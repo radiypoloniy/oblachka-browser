@@ -1,6 +1,7 @@
 import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell } from 'electron';
 import path from 'node:path';
 import { TabManager } from './TabManager';
+import { SessionManager } from './SessionManager';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts } from '../shared/ipc';
 
@@ -10,6 +11,7 @@ const DEV_URL = 'http://localhost:5173';
 let win: BrowserWindow | null = null;
 let chromeView: WebContentsView | null = null; // слой нашего React-хрома
 let tabs: TabManager | null = null;
+let session: SessionManager | null = null;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -47,10 +49,30 @@ function createWindow() {
   layoutChrome();
   win.on('resize', layoutChrome);
 
-  // Менеджер вкладок. При любом изменении — шлём свежий снимок в хром.
+  // Загружаем сохранённую сессию ДО создания TabManager.
+  session = new SessionManager();
+  const restored = session.load();
+
+  // При любом изменении: обновляем UI и планируем сохранение сессии.
+  // scheduleSave молча игнорирует вызовы до session.enable() — это защита
+  // от затирания: onChange стреляет во время restore, но сохранять ещё нельзя.
   tabs = new TabManager(win, () => {
     chromeView?.webContents.send(IPC.TABS_CHANGED, tabs!.snapshot());
+    session!.scheduleSave(() => tabs!.snapshot(), () => tabs!.getActiveId());
   });
+
+  // Восстанавливаем вкладки из session.json.
+  if (restored && restored.tabs.length > 0) {
+    const restoredIds: string[] = [];
+    for (const { url } of restored.tabs) {
+      restoredIds.push(tabs.createTab(url));
+    }
+    const targetId = restoredIds[restored.activeTabIndex];
+    if (targetId) tabs.activate(targetId);
+  }
+
+  // Только после восстановления разрешаем автосейв.
+  session.enable();
 
   if (isDev) {
     chromeView.webContents.loadURL(DEV_URL);
@@ -60,7 +82,7 @@ function createWindow() {
   }
 
   win.on('closed', () => {
-    win = null; chromeView = null; tabs = null;
+    win = null; chromeView = null; tabs = null; session = null;
   });
 }
 
@@ -100,4 +122,9 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// Синхронная запись перед выходом — никаких await, иначе процесс умрёт раньше.
+app.on('before-quit', () => {
+  if (tabs && session) session.saveNow(tabs.snapshot(), tabs.getActiveId());
 });
