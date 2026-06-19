@@ -1,0 +1,10 @@
+/* ── Oblako corner radii ─────────────────────────────────────────────
+   Nesting scale — respect the hierarchy:
+   islands (outermost) → cards → chips (innermost). */
+:root {
+  --radius-island: 18px; /* floating shell plates, the big input island */
+  --radius-card: 13px;   /* chat cards, dropdown panels, site tiles      */
+  --radius-chip: 9px;    /* model chip, segmented options, small chips   */
+  --radius-sm: 7px;      /* tiny controls, favicon tiles                 */
+  --radius-pill: 999px;  /* VPN pill, status pills, round icon buttons   */
+}

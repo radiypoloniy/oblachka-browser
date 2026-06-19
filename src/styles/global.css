@@ -1,0 +1,27 @@
+/* Entry-стили рендерера. Токены дизайн-системы + glass-канвас. */
+@import "./tokens/fonts.css";
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/radii.css";
+@import "./tokens/shadows.css";
+@import "./tokens/effects.css";
+@import "./tokens/theme-dark.css";
+
+html, body, #root { margin: 0; height: 100%; background: var(--app-bg); }
+body {
+  background: var(--canvas);
+  background-attachment: fixed;
+  font-family: var(--font-sans);
+  color: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(60,50,90,0.22); border-radius: 6px;
+  border: 3px solid transparent; background-clip: content-box;
+}
+/* Зона перетаскивания окна (кастомный titlebar) */
+.drag { -webkit-app-region: drag; }
+.no-drag { -webkit-app-region: no-drag; }

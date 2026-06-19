@@ -1,0 +1,29 @@
+/* ── Oblako elevation ────────────────────────────────────────────────
+   Soft, layered drop shadows + a specular rim. On glass surfaces the rim
+   (inset highlights) reads as light catching the edge — that's what sells
+   Liquid Glass. Plain plates use the rim-less chip/card steps. */
+:root {
+  --shadow-chip:
+    0 1px 2px rgba(30,25,60,0.07);
+
+  --shadow-card:
+    0 1px 2px rgba(30,25,60,0.06),
+    0 4px 14px rgba(30,25,60,0.07);
+
+  /* Glass elevations — specular rim baked in. Use for islands / menus. */
+  --shadow-island:
+    inset 0 1px 0.5px var(--glass-hi),
+    inset 0 0 0 1px var(--glass-edge),
+    0 10px 30px rgba(40,30,80,0.12),
+    0 28px 56px rgba(40,30,80,0.10);
+
+  --shadow-pop:
+    inset 0 1px 0.5px var(--glass-hi),
+    inset 0 0 0 1px var(--glass-edge),
+    0 6px 18px rgba(40,30,80,0.16),
+    0 20px 48px rgba(40,30,80,0.22);
+
+  /* Focus ring — violet, soft, no hard border */
+  --ring-accent: 0 0 0 3px rgba(138,63,238,0.24);
+  --ring-system: 0 0 0 3px rgba(65,128,219,0.20);
+}

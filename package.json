@@ -1,0 +1,35 @@
+{
+  "name": "oblako-browser",
+  "version": "0.1.0",
+  "description": "Oblako — приватный AI-браузер. Прототип ядра (Этап 1).",
+  "main": "dist-electron/electron/main.js",
+  "author": "Oblako",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n VITE,ELECTRON -c cyan,magenta \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "tsc -p electron/tsconfig.json && wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build:vite": "vite build",
+    "build": "npm run build:vite && npm run build:electron",
+    "start": "cross-env NODE_ENV=production electron ."
+  },
+  "dependencies": {
+    "lucide-react": "0.383.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.0",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "@vitejs/plugin-react": "4.3.1",
+    "concurrently": "8.2.2",
+    "cross-env": "7.0.3",
+    "electron": "31.0.2",
+    "typescript": "5.4.5",
+    "vite": "5.3.1",
+    "wait-on": "7.2.0"
+  }
+}

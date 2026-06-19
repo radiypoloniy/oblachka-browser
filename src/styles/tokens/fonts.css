@@ -1,0 +1,6 @@
+/* Oblako webfonts.
+   Onest  — neutral geometric grotesque w/ full Cyrillic (brand sans).
+   JetBrains Mono — monospace w/ Cyrillic (code, model ids, technical).
+   For the Electron build, bundle the .woff2 binaries locally and replace
+   this @import with @font-face rules pointing at them. */
+@import url('https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');

@@ -1,0 +1,122 @@
+/* ── Oblako color system ──────────────────────────────────────────────
+   Base palette + semantic aliases. Light theme default (warm off-white
+   ground). Dark theme in theme-dark.css.
+
+   PALETTE (от пользователя):
+     violet  #8A3FEE — основной акцент
+     pink    #FB7EB0 — тёплый вторичный акцент
+     peach   #FCC8BF — мягкий тёплый тинт
+     paper   #F6F5EF — фон приложения
+     blue    #4180DB — облако / система
+
+   RULES OF THE BRAND:
+   • Violet is the ONE primary accent (active states, send, selection,
+     pinned-tab ring).
+   • Blue is reserved for CLOUD / SYSTEM signals only (cloud-model dot,
+     "через VPN-узел"). Never for names, links, or decoration.
+   • Pink / peach are sparse warm accents (highlights, soft fills).
+*/
+:root {
+  /* Violet — primary accent */
+  --violet-50:  #F4ECFE;
+  --violet-100: #E7D6FD;
+  --violet-200: #D0B2FA;
+  --violet-300: #B488F5;
+  --violet-400: #9C5FF1;
+  --violet-500: #8A3FEE; /* brand violet */
+  --violet-600: #7A2EE0;
+  --violet-700: #6422BC;
+  --violet-800: #4E1B91;
+
+  /* Pink — warm secondary accent */
+  --pink-50:  #FFEAF3;
+  --pink-100: #FFD4E6;
+  --pink-300: #FFA8CD;
+  --pink-500: #FB7EB0;
+  --pink-600: #E85F98;
+
+  /* Peach — soft warm tint */
+  --peach-100: #FFE6E0;
+  --peach-300: #FCC8BF;
+  --peach-500: #F7A99B;
+
+  /* Cloud blue — system / cloud signals ONLY */
+  --cloud-50:  #E9F1FB;
+  --cloud-100: #CFE0F6;
+  --cloud-300: #8AB4EB;
+  --cloud-500: #4180DB;
+  --cloud-600: #2F69BC;
+
+  /* Neutrals — warm paper grays */
+  --white:      #FFFFFF;
+  --neutral-25: #FBFAF7;
+  --neutral-50: #F6F5EF; /* paper — app bg */
+  --neutral-100:#EFEEE8;
+  --neutral-150:#E7E5DE;
+  --neutral-200:#DDDBD3;
+  --neutral-300:#C7C4BB;
+  --neutral-400:#A6A39A;
+  --neutral-500:#827F77;
+  --neutral-600:#615E57;
+  --neutral-700:#46443F;
+  --neutral-800:#2D2B27;
+  --neutral-900:#1C1B18;
+
+  /* Status dots */
+  --dot-local: #2FB07A; /* green = on-device / local model (functional online dot) */
+  --dot-cloud: #4180DB; /* blue  = cloud model */
+  --dot-vpn:   #2FB07A; /* VPN connected, healthy */
+
+  /* Feedback */
+  --danger-500: #D8584E;
+  --warning-500:#C98A2E;
+
+  /* ── Semantic aliases (use these in product code) ── */
+  --accent:            var(--violet-500);
+  --accent-hover:      var(--violet-600);
+  --accent-active:     var(--violet-700);
+  --accent-soft:       var(--violet-50);
+  --accent-soft-border:var(--violet-200);
+  --on-accent:         #FFFFFF;
+
+  --accent-warm:       var(--pink-500); /* sparse warm secondary */
+  --accent-warm-soft:  var(--pink-50);
+
+  --system:            var(--cloud-500); /* cloud / system blue */
+  --system-soft:       var(--cloud-50);
+
+  /* ── Canvas ──────────────────────────────────────────────────────
+     The luminous ground liquid glass refracts. NOT a flat fill — soft
+     palette blooms (violet ↖, blue ↗, pink ↘, peach ↙) over a cool base.
+     Apply --canvas as a background-image on the app shell / specimen bg. */
+  --app-bg:   #E7E9F4;  /* cool light base behind the blooms */
+  --canvas:
+    radial-gradient(135% 130% at 10% 4%,  rgba(138,63,238,0.30), transparent 52%),
+    radial-gradient(120% 120% at 92% 2%,  rgba(65,128,219,0.26), transparent 50%),
+    radial-gradient(150% 130% at 86% 100%, rgba(251,126,176,0.30), transparent 54%),
+    radial-gradient(130% 130% at 2% 100%, rgba(252,200,191,0.40), transparent 56%),
+    var(--app-bg);
+
+  /* ── Liquid glass fills ──────────────────────────────────────────
+     Translucent white plates that frost the canvas behind them. Pair
+     with --glass-blur + --shadow-glass (specular edge lives in shadow). */
+  --glass-fill:        rgba(255,255,255,0.52);  /* shell islands, input plate, menus */
+  --glass-fill-strong: rgba(255,255,255,0.66);  /* dropdowns / scrims needing more body */
+
+  --surface:           rgba(255,255,255,0.66);  /* content cards, button plates, segmented */
+  --surface-island:    var(--glass-fill);       /* floating glass islands */
+  --surface-sunken:    rgba(255,255,255,0.34);  /* recessed wells (omnibox, chip track) */
+  --surface-hover:     rgba(255,255,255,0.58);
+  --surface-solid:     #FFFFFF;                 /* escape hatch when opacity is required */
+
+  --divider:           rgba(40,30,70,0.10);
+  --divider-strong:    rgba(40,30,70,0.16);
+
+  --text-strong:       var(--neutral-900);
+  --text-body:         var(--neutral-700);
+  --text-muted:        var(--neutral-500);
+  --text-faint:        var(--neutral-400);
+  --text-on-accent:    #FFFFFF;
+  --text-link:         var(--text-body); /* links are NOT blue — neutral, violet on hover */
+  --text-link-hover:   var(--violet-600);
+}

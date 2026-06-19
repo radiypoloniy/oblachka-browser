@@ -1,0 +1,52 @@
+/* ── Oblako dark theme ───────────────────────────────────────────────
+   Same meanings, different ground. Apply with <html data-theme="dark">.
+   Deep cool charcoal ground; islands lift on slightly lighter glass.
+   Violet lightens a touch for contrast; cloud-blue stays the cloud signal. */
+[data-theme="dark"] {
+  --violet-500: #A571F5;
+  --accent:        #A571F5;
+  --accent-hover:  #B388F8;
+  --accent-active: #C2A1FA;
+  --accent-soft:   rgba(165,113,245,0.16);
+  --accent-soft-border: rgba(165,113,245,0.42);
+  --on-accent: #1A0B33;
+
+  --accent-warm:      #FB7EB0;
+  --accent-warm-soft: rgba(251,126,176,0.16);
+
+  --cloud-500: #6BA0EC;
+  --system:      #6BA0EC;
+  --system-soft: rgba(107,160,236,0.16);
+
+  --app-bg:         #15131A;
+  --surface:        #201D28;
+  --surface-island: rgba(36,32,46,0.74);
+  --surface-sunken: #1B1922;
+  --surface-hover:  #292534;
+
+  --divider:        rgba(255,255,255,0.07);
+  --divider-strong: rgba(255,255,255,0.12);
+
+  --text-strong: #F3F1F6;
+  --text-body:   #CBC7D2;
+  --text-muted:  #918C9B;
+  --text-faint:  #6C6776;
+  --text-link:   #CBC7D2;
+  --text-link-hover: #B388F8;
+
+  --dot-local: #4FC78E;
+  --dot-cloud: #6BA0EC;
+  --dot-vpn:   #4FC78E;
+
+  --glass-tint: rgba(36,32,46,0.74);
+
+  --shadow-chip: 0 1px 2px rgba(0,0,0,0.40);
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.40), 0 4px 12px rgba(0,0,0,0.36);
+  --shadow-island:
+    0 1px 2px rgba(0,0,0,0.40),
+    0 8px 24px rgba(0,0,0,0.40),
+    0 24px 48px rgba(0,0,0,0.34);
+  --shadow-pop: 0 2px 8px rgba(0,0,0,0.50), 0 12px 32px rgba(0,0,0,0.55);
+  --ring-accent: 0 0 0 3px rgba(165,113,245,0.32);
+  --ring-system: 0 0 0 3px rgba(107,160,236,0.28);
+}
