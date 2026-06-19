@@ -3,3 +3,4 @@ dist/
 dist-electron/
 *.log
 .DS_Store
+scripts/shots/
