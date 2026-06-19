@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { PanelLeft, Plus, Settings, X, Cloud } from 'lucide-react';
 import type { TabState } from '../../shared/ipc';
 
@@ -9,7 +10,6 @@ interface SidebarProps {
   onNewTab: () => void;
 }
 
-// Маленькая плитка-favicon. Если URL фавикона есть — картинка, иначе буква домена.
 function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
   if (tab.isHub) {
     return (
@@ -89,18 +89,105 @@ function TabRow({ tab, active, onClick, onClose }: {
   );
 }
 
+// Базовые стили aside — одинаковы для обоих режимов.
+const asideBase: React.CSSProperties = {
+  flex: 'none', height: '100%', display: 'flex', flexDirection: 'column',
+  background: 'var(--surface-island)',
+  backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
+  boxShadow: 'inset -1px 0 0 var(--glass-edge)',
+  overflow: 'hidden',
+};
+
 export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab }: SidebarProps) {
+  const [collapsed, setCollapsed] = useState(false);
+
   const pinned = tabs.filter((t) => t.isHub);
   const open = tabs.filter((t) => !t.isHub);
 
+  // ── Свёрнутый режим: узкая полоса иконок ──
+  if (collapsed) {
+    return (
+      <aside className="drag" style={{ ...asideBase, width: 56, alignItems: 'center', padding: '12px 0 14px' }}>
+
+        {/* Логотип + кнопка развернуть */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingBottom: 14 }}>
+          <span style={{
+            width: 24, height: 24, borderRadius: 7, background: 'var(--accent)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Cloud size={15} color="#fff" />
+          </span>
+          <button
+            className="no-drag"
+            onClick={() => setCollapsed(false)}
+            title="Развернуть панель"
+            style={{ ...iconBtn, transform: 'scaleX(-1)' }}
+          >
+            <PanelLeft size={17} />
+          </button>
+        </div>
+
+        {/* Закреплённые (хаб) + кнопка новой вкладки */}
+        <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingBottom: 14 }}>
+          {pinned.map((t) => (
+            <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
+              style={{
+                border: 'none', cursor: 'default', padding: 4,
+                borderRadius: 'var(--radius-sm)',
+                background: activeId === t.id ? 'var(--surface)' : 'transparent',
+                boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
+              }}>
+              <FaviconTile tab={t} size={18} />
+            </button>
+          ))}
+          <button onClick={onNewTab} title="Новая вкладка"
+            style={{
+              width: 26, height: 26, borderRadius: 'var(--radius-sm)',
+              border: '1px dashed var(--divider-strong)', background: 'transparent',
+              cursor: 'default', display: 'inline-flex', alignItems: 'center',
+              justifyContent: 'center', color: 'var(--text-faint)',
+            }}>
+            <Plus size={16} />
+          </button>
+        </div>
+
+        {/* Открытые вкладки — только favicon */}
+        <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, overflowY: 'auto', flex: 1 }}>
+          {open.map((t) => (
+            <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
+              style={{
+                border: 'none', cursor: 'default', padding: 5,
+                borderRadius: 'var(--radius-sm)',
+                background: activeId === t.id ? 'var(--surface)' : 'transparent',
+                boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
+              }}
+              onMouseEnter={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+              onMouseLeave={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <FaviconTile tab={t} size={18} />
+            </button>
+          ))}
+        </div>
+
+        {/* Низ: настройки + аватар */}
+        <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <button title="Настройки" style={iconBtn}><Settings size={17} /></button>
+          <span style={{
+            width: 28, height: 28, borderRadius: '50%', flex: 'none',
+            background: 'linear-gradient(135deg, var(--accent), var(--accent-warm))',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontSize: 12, fontWeight: 600,
+          }}>А</span>
+        </div>
+      </aside>
+    );
+  }
+
+  // ── Развёрнутый режим ──
   return (
-    <aside className="drag" style={{
-      width: 256, flex: 'none', height: '100%', display: 'flex', flexDirection: 'column',
-      padding: '12px 12px 14px', background: 'var(--surface-island)',
-      backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
-      boxShadow: 'inset -1px 0 0 var(--glass-edge)',
-    }}>
-      {/* шапка: оставляем место под системные кнопки titlebarOverlay справа */}
+    <aside className="drag" style={{ ...asideBase, width: 256, padding: '12px 12px 14px' }}>
+
+      {/* Шапка: логотип + кнопка свернуть */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px 14px' }}>
         <span style={{
           width: 24, height: 24, borderRadius: 7, background: 'var(--accent)',
@@ -108,12 +195,12 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab }:
         }}><Cloud size={15} color="#fff" /></span>
         <span style={{ fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--text-strong)' }}>Oblako</span>
         <div style={{ flex: 1 }} />
-        <button className="no-drag" title="Свернуть панель" style={iconBtn}>
+        <button className="no-drag" onClick={() => setCollapsed(true)} title="Свернуть панель" style={iconBtn}>
           <PanelLeft size={17} />
         </button>
       </div>
 
-      {/* закреплённые (хаб + позже реальные пины) */}
+      {/* Закреплённые (хаб + позже реальные пины) */}
       <div className="no-drag" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 4px 14px' }}>
         {pinned.map((t) => (
           <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}

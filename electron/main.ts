@@ -2,7 +2,7 @@ import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell } from 'elect
 import path from 'node:path';
 import { TabManager } from './TabManager';
 import { IPC } from '../shared/ipc';
-import type { ContentBounds } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts } from '../shared/ipc';
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
@@ -22,7 +22,7 @@ function createWindow() {
     show: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#00000000',
+      color: '#E7E9F4',   // --app-bg светлой темы; обновляется через IPC при смене темы
       symbolColor: '#46443F',
       height: 56,
     },
@@ -75,6 +75,7 @@ function registerIpc() {
   ipcMain.handle(IPC.TAB_GO_FORWARD, (_e, id: string) => tabs?.goForward(id));
   ipcMain.handle(IPC.TAB_RELOAD, (_e, id: string) => tabs?.reload(id));
   ipcMain.handle(IPC.CONTENT_SET_BOUNDS, (_e, b: ContentBounds) => tabs?.setContentBounds(b));
+  ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (_e, opts: TitleBarOpts) => win?.setTitleBarOverlay(opts));
 }
 
 // Внешние протоколы (mailto:, tel:) -> отдаём ОС, не показываем ошибку навигации.

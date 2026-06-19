@@ -21,6 +21,16 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   }, [dark]);
 
+  // Синхронизируем фон и цвет иконок зоны системных кнопок с темой.
+  // color = --app-bg темы (прозрачность не работает: Windows рисует backgroundColor окна,
+  // а не web-контент, что даёт видимую плашку при несовпадении).
+  useEffect(() => {
+    void window.oblako.setTitleBarOverlay({
+      color: dark ? '#15131A' : '#E7E9F4',
+      symbolColor: dark ? '#EAE8E3' : '#46443F',
+    });
+  }, [dark]);
+
   // Подписка на изменения вкладок из main + первичная загрузка.
   useEffect(() => {
     let mounted = true;

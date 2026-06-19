@@ -33,10 +33,14 @@ export const IPC = {
   TAB_GO_FORWARD: 'tab:go-forward',
   TAB_RELOAD: 'tab:reload',
   CONTENT_SET_BOUNDS: 'content:set-bounds',
+  WINDOW_SET_OVERLAY: 'window:set-overlay', // обновить цвет иконок titleBarOverlay
 
   // События (main -> renderer, односторонние)
   TABS_CHANGED: 'tabs:changed',     // прислать весь актуальный список TabState[]
 } as const;
+
+// Параметры titleBarOverlay для динамического обновления (смена темы).
+export type TitleBarOpts = { color?: string; symbolColor?: string; height?: number };
 
 // Тип API, который preload пробрасывает в window.oblako
 export interface OblakoApi {
@@ -49,5 +53,6 @@ export interface OblakoApi {
   goForward(id: string): Promise<void>;
   reload(id: string): Promise<void>;
   setContentBounds(bounds: ContentBounds): Promise<void>;
+  setTitleBarOverlay(opts: TitleBarOpts): Promise<void>;
   onTabsChanged(cb: (tabs: TabState[]) => void): () => void; // вернёт unsubscribe
 }

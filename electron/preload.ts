@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, TabState, ContentBounds } from '../shared/ipc';
+import type { OblakoApi, TabState, ContentBounds, TitleBarOpts } from '../shared/ipc';
 
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
@@ -12,6 +12,7 @@ const api: OblakoApi = {
   goForward: (id: string) => ipcRenderer.invoke(IPC.TAB_GO_FORWARD, id),
   reload: (id: string) => ipcRenderer.invoke(IPC.TAB_RELOAD, id),
   setContentBounds: (b: ContentBounds) => ipcRenderer.invoke(IPC.CONTENT_SET_BOUNDS, b),
+  setTitleBarOverlay: (opts: TitleBarOpts) => ipcRenderer.invoke(IPC.WINDOW_SET_OVERLAY, opts),
   onTabsChanged: (cb: (tabs: TabState[]) => void) => {
     const handler = (_e: unknown, tabs: TabState[]) => cb(tabs);
     ipcRenderer.on(IPC.TABS_CHANGED, handler);

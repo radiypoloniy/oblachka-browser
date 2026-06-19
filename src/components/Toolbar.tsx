@@ -47,7 +47,10 @@ export default function Toolbar({
 
   return (
     <div className="drag" style={{
-      display: 'flex', alignItems: 'center', gap: 10, height: 56, flex: 'none', padding: '0 16px',
+      display: 'flex', alignItems: 'center', gap: 10, height: 56, flex: 'none',
+      paddingLeft: 16,
+      // 138px = 3 системные кнопки Windows × ~46px каждая при 100% DPI.
+      paddingRight: 138,
     }}>
       <div className="no-drag" style={{ display: 'flex', gap: 2 }}>
         <button title="Назад" disabled={!tab?.canGoBack} onClick={onBack}

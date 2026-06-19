@@ -26,7 +26,7 @@ export default function Hub({ onSubmit }: { onSubmit: (input: string) => void })
         width: '100%', maxWidth: 680, background: 'var(--surface-island)',
         backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
         borderRadius: 'var(--radius-island)', boxShadow: 'var(--shadow-island)',
-        padding: 18,
+        padding: 18, overflow: 'hidden',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Sparkles size={20} style={{ color: 'var(--accent)', flex: 'none' }} />
