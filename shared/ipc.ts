@@ -3,6 +3,7 @@
 
 export interface TabState {
   id: string;
+  isActive: boolean;    // true = эта вкладка сейчас активна в main-процессе
   url: string;          // текущий реальный URL вкладки
   title: string;        // заголовок страницы (document.title)
   faviconUrl: string | null;

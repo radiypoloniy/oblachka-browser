@@ -32,21 +32,19 @@ export default function App() {
   }, [dark]);
 
   // Подписка на изменения вкладок из main + первичная загрузка.
+  // snapshot теперь несёт isActive — синхронизируем activeId из main,
+  // чтобы хоткеи и любые переключения из main отражались в UI немедленно.
   useEffect(() => {
+    const applySnapshot = (t: TabState[]) => {
+      setTabs(t);
+      const active = t.find((x) => x.isActive);
+      if (active) setActiveId(active.id);
+    };
     let mounted = true;
-    window.oblako.getAllTabs().then((t) => { if (mounted) setTabs(t); });
-    const unsub = window.oblako.onTabsChanged((t) => setTabs(t));
+    window.oblako.getAllTabs().then((t) => { if (mounted) applySnapshot(t); });
+    const unsub = window.oblako.onTabsChanged(applySnapshot);
     return () => { mounted = false; unsub(); };
   }, []);
-
-  // Активная вкладка определяется main-процессом, но мы держим локальную копию
-  // для мгновенного отклика UI. Синхронизируем при изменении списка, если
-  // активная вкладка пропала (закрыта).
-  useEffect(() => {
-    if (tabs.length && !tabs.some((t) => t.id === activeId)) {
-      setActiveId(tabs[tabs.length - 1].id);
-    }
-  }, [tabs, activeId]);
 
   // ── Главное: измеряем "дырку" под контент и сообщаем main, ──
   // ── куда положить WebContentsView активной вкладки.       ──

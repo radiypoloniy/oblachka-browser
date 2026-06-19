@@ -62,7 +62,8 @@ export class TabManager {
     return this.tabs.map((t) => {
       if (!this.isHttpView(t.view)) {
         return {
-          id: t.id, url: '', title: 'Новая вкладка · AI-хаб',
+          id: t.id, isActive: t.id === this.activeId,
+          url: '', title: 'Новая вкладка · AI-хаб',
           faviconUrl: null, isLoading: false,
           canGoBack: false, canGoForward: false, isHub: true,
         };
@@ -70,6 +71,7 @@ export class TabManager {
       const wc = t.view.webContents;
       return {
         id: t.id,
+        isActive: t.id === this.activeId,
         url: wc.getURL(),
         title: wc.getTitle() || wc.getURL() || 'Загрузка…',
         faviconUrl: (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon ?? null,
