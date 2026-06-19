@@ -1,7 +1,7 @@
 import { WebContentsView, BrowserWindow, Menu, clipboard } from 'electron';
 import type { MenuItemConstructorOptions, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
-import type { TabState, ContentBounds } from '../shared/ipc';
+import type { TabState, TabErrorState, ContentBounds } from '../shared/ipc';
 
 const CLOSED_STACK_MAX = 10;
 
@@ -33,6 +33,7 @@ export class TabManager {
   private bounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
   private onChange: () => void;
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
+  private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
 
   constructor(win: BrowserWindow, onChange: () => void) {
     this.win = win;
@@ -67,6 +68,7 @@ export class TabManager {
       if (!this.isHttpView(t.view)) {
         return {
           id: t.id, isActive: t.id === this.activeId,
+          tabError: null, // хаб не имеет ошибок
           url: '', title: 'Новая вкладка · AI-хаб',
           faviconUrl: null, isLoading: false,
           canGoBack: false, canGoForward: false, isHub: true,
@@ -76,6 +78,7 @@ export class TabManager {
       return {
         id: t.id,
         isActive: t.id === this.activeId,
+        tabError: this.errors.get(t.id) ?? null,
         url: wc.getURL(),
         title: wc.getTitle() || wc.getURL() || 'Загрузка…',
         faviconUrl: (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon ?? null,
@@ -114,10 +117,12 @@ export class TabManager {
     const wc = view.webContents;
     const notify = () => this.onChange();
 
-    // Любое изменение состояния страницы -> пересобрать UI.
-    wc.on('did-start-loading', notify);
+    // Новая попытка загрузки — очищаем предыдущую ошибку сразу.
+    wc.on('did-start-loading', () => { this.errors.delete(id); notify(); });
     wc.on('did-stop-loading', notify);
-    wc.on('did-navigate', notify);
+    // Успешный коммит навигации — показываем вьюху (важно: не на did-start-loading,
+    // чтобы вьюха не мигала при retry, который снова упадёт).
+    wc.on('did-navigate', () => { if (this.activeId === id) this.revealView(id); notify(); });
     wc.on('did-navigate-in-page', notify);
     wc.on('page-title-updated', notify);
 
@@ -133,10 +138,21 @@ export class TabManager {
       return { action: 'deny' };
     });
 
-    // Падение рендер-процесса вкладки — не оставляем мёртвую вьюху молча.
+    // Ошибка загрузки основного фрейма (DNS, сеть, TLS…)
+    // errorCode === -3 (ERR_ABORTED) — пользователь остановил загрузку; не ошибка.
+    wc.on('did-fail-load', (_e, errorCode, _desc, validatedURL, isMainFrame) => {
+      if (!isMainFrame || errorCode === -3) return;
+      const url = wc.getURL() || validatedURL;
+      this.errors.set(id, { type: 'load', code: errorCode, url });
+      if (this.activeId === id) this.hideView(id);
+      notify();
+    });
+
+    // Краш рендер-процесса: вьюха мертва — прячем, показываем экран ошибки.
     wc.on('render-process-gone', () => {
-      // Прототип: просто помечаем перезагрузкой. Полноценная страница
-      // "вкладка упала, перезагрузить" — задача Этапа 1 (см. 3.7), здесь TODO.
+      const url = wc.getURL();
+      this.errors.set(id, { type: 'crash', code: 0, url });
+      if (this.activeId === id) this.hideView(id);
       notify();
     });
 
@@ -209,11 +225,16 @@ export class TabManager {
     for (const t of this.tabs) {
       if (!this.isHttpView(t.view)) continue;
       if (t.id === id) {
-        // добавляем во вьюхи окна, если ещё не там
-        const children = this.win.contentView.children;
-        if (!children.includes(t.view)) this.win.contentView.addChildView(t.view);
-        t.view.setVisible(true);
-        this.applyBounds(t.view);
+        if (!this.errors.has(id)) {
+          // Нет ошибки — показываем и позиционируем.
+          const children = this.win.contentView.children;
+          if (!children.includes(t.view)) this.win.contentView.addChildView(t.view);
+          t.view.setVisible(true);
+          this.applyBounds(t.view);
+        } else {
+          // Вкладка в ошибке — держим скрытой; React нарисует экран ошибки.
+          t.view.setVisible(false);
+        }
       } else {
         t.view.setVisible(false);
       }
@@ -226,6 +247,7 @@ export class TabManager {
     const idx = this.tabs.findIndex((t) => t.id === id);
     if (idx === -1) return;
     const [tab] = this.tabs.splice(idx, 1);
+    this.errors.delete(id); // убираем ошибку вместе со вкладкой
     if (this.isHttpView(tab.view)) {
       // Запоминаем URL до уничтожения webContents — для Ctrl+Shift+T.
       const url = tab.view.webContents.getURL();
@@ -284,7 +306,15 @@ export class TabManager {
   }
   reload(id: string) {
     const t = this.tabs.find((x) => x.id === id);
-    if (this.isHttpView(t?.view ?? null)) t!.view!.webContents.reload();
+    if (!this.isHttpView(t?.view ?? null)) return;
+    const err = this.errors.get(id);
+    // После краша renderer-процесс мёртв — reload() может не стартовать.
+    // loadURL(сохранённый_url) надёжно пересоздаёт процесс.
+    if (err?.type === 'crash' && err.url) {
+      t!.view!.webContents.loadURL(err.url);
+    } else {
+      t!.view!.webContents.reload();
+    }
   }
 
   // ── Зум активной вкладки ──────────────────────────────────────────────────
@@ -340,6 +370,24 @@ export class TabManager {
         this.resetZoom();                 // Ctrl+0: сбросить к 100%
       }
     });
+  }
+
+  // ── Показать / скрыть вьюху активной вкладки ──
+  // revealView: вызывается после did-navigate (успешная загрузка) — показываем.
+  private revealView(id: string): void {
+    const tab = this.tabs.find((t) => t.id === id);
+    if (!tab || !this.isHttpView(tab.view)) return;
+    const children = this.win.contentView.children;
+    if (!children.includes(tab.view)) this.win.contentView.addChildView(tab.view);
+    tab.view.setVisible(true);
+    this.applyBounds(tab.view);
+  }
+
+  // hideView: вызывается при ошибке/краше — скрываем, React нарисует экран ошибки.
+  private hideView(id: string): void {
+    const tab = this.tabs.find((t) => t.id === id);
+    if (!tab || !this.isHttpView(tab.view)) return;
+    tab.view.setVisible(false);
   }
 
   // ── Геометрия "дырки" под контент ──

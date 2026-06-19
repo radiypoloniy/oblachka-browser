@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react
 import Sidebar from './components/Sidebar';
 import Toolbar from './components/Toolbar';
 import Hub from './components/Hub';
+import TabError from './components/TabError';
 import type { TabState } from '../shared/ipc';
 
 const HUB_ID = 'hub';
@@ -15,6 +16,7 @@ export default function App() {
 
   const active = tabs.find((t) => t.id === activeId);
   const isHub = active?.isHub ?? true;
+  const tabError = active?.tabError ?? null;
 
   // Тема
   useEffect(() => {
@@ -98,12 +100,17 @@ export default function App() {
           onReload={() => window.oblako.reload(activeId)}
           onSubmit={submit}
         />
-        {/* Контент-зона. Когда активен сайт — здесь "дырка": WebContentsView
-            кладётся main-процессом поверх этого места. Когда хаб — рисуем Hub. */}
+        {/* Контент-зона. Варианты: хаб, страница ошибки, или "дырка" (WebContentsView). */}
         <div ref={contentRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
           {isHub
             ? <Hub onSubmit={submit} />
-            : null /* реальную страницу рисует main через WebContentsView */}
+            : tabError
+              ? <TabError
+                  error={tabError}
+                  url={active?.url ?? ''}
+                  onRetry={() => window.oblako.reload(activeId)}
+                />
+              : null /* реальную страницу рисует main через WebContentsView */}
         </div>
       </div>
     </div>

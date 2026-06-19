@@ -1,9 +1,16 @@
 // Единый источник правды по форме данных, которыми обмениваются
 // renderer (хром-UI) и main (движок вкладок). Импортируется обеими сторонами.
 
+export interface TabErrorState {
+  type: 'load' | 'crash';
+  code: number;   // errorCode из did-fail-load; 0 при краше
+  url: string;    // URL, который не открылся — для показа и retry
+}
+
 export interface TabState {
   id: string;
   isActive: boolean;    // true = эта вкладка сейчас активна в main-процессе
+  tabError: TabErrorState | null; // null = нет ошибки
   url: string;          // текущий реальный URL вкладки
   title: string;        // заголовок страницы (document.title)
   faviconUrl: string | null;
