@@ -1,6 +1,13 @@
-import { WebContentsView, BrowserWindow } from 'electron';
+import { WebContentsView, BrowserWindow, Menu, clipboard } from 'electron';
+import type { MenuItemConstructorOptions } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type { TabState, ContentBounds } from '../shared/ipc';
+
+// Обрезает длинный текст для лейблов меню, чтобы не растягивало окно.
+function truncate(text: string, max = 40): string {
+  const s = text.trim().replace(/\s+/g, ' ');
+  return s.length > max ? s.slice(0, max) + '…' : s;
+}
 
 // Поисковик по умолчанию — DuckDuckGo (приватный), как в спеке (3.2).
 const SEARCH_URL = (q: string) => `https://duckduckgo.com/?q=${encodeURIComponent(q)}`;
@@ -122,6 +129,63 @@ export class TabManager {
       // Прототип: просто помечаем перезагрузкой. Полноценная страница
       // "вкладка упала, перезагрузить" — задача Этапа 1 (см. 3.7), здесь TODO.
       notify();
+    });
+
+    wc.on('context-menu', (_e, p) => {
+      const items: MenuItemConstructorOptions[] = [];
+
+      // ── Ссылка ──────────────────────────────────────────────────────────────
+      if (p.linkURL) {
+        items.push(
+          { label: 'Открыть ссылку в новой вкладке', click: () => this.createTab(p.linkURL) },
+          { label: 'Копировать адрес ссылки', click: () => clipboard.writeText(p.linkURL) },
+        );
+      }
+
+      // ── Картинка ─────────────────────────────────────────────────────────────
+      if (p.mediaType === 'image' && p.srcURL) {
+        if (items.length) items.push({ type: 'separator' });
+        items.push(
+          { label: 'Копировать картинку', click: () => wc.copyImageAt(p.x, p.y) },
+          { label: 'Сохранить картинку как…', click: () => wc.downloadURL(p.srcURL) },
+          { label: 'Открыть картинку в новой вкладке', click: () => this.createTab(p.srcURL) },
+        );
+      }
+
+      // ── Редактируемое поле ───────────────────────────────────────────────────
+      // isEditable обрабатываем ДО selectionText: cut/copy/paste — главное для инпутов.
+      if (p.isEditable) {
+        if (items.length) items.push({ type: 'separator' });
+        items.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' });
+        if (p.selectionText.trim()) {
+          items.push({ type: 'separator' });
+          items.push({
+            label: `Поиск «${truncate(p.selectionText)}» в DuckDuckGo`,
+            click: () => this.createTab(SEARCH_URL(p.selectionText)),
+          });
+        }
+      } else if (p.selectionText.trim()) {
+        // ── Выделенный текст (не в инпуте) ──────────────────────────────────
+        if (items.length) items.push({ type: 'separator' });
+        items.push(
+          { role: 'copy' },
+          {
+            label: `Поиск «${truncate(p.selectionText)}» в DuckDuckGo`,
+            click: () => this.createTab(SEARCH_URL(p.selectionText)),
+          },
+        );
+      }
+
+      // ── Фоллбэк: просто страница (ни ссылки, ни картинки, ни выделения) ────
+      if (!items.length) {
+        items.push(
+          { label: 'Назад',    enabled: wc.canGoBack(),     click: () => wc.goBack() },
+          { label: 'Вперёд',   enabled: wc.canGoForward(),  click: () => wc.goForward() },
+          { label: 'Обновить',                               click: () => wc.reload() },
+        );
+      }
+
+      Menu.buildFromTemplate(items).popup({ window: this.win });
     });
   }
 
