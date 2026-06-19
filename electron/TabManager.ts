@@ -1,7 +1,9 @@
 import { WebContentsView, BrowserWindow, Menu, clipboard } from 'electron';
-import type { MenuItemConstructorOptions } from 'electron';
+import type { MenuItemConstructorOptions, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type { TabState, ContentBounds } from '../shared/ipc';
+
+const CLOSED_STACK_MAX = 10;
 
 // Обрезает длинный текст для лейблов меню, чтобы не растягивало окно.
 function truncate(text: string, max = 40): string {
@@ -26,6 +28,7 @@ export class TabManager {
   private activeId: string = HUB_ID;
   private bounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
   private onChange: () => void;
+  private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
 
   constructor(win: BrowserWindow, onChange: () => void) {
     this.win = win;
@@ -187,6 +190,8 @@ export class TabManager {
 
       Menu.buildFromTemplate(items).popup({ window: this.win });
     });
+
+    this.registerHotkeyHandler(wc);
   }
 
   // ── Активация: показываем нужную вьюху, прячем остальные ──
@@ -216,8 +221,13 @@ export class TabManager {
     if (idx === -1) return;
     const [tab] = this.tabs.splice(idx, 1);
     if (this.isHttpView(tab.view)) {
+      // Запоминаем URL до уничтожения webContents — для Ctrl+Shift+T.
+      const url = tab.view.webContents.getURL();
+      if (/^https?:\/\//i.test(url)) {
+        this.closedTabs.push(url);
+        if (this.closedTabs.length > CLOSED_STACK_MAX) this.closedTabs.shift();
+      }
       try { this.win.contentView.removeChildView(tab.view); } catch { /* noop */ }
-      // освобождаем ресурсы webContents
       (tab.view.webContents as unknown as { close?: () => void }).close?.();
     }
     // если закрыли активную — переключаемся на соседнюю или хаб
@@ -227,6 +237,21 @@ export class TabManager {
     } else {
       this.onChange();
     }
+  }
+
+  reopenLastClosedTab(): void {
+    const url = this.closedTabs.pop();
+    if (url) this.createTab(url);
+  }
+
+  selectNext(): void {
+    const idx = this.tabs.findIndex((t) => t.id === this.activeId);
+    this.activate(this.tabs[(idx + 1) % this.tabs.length].id);
+  }
+
+  selectPrev(): void {
+    const idx = this.tabs.findIndex((t) => t.id === this.activeId);
+    this.activate(this.tabs[(idx - 1 + this.tabs.length) % this.tabs.length].id);
   }
 
   navigate(id: string, input: string) {
@@ -254,6 +279,34 @@ export class TabManager {
   reload(id: string) {
     const t = this.tabs.find((x) => x.id === id);
     if (this.isHttpView(t?.view ?? null)) t!.view!.webContents.reload();
+  }
+
+  // ── Хоткеи: перехватываем до рендерера, чтобы работало и на сайтах ──
+  // Вызывается для каждой новой вкладки (из wirePageEvents) и для chromeView
+  // (из main.ts), чтобы покрыть и страницы, и хаб.
+  registerHotkeyHandler(wc: WebContents): void {
+    wc.on('before-input-event', (event, input) => {
+      if (!input.control || input.type !== 'keyDown') return;
+      const key = input.key.toLowerCase();
+      const shift = input.shift;
+
+      if (key === 't' && !shift) {
+        event.preventDefault();
+        this.activate(HUB_ID);           // Ctrl+T: открыть хаб
+      } else if (key === 't' && shift) {
+        event.preventDefault();
+        this.reopenLastClosedTab();       // Ctrl+Shift+T: восстановить закрытую
+      } else if (key === 'w' && !shift) {
+        event.preventDefault();
+        this.closeTab(this.activeId);     // Ctrl+W: закрыть активную (хаб защищён)
+      } else if (key === 'tab' && !shift) {
+        event.preventDefault();
+        this.selectNext();                // Ctrl+Tab: следующая вкладка
+      } else if (key === 'tab' && shift) {
+        event.preventDefault();
+        this.selectPrev();                // Ctrl+Shift+Tab: предыдущая вкладка
+      }
+    });
   }
 
   // ── Геометрия "дырки" под контент ──

@@ -74,6 +74,9 @@ function createWindow() {
   // Только после восстановления разрешаем автосейв.
   session.enable();
 
+  // Хоткеи для хром-слоя (хаб, омнибокс). Вкладки получают их через wirePageEvents.
+  tabs.registerHotkeyHandler(chromeView.webContents);
+
   if (isDev) {
     chromeView.webContents.loadURL(DEV_URL);
     chromeView.webContents.openDevTools({ mode: 'detach' });
