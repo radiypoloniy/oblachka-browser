@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, TabState, ContentBounds, TitleBarOpts } from '../shared/ipc';
+import type { OblakoApi, TabState, ContentBounds, TitleBarOpts, FindResult } from '../shared/ipc';
 
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
@@ -17,6 +17,26 @@ const api: OblakoApi = {
     const handler = (_e: unknown, tabs: TabState[]) => cb(tabs);
     ipcRenderer.on(IPC.TABS_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.TABS_CHANGED, handler);
+  },
+
+  findStart: (query: string, forward: boolean) => ipcRenderer.invoke(IPC.FIND_START, query, forward),
+  findNext:  (forward: boolean)                => ipcRenderer.invoke(IPC.FIND_NEXT, forward),
+  findStop:  ()                                => ipcRenderer.invoke(IPC.FIND_STOP),
+
+  onFindResult: (cb: (r: FindResult) => void) => {
+    const handler = (_e: unknown, r: FindResult) => cb(r);
+    ipcRenderer.on(IPC.FIND_RESULT, handler);
+    return () => ipcRenderer.removeListener(IPC.FIND_RESULT, handler);
+  },
+  onFindOpen: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.FIND_OPEN, handler);
+    return () => ipcRenderer.removeListener(IPC.FIND_OPEN, handler);
+  },
+  onFindClose: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.FIND_CLOSE, handler);
+    return () => ipcRenderer.removeListener(IPC.FIND_CLOSE, handler);
   },
 };
 

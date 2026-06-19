@@ -1,7 +1,7 @@
 import { WebContentsView, BrowserWindow, Menu, clipboard } from 'electron';
 import type { MenuItemConstructorOptions, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
-import type { TabState, TabErrorState, ContentBounds } from '../shared/ipc';
+import type { TabState, TabErrorState, ContentBounds, FindResult } from '../shared/ipc';
 
 const CLOSED_STACK_MAX = 10;
 
@@ -32,12 +32,25 @@ export class TabManager {
   private activeId: string = HUB_ID;
   private bounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
   private onChange: () => void;
+  private onFindResultCb: (r: FindResult) => void;
+  private onFindOpenCb: () => void;
+  private onFindCloseCb: () => void;
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
+  private lastQuery = ''; // последний поисковый запрос (чтобы отличить новый от навигации)
 
-  constructor(win: BrowserWindow, onChange: () => void) {
+  constructor(
+    win: BrowserWindow,
+    onChange: () => void,
+    onFindResult: (r: FindResult) => void,
+    onFindOpen: () => void,
+    onFindClose: () => void,
+  ) {
     this.win = win;
     this.onChange = onChange;
+    this.onFindResultCb = onFindResult;
+    this.onFindOpenCb = onFindOpen;
+    this.onFindCloseCb = onFindClose;
     // Вкладка-хаб существует всегда и первой.
     this.tabs.push({ id: HUB_ID, view: null });
   }
@@ -120,15 +133,28 @@ export class TabManager {
     // Новая попытка загрузки — очищаем предыдущую ошибку сразу.
     wc.on('did-start-loading', () => { this.errors.delete(id); notify(); });
     wc.on('did-stop-loading', notify);
-    // Успешный коммит навигации — показываем вьюху (важно: не на did-start-loading,
-    // чтобы вьюха не мигала при retry, который снова упадёт).
-    wc.on('did-navigate', () => { if (this.activeId === id) this.revealView(id); notify(); });
+    // Успешный коммит навигации — показываем вьюху + сбрасываем поиск.
+    // Не на did-start-loading: вьюха не должна мигать при retry, который снова упадёт.
+    wc.on('did-navigate', () => {
+      if (this.activeId === id) {
+        wc.stopFindInPage('clearSelection');
+        this.lastQuery = '';
+        this.onFindCloseCb(); // закрыть панель поиска в renderer
+        this.revealView(id);
+      }
+      notify();
+    });
     wc.on('did-navigate-in-page', notify);
     wc.on('page-title-updated', notify);
 
     wc.on('page-favicon-updated', (_e, favicons) => {
       (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon = favicons?.[0];
       notify();
+    });
+
+    // Результат findInPage — пробрасываем в renderer для обновления счётчика.
+    wc.on('found-in-page', (_e, result) => {
+      this.onFindResultCb({ activeMatch: result.activeMatchOrdinal, count: result.matches });
     });
 
     // Политика окон: target=_blank / window.open -> открываем как НОВУЮ ВКЛАДКУ,
@@ -214,12 +240,30 @@ export class TabManager {
     });
 
     this.registerHotkeyHandler(wc);
+
+    // Esc на странице (фокус на WebContentsView) → закрыть панель поиска.
+    // Без preventDefault: страница тоже получает Esc (закрыть модал, сбросить фокус).
+    wc.on('before-input-event', (_e, input) => {
+      if (input.type === 'keyDown' && input.key === 'Escape' && !input.control) {
+        this.onFindCloseCb();
+      }
+    });
   }
 
   // ── Активация: показываем нужную вьюху, прячем остальные ──
   activate(id: string) {
     const tab = this.tabs.find((t) => t.id === id);
     if (!tab) return;
+
+    // Останавливаем поиск на уходящей вкладке перед переключением.
+    if (this.activeId !== id) {
+      const prev = this.tabs.find((t) => t.id === this.activeId);
+      if (prev && this.isHttpView(prev.view)) {
+        prev.view.webContents.stopFindInPage('clearSelection');
+        this.lastQuery = '';
+      }
+    }
+
     this.activeId = id;
 
     for (const t of this.tabs) {
@@ -317,6 +361,32 @@ export class TabManager {
     }
   }
 
+  // ── Поиск по странице ────────────────────────────────────────────────────
+  private getActiveWebContents() {
+    const tab = this.tabs.find((t) => t.id === this.activeId);
+    return tab && this.isHttpView(tab.view) ? tab.view.webContents : null;
+  }
+
+  findInPage(query: string, forward: boolean): void {
+    const wc = this.getActiveWebContents();
+    if (!wc) return;
+    // findNext:true = продолжить существующий поиск; false = начать новый.
+    wc.findInPage(query, { forward, findNext: query === this.lastQuery });
+    this.lastQuery = query;
+  }
+
+  findNext(forward: boolean): void {
+    const wc = this.getActiveWebContents();
+    if (!wc || !this.lastQuery) return;
+    wc.findInPage(this.lastQuery, { forward, findNext: true });
+  }
+
+  stopFind(): void {
+    const wc = this.getActiveWebContents();
+    if (wc) wc.stopFindInPage('clearSelection');
+    this.lastQuery = '';
+  }
+
   // ── Зум активной вкладки ──────────────────────────────────────────────────
   // Хаб пропускаем: у него нет WebContentsView.
   private adjustZoom(delta: number): void {
@@ -368,6 +438,9 @@ export class TabManager {
       } else if (input.code === 'Digit0' || input.code === 'Numpad0') {
         event.preventDefault();
         this.resetZoom();                 // Ctrl+0: сбросить к 100%
+      } else if (key === 'f' && !shift) {
+        event.preventDefault();
+        this.onFindOpenCb();              // Ctrl+F: открыть / сфокусировать панель поиска
       }
     });
   }

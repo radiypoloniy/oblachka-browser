@@ -4,7 +4,7 @@ import path from 'node:path';
 import { TabManager } from './TabManager';
 import { SessionManager } from './SessionManager';
 import { IPC } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult } from '../shared/ipc';
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
@@ -57,10 +57,16 @@ function createWindow() {
   // При любом изменении: обновляем UI и планируем сохранение сессии.
   // scheduleSave молча игнорирует вызовы до session.enable() — это защита
   // от затирания: onChange стреляет во время restore, но сохранять ещё нельзя.
-  tabs = new TabManager(win, () => {
-    chromeView?.webContents.send(IPC.TABS_CHANGED, tabs!.snapshot());
-    session!.scheduleSave(() => tabs!.snapshot(), () => tabs!.getActiveId());
-  });
+  tabs = new TabManager(
+    win,
+    () => {
+      chromeView?.webContents.send(IPC.TABS_CHANGED, tabs!.snapshot());
+      session!.scheduleSave(() => tabs!.snapshot(), () => tabs!.getActiveId());
+    },
+    (r: FindResult) => chromeView?.webContents.send(IPC.FIND_RESULT, r),
+    ()              => chromeView?.webContents.send(IPC.FIND_OPEN),
+    ()              => chromeView?.webContents.send(IPC.FIND_CLOSE),
+  );
 
   // Восстанавливаем вкладки из session.json.
   if (restored && restored.tabs.length > 0) {
@@ -114,6 +120,9 @@ function registerIpc() {
   ipcMain.handle(IPC.TAB_RELOAD, (_e, id: string) => tabs?.reload(id));
   ipcMain.handle(IPC.CONTENT_SET_BOUNDS, (_e, b: ContentBounds) => tabs?.setContentBounds(b));
   ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (_e, opts: TitleBarOpts) => win?.setTitleBarOverlay(opts));
+  ipcMain.handle(IPC.FIND_START, (_e, q: string, fwd: boolean) => tabs?.findInPage(q, fwd));
+  ipcMain.handle(IPC.FIND_NEXT,  (_e, fwd: boolean)            => tabs?.findNext(fwd));
+  ipcMain.handle(IPC.FIND_STOP,  ()                            => tabs?.stopFind());
 }
 
 // Внешние протоколы (mailto:, tel:) -> отдаём ОС, не показываем ошибку навигации.

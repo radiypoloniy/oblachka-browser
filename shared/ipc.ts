@@ -1,6 +1,11 @@
 // Единый источник правды по форме данных, которыми обмениваются
 // renderer (хром-UI) и main (движок вкладок). Импортируется обеими сторонами.
 
+export interface FindResult {
+  activeMatch: number; // порядковый номер текущего совпадения (1-based)
+  count: number;       // всего совпадений
+}
+
 export interface TabErrorState {
   type: 'load' | 'crash';
   code: number;   // errorCode из did-fail-load; 0 при краше
@@ -45,6 +50,14 @@ export const IPC = {
 
   // События (main -> renderer, односторонние)
   TABS_CHANGED: 'tabs:changed',     // прислать весь актуальный список TabState[]
+
+  // Поиск по странице
+  FIND_START:  'find:start',        // renderer → main: начать/обновить поиск
+  FIND_NEXT:   'find:next',         // renderer → main: следующее/предыдущее совпадение
+  FIND_STOP:   'find:stop',         // renderer → main: остановить поиск
+  FIND_RESULT: 'find:result',       // main → renderer: результат (activeMatch, count)
+  FIND_OPEN:   'find:open',         // main → renderer: открыть панель поиска (Ctrl+F)
+  FIND_CLOSE:  'find:close',        // main → renderer: закрыть панель (навигация, Esc)
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -63,4 +76,12 @@ export interface OblakoApi {
   setContentBounds(bounds: ContentBounds): Promise<void>;
   setTitleBarOverlay(opts: TitleBarOpts): Promise<void>;
   onTabsChanged(cb: (tabs: TabState[]) => void): () => void; // вернёт unsubscribe
+
+  // Поиск по странице
+  findStart(query: string, forward: boolean): Promise<void>;
+  findNext(forward: boolean): Promise<void>;
+  findStop(): Promise<void>;
+  onFindResult(cb: (r: FindResult) => void): () => void;
+  onFindOpen(cb: () => void): () => void;
+  onFindClose(cb: () => void): () => void;
 }

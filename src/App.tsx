@@ -3,7 +3,8 @@ import Sidebar from './components/Sidebar';
 import Toolbar from './components/Toolbar';
 import Hub from './components/Hub';
 import TabError from './components/TabError';
-import type { TabState } from '../shared/ipc';
+import FindBar from './components/FindBar';
+import type { TabState, FindResult } from '../shared/ipc';
 
 const HUB_ID = 'hub';
 
@@ -12,11 +13,20 @@ export default function App() {
   const [activeId, setActiveId] = useState(HUB_ID);
   const [vpnOn, setVpnOn] = useState(true);
   const [dark, setDark] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findResult, setFindResult] = useState<FindResult | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
 
   const active = tabs.find((t) => t.id === activeId);
   const isHub = active?.isHub ?? true;
   const tabError = active?.tabError ?? null;
+
+  // Refs для использования актуальных значений внутри IPC-колбэков (замыкания).
+  const isHubRef = useRef(isHub);
+  isHubRef.current = isHub;
+  const findOpenRef = useRef(findOpen);
+  findOpenRef.current = findOpen;
 
   // Тема
   useEffect(() => {
@@ -47,6 +57,36 @@ export default function App() {
     const unsub = window.oblako.onTabsChanged(applySnapshot);
     return () => { mounted = false; unsub(); };
   }, []);
+
+  // Подписки на события поиска — один раз на маунт.
+  useEffect(() => {
+    const unsubResult = window.oblako.onFindResult((r) => setFindResult(r));
+
+    const unsubOpen = window.oblako.onFindOpen(() => {
+      if (isHubRef.current) return; // поиск не работает на хабе
+      if (!findOpenRef.current) {
+        setFindOpen(true);           // открыть панель; autoFocus сфокусирует input
+      } else {
+        // Панель уже открыта — выделить текст в поле (стандарт браузеров)
+        findInputRef.current?.focus();
+        findInputRef.current?.select();
+      }
+    });
+
+    const unsubClose = window.oblako.onFindClose(() => {
+      setFindOpen(false);
+      setFindResult(null);
+      void window.oblako.findStop();
+    });
+
+    return () => { unsubResult(); unsubOpen(); unsubClose(); };
+  }, []);
+
+  // Закрыть панель при переключении вкладки (stopFindInPage уже вызван в TabManager).
+  useEffect(() => {
+    setFindOpen(false);
+    setFindResult(null);
+  }, [activeId]);
 
   // ── Главное: измеряем "дырку" под контент и сообщаем main, ──
   // ── куда положить WebContentsView активной вкладки.       ──
@@ -111,6 +151,21 @@ export default function App() {
                   onRetry={() => window.oblako.reload(activeId)}
                 />
               : null /* реальную страницу рисует main через WebContentsView */}
+          {/* Панель поиска: абсолютный оверлей поверх WebContentsView. */}
+          {findOpen && !isHub && !tabError && (
+            <FindBar
+              ref={findInputRef}
+              result={findResult}
+              onSearch={(q, fwd) => { void window.oblako.findStart(q, fwd); }}
+              onNext={(fwd) => { void window.oblako.findNext(fwd); }}
+              onStop={() => { void window.oblako.findStop(); setFindResult(null); }}
+              onClose={() => {
+                void window.oblako.findStop();
+                setFindResult(null);
+                setFindOpen(false);
+              }}
+            />
+          )}
         </div>
       </div>
     </div>
