@@ -5,6 +5,10 @@ import type { TabState, ContentBounds } from '../shared/ipc';
 
 const CLOSED_STACK_MAX = 10;
 
+const ZOOM_MIN  = 0.5;
+const ZOOM_MAX  = 2.5;
+const ZOOM_STEP = 0.1; // 10% за шаг, как в Chrome
+
 // Обрезает длинный текст для лейблов меню, чтобы не растягивало окно.
 function truncate(text: string, max = 40): string {
   const s = text.trim().replace(/\s+/g, ' ');
@@ -283,6 +287,22 @@ export class TabManager {
     if (this.isHttpView(t?.view ?? null)) t!.view!.webContents.reload();
   }
 
+  // ── Зум активной вкладки ──────────────────────────────────────────────────
+  // Хаб пропускаем: у него нет WebContentsView.
+  private adjustZoom(delta: number): void {
+    const tab = this.tabs.find((t) => t.id === this.activeId);
+    if (!tab || !this.isHttpView(tab.view)) return;
+    const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX,
+      tab.view.webContents.getZoomFactor() + delta));
+    tab.view.webContents.setZoomFactor(next);
+  }
+
+  private resetZoom(): void {
+    const tab = this.tabs.find((t) => t.id === this.activeId);
+    if (!tab || !this.isHttpView(tab.view)) return;
+    tab.view.webContents.setZoomFactor(1.0);
+  }
+
   // ── Хоткеи: перехватываем до рендерера, чтобы работало и на сайтах ──
   // Вызывается для каждой новой вкладки (из wirePageEvents) и для chromeView
   // (из main.ts), чтобы покрыть и страницы, и хаб.
@@ -307,6 +327,17 @@ export class TabManager {
       } else if (key === 'tab' && shift) {
         event.preventDefault();
         this.selectPrev();                // Ctrl+Shift+Tab: предыдущая вкладка
+      // Зум: используем code (layout-independent), чтобы не зависеть от раскладки.
+      // Equal/NumpadAdd покрывают и = и +; оба варианта Ctrl+Plus.
+      } else if (input.code === 'Equal' || input.code === 'NumpadAdd') {
+        event.preventDefault();
+        this.adjustZoom(ZOOM_STEP);       // Ctrl+= / Ctrl++
+      } else if (input.code === 'Minus' || input.code === 'NumpadSubtract') {
+        event.preventDefault();
+        this.adjustZoom(-ZOOM_STEP);      // Ctrl+-
+      } else if (input.code === 'Digit0' || input.code === 'Numpad0') {
+        event.preventDefault();
+        this.resetZoom();                 // Ctrl+0: сбросить к 100%
       }
     });
   }
