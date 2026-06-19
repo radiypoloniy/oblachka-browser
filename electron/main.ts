@@ -1,4 +1,5 @@
 import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell } from 'electron';
+import type { MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
 import { TabManager } from './TabManager';
 import { SessionManager } from './SessionManager';
@@ -73,6 +74,18 @@ function createWindow() {
 
   // Только после восстановления разрешаем автосейв.
   session.enable();
+
+  // ПКМ в хром-слое (омнибокс, поле чата): только редактируемые поля и выделение.
+  // Для обычных элементов управления (кнопки, сайдбар) меню НЕ показываем.
+  chromeView.webContents.on('context-menu', (_e, p) => {
+    const items: MenuItemConstructorOptions[] = [];
+    if (p.isEditable) {
+      items.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { type: 'separator' }, { role: 'selectAll' });
+    } else if (p.selectionText.trim()) {
+      items.push({ role: 'copy' });
+    }
+    if (items.length) Menu.buildFromTemplate(items).popup({ window: win! });
+  });
 
   // Хоткеи для хром-слоя (хаб, омнибокс). Вкладки получают их через wirePageEvents.
   tabs.registerHotkeyHandler(chromeView.webContents);
