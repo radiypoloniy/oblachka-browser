@@ -9,7 +9,8 @@ interface SidebarProps {
   onClose: (id: string) => void;
   onNewTab: () => void;
   onTabMenu: (id: string) => void;
-  onSplit: (id: string) => void; // войти в split с этой вкладкой как правой панелью
+  onSplit: (id: string) => void;  // войти в split с этой вкладкой как правой панелью
+  onExitSplit: () => void;        // схлопнуть split, обе вкладки остаются открытыми
 }
 
 function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
@@ -44,9 +45,9 @@ function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
   );
 }
 
-function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit }: {
+function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitSplit }: {
   tab: TabState; active: boolean; onClick: () => void; onClose: () => void;
-  onContextMenu: () => void; onSplit?: () => void;
+  onContextMenu: () => void; onSplit?: () => void; onExitSplit?: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const inSplit   = tab.splitSide !== null;
@@ -86,9 +87,20 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit }: {
         }} />
       )}
 
-      {/* Индикатор: вкладка участвует в split */}
-      {inSplit && (
-        <Columns2 size={12} color="var(--accent)" style={{ flex: 'none' }} />
+      {/* Индикатор split — кнопка «выйти из split» (обе вкладки остаются) */}
+      {inSplit && onExitSplit && (
+        <button
+          className="no-drag"
+          onClick={(e) => { e.stopPropagation(); onExitSplit(); }}
+          title="Выйти из split (обе вкладки останутся)"
+          style={{
+            border: 'none', background: 'transparent', cursor: 'default',
+            padding: 2, borderRadius: 4, display: 'inline-flex',
+            color: 'var(--accent)', flex: 'none',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        ><Columns2 size={12} /></button>
       )}
 
       {/* Кнопка входа в split — при наведении на обычную неактивную вкладку */}
@@ -135,7 +147,7 @@ const asideBase: React.CSSProperties = {
   overflow: 'hidden',
 };
 
-export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu, onSplit }: SidebarProps) {
+export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const hub = tabs.filter((t) => t.isHub);
@@ -288,7 +300,8 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
               <TabRow key={t.id} tab={t} active={activeId === t.id}
                 onClick={() => onSelect(t.id)}
                 onClose={() => onClose(t.id)}
-                onContextMenu={() => onTabMenu(t.id)} />
+                onContextMenu={() => onTabMenu(t.id)}
+                onExitSplit={onExitSplit} />
             ))}
           </div>
         </>
@@ -307,7 +320,8 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
             onClick={() => onSelect(t.id)}
             onClose={() => onClose(t.id)}
             onContextMenu={() => onTabMenu(t.id)}
-            onSplit={() => onSplit(t.id)} />
+            onSplit={() => onSplit(t.id)}
+            onExitSplit={onExitSplit} />
         ))}
       </div>
 

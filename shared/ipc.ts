@@ -70,6 +70,7 @@ export const IPC = {
 
   // Split View
   TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (правая вкладка)
+  TAB_EXIT_SPLIT:   'tab:exit-split',   // renderer → main: выйти из split, обе вкладки остаются
   TAB_SPLIT_FOCUS:  'tab:split-focus',  // renderer → main: переключить фокус на панель
 } as const;
 
@@ -107,5 +108,6 @@ export interface OblakoApi {
 
   // Split View
   enterSplit(rightId: string): Promise<void>;       // текущая активная → левая, rightId → правая
+  exitSplit(): Promise<void>;                       // схлопнуть split, обе вкладки остаются
   focusSplitPanel(side: 'left' | 'right'): Promise<void>; // переключить активную панель
 }

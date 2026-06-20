@@ -162,6 +162,7 @@ export default function App() {
         onSelect={select} onClose={close} onNewTab={newTab}
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
         onSplit={(id) => { void window.oblako.enterSplit(id); }}
+        onExitSplit={() => { void window.oblako.exitSplit(); }}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar

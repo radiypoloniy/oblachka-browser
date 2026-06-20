@@ -175,6 +175,17 @@ export class TabManager {
     const wc = view.webContents;
     const notify = () => this.onChange();
 
+    // Когда WebContentsView получает OS-фокус от клика мышью — проверяем, не нужно ли
+    // активировать панель split. DOM-дивы в renderer не получают клик, перекрытый вьюхой.
+    wc.on('focus', () => {
+      if (this.splitState &&
+          (id === this.splitState.leftId || id === this.splitState.rightId) &&
+          this.activeId !== id) {
+        const side = id === this.splitState.leftId ? 'left' : 'right';
+        this.focusSplitPanel(side);
+      }
+    });
+
     // Новая попытка загрузки — очищаем предыдущую ошибку сразу.
     wc.on('did-start-loading', () => { this.errors.delete(id); notify(); });
     wc.on('did-stop-loading', notify);
