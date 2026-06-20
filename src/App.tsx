@@ -13,6 +13,11 @@ const HUB_ID = 'hub';
 // 52 = 8px (gap) + ~36px (панель) + 8px (запас).
 const FIND_BAR_RESERVE = 52;
 
+// Ширина зазора-разделителя в split-режиме (px). Должна совпадать с SPLIT_GAP в TabManager.
+const SPLIT_GAP = 8;
+const SPLIT_RATIO_MIN = 0.2;
+const SPLIT_RATIO_MAX = 0.8;
+
 export default function App() {
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [activeId, setActiveId] = useState(HUB_ID);
@@ -20,6 +25,8 @@ export default function App() {
   const [dark, setDark] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findResult, setFindResult] = useState<FindResult | null>(null);
+  const [splitRatio, setSplitRatioState] = useState(0.5);
+  const [isDragging, setIsDragging] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const omniboxRef = useRef<HTMLInputElement>(null);
@@ -111,6 +118,30 @@ export default function App() {
     setFindResult(null);
   }, [activeId]);
 
+  // ── Drag разделителя split ──
+  // setPointerCapture удерживает pointermove на разделителе даже когда курсор
+  // уходит над нативными WebContentsViews (в Electron/Aura все вьюхи в одном HWND).
+  const handleDividerPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setIsDragging(true);
+  }, []);
+
+  const handleDividerPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) return;
+    const container = contentRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const ratio = Math.max(SPLIT_RATIO_MIN, Math.min(SPLIT_RATIO_MAX, x / rect.width));
+    setSplitRatioState(ratio);
+    void window.oblako.setSplitRatio(ratio);
+  }, []);
+
+  const handleDividerPointerUp = useCallback((_e: React.PointerEvent) => {
+    setIsDragging(false);
+  }, []);
+
   // ── Главное: измеряем "дырку" под контент и сообщаем main, ──
   // ── куда положить WebContentsView активной вкладки.       ──
   //
@@ -161,11 +192,20 @@ export default function App() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', overflow: 'hidden' }}>
+      {/* Оверлей во время drag разделителя: держит col-resize курсор по всей ширине
+          и служит страховкой на случай если setPointerCapture не перехватит события
+          над нативными WebContentsViews. */}
+      {isDragging && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          cursor: 'col-resize', userSelect: 'none',
+        }} />
+      )}
       <Sidebar
         tabs={tabs} activeId={activeId}
         onSelect={select} onClose={close} onNewTab={newTab}
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
-        onSplit={(id) => { void window.oblako.enterSplit(id); }}
+        onSplit={(id) => { setSplitRatioState(0.5); void window.oblako.enterSplit(id); }}
         onExitSplit={() => { void window.oblako.exitSplit(); }}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -184,9 +224,9 @@ export default function App() {
           {isSplit ? (
             /* Split: два WebContentsView рядом; DOM-слои только для ошибок и фокус-индикатора */
             <div style={{ display: 'flex', height: '100%' }}>
-              {/* Левая панель */}
+              {/* Левая панель — flex: splitRatio даёт долю от (ширина - SPLIT_GAP) */}
               <div
-                style={{ flex: 1, position: 'relative' }}
+                style={{ flex: splitRatio, position: 'relative', minWidth: 0 }}
                 onClick={() => {
                   if (activeId !== splitLeft!.id) void window.oblako.focusSplitPanel('left');
                 }}
@@ -195,7 +235,6 @@ export default function App() {
                   <TabError error={splitLeft!.tabError} url={splitLeft!.url}
                     onRetry={() => void window.oblako.reload(splitLeft!.id)} />
                 )}
-                {/* Тонкая рамка вокруг активной панели */}
                 {activeId === splitLeft!.id && (
                   <div style={{
                     position: 'absolute', inset: 0, pointerEvents: 'none',
@@ -203,11 +242,28 @@ export default function App() {
                   }} />
                 )}
               </div>
-              {/* Разделитель */}
-              <div style={{ width: 2, background: 'var(--divider-strong)', flex: 'none' }} />
+
+              {/* Разделитель: SPLIT_GAP шириной, визуальная линия по центру */}
+              <div
+                style={{
+                  flex: 'none', width: SPLIT_GAP, position: 'relative',
+                  cursor: 'col-resize', userSelect: 'none',
+                }}
+                onPointerDown={handleDividerPointerDown}
+                onPointerMove={handleDividerPointerMove}
+                onPointerUp={handleDividerPointerUp}
+                onPointerCancel={handleDividerPointerUp}
+              >
+                <div style={{
+                  position: 'absolute', top: 0, bottom: 0,
+                  left: '50%', width: 2, transform: 'translateX(-50%)',
+                  background: 'var(--divider-strong)', pointerEvents: 'none',
+                }} />
+              </div>
+
               {/* Правая панель */}
               <div
-                style={{ flex: 1, position: 'relative' }}
+                style={{ flex: 1 - splitRatio, position: 'relative', minWidth: 0 }}
                 onClick={() => {
                   if (activeId !== splitRight!.id) void window.oblako.focusSplitPanel('right');
                 }}

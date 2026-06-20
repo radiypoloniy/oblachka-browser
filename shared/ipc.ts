@@ -72,6 +72,7 @@ export const IPC = {
   TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (правая вкладка)
   TAB_EXIT_SPLIT:   'tab:exit-split',   // renderer → main: выйти из split, обе вкладки остаются
   TAB_SPLIT_FOCUS:  'tab:split-focus',  // renderer → main: переключить фокус на панель
+  TAB_SPLIT_RATIO:  'tab:split-ratio',  // renderer → main: новое соотношение панелей при drag
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -110,4 +111,5 @@ export interface OblakoApi {
   enterSplit(rightId: string): Promise<void>;       // текущая активная → левая, rightId → правая
   exitSplit(): Promise<void>;                       // схлопнуть split, обе вкладки остаются
   focusSplitPanel(side: 'left' | 'right'): Promise<void>; // переключить активную панель
+  setSplitRatio(ratio: number): Promise<void>;      // drag разделителя: 0.2..0.8
 }

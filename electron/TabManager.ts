@@ -9,6 +9,11 @@ const ZOOM_MIN  = 0.5;
 const ZOOM_MAX  = 2.5;
 const ZOOM_STEP = 0.1; // 10% за шаг, как в Chrome
 
+// Ширина зазора между split-панелями (px). Должна совпадать с SPLIT_GAP в App.tsx.
+const SPLIT_GAP = 8;
+const SPLIT_RATIO_MIN = 0.2;
+const SPLIT_RATIO_MAX = 0.8;
+
 // Обрезает длинный текст для лейблов меню, чтобы не растягивало окно.
 function truncate(text: string, max = 40): string {
   const s = text.trim().replace(/\s+/g, ' ');
@@ -44,8 +49,14 @@ export class TabManager {
   private findBarOpen = false;
   // Множество id закреплённых вкладок — переживают перезапуск.
   private pinnedIds = new Set<string>();
-  // Состояние split-режима: null = обычный режим, иначе две панели 50/50.
-  private splitState: { leftId: string; rightId: string; activePanel: 'left' | 'right' } | null = null;
+  // Состояние split-режима: null = обычный режим.
+  // splitRatio — доля левой панели (0.2..0.8), сохраняется пока split существует.
+  private splitState: {
+    leftId: string;
+    rightId: string;
+    activePanel: 'left' | 'right';
+    splitRatio: number;
+  } | null = null;
 
   constructor(
     win: BrowserWindow,
@@ -471,7 +482,7 @@ export class TabManager {
       if (t.id !== leftId && t.id !== rightId) t.view.setVisible(false);
     }
 
-    this.splitState = { leftId, rightId, activePanel: 'left' };
+    this.splitState = { leftId, rightId, activePanel: 'left', splitRatio: 0.5 };
 
     // Убеждаемся, что обе вьюхи добавлены в contentView до позиционирования.
     for (const splitId of [leftId, rightId]) {
@@ -527,6 +538,13 @@ export class TabManager {
 
     this.onChange();
     this.focusActiveView();
+  }
+
+  // Установить соотношение панелей split (вызывается при drag разделителя).
+  setSplitRatio(ratio: number): void {
+    if (!this.splitState) return;
+    this.splitState.splitRatio = Math.max(SPLIT_RATIO_MIN, Math.min(SPLIT_RATIO_MAX, ratio));
+    this.repositionViews();
   }
 
   // Переключить фокус между левой и правой панелью split.
@@ -810,19 +828,18 @@ export class TabManager {
       }
       return;
     }
-    // Split 50/50: разделяем bounds на две равные части с 2px-зазором.
+    // Split: разделяем bounds по текущему splitRatio с SPLIT_GAP-зазором.
     // splitState гарантированно не null: currentlyInSplit включает !!this.splitState.
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const { leftId, rightId } = this.splitState!;
-    const gap  = 2;
-    const half = Math.floor((this.bounds.width - gap) / 2);
+    const { leftId, rightId, splitRatio } = this.splitState!;
+    const leftWidth = Math.floor((this.bounds.width - SPLIT_GAP) * splitRatio);
     const leftB:  ContentBounds = {
       x: this.bounds.x, y: this.bounds.y,
-      width: half, height: this.bounds.height,
+      width: leftWidth, height: this.bounds.height,
     };
     const rightB: ContentBounds = {
-      x: this.bounds.x + half + gap, y: this.bounds.y,
-      width: this.bounds.width - half - gap, height: this.bounds.height,
+      x: this.bounds.x + leftWidth + SPLIT_GAP, y: this.bounds.y,
+      width: this.bounds.width - leftWidth - SPLIT_GAP, height: this.bounds.height,
     };
     this.applySplitBounds(leftId, leftB);
     this.applySplitBounds(rightId, rightB);

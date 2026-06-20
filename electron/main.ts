@@ -142,9 +142,10 @@ function registerIpc() {
   ipcMain.handle(IPC.TAB_PIN_TOGGLE, (_e, id: string) => tabs?.togglePin(id));
 
   // Split View
-  ipcMain.handle(IPC.TAB_ENTER_SPLIT, (_e, rightId: string) => tabs?.enterSplit(rightId));
-  ipcMain.handle(IPC.TAB_EXIT_SPLIT,  ()                    => tabs?.exitSplit());
+  ipcMain.handle(IPC.TAB_ENTER_SPLIT, (_e, rightId: string)         => tabs?.enterSplit(rightId));
+  ipcMain.handle(IPC.TAB_EXIT_SPLIT,  ()                            => tabs?.exitSplit());
   ipcMain.handle(IPC.TAB_SPLIT_FOCUS, (_e, side: 'left' | 'right') => tabs?.focusSplitPanel(side));
+  ipcMain.handle(IPC.TAB_SPLIT_RATIO, (_e, ratio: number)           => tabs?.setSplitRatio(ratio));
 
   // Нативное ПКМ-меню вкладки в сайдбаре: Закрепить / Открепить.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {
