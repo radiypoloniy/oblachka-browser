@@ -409,36 +409,36 @@ export class TabManager {
   registerHotkeyHandler(wc: WebContents): void {
     wc.on('before-input-event', (event, input) => {
       if (!input.control || input.type !== 'keyDown') return;
-      const key = input.key.toLowerCase();
-      const shift = input.shift;
+      // Все хоткеи матчим по input.code (физическая позиция клавиши), а не по input.key
+      // (символ). input.key зависит от раскладки: на русской F→«а», W→«ц» и т.д.,
+      // поэтому key-based матчинг ломается при переключении языка.
+      const { code, shift } = input;
 
-      if (key === 't' && !shift) {
+      if (code === 'KeyT' && !shift) {
         event.preventDefault();
         this.activate(HUB_ID);           // Ctrl+T: открыть хаб
-      } else if (key === 't' && shift) {
+      } else if (code === 'KeyT' && shift) {
         event.preventDefault();
         this.reopenLastClosedTab();       // Ctrl+Shift+T: восстановить закрытую
-      } else if (key === 'w' && !shift) {
+      } else if (code === 'KeyW' && !shift) {
         event.preventDefault();
         this.closeTab(this.activeId);     // Ctrl+W: закрыть активную (хаб защищён)
-      } else if (key === 'tab' && !shift) {
+      } else if (code === 'Tab' && !shift) {
         event.preventDefault();
         this.selectNext();                // Ctrl+Tab: следующая вкладка
-      } else if (key === 'tab' && shift) {
+      } else if (code === 'Tab' && shift) {
         event.preventDefault();
         this.selectPrev();                // Ctrl+Shift+Tab: предыдущая вкладка
-      // Зум: используем code (layout-independent), чтобы не зависеть от раскладки.
-      // Equal/NumpadAdd покрывают и = и +; оба варианта Ctrl+Plus.
-      } else if (input.code === 'Equal' || input.code === 'NumpadAdd') {
+      } else if (code === 'Equal' || code === 'NumpadAdd') {
         event.preventDefault();
         this.adjustZoom(ZOOM_STEP);       // Ctrl+= / Ctrl++
-      } else if (input.code === 'Minus' || input.code === 'NumpadSubtract') {
+      } else if (code === 'Minus' || code === 'NumpadSubtract') {
         event.preventDefault();
         this.adjustZoom(-ZOOM_STEP);      // Ctrl+-
-      } else if (input.code === 'Digit0' || input.code === 'Numpad0') {
+      } else if (code === 'Digit0' || code === 'Numpad0') {
         event.preventDefault();
         this.resetZoom();                 // Ctrl+0: сбросить к 100%
-      } else if (key === 'f' && !shift) {
+      } else if (code === 'KeyF' && !shift) {
         event.preventDefault();
         this.onFindOpenCb();              // Ctrl+F: открыть / сфокусировать панель поиска
       }
