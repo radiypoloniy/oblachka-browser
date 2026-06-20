@@ -24,6 +24,7 @@ export interface TabState {
   canGoForward: boolean;
   isHub: boolean;       // true = вкладка-хаб (наш UI), без WebContentsView
   isPinned: boolean;    // закреплена — переживает перезапуск, нельзя закрыть крестиком
+  splitSide: 'left' | 'right' | null; // null = не в split-режиме
 }
 
 // Геометрия "дырки" под контент в координатах окна (CSS-пиксели).
@@ -66,6 +67,10 @@ export const IPC = {
   // Закреплённые вкладки
   TAB_PIN_TOGGLE: 'tab:pin-toggle', // renderer → main: закрепить / открепить вкладку
   TAB_SHOW_MENU:  'tab:show-menu',  // renderer → main: показать нативное ПКМ-меню вкладки
+
+  // Split View
+  TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (правая вкладка)
+  TAB_SPLIT_FOCUS:  'tab:split-focus',  // renderer → main: переключить фокус на панель
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -99,4 +104,8 @@ export interface OblakoApi {
   // Закреплённые вкладки
   togglePinTab(id: string): Promise<void>;
   showTabMenu(id: string): Promise<void>;
+
+  // Split View
+  enterSplit(rightId: string): Promise<void>;       // текущая активная → левая, rightId → правая
+  focusSplitPanel(side: 'left' | 'right'): Promise<void>; // переключить активную панель
 }

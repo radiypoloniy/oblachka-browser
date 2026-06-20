@@ -141,6 +141,10 @@ function registerIpc() {
 
   ipcMain.handle(IPC.TAB_PIN_TOGGLE, (_e, id: string) => tabs?.togglePin(id));
 
+  // Split View
+  ipcMain.handle(IPC.TAB_ENTER_SPLIT, (_e, rightId: string) => tabs?.enterSplit(rightId));
+  ipcMain.handle(IPC.TAB_SPLIT_FOCUS, (_e, side: 'left' | 'right') => tabs?.focusSplitPanel(side));
+
   // Нативное ПКМ-меню вкладки в сайдбаре: Закрепить / Открепить.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {
     if (!tabs || !win) return;

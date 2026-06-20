@@ -28,6 +28,11 @@ export default function App() {
   const isHub = active?.isHub ?? true;
   const tabError = active?.tabError ?? null;
 
+  // Split View: определяем участников по splitSide в снимке.
+  const splitLeft  = tabs.find((t) => t.splitSide === 'left');
+  const splitRight = tabs.find((t) => t.splitSide === 'right');
+  const isSplit = !!splitLeft && !!splitRight;
+
   // Refs для использования актуальных значений внутри IPC-колбэков (замыкания).
   const isHubRef = useRef(isHub);
   isHubRef.current = isHub;
@@ -156,6 +161,7 @@ export default function App() {
         tabs={tabs} activeId={activeId}
         onSelect={select} onClose={close} onNewTab={newTab}
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
+        onSplit={(id) => { void window.oblako.enterSplit(id); }}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
@@ -168,18 +174,66 @@ export default function App() {
           onReload={() => window.oblako.reload(activeId)}
           onSubmit={submit}
         />
-        {/* Контент-зона. Варианты: хаб, страница ошибки, или "дырка" (WebContentsView). */}
+        {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView). */}
         <div ref={contentRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-          {isHub
-            ? <Hub onSubmit={submit} />
-            : tabError
-              ? <TabError
-                  error={tabError}
-                  url={active?.url ?? ''}
-                  onRetry={() => window.oblako.reload(activeId)}
-                />
-              : null /* реальную страницу рисует main через WebContentsView */}
-          {/* Панель поиска: абсолютный оверлей в «дырке» выше WebContentsView. */}
+          {isSplit ? (
+            /* Split: два WebContentsView рядом; DOM-слои только для ошибок и фокус-индикатора */
+            <div style={{ display: 'flex', height: '100%' }}>
+              {/* Левая панель */}
+              <div
+                style={{ flex: 1, position: 'relative' }}
+                onClick={() => {
+                  if (activeId !== splitLeft!.id) void window.oblako.focusSplitPanel('left');
+                }}
+              >
+                {splitLeft!.tabError && (
+                  <TabError error={splitLeft!.tabError} url={splitLeft!.url}
+                    onRetry={() => void window.oblako.reload(splitLeft!.id)} />
+                )}
+                {/* Тонкая рамка вокруг активной панели */}
+                {activeId === splitLeft!.id && (
+                  <div style={{
+                    position: 'absolute', inset: 0, pointerEvents: 'none',
+                    boxShadow: 'inset 0 0 0 2px var(--accent)',
+                  }} />
+                )}
+              </div>
+              {/* Разделитель */}
+              <div style={{ width: 2, background: 'var(--divider-strong)', flex: 'none' }} />
+              {/* Правая панель */}
+              <div
+                style={{ flex: 1, position: 'relative' }}
+                onClick={() => {
+                  if (activeId !== splitRight!.id) void window.oblako.focusSplitPanel('right');
+                }}
+              >
+                {splitRight!.tabError && (
+                  <TabError error={splitRight!.tabError} url={splitRight!.url}
+                    onRetry={() => void window.oblako.reload(splitRight!.id)} />
+                )}
+                {activeId === splitRight!.id && (
+                  <div style={{
+                    position: 'absolute', inset: 0, pointerEvents: 'none',
+                    boxShadow: 'inset 0 0 0 2px var(--accent)',
+                  }} />
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Обычный режим: хаб, ошибка или «дырка» под WebContentsView */
+            <>
+              {isHub
+                ? <Hub onSubmit={submit} />
+                : tabError
+                  ? <TabError
+                      error={tabError}
+                      url={active?.url ?? ''}
+                      onRetry={() => window.oblako.reload(activeId)}
+                    />
+                  : null}
+            </>
+          )}
+          {/* FindBar: абсолютный оверлей над всей контент-зоной (включая split). */}
           {findOpen && !isHub && !tabError && (
             <FindBar
               ref={findInputRef}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2 } from 'lucide-react';
 import type { TabState } from '../../shared/ipc';
 
 interface SidebarProps {
@@ -9,6 +9,7 @@ interface SidebarProps {
   onClose: (id: string) => void;
   onNewTab: () => void;
   onTabMenu: (id: string) => void;
+  onSplit: (id: string) => void; // войти в split с этой вкладкой как правой панелью
 }
 
 function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
@@ -43,10 +44,15 @@ function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
   );
 }
 
-function TabRow({ tab, active, onClick, onClose, onContextMenu }: {
+function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit }: {
   tab: TabState; active: boolean; onClick: () => void; onClose: () => void;
-  onContextMenu: () => void;
+  onContextMenu: () => void; onSplit?: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
+  const inSplit   = tab.splitSide !== null;
+  // Обе split-панели подсвечены наравне с активной вкладкой.
+  const highlighted = active || inSplit;
+
   return (
     <div
       onClick={onClick}
@@ -55,22 +61,23 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu }: {
         // Средний клик = закрыть (только незакреплённые — закреплённые защищены).
         if (e.button === 1) { e.preventDefault(); if (!tab.isHub && !tab.isPinned) onClose(); }
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px',
         borderRadius: 'var(--radius-sm)', cursor: 'default',
-        background: active ? 'var(--surface)' : 'transparent',
-        boxShadow: active ? 'var(--shadow-card)' : 'none',
-        color: active ? 'var(--text-strong)' : 'var(--text-body)',
+        background: highlighted ? 'var(--surface)' : hovered ? 'var(--surface-hover)' : 'transparent',
+        boxShadow: highlighted ? 'var(--shadow-card)' : 'none',
+        color: highlighted ? 'var(--text-strong)' : 'var(--text-body)',
         transition: 'background var(--dur-fast) var(--ease-standard)',
       }}
-      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
     >
       <FaviconTile tab={tab} />
       <span style={{
-        flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 500,
+        flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: highlighted ? 600 : 500,
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}>{tab.title || tab.url || 'Загрузка…'}</span>
+
       {tab.isLoading && (
         <span style={{
           width: 12, height: 12, flex: 'none', borderRadius: '50%',
@@ -78,6 +85,29 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu }: {
           animation: 'oblako-spin 0.7s linear infinite',
         }} />
       )}
+
+      {/* Индикатор: вкладка участвует в split */}
+      {inSplit && (
+        <Columns2 size={12} color="var(--accent)" style={{ flex: 'none' }} />
+      )}
+
+      {/* Кнопка входа в split — при наведении на обычную неактивную вкладку */}
+      {hovered && !tab.isHub && !tab.isPinned && !inSplit && !active && onSplit && (
+        <button
+          className="no-drag"
+          onClick={(e) => { e.stopPropagation(); onSplit(); }}
+          title="Открыть рядом"
+          style={{
+            border: 'none', background: 'transparent', cursor: 'default',
+            padding: 2, borderRadius: 4, display: 'inline-flex',
+            color: 'var(--text-faint)', flex: 'none',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        ><Columns2 size={14} /></button>
+      )}
+
+      {/* Кнопка закрытия — всегда видима для незакреплённых вкладок */}
       {!tab.isHub && !tab.isPinned && (
         <button
           className="no-drag"
@@ -88,8 +118,8 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu }: {
             padding: 2, borderRadius: 4, display: 'inline-flex',
             color: 'var(--text-faint)', flex: 'none',
           }}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-sunken)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         ><X size={14} /></button>
       )}
     </div>
@@ -105,7 +135,7 @@ const asideBase: React.CSSProperties = {
   overflow: 'hidden',
 };
 
-export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu }: SidebarProps) {
+export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu, onSplit }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const hub = tabs.filter((t) => t.isHub);
@@ -276,7 +306,8 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
           <TabRow key={t.id} tab={t} active={activeId === t.id}
             onClick={() => onSelect(t.id)}
             onClose={() => onClose(t.id)}
-            onContextMenu={() => onTabMenu(t.id)} />
+            onContextMenu={() => onTabMenu(t.id)}
+            onSplit={() => onSplit(t.id)} />
         ))}
       </div>
 

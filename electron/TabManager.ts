@@ -44,6 +44,8 @@ export class TabManager {
   private findBarOpen = false;
   // Множество id закреплённых вкладок — переживают перезапуск.
   private pinnedIds = new Set<string>();
+  // Состояние split-режима: null = обычный режим, иначе две панели 50/50.
+  private splitState: { leftId: string; rightId: string; activePanel: 'left' | 'right' } | null = null;
 
   constructor(
     win: BrowserWindow,
@@ -95,6 +97,7 @@ export class TabManager {
           url: '', title: 'Новая вкладка · AI-хаб',
           faviconUrl: null, isLoading: false,
           canGoBack: false, canGoForward: false, isHub: true, isPinned: false,
+          splitSide: null,
         };
       }
       const wc = t.view.webContents;
@@ -110,6 +113,10 @@ export class TabManager {
         canGoForward: wc.canGoForward(),
         isHub: false,
         isPinned: this.pinnedIds.has(t.id),
+        splitSide: !this.splitState ? null
+          : t.id === this.splitState.leftId  ? 'left' as const
+          : t.id === this.splitState.rightId ? 'right' as const
+          : null,
       };
     });
   }
@@ -174,12 +181,16 @@ export class TabManager {
     // Успешный коммит навигации — показываем вьюху + сбрасываем поиск.
     // Не на did-start-loading: вьюха не должна мигать при retry, который снова упадёт.
     wc.on('did-navigate', () => {
-      if (this.activeId === id) {
+      const isActivePanel = this.activeId === id;
+      const isInSplit = !!this.splitState
+        && (id === this.splitState.leftId || id === this.splitState.rightId);
+      if (isActivePanel) {
         wc.stopFindInPage('clearSelection');
         this.lastQuery = '';
-        this.onFindCloseCb(); // закрыть панель поиска в renderer
-        this.revealView(id);
+        this.onFindCloseCb();
       }
+      // Показываем вьюху как для активной вкладки, так и для split-партнёра.
+      if (isActivePanel || isInSplit) this.revealView(id);
       notify();
     });
     wc.on('did-navigate-in-page', notify);
@@ -215,7 +226,9 @@ export class TabManager {
       if (!isMainFrame || errorCode === -3) return;
       const url = wc.getURL() || validatedURL;
       this.errors.set(id, { type: 'load', code: errorCode, url });
-      if (this.activeId === id) this.hideView(id);
+      const isInSplit = !!this.splitState
+        && (id === this.splitState.leftId || id === this.splitState.rightId);
+      if (this.activeId === id || isInSplit) this.hideView(id);
       notify();
     });
 
@@ -223,7 +236,9 @@ export class TabManager {
     wc.on('render-process-gone', () => {
       const url = wc.getURL();
       this.errors.set(id, { type: 'crash', code: 0, url });
-      if (this.activeId === id) this.hideView(id);
+      const isInSplit = !!this.splitState
+        && (id === this.splitState.leftId || id === this.splitState.rightId);
+      if (this.activeId === id || isInSplit) this.hideView(id);
       notify();
     });
 
@@ -312,6 +327,23 @@ export class TabManager {
       this.findBarOpen = false; // FindBar уйдёт при смене activeId в renderer'е
     }
 
+    // В режиме split: переключение между панелями — только смена фокуса, без перекладки.
+    if (this.splitState) {
+      if (id === this.splitState.leftId || id === this.splitState.rightId) {
+        this.splitState.activePanel = id === this.splitState.leftId ? 'left' : 'right';
+        this.activeId = id;
+        this.onChange();
+        this.focusActiveView();
+        return;
+      }
+      // Активируем вкладку вне split — схлопываем split, скрывая обе панели.
+      for (const splitId of [this.splitState.leftId, this.splitState.rightId]) {
+        const splitTab = this.tabs.find((t) => t.id === splitId);
+        if (splitTab && this.isHttpView(splitTab.view)) splitTab.view.setVisible(false);
+      }
+      this.splitState = null;
+    }
+
     this.activeId = id;
 
     for (const t of this.tabs) {
@@ -350,6 +382,13 @@ export class TabManager {
   closeTab(id: string) {
     if (id === HUB_ID) return;             // хаб не закрываем
     if (this.pinnedIds.has(id)) return;    // закреплённые не закрываем через крестик
+
+    // Если закрываем одну из split-панелей — схлопываем split, оставляя другую.
+    if (this.splitState && (id === this.splitState.leftId || id === this.splitState.rightId)) {
+      const otherId = id === this.splitState.leftId ? this.splitState.rightId : this.splitState.leftId;
+      this.exitSplit(otherId);
+    }
+
     const idx = this.tabs.findIndex((t) => t.id === id);
     if (idx === -1) return;
     const [tab] = this.tabs.splice(idx, 1);
@@ -377,6 +416,95 @@ export class TabManager {
   reopenLastClosedTab(): void {
     const url = this.closedTabs.pop();
     if (url) this.createTab(url);
+  }
+
+  // ── Split View ────────────────────────────────────────────────────────────
+
+  // Войти в split: текущая активная вкладка → левая панель, rightId → правая.
+  // Только обычные (не закреплённые, не хаб) вкладки могут участвовать.
+  enterSplit(rightId: string): void {
+    const rightTab = this.tabs.find((t) => t.id === rightId);
+    if (!rightTab || !this.isHttpView(rightTab.view) || this.pinnedIds.has(rightId)) return;
+
+    const leftId = this.activeId;
+    if (leftId === rightId) return; // нельзя делать split с самим собой
+
+    const leftTab = this.tabs.find((t) => t.id === leftId);
+    if (!leftTab || !this.isHttpView(leftTab.view) || this.pinnedIds.has(leftId)) return;
+
+    // Останавливаем поиск: FindBar не переживает вход в split.
+    const activeWc = this.getActiveWebContents();
+    if (activeWc) { activeWc.stopFindInPage('clearSelection'); this.lastQuery = ''; }
+    this.findBarOpen = false;
+    this.onFindCloseCb();
+
+    // Скрываем все вьюхи, которые не участвуют в новом split.
+    for (const t of this.tabs) {
+      if (!this.isHttpView(t.view)) continue;
+      if (t.id !== leftId && t.id !== rightId) t.view.setVisible(false);
+    }
+
+    this.splitState = { leftId, rightId, activePanel: 'left' };
+
+    // Убеждаемся, что обе вьюхи добавлены в contentView до позиционирования.
+    for (const splitId of [leftId, rightId]) {
+      const splitTab = this.tabs.find((t) => t.id === splitId);
+      if (!splitTab || !this.isHttpView(splitTab.view)) continue;
+      const children = this.win.contentView.children;
+      if (!children.includes(splitTab.view)) this.win.contentView.addChildView(splitTab.view);
+    }
+
+    this.repositionViews();
+    this.onChange();
+    this.focusActiveView(); // фокус на левой (активной) панели
+  }
+
+  // Выйти из split, оставив keepId активной вкладкой (по умолчанию — активная панель).
+  exitSplit(keepId?: string): void {
+    if (!this.splitState) return;
+    const { leftId, rightId, activePanel } = this.splitState;
+
+    const stayId = keepId ?? (activePanel === 'left' ? leftId : rightId);
+    const hideId = stayId === leftId ? rightId : leftId;
+
+    this.splitState = null;
+
+    // Останавливаем поиск и скрываем уходящую панель.
+    const hideTab = this.tabs.find((t) => t.id === hideId);
+    if (hideTab && this.isHttpView(hideTab.view)) {
+      hideTab.view.webContents.stopFindInPage('clearSelection');
+      hideTab.view.setVisible(false);
+    }
+
+    // Разворачиваем оставшуюся вкладку на всю область.
+    this.activeId = stayId;
+    const stayTab = this.tabs.find((t) => t.id === stayId);
+    if (stayTab && this.isHttpView(stayTab.view) && !this.errors.has(stayId)) {
+      const children = this.win.contentView.children;
+      if (!children.includes(stayTab.view)) this.win.contentView.addChildView(stayTab.view);
+      stayTab.view.setVisible(true);
+      this.applyBounds(stayTab.view);
+    }
+
+    this.onChange();
+    this.focusActiveView();
+  }
+
+  // Переключить фокус между левой и правой панелью split.
+  focusSplitPanel(side: 'left' | 'right'): void {
+    if (!this.splitState) return;
+    const newId = side === 'left' ? this.splitState.leftId : this.splitState.rightId;
+    if (this.activeId === newId) return;
+
+    // Останавливаем поиск на панели, с которой уходим.
+    const prevWc = this.getActiveWebContents();
+    if (prevWc) { prevWc.stopFindInPage('clearSelection'); this.lastQuery = ''; }
+    this.findBarOpen = false;
+
+    this.splitState.activePanel = side;
+    this.activeId = newId;
+    this.onChange();
+    this.focusActiveView();
   }
 
   // Визуальный порядок вкладок: хаб → закреплённые → обычные.
@@ -608,7 +736,12 @@ export class TabManager {
     const children = this.win.contentView.children;
     if (!children.includes(tab.view)) this.win.contentView.addChildView(tab.view);
     tab.view.setVisible(true);
-    this.applyBounds(tab.view);
+    // В split: перепозиционируем обе панели (bounds мог прийти раньше вьюхи).
+    if (this.splitState && (id === this.splitState.leftId || id === this.splitState.rightId)) {
+      this.repositionViews();
+    } else {
+      this.applyBounds(tab.view);
+    }
   }
 
   // hideView: вызывается при ошибке/краше — скрываем, React нарисует экран ошибки.
@@ -621,9 +754,47 @@ export class TabManager {
   // ── Геометрия "дырки" под контент ──
   setContentBounds(b: ContentBounds) {
     this.bounds = b;
-    const active = this.tabs.find((t) => t.id === this.activeId);
-    if (active && this.isHttpView(active.view))
-      this.applyBounds(active.view);
+    this.repositionViews();
+  }
+
+  // Позиционирует видимые вьюхи согласно текущему режиму (single / split).
+  private repositionViews(): void {
+    if (!this.splitState) {
+      const active = this.tabs.find((t) => t.id === this.activeId);
+      if (active && this.isHttpView(active.view) && !this.errors.has(this.activeId)) {
+        this.applyBounds(active.view);
+      }
+      return;
+    }
+    // Split 50/50: разделяем bounds на две равные части с 2px-зазором.
+    const { leftId, rightId } = this.splitState;
+    const gap  = 2;
+    const half = Math.floor((this.bounds.width - gap) / 2);
+    const leftB:  ContentBounds = {
+      x: this.bounds.x, y: this.bounds.y,
+      width: half, height: this.bounds.height,
+    };
+    const rightB: ContentBounds = {
+      x: this.bounds.x + half + gap, y: this.bounds.y,
+      width: this.bounds.width - half - gap, height: this.bounds.height,
+    };
+    this.applySplitBounds(leftId, leftB);
+    this.applySplitBounds(rightId, rightB);
+  }
+
+  // Позиционирует одну split-панель; при ошибке скрывает вьюху (React рисует TabError).
+  private applySplitBounds(id: string, b: ContentBounds): void {
+    const tab = this.tabs.find((t) => t.id === id);
+    if (!tab || !this.isHttpView(tab.view)) return;
+    if (this.errors.has(id)) { tab.view.setVisible(false); return; }
+    const children = this.win.contentView.children;
+    if (!children.includes(tab.view)) this.win.contentView.addChildView(tab.view);
+    tab.view.setVisible(true);
+    tab.view.setBounds({
+      x: Math.round(b.x), y: Math.round(b.y),
+      width: Math.max(0, Math.round(b.width)),
+      height: Math.max(0, Math.round(b.height)),
+    });
   }
 
   private applyBounds(view: WebContentsView) {
