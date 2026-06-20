@@ -379,14 +379,26 @@ export class TabManager {
     if (url) this.createTab(url);
   }
 
+  // Визуальный порядок вкладок: хаб → закреплённые → обычные.
+  // Совпадает с порядком секций в сайдбаре, чтобы хоткеи не расходились с UI.
+  private tabsInVisualOrder(withHub: boolean): ManagedTab[] {
+    const pinned = this.tabs.filter((t) => this.isHttpView(t.view) && this.pinnedIds.has(t.id));
+    const normal = this.tabs.filter((t) => this.isHttpView(t.view) && !this.pinnedIds.has(t.id));
+    if (!withHub) return [...pinned, ...normal];
+    const hub = this.tabs.filter((t) => !this.isHttpView(t.view));
+    return [...hub, ...pinned, ...normal];
+  }
+
   selectNext(): void {
-    const idx = this.tabs.findIndex((t) => t.id === this.activeId);
-    this.activate(this.tabs[(idx + 1) % this.tabs.length].id);
+    const ordered = this.tabsInVisualOrder(true);
+    const idx = ordered.findIndex((t) => t.id === this.activeId);
+    this.activate(ordered[(idx + 1) % ordered.length].id);
   }
 
   selectPrev(): void {
-    const idx = this.tabs.findIndex((t) => t.id === this.activeId);
-    this.activate(this.tabs[(idx - 1 + this.tabs.length) % this.tabs.length].id);
+    const ordered = this.tabsInVisualOrder(true);
+    const idx = ordered.findIndex((t) => t.id === this.activeId);
+    this.activate(ordered[(idx - 1 + ordered.length) % ordered.length].id);
   }
 
   navigate(id: string, input: string) {
@@ -468,10 +480,10 @@ export class TabManager {
   }
 
   // ── Ctrl+1..9: переключиться на вкладку по номеру ──
-  // Считаем только реальные вкладки (без хаба), в порядке сайдбара.
+  // Счёт в визуальном порядке (закреплённые сверху, потом обычные), без хаба.
   // Ctrl+9 = всегда последняя (стандарт браузеров), Ctrl+1..8 = по индексу.
   selectByIndex(n: number): void {
-    const real = this.tabs.filter((t) => this.isHttpView(t.view));
+    const real = this.tabsInVisualOrder(false); // без хаба
     if (real.length === 0) return;
     const target = n === 9 ? real[real.length - 1] : real[n - 1];
     if (target) this.activate(target.id);
