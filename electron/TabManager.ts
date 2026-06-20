@@ -36,6 +36,7 @@ export class TabManager {
   private onFindOpenCb: () => void;
   private onFindCloseCb: () => void;
   private onOmniboxFocusCb: () => void;
+  private onFocusChromeCb: () => void;
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
   private lastQuery = ''; // последний поисковый запрос (чтобы отличить новый от навигации)
@@ -49,6 +50,7 @@ export class TabManager {
     onFindOpen: () => void,
     onFindClose: () => void,
     onOmniboxFocus: () => void,
+    onFocusChrome: () => void,
   ) {
     this.win = win;
     this.onChange = onChange;
@@ -56,6 +58,7 @@ export class TabManager {
     this.onFindOpenCb = onFindOpen;
     this.onFindCloseCb = onFindClose;
     this.onOmniboxFocusCb = onOmniboxFocus;
+    this.onFocusChromeCb = onFocusChrome;
     // Вкладка-хаб существует всегда и первой.
     this.tabs.push({ id: HUB_ID, view: null });
   }
@@ -282,6 +285,19 @@ export class TabManager {
       }
     }
     this.onChange();
+    this.focusActiveView();
+  }
+
+  // После программного переключения вкладки явно передаём OS-фокус нужному view.
+  // Без этого before-input-event замолкает: Windows освобождает фокус на BrowserWindow HWND,
+  // не перекидывая его на дочерние view автоматически.
+  private focusActiveView(): void {
+    const tab = this.tabs.find((t) => t.id === this.activeId);
+    if (tab && this.isHttpView(tab.view) && !this.errors.has(this.activeId)) {
+      tab.view.webContents.focus();
+    } else {
+      this.onFocusChromeCb();
+    }
   }
 
   closeTab(id: string) {
