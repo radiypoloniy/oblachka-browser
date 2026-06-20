@@ -8,6 +8,11 @@ import type { TabState, FindResult } from '../shared/ipc';
 
 const HUB_ID = 'hub';
 
+// Высота полосы, вырезаемой у WebContentsView сверху, когда открыт FindBar.
+// Даёт «реальную дырку» в нативном слое, иначе DOM-оверлей скрыт за WebContentsView.
+// 52 = 8px (gap) + ~36px (панель) + 8px (запас).
+const FIND_BAR_RESERVE = 52;
+
 export default function App() {
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [activeId, setActiveId] = useState(HUB_ID);
@@ -27,6 +32,9 @@ export default function App() {
   isHubRef.current = isHub;
   const findOpenRef = useRef(findOpen);
   findOpenRef.current = findOpen;
+  // tabErrorRef нужен в pushBounds: reserve не применяем когда показана страница ошибки.
+  const tabErrorRef = useRef(tabError);
+  tabErrorRef.current = tabError;
 
   // Тема
   useEffect(() => {
@@ -90,12 +98,20 @@ export default function App() {
 
   // ── Главное: измеряем "дырку" под контент и сообщаем main, ──
   // ── куда положить WebContentsView активной вкладки.       ──
+  //
+  // Reserve: когда FindBar открыт на реальной странице (не хаб, не ошибка),
+  // откусываем FIND_BAR_RESERVE px сверху — создаём «реальную дырку» для панели.
+  // Callback стабилен (deps=[]), читает актуальные значения через рефы.
   const pushBounds = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
+    const reserve = (findOpenRef.current && !isHubRef.current && !tabErrorRef.current)
+      ? FIND_BAR_RESERVE
+      : 0;
     window.oblako.setContentBounds({
-      x: r.left, y: r.top, width: r.width, height: r.height,
+      x: r.left, y: r.top + reserve,
+      width: r.width, height: Math.max(0, r.height - reserve),
     });
   }, []);
 
@@ -106,6 +122,10 @@ export default function App() {
     window.addEventListener('resize', pushBounds);
     return () => { ro.disconnect(); window.removeEventListener('resize', pushBounds); };
   }, [pushBounds]);
+
+  // Пересчёт bounds при смене состояния find-панели:
+  // открытие (+reserve) и закрытие (-reserve) должны синхронно обновить WebContentsView.
+  useEffect(() => { pushBounds(); }, [findOpen, pushBounds]);
 
   // когда переключаемся между хабом и сайтом, геометрия дырки та же,
   // но main должен переотобразить вьюху — пушим bounds ещё раз.
@@ -151,7 +171,7 @@ export default function App() {
                   onRetry={() => window.oblako.reload(activeId)}
                 />
               : null /* реальную страницу рисует main через WebContentsView */}
-          {/* Панель поиска: абсолютный оверлей поверх WebContentsView. */}
+          {/* Панель поиска: абсолютный оверлей в «дырке» выше WebContentsView. */}
           {findOpen && !isHub && !tabError && (
             <FindBar
               ref={findInputRef}
