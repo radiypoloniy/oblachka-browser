@@ -338,21 +338,29 @@ export class TabManager {
       this.findBarOpen = false; // FindBar уйдёт при смене activeId в renderer'е
     }
 
-    // В режиме split: переключение между панелями — только смена фокуса, без перекладки.
     if (this.splitState) {
       if (id === this.splitState.leftId || id === this.splitState.rightId) {
+        // Возврат к split-вкладке (из любой другой вкладки или из той же панели):
+        // восстанавливаем обе панели, скрываем всё постороннее.
         this.splitState.activePanel = id === this.splitState.leftId ? 'left' : 'right';
         this.activeId = id;
+        for (const t of this.tabs) {
+          if (!this.isHttpView(t.view)) continue;
+          if (t.id !== this.splitState.leftId && t.id !== this.splitState.rightId) {
+            t.view.setVisible(false);
+          }
+        }
+        this.repositionViews();
         this.onChange();
         this.focusActiveView();
         return;
       }
-      // Активируем вкладку вне split — схлопываем split, скрывая обе панели.
+      // Уход на стороннюю вкладку — прячем панели, НО splitState НЕ сбрасываем:
+      // split «припаркован» и восстановится при клике по любой из его вкладок.
       for (const splitId of [this.splitState.leftId, this.splitState.rightId]) {
         const splitTab = this.tabs.find((t) => t.id === splitId);
         if (splitTab && this.isHttpView(splitTab.view)) splitTab.view.setVisible(false);
       }
-      this.splitState = null;
     }
 
     this.activeId = id;
@@ -394,10 +402,18 @@ export class TabManager {
     if (id === HUB_ID) return;             // хаб не закрываем
     if (this.pinnedIds.has(id)) return;    // закреплённые не закрываем через крестик
 
-    // Если закрываем одну из split-панелей — схлопываем split, оставляя другую.
+    // Закрытие вкладки, входящей в (возможно припаркованный) split.
     if (this.splitState && (id === this.splitState.leftId || id === this.splitState.rightId)) {
       const otherId = id === this.splitState.leftId ? this.splitState.rightId : this.splitState.leftId;
-      this.exitSplit(otherId);
+      const currentlyInSplit = this.activeId === this.splitState.leftId || this.activeId === this.splitState.rightId;
+      if (currentlyInSplit) {
+        // Split на экране: схлопываем с переключением на соседнюю панель.
+        this.exitSplit(otherId);
+      } else {
+        // Split припаркован: просто снимаем splitState — «осиротевший» split.
+        // Оставшаяся вкладка (otherId) тихо становится обычной.
+        this.splitState = null;
+      }
     }
 
     const idx = this.tabs.findIndex((t) => t.id === id);
@@ -471,9 +487,21 @@ export class TabManager {
   }
 
   // Выйти из split, оставив keepId активной вкладкой (по умолчанию — активная панель).
+  // Явный выход: splitState = null насовсем. Отличается от «ухода» (activate другой вкладки),
+  // который сохраняет splitState для последующего восстановления.
   exitSplit(keepId?: string): void {
     if (!this.splitState) return;
     const { leftId, rightId, activePanel } = this.splitState;
+
+    const currentlyInSplit = this.activeId === leftId || this.activeId === rightId;
+
+    // Явный выход при припаркованном split (кнопка в сайдбаре, пока смотрим другую вкладку):
+    // просто снимаем splitState и остаёмся там, где были. Обе вкладки и так уже скрыты.
+    if (!currentlyInSplit && keepId === undefined) {
+      this.splitState = null;
+      this.onChange();
+      return;
+    }
 
     const stayId = keepId ?? (activePanel === 'left' ? leftId : rightId);
     const hideId = stayId === leftId ? rightId : leftId;
@@ -769,8 +797,13 @@ export class TabManager {
   }
 
   // Позиционирует видимые вьюхи согласно текущему режиму (single / split).
+  // «Припаркованный» split (splitState есть, но активна другая вкладка) ведёт
+  // себя как single: позиционируем только текущую активную вкладку.
   private repositionViews(): void {
-    if (!this.splitState) {
+    const currentlyInSplit = !!this.splitState
+      && (this.activeId === this.splitState.leftId || this.activeId === this.splitState.rightId);
+
+    if (!currentlyInSplit) {
       const active = this.tabs.find((t) => t.id === this.activeId);
       if (active && this.isHttpView(active.view) && !this.errors.has(this.activeId)) {
         this.applyBounds(active.view);
@@ -778,7 +811,9 @@ export class TabManager {
       return;
     }
     // Split 50/50: разделяем bounds на две равные части с 2px-зазором.
-    const { leftId, rightId } = this.splitState;
+    // splitState гарантированно не null: currentlyInSplit включает !!this.splitState.
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const { leftId, rightId } = this.splitState!;
     const gap  = 2;
     const half = Math.floor((this.bounds.width - gap) / 2);
     const leftB:  ContentBounds = {

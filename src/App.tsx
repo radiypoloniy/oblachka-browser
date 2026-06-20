@@ -29,9 +29,13 @@ export default function App() {
   const tabError = active?.tabError ?? null;
 
   // Split View: определяем участников по splitSide в снимке.
+  // isSplit = true только когда split реально на экране (активная вкладка — одна из панелей).
+  // При «припаркованном» split (смотрим другую вкладку) — isSplit = false,
+  // но splitSide у обеих вкладок не null → сайдбар показывает Columns2-индикатор.
   const splitLeft  = tabs.find((t) => t.splitSide === 'left');
   const splitRight = tabs.find((t) => t.splitSide === 'right');
-  const isSplit = !!splitLeft && !!splitRight;
+  const isSplit = !!splitLeft && !!splitRight
+    && (activeId === splitLeft.id || activeId === splitRight.id);
 
   // Refs для использования актуальных значений внутри IPC-колбэков (замыкания).
   const isHubRef = useRef(isHub);

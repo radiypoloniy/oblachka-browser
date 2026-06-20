@@ -50,9 +50,15 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
   onContextMenu: () => void; onSplit?: () => void; onExitSplit?: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
-  const inSplit   = tab.splitSide !== null;
-  // Обе split-панели подсвечены наравне с активной вкладкой.
-  const highlighted = active || inSplit;
+  const inSplit = tab.splitSide !== null;
+  // Три визуальных состояния:
+  //   active       → полная подсветка (surface + shadow + bold)
+  //   inSplit      → лёгкая подсветка (surface-hover без shadow) — «припаркован»
+  //   иначе        → прозрачный / hover при наведении
+  const bg = active ? 'var(--surface)'
+    : inSplit ? 'var(--surface-hover)'
+    : hovered  ? 'var(--surface-hover)'
+    : 'transparent';
 
   return (
     <div
@@ -67,15 +73,15 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
       style={{
         display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px',
         borderRadius: 'var(--radius-sm)', cursor: 'default',
-        background: highlighted ? 'var(--surface)' : hovered ? 'var(--surface-hover)' : 'transparent',
-        boxShadow: highlighted ? 'var(--shadow-card)' : 'none',
-        color: highlighted ? 'var(--text-strong)' : 'var(--text-body)',
+        background: bg,
+        boxShadow: active ? 'var(--shadow-card)' : 'none',
+        color: active ? 'var(--text-strong)' : 'var(--text-body)',
         transition: 'background var(--dur-fast) var(--ease-standard)',
       }}
     >
       <FaviconTile tab={tab} />
       <span style={{
-        flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: highlighted ? 600 : 500,
+        flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 500,
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}>{tab.title || tab.url || 'Загрузка…'}</span>
 
