@@ -66,6 +66,7 @@ function createWindow() {
     (r: FindResult) => chromeView?.webContents.send(IPC.FIND_RESULT, r),
     ()              => chromeView?.webContents.send(IPC.FIND_OPEN),
     ()              => chromeView?.webContents.send(IPC.FIND_CLOSE),
+    ()              => chromeView?.webContents.send(IPC.OMNIBOX_FOCUS),
   );
 
   // Восстанавливаем вкладки из session.json.

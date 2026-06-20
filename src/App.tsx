@@ -22,6 +22,7 @@ export default function App() {
   const [findResult, setFindResult] = useState<FindResult | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
+  const omniboxRef = useRef<HTMLInputElement>(null);
 
   const active = tabs.find((t) => t.id === activeId);
   const isHub = active?.isHub ?? true;
@@ -87,7 +88,12 @@ export default function App() {
       void window.oblako.findStop();
     });
 
-    return () => { unsubResult(); unsubOpen(); unsubClose(); };
+    const unsubOmnibox = window.oblako.onOmniboxFocus(() => {
+      omniboxRef.current?.focus();
+      omniboxRef.current?.select();
+    });
+
+    return () => { unsubResult(); unsubOpen(); unsubClose(); unsubOmnibox(); };
   }, []);
 
   // Закрыть панель при переключении вкладки (stopFindInPage уже вызван в TabManager).
@@ -153,6 +159,7 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
           tab={active} vpnOn={vpnOn} dark={dark}
+          omniboxRef={omniboxRef}
           onToggleVpn={() => setVpnOn((v) => !v)}
           onToggleDark={() => setDark((d) => !d)}
           onBack={() => window.oblako.goBack(activeId)}

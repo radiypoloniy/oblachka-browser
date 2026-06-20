@@ -35,9 +35,12 @@ export class TabManager {
   private onFindResultCb: (r: FindResult) => void;
   private onFindOpenCb: () => void;
   private onFindCloseCb: () => void;
+  private onOmniboxFocusCb: () => void;
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
   private lastQuery = ''; // последний поисковый запрос (чтобы отличить новый от навигации)
+  // Флаг: открыта ли панель поиска (нужен для приоритета Esc: сначала закрыть поиск).
+  private findBarOpen = false;
 
   constructor(
     win: BrowserWindow,
@@ -45,12 +48,14 @@ export class TabManager {
     onFindResult: (r: FindResult) => void,
     onFindOpen: () => void,
     onFindClose: () => void,
+    onOmniboxFocus: () => void,
   ) {
     this.win = win;
     this.onChange = onChange;
     this.onFindResultCb = onFindResult;
     this.onFindOpenCb = onFindOpen;
     this.onFindCloseCb = onFindClose;
+    this.onOmniboxFocusCb = onOmniboxFocus;
     // Вкладка-хаб существует всегда и первой.
     this.tabs.push({ id: HUB_ID, view: null });
   }
@@ -240,14 +245,6 @@ export class TabManager {
     });
 
     this.registerHotkeyHandler(wc);
-
-    // Esc на странице (фокус на WebContentsView) → закрыть панель поиска.
-    // Без preventDefault: страница тоже получает Esc (закрыть модал, сбросить фокус).
-    wc.on('before-input-event', (_e, input) => {
-      if (input.type === 'keyDown' && input.key === 'Escape' && !input.control) {
-        this.onFindCloseCb();
-      }
-    });
   }
 
   // ── Активация: показываем нужную вьюху, прячем остальные ──
@@ -262,6 +259,7 @@ export class TabManager {
         prev.view.webContents.stopFindInPage('clearSelection');
         this.lastQuery = '';
       }
+      this.findBarOpen = false; // FindBar уйдёт при смене activeId в renderer'е
     }
 
     this.activeId = id;
@@ -385,6 +383,7 @@ export class TabManager {
     const wc = this.getActiveWebContents();
     if (wc) wc.stopFindInPage('clearSelection');
     this.lastQuery = '';
+    this.findBarOpen = false;
   }
 
   // ── Зум активной вкладки ──────────────────────────────────────────────────
@@ -403,44 +402,91 @@ export class TabManager {
     tab.view.webContents.setZoomFactor(1.0);
   }
 
+  // ── Ctrl+1..9: переключиться на вкладку по номеру ──
+  // Считаем только реальные вкладки (без хаба), в порядке сайдбара.
+  // Ctrl+9 = всегда последняя (стандарт браузеров), Ctrl+1..8 = по индексу.
+  selectByIndex(n: number): void {
+    const real = this.tabs.filter((t) => this.isHttpView(t.view));
+    if (real.length === 0) return;
+    const target = n === 9 ? real[real.length - 1] : real[n - 1];
+    if (target) this.activate(target.id);
+  }
+
   // ── Хоткеи: перехватываем до рендерера, чтобы работало и на сайтах ──
   // Вызывается для каждой новой вкладки (из wirePageEvents) и для chromeView
   // (из main.ts), чтобы покрыть и страницы, и хаб.
+  //
+  // ВСЕ хоткеи матчим по input.code (физическая позиция клавиши), а НЕ по input.key.
+  // input.key зависит от раскладки: на русской F→«а», W→«ц» и т.д.
   registerHotkeyHandler(wc: WebContents): void {
     wc.on('before-input-event', (event, input) => {
-      if (!input.control || input.type !== 'keyDown') return;
-      // Все хоткеи матчим по input.code (физическая позиция клавиши), а не по input.key
-      // (символ). input.key зависит от раскладки: на русской F→«а», W→«ц» и т.д.,
-      // поэтому key-based матчинг ломается при переключении языка.
+      if (input.type !== 'keyDown') return;
       const { code, shift } = input;
 
+      // ── Без Ctrl ──────────────────────────────────────────────────────────
+      if (!input.control) {
+        // Esc: приоритет — закрыть FindBar; иначе — остановить загрузку страницы.
+        if (code === 'Escape' && !shift) {
+          if (this.findBarOpen) {
+            event.preventDefault();
+            this.findBarOpen = false;   // немедленный сброс, чтобы второй Esc не зацикливался
+            this.onFindCloseCb();
+          } else {
+            const active = this.getActiveWebContents();
+            if (active) { event.preventDefault(); active.stop(); }
+          }
+          return;
+        }
+        // F5: обновить активную вкладку.
+        if (code === 'F5' && !shift) {
+          event.preventDefault();
+          this.reload(this.activeId);
+          return;
+        }
+        return;
+      }
+
+      // ── Ctrl+... ──────────────────────────────────────────────────────────
       if (code === 'KeyT' && !shift) {
         event.preventDefault();
-        this.activate(HUB_ID);           // Ctrl+T: открыть хаб
+        this.activate(HUB_ID);             // Ctrl+T: открыть хаб
       } else if (code === 'KeyT' && shift) {
         event.preventDefault();
-        this.reopenLastClosedTab();       // Ctrl+Shift+T: восстановить закрытую
+        this.reopenLastClosedTab();         // Ctrl+Shift+T: восстановить закрытую
       } else if (code === 'KeyW' && !shift) {
         event.preventDefault();
-        this.closeTab(this.activeId);     // Ctrl+W: закрыть активную (хаб защищён)
+        this.closeTab(this.activeId);       // Ctrl+W: закрыть активную (хаб защищён)
       } else if (code === 'Tab' && !shift) {
         event.preventDefault();
-        this.selectNext();                // Ctrl+Tab: следующая вкладка
+        this.selectNext();                  // Ctrl+Tab: следующая вкладка
       } else if (code === 'Tab' && shift) {
         event.preventDefault();
-        this.selectPrev();                // Ctrl+Shift+Tab: предыдущая вкладка
+        this.selectPrev();                  // Ctrl+Shift+Tab: предыдущая вкладка
       } else if (code === 'Equal' || code === 'NumpadAdd') {
         event.preventDefault();
-        this.adjustZoom(ZOOM_STEP);       // Ctrl+= / Ctrl++
+        this.adjustZoom(ZOOM_STEP);         // Ctrl+= / Ctrl++
       } else if (code === 'Minus' || code === 'NumpadSubtract') {
         event.preventDefault();
-        this.adjustZoom(-ZOOM_STEP);      // Ctrl+-
+        this.adjustZoom(-ZOOM_STEP);        // Ctrl+-
       } else if (code === 'Digit0' || code === 'Numpad0') {
         event.preventDefault();
-        this.resetZoom();                 // Ctrl+0: сбросить к 100%
+        this.resetZoom();                   // Ctrl+0: сбросить к 100%
       } else if (code === 'KeyF' && !shift) {
         event.preventDefault();
-        this.onFindOpenCb();              // Ctrl+F: открыть / сфокусировать панель поиска
+        this.findBarOpen = true;
+        this.onFindOpenCb();                // Ctrl+F: открыть / сфокусировать FindBar
+      } else if (code === 'KeyR' && !shift) {
+        event.preventDefault();
+        this.reload(this.activeId);         // Ctrl+R: обновить страницу
+      } else if (code === 'KeyL' && !shift) {
+        event.preventDefault();
+        this.onOmniboxFocusCb();            // Ctrl+L: фокус в омнибокс
+      } else if (code.startsWith('Digit') && !shift) {
+        const n = parseInt(code[5]!, 10);   // 'Digit1'→1 … 'Digit9'→9
+        if (n >= 1 && n <= 9) {
+          event.preventDefault();
+          this.selectByIndex(n);            // Ctrl+1..8: вкладка по номеру; Ctrl+9: последняя
+        }
       }
     });
   }

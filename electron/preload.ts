@@ -38,6 +38,12 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.FIND_CLOSE, handler);
     return () => ipcRenderer.removeListener(IPC.FIND_CLOSE, handler);
   },
+
+  onOmniboxFocus: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.OMNIBOX_FOCUS, handler);
+    return () => ipcRenderer.removeListener(IPC.OMNIBOX_FOCUS, handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('oblako', api);

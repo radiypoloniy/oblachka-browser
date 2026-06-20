@@ -58,6 +58,9 @@ export const IPC = {
   FIND_RESULT: 'find:result',       // main → renderer: результат (activeMatch, count)
   FIND_OPEN:   'find:open',         // main → renderer: открыть панель поиска (Ctrl+F)
   FIND_CLOSE:  'find:close',        // main → renderer: закрыть панель (навигация, Esc)
+
+  // Омнибокс
+  OMNIBOX_FOCUS: 'omnibox:focus',   // main → renderer: сфокусировать адресную строку (Ctrl+L)
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -84,4 +87,7 @@ export interface OblakoApi {
   onFindResult(cb: (r: FindResult) => void): () => void;
   onFindOpen(cb: () => void): () => void;
   onFindClose(cb: () => void): () => void;
+
+  // Омнибокс
+  onOmniboxFocus(cb: () => void): () => void;
 }

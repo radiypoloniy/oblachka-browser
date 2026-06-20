@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Moon, Copy, Check } from 'lucide-react';
 import type { TabState } from '../../shared/ipc';
 
@@ -6,6 +6,7 @@ interface ToolbarProps {
   tab: TabState | undefined;
   vpnOn: boolean;
   dark: boolean;
+  omniboxRef?: React.RefObject<HTMLInputElement>; // внешний ref для фокуса по Ctrl+L
   onToggleVpn: () => void;
   onToggleDark: () => void;
   onBack: () => void;
@@ -15,13 +16,15 @@ interface ToolbarProps {
 }
 
 export default function Toolbar({
-  tab, vpnOn, dark, onToggleVpn, onToggleDark, onBack, onForward, onReload, onSubmit,
+  tab, vpnOn, dark, omniboxRef: externalRef,
+  onToggleVpn, onToggleDark, onBack, onForward, onReload, onSubmit,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
   const [value, setValue] = useState('');
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const internalRef = useRef<HTMLInputElement>(null);
+  const inputRef = externalRef ?? internalRef;
 
   // Пока пользователь не редактирует — поле отражает реальный URL вкладки.
   useEffect(() => {
