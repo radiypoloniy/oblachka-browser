@@ -71,12 +71,25 @@ function createWindow() {
   );
 
   // Восстанавливаем вкладки из session.json.
-  if (restored && restored.tabs.length > 0) {
-    const restoredIds: string[] = [];
-    for (const { url } of restored.tabs) {
-      restoredIds.push(tabs.createTab(url));
+  if (restored) {
+    // Закреплённые сначала — их порядок стабилен и они всегда вверху сайдбара.
+    const pinnedIds: string[] = [];
+    for (const { url } of restored.pinnedTabs) {
+      pinnedIds.push(tabs.createPinnedTab(url));
     }
-    const targetId = restoredIds[restored.activeTabIndex];
+    const normalIds: string[] = [];
+    for (const { url } of restored.tabs) {
+      normalIds.push(tabs.createTab(url, /* background */ true));
+    }
+
+    // Восстанавливаем активную вкладку по типу + индексу.
+    let targetId: string | undefined;
+    if (restored.activeTabType === 'pinned') {
+      targetId = pinnedIds[restored.activeTabIndex];
+    } else if (restored.activeTabType === 'normal') {
+      targetId = normalIds[restored.activeTabIndex];
+    }
+    // 'hub' или индекс вне диапазона — остаёмся на хабе (дефолт TabManager).
     if (targetId) tabs.activate(targetId);
   }
 
@@ -125,6 +138,27 @@ function registerIpc() {
   ipcMain.handle(IPC.FIND_START, (_e, q: string, fwd: boolean) => tabs?.findInPage(q, fwd));
   ipcMain.handle(IPC.FIND_NEXT,  (_e, fwd: boolean)            => tabs?.findNext(fwd));
   ipcMain.handle(IPC.FIND_STOP,  ()                            => tabs?.stopFind());
+
+  ipcMain.handle(IPC.TAB_PIN_TOGGLE, (_e, id: string) => tabs?.togglePin(id));
+
+  // Нативное ПКМ-меню вкладки в сайдбаре: Закрепить / Открепить.
+  ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {
+    if (!tabs || !win) return;
+    const isPinned = tabs.isTabPinned(id);
+    const items: MenuItemConstructorOptions[] = [
+      {
+        label: isPinned ? 'Открепить вкладку' : 'Закрепить вкладку',
+        click: () => tabs!.togglePin(id),
+      },
+      { type: 'separator' },
+      {
+        label: 'Закрыть вкладку',
+        enabled: !isPinned, // закреплённую через меню тоже нельзя закрыть
+        click: () => tabs!.closeTab(id),
+      },
+    ];
+    Menu.buildFromTemplate(items).popup({ window: win });
+  });
 }
 
 // Внешние протоколы (mailto:, tel:) -> отдаём ОС, не показываем ошибку навигации.

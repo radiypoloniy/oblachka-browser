@@ -42,6 +42,8 @@ export class TabManager {
   private lastQuery = ''; // последний поисковый запрос (чтобы отличить новый от навигации)
   // Флаг: открыта ли панель поиска (нужен для приоритета Esc: сначала закрыть поиск).
   private findBarOpen = false;
+  // Множество id закреплённых вкладок — переживают перезапуск.
+  private pinnedIds = new Set<string>();
 
   constructor(
     win: BrowserWindow,
@@ -92,7 +94,7 @@ export class TabManager {
           tabError: null, // хаб не имеет ошибок
           url: '', title: 'Новая вкладка · AI-хаб',
           faviconUrl: null, isLoading: false,
-          canGoBack: false, canGoForward: false, isHub: true,
+          canGoBack: false, canGoForward: false, isHub: true, isPinned: false,
         };
       }
       const wc = t.view.webContents;
@@ -107,6 +109,7 @@ export class TabManager {
         canGoBack: wc.canGoBack(),
         canGoForward: wc.canGoForward(),
         isHub: false,
+        isPinned: this.pinnedIds.has(t.id),
       };
     });
   }
@@ -137,6 +140,28 @@ export class TabManager {
       this.activate(id);
     }
     return id;
+  }
+
+  // Создаёт закреплённую вкладку — используется только при восстановлении сессии.
+  createPinnedTab(rawUrl: string): string {
+    const id = this.createTab(rawUrl, /* background */ true);
+    this.pinnedIds.add(id);
+    return id;
+  }
+
+  // Закрепить / открепить существующую вкладку.
+  togglePin(id: string): void {
+    if (!this.tabs.find((t) => t.id === id) || id === HUB_ID) return;
+    if (this.pinnedIds.has(id)) {
+      this.pinnedIds.delete(id);
+    } else {
+      this.pinnedIds.add(id);
+    }
+    this.onChange();
+  }
+
+  isTabPinned(id: string): boolean {
+    return this.pinnedIds.has(id);
   }
 
   private wirePageEvents(id: string, view: WebContentsView) {
@@ -323,11 +348,13 @@ export class TabManager {
   }
 
   closeTab(id: string) {
-    if (id === HUB_ID) return; // хаб не закрываем
+    if (id === HUB_ID) return;             // хаб не закрываем
+    if (this.pinnedIds.has(id)) return;    // закреплённые не закрываем через крестик
     const idx = this.tabs.findIndex((t) => t.id === id);
     if (idx === -1) return;
     const [tab] = this.tabs.splice(idx, 1);
-    this.errors.delete(id); // убираем ошибку вместе со вкладкой
+    this.errors.delete(id);
+    this.pinnedIds.delete(id); // на случай программного закрытия
     if (this.isHttpView(tab.view)) {
       // Запоминаем URL до уничтожения webContents — для Ctrl+Shift+T.
       const url = tab.view.webContents.getURL();

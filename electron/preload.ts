@@ -44,6 +44,9 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.OMNIBOX_FOCUS, handler);
     return () => ipcRenderer.removeListener(IPC.OMNIBOX_FOCUS, handler);
   },
+
+  togglePinTab: (id: string) => ipcRenderer.invoke(IPC.TAB_PIN_TOGGLE, id),
+  showTabMenu:  (id: string) => ipcRenderer.invoke(IPC.TAB_SHOW_MENU, id),
 };
 
 contextBridge.exposeInMainWorld('oblako', api);

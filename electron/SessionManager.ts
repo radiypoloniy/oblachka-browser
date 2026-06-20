@@ -10,16 +10,24 @@ interface SavedTab {
   url: string;
 }
 
+// Тип активной вкладки — из какого списка.
+// Старые файлы без этого поля: activeTabIndex===-1 → hub, иначе → normal.
+type ActiveTabType = 'hub' | 'pinned' | 'normal';
+
 interface SessionData {
   version: 1;
   savedAt: string;
-  activeTabIndex: number; // -1 = активен хаб
+  activeTabIndex: number;        // индекс внутри списка, указанного activeTabType
+  activeTabType?: ActiveTabType; // опционально — для обратной совместимости
+  pinnedTabs?: SavedTab[];       // опционально — для обратной совместимости
   tabs: SavedTab[];
 }
 
 export interface RestoredSession {
+  pinnedTabs: SavedTab[];
   tabs: SavedTab[];
-  activeTabIndex: number;
+  activeTabType: ActiveTabType;
+  activeTabIndex: number; // индекс в соответствующем списке; -1 при hub
 }
 
 export class SessionManager {
@@ -43,7 +51,22 @@ export class SessionManager {
       if (!isValidSession(data)) return null;
       // Несовпадение версии — стартуем чисто, не рискуем неправильной миграцией.
       if (data.version !== SESSION_VERSION) return null;
-      return { tabs: data.tabs, activeTabIndex: data.activeTabIndex };
+
+      // Обратная совместимость: старые файлы без activeTabType.
+      // activeTabIndex === -1 означало «активен хаб».
+      let activeTabType: ActiveTabType;
+      if (data.activeTabType === 'hub' || data.activeTabType === 'pinned' || data.activeTabType === 'normal') {
+        activeTabType = data.activeTabType;
+      } else {
+        activeTabType = data.activeTabIndex === -1 ? 'hub' : 'normal';
+      }
+
+      return {
+        pinnedTabs: data.pinnedTabs ?? [],
+        tabs: data.tabs,
+        activeTabType,
+        activeTabIndex: data.activeTabIndex,
+      };
     } catch {
       return null; // файл отсутствует, битый JSON или ошибка чтения — ok
     }
@@ -75,23 +98,33 @@ export class SessionManager {
 
   #write(snapshot: TabState[], activeId: string): void {
     // Сохраняем только вкладки с валидным http/https URL.
-    // about:blank, загружающиеся и упавшие вкладки не пишем.
-    const realTabs = snapshot.filter(
-      (t) => !t.isHub && /^https?:\/\//i.test(t.url),
-    );
-    const tabs: SavedTab[] = realTabs.map((t) => ({ url: t.url }));
+    const isReal = (t: TabState) => !t.isHub && /^https?:\/\//i.test(t.url);
+    const pinnedSnap = snapshot.filter((t) => t.isPinned && isReal(t));
+    const normalSnap = snapshot.filter((t) => !t.isPinned && isReal(t));
 
-    let activeTabIndex = -1; // -1 = хаб
+    const pinnedTabs: SavedTab[] = pinnedSnap.map((t) => ({ url: t.url }));
+    const tabs: SavedTab[]       = normalSnap.map((t) => ({ url: t.url }));
+
     const activeTab = snapshot.find((t) => t.id === activeId);
+    let activeTabType: ActiveTabType = 'hub';
+    let activeTabIndex = -1;
     if (activeTab && !activeTab.isHub) {
-      activeTabIndex = realTabs.findIndex((t) => t.id === activeId);
-      // если активная вкладка не прошла фильтр (about:blank) — активируем хаб
+      if (activeTab.isPinned) {
+        activeTabType  = 'pinned';
+        activeTabIndex = pinnedSnap.findIndex((t) => t.id === activeId);
+      } else {
+        activeTabType  = 'normal';
+        activeTabIndex = normalSnap.findIndex((t) => t.id === activeId);
+        // если активная не прошла фильтр (about:blank) — activeTabIndex=-1 → хаб при restore
+      }
     }
 
     const data: SessionData = {
       version: SESSION_VERSION,
       savedAt: new Date().toISOString(),
+      activeTabType,
       activeTabIndex,
+      pinnedTabs,
       tabs,
     };
 
@@ -104,19 +137,23 @@ export class SessionManager {
   }
 }
 
+function isSavedTabArray(v: unknown): v is SavedTab[] {
+  return Array.isArray(v) && (v as unknown[]).every(
+    (t) => typeof t === 'object' && t !== null &&
+      typeof (t as Record<string, unknown>)['url'] === 'string',
+  );
+}
+
 function isValidSession(v: unknown): v is SessionData {
   if (typeof v !== 'object' || v === null) return false;
   const d = v as Record<string, unknown>;
-  return (
-    typeof d['version'] === 'number' &&
-    typeof d['savedAt'] === 'string' &&
-    typeof d['activeTabIndex'] === 'number' &&
-    Array.isArray(d['tabs']) &&
-    (d['tabs'] as unknown[]).every(
-      (t) =>
-        typeof t === 'object' &&
-        t !== null &&
-        typeof (t as Record<string, unknown>)['url'] === 'string',
-    )
-  );
+  if (
+    typeof d['version'] !== 'number' ||
+    typeof d['savedAt'] !== 'string' ||
+    typeof d['activeTabIndex'] !== 'number' ||
+    !isSavedTabArray(d['tabs'])
+  ) return false;
+  // pinnedTabs и activeTabType — опциональные поля (обратная совместимость).
+  if (d['pinnedTabs'] !== undefined && !isSavedTabArray(d['pinnedTabs'])) return false;
+  return true;
 }

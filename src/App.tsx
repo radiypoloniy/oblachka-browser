@@ -155,6 +155,7 @@ export default function App() {
       <Sidebar
         tabs={tabs} activeId={activeId}
         onSelect={select} onClose={close} onNewTab={newTab}
+        onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar

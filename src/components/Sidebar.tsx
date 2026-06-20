@@ -8,6 +8,7 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onNewTab: () => void;
+  onTabMenu: (id: string) => void;
 }
 
 function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
@@ -42,15 +43,17 @@ function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
   );
 }
 
-function TabRow({ tab, active, onClick, onClose }: {
+function TabRow({ tab, active, onClick, onClose, onContextMenu }: {
   tab: TabState; active: boolean; onClick: () => void; onClose: () => void;
+  onContextMenu: () => void;
 }) {
   return (
     <div
       onClick={onClick}
+      onContextMenu={(e) => { e.preventDefault(); onContextMenu(); }}
       onMouseDown={(e) => {
-        // Средний клик по вкладке = закрыть (стандарт браузеров, без попадания в крестик).
-        if (e.button === 1) { e.preventDefault(); if (!tab.isHub) onClose(); }
+        // Средний клик = закрыть (только незакреплённые — закреплённые защищены).
+        if (e.button === 1) { e.preventDefault(); if (!tab.isHub && !tab.isPinned) onClose(); }
       }}
       style={{
         display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px',
@@ -75,7 +78,7 @@ function TabRow({ tab, active, onClick, onClose }: {
           animation: 'oblako-spin 0.7s linear infinite',
         }} />
       )}
-      {!tab.isHub && (
+      {!tab.isHub && !tab.isPinned && (
         <button
           className="no-drag"
           onClick={(e) => { e.stopPropagation(); onClose(); }}
@@ -102,11 +105,12 @@ const asideBase: React.CSSProperties = {
   overflow: 'hidden',
 };
 
-export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab }: SidebarProps) {
+export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
-  const pinned = tabs.filter((t) => t.isHub);
-  const open = tabs.filter((t) => !t.isHub);
+  const hub = tabs.filter((t) => t.isHub);
+  const pinned = tabs.filter((t) => t.isPinned && !t.isHub);
+  const open = tabs.filter((t) => !t.isHub && !t.isPinned);
 
   // ── Свёрнутый режим: узкая полоса иконок ──
   if (collapsed) {
@@ -131,9 +135,9 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab }:
           </button>
         </div>
 
-        {/* Закреплённые (хаб) + кнопка новой вкладки */}
-        <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingBottom: 14 }}>
-          {pinned.map((t) => (
+        {/* Хаб + кнопка новой вкладки */}
+        <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingBottom: 6 }}>
+          {hub.map((t) => (
             <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
               style={{
                 border: 'none', cursor: 'default', padding: 4,
@@ -155,10 +159,33 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab }:
           </button>
         </div>
 
+        {/* Закреплённые вкладки */}
+        {pinned.length > 0 && (
+          <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingBottom: 8, paddingTop: 4, borderBottom: '1px solid var(--divider-strong)', width: '100%' }}>
+            {pinned.map((t) => (
+              <button key={t.id} onClick={() => onSelect(t.id)}
+                onContextMenu={(e) => { e.preventDefault(); onTabMenu(t.id); }}
+                title={t.title}
+                style={{
+                  border: 'none', cursor: 'default', padding: 5,
+                  borderRadius: 'var(--radius-sm)',
+                  background: activeId === t.id ? 'var(--surface)' : 'transparent',
+                  boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
+                }}
+                onMouseEnter={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <FaviconTile tab={t} size={18} />
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Открытые вкладки — только favicon */}
-        <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, overflowY: 'auto', flex: 1 }}>
+        <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, overflowY: 'auto', flex: 1, paddingTop: 4 }}>
           {open.map((t) => (
             <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
+              onContextMenu={(e) => { e.preventDefault(); onTabMenu(t.id); }}
               onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(t.id); } }}
               style={{
                 border: 'none', cursor: 'default', padding: 5,
@@ -205,9 +232,9 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab }:
         </button>
       </div>
 
-      {/* Закреплённые (хаб + позже реальные пины) */}
+      {/* Хаб + кнопка новой вкладки */}
       <div className="no-drag" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 4px 14px' }}>
-        {pinned.map((t) => (
+        {hub.map((t) => (
           <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
             style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 0 }}>
             <FaviconTile tab={t} size={20} />
@@ -222,6 +249,21 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab }:
           }}><Plus size={16} /></button>
       </div>
 
+      {/* Закреплённые вкладки */}
+      {pinned.length > 0 && (
+        <>
+          <div style={eyebrow}>Закреплённые</div>
+          <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 8, borderBottom: '1px solid var(--divider-strong)' }}>
+            {pinned.map((t) => (
+              <TabRow key={t.id} tab={t} active={activeId === t.id}
+                onClick={() => onSelect(t.id)}
+                onClose={() => onClose(t.id)}
+                onContextMenu={() => onTabMenu(t.id)} />
+            ))}
+          </div>
+        </>
+      )}
+
       <div style={eyebrow}>Открытые вкладки</div>
 
       <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', flex: 1 }}>
@@ -232,7 +274,9 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab }:
         )}
         {open.map((t) => (
           <TabRow key={t.id} tab={t} active={activeId === t.id}
-            onClick={() => onSelect(t.id)} onClose={() => onClose(t.id)} />
+            onClick={() => onSelect(t.id)}
+            onClose={() => onClose(t.id)}
+            onContextMenu={() => onTabMenu(t.id)} />
         ))}
       </div>
 

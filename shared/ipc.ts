@@ -23,6 +23,7 @@ export interface TabState {
   canGoBack: boolean;
   canGoForward: boolean;
   isHub: boolean;       // true = вкладка-хаб (наш UI), без WebContentsView
+  isPinned: boolean;    // закреплена — переживает перезапуск, нельзя закрыть крестиком
 }
 
 // Геометрия "дырки" под контент в координатах окна (CSS-пиксели).
@@ -61,6 +62,10 @@ export const IPC = {
 
   // Омнибокс
   OMNIBOX_FOCUS: 'omnibox:focus',   // main → renderer: сфокусировать адресную строку (Ctrl+L)
+
+  // Закреплённые вкладки
+  TAB_PIN_TOGGLE: 'tab:pin-toggle', // renderer → main: закрепить / открепить вкладку
+  TAB_SHOW_MENU:  'tab:show-menu',  // renderer → main: показать нативное ПКМ-меню вкладки
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -90,4 +95,8 @@ export interface OblakoApi {
 
   // Омнибокс
   onOmniboxFocus(cb: () => void): () => void;
+
+  // Закреплённые вкладки
+  togglePinTab(id: string): Promise<void>;
+  showTabMenu(id: string): Promise<void>;
 }
