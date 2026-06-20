@@ -256,6 +256,16 @@ export class TabManager {
         );
       }
 
+      // Инспектор — всегда в конце; inspectElement подсвечивает элемент под курсором.
+      items.push({ type: 'separator' });
+      items.push({
+        label: 'Просмотреть код',
+        click: () => {
+          if (!wc.isDevToolsOpened()) wc.openDevTools({ mode: 'detach' });
+          wc.inspectElement(p.x, p.y);
+        },
+      });
+
       Menu.buildFromTemplate(items).popup({ window: this.win });
     });
 
@@ -440,6 +450,17 @@ export class TabManager {
     if (target) this.activate(target.id);
   }
 
+  // DevTools активной вкладки в отдельном окне (не путать с DevTools хром-слоя).
+  private toggleActiveDevTools(): void {
+    const wc = this.getActiveWebContents();
+    if (!wc) return;
+    if (wc.isDevToolsOpened()) {
+      wc.closeDevTools();
+    } else {
+      wc.openDevTools({ mode: 'detach' });
+    }
+  }
+
   // ── Хоткеи: перехватываем до рендерера, чтобы работало и на сайтах ──
   // Вызывается для каждой новой вкладки (из wirePageEvents) и для chromeView
   // (из main.ts), чтобы покрыть и страницы, и хаб.
@@ -469,6 +490,12 @@ export class TabManager {
         if (code === 'F5' && !shift) {
           event.preventDefault();
           this.reload(this.activeId);
+          return;
+        }
+        // F12: DevTools активной вкладки (открыть / закрыть).
+        if (code === 'F12' && !shift && !input.alt) {
+          event.preventDefault();
+          this.toggleActiveDevTools();
           return;
         }
         // Alt+← / Alt+→: назад / вперёд (клавиатурная альтернатива Mouse4/Mouse5).
@@ -521,6 +548,9 @@ export class TabManager {
       } else if (code === 'KeyL' && !shift) {
         event.preventDefault();
         this.onOmniboxFocusCb();            // Ctrl+L: фокус в омнибокс
+      } else if (code === 'KeyI' && shift) {
+        event.preventDefault();
+        this.toggleActiveDevTools();        // Ctrl+Shift+I: DevTools (альтернатива F12)
       } else if (code.startsWith('Digit') && !shift) {
         const n = parseInt(code[5]!, 10);   // 'Digit1'→1 … 'Digit9'→9
         if (n >= 1 && n <= 9) {
