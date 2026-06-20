@@ -114,7 +114,8 @@ export class TabManager {
   getActiveId() { return this.activeId; }
 
   // ── Создание новой вкладки с реальной страницей ──
-  createTab(rawUrl?: string): string {
+  // background=true: вкладка создаётся в фоне, без переключения (средний клик по ссылке).
+  createTab(rawUrl?: string, background = false): string {
     const id = randomUUID();
     const view = new WebContentsView({
       webPreferences: {
@@ -130,7 +131,11 @@ export class TabManager {
     const target = this.resolveInput(rawUrl ?? 'about:blank');
     if (target !== 'about:blank') view.webContents.loadURL(target);
 
-    this.activate(id);
+    if (background) {
+      this.onChange(); // показываем новую вкладку в сайдбаре без переключения
+    } else {
+      this.activate(id);
+    }
     return id;
   }
 
@@ -165,11 +170,18 @@ export class TabManager {
       this.onFindResultCb({ activeMatch: result.activeMatchOrdinal, count: result.matches });
     });
 
-    // Политика окон: target=_blank / window.open -> открываем как НОВУЮ ВКЛАДКУ,
-    // а не как отдельное окно Electron (спека 3.7). Иначе сайты плодят окна.
-    wc.setWindowOpenHandler(({ url }) => {
-      this.createTab(url);
+    // Политика окон: target=_blank / window.open -> НОВАЯ ВКЛАДКА, не окно.
+    // disposition='background-tab' = средний клик или Ctrl+клик → фон (стандарт браузеров).
+    wc.setWindowOpenHandler(({ url, disposition }) => {
+      this.createTab(url, disposition === 'background-tab');
       return { action: 'deny' };
+    });
+
+    // Ctrl+колесо → наш зум (preventDefault гасит нативный зум Chromium).
+    // Chromium перехватывает Ctrl+scroll как gesture, поэтому страница не скроллится.
+    wc.on('zoom-changed', (event, direction) => {
+      event.preventDefault();
+      this.adjustZoom(direction === 'in' ? ZOOM_STEP : -ZOOM_STEP);
     });
 
     // Ошибка загрузки основного фрейма (DNS, сеть, TLS…)
@@ -457,6 +469,18 @@ export class TabManager {
         if (code === 'F5' && !shift) {
           event.preventDefault();
           this.reload(this.activeId);
+          return;
+        }
+        // Alt+← / Alt+→: назад / вперёд (клавиатурная альтернатива Mouse4/Mouse5).
+        // Боковые кнопки мыши (XButton1/2) обрабатываются нативно через WebContentsViewAura.
+        if (code === 'ArrowLeft' && input.alt && !shift) {
+          event.preventDefault();
+          this.goBack(this.activeId);
+          return;
+        }
+        if (code === 'ArrowRight' && input.alt && !shift) {
+          event.preventDefault();
+          this.goForward(this.activeId);
           return;
         }
         return;

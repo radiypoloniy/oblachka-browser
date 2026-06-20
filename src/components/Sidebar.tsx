@@ -48,6 +48,10 @@ function TabRow({ tab, active, onClick, onClose }: {
   return (
     <div
       onClick={onClick}
+      onMouseDown={(e) => {
+        // Средний клик по вкладке = закрыть (стандарт браузеров, без попадания в крестик).
+        if (e.button === 1) { e.preventDefault(); if (!tab.isHub) onClose(); }
+      }}
       style={{
         display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px',
         borderRadius: 'var(--radius-sm)', cursor: 'default',
@@ -155,6 +159,7 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab }:
         <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, overflowY: 'auto', flex: 1 }}>
           {open.map((t) => (
             <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
+              onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(t.id); } }}
               style={{
                 border: 'none', cursor: 'default', padding: 5,
                 borderRadius: 'var(--radius-sm)',
