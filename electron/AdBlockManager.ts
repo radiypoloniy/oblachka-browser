@@ -329,14 +329,18 @@ export class AdBlockManager {
     // Проверяем доменный индекс (быстро: O(1) lookup на уровень домена)
     for (const re of this.#getDomainRules(this.#index.blockByDomain, hostname)) {
       if (re.test(url)) {
-        return !this.#isExcepted(url, hostname);
+        const excepted = this.#isExcepted(url, hostname);
+        if (!excepted) console.log(`[AdBlock] BLOCK domain | ${re} | ${url}`);
+        return !excepted;
       }
     }
 
     // Глобальные правила (медленнее, но ограничены GLOBAL_RULE_LIMIT)
     for (const re of this.#index.blockGlobal) {
       if (re.test(url)) {
-        return !this.#isExcepted(url, hostname);
+        const excepted = this.#isExcepted(url, hostname);
+        if (!excepted) console.log(`[AdBlock] BLOCK global | ${re} | ${url}`);
+        return !excepted;
       }
     }
 

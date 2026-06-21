@@ -200,6 +200,9 @@ app.whenReady().then(async () => {
   // включая пересоздаваемые при пробуждении спящих вкладок.
   // Только http/https: file://, about:, devtools:// и пр. не трогаем — иначе блокируем собственный UI.
   session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, cb) => {
+    // Главный документ (навигация пользователя) не блокируем никогда —
+    // адблок режет только подресурсы (скрипты, картинки, xhr, iframe и т.д.).
+    if (details.resourceType === 'mainFrame') { cb({}); return; }
     if (adblock.shouldBlock(details.url, details.referrer)) {
       adblock.recordBlock();
       cb({ cancel: true });
