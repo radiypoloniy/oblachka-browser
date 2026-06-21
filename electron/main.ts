@@ -190,11 +190,15 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null); // прячем дефолтное меню — у нас свой хром
   registerIpc();
 
-  // Ghostery ставит свой onBeforeRequest и IPC-хуки для косметики внутри initialize().
-  // Окно создаём сразу после: движок грузится из кэша (~50ms) или фоново скачивается.
-  await adblock.initialize((state) => {
-    chromeView?.webContents.send(IPC.ADBLOCK_STATE_CHANGED, state);
-  });
+  // Ghostery ставит свой onBeforeRequest внутри initialize().
+  // try/catch: падение адблока не должно блокировать запуск браузера.
+  try {
+    await adblock.initialize((state) => {
+      chromeView?.webContents.send(IPC.ADBLOCK_STATE_CHANGED, state);
+    });
+  } catch (e) {
+    console.error('[AdBlock] инициализация упала, браузер работает без блокировки:', e);
+  }
 
   createWindow();
 
