@@ -1,5 +1,5 @@
 import { app, session as electronSession } from 'electron';
-import { ElectronBlocker, adsAndTrackingLists } from '@ghostery/adblocker-electron';
+import { ElectronBlocker } from '@ghostery/adblocker-electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AdBlockState } from '../shared/ipc';
@@ -36,9 +36,9 @@ export class AdBlockManager {
   constructor() {
     const userData = app.getPath('userData');
     this.#settingsPath = path.join(userData, 'adblock-settings.json');
-    // Кэш движка Ghostery: при повторных стартах грузится за <50ms без сети.
-    // Хранит только базовые листы — пользовательский whitelist поверх через updateFromDiff.
-    this.#enginePath = path.join(userData, 'ghostery-engine.bin');
+    // Prebuilt-бинарник с косметикой. Имя отличается от старого ghostery-engine.bin
+    // (тот был без косметики) — при первом запуске скачается свежая версия с CDN.
+    this.#enginePath = path.join(userData, 'ghostery-engine-prebuilt.bin');
   }
 
   // Загружает настройки + строит движок. Вызывается один раз при старте приложения.
@@ -69,7 +69,7 @@ export class AdBlockManager {
 
     if (this.#enabled) {
       blocker.enableBlockingInSession(electronSession.defaultSession);
-      console.log('[AdBlock] Ghostery активен (сетевая блокировка; косметика — Electron 35+)');
+      console.log('[AdBlock] Ghostery активен (сеть + косметика)');
     } else {
       console.log('[AdBlock] Ghostery загружен, но блокировка выключена пользователем');
     }
@@ -137,13 +137,10 @@ export class AdBlockManager {
 
   async #loadBlocker(): Promise<ElectronBlocker | null> {
     try {
-      // fromLists с loadCosmeticFilters:false — обходим session.registerPreloadScript,
-      // которого нет в Electron 31 (добавлен в Electron 35). Сетевая блокировка работает.
-      // Кэш: при повторных стартах грузится из engine.bin без сети (<50ms).
-      const load = ElectronBlocker.fromLists(
+      // fromPrebuiltAdsAndTracking: скачивает prebuilt-бинарник с CDN Ghostery
+      // (уже скомпилирован с косметикой). При повторных стартах — из кэша (<50ms).
+      const load = ElectronBlocker.fromPrebuiltAdsAndTracking(
         (url) => fetch(url),
-        adsAndTrackingLists,
-        { loadCosmeticFilters: false },
         {
           path: this.#enginePath,
           read:  (p) => fs.promises.readFile(p),
@@ -157,7 +154,7 @@ export class AdBlockManager {
       );
 
       const blocker = await Promise.race([load, deadline]);
-      console.log('[AdBlock] движок загружен (Ghostery, только сетевая блокировка)');
+      console.log('[AdBlock] движок загружен (Ghostery prebuilt, сеть + косметика)');
       return blocker;
     } catch (e) {
       console.warn('[AdBlock] не удалось загрузить движок:', (e as Error).message);
