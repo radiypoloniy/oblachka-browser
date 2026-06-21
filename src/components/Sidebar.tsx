@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Shield } from 'lucide-react';
 import type { TabState } from '../../shared/ipc';
 
 interface SidebarProps {
@@ -12,6 +12,7 @@ interface SidebarProps {
   onSplit: (id: string) => void;  // войти в split с этой вкладкой как правой панелью
   onExitSplit: () => void;        // схлопнуть split, обе вкладки остаются открытыми
   onSettings: () => void;         // открыть / закрыть экран настроек
+  adBlockCount: number;           // заблокировано за сессию — обновляется push-ем из main
 }
 
 function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
@@ -174,7 +175,7 @@ const asideBase: React.CSSProperties = {
   overflow: 'hidden',
 };
 
-export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit, onSettings }: SidebarProps) {
+export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit, onSettings, adBlockCount }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const hub = tabs.filter((t) => t.isHub);
@@ -272,8 +273,13 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
           ))}
         </div>
 
-        {/* Низ: настройки + аватар */}
+        {/* Низ: адблок-счётчик + настройки + аватар */}
         <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <button
+            title={`Адблок: ${adBlockCount.toLocaleString('ru')} заблокировано`}
+            style={{ ...iconBtn, color: adBlockCount > 0 ? 'var(--accent)' : 'var(--text-faint)' }}
+            onClick={onSettings}
+          ><Shield size={17} /></button>
           <button title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
           <span style={{
             width: 28, height: 28, borderRadius: '50%', flex: 'none',
@@ -363,6 +369,28 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
         onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
         <Plus size={16} /> Новая вкладка
+      </button>
+
+      {/* Счётчик адблока — щит + число, клик открывает настройки */}
+      <button
+        className="no-drag"
+        onClick={onSettings}
+        title="Открыть настройки адблока"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          width: '100%', padding: '5px 10px', margin: '4px 0 0',
+          border: 'none', background: 'transparent', cursor: 'default',
+          borderRadius: 'var(--radius-sm)', textAlign: 'left',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      >
+        <Shield size={13} style={{ color: adBlockCount > 0 ? 'var(--accent)' : 'var(--text-faint)', flex: 'none' }} />
+        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+          {adBlockCount > 0
+            ? <><span style={{ color: 'var(--text-body)', fontWeight: 600 }}>{adBlockCount.toLocaleString('ru')}</span> заблокировано</>
+            : 'Адблок активен'}
+        </span>
       </button>
 
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, padding: '8px 8px 2px' }}>

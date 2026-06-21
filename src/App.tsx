@@ -27,6 +27,7 @@ export default function App() {
   const [findOpen, setFindOpen] = useState(false);
   const [findResult, setFindResult] = useState<FindResult | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [adBlockCount, setAdBlockCount] = useState(0);
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -115,6 +116,13 @@ export default function App() {
     });
 
     return () => { unsubResult(); unsubOpen(); unsubClose(); unsubOmnibox(); };
+  }, []);
+
+  // Счётчик адблока — подписка на push из main (debounced 1s, значит не шумит).
+  useEffect(() => {
+    void window.oblako.getAdBlockState().then((s) => setAdBlockCount(s.sessionBlockCount));
+    const unsub = window.oblako.onAdBlockStateChanged((s) => setAdBlockCount(s.sessionBlockCount));
+    return () => unsub();
   }, []);
 
   // Закрыть панель при переключении вкладки (stopFindInPage уже вызван в TabManager).
@@ -229,6 +237,7 @@ export default function App() {
         onSplit={(id) => { setSplitRatioState(0.5); void window.oblako.enterSplit(id); }}
         onExitSplit={() => { void window.oblako.exitSplit(); }}
         onSettings={() => setSettingsOpen((v) => !v)}
+        adBlockCount={adBlockCount}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
