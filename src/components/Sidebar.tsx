@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2 } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon } from 'lucide-react';
 import type { TabState } from '../../shared/ipc';
 
 interface SidebarProps {
@@ -25,23 +25,42 @@ function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
       </span>
     );
   }
+
+  // Иконка + лунный значок для спящих вкладок
+  const tileSize = size + 6;
+  let inner: React.ReactNode;
   if (tab.faviconUrl) {
-    return (
-      <img src={tab.faviconUrl} width={size + 6} height={size + 6}
-        style={{ borderRadius: 'var(--radius-sm)', flex: 'none', objectFit: 'cover' }}
+    inner = (
+      <img src={tab.faviconUrl} width={tileSize} height={tileSize}
+        style={{ borderRadius: 'var(--radius-sm)', objectFit: 'cover', opacity: tab.isSleeping ? 0.45 : 1 }}
         alt="" />
     );
+  } else {
+    let host = '?';
+    try { host = new URL(tab.url).hostname.replace('www.', '')[0]?.toUpperCase() ?? '?'; }
+    catch { /* about:blank и т.п. */ }
+    inner = (
+      <span style={{
+        width: tileSize, height: tileSize, borderRadius: 'var(--radius-sm)',
+        background: 'var(--neutral-300)', color: 'var(--text-body)', flex: 'none',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 11, fontWeight: 600, opacity: tab.isSleeping ? 0.45 : 1,
+      }}>{host}</span>
+    );
   }
-  let host = '?';
-  try { host = new URL(tab.url).hostname.replace('www.', '')[0]?.toUpperCase() ?? '?'; }
-  catch { /* about:blank и т.п. */ }
+
+  if (!tab.isSleeping) return <>{inner}</>;
+
+  // Спящая: фавикон + маленькая луна в правом нижнем углу
   return (
-    <span style={{
-      width: size + 6, height: size + 6, borderRadius: 'var(--radius-sm)',
-      background: 'var(--neutral-300)', color: 'var(--text-body)', flex: 'none',
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 11, fontWeight: 600,
-    }}>{host}</span>
+    <span style={{ position: 'relative', display: 'inline-flex', flex: 'none' }}>
+      {inner}
+      <Moon size={8} style={{
+        position: 'absolute', bottom: -1, right: -1,
+        color: 'var(--text-faint)', background: 'var(--surface-island)',
+        borderRadius: '50%', padding: 1,
+      }} />
+    </span>
   );
 }
 
@@ -76,6 +95,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
         background: bg,
         boxShadow: active ? 'var(--shadow-card)' : 'none',
         color: active ? 'var(--text-strong)' : 'var(--text-body)',
+        opacity: tab.isSleeping ? 0.6 : 1,
         transition: 'background var(--dur-fast) var(--ease-standard)',
       }}
     >
@@ -85,7 +105,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}>{tab.title || tab.url || 'Загрузка…'}</span>
 
-      {tab.isLoading && (
+      {tab.isLoading && !tab.isSleeping && (
         <span style={{
           width: 12, height: 12, flex: 'none', borderRadius: '50%',
           border: '2px solid var(--divider-strong)', borderTopColor: 'var(--accent)',
@@ -219,6 +239,7 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
                   borderRadius: 'var(--radius-sm)',
                   background: activeId === t.id ? 'var(--surface)' : 'transparent',
                   boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
+                  opacity: t.isSleeping ? 0.6 : 1,
                 }}
                 onMouseEnter={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                 onMouseLeave={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'transparent'; }}
@@ -240,6 +261,7 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
                 borderRadius: 'var(--radius-sm)',
                 background: activeId === t.id ? 'var(--surface)' : 'transparent',
                 boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
+                opacity: t.isSleeping ? 0.6 : 1,
               }}
               onMouseEnter={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'var(--surface-hover)'; }}
               onMouseLeave={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'transparent'; }}

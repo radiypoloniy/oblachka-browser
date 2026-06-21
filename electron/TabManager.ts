@@ -14,6 +14,11 @@ const SPLIT_GAP = 8;
 const SPLIT_RATIO_MIN = 0.2;
 const SPLIT_RATIO_MAX = 0.8;
 
+// TODO: вернуть на боевые значения после теста (2ч / 8ч / 60сек)
+const SLEEP_TIMEOUT_NORMAL = 30_000;   // 30 сек для теста → 2 * 60 * 60 * 1000
+const SLEEP_TIMEOUT_PINNED = 60_000;   // 60 сек для теста → 8 * 60 * 60 * 1000
+const SLEEP_CHECK_INTERVAL = 5_000;    // 5 сек для теста  → 60_000
+
 // Обрезает длинный текст для лейблов меню, чтобы не растягивало окно.
 function truncate(text: string, max = 40): string {
   const s = text.trim().replace(/\s+/g, ' ');
@@ -26,10 +31,32 @@ const SEARCH_URL = (q: string) => `https://duckduckgo.com/?q=${encodeURIComponen
 // id вкладки-хаба фиксирован: это НЕ WebContentsView, а наш React-экран.
 export const HUB_ID = 'hub';
 
+// Метаданные, сохраняемые при усыплении вкладки.
+interface SleepingMeta {
+  url: string;
+  title: string;
+  faviconUrl: string | null;
+}
+
 interface ManagedTab {
   id: string;
-  view: WebContentsView | null; // null = хаб (нет реальной веб-страницы)
+  view: WebContentsView | null; // null = хаб (sleeping===null) ИЛИ спящая (sleeping!==null)
+  sleeping: SleepingMeta | null;
+  lastActiveAt: number; // Date.now() последней активности — для таймера сна
 }
+
+// Скрипт проверки незаполненных форм — только top-frame (v1: поля внутри iframe не проверяются).
+const HAS_FILLED_FORMS_SCRIPT = `(function(){
+  var sel='input:not([type=checkbox]):not([type=radio]):not([type=hidden])' +
+    ':not([type=submit]):not([type=button]):not([type=reset]):not([type=file]),' +
+    'textarea,[contenteditable="true"]';
+  var els=document.querySelectorAll(sel);
+  for(var i=0;i<els.length;i++){
+    var v=els[i].value||els[i].textContent||'';
+    if(v.trim().length>0)return true;
+  }
+  return false;
+})()`;
 
 export class TabManager {
   private win: BrowserWindow;
@@ -75,7 +102,8 @@ export class TabManager {
     this.onOmniboxFocusCb = onOmniboxFocus;
     this.onFocusChromeCb = onFocusChrome;
     // Вкладка-хаб существует всегда и первой.
-    this.tabs.push({ id: HUB_ID, view: null });
+    this.tabs.push({ id: HUB_ID, view: null, sleeping: null, lastActiveAt: 0 });
+    this.startSleepTimer();
   }
 
   // ── Парсинг omnibox: это URL или поисковый запрос ──
@@ -101,6 +129,27 @@ export class TabManager {
   // ── Снимок состояния для UI ──
   snapshot(): TabState[] {
     return this.tabs.map((t) => {
+      // Спящая вкладка: отдаём сохранённые метаданные — WebContentsView уже нет.
+      if (t.sleeping) {
+        return {
+          id: t.id,
+          isActive: t.id === this.activeId,
+          tabError: null,
+          url: t.sleeping.url,
+          title: t.sleeping.title,
+          faviconUrl: t.sleeping.faviconUrl,
+          isLoading: false,
+          canGoBack: false,
+          canGoForward: false,
+          isHub: false,
+          isPinned: this.pinnedIds.has(t.id),
+          splitSide: !this.splitState ? null
+            : t.id === this.splitState.leftId  ? 'left' as const
+            : t.id === this.splitState.rightId ? 'right' as const
+            : null,
+          isSleeping: true,
+        };
+      }
       if (!this.isHttpView(t.view)) {
         return {
           id: t.id, isActive: t.id === this.activeId,
@@ -109,6 +158,7 @@ export class TabManager {
           faviconUrl: null, isLoading: false,
           canGoBack: false, canGoForward: false, isHub: true, isPinned: false,
           splitSide: null,
+          isSleeping: false,
         };
       }
       const wc = t.view.webContents;
@@ -128,6 +178,7 @@ export class TabManager {
           : t.id === this.splitState.leftId  ? 'left' as const
           : t.id === this.splitState.rightId ? 'right' as const
           : null,
+        isSleeping: false,
       };
     });
   }
@@ -146,7 +197,7 @@ export class TabManager {
         sandbox: true,
       },
     });
-    this.tabs.push({ id, view });
+    this.tabs.push({ id, view, sleeping: null, lastActiveAt: Date.now() });
     this.wirePageEvents(id, view);
 
     const target = this.resolveInput(rawUrl ?? 'about:blank');
@@ -182,6 +233,95 @@ export class TabManager {
     return this.pinnedIds.has(id);
   }
 
+  // ── Усыпление: выгружаем WebContentsView, сохраняем метаданные ──
+  private sleepTab(id: string): void {
+    const tab = this.tabs.find((t) => t.id === id);
+    if (!tab || !this.isHttpView(tab.view) || tab.sleeping) return;
+    const wc = tab.view.webContents;
+    const url = wc.getURL();
+    // Не усыпляем вкладки без реального URL (about:blank и т.п.)
+    if (!/^https?:\/\//i.test(url)) return;
+    tab.sleeping = {
+      url,
+      title: wc.getTitle() || url,
+      faviconUrl: (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon ?? null,
+    };
+    try { this.win.contentView.removeChildView(tab.view); } catch { /* noop */ }
+    try { (wc as unknown as { close?: () => void }).close?.(); } catch { /* noop */ }
+    tab.view = null;
+    this.errors.delete(id);
+    this.onChange();
+  }
+
+  // ── Пробуждение: пересоздаём WebContentsView и начинаем загрузку ──
+  // Синхронный: создаёт вьюху и стартует загрузку. Страница появится когда загрузится (did-navigate).
+  private wakeTab(id: string): void {
+    const tab = this.tabs.find((t) => t.id === id);
+    if (!tab?.sleeping) return;
+    const { url } = tab.sleeping;
+    const view = new WebContentsView({
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    tab.sleeping = null;
+    tab.view = view;
+    tab.lastActiveAt = Date.now();
+    this.errors.delete(id);
+    this.wirePageEvents(id, view);
+    view.webContents.loadURL(url);
+  }
+
+  // ── Таймер засыпания: периодически проверяет кандидатов ──
+  private startSleepTimer(): void {
+    setInterval(async () => {
+      const now = Date.now();
+      const currentlyInSplit = !!this.splitState &&
+        (this.activeId === this.splitState.leftId || this.activeId === this.splitState.rightId);
+
+      // Набор защищённых id: активная вкладка + обе панели активного split.
+      const protectedIds = new Set<string>([this.activeId]);
+      if (currentlyInSplit && this.splitState) {
+        protectedIds.add(this.splitState.leftId);
+        protectedIds.add(this.splitState.rightId);
+      }
+
+      for (const tab of this.tabs) {
+        // Пропускаем: хаб, уже спящие, защищённые вкладки, не-http вьюхи
+        if (tab.id === HUB_ID || tab.sleeping || protectedIds.has(tab.id)) continue;
+        if (!this.isHttpView(tab.view)) continue;
+
+        // Таймаут ещё не истёк — не трогаем (и не гоняем дорогой JS-запрос зря)
+        const timeout = this.pinnedIds.has(tab.id) ? SLEEP_TIMEOUT_PINNED : SLEEP_TIMEOUT_NORMAL;
+        if (now - tab.lastActiveAt < timeout) continue;
+
+        const wc = tab.view.webContents;
+
+        // Играет медиа — пропускаем
+        if (wc.isCurrentlyAudible()) continue;
+
+        // Async: проверяем незаполненные формы — только после прохождения всех sync-фильтров
+        let hasForms = false;
+        try {
+          hasForms = await wc.executeJavaScript(HAS_FILLED_FORMS_SCRIPT, true);
+        } catch {
+          continue; // WebContents недоступен — пропускаем
+        }
+        if (hasForms) continue;
+
+        // Перепроверяем после await: вкладка могла стать активной пока шёл JS-запрос
+        if (protectedIds.has(tab.id) || tab.sleeping || !this.isHttpView(tab.view)) continue;
+        if (tab.id === this.activeId) continue;
+        if (this.splitState) {
+          const inActiveSplit = this.activeId === this.splitState.leftId ||
+                                this.activeId === this.splitState.rightId;
+          if (inActiveSplit &&
+              (tab.id === this.splitState.leftId || tab.id === this.splitState.rightId)) continue;
+        }
+
+        this.sleepTab(tab.id);
+      }
+    }, SLEEP_CHECK_INTERVAL);
+  }
+
   private wirePageEvents(id: string, view: WebContentsView) {
     const wc = view.webContents;
     const notify = () => this.onChange();
@@ -210,6 +350,11 @@ export class TabManager {
         wc.stopFindInPage('clearSelection');
         this.lastQuery = '';
         this.onFindCloseCb();
+      }
+      // Навигация = активность; обновляем lastActiveAt для активных/split-вкладок.
+      if (isActivePanel || isInSplit) {
+        const tab = this.tabs.find((t) => t.id === id);
+        if (tab) tab.lastActiveAt = Date.now();
       }
       // Показываем вьюху как для активной вкладки, так и для split-партнёра.
       if (isActivePanel || isInSplit) this.revealView(id);
@@ -339,6 +484,9 @@ export class TabManager {
     const tab = this.tabs.find((t) => t.id === id);
     if (!tab) return;
 
+    // Пробуждаем вкладку, если она спит (до любой логики с view).
+    if (tab.sleeping) this.wakeTab(id);
+
     // Останавливаем поиск на уходящей вкладке перед переключением.
     if (this.activeId !== id) {
       const prev = this.tabs.find((t) => t.id === this.activeId);
@@ -353,8 +501,16 @@ export class TabManager {
       if (id === this.splitState.leftId || id === this.splitState.rightId) {
         // Возврат к split-вкладке (из любой другой вкладки или из той же панели):
         // восстанавливаем обе панели, скрываем всё постороннее.
+        // Будим только спящего участника — бодрствующего не трогаем.
+        const otherId = id === this.splitState.leftId ? this.splitState.rightId : this.splitState.leftId;
+        const otherTab = this.tabs.find((t) => t.id === otherId);
+        if (otherTab?.sleeping) this.wakeTab(otherId);
+
         this.splitState.activePanel = id === this.splitState.leftId ? 'left' : 'right';
         this.activeId = id;
+        const activatedTab = this.tabs.find((t) => t.id === id);
+        if (activatedTab) activatedTab.lastActiveAt = Date.now();
+
         for (const t of this.tabs) {
           if (!this.isHttpView(t.view)) continue;
           if (t.id !== this.splitState.leftId && t.id !== this.splitState.rightId) {
@@ -375,6 +531,8 @@ export class TabManager {
     }
 
     this.activeId = id;
+    // Обновляем время последней активности.
+    tab.lastActiveAt = Date.now();
 
     for (const t of this.tabs) {
       if (!this.isHttpView(t.view)) continue;
@@ -432,8 +590,9 @@ export class TabManager {
     const [tab] = this.tabs.splice(idx, 1);
     this.errors.delete(id);
     this.pinnedIds.delete(id); // на случай программного закрытия
+
     if (this.isHttpView(tab.view)) {
-      // Запоминаем URL до уничтожения webContents — для Ctrl+Shift+T.
+      // Живая вкладка: запоминаем URL до уничтожения webContents — для Ctrl+Shift+T.
       const url = tab.view.webContents.getURL();
       if (/^https?:\/\//i.test(url)) {
         this.closedTabs.push(url);
@@ -441,7 +600,15 @@ export class TabManager {
       }
       try { this.win.contentView.removeChildView(tab.view); } catch { /* noop */ }
       (tab.view.webContents as unknown as { close?: () => void }).close?.();
+    } else if (tab.sleeping) {
+      // Спящая вкладка: view уже уничтожен, URL берём из sleeping-метаданных.
+      const url = tab.sleeping.url;
+      if (/^https?:\/\//i.test(url)) {
+        this.closedTabs.push(url);
+        if (this.closedTabs.length > CLOSED_STACK_MAX) this.closedTabs.shift();
+      }
     }
+
     // если закрыли активную — переключаемся на соседнюю или хаб
     if (this.activeId === id) {
       const next = this.tabs[idx] ?? this.tabs[idx - 1] ?? this.tabs[0];
@@ -462,13 +629,16 @@ export class TabManager {
   // Только обычные (не закреплённые, не хаб) вкладки могут участвовать.
   enterSplit(rightId: string): void {
     const rightTab = this.tabs.find((t) => t.id === rightId);
-    if (!rightTab || !this.isHttpView(rightTab.view) || this.pinnedIds.has(rightId)) return;
+    if (!rightTab || (!this.isHttpView(rightTab.view) && !rightTab.sleeping) || this.pinnedIds.has(rightId)) return;
 
     const leftId = this.activeId;
     if (leftId === rightId) return; // нельзя делать split с самим собой
 
     const leftTab = this.tabs.find((t) => t.id === leftId);
-    if (!leftTab || !this.isHttpView(leftTab.view) || this.pinnedIds.has(leftId)) return;
+    if (!leftTab || (!this.isHttpView(leftTab.view) && !leftTab.sleeping) || this.pinnedIds.has(leftId)) return;
+
+    // Пробуждаем правую вкладку если она спит (левая — активная, не спит).
+    if (rightTab.sleeping) this.wakeTab(rightId);
 
     // Останавливаем поиск: FindBar не переживает вход в split.
     const activeWc = this.getActiveWebContents();
@@ -560,6 +730,9 @@ export class TabManager {
 
     this.splitState.activePanel = side;
     this.activeId = newId;
+    // Обновляем время активности новой панели.
+    const tab = this.tabs.find((t) => t.id === newId);
+    if (tab) tab.lastActiveAt = Date.now();
     this.onChange();
     this.focusActiveView();
   }
@@ -567,10 +740,10 @@ export class TabManager {
   // Визуальный порядок вкладок: хаб → закреплённые → обычные.
   // Совпадает с порядком секций в сайдбаре, чтобы хоткеи не расходились с UI.
   private tabsInVisualOrder(withHub: boolean): ManagedTab[] {
-    const pinned = this.tabs.filter((t) => this.isHttpView(t.view) && this.pinnedIds.has(t.id));
-    const normal = this.tabs.filter((t) => this.isHttpView(t.view) && !this.pinnedIds.has(t.id));
+    const pinned = this.tabs.filter((t) => (this.isHttpView(t.view) || t.sleeping) && this.pinnedIds.has(t.id));
+    const normal = this.tabs.filter((t) => (this.isHttpView(t.view) || t.sleeping) && !this.pinnedIds.has(t.id));
     if (!withHub) return [...pinned, ...normal];
-    const hub = this.tabs.filter((t) => !this.isHttpView(t.view));
+    const hub = this.tabs.filter((t) => !this.isHttpView(t.view) && !t.sleeping);
     return [...hub, ...pinned, ...normal];
   }
 
@@ -590,12 +763,21 @@ export class TabManager {
     const tab = this.tabs.find((t) => t.id === id);
     if (!tab) return;
     const target = this.resolveInput(input);
-    if (!this.isHttpView(tab.view)) {
+    if (!this.isHttpView(tab.view) && !tab.sleeping) {
       // навигация из хаба = создать настоящую вкладку
       this.createTab(target);
       return;
     }
-    tab.view.webContents.loadURL(target);
+    // Если вкладка спит — пробуждаем, потом навигируем
+    if (tab.sleeping) {
+      this.wakeTab(id);
+      this.activate(id);
+      // wakeTab уже вызвал loadURL(sleeping.url), заменяем на новый target
+      const freshTab = this.tabs.find((t) => t.id === id);
+      if (freshTab && this.isHttpView(freshTab.view)) freshTab.view.webContents.loadURL(target);
+      return;
+    }
+    tab.view!.webContents.loadURL(target);
   }
 
   goBack(id: string) {

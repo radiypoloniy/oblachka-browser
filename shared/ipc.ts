@@ -25,6 +25,7 @@ export interface TabState {
   isHub: boolean;       // true = вкладка-хаб (наш UI), без WebContentsView
   isPinned: boolean;    // закреплена — переживает перезапуск, нельзя закрыть крестиком
   splitSide: 'left' | 'right' | null; // null = не в split-режиме
+  isSleeping: boolean;  // WebContentsView выгружен, хранятся только url/title/favicon
 }
 
 // Геометрия "дырки" под контент в координатах окна (CSS-пиксели).
