@@ -155,8 +155,11 @@ function ruleToRegExp(rule: string): RegExp | null {
   else if (r.startsWith('|')) { startAnchor = true; r = r.slice(1); }
   if (r.endsWith('|')) { endAnchor = true; r = r.slice(0, -1); }
 
-  // Экранируем спецсимволы RegExp, кроме * и ^ (обрабатываем отдельно)
-  r = r.replace(/[.+?{}[\]()\\\-]/g, '\\$&')
+  // Экранируем все спецсимволы RegExp, кроме * и ^ (обрабатываем ниже).
+  // ВАЖНО: | тоже экранируем — в EasyList это литеральный pipe внутри URL,
+  // а не regex-альтернатива. Без этого /addyn|*|adtech; → /\/addyn|.*|adtech;/
+  // где .* создаёт альтернативу «любая строка» и матчит абсолютно всё.
+  r = r.replace(/[.+?{}[\]()|\\-]/g, '\\$&')
         .replace(/\*/g, '.*')
         .replace(/\^/g, '(?:[/?#&=]|$)');
 
@@ -172,6 +175,17 @@ function ruleToRegExp(rule: string): RegExp | null {
   catch { return null; }
 }
 
+// Канарейки — заведомо-нейтральные URL, которые НЕ ДОЛЖЕН матчить ни один адблок-паттерн.
+// Правило, матчащее их — пожиратель (слишком широкий) и отбрасывается.
+// Используем .invalid (RFC 2606) — гарантированно не в EasyList.
+const CANARY_URLS = [
+  'https://oblako-canary.invalid/',
+  'https://oblako-canary.invalid/normal/page.html',
+];
+function isSafeRule(re: RegExp): boolean {
+  return CANARY_URLS.every((u) => !re.test(u));
+}
+
 // Парсит один или несколько фильтр-листов в единый индекс.
 function parseFilterLists(...texts: string[]): FilterIndex {
   const blockByDomain  = new Map<string, RegExp[]>();
@@ -179,6 +193,7 @@ function parseFilterLists(...texts: string[]): FilterIndex {
   const exceptByDomain = new Map<string, RegExp[]>();
   const exceptGlobal:   RegExp[] = [];
   let globalCount = 0;
+  let droppedCount = 0;
 
   for (const text of texts) {
     for (const rawLine of text.split('\n')) {
@@ -214,6 +229,14 @@ function parseFilterLists(...texts: string[]): FilterIndex {
 
       const domain = extractRuleDomain(rule);
 
+      // Предохранитель: глобальные правила без доменной привязки проверяем канарейкой.
+      // Правило-пожиратель (матчит заведомо-нейтральный URL) отбрасываем и логируем.
+      if (!domain && !isException && !isSafeRule(re)) {
+        console.warn(`[AdBlock] пожиратель отброшен: ${rule.slice(0, 100)} → ${re}`);
+        droppedCount++;
+        continue;
+      }
+
       if (isException) {
         if (domain) {
           const arr = exceptByDomain.get(domain) ?? [];
@@ -235,6 +258,9 @@ function parseFilterLists(...texts: string[]): FilterIndex {
     }
   }
 
+  if (droppedCount > 0) {
+    console.warn(`[AdBlock] Итого отброшено правил-пожирателей: ${droppedCount}`);
+  }
   return { blockByDomain, blockGlobal, exceptByDomain, exceptGlobal };
 }
 
