@@ -4,8 +4,9 @@ import path from 'node:path';
 import { TabManager } from './TabManager';
 import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
+import { HistoryManager } from './HistoryManager';
 import { IPC } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod } from '../shared/ipc';
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
@@ -15,6 +16,7 @@ let chromeView: WebContentsView | null = null; // слой нашего React-х
 let tabs: TabManager | null = null;
 let sess: SessionManager | null = null;
 const adblock = new AdBlockManager();
+const history = new HistoryManager();
 
 function createWindow() {
   win = new BrowserWindow({
@@ -70,6 +72,9 @@ function createWindow() {
     ()              => chromeView?.webContents.send(IPC.FIND_CLOSE),
     ()              => chromeView?.webContents.send(IPC.OMNIBOX_FOCUS),
     ()              => chromeView?.webContents.focus(),
+    (url, title)    => history.recordVisit(url, title),
+    (url, title)    => history.updateTitle(url, title),
+    ()              => chromeView?.webContents.send(IPC.HISTORY_OPEN),
   );
 
   // Восстанавливаем вкладки из session.json.
@@ -156,6 +161,12 @@ function registerIpc() {
   ipcMain.handle(IPC.ADBLOCK_REMOVE_DOMAIN,  (_e, d: string)       => adblock.removeDomain(d));
   ipcMain.handle(IPC.ADBLOCK_RELOAD_TABS,    (_e, d?: string)      => tabs?.reloadTabsForDomain(d));
 
+  // История посещений
+  ipcMain.handle(IPC.HISTORY_GET,    (_e, limit?: number)           => history.getRecent(limit));
+  ipcMain.handle(IPC.HISTORY_SEARCH, (_e, query: string)            => history.search(query));
+  ipcMain.handle(IPC.HISTORY_DELETE, (_e, id: number)               => history.deleteEntry(id));
+  ipcMain.handle(IPC.HISTORY_CLEAR,  (_e, period: HistoryClearPeriod) => history.clearHistory(period));
+
   // Нативное ПКМ-меню вкладки в сайдбаре: Закрепить / Открепить.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {
     if (!tabs || !win) return;
@@ -189,6 +200,11 @@ app.on('web-contents-created', (_e, contents) => {
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null); // прячем дефолтное меню — у нас свой хром
   registerIpc();
+
+  // История: нативный модуль может отсутствовать — падение не блокирует запуск.
+  await history.initialize().catch((e) =>
+    console.error('[History] инициализация упала:', e),
+  );
 
   // Ghostery ставит свой onBeforeRequest внутри initialize().
   // try/catch: падение адблока не должно блокировать запуск браузера.

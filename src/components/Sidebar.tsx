@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Shield } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Shield, Clock } from 'lucide-react';
 import type { TabState } from '../../shared/ipc';
 
 interface SidebarProps {
@@ -12,6 +12,7 @@ interface SidebarProps {
   onSplit: (id: string) => void;  // войти в split с этой вкладкой как правой панелью
   onExitSplit: () => void;        // схлопнуть split, обе вкладки остаются открытыми
   onSettings: () => void;         // открыть / закрыть экран настроек
+  onHistory: () => void;          // открыть / закрыть панель истории
   adBlockCount: number;           // заблокировано за сессию — обновляется push-ем из main
 }
 
@@ -175,7 +176,7 @@ const asideBase: React.CSSProperties = {
   overflow: 'hidden',
 };
 
-export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit, onSettings, adBlockCount }: SidebarProps) {
+export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit, onSettings, onHistory, adBlockCount }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const hub = tabs.filter((t) => t.isHub);
@@ -275,6 +276,7 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
 
         {/* Низ: адблок-счётчик + настройки + аватар */}
         <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <button title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
           <button
             title={`Адблок: ${adBlockCount.toLocaleString('ru')} заблокировано`}
             style={{ ...iconBtn, color: adBlockCount > 0 ? 'var(--accent)' : 'var(--text-faint)' }}
@@ -404,6 +406,7 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
           <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>Антон</div>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Oblako Pro</div>
         </div>
+        <button className="no-drag" title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
         <button className="no-drag" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
       </div>
     </aside>

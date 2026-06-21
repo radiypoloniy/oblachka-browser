@@ -5,6 +5,7 @@ import Hub from './components/Hub';
 import TabError from './components/TabError';
 import FindBar from './components/FindBar';
 import Settings from './components/Settings';
+import History from './components/History';
 import type { TabState, FindResult } from '../shared/ipc';
 
 const HUB_ID = 'hub';
@@ -27,6 +28,7 @@ export default function App() {
   const [findOpen, setFindOpen] = useState(false);
   const [findResult, setFindResult] = useState<FindResult | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [adBlockCount, setAdBlockCount] = useState(0);
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
@@ -55,9 +57,11 @@ export default function App() {
   // tabErrorRef нужен в pushBounds: reserve не применяем когда показана страница ошибки.
   const tabErrorRef = useRef(tabError);
   tabErrorRef.current = tabError;
-  // settingsOpenRef: при открытых настройках скрываем WebContentsView нулевыми bounds.
+  // settingsOpenRef / historyOpenRef: при открытых панелях скрываем WebContentsView нулевыми bounds.
   const settingsOpenRef = useRef(settingsOpen);
   settingsOpenRef.current = settingsOpen;
+  const historyOpenRef = useRef(historyOpen);
+  historyOpenRef.current = historyOpen;
 
   // Тема
   useEffect(() => {
@@ -115,7 +119,11 @@ export default function App() {
       omniboxRef.current?.select();
     });
 
-    return () => { unsubResult(); unsubOpen(); unsubClose(); unsubOmnibox(); };
+    const unsubHistory = window.oblako.onHistoryOpen(() => {
+      setHistoryOpen((v) => !v);
+    });
+
+    return () => { unsubResult(); unsubOpen(); unsubClose(); unsubOmnibox(); unsubHistory(); };
   }, []);
 
   // Счётчик адблока — подписка на push из main (debounced 1s, значит не шумит).
@@ -164,9 +172,9 @@ export default function App() {
   const pushBounds = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
-    // Настройки открыты — скрываем WebContentsView нулевыми bounds.
+    // Настройки или история открыты — скрываем WebContentsView нулевыми bounds.
     // Покрывает и split (обе вьюхи): repositionViews() в TabManager выдаёт нулевые размеры обеим.
-    if (settingsOpenRef.current) {
+    if (settingsOpenRef.current || historyOpenRef.current) {
       void window.oblako.setContentBounds({ x: 0, y: 0, width: 0, height: 0 });
       return;
     }
@@ -206,6 +214,15 @@ export default function App() {
     pushBounds();
   }, [settingsOpen, pushBounds]);
 
+  // То же для панели истории.
+  useEffect(() => {
+    if (historyOpen) {
+      setFindOpen(false);
+      setFindResult(null);
+    }
+    pushBounds();
+  }, [historyOpen, pushBounds]);
+
   const select = (id: string) => { setActiveId(id); window.oblako.activateTab(id); };
   const newTab = () => { setActiveId(HUB_ID); window.oblako.activateTab(HUB_ID); };
   const close = (id: string) => { window.oblako.closeTab(id); };
@@ -236,7 +253,8 @@ export default function App() {
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
         onSplit={(id) => { setSplitRatioState(0.5); void window.oblako.enterSplit(id); }}
         onExitSplit={() => { void window.oblako.exitSplit(); }}
-        onSettings={() => setSettingsOpen((v) => !v)}
+        onSettings={() => { setSettingsOpen((v) => !v); setHistoryOpen(false); }}
+        onHistory={() => { setHistoryOpen((v) => !v); setSettingsOpen(false); }}
         adBlockCount={adBlockCount}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -252,7 +270,9 @@ export default function App() {
         />
         {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView). */}
         <div ref={contentRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-          {settingsOpen ? (
+          {historyOpen ? (
+            <History onClose={() => setHistoryOpen(false)} />
+          ) : settingsOpen ? (
             <Settings onClose={() => setSettingsOpen(false)} />
           ) : isSplit ? (
             <div style={{ display: 'flex', height: '100%' }}>
@@ -328,7 +348,7 @@ export default function App() {
           )}
           {/* FindBar: абсолютный оверлей над всей контент-зоной (включая split). */}
           {/* FindBar: абсолютный оверлей (не показываем в режиме настроек). */}
-          {findOpen && !isHub && !tabError && !settingsOpen && (
+          {findOpen && !isHub && !tabError && !settingsOpen && !historyOpen && (
             <FindBar
               ref={findInputRef}
               result={findResult}

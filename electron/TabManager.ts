@@ -68,6 +68,9 @@ export class TabManager {
   private onFindCloseCb: () => void;
   private onOmniboxFocusCb: () => void;
   private onFocusChromeCb: () => void;
+  private onNavigateCb?: (url: string, title: string) => void;
+  private onTitleUpdateCb?: (url: string, title: string) => void;
+  private onHistoryOpenCb?: () => void;
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
   private lastQuery = ''; // последний поисковый запрос (чтобы отличить новый от навигации)
@@ -92,6 +95,9 @@ export class TabManager {
     onFindClose: () => void,
     onOmniboxFocus: () => void,
     onFocusChrome: () => void,
+    onNavigate?: (url: string, title: string) => void,
+    onTitleUpdate?: (url: string, title: string) => void,
+    onHistoryOpen?: () => void,
   ) {
     this.win = win;
     this.onChange = onChange;
@@ -100,6 +106,9 @@ export class TabManager {
     this.onFindCloseCb = onFindClose;
     this.onOmniboxFocusCb = onOmniboxFocus;
     this.onFocusChromeCb = onFocusChrome;
+    this.onNavigateCb = onNavigate;
+    this.onTitleUpdateCb = onTitleUpdate;
+    this.onHistoryOpenCb = onHistoryOpen;
     // Вкладка-хаб существует всегда и первой.
     this.tabs.push({ id: HUB_ID, view: null, sleeping: null, lastActiveAt: 0 });
     this.startSleepTimer();
@@ -357,10 +366,16 @@ export class TabManager {
       }
       // Показываем вьюху как для активной вкладки, так и для split-партнёра.
       if (isActivePanel || isInSplit) this.revealView(id);
+      // Записываем визит: один URL = один UPSERT с инкрементом счётчика.
+      this.onNavigateCb?.(wc.getURL(), wc.getTitle());
       notify();
     });
     wc.on('did-navigate-in-page', notify);
-    wc.on('page-title-updated', notify);
+    wc.on('page-title-updated', (_e, title) => {
+      // Обновляем только заголовок — без инкремента счётчика посещений.
+      this.onTitleUpdateCb?.(wc.getURL(), title);
+      notify();
+    });
 
     wc.on('page-favicon-updated', (_e, favicons) => {
       (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon = favicons?.[0];
@@ -969,6 +984,9 @@ export class TabManager {
       } else if (code === 'KeyL' && !shift) {
         event.preventDefault();
         this.onOmniboxFocusCb();            // Ctrl+L: фокус в омнибокс
+      } else if (code === 'KeyH' && !shift) {
+        event.preventDefault();
+        this.onHistoryOpenCb?.();           // Ctrl+H: открыть панель истории
       } else if (code === 'KeyI' && shift) {
         event.preventDefault();
         this.toggleActiveDevTools();        // Ctrl+Shift+I: DevTools (альтернатива F12)

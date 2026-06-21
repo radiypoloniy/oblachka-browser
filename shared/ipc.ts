@@ -82,10 +82,28 @@ export const IPC = {
   ADBLOCK_REMOVE_DOMAIN:  'adblock:remove-domain',  // renderer → main: убрать из whitelist
   ADBLOCK_RELOAD_TABS:    'adblock:reload-tabs',    // renderer → main: перезагрузить вкладки (domain?: string)
   ADBLOCK_STATE_CHANGED:  'adblock:state-changed',  // main → renderer: новый AdBlockState (push)
+
+  // История посещений
+  HISTORY_GET:    'history:get',     // renderer → main: последние N записей
+  HISTORY_SEARCH: 'history:search',  // renderer → main: поиск по url/title (string)
+  HISTORY_DELETE: 'history:delete',  // renderer → main: удалить запись (id: number)
+  HISTORY_CLEAR:  'history:clear',   // renderer → main: очистить за период ('hour'|'day'|'week'|'all')
+  HISTORY_OPEN:   'history:open',    // main → renderer: открыть панель истории (Ctrl+H)
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
 export type TitleBarOpts = { color?: string; symbolColor?: string; height?: number };
+
+// ── История посещений ────────────────────────────────────────────────────────
+export interface HistoryEntry {
+  id: number;
+  url: string;
+  title: string;
+  lastVisit: number;  // Unix ms
+  visitCount: number;
+}
+
+export type HistoryClearPeriod = 'hour' | 'day' | 'week' | 'all';
 
 // ── AdBlock ─────────────────────────────────────────────────────────────────
 export interface AdBlockState {
@@ -136,4 +154,11 @@ export interface OblakoApi {
   adBlockRemoveDomain(domain: string): Promise<void>;
   adBlockReloadTabs(domain?: string): Promise<void>;
   onAdBlockStateChanged(cb: (state: AdBlockState) => void): () => void;
+
+  // История посещений
+  getHistory(limit?: number): Promise<HistoryEntry[]>;
+  searchHistory(query: string): Promise<HistoryEntry[]>;
+  deleteHistoryEntry(id: number): Promise<void>;
+  clearHistory(period: HistoryClearPeriod): Promise<void>;
+  onHistoryOpen(cb: () => void): () => void;
 }

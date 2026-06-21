@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState } from '../shared/ipc';
+import type { OblakoApi, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod } from '../shared/ipc';
 
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
@@ -63,6 +63,17 @@ const api: OblakoApi = {
     const handler = (_e: unknown, state: AdBlockState) => cb(state);
     ipcRenderer.on(IPC.ADBLOCK_STATE_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.ADBLOCK_STATE_CHANGED, handler);
+  },
+
+  // История посещений
+  getHistory:         (limit?: number)              => ipcRenderer.invoke(IPC.HISTORY_GET, limit) as Promise<HistoryEntry[]>,
+  searchHistory:      (query: string)               => ipcRenderer.invoke(IPC.HISTORY_SEARCH, query) as Promise<HistoryEntry[]>,
+  deleteHistoryEntry: (id: number)                  => ipcRenderer.invoke(IPC.HISTORY_DELETE, id),
+  clearHistory:       (period: HistoryClearPeriod)  => ipcRenderer.invoke(IPC.HISTORY_CLEAR, period),
+  onHistoryOpen: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.HISTORY_OPEN, handler);
+    return () => ipcRenderer.removeListener(IPC.HISTORY_OPEN, handler);
   },
 };
 
