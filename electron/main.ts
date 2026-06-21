@@ -190,25 +190,10 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null); // прячем дефолтное меню — у нас свой хром
   registerIpc();
 
-  // Инициализируем AdBlock до создания окна: индекс строится в setImmediate,
-  // поэтому окно появится сразу, а правила применятся через ~100–300ms.
+  // Ghostery ставит свой onBeforeRequest и IPC-хуки для косметики внутри initialize().
+  // Окно создаём сразу после: движок грузится из кэша (~50ms) или фоново скачивается.
   await adblock.initialize((state) => {
     chromeView?.webContents.send(IPC.ADBLOCK_STATE_CHANGED, state);
-  });
-
-  // Единый webRequest-фильтр на defaultSession — покрывает ВСЕ WebContentsView,
-  // включая пересоздаваемые при пробуждении спящих вкладок.
-  // Только http/https: file://, about:, devtools:// и пр. не трогаем — иначе блокируем собственный UI.
-  session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, cb) => {
-    // Главный документ (навигация пользователя) не блокируем никогда —
-    // адблок режет только подресурсы (скрипты, картинки, xhr, iframe и т.д.).
-    if (details.resourceType === 'mainFrame') { cb({}); return; }
-    if (adblock.shouldBlock(details.url, details.referrer)) {
-      adblock.recordBlock();
-      cb({ cancel: true });
-    } else {
-      cb({});
-    }
   });
 
   createWindow();

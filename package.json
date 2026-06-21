@@ -17,6 +17,7 @@
     "download-filters": "node scripts/download-filters.mjs"
   },
   "dependencies": {
+    "@ghostery/adblocker-electron": "^2.18.0",
     "lucide-react": "0.383.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"

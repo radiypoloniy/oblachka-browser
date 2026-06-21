@@ -1,296 +1,78 @@
-import { app } from 'electron';
+import { app, session as electronSession } from 'electron';
+import { ElectronBlocker } from '@ghostery/adblocker-electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AdBlockState } from '../shared/ipc';
 
 // ── Константы ────────────────────────────────────────────────────────────────
 
-// Максимальное кол-во глобальных (не привязанных к домену) правил.
-// Защита от деградации производительности: остальные правила берутся только из доменного индекса.
-const GLOBAL_RULE_LIMIT = 3_000;
-const SETTINGS_DEBOUNCE_MS = 1_500;
+const SETTINGS_DEBOUNCE_MS   = 1_500;
 const STATS_PUSH_DEBOUNCE_MS = 1_000;
-
-// ── Встроенный fallback-список ────────────────────────────────────────────────
-// Покрывает крупнейшие рекламные сети и трекеры — достаточно для базовой блокировки.
-// Для полного EasyList/EasyPrivacy запустите: npm run download-filters
-const INLINE_RULES = `
-||googlesyndication.com^
-||doubleclick.net^
-||googleadservices.com^
-||google-analytics.com^
-||googletagmanager.com^
-||googletagservices.com^
-||adservice.google.com^
-||pagead2.googlesyndication.com^
-||adnxs.com^
-||appnexus.com^
-||adsrvr.org^
-||amazon-adsystem.com^
-||ads.amazon.com^
-||aps.amazon.com^
-||scorecardresearch.com^
-||outbrain.com^
-||outbrainimg.com^
-||taboola.com^
-||trc.taboola.com^
-||rubiconproject.com^
-||openx.net^
-||pubmatic.com^
-||criteo.com^
-||criteo.net^
-||static.criteo.net^
-||gum.criteo.com^
-||moatads.com^
-||moatpixel.com^
-||hotjar.com^
-||mixpanel.com^
-||segment.io^
-||cdn.segment.com^
-||advertising.com^
-||media.net^
-||revcontent.com^
-||sharethrough.com^
-||spotxchange.com^
-||yieldmo.com^
-||33across.com^
-||lijit.com^
-||triplelift.com^
-||indexexchange.com^
-||casalemedia.com^
-||smartadserver.com^
-||sovrn.com^
-||sonobi.com^
-||quantserve.com^
-||bidswitch.net^
-||justpremium.com^
-||smaato.net^
-||buzzoola.com^
-||ssp.rambler.ru^
-||ads.rambler.ru^
-||rutarget.ru^
-||smi2.net^
-||smi2.ru^
-||relap.io^
-||adriver.ru^
-||begun.ru^
-||betweendigital.com^
-||cxense.com^
-||bidvol.com^
-||nativeroll.tv^
-||yandex.ru/an^
-||an.yandex.ru^
-||mc.yandex.ru^
-||mc.admetrica.ru^
-||counter.yadro.ru^
-||top-fwz1.mail.ru^
-||top.mail.ru^
-||radar.mail.ru^
-||rb.mail.ru^
-||aflt.yandex.ru^
-||awaps.yandex.net^
-||awaps.yandex.ru^
-||dsp.yandex.ru^
-||bs.serving-sys.com^
-||s.adroll.com^
-||d.adroll.com^
-||t.adroll.com^
-||t.mookie1.com^
-||ads.yahoo.com^
-||analytics.yahoo.com^
-||connect.facebook.net^
-||staticxx.facebook.com^
-||tr.snapchat.com^
-||analytics.tiktok.com^
-||log.byteoversea.com^
-||adform.net^
-||adtelligent.com^
-||bluekai.com^
-||exelator.com^
-||mathtag.com^
-||eyeota.net^
-||ads.linkedin.com^
-||px.ads.linkedin.com^
-||platform.twitter.com^
-||sspgw.mail.ru^
-||direct.adform.net^
-||rftp.com^
-||rtrk.net^
-`.trim();
+// Таймаут на сетевое скачивание листов при первом запуске.
+// Если кэш engine.bin уже есть — fromPrebuiltAdsAndTracking грузит его без сети
+// и завершается до дедлайна; таймер лишь предохраняет от зависания при отсутствии сети.
+const FETCH_TIMEOUT_MS = 15_000;
 
 // ── Типы ─────────────────────────────────────────────────────────────────────
-
-interface FilterIndex {
-  blockByDomain:  Map<string, RegExp[]>;  // домен → RegExp[] (domain-map индекс)
-  blockGlobal:    RegExp[];               // правила без привязки к домену (ограничены GLOBAL_RULE_LIMIT)
-  exceptByDomain: Map<string, RegExp[]>;  // @@ исключения EasyList по домену
-  exceptGlobal:   RegExp[];               // @@ глобальные исключения EasyList
-}
 
 interface PersistedSettings {
   enabled: boolean;
   whitelist: string[];
 }
 
-// ── Парсинг правил ───────────────────────────────────────────────────────────
-
-// Извлекает hostname из domain-anchored правила вида ||hostname^ или ||hostname/path
-function extractRuleDomain(rule: string): string | null {
-  if (!rule.startsWith('||')) return null;
-  const m = rule.slice(2).match(/^([a-z0-9._-]+?)(?:[/^]|$)/i);
-  return m ? m[1].toLowerCase() : null;
-}
-
-// Конвертирует EasyList-правило в RegExp.
-// Возвращает null если правило некорректно или слишком сложно для v1.
-function ruleToRegExp(rule: string): RegExp | null {
-  let r = rule.trim();
-  if (!r || r.length < 3) return null;
-
-  let domainAnchor = false;
-  let startAnchor  = false;
-  let endAnchor    = false;
-
-  if (r.startsWith('||')) { domainAnchor = true; r = r.slice(2); }
-  else if (r.startsWith('|')) { startAnchor = true; r = r.slice(1); }
-  if (r.endsWith('|')) { endAnchor = true; r = r.slice(0, -1); }
-
-  // Экранируем все спецсимволы RegExp, кроме * и ^ (обрабатываем ниже).
-  // ВАЖНО: | тоже экранируем — в EasyList это литеральный pipe внутри URL,
-  // а не regex-альтернатива. Без этого /addyn|*|adtech; → /\/addyn|.*|adtech;/
-  // где .* создаёт альтернативу «любая строка» и матчит абсолютно всё.
-  r = r.replace(/[.+?{}[\]()|\\-]/g, '\\$&')
-        .replace(/\*/g, '.*')
-        .replace(/\^/g, '(?:[/?#&=]|$)');
-
-  if (domainAnchor) {
-    // ||domain^ → матчим домен и его поддомены
-    r = '(?:https?://|wss?://)?(?:[a-z0-9-]+\\.)*' + r;
-  } else if (startAnchor) {
-    r = '^' + r;
-  }
-  if (endAnchor) r += '$';
-
-  try { return new RegExp(r, 'i'); }
-  catch { return null; }
-}
-
-// Канарейки — заведомо-нейтральные URL, которые НЕ ДОЛЖЕН матчить ни один адблок-паттерн.
-// Правило, матчащее их — пожиратель (слишком широкий) и отбрасывается.
-// Используем .invalid (RFC 2606) — гарантированно не в EasyList.
-const CANARY_URLS = [
-  'https://oblako-canary.invalid/',
-  'https://oblako-canary.invalid/normal/page.html',
-];
-function isSafeRule(re: RegExp): boolean {
-  return CANARY_URLS.every((u) => !re.test(u));
-}
-
-// Парсит один или несколько фильтр-листов в единый индекс.
-function parseFilterLists(...texts: string[]): FilterIndex {
-  const blockByDomain  = new Map<string, RegExp[]>();
-  const blockGlobal:    RegExp[] = [];
-  const exceptByDomain = new Map<string, RegExp[]>();
-  const exceptGlobal:   RegExp[] = [];
-  let globalCount = 0;
-  let droppedCount = 0;
-
-  for (const text of texts) {
-    for (const rawLine of text.split('\n')) {
-      const line = rawLine.trim();
-
-      // Пропускаем: пустые строки, комментарии, заголовки [...]
-      if (!line || line.startsWith('!') || line.startsWith('[')) continue;
-
-      // CSS/element-правила и ABP HTML-фильтры ($$) — скрытие DOM, не сетевые запросы
-      if (line.includes('##') || line.includes('#@#') || line.includes('#?#') || line.includes('$$')) continue;
-
-      const isException = line.startsWith('@@');
-      let rule = isException ? line.slice(2) : line;
-
-      // Обрабатываем опции ($script, $third-party и т.д.)
-      // Критично: правила вида |https://$script без этой защиты превращаются в |https://
-      // (regex ^https://) и блокируют ВСЕ https-запросы — белый экран и блок любых сайтов.
-      const optIdx = rule.lastIndexOf('$');
-      if (optIdx !== -1) {
-        const opts = rule.slice(optIdx + 1).split(',');
-        const dangerous = ['elemhide', 'document', 'popup', 'genericblock', 'generichide', 'csp'];
-        if (opts.some((o) => dangerous.includes(o.split('=')[0] ?? ''))) continue;
-        // Не-доменные правила с опциями (||domain^ обрабатываем — остальные пропускаем).
-        // $third-party, $script, $domain= требуют контекста запроса, которого у нас нет:
-        // без него |https://$script → regex ^https:// блокирует все https-URL.
-        if (!rule.startsWith('||')) continue;
-        rule = rule.slice(0, optIdx);
-      }
-      if (!rule) continue;
-
-      const re = ruleToRegExp(rule);
-      if (!re) continue;
-
-      const domain = extractRuleDomain(rule);
-
-      // Предохранитель: глобальные правила без доменной привязки проверяем канарейкой.
-      // Правило-пожиратель (матчит заведомо-нейтральный URL) отбрасываем и логируем.
-      if (!domain && !isException && !isSafeRule(re)) {
-        console.warn(`[AdBlock] пожиратель отброшен: ${rule.slice(0, 100)} → ${re}`);
-        droppedCount++;
-        continue;
-      }
-
-      if (isException) {
-        if (domain) {
-          const arr = exceptByDomain.get(domain) ?? [];
-          arr.push(re);
-          exceptByDomain.set(domain, arr);
-        } else {
-          exceptGlobal.push(re);
-        }
-      } else {
-        if (domain) {
-          const arr = blockByDomain.get(domain) ?? [];
-          arr.push(re);
-          blockByDomain.set(domain, arr);
-        } else if (globalCount < GLOBAL_RULE_LIMIT) {
-          blockGlobal.push(re);
-          globalCount++;
-        }
-      }
-    }
-  }
-
-  if (droppedCount > 0) {
-    console.warn(`[AdBlock] Итого отброшено правил-пожирателей: ${droppedCount}`);
-  }
-  return { blockByDomain, blockGlobal, exceptByDomain, exceptGlobal };
-}
-
 // ── AdBlockManager ──────────────────────────────────────────────────────────
 
 export class AdBlockManager {
+  #blocker: ElectronBlocker | null = null;
   #enabled = true;
   #whitelist = new Set<string>();
   #sessionBlockCount = 0;
-  #index: FilterIndex | null = null;
   readonly #settingsPath: string;
-  readonly #listsDir: string;
+  readonly #enginePath: string;
   #settingsTimer: ReturnType<typeof setTimeout> | null = null;
-  #statsTimer: ReturnType<typeof setTimeout> | null = null;
+  #statsTimer:    ReturnType<typeof setTimeout> | null = null;
   #onStateChange: ((state: AdBlockState) => void) | null = null;
 
   constructor() {
     const userData = app.getPath('userData');
     this.#settingsPath = path.join(userData, 'adblock-settings.json');
-
-    // app.getAppPath() = корень проекта (в dev и в собранном виде без упаковки).
-    // При упаковке electron-builder → проверить путь к resources/ в конфиге packager.
-    this.#listsDir = path.join(app.getAppPath(), 'resources');
+    // Кэш движка Ghostery: при повторных стартах грузится за <50ms без сети.
+    // Хранит только базовые листы — пользовательский whitelist поверх через updateFromDiff.
+    this.#enginePath = path.join(userData, 'ghostery-engine.bin');
   }
 
-  // Загружает настройки + строит индекс. Вызывается один раз при старте.
+  // Загружает настройки + строит движок. Вызывается один раз при старте приложения.
   async initialize(onStateChange: (state: AdBlockState) => void): Promise<void> {
     this.#onStateChange = onStateChange;
     this.#loadSettings();
-    await this.#buildIndex();
+
+    const blocker = await this.#loadBlocker();
+
+    if (!blocker) {
+      // Нет кэша и нет сети — адблок выключен; браузер работает нормально.
+      // При следующем запуске с сетью движок скачается и закэшируется.
+      console.warn('[AdBlock] движок не загружен — блокировка отключена до следующего старта');
+      this.#enabled = false;
+      this.#notify();
+      return;
+    }
+
+    this.#blocker = blocker;
+
+    // Пользовательские исключения (whitelist) применяем поверх базового движка
+    // при каждом старте — НЕ кэшируем в engine.bin, чтобы кэш оставался стабильным.
+    this.#applyWhitelist();
+
+    // Нативный коллбэк Ghostery на каждую заблокированную сеть-заявку.
+    // Точнее, чем onErrorOccurred: срабатывает ровно на блокировки адблока.
+    blocker.on('request-blocked', () => { this.recordBlock(); });
+
+    if (this.#enabled) {
+      blocker.enableBlockingInSession(electronSession.defaultSession);
+      console.log('[AdBlock] Ghostery активен, косметика включена');
+    } else {
+      console.log('[AdBlock] Ghostery загружен, но блокировка выключена пользователем');
+    }
   }
 
   // ── Публичный API ──────────────────────────────────────────────────────────
@@ -305,6 +87,13 @@ export class AdBlockManager {
 
   setEnabled(enabled: boolean): void {
     this.#enabled = enabled;
+    if (this.#blocker) {
+      if (enabled) {
+        this.#blocker.enableBlockingInSession(electronSession.defaultSession);
+      } else {
+        this.#blocker.disableBlockingInSession(electronSession.defaultSession);
+      }
+    }
     this.#scheduleSettingsSave();
     this.#notify();
   }
@@ -315,62 +104,21 @@ export class AdBlockManager {
     const domain = normalizeDomain(raw);
     if (!domain) return;
     this.#whitelist.add(domain);
+    if (this.#blocker) {
+      // Добавляем исключение в живой движок без перезагрузки кэша.
+      this.#blocker.updateFromDiff({ added: [`@@||${domain}^$important`] });
+    }
     this.#scheduleSettingsSave();
     this.#notify();
   }
 
   removeDomain(domain: string): void {
     this.#whitelist.delete(domain);
+    if (this.#blocker) {
+      this.#blocker.updateFromDiff({ removed: [`@@||${domain}^$important`] });
+    }
     this.#scheduleSettingsSave();
     this.#notify();
-  }
-
-  // Вызывается из webRequest.onBeforeRequest на КАЖДЫЙ запрос.
-  // Должен быть максимально быстрым: 2–4 Map.get() + ~20 RegExp.test().
-  shouldBlock(url: string, referrer?: string): boolean {
-    if (!this.#enabled || !this.#index) return false;
-
-    // Никогда не блокируем не-HTTP(S): file://, about:, devtools://, chrome-extension:// и т.д.
-    // Дополнительная страховка к фильтру в onBeforeRequest (там уже ограничено http/https).
-    if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
-
-    let hostname: string;
-    try { hostname = new URL(url).hostname.toLowerCase(); }
-    catch { return false; }
-
-    // Локальные адреса не блокируем: localhost, dev-серверы, Vite HMR.
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return false;
-
-    // Whitelist: сам запрашиваемый домен
-    if (this.#isWhitelisted(hostname)) return false;
-
-    // Whitelist: страница-источник запроса (referrer)
-    if (referrer) {
-      try {
-        const refHost = new URL(referrer).hostname.toLowerCase();
-        if (this.#isWhitelisted(refHost)) return false;
-      } catch { /* нет referrer — игнорируем */ }
-    }
-
-    // Проверяем доменный индекс (быстро: O(1) lookup на уровень домена)
-    for (const re of this.#getDomainRules(this.#index.blockByDomain, hostname)) {
-      if (re.test(url)) {
-        const excepted = this.#isExcepted(url, hostname);
-        if (!excepted) console.log(`[AdBlock] BLOCK domain | ${re} | ${url}`);
-        return !excepted;
-      }
-    }
-
-    // Глобальные правила (медленнее, но ограничены GLOBAL_RULE_LIMIT)
-    for (const re of this.#index.blockGlobal) {
-      if (re.test(url)) {
-        const excepted = this.#isExcepted(url, hostname);
-        if (!excepted) console.log(`[AdBlock] BLOCK global | ${re} | ${url}`);
-        return !excepted;
-      }
-    }
-
-    return false;
   }
 
   recordBlock(): void {
@@ -380,77 +128,41 @@ export class AdBlockManager {
 
   // ── Приватные методы ───────────────────────────────────────────────────────
 
-  // Проверяет, покрыт ли hostname пользовательским whitelist.
-  // Домен "example.com" покрывает "example.com" и "*.example.com" (www, m, api и т.д.).
-  #isWhitelisted(hostname: string): boolean {
-    for (const domain of this.#whitelist) {
-      if (hostname === domain || hostname.endsWith('.' + domain)) return true;
-    }
-    return false;
+  // Применяет текущий whitelist поверх движка (вызывается при каждом старте).
+  #applyWhitelist(): void {
+    if (!this.#blocker || this.#whitelist.size === 0) return;
+    const rules = [...this.#whitelist].map((d) => `@@||${d}^$important`);
+    this.#blocker.updateFromDiff({ added: rules });
   }
 
-  // Проверяет @@ исключения EasyList для данного url/hostname.
-  #isExcepted(url: string, hostname: string): boolean {
-    if (!this.#index) return false;
-    for (const re of this.#getDomainRules(this.#index.exceptByDomain, hostname)) {
-      if (re.test(url)) return true;
+  async #loadBlocker(): Promise<ElectronBlocker | null> {
+    try {
+      // fromPrebuiltAdsAndTracking: если engine.bin существует — грузит из него (<50ms).
+      // Если нет — скачивает с CDN Ghostery и записывает кэш для следующих стартов.
+      const load = ElectronBlocker.fromPrebuiltAdsAndTracking(
+        (url) => fetch(url),
+        {
+          path: this.#enginePath,
+          read:  (p) => fs.promises.readFile(p),
+          write: (p, data) => fs.promises.writeFile(p, data),
+        },
+      );
+
+      // Таймаут только для сетевой загрузки: кэш-путь завершается немедленно.
+      const deadline = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('adblock download timeout')), FETCH_TIMEOUT_MS),
+      );
+
+      const blocker = await Promise.race([load, deadline]);
+      console.log('[AdBlock] движок загружен (Ghostery v2.18)');
+      return blocker;
+    } catch (e) {
+      console.warn('[AdBlock] не удалось загрузить движок:', (e as Error).message);
+      return null;
     }
-    for (const re of this.#index.exceptGlobal) {
-      if (re.test(url)) return true;
-    }
-    return false;
   }
 
-  // Итерирует правила из доменного Map для данного hostname и всех родительских доменов.
-  // Пример: "ads.googlesyndication.com" → проверяет "ads.googlesyndication.com", "googlesyndication.com".
-  #getDomainRules(map: Map<string, RegExp[]>, hostname: string): RegExp[] {
-    const result: RegExp[] = [];
-    const parts = hostname.split('.');
-    for (let i = 0; i <= parts.length - 2; i++) {
-      const domain = parts.slice(i).join('.');
-      const rules = map.get(domain);
-      if (rules) result.push(...rules);
-    }
-    return result;
-  }
-
-  // ── Инициализация индекса ──────────────────────────────────────────────────
-
-  async #buildIndex(): Promise<void> {
-    const texts: string[] = [];
-
-    // Пробуем загрузить полные листы из resources/
-    for (const name of ['easylist.txt', 'easyprivacy.txt']) {
-      const filePath = path.join(this.#listsDir, name);
-      try {
-        texts.push(fs.readFileSync(filePath, 'utf8'));
-      } catch {
-        // Файл не найден — пропускаем. Если ни один не найден, используем fallback.
-      }
-    }
-
-    if (texts.length === 0) {
-      console.warn('[AdBlock] Фильтр-листы не найдены в resources/. Используется встроенный fallback-список.');
-      console.warn('[AdBlock] Для полной блокировки запустите: npm run download-filters');
-      texts.push(INLINE_RULES);
-    } else {
-      console.log(`[AdBlock] Загружено фильтр-листов: ${texts.length} (из ${this.#listsDir})`);
-    }
-
-    // parseFilterLists синхронный но тяжёлый при полных листах — откладываем в макро-таску
-    // чтобы не блокировать создание окна.
-    await new Promise<void>((resolve) => {
-      setImmediate(() => {
-        this.#index = parseFilterLists(...texts);
-        const domainCount  = this.#index.blockByDomain.size;
-        const globalCount  = this.#index.blockGlobal.length;
-        console.log(`[AdBlock] Индекс построен: ${domainCount} доменов, ${globalCount} глобальных правил`);
-        resolve();
-      });
-    });
-  }
-
-  // ── Персистенция настроек ─────────────────────────────────────────────────
+  // ── Персистенция ──────────────────────────────────────────────────────────
 
   #loadSettings(): void {
     try {
@@ -461,8 +173,7 @@ export class AdBlockManager {
         this.#whitelist = new Set(data.whitelist);
         return;
       }
-    } catch { /* файл отсутствует, битый JSON или ошибка FS — стартуем с дефолтом */ }
-    // Дефолт: блокировка включена, whitelist пуст
+    } catch { /* файл отсутствует или битый JSON — стартуем с дефолтом */ }
     this.#enabled  = true;
     this.#whitelist = new Set();
   }
@@ -476,10 +187,7 @@ export class AdBlockManager {
   }
 
   #writeSettings(): void {
-    const data: PersistedSettings = {
-      enabled: this.#enabled,
-      whitelist: [...this.#whitelist],
-    };
+    const data: PersistedSettings = { enabled: this.#enabled, whitelist: [...this.#whitelist] };
     const tmpPath = this.#settingsPath + '.tmp';
     try {
       fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf8');
@@ -487,7 +195,6 @@ export class AdBlockManager {
     } catch { /* ошибка диска — следующий debounce попробует снова */ }
   }
 
-  // Debounced push статистики — не чаще раза в секунду (блоков может быть сотни в минуту)
   #scheduleStatsPush(): void {
     if (this.#statsTimer !== null) return;
     this.#statsTimer = setTimeout(() => {
@@ -501,7 +208,7 @@ export class AdBlockManager {
   }
 }
 
-// ── Валидация и нормализация ──────────────────────────────────────────────────
+// ── Хелперы ───────────────────────────────────────────────────────────────────
 
 function isValidSettings(v: unknown): v is PersistedSettings {
   if (typeof v !== 'object' || v === null) return false;
@@ -511,12 +218,11 @@ function isValidSettings(v: unknown): v is PersistedSettings {
     (d['whitelist'] as unknown[]).every((x) => typeof x === 'string');
 }
 
-// Нормализует то, что ввёл пользователь, до голого hostname.
+// Нормализует ввод пользователя до голого hostname.
 // "https://www.Reddit.com/r/..." → "reddit.com"
 export function normalizeDomain(raw: string): string | null {
   let s = raw.trim().toLowerCase();
   if (!s) return null;
-  // Добавляем схему если нет — иначе new URL() падает
   if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
   try {
     let host = new URL(s).hostname;
