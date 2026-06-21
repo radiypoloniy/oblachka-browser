@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, TabState, ContentBounds, TitleBarOpts, FindResult } from '../shared/ipc';
+import type { OblakoApi, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState } from '../shared/ipc';
 
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
@@ -52,6 +52,18 @@ const api: OblakoApi = {
   exitSplit:       ()                           => ipcRenderer.invoke(IPC.TAB_EXIT_SPLIT),
   focusSplitPanel: (side: 'left' | 'right')    => ipcRenderer.invoke(IPC.TAB_SPLIT_FOCUS, side),
   setSplitRatio:   (ratio: number)             => ipcRenderer.invoke(IPC.TAB_SPLIT_RATIO, ratio),
+
+  // AdBlock
+  getAdBlockState:     ()                  => ipcRenderer.invoke(IPC.ADBLOCK_GET_STATE),
+  setAdBlockEnabled:   (v: boolean)        => ipcRenderer.invoke(IPC.ADBLOCK_SET_ENABLED, v),
+  adBlockAddDomain:    (d: string)         => ipcRenderer.invoke(IPC.ADBLOCK_ADD_DOMAIN, d),
+  adBlockRemoveDomain: (d: string)         => ipcRenderer.invoke(IPC.ADBLOCK_REMOVE_DOMAIN, d),
+  adBlockReloadTabs:   (d?: string)        => ipcRenderer.invoke(IPC.ADBLOCK_RELOAD_TABS, d),
+  onAdBlockStateChanged: (cb: (state: AdBlockState) => void) => {
+    const handler = (_e: unknown, state: AdBlockState) => cb(state);
+    ipcRenderer.on(IPC.ADBLOCK_STATE_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.ADBLOCK_STATE_CHANGED, handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('oblako', api);

@@ -11,6 +11,7 @@ interface SidebarProps {
   onTabMenu: (id: string) => void;
   onSplit: (id: string) => void;  // войти в split с этой вкладкой как правой панелью
   onExitSplit: () => void;        // схлопнуть split, обе вкладки остаются открытыми
+  onSettings: () => void;         // открыть / закрыть экран настроек
 }
 
 function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
@@ -173,7 +174,7 @@ const asideBase: React.CSSProperties = {
   overflow: 'hidden',
 };
 
-export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit }: SidebarProps) {
+export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit, onSettings }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const hub = tabs.filter((t) => t.isHub);
@@ -273,7 +274,7 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
 
         {/* Низ: настройки + аватар */}
         <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <button title="Настройки" style={iconBtn}><Settings size={17} /></button>
+          <button title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
           <span style={{
             width: 28, height: 28, borderRadius: '50%', flex: 'none',
             background: 'linear-gradient(135deg, var(--accent), var(--accent-warm))',
@@ -375,7 +376,7 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
           <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>Антон</div>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Oblako Pro</div>
         </div>
-        <button className="no-drag" title="Настройки" style={iconBtn}><Settings size={17} /></button>
+        <button className="no-drag" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
       </div>
     </aside>
   );

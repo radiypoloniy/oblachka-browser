@@ -74,10 +74,25 @@ export const IPC = {
   TAB_EXIT_SPLIT:   'tab:exit-split',   // renderer → main: выйти из split, обе вкладки остаются
   TAB_SPLIT_FOCUS:  'tab:split-focus',  // renderer → main: переключить фокус на панель
   TAB_SPLIT_RATIO:  'tab:split-ratio',  // renderer → main: новое соотношение панелей при drag
+
+  // AdBlock
+  ADBLOCK_GET_STATE:      'adblock:get-state',      // renderer → main: получить AdBlockState
+  ADBLOCK_SET_ENABLED:    'adblock:set-enabled',    // renderer → main: вкл/выкл (boolean)
+  ADBLOCK_ADD_DOMAIN:     'adblock:add-domain',     // renderer → main: домен в whitelist
+  ADBLOCK_REMOVE_DOMAIN:  'adblock:remove-domain',  // renderer → main: убрать из whitelist
+  ADBLOCK_RELOAD_TABS:    'adblock:reload-tabs',    // renderer → main: перезагрузить вкладки (domain?: string)
+  ADBLOCK_STATE_CHANGED:  'adblock:state-changed',  // main → renderer: новый AdBlockState (push)
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
 export type TitleBarOpts = { color?: string; symbolColor?: string; height?: number };
+
+// ── AdBlock ─────────────────────────────────────────────────────────────────
+export interface AdBlockState {
+  enabled: boolean;
+  whitelist: string[];        // нормализованные домены (без www., без схемы)
+  sessionBlockCount: number;  // счётчик за текущую сессию (сбрасывается при перезапуске)
+}
 
 // Тип API, который preload пробрасывает в window.oblako
 export interface OblakoApi {
@@ -113,4 +128,12 @@ export interface OblakoApi {
   exitSplit(): Promise<void>;                       // схлопнуть split, обе вкладки остаются
   focusSplitPanel(side: 'left' | 'right'): Promise<void>; // переключить активную панель
   setSplitRatio(ratio: number): Promise<void>;      // drag разделителя: 0.2..0.8
+
+  // AdBlock
+  getAdBlockState(): Promise<AdBlockState>;
+  setAdBlockEnabled(enabled: boolean): Promise<void>;
+  adBlockAddDomain(domain: string): Promise<void>;
+  adBlockRemoveDomain(domain: string): Promise<void>;
+  adBlockReloadTabs(domain?: string): Promise<void>;
+  onAdBlockStateChanged(cb: (state: AdBlockState) => void): () => void;
 }

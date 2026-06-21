@@ -4,6 +4,7 @@ import Toolbar from './components/Toolbar';
 import Hub from './components/Hub';
 import TabError from './components/TabError';
 import FindBar from './components/FindBar';
+import Settings from './components/Settings';
 import type { TabState, FindResult } from '../shared/ipc';
 
 const HUB_ID = 'hub';
@@ -25,6 +26,7 @@ export default function App() {
   const [dark, setDark] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findResult, setFindResult] = useState<FindResult | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -52,6 +54,9 @@ export default function App() {
   // tabErrorRef нужен в pushBounds: reserve не применяем когда показана страница ошибки.
   const tabErrorRef = useRef(tabError);
   tabErrorRef.current = tabError;
+  // settingsOpenRef: при открытых настройках скрываем WebContentsView нулевыми bounds.
+  const settingsOpenRef = useRef(settingsOpen);
+  settingsOpenRef.current = settingsOpen;
 
   // Тема
   useEffect(() => {
@@ -151,11 +156,17 @@ export default function App() {
   const pushBounds = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
+    // Настройки открыты — скрываем WebContentsView нулевыми bounds.
+    // Покрывает и split (обе вьюхи): repositionViews() в TabManager выдаёт нулевые размеры обеим.
+    if (settingsOpenRef.current) {
+      void window.oblako.setContentBounds({ x: 0, y: 0, width: 0, height: 0 });
+      return;
+    }
     const r = el.getBoundingClientRect();
     const reserve = (findOpenRef.current && !isHubRef.current && !tabErrorRef.current)
       ? FIND_BAR_RESERVE
       : 0;
-    window.oblako.setContentBounds({
+    void window.oblako.setContentBounds({
       x: r.left, y: r.top + reserve,
       width: r.width, height: Math.max(0, r.height - reserve),
     });
@@ -176,6 +187,16 @@ export default function App() {
   // когда переключаемся между хабом и сайтом, геометрия дырки та же,
   // но main должен переотобразить вьюху — пушим bounds ещё раз.
   useEffect(() => { pushBounds(); }, [activeId, isHub, pushBounds]);
+
+  // Открытие/закрытие настроек: скрываем или восстанавливаем WebContentsView.
+  // FindBar закрываем при входе в настройки.
+  useEffect(() => {
+    if (settingsOpen) {
+      setFindOpen(false);
+      setFindResult(null);
+    }
+    pushBounds();
+  }, [settingsOpen, pushBounds]);
 
   const select = (id: string) => { setActiveId(id); window.oblako.activateTab(id); };
   const newTab = () => { setActiveId(HUB_ID); window.oblako.activateTab(HUB_ID); };
@@ -207,6 +228,7 @@ export default function App() {
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
         onSplit={(id) => { setSplitRatioState(0.5); void window.oblako.enterSplit(id); }}
         onExitSplit={() => { void window.oblako.exitSplit(); }}
+        onSettings={() => setSettingsOpen((v) => !v)}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
@@ -221,8 +243,9 @@ export default function App() {
         />
         {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView). */}
         <div ref={contentRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-          {isSplit ? (
-            /* Split: два WebContentsView рядом; DOM-слои только для ошибок и фокус-индикатора */
+          {settingsOpen ? (
+            <Settings onClose={() => setSettingsOpen(false)} />
+          ) : isSplit ? (
             <div style={{ display: 'flex', height: '100%' }}>
               {/* Левая панель — flex: splitRatio даёт долю от (ширина - SPLIT_GAP) */}
               <div
@@ -295,7 +318,8 @@ export default function App() {
             </>
           )}
           {/* FindBar: абсолютный оверлей над всей контент-зоной (включая split). */}
-          {findOpen && !isHub && !tabError && (
+          {/* FindBar: абсолютный оверлей (не показываем в режиме настроек). */}
+          {findOpen && !isHub && !tabError && !settingsOpen && (
             <FindBar
               ref={findInputRef}
               result={findResult}

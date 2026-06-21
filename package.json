@@ -13,7 +13,8 @@
     "build:electron": "tsc -p electron/tsconfig.json && node -e \"require('fs').writeFileSync('dist-electron/package.json', JSON.stringify({type:'commonjs'}))\"",
     "build:vite": "vite build",
     "build": "npm run build:vite && npm run build:electron",
-    "start": "cross-env NODE_ENV=production electron ."
+    "start": "cross-env NODE_ENV=production electron .",
+    "download-filters": "node scripts/download-filters.mjs"
   },
   "dependencies": {
     "lucide-react": "0.383.0",

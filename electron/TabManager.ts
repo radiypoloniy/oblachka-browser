@@ -622,6 +622,22 @@ export class TabManager {
     if (url) this.createTab(url);
   }
 
+  // Перезагружает все живые (не спящие) вкладки. Если domain задан — только с этим hostname
+  // (и его поддоменами). Используется адблоком после смены настроек.
+  reloadTabsForDomain(domain?: string): void {
+    for (const tab of this.tabs) {
+      if (!this.isHttpView(tab.view) || tab.sleeping) continue;
+      const url = tab.view.webContents.getURL();
+      if (!url) continue;
+      if (domain) {
+        let hostname: string;
+        try { hostname = new URL(url).hostname.toLowerCase(); } catch { continue; }
+        if (hostname !== domain && !hostname.endsWith('.' + domain)) continue;
+      }
+      tab.view.webContents.reload();
+    }
+  }
+
   // ── Split View ────────────────────────────────────────────────────────────
 
   // Войти в split: текущая активная вкладка → левая панель, rightId → правая.

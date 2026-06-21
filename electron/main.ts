@@ -1,8 +1,9 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
 import { TabManager } from './TabManager';
 import { SessionManager } from './SessionManager';
+import { AdBlockManager } from './AdBlockManager';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts, FindResult } from '../shared/ipc';
 
@@ -12,7 +13,8 @@ const DEV_URL = 'http://localhost:5173';
 let win: BrowserWindow | null = null;
 let chromeView: WebContentsView | null = null; // слой нашего React-хрома
 let tabs: TabManager | null = null;
-let session: SessionManager | null = null;
+let sess: SessionManager | null = null;
+const adblock = new AdBlockManager();
 
 function createWindow() {
   win = new BrowserWindow({
@@ -51,17 +53,17 @@ function createWindow() {
   win.on('resize', layoutChrome);
 
   // Загружаем сохранённую сессию ДО создания TabManager.
-  session = new SessionManager();
-  const restored = session.load();
+  sess = new SessionManager();
+  const restored = sess.load();
 
   // При любом изменении: обновляем UI и планируем сохранение сессии.
-  // scheduleSave молча игнорирует вызовы до session.enable() — это защита
+  // scheduleSave молча игнорирует вызовы до sess.enable() — это защита
   // от затирания: onChange стреляет во время restore, но сохранять ещё нельзя.
   tabs = new TabManager(
     win,
     () => {
       chromeView?.webContents.send(IPC.TABS_CHANGED, tabs!.snapshot());
-      session!.scheduleSave(() => tabs!.snapshot(), () => tabs!.getActiveId());
+      sess!.scheduleSave(() => tabs!.snapshot(), () => tabs!.getActiveId());
     },
     (r: FindResult) => chromeView?.webContents.send(IPC.FIND_RESULT, r),
     ()              => chromeView?.webContents.send(IPC.FIND_OPEN),
@@ -94,7 +96,7 @@ function createWindow() {
   }
 
   // Только после восстановления разрешаем автосейв.
-  session.enable();
+  sess.enable();
 
   // ПКМ в хром-слое (омнибокс, поле чата): только редактируемые поля и выделение.
   // Для обычных элементов управления (кнопки, сайдбар) меню НЕ показываем.
@@ -119,7 +121,7 @@ function createWindow() {
   }
 
   win.on('closed', () => {
-    win = null; chromeView = null; tabs = null; session = null;
+    win = null; chromeView = null; tabs = null; sess = null;
   });
 }
 
@@ -146,6 +148,13 @@ function registerIpc() {
   ipcMain.handle(IPC.TAB_EXIT_SPLIT,  ()                            => tabs?.exitSplit());
   ipcMain.handle(IPC.TAB_SPLIT_FOCUS, (_e, side: 'left' | 'right') => tabs?.focusSplitPanel(side));
   ipcMain.handle(IPC.TAB_SPLIT_RATIO, (_e, ratio: number)           => tabs?.setSplitRatio(ratio));
+
+  // AdBlock
+  ipcMain.handle(IPC.ADBLOCK_GET_STATE,      ()                    => adblock.getState());
+  ipcMain.handle(IPC.ADBLOCK_SET_ENABLED,    (_e, v: boolean)      => adblock.setEnabled(v));
+  ipcMain.handle(IPC.ADBLOCK_ADD_DOMAIN,     (_e, d: string)       => adblock.addDomain(d));
+  ipcMain.handle(IPC.ADBLOCK_REMOVE_DOMAIN,  (_e, d: string)       => adblock.removeDomain(d));
+  ipcMain.handle(IPC.ADBLOCK_RELOAD_TABS,    (_e, d?: string)      => tabs?.reloadTabsForDomain(d));
 
   // Нативное ПКМ-меню вкладки в сайдбаре: Закрепить / Открепить.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {
@@ -177,9 +186,27 @@ app.on('web-contents-created', (_e, contents) => {
   });
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   Menu.setApplicationMenu(null); // прячем дефолтное меню — у нас свой хром
   registerIpc();
+
+  // Инициализируем AdBlock до создания окна: индекс строится в setImmediate,
+  // поэтому окно появится сразу, а правила применятся через ~100–300ms.
+  await adblock.initialize((state) => {
+    chromeView?.webContents.send(IPC.ADBLOCK_STATE_CHANGED, state);
+  });
+
+  // Единый webRequest-фильтр на defaultSession — покрывает ВСЕ WebContentsView,
+  // включая пересоздаваемые при пробуждении спящих вкладок.
+  session.defaultSession.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, cb) => {
+    if (adblock.shouldBlock(details.url, details.referrer)) {
+      adblock.recordBlock();
+      cb({ cancel: true });
+    } else {
+      cb({});
+    }
+  });
+
   createWindow();
 
   app.on('activate', () => {
@@ -193,5 +220,5 @@ app.on('window-all-closed', () => {
 
 // Синхронная запись перед выходом — никаких await, иначе процесс умрёт раньше.
 app.on('before-quit', () => {
-  if (tabs && session) session.saveNow(tabs.snapshot(), tabs.getActiveId());
+  if (tabs && sess) sess.saveNow(tabs.snapshot(), tabs.getActiveId());
 });
