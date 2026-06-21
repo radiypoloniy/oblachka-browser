@@ -14,10 +14,9 @@ const SPLIT_GAP = 8;
 const SPLIT_RATIO_MIN = 0.2;
 const SPLIT_RATIO_MAX = 0.8;
 
-// TODO: вернуть на боевые значения после теста (2ч / 8ч / 60сек)
-const SLEEP_TIMEOUT_NORMAL = 30_000;   // 30 сек для теста → 2 * 60 * 60 * 1000
-const SLEEP_TIMEOUT_PINNED = 60_000;   // 60 сек для теста → 8 * 60 * 60 * 1000
-const SLEEP_CHECK_INTERVAL = 5_000;    // 5 сек для теста  → 60_000
+const SLEEP_TIMEOUT_NORMAL = 2 * 60 * 60 * 1000;  // 2 часа без активности
+const SLEEP_TIMEOUT_PINNED = 8 * 60 * 60 * 1000;  // 8 часов для закреплённых
+const SLEEP_CHECK_INTERVAL = 60_000;               // проверка раз в минуту
 
 // Обрезает длинный текст для лейблов меню, чтобы не растягивало окно.
 function truncate(text: string, max = 40): string {
