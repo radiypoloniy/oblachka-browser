@@ -198,7 +198,8 @@ app.whenReady().then(async () => {
 
   // Единый webRequest-фильтр на defaultSession — покрывает ВСЕ WebContentsView,
   // включая пересоздаваемые при пробуждении спящих вкладок.
-  session.defaultSession.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, cb) => {
+  // Только http/https: file://, about:, devtools:// и пр. не трогаем — иначе блокируем собственный UI.
+  session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, cb) => {
     if (adblock.shouldBlock(details.url, details.referrer)) {
       adblock.recordBlock();
       cb({ cancel: true });

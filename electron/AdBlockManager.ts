@@ -187,19 +187,24 @@ function parseFilterLists(...texts: string[]): FilterIndex {
       // Пропускаем: пустые строки, комментарии, заголовки [...]
       if (!line || line.startsWith('!') || line.startsWith('[')) continue;
 
-      // CSS/element-правила (##, #@#, #?#) — скрытие DOM, не сетевые запросы
-      if (line.includes('##') || line.includes('#@#') || line.includes('#?#')) continue;
+      // CSS/element-правила и ABP HTML-фильтры ($$) — скрытие DOM, не сетевые запросы
+      if (line.includes('##') || line.includes('#@#') || line.includes('#?#') || line.includes('$$')) continue;
 
       const isException = line.startsWith('@@');
       let rule = isException ? line.slice(2) : line;
 
-      // Обрабатываем опции ($script, $image и т.д.)
-      // Опасные опции: $elemhide/$document/$popup — могут блокировать не то
+      // Обрабатываем опции ($script, $third-party и т.д.)
+      // Критично: правила вида |https://$script без этой защиты превращаются в |https://
+      // (regex ^https://) и блокируют ВСЕ https-запросы — белый экран и блок любых сайтов.
       const optIdx = rule.lastIndexOf('$');
       if (optIdx !== -1) {
         const opts = rule.slice(optIdx + 1).split(',');
         const dangerous = ['elemhide', 'document', 'popup', 'genericblock', 'generichide', 'csp'];
         if (opts.some((o) => dangerous.includes(o.split('=')[0] ?? ''))) continue;
+        // Не-доменные правила с опциями (||domain^ обрабатываем — остальные пропускаем).
+        // $third-party, $script, $domain= требуют контекста запроса, которого у нас нет:
+        // без него |https://$script → regex ^https:// блокирует все https-URL.
+        if (!rule.startsWith('||')) continue;
         rule = rule.slice(0, optIdx);
       }
       if (!rule) continue;
@@ -299,9 +304,16 @@ export class AdBlockManager {
   shouldBlock(url: string, referrer?: string): boolean {
     if (!this.#enabled || !this.#index) return false;
 
+    // Никогда не блокируем не-HTTP(S): file://, about:, devtools://, chrome-extension:// и т.д.
+    // Дополнительная страховка к фильтру в onBeforeRequest (там уже ограничено http/https).
+    if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
+
     let hostname: string;
     try { hostname = new URL(url).hostname.toLowerCase(); }
     catch { return false; }
+
+    // Локальные адреса не блокируем: localhost, dev-серверы, Vite HMR.
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return false;
 
     // Whitelist: сам запрашиваемый домен
     if (this.#isWhitelisted(hostname)) return false;
