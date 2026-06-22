@@ -30,6 +30,10 @@ const RIGHT_RESERVE: Record<VpnMode, number> = {
   icon:  265, // 138 sys +  ~35 VPN + 32×2 AI/Moon + 24 gap ≈ 261
 };
 
+// Гарантированный зазор (px) между краем омнибокса и каждым боковым блоком.
+// Вычитается с обеих сторон, поэтому отнимает 2×GAP от суммарной ширины.
+const OMNIBOX_SIDE_GAP = 12;
+
 // ── Типы ─────────────────────────────────────────────────────────────────────
 
 type SuggestKind = 'history' | 'tab' | 'search';
@@ -94,7 +98,9 @@ export default function Toolbar({
   const vpnMode: VpnMode = toolbarWidth >= VPN_THRESHOLD_FULL ? 'full'
     : toolbarWidth >= VPN_THRESHOLD_SHORT ? 'short'
     : 'icon';
-  const omniboxWidth = Math.min(620, Math.max(160, toolbarWidth - 2 * RIGHT_RESERVE[vpnMode]));
+  // Math.max(0, ...) — намеренно без нижнего предела: на совсем узком окне
+  // омнибокс становится узким (до 0), но никогда не налезает на боковые блоки.
+  const omniboxWidth = Math.min(620, Math.max(0, toolbarWidth - 2 * RIGHT_RESERVE[vpnMode] - 2 * OMNIBOX_SIDE_GAP));
 
   // Пока не редактируем — поле отражает реальный URL вкладки.
   useEffect(() => {
