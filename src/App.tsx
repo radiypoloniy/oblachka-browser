@@ -336,7 +336,7 @@ export default function App() {
             /* Обычный режим: хаб, ошибка или «дырка» под WebContentsView */
             <>
               {isHub
-                ? <Hub onSubmit={submit} />
+                ? <Hub onSubmit={submit} onOpenHistory={() => { setHistoryOpen(true); setSettingsOpen(false); }} />
                 : tabError
                   ? <TabError
                       error={tabError}
