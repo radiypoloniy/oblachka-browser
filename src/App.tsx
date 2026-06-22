@@ -15,6 +15,11 @@ const HUB_ID = 'hub';
 // 52 = 8px (gap) + ~36px (панель) + 8px (запас).
 const FIND_BAR_RESERVE = 52;
 
+// Высота резерва для дропдауна омнибокса — та же логика, что и FindBar.
+// chromeView идёт под WebContentsView по z-order, поэтому сдвигаем WebContentsView вниз.
+// 280 = 6 строк × ~44px + 8px зазор — max высота списка саджестов.
+const OMNIBOX_SUGGEST_RESERVE = 280;
+
 // Ширина зазора-разделителя в split-режиме (px). Должна совпадать с SPLIT_GAP в TabManager.
 const SPLIT_GAP = 8;
 const SPLIT_RATIO_MIN = 0.2;
@@ -32,6 +37,7 @@ export default function App() {
   const [adBlockCount, setAdBlockCount] = useState(0);
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
+  const [omniboxSuggestOpen, setOmniboxSuggestOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const omniboxRef = useRef<HTMLInputElement>(null);
@@ -62,6 +68,8 @@ export default function App() {
   settingsOpenRef.current = settingsOpen;
   const historyOpenRef = useRef(historyOpen);
   historyOpenRef.current = historyOpen;
+  const omniboxSuggestOpenRef = useRef(omniboxSuggestOpen);
+  omniboxSuggestOpenRef.current = omniboxSuggestOpen;
 
   // Тема
   useEffect(() => {
@@ -179,9 +187,12 @@ export default function App() {
       return;
     }
     const r = el.getBoundingClientRect();
-    const reserve = (findOpenRef.current && !isHubRef.current && !tabErrorRef.current)
-      ? FIND_BAR_RESERVE
-      : 0;
+    const findReserve = (findOpenRef.current && !isHubRef.current && !tabErrorRef.current)
+      ? FIND_BAR_RESERVE : 0;
+    // Дропдаун омнибокса тоже требует резерв сверху — только на реальной странице.
+    const suggestReserve = (omniboxSuggestOpenRef.current && !isHubRef.current && !tabErrorRef.current)
+      ? OMNIBOX_SUGGEST_RESERVE : 0;
+    const reserve = Math.max(findReserve, suggestReserve);
     void window.oblako.setContentBounds({
       x: r.left, y: r.top + reserve,
       width: r.width, height: Math.max(0, r.height - reserve),
@@ -196,9 +207,8 @@ export default function App() {
     return () => { ro.disconnect(); window.removeEventListener('resize', pushBounds); };
   }, [pushBounds]);
 
-  // Пересчёт bounds при смене состояния find-панели:
-  // открытие (+reserve) и закрытие (-reserve) должны синхронно обновить WebContentsView.
-  useEffect(() => { pushBounds(); }, [findOpen, pushBounds]);
+  // Пересчёт bounds при смене состояния find-панели и дропдауна омнибокса.
+  useEffect(() => { pushBounds(); }, [findOpen, omniboxSuggestOpen, pushBounds]);
 
   // когда переключаемся между хабом и сайтом, геометрия дырки та же,
   // но main должен переотобразить вьюху — пушим bounds ещё раз.
@@ -259,7 +269,7 @@ export default function App() {
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
-          tab={active} vpnOn={vpnOn} dark={dark}
+          tab={active} allTabs={tabs} vpnOn={vpnOn} dark={dark}
           omniboxRef={omniboxRef}
           onToggleVpn={() => setVpnOn((v) => !v)}
           onToggleDark={() => setDark((d) => !d)}
@@ -267,6 +277,7 @@ export default function App() {
           onForward={() => window.oblako.goForward(activeId)}
           onReload={() => window.oblako.reload(activeId)}
           onSubmit={submit}
+          onSuggestToggle={setOmniboxSuggestOpen}
         />
         {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView). */}
         <div ref={contentRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
