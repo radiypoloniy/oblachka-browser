@@ -14,15 +14,19 @@
     "build:vite": "vite build",
     "build": "npm run build:vite && npm run build:electron",
     "start": "cross-env NODE_ENV=production electron .",
-    "download-filters": "node scripts/download-filters.mjs"
+    "download-filters": "node scripts/download-filters.mjs",
+    "postinstall": "electron-rebuild -f -w better-sqlite3 || echo [postinstall] better-sqlite3 rebuild skipped — history unavailable without C++ tools"
   },
   "dependencies": {
     "@ghostery/adblocker-electron": "^2.18.0",
+    "better-sqlite3": "^12.11.1",
     "lucide-react": "0.383.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "20.14.0",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
