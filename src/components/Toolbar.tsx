@@ -4,21 +4,42 @@ import type { TabState, HistoryEntry } from '../../shared/ipc';
 import { rankByFrecency, normalizeForOmnibox } from '../../shared/frecency';
 
 // Высота тулбара — должна совпадать с CSS-значением (56px).
-// Дропдаун позиционируется с position:fixed, top = TOOLBAR_HEIGHT.
 const TOOLBAR_HEIGHT = 56;
 // Дебаунс запроса к истории (мс).
 const SUGGEST_DEBOUNCE = 150;
 // Максимум строк в дропдауне.
 const SUGGEST_MAX = 8;
 
+// ── VPN-пилюля: ступенчатое схлопывание ─────────────────────────────────────
+
+type VpnMode = 'full' | 'short' | 'icon';
+
+// Ширина тулбара (= ширина колонки), при которой переключаем режим.
+// full  : полный лейбл «VPN · Финляндия» / «VPN выкл.»
+// short : только «VPN» + цветной индикатор
+// icon  : только иконка-щит + индикатор
+const VPN_THRESHOLD_FULL  = 1150;
+const VPN_THRESHOLD_SHORT =  900;
+
+// Сколько пикселей от центра уходит правая группа кнопок (paddingRight 138 +
+// кнопки + отступы) в каждом режиме. Используется для вычисления ширины омнибокса
+// так, чтобы он не наезжал на правую группу (оба — вправо от центра на это значение).
+const RIGHT_RESERVE: Record<VpnMode, number> = {
+  full:  400, // 138 sys + ~160 VPN + 32×2 AI/Moon + 24 gap ≈ 356 + запас
+  short: 315, // 138 sys +  ~85 VPN + 32×2 AI/Moon + 24 gap ≈ 311
+  icon:  265, // 138 sys +  ~35 VPN + 32×2 AI/Moon + 24 gap ≈ 261
+};
+
+// ── Типы ─────────────────────────────────────────────────────────────────────
+
 type SuggestKind = 'history' | 'tab' | 'search';
 
 interface SuggestItem {
   kind: SuggestKind;
-  label: string;    // основной текст (URL или заголовок)
-  sub?: string;     // вспомогательный текст
-  url: string;      // URL для перехода / переключения
-  tabId?: string;   // только для kind='tab'
+  label: string;
+  sub?: string;
+  url: string;
+  tabId?: string;
 }
 
 interface ToolbarProps {
@@ -36,6 +57,8 @@ interface ToolbarProps {
   onSuggestToggle?: (open: boolean) => void;
 }
 
+// ── Компонент ─────────────────────────────────────────────────────────────────
+
 export default function Toolbar({
   tab, allTabs, vpnOn, dark, omniboxRef: externalRef,
   onToggleVpn, onToggleDark, onBack, onForward, onReload, onSubmit, onSuggestToggle,
@@ -47,17 +70,37 @@ export default function Toolbar({
   const [suggestions, setSuggestions] = useState<SuggestItem[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [toolbarWidth, setToolbarWidth] = useState(1280);
+
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = externalRef ?? internalRef;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  // Измеряем ширину тулбара для расчёта режима VPN и ширины омнибокса.
+  useEffect(() => {
+    const el = toolbarRef.current;
+    if (!el) return;
+    const update = () => setToolbarWidth(el.offsetWidth);
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    update();
+    return () => ro.disconnect();
+  }, []);
+
+  // Режим VPN-пилюли и ширина омнибокса вычисляются из ширины тулбара.
+  // Омнибокс растёт по мере схлопывания VPN — центр не двигается (left:50%).
+  const vpnMode: VpnMode = toolbarWidth >= VPN_THRESHOLD_FULL ? 'full'
+    : toolbarWidth >= VPN_THRESHOLD_SHORT ? 'short'
+    : 'icon';
+  const omniboxWidth = Math.min(620, Math.max(160, toolbarWidth - 2 * RIGHT_RESERVE[vpnMode]));
 
   // Пока не редактируем — поле отражает реальный URL вкладки.
   useEffect(() => {
     if (!editing) setValue(isHub ? '' : (tab?.url ?? ''));
   }, [tab?.url, isHub, editing]);
 
-  // Уведомляем App о смене состояния дропдауна.
   const openDropdown = useCallback(() => {
     setDropdownOpen(true);
     onSuggestToggle?.(true);
@@ -70,20 +113,16 @@ export default function Toolbar({
     onSuggestToggle?.(false);
   }, [onSuggestToggle]);
 
-  // Строим список саджестов по введённой строке.
   const buildSuggestions = useCallback(async (query: string) => {
     if (!query.trim()) { closeDropdown(); return; }
-
     const q = query.toLowerCase();
 
-    // 1. История: IPC-запрос + frecency-сортировка.
     let histEntries: HistoryEntry[] = [];
     try {
       histEntries = await window.oblako.searchHistory(query);
       histEntries = rankByFrecency(histEntries);
     } catch { /* история недоступна */ }
 
-    // Дедупликация по нормализованному URL.
     const seen = new Set<string>();
     const histItems: SuggestItem[] = [];
     for (const e of histEntries) {
@@ -94,21 +133,18 @@ export default function Toolbar({
       if (histItems.length >= 5) break;
     }
 
-    // 2. Открытые вкладки (не хаб, не спящие без URL, совпадение в url/title).
     const tabItems: SuggestItem[] = allTabs
       .filter((t) => !t.isHub && (
         t.url.toLowerCase().includes(q) || t.title.toLowerCase().includes(q)
       ))
       .map((t) => ({ kind: 'tab' as SuggestKind, label: t.url, sub: t.title, url: t.url, tabId: t.id }));
 
-    // 3. Поисковый саджест (всегда в конце).
     const searchItem: SuggestItem = {
       kind: 'search',
       label: `Искать: ${query}`,
       url: `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
     };
 
-    // Приоритет: история и вкладки сверху, поиск снизу. Ограничиваем SUGGEST_MAX строками.
     const tabUrls = new Set(tabItems.map((t) => t.url));
     const deduped = [
       ...tabItems,
@@ -120,7 +156,6 @@ export default function Toolbar({
     openDropdown();
   }, [allTabs, openDropdown, closeDropdown]);
 
-  // Запуск саджестов с дебаунсом.
   const triggerSuggest = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!q.trim()) { closeDropdown(); return; }
@@ -146,10 +181,8 @@ export default function Toolbar({
     } catch { /* noop */ }
   };
 
-  // Клик по саджесту.
   const pickSuggestion = (item: SuggestItem) => {
     if (item.kind === 'tab' && item.tabId) {
-      // Переключение на уже открытую вкладку.
       void window.oblako.activateTab(item.tabId);
       closeDropdown();
       setEditing(false);
@@ -195,12 +228,16 @@ export default function Toolbar({
   };
 
   return (
-    <div className="drag" style={{
-      display: 'flex', alignItems: 'center', gap: 10, height: TOOLBAR_HEIGHT, flex: 'none',
-      paddingLeft: 16,
-      paddingRight: 138,
-      position: 'relative', // нужно для абсолютного позиционирования омнибокса
-    }}>
+    <div
+      ref={toolbarRef}
+      className="drag"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10, height: TOOLBAR_HEIGHT, flex: 'none',
+        paddingLeft: 16, paddingRight: 138,
+        position: 'relative',
+      }}
+    >
+      {/* Кнопки навигации */}
       <div className="no-drag" style={{ display: 'flex', gap: 2 }}>
         <button title="Назад" disabled={!tab?.canGoBack} onClick={onBack}
           style={navBtn(!tab?.canGoBack)}><ArrowLeft size={18} /></button>
@@ -210,18 +247,16 @@ export default function Toolbar({
           style={navBtn(isHub)}><RefreshCw size={17} /></button>
       </div>
 
-      {/* Омнибокс: абсолютно центрируется по полной ширине toolbar-а (= центр contentRef).
-          Внешняя обёртка pointer-events:none — боковые кнопки получают клики сквозь неё.
-          Ширина: max(160px, calc(100% - 820px)) не даёт наезжать на VPN-кнопку на стандартных
-          окнах; 820px = левый край (≈126px) + правый край (≈130px+138px системных) × 2.  */}
+      {/* Омнибокс: абсолютно по центру колонки (left:50%).
+          Ширина растёт при схлопывании VPN — центральная ось неподвижна.
+          pointer-events:none на внешней обёртке — боковые кнопки кликабельны насквозь. */}
       <div style={{
         position: 'absolute',
         left: '50%',
         transform: 'translateX(-50%)',
         top: 0, bottom: 0,
         display: 'flex', alignItems: 'center',
-        width: 'max(160px, calc(100% - 820px))',
-        maxWidth: 620,
+        width: omniboxWidth,
         pointerEvents: 'none',
       }}>
         <div
@@ -242,20 +277,10 @@ export default function Toolbar({
               ref={inputRef}
               value={value}
               placeholder="Введите запрос или адрес"
-              onChange={(e) => {
-                setValue(e.target.value);
-                triggerSuggest(e.target.value);
-              }}
-              onFocus={() => {
-                setEditing(true);
-                if (value.trim()) triggerSuggest(value);
-              }}
+              onChange={(e) => { setValue(e.target.value); triggerSuggest(e.target.value); }}
+              onFocus={() => { setEditing(true); if (value.trim()) triggerSuggest(value); }}
               onBlur={() => {
-                // Задержка: клик по саджесту успеет сработать до закрытия.
-                setTimeout(() => {
-                  setEditing(false);
-                  closeDropdown();
-                }, 150);
+                setTimeout(() => { setEditing(false); closeDropdown(); }, 150);
               }}
               onKeyDown={handleKeyDown}
               style={{
@@ -266,38 +291,31 @@ export default function Toolbar({
             />
             {!isHub && tab?.url && (
               <button title="Копировать адрес" onClick={copyUrl}
-                style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3, display: 'inline-flex', color: copied ? 'var(--dot-local)' : 'var(--text-faint)' }}>
+                style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
+                         display: 'inline-flex', color: copied ? 'var(--dot-local)' : 'var(--text-faint)' }}>
                 {copied ? <Check size={14} /> : <Copy size={14} />}
               </button>
             )}
           </div>
 
-          {/* Дропдаун саджестов: position:fixed в координатах chromeView (всё окно). */}
+          {/* Дропдаун: position:fixed в координатах chromeView (всё окно). */}
           {dropdownOpen && suggestions.length > 0 && (() => {
             const rect = containerRef.current?.getBoundingClientRect();
             if (!rect) return null;
             return (
               <div style={{
-                position: 'fixed',
-                top: TOOLBAR_HEIGHT,
-                left: rect.left,
-                width: rect.width,
+                position: 'fixed', top: TOOLBAR_HEIGHT, left: rect.left, width: rect.width,
                 zIndex: 200,
                 background: 'var(--surface)',
-                backdropFilter: 'var(--glass-filter)',
-                WebkitBackdropFilter: 'var(--glass-filter)',
-                borderRadius: 'var(--radius-card)',
-                boxShadow: 'var(--shadow-island)',
+                backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
+                borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-island)',
                 border: '1px solid var(--glass-edge)',
-                overflow: 'hidden',
-                maxHeight: 280,
-                overflowY: 'auto',
+                overflow: 'hidden', maxHeight: 280, overflowY: 'auto',
               }}>
                 {suggestions.map((item, idx) => (
                   <SuggestRow
                     key={`${item.kind}-${item.url}`}
-                    item={item}
-                    active={idx === selectedIdx}
+                    item={item} active={idx === selectedIdx}
                     onMouseDown={() => pickSuggestion(item)}
                     onMouseEnter={() => setSelectedIdx(idx)}
                   />
@@ -308,20 +326,10 @@ export default function Toolbar({
         </div>
       </div>
 
-      {/* marginLeft: auto → правая группа прижимается к правому краю flex-контейнера */}
+      {/* Правая группа: VPN-пилюля (схлопывается) + AI + тема.
+          marginLeft:auto прижимает к правому краю flex-контейнера. */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-        <button onClick={onToggleVpn} title="VPN" style={{
-          display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 12px',
-          borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'default',
-          background: vpnOn ? 'var(--surface)' : 'var(--surface-sunken)',
-          boxShadow: vpnOn ? 'var(--shadow-card)' : 'none',
-          fontSize: 'var(--fs-sm)', fontWeight: 500,
-          color: vpnOn ? 'var(--text-strong)' : 'var(--text-muted)',
-        }}>
-          <Shield size={15} style={{ color: vpnOn ? 'var(--dot-vpn)' : 'var(--text-faint)' }} />
-          {vpnOn ? 'VPN · Финляндия' : 'VPN выкл.'}
-          {vpnOn && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--dot-vpn)' }} />}
-        </button>
+        <VpnPill vpnOn={vpnOn} mode={vpnMode} onClick={onToggleVpn} />
         <button title="AI-хаб" style={{ ...navBtn(false), background: 'var(--accent-soft)', color: 'var(--accent)' }}>
           <Sparkles size={18} />
         </button>
@@ -334,17 +342,92 @@ export default function Toolbar({
   );
 }
 
+// ── VPN-пилюля ───────────────────────────────────────────────────────────────
+
+function VpnPill({ vpnOn, mode, onClick }: { vpnOn: boolean; mode: VpnMode; onClick: () => void }) {
+  const shieldColor = vpnOn ? 'var(--dot-vpn)' : 'var(--text-faint)';
+  const dot = vpnOn
+    ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--dot-vpn)', flex: 'none' }} />
+    : null;
+
+  if (mode === 'icon') {
+    // Только щит + цветная точка (если VPN включён).
+    return (
+      <button
+        onClick={onClick}
+        title={vpnOn ? 'VPN включён' : 'VPN выкл.'}
+        style={{
+          ...navBtn(false),
+          position: 'relative',
+          color: shieldColor,
+          background: vpnOn ? 'var(--surface)' : 'transparent',
+          boxShadow: vpnOn ? 'var(--shadow-card)' : 'none',
+        }}
+      >
+        <Shield size={15} />
+        {vpnOn && (
+          // Маленький индикатор поверх иконки.
+          <span style={{
+            position: 'absolute', bottom: 5, right: 5,
+            width: 5, height: 5, borderRadius: '50%', background: 'var(--dot-vpn)',
+          }} />
+        )}
+      </button>
+    );
+  }
+
+  if (mode === 'short') {
+    // «VPN» + индикатор — без страны.
+    return (
+      <button
+        onClick={onClick}
+        title={vpnOn ? 'VPN · Финляндия' : 'VPN выкл.'}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 10px',
+          borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'default',
+          background: vpnOn ? 'var(--surface)' : 'var(--surface-sunken)',
+          boxShadow: vpnOn ? 'var(--shadow-card)' : 'none',
+          fontSize: 'var(--fs-sm)', fontWeight: 500,
+          color: vpnOn ? 'var(--text-strong)' : 'var(--text-muted)',
+        }}
+      >
+        <Shield size={15} style={{ color: shieldColor }} />
+        VPN
+        {dot}
+      </button>
+    );
+  }
+
+  // full — полный лейбл.
+  return (
+    <button
+      onClick={onClick}
+      title="VPN"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 12px',
+        borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'default',
+        background: vpnOn ? 'var(--surface)' : 'var(--surface-sunken)',
+        boxShadow: vpnOn ? 'var(--shadow-card)' : 'none',
+        fontSize: 'var(--fs-sm)', fontWeight: 500,
+        color: vpnOn ? 'var(--text-strong)' : 'var(--text-muted)',
+      }}
+    >
+      <Shield size={15} style={{ color: shieldColor }} />
+      {vpnOn ? 'VPN · Финляндия' : 'VPN выкл.'}
+      {dot}
+    </button>
+  );
+}
+
+// ── Строка дропдауна ──────────────────────────────────────────────────────────
+
 function SuggestRow({ item, active, onMouseDown, onMouseEnter }: {
   item: SuggestItem;
   active: boolean;
   onMouseDown: () => void;
   onMouseEnter: () => void;
 }) {
-  const icon = item.kind === 'tab'
-    ? <Globe size={13} />
-    : item.kind === 'search'
-      ? <Search size={13} />
-      : <Globe size={13} />;
+  const icon = item.kind === 'search' ? <Search size={13} /> : <Globe size={13} />;
 
   return (
     <div
@@ -354,8 +437,7 @@ function SuggestRow({ item, active, onMouseDown, onMouseEnter }: {
         display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
         cursor: 'default',
         background: active ? 'var(--surface-sunken)' : 'transparent',
-        transition: 'background 0.08s',
-        minWidth: 0,
+        transition: 'background 0.08s', minWidth: 0,
       }}
     >
       <span style={{ color: 'var(--text-faint)', flex: 'none', display: 'inline-flex' }}>
@@ -385,6 +467,8 @@ function SuggestRow({ item, active, onMouseDown, onMouseEnter }: {
     </div>
   );
 }
+
+// ── Стиль кнопки навигации ────────────────────────────────────────────────────
 
 function navBtn(disabled: boolean): React.CSSProperties {
   return {
