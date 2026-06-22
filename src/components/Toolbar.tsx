@@ -199,6 +199,7 @@ export default function Toolbar({
       display: 'flex', alignItems: 'center', gap: 10, height: TOOLBAR_HEIGHT, flex: 'none',
       paddingLeft: 16,
       paddingRight: 138,
+      position: 'relative', // нужно для абсолютного позиционирования омнибокса
     }}>
       <div className="no-drag" style={{ display: 'flex', gap: 2 }}>
         <button title="Назад" disabled={!tab?.canGoBack} onClick={onBack}
@@ -209,91 +210,106 @@ export default function Toolbar({
           style={navBtn(isHub)}><RefreshCw size={17} /></button>
       </div>
 
-      {/* Омнибокс + дропдаун */}
-      <div
-        ref={containerRef}
-        className="no-drag"
-        style={{ flex: 1, maxWidth: 620, margin: '0 auto', position: 'relative' }}
-      >
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8, height: 38,
-          padding: '0 12px', borderRadius: 'var(--radius-pill)',
-          background: 'var(--surface-sunken)',
-          boxShadow: 'inset 0 0 0 1px var(--divider)',
-        }}>
-          <span style={{ color: 'var(--text-faint)', display: 'inline-flex' }}>
-            {isHub ? <Search size={15} /> : <Lock size={14} />}
-          </span>
-          <input
-            ref={inputRef}
-            value={value}
-            placeholder="Введите запрос или адрес"
-            onChange={(e) => {
-              setValue(e.target.value);
-              triggerSuggest(e.target.value);
-            }}
-            onFocus={() => {
-              setEditing(true);
-              if (value.trim()) triggerSuggest(value);
-            }}
-            onBlur={() => {
-              // Задержка: клик по саджесту успеет сработать до закрытия.
-              setTimeout(() => {
-                setEditing(false);
-                closeDropdown();
-              }, 150);
-            }}
-            onKeyDown={handleKeyDown}
-            style={{
-              flex: 1, border: 'none', background: 'transparent', outline: 'none',
-              fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
-              fontFamily: isHub ? 'var(--font-sans)' : 'var(--font-mono)',
-            }}
-          />
-          {!isHub && tab?.url && (
-            <button title="Копировать адрес" onClick={copyUrl}
-              style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3, display: 'inline-flex', color: copied ? 'var(--dot-local)' : 'var(--text-faint)' }}>
-              {copied ? <Check size={14} /> : <Copy size={14} />}
-            </button>
-          )}
-        </div>
+      {/* Омнибокс: абсолютно центрируется по полной ширине toolbar-а (= центр contentRef).
+          Внешняя обёртка pointer-events:none — боковые кнопки получают клики сквозь неё.
+          Ширина: max(160px, calc(100% - 820px)) не даёт наезжать на VPN-кнопку на стандартных
+          окнах; 820px = левый край (≈126px) + правый край (≈130px+138px системных) × 2.  */}
+      <div style={{
+        position: 'absolute',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        top: 0, bottom: 0,
+        display: 'flex', alignItems: 'center',
+        width: 'max(160px, calc(100% - 820px))',
+        maxWidth: 620,
+        pointerEvents: 'none',
+      }}>
+        <div
+          ref={containerRef}
+          className="no-drag"
+          style={{ width: '100%', position: 'relative', pointerEvents: 'auto' }}
+        >
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, height: 38,
+            padding: '0 12px', borderRadius: 'var(--radius-pill)',
+            background: 'var(--surface-sunken)',
+            boxShadow: 'inset 0 0 0 1px var(--divider)',
+          }}>
+            <span style={{ color: 'var(--text-faint)', display: 'inline-flex' }}>
+              {isHub ? <Search size={15} /> : <Lock size={14} />}
+            </span>
+            <input
+              ref={inputRef}
+              value={value}
+              placeholder="Введите запрос или адрес"
+              onChange={(e) => {
+                setValue(e.target.value);
+                triggerSuggest(e.target.value);
+              }}
+              onFocus={() => {
+                setEditing(true);
+                if (value.trim()) triggerSuggest(value);
+              }}
+              onBlur={() => {
+                // Задержка: клик по саджесту успеет сработать до закрытия.
+                setTimeout(() => {
+                  setEditing(false);
+                  closeDropdown();
+                }, 150);
+              }}
+              onKeyDown={handleKeyDown}
+              style={{
+                flex: 1, border: 'none', background: 'transparent', outline: 'none',
+                fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
+                fontFamily: isHub ? 'var(--font-sans)' : 'var(--font-mono)',
+              }}
+            />
+            {!isHub && tab?.url && (
+              <button title="Копировать адрес" onClick={copyUrl}
+                style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3, display: 'inline-flex', color: copied ? 'var(--dot-local)' : 'var(--text-faint)' }}>
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+              </button>
+            )}
+          </div>
 
-        {/* Дропдаун саджестов: position:fixed — в координатах chromeView (всё окно). */}
-        {dropdownOpen && suggestions.length > 0 && (() => {
-          const rect = containerRef.current?.getBoundingClientRect();
-          if (!rect) return null;
-          return (
-            <div style={{
-              position: 'fixed',
-              top: TOOLBAR_HEIGHT,
-              left: rect.left,
-              width: rect.width,
-              zIndex: 200,
-              background: 'var(--surface)',
-              backdropFilter: 'var(--glass-filter)',
-              WebkitBackdropFilter: 'var(--glass-filter)',
-              borderRadius: 'var(--radius-card)',
-              boxShadow: 'var(--shadow-island)',
-              border: '1px solid var(--glass-edge)',
-              overflow: 'hidden',
-              maxHeight: 280,
-              overflowY: 'auto',
-            }}>
-              {suggestions.map((item, idx) => (
-                <SuggestRow
-                  key={`${item.kind}-${item.url}`}
-                  item={item}
-                  active={idx === selectedIdx}
-                  onMouseDown={() => pickSuggestion(item)}
-                  onMouseEnter={() => setSelectedIdx(idx)}
-                />
-              ))}
-            </div>
-          );
-        })()}
+          {/* Дропдаун саджестов: position:fixed в координатах chromeView (всё окно). */}
+          {dropdownOpen && suggestions.length > 0 && (() => {
+            const rect = containerRef.current?.getBoundingClientRect();
+            if (!rect) return null;
+            return (
+              <div style={{
+                position: 'fixed',
+                top: TOOLBAR_HEIGHT,
+                left: rect.left,
+                width: rect.width,
+                zIndex: 200,
+                background: 'var(--surface)',
+                backdropFilter: 'var(--glass-filter)',
+                WebkitBackdropFilter: 'var(--glass-filter)',
+                borderRadius: 'var(--radius-card)',
+                boxShadow: 'var(--shadow-island)',
+                border: '1px solid var(--glass-edge)',
+                overflow: 'hidden',
+                maxHeight: 280,
+                overflowY: 'auto',
+              }}>
+                {suggestions.map((item, idx) => (
+                  <SuggestRow
+                    key={`${item.kind}-${item.url}`}
+                    item={item}
+                    active={idx === selectedIdx}
+                    onMouseDown={() => pickSuggestion(item)}
+                    onMouseEnter={() => setSelectedIdx(idx)}
+                  />
+                ))}
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
-      <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* marginLeft: auto → правая группа прижимается к правому краю flex-контейнера */}
+      <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
         <button onClick={onToggleVpn} title="VPN" style={{
           display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 12px',
           borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'default',
