@@ -1,19 +1,63 @@
-import { useState } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Shield, Clock } from 'lucide-react';
-import type { TabState } from '../../shared/ipc';
+import { useState, useEffect, useRef } from 'react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Shield, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw } from 'lucide-react';
+import type { ClusterProposal } from '../services/ClusteringService';
+import {
+  DndContext, DragOverlay,
+  PointerSensor, useSensor, useSensors,
+  closestCenter, useDroppable,
+  type DragStartEvent, type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, verticalListSortingStrategy,
+  useSortable, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import type { TabState, SidebarNode, GroupNode } from '../../shared/ipc';
+
+// Стабильный id droppable-контейнера секции «Открытые вкладки».
+const SECTION_NORMAL_ID = 'drop-section-normal';
+
+// ID для dnd-kit: single → tabId, pair → leftTabId, group → 'group:${id}'
+const nodeToTopId = (node: SidebarNode): string =>
+  node.type === 'single' ? node.tabId
+  : node.type === 'split-pair' ? node.leftTabId
+  : `group:${node.id}`;
+
+const GROUP_COLORS: Record<string, string> = {
+  red: '#ef4444', orange: '#f97316', yellow: '#eab308',
+  green: '#22c55e', blue: '#3b82f6', purple: '#a855f7',
+};
 
 interface SidebarProps {
   tabs: TabState[];
+  sidebarNodes: SidebarNode[];
   activeId: string;
+  collapsed: boolean;
+  onCollapsedChange: (v: boolean) => void;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onNewTab: () => void;
   onTabMenu: (id: string) => void;
-  onSplit: (id: string) => void;  // войти в split с этой вкладкой как правой панелью
-  onExitSplit: () => void;        // схлопнуть split, обе вкладки остаются открытыми
-  onSettings: () => void;         // открыть / закрыть экран настроек
-  onHistory: () => void;          // открыть / закрыть панель истории
-  adBlockCount: number;           // заблокировано за сессию — обновляется push-ем из main
+  onSplit: (id: string) => void;
+  onExitSplit: () => void;
+  onSettings: () => void;
+  onHistory: () => void;
+  adBlockCount: number;
+  onReorder: (section: 'normal' | 'pinned', orderedIds: string[]) => void;
+  onMoveSection: (tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number) => void;
+  getContentRect: () => DOMRect | null;
+  onDragOverContent: (over: boolean) => void;
+  onDropOnContent: (tabId: string) => void;
+  // AI-группировка
+  organizeTabsCount: number;
+  organizeState: 'idle' | 'computing' | 'preview';
+  organizeProposal: ClusterProposal[];
+  hasOrganizeSnapshot: boolean;
+  onOrganize: () => void;
+  onOrganizeApply: () => void;
+  onOrganizeCancel: () => void;
+  onOrganizeRollback: () => void;
 }
 
 function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
@@ -29,7 +73,6 @@ function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
     );
   }
 
-  // Иконка + лунный значок для спящих вкладок
   const tileSize = size + 6;
   let inner: React.ReactNode;
   if (tab.faviconUrl) {
@@ -54,7 +97,6 @@ function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
 
   if (!tab.isSleeping) return <>{inner}</>;
 
-  // Спящая: фавикон + маленькая луна в правом нижнем углу
   return (
     <span style={{ position: 'relative', display: 'inline-flex', flex: 'none' }}>
       {inner}
@@ -67,16 +109,23 @@ function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
   );
 }
 
-function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitSplit }: {
-  tab: TabState; active: boolean; onClick: () => void; onClose: () => void;
-  onContextMenu: () => void; onSplit?: () => void; onExitSplit?: () => void;
-}) {
+interface TabRowProps {
+  tab: TabState;
+  active: boolean;
+  onClick: () => void;
+  onClose: () => void;
+  onContextMenu: () => void;
+  onSplit?: () => void;
+  onExitSplit?: () => void;
+  // Во время DragOverlay-рендера кнопки не нужны (ghost — только визуал).
+  ghost?: boolean;
+  // Скрывает «открыть рядом», пока split уже активен (избегаем молчаливого no-op).
+  splitActive?: boolean;
+}
+
+function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitSplit, ghost, splitActive }: TabRowProps) {
   const [hovered, setHovered] = useState(false);
   const inSplit = tab.splitSide !== null;
-  // Три визуальных состояния:
-  //   active       → полная подсветка (surface + shadow + bold)
-  //   inSplit      → лёгкая подсветка (surface-hover без shadow) — «припаркован»
-  //   иначе        → прозрачный / hover при наведении
   const bg = active ? 'var(--surface)'
     : inSplit ? 'var(--surface-hover)'
     : hovered  ? 'var(--surface-hover)'
@@ -84,14 +133,13 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
 
   return (
     <div
-      onClick={onClick}
-      onContextMenu={(e) => { e.preventDefault(); onContextMenu(); }}
-      onMouseDown={(e) => {
-        // Средний клик = закрыть (только незакреплённые — закреплённые защищены).
+      onClick={ghost ? undefined : onClick}
+      onContextMenu={ghost ? undefined : (e) => { e.preventDefault(); onContextMenu(); }}
+      onMouseDown={ghost ? undefined : (e) => {
         if (e.button === 1) { e.preventDefault(); if (!tab.isHub && !tab.isPinned) onClose(); }
       }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={ghost ? undefined : () => setHovered(true)}
+      onMouseLeave={ghost ? undefined : () => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px',
         borderRadius: 'var(--radius-sm)', cursor: 'default',
@@ -99,7 +147,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
         boxShadow: active ? 'var(--shadow-card)' : 'none',
         color: active ? 'var(--text-strong)' : 'var(--text-body)',
         opacity: tab.isSleeping ? 0.6 : 1,
-        transition: 'background var(--dur-fast) var(--ease-standard)',
+        transition: ghost ? undefined : 'background var(--dur-fast) var(--ease-standard)',
       }}
     >
       <FaviconTile tab={tab} />
@@ -116,49 +164,34 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
         }} />
       )}
 
-      {/* Индикатор split — кнопка «выйти из split» (обе вкладки остаются) */}
-      {inSplit && onExitSplit && (
+      {!ghost && inSplit && onExitSplit && (
         <button
           className="no-drag"
           onClick={(e) => { e.stopPropagation(); onExitSplit(); }}
           title="Выйти из split (обе вкладки останутся)"
-          style={{
-            border: 'none', background: 'transparent', cursor: 'default',
-            padding: 2, borderRadius: 4, display: 'inline-flex',
-            color: 'var(--accent)', flex: 'none',
-          }}
+          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--accent)', flex: 'none' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         ><Columns2 size={12} /></button>
       )}
 
-      {/* Кнопка входа в split — при наведении на обычную неактивную вкладку */}
-      {hovered && !tab.isHub && !tab.isPinned && !inSplit && !active && onSplit && (
+      {!ghost && hovered && !tab.isHub && !tab.isPinned && !inSplit && !active && !splitActive && onSplit && (
         <button
           className="no-drag"
           onClick={(e) => { e.stopPropagation(); onSplit(); }}
           title="Открыть рядом"
-          style={{
-            border: 'none', background: 'transparent', cursor: 'default',
-            padding: 2, borderRadius: 4, display: 'inline-flex',
-            color: 'var(--text-faint)', flex: 'none',
-          }}
+          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         ><Columns2 size={14} /></button>
       )}
 
-      {/* Кнопка закрытия — всегда видима для незакреплённых вкладок */}
-      {!tab.isHub && !tab.isPinned && (
+      {!ghost && !tab.isHub && !tab.isPinned && (
         <button
           className="no-drag"
           onClick={(e) => { e.stopPropagation(); onClose(); }}
           title="Закрыть вкладку"
-          style={{
-            border: 'none', background: 'transparent', cursor: 'default',
-            padding: 2, borderRadius: 4, display: 'inline-flex',
-            color: 'var(--text-faint)', flex: 'none',
-          }}
+          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         ><X size={14} /></button>
@@ -167,7 +200,374 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
   );
 }
 
-// Базовые стили aside — одинаковы для обоих режимов.
+// Обёртка для drag-and-drop одного ряда.
+// disabled=true когда вкладка в split: tab.splitSide реактивен (обновляется при TABS_CHANGED),
+// поэтому disabled корректно пересчитывается при входе/выходе из split.
+function SortableTabRow(props: TabRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: props.tab.id,
+    disabled: props.tab.splitSide !== null,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        // Исходный элемент прозрачен пока drag активен — DragOverlay рисует ghost.
+        opacity: isDragging ? 0 : 1,
+        flexShrink: 0,
+      }}
+      {...attributes}
+      {...listeners}
+    >
+      <TabRow {...props} />
+    </div>
+  );
+}
+
+// Split-пара как единый неперетаскиваемый блок (drag разблокируется в 2c).
+// Arc-стиль: одна горизонтальная строка с двумя mini-ячейками.
+function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContextMenu, onExitSplit }: {
+  left: TabState;
+  right: TabState;
+  activeId: string;
+  onSelect: (id: string) => void;
+  onClose: (id: string) => void;
+  onContextMenu: (id: string) => void;
+  onExitSplit: () => void;
+}) {
+  const [hoveredSide, setHoveredSide] = useState<'left' | 'right' | null>(null);
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: left.id,
+    disabled: true,
+  });
+
+  const leftActive  = activeId === left.id;
+  const rightActive = activeId === right.id;
+  const leftShowExit  = leftActive || !rightActive;
+  const rightShowExit = rightActive;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        display: 'flex', alignItems: 'stretch',
+        borderRadius: 'var(--radius-sm)',
+        border: '1px solid var(--divider-strong)',
+        overflow: 'hidden',
+        flexShrink: 0,
+        minHeight: 36,
+      }}
+      {...attributes}
+      {...listeners}
+    >
+      {/* Левая ячейка */}
+      <div
+        onClick={() => { if (!leftActive) onSelect(left.id); }}
+        onContextMenu={(e) => { e.preventDefault(); onContextMenu(left.id); }}
+        onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(left.id); } }}
+        onMouseEnter={() => setHoveredSide('left')}
+        onMouseLeave={() => setHoveredSide(null)}
+        style={{
+          flex: 1, display: 'flex', alignItems: 'center', gap: 4,
+          padding: '0 8px', minWidth: 0, cursor: 'default',
+          background: leftActive ? 'var(--surface)' : 'transparent',
+          boxShadow: leftActive ? 'var(--shadow-card)' : 'none',
+        }}
+      >
+        <FaviconTile tab={left} size={12} />
+        <span style={{
+          flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)',
+          fontWeight: leftActive ? 600 : 500,
+          color: leftActive ? 'var(--text-strong)' : 'var(--text-body)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>{left.title || left.url || 'Загрузка…'}</span>
+        {leftShowExit && (
+          <button
+            className="no-drag"
+            onClick={(e) => { e.stopPropagation(); onExitSplit(); }}
+            title="Выйти из split (обе вкладки останутся)"
+            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--accent)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          ><Columns2 size={12} /></button>
+        )}
+        {hoveredSide === 'left' && (
+          <button
+            className="no-drag"
+            onClick={(e) => { e.stopPropagation(); onClose(left.id); }}
+            title="Закрыть левую панель"
+            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          ><X size={12} /></button>
+        )}
+      </div>
+
+      {/* Вертикальный разделитель */}
+      <div style={{ width: 1, background: 'var(--divider-strong)', alignSelf: 'stretch', margin: '4px 0', flex: 'none' }} />
+
+      {/* Правая ячейка */}
+      <div
+        onClick={() => { if (!rightActive) onSelect(right.id); }}
+        onContextMenu={(e) => { e.preventDefault(); onContextMenu(right.id); }}
+        onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(right.id); } }}
+        onMouseEnter={() => setHoveredSide('right')}
+        onMouseLeave={() => setHoveredSide(null)}
+        style={{
+          flex: 1, display: 'flex', alignItems: 'center', gap: 4,
+          padding: '0 8px', minWidth: 0, cursor: 'default',
+          background: rightActive ? 'var(--surface)' : 'transparent',
+          boxShadow: rightActive ? 'var(--shadow-card)' : 'none',
+        }}
+      >
+        <FaviconTile tab={right} size={12} />
+        <span style={{
+          flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)',
+          fontWeight: rightActive ? 600 : 500,
+          color: rightActive ? 'var(--text-strong)' : 'var(--text-body)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>{right.title || right.url || 'Загрузка…'}</span>
+        {rightShowExit && (
+          <button
+            className="no-drag"
+            onClick={(e) => { e.stopPropagation(); onExitSplit(); }}
+            title="Выйти из split (обе вкладки останутся)"
+            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--accent)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          ><Columns2 size={12} /></button>
+        )}
+        {hoveredSide === 'right' && (
+          <button
+            className="no-drag"
+            onClick={(e) => { e.stopPropagation(); onClose(right.id); }}
+            title="Закрыть правую панель"
+            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          ><X size={12} /></button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Блок группы: заголовок (drag handle для внешнего DndContext)
+// + собственный inner DndContext для сортировки детей.
+interface GroupBlockProps {
+  group: GroupNode;
+  tabMap: Map<string, TabState>;
+  activeId: string;
+  onSelect: (id: string) => void;
+  onClose: (id: string) => void;
+  onContextMenu: (id: string) => void;
+  onSplit: (id: string) => void;
+  onExitSplit: () => void;
+  splitActive: boolean;
+  renameGroupId: string | null;
+  setRenameGroupId: (id: string | null) => void;
+}
+
+function SortableGroupBlock({
+  group, tabMap, activeId, onSelect, onClose, onContextMenu,
+  onSplit, onExitSplit, splitActive, renameGroupId, setRenameGroupId,
+}: GroupBlockProps) {
+  const innerSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const [localChildOrder, setLocalChildOrder] = useState<string[] | null>(null);
+  const [renameValue, setRenameValue] = useState(group.label);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const isRenaming = renameGroupId === group.id;
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `group:${group.id}`,
+  });
+
+  const childIds = group.children.map(nodeToTopId);
+
+  // Сбросить оптимистичный порядок детей при изменении состава группы из main
+  useEffect(() => {
+    if (!localChildOrder) return;
+    const curSet = new Set(localChildOrder);
+    if (localChildOrder.length !== childIds.length || childIds.some((id) => !curSet.has(id))) {
+      setLocalChildOrder(null);
+      return;
+    }
+    if (localChildOrder.every((id, i) => id === childIds[i])) {
+      setLocalChildOrder(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group.children]);
+
+  // При активации переименования — синхронизировать текущий label и сфокусировать
+  useEffect(() => {
+    if (!isRenaming) return;
+    setRenameValue(group.label);
+    requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRenaming]);
+
+  const effectiveChildIds = localChildOrder ?? childIds;
+  const childNodeById = new Map<string, SidebarNode>();
+  for (const child of group.children) {
+    childNodeById.set(nodeToTopId(child), child);
+  }
+  const effectiveChildren = effectiveChildIds
+    .map((id) => childNodeById.get(id))
+    .filter((n): n is SidebarNode => n !== undefined);
+
+  const handleChildDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = effectiveChildIds.indexOf(active.id as string);
+    const to   = effectiveChildIds.indexOf(over.id as string);
+    if (from < 0 || to < 0 || from === to) return;
+    const newOrder = arrayMove(effectiveChildIds, from, to);
+    setLocalChildOrder(newOrder);
+    void window.oblako.reorderGroupChildren(group.id, newOrder);
+  };
+
+  const commitRename = () => {
+    const trimmed = renameValue.trim();
+    if (trimmed) void window.oblako.renameGroup(group.id, trimmed);
+    setRenameGroupId(null);
+  };
+
+  const colorDot = group.color ? (GROUP_COLORS[group.color] ?? null) : null;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1, flexShrink: 0 }}
+    >
+      {/* Заголовок группы — drag handle (listeners отключены при переименовании) */}
+      <div
+        {...attributes}
+        {...(isRenaming ? {} : listeners)}
+        onContextMenu={(e) => {
+          if (isRenaming) return;
+          e.preventDefault();
+          void window.oblako.showGroupMenu(group.id);
+        }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '6px 10px', borderRadius: 'var(--radius-sm)',
+          cursor: isRenaming ? 'default' : 'grab',
+          userSelect: 'none',
+        }}
+        onMouseEnter={(e) => { if (!isRenaming) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      >
+        {/* Цветная точка */}
+        <span style={{
+          width: 10, height: 10, borderRadius: '50%', flex: 'none',
+          background: colorDot ?? 'transparent',
+          border: colorDot ? 'none' : '1.5px solid var(--text-faint)',
+        }} />
+
+        {/* Метка или поле переименования */}
+        {isRenaming ? (
+          <input
+            ref={renameInputRef}
+            className="no-drag"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter')  { e.preventDefault(); commitRename(); }
+              if (e.key === 'Escape') { e.preventDefault(); setRenameGroupId(null); }
+            }}
+            style={{
+              flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: 600,
+              background: 'var(--surface)', border: '1px solid var(--accent)',
+              borderRadius: 4, padding: '1px 6px', color: 'var(--text-strong)',
+              outline: 'none',
+            }}
+          />
+        ) : (
+          <span style={{
+            flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: 600,
+            color: 'var(--text-body)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>{group.label}</span>
+        )}
+
+        {/* Свернуть / развернуть */}
+        <button
+          className="no-drag"
+          onClick={(e) => { e.stopPropagation(); void window.oblako.toggleGroupCollapse(group.id); }}
+          title={group.collapsed ? 'Развернуть группу' : 'Свернуть группу'}
+          style={{
+            border: 'none', background: 'transparent', cursor: 'default',
+            padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none',
+            color: 'var(--text-faint)',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        >
+          {group.collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+        </button>
+      </div>
+
+      {/* Дети группы с собственным DndContext для внутренней сортировки */}
+      {!group.collapsed && (
+        <DndContext
+          sensors={innerSensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis]}
+          onDragEnd={handleChildDragEnd}
+        >
+          <SortableContext items={effectiveChildIds} strategy={verticalListSortingStrategy}>
+            <div style={{ paddingLeft: 14, paddingBottom: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {effectiveChildren.map((child) => {
+                if (child.type === 'single') {
+                  const tab = tabMap.get(child.tabId);
+                  if (!tab) return null;
+                  return (
+                    <SortableTabRow
+                      key={child.tabId}
+                      tab={tab}
+                      active={activeId === tab.id}
+                      onClick={() => onSelect(tab.id)}
+                      onClose={() => onClose(tab.id)}
+                      onContextMenu={() => onContextMenu(tab.id)}
+                      onSplit={() => onSplit(tab.id)}
+                      onExitSplit={onExitSplit}
+                      splitActive={splitActive}
+                    />
+                  );
+                }
+                if (child.type === 'split-pair') {
+                  const left = tabMap.get(child.leftTabId);
+                  const right = tabMap.get(child.rightTabId);
+                  if (!left || !right) return null;
+                  return (
+                    <SortablePairBlock
+                      key={child.leftTabId}
+                      left={left} right={right}
+                      activeId={activeId}
+                      onSelect={onSelect} onClose={onClose}
+                      onContextMenu={onContextMenu} onExitSplit={onExitSplit}
+                    />
+                  );
+                }
+                return null;
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
+    </div>
+  );
+}
+
 const asideBase: React.CSSProperties = {
   flex: 'none', height: '100%', display: 'flex', flexDirection: 'column',
   background: 'var(--surface-island)',
@@ -176,19 +576,259 @@ const asideBase: React.CSSProperties = {
   overflow: 'hidden',
 };
 
-export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit, onSettings, onHistory, adBlockCount }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+export default function Sidebar({
+  tabs, sidebarNodes, activeId, collapsed, onCollapsedChange,
+  onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit,
+  onSettings, onHistory, adBlockCount, onReorder, onMoveSection,
+  getContentRect, onDragOverContent, onDropOnContent,
+  organizeTabsCount, organizeState, organizeProposal,
+  hasOrganizeSnapshot, onOrganize, onOrganizeApply, onOrganizeCancel, onOrganizeRollback,
+}: SidebarProps) {
 
   const hub = tabs.filter((t) => t.isHub);
-  const pinned = tabs.filter((t) => t.isPinned && !t.isHub);
-  const open = tabs.filter((t) => !t.isHub && !t.isPinned);
+
+  // Оптимистичный порядок: применяется сразу при drop, до ответа main.
+  const [localPinnedOrder, setLocalPinnedOrder] = useState<string[] | null>(null);
+  const [localOpenOrder,   setLocalOpenOrder]   = useState<string[] | null>(null);
+  // ID группы, которая сейчас в режиме inline-переименования
+  const [renameGroupId, setRenameGroupId] = useState<string | null>(null);
+
+  const REORDER_CONFIRM_MS = 3000;
+  const openTimeoutRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pinnedTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contentOverRef    = useRef(false);
+  const moveListenerRef   = useRef<((e: PointerEvent) => void) | null>(null);
+
+  // Валидация оптимистичного порядка при любом изменении tabs или sidebarNodes.
+  // Если состав ID изменился → сброс (закрытие/открытие/группировка).
+  // Если порядок совпал с оптимистичным → подтверждение, сброс.
+  useEffect(() => {
+    const newTopIds    = sidebarNodes.map(nodeToTopId);
+    const newPinnedIds = tabs.filter((t) => t.isPinned && !t.isHub).map((t) => t.id);
+
+    const decide = (cur: string[], newIds: string[]): string[] | null => {
+      const curSet = new Set(cur);
+      if (cur.length !== newIds.length || newIds.some((id) => !curSet.has(id))) return null;
+      if (cur.every((id, i) => id === newIds[i])) return null;
+      return cur;
+    };
+
+    setLocalOpenOrder((cur)   => (cur === null ? null : decide(cur, newTopIds)));
+    setLocalPinnedOrder((cur) => (cur === null ? null : decide(cur, newPinnedIds)));
+  }, [tabs, sidebarNodes]);
+
+  // Подписка на GROUP_RENAME_PROMPT: нативное меню просит начать inline-переименование
+  useEffect(() => {
+    return window.oblako.onGroupRenamePrompt((groupId) => setRenameGroupId(groupId));
+  }, []);
+
+  // Очистка таймаутов и pointermove-слушателя при размонтировании.
+  useEffect(() => {
+    return () => {
+      if (openTimeoutRef.current)   clearTimeout(openTimeoutRef.current);
+      if (pinnedTimeoutRef.current) clearTimeout(pinnedTimeoutRef.current);
+      if (moveListenerRef.current) {
+        document.removeEventListener('pointermove', moveListenerRef.current);
+        moveListenerRef.current = null;
+      }
+    };
+  }, []);
+
+  const pinnedBase = tabs.filter((t) => t.isPinned && !t.isHub);
+  // При любом активном split прячем кнопку «открыть рядом» на обычных вкладках.
+  const anySplitActive = tabs.some((t) => t.splitSide !== null);
+
+  // Карта tabId → TabState для O(1)-поиска (нужна до pinned: при активной оптимистике
+  // ищем вкладку здесь, а не в pinnedBase — tabs ещё не обновился).
+  const tabMap = new Map(tabs.map((t) => [t.id, t]));
+
+  // pinned: при активном localPinnedOrder берём TabState из tabMap.
+  // Это даёт мгновенный показ X в секции закреплённых ДО ответа main —
+  // без этого pinned.find() не находит X (tabs ещё isPinned=false) и dnd-kit
+  // анимирует snap-back.
+  const pinned: TabState[] = localPinnedOrder
+    ? localPinnedOrder.map((id) => tabMap.get(id)).filter((t): t is TabState => t !== undefined && !t.isHub)
+    : pinnedBase;
+
+  // Набор «эффективно закреплённых» для фильтрации открытой секции:
+  // оптимистика в приоритете — это предотвращает дубль X в обеих секциях
+  // во время race-окна между TABS_CHANGED и SIDEBAR_NODES_CHANGED
+  // (два сообщения приходят отдельными рендерами).
+  const effectivePinnedIds: Set<string> = localPinnedOrder
+    ? new Set(localPinnedOrder)
+    : new Set(pinnedBase.map((t) => t.id));
+
+  // Канонические ID верхнего уровня: single→tabId, pair→leftTabId, group→'group:${id}'
+  const topLevelOpenIds = sidebarNodes.map(nodeToTopId);
+
+  // Карта topId → SidebarNode для восстановления порядка при localOpenOrder
+  const nodeByTopId = new Map<string, SidebarNode>();
+  for (const node of sidebarNodes) {
+    nodeByTopId.set(nodeToTopId(node), node);
+  }
+  const effectiveNodes: SidebarNode[] = (localOpenOrder
+    ? localOpenOrder.map((id) => nodeByTopId.get(id)).filter((n): n is SidebarNode => n !== undefined)
+    : sidebarNodes
+  ).filter((node) => {
+    if (node.type === 'single') return !effectivePinnedIds.has(node.tabId);
+    return true;
+  });
+
+  // ID активного drag-элемента (может быть tabId или 'group:${id}')
+  const [dragActiveId, setDragActiveId] = useState<string | null>(null);
+  const dragTab: TabState | null = (dragActiveId && !dragActiveId.startsWith('group:'))
+    ? (tabs.find((t) => t.id === dragActiveId) ?? null)
+    : null;
+  const dragGroup: GroupNode | null = (() => {
+    if (!dragActiveId?.startsWith('group:')) return null;
+    const gId = dragActiveId.slice(6);
+    const found = sidebarNodes.find((n) => n.type === 'group' && n.id === gId);
+    return found?.type === 'group' ? found : null;
+  })();
+
+  // PointerSensor с минимальным расстоянием активации: клики не превращаются в drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  // Droppable-контейнер секции «Открытые вкладки» для дропа из pinned в пустую секцию.
+  const { setNodeRef: setNormalDropRef } = useDroppable({ id: SECTION_NORMAL_ID });
+
+  const pinnedIds = pinned.map((t) => t.id);
+  const openIds = (localOpenOrder ?? topLevelOpenIds).filter((id) => !effectivePinnedIds.has(id));
+
+  const handleDragStart = (e: DragStartEvent) => {
+    setDragActiveId(e.active.id as string);
+    const onMove = (ev: PointerEvent) => {
+      const rect = getContentRect();
+      const over = !!rect
+        && ev.clientX >= rect.left && ev.clientX <= rect.right
+        && ev.clientY >= rect.top  && ev.clientY <= rect.bottom;
+      if (over !== contentOverRef.current) {
+        contentOverRef.current = over;
+        onDragOverContent(over);
+      }
+    };
+    moveListenerRef.current = onMove;
+    document.addEventListener('pointermove', onMove);
+  };
+
+  const handleDragEnd = (e: DragEndEvent) => {
+    if (moveListenerRef.current) {
+      document.removeEventListener('pointermove', moveListenerRef.current);
+      moveListenerRef.current = null;
+    }
+    const wasOverContent = contentOverRef.current;
+    contentOverRef.current = false;
+    onDragOverContent(false);
+    setDragActiveId(null);
+
+    const { active, over } = e;
+
+    // Дроп в контент-зону → split вместо reorder.
+    // Группы в split не входят — проверяем только обычные вкладки.
+    if (wasOverContent) {
+      const draggedId = active.id as string;
+      if (!draggedId.startsWith('group:')) {
+        const draggedTab = tabs.find((t) => t.id === draggedId);
+        if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
+          onDropOnContent(draggedId);
+        }
+      }
+      return;
+    }
+
+    if (!over || active.id === over.id) return;
+
+    const activeItemId = active.id as string;
+    const overId       = over.id  as string;
+
+    const isActivePinned      = pinnedIds.includes(activeItemId);
+    const overIsPinnedTab     = pinnedIds.includes(overId);
+    const overIsNormalItem    = openIds.includes(overId);
+    const overIsNormalSection = overId === SECTION_NORMAL_ID;
+
+    const overInPinned = overIsPinnedTab;
+    const overInNormal = overIsNormalItem || overIsNormalSection;
+
+    if (!overInPinned && !overInNormal) return;
+
+    const crossSection = (isActivePinned && overInNormal) || (!isActivePinned && overInPinned);
+
+    if (crossSection) {
+      // Группы нельзя перемещать в закреплённые — это операция только над вкладками
+      if (activeItemId.startsWith('group:')) return;
+
+      const targetSection: 'pinned' | 'normal' = overInNormal ? 'normal' : 'pinned';
+
+      let targetIndex: number;
+      if (overIsNormalSection) {
+        targetIndex = openIds.length;
+      } else if (overIsNormalItem) {
+        targetIndex = openIds.indexOf(overId);
+      } else {
+        targetIndex = pinnedIds.indexOf(overId);
+      }
+
+      if (targetSection === 'normal') {
+        const newPinnedIds = pinnedIds.filter((id) => id !== activeItemId);
+        const newOpenIds   = [...openIds];
+        newOpenIds.splice(targetIndex, 0, activeItemId);
+        if (pinnedTimeoutRef.current) clearTimeout(pinnedTimeoutRef.current);
+        if (openTimeoutRef.current)   clearTimeout(openTimeoutRef.current);
+        setLocalPinnedOrder(newPinnedIds);
+        setLocalOpenOrder(newOpenIds);
+        pinnedTimeoutRef.current = setTimeout(() => { setLocalPinnedOrder(null); pinnedTimeoutRef.current = null; }, REORDER_CONFIRM_MS);
+        openTimeoutRef.current   = setTimeout(() => { setLocalOpenOrder(null);   openTimeoutRef.current   = null; }, REORDER_CONFIRM_MS);
+      } else {
+        const newOpenIds   = openIds.filter((id) => id !== activeItemId);
+        const newPinnedIds = [...pinnedIds];
+        newPinnedIds.splice(targetIndex, 0, activeItemId);
+        if (pinnedTimeoutRef.current) clearTimeout(pinnedTimeoutRef.current);
+        if (openTimeoutRef.current)   clearTimeout(openTimeoutRef.current);
+        setLocalOpenOrder(newOpenIds);
+        setLocalPinnedOrder(newPinnedIds);
+        openTimeoutRef.current   = setTimeout(() => { setLocalOpenOrder(null);   openTimeoutRef.current   = null; }, REORDER_CONFIRM_MS);
+        pinnedTimeoutRef.current = setTimeout(() => { setLocalPinnedOrder(null); pinnedTimeoutRef.current = null; }, REORDER_CONFIRM_MS);
+      }
+      onMoveSection(activeItemId, targetSection, targetIndex);
+      return;
+    }
+
+    // ── Перемещение внутри секции ─────────────────────────────────────────
+    if (isActivePinned) {
+      const oldIdx = pinnedIds.indexOf(activeItemId);
+      const newIdx = overIsPinnedTab ? pinnedIds.indexOf(overId) : -1;
+      if (newIdx < 0 || oldIdx === newIdx) return;
+      const newOrder = arrayMove(pinnedIds, oldIdx, newIdx);
+      if (pinnedTimeoutRef.current) clearTimeout(pinnedTimeoutRef.current);
+      setLocalPinnedOrder(newOrder);
+      pinnedTimeoutRef.current = setTimeout(() => {
+        setLocalPinnedOrder(null);
+        pinnedTimeoutRef.current = null;
+      }, REORDER_CONFIRM_MS);
+      onReorder('pinned', newOrder);
+    } else {
+      const oldIdx = openIds.indexOf(activeItemId);
+      const newIdx = overIsNormalItem ? openIds.indexOf(overId) : -1;
+      if (newIdx < 0 || oldIdx === newIdx) return;
+      const newOrder = arrayMove(openIds, oldIdx, newIdx);
+      if (openTimeoutRef.current) clearTimeout(openTimeoutRef.current);
+      setLocalOpenOrder(newOrder);
+      openTimeoutRef.current = setTimeout(() => {
+        setLocalOpenOrder(null);
+        openTimeoutRef.current = null;
+      }, REORDER_CONFIRM_MS);
+      onReorder('normal', newOrder);
+    }
+  };
 
   // ── Свёрнутый режим: узкая полоса иконок ──
   if (collapsed) {
+    const openBase = tabs.filter((t) => !t.isHub && !t.isPinned);
     return (
       <aside className="drag" style={{ ...asideBase, width: 56, alignItems: 'center', padding: '12px 0 14px' }}>
 
-        {/* Логотип + кнопка развернуть */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingBottom: 14 }}>
           <span style={{
             width: 24, height: 24, borderRadius: 7, background: 'var(--accent)',
@@ -198,7 +838,7 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
           </span>
           <button
             className="no-drag"
-            onClick={() => setCollapsed(false)}
+            onClick={() => onCollapsedChange(false)}
             title="Развернуть панель"
             style={{ ...iconBtn, transform: 'scaleX(-1)' }}
           >
@@ -206,13 +846,11 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
           </button>
         </div>
 
-        {/* Хаб + кнопка новой вкладки */}
         <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingBottom: 6 }}>
           {hub.map((t) => (
             <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
               style={{
-                border: 'none', cursor: 'default', padding: 4,
-                borderRadius: 'var(--radius-sm)',
+                border: 'none', cursor: 'default', padding: 4, borderRadius: 'var(--radius-sm)',
                 background: activeId === t.id ? 'var(--surface)' : 'transparent',
                 boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
               }}>
@@ -230,7 +868,6 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
           </button>
         </div>
 
-        {/* Закреплённые вкладки */}
         {pinned.length > 0 && (
           <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingBottom: 8, paddingTop: 4, borderBottom: '1px solid var(--divider-strong)', width: '100%' }}>
             {pinned.map((t) => (
@@ -238,8 +875,7 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
                 onContextMenu={(e) => { e.preventDefault(); onTabMenu(t.id); }}
                 title={t.title}
                 style={{
-                  border: 'none', cursor: 'default', padding: 5,
-                  borderRadius: 'var(--radius-sm)',
+                  border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
                   background: activeId === t.id ? 'var(--surface)' : 'transparent',
                   boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
                   opacity: t.isSleeping ? 0.6 : 1,
@@ -253,15 +889,13 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
           </div>
         )}
 
-        {/* Открытые вкладки — только favicon */}
         <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, overflowY: 'auto', flex: 1, paddingTop: 4 }}>
-          {open.map((t) => (
+          {openBase.map((t) => (
             <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
               onContextMenu={(e) => { e.preventDefault(); onTabMenu(t.id); }}
               onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(t.id); } }}
               style={{
-                border: 'none', cursor: 'default', padding: 5,
-                borderRadius: 'var(--radius-sm)',
+                border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
                 background: activeId === t.id ? 'var(--surface)' : 'transparent',
                 boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
                 opacity: t.isSleeping ? 0.6 : 1,
@@ -274,7 +908,6 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
           ))}
         </div>
 
-        {/* Низ: адблок-счётчик + настройки + аватар */}
         <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 8 }}>
           <button title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
           <button
@@ -294,11 +927,11 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
     );
   }
 
-  // ── Развёрнутый режим ──
+  // ── Развёрнутый режим с drag-and-drop ──
   return (
     <aside className="drag" style={{ ...asideBase, width: 256, padding: '12px 12px 14px' }}>
 
-      {/* Шапка: логотип + кнопка свернуть */}
+      {/* Шапка */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px 14px' }}>
         <span style={{
           width: 24, height: 24, borderRadius: 7, background: 'var(--accent)',
@@ -306,12 +939,12 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
         }}><Cloud size={15} color="#fff" /></span>
         <span style={{ fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--text-strong)' }}>Oblako</span>
         <div style={{ flex: 1 }} />
-        <button className="no-drag" onClick={() => setCollapsed(true)} title="Свернуть панель" style={iconBtn}>
+        <button className="no-drag" onClick={() => onCollapsedChange(true)} title="Свернуть панель" style={iconBtn}>
           <PanelLeft size={17} />
         </button>
       </div>
 
-      {/* Хаб + кнопка новой вкладки */}
+      {/* Хаб + кнопка новой вкладки — вне DndContext, не таскается */}
       <div className="no-drag" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 4px 14px' }}>
         {hub.map((t) => (
           <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
@@ -328,39 +961,272 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
           }}><Plus size={16} /></button>
       </div>
 
-      {/* Закреплённые вкладки */}
-      {pinned.length > 0 && (
-        <>
-          <div style={eyebrow}>Закреплённые</div>
-          <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 8, borderBottom: '1px solid var(--divider-strong)' }}>
-            {pinned.map((t) => (
-              <TabRow key={t.id} tab={t} active={activeId === t.id}
-                onClick={() => onSelect(t.id)}
-                onClose={() => onClose(t.id)}
-                onContextMenu={() => onTabMenu(t.id)}
-                onExitSplit={onExitSplit} />
+      {/* Один внешний DndContext для обеих секций */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        modifiers={[restrictToVerticalAxis]}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        {/* Закреплённые */}
+        {pinned.length > 0 && (
+          <>
+            <div style={eyebrow}>Закреплённые</div>
+            <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
+              <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 8, borderBottom: '1px solid var(--divider-strong)' }}>
+                {pinned.map((t) => (
+                  <SortableTabRow key={t.id} tab={t} active={activeId === t.id}
+                    onClick={() => onSelect(t.id)}
+                    onClose={() => onClose(t.id)}
+                    onContextMenu={() => onTabMenu(t.id)}
+                    onExitSplit={onExitSplit} />
+                ))}
+              </div>
+            </SortableContext>
+          </>
+        )}
+
+        <div style={eyebrow}>Открытые вкладки</div>
+
+        {/* Верхний уровень: singles, pairs, groups — все в одном SortableContext */}
+        <SortableContext items={openIds} strategy={verticalListSortingStrategy}>
+          <div ref={setNormalDropRef} className="no-drag" style={{
+            display: organizeState === 'preview' ? 'none' : 'flex',
+            flexDirection: 'column', gap: 2, overflowY: 'auto',
+            flex: organizeState === 'preview' ? 'none' : 1,
+          }}>
+            {effectiveNodes.length === 0 && (
+              <div style={{ padding: '8px 10px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
+                Пока пусто. Введите адрес в строке сверху.
+              </div>
+            )}
+            {effectiveNodes.map((node) => {
+              if (node.type === 'single') {
+                const tab = tabMap.get(node.tabId);
+                if (!tab) return null;
+                return (
+                  <SortableTabRow key={node.tabId} tab={tab} active={activeId === tab.id}
+                    onClick={() => onSelect(tab.id)}
+                    onClose={() => onClose(tab.id)}
+                    onContextMenu={() => onTabMenu(tab.id)}
+                    onSplit={() => onSplit(tab.id)}
+                    onExitSplit={onExitSplit}
+                    splitActive={anySplitActive} />
+                );
+              }
+              if (node.type === 'split-pair') {
+                const left = tabMap.get(node.leftTabId);
+                const right = tabMap.get(node.rightTabId);
+                if (!left || !right) return null;
+                return (
+                  <SortablePairBlock
+                    key={node.leftTabId}
+                    left={left} right={right}
+                    activeId={activeId}
+                    onSelect={onSelect} onClose={onClose}
+                    onContextMenu={onTabMenu} onExitSplit={onExitSplit}
+                  />
+                );
+              }
+              if (node.type === 'group') {
+                return (
+                  <SortableGroupBlock
+                    key={node.id}
+                    group={node}
+                    tabMap={tabMap}
+                    activeId={activeId}
+                    onSelect={onSelect} onClose={onClose}
+                    onContextMenu={onTabMenu} onSplit={onSplit}
+                    onExitSplit={onExitSplit} splitActive={anySplitActive}
+                    renameGroupId={renameGroupId}
+                    setRenameGroupId={setRenameGroupId}
+                  />
+                );
+              }
+              return null;
+            })}
+          </div>
+        </SortableContext>
+
+        {/* DragOverlay: ghost-копия перетаскиваемого элемента.
+            Для вкладки — TabRow; для группы — минимальный заголовок. */}
+        <DragOverlay>
+          {dragTab && (
+            <div style={{
+              boxShadow: 'var(--shadow-card)',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--surface)',
+              opacity: 0.95,
+            }}>
+              <TabRow
+                tab={dragTab}
+                active={activeId === dragTab.id}
+                onClick={() => {}}
+                onClose={() => {}}
+                onContextMenu={() => {}}
+                ghost
+              />
+            </div>
+          )}
+          {dragGroup && (
+            <div style={{
+              boxShadow: 'var(--shadow-card)', borderRadius: 'var(--radius-sm)',
+              background: 'var(--surface)', opacity: 0.95,
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 10px',
+            }}>
+              <span style={{
+                width: 10, height: 10, borderRadius: '50%', flex: 'none',
+                background: dragGroup.color ? (GROUP_COLORS[dragGroup.color] ?? 'transparent') : 'transparent',
+                border: dragGroup.color ? 'none' : '1.5px solid var(--text-faint)',
+              }} />
+              <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-body)' }}>
+                {dragGroup.label}
+              </span>
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+
+      {/* ── Превью AI-группировки: заменяет список вкладок ── */}
+      {organizeState === 'preview' && (
+        <div className="no-drag" style={{
+          flex: 1, display: 'flex', flexDirection: 'column', gap: 0,
+          overflow: 'hidden', marginTop: 4,
+        }}>
+          <div style={eyebrow}>
+            Предложение: {organizeProposal.length} {organizeProposal.length === 1 ? 'группа' : organizeProposal.length < 5 ? 'группы' : 'групп'}
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {organizeProposal.map((p, i) => (
+              <div key={i} style={{
+                border: '1px solid var(--divider-strong)',
+                borderRadius: 'var(--radius-sm)',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '6px 10px', background: 'var(--surface-hover)',
+                }}>
+                  <span style={{
+                    width: 10, height: 10, borderRadius: '50%', flex: 'none',
+                    background: 'var(--accent)',
+                  }} />
+                  <span style={{
+                    flex: 1, fontWeight: 600, fontSize: 'var(--fs-sm)',
+                    color: 'var(--text-strong)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>{p.suggestedName}</span>
+                  <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
+                    {p.nodeIds.length}
+                  </span>
+                </div>
+                <div style={{ padding: '4px 10px 6px' }}>
+                  {p.titles.slice(0, 4).map((t, j) => (
+                    <div key={j} style={{
+                      fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      padding: '1px 0',
+                    }}>• {t}</div>
+                  ))}
+                  {p.titles.length > 4 && (
+                    <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', padding: '1px 0' }}>
+                      и ещё {p.titles.length - 4}…
+                    </div>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
-        </>
+          <div style={{ display: 'flex', gap: 6, padding: '8px 0 4px', flexShrink: 0 }}>
+            <button
+              className="no-drag"
+              onClick={onOrganizeApply}
+              style={{
+                flex: 1, padding: '8px 0', border: 'none', cursor: 'default',
+                borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: '#fff',
+                fontSize: 'var(--fs-sm)', fontWeight: 600,
+              }}
+            >Применить</button>
+            <button
+              className="no-drag"
+              onClick={onOrganizeCancel}
+              style={{
+                flex: 'none', padding: '8px 14px', border: 'none', cursor: 'default',
+                borderRadius: 'var(--radius-sm)', background: 'transparent',
+                color: 'var(--text-muted)', fontSize: 'var(--fs-sm)',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >Отмена</button>
+          </div>
+        </div>
       )}
 
-      <div style={eyebrow}>Открытые вкладки</div>
+      {/* ── Кнопка «Навести порядок» — только в обычном режиме, > 10 вкладок ── */}
+      {organizeState !== 'preview' && organizeTabsCount > 10 && (
+        <button
+          className="no-drag"
+          onClick={organizeState === 'idle' ? onOrganize : undefined}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, width: '100%', marginTop: 4,
+            padding: '9px 12px', border: 'none', cursor: 'default',
+            borderRadius: 'var(--radius-sm)',
+            background: organizeState === 'computing' ? 'var(--surface-hover)' : 'transparent',
+            fontWeight: 500, fontSize: 'var(--fs-sm)', color: 'var(--text-muted)',
+          }}
+          onMouseEnter={(e) => { if (organizeState === 'idle') e.currentTarget.style.background = 'var(--surface-hover)'; }}
+          onMouseLeave={(e) => { if (organizeState === 'idle') e.currentTarget.style.background = 'transparent'; }}
+        >
+          {organizeState === 'computing' ? (
+            <>
+              <span style={{
+                width: 14, height: 14, flex: 'none', borderRadius: '50%',
+                border: '2px solid var(--divider-strong)', borderTopColor: 'var(--accent)',
+                animation: 'oblako-spin 0.7s linear infinite',
+              }} />
+              Группирую…
+            </>
+          ) : (
+            <>
+              <Sparkles size={16} />
+              Навести порядок
+            </>
+          )}
+        </button>
+      )}
 
-      <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', flex: 1 }}>
-        {open.length === 0 && (
-          <div style={{ padding: '8px 10px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-            Пока пусто. Введите адрес в строке сверху.
-          </div>
-        )}
-        {open.map((t) => (
-          <TabRow key={t.id} tab={t} active={activeId === t.id}
-            onClick={() => onSelect(t.id)}
-            onClose={() => onClose(t.id)}
-            onContextMenu={() => onTabMenu(t.id)}
-            onSplit={() => onSplit(t.id)}
-            onExitSplit={onExitSplit} />
-        ))}
-      </div>
+      {/* ── Баннер отката: показываем после применения, пока нет ручных изменений ── */}
+      {organizeState === 'idle' && hasOrganizeSnapshot && (
+        <div className="no-drag" style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginTop: 4,
+          padding: '6px 10px',
+          background: 'var(--surface-hover)',
+          borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--divider-strong)',
+        }}>
+          <span style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
+            Вкладки сгруппированы
+          </span>
+          <button
+            className="no-drag"
+            onClick={onOrganizeRollback}
+            title="Вернуть прежний порядок"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              border: 'none', background: 'transparent', cursor: 'default',
+              padding: '2px 6px', borderRadius: 4,
+              color: 'var(--accent)', fontSize: 'var(--fs-xs)', fontWeight: 600,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <RotateCcw size={11} />
+            Вернуть
+          </button>
+        </div>
+      )}
 
       <button className="no-drag" onClick={onNewTab} style={{
         display: 'flex', alignItems: 'center', gap: 8, width: '100%', marginTop: 8,
@@ -373,7 +1239,6 @@ export default function Sidebar({ tabs, activeId, onSelect, onClose, onNewTab, o
         <Plus size={16} /> Новая вкладка
       </button>
 
-      {/* Счётчик адблока — щит + число, клик открывает настройки */}
       <button
         className="no-drag"
         onClick={onSettings}

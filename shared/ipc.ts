@@ -58,6 +58,14 @@ export interface TabState {
 export interface SyncState {
   tabs: TabState[];
   nodes: SidebarNode[];
+  hasOrganizeSnapshot: boolean; // true = доступен откат последней AI-группировки
+}
+
+// Один предложенный кластер от ClusteringService → TabManager.applyOrganize().
+export interface OrganizeCluster {
+  nodeIds:   string[];                       // tabId (single) или leftTabId (split-pair)
+  nodeTypes: ('single' | 'split-pair')[];   // по позиции
+  label:     string;                         // название группы
 }
 
 // Геометрия "дырки" под контент в координатах окна (CSS-пиксели).
@@ -161,8 +169,9 @@ export const IPC = {
   DOWNLOAD_SHOW_FOLDER: 'download:show-folder', // renderer → main: показать в папке (id)
   DOWNLOAD_RETRY:       'download:retry',       // renderer → main: повторить загрузку (id)
 
-  // ВРЕМЕННО Коммит 1: тест кластеризации — удалить вместе с тест-хуками.
-  ORGANIZE_THRESHOLD: 'organize:threshold',     // renderer → main: получить порог из --threshold=
+  // AI-группировка вкладок (Phase 4)
+  TABS_ORGANIZE_APPLY:    'tabs:organize-apply',    // renderer → main: OrganizeCluster[] → сгруппировать
+  TABS_ORGANIZE_ROLLBACK: 'tabs:organize-rollback', // renderer → main: откатить последнюю группировку
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -309,6 +318,7 @@ export interface OblakoApi {
   onDownloadsChanged(cb: (entries: DownloadEntry[]) => void): () => void;
   onDownloadsOpen(cb: () => void): () => void;
 
-  // ВРЕМЕННО Коммит 1: тест кластеризации — удалить вместе с тест-хуком в App.tsx.
-  getOrganizeThreshold(): Promise<number>;
+  // AI-группировка вкладок (Phase 4)
+  organizeApply(clusters: OrganizeCluster[]): Promise<void>;
+  organizeRollback(): Promise<void>;
 }

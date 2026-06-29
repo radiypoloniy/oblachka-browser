@@ -4,7 +4,7 @@ import type { SidebarNode, TabState } from '../../shared/ipc'
 // Порог агломеративной кластеризации (average-linkage, косинусное сходство).
 // Выше = строже (меньше групп, крупнее), ниже = мягче (больше групп, точнее).
 // Рекомендуемый диапазон подбора: 0.30–0.60.
-export const DEFAULT_SIMILARITY_THRESHOLD = 0.40
+export const DEFAULT_SIMILARITY_THRESHOLD = 0.60
 
 interface Candidate {
   nodeId: string               // tabId для single; leftTabId для split-pair

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster } from '../shared/ipc';
 
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
@@ -143,8 +143,9 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.GROUP_RENAME_PROMPT, handler);
   },
 
-  // ВРЕМЕННО Коммит 1: читает порог из --threshold= аргумента запуска.
-  getOrganizeThreshold: () => ipcRenderer.invoke(IPC.ORGANIZE_THRESHOLD) as Promise<number>,
+  // AI-группировка вкладок (Phase 4)
+  organizeApply:    (clusters: OrganizeCluster[]) => ipcRenderer.invoke(IPC.TABS_ORGANIZE_APPLY,    clusters) as Promise<void>,
+  organizeRollback: ()                            => ipcRenderer.invoke(IPC.TABS_ORGANIZE_ROLLBACK)            as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('oblako', api);

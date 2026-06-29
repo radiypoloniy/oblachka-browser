@@ -9,6 +9,7 @@ import History from './components/History';
 import Downloads from './components/Downloads';
 import PermissionPrompt from './components/PermissionPrompt';
 import type { SyncState, TabState, FindResult, DownloadEntry, PermissionRequest, SidebarNode } from '../shared/ipc';
+import type { ClusterProposal } from './services/ClusteringService';
 
 const HUB_ID = 'hub';
 
@@ -55,6 +56,11 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [omniboxSuggestOpen, setOmniboxSuggestOpen] = useState(false);
   const [splitDragOver, setSplitDragOver] = useState(false);
+
+  // AI-группировка: состояние флоу + предложения + наличие снимка для отката
+  const [organizeState, setOrganizeState] = useState<'idle' | 'computing' | 'preview'>('idle');
+  const [organizeProposal, setOrganizeProposal] = useState<ClusterProposal[]>([]);
+  const [hasOrganizeSnapshot, setHasOrganizeSnapshot] = useState(false);
 
   // desired — что выбрал пользователь (идёт в автосейв, когда он появится).
   // effective — что реально отображается (может быть принудительно true при узком окне).
@@ -109,32 +115,6 @@ export default function App() {
   const allTabsRef = useRef(tabs);
   allTabsRef.current = tabs;
 
-  // ВРЕМЕННО Коммит 1: автопрогон кластеризации — результат в терминал npm start.
-  // Порог — без пересборки: npm start -- --threshold=0.55
-  // Удалить после одобрения качества группировки.
-  useEffect(() => {
-    // 3 секунды — чтобы сессия восстановилась и страницы получили заголовки.
-    const timer = setTimeout(() => {
-      const tabMap = new Map(allTabsRef.current.map((x) => [x.id, x]));
-      if (tabMap.size === 0) return; // нет вкладок — нечего кластеризовать
-      void window.oblako.getOrganizeThreshold().then((threshold) =>
-        import('./services/ClusteringService').then(({ clusterTabs }) =>
-          clusterTabs(sidebarNodesRef.current, tabMap, threshold),
-        ).then((proposals) => {
-          console.log(`[Organize] порог=${threshold} → ${proposals.length} групп`);
-          proposals.forEach((p, i) => {
-            console.log(`[Organize] ─ Группа ${i + 1}: «${p.suggestedName}» (${p.nodeIds.length} вкладок)`);
-            p.titles.forEach((title) => console.log(`[Organize]   • ${title}`));
-          });
-          if (proposals.length === 0)
-            console.log('[Organize] нет групп: все синглтоны или < 2 кандидатов');
-        }),
-      ).catch((e: unknown) => console.log(`[Organize] ошибка: ${String(e)}`));
-    }, 3000);
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Тема
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
@@ -155,6 +135,7 @@ export default function App() {
     const applySync = (s: SyncState) => {
       setTabs(s.tabs);
       setSidebarNodes(s.nodes);
+      setHasOrganizeSnapshot(s.hasOrganizeSnapshot);
       const active = s.tabs.find((x) => x.isActive);
       if (active) setActiveId(active.id);
     };
@@ -373,6 +354,46 @@ export default function App() {
     pushBounds();
   }, [downloadsOpen, pushBounds]);
 
+  // Количество незакреплённых, негруппированных вкладок-единиц верхнего уровня.
+  // GroupNode и pinned в счёт не идут — только top-level single + split-pair.
+  const organizeTabsCount = sidebarNodes.filter(
+    (n) => n.type === 'single' || n.type === 'split-pair',
+  ).length;
+
+  const handleOrganize = useCallback(() => {
+    setOrganizeState('computing');
+    const tabMap = new Map(allTabsRef.current.map((x) => [x.id, x]));
+    void import('./services/ClusteringService').then(({ clusterTabs, DEFAULT_SIMILARITY_THRESHOLD }) =>
+      clusterTabs(sidebarNodesRef.current, tabMap, DEFAULT_SIMILARITY_THRESHOLD),
+    ).then((proposals) => {
+      setOrganizeProposal(proposals);
+      setOrganizeState('preview');
+    }).catch(() => {
+      setOrganizeState('idle');
+    });
+  }, []);
+
+  const handleOrganizeApply = useCallback(() => {
+    if (organizeProposal.length === 0) { setOrganizeState('idle'); return; }
+    const clusters = organizeProposal.map((p) => ({
+      nodeIds:   p.nodeIds,
+      nodeTypes: p.nodeTypes,
+      label:     p.suggestedName,
+    }));
+    void window.oblako.organizeApply(clusters);
+    setOrganizeState('idle');
+    setOrganizeProposal([]);
+  }, [organizeProposal]);
+
+  const handleOrganizeCancel = useCallback(() => {
+    setOrganizeState('idle');
+    setOrganizeProposal([]);
+  }, []);
+
+  const handleOrganizeRollback = useCallback(() => {
+    void window.oblako.organizeRollback();
+  }, []);
+
   const downloadsActive = downloads.some((d) => d.state === 'progressing');
 
   const handlePermissionRespond = (granted: boolean, remember: boolean) => {
@@ -423,6 +444,14 @@ export default function App() {
         getContentRect={() => contentRectRef.current}
         onDragOverContent={setSplitDragOver}
         onDropOnContent={handleDropOnContent}
+        organizeTabsCount={organizeTabsCount}
+        organizeState={organizeState}
+        organizeProposal={organizeProposal}
+        hasOrganizeSnapshot={hasOrganizeSnapshot}
+        onOrganize={handleOrganize}
+        onOrganizeApply={handleOrganizeApply}
+        onOrganizeCancel={handleOrganizeCancel}
+        onOrganizeRollback={handleOrganizeRollback}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
