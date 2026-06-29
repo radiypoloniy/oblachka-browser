@@ -163,6 +163,12 @@ function createWindow() {
   // Только после восстановления разрешаем автосейв.
   sess.enable();
 
+  // ВРЕМЕННО Коммит 1: перенаправляет [Organize]-логи из renderer в терминал npm start.
+  // Удалить после одобрения качества кластеризации.
+  chromeView.webContents.on('console-message', (_e, _level, message) => {
+    if (message.startsWith('[Organize]')) process.stdout.write(message + '\n');
+  });
+
   // ПКМ в хром-слое (омнибокс, поле чата): только редактируемые поля и выделение.
   // Для обычных элементов управления (кнопки, сайдбар) меню НЕ показываем.
   chromeView.webContents.on('context-menu', (_e, p) => {

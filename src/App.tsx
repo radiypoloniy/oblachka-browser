@@ -109,26 +109,30 @@ export default function App() {
   const allTabsRef = useRef(tabs);
   allTabsRef.current = tabs;
 
-  // ВРЕМЕННО Коммит 1: тест кластеризации — удалить после одобрения качества.
-  // DevTools рендерера → __oblakoOrganize() или __oblakoOrganize(0.35)
+  // ВРЕМЕННО Коммит 1: автопрогон кластеризации — результат в терминал npm start.
+  // Менять порог здесь, пересобрать (npm run build), перезапустить (npm start).
+  // Удалить после одобрения качества группировки.
+  const ORGANIZE_TEST_THRESHOLD = 0.40;
   useEffect(() => {
-    type OrgWin = typeof window & { __oblakoOrganize?: (threshold?: number) => void }
-    ;(window as OrgWin).__oblakoOrganize = (threshold?: number) => {
-      const tabMap = new Map(allTabsRef.current.map((t) => [t.id, t]))
+    // 3 секунды — чтобы сессия восстановилась и страницы получили заголовки.
+    const timer = setTimeout(() => {
+      const tabMap = new Map(allTabsRef.current.map((x) => [x.id, x]));
+      if (tabMap.size === 0) return; // нет вкладок — нечего кластеризовать
       void import('./services/ClusteringService').then(({ clusterTabs }) =>
-        clusterTabs(sidebarNodesRef.current, tabMap, threshold),
+        clusterTabs(sidebarNodesRef.current, tabMap, ORGANIZE_TEST_THRESHOLD),
       ).then((proposals) => {
-        console.group(`[Organize] порог=${threshold ?? 0.40}, кластеров=${proposals.length}`)
+        console.log(`[Organize] порог=${ORGANIZE_TEST_THRESHOLD} → ${proposals.length} групп`);
         proposals.forEach((p, i) => {
-          console.group(`Группа ${i + 1}: «${p.suggestedName}» (${p.nodeIds.length} вкладок)`)
-          p.titles.forEach((t) => console.log(' •', t))
-          console.groupEnd()
-        })
-        console.groupEnd()
-      }).catch(console.error)
-    }
-    return () => { delete (window as OrgWin).__oblakoOrganize }
-  }, [])
+          console.log(`[Organize] ─ Группа ${i + 1}: «${p.suggestedName}» (${p.nodeIds.length} вкладок)`);
+          p.titles.forEach((title) => console.log(`[Organize]   • ${title}`));
+        });
+        if (proposals.length === 0)
+          console.log('[Organize] нет групп: все синглтоны или < 2 кандидатов');
+      }).catch((e: unknown) => console.log(`[Organize] ошибка: ${String(e)}`));
+    }, 3000);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Тема
   useEffect(() => {
