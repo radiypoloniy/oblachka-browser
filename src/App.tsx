@@ -110,25 +110,26 @@ export default function App() {
   allTabsRef.current = tabs;
 
   // ВРЕМЕННО Коммит 1: автопрогон кластеризации — результат в терминал npm start.
-  // Менять порог здесь, пересобрать (npm run build), перезапустить (npm start).
+  // Порог — без пересборки: npm start -- --threshold=0.55
   // Удалить после одобрения качества группировки.
-  const ORGANIZE_TEST_THRESHOLD = 0.40;
   useEffect(() => {
     // 3 секунды — чтобы сессия восстановилась и страницы получили заголовки.
     const timer = setTimeout(() => {
       const tabMap = new Map(allTabsRef.current.map((x) => [x.id, x]));
       if (tabMap.size === 0) return; // нет вкладок — нечего кластеризовать
-      void import('./services/ClusteringService').then(({ clusterTabs }) =>
-        clusterTabs(sidebarNodesRef.current, tabMap, ORGANIZE_TEST_THRESHOLD),
-      ).then((proposals) => {
-        console.log(`[Organize] порог=${ORGANIZE_TEST_THRESHOLD} → ${proposals.length} групп`);
-        proposals.forEach((p, i) => {
-          console.log(`[Organize] ─ Группа ${i + 1}: «${p.suggestedName}» (${p.nodeIds.length} вкладок)`);
-          p.titles.forEach((title) => console.log(`[Organize]   • ${title}`));
-        });
-        if (proposals.length === 0)
-          console.log('[Organize] нет групп: все синглтоны или < 2 кандидатов');
-      }).catch((e: unknown) => console.log(`[Organize] ошибка: ${String(e)}`));
+      void window.oblako.getOrganizeThreshold().then((threshold) =>
+        import('./services/ClusteringService').then(({ clusterTabs }) =>
+          clusterTabs(sidebarNodesRef.current, tabMap, threshold),
+        ).then((proposals) => {
+          console.log(`[Organize] порог=${threshold} → ${proposals.length} групп`);
+          proposals.forEach((p, i) => {
+            console.log(`[Organize] ─ Группа ${i + 1}: «${p.suggestedName}» (${p.nodeIds.length} вкладок)`);
+            p.titles.forEach((title) => console.log(`[Organize]   • ${title}`));
+          });
+          if (proposals.length === 0)
+            console.log('[Organize] нет групп: все синглтоны или < 2 кандидатов');
+        }),
+      ).catch((e: unknown) => console.log(`[Organize] ошибка: ${String(e)}`));
     }, 3000);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps

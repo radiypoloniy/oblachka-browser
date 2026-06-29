@@ -1,6 +1,30 @@
 // Единый источник правды по форме данных, которыми обмениваются
 // renderer (хром-UI) и main (движок вкладок). Импортируется обеими сторонами.
 
+// ── Узлы сайдбара ─────────────────────────────────────────────────────────────
+// Дискриминированное объединение для трёх типов узлов.
+// Phase 0: создаются только SingleNode.
+// Phase 2+: split-pair и group.
+export interface SingleNode {
+  type: 'single';
+  tabId: string;
+}
+export interface SplitPairNode {
+  type: 'split-pair';
+  leftTabId: string;
+  rightTabId: string;
+  ratio: number; // 0.2..0.8
+}
+export interface GroupNode {
+  type: 'group';
+  id: string;           // стабильный UUID для dnd-kit
+  label: string;
+  color: string | null; // 'red'|'orange'|'yellow'|'green'|'blue'|'purple'|null
+  children: SidebarNode[];
+  collapsed: boolean;
+}
+export type SidebarNode = SingleNode | SplitPairNode | GroupNode;
+
 export interface FindResult {
   activeMatch: number; // порядковый номер текущего совпадения (1-based)
   count: number;       // всего совпадений
@@ -28,6 +52,14 @@ export interface TabState {
   isSleeping: boolean;  // WebContentsView выгружен, хранятся только url/title/favicon
 }
 
+// Атомарный снимок: вкладки + структура сайдбара в одном сообщении.
+// Заменяет два раздельных push-канала TABS_CHANGED + SIDEBAR_NODES_CHANGED, чтобы
+// renderer никогда не рендерил половинчатое состояние (узел пары есть, вкладка ещё нет).
+export interface SyncState {
+  tabs: TabState[];
+  nodes: SidebarNode[];
+}
+
 // Геометрия "дырки" под контент в координатах окна (CSS-пиксели).
 // Renderer измеряет область и сообщает main, куда класть WebContentsView.
 export interface ContentBounds {
@@ -51,8 +83,13 @@ export const IPC = {
   CONTENT_SET_BOUNDS: 'content:set-bounds',
   WINDOW_SET_OVERLAY: 'window:set-overlay', // обновить цвет иконок titleBarOverlay
 
+  // Атомарный push: заменяет раздельные TABS_CHANGED + SIDEBAR_NODES_CHANGED.
+  // Один IPC-пакет = один рендер = нет рассинхрона между вкладками и деревом узлов.
+  SYNC_CHANGED: 'sync:changed',     // main → renderer: SyncState { tabs, nodes }
+  SYNC_GET:     'sync:get',         // renderer → main: начальный атомарный запрос
+
   // События (main -> renderer, односторонние)
-  TABS_CHANGED: 'tabs:changed',     // прислать весь актуальный список TabState[]
+  TABS_CHANGED: 'tabs:changed',     // @deprecated → используй SYNC_CHANGED
 
   // Поиск по странице
   FIND_START:  'find:start',        // renderer → main: начать/обновить поиск
@@ -75,6 +112,24 @@ export const IPC = {
   TAB_SPLIT_FOCUS:  'tab:split-focus',  // renderer → main: переключить фокус на панель
   TAB_SPLIT_RATIO:  'tab:split-ratio',  // renderer → main: новое соотношение панелей при drag
 
+  // Переупорядочивание вкладок drag-and-drop
+  TAB_REORDER: 'tab:reorder',           // renderer → main: { section, orderedIds } после drop
+  TAB_MOVE_SECTION: 'tab:move-section', // renderer → main: перенос между секциями { tabId, targetSection, targetIndex }
+
+  // Группы вкладок (Phase 3)
+  SIDEBAR_NODES_GET:          'sidebar:nodes-get',          // renderer → main: запрос текущего SidebarNode[]
+  SIDEBAR_NODES_CHANGED:      'sidebar:nodes-changed',      // main → renderer: push SidebarNode[] при любом изменении
+  GROUP_CREATE:               'group:create',               // renderer → main: tabId → создать группу вокруг вкладки
+  GROUP_ADD_TAB:              'group:add-tab',              // renderer → main: groupId, tabId → переместить в группу
+  GROUP_REMOVE_TAB:           'group:remove-tab',           // renderer → main: groupId, tabId → вынуть из группы
+  GROUP_RENAME:               'group:rename',               // renderer → main: groupId, label
+  GROUP_COLOR:                'group:color',                // renderer → main: groupId, color | null
+  GROUP_TOGGLE_COLLAPSE:      'group:toggle-collapse',      // renderer → main: groupId
+  GROUP_DISBAND:              'group:disband',              // renderer → main: groupId → расформировать
+  GROUP_REORDER_CHILDREN:     'group:reorder-children',     // renderer → main: groupId, orderedIds[]
+  GROUP_SHOW_MENU:            'group:show-menu',            // renderer → main: нативный ПКМ заголовка группы
+  GROUP_RENAME_PROMPT:        'group:rename-prompt',        // main → renderer: начать inline-переименование (push)
+
   // AdBlock
   ADBLOCK_GET_STATE:      'adblock:get-state',      // renderer → main: получить AdBlockState
   ADBLOCK_SET_ENABLED:    'adblock:set-enabled',    // renderer → main: вкл/выкл (boolean)
@@ -89,6 +144,25 @@ export const IPC = {
   HISTORY_DELETE: 'history:delete',  // renderer → main: удалить запись (id: number)
   HISTORY_CLEAR:  'history:clear',   // renderer → main: очистить за период ('hour'|'day'|'week'|'all')
   HISTORY_OPEN:   'history:open',    // main → renderer: открыть панель истории (Ctrl+H)
+
+  // Разрешения сайтов
+  PERMISSION_REQUEST:  'permission:request',    // main → renderer: входящий запрос (PermissionRequest)
+  PERMISSION_RESPONSE: 'permission:response',   // renderer → main: ответ пользователя (requestId, granted, remember)
+
+  // Загрузки
+  DOWNLOADS_GET_ALL:    'downloads:get-all',    // renderer → main: текущий список
+  DOWNLOADS_CHANGED:    'downloads:changed',    // main → renderer: обновлённый список (push)
+  DOWNLOADS_OPEN:       'downloads:open',       // main → renderer: открыть панель (Ctrl+J)
+  DOWNLOAD_PAUSE:       'download:pause',       // renderer → main: пауза (id)
+  DOWNLOAD_RESUME:      'download:resume',      // renderer → main: продолжить (id)
+  DOWNLOAD_CANCEL:      'download:cancel',      // renderer → main: отмена (id)
+  DOWNLOAD_CLEAR:       'download:clear',       // renderer → main: убрать из списка (id)
+  DOWNLOAD_OPEN_FILE:   'download:open-file',   // renderer → main: открыть файл (id)
+  DOWNLOAD_SHOW_FOLDER: 'download:show-folder', // renderer → main: показать в папке (id)
+  DOWNLOAD_RETRY:       'download:retry',       // renderer → main: повторить загрузку (id)
+
+  // ВРЕМЕННО Коммит 1: тест кластеризации — удалить вместе с тест-хуками.
+  ORGANIZE_THRESHOLD: 'organize:threshold',     // renderer → main: получить порог из --threshold=
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -105,6 +179,24 @@ export interface HistoryEntry {
 
 export type HistoryClearPeriod = 'hour' | 'day' | 'week' | 'all';
 
+// ── Загрузки ─────────────────────────────────────────────────────────────────
+
+export type DownloadState = 'progressing' | 'completed' | 'cancelled' | 'interrupted';
+
+export interface DownloadEntry {
+  id: string;
+  filename: string;
+  url: string;
+  savePath: string;       // пустая строка пока не завершено / пользователь не выбрал путь
+  mime: string;
+  totalBytes: number;     // 0 = неизвестен до получения Content-Length
+  receivedBytes: number;
+  state: DownloadState;
+  startedAt: number;      // Unix ms
+  isPaused: boolean;
+  bytesPerSec: number;    // 0 = неизвестна или завершено
+}
+
 // ── AdBlock ─────────────────────────────────────────────────────────────────
 export interface AdBlockState {
   enabled: boolean;
@@ -112,8 +204,27 @@ export interface AdBlockState {
   sessionBlockCount: number;  // счётчик за текущую сессию (сбрасывается при перезапуске)
 }
 
+// ── Разрешения сайтов ────────────────────────────────────────────────────────
+
+// Ключи разрешений (используются и как ключи в БД, и в UI).
+// «camera+microphone» — виртуальный ключ для одновременного запроса обоих.
+export type PermKey =
+  | 'camera' | 'microphone' | 'camera+microphone'
+  | 'geolocation' | 'notifications' | 'fullscreen'
+  | 'clipboard-read' | 'clipboard-sanitized-write';
+
+export interface PermissionRequest {
+  requestId: string;
+  origin: string;    // e.g. "https://meet.google.com"
+  permission: PermKey;
+}
+
 // Тип API, который preload пробрасывает в window.oblako
 export interface OblakoApi {
+  // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).
+  getSyncState(): Promise<SyncState>;
+  onSyncChanged(cb: (state: SyncState) => void): () => void;
+
   getAllTabs(): Promise<TabState[]>;
   createTab(url?: string): Promise<string>;       // вернёт id новой вкладки
   closeTab(id: string): Promise<void>;
@@ -147,6 +258,26 @@ export interface OblakoApi {
   focusSplitPanel(side: 'left' | 'right'): Promise<void>; // переключить активную панель
   setSplitRatio(ratio: number): Promise<void>;      // drag разделителя: 0.2..0.8
 
+  // Переупорядочивание drag-and-drop
+  reorderTabs(section: 'normal' | 'pinned', orderedIds: string[]): Promise<void>;
+  moveTabSection(tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number): Promise<void>;
+
+  // Структура сайдбара (дерево узлов)
+  getSidebarNodes(): Promise<SidebarNode[]>;
+  onSidebarNodesChanged(cb: (nodes: SidebarNode[]) => void): () => void;
+
+  // Группы вкладок
+  createGroup(tabId: string): Promise<void>;
+  addTabToGroup(groupId: string, tabId: string): Promise<void>;
+  removeTabFromGroup(groupId: string, tabId: string): Promise<void>;
+  renameGroup(groupId: string, label: string): Promise<void>;
+  setGroupColor(groupId: string, color: string | null): Promise<void>;
+  toggleGroupCollapse(groupId: string): Promise<void>;
+  disbandGroup(groupId: string): Promise<void>;
+  reorderGroupChildren(groupId: string, orderedIds: string[]): Promise<void>;
+  showGroupMenu(groupId: string): Promise<void>;
+  onGroupRenamePrompt(cb: (groupId: string) => void): () => void;
+
   // AdBlock
   getAdBlockState(): Promise<AdBlockState>;
   setAdBlockEnabled(enabled: boolean): Promise<void>;
@@ -161,4 +292,23 @@ export interface OblakoApi {
   deleteHistoryEntry(id: number): Promise<void>;
   clearHistory(period: HistoryClearPeriod): Promise<void>;
   onHistoryOpen(cb: () => void): () => void;
+
+  // Разрешения сайтов
+  respondPermission(requestId: string, granted: boolean, remember: boolean): Promise<void>;
+  onPermissionRequest(cb: (req: PermissionRequest) => void): () => void;
+
+  // Загрузки
+  getDownloads(): Promise<DownloadEntry[]>;
+  pauseDownload(id: string): Promise<void>;
+  resumeDownload(id: string): Promise<void>;
+  cancelDownload(id: string): Promise<void>;
+  clearDownload(id: string): Promise<void>;
+  openDownloadFile(id: string): Promise<void>;
+  showDownloadFolder(id: string): Promise<void>;
+  retryDownload(id: string): Promise<void>;
+  onDownloadsChanged(cb: (entries: DownloadEntry[]) => void): () => void;
+  onDownloadsOpen(cb: () => void): () => void;
+
+  // ВРЕМЕННО Коммит 1: тест кластеризации — удалить вместе с тест-хуком в App.tsx.
+  getOrganizeThreshold(): Promise<number>;
 }

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode } from '../shared/ipc';
 
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
@@ -53,6 +53,12 @@ const api: OblakoApi = {
   focusSplitPanel: (side: 'left' | 'right')    => ipcRenderer.invoke(IPC.TAB_SPLIT_FOCUS, side),
   setSplitRatio:   (ratio: number)             => ipcRenderer.invoke(IPC.TAB_SPLIT_RATIO, ratio),
 
+  reorderTabs: (section: 'normal' | 'pinned', orderedIds: string[]) =>
+    ipcRenderer.invoke(IPC.TAB_REORDER, section, orderedIds),
+
+  moveTabSection: (tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number) =>
+    ipcRenderer.invoke(IPC.TAB_MOVE_SECTION, tabId, targetSection, targetIndex),
+
   // AdBlock
   getAdBlockState:     ()                  => ipcRenderer.invoke(IPC.ADBLOCK_GET_STATE),
   setAdBlockEnabled:   (v: boolean)        => ipcRenderer.invoke(IPC.ADBLOCK_SET_ENABLED, v),
@@ -75,6 +81,70 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.HISTORY_OPEN, handler);
     return () => ipcRenderer.removeListener(IPC.HISTORY_OPEN, handler);
   },
+
+  // Загрузки
+  getDownloads:       ()             => ipcRenderer.invoke(IPC.DOWNLOADS_GET_ALL) as Promise<DownloadEntry[]>,
+  pauseDownload:      (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_PAUSE, id),
+  resumeDownload:     (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_RESUME, id),
+  cancelDownload:     (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_CANCEL, id),
+  clearDownload:      (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_CLEAR, id),
+  openDownloadFile:   (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_OPEN_FILE, id),
+  showDownloadFolder: (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_SHOW_FOLDER, id),
+  retryDownload:      (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_RETRY, id),
+  onDownloadsChanged: (cb: (entries: DownloadEntry[]) => void) => {
+    const handler = (_e: unknown, entries: DownloadEntry[]) => cb(entries);
+    ipcRenderer.on(IPC.DOWNLOADS_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.DOWNLOADS_CHANGED, handler);
+  },
+  onDownloadsOpen: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.DOWNLOADS_OPEN, handler);
+    return () => ipcRenderer.removeListener(IPC.DOWNLOADS_OPEN, handler);
+  },
+
+  // Разрешения сайтов
+  respondPermission: (requestId: string, granted: boolean, remember: boolean) =>
+    ipcRenderer.invoke(IPC.PERMISSION_RESPONSE, requestId, granted, remember),
+  onPermissionRequest: (cb: (req: PermissionRequest) => void) => {
+    const handler = (_e: unknown, req: PermissionRequest) => cb(req);
+    ipcRenderer.on(IPC.PERMISSION_REQUEST, handler);
+    return () => ipcRenderer.removeListener(IPC.PERMISSION_REQUEST, handler);
+  },
+
+  // Атомарный снимок состояния (вкладки + узлы сайдбара в одном сообщении)
+  getSyncState: () => ipcRenderer.invoke(IPC.SYNC_GET) as Promise<SyncState>,
+  onSyncChanged: (cb: (state: SyncState) => void) => {
+    const handler = (_e: unknown, state: SyncState) => cb(state);
+    ipcRenderer.on(IPC.SYNC_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.SYNC_CHANGED, handler);
+  },
+
+  // Структура сайдбара (дерево узлов)
+  getSidebarNodes: () => ipcRenderer.invoke(IPC.SIDEBAR_NODES_GET) as Promise<SidebarNode[]>,
+  onSidebarNodesChanged: (cb: (nodes: SidebarNode[]) => void) => {
+    const handler = (_e: unknown, nodes: SidebarNode[]) => cb(nodes);
+    ipcRenderer.on(IPC.SIDEBAR_NODES_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.SIDEBAR_NODES_CHANGED, handler);
+  },
+
+  // Группы вкладок
+  createGroup:          (tabId: string)                       => ipcRenderer.invoke(IPC.GROUP_CREATE,           tabId),
+  addTabToGroup:        (groupId: string, tabId: string)      => ipcRenderer.invoke(IPC.GROUP_ADD_TAB,          groupId, tabId),
+  removeTabFromGroup:   (groupId: string, tabId: string)      => ipcRenderer.invoke(IPC.GROUP_REMOVE_TAB,       groupId, tabId),
+  renameGroup:          (groupId: string, label: string)      => ipcRenderer.invoke(IPC.GROUP_RENAME,           groupId, label),
+  setGroupColor:        (groupId: string, color: string|null) => ipcRenderer.invoke(IPC.GROUP_COLOR,            groupId, color),
+  toggleGroupCollapse:  (groupId: string)                     => ipcRenderer.invoke(IPC.GROUP_TOGGLE_COLLAPSE,  groupId),
+  disbandGroup:         (groupId: string)                     => ipcRenderer.invoke(IPC.GROUP_DISBAND,          groupId),
+  reorderGroupChildren: (groupId: string, ids: string[])      => ipcRenderer.invoke(IPC.GROUP_REORDER_CHILDREN, groupId, ids),
+  showGroupMenu:        (groupId: string)                     => ipcRenderer.invoke(IPC.GROUP_SHOW_MENU,        groupId),
+  onGroupRenamePrompt: (cb: (groupId: string) => void) => {
+    const handler = (_e: unknown, groupId: string) => cb(groupId);
+    ipcRenderer.on(IPC.GROUP_RENAME_PROMPT, handler);
+    return () => ipcRenderer.removeListener(IPC.GROUP_RENAME_PROMPT, handler);
+  },
+
+  // ВРЕМЕННО Коммит 1: читает порог из --threshold= аргумента запуска.
+  getOrganizeThreshold: () => ipcRenderer.invoke(IPC.ORGANIZE_THRESHOLD) as Promise<number>,
 };
 
 contextBridge.exposeInMainWorld('oblako', api);

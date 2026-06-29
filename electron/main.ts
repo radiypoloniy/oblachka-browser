@@ -18,6 +18,15 @@ import type { SavedNode } from './SessionManager';
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
 
+// ВРЕМЕННО Коммит 1: порог кластеризации из аргумента запуска.
+// npm start -- --threshold=0.55 (или любое значение 0.0–1.0).
+// Удалить вместе с тест-хуками после одобрения качества.
+const ORGANIZE_TEST_THRESHOLD = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--threshold='));
+  const val = arg ? parseFloat(arg.slice('--threshold='.length)) : NaN;
+  return isNaN(val) ? 0.40 : Math.max(0, Math.min(1, val));
+})();
+
 let win: BrowserWindow | null = null;
 let chromeView: WebContentsView | null = null; // слой нашего React-хрома
 let tabs: TabManager | null = null;
@@ -198,6 +207,9 @@ function createWindow() {
 
 // ── IPC: renderer (хром) управляет движком вкладок ──
 function registerIpc() {
+  // ВРЕМЕННО Коммит 1: отдаёт порог, переданный через --threshold= (или 0.40 по умолчанию).
+  ipcMain.handle(IPC.ORGANIZE_THRESHOLD, () => ORGANIZE_TEST_THRESHOLD);
+
   ipcMain.handle(IPC.SYNC_GET, () => ({
     tabs:  tabs?.snapshot()              ?? [],
     nodes: tabs?.sidebarNodesSnapshot() ?? [],
