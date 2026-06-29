@@ -12,20 +12,11 @@ import { HistoryManager } from './HistoryManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
 import { IPC } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster } from '../shared/ipc';
 import type { SavedNode } from './SessionManager';
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
-
-// ВРЕМЕННО Коммит 1: порог кластеризации из аргумента запуска.
-// npm start -- --threshold=0.55 (или любое значение 0.0–1.0).
-// Удалить вместе с тест-хуками после одобрения качества.
-const ORGANIZE_TEST_THRESHOLD = (() => {
-  const arg = process.argv.find((a) => a.startsWith('--threshold='));
-  const val = arg ? parseFloat(arg.slice('--threshold='.length)) : NaN;
-  return isNaN(val) ? 0.40 : Math.max(0, Math.min(1, val));
-})();
 
 let win: BrowserWindow | null = null;
 let chromeView: WebContentsView | null = null; // слой нашего React-хрома
@@ -96,6 +87,7 @@ function createWindow() {
       chromeView?.webContents.send(IPC.SYNC_CHANGED, {
         tabs: tabs!.snapshot(),
         nodes: tabs!.sidebarNodesSnapshot(),
+        hasOrganizeSnapshot: tabs!.hasOrganizeSnapshot(),
       });
       sess!.scheduleSave(() => tabs!.getSessionSnapshot());
     },
@@ -172,12 +164,6 @@ function createWindow() {
   // Только после восстановления разрешаем автосейв.
   sess.enable();
 
-  // ВРЕМЕННО Коммит 1: перенаправляет [Organize]-логи из renderer в терминал npm start.
-  // Удалить после одобрения качества кластеризации.
-  chromeView.webContents.on('console-message', (_e, _level, message) => {
-    if (message.startsWith('[Organize]')) process.stdout.write(message + '\n');
-  });
-
   // ПКМ в хром-слое (омнибокс, поле чата): только редактируемые поля и выделение.
   // Для обычных элементов управления (кнопки, сайдбар) меню НЕ показываем.
   chromeView.webContents.on('context-menu', (_e, p) => {
@@ -207,12 +193,10 @@ function createWindow() {
 
 // ── IPC: renderer (хром) управляет движком вкладок ──
 function registerIpc() {
-  // ВРЕМЕННО Коммит 1: отдаёт порог, переданный через --threshold= (или 0.40 по умолчанию).
-  ipcMain.handle(IPC.ORGANIZE_THRESHOLD, () => ORGANIZE_TEST_THRESHOLD);
-
   ipcMain.handle(IPC.SYNC_GET, () => ({
     tabs:  tabs?.snapshot()              ?? [],
     nodes: tabs?.sidebarNodesSnapshot() ?? [],
+    hasOrganizeSnapshot: tabs?.hasOrganizeSnapshot() ?? false,
   }));
   ipcMain.handle(IPC.TABS_GET_ALL, () => tabs?.snapshot() ?? []);
   ipcMain.handle(IPC.TAB_CREATE, (_e, url?: string) => tabs?.createTab(url));
@@ -274,6 +258,10 @@ function registerIpc() {
   ipcMain.handle(IPC.DOWNLOAD_OPEN_FILE,   (_e, id: string) => downloads.openFile(id));
   ipcMain.handle(IPC.DOWNLOAD_SHOW_FOLDER, (_e, id: string) => downloads.showFolder(id));
   ipcMain.handle(IPC.DOWNLOAD_RETRY,       (_e, id: string) => downloads.retry(id));
+
+  // AI-группировка вкладок (Phase 4)
+  ipcMain.handle(IPC.TABS_ORGANIZE_APPLY,    (_e, clusters: OrganizeCluster[]) => tabs?.applyOrganize(clusters));
+  ipcMain.handle(IPC.TABS_ORGANIZE_ROLLBACK, ()                                => tabs?.rollbackOrganize());
 
   // Нативное ПКМ-меню вкладки в сайдбаре.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {
