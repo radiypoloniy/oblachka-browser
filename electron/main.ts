@@ -1,12 +1,19 @@
 import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session } from 'electron';
+import { registerSchemesAsPrivileged, registerModelProtocol } from './AppProtocol';
+
+// ДО app.whenReady() — Electron требует это до события ready.
+registerSchemesAsPrivileged();
 import type { MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
 import { TabManager } from './TabManager';
 import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
 import { HistoryManager } from './HistoryManager';
+import { DownloadManager } from './DownloadManager';
+import { PermissionManager } from './PermissionManager';
 import { IPC } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode } from '../shared/ipc';
+import type { SavedNode } from './SessionManager';
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
@@ -15,8 +22,10 @@ let win: BrowserWindow | null = null;
 let chromeView: WebContentsView | null = null; // слой нашего React-хрома
 let tabs: TabManager | null = null;
 let sess: SessionManager | null = null;
-const adblock = new AdBlockManager();
-const history = new HistoryManager();
+const adblock     = new AdBlockManager();
+const history     = new HistoryManager();
+const downloads   = new DownloadManager();
+const permissions = new PermissionManager();
 
 function createWindow() {
   win = new BrowserWindow({
@@ -54,6 +63,16 @@ function createWindow() {
   layoutChrome();
   win.on('resize', layoutChrome);
 
+  // Перехватываем все загрузки на дефолтной сессии (вкладки partition не задают).
+  downloads.attach(session.defaultSession, (entries) => {
+    chromeView?.webContents.send(IPC.DOWNLOADS_CHANGED, entries);
+  });
+
+  // Разрешения: оба хендлера на дефолтной сессии. Инкогнито (будущее) — отдельный attach.
+  permissions.attach(session.defaultSession, (req) => {
+    chromeView?.webContents.send(IPC.PERMISSION_REQUEST, req);
+  });
+
   // Загружаем сохранённую сессию ДО создания TabManager.
   sess = new SessionManager();
   const restored = sess.load();
@@ -64,8 +83,12 @@ function createWindow() {
   tabs = new TabManager(
     win,
     () => {
-      chromeView?.webContents.send(IPC.TABS_CHANGED, tabs!.snapshot());
-      sess!.scheduleSave(() => tabs!.snapshot(), () => tabs!.getActiveId());
+      // Атомарный push: tabs и nodes в одном сообщении → один рендер, нет рассинхрона.
+      chromeView?.webContents.send(IPC.SYNC_CHANGED, {
+        tabs: tabs!.snapshot(),
+        nodes: tabs!.sidebarNodesSnapshot(),
+      });
+      sess!.scheduleSave(() => tabs!.getSessionSnapshot());
     },
     (r: FindResult) => chromeView?.webContents.send(IPC.FIND_RESULT, r),
     ()              => chromeView?.webContents.send(IPC.FIND_OPEN),
@@ -77,26 +100,63 @@ function createWindow() {
     ()              => chromeView?.webContents.send(IPC.HISTORY_OPEN),
   );
 
-  // Восстанавливаем вкладки из session.json.
+  // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).
   if (restored) {
-    // Закреплённые сначала — их порядок стабилен и они всегда вверху сайдбара.
+    // Закреплённые сначала — стабильный порядок, всегда вверху сайдбара.
     const pinnedIds: string[] = [];
+    const pinnedUrlToId = new Map<string, string>();
     for (const { url } of restored.pinnedTabs) {
-      pinnedIds.push(tabs.createPinnedTab(url));
-    }
-    const normalIds: string[] = [];
-    for (const { url } of restored.tabs) {
-      normalIds.push(tabs.createTab(url, /* background */ true));
+      const id = tabs.createPinnedTab(url);
+      pinnedIds.push(id);
+      pinnedUrlToId.set(url, id);
     }
 
-    // Восстанавливаем активную вкладку по типу + индексу.
+    // Рекурсивно создаём вкладки из дерева узлов и строим urlToIds (очередь на случай дублей URL).
+    const urlToIds = new Map<string, string[]>();
+    const collectTabs = (nodes: SavedNode[]) => {
+      for (const node of nodes) {
+        if (node.type === 'single') {
+          const id = tabs!.createTab(node.url, true);
+          const list = urlToIds.get(node.url) ?? [];
+          list.push(id); urlToIds.set(node.url, list);
+        } else if (node.type === 'split-pair') {
+          const lId = tabs!.createTab(node.leftUrl,  true);
+          const rId = tabs!.createTab(node.rightUrl, true);
+          const lList = urlToIds.get(node.leftUrl)  ?? []; lList.push(lId); urlToIds.set(node.leftUrl,  lList);
+          const rList = urlToIds.get(node.rightUrl) ?? []; rList.push(rId); urlToIds.set(node.rightUrl, rList);
+        } else if (node.type === 'group') {
+          collectTabs(node.children);
+        }
+      }
+    };
+    collectTabs(restored.nodes);
+
+    // Перестраиваем дерево узлов по сохранённой структуре (с группами, парами).
+    tabs.rebuildNodeTree(restored.nodes, urlToIds);
+
+    // Активная вкладка по activeRef.
+    const ref = restored.activeRef;
     let targetId: string | undefined;
-    if (restored.activeTabType === 'pinned') {
-      targetId = pinnedIds[restored.activeTabIndex];
-    } else if (restored.activeTabType === 'normal') {
-      targetId = normalIds[restored.activeTabIndex];
+    if (ref.type === 'pinned') {
+      targetId = pinnedIds[ref.index];
+    } else if (ref.type === 'url') {
+      // v4-формат: URL уникально идентифицирует вкладку.
+      targetId = urlToIds.get(ref.url)?.[0] ?? pinnedUrlToId.get(ref.url);
+    } else if (ref.type === 'normal') {
+      // v3-формат: плоский nodeIndex в сериализованном списке без групп.
+      // Так как v3 не имел групп, flattenNodes() совпадает с порядком nodes.
+      const flatNodes = tabs.snapshot().filter((t) => !t.isHub && !t.isPinned);
+      targetId = flatNodes[ref.nodeIndex]?.id;
+    } else if (ref.type === 'split') {
+      // v3-формат: split с nodeIndex и side.
+      const flatNodes = tabs.snapshot().filter((t) => !t.isHub && !t.isPinned);
+      const paired = flatNodes.filter((t) => t.splitSide !== null);
+      const target = ref.side === 'left'
+        ? paired.find((t) => t.splitSide === 'left')
+        : paired.find((t) => t.splitSide === 'right');
+      targetId = target?.id;
     }
-    // 'hub' или индекс вне диапазона — остаёмся на хабе (дефолт TabManager).
+    // ref.type === 'hub' → остаёмся на хабе (дефолт TabManager).
     if (targetId) tabs.activate(targetId);
   }
 
@@ -132,6 +192,10 @@ function createWindow() {
 
 // ── IPC: renderer (хром) управляет движком вкладок ──
 function registerIpc() {
+  ipcMain.handle(IPC.SYNC_GET, () => ({
+    tabs:  tabs?.snapshot()              ?? [],
+    nodes: tabs?.sidebarNodesSnapshot() ?? [],
+  }));
   ipcMain.handle(IPC.TABS_GET_ALL, () => tabs?.snapshot() ?? []);
   ipcMain.handle(IPC.TAB_CREATE, (_e, url?: string) => tabs?.createTab(url));
   ipcMain.handle(IPC.TAB_CLOSE, (_e, id: string) => tabs?.closeTab(id));
@@ -154,6 +218,16 @@ function registerIpc() {
   ipcMain.handle(IPC.TAB_SPLIT_FOCUS, (_e, side: 'left' | 'right') => tabs?.focusSplitPanel(side));
   ipcMain.handle(IPC.TAB_SPLIT_RATIO, (_e, ratio: number)           => tabs?.setSplitRatio(ratio));
 
+  ipcMain.handle(IPC.TAB_REORDER,
+    (_e, section: 'normal' | 'pinned', orderedIds: string[]) =>
+      tabs?.reorderTabs(section, orderedIds),
+  );
+
+  ipcMain.handle(IPC.TAB_MOVE_SECTION,
+    (_e, tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number) =>
+      tabs?.moveTabSection(tabId, targetSection, targetIndex),
+  );
+
   // AdBlock
   ipcMain.handle(IPC.ADBLOCK_GET_STATE,      ()                    => adblock.getState());
   ipcMain.handle(IPC.ADBLOCK_SET_ENABLED,    (_e, v: boolean)      => adblock.setEnabled(v));
@@ -167,24 +241,130 @@ function registerIpc() {
   ipcMain.handle(IPC.HISTORY_DELETE, (_e, id: number)               => history.deleteEntry(id));
   ipcMain.handle(IPC.HISTORY_CLEAR,  (_e, period: HistoryClearPeriod) => history.clearHistory(period));
 
-  // Нативное ПКМ-меню вкладки в сайдбаре: Закрепить / Открепить.
+  // Разрешения сайтов
+  ipcMain.handle(IPC.PERMISSION_RESPONSE,
+    (_e, requestId: string, granted: boolean, remember: boolean) =>
+      permissions.respond(requestId, granted, remember),
+  );
+
+  // Загрузки
+  ipcMain.handle(IPC.DOWNLOADS_GET_ALL,    ()               => downloads.getAll());
+  ipcMain.handle(IPC.DOWNLOAD_PAUSE,       (_e, id: string) => downloads.pause(id));
+  ipcMain.handle(IPC.DOWNLOAD_RESUME,      (_e, id: string) => downloads.resume(id));
+  ipcMain.handle(IPC.DOWNLOAD_CANCEL,      (_e, id: string) => downloads.cancel(id));
+  ipcMain.handle(IPC.DOWNLOAD_CLEAR,       (_e, id: string) => downloads.clear(id));
+  ipcMain.handle(IPC.DOWNLOAD_OPEN_FILE,   (_e, id: string) => downloads.openFile(id));
+  ipcMain.handle(IPC.DOWNLOAD_SHOW_FOLDER, (_e, id: string) => downloads.showFolder(id));
+  ipcMain.handle(IPC.DOWNLOAD_RETRY,       (_e, id: string) => downloads.retry(id));
+
+  // Нативное ПКМ-меню вкладки в сайдбаре.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {
     if (!tabs || !win) return;
     const isPinned = tabs.isTabPinned(id);
+    const groupId  = tabs.getTabGroupId(id);
+
     const items: MenuItemConstructorOptions[] = [
       {
         label: isPinned ? 'Открепить вкладку' : 'Закрепить вкладку',
         click: () => tabs!.togglePin(id),
       },
       { type: 'separator' },
+    ];
+
+    if (!isPinned) {
+      if (groupId) {
+        items.push({
+          label: 'Убрать из группы',
+          click: () => tabs!.removeTabFromGroup(groupId, id),
+        });
+      } else {
+        items.push({
+          label: 'Создать группу',
+          click: () => tabs!.createGroup(id),
+        });
+      }
+
+      // Подменю «Добавить в группу» — только если есть группы.
+      const allGroups = collectGroups(tabs.sidebarNodesSnapshot());
+      const otherGroups = allGroups.filter((g) => g.id !== groupId);
+      if (otherGroups.length > 0) {
+        items.push({
+          label: 'Добавить в группу',
+          submenu: otherGroups.map((g) => ({
+            label: g.label || 'Группа',
+            click: () => tabs!.addTabToGroup(g.id, id),
+          })),
+        });
+      }
+
+      items.push({ type: 'separator' });
+    }
+
+    items.push({
+      label: 'Закрыть вкладку',
+      enabled: !isPinned,
+      click: () => tabs!.closeTab(id),
+    });
+    Menu.buildFromTemplate(items).popup({ window: win });
+  });
+
+  // Нативное ПКМ-меню заголовка группы.
+  ipcMain.handle(IPC.GROUP_SHOW_MENU, (_e, groupId: string) => {
+    if (!tabs || !win || !chromeView) return;
+    const GROUP_COLORS: Array<{ label: string; value: string }> = [
+      { label: 'Без цвета',   value: '' },
+      { label: 'Красный',     value: 'red' },
+      { label: 'Оранжевый',   value: 'orange' },
+      { label: 'Жёлтый',      value: 'yellow' },
+      { label: 'Зелёный',     value: 'green' },
+      { label: 'Синий',       value: 'blue' },
+      { label: 'Фиолетовый',  value: 'purple' },
+    ];
+    const items: MenuItemConstructorOptions[] = [
       {
-        label: 'Закрыть вкладку',
-        enabled: !isPinned, // закреплённую через меню тоже нельзя закрыть
-        click: () => tabs!.closeTab(id),
+        label: 'Переименовать',
+        click: () => chromeView?.webContents.send(IPC.GROUP_RENAME_PROMPT, groupId),
+      },
+      {
+        label: 'Цвет',
+        submenu: GROUP_COLORS.map(({ label, value }) => ({
+          label,
+          click: () => tabs!.setGroupColor(groupId, value || null),
+        })),
+      },
+      { type: 'separator' },
+      {
+        label: 'Свернуть / развернуть',
+        click: () => tabs!.toggleGroupCollapse(groupId),
+      },
+      { type: 'separator' },
+      {
+        label: 'Расформировать группу',
+        click: () => tabs!.disbandGroup(groupId),
       },
     ];
     Menu.buildFromTemplate(items).popup({ window: win });
   });
+
+  // Группо-операции.
+  ipcMain.handle(IPC.SIDEBAR_NODES_GET,      ()                                => tabs?.sidebarNodesSnapshot() ?? []);
+  ipcMain.handle(IPC.GROUP_CREATE,           (_e, tabId: string)               => tabs?.createGroup(tabId));
+  ipcMain.handle(IPC.GROUP_ADD_TAB,          (_e, gId: string, tabId: string)  => tabs?.addTabToGroup(gId, tabId));
+  ipcMain.handle(IPC.GROUP_REMOVE_TAB,       (_e, gId: string, tabId: string)  => tabs?.removeTabFromGroup(gId, tabId));
+  ipcMain.handle(IPC.GROUP_RENAME,           (_e, gId: string, label: string)  => tabs?.renameGroup(gId, label));
+  ipcMain.handle(IPC.GROUP_COLOR,            (_e, gId: string, color: string | null) => tabs?.setGroupColor(gId, color));
+  ipcMain.handle(IPC.GROUP_TOGGLE_COLLAPSE,  (_e, gId: string)                 => tabs?.toggleGroupCollapse(gId));
+  ipcMain.handle(IPC.GROUP_DISBAND,          (_e, gId: string)                 => tabs?.disbandGroup(gId));
+  ipcMain.handle(IPC.GROUP_REORDER_CHILDREN, (_e, gId: string, ids: string[])  => tabs?.reorderGroupChildren(gId, ids));
+}
+
+// Собирает GroupNode[] плоским списком из верхнего уровня дерева.
+function collectGroups(nodes: SidebarNode[]): GroupNode[] {
+  const groups: GroupNode[] = [];
+  for (const node of nodes) {
+    if (node.type === 'group') groups.push(node as GroupNode);
+  }
+  return groups;
 }
 
 // Внешние протоколы (mailto:, tel:) -> отдаём ОС, не показываем ошибку навигации.
@@ -199,11 +379,17 @@ app.on('web-contents-created', (_e, contents) => {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null); // прячем дефолтное меню — у нас свой хром
+  registerModelProtocol();
   registerIpc();
 
   // История: нативный модуль может отсутствовать — падение не блокирует запуск.
   await history.initialize().catch((e) =>
     console.error('[History] инициализация упала:', e),
+  );
+
+  // Разрешения: та же гарантия — падение не блокирует старт, браузер работает без персистенции.
+  await permissions.initialize().catch((e) =>
+    console.error('[Permissions] инициализация упала:', e),
   );
 
   // Ghostery ставит свой onBeforeRequest внутри initialize().
@@ -229,5 +415,5 @@ app.on('window-all-closed', () => {
 
 // Синхронная запись перед выходом — никаких await, иначе процесс умрёт раньше.
 app.on('before-quit', () => {
-  if (tabs && sess) sess.saveNow(tabs.snapshot(), tabs.getActiveId());
+  if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot());
 });

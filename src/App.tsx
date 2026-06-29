@@ -6,7 +6,9 @@ import TabError from './components/TabError';
 import FindBar from './components/FindBar';
 import Settings from './components/Settings';
 import History from './components/History';
-import type { TabState, FindResult } from '../shared/ipc';
+import Downloads from './components/Downloads';
+import PermissionPrompt from './components/PermissionPrompt';
+import type { SyncState, TabState, FindResult, DownloadEntry, PermissionRequest, SidebarNode } from '../shared/ipc';
 
 const HUB_ID = 'hub';
 
@@ -20,13 +22,24 @@ const FIND_BAR_RESERVE = 52;
 // 280 = 6 строк × ~44px + 8px зазор — max высота списка саджестов.
 const OMNIBOX_SUGGEST_RESERVE = 280;
 
+// Резерв для inline-prompt разрешений (высота панели 56px + 8px зазор).
+const PERMISSION_PROMPT_RESERVE = 64;
+
 // Ширина зазора-разделителя в split-режиме (px). Должна совпадать с SPLIT_GAP в TabManager.
 const SPLIT_GAP = 8;
+
+// Ниже COLLAPSE_THRESHOLD сайдбар схлопывается принудительно.
+// Выше EXPAND_THRESHOLD — восстанавливается желаемое состояние пользователя.
+// Зазор 20 px = гистерезис: убирает дёрганье на границе.
+const SIDEBAR_COLLAPSE_THRESHOLD = 960;
+const SIDEBAR_EXPAND_THRESHOLD   = 980;
 const SPLIT_RATIO_MIN = 0.2;
 const SPLIT_RATIO_MAX = 0.8;
 
 export default function App() {
+  console.log('[renderer-alive] App смонтирован')
   const [tabs, setTabs] = useState<TabState[]>([]);
+  const [sidebarNodes, setSidebarNodes] = useState<SidebarNode[]>([]);
   const [activeId, setActiveId] = useState(HUB_ID);
   const [vpnOn, setVpnOn] = useState(true);
   const [dark, setDark] = useState(false);
@@ -34,11 +47,26 @@ export default function App() {
   const [findResult, setFindResult] = useState<FindResult | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [downloadsOpen, setDownloadsOpen] = useState(false);
+  const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
+  const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
   const [adBlockCount, setAdBlockCount] = useState(0);
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
   const [omniboxSuggestOpen, setOmniboxSuggestOpen] = useState(false);
+  const [splitDragOver, setSplitDragOver] = useState(false);
+
+  // desired — что выбрал пользователь (идёт в автосейв, когда он появится).
+  // effective — что реально отображается (может быть принудительно true при узком окне).
+  // Авто-схлопывание НЕ пишет в desired и НЕ пишет в автосейв.
+  const [desiredCollapsed, setDesiredCollapsed] = useState(false);
+  const [effectiveCollapsed, setEffectiveCollapsed] = useState(false);
+  const desiredCollapsedRef = useRef(desiredCollapsed);
+  desiredCollapsedRef.current = desiredCollapsed;
+
   const contentRef = useRef<HTMLDivElement>(null);
+  // Актуальный DOMRect контент-зоны: обновляется ResizeObserver-ом, читается Sidebar во время drag.
+  const contentRectRef = useRef<DOMRect | null>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const omniboxRef = useRef<HTMLInputElement>(null);
 
@@ -68,8 +96,39 @@ export default function App() {
   settingsOpenRef.current = settingsOpen;
   const historyOpenRef = useRef(historyOpen);
   historyOpenRef.current = historyOpen;
+  const downloadsOpenRef = useRef(downloadsOpen);
+  downloadsOpenRef.current = downloadsOpen;
+  const pendingPermissionsRef = useRef(pendingPermissions);
+  pendingPermissionsRef.current = pendingPermissions;
   const omniboxSuggestOpenRef = useRef(omniboxSuggestOpen);
   omniboxSuggestOpenRef.current = omniboxSuggestOpen;
+
+  // Рефы с актуальными значениями — нужны для organize (читаются вне рендер-цикла).
+  const sidebarNodesRef = useRef(sidebarNodes);
+  sidebarNodesRef.current = sidebarNodes;
+  const allTabsRef = useRef(tabs);
+  allTabsRef.current = tabs;
+
+  // ВРЕМЕННО Коммит 1: тест кластеризации — удалить после одобрения качества.
+  // DevTools рендерера → __oblakoOrganize() или __oblakoOrganize(0.35)
+  useEffect(() => {
+    type OrgWin = typeof window & { __oblakoOrganize?: (threshold?: number) => void }
+    ;(window as OrgWin).__oblakoOrganize = (threshold?: number) => {
+      const tabMap = new Map(allTabsRef.current.map((t) => [t.id, t]))
+      void import('./services/ClusteringService').then(({ clusterTabs }) =>
+        clusterTabs(sidebarNodesRef.current, tabMap, threshold),
+      ).then((proposals) => {
+        console.group(`[Organize] порог=${threshold ?? 0.40}, кластеров=${proposals.length}`)
+        proposals.forEach((p, i) => {
+          console.group(`Группа ${i + 1}: «${p.suggestedName}» (${p.nodeIds.length} вкладок)`)
+          p.titles.forEach((t) => console.log(' •', t))
+          console.groupEnd()
+        })
+        console.groupEnd()
+      }).catch(console.error)
+    }
+    return () => { delete (window as OrgWin).__oblakoOrganize }
+  }, [])
 
   // Тема
   useEffect(() => {
@@ -86,18 +145,17 @@ export default function App() {
     });
   }, [dark]);
 
-  // Подписка на изменения вкладок из main + первичная загрузка.
-  // snapshot теперь несёт isActive — синхронизируем activeId из main,
-  // чтобы хоткеи и любые переключения из main отражались в UI немедленно.
+  // Атомарная подписка: tabs + nodes в одном IPC-сообщении → один рендер, нет рассинхрона.
   useEffect(() => {
-    const applySnapshot = (t: TabState[]) => {
-      setTabs(t);
-      const active = t.find((x) => x.isActive);
+    const applySync = (s: SyncState) => {
+      setTabs(s.tabs);
+      setSidebarNodes(s.nodes);
+      const active = s.tabs.find((x) => x.isActive);
       if (active) setActiveId(active.id);
     };
     let mounted = true;
-    window.oblako.getAllTabs().then((t) => { if (mounted) applySnapshot(t); });
-    const unsub = window.oblako.onTabsChanged(applySnapshot);
+    window.oblako.getSyncState().then((s) => { if (mounted) applySync(s); });
+    const unsub = window.oblako.onSyncChanged((s) => { if (mounted) applySync(s); });
     return () => { mounted = false; unsub(); };
   }, []);
 
@@ -129,9 +187,28 @@ export default function App() {
 
     const unsubHistory = window.oblako.onHistoryOpen(() => {
       setHistoryOpen((v) => !v);
+      setSettingsOpen(false);
+      setDownloadsOpen(false);
     });
 
-    return () => { unsubResult(); unsubOpen(); unsubClose(); unsubOmnibox(); unsubHistory(); };
+    const unsubDownloadsOpen = window.oblako.onDownloadsOpen(() => {
+      setDownloadsOpen((v) => !v);
+      setSettingsOpen(false);
+      setHistoryOpen(false);
+    });
+
+    const unsubPermission = window.oblako.onPermissionRequest((req) => {
+      // При входящем запросе разрешения закрываем find bar (они занимают одно пространство).
+      setFindOpen(false);
+      setFindResult(null);
+      void window.oblako.findStop();
+      setPendingPermissions((prev) => [...prev, req]);
+    });
+
+    return () => {
+      unsubResult(); unsubOpen(); unsubClose(); unsubOmnibox();
+      unsubHistory(); unsubDownloadsOpen(); unsubPermission();
+    };
   }, []);
 
   // Счётчик адблока — подписка на push из main (debounced 1s, значит не шумит).
@@ -141,15 +218,51 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  // Подписка на обновления загрузок.
+  useEffect(() => {
+    void window.oblako.getDownloads().then(setDownloads);
+    const unsub = window.oblako.onDownloadsChanged(setDownloads);
+    return () => unsub();
+  }, []);
+
   // Закрыть панель при переключении вкладки (stopFindInPage уже вызван в TabManager).
   useEffect(() => {
     setFindOpen(false);
     setFindResult(null);
   }, [activeId]);
 
+  // ── Авто-схлопывание сайдбара по ширине окна ──
+  // Пересчитывается при каждом resize. Гистерезис: схлопнуть < 960, развернуть > 980.
+  const updateSidebarCollapse = useCallback(() => {
+    const w = window.innerWidth;
+    if (w < SIDEBAR_COLLAPSE_THRESHOLD) {
+      setEffectiveCollapsed(true);
+    } else if (w >= SIDEBAR_EXPAND_THRESHOLD) {
+      setEffectiveCollapsed(desiredCollapsedRef.current);
+    }
+    // в зоне гистерезиса [960, 980) — не меняем effective
+  }, []);
+
+  // Ручное переключение из сайдбара: всегда пишем в desired.
+  // В effective применяем сразу, только если окно не в зоне принудительного схлопывания.
+  const handleSidebarCollapse = useCallback((v: boolean) => {
+    setDesiredCollapsed(v);
+    desiredCollapsedRef.current = v;
+    if (window.innerWidth >= SIDEBAR_COLLAPSE_THRESHOLD) {
+      setEffectiveCollapsed(v);
+    }
+  }, []);
+
   // ── Drag разделителя split ──
   // setPointerCapture удерживает pointermove на разделителе даже когда курсор
   // уходит над нативными WebContentsViews (в Electron/Aura все вьюхи в одном HWND).
+  // Вкладка сброшена в область контента → split (dragged = right, activeId = left).
+  const handleDropOnContent = useCallback((tabId: string) => {
+    setSplitDragOver(false);
+    setSplitRatioState(0.5);
+    void window.oblako.enterSplit(tabId);
+  }, []);
+
   const handleDividerPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -180,9 +293,9 @@ export default function App() {
   const pushBounds = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
-    // Настройки или история открыты — скрываем WebContentsView нулевыми bounds.
+    // Настройки, история или загрузки открыты — скрываем WebContentsView нулевыми bounds.
     // Покрывает и split (обе вьюхи): repositionViews() в TabManager выдаёт нулевые размеры обеим.
-    if (settingsOpenRef.current || historyOpenRef.current) {
+    if (settingsOpenRef.current || historyOpenRef.current || downloadsOpenRef.current) {
       void window.oblako.setContentBounds({ x: 0, y: 0, width: 0, height: 0 });
       return;
     }
@@ -192,7 +305,10 @@ export default function App() {
     // Дропдаун омнибокса тоже требует резерв сверху — только на реальной странице.
     const suggestReserve = (omniboxSuggestOpenRef.current && !isHubRef.current && !tabErrorRef.current)
       ? OMNIBOX_SUGGEST_RESERVE : 0;
-    const reserve = Math.max(findReserve, suggestReserve);
+    // Inline-prompt разрешений: резерв только при наличии pending запроса на реальной странице.
+    const permReserve = (pendingPermissionsRef.current.length > 0 && !isHubRef.current && !tabErrorRef.current)
+      ? PERMISSION_PROMPT_RESERVE : 0;
+    const reserve = Math.max(findReserve, suggestReserve, permReserve);
     void window.oblako.setContentBounds({
       x: r.left, y: r.top + reserve,
       width: r.width, height: Math.max(0, r.height - reserve),
@@ -200,15 +316,25 @@ export default function App() {
   }, []);
 
   useLayoutEffect(() => {
-    pushBounds();
-    const ro = new ResizeObserver(pushBounds);
+    const updateAll = () => {
+      contentRectRef.current = contentRef.current?.getBoundingClientRect() ?? null;
+      pushBounds();
+    };
+    updateAll();
+    const ro = new ResizeObserver(updateAll);
     if (contentRef.current) ro.observe(contentRef.current);
-    window.addEventListener('resize', pushBounds);
-    return () => { ro.disconnect(); window.removeEventListener('resize', pushBounds); };
+    window.addEventListener('resize', updateAll);
+    return () => { ro.disconnect(); window.removeEventListener('resize', updateAll); };
   }, [pushBounds]);
 
-  // Пересчёт bounds при смене состояния find-панели и дропдауна омнибокса.
-  useEffect(() => { pushBounds(); }, [findOpen, omniboxSuggestOpen, pushBounds]);
+  useLayoutEffect(() => {
+    updateSidebarCollapse(); // начальная проверка при маунте
+    window.addEventListener('resize', updateSidebarCollapse);
+    return () => window.removeEventListener('resize', updateSidebarCollapse);
+  }, [updateSidebarCollapse]);
+
+  // Пересчёт bounds при смене состояния find-панели, дропдауна омнибокса и очереди разрешений.
+  useEffect(() => { pushBounds(); }, [findOpen, omniboxSuggestOpen, pendingPermissions, pushBounds]);
 
   // когда переключаемся между хабом и сайтом, геометрия дырки та же,
   // но main должен переотобразить вьюху — пушим bounds ещё раз.
@@ -232,6 +358,24 @@ export default function App() {
     }
     pushBounds();
   }, [historyOpen, pushBounds]);
+
+  // То же для панели загрузок.
+  useEffect(() => {
+    if (downloadsOpen) {
+      setFindOpen(false);
+      setFindResult(null);
+    }
+    pushBounds();
+  }, [downloadsOpen, pushBounds]);
+
+  const downloadsActive = downloads.some((d) => d.state === 'progressing');
+
+  const handlePermissionRespond = (granted: boolean, remember: boolean) => {
+    const [current, ...rest] = pendingPermissions;
+    if (!current) return;
+    void window.oblako.respondPermission(current.requestId, granted, remember);
+    setPendingPermissions(rest);
+  };
 
   const select = (id: string) => { setActiveId(id); window.oblako.activateTab(id); };
   const newTab = () => { setActiveId(HUB_ID); window.oblako.activateTab(HUB_ID); };
@@ -259,13 +403,21 @@ export default function App() {
       )}
       <Sidebar
         tabs={tabs} activeId={activeId}
+        collapsed={effectiveCollapsed}
+        onCollapsedChange={handleSidebarCollapse}
         onSelect={select} onClose={close} onNewTab={newTab}
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
         onSplit={(id) => { setSplitRatioState(0.5); void window.oblako.enterSplit(id); }}
         onExitSplit={() => { void window.oblako.exitSplit(); }}
-        onSettings={() => { setSettingsOpen((v) => !v); setHistoryOpen(false); }}
-        onHistory={() => { setHistoryOpen((v) => !v); setSettingsOpen(false); }}
+        onSettings={() => { setSettingsOpen((v) => !v); setHistoryOpen(false); setDownloadsOpen(false); }}
+        onHistory={() => { setHistoryOpen((v) => !v); setSettingsOpen(false); setDownloadsOpen(false); }}
         adBlockCount={adBlockCount}
+        onReorder={(section, ids) => { void window.oblako.reorderTabs(section, ids); }}
+        onMoveSection={(tabId, section, idx) => { void window.oblako.moveTabSection(tabId, section, idx); }}
+        sidebarNodes={sidebarNodes}
+        getContentRect={() => contentRectRef.current}
+        onDragOverContent={setSplitDragOver}
+        onDropOnContent={handleDropOnContent}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
@@ -278,10 +430,15 @@ export default function App() {
           onReload={() => window.oblako.reload(activeId)}
           onSubmit={submit}
           onSuggestToggle={setOmniboxSuggestOpen}
+          downloadsActive={downloadsActive}
+          downloadsOpen={downloadsOpen}
+          onToggleDownloads={() => { setDownloadsOpen((v) => !v); setSettingsOpen(false); setHistoryOpen(false); }}
         />
         {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView). */}
         <div ref={contentRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-          {historyOpen ? (
+          {downloadsOpen ? (
+            <Downloads downloads={downloads} onClose={() => setDownloadsOpen(false)} />
+          ) : historyOpen ? (
             <History onClose={() => setHistoryOpen(false)} />
           ) : settingsOpen ? (
             <Settings onClose={() => setSettingsOpen(false)} />
@@ -357,6 +514,23 @@ export default function App() {
                   : null}
             </>
           )}
+          {/* Рамка drag-to-split: видна когда вкладка тащится над контентом. */}
+          {splitDragOver && !isSplit && !isHub && !settingsOpen && !historyOpen && !downloadsOpen && (
+            <div style={{
+              position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none',
+              border: '2px dashed var(--accent)', borderRadius: 'var(--radius-sm)',
+            }} />
+          )}
+
+          {/* Inline-prompt разрешений: показываем первый из очереди. */}
+          {/* Промпт в chrome-зоне, WebContentsView сдвинут вниз через pushBounds. */}
+          {pendingPermissions.length > 0 && !isHub && !tabError && !settingsOpen && !historyOpen && !downloadsOpen && (
+            <PermissionPrompt
+              request={pendingPermissions[0]}
+              onRespond={handlePermissionRespond}
+            />
+          )}
+
           {/* FindBar: абсолютный оверлей над всей контент-зоной (включая split). */}
           {/* FindBar: абсолютный оверлей (не показываем в режиме настроек). */}
           {findOpen && !isHub && !tabError && !settingsOpen && !historyOpen && (
