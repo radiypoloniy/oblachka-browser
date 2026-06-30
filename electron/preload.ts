@@ -146,6 +146,12 @@ const api: OblakoApi = {
   // AI-группировка вкладок (Phase 4)
   organizeApply:    (clusters: OrganizeCluster[]) => ipcRenderer.invoke(IPC.TABS_ORGANIZE_APPLY,    clusters) as Promise<void>,
   organizeRollback: ()                            => ipcRenderer.invoke(IPC.TABS_ORGANIZE_ROLLBACK)            as Promise<void>,
+
+  // ВРЕМЕННО: калибровка порога (удалить после фиксации DEFAULT_SIMILARITY_THRESHOLD)
+  getOrganizeThreshold: () => ipcRenderer.invoke(IPC.ORGANIZE_THRESHOLD) as Promise<number | null>,
+
+  // ВРЕМЕННО: флаги --bench / --verify-gpu (удалить после замера + верификации WebGPU)
+  getEmbeddingFlags: () => ipcRenderer.invoke(IPC.EMBEDDING_FLAGS) as Promise<{ bench: boolean; verifyGpu: boolean }>,
 };
 
 contextBridge.exposeInMainWorld('oblako', api);

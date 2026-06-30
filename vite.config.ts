@@ -8,6 +8,10 @@ export default defineConfig({
   root: resolve(__dirname, 'src'),
   base: './',
   plugins: [react()],
+  // Без exclude transformers.js не может динамически грузить WASM-файлы onnxruntime-web.
+  optimizeDeps: {
+    exclude: ['@huggingface/transformers'],
+  },
   build: {
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,

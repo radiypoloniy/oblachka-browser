@@ -24,7 +24,7 @@ function extractHostname(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' }
 }
 
-// Вектора нормализованы MiniLM (normalize: true) → косинусное сходство = скалярное произведение.
+// Вектора нормализованы (normalize: true + MRL L2-ренорм) → косинусное сходство = скалярное произведение.
 function cosineSim(a: Float32Array, b: Float32Array): number {
   let dot = 0
   for (let i = 0; i < a.length; i++) dot += a[i]! * b[i]!

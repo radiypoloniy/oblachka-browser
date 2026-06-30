@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Moon, Copy, Check, Globe } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Moon, Copy, Check, Globe, Download } from 'lucide-react';
 import type { TabState, HistoryEntry } from '../../shared/ipc';
-import { rankByFrecency, normalizeForOmnibox } from '../../shared/frecency';
+import { normalizeForTiles, scoreEntry } from '../../shared/frecency';
 
 // Высота тулбара — должна совпадать с CSS-значением (56px).
 const TOOLBAR_HEIGHT = 56;
@@ -24,15 +25,21 @@ const VPN_THRESHOLD_SHORT =  900;
 // Сколько пикселей от центра уходит правая группа кнопок (paddingRight 138 +
 // кнопки + отступы) в каждом режиме. Используется для вычисления ширины омнибокса
 // так, чтобы он не наезжал на правую группу (оба — вправо от центра на это значение).
+// +40 к каждому режиму относительно версии без кнопки Download (32px тело + 8px gap).
 const RIGHT_RESERVE: Record<VpnMode, number> = {
-  full:  400, // 138 sys + ~160 VPN + 32×2 AI/Moon + 24 gap ≈ 356 + запас
-  short: 315, // 138 sys +  ~85 VPN + 32×2 AI/Moon + 24 gap ≈ 311
-  icon:  265, // 138 sys +  ~35 VPN + 32×2 AI/Moon + 24 gap ≈ 261
+  full:  440, // 138 sys + ~160 VPN + 32×3 AI/Moon/DL + 32 gap ≈ 396 + запас
+  short: 355, // 138 sys +  ~85 VPN + 32×3 AI/Moon/DL + 32 gap ≈ 351
+  icon:  305, // 138 sys +  ~35 VPN + 32×3 AI/Moon/DL + 32 gap ≈ 301
 };
 
 // Гарантированный зазор (px) между краем омнибокса и каждым боковым блоком.
 // Вычитается с обеих сторон, поэтому отнимает 2×GAP от суммарной ширины.
 const OMNIBOX_SIDE_GAP = 12;
+
+// Ниже PLACEHOLDER_HIDE плейсхолдер скрывается — текст не помещается, иконка остаётся.
+// Выше PLACEHOLDER_SHOW — возвращается. Зазор 20px = гистерезис против мигания.
+const PLACEHOLDER_HIDE_THRESHOLD = 200;
+const PLACEHOLDER_SHOW_THRESHOLD = 220;
 
 // ── Типы ─────────────────────────────────────────────────────────────────────
 
@@ -59,6 +66,9 @@ interface ToolbarProps {
   onReload: () => void;
   onSubmit: (input: string) => void;
   onSuggestToggle?: (open: boolean) => void;
+  downloadsActive: boolean;   // есть хотя бы одна активная загрузка
+  downloadsOpen: boolean;     // панель загрузок сейчас открыта
+  onToggleDownloads: () => void;
 }
 
 // ── Компонент ─────────────────────────────────────────────────────────────────
@@ -66,6 +76,7 @@ interface ToolbarProps {
 export default function Toolbar({
   tab, allTabs, vpnOn, dark, omniboxRef: externalRef,
   onToggleVpn, onToggleDark, onBack, onForward, onReload, onSubmit, onSuggestToggle,
+  downloadsActive, downloadsOpen, onToggleDownloads,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
   const [value, setValue] = useState('');
@@ -75,11 +86,11 @@ export default function Toolbar({
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [toolbarWidth, setToolbarWidth] = useState(1280);
+  const [placeholderVisible, setPlaceholderVisible] = useState(true);
 
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = externalRef ?? internalRef;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   // Измеряем ширину тулбара для расчёта режима VPN и ширины омнибокса.
@@ -101,6 +112,13 @@ export default function Toolbar({
   // Math.max(0, ...) — намеренно без нижнего предела: на совсем узком окне
   // омнибокс становится узким (до 0), но никогда не налезает на боковые блоки.
   const omniboxWidth = Math.min(620, Math.max(0, toolbarWidth - 2 * RIGHT_RESERVE[vpnMode] - 2 * OMNIBOX_SIDE_GAP));
+
+  // Гистерезис плейсхолдера: прячем когда поле узкое, возвращаем с запасом.
+  useEffect(() => {
+    if (omniboxWidth < PLACEHOLDER_HIDE_THRESHOLD) setPlaceholderVisible(false);
+    else if (omniboxWidth >= PLACEHOLDER_SHOW_THRESHOLD) setPlaceholderVisible(true);
+    // в зоне [200, 220) — не меняем, чтобы не мигало
+  }, [omniboxWidth]);
 
   // Пока не редактируем — поле отражает реальный URL вкладки.
   useEffect(() => {
@@ -126,18 +144,47 @@ export default function Toolbar({
     let histEntries: HistoryEntry[] = [];
     try {
       histEntries = await window.oblako.searchHistory(query);
-      histEntries = rankByFrecency(histEntries);
     } catch { /* история недоступна */ }
 
-    const seen = new Set<string>();
-    const histItems: SuggestItem[] = [];
+    const now = Date.now();
+
+    // Дедуп по домену: одному origin = одна строка.
+    // Берём страницу с максимальным frecency-баллом на этом домене.
+    const byOrigin = new Map<string, HistoryEntry>();
     for (const e of histEntries) {
-      const norm = normalizeForOmnibox(e.url);
-      if (seen.has(norm)) continue;
-      seen.add(norm);
-      histItems.push({ kind: 'history', label: e.url, sub: e.title, url: e.url });
-      if (histItems.length >= 5) break;
+      const origin = normalizeForTiles(e.url);
+      const cur = byOrigin.get(origin);
+      if (!cur || scoreEntry(e, now) > scoreEntry(cur, now)) byOrigin.set(origin, e);
     }
+
+    // Match-score: тип совпадения — главный сортировщик, frecency — вторичный.
+    // query/hash-параметры намеренно исключены: они источник ложных хитов
+    // (e.g. «the» в ?q=... подтягивает нерелевантные страницы).
+    function calcMatchScore(e: HistoryEntry): number {
+      let hostname = '';
+      let pathname = '';
+      try {
+        const u = new URL(e.url);
+        hostname = u.hostname.replace(/^www\./, '').toLowerCase();
+        pathname = u.pathname.toLowerCase();
+      } catch { /* невалидный URL */ }
+      const title = e.title.toLowerCase();
+      if (hostname.startsWith(q))              return 4; // префикс домена → максимум
+      if (title.startsWith(q))                 return 3; // префикс заголовка
+      if (hostname.includes(q) || title.includes(q)) return 2; // вхождение в домен/заголовок
+      if (pathname.includes(q))                return 1; // только в пути
+      return 0; // только в query/hash — отфильтровываем
+    }
+
+    // Итоговый скор: ×10000 за тип совпадения даёт ему абсолютный приоритет над частотой.
+    const MATCH_TIER = 10_000;
+
+    const histItems: SuggestItem[] = [...byOrigin.values()]
+      .map((e) => ({ e, match: calcMatchScore(e), freq: scoreEntry(e, now) }))
+      .filter(({ match }) => match > 0)
+      .sort((a, b) => (b.match * MATCH_TIER + b.freq) - (a.match * MATCH_TIER + a.freq))
+      .slice(0, 5)
+      .map(({ e }) => ({ kind: 'history' as SuggestKind, label: e.url, sub: e.title, url: e.url }));
 
     const tabItems: SuggestItem[] = allTabs
       .filter((t) => !t.isHub && (
@@ -266,7 +313,6 @@ export default function Toolbar({
         pointerEvents: 'none',
       }}>
         <div
-          ref={containerRef}
           className="no-drag"
           style={{ width: '100%', position: 'relative', pointerEvents: 'auto' }}
         >
@@ -282,7 +328,7 @@ export default function Toolbar({
             <input
               ref={inputRef}
               value={value}
-              placeholder="Введите запрос или адрес"
+              placeholder={placeholderVisible ? 'Введите запрос или адрес' : ''}
               onChange={(e) => { setValue(e.target.value); triggerSuggest(e.target.value); }}
               onFocus={() => { setEditing(true); if (value.trim()) triggerSuggest(value); }}
               onBlur={() => {
@@ -303,33 +349,36 @@ export default function Toolbar({
               </button>
             )}
           </div>
-
-          {/* Дропдаун: position:fixed в координатах chromeView (всё окно). */}
-          {dropdownOpen && suggestions.length > 0 && (() => {
-            const rect = containerRef.current?.getBoundingClientRect();
-            if (!rect) return null;
-            return (
-              <div style={{
-                position: 'fixed', top: TOOLBAR_HEIGHT, left: rect.left, width: rect.width,
-                zIndex: 200,
-                background: 'var(--surface)',
-                backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
-                borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-island)',
-                border: '1px solid var(--glass-edge)',
-                overflow: 'hidden', maxHeight: 280, overflowY: 'auto',
-              }}>
-                {suggestions.map((item, idx) => (
-                  <SuggestRow
-                    key={`${item.kind}-${item.url}`}
-                    item={item} active={idx === selectedIdx}
-                    onMouseDown={() => pickSuggestion(item)}
-                    onMouseEnter={() => setSelectedIdx(idx)}
-                  />
-                ))}
-              </div>
-            );
-          })()}
         </div>
+
+        {/* Дропдаун рендерится порталом в document.body — вне всех stacking context.
+            position:fixed с координатами viewport (за пределами transform-предка работает корректно).
+            Позиция: левый край тулбара + центр тулбара - полширины омнибокса. */}
+        {dropdownOpen && suggestions.length > 0 && (() => {
+          const toolbarRect = toolbarRef.current?.getBoundingClientRect();
+          if (!toolbarRect) return null;
+          const dropLeft = toolbarRect.left + toolbarWidth / 2 - omniboxWidth / 2;
+          return createPortal(
+            <div style={{
+              position: 'fixed', top: TOOLBAR_HEIGHT, left: dropLeft, width: omniboxWidth,
+              zIndex: 9000,
+              background: 'var(--surface-solid)',
+              borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-island)',
+              border: '1px solid var(--glass-edge)',
+              overflow: 'hidden', maxHeight: 280, overflowY: 'auto',
+            }}>
+              {suggestions.map((item, idx) => (
+                <SuggestRow
+                  key={`${item.kind}-${item.url}`}
+                  item={item} active={idx === selectedIdx}
+                  onMouseDown={() => pickSuggestion(item)}
+                  onMouseEnter={() => setSelectedIdx(idx)}
+                />
+              ))}
+            </div>,
+            document.body,
+          );
+        })()}
       </div>
 
       {/* Правая группа: VPN-пилюля (схлопывается) + AI + тема.
@@ -342,6 +391,21 @@ export default function Toolbar({
         <button title="Тема" onClick={onToggleDark}
           style={{ ...navBtn(false), color: dark ? 'var(--accent)' : 'var(--text-muted)' }}>
           <Moon size={18} />
+        </button>
+        {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки */}
+        <button
+          title="Загрузки"
+          onClick={onToggleDownloads}
+          style={{ ...navBtn(false), position: 'relative', color: downloadsOpen ? 'var(--accent)' : 'var(--text-muted)' }}
+        >
+          <Download size={18} />
+          {downloadsActive && !downloadsOpen && (
+            <span style={{
+              position: 'absolute', bottom: 5, right: 5,
+              width: 5, height: 5, borderRadius: '50%',
+              background: 'var(--accent)',
+            }} />
+          )}
         </button>
       </div>
     </div>

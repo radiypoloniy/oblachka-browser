@@ -1,38 +1,94 @@
 import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { TabState } from '../shared/ipc';
 
-const SESSION_VERSION = 1;
+// Версия 4: nodes[] рекурсивно поддерживает group; activeRef использует type:'url'.
+// Версия 3: nodes[] с split-pair; activeRef type:'normal'|'split'.
+// Версия 2: nodes[] только single; activeTabType+activeTabIndex.
+// Версия 1: tabs[] (плоский список).
+const SESSION_VERSION = 4;
 const DEBOUNCE_MS = 1500;
 
 interface SavedTab {
   url: string;
 }
 
-// Тип активной вкладки — из какого списка.
-// Старые файлы без этого поля: activeTabIndex===-1 → hub, иначе → normal.
-type ActiveTabType = 'hub' | 'pinned' | 'normal';
-
-interface SessionData {
-  version: 1;
-  savedAt: string;
-  activeTabIndex: number;        // индекс внутри списка, указанного activeTabType
-  activeTabType?: ActiveTabType; // опционально — для обратной совместимости
-  pinnedTabs?: SavedTab[];       // опционально — для обратной совместимости
-  tabs: SavedTab[];
+export interface SavedSingleNode {
+  type: 'single';
+  url: string;
 }
 
-export interface RestoredSession {
+export interface SavedSplitPairNode {
+  type: 'split-pair';
+  leftUrl: string;
+  rightUrl: string;
+  ratio: number;
+}
+
+export interface SavedGroupNode {
+  type: 'group';
+  id: string;
+  label: string;
+  color: string | null;
+  collapsed: boolean;
+  children: SavedNode[];
+}
+
+export type SavedNode = SavedSingleNode | SavedSplitPairNode | SavedGroupNode;
+
+// activeRef v4: 'url' вместо 'normal'/'split' (проще с вложенными группами).
+// 'normal'/'split' оставлены в типе для чтения старых v3-сессий в main.ts.
+export type SavedActiveRef =
+  | { type: 'hub' }
+  | { type: 'pinned'; index: number }
+  | { type: 'url'; url: string }
+  // v3-формат — только для чтения при миграции, TabManager больше не пишет их:
+  | { type: 'normal'; nodeIndex: number }
+  | { type: 'split';  nodeIndex: number; side: 'left' | 'right' };
+
+export interface SessionSnapshot {
   pinnedTabs: SavedTab[];
+  nodes: SavedNode[];
+  activeRef: SavedActiveRef;
+}
+
+type UnknownNode = { type: string; [k: string]: unknown };
+
+interface SessionDataV4 {
+  version: 4;
+  savedAt: string;
+  activeRef: SavedActiveRef;
+  pinnedTabs: SavedTab[];
+  nodes: SavedNode[];
+}
+
+interface SessionDataV3 {
+  version: 3;
+  savedAt: string;
+  activeRef: SavedActiveRef;
+  pinnedTabs: SavedTab[];
+  nodes: (SavedSingleNode | SavedSplitPairNode | UnknownNode)[];
+}
+
+interface SessionDataV2 {
+  version: 2;
+  savedAt: string;
+  activeTabIndex: number;
+  activeTabType?: string;
+  pinnedTabs: SavedTab[];
+  nodes: unknown[];
+}
+
+interface SessionDataV1 {
+  version: 1;
+  savedAt: string;
+  activeTabIndex: number;
+  activeTabType?: string;
+  pinnedTabs?: SavedTab[];
   tabs: SavedTab[];
-  activeTabType: ActiveTabType;
-  activeTabIndex: number; // индекс в соответствующем списке; -1 при hub
 }
 
 export class SessionManager {
-  // Флаг: сохранение запрещено до завершения восстановления.
-  // Без этого автосейв на старте затирает сессию пустым состоянием.
   #enabled = false;
   #debounceTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #filePath: string;
@@ -41,98 +97,154 @@ export class SessionManager {
   constructor() {
     const dir = app.getPath('userData');
     this.#filePath = path.join(dir, 'session.json');
-    this.#tmpPath = path.join(dir, 'session.json.tmp');
+    this.#tmpPath  = path.join(dir, 'session.json.tmp');
   }
 
-  load(): RestoredSession | null {
+  load(): SessionSnapshot | null {
     try {
       const raw = fs.readFileSync(this.#filePath, 'utf8');
       const data = JSON.parse(raw) as unknown;
-      if (!isValidSession(data)) return null;
-      // Несовпадение версии — стартуем чисто, не рискуем неправильной миграцией.
-      if (data.version !== SESSION_VERSION) return null;
+      if (typeof data !== 'object' || data === null) return null;
+      const d = data as Record<string, unknown>;
 
-      // Обратная совместимость: старые файлы без activeTabType.
-      // activeTabIndex === -1 означало «активен хаб».
-      let activeTabType: ActiveTabType;
-      if (data.activeTabType === 'hub' || data.activeTabType === 'pinned' || data.activeTabType === 'normal') {
-        activeTabType = data.activeTabType;
-      } else {
-        activeTabType = data.activeTabIndex === -1 ? 'hub' : 'normal';
-      }
-
-      return {
-        pinnedTabs: data.pinnedTabs ?? [],
-        tabs: data.tabs,
-        activeTabType,
-        activeTabIndex: data.activeTabIndex,
-      };
+      if (d['version'] === 4) return this.#loadV4(d);
+      if (d['version'] === 3) return this.#loadV3(d);
+      if (d['version'] === 2) return this.#migrateV2(d as unknown as SessionDataV2);
+      if (d['version'] === 1) return this.#migrateV1(d as unknown as SessionDataV1);
+      return null;
     } catch {
-      return null; // файл отсутствует, битый JSON или ошибка чтения — ok
+      return null;
     }
+  }
+
+  #loadV4(d: Record<string, unknown>): SessionSnapshot | null {
+    if (
+      typeof d['savedAt'] !== 'string' ||
+      !isSavedTabArray(d['pinnedTabs']) ||
+      !Array.isArray(d['nodes']) ||
+      !isActiveRef(d['activeRef'])
+    ) return null;
+
+    return {
+      pinnedTabs: d['pinnedTabs'] as SavedTab[],
+      nodes: filterKnownNodes(d['nodes'] as unknown[]),
+      activeRef: d['activeRef'] as SavedActiveRef,
+    };
+  }
+
+  #loadV3(d: Record<string, unknown>): SessionSnapshot | null {
+    if (
+      typeof d['savedAt'] !== 'string' ||
+      !isSavedTabArray(d['pinnedTabs']) ||
+      !Array.isArray(d['nodes']) ||
+      !isActiveRef(d['activeRef'])
+    ) return null;
+
+    // v3 узлы не содержат групп — filterKnownNodes корректно их пропустит.
+    return {
+      pinnedTabs: d['pinnedTabs'] as SavedTab[],
+      nodes: filterKnownNodes(d['nodes'] as unknown[]),
+      activeRef: d['activeRef'] as SavedActiveRef,
+      // v3-формат activeRef ('normal'/'split') передаётся как есть в main.ts,
+      // который умеет оба формата при restore.
+    };
+  }
+
+  #migrateV2(d: SessionDataV2): SessionSnapshot | null {
+    if (
+      typeof d.savedAt !== 'string' ||
+      typeof d.activeTabIndex !== 'number' ||
+      !isSavedTabArray(d.pinnedTabs) ||
+      !Array.isArray(d.nodes)
+    ) return null;
+
+    const rawType = d.activeTabType;
+    const tabType: 'hub' | 'pinned' | 'normal' =
+      rawType === 'hub' || rawType === 'pinned' || rawType === 'normal' ? rawType : 'hub';
+
+    let activeRef: SavedActiveRef;
+    if (tabType === 'hub') {
+      activeRef = { type: 'hub' };
+    } else if (tabType === 'pinned') {
+      activeRef = { type: 'pinned', index: d.activeTabIndex };
+    } else {
+      activeRef = { type: 'normal', nodeIndex: d.activeTabIndex };
+    }
+
+    return {
+      pinnedTabs: d.pinnedTabs,
+      nodes: filterKnownNodes(d.nodes),
+      activeRef,
+    };
+  }
+
+  #migrateV1(d: SessionDataV1): SessionSnapshot | null {
+    if (
+      typeof d.savedAt !== 'string' ||
+      typeof d.activeTabIndex !== 'number' ||
+      !isSavedTabArray(d.tabs)
+    ) return null;
+
+    const rawType = d.activeTabType;
+    let tabType: 'hub' | 'pinned' | 'normal';
+    if (rawType === 'hub' || rawType === 'pinned' || rawType === 'normal') {
+      tabType = rawType;
+    } else {
+      tabType = d.activeTabIndex === -1 ? 'hub' : 'normal';
+    }
+
+    let activeRef: SavedActiveRef;
+    if (tabType === 'hub') {
+      activeRef = { type: 'hub' };
+    } else if (tabType === 'pinned') {
+      activeRef = { type: 'pinned', index: d.activeTabIndex };
+    } else {
+      activeRef = { type: 'normal', nodeIndex: d.activeTabIndex };
+    }
+
+    const pinnedTabs: SavedTab[] = isSavedTabArray(d.pinnedTabs) ? d.pinnedTabs : [];
+    const nodes: SavedSingleNode[] = d.tabs.map((t) => ({ type: 'single', url: t.url }));
+
+    return { pinnedTabs, nodes, activeRef };
   }
 
   enable(): void {
     this.#enabled = true;
   }
 
-  scheduleSave(getSnapshot: () => TabState[], getActiveId: () => string): void {
+  scheduleSave(getSnapshot: () => SessionSnapshot | null): void {
     if (!this.#enabled) return;
     if (this.#debounceTimer !== null) clearTimeout(this.#debounceTimer);
     this.#debounceTimer = setTimeout(() => {
       this.#debounceTimer = null;
-      this.#write(getSnapshot(), getActiveId());
+      const snap = getSnapshot();
+      if (snap) this.#write(snap);
     }, DEBOUNCE_MS);
   }
 
-  // Синхронный путь для before-quit: процесс завершается сразу после.
-  // Никаких await — иначе Node не дождётся записи до выхода.
-  saveNow(snapshot: TabState[], activeId: string): void {
-    if (!this.#enabled) return;
+  saveNow(snapshot: SessionSnapshot | null): void {
+    if (!this.#enabled || !snapshot) return;
     if (this.#debounceTimer !== null) {
       clearTimeout(this.#debounceTimer);
       this.#debounceTimer = null;
     }
-    this.#write(snapshot, activeId);
+    this.#write(snapshot);
   }
 
-  #write(snapshot: TabState[], activeId: string): void {
-    // Сохраняем только вкладки с валидным http/https URL.
-    const isReal = (t: TabState) => !t.isHub && /^https?:\/\//i.test(t.url);
-    const pinnedSnap = snapshot.filter((t) => t.isPinned && isReal(t));
-    const normalSnap = snapshot.filter((t) => !t.isPinned && isReal(t));
-
-    const pinnedTabs: SavedTab[] = pinnedSnap.map((t) => ({ url: t.url }));
-    const tabs: SavedTab[]       = normalSnap.map((t) => ({ url: t.url }));
-
-    const activeTab = snapshot.find((t) => t.id === activeId);
-    let activeTabType: ActiveTabType = 'hub';
-    let activeTabIndex = -1;
-    if (activeTab && !activeTab.isHub) {
-      if (activeTab.isPinned) {
-        activeTabType  = 'pinned';
-        activeTabIndex = pinnedSnap.findIndex((t) => t.id === activeId);
-      } else {
-        activeTabType  = 'normal';
-        activeTabIndex = normalSnap.findIndex((t) => t.id === activeId);
-        // если активная не прошла фильтр (about:blank) — activeTabIndex=-1 → хаб при restore
-      }
-    }
-
-    const data: SessionData = {
-      version: SESSION_VERSION,
+  #write(snapshot: SessionSnapshot): void {
+    const data: SessionDataV4 = {
+      version: SESSION_VERSION as 4,
       savedAt: new Date().toISOString(),
-      activeTabType,
-      activeTabIndex,
-      pinnedTabs,
-      tabs,
+      activeRef: snapshot.activeRef,
+      pinnedTabs: snapshot.pinnedTabs,
+      nodes: snapshot.nodes,
     };
 
     try {
       fs.writeFileSync(this.#tmpPath, JSON.stringify(data, null, 2), 'utf8');
       fs.renameSync(this.#tmpPath, this.#filePath);
     } catch {
-      // Ошибка диска не критична — следующий дебаунс попробует снова.
+      // Ошибка диска — следующий дебаунс повторит попытку.
     }
   }
 }
@@ -144,16 +256,61 @@ function isSavedTabArray(v: unknown): v is SavedTab[] {
   );
 }
 
-function isValidSession(v: unknown): v is SessionData {
+function isActiveRef(v: unknown): v is SavedActiveRef {
   if (typeof v !== 'object' || v === null) return false;
-  const d = v as Record<string, unknown>;
-  if (
-    typeof d['version'] !== 'number' ||
-    typeof d['savedAt'] !== 'string' ||
-    typeof d['activeTabIndex'] !== 'number' ||
-    !isSavedTabArray(d['tabs'])
-  ) return false;
-  // pinnedTabs и activeTabType — опциональные поля (обратная совместимость).
-  if (d['pinnedTabs'] !== undefined && !isSavedTabArray(d['pinnedTabs'])) return false;
-  return true;
+  const r = v as Record<string, unknown>;
+  if (r['type'] === 'hub') return true;
+  if (r['type'] === 'pinned') return typeof r['index'] === 'number';
+  if (r['type'] === 'url')    return typeof r['url'] === 'string';
+  // v3-форматы: принимаем при чтении старых сессий
+  if (r['type'] === 'normal') return typeof r['nodeIndex'] === 'number';
+  if (r['type'] === 'split')  return typeof r['nodeIndex'] === 'number'
+    && (r['side'] === 'left' || r['side'] === 'right');
+  return false;
+}
+
+// Рекурсивно фильтрует узлы, пропуская неизвестные/битые типы.
+// Поддерживает single, split-pair и group (с вложенными children).
+function filterKnownNodes(arr: unknown[]): SavedNode[] {
+  const result: SavedNode[] = [];
+  for (const item of arr) {
+    if (typeof item !== 'object' || item === null) continue;
+    const n = item as Record<string, unknown>;
+
+    if (n['type'] === 'single' && typeof n['url'] === 'string') {
+      result.push({ type: 'single', url: n['url'] as string });
+
+    } else if (
+      n['type'] === 'split-pair' &&
+      typeof n['leftUrl'] === 'string' &&
+      typeof n['rightUrl'] === 'string' &&
+      typeof n['ratio'] === 'number'
+    ) {
+      result.push({
+        type: 'split-pair',
+        leftUrl:  n['leftUrl']  as string,
+        rightUrl: n['rightUrl'] as string,
+        ratio:    n['ratio']    as number,
+      });
+
+    } else if (
+      n['type'] === 'group' &&
+      typeof n['id'] === 'string' &&
+      typeof n['label'] === 'string' &&
+      typeof n['collapsed'] === 'boolean' &&
+      Array.isArray(n['children'])
+    ) {
+      const color = typeof n['color'] === 'string' ? n['color'] : null;
+      result.push({
+        type: 'group',
+        id:        n['id']        as string,
+        label:     n['label']     as string,
+        color,
+        collapsed: n['collapsed'] as boolean,
+        children:  filterKnownNodes(n['children'] as unknown[]),
+      });
+    }
+    // Неизвестные типы пропускаем молча.
+  }
+  return result;
 }

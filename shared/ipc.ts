@@ -172,6 +172,14 @@ export const IPC = {
   // AI-группировка вкладок (Phase 4)
   TABS_ORGANIZE_APPLY:    'tabs:organize-apply',    // renderer → main: OrganizeCluster[] → сгруппировать
   TABS_ORGANIZE_ROLLBACK: 'tabs:organize-rollback', // renderer → main: откатить последнюю группировку
+
+  // ВРЕМЕННО: перекалибровка порога кластеризации (удалить после фиксации DEFAULT_SIMILARITY_THRESHOLD)
+  // npm start -- --threshold=0.45 → автопрогон через 8с → результат в терминал
+  ORGANIZE_THRESHOLD: 'organize:threshold',         // renderer → main: получить порог из --threshold= (null если не задан)
+
+  // ВРЕМЕННО: диагностика WebGPU-бэкенда (удалить после замера ДО/ПОСЛЕ + верификации)
+  // npm start -- --bench → замер инференса, npm start -- --verify-gpu → косинус WebGPU vs WASM
+  EMBEDDING_FLAGS: 'embedding:flags',               // renderer → main: { bench, verifyGpu }
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -321,4 +329,10 @@ export interface OblakoApi {
   // AI-группировка вкладок (Phase 4)
   organizeApply(clusters: OrganizeCluster[]): Promise<void>;
   organizeRollback(): Promise<void>;
+
+  // ВРЕМЕННО: калибровка порога (удалить после фиксации DEFAULT_SIMILARITY_THRESHOLD)
+  getOrganizeThreshold(): Promise<number | null>;
+
+  // ВРЕМЕННО: флаги --bench и --verify-gpu (удалить после замера + верификации WebGPU)
+  getEmbeddingFlags(): Promise<{ bench: boolean; verifyGpu: boolean }>;
 }

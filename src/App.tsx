@@ -115,6 +115,32 @@ export default function App() {
   const allTabsRef = useRef(tabs);
   allTabsRef.current = tabs;
 
+  // ВРЕМЕННО: автопрогон кластеризации для перекалибровки порога на EmbeddingGemma.
+  // Удалить после фиксации DEFAULT_SIMILARITY_THRESHOLD в ClusteringService.ts.
+  // Запуск: npm start -- --threshold=0.45 → результат через 8с в терминале npm start.
+  // Задержка 8с: EmbeddingGemma грузится дольше MiniLM (~3–10с) + восстановление сессии.
+  useEffect(() => {
+    void window.oblako.getOrganizeThreshold().then((threshold) => {
+      if (threshold === null) return
+      const timer = setTimeout(() => {
+        const tabMap = new Map(allTabsRef.current.map((x) => [x.id, x]))
+        void import('./services/ClusteringService').then(({ clusterTabs }) =>
+          clusterTabs(sidebarNodesRef.current, tabMap, threshold),
+        ).then((proposals) => {
+          console.log(`[Calibrate] порог=${threshold} → ${proposals.length} групп`)
+          proposals.forEach((p, i) => {
+            console.log(`[Calibrate] ─ Группа ${i + 1}: «${p.suggestedName}» (${p.nodeIds.length} вкладок)`)
+            p.titles.forEach((title) => console.log(`[Calibrate]   • ${title}`))
+          })
+          if (proposals.length === 0)
+            console.log('[Calibrate] нет групп: синглтоны или < 2 кандидатов')
+        }).catch((e: unknown) => console.log(`[Calibrate] ошибка: ${String(e)}`))
+      }, 8000)
+      return () => clearTimeout(timer)
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Тема
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');

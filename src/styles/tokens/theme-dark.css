@@ -20,6 +20,7 @@
 
   --app-bg:         #15131A;
   --surface:        #201D28;
+  --surface-solid:  #201D28;  /* escape hatch: тёмный аналог #FFFFFF в светлой теме */
   --surface-island: rgba(36,32,46,0.74);
   --surface-sunken: #1B1922;
   --surface-hover:  #292534;
