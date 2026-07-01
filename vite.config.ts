@@ -15,6 +15,17 @@ export default defineConfig({
   build: {
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'src/index.html'),
+        // Изолированный стенд Фазы 1 (WebGPU на кириллице) — не часть боевого чрома,
+        // грузится отдельным окном только при OBLAKO_GPU_TEST=1.
+        gputest: resolve(__dirname, 'src/gputest.html'),
+        // Временный мост ручной проверки перевода (EuroLLM/node-llama-cpp) — за флагом
+        // OBLAKO_TRANSLATE_TEST=1, сносится без следа.
+        translatetest: resolve(__dirname, 'src/translatetest.html'),
+      },
+    },
   },
   server: {
     port: 5173,

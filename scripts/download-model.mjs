@@ -14,6 +14,10 @@ const MODELS_DIR = path.join(__dirname, '..', 'resources', 'models')
 // --q4: дополнительно скачивает q4-вариант EmbeddingGemma (197MB, fp32-активации, нужен для WebGPU без NaN)
 const DOWNLOAD_Q4 = process.argv.includes('--q4')
 
+// --gputest: fp32 (1.2GB) + q8 (309MB) EmbeddingGemma — изолированный тест WebGPU на кириллице
+// (Фаза 1 задачи «GPU-роутер»), боевую модель (q4f16/wasm) не трогает.
+const DOWNLOAD_GPUTEST = process.argv.includes('--gputest')
+
 // ── Конфигурация моделей ───────────────────────────────────────────────────────
 
 const MODELS = [
@@ -51,6 +55,34 @@ const MODELS = [
       'onnx/model_q4.onnx_data',
     ],
     preflight: { onnxFile: 'onnx/model_q4.onnx', expectedData: 'model_q4.onnx_data' },
+    aliases: new Map(),
+  }] : []),
+  // gputest-варианты: fp32 (dtype:'fp32', без суффикса) и q8 (dtype:'q8' → '_quantized').
+  // Токенизатор/конфиг общий с q4f16 → пропустятся (уже есть). Качать только .onnx+.onnx_data.
+  // Скачать: node scripts/download-model.mjs --gputest
+  ...(DOWNLOAD_GPUTEST ? [{
+    org:  'onnx-community',
+    name: 'embeddinggemma-300m-ONNX',
+    label: 'EmbeddingGemma 300M fp32 (gputest, 1.2GB)',
+    files: [
+      'config.json', 'generation_config.json', 'tokenizer.json',
+      'tokenizer_config.json', 'tokenizer.model', 'special_tokens_map.json',
+      'onnx/model.onnx',
+      'onnx/model.onnx_data',
+    ],
+    preflight: { onnxFile: 'onnx/model.onnx', expectedData: 'model.onnx_data' },
+    aliases: new Map(),
+  }, {
+    org:  'onnx-community',
+    name: 'embeddinggemma-300m-ONNX',
+    label: 'EmbeddingGemma 300M q8 (gputest, 309MB)',
+    files: [
+      'config.json', 'generation_config.json', 'tokenizer.json',
+      'tokenizer_config.json', 'tokenizer.model', 'special_tokens_map.json',
+      'onnx/model_quantized.onnx',
+      'onnx/model_quantized.onnx_data',
+    ],
+    preflight: { onnxFile: 'onnx/model_quantized.onnx', expectedData: 'model_quantized.onnx_data' },
     aliases: new Map(),
   }] : []),
   {
@@ -180,6 +212,9 @@ for (const model of MODELS) {
 }
 
 console.log('\nГотово.')
+if (DOWNLOAD_GPUTEST) {
+  console.log('gputest fp32+q8 загружены. Запуск: OBLAKO_GPU_TEST=1 npm start (после npm run build).')
+}
 if (DOWNLOAD_Q4) {
   console.log('q4 загружен. Для теста: поменяй ACTIVE_MODEL = "embeddinggemma-q4" в EmbeddingService.ts, пересобери.')
 } else {

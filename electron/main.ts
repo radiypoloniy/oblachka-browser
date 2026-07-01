@@ -22,6 +22,54 @@ const DEV_URL = 'http://localhost:5173';
 // Используется в preload.ts (window.oblako.embedPreload) и для лога [startup] preload=on|off.
 const EMBED_PRELOAD = process.env.OBLAKO_PRELOAD_EMBED !== '0';
 
+// Изолированные стенды AI-инфраструктурных тестов (WebGPU-эксперименты, node-llama-cpp).
+// OBLAKO_GPU_TEST=1 / OBLAKO_LLAMA_TEST=1 / OBLAKO_TRANSLATE_TEST=1 npm start → вместо боевого
+// окна открывается только тестовое, боевой чром (TabManager/SessionManager/adblock/history)
+// не инициализируется.
+const GPU_TEST = process.env.OBLAKO_GPU_TEST === '1';
+const LLAMA_TEST = process.env.OBLAKO_LLAMA_TEST === '1';
+const TRANSLATE_TEST = process.env.OBLAKO_TRANSLATE_TEST === '1';
+
+// html — страница из src/*.html (Vite multi-entry, см. vite.config.ts).
+// logPrefix — ASCII-тег, по которому строки console.log форвардятся в main stdout как есть;
+// всё остальное (шум ORT/браузера) помечается tag:console, чтобы не путать с результатами теста.
+function runIsolatedTestWindow(html: string, logPrefix: string): void {
+  const testWin = new BrowserWindow({ width: 900, height: 600, show: true });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  testWin.webContents.on('console-message', (event: any) => {
+    const msg: string = event.message ?? '';
+    if (msg.startsWith(logPrefix)) process.stdout.write(msg + '\n');
+    else process.stdout.write(`${logPrefix}:console ${msg}\n`);
+  });
+  testWin.on('closed', () => app.quit());
+  testWin.loadURL(`oblako-chrome://localhost/${html}`);
+}
+
+// Тест-мост перевода: нужен свой preload (contextBridge → window.translateTest) и IPC-хендлер
+// в main (node-llama-cpp работает только там) — в отличие от runIsolatedTestWindow это не просто
+// read-only лог, а живое окно с вводом. Отдельный от боевого preload.ts/shared/ipc.ts.
+async function runTranslateTestWindow(): Promise<void> {
+  const { initTranslateTestBridge } = await import('./translateTestBridge');
+  initTranslateTestBridge();
+
+  const testWin = new BrowserWindow({
+    width: 900,
+    height: 700,
+    show: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload-translatetest.js'),
+      contextIsolation: true,
+      sandbox: false, // preload использует ipcRenderer
+    },
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  testWin.webContents.on('console-message', (event: any) => {
+    process.stdout.write(`${event.message ?? ''}\n`);
+  });
+  testWin.on('closed', () => app.quit());
+  testWin.loadURL('oblako-chrome://localhost/translatetest.html');
+}
+
 // t0 стартовых тайминов: фиксируем в app.whenReady, до createWindow.
 let startT0 = 0;
 
@@ -412,6 +460,23 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null); // прячем дефолтное меню — у нас свой хром
   registerModelProtocol();
   registerChromeProtocol();
+
+  if (GPU_TEST) {
+    runIsolatedTestWindow('gputest.html', '[gputest]');
+    return;
+  }
+  if (LLAMA_TEST) {
+    // node-llama-cpp работает только в main-процессе — своё окно не нужно, только stdout.
+    const { runLlamaTest } = await import('./llamatest');
+    await runLlamaTest().catch((e: unknown) => console.error('[llamatest] FATAL', e));
+    app.quit();
+    return;
+  }
+  if (TRANSLATE_TEST) {
+    await runTranslateTestWindow();
+    return;
+  }
+
   registerIpc();
 
   // История: нативный модуль может отсутствовать — падение не блокирует запуск.
