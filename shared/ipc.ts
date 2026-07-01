@@ -230,7 +230,8 @@ export interface PermissionRequest {
 
 // ── Перевод выделения ───────────────────────────────────────────────────────
 
-export type TranslateDirection = 'ru->en' | 'en->ru';
+// Любая пара языков после автоопределения ('fr->ru', 'ru->en', ...), не только ru/en.
+export type TranslateDirection = `${string}->${string}`;
 
 export type TranslateOutcome =
   | { ok: true; out: string; dirUsed: TranslateDirection; ms: number; tokPerSec: number; loadMs: number | null }

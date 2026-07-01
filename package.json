@@ -25,6 +25,7 @@
     "@ghostery/adblocker-electron": "^2.18.0",
     "@huggingface/transformers": "^3.8.1",
     "better-sqlite3": "^12.11.1",
+    "franc-min": "^6.2.0",
     "lucide-react": "0.383.0",
     "node-llama-cpp": "^3.19.0",
     "react": "18.3.1",

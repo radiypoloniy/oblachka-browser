@@ -4,20 +4,78 @@
 // node-llama-cpp работает ТОЛЬКО в main-процессе. Ленивая загрузка: модель (~1ГБ) грузится по
 // первому вызову translate(), НЕ при старте браузера — иначе окно подвиснет на открытии.
 import path from 'node:path'
+import { getTargetLang } from './TranslationConfig'
 
+// 'ru->en' и т.п. — для ручного теста (translateTestBridge.ts/translatetest.ts, там всегда пара
+// ru/en). 'auto' — боевой путь (ПКМ → «Перевести»): язык определяется по тексту, см. detectLang.
 export type Direction = 'ru->en' | 'en->ru' | 'auto'
-export type ResolvedDirection = 'ru->en' | 'en->ru'
+// Реальная пара после резолва — любой язык из LANG_NAME, не только ru/en (франц + другие языки ЕС).
+export type ResolvedDirection = `${string}->${string}`
 
 export type TranslateResult =
   | { ok: true; out: string; dirUsed: ResolvedDirection; ms: number; tokPerSec: number; loadMs: number | null }
   | { ok: false; error: string }
 
-const LANG_NAME: Record<'ru' | 'en', string> = { ru: 'Russian', en: 'English' }
-const CYRILLIC_RE = /[а-яёА-ЯЁ]/
+// Английские имена языков для промпт-шаблона EuroLLM — только те, что реально можно определить
+// (см. FRANC_TO_CODE) и передать модели по имени. Список — не «все языки мира», а разумный набор
+// вокруг задачи (крупные европейские + несколько мировых), лёгкий в поддержке.
+const LANG_NAME: Record<string, string> = {
+  ru: 'Russian', en: 'English', fr: 'French', de: 'German', es: 'Spanish', it: 'Italian',
+  pt: 'Portuguese', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian', cs: 'Czech', sv: 'Swedish',
+  el: 'Greek', ro: 'Romanian', hu: 'Hungarian', bg: 'Bulgarian', hr: 'Croatian',
+  zh: 'Chinese', ja: 'Japanese', ko: 'Korean', tr: 'Turkish', ar: 'Arabic',
+}
 
-function resolveDirection(dir: Direction, text: string): ResolvedDirection {
-  if (dir !== 'auto') return dir
-  return CYRILLIC_RE.test(text) ? 'ru->en' : 'en->ru'
+// franc-min отдаёт ISO 639-3 — переводим в короткие коды из LANG_NAME выше. Список ключей заодно
+// передаётся франку как `only` (см. detectLang) — не даём ему распознавать языки, для которых
+// у нас всё равно нет промпт-имени.
+const FRANC_TO_CODE: Record<string, string> = {
+  rus: 'ru', eng: 'en', fra: 'fr', deu: 'de', spa: 'es', ita: 'it', por: 'pt',
+  nld: 'nl', pol: 'pl', ukr: 'uk', ces: 'cs', swe: 'sv', ell: 'el', ron: 'ro',
+  hun: 'hu', bul: 'bg', hrv: 'hr', cmn: 'zh', jpn: 'ja', kor: 'ko', tur: 'tr', arb: 'ar',
+}
+
+// Если не совпал ни с одним targetLang — считаем текст «не на целевом», переводим НА targetLang
+// (см. resolveDirection). Для этого случая (и как src, когда сам детектор не смог определить язык)
+// нужен нейтральный дефолт-язык — английский, самый частый вариант «непонятного» текста.
+const FALLBACK_LANG = 'en'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let francFn: ((text: string, options?: any) => string) | null = null
+let francLoadPromise: Promise<void> | null = null
+
+async function ensureFranc(): Promise<void> {
+  if (francFn) return
+  francLoadPromise ??= (async () => {
+    // franc-min — ESM-only пакет (как node-llama-cpp ниже), тот же обход через Function(),
+    // чтобы tsc не превратил import() в require() при сборке main в CommonJS.
+    const mod: typeof import('franc-min') = await Function('return import("franc-min")')()
+    francFn = mod.franc
+  })()
+  return francLoadPromise
+}
+
+// Лёгкое оффлайн n-граммное определение языка (без сети, без LLM) — НЕ спрашиваем саму модель
+// перевода, это был бы лишний медленный вызов. minLength занижен с дефолтных 10 до 3: выделения
+// для перевода часто короче одного предложения (отдельные слова/фразы), а франк с дефолтом просто
+// вернул бы 'und' на них. Точность на коротких строках ниже, но это лучше, чем всегда «не определил».
+async function detectLang(text: string): Promise<string> {
+  await ensureFranc()
+  const iso3 = francFn!(text, { only: Object.keys(FRANC_TO_CODE), minLength: 3 })
+  return FRANC_TO_CODE[iso3] ?? FALLBACK_LANG
+}
+
+// Вариант A: иностранное → на целевой язык (targetLang, дефолт 'ru'); если текст уже на целевом —
+// на запасной (FALLBACK_LANG). targetLang читается из TranslationConfig — единственного места,
+// куда позже начнёт писать кнопка настроек AI, без изменений здесь.
+async function resolveDirection(dir: Direction, text: string): Promise<{ src: string; tgt: string }> {
+  if (dir !== 'auto') {
+    const [src, tgt] = dir.split('->') as [string, string]
+    return { src, tgt }
+  }
+  const target = getTargetLang()
+  const detected = await detectLang(text)
+  return detected === target ? { src: target, tgt: FALLBACK_LANG } : { src: detected, tgt: target }
 }
 
 // Грубая разбивка на предложения (не NLP-прод): границы — .!?… перед пробелом/концом строки.
@@ -33,9 +91,9 @@ function splitSentences(text: string): string[] {
 // Промпт-шаблон из диагностики: пустой system, инструкция + labeled fill-in-the-blank
 // в user-сообщении — точно по карточке модели utter-project/EuroLLM-1.7B-Instruct.
 // Системный промпт-инструкция ("You are a translator...") эту модель не слушается для en->ru.
-function buildPrompt(dir: ResolvedDirection, text: string): string {
-  const { src, tgt } = dir === 'ru->en' ? { src: 'ru' as const, tgt: 'en' as const } : { src: 'en' as const, tgt: 'ru' as const }
-  const S = LANG_NAME[src]; const T = LANG_NAME[tgt]
+// src/tgt — любая пара из LANG_NAME (не захардкоженные ru/en), резолвится в resolveDirection.
+function buildPrompt(src: string, tgt: string, text: string): string {
+  const S = LANG_NAME[src] ?? src; const T = LANG_NAME[tgt] ?? tgt
   return `Translate the following ${S} source text to ${T}:\n${S}: ${text} \n${T}: `
 }
 
@@ -71,9 +129,9 @@ async function ensureLoaded(): Promise<number> {
   return loadPromise
 }
 
-async function translateSegment(segment: string, dirUsed: ResolvedDirection): Promise<{ out: string; tokens: number }> {
+async function translateSegment(segment: string, src: string, tgt: string): Promise<{ out: string; tokens: number }> {
   const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '' })
-  const userMsg = buildPrompt(dirUsed, segment)
+  const userMsg = buildPrompt(src, tgt, segment)
   const out = (await session.prompt(userMsg, { maxTokens: 100, customStopTriggers: ['\n'] })).trim()
   const tokens = model.tokenize(out).length
   await sequence.clearHistory()
@@ -86,14 +144,15 @@ export async function translate(text: string, dir: Direction = 'auto'): Promise<
     const loadMs = await ensureLoaded()
 
     // Направление резолвим один раз по всему тексту — не по каждому предложению отдельно.
-    const dirUsed = resolveDirection(dir, text)
+    const { src, tgt } = await resolveDirection(dir, text)
+    const dirUsed: ResolvedDirection = `${src}->${tgt}`
     const segments = splitSentences(text)
 
     const t0 = performance.now()
     const outs: string[] = []
     let totalTokens = 0
     for (const segment of segments) {
-      const { out, tokens } = await translateSegment(segment, dirUsed)
+      const { out, tokens } = await translateSegment(segment, src, tgt)
       outs.push(out)
       totalTokens += tokens
     }
