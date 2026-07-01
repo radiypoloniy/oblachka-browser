@@ -1,8 +1,12 @@
-// Продовый переводчик: EuroLLM-1.7B-Instruct (GGUF Q4_K_M) через node-llama-cpp.
-// Единственный источник правды для перевода — используется и боевой фичей (ПКМ → «Перевести»,
-// см. TabManager.ts/main.ts), и ручным тест-мостом (translateTestBridge.ts), чтобы не дублировать.
-// node-llama-cpp работает ТОЛЬКО в main-процессе. Ленивая загрузка: модель (~1ГБ) грузится по
-// первому вызову translate(), НЕ при старте браузера — иначе окно подвиснет на открытии.
+// Продовый переводчик: Qwen3.5-9B (GGUF Q4_K_M) через node-llama-cpp — единый генеративный слой
+// вместо специализированного EuroLLM-1.7B (заменён после сравнения качества/скорости, см. изолированные
+// тесты translategemma-test.ts/qwen35-test.ts, уже удалены). Единственный источник правды для
+// перевода — используется и боевой фичей (ПКМ → «Перевести», см. TabManager.ts/main.ts), и ручным
+// тест-мостом (translateTestBridge.ts), чтобы не дублировать.
+// node-llama-cpp работает ТОЛЬКО в main-процессе. Ленивая загрузка: модель (~5.7ГБ) грузится по
+// первому вызову translate(), НЕ при старте браузера — иначе окно подвиснет на открытии. Загрузка
+// заметно дольше, чем у EuroLLM (~30с против ~5с, соло-замер на чистых 8ГБ VRAM) — see
+// translatepopover.tsx: текст плейсхолдера отражает это честно.
 import path from 'node:path'
 import { getTargetLang } from './TranslationConfig'
 
@@ -16,7 +20,7 @@ export type TranslateResult =
   | { ok: true; out: string; dirUsed: ResolvedDirection; ms: number; tokPerSec: number; loadMs: number | null }
   | { ok: false; error: string }
 
-// Английские имена языков для промпт-шаблона EuroLLM — только те, что реально можно определить
+// Английские имена языков для промпт-шаблона — только те, что реально можно определить
 // (см. FRANC_TO_CODE) и передать модели по имени. Список — не «все языки мира», а разумный набор
 // вокруг задачи (крупные европейские + несколько мировых), лёгкий в поддержке.
 const LANG_NAME: Record<string, string> = {
@@ -79,22 +83,30 @@ async function resolveDirection(dir: Direction, text: string): Promise<{ src: st
 }
 
 // Грубая разбивка на предложения (не NLP-прод): границы — .!?… перед пробелом/концом строки.
-// Нужна, т.к. customStopTriggers:'\n' ниже режет вывод по первому переносу строки — модель
-// кладёт переведённые предложения на отдельные строки, и один вызов на весь текст обрезался бы
-// после первого предложения (воспроизведённый и подтверждённый баг). Решение: переводить по
-// предложению (короткий однострочный вызов, для которого стоп-триггер и задумывался), склеивать.
+// Держим короткие однопредложенческие вызовы к модели — быстрее, стабильнее на длинных
+// выделениях, меньше риска, что модель начнёт «растекаться» на большом входе. Qwen (в отличие от
+// EuroLLM) не требует этого как обход конкретного бага — но архитектуру перевода по сегментам не
+// меняем (перенесена как есть), только сам движок ниже.
 function splitSentences(text: string): string[] {
   const parts = text.match(/[^.!?…]+[.!?…]*(\s+|$)/g) ?? [text]
   return parts.map((p) => p.trim()).filter((p) => p.length > 0)
 }
 
-// Промпт-шаблон из диагностики: пустой system, инструкция + labeled fill-in-the-blank
-// в user-сообщении — точно по карточке модели utter-project/EuroLLM-1.7B-Instruct.
-// Системный промпт-инструкция ("You are a translator...") эту модель не слушается для en->ru.
-// src/tgt — любая пара из LANG_NAME (не захардкоженные ru/en), резолвится в resolveDirection.
+// Естественная инструкция для общего чат/инструкт-слоя (Qwen3.5) — не fill-in-the-blank формат
+// EuroLLM, у которого свой формат карточки модели. src/tgt — любая пара из LANG_NAME (не
+// захардкоженные ru/en), резолвится в resolveDirection.
 function buildPrompt(src: string, tgt: string, text: string): string {
   const S = LANG_NAME[src] ?? src; const T = LANG_NAME[tgt] ?? tgt
-  return `Translate the following ${S} source text to ${T}:\n${S}: ${text} \n${T}: `
+  return `Translate the following ${S} text to ${T}. Output ONLY the ${T} translation, ` +
+    `with no explanations, notes, or additional commentary.\n\n${text}`
+}
+
+// Защита от утечки reasoning в перевод: у Qwen3.5-9B thinking по умолчанию off, и chatWrapper ниже
+// явно просит thoughts:'discourage' — но это диагностировано на живых прогонах (см. qwen35-test.ts,
+// уже удалён), не гарантия на 100% случаев. Если <think>-теги всё же просочатся — вырезаем перед
+// тем, как отдать текст в поповер, а не полагаемся молча на настройку wrapper'а.
+function stripThinking(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -107,6 +119,8 @@ let context: any = null
 let sequence: any = null
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let LlamaChatSession: any = null
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let qwenChatWrapper: any = null
 let loadPromise: Promise<number> | null = null
 
 async function ensureLoaded(): Promise<number> {
@@ -120,7 +134,12 @@ async function ensureLoaded(): Promise<number> {
     const nlc: typeof import('node-llama-cpp') = await Function('return import("node-llama-cpp")')()
     llama = await nlc.getLlama()
     LlamaChatSession = nlc.LlamaChatSession
-    const modelPath = path.join(__dirname, '../../resources/models/gguf/EuroLLM-1.7B-Instruct.Q4_K_M.gguf')
+    // variation:'3.5' — актуальный чат-шаблон Qwen3.5 (свой формат, не EuroLLM/Gemma).
+    // thoughts:'discourage' — явно давим reasoning: у Qwen3.5-9B thinking по умолчанию off, но
+    // задача была УБЕДИТЬСЯ, а не полагаться на дефолт (подтверждено на живых прогонах: без утечек
+    // <think> ни разу — доп. защита всё равно есть в stripThinking() ниже).
+    qwenChatWrapper = new nlc.QwenChatWrapper({ variation: '3.5', thoughts: 'discourage' })
+    const modelPath = path.join(__dirname, '../../resources/models/gguf/Qwen3.5-9B-Q4_K_M.gguf')
     model = await llama.loadModel({ modelPath })
     context = await model.createContext({ sequences: 1 })
     sequence = context.getSequence()
@@ -130,9 +149,9 @@ async function ensureLoaded(): Promise<number> {
 }
 
 async function translateSegment(segment: string, src: string, tgt: string): Promise<{ out: string; tokens: number }> {
-  const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '' })
+  const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper: qwenChatWrapper })
   const userMsg = buildPrompt(src, tgt, segment)
-  const out = (await session.prompt(userMsg, { maxTokens: 100, customStopTriggers: ['\n'] })).trim()
+  const out = stripThinking((await session.prompt(userMsg, { maxTokens: 150 })).trim())
   const tokens = model.tokenize(out).length
   await sequence.clearHistory()
   return { out, tokens }

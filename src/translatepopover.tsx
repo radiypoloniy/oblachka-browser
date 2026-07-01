@@ -97,7 +97,7 @@ function Popover() {
 
         {outcome === null && (
           <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-            Перевожу… (первая загрузка ~5с)
+            Перевожу… (при первом запуске загрузка модели — до 30–40 секунд)
           </span>
         )}
 
