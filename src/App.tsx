@@ -227,7 +227,6 @@ export default function App() {
     };
   }, []);
 
-
   // Подписка на обновления загрузок.
   useEffect(() => {
     void window.oblako.getDownloads().then(setDownloads);

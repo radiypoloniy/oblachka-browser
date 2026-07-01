@@ -38,6 +38,10 @@ interface SleepingMeta {
   faviconUrl: string | null;
 }
 
+// Прямоугольник (селекшена или фоллбэк-точки клика) в координатах ОКНА — уже с добавленным
+// оффсетом view.getBounds(), готов к использованию для позиционирования поповера в main.ts.
+export interface SelectionRect { x: number; y: number; width: number; height: number }
+
 interface ManagedTab {
   id: string;
   view: WebContentsView | null; // null = хаб (sleeping===null) ИЛИ спящая (sleeping!==null)
@@ -56,6 +60,16 @@ const HAS_FILLED_FORMS_SCRIPT = `(function(){
     if(v.trim().length>0)return true;
   }
   return false;
+})()`;
+
+// Прямоугольник выделения (последний range) в координатах viewport страницы — для позиционирования
+// поповера перевода. null, если выделения нет (тогда — фоллбэк на p.x/p.y клика ПКМ).
+const SELECTION_RECT_SCRIPT = `(function(){
+  var sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  var r = sel.getRangeAt(0).getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) return null;
+  return { x: r.left, y: r.top, width: r.width, height: r.height };
 })()`;
 
 export class TabManager {
@@ -85,6 +99,7 @@ export class TabManager {
   private onTitleUpdateCb?: (url: string, title: string) => void;
   private onHistoryOpenCb?: () => void;
   private onFirstTabLoadCb?: () => void;
+  private onTranslateSelectionCb?: (text: string, rect: SelectionRect, wc: WebContents) => void;
   private firstTabLoaded = false; // защита: колбэк вызывается ровно один раз
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
@@ -117,6 +132,7 @@ export class TabManager {
     onTitleUpdate?: (url: string, title: string) => void,
     onHistoryOpen?: () => void,
     onFirstTabLoad?: () => void,
+    onTranslateSelection?: (text: string, rect: SelectionRect, wc: WebContents) => void,
   ) {
     this.win = win;
     this.onChange = onChange;
@@ -129,6 +145,7 @@ export class TabManager {
     this.onTitleUpdateCb = onTitleUpdate;
     this.onHistoryOpenCb = onHistoryOpen;
     this.onFirstTabLoadCb = onFirstTabLoad;
+    this.onTranslateSelectionCb = onTranslateSelection;
     // Хаб существует всегда; не входит в tabMap, pinnedTabs или nodes.
     this.hubTab = { id: HUB_ID, view: null, sleeping: null, lastActiveAt: 0 };
     this.startSleepTimer();
@@ -825,6 +842,32 @@ export class TabManager {
             click: () => this.createTab(SEARCH_URL(p.selectionText)),
           },
         );
+        if (this.onTranslateSelectionCb) {
+          items.push({
+            label: 'Перевести',
+            click: () => {
+              const text = p.selectionText;
+              void (async () => {
+                // Фоллбэк на координаты клика ПКМ, если запрос rect не удался/не дал результата
+                // (напр. выделение снялось до клика по пункту меню — редкий race).
+                let local: { x: number; y: number; width: number; height: number };
+                try {
+                  local = (await wc.executeJavaScript(SELECTION_RECT_SCRIPT, true)) ?? { x: p.x, y: p.y, width: 0, height: 0 };
+                } catch {
+                  local = { x: p.x, y: p.y, width: 0, height: 0 };
+                }
+                const viewBounds = view.getBounds();
+                const rect: SelectionRect = {
+                  x: viewBounds.x + local.x,
+                  y: viewBounds.y + local.y,
+                  width: local.width,
+                  height: local.height,
+                };
+                this.onTranslateSelectionCb!(text, rect, wc);
+              })();
+            },
+          });
+        }
       }
 
       // ── Фоллбэк: просто страница (ни ссылки, ни картинки, ни выделения) ────

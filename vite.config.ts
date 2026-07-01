@@ -24,6 +24,9 @@ export default defineConfig({
         // Временный мост ручной проверки перевода (EuroLLM/node-llama-cpp) — за флагом
         // OBLAKO_TRANSLATE_TEST=1, сносится без следа.
         translatetest: resolve(__dirname, 'src/translatetest.html'),
+        // Боевой поповер перевода выделения — отдельная WebContentsView поверх контента,
+        // создаётся лениво (TranslatePopoverManager.ts), не при старте браузера.
+        translatepopover: resolve(__dirname, 'src/translatepopover.html'),
       },
     },
   },

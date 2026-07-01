@@ -228,6 +228,14 @@ export interface PermissionRequest {
   permission: PermKey;
 }
 
+// ── Перевод выделения ───────────────────────────────────────────────────────
+
+export type TranslateDirection = 'ru->en' | 'en->ru';
+
+export type TranslateOutcome =
+  | { ok: true; out: string; dirUsed: TranslateDirection; ms: number; tokPerSec: number; loadMs: number | null }
+  | { ok: false; error: string };
+
 // Тип API, который preload пробрасывает в window.oblako
 export interface OblakoApi {
   // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).

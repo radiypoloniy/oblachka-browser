@@ -14,6 +14,7 @@ import { PermissionManager } from './PermissionManager';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster } from '../shared/ipc';
 import type { SavedNode } from './SessionManager';
+import { showTranslatePopover } from './TranslatePopoverManager';
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
@@ -155,6 +156,11 @@ function createWindow() {
     (url, title)    => history.updateTitle(url, title),
     ()              => chromeView?.webContents.send(IPC.HISTORY_OPEN),
     ()              => console.log(`[startup] firsttab ${Date.now() - startT0}ms`),
+    (text, rect, wc) => {
+      // Поповер у выделения, поверх контента (см. TranslatePopoverManager.ts) — не панель в чроме.
+      // Ленивый: WebContentsView+preload поповера создаются только этим вызовом.
+      if (win) showTranslatePopover(win, text, rect, wc);
+    },
   );
 
   // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).
