@@ -58,9 +58,10 @@ function Popover() {
         overflowY: 'auto',
         boxSizing: 'border-box',
         background: 'var(--surface-solid)',
-        border: '1px solid var(--glass-edge)',
-        padding: 12,
-        display: 'flex', flexDirection: 'column', gap: 6,
+        borderRadius: 'var(--radius-card)',
+        boxShadow: 'var(--shadow-pop)',
+        padding: 'var(--pad-card)',
+        display: 'flex', flexDirection: 'column', gap: 8,
         fontFamily: 'var(--font-sans)',
       }}
     >
@@ -96,7 +97,7 @@ function Popover() {
         <>
           {/* Полный текст, без обрезки многоточием — длинные переводы дают скролл (см. maxHeight выше). */}
           <span style={{
-            fontSize: 'var(--fs-sm)', color: 'var(--text-strong)', fontWeight: 500,
+            fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-strong)', fontWeight: 500,
             whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           }}>
             {outcome.out}
