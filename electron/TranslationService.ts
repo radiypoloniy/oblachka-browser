@@ -45,19 +45,36 @@ const FRANC_TO_CODE: Record<string, string> = {
 const FALLBACK_LANG = 'en'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let francFn: ((text: string, options?: any) => string) | null = null
+let francAllFn: ((text: string, options?: any) => Array<[string, number]>) | null = null
 let francLoadPromise: Promise<void> | null = null
 
 async function ensureFranc(): Promise<void> {
-  if (francFn) return
+  if (francAllFn) return
   francLoadPromise ??= (async () => {
     // franc-min — ESM-only пакет (как node-llama-cpp ниже), тот же обход через Function(),
     // чтобы tsc не превратил import() в require() при сборке main в CommonJS.
     const mod: typeof import('franc-min') = await Function('return import("franc-min")')()
-    francFn = mod.franc
+    // francAll вместо franc — нужен не только победитель, но и весь список кандидатов с их
+    // score (см. эвристики ниже: коротким строкам не хватает сигнала для однозначного вывода,
+    // а среди кандидатов почти всегда есть правильный ответ, просто не на первом месте).
+    francAllFn = mod.francAll
   })()
   return francLoadPromise
 }
+
+// На коротких строках franc даёт мало сигнала и путает языки — подтверждено на живых прогонах:
+// «да блин, опять сроки горят...» (52 симв.) → 'bg', «спасибо огромное...» (47 симв.) → 'uk',
+// "honestly that's a game changer, let's ship it" (47 симв.) → 'fr'. Общий порог по score не
+// работает (проверено численно: score правильного языка у разных пар пересекается со score
+// ложного срабатывания на других парах) — вместо этого две точечные эвристики:
+// 1) кириллица: bg/uk на короткой строке при рус. тексте — общая графика, франк путает между
+//    близкими славянскими языками почти всегда одинаково → просто считаем русским.
+// 2) латиница/английский: нет script-сигнала, зато есть надёжный лексический маркер — английские
+//    сокращения (that's, let's, don't, we're...) практически не встречаются в других языках
+//    из FRANC_TO_CODE в этой форме (апостроф ПОСЛЕ слова, не перед, как в французских l'/c'/qu').
+const RU_CONFUSABLE_ON_SHORT_TEXT = new Set(['bg', 'uk'])
+const ENGLISH_CONTRACTION_RE = /\b\w+'(s|t|re|ll|ve|d|m)\b/i
+const SHORT_TEXT_THRESHOLD = 80
 
 // Лёгкое оффлайн n-граммное определение языка (без сети, без LLM) — НЕ спрашиваем саму модель
 // перевода, это был бы лишний медленный вызов. minLength занижен с дефолтных 10 до 3: выделения
@@ -65,8 +82,22 @@ async function ensureFranc(): Promise<void> {
 // вернул бы 'und' на них. Точность на коротких строках ниже, но это лучше, чем всегда «не определил».
 async function detectLang(text: string): Promise<string> {
   await ensureFranc()
-  const iso3 = francFn!(text, { only: Object.keys(FRANC_TO_CODE), minLength: 3 })
-  return FRANC_TO_CODE[iso3] ?? FALLBACK_LANG
+  const candidates = francAllFn!(text, { only: Object.keys(FRANC_TO_CODE), minLength: 3 })
+  let iso3 = candidates[0]?.[0] ?? 'und'
+  let code = FRANC_TO_CODE[iso3] ?? FALLBACK_LANG
+
+  if (text.length < SHORT_TEXT_THRESHOLD) {
+    if (RU_CONFUSABLE_ON_SHORT_TEXT.has(code)) {
+      console.log(`[translate] detected=${code} (iso3=${iso3}) на короткой строке — считаем русским (RU_CONFUSABLE_ON_SHORT_TEXT)`)
+      iso3 = 'rus'; code = 'ru'
+    } else if (code !== 'en' && ENGLISH_CONTRACTION_RE.test(text) && candidates.some(([c]) => c === 'eng')) {
+      console.log(`[translate] detected=${code} (iso3=${iso3}), но есть англ. сокращение (that's/let's/...) — считаем английским`)
+      iso3 = 'eng'; code = 'en'
+    }
+  }
+
+  console.log(`[translate] detectLang: iso3=${iso3} -> code=${code} text="${text.slice(0, 60)}"`)
+  return code
 }
 
 // Вариант A: иностранное → на целевой язык (targetLang, дефолт 'ru'); если текст уже на целевом —
