@@ -19,5 +19,11 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // COOP/COEP для dev-режима: те же заголовки что и в oblako-chrome://
+    // → crossOriginIsolated=true → SAB → WASM-многопоточность в npm run dev тоже.
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
   },
 });

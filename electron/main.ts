@@ -1,5 +1,5 @@
 import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session } from 'electron';
-import { registerSchemesAsPrivileged, registerModelProtocol } from './AppProtocol';
+import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 
 // ДО app.whenReady() — Electron требует это до события ready.
 registerSchemesAsPrivileged();
@@ -18,24 +18,12 @@ import type { SavedNode } from './SessionManager';
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
 
-// ВРЕМЕННО: порог кластеризации из --threshold= для перекалибровки на EmbeddingGemma.
-// Удалить после фиксации DEFAULT_SIMILARITY_THRESHOLD в ClusteringService.ts.
-// Пример: npm start -- --threshold=0.45
-const CALIBRATION_THRESHOLD = (() => {
-  const arg = process.argv.find((a) => a.startsWith('--threshold='));
-  if (!arg) return null;
-  const val = parseFloat(arg.slice('--threshold='.length));
-  return isNaN(val) ? null : Math.max(0, Math.min(1, val));
-})();
+// Одно место: env OBLAKO_PRELOAD_EMBED=0 npm start → предзагрузка эмбеддинг-модели отключена.
+// Используется в preload.ts (window.oblako.embedPreload) и для лога [startup] preload=on|off.
+const EMBED_PRELOAD = process.env.OBLAKO_PRELOAD_EMBED !== '0';
 
-// ВРЕМЕННО: флаги диагностики WebGPU-бэкенда.
-// Удалить после замера ДО/ПОСЛЕ и верификации косинуса.
-// npm start -- --bench       → замер инференса 10 строк (после прогрева)
-// npm start -- --verify-gpu  → косинус WebGPU vs WASM (мин. по 10 строкам)
-const EMBEDDING_FLAGS = {
-  bench:     process.argv.includes('--bench'),
-  verifyGpu: process.argv.includes('--verify-gpu'),
-};
+// t0 стартовых тайминов: фиксируем в app.whenReady, до createWindow.
+let startT0 = 0;
 
 let win: BrowserWindow | null = null;
 let chromeView: WebContentsView | null = null; // слой нашего React-хрома
@@ -118,6 +106,7 @@ function createWindow() {
     (url, title)    => history.recordVisit(url, title),
     (url, title)    => history.updateTitle(url, title),
     ()              => chromeView?.webContents.send(IPC.HISTORY_OPEN),
+    ()              => console.log(`[startup] firsttab ${Date.now() - startT0}ms`),
   );
 
   // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).
@@ -183,10 +172,9 @@ function createWindow() {
   // Только после восстановления разрешаем автосейв.
   sess.enable();
 
-  // Форвардинг диагностических логов из renderer (воркер эмбеддингов, калибровка) → stdout.
-  // Префиксы: [Embeddings] [Bench] [Verify] [Calibrate] — всё остальное в UI-консоль.
+  // Форвардинг логов воркера эмбеддингов из renderer → stdout.
   // Новый API Electron: событие console-message передаёт поля через Event-объект.
-  const LOG_PREFIXES = ['[Embeddings]', '[Bench]', '[Verify]', '[Calibrate]'];
+  const LOG_PREFIXES = ['[embed]'];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   chromeView.webContents.on('console-message', (event: any) => {
     const msg: string = event.message ?? '';
@@ -208,11 +196,17 @@ function createWindow() {
   // Хоткеи для хром-слоя (хаб, омнибокс). Вкладки получают их через wirePageEvents.
   tabs.registerHotkeyHandler(chromeView.webContents);
 
+  // Таймер окна: did-finish-load chromeView = React-UI загружен и отрисован.
+  chromeView.webContents.once('did-finish-load', () => {
+    console.log(`[startup] window ${Date.now() - startT0}ms`);
+  });
+
   if (isDev) {
     chromeView.webContents.loadURL(DEV_URL);
     chromeView.webContents.openDevTools({ mode: 'detach' });
   } else {
-    chromeView.webContents.loadFile(path.join(__dirname, '../../dist/index.html'));
+    // oblako-chrome:// вместо file:// → COOP/COEP заголовки → crossOriginIsolated=true → SAB → WASM-потоки
+    chromeView.webContents.loadURL('oblako-chrome://localhost/index.html');
   }
 
   win.on('closed', () => {
@@ -291,12 +285,6 @@ function registerIpc() {
   // AI-группировка вкладок (Phase 4)
   ipcMain.handle(IPC.TABS_ORGANIZE_APPLY,    (_e, clusters: OrganizeCluster[]) => tabs?.applyOrganize(clusters));
   ipcMain.handle(IPC.TABS_ORGANIZE_ROLLBACK, ()                                => tabs?.rollbackOrganize());
-
-  // ВРЕМЕННО: отдаёт порог из --threshold= (null если не задан → автопрогон не запускается)
-  ipcMain.handle(IPC.ORGANIZE_THRESHOLD, () => CALIBRATION_THRESHOLD);
-
-  // ВРЕМЕННО: флаги --bench и --verify-gpu для диагностики WebGPU
-  ipcMain.handle(IPC.EMBEDDING_FLAGS, () => EMBEDDING_FLAGS);
 
   // Нативное ПКМ-меню вкладки в сайдбаре.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {
@@ -419,8 +407,11 @@ app.on('web-contents-created', (_e, contents) => {
 });
 
 app.whenReady().then(async () => {
+  startT0 = Date.now();
+  console.log(`[startup] preload=${EMBED_PRELOAD ? 'on' : 'off'}`);
   Menu.setApplicationMenu(null); // прячем дефолтное меню — у нас свой хром
   registerModelProtocol();
+  registerChromeProtocol();
   registerIpc();
 
   // История: нативный модуль может отсутствовать — падение не блокирует запуск.

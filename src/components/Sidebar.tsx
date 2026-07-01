@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Shield, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw } from 'lucide-react';
 import type { ClusterProposal } from '../services/ClusteringService';
 import {
   DndContext, DragOverlay,
@@ -43,7 +43,6 @@ interface SidebarProps {
   onExitSplit: () => void;
   onSettings: () => void;
   onHistory: () => void;
-  adBlockCount: number;
   onReorder: (section: 'normal' | 'pinned', orderedIds: string[]) => void;
   onMoveSection: (tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number) => void;
   getContentRect: () => DOMRect | null;
@@ -51,7 +50,7 @@ interface SidebarProps {
   onDropOnContent: (tabId: string) => void;
   // AI-группировка
   organizeTabsCount: number;
-  organizeState: 'idle' | 'computing' | 'preview';
+  organizeState: 'idle' | 'computing' | 'preview' | 'model-error';
   organizeProposal: ClusterProposal[];
   hasOrganizeSnapshot: boolean;
   onOrganize: () => void;
@@ -357,6 +356,35 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
   );
 }
 
+// Ячейка сетки закреплённых: favicon + tooltip, без крестика.
+// DnD сохраняется — перетаскивание для изменения порядка пинов.
+function SortablePinCell({ tab, active, onClick, onContextMenu }: {
+  tab: TabState; active: boolean;
+  onClick: () => void; onContextMenu: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id });
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }} {...attributes} {...listeners}>
+      <button
+        className="no-drag"
+        onClick={onClick}
+        onContextMenu={(e) => { e.preventDefault(); onContextMenu(); }}
+        title={tab.title || tab.url || ''}
+        style={{
+          border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
+          background: active ? 'var(--surface)' : 'transparent',
+          boxShadow: active ? 'var(--shadow-card)' : 'none',
+          opacity: tab.isSleeping ? 0.6 : 1, display: 'inline-flex',
+        }}
+        onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
+      >
+        <FaviconTile tab={tab} size={18} />
+      </button>
+    </div>
+  );
+}
+
 // Блок группы: заголовок (drag handle для внешнего DndContext)
 // + собственный inner DndContext для сортировки детей.
 interface GroupBlockProps {
@@ -579,13 +607,11 @@ const asideBase: React.CSSProperties = {
 export default function Sidebar({
   tabs, sidebarNodes, activeId, collapsed, onCollapsedChange,
   onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit,
-  onSettings, onHistory, adBlockCount, onReorder, onMoveSection,
+  onSettings, onHistory, onReorder, onMoveSection,
   getContentRect, onDragOverContent, onDropOnContent,
   organizeTabsCount, organizeState, organizeProposal,
   hasOrganizeSnapshot, onOrganize, onOrganizeApply, onOrganizeCancel, onOrganizeRollback,
 }: SidebarProps) {
-
-  const hub = tabs.filter((t) => t.isHub);
 
   // Оптимистичный порядок: применяется сразу при drop, до ответа main.
   const [localPinnedOrder, setLocalPinnedOrder] = useState<string[] | null>(null);
@@ -829,13 +855,7 @@ export default function Sidebar({
     return (
       <aside className="drag" style={{ ...asideBase, width: 56, alignItems: 'center', padding: '12px 0 14px' }}>
 
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingBottom: 14 }}>
-          <span style={{
-            width: 24, height: 24, borderRadius: 7, background: 'var(--accent)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Cloud size={15} color="#fff" />
-          </span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: 14 }}>
           <button
             className="no-drag"
             onClick={() => onCollapsedChange(false)}
@@ -843,28 +863,6 @@ export default function Sidebar({
             style={{ ...iconBtn, transform: 'scaleX(-1)' }}
           >
             <PanelLeft size={17} />
-          </button>
-        </div>
-
-        <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingBottom: 6 }}>
-          {hub.map((t) => (
-            <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
-              style={{
-                border: 'none', cursor: 'default', padding: 4, borderRadius: 'var(--radius-sm)',
-                background: activeId === t.id ? 'var(--surface)' : 'transparent',
-                boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
-              }}>
-              <FaviconTile tab={t} size={18} />
-            </button>
-          ))}
-          <button onClick={onNewTab} title="Новая вкладка"
-            style={{
-              width: 26, height: 26, borderRadius: 'var(--radius-sm)',
-              border: '1px dashed var(--divider-strong)', background: 'transparent',
-              cursor: 'default', display: 'inline-flex', alignItems: 'center',
-              justifyContent: 'center', color: 'var(--text-faint)',
-            }}>
-            <Plus size={16} />
           </button>
         </div>
 
@@ -909,19 +907,9 @@ export default function Sidebar({
         </div>
 
         <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <button title="Новая вкладка" style={iconBtn} onClick={onNewTab}><Plus size={17} /></button>
           <button title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
-          <button
-            title={`Адблок: ${adBlockCount.toLocaleString('ru')} заблокировано`}
-            style={{ ...iconBtn, color: adBlockCount > 0 ? 'var(--accent)' : 'var(--text-faint)' }}
-            onClick={onSettings}
-          ><Shield size={17} /></button>
           <button title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
-          <span style={{
-            width: 28, height: 28, borderRadius: '50%', flex: 'none',
-            background: 'linear-gradient(135deg, var(--accent), var(--accent-warm))',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', fontSize: 12, fontWeight: 600,
-          }}>А</span>
         </div>
       </aside>
     );
@@ -932,33 +920,10 @@ export default function Sidebar({
     <aside className="drag" style={{ ...asideBase, width: 256, padding: '12px 12px 14px' }}>
 
       {/* Шапка */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px 14px' }}>
-        <span style={{
-          width: 24, height: 24, borderRadius: 7, background: 'var(--accent)',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        }}><Cloud size={15} color="#fff" /></span>
-        <span style={{ fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--text-strong)' }}>Oblako</span>
-        <div style={{ flex: 1 }} />
+      <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0 14px' }}>
         <button className="no-drag" onClick={() => onCollapsedChange(true)} title="Свернуть панель" style={iconBtn}>
           <PanelLeft size={17} />
         </button>
-      </div>
-
-      {/* Хаб + кнопка новой вкладки — вне DndContext, не таскается */}
-      <div className="no-drag" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 4px 14px' }}>
-        {hub.map((t) => (
-          <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
-            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 0 }}>
-            <FaviconTile tab={t} size={20} />
-          </button>
-        ))}
-        <button onClick={onNewTab} title="Новая вкладка"
-          style={{
-            width: 26, height: 26, borderRadius: 'var(--radius-sm)', flex: 'none',
-            border: '1px dashed var(--divider-strong)', background: 'transparent',
-            cursor: 'default', display: 'inline-flex', alignItems: 'center',
-            justifyContent: 'center', color: 'var(--text-faint)',
-          }}><Plus size={16} /></button>
       </div>
 
       {/* Один внешний DndContext для обеих секций */}
@@ -969,25 +934,22 @@ export default function Sidebar({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        {/* Закреплённые */}
+        {/* Закреплённые: сетка favicon, tooltip с заголовком, без крестика */}
         {pinned.length > 0 && (
-          <>
-            <div style={eyebrow}>Закреплённые</div>
-            <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
-              <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 8, borderBottom: '1px solid var(--divider-strong)' }}>
-                {pinned.map((t) => (
-                  <SortableTabRow key={t.id} tab={t} active={activeId === t.id}
-                    onClick={() => onSelect(t.id)}
-                    onClose={() => onClose(t.id)}
-                    onContextMenu={() => onTabMenu(t.id)}
-                    onExitSplit={onExitSplit} />
-                ))}
-              </div>
-            </SortableContext>
-          </>
+          <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
+            <div className="no-drag" style={{
+              display: 'flex', flexWrap: 'wrap', gap: 4,
+              paddingBottom: 10, marginBottom: 2,
+              borderBottom: '1px solid var(--divider-strong)',
+            }}>
+              {pinned.map((t) => (
+                <SortablePinCell key={t.id} tab={t} active={activeId === t.id}
+                  onClick={() => onSelect(t.id)}
+                  onContextMenu={() => onTabMenu(t.id)} />
+              ))}
+            </div>
+          </SortableContext>
         )}
-
-        <div style={eyebrow}>Открытые вкладки</div>
 
         {/* Верхний уровень: singles, pairs, groups — все в одном SortableContext */}
         <SortableContext items={openIds} strategy={verticalListSortingStrategy}>
@@ -1168,7 +1130,7 @@ export default function Sidebar({
       {organizeState !== 'preview' && organizeTabsCount > 10 && (
         <button
           className="no-drag"
-          onClick={organizeState === 'idle' ? onOrganize : undefined}
+          onClick={organizeState === 'idle' || organizeState === 'model-error' ? onOrganize : undefined}
           style={{
             display: 'flex', alignItems: 'center', gap: 8, width: '100%', marginTop: 4,
             padding: '9px 12px', border: 'none', cursor: 'default',
@@ -1176,8 +1138,8 @@ export default function Sidebar({
             background: organizeState === 'computing' ? 'var(--surface-hover)' : 'transparent',
             fontWeight: 500, fontSize: 'var(--fs-sm)', color: 'var(--text-muted)',
           }}
-          onMouseEnter={(e) => { if (organizeState === 'idle') e.currentTarget.style.background = 'var(--surface-hover)'; }}
-          onMouseLeave={(e) => { if (organizeState === 'idle') e.currentTarget.style.background = 'transparent'; }}
+          onMouseEnter={(e) => { if (organizeState === 'idle' || organizeState === 'model-error') e.currentTarget.style.background = 'var(--surface-hover)'; }}
+          onMouseLeave={(e) => { if (organizeState === 'idle' || organizeState === 'model-error') e.currentTarget.style.background = 'transparent'; }}
         >
           {organizeState === 'computing' ? (
             <>
@@ -1187,6 +1149,11 @@ export default function Sidebar({
                 animation: 'oblako-spin 0.7s linear infinite',
               }} />
               Группирую…
+            </>
+          ) : organizeState === 'model-error' ? (
+            <>
+              <span style={{ fontSize: 13, lineHeight: 1 }}>⚠</span>
+              Повторить
             </>
           ) : (
             <>
@@ -1228,49 +1195,18 @@ export default function Sidebar({
         </div>
       )}
 
-      <button className="no-drag" onClick={onNewTab} style={{
-        display: 'flex', alignItems: 'center', gap: 8, width: '100%', marginTop: 8,
-        padding: '9px 12px', border: 'none', cursor: 'default',
-        borderRadius: 'var(--radius-sm)', background: 'transparent',
-        fontWeight: 500, fontSize: 'var(--fs-sm)', color: 'var(--text-muted)',
-      }}
-        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
-        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
-        <Plus size={16} /> Новая вкладка
-      </button>
-
-      <button
-        className="no-drag"
-        onClick={onSettings}
-        title="Открыть настройки адблока"
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          width: '100%', padding: '5px 10px', margin: '4px 0 0',
-          border: 'none', background: 'transparent', cursor: 'default',
-          borderRadius: 'var(--radius-sm)', textAlign: 'left',
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-      >
-        <Shield size={13} style={{ color: adBlockCount > 0 ? 'var(--accent)' : 'var(--text-faint)', flex: 'none' }} />
-        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          {adBlockCount > 0
-            ? <><span style={{ color: 'var(--text-body)', fontWeight: 600 }}>{adBlockCount.toLocaleString('ru')}</span> заблокировано</>
-            : 'Адблок активен'}
-        </span>
-      </button>
-
-      <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, padding: '8px 8px 2px' }}>
-        <span style={{
-          width: 28, height: 28, borderRadius: '50%', flex: 'none',
-          background: 'linear-gradient(135deg, var(--accent), var(--accent-warm))',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontSize: 12, fontWeight: 600,
-        }}>А</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>Антон</div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Oblako Pro</div>
-        </div>
+      <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 8, padding: '4px 0 2px' }}>
+        <button className="no-drag" title="Новая вкладка"
+          style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
+            border: 'none', background: 'transparent', cursor: 'default',
+            borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }}
+          onClick={onNewTab}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          <Plus size={17} />
+          <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>Новая вкладка</span>
+        </button>
         <button className="no-drag" title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
         <button className="no-drag" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
       </div>

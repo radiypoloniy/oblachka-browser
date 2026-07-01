@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster } from '../shared/ipc';
 
+// В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
+const EMBED_PRELOAD = process.env.OBLAKO_PRELOAD_EMBED !== '0';
+
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
   createTab: (url?: string) => ipcRenderer.invoke(IPC.TAB_CREATE, url),
@@ -147,11 +150,7 @@ const api: OblakoApi = {
   organizeApply:    (clusters: OrganizeCluster[]) => ipcRenderer.invoke(IPC.TABS_ORGANIZE_APPLY,    clusters) as Promise<void>,
   organizeRollback: ()                            => ipcRenderer.invoke(IPC.TABS_ORGANIZE_ROLLBACK)            as Promise<void>,
 
-  // ВРЕМЕННО: калибровка порога (удалить после фиксации DEFAULT_SIMILARITY_THRESHOLD)
-  getOrganizeThreshold: () => ipcRenderer.invoke(IPC.ORGANIZE_THRESHOLD) as Promise<number | null>,
-
-  // ВРЕМЕННО: флаги --bench / --verify-gpu (удалить после замера + верификации WebGPU)
-  getEmbeddingFlags: () => ipcRenderer.invoke(IPC.EMBEDDING_FLAGS) as Promise<{ bench: boolean; verifyGpu: boolean }>,
+  embedPreload: EMBED_PRELOAD,
 };
 
 contextBridge.exposeInMainWorld('oblako', api);

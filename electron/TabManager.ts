@@ -84,6 +84,8 @@ export class TabManager {
   private onNavigateCb?: (url: string, title: string) => void;
   private onTitleUpdateCb?: (url: string, title: string) => void;
   private onHistoryOpenCb?: () => void;
+  private onFirstTabLoadCb?: () => void;
+  private firstTabLoaded = false; // защита: колбэк вызывается ровно один раз
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
   private lastQuery = ''; // последний поисковый запрос (чтобы отличить новый от навигации)
@@ -114,6 +116,7 @@ export class TabManager {
     onNavigate?: (url: string, title: string) => void,
     onTitleUpdate?: (url: string, title: string) => void,
     onHistoryOpen?: () => void,
+    onFirstTabLoad?: () => void,
   ) {
     this.win = win;
     this.onChange = onChange;
@@ -125,6 +128,7 @@ export class TabManager {
     this.onNavigateCb = onNavigate;
     this.onTitleUpdateCb = onTitleUpdate;
     this.onHistoryOpenCb = onHistoryOpen;
+    this.onFirstTabLoadCb = onFirstTabLoad;
     // Хаб существует всегда; не входит в tabMap, pinnedTabs или nodes.
     this.hubTab = { id: HUB_ID, view: null, sleeping: null, lastActiveAt: 0 };
     this.startSleepTimer();
@@ -690,6 +694,15 @@ export class TabManager {
         this.focusSplitPanel(side);
       }
     });
+
+    // Таймер первой контентной вкладки: вызывается ровно один раз.
+    if (!this.firstTabLoaded) {
+      wc.once('did-finish-load', () => {
+        if (this.firstTabLoaded) return;
+        this.firstTabLoaded = true;
+        this.onFirstTabLoadCb?.();
+      });
+    }
 
     // Новая попытка загрузки — очищаем предыдущую ошибку сразу.
     wc.on('did-start-loading', () => { this.errors.delete(id); notify(); });

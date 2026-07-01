@@ -8,6 +8,7 @@ import Settings from './components/Settings';
 import History from './components/History';
 import Downloads from './components/Downloads';
 import PermissionPrompt from './components/PermissionPrompt';
+import { embeddingService } from './services/EmbeddingService';
 import type { SyncState, TabState, FindResult, DownloadEntry, PermissionRequest, SidebarNode } from '../shared/ipc';
 import type { ClusterProposal } from './services/ClusteringService';
 
@@ -51,14 +52,13 @@ export default function App() {
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
-  const [adBlockCount, setAdBlockCount] = useState(0);
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
   const [omniboxSuggestOpen, setOmniboxSuggestOpen] = useState(false);
   const [splitDragOver, setSplitDragOver] = useState(false);
 
   // AI-группировка: состояние флоу + предложения + наличие снимка для отката
-  const [organizeState, setOrganizeState] = useState<'idle' | 'computing' | 'preview'>('idle');
+  const [organizeState, setOrganizeState] = useState<'idle' | 'computing' | 'preview' | 'model-error'>('idle');
   const [organizeProposal, setOrganizeProposal] = useState<ClusterProposal[]>([]);
   const [hasOrganizeSnapshot, setHasOrganizeSnapshot] = useState(false);
 
@@ -115,30 +115,34 @@ export default function App() {
   const allTabsRef = useRef(tabs);
   allTabsRef.current = tabs;
 
-  // ВРЕМЕННО: автопрогон кластеризации для перекалибровки порога на EmbeddingGemma.
-  // Удалить после фиксации DEFAULT_SIMILARITY_THRESHOLD в ClusteringService.ts.
-  // Запуск: npm start -- --threshold=0.45 → результат через 8с в терминале npm start.
-  // Задержка 8с: EmbeddingGemma грузится дольше MiniLM (~3–10с) + восстановление сессии.
+  // Предзагрузка модели эмбеддингов: стартует ПОСЛЕ первого paint оболочки.
+  // Double-rAF гарантирует, что первый кадр (сайдбар/тулбар/хаб) уже скомпозичен
+  // прежде чем worker поднимает 8 WASM-потоков и начинает конкурировать с CPU.
+  // Отключается через OBLAKO_PRELOAD_EMBED=0 npm start (для замера влияния на старт).
   useEffect(() => {
-    void window.oblako.getOrganizeThreshold().then((threshold) => {
-      if (threshold === null) return
-      const timer = setTimeout(() => {
-        const tabMap = new Map(allTabsRef.current.map((x) => [x.id, x]))
-        void import('./services/ClusteringService').then(({ clusterTabs }) =>
-          clusterTabs(sidebarNodesRef.current, tabMap, threshold),
-        ).then((proposals) => {
-          console.log(`[Calibrate] порог=${threshold} → ${proposals.length} групп`)
-          proposals.forEach((p, i) => {
-            console.log(`[Calibrate] ─ Группа ${i + 1}: «${p.suggestedName}» (${p.nodeIds.length} вкладок)`)
-            p.titles.forEach((title) => console.log(`[Calibrate]   • ${title}`))
-          })
-          if (proposals.length === 0)
-            console.log('[Calibrate] нет групп: синглтоны или < 2 кандидатов')
-        }).catch((e: unknown) => console.log(`[Calibrate] ошибка: ${String(e)}`))
-      }, 8000)
-      return () => clearTimeout(timer)
+    if (!window.oblako.embedPreload) return
+
+    let raf1 = 0, raf2 = 0, idle = 0
+    const useIdle = typeof requestIdleCallback !== 'undefined'
+
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        // Первый кадр отрисован — грузим модель только в реальный idle.
+        // timeout=10000: если пользователь активен, не ждать больше 10с.
+        if (useIdle) {
+          idle = requestIdleCallback(() => { embeddingService.preload() }, { timeout: 10_000 })
+        } else {
+          idle = window.setTimeout(() => { embeddingService.preload() }, 500)
+        }
+      })
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+      if (useIdle) cancelIdleCallback(idle)
+      else clearTimeout(idle)
+    }
   }, [])
 
   // Тема
@@ -223,12 +227,6 @@ export default function App() {
     };
   }, []);
 
-  // Счётчик адблока — подписка на push из main (debounced 1s, значит не шумит).
-  useEffect(() => {
-    void window.oblako.getAdBlockState().then((s) => setAdBlockCount(s.sessionBlockCount));
-    const unsub = window.oblako.onAdBlockStateChanged((s) => setAdBlockCount(s.sessionBlockCount));
-    return () => unsub();
-  }, []);
 
   // Подписка на обновления загрузок.
   useEffect(() => {
@@ -387,6 +385,9 @@ export default function App() {
   ).length;
 
   const handleOrganize = useCallback(() => {
+    if (organizeState === 'computing') return
+    // При ошибке модели: сбросить и перезапустить загрузку перед инференсом.
+    if (organizeState === 'model-error') embeddingService.retry()
     setOrganizeState('computing');
     const tabMap = new Map(allTabsRef.current.map((x) => [x.id, x]));
     void import('./services/ClusteringService').then(({ clusterTabs, DEFAULT_SIMILARITY_THRESHOLD }) =>
@@ -395,9 +396,9 @@ export default function App() {
       setOrganizeProposal(proposals);
       setOrganizeState('preview');
     }).catch(() => {
-      setOrganizeState('idle');
+      setOrganizeState('model-error');
     });
-  }, []);
+  }, [organizeState]);
 
   const handleOrganizeApply = useCallback(() => {
     if (organizeProposal.length === 0) { setOrganizeState('idle'); return; }
@@ -463,7 +464,6 @@ export default function App() {
         onExitSplit={() => { void window.oblako.exitSplit(); }}
         onSettings={() => { setSettingsOpen((v) => !v); setHistoryOpen(false); setDownloadsOpen(false); }}
         onHistory={() => { setHistoryOpen((v) => !v); setSettingsOpen(false); setDownloadsOpen(false); }}
-        adBlockCount={adBlockCount}
         onReorder={(section, ids) => { void window.oblako.reorderTabs(section, ids); }}
         onMoveSection={(tabId, section, idx) => { void window.oblako.moveTabSection(tabId, section, idx); }}
         sidebarNodes={sidebarNodes}
