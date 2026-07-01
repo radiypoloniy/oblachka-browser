@@ -17,6 +17,14 @@ const POPOVER_WIDTH = 340
 const INITIAL_HEIGHT = 90 // высота на время «Перевожу…»
 const GAP = 8             // зазор от выделения
 const MARGIN = 8          // минимальный отступ от края окна
+// Прозрачный запас вокруг карточки под CSS box-shadow — WebContentsView обрезает всё, что рисуется
+// за границей своего прямоугольника, поэтому «парящей» тени нужно физическое место, куда вытечь.
+// Должен с запасом покрывать реальный охват тени (offset + blur карточки в translatepopover.tsx,
+// сейчас 10+28=38px по нижнему краю) — иначе едва заметный, но видимый обрез хвоста тени даёт
+// то же ощущение «прямоугольника-подложки», от которого и уходили. Держать в синхроне с
+// SHADOW_MARGIN в src/translatepopover.tsx (тот же паддинг инсетит карточку обратно на столько же —
+// сама карточка визуально остаётся в исходной точке анкоринга).
+const SHADOW_MARGIN = 40
 
 let popoverView: WebContentsView | null = null
 let attachedWin: BrowserWindow | null = null
@@ -28,6 +36,9 @@ let ipcRegistered = false
 
 // Позиция: под выделением по умолчанию; флип вверх, если не помещается снизу; флип влево
 // (выравнивание по правому краю выделения), если не помещается справа. Итог клампится в окно.
+// Решения флипа/кламп считаются на «логических» (без отступа под тень) ширине/высоте карточки —
+// это тот же расчёт, что уже проверен руками. SHADOW_MARGIN добавляется отдельным шагом в самом
+// конце: итоговый прямоугольник просто на него больше со всех сторон, под CSS-тень.
 function computeBounds(win: BrowserWindow, rect: SelectionRect, height: number) {
   const { width: winW, height: winH } = win.getContentBounds()
 
@@ -39,7 +50,12 @@ function computeBounds(win: BrowserWindow, rect: SelectionRect, height: number) 
   if (y + height > winH - MARGIN) y = rect.y - GAP - height
   y = Math.min(Math.max(MARGIN, y), Math.max(MARGIN, winH - height - MARGIN))
 
-  return { x, y, width: POPOVER_WIDTH, height }
+  return {
+    x: x - SHADOW_MARGIN,
+    y: y - SHADOW_MARGIN,
+    width: POPOVER_WIDTH + SHADOW_MARGIN * 2,
+    height: height + SHADOW_MARGIN * 2,
+  }
 }
 
 function cleanup(): void {
@@ -84,6 +100,10 @@ export function showTranslatePopover(win: BrowserWindow, text: string, rect: Sel
       sandbox: false, // preload использует ipcRenderer
     },
   })
+  // По умолчанию у View непрозрачный фон — без этого вокруг карточки был бы виден серый
+  // прямоугольник на весь прямоугольник WebContentsView. Страница (html/body) тоже прозрачная
+  // (см. translatepopover.html) — вместе это даёт «плавающую» карточку без подложки.
+  popoverView.setBackgroundColor('#00000000')
   attachedWin = win
   currentRect = rect
 

@@ -4,7 +4,10 @@
   <meta charset="utf-8" />
   <title>Oblako — перевод</title>
   <style>
-    html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+    /* !important — global.css (общие токены/канвас чрома) грузится позже этого инлайн-стиля и
+       иначе перебивает прозрачность (html/body/#root { background: var(--app-bg/--canvas) }),
+       давая непрозрачный прямоугольник вокруг карточки поверх страницы. */
+    html, body, #root { margin: 0; padding: 0; background: transparent !important; overflow: hidden; }
     #root { display: inline-block; }
   </style>
 </head>

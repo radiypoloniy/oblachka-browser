@@ -20,6 +20,11 @@ declare global {
 }
 
 const MAX_CONTENT_HEIGHT = 360 // сверх этого — внутренний скролл, а не рост view
+// Прозрачный запас под тень карточки — должен покрывать реальный охват box-shadow ниже
+// (offset+blur, сейчас 10+28=38px по нижнему краю) с запасом, иначе виден обрез хвоста тени.
+// Держать в синхроне с SHADOW_MARGIN в electron/TranslatePopoverManager.ts (main выделяет под
+// него ровно столько же места в bounds).
+const SHADOW_MARGIN = 40
 
 function Popover() {
   const [text, setText] = useState('')
@@ -50,70 +55,75 @@ function Popover() {
   }, [text, outcome])
 
   return (
-    <div
-      ref={wrapperRef}
-      style={{
-        width: 340,
-        maxHeight: MAX_CONTENT_HEIGHT,
-        overflowY: 'auto',
-        boxSizing: 'border-box',
-        background: 'var(--surface-solid)',
-        borderRadius: 'var(--radius-card)',
-        boxShadow: 'var(--shadow-pop)',
-        padding: 'var(--pad-card)',
-        display: 'flex', flexDirection: 'column', gap: 8,
-        fontFamily: 'var(--font-sans)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Languages size={14} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
-        <span style={{
-          fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
-          flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {text}
-        </span>
-        <button
-          onClick={() => window.translatePopover.close()}
-          title="Закрыть (Esc)"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 20, height: 20, flexShrink: 0,
-            background: 'none', border: 'none', borderRadius: 'calc(var(--radius-card) / 2)',
-            color: 'var(--text-muted)', cursor: 'pointer', padding: 0,
-          }}
-        >
-          <X size={13} strokeWidth={2} />
-        </button>
-      </div>
-
-      {outcome === null && (
-        <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-          Перевожу… (первая загрузка ~5с)
-        </span>
-      )}
-
-      {outcome?.ok === true && (
-        <>
-          {/* Полный текст, без обрезки многоточием — длинные переводы дают скролл (см. maxHeight выше). */}
+    // Прозрачный внешний паддинг — место для вытекания CSS box-shadow за пределы видимой карточки
+    // (сама WebContentsView увеличена на столько же в main, см. SHADOW_MARGIN в TranslatePopoverManager.ts).
+    <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
+      <div
+        ref={wrapperRef}
+        style={{
+          width: 340,
+          maxHeight: MAX_CONTENT_HEIGHT,
+          overflowY: 'auto',
+          boxSizing: 'border-box',
+          background: 'var(--surface-solid)',
+          borderRadius: 'var(--radius-card)',
+          boxShadow: '0 10px 28px rgba(40,30,80,0.16)',
+          padding: 'var(--pad-card)',
+          display: 'flex', flexDirection: 'column', gap: 8,
+          fontFamily: 'var(--font-sans)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Languages size={14} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
           <span style={{
-            fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-strong)', fontWeight: 500,
-            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
+            flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
-            {outcome.out}
+            {text}
           </span>
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-            [{outcome.dirUsed}] {outcome.ms.toFixed(0)}ms, {outcome.tokPerSec.toFixed(1)} tok/s
-            {outcome.loadMs !== null ? `, загрузка: ${outcome.loadMs.toFixed(0)}ms` : ''}
-          </span>
-        </>
-      )}
+          <button
+            onClick={() => window.translatePopover.close()}
+            title="Закрыть (Esc)"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 20, height: 20, flexShrink: 0,
+              background: 'none', border: 'none', borderRadius: 'calc(var(--radius-card) / 2)',
+              color: 'var(--text-muted)', cursor: 'pointer', padding: 0,
+            }}
+          >
+            <X size={13} strokeWidth={2} />
+          </button>
+        </div>
 
-      {outcome?.ok === false && (
-        <span style={{ fontSize: 'var(--fs-sm)', color: 'rgba(200,50,50,0.85)' }}>
-          Ошибка: {outcome.error}
-        </span>
-      )}
+        {outcome === null && (
+          <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
+            Перевожу… (первая загрузка ~5с)
+          </span>
+        )}
+
+        {outcome?.ok === true && (
+          <>
+            {/* Полный текст, без обрезки многоточием — длинные переводы дают скролл (см. maxHeight выше). */}
+            <span style={{
+              fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-strong)', fontWeight: 500,
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            }}>
+              {outcome.out}
+            </span>
+            {/* Техстрока (скорость/тайминг) — доступна, но не должна цеплять взгляд. */}
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', opacity: 0.7 }}>
+              [{outcome.dirUsed}] {outcome.ms.toFixed(0)}ms, {outcome.tokPerSec.toFixed(1)} tok/s
+              {outcome.loadMs !== null ? `, загрузка: ${outcome.loadMs.toFixed(0)}ms` : ''}
+            </span>
+          </>
+        )}
+
+        {outcome?.ok === false && (
+          <span style={{ fontSize: 'var(--fs-sm)', color: 'rgba(200,50,50,0.85)' }}>
+            Ошибка: {outcome.error}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
