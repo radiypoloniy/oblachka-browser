@@ -6,6 +6,7 @@
 // текст с капом + внутренний скролл сверх капа — сам кап и позиция живут в main).
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import { Languages, Wand2, HelpCircle, ListChecks, X, type LucideIcon } from 'lucide-react';
 import './styles/global.css';
 import type { AiAction, AiActionOutcome } from '../shared/ipc';
@@ -36,6 +37,37 @@ const ACTION_ICON: Record<AiAction, LucideIcon> = {
 }
 const ACTION_VERB: Record<AiAction, string> = {
   translate: 'Перевожу', simplify: 'Упрощаю', explain: 'Объясняю', summarize: 'Делаю выжимку',
+}
+
+// Qwen может ответить с разметкой (**жирный**, списки, изредка заголовки) — react-markdown рендерит
+// её в реальные элементы (не dangerouslySetInnerHTML: без risk'а инъекции чужого HTML). Перевод
+// обычно просто сплошной текст без синтаксиса — тогда это один <p> с теми же стилями, что были
+// раньше у обычного <span>, визуально не отличить. Base-стили (fs-md/lh-body/text-strong) — тут,
+// а не в родителе, т.к. react-markdown сам оборачивает контент в блочные теги (p/ul/li/h1…).
+const markdownComponents: Components = {
+  p: ({ children }) => (
+    <p style={{
+      margin: '0 0 6px', fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)',
+      color: 'var(--text-strong)', fontWeight: 500, wordBreak: 'break-word',
+    }}>
+      {children}
+    </p>
+  ),
+  strong: ({ children }) => <strong style={{ fontWeight: 700 }}>{children}</strong>,
+  ul: ({ children }) => <ul style={{ margin: '0 0 6px', paddingLeft: 18 }}>{children}</ul>,
+  ol: ({ children }) => <ol style={{ margin: '0 0 6px', paddingLeft: 18 }}>{children}</ol>,
+  li: ({ children }) => (
+    <li style={{
+      fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-strong)', marginBottom: 2,
+    }}>
+      {children}
+    </li>
+  ),
+  // h1-h6 — попадаются редко (модель не просят делать заголовки), но карточка узкая (340px):
+  // реальные размеры h1/h2 браузера смотрелись бы абсурдно. Один скромный стиль на все уровни.
+  h1: ({ children }) => <strong style={{ display: 'block', fontSize: 'var(--fs-md)', margin: '0 0 4px' }}>{children}</strong>,
+  h2: ({ children }) => <strong style={{ display: 'block', fontSize: 'var(--fs-md)', margin: '0 0 4px' }}>{children}</strong>,
+  h3: ({ children }) => <strong style={{ display: 'block', fontSize: 'var(--fs-md)', margin: '0 0 4px' }}>{children}</strong>,
 }
 
 function Popover() {
@@ -124,18 +156,19 @@ function Popover() {
         )}
 
         {/* Стримится по мере готовности сегментов (streamedText) до финального outcome.out — тот
-            же текстовый блок и до, и после финализации, чтобы верстка не прыгала на последнем сегменте. */}
+            же Markdown-рендер и до, и после финализации (react-markdown нормально переживает
+            промежуточный незакрытый синтаксис, самоисправляется на следующем чанке), чтобы верстка
+            не прыгала на последнем сегменте и сырые символы разметки не мелькали дольше, чем нужно. */}
         {outcome?.ok !== false && (streamedText.length > 0 || outcome?.ok === true) && (
           <>
-            {/* Полный текст, без обрезки многоточием — длинные переводы дают скролл (см. maxHeight выше). */}
-            <span style={{
-              fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-strong)', fontWeight: 500,
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            }}>
+            {/* Без обрезки многоточием — длинные результаты дают скролл (см. maxHeight выше). */}
+            <ReactMarkdown components={markdownComponents}>
               {outcome?.ok === true ? outcome.out : streamedText}
-              {/* Индикатор «идёт перевод» — пока не пришёл финальный сегмент (outcome ещё null). */}
-              {outcome === null && <span style={{ color: 'var(--text-faint)' }}> …</span>}
-            </span>
+            </ReactMarkdown>
+            {/* Индикатор «идёт обработка» — пока не пришёл финальный результат (outcome ещё null). */}
+            {outcome === null && (
+              <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-faint)' }}>…</span>
+            )}
             {/* Техстрока (скорость/тайминг) — доступна, но не должна цеплять взгляд. Только после финала. */}
             {outcome?.ok === true && (
               <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', opacity: 0.7 }}>
