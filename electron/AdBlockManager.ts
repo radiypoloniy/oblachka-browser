@@ -1,5 +1,9 @@
-import { app, session as electronSession } from 'electron';
-import type { OnBeforeRequestListenerDetails, CallbackResponse } from 'electron';
+import { app, session as electronSession, ipcMain } from 'electron';
+import type {
+  OnBeforeRequestListenerDetails, CallbackResponse,
+  OnHeadersReceivedListenerDetails, HeadersReceivedResponse,
+  WebContents, IpcMainInvokeEvent,
+} from 'electron';
 import { ElectronBlocker } from '@ghostery/adblocker-electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -129,7 +133,7 @@ export class AdBlockManager {
     this.#scheduleStatsPush();
   }
 
-  // ── Блокировка сети: свой onBeforeRequest ПЕРЕД движком ─────────────────────
+  // ── Блокировка: свои перехватчики ПЕРЕД движком, whitelist = «не трогать сайт вообще» ──
   //
   // ElectronBlocker.enableBlockingInSession() сам регистрирует session.webRequest.onBeforeRequest
   // и решает блокировку целиком внутри себя — внешний whitelist (напр. через updateFromDiff с
@@ -137,30 +141,50 @@ export class AdBlockManager {
   // ресурс часто лежит на ДРУГОМ домене (CDN/API), чем сама страница, и правило `@@||chatgpt.com^`
   // его не покрывает — ложная блокировка ломает приложение целиком.
   //
-  // Чиним переопределением: Electron допускает только ОДНОГО слушателя onBeforeRequest на сессию
-  // (более новая регистрация замещает предыдущую) — регистрируем свой ПОСЛЕ enableBlockingInSession,
-  // он вытесняет внутренний слушатель движка. Сначала проверяем домен СТРАНИЦЫ (первую сторону, не
-  // домен запроса) по whitelist; если сайт в исключениях — пропускаем запрос, до движка не доходя.
-  // Иначе — отдаём тот же details/callback в blocker.onBeforeRequest (публичный bound-метод,
-  // конкретно ЭТА логика не меняется, просто пропущена через наш гейт раньше движка).
+  // Чиним переопределением: Electron допускает только ОДНОГО слушателя onBeforeRequest/
+  // onHeadersReceived на сессию (новая регистрация замещает предыдущую), а ipcMain.handle для
+  // косметики нужно снять явно (removeHandler) — регистрируем свои ПОСЛЕ enableBlockingInSession,
+  // они вытесняют внутренние. Сначала проверяем домен СТРАНИЦЫ (первую сторону, не домен запроса)
+  // по whitelist; если сайт в исключениях — пропускаем БЕЗ обращения к движку вообще (не только
+  // сеть, но и CSP-заголовки, и косметические правила/скрипты — «исключение» значит не трогать
+  // сайт целиком, а не только не блокировать его запросы). Иначе — тот же details/callback/msg
+  // уходит в соответствующий bound-метод blocker.* без изменений, просто позже нашего гейта.
   #enableBlocking(): void {
     const session = electronSession.defaultSession;
     const blocker = this.#blocker!;
-    blocker.enableBlockingInSession(session); // косметика + CSP-заголовки, как и раньше
+    blocker.enableBlockingInSession(session);
+
     session.webRequest.onBeforeRequest(
       { urls: ['<all_urls>'] },
       (details: OnBeforeRequestListenerDetails, callback: (r: CallbackResponse) => void) => {
-        if (this.#isWhitelistedRequest(details)) { callback({}); return; }
+        if (this.#isWhitelistedDomain(details.webContents, details.referrer)) { callback({}); return; }
         blocker.onBeforeRequest(details, callback);
       },
     );
+
+    session.webRequest.onHeadersReceived(
+      { urls: ['<all_urls>'] },
+      (details: OnHeadersReceivedListenerDetails, callback: (r: HeadersReceivedResponse) => void) => {
+        if (this.#isWhitelistedDomain(details.webContents, details.referrer)) { callback({}); return; }
+        blocker.onHeadersReceived(details, callback);
+      },
+    );
+
+    // Косметика идёт через IPC (не webRequest) — ipcMain.handle бросает при повторной регистрации
+    // на тот же канал без предварительного removeHandler (в отличие от webRequest, который просто
+    // молча замещает слушателя).
+    ipcMain.removeHandler('@ghostery/adblocker/inject-cosmetic-filters');
+    ipcMain.handle('@ghostery/adblocker/inject-cosmetic-filters', ((event: IpcMainInvokeEvent, url: string, msg?: unknown) => {
+      if (this.#isWhitelistedDomain(undefined, url)) return;
+      return blocker.onInjectCosmeticFilters(event, url, msg as Parameters<typeof blocker.onInjectCosmeticFilters>[2]);
+    }) as typeof blocker.onInjectCosmeticFilters);
   }
 
-  #isWhitelistedRequest(details: OnBeforeRequestListenerDetails): boolean {
+  // pageUrl резолвится из webContents.getURL() (надёжнее referrer — тот пуст при строгой
+  // Referrer-Policy), с фоллбэком на referrer/url, если webContents недоступен.
+  #isWhitelistedDomain(webContents: WebContents | undefined, fallbackUrl: string): boolean {
     if (this.#whitelist.size === 0) return false;
-    // webContents.getURL() — надёжнее referrer (тот пуст при строгой Referrer-Policy).
-    // Для сабресурсов уже отражает АКТУАЛЬНУЮ (закоммиченную) страницу-владельца запроса.
-    const pageUrl = details.webContents?.getURL() || details.referrer;
+    const pageUrl = webContents?.getURL() || fallbackUrl;
     if (!pageUrl) return false;
     const domain = normalizeDomain(pageUrl);
     return !!domain && this.#whitelist.has(domain);
