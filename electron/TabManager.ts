@@ -63,12 +63,18 @@ const HAS_FILLED_FORMS_SCRIPT = `(function(){
 })()`;
 
 // Прямоугольник выделения (последний range) в координатах viewport страницы — для позиционирования
-// поповера перевода. null, если выделения нет (тогда — фоллбэк на p.x/p.y клика ПКМ).
+// поповера перевода. null, если выделения нет (тогда — фоллбэк на p.x/p.y клика ПКМ) — и ТАК ЖЕ
+// null, если bounding rect всего выделения больше вьюпорта или начинается за его пределами (напр.
+// выделили несколько экранов текста с прокруткой — rect в основном закадровый, якорить под ним
+// поповер уводит его далеко от видимого текста, диагностировано логами: height=1649 при вьюпорте
+// ~744, y=-1278). В этом случае координата клика ПКМ (она точно на экране) надёжнее bounding rect
+// всего выделения — для НОРМАЛЬНОГО выделения, влезающего во вьюпорт, поведение не меняется.
 const SELECTION_RECT_SCRIPT = `(function(){
   var sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return null;
   var r = sel.getRangeAt(0).getBoundingClientRect();
   if (r.width === 0 && r.height === 0) return null;
+  if (r.height > window.innerHeight || r.width > window.innerWidth || r.top < 0 || r.left < 0) return null;
   return { x: r.left, y: r.top, width: r.width, height: r.height };
 })()`;
 
