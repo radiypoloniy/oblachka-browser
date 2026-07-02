@@ -145,7 +145,13 @@ function createWindow() {
         nodes: tabs!.sidebarNodesSnapshot(),
         hasOrganizeSnapshot: tabs!.hasOrganizeSnapshot(),
       });
-      sess!.scheduleSave(() => tabs!.getSessionSnapshot());
+      // sess?. — не «отменяет» финальное сохранение: оно гарантированно уже прошло синхронно
+      // в win.on('close') ДО того, как sess обнуляется в win.on('closed') (см. ниже). Этот вызов
+      // подчистую сработает во время закрытия окна — часть вкладок ещё дозакрывается асинхронно
+      // (destroyed-события уже после win.on('closed')) и без ?. падал на null.scheduleSave.
+      // tabs?. в колбэке — scheduleSave стреляет через debounce (1.5с), tabs может обнулиться
+      // МЕЖДУ планированием и срабатыванием таймера (окно закрылось в этот промежуток).
+      sess?.scheduleSave(() => tabs?.getSessionSnapshot() ?? null);
     },
     (r: FindResult) => chromeView?.webContents.send(IPC.FIND_RESULT, r),
     ()              => chromeView?.webContents.send(IPC.FIND_OPEN),
@@ -265,6 +271,14 @@ function createWindow() {
     // oblako-chrome:// вместо file:// → COOP/COEP заголовки → crossOriginIsolated=true → SAB → WASM-потоки
     chromeView.webContents.loadURL('oblako-chrome://localhost/index.html');
   }
+
+  // Финальный синхронный снапшот СЮДА, а не в app.on('before-quit'): на Windows/Linux
+  // window-all-closed зовёт app.quit() уже ПОСЛЕ того, как это окно закрылось — то есть
+  // before-quit неизбежно видит win/tabs/sess уже обнулёнными (см. win.on('closed') ниже) и
+  // реально ничего не сохраняет. 'close' — единственная точка, где всё ещё гарантированно живо.
+  win.on('close', () => {
+    if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot());
+  });
 
   win.on('closed', () => {
     win = null; chromeView = null; tabs = null; sess = null;
@@ -520,6 +534,9 @@ app.on('window-all-closed', () => {
 });
 
 // Синхронная запись перед выходом — никаких await, иначе процесс умрёт раньше.
+// На Windows/Linux это уже избыточно (win.on('close') в createWindow успевает раньше и обнуляет
+// tabs/sess), но на macOS Cmd+Q шлёт before-quit ДО закрытия окна — здесь ещё всё живо, это тот
+// путь, где сработает эта подстраховка. Оставлено ради будущего macOS-порта (см. CLAUDE.md).
 app.on('before-quit', () => {
   if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot());
 });
