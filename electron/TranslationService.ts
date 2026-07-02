@@ -163,11 +163,21 @@ function buildActionPrompt(action: Exclude<AiAction, 'translate'>, lang: string,
     `Respond in ${L}. Output ONLY the summary, with no additional commentary.\n\n${text}`
 }
 
-// Выжимке нужен ВЕСЬ текст целиком — 2-3 тезиса по общему смыслу, а не по отдельному предложению.
-// В отличие от неё перевод/пересказ/объяснение нормально работают по предложениям (splitSentences).
-function segmentsForAction(action: AiAction, text: string): string[] {
-  if (action === 'summarize') return [text]
-  return splitSentences(text)
+// Осмысляющим действиям (explain/simplify/summarize) нужен ВЕСЬ текст целиком одним куском — связный
+// ответ на весь смысл, а не разбор по отдельному предложению (segmentsForAction для перевода НЕ
+// используется — тот сегментируется в translate() как раньше, см. splitSentences выше). Резать
+// осмысляющие на предложения и обрабатывать каждое отдельно — именно баг, который правим здесь:
+// бессвязный разбор обрывков вместо ответа по всему тексту.
+// Контекст-лимит: очень длинное выделение может не влезть в контекст Qwen целиком одним промптом —
+// обрезаем с явным предупреждением в лог, а НЕ режем на независимые сегменты (это и был баг).
+const ACTION_TEXT_MAX_CHARS = 8000
+
+function segmentsForAction(text: string): string[] {
+  if (text.length > ACTION_TEXT_MAX_CHARS) {
+    console.warn(`[ai-action] текст длиннее лимита (${text.length} > ${ACTION_TEXT_MAX_CHARS} симв.) — обрезаю, НЕ сегментирую`)
+    return [text.slice(0, ACTION_TEXT_MAX_CHARS)]
+  }
+  return [text]
 }
 
 // Защита от утечки reasoning в перевод: у Qwen3.5-9B thinking по умолчанию off, и chatWrapper ниже
@@ -221,7 +231,7 @@ async function ensureLoaded(): Promise<number> {
 // превращается в кракозябры. Общий низкоуровневый вызов Qwen — единственное место, где реально
 // зовётся session.prompt(); и перевод, и остальные AI-действия проходят через него (см.
 // translateSegment/runSegmented ниже) — «разные промпты поверх одной трубы», не разные движки.
-async function runPrompt(prompt: string): Promise<{ out: string; tokens: number }> {
+async function runPrompt(prompt: string, maxTokens: number): Promise<{ out: string; tokens: number }> {
   const tSessionStart = performance.now()
   const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper: qwenChatWrapper })
   const tSessionCreated = performance.now()
@@ -236,7 +246,7 @@ async function runPrompt(prompt: string): Promise<{ out: string; tokens: number 
   let firstTokenAt: number | null = null
   let genTokenCount = 0
   const rawOut = (await session.prompt(prompt, {
-    maxTokens: 150,
+    maxTokens,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onToken: (tokens: any[]) => {
       if (firstTokenAt === null) firstTokenAt = performance.now()
@@ -265,9 +275,10 @@ async function runPrompt(prompt: string): Promise<{ out: string; tokens: number 
   return { out, tokens }
 }
 
-async function translateSegment(segment: string, src: string, tgt: string): Promise<{ out: string; tokens: number }> {
-  return runPrompt(buildPrompt(src, tgt, segment))
-}
+// 150 токенов достаточно для одного предложения перевода — но осмысляющим действиям (целиковый
+// текст, см. TEXT_ACTION_MAX_TOKENS в runAiAction) этого мало, связный ответ на абзац длиннее и
+// обрывался бы на полуслове.
+const TRANSLATE_SEGMENT_MAX_TOKENS = 150
 
 // Общий цикл по сегментам — используется и переводом, и остальными AI-действиями. onSegment
 // (опционально) зовётся сразу по готовности КАЖДОГО сегмента, до завершения всего вызова — для
@@ -276,6 +287,7 @@ async function translateSegment(segment: string, src: string, tgt: string): Prom
 async function runSegmented(
   segments: string[],
   buildSegPrompt: (segment: string) => string,
+  maxTokens: number,
   onSegment?: (out: string, index: number, total: number) => void,
 ): Promise<{ out: string; ms: number; tokPerSec: number; loadMs: number | null }> {
   const tTotalStart = performance.now()
@@ -287,7 +299,7 @@ async function runSegmented(
   const outs: string[] = []
   let totalTokens = 0
   for (let i = 0; i < segments.length; i++) {
-    const { out, tokens } = await runPrompt(buildSegPrompt(segments[i]!))
+    const { out, tokens } = await runPrompt(buildSegPrompt(segments[i]!), maxTokens)
     outs.push(out)
     totalTokens += tokens
     onSegment?.(out, i, segments.length)
@@ -313,7 +325,7 @@ export async function translate(
     const dirUsed: ResolvedDirection = `${src}->${tgt}`
     const segments = splitSentences(text)
 
-    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildPrompt(src, tgt, seg), onSegment)
+    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildPrompt(src, tgt, seg), TRANSLATE_SEGMENT_MAX_TOKENS, onSegment)
 
     console.log(
       `[translate] [${dirUsed}] ${segments.length} seg(s): "${text}" -> "${out}" ` +
@@ -346,9 +358,13 @@ export async function runAiAction(
     const tDetectStart = performance.now()
     const lang = await detectLang(text)
     console.log(`[perf] language detect (franc): ${(performance.now() - tDetectStart).toFixed(0)}ms`)
-    const segments = segmentsForAction(action, text)
+    const segments = segmentsForAction(text)
 
-    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), onSegment)
+    // Один связный ответ на весь текст (explain/simplify — пересказ длиной с оригинал; summarize —
+    // компактнее, но всё равно длиннее одного переводческого предложения) — 150 токенов из
+    // TRANSLATE_SEGMENT_MAX_TOKENS тут обрежут ответ на полуслове.
+    const TEXT_ACTION_MAX_TOKENS = 500
+    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), TEXT_ACTION_MAX_TOKENS, onSegment)
 
     console.log(
       `[ai-action] [${action}][${lang}] ${segments.length} seg(s): "${text.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +
