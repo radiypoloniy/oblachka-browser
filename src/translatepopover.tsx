@@ -1,19 +1,21 @@
-// Поповер перевода: отдельная WebContentsView поверх контента (см. TranslatePopoverManager.ts).
+// Поповер AI-действий над выделением (перевод/выжимка/пересказ/объяснение): отдельная
+// WebContentsView поверх контента (см. TranslatePopoverManager.ts). Одна страница на все действия —
+// action влияет только на иконку/подпись, сама механика (стриминг/рост/скролл/закрытие) общая.
 // Позиционирование и размер задаёт main (setBounds) — эта страница просто рисует содержимое
 // на весь свой вьюпорт и репортит реальную высоту контента обратно через preload (рост под
 // текст с капом + внутренний скролл сверх капа — сам кап и позиция живут в main).
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Languages, X } from 'lucide-react';
+import { Languages, Wand2, HelpCircle, ListChecks, X, type LucideIcon } from 'lucide-react';
 import './styles/global.css';
-import type { TranslateOutcome } from '../shared/ipc';
+import type { AiAction, AiActionOutcome } from '../shared/ipc';
 
 declare global {
   interface Window {
     translatePopover: {
-      onOpen: (cb: (text: string) => void) => () => void
+      onOpen: (cb: (text: string, action: AiAction) => void) => () => void
       onSegment: (cb: (text: string) => void) => () => void
-      onResult: (cb: (outcome: TranslateOutcome) => void) => () => void
+      onResult: (cb: (outcome: AiActionOutcome) => void) => () => void
       reportHeight: (px: number) => void
       close: () => void
     }
@@ -27,16 +29,26 @@ const MAX_CONTENT_HEIGHT = 360 // сверх этого — внутренний
 // него ровно столько же места в bounds).
 const SHADOW_MARGIN = 40
 
+// Единственное место, где новое действие получает иконку/подпись — сам промпт живёт в
+// TranslationService.ts, пункт меню в TabManager.ts. Больше поповер трогать не нужно.
+const ACTION_ICON: Record<AiAction, LucideIcon> = {
+  translate: Languages, simplify: Wand2, explain: HelpCircle, summarize: ListChecks,
+}
+const ACTION_VERB: Record<AiAction, string> = {
+  translate: 'Перевожу', simplify: 'Упрощаю', explain: 'Объясняю', summarize: 'Делаю выжимку',
+}
+
 function Popover() {
   const [text, setText] = useState('')
+  const [action, setAction] = useState<AiAction>('translate')
   // Копится по мере прихода сегментов (см. onSegment) — показывается СРАЗУ, не дожидаясь outcome.
-  // outcome.out (финальный, авторитетный) подменяет её как только придёт весь перевод целиком.
+  // outcome.out (финальный, авторитетный) подменяет её как только придёт весь результат целиком.
   const [streamedText, setStreamedText] = useState('')
-  const [outcome, setOutcome] = useState<TranslateOutcome | null>(null)
+  const [outcome, setOutcome] = useState<AiActionOutcome | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const unsubOpen = window.translatePopover.onOpen((t) => { setText(t); setOutcome(null); setStreamedText('') })
+    const unsubOpen = window.translatePopover.onOpen((t, a) => { setText(t); setAction(a); setOutcome(null); setStreamedText('') })
     const unsubSegment = window.translatePopover.onSegment((segText) => {
       setStreamedText((prev) => (prev ? `${prev} ${segText}` : segText))
     })
@@ -61,6 +73,8 @@ function Popover() {
     return () => ro.disconnect()
   }, [text, outcome])
 
+  const ActionIcon = ACTION_ICON[action]
+
   return (
     // Прозрачный внешний паддинг — место для вытекания CSS box-shadow за пределы видимой карточки
     // (сама WebContentsView увеличена на столько же в main, см. SHADOW_MARGIN в TranslatePopoverManager.ts).
@@ -81,7 +95,7 @@ function Popover() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Languages size={14} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
+          <ActionIcon size={14} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
           <span style={{
             fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
             flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -105,7 +119,7 @@ function Popover() {
         {/* Пока не пришёл ни один сегмент и не пришёл финальный outcome — обычный плейсхолдер загрузки. */}
         {outcome === null && streamedText.length === 0 && (
           <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-            Перевожу… (при первом запуске загрузка модели — до 30–40 секунд)
+            {ACTION_VERB[action]}… (при первом запуске загрузка модели — до 30–40 секунд)
           </span>
         )}
 
@@ -125,7 +139,7 @@ function Popover() {
             {/* Техстрока (скорость/тайминг) — доступна, но не должна цеплять взгляд. Только после финала. */}
             {outcome?.ok === true && (
               <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', opacity: 0.7 }}>
-                [{outcome.dirUsed}] {outcome.ms.toFixed(0)}ms, {outcome.tokPerSec.toFixed(1)} tok/s
+                {outcome.dirUsed ? `[${outcome.dirUsed}] ` : ''}{outcome.ms.toFixed(0)}ms, {outcome.tokPerSec.toFixed(1)} tok/s
                 {outcome.loadMs !== null ? `, загрузка: ${outcome.loadMs.toFixed(0)}ms` : ''}
               </span>
             )}

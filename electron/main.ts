@@ -156,10 +156,11 @@ function createWindow() {
     (url, title)    => history.updateTitle(url, title),
     ()              => chromeView?.webContents.send(IPC.HISTORY_OPEN),
     ()              => console.log(`[startup] firsttab ${Date.now() - startT0}ms`),
-    (text, rect, wc) => {
+    (action, text, rect, wc) => {
       // Поповер у выделения, поверх контента (см. TranslatePopoverManager.ts) — не панель в чроме.
-      // Ленивый: WebContentsView+preload поповера создаются только этим вызовом.
-      if (win) showTranslatePopover(win, text, rect, wc);
+      // Ленивый: WebContentsView+preload поповера создаются только этим вызовом. Один поповер на
+      // все AI-действия (перевод/выжимка/пересказ/объяснение) — action меняет только промпт.
+      if (win) showTranslatePopover(win, action, text, rect, wc);
     },
     () => closeTranslatePopoverOnTabSwitch(),
     (wc) => closeTranslatePopoverForClosedTab(wc),

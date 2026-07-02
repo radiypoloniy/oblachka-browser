@@ -228,13 +228,20 @@ export interface PermissionRequest {
   permission: PermKey;
 }
 
-// ── Перевод выделения ───────────────────────────────────────────────────────
+// ── AI-действия над выделением (перевод / пересказ / объяснение / выжимка) ───
+// Общая труба: выделение → координаты → Qwen (промпт зависит от action) → поповер → стриминг.
+// Добавить новое действие = добавить пункт меню (TabManager.ts) + промпт (TranslationService.ts) —
+// без нового поповер-кода, см. AiActionOutcome ниже (один контракт результата на все действия).
+
+export type AiAction = 'translate' | 'summarize' | 'simplify' | 'explain';
 
 // Любая пара языков после автоопределения ('fr->ru', 'ru->en', ...), не только ru/en.
+// Заполняется только для action:'translate' — остальные действия отвечают на языке оригинала,
+// у них нет пары src->tgt.
 export type TranslateDirection = `${string}->${string}`;
 
-export type TranslateOutcome =
-  | { ok: true; out: string; dirUsed: TranslateDirection; ms: number; tokPerSec: number; loadMs: number | null }
+export type AiActionOutcome =
+  | { ok: true; out: string; action: AiAction; dirUsed?: TranslateDirection; ms: number; tokPerSec: number; loadMs: number | null }
   | { ok: false; error: string };
 
 // Тип API, который preload пробрасывает в window.oblako

@@ -9,6 +9,7 @@
 // translatepopover.tsx: текст плейсхолдера отражает это честно.
 import path from 'node:path'
 import { getTargetLang } from './TranslationConfig'
+import type { AiAction, AiActionOutcome } from '../shared/ipc'
 
 // 'ru->en' и т.п. — для ручного теста (translateTestBridge.ts/translatetest.ts, там всегда пара
 // ru/en). 'auto' — боевой путь (ПКМ → «Перевести»): язык определяется по тексту, см. detectLang.
@@ -144,6 +145,31 @@ function buildPrompt(src: string, tgt: string, text: string): string {
     `with no explanations, notes, or additional commentary.\n\n${text}`
 }
 
+// Промпты для действий над выделением помимо перевода — отвечаем НА ЯЗЫКЕ ОРИГИНАЛА (не
+// переводим), поэтому вместо src/tgt пары нужен только определённый язык текста (см. detectLang),
+// который подставляется и как «respond in», и как контекст модели о самом тексте.
+function buildActionPrompt(action: Exclude<AiAction, 'translate'>, lang: string, text: string): string {
+  const L = LANG_NAME[lang] ?? lang
+  if (action === 'simplify') {
+    return `Rewrite the following ${L} text in simpler, plainer ${L}, keeping the same meaning. ` +
+      `Respond in ${L}. Output ONLY the rewritten text, with no explanations or commentary.\n\n${text}`
+  }
+  if (action === 'explain') {
+    return `Explain the following ${L} text: clarify its meaning, context, and any technical terms in ` +
+      `plain language. Respond in ${L}. Output ONLY the explanation, with no additional commentary.\n\n${text}`
+  }
+  // summarize
+  return `Summarize the following ${L} text as 2-3 key points (a short list). ` +
+    `Respond in ${L}. Output ONLY the summary, with no additional commentary.\n\n${text}`
+}
+
+// Выжимке нужен ВЕСЬ текст целиком — 2-3 тезиса по общему смыслу, а не по отдельному предложению.
+// В отличие от неё перевод/пересказ/объяснение нормально работают по предложениям (splitSentences).
+function segmentsForAction(action: AiAction, text: string): string[] {
+  if (action === 'summarize') return [text]
+  return splitSentences(text)
+}
+
 // Защита от утечки reasoning в перевод: у Qwen3.5-9B thinking по умолчанию off, и chatWrapper ниже
 // явно просит thoughts:'discourage' — но это диагностировано на живых прогонах (см. qwen35-test.ts,
 // уже удалён), не гарантия на 100% случаев. Если <think>-теги всё же просочатся — вырезаем перед
@@ -191,15 +217,16 @@ async function ensureLoaded(): Promise<number> {
   return loadPromise
 }
 
-// ВРЕМЕННАЯ диагностика скорости (задача: разложить время перевода по этапам, ничего не чинить,
-// только измерить). ASCII-теги [perf] — кириллица в stdout превращается в кракозябры.
-async function translateSegment(segment: string, src: string, tgt: string): Promise<{ out: string; tokens: number }> {
+// Диагностика скорости по этапам (см. задачу замера) — ASCII-теги [perf], кириллица в stdout
+// превращается в кракозябры. Общий низкоуровневый вызов Qwen — единственное место, где реально
+// зовётся session.prompt(); и перевод, и остальные AI-действия проходят через него (см.
+// translateSegment/runSegmented ниже) — «разные промпты поверх одной трубы», не разные движки.
+async function runPrompt(prompt: string): Promise<{ out: string; tokens: number }> {
   const tSessionStart = performance.now()
   const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper: qwenChatWrapper })
   const tSessionCreated = performance.now()
 
-  const userMsg = buildPrompt(src, tgt, segment)
-  const inputTokens = model.tokenize(userMsg).length
+  const inputTokens = model.tokenize(prompt).length
   const tTokenized = performance.now()
 
   // onToken — единственный способ увидеть МОМЕНТ первого сгенерированного токена, а не только
@@ -208,7 +235,7 @@ async function translateSegment(segment: string, src: string, tgt: string): Prom
   // «session/context setup», которое иначе не отделить от честной генерации.
   let firstTokenAt: number | null = null
   let genTokenCount = 0
-  const rawOut = (await session.prompt(userMsg, {
+  const rawOut = (await session.prompt(prompt, {
     maxTokens: 150,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onToken: (tokens: any[]) => {
@@ -238,52 +265,99 @@ async function translateSegment(segment: string, src: string, tgt: string): Prom
   return { out, tokens }
 }
 
-// onSegment — опциональный колбэк для инкрементальной подачи (поповер): зовётся сразу по готовности
-// КАЖДОГО сегмента, до завершения всего перевода. Не меняет сегментацию/логику перевода — тот же
-// цикл, что и раньше, просто с уведомлением после каждой итерации. Необязательный параметр —
-// вызовы без него (ручной тест-мост translateTestBridge.ts) продолжают работать как раньше,
-// получая только финальный TranslateResult.
+async function translateSegment(segment: string, src: string, tgt: string): Promise<{ out: string; tokens: number }> {
+  return runPrompt(buildPrompt(src, tgt, segment))
+}
+
+// Общий цикл по сегментам — используется и переводом, и остальными AI-действиями. onSegment
+// (опционально) зовётся сразу по готовности КАЖДОГО сегмента, до завершения всего вызова — для
+// инкрементальной подачи в поповер (см. TranslatePopoverManager.ts). Без колбэка (ручной тест-мост
+// translateTestBridge.ts) поведение как раньше — только финальный результат.
+async function runSegmented(
+  segments: string[],
+  buildSegPrompt: (segment: string) => string,
+  onSegment?: (out: string, index: number, total: number) => void,
+): Promise<{ out: string; ms: number; tokPerSec: number; loadMs: number | null }> {
+  const tTotalStart = performance.now()
+  const wasLoaded = loadPromise !== null
+  const loadMs = await ensureLoaded()
+  console.log(`[perf] segments: ${segments.length}`)
+
+  const t0 = performance.now()
+  const outs: string[] = []
+  let totalTokens = 0
+  for (let i = 0; i < segments.length; i++) {
+    const { out, tokens } = await runPrompt(buildSegPrompt(segments[i]!))
+    outs.push(out)
+    totalTokens += tokens
+    onSegment?.(out, i, segments.length)
+  }
+  const ms = performance.now() - t0
+  console.log(`[perf] total: ${(performance.now() - tTotalStart).toFixed(0)}ms (loadMs=${wasLoaded ? 'null(тёплая)' : loadMs.toFixed(0) + 'ms'})`)
+
+  return { out: outs.join(' '), ms, tokPerSec: totalTokens / (ms / 1000), loadMs: wasLoaded ? null : loadMs }
+}
+
+// onSegment — см. runSegmented выше. Необязательный параметр — вызовы без него (ручной тест-мост
+// translateTestBridge.ts) продолжают работать как раньше, получая только финальный TranslateResult.
 export async function translate(
   text: string,
   dir: Direction = 'auto',
   onSegment?: (out: string, index: number, total: number) => void,
 ): Promise<TranslateResult> {
-  const tTotalStart = performance.now()
   try {
-    const wasLoaded = loadPromise !== null
-    const loadMs = await ensureLoaded()
-
     // Направление резолвим один раз по всему тексту — не по каждому предложению отдельно.
     const tDetectStart = performance.now()
     const { src, tgt } = await resolveDirection(dir, text)
-    const detectMs = performance.now() - tDetectStart
-    console.log(`[perf] language detect (franc): ${detectMs.toFixed(0)}ms`)
+    console.log(`[perf] language detect (franc): ${(performance.now() - tDetectStart).toFixed(0)}ms`)
     const dirUsed: ResolvedDirection = `${src}->${tgt}`
     const segments = splitSentences(text)
-    console.log(`[perf] segments: ${segments.length}`)
 
-    const t0 = performance.now()
-    const outs: string[] = []
-    let totalTokens = 0
-    for (let i = 0; i < segments.length; i++) {
-      const { out, tokens } = await translateSegment(segments[i]!, src, tgt)
-      outs.push(out)
-      totalTokens += tokens
-      onSegment?.(out, i, segments.length)
-    }
-    const ms = performance.now() - t0
-    console.log(`[perf] total (translate() вход-выход): ${(performance.now() - tTotalStart).toFixed(0)}ms (loadMs=${wasLoaded ? 'null(тёплая)' : loadMs.toFixed(0) + 'ms'})`)
-    const tokPerSec = totalTokens / (ms / 1000)
-    const out = outs.join(' ')
+    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildPrompt(src, tgt, seg), onSegment)
 
     console.log(
       `[translate] [${dirUsed}] ${segments.length} seg(s): "${text}" -> "${out}" ` +
       `(${ms.toFixed(0)}ms, ${tokPerSec.toFixed(1)} tok/s)`,
     )
 
-    return { ok: true, out, dirUsed, ms, tokPerSec, loadMs: wasLoaded ? null : loadMs }
+    return { ok: true, out, dirUsed, ms, tokPerSec, loadMs }
   } catch (e) {
     console.error('[translate] error:', e)
+    return { ok: false, error: String(e) }
+  }
+}
+
+// Единая точка входа для ВСЕХ AI-действий над выделением (перевод/выжимка/пересказ/объяснение) —
+// то, что зовёт TranslatePopoverManager.ts. 'translate' делегирует в translate() как есть (та же
+// функция, то же поведение, никакого дублирования) и просто помечает результат action'ом; остальные
+// действия отвечают на языке оригинала (detectLang, не resolveDirection — направления нет).
+// Добавить новое действие = добавить сюда промпт (buildActionPrompt) и пункт меню в TabManager.ts.
+export async function runAiAction(
+  action: AiAction,
+  text: string,
+  onSegment?: (out: string, index: number, total: number) => void,
+): Promise<AiActionOutcome> {
+  if (action === 'translate') {
+    const result = await translate(text, 'auto', onSegment)
+    return result.ok ? { ...result, action } : result
+  }
+
+  try {
+    const tDetectStart = performance.now()
+    const lang = await detectLang(text)
+    console.log(`[perf] language detect (franc): ${(performance.now() - tDetectStart).toFixed(0)}ms`)
+    const segments = segmentsForAction(action, text)
+
+    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), onSegment)
+
+    console.log(
+      `[ai-action] [${action}][${lang}] ${segments.length} seg(s): "${text.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +
+      `(${ms.toFixed(0)}ms, ${tokPerSec.toFixed(1)} tok/s)`,
+    )
+
+    return { ok: true, out, action, ms, tokPerSec, loadMs }
+  } catch (e) {
+    console.error('[ai-action] error:', e)
     return { ok: false, error: String(e) }
   }
 }

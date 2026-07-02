@@ -1,7 +1,7 @@
 import { WebContentsView, BrowserWindow, Menu, clipboard } from 'electron';
 import type { MenuItemConstructorOptions, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
-import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode } from '../shared/ipc';
+import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction } from '../shared/ipc';
 import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef } from './SessionManager';
 
 const CLOSED_STACK_MAX = 10;
@@ -18,6 +18,10 @@ const SPLIT_RATIO_MAX = 0.8;
 const SLEEP_TIMEOUT_NORMAL = 2 * 60 * 60 * 1000;  // 2 часа без активности
 const SLEEP_TIMEOUT_PINNED = 8 * 60 * 60 * 1000;  // 8 часов для закреплённых
 const SLEEP_CHECK_INTERVAL = 60_000;               // проверка раз в минуту
+
+// «Краткая выжимка» имеет смысл только для достаточно длинного выделения (иначе выжимать нечего) —
+// одно место, легко поменять. ~40 слов ~ 250 символов на кириллице/латинице.
+const SUMMARIZE_MIN_CHARS = 250;
 
 // Обрезает длинный текст для лейблов меню, чтобы не растягивало окно.
 function truncate(text: string, max = 40): string {
@@ -105,7 +109,9 @@ export class TabManager {
   private onTitleUpdateCb?: (url: string, title: string) => void;
   private onHistoryOpenCb?: () => void;
   private onFirstTabLoadCb?: () => void;
-  private onTranslateSelectionCb?: (text: string, rect: SelectionRect, wc: WebContents) => void;
+  // Общий колбэк для ВСЕХ AI-действий над выделением (перевод/выжимка/пересказ/объяснение) — та же
+  // труба «координаты → Qwen → поповер», разные action только меняют промпт (см. TranslationService.ts).
+  private onAiActionCb?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents) => void;
   // Поповер перевода анкорится к конкретной вкладке/области — при смене активной вкладки его
   // позиция теряет смысл, при закрытии ИМЕННО этой вкладки — тем более. Два отдельных сигнала
   // (не переиспользуем onChange — он общий и палит на ~20 несвязанных мутаций).
@@ -143,7 +149,7 @@ export class TabManager {
     onTitleUpdate?: (url: string, title: string) => void,
     onHistoryOpen?: () => void,
     onFirstTabLoad?: () => void,
-    onTranslateSelection?: (text: string, rect: SelectionRect, wc: WebContents) => void,
+    onAiAction?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents) => void,
     onActiveTabChanged?: () => void,
     onTabClosed?: (wc: WebContents) => void,
   ) {
@@ -158,7 +164,7 @@ export class TabManager {
     this.onTitleUpdateCb = onTitleUpdate;
     this.onHistoryOpenCb = onHistoryOpen;
     this.onFirstTabLoadCb = onFirstTabLoad;
-    this.onTranslateSelectionCb = onTranslateSelection;
+    this.onAiActionCb = onAiAction;
     this.onActiveTabChangedCb = onActiveTabChanged;
     this.onTabClosedCb = onTabClosed;
     // Хаб существует всегда; не входит в tabMap, pinnedTabs или nodes.
@@ -857,37 +863,44 @@ export class TabManager {
             click: () => this.createTab(SEARCH_URL(p.selectionText)),
           },
         );
-        if (this.onTranslateSelectionCb) {
-          items.push({
-            label: 'Перевести',
-            click: () => {
-              const text = p.selectionText;
-              const tClick = performance.now();
-              void (async () => {
-                // Фоллбэк на координаты клика ПКМ, если запрос rect не удался/не дал результата
-                // (напр. выделение снялось до клика по пункту меню — редкий race).
-                let local: { x: number; y: number; width: number; height: number };
-                let fellBack = false;
-                try {
-                  const scriptResult = await wc.executeJavaScript(SELECTION_RECT_SCRIPT, true);
-                  if (scriptResult) { local = scriptResult; } else { local = { x: p.x, y: p.y, width: 0, height: 0 }; fellBack = true; }
-                } catch {
-                  local = { x: p.x, y: p.y, width: 0, height: 0 };
-                  fellBack = true;
-                }
-                const viewBounds = view.getBounds();
-                const rect: SelectionRect = {
-                  x: viewBounds.x + local.x,
-                  y: viewBounds.y + local.y,
-                  width: local.width,
-                  height: local.height,
-                };
-                console.log(`[popover] selrect: fellBack=${fellBack} local=${JSON.stringify(local)} viewBounds=${JSON.stringify(viewBounds)} computed=${JSON.stringify(rect)}`);
-                console.log(`[perf] selection->request: ${(performance.now() - tClick).toFixed(0)}ms`);
-                this.onTranslateSelectionCb!(text, rect, wc);
-              })();
-            },
-          });
+        if (this.onAiActionCb) {
+          // Общий диспетчер для всех AI-действий над выделением — только action меняется,
+          // координаты/фоллбэк/лог одни и те же (см. onAiActionCb в TranslationService.ts).
+          const dispatchAiAction = (action: AiAction) => {
+            const text = p.selectionText;
+            const tClick = performance.now();
+            void (async () => {
+              // Фоллбэк на координаты клика ПКМ, если запрос rect не удался/не дал результата
+              // (напр. выделение снялось до клика по пункту меню — редкий race).
+              let local: { x: number; y: number; width: number; height: number };
+              let fellBack = false;
+              try {
+                const scriptResult = await wc.executeJavaScript(SELECTION_RECT_SCRIPT, true);
+                if (scriptResult) { local = scriptResult; } else { local = { x: p.x, y: p.y, width: 0, height: 0 }; fellBack = true; }
+              } catch {
+                local = { x: p.x, y: p.y, width: 0, height: 0 };
+                fellBack = true;
+              }
+              const viewBounds = view.getBounds();
+              const rect: SelectionRect = {
+                x: viewBounds.x + local.x,
+                y: viewBounds.y + local.y,
+                width: local.width,
+                height: local.height,
+              };
+              console.log(`[popover] selrect: fellBack=${fellBack} local=${JSON.stringify(local)} viewBounds=${JSON.stringify(viewBounds)} computed=${JSON.stringify(rect)}`);
+              console.log(`[perf] selection->request: ${(performance.now() - tClick).toFixed(0)}ms`);
+              this.onAiActionCb!(action, text, rect, wc);
+            })();
+          };
+
+          items.push({ label: 'Перевести', click: () => dispatchAiAction('translate') });
+          items.push({ label: 'Пересказать проще', click: () => dispatchAiAction('simplify') });
+          items.push({ label: 'Объяснить', click: () => dispatchAiAction('explain') });
+          // «Краткая выжимка» — только для достаточно длинного выделения (см. SUMMARIZE_MIN_CHARS).
+          if (p.selectionText.trim().length >= SUMMARIZE_MIN_CHARS) {
+            items.push({ label: 'Краткая выжимка', click: () => dispatchAiAction('summarize') });
+          }
         }
       }
 

@@ -1,17 +1,20 @@
-// Компактный поповер перевода у выделения — отдельная WebContentsView поверх активной вкладки.
-// WebContentsView.setBounds — один прямоугольник; «дырку» под произвольной точкой контента не
-// сделать (тот же вывод, что и для чром-панели: FindBar доказывает это на всю ширину сверху).
-// Поэтому — отдельный view, добавленный ПОСЛЕДНИМ (топ по z-order Electron), а не встройка
-// в чром-слой и не reserve основного контента.
+// Компактный поповер AI-действий над выделением (перевод/выжимка/пересказ/объяснение) — отдельная
+// WebContentsView поверх активной вкладки. Один и тот же поповер для всех действий — action влияет
+// только на промпт внутри TranslationService.runAiAction, сама труба (координаты → Qwen → поповер →
+// стриминг → закрытие) общая. WebContentsView.setBounds — один прямоугольник; «дырку» под
+// произвольной точкой контента не сделать (тот же вывод, что и для чром-панели: FindBar доказывает
+// это на всю ширину сверху). Поэтому — отдельный view, добавленный ПОСЛЕДНИМ (топ по z-order
+// Electron), а не встройка в чром-слой и не reserve основного контента.
 //
-// Создаётся ЛЕНИВО: ничего не происходит, пока не вызван showTranslatePopover() (по клику
-// «Перевести»). Ничего не висит на старте браузера. TranslationService (сама логика перевода,
-// промпт, стоп-настройка, ленивая загрузка GGUF) не трогается — только вызывается.
+// Создаётся ЛЕНИВО: ничего не происходит, пока не вызван showTranslatePopover() (по клику пункта
+// меню). Ничего не висит на старте браузера. TranslationService (сама логика AI-действий, промпты,
+// ленивая загрузка GGUF) не трогается — только вызывается.
 import { WebContentsView, ipcMain } from 'electron'
 import type { BrowserWindow, WebContents } from 'electron'
 import path from 'node:path'
 import type { SelectionRect } from './TabManager'
-import { translate } from './TranslationService'
+import { runAiAction } from './TranslationService'
+import type { AiAction } from '../shared/ipc'
 
 const POPOVER_WIDTH = 340
 const INITIAL_HEIGHT = 90 // высота на время «Перевожу…»
@@ -105,7 +108,7 @@ function ensureIpcRegistered(): void {
   ipcMain.on('translate-popover:close', () => cleanup())
 }
 
-export function showTranslatePopover(win: BrowserWindow, text: string, rect: SelectionRect, tabWc: WebContents): void {
+export function showTranslatePopover(win: BrowserWindow, action: AiAction, text: string, rect: SelectionRect, tabWc: WebContents): void {
   ensureIpcRegistered()
   cleanup() // на случай, если предыдущий поповер ещё не закрыт (повторный клик «Перевести»)
 
@@ -139,7 +142,7 @@ export function showTranslatePopover(win: BrowserWindow, text: string, rect: Sel
   // Закрытие — только явные действия: крестик/Esc (ipc), повторный клик «Перевести» (re-show выше),
   // скролл страницы (best-effort ниже).
   wc.once('did-finish-load', () => {
-    wc.send('translate-popover:open', text)
+    wc.send('translate-popover:open', { text, action })
     wc.focus()
   })
   wc.loadURL('oblako-chrome://localhost/translatepopover.html')
@@ -173,11 +176,12 @@ export function showTranslatePopover(win: BrowserWindow, text: string, rect: Sel
     true,
   ).catch(() => { /* best-effort — если скрипт не выполнился, Esc/крестик всё равно работают */ })
 
-  // Сама логика перевода — TranslationService не меняется, только вызывается. onSegment — по
-  // готовности каждого сегмента (не дожидаясь всего перевода), чтобы на длинном тексте поповер
-  // наполнялся постепенно, а не висел пустым до самого конца. И там, и в финальном .then —
-  // проверка, что popoverView всё ещё тот же (не закрыт/не пересоздан повторным «Перевести»).
-  void translate(text, 'auto', (segmentOut) => {
+  // Единая точка входа для ЛЮБОГО AI-действия (перевод/выжимка/пересказ/объяснение) — только
+  // action меняет промпт внутри TranslationService, сама труба одна. onSegment — по готовности
+  // каждого сегмента (не дожидаясь всего результата), чтобы на длинном тексте поповер наполнялся
+  // постепенно, а не висел пустым до самого конца. И там, и в финальном .then — проверка, что
+  // popoverView всё ещё тот же (не закрыт/не пересоздан повторным действием).
+  void runAiAction(action, text, (segmentOut) => {
     if (popoverView && popoverView.webContents === wc) wc.send('translate-popover:segment', segmentOut)
   }).then((outcome) => {
     if (popoverView && popoverView.webContents === wc) wc.send('translate-popover:result', outcome)

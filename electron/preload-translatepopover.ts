@@ -1,17 +1,17 @@
-// Минимальный preload для поповера перевода (src/translatepopover.tsx).
+// Минимальный preload для поповера AI-действий над выделением (src/translatepopover.tsx).
 // Отдельный от боевого preload.ts и от preload-translatetest.ts — свой маленький канал,
 // не трогает контракт основного чрома (shared/ipc.ts).
 import { contextBridge, ipcRenderer } from 'electron'
-import type { TranslateOutcome } from '../shared/ipc'
+import type { AiAction, AiActionOutcome } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('translatePopover', {
-  onOpen: (cb: (text: string) => void) => {
-    const handler = (_e: unknown, text: string) => cb(text);
+  onOpen: (cb: (text: string, action: AiAction) => void) => {
+    const handler = (_e: unknown, payload: { text: string; action: AiAction }) => cb(payload.text, payload.action);
     ipcRenderer.on('translate-popover:open', handler);
     return () => ipcRenderer.removeListener('translate-popover:open', handler);
   },
-  onResult: (cb: (outcome: TranslateOutcome) => void) => {
-    const handler = (_e: unknown, outcome: TranslateOutcome) => cb(outcome);
+  onResult: (cb: (outcome: AiActionOutcome) => void) => {
+    const handler = (_e: unknown, outcome: AiActionOutcome) => cb(outcome);
     ipcRenderer.on('translate-popover:result', handler);
     return () => ipcRenderer.removeListener('translate-popover:result', handler);
   },
