@@ -12,6 +12,7 @@ declare global {
   interface Window {
     translatePopover: {
       onOpen: (cb: (text: string) => void) => () => void
+      onSegment: (cb: (text: string) => void) => () => void
       onResult: (cb: (outcome: TranslateOutcome) => void) => () => void
       reportHeight: (px: number) => void
       close: () => void
@@ -28,13 +29,19 @@ const SHADOW_MARGIN = 40
 
 function Popover() {
   const [text, setText] = useState('')
+  // Копится по мере прихода сегментов (см. onSegment) — показывается СРАЗУ, не дожидаясь outcome.
+  // outcome.out (финальный, авторитетный) подменяет её как только придёт весь перевод целиком.
+  const [streamedText, setStreamedText] = useState('')
   const [outcome, setOutcome] = useState<TranslateOutcome | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const unsubOpen = window.translatePopover.onOpen((t) => { setText(t); setOutcome(null) })
+    const unsubOpen = window.translatePopover.onOpen((t) => { setText(t); setOutcome(null); setStreamedText('') })
+    const unsubSegment = window.translatePopover.onSegment((segText) => {
+      setStreamedText((prev) => (prev ? `${prev} ${segText}` : segText))
+    })
     const unsubResult = window.translatePopover.onResult((o) => setOutcome(o))
-    return () => { unsubOpen(); unsubResult() }
+    return () => { unsubOpen(); unsubSegment(); unsubResult() }
   }, [])
 
   useEffect(() => {
@@ -95,26 +102,33 @@ function Popover() {
           </button>
         </div>
 
-        {outcome === null && (
+        {/* Пока не пришёл ни один сегмент и не пришёл финальный outcome — обычный плейсхолдер загрузки. */}
+        {outcome === null && streamedText.length === 0 && (
           <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
             Перевожу… (при первом запуске загрузка модели — до 30–40 секунд)
           </span>
         )}
 
-        {outcome?.ok === true && (
+        {/* Стримится по мере готовности сегментов (streamedText) до финального outcome.out — тот
+            же текстовый блок и до, и после финализации, чтобы верстка не прыгала на последнем сегменте. */}
+        {outcome?.ok !== false && (streamedText.length > 0 || outcome?.ok === true) && (
           <>
             {/* Полный текст, без обрезки многоточием — длинные переводы дают скролл (см. maxHeight выше). */}
             <span style={{
               fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-strong)', fontWeight: 500,
               whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             }}>
-              {outcome.out}
+              {outcome?.ok === true ? outcome.out : streamedText}
+              {/* Индикатор «идёт перевод» — пока не пришёл финальный сегмент (outcome ещё null). */}
+              {outcome === null && <span style={{ color: 'var(--text-faint)' }}> …</span>}
             </span>
-            {/* Техстрока (скорость/тайминг) — доступна, но не должна цеплять взгляд. */}
-            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', opacity: 0.7 }}>
-              [{outcome.dirUsed}] {outcome.ms.toFixed(0)}ms, {outcome.tokPerSec.toFixed(1)} tok/s
-              {outcome.loadMs !== null ? `, загрузка: ${outcome.loadMs.toFixed(0)}ms` : ''}
-            </span>
+            {/* Техстрока (скорость/тайминг) — доступна, но не должна цеплять взгляд. Только после финала. */}
+            {outcome?.ok === true && (
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', opacity: 0.7 }}>
+                [{outcome.dirUsed}] {outcome.ms.toFixed(0)}ms, {outcome.tokPerSec.toFixed(1)} tok/s
+                {outcome.loadMs !== null ? `, загрузка: ${outcome.loadMs.toFixed(0)}ms` : ''}
+              </span>
+            )}
           </>
         )}
 

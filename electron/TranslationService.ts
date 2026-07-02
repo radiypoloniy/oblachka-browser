@@ -191,34 +191,88 @@ async function ensureLoaded(): Promise<number> {
   return loadPromise
 }
 
+// ВРЕМЕННАЯ диагностика скорости (задача: разложить время перевода по этапам, ничего не чинить,
+// только измерить). ASCII-теги [perf] — кириллица в stdout превращается в кракозябры.
 async function translateSegment(segment: string, src: string, tgt: string): Promise<{ out: string; tokens: number }> {
+  const tSessionStart = performance.now()
   const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper: qwenChatWrapper })
+  const tSessionCreated = performance.now()
+
   const userMsg = buildPrompt(src, tgt, segment)
-  const out = stripThinking((await session.prompt(userMsg, { maxTokens: 150 })).trim())
+  const inputTokens = model.tokenize(userMsg).length
+  const tTokenized = performance.now()
+
+  // onToken — единственный способ увидеть МОМЕНТ первого сгенерированного токена, а не только
+  // итог. Время до первого токена = вся служебная работа перед реальной генерацией (prefill
+  // промпта в KV cache, чат-шаблон Qwen, что угодно скрытое внутри session.prompt()) — то самое
+  // «session/context setup», которое иначе не отделить от честной генерации.
+  let firstTokenAt: number | null = null
+  let genTokenCount = 0
+  const rawOut = (await session.prompt(userMsg, {
+    maxTokens: 150,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onToken: (tokens: any[]) => {
+      if (firstTokenAt === null) firstTokenAt = performance.now()
+      genTokenCount += tokens.length
+    },
+  })).trim()
+  const tGenDone = performance.now()
+
+  const out = stripThinking(rawOut)
   const tokens = model.tokenize(out).length
+
   await sequence.clearHistory()
+  const tCleared = performance.now()
+
+  const setupMs = (firstTokenAt ?? tGenDone) - tTokenized
+  const genMs = tGenDone - (firstTokenAt ?? tGenDone)
+  console.log(
+    `[perf] segment: sessionCreate=${(tSessionCreated - tSessionStart).toFixed(0)}ms ` +
+    `promptBuild+tokenize=${(tTokenized - tSessionCreated).toFixed(0)}ms (inputTokens=${inputTokens}) ` +
+    `setup/prefill(до 1-го токена)=${setupMs.toFixed(0)}ms ` +
+    `generation=${genMs.toFixed(0)}ms (genTokens=${genTokenCount}, ${(genTokenCount / (genMs / 1000)).toFixed(1)} tok/s) ` +
+    `clearHistory=${(tCleared - tGenDone).toFixed(0)}ms ` +
+    `finalOutTokens=${tokens} (после stripThinking/trim, для справки с genTokens выше)`,
+  )
+
   return { out, tokens }
 }
 
-export async function translate(text: string, dir: Direction = 'auto'): Promise<TranslateResult> {
+// onSegment — опциональный колбэк для инкрементальной подачи (поповер): зовётся сразу по готовности
+// КАЖДОГО сегмента, до завершения всего перевода. Не меняет сегментацию/логику перевода — тот же
+// цикл, что и раньше, просто с уведомлением после каждой итерации. Необязательный параметр —
+// вызовы без него (ручной тест-мост translateTestBridge.ts) продолжают работать как раньше,
+// получая только финальный TranslateResult.
+export async function translate(
+  text: string,
+  dir: Direction = 'auto',
+  onSegment?: (out: string, index: number, total: number) => void,
+): Promise<TranslateResult> {
+  const tTotalStart = performance.now()
   try {
     const wasLoaded = loadPromise !== null
     const loadMs = await ensureLoaded()
 
     // Направление резолвим один раз по всему тексту — не по каждому предложению отдельно.
+    const tDetectStart = performance.now()
     const { src, tgt } = await resolveDirection(dir, text)
+    const detectMs = performance.now() - tDetectStart
+    console.log(`[perf] language detect (franc): ${detectMs.toFixed(0)}ms`)
     const dirUsed: ResolvedDirection = `${src}->${tgt}`
     const segments = splitSentences(text)
+    console.log(`[perf] segments: ${segments.length}`)
 
     const t0 = performance.now()
     const outs: string[] = []
     let totalTokens = 0
-    for (const segment of segments) {
-      const { out, tokens } = await translateSegment(segment, src, tgt)
+    for (let i = 0; i < segments.length; i++) {
+      const { out, tokens } = await translateSegment(segments[i]!, src, tgt)
       outs.push(out)
       totalTokens += tokens
+      onSegment?.(out, i, segments.length)
     }
     const ms = performance.now() - t0
+    console.log(`[perf] total (translate() вход-выход): ${(performance.now() - tTotalStart).toFixed(0)}ms (loadMs=${wasLoaded ? 'null(тёплая)' : loadMs.toFixed(0) + 'ms'})`)
     const tokPerSec = totalTokens / (ms / 1000)
     const out = outs.join(' ')
 

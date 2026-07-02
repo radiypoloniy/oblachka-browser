@@ -173,8 +173,13 @@ export function showTranslatePopover(win: BrowserWindow, text: string, rect: Sel
     true,
   ).catch(() => { /* best-effort — если скрипт не выполнился, Esc/крестик всё равно работают */ })
 
-  // Сама логика перевода — TranslationService не меняется, только вызывается.
-  void translate(text, 'auto').then((outcome) => {
+  // Сама логика перевода — TranslationService не меняется, только вызывается. onSegment — по
+  // готовности каждого сегмента (не дожидаясь всего перевода), чтобы на длинном тексте поповер
+  // наполнялся постепенно, а не висел пустым до самого конца. И там, и в финальном .then —
+  // проверка, что popoverView всё ещё тот же (не закрыт/не пересоздан повторным «Перевести»).
+  void translate(text, 'auto', (segmentOut) => {
+    if (popoverView && popoverView.webContents === wc) wc.send('translate-popover:segment', segmentOut)
+  }).then((outcome) => {
     if (popoverView && popoverView.webContents === wc) wc.send('translate-popover:result', outcome)
   })
 }

@@ -862,6 +862,7 @@ export class TabManager {
             label: 'Перевести',
             click: () => {
               const text = p.selectionText;
+              const tClick = performance.now();
               void (async () => {
                 // Фоллбэк на координаты клика ПКМ, если запрос rect не удался/не дал результата
                 // (напр. выделение снялось до клика по пункту меню — редкий race).
@@ -882,6 +883,7 @@ export class TabManager {
                   height: local.height,
                 };
                 console.log(`[popover] selrect: fellBack=${fellBack} local=${JSON.stringify(local)} viewBounds=${JSON.stringify(viewBounds)} computed=${JSON.stringify(rect)}`);
+                console.log(`[perf] selection->request: ${(performance.now() - tClick).toFixed(0)}ms`);
                 this.onTranslateSelectionCb!(text, rect, wc);
               })();
             },
