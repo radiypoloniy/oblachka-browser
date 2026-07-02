@@ -50,12 +50,14 @@ function computeBounds(win: BrowserWindow, rect: SelectionRect, height: number) 
   if (y + height > winH - MARGIN) y = rect.y - GAP - height
   y = Math.min(Math.max(MARGIN, y), Math.max(MARGIN, winH - height - MARGIN))
 
-  return {
+  const result = {
     x: x - SHADOW_MARGIN,
     y: y - SHADOW_MARGIN,
     width: POPOVER_WIDTH + SHADOW_MARGIN * 2,
     height: height + SHADOW_MARGIN * 2,
   }
+  console.log(`[popover] computeBounds: inputRect=${JSON.stringify(rect)} winSize=${winW}x${winH} -> ${JSON.stringify(result)}`)
+  return result
 }
 
 function cleanup(): void {
@@ -72,6 +74,20 @@ function cleanup(): void {
   onScrollConsoleMessage = null
   attachedWin = null
   currentRect = null
+}
+
+// Безусловное закрытие — активная вкладка сменилась (см. TabManager.activate/focusSplitPanel),
+// поповер анкорен к прежней и позиционно больше не имеет смысла, независимо от того, какая
+// вкладка стала активной.
+export function closeTranslatePopoverOnTabSwitch(): void {
+  cleanup()
+}
+
+// Закрытие только если закрывшаяся вкладка — та самая, на которой поповер висит (сравнение по
+// ссылке на WebContents, тот же приём, что и для scrollWc/console-message выше). Закрытие ЧУЖОЙ
+// фоновой вкладки не должно гасить открытый поповер.
+export function closeTranslatePopoverForClosedTab(wc: WebContents): void {
+  if (scrollWc === wc) cleanup()
 }
 
 // Регистрируется один раз, лениво — на первый показ поповера, не на старте.
@@ -128,18 +144,32 @@ export function showTranslatePopover(win: BrowserWindow, text: string, rect: Sel
   })
   wc.loadURL('oblako-chrome://localhost/translatepopover.html')
 
-  // Best-effort: скролл страницы закрывает поповер. НЕ единственный триггер — console-message
-  // в проекте признан ненадёжным (см. заметку по прошлой фиче), поэтому это поверх Esc/крестика,
-  // а не вместо них: если сигнал не дойдёт, попер всё равно закроется другим путём.
+  // Best-effort: скролл страницы / клик вне выделения / смена выделения на странице закрывают
+  // поповер. НЕ единственные триггеры — console-message в проекте признан ненадёжным (см. заметку
+  // по прошлой фиче), поэтому это поверх Esc/крестика, а не вместо них: если сигнал не дойдёт,
+  // попер всё равно закроется другим путём. Слушатели живут на странице ВКЛАДКИ (tabWc), не
+  // поповера — клик/скролл ВНУТРИ самого поповера (крестик, скролл результата) физически не может
+  // попасть сюда, это отдельный DOM/процесс.
   scrollWc = tabWc
   const SCROLL_SIGNAL = '__oblako_translate_scroll_close__'
+  const OUTSIDE_SIGNAL = '__oblako_translate_outside_close__'
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onScrollConsoleMessage = (event: any) => {
-    if (event.message === SCROLL_SIGNAL) cleanup()
+    if (event.message === SCROLL_SIGNAL || event.message === OUTSIDE_SIGNAL) cleanup()
   }
   tabWc.on('console-message', onScrollConsoleMessage)
   tabWc.executeJavaScript(
-    `window.addEventListener('scroll', function(){ console.log('${SCROLL_SIGNAL}') }, { once: true, capture: true });`,
+    `(function(){
+      window.addEventListener('scroll', function(){ console.log('${SCROLL_SIGNAL}') }, { once: true, capture: true });
+      // Отложенная регистрация — тем самым клик/выделение, которым сам поповер и был вызван
+      // (ПКМ → «Перевести»), уже в прошлом и не может породить ложное самозакрытие сразу после
+      // показа (тот же класс гонки, что раньше был с blur, только здесь — реальные события мыши,
+      // а не внутренний шум Electron, так что достаточно небольшой задержки, а не отказа от идеи).
+      setTimeout(function(){
+        window.addEventListener('mousedown', function(){ console.log('${OUTSIDE_SIGNAL}') }, { once: true, capture: true });
+        document.addEventListener('selectionchange', function(){ console.log('${OUTSIDE_SIGNAL}') }, { once: true });
+      }, 250);
+    })();`,
     true,
   ).catch(() => { /* best-effort — если скрипт не выполнился, Esc/крестик всё равно работают */ })
 

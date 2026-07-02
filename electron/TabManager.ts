@@ -100,6 +100,11 @@ export class TabManager {
   private onHistoryOpenCb?: () => void;
   private onFirstTabLoadCb?: () => void;
   private onTranslateSelectionCb?: (text: string, rect: SelectionRect, wc: WebContents) => void;
+  // Поповер перевода анкорится к конкретной вкладке/области — при смене активной вкладки его
+  // позиция теряет смысл, при закрытии ИМЕННО этой вкладки — тем более. Два отдельных сигнала
+  // (не переиспользуем onChange — он общий и палит на ~20 несвязанных мутаций).
+  private onActiveTabChangedCb?: () => void;
+  private onTabClosedCb?: (wc: WebContents) => void;
   private firstTabLoaded = false; // защита: колбэк вызывается ровно один раз
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
@@ -133,6 +138,8 @@ export class TabManager {
     onHistoryOpen?: () => void,
     onFirstTabLoad?: () => void,
     onTranslateSelection?: (text: string, rect: SelectionRect, wc: WebContents) => void,
+    onActiveTabChanged?: () => void,
+    onTabClosed?: (wc: WebContents) => void,
   ) {
     this.win = win;
     this.onChange = onChange;
@@ -146,6 +153,8 @@ export class TabManager {
     this.onHistoryOpenCb = onHistoryOpen;
     this.onFirstTabLoadCb = onFirstTabLoad;
     this.onTranslateSelectionCb = onTranslateSelection;
+    this.onActiveTabChangedCb = onActiveTabChanged;
+    this.onTabClosedCb = onTabClosed;
     // Хаб существует всегда; не входит в tabMap, pinnedTabs или nodes.
     this.hubTab = { id: HUB_ID, view: null, sleeping: null, lastActiveAt: 0 };
     this.startSleepTimer();
@@ -851,10 +860,13 @@ export class TabManager {
                 // Фоллбэк на координаты клика ПКМ, если запрос rect не удался/не дал результата
                 // (напр. выделение снялось до клика по пункту меню — редкий race).
                 let local: { x: number; y: number; width: number; height: number };
+                let fellBack = false;
                 try {
-                  local = (await wc.executeJavaScript(SELECTION_RECT_SCRIPT, true)) ?? { x: p.x, y: p.y, width: 0, height: 0 };
+                  const scriptResult = await wc.executeJavaScript(SELECTION_RECT_SCRIPT, true);
+                  if (scriptResult) { local = scriptResult; } else { local = { x: p.x, y: p.y, width: 0, height: 0 }; fellBack = true; }
                 } catch {
                   local = { x: p.x, y: p.y, width: 0, height: 0 };
+                  fellBack = true;
                 }
                 const viewBounds = view.getBounds();
                 const rect: SelectionRect = {
@@ -863,6 +875,7 @@ export class TabManager {
                   width: local.width,
                   height: local.height,
                 };
+                console.log(`[popover] selrect: fellBack=${fellBack} local=${JSON.stringify(local)} viewBounds=${JSON.stringify(viewBounds)} computed=${JSON.stringify(rect)}`);
                 this.onTranslateSelectionCb!(text, rect, wc);
               })();
             },
@@ -900,6 +913,11 @@ export class TabManager {
     // Хаб не в tabMap — обрабатываем отдельно.
     const tab = id === HUB_ID ? this.hubTab : this.tabMap.get(id);
     if (!tab) return;
+
+    // Поповер перевода анкорится к прежней активной вкладке — при реальной смене (не при
+    // повторном activate() того же id, напр. клик по уже активной вкладке в сайдбаре) его пора
+    // закрыть. Раньше остального в функции — событие должно уйти сразу, а не в конце разбора.
+    if (this.activeId !== id) this.onActiveTabChangedCb?.();
 
     // Пробуждаем вкладку, если она спит (до любой логики с view).
     if (tab.sleeping) this.wakeTab(id);
@@ -1028,6 +1046,10 @@ export class TabManager {
         this.closedTabs.push(url);
         if (this.closedTabs.length > CLOSED_STACK_MAX) this.closedTabs.shift();
       }
+      // Поповер перевода анкорится к WebContents конкретной вкладки (см. TranslatePopoverManager.ts) —
+      // если закрывается именно она, поповер сравнит ссылку и закроется сам. До removeChildView/close,
+      // чтобы сравнение ссылки точно застало ещё живой объект.
+      this.onTabClosedCb?.(tab.view.webContents);
       try { this.win.contentView.removeChildView(tab.view); } catch { /* noop */ }
       (tab.view.webContents as unknown as { close?: () => void }).close?.();
     } else if (tab.sleeping) {
@@ -1450,6 +1472,7 @@ export class TabManager {
     if (!this.splitState) return;
     const newId = side === 'left' ? this.splitState.leftId : this.splitState.rightId;
     if (this.activeId === newId) return;
+    this.onActiveTabChangedCb?.(); // та же логика, что и в activate() — активная панель реально меняется
 
     // Останавливаем поиск на панели, с которой уходим.
     const prevWc = this.getActiveWebContents();

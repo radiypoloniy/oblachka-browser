@@ -14,7 +14,7 @@ import { PermissionManager } from './PermissionManager';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster } from '../shared/ipc';
 import type { SavedNode } from './SessionManager';
-import { showTranslatePopover } from './TranslatePopoverManager';
+import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
@@ -161,6 +161,8 @@ function createWindow() {
       // Ленивый: WebContentsView+preload поповера создаются только этим вызовом.
       if (win) showTranslatePopover(win, text, rect, wc);
     },
+    () => closeTranslatePopoverOnTabSwitch(),
+    (wc) => closeTranslatePopoverForClosedTab(wc),
   );
 
   // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).

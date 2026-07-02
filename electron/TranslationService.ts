@@ -26,17 +26,18 @@ export type TranslateResult =
 const LANG_NAME: Record<string, string> = {
   ru: 'Russian', en: 'English', fr: 'French', de: 'German', es: 'Spanish', it: 'Italian',
   pt: 'Portuguese', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian', cs: 'Czech', sv: 'Swedish',
-  el: 'Greek', ro: 'Romanian', hu: 'Hungarian', bg: 'Bulgarian', hr: 'Croatian',
+  el: 'Greek', ro: 'Romanian', hu: 'Hungarian', bg: 'Bulgarian', hr: 'Croatian', be: 'Belarusian',
   zh: 'Chinese', ja: 'Japanese', ko: 'Korean', tr: 'Turkish', ar: 'Arabic',
 }
 
 // franc-min отдаёт ISO 639-3 — переводим в короткие коды из LANG_NAME выше. Список ключей заодно
 // передаётся франку как `only` (см. detectLang) — не даём ему распознавать языки, для которых
-// у нас всё равно нет промпт-имени.
+// у нас всё равно нет промпт-имени. bel (белорусский) добавлен наравне с bul/ukr — тоже кириллица,
+// тоже близок к русскому графически, без явного маппинга ушёл бы в FALLBACK_LANG молча.
 const FRANC_TO_CODE: Record<string, string> = {
   rus: 'ru', eng: 'en', fra: 'fr', deu: 'de', spa: 'es', ita: 'it', por: 'pt',
   nld: 'nl', pol: 'pl', ukr: 'uk', ces: 'cs', swe: 'sv', ell: 'el', ron: 'ro',
-  hun: 'hu', bul: 'bg', hrv: 'hr', cmn: 'zh', jpn: 'ja', kor: 'ko', tur: 'tr', arb: 'ar',
+  hun: 'hu', bul: 'bg', hrv: 'hr', bel: 'be', cmn: 'zh', jpn: 'ja', kor: 'ko', tur: 'tr', arb: 'ar',
 }
 
 // Если не совпал ни с одним targetLang — считаем текст «не на целевом», переводим НА targetLang
@@ -62,19 +63,32 @@ async function ensureFranc(): Promise<void> {
   return francLoadPromise
 }
 
-// На коротких строках franc даёт мало сигнала и путает языки — подтверждено на живых прогонах:
+// franc путает языки — подтверждено на живых прогонах, и НЕ только на коротких строках:
 // «да блин, опять сроки горят...» (52 симв.) → 'bg', «спасибо огромное...» (47 симв.) → 'uk',
-// "honestly that's a game changer, let's ship it" (47 симв.) → 'fr'. Общий порог по score не
-// работает (проверено численно: score правильного языка у разных пар пересекается со score
-// ложного срабатывания на других парах) — вместо этого две точечные эвристики:
-// 1) кириллица: bg/uk на короткой строке при рус. тексте — общая графика, франк путает между
-//    близкими славянскими языками почти всегда одинаково → просто считаем русским.
+// "honestly that's a game changer, let's ship it" (47 симв.) → 'fr' — и целая русскоязычная
+// новостная статья (200+ симв., много имён собственных и кавычек) тоже ушла в 'bg'. Длина не
+// спасает. Общий порог по score тоже не работает (проверено численно: score правильного языка у
+// разных пар пересекается со score ложного срабатывания на других парах) — вместо этого две
+// точечные эвристики, каждая на своём независимом сигнале (не на score franc):
+// 1) кириллица: bg/uk/be при преимущественно кириллическом тексте — общая графика, франк путает
+//    между близкими славянскими языками systematically → считаем русским БЕЗУСЛОВНО, без разбора
+//    длины строки (длина не помогает, см. выше). Для этого пользователя русский на порядок
+//    вероятнее болгарского/украинского/белорусского.
 // 2) латиница/английский: нет script-сигнала, зато есть надёжный лексический маркер — английские
 //    сокращения (that's, let's, don't, we're...) практически не встречаются в других языках
 //    из FRANC_TO_CODE в этой форме (апостроф ПОСЛЕ слова, не перед, как в французских l'/c'/qu').
-const RU_CONFUSABLE_ON_SHORT_TEXT = new Set(['bg', 'uk'])
+//    Эта эвристика короткой строкой пока не была замечена ложной за пределами SHORT_TEXT_THRESHOLD,
+//    оставлена ограниченной короткими фразами, чтобы не разрастаться сверх подтверждённой проблемы.
+const RU_CONFUSABLE = new Set(['bg', 'uk', 'be'])
 const ENGLISH_CONTRACTION_RE = /\b\w+'(s|t|re|ll|ve|d|m)\b/i
 const SHORT_TEXT_THRESHOLD = 80
+
+function isMostlyCyrillic(text: string): boolean {
+  const letters = text.match(/[a-zA-Zа-яёА-ЯЁ]/g)
+  if (!letters || letters.length === 0) return false
+  const cyrillic = text.match(/[а-яёА-ЯЁ]/g)?.length ?? 0
+  return cyrillic / letters.length > 0.5
+}
 
 // Лёгкое оффлайн n-граммное определение языка (без сети, без LLM) — НЕ спрашиваем саму модель
 // перевода, это был бы лишний медленный вызов. minLength занижен с дефолтных 10 до 3: выделения
@@ -86,17 +100,15 @@ async function detectLang(text: string): Promise<string> {
   let iso3 = candidates[0]?.[0] ?? 'und'
   let code = FRANC_TO_CODE[iso3] ?? FALLBACK_LANG
 
-  if (text.length < SHORT_TEXT_THRESHOLD) {
-    if (RU_CONFUSABLE_ON_SHORT_TEXT.has(code)) {
-      console.log(`[translate] detected=${code} (iso3=${iso3}) на короткой строке — считаем русским (RU_CONFUSABLE_ON_SHORT_TEXT)`)
-      iso3 = 'rus'; code = 'ru'
-    } else if (code !== 'en' && ENGLISH_CONTRACTION_RE.test(text) && candidates.some(([c]) => c === 'eng')) {
-      console.log(`[translate] detected=${code} (iso3=${iso3}), но есть англ. сокращение (that's/let's/...) — считаем английским`)
-      iso3 = 'eng'; code = 'en'
-    }
+  if (RU_CONFUSABLE.has(code) && isMostlyCyrillic(text)) {
+    console.log(`[translate] detected=${code} (iso3=${iso3}), текст преим. кириллический — считаем русским (RU_CONFUSABLE)`)
+    iso3 = 'rus'; code = 'ru'
+  } else if (text.length < SHORT_TEXT_THRESHOLD && code !== 'en' && ENGLISH_CONTRACTION_RE.test(text) && candidates.some(([c]) => c === 'eng')) {
+    console.log(`[translate] detected=${code} (iso3=${iso3}), но есть англ. сокращение (that's/let's/...) — считаем английским`)
+    iso3 = 'eng'; code = 'en'
   }
 
-  console.log(`[translate] detectLang: iso3=${iso3} -> code=${code} text="${text.slice(0, 60)}"`)
+  console.log(`[translate] detectLang: franc raw=${candidates[0]?.[0] ?? 'und'} -> mapped=${code} text="${text.slice(0, 60)}"`)
   return code
 }
 
