@@ -51,6 +51,9 @@ interface ManagedTab {
   view: WebContentsView | null; // null = хаб (sleeping===null) ИЛИ спящая (sleeping!==null)
   sleeping: SleepingMeta | null;
   lastActiveAt: number; // Date.now() последней активности — для таймера сна
+  // Короткоживущая вкладка (напр. OAuth-попап из window.open с фичами окна, disposition='new-window'):
+  // не участвует в автосейве/восстановлении сессии — иначе при рестарте «воскреснет» мёртвая страница логина.
+  ephemeral?: boolean;
 }
 
 // Скрипт проверки незаполненных форм — только top-frame (v1: поля внутри iframe не проверяются).
@@ -236,8 +239,9 @@ export class TabManager {
         isSleeping: true,
       };
     }
-    if (!this.isHttpView(t.view)) {
+    if (!this.isHttpView(t.view) || t.view.webContents.isDestroyed()) {
       // Хаб обрабатывается отдельно выше; сюда не должны попадать.
+      // Уничтоженный (но ещё не вычищенный из tabMap) WebContents — тот же короткий фоллбэк.
       return {
         id: t.id, isActive: t.id === this.activeId,
         tabError: null, url: '', title: '', faviconUrl: null,
@@ -326,7 +330,7 @@ export class TabManager {
   // URL вкладки: из sleeping-метаданных или из живого WebContents.
   #tabUrl(tab: ManagedTab): string {
     if (tab.sleeping) return tab.sleeping.url;
-    if (this.isHttpView(tab.view)) return tab.view.webContents.getURL();
+    if (this.isHttpView(tab.view) && !tab.view.webContents.isDestroyed()) return tab.view.webContents.getURL();
     return '';
   }
 
@@ -364,8 +368,10 @@ export class TabManager {
 
     const tab = this.tabMap.get(this.activeId);
     const url = tab ? this.#tabUrl(tab) : '';
-    if (/^https?:\/\//i.test(url)) return { type: 'url', url };
-    return { type: 'hub' }; // фоллбэк: about:blank или без реального URL
+    // Активный OAuth-попап (ephemeral) сам в сейв не попадает — ссылаться на него в activeRef нельзя,
+    // после рестарта такого URL в сохранённых вкладках не будет.
+    if (tab && !tab.ephemeral && /^https?:\/\//i.test(url)) return { type: 'url', url };
+    return { type: 'hub' }; // фоллбэк: about:blank, ephemeral или без реального URL
   }
 
   // Текущее дерево узлов для SYNC_CHANGED (шлём как есть из this.nodes).
@@ -379,18 +385,19 @@ export class TabManager {
   // Возвращает null если нарушен инвариант — сейв пропускается.
   getSessionSnapshot(): SessionSnapshot | null {
     const isReal = (url: string) => /^https?:\/\//i.test(url);
+    // Короткоживущие вкладки (OAuth-попапы, см. wirePageEvents/setWindowOpenHandler) в сейв не идут —
+    // при рестарте нет смысла «воскрешать» страницу логина.
+    const savable = (t: ManagedTab) => !t.ephemeral && isReal(this.#tabUrl(t));
 
     const pinnedTabs: { url: string }[] = [];
     for (const t of this.pinnedTabs) {
-      const url = this.#tabUrl(t);
-      if (isReal(url)) pinnedTabs.push({ url });
+      if (savable(t)) pinnedTabs.push({ url: this.#tabUrl(t) });
     }
 
-    const nodes = this.#serializeNodes(this.nodes, isReal);
+    const nodes = this.#serializeNodes(this.nodes, savable);
 
-    // Инвариант: число сериализованных вкладок == число вкладок tabMap с реальным URL.
-    const expectedCount = [...this.tabMap.values()]
-      .filter((t) => isReal(this.#tabUrl(t))).length;
+    // Инвариант: число сериализованных вкладок == число сохраняемых вкладок tabMap.
+    const expectedCount = [...this.tabMap.values()].filter(savable).length;
     const actualCount = pinnedTabs.length + this.#countSavedTabs(nodes);
 
     if (actualCount !== expectedCount) {
@@ -403,31 +410,30 @@ export class TabManager {
     return { pinnedTabs, nodes, activeRef: this.#computeActiveRef() };
   }
 
-  // Рекурсивная сериализация узлов с деградацией split-pair при отсутствии реальных URL.
-  #serializeNodes(nodes: SidebarNode[], isReal: (url: string) => boolean): SavedNode[] {
+  // Рекурсивная сериализация узлов с деградацией split-pair при отсутствии сохраняемых вкладок.
+  #serializeNodes(nodes: SidebarNode[], savable: (t: ManagedTab) => boolean): SavedNode[] {
     const result: SavedNode[] = [];
     for (const node of nodes) {
       if (node.type === 'single') {
         const tab = this.tabMap.get(node.tabId);
         if (!tab) continue;
-        const url = this.#tabUrl(tab);
-        if (isReal(url)) result.push({ type: 'single', url });
+        if (savable(tab)) result.push({ type: 'single', url: this.#tabUrl(tab) });
       } else if (node.type === 'split-pair') {
         const leftTab  = this.tabMap.get(node.leftTabId);
         const rightTab = this.tabMap.get(node.rightTabId);
-        const leftUrl  = leftTab  ? this.#tabUrl(leftTab)  : '';
-        const rightUrl = rightTab ? this.#tabUrl(rightTab) : '';
-        if (isReal(leftUrl) && isReal(rightUrl)) {
+        const leftOk  = !!leftTab  && savable(leftTab);
+        const rightOk = !!rightTab && savable(rightTab);
+        if (leftOk && rightOk) {
           const ratio = (this.splitState?.leftId === node.leftTabId)
             ? this.splitState.splitRatio : node.ratio;
-          result.push({ type: 'split-pair', leftUrl, rightUrl, ratio });
-        } else if (isReal(leftUrl)) {
-          result.push({ type: 'single', url: leftUrl });
-        } else if (isReal(rightUrl)) {
-          result.push({ type: 'single', url: rightUrl });
+          result.push({ type: 'split-pair', leftUrl: this.#tabUrl(leftTab!), rightUrl: this.#tabUrl(rightTab!), ratio });
+        } else if (leftOk) {
+          result.push({ type: 'single', url: this.#tabUrl(leftTab!) });
+        } else if (rightOk) {
+          result.push({ type: 'single', url: this.#tabUrl(rightTab!) });
         }
       } else if (node.type === 'group') {
-        const children = this.#serializeNodes(node.children, isReal);
+        const children = this.#serializeNodes(node.children, savable);
         if (children.length > 0) {
           result.push({
             type: 'group', id: node.id, label: node.label,
@@ -540,7 +546,7 @@ export class TabManager {
 
   // ── Создание новой вкладки с реальной страницей ──
   // background=true: вкладка создаётся в фоне, без переключения (средний клик по ссылке).
-  createTab(rawUrl?: string, background = false): string {
+  createTab(rawUrl?: string, background = false, ephemeral = false): string {
     const id = randomUUID();
     const view = new WebContentsView({
       webPreferences: {
@@ -550,7 +556,7 @@ export class TabManager {
         sandbox: true,
       },
     });
-    const tab: ManagedTab = { id, view, sleeping: null, lastActiveAt: Date.now() };
+    const tab: ManagedTab = { id, view, sleeping: null, lastActiveAt: Date.now(), ephemeral };
     this.tabMap.set(id, tab);
     this.nodes.push({ type: 'single', tabId: id });
     this.wirePageEvents(id, view);
@@ -784,12 +790,34 @@ export class TabManager {
       this.onFindResultCb({ activeMatch: result.activeMatchOrdinal, count: result.matches });
     });
 
-    // Политика окон: target=_blank / window.open -> НОВАЯ ВКЛАДКА, не окно.
-    // disposition='background-tab' = средний клик или Ctrl+клик → фон (стандарт браузеров).
-    wc.setWindowOpenHandler(({ url, disposition }) => {
-      this.createTab(url, disposition === 'background-tab');
+    // Политика окон: target=_blank / window.open -> НОВАЯ ВКЛАДКА, не окно — КРОМЕ настоящих
+    // попапов (см. ниже). disposition='background-tab' = средний клик/Ctrl+клик → фон (стандарт браузеров).
+    wc.setWindowOpenHandler(({ url, disposition, features }) => {
+      // OAuth-попап (Google/Firebase и т.п.) открывается ИМЕННО так: window.open(url, name,
+      // 'width=…,height=…') → disposition='new-window' + width/height в features. Это единственный
+      // надёжный сигнал «это попап, а не просто открытие в новой вкладке» — обычные target=_blank/
+      // window.open(url) без размерных фич дают 'foreground-tab'/'background-tab'/'default'.
+      //
+      // Такому попапу нужно НАСТОЯЩЕЕ дочернее окно с живым window.opener — OAuth-провайдер в конце
+      // шлёт window.opener.postMessage(token) родителю. Если вместо этого создать нашу вкладку
+      // (как раньше), opener окажется пустым и логин молча не долетит до родителя (см. диагностику
+      // прошлого шага). Поэтому здесь action:'allow' — Chromium сам создаёт связанное окно;
+      // details.features уже содержит width/height, Electron распарсит их сам.
+      const isOAuthPopup = disposition === 'new-window' && /(?:^|,)\s*(width|height)\s*=/.test(features);
+      if (isOAuthPopup) {
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            autoHideMenuBar: true, // не наш кастомный хром — просто обычное окно ОС без лишнего UI
+            webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+          },
+        };
+      }
+      this.createTab(url, disposition === 'background-tab', disposition === 'new-window');
       return { action: 'deny' };
     });
+    // Настоящее окно OAuth-попапа (action:'allow' выше) Electron создаёт и закрывает сам —
+    // оно НЕ регистрируется в tabMap/nodes, никак не завязано на автосейв/дерево вкладок Oblako.
 
     // Ctrl+колесо → наш зум (preventDefault гасит нативный зум Chromium).
     // Chromium перехватывает Ctrl+scroll как gesture, поэтому страница не скроллится.
@@ -808,6 +836,19 @@ export class TabManager {
         && (id === this.splitState.leftId || id === this.splitState.rightId);
       if (this.activeId === id || isInSplit) this.hideView(id);
       notify();
+    });
+
+    // Программное уничтожение вкладки САМИМ контентом (window.close() — типично для OAuth-попапов
+    // после логина), а не через наш closeTab(). Без этого слушателя tabMap/дерево нод/activeId
+    // продолжают ссылаться на уничтоженный WebContents — следующий снапшот падает на getURL.
+    // Пускаем через тот же closeTab(), что и обычное закрытие — единая атомарная уборка.
+    // Проверка tab.view === view отсекает устаревшие/ожидаемые destroyed от старой вьюхи —
+    // усыпление (sleepTab) и обычный closeTab() сами обнуляют/удаляют tab.view ДО close(),
+    // так что к моменту этого события они уже не совпадут и повторной уборки не случится.
+    wc.on('destroyed', () => {
+      const tab = this.tabMap.get(id);
+      if (!tab || tab.view !== view) return;
+      this.closeTab(id);
     });
 
     // Краш рендер-процесса: вьюха мертва — прячем, показываем экран ошибки.
@@ -1056,13 +1097,15 @@ export class TabManager {
         this.#pruneEmptyGroups(this.nodes);
       }
     }
-    // DBG: логируем каждое удаление из tabMap со стеком — ищем, кто удаляет split-вкладку.
-    console.warn('[TabMgr] tabMap.delete', id, new Error('stack').stack?.split('\n').slice(1, 5).join(' | '));
     this.tabMap.delete(id);
     this.errors.delete(id);
 
     if (this.isHttpView(tab.view)) {
-      const url = tab.view.webContents.getURL();
+      const wc = tab.view.webContents;
+      // closeTab может прийти сюда и через 'destroyed' (window.close() из контента, см. wirePageEvents) —
+      // тогда wc уже мёртв, и getURL()/removeChildView()/close() на нём бросят "Object has been destroyed".
+      const destroyed = wc.isDestroyed();
+      const url = destroyed ? '' : wc.getURL();
       if (/^https?:\/\//i.test(url)) {
         this.closedTabs.push(url);
         if (this.closedTabs.length > CLOSED_STACK_MAX) this.closedTabs.shift();
@@ -1070,9 +1113,11 @@ export class TabManager {
       // Поповер перевода анкорится к WebContents конкретной вкладки (см. TranslatePopoverManager.ts) —
       // если закрывается именно она, поповер сравнит ссылку и закроется сам. До removeChildView/close,
       // чтобы сравнение ссылки точно застало ещё живой объект.
-      this.onTabClosedCb?.(tab.view.webContents);
-      try { this.win.contentView.removeChildView(tab.view); } catch { /* noop */ }
-      (tab.view.webContents as unknown as { close?: () => void }).close?.();
+      this.onTabClosedCb?.(wc);
+      if (!destroyed) {
+        try { this.win.contentView.removeChildView(tab.view); } catch { /* noop */ }
+        (wc as unknown as { close?: () => void }).close?.();
+      }
     } else if (tab.sleeping) {
       const url = tab.sleeping.url;
       if (/^https?:\/\//i.test(url)) {
