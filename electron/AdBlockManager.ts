@@ -1,8 +1,12 @@
 import { app, session as electronSession } from 'electron';
+import type { OnBeforeRequestListenerDetails, CallbackResponse } from 'electron';
 import { ElectronBlocker } from '@ghostery/adblocker-electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AdBlockState } from '../shared/ipc';
+
+type Database = import('better-sqlite3').Database;
+type BetterSqlite3 = typeof import('better-sqlite3');
 
 // ── Константы ────────────────────────────────────────────────────────────────
 
@@ -17,7 +21,9 @@ const FETCH_TIMEOUT_MS = 15_000;
 
 interface PersistedSettings {
   enabled: boolean;
-  whitelist: string[];
+  // whitelist здесь больше не пишется (переехал в adblock.sqlite) — поле читается
+  // только для миграции уже существующих у пользователя настроек, см. #migrateWhitelistFromJson.
+  whitelist?: string[];
 }
 
 // ── AdBlockManager ──────────────────────────────────────────────────────────
@@ -29,6 +35,8 @@ export class AdBlockManager {
   #sessionBlockCount = 0;
   readonly #settingsPath: string;
   readonly #enginePath: string;
+  readonly #dbPath: string;
+  #db: Database | null = null;
   #settingsTimer: ReturnType<typeof setTimeout> | null = null;
   #statsTimer:    ReturnType<typeof setTimeout> | null = null;
   #onStateChange: ((state: AdBlockState) => void) | null = null;
@@ -36,6 +44,7 @@ export class AdBlockManager {
   constructor() {
     const userData = app.getPath('userData');
     this.#settingsPath = path.join(userData, 'adblock-settings.json');
+    this.#dbPath = path.join(userData, 'adblock.sqlite');
     // Prebuilt-бинарник с косметикой. Имя отличается от старого ghostery-engine.bin
     // (тот был без косметики) — при первом запуске скачается свежая версия с CDN.
     this.#enginePath = path.join(userData, 'ghostery-engine-prebuilt.bin');
@@ -44,7 +53,8 @@ export class AdBlockManager {
   // Загружает настройки + строит движок. Вызывается один раз при старте приложения.
   async initialize(onStateChange: (state: AdBlockState) => void): Promise<void> {
     this.#onStateChange = onStateChange;
-    this.#loadSettings();
+    this.#loadEnabledFlag();
+    this.#openWhitelistDb();
 
     const blocker = await this.#loadBlocker();
 
@@ -59,16 +69,15 @@ export class AdBlockManager {
 
     this.#blocker = blocker;
 
-    // Пользовательские исключения (whitelist) применяем поверх базового движка
-    // при каждом старте — НЕ кэшируем в engine.bin, чтобы кэш оставался стабильным.
-    this.#applyWhitelist();
-
-    // Нативный коллбэк Ghostery на каждую заблокированную сеть-заявку.
-    // Точнее, чем onErrorOccurred: срабатывает ровно на блокировки адблока.
-    blocker.on('request-blocked', () => { this.recordBlock(); });
+    // Нативный коллбэк Ghostery на каждую заблокированную сеть-заявку — считаем и логируем,
+    // чтобы при жалобах на конкретный сайт было видно, что именно резалось.
+    blocker.on('request-blocked', (request) => {
+      this.recordBlock();
+      console.log(`[AdBlock] blocked ${request.url}`);
+    });
 
     if (this.#enabled) {
-      blocker.enableBlockingInSession(electronSession.defaultSession);
+      this.#enableBlocking();
       console.log('[AdBlock] Ghostery активен (сеть + косметика)');
     } else {
       console.log('[AdBlock] Ghostery загружен, но блокировка выключена пользователем');
@@ -89,7 +98,7 @@ export class AdBlockManager {
     this.#enabled = enabled;
     if (this.#blocker) {
       if (enabled) {
-        this.#blocker.enableBlockingInSession(electronSession.defaultSession);
+        this.#enableBlocking();
       } else {
         this.#blocker.disableBlockingInSession(electronSession.defaultSession);
       }
@@ -99,25 +108,19 @@ export class AdBlockManager {
   }
 
   // Домен нормализуется: strip протокола, www., trailing slash.
-  // "www.reddit.com" → "reddit.com"; покрывает reddit.com И все поддомены.
+  // "www.reddit.com" → "reddit.com"; покрывает reddit.com И все поддомены сайта
+  // (проверка идёт по домену СТРАНИЦЫ — см. #isWhitelistedRequest — а не домену запроса).
   addDomain(raw: string): void {
     const domain = normalizeDomain(raw);
     if (!domain) return;
     this.#whitelist.add(domain);
-    if (this.#blocker) {
-      // Добавляем исключение в живой движок без перезагрузки кэша.
-      this.#blocker.updateFromDiff({ added: [`@@||${domain}^$important`] });
-    }
-    this.#scheduleSettingsSave();
+    this.#dbInsertDomain(domain);
     this.#notify();
   }
 
   removeDomain(domain: string): void {
     this.#whitelist.delete(domain);
-    if (this.#blocker) {
-      this.#blocker.updateFromDiff({ removed: [`@@||${domain}^$important`] });
-    }
-    this.#scheduleSettingsSave();
+    this.#dbDeleteDomain(domain);
     this.#notify();
   }
 
@@ -126,14 +129,44 @@ export class AdBlockManager {
     this.#scheduleStatsPush();
   }
 
-  // ── Приватные методы ───────────────────────────────────────────────────────
-
-  // Применяет текущий whitelist поверх движка (вызывается при каждом старте).
-  #applyWhitelist(): void {
-    if (!this.#blocker || this.#whitelist.size === 0) return;
-    const rules = [...this.#whitelist].map((d) => `@@||${d}^$important`);
-    this.#blocker.updateFromDiff({ added: rules });
+  // ── Блокировка сети: свой onBeforeRequest ПЕРЕД движком ─────────────────────
+  //
+  // ElectronBlocker.enableBlockingInSession() сам регистрирует session.webRequest.onBeforeRequest
+  // и решает блокировку целиком внутри себя — внешний whitelist (напр. через updateFromDiff с
+  // правилом-исключением по домену ЗАПРОСА) не спасает: на SPA вроде ChatGPT реальный подгружаемый
+  // ресурс часто лежит на ДРУГОМ домене (CDN/API), чем сама страница, и правило `@@||chatgpt.com^`
+  // его не покрывает — ложная блокировка ломает приложение целиком.
+  //
+  // Чиним переопределением: Electron допускает только ОДНОГО слушателя onBeforeRequest на сессию
+  // (более новая регистрация замещает предыдущую) — регистрируем свой ПОСЛЕ enableBlockingInSession,
+  // он вытесняет внутренний слушатель движка. Сначала проверяем домен СТРАНИЦЫ (первую сторону, не
+  // домен запроса) по whitelist; если сайт в исключениях — пропускаем запрос, до движка не доходя.
+  // Иначе — отдаём тот же details/callback в blocker.onBeforeRequest (публичный bound-метод,
+  // конкретно ЭТА логика не меняется, просто пропущена через наш гейт раньше движка).
+  #enableBlocking(): void {
+    const session = electronSession.defaultSession;
+    const blocker = this.#blocker!;
+    blocker.enableBlockingInSession(session); // косметика + CSP-заголовки, как и раньше
+    session.webRequest.onBeforeRequest(
+      { urls: ['<all_urls>'] },
+      (details: OnBeforeRequestListenerDetails, callback: (r: CallbackResponse) => void) => {
+        if (this.#isWhitelistedRequest(details)) { callback({}); return; }
+        blocker.onBeforeRequest(details, callback);
+      },
+    );
   }
+
+  #isWhitelistedRequest(details: OnBeforeRequestListenerDetails): boolean {
+    if (this.#whitelist.size === 0) return false;
+    // webContents.getURL() — надёжнее referrer (тот пуст при строгой Referrer-Policy).
+    // Для сабресурсов уже отражает АКТУАЛЬНУЮ (закоммиченную) страницу-владельца запроса.
+    const pageUrl = details.webContents?.getURL() || details.referrer;
+    if (!pageUrl) return false;
+    const domain = normalizeDomain(pageUrl);
+    return !!domain && this.#whitelist.has(domain);
+  }
+
+  // ── Приватные методы ───────────────────────────────────────────────────────
 
   async #loadBlocker(): Promise<ElectronBlocker | null> {
     try {
@@ -162,20 +195,101 @@ export class AdBlockManager {
     }
   }
 
-  // ── Персистенция ──────────────────────────────────────────────────────────
+  // ── Персистенция: enabled — JSON (как раньше), whitelist — SQLite ──────────
 
-  #loadSettings(): void {
+  #loadEnabledFlag(): void {
     try {
       const raw = fs.readFileSync(this.#settingsPath, 'utf8');
       const data = JSON.parse(raw) as unknown;
       if (isValidSettings(data)) {
-        this.#enabled  = data.enabled;
-        this.#whitelist = new Set(data.whitelist);
+        this.#enabled = data.enabled;
+        // Старый формат хранил whitelist прямо тут — подхватываем в память сейчас,
+        // #openWhitelistDb() перенесёт эти домены в SQLite один раз, если она там ещё пуста.
+        if (Array.isArray(data.whitelist)) {
+          for (const d of data.whitelist) this.#whitelist.add(d);
+        }
         return;
       }
     } catch { /* файл отсутствует или битый JSON — стартуем с дефолтом */ }
-    this.#enabled  = true;
-    this.#whitelist = new Set();
+    this.#enabled = true;
+  }
+
+  #openWhitelistDb(): void {
+    let Sqlite: BetterSqlite3 | null = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      Sqlite = require('better-sqlite3') as BetterSqlite3;
+    } catch (e) {
+      console.warn('[AdBlock] better-sqlite3 недоступен — whitelist не персистируется:', (e as Error).message);
+      return;
+    }
+    try {
+      this.#db = new Sqlite(this.#dbPath);
+      this.#setupDb();
+    } catch (e) {
+      console.error('[AdBlock] ошибка открытия whitelist БД:', (e as Error).message);
+      try {
+        fs.unlinkSync(this.#dbPath);
+        this.#db = new Sqlite(this.#dbPath);
+        this.#setupDb();
+        console.log('[AdBlock] whitelist БД пересоздана');
+      } catch (e2) {
+        console.error('[AdBlock] пересоздание whitelist БД провалилось:', (e2 as Error).message);
+        this.#db = null;
+        return;
+      }
+    }
+
+    const fromDb = this.#dbLoadDomains();
+    if (fromDb.length > 0) {
+      // В SQLite уже есть данные — она источник истины, JSON-остатки (если есть) игнорируем.
+      this.#whitelist = new Set(fromDb);
+    } else if (this.#whitelist.size > 0) {
+      // Миграция один раз: домены были только в старом JSON — переносим в SQLite и БОЛЬШЕ
+      // не пишем whitelist в JSON (см. #writeSettings).
+      for (const d of this.#whitelist) this.#dbInsertDomain(d);
+      console.log(`[AdBlock] whitelist мигрирован из JSON в SQLite (${this.#whitelist.size} записей)`);
+    }
+  }
+
+  #setupDb(): void {
+    const db = this.#db!;
+    db.pragma('journal_mode = WAL');
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS whitelist (
+        domain     TEXT    PRIMARY KEY,
+        added_at   INTEGER NOT NULL
+      );
+    `);
+  }
+
+  #dbLoadDomains(): string[] {
+    if (!this.#db) return [];
+    try {
+      const rows = this.#db.prepare('SELECT domain FROM whitelist').all() as { domain: string }[];
+      return rows.map((r) => r.domain);
+    } catch (e) {
+      console.warn('[AdBlock] #dbLoadDomains error:', (e as Error).message);
+      return [];
+    }
+  }
+
+  #dbInsertDomain(domain: string): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare('INSERT OR IGNORE INTO whitelist (domain, added_at) VALUES (?, ?)').run(domain, Date.now());
+    } catch (e) {
+      console.warn('[AdBlock] #dbInsertDomain error:', (e as Error).message);
+    }
+  }
+
+  #dbDeleteDomain(domain: string): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare('DELETE FROM whitelist WHERE domain = ?').run(domain);
+    } catch (e) {
+      console.warn('[AdBlock] #dbDeleteDomain error:', (e as Error).message);
+    }
   }
 
   #scheduleSettingsSave(): void {
@@ -187,7 +301,8 @@ export class AdBlockManager {
   }
 
   #writeSettings(): void {
-    const data: PersistedSettings = { enabled: this.#enabled, whitelist: [...this.#whitelist] };
+    // whitelist сюда больше не пишется — только enabled (whitelist живёт в adblock.sqlite).
+    const data: PersistedSettings = { enabled: this.#enabled };
     const tmpPath = this.#settingsPath + '.tmp';
     try {
       fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf8');
@@ -213,12 +328,10 @@ export class AdBlockManager {
 function isValidSettings(v: unknown): v is PersistedSettings {
   if (typeof v !== 'object' || v === null) return false;
   const d = v as Record<string, unknown>;
-  return typeof d['enabled'] === 'boolean' &&
-    Array.isArray(d['whitelist']) &&
-    (d['whitelist'] as unknown[]).every((x) => typeof x === 'string');
+  return typeof d['enabled'] === 'boolean';
 }
 
-// Нормализует ввод пользователя до голого hostname.
+// Нормализует ввод пользователя (или URL страницы) до голого hostname.
 // "https://www.Reddit.com/r/..." → "reddit.com"
 export function normalizeDomain(raw: string): string | null {
   let s = raw.trim().toLowerCase();
