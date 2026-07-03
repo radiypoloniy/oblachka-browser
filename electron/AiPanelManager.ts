@@ -90,11 +90,18 @@ function getReadabilitySource(): string {
   return readabilitySource
 }
 
-// Обязательный порог для фолбэка: если Readability не нашёл ничего (parse()===null) или нашёл
-// подозрительно мало (нестандартная вёрстка — форум, SPA, короткая страница) — не отдаём в чат
-// огрызок, откатываемся на прежний путь (весь видимый текст, document.body.innerText).
+// Обязательный порог для фолбэка — АБСОЛЮТНЫЙ (не хватает символов) — не менялся с прошлого захода.
 const READABILITY_MIN_CHARS = 200
+// ОТНОСИТЕЛЬНЫЙ порог (этот заход): форумы вроде Reddit — Readability формально находит «статью»
+// (например, один комментарий + счётчик голосов), абсолютный порог проходит, но это ничтожная доля
+// от реального объёма страницы — огрызок вместо содержимого. Если readability-текст короче этой
+// доли от полного innerText — тоже считаем, что не справилась. Обе константы — единственное место
+// порогов, легко подкрутить.
+const READABILITY_MIN_RATIO = 0.15
 
+// Инжектируемый скрипт всегда считает ОБА варианта (readability + весь innerText) — решение, какой
+// использовать, и оба порога живут в extractPageText (main), а не зашиты в саму строку скрипта:
+// подкручивать READABILITY_MIN_CHARS/RATIO не нужно трогать генерацию скрипта.
 function buildExtractionScript(): string {
   return `(function(){
     ${getReadabilitySource()}
@@ -104,10 +111,8 @@ function buildExtractionScript(): string {
       var article = new Readability(docClone).parse();
       readabilityText = (article && article.textContent) ? article.textContent.trim() : '';
     } catch (e) { readabilityText = ''; }
-    if (readabilityText.length >= ${READABILITY_MIN_CHARS}) {
-      return { method: 'readability', text: readabilityText };
-    }
-    return { method: 'fallback', text: document.body ? document.body.innerText : '' };
+    var fullText = document.body ? document.body.innerText : '';
+    return { readabilityText: readabilityText, fullText: fullText };
   })()`
 }
 
@@ -122,10 +127,22 @@ async function extractPageText(wc: WebContents | null): Promise<string> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: any = await wc.executeJavaScript(buildExtractionScript(), true)
-    const rawText = typeof result?.text === 'string' ? result.text : ''
-    const text = rawText.slice(0, PAGE_TEXT_MAX_CHARS)
-    const methodLabel = result?.method === 'readability' ? 'readability' : 'fallback innerText'
-    console.log(`[ai-panel] извлечение: ${methodLabel} ${text.length} симв.`)
+    const readabilityText: string = typeof result?.readabilityText === 'string' ? result.readabilityText : ''
+    const fullText: string = typeof result?.fullText === 'string' ? result.fullText : ''
+
+    // «Не справилась»: коротко в абсолютных цифрах (пусто/почти пусто) ИЛИ подозрительно мало
+    // относительно всего текста страницы (Reddit-кейс — формально не пусто, но огрызок).
+    const tooShortAbsolute = readabilityText.length < READABILITY_MIN_CHARS
+    const tooShortRelative = fullText.length > 0 && readabilityText.length < fullText.length * READABILITY_MIN_RATIO
+    const readabilityFailed = tooShortAbsolute || tooShortRelative
+
+    const text = (readabilityFailed ? fullText : readabilityText).slice(0, PAGE_TEXT_MAX_CHARS)
+
+    if (readabilityFailed) {
+      console.log(`[ai-panel] извлечение: fallback (readability слишком мало: ${readabilityText.length} из ${fullText.length}) ${text.length} симв.`)
+    } else {
+      console.log(`[ai-panel] извлечение: readability ${text.length} симв.`)
+    }
     return text
   } catch (e) {
     console.error('[ai-panel] извлечение текста страницы упало:', e)
