@@ -5,8 +5,9 @@
 // перекрывает правый край страницы, сайт под ней геометрически не меняется (как у Яндекса).
 // Никакой AI-логики здесь пока нет — просто позиция/тоггл/дизайн, содержимое page — заглушка.
 import { WebContentsView, ipcMain } from 'electron'
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, IpcMainEvent } from 'electron'
 import path from 'node:path'
+import { runChatMessage } from './TranslationService'
 
 const PANEL_WIDTH = 360
 // Держать в синхроне с TOOLBAR_HEIGHT в src/components/Toolbar.tsx — панель начинается СРАЗУ
@@ -59,6 +60,19 @@ function ensureIpcRegistered(): void {
   // это внутренняя механика панели, а не контракт хром-обвязки.
   ipcMain.on('ai-panel:close', () => {
     if (attachedWin) closePanel(attachedWin)
+  })
+
+  // Чат (Заход 2) — та же труба, что у поповера: runChatMessage стримит чанки по мере генерации,
+  // затем финальный исход. event.sender вместо popoverView/panelView сравнения — здесь один
+  // постоянный panelView, но сверяемся всё равно (панель могла быть закрыта/пересоздана между
+  // отправкой сообщения и приходом ответа).
+  ipcMain.on('ai-panel:chat-send', (event: IpcMainEvent, text: string) => {
+    const wc = event.sender
+    void runChatMessage(text, (chunkText) => {
+      if (panelView && panelView.webContents === wc) wc.send('ai-panel:chat-chunk', chunkText)
+    }).then((outcome) => {
+      if (panelView && panelView.webContents === wc) wc.send('ai-panel:chat-result', outcome)
+    })
   })
 }
 

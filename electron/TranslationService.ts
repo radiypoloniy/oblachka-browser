@@ -386,3 +386,61 @@ export async function runAiAction(
     return { ok: false, error: String(e) }
   }
 }
+
+// ── Чат в AI-панели (Заход 2) ────────────────────────────────────────────────────────────────
+// Отдельный вход поверх ТОГО ЖЕ движка (llama/model/context/sequence из ensureLoaded() выше) —
+// НЕ поднимает вторую копию модели (та занимает ~6.81ГБ из 8ГБ VRAM, вторая не влезет). Общий
+// module-level sequence используется и переводом/AI-действиями (runPrompt/runSegmented), и здесь —
+// как и они, каждый ход завершается sequence.clearHistory(), чтобы не оставить чат «грязным»
+// контекстом для следующего вызова (перевода/действия/следующего хода чата) — платим повторным
+// prefill всей беседы на каждый ход вместо переиспользования KV-кэша между ходами, зато не рискуем
+// путаницей между независимыми фичами, которые делят одну и ту же low-level sequence.
+export type ChatOutcome =
+  | { ok: true; out: string; ms: number; tokPerSec: number; loadMs: number | null }
+  | { ok: false; error: string }
+
+// Одна беседа на весь процесс main — живёт, пока жив браузер (без персистентности на диск, как и
+// просили): переживает закрытие/переоткрытие панели (WebContentsView не пересоздаётся при тоггле,
+// см. AiPanelManager.ts), обнуляется при перезапуске браузера (модуль просто переинициализируется).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let chatHistory: any[] = []
+
+const CHAT_SYSTEM_PROMPT = 'You are a helpful, concise assistant built into a web browser. Respond in the same language the user writes in.'
+const CHAT_MAX_TOKENS = 700
+
+export async function runChatMessage(userText: string, onChunk?: (text: string) => void): Promise<ChatOutcome> {
+  try {
+    const tTotalStart = performance.now()
+    const wasLoaded = loadPromise !== null
+    const loadMs = await ensureLoaded()
+
+    const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: CHAT_SYSTEM_PROMPT, chatWrapper: qwenChatWrapper })
+    session.setChatHistory(chatHistory) // предыдущие ходы этой беседы (пусто на первом сообщении)
+
+    const t0 = performance.now()
+    const rawOut = (await session.prompt(userText, {
+      maxTokens: CHAT_MAX_TOKENS,
+      onTextChunk: onChunk,
+    })).trim()
+    const ms = performance.now() - t0
+
+    const out = stripThinking(rawOut)
+    const tokens = model.tokenize(out).length
+
+    // getChatHistory() уже включает и этот новый user-ход, и model-ответ — фиксируем как базу
+    // для следующего сообщения этой же беседы.
+    chatHistory = session.getChatHistory()
+
+    await sequence.clearHistory() // та же гигиена, что и в runPrompt — сброс физического KV-кэша
+
+    console.log(
+      `[chat] "${userText.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +
+      `(${ms.toFixed(0)}ms, ${(tokens / (ms / 1000)).toFixed(1)} tok/s, всего=${(performance.now() - tTotalStart).toFixed(0)}ms)`,
+    )
+
+    return { ok: true, out, ms, tokPerSec: tokens / (ms / 1000), loadMs: wasLoaded ? null : loadMs }
+  } catch (e) {
+    console.error('[chat] error:', e)
+    return { ok: false, error: String(e) }
+  }
+}

@@ -1,7 +1,21 @@
-// Минимальный preload правой AI-панели (src/aipanel.tsx). Свой маленький канал закрытия —
-// не трогает контракт основного хрома (shared/ipc.ts), как и preload-translatepopover.ts.
+// Минимальный preload правой AI-панели (src/aipanel.tsx). Свои маленькие каналы (закрытие +
+// чат Заход 2) — не трогают контракт основного хрома (shared/ipc.ts), как и preload-translatepopover.ts.
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('aiPanel', {
   close: () => ipcRenderer.send('ai-panel:close'),
+
+  sendChat: (text: string) => ipcRenderer.send('ai-panel:chat-send', text),
+  onChatChunk: (cb: (text: string) => void) => {
+    const handler = (_e: unknown, text: string) => cb(text);
+    ipcRenderer.on('ai-panel:chat-chunk', handler);
+    return () => ipcRenderer.removeListener('ai-panel:chat-chunk', handler);
+  },
+  // ChatOutcome из TranslationService.ts — не типизируем через shared/ipc.ts (ad-hoc канал, не
+  // общий контракт хрома), renderer описывает своей локальной копией формы (см. aipanel.tsx).
+  onChatResult: (cb: (outcome: unknown) => void) => {
+    const handler = (_e: unknown, outcome: unknown) => cb(outcome);
+    ipcRenderer.on('ai-panel:chat-result', handler);
+    return () => ipcRenderer.removeListener('ai-panel:chat-result', handler);
+  },
 })

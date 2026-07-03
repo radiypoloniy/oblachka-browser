@@ -6,9 +6,10 @@
 // текст с капом + внутренний скролл сверх капа — сам кап и позиция живут в main).
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown from 'react-markdown';
 import { Languages, Wand2, HelpCircle, ListChecks, X, type LucideIcon } from 'lucide-react';
 import './styles/global.css';
+import { markdownComponents } from './components/aiMarkdown';
 import type { AiAction, AiActionOutcome } from '../shared/ipc';
 
 declare global {
@@ -37,37 +38,6 @@ const ACTION_ICON: Record<AiAction, LucideIcon> = {
 }
 const ACTION_VERB: Record<AiAction, string> = {
   translate: 'Перевожу', simplify: 'Упрощаю', explain: 'Объясняю', summarize: 'Делаю выжимку',
-}
-
-// Qwen может ответить с разметкой (**жирный**, списки, изредка заголовки) — react-markdown рендерит
-// её в реальные элементы (не dangerouslySetInnerHTML: без risk'а инъекции чужого HTML). Перевод
-// обычно просто сплошной текст без синтаксиса — тогда это один <p> с теми же стилями, что были
-// раньше у обычного <span>, визуально не отличить. Base-стили (fs-md/lh-body/text-strong) — тут,
-// а не в родителе, т.к. react-markdown сам оборачивает контент в блочные теги (p/ul/li/h1…).
-const markdownComponents: Components = {
-  p: ({ children }) => (
-    <p style={{
-      margin: '0 0 6px', fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)',
-      color: 'var(--text-strong)', fontWeight: 500, wordBreak: 'break-word',
-    }}>
-      {children}
-    </p>
-  ),
-  strong: ({ children }) => <strong style={{ fontWeight: 700 }}>{children}</strong>,
-  ul: ({ children }) => <ul style={{ margin: '0 0 6px', paddingLeft: 18 }}>{children}</ul>,
-  ol: ({ children }) => <ol style={{ margin: '0 0 6px', paddingLeft: 18 }}>{children}</ol>,
-  li: ({ children }) => (
-    <li style={{
-      fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-strong)', marginBottom: 2,
-    }}>
-      {children}
-    </li>
-  ),
-  // h1-h6 — попадаются редко (модель не просят делать заголовки), но карточка узкая (340px):
-  // реальные размеры h1/h2 браузера смотрелись бы абсурдно. Один скромный стиль на все уровни.
-  h1: ({ children }) => <strong style={{ display: 'block', fontSize: 'var(--fs-md)', margin: '0 0 4px' }}>{children}</strong>,
-  h2: ({ children }) => <strong style={{ display: 'block', fontSize: 'var(--fs-md)', margin: '0 0 4px' }}>{children}</strong>,
-  h3: ({ children }) => <strong style={{ display: 'block', fontSize: 'var(--fs-md)', margin: '0 0 4px' }}>{children}</strong>,
 }
 
 function Popover() {
