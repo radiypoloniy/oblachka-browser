@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('aiPanel', {
   close: () => ipcRenderer.send('ai-panel:close'),
 
   sendChat: (text: string) => ipcRenderer.send('ai-panel:chat-send', text),
+  // Кнопка-подсказка «Перевести» — без текста: направление (src/tgt) решает main после извлечения
+  // и детекции языка страницы, см. AiPanelManager.ts.
+  quickTranslate: () => ipcRenderer.send('ai-panel:quick-translate'),
   onChatChunk: (cb: (text: string) => void) => {
     const handler = (_e: unknown, text: string) => cb(text);
     ipcRenderer.on('ai-panel:chat-chunk', handler);

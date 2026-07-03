@@ -116,7 +116,9 @@ async function detectLang(text: string): Promise<string> {
 // Вариант A: иностранное → на целевой язык (targetLang, дефолт 'ru'); если текст уже на целевом —
 // на запасной (FALLBACK_LANG). targetLang читается из TranslationConfig — единственного места,
 // куда позже начнёт писать кнопка настроек AI, без изменений здесь.
-async function resolveDirection(dir: Direction, text: string): Promise<{ src: string; tgt: string }> {
+// export — переиспользуется кнопкой «Перевести» в AI-панели (AiPanelManager.ts) для двунаправленного
+// перевода страницы тем же определением языка/направления, что и перевод выделения — без дублирования.
+export async function resolveDirection(dir: Direction, text: string): Promise<{ src: string; tgt: string }> {
   if (dir !== 'auto') {
     const [src, tgt] = dir.split('->') as [string, string]
     return { src, tgt }
@@ -139,7 +141,9 @@ function splitSentences(text: string): string[] {
 // Естественная инструкция для общего чат/инструкт-слоя (Qwen3.5) — не fill-in-the-blank формат
 // EuroLLM, у которого свой формат карточки модели. src/tgt — любая пара из LANG_NAME (не
 // захардкоженные ru/en), резолвится в resolveDirection.
-function buildPrompt(src: string, tgt: string, text: string): string {
+// export — переиспользуется кнопкой «Перевести» в AI-панели, тот же шаблон промпта, что у перевода
+// выделения (не пишем новый).
+export function buildPrompt(src: string, tgt: string, text: string): string {
   const S = LANG_NAME[src] ?? src; const T = LANG_NAME[tgt] ?? tgt
   return `Translate the following ${S} text to ${T}. Output ONLY the ${T} translation, ` +
     `with no explanations, notes, or additional commentary.\n\n${text}`

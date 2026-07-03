@@ -38,6 +38,7 @@ declare global {
     aiPanel: {
       close: () => void
       sendChat: (text: string) => void
+      quickTranslate: () => void
       onChatChunk: (cb: (text: string) => void) => () => void
       onChatResult: (cb: (outcome: ChatOutcome) => void) => () => void
       onContext: (cb: (ctx: TabContext) => void) => () => void
@@ -63,14 +64,19 @@ const VERTICAL_OPTICAL_SHIFT = 6;
 
 // Кнопки-подсказки над полем ввода (как у Яндекса) — статичный набор, НЕ генерируются под
 // страницу (это отдельный дорогой заход, в бэклог). Промпт-тексты — единственное место, легко
-// менять формулировки. Клик = отправка ровно этого текста в чат текущей вкладки, как обычное
-// сообщение — тот же существующий стриминг/per-вкладочный контекст/извлечение текста страницы
-// (заход 4: на первое сообщение беседы страница извлекается и подмешивается в main, см.
-// AiPanelManager.ts). Результат уходит в ПАНЕЛЬ — эти кнопки не трогают текст самой страницы.
-const QUICK_ACTIONS: { label: string; prompt: string }[] = [
-  { label: 'Перевести', prompt: 'Переведи содержимое этой страницы на русский.' },
-  { label: 'Объяснить', prompt: 'Объясни простыми словами, о чём эта страница.' },
-  { label: 'Сделать саммари', prompt: 'Сделай краткое саммари этой страницы.' },
+// менять формулировки. Клик = отправка сообщения в чат текущей вкладки, как обычное — тот же
+// существующий стриминг/per-вкладочный контекст/извлечение текста страницы (заход 4). Результат
+// уходит в ПАНЕЛЬ — эти кнопки не трогают текст самой страницы.
+// «Перевести» — отдельный kind: направление (src/tgt) неизвестно ДО извлечения текста и детекции
+// языка страницы (двунаправленно, как перевод выделения — см. AiPanelManager.ts::resolveDirection/
+// buildPrompt), поэтому у неё нет готового prompt здесь — только сигнал quickTranslate() в main.
+type QuickAction =
+  | { kind: 'prompt'; label: string; prompt: string }
+  | { kind: 'translate'; label: string }
+const QUICK_ACTIONS: QuickAction[] = [
+  { kind: 'translate', label: 'Перевести' },
+  { kind: 'prompt', label: 'Объяснить', prompt: 'Объясни простыми словами, о чём эта страница.' },
+  { kind: 'prompt', label: 'Сделать саммари', prompt: 'Сделай краткое саммари этой страницы.' },
 ];
 
 // Хост без www. — компактнее в узкой (360px) панели. Пустой/нераспарсиваемый url (хаб,
@@ -152,6 +158,17 @@ function AiPanel() {
   }
 
   const handleSend = () => sendText(input.trim())
+
+  // «Перевести» — не sendText: промпт (с определённым src/tgt) собирается в main, после извлечения
+  // текста страницы и детекции языка. Здесь только оптимистичная метка в ленте + сигнал main.
+  const sendQuickTranslate = () => {
+    if (sending || !tabId) return
+    setMessages((prev) => [...prev, { role: 'user', text: 'Перевести' }])
+    setStreamedText('')
+    setError(null)
+    setSending(true)
+    window.aiPanel.quickTranslate()
+  }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -298,13 +315,17 @@ function AiPanel() {
             {QUICK_ACTIONS.map((qa) => (
               <button
                 key={qa.label}
-                onClick={() => sendText(qa.prompt)}
+                onClick={() => qa.kind === 'translate' ? sendQuickTranslate() : sendText(qa.prompt)}
                 disabled={!tabId}
                 style={{
                   padding: '6px 12px',
                   borderRadius: 'var(--radius-chip)',
                   border: 'none',
+                  // var(--shadow-chip) — та же лёгкая тень, что у чипов/карточек в остальном
+                  // хроме (tokens/shadows.css), не подобрана заново: иначе кнопки сливались
+                  // с фоном острова (тот же тон var(--surface-sunken)).
                   background: 'var(--surface-sunken)',
+                  boxShadow: 'var(--shadow-chip)',
                   color: 'var(--text-body)',
                   fontSize: 'var(--fs-xs)', fontWeight: 500,
                   cursor: tabId ? 'pointer' : 'default',

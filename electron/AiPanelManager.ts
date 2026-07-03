@@ -7,7 +7,7 @@
 import { WebContentsView, ipcMain } from 'electron'
 import type { BrowserWindow, IpcMainEvent, WebContents } from 'electron'
 import path from 'node:path'
-import { runChatMessage } from './TranslationService'
+import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
 import type { TabState } from '../shared/ipc'
 import type { TabManager } from './TabManager'
 
@@ -214,6 +214,52 @@ function ensureIpcRegistered(): void {
         ctx.pageText = extracted
         promptText = buildFirstTurnPrompt(extracted, title, text)
         console.log(`[ai-panel] текст страницы извлечён: ${extracted.length} симв. (лимит ${PAGE_TEXT_MAX_CHARS})`)
+      }
+
+      const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
+        if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+          wc.send('ai-panel:chat-chunk', chunkText)
+        }
+      })
+
+      if (outcome.ok) {
+        ctx.messages.push({ role: 'assistant', text: outcome.out })
+        ctx.history = outcome.history
+      }
+      if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+        wc.send('ai-panel:chat-result', outcome)
+      }
+    })()
+  })
+
+  // Кнопка-подсказка «Перевести» — двунаправленный перевод СТРАНИЦЫ тем же определением
+  // языка/направления и тем же шаблоном промпта, что и перевод выделения (resolveDirection/
+  // buildPrompt из TranslationService.ts — не новая логика, см. задачу). Отдельный канал (не
+  // ai-panel:chat-send с заготовленным текстом): направление известно только ПОСЛЕ извлечения
+  // текста и детекции языка, точный src/tgt-промпт строится здесь же, в main — в отличие от
+  // Объяснить/Саммари, где текст кнопки одновременно и видимое сообщение, и весь промпт.
+  ipcMain.on('ai-panel:quick-translate', (event: IpcMainEvent) => {
+    const wc = event.sender
+    const tabId = activeTabId
+    if (!tabId) return
+    const ctx = getOrCreateContext(tabId, activeTabUrl)
+    ctx.messages.push({ role: 'user', text: 'Перевести' })
+
+    const needsExtraction = ctx.pageText === null
+    const pageWc = needsExtraction ? (tabManagerRef?.getActiveWebContents() ?? null) : null
+
+    void (async () => {
+      if (needsExtraction) {
+        ctx.pageText = await extractPageText(pageWc)
+        console.log(`[ai-panel] текст страницы извлечён: ${ctx.pageText.length} симв. (лимит ${PAGE_TEXT_MAX_CHARS})`)
+      }
+      const pageText = ctx.pageText ?? ''
+      // Пустая страница (хаб / извлечение не удалось) — buildPrompt тут неуместен (нечего
+      // переводить), просто просим модель ответить без текста-заглушки.
+      let promptText = 'Переведи содержимое этой страницы.'
+      if (pageText) {
+        const { src, tgt } = await resolveDirection('auto', pageText)
+        promptText = buildPrompt(src, tgt, pageText)
       }
 
       const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
