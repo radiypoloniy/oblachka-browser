@@ -17,6 +17,21 @@ import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
 
+// Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
+// split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
+// проблему, значит падает ДРУГОЙ путь: массовый teardown при закрытии всего окна, не self-close
+// одной вкладки. Полный стек + порядок destroyed-событий — см. также логи в TabManager.ts
+// (wc.on('destroyed', ...), exitSplit, closeTab). Убрать после диагностики можно, но по духу
+// проекта (сравни [perf]/[popover]-логи) — не обязательно, шума немного, срабатывает только
+// на закрытии/split-событиях.
+Error.stackTraceLimit = Infinity;
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] uncaughtException:', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] unhandledRejection:', reason);
+});
+
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
 
@@ -79,6 +94,12 @@ let win: BrowserWindow | null = null;
 let chromeView: WebContentsView | null = null; // слой нашего React-хрома
 let tabs: TabManager | null = null;
 let sess: SessionManager | null = null;
+// Взводится ДО того, как tabs/sess начинают асинхронно обнуляться/дозакрываться (win.on('close')/
+// before-quit) — сигнал побочным подписчикам onChange (сейчас только AiPanelManager.onTabsSynced)
+// не синкаться во время выхода: AI-панель и так исчезает вместе с окном, а сама TabManager к этому
+// моменту может уже дотла закрывать вкладки асинхронно. НЕ влияет на финальный автосейв — тот
+// синхронный (win.on('close') ниже), от этого флага не зависит.
+let isShuttingDown = false;
 const adblock     = new AdBlockManager();
 const history     = new HistoryManager();
 const downloads   = new DownloadManager();
@@ -140,16 +161,24 @@ function createWindow() {
   tabs = new TabManager(
     win,
     () => {
+      // РЕГРЕССИЯ (заход 3, починено): tabs!.snapshot() раньше жил ВНУТРИ chromeView?.webContents.send(...) —
+      // optional chaining короткого замыкания там пропускал вычисление ВСЕХ аргументов целиком,
+      // если chromeView===null (а он обнуляется синхронно вместе с tabs в win.on('closed')), так что
+      // .snapshot() неявно никогда не звался на null. Вынос в отдельную const убрал эту неявную
+      // защиту — .snapshot() стал звонить на tabs===null во время закрытия (часть вкладок
+      // дозакрывается асинхронно уже ПОСЛЕ win.on('closed')). Явный гард вместо неявного:
+      if (!tabs) return;
       // Атомарный push: tabs и nodes в одном сообщении → один рендер, нет рассинхрона.
-      const tabsSnapshot = tabs!.snapshot();
+      const tabsSnapshot = tabs.snapshot();
       chromeView?.webContents.send(IPC.SYNC_CHANGED, {
         tabs: tabsSnapshot,
-        nodes: tabs!.sidebarNodesSnapshot(),
-        hasOrganizeSnapshot: tabs!.hasOrganizeSnapshot(),
+        nodes: tabs.sidebarNodesSnapshot(),
+        hasOrganizeSnapshot: tabs.hasOrganizeSnapshot(),
       });
       // Тот же снапшот — источник правды для привязки чата AI-панели к вкладке (переключение/
-      // закрытие/смена URL), без новых колбэков в TabManager.ts (см. AiPanelManager.ts).
-      onTabsSynced(tabsSnapshot);
+      // закрытие/смена URL), без новых колбэков в TabManager.ts (см. AiPanelManager.ts). Не во
+      // время выхода — AI-панель и так исчезает вместе с окном, синкать её незачем.
+      if (!isShuttingDown) onTabsSynced(tabsSnapshot);
       // sess?. — не «отменяет» финальное сохранение: оно гарантированно уже прошло синхронно
       // в win.on('close') ДО того, как sess обнуляется в win.on('closed') (см. ниже). Этот вызов
       // подчистую сработает во время закрытия окна — часть вкладок ещё дозакрывается асинхронно
@@ -286,10 +315,14 @@ function createWindow() {
   // before-quit неизбежно видит win/tabs/sess уже обнулёнными (см. win.on('closed') ниже) и
   // реально ничего не сохраняет. 'close' — единственная точка, где всё ещё гарантированно живо.
   win.on('close', () => {
+    isShuttingDown = true; // до сохранения — далее tabs/sess ещё какое-то время живы, но выходим
+    console.log('[shutdown] win close: старт, isShuttingDown=true, сохраняю сессию');
     if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot());
+    console.log('[shutdown] win close: сессия сохранена');
   });
 
   win.on('closed', () => {
+    console.log('[shutdown] win closed: обнуляю win/chromeView/tabs/sess');
     win = null; chromeView = null; tabs = null; sess = null;
   });
 }
@@ -550,5 +583,6 @@ app.on('window-all-closed', () => {
 // tabs/sess), но на macOS Cmd+Q шлёт before-quit ДО закрытия окна — здесь ещё всё живо, это тот
 // путь, где сработает эта подстраховка. Оставлено ради будущего macOS-порта (см. CLAUDE.md).
 app.on('before-quit', () => {
+  isShuttingDown = true; // macOS Cmd+Q путь — здесь ещё раньше, чем win.on('close') выше
   if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot());
 });
