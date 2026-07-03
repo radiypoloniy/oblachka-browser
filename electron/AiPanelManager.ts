@@ -7,6 +7,7 @@
 import { WebContentsView, ipcMain } from 'electron'
 import type { BrowserWindow, IpcMainEvent, WebContents } from 'electron'
 import path from 'node:path'
+import { readFileSync } from 'node:fs'
 import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
 import type { TabState } from '../shared/ipc'
 import type { TabManager } from './TabManager'
@@ -73,23 +74,59 @@ function getOrCreateContext(id: string, url: string): TabChatContext {
   return ctx
 }
 
-// ── Извлечение текста страницы в контекст чата (Заход 4) ────────────────────────────────────
+// ── Извлечение текста страницы в контекст чата (Заход 4, Readability — этот заход) ──────────
 // Переиспользует ТОТ ЖЕ мост, что и SELECTION_RECT_SCRIPT для поповера перевода (TabManager.ts) —
-// executeJavaScript(script, true) на WebContents вкладки. Простой путь: document.body.innerText —
-// весь видимый текст (учитывает display:none/visibility:hidden), без попытки вычленить «основной
-// контент» (Readability — в бэклог, см. задачу).
-const PAGE_TEXT_SCRIPT = `(function(){ return document.body ? document.body.innerText : ''; })()`
+// executeJavaScript(script, true) на WebContents вкладки. Умный путь: Mozilla Readability (та же
+// библиотека, что режим чтения в Firefox) — вычленяет заголовок+тело статьи, отбрасывая
+// меню/футер/рекламу/сайдбары. НЕ переписываем эвристику вручную — читаем готовый Readability.js
+// с диска и инжектим его ИСХОДНИК прямо в страницу (та же труба executeJavaScript, не отдельный
+// jsdom-парсинг в main), выполняем на document.cloneNode(true) — так рекомендует сам README
+// библиотеки: parse() мутирует DOM, клон не даёт сломать реальную страницу пользователя.
+let readabilitySource: string | null = null
+function getReadabilitySource(): string {
+  if (readabilitySource === null) {
+    readabilitySource = readFileSync(require.resolve('@mozilla/readability/Readability.js'), 'utf-8')
+  }
+  return readabilitySource
+}
+
+// Обязательный порог для фолбэка: если Readability не нашёл ничего (parse()===null) или нашёл
+// подозрительно мало (нестандартная вёрстка — форум, SPA, короткая страница) — не отдаём в чат
+// огрызок, откатываемся на прежний путь (весь видимый текст, document.body.innerText).
+const READABILITY_MIN_CHARS = 200
+
+function buildExtractionScript(): string {
+  return `(function(){
+    ${getReadabilitySource()}
+    var readabilityText = '';
+    try {
+      var docClone = document.cloneNode(true);
+      var article = new Readability(docClone).parse();
+      readabilityText = (article && article.textContent) ? article.textContent.trim() : '';
+    } catch (e) { readabilityText = ''; }
+    if (readabilityText.length >= ${READABILITY_MIN_CHARS}) {
+      return { method: 'readability', text: readabilityText };
+    }
+    return { method: 'fallback', text: document.body ? document.body.innerText : '' };
+  })()`
+}
 
 // Единственное место лимита — легко менять. Длинная страница (тысячи слов) иначе переполнит
 // контекст Qwen вместе с историей беседы; обрезаем «в лоб» (начало текста), без суммаризации —
-// та тоже в бэклог.
+// та тоже в бэклог. Умный контент (Readability) обычно уже заметно короче — мусора меньше, но
+// лимит всё равно нужен: длинная статья сама по себе может быть длиннее лимита.
 const PAGE_TEXT_MAX_CHARS = 6000
 
 async function extractPageText(wc: WebContents | null): Promise<string> {
   if (!wc || wc.isDestroyed()) return ''
   try {
-    const raw = await wc.executeJavaScript(PAGE_TEXT_SCRIPT, true)
-    return typeof raw === 'string' ? raw.slice(0, PAGE_TEXT_MAX_CHARS) : ''
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: any = await wc.executeJavaScript(buildExtractionScript(), true)
+    const rawText = typeof result?.text === 'string' ? result.text : ''
+    const text = rawText.slice(0, PAGE_TEXT_MAX_CHARS)
+    const methodLabel = result?.method === 'readability' ? 'readability' : 'fallback innerText'
+    console.log(`[ai-panel] извлечение: ${methodLabel} ${text.length} симв.`)
+    return text
   } catch (e) {
     console.error('[ai-panel] извлечение текста страницы упало:', e)
     return ''
