@@ -1616,7 +1616,10 @@ export class TabManager {
   }
 
   // ── Поиск по странице ────────────────────────────────────────────────────
-  private getActiveWebContents() {
+  // Публичный (не private) — единственная точка, где AiPanelManager.ts достаёт WebContents
+  // активной вкладки для извлечения текста страницы в контекст чата (Заход 4). Само поведение
+  // метода не менялось ни на строку — только видимость.
+  getActiveWebContents() {
     const tab = this.tabMap.get(this.activeId);
     return tab && this.isHttpView(tab.view) ? tab.view.webContents : null;
   }

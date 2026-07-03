@@ -5,10 +5,11 @@
 // вкладки НЕ трогаем — панель просто перекрывает правый край страницы, сайт под ней геометрически
 // не меняется (как у Яндекса).
 import { WebContentsView, ipcMain } from 'electron'
-import type { BrowserWindow, IpcMainEvent } from 'electron'
+import type { BrowserWindow, IpcMainEvent, WebContents } from 'electron'
 import path from 'node:path'
 import { runChatMessage } from './TranslationService'
 import type { TabState } from '../shared/ipc'
+import type { TabManager } from './TabManager'
 
 const PANEL_WIDTH = 360
 // Держать в синхроне с TOOLBAR_HEIGHT в src/components/Toolbar.tsx — панель начинается СРАЗУ
@@ -33,6 +34,15 @@ let resizeBoundWin: BrowserWindow | null = null
 let isOpen = false
 let ipcRegistered = false
 
+// Единственный способ достать WebContents активной вкладки без нового кода в TabManager.ts —
+// готовый (ранее private, теперь public) TabManager.getActiveWebContents(), см. main.ts::setTabManager.
+// Используется ТОЛЬКО для чтения (executeJavaScript извлечения текста, Заход 4) — управление
+// вкладками (closeTab/activate/OAuth-окна) этот модуль не трогает и трогать не должен.
+let tabManagerRef: TabManager | null = null
+export function setTabManager(tm: TabManager): void {
+  tabManagerRef = tm
+}
+
 // ── Контекст чата по вкладке (Заход 3) ───────────────────────────────────────────────────────
 // Один движок (см. runChatMessage/ensureLoaded в TranslationService.ts), много контекстов: тут
 // только РАЗДЕЛЕНИЕ истории по вкладкам, а не отдельная модель на вкладку. Эфемерно, только в
@@ -44,6 +54,9 @@ interface TabChatContext {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   history: any[]  // ChatHistoryItem[] для Qwen (session.setChatHistory в runChatMessage)
   url: string     // последний известный URL вкладки — детектор «сменилась страница»
+  // Заход 4: null = ещё не извлекали (извлечём лениво на первое сообщение); '' = извлекли, но
+  // пусто/не удалось — тоже НЕ извлекаем повторно, отличать от null через строгую проверку.
+  pageText: string | null
 }
 
 const tabContexts = new Map<string, TabChatContext>()
@@ -54,10 +67,43 @@ let activeTabTitle = ''
 function getOrCreateContext(id: string, url: string): TabChatContext {
   let ctx = tabContexts.get(id)
   if (!ctx) {
-    ctx = { messages: [], history: [], url }
+    ctx = { messages: [], history: [], url, pageText: null }
     tabContexts.set(id, ctx)
   }
   return ctx
+}
+
+// ── Извлечение текста страницы в контекст чата (Заход 4) ────────────────────────────────────
+// Переиспользует ТОТ ЖЕ мост, что и SELECTION_RECT_SCRIPT для поповера перевода (TabManager.ts) —
+// executeJavaScript(script, true) на WebContents вкладки. Простой путь: document.body.innerText —
+// весь видимый текст (учитывает display:none/visibility:hidden), без попытки вычленить «основной
+// контент» (Readability — в бэклог, см. задачу).
+const PAGE_TEXT_SCRIPT = `(function(){ return document.body ? document.body.innerText : ''; })()`
+
+// Единственное место лимита — легко менять. Длинная страница (тысячи слов) иначе переполнит
+// контекст Qwen вместе с историей беседы; обрезаем «в лоб» (начало текста), без суммаризации —
+// та тоже в бэклог.
+const PAGE_TEXT_MAX_CHARS = 6000
+
+async function extractPageText(wc: WebContents | null): Promise<string> {
+  if (!wc || wc.isDestroyed()) return ''
+  try {
+    const raw = await wc.executeJavaScript(PAGE_TEXT_SCRIPT, true)
+    return typeof raw === 'string' ? raw.slice(0, PAGE_TEXT_MAX_CHARS) : ''
+  } catch (e) {
+    console.error('[ai-panel] извлечение текста страницы упало:', e)
+    return ''
+  }
+}
+
+// Подмешивает текст страницы ТОЛЬКО в первый ход беседы — дальше он остаётся в ctx.history
+// (session.getChatHistory() уже включает этот развёрнутый текст первого user-хода), повторные
+// вопросы шлют голый userText без повторного дублирования контекста.
+function buildFirstTurnPrompt(pageText: string, pageTitle: string, userText: string): string {
+  if (!pageText) return userText // извлечь не удалось / пустая страница (напр. хаб) — просто вопрос
+  return `The user has a web page open titled "${pageTitle}". Here is its visible text content:\n\n` +
+    `"""\n${pageText}\n"""\n\n` +
+    `Using that page content as context where relevant, answer the user's message below.\n\n${userText}`
 }
 
 // Пушит панели (если открыта и загружена) беседу текущей активной вкладки — чипс страницы +
@@ -95,6 +141,7 @@ export function onTabsSynced(tabsSnapshot: TabState[]): void {
     ctx.url = active.url
     ctx.messages = []
     ctx.history = []
+    ctx.pageText = null // другая страница — извлечём заново при следующем вопросе (лениво)
     urlChanged = true
   }
 
@@ -149,14 +196,32 @@ function ensureIpcRegistered(): void {
     const wc = event.sender
     const tabId = activeTabId
     if (!tabId) return
+    const title = activeTabTitle
     const ctx = getOrCreateContext(tabId, activeTabUrl)
     ctx.messages.push({ role: 'user', text })
 
-    void runChatMessage(text, ctx.history, (chunkText) => {
-      if (panelView && panelView.webContents === wc && activeTabId === tabId) {
-        wc.send('ai-panel:chat-chunk', chunkText)
+    // Извлечение по требованию (Заход 4) — только на первое сообщение ЭТОЙ страницы (pageText
+    // ещё null). WebContents страницы захватываем СЕЙЧАС, синхронно, до await: activeTabId точно
+    // ещё равен tabId в этот момент, а после await пользователь мог уже переключиться на другую
+    // вкладку — getActiveWebContents() тогда вернул бы чужую страницу.
+    const needsExtraction = ctx.pageText === null
+    const pageWc = needsExtraction ? (tabManagerRef?.getActiveWebContents() ?? null) : null
+
+    void (async () => {
+      let promptText = text
+      if (needsExtraction) {
+        const extracted = await extractPageText(pageWc)
+        ctx.pageText = extracted
+        promptText = buildFirstTurnPrompt(extracted, title, text)
+        console.log(`[ai-panel] текст страницы извлечён: ${extracted.length} симв. (лимит ${PAGE_TEXT_MAX_CHARS})`)
       }
-    }).then((outcome) => {
+
+      const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
+        if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+          wc.send('ai-panel:chat-chunk', chunkText)
+        }
+      })
+
       if (outcome.ok) {
         ctx.messages.push({ role: 'assistant', text: outcome.out })
         ctx.history = outcome.history
@@ -164,7 +229,7 @@ function ensureIpcRegistered(): void {
       if (panelView && panelView.webContents === wc && activeTabId === tabId) {
         wc.send('ai-panel:chat-result', outcome)
       }
-    })
+    })()
   })
 }
 

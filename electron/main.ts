@@ -15,7 +15,7 @@ import { IPC } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster } from '../shared/ipc';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
-import { toggleAiPanel, onTabsSynced } from './AiPanelManager';
+import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
@@ -176,6 +176,10 @@ function createWindow() {
     () => closeTranslatePopoverOnTabSwitch(),
     (wc) => closeTranslatePopoverForClosedTab(wc),
   );
+  // Единственная точка, где AiPanelManager получает доступ к вкладкам — только для чтения
+  // WebContents активной вкладки при извлечении текста страницы в чат (Заход 4), см.
+  // TabManager.getActiveWebContents(). Не влияет на управление вкладками.
+  setTabManager(tabs);
 
   // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).
   if (restored) {
