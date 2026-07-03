@@ -172,6 +172,9 @@ export const IPC = {
   // AI-группировка вкладок (Phase 4)
   TABS_ORGANIZE_APPLY:    'tabs:organize-apply',    // renderer → main: OrganizeCluster[] → сгруппировать
   TABS_ORGANIZE_ROLLBACK: 'tabs:organize-rollback', // renderer → main: откатить последнюю группировку
+
+  // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
+  AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -337,6 +340,9 @@ export interface OblakoApi {
   // AI-группировка вкладок (Phase 4)
   organizeApply(clusters: OrganizeCluster[]): Promise<void>;
   organizeRollback(): Promise<void>;
+
+  // Правая AI-панель (оверлей поверх контента, см. AiPanelManager.ts)
+  toggleAiPanel(): Promise<boolean>;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;

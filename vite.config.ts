@@ -27,6 +27,9 @@ export default defineConfig({
         // Боевой поповер перевода выделения — отдельная WebContentsView поверх контента,
         // создаётся лениво (TranslatePopoverManager.ts), не при старте браузера.
         translatepopover: resolve(__dirname, 'src/translatepopover.html'),
+        // Правая AI-панель — отдельная WebContentsView поверх контента (см. AiPanelManager.ts),
+        // тоже создаётся лениво, на первое открытие кнопкой AI в тулбаре.
+        aipanel: resolve(__dirname, 'src/aipanel.html'),
       },
     },
   },

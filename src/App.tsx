@@ -492,6 +492,7 @@ export default function App() {
           downloadsActive={downloadsActive}
           downloadsOpen={downloadsOpen}
           onToggleDownloads={() => { setDownloadsOpen((v) => !v); setSettingsOpen(false); setHistoryOpen(false); }}
+          onToggleAiPanel={() => { void window.oblako.toggleAiPanel(); }}
         />
         {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView). */}
         <div ref={contentRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>

@@ -15,6 +15,7 @@ import { IPC } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster } from '../shared/ipc';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
+import { toggleAiPanel } from './AiPanelManager';
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
@@ -356,6 +357,9 @@ function registerIpc() {
   // AI-группировка вкладок (Phase 4)
   ipcMain.handle(IPC.TABS_ORGANIZE_APPLY,    (_e, clusters: OrganizeCluster[]) => tabs?.applyOrganize(clusters));
   ipcMain.handle(IPC.TABS_ORGANIZE_ROLLBACK, ()                                => tabs?.rollbackOrganize());
+
+  // Правая AI-панель (см. AiPanelManager.ts)
+  ipcMain.handle(IPC.AI_PANEL_TOGGLE, () => win ? toggleAiPanel(win) : false);
 
   // Нативное ПКМ-меню вкладки в сайдбаре.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {

@@ -69,6 +69,7 @@ interface ToolbarProps {
   downloadsActive: boolean;   // есть хотя бы одна активная загрузка
   downloadsOpen: boolean;     // панель загрузок сейчас открыта
   onToggleDownloads: () => void;
+  onToggleAiPanel: () => void; // тоггл правой AI-панели (оверлей, см. AiPanelManager.ts)
 }
 
 // ── Компонент ─────────────────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ interface ToolbarProps {
 export default function Toolbar({
   tab, allTabs, vpnOn, dark, omniboxRef: externalRef,
   onToggleVpn, onToggleDark, onBack, onForward, onReload, onSubmit, onSuggestToggle,
-  downloadsActive, downloadsOpen, onToggleDownloads,
+  downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
   const [value, setValue] = useState('');
@@ -385,7 +386,8 @@ export default function Toolbar({
           marginLeft:auto прижимает к правому краю flex-контейнера. */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
         <VpnPill vpnOn={vpnOn} mode={vpnMode} onClick={onToggleVpn} />
-        <button title="AI-хаб" style={{ ...navBtn(false), background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+        <button title="AI-хаб" onClick={onToggleAiPanel}
+          style={{ ...navBtn(false), background: 'var(--accent-soft)', color: 'var(--accent)' }}>
           <Sparkles size={18} />
         </button>
         <button title="Тема" onClick={onToggleDark}
