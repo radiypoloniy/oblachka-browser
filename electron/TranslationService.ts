@@ -176,6 +176,12 @@ function buildActionPrompt(action: Exclude<AiAction, 'translate'>, lang: string,
 // обрезаем с явным предупреждением в лог, а НЕ режем на независимые сегменты (это и был баг).
 const ACTION_TEXT_MAX_CHARS = 8000
 
+// Осмысляющим действиям (explain/simplify целиком переписывают текст, длина ответа сравнима со
+// входом) — нужно больше, чем одному переводческому предложению. При ACTION_TEXT_MAX_CHARS=8000
+// симв. (~2.5-3k токенов входа) и n_ctx=43520 (см. лог [gen] context ниже) 2000 токенов на выход
+// оставляют input+output ~5k токенов — на порядок меньше n_ctx, разрыва по контексту не будет.
+const TEXT_ACTION_MAX_TOKENS = 2000
+
 function segmentsForAction(text: string): string[] {
   if (text.length > ACTION_TEXT_MAX_CHARS) {
     console.warn(`[ai-action] текст длиннее лимита (${text.length} > ${ACTION_TEXT_MAX_CHARS} симв.) — обрезаю, НЕ сегментирую`)
@@ -226,6 +232,10 @@ async function ensureLoaded(): Promise<number> {
     model = await llama.loadModel({ modelPath })
     context = await model.createContext({ sequences: 1 })
     sequence = context.getSequence()
+    // contextSize — не задаём явно (createContext сам подбирает "auto" под доступную VRAM и
+    // trainContextSize модели), поэтому фактический n_ctx известен только ПОСЛЕ загрузки —
+    // логируем сразу, чтобы не гадать, укладывается ли вход+выход в бюджет (см. [gen] limits выше).
+    console.log(`[gen] context: n_ctx=${context.contextSize} trainContextSize=${model.trainContextSize}`)
     return performance.now() - t0
   })()
   return loadPromise
@@ -249,7 +259,11 @@ async function runPrompt(prompt: string, maxTokens: number, onChunk?: (text: str
   // «session/context setup», которое иначе не отделить от честной генерации.
   let firstTokenAt: number | null = null
   let genTokenCount = 0
-  const rawOut = (await session.prompt(prompt, {
+  // promptWithMeta вместо prompt() — тот же стриминг (onToken/onTextChunk), но плюс stopReason:
+  // единственный надёжный способ отличить «модель ответила и остановилась сама (eogToken/
+  // stopGenerationTrigger)» от «упёрлась в maxTokens и её оборвали» (см. лог [gen] stopped ниже) —
+  // раньше это приходилось гадать по факту обрыва текста на полуслове.
+  const { responseText, stopReason } = await session.promptWithMeta(prompt, {
     maxTokens,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onToken: (tokens: any[]) => {
@@ -261,7 +275,8 @@ async function runPrompt(prompt: string, maxTokens: number, onChunk?: (text: str
     // а не токенами. Пробрасываем наружу как есть: печатание в поповере на уровне генерации,
     // а не по сегментам (см. runSegmented ниже).
     onTextChunk: onChunk,
-  })).trim()
+  })
+  const rawOut = responseText.trim()
   const tGenDone = performance.now()
 
   const out = stripThinking(rawOut)
@@ -280,14 +295,18 @@ async function runPrompt(prompt: string, maxTokens: number, onChunk?: (text: str
     `clearHistory=${(tCleared - tGenDone).toFixed(0)}ms ` +
     `finalOutTokens=${tokens} (после stripThinking/trim, для справки с genTokens выше)`,
   )
+  console.log(
+    `[gen] stopped: ${stopReason === 'maxTokens' ? 'maxTokens reached' : `stop token (${stopReason})`} (limit=${maxTokens}, genTokens=${genTokenCount})`,
+  )
 
   return { out, tokens }
 }
 
-// 150 токенов достаточно для одного предложения перевода — но осмысляющим действиям (целиковый
-// текст, см. TEXT_ACTION_MAX_TOKENS в runAiAction) этого мало, связный ответ на абзац длиннее и
-// обрывался бы на полуслове.
-const TRANSLATE_SEGMENT_MAX_TOKENS = 150
+// Один сегмент — одно предложение (см. splitSentences). 300 токенов — запас x2-3 над типичной
+// длиной перевода одного предложения (было 150 — обрывало редкие длинные/составные предложения
+// на полуслове). Каждый сегмент — независимый прогон (своя LlamaChatSession, own history пустая),
+// так что запас почти ничего не стоит по контексту: n_ctx=43520 (см. [gen] context в логе).
+const TRANSLATE_SEGMENT_MAX_TOKENS = 300
 
 // Общий цикл по сегментам — используется и переводом, и остальными AI-действиями. onChunk
 // (опционально) зовётся по мере генерации текста ВНУТРИ каждого сегмента (токен-стриминг, см.
@@ -374,9 +393,8 @@ export async function runAiAction(
     const segments = segmentsForAction(text)
 
     // Один связный ответ на весь текст (explain/simplify — пересказ длиной с оригинал; summarize —
-    // компактнее, но всё равно длиннее одного переводческого предложения) — 150 токенов из
-    // TRANSLATE_SEGMENT_MAX_TOKENS тут обрежут ответ на полуслове.
-    const TEXT_ACTION_MAX_TOKENS = 500
+    // компактнее, но всё равно длиннее одного переводческого предложения) — см. TEXT_ACTION_MAX_TOKENS
+    // выше (модульная константа, не локальная — нужна и здесь, и в стартовом логе [gen] limits).
     const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), TEXT_ACTION_MAX_TOKENS, onChunk)
 
     console.log(
@@ -408,7 +426,23 @@ export type ChatOutcome =
   | { ok: false; error: string }
 
 const CHAT_SYSTEM_PROMPT = 'You are a helpful, concise assistant built into a web browser. Respond in the same language the user writes in.'
-const CHAT_MAX_TOKENS = 700
+// Было 700 — обрывало развёрнутые ответы и (особенно) кнопку «Перевести страницу» в AI-панели
+// (AiPanelManager.ts::quick-translate идёт через ЭТОТ ЖЕ runChatMessage, лимит общий): вход там
+// до PAGE_TEXT_MAX_CHARS=28000 симв. (~8-10k токенов, см. её же комментарий), а выход обрезался на
+// 700. n_ctx=43520 (см. [gen] context в логе) — под первый ход (страница ~10k + ответ) остаётся
+// с запасом ~десятки тысяч токенов на историю диалога (см. комментарий у PAGE_TEXT_MAX_CHARS),
+// поэтому 3072 на выход всё ещё далеко от переполнения, но уже покрывает развёрнутый ответ/
+// перевод абзаца/саммари страницы целиком. Не задрано до предела n_ctx специально: длиннее —
+// ощутимо дольше молотит при вероятном будущем зависании (degenerate loop, см. бэклог), а
+// диалог всё равно постепенно съедает контекст сам по себе за счёт растущей истории.
+const CHAT_MAX_TOKENS = 3072
+
+// Единственное место, где видно ВСЕ лимиты генерации сразу — иначе они разбросаны по функциям и
+// невозможно быстро сверить с бюджетом контекста. n_ctx появится отдельной строкой после загрузки
+// модели (см. [gen] context в ensureLoaded) — здесь он ещё неизвестен.
+console.log(
+  `[gen] limits: translateSegment=${TRANSLATE_SEGMENT_MAX_TOKENS} action=${TEXT_ACTION_MAX_TOKENS} chat=${CHAT_MAX_TOKENS} (максимум токенов на выход, на прогон)`,
+)
 
 export async function runChatMessage(
   userText: string,
@@ -425,10 +459,14 @@ export async function runChatMessage(
     session.setChatHistory(history) // предыдущие ходы ЭТОЙ вкладки (пусто на первом сообщении/новой странице)
 
     const t0 = performance.now()
-    const rawOut = (await session.prompt(userText, {
+    // promptWithMeta — см. комментарий в runPrompt() выше: тот же повод, stopReason нужен и здесь
+    // (чат — самый частый источник обрывов на maxTokens, включая «Перевести страницу», которая
+    // тоже идёт через этот вызов, см. AiPanelManager.ts::quick-translate).
+    const { responseText, stopReason } = await session.promptWithMeta(userText, {
       maxTokens: CHAT_MAX_TOKENS,
       onTextChunk: onChunk,
-    })).trim()
+    })
+    const rawOut = responseText.trim()
     const ms = performance.now() - t0
 
     const out = stripThinking(rawOut)
@@ -443,6 +481,9 @@ export async function runChatMessage(
     console.log(
       `[chat] "${userText.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +
       `(${ms.toFixed(0)}ms, ${(tokens / (ms / 1000)).toFixed(1)} tok/s, всего=${(performance.now() - tTotalStart).toFixed(0)}ms)`,
+    )
+    console.log(
+      `[gen] stopped: ${stopReason === 'maxTokens' ? 'maxTokens reached' : `stop token (${stopReason})`} (limit=${CHAT_MAX_TOKENS}, outTokens=${tokens})`,
     )
 
     return { ok: true, out, history: newHistory, ms, tokPerSec: tokens / (ms / 1000), loadMs: wasLoaded ? null : loadMs }
