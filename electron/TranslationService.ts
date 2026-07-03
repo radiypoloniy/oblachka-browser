@@ -231,7 +231,7 @@ async function ensureLoaded(): Promise<number> {
 // превращается в кракозябры. Общий низкоуровневый вызов Qwen — единственное место, где реально
 // зовётся session.prompt(); и перевод, и остальные AI-действия проходят через него (см.
 // translateSegment/runSegmented ниже) — «разные промпты поверх одной трубы», не разные движки.
-async function runPrompt(prompt: string, maxTokens: number): Promise<{ out: string; tokens: number }> {
+async function runPrompt(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number }> {
   const tSessionStart = performance.now()
   const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper: qwenChatWrapper })
   const tSessionCreated = performance.now()
@@ -252,6 +252,11 @@ async function runPrompt(prompt: string, maxTokens: number): Promise<{ out: stri
       if (firstTokenAt === null) firstTokenAt = performance.now()
       genTokenCount += tokens.length
     },
+    // onTextChunk — готовый декодированный текст по мере генерации, БЕЗ thinking-сегментов
+    // (гарантия самой библиотеки, см. её .d.ts) — тот же тумблер, что и onToken выше, но текстом,
+    // а не токенами. Пробрасываем наружу как есть: печатание в поповере на уровне генерации,
+    // а не по сегментам (см. runSegmented ниже).
+    onTextChunk: onChunk,
   })).trim()
   const tGenDone = performance.now()
 
@@ -280,15 +285,16 @@ async function runPrompt(prompt: string, maxTokens: number): Promise<{ out: stri
 // обрывался бы на полуслове.
 const TRANSLATE_SEGMENT_MAX_TOKENS = 150
 
-// Общий цикл по сегментам — используется и переводом, и остальными AI-действиями. onSegment
-// (опционально) зовётся сразу по готовности КАЖДОГО сегмента, до завершения всего вызова — для
-// инкрементальной подачи в поповер (см. TranslatePopoverManager.ts). Без колбэка (ручной тест-мост
+// Общий цикл по сегментам — используется и переводом, и остальными AI-действиями. onChunk
+// (опционально) зовётся по мере генерации текста ВНУТРИ каждого сегмента (токен-стриминг, см.
+// runPrompt/onTextChunk выше) — для инкрементальной подачи в поповер (см. TranslatePopoverManager.ts),
+// печатание по мере генерации, а не пачками по сегменту. Без колбэка (ручной тест-мост
 // translateTestBridge.ts) поведение как раньше — только финальный результат.
 async function runSegmented(
   segments: string[],
   buildSegPrompt: (segment: string) => string,
   maxTokens: number,
-  onSegment?: (out: string, index: number, total: number) => void,
+  onChunk?: (text: string) => void,
 ): Promise<{ out: string; ms: number; tokPerSec: number; loadMs: number | null }> {
   const tTotalStart = performance.now()
   const wasLoaded = loadPromise !== null
@@ -299,10 +305,13 @@ async function runSegmented(
   const outs: string[] = []
   let totalTokens = 0
   for (let i = 0; i < segments.length; i++) {
-    const { out, tokens } = await runPrompt(buildSegPrompt(segments[i]!), maxTokens)
+    // Разделитель между предложениями перевода: сам сегмент стримится «сырыми» кусками без
+    // пробела на границе (onTextChunk отдаёт текст как есть) — пробел между соседними сегментами
+    // добавляем явно один раз здесь, а не полагаемся, что модель сама его сгенерирует.
+    if (i > 0) onChunk?.(' ')
+    const { out, tokens } = await runPrompt(buildSegPrompt(segments[i]!), maxTokens, onChunk)
     outs.push(out)
     totalTokens += tokens
-    onSegment?.(out, i, segments.length)
   }
   const ms = performance.now() - t0
   console.log(`[perf] total: ${(performance.now() - tTotalStart).toFixed(0)}ms (loadMs=${wasLoaded ? 'null(тёплая)' : loadMs.toFixed(0) + 'ms'})`)
@@ -310,12 +319,12 @@ async function runSegmented(
   return { out: outs.join(' '), ms, tokPerSec: totalTokens / (ms / 1000), loadMs: wasLoaded ? null : loadMs }
 }
 
-// onSegment — см. runSegmented выше. Необязательный параметр — вызовы без него (ручной тест-мост
+// onChunk — см. runSegmented выше. Необязательный параметр — вызовы без него (ручной тест-мост
 // translateTestBridge.ts) продолжают работать как раньше, получая только финальный TranslateResult.
 export async function translate(
   text: string,
   dir: Direction = 'auto',
-  onSegment?: (out: string, index: number, total: number) => void,
+  onChunk?: (text: string) => void,
 ): Promise<TranslateResult> {
   try {
     // Направление резолвим один раз по всему тексту — не по каждому предложению отдельно.
@@ -325,7 +334,7 @@ export async function translate(
     const dirUsed: ResolvedDirection = `${src}->${tgt}`
     const segments = splitSentences(text)
 
-    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildPrompt(src, tgt, seg), TRANSLATE_SEGMENT_MAX_TOKENS, onSegment)
+    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildPrompt(src, tgt, seg), TRANSLATE_SEGMENT_MAX_TOKENS, onChunk)
 
     console.log(
       `[translate] [${dirUsed}] ${segments.length} seg(s): "${text}" -> "${out}" ` +
@@ -347,10 +356,10 @@ export async function translate(
 export async function runAiAction(
   action: AiAction,
   text: string,
-  onSegment?: (out: string, index: number, total: number) => void,
+  onChunk?: (text: string) => void,
 ): Promise<AiActionOutcome> {
   if (action === 'translate') {
-    const result = await translate(text, 'auto', onSegment)
+    const result = await translate(text, 'auto', onChunk)
     return result.ok ? { ...result, action } : result
   }
 
@@ -364,7 +373,7 @@ export async function runAiAction(
     // компактнее, но всё равно длиннее одного переводческого предложения) — 150 токенов из
     // TRANSLATE_SEGMENT_MAX_TOKENS тут обрежут ответ на полуслове.
     const TEXT_ACTION_MAX_TOKENS = 500
-    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), TEXT_ACTION_MAX_TOKENS, onSegment)
+    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), TEXT_ACTION_MAX_TOKENS, onChunk)
 
     console.log(
       `[ai-action] [${action}][${lang}] ${segments.length} seg(s): "${text.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +

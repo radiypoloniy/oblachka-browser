@@ -15,12 +15,12 @@ contextBridge.exposeInMainWorld('translatePopover', {
     ipcRenderer.on('translate-popover:result', handler);
     return () => ipcRenderer.removeListener('translate-popover:result', handler);
   },
-  // Инкрементальный текст сегмента, по готовности каждого — до финального onResult. Тот же
+  // Инкрементальный текст по мере генерации (токен-стриминг) — до финального onResult. Тот же
   // канальный приём, что и onOpen/onResult (не новый мост, ещё один канал в том же семействе).
-  onSegment: (cb: (text: string) => void) => {
+  onChunk: (cb: (text: string) => void) => {
     const handler = (_e: unknown, text: string) => cb(text);
-    ipcRenderer.on('translate-popover:segment', handler);
-    return () => ipcRenderer.removeListener('translate-popover:segment', handler);
+    ipcRenderer.on('translate-popover:chunk', handler);
+    return () => ipcRenderer.removeListener('translate-popover:chunk', handler);
   },
   reportHeight: (px: number) => ipcRenderer.send('translate-popover:height', px),
   close: () => ipcRenderer.send('translate-popover:close'),

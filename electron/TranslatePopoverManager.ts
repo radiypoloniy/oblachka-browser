@@ -177,12 +177,14 @@ export function showTranslatePopover(win: BrowserWindow, action: AiAction, text:
   ).catch(() => { /* best-effort — если скрипт не выполнился, Esc/крестик всё равно работают */ })
 
   // Единая точка входа для ЛЮБОГО AI-действия (перевод/выжимка/пересказ/объяснение) — только
-  // action меняет промпт внутри TranslationService, сама труба одна. onSegment — по готовности
-  // каждого сегмента (не дожидаясь всего результата), чтобы на длинном тексте поповер наполнялся
-  // постепенно, а не висел пустым до самого конца. И там, и в финальном .then — проверка, что
-  // popoverView всё ещё тот же (не закрыт/не пересоздан повторным действием).
-  void runAiAction(action, text, (segmentOut) => {
-    if (popoverView && popoverView.webContents === wc) wc.send('translate-popover:segment', segmentOut)
+  // action меняет промпт внутри TranslationService, сама труба одна. onChunk — токен-стриминг на
+  // уровне генерации (не дожидаясь всего результата и не дожидаясь целого сегмента), чтобы текст
+  // «печатался» в поповере по мере генерации для ЛЮБОГО действия, включая осмысляющие
+  // (explain/simplify/summarize), у которых раньше не было промежуточной подачи вовсе. И там, и в
+  // финальном .then — проверка, что popoverView всё ещё тот же (не закрыт/не пересоздан повторным
+  // действием).
+  void runAiAction(action, text, (chunkText) => {
+    if (popoverView && popoverView.webContents === wc) wc.send('translate-popover:chunk', chunkText)
   }).then((outcome) => {
     if (popoverView && popoverView.webContents === wc) wc.send('translate-popover:result', outcome)
   })

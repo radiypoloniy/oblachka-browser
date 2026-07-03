@@ -15,7 +15,7 @@ declare global {
   interface Window {
     translatePopover: {
       onOpen: (cb: (text: string, action: AiAction) => void) => () => void
-      onSegment: (cb: (text: string) => void) => () => void
+      onChunk: (cb: (text: string) => void) => () => void
       onResult: (cb: (outcome: AiActionOutcome) => void) => () => void
       reportHeight: (px: number) => void
       close: () => void
@@ -73,19 +73,22 @@ const markdownComponents: Components = {
 function Popover() {
   const [text, setText] = useState('')
   const [action, setAction] = useState<AiAction>('translate')
-  // Копится по мере прихода сегментов (см. onSegment) — показывается СРАЗУ, не дожидаясь outcome.
-  // outcome.out (финальный, авторитетный) подменяет её как только придёт весь результат целиком.
+  // Копится по мере генерации (токен-стриминг, см. onChunk) — показывается СРАЗУ, не дожидаясь
+  // outcome. outcome.out (финальный, авторитетный) подменяет её как только придёт весь результат
+  // целиком. Куски конкатенируются как есть, без вставки пробелов — модель отдаёт их уже с нужными
+  // пробелами внутри сегмента, а разделитель между сегментами перевода добавляет сам main-процесс
+  // (см. runSegmented в TranslationService.ts).
   const [streamedText, setStreamedText] = useState('')
   const [outcome, setOutcome] = useState<AiActionOutcome | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const unsubOpen = window.translatePopover.onOpen((t, a) => { setText(t); setAction(a); setOutcome(null); setStreamedText('') })
-    const unsubSegment = window.translatePopover.onSegment((segText) => {
-      setStreamedText((prev) => (prev ? `${prev} ${segText}` : segText))
+    const unsubChunk = window.translatePopover.onChunk((chunkText) => {
+      setStreamedText((prev) => prev + chunkText)
     })
     const unsubResult = window.translatePopover.onResult((o) => setOutcome(o))
-    return () => { unsubOpen(); unsubSegment(); unsubResult() }
+    return () => { unsubOpen(); unsubChunk(); unsubResult() }
   }, [])
 
   useEffect(() => {
@@ -155,10 +158,10 @@ function Popover() {
           </span>
         )}
 
-        {/* Стримится по мере готовности сегментов (streamedText) до финального outcome.out — тот
+        {/* Стримится по мере генерации токенов (streamedText) до финального outcome.out — тот
             же Markdown-рендер и до, и после финализации (react-markdown нормально переживает
             промежуточный незакрытый синтаксис, самоисправляется на следующем чанке), чтобы верстка
-            не прыгала на последнем сегменте и сырые символы разметки не мелькали дольше, чем нужно. */}
+            не прыгала на последних токенах и сырые символы разметки не мелькали дольше, чем нужно. */}
         {outcome?.ok !== false && (streamedText.length > 0 || outcome?.ok === true) && (
           <>
             {/* Без обрезки многоточием — длинные результаты дают скролл (см. maxHeight выше). */}
