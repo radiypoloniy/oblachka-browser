@@ -1,14 +1,16 @@
-// Правая AI-панель — Заход 2: рабочий чат с локальным Qwen поверх готового каркаса-острова
-// (Заход 1). Дизайн (остров/тень/скругления/отступы/закрытие) не трогается — только контент
-// внутри вместо пустой заглушки. Позиция/размер/открытие-закрытие по-прежнему в main
-// (AiPanelManager.ts), эта страница просто рисует ленту + поле ввода на весь свой вьюпорт.
-// Одна беседа на сессию браузера, без персистентности — история живёт в main (TranslationService.ts,
-// module-level chatHistory) и здесь дублируется только для отрисовки; закрытие браузера теряет обе
-// копии одинаково (задел под будущий чат-по-странице — не реализован в этом заходе).
+// Правая AI-панель — чат с локальным Qwen (Заход 2), беседа привязана к вкладке (Заход 3).
+// Дизайн (остров/тень/скругления/отступы/закрытие) не трогается — только контент внутри.
+// Позиция/размер/открытие-закрытие по-прежнему в main (AiPanelManager.ts), эта страница просто
+// рисует чипс страницы + ленту + поле ввода на весь свой вьюпорт.
+// Беседы эфемерные, per-вкладка, БЕЗ персистентности — авторитетное хранилище (messages+history
+// для Qwen) живёт в main (AiPanelManager.ts::tabContexts), эта страница только отображает то, что
+// приходит через onContext при переключении/навигации/(пере)открытии панели. Свой собственный
+// messages-стейт здесь — витрина: пополняется оптимистично при отправке и полностью ЗАМЕНЯЕТСЯ
+// целиком при каждом onContext (переключили вкладку → другая лента, не дописывание к старой).
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, X, Send } from 'lucide-react';
+import { Sparkles, X, Send, Globe } from 'lucide-react';
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 
@@ -18,6 +20,19 @@ type ChatOutcome =
   | { ok: true; out: string; ms: number; tokPerSec: number; loadMs: number | null }
   | { ok: false; error: string }
 
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  text: string
+}
+
+// Форма пуша ai-panel:context из AiPanelManager.ts::sendCurrentContext.
+interface TabContext {
+  tabId: string
+  url: string
+  title: string
+  messages: ChatMessage[]
+}
+
 declare global {
   interface Window {
     aiPanel: {
@@ -25,13 +40,9 @@ declare global {
       sendChat: (text: string) => void
       onChatChunk: (cb: (text: string) => void) => () => void
       onChatResult: (cb: (outcome: ChatOutcome) => void) => () => void
+      onContext: (cb: (ctx: TabContext) => void) => () => void
     }
   }
-}
-
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  text: string
 }
 
 // Воздух вокруг острова на все стороны — держать в синхроне с GUTTER в
@@ -50,7 +61,20 @@ const GUTTER = 20;
 // её всё ещё читается как часть тулбара, не как зазор.
 const VERTICAL_OPTICAL_SHIFT = 6;
 
+// Хост без www. — компактнее в узкой (360px) панели. Пустой/нераспарсиваемый url (хаб,
+// oblako-chrome://) — просто ничего не показываем вторым сегментом чипса.
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
 function AiPanel() {
+  const [tabId, setTabId] = useState<string | null>(null)
+  const [pageTitle, setPageTitle] = useState('')
+  const [pageUrl, setPageUrl] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   // Копится по мере генерации (тот же токен-стриминг, что у поповера/AI-действий) — показывается
@@ -67,6 +91,19 @@ function AiPanel() {
   }, []);
 
   useEffect(() => {
+    // Переключение вкладки / смена её URL / (пере)открытие панели — main присылает АВТОРИТЕТНУЮ
+    // ленту этой вкладки целиком. Любая незавершённая генерация «протухшей» вкладки визуально
+    // гасится (sending/streamedText/error сбрасываются) — она никуда не делась в main, просто эта
+    // страница её больше не показывает, пока пользователь не вернётся на ту вкладку.
+    const unsubContext = window.aiPanel.onContext((ctx) => {
+      setTabId(ctx.tabId)
+      setPageTitle(ctx.title)
+      setPageUrl(ctx.url)
+      setMessages(ctx.messages)
+      setStreamedText('')
+      setSending(false)
+      setError(null)
+    })
     const unsubChunk = window.aiPanel.onChatChunk((chunkText) => {
       setStreamedText((prev) => prev + chunkText)
     })
@@ -80,7 +117,7 @@ function AiPanel() {
         setError(outcome.error)
       }
     })
-    return () => { unsubChunk(); unsubResult() }
+    return () => { unsubContext(); unsubChunk(); unsubResult() }
   }, [])
 
   // Автоскролл вниз при новом тексте — свои сообщения, ответы AI, стриминг по ходу генерации.
@@ -92,7 +129,7 @@ function AiPanel() {
 
   const handleSend = () => {
     const text = input.trim()
-    if (!text || sending) return
+    if (!text || sending || !tabId) return
     setMessages((prev) => [...prev, { role: 'user', text }])
     setInput('')
     setStreamedText('')
@@ -107,6 +144,8 @@ function AiPanel() {
       handleSend()
     }
   }
+
+  const host = hostnameOf(pageUrl)
 
   return (
     <div style={{
@@ -129,6 +168,7 @@ function AiPanel() {
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: 'var(--pad-island)',
+          paddingBottom: 0,
           flexShrink: 0,
         }}>
           <Sparkles size={18} style={{ color: 'var(--accent)' }} />
@@ -149,16 +189,38 @@ function AiPanel() {
           </button>
         </div>
 
+        {/* Чипс текущей страницы (как у Яндекса) — к чему привязана лента ниже. Смена URL внутри
+            вкладки обновит и чипс, и ленту (сброшенную на новый разговор) одним и тем же onContext. */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          margin: `10px var(--pad-island) 0`,
+          padding: '6px 10px',
+          background: 'var(--surface-sunken)',
+          borderRadius: 'var(--radius-chip)',
+          flexShrink: 0,
+          minWidth: 0,
+        }}>
+          <Globe size={12} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
+          <span style={{
+            fontSize: 'var(--fs-xs)', fontWeight: 500, color: 'var(--text-muted)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
+          }}>
+            {pageTitle || 'Новая вкладка'}
+            {host && <span style={{ color: 'var(--text-faint)' }}> · {host}</span>}
+          </span>
+        </div>
+
         {/* Лента сообщений — minHeight:0 обязателен, иначе flex-контейнер не даёт себе схлопнуться
             под overflowY:auto и скролл не работает (стандартная ловушка flex+scroll). */}
         <div ref={listRef} style={{
           flex: 1, minHeight: 0, overflowY: 'auto',
           display: 'flex', flexDirection: 'column', gap: 10,
-          padding: `0 var(--pad-island) var(--pad-island)`,
+          padding: `10px var(--pad-island) var(--pad-island)`,
         }}>
           {messages.length === 0 && !sending && (
             <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-              Спросите что-нибудь у Qwen. Первый ответ может занять до 30–40 секунд — модель загружается.
+              Спросите что-нибудь у Qwen про эту страницу. Первый ответ может занять до 30–40 секунд —
+              модель загружается.
             </span>
           )}
 

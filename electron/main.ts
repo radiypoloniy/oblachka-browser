@@ -15,7 +15,7 @@ import { IPC } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster } from '../shared/ipc';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
-import { toggleAiPanel } from './AiPanelManager';
+import { toggleAiPanel, onTabsSynced } from './AiPanelManager';
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
@@ -141,11 +141,15 @@ function createWindow() {
     win,
     () => {
       // Атомарный push: tabs и nodes в одном сообщении → один рендер, нет рассинхрона.
+      const tabsSnapshot = tabs!.snapshot();
       chromeView?.webContents.send(IPC.SYNC_CHANGED, {
-        tabs: tabs!.snapshot(),
+        tabs: tabsSnapshot,
         nodes: tabs!.sidebarNodesSnapshot(),
         hasOrganizeSnapshot: tabs!.hasOrganizeSnapshot(),
       });
+      // Тот же снапшот — источник правды для привязки чата AI-панели к вкладке (переключение/
+      // закрытие/смена URL), без новых колбэков в TabManager.ts (см. AiPanelManager.ts).
+      onTabsSynced(tabsSnapshot);
       // sess?. — не «отменяет» финальное сохранение: оно гарантированно уже прошло синхронно
       // в win.on('close') ДО того, как sess обнуляется в win.on('closed') (см. ниже). Этот вызов
       // подчистую сработает во время закрытия окна — часть вкладок ещё дозакрывается асинхронно

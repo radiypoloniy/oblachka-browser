@@ -1,13 +1,14 @@
-// Правая AI-панель — Заход 1: пустой каркас-оверлей, только открытие/закрытие/позиция/дизайн.
-// Тот же приём, что и у поповера перевода (см. TranslatePopoverManager.ts): отдельная
-// WebContentsView, добавленная в contentView ПОСЛЕДНЕЙ → native z-order (не CSS z-index),
-// поверх уже добавленной вкладки. Bounds контентной вкладки НЕ трогаем — панель просто
-// перекрывает правый край страницы, сайт под ней геометрически не меняется (как у Яндекса).
-// Никакой AI-логики здесь пока нет — просто позиция/тоггл/дизайн, содержимое page — заглушка.
+// Правая AI-панель — оверлей поверх контента (Заход 1: каркас/дизайн), рабочий чат с Qwen
+// (Заход 2), беседа привязана к вкладке (Заход 3). Тот же приём, что и у поповера перевода
+// (см. TranslatePopoverManager.ts): отдельная WebContentsView, добавленная в contentView
+// ПОСЛЕДНЕЙ → native z-order (не CSS z-index), поверх уже добавленной вкладки. Bounds контентной
+// вкладки НЕ трогаем — панель просто перекрывает правый край страницы, сайт под ней геометрически
+// не меняется (как у Яндекса).
 import { WebContentsView, ipcMain } from 'electron'
 import type { BrowserWindow, IpcMainEvent } from 'electron'
 import path from 'node:path'
 import { runChatMessage } from './TranslationService'
+import type { TabState } from '../shared/ipc'
 
 const PANEL_WIDTH = 360
 // Держать в синхроне с TOOLBAR_HEIGHT в src/components/Toolbar.tsx — панель начинается СРАЗУ
@@ -31,6 +32,81 @@ let attachedWin: BrowserWindow | null = null
 let resizeBoundWin: BrowserWindow | null = null
 let isOpen = false
 let ipcRegistered = false
+
+// ── Контекст чата по вкладке (Заход 3) ───────────────────────────────────────────────────────
+// Один движок (см. runChatMessage/ensureLoaded в TranslationService.ts), много контекстов: тут
+// только РАЗДЕЛЕНИЕ истории по вкладкам, а не отдельная модель на вкладку. Эфемерно, только в
+// памяти процесса main — без персистентности на диск (как и просили), обнуляется при рестарте
+// браузера вместе со всем модулем.
+interface ChatMessage { role: 'user' | 'assistant'; text: string }
+interface TabChatContext {
+  messages: ChatMessage[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  history: any[]  // ChatHistoryItem[] для Qwen (session.setChatHistory в runChatMessage)
+  url: string     // последний известный URL вкладки — детектор «сменилась страница»
+}
+
+const tabContexts = new Map<string, TabChatContext>()
+let activeTabId: string | null = null
+let activeTabUrl = ''
+let activeTabTitle = ''
+
+function getOrCreateContext(id: string, url: string): TabChatContext {
+  let ctx = tabContexts.get(id)
+  if (!ctx) {
+    ctx = { messages: [], history: [], url }
+    tabContexts.set(id, ctx)
+  }
+  return ctx
+}
+
+// Пушит панели (если открыта и загружена) беседу текущей активной вкладки — чипс страницы +
+// накопленные сообщения. Вызывается и при переключении вкладки, и при (пере)открытии панели.
+function sendCurrentContext(): void {
+  if (!panelView || !activeTabId) return
+  const ctx = getOrCreateContext(activeTabId, activeTabUrl)
+  panelView.webContents.send('ai-panel:context', {
+    tabId: activeTabId, url: activeTabUrl, title: activeTabTitle, messages: ctx.messages,
+  })
+}
+
+// Единственная точка входа из main.ts — вызывается из УЖЕ существующего onChange (тот, что шлёт
+// SYNC_CHANGED в чром), TabManager.ts НЕ трогаем и новых колбэков туда не добавляем. onChange и
+// так стреляет на переключение вкладки, навигацию и закрытие — этого достаточно, чтобы вывести
+// все три события чисто из снапшота, без новых hook'ов в TabManager.
+export function onTabsSynced(tabsSnapshot: TabState[]): void {
+  // Закрытые вкладки — их нет в свежем снапшоте: удаляем контекст вместе с ними.
+  const liveIds = new Set(tabsSnapshot.map((t) => t.id))
+  for (const id of tabContexts.keys()) {
+    if (!liveIds.has(id)) tabContexts.delete(id)
+  }
+
+  const active = tabsSnapshot.find((t) => t.isActive)
+  if (!active) return
+
+  const ctx = getOrCreateContext(active.id, active.url)
+
+  // Смена URL ВНУТРИ уже известной вкладки (не первое появление — при создании контекста url уже
+  // совпадает, см. getOrCreateContext) → другая страница, другой разговор. Сброс истории для Qwen
+  // И ленты сообщений. Флаг — потому что ниже activeTabUrl тоже перезатирается на active.url, и
+  // сравнивать с ним после этой строчки было бы уже не с чем (оба всегда совпадут).
+  let urlChanged = false
+  if (ctx.url !== active.url) {
+    ctx.url = active.url
+    ctx.messages = []
+    ctx.history = []
+    urlChanged = true
+  }
+
+  const switched = active.id !== activeTabId
+  activeTabId = active.id
+  activeTabUrl = active.url
+  activeTabTitle = active.title
+
+  // Переключение активной вкладки (или смена её URL) — если панель открыта, показываем актуальную
+  // беседу немедленно, а не ждём следующего действия пользователя внутри панели.
+  if (switched || urlChanged) sendCurrentContext()
+}
 
 function computeBounds(win: BrowserWindow) {
   const { width, height } = win.getContentBounds()
@@ -62,16 +138,32 @@ function ensureIpcRegistered(): void {
     if (attachedWin) closePanel(attachedWin)
   })
 
-  // Чат (Заход 2) — та же труба, что у поповера: runChatMessage стримит чанки по мере генерации,
-  // затем финальный исход. event.sender вместо popoverView/panelView сравнения — здесь один
-  // постоянный panelView, но сверяемся всё равно (панель могла быть закрыта/пересоздана между
-  // отправкой сообщения и приходом ответа).
+  // Чат — та же труба, что у поповера: runChatMessage стримит чанки по мере генерации, затем
+  // финальный исход. Привязка к вкладке: history/messages читаются и пишутся в контекст ТОЙ
+  // вкладки, что была активна в момент отправки (tabId зафиксирован здесь, до await) — если
+  // пользователь успеет переключиться на другую вкладку, пока Qwen ещё генерирует, ответ всё
+  // равно уйдёт в правильный (фоновый) контекст, а в панель — только если она всё ещё показывает
+  // именно эту вкладку к моменту прихода чанка/результата (иначе получился бы чужой текст поверх
+  // чужого разговора).
   ipcMain.on('ai-panel:chat-send', (event: IpcMainEvent, text: string) => {
     const wc = event.sender
-    void runChatMessage(text, (chunkText) => {
-      if (panelView && panelView.webContents === wc) wc.send('ai-panel:chat-chunk', chunkText)
+    const tabId = activeTabId
+    if (!tabId) return
+    const ctx = getOrCreateContext(tabId, activeTabUrl)
+    ctx.messages.push({ role: 'user', text })
+
+    void runChatMessage(text, ctx.history, (chunkText) => {
+      if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+        wc.send('ai-panel:chat-chunk', chunkText)
+      }
     }).then((outcome) => {
-      if (panelView && panelView.webContents === wc) wc.send('ai-panel:chat-result', outcome)
+      if (outcome.ok) {
+        ctx.messages.push({ role: 'assistant', text: outcome.out })
+        ctx.history = outcome.history
+      }
+      if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+        wc.send('ai-panel:chat-result', outcome)
+      }
     })
   })
 }
@@ -91,6 +183,9 @@ function ensurePanelView(): WebContentsView {
   // Прозрачный фон вида — страница сама красит себя в токен темы (см. aipanel.tsx), без
   // риска мигнуть белым мимо текущей темы (светлой/тёмной) до применения CSS.
   panelView.setBackgroundColor('#00000000')
+  // Первый показ беседы активной вкладки — только после did-finish-load: раньше renderer ещё не
+  // навесил обработчик onContext, сообщение потерялось бы.
+  panelView.webContents.once('did-finish-load', () => sendCurrentContext())
   panelView.webContents.loadURL('oblako-chrome://localhost/aipanel.html')
   return panelView
 }
@@ -108,9 +203,13 @@ export function toggleAiPanel(win: BrowserWindow): boolean {
     return false
   }
 
+  const alreadyLoaded = panelView !== null // false только на самый первый показ панели вообще
   const view = ensurePanelView()
   view.setBounds(computeBounds(win))
   win.contentView.addChildView(view) // последней → поверх вкладки, а не под ней
   isOpen = true
+  // При повторном открытии (view уже когда-то загрузился) did-finish-load больше не сработает —
+  // шлём текущий контекст явно, чтобы панель не показывала последнюю беседу «протухшей» вкладки.
+  if (alreadyLoaded) sendCurrentContext()
   return true
 }

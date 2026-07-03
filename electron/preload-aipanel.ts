@@ -1,5 +1,6 @@
-// Минимальный preload правой AI-панели (src/aipanel.tsx). Свои маленькие каналы (закрытие +
-// чат Заход 2) — не трогают контракт основного хрома (shared/ipc.ts), как и preload-translatepopover.ts.
+// Минимальный preload правой AI-панели (src/aipanel.tsx). Свои маленькие каналы (закрытие + чат +
+// контекст вкладки) — не трогают контракт основного хрома (shared/ipc.ts), как и
+// preload-translatepopover.ts.
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('aiPanel', {
@@ -17,5 +18,13 @@ contextBridge.exposeInMainWorld('aiPanel', {
     const handler = (_e: unknown, outcome: unknown) => cb(outcome);
     ipcRenderer.on('ai-panel:chat-result', handler);
     return () => ipcRenderer.removeListener('ai-panel:chat-result', handler);
+  },
+
+  // Беседа привязанной вкладки (Заход 3) — приходит при переключении вкладки, смене её URL и при
+  // (пере)открытии панели, см. AiPanelManager.ts::sendCurrentContext.
+  onContext: (cb: (ctx: unknown) => void) => {
+    const handler = (_e: unknown, ctx: unknown) => cb(ctx);
+    ipcRenderer.on('ai-panel:context', handler);
+    return () => ipcRenderer.removeListener('ai-panel:context', handler);
   },
 })
