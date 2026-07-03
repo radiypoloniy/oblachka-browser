@@ -16,11 +16,14 @@ const PANEL_WIDTH = 360
 // внутри своей страницы — именно так ранее ломался повторный клик по AI-кнопке (панель сама
 // перекрывала кнопку, которой её открыли).
 const TOOLBAR_HEIGHT = 56
-// Запас слева под CSS box-shadow «парящей» карточки — WebContentsView обрезает всё, что рисуется
-// за границей своего прямоугольника (тот же приём, что и SHADOW_MARGIN в TranslatePopoverManager.ts).
-// Держать в синхроне с SHADOW_MARGIN в src/aipanel.tsx. Только слева: справа/сверху/снизу панель
-// НАМЕРЕННО флаш к тулбару/краю окна — там тень не нужна.
-const SHADOW_MARGIN = 24
+// Воздух вокруг «плавающего острова» на все стороны (отступ от тулбара/правого края/низа окна) —
+// держать в синхроне с GUTTER в src/aipanel.tsx (тот инсетит видимую карточку внутри вьюпорта
+// ровно на столько же паддингом). Тот же запас служит зоной под CSS box-shadow «парящей»
+// карточки — WebContentsView обрезает всё, что рисуется за границей своего прямоугольника (тот
+// же приём, что и SHADOW_MARGIN в TranslatePopoverManager.ts). Сверху жёстко: view.y не может
+// быть меньше TOOLBAR_HEIGHT (см. комментарий выше) — справа/снизу больше и не нужно, тень
+// физически не может выйти за пределы окна.
+const GUTTER = 20
 
 let panelView: WebContentsView | null = null
 let attachedWin: BrowserWindow | null = null
@@ -31,9 +34,9 @@ let ipcRegistered = false
 function computeBounds(win: BrowserWindow) {
   const { width, height } = win.getContentBounds()
   return {
-    x: width - PANEL_WIDTH - SHADOW_MARGIN,
+    x: width - PANEL_WIDTH - GUTTER * 2,
     y: TOOLBAR_HEIGHT,
-    width: PANEL_WIDTH + SHADOW_MARGIN,
+    width: PANEL_WIDTH + GUTTER * 2,
     height: height - TOOLBAR_HEIGHT,
   }
 }

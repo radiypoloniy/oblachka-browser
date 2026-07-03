@@ -1,9 +1,11 @@
 // Правая AI-панель — Заход 1: пустой каркас (заголовок + плейсхолдер), без AI-логики.
 // Позиция/размер/открытие-закрытие целиком в main (AiPanelManager.ts) — эта страница просто
-// рисует «парящую» glass-карточку на весь свой вьюпорт, без роста/скролла как у поповера.
-// Настоящий сквозной backdrop-blur контента ЗА панелью недостижим (нативный оверлей не видит
-// пиксели чужого WebContentsView под собой) — здесь glass-ЭФФЕКТ в пределах своего слоя
-// (полупрозрачность + var(--glass-filter) + тень + скругления), см. задачу/CLAUDE.md.
+// рисует «парящий остров» на весь свой вьюпорт, без роста/скролла как у поповера.
+// Фон/тень — переиспользованы буквально из translatepopover.tsx (var(--surface-solid) +
+// '0 10px 28px rgba(40,30,80,0.16)'), а не подобраны заново: та же WebContentsView с
+// setBackgroundColor('#00000000') (см. AiPanelManager.ts) отлажена там, никакого прозрачного
+// glass-фона — сплошной непрозрачный остров, иначе он сливается с холстом страницы под собой
+// (тот же провал контраста, что и с полупрозрачным glass-fill в прошлой версии).
 import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Sparkles, X } from 'lucide-react';
@@ -15,10 +17,11 @@ declare global {
   }
 }
 
-// Прозрачный запас слева под CSS box-shadow «парящей» карточки — держать в синхроне с
-// SHADOW_MARGIN в electron/AiPanelManager.ts (тот выделяет под него ровно столько же места
-// в bounds WebContentsView). Справа/сверху/снизу паддинга нет — панель флаш к тулбару/окну.
-const SHADOW_MARGIN = 24;
+// Воздух вокруг острова на все стороны — держать в синхроне с GUTTER в
+// electron/AiPanelManager.ts (тот выделяет под него ровно столько же места в bounds
+// WebContentsView, отсчитывая от тулбара/правого края/низа окна). Тот же паддинг заодно
+// и зона под CSS box-shadow — WebContentsView обрезает всё, что рисуется за границей.
+const GUTTER = 20;
 
 function AiPanel() {
   useEffect(() => {
@@ -28,27 +31,23 @@ function AiPanel() {
   }, []);
 
   return (
-    <div style={{ paddingLeft: SHADOW_MARGIN, boxSizing: 'border-box', width: '100%', height: '100vh' }}>
+    <div style={{ padding: GUTTER, boxSizing: 'border-box', width: '100%', height: '100vh' }}>
       <div style={{
         width: '100%', height: '100%', boxSizing: 'border-box',
         display: 'flex', flexDirection: 'column',
-        background: 'var(--glass-fill-strong)',
-        backdropFilter: 'var(--glass-filter)',
-        WebkitBackdropFilter: 'var(--glass-filter)',
-        // Скругления только со стороны контента (слева) — справа/сверху/снизу панель флаш
-        // к окну/тулбару, там углов не видно.
-        borderRadius: 'var(--radius-card) 0 0 var(--radius-card)',
-        boxShadow: 'var(--shadow-pop)',
-        border: '1px solid var(--glass-edge)',
+        overflow: 'hidden',
+        background: 'var(--surface-solid)',
+        // var(--radius-island) — заметно круглее var(--radius-card): остров, а не карточка.
+        borderRadius: 'var(--radius-island)',
+        boxShadow: '0 10px 28px rgba(40,30,80,0.16)',
         fontFamily: 'var(--font-sans)',
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          padding: 'var(--pad-card)',
-          borderBottom: '1px solid var(--divider)',
+          padding: 'var(--pad-island)',
           flexShrink: 0,
         }}>
-          <Sparkles size={16} style={{ color: 'var(--accent)' }} />
+          <Sparkles size={18} style={{ color: 'var(--accent)' }} />
           <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-strong)' }}>
             AI
           </span>
@@ -57,12 +56,12 @@ function AiPanel() {
             title="Закрыть (Esc)"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 22, height: 22, flexShrink: 0,
-              background: 'none', border: 'none', borderRadius: 'calc(var(--radius-card) / 2)',
+              width: 30, height: 30, flexShrink: 0,
+              background: 'var(--surface-sunken)', border: 'none', borderRadius: '50%',
               color: 'var(--text-muted)', cursor: 'pointer', padding: 0,
             }}
           >
-            <X size={14} strokeWidth={2} />
+            <X size={15} strokeWidth={2} />
           </button>
         </div>
         {/* Заглушка — содержимое появится в следующих заходах. */}
