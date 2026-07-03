@@ -61,6 +61,18 @@ const GUTTER = 20;
 // её всё ещё читается как часть тулбара, не как зазор.
 const VERTICAL_OPTICAL_SHIFT = 6;
 
+// Кнопки-подсказки над полем ввода (как у Яндекса) — статичный набор, НЕ генерируются под
+// страницу (это отдельный дорогой заход, в бэклог). Промпт-тексты — единственное место, легко
+// менять формулировки. Клик = отправка ровно этого текста в чат текущей вкладки, как обычное
+// сообщение — тот же существующий стриминг/per-вкладочный контекст/извлечение текста страницы
+// (заход 4: на первое сообщение беседы страница извлекается и подмешивается в main, см.
+// AiPanelManager.ts). Результат уходит в ПАНЕЛЬ — эти кнопки не трогают текст самой страницы.
+const QUICK_ACTIONS: { label: string; prompt: string }[] = [
+  { label: 'Перевести', prompt: 'Переведи содержимое этой страницы на русский.' },
+  { label: 'Объяснить', prompt: 'Объясни простыми словами, о чём эта страница.' },
+  { label: 'Сделать саммари', prompt: 'Сделай краткое саммари этой страницы.' },
+];
+
 // Хост без www. — компактнее в узкой (360px) панели. Пустой/нераспарсиваемый url (хаб,
 // oblako-chrome://) — просто ничего не показываем вторым сегментом чипса.
 function hostnameOf(url: string): string {
@@ -127,8 +139,9 @@ function AiPanel() {
     el.scrollTop = el.scrollHeight
   }, [messages, streamedText])
 
-  const handleSend = () => {
-    const text = input.trim()
+  // Общая точка отправки — и текстовое поле, и кнопки-подсказки шлют через неё «как будто
+  // пользователь сам написал»: один и тот же путь (оптимистичное сообщение в ленте → sendChat).
+  const sendText = (text: string) => {
     if (!text || sending || !tabId) return
     setMessages((prev) => [...prev, { role: 'user', text }])
     setInput('')
@@ -137,6 +150,8 @@ function AiPanel() {
     setSending(true)
     window.aiPanel.sendChat(text)
   }
+
+  const handleSend = () => sendText(input.trim())
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -269,6 +284,38 @@ function AiPanel() {
             </span>
           )}
         </div>
+
+        {/* Кнопки-подсказки — только пока беседа пуста (как у Яндекса, над полем ввода). Как только
+            пришло первое сообщение, ряд исчезает — тот же messages.length, что гасит плейсхолдер
+            в ленте выше. */}
+        {messages.length === 0 && !sending && (
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 6,
+            padding: `0 var(--pad-island)`,
+            marginBottom: 8,
+            flexShrink: 0,
+          }}>
+            {QUICK_ACTIONS.map((qa) => (
+              <button
+                key={qa.label}
+                onClick={() => sendText(qa.prompt)}
+                disabled={!tabId}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-chip)',
+                  border: 'none',
+                  background: 'var(--surface-sunken)',
+                  color: 'var(--text-body)',
+                  fontSize: 'var(--fs-xs)', fontWeight: 500,
+                  cursor: tabId ? 'pointer' : 'default',
+                  opacity: tabId ? 1 : 0.5,
+                }}
+              >
+                {qa.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Поле ввода — Enter отправляет, Shift+Enter переносит строку. Кнопка отправки —
             единственный акцентный (--accent) элемент здесь, как и просит цветовой закон
