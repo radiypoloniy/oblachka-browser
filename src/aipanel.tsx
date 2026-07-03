@@ -23,6 +23,16 @@ declare global {
 // и зона под CSS box-shadow — WebContentsView обрезает всё, что рисуется за границей.
 const GUTTER = 20;
 
+// Сырые отступы сверху/снизу от границ вьюпорта равны (оба GUTTER) — но у тулбара нет своего
+// фона (см. Toolbar.tsx: div без background, флаш-прозрачный поверх холста), а его кнопки/омнибокс
+// центрированы внутри строки высотой 56px с ~12px пустого места сверху/снизу вокруг иконок
+// (padding:7 вокруг 18px-иконки). Глаз меряет зазор от ВИДИМЫХ иконок, а не от невидимой границы
+// div'а — поэтому верхний зазор читается больше нижнего при равных сырых отступах. Компенсируем
+// оптически, сдвигая карточку вниз в её же фиксированном диапазоне (сам диапазон — от тулбара до
+// низа окна — не меняется, см. AiPanelManager.ts): но не на все 12px тулбарной «пустоты» — часть
+// её всё ещё читается как часть тулбара, не как зазор.
+const VERTICAL_OPTICAL_SHIFT = 6;
+
 function AiPanel() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') window.aiPanel.close(); };
@@ -31,7 +41,13 @@ function AiPanel() {
   }, []);
 
   return (
-    <div style={{ padding: GUTTER, boxSizing: 'border-box', width: '100%', height: '100vh' }}>
+    <div style={{
+      paddingTop: GUTTER - VERTICAL_OPTICAL_SHIFT,
+      paddingBottom: GUTTER + VERTICAL_OPTICAL_SHIFT,
+      paddingLeft: GUTTER,
+      paddingRight: GUTTER,
+      boxSizing: 'border-box', width: '100%', height: '100vh',
+    }}>
       <div style={{
         width: '100%', height: '100%', boxSizing: 'border-box',
         display: 'flex', flexDirection: 'column',
