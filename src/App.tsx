@@ -494,8 +494,11 @@ export default function App() {
           onToggleDownloads={() => { setDownloadsOpen((v) => !v); setSettingsOpen(false); setHistoryOpen(false); }}
           onToggleAiPanel={() => { void window.oblako.toggleAiPanel(); }}
         />
-        {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView). */}
-        <div ref={contentRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView).
+            Margin — единственный источник воздуха: pushBounds меряет getBoundingClientRect()
+            этого div, суженный margin'ом прямоугольник уезжает в main как есть, без правки
+            формул bounds. Воздух согласован с --gutter-shell (тем же, что у острова сайдбара). */}
+        <div ref={contentRef} style={{ flex: 1, minHeight: 0, position: 'relative', margin: 'var(--gutter-shell)' }}>
           {downloadsOpen ? (
             <Downloads downloads={downloads} onClose={() => setDownloadsOpen(false)} />
           ) : historyOpen ? (
