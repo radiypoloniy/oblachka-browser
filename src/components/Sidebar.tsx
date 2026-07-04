@@ -252,11 +252,10 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
     <div
       ref={setNodeRef}
       style={{
+        ...innerPlate,
         transform: CSS.Transform.toString(transform),
         transition,
         display: 'flex', alignItems: 'stretch',
-        borderRadius: 'var(--radius-sm)',
-        border: '1px solid var(--divider-strong)',
         overflow: 'hidden',
         flexShrink: 0,
         minHeight: 36,
@@ -307,8 +306,8 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
         )}
       </div>
 
-      {/* Вертикальный разделитель */}
-      <div style={{ width: 1, background: 'var(--divider-strong)', alignSelf: 'stretch', margin: '4px 0', flex: 'none' }} />
+      {/* Вертикальный разделитель — смягчён под парящий стиль строки (была --divider-strong) */}
+      <div style={{ width: 1, background: 'var(--divider)', alignSelf: 'stretch', margin: '6px 0', flex: 'none' }} />
 
       {/* Правая ячейка */}
       <div
@@ -625,6 +624,16 @@ const innerPlate: React.CSSProperties = {
   border: '1px solid var(--glass-edge)',
 };
 
+// Маленький квадратный «остров» под одну иконку: кнопка сворачивания сайдбара
+// и «Новая вкладка» в свёрнутом виде. Тот же innerPlate, компактный padding.
+const floatingIconBtn: React.CSSProperties = {
+  ...innerPlate,
+  padding: 7,
+  color: 'var(--text-muted)',
+  cursor: 'default',
+  display: 'inline-flex',
+};
+
 export default function Sidebar({
   tabs, sidebarNodes, activeId, collapsed, onCollapsedChange,
   onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit,
@@ -878,10 +887,12 @@ export default function Sidebar({
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: 14 }}>
           <button
-            className="no-drag icon-btn"
+            className="no-drag"
             onClick={() => onCollapsedChange(false)}
             title="Развернуть панель"
-            style={{ ...iconBtn, transform: 'scaleX(-1)' }}
+            style={{ ...floatingIconBtn, transform: 'scaleX(-1)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
           >
             <PanelLeft size={17} />
           </button>
@@ -932,11 +943,16 @@ export default function Sidebar({
         </div>
 
         <div className="no-drag" style={{
-          ...innerPlate,
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-          padding: '8px 6px', marginTop: 8,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginTop: 8,
         }}>
-          <button className="icon-btn" title="Новая вкладка" style={iconBtn} onClick={onNewTab}><Plus size={17} /></button>
+          <button
+            className="no-drag"
+            title="Новая вкладка"
+            style={floatingIconBtn}
+            onClick={onNewTab}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
+          ><Plus size={17} /></button>
           <button className="icon-btn" title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
           <button className="icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
         </div>
@@ -950,7 +966,14 @@ export default function Sidebar({
 
       {/* Шапка */}
       <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0 14px' }}>
-        <button className="no-drag icon-btn" onClick={() => onCollapsedChange(true)} title="Свернуть панель" style={iconBtn}>
+        <button
+          className="no-drag"
+          onClick={() => onCollapsedChange(true)}
+          title="Свернуть панель"
+          style={floatingIconBtn}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
+        >
           <PanelLeft size={17} />
         </button>
       </div>
@@ -1223,17 +1246,18 @@ export default function Sidebar({
         </div>
       )}
 
-      <div className="no-drag" style={{
-        ...innerPlate,
-        display: 'flex', alignItems: 'center', gap: 2, marginTop: 10, padding: 4,
-      }}>
+      {/* «Новая вкладка» — отдельная плашка-остров; история/настройки — лёгкие иконки рядом,
+          НЕ часть плашки (не сливаются в общую пластину). */}
+      <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
         <button className="no-drag" title="Новая вкладка"
-          style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
-            border: 'none', background: 'transparent', cursor: 'default',
-            borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }}
+          style={{
+            ...innerPlate,
+            flex: 1, display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 12px', color: 'var(--text-muted)', cursor: 'default',
+          }}
           onClick={onNewTab}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
         >
           <Plus size={17} />
           <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>Новая вкладка</span>
