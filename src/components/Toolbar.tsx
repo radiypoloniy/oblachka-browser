@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Globe, Download } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Globe, Download, ChevronDown } from 'lucide-react';
 import type { TabState, HistoryEntry } from '../../shared/ipc';
 import { normalizeForTiles, scoreEntry } from '../../shared/frecency';
-import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
+import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
 
 // Высота тулбара — должна совпадать с CSS-значением (56px).
@@ -42,6 +42,17 @@ const OMNIBOX_SIDE_GAP = 12;
 // Выше PLACEHOLDER_SHOW — возвращается. Зазор 20px = гистерезис против мигания.
 const PLACEHOLDER_HIDE_THRESHOLD = 200;
 const PLACEHOLDER_SHOW_THRESHOLD = 220;
+
+// ── Капсула поисковика: то же ступенчатое схлопывание, что у VPN-пилюли, но по
+// ширине САМОГО омнибокса (omniboxWidth), т.к. капсула живёт внутри его «таблетки».
+// full   : полное имя движка («DuckDuckGo») + шеврон
+// compact: только первая буква названия + шеврон — умещается даже на дефолтном окне
+//          (омнибокс в режиме VPN 'short' уже узкий, полное имя туда не влезает,
+//          см. заход с капсулой — иначе капсула вылезает за скруглённый край пилюли)
+// hidden : совсем убираем на очень узких окнах — приоритет у поля ввода
+type CapsuleMode = 'full' | 'compact' | 'hidden';
+const CAPSULE_FULL_THRESHOLD = 380;
+const CAPSULE_HIDE_THRESHOLD = 200;
 
 // ── Типы ─────────────────────────────────────────────────────────────────────
 
@@ -107,6 +118,17 @@ export default function Toolbar({
     return () => { mounted = false; };
   }, []);
 
+  // Капсула выбора поисковика — только на хабе (isHub), см. omnibox ниже.
+  const [engineMenuOpen, setEngineMenuOpen] = useState(false);
+  const engineBtnRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (!isHub) setEngineMenuOpen(false); }, [isHub]);
+
+  const pickEngine = (id: SearchEngineId) => {
+    setSearchEngineId(id);
+    setEngineMenuOpen(false);
+    void window.oblako.setSearchEngine(id);
+  };
+
   // Измеряем ширину тулбара для расчёта режима VPN и ширины омнибокса.
   useEffect(() => {
     const el = toolbarRef.current;
@@ -126,6 +148,12 @@ export default function Toolbar({
   // Math.max(0, ...) — намеренно без нижнего предела: на совсем узком окне
   // омнибокс становится узким (до 0), но никогда не налезает на боковые блоки.
   const omniboxWidth = Math.min(620, Math.max(0, toolbarWidth - 2 * RIGHT_RESERVE[vpnMode] - 2 * OMNIBOX_SIDE_GAP));
+
+  // Режим капсулы поисковика — см. константы выше. Приоритет у поля ввода:
+  // капсула схлопывается первой, а не наоборот.
+  const capsuleMode: CapsuleMode = omniboxWidth >= CAPSULE_FULL_THRESHOLD ? 'full'
+    : omniboxWidth >= CAPSULE_HIDE_THRESHOLD ? 'compact'
+    : 'hidden';
 
   // Гистерезис плейсхолдера: прячем когда поле узкое, возвращаем с запасом.
   useEffect(() => {
@@ -356,7 +384,7 @@ export default function Toolbar({
               }}
               onKeyDown={handleKeyDown}
               style={{
-                flex: 1, border: 'none', background: 'transparent', outline: 'none',
+                flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none',
                 fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
                 fontFamily: isHub ? 'var(--font-sans)' : 'var(--font-mono)',
               }}
@@ -368,8 +396,75 @@ export default function Toolbar({
                 {copied ? <Check size={14} /> : <Copy size={14} />}
               </button>
             )}
+            {/* Капсула выбора поисковика — только на хабе, в контентных вкладках не рендерится вовсе.
+                Схлопывается по тому же принципу, что VPN-пилюля (см. capsuleMode выше): на дефолтном
+                окне омнибокс уже узкий (VPN-режим 'short' даёт ~278px) — полное имя туда не влезает
+                и вылезает за скруглённый край пилюли, поэтому ниже CAPSULE_FULL_THRESHOLD показываем
+                только первую букву названия. */}
+            {isHub && capsuleMode !== 'hidden' && (
+              <button
+                ref={engineBtnRef}
+                title={`Поисковик: ${getSearchEngine(searchEngineId).name}`}
+                onClick={() => setEngineMenuOpen((v) => !v)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4, flex: 'none',
+                  border: 'none', cursor: 'default', padding: capsuleMode === 'full' ? '4px 8px' : '4px 6px',
+                  borderRadius: 'var(--radius-sm)', background: 'var(--surface-hover)',
+                  color: 'var(--text-muted)', fontSize: 'var(--fs-xs)', fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {capsuleMode === 'full'
+                  ? getSearchEngine(searchEngineId).name
+                  : getSearchEngine(searchEngineId).name.charAt(0)}
+                <ChevronDown size={12} />
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Меню выбора поисковика — портал в body (та же техника, что у дропдауна подсказок),
+            прозрачный оверлей на весь экран закрывает по клику мимо, сам список — поверх него. */}
+        {isHub && engineMenuOpen && (() => {
+          const btnRect = engineBtnRef.current?.getBoundingClientRect();
+          if (!btnRect) return null;
+          return createPortal(
+            <>
+              <div
+                onClick={() => setEngineMenuOpen(false)}
+                style={{ position: 'fixed', inset: 0, zIndex: 9000 }}
+              />
+              <div style={{
+                position: 'fixed', top: btnRect.bottom + 6, left: btnRect.right - 140,
+                width: 140, zIndex: 9001,
+                background: 'var(--surface-solid)',
+                borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-island)',
+                border: '1px solid var(--glass-edge)',
+                overflow: 'hidden', padding: 4,
+              }}>
+                {SEARCH_ENGINES.map((engine) => (
+                  <div
+                    key={engine.id}
+                    onClick={() => pickEngine(engine.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '7px 10px', borderRadius: 'var(--radius-sm)', cursor: 'default',
+                      fontSize: 'var(--fs-sm)',
+                      color: engine.id === searchEngineId ? 'var(--text-strong)' : 'var(--text-body)',
+                      fontWeight: engine.id === searchEngineId ? 600 : 400,
+                      background: engine.id === searchEngineId ? 'var(--surface-sunken)' : 'transparent',
+                    }}
+                    onMouseEnter={(e) => { if (engine.id !== searchEngineId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                    onMouseLeave={(e) => { if (engine.id !== searchEngineId) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    {engine.name}
+                  </div>
+                ))}
+              </div>
+            </>,
+            document.body,
+          );
+        })()}
 
         {/* Дропдаун рендерится порталом в document.body — вне всех stacking context.
             position:fixed с координатами viewport (за пределами transform-предка работает корректно).
