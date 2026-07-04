@@ -518,12 +518,6 @@ export default function App() {
                   <TabError error={splitLeft!.tabError} url={splitLeft!.url}
                     onRetry={() => void window.oblako.reload(splitLeft!.id)} />
                 )}
-                {activeId === splitLeft!.id && (
-                  <div style={{
-                    position: 'absolute', inset: 0, pointerEvents: 'none',
-                    boxShadow: 'inset 0 0 0 2px var(--accent)',
-                  }} />
-                )}
               </div>
 
               {/* Разделитель: SPLIT_GAP шириной, визуальная линия по центру */}
@@ -554,12 +548,6 @@ export default function App() {
                 {splitRight!.tabError && (
                   <TabError error={splitRight!.tabError} url={splitRight!.url}
                     onRetry={() => void window.oblako.reload(splitRight!.id)} />
-                )}
-                {activeId === splitRight!.id && (
-                  <div style={{
-                    position: 'absolute', inset: 0, pointerEvents: 'none',
-                    boxShadow: 'inset 0 0 0 2px var(--accent)',
-                  }} />
                 )}
               </div>
             </div>
