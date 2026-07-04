@@ -613,6 +613,18 @@ const asideBase: React.CSSProperties = {
   overflow: 'hidden',
 };
 
+// Внутренние «плашки» сайдбара (пины / нижние утилиты) — парят уже ВНУТРИ острова
+// сайдбара, поэтому по вложенности это card-уровень, не island-уровень (см. radii.css).
+// Параметры стекла/тени/скругления не подбираются заново — те же, что уже отлажены
+// в FindBar/Hub/TabError (--surface + --glass-filter + --radius-card + --shadow-card).
+const innerPlate: React.CSSProperties = {
+  background: 'var(--surface)',
+  backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
+  borderRadius: 'var(--radius-card)',
+  boxShadow: 'var(--shadow-card)',
+  border: '1px solid var(--glass-edge)',
+};
+
 export default function Sidebar({
   tabs, sidebarNodes, activeId, collapsed, onCollapsedChange,
   onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit,
@@ -876,7 +888,11 @@ export default function Sidebar({
         </div>
 
         {pinned.length > 0 && (
-          <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingBottom: 8, paddingTop: 4, borderBottom: '1px solid var(--divider-strong)', width: '100%' }}>
+          <div className="no-drag" style={{
+            ...innerPlate,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+            padding: '8px 6px', marginBottom: 10,
+          }}>
             {pinned.map((t) => (
               <button key={t.id} onClick={() => onSelect(t.id)}
                 onContextMenu={(e) => { e.preventDefault(); onTabMenu(t.id); }}
@@ -915,7 +931,11 @@ export default function Sidebar({
           ))}
         </div>
 
-        <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        <div className="no-drag" style={{
+          ...innerPlate,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+          padding: '8px 6px', marginTop: 8,
+        }}>
           <button className="icon-btn" title="Новая вкладка" style={iconBtn} onClick={onNewTab}><Plus size={17} /></button>
           <button className="icon-btn" title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
           <button className="icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
@@ -943,21 +963,20 @@ export default function Sidebar({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        {/* Закреплённые: сетка favicon, tooltip с заголовком, без крестика */}
+        {/* Закреплённые: сетка favicon, tooltip с заголовком, без крестика.
+            Плашка-обёртка — СНАРУЖИ SortableContext, сам dnd-контекст и ячейки не тронуты. */}
         {pinned.length > 0 && (
-          <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
-            <div className="no-drag" style={{
-              display: 'flex', flexWrap: 'wrap', gap: 4,
-              paddingBottom: 10, marginBottom: 2,
-              borderBottom: '1px solid var(--divider-strong)',
-            }}>
-              {pinned.map((t) => (
-                <SortablePinCell key={t.id} tab={t} active={activeId === t.id}
-                  onClick={() => onSelect(t.id)}
-                  onContextMenu={() => onTabMenu(t.id)} />
-              ))}
-            </div>
-          </SortableContext>
+          <div className="no-drag" style={{ ...innerPlate, padding: 8, marginBottom: 10 }}>
+            <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {pinned.map((t) => (
+                  <SortablePinCell key={t.id} tab={t} active={activeId === t.id}
+                    onClick={() => onSelect(t.id)}
+                    onContextMenu={() => onTabMenu(t.id)} />
+                ))}
+              </div>
+            </SortableContext>
+          </div>
         )}
 
         {/* Верхний уровень: singles, pairs, groups — все в одном SortableContext */}
@@ -1204,7 +1223,10 @@ export default function Sidebar({
         </div>
       )}
 
-      <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 8, padding: '4px 0 2px' }}>
+      <div className="no-drag" style={{
+        ...innerPlate,
+        display: 'flex', alignItems: 'center', gap: 2, marginTop: 10, padding: 4,
+      }}>
         <button className="no-drag" title="Новая вкладка"
           style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
             border: 'none', background: 'transparent', cursor: 'default',
