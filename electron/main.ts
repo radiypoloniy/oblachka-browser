@@ -18,6 +18,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
+import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar } from './FindBarManager';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -154,6 +155,10 @@ function createWindow() {
 
   // Разрешения: оба хендлера на дефолтной сессии. Инкогнито (будущее) — отдельный attach.
   permissions.attach(session.defaultSession, (req) => {
+    // Входящий запрос разрешения занимает то же место, что FindBar — закрываем его (та же логика,
+    // что раньше жила в App.tsx::onPermissionRequest, до переезда FindBar в отдельную WebContentsView).
+    tabs?.stopFind();
+    closeFindBar();
     chromeView?.webContents.send(IPC.PERMISSION_REQUEST, req);
   });
 
@@ -193,9 +198,12 @@ function createWindow() {
       // МЕЖДУ планированием и срабатыванием таймера (окно закрылось в этот промежуток).
       sess?.scheduleSave(() => tabs?.getSessionSnapshot() ?? null);
     },
-    (r: FindResult) => chromeView?.webContents.send(IPC.FIND_RESULT, r),
-    ()              => chromeView?.webContents.send(IPC.FIND_OPEN),
-    ()              => chromeView?.webContents.send(IPC.FIND_CLOSE),
+    // FindBar — теперь отдельная WebContentsView (FindBarManager.ts), не React в chromeView.
+    // Сам поиск (findInPage/found-in-page) не меняется — меняется только, куда идёт push
+    // результата и что открывает/закрывает панель.
+    (r: FindResult) => sendFindResult(r),
+    ()              => { if (win && tabs?.getActiveWebContents()) showFindBar(win); }, // Ctrl+F: не открываем на хабе (getActiveWebContents()===null)
+    ()              => { tabs?.stopFind(); closeFindBar(); },
     ()              => chromeView?.webContents.send(IPC.OMNIBOX_FOCUS),
     ()              => chromeView?.webContents.focus(),
     (url, title)    => history.recordVisit(url, title),
@@ -208,7 +216,7 @@ function createWindow() {
       // все AI-действия (перевод/выжимка/пересказ/объяснение) — action меняет только промпт.
       if (win) showTranslatePopover(win, action, text, rect, wc);
     },
-    () => closeTranslatePopoverOnTabSwitch(),
+    () => { closeTranslatePopoverOnTabSwitch(); closeFindBar(); }, // FindBar анкорен к прежней активной вкладке — смысла нет
     (wc) => closeTranslatePopoverForClosedTab(wc),
   );
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
@@ -350,7 +358,12 @@ function registerIpc() {
   ipcMain.handle(IPC.TAB_GO_BACK, (_e, id: string) => tabs?.goBack(id));
   ipcMain.handle(IPC.TAB_GO_FORWARD, (_e, id: string) => tabs?.goForward(id));
   ipcMain.handle(IPC.TAB_RELOAD, (_e, id: string) => tabs?.reload(id));
-  ipcMain.handle(IPC.CONTENT_SET_BOUNDS, (_e, b: ContentBounds) => tabs?.setContentBounds(b));
+  ipcMain.handle(IPC.CONTENT_SET_BOUNDS, (_e, b: ContentBounds) => {
+    tabs?.setContentBounds(b);
+    // Та же геометрия двигает FindBar — центрирование по контентной зоне (учитывает сайдбар) и
+    // авто-скрытие при настройках/истории/загрузках (нулевые bounds — тот же сентинел, см. FindBarManager.ts).
+    syncFindBarBounds(b);
+  });
   ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (_e, opts: TitleBarOpts) => win?.setTitleBarOverlay(opts));
   ipcMain.handle(IPC.FIND_START, (_e, q: string, fwd: boolean) => tabs?.findInPage(q, fwd));
   ipcMain.handle(IPC.FIND_NEXT,  (_e, fwd: boolean)            => tabs?.findNext(fwd));
@@ -415,7 +428,12 @@ function registerIpc() {
   ipcMain.handle(IPC.TABS_ORGANIZE_ROLLBACK, ()                                => tabs?.rollbackOrganize());
 
   // Правая AI-панель (см. AiPanelManager.ts)
-  ipcMain.handle(IPC.AI_PANEL_TOGGLE, () => win ? toggleAiPanel(win) : false);
+  ipcMain.handle(IPC.AI_PANEL_TOGGLE, () => {
+    if (!win) return false;
+    const open = toggleAiPanel(win);
+    relayoutFindBar(); // свободная ширина под FindBar изменилась (см. FindBarManager.ts::computeBounds)
+    return open;
+  });
 
   // Нативное ПКМ-меню вкладки в сайдбаре.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {

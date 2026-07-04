@@ -3,23 +3,18 @@ import Sidebar from './components/Sidebar';
 import Toolbar from './components/Toolbar';
 import Hub from './components/Hub';
 import TabError from './components/TabError';
-import FindBar from './components/FindBar';
 import Settings from './components/Settings';
 import History from './components/History';
 import Downloads from './components/Downloads';
 import PermissionPrompt from './components/PermissionPrompt';
 import { embeddingService } from './services/EmbeddingService';
-import type { SyncState, TabState, FindResult, DownloadEntry, PermissionRequest, SidebarNode } from '../shared/ipc';
+import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode } from '../shared/ipc';
 import type { ClusterProposal } from './services/ClusteringService';
 
 const HUB_ID = 'hub';
 
-// Высота полосы, вырезаемой у WebContentsView сверху, когда открыт FindBar.
-// Даёт «реальную дырку» в нативном слое, иначе DOM-оверлей скрыт за WebContentsView.
-// 52 = 8px (gap) + ~36px (панель) + 8px (запас).
-const FIND_BAR_RESERVE = 52;
-
-// Высота резерва для дропдауна омнибокса — та же логика, что и FindBar.
+// Высота резерва для дропдауна омнибокса — FindBar больше не резервирует место (переехал в
+// отдельную WebContentsView-оверлей, см. electron/FindBarManager.ts) — та же логика, что раньше.
 // chromeView идёт под WebContentsView по z-order, поэтому сдвигаем WebContentsView вниз.
 // 280 = 6 строк × ~44px + 8px зазор — max высота списка саджестов.
 const OMNIBOX_SUGGEST_RESERVE = 280;
@@ -45,8 +40,6 @@ export default function App() {
   const [activeId, setActiveId] = useState(HUB_ID);
   const [vpnOn, setVpnOn] = useState(true);
   const [dark, setDark] = useState(false);
-  const [findOpen, setFindOpen] = useState(false);
-  const [findResult, setFindResult] = useState<FindResult | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
@@ -73,7 +66,6 @@ export default function App() {
   const contentRef = useRef<HTMLDivElement>(null);
   // Актуальный DOMRect контент-зоны: обновляется ResizeObserver-ом, читается Sidebar во время drag.
   const contentRectRef = useRef<DOMRect | null>(null);
-  const findInputRef = useRef<HTMLInputElement>(null);
   const omniboxRef = useRef<HTMLInputElement>(null);
 
   const active = tabs.find((t) => t.id === activeId);
@@ -92,8 +84,6 @@ export default function App() {
   // Refs для использования актуальных значений внутри IPC-колбэков (замыкания).
   const isHubRef = useRef(isHub);
   isHubRef.current = isHub;
-  const findOpenRef = useRef(findOpen);
-  findOpenRef.current = findOpen;
   // tabErrorRef нужен в pushBounds: reserve не применяем когда показана страница ошибки.
   const tabErrorRef = useRef(tabError);
   tabErrorRef.current = tabError;
@@ -175,27 +165,10 @@ export default function App() {
     return () => { mounted = false; unsub(); };
   }, []);
 
-  // Подписки на события поиска — один раз на маунт.
+  // Подписки на разные push-события хрома — один раз на маунт. FindBar (открытие/закрытие/
+  // результат) сюда больше не входит — переехал в отдельную WebContentsView, см.
+  // electron/FindBarManager.ts (main сам решает, когда её показать/спрятать/куда слать счётчик).
   useEffect(() => {
-    const unsubResult = window.oblako.onFindResult((r) => setFindResult(r));
-
-    const unsubOpen = window.oblako.onFindOpen(() => {
-      if (isHubRef.current) return; // поиск не работает на хабе
-      if (!findOpenRef.current) {
-        setFindOpen(true);           // открыть панель; autoFocus сфокусирует input
-      } else {
-        // Панель уже открыта — выделить текст в поле (стандарт браузеров)
-        findInputRef.current?.focus();
-        findInputRef.current?.select();
-      }
-    });
-
-    const unsubClose = window.oblako.onFindClose(() => {
-      setFindOpen(false);
-      setFindResult(null);
-      void window.oblako.findStop();
-    });
-
     const unsubOmnibox = window.oblako.onOmniboxFocus(() => {
       omniboxRef.current?.focus();
       omniboxRef.current?.select();
@@ -214,15 +187,13 @@ export default function App() {
     });
 
     const unsubPermission = window.oblako.onPermissionRequest((req) => {
-      // При входящем запросе разрешения закрываем find bar (они занимают одно пространство).
-      setFindOpen(false);
-      setFindResult(null);
-      void window.oblako.findStop();
+      // FindBar на входящий запрос разрешения закрывается в main (см. permissions.attach в
+      // main.ts) — та же логика, что была здесь, просто рядом с источником события.
       setPendingPermissions((prev) => [...prev, req]);
     });
 
     return () => {
-      unsubResult(); unsubOpen(); unsubClose(); unsubOmnibox();
+      unsubOmnibox();
       unsubHistory(); unsubDownloadsOpen(); unsubPermission();
     };
   }, []);
@@ -233,12 +204,6 @@ export default function App() {
     const unsub = window.oblako.onDownloadsChanged(setDownloads);
     return () => unsub();
   }, []);
-
-  // Закрыть панель при переключении вкладки (stopFindInPage уже вызван в TabManager).
-  useEffect(() => {
-    setFindOpen(false);
-    setFindResult(null);
-  }, [activeId]);
 
   // ── Авто-схлопывание сайдбара по ширине окна ──
   // Пересчитывается при каждом resize. Гистерезис: схлопнуть < 960, развернуть > 980.
@@ -296,28 +261,25 @@ export default function App() {
   // ── Главное: измеряем "дырку" под контент и сообщаем main, ──
   // ── куда положить WebContentsView активной вкладки.       ──
   //
-  // Reserve: когда FindBar открыт на реальной странице (не хаб, не ошибка),
-  // откусываем FIND_BAR_RESERVE px сверху — создаём «реальную дырку» для панели.
   // Callback стабилен (deps=[]), читает актуальные значения через рефы.
   const pushBounds = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
     // Настройки, история или загрузки открыты — скрываем WebContentsView нулевыми bounds.
     // Покрывает и split (обе вьюхи): repositionViews() в TabManager выдаёт нулевые размеры обеим.
+    // Тот же сентинел (0,0,0,0) main использует, чтобы заодно спрятать FindBar (см. FindBarManager.ts).
     if (settingsOpenRef.current || historyOpenRef.current || downloadsOpenRef.current) {
       void window.oblako.setContentBounds({ x: 0, y: 0, width: 0, height: 0 });
       return;
     }
     const r = el.getBoundingClientRect();
-    const findReserve = (findOpenRef.current && !isHubRef.current && !tabErrorRef.current)
-      ? FIND_BAR_RESERVE : 0;
-    // Дропдаун омнибокса тоже требует резерв сверху — только на реальной странице.
+    // Дропдаун омнибокса требует резерв сверху — только на реальной странице.
     const suggestReserve = (omniboxSuggestOpenRef.current && !isHubRef.current && !tabErrorRef.current)
       ? OMNIBOX_SUGGEST_RESERVE : 0;
     // Inline-prompt разрешений: резерв только при наличии pending запроса на реальной странице.
     const permReserve = (pendingPermissionsRef.current.length > 0 && !isHubRef.current && !tabErrorRef.current)
       ? PERMISSION_PROMPT_RESERVE : 0;
-    const reserve = Math.max(findReserve, suggestReserve, permReserve);
+    const reserve = Math.max(suggestReserve, permReserve);
     void window.oblako.setContentBounds({
       x: r.left, y: r.top + reserve,
       width: r.width, height: Math.max(0, r.height - reserve),
@@ -342,40 +304,22 @@ export default function App() {
     return () => window.removeEventListener('resize', updateSidebarCollapse);
   }, [updateSidebarCollapse]);
 
-  // Пересчёт bounds при смене состояния find-панели, дропдауна омнибокса и очереди разрешений.
-  useEffect(() => { pushBounds(); }, [findOpen, omniboxSuggestOpen, pendingPermissions, pushBounds]);
+  // Пересчёт bounds при смене состояния дропдауна омнибокса и очереди разрешений.
+  useEffect(() => { pushBounds(); }, [omniboxSuggestOpen, pendingPermissions, pushBounds]);
 
   // когда переключаемся между хабом и сайтом, геометрия дырки та же,
   // но main должен переотобразить вьюху — пушим bounds ещё раз.
   useEffect(() => { pushBounds(); }, [activeId, isHub, pushBounds]);
 
-  // Открытие/закрытие настроек: скрываем или восстанавливаем WebContentsView.
-  // FindBar закрываем при входе в настройки.
-  useEffect(() => {
-    if (settingsOpen) {
-      setFindOpen(false);
-      setFindResult(null);
-    }
-    pushBounds();
-  }, [settingsOpen, pushBounds]);
+  // Открытие/закрытие настроек: скрываем или восстанавливаем WebContentsView
+  // (нулевые bounds заодно прячут FindBar, см. pushBounds выше).
+  useEffect(() => { pushBounds(); }, [settingsOpen, pushBounds]);
 
   // То же для панели истории.
-  useEffect(() => {
-    if (historyOpen) {
-      setFindOpen(false);
-      setFindResult(null);
-    }
-    pushBounds();
-  }, [historyOpen, pushBounds]);
+  useEffect(() => { pushBounds(); }, [historyOpen, pushBounds]);
 
   // То же для панели загрузок.
-  useEffect(() => {
-    if (downloadsOpen) {
-      setFindOpen(false);
-      setFindResult(null);
-    }
-    pushBounds();
-  }, [downloadsOpen, pushBounds]);
+  useEffect(() => { pushBounds(); }, [downloadsOpen, pushBounds]);
 
   // Количество незакреплённых, негруппированных вкладок-единиц верхнего уровня.
   // GroupNode и pinned в счёт не идут — только top-level single + split-pair.
@@ -579,23 +523,6 @@ export default function App() {
             <PermissionPrompt
               request={pendingPermissions[0]}
               onRespond={handlePermissionRespond}
-            />
-          )}
-
-          {/* FindBar: абсолютный оверлей над всей контент-зоной (включая split). */}
-          {/* FindBar: абсолютный оверлей (не показываем в режиме настроек). */}
-          {findOpen && !isHub && !tabError && !settingsOpen && !historyOpen && (
-            <FindBar
-              ref={findInputRef}
-              result={findResult}
-              onSearch={(q, fwd) => { void window.oblako.findStart(q, fwd); }}
-              onNext={(fwd) => { void window.oblako.findNext(fwd); }}
-              onStop={() => { void window.oblako.findStop(); setFindResult(null); }}
-              onClose={() => {
-                void window.oblako.findStop();
-                setFindResult(null);
-                setFindOpen(false);
-              }}
             />
           )}
         </div>

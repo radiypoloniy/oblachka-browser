@@ -30,6 +30,9 @@ export default defineConfig({
         // Правая AI-панель — отдельная WebContentsView поверх контента (см. AiPanelManager.ts),
         // тоже создаётся лениво, на первое открытие кнопкой AI в тулбаре.
         aipanel: resolve(__dirname, 'src/aipanel.html'),
+        // FindBar (Ctrl+F) — отдельная WebContentsView поверх контента (см. FindBarManager.ts),
+        // создаётся лениво на первый Ctrl+F, не при старте браузера.
+        findbar: resolve(__dirname, 'src/findbar.html'),
       },
     },
   },

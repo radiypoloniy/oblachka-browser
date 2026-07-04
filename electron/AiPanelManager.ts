@@ -270,6 +270,14 @@ function closePanel(win: BrowserWindow): void {
   isOpen = false
 }
 
+// Read-only геометрия для координации с FindBarManager.ts (чтобы FindBar не центрировался под
+// открытой AI-панелью — она не двигает bounds контентной вкладки, поэтому FindBar иначе не узнал
+// бы, что справа занято). Ничего не меняет в самой панели, только сообщает, сколько px справа
+// окна она реально занимает прямо сейчас (0 — если закрыта или для другого окна).
+export function getAiPanelReservedWidth(win: BrowserWindow): number {
+  return (isOpen && attachedWin === win) ? PANEL_WIDTH + GUTTER * 2 : 0
+}
+
 // Регистрируется один раз, лениво — на первое открытие панели, не на старте.
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return
