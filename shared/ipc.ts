@@ -1,6 +1,8 @@
 // Единый источник правды по форме данных, которыми обмениваются
 // renderer (хром-UI) и main (движок вкладок). Импортируется обеими сторонами.
 
+import type { SearchEngineId } from './searchEngines';
+
 // ── Узлы сайдбара ─────────────────────────────────────────────────────────────
 // Дискриминированное объединение для трёх типов узлов.
 // Phase 0: создаются только SingleNode.
@@ -175,6 +177,10 @@ export const IPC = {
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
+
+  // Настройки (пока только поисковик по умолчанию, см. SettingsManager.ts)
+  SETTINGS_GET_SEARCH_ENGINE: 'settings:get-search-engine', // renderer → main: текущий SearchEngineId
+  SETTINGS_SET_SEARCH_ENGINE: 'settings:set-search-engine', // renderer → main: сменить движок поиска
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -343,6 +349,10 @@ export interface OblakoApi {
 
   // Правая AI-панель (оверлей поверх контента, см. AiPanelManager.ts)
   toggleAiPanel(): Promise<boolean>;
+
+  // Настройки
+  getSearchEngine(): Promise<SearchEngineId>;
+  setSearchEngine(id: SearchEngineId): Promise<void>;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;

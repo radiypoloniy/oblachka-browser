@@ -3,6 +3,8 @@ import type { MenuItemConstructorOptions, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction } from '../shared/ipc';
 import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef } from './SessionManager';
+import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
+import type { SearchEngineId } from '../shared/searchEngines';
 
 const CLOSED_STACK_MAX = 10;
 
@@ -34,9 +36,6 @@ function truncate(text: string, max = 40): string {
   const s = text.trim().replace(/\s+/g, ' ');
   return s.length > max ? s.slice(0, max) + '…' : s;
 }
-
-// Поисковик по умолчанию — DuckDuckGo (приватный), как в спеке (3.2).
-const SEARCH_URL = (q: string) => `https://duckduckgo.com/?q=${encodeURIComponent(q)}`;
 
 // id вкладки-хаба фиксирован: это НЕ WebContentsView, а наш React-экран.
 export const HUB_ID = 'hub';
@@ -108,6 +107,10 @@ export class TabManager {
 
   private activeId: string = HUB_ID;
   private bounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
+  // Поисковик для omnibox-навигации и ПКМ-поиска — единый источник для обеих точек.
+  // Применяется извне через setSearchEngine() сразу после конструктора (см. main.ts,
+  // SettingsManager) и при смене настройки — сам TabManager настройку не персистирует.
+  private searchEngineId: SearchEngineId = DEFAULT_SEARCH_ENGINE_ID;
   private onChange: () => void;
   private onFindResultCb: (r: FindResult) => void;
   private onFindOpenCb: () => void;
@@ -181,6 +184,11 @@ export class TabManager {
     this.startSleepTimer();
   }
 
+  // Меняет движок для omnibox-навигации и ПКМ-поиска (единый источник для обеих точек).
+  setSearchEngine(id: SearchEngineId): void {
+    this.searchEngineId = id;
+  }
+
   // ── Парсинг omnibox: это URL или поисковый запрос ──
   // Явные правила из спеки (3.7). Edge-кейсы лучше прописать заранее.
   private resolveInput(input: string): string {
@@ -194,7 +202,7 @@ export class TabManager {
       /^(\d{1,3}\.){3}\d{1,3}(:\d+)?(\/.*)?$/.test(s) ||
       (!/\s/.test(s) && /\.[a-z]{2,}(:\d+)?(\/.*)?$/i.test(s));
     if (looksLikeHost) return `https://${s}`;
-    return SEARCH_URL(s);
+    return getSearchEngine(this.searchEngineId).buildUrl(s);
   }
 
   private isHttpView(view: WebContentsView | null): view is WebContentsView {
@@ -885,6 +893,7 @@ export class TabManager {
 
     wc.on('context-menu', (_e, p) => {
       const items: MenuItemConstructorOptions[] = [];
+      const engine = getSearchEngine(this.searchEngineId);
 
       // ── Ссылка ──────────────────────────────────────────────────────────────
       if (p.linkURL) {
@@ -919,8 +928,8 @@ export class TabManager {
         if (p.selectionText.trim()) {
           items.push({ type: 'separator' });
           items.push({
-            label: `Поиск «${truncate(p.selectionText)}» в DuckDuckGo`,
-            click: () => this.createTab(SEARCH_URL(p.selectionText)),
+            label: `Поиск «${truncate(p.selectionText)}» в ${engine.name}`,
+            click: () => this.createTab(engine.buildUrl(p.selectionText)),
           });
         }
       } else if (p.selectionText.trim()) {
@@ -929,8 +938,8 @@ export class TabManager {
         items.push(
           { role: 'copy' },
           {
-            label: `Поиск «${truncate(p.selectionText)}» в DuckDuckGo`,
-            click: () => this.createTab(SEARCH_URL(p.selectionText)),
+            label: `Поиск «${truncate(p.selectionText)}» в ${engine.name}`,
+            click: () => this.createTab(engine.buildUrl(p.selectionText)),
           },
         );
         if (this.onAiActionCb) {

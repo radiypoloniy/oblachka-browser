@@ -11,8 +11,10 @@ import { AdBlockManager } from './AdBlockManager';
 import { HistoryManager } from './HistoryManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
+import { SettingsManager } from './SettingsManager';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster } from '../shared/ipc';
+import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
@@ -104,6 +106,7 @@ const adblock     = new AdBlockManager();
 const history     = new HistoryManager();
 const downloads   = new DownloadManager();
 const permissions = new PermissionManager();
+const settings    = new SettingsManager();
 
 function createWindow() {
   win = new BrowserWindow({
@@ -208,6 +211,8 @@ function createWindow() {
     () => closeTranslatePopoverOnTabSwitch(),
     (wc) => closeTranslatePopoverForClosedTab(wc),
   );
+  // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
+  tabs.setSearchEngine(settings.getSearchEngine());
   // Единственная точка, где AiPanelManager получает доступ к вкладкам — только для чтения
   // WebContents активной вкладки при извлечении текста страницы в чат (Заход 4), см.
   // TabManager.getActiveWebContents(). Не влияет на управление вкладками.
@@ -375,6 +380,13 @@ function registerIpc() {
   ipcMain.handle(IPC.ADBLOCK_ADD_DOMAIN,     (_e, d: string)       => adblock.addDomain(d));
   ipcMain.handle(IPC.ADBLOCK_REMOVE_DOMAIN,  (_e, d: string)       => adblock.removeDomain(d));
   ipcMain.handle(IPC.ADBLOCK_RELOAD_TABS,    (_e, d?: string)      => tabs?.reloadTabsForDomain(d));
+
+  // Настройки
+  ipcMain.handle(IPC.SETTINGS_GET_SEARCH_ENGINE, () => settings.getSearchEngine());
+  ipcMain.handle(IPC.SETTINGS_SET_SEARCH_ENGINE, (_e, id: SearchEngineId) => {
+    settings.setSearchEngine(id);
+    tabs?.setSearchEngine(id);
+  });
 
   // История посещений
   ipcMain.handle(IPC.HISTORY_GET,    (_e, limit?: number)           => history.getRecent(limit));

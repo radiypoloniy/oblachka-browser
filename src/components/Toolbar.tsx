@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Globe, Download } from 'lucide-react';
 import type { TabState, HistoryEntry } from '../../shared/ipc';
 import { normalizeForTiles, scoreEntry } from '../../shared/frecency';
+import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
+import type { SearchEngineId } from '../../shared/searchEngines';
 
 // Высота тулбара — должна совпадать с CSS-значением (56px).
 const TOOLBAR_HEIGHT = 56;
@@ -95,6 +97,15 @@ export default function Toolbar({
   const inputRef = externalRef ?? internalRef;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+
+  // Текущий выбранный поисковик — источник истины в main (SettingsManager); здесь только
+  // читаем id и строим URL по общему шаблону (shared/searchEngines.ts), не хардкодим движок.
+  const [searchEngineId, setSearchEngineId] = useState<SearchEngineId>(DEFAULT_SEARCH_ENGINE_ID);
+  useEffect(() => {
+    let mounted = true;
+    window.oblako.getSearchEngine().then((id) => { if (mounted) setSearchEngineId(id); });
+    return () => { mounted = false; };
+  }, []);
 
   // Измеряем ширину тулбара для расчёта режима VPN и ширины омнибокса.
   useEffect(() => {
@@ -198,7 +209,7 @@ export default function Toolbar({
     const searchItem: SuggestItem = {
       kind: 'search',
       label: `Искать: ${query}`,
-      url: `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
+      url: getSearchEngine(searchEngineId).buildUrl(query),
     };
 
     const tabUrls = new Set(tabItems.map((t) => t.url));
@@ -210,7 +221,7 @@ export default function Toolbar({
     setSuggestions(deduped);
     setSelectedIdx(-1);
     openDropdown();
-  }, [allTabs, openDropdown, closeDropdown]);
+  }, [allTabs, openDropdown, closeDropdown, searchEngineId]);
 
   const triggerSuggest = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

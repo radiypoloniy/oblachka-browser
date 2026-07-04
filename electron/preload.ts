@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster } from '../shared/ipc';
+import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
 const EMBED_PRELOAD = process.env.OBLAKO_PRELOAD_EMBED !== '0';
@@ -152,6 +153,10 @@ const api: OblakoApi = {
 
   // Правая AI-панель
   toggleAiPanel: () => ipcRenderer.invoke(IPC.AI_PANEL_TOGGLE) as Promise<boolean>,
+
+  // Настройки
+  getSearchEngine: () => ipcRenderer.invoke(IPC.SETTINGS_GET_SEARCH_ENGINE) as Promise<SearchEngineId>,
+  setSearchEngine: (id: SearchEngineId) => ipcRenderer.invoke(IPC.SETTINGS_SET_SEARCH_ENGINE, id) as Promise<void>,
 
   embedPreload: EMBED_PRELOAD,
 };
