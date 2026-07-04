@@ -8,9 +8,14 @@ import { WebContentsView, ipcMain } from 'electron'
 import type { BrowserWindow, IpcMainEvent, WebContents } from 'electron'
 import path from 'node:path'
 import { readFileSync } from 'node:fs'
+import TurndownService from 'turndown'
 import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
 import type { TabState } from '../shared/ipc'
 import type { TabManager } from './TabManager'
+
+// html→markdown ТОЛЬКО для ветки чата (см. extractPageText/buildFirstTurnPrompt ниже) —
+// перевод (quick-translate) продолжает получать plain text, turndown его не касается.
+const turndownService = new TurndownService()
 
 const PANEL_WIDTH = 360
 // Держать в синхроне с TOOLBAR_HEIGHT в src/components/Toolbar.tsx — панель начинается СРАЗУ
@@ -58,6 +63,10 @@ interface TabChatContext {
   // Заход 4: null = ещё не извлекали (извлечём лениво на первое сообщение); '' = извлекли, но
   // пусто/не удалось — тоже НЕ извлекаем повторно, отличать от null через строгую проверку.
   pageText: string | null
+  // Markdown-версия ТОГО ЖЕ извлечения (этот заход) — используется только чатом
+  // (buildFirstTurnPrompt), quick-translate её не читает. null = либо ещё не извлекали
+  // (см. pageText), либо Readability не удалась/html не было — тогда чат берёт pageText как есть.
+  pageMarkdown: string | null
 }
 
 const tabContexts = new Map<string, TabChatContext>()
@@ -68,7 +77,7 @@ let activeTabTitle = ''
 function getOrCreateContext(id: string, url: string): TabChatContext {
   let ctx = tabContexts.get(id)
   if (!ctx) {
-    ctx = { messages: [], history: [], url, pageText: null }
+    ctx = { messages: [], history: [], url, pageText: null, pageMarkdown: null }
     tabContexts.set(id, ctx)
   }
   return ctx
@@ -102,17 +111,21 @@ const READABILITY_MIN_RATIO = 0.15
 // Инжектируемый скрипт всегда считает ОБА варианта (readability + весь innerText) — решение, какой
 // использовать, и оба порога живут в extractPageText (main), а не зашиты в саму строку скрипта:
 // подкручивать READABILITY_MIN_CHARS/RATIO не нужно трогать генерацию скрипта.
+// articleHtml (этот заход) — article.content, HTML статьи, который parse() и так вычисляет, но
+// раньше просто выбрасывался. readabilityText/fullText — поля прежние, не тронуты.
 function buildExtractionScript(): string {
   return `(function(){
     ${getReadabilitySource()}
     var readabilityText = '';
+    var articleHtml = '';
     try {
       var docClone = document.cloneNode(true);
       var article = new Readability(docClone).parse();
       readabilityText = (article && article.textContent) ? article.textContent.trim() : '';
-    } catch (e) { readabilityText = ''; }
+      articleHtml = (article && article.content) ? article.content : '';
+    } catch (e) { readabilityText = ''; articleHtml = ''; }
     var fullText = document.body ? document.body.innerText : '';
-    return { readabilityText: readabilityText, fullText: fullText };
+    return { readabilityText: readabilityText, fullText: fullText, articleHtml: articleHtml };
   })()`
 }
 
@@ -127,13 +140,22 @@ function buildExtractionScript(): string {
 // (n_ctx=43520 - text budget здесь ~8-10k ток. = десятки тысяч токенов на диалог).
 const PAGE_TEXT_MAX_CHARS = 28000
 
-async function extractPageText(wc: WebContents | null): Promise<string> {
-  if (!wc || wc.isDestroyed()) return ''
+// Результат извлечения: text — как раньше (readability либо fallback-innerText, обрезан по
+// лимиту), markdown — ТОЛЬКО для ветки чата (см. вызовы ниже), null если Readability не удалась
+// (fallback) или article.content пуст — тогда чат берёт text как есть, markdown не форсируем.
+interface ExtractedPage {
+  text: string
+  markdown: string | null
+}
+
+async function extractPageText(wc: WebContents | null): Promise<ExtractedPage> {
+  if (!wc || wc.isDestroyed()) return { text: '', markdown: null }
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: any = await wc.executeJavaScript(buildExtractionScript(), true)
     const readabilityText: string = typeof result?.readabilityText === 'string' ? result.readabilityText : ''
     const fullText: string = typeof result?.fullText === 'string' ? result.fullText : ''
+    const articleHtml: string = typeof result?.articleHtml === 'string' ? result.articleHtml : ''
 
     // «Не справилась»: коротко в абсолютных цифрах (пусто/почти пусто) ИЛИ подозрительно мало
     // относительно всего текста страницы (Reddit-кейс — формально не пусто, но огрызок).
@@ -143,15 +165,28 @@ async function extractPageText(wc: WebContents | null): Promise<string> {
 
     const text = (readabilityFailed ? fullText : readabilityText).slice(0, PAGE_TEXT_MAX_CHARS)
 
+    // Markdown — только когда Readability реально удалась И html статьи есть. Обрезаем ПОСЛЕ
+    // конвертации (markdown чуть длиннее plain text за счёт разметки — лимит должен быть на
+    // итоговой строке, не до turndown).
+    let markdown: string | null = null
+    if (!readabilityFailed && articleHtml) {
+      try {
+        markdown = turndownService.turndown(articleHtml).trim().slice(0, PAGE_TEXT_MAX_CHARS)
+      } catch (e) {
+        console.error('[ai-panel] html→markdown упало:', e)
+        markdown = null
+      }
+    }
+
     if (readabilityFailed) {
       console.log(`[ai-panel] извлечение: fallback (readability слишком мало: ${readabilityText.length} из ${fullText.length}) ${text.length} симв.`)
     } else {
-      console.log(`[ai-panel] извлечение: readability ${text.length} симв.`)
+      console.log(`[ai-panel] извлечение: readability ${text.length} симв.` + (markdown ? `, markdown ${markdown.length} симв.` : ', markdown недоступен'))
     }
-    return text
+    return { text, markdown }
   } catch (e) {
     console.error('[ai-panel] извлечение текста страницы упало:', e)
-    return ''
+    return { text: '', markdown: null }
   }
 }
 
@@ -201,6 +236,7 @@ export function onTabsSynced(tabsSnapshot: TabState[]): void {
     ctx.messages = []
     ctx.history = []
     ctx.pageText = null // другая страница — извлечём заново при следующем вопросе (лениво)
+    ctx.pageMarkdown = null
     urlChanged = true
   }
 
@@ -270,9 +306,12 @@ function ensureIpcRegistered(): void {
       let promptText = text
       if (needsExtraction) {
         const extracted = await extractPageText(pageWc)
-        ctx.pageText = extracted
-        promptText = buildFirstTurnPrompt(extracted, title, text)
-        console.log(`[ai-panel] текст страницы извлечён: ${extracted.length} симв. (лимит ${PAGE_TEXT_MAX_CHARS})`)
+        ctx.pageText = extracted.text
+        ctx.pageMarkdown = extracted.markdown
+        // Чат получает markdown, когда Readability реально удалась и html был; иначе — тот же
+        // plain text, что и раньше (fallback/форумы — markdown не форсируем).
+        promptText = buildFirstTurnPrompt(extracted.markdown ?? extracted.text, title, text)
+        console.log(`[ai-panel] текст страницы извлечён: ${extracted.text.length} симв. (лимит ${PAGE_TEXT_MAX_CHARS})`)
       }
 
       const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
@@ -309,9 +348,12 @@ function ensureIpcRegistered(): void {
 
     void (async () => {
       if (needsExtraction) {
-        ctx.pageText = await extractPageText(pageWc)
+        const extracted = await extractPageText(pageWc)
+        ctx.pageText = extracted.text
+        ctx.pageMarkdown = extracted.markdown
         console.log(`[ai-panel] текст страницы извлечён: ${ctx.pageText.length} симв. (лимит ${PAGE_TEXT_MAX_CHARS})`)
       }
+      // Перевод остаётся на plain text — markdown (ctx.pageMarkdown) сюда намеренно не идёт.
       const pageText = ctx.pageText ?? ''
       // Пустая страница (хаб / извлечение не удалось) — buildPrompt тут неуместен (нечего
       // переводить), просто просим модель ответить без текста-заглушки.
