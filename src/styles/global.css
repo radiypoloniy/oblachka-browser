@@ -25,3 +25,9 @@ body {
 /* Зона перетаскивания окна (кастомный titlebar) */
 .drag { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
+
+/* Одиночные иконки-кнопки (сайдбар: свернуть/история/настройки/+) — раньше без hover вообще,
+   единственная обратная связь была смена курсора. Строки вкладок (TabRow) уже hover через
+   JS-state (там ещё нужен hover для условных кнопок split/close) — здесь проще и достаточно CSS. */
+.icon-btn { transition: background var(--dur-fast) var(--ease-standard); }
+.icon-btn:hover { background: var(--surface-hover); }

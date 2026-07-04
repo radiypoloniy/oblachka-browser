@@ -596,11 +596,20 @@ function SortableGroupBlock({
   );
 }
 
+// Частичный остров (заход): воздух сверху/снизу/слева через margin (--gutter-shell), высота —
+// НЕ фикс. height:100% (тот вместе с margin переполнил бы флекс-строку и обрезался бы снизу
+// родительским overflow:hidden в App.tsx) — вместо этого убрали height и отдали расчёт дефолтному
+// align-items:stretch родителя, который сам вычитает margin-top/bottom из доступной высоты.
+// Справа — воздуха нет (borderRadius только у левых углов): та сторона всё ещё вплотную к контенту
+// (bounds WebContentsView в этом заходе не трогаем, см. CLAUDE.md/задачу), полный остров — отдельный
+// будущий заход. Тень/скругление — токены из shadows.css/radii.css («Use for islands»), не свои.
 const asideBase: React.CSSProperties = {
-  flex: 'none', height: '100%', display: 'flex', flexDirection: 'column',
+  flex: 'none', display: 'flex', flexDirection: 'column',
+  margin: 'var(--gutter-shell) 0 var(--gutter-shell) var(--gutter-shell)',
+  borderRadius: 'var(--radius-island) 0 0 var(--radius-island)',
   background: 'var(--surface-island)',
   backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
-  boxShadow: 'inset -1px 0 0 var(--glass-edge)',
+  boxShadow: 'var(--shadow-island)',
   overflow: 'hidden',
 };
 
@@ -857,7 +866,7 @@ export default function Sidebar({
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: 14 }}>
           <button
-            className="no-drag"
+            className="no-drag icon-btn"
             onClick={() => onCollapsedChange(false)}
             title="Развернуть панель"
             style={{ ...iconBtn, transform: 'scaleX(-1)' }}
@@ -907,9 +916,9 @@ export default function Sidebar({
         </div>
 
         <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <button title="Новая вкладка" style={iconBtn} onClick={onNewTab}><Plus size={17} /></button>
-          <button title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
-          <button title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
+          <button className="icon-btn" title="Новая вкладка" style={iconBtn} onClick={onNewTab}><Plus size={17} /></button>
+          <button className="icon-btn" title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
+          <button className="icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
         </div>
       </aside>
     );
@@ -917,11 +926,11 @@ export default function Sidebar({
 
   // ── Развёрнутый режим с drag-and-drop ──
   return (
-    <aside className="drag" style={{ ...asideBase, width: 256, padding: '12px 12px 14px' }}>
+    <aside className="drag" style={{ ...asideBase, width: 256, padding: '14px 12px 14px 14px' }}>
 
       {/* Шапка */}
       <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0 14px' }}>
-        <button className="no-drag" onClick={() => onCollapsedChange(true)} title="Свернуть панель" style={iconBtn}>
+        <button className="no-drag icon-btn" onClick={() => onCollapsedChange(true)} title="Свернуть панель" style={iconBtn}>
           <PanelLeft size={17} />
         </button>
       </div>
@@ -1207,8 +1216,8 @@ export default function Sidebar({
           <Plus size={17} />
           <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>Новая вкладка</span>
         </button>
-        <button className="no-drag" title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
-        <button className="no-drag" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
+        <button className="no-drag icon-btn" title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
+        <button className="no-drag icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
       </div>
     </aside>
   );
