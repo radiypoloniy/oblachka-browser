@@ -28,7 +28,6 @@ const SHADOW_MARGIN = 20
 let findBarView: WebContentsView | null = null
 let attachedWin: BrowserWindow | null = null
 let resizeBoundWin: BrowserWindow | null = null
-let isOpen = false
 let ipcRegistered = false
 // Последняя геометрия КОНТЕНТНОЙ зоны (не окна) — приходит из App.tsx::pushBounds через тот же
 // CONTENT_SET_BOUNDS, что двигает активную вкладку. Уже учитывает сайдбар (renderer меряет
@@ -56,9 +55,21 @@ function computeBounds(): { x: number; y: number; width: number; height: number 
   return result
 }
 
+// Единственный источник истины «открыта ли панель» — реальное присутствие findBarView среди
+// детей contentView (тот же приём, что applySplitBounds/activate используют для вкладок:
+// children.includes(view) перед addChildView). Раньше решение о show/close/refocus держалось на
+// отдельном булевом isOpen, который мог разойтись с реальностью (если removeChildView не сработал
+// по неучтённой причине) — тогда showFindBar() слепо доверял isOpen===true и выходил через
+// refocus-ветку, ни разу не вызывая addChildView повторно: панель не появлялась, пока что-то
+// постороннее (навигация → did-navigate → closeFindBar) случайно не приводило флаг в соответствие
+// с фактом. Теперь флага нет вообще — факт и есть состояние.
+function isAttached(): boolean {
+  return !!findBarView && !!attachedWin && attachedWin.contentView.children.includes(findBarView)
+}
+
 function layoutFindBar(): void {
-  if (!findBarView || !isOpen) return
-  findBarView.setBounds(computeBounds())
+  if (!isAttached()) return
+  findBarView!.setBounds(computeBounds())
 }
 
 // Вызывается из main.ts на каждый CONTENT_SET_BOUNDS (ресайз окна, сворачивание/разворот
@@ -120,7 +131,9 @@ export function showFindBar(win: BrowserWindow): void {
     resizeBoundWin = win
   }
 
-  if (isOpen) {
+  // Решение «уже открыта → перефокусировать» или «нужно открыть» — по факту прикрепления
+  // вью (isAttached()), не по флагу: тем самым эта проверка не может разойтись с реальностью.
+  if (isAttached()) {
     findBarView?.webContents.send('findbar:refocus')
     findBarView?.webContents.focus()
     return
@@ -130,7 +143,6 @@ export function showFindBar(win: BrowserWindow): void {
   const view = ensureFindBarView()
   view.setBounds(computeBounds())
   win.contentView.addChildView(view) // последней → нативный z-order поверх уже добавленной вкладки
-  isOpen = true
   if (!firstTime) {
     // View уже когда-то загружался — did-finish-load повторно не сработает, шлём explicit сигнал
     // (аналог sendCurrentContext-при-повторном-открытии в AiPanelManager.toggleAiPanel).
@@ -145,16 +157,20 @@ export function relayoutFindBar(): void {
   layoutFindBar()
 }
 
+// Ничего не возвращает и не хранит отдельный флаг — просто приводит реальное прикрепление к
+// «откреплено», если оно ещё не такое. Идемпотентна: повторный вызов на уже открепленной вью —
+// no-op (isAttached() уже false, до removeChildView дело не доходит).
 export function closeFindBar(): void {
-  if (!findBarView || !isOpen) return
-  if (attachedWin) {
-    try { attachedWin.contentView.removeChildView(findBarView) } catch { /* окно могло уже закрыться */ }
-  }
-  isOpen = false
+  if (!isAttached()) return
+  try { attachedWin!.contentView.removeChildView(findBarView!) } catch { /* окно могло уже закрыться */ }
+  // Не считаем закрытие успешным вслепую: если removeChildView по какой-то неучтённой причине
+  // не открепил вью, isAttached() это тут же покажет — состояние остаётся консистентным с фактом
+  // (следующий showFindBar() увидит isAttached()===true и просто перефокусирует, а не «потеряется»).
 }
 
 // Результат findInPage — пробрасываем в НАШУ view вместо chromeView (единственное изменение в
-// самой трубе поиска: куда идёт push, а не как считается результат).
+// самой трубе поиска: куда идёт push, а не как считается результат). Шлём, только если панель
+// реально видна — та же проверка по факту, что и везде в этом модуле.
 export function sendFindResult(r: FindResult): void {
-  if (findBarView && isOpen) findBarView.webContents.send(IPC.FIND_RESULT, r)
+  if (isAttached()) findBarView!.webContents.send(IPC.FIND_RESULT, r)
 }
