@@ -907,6 +907,13 @@ export class TabManager {
       // ── Редактируемое поле ───────────────────────────────────────────────────
       // isEditable обрабатываем ДО selectionText: cut/copy/paste — главное для инпутов.
       if (p.isEditable) {
+        // Орфография: варианты исправления, только если под курсором реально опечатка.
+        if (p.misspelledWord && p.dictionarySuggestions.length) {
+          if (items.length) items.push({ type: 'separator' });
+          for (const suggestion of p.dictionarySuggestions) {
+            items.push({ label: suggestion, click: () => wc.replaceMisspelling(suggestion) });
+          }
+        }
         if (items.length) items.push({ type: 'separator' });
         items.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' });
         if (p.selectionText.trim()) {

@@ -141,6 +141,9 @@ function createWindow() {
   layoutChrome();
   win.on('resize', layoutChrome);
 
+  // Орфография (ru+en): одна сессия на все вкладки — одного вызова достаточно.
+  session.defaultSession.setSpellCheckerLanguages(['ru', 'en-US']);
+
   // Перехватываем все загрузки на дефолтной сессии (вкладки partition не задают).
   downloads.attach(session.defaultSession, (entries) => {
     chromeView?.webContents.send(IPC.DOWNLOADS_CHANGED, entries);
