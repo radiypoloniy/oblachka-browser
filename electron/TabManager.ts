@@ -12,6 +12,12 @@ const ZOOM_STEP = 0.1; // 10% за шаг, как в Chrome
 
 // Ширина зазора между split-панелями (px). Должна совпадать с SPLIT_GAP в App.tsx.
 const SPLIT_GAP = 8;
+
+// Радиус скругления углов контентной вью (px). Должен совпадать с --radius-island
+// в src/styles/tokens/radii.css — то же скругление, что у сайдбара/панелей острова.
+// setBorderRadius — чисто визуальный вырез; хит-тест углов остаётся прямоугольным
+// (штатное поведение Electron View.setBorderRadius, не дефект — см. заход).
+const CONTENT_CORNER_RADIUS = 18;
 const SPLIT_RATIO_MIN = 0.2;
 const SPLIT_RATIO_MAX = 0.8;
 
@@ -1979,6 +1985,7 @@ export class TabManager {
       width: Math.max(0, Math.round(b.width)),
       height: Math.max(0, Math.round(b.height)),
     });
+    tab.view.setBorderRadius(CONTENT_CORNER_RADIUS);
   }
 
   private applyBounds(view: WebContentsView) {
@@ -1988,5 +1995,6 @@ export class TabManager {
       width: Math.max(0, Math.round(width)),
       height: Math.max(0, Math.round(height)),
     });
+    view.setBorderRadius(CONTENT_CORNER_RADIUS);
   }
 }
