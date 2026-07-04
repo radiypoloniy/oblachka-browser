@@ -595,17 +595,17 @@ function SortableGroupBlock({
   );
 }
 
-// Частичный остров (заход): воздух сверху/снизу/слева через margin (--gutter-shell), высота —
+// Полный остров: воздух сверху/снизу/слева через margin (--gutter-shell), высота —
 // НЕ фикс. height:100% (тот вместе с margin переполнил бы флекс-строку и обрезался бы снизу
 // родительским overflow:hidden в App.tsx) — вместо этого убрали height и отдали расчёт дефолтному
 // align-items:stretch родителя, который сам вычитает margin-top/bottom из доступной высоты.
-// Справа — воздуха нет (borderRadius только у левых углов): та сторона всё ещё вплотную к контенту
-// (bounds WebContentsView в этом заходе не трогаем, см. CLAUDE.md/задачу), полный остров — отдельный
-// будущий заход. Тень/скругление — токены из shadows.css/radii.css («Use for islands»), не свои.
+// Справа margin нет — контент теперь сам отступает от сайдбара своим собственным margin
+// (src/App.tsx, contentRef), поэтому граница ровно совпадает без удвоения зазора; скругление —
+// все четыре угла (--radius-island), т.к. контент больше не примыкает вплотную.
 const asideBase: React.CSSProperties = {
   flex: 'none', display: 'flex', flexDirection: 'column',
   margin: 'var(--gutter-shell) 0 var(--gutter-shell) var(--gutter-shell)',
-  borderRadius: 'var(--radius-island) 0 0 var(--radius-island)',
+  borderRadius: 'var(--radius-island)',
   background: 'var(--surface-island)',
   backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
   boxShadow: 'var(--shadow-island)',

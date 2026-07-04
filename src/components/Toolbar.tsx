@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Moon, Copy, Check, Globe, Download } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Globe, Download } from 'lucide-react';
 import type { TabState, HistoryEntry } from '../../shared/ipc';
 import { normalizeForTiles, scoreEntry } from '../../shared/frecency';
 
@@ -75,8 +75,10 @@ interface ToolbarProps {
 // ── Компонент ─────────────────────────────────────────────────────────────────
 
 export default function Toolbar({
-  tab, allTabs, vpnOn, dark, omniboxRef: externalRef,
-  onToggleVpn, onToggleDark, onBack, onForward, onReload, onSubmit, onSuggestToggle,
+  // dark/onToggleDark остаются в контракте пропсов (механизм темы не трогаем,
+  // см. задачу) — сама кнопка убрана из разметки, поэтому здесь они не нужны.
+  tab, allTabs, vpnOn, omniboxRef: externalRef,
+  onToggleVpn, onBack, onForward, onReload, onSubmit, onSuggestToggle,
   downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
@@ -286,13 +288,17 @@ export default function Toolbar({
       ref={toolbarRef}
       className="drag"
       style={{
-        display: 'flex', alignItems: 'center', gap: 10, height: TOOLBAR_HEIGHT, flex: 'none',
-        paddingLeft: 16, paddingRight: 138,
+        // alignItems:'flex-start' + paddingTop:--gutter-shell — верхняя кромка плашек-островов
+        // совпадает с верхней кромкой сайдбара-острова (тот же токен воздуха). Высота контейнера
+        // (TOOLBAR_HEIGHT) не меняется — плашки просто прижаты к верху вместо центрирования.
+        display: 'flex', alignItems: 'flex-start', gap: 10, height: TOOLBAR_HEIGHT, flex: 'none',
+        paddingLeft: 16, paddingRight: 138, paddingTop: 'var(--gutter-shell)',
         position: 'relative',
       }}
     >
-      {/* Кнопки навигации */}
-      <div className="no-drag" style={{ display: 'flex', gap: 2 }}>
+      {/* Кнопки навигации — парящая плашка-остров (glass/тень/скругление из поповера/AI-панели).
+          Вписана в текущую высоту тулбара: паддинг плашки не увеличивает высоту кнопок. */}
+      <div className="no-drag" style={{ ...islandPlate, display: 'flex', gap: 2, padding: 3, borderRadius: 'var(--radius-card)' }}>
         <button title="Назад" disabled={!tab?.canGoBack} onClick={onBack}
           style={navBtn(!tab?.canGoBack)}><ArrowLeft size={18} /></button>
         <button title="Вперёд" disabled={!tab?.canGoForward} onClick={onForward}
@@ -308,8 +314,11 @@ export default function Toolbar({
         position: 'absolute',
         left: '50%',
         transform: 'translateX(-50%)',
-        top: 0, bottom: 0,
-        display: 'flex', alignItems: 'center',
+        // top сдвинут на --gutter-shell + flex-start — та же верхняя кромка, что и у
+        // остальных плашек тулбара (омнибокс абсолютно спозиционирован и не участвует
+        // в общем flex-потоке, поэтому выравнивается отдельно тем же токеном).
+        top: 'var(--gutter-shell)', bottom: 0,
+        display: 'flex', alignItems: 'flex-start',
         width: omniboxWidth,
         pointerEvents: 'none',
       }}>
@@ -318,10 +327,9 @@ export default function Toolbar({
           style={{ width: '100%', position: 'relative', pointerEvents: 'auto' }}
         >
           <div style={{
+            ...islandPlate,
             display: 'flex', alignItems: 'center', gap: 8, height: 38,
             padding: '0 12px', borderRadius: 'var(--radius-pill)',
-            background: 'var(--surface-sunken)',
-            boxShadow: 'inset 0 0 0 1px var(--divider)',
           }}>
             <span style={{ color: 'var(--text-faint)', display: 'inline-flex' }}>
               {isHub ? <Search size={15} /> : <Lock size={14} />}
@@ -382,17 +390,19 @@ export default function Toolbar({
         })()}
       </div>
 
-      {/* Правая группа: VPN-пилюля (схлопывается) + AI + тема.
+      {/* Правая группа: VPN-пилюля (схлопывается) + AI + адблок.
           marginLeft:auto прижимает к правому краю flex-контейнера. */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
         <VpnPill vpnOn={vpnOn} mode={vpnMode} onClick={onToggleVpn} />
         <button title="AI-хаб" onClick={onToggleAiPanel}
-          style={{ ...navBtn(false), background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+          style={islandBtn('var(--accent)', 'var(--accent-soft)')}>
           <Sparkles size={18} />
         </button>
-        <button title="Тема" onClick={onToggleDark}
-          style={{ ...navBtn(false), color: dark ? 'var(--accent)' : 'var(--text-muted)' }}>
-          <Moon size={18} />
+        {/* Иконка адблока — ПОКА чисто визуальная заглушка, без подключения к логике
+            (см. задачу: в исключениях адблока сейчас незакрытый баг, подключать рано). */}
+        <button title="Адблок" onClick={() => {}}
+          style={islandBtn()}>
+          <Ban size={18} />
         </button>
         {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки */}
         <button
@@ -423,17 +433,19 @@ function VpnPill({ vpnOn, mode, onClick }: { vpnOn: boolean; mode: VpnMode; onCl
     : null;
 
   if (mode === 'icon') {
-    // Только щит + цветная точка (если VPN включён).
+    // Только щит + цветная точка (если VPN включён). Плашка-остров всегда,
+    // включён/выключен различает только тон фона (surface / surface-sunken).
     return (
       <button
         onClick={onClick}
         title={vpnOn ? 'VPN включён' : 'VPN выкл.'}
         style={{
           ...navBtn(false),
+          ...islandPlate,
           position: 'relative',
           color: shieldColor,
-          background: vpnOn ? 'var(--surface)' : 'transparent',
-          boxShadow: vpnOn ? 'var(--shadow-card)' : 'none',
+          background: vpnOn ? 'var(--surface)' : 'var(--surface-sunken)',
+          borderRadius: 'var(--radius-card)',
         }}
       >
         <Shield size={15} />
@@ -449,16 +461,16 @@ function VpnPill({ vpnOn, mode, onClick }: { vpnOn: boolean; mode: VpnMode; onCl
   }
 
   if (mode === 'short') {
-    // «VPN» + индикатор — без страны.
+    // «VPN» + индикатор — без страны. Плашка-остров всегда, вкл/выкл — тон фона.
     return (
       <button
         onClick={onClick}
         title={vpnOn ? 'VPN · Финляндия' : 'VPN выкл.'}
         style={{
+          ...islandPlate,
           display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 10px',
-          borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'default',
+          borderRadius: 'var(--radius-pill)', cursor: 'default',
           background: vpnOn ? 'var(--surface)' : 'var(--surface-sunken)',
-          boxShadow: vpnOn ? 'var(--shadow-card)' : 'none',
           fontSize: 'var(--fs-sm)', fontWeight: 500,
           color: vpnOn ? 'var(--text-strong)' : 'var(--text-muted)',
         }}
@@ -470,16 +482,16 @@ function VpnPill({ vpnOn, mode, onClick }: { vpnOn: boolean; mode: VpnMode; onCl
     );
   }
 
-  // full — полный лейбл.
+  // full — полный лейбл. Та же плашка-остров, шире под текст.
   return (
     <button
       onClick={onClick}
       title="VPN"
       style={{
+        ...islandPlate,
         display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 12px',
-        borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'default',
+        borderRadius: 'var(--radius-pill)', cursor: 'default',
         background: vpnOn ? 'var(--surface)' : 'var(--surface-sunken)',
-        boxShadow: vpnOn ? 'var(--shadow-card)' : 'none',
         fontSize: 'var(--fs-sm)', fontWeight: 500,
         color: vpnOn ? 'var(--text-strong)' : 'var(--text-muted)',
       }}
@@ -538,6 +550,28 @@ function SuggestRow({ item, active, onMouseDown, onMouseEnter }: {
       )}
     </div>
   );
+}
+
+// ── Плавающие плашки-острова тулбара ──────────────────────────────────────────
+// Параметры стекла/тени/скругления не подбираются заново — те же, что уже
+// отлажены в поповере/AI-панели (surface + glass-filter + shadow-card + glass-edge).
+// Вписаны в текущую высоту тулбара (TOOLBAR_HEIGHT не меняется).
+const islandPlate: React.CSSProperties = {
+  background: 'var(--surface)',
+  backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
+  boxShadow: 'var(--shadow-card)',
+  border: '1px solid var(--glass-edge)',
+};
+
+// Одиночная кнопка-остров (AI, адблок) — тот же islandPlate, компактный размер как у navBtn.
+function islandBtn(color?: string, bg?: string): React.CSSProperties {
+  return {
+    ...navBtn(false),
+    ...islandPlate,
+    color: color ?? 'var(--text-muted)',
+    background: bg ?? 'var(--surface)',
+    borderRadius: 'var(--radius-card)',
+  };
 }
 
 // ── Стиль кнопки навигации ────────────────────────────────────────────────────
