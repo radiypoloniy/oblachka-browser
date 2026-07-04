@@ -430,7 +430,17 @@ export default function App() {
   };
 
   const select = (id: string) => { setActiveId(id); window.oblako.activateTab(id); };
-  const newTab = () => { setActiveId(HUB_ID); window.oblako.activateTab(HUB_ID); };
+  const newTab = () => {
+    setActiveId(HUB_ID);
+    window.oblako.activateTab(HUB_ID);
+    // Автофокус омнибокса на новой вкладке — тот же focus()+select(), что и у Ctrl+L
+    // (onOmniboxFocus ниже). rAF, не синхронно: activeId/isHub меняются асинхронно относительно
+    // этого рендера, поле должно успеть стать пустым (см. useEffect в Toolbar.tsx) ДО фокуса.
+    requestAnimationFrame(() => {
+      omniboxRef.current?.focus();
+      omniboxRef.current?.select();
+    });
+  };
   const close = (id: string) => { window.oblako.closeTab(id); };
 
   const submit = async (input: string) => {
