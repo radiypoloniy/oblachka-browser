@@ -398,6 +398,29 @@ function ensurePanelView(): WebContentsView {
   // Первый показ беседы активной вкладки — только после did-finish-load: раньше renderer ещё не
   // навесил обработчик onContext, сообщение потерялось бы.
   panelView.webContents.once('did-finish-load', () => sendCurrentContext())
+
+  // Ссылки из ответа модели — обычные <a href> (react-markdown их не оборачивает, см. задачу):
+  // без перехвата клик навигирует ЭТУ ЖЕ webContents на внешний сайт, затирая aipanel.html —
+  // UI панели (крестик/поле ввода) исчезает вместе с разметкой, закрыть панель после этого нечем.
+  // У панели нет собственной навигации, поэтому ЛЮБАЯ внешняя http(s)-ссылка должна уйти в
+  // обычную вкладку Oblako, а не остаться внутри панели. Свою же загрузку (oblako-chrome://...
+  // aipanel.html) пропускаем — иначе сломаем первичную загрузку/возможный релоад панели.
+  // Отдельно и независимо от TabManager.wirePageEvents/isOAuthPopup (OAuth-поток обычных вкладок
+  // тут не участвует — panelView никогда не проходит через wirePageEvents).
+  panelView.webContents.on('will-navigate', (e, url) => {
+    if (url.startsWith('oblako-chrome://')) return // легитимная (пере)загрузка самой панели
+    if (/^https?:\/\//i.test(url)) {
+      e.preventDefault()
+      tabManagerRef?.createTab(url)
+    }
+  })
+  // Страховка на случай target=_blank/window.open в тексте ответа (не обычная навигация, а
+  // запрос нового окна) — тот же исход: новая вкладка Oblako, Chromium своё окно не создаёт.
+  panelView.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) tabManagerRef?.createTab(url)
+    return { action: 'deny' }
+  })
+
   panelView.webContents.loadURL('oblako-chrome://localhost/aipanel.html')
   return panelView
 }
