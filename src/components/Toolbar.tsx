@@ -102,6 +102,16 @@ export default function Toolbar({
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = externalRef ?? internalRef;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Заход 8 (реальный баг): дропдаун закрывался корректно, но САМ ОТКРЫВАЛСЯ ЗАНОВО при переходе
+  // на страницу / клике по сайдбару — потому что закрытие (removeChildView нативной вью дропдауна
+  // в main) отдаёт OS-фокус ОБРАТНО омниноксу (тот же класс поведения, что задокументированная
+  // спонтанная blur-пара при addChildView — тут симметрично, спонтанный focus при removeChildView).
+  // onFocus ниже слепо перезапускал triggerSuggest(value), если в поле ещё оставался старый текст —
+  // при спонтанном refocus это ОТКРЫВАЛО дропдаун заново без участия пользователя. Различаем
+  // настоящий клик от спонтанного refocus: настоящий клик ВСЕГДА даёт mousedown НА ЭТОМ инпуте
+  // непосредственно перед focus (синхронно, тот же тик) — спонтанный refocus от removeChildView
+  // этому не предшествует.
+  const realMouseDownRef = useRef(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
   // «Таблетка» омнибокса (иконка+инпут+капсула/copy) — прямоугольник, под которым должен
   // вставать дропдаун подсказок. Пушится в main отдельным каналом (OMNIBOX_SET_BOUNDS) —
@@ -492,7 +502,22 @@ export default function Toolbar({
               value={value}
               placeholder={placeholderVisible ? 'Введите запрос или адрес' : ''}
               onChange={(e) => { setValue(e.target.value); triggerSuggest(e.target.value); }}
-              onFocus={() => { setEditing(true); if (value.trim()) triggerSuggest(value); }}
+              onMouseDown={() => {
+                realMouseDownRef.current = true;
+                // Самосброс на следующий тик — если фокус НЕ сменился (клик в уже сфокусированное
+                // поле, просто переставить курсор), onFocus не вызовется вообще и не консьюмит флаг
+                // сам; без этого он завис бы «true» до следующего, уже НЕ обязательно настоящего,
+                // focus-события (см. комментарий у realMouseDownRef).
+                setTimeout(() => { realMouseDownRef.current = false; }, 0);
+              }}
+              onFocus={() => {
+                setEditing(true);
+                // Реальный клик — realMouseDownRef успел взвестись только что (onMouseDown на ЭТОМ
+                // же инпуте синхронно предшествует onFocus). Спонтанный refocus (см. комментарий у
+                // realMouseDownRef выше) этого сигнала не имеет — дропдаун не переоткрываем.
+                if (realMouseDownRef.current && value.trim()) triggerSuggest(value);
+                realMouseDownRef.current = false;
+              }}
               // ⚠️ Намеренно БЕЗ onBlur. blur — не триггер закрытия дропдауна ни в каком виде (см.
               // «Заход 5» выше — независимые сигналы вместо него). Раньше отсюда же сбрасывался
               // editing по любому blur — теперь это делают те же явные сигналы (клик мимо/фокус на
