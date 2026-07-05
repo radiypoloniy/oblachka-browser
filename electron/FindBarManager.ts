@@ -43,14 +43,17 @@ export function setTabManager(tm: TabManager): void {
 // сам по себе не знает.
 let lastContentBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 }
 
-// Центр — по СВОБОДНОЙ части контентной зоны: если AI-панель открыта, она перекрывает правый
-// край страницы (не двигая bounds самой вкладки, см. AiPanelManager.ts), поэтому центр без этой
-// поправки попадал бы визуально ПОД панель на обычном окне (сайдбар уже сдвигает контент вправо,
-// а AI-панель есть ещё ~400px справа — без вычитания её ширины они гарантированно перекрываются).
+// Центр — по СВОБОДНОЙ части контентной зоны, НО только если центрированный без поправки FindBar
+// реально пересёкся бы с зоной AI-панели (она перекрывает правый край страницы, не двигая bounds
+// самой вкладки, см. AiPanelManager.ts). На широком/фуллскрин окне места хватает и без сдвига —
+// вычитать aiPanelWidth там не нужно (иначе FindBar нелепо уезжает влево, хотя перекрытия и так
+// не было бы). Сдвигаем только когда naiveRight (правый край без поправки) заходит на панель.
 function computeBounds(): { x: number; y: number; width: number; height: number } {
   const cb = lastContentBounds
   const aiPanelWidth = attachedWin ? getAiPanelReservedWidth(attachedWin) : 0
-  const usableRight = cb.x + cb.width - aiPanelWidth
+  const naiveRight = cb.x + cb.width / 2 + FINDBAR_WIDTH / 2
+  const panelLeft = cb.x + cb.width - aiPanelWidth
+  const usableRight = naiveRight > panelLeft ? panelLeft : cb.x + cb.width
   const x = (cb.x + usableRight) / 2 - FINDBAR_WIDTH / 2
   const y = cb.y + TOP_GAP
   const result = {
