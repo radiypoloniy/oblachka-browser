@@ -107,6 +107,11 @@ export default function Toolbar({
   // вставать дропдаун подсказок. Пушится в main отдельным каналом (OMNIBOX_SET_BOUNDS) —
   // фундамент под будущую нативную вью дропдауна, сам дропдаун этот заход не трогает.
   const omniboxPillRef = useRef<HTMLDivElement>(null);
+  // Ref на портал СТАРОГО React-дропдауна (createPortal в document.body, см. JSX ниже) — нужен
+  // ТОЛЬКО чтобы новый mousedown-capture-детектор «клик мимо» (заход 5) не принял клик по старой
+  // подсказке за клик мимо (портал физически вне omniboxPillRef, хоть и в том же document). Старый
+  // дропдаун этим не трогается — ref не меняет ни его рендер, ни его pickSuggestion-логику.
+  const oldDropdownPortalRef = useRef<HTMLDivElement>(null);
 
   // Текущий выбранный поисковик — источник истины в main (SettingsManager); здесь только
   // читаем id и строим URL по общему шаблону (shared/searchEngines.ts), не хардкодим движок.
@@ -208,6 +213,56 @@ export default function Toolbar({
     // подсветка строки от предыдущей сессии (заход 4/5).
     void window.oblako.setSuggestDropdownHighlight(-1);
   }, [onSuggestToggle]);
+
+  // ── Заход 5 (кардинальный фикс): закрытие БЕЗ blur ──────────────────────────────────────────
+  // blur омнибокса — НЕ триггер закрытия (по образцу FindBar/поповера/AI-панели, см. BACKLOG.md:
+  // «blur НИКОГДА не использовать как механику закрытия» — addChildView новой вью дропдауна шлёт
+  // спонтанный blur, неотличимый от реального без хрупкого флага-подпорки). Вместо этого —
+  // независимые явные сигналы «фокус реально ушёл»:
+
+  // Все три сигнала ниже висят, пока омнибокс в режиме редактирования (editing), А НЕ пока
+  // dropdownOpen — иначе фокус-в-поле-без-набора-текста (dropdownOpen так и остаётся false)
+  // никогда не увидел бы «клик мимо» и editing завис бы навсегда (поле перестало бы отражать
+  // реальный URL вкладки, см. useEffect на tab?.url/editing выше). closeDropdown() внутри —
+  // безопасный no-op, если дропдаун и так уже закрыт.
+
+  // (1) Клик МИМО внутри ЭТОГО ЖЕ webContents (chromeView: тулбар/сайдбар/хаб) — обычный
+  // однопроцессный DOM mousedown, никакой гонки addChildView тут нет (её вызывает исключительно
+  // показ ОТДЕЛЬНОЙ вью дропдауна, а не клик внутри уже существующего chromeView). Слушатель висит
+  // ТОЛЬКО пока идёт редактирование — сам момент фокусировки (клик в омнибокс) уже завершён к
+  // моменту, когда React успевает навесить этот эффект, самозакрытия на открывающем клике не будет.
+  useEffect(() => {
+    if (!editing) return;
+    const onOutsideMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const insidePill = omniboxPillRef.current?.contains(target) ?? false;
+      const insideOldDropdown = oldDropdownPortalRef.current?.contains(target) ?? false;
+      if (!insidePill && !insideOldDropdown) {
+        closeDropdown();
+        setEditing(false);
+      }
+    };
+    document.addEventListener('mousedown', onOutsideMouseDown, true);
+    return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
+  }, [editing, closeDropdown]);
+
+  // (2) Реальный OS-фокус ушёл на контент активной вкладки (ДРУГОЙ webContents — клик мышью по
+  // странице) — main шлёт это из TabManager.wirePageEvents::wc.on('focus'), см. shared/ipc.ts::
+  // SUGGEST_DROPDOWN_CONTENT_FOCUS.
+  useEffect(() => {
+    if (!editing) return;
+    return window.oblako.onSuggestDropdownContentFocus(() => {
+      closeDropdown();
+      setEditing(false);
+    });
+  }, [editing, closeDropdown]);
+
+  // (3) Смена активной вкладки (мышью по сайдбару — уже покрыто (1); Ctrl+Tab/Ctrl+1-9 — нет) —
+  // дропдаун анкорен к прежнему контексту, смысла в нём больше нет (тот же принцип, что
+  // closeTranslatePopoverOnTabSwitch у поповера перевода).
+  useEffect(() => {
+    if (editing) { closeDropdown(); setEditing(false); }
+  }, [tab?.id]);
 
   const buildSuggestions = useCallback(async (query: string) => {
     if (!query.trim()) { closeDropdown(); return; }
@@ -432,9 +487,10 @@ export default function Toolbar({
               placeholder={placeholderVisible ? 'Введите запрос или адрес' : ''}
               onChange={(e) => { setValue(e.target.value); triggerSuggest(e.target.value); }}
               onFocus={() => { setEditing(true); if (value.trim()) triggerSuggest(value); }}
-              onBlur={() => {
-                setTimeout(() => { setEditing(false); closeDropdown(); }, 150);
-              }}
+              // ⚠️ Намеренно БЕЗ onBlur. blur — не триггер закрытия дропдауна ни в каком виде (см.
+              // «Заход 5» выше — независимые сигналы вместо него). Раньше отсюда же сбрасывался
+              // editing по любому blur — теперь это делают те же явные сигналы (клик мимо/фокус на
+              // контент/смена вкладки), Esc и submit() сбрасывают editing отдельно, как и раньше.
               onKeyDown={handleKeyDown}
               style={{
                 flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none',
@@ -527,7 +583,7 @@ export default function Toolbar({
           if (!toolbarRect) return null;
           const dropLeft = toolbarRect.left + toolbarWidth / 2 - omniboxWidth / 2;
           return createPortal(
-            <div style={{
+            <div ref={oldDropdownPortalRef} style={{
               position: 'fixed', top: TOOLBAR_HEIGHT, left: dropLeft, width: omniboxWidth,
               zIndex: 9000,
               background: 'var(--surface-solid)',

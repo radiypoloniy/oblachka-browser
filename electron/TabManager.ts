@@ -129,6 +129,11 @@ export class TabManager {
   // (не переиспользуем onChange — он общий и палит на ~20 несвязанных мутаций).
   private onActiveTabChangedCb?: () => void;
   private onTabClosedCb?: (wc: WebContents) => void;
+  // Заход 5 (дропдаун подсказок, кардинальный фикс): реальный OS-фокус ушёл на контент вкладки —
+  // единственный надёжный (не blur) сигнал «пользователь физически кликнул в страницу», см.
+  // wirePageEvents::wc.on('focus') ниже. Используется main.ts, чтобы закрыть дропдаун омнибокса
+  // в chrome (SuggestDropdownManager сам этого не видит — фокус чужой вкладки его не касается).
+  private onContentFocusCb?: () => void;
   private firstTabLoaded = false; // защита: колбэк вызывается ровно один раз
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
@@ -164,6 +169,7 @@ export class TabManager {
     onAiAction?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents) => void,
     onActiveTabChanged?: () => void,
     onTabClosed?: (wc: WebContents) => void,
+    onContentFocus?: () => void,
   ) {
     this.win = win;
     this.onChange = onChange;
@@ -179,6 +185,7 @@ export class TabManager {
     this.onAiActionCb = onAiAction;
     this.onActiveTabChangedCb = onActiveTabChanged;
     this.onTabClosedCb = onTabClosed;
+    this.onContentFocusCb = onContentFocus;
     // Хаб существует всегда; не входит в tabMap, pinnedTabs или nodes.
     this.hubTab = { id: HUB_ID, view: null, sleeping: null, lastActiveAt: 0 };
     this.startSleepTimer();
@@ -763,6 +770,10 @@ export class TabManager {
         const side = id === this.splitState.leftId ? 'left' : 'right';
         this.focusSplitPanel(side);
       }
+      // Реальный клик в контент — не связан с addChildView chrome-оверлеев (дропдаун/поповер/
+      // FindBar), это OS-фокус ДРУГОГО webContents. Надёжный сигнал закрытия дропдауна омнибокса
+      // без blur (см. onContentFocusCb выше).
+      this.onContentFocusCb?.();
     });
 
     // Таймер первой контентной вкладки: вызывается ровно один раз.

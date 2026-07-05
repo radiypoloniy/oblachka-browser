@@ -19,10 +19,15 @@ import path from 'node:path'
 import type { ContentBounds, SuggestDropdownItem } from '../shared/ipc'
 
 const GAP = 4 // зазор между низом омнибокса и верхом дропдауна
-// Фиксированная высота вью — как maxHeight старого дропдауна (Toolbar.tsx), тот же приём:
-// список внутри скроллится (overflowY:auto в suggestdropdown.tsx), а не растягивает вью под
-// количество строк (до SUGGEST_MAX=8) — без нового IPC для динамического ресайза.
-const DROPDOWN_HEIGHT = 280
+// Заход 5 (кардинальный фикс): высота вью больше НЕ фиксирована. Стартовая высота — до первого
+// реального замера от suggestdropdown.tsx (ResizeObserver → 'suggest-dropdown:height', тот же
+// приём, что INITIAL_HEIGHT/translate-popover:height у TranslatePopoverManager.ts) — держим её
+// маленькой (высота ~1 строки), а не старым потолком в 280: цель этого захода — не накрывать
+// вью лишней площадью (мёртвая хит-тест-зона перехватывала клики по кнопкам/контенту под собой —
+// pointer-events между разными WebContentsView не работает, см. прецедент AI-панели). Реальная
+// высота прилетает почти сразу после показа (did-finish-load уже отрендерил список), поэтому
+// стартовый флеш короткий и безвредный — тот же компромисс, что и у поповера.
+const INITIAL_HEIGHT = 48
 // Прозрачный запас под CSS box-shadow — WebContentsView обрезает всё, что рисуется за границей
 // своего прямоугольника (тот же приём, что SHADOW_MARGIN в FindBarManager.ts/TranslatePopoverManager.ts).
 const SHADOW_MARGIN = 16
@@ -33,6 +38,10 @@ let resizeBoundWin: BrowserWindow | null = null
 let ipcRegistered = false
 // Последний присланный прямоугольник омнибокса (см. IPC.OMNIBOX_SET_BOUNDS, main.ts).
 let lastOmniboxBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 }
+// Последняя реально измеренная высота карточки (см. 'suggest-dropdown:height' ниже) — вью
+// персистентна между показами (в отличие от поповера), поэтому переиспользуем последнее известное
+// значение при повторном открытии вместо того, чтобы каждый раз падать обратно на INITIAL_HEIGHT.
+let currentHeight = INITIAL_HEIGHT
 // Последний присланный список подсказок — переотправляется на did-finish-load, если вью ещё
 // не успела загрузиться к моменту первого sendSuggestItems() (см. ensureDropdownView).
 let lastItems: SuggestDropdownItem[] = []
@@ -48,7 +57,7 @@ function isAttached(): boolean {
   return !!dropdownView && !!attachedWin && attachedWin.contentView.children.includes(dropdownView)
 }
 
-function computeBounds(): { x: number; y: number; width: number; height: number } {
+function computeBounds(height: number): { x: number; y: number; width: number; height: number } {
   const ob = lastOmniboxBounds
   const x = ob.x
   const y = ob.y + ob.height + GAP
@@ -56,15 +65,15 @@ function computeBounds(): { x: number; y: number; width: number; height: number 
     x: x - SHADOW_MARGIN,
     y: y - SHADOW_MARGIN,
     width: ob.width + SHADOW_MARGIN * 2,
-    height: DROPDOWN_HEIGHT + SHADOW_MARGIN * 2,
+    height: height + SHADOW_MARGIN * 2,
   }
-  console.log(`[suggest-dropdown] computeBounds: omnibox=${JSON.stringify(ob)} -> ${JSON.stringify(result)}`)
+  console.log(`[suggest-dropdown] computeBounds: omnibox=${JSON.stringify(ob)} height=${height} -> ${JSON.stringify(result)}`)
   return result
 }
 
 function layoutDropdown(): void {
   if (!isAttached()) return
-  dropdownView!.setBounds(computeBounds())
+  dropdownView!.setBounds(computeBounds(currentHeight))
 }
 
 // Вызывается из main.ts на каждый OMNIBOX_SET_BOUNDS (см. Toolbar.tsx::omniboxPillRef) —
@@ -81,6 +90,14 @@ function ensureIpcRegistered(): void {
   // Не боевой канал (не в shared/ipc.ts) — это внутренняя механика ЭТОЙ вью, как и у
   // translate-popover:close/ai-panel:close (см. соответствующие *Manager.ts).
   ipcMain.on('suggest-dropdown:pick', (_e, item: SuggestDropdownItem) => { onPickCb?.(item) })
+
+  // Заход 5 — реальная высота карточки (ResizeObserver в suggestdropdown.tsx). Math.max(1, px) —
+  // защита от абсурдных 0/отрицательных значений (карточка ещё не отрендерилась/офскрин), тот же
+  // приём, что Math.max(INITIAL_HEIGHT, px) у translate-popover:height.
+  ipcMain.on('suggest-dropdown:height', (_e, px: number) => {
+    currentHeight = Math.max(1, px)
+    layoutDropdown()
+  })
 }
 
 function ensureDropdownView(): WebContentsView {
@@ -117,7 +134,7 @@ export function showSuggestDropdown(win: BrowserWindow): void {
   if (isAttached()) return // уже показан — просто пересчитать (см. layoutDropdown выше)
 
   const view = ensureDropdownView()
-  view.setBounds(computeBounds())
+  view.setBounds(computeBounds(currentHeight))
   win.contentView.addChildView(view) // последней → нативный z-order поверх уже добавленной вкладки
   // ⚠️ НИКАКОГО view.webContents.focus() здесь — критичный инвариант этого модуля.
 }

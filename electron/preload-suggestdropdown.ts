@@ -19,4 +19,8 @@ contextBridge.exposeInMainWorld('suggestDropdown', {
     ipcRenderer.on('suggest-dropdown:highlight', handler)
     return () => ipcRenderer.removeListener('suggest-dropdown:highlight', handler)
   },
+  // Заход 5 (кардинальный фикс): реальная высота карточки (ResizeObserver в suggestdropdown.tsx) —
+  // main пересчитывает bounds самой вью под неё, вместо фиксированных 280px (см.
+  // SuggestDropdownManager.ts). Тот же приём, что translate-popover:height у поповера перевода.
+  reportHeight: (px: number) => ipcRenderer.send('suggest-dropdown:height', px),
 })

@@ -222,6 +222,9 @@ function createWindow() {
     },
     () => { closeTranslatePopoverOnTabSwitch(); closeFindBar(); }, // FindBar анкорен к прежней активной вкладке — смысла нет
     (wc) => closeTranslatePopoverForClosedTab(wc),
+    // Заход 5: реальный клик в контент вкладки (не blur омнибокса) — закрывает дропдаун подсказок
+    // в chrome, см. shared/ipc.ts::SUGGEST_DROPDOWN_CONTENT_FOCUS, Toolbar.tsx.
+    () => chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS),
   );
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
   tabs.setSearchEngine(settings.getSearchEngine());

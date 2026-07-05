@@ -198,6 +198,14 @@ export const IPC = {
   // Омнибокс — единственный владелец selectedIdx, вью только отрисовывает по этому номеру,
   // ничего не решая сама (Enter выполняется локально в омнибоксе, без обращения к вью).
   SUGGEST_DROPDOWN_HIGHLIGHT: 'suggest-dropdown:highlight',
+  // Заход 5 (кардинальный фикс): main → chrome, реальный OS-фокус ушёл на контент АКТИВНОЙ
+  // вкладки (другой webContents, клик мышью — см. TabManager.wirePageEvents::wc.on('focus')).
+  // Единственный сигнал закрытия дропдауна для этого случая — вместо blur омнибокса (см. BACKLOG.md:
+  // «blur НИКОГДА не использовать как механику закрытия» — тот же инвариант, что у поповера/FindBar).
+  // Клик внутри chromeView (тулбар/сайдбар/хаб) закрывает дропдаун ДРУГИМ, локальным путём
+  // (document-level mousedown-capture в Toolbar.tsx) — этот канал только для случая, когда фокус
+  // реально ушёл в отдельный webContents страницы.
+  SUGGEST_DROPDOWN_CONTENT_FOCUS: 'suggest-dropdown:content-focus',
 
   // Настройки (пока только поисковик по умолчанию, см. SettingsManager.ts)
   SETTINGS_GET_SEARCH_ENGINE: 'settings:get-search-engine', // renderer → main: текущий SearchEngineId
@@ -397,6 +405,9 @@ export interface OblakoApi {
   // Клавиатурная подсветка (заход 4/5) — номер строки, -1 снимает подсветку. Омнибокс держит
   // selectedIdx, вью только рисует по этому номеру.
   setSuggestDropdownHighlight(idx: number): Promise<void>;
+  // Заход 5 — реальный OS-фокус ушёл на контент активной вкладки (независимый от blur сигнал
+  // закрытия дропдауна, см. IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS).
+  onSuggestDropdownContentFocus(cb: () => void): () => void;
 
   // Настройки
   getSearchEngine(): Promise<SearchEngineId>;

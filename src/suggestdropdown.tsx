@@ -4,11 +4,14 @@
 // присланному через onHighlight. Enter выполняется ЛОКАЛЬНО в омнибоксе — эта вью в выборе по
 // Enter не участвует вообще (только мышиный клик, как в заходе 3). Старый chrome-DOM дропдаун
 // (Toolbar.tsx) работает параллельно и это не трогает.
-// Позиция/размер задаёт main (setBounds, см. electron/SuggestDropdownManager.ts) — эта страница
-// просто рисует контент на весь свой вьюпорт, инсетнутый на SHADOW_MARGIN под CSS-тень (тот же
-// приём, что у поповера перевода/FindBar). Список внутри скроллится (maxHeight+overflowY) —
-// та же логика, что у старого дропдауна (Toolbar.tsx: maxHeight:280), а не растёт вью под контент.
-import React, { useEffect, useState } from 'react';
+// Позиция задаёт main (setBounds, см. electron/SuggestDropdownManager.ts) — эта страница рисует
+// контент на весь свой вьюпорт, инсетнутый на SHADOW_MARGIN под CSS-тень (тот же приём, что у
+// поповера перевода/FindBar). Заход 5 (кардинальный фикс): ВЫСОТА вью следует за реальной высотой
+// карточки (ResizeObserver → reportHeight → SuggestDropdownManager.ts пересчитывает bounds) —
+// вью не должна накрывать пустым местом кнопки/контент под собой (pointer-events между разными
+// WebContentsView не работает, см. прецедент AI-панели). maxHeight:280+overflowY — потолок самого
+// КОНТЕНТА (длинный список продолжает скроллиться внутри), а не фиксированный размер вью.
+import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Search, Globe } from 'lucide-react';
 import './styles/global.css';
@@ -20,6 +23,7 @@ declare global {
       onItems: (cb: (items: SuggestDropdownItem[]) => void) => () => void
       pick: (item: SuggestDropdownItem) => void
       onHighlight: (cb: (idx: number) => void) => () => void
+      reportHeight: (px: number) => void
     }
   }
 }
@@ -35,15 +39,32 @@ function SuggestDropdown() {
   // мышь возвращает себе приоритет, как только физически наводится на НОВУЮ строку (см.
   // onMouseEnter ниже — сбрасывает keyboardIdx локально, без обращения к омнибоксу).
   const [keyboardIdx, setKeyboardIdx] = useState(-1);
+  // Заход 5 (кардинальный фикс): реальная высота карточки → main (SuggestDropdownManager.ts)
+  // пересчитывает bounds вью ровно под список, а не под фиксированные 280px — устраняет мёртвую
+  // хит-тест-зону (пустая площадь вью физически перехватывала клики по кнопкам/контенту под ней,
+  // pointer-events здесь бессилен — подтверждено прецедентом AI-панели, только геометрия).
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => window.suggestDropdown.onItems(setItems), []);
   useEffect(() => window.suggestDropdown.onHighlight(setKeyboardIdx), []);
+
+  // maxHeight:280 ниже остаётся потолком КОНТЕНТА (внутренний скролл для длинных списков) —
+  // измеряем реальный (уже упёршийся в этот потолок при необходимости) offsetHeight карточки.
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const report = () => window.suggestDropdown.reportHeight(el.offsetHeight);
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [items]);
 
   const activeIdx = keyboardIdx !== -1 ? keyboardIdx : hoverIdx;
 
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
-      <div style={{
+      <div ref={cardRef} style={{
         boxSizing: 'border-box',
         background: 'var(--surface-solid)',
         borderRadius: 'var(--radius-card)',
