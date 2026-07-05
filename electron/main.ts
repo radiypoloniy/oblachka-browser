@@ -18,7 +18,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
-import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar } from './FindBarManager';
+import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -203,7 +203,7 @@ function createWindow() {
     // результата и что открывает/закрывает панель.
     (r: FindResult) => sendFindResult(r),
     ()              => { if (win && tabs?.getActiveWebContents()) showFindBar(win); }, // Ctrl+F: не открываем на хабе (getActiveWebContents()===null)
-    ()              => { tabs?.stopFind(); closeFindBar(); },
+    ()              => { tabs?.stopFind(); closeFindBar(); tabs?.focusActiveView(); }, // Esc-на-странице/did-navigate — вернуть OS-фокус, иначе Ctrl+F повторно не долетит
     ()              => chromeView?.webContents.send(IPC.OMNIBOX_FOCUS),
     ()              => chromeView?.webContents.focus(),
     (url, title)    => history.recordVisit(url, title),
@@ -225,6 +225,9 @@ function createWindow() {
   // WebContents активной вкладки при извлечении текста страницы в чат (Заход 4), см.
   // TabManager.getActiveWebContents(). Не влияет на управление вкладками.
   setTabManager(tabs);
+  // Аналогично для FindBarManager — только чтобы вернуть OS-фокус активной вкладке после
+  // закрытия по IPC (крестик/Esc-в-поле), см. FindBarManager.ts::ensureIpcRegistered.
+  setFindBarTabManager(tabs);
 
   // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).
   if (restored) {

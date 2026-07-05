@@ -16,6 +16,7 @@ import path from 'node:path'
 import { IPC } from '../shared/ipc'
 import type { ContentBounds, FindResult } from '../shared/ipc'
 import { getAiPanelReservedWidth } from './AiPanelManager'
+import type { TabManager } from './TabManager'
 
 const FINDBAR_WIDTH = 360
 const FINDBAR_HEIGHT = 48
@@ -29,6 +30,13 @@ let findBarView: WebContentsView | null = null
 let attachedWin: BrowserWindow | null = null
 let resizeBoundWin: BrowserWindow | null = null
 let ipcRegistered = false
+// Тот же приём, что AiPanelManager.setTabManager — только для чтения/вызова focusActiveView()
+// при закрытии по IPC (крестик/Esc-в-поле), см. ensureIpcRegistered ниже. Управление вкладками
+// этот модуль не трогает.
+let tabManagerRef: TabManager | null = null
+export function setTabManager(tm: TabManager): void {
+  tabManagerRef = tm
+}
 // Последняя геометрия КОНТЕНТНОЙ зоны (не окна) — приходит из App.tsx::pushBounds через тот же
 // CONTENT_SET_BOUNDS, что двигает активную вкладку. Уже учитывает сайдбар (renderer меряет
 // contentRef, который физически начинается ПОСЛЕ сайдбара) — этого main из win.getContentBounds()
@@ -92,7 +100,13 @@ function ensureIpcRegistered(): void {
   // Крестик / Esc-внутри-поля — надёжный путь закрытия (аналог translate-popover:close).
   // Esc, когда фокус НЕ в самом FindBar (на странице) — отдельный путь через findBarOpen в
   // TabManager.registerHotkeyHandler, не через этот канал (см. main.ts, onFindClose-колбэк).
-  ipcMain.on('findbar:close', () => { if (attachedWin) closeFindBar() })
+  // focusActiveView() — обязателен: в момент этого IPC OS-фокус стоит на FindBar (см. wc.focus()
+  // при показе), removeChildView его никуда не возвращает — без явного вызова Ctrl+F повторно
+  // не долетает (before-input-event молчит на вкладке/chromeView, у которых нет OS-фокуса).
+  ipcMain.on('findbar:close', () => {
+    if (attachedWin) closeFindBar()
+    tabManagerRef?.focusActiveView()
+  })
 }
 
 function ensureFindBarView(): WebContentsView {

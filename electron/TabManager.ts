@@ -1087,7 +1087,11 @@ export class TabManager {
   // После программного переключения вкладки явно передаём OS-фокус нужному view.
   // Без этого before-input-event замолкает: Windows освобождает фокус на BrowserWindow HWND,
   // не перекидывая его на дочерние view автоматически.
-  private focusActiveView(): void {
+  // Публичный (не private) — тем же приёмом, что getActiveWebContents() открыт для
+  // AiPanelManager.ts: FindBarManager.ts зовёт его после закрытия FindBar (см. main.ts,
+  // FindBarManager.setTabManager) — иначе OS-фокус зависает и Ctrl+F перестаёт долетать
+  // повторно (before-input-event молчит без явного focus() на нужный webContents).
+  focusActiveView(): void {
     const tab = this.tabMap.get(this.activeId);
     // [диагностика] — кандидат №2 на краш "Object has been destroyed" при закрытии окна со split:
     // тут isHttpView (только не-null), а НЕ isLiveHttpView — если exitSplit зовёт этот метод в
