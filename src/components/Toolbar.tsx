@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Globe, Download, ChevronDown } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown } from 'lucide-react';
 import type { TabState, HistoryEntry, SuggestDropdownItem } from '../../shared/ipc';
 import { normalizeForTiles, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
@@ -107,11 +107,6 @@ export default function Toolbar({
   // вставать дропдаун подсказок. Пушится в main отдельным каналом (OMNIBOX_SET_BOUNDS) —
   // фундамент под будущую нативную вью дропдауна, сам дропдаун этот заход не трогает.
   const omniboxPillRef = useRef<HTMLDivElement>(null);
-  // Ref на портал СТАРОГО React-дропдауна (createPortal в document.body, см. JSX ниже) — нужен
-  // ТОЛЬКО чтобы новый mousedown-capture-детектор «клик мимо» (заход 5) не принял клик по старой
-  // подсказке за клик мимо (портал физически вне omniboxPillRef, хоть и в том же document). Старый
-  // дропдаун этим не трогается — ref не меняет ни его рендер, ни его pickSuggestion-логику.
-  const oldDropdownPortalRef = useRef<HTMLDivElement>(null);
 
   // Текущий выбранный поисковик — источник истины в main (SettingsManager); здесь только
   // читаем id и строим URL по общему шаблону (shared/searchEngines.ts), не хардкодим движок.
@@ -235,9 +230,7 @@ export default function Toolbar({
     if (!editing) return;
     const onOutsideMouseDown = (e: MouseEvent) => {
       const target = e.target as Node;
-      const insidePill = omniboxPillRef.current?.contains(target) ?? false;
-      const insideOldDropdown = oldDropdownPortalRef.current?.contains(target) ?? false;
-      if (!insidePill && !insideOldDropdown) {
+      if (!omniboxPillRef.current?.contains(target)) {
         closeDropdown();
         setEditing(false);
       }
@@ -574,35 +567,6 @@ export default function Toolbar({
             document.body,
           );
         })()}
-
-        {/* Дропдаун рендерится порталом в document.body — вне всех stacking context.
-            position:fixed с координатами viewport (за пределами transform-предка работает корректно).
-            Позиция: левый край тулбара + центр тулбара - полширины омнибокса. */}
-        {dropdownOpen && suggestions.length > 0 && (() => {
-          const toolbarRect = toolbarRef.current?.getBoundingClientRect();
-          if (!toolbarRect) return null;
-          const dropLeft = toolbarRect.left + toolbarWidth / 2 - omniboxWidth / 2;
-          return createPortal(
-            <div ref={oldDropdownPortalRef} style={{
-              position: 'fixed', top: TOOLBAR_HEIGHT, left: dropLeft, width: omniboxWidth,
-              zIndex: 9000,
-              background: 'var(--surface-solid)',
-              borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-island)',
-              border: '1px solid var(--glass-edge)',
-              overflow: 'hidden', maxHeight: 280, overflowY: 'auto',
-            }}>
-              {suggestions.map((item, idx) => (
-                <SuggestRow
-                  key={`${item.kind}-${item.url}`}
-                  item={item} active={idx === selectedIdx}
-                  onMouseDown={() => pickSuggestion(item)}
-                  onMouseEnter={() => setSelectedIdx(idx)}
-                />
-              ))}
-            </div>,
-            document.body,
-          );
-        })()}
       </div>
 
       {/* Правая группа: VPN-пилюля (схлопывается) + AI + адблок.
@@ -715,55 +679,6 @@ function VpnPill({ vpnOn, mode, onClick }: { vpnOn: boolean; mode: VpnMode; onCl
       {vpnOn ? 'VPN · Финляндия' : 'VPN выкл.'}
       {dot}
     </button>
-  );
-}
-
-// ── Строка дропдауна ──────────────────────────────────────────────────────────
-
-function SuggestRow({ item, active, onMouseDown, onMouseEnter }: {
-  item: SuggestItem;
-  active: boolean;
-  onMouseDown: () => void;
-  onMouseEnter: () => void;
-}) {
-  const icon = item.kind === 'search' ? <Search size={13} /> : <Globe size={13} />;
-
-  return (
-    <div
-      onMouseDown={onMouseDown}
-      onMouseEnter={onMouseEnter}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
-        cursor: 'default',
-        background: active ? 'var(--surface-sunken)' : 'transparent',
-        transition: 'background 0.08s', minWidth: 0,
-      }}
-    >
-      <span style={{ color: 'var(--text-faint)', flex: 'none', display: 'inline-flex' }}>
-        {icon}
-      </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {item.label}
-        </div>
-        {item.sub && (
-          <div style={{
-            fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {item.sub}
-          </div>
-        )}
-      </div>
-      {item.kind === 'tab' && (
-        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
-          вкладка
-        </span>
-      )}
-    </div>
   );
 }
 

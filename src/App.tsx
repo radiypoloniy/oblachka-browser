@@ -13,12 +13,6 @@ import type { ClusterProposal } from './services/ClusteringService';
 
 const HUB_ID = 'hub';
 
-// Высота резерва для дропдауна омнибокса — FindBar больше не резервирует место (переехал в
-// отдельную WebContentsView-оверлей, см. electron/FindBarManager.ts) — та же логика, что раньше.
-// chromeView идёт под WebContentsView по z-order, поэтому сдвигаем WebContentsView вниз.
-// 280 = 6 строк × ~44px + 8px зазор — max высота списка саджестов.
-const OMNIBOX_SUGGEST_RESERVE = 280;
-
 // Резерв для inline-prompt разрешений (высота панели 56px + 8px зазор).
 const PERMISSION_PROMPT_RESERVE = 64;
 
@@ -47,7 +41,6 @@ export default function App() {
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
-  const [omniboxSuggestOpen, setOmniboxSuggestOpen] = useState(false);
   const [splitDragOver, setSplitDragOver] = useState(false);
 
   // AI-группировка: состояние флоу + предложения + наличие снимка для отката
@@ -96,8 +89,6 @@ export default function App() {
   downloadsOpenRef.current = downloadsOpen;
   const pendingPermissionsRef = useRef(pendingPermissions);
   pendingPermissionsRef.current = pendingPermissions;
-  const omniboxSuggestOpenRef = useRef(omniboxSuggestOpen);
-  omniboxSuggestOpenRef.current = omniboxSuggestOpen;
 
   // Рефы с актуальными значениями — нужны для organize (читаются вне рендер-цикла).
   const sidebarNodesRef = useRef(sidebarNodes);
@@ -273,16 +264,15 @@ export default function App() {
       return;
     }
     const r = el.getBoundingClientRect();
-    // Дропдаун омнибокса требует резерв сверху — только на реальной странице.
-    const suggestReserve = (omniboxSuggestOpenRef.current && !isHubRef.current && !tabErrorRef.current)
-      ? OMNIBOX_SUGGEST_RESERVE : 0;
+    // Дропдаун омнибокса больше НЕ резервирует место — нативная вью (SuggestDropdownManager.ts)
+    // плавает поверх контента как самостоятельный оверлей (native z-order, addChildView), контенту
+    // сдвигаться незачем (заход 5: устранена дублирующая система, см. Toolbar.tsx).
     // Inline-prompt разрешений: резерв только при наличии pending запроса на реальной странице.
     const permReserve = (pendingPermissionsRef.current.length > 0 && !isHubRef.current && !tabErrorRef.current)
       ? PERMISSION_PROMPT_RESERVE : 0;
-    const reserve = Math.max(suggestReserve, permReserve);
     void window.oblako.setContentBounds({
-      x: r.left, y: r.top + reserve,
-      width: r.width, height: Math.max(0, r.height - reserve),
+      x: r.left, y: r.top + permReserve,
+      width: r.width, height: Math.max(0, r.height - permReserve),
     });
   }, []);
 
@@ -304,8 +294,8 @@ export default function App() {
     return () => window.removeEventListener('resize', updateSidebarCollapse);
   }, [updateSidebarCollapse]);
 
-  // Пересчёт bounds при смене состояния дропдауна омнибокса и очереди разрешений.
-  useEffect(() => { pushBounds(); }, [omniboxSuggestOpen, pendingPermissions, pushBounds]);
+  // Пересчёт bounds при смене очереди разрешений.
+  useEffect(() => { pushBounds(); }, [pendingPermissions, pushBounds]);
 
   // когда переключаемся между хабом и сайтом, геометрия дырки та же,
   // но main должен переотобразить вьюху — пушим bounds ещё раз.
@@ -433,11 +423,8 @@ export default function App() {
           onReload={() => window.oblako.reload(activeId)}
           onSubmit={submit}
           onSuggestToggle={(open) => {
-            setOmniboxSuggestOpen(open);
-            // Временный тумблер тестовой нативной вью дропдауна (заход 2/5, см.
-            // SuggestDropdownManager.ts) — вешается на тот же момент, что и старый React-дропдаун
-            // (Toolbar.tsx::openDropdown/closeDropdown), который пока НЕ заменяет — оба видны
-            // параллельно для сравнения позиции.
+            // Заход 5: единственная система дропдауна — нативная вью (SuggestDropdownManager.ts),
+            // старый React-портал удалён вместе с резервом места под него (см. pushBounds выше).
             void window.oblako.setSuggestDropdownOpen(open);
           }}
           downloadsActive={downloadsActive}
