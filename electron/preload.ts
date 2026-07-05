@@ -163,6 +163,7 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.SUGGEST_DROPDOWN_PICKED, handler);
     return () => ipcRenderer.removeListener(IPC.SUGGEST_DROPDOWN_PICKED, handler);
   },
+  setSuggestDropdownHighlight: (idx: number) => ipcRenderer.invoke(IPC.SUGGEST_DROPDOWN_HIGHLIGHT, idx) as Promise<void>,
 
   // Настройки
   getSearchEngine: () => ipcRenderer.invoke(IPC.SETTINGS_GET_SEARCH_ENGINE) as Promise<SearchEngineId>,

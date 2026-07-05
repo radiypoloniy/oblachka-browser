@@ -194,6 +194,10 @@ export const IPC = {
   // обратно в chrome, где Toolbar.tsx вызывает свой существующий pickSuggestion(), не дублируя
   // его поведение (activateTab/навигация) во второй раз.
   SUGGEST_DROPDOWN_PICKED: 'suggest-dropdown:picked',
+  // Клавиатурная подсветка (заход 4/5): chrome → main → вью, номер строки (-1 = снять подсветку).
+  // Омнибокс — единственный владелец selectedIdx, вью только отрисовывает по этому номеру,
+  // ничего не решая сама (Enter выполняется локально в омнибоксе, без обращения к вью).
+  SUGGEST_DROPDOWN_HIGHLIGHT: 'suggest-dropdown:highlight',
 
   // Настройки (пока только поисковик по умолчанию, см. SettingsManager.ts)
   SETTINGS_GET_SEARCH_ENGINE: 'settings:get-search-engine', // renderer → main: текущий SearchEngineId
@@ -390,6 +394,9 @@ export interface OblakoApi {
   setSuggestDropdownItems(items: SuggestDropdownItem[]): Promise<void>;
   // Пользователь кликнул строку во вью дропдауна — Toolbar.tsx вызывает свой pickSuggestion().
   onSuggestDropdownPicked(cb: (item: SuggestDropdownItem) => void): () => void;
+  // Клавиатурная подсветка (заход 4/5) — номер строки, -1 снимает подсветку. Омнибокс держит
+  // selectedIdx, вью только рисует по этому номеру.
+  setSuggestDropdownHighlight(idx: number): Promise<void>;
 
   // Настройки
   getSearchEngine(): Promise<SearchEngineId>;

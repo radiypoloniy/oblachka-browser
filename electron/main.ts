@@ -19,7 +19,7 @@ import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
-import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick } from './SuggestDropdownManager';
+import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -392,6 +392,11 @@ function registerIpc() {
   // Клик по строке ВО вью дропдауна (другой webContents) — пересылаем в chrome, где Toolbar.tsx
   // вызывает свой существующий pickSuggestion(), не дублируя его поведение (activateTab/навигация).
   onSuggestDropdownPick((item) => { chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_PICKED, item); });
+  // Клавиатурная подсветка (заход 4/5) — омнибокс шлёт номер строки (-1 снимает), main просто
+  // пересылает во вью; выбор (Enter) остаётся локальным в омнибоксе, эта вью в нём не участвует.
+  ipcMain.handle(IPC.SUGGEST_DROPDOWN_HIGHLIGHT, (_e, idx: number) => {
+    setSuggestDropdownHighlight(idx);
+  });
   ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (_e, opts: TitleBarOpts) => win?.setTitleBarOverlay(opts));
   ipcMain.handle(IPC.FIND_START, (_e, q: string, fwd: boolean) => tabs?.findInPage(q, fwd));
   ipcMain.handle(IPC.FIND_NEXT,  (_e, fwd: boolean)            => tabs?.findNext(fwd));

@@ -1,7 +1,9 @@
 // Дропдаун подсказок омнибокса — отдельная WebContentsView-оверлей поверх страницы, под самим
-// омнибоксом (не под всей контентной зоной, как FindBar). Заход 3/5 переезда с chrome-DOM:
-// живые подсказки + мышиный выбор (клик) — клавиатура ещё заход 4. Старый React-дропдаун
-// (Toolbar.tsx, buildSuggestions, OMNIBOX_SUGGEST_RESERVE) работает ПАРАЛЛЕЛЬНО и не тронут.
+// омнибоксом (не под всей контентной зоной, как FindBar). Заход 4/5 переезда с chrome-DOM:
+// живые подсказки + мышиный выбор (заход 3) + клавиатурная подсветка (setHighlight ниже) —
+// омнибокс остаётся ЕДИНСТВЕННЫМ владельцем selectedIdx, вью только рисует по номеру, Enter
+// выполняется локально в омнибоксе без обращения к этой вью. Старый React-дропдаун (Toolbar.tsx,
+// buildSuggestions, OMNIBOX_SUGGEST_RESERVE) работает ПАРАЛЛЕЛЬНО и не тронут.
 //
 // ⚠️ Единственное принципиальное отличие от FindBar/AI-панели/поповера — эта вью НИКОГДА не
 // вызывает webContents.focus(). Фокус должен остаться в омнибоксе (другой webContents,
@@ -132,4 +134,11 @@ export function sendSuggestItems(items: SuggestDropdownItem[]): void {
 export function hideSuggestDropdown(): void {
   if (!isAttached()) return
   try { attachedWin!.contentView.removeChildView(dropdownView!) } catch { /* окно могло уже закрыться */ }
+}
+
+// Клавиатурная подсветка (заход 4/5) — омнибокс держит selectedIdx, эта функция просто
+// пересылает номер строки во вью (-1 снимает подсветку). Вью ничего не решает сама — источник
+// истины остаётся в Toolbar.tsx. Если вью ещё не создана — подсвечивать нечего, no-op.
+export function setHighlight(idx: number): void {
+  dropdownView?.webContents.send('suggest-dropdown:highlight', idx)
 }

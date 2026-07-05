@@ -204,6 +204,9 @@ export default function Toolbar({
     setSuggestions([]);
     setSelectedIdx(-1);
     onSuggestToggle?.(false);
+    // Снимаем клавиатурную подсветку во вью — иначе при следующем открытии на миг мелькнёт
+    // подсветка строки от предыдущей сессии (заход 4/5).
+    void window.oblako.setSuggestDropdownHighlight(-1);
   }, [onSuggestToggle]);
 
   const buildSuggestions = useCallback(async (query: string) => {
@@ -280,6 +283,9 @@ export default function Toolbar({
     // React-дропдауну выше). Формирование списка (история/вкладки/frecency/дедуп) не меняется —
     // только эта отправка добавлена.
     void window.oblako.setSuggestDropdownItems(deduped);
+    // Новый список — снимаем клавиатурную подсветку синхронно со сбросом selectedIdx выше
+    // (заход 4/5): иначе вью продолжила бы подсвечивать строку, которой уже нет/сместилась.
+    void window.oblako.setSuggestDropdownHighlight(-1);
   }, [allTabs, openDropdown, closeDropdown, searchEngineId]);
 
   const triggerSuggest = useCallback((q: string) => {
@@ -332,12 +338,18 @@ export default function Toolbar({
     if (dropdownOpen && suggestions.length > 0) {
       if (e.code === 'ArrowDown') {
         e.preventDefault();
-        setSelectedIdx((i) => Math.min(i + 1, suggestions.length - 1));
+        const next = Math.min(selectedIdx + 1, suggestions.length - 1);
+        setSelectedIdx(next);
+        // Заход 4/5: та же подсветка — во вью нативного дропдауна (омнибокс остаётся владельцем
+        // selectedIdx, вью только рисует по номеру, ничего не решая сама).
+        void window.oblako.setSuggestDropdownHighlight(next);
         return;
       }
       if (e.code === 'ArrowUp') {
         e.preventDefault();
-        setSelectedIdx((i) => Math.max(i - 1, -1));
+        const next = Math.max(selectedIdx - 1, -1);
+        setSelectedIdx(next);
+        void window.oblako.setSuggestDropdownHighlight(next);
         return;
       }
       if (e.code === 'Enter') {
