@@ -2,6 +2,7 @@ import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { HistoryEntry, HistoryClearPeriod } from '../shared/ipc';
+import { isSearchResultUrl } from '../shared/searchEngines';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
 // Грузим динамически, чтобы браузер запускался даже без C++ инструментов.
@@ -157,10 +158,13 @@ export class HistoryManager {
     `);
   }
 
-  // Приватные и системные URL в историю не пишем.
+  // Приватные и системные URL, а также result-страницы поисковиков в историю не пишем.
+  // ⚠️ Только result-страница (google.com/search?q=…), не домен/главная поисковика — те
+  // (google.com, yandex.ru как есть) остаются валидной историей.
   #shouldRecord(url: string): boolean {
     if (!url) return false;
     // about:, chrome:, devtools: и т.п. не записываем
-    return /^https?:\/\//i.test(url);
+    if (!/^https?:\/\//i.test(url)) return false;
+    return !isSearchResultUrl(url);
   }
 }

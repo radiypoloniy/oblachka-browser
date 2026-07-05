@@ -37,7 +37,10 @@ export function normalizeForTiles(url: string): string {
   }
 }
 
-// Полный URL без utm-параметров и фрагментов — для дедупликации в омнибоксе.
+// Полный URL без utm-параметров, фрагмента и завершающего слэша — ключ дедупликации «одна
+// страница = одна запись» в омнибоксе (Toolbar.tsx::buildSuggestions) и матча открытых вкладок.
+// Завершающий слэш убирается для ЛЮБОГО пути (не только корня) — /article/ и /article одна
+// и та же страница; query всегда остаётся последним, так что срез по '/' не заденет её.
 export function normalizeForOmnibox(url: string): string {
   try {
     const u = new URL(url);
@@ -45,9 +48,8 @@ export function normalizeForOmnibox(url: string): string {
     for (const key of [...u.searchParams.keys()]) {
       if (/^utm_/i.test(key)) u.searchParams.delete(key);
     }
-    // trailing slash у root-пути убираем
     let result = u.toString();
-    if (u.pathname === '/' && result.endsWith('/')) result = result.slice(0, -1);
+    if (result.length > 1 && result.endsWith('/')) result = result.slice(0, -1);
     return result;
   } catch {
     return url;

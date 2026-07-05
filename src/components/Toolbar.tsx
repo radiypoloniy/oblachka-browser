@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown } from 'lucide-react';
 import type { TabState, HistoryEntry, SuggestDropdownItem } from '../../shared/ipc';
-import { normalizeForTiles, scoreEntry } from '../../shared/frecency';
+import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
 
@@ -291,13 +291,27 @@ export default function Toolbar({
 
     const now = Date.now();
 
-    // Дедуп по домену: одному origin = одна строка.
-    // Берём страницу с максимальным frecency-баллом на этом домене.
-    const byOrigin = new Map<string, HistoryEntry>();
+    // Открытые вкладки — по нормализованному URL (не substring по url/title). Точный матч:
+    // подсказка помечается kind='tab' только если её URL совпадает с URL реально открытой
+    // вкладки — раньше widely-substring-матч по allTabs ловил произвольные вкладки (в т.ч.
+    // поисковые result-страницы), из-за чего они подписывались «вкладка» независимо от
+    // релевантности запросу.
+    const tabIdByUrl = new Map<string, string>();
+    for (const t of allTabs) {
+      if (!t.isHub) tabIdByUrl.set(normalizeForOmnibox(t.url), t.id);
+    }
+
+    // Дедуп по нормализованному URL — одна запись на СТРАНИЦУ (не на домен, как раньше через
+    // normalizeForTiles/origin). utm-параметры/якорь/завершающий слэш схлопываются в один ключ
+    // (см. normalizeForOmnibox) — это убирает 5-6 «копий» одной и той же страницы, которые
+    // history.sqlite хранит отдельными строками (там UNIQUE по точному URL, см. HistoryManager.ts).
+    // Разные СТРАНИЦЫ одного домена (не дубли) по-прежнему остаются разными записями — их
+    // взаимный порядок решает ранжирование ниже (homepage поднимается при прочих равных).
+    const byUrl = new Map<string, HistoryEntry>();
     for (const e of histEntries) {
-      const origin = normalizeForTiles(e.url);
-      const cur = byOrigin.get(origin);
-      if (!cur || scoreEntry(e, now) > scoreEntry(cur, now)) byOrigin.set(origin, e);
+      const key = normalizeForOmnibox(e.url);
+      const cur = byUrl.get(key);
+      if (!cur || scoreEntry(e, now) > scoreEntry(cur, now)) byUrl.set(key, e);
     }
 
     // Match-score: тип совпадения — главный сортировщик, frecency — вторичный.
@@ -321,19 +335,33 @@ export default function Toolbar({
 
     // Итоговый скор: ×10000 за тип совпадения даёт ему абсолютный приоритет над частотой.
     const MATCH_TIER = 10_000;
+    // При прочих равных (тот же match-tier, тот же домен) — главная страница домена выше
+    // вглубь-страниц того же домена, как в Chrome (example.com над example.com/article/123).
+    // Множитель на freq, не плоская добавка — масштабируется вместе с реальной частотой визитов,
+    // а не перевешивает её произвольной константой.
+    const HOMEPAGE_BOOST = 1.5;
+    function isHomepage(url: string): boolean {
+      try { return new URL(url).pathname === '/'; } catch { return false; }
+    }
 
-    const histItems: SuggestItem[] = [...byOrigin.values()]
-      .map((e) => ({ e, match: calcMatchScore(e), freq: scoreEntry(e, now) }))
+    // Единый ранжированный список — history и «вкладка» больше не строятся отдельно
+    // (tabItems раньше шли ПЕРВЫМИ безусловно, до среза по SUGGEST_MAX, вытесняя
+    // отранжированные по frecency записи истории независимо от их релевантности).
+    const items: SuggestItem[] = [...byUrl.entries()]
+      .map(([key, e]) => ({
+        e,
+        match: calcMatchScore(e),
+        freq: scoreEntry(e, now) * (isHomepage(e.url) ? HOMEPAGE_BOOST : 1),
+        tabId: tabIdByUrl.get(key),
+      }))
       .filter(({ match }) => match > 0)
       .sort((a, b) => (b.match * MATCH_TIER + b.freq) - (a.match * MATCH_TIER + a.freq))
-      .slice(0, 5)
-      .map(({ e }) => ({ kind: 'history' as SuggestKind, label: e.url, sub: e.title, url: e.url }));
-
-    const tabItems: SuggestItem[] = allTabs
-      .filter((t) => !t.isHub && (
-        t.url.toLowerCase().includes(q) || t.title.toLowerCase().includes(q)
-      ))
-      .map((t) => ({ kind: 'tab' as SuggestKind, label: t.url, sub: t.title, url: t.url, tabId: t.id }));
+      .slice(0, SUGGEST_MAX - 1)
+      .map(({ e, tabId }) => (
+        tabId
+          ? { kind: 'tab' as SuggestKind, label: e.url, sub: e.title, url: e.url, tabId }
+          : { kind: 'history' as SuggestKind, label: e.url, sub: e.title, url: e.url }
+      ));
 
     const searchItem: SuggestItem = {
       kind: 'search',
@@ -341,12 +369,7 @@ export default function Toolbar({
       url: getSearchEngine(searchEngineId).buildUrl(query),
     };
 
-    const tabUrls = new Set(tabItems.map((t) => t.url));
-    const deduped = [
-      ...tabItems,
-      ...histItems.filter((h) => !tabUrls.has(h.url)),
-    ].slice(0, SUGGEST_MAX - 1);
-    deduped.push(searchItem);
+    const deduped = [...items, searchItem];
     setSuggestions(deduped);
     setSelectedIdx(-1);
     openDropdown();
