@@ -97,6 +97,9 @@ let win: BrowserWindow | null = null;
 let chromeView: WebContentsView | null = null; // слой нашего React-хрома
 let tabs: TabManager | null = null;
 let sess: SessionManager | null = null;
+// Последний присланный прямоугольник омнибокса (см. IPC.OMNIBOX_SET_BOUNDS) — пока без
+// потребителя, только хранится для будущей нативной вью дропдауна подсказок.
+let omniboxBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
 // Взводится ДО того, как tabs/sess начинают асинхронно обнуляться/дозакрываться (win.on('close')/
 // before-quit) — сигнал побочным подписчикам onChange (сейчас только AiPanelManager.onTabsSynced)
 // не синкаться во время выхода: AI-панель и так исчезает вместе с окном, а сама TabManager к этому
@@ -366,6 +369,12 @@ function registerIpc() {
     // Та же геометрия двигает FindBar — центрирование по контентной зоне (учитывает сайдбар) и
     // авто-скрытие при настройках/истории/загрузках (нулевые bounds — тот же сентинел, см. FindBarManager.ts).
     syncFindBarBounds(b);
+  });
+  // Прямоугольник омнибокса — фундамент под будущую нативную вью дропдауна подсказок (см.
+  // shared/ipc.ts::IPC.OMNIBOX_SET_BOUNDS). Пока просто хранится и логируется — потребителя ещё нет.
+  ipcMain.handle(IPC.OMNIBOX_SET_BOUNDS, (_e, b: ContentBounds) => {
+    omniboxBounds = b;
+    console.log(`[omnibox] bounds: ${JSON.stringify(b)}`);
   });
   ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (_e, opts: TitleBarOpts) => win?.setTitleBarOverlay(opts));
   ipcMain.handle(IPC.FIND_START, (_e, q: string, fwd: boolean) => tabs?.findInPage(q, fwd));

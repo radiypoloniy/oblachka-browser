@@ -108,6 +108,10 @@ export default function Toolbar({
   const inputRef = externalRef ?? internalRef;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  // «Таблетка» омнибокса (иконка+инпут+капсула/copy) — прямоугольник, под которым должен
+  // вставать дропдаун подсказок. Пушится в main отдельным каналом (OMNIBOX_SET_BOUNDS) —
+  // фундамент под будущую нативную вью дропдауна, сам дропдаун этот заход не трогает.
+  const omniboxPillRef = useRef<HTMLDivElement>(null);
 
   // Текущий выбранный поисковик — источник истины в main (SettingsManager); здесь только
   // читаем id и строим URL по общему шаблону (shared/searchEngines.ts), не хардкодим движок.
@@ -154,6 +158,34 @@ export default function Toolbar({
   const capsuleMode: CapsuleMode = omniboxWidth >= CAPSULE_FULL_THRESHOLD ? 'full'
     : omniboxWidth >= CAPSULE_HIDE_THRESHOLD ? 'compact'
     : 'hidden';
+
+  // Пушим прямоугольник «таблетки» омнибокса в main (см. IPC.OMNIBOX_SET_BOUNDS) — координаты
+  // окна, тот же getBoundingClientRect(), что и pushBounds в App.tsx для contentRef.
+  // ResizeObserver ловит изменение РАЗМЕРА таблетки (ресайз окна, схлопывание VPN-пилюли — оба
+  // меняют omniboxWidth и тем самым реальную ширину таблетки). Но НЕ ловит чистое смещение без
+  // изменения размера: сворачивание сайдбара двигает тулбар по X (таблетка центрируется внутри
+  // него), при этом её собственная ширина может в моменте не измениться — поэтому дублируем пуш
+  // явным эффектом на toolbarWidth: он меняется во ВСЕХ трёх случаях (ресайз окна и сворачивание
+  // сайдбара напрямую меняют ширину тулбара, порог VPN-пилюли — производная от неё же величина).
+  useEffect(() => {
+    const el = omniboxPillRef.current;
+    if (!el) return;
+    const push = () => {
+      const r = el.getBoundingClientRect();
+      void window.oblako.setOmniboxBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+    };
+    push();
+    const ro = new ResizeObserver(push);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = omniboxPillRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    void window.oblako.setOmniboxBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+  }, [toolbarWidth]);
 
   // Гистерезис плейсхолдера: прячем когда поле узкое, возвращаем с запасом.
   useEffect(() => {
@@ -365,7 +397,7 @@ export default function Toolbar({
           className="no-drag"
           style={{ width: '100%', position: 'relative', pointerEvents: 'auto' }}
         >
-          <div style={{
+          <div ref={omniboxPillRef} style={{
             ...islandPlate,
             display: 'flex', alignItems: 'center', gap: 8, height: 38,
             padding: '0 12px', borderRadius: 'var(--radius-pill)',

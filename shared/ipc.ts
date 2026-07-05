@@ -91,6 +91,11 @@ export const IPC = {
   TAB_GO_FORWARD: 'tab:go-forward',
   TAB_RELOAD: 'tab:reload',
   CONTENT_SET_BOUNDS: 'content:set-bounds',
+  // Прямоугольник «таблетки» омнибокса (координаты окна, тот же формат, что CONTENT_SET_BOUNDS) —
+  // фундамент под будущую нативную WebContentsView дропдауна подсказок (пока main его только
+  // хранит, ничем не пользуется). Гоняется отдельно от CONTENT_SET_BOUNDS — геометрия контента
+  // и геометрия омнибокса меняются по разным причинам (сайдбар/VPN-пилюля vs reserve-панели).
+  OMNIBOX_SET_BOUNDS: 'omnibox:set-bounds',
   WINDOW_SET_OVERLAY: 'window:set-overlay', // обновить цвет иконок titleBarOverlay
 
   // Атомарный push: заменяет раздельные TABS_CHANGED + SIDEBAR_NODES_CHANGED.
@@ -268,6 +273,9 @@ export interface OblakoApi {
   goForward(id: string): Promise<void>;
   reload(id: string): Promise<void>;
   setContentBounds(bounds: ContentBounds): Promise<void>;
+  // Прямоугольник омнибокса — see IPC.OMNIBOX_SET_BOUNDS. Пока только сохраняется в main,
+  // без вью-потребителя (см. shared/ipc.ts::IPC).
+  setOmniboxBounds(bounds: ContentBounds): Promise<void>;
   setTitleBarOverlay(opts: TitleBarOpts): Promise<void>;
   onTabsChanged(cb: (tabs: TabState[]) => void): () => void; // вернёт unsubscribe
 
