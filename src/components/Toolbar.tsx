@@ -199,11 +199,19 @@ export default function Toolbar({
     onSuggestToggle?.(true);
   }, [onSuggestToggle]);
 
-  const closeDropdown = useCallback(() => {
+  const closeDropdown = useCallback((reason = 'unknown') => {
+    (window as any).ddlog?.log(`closeDropdown called reason=${reason}`); // ВРЕМЕННЫЙ лог диагностики
     setDropdownOpen(false);
     setSuggestions([]);
     setSelectedIdx(-1);
     onSuggestToggle?.(false);
+    // Заход 6: открепление нативной вью — НЕ через опциональный onSuggestToggle (тот
+    // существует для внешней синхронизации App.tsx, но closeDropdown не должен ЗАВИСЕТЬ от
+    // того, передан ли он вообще). Прямой вызов того же канала, что открытие — единственная
+    // точка закрытия (эту функцию), гарантированно доводит React-состояние и факт прикрепления
+    // вью (isAttached() в SuggestDropdownManager.ts) до одного и того же результата на КАЖДОМ
+    // пути закрытия (клик-вне, Esc, выбор, очистка ввода — все идут через closeDropdown).
+    void window.oblako.setSuggestDropdownOpen(false);
     // Снимаем клавиатурную подсветку во вью — иначе при следующем открытии на миг мелькнёт
     // подсветка строки от предыдущей сессии (заход 4/5).
     void window.oblako.setSuggestDropdownHighlight(-1);
@@ -230,8 +238,12 @@ export default function Toolbar({
     if (!editing) return;
     const onOutsideMouseDown = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (!omniboxPillRef.current?.contains(target)) {
-        closeDropdown();
+      const insidePill = omniboxPillRef.current?.contains(target) ?? false;
+      // ВРЕМЕННЫЙ лог диагностики — видно КАЖДЫЙ mousedown в chromeView, пока editing=true,
+      // и что именно решил слушатель (insidePill=true -> игнор, false -> должен закрыть).
+      (window as any).ddlog?.log(`outside-click detected insidePill=${insidePill} target=${(target as HTMLElement)?.tagName ?? '?'}`);
+      if (!insidePill) {
+        closeDropdown('outside-click');
         setEditing(false);
       }
     };
@@ -245,7 +257,8 @@ export default function Toolbar({
   useEffect(() => {
     if (!editing) return;
     return window.oblako.onSuggestDropdownContentFocus(() => {
-      closeDropdown();
+      (window as any).ddlog?.log('content-focus signal received'); // ВРЕМЕННЫЙ лог диагностики
+      closeDropdown('content-focus');
       setEditing(false);
     });
   }, [editing, closeDropdown]);
@@ -254,11 +267,11 @@ export default function Toolbar({
   // дропдаун анкорен к прежнему контексту, смысла в нём больше нет (тот же принцип, что
   // closeTranslatePopoverOnTabSwitch у поповера перевода).
   useEffect(() => {
-    if (editing) { closeDropdown(); setEditing(false); }
+    if (editing) { closeDropdown('tab-switch'); setEditing(false); }
   }, [tab?.id]);
 
   const buildSuggestions = useCallback(async (query: string) => {
-    if (!query.trim()) { closeDropdown(); return; }
+    if (!query.trim()) { closeDropdown('empty-query'); return; }
     const q = query.toLowerCase();
 
     let histEntries: HistoryEntry[] = [];
@@ -338,7 +351,7 @@ export default function Toolbar({
 
   const triggerSuggest = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!q.trim()) { closeDropdown(); return; }
+    if (!q.trim()) { closeDropdown('empty-query-trigger'); return; }
     debounceRef.current = setTimeout(() => { void buildSuggestions(q); }, SUGGEST_DEBOUNCE);
   }, [buildSuggestions, closeDropdown]);
 
@@ -348,7 +361,7 @@ export default function Toolbar({
     onSubmit(v);
     inputRef.current?.blur();
     setEditing(false);
-    closeDropdown();
+    closeDropdown('submit');
     setValue(v);
   };
 
@@ -364,7 +377,7 @@ export default function Toolbar({
   const pickSuggestion = (item: SuggestItem) => {
     if (item.kind === 'tab' && item.tabId) {
       void window.oblako.activateTab(item.tabId);
-      closeDropdown();
+      closeDropdown('pick-tab');
       setEditing(false);
     } else {
       submit(item.url);
@@ -415,7 +428,7 @@ export default function Toolbar({
     }
     if (e.code === 'Escape') {
       if (dropdownOpen) {
-        closeDropdown();
+        closeDropdown('escape');
       } else {
         inputRef.current?.blur();
         setEditing(false);

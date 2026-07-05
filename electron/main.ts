@@ -220,11 +220,20 @@ function createWindow() {
       // все AI-действия (перевод/выжимка/пересказ/объяснение) — action меняет только промпт.
       if (win) showTranslatePopover(win, action, text, rect, wc);
     },
-    () => { closeTranslatePopoverOnTabSwitch(); closeFindBar(); }, // FindBar анкорен к прежней активной вкладке — смысла нет
+    // Заход 6: дропдаун подсказок — та же логика, что у поповера/FindBar (анкерен к прежней
+    // вкладке, безусловный main-side хук на КАЖДУЮ реальную смену активной, а не только
+    // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
+    () => {
+      console.log('[DD] onActiveTabChangedCb fired'); // ВРЕМЕННЫЙ лог диагностики
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(); hideSuggestDropdown();
+    },
     (wc) => closeTranslatePopoverForClosedTab(wc),
     // Заход 5: реальный клик в контент вкладки (не blur омнибокса) — закрывает дропдаун подсказок
     // в chrome, см. shared/ipc.ts::SUGGEST_DROPDOWN_CONTENT_FOCUS, Toolbar.tsx.
-    () => chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS),
+    () => {
+      console.log('[DD] onContentFocusCb fired (tab wc gained OS focus)'); // ВРЕМЕННЫЙ лог диагностики
+      chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS);
+    },
   );
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
   tabs.setSearchEngine(settings.getSearchEngine());
@@ -385,8 +394,11 @@ function registerIpc() {
   // Тумблер показа вью дропдауна — вешается на тот же момент, что и старый React-дропдаун
   // (Toolbar.tsx::openDropdown/closeDropdown), который пока не заменяет (работают параллельно).
   ipcMain.handle(IPC.SUGGEST_DROPDOWN_TOGGLE, (_e, open: boolean) => {
+    console.log(`[DD] main received SUGGEST_DROPDOWN_TOGGLE open=${open}`); // ВРЕМЕННЫЙ лог диагностики
     if (open) { if (win) showSuggestDropdown(win); } else { hideSuggestDropdown(); }
   });
+  // ВРЕМЕННЫЙ канал диагностики залипания дропдауна — см. preload.ts::ddlog. Удалить вместе с ним.
+  ipcMain.on('dd-log', (_e, msg: string) => console.log(`[DD] ${msg}`));
   // Живой список подсказок (заход 3/5) — buildSuggestions в Toolbar.tsx шлёт тот же массив,
   // что кладёт в setSuggestions() для старого дропдауна; main пересылает его во вью.
   ipcMain.handle(IPC.SUGGEST_DROPDOWN_SET_ITEMS, (_e, items: SuggestDropdownItem[]) => {

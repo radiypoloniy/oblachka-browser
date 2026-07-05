@@ -126,6 +126,7 @@ function ensureDropdownView(): WebContentsView {
 }
 
 export function showSuggestDropdown(win: BrowserWindow): void {
+  console.log(`[DD] showSuggestDropdown called, isAttached(before)=${isAttached()}`) // ВРЕМЕННЫЙ лог диагностики
   attachedWin = win
   if (resizeBoundWin !== win) {
     win.on('resize', layoutDropdown) // подписка один раз на окно, как layoutPanel в AiPanelManager
@@ -138,6 +139,7 @@ export function showSuggestDropdown(win: BrowserWindow): void {
   view.setBounds(computeBounds(currentHeight))
   win.contentView.addChildView(view) // последней → нативный z-order поверх уже добавленной вкладки
   // ⚠️ НИКАКОГО view.webContents.focus() здесь — критичный инвариант этого модуля.
+  console.log(`[DD] addChildView done, isAttached=${isAttached()}`) // ВРЕМЕННЫЙ лог диагностики
 }
 
 // Живой список подсказок (заход 3/5) — buildSuggestions в Toolbar.tsx шлёт его на каждый
@@ -150,8 +152,10 @@ export function sendSuggestItems(items: SuggestDropdownItem[]): void {
 }
 
 export function hideSuggestDropdown(): void {
+  console.log(`[DD] hideSuggestDropdown called, isAttached=${isAttached()}`) // ВРЕМЕННЫЙ лог диагностики
   if (!isAttached()) return
   try { attachedWin!.contentView.removeChildView(dropdownView!) } catch { /* окно могло уже закрыться */ }
+  console.log(`[DD] removeChildView done, isAttached=${isAttached()}`) // ВРЕМЕННЫЙ лог диагностики
 }
 
 // Клавиатурная подсветка (заход 4/5) — омнибокс держит selectedIdx, эта функция просто

@@ -35,9 +35,17 @@ function SuggestDropdown() {
   const [hoverIdx, setHoverIdx] = useState(-1);
   // Подсветка от клавиатуры (номер строки, -1 = нет) — приходит от омнибокса, единственного
   // владельца выбора. Приоритет над hover: пока клавиатура «активна» (!== -1), она главнее —
-  // мышь возвращает себе приоритет, как только физически наводится на НОВУЮ строку (см.
-  // onMouseEnter ниже — сбрасывает keyboardIdx локально, без обращения к омнибоксу).
+  // мышь возвращает себе приоритет ТОЛЬКО при реальном движении курсора (см. handleMouseMove
+  // и lastMousePosRef ниже — не onMouseEnter/onMouseLeave, заход 6).
   const [keyboardIdx, setKeyboardIdx] = useState(-1);
+  // Заход 6 (фикс подсветки): onMouseEnter/onMouseLeave — ПРОИЗВОДНЫЕ события хит-теста,
+  // браузер пересчитывает их заново при любом реflow под НЕПОДВИЖНЫМ курсором (например, вью
+  // чуть сдвинулась/переразмерилась после setBounds от suggest-dropdown:height) — то есть могут
+  // «спонтанно» сработать без реального движения мыши, гася клавиатурную подсветку мгновенно
+  // после ArrowDown/ArrowUp. mousemove же браузер синтезирует ТОЛЬКО из настоящего input-события
+  // ОС — на reflow сам по себе никогда не срабатывает. Поэтому передачу приоритета мыши держим
+  // на mousemove с явной проверкой изменения координат, а не на enter/leave.
+  const lastMousePosRef = useRef<{ x: number; y: number } | null>(null);
   // Заход 5 (кардинальный фикс): реальная высота карточки → main (SuggestDropdownManager.ts)
   // пересчитывает bounds вью ровно под список, а не под фиксированные 280px — устраняет мёртвую
   // хит-тест-зону (пустая площадь вью физически перехватывала клики по кнопкам/контенту под ней,
@@ -61,6 +69,19 @@ function SuggestDropdown() {
 
   const activeIdx = keyboardIdx !== -1 ? keyboardIdx : hoverIdx;
 
+  // Реальное движение курсора (не reflow-синтезированное enter/leave) — единственный сигнал,
+  // который отбирает подсветку у клавиатуры обратно мыши. Сверяем координаты, а не полагаемся
+  // просто на факт события mousemove — на всякий случай, если браузер когда-либо всё же
+  // синтезирует его без изменения позиции.
+  const handleRowMouseMove = (e: React.MouseEvent, idx: number) => {
+    const { clientX: x, clientY: y } = e;
+    const last = lastMousePosRef.current;
+    lastMousePosRef.current = { x, y };
+    if (last && last.x === x && last.y === y) return;
+    setHoverIdx(idx);
+    setKeyboardIdx(-1);
+  };
+
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
       <div ref={cardRef} style={{
@@ -80,7 +101,7 @@ function SuggestDropdown() {
               // onMouseDown (не onClick) — регистрирует выбор ДО потенциального ухода фокуса у
               // омнибокса, а не после (см. закрытие без blur — Toolbar.tsx, заход 5).
               onMouseDown={() => window.suggestDropdown.pick(item)}
-              onMouseEnter={() => { setHoverIdx(idx); setKeyboardIdx(-1); }}
+              onMouseMove={(e) => handleRowMouseMove(e, idx)}
               onMouseLeave={() => setHoverIdx((i) => (i === idx ? -1 : i))}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',

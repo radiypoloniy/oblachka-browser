@@ -178,3 +178,11 @@ const api: OblakoApi = {
 };
 
 contextBridge.exposeInMainWorld('oblako', api);
+
+// ВРЕМЕННЫЙ debug-мост для диагностики залипания дропдауна — console.log рендерера не долетает
+// до main stdout (кириллица там же кракозябры), а факты нужны именно оттуда. Отдельный от api,
+// чтобы не трогать контракт OblakoApi/shared/ipc.ts ради одноразовой диагностики. Удалить вместе
+// с временными вызовами в Toolbar.tsx после диагностики.
+contextBridge.exposeInMainWorld('ddlog', {
+  log: (msg: string) => ipcRenderer.send('dd-log', msg),
+});
