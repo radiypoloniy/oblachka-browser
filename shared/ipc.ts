@@ -183,6 +183,11 @@ export const IPC = {
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
 
+  // Дропдаун подсказок омнибокса — временный тумблер нативной тестовой вью (заход 2/5 переезда
+  // с chrome-DOM, см. SuggestDropdownManager.ts), вешается на тот же момент, что и старый
+  // React-дропдаун (Toolbar.tsx::openDropdown/closeDropdown), который пока НЕ заменяет.
+  SUGGEST_DROPDOWN_TOGGLE: 'suggest-dropdown:toggle',
+
   // Настройки (пока только поисковик по умолчанию, см. SettingsManager.ts)
   SETTINGS_GET_SEARCH_ENGINE: 'settings:get-search-engine', // renderer → main: текущий SearchEngineId
   SETTINGS_SET_SEARCH_ENGINE: 'settings:set-search-engine', // renderer → main: сменить движок поиска
@@ -357,6 +362,10 @@ export interface OblakoApi {
 
   // Правая AI-панель (оверлей поверх контента, см. AiPanelManager.ts)
   toggleAiPanel(): Promise<boolean>;
+
+  // Дропдаун подсказок омнибокса — временный тумблер тестовой нативной вью (заход 2/5,
+  // см. SuggestDropdownManager.ts). Прямоугольник омнибокса — см. setOmniboxBounds выше.
+  setSuggestDropdownOpen(open: boolean): Promise<void>;
 
   // Настройки
   getSearchEngine(): Promise<SearchEngineId>;

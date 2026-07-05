@@ -432,7 +432,14 @@ export default function App() {
           onForward={() => window.oblako.goForward(activeId)}
           onReload={() => window.oblako.reload(activeId)}
           onSubmit={submit}
-          onSuggestToggle={setOmniboxSuggestOpen}
+          onSuggestToggle={(open) => {
+            setOmniboxSuggestOpen(open);
+            // Временный тумблер тестовой нативной вью дропдауна (заход 2/5, см.
+            // SuggestDropdownManager.ts) — вешается на тот же момент, что и старый React-дропдаун
+            // (Toolbar.tsx::openDropdown/closeDropdown), который пока НЕ заменяет — оба видны
+            // параллельно для сравнения позиции.
+            void window.oblako.setSuggestDropdownOpen(open);
+          }}
           downloadsActive={downloadsActive}
           downloadsOpen={downloadsOpen}
           onToggleDownloads={() => { setDownloadsOpen((v) => !v); setSettingsOpen(false); setHistoryOpen(false); }}

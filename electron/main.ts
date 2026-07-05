@@ -19,6 +19,7 @@ import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
+import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds } from './SuggestDropdownManager';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -370,11 +371,18 @@ function registerIpc() {
     // авто-скрытие при настройках/истории/загрузках (нулевые bounds — тот же сентинел, см. FindBarManager.ts).
     syncFindBarBounds(b);
   });
-  // Прямоугольник омнибокса — фундамент под будущую нативную вью дропдауна подсказок (см.
-  // shared/ipc.ts::IPC.OMNIBOX_SET_BOUNDS). Пока просто хранится и логируется — потребителя ещё нет.
+  // Прямоугольник омнибокса — фундамент под нативную вью дропдауна подсказок (см.
+  // shared/ipc.ts::IPC.OMNIBOX_SET_BOUNDS). Та же геометрия двигает тестовую вью дропдауна
+  // (заход 2/5, см. SuggestDropdownManager.ts) — старый chrome-DOM дропдаун этот канал не читает.
   ipcMain.handle(IPC.OMNIBOX_SET_BOUNDS, (_e, b: ContentBounds) => {
     omniboxBounds = b;
     console.log(`[omnibox] bounds: ${JSON.stringify(b)}`);
+    syncOmniboxBounds(b);
+  });
+  // Временный тумблер тестовой вью дропдауна (заход 2/5) — вешается на тот же момент, что и
+  // старый React-дропдаун (Toolbar.tsx::openDropdown/closeDropdown), который пока не заменяет.
+  ipcMain.handle(IPC.SUGGEST_DROPDOWN_TOGGLE, (_e, open: boolean) => {
+    if (open) { if (win) showSuggestDropdown(win); } else { hideSuggestDropdown(); }
   });
   ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (_e, opts: TitleBarOpts) => win?.setTitleBarOverlay(opts));
   ipcMain.handle(IPC.FIND_START, (_e, q: string, fwd: boolean) => tabs?.findInPage(q, fwd));

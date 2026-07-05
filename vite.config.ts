@@ -33,6 +33,9 @@ export default defineConfig({
         // FindBar (Ctrl+F) — отдельная WebContentsView поверх контента (см. FindBarManager.ts),
         // создаётся лениво на первый Ctrl+F, не при старте браузера.
         findbar: resolve(__dirname, 'src/findbar.html'),
+        // Тестовая вью дропдауна подсказок омнибокса (заход 2/5 переезда с chrome-DOM, см.
+        // SuggestDropdownManager.ts) — статичный список, не боевая пока.
+        suggestdropdown: resolve(__dirname, 'src/suggestdropdown.html'),
       },
     },
   },
