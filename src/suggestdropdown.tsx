@@ -1,18 +1,21 @@
-// Тестовая нативная вью дропдауна подсказок омнибокса (заход 2/5 переезда с chrome-DOM) —
-// статичный список, без клавиатуры, без реальных данных (заходы 3-4). Единственная цель этого
-// захода: показ/позиционирование/НЕ-взятие-фокуса — старый chrome-DOM дропдаун (Toolbar.tsx)
-// работает параллельно и это НЕ трогает.
+// Нативная вью дропдауна подсказок омнибокса (заход 3/5 переезда с chrome-DOM) — живой список
+// от buildSuggestions (Toolbar.tsx) + мышиный выбор (клик). Клавиатура — заход 4. Старый
+// chrome-DOM дропдаун (Toolbar.tsx) работает параллельно и это не трогает.
 // Позиция/размер задаёт main (setBounds, см. electron/SuggestDropdownManager.ts) — эта страница
 // просто рисует контент на весь свой вьюпорт, инсетнутый на SHADOW_MARGIN под CSS-тень (тот же
-// приём, что у поповера перевода/FindBar).
+// приём, что у поповера перевода/FindBar). Список внутри скроллится (maxHeight+overflowY) —
+// та же логика, что у старого дропдауна (Toolbar.tsx: maxHeight:280), а не растёт вью под контент.
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { Search, Globe } from 'lucide-react';
 import './styles/global.css';
+import type { SuggestDropdownItem } from '../shared/ipc';
 
 declare global {
   interface Window {
     suggestDropdown: {
-      onItems: (cb: (items: string[]) => void) => () => void
+      onItems: (cb: (items: SuggestDropdownItem[]) => void) => () => void
+      pick: (item: SuggestDropdownItem) => void
     }
   }
 }
@@ -21,7 +24,8 @@ declare global {
 const SHADOW_MARGIN = 16;
 
 function SuggestDropdown() {
-  const [items, setItems] = useState<string[]>([]);
+  const [items, setItems] = useState<SuggestDropdownItem[]>([]);
+  const [hoverIdx, setHoverIdx] = useState(-1);
 
   useEffect(() => window.suggestDropdown.onItems(setItems), []);
 
@@ -33,19 +37,53 @@ function SuggestDropdown() {
         borderRadius: 'var(--radius-card)',
         boxShadow: 'var(--shadow-island)',
         border: '1px solid var(--glass-edge)',
-        overflow: 'hidden',
+        overflow: 'hidden', maxHeight: 280, overflowY: 'auto',
         fontFamily: 'var(--font-sans)',
       }}>
-        {items.map((item, idx) => (
-          <div key={idx} style={{
-            padding: '10px 14px',
-            fontSize: 'var(--fs-sm)',
-            color: 'var(--text-strong)',
-            borderBottom: idx < items.length - 1 ? '1px solid var(--divider)' : 'none',
-          }}>
-            {item}
-          </div>
-        ))}
+        {items.map((item, idx) => {
+          const Icon = item.kind === 'search' ? Search : Globe;
+          return (
+            <div
+              key={`${item.kind}-${item.url}`}
+              // onMouseDown (не onClick) — та же семантика, что у старого дропдауна (SuggestRow
+              // в Toolbar.tsx): регистрирует выбор ДО возможного blur/потери фокуса у омнибокса.
+              onMouseDown={() => window.suggestDropdown.pick(item)}
+              onMouseEnter={() => setHoverIdx(idx)}
+              onMouseLeave={() => setHoverIdx((i) => (i === idx ? -1 : i))}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
+                cursor: 'default', minWidth: 0,
+                background: hoverIdx === idx ? 'var(--surface-sunken)' : 'transparent',
+                transition: 'background 0.08s',
+              }}
+            >
+              <span style={{ color: 'var(--text-faint)', flex: 'none', display: 'inline-flex' }}>
+                <Icon size={13} />
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {item.label}
+                </div>
+                {item.sub && (
+                  <div style={{
+                    fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {item.sub}
+                  </div>
+                )}
+              </div>
+              {item.kind === 'tab' && (
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
+                  вкладка
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

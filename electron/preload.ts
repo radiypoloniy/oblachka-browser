@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -155,8 +155,14 @@ const api: OblakoApi = {
   // Правая AI-панель
   toggleAiPanel: () => ipcRenderer.invoke(IPC.AI_PANEL_TOGGLE) as Promise<boolean>,
 
-  // Дропдаун подсказок омнибокса (временный тумблер тестовой вью, заход 2/5)
+  // Дропдаун подсказок омнибокса (нативная вью)
   setSuggestDropdownOpen: (open: boolean) => ipcRenderer.invoke(IPC.SUGGEST_DROPDOWN_TOGGLE, open) as Promise<void>,
+  setSuggestDropdownItems: (items: SuggestDropdownItem[]) => ipcRenderer.invoke(IPC.SUGGEST_DROPDOWN_SET_ITEMS, items) as Promise<void>,
+  onSuggestDropdownPicked: (cb: (item: SuggestDropdownItem) => void) => {
+    const handler = (_e: unknown, item: SuggestDropdownItem) => cb(item);
+    ipcRenderer.on(IPC.SUGGEST_DROPDOWN_PICKED, handler);
+    return () => ipcRenderer.removeListener(IPC.SUGGEST_DROPDOWN_PICKED, handler);
+  },
 
   // Настройки
   getSearchEngine: () => ipcRenderer.invoke(IPC.SETTINGS_GET_SEARCH_ENGINE) as Promise<SearchEngineId>,

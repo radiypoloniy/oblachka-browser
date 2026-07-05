@@ -187,6 +187,13 @@ export const IPC = {
   // с chrome-DOM, см. SuggestDropdownManager.ts), вешается на тот же момент, что и старый
   // React-дропдаун (Toolbar.tsx::openDropdown/closeDropdown), который пока НЕ заменяет.
   SUGGEST_DROPDOWN_TOGGLE: 'suggest-dropdown:toggle',
+  // Живой список подсказок (заход 3/5): chrome → main, тот же массив, что buildSuggestions
+  // кладёт в setSuggestions() для старого дропдауна. Main пересылает его во вью дропдауна.
+  SUGGEST_DROPDOWN_SET_ITEMS: 'suggest-dropdown:set-items',
+  // Пользователь кликнул строку ВО вью дропдауна (другой webContents) — main пересылает выбор
+  // обратно в chrome, где Toolbar.tsx вызывает свой существующий pickSuggestion(), не дублируя
+  // его поведение (activateTab/навигация) во второй раз.
+  SUGGEST_DROPDOWN_PICKED: 'suggest-dropdown:picked',
 
   // Настройки (пока только поисковик по умолчанию, см. SettingsManager.ts)
   SETTINGS_GET_SEARCH_ENGINE: 'settings:get-search-engine', // renderer → main: текущий SearchEngineId
@@ -208,6 +215,18 @@ export interface HistoryEntry {
 export type HistoryClearPeriod = 'hour' | 'day' | 'week' | 'all';
 
 // ── Загрузки ─────────────────────────────────────────────────────────────────
+
+// ── Дропдаун подсказок омнибокса (нативная вью, заход 3/5) ───────────────────────────────────
+// Та же форма, что локальный SuggestItem в Toolbar.tsx (переиспользуется оттуда напрямую) —
+// пересекает IPC-границу chrome ↔ main ↔ вью дропдауна, поэтому здесь, а не ad-hoc в одном файле.
+export type SuggestKind = 'history' | 'tab' | 'search';
+export interface SuggestDropdownItem {
+  kind: SuggestKind;
+  label: string;
+  sub?: string;
+  url: string;
+  tabId?: string;
+}
 
 export type DownloadState = 'progressing' | 'completed' | 'cancelled' | 'interrupted';
 
@@ -366,6 +385,11 @@ export interface OblakoApi {
   // Дропдаун подсказок омнибокса — временный тумблер тестовой нативной вью (заход 2/5,
   // см. SuggestDropdownManager.ts). Прямоугольник омнибокса — см. setOmniboxBounds выше.
   setSuggestDropdownOpen(open: boolean): Promise<void>;
+  // Живой список подсказок (заход 3/5) — тот же массив, что buildSuggestions строит для
+  // старого дропдауна, пересылается во вью нативного дропдауна.
+  setSuggestDropdownItems(items: SuggestDropdownItem[]): Promise<void>;
+  // Пользователь кликнул строку во вью дропдауна — Toolbar.tsx вызывает свой pickSuggestion().
+  onSuggestDropdownPicked(cb: (item: SuggestDropdownItem) => void): () => void;
 
   // Настройки
   getSearchEngine(): Promise<SearchEngineId>;

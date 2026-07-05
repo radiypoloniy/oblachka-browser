@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Globe, Download, ChevronDown } from 'lucide-react';
-import type { TabState, HistoryEntry } from '../../shared/ipc';
+import type { TabState, HistoryEntry, SuggestDropdownItem } from '../../shared/ipc';
 import { normalizeForTiles, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
@@ -56,15 +56,10 @@ const CAPSULE_HIDE_THRESHOLD = 200;
 
 // ── Типы ─────────────────────────────────────────────────────────────────────
 
-type SuggestKind = 'history' | 'tab' | 'search';
-
-interface SuggestItem {
-  kind: SuggestKind;
-  label: string;
-  sub?: string;
-  url: string;
-  tabId?: string;
-}
+// Тот же тип, что шлётся во вью нативного дропдауна (shared/ipc.ts) — переиспользуем напрямую,
+// чтобы форма подсказки не разъезжалась между двумя дропдаунами (chrome-DOM и native, заход 3/5).
+type SuggestKind = SuggestDropdownItem['kind'];
+type SuggestItem = SuggestDropdownItem;
 
 interface ToolbarProps {
   tab: TabState | undefined;
@@ -281,6 +276,10 @@ export default function Toolbar({
     setSuggestions(deduped);
     setSelectedIdx(-1);
     openDropdown();
+    // Тот же список — дополнительно в нативную вью дропдауна (заход 3/5, параллельно старому
+    // React-дропдауну выше). Формирование списка (история/вкладки/frecency/дедуп) не меняется —
+    // только эта отправка добавлена.
+    void window.oblako.setSuggestDropdownItems(deduped);
   }, [allTabs, openDropdown, closeDropdown, searchEngineId]);
 
   const triggerSuggest = useCallback((q: string) => {
@@ -317,6 +316,16 @@ export default function Toolbar({
       submit(item.url);
     }
   };
+
+  // Клик по строке ВО вью нативного дропдауна (другой webContents, заход 3/5) — main пересылает
+  // выбор сюда, вызываем тот же pickSuggestion(), что и старый chrome-DOM дропдаун (не дублируем
+  // его поведение). Ref — чтобы не пересобирать подписку на каждый рендер (pickSuggestion не
+  // мемоизирована), тот же приём, что isHubRef/findOpenRef в App.tsx.
+  const pickSuggestionRef = useRef(pickSuggestion);
+  pickSuggestionRef.current = pickSuggestion;
+  useEffect(() => {
+    return window.oblako.onSuggestDropdownPicked((item) => { pickSuggestionRef.current(item); });
+  }, []);
 
   // Клавиатурная навигация. e.code — раскладконезависимо.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

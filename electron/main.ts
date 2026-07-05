@@ -13,13 +13,13 @@ import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
 import { SettingsManager } from './SettingsManager';
 import { IPC } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
-import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds } from './SuggestDropdownManager';
+import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick } from './SuggestDropdownManager';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -371,19 +371,27 @@ function registerIpc() {
     // авто-скрытие при настройках/истории/загрузках (нулевые bounds — тот же сентинел, см. FindBarManager.ts).
     syncFindBarBounds(b);
   });
-  // Прямоугольник омнибокса — фундамент под нативную вью дропдауна подсказок (см.
-  // shared/ipc.ts::IPC.OMNIBOX_SET_BOUNDS). Та же геометрия двигает тестовую вью дропдауна
-  // (заход 2/5, см. SuggestDropdownManager.ts) — старый chrome-DOM дропдаун этот канал не читает.
+  // Прямоугольник омнибокса — двигает нативную вью дропдауна подсказок (см.
+  // shared/ipc.ts::IPC.OMNIBOX_SET_BOUNDS, SuggestDropdownManager.ts) — старый chrome-DOM
+  // дропдаун этот канал не читает, продолжает позиционироваться от toolbarRef как раньше.
   ipcMain.handle(IPC.OMNIBOX_SET_BOUNDS, (_e, b: ContentBounds) => {
     omniboxBounds = b;
     console.log(`[omnibox] bounds: ${JSON.stringify(b)}`);
     syncOmniboxBounds(b);
   });
-  // Временный тумблер тестовой вью дропдауна (заход 2/5) — вешается на тот же момент, что и
-  // старый React-дропдаун (Toolbar.tsx::openDropdown/closeDropdown), который пока не заменяет.
+  // Тумблер показа вью дропдауна — вешается на тот же момент, что и старый React-дропдаун
+  // (Toolbar.tsx::openDropdown/closeDropdown), который пока не заменяет (работают параллельно).
   ipcMain.handle(IPC.SUGGEST_DROPDOWN_TOGGLE, (_e, open: boolean) => {
     if (open) { if (win) showSuggestDropdown(win); } else { hideSuggestDropdown(); }
   });
+  // Живой список подсказок (заход 3/5) — buildSuggestions в Toolbar.tsx шлёт тот же массив,
+  // что кладёт в setSuggestions() для старого дропдауна; main пересылает его во вью.
+  ipcMain.handle(IPC.SUGGEST_DROPDOWN_SET_ITEMS, (_e, items: SuggestDropdownItem[]) => {
+    sendSuggestItems(items);
+  });
+  // Клик по строке ВО вью дропдауна (другой webContents) — пересылаем в chrome, где Toolbar.tsx
+  // вызывает свой существующий pickSuggestion(), не дублируя его поведение (activateTab/навигация).
+  onSuggestDropdownPick((item) => { chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_PICKED, item); });
   ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (_e, opts: TitleBarOpts) => win?.setTitleBarOverlay(opts));
   ipcMain.handle(IPC.FIND_START, (_e, q: string, fwd: boolean) => tabs?.findInPage(q, fwd));
   ipcMain.handle(IPC.FIND_NEXT,  (_e, fwd: boolean)            => tabs?.findNext(fwd));
