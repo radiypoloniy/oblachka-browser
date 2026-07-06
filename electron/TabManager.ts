@@ -1,8 +1,8 @@
-import { WebContentsView, BrowserWindow, Menu, clipboard } from 'electron';
+import { WebContentsView, BrowserWindow, Menu, clipboard, net } from 'electron';
 import type { MenuItemConstructorOptions, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction } from '../shared/ipc';
-import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef } from './SessionManager';
+import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef, SavedTab } from './SessionManager';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
 
@@ -27,6 +27,10 @@ const SLEEP_TIMEOUT_NORMAL = 2 * 60 * 60 * 1000;  // 2 часа без акти�
 const SLEEP_TIMEOUT_PINNED = 8 * 60 * 60 * 1000;  // 8 часов для закреплённых
 const SLEEP_CHECK_INTERVAL = 60_000;               // проверка раз в минуту
 
+// Кап на размер тела favicon перед base64-кэшированием в сессию (заход C) — без него один
+// «тяжёлый» сайт (нестандартный favicon.ico на сотни КБ) непредсказуемо раздувает session.json.
+const FAVICON_CACHE_MAX_BYTES = 100 * 1024; // 100 КБ сырых байт (до base64, т.е. ~133 КБ в файле)
+
 // «Краткая выжимка» имеет смысл только для достаточно длинного выделения (иначе выжимать нечего) —
 // одно место, легко поменять. ~40 слов ~ 250 символов на кириллице/латинице.
 const SUMMARIZE_MIN_CHARS = 250;
@@ -50,7 +54,8 @@ export const HUB_ID = 'hub';
 interface SleepingMeta {
   url: string;
   title: string;
-  faviconUrl: string | null;
+  faviconUrl: string | null;   // «живой» URL иконки (сеть) — фоллбэк, если данных ещё нет
+  faviconData: string | null;  // закэшированные байты (data: URL) — приоритетны, работают офлайн
 }
 
 // Прямоугольник (селекшена или фоллбэк-точки клика) в координатах ОКНА — уже с добавленным
@@ -268,7 +273,9 @@ export class TabManager {
       return {
         id: t.id, isActive: t.id === this.activeId,
         tabError: null,
-        url: t.sleeping.url, title: t.sleeping.title, faviconUrl: t.sleeping.faviconUrl,
+        url: t.sleeping.url, title: t.sleeping.title,
+        // Кэш (base64, офлайн) приоритетнее «живого» URL — тот требует сети прямо сейчас.
+        faviconUrl: t.sleeping.faviconData ?? t.sleeping.faviconUrl,
         isLoading: false, canGoBack: false, canGoForward: false,
         isHub: false, isPinned,
         splitSide: !this.splitState ? null
@@ -373,6 +380,37 @@ export class TabManager {
     return '';
   }
 
+  // Title вкладки для сохранения в сессию (заход C) — undefined, если не знаем (напр. страница
+  // ещё не отдала title) — писать в session.json нечего, поле останется отсутствующим (optional).
+  #tabTitle(tab: ManagedTab): string | undefined {
+    if (tab.sleeping) return tab.sleeping.title || undefined;
+    if (this.isHttpView(tab.view) && !tab.view.webContents.isDestroyed()) {
+      return tab.view.webContents.getTitle() || undefined;
+    }
+    return undefined;
+  }
+
+  // Base64-кэш favicon для сохранения в сессию — undefined, если фоновый #cacheFaviconData ещё не
+  // успел (или сайт без favicon) — это нормально, допишется при следующем автосейве.
+  #tabFaviconData(tab: ManagedTab): string | undefined {
+    if (tab.sleeping) return tab.sleeping.faviconData ?? undefined;
+    if (this.isHttpView(tab.view) && !tab.view.webContents.isDestroyed()) {
+      return (tab.view.webContents as unknown as { _oblakoFaviconData?: string })._oblakoFaviconData;
+    }
+    return undefined;
+  }
+
+  // Строит SavedSingleNode с опциональными title/faviconData, если уже известны — используется и
+  // для обычного single-узла, и для деградации split-pair (см. #serializeNodes).
+  #toSavedSingle(tab: ManagedTab): SavedSingleNode {
+    const node: SavedSingleNode = { type: 'single', url: this.#tabUrl(tab) };
+    const title = this.#tabTitle(tab);
+    if (title) node.title = title;
+    const faviconData = this.#tabFaviconData(tab);
+    if (faviconData) node.faviconData = faviconData;
+    return node;
+  }
+
   // Заменяет SplitPairNode двумя SingleNode — рекурсивный поиск (пара может быть в группе).
   #dissolveSplitPair(leftId: string, rightId: string): void {
     this.#dissolveSplitPairIn(leftId, rightId, this.nodes);
@@ -428,9 +466,13 @@ export class TabManager {
     // при рестарте нет смысла «воскрешать» страницу логина.
     const savable = (t: ManagedTab) => !t.ephemeral && isReal(this.#tabUrl(t));
 
-    const pinnedTabs: { url: string }[] = [];
+    const pinnedTabs: SavedTab[] = [];
     for (const t of this.pinnedTabs) {
-      if (savable(t)) pinnedTabs.push({ url: this.#tabUrl(t) });
+      if (!savable(t)) continue;
+      const pin: SavedTab = { url: this.#tabUrl(t) };
+      const title = this.#tabTitle(t); if (title) pin.title = title;
+      const faviconData = this.#tabFaviconData(t); if (faviconData) pin.faviconData = faviconData;
+      pinnedTabs.push(pin);
     }
 
     const nodes = this.#serializeNodes(this.nodes, savable);
@@ -456,7 +498,7 @@ export class TabManager {
       if (node.type === 'single') {
         const tab = this.tabMap.get(node.tabId);
         if (!tab) continue;
-        if (savable(tab)) result.push({ type: 'single', url: this.#tabUrl(tab) });
+        if (savable(tab)) result.push(this.#toSavedSingle(tab));
       } else if (node.type === 'split-pair') {
         const leftTab  = this.tabMap.get(node.leftTabId);
         const rightTab = this.tabMap.get(node.rightTabId);
@@ -465,11 +507,18 @@ export class TabManager {
         if (leftOk && rightOk) {
           const ratio = (this.splitState?.leftId === node.leftTabId)
             ? this.splitState.splitRatio : node.ratio;
-          result.push({ type: 'split-pair', leftUrl: this.#tabUrl(leftTab!), rightUrl: this.#tabUrl(rightTab!), ratio });
+          const pairNode: SavedSplitPairNode = {
+            type: 'split-pair', leftUrl: this.#tabUrl(leftTab!), rightUrl: this.#tabUrl(rightTab!), ratio,
+          };
+          const leftTitle = this.#tabTitle(leftTab!); if (leftTitle) pairNode.leftTitle = leftTitle;
+          const rightTitle = this.#tabTitle(rightTab!); if (rightTitle) pairNode.rightTitle = rightTitle;
+          const leftFav = this.#tabFaviconData(leftTab!); if (leftFav) pairNode.leftFaviconData = leftFav;
+          const rightFav = this.#tabFaviconData(rightTab!); if (rightFav) pairNode.rightFaviconData = rightFav;
+          result.push(pairNode);
         } else if (leftOk) {
-          result.push({ type: 'single', url: this.#tabUrl(leftTab!) });
+          result.push(this.#toSavedSingle(leftTab!));
         } else if (rightOk) {
-          result.push({ type: 'single', url: this.#tabUrl(rightTab!) });
+          result.push(this.#toSavedSingle(rightTab!));
         }
       } else if (node.type === 'group') {
         const children = this.#serializeNodes(node.children, savable);
@@ -640,7 +689,7 @@ export class TabManager {
     const url = this.resolveInput(rawUrl);
     const tab: ManagedTab = {
       id, view: null, lastActiveAt: Date.now(),
-      sleeping: { url, title: domainFromUrl(url), faviconUrl: null },
+      sleeping: { url, title: domainFromUrl(url), faviconUrl: null, faviconData: null },
     };
     this.tabMap.set(id, tab);
     this.nodes.push({ type: 'single', tabId: id });
@@ -693,6 +742,23 @@ export class TabManager {
     return this.pinnedTabs.some((t) => t.id === id);
   }
 
+  // ── Фоновый кэш favicon в base64 (заход C) — для мгновенных офлайн-иконок в сессии ──
+  // Fire-and-forget: качает favicons?.[0] (URL, см. page-favicon-updated выше), кладёт data:-строку
+  // в тот же хак-приём, что и _oblakoFavicon (свойство прямо на webContents). НИКОГДА не вызывается
+  // из getSessionSnapshot/#write — те синхронны и работают в т.ч. на win.on('close'), await там
+  // не сработает. Кап на размер (FAVICON_CACHE_MAX_BYTES) — один «тяжёлый» favicon не должен
+  // бесконтрольно раздувать session.json.
+  #cacheFaviconData(wc: WebContents, url: string): void {
+    net.fetch(url).then(async (res) => {
+      if (!res.ok || wc.isDestroyed()) return;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.byteLength === 0 || buf.byteLength > FAVICON_CACHE_MAX_BYTES || wc.isDestroyed()) return;
+      const contentType = res.headers.get('content-type') || 'image/x-icon';
+      (wc as unknown as { _oblakoFaviconData?: string })._oblakoFaviconData =
+        `data:${contentType};base64,${buf.toString('base64')}`;
+    }).catch(() => { /* сеть недоступна/CORS/т.п. — просто не кэшируем, не критично */ });
+  }
+
   // ── Усыпление: выгружаем WebContentsView, сохраняем метаданные ──
   private sleepTab(id: string): void {
     const tab = this.tabMap.get(id);
@@ -705,6 +771,10 @@ export class TabManager {
       url,
       title: wc.getTitle() || url,
       faviconUrl: (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon ?? null,
+      // Base64-кэш (см. #cacheFaviconData) — если фоновый fetch уже успел завершиться к моменту
+      // усыпления. Если нет — faviconUrl выше остаётся фоллбэком для текущей сессии, а данные
+      // всё равно попадут в session.json при следующем реальном пробуждении+усыплении.
+      faviconData: (wc as unknown as { _oblakoFaviconData?: string })._oblakoFaviconData ?? null,
     };
     try { this.win.contentView.removeChildView(tab.view); } catch { /* noop */ }
     try { (wc as unknown as { close?: () => void }).close?.(); } catch { /* noop */ }
@@ -843,8 +913,10 @@ export class TabManager {
     });
 
     wc.on('page-favicon-updated', (_e, favicons) => {
-      (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon = favicons?.[0];
+      const url = favicons?.[0];
+      (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon = url;
       notify();
+      if (url) this.#cacheFaviconData(wc, url);
     });
 
     // Результат findInPage — пробрасываем в renderer для обновления счётчика.

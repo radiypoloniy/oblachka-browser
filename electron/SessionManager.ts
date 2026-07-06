@@ -11,7 +11,7 @@ import path from 'node:path';
 const SESSION_VERSION = 5;
 const DEBOUNCE_MS = 1500;
 
-interface SavedTab {
+export interface SavedTab {
   url: string;
   // Кэш названия/иконки (base64 data:) — опционально, для мгновенной отрисовки без пробуждения/
   // загрузки. Отсутствуют в файлах v4 и старше — читающий код обязан фоллбэчить сам.
