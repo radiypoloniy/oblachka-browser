@@ -17,6 +17,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 * { box-sizing: border-box; }
+/* Тот же keyframe-приём, что и src/index.html (спиннер до React) — здесь для React-точек входа,
+   не грузящих index.html (aipanel.tsx и т.п.), см. заход D: индикатор фактчека. */
+@keyframes oblako-spin { to { transform: rotate(360deg); } }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb {
   background: rgba(60,50,90,0.22); border-radius: 6px;

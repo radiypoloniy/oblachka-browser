@@ -10,6 +10,7 @@ import path from 'node:path'
 import { readFileSync } from 'node:fs'
 import TurndownService from 'turndown'
 import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
+import * as aiKeyStore from './AiKeyStore'
 import type { TabState } from '../shared/ipc'
 import type { TabManager } from './TabManager'
 
@@ -210,6 +211,17 @@ function sendCurrentContext(): void {
   })
 }
 
+// Пушит панели текущий статус ключа Gemini — кнопка фактчека показывается/прячется по нему
+// (см. aipanel.tsx). Тот же источник истины (AiKeyStore.ts), что и секция настроек AI.
+function sendKeyStatus(): void {
+  if (!panelView) return
+  panelView.webContents.send('ai-panel:key-status', aiKeyStore.getKeyStatus())
+}
+
+// Подписка на изменения статуса ключа (сохранили/удалили в настройках) — модуль загружается один
+// раз за жизнь процесса (импорт в main.ts), повторной регистрации не будет.
+aiKeyStore.onKeyStatusChanged(() => sendKeyStatus())
+
 // Единственная точка входа из main.ts — вызывается из УЖЕ существующего onChange (тот, что шлёт
 // SYNC_CHANGED в чром), TabManager.ts НЕ трогаем и новых колбэков туда не добавляем. onChange и
 // так стреляет на переключение вкладки, навигацию и закрытие — этого достаточно, чтобы вывести
@@ -404,8 +416,8 @@ function ensurePanelView(): WebContentsView {
   // риска мигнуть белым мимо текущей темы (светлой/тёмной) до применения CSS.
   panelView.setBackgroundColor('#00000000')
   // Первый показ беседы активной вкладки — только после did-finish-load: раньше renderer ещё не
-  // навесил обработчик onContext, сообщение потерялось бы.
-  panelView.webContents.once('did-finish-load', () => sendCurrentContext())
+  // навесил обработчик onContext, сообщение потерялось бы. Статус ключа — тем же приёмом.
+  panelView.webContents.once('did-finish-load', () => { sendCurrentContext(); sendKeyStatus() })
 
   // Ссылки из ответа модели — обычные <a href> (react-markdown их не оборачивает, см. задачу):
   // без перехвата клик навигирует ЭТУ ЖЕ webContents на внешний сайт, затирая aipanel.html —
@@ -453,6 +465,6 @@ export function toggleAiPanel(win: BrowserWindow): boolean {
   isOpen = true
   // При повторном открытии (view уже когда-то загрузился) did-finish-load больше не сработает —
   // шлём текущий контекст явно, чтобы панель не показывала последнюю беседу «протухшей» вкладки.
-  if (alreadyLoaded) sendCurrentContext()
+  if (alreadyLoaded) { sendCurrentContext(); sendKeyStatus() }
   return true
 }

@@ -30,4 +30,13 @@ contextBridge.exposeInMainWorld('aiPanel', {
     ipcRenderer.on('ai-panel:context', handler);
     return () => ipcRenderer.removeListener('ai-panel:context', handler);
   },
+
+  // Заход D — кнопка фактчека: показывается только если ключ Gemini подключён (см. AiKeyStore.ts).
+  // Пуш статуса — тот же источник, что и секция настроек AI, не два независимых состояния.
+  onKeyStatus: (cb: (connected: boolean) => void) => {
+    const handler = (_e: unknown, connected: boolean) => cb(connected);
+    ipcRenderer.on('ai-panel:key-status', handler);
+    return () => ipcRenderer.removeListener('ai-panel:key-status', handler);
+  },
+  factCheck: () => ipcRenderer.send('ai-panel:fact-check'),
 })

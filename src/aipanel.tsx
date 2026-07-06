@@ -10,7 +10,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, X, Send, Globe } from 'lucide-react';
+import { Sparkles, X, Send, Globe, SearchCheck, Loader2 } from 'lucide-react';
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 
@@ -42,6 +42,9 @@ declare global {
       onChatChunk: (cb: (text: string) => void) => () => void
       onChatResult: (cb: (outcome: ChatOutcome) => void) => () => void
       onContext: (cb: (ctx: TabContext) => void) => () => void
+      // Заход D — кнопка фактчека: показывается только когда ключ Gemini подключён.
+      onKeyStatus: (cb: (connected: boolean) => void) => () => void
+      factCheck: () => void
     }
   }
 }
@@ -100,6 +103,15 @@ function AiPanel() {
   const [streamedText, setStreamedText] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Заход D — кнопка фактчека видна только когда ключ Gemini подключён (см. AiKeyStore.ts,
+  // пуш через AiPanelManager.ts::sendKeyStatus). factChecking — отдельный флаг ТОЛЬКО для
+  // текстовой/визуальной подписи «печатающегося» сообщения (см. рендер ленты ниже): вызов Gemini
+  // с Search Grounding идёт заметно дольше локальной модели и без частичного стриминга, обычное
+  // «…» выглядело бы как зависание — явный текст снижает риск повторного клика.
+  const [factCheckAvailable, setFactCheckAvailable] = useState(false)
+  const [factChecking, setFactChecking] = useState(false)
+  // Плашка приватности перед вызовом (см. sendFactCheck ниже) — обязательна каждый раз, без «запомнить».
+  const [showFactCheckConfirm, setShowFactCheckConfirm] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -120,6 +132,7 @@ function AiPanel() {
       setMessages(ctx.messages)
       setStreamedText('')
       setSending(false)
+      setFactChecking(false)
       setError(null)
     })
     const unsubChunk = window.aiPanel.onChatChunk((chunkText) => {
@@ -127,6 +140,7 @@ function AiPanel() {
     })
     const unsubResult = window.aiPanel.onChatResult((outcome) => {
       setSending(false)
+      setFactChecking(false)
       setStreamedText('')
       if (outcome.ok) {
         setMessages((prev) => [...prev, { role: 'assistant', text: outcome.out }])
@@ -135,7 +149,10 @@ function AiPanel() {
         setError(outcome.error)
       }
     })
-    return () => { unsubContext(); unsubChunk(); unsubResult() }
+    const unsubKeyStatus = window.aiPanel.onKeyStatus((connected) => {
+      setFactCheckAvailable(connected)
+    })
+    return () => { unsubContext(); unsubChunk(); unsubResult(); unsubKeyStatus() }
   }, [])
 
   // Автоскролл вниз при новом тексте — свои сообщения, ответы AI, стриминг по ходу генерации.
@@ -168,6 +185,20 @@ function AiPanel() {
     setError(null)
     setSending(true)
     window.aiPanel.quickTranslate()
+  }
+
+  // Заход D — фактчек уходит в облако (Google Gemini), а не к локальной модели: плашка
+  // приватности обязательна перед КАЖДЫМ вызовом (см. showFactCheckConfirm выше) — реальная
+  // отправка происходит только по явному подтверждению.
+  const sendFactCheck = () => {
+    if (sending || !tabId) return
+    setShowFactCheckConfirm(false)
+    setMessages((prev) => [...prev, { role: 'user', text: 'Фактчек' }])
+    setStreamedText('')
+    setError(null)
+    setSending(true)
+    setFactChecking(true)
+    window.aiPanel.factCheck()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -289,6 +320,17 @@ function AiPanel() {
             }}>
               {streamedText.length > 0 ? (
                 <ReactMarkdown components={markdownComponents}>{streamedText}</ReactMarkdown>
+              ) : factChecking ? (
+                // Явный индикатор, отличный от «мгновенного» «…» локальных кнопок — Gemini с
+                // Search Grounding занимает заметно дольше и не стримит частями, «…» тут читался
+                // бы как зависание и мог спровоцировать повторный клик.
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  fontSize: 'var(--fs-sm)', color: 'var(--text-faint)',
+                }}>
+                  <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+                  Анализирую источники…
+                </span>
               ) : (
                 <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>…</span>
               )}
@@ -304,38 +346,101 @@ function AiPanel() {
 
         {/* Кнопки-подсказки — только пока беседа пуста (как у Яндекса, над полем ввода). Как только
             пришло первое сообщение, ряд исчезает — тот же messages.length, что гасит плейсхолдер
-            в ленте выше. */}
+            в ленте выше. Плашка приватности фактчека занимает то же место — взаимоисключающе с
+            рядом кнопок (см. showFactCheckConfirm). */}
         {messages.length === 0 && !sending && (
-          <div style={{
-            display: 'flex', flexWrap: 'wrap', gap: 6,
-            padding: `0 var(--pad-island)`,
-            marginBottom: 8,
-            flexShrink: 0,
-          }}>
-            {QUICK_ACTIONS.map((qa) => (
-              <button
-                key={qa.label}
-                onClick={() => qa.kind === 'translate' ? sendQuickTranslate() : sendText(qa.prompt)}
-                disabled={!tabId}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-chip)',
-                  border: 'none',
-                  // var(--shadow-chip) — та же лёгкая тень, что у чипов/карточек в остальном
-                  // хроме (tokens/shadows.css), не подобрана заново: иначе кнопки сливались
-                  // с фоном острова (тот же тон var(--surface-sunken)).
-                  background: 'var(--surface-sunken)',
-                  boxShadow: 'var(--shadow-chip)',
-                  color: 'var(--text-body)',
-                  fontSize: 'var(--fs-xs)', fontWeight: 500,
-                  cursor: tabId ? 'pointer' : 'default',
-                  opacity: tabId ? 1 : 0.5,
-                }}
-              >
-                {qa.label}
-              </button>
-            ))}
-          </div>
+          showFactCheckConfirm ? (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 8,
+              margin: `0 var(--pad-island) 8px`,
+              padding: '10px 12px',
+              borderRadius: 'var(--radius-chip)',
+              background: 'var(--system-soft)',
+              flexShrink: 0,
+            }}>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
+                Текст страницы и запрос уйдут в облако (Google Gemini) для проверки по реальным
+                источникам в интернете.
+              </span>
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setShowFactCheckConfirm(false)}
+                  style={{
+                    padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
+                    background: 'transparent', color: 'var(--text-muted)',
+                    fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer',
+                  }}
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={sendFactCheck}
+                  style={{
+                    padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
+                    background: 'var(--system)', color: '#fff',
+                    fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  Продолжить
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: 6,
+              padding: `0 var(--pad-island)`,
+              marginBottom: 8,
+              flexShrink: 0,
+            }}>
+              {QUICK_ACTIONS.map((qa) => (
+                <button
+                  key={qa.label}
+                  onClick={() => qa.kind === 'translate' ? sendQuickTranslate() : sendText(qa.prompt)}
+                  disabled={!tabId}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 'var(--radius-chip)',
+                    border: 'none',
+                    // var(--shadow-chip) — та же лёгкая тень, что у чипов/карточек в остальном
+                    // хроме (tokens/shadows.css), не подобрана заново: иначе кнопки сливались
+                    // с фоном острова (тот же тон var(--surface-sunken)).
+                    background: 'var(--surface-sunken)',
+                    boxShadow: 'var(--shadow-chip)',
+                    color: 'var(--text-body)',
+                    fontSize: 'var(--fs-xs)', fontWeight: 500,
+                    cursor: tabId ? 'pointer' : 'default',
+                    opacity: tabId ? 1 : 0.5,
+                  }}
+                >
+                  {qa.label}
+                </button>
+              ))}
+              {/* Заход D — видна ТОЛЬКО когда ключ Gemini подключён (см. onKeyStatus выше), не
+                  disabled-серая: без ключа кнопки нет вообще. Цвет — var(--system) (облако/
+                  система, см. tokens/colors.css), не новый оттенок синего — тот же, что уже
+                  зарезервирован цветовым законом проекта под облачные/системные элементы. */}
+              {factCheckAvailable && (
+                <button
+                  onClick={() => setShowFactCheckConfirm(true)}
+                  disabled={!tabId}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '6px 12px',
+                    borderRadius: 'var(--radius-chip)',
+                    border: 'none',
+                    background: 'var(--system-soft)',
+                    boxShadow: 'var(--shadow-chip)',
+                    color: 'var(--system)',
+                    fontSize: 'var(--fs-xs)', fontWeight: 500,
+                    cursor: tabId ? 'pointer' : 'default',
+                    opacity: tabId ? 1 : 0.5,
+                  }}
+                >
+                  <SearchCheck size={13} /> Фактчек
+                </button>
+              )}
+            </div>
+          )
         )}
 
         {/* Поле ввода — Enter отправляет, Shift+Enter переносит строку. Кнопка отправки —
