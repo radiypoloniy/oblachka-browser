@@ -692,6 +692,10 @@ app.whenReady().then(async () => {
 
   registerIpc();
 
+  // safeStorage требует app.isReady() — грузим сохранённый (зашифрованный) ключ Gemini здесь,
+  // не на верхнем уровне модуля (см. AiKeyStore.ts, заход D шаг 3).
+  aiKeyStore.loadFromDisk();
+
   // История: нативный модуль может отсутствовать — падение не блокирует запуск.
   await history.initialize().catch((e) =>
     console.error('[History] инициализация упала:', e),
