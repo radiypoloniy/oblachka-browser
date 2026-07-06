@@ -178,6 +178,16 @@ const api: OblakoApi = {
   getSearchEngine: () => ipcRenderer.invoke(IPC.SETTINGS_GET_SEARCH_ENGINE) as Promise<SearchEngineId>,
   setSearchEngine: (id: SearchEngineId) => ipcRenderer.invoke(IPC.SETTINGS_SET_SEARCH_ENGINE, id) as Promise<void>,
 
+  // Заход D — ключ Gemini (AI-фактчек). Сам ключ никогда не возвращается в renderer.
+  getAiKeyStatus: () => ipcRenderer.invoke(IPC.AI_GET_KEY_STATUS) as Promise<boolean>,
+  saveAiKey:      (key: string) => ipcRenderer.invoke(IPC.AI_SAVE_KEY, key) as Promise<boolean>,
+  deleteAiKey:    () => ipcRenderer.invoke(IPC.AI_DELETE_KEY) as Promise<void>,
+  onAiKeyStatusChanged: (cb: (connected: boolean) => void) => {
+    const handler = (_e: unknown, connected: boolean) => cb(connected);
+    ipcRenderer.on(IPC.AI_KEY_STATUS_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.AI_KEY_STATUS_CHANGED, handler);
+  },
+
   embedPreload: EMBED_PRELOAD,
 };
 

@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, type LucideIcon } from 'lucide-react';
+import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyRound, Check, type LucideIcon } from 'lucide-react';
 import type { AdBlockState } from '../../shared/ipc';
 
 interface SettingsProps {
   onClose: () => void;
 }
 
-// Секции левого меню — только «Блокировка» рабочая, остальные placeholder для будущих этапов.
+// Секции левого меню — «Блокировка» и «AI» рабочие, VPN/Интерфейс — placeholder для будущих
+// этапов. soon — единственный флаг, гоняющий и активность, и клик, и стиль (см. рендер-цикл
+// ниже) — точечно снят только у 'ai', остальные пункты и их поведение не тронуты.
 type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean };
 const NAV_ITEMS: NavItem[] = [
   { id: 'adblock',    label: 'Блокировка', Icon: Shield },
   { id: 'vpn',        label: 'VPN',         Icon: Wifi,    soon: true },
-  { id: 'ai',         label: 'AI',          Icon: Cpu,     soon: true },
+  { id: 'ai',         label: 'AI',          Icon: Cpu },
   { id: 'appearance', label: 'Интерфейс',   Icon: Palette, soon: true },
 ];
 type SectionId = 'adblock' | 'vpn' | 'ai' | 'appearance';
@@ -148,6 +150,7 @@ export default function Settings({ onClose }: SettingsProps) {
               onDismissReload={() => setPendingReload(null)}
             />
           )}
+          {section === 'ai' && <AiSection />}
         </div>
       </div>
     </div>
@@ -295,6 +298,123 @@ function AdBlockSection({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Секция «AI» — ключ Gemini для фактчека ────────────────────────────────────
+// Шаг 2 захода D: UI + IPC-проводка. Хранение ключа на этом шаге — только в памяти main-процесса
+// (см. AiKeyStore.ts) — persist через safeStorage добавляется отдельным коммитом (шаг 3), поэтому
+// «подключено» здесь не переживёт перезапуск браузера ДО того коммита — это ожидаемо на этом шаге.
+function AiSection() {
+  const [connected, setConnected] = useState<boolean | null>(null); // null = ещё грузим статус
+  const [keyInput, setKeyInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    window.oblako.getAiKeyStatus().then((v) => { if (mounted) setConnected(v); });
+    const unsub = window.oblako.onAiKeyStatusChanged((v) => { if (mounted) setConnected(v); });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
+  async function handleSave() {
+    const key = keyInput.trim();
+    if (!key) { setSaveError('Введите ключ'); return; }
+    setSaving(true);
+    setSaveError('');
+    const ok = await window.oblako.saveAiKey(key);
+    setSaving(false);
+    if (ok) setKeyInput(''); else setSaveError('Не удалось сохранить ключ');
+  }
+
+  async function handleDelete() {
+    await window.oblako.deleteAiKey();
+  }
+
+  if (connected === null) {
+    return <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
+      <div>
+        <h2 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>
+          AI — фактчек
+        </h2>
+        <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
+          Ключ Gemini нужен для фактчека в AI-панели — проверки утверждений страницы по реальным
+          источникам в интернете. Хранится зашифрованным, не в виде обычного текста.
+        </p>
+      </div>
+
+      {/* Статус */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
+        borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
+        boxShadow: 'var(--shadow-card)',
+      }}>
+        {connected
+          ? <Check size={22} style={{ color: 'var(--system)', flex: 'none' }} />
+          : <KeyRound size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+            {connected ? 'Подключено' : 'Не подключено'}
+          </div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+            {connected
+              ? 'Ключ Gemini сохранён — кнопка фактчека доступна в AI-панели.'
+              : 'Добавьте ключ, чтобы включить фактчек в AI-панели.'}
+          </div>
+        </div>
+        {connected && (
+          <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <Trash2 size={14} /> Удалить
+          </button>
+        )}
+      </div>
+
+      {/* Ввод ключа — только пока не подключено; чтобы сменить ключ, сначала «Удалить». */}
+      {!connected && (
+        <div>
+          <div style={{
+            fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
+            textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8,
+          }}>
+            Gemini API-ключ
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <input
+                type="password"
+                value={keyInput}
+                placeholder="AIza…"
+                onChange={(e) => { setKeyInput(e.target.value); setSaveError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') void handleSave(); }}
+                style={{
+                  padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                  border: saveError ? '1.5px solid var(--error, #e05)' : '1.5px solid var(--divider-strong)',
+                  background: 'var(--surface)', color: 'var(--text-strong)',
+                  fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = saveError ? 'var(--error, #e05)' : 'var(--divider-strong)')}
+              />
+              {saveError && (
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)' }}>{saveError}</span>
+              )}
+            </div>
+            <button
+              onClick={() => void handleSave()}
+              disabled={saving || !keyInput.trim()}
+              style={{ ...btnPrimary, alignSelf: 'flex-start', opacity: saving || !keyInput.trim() ? 0.6 : 1 }}
+            >
+              {saving ? 'Сохранение…' : 'Сохранить'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

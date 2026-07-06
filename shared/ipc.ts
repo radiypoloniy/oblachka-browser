@@ -211,6 +211,15 @@ export const IPC = {
   SETTINGS_GET_SEARCH_ENGINE: 'settings:get-search-engine', // renderer → main: текущий SearchEngineId
   SETTINGS_SET_SEARCH_ENGINE: 'settings:set-search-engine', // renderer → main: сменить движок поиска
 
+  // Заход D: ключ Gemini для AI-фактчека (см. AiKeyStore.ts) — ключ сам НИКОГДА не идёт в
+  // renderer обратно, только булев статус «подключён/нет». connected-статус пушится и в чром
+  // (эта секция настроек), и в AI-панель (см. preload-aipanel.ts) — оба слушателя одного и того
+  // же source of truth в main, не два независимых состояния.
+  AI_GET_KEY_STATUS:      'ai:get-key-status',      // renderer → main: connected: boolean
+  AI_SAVE_KEY:            'ai:save-key',            // renderer → main: (key: string) → boolean (успех)
+  AI_DELETE_KEY:          'ai:delete-key',          // renderer → main: удалить ключ
+  AI_KEY_STATUS_CHANGED:  'ai:key-status-changed',  // main → renderer: push нового connected-статуса
+
   // Заход 10: живые suggest-подсказки текущего поисковика (см. SearchSuggestFetcher.ts) —
   // fetch ТОЛЬКО из main (CORS, см. комментарий в SearchSuggestFetcher.ts). Движок берётся main'ом
   // самостоятельно через SettingsManager.getSearchEngine() — тот же источник истины, что капсула.
@@ -430,6 +439,12 @@ export interface OblakoApi {
   // Настройки
   getSearchEngine(): Promise<SearchEngineId>;
   setSearchEngine(id: SearchEngineId): Promise<void>;
+
+  // Заход D — ключ Gemini (AI-фактчек). Сам ключ никогда не приходит в renderer — только статус.
+  getAiKeyStatus(): Promise<boolean>;
+  saveAiKey(key: string): Promise<boolean>;
+  deleteAiKey(): Promise<void>;
+  onAiKeyStatusChanged(cb: (connected: boolean) => void): () => void;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;

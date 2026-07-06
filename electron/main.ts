@@ -21,6 +21,7 @@ import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { fetchSearchSuggestions } from './SearchSuggestFetcher';
+import * as aiKeyStore from './AiKeyStore';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -496,6 +497,16 @@ function registerIpc() {
   ipcMain.handle(IPC.SETTINGS_SET_SEARCH_ENGINE, (_e, id: SearchEngineId) => {
     settings.setSearchEngine(id);
     tabs?.setSearchEngine(id);
+  });
+
+  // Заход D — ключ Gemini (AI-фактчек). Сам ключ не возвращается в renderer, только статус.
+  ipcMain.handle(IPC.AI_GET_KEY_STATUS, () => aiKeyStore.getKeyStatus());
+  ipcMain.handle(IPC.AI_SAVE_KEY,       (_e, key: string) => aiKeyStore.saveKey(key));
+  ipcMain.handle(IPC.AI_DELETE_KEY,     () => aiKeyStore.deleteKey());
+  // Пуш статуса в чром (секция настроек) — тот же источник, что слушает и AI-панель отдельно
+  // (см. AiPanelManager.ts, заход D шаг 4), оба подписаны на один aiKeyStore.onKeyStatusChanged.
+  aiKeyStore.onKeyStatusChanged((connected) => {
+    chromeView?.webContents.send(IPC.AI_KEY_STATUS_CHANGED, connected);
   });
 
   // Заход 10: живые suggest-подсказки — движок берём из settings (тот же источник истины, что
