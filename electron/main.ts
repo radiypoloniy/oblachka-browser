@@ -283,8 +283,8 @@ function createWindow() {
     // Закреплённые сначала — стабильный порядок, всегда вверху сайдбара.
     const pinnedIds: string[] = [];
     const pinnedUrlToId = new Map<string, string>();
-    for (const { url } of restored.pinnedTabs) {
-      const id = tabs.createPinnedTab(url);
+    for (const { url, faviconData } of restored.pinnedTabs) {
+      const id = tabs.createPinnedTab(url, faviconData);
       pinnedIds.push(id);
       pinnedUrlToId.set(url, id);
     }

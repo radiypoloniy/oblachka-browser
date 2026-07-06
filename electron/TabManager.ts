@@ -661,11 +661,17 @@ export class TabManager {
   }
 
   // Создаёт закреплённую вкладку — используется только при восстановлении сессии.
-  createPinnedTab(rawUrl: string): string {
+  // cachedFaviconData — base64 из session.json (заход C): кладём в тот же хак-приём, что и живой
+  // favicon (_oblakoFavicon), ДО loadURL — #tabToState тут же отдаст его в сайдбар, пока страница
+  // ещё грузится. Реальный favicon, когда прилетит page-favicon-updated, перезапишет заглушку сам.
+  createPinnedTab(rawUrl: string, cachedFaviconData?: string): string {
     const id = randomUUID();
     const view = new WebContentsView({
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
+    if (cachedFaviconData) {
+      (view.webContents as unknown as { _oblakoFavicon?: string })._oblakoFavicon = cachedFaviconData;
+    }
     const tab: ManagedTab = { id, view, sleeping: null, lastActiveAt: Date.now() };
     this.tabMap.set(id, tab);
     this.pinnedTabs.push(tab);
