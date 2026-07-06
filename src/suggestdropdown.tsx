@@ -94,7 +94,9 @@ function SuggestDropdown() {
         fontFamily: 'var(--font-sans)',
       }}>
         {items.map((item, idx) => {
-          const Icon = item.kind === 'search' ? Search : Globe;
+          // 'suggest' (заход 10, живая веб-подсказка) — та же лупа, что 'search': оба ведут
+          // на результаты поиска фразы, не на посещённую страницу/вкладку (те — Globe).
+          const Icon = (item.kind === 'search' || item.kind === 'suggest') ? Search : Globe;
           return (
             <div
               key={`${item.kind}-${item.url}`}

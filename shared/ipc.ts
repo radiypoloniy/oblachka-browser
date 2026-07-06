@@ -210,6 +210,11 @@ export const IPC = {
   // Настройки (пока только поисковик по умолчанию, см. SettingsManager.ts)
   SETTINGS_GET_SEARCH_ENGINE: 'settings:get-search-engine', // renderer → main: текущий SearchEngineId
   SETTINGS_SET_SEARCH_ENGINE: 'settings:set-search-engine', // renderer → main: сменить движок поиска
+
+  // Заход 10: живые suggest-подсказки текущего поисковика (см. SearchSuggestFetcher.ts) —
+  // fetch ТОЛЬКО из main (CORS, см. комментарий в SearchSuggestFetcher.ts). Движок берётся main'ом
+  // самостоятельно через SettingsManager.getSearchEngine() — тот же источник истины, что капсула.
+  SEARCH_SUGGEST: 'search:suggest',
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -231,7 +236,9 @@ export type HistoryClearPeriod = 'hour' | 'day' | 'week' | 'all';
 // ── Дропдаун подсказок омнибокса (нативная вью, заход 3/5) ───────────────────────────────────
 // Та же форма, что локальный SuggestItem в Toolbar.tsx (переиспользуется оттуда напрямую) —
 // пересекает IPC-границу chrome ↔ main ↔ вью дропдауна, поэтому здесь, а не ad-hoc в одном файле.
-export type SuggestKind = 'history' | 'tab' | 'search';
+// 'suggest' — заход 10, живая веб-подсказка от suggest-API поисковика (не посещённая страница
+// и не открытая вкладка — просто фраза-автодополнение, ведёт на её результаты поиска).
+export type SuggestKind = 'history' | 'tab' | 'search' | 'suggest';
 export interface SuggestDropdownItem {
   kind: SuggestKind;
   label: string;
@@ -408,6 +415,11 @@ export interface OblakoApi {
   // Заход 5 — реальный OS-фокус ушёл на контент активной вкладки (независимый от blur сигнал
   // закрытия дропдауна, см. IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS).
   onSuggestDropdownContentFocus(cb: () => void): () => void;
+
+  // Заход 10 — живые suggest-подсказки текущего поисковика (см. SearchSuggestFetcher.ts).
+  // Пустой массив на любой сбой (нет сети/таймаут/лимит) — never throws, вызывающая сторона
+  // (Toolbar.tsx::buildSuggestions) не обязана оборачивать в try/catch отдельно.
+  fetchSuggestions(query: string): Promise<string[]>;
 
   // Настройки
   getSearchEngine(): Promise<SearchEngineId>;

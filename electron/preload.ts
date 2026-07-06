@@ -170,6 +170,9 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS, handler);
   },
 
+  // Заход 10 — живые suggest-подсказки текущего поисковика.
+  fetchSuggestions: (query: string) => ipcRenderer.invoke(IPC.SEARCH_SUGGEST, query) as Promise<string[]>,
+
   // Настройки
   getSearchEngine: () => ipcRenderer.invoke(IPC.SETTINGS_GET_SEARCH_ENGINE) as Promise<SearchEngineId>,
   setSearchEngine: (id: SearchEngineId) => ipcRenderer.invoke(IPC.SETTINGS_SET_SEARCH_ENGINE, id) as Promise<void>,

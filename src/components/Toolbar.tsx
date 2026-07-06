@@ -284,10 +284,20 @@ export default function Toolbar({
     if (!query.trim()) { closeDropdown('empty-query'); return; }
     const q = query.toLowerCase();
 
+    // Заход 10: история и живые suggest-подсказки — параллельно, каждая изолирована через
+    // Promise.allSettled (не Promise.all — сбой ОДНОЙ не должен обрушить ДРУГУЮ). fetchSuggestions
+    // сама по себе никогда не бросает (см. SearchSuggestFetcher.ts — любая ошибка/таймаут/отмена
+    // ловится там и превращается в []), но изоляция здесь дублируется намеренно: buildSuggestions
+    // не должен зависеть от внутренней гарантии другого модуля, чтобы сбой suggest-API НИ ПРИ
+    // КАКИХ обстоятельствах не уронил историю/вкладки.
     let histEntries: HistoryEntry[] = [];
-    try {
-      histEntries = await window.oblako.searchHistory(query);
-    } catch { /* история недоступна */ }
+    let suggestPhrases: string[] = [];
+    const [histResult, suggestResult] = await Promise.allSettled([
+      window.oblako.searchHistory(query),
+      window.oblako.fetchSuggestions(query),
+    ]);
+    if (histResult.status === 'fulfilled') histEntries = histResult.value;
+    if (suggestResult.status === 'fulfilled') suggestPhrases = suggestResult.value;
 
     const now = Date.now();
 
@@ -363,13 +373,25 @@ export default function Toolbar({
           : { kind: 'history' as SuggestKind, label: e.url, sub: e.title, url: e.url }
       ));
 
+    // Живые веб-подсказки — ОТДЕЛЬНОЙ группой НИЖЕ истории/вкладок (точных совпадений), как в
+    // Chrome: сначала твоё, потом веб-автодополнение. Не участвуют в frecency-ранжировании items
+    // (это не посещённые страницы) — порядок такой, какой вернул сам suggest-API движка.
+    // Фраза, совпадающая с самим введённым текстом, отфильтровывается — её уже покрывает searchItem.
+    const suggestItems: SuggestItem[] = suggestPhrases
+      .filter((phrase) => phrase.trim().toLowerCase() !== q)
+      .map((phrase) => ({
+        kind: 'suggest' as SuggestKind,
+        label: phrase,
+        url: getSearchEngine(searchEngineId).buildUrl(phrase),
+      }));
+
     const searchItem: SuggestItem = {
       kind: 'search',
       label: `Искать: ${query}`,
       url: getSearchEngine(searchEngineId).buildUrl(query),
     };
 
-    const deduped = [...items, searchItem];
+    const deduped = [...items, ...suggestItems, searchItem];
     setSuggestions(deduped);
     setSelectedIdx(-1);
     openDropdown();

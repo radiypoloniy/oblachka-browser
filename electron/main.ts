@@ -20,6 +20,7 @@ import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslateP
 import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
+import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -448,6 +449,10 @@ function registerIpc() {
     settings.setSearchEngine(id);
     tabs?.setSearchEngine(id);
   });
+
+  // Заход 10: живые suggest-подсказки — движок берём из settings (тот же источник истины, что
+  // капсула выбора поисковика), а не отдельным параметром от renderer — не может разойтись.
+  ipcMain.handle(IPC.SEARCH_SUGGEST, (_e, query: string) => fetchSearchSuggestions(query, settings.getSearchEngine()));
 
   // История посещений
   ipcMain.handle(IPC.HISTORY_GET,    (_e, limit?: number)           => history.getRecent(limit));
