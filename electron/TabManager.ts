@@ -682,14 +682,23 @@ export class TabManager {
   // сессии: не создаёт WebContentsView, не грузит URL, ничего не ест до первого клика.
   // sleeping заполняется в ТОМ ЖЕ объекте, что и view:null, — атомарно, без промежуточного
   // view:null+sleeping:null (это состояние #tabToState трактует как "уничтоженный", title:'').
-  // title/faviconUrl настоящих взять неоткуда — session.json v4 хранит только url — поэтому
-  // фоллбэк: домен из URL, favicon отсутствует. Появятся после пробуждения (wakeTab → loadURL).
-  createSleepingTab(rawUrl: string): string {
+  // seedTitle/seedFaviconData — то, что уже знаем из файла сессии (заход C: session.json v5
+  // хранит title/faviconData, накопленные в прошлых сеансах). Если их нет (старый v4-файл, или
+  // URL, для которого ничего не успело закэшироваться) — фоллбэк: домен из URL, favicon отсутствует.
+  // ⚠️ Важно не путать с доменом-заглушкой: если seed передан — он ВСЕГДА реальные данные, а не
+  // фоллбэк, поэтому подменять его доменом нельзя, иначе настоящий title тихо деградирует при
+  // каждом цикле «уснула → сохранили → перезапуск без пробуждения» (см. диагностику захода B).
+  createSleepingTab(rawUrl: string, seedTitle?: string, seedFaviconData?: string): string {
     const id = randomUUID();
     const url = this.resolveInput(rawUrl);
     const tab: ManagedTab = {
       id, view: null, lastActiveAt: Date.now(),
-      sleeping: { url, title: domainFromUrl(url), faviconUrl: null, faviconData: null },
+      sleeping: {
+        url,
+        title: seedTitle || domainFromUrl(url),
+        faviconUrl: null,
+        faviconData: seedFaviconData ?? null,
+      },
     };
     this.tabMap.set(id, tab);
     this.nodes.push({ type: 'single', tabId: id });

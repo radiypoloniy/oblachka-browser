@@ -298,12 +298,15 @@ function createWindow() {
     const collectTabs = (nodes: SavedNode[]) => {
       for (const node of nodes) {
         if (node.type === 'single') {
-          const id = tabs!.createSleepingTab(node.url);
+          // Seed title/faviconData из файла (v5) — если файл ещё v4/пуст, оба undefined и
+          // createSleepingTab сам фоллбэкнет на домен/null. НЕ путать с доменом: если поле
+          // есть в файле — это настоящие данные, накопленные в прошлых сеансах.
+          const id = tabs!.createSleepingTab(node.url, node.title, node.faviconData);
           const list = urlToIds.get(node.url) ?? [];
           list.push(id); urlToIds.set(node.url, list);
         } else if (node.type === 'split-pair') {
-          const lId = tabs!.createSleepingTab(node.leftUrl);
-          const rId = tabs!.createSleepingTab(node.rightUrl);
+          const lId = tabs!.createSleepingTab(node.leftUrl, node.leftTitle, node.leftFaviconData);
+          const rId = tabs!.createSleepingTab(node.rightUrl, node.rightTitle, node.rightFaviconData);
           const lList = urlToIds.get(node.leftUrl)  ?? []; lList.push(lId); urlToIds.set(node.leftUrl,  lList);
           const rList = urlToIds.get(node.rightUrl) ?? []; rList.push(rId); urlToIds.set(node.rightUrl, rList);
         } else if (node.type === 'group') {
