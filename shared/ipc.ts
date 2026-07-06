@@ -215,6 +215,10 @@ export const IPC = {
   // fetch ТОЛЬКО из main (CORS, см. комментарий в SearchSuggestFetcher.ts). Движок берётся main'ом
   // самостоятельно через SettingsManager.getSearchEngine() — тот же источник истины, что капсула.
   SEARCH_SUGGEST: 'search:suggest',
+
+  // Старт: renderer → main, «React-оболочка отрисована». Окно создаётся show:false
+  // (против белого экрана) и показывается по этому сигналу (см. main.ts::createWindow).
+  CHROME_UI_READY: 'chrome:ui-ready',
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -320,6 +324,8 @@ export interface OblakoApi {
   // без вью-потребителя (см. shared/ipc.ts::IPC).
   setOmniboxBounds(bounds: ContentBounds): Promise<void>;
   setTitleBarOverlay(opts: TitleBarOpts): Promise<void>;
+  // Сигнал «оболочка отрисована» — main показывает скрытое до этого окно (см. IPC.CHROME_UI_READY).
+  chromeUiReady(): void;
   onTabsChanged(cb: (tabs: TabState[]) => void): () => void; // вернёт unsubscribe
 
   // Поиск по странице

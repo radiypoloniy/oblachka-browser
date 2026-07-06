@@ -122,7 +122,9 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: '#E7E9F4', // совпадает с --app-bg, чтобы не мигало белым
     // Кастомный titlebar: системные кнопки в своём оформлении (спека, тех.стек).
-    show: true,
+    // show:false — против белого экрана: окно покажем, когда React-оболочка отрисуется
+    // (сигнал CHROME_UI_READY из src/main.tsx), с fallback-таймаутом ниже.
+    show: false,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       color: '#E7E9F4',   // --app-bg светлой темы; обновляется через IPC при смене темы
@@ -141,6 +143,36 @@ function createWindow() {
     },
   });
   win.contentView.addChildView(chromeView);
+  // Дефолтный фон WebContentsView — белый, и он перекрывает backgroundColor окна на всю площадь.
+  // Красим под --app-bg, чтобы кадры до первой отрисовки React были цветом интерфейса.
+  chromeView.setBackgroundColor('#E7E9F4');
+
+  // Показ окна: ждём сигнал «оболочка отрисована» (useEffect+rAF в src/main.tsx). Fallback-таймаут
+  // обязателен — если сигнал не пришёл (упал preload/React, Vite ещё не поднялся в dev),
+  // окно всё равно должно появиться, а не висеть невидимым.
+  {
+    const thisWin = win;
+    let shown = false;
+    const showWindow = (reason: string) => {
+      if (shown) return;
+      shown = true;
+      clearTimeout(fallbackTimer);
+      ipcMain.removeListener(IPC.CHROME_UI_READY, onUiReady);
+      if (!thisWin.isDestroyed()) {
+        thisWin.show();
+        console.log(`[startup] show reason=${reason} ${Date.now() - startT0}ms`);
+      }
+    };
+    const onUiReady = () => showWindow('ui-ready');
+    ipcMain.once(IPC.CHROME_UI_READY, onUiReady);
+    const fallbackTimer = setTimeout(() => showWindow('fallback-timeout'), 3000);
+    // Окно закрыли до показа (или до сигнала) — подчистить, чтобы таймер/слушатель не дёргали труп.
+    thisWin.on('closed', () => {
+      shown = true;
+      clearTimeout(fallbackTimer);
+      ipcMain.removeListener(IPC.CHROME_UI_READY, onUiReady);
+    });
+  }
 
   const layoutChrome = () => {
     if (!win || !chromeView) return;
