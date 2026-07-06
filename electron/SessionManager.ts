@@ -2,20 +2,28 @@ import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Версия 5: + title?/faviconData? (опционально) в SavedTab/SavedSingleNode/SavedSplitPairNode —
+//           кэш для мгновенного показа названия/иконки спящей вкладки без пробуждения (заход C).
 // Версия 4: nodes[] рекурсивно поддерживает group; activeRef использует type:'url'.
 // Версия 3: nodes[] с split-pair; activeRef type:'normal'|'split'.
 // Версия 2: nodes[] только single; activeTabType+activeTabIndex.
 // Версия 1: tabs[] (плоский список).
-const SESSION_VERSION = 4;
+const SESSION_VERSION = 5;
 const DEBOUNCE_MS = 1500;
 
 interface SavedTab {
   url: string;
+  // Кэш названия/иконки (base64 data:) — опционально, для мгновенной отрисовки без пробуждения/
+  // загрузки. Отсутствуют в файлах v4 и старше — читающий код обязан фоллбэчить сам.
+  title?: string;
+  faviconData?: string;
 }
 
 export interface SavedSingleNode {
   type: 'single';
   url: string;
+  title?: string;
+  faviconData?: string;
 }
 
 export interface SavedSplitPairNode {
@@ -23,6 +31,10 @@ export interface SavedSplitPairNode {
   leftUrl: string;
   rightUrl: string;
   ratio: number;
+  leftTitle?: string;
+  rightTitle?: string;
+  leftFaviconData?: string;
+  rightFaviconData?: string;
 }
 
 export interface SavedGroupNode {
@@ -53,6 +65,14 @@ export interface SessionSnapshot {
 }
 
 type UnknownNode = { type: string; [k: string]: unknown };
+
+interface SessionDataV5 {
+  version: 5;
+  savedAt: string;
+  activeRef: SavedActiveRef;
+  pinnedTabs: SavedTab[];
+  nodes: SavedNode[];
+}
 
 interface SessionDataV4 {
   version: 4;
@@ -107,6 +127,7 @@ export class SessionManager {
       if (typeof data !== 'object' || data === null) return null;
       const d = data as Record<string, unknown>;
 
+      if (d['version'] === 5) return this.#loadV5(d);
       if (d['version'] === 4) return this.#loadV4(d);
       if (d['version'] === 3) return this.#loadV3(d);
       if (d['version'] === 2) return this.#migrateV2(d as unknown as SessionDataV2);
@@ -115,6 +136,24 @@ export class SessionManager {
     } catch {
       return null;
     }
+  }
+
+  // v5 структурно = v4 + опциональные title/faviconData на узлах/пинах (см. SavedTab/SavedSingleNode/
+  // SavedSplitPairNode выше) — отдельный загрузчик только чтобы не трогать #loadV4 (читает старые
+  // v4-файлы как есть, без единой правки, см. заход C).
+  #loadV5(d: Record<string, unknown>): SessionSnapshot | null {
+    if (
+      typeof d['savedAt'] !== 'string' ||
+      !isSavedTabArray(d['pinnedTabs']) ||
+      !Array.isArray(d['nodes']) ||
+      !isActiveRef(d['activeRef'])
+    ) return null;
+
+    return {
+      pinnedTabs: d['pinnedTabs'] as SavedTab[],
+      nodes: filterKnownNodes(d['nodes'] as unknown[]),
+      activeRef: d['activeRef'] as SavedActiveRef,
+    };
   }
 
   #loadV4(d: Record<string, unknown>): SessionSnapshot | null {
@@ -232,8 +271,8 @@ export class SessionManager {
   }
 
   #write(snapshot: SessionSnapshot): void {
-    const data: SessionDataV4 = {
-      version: SESSION_VERSION as 4,
+    const data: SessionDataV5 = {
+      version: SESSION_VERSION as 5,
       savedAt: new Date().toISOString(),
       activeRef: snapshot.activeRef,
       pinnedTabs: snapshot.pinnedTabs,
@@ -250,10 +289,16 @@ export class SessionManager {
 }
 
 function isSavedTabArray(v: unknown): v is SavedTab[] {
-  return Array.isArray(v) && (v as unknown[]).every(
-    (t) => typeof t === 'object' && t !== null &&
-      typeof (t as Record<string, unknown>)['url'] === 'string',
-  );
+  return Array.isArray(v) && (v as unknown[]).every((t) => {
+    if (typeof t !== 'object' || t === null) return false;
+    const r = t as Record<string, unknown>;
+    if (typeof r['url'] !== 'string') return false;
+    // title/faviconData — опциональны (отсутствуют в v4 и старше): отсутствие ПОЛЯ допустимо,
+    // но если поле есть — оно должно быть строкой (битый тип не должен молча пролезть).
+    if (r['title'] !== undefined && typeof r['title'] !== 'string') return false;
+    if (r['faviconData'] !== undefined && typeof r['faviconData'] !== 'string') return false;
+    return true;
+  });
 }
 
 function isActiveRef(v: unknown): v is SavedActiveRef {
@@ -278,7 +323,10 @@ function filterKnownNodes(arr: unknown[]): SavedNode[] {
     const n = item as Record<string, unknown>;
 
     if (n['type'] === 'single' && typeof n['url'] === 'string') {
-      result.push({ type: 'single', url: n['url'] as string });
+      const node: SavedSingleNode = { type: 'single', url: n['url'] as string };
+      if (typeof n['title'] === 'string') node.title = n['title'];
+      if (typeof n['faviconData'] === 'string') node.faviconData = n['faviconData'];
+      result.push(node);
 
     } else if (
       n['type'] === 'split-pair' &&
@@ -286,12 +334,17 @@ function filterKnownNodes(arr: unknown[]): SavedNode[] {
       typeof n['rightUrl'] === 'string' &&
       typeof n['ratio'] === 'number'
     ) {
-      result.push({
+      const node: SavedSplitPairNode = {
         type: 'split-pair',
         leftUrl:  n['leftUrl']  as string,
         rightUrl: n['rightUrl'] as string,
         ratio:    n['ratio']    as number,
-      });
+      };
+      if (typeof n['leftTitle'] === 'string') node.leftTitle = n['leftTitle'];
+      if (typeof n['rightTitle'] === 'string') node.rightTitle = n['rightTitle'];
+      if (typeof n['leftFaviconData'] === 'string') node.leftFaviconData = n['leftFaviconData'];
+      if (typeof n['rightFaviconData'] === 'string') node.rightFaviconData = n['rightFaviconData'];
+      result.push(node);
 
     } else if (
       n['type'] === 'group' &&
