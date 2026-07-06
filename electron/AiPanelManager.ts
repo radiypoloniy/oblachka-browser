@@ -10,6 +10,7 @@ import path from 'node:path'
 import { readFileSync } from 'node:fs'
 import TurndownService from 'turndown'
 import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
+import { runFactCheck } from './GeminiFactCheck'
 import * as aiKeyStore from './AiKeyStore'
 import type { TabState } from '../shared/ipc'
 import type { TabManager } from './TabManager'
@@ -392,6 +393,42 @@ function ensureIpcRegistered(): void {
       if (outcome.ok) {
         ctx.messages.push({ role: 'assistant', text: outcome.out })
         ctx.history = outcome.history
+      }
+      if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+        wc.send('ai-panel:chat-result', outcome)
+      }
+    })()
+  })
+
+  // Кнопка «Фактчек» (заход D) — Gemini API с Search Grounding (см. GeminiFactCheck.ts), не
+  // локальный Qwen. Плашка приватности уже показана и подтверждена на стороне renderer
+  // (aipanel.tsx::showFactCheckConfirm) ДО отправки этого сигнала — здесь только сам вызов.
+  ipcMain.on('ai-panel:fact-check', (event: IpcMainEvent) => {
+    const wc = event.sender
+    const tabId = activeTabId
+    if (!tabId) return
+    const title = activeTabTitle
+    const url = activeTabUrl
+    const ctx = getOrCreateContext(tabId, url)
+    ctx.messages.push({ role: 'user', text: 'Фактчек' })
+
+    const needsExtraction = ctx.pageText === null
+    const pageWc = needsExtraction ? (tabManagerRef?.getActiveWebContents() ?? null) : null
+
+    void (async () => {
+      if (needsExtraction) {
+        const extracted = await extractPageText(pageWc)
+        ctx.pageText = extracted.text
+        ctx.pageMarkdown = extracted.markdown
+        console.log(`[ai-panel] текст страницы извлечён: ${ctx.pageText.length} симв. (для фактчека)`)
+      }
+      const outcome = await runFactCheck(ctx.pageText ?? '', title, url)
+
+      // Ответ Gemini НЕ идёт в ctx.history (та — контекст ЛОКАЛЬНОГО Qwen для продолжения
+      // беседы, см. runChatMessage/LlamaChatSession) — фактчек не часть того же диалога/модели,
+      // только видимая лента ctx.messages.
+      if (outcome.ok) {
+        ctx.messages.push({ role: 'assistant', text: outcome.out })
       }
       if (panelView && panelView.webContents === wc && activeTabId === tabId) {
         wc.send('ai-panel:chat-result', outcome)
