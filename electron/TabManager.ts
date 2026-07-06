@@ -37,6 +37,12 @@ function truncate(text: string, max = 40): string {
   return s.length > max ? s.slice(0, max) + '…' : s;
 }
 
+// Фоллбэк-заголовок для вкладки, восстановленной сразу спящей (createSleepingTab) — session.json
+// v4 хранит только url, настоящий title/favicon появятся после пробуждения (загрузки страницы).
+function domainFromUrl(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, '') || url; } catch { return url; }
+}
+
 // id вкладки-хаба фиксирован: это НЕ WebContentsView, а наш React-экран.
 export const HUB_ID = 'hub';
 
@@ -619,6 +625,25 @@ export class TabManager {
     const target = this.resolveInput(rawUrl);
     if (target !== 'about:blank') view.webContents.loadURL(target);
 
+    this.onChange();
+    return id;
+  }
+
+  // ── Создаёт вкладку СРАЗУ спящей (view:null + sleeping:meta) — для ленивого восстановления
+  // сессии: не создаёт WebContentsView, не грузит URL, ничего не ест до первого клика.
+  // sleeping заполняется в ТОМ ЖЕ объекте, что и view:null, — атомарно, без промежуточного
+  // view:null+sleeping:null (это состояние #tabToState трактует как "уничтоженный", title:'').
+  // title/faviconUrl настоящих взять неоткуда — session.json v4 хранит только url — поэтому
+  // фоллбэк: домен из URL, favicon отсутствует. Появятся после пробуждения (wakeTab → loadURL).
+  createSleepingTab(rawUrl: string): string {
+    const id = randomUUID();
+    const url = this.resolveInput(rawUrl);
+    const tab: ManagedTab = {
+      id, view: null, lastActiveAt: Date.now(),
+      sleeping: { url, title: domainFromUrl(url), faviconUrl: null },
+    };
+    this.tabMap.set(id, tab);
+    this.nodes.push({ type: 'single', tabId: id });
     this.onChange();
     return id;
   }

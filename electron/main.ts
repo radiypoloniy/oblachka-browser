@@ -290,16 +290,20 @@ function createWindow() {
     }
 
     // Рекурсивно создаём вкладки из дерева узлов и строим urlToIds (очередь на случай дублей URL).
+    // Ленивое восстановление: все обычные вкладки создаются СПЯЩИМИ (createSleepingTab — без
+    // WebContentsView и без loadURL). Активную (и вторую панель split, если активна пара) разбудит
+    // tabs.activate(targetId) ниже — уже существующий wake-путь (wakeTab), трогать его не нужно:
+    // он одинаково умеет будить и "давно уснувшую", и "рождённую спящей" вкладку.
     const urlToIds = new Map<string, string[]>();
     const collectTabs = (nodes: SavedNode[]) => {
       for (const node of nodes) {
         if (node.type === 'single') {
-          const id = tabs!.createTab(node.url, true);
+          const id = tabs!.createSleepingTab(node.url);
           const list = urlToIds.get(node.url) ?? [];
           list.push(id); urlToIds.set(node.url, list);
         } else if (node.type === 'split-pair') {
-          const lId = tabs!.createTab(node.leftUrl,  true);
-          const rId = tabs!.createTab(node.rightUrl, true);
+          const lId = tabs!.createSleepingTab(node.leftUrl);
+          const rId = tabs!.createSleepingTab(node.rightUrl);
           const lList = urlToIds.get(node.leftUrl)  ?? []; lList.push(lId); urlToIds.set(node.leftUrl,  lList);
           const rList = urlToIds.get(node.rightUrl) ?? []; rList.push(rId); urlToIds.set(node.rightUrl, rList);
         } else if (node.type === 'group') {
@@ -336,6 +340,15 @@ function createWindow() {
     }
     // ref.type === 'hub' → остаёмся на хабе (дефолт TabManager).
     if (targetId) tabs.activate(targetId);
+
+    // Диагностика ленивого восстановления: сколько вкладок реально восстановилось (сверить с
+    // числом вкладок в session.json — ни одна не должна потеряться) и сколько из них уснувших.
+    const restoredSnapshot = tabs.snapshot().filter((t) => !t.isHub);
+    const sleepingCount = restoredSnapshot.filter((t) => t.isSleeping).length;
+    console.log(
+      `[startup] restore: pinned=${pinnedIds.length} tabs=${restoredSnapshot.length} ` +
+      `sleeping=${sleepingCount} awake=${restoredSnapshot.length - sleepingCount} ${Date.now() - startT0}ms`,
+    );
   }
 
   // Только после восстановления разрешаем автосейв.
