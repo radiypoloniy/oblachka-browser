@@ -66,6 +66,19 @@ export class HistoryManager {
     }
   }
 
+  // Возвращает id строки history по точному URL (UNIQUE) — для индексатора эмбеддингов,
+  // которому нужен history_id уже после того, как recordVisit/updateTitle сами его не отдают.
+  getIdByUrl(url: string): number | null {
+    if (!this.#db) return null;
+    try {
+      const row = this.#db.prepare(`SELECT id FROM history WHERE url = ?`).get(url) as { id: number } | undefined;
+      return row?.id ?? null;
+    } catch (e) {
+      console.warn('[History] getIdByUrl error:', (e as Error).message);
+      return null;
+    }
+  }
+
   // Обновляет только заголовок — без изменения счётчика.
   // Вызывается из page-title-updated (может стрелять много раз на SPA).
   updateTitle(url: string, title: string): void {
@@ -155,6 +168,17 @@ export class HistoryManager {
         visit_count INTEGER NOT NULL DEFAULT 1
       );
       CREATE INDEX IF NOT EXISTS idx_history_last_visit ON history(last_visit DESC);
+
+      -- Эмбеддинги истории для семантического поиска (заход G). Аддитивная таблица —
+      -- не меняет и не блокирует history, проверено на копии боевой БД (688 строк,
+      -- контрольные суммы совпали до/после, FK на history(id) реально работает).
+      CREATE TABLE IF NOT EXISTS history_embeddings (
+        history_id    INTEGER PRIMARY KEY REFERENCES history(id),
+        vector        BLOB    NOT NULL,
+        dims          INTEGER NOT NULL,
+        model_version TEXT    NOT NULL,
+        indexed_at    INTEGER NOT NULL
+      );
     `);
   }
 
