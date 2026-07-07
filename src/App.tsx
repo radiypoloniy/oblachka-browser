@@ -8,6 +8,7 @@ import History from './components/History';
 import Downloads from './components/Downloads';
 import PermissionPrompt from './components/PermissionPrompt';
 import { embeddingService } from './services/EmbeddingService';
+import { startEmbedRequestBridge } from './services/EmbedRequestBridge';
 import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode } from '../shared/ipc';
 import type { ClusterProposal } from './services/ClusteringService';
 
@@ -29,6 +30,11 @@ const SPLIT_RATIO_MAX = 0.8;
 
 export default function App() {
   console.log('[renderer-alive] App смонтирован')
+
+  // Заход G: отвечает на embed:request от main реальным embeddingService — общий канал для
+  // индексатора истории и (позже) семантического поиска, см. EmbedRequestBridge.ts.
+  useEffect(() => startEmbedRequestBridge(), []);
+
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [sidebarNodes, setSidebarNodes] = useState<SidebarNode[]>([]);
   const [activeId, setActiveId] = useState(HUB_ID);

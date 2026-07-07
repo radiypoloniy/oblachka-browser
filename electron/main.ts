@@ -22,6 +22,8 @@ import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutF
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
+import { setChromeView as setEmbedClientChromeView } from './EmbedClient';
+import { indexVisit } from './HistoryIndexer';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -144,6 +146,7 @@ function createWindow() {
     },
   });
   win.contentView.addChildView(chromeView);
+  setEmbedClientChromeView(chromeView); // заход G: мост эмбеддингов слушает этот же chromeView
   // Дефолтный фон WebContentsView — белый, и он перекрывает backgroundColor окна на всю площадь.
   // Красим под --app-bg, чтобы кадры до первой отрисовки React были цветом интерфейса.
   chromeView.setBackgroundColor('#E7E9F4');
@@ -244,7 +247,17 @@ function createWindow() {
     ()              => { tabs?.stopFind(); closeFindBar(); tabs?.focusActiveView(); }, // Esc-на-странице/did-navigate — вернуть OS-фокус, иначе Ctrl+F повторно не долетит
     ()              => chromeView?.webContents.send(IPC.OMNIBOX_FOCUS),
     ()              => chromeView?.webContents.focus(),
-    (url, title)    => history.recordVisit(url, title),
+    (url, title)    => {
+      history.recordVisit(url, title);
+      // Заход G, блок 3: индексация эмбеддингом — только на визит (не на updateTitle ниже,
+      // который может стрелять много раз на SPA, см. HistoryManager.ts::updateTitle — это
+      // спамило бы единственный embed-воркер на каждое SPA-обновление заголовка одной страницы).
+      // Fire-and-forget с внешним .catch — indexVisit сама не должна бросать (try/catch на
+      // каждом уровне), но лишняя страховка здесь ничего не стоит.
+      void indexVisit(history, url, title).catch((e: unknown) =>
+        console.warn('[HistoryIndexer] неожиданная ошибка:', e),
+      );
+    },
     (url, title)    => history.updateTitle(url, title),
     ()              => chromeView?.webContents.send(IPC.HISTORY_OPEN),
     ()              => console.log(`[startup] firsttab ${Date.now() - startT0}ms`),
@@ -409,6 +422,7 @@ function createWindow() {
   win.on('closed', () => {
     console.log('[shutdown] win closed: обнуляю win/chromeView/tabs/sess');
     win = null; chromeView = null; tabs = null; sess = null;
+    setEmbedClientChromeView(null); // заход G: мост эмбеддингов больше не должен слать в мёртвый webContents
   });
 }
 

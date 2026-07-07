@@ -66,6 +66,27 @@ export class HistoryManager {
     }
   }
 
+  // Пишет/обновляет вектор эмбеддинга для уже существующей строки history (заход G).
+  // ON CONFLICT — та же логика, что и у recordVisit: повторная индексация той же страницы
+  // (ревизит, или переиндексация после смены модели) молча перезаписывает, не падает на PK.
+  saveEmbedding(historyId: number, vector: Float32Array, dims: number, modelVersion: string): void {
+    if (!this.#db) return;
+    try {
+      const buf = Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength);
+      this.#db.prepare(`
+        INSERT INTO history_embeddings (history_id, vector, dims, model_version, indexed_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(history_id) DO UPDATE SET
+          vector        = excluded.vector,
+          dims          = excluded.dims,
+          model_version = excluded.model_version,
+          indexed_at    = excluded.indexed_at
+      `).run(historyId, buf, dims, modelVersion, Date.now());
+    } catch (e) {
+      console.warn('[History] saveEmbedding error:', (e as Error).message);
+    }
+  }
+
   // Возвращает id строки history по точному URL (UNIQUE) — для индексатора эмбеддингов,
   // которому нужен history_id уже после того, как recordVisit/updateTitle сами его не отдают.
   getIdByUrl(url: string): number | null {

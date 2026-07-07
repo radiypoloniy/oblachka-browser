@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -87,6 +87,14 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.HISTORY_OPEN, handler);
     return () => ipcRenderer.removeListener(IPC.HISTORY_OPEN, handler);
   },
+
+  // Заход G — общий канал эмбеддингов (см. shared/ipc.ts::EmbedRequestPayload).
+  onEmbedRequest: (cb: (req: EmbedRequestPayload) => void) => {
+    const handler = (_e: unknown, req: EmbedRequestPayload) => cb(req);
+    ipcRenderer.on(IPC.EMBED_REQUEST, handler);
+    return () => ipcRenderer.removeListener(IPC.EMBED_REQUEST, handler);
+  },
+  sendEmbedResponse: (res: EmbedResponsePayload) => ipcRenderer.send(IPC.EMBED_RESPONSE, res),
 
   // Загрузки
   getDownloads:       ()             => ipcRenderer.invoke(IPC.DOWNLOADS_GET_ALL) as Promise<DownloadEntry[]>,

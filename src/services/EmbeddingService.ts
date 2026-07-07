@@ -64,6 +64,13 @@ class EmbeddingService {
 
   getStatus(): ModelStatus { return this.status }
 
+  // Строка версии активной модели — уходит в history_embeddings.model_version (заход G),
+  // чтобы при смене ACTIVE_MODEL/dtype/mrlDims старые векторы были явно отличимы от новых.
+  getModelVersion(): string {
+    const cfg = MODELS[ACTIVE_MODEL]!
+    return `${cfg.modelId}@${cfg.dtype}${cfg.mrlDims !== null ? `:mrl${cfg.mrlDims}` : ''}`
+  }
+
   onStatusChange(cb: (s: ModelStatus) => void): () => void {
     this.listeners.push(cb)
     return () => { this.listeners = this.listeners.filter((l) => l !== cb) }

@@ -228,6 +228,14 @@ export const IPC = {
   // Старт: renderer → main, «React-оболочка отрисована». Окно создаётся show:false
   // (против белого экрана) и показывается по этому сигналу (см. main.ts::createWindow).
   CHROME_UI_READY: 'chrome:ui-ready',
+
+  // Заход G: эмбеддинги считаются ТОЛЬКО в renderer (embeddingService — WASM/WebGPU worker,
+  // требует DOM lib, недоступен из electron/main.ts, см. electron/EmbedClient.ts). Общий канал
+  // main→renderer→main: одна фраза → один вектор, ничего не знает о вызывающей стороне —
+  // используется и индексатором истории (electron/HistoryIndexer.ts), и позже семантическим
+  // поиском (блок 6). Логика «что делать с вектором» остаётся у вызывающего в main, не здесь.
+  EMBED_REQUEST:  'embed:request',   // main → renderer: { requestId, text }
+  EMBED_RESPONSE: 'embed:response',  // renderer → main: EmbedResponsePayload (fire-and-forget send)
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -243,6 +251,17 @@ export interface HistoryEntry {
 }
 
 export type HistoryClearPeriod = 'hour' | 'day' | 'week' | 'all';
+
+// ── Эмбеддинги (заход G) ─────────────────────────────────────────────────────
+// Общий транспорт main↔renderer: текст на входе, вектор на выходе. requestId — корреляция
+// ответа с запросом (в main может быть несколько requestEmbedding() в полёте одновременно).
+export interface EmbedRequestPayload {
+  requestId: number;
+  text: string;
+}
+export type EmbedResponsePayload =
+  | { requestId: number; ok: true; vector: Float32Array; dims: number; modelVersion: string }
+  | { requestId: number; ok: false; error: string };
 
 // ── Загрузки ─────────────────────────────────────────────────────────────────
 
@@ -392,6 +411,11 @@ export interface OblakoApi {
   deleteHistoryEntry(id: number): Promise<void>;
   clearHistory(period: HistoryClearPeriod): Promise<void>;
   onHistoryOpen(cb: () => void): () => void;
+
+  // Заход G — общий канал эмбеддингов main→renderer→main (см. electron/EmbedClient.ts,
+  // src/services/EmbedRequestBridge.ts). embeddingService живёт только в renderer.
+  onEmbedRequest(cb: (req: EmbedRequestPayload) => void): () => void;
+  sendEmbedResponse(res: EmbedResponsePayload): void;
 
   // Разрешения сайтов
   respondPermission(requestId: string, granted: boolean, remember: boolean): Promise<void>;
