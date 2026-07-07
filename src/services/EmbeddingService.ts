@@ -53,6 +53,14 @@ type Pending = {
 
 export type ModelStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+// Таймаут одного запроса ВНУТРИ очереди embed() (заход G) — защита от того, что зависший
+// (не только конкурентный — вообще любой) вызов навсегда заблокирует очередь для всех
+// последующих потребителей. Явно больше, чем таймаут EmbedClient.ts (20с) в main — тот
+// покрывает полный main→renderer→main round-trip и должен успеть сработать первым для
+// потребителей из main; этот — последний рубеж для прямых вызовов внутри renderer
+// (кластеризация вкладок), у которых внешнего таймаута нет вообще.
+const EMBED_QUEUE_ITEM_TIMEOUT_MS = 30_000
+
 class EmbeddingService {
   private worker:  Worker | null = null
   private status:  ModelStatus = 'idle'
@@ -61,6 +69,8 @@ class EmbeddingService {
   private nextId   = 0
   private startupPromise: Promise<void> | null = null
   private listeners: Array<(s: ModelStatus) => void> = []
+  // Хвост очереди сериализации embed() (заход G) — см. embed() ниже.
+  private queueTail: Promise<unknown> = Promise.resolve()
 
   getStatus(): ModelStatus { return this.status }
 
@@ -95,19 +105,48 @@ class EmbeddingService {
     this.startupPromise.catch(() => {})
   }
 
+  // Сериализовано (заход G): worker/WASM-сессия не рассчитаны на overlapping-вызовы — до этой
+  // правки кластеризация вкладок (Sidebar.tsx → ClusteringService, прямой вызов) и индексатор
+  // истории (main → EmbedRequestBridge.ts, через IPC) звали embed() независимо друг от друга,
+  // и конкурентные вызовы вешали часть запросов НАВСЕГДА (не резолвились и не реджектились —
+  // см. диагностику: рестор сессии с ~10 вкладками дал 3 успеха и 7 вечных таймаутов).
+  // this.queueTail — единая точка, через которую проходят ОБА потребителя, поэтому очередь
+  // здесь закрывает гонку целиком, а не только со стороны истории.
+  // Слот освобождается в .then(runOne, runOne) — срабатывает при любом исходе предыдущего
+  // вызова (успех/ошибка/таймаут), не только на happy path, иначе одна забытая ветка
+  // навсегда заблокировала бы очередь для всех остальных потребителей.
   embed(texts: string[]): Promise<Float32Array[]> {
     if (this.broken) return Promise.reject(this.broken)
     if (!this.startupPromise) this.startupPromise = this.doStartup()
 
-    return this.startupPromise.then(
-      () => new Promise<Float32Array[]>((resolve, reject) => {
-        if (this.broken) { reject(this.broken!); return }
-        const id = this.nextId++
-        this.pending.set(id, { resolve, reject })
-        this.worker!.postMessage({ type: 'embed', id, texts })
-      }),
-      (err: unknown) => Promise.reject(err),
-    )
+    const runOne = (): Promise<Float32Array[]> => {
+      const attempt = this.startupPromise!.then(
+        () => new Promise<Float32Array[]>((resolve, reject) => {
+          if (this.broken) { reject(this.broken!); return }
+          const id = this.nextId++
+          this.pending.set(id, { resolve, reject })
+          this.worker!.postMessage({ type: 'embed', id, texts })
+        }),
+        (err: unknown) => Promise.reject(err),
+      )
+
+      let timer: ReturnType<typeof setTimeout>
+      const timeout = new Promise<Float32Array[]>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`embed(): таймаут ${EMBED_QUEUE_ITEM_TIMEOUT_MS}ms в очереди`)),
+          EMBED_QUEUE_ITEM_TIMEOUT_MS,
+        )
+      })
+      return Promise.race([attempt, timeout]).finally(() => clearTimeout(timer))
+    }
+
+    const result = this.queueTail.then(runOne, runOne)
+    // Хвост очереди — сигнал «слот освободился», без значения/исключения наружу: сам
+    // результат этого вызова уже возвращается вызывающему через `result`. Гасим здесь
+    // отдельно от него, чтобы отклонение НЕ‑последнего вызова в цепочке не всплывало как
+    // необработанный rejection у самого queueTail (у него никогда нет своего .catch).
+    this.queueTail = result.then(() => undefined, () => undefined)
+    return result
   }
 
   private setStatus(s: ModelStatus): void {
