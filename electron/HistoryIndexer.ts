@@ -6,6 +6,7 @@
 // иначе обычный браузинг захламляет stdout логом на каждый визит.
 import type { HistoryManager } from './HistoryManager';
 import { requestEmbedding } from './EmbedClient';
+import { isNoisyForEmbedding } from './HistoryNoiseFilter';
 
 // Блок 4: не в HistoryManager.ts (тот в этом заходе не трогается) — держим факт «уже
 // проиндексирована в этой сессии» здесь же, в памяти процесса. Не персистентно между
@@ -31,6 +32,16 @@ export async function indexVisit(history: HistoryManager, url: string, title: st
   // Идемпотентность (блок 4): ревизит уже проиндексированной страницы — no-op, не спамим
   // очередь embed() повторно на каждый повторный визит.
   if (indexedHistoryIds.has(historyId)) return;
+
+  // Шумные для эмбеддинга страницы (логин/OAuth/голый домен/техническая заглушка, см.
+  // HistoryNoiseFilter.ts) — в history остаются как есть, просто не индексируем вектором.
+  // Здесь без записи заглушки в history_embeddings: indexVisit не работает через очередь
+  // «дай непроиндексированное» (в отличие от HistoryBackfill.ts), так что вечного цикла нет —
+  // достаточно молча пропускать на каждый визит, ничего не персистим.
+  if (isNoisyForEmbedding(url, title)) {
+    indexedHistoryIds.add(historyId); // не пересчитывать фильтр на каждый повторный визит
+    return;
+  }
 
   // Тот же формат сигнала, что и AI-группировка вкладок (ClusteringService.ts::buildCandidates) —
   // title + hostname, без пути/query.

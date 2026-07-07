@@ -42,7 +42,10 @@ export async function searchHistorySemantic(
     return [];
   }
 
-  const rows = history.getAllEmbeddings();
+  // dims === 0 — заглушка «намеренно не индексировано» (HistoryBackfill.ts, шумные для эмбеддинга
+  // строки: логин/OAuth/голый домен). Не настоящий вектор — cosineSim(a, b) читает b[i] по длине
+  // a, на пустом b это дало бы NaN (undefined * number), а не 0.
+  const rows = history.getAllEmbeddings().filter((r) => r.dims > 0);
   const scored: SemanticSearchResult[] = rows.map((r) => ({
     id: r.id,
     url: r.url,

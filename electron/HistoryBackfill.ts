@@ -8,6 +8,14 @@
 import type { HistoryManager } from './HistoryManager';
 import type { BackfillProgress } from '../shared/ipc';
 import { requestEmbedding, isAvailable as isEmbedClientAvailable } from './EmbedClient';
+import { isNoisyForEmbedding } from './HistoryNoiseFilter';
+
+// Маркер «намеренно не индексируем» для шумных строк (логин/OAuth/голый домен/заглушка,
+// см. HistoryNoiseFilter.ts). Пустой вектор (dims=0) — не настоящий эмбеддинг, HistorySearch.ts
+// отфильтровывает такие строки перед скорингом. Без этой отметки getUnindexedHistory() возвращал
+// бы одни и те же шумные строки на каждой итерации цикла ниже (они никогда не попадут в
+// history_embeddings обычным путём) — цикл не дошёл бы до `chunk.length === 0` и завис бы навсегда.
+const EXCLUDED_MODEL_VERSION = 'excluded';
 
 // Размер чанка — тот же порядок, что уже проверенный боевой батч кластеризации (18 текстов).
 const CHUNK_SIZE = 18;
@@ -71,6 +79,20 @@ export async function startBackfill(history: HistoryManager): Promise<void> {
 
       for (const row of chunk) {
         if (cancelRequested || !isEmbedClientAvailable()) break;
+
+        // Шумные для эмбеддинга строки (логин/OAuth/голый домен/заглушка) — не считаем вектор,
+        // но помечаем как обработанные пустым вектором, иначе они вечно будут возвращаться
+        // из getUnindexedHistory() и цикл не завершится (см. комментарий у EXCLUDED_MODEL_VERSION).
+        if (isNoisyForEmbedding(row.url, row.title)) {
+          try {
+            history.saveEmbedding(row.id, new Float32Array(0), 0, EXCLUDED_MODEL_VERSION);
+          } catch (e) {
+            console.warn(`[HistoryBackfill] пометка «исключено» не удалась для ${row.url}:`, (e as Error).message);
+          }
+          processed++;
+          report();
+          continue;
+        }
 
         // Тот же формат сигнала, что и AI-группировка вкладок / HistoryIndexer.ts —
         // title + hostname, без пути/query.
