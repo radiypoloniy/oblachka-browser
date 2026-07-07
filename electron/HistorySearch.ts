@@ -8,6 +8,7 @@
 // нормализованных моделью векторов) зафиксирована и не должна расходиться между копиями.
 import type { HistoryManager } from './HistoryManager';
 import { requestEmbedding } from './EmbedClient';
+import type { SemanticSearchResult } from '../shared/ipc';
 
 function cosineSim(a: Float32Array, b: Float32Array): number {
   let dot = 0;
@@ -19,11 +20,7 @@ function toFloat32Array(buf: Buffer, dims: number): Float32Array {
   return new Float32Array(buf.buffer, buf.byteOffset, dims);
 }
 
-export interface SemanticSearchResult {
-  url: string;
-  title: string;
-  score: number;
-}
+export type { SemanticSearchResult };
 
 // Общий мост embed:request/response — тот же, что уже использует индексатор истории (блоки 3-4)
 // и бэкфилл (блок 5). Один лишний вызов на один пользовательский поиск — разовая, малая
@@ -47,8 +44,11 @@ export async function searchHistorySemantic(
 
   const rows = history.getAllEmbeddings();
   const scored: SemanticSearchResult[] = rows.map((r) => ({
+    id: r.id,
     url: r.url,
     title: r.title,
+    lastVisit: r.lastVisit,
+    visitCount: r.visitCount,
     score: cosineSim(queryVector, toFloat32Array(r.vector, r.dims)),
   }));
 

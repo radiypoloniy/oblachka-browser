@@ -159,6 +159,8 @@ export const IPC = {
   HISTORY_DELETE: 'history:delete',  // renderer → main: удалить запись (id: number)
   HISTORY_CLEAR:  'history:clear',   // renderer → main: очистить за период ('hour'|'day'|'week'|'all')
   HISTORY_OPEN:   'history:open',    // main → renderer: открыть панель истории (Ctrl+H)
+  // Заход G, блок 7: векторный поиск для омнибокса (см. electron/HistorySearch.ts, блок 6).
+  HISTORY_SEARCH_SEMANTIC: 'history:search-semantic', // renderer → main: query -> SemanticSearchResult[]
 
   // Разрешения сайтов
   PERMISSION_REQUEST:  'permission:request',    // main → renderer: входящий запрос (PermissionRequest)
@@ -258,6 +260,19 @@ export interface HistoryEntry {
 }
 
 export type HistoryClearPeriod = 'hour' | 'day' | 'week' | 'all';
+
+// Заход G, блок 6/7 — результат векторного поиска. id/lastVisit/visitCount присутствуют
+// намеренно (не только url/title/score) — так результат напрямую совместим с HistoryEntry
+// и сливается в тот же byUrl-конвейер Toolbar.tsx::buildSuggestions, что и обычный поиск
+// по истории, без отдельной ветки логики дедупа.
+export interface SemanticSearchResult {
+  id: number;
+  url: string;
+  title: string;
+  lastVisit: number;
+  visitCount: number;
+  score: number;
+}
 
 // ── Эмбеддинги (заход G) ─────────────────────────────────────────────────────
 // Общий транспорт main↔renderer: текст на входе, вектор на выходе. requestId — корреляция
@@ -426,6 +441,8 @@ export interface OblakoApi {
   deleteHistoryEntry(id: number): Promise<void>;
   clearHistory(period: HistoryClearPeriod): Promise<void>;
   onHistoryOpen(cb: () => void): () => void;
+  // Заход G, блок 7 — векторный поиск (см. electron/HistorySearch.ts, блок 6).
+  searchHistorySemantic(query: string): Promise<SemanticSearchResult[]>;
 
   // Заход G — общий канал эмбеддингов main→renderer→main (см. electron/EmbedClient.ts,
   // src/services/EmbedRequestBridge.ts). embeddingService живёт только в renderer.

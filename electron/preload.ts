@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, SemanticSearchResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -87,6 +87,8 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.HISTORY_OPEN, handler);
     return () => ipcRenderer.removeListener(IPC.HISTORY_OPEN, handler);
   },
+  searchHistorySemantic: (query: string) =>
+    ipcRenderer.invoke(IPC.HISTORY_SEARCH_SEMANTIC, query) as Promise<SemanticSearchResult[]>,
 
   // Заход G — общий канал эмбеддингов (см. shared/ipc.ts::EmbedRequestPayload).
   onEmbedRequest: (cb: (req: EmbedRequestPayload) => void) => {

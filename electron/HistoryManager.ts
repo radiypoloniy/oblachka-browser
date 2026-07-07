@@ -68,14 +68,14 @@ export class HistoryManager {
 
   // Блок 6: все проиндексированные записи с векторами для brute-force top-k поиска —
   // на объёме ~700 строк полный скан дешевле, чем инфраструктура ANN-индекса ради этого.
-  getAllEmbeddings(): Array<{ url: string; title: string; lastVisit: number; vector: Buffer; dims: number }> {
+  getAllEmbeddings(): Array<{ id: number; url: string; title: string; lastVisit: number; visitCount: number; vector: Buffer; dims: number }> {
     if (!this.#db) return [];
     try {
       return this.#db.prepare(`
-        SELECT h.url, h.title, h.last_visit AS lastVisit, he.vector, he.dims
+        SELECT h.id, h.url, h.title, h.last_visit AS lastVisit, h.visit_count AS visitCount, he.vector, he.dims
         FROM history_embeddings he
         JOIN history h ON h.id = he.history_id
-      `).all() as Array<{ url: string; title: string; lastVisit: number; vector: Buffer; dims: number }>;
+      `).all() as Array<{ id: number; url: string; title: string; lastVisit: number; visitCount: number; vector: Buffer; dims: number }>;
     } catch (e) {
       console.warn('[History] getAllEmbeddings error:', (e as Error).message);
       return [];

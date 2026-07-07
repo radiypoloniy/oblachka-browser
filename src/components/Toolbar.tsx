@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown } from 'lucide-react';
-import type { TabState, HistoryEntry, SuggestDropdownItem } from '../../shared/ipc';
+import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
@@ -290,14 +290,28 @@ export default function Toolbar({
     // ловится там и превращается в []), но изоляция здесь дублируется намеренно: buildSuggestions
     // не должен зависеть от внутренней гарантии другого модуля, чтобы сбой suggest-API НИ ПРИ
     // КАКИХ обстоятельствах не уронил историю/вкладки.
+    // Заход G, блок 7: семантический поиск — третья ветка в том же allSettled, та же изоляция
+    // (embed-мост может отвалиться по таймауту/недоступности chromeView — не должен уронить
+    // ни обычную историю, ни живые подсказки).
+    // ⚠️ Promise.allSettled ждёт САМУЮ МЕДЛЕННУЮ ветку — без обёртки ниже холодный старт
+    // эмбеддинг-модели (3-6с, см. замеры захода F) держал бы показ УЖЕ готовых history/suggest
+    // результатов, хотя раньше омнибокс отвечал мгновенно. Таймаут — только на семантическую
+    // ветку: если не успела за 400мс, просто не участвует в ЭТОМ показе (не отменяет сам запрос —
+    // он может тихо доработать в фоне, результат достанется следующему keystroke, если такой будет).
+    const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> =>
+      Promise.race([p, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
+
     let histEntries: HistoryEntry[] = [];
     let suggestPhrases: string[] = [];
-    const [histResult, suggestResult] = await Promise.allSettled([
+    let semanticEntries: SemanticSearchResult[] = [];
+    const [histResult, suggestResult, semanticResult] = await Promise.allSettled([
       window.oblako.searchHistory(query),
       window.oblako.fetchSuggestions(query),
+      withTimeout(window.oblako.searchHistorySemantic(query), 400, [] as SemanticSearchResult[]),
     ]);
     if (histResult.status === 'fulfilled') histEntries = histResult.value;
     if (suggestResult.status === 'fulfilled') suggestPhrases = suggestResult.value;
+    if (semanticResult.status === 'fulfilled') semanticEntries = semanticResult.value;
 
     const now = Date.now();
 
@@ -324,6 +338,24 @@ export default function Toolbar({
       if (!cur || scoreEntry(e, now) > scoreEntry(cur, now)) byUrl.set(key, e);
     }
 
+    // Заход G, блок 7: семантические результаты сливаются в тот же byUrl-конвейер — дедуп по
+    // URL срабатывает автоматически (если страница уже есть от обычного поиска по истории,
+    // семантическое совпадение её не дублирует). Порог 0.5 — общие короткие заголовки
+    // (логины, главные страницы) не должны лезть во всё подряд, как показал живой тест блока 6:
+    // короткие тайтлы вроде "ChatGPT"/"Twitch"/"Авторизация" систематически давали высокий
+    // cosine независимо от смысла запроса — отсечка убирает часть таких ложных срабатываний,
+    // не устраняя саму причину (сигнал title+hostname), это осталось на будущее.
+    const SEMANTIC_MIN_SCORE = 0.5;
+    const semanticKeys = new Set<string>();
+    for (const s of semanticEntries) {
+      if (s.score < SEMANTIC_MIN_SCORE) continue;
+      const key = normalizeForOmnibox(s.url);
+      semanticKeys.add(key);
+      const cur = byUrl.get(key);
+      const asEntry: HistoryEntry = { id: s.id, url: s.url, title: s.title, lastVisit: s.lastVisit, visitCount: s.visitCount };
+      if (!cur || scoreEntry(asEntry, now) > scoreEntry(cur, now)) byUrl.set(key, asEntry);
+    }
+
     // Match-score: тип совпадения — главный сортировщик, frecency — вторичный.
     // query/hash-параметры намеренно исключены: они источник ложных хитов
     // (e.g. «the» в ?q=... подтягивает нерелевантные страницы).
@@ -340,7 +372,12 @@ export default function Toolbar({
       if (title.startsWith(q))                 return 3; // префикс заголовка
       if (hostname.includes(q) || title.includes(q)) return 2; // вхождение в домен/заголовок
       if (pathname.includes(q))                return 1; // только в пути
-      return 0; // только в query/hash — отфильтровываем
+      // Семантическое совпадение (заход G, блок 7) — ниже точных текстовых совпадений (1-4),
+      // но выше search-фоллбэка (тот вообще не участвует в match-tier). Проверяется ПОСЛЕДНИМ:
+      // страница, у которой и так есть лексический матч, получает свой обычный тир — семантика
+      // здесь только подстраховка для того, что calcMatchScore иначе отфильтровал бы как 0.
+      if (semanticKeys.has(normalizeForOmnibox(e.url))) return 1.5;
+      return 0; // ни лексического, ни семантического совпадения — отфильтровываем
     }
 
     // Итоговый скор: ×10000 за тип совпадения даёт ему абсолютный приоритет над частотой.
