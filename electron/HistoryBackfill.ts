@@ -1,0 +1,104 @@
+// Разовый бэкфилл уже накопленной истории эмбеддингами (заход G, блок 5). Запускается ТОЛЬКО
+// по явному действию пользователя (см. Settings.tsx::HistoryBackfillSection) — никогда
+// автоматически на старте приложения. Работает как обычный клиент общей очереди
+// embeddingService.embed() — тем же каналом embed:request/response и тем же per-текст вызовом,
+// что и HistoryIndexer.ts (одна фраза → requestEmbedding() → один вектор), не батчит несколько
+// текстов в один embed()-вызов и не трогает саму очередь/её сериализацию — чтобы не быть
+// привилегированным потребителем, который может обойти уже проверенную гонку.
+import type { HistoryManager } from './HistoryManager';
+import type { BackfillProgress } from '../shared/ipc';
+import { requestEmbedding, isAvailable as isEmbedClientAvailable } from './EmbedClient';
+
+// Размер чанка — тот же порядок, что уже проверенный боевой батч кластеризации (18 текстов).
+const CHUNK_SIZE = 18;
+// Пауза — ПОСЛЕ того, как все embed-вызовы текущего чанка отработали последовательно (значит,
+// на этот момент очередь точно не занята бэкфиллом), а не параллельно им — иначе пауза не
+// давала бы реального окна другому потребителю (кластеризации). Стартовое значение для
+// эмпирической подстройки на живом тесте (см. бриф блока 5) — не точная константа навсегда.
+const PAUSE_BETWEEN_CHUNKS_MS = 500;
+
+let running = false;
+let cancelRequested = false;
+let onProgress: ((p: BackfillProgress) => void) | null = null;
+
+export function isBackfillRunning(): boolean {
+  return running;
+}
+
+// main.ts подписывается один раз при старте — тот же приём, что onPick у SuggestDropdownManager.ts.
+export function setBackfillProgressListener(cb: ((p: BackfillProgress) => void) | null): void {
+  onProgress = cb;
+}
+
+// Прерывает цикл МЕЖДУ чанками (или между отдельными визитами внутри чанка) — не обрывает уже
+// запущенный вызов requestEmbedding() на середине, просто не даёт стартовать следующему шагу.
+export function cancelBackfill(): void {
+  cancelRequested = true;
+}
+
+function hostnameOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function startBackfill(history: HistoryManager): Promise<void> {
+  if (running) return; // защита от повторного запуска — простой флаг, ничего сложнее не нужно
+  running = true;
+  cancelRequested = false;
+
+  // Считается один раз на старте — обычный браузинг не останавливается на время бэкфилла,
+  // новые визиты параллельно уменьшают реальный остаток; индикатор прогресса не претендует
+  // на абсолютную точность в моменте, только на общее ощущение хода процесса.
+  const total = history.countUnindexed();
+  let processed = 0;
+  const report = (extra: Partial<BackfillProgress> = {}) =>
+    onProgress?.({ processed, total, running: true, cancelled: false, ...extra });
+  report();
+
+  try {
+    for (;;) {
+      if (cancelRequested) break;
+      if (!isEmbedClientAvailable()) {
+        console.warn('[HistoryBackfill] chromeView недоступен — останавливаюсь');
+        break;
+      }
+
+      const chunk = history.getUnindexedHistory(CHUNK_SIZE);
+      if (chunk.length === 0) break; // всё сделано (или ничего никогда не было)
+
+      for (const row of chunk) {
+        if (cancelRequested || !isEmbedClientAvailable()) break;
+
+        // Тот же формат сигнала, что и AI-группировка вкладок / HistoryIndexer.ts —
+        // title + hostname, без пути/query.
+        const text = `${row.title} ${hostnameOf(row.url)}`.trim();
+        if (text) {
+          try {
+            const embedded = await requestEmbedding(text);
+            try {
+              history.saveEmbedding(row.id, embedded.vector, embedded.dims, embedded.modelVersion);
+            } catch (e) {
+              console.warn(`[HistoryBackfill] запись эмбеддинга не удалась для ${row.url}:`, (e as Error).message);
+            }
+          } catch (e) {
+            // Строка остаётся неиндексированной — не теряется, просто попадёт в выборку
+            // getUnindexedHistory() на следующем запуске бэкфилла (см. блок 5, п.4 брифа).
+            console.warn(`[HistoryBackfill] embed не удался для ${row.url}:`, (e as Error).message);
+          }
+        }
+
+        processed++;
+        report();
+      }
+
+      if (cancelRequested || !isEmbedClientAvailable()) break;
+      await wait(PAUSE_BETWEEN_CHUNKS_MS);
+    }
+  } finally {
+    running = false;
+    onProgress?.({ processed, total, running: false, cancelled: cancelRequested });
+  }
+}

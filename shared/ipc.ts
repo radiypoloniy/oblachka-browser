@@ -236,6 +236,13 @@ export const IPC = {
   // поиском (блок 6). Логика «что делать с вектором» остаётся у вызывающего в main, не здесь.
   EMBED_REQUEST:  'embed:request',   // main → renderer: { requestId, text }
   EMBED_RESPONSE: 'embed:response',  // renderer → main: EmbedResponsePayload (fire-and-forget send)
+
+  // Заход G, блок 5: разовый бэкфилл уже накопленной истории эмбеддингами. Запускается ТОЛЬКО
+  // по явному действию пользователя (см. Settings.tsx::HistoryBackfillSection) — не автоматически.
+  HISTORY_BACKFILL_START:    'history:backfill-start',    // renderer → main: запустить (no-op если уже идёт)
+  HISTORY_BACKFILL_CANCEL:   'history:backfill-cancel',   // renderer → main: остановить между чанками
+  HISTORY_BACKFILL_STATUS:   'history:backfill-status',   // renderer → main: текущий прогресс (синк при открытии панели)
+  HISTORY_BACKFILL_PROGRESS: 'history:backfill-progress', // main → renderer: push прогресса
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -262,6 +269,14 @@ export interface EmbedRequestPayload {
 export type EmbedResponsePayload =
   | { requestId: number; ok: true; vector: Float32Array; dims: number; modelVersion: string }
   | { requestId: number; ok: false; error: string };
+
+// Заход G, блок 5 — прогресс разового бэкфилла истории.
+export interface BackfillProgress {
+  processed: number;
+  total: number;
+  running: boolean;
+  cancelled: boolean;
+}
 
 // ── Загрузки ─────────────────────────────────────────────────────────────────
 
@@ -416,6 +431,12 @@ export interface OblakoApi {
   // src/services/EmbedRequestBridge.ts). embeddingService живёт только в renderer.
   onEmbedRequest(cb: (req: EmbedRequestPayload) => void): () => void;
   sendEmbedResponse(res: EmbedResponsePayload): void;
+
+  // Заход G, блок 5 — разовый бэкфилл истории (см. electron/HistoryBackfill.ts).
+  startHistoryBackfill(): void;
+  cancelHistoryBackfill(): void;
+  getHistoryBackfillStatus(): Promise<BackfillProgress>;
+  onHistoryBackfillProgress(cb: (p: BackfillProgress) => void): () => void;
 
   // Разрешения сайтов
   respondPermission(requestId: string, granted: boolean, remember: boolean): Promise<void>;

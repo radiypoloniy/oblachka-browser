@@ -66,6 +66,40 @@ export class HistoryManager {
     }
   }
 
+  // Разовый бэкфилл (заход G, блок 5): чанк ещё не проиндексированных записей, свежее/чаще
+  // посещаемое — первым (last_visit DESC), чтобы при прерывании уже сделанная часть была
+  // максимально полезной. NOT IN на history_embeddings естественно даёт возобновляемость —
+  // повторный вызов после прерывания просто не вернёт уже обработанные строки.
+  getUnindexedHistory(limit: number): Array<{ id: number; url: string; title: string }> {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT id, url, title FROM history
+        WHERE id NOT IN (SELECT history_id FROM history_embeddings)
+        ORDER BY last_visit DESC
+        LIMIT ?
+      `).all(limit) as Array<{ id: number; url: string; title: string }>;
+    } catch (e) {
+      console.warn('[History] getUnindexedHistory error:', (e as Error).message);
+      return [];
+    }
+  }
+
+  // Общее число невыполненных записей — для индикатора прогресса бэкфилла (блок 5).
+  countUnindexed(): number {
+    if (!this.#db) return 0;
+    try {
+      const row = this.#db.prepare(`
+        SELECT COUNT(*) c FROM history
+        WHERE id NOT IN (SELECT history_id FROM history_embeddings)
+      `).get() as { c: number };
+      return row.c;
+    } catch (e) {
+      console.warn('[History] countUnindexed error:', (e as Error).message);
+      return 0;
+    }
+  }
+
   // Пишет/обновляет вектор эмбеддинга для уже существующей строки history (заход G).
   // ON CONFLICT — та же логика, что и у recordVisit: повторная индексация той же страницы
   // (ревизит, или переиндексация после смены модели) молча перезаписывает, не падает на PK.

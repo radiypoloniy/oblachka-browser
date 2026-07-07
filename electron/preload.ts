@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -95,6 +95,16 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.EMBED_REQUEST, handler);
   },
   sendEmbedResponse: (res: EmbedResponsePayload) => ipcRenderer.send(IPC.EMBED_RESPONSE, res),
+
+  // Заход G, блок 5 — разовый бэкфилл истории.
+  startHistoryBackfill:  () => ipcRenderer.send(IPC.HISTORY_BACKFILL_START),
+  cancelHistoryBackfill: () => ipcRenderer.send(IPC.HISTORY_BACKFILL_CANCEL),
+  getHistoryBackfillStatus: () => ipcRenderer.invoke(IPC.HISTORY_BACKFILL_STATUS) as Promise<BackfillProgress>,
+  onHistoryBackfillProgress: (cb: (p: BackfillProgress) => void) => {
+    const handler = (_e: unknown, p: BackfillProgress) => cb(p);
+    ipcRenderer.on(IPC.HISTORY_BACKFILL_PROGRESS, handler);
+    return () => ipcRenderer.removeListener(IPC.HISTORY_BACKFILL_PROGRESS, handler);
+  },
 
   // Загрузки
   getDownloads:       ()             => ipcRenderer.invoke(IPC.DOWNLOADS_GET_ALL) as Promise<DownloadEntry[]>,

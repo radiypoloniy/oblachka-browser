@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyRound, Check, type LucideIcon } from 'lucide-react';
-import type { AdBlockState } from '../../shared/ipc';
+import type { AdBlockState, BackfillProgress } from '../../shared/ipc';
 
 interface SettingsProps {
   onClose: () => void;
@@ -413,6 +413,79 @@ function AiSection() {
               {saving ? 'Сохранение…' : 'Сохранить'}
             </button>
           </div>
+        </div>
+      )}
+
+      <HistoryBackfillSection />
+    </div>
+  );
+}
+
+// ── Разовый бэкфилл истории эмбеддингами (заход G, блок 5) ────────────────────
+// Триггер — только явный клик по кнопке здесь; никогда автоматически. Прогресс синхронизируется
+// при монтировании (getHistoryBackfillStatus) — если бэкфилл уже идёт/завершился при открытой
+// в другой раз панели настроек, показываем актуальное состояние, а не всегда «Индексировать».
+function HistoryBackfillSection() {
+  const [progress, setProgress] = useState<BackfillProgress | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    window.oblako.getHistoryBackfillStatus().then((p) => { if (mounted) setProgress(p); });
+    const unsub = window.oblako.onHistoryBackfillProgress((p) => { if (mounted) setProgress(p); });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
+  const running = progress?.running ?? false;
+  const processed = progress?.processed ?? 0;
+  const total = progress?.total ?? 0;
+  const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+  const finishedClean = !!progress && !running && total > 0 && processed >= total && !progress.cancelled;
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 12,
+      paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
+    }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+          Индексация истории для поиска
+        </h3>
+        <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+          Разовая фоновая обработка уже накопленной истории эмбеддингами — понадобится для
+          будущего семантического поиска. Считается локально на устройстве, ничего никуда
+          не отправляется. Идёт не одномоментно — маленькими порциями с паузами, чтобы не мешать
+          другим AI-функциям браузера.
+        </p>
+      </div>
+
+      {running ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
+            Обработано {processed} из {total}…
+          </div>
+          <div style={{ height: 6, borderRadius: 3, background: 'var(--surface-hover)', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', width: `${pct}%`, background: 'var(--accent)',
+              transition: 'width 0.2s ease-out',
+            }} />
+          </div>
+          <button
+            onClick={() => window.oblako.cancelHistoryBackfill()}
+            style={{ ...btnGhost, alignSelf: 'flex-start' }}
+          >
+            Остановить
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => window.oblako.startHistoryBackfill()} style={btnPrimary}>
+            {finishedClean ? 'Переиндексировать заново' : 'Индексировать историю'}
+          </button>
+          {progress && total > 0 && (progress.cancelled || finishedClean) && (
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+              {progress.cancelled ? `Остановлено: ${processed} из ${total}` : `Готово: ${processed} из ${total}`}
+            </span>
+          )}
         </div>
       )}
     </div>

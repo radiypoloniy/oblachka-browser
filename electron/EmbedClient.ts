@@ -36,6 +36,13 @@ export function setChromeView(view: WebContentsView | null): void {
   chromeViewRef = view;
 }
 
+// Заход G, блок 5: бэкфиллу нужно самому решить остановиться, если окно закрывается —
+// иначе он молотил бы requestEmbedding() по всем оставшимся строкам подряд, каждая мгновенно
+// падала бы с одной и той же «chromeView недоступен» вместо одной явной остановки.
+export function isAvailable(): boolean {
+  return !!chromeViewRef && !chromeViewRef.webContents.isDestroyed();
+}
+
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return;
   ipcRegistered = true;

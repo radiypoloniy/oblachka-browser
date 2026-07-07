@@ -24,6 +24,8 @@ import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
 import { setChromeView as setEmbedClientChromeView } from './EmbedClient';
 import { indexVisit } from './HistoryIndexer';
+import { startBackfill, cancelBackfill, setBackfillProgressListener } from './HistoryBackfill';
+import type { BackfillProgress } from '../shared/ipc';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -522,6 +524,18 @@ function registerIpc() {
   aiKeyStore.onKeyStatusChanged((connected) => {
     chromeView?.webContents.send(IPC.AI_KEY_STATUS_CHANGED, connected);
   });
+
+  // Заход G, блок 5 — разовый бэкфилл истории. Запускается только по явному действию
+  // пользователя (Settings.tsx), никогда автоматически. lastBackfillProgress — чтобы панель
+  // настроек могла синхронизироваться при открытии, если бэкфилл уже идёт (или уже завершился).
+  let lastBackfillProgress: BackfillProgress = { processed: 0, total: 0, running: false, cancelled: false };
+  setBackfillProgressListener((p) => {
+    lastBackfillProgress = p;
+    chromeView?.webContents.send(IPC.HISTORY_BACKFILL_PROGRESS, p);
+  });
+  ipcMain.on(IPC.HISTORY_BACKFILL_START,  () => { void startBackfill(history); });
+  ipcMain.on(IPC.HISTORY_BACKFILL_CANCEL, () => { cancelBackfill(); });
+  ipcMain.handle(IPC.HISTORY_BACKFILL_STATUS, () => lastBackfillProgress);
 
   // Заход 10: живые suggest-подсказки — движок берём из settings (тот же источник истины, что
   // капсула выбора поисковика), а не отдельным параметром от renderer — не может разойтись.
