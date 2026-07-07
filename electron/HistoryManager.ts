@@ -66,6 +66,22 @@ export class HistoryManager {
     }
   }
 
+  // Блок 6: все проиндексированные записи с векторами для brute-force top-k поиска —
+  // на объёме ~700 строк полный скан дешевле, чем инфраструктура ANN-индекса ради этого.
+  getAllEmbeddings(): Array<{ url: string; title: string; lastVisit: number; vector: Buffer; dims: number }> {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT h.url, h.title, h.last_visit AS lastVisit, he.vector, he.dims
+        FROM history_embeddings he
+        JOIN history h ON h.id = he.history_id
+      `).all() as Array<{ url: string; title: string; lastVisit: number; vector: Buffer; dims: number }>;
+    } catch (e) {
+      console.warn('[History] getAllEmbeddings error:', (e as Error).message);
+      return [];
+    }
+  }
+
   // Разовый бэкфилл (заход G, блок 5): чанк ещё не проиндексированных записей, свежее/чаще
   // посещаемое — первым (last_visit DESC), чтобы при прерывании уже сделанная часть была
   // максимально полезной. NOT IN на history_embeddings естественно даёт возобновляемость —
