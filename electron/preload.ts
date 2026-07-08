@@ -9,6 +9,7 @@ const EMBED_PRELOAD = process.env.OBLAKO_PRELOAD_EMBED !== '0';
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
   createTab: (url?: string) => ipcRenderer.invoke(IPC.TAB_CREATE, url),
+  createSpecialTab: (kind: 'history' | 'settings') => ipcRenderer.invoke(IPC.TAB_CREATE_SPECIAL, kind),
   closeTab: (id: string) => ipcRenderer.invoke(IPC.TAB_CLOSE, id),
   activateTab: (id: string) => ipcRenderer.invoke(IPC.TAB_ACTIVATE, id),
   navigate: (id: string, input: string) => ipcRenderer.invoke(IPC.TAB_NAVIGATE, id, input),

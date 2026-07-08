@@ -52,6 +52,14 @@ export interface TabState {
   isPinned: boolean;    // закреплена — переживает перезапуск, нельзя закрыть крестиком
   splitSide: 'left' | 'right' | null; // null = не в split-режиме
   isSleeping: boolean;  // WebContentsView выгружен, хранятся только url/title/favicon
+  // Вид содержимого вкладки — 'page' обычная страница (реальный WebContentsView), 'hub' —
+  // единственный синглтон-хаб (isHub уже покрывает это, kind добавлен для полноты и симметрии
+  // с history/settings). 'history'/'settings' — псевдо-вкладки без WebContentsView (view: null
+  // в TabManager, тот же приём, что у хаба), обычные tabMap-записи: закрываемые, в нескольких
+  // экземплярах, не участвуют в сессии/истории/усыплении (см. TabManager.createSpecialTab —
+  // тот же путь #tabUrl()==='' → savable()===false / isHttpView(null)===false, что уже
+  // естественно исключает их из session snapshot и sleep-таймера, без отдельных правок там).
+  kind: 'page' | 'hub' | 'history' | 'settings';
 }
 
 // Атомарный снимок: вкладки + структура сайдбара в одном сообщении.
@@ -84,6 +92,9 @@ export const IPC = {
   // Запросы (renderer -> main, ожидают ответ)
   TABS_GET_ALL: 'tabs:get-all',
   TAB_CREATE: 'tab:create',
+  // Псевдо-вкладка (История/Настройки) — тот же tabMap/nodes-механизм, что обычная вкладка
+  // (createTab), но без WebContentsView (kind вместо реального url). См. TabManager.createSpecialTab.
+  TAB_CREATE_SPECIAL: 'tab:create-special',
   TAB_CLOSE: 'tab:close',
   TAB_ACTIVATE: 'tab:activate',
   TAB_NAVIGATE: 'tab:navigate',     // omnibox: URL или поисковый запрос
@@ -374,6 +385,9 @@ export interface OblakoApi {
 
   getAllTabs(): Promise<TabState[]>;
   createTab(url?: string): Promise<string>;       // вернёт id новой вкладки
+  // Псевдо-вкладка (История/Настройки) — та же жизнь (закрытие/активация), что у обычной,
+  // просто без WebContentsView. См. shared/ipc.ts::TabState.kind, TabManager.createSpecialTab.
+  createSpecialTab(kind: 'history' | 'settings'): Promise<string>;
   closeTab(id: string): Promise<void>;
   activateTab(id: string): Promise<void>;
   navigate(id: string, input: string): Promise<void>;

@@ -126,7 +126,9 @@ function buildCandidates(nodes: SidebarNode[], tabMap: Map<string, TabState>): C
   for (const node of nodes) {
     if (node.type === 'single') {
       const tab = tabMap.get(node.tabId)
-      if (!tab || tab.isHub || tab.isPinned) continue
+      // Псевдо-вкладки (История/Настройки) — url пустой, нечего кластеризовать по смыслу,
+      // тот же класс исключения, что isHub/isPinned (см. TabState.kind).
+      if (!tab || tab.isHub || tab.isPinned || tab.kind === 'history' || tab.kind === 'settings') continue
       const signal = `${tab.title} ${extractHostname(tab.url)}`.trim()
       result.push({ nodeId: node.tabId, nodeType: 'single', signal, title: tab.title })
     } else if (node.type === 'split-pair') {

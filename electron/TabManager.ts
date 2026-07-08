@@ -64,12 +64,19 @@ export interface SelectionRect { x: number; y: number; width: number; height: nu
 
 interface ManagedTab {
   id: string;
-  view: WebContentsView | null; // null = хаб (sleeping===null) ИЛИ спящая (sleeping!==null)
+  view: WebContentsView | null; // null = хаб (sleeping===null) ИЛИ спящая (sleeping!==null) ИЛИ псевдо-вкладка (kind задан)
   sleeping: SleepingMeta | null;
   lastActiveAt: number; // Date.now() последней активности — для таймера сна
   // Короткоживущая вкладка (напр. OAuth-попап из window.open с фичами окна, disposition='new-window'):
   // не участвует в автосейве/восстановлении сессии — иначе при рестарте «воскреснет» мёртвая страница логина.
   ephemeral?: boolean;
+  // Псевдо-вкладка (История/Настройки, см. createSpecialTab) — обычная запись в tabMap/nodes
+  // (не синглтон-хаб: свой id, закрываемая, можно открыть несколько), но БЕЗ WebContentsView —
+  // переиспользован только сам приём хаба (view: null). #tabUrl() для такой вкладки вернёт ''
+  // (см. ниже) → savable()===false и isHttpView(null)===false уже естественно исключают её из
+  // сессии/сна без отдельных правок в SessionManager/sleep-таймере (см. диагностику, подтверждено
+  // чтением кода: #serializeNodes фильтрует по savable(), sleep-таймер — по isHttpView).
+  kind?: 'history' | 'settings';
 }
 
 // Скрипт проверки незаполненных форм — только top-frame (v1: поля внутри iframe не проверяются).
@@ -255,7 +262,7 @@ export class TabManager {
       url: '', title: 'Новая вкладка · AI-хаб',
       faviconUrl: null, isLoading: false,
       canGoBack: false, canGoForward: false, isHub: true, isPinned: false,
-      splitSide: null, isSleeping: false,
+      splitSide: null, isSleeping: false, kind: 'hub',
     });
 
     // Закреплённые
@@ -272,6 +279,18 @@ export class TabManager {
 
   // Превращает ManagedTab в TabState; isPinned явно передаётся — известно по списку.
   #tabToState(t: ManagedTab, isPinned: boolean): TabState {
+    // Псевдо-вкладка (История/Настройки) — постоянно view:null/sleeping:null (не «убитый»
+    // WebContents, а вкладка, у которой его в принципе никогда не было), проверяем ДО ветки
+    // «мёртвый вид» ниже, иначе она попала бы в тот же фоллбэк с пустым title.
+    if (t.kind) {
+      return {
+        id: t.id, isActive: t.id === this.activeId,
+        tabError: null,
+        url: '', title: t.kind === 'history' ? 'История посещений' : 'Настройки',
+        faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false,
+        isHub: false, isPinned, splitSide: null, isSleeping: false, kind: t.kind,
+      };
+    }
     if (t.sleeping) {
       return {
         id: t.id, isActive: t.id === this.activeId,
@@ -285,17 +304,17 @@ export class TabManager {
           : t.id === this.splitState.leftId  ? 'left' as const
           : t.id === this.splitState.rightId ? 'right' as const
           : null,
-        isSleeping: true,
+        isSleeping: true, kind: 'page',
       };
     }
     if (!this.isHttpView(t.view) || t.view.webContents.isDestroyed()) {
-      // Хаб обрабатывается отдельно выше; сюда не должны попадать.
+      // Хаб и псевдо-вкладки обрабатываются отдельно выше; сюда не должны попадать.
       // Уничтоженный (но ещё не вычищенный из tabMap) WebContents — тот же короткий фоллбэк.
       return {
         id: t.id, isActive: t.id === this.activeId,
         tabError: null, url: '', title: '', faviconUrl: null,
         isLoading: false, canGoBack: false, canGoForward: false,
-        isHub: false, isPinned, splitSide: null, isSleeping: false,
+        isHub: false, isPinned, splitSide: null, isSleeping: false, kind: 'page',
       };
     }
     const wc = t.view.webContents;
@@ -313,7 +332,7 @@ export class TabManager {
         : t.id === this.splitState.leftId  ? 'left' as const
         : t.id === this.splitState.rightId ? 'right' as const
         : null,
-      isSleeping: false,
+      isSleeping: false, kind: 'page',
     };
   }
 
@@ -663,6 +682,21 @@ export class TabManager {
     return id;
   }
 
+  // Псевдо-вкладка (История/Настройки) — тот же tabMap/nodes-путь, что у createTab выше, но
+  // без WebContentsView/wirePageEvents (переиспользован только приём "view: null" от хаба, не
+  // сам синглтон-механизм хаба — см. диагностику: HUB_ID жёстко захардкожен и не масштабируется
+  // на несколько экземпляров, а эта вкладка — обычная запись со своим id, закрываемая, можно
+  // открыть несколько сразу). #tabUrl()==='' для неё уже естественно исключает её из
+  // savable()/session-снимка и isHttpView()/sleep-таймера — без отдельных правок там.
+  createSpecialTab(kind: 'history' | 'settings'): string {
+    const id = randomUUID();
+    const tab: ManagedTab = { id, view: null, sleeping: null, lastActiveAt: Date.now(), kind };
+    this.tabMap.set(id, tab);
+    this.nodes.push({ type: 'single', tabId: id });
+    this.activate(id);
+    return id;
+  }
+
   // Создаёт закреплённую вкладку — используется только при восстановлении сессии.
   // cachedFaviconData — base64 из session.json (заход C): кладём в тот же хак-приём, что и живой
   // favicon (_oblakoFavicon), ДО loadURL — #tabToState тут же отдаст его в сайдбар, пока страница
@@ -717,7 +751,10 @@ export class TabManager {
 
   // Закрепить / открепить существующую вкладку.
   togglePin(id: string): void {
-    if (id === HUB_ID || !this.tabMap.has(id)) return;
+    // Псевдо-вкладки (История/Настройки) закреплять некуда — нет реальной страницы, которую
+    // «переживать» перезапуску (и так не попадают в сессию, см. диагностику).
+    if (id === HUB_ID || this.tabMap.get(id)?.kind) return;
+    if (!this.tabMap.has(id)) return;
     this.clearOrganizeSnapshot();
     const pinnedIdx = this.pinnedTabs.findIndex((t) => t.id === id);
     if (pinnedIdx !== -1) {
