@@ -8,7 +8,6 @@
 // нормализованных моделью векторов) зафиксирована и не должна расходиться между копиями.
 import type { HistoryManager } from './HistoryManager';
 import { requestEmbedding } from './EmbedClient';
-import { rerankHistoryCandidates } from './TranslationService';
 import type { SemanticSearchResult } from '../shared/ipc';
 
 function cosineSim(a: Float32Array, b: Float32Array): number {
@@ -60,12 +59,19 @@ export async function searchHistorySemantic(
   return scored.slice(0, limit);
 }
 
-// Умный поиск (заход на Qwen-переключатель) — только по явному действию (Enter в омниноксе,
-// см. Toolbar.tsx::runSmartSearch), НЕ на каждый keystroke: генеративный вызов занимает секунды,
-// не миллисекунды, как cosine top-k выше. Кандидаты — тот же searchHistorySemantic, просто
-// шире (20, не 8) — Qwen сама решает, что из них реально релевантно, cosine-порядок для неё
-// только черновой.
+// Умный поиск (заход на Qwen-переключатель) — только по явному действию (Enter в панели
+// «История»), НЕ на каждый keystroke: генеративный вызов занимает секунды, не миллисекунды,
+// как cosine top-k выше. Кандидаты — тот же searchHistorySemantic, шире (20, не 8) — Qwen сама
+// решает, что из них реально релевантно, cosine-порядок для неё только черновой.
 const SMART_CANDIDATE_LIMIT = 20;
+
+// Тот же порог, что уже проверен в омниноксе (Toolbar.tsx::SEMANTIC_MIN_SCORE) — короткие
+// generic-заголовки (ChatGPT/Google Диск/главная Claude — см. живой баг-репорт: они лезут в
+// top-20 почти на ЛЮБОЙ запрос из-за скудного сигнала title+hostname) систематически дают
+// высокий cosine независимо от смысла. Без отсечки ДО Qwen модель получает мусор-кандидатов
+// вперемешку с реальными и либо путается, либо у нас просто нет оснований спрашивать её мнение
+// о заведомо нерелевантных вещах.
+const SMART_MIN_SCORE = 0.5;
 
 export async function searchHistorySmart(
   history: HistoryManager,
@@ -75,21 +81,18 @@ export async function searchHistorySmart(
   const q = query.trim();
   if (!q) return [];
 
-  const candidates = await searchHistorySemantic(history, q, SMART_CANDIDATE_LIMIT);
+  const rawCandidates = await searchHistorySemantic(history, q, SMART_CANDIDATE_LIMIT);
+  const candidates = rawCandidates.filter((c) => c.score >= SMART_MIN_SCORE);
+  // Ничего даже отдалённо похожего по cosine — честно ничего не нашли.
   if (candidates.length === 0) return [];
 
-  let order: number[];
-  try {
-    order = await rerankHistoryCandidates(q, candidates.map((c) => ({ id: c.id, title: c.title, url: c.url })));
-  } catch (e) {
-    // Qwen недоступна/упала — честный fallback на обычный cosine top-k, не пустой список.
-    console.warn('[HistorySearch] Qwen-реранк не удался, отдаю cosine top-k как есть:', (e as Error).message);
-    return candidates.slice(0, limit);
-  }
-
-  // Пустой/полностью нераспознанный ответ модели — тоже fallback на cosine-порядок, а не пустой
-  // результат: юзер явно попросил умный поиск, оставлять его совсем без ответа хуже, чем без ума.
-  if (order.length === 0) return candidates.slice(0, limit);
-
-  return order.slice(0, limit).map((i) => candidates[i]!);
+  // ВРЕМЕННО ОТКЛЮЧЕНО: Qwen-реранк (rerankHistoryCandidates в TranslationService.ts, код не
+  // удалён) судит только по title/url — без контента, по которому на самом деле считался cosine
+  // выше. На слабом корпусе истории это регулярно давало результат ХУЖЕ чистого cosine top-k
+  // (живой баг-репорт: "бензин" → Google Pixel/Lamborghini вместо реально близких страниц,
+  // при том что до бага с ensureLoaded — когда Qwen фактически не вызывалась вовсе и незаметно
+  // деградировала до этого же cosine top-k — результаты казались нормальными). Реранк нужно
+  // реактивировать только вместе с контентным сниппетом на вход модели, не раньше — см. бриф
+  // по итогам диагностики. До тех пор — честный cosine top-k, без обмана "Qwen думает".
+  return candidates.slice(0, limit);
 }

@@ -37,11 +37,19 @@ export default function History({ onClose }: HistoryProps) {
   const [smartOn, setSmartOn] = useState(false);
   const [smartLoading, setSmartLoading] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  // Счётчик запросов в entries — защита от гонки: load() (мгновенный, на каждый keystroke) и
+  // handleSmartSearch() (Qwen, ~1-2+ сек) пишут в один и тот же entries независимо друг от
+  // друга и без отмены. Без счётчика поздний ответ УСТАРЕВШЕГО запроса (юзер уже успел
+  // напечатать/запустить новый, пока предыдущий Qwen-вызов ещё летел) мог молча перезаписать
+  // уже показанные свежие результаты — тот самый «один результат из прошлого поиска затесался».
+  const searchSeqRef = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++searchSeqRef.current;
     const result = query.trim()
       ? await window.oblako.searchHistory(query)
       : await window.oblako.getHistory();
+    if (searchSeqRef.current !== seq) return; // подоспел более новый запрос — этот ответ устарел
     setEntries(result);
   }, [query]);
 
@@ -69,14 +77,16 @@ export default function History({ onClose }: HistoryProps) {
   async function handleSmartSearch() {
     const q = query.trim();
     if (!q || smartLoading) return;
+    const seq = ++searchSeqRef.current;
     setSmartLoading(true);
     try {
       const results = await window.oblako.searchHistorySmart(q);
-      setEntries(results);
+      if (searchSeqRef.current === seq) setEntries(results); // иначе — устарело, юзер уже дальше
     } catch {
       // Qwen/IPC недоступны — не оставляем список пустым молча, просто откатываемся
-      // на обычный поиск (load() уже отработал по этому же query per keystroke).
-      void load();
+      // на обычный поиск (load() уже отработал по этому же query per keystroke), но тоже
+      // только если этот запрос всё ещё актуален.
+      if (searchSeqRef.current === seq) void load();
     } finally {
       setSmartLoading(false);
     }
@@ -234,7 +244,9 @@ export default function History({ onClose }: HistoryProps) {
             color: 'var(--text-muted)', fontSize: 12, padding: '8px 8px 12px',
           }}>
             <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-            Qwen переранжирует…
+            {/* ВРЕМЕННО "Ищу…" вместо "Qwen переранжирует…" — сам Qwen-реранк сейчас отключён
+                (см. HistorySearch.ts::searchHistorySmart), нечестно утверждать, что он думает. */}
+            Ищу…
           </div>
         )}
         {entries.length === 0 ? (
