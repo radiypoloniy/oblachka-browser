@@ -8,6 +8,7 @@
 // нормализованных моделью векторов) зафиксирована и не должна расходиться между копиями.
 import type { HistoryManager } from './HistoryManager';
 import { requestEmbedding } from './EmbedClient';
+import { rerankHistoryCandidates } from './TranslationService';
 import type { SemanticSearchResult } from '../shared/ipc';
 
 function cosineSim(a: Float32Array, b: Float32Array): number {
@@ -57,4 +58,38 @@ export async function searchHistorySemantic(
 
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit);
+}
+
+// Умный поиск (заход на Qwen-переключатель) — только по явному действию (Enter в омниноксе,
+// см. Toolbar.tsx::runSmartSearch), НЕ на каждый keystroke: генеративный вызов занимает секунды,
+// не миллисекунды, как cosine top-k выше. Кандидаты — тот же searchHistorySemantic, просто
+// шире (20, не 8) — Qwen сама решает, что из них реально релевантно, cosine-порядок для неё
+// только черновой.
+const SMART_CANDIDATE_LIMIT = 20;
+
+export async function searchHistorySmart(
+  history: HistoryManager,
+  query: string,
+  limit = 8,
+): Promise<SemanticSearchResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  const candidates = await searchHistorySemantic(history, q, SMART_CANDIDATE_LIMIT);
+  if (candidates.length === 0) return [];
+
+  let order: number[];
+  try {
+    order = await rerankHistoryCandidates(q, candidates.map((c) => ({ id: c.id, title: c.title, url: c.url })));
+  } catch (e) {
+    // Qwen недоступна/упала — честный fallback на обычный cosine top-k, не пустой список.
+    console.warn('[HistorySearch] Qwen-реранк не удался, отдаю cosine top-k как есть:', (e as Error).message);
+    return candidates.slice(0, limit);
+  }
+
+  // Пустой/полностью нераспознанный ответ модели — тоже fallback на cosine-порядок, а не пустой
+  // результат: юзер явно попросил умный поиск, оставлять его совсем без ответа хуже, чем без ума.
+  if (order.length === 0) return candidates.slice(0, limit);
+
+  return order.slice(0, limit).map((i) => candidates[i]!);
 }

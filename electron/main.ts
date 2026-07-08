@@ -26,7 +26,7 @@ import { setChromeView as setEmbedClientChromeView } from './EmbedClient';
 import { indexVisit } from './HistoryIndexer';
 import { startBackfill, cancelBackfill, setBackfillProgressListener } from './HistoryBackfill';
 import type { BackfillProgress } from '../shared/ipc';
-import { searchHistorySemantic } from './HistorySearch';
+import { searchHistorySemantic, searchHistorySmart } from './HistorySearch';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -551,6 +551,8 @@ function registerIpc() {
   ipcMain.handle(IPC.HISTORY_CLEAR,  (_e, period: HistoryClearPeriod) => history.clearHistory(period));
   // Заход G, блок 7 — векторный поиск для омнибокса (searchHistorySemantic — блок 6).
   ipcMain.handle(IPC.HISTORY_SEARCH_SEMANTIC, (_e, query: string) => searchHistorySemantic(history, query));
+  // Умный поиск — Qwen-реранк, только по явному Enter (см. HistorySearch.ts::searchHistorySmart).
+  ipcMain.handle(IPC.HISTORY_SEARCH_SMART, (_e, query: string) => searchHistorySmart(history, query));
 
   // Разрешения сайтов
   ipcMain.handle(IPC.PERMISSION_RESPONSE,

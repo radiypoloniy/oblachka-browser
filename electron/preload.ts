@@ -89,6 +89,8 @@ const api: OblakoApi = {
   },
   searchHistorySemantic: (query: string) =>
     ipcRenderer.invoke(IPC.HISTORY_SEARCH_SEMANTIC, query) as Promise<SemanticSearchResult[]>,
+  searchHistorySmart: (query: string) =>
+    ipcRenderer.invoke(IPC.HISTORY_SEARCH_SMART, query) as Promise<SemanticSearchResult[]>,
 
   // Заход G — общий канал эмбеддингов (см. shared/ipc.ts::EmbedRequestPayload).
   onEmbedRequest: (cb: (req: EmbedRequestPayload) => void) => {

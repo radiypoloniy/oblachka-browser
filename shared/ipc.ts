@@ -161,6 +161,9 @@ export const IPC = {
   HISTORY_OPEN:   'history:open',    // main → renderer: открыть панель истории (Ctrl+H)
   // Заход G, блок 7: векторный поиск для омнибокса (см. electron/HistorySearch.ts, блок 6).
   HISTORY_SEARCH_SEMANTIC: 'history:search-semantic', // renderer → main: query -> SemanticSearchResult[]
+  // Умный поиск (Qwen-реранк top-k кандидатов от searchHistorySemantic) — только по явному
+  // действию (Enter), НЕ на каждый keystroke, см. HistorySearch.ts::searchHistorySmart.
+  HISTORY_SEARCH_SMART: 'history:search-smart', // renderer → main: query -> SemanticSearchResult[]
 
   // Разрешения сайтов
   PERMISSION_REQUEST:  'permission:request',    // main → renderer: входящий запрос (PermissionRequest)
@@ -443,6 +446,8 @@ export interface OblakoApi {
   onHistoryOpen(cb: () => void): () => void;
   // Заход G, блок 7 — векторный поиск (см. electron/HistorySearch.ts, блок 6).
   searchHistorySemantic(query: string): Promise<SemanticSearchResult[]>;
+  // Умный поиск — Qwen-реранк top-k кандидатов, только по явному Enter (см. HistorySearch.ts).
+  searchHistorySmart(query: string): Promise<SemanticSearchResult[]>;
 
   // Заход G — общий канал эмбеддингов main→renderer→main (см. electron/EmbedClient.ts,
   // src/services/EmbedRequestBridge.ts). embeddingService живёт только в renderer.

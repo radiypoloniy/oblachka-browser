@@ -330,6 +330,54 @@ async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (tex
   return { out, tokens }
 }
 
+// ── Умный поиск истории (Qwen-реранк top-k кандидатов от эмбеддинга) ────────────────────────
+// Реюз runPrompt() выше — та же труба, что и перевод/AI-действия, никакого нового способа звать
+// модель (см. HistorySearch.ts::searchHistorySmart, который строит кандидатов через cosine top-k
+// и зовёт эту функцию). Через очередь (withQwenQueue внутри runPrompt) — умный поиск не может
+// конкурировать с переводом/чатом за один и тот же sequence.
+export interface RerankCandidate { id: number; title: string; url: string }
+
+// 512 — с запасом на список номеров по 20 кандидатам (несколько цифр с запятыми), это не
+// связный текст, а короткий структурированный ответ.
+const RERANK_MAX_TOKENS = 512
+
+function buildRerankPrompt(query: string, candidates: RerankCandidate[]): string {
+  const list = candidates
+    .map((c, i) => `${i}. ${c.title || '(без названия)'} — ${c.url}`)
+    .join('\n')
+  return (
+    `Пользователь ищет в истории браузера: "${query}"\n\n` +
+    `Вот кандидаты (найдены по семантическому сходству, не все действительно релевантны):\n${list}\n\n` +
+    `Верни номера строк, которые ДЕЙСТВИТЕЛЬНО релевантны запросу, через запятую, в порядке ` +
+    `убывания релевантности (например: 2,0,5). Если релевантных нет вообще — верни пустую строку. ` +
+    `Ответь ТОЛЬКО номерами, без пояснений.`
+  )
+}
+
+// Возвращает индексы candidates (0-based) в порядке релевантности по мнению модели — может быть
+// короче/длиннее/в любом порядке относительно исходного cosine-ранжирования, может быть пустым
+// массивом (не нашла релевантных). Не бросает по формату ответа — нераспознанные токены просто
+// не попадают в результат (см. регэксп ниже); полный провал модели (исключение runPrompt) уходит
+// наверх вызывающей стороне, которая уже решает про fallback (см. searchHistorySmart).
+export async function rerankHistoryCandidates(query: string, candidates: RerankCandidate[]): Promise<number[]> {
+  if (candidates.length === 0) return []
+  // runPrompt САМ модель не грузит — обычно её загружает вызывающая сторона (runSegmented для
+  // перевода/AI-действий, runChatMessageQueued для чата) до первого runPrompt/session.prompt().
+  // Умный поиск — единственный потребитель runPrompt(), у которого нет такого "заботливого"
+  // вызывающего кода вокруг — без явного ensureLoaded() здесь LlamaChatSession/model/sequence
+  // ещё null при первом заходе (если юзер до этого ни разу не переводил/не чатился в этой
+  // сессии) и `new LlamaChatSession(...)` внутри runPrompt падает с "is not a constructor".
+  await ensureLoaded()
+  const { out } = await runPrompt(buildRerankPrompt(query, candidates), RERANK_MAX_TOKENS)
+  const seen = new Set<number>()
+  const result: number[] = []
+  for (const raw of out.match(/\d+/g) ?? []) {
+    const i = Number(raw)
+    if (i >= 0 && i < candidates.length && !seen.has(i)) { seen.add(i); result.push(i) }
+  }
+  return result
+}
+
 // Один сегмент — одно предложение (см. splitSentences). 300 токенов — запас x2-3 над типичной
 // длиной перевода одного предложения (было 150 — обрывало редкие длинные/составные предложения
 // на полуслове). Каждый сегмент — независимый прогон (своя LlamaChatSession, own history пустая),

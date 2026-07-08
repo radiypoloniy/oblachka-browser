@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, Search, Trash2, Clock } from 'lucide-react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { X, Search, Trash2, Clock, Wand2, Loader2 } from 'lucide-react';
 import type { HistoryEntry, HistoryClearPeriod } from '../../shared/ipc';
 
 interface HistoryProps {
@@ -30,6 +30,12 @@ export default function History({ onClose }: HistoryProps) {
   const [query, setQuery] = useState('');
   const [clearOpen, setClearOpen] = useState(false);
   const [clearError, setClearError] = useState(false);
+  // Умный поиск (Qwen-реранк) — своё поле, отдельное от омнибокса (см. диагностику: это два
+  // разных поля ввода с разными наборами фич, не один компонент в двух режимах). Выключен по
+  // умолчанию — генеративный вызов небесплатный. НЕ участвует в live-фильтрации по keystroke
+  // ниже (load() как был) — включается только по явному Enter (см. handleSearchKeyDown).
+  const [smartOn, setSmartOn] = useState(false);
+  const [smartLoading, setSmartLoading] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -55,6 +61,29 @@ export default function History({ onClose }: HistoryProps) {
     setClearOpen(false);
     setClearError(!ok);
     void load();
+  }
+
+  // Только по явному Enter — генеративный вызов Qwen занимает секунды, гонять его на каждый
+  // keystroke (как обычный load() выше) нельзя. Результат временно заменяет entries; дальнейший
+  // ввод/очистка снова отдают управление обычному live-поиску через load().
+  async function handleSmartSearch() {
+    const q = query.trim();
+    if (!q || smartLoading) return;
+    setSmartLoading(true);
+    try {
+      const results = await window.oblako.searchHistorySmart(q);
+      setEntries(results);
+    } catch {
+      // Qwen/IPC недоступны — не оставляем список пустым молча, просто откатываемся
+      // на обычный поиск (load() уже отработал по этому же query per keystroke).
+      void load();
+    } finally {
+      setSmartLoading(false);
+    }
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' && smartOn) void handleSmartSearch();
   }
 
   return (
@@ -161,6 +190,7 @@ export default function History({ onClose }: HistoryProps) {
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             placeholder="Поиск в истории…"
             style={{
               flex: 1, background: 'none', border: 'none', outline: 'none',
@@ -178,6 +208,19 @@ export default function History({ onClose }: HistoryProps) {
               <X size={12} />
             </button>
           )}
+          {/* Умный поиск (Qwen-реранк) — своё отдельное поле, не омнибокс (см. диагностику).
+              Влияет только на Enter (handleSearchKeyDown), сам факт включения ничего не запускает. */}
+          <button
+            onClick={() => setSmartOn((v) => !v)}
+            title={smartOn ? 'Умный поиск (Qwen): включён — Enter запускает переранжирование' : 'Умный поиск (Qwen): выключен'}
+            style={{
+              background: smartOn ? 'var(--accent-soft)' : 'none',
+              border: 'none', cursor: 'pointer', padding: 3, borderRadius: 'var(--radius-sm)',
+              color: smartOn ? 'var(--accent)' : 'var(--text-muted)', display: 'flex', flexShrink: 0,
+            }}
+          >
+            <Wand2 size={14} />
+          </button>
         </div>
       </div>
 
@@ -185,6 +228,15 @@ export default function History({ onClose }: HistoryProps) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px' }}
         onClick={() => { if (clearOpen) setClearOpen(false); }}
       >
+        {smartLoading && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            color: 'var(--text-muted)', fontSize: 12, padding: '8px 8px 12px',
+          }}>
+            <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+            Qwen переранжирует…
+          </div>
+        )}
         {entries.length === 0 ? (
           <div style={{
             textAlign: 'center', color: 'var(--text-muted)',
