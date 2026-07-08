@@ -241,11 +241,39 @@ async function ensureLoaded(): Promise<number> {
   return loadPromise
 }
 
+// ── Очередь Qwen-вызовов (диагностика "заход на умный поиск, п.4") ──────────────────────────
+// contextSequence из ensureLoaded() — один-единственный слот KV-cache на весь процесс. До этой
+// правки runPrompt (перевод/AI-действия) и runChatMessage (чат/быстрый перевод страницы, см.
+// AiPanelManager.ts::quick-translate) звали его независимо, без всякой сериализации — конкурентный
+// вызов на одном sequence либо портит генерацию, либо роняет исключение внутри node-llama-cpp.
+// Тот же приём, что уже проверен на EmbeddingService.ts::embed (queueTail: Promise<unknown>
+// chaining) — там нашли ровно этот класс гонки на общем worker'е. Хвост ОДИН на весь модуль и
+// оборачивает ОБЕ точки входа (runPrompt И runChatMessage), а не только новую фичу поиска —
+// иначе следующий добавленный потребитель Qwen снова пробил бы ту же гонку.
+let qwenQueueTail: Promise<unknown> = Promise.resolve()
+
+// Слот освобождается в .then(fn, fn) — вызывается СЛЕДУЮЩИМ независимо от исхода предыдущего
+// (успех/ошибка/таймаут). Забытая ветка здесь означает подвешенную очередь для ВСЕХ AI-функций
+// процесса разом (перевод/действия/чат), не только для одного вызывающего — цена ошибки та же,
+// что была у embed(). queueTail сам гасит исход в .then(()=>undefined,()=>undefined), чтобы
+// отклонение НЕ-последнего вызова в цепочке не всплыло необработанным rejection у самого хвоста
+// (у него никогда нет своего .catch) — результат КОНКРЕТНОГО вызова всё равно возвращается через `result`.
+function withQwenQueue<T>(fn: () => Promise<T>): Promise<T> {
+  const result = qwenQueueTail.then(fn, fn)
+  qwenQueueTail = result.then(() => undefined, () => undefined)
+  return result
+}
+
 // Диагностика скорости по этапам (см. задачу замера) — ASCII-теги [perf], кириллица в stdout
-// превращается в кракозябры. Общий низкоуровневый вызов Qwen — единственное место, где реально
-// зовётся session.prompt(); и перевод, и остальные AI-действия проходят через него (см.
-// translateSegment/runSegmented ниже) — «разные промпты поверх одной трубы», не разные движки.
+// превращается в кракозябры. Общий низкоуровневый вызов Qwen — единственное место в этом файле,
+// где реально зовётся session.prompt() (кроме runChatMessage — у того своя, тоже через очередь
+// выше); и перевод, и остальные AI-действия проходят через него (см. translateSegment/runSegmented
+// ниже) — «разные промпты поверх одной трубы», не разные движки.
 async function runPrompt(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number }> {
+  return withQwenQueue(() => runPromptQueued(prompt, maxTokens, onChunk))
+}
+
+async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number }> {
   const tSessionStart = performance.now()
   const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper: qwenChatWrapper })
   const tSessionCreated = performance.now()
@@ -444,7 +472,19 @@ console.log(
   `[gen] limits: translateSegment=${TRANSLATE_SEGMENT_MAX_TOKENS} action=${TEXT_ACTION_MAX_TOKENS} chat=${CHAT_MAX_TOKENS} (максимум токенов на выход, на прогон)`,
 )
 
+// Через ту же очередь, что и runPrompt (см. withQwenQueue выше) — свой, отдельный от runPrompt
+// вызов session.promptWithMeta() на ОБЩЕМ sequence, иначе одновременный чат + перевод/AI-действие
+// снова конкурировали бы за один слот KV-cache в обход очереди.
 export async function runChatMessage(
+  userText: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  history: any[],
+  onChunk?: (text: string) => void,
+): Promise<ChatOutcome> {
+  return withQwenQueue(() => runChatMessageQueued(userText, history, onChunk))
+}
+
+async function runChatMessageQueued(
   userText: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   history: any[],
