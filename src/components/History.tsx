@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { X, Search, Trash2, Clock, Wand2, Loader2 } from 'lucide-react';
 import type { HistoryEntry, HistoryClearPeriod } from '../../shared/ipc';
+import { islandPlate } from '../styles/island';
 
 interface HistoryProps {
   onClose: () => void;
@@ -165,8 +166,8 @@ export default function History({ onClose }: HistoryProps) {
       {clearOpen && (
         <div style={{
           position: 'absolute', top: 52, right: 16,
-          background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-md)',
+          ...islandPlate,
+          borderRadius: 'var(--radius-card)',
           zIndex: 200, overflow: 'hidden', minWidth: 180,
         }}>
           {CLEAR_OPTIONS.map((opt) => (
@@ -191,7 +192,7 @@ export default function History({ onClose }: HistoryProps) {
       <div style={{ padding: '10px 20px', flexShrink: 0 }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          background: 'var(--surface)', border: '1px solid var(--border)',
+          ...islandPlate,
           borderRadius: 'var(--radius-sm)', padding: '6px 10px',
         }}>
           <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
@@ -224,7 +225,7 @@ export default function History({ onClose }: HistoryProps) {
             title={smartOn ? 'Умный поиск (Qwen): включён — Enter запускает переранжирование' : 'Умный поиск (Qwen): выключен'}
             style={{
               background: smartOn ? 'var(--accent-soft)' : 'none',
-              border: 'none', cursor: 'pointer', padding: 3, borderRadius: 'var(--radius-sm)',
+              border: 'none', cursor: 'default', padding: 3, borderRadius: 'var(--radius-sm)',
               color: smartOn ? 'var(--accent)' : 'var(--text-muted)', display: 'flex', flexShrink: 0,
             }}
           >

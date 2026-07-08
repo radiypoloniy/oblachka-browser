@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyRound, Check, type LucideIcon } from 'lucide-react';
 import type { AdBlockState, BackfillProgress } from '../../shared/ipc';
+import { islandPlate } from '../styles/island';
 
 interface SettingsProps {
   onClose: () => void;
@@ -197,8 +198,8 @@ function AdBlockSection({
       {pendingReload !== null && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-          borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
-          boxShadow: 'var(--shadow-card)', fontSize: 'var(--fs-sm)',
+          ...islandPlate,
+          borderRadius: 'var(--radius-sm)', fontSize: 'var(--fs-sm)',
         }}>
           <RotateCcw size={15} style={{ color: 'var(--accent)', flex: 'none' }} />
           <span style={{ flex: 1, color: 'var(--text-body)' }}>
@@ -214,8 +215,8 @@ function AdBlockSection({
       {/* Тумблер */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
-        borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
-        boxShadow: 'var(--shadow-card)',
+        ...islandPlate,
+        borderRadius: 'var(--radius-sm)',
       }}>
         {state.enabled
           ? <Shield size={22} style={{ color: 'var(--accent)', flex: 'none' }} />
@@ -352,8 +353,8 @@ function AiSection() {
       {/* Статус */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
-        borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
-        boxShadow: 'var(--shadow-card)',
+        ...islandPlate,
+        borderRadius: 'var(--radius-sm)',
       }}>
         {connected
           ? <Check size={22} style={{ color: 'var(--system)', flex: 'none' }} />
