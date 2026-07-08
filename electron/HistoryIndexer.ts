@@ -4,8 +4,15 @@
 // навигации/записи истории для пользователя — тихий лог, запись остаётся неиндексированной до
 // следующей попытки (или до бэкфилла, блок 5). Успешная индексация НЕ логируется намеренно —
 // иначе обычный браузинг захламляет stdout логом на каждый визит.
+//
+// Заход на обогащение эмбеддинга контентом страницы (после очистки истории — см. history, чистый
+// корпус, миграция не нужна): текст для embed() теперь — Readability-контент страницы, когда
+// удалось его дождаться и извлечь, иначе честный fallback на title+hostname (как было). Реюз
+// extractPageText из AiPanelManager.ts — тот же пайплайн, что у AI-панели, не дублируем его.
+import type { WebContents } from 'electron';
 import type { HistoryManager } from './HistoryManager';
 import { requestEmbedding } from './EmbedClient';
+import { extractPageText } from './AiPanelManager';
 import { isNoisyForEmbedding } from './HistoryNoiseFilter';
 
 // Блок 4: не в HistoryManager.ts (тот в этом заходе не трогается) — держим факт «уже
@@ -18,11 +25,56 @@ import { isNoisyForEmbedding } from './HistoryNoiseFilter';
 // кластеризация вкладок — то, от чего явно предостерегает бриф блока 4.
 const indexedHistoryIds = new Set<number>();
 
+// Сколько ждать did-finish-load, прежде чем сдаться и уйти в fallback (title+hostname) —
+// страница может вообще не догрузиться (сеть/ошибка/редирект в никуда), fire-and-forget
+// индексация не должна зависать на ней навсегда.
+const EXTRACTION_TIMEOUT_MS = 8000;
+
+// Отдельный, куда меньший лимит, чем PAGE_TEXT_MAX_CHARS у AI-панели (28000 симв., там нужен
+// полный контекст для LLM-диалога) — эмбеддинг сжимает вход в 256 чисел, длинный текст не даёт
+// пропорционально лучший вектор, только лишняя нагрузка на общую очередь embed().
+const HISTORY_EMBED_TEXT_MAX_CHARS = 2000;
+
 function hostnameOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
 }
 
-export async function indexVisit(history: HistoryManager, url: string, title: string): Promise<void> {
+// Резолвится либо по событию did-finish-load ЭТОЙ вкладки, либо по таймауту — что раньше.
+// Не различает, чья именно навигация закончилась (см. extractEnrichedText — проверка URL после).
+function waitForFinishLoad(wc: WebContents): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      wc.removeListener('did-finish-load', finish);
+      clearTimeout(timer);
+      resolve();
+    };
+    wc.once('did-finish-load', finish);
+    const timer = setTimeout(finish, EXTRACTION_TIMEOUT_MS);
+  });
+}
+
+// null — не удалось (вкладка закрыта/страница не догрузилась к таймауту/юзер ушёл на другой
+// URL до конца загрузки/Readability не нашла текста) — indexVisit уходит в fallback.
+async function extractEnrichedText(wc: WebContents | null, url: string): Promise<string | null> {
+  if (!wc || wc.isDestroyed()) return null;
+  await waitForFinishLoad(wc);
+  if (wc.isDestroyed()) return null;
+  // Гонка: юзер успел уйти со страницы (или навигация вообще не завершилась, а сработал
+  // did-finish-load ПОЗДНЕЙШЕЙ навигации той же вкладки) — извлекать нечего, честный fallback.
+  if (wc.getURL() !== url) return null;
+  const extracted = await extractPageText(wc);
+  return extracted.text || null;
+}
+
+export async function indexVisit(
+  history: HistoryManager,
+  url: string,
+  title: string,
+  wc: WebContents | null,
+): Promise<void> {
   // Шаг 1: id. getIdByUrl() уже не бросает (свой try/catch внутри HistoryManager.ts, заход G
   // блок 2) — здесь дополнительный try/catch был бы мёртвым кодом на сценарий, который не
   // может случиться; null уже покрывает и «не найдено», и «БД недоступна».
@@ -44,8 +96,18 @@ export async function indexVisit(history: HistoryManager, url: string, title: st
   }
 
   // Тот же формат сигнала, что и AI-группировка вкладок (ClusteringService.ts::buildCandidates) —
-  // title + hostname, без пути/query.
-  const text = `${title} ${hostnameOf(url)}`.trim();
+  // title + hostname, без пути/query. Используется как fallback, если обогащённый текст
+  // недоступен (страница не догрузилась/Readability не справилась/вкладка уже закрыта).
+  const fallbackText = `${title} ${hostnameOf(url)}`.trim();
+
+  let enrichedText: string | null = null;
+  try {
+    enrichedText = await extractEnrichedText(wc, url);
+  } catch (e) {
+    console.warn(`[HistoryIndexer] извлечение контента не удалось для ${url}:`, (e as Error).message);
+  }
+
+  const text = (enrichedText ? enrichedText.trim().slice(0, HISTORY_EMBED_TEXT_MAX_CHARS) : '') || fallbackText;
   if (!text) return;
 
   // Шаг 2: embed.
@@ -59,7 +121,7 @@ export async function indexVisit(history: HistoryManager, url: string, title: st
 
   // Шаг 3: запись. saveEmbedding() тоже не бросает наружу (свой try/catch в HistoryManager.ts),
   // но try/catch здесь остаётся явным по контракту блока 4 — и на случай, если это когда-нибудь
-  // изменится, успешный embed без записи не должен молча помечаться как проиндексированный.
+  // изменится, успешный embed без записи не должен молча помечаться как проиндексированную.
   try {
     history.saveEmbedding(historyId, embedded.vector, embedded.dims, embedded.modelVersion);
     indexedHistoryIds.add(historyId); // помечаем ТОЛЬКО после реально успешной записи

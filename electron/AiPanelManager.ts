@@ -145,12 +145,14 @@ const PAGE_TEXT_MAX_CHARS = 28000
 // Результат извлечения: text — как раньше (readability либо fallback-innerText, обрезан по
 // лимиту), markdown — ТОЛЬКО для ветки чата (см. вызовы ниже), null если Readability не удалась
 // (fallback) или article.content пуст — тогда чат берёт text как есть, markdown не форсируем.
-interface ExtractedPage {
+export interface ExtractedPage {
   text: string
   markdown: string | null
 }
 
-async function extractPageText(wc: WebContents | null): Promise<ExtractedPage> {
+// Экспортирована для HistoryIndexer.ts (заход на обогащение эмбеддинга истории контентом
+// страницы) — тот же пайплайн Readability, без дублирования. Сама функция не менялась.
+export async function extractPageText(wc: WebContents | null): Promise<ExtractedPage> {
   if (!wc || wc.isDestroyed()) return { text: '', markdown: null }
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

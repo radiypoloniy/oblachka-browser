@@ -250,14 +250,16 @@ function createWindow() {
     ()              => { tabs?.stopFind(); closeFindBar(); tabs?.focusActiveView(); }, // Esc-на-странице/did-navigate — вернуть OS-фокус, иначе Ctrl+F повторно не долетит
     ()              => chromeView?.webContents.send(IPC.OMNIBOX_FOCUS),
     ()              => chromeView?.webContents.focus(),
-    (url, title)    => {
+    (url, title, wc) => {
       history.recordVisit(url, title);
       // Заход G, блок 3: индексация эмбеддингом — только на визит (не на updateTitle ниже,
       // который может стрелять много раз на SPA, см. HistoryManager.ts::updateTitle — это
       // спамило бы единственный embed-воркер на каждое SPA-обновление заголовка одной страницы).
+      // wc — вкладка, которая реально навигировала (заход на обогащение контентом страницы),
+      // не обязательно активная — HistoryIndexer сам ждёт её догрузки перед извлечением.
       // Fire-and-forget с внешним .catch — indexVisit сама не должна бросать (try/catch на
       // каждом уровне), но лишняя страховка здесь ничего не стоит.
-      void indexVisit(history, url, title).catch((e: unknown) =>
+      void indexVisit(history, url, title, wc).catch((e: unknown) =>
         console.warn('[HistoryIndexer] неожиданная ошибка:', e),
       );
     },

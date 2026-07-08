@@ -128,7 +128,10 @@ export class TabManager {
   private onFindCloseCb: () => void;
   private onOmniboxFocusCb: () => void;
   private onFocusChromeCb: () => void;
-  private onNavigateCb?: (url: string, title: string) => void;
+  // wc — третий параметр (заход на обогащение эмбеддинга истории контентом страницы): даёт
+  // HistoryIndexer.ts доступ именно к WebContents НАВИГИРОВАВШЕЙ вкладки, а не к активной —
+  // важно для фоновых вкладок, у которых getActiveWebContents() вернул бы чужой DOM.
+  private onNavigateCb?: (url: string, title: string, wc: WebContents) => void;
   private onTitleUpdateCb?: (url: string, title: string) => void;
   private onHistoryOpenCb?: () => void;
   private onFirstTabLoadCb?: () => void;
@@ -173,7 +176,7 @@ export class TabManager {
     onFindClose: () => void,
     onOmniboxFocus: () => void,
     onFocusChrome: () => void,
-    onNavigate?: (url: string, title: string) => void,
+    onNavigate?: (url: string, title: string, wc: WebContents) => void,
     onTitleUpdate?: (url: string, title: string) => void,
     onHistoryOpen?: () => void,
     onFirstTabLoad?: () => void,
@@ -917,7 +920,7 @@ export class TabManager {
       // Показываем вьюху как для активной вкладки, так и для split-партнёра.
       if (isActivePanel || isInSplit) this.revealView(id);
       // Записываем визит: один URL = один UPSERT с инкрементом счётчика.
-      this.onNavigateCb?.(wc.getURL(), wc.getTitle());
+      this.onNavigateCb?.(wc.getURL(), wc.getTitle(), wc);
       notify();
     });
     wc.on('did-navigate-in-page', notify);
