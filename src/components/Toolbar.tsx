@@ -5,6 +5,7 @@ import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult 
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
+import { islandPlate, islandBtn, navBtn } from '../styles/island';
 
 // Высота тулбара — должна совпадать с CSS-значением (56px).
 const TOOLBAR_HEIGHT = 56;
@@ -802,34 +803,7 @@ function VpnPill({ vpnOn, mode, onClick }: { vpnOn: boolean; mode: VpnMode; onCl
   );
 }
 
-// ── Плавающие плашки-острова тулбара ──────────────────────────────────────────
-// Параметры стекла/тени/скругления не подбираются заново — те же, что уже
-// отлажены в поповере/AI-панели (surface + glass-filter + shadow-card + glass-edge).
-// Вписаны в текущую высоту тулбара (TOOLBAR_HEIGHT не меняется).
-const islandPlate: React.CSSProperties = {
-  background: 'var(--surface)',
-  backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
-  boxShadow: 'var(--shadow-card)',
-  border: '1px solid var(--glass-edge)',
-};
-
-// Одиночная кнопка-остров (AI, адблок) — тот же islandPlate, компактный размер как у navBtn.
-function islandBtn(color?: string, bg?: string): React.CSSProperties {
-  return {
-    ...navBtn(false),
-    ...islandPlate,
-    color: color ?? 'var(--text-muted)',
-    background: bg ?? 'var(--surface)',
-    borderRadius: 'var(--radius-card)',
-  };
-}
-
-// ── Стиль кнопки навигации ────────────────────────────────────────────────────
-
-function navBtn(disabled: boolean): React.CSSProperties {
-  return {
-    border: 'none', background: 'transparent', padding: 7, borderRadius: 'var(--radius-sm)',
-    color: disabled ? 'var(--text-faint)' : 'var(--text-muted)',
-    cursor: 'default', display: 'inline-flex', opacity: disabled ? 0.45 : 1,
-  };
-}
+// islandPlate/islandBtn/navBtn — вынесены в src/styles/island.ts для переиспользования
+// в других панелях (История/Настройки), см. импорт наверху файла. Вписаны в текущую высоту
+// тулбара (TOOLBAR_HEIGHT не меняется) — сами токены стекла/тени/скругления не подбирались
+// заново, те же, что уже отлажены в поповере/AI-панели.
