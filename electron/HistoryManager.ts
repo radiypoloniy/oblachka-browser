@@ -204,23 +204,40 @@ export class HistoryManager {
     }
   }
 
-  clearHistory(period: HistoryClearPeriod): void {
-    if (!this.#db) return;
+  // Возвращает true/false — раньше ошибка тихо проглатывалась в catch, и пользователь не мог
+  // узнать, что очистка не выполнилась (см. History.tsx::handleClear).
+  clearHistory(period: HistoryClearPeriod): boolean {
+    if (!this.#db) return false;
+    const db = this.#db;
     try {
-      if (period === 'all') {
-        this.#db.prepare(`DELETE FROM history`).run();
-      } else {
-        const ms: Record<HistoryClearPeriod, number> = {
-          hour: 60 * 60 * 1000,
-          day:  24 * 60 * 60 * 1000,
-          week: 7  * 24 * 60 * 60 * 1000,
-          all:  0,
-        };
-        const cutoff = Date.now() - ms[period];
-        this.#db.prepare(`DELETE FROM history WHERE last_visit >= ?`).run(cutoff);
-      }
+      const run = db.transaction(() => {
+        if (period === 'all') {
+          // history_embeddings.history_id → history(id) БЕЗ ON DELETE CASCADE, а foreign_keys=ON
+          // (#setup) — DELETE FROM history без предварительной чистки детей падает на FK constraint
+          // (проверено на копии боевой БД: 627 строк с эмбеддингами → весь DELETE откатывался,
+          // ни одна запись не удалялась). Порядок обязателен: сначала дети, потом родители.
+          db.prepare(`DELETE FROM history_embeddings`).run();
+          db.prepare(`DELETE FROM history`).run();
+        } else {
+          const ms: Record<HistoryClearPeriod, number> = {
+            hour: 60 * 60 * 1000,
+            day:  24 * 60 * 60 * 1000,
+            week: 7  * 24 * 60 * 60 * 1000,
+            all:  0,
+          };
+          const cutoff = Date.now() - ms[period];
+          db.prepare(`
+            DELETE FROM history_embeddings
+            WHERE history_id IN (SELECT id FROM history WHERE last_visit >= ?)
+          `).run(cutoff);
+          db.prepare(`DELETE FROM history WHERE last_visit >= ?`).run(cutoff);
+        }
+      });
+      run();
+      return true;
     } catch (e) {
-      console.warn('[History] clearHistory error:', (e as Error).message);
+      console.error('[History] clearHistory ОШИБКА — очистка НЕ выполнена:', (e as Error).message);
+      return false;
     }
   }
 

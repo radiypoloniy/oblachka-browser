@@ -439,7 +439,7 @@ export interface OblakoApi {
   getHistory(limit?: number): Promise<HistoryEntry[]>;
   searchHistory(query: string): Promise<HistoryEntry[]>;
   deleteHistoryEntry(id: number): Promise<void>;
-  clearHistory(period: HistoryClearPeriod): Promise<void>;
+  clearHistory(period: HistoryClearPeriod): Promise<boolean>; // false — очистка не выполнилась, см. HistoryManager.ts::clearHistory
   onHistoryOpen(cb: () => void): () => void;
   // Заход G, блок 7 — векторный поиск (см. electron/HistorySearch.ts, блок 6).
   searchHistorySemantic(query: string): Promise<SemanticSearchResult[]>;

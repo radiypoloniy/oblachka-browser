@@ -29,6 +29,7 @@ export default function History({ onClose }: HistoryProps) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [query, setQuery] = useState('');
   const [clearOpen, setClearOpen] = useState(false);
+  const [clearError, setClearError] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -50,8 +51,9 @@ export default function History({ onClose }: HistoryProps) {
   }
 
   async function handleClear(period: HistoryClearPeriod) {
-    await window.oblako.clearHistory(period);
+    const ok = await window.oblako.clearHistory(period);
     setClearOpen(false);
+    setClearError(!ok);
     void load();
   }
 
@@ -100,6 +102,26 @@ export default function History({ onClose }: HistoryProps) {
           <X size={16} />
         </button>
       </div>
+
+      {clearError && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 20px', fontSize: 12,
+          background: 'color-mix(in srgb, var(--danger-500) 12%, transparent)',
+          color: 'var(--danger-500)', flexShrink: 0,
+        }}>
+          Не удалось очистить историю. Попробуйте ещё раз.
+          <button
+            onClick={() => setClearError(false)}
+            style={{
+              marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
+              color: 'inherit', display: 'flex', padding: 2,
+            }}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {/* Дропдаун очистки */}
       {clearOpen && (
