@@ -98,10 +98,9 @@ export default function History({ onClose }: HistoryProps) {
 
   return (
     <div style={{
-      position: 'absolute', inset: 0,
+      height: '100%', position: 'relative',
       background: 'var(--app-bg)',
       display: 'flex', flexDirection: 'column',
-      zIndex: 100,
     }}>
       {/* Заголовок */}
       <div style={{

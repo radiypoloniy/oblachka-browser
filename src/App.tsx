@@ -70,6 +70,9 @@ export default function App() {
   const active = tabs.find((t) => t.id === activeId);
   const isHub = active?.isHub ?? true;
   const tabError = active?.tabError ?? null;
+  // kind — заход на псевдо-вкладки (История/Настройки, см. shared/ipc.ts::TabState.kind):
+  // отдельно от isHub (тот трогать рискованно, читается ~15+ мест) — только для нового рендер-пути.
+  const kind = active?.kind ?? 'hub';
 
   // Split View: определяем участников по splitSide в снимке.
   // isSplit = true только когда split реально на экране (активная вкладка — одна из панелей).
@@ -83,6 +86,8 @@ export default function App() {
   // Refs для использования актуальных значений внутри IPC-колбэков (замыкания).
   const isHubRef = useRef(isHub);
   isHubRef.current = isHub;
+  const kindRef = useRef(kind);
+  kindRef.current = kind;
   // tabErrorRef нужен в pushBounds: reserve не применяем когда показана страница ошибки.
   const tabErrorRef = useRef(tabError);
   tabErrorRef.current = tabError;
@@ -262,10 +267,12 @@ export default function App() {
   const pushBounds = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
-    // Настройки, история или загрузки открыты — скрываем WebContentsView нулевыми bounds.
-    // Покрывает и split (обе вьюхи): repositionViews() в TabManager выдаёт нулевые размеры обеим.
-    // Тот же сентинел (0,0,0,0) main использует, чтобы заодно спрятать FindBar (см. FindBarManager.ts).
-    if (settingsOpenRef.current || historyOpenRef.current || downloadsOpenRef.current) {
+    // Загрузки всё ещё оверлей (не тронуты этим заходом) — скрываем WebContentsView нулевыми
+    // bounds, пока он открыт. История/Настройки — теперь псевдо-вкладки (view: null в TabManager,
+    // тот же приём, что у хаба): activate() на них уже сам прячет любую ранее показанную реальную
+    // вьюху (тот же путь, что при переключении на хаб), отдельный зов не нужен — подтверждено
+    // чтением TabManager.activate()/repositionViews().
+    if (downloadsOpenRef.current) {
       void window.oblako.setContentBounds({ x: 0, y: 0, width: 0, height: 0 });
       return;
     }
@@ -273,8 +280,9 @@ export default function App() {
     // Дропдаун омнибокса больше НЕ резервирует место — нативная вью (SuggestDropdownManager.ts)
     // плавает поверх контента как самостоятельный оверлей (native z-order, addChildView), контенту
     // сдвигаться незачем (заход 5: устранена дублирующая система, см. Toolbar.tsx).
-    // Inline-prompt разрешений: резерв только при наличии pending запроса на реальной странице.
-    const permReserve = (pendingPermissionsRef.current.length > 0 && !isHubRef.current && !tabErrorRef.current)
+    // Inline-prompt разрешений: резерв только при наличии pending запроса на реальной странице
+    // (kind==='page' — не хаб и не псевдо-вкладка История/Настройки).
+    const permReserve = (pendingPermissionsRef.current.length > 0 && kindRef.current === 'page' && !tabErrorRef.current)
       ? PERMISSION_PROMPT_RESERVE : 0;
     void window.oblako.setContentBounds({
       x: r.left, y: r.top + permReserve,
@@ -303,18 +311,13 @@ export default function App() {
   // Пересчёт bounds при смене очереди разрешений.
   useEffect(() => { pushBounds(); }, [pendingPermissions, pushBounds]);
 
-  // когда переключаемся между хабом и сайтом, геометрия дырки та же,
-  // но main должен переотобразить вьюху — пушим bounds ещё раз.
+  // когда переключаемся между хабом/страницей/псевдо-вкладкой (История/Настройки), геометрия
+  // дырки та же, но main должен переотобразить вьюху — пушим bounds ещё раз. activeId один уже
+  // покрывает переключение НА/С Истории и Настроек (это теперь обычная смена activeId, не
+  // отдельное состояние) — специальных эффектов под них больше не нужно.
   useEffect(() => { pushBounds(); }, [activeId, isHub, pushBounds]);
 
-  // Открытие/закрытие настроек: скрываем или восстанавливаем WebContentsView
-  // (нулевые bounds заодно прячут FindBar, см. pushBounds выше).
-  useEffect(() => { pushBounds(); }, [settingsOpen, pushBounds]);
-
-  // То же для панели истории.
-  useEffect(() => { pushBounds(); }, [historyOpen, pushBounds]);
-
-  // То же для панели загрузок.
+  // То же для панели загрузок (всё ещё оверлей, не тронута этим заходом).
   useEffect(() => { pushBounds(); }, [downloadsOpen, pushBounds]);
 
   // Количество незакреплённых, негруппированных вкладок-единиц верхнего уровня.
@@ -445,10 +448,10 @@ export default function App() {
         <div ref={contentRef} style={{ flex: 1, minHeight: 0, position: 'relative', margin: 'var(--gutter-shell)' }}>
           {downloadsOpen ? (
             <Downloads downloads={downloads} onClose={() => setDownloadsOpen(false)} />
-          ) : historyOpen ? (
-            <History onClose={() => setHistoryOpen(false)} />
-          ) : settingsOpen ? (
-            <Settings onClose={() => setSettingsOpen(false)} />
+          ) : kind === 'history' ? (
+            <History onClose={() => void window.oblako.closeTab(activeId)} />
+          ) : kind === 'settings' ? (
+            <Settings onClose={() => void window.oblako.closeTab(activeId)} />
           ) : isSplit ? (
             <div style={{ display: 'flex', height: '100%' }}>
               {/* Левая панель — flex: splitRatio даёт долю от (ширина - SPLIT_GAP) */}
@@ -509,8 +512,9 @@ export default function App() {
                   : null}
             </>
           )}
-          {/* Рамка drag-to-split: видна когда вкладка тащится над контентом. */}
-          {splitDragOver && !isSplit && !isHub && !settingsOpen && !historyOpen && !downloadsOpen && (
+          {/* Рамка drag-to-split: видна когда вкладка тащится над контентом. kind==='page' уже
+              покрывает хаб/Историю/Настройки одним условием — раньше это были 3 отдельных флага. */}
+          {splitDragOver && !isSplit && kind === 'page' && !downloadsOpen && (
             <div style={{
               position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none',
               border: '2px dashed var(--accent)', borderRadius: 'var(--radius-sm)',
@@ -519,7 +523,7 @@ export default function App() {
 
           {/* Inline-prompt разрешений: показываем первый из очереди. */}
           {/* Промпт в chrome-зоне, WebContentsView сдвинут вниз через pushBounds. */}
-          {pendingPermissions.length > 0 && !isHub && !tabError && !settingsOpen && !historyOpen && !downloadsOpen && (
+          {pendingPermissions.length > 0 && kind === 'page' && !tabError && !downloadsOpen && (
             <PermissionPrompt
               request={pendingPermissions[0]}
               onRespond={handlePermissionRespond}
