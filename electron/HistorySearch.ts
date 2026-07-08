@@ -9,6 +9,7 @@
 import type { HistoryManager } from './HistoryManager';
 import { requestEmbedding } from './EmbedClient';
 import { rerankHistoryCandidates } from './TranslationService';
+import { isNoisyForEmbedding } from './HistoryNoiseFilter';
 import type { SemanticSearchResult } from '../shared/ipc';
 
 function cosineSim(a: Float32Array, b: Float32Array): number {
@@ -46,7 +47,13 @@ export async function searchHistorySemantic(
   // dims === 0 — заглушка «намеренно не индексировано» (HistoryBackfill.ts, шумные для эмбеддинга
   // строки: логин/OAuth/голый домен). Не настоящий вектор — cosineSim(a, b) читает b[i] по длине
   // a, на пустом b это дало бы NaN (undefined * number), а не 0.
-  const rows = history.getAllEmbeddings().filter((r) => r.dims > 0);
+  // isNoisyForEmbedding здесь же — вторая проверка на этапе выборки, не только на этапе индексации
+  // (HistoryIndexer.ts/HistoryBackfill.ts). Живой аудит показал дыру в паттернах фильтра (branded
+  // хомпейджи вроде "Google Диск"/"Reddit — Сердце сети" её не ловят) — эта строка не чинит саму
+  // дыру, но не даёт УЖЕ проиндексированным (с реальным вектором) шумным записям попадать в
+  // кандидаты навсегда: если критерии фильтра позже расширятся, старые записи начнут отсеиваться
+  // здесь без миграции/переиндексации.
+  const rows = history.getAllEmbeddings().filter((r) => r.dims > 0 && !isNoisyForEmbedding(r.url, r.title));
   const scored: SemanticSearchResult[] = rows.map((r) => ({
     id: r.id,
     url: r.url,
