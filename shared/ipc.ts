@@ -250,6 +250,14 @@ export const IPC = {
   PASSWORDS_IMPORT:   'passwords:import',   // renderer → main: passphrase → число импортированных записей
   PASSWORDS_CHANGED:  'passwords:changed',  // main → renderer: push после любой мутации (тот же приём, что ADBLOCK_STATE_CHANGED)
 
+  // Менеджер паролей, шаг 2 (см. electron/preload-content.ts, electron/TabManager.ts) — канал
+  // ГОСТЕВАЯ СТРАНИЦА ↔ TabManager, через per-view webContents.ipc (не общий ipcMain — main точно
+  // знает, какая вкладка прислала сообщение). Content-preload НИКОГДА не шлёт origin — main сам
+  // вычисляет его из wc.getURL() (доверенный источник), см. PasswordAutofillManager.ts.
+  PASSWORDS_FORM_DETECTED:       'passwords:form-detected',       // гостевая страница → TabManager: { hasLoginForm, hasUsernameField }
+  PASSWORDS_CREDENTIAL_SUBMITTED: 'passwords:credential-submitted', // гостевая страница → TabManager: { username, password }
+  PASSWORDS_FILL:                'passwords:fill',                // TabManager → конкретная гостевая вкладка: { username, password }, только fill, без submit
+
   // Заход 10: живые suggest-подсказки текущего поисковика (см. SearchSuggestFetcher.ts) —
   // fetch ТОЛЬКО из main (CORS, см. комментарий в SearchSuggestFetcher.ts). Движок берётся main'ом
   // самостоятельно через SettingsManager.getSearchEngine() — тот же источник истины, что капсула.

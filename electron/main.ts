@@ -289,6 +289,14 @@ function createWindow() {
       console.log('[DD] onContentFocusCb fired (tab wc gained OS focus)'); // ВРЕМЕННЫЙ лог диагностики
       chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS);
     },
+    // Менеджер паролей, шаг 2, коммит 1 — ВРЕМЕННАЯ заглушка (проверяем сквозной путь детекта
+    // до появления PasswordAutofillManager.ts, коммит 2). Заменится реальной логикой.
+    (tabId, hasLoginForm, hasUsernameField, url) => {
+      console.log(`[Passwords][DEBUG] form-detected tab=${tabId} hasLoginForm=${hasLoginForm} hasUsernameField=${hasUsernameField} url=${url}`);
+    },
+    (tabId, username, _password, url) => {
+      console.log(`[Passwords][DEBUG] credential-submitted tab=${tabId} username=${username} url=${url}`);
+    },
   );
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
   tabs.setSearchEngine(settings.getSearchEngine());

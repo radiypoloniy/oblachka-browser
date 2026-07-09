@@ -1,12 +1,20 @@
 import { WebContentsView, BrowserWindow, Menu, clipboard, net } from 'electron';
 import type { MenuItemConstructorOptions, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { IPC } from '../shared/ipc';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction } from '../shared/ipc';
 import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef, SavedTab } from './SessionManager';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 const CLOSED_STACK_MAX = 10;
+
+// Менеджер паролей, шаг 2 — ПЕРВЫЙ preload на гостевых страницах (сканер форм, см.
+// electron/preload-content.ts). Тот же приём резолва пути, что AiPanelManager.ts использует
+// для preload-aipanel.js (__dirname здесь и там — один и тот же dist-electron/electron после
+// компиляции, см. electron/tsconfig.json).
+const CONTENT_PRELOAD_PATH = path.join(__dirname, 'preload-content.js');
 
 const ZOOM_MIN  = 0.5;
 const ZOOM_MAX  = 2.5;
@@ -155,6 +163,10 @@ export class TabManager {
   // wirePageEvents::wc.on('focus') ниже. Используется main.ts, чтобы закрыть дропдаун омнибокса
   // в chrome (SuggestDropdownManager сам этого не видит — фокус чужой вкладки его не касается).
   private onContentFocusCb?: () => void;
+  // Менеджер паролей, шаг 2 — сигналы от content-preload гостевой вкладки (см. wirePageEvents,
+  // wc.ipc.on выше). url — уже вычисленный main'ом wc.getURL(), не из payload preload'а.
+  private onPasswordFormCb?: (tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string) => void;
+  private onPasswordSubmitCb?: (tabId: string, username: string, password: string, url: string) => void;
   private firstTabLoaded = false; // защита: колбэк вызывается ровно один раз
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
@@ -191,6 +203,8 @@ export class TabManager {
     onActiveTabChanged?: () => void,
     onTabClosed?: (wc: WebContents) => void,
     onContentFocus?: () => void,
+    onPasswordForm?: (tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string) => void,
+    onPasswordSubmit?: (tabId: string, username: string, password: string, url: string) => void,
   ) {
     this.win = win;
     this.onChange = onChange;
@@ -207,6 +221,8 @@ export class TabManager {
     this.onActiveTabChangedCb = onActiveTabChanged;
     this.onTabClosedCb = onTabClosed;
     this.onContentFocusCb = onContentFocus;
+    this.onPasswordFormCb = onPasswordForm;
+    this.onPasswordSubmitCb = onPasswordSubmit;
     // Хаб существует всегда; не входит в tabMap, pinnedTabs или nodes.
     this.hubTab = { id: HUB_ID, view: null, sleeping: null, lastActiveAt: 0 };
     this.startSleepTimer();
@@ -664,6 +680,10 @@ export class TabManager {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        // Менеджер паролей, шаг 2 — сканер форм (см. CONTENT_PRELOAD_PATH выше). Без
+        // nodeIntegrationInSubFrames — preload намеренно НЕ выполняется в кросс-origin iframe
+        // (структурный гвард против чтения/заполнения чужого origin, см. PasswordAutofillManager.ts).
+        preload: CONTENT_PRELOAD_PATH,
       },
     });
     const tab: ManagedTab = { id, view, sleeping: null, lastActiveAt: Date.now(), ephemeral };
@@ -704,7 +724,7 @@ export class TabManager {
   createPinnedTab(rawUrl: string, cachedFaviconData?: string): string {
     const id = randomUUID();
     const view = new WebContentsView({
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: CONTENT_PRELOAD_PATH },
     });
     if (cachedFaviconData) {
       (view.webContents as unknown as { _oblakoFavicon?: string })._oblakoFavicon = cachedFaviconData;
@@ -845,7 +865,7 @@ export class TabManager {
     if (!tab?.sleeping) return;
     const { url } = tab.sleeping;
     const view = new WebContentsView({
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: CONTENT_PRELOAD_PATH },
     });
     tab.sleeping = null;
     tab.view = view;
@@ -910,6 +930,25 @@ export class TabManager {
   private wirePageEvents(id: string, view: WebContentsView) {
     const wc = view.webContents;
     const notify = () => this.onChange();
+
+    // Менеджер паролей, шаг 2 — per-view IPC (webContents.ipc, не общий ipcMain): main точно
+    // знает, какая вкладка прислала сообщение, без реверс-маппинга webContents.id → tabId.
+    // Origin НЕ берём из payload content-preload (недоверенный источник) — только из wc.getURL()
+    // здесь, в main, в момент события (см. PasswordAutofillManager.ts).
+    wc.ipc.on(IPC.PASSWORDS_FORM_DETECTED, (_e, payload: { hasLoginForm: boolean; hasUsernameField: boolean }) => {
+      try {
+        this.onPasswordFormCb?.(id, payload.hasLoginForm, payload.hasUsernameField, wc.getURL());
+      } catch (e) {
+        console.warn('[TabMgr] onPasswordFormCb error:', (e as Error).message);
+      }
+    });
+    wc.ipc.on(IPC.PASSWORDS_CREDENTIAL_SUBMITTED, (_e, payload: { username: string; password: string }) => {
+      try {
+        this.onPasswordSubmitCb?.(id, payload.username, payload.password, wc.getURL());
+      } catch (e) {
+        console.warn('[TabMgr] onPasswordSubmitCb error:', (e as Error).message);
+      }
+    });
 
     // Когда WebContentsView получает OS-фокус от клика мышью — проверяем, не нужно ли
     // активировать панель split. DOM-дивы в renderer не получают клик, перекрытый вьюхой.
@@ -998,6 +1037,9 @@ export class TabManager {
           action: 'allow',
           overrideBrowserWindowOptions: {
             autoHideMenuBar: true, // не наш кастомный хром — просто обычное окно ОС без лишнего UI
+            // Менеджер паролей, шаг 2: сканер форм (CONTENT_PRELOAD_PATH) сюда НЕ подключаем —
+            // это окно вне tabMap/wirePageEvents (сторонний OAuth-провайдер, не сайт пользователя),
+            // осознанно за скобками v1, см. план.
             webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
           },
         };
@@ -1852,6 +1894,17 @@ export class TabManager {
   getActiveWebContents() {
     const tab = this.tabMap.get(this.activeId);
     return tab && this.isHttpView(tab.view) ? tab.view.webContents : null;
+  }
+
+  // Менеджер паролей, шаг 2 — адресная отправка заполнения строго ОДНОЙ вкладке (не broadcast).
+  // Используется PasswordAutofillManager.ts после явного клика пользователя в поповере — только
+  // fill, страница сама решает, что делать с полями (submit никогда не вызывается нами).
+  sendPasswordFill(tabId: string, payload: { username: string; password: string }): boolean {
+    const tab = this.tabMap.get(tabId);
+    const wc = tab?.view?.webContents;
+    if (!wc || wc.isDestroyed()) return false;
+    wc.send(IPC.PASSWORDS_FILL, payload);
+    return true;
   }
 
   findInPage(query: string, forward: boolean): void {
