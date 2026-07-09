@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown } from 'lucide-react';
-import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult } from '../../shared/ipc';
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown, KeyRound } from 'lucide-react';
+import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult, PasswordIndicatorState } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
@@ -99,6 +99,8 @@ export default function Toolbar({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [toolbarWidth, setToolbarWidth] = useState(1280);
   const [placeholderVisible, setPlaceholderVisible] = useState(true);
+  const [passwordIndicator, setPasswordIndicator] = useState<PasswordIndicatorState | null>(null);
+  const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false);
 
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = externalRef ?? internalRef;
@@ -118,6 +120,7 @@ export default function Toolbar({
   // вставать дропдаун подсказок. Пушится в main отдельным каналом (OMNIBOX_SET_BOUNDS) —
   // фундамент под будущую нативную вью дропдауна, сам дропдаун этот заход не трогает.
   const omniboxPillRef = useRef<HTMLDivElement>(null);
+  const passwordControlRef = useRef<HTMLDivElement>(null);
 
   // Текущий выбранный поисковик — источник истины в main (SettingsManager); здесь только
   // читаем id и строим URL по общему шаблону (shared/searchEngines.ts), не хардкодим движок.
@@ -228,6 +231,27 @@ export default function Toolbar({
     void window.oblako.setSuggestDropdownHighlight(-1);
   }, [onSuggestToggle]);
 
+  const pushPasswordPopoverBounds = useCallback(() => {
+    const el = passwordControlRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    void window.oblako.setPasswordPopoverAnchorBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+  }, []);
+
+  const togglePasswordPopover = useCallback(() => {
+    if (!passwordIndicator) return;
+    closeDropdown('password-indicator');
+    setEditing(false);
+    if (passwordPopoverOpen) {
+      setPasswordPopoverOpen(false);
+      void window.oblako.closePasswordPopover();
+      return;
+    }
+    pushPasswordPopoverBounds();
+    setPasswordPopoverOpen(true);
+    void window.oblako.showPasswordPopover(passwordIndicator);
+  }, [closeDropdown, passwordIndicator, passwordPopoverOpen, pushPasswordPopoverBounds]);
+
   // ── Заход 5 (кардинальный фикс): закрытие БЕЗ blur ──────────────────────────────────────────
   // blur омнибокса — НЕ триггер закрытия (по образцу FindBar/поповера/AI-панели, см. BACKLOG.md:
   // «blur НИКОГДА не использовать как механику закрытия» — addChildView новой вью дропдауна шлёт
@@ -262,6 +286,42 @@ export default function Toolbar({
     return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
   }, [editing, closeDropdown]);
 
+  useEffect(() => {
+    return window.oblako.onPasswordIndicatorChanged((state) => {
+      setPasswordIndicator(state);
+      if (!state) {
+        setPasswordPopoverOpen(false);
+        void window.oblako.closePasswordPopover();
+      }
+    });
+  }, []);
+
+  useEffect(() => window.oblako.onPasswordPopoverClosed(() => setPasswordPopoverOpen(false)), []);
+
+  useEffect(() => {
+    if (!passwordPopoverOpen) return;
+    pushPasswordPopoverBounds();
+    if (passwordIndicator) void window.oblako.showPasswordPopover(passwordIndicator);
+    const el = passwordControlRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(pushPasswordPopoverBounds);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [passwordPopoverOpen, passwordIndicator, toolbarWidth, pushPasswordPopoverBounds]);
+
+  useEffect(() => {
+    if (!passwordPopoverOpen) return;
+    const onOutsideMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!passwordControlRef.current?.contains(target)) {
+        setPasswordPopoverOpen(false);
+        void window.oblako.closePasswordPopover();
+      }
+    };
+    document.addEventListener('mousedown', onOutsideMouseDown, true);
+    return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
+  }, [passwordPopoverOpen]);
+
   // (2) Реальный OS-фокус ушёл на контент активной вкладки (ДРУГОЙ webContents — клик мышью по
   // странице) — main шлёт это из TabManager.wirePageEvents::wc.on('focus'), см. shared/ipc.ts::
   // SUGGEST_DROPDOWN_CONTENT_FOCUS.
@@ -279,6 +339,10 @@ export default function Toolbar({
   // closeTranslatePopoverOnTabSwitch у поповера перевода).
   useEffect(() => {
     if (editing) { closeDropdown('tab-switch'); setEditing(false); }
+    if (passwordPopoverOpen) {
+      setPasswordPopoverOpen(false);
+      void window.oblako.closePasswordPopover();
+    }
   }, [tab?.id]);
 
   const buildSuggestions = useCallback(async (query: string) => {
@@ -612,6 +676,23 @@ export default function Toolbar({
                 fontFamily: isHub ? 'var(--font-sans)' : 'var(--font-mono)',
               }}
             />
+            {!isHub && tab?.url && (
+              passwordIndicator && (
+                <div ref={passwordControlRef} style={{ display: 'inline-flex', flex: 'none' }}>
+                  <button
+                    title="Пароли"
+                    onClick={togglePasswordPopover}
+                    style={{
+                      border: 'none', background: passwordPopoverOpen ? 'var(--accent-soft)' : 'transparent',
+                      cursor: 'default', padding: 3, borderRadius: 'var(--radius-sm)',
+                      display: 'inline-flex', color: 'var(--accent)', position: 'relative',
+                    }}
+                  >
+                    <KeyRound size={14} />
+                  </button>
+                </div>
+              )
+            )}
             {!isHub && tab?.url && (
               <button title="Копировать адрес" onClick={copyUrl}
                 style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,

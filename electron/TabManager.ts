@@ -157,7 +157,10 @@ export class TabManager {
   // позиция теряет смысл, при закрытии ИМЕННО этой вкладки — тем более. Два отдельных сигнала
   // (не переиспользуем onChange — он общий и палит на ~20 несвязанных мутаций).
   private onActiveTabChangedCb?: () => void;
-  private onTabClosedCb?: (wc: WebContents) => void;
+  // tabId — добавлен в шаге 2 менеджера паролей (PasswordAutofillManager.onTabClosed), существующие
+  // подписчики (TranslatePopoverManager) второй параметр просто игнорируют — это расширение
+  // сигнатуры, не ломает совместимость.
+  private onTabClosedCb?: (wc: WebContents, tabId: string) => void;
   // Заход 5 (дропдаун подсказок, кардинальный фикс): реальный OS-фокус ушёл на контент вкладки —
   // единственный надёжный (не blur) сигнал «пользователь физически кликнул в страницу», см.
   // wirePageEvents::wc.on('focus') ниже. Используется main.ts, чтобы закрыть дропдаун омнибокса
@@ -201,7 +204,7 @@ export class TabManager {
     onFirstTabLoad?: () => void,
     onAiAction?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents) => void,
     onActiveTabChanged?: () => void,
-    onTabClosed?: (wc: WebContents) => void,
+    onTabClosed?: (wc: WebContents, tabId: string) => void,
     onContentFocus?: () => void,
     onPasswordForm?: (tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string) => void,
     onPasswordSubmit?: (tabId: string, username: string, password: string, url: string) => void,
@@ -1378,7 +1381,7 @@ export class TabManager {
       // Поповер перевода анкорится к WebContents конкретной вкладки (см. TranslatePopoverManager.ts) —
       // если закрывается именно она, поповер сравнит ссылку и закроется сам. До removeChildView/close,
       // чтобы сравнение ссылки точно застало ещё живой объект.
-      this.onTabClosedCb?.(wc);
+      this.onTabClosedCb?.(wc, id);
       if (!destroyed) {
         try { this.win.contentView.removeChildView(tab.view); } catch { /* noop */ }
         (wc as unknown as { close?: () => void }).close?.();

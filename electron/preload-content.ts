@@ -24,10 +24,19 @@
 // удобства импорта) не может require() локальные относительные модули, только сам 'electron'
 // и Node-совместимые встроенные. Отсюда — вручную продублированные строки, ДОЛЖНЫ совпадать
 // с shared/ipc.ts::IPC.PASSWORDS_FORM_DETECTED/PASSWORDS_CREDENTIAL_SUBMITTED/PASSWORDS_FILL.
-// (Каналы submit/fill добавятся сюда же в коммитах 2/3 — на этом шаге только сканер.)
 import { ipcRenderer } from 'electron';
 
 const CH_FORM_DETECTED = 'passwords:form-detected';
+const CH_CREDENTIAL_SUBMITTED = 'passwords:credential-submitted';
+const CH_FILL = 'passwords:fill';
+
+function isTopFrame(): boolean {
+  try {
+    return window.top === window;
+  } catch {
+    return false;
+  }
+}
 
 // ── Видимость поля — против фантомных/скрытых форм (clickjacking-смежный риск, см. бриф) ──
 function isVisible(el: Element): boolean {
@@ -71,7 +80,7 @@ function reportScan() {
     const key = `${result.hasLoginForm}:${result.hasUsernameField}`;
     if (key === lastScanKey) return;
     lastScanKey = key;
-    ipcRenderer.send(CH_FORM_DETECTED, result);
+    if (isTopFrame()) ipcRenderer.send(CH_FORM_DETECTED, result);
   } catch {
     // сканер не должен ронять страницу
   }
@@ -97,3 +106,105 @@ try {
 document.addEventListener('DOMContentLoaded', scheduleScan);
 window.addEventListener('load', scheduleScan);
 scheduleScan(); // на случай, если preload выполнился уже после DOMContentLoaded
+
+// ── Детект сохранения — submit с непустым паролем + SPA-эвристика ──────────────────────────────
+// «Грязное» поле — пароль реально заполнен пользователем, submit ещё не пойман. captureDirty
+// хранит ССЫЛКУ на DOM-элемент (не строку) — на момент реального submit/SPA-навигации читаем
+// АКТУАЛЬНОЕ .value, не protecting устаревший снимок.
+let dirty: HTMLInputElement | null = null;
+let reportedForDirty = false; // не шлём один и тот же submit дважды (обычный submit + SPA-эвристика на ту же навигацию)
+
+function reportSubmit(username: string, password: string) {
+  try {
+    if (!password) return;
+    if (isTopFrame()) ipcRenderer.send(CH_CREDENTIAL_SUBMITTED, { username, password });
+    reportedForDirty = true;
+  } catch {
+    // детектор не должен ронять страницу
+  }
+}
+
+document.addEventListener('input', (e) => {
+  try {
+    const t = e.target;
+    if (t instanceof HTMLInputElement && t.type === 'password') {
+      dirty = t.value ? t : null;
+      if (t.value) reportedForDirty = false;
+    }
+  } catch {
+    // noop
+  }
+}, true);
+
+document.addEventListener('submit', (e) => {
+  try {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    const pf = form.querySelector('input[type="password"]') as HTMLInputElement | null;
+    if (!pf || !pf.value) return;
+    reportSubmit(findUsernameField(pf)?.value ?? '', pf.value);
+  } catch {
+    // noop
+  }
+}, true);
+
+// SPA: явного submit не было, но пароль был заполнен и произошла клиентская навигация
+// (pushState/popstate) — типичный паттерн React/Vue форм логина. Честная эвристика, не ловит
+// все варианты (см. бриф) — это ограничение, не баг.
+function checkSpaSubmit() {
+  try {
+    if (reportedForDirty || !dirty || !dirty.value) return;
+    reportSubmit(findUsernameField(dirty)?.value ?? '', dirty.value);
+  } catch {
+    // noop
+  }
+}
+
+try {
+  const originalPushState = history.pushState.bind(history);
+  history.pushState = function (...args: Parameters<typeof history.pushState>) {
+    checkSpaSubmit();
+    return originalPushState(...args);
+  };
+  window.addEventListener('popstate', checkSpaSubmit);
+} catch {
+  // сайт мог заморозить history/pushState — SPA-эвристика просто не сработает, обычный submit не затронут
+}
+
+// ── Исполнитель заполнения — только по адресной команде от main, без submit ──────────────────
+function setNativeValue(input: HTMLInputElement, value: string): void {
+  const proto = Object.getPrototypeOf(input) as HTMLInputElement;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  if (setter) setter.call(input, value);
+  else input.value = value;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function fillCredential(username: string, password: string): boolean {
+  try {
+    if (!isTopFrame()) return false;
+    const pwFields = (Array.from(document.querySelectorAll('input[type="password"]')) as HTMLInputElement[]).filter(isVisible);
+    const passwordField = pwFields[0];
+    if (!passwordField) return false;
+    const usernameField = findUsernameField(passwordField);
+    if (usernameField && isVisible(usernameField)) setNativeValue(usernameField, username);
+    setNativeValue(passwordField, password);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+try {
+  ipcRenderer.on(CH_FILL, (_e, payload: { username?: string; password?: string }) => {
+    try {
+      if (typeof payload?.password !== 'string') return;
+      fillCredential(typeof payload.username === 'string' ? payload.username : '', payload.password);
+    } catch {
+      // исполнитель не должен ронять страницу
+    }
+  });
+} catch {
+  // IPC недоступен — автозаполнение просто не работает
+}

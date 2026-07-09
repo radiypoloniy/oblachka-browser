@@ -104,6 +104,25 @@ export class PasswordManager {
     }
   }
 
+  // Менеджер паролей, шаг 2 — сверка перехваченного при submit пароля с сейфом (см.
+  // PasswordAutofillManager.ts::handleCredentialSubmitted). 'match' → ничего не предлагаем
+  // (никогда не сохраняем молча, но и не спамим уже известным); 'differs' → matchId для
+  // строгого update() ПО ID (не «размытый» матчинг); 'new' — сейф недоступен трактуем как
+  // 'new' тоже — безопасный дефолт, add() всё равно деградирует сам, ничего не потеряется.
+  checkCredential(origin: string, username: string, password: string): { status: 'new' | 'match' | 'differs'; matchId?: number } {
+    if (!this.#db || !this.#dek) return { status: 'new' };
+    try {
+      const row = this.#db.prepare(`SELECT id, secret FROM credentials WHERE origin = ? AND username = ?`).get(origin, username) as
+        | { id: number; secret: Buffer } | undefined;
+      if (!row) return { status: 'new' };
+      const existing = VaultCrypto.decryptField(this.#dek, row.secret);
+      return existing === password ? { status: 'match' } : { status: 'differs', matchId: row.id };
+    } catch (e) {
+      console.warn('[Passwords] checkCredential error:', (e as Error).message);
+      return { status: 'new' };
+    }
+  }
+
   // Копирует значение в буфер сам — плейнтекст в ответ вызывающей стороне никогда не возвращается
   // (см. бриф). Пароль (не логин) автоочищается через 30с, но только если буфер всё ещё содержит
   // именно это значение — не затираем более позднее копирование пользователя чем-то другим.
@@ -308,7 +327,9 @@ export class PasswordManager {
   }
 }
 
-function originOf(url: string): string {
+// Менеджер паролей, шаг 2 — экспортирована для PasswordAutofillManager.ts (тот же расчёт origin,
+// что использует эта таблица сама, не дублируем логику).
+export function originOf(url: string): string {
   try {
     return new URL(url).origin;
   } catch {

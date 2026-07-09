@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, SemanticSearchResult, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, SemanticSearchResult, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -225,6 +225,25 @@ const api: OblakoApi = {
     const handler = () => cb();
     ipcRenderer.on(IPC.PASSWORDS_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.PASSWORDS_CHANGED, handler);
+  },
+
+  // Менеджер паролей, шаг 2 — индикатор-«ключ» + поповер.
+  onPasswordIndicatorChanged: (cb: (state: PasswordIndicatorState | null) => void) => {
+    const handler = (_e: unknown, state: PasswordIndicatorState | null) => cb(state);
+    ipcRenderer.on(IPC.PASSWORDS_INDICATOR_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.PASSWORDS_INDICATOR_CHANGED, handler);
+  },
+  savePendingPassword:    () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_SAVE) as Promise<boolean>,
+  updatePendingPassword:  () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_UPDATE) as Promise<boolean>,
+  fillSavedPassword:      (id: number) => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_FILL, id) as Promise<boolean>,
+  dismissPendingPassword: () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_DISMISS) as Promise<void>,
+  setPasswordPopoverAnchorBounds: (b: ContentBounds) => ipcRenderer.invoke(IPC.PASSWORD_POPOVER_SET_BOUNDS, b) as Promise<void>,
+  showPasswordPopover:       (state: PasswordIndicatorState) => ipcRenderer.invoke(IPC.PASSWORD_POPOVER_SHOW, state) as Promise<void>,
+  closePasswordPopover:      () => ipcRenderer.invoke(IPC.PASSWORD_POPOVER_CLOSE) as Promise<void>,
+  onPasswordPopoverClosed: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.PASSWORD_POPOVER_CLOSED, handler);
+    return () => ipcRenderer.removeListener(IPC.PASSWORD_POPOVER_CLOSED, handler);
   },
 
   embedPreload: EMBED_PRELOAD,

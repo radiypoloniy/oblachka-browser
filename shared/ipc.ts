@@ -258,6 +258,22 @@ export const IPC = {
   PASSWORDS_CREDENTIAL_SUBMITTED: 'passwords:credential-submitted', // гостевая страница → TabManager: { username, password }
   PASSWORDS_FILL:                'passwords:fill',                // TabManager → конкретная гостевая вкладка: { username, password }, только fill, без submit
 
+  // Менеджер паролей, шаг 2 — индикатор-«ключ» в omnibox + поповер (см. PasswordIndicatorPopover.tsx,
+  // electron/PasswordAutofillManager.ts). Только про АКТИВНУЮ вкладку — переключение вкладок само
+  // пересылает актуальное состояние (или null).
+  PASSWORDS_INDICATOR_CHANGED: 'passwords:indicator-changed', // main → renderer: push PasswordIndicatorState | null
+  PASSWORDS_INDICATOR_SAVE:    'passwords:indicator-save',    // renderer → main: подтвердить «Сохранить» → boolean
+  PASSWORDS_INDICATOR_UPDATE:  'passwords:indicator-update',  // renderer → main: подтвердить «Обновить» → boolean
+  PASSWORDS_INDICATOR_FILL:    'passwords:indicator-fill',    // renderer → main: явный клик «Подставить» по id → boolean
+  PASSWORDS_INDICATOR_DISMISS: 'passwords:indicator-dismiss', // renderer → main: «Не сейчас» — сбросить оффер без записи
+
+  // Нативная WebContentsView-вью поповера паролей (как FindBar/SuggestDropdown): chrome только
+  // сообщает anchor-bounds и состояние, сама карточка рисуется поверх страницы отдельным слоем.
+  PASSWORD_POPOVER_SET_BOUNDS: 'password-popover:set-bounds',
+  PASSWORD_POPOVER_SHOW:       'password-popover:show',
+  PASSWORD_POPOVER_CLOSE:      'password-popover:close',
+  PASSWORD_POPOVER_CLOSED:     'password-popover:closed',
+
   // Заход 10: живые suggest-подсказки текущего поисковика (см. SearchSuggestFetcher.ts) —
   // fetch ТОЛЬКО из main (CORS, см. комментарий в SearchSuggestFetcher.ts). Движок берётся main'ом
   // самостоятельно через SettingsManager.getSearchEngine() — тот же источник истины, что капсула.
@@ -367,6 +383,18 @@ export interface PasswordGenerateOptions {
   digits: boolean;
   symbols: boolean;
 }
+
+// Менеджер паролей, шаг 2 — состояние индикатора-«ключа» в omnibox для АКТИВНОЙ вкладки.
+// Пароль НИКОГДА не входит в этот тип — только origin/username/id, само значение секрета
+// остаётся в main до explicit save/update/fill (см. electron/PasswordAutofillManager.ts).
+export interface PasswordIndicatorMatch {
+  id: number;
+  username: string;
+}
+export type PasswordIndicatorState =
+  | { kind: 'has-saved'; origin: string; matches: PasswordIndicatorMatch[] }
+  | { kind: 'offer-save'; origin: string; username: string }
+  | { kind: 'offer-update'; origin: string; username: string; matchId: number };
 
 // ── Дропдаун подсказок омнибокса (нативная вью, заход 3/5) ───────────────────────────────────
 // Та же форма, что локальный SuggestItem в Toolbar.tsx (переиспользуется оттуда напрямую) —
@@ -601,6 +629,17 @@ export interface OblakoApi {
   exportPasswords(passphrase: string): Promise<boolean>;
   importPasswords(passphrase: string): Promise<number>;
   onPasswordsChanged(cb: () => void): () => void;
+
+  // Менеджер паролей, шаг 2 — индикатор-«ключ» + поповер (см. shared/ipc.ts::PasswordIndicatorState).
+  onPasswordIndicatorChanged(cb: (state: PasswordIndicatorState | null) => void): () => void;
+  savePendingPassword(): Promise<boolean>;
+  updatePendingPassword(): Promise<boolean>;
+  fillSavedPassword(id: number): Promise<boolean>;
+  dismissPendingPassword(): Promise<void>;
+  setPasswordPopoverAnchorBounds(bounds: ContentBounds): Promise<void>;
+  showPasswordPopover(state: PasswordIndicatorState): Promise<void>;
+  closePasswordPopover(): Promise<void>;
+  onPasswordPopoverClosed(cb: () => void): () => void;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;
