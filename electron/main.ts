@@ -9,6 +9,7 @@ import { TabManager } from './TabManager';
 import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
 import { HistoryManager } from './HistoryManager';
+import { PasswordManager } from './PasswordManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
 import { SettingsManager } from './SettingsManager';
@@ -116,6 +117,7 @@ let omniboxBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
 let isShuttingDown = false;
 const adblock     = new AdBlockManager();
 const history     = new HistoryManager();
+const passwords   = new PasswordManager();
 const downloads   = new DownloadManager();
 const permissions = new PermissionManager();
 const settings    = new SettingsManager();
@@ -735,6 +737,12 @@ app.whenReady().then(async () => {
   // История: нативный модуль может отсутствовать — падение не блокирует запуск.
   await history.initialize().catch((e) =>
     console.error('[History] инициализация упала:', e),
+  );
+
+  // Сейф паролей: та же гарантия — падение (нет better-sqlite3, safeStorage недоступен) не
+  // блокирует старт, браузер работает без него (см. PasswordManager.ts::initialize).
+  await passwords.initialize().catch((e) =>
+    console.error('[Passwords] инициализация упала:', e),
   );
 
   // Разрешения: та же гарантия — падение не блокирует старт, браузер работает без персистенции.
