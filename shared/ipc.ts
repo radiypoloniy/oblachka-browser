@@ -236,6 +236,20 @@ export const IPC = {
   AI_DELETE_KEY:          'ai:delete-key',          // renderer → main: удалить ключ
   AI_KEY_STATUS_CHANGED:  'ai:key-status-changed',  // main → renderer: push нового connected-статуса
 
+  // Менеджер паролей, шаг 1 (см. electron/VaultCrypto.ts, electron/PasswordManager.ts) — сейф
+  // отдельный от settings.json/истории. Сам пароль пересекает IPC только по явному действию
+  // пользователя (reveal) — список и copy никогда не отдают plaintext без явного запроса на него.
+  PASSWORDS_LIST:     'passwords:list',     // renderer → main: PasswordMeta[] (без секретов)
+  PASSWORDS_REVEAL:   'passwords:reveal',   // renderer → main: id → расшифрованный пароль | null
+  PASSWORDS_COPY:     'passwords:copy',     // renderer → main: id, field → main сам кладёт в буфер
+  PASSWORDS_ADD:      'passwords:add',      // renderer → main: PasswordAddInput → boolean
+  PASSWORDS_UPDATE:   'passwords:update',   // renderer → main: PasswordUpdateInput → boolean
+  PASSWORDS_DELETE:   'passwords:delete',   // renderer → main: id
+  PASSWORDS_GENERATE: 'passwords:generate', // renderer → main: PasswordGenerateOptions → string
+  PASSWORDS_EXPORT:   'passwords:export',   // renderer → main: passphrase → boolean (диалог сохранения в main)
+  PASSWORDS_IMPORT:   'passwords:import',   // renderer → main: passphrase → число импортированных записей
+  PASSWORDS_CHANGED:  'passwords:changed',  // main → renderer: push после любой мутации (тот же приём, что ADBLOCK_STATE_CHANGED)
+
   // Заход 10: живые suggest-подсказки текущего поисковика (см. SearchSuggestFetcher.ts) —
   // fetch ТОЛЬКО из main (CORS, см. комментарий в SearchSuggestFetcher.ts). Движок берётся main'ом
   // самостоятельно через SettingsManager.getSearchEngine() — тот же источник истины, что капсула.
@@ -308,6 +322,43 @@ export interface BackfillProgress {
 }
 
 // ── Загрузки ─────────────────────────────────────────────────────────────────
+
+// ── Менеджер паролей, шаг 1 (сейф, см. electron/PasswordManager.ts) ───────────
+// PasswordMeta — то, что уходит в renderer массово (список): без secret/notes. Сам пароль
+// приходит только через revealPassword/copyPasswordField, по явному действию пользователя.
+export interface PasswordMeta {
+  id: number;
+  origin: string;
+  url: string;
+  username: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PasswordAddInput {
+  url: string;
+  username: string;
+  password: string;
+  title: string;
+  notes?: string;
+}
+
+// undefined-поля не меняются при update; password: undefined — оставить прежний секрет как есть.
+export type PasswordUpdateInput = Partial<Omit<PasswordAddInput, 'password'>> & {
+  id: number;
+  password?: string;
+};
+
+export type PasswordCopyField = 'username' | 'password';
+
+export interface PasswordGenerateOptions {
+  length: number;
+  lower: boolean;
+  upper: boolean;
+  digits: boolean;
+  symbols: boolean;
+}
 
 // ── Дропдаун подсказок омнибокса (нативная вью, заход 3/5) ───────────────────────────────────
 // Та же форма, что локальный SuggestItem в Toolbar.tsx (переиспользуется оттуда напрямую) —
@@ -526,6 +577,22 @@ export interface OblakoApi {
   saveAiKey(key: string): Promise<boolean>;
   deleteAiKey(): Promise<void>;
   onAiKeyStatusChanged(cb: (connected: boolean) => void): () => void;
+
+  // Менеджер паролей, шаг 1 (см. electron/PasswordManager.ts). Пароль пересекает IPC только
+  // через revealPassword/generatePassword — listPasswords им не отдаёт, copyPasswordField сам
+  // кладёт значение в буфер в main и наружу его не возвращает.
+  listPasswords(): Promise<PasswordMeta[]>;
+  revealPassword(id: number): Promise<string | null>;
+  copyPasswordField(id: number, field: PasswordCopyField): Promise<boolean>;
+  addPassword(input: PasswordAddInput): Promise<boolean>;
+  updatePassword(input: PasswordUpdateInput): Promise<boolean>;
+  deletePassword(id: number): Promise<void>;
+  generatePassword(opts: PasswordGenerateOptions): Promise<string>;
+  // Диалог сохранения/открытия файла — целиком в main (см. main.ts::registerIpc). Возвращает
+  // false/0, если пользователь отменил диалог или passphrase не подошла — не бросает наружу.
+  exportPasswords(passphrase: string): Promise<boolean>;
+  importPasswords(passphrase: string): Promise<number>;
+  onPasswordsChanged(cb: () => void): () => void;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;

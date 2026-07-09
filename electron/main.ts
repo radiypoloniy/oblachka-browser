@@ -1,10 +1,11 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 
 // ДО app.whenReady() — Electron требует это до события ready.
 registerSchemesAsPrivileged();
 import type { MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import { TabManager } from './TabManager';
 import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
@@ -14,7 +15,7 @@ import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
 import { SettingsManager } from './SettingsManager';
 import { IPC } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -529,6 +530,66 @@ function registerIpc() {
   // (см. AiPanelManager.ts, заход D шаг 4), оба подписаны на один aiKeyStore.onKeyStatusChanged.
   aiKeyStore.onKeyStatusChanged((connected) => {
     chromeView?.webContents.send(IPC.AI_KEY_STATUS_CHANGED, connected);
+  });
+
+  // Менеджер паролей, шаг 1 (см. electron/PasswordManager.ts). Пароль пересекает IPC только
+  // через reveal/generate — list его не отдаёт, copy сам кладёт в буфер и наружу не возвращает.
+  ipcMain.handle(IPC.PASSWORDS_LIST,     () => passwords.list());
+  ipcMain.handle(IPC.PASSWORDS_REVEAL,   (_e, id: number) => passwords.reveal(id));
+  ipcMain.handle(IPC.PASSWORDS_COPY,     (_e, id: number, field: PasswordCopyField) => passwords.copyField(id, field));
+  ipcMain.handle(IPC.PASSWORDS_GENERATE, (_e, opts: PasswordGenerateOptions) => passwords.generate(opts));
+  ipcMain.handle(IPC.PASSWORDS_ADD, (_e, input: PasswordAddInput) => {
+    const ok = passwords.add(input);
+    if (ok) chromeView?.webContents.send(IPC.PASSWORDS_CHANGED);
+    return ok;
+  });
+  ipcMain.handle(IPC.PASSWORDS_UPDATE, (_e, input: PasswordUpdateInput) => {
+    const ok = passwords.update(input);
+    if (ok) chromeView?.webContents.send(IPC.PASSWORDS_CHANGED);
+    return ok;
+  });
+  ipcMain.handle(IPC.PASSWORDS_DELETE, (_e, id: number) => {
+    passwords.delete(id);
+    chromeView?.webContents.send(IPC.PASSWORDS_CHANGED);
+  });
+  // Экспорт/импорт — диалог выбора файла целиком в main, на диск попадает только уже
+  // зашифрованная под passphrase строка (см. PasswordManager.exportVault/importVault),
+  // никогда не расшифрованный JSON.
+  ipcMain.handle(IPC.PASSWORDS_EXPORT, async (_e, passphrase: string) => {
+    const payload = passwords.exportVault(passphrase);
+    if (payload === null || !win) return false;
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: 'Экспорт паролей',
+      defaultPath: 'oblako-passwords.json',
+      filters: [{ name: 'Зашифрованный экспорт', extensions: ['json'] }],
+    });
+    if (canceled || !filePath) return false;
+    try {
+      fs.writeFileSync(filePath, payload, 'utf8');
+      return true;
+    } catch (e) {
+      console.error('[Passwords] экспорт: не удалось записать файл:', (e as Error).message);
+      return false;
+    }
+  });
+  ipcMain.handle(IPC.PASSWORDS_IMPORT, async (_e, passphrase: string) => {
+    if (!win) return 0;
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      title: 'Импорт паролей',
+      filters: [{ name: 'Зашифрованный экспорт', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+    if (canceled || !filePaths[0]) return 0;
+    let payload: string;
+    try {
+      payload = fs.readFileSync(filePaths[0], 'utf8');
+    } catch (e) {
+      console.error('[Passwords] импорт: не удалось прочитать файл:', (e as Error).message);
+      return 0;
+    }
+    const count = passwords.importVault(passphrase, payload);
+    if (count > 0) chromeView?.webContents.send(IPC.PASSWORDS_CHANGED);
+    return count;
   });
 
   // Заход G, блок 5 — разовый бэкфилл истории. Запускается только по явному действию

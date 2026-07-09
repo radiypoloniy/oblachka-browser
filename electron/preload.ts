@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, SemanticSearchResult } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, SemanticSearchResult, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -209,6 +209,22 @@ const api: OblakoApi = {
     const handler = (_e: unknown, connected: boolean) => cb(connected);
     ipcRenderer.on(IPC.AI_KEY_STATUS_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.AI_KEY_STATUS_CHANGED, handler);
+  },
+
+  // Менеджер паролей, шаг 1 (см. electron/PasswordManager.ts).
+  listPasswords:     ()                                        => ipcRenderer.invoke(IPC.PASSWORDS_LIST) as Promise<PasswordMeta[]>,
+  revealPassword:    (id: number)                               => ipcRenderer.invoke(IPC.PASSWORDS_REVEAL, id) as Promise<string | null>,
+  copyPasswordField: (id: number, field: PasswordCopyField)     => ipcRenderer.invoke(IPC.PASSWORDS_COPY, id, field) as Promise<boolean>,
+  addPassword:       (input: PasswordAddInput)                  => ipcRenderer.invoke(IPC.PASSWORDS_ADD, input) as Promise<boolean>,
+  updatePassword:    (input: PasswordUpdateInput)                => ipcRenderer.invoke(IPC.PASSWORDS_UPDATE, input) as Promise<boolean>,
+  deletePassword:    (id: number)                               => ipcRenderer.invoke(IPC.PASSWORDS_DELETE, id) as Promise<void>,
+  generatePassword:  (opts: PasswordGenerateOptions)            => ipcRenderer.invoke(IPC.PASSWORDS_GENERATE, opts) as Promise<string>,
+  exportPasswords:   (passphrase: string)                       => ipcRenderer.invoke(IPC.PASSWORDS_EXPORT, passphrase) as Promise<boolean>,
+  importPasswords:   (passphrase: string)                       => ipcRenderer.invoke(IPC.PASSWORDS_IMPORT, passphrase) as Promise<number>,
+  onPasswordsChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.PASSWORDS_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.PASSWORDS_CHANGED, handler);
   },
 
   embedPreload: EMBED_PRELOAD,

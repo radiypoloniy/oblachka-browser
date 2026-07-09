@@ -4,50 +4,15 @@
 // Отдельный файл БД от history.sqlite — изоляция, независимый бэкап, миграции истории не задевают
 // сейф паролей (см. CLAUDE.md — зона максимальной осторожности к потере данных).
 //
-// Заход IPC (шаг 3) заменит локальные типы ниже на импорт из shared/ipc.ts — на этом шаге БД ещё
-// не подключена к IPC, типы держим здесь, чтобы не создавать преждевременную связь с контрактом.
 import { app, clipboard } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import * as VaultCrypto from './VaultCrypto';
+import type { PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions } from '../shared/ipc';
 
 type Database = import('better-sqlite3').Database;
 type BetterSqlite3 = typeof import('better-sqlite3');
-
-export interface PasswordMeta {
-  id: number;
-  origin: string;
-  url: string;
-  username: string;
-  title: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface PasswordAddInput {
-  url: string;
-  username: string;
-  password: string;
-  title: string;
-  notes?: string;
-}
-
-// undefined-поля — не менять; password: undefined — оставить прежний секрет как есть.
-export type PasswordUpdateInput = Partial<Omit<PasswordAddInput, 'password'>> & {
-  id: number;
-  password?: string;
-};
-
-export type PasswordCopyField = 'username' | 'password';
-
-export interface PasswordGenerateOptions {
-  length: number;
-  lower: boolean;
-  upper: boolean;
-  digits: boolean;
-  symbols: boolean;
-}
 
 const CLIPBOARD_CLEAR_MS = 30_000;
 const LOWER = 'abcdefghijklmnopqrstuvwxyz';
