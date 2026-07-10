@@ -139,11 +139,46 @@ function createIconHost(field: HTMLInputElement): { host: HTMLDivElement; btn: H
   return { host, btn };
 }
 
+// Многие сайты уже держат свою иконку (глазик «показать пароль», галочка валидации и т.п.)
+// в ТОМ ЖЕ правом углу поля — сам input часто растянут на всю ширину обёртки (включая место
+// под чужую иконку), их overlay просто рисуется поверх через position:absolute внутри
+// position:relative обёртки. Живой пример поймал это ровно так: наша иконка садилась
+// ТОЧНО на чужую. Ищем такое препятствие в родителе/деде поля и уступаем ему место слева,
+// вместо жёсткой привязки к правому краю самого input — без хардкода конкретных сайтов/классов.
+function findRightEdgeObstacleX(field: HTMLInputElement, fieldRect: DOMRect): number | null {
+  const scopes = [field.parentElement, field.parentElement?.parentElement].filter(
+    (x): x is HTMLElement => !!x,
+  );
+  let leftmost: number | null = null;
+  for (const scope of scopes) {
+    for (const el of Array.from(scope.querySelectorAll('*'))) {
+      if (el === field || el.tagName === 'INPUT') continue;
+      const r = (el as HTMLElement).getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      // Пересекается с полем по вертикали и находится в его правой половине — типичная зона
+      // под «свою» иконку сайта. За пределы поля вправо не выходим — то, что торчит наружу
+      // (например, кнопка отправки формы рядом), к этой эвристике не относится.
+      const vOverlap = r.top < fieldRect.bottom && r.bottom > fieldRect.top;
+      if (!vOverlap) continue;
+      if (r.left < fieldRect.left + fieldRect.width * 0.5) continue;
+      if (r.right > fieldRect.right + 4) continue;
+      if (leftmost === null || r.left < leftmost) leftmost = r.left;
+    }
+  }
+  return leftmost;
+}
+
 function positionIcon(field: HTMLInputElement, btn: HTMLButtonElement): boolean {
   const r = field.getBoundingClientRect();
   if (r.width < MIN_FIELD_WIDTH_FOR_ICON || r.height < MIN_FIELD_HEIGHT_FOR_ICON) return false;
-  // Прижимаем к правому внутреннему краю поля — тот же приём, что у Chrome/1Password/Bitwarden.
-  const left = r.right - ICON_SIZE - ICON_MARGIN;
+  const obstacleX = findRightEdgeObstacleX(field, r);
+  // Прижимаем к правому внутреннему краю поля — тот же приём, что у Chrome/1Password/Bitwarden —
+  // либо, если там уже что-то чужое, уступаем место слева от него.
+  const left = (obstacleX ?? r.right) - ICON_SIZE - ICON_MARGIN;
+  // Не вылезаем ЗА левый край поля — если места категорически не хватает (узкое поле + чужая
+  // иконка почти во всю ширину), лучше не показывать значок вовсе, чем рисовать его внахлёст
+  // на текст/плейсхолдер.
+  if (left < r.left + ICON_MARGIN) return false;
   const top = r.top + (r.height - ICON_SIZE) / 2;
   btn.style.left = `${left}px`;
   btn.style.top = `${top}px`;
