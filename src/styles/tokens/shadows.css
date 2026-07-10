@@ -28,7 +28,9 @@
     0 6px 18px rgba(40,30,80,0.16),
     0 20px 48px rgba(40,30,80,0.22);
 
-  /* Focus ring — violet, soft, no hard border */
-  --ring-accent: 0 0 0 3px rgba(138,63,238,0.24);
-  --ring-system: 0 0 0 3px rgba(65,128,219,0.20);
+  /* Focus ring — бирюзовый (accent), мягкий, без жёсткой границы.
+     --ring-system теперь на фиолетовом — --system переехал на violet
+     вместе с ролью «облако/система» (--accent занял бирюзовый). */
+  --ring-accent: 0 0 0 3px rgba(0,180,216,0.24);
+  --ring-system: 0 0 0 3px rgba(138,63,238,0.20);
 }
