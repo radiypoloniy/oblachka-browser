@@ -73,7 +73,14 @@ export default function Settings({ onClose }: SettingsProps) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', height: '100%',
-      background: 'var(--app-bg)', overflow: 'hidden',
+      overflow: 'hidden',
+      // Тот же "остров", что у сайдбара (Sidebar.tsx::asideBase) — см. подробный комментарий
+      // в History.tsx (тот же приём). Отступ по периметру не здесь — уже даёт contentRef margin
+      // в App.tsx.
+      ...islandPlate,
+      borderRadius: 'var(--radius-island)',
+      boxShadow: 'var(--shadow-island)',
+      background: 'var(--surface-solid)',
     }}>
       {/* Шапка */}
       <div style={{

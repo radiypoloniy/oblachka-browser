@@ -53,8 +53,6 @@ export default function App() {
   const [activeId, setActiveId] = useState(HUB_ID);
   const [vpnOn, setVpnOn] = useState(true);
   const [dark, setDark] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
@@ -104,11 +102,7 @@ export default function App() {
   // tabErrorRef нужен в pushBounds: reserve не применяем когда показана страница ошибки.
   const tabErrorRef = useRef(tabError);
   tabErrorRef.current = tabError;
-  // settingsOpenRef / historyOpenRef: при открытых панелях скрываем WebContentsView нулевыми bounds.
-  const settingsOpenRef = useRef(settingsOpen);
-  settingsOpenRef.current = settingsOpen;
-  const historyOpenRef = useRef(historyOpen);
-  historyOpenRef.current = historyOpen;
+  // downloadsOpenRef: пока открыты Загрузки (оверлей), скрываем WebContentsView нулевыми bounds.
   const downloadsOpenRef = useRef(downloadsOpen);
   downloadsOpenRef.current = downloadsOpen;
   const pendingPermissionsRef = useRef(pendingPermissions);
@@ -195,16 +189,16 @@ export default function App() {
       omniboxRef.current?.select();
     });
 
+    // Ctrl+H — та же псевдо-вкладка, что и иконка в сайдбаре (см. onHistory prop у Sidebar
+    // ниже): всегда создаёт новую (простая, предсказуемая семантика, как у обычного createTab —
+    // без «переключиться на уже открытую, если есть»).
     const unsubHistory = window.oblako.onHistoryOpen(() => {
-      setHistoryOpen((v) => !v);
-      setSettingsOpen(false);
+      void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })();
       setDownloadsOpen(false);
     });
 
     const unsubDownloadsOpen = window.oblako.onDownloadsOpen(() => {
       setDownloadsOpen((v) => !v);
-      setSettingsOpen(false);
-      setHistoryOpen(false);
     });
 
     const unsubPermission = window.oblako.onPermissionRequest((req) => {
@@ -423,8 +417,8 @@ export default function App() {
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
         onSplit={(id) => { setSplitRatioState(0.5); void window.oblako.enterSplit(id); }}
         onExitSplit={() => { void window.oblako.exitSplit(); }}
-        onSettings={() => { setSettingsOpen((v) => !v); setHistoryOpen(false); setDownloadsOpen(false); }}
-        onHistory={() => { setHistoryOpen((v) => !v); setSettingsOpen(false); setDownloadsOpen(false); }}
+        onSettings={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })(); setDownloadsOpen(false); }}
+        onHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); setDownloadsOpen(false); }}
         onReorder={(section, ids) => { void window.oblako.reorderTabs(section, ids); }}
         onMoveSection={(tabId, section, idx) => { void window.oblako.moveTabSection(tabId, section, idx); }}
         sidebarNodes={sidebarNodes}
@@ -457,7 +451,7 @@ export default function App() {
           }}
           downloadsActive={downloadsActive}
           downloadsOpen={downloadsOpen}
-          onToggleDownloads={() => { setDownloadsOpen((v) => !v); setSettingsOpen(false); setHistoryOpen(false); }}
+          onToggleDownloads={() => { setDownloadsOpen((v) => !v); }}
           onToggleAiPanel={() => { void window.oblako.toggleAiPanel(); }}
         />
         {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView).
@@ -521,7 +515,7 @@ export default function App() {
             /* Обычный режим: хаб, ошибка или «дырка» под WebContentsView */
             <>
               {isHub
-                ? <Hub onSubmit={submit} onOpenHistory={() => { setHistoryOpen(true); setSettingsOpen(false); }} />
+                ? <Hub onSubmit={submit} onOpenHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); }} />
                 : tabError
                   ? <TabError
                       error={tabError}
