@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
-import { Clock, Sparkles, LayoutGrid, Plus, Send } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import {
+  Clock, Sparkles, LayoutGrid, MessageSquarePlus, Send, ArrowLeft,
+  BookOpen, Lightbulb, Globe, Code2, Bookmark, Utensils, type LucideIcon,
+} from 'lucide-react';
 import { getTopSites } from '../../shared/frecency';
 import type { TileSite } from '../../shared/frecency';
 import type { HubChatMessage, HubChatSessionMeta, HubMode } from '../../shared/ipc';
+import { markdownComponents } from './aiMarkdown';
 
 interface HubProps {
   tabId: string;
@@ -35,28 +40,52 @@ export default function Hub({ tabId, onSubmit, onOpenHistory }: HubProps) {
   };
 
   return (
+    // position:absolute/inset:0 — тот же приём, что у TabError.tsx: родитель (contentRef в
+    // App.tsx) сам НЕ display:flex, поэтому flex:1 здесь ничего не даёт (частая ловушка —
+    // именно из-за неё раньше не работал внутренний скролл ленты чата: без реальной границы
+    // высоты у Hub не было от чего схлопнуться overflowY:auto у транскрипта, контент просто
+    // вылезал за пределы contentRef и обрезался самым внешним overflow:hidden в App.tsx).
     <div style={{
-      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+      position: 'absolute', inset: 0,
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: mode === 'tiles' ? 'center' : 'flex-start',
       padding: '32px 48px', overflowY: mode === 'tiles' ? 'auto' : 'hidden',
-      gap: 24, minHeight: 0,
     }}>
-      <ModeToggle mode={mode} onChange={pickMode} />
-
       {mode === 'tiles'
-        ? <TilesView tiles={tiles} onSubmit={onSubmit} onOpenHistory={onOpenHistory} />
-        : <AiChatView tabId={tabId} />}
+        ? <TilesView tiles={tiles} onSubmit={onSubmit} onOpenHistory={onOpenHistory} mode={mode} onModeChange={pickMode} />
+        : <AiChatView tabId={tabId} mode={mode} onModeChange={pickMode} />}
     </div>
   );
 }
 
-// ── Переключатель режимов ────────────────────────────────────────────────────
+// ── Общая шапка (заголовок + переключатель режимов) — общий для обоих режимов вид ──────
+
+function HubHeader({ title, subtitle, mode, onModeChange }: {
+  title: ReactNode; subtitle: string; mode: HubMode; onModeChange: (m: HubMode) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, textAlign: 'center' }}>
+      <div>
+        <h1 style={{
+          margin: '0 0 6px', fontSize: 'var(--fs-2xl)', fontWeight: 700,
+          letterSpacing: 'var(--ls-tight)', color: 'var(--text-strong)',
+        }}>
+          {title}
+        </h1>
+        <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 'var(--fs-md)' }}>
+          {subtitle}
+        </p>
+      </div>
+      <ModeToggle mode={mode} onChange={onModeChange} />
+    </div>
+  );
+}
 
 function ModeToggle({ mode, onChange }: { mode: HubMode; onChange: (m: HubMode) => void }) {
   return (
     <div style={{
       display: 'inline-flex', flex: 'none', padding: 3, gap: 2,
-      background: 'var(--surface-sunken)', borderRadius: 'var(--radius-card)',
+      background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
       border: '1px solid var(--glass-edge)',
     }}>
       <ModeButton active={mode === 'tiles'} onClick={() => onChange('tiles')} icon={<LayoutGrid size={14} />} label="Обзор" />
@@ -70,10 +99,11 @@ function ModeButton({ active, onClick, icon, label }: { active: boolean; onClick
     <button
       onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
-        border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'default',
+        display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+        border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'default',
         fontSize: 'var(--fs-xs)', fontWeight: 600,
-        background: active ? 'var(--accent-soft)' : 'transparent',
+        background: active ? 'var(--surface-solid)' : 'transparent',
+        boxShadow: active ? 'var(--shadow-chip)' : 'none',
         color: active ? 'var(--accent)' : 'var(--text-muted)',
       }}
     >
@@ -82,27 +112,22 @@ function ModeButton({ active, onClick, icon, label }: { active: boolean; onClick
   );
 }
 
-// ── Режим «Обзор» — плитки популярных сайтов (без изменений) ───────────────────
+// ── Режим «Обзор» — плитки популярных сайтов ────────────────────────────────────
 
-function TilesView({ tiles, onSubmit, onOpenHistory }: {
+function TilesView({ tiles, onSubmit, onOpenHistory, mode, onModeChange }: {
   tiles: TileSite[]; onSubmit: (input: string) => void; onOpenHistory: () => void;
+  mode: HubMode; onModeChange: (m: HubMode) => void;
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 32 }}>
-      <div style={{ textAlign: 'center' }}>
-        <h1 style={{
-          margin: '0 0 6px', fontSize: 'var(--fs-3xl)', fontWeight: 700,
-          letterSpacing: 'var(--ls-tight)', color: 'var(--text-strong)',
-        }}>
-          Чем займёмся, <span style={{ color: 'var(--accent)' }}>Антон</span>?
-        </h1>
-        <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 'var(--fs-md)' }}>
-          Введите адрес или запрос в строке выше
-        </p>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 32, width: '100%', maxWidth: 680 }}>
+      <HubHeader
+        title={<>Чем займёмся, <span style={{ color: 'var(--accent)' }}>Антон</span>?</>}
+        subtitle="Введите адрес или запрос в строке выше"
+        mode={mode} onModeChange={onModeChange}
+      />
 
       {tiles.length > 0 && (
-        <div style={{ width: '100%', maxWidth: 680 }}>
+        <div style={{ width: '100%' }}>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(4, 1fr)',
@@ -200,7 +225,18 @@ function TileCard({ site, onClick }: { site: TileSite; onClick: () => void }) {
 
 // ── Режим «AI» — чат с локальной моделью (см. electron/HubChatManager.ts) ──────
 
-function AiChatView({ tabId }: { tabId: string }) {
+// Заглушки быстрых подсказок (на будущее — меню промптов на манер AI-хаба).
+// Просто подставляют текст в поле ввода, реального меню/персонализации пока нет.
+const QUICK_PROMPTS: { icon: LucideIcon; text: string }[] = [
+  { icon: BookOpen, text: 'Объясни квантовые компьютеры простыми словами' },
+  { icon: Lightbulb, text: 'Идеи для стартапа в сфере экологии' },
+  { icon: Globe, text: 'Как выучить новый язык быстрее?' },
+  { icon: Code2, text: 'Помоги написать код на Python' },
+  { icon: Bookmark, text: 'Что почитать из классики?' },
+  { icon: Utensils, text: 'Как правильно питаться?' },
+];
+
+function AiChatView({ tabId, mode, onModeChange }: { tabId: string; mode: HubMode; onModeChange: (m: HubMode) => void }) {
   const [sessions, setSessions] = useState<HubChatSessionMeta[]>([]);
   const [messages, setMessages] = useState<HubChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<number | null>(null);
@@ -246,15 +282,15 @@ function AiChatView({ tabId }: { tabId: string }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, streamText]);
 
-  const send = () => {
-    const text = input.trim();
-    if (!text || streaming) return;
-    setMessages((prev) => [...prev, { role: 'user', text, createdAt: Date.now() }]);
+  const send = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || streaming) return;
+    setMessages((prev) => [...prev, { role: 'user', text: trimmed, createdAt: Date.now() }]);
     setInput('');
     setStreaming(true);
     setStreamText('');
     setError(null);
-    window.oblako.sendHubChatMessage(tabId, text);
+    window.oblako.sendHubChatMessage(tabId, trimmed);
   };
 
   const newChat = () => {
@@ -277,34 +313,54 @@ function AiChatView({ tabId }: { tabId: string }) {
     });
   };
 
+  const pickPrompt = (text: string) => {
+    setInput(text);
+    textareaRef.current?.focus();
+  };
+
   const hasConversation = messages.length > 0 || streaming;
 
   return (
     <div style={{
-      flex: 1, width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column',
-      minHeight: 0, gap: 12,
+      flex: 1, width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column',
+      minHeight: 0, gap: 20,
     }}>
-      {hasConversation ? (
+      {hasConversation
+        ? (
+          <div style={{ flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <button
+              onClick={newChat}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
+                border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'default',
+                fontSize: 'var(--fs-xs)', fontWeight: 600,
+                background: 'transparent', color: 'var(--text-muted)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-strong)'; e.currentTarget.style.background = 'var(--surface-hover)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+            >
+              <ArrowLeft size={14} /> Назад к списку
+            </button>
+            <ModeToggle mode={mode} onChange={onModeChange} />
+          </div>
+        )
+        : (
+          <HubHeader
+            title="Спросите что угодно"
+            subtitle="Отвечает локальная модель, без интернета"
+            mode={mode} onModeChange={onModeChange}
+          />
+        )}
+
+      {hasConversation && (
         <div ref={transcriptRef} style={{
           flex: 1, minHeight: 0, overflowY: 'auto',
           display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 2px',
         }}>
           {messages.map((m, i) => <MessageBubble key={i} message={m} />)}
           {streaming && (
-            <MessageBubble message={{ role: 'assistant', text: streamText || '…', createdAt: Date.now() }} pending />
+            <MessageBubble message={{ role: 'assistant', text: streamText, createdAt: Date.now() }} pending />
           )}
-        </div>
-      ) : (
-        <div style={{
-          flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center',
-        }}>
-          <h2 style={{ margin: 0, fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text-strong)' }}>
-            Спросите что угодно
-          </h2>
-          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 'var(--fs-sm)' }}>
-            Отвечает локальная модель, без интернета
-          </p>
         </div>
       )}
 
@@ -315,10 +371,9 @@ function AiChatView({ tabId }: { tabId: string }) {
       )}
 
       <div style={{
-        flex: 'none', display: 'flex', alignItems: 'flex-end', gap: 6, padding: 8,
-        background: 'var(--surface-island)',
-        backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
-        borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)',
+        flex: 'none', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '12px 14px',
+        background: 'var(--surface-solid)',
+        borderRadius: 'var(--radius-island)', boxShadow: 'var(--shadow-card)',
         border: '1px solid var(--glass-edge)',
       }}>
         <textarea
@@ -326,35 +381,35 @@ function AiChatView({ tabId }: { tabId: string }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); }
           }}
           placeholder="Напишите сообщение…"
           rows={1}
           style={{
             flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent',
-            color: 'var(--text-strong)', fontSize: 'var(--fs-sm)', fontFamily: 'inherit',
-            maxHeight: 140, minHeight: 22, padding: '5px 6px',
+            color: 'var(--text-strong)', fontSize: 'var(--fs-md)', fontFamily: 'inherit',
+            maxHeight: 140, minHeight: 24, padding: '6px 8px',
           }}
         />
         <button
           onClick={newChat}
           title="Новый чат"
           style={{
-            flex: 'none', border: 'none', background: 'transparent', cursor: 'default', padding: 7,
+            flex: 'none', border: 'none', background: 'transparent', cursor: 'default', padding: 8,
             borderRadius: 'var(--radius-sm)', display: 'inline-flex', color: 'var(--text-faint)',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; e.currentTarget.style.background = 'var(--surface-hover)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent'; }}
         >
-          <Plus size={16} />
+          <MessageSquarePlus size={17} />
         </button>
         <button
-          onClick={send}
+          onClick={() => send(input)}
           disabled={streaming || !input.trim()}
           title="Отправить"
           style={{
-            flex: 'none', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'default', padding: 8,
-            display: 'inline-flex',
+            flex: 'none', border: 'none', borderRadius: '50%', cursor: 'default',
+            width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             background: input.trim() && !streaming ? 'var(--accent)' : 'var(--surface-sunken)',
             color: input.trim() && !streaming ? 'var(--on-accent)' : 'var(--text-faint)',
           }}
@@ -363,48 +418,111 @@ function AiChatView({ tabId }: { tabId: string }) {
         </button>
       </div>
 
-      {sessions.length > 0 && (
-        <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 150, overflowY: 'auto' }}>
-          {sessions.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => openSession(s.id)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', textAlign: 'left',
-                border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'default',
-                background: s.id === sessionId ? 'var(--surface-sunken)' : 'transparent',
-                color: s.id === sessionId ? 'var(--text-strong)' : 'var(--text-muted)',
-                fontSize: 'var(--fs-xs)',
-              }}
-              onMouseEnter={(e) => { if (s.id !== sessionId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-              onMouseLeave={(e) => { if (s.id !== sessionId) e.currentTarget.style.background = 'transparent'; }}
-            >
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {s.title || 'Без названия'}
-              </span>
-              <span style={{ color: 'var(--text-faint)', flex: 'none' }}>{formatSessionTime(s.updatedAt)}</span>
-            </button>
-          ))}
-        </div>
+      {!hasConversation && (
+        <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+            {QUICK_PROMPTS.map((p) => (
+              <QuickPromptChip key={p.text} icon={p.icon} text={p.text} onClick={() => pickPrompt(p.text)} />
+            ))}
+          </div>
+
+          {sessions.length > 0 && (
+            <div>
+              <div style={{
+                fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)', marginBottom: 8,
+              }}>
+                Недавние запросы
+              </div>
+              <div style={{
+                background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
+                boxShadow: 'var(--shadow-card)', border: '1px solid var(--glass-edge)', overflow: 'hidden',
+              }}>
+                {sessions.map((s, i) => (
+                  <button
+                    key={s.id}
+                    onClick={() => openSession(s.id)}
+                    style={{
+                      display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+                      padding: '12px 16px', textAlign: 'left', cursor: 'default',
+                      border: 'none', borderTop: i === 0 ? 'none' : '1px solid var(--glass-edge)',
+                      background: 'transparent', color: 'var(--text-body)', fontSize: 'var(--fs-sm)',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.title || 'Без названия'}
+                    </span>
+                    <span style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-xs)', flex: 'none' }}>
+                      {formatSessionTime(s.updatedAt)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{
+            textAlign: 'center', color: 'var(--text-faint)', fontSize: 'var(--fs-xs)',
+            lineHeight: 1.6, marginTop: 4,
+          }}>
+            <div>Локальная модель работает на вашем устройстве.</div>
+            <div>Ваши данные не покидают устройство.</div>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-function MessageBubble({ message, pending }: { message: HubChatMessage; pending?: boolean }) {
-  const isUser = message.role === 'user';
+function QuickPromptChip({ icon: Icon, text, onClick }: { icon: LucideIcon; text: string; onClick: () => void }) {
   return (
-    <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
-      <div style={{
-        maxWidth: '85%', padding: '8px 12px', borderRadius: 'var(--radius-card)',
-        fontSize: 'var(--fs-sm)', lineHeight: 'var(--lh-body)', whiteSpace: 'pre-wrap',
-        color: isUser ? 'var(--text-strong)' : 'var(--text-body)',
-        background: isUser ? 'var(--accent-soft)' : 'var(--surface-island)',
-        border: isUser ? 'none' : '1px solid var(--glass-edge)',
-        opacity: pending ? 0.85 : 1,
-      }}>
-        {message.text}
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px',
+        background: 'var(--surface-island)',
+        backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
+        border: '1px solid var(--glass-edge)', borderRadius: 'var(--radius-pill)',
+        color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-island)'; }}
+    >
+      <Icon size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} />
+      {text}
+    </button>
+  );
+}
+
+// Тот же паттерн, что у Claude/ChatGPT: реплика ПОЛЬЗОВАТЕЛЯ — пузырь с заметной подложкой,
+// ответ МОДЕЛИ — без подложки вообще, обычным текстом во всю ширину (markdown-разметка —
+// markdownComponents, общий рендер с боковой AI-панелью, см. components/aiMarkdown.tsx).
+// Пузырь — var(--surface-sunken) (тема-зависимый: тёмная уже сплошная, светлая полупрозрачная)
+// + бордер var(--divider) — на текущем почти-белом --app-bg одной полупрозрачной заливки
+// недостаточно, граница гарантирует видимость пузыря в обеих темах без хардкода цвета.
+function MessageBubble({ message, pending }: { message: HubChatMessage; pending?: boolean }) {
+  if (message.role === 'user') {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{
+          maxWidth: '80%', padding: '8px 14px', borderRadius: 'var(--radius-card)',
+          fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          color: 'var(--text-strong)', background: 'var(--surface-sunken)',
+          border: '1px solid var(--divider)',
+        }}>
+          {message.text}
+        </div>
       </div>
+    );
+  }
+
+  const showPlaceholder = pending && message.text.trim() === '';
+  return (
+    <div style={{ width: '100%', opacity: showPlaceholder ? 0.6 : 1 }}>
+      {showPlaceholder
+        ? <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-faint)' }}>…</span>
+        : <ReactMarkdown components={markdownComponents}>{message.text}</ReactMarkdown>}
     </div>
   );
 }
