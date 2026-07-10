@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyRound, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, type LucideIcon } from 'lucide-react';
-import type { AdBlockState, BackfillProgress, HistoryContentCoverage, VpnStatus, VpnServerMeta, PasswordMeta, PasswordCopyField } from '../../shared/ipc';
+import type { AdBlockState, BackfillProgress, HistoryContentCoverage, VpnStatus, VpnServerMeta, VpnConnectionState, PasswordMeta, PasswordCopyField } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 
 interface SettingsProps {
@@ -317,16 +317,19 @@ function AdBlockSection({
 // Шаг 2 захода D: UI + IPC-проводка. Хранение ключа на этом шаге — только в памяти main-процесса
 // (см. AiKeyStore.ts) — persist через safeStorage добавляется отдельным коммитом (шаг 3), поэтому
 // «подключено» здесь не переживёт перезапуск браузера ДО того коммита — это ожидаемо на этом шаге.
-// VPN, шаг 1 — только подписка и список серверов. Подключения (спавн Xray, session.setProxy)
-// здесь ещё нет — это отдельные, более рискованные шаги (см. план). Ссылка подписки и
-// credential каждого сервера никогда не покидают main — сюда приходит только редактированный
-// список (VpnServerMeta) и статус (VpnStatus), тот же приём, что у PasswordMeta/AiKeyStore.
+// VPN, шаг 2 — подписка/список серверов (шаг 1) + подключение процесса Xray (шаг 2). Ссылка
+// подписки и credential каждого сервера никогда не покидают main — сюда приходит только
+// редактированный список (VpnServerMeta) и статусы (VpnStatus/VpnConnectionState), тот же
+// приём, что у PasswordMeta/AiKeyStore. ⚠️ "Подключиться" пока НЕ переключает трафик вкладок
+// (session.setProxy — шаг 3, ещё не реализован) — только поднимает локальный процесс Xray.
 function VpnSection() {
   const [status, setStatus] = useState<VpnStatus | null>(null);
   const [servers, setServers] = useState<VpnServerMeta[]>([]);
+  const [conn, setConn] = useState<VpnConnectionState | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [connectingId, setConnectingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
 
@@ -335,14 +338,26 @@ function VpnSection() {
   useEffect(() => {
     let mounted = true;
     window.oblako.getVpnStatus().then((s) => { if (mounted) setStatus(s); });
+    window.oblako.getVpnConnectionState().then((c) => { if (mounted) setConn(c); });
     loadServers();
-    const unsub = window.oblako.onVpnStatusChanged((s) => {
+    const unsubStatus = window.oblako.onVpnStatusChanged((s) => {
       if (!mounted) return;
       setStatus(s);
       loadServers();
     });
-    return () => { mounted = false; unsub(); };
+    const unsubConn = window.oblako.onVpnConnectionStateChanged((c) => { if (mounted) setConn(c); });
+    return () => { mounted = false; unsubStatus(); unsubConn(); };
   }, []);
+
+  async function handleConnect(serverId: string) {
+    setConnectingId(serverId);
+    await window.oblako.vpnConnect(serverId);
+    setConnectingId(null);
+  }
+
+  async function handleDisconnect() {
+    await window.oblako.vpnDisconnect();
+  }
 
   async function handleSave() {
     const url = urlInput.trim();
@@ -384,8 +399,8 @@ function VpnSection() {
         <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
           Вставьте ссылку подписки от вашего VPN-сервиса (vless/trojan) — так же, как в Happ или
           Hiddify. Ссылка и серверы хранятся зашифрованными на этом устройстве, никуда, кроме
-          вашего провайдера, не отправляются. Само подключение — отдельный следующий шаг; сейчас
-          можно сохранить подписку и посмотреть список серверов.
+          вашего провайдера, не отправляются. Подключение пока экспериментальное: поднимает
+          локальный туннель, но ещё не переключает на него трафик вкладок — это следующий шаг.
         </p>
       </div>
 
@@ -473,34 +488,60 @@ function VpnSection() {
             Серверы ({servers.length})
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {servers.map((s) => (
-              <div
-                key={s.id}
-                style={{
-                  ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '9px 14px',
-                  display: 'flex', alignItems: 'center', gap: 10,
-                }}
-              >
-                <span style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
-                  color: 'var(--text-faint)', flex: 'none', width: 44,
-                }}>
-                  {s.protocol}
-                </span>
-                <span style={{
-                  flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                }}>
-                  {s.remark}
-                </span>
-                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontFamily: 'monospace', flex: 'none' }}>
-                  {s.address}:{s.port}
-                </span>
-                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
-                  {s.transport}/{s.security}
-                </span>
-              </div>
-            ))}
+            {servers.map((s) => {
+              const isTarget = conn?.serverId === s.id;
+              const isRunning = isTarget && conn?.state === 'running';
+              const isStarting = (isTarget && conn?.state === 'starting') || connectingId === s.id;
+              const isError = isTarget && conn?.state === 'error';
+              return (
+                <div key={s.id}>
+                  <div
+                    style={{
+                      ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '9px 14px',
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      boxShadow: isRunning ? '0 0 0 1.5px var(--system) inset' : undefined,
+                    }}
+                  >
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
+                      color: 'var(--text-faint)', flex: 'none', width: 44,
+                    }}>
+                      {s.protocol}
+                    </span>
+                    <span style={{
+                      flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
+                      {s.remark}
+                    </span>
+                    <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontFamily: 'monospace', flex: 'none' }}>
+                      {s.address}:{s.port}
+                    </span>
+                    <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
+                      {s.transport}/{s.security}
+                    </span>
+                    {isRunning ? (
+                      <button onClick={() => void handleDisconnect()} style={{ ...btnGhost, flex: 'none', padding: '5px 10px' }}>
+                        Отключить
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => void handleConnect(s.id)}
+                        disabled={isStarting}
+                        style={{ ...btnGhost, flex: 'none', padding: '5px 10px', opacity: isStarting ? 0.6 : 1 }}
+                      >
+                        {isStarting ? 'Подключение…' : 'Подключить'}
+                      </button>
+                    )}
+                  </div>
+                  {isError && conn?.error && (
+                    <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)', padding: '3px 14px 0' }}>
+                      {conn.error}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

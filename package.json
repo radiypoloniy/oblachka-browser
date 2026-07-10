@@ -16,6 +16,7 @@
     "start": "cross-env NODE_ENV=production electron .",
     "download-filters": "node scripts/download-filters.mjs",
     "download-model": "node scripts/download-model.mjs",
+    "download-xray": "node scripts/download-xray.mjs",
     "postinstall": "electron-rebuild -f -w better-sqlite3 || echo [postinstall] better-sqlite3 rebuild skipped — history unavailable without C++ tools"
   },
   "dependencies": {

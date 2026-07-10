@@ -27,7 +27,9 @@ import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
 import * as vpnKeyStore from './VpnKeyStore';
 import * as vpnSubscription from './VpnSubscription';
+import * as vpnProcess from './VpnProcess';
 import { toServerMeta } from './VpnParser';
+import type { VpnConnectionState } from '../shared/ipc';
 import * as passwordAutofill from './PasswordAutofillManager';
 import { setChromeView as setEmbedClientChromeView } from './EmbedClient';
 import { indexVisit } from './HistoryIndexer';
@@ -461,6 +463,10 @@ function createWindow() {
     console.log('[shutdown] win close: старт, isShuttingDown=true, сохраняю сессию');
     if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot());
     console.log('[shutdown] win close: сессия сохранена');
+    // Windows не убивает дочерние процессы автоматически при выходе родителя — без явной
+    // остановки xray.exe продолжил бы висеть в фоне (и туннелировать трафик) уже после
+    // закрытия браузера. Fire-and-forget — не блокируем закрытие окна ожиданием.
+    void vpnProcess.stop();
   });
 
   win.on('closed', () => {
@@ -591,6 +597,37 @@ function registerIpc() {
   ipcMain.handle(IPC.VPN_LIST_SERVERS, () => vpnKeyStore.getServers().map(toServerMeta));
   vpnKeyStore.onChanged(() => {
     chromeView?.webContents.send(IPC.VPN_STATUS_CHANGED, vpnStatus());
+  });
+
+  // VPN, шаг 2 — только процесс Xray + локальный SOCKS-порт (electron/VpnProcess.ts).
+  // ⚠️ session.setProxy ЕЩЁ НЕ подключён (шаг 3) — "connect" здесь не переключает трафик
+  // вкладок, только поднимает процесс и проверяет, что порт отвечает.
+  // vpnConnectionTarget не сбрасывается при неудачном connect — иначе состояние 'error'
+  // потеряло бы "какой именно сервер не подключился", см. VpnConnectionState в shared/ipc.ts.
+  let vpnConnectionTarget: { id: string; remark: string } | null = null;
+  const vpnConnectionState = (): VpnConnectionState => ({
+    state: vpnProcess.getState(),
+    serverId: vpnConnectionTarget?.id ?? null,
+    serverRemark: vpnConnectionTarget?.remark ?? null,
+  });
+  ipcMain.handle(IPC.VPN_CONNECT, async (_e, serverId: string) => {
+    const server = vpnKeyStore.getServers().find((s) => s.id === serverId);
+    if (!server) return { ok: false, error: 'Сервер не найден — обновите подписку' };
+    vpnConnectionTarget = { id: server.id, remark: server.remark };
+    return vpnProcess.start(server);
+  });
+  ipcMain.handle(IPC.VPN_DISCONNECT, async () => {
+    // Тот же приём, что VpnProcess.ts::stop() уже применяет к своему состоянию (wasError) —
+    // не затираем target, если disconnect вызван как уборка ПОСЛЕ краша (Settings.tsx показывает
+    // ошибку у конкретного сервера по conn.serverId — обнулив его здесь, сообщение об ошибке
+    // молча исчезло бы из UI при следующей же попытке прибраться после сбоя).
+    const wasError = vpnProcess.getState() === 'error';
+    await vpnProcess.stop();
+    if (!wasError) vpnConnectionTarget = null;
+  });
+  ipcMain.handle(IPC.VPN_GET_CONNECTION_STATE, () => vpnConnectionState());
+  vpnProcess.onStateChange(() => {
+    chromeView?.webContents.send(IPC.VPN_CONNECTION_STATE_CHANGED, vpnConnectionState());
   });
 
   // Менеджер паролей, шаг 1 (см. electron/PasswordManager.ts). Пароль пересекает IPC только

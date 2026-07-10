@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -235,6 +235,16 @@ const api: OblakoApi = {
     const handler = (_e: unknown, status: VpnStatus) => cb(status);
     ipcRenderer.on(IPC.VPN_STATUS_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.VPN_STATUS_CHANGED, handler);
+  },
+  // VPN, шаг 2 — только процесс + локальный SOCKS-порт (см. electron/VpnProcess.ts).
+  // session.setProxy ещё не подключён — connect не переключает трафик вкладок.
+  vpnConnect:    (serverId: string) => ipcRenderer.invoke(IPC.VPN_CONNECT, serverId) as Promise<{ ok: boolean; error?: string }>,
+  vpnDisconnect: () => ipcRenderer.invoke(IPC.VPN_DISCONNECT) as Promise<void>,
+  getVpnConnectionState: () => ipcRenderer.invoke(IPC.VPN_GET_CONNECTION_STATE) as Promise<VpnConnectionState>,
+  onVpnConnectionStateChanged: (cb: (state: VpnConnectionState) => void) => {
+    const handler = (_e: unknown, state: VpnConnectionState) => cb(state);
+    ipcRenderer.on(IPC.VPN_CONNECTION_STATE_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.VPN_CONNECTION_STATE_CHANGED, handler);
   },
 
   // Менеджер паролей, шаг 1 (см. electron/PasswordManager.ts).

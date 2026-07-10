@@ -246,6 +246,14 @@ export const IPC = {
   VPN_LIST_SERVERS:          'vpn:list-servers',          // renderer → main: VpnServerMeta[] (без credential)
   VPN_STATUS_CHANGED:        'vpn:status-changed',        // main → renderer: push нового VpnStatus
 
+  // VPN, шаг 2 (см. electron/VpnProcess.ts) — только процесс Xray + локальный SOCKS-порт.
+  // session.setProxy ЕЩЁ НЕ подключён (шаг 3) — трафик вкладок пока НИКУДА не переключается,
+  // "подключение" здесь означает только "процесс поднялся и порт отвечает".
+  VPN_CONNECT:               'vpn:connect',                // renderer → main: serverId → { ok, error? }
+  VPN_DISCONNECT:            'vpn:disconnect',             // renderer → main: остановить процесс
+  VPN_GET_CONNECTION_STATE:  'vpn:get-connection-state',   // renderer → main: VpnConnectionState
+  VPN_CONNECTION_STATE_CHANGED: 'vpn:connection-state-changed', // main → renderer: push VpnConnectionState
+
   // Менеджер паролей, шаг 1 (см. electron/VaultCrypto.ts, electron/PasswordManager.ts) — сейф
   // отдельный от settings.json/истории. Сам пароль пересекает IPC только по явному действию
   // пользователя (reveal) — список и copy никогда не отдают plaintext без явного запроса на него.
@@ -413,6 +421,17 @@ export interface VpnSubscriptionResult {
   error?: string;
   count?: number;
   skipped?: number;
+}
+
+// VPN, шаг 2 — состояние процесса Xray. serverId/remark — какой сервер сейчас активен (или
+// последняя попытка) для подсветки в списке. error — только человекочитаемое сообщение,
+// НЕ сырой лог Xray (тот может содержать SNI/адреса — см. VpnProcess.ts::getRecentLogs,
+// отдельный канал не заведён в шаге 2, лог наружу пока вообще не уходит).
+export interface VpnConnectionState {
+  state: 'stopped' | 'starting' | 'running' | 'error';
+  serverId: string | null;
+  serverRemark: string | null;
+  error?: string;
 }
 
 // ── Менеджер паролей, шаг 1 (сейф, см. electron/PasswordManager.ts) ───────────
@@ -704,6 +723,13 @@ export interface OblakoApi {
   deleteVpnSubscription(): Promise<void>;
   listVpnServers(): Promise<VpnServerMeta[]>;
   onVpnStatusChanged(cb: (status: VpnStatus) => void): () => void;
+
+  // VPN, шаг 2 — только процесс + локальный SOCKS-порт, session.setProxy ещё не подключён
+  // (см. electron/VpnProcess.ts). "connect" пока не переключает трафик вкладок.
+  vpnConnect(serverId: string): Promise<{ ok: boolean; error?: string }>;
+  vpnDisconnect(): Promise<void>;
+  getVpnConnectionState(): Promise<VpnConnectionState>;
+  onVpnConnectionStateChanged(cb: (state: VpnConnectionState) => void): () => void;
 
   // Менеджер паролей, шаг 1 (см. electron/PasswordManager.ts). Пароль пересекает IPC только
   // через revealPassword/generatePassword — listPasswords им не отдаёт, copyPasswordField сам

@@ -5,3 +5,4 @@ dist-electron/
 .DS_Store
 scripts/shots/
 resources/models/
+resources/xray/
