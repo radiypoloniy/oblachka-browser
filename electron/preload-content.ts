@@ -23,12 +23,14 @@
 // (webPreferences.sandbox: true, обязателен для гостевых страниц — снижать его тут нельзя ради
 // удобства импорта) не может require() локальные относительные модули, только сам 'electron'
 // и Node-совместимые встроенные. Отсюда — вручную продублированные строки, ДОЛЖНЫ совпадать
-// с shared/ipc.ts::IPC.PASSWORDS_FORM_DETECTED/PASSWORDS_CREDENTIAL_SUBMITTED/PASSWORDS_FILL.
+// с shared/ipc.ts::IPC.PASSWORDS_FORM_DETECTED/PASSWORDS_CREDENTIAL_SUBMITTED/PASSWORDS_FILL/
+// PASSWORDS_FIELD_ICON_CLICK.
 import { ipcRenderer } from 'electron';
 
 const CH_FORM_DETECTED = 'passwords:form-detected';
 const CH_CREDENTIAL_SUBMITTED = 'passwords:credential-submitted';
 const CH_FILL = 'passwords:fill';
+const CH_FIELD_ICON_CLICK = 'passwords:field-icon-click';
 
 function isTopFrame(): boolean {
   try {
@@ -61,9 +63,12 @@ function findUsernameField(passwordField: HTMLInputElement): HTMLInputElement | 
   return candidates.find((c) => c !== passwordField && isUsernameType(c)) ?? null;
 }
 
-function scanForms(): { hasLoginForm: boolean; hasUsernameField: boolean } {
+function visiblePasswordFields(): HTMLInputElement[] {
+  return (Array.from(document.querySelectorAll('input[type="password"]')) as HTMLInputElement[]).filter(isVisible);
+}
+
+function scanForms(pwFields: HTMLInputElement[]): { hasLoginForm: boolean; hasUsernameField: boolean } {
   try {
-    const pwFields = (Array.from(document.querySelectorAll('input[type="password"]')) as HTMLInputElement[]).filter(isVisible);
     if (pwFields.length === 0) return { hasLoginForm: false, hasUsernameField: false };
     const hasUsernameField = pwFields.some((pf) => findUsernameField(pf) !== null);
     return { hasLoginForm: true, hasUsernameField };
@@ -72,11 +77,126 @@ function scanForms(): { hasLoginForm: boolean; hasUsernameField: boolean } {
   }
 }
 
+// ── Иконка-ключ прямо в поле пароля (не в тулбаре) ──────────────────────────────────────────
+// Единственная внедряемая в страницу видимая вещь — маленький значок, ничего больше. Сама
+// карточка с логинами/генератором рисуется в ОТДЕЛЬНОЙ привилегированной WebContentsView
+// (electron/PasswordPopoverManager.ts, тот же compositор, что у тулбарной иконки-ключа) —
+// просто заякоренной на позицию этого значка вместо позиции тулбара. Секреты через эту
+// границу не проходят вообще: клик шлёт наружу только координаты поля (rect), ничего больше.
+const ICON_SIZE = 20;
+const ICON_MARGIN = 4;
+// Меньше этого — поле физически не вместит значок без визуального мусора, не показываем.
+const MIN_FIELD_WIDTH_FOR_ICON = ICON_SIZE + ICON_MARGIN * 2;
+const MIN_FIELD_HEIGHT_FOR_ICON = 14;
+
+const KEY_ICON_SVG = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/>
+    <path d="m21 2-9.6 9.6"/>
+    <circle cx="7.5" cy="15.5" r="5.5"/>
+  </svg>`;
+
+const fieldIcons = new Map<HTMLInputElement, { host: HTMLDivElement; btn: HTMLButtonElement }>();
+
+function createIconHost(field: HTMLInputElement): { host: HTMLDivElement; btn: HTMLButtonElement } {
+  const host = document.createElement('div');
+  // Инлайн-стили на самом host — страница теоретически может их переопределить своим CSS
+  // (тот же риск, на который идут любые расширения-менеджеры паролей), но случайный конфликт
+  // маловероятен: ни класса, ни id, которые могла бы случайно поймать чужая CSS-селекция.
+  host.style.cssText = 'position:fixed; top:0; left:0; width:0; height:0; z-index:2147483647; pointer-events:none;';
+  const shadow = host.attachShadow({ mode: 'closed' });
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.setAttribute('aria-label', 'Пароли Oblako');
+  btn.innerHTML = KEY_ICON_SVG;
+  btn.style.cssText = `
+    all: initial; position: fixed; width: ${ICON_SIZE}px; height: ${ICON_SIZE}px;
+    display: flex; align-items: center; justify-content: center; pointer-events: auto;
+    border: none; border-radius: 5px; background: rgba(120,120,140,0.16); color: rgba(90,90,110,0.9);
+    cursor: pointer; box-sizing: border-box;
+  `;
+  shadow.appendChild(btn);
+
+  // ⚠️ event.isTrusted — обязательная проверка: без неё скрипт страницы мог бы программно
+  // "нажать" на значок (el.dispatchEvent(new MouseEvent('click'))) и спровоцировать открытие
+  // поповера/автоподстановку без реального пользователя за клавиатурой.
+  btn.addEventListener('click', (e) => {
+    try {
+      if (!e.isTrusted) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const r = field.getBoundingClientRect();
+      if (isTopFrame()) {
+        ipcRenderer.send(CH_FIELD_ICON_CLICK, { rect: { x: r.left, y: r.top, width: r.width, height: r.height } });
+      }
+    } catch {
+      // клик не должен ронять страницу
+    }
+  }, true);
+
+  document.documentElement.appendChild(host);
+  return { host, btn };
+}
+
+function positionIcon(field: HTMLInputElement, btn: HTMLButtonElement): boolean {
+  const r = field.getBoundingClientRect();
+  if (r.width < MIN_FIELD_WIDTH_FOR_ICON || r.height < MIN_FIELD_HEIGHT_FOR_ICON) return false;
+  // Прижимаем к правому внутреннему краю поля — тот же приём, что у Chrome/1Password/Bitwarden.
+  const left = r.right - ICON_SIZE - ICON_MARGIN;
+  const top = r.top + (r.height - ICON_SIZE) / 2;
+  btn.style.left = `${left}px`;
+  btn.style.top = `${top}px`;
+  return true;
+}
+
+// Вызывается из debounced-скана (новые/пропавшие поля) И из scroll/resize (только репозишн,
+// без пересчёта видимости — дёшево, может вызываться часто).
+function repositionAllIcons() {
+  try {
+    for (const [field, { host, btn }] of fieldIcons) {
+      if (!field.isConnected || !isVisible(field)) { host.remove(); fieldIcons.delete(field); continue; }
+      const fits = positionIcon(field, btn);
+      host.style.display = fits ? '' : 'none';
+    }
+  } catch {
+    // repositioning не должен ронять страницу
+  }
+}
+
+function syncIcons(pwFields: HTMLInputElement[]) {
+  try {
+    const current = new Set(pwFields);
+    for (const [field, { host }] of fieldIcons) {
+      if (!current.has(field)) { host.remove(); fieldIcons.delete(field); }
+    }
+    for (const field of pwFields) {
+      if (fieldIcons.has(field)) continue;
+      const { host, btn } = createIconHost(field);
+      fieldIcons.set(field, { host, btn });
+    }
+    repositionAllIcons();
+  } catch {
+    // синк иконок не должен ронять страницу
+  }
+}
+
+try {
+  // capture:true — scroll не всплывает от вложенных скроллящихся контейнеров, только capture
+  // ловит его на уровне window для ЛЮБОГО скролла на странице, не только document.
+  window.addEventListener('scroll', repositionAllIcons, true);
+  window.addEventListener('resize', repositionAllIcons);
+} catch {
+  // noop
+}
+
 // Дедуп — не спамим main одинаковым результатом на каждую мутацию DOM.
 let lastScanKey = '';
 function reportScan() {
   try {
-    const result = scanForms();
+    const pwFields = visiblePasswordFields();
+    const result = scanForms(pwFields);
+    if (isTopFrame()) syncIcons(pwFields);
     const key = `${result.hasLoginForm}:${result.hasUsernameField}`;
     if (key === lastScanKey) return;
     lastScanKey = key;
@@ -181,14 +301,18 @@ function setNativeValue(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-function fillCredential(username: string, password: string): boolean {
+// username: undefined (поле ОТСУТСТВУЕТ в payload, не пустая строка) — не трогать поле логина.
+// Нужно генератору пароля: пользователь мог уже начать вводить логин, затирать его нельзя.
+// Пустая строка — легитимное значение сохранённого логина (сайт без поля логина вообще).
+function fillCredential(username: string | undefined, password: string): boolean {
   try {
     if (!isTopFrame()) return false;
-    const pwFields = (Array.from(document.querySelectorAll('input[type="password"]')) as HTMLInputElement[]).filter(isVisible);
-    const passwordField = pwFields[0];
+    const passwordField = visiblePasswordFields()[0];
     if (!passwordField) return false;
-    const usernameField = findUsernameField(passwordField);
-    if (usernameField && isVisible(usernameField)) setNativeValue(usernameField, username);
+    if (typeof username === 'string') {
+      const usernameField = findUsernameField(passwordField);
+      if (usernameField && isVisible(usernameField)) setNativeValue(usernameField, username);
+    }
     setNativeValue(passwordField, password);
     return true;
   } catch {
@@ -200,7 +324,7 @@ try {
   ipcRenderer.on(CH_FILL, (_e, payload: { username?: string; password?: string }) => {
     try {
       if (typeof payload?.password !== 'string') return;
-      fillCredential(typeof payload.username === 'string' ? payload.username : '', payload.password);
+      fillCredential(payload.username, payload.password);
     } catch {
       // исполнитель не должен ронять страницу
     }

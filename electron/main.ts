@@ -300,6 +300,19 @@ function createWindow() {
     // который сверяется с сейфом и решает, показывать ли индикатор/поповер.
     (tabId, hasLoginForm, hasUsernameField, url) => passwordAutofill.handleFormDetected(tabId, hasLoginForm, hasUsernameField, url),
     (tabId, username, password, url) => passwordAutofill.handleCredentialSubmitted(tabId, username, password, url),
+    // Иконка в поле пароля — та же карточка, что у тулбарной иконки-ключа (PasswordPopoverManager),
+    // просто заякорена на позицию поля. rect приходит в координатах вьюпорта СТРАНИЦЫ —
+    // прибавляем bounds именно ЭТОЙ вкладки (не активной вообще — split может показывать другую).
+    (tabId, rect, url) => {
+      const state = passwordAutofill.handleFieldIconClick(tabId, url);
+      if (!state || !win || !tabs) return;
+      const viewBounds = tabs.getTabViewBounds(tabId);
+      syncPasswordPopoverAnchorBounds({
+        x: viewBounds.x + rect.x, y: viewBounds.y + rect.y,
+        width: rect.width, height: rect.height,
+      });
+      showPasswordPopover(win, state);
+    },
   );
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
   tabs.setSearchEngine(settings.getSearchEngine());
@@ -627,6 +640,7 @@ function registerIpc() {
   ipcMain.handle(IPC.PASSWORDS_INDICATOR_UPDATE,  () => passwordAutofill.handleUpdate());
   ipcMain.handle(IPC.PASSWORDS_INDICATOR_FILL,    (_e, id: number) => passwordAutofill.handleFill(id));
   ipcMain.handle(IPC.PASSWORDS_INDICATOR_DISMISS, () => passwordAutofill.handleDismiss());
+  ipcMain.handle(IPC.PASSWORDS_INDICATOR_GENERATE, () => passwordAutofill.handleGenerateAndFill());
 
   // Заход G, блок 5 — разовый бэкфилл истории. Запускается только по явному действию
   // пользователя (Settings.tsx), никогда автоматически. lastBackfillProgress — чтобы панель

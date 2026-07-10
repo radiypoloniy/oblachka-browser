@@ -11,6 +11,7 @@ interface PasswordActions {
   updatePendingPassword(): Promise<boolean>;
   fillSavedPassword(id: number): Promise<boolean>;
   dismissPendingPassword(): Promise<void>;
+  generatePendingPassword(): Promise<boolean>;
 }
 
 interface Props {
@@ -105,6 +106,24 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
               style={{ ...btnGhost, textAlign: 'left', display: 'flex', gap: 8, alignItems: 'center' }}
             ><Check size={14} style={{ color: 'var(--accent)', flex: 'none' }} />{m.username}</button>
           ))}
+        </>
+      )}
+
+      {state.kind === 'offer-generate' && (
+        <>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
+            Нет сохранённого входа для <b>{state.origin}</b>
+          </div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+            Похоже на регистрацию — сгенерировать надёжный пароль в это поле?
+          </div>
+          <button
+            onClick={() => void act(() => api.generatePendingPassword())}
+            disabled={busy}
+            style={btnPrimary}
+          >
+            Сгенерировать пароль
+          </button>
         </>
       )}
     </div>

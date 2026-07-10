@@ -45,6 +45,61 @@ function computeHasSavedState(pm: PasswordManager, origin: string): PasswordIndi
 
 // ── Сигналы с гостевой страницы (см. TabManager.ts::onPasswordFormCb/onPasswordSubmitCb) ──────
 
+// Клик по иконке в поле пароля (не в тулбаре) — см. TabManager.ts::onPasswordFieldIconClickCb,
+// electron/preload-content.ts. Решает, что показать в поповере: тот же расчёт, что уже даёт
+// has-saved (сохранённый логин есть — предложить подставить), либо, если для origin вообще
+// ничего не сохранено, offer-generate (похоже на регистрацию — предложить сгенерировать).
+// Позиция поповера (заякорен на поле, не на тулбар) считается вызывающей стороной (main.ts) —
+// этот модуль ничего не знает про геометрию окна.
+export function handleFieldIconClick(tabId: string, url: string): PasswordIndicatorState | null {
+  try {
+    const pm = passwordManagerRef;
+    if (!pm) return null;
+    const origin = originOf(url);
+    const saved = computeHasSavedState(pm, origin);
+    if (saved) {
+      tabStates.set(tabId, saved);
+      return saved;
+    }
+    const state: PasswordIndicatorState = { kind: 'offer-generate', origin };
+    tabStates.set(tabId, state);
+    return state;
+  } catch (e) {
+    console.warn('[PasswordAutofill] handleFieldIconClick error:', (e as Error).message);
+    return null;
+  }
+}
+
+// Дефолт для инлайн-генерации из поля (не из формы в Settings, там уже есть полный набор
+// чекбоксов/длины) — длина и набор символов, которые молча считаются «надёжно достаточно»
+// (128 бит энтропии с запасом: log2(26+26+10+22)^20 ≈ 129 бит). Пользователь всегда может
+// зайти в Настройки → Пароли за тонкой настройкой длины/набора символов.
+const INLINE_GENERATE_OPTS = { length: 20, lower: true, upper: true, digits: true, symbols: true };
+
+export async function handleGenerateAndFill(): Promise<boolean> {
+  try {
+    const pm = passwordManagerRef;
+    const tm = tabManagerRef;
+    const tabId = tm?.getActiveId();
+    if (!pm || !tm || !tabId) return false;
+
+    const state = tabStates.get(tabId);
+    if (!state || state.kind !== 'offer-generate') return false;
+
+    const activeUrl = tm.getActiveWebContents()?.getURL() ?? '';
+    if (originOf(activeUrl) !== state.origin) return false;
+
+    const password = pm.generate(INLINE_GENERATE_OPTS);
+    // Только пароль (username отсутствует в payload) — не трогаем поле логина, пользователь
+    // мог его уже начать заполнять. Реальное сохранение — тем же путём, что и раньше: обычный
+    // submit-детектор content-preload сам предложит offer-save/offer-update при отправке формы.
+    return tm.sendPasswordFill(tabId, { password });
+  } catch (e) {
+    console.warn('[PasswordAutofill] handleGenerateAndFill error:', (e as Error).message);
+    return false;
+  }
+}
+
 export function handleFormDetected(tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string): void {
   try {
     const pm = passwordManagerRef;

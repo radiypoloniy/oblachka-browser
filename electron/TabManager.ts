@@ -170,6 +170,9 @@ export class TabManager {
   // wc.ipc.on выше). url — уже вычисленный main'ом wc.getURL(), не из payload preload'а.
   private onPasswordFormCb?: (tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string) => void;
   private onPasswordSubmitCb?: (tabId: string, username: string, password: string, url: string) => void;
+  // Иконка в поле пароля (не в тулбаре) — rect в координатах вьюпорта СТРАНИЦЫ, main сам
+  // транслирует в оконные через getTabViewBounds() (см. PasswordAutofillManager.ts).
+  private onPasswordFieldIconClickCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void;
   private firstTabLoaded = false; // защита: колбэк вызывается ровно один раз
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
@@ -208,6 +211,7 @@ export class TabManager {
     onContentFocus?: () => void,
     onPasswordForm?: (tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string) => void,
     onPasswordSubmit?: (tabId: string, username: string, password: string, url: string) => void,
+    onPasswordFieldIconClick?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void,
   ) {
     this.win = win;
     this.onChange = onChange;
@@ -226,6 +230,7 @@ export class TabManager {
     this.onContentFocusCb = onContentFocus;
     this.onPasswordFormCb = onPasswordForm;
     this.onPasswordSubmitCb = onPasswordSubmit;
+    this.onPasswordFieldIconClickCb = onPasswordFieldIconClick;
     // Хаб существует всегда; не входит в tabMap, pinnedTabs или nodes.
     this.hubTab = { id: HUB_ID, view: null, sleeping: null, lastActiveAt: 0 };
     this.startSleepTimer();
@@ -950,6 +955,13 @@ export class TabManager {
         this.onPasswordSubmitCb?.(id, payload.username, payload.password, wc.getURL());
       } catch (e) {
         console.warn('[TabMgr] onPasswordSubmitCb error:', (e as Error).message);
+      }
+    });
+    wc.ipc.on(IPC.PASSWORDS_FIELD_ICON_CLICK, (_e, payload: { rect: { x: number; y: number; width: number; height: number } }) => {
+      try {
+        this.onPasswordFieldIconClickCb?.(id, payload.rect, wc.getURL());
+      } catch (e) {
+        console.warn('[TabMgr] onPasswordFieldIconClickCb error:', (e as Error).message);
       }
     });
 
@@ -1905,7 +1917,10 @@ export class TabManager {
   // Менеджер паролей, шаг 2 — адресная отправка заполнения строго ОДНОЙ вкладке (не broadcast).
   // Используется PasswordAutofillManager.ts после явного клика пользователя в поповере — только
   // fill, страница сама решает, что делать с полями (submit никогда не вызывается нами).
-  sendPasswordFill(tabId: string, payload: { username: string; password: string }): boolean {
+  // username отсутствует (не пустая строка, а именно отсутствует) — не трогать поле логина,
+  // см. handleGenerateAndFill(): генератор пишет только пароль, не должен затирать то, что
+  // пользователь уже успел ввести в поле логина.
+  sendPasswordFill(tabId: string, payload: { username?: string; password: string }): boolean {
     const tab = this.tabMap.get(tabId);
     const wc = tab?.view?.webContents;
     if (!wc || wc.isDestroyed()) return false;
@@ -2181,6 +2196,27 @@ export class TabManager {
   setContentBounds(b: ContentBounds) {
     this.bounds = b;
     this.repositionViews();
+  }
+
+  // Актуальные оконные bounds вьюхи КОНКРЕТНОЙ вкладки — то же вычисление, что repositionViews
+  // использует для split. Нужно PasswordAutofillManager.ts: координаты поля пароля, которые
+  // приходит из preload-content.ts (getBoundingClientRect гостя), заданы относительно вьюпорта
+  // СТРАНИЦЫ — чтобы получить оконные координаты для поповера паролей, нужно прибавить именно
+  // этот оффсет, а не общий this.bounds (в split-режиме вкладка занимает только половину).
+  getTabViewBounds(tabId: string): ContentBounds {
+    const inSplit = !!this.splitState
+      && (tabId === this.splitState.leftId || tabId === this.splitState.rightId);
+    if (!inSplit) return this.bounds;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const { leftId, splitRatio } = this.splitState!;
+    const leftWidth = Math.floor((this.bounds.width - SPLIT_GAP) * splitRatio);
+    if (tabId === leftId) {
+      return { x: this.bounds.x, y: this.bounds.y, width: leftWidth, height: this.bounds.height };
+    }
+    return {
+      x: this.bounds.x + leftWidth + SPLIT_GAP, y: this.bounds.y,
+      width: this.bounds.width - leftWidth - SPLIT_GAP, height: this.bounds.height,
+    };
   }
 
   // Позиционирует видимые вьюхи согласно текущему режиму (single / split).

@@ -250,6 +250,7 @@ const api: OblakoApi = {
   updatePendingPassword:  () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_UPDATE) as Promise<boolean>,
   fillSavedPassword:      (id: number) => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_FILL, id) as Promise<boolean>,
   dismissPendingPassword: () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_DISMISS) as Promise<void>,
+  generatePendingPassword: () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_GENERATE) as Promise<boolean>,
   setPasswordPopoverAnchorBounds: (b: ContentBounds) => ipcRenderer.invoke(IPC.PASSWORD_POPOVER_SET_BOUNDS, b) as Promise<void>,
   showPasswordPopover:       (state: PasswordIndicatorState) => ipcRenderer.invoke(IPC.PASSWORD_POPOVER_SHOW, state) as Promise<void>,
   closePasswordPopover:      () => ipcRenderer.invoke(IPC.PASSWORD_POPOVER_CLOSE) as Promise<void>,

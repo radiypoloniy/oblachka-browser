@@ -256,7 +256,12 @@ export const IPC = {
   // вычисляет его из wc.getURL() (доверенный источник), см. PasswordAutofillManager.ts.
   PASSWORDS_FORM_DETECTED:       'passwords:form-detected',       // гостевая страница → TabManager: { hasLoginForm, hasUsernameField }
   PASSWORDS_CREDENTIAL_SUBMITTED: 'passwords:credential-submitted', // гостевая страница → TabManager: { username, password }
-  PASSWORDS_FILL:                'passwords:fill',                // TabManager → конкретная гостевая вкладка: { username, password }, только fill, без submit
+  PASSWORDS_FILL:                'passwords:fill',                // TabManager → конкретная гостевая вкладка: { username?, password }, только fill, без submit. username отсутствует — не трогать поле логина (см. генератор пароля).
+  // Иконка в самом поле пароля (не в тулбаре) — см. electron/preload-content.ts (closed Shadow DOM,
+  // проверка event.isTrusted перед отправкой) + electron/PasswordPopoverManager.ts (тот же поповер,
+  // просто заякорен на позицию поля вместо иконки в тулбаре). rect — координаты поля ОТНОСИТЕЛЬНО
+  // вьюпорта страницы; TabManager транслирует их в оконные, прибавляя bounds вьюхи вкладки.
+  PASSWORDS_FIELD_ICON_CLICK: 'passwords:field-icon-click', // гостевая страница → TabManager: { rect: {x,y,width,height} }
 
   // Менеджер паролей, шаг 2 — индикатор-«ключ» в omnibox + поповер (см. PasswordIndicatorPopover.tsx,
   // electron/PasswordAutofillManager.ts). Только про АКТИВНУЮ вкладку — переключение вкладок само
@@ -266,6 +271,9 @@ export const IPC = {
   PASSWORDS_INDICATOR_UPDATE:  'passwords:indicator-update',  // renderer → main: подтвердить «Обновить» → boolean
   PASSWORDS_INDICATOR_FILL:    'passwords:indicator-fill',    // renderer → main: явный клик «Подставить» по id → boolean
   PASSWORDS_INDICATOR_DISMISS: 'passwords:indicator-dismiss', // renderer → main: «Не сейчас» — сбросить оффер без записи
+  // Иконка на пустом поле пароля без сохранённого логина (регистрация) — «Сгенерировать пароль».
+  // Генерирует + сразу пишет в ТО ЖЕ поле (только пароль, логин не трогается), не в буфер обмена.
+  PASSWORDS_INDICATOR_GENERATE: 'passwords:indicator-generate', // renderer → main: сгенерировать и заполнить активное поле → boolean
 
   // Нативная WebContentsView-вью поповера паролей (как FindBar/SuggestDropdown): chrome только
   // сообщает anchor-bounds и состояние, сама карточка рисуется поверх страницы отдельным слоем.
@@ -416,7 +424,11 @@ export interface PasswordIndicatorMatch {
 export type PasswordIndicatorState =
   | { kind: 'has-saved'; origin: string; matches: PasswordIndicatorMatch[] }
   | { kind: 'offer-save'; origin: string; username: string }
-  | { kind: 'offer-update'; origin: string; username: string; matchId: number };
+  | { kind: 'offer-update'; origin: string; username: string; matchId: number }
+  // Клик по иконке в пустом поле пароля БЕЗ сохранённого логина для origin (похоже на форму
+  // регистрации) — предложить сгенерировать пароль. Ничего не расшифровываем/не подставляем,
+  // пока пользователь сам не нажмёт «Сгенерировать» в поповере.
+  | { kind: 'offer-generate'; origin: string };
 
 // ── Дропдаун подсказок омнибокса (нативная вью, заход 3/5) ───────────────────────────────────
 // Та же форма, что локальный SuggestItem в Toolbar.tsx (переиспользуется оттуда напрямую) —
@@ -668,6 +680,8 @@ export interface OblakoApi {
   updatePendingPassword(): Promise<boolean>;
   fillSavedPassword(id: number): Promise<boolean>;
   dismissPendingPassword(): Promise<void>;
+  // Иконка на пустом поле пароля (offer-generate) — генерирует и сразу пишет в поле, без буфера.
+  generatePendingPassword(): Promise<boolean>;
   setPasswordPopoverAnchorBounds(bounds: ContentBounds): Promise<void>;
   showPasswordPopover(state: PasswordIndicatorState): Promise<void>;
   closePasswordPopover(): Promise<void>;

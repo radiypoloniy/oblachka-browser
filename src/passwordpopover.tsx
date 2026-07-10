@@ -11,6 +11,7 @@ declare global {
       updatePendingPassword: () => Promise<boolean>;
       fillSavedPassword: (id: number) => Promise<boolean>;
       dismissPendingPassword: () => Promise<void>;
+      generatePendingPassword: () => Promise<boolean>;
       close: () => void;
       reportHeight: (px: number) => void;
       onShow: (cb: (state: PasswordIndicatorState) => void) => () => void;
