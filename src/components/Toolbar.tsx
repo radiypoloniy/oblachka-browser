@@ -72,6 +72,8 @@ interface ToolbarProps {
   // фейковый лейбл, не привязанный к реальному состоянию, — это то самое ложное чувство
   // защищённости, от которого fail-closed на шаге 3 явно уходит).
   vpnLabel: string | null;
+  adBlockOn: boolean;         // AdBlockState.enabled — источник в App.tsx (getAdBlockState/onAdBlockStateChanged)
+  onToggleAdBlock: () => void;
   dark: boolean;
   omniboxRef?: React.RefObject<HTMLInputElement>;
   onToggleDark: () => void;
@@ -91,7 +93,7 @@ interface ToolbarProps {
 export default function Toolbar({
   // dark/onToggleDark остаются в контракте пропсов (механизм темы не трогаем,
   // см. задачу) — сама кнопка убрана из разметки, поэтому здесь они не нужны.
-  tab, allTabs, vpnOn, vpnLabel, omniboxRef: externalRef,
+  tab, allTabs, vpnOn, vpnLabel, adBlockOn, onToggleAdBlock, omniboxRef: externalRef,
   onBack, onForward, onReload, onSubmit, onSuggestToggle,
   downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel,
 }: ToolbarProps) {
@@ -845,10 +847,13 @@ export default function Toolbar({
           style={islandBtn('var(--accent)', 'var(--accent-soft)')}>
           <Sparkles size={18} />
         </button>
-        {/* Иконка адблока — ПОКА чисто визуальная заглушка, без подключения к логике
-            (см. задачу: в исключениях адблока сейчас незакрытый баг, подключать рано). */}
-        <button title="Адблок" onClick={() => {}}
-          style={islandBtn()}>
+        {/* Тоггл адблока — глобальный AdBlockState.enabled (тот же тумблер, что в Settings →
+            Блокировка). Выключено = приглушённая иконка, как у недоступной кнопки навигации. */}
+        <button
+          title={adBlockOn ? 'Адблок включён' : 'Адблок выключен'}
+          onClick={onToggleAdBlock}
+          style={islandBtn(adBlockOn ? 'var(--accent)' : 'var(--text-faint)', adBlockOn ? 'var(--accent-soft)' : undefined)}
+        >
           <Ban size={18} />
         </button>
         {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки */}
