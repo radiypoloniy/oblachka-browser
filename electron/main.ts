@@ -14,8 +14,9 @@ import { PasswordManager } from './PasswordManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
 import { SettingsManager } from './SettingsManager';
+import { HubChatManager } from './HubChatManager';
 import { IPC } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -131,6 +132,7 @@ const passwords   = new PasswordManager();
 const downloads   = new DownloadManager();
 const permissions = new PermissionManager();
 const settings    = new SettingsManager();
+const hubChat     = new HubChatManager();
 
 function createWindow() {
   win = new BrowserWindow({
@@ -246,6 +248,9 @@ function createWindow() {
       // закрытие/смена URL), без новых колбэков в TabManager.ts (см. AiPanelManager.ts). Не во
       // время выхода — AI-панель и так исчезает вместе с окном, синкать её незачем.
       if (!isShuttingDown) onTabsSynced(tabsSnapshot);
+      // Тот же снапшот — чистка in-memory контекстов AI-чата Hub по закрытым вкладкам
+      // (см. HubChatManager.ts::pruneClosedTabs, тот же принцип, что onTabsSynced выше).
+      hubChat.pruneClosedTabs(new Set(tabsSnapshot.map((t) => t.id)));
       // sess?. — не «отменяет» финальное сохранение: оно гарантированно уже прошло синхронно
       // в win.on('close') ДО того, как sess обнуляется в win.on('closed') (см. ниже). Этот вызов
       // подчистую сработает во время закрытия окна — часть вкладок ещё дозакрывается асинхронно
@@ -608,6 +613,32 @@ function registerIpc() {
     settings.setSearchEngine(id);
     tabs?.setSearchEngine(id);
   });
+  ipcMain.handle(IPC.SETTINGS_GET_HUB_MODE, () => settings.getHubMode());
+  ipcMain.handle(IPC.SETTINGS_SET_HUB_MODE, (_e, mode: HubMode) => settings.setHubMode(mode));
+
+  // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
+  // send — fire-and-forget (не invoke): ответ идёт стримом чанков + финальным результатом,
+  // так проще, чем тащить длинный запрос через invoke (тот же приём, что у AI-панели).
+  ipcMain.on(IPC.HUB_CHAT_SEND, (_e, payload: { tabId: string; text: string }) => {
+    const { tabId, text } = payload;
+    void (async () => {
+      const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, (chunkText) => {
+        chromeView?.webContents.send(IPC.HUB_CHAT_CHUNK, { tabId, text: chunkText });
+      });
+      chromeView?.webContents.send(IPC.HUB_CHAT_RESULT, {
+        tabId,
+        sessionId,
+        outcome: outcome.ok ? { ok: true, out: outcome.out } : { ok: false, error: outcome.error },
+      });
+    })();
+  });
+  ipcMain.handle(IPC.HUB_CHAT_LIST_SESSIONS, () => hubChat.listSessions());
+  ipcMain.handle(IPC.HUB_CHAT_GET_SESSION, (_e, sessionId: number) => hubChat.getSession(sessionId));
+  ipcMain.handle(IPC.HUB_CHAT_NEW_SESSION, (_e, tabId: string) => hubChat.newSession(tabId));
+  ipcMain.handle(IPC.HUB_CHAT_RESUME_SESSION, (_e, tabId: string, sessionId: number) =>
+    hubChat.resumeSession(tabId, sessionId));
+  ipcMain.handle(IPC.HUB_CHAT_DELETE_SESSION, (_e, sessionId: number) => hubChat.deleteSession(sessionId));
+
   // Заход D — ключ Gemini (AI-фактчек). Сам ключ не возвращается в renderer, только статус.
   ipcMain.handle(IPC.AI_GET_KEY_STATUS, () => aiKeyStore.getKeyStatus());
   ipcMain.handle(IPC.AI_SAVE_KEY,       (_e, key: string) => aiKeyStore.saveKey(key));
@@ -971,6 +1002,12 @@ app.whenReady().then(async () => {
   // блокирует старт, браузер работает без него (см. PasswordManager.ts::initialize).
   await passwords.initialize().catch((e) =>
     console.error('[Passwords] инициализация упала:', e),
+  );
+
+  // История AI-чата Hub: та же гарантия — падение не блокирует старт, чат работает без
+  // персистентности (см. HubChatManager.ts::initialize).
+  await hubChat.initialize().catch((e) =>
+    console.error('[HubChat] инициализация упала:', e),
   );
 
   // Разрешения: та же гарантия — падение не блокирует старт, браузер работает без персистенции.

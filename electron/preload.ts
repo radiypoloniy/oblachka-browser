@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -213,6 +213,27 @@ const api: OblakoApi = {
   // Настройки
   getSearchEngine: () => ipcRenderer.invoke(IPC.SETTINGS_GET_SEARCH_ENGINE) as Promise<SearchEngineId>,
   setSearchEngine: (id: SearchEngineId) => ipcRenderer.invoke(IPC.SETTINGS_SET_SEARCH_ENGINE, id) as Promise<void>,
+  getHubMode: () => ipcRenderer.invoke(IPC.SETTINGS_GET_HUB_MODE) as Promise<HubMode>,
+  setHubMode: (mode: HubMode) => ipcRenderer.invoke(IPC.SETTINGS_SET_HUB_MODE, mode) as Promise<void>,
+
+  // AI-чат на Hub (см. electron/HubChatManager.ts) — send fire-and-forget, ответ стримом.
+  sendHubChatMessage: (tabId: string, text: string) => ipcRenderer.send(IPC.HUB_CHAT_SEND, { tabId, text }),
+  onHubChatChunk: (cb: (payload: { tabId: string; text: string }) => void) => {
+    const handler = (_e: unknown, payload: { tabId: string; text: string }) => cb(payload);
+    ipcRenderer.on(IPC.HUB_CHAT_CHUNK, handler);
+    return () => ipcRenderer.removeListener(IPC.HUB_CHAT_CHUNK, handler);
+  },
+  onHubChatResult: (cb: (payload: { tabId: string; sessionId: number; outcome: HubChatOutcome }) => void) => {
+    const handler = (_e: unknown, payload: { tabId: string; sessionId: number; outcome: HubChatOutcome }) => cb(payload);
+    ipcRenderer.on(IPC.HUB_CHAT_RESULT, handler);
+    return () => ipcRenderer.removeListener(IPC.HUB_CHAT_RESULT, handler);
+  },
+  listHubChatSessions: () => ipcRenderer.invoke(IPC.HUB_CHAT_LIST_SESSIONS) as Promise<HubChatSessionMeta[]>,
+  getHubChatSession: (sessionId: number) => ipcRenderer.invoke(IPC.HUB_CHAT_GET_SESSION, sessionId) as Promise<HubChatMessage[]>,
+  newHubChatSession: (tabId: string) => ipcRenderer.invoke(IPC.HUB_CHAT_NEW_SESSION, tabId) as Promise<void>,
+  resumeHubChatSession: (tabId: string, sessionId: number) =>
+    ipcRenderer.invoke(IPC.HUB_CHAT_RESUME_SESSION, tabId, sessionId) as Promise<HubChatMessage[]>,
+  deleteHubChatSession: (sessionId: number) => ipcRenderer.invoke(IPC.HUB_CHAT_DELETE_SESSION, sessionId) as Promise<void>,
 
   // Заход D — ключ Gemini (AI-фактчек). Сам ключ никогда не возвращается в renderer.
   getAiKeyStatus: () => ipcRenderer.invoke(IPC.AI_GET_KEY_STATUS) as Promise<boolean>,

@@ -537,7 +537,7 @@ export default function App() {
             /* Обычный режим: хаб, ошибка или «дырка» под WebContentsView */
             <>
               {isHub
-                ? <Hub onSubmit={submit} onOpenHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); }} />
+                ? <Hub tabId={activeId} onSubmit={submit} onOpenHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); }} />
                 : tabError
                   ? <TabError
                       error={tabError}

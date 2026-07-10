@@ -223,9 +223,11 @@ export const IPC = {
   // реально ушёл в отдельный webContents страницы.
   SUGGEST_DROPDOWN_CONTENT_FOCUS: 'suggest-dropdown:content-focus',
 
-  // Настройки (пока только поисковик по умолчанию, см. SettingsManager.ts)
+  // Настройки (поисковик по умолчанию + режим Hub, см. SettingsManager.ts)
   SETTINGS_GET_SEARCH_ENGINE: 'settings:get-search-engine', // renderer → main: текущий SearchEngineId
   SETTINGS_SET_SEARCH_ENGINE: 'settings:set-search-engine', // renderer → main: сменить движок поиска
+  SETTINGS_GET_HUB_MODE:      'settings:get-hub-mode',      // renderer → main: текущий HubMode
+  SETTINGS_SET_HUB_MODE:      'settings:set-hub-mode',      // renderer → main: сменить режим Hub (плитки/AI)
 
   // Заход D: ключ Gemini для AI-фактчека (см. AiKeyStore.ts) — ключ сам НИКОГДА не идёт в
   // renderer обратно, только булев статус «подключён/нет». connected-статус пушится и в чром
@@ -343,6 +345,20 @@ export const IPC = {
   HISTORY_CONTENT_BACKFILL_CANCEL:   'history:content-backfill-cancel',
   HISTORY_CONTENT_BACKFILL_STATUS:   'history:content-backfill-status',
   HISTORY_CONTENT_BACKFILL_PROGRESS: 'history:content-backfill-progress',
+
+  // AI-чат на Hub (см. electron/HubChatManager.ts) — живёт в основном chrome-рендерере, честный
+  // канал в этом контракте (в отличие от боковой AI-панели, у которой свой изолированный ad-hoc
+  // IPC, см. preload-aipanel.ts) — Hub не оверлей, а обычный контент вкладки. Только локальная
+  // модель (Qwen, тот же runChatMessage, что у AI-панели/quick-translate) — Gemini как вторая
+  // модель это отдельный следующий заход, здесь его нет.
+  HUB_CHAT_SEND:          'hub-chat:send',           // renderer → main: { tabId, text } (fire-and-forget, ответ идёт через chunk/result)
+  HUB_CHAT_CHUNK:         'hub-chat:chunk',          // main → renderer: { tabId, text } — очередной чанк стрима
+  HUB_CHAT_RESULT:        'hub-chat:result',         // main → renderer: { tabId, sessionId, outcome: HubChatOutcome }
+  HUB_CHAT_LIST_SESSIONS: 'hub-chat:list-sessions',  // renderer → main: HubChatSessionMeta[]
+  HUB_CHAT_GET_SESSION:   'hub-chat:get-session',    // renderer → main: sessionId → HubChatMessage[]
+  HUB_CHAT_NEW_SESSION:   'hub-chat:new-session',    // renderer → main: tabId — сбросить текущий диалог вкладки
+  HUB_CHAT_RESUME_SESSION: 'hub-chat:resume-session', // renderer → main: { tabId, sessionId } → HubChatMessage[] — продолжить старый диалог
+  HUB_CHAT_DELETE_SESSION: 'hub-chat:delete-session', // renderer → main: sessionId
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -532,6 +548,25 @@ export interface AdBlockState {
   sessionBlockCount: number;  // счётчик за текущую сессию (сбрасывается при перезапуске)
 }
 
+// ── AI-чат на Hub ───────────────────────────────────────────────────────────
+export type HubMode = 'tiles' | 'ai';
+
+export interface HubChatMessage {
+  role: 'user' | 'assistant';
+  text: string;
+  createdAt: number;
+}
+
+export interface HubChatSessionMeta {
+  id: number;
+  title: string;      // начало первого сообщения пользователя
+  updatedAt: number;
+}
+
+export type HubChatOutcome =
+  | { ok: true; out: string }
+  | { ok: false; error: string };
+
 // ── Разрешения сайтов ────────────────────────────────────────────────────────
 
 // Ключи разрешений (используются и как ключи в БД, и в UI).
@@ -716,6 +751,19 @@ export interface OblakoApi {
   // Настройки
   getSearchEngine(): Promise<SearchEngineId>;
   setSearchEngine(id: SearchEngineId): Promise<void>;
+  getHubMode(): Promise<HubMode>;
+  setHubMode(mode: HubMode): Promise<void>;
+
+  // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
+  // send — fire-and-forget, ответ идёт стримом через onHubChatChunk/onHubChatResult.
+  sendHubChatMessage(tabId: string, text: string): void;
+  onHubChatChunk(cb: (payload: { tabId: string; text: string }) => void): () => void;
+  onHubChatResult(cb: (payload: { tabId: string; sessionId: number; outcome: HubChatOutcome }) => void): () => void;
+  listHubChatSessions(): Promise<HubChatSessionMeta[]>;
+  getHubChatSession(sessionId: number): Promise<HubChatMessage[]>;
+  newHubChatSession(tabId: string): Promise<void>;
+  resumeHubChatSession(tabId: string, sessionId: number): Promise<HubChatMessage[]>;
+  deleteHubChatSession(sessionId: number): Promise<void>;
 
   // Заход D — ключ Gemini (AI-фактчек). Сам ключ никогда не приходит в renderer — только статус.
   getAiKeyStatus(): Promise<boolean>;
