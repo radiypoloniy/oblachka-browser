@@ -185,17 +185,20 @@ export async function start(server: VpnServer): Promise<{ ok: boolean; error?: s
   return { ok: true };
 }
 
-// wasError: не затираем 'error' состоянием 'stopped', если stop() вызван как уборка ПОСЛЕ
-// неожиданного падения (см. proc.on('exit') выше) — пользователь должен продолжать видеть,
-// что соединение оборвалось само, а не что он сам его выключил.
+// ⚠️ ВСЕГДА переводит в 'stopped', даже если до этого было 'error' — это осознанный выбор
+// после живого теста: более ранняя версия сохраняла 'error' навсегда (чтобы UI не терял
+// сообщение о том, какой сервер отвалился), но это означало, что kill switch
+// (см. main.ts::applyVpnProxy) блокировал ВЕСЬ трафик НАВСЕГДА без единого способа выйти —
+// disconnect обязан быть гарантированным путём назад к рабочему (пусть и незащищённому)
+// состоянию, иначе это не «безопасно по умолчанию», а тупик. Сообщение об ошибке в UI решается
+// иначе — см. Settings.tsx (кнопка «Отключить» видна и в состоянии error, не только running).
 export async function stop(): Promise<void> {
   const proc = child;
   child = null;
   currentPort = null;
-  const wasError = state === 'error';
 
   if (!proc || proc.exitCode !== null) {
-    if (!wasError) setState('stopped');
+    setState('stopped');
     return;
   }
 
@@ -212,5 +215,5 @@ export async function stop(): Promise<void> {
     }
   });
 
-  if (!wasError) setState('stopped');
+  setState('stopped');
 }

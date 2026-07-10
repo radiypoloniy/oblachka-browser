@@ -9,7 +9,7 @@ import Downloads from './components/Downloads';
 import PermissionPrompt from './components/PermissionPrompt';
 import { embeddingService } from './services/EmbeddingService';
 import { startEmbedRequestBridge } from './services/EmbedRequestBridge';
-import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode } from '../shared/ipc';
+import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, VpnConnectionState } from '../shared/ipc';
 import type { ClusterProposal } from './services/ClusteringService';
 
 const HUB_ID = 'hub';
@@ -51,7 +51,11 @@ export default function App() {
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [sidebarNodes, setSidebarNodes] = useState<SidebarNode[]>([]);
   const [activeId, setActiveId] = useState(HUB_ID);
-  const [vpnOn, setVpnOn] = useState(true);
+  // VPN, шаг 3 — реальное состояние вместо мока (было: локальный boolean, всегда true при старте,
+  // «Финляндия» захардкожена в Toolbar.tsx). Индикатор, который не отражает, действительно ли
+  // сейчас блокируется/маршрутизируется трафик, — прямая противоположность тому, что должен
+  // давать fail-closed (см. electron/main.ts::applyVpnProxy). null — статус ещё не загружен.
+  const [vpnConn, setVpnConn] = useState<VpnConnectionState | null>(null);
   const [dark, setDark] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
@@ -217,6 +221,13 @@ export default function App() {
   useEffect(() => {
     void window.oblako.getDownloads().then(setDownloads);
     const unsub = window.oblako.onDownloadsChanged(setDownloads);
+    return () => unsub();
+  }, []);
+
+  // VPN, шаг 3 — реальный статус подключения для тулбарной пилюли (см. VpnPill в Toolbar.tsx).
+  useEffect(() => {
+    void window.oblako.getVpnConnectionState().then(setVpnConn);
+    const unsub = window.oblako.onVpnConnectionStateChanged(setVpnConn);
     return () => unsub();
   }, []);
 
@@ -436,9 +447,11 @@ export default function App() {
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
-          tab={active} allTabs={tabs} vpnOn={vpnOn} dark={dark}
+          tab={active} allTabs={tabs} vpnOn={vpnConn?.state === 'running'} vpnLabel={vpnConn?.serverRemark ?? null} dark={dark}
           omniboxRef={omniboxRef}
-          onToggleVpn={() => setVpnOn((v) => !v)}
+          // Пилюля больше не тумблер (реальное подключение требует выбора сервера, это не
+          // булев переключатель) — клик ведёт туда, где реально можно подключиться/отключиться.
+          onToggleVpn={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })(); }}
           onToggleDark={() => setDark((d) => !d)}
           onBack={() => window.oblako.goBack(activeId)}
           onForward={() => window.oblako.goForward(activeId)}

@@ -66,6 +66,11 @@ interface ToolbarProps {
   tab: TabState | undefined;
   allTabs: TabState[];
   vpnOn: boolean;
+  // Реальный remark подключённого сервера (VpnConnectionState.serverRemark) — не показываем
+  // ничего, пока не подключено, вместо захардкоженной страны-плейсхолдера (см. живой аудит:
+  // фейковый лейбл, не привязанный к реальному состоянию, — это то самое ложное чувство
+  // защищённости, от которого fail-closed на шаге 3 явно уходит).
+  vpnLabel: string | null;
   dark: boolean;
   omniboxRef?: React.RefObject<HTMLInputElement>;
   onToggleVpn: () => void;
@@ -86,7 +91,7 @@ interface ToolbarProps {
 export default function Toolbar({
   // dark/onToggleDark остаются в контракте пропсов (механизм темы не трогаем,
   // см. задачу) — сама кнопка убрана из разметки, поэтому здесь они не нужны.
-  tab, allTabs, vpnOn, omniboxRef: externalRef,
+  tab, allTabs, vpnOn, vpnLabel, omniboxRef: externalRef,
   onToggleVpn, onBack, onForward, onReload, onSubmit, onSuggestToggle,
   downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel,
 }: ToolbarProps) {
@@ -779,7 +784,7 @@ export default function Toolbar({
       {/* Правая группа: VPN-пилюля (схлопывается) + AI + адблок.
           marginLeft:auto прижимает к правому краю flex-контейнера. */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-        <VpnPill vpnOn={vpnOn} mode={vpnMode} onClick={onToggleVpn} />
+        <VpnPill vpnOn={vpnOn} vpnLabel={vpnLabel} mode={vpnMode} onClick={onToggleVpn} />
         <button title="AI-хаб" onClick={onToggleAiPanel}
           style={islandBtn('var(--accent)', 'var(--accent-soft)')}>
           <Sparkles size={18} />
@@ -812,8 +817,9 @@ export default function Toolbar({
 
 // ── VPN-пилюля ───────────────────────────────────────────────────────────────
 
-function VpnPill({ vpnOn, mode, onClick }: { vpnOn: boolean; mode: VpnMode; onClick: () => void }) {
+function VpnPill({ vpnOn, vpnLabel, mode, onClick }: { vpnOn: boolean; vpnLabel: string | null; mode: VpnMode; onClick: () => void }) {
   const shieldColor = vpnOn ? 'var(--dot-vpn)' : 'var(--text-faint)';
+  const fullLabel = vpnOn ? `VPN · ${vpnLabel ?? '…'}` : 'VPN выкл.';
   const dot = vpnOn
     ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--dot-vpn)', flex: 'none' }} />
     : null;
@@ -824,7 +830,7 @@ function VpnPill({ vpnOn, mode, onClick }: { vpnOn: boolean; mode: VpnMode; onCl
     return (
       <button
         onClick={onClick}
-        title={vpnOn ? 'VPN включён' : 'VPN выкл.'}
+        title={fullLabel}
         style={{
           ...navBtn(false),
           ...islandPlate,
@@ -851,7 +857,7 @@ function VpnPill({ vpnOn, mode, onClick }: { vpnOn: boolean; mode: VpnMode; onCl
     return (
       <button
         onClick={onClick}
-        title={vpnOn ? 'VPN · Финляндия' : 'VPN выкл.'}
+        title={fullLabel}
         style={{
           ...islandPlate,
           display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 10px',
@@ -883,7 +889,7 @@ function VpnPill({ vpnOn, mode, onClick }: { vpnOn: boolean; mode: VpnMode; onCl
       }}
     >
       <Shield size={15} style={{ color: shieldColor }} />
-      {vpnOn ? 'VPN · Финляндия' : 'VPN выкл.'}
+      {fullLabel}
       {dot}
     </button>
   );

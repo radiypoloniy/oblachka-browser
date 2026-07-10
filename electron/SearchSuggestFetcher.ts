@@ -3,8 +3,13 @@
 // из трёх эндпоинтов (Google/DuckDuckGo/Yandex) не шлёт Access-Control-Allow-Origin (проверено
 // вручную curl'ом на все три) — fetch из renderer получил бы заблокированный CORS-ом ответ
 // (сеть отработает, но JS не сможет прочитать тело). Main — обычный Node-контекст, CORS там не
-// действует вовсе. Прецедент сетевого запроса из main уже есть — AdBlockManager.ts::
-// fromPrebuiltAdsAndTracking (fetch(url) на CDN Ghostery), тот же приём.
+// действует вовсе.
+//
+// ⚠️ net.fetch (модуль Electron 'net'), НЕ глобальный fetch() — живой аудит утечек VPN (см. план,
+// шаг 3) поймал именно этот файл: глобальный fetch() идёт через сетевой стек Node/undici и НЕ
+// уважает session.setProxy() — при включённом VPN подсказки при наборе в омнибоксе продолжали бы
+// идти напрямую, светя реальный IP поисковику. net.fetch — часть session.defaultSession.
+import { net } from 'electron'
 import { getSearchEngine } from '../shared/searchEngines'
 import type { SearchEngineId } from '../shared/searchEngines'
 
@@ -31,7 +36,7 @@ export async function fetchSearchSuggestions(query: string, engineId: SearchEngi
 
   try {
     const engine = getSearchEngine(engineId)
-    const res = await fetch(engine.suggestUrl(query), { signal: controller.signal })
+    const res = await net.fetch(engine.suggestUrl(query), { signal: controller.signal })
     if (!res.ok) return []
     const json = await res.json()
     return engine.parseSuggest(json).slice(0, MAX_SUGGESTIONS)

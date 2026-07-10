@@ -476,6 +476,30 @@ function createWindow() {
   });
 }
 
+// VPN, шаг 3 — единственное место, которое решает, куда идёт ВЕСЬ трафик вкладок
+// (session.defaultSession — общая сессия для всех обычных вкладок, см. downloads/permissions
+// .attach() выше). Держим рядом с остальной VPN-проводкой (registerIpc), не размазываем.
+//
+// ⚠️ Fail-closed — осознанный выбор, не поведение Electron/Chromium по умолчанию: при
+// неожиданном падении Xray ПОСЛЕ успешного подключения НЕ откатываемся молча на прямое
+// соединение — это дало бы ложное чувство защиты (пользователь думает, что VPN включён, а
+// трафик уже идёт напрямую). Вместо этого блокируем весь трафик, пока пользователь явно не
+// переподключится или не нажмёт «Отключить». 127.0.0.1:1 — заведомо мёртвый локальный порт
+// (никогда не совпадает с реальным SOCKS-портом Xray, туда в принципе никто не слушает) —
+// любой запрос через такой "прокси" гарантированно проваливается, а не тихо идёт мимо него.
+const VPN_KILL_SWITCH_PROXY_RULES = 'socks5://127.0.0.1:1';
+
+function applyVpnProxy(): void {
+  const state = vpnProcess.getState();
+  const port = vpnProcess.getLocalSocksPort();
+  const proxyRules = state === 'running' && port
+    ? `socks5://127.0.0.1:${port}`
+    : state === 'error'
+      ? VPN_KILL_SWITCH_PROXY_RULES
+      : 'direct://'; // 'stopped'/'starting' — обычный режим, VPN не задействован
+  void session.defaultSession.setProxy({ proxyRules });
+}
+
 // ── IPC: renderer (хром) управляет движком вкладок ──
 function registerIpc() {
   ipcMain.handle(IPC.SYNC_GET, () => ({
@@ -605,10 +629,15 @@ function registerIpc() {
   // vpnConnectionTarget не сбрасывается при неудачном connect — иначе состояние 'error'
   // потеряло бы "какой именно сервер не подключился", см. VpnConnectionState в shared/ipc.ts.
   let vpnConnectionTarget: { id: string; remark: string } | null = null;
+  // Захватывается из onStateChange(state, error) ниже — VpnProcess.getState() отдаёт только
+  // строку состояния, само сообщение раньше нигде не сохранялось (баг, пойман живым тестом:
+  // kill switch блокировал трафик правильно, но UI не мог показать пользователю, ПОЧЕМУ).
+  let lastVpnError: string | undefined;
   const vpnConnectionState = (): VpnConnectionState => ({
     state: vpnProcess.getState(),
     serverId: vpnConnectionTarget?.id ?? null,
     serverRemark: vpnConnectionTarget?.remark ?? null,
+    error: lastVpnError,
   });
   ipcMain.handle(IPC.VPN_CONNECT, async (_e, serverId: string) => {
     const server = vpnKeyStore.getServers().find((s) => s.id === serverId);
@@ -617,18 +646,20 @@ function registerIpc() {
     return vpnProcess.start(server);
   });
   ipcMain.handle(IPC.VPN_DISCONNECT, async () => {
-    // Тот же приём, что VpnProcess.ts::stop() уже применяет к своему состоянию (wasError) —
-    // не затираем target, если disconnect вызван как уборка ПОСЛЕ краша (Settings.tsx показывает
-    // ошибку у конкретного сервера по conn.serverId — обнулив его здесь, сообщение об ошибке
-    // молча исчезло бы из UI при следующей же попытке прибраться после сбоя).
-    const wasError = vpnProcess.getState() === 'error';
+    // ⚠️ ВСЕГДА сбрасывает target/error — см. VpnProcess.ts::stop() про живой баг, который эта
+    // симметрия раньше маскировала (kill switch блокировал трафик навсегда без выхода).
+    // Disconnect — гарантированный путь назад к рабочему состоянию, а не «почти сброс».
     await vpnProcess.stop();
-    if (!wasError) vpnConnectionTarget = null;
+    vpnConnectionTarget = null;
+    lastVpnError = undefined;
   });
   ipcMain.handle(IPC.VPN_GET_CONNECTION_STATE, () => vpnConnectionState());
-  vpnProcess.onStateChange(() => {
+  vpnProcess.onStateChange((_state, error) => {
+    lastVpnError = error;
+    applyVpnProxy();
     chromeView?.webContents.send(IPC.VPN_CONNECTION_STATE_CHANGED, vpnConnectionState());
   });
+  applyVpnProxy(); // детерминированная база на старте — 'stopped' → direct, а не implicit-дефолт Electron
 
   // Менеджер паролей, шаг 1 (см. electron/PasswordManager.ts). Пароль пересекает IPC только
   // через reveal/generate — list его не отдаёт, copy сам кладёт в буфер и наружу не возвращает.

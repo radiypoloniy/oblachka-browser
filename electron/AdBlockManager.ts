@@ -1,4 +1,4 @@
-import { app, session as electronSession, ipcMain } from 'electron';
+import { app, session as electronSession, ipcMain, net } from 'electron';
 import type {
   OnBeforeRequestListenerDetails, CallbackResponse,
   OnHeadersReceivedListenerDetails, HeadersReceivedResponse,
@@ -196,8 +196,11 @@ export class AdBlockManager {
     try {
       // fromPrebuiltAdsAndTracking: скачивает prebuilt-бинарник с CDN Ghostery
       // (уже скомпилирован с косметикой). При повторных стартах — из кэша (<50ms).
+      // net.fetch (модуль Electron), НЕ глобальный fetch() — живой аудит утечек VPN (см. план,
+      // шаг 3): глобальный fetch() не уважает session.setProxy(), обновление списков блокировки
+      // при включённом VPN продолжало бы идти напрямую в обход туннеля.
       const load = ElectronBlocker.fromPrebuiltAdsAndTracking(
-        (url) => fetch(url),
+        (url) => net.fetch(url),
         {
           path: this.#enginePath,
           read:  (p) => fs.promises.readFile(p),

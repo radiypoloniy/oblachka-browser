@@ -524,6 +524,23 @@ function VpnSection() {
                       <button onClick={() => void handleDisconnect()} style={{ ...btnGhost, flex: 'none', padding: '5px 10px' }}>
                         Отключить
                       </button>
+                    ) : isError ? (
+                      // ⚠️ «Отключить» видна и здесь, не только при isRunning — иначе после
+                      // неудачной попытки нет способа выйти из состояния error через UI вообще
+                      // (см. живой аудит: kill switch блокирует ВЕСЬ трафик до переподключения,
+                      // а без этой кнопки переподключиться — единственный доступный выход).
+                      <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+                        <button
+                          onClick={() => void handleConnect(s.id)}
+                          disabled={isStarting}
+                          style={{ ...btnGhost, padding: '5px 10px', opacity: isStarting ? 0.6 : 1 }}
+                        >
+                          {isStarting ? 'Подключение…' : 'Повторить'}
+                        </button>
+                        <button onClick={() => void handleDisconnect()} style={{ ...btnGhost, padding: '5px 10px' }}>
+                          Отключить
+                        </button>
+                      </div>
                     ) : (
                       <button
                         onClick={() => void handleConnect(s.id)}
