@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyRound, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, type LucideIcon } from 'lucide-react';
 import type { AdBlockState, BackfillProgress, HistoryContentCoverage, VpnStatus, VpnServerMeta, VpnConnectionState, PasswordMeta, PasswordCopyField } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
+import { stripEmoji } from '../../shared/text';
 
 interface SettingsProps {
   onClose: () => void;
@@ -512,7 +513,7 @@ function VpnSection() {
                       flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
-                      {s.remark}
+                      {stripEmoji(s.remark) || s.address}
                     </span>
                     <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontFamily: 'monospace', flex: 'none' }}>
                       {s.address}:{s.port}

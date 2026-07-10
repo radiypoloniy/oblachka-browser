@@ -23,6 +23,7 @@ import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
+import { initVpnPopover, showVpnPopover, closeVpnPopover, syncVpnPopoverAnchorBounds } from './VpnPopoverManager';
 import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
 import * as vpnKeyStore from './VpnKeyStore';
@@ -288,18 +289,19 @@ function createWindow() {
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
       console.log('[DD] onActiveTabChangedCb fired'); // ВРЕМЕННЫЙ лог диагностики
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(); hideSuggestDropdown(); closePasswordPopover();
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(); hideSuggestDropdown(); closePasswordPopover(); closeVpnPopover();
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
       // её текущее состояние (или null) при каждом реальном переключении.
       passwordAutofill.onActiveTabChanged();
     },
-    (wc, tabId) => { closeTranslatePopoverForClosedTab(wc); closePasswordPopover(); passwordAutofill.onTabClosed(tabId); },
+    (wc, tabId) => { closeTranslatePopoverForClosedTab(wc); closePasswordPopover(); closeVpnPopover(); passwordAutofill.onTabClosed(tabId); },
     // Заход 5: реальный клик в контент вкладки (не blur омнибокса) — закрывает дропдаун подсказок
     // в chrome, см. shared/ipc.ts::SUGGEST_DROPDOWN_CONTENT_FOCUS, Toolbar.tsx.
     () => {
       console.log('[DD] onContentFocusCb fired (tab wc gained OS focus)'); // ВРЕМЕННЫЙ лог диагностики
       chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS);
       closePasswordPopover();
+      closeVpnPopover();
     },
     // Менеджер паролей, шаг 2, коммит 2 — сигналы content-preload идут в PasswordAutofillManager,
     // который сверяется с сейфом и решает, показывать ли индикатор/поповер.
@@ -329,6 +331,7 @@ function createWindow() {
   // закрытия по IPC (крестик/Esc-в-поле), см. FindBarManager.ts::ensureIpcRegistered.
   setFindBarTabManager(tabs);
   initPasswordPopover(() => chromeView?.webContents.send(IPC.PASSWORD_POPOVER_CLOSED));
+  initVpnPopover(() => chromeView?.webContents.send(IPC.VPN_POPOVER_CLOSED));
   // Менеджер паролей, шаг 2: индикатор push идёт в chrome (не в конкретную вкладку) —
   // PASSWORDS_CHANGED переиспользует существующий канал шага 1 (список в Settings→Пароли).
   passwordAutofill.init(
@@ -545,6 +548,15 @@ function registerIpc() {
   ipcMain.handle(IPC.PASSWORD_POPOVER_CLOSE, () => {
     closePasswordPopover();
   });
+  ipcMain.handle(IPC.VPN_POPOVER_SET_BOUNDS, (_e, b: ContentBounds) => {
+    syncVpnPopoverAnchorBounds(b);
+  });
+  ipcMain.handle(IPC.VPN_POPOVER_SHOW, () => {
+    if (win) showVpnPopover(win);
+  });
+  ipcMain.handle(IPC.VPN_POPOVER_CLOSE, () => {
+    closeVpnPopover();
+  });
   // ВРЕМЕННЫЙ канал диагностики залипания дропдауна — см. preload.ts::ddlog. Удалить вместе с ним.
   ipcMain.on('dd-log', (_e, msg: string) => console.log(`[DD] ${msg}`));
   // Живой список подсказок (заход 3/5) — buildSuggestions в Toolbar.tsx шлёт тот же массив,
@@ -596,7 +608,6 @@ function registerIpc() {
     settings.setSearchEngine(id);
     tabs?.setSearchEngine(id);
   });
-
   // Заход D — ключ Gemini (AI-фактчек). Сам ключ не возвращается в renderer, только статус.
   ipcMain.handle(IPC.AI_GET_KEY_STATUS, () => aiKeyStore.getKeyStatus());
   ipcMain.handle(IPC.AI_SAVE_KEY,       (_e, key: string) => aiKeyStore.saveKey(key));

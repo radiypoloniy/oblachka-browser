@@ -283,6 +283,16 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.PASSWORD_POPOVER_CLOSED, handler);
   },
 
+  // Поповер VPN-пилюли (см. shared/ipc.ts::IPC.VPN_POPOVER_*).
+  setVpnPopoverAnchorBounds: (b: ContentBounds) => ipcRenderer.invoke(IPC.VPN_POPOVER_SET_BOUNDS, b) as Promise<void>,
+  showVpnPopover:            () => ipcRenderer.invoke(IPC.VPN_POPOVER_SHOW) as Promise<void>,
+  closeVpnPopover:           () => ipcRenderer.invoke(IPC.VPN_POPOVER_CLOSE) as Promise<void>,
+  onVpnPopoverClosed: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.VPN_POPOVER_CLOSED, handler);
+    return () => ipcRenderer.removeListener(IPC.VPN_POPOVER_CLOSED, handler);
+  },
+
   embedPreload: EMBED_PRELOAD,
 };
 

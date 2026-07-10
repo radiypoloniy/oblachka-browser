@@ -300,6 +300,14 @@ export const IPC = {
   PASSWORD_POPOVER_CLOSE:      'password-popover:close',
   PASSWORD_POPOVER_CLOSED:     'password-popover:closed',
 
+  // Поповер VPN-пилюли — тот же приём, что PASSWORD_POPOVER_* (см. electron/VpnPopoverManager.ts).
+  // Отличие: SHOW не несёт payload — сам поповер запрашивает список серверов/статус подключения
+  // через свой preload (см. preload-vpnpopover.ts), main здесь ничего не решает.
+  VPN_POPOVER_SET_BOUNDS: 'vpn-popover:set-bounds',
+  VPN_POPOVER_SHOW:       'vpn-popover:show',
+  VPN_POPOVER_CLOSE:      'vpn-popover:close',
+  VPN_POPOVER_CLOSED:     'vpn-popover:closed',
+
   // Заход 10: живые suggest-подсказки текущего поисковика (см. SearchSuggestFetcher.ts) —
   // fetch ТОЛЬКО из main (CORS, см. комментарий в SearchSuggestFetcher.ts). Движок берётся main'ом
   // самостоятельно через SettingsManager.getSearchEngine() — тот же источник истины, что капсула.
@@ -759,6 +767,14 @@ export interface OblakoApi {
   showPasswordPopover(state: PasswordIndicatorState): Promise<void>;
   closePasswordPopover(): Promise<void>;
   onPasswordPopoverClosed(cb: () => void): () => void;
+
+  // Поповер VPN-пилюли (см. shared/ipc.ts::IPC.VPN_POPOVER_*, electron/VpnPopoverManager.ts) —
+  // сама карточка сама запрашивает список серверов/статус через preload-vpnpopover.ts, здесь
+  // только геометрия анкора и открытие/закрытие.
+  setVpnPopoverAnchorBounds(bounds: ContentBounds): Promise<void>;
+  showVpnPopover(): Promise<void>;
+  closeVpnPopover(): Promise<void>;
+  onVpnPopoverClosed(cb: () => void): () => void;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;

@@ -449,9 +449,6 @@ export default function App() {
         <Toolbar
           tab={active} allTabs={tabs} vpnOn={vpnConn?.state === 'running'} vpnLabel={vpnConn?.serverRemark ?? null} dark={dark}
           omniboxRef={omniboxRef}
-          // Пилюля больше не тумблер (реальное подключение требует выбора сервера, это не
-          // булев переключатель) — клик ведёт туда, где реально можно подключиться/отключиться.
-          onToggleVpn={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })(); }}
           onToggleDark={() => setDark((d) => !d)}
           onBack={() => window.oblako.goBack(activeId)}
           onForward={() => window.oblako.goForward(activeId)}

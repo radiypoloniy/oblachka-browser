@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown, KeyRound } from 'lucide-react';
 import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult, PasswordIndicatorState } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
+import { stripEmoji } from '../../shared/text';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
 import { islandPlate, islandBtn, navBtn } from '../styles/island';
@@ -73,7 +74,6 @@ interface ToolbarProps {
   vpnLabel: string | null;
   dark: boolean;
   omniboxRef?: React.RefObject<HTMLInputElement>;
-  onToggleVpn: () => void;
   onToggleDark: () => void;
   onBack: () => void;
   onForward: () => void;
@@ -92,7 +92,7 @@ export default function Toolbar({
   // dark/onToggleDark остаются в контракте пропсов (механизм темы не трогаем,
   // см. задачу) — сама кнопка убрана из разметки, поэтому здесь они не нужны.
   tab, allTabs, vpnOn, vpnLabel, omniboxRef: externalRef,
-  onToggleVpn, onBack, onForward, onReload, onSubmit, onSuggestToggle,
+  onBack, onForward, onReload, onSubmit, onSuggestToggle,
   downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
@@ -106,6 +106,7 @@ export default function Toolbar({
   const [placeholderVisible, setPlaceholderVisible] = useState(true);
   const [passwordIndicator, setPasswordIndicator] = useState<PasswordIndicatorState | null>(null);
   const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false);
+  const [vpnPopoverOpen, setVpnPopoverOpen] = useState(false);
 
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = externalRef ?? internalRef;
@@ -127,6 +128,7 @@ export default function Toolbar({
   // фундамент под будущую нативную вью дропдауна, сам дропдаун этот заход не трогает.
   const omniboxPillRef = useRef<HTMLDivElement>(null);
   const passwordControlRef = useRef<HTMLDivElement>(null);
+  const vpnControlRef = useRef<HTMLDivElement>(null);
 
   // Текущий выбранный поисковик — источник истины в main (SettingsManager); здесь только
   // читаем id и строим URL по общему шаблону (shared/searchEngines.ts), не хардкодим движок.
@@ -259,6 +261,30 @@ export default function Toolbar({
     void window.oblako.showPasswordPopover(passwordIndicator);
   }, [closeDropdown, passwordIndicator, passwordPopoverOpen, pushPasswordPopoverBounds]);
 
+  const pushVpnPopoverBounds = useCallback(() => {
+    const el = vpnControlRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    void window.oblako.setVpnPopoverAnchorBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+  }, []);
+
+  const toggleVpnPopover = useCallback(() => {
+    closeDropdown('vpn-indicator');
+    setEditing(false);
+    if (passwordPopoverOpen) {
+      setPasswordPopoverOpen(false);
+      void window.oblako.closePasswordPopover();
+    }
+    if (vpnPopoverOpen) {
+      setVpnPopoverOpen(false);
+      void window.oblako.closeVpnPopover();
+      return;
+    }
+    pushVpnPopoverBounds();
+    setVpnPopoverOpen(true);
+    void window.oblako.showVpnPopover();
+  }, [closeDropdown, passwordPopoverOpen, vpnPopoverOpen, pushVpnPopoverBounds]);
+
   // ── Заход 5 (кардинальный фикс): закрытие БЕЗ blur ──────────────────────────────────────────
   // blur омнибокса — НЕ триггер закрытия (по образцу FindBar/поповера/AI-панели, см. BACKLOG.md:
   // «blur НИКОГДА не использовать как механику закрытия» — addChildView новой вью дропдауна шлёт
@@ -304,6 +330,7 @@ export default function Toolbar({
   }, []);
 
   useEffect(() => window.oblako.onPasswordPopoverClosed(() => setPasswordPopoverOpen(false)), []);
+  useEffect(() => window.oblako.onVpnPopoverClosed(() => setVpnPopoverOpen(false)), []);
 
   useEffect(() => {
     if (!passwordPopoverOpen) return;
@@ -329,6 +356,29 @@ export default function Toolbar({
     return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
   }, [passwordPopoverOpen]);
 
+  useEffect(() => {
+    if (!vpnPopoverOpen) return;
+    pushVpnPopoverBounds();
+    const el = vpnControlRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(pushVpnPopoverBounds);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [vpnPopoverOpen, toolbarWidth, pushVpnPopoverBounds]);
+
+  useEffect(() => {
+    if (!vpnPopoverOpen) return;
+    const onOutsideMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!vpnControlRef.current?.contains(target)) {
+        setVpnPopoverOpen(false);
+        void window.oblako.closeVpnPopover();
+      }
+    };
+    document.addEventListener('mousedown', onOutsideMouseDown, true);
+    return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
+  }, [vpnPopoverOpen]);
+
   // (2) Реальный OS-фокус ушёл на контент активной вкладки (ДРУГОЙ webContents — клик мышью по
   // странице) — main шлёт это из TabManager.wirePageEvents::wc.on('focus'), см. shared/ipc.ts::
   // SUGGEST_DROPDOWN_CONTENT_FOCUS.
@@ -349,6 +399,10 @@ export default function Toolbar({
     if (passwordPopoverOpen) {
       setPasswordPopoverOpen(false);
       void window.oblako.closePasswordPopover();
+    }
+    if (vpnPopoverOpen) {
+      setVpnPopoverOpen(false);
+      void window.oblako.closeVpnPopover();
     }
   }, [tab?.id]);
 
@@ -784,7 +838,9 @@ export default function Toolbar({
       {/* Правая группа: VPN-пилюля (схлопывается) + AI + адблок.
           marginLeft:auto прижимает к правому краю flex-контейнера. */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-        <VpnPill vpnOn={vpnOn} vpnLabel={vpnLabel} mode={vpnMode} onClick={onToggleVpn} />
+        <div ref={vpnControlRef} style={{ display: 'inline-flex' }}>
+          <VpnPill vpnOn={vpnOn} vpnLabel={vpnLabel} mode={vpnMode} onClick={toggleVpnPopover} active={vpnPopoverOpen} />
+        </div>
         <button title="AI-хаб" onClick={onToggleAiPanel}
           style={islandBtn('var(--accent)', 'var(--accent-soft)')}>
           <Sparkles size={18} />
@@ -817,16 +873,21 @@ export default function Toolbar({
 
 // ── VPN-пилюля ───────────────────────────────────────────────────────────────
 
-function VpnPill({ vpnOn, vpnLabel, mode, onClick }: { vpnOn: boolean; vpnLabel: string | null; mode: VpnMode; onClick: () => void }) {
+function VpnPill({ vpnOn, vpnLabel, mode, onClick, active }: { vpnOn: boolean; vpnLabel: string | null; mode: VpnMode; onClick: () => void; active: boolean }) {
   const shieldColor = vpnOn ? 'var(--dot-vpn)' : 'var(--text-faint)';
-  const fullLabel = vpnOn ? `VPN · ${vpnLabel ?? '…'}` : 'VPN выкл.';
-  const dot = vpnOn
-    ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--dot-vpn)', flex: 'none' }} />
-    : null;
+  // Флаг-эмодзи в remark (🇳🇱, 🇩🇪…) не всегда рендерится Windows как один глиф — в узкой пилюле/
+  // поповере это давало налезание символов друг на друга (см. shared/text.ts::stripEmoji).
+  const cleanLabel = vpnLabel ? stripEmoji(vpnLabel) : null;
+  const fullLabel = vpnOn ? `VPN · ${cleanLabel ?? '…'}` : 'VPN выкл.';
+  // Заливка самого щита зелёным при включённом VPN — вместо отдельной точки-индикатора рядом
+  // (пользователь: «мне не нравится зеленая точка... почему бы просто не делать заливку щита»).
+  const shieldIcon = <Shield size={15} style={{ color: shieldColor }} fill={vpnOn ? shieldColor : 'none'} />;
+  // active — открыт поповер по клику на эту пилюлю: та же подсветка, что у кнопки паролей
+  // (accent-soft), поверх обычного surface/surface-sunken тона вкл/выкл.
+  const activeBg = active ? 'var(--accent-soft)' : undefined;
 
   if (mode === 'icon') {
-    // Только щит + цветная точка (если VPN включён). Плашка-остров всегда,
-    // включён/выключен различает только тон фона (surface / surface-sunken).
+    // Только щит (заливка = статус). Плашка-остров всегда, вкл/выкл различает тон фона.
     return (
       <button
         onClick={onClick}
@@ -835,25 +896,17 @@ function VpnPill({ vpnOn, vpnLabel, mode, onClick }: { vpnOn: boolean; vpnLabel:
           ...navBtn(false),
           ...islandPlate,
           position: 'relative',
-          color: shieldColor,
-          background: vpnOn ? 'var(--surface)' : 'var(--surface-sunken)',
+          background: activeBg ?? (vpnOn ? 'var(--surface)' : 'var(--surface-sunken)'),
           borderRadius: 'var(--radius-card)',
         }}
       >
-        <Shield size={15} />
-        {vpnOn && (
-          // Маленький индикатор поверх иконки.
-          <span style={{
-            position: 'absolute', bottom: 5, right: 5,
-            width: 5, height: 5, borderRadius: '50%', background: 'var(--dot-vpn)',
-          }} />
-        )}
+        {shieldIcon}
       </button>
     );
   }
 
   if (mode === 'short') {
-    // «VPN» + индикатор — без страны. Плашка-остров всегда, вкл/выкл — тон фона.
+    // «VPN» + щит — без страны. Плашка-остров всегда, вкл/выкл — тон фона.
     return (
       <button
         onClick={onClick}
@@ -862,14 +915,13 @@ function VpnPill({ vpnOn, vpnLabel, mode, onClick }: { vpnOn: boolean; vpnLabel:
           ...islandPlate,
           display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 10px',
           borderRadius: 'var(--radius-pill)', cursor: 'default',
-          background: vpnOn ? 'var(--surface)' : 'var(--surface-sunken)',
+          background: activeBg ?? (vpnOn ? 'var(--surface)' : 'var(--surface-sunken)'),
           fontSize: 'var(--fs-sm)', fontWeight: 500,
           color: vpnOn ? 'var(--text-strong)' : 'var(--text-muted)',
         }}
       >
-        <Shield size={15} style={{ color: shieldColor }} />
+        {shieldIcon}
         VPN
-        {dot}
       </button>
     );
   }
@@ -883,14 +935,14 @@ function VpnPill({ vpnOn, vpnLabel, mode, onClick }: { vpnOn: boolean; vpnLabel:
         ...islandPlate,
         display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 12px',
         borderRadius: 'var(--radius-pill)', cursor: 'default',
-        background: vpnOn ? 'var(--surface)' : 'var(--surface-sunken)',
+        background: activeBg ?? (vpnOn ? 'var(--surface)' : 'var(--surface-sunken)'),
         fontSize: 'var(--fs-sm)', fontWeight: 500,
         color: vpnOn ? 'var(--text-strong)' : 'var(--text-muted)',
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}
     >
-      <Shield size={15} style={{ color: shieldColor }} />
-      {fullLabel}
-      {dot}
+      {shieldIcon}
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullLabel}</span>
     </button>
   );
 }
