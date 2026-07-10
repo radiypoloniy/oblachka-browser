@@ -29,6 +29,7 @@ import * as passwordAutofill from './PasswordAutofillManager';
 import { setChromeView as setEmbedClientChromeView } from './EmbedClient';
 import { indexVisit } from './HistoryIndexer';
 import { startBackfill, cancelBackfill, setBackfillProgressListener } from './HistoryBackfill';
+import { startContentBackfill, cancelContentBackfill, setContentBackfillProgressListener } from './HistoryContentBackfill';
 import type { BackfillProgress } from '../shared/ipc';
 import { searchHistorySemantic, searchHistorySmart } from './HistorySearch';
 
@@ -644,6 +645,18 @@ function registerIpc() {
     withContent: history.countHistoryWithContent(),
     total: history.countAll(),
   }));
+
+  // Рискованный бэкфилл полного текста (electron/HistoryContentBackfill.ts) — тихое переоткрытие
+  // старых URL, отдельная секция в Settings.tsx с явным предупреждением. Нужен win (создаёт
+  // скрытые WebContentsView) — если окна уже нет, просто no-op.
+  let lastContentBackfillProgress: BackfillProgress = { processed: 0, total: 0, running: false, cancelled: false };
+  setContentBackfillProgressListener((p) => {
+    lastContentBackfillProgress = p;
+    chromeView?.webContents.send(IPC.HISTORY_CONTENT_BACKFILL_PROGRESS, p);
+  });
+  ipcMain.on(IPC.HISTORY_CONTENT_BACKFILL_START, () => { if (win) void startContentBackfill(history, win); });
+  ipcMain.on(IPC.HISTORY_CONTENT_BACKFILL_CANCEL, () => { cancelContentBackfill(); });
+  ipcMain.handle(IPC.HISTORY_CONTENT_BACKFILL_STATUS, () => lastContentBackfillProgress);
 
   // Заход 10: живые suggest-подсказки — движок берём из settings (тот же источник истины, что
   // капсула выбора поисковика), а не отдельным параметром от renderer — не может разойтись.

@@ -45,7 +45,7 @@ const SPA_SETTLE_GROWTH_RATIO = 1.3;
 // Отдельный, куда меньший лимит, чем PAGE_TEXT_MAX_CHARS у AI-панели (28000 симв., там нужен
 // полный контекст для LLM-диалога) — эмбеддинг сжимает вход в 256 чисел, длинный текст не даёт
 // пропорционально лучший вектор, только лишняя нагрузка на общую очередь embed().
-const HISTORY_EMBED_TEXT_MAX_CHARS = 2000;
+export const HISTORY_EMBED_TEXT_MAX_CHARS = 2000;
 const HISTORY_CHUNK_SOURCE_MAX_CHARS = 12_000;
 const HISTORY_CHUNK_TARGET_CHARS = 1400;
 const HISTORY_CHUNK_OVERLAP_CHARS = 220;
@@ -55,7 +55,9 @@ function hostnameOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
 }
 
-function buildTextChunks(text: string): string[] {
+// Экспортирована для HistoryContentBackfill.ts — тот же пайплайн чанкинга для тихого
+// переоткрытия старых страниц, дублировать логику незачем.
+export function buildTextChunks(text: string): string[] {
   const normalized = text.replace(/\s+/g, ' ').trim().slice(0, HISTORY_CHUNK_SOURCE_MAX_CHARS);
   if (!normalized) return [];
   if (normalized.length <= HISTORY_CHUNK_TARGET_CHARS) return [normalized];
@@ -107,7 +109,10 @@ function stillOnPage(wc: WebContents, url: string): boolean {
 
 // null — не удалось (вкладка закрыта/страница не догрузилась к таймауту/юзер ушёл на другой
 // URL до конца загрузки/Readability не нашла текста) — indexVisit уходит в fallback.
-async function extractEnrichedText(wc: WebContents | null, url: string): Promise<string | null> {
+// Экспортирована для HistoryContentBackfill.ts — тот же did-finish-load/SPA-settle пайплайн,
+// что и обычная индексация визита, просто источник wc другой (скрытая фоновая вьюха, не
+// реальная вкладка пользователя).
+export async function extractEnrichedText(wc: WebContents | null, url: string): Promise<string | null> {
   if (!wc || wc.isDestroyed()) return null;
   await waitForFinishLoad(wc);
   if (!stillOnPage(wc, url)) return null;

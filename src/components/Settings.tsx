@@ -522,6 +522,84 @@ function HistoryBackfillSection() {
           )}
         </div>
       )}
+
+      <HistoryContentBackfillSection onDone={loadCoverage} />
+    </div>
+  );
+}
+
+// ── Рискованный бэкфилл полного текста: тихое переоткрытие старых URL (electron/
+// HistoryContentBackfill.ts) ─────────────────────────────────────────────────────────────────
+// Отдельная секция, не совмещена с лёгким бэкфиллом выше — это принципиально другой по
+// стоимости и риску процесс (реальные загрузки страниц, не только текстовый embed-вызов).
+// onDone — обновить счётчик охвата в родительской секции после завершения/остановки.
+function HistoryContentBackfillSection({ onDone }: { onDone: () => void }) {
+  const [progress, setProgress] = useState<BackfillProgress | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    window.oblako.getHistoryContentBackfillStatus().then((p) => { if (mounted) setProgress(p); });
+    const unsub = window.oblako.onHistoryContentBackfillProgress((p) => {
+      if (!mounted) return;
+      setProgress(p);
+      if (!p.running) onDone();
+    });
+    return () => { mounted = false; unsub(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const running = progress?.running ?? false;
+  const processed = progress?.processed ?? 0;
+  const total = progress?.total ?? 0;
+  const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 12,
+      paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
+    }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+          Полная индексация истории (эксперимент)
+        </h3>
+        <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--danger-500)' }}>
+          Тихо переоткрывает старые страницы из истории в фоне (невидимо для вас), чтобы забрать
+          их текст для умного поиска. Это значит реальные сетевые запросы к этим сайтам — часть
+          страниц может показать капчу, разлогинить или уже не существовать (такие просто
+          пропускаются). Может занять долго на большой истории. Можно остановить в любой момент.
+        </p>
+      </div>
+
+      {running ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
+            Обработано {processed} из {total}…
+          </div>
+          <div style={{ height: 6, borderRadius: 3, background: 'var(--surface-hover)', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', width: `${pct}%`, background: 'var(--accent)',
+              transition: 'width 0.2s ease-out',
+            }} />
+          </div>
+          <button
+            onClick={() => window.oblako.cancelHistoryContentBackfill()}
+            style={{ ...btnGhost, alignSelf: 'flex-start' }}
+          >
+            Остановить
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => window.oblako.startHistoryContentBackfill()} style={btnGhost}>
+            Проиндексировать полный текст
+          </button>
+          {progress && total > 0 && !running && (
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+              {progress.cancelled ? `Остановлено: ${processed} из ${total}` : `Готово: ${processed} из ${total}`}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

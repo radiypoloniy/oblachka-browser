@@ -239,6 +239,25 @@ export class HistoryManager {
     }
   }
 
+  // Для HistoryContentBackfill.ts (тихое переоткрытие старых URL для извлечения текста) —
+  // все записи без единого чанка, свежее/чаще посещаемые первыми (та же логика приоритета,
+  // что у getUnindexedHistory). Шумные (логин/OAuth/голый домен) здесь НЕ отфильтрованы —
+  // это делает вызывающая сторона до навигации (isNoisyForEmbedding), чтобы не открывать их
+  // вообще, не только не индексировать результат.
+  getHistoryWithoutContent(): Array<{ id: number; url: string; title: string }> {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT id, url, title FROM history
+        WHERE id NOT IN (SELECT DISTINCT history_id FROM history_content_chunks)
+        ORDER BY last_visit DESC
+      `).all() as Array<{ id: number; url: string; title: string }>;
+    } catch (e) {
+      console.warn('[History] getHistoryWithoutContent error:', (e as Error).message);
+      return [];
+    }
+  }
+
   countAll(): number {
     if (!this.#db) return 0;
     try {

@@ -113,6 +113,17 @@ const api: OblakoApi = {
   getHistoryContentCoverage: () =>
     ipcRenderer.invoke(IPC.HISTORY_CONTENT_COVERAGE) as Promise<HistoryContentCoverage>,
 
+  // Рискованный бэкфилл полного текста — тихое переоткрытие старых URL (electron/HistoryContentBackfill.ts).
+  startHistoryContentBackfill:  () => ipcRenderer.send(IPC.HISTORY_CONTENT_BACKFILL_START),
+  cancelHistoryContentBackfill: () => ipcRenderer.send(IPC.HISTORY_CONTENT_BACKFILL_CANCEL),
+  getHistoryContentBackfillStatus: () =>
+    ipcRenderer.invoke(IPC.HISTORY_CONTENT_BACKFILL_STATUS) as Promise<BackfillProgress>,
+  onHistoryContentBackfillProgress: (cb: (p: BackfillProgress) => void) => {
+    const handler = (_e: unknown, p: BackfillProgress) => cb(p);
+    ipcRenderer.on(IPC.HISTORY_CONTENT_BACKFILL_PROGRESS, handler);
+    return () => ipcRenderer.removeListener(IPC.HISTORY_CONTENT_BACKFILL_PROGRESS, handler);
+  },
+
   // Загрузки
   getDownloads:       ()             => ipcRenderer.invoke(IPC.DOWNLOADS_GET_ALL) as Promise<DownloadEntry[]>,
   pauseDownload:      (id: string)   => ipcRenderer.invoke(IPC.DOWNLOAD_PAUSE, id),

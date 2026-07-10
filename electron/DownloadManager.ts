@@ -2,6 +2,7 @@ import type { Session, DownloadItem } from 'electron';
 import { shell } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type { DownloadEntry } from '../shared/ipc';
+import { isBackgroundWebContents } from './BackgroundWebContents';
 
 // Минимальный интервал отправки обновлений прогресса в renderer.
 // Каждый байт не шлём — слишком шумно.
@@ -18,7 +19,12 @@ export class DownloadManager {
     this.#session = sess;
     this.#onChange = onChange;
 
-    sess.on('will-download', (_event, item) => {
+    sess.on('will-download', (_event, item, wc) => {
+      // Фоновая (не пользователем открытая) вкладка — см. BackgroundWebContents.ts. Отменяем
+      // молча: прямая ссылка на файл на переоткрытой в фоне странице не должна класть файл
+      // пользователю в Загрузки без его ведома.
+      if (isBackgroundWebContents(wc.id)) { item.cancel(); return; }
+
       const id = randomUUID();
       const entry: DownloadEntry = {
         id,

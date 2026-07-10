@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { PermissionRequest, PermKey } from '../shared/ipc';
+import { isBackgroundWebContents } from './BackgroundWebContents';
 
 type Database = import('better-sqlite3').Database;
 type BetterSqlite3 = typeof import('better-sqlite3');
@@ -110,7 +111,11 @@ export class PermissionManager {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (sess as any).setPermissionRequestHandler(
-      (wc: { getURL(): string } | null, permission: string, callback: (granted: boolean) => void, details: unknown) => {
+      (wc: { id: number; getURL(): string } | null, permission: string, callback: (granted: boolean) => void, details: unknown) => {
+        // Фоновая (не пользователем открытая) вкладка — см. BackgroundWebContents.ts. Тихий deny,
+        // без всплытия в UI: запрос разрешения без видимой вкладки-источника только запутал бы.
+        if (wc && isBackgroundWebContents(wc.id)) { callback(false); return; }
+
         const rawUrl = (details as { requestingUrl?: string })?.requestingUrl
           ?? (wc ? wc.getURL() : '');
         const origin = safeOrigin(rawUrl);

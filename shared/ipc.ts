@@ -301,6 +301,14 @@ export const IPC = {
   // Индикатор качества индекса умного поиска (см. Settings.tsx::HistoryBackfillSection) — сколько
   // страниц истории реально имеют извлечённый текст (chunks), а не только заголовок+домен.
   HISTORY_CONTENT_COVERAGE: 'history:content-coverage', // renderer → main: снимок охвата на момент запроса
+
+  // Рискованный бэкфилл полного текста (см. electron/HistoryContentBackfill.ts) — тихое
+  // переоткрытие старых URL. Только по явному действию в отдельной, явно промаркированной
+  // секции Settings.tsx — не совмещён с HISTORY_BACKFILL_* (тот делает совсем другое и дешёвое).
+  HISTORY_CONTENT_BACKFILL_START:    'history:content-backfill-start',
+  HISTORY_CONTENT_BACKFILL_CANCEL:   'history:content-backfill-cancel',
+  HISTORY_CONTENT_BACKFILL_STATUS:   'history:content-backfill-status',
+  HISTORY_CONTENT_BACKFILL_PROGRESS: 'history:content-backfill-progress',
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -576,6 +584,14 @@ export interface OblakoApi {
   onHistoryBackfillProgress(cb: (p: BackfillProgress) => void): () => void;
   // Индикатор качества индекса умного поиска — сколько страниц реально имеют извлечённый текст.
   getHistoryContentCoverage(): Promise<HistoryContentCoverage>;
+
+  // Рискованный бэкфилл полного текста (electron/HistoryContentBackfill.ts) — тихое переоткрытие
+  // старых URL. Тот же прогресс-контракт, что у HISTORY_BACKFILL_* (BackfillProgress), но
+  // отдельные каналы/методы — это независимый, гораздо более тяжёлый и рискованный процесс.
+  startHistoryContentBackfill(): void;
+  cancelHistoryContentBackfill(): void;
+  getHistoryContentBackfillStatus(): Promise<BackfillProgress>;
+  onHistoryContentBackfillProgress(cb: (p: BackfillProgress) => void): () => void;
 
   // Разрешения сайтов
   respondPermission(requestId: string, granted: boolean, remember: boolean): Promise<void>;
