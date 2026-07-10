@@ -11,6 +11,14 @@ import * as store from './VpnKeyStore';
 
 const FETCH_TIMEOUT_MS = 15_000;
 
+// Живой аудит на реальной подписке (панель Remnawave): дефолтный браузерный User-Agent
+// (Chrome/Safari/AppleWebKit-подобный) получает HTTP 502 — панели-обёртки над Xray/sing-box
+// массово блокируют похожие-на-браузер UA (анти-скрапинг), но пропускают практически любую
+// другую строку, включая честное имя приложения — проверено эмпирически (curl, "Oblako/1.0" и
+// сторонние клиентские UA все одинаково получают 200 с тем же телом ответа). Не притворяемся
+// другим приложением (v2rayNG и т.п.) — это было бы обманом сервера, а не необходимостью.
+const SUBSCRIPTION_USER_AGENT = 'Oblako/1.0';
+
 export interface SubscriptionResult {
   ok: boolean;
   error?: string;
@@ -22,7 +30,7 @@ async function fetchText(url: string): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await net.fetch(url, { signal: controller.signal });
+    const res = await net.fetch(url, { signal: controller.signal, headers: { 'User-Agent': SUBSCRIPTION_USER_AGENT } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.text();
   } finally {
