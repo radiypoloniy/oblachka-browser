@@ -30,6 +30,18 @@ const indexedHistoryIds = new Set<number>();
 // индексация не должна зависать на ней навсегда.
 const EXTRACTION_TIMEOUT_MS = 8000;
 
+// did-finish-load — это конец СЕТЕВОЙ загрузки, не конец отрисовки. Тяжёлые SPA (Google Диск,
+// почта, ленты) в этот момент ещё показывают скелетон/спиннер — реальный контент дорисовывается
+// позже через XHR/fetch. Живой аудит истории (см. задачу про качество умного поиска) поймал
+// ровно это: чанк с текстом "Загружается... (собрано 74%)" вместо содержимого папки. Задержка
+// перед первым снимком — не блокирует навигацию/UI, извлечение всё ещё fire-and-forget.
+const SPA_SETTLE_DELAY_MS = 1200;
+// Повторный снимок ПОСЛЕ первого — если текст заметно вырос, первый снимок поймал страницу
+// в процессе дорисовки. Один повтор с фиксированным бюджетом, не опрос до полной стабилизации —
+// для страниц, которым и этого мало, остаётся fallback на title+hostname, не зависание.
+const SPA_SETTLE_RECHECK_MS = 1000;
+const SPA_SETTLE_GROWTH_RATIO = 1.3;
+
 // Отдельный, куда меньший лимит, чем PAGE_TEXT_MAX_CHARS у AI-панели (28000 симв., там нужен
 // полный контекст для LLM-диалога) — эмбеддинг сжимает вход в 256 чисел, длинный текст не даёт
 // пропорционально лучший вектор, только лишняя нагрузка на общую очередь embed().
@@ -83,17 +95,38 @@ function waitForFinishLoad(wc: WebContents): Promise<void> {
   });
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Гонка: юзер успел уйти со страницы (или навигация вообще не завершилась, а сработал
+// did-finish-load ПОЗДНЕЙШЕЙ навигации той же вкладки) — извлекать нечего, честный fallback.
+function stillOnPage(wc: WebContents, url: string): boolean {
+  return !wc.isDestroyed() && wc.getURL() === url;
+}
+
 // null — не удалось (вкладка закрыта/страница не догрузилась к таймауту/юзер ушёл на другой
 // URL до конца загрузки/Readability не нашла текста) — indexVisit уходит в fallback.
 async function extractEnrichedText(wc: WebContents | null, url: string): Promise<string | null> {
   if (!wc || wc.isDestroyed()) return null;
   await waitForFinishLoad(wc);
-  if (wc.isDestroyed()) return null;
-  // Гонка: юзер успел уйти со страницы (или навигация вообще не завершилась, а сработал
-  // did-finish-load ПОЗДНЕЙШЕЙ навигации той же вкладки) — извлекать нечего, честный fallback.
-  if (wc.getURL() !== url) return null;
-  const extracted = await extractPageText(wc);
-  return extracted.text || null;
+  if (!stillOnPage(wc, url)) return null;
+
+  // Первый снимок — не сразу: см. SPA_SETTLE_DELAY_MS про скелетон/спиннер SPA на did-finish-load.
+  await wait(SPA_SETTLE_DELAY_MS);
+  if (!stillOnPage(wc, url)) return null;
+  const first = await extractPageText(wc);
+  if (!stillOnPage(wc, url)) return first.text || null;
+
+  // Повторный снимок: если текст заметно вырос — страница ещё дорисовывалась на первом снимке,
+  // берём более полный второй. Иначе первый снимок уже стабилен — не тратим лишний прогон.
+  await wait(SPA_SETTLE_RECHECK_MS);
+  if (!stillOnPage(wc, url)) return first.text || null;
+  const second = await extractPageText(wc);
+  if (!stillOnPage(wc, url)) return first.text || null;
+
+  if (second.text.length > first.text.length * SPA_SETTLE_GROWTH_RATIO) return second.text || null;
+  return first.text || second.text || null;
 }
 
 export async function indexVisit(
