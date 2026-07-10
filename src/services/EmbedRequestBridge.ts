@@ -8,6 +8,16 @@ import type { EmbedRequestPayload, EmbedResponsePayload } from '../../shared/ipc
 export function startEmbedRequestBridge(): () => void {
   return window.oblako.onEmbedRequest(async (req: EmbedRequestPayload) => {
     try {
+      if (req.modelVersionOnly) {
+        window.oblako.sendEmbedResponse({
+          requestId: req.requestId,
+          ok: true,
+          vector: new Float32Array(0),
+          dims: 0,
+          modelVersion: embeddingService.getModelVersion(),
+        })
+        return
+      }
       const [vector] = await embeddingService.embed([req.text])
       const res: EmbedResponsePayload = {
         requestId: req.requestId,

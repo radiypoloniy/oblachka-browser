@@ -75,3 +75,24 @@ export function requestEmbedding(text: string): Promise<EmbedResult> {
     chromeViewRef.webContents.send(IPC.EMBED_REQUEST, { requestId, text });
   });
 }
+
+export function requestEmbeddingModelVersion(): Promise<string> {
+  ensureIpcRegistered();
+  return new Promise((resolve, reject) => {
+    if (!chromeViewRef || chromeViewRef.webContents.isDestroyed()) {
+      reject(new Error('EmbedClient: chromeView недоступен'));
+      return;
+    }
+    const requestId = nextRequestId++;
+    const timer = setTimeout(() => {
+      pending.delete(requestId);
+      reject(new Error(`EmbedClient: таймаут ${REQUEST_TIMEOUT_MS}ms (requestId=${requestId})`));
+    }, REQUEST_TIMEOUT_MS);
+    pending.set(requestId, {
+      resolve: (r) => resolve(r.modelVersion),
+      reject,
+      timer,
+    });
+    chromeViewRef.webContents.send(IPC.EMBED_REQUEST, { requestId, text: '', modelVersionOnly: true });
+  });
+}

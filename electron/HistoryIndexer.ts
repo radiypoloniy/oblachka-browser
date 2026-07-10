@@ -34,9 +34,36 @@ const EXTRACTION_TIMEOUT_MS = 8000;
 // полный контекст для LLM-диалога) — эмбеддинг сжимает вход в 256 чисел, длинный текст не даёт
 // пропорционально лучший вектор, только лишняя нагрузка на общую очередь embed().
 const HISTORY_EMBED_TEXT_MAX_CHARS = 2000;
+const HISTORY_CHUNK_SOURCE_MAX_CHARS = 12_000;
+const HISTORY_CHUNK_TARGET_CHARS = 1400;
+const HISTORY_CHUNK_OVERLAP_CHARS = 220;
+const HISTORY_CHUNK_MAX = 8;
 
 function hostnameOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
+}
+
+function buildTextChunks(text: string): string[] {
+  const normalized = text.replace(/\s+/g, ' ').trim().slice(0, HISTORY_CHUNK_SOURCE_MAX_CHARS);
+  if (!normalized) return [];
+  if (normalized.length <= HISTORY_CHUNK_TARGET_CHARS) return [normalized];
+
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < normalized.length && chunks.length < HISTORY_CHUNK_MAX) {
+    const hardEnd = Math.min(normalized.length, start + HISTORY_CHUNK_TARGET_CHARS);
+    let end = hardEnd;
+    if (hardEnd < normalized.length) {
+      const punctuation = normalized.lastIndexOf('.', hardEnd);
+      const boundary = punctuation > start + 500 ? punctuation + 1 : normalized.lastIndexOf(' ', hardEnd);
+      if (boundary > start + 500) end = boundary;
+    }
+    const chunk = normalized.slice(start, end).trim();
+    if (chunk) chunks.push(chunk);
+    if (end >= normalized.length) break;
+    start = Math.max(end - HISTORY_CHUNK_OVERLAP_CHARS, start + 1);
+  }
+  return chunks;
 }
 
 // Резолвится либо по событию did-finish-load ЭТОЙ вкладки, либо по таймауту — что раньше.
@@ -124,6 +151,26 @@ export async function indexVisit(
   // изменится, успешный embed без записи не должен молча помечаться как проиндексированную.
   try {
     history.saveEmbedding(historyId, embedded.vector, embedded.dims, embedded.modelVersion);
+    if (enrichedText) {
+      const chunks = buildTextChunks(enrichedText);
+      const chunkInputs = [];
+      for (let i = 0; i < chunks.length; i++) {
+        try {
+          const chunkEmbedded = await requestEmbedding(chunks[i]!);
+          chunkInputs.push({
+            chunkIndex: i,
+            url,
+            title,
+            text: chunks[i]!,
+            vector: chunkEmbedded.vector,
+            dims: chunkEmbedded.dims,
+          });
+        } catch (e) {
+          console.warn(`[HistoryIndexer] embed чанка не удался для ${url}:`, (e as Error).message);
+        }
+      }
+      history.saveContentChunks(historyId, chunkInputs, embedded.modelVersion);
+    }
     indexedHistoryIds.add(historyId); // помечаем ТОЛЬКО после реально успешной записи
   } catch (e) {
     console.warn(`[HistoryIndexer] запись эмбеддинга не удалась для ${url}:`, (e as Error).message);

@@ -324,6 +324,7 @@ export interface SemanticSearchResult {
   lastVisit: number;
   visitCount: number;
   score: number;
+  snippet?: string;
 }
 
 // ── Эмбеддинги (заход G) ─────────────────────────────────────────────────────
@@ -332,6 +333,7 @@ export interface SemanticSearchResult {
 export interface EmbedRequestPayload {
   requestId: number;
   text: string;
+  modelVersionOnly?: boolean;
 }
 export type EmbedResponsePayload =
   | { requestId: number; ok: true; vector: Float32Array; dims: number; modelVersion: string }

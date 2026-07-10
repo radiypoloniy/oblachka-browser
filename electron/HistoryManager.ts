@@ -11,6 +11,29 @@ type BetterSqlite3 = typeof import('better-sqlite3');
 
 const RECENT_LIMIT = 500;
 
+export interface ContentChunkInput {
+  chunkIndex: number;
+  url: string;
+  title: string;
+  text: string;
+  vector: Float32Array;
+  dims: number;
+}
+
+export interface HistoryContentChunk {
+  chunkId: number;
+  historyId: number;
+  chunkIndex: number;
+  url: string;
+  title: string;
+  text: string;
+  lastVisit: number;
+  visitCount: number;
+  vector: Buffer;
+  dims: number;
+  modelVersion: string;
+}
+
 export class HistoryManager {
   #db: Database | null = null;
   #dbPath: string;
@@ -68,14 +91,17 @@ export class HistoryManager {
 
   // Блок 6: все проиндексированные записи с векторами для brute-force top-k поиска —
   // на объёме ~700 строк полный скан дешевле, чем инфраструктура ANN-индекса ради этого.
-  getAllEmbeddings(): Array<{ id: number; url: string; title: string; lastVisit: number; visitCount: number; vector: Buffer; dims: number }> {
+  getAllEmbeddings(modelVersion?: string): Array<{ id: number; url: string; title: string; lastVisit: number; visitCount: number; vector: Buffer; dims: number; modelVersion: string }> {
     if (!this.#db) return [];
     try {
-      return this.#db.prepare(`
-        SELECT h.id, h.url, h.title, h.last_visit AS lastVisit, h.visit_count AS visitCount, he.vector, he.dims
+      const sql = `
+        SELECT h.id, h.url, h.title, h.last_visit AS lastVisit, h.visit_count AS visitCount,
+               he.vector, he.dims, he.model_version AS modelVersion
         FROM history_embeddings he
         JOIN history h ON h.id = he.history_id
-      `).all() as Array<{ id: number; url: string; title: string; lastVisit: number; visitCount: number; vector: Buffer; dims: number }>;
+        ${modelVersion ? 'WHERE he.model_version = ?' : ''}
+      `;
+      return this.#db.prepare(sql).all(...(modelVersion ? [modelVersion] : [])) as Array<{ id: number; url: string; title: string; lastVisit: number; visitCount: number; vector: Buffer; dims: number; modelVersion: string }>;
     } catch (e) {
       console.warn('[History] getAllEmbeddings error:', (e as Error).message);
       return [];
@@ -86,9 +112,20 @@ export class HistoryManager {
   // посещаемое — первым (last_visit DESC), чтобы при прерывании уже сделанная часть была
   // максимально полезной. NOT IN на history_embeddings естественно даёт возобновляемость —
   // повторный вызов после прерывания просто не вернёт уже обработанные строки.
-  getUnindexedHistory(limit: number): Array<{ id: number; url: string; title: string }> {
+  getUnindexedHistory(limit: number, modelVersion?: string): Array<{ id: number; url: string; title: string }> {
     if (!this.#db) return [];
     try {
+      if (modelVersion) {
+        return this.#db.prepare(`
+          SELECT id, url, title FROM history
+          WHERE id NOT IN (
+            SELECT history_id FROM history_embeddings
+            WHERE model_version = ? OR model_version = 'excluded'
+          )
+          ORDER BY last_visit DESC
+          LIMIT ?
+        `).all(modelVersion, limit) as Array<{ id: number; url: string; title: string }>;
+      }
       return this.#db.prepare(`
         SELECT id, url, title FROM history
         WHERE id NOT IN (SELECT history_id FROM history_embeddings)
@@ -102,9 +139,19 @@ export class HistoryManager {
   }
 
   // Общее число невыполненных записей — для индикатора прогресса бэкфилла (блок 5).
-  countUnindexed(): number {
+  countUnindexed(modelVersion?: string): number {
     if (!this.#db) return 0;
     try {
+      if (modelVersion) {
+        const row = this.#db.prepare(`
+          SELECT COUNT(*) c FROM history
+          WHERE id NOT IN (
+            SELECT history_id FROM history_embeddings
+            WHERE model_version = ? OR model_version = 'excluded'
+          )
+        `).get(modelVersion) as { c: number };
+        return row.c;
+      }
       const row = this.#db.prepare(`
         SELECT COUNT(*) c FROM history
         WHERE id NOT IN (SELECT history_id FROM history_embeddings)
@@ -134,6 +181,86 @@ export class HistoryManager {
       `).run(historyId, buf, dims, modelVersion, Date.now());
     } catch (e) {
       console.warn('[History] saveEmbedding error:', (e as Error).message);
+    }
+  }
+
+  saveContentChunks(historyId: number, chunks: ContentChunkInput[], modelVersion: string): void {
+    if (!this.#db || chunks.length === 0) return;
+    const db = this.#db;
+    try {
+      const run = db.transaction(() => {
+        const oldIds = db.prepare(`
+          SELECT id FROM history_content_chunks WHERE history_id = ? AND model_version = ?
+        `).all(historyId, modelVersion) as Array<{ id: number }>;
+        for (const row of oldIds) {
+          try { db.prepare(`DELETE FROM history_content_chunks_fts WHERE rowid = ?`).run(row.id); } catch { /* FTS может быть недоступен */ }
+        }
+        db.prepare(`DELETE FROM history_content_chunks WHERE history_id = ? AND model_version = ?`).run(historyId, modelVersion);
+
+        const insertChunk = db.prepare(`
+          INSERT INTO history_content_chunks
+            (history_id, chunk_index, url, title, text, vector, dims, model_version, indexed_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        let insertFts: import('better-sqlite3').Statement | null = null;
+        try {
+          insertFts = db.prepare(`
+            INSERT INTO history_content_chunks_fts(rowid, text, title, url) VALUES (?, ?, ?, ?)
+          `);
+        } catch { /* FTS может быть недоступен */ }
+        const indexedAt = Date.now();
+        for (const chunk of chunks) {
+          const buf = Buffer.from(chunk.vector.buffer, chunk.vector.byteOffset, chunk.vector.byteLength);
+          const info = insertChunk.run(
+            historyId, chunk.chunkIndex, chunk.url, chunk.title, chunk.text,
+            buf, chunk.dims, modelVersion, indexedAt,
+          );
+          try { insertFts?.run(Number(info.lastInsertRowid), chunk.text, chunk.title, chunk.url); } catch { /* FTS может быть недоступен */ }
+        }
+      });
+      run();
+    } catch (e) {
+      console.warn('[History] saveContentChunks error:', (e as Error).message);
+    }
+  }
+
+  getAllContentChunks(modelVersion: string): HistoryContentChunk[] {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT c.id AS chunkId, c.history_id AS historyId, c.chunk_index AS chunkIndex,
+               c.url, c.title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
+               c.vector, c.dims, c.model_version AS modelVersion
+        FROM history_content_chunks c
+        JOIN history h ON h.id = c.history_id
+        WHERE c.model_version = ?
+      `).all(modelVersion) as HistoryContentChunk[];
+    } catch (e) {
+      console.warn('[History] getAllContentChunks error:', (e as Error).message);
+      return [];
+    }
+  }
+
+  searchContentChunksFts(query: string, modelVersion: string, limit: number): HistoryContentChunk[] {
+    if (!this.#db) return [];
+    const ftsQuery = buildFtsQuery(query);
+    if (!ftsQuery) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT c.id AS chunkId, c.history_id AS historyId, c.chunk_index AS chunkIndex,
+               c.url, c.title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
+               c.vector, c.dims, c.model_version AS modelVersion,
+               bm25(history_content_chunks_fts) AS rank
+        FROM history_content_chunks_fts
+        JOIN history_content_chunks c ON c.id = history_content_chunks_fts.rowid
+        JOIN history h ON h.id = c.history_id
+        WHERE history_content_chunks_fts MATCH ? AND c.model_version = ?
+        ORDER BY rank ASC
+        LIMIT ?
+      `).all(ftsQuery, modelVersion, limit) as HistoryContentChunk[];
+    } catch (e) {
+      console.warn('[History] searchContentChunksFts error:', (e as Error).message);
+      return [];
     }
   }
 
@@ -198,6 +325,8 @@ export class HistoryManager {
   deleteEntry(id: number): void {
     if (!this.#db) return;
     try {
+      this.#deleteContentChunksForHistoryIds([id]);
+      this.#db.prepare(`DELETE FROM history_embeddings WHERE history_id = ?`).run(id);
       this.#db.prepare(`DELETE FROM history WHERE id = ?`).run(id);
     } catch (e) {
       console.warn('[History] deleteEntry error:', (e as Error).message);
@@ -216,6 +345,8 @@ export class HistoryManager {
           // (#setup) — DELETE FROM history без предварительной чистки детей падает на FK constraint
           // (проверено на копии боевой БД: 627 строк с эмбеддингами → весь DELETE откатывался,
           // ни одна запись не удалялась). Порядок обязателен: сначала дети, потом родители.
+          try { db.prepare(`DELETE FROM history_content_chunks_fts`).run(); } catch { /* FTS может быть недоступен */ }
+          db.prepare(`DELETE FROM history_content_chunks`).run();
           db.prepare(`DELETE FROM history_embeddings`).run();
           db.prepare(`DELETE FROM history`).run();
         } else {
@@ -226,6 +357,8 @@ export class HistoryManager {
             all:  0,
           };
           const cutoff = Date.now() - ms[period];
+          const rows = db.prepare(`SELECT id FROM history WHERE last_visit >= ?`).all(cutoff) as Array<{ id: number }>;
+          this.#deleteContentChunksForHistoryIds(rows.map((r) => r.id));
           db.prepare(`
             DELETE FROM history_embeddings
             WHERE history_id IN (SELECT id FROM history WHERE last_visit >= ?)
@@ -267,7 +400,47 @@ export class HistoryManager {
         model_version TEXT    NOT NULL,
         indexed_at    INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS history_content_chunks (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        history_id    INTEGER NOT NULL REFERENCES history(id),
+        chunk_index   INTEGER NOT NULL,
+        url           TEXT    NOT NULL,
+        title         TEXT    NOT NULL DEFAULT '',
+        text          TEXT    NOT NULL,
+        vector        BLOB    NOT NULL,
+        dims          INTEGER NOT NULL,
+        model_version TEXT    NOT NULL,
+        indexed_at    INTEGER NOT NULL,
+        UNIQUE(history_id, chunk_index, model_version)
+      );
+      CREATE INDEX IF NOT EXISTS idx_history_content_chunks_history ON history_content_chunks(history_id);
+      CREATE INDEX IF NOT EXISTS idx_history_content_chunks_model ON history_content_chunks(model_version);
     `);
+    try {
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS history_content_chunks_fts
+        USING fts5(text, title, url, tokenize='unicode61');
+      `);
+    } catch (e) {
+      console.warn('[History] FTS5 для content chunks недоступен:', (e as Error).message);
+    }
+  }
+
+  #deleteContentChunksForHistoryIds(ids: number[]): void {
+    if (!this.#db || ids.length === 0) return;
+    const db = this.#db;
+    const select = db.prepare(`SELECT id FROM history_content_chunks WHERE history_id = ?`);
+    let deleteFts: import('better-sqlite3').Statement | null = null;
+    try { deleteFts = db.prepare(`DELETE FROM history_content_chunks_fts WHERE rowid = ?`); } catch { /* FTS может быть недоступен */ }
+    const deleteChunks = db.prepare(`DELETE FROM history_content_chunks WHERE history_id = ?`);
+    for (const id of ids) {
+      const chunks = select.all(id) as Array<{ id: number }>;
+      for (const chunk of chunks) {
+        try { deleteFts?.run(chunk.id); } catch { /* FTS может быть недоступен */ }
+      }
+      deleteChunks.run(id);
+    }
   }
 
   // Приватные и системные URL, а также result-страницы поисковиков в историю не пишем.
@@ -279,4 +452,15 @@ export class HistoryManager {
     if (!/^https?:\/\//i.test(url)) return false;
     return !isSearchResultUrl(url);
   }
+}
+
+function buildFtsQuery(query: string): string {
+  const terms = query
+    .toLowerCase()
+    .split(/[\s\-_/|·•,.:;!?()[\]{}'"«»—–]+/)
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 2)
+    .slice(0, 8)
+    .map((x) => `"${x.replace(/"/g, '""')}"`);
+  return terms.join(' OR ');
 }

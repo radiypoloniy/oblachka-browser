@@ -340,7 +340,7 @@ async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (tex
 // generic-заголовков (короткие тайтлы вроде "Google Диск"/"ChatGPT" систематически дают высокий
 // cosine независимо от смысла запроса, см. живой баг-репорт). Даём Qwen сам score как явный
 // сигнал силы совпадения — без него модель судит вслепую по одному тексту заголовка/URL.
-export interface RerankCandidate { id: number; title: string; url: string; score: number }
+export interface RerankCandidate { id: number; title: string; url: string; score: number; snippet?: string }
 
 // 512 — с запасом на список номеров по 20 кандидатам (несколько цифр с запятыми), это не
 // связный текст, а короткий структурированный ответ.
@@ -348,7 +348,10 @@ const RERANK_MAX_TOKENS = 512
 
 function buildRerankPrompt(query: string, candidates: RerankCandidate[]): string {
   const list = candidates
-    .map((c, i) => `${i}. [сходство ${c.score.toFixed(2)}] ${c.title || '(без названия)'} — ${c.url}`)
+    .map((c, i) => {
+      const snippet = c.snippet ? `\n   Фрагмент: ${c.snippet}` : ''
+      return `${i}. [сходство ${c.score.toFixed(2)}] ${c.title || '(без названия)'} — ${c.url}${snippet}`
+    })
     .join('\n')
   return (
     `Пользователь ищет в истории браузера: "${query}"\n\n` +

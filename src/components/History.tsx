@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { X, Search, Trash2, Clock, Wand2, Loader2 } from 'lucide-react';
 import type { HistoryEntry, HistoryClearPeriod } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
@@ -7,16 +7,92 @@ interface HistoryProps {
   onClose: () => void;
 }
 
-function formatRelativeTime(ms: number): string {
-  const diff = Date.now() - ms;
-  const m = Math.floor(diff / 60_000);
-  if (m < 1) return 'только что';
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} ч назад`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d} д назад`;
-  return new Date(ms).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+// ── Группировка по дню (референс — страница истории Chrome/Яндекс) ──────────────────────────
+function startOfDayMs(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function diffDaysFromToday(ms: number): number {
+  return Math.round((startOfDayMs(Date.now()) - startOfDayMs(ms)) / 86_400_000);
+}
+
+function dayKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function dayLabel(ms: number): string {
+  const diff = diffDaysFromToday(ms);
+  if (diff === 0) return 'Сегодня';
+  if (diff === 1) return 'Вчера';
+  return new Date(ms).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
+}
+
+function timeOf(ms: number): string {
+  return new Date(ms).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function monthKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${d.getMonth()}`;
+}
+
+function monthLabel(ms: number): string {
+  const label = new Date(ms).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function domainOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+}
+
+interface DayGroup {
+  key: string;
+  label: string;
+  diffDays: number;
+  entries: HistoryEntry[];
+}
+
+// entries уже упорядочены по last_visit DESC (см. HistoryManager.ts) — просто бьём подряд идущие
+// записи одного дня в одну группу, повторной сортировки не требуется.
+function groupByDay(entries: HistoryEntry[]): DayGroup[] {
+  const groups: DayGroup[] = [];
+  for (const e of entries) {
+    const key = dayKey(e.lastVisit);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) {
+      last.entries.push(e);
+    } else {
+      groups.push({ key, label: dayLabel(e.lastVisit), diffDays: diffDaysFromToday(e.lastVisit), entries: [e] });
+    }
+  }
+  return groups;
+}
+
+interface NavItem { key: string; label: string; targetKey: string }
+
+// Недавние дни — по имени (Сегодня/Вчера/«6 июля, понедельник»), дальше — свёрнуто по месяцам
+// (один пункт на месяц, ведёт к первой попавшейся в нём группе).
+const RECENT_DAYS_SHOWN_INDIVIDUALLY = 6;
+
+function buildNavItems(groups: DayGroup[]): NavItem[] {
+  const items: NavItem[] = [];
+  const seenMonths = new Set<string>();
+  for (const g of groups) {
+    if (g.diffDays <= RECENT_DAYS_SHOWN_INDIVIDUALLY) {
+      items.push({ key: g.key, label: g.label, targetKey: g.key });
+      continue;
+    }
+    const ms = g.entries[0]!.lastVisit;
+    const mKey = monthKey(ms);
+    if (!seenMonths.has(mKey)) {
+      seenMonths.add(mKey);
+      items.push({ key: mKey, label: monthLabel(ms), targetKey: g.key });
+    }
+  }
+  return items;
 }
 
 const CLEAR_OPTIONS: { label: string; value: HistoryClearPeriod }[] = [
@@ -37,6 +113,10 @@ export default function History({ onClose }: HistoryProps) {
   // ниже (load() как был) — включается только по явному Enter (см. handleSearchKeyDown).
   const [smartOn, setSmartOn] = useState(false);
   const [smartLoading, setSmartLoading] = useState(false);
+  // true — entries сейчас содержит Qwen-реранк (порядок релевантности), не хронологию. Группировка
+  // по дню/навигация по датам в этом случае показывать нельзя — она молча разрушила бы порядок
+  // релевантности, раскидав результаты по датам. Плоский список — та же логика, что и раньше.
+  const [smartResultsShown, setSmartResultsShown] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   // Счётчик запросов в entries — защита от гонки: load() (мгновенный, на каждый keystroke) и
   // handleSmartSearch() (Qwen, ~1-2+ сек) пишут в один и тот же entries независимо друг от
@@ -44,6 +124,8 @@ export default function History({ onClose }: HistoryProps) {
   // напечатать/запустить новый, пока предыдущий Qwen-вызов ещё летел) мог молча перезаписать
   // уже показанные свежие результаты — тот самый «один результат из прошлого поиска затесался».
   const searchSeqRef = useRef(0);
+  // Скролл к секции дня по клику в левой навигации — ключ дня → DOM-узел заголовка группы.
+  const dayRefs = useRef(new Map<string, HTMLDivElement>());
 
   const load = useCallback(async () => {
     const seq = ++searchSeqRef.current;
@@ -52,6 +134,7 @@ export default function History({ onClose }: HistoryProps) {
       : await window.oblako.getHistory();
     if (searchSeqRef.current !== seq) return; // подоспел более новый запрос — этот ответ устарел
     setEntries(result);
+    setSmartResultsShown(false);
   }, [query]);
 
   useEffect(() => { void load(); }, [load]);
@@ -59,6 +142,13 @@ export default function History({ onClose }: HistoryProps) {
   useEffect(() => {
     searchRef.current?.focus();
   }, []);
+
+  const dayGroups = useMemo(() => groupByDay(entries), [entries]);
+  const navItems = useMemo(() => buildNavItems(dayGroups), [dayGroups]);
+
+  function scrollToDay(key: string) {
+    dayRefs.current.get(key)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   async function handleDelete(id: number) {
     await window.oblako.deleteHistoryEntry(id);
@@ -82,7 +172,7 @@ export default function History({ onClose }: HistoryProps) {
     setSmartLoading(true);
     try {
       const results = await window.oblako.searchHistorySmart(q);
-      if (searchSeqRef.current === seq) setEntries(results); // иначе — устарело, юзер уже дальше
+      if (searchSeqRef.current === seq) { setEntries(results); setSmartResultsShown(true); } // иначе — устарело, юзер уже дальше
     } catch {
       // Qwen/IPC недоступны — не оставляем список пустым молча, просто откатываемся
       // на обычный поиск (load() уже отработал по этому же query per keystroke), но тоже
@@ -100,14 +190,24 @@ export default function History({ onClose }: HistoryProps) {
   return (
     <div style={{
       height: '100%', position: 'relative',
-      background: 'var(--app-bg)',
       display: 'flex', flexDirection: 'column',
+      overflow: 'hidden',
+      // Тот же "остров", что у сайдбара (Sidebar.tsx::asideBase) — radius-island/shadow-island
+      // совпадают с CONTENT_CORNER_RADIUS=18 у обычной вкладки (TabManager.ts), только фон
+      // непрозрачный (--surface-solid), не --surface-island: у сайдбара мало текста, лёгкая
+      // прозрачность не мешает, а плотный список истории на полупрозрачном фоне читался бы хуже.
+      // Отступ по периметру — НЕ здесь: contentRef в App.tsx уже даёт margin:var(--gutter-shell)
+      // один раз на весь контент (Hub тоже им пользуется, без своего собственного margin).
+      ...islandPlate,
+      borderRadius: 'var(--radius-island)',
+      boxShadow: 'var(--shadow-island)',
+      background: 'var(--surface-solid)',
     }}>
       {/* Заголовок */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '16px 20px 12px',
-        borderBottom: '1px solid var(--border)',
+        borderBottom: '1px solid var(--divider)',
         flexShrink: 0,
       }}>
         <Clock size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
@@ -188,7 +288,7 @@ export default function History({ onClose }: HistoryProps) {
         </div>
       )}
 
-      {/* Поиск */}
+      {/* Поиск — на всю ширину плиты */}
       <div style={{ padding: '10px 20px', flexShrink: 0 }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
@@ -234,44 +334,91 @@ export default function History({ onClose }: HistoryProps) {
         </div>
       </div>
 
-      {/* Список */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px' }}
-        onClick={() => { if (clearOpen) setClearOpen(false); }}
-      >
-        {smartLoading && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            color: 'var(--text-muted)', fontSize: 12, padding: '8px 8px 12px',
+      {smartLoading && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          color: 'var(--text-muted)', fontSize: 12, padding: '0 20px 8px', flexShrink: 0,
+        }}>
+          <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+          {/* ВРЕМЕННО "Ищу…" вместо "Qwen переранжирует…" — сам Qwen-реранк сейчас отключён
+              (см. HistorySearch.ts::searchHistorySmart), нечестно утверждать, что он думает. */}
+          Ищу…
+        </div>
+      )}
+
+      {entries.length === 0 ? (
+        <div style={{
+          textAlign: 'center', color: 'var(--text-muted)',
+          fontSize: 13, marginTop: 48,
+        }}>
+          {query ? 'Ничего не найдено' : 'История пуста'}
+        </div>
+      ) : smartResultsShown ? (
+        // Умный поиск — плоский список в порядке релевантности (см. комментарий у smartResultsShown).
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px' }}
+          onClick={() => { if (clearOpen) setClearOpen(false); }}
+        >
+          {entries.map((entry) => (
+            <HistoryRow key={entry.id} entry={entry} onDelete={handleDelete} />
+          ))}
+        </div>
+      ) : (
+        // Референс — страница истории Chrome/Яндекс: узкая навигация по датам слева,
+        // список записей справа, сгруппированный блоками по дню.
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+          <nav style={{
+            width: 150, flexShrink: 0, overflowY: 'auto',
+            padding: '10px 8px 16px', borderRight: '1px solid var(--divider)',
           }}>
-            <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-            {/* ВРЕМЕННО "Ищу…" вместо "Qwen переранжирует…" — сам Qwen-реранк сейчас отключён
-                (см. HistorySearch.ts::searchHistorySmart), нечестно утверждать, что он думает. */}
-            Ищу…
+            {navItems.map((item) => (
+              <button
+                key={item.key}
+                onClick={() => scrollToDay(item.targetKey)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '6px 10px', marginBottom: 1, border: 'none', background: 'none',
+                  borderRadius: 'var(--radius-sm)', cursor: 'default',
+                  fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px' }}
+            onClick={() => { if (clearOpen) setClearOpen(false); }}
+          >
+            {dayGroups.map((group) => (
+              <div
+                key={group.key}
+                ref={(el) => { if (el) dayRefs.current.set(group.key, el); else dayRefs.current.delete(group.key); }}
+              >
+                <div style={{
+                  position: 'sticky', top: 0, zIndex: 1,
+                  background: 'var(--surface-solid)',
+                  fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
+                  padding: '12px 8px 6px',
+                }}>
+                  {group.label}
+                </div>
+                {group.entries.map((entry) => (
+                  <HistoryRow key={entry.id} entry={entry} onDelete={handleDelete} />
+                ))}
+              </div>
+            ))}
           </div>
-        )}
-        {entries.length === 0 ? (
-          <div style={{
-            textAlign: 'center', color: 'var(--text-muted)',
-            fontSize: 13, marginTop: 48,
-          }}>
-            {query ? 'Ничего не найдено' : 'История пуста'}
-          </div>
-        ) : (
-          entries.map((entry) => (
-            <HistoryRow
-              key={entry.id}
-              entry={entry}
-              onDelete={handleDelete}
-            />
-          ))
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function HistoryRow({ entry, onDelete }: { entry: HistoryEntry; onDelete: (id: number) => void }) {
+function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: string }; onDelete: (id: number) => void }) {
   const [hovered, setHovered] = useState(false);
+  const domain = domainOf(entry.url);
 
   function handleNavigate() {
     void window.oblako.createTab(entry.url);
@@ -280,8 +427,8 @@ function HistoryRow({ entry, onDelete }: { entry: HistoryEntry; onDelete: (id: n
   return (
     <div
       style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '7px 8px', borderRadius: 'var(--radius-sm)',
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '6px 8px', borderRadius: 'var(--radius-sm)',
         background: hovered ? 'var(--surface-hover)' : 'transparent',
         cursor: 'pointer',
       }}
@@ -289,26 +436,47 @@ function HistoryRow({ entry, onDelete }: { entry: HistoryEntry; onDelete: (id: n
       onMouseLeave={() => setHovered(false)}
       onClick={handleNavigate}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 13, color: 'var(--text-strong)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-          {entry.title || entry.url}
-        </div>
-        <div style={{
-          fontSize: 11, color: 'var(--text-muted)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          marginTop: 1,
-        }}>
-          {entry.url}
-        </div>
-      </div>
-      <div style={{
-        fontSize: 11, color: 'var(--text-muted)',
-        flexShrink: 0, whiteSpace: 'nowrap',
+      <span style={{
+        fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', width: 40, flexShrink: 0,
+        fontVariantNumeric: 'tabular-nums',
       }}>
-        {formatRelativeTime(entry.lastVisit)}
+        {timeOf(entry.lastVisit)}
+      </span>
+      {/* Нет хранимых favicon-урлов для истории (HistoryEntry их не несёт) — тот же фоллбэк,
+          что у вкладок без favicon в сайдбаре (Sidebar.tsx): буква домена на плашке. */}
+      <span style={{
+        width: 20, height: 20, borderRadius: 'var(--radius-sm)', flexShrink: 0,
+        background: 'var(--neutral-300)', color: 'var(--text-body)',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 10, fontWeight: 600,
+      }}>
+        {domain.charAt(0).toUpperCase() || '?'}
+      </span>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+            <span style={{
+              fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {entry.title || entry.url}
+            </span>
+            <span style={{
+              fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flexShrink: 3,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {domain}
+            </span>
+          </div>
+          {entry.snippet && (
+            <div style={{
+              fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', marginTop: 2,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {entry.snippet}
+            </div>
+          )}
+        </div>
       </div>
       {hovered && (
         <button

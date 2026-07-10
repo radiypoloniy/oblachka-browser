@@ -105,6 +105,7 @@ export default function Toolbar({
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = externalRef ?? internalRef;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestSeqRef = useRef(0);
   // Заход 8 (реальный баг): дропдаун закрывался корректно, но САМ ОТКРЫВАЛСЯ ЗАНОВО при переходе
   // на страницу / клике по сайдбару — потому что закрытие (removeChildView нативной вью дропдауна
   // в main) отдаёт OS-фокус ОБРАТНО омниноксу (тот же класс поведения, что задокументированная
@@ -214,6 +215,7 @@ export default function Toolbar({
   }, [onSuggestToggle]);
 
   const closeDropdown = useCallback((reason = 'unknown') => {
+    suggestSeqRef.current++;
     (window as any).ddlog?.log(`closeDropdown called reason=${reason}`); // ВРЕМЕННЫЙ лог диагностики
     setDropdownOpen(false);
     setSuggestions([]);
@@ -345,7 +347,7 @@ export default function Toolbar({
     }
   }, [tab?.id]);
 
-  const buildSuggestions = useCallback(async (query: string) => {
+  const buildSuggestions = useCallback(async (query: string, seq: number) => {
     if (!query.trim()) { closeDropdown('empty-query'); return; }
     const q = query.toLowerCase();
 
@@ -377,6 +379,7 @@ export default function Toolbar({
     if (histResult.status === 'fulfilled') histEntries = histResult.value;
     if (suggestResult.status === 'fulfilled') suggestPhrases = suggestResult.value;
     if (semanticResult.status === 'fulfilled') semanticEntries = semanticResult.value;
+    if (seq !== suggestSeqRef.current) return;
 
     const now = Date.now();
 
@@ -494,6 +497,7 @@ export default function Toolbar({
     };
 
     const deduped = [...items, ...suggestItems, searchItem];
+    if (seq !== suggestSeqRef.current) return;
     setSuggestions(deduped);
     setSelectedIdx(-1);
     openDropdown();
@@ -509,7 +513,8 @@ export default function Toolbar({
   const triggerSuggest = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!q.trim()) { closeDropdown('empty-query-trigger'); return; }
-    debounceRef.current = setTimeout(() => { void buildSuggestions(q); }, SUGGEST_DEBOUNCE);
+    const seq = ++suggestSeqRef.current;
+    debounceRef.current = setTimeout(() => { void buildSuggestions(q, seq); }, SUGGEST_DEBOUNCE);
   }, [buildSuggestions, closeDropdown]);
 
   const submit = (input: string) => {

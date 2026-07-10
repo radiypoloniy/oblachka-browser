@@ -6,11 +6,12 @@
 // весь модуль ClusteringService.ts вместе с его require('EmbeddingService') и сломал бы сборку
 // electron/tsconfig.json, где нет DOM lib) — сама математика (скалярное произведение уже
 // нормализованных моделью векторов) зафиксирована и не должна расходиться между копиями.
-import type { HistoryManager } from './HistoryManager';
+import type { HistoryContentChunk, HistoryManager } from './HistoryManager';
 import { requestEmbedding } from './EmbedClient';
 import { rerankHistoryCandidates } from './TranslationService';
 import { isNoisyForEmbedding } from './HistoryNoiseFilter';
-import type { SemanticSearchResult } from '../shared/ipc';
+import { normalizeForOmnibox } from '../shared/frecency';
+import type { HistoryEntry, SemanticSearchResult } from '../shared/ipc';
 
 function cosineSim(a: Float32Array, b: Float32Array): number {
   let dot = 0;
@@ -24,6 +25,62 @@ function toFloat32Array(buf: Buffer, dims: number): Float32Array {
 
 export type { SemanticSearchResult };
 
+interface QueryEmbedding {
+  vector: Float32Array;
+  modelVersion: string;
+}
+
+function makeSnippet(text: string, max = 360): string {
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (compact.length <= max) return compact;
+  return `${compact.slice(0, max).trim()}...`;
+}
+
+function mergeBestByUrl(items: SemanticSearchResult[], limit: number): SemanticSearchResult[] {
+  const byUrl = new Map<string, SemanticSearchResult>();
+  for (const item of items) {
+    const key = normalizeForOmnibox(item.url);
+    const existing = byUrl.get(key);
+    if (!existing || item.score > existing.score || (!existing.snippet && item.snippet)) byUrl.set(key, item);
+  }
+  return [...byUrl.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+function chunkToResult(chunk: HistoryContentChunk, score: number): SemanticSearchResult {
+  return {
+    id: chunk.historyId,
+    url: chunk.url,
+    title: chunk.title,
+    lastVisit: chunk.lastVisit,
+    visitCount: chunk.visitCount,
+    score,
+    snippet: makeSnippet(chunk.text),
+  };
+}
+
+function scoreSemanticCandidates(
+  history: HistoryManager,
+  query: QueryEmbedding,
+  limit: number,
+): SemanticSearchResult[] {
+  const rows = history.getAllEmbeddings(query.modelVersion)
+    .filter((r) => r.dims > 0 && !isNoisyForEmbedding(r.url, r.title));
+  const pageResults: SemanticSearchResult[] = rows.map((r) => ({
+    id: r.id,
+    url: r.url,
+    title: r.title,
+    lastVisit: r.lastVisit,
+    visitCount: r.visitCount,
+    score: cosineSim(query.vector, toFloat32Array(r.vector, r.dims)),
+  }));
+
+  const chunkResults = history.getAllContentChunks(query.modelVersion)
+    .filter((r) => r.dims > 0 && !isNoisyForEmbedding(r.url, r.title))
+    .map((r) => chunkToResult(r, cosineSim(query.vector, toFloat32Array(r.vector, r.dims)) + 0.03));
+
+  return mergeBestByUrl([...chunkResults, ...pageResults], limit);
+}
+
 // Общий мост embed:request/response — тот же, что уже использует индексатор истории (блоки 3-4)
 // и бэкфилл (блок 5). Один лишний вызов на один пользовательский поиск — разовая, малая
 // нагрузка на общую очередь embeddingService.embed(), не батч и не серия чанков.
@@ -35,10 +92,10 @@ export async function searchHistorySemantic(
   const q = query.trim();
   if (!q) return [];
 
-  let queryVector: Float32Array;
+  let queryEmbedding: QueryEmbedding;
   try {
     const embedded = await requestEmbedding(q);
-    queryVector = embedded.vector;
+    queryEmbedding = { vector: embedded.vector, modelVersion: embedded.modelVersion };
   } catch (e) {
     console.warn('[HistorySearch] embed запроса не удался:', (e as Error).message);
     return [];
@@ -53,18 +110,7 @@ export async function searchHistorySemantic(
   // дыру, но не даёт УЖЕ проиндексированным (с реальным вектором) шумным записям попадать в
   // кандидаты навсегда: если критерии фильтра позже расширятся, старые записи начнут отсеиваться
   // здесь без миграции/переиндексации.
-  const rows = history.getAllEmbeddings().filter((r) => r.dims > 0 && !isNoisyForEmbedding(r.url, r.title));
-  const scored: SemanticSearchResult[] = rows.map((r) => ({
-    id: r.id,
-    url: r.url,
-    title: r.title,
-    lastVisit: r.lastVisit,
-    visitCount: r.visitCount,
-    score: cosineSim(queryVector, toFloat32Array(r.vector, r.dims)),
-  }));
-
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit);
+  return scoreSemanticCandidates(history, queryEmbedding, limit);
 }
 
 // Умный поиск (заход на Qwen-переключатель) — только по явному действию (Enter в панели
@@ -72,6 +118,19 @@ export async function searchHistorySemantic(
 // как cosine top-k выше. Кандидаты — тот же searchHistorySemantic, шире (20, не 8) — Qwen сама
 // решает, что из них реально релевантно, cosine-порядок для неё только черновой.
 const SMART_CANDIDATE_LIMIT = 20;
+const SMART_LEXICAL_CANDIDATE_LIMIT = 8;
+const SMART_SEMANTIC_MIN_SCORE = 0.35;
+
+function historyEntryToSemanticResult(entry: HistoryEntry, score: number): SemanticSearchResult {
+  return {
+    id: entry.id,
+    url: entry.url,
+    title: entry.title,
+    lastVisit: entry.lastVisit,
+    visitCount: entry.visitCount,
+    score,
+  };
+}
 
 export async function searchHistorySmart(
   history: HistoryManager,
@@ -81,15 +140,48 @@ export async function searchHistorySmart(
   const q = query.trim();
   if (!q) return [];
 
-  const candidates = await searchHistorySemantic(history, q, SMART_CANDIDATE_LIMIT);
+  let semanticCandidates: SemanticSearchResult[] = [];
+  let ftsCandidates: SemanticSearchResult[] = [];
+  try {
+    const embedded = await requestEmbedding(q);
+    const queryEmbedding = { vector: embedded.vector, modelVersion: embedded.modelVersion };
+    semanticCandidates = scoreSemanticCandidates(history, queryEmbedding, SMART_CANDIDATE_LIMIT)
+      .filter((c) => c.score >= SMART_SEMANTIC_MIN_SCORE);
+    ftsCandidates = history.searchContentChunksFts(q, queryEmbedding.modelVersion, 12)
+      .map((chunk) => chunkToResult(chunk, 1.12));
+  } catch (e) {
+    console.warn('[HistorySearch] embed запроса для smart search не удался:', (e as Error).message);
+  }
+  const lexicalCandidates = history.search(q)
+    .slice(0, SMART_LEXICAL_CANDIDATE_LIMIT)
+    .map((entry) => historyEntryToSemanticResult(entry, 1));
+
+  const lexicalKeys = new Set(lexicalCandidates.map((c) => normalizeForOmnibox(c.url)));
+  const byUrl = new Map<string, SemanticSearchResult>();
+  for (const c of [...lexicalCandidates, ...ftsCandidates, ...semanticCandidates]) {
+    const key = normalizeForOmnibox(c.url);
+    const existing = byUrl.get(key);
+    if (!existing || c.score > existing.score) byUrl.set(key, c);
+  }
+  const candidates = [...byUrl.values()].slice(0, SMART_CANDIDATE_LIMIT);
   if (candidates.length === 0) return [];
 
   let order: number[];
   try {
-    order = await rerankHistoryCandidates(q, candidates.map((c) => ({ id: c.id, title: c.title, url: c.url, score: c.score })));
+    order = await rerankHistoryCandidates(q, candidates.map((c) => ({
+      id: c.id,
+      title: c.title,
+      url: c.url,
+      score: c.score,
+      snippet: c.snippet,
+    })));
   } catch (e) {
     console.warn('[HistorySearch] Qwen-реранк не удался, отдаю cosine top-k как есть:', (e as Error).message);
     return candidates.slice(0, limit);
+  }
+
+  if (order.length === 0 && lexicalKeys.size > 0) {
+    return candidates.filter((c) => lexicalKeys.has(normalizeForOmnibox(c.url))).slice(0, limit);
   }
 
   return order.slice(0, limit).map((i) => candidates[i]!);

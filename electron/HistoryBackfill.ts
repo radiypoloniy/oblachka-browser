@@ -7,7 +7,7 @@
 // привилегированным потребителем, который может обойти уже проверенную гонку.
 import type { HistoryManager } from './HistoryManager';
 import type { BackfillProgress } from '../shared/ipc';
-import { requestEmbedding, isAvailable as isEmbedClientAvailable } from './EmbedClient';
+import { requestEmbedding, requestEmbeddingModelVersion, isAvailable as isEmbedClientAvailable } from './EmbedClient';
 import { isNoisyForEmbedding } from './HistoryNoiseFilter';
 
 // Маркер «намеренно не индексируем» для шумных строк (логин/OAuth/голый домен/заглушка,
@@ -60,7 +60,14 @@ export async function startBackfill(history: HistoryManager): Promise<void> {
   // Считается один раз на старте — обычный браузинг не останавливается на время бэкфилла,
   // новые визиты параллельно уменьшают реальный остаток; индикатор прогресса не претендует
   // на абсолютную точность в моменте, только на общее ощущение хода процесса.
-  const total = history.countUnindexed();
+  let activeModelVersion: string | null = null;
+  try {
+    activeModelVersion = await requestEmbeddingModelVersion();
+  } catch (e) {
+    console.warn('[HistoryBackfill] версия embedding-модели недоступна:', (e as Error).message);
+  }
+
+  const total = history.countUnindexed(activeModelVersion ?? undefined);
   let processed = 0;
   const report = (extra: Partial<BackfillProgress> = {}) =>
     onProgress?.({ processed, total, running: true, cancelled: false, ...extra });
@@ -74,7 +81,7 @@ export async function startBackfill(history: HistoryManager): Promise<void> {
         break;
       }
 
-      const chunk = history.getUnindexedHistory(CHUNK_SIZE);
+      const chunk = history.getUnindexedHistory(CHUNK_SIZE, activeModelVersion ?? undefined);
       if (chunk.length === 0) break; // всё сделано (или ничего никогда не было)
 
       for (const row of chunk) {
