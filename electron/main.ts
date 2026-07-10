@@ -25,6 +25,9 @@ import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSugges
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
 import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
+import * as vpnKeyStore from './VpnKeyStore';
+import * as vpnSubscription from './VpnSubscription';
+import { toServerMeta } from './VpnParser';
 import * as passwordAutofill from './PasswordAutofillManager';
 import { setChromeView as setEmbedClientChromeView } from './EmbedClient';
 import { indexVisit } from './HistoryIndexer';
@@ -574,6 +577,22 @@ function registerIpc() {
     chromeView?.webContents.send(IPC.AI_KEY_STATUS_CHANGED, connected);
   });
 
+  // VPN, шаг 1 — подписка + список серверов. Ссылка и credential серверов остаются в main
+  // (см. VpnKeyStore.ts) — тот же принцип, что у ключа Gemini чуть выше.
+  const vpnStatus = () => ({
+    hasSubscription: vpnKeyStore.hasSubscription(),
+    serverCount: vpnKeyStore.getServerCount(),
+    fetchedAt: vpnKeyStore.getFetchedAt(),
+  });
+  ipcMain.handle(IPC.VPN_GET_STATUS, () => vpnStatus());
+  ipcMain.handle(IPC.VPN_SET_SUBSCRIPTION, (_e, url: string) => vpnSubscription.setSubscription(url));
+  ipcMain.handle(IPC.VPN_REFRESH_SUBSCRIPTION, () => vpnSubscription.refresh());
+  ipcMain.handle(IPC.VPN_DELETE_SUBSCRIPTION, () => vpnKeyStore.deleteSubscription());
+  ipcMain.handle(IPC.VPN_LIST_SERVERS, () => vpnKeyStore.getServers().map(toServerMeta));
+  vpnKeyStore.onChanged(() => {
+    chromeView?.webContents.send(IPC.VPN_STATUS_CHANGED, vpnStatus());
+  });
+
   // Менеджер паролей, шаг 1 (см. electron/PasswordManager.ts). Пароль пересекает IPC только
   // через reveal/generate — list его не отдаёт, copy сам кладёт в буфер и наружу не возвращает.
   ipcMain.handle(IPC.PASSWORDS_LIST,     () => passwords.list());
@@ -862,6 +881,7 @@ app.whenReady().then(async () => {
   // safeStorage требует app.isReady() — грузим сохранённый (зашифрованный) ключ Gemini здесь,
   // не на верхнем уровне модуля (см. AiKeyStore.ts, заход D шаг 3).
   aiKeyStore.loadFromDisk();
+  vpnKeyStore.loadFromDisk();
 
   // История: нативный модуль может отсутствовать — падение не блокирует запуск.
   await history.initialize().catch((e) =>

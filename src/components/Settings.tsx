@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyRound, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, type LucideIcon } from 'lucide-react';
-import type { AdBlockState, BackfillProgress, HistoryContentCoverage, PasswordMeta, PasswordCopyField } from '../../shared/ipc';
+import type { AdBlockState, BackfillProgress, HistoryContentCoverage, VpnStatus, VpnServerMeta, PasswordMeta, PasswordCopyField } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 
 interface SettingsProps {
@@ -13,7 +13,7 @@ interface SettingsProps {
 type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean };
 const NAV_ITEMS: NavItem[] = [
   { id: 'adblock',    label: 'Блокировка', Icon: Shield },
-  { id: 'vpn',        label: 'VPN',         Icon: Wifi,    soon: true },
+  { id: 'vpn',        label: 'VPN',         Icon: Wifi },
   { id: 'ai',         label: 'AI',          Icon: Cpu },
   { id: 'passwords',  label: 'Пароли',      Icon: Lock },
   { id: 'appearance', label: 'Интерфейс',   Icon: Palette, soon: true },
@@ -159,6 +159,7 @@ export default function Settings({ onClose }: SettingsProps) {
               onDismissReload={() => setPendingReload(null)}
             />
           )}
+          {section === 'vpn' && <VpnSection />}
           {section === 'ai' && <AiSection />}
           {section === 'passwords' && <PasswordsSection />}
         </div>
@@ -316,6 +317,197 @@ function AdBlockSection({
 // Шаг 2 захода D: UI + IPC-проводка. Хранение ключа на этом шаге — только в памяти main-процесса
 // (см. AiKeyStore.ts) — persist через safeStorage добавляется отдельным коммитом (шаг 3), поэтому
 // «подключено» здесь не переживёт перезапуск браузера ДО того коммита — это ожидаемо на этом шаге.
+// VPN, шаг 1 — только подписка и список серверов. Подключения (спавн Xray, session.setProxy)
+// здесь ещё нет — это отдельные, более рискованные шаги (см. план). Ссылка подписки и
+// credential каждого сервера никогда не покидают main — сюда приходит только редактированный
+// список (VpnServerMeta) и статус (VpnStatus), тот же приём, что у PasswordMeta/AiKeyStore.
+function VpnSection() {
+  const [status, setStatus] = useState<VpnStatus | null>(null);
+  const [servers, setServers] = useState<VpnServerMeta[]>([]);
+  const [urlInput, setUrlInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+
+  const loadServers = () => { void window.oblako.listVpnServers().then(setServers); };
+
+  useEffect(() => {
+    let mounted = true;
+    window.oblako.getVpnStatus().then((s) => { if (mounted) setStatus(s); });
+    loadServers();
+    const unsub = window.oblako.onVpnStatusChanged((s) => {
+      if (!mounted) return;
+      setStatus(s);
+      loadServers();
+    });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
+  async function handleSave() {
+    const url = urlInput.trim();
+    if (!url) { setError('Введите ссылку подписки'); return; }
+    setSaving(true); setError(''); setInfo('');
+    const res = await window.oblako.setVpnSubscription(url);
+    setSaving(false);
+    if (res.ok) {
+      setUrlInput('');
+      setInfo(`Загружено серверов: ${res.count}${res.skipped ? `, не распознано: ${res.skipped}` : ''}`);
+    } else {
+      setError(res.error ?? 'Не удалось сохранить');
+    }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true); setError(''); setInfo('');
+    const res = await window.oblako.refreshVpnSubscription();
+    setRefreshing(false);
+    if (res.ok) setInfo(`Обновлено. Серверов: ${res.count}${res.skipped ? `, не распознано: ${res.skipped}` : ''}`);
+    else setError(res.error ?? 'Не удалось обновить');
+  }
+
+  async function handleDelete() {
+    await window.oblako.deleteVpnSubscription();
+    setUrlInput(''); setError(''); setInfo('');
+  }
+
+  if (status === null) {
+    return <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
+      <div>
+        <h2 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>
+          VPN
+        </h2>
+        <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
+          Вставьте ссылку подписки от вашего VPN-сервиса (vless/trojan) — так же, как в Happ или
+          Hiddify. Ссылка и серверы хранятся зашифрованными на этом устройстве, никуда, кроме
+          вашего провайдера, не отправляются. Само подключение — отдельный следующий шаг; сейчас
+          можно сохранить подписку и посмотреть список серверов.
+        </p>
+      </div>
+
+      {/* Статус */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
+        ...islandPlate,
+        borderRadius: 'var(--radius-sm)',
+      }}>
+        {status.hasSubscription
+          ? <Check size={22} style={{ color: 'var(--system)', flex: 'none' }} />
+          : <Wifi size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+            {status.hasSubscription ? `Подписка сохранена — серверов: ${status.serverCount}` : 'Подписка не добавлена'}
+          </div>
+          {status.fetchedAt && (
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+              Обновлено: {new Date(status.fetchedAt).toLocaleString('ru-RU')}
+            </div>
+          )}
+        </div>
+        {status.hasSubscription && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => void handleRefresh()}
+              disabled={refreshing}
+              style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}
+            >
+              <RefreshCw size={14} /> {refreshing ? 'Обновление…' : 'Обновить'}
+            </button>
+            <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}>
+              <Trash2 size={14} /> Удалить
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Ввод ссылки — доступен всегда (не только при первом добавлении): пользователь может
+          захотеть сменить провайдера, новая ссылка просто перезапишет текущую подписку. */}
+      <div>
+        <div style={{
+          fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
+          textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8,
+        }}>
+          Ссылка подписки
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <input
+              type="text"
+              value={urlInput}
+              placeholder="https://…/sub"
+              onChange={(e) => { setUrlInput(e.target.value); setError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleSave(); }}
+              style={{
+                padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                border: error ? '1.5px solid var(--error, #e05)' : '1.5px solid var(--divider-strong)',
+                background: 'var(--surface)', color: 'var(--text-strong)',
+                fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = error ? 'var(--error, #e05)' : 'var(--divider-strong)')}
+            />
+            {error && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)' }}>{error}</span>}
+            {!error && info && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{info}</span>}
+          </div>
+          <button
+            onClick={() => void handleSave()}
+            disabled={saving || !urlInput.trim()}
+            style={{ ...btnPrimary, alignSelf: 'flex-start', opacity: saving || !urlInput.trim() ? 0.6 : 1 }}
+          >
+            {saving ? 'Сохранение…' : 'Сохранить'}
+          </button>
+        </div>
+      </div>
+
+      {/* Список серверов — только чтение, без credential (см. VpnServerMeta). */}
+      {servers.length > 0 && (
+        <div>
+          <div style={{
+            fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
+            textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8,
+          }}>
+            Серверы ({servers.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {servers.map((s) => (
+              <div
+                key={s.id}
+                style={{
+                  ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '9px 14px',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}
+              >
+                <span style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
+                  color: 'var(--text-faint)', flex: 'none', width: 44,
+                }}>
+                  {s.protocol}
+                </span>
+                <span style={{
+                  flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {s.remark}
+                </span>
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontFamily: 'monospace', flex: 'none' }}>
+                  {s.address}:{s.port}
+                </span>
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
+                  {s.transport}/{s.security}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AiSection() {
   const [connected, setConnected] = useState<boolean | null>(null); // null = ещё грузим статус
   const [keyInput, setKeyInput] = useState('');

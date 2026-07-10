@@ -236,6 +236,16 @@ export const IPC = {
   AI_DELETE_KEY:          'ai:delete-key',          // renderer → main: удалить ключ
   AI_KEY_STATUS_CHANGED:  'ai:key-status-changed',  // main → renderer: push нового connected-статуса
 
+  // VPN, шаг 1 (см. electron/VpnParser.ts, VpnKeyStore.ts, VpnSubscription.ts) — подписка и
+  // список серверов. Сама ссылка подписки и credential (uuid/пароль) каждого сервера НИКОГДА
+  // не пересекают эту границу — только редактированный VpnServerMeta[] и общий статус.
+  VPN_GET_STATUS:            'vpn:get-status',            // renderer → main: VpnStatus
+  VPN_SET_SUBSCRIPTION:      'vpn:set-subscription',      // renderer → main: url → SubscriptionResult
+  VPN_REFRESH_SUBSCRIPTION:  'vpn:refresh-subscription',  // renderer → main: повторный fetch по сохранённой ссылке
+  VPN_DELETE_SUBSCRIPTION:   'vpn:delete-subscription',   // renderer → main: удалить подписку и список серверов
+  VPN_LIST_SERVERS:          'vpn:list-servers',          // renderer → main: VpnServerMeta[] (без credential)
+  VPN_STATUS_CHANGED:        'vpn:status-changed',        // main → renderer: push нового VpnStatus
+
   // Менеджер паролей, шаг 1 (см. electron/VaultCrypto.ts, electron/PasswordManager.ts) — сейф
   // отдельный от settings.json/истории. Сам пароль пересекает IPC только по явному действию
   // пользователя (reveal) — список и copy никогда не отдают plaintext без явного запроса на него.
@@ -376,6 +386,34 @@ export interface HistoryContentCoverage {
 }
 
 // ── Загрузки ─────────────────────────────────────────────────────────────────
+
+// ── VPN, шаг 1 (подписка + список серверов, см. electron/VpnSubscription.ts) ──
+// Редактированная версия VpnServer (electron/VpnParser.ts) для renderer — без credential
+// (uuid/пароль). Показывать/копировать эти значения пользователю в UI незачем (не пароль
+// сайта, который иногда нужно скопировать в другое место) — поэтому не «спрятано до reveal»,
+// как у PasswordMeta, а не отдаётся вообще никогда.
+export interface VpnServerMeta {
+  id: string;
+  protocol: 'vless' | 'trojan';
+  remark: string;
+  address: string;
+  port: number;
+  security: 'none' | 'tls' | 'reality';
+  transport: 'tcp' | 'ws' | 'grpc' | 'xhttp';
+}
+
+export interface VpnStatus {
+  hasSubscription: boolean;
+  serverCount: number;
+  fetchedAt: number | null;
+}
+
+export interface VpnSubscriptionResult {
+  ok: boolean;
+  error?: string;
+  count?: number;
+  skipped?: number;
+}
 
 // ── Менеджер паролей, шаг 1 (сейф, см. electron/PasswordManager.ts) ───────────
 // PasswordMeta — то, что уходит в renderer массово (список): без secret/notes. Сам пароль
@@ -657,6 +695,15 @@ export interface OblakoApi {
   saveAiKey(key: string): Promise<boolean>;
   deleteAiKey(): Promise<void>;
   onAiKeyStatusChanged(cb: (connected: boolean) => void): () => void;
+
+  // VPN, шаг 1 — подписка + список серверов (см. electron/VpnSubscription.ts). Ссылка подписки
+  // и credential серверов никогда не приходят в renderer — см. VpnServerMeta/VpnStatus выше.
+  getVpnStatus(): Promise<VpnStatus>;
+  setVpnSubscription(url: string): Promise<VpnSubscriptionResult>;
+  refreshVpnSubscription(): Promise<VpnSubscriptionResult>;
+  deleteVpnSubscription(): Promise<void>;
+  listVpnServers(): Promise<VpnServerMeta[]>;
+  onVpnStatusChanged(cb: (status: VpnStatus) => void): () => void;
 
   // Менеджер паролей, шаг 1 (см. electron/PasswordManager.ts). Пароль пересекает IPC только
   // через revealPassword/generatePassword — listPasswords им не отдаёт, copyPasswordField сам
