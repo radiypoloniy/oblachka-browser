@@ -224,6 +224,31 @@ export class HistoryManager {
     }
   }
 
+  // Индикатор качества индекса умного поиска (Settings.tsx::HistoryBackfillSection): сколько
+  // записей истории реально имеют контентные чанки (не только заголовок+домен). Без фильтра по
+  // model_version — любой сохранённый чанк уже сигнал «текст страницы был извлечён», даже если
+  // модель эмбеддингов сменилась и сам вектор в нём успел устареть.
+  countHistoryWithContent(): number {
+    if (!this.#db) return 0;
+    try {
+      const row = this.#db.prepare(`SELECT COUNT(DISTINCT history_id) c FROM history_content_chunks`).get() as { c: number };
+      return row.c;
+    } catch (e) {
+      console.warn('[History] countHistoryWithContent error:', (e as Error).message);
+      return 0;
+    }
+  }
+
+  countAll(): number {
+    if (!this.#db) return 0;
+    try {
+      return (this.#db.prepare(`SELECT COUNT(*) c FROM history`).get() as { c: number }).c;
+    } catch (e) {
+      console.warn('[History] countAll error:', (e as Error).message);
+      return 0;
+    }
+  }
+
   getAllContentChunks(modelVersion: string): HistoryContentChunk[] {
     if (!this.#db) return [];
     try {

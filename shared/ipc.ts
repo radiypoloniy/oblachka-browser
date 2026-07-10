@@ -297,6 +297,10 @@ export const IPC = {
   HISTORY_BACKFILL_CANCEL:   'history:backfill-cancel',   // renderer → main: остановить между чанками
   HISTORY_BACKFILL_STATUS:   'history:backfill-status',   // renderer → main: текущий прогресс (синк при открытии панели)
   HISTORY_BACKFILL_PROGRESS: 'history:backfill-progress', // main → renderer: push прогресса
+
+  // Индикатор качества индекса умного поиска (см. Settings.tsx::HistoryBackfillSection) — сколько
+  // страниц истории реально имеют извлечённый текст (chunks), а не только заголовок+домен.
+  HISTORY_CONTENT_COVERAGE: 'history:content-coverage', // renderer → main: снимок охвата на момент запроса
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -345,6 +349,14 @@ export interface BackfillProgress {
   total: number;
   running: boolean;
   cancelled: boolean;
+}
+
+// Индикатор качества индекса умного поиска (см. HistoryManager.ts::countHistoryWithContent) —
+// withContent считает страницы с реально извлечённым текстом, не только заголовок+домен
+// (который получает КАЖДАЯ проиндексированная строка, включая шумные/непроверенные).
+export interface HistoryContentCoverage {
+  withContent: number;
+  total: number;
 }
 
 // ── Загрузки ─────────────────────────────────────────────────────────────────
@@ -562,6 +574,8 @@ export interface OblakoApi {
   cancelHistoryBackfill(): void;
   getHistoryBackfillStatus(): Promise<BackfillProgress>;
   onHistoryBackfillProgress(cb: (p: BackfillProgress) => void): () => void;
+  // Индикатор качества индекса умного поиска — сколько страниц реально имеют извлечённый текст.
+  getHistoryContentCoverage(): Promise<HistoryContentCoverage>;
 
   // Разрешения сайтов
   respondPermission(requestId: string, granted: boolean, remember: boolean): Promise<void>;

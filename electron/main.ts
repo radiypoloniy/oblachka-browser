@@ -638,6 +638,12 @@ function registerIpc() {
   ipcMain.on(IPC.HISTORY_BACKFILL_START,  () => { void startBackfill(history); });
   ipcMain.on(IPC.HISTORY_BACKFILL_CANCEL, () => { cancelBackfill(); });
   ipcMain.handle(IPC.HISTORY_BACKFILL_STATUS, () => lastBackfillProgress);
+  // Индикатор качества индекса умного поиска (Settings.tsx) — снимок на момент запроса,
+  // не подписка: панель настроек открывают редко, push-канал ради этого избыточен.
+  ipcMain.handle(IPC.HISTORY_CONTENT_COVERAGE, () => ({
+    withContent: history.countHistoryWithContent(),
+    total: history.countAll(),
+  }));
 
   // Заход 10: живые suggest-подсказки — движок берём из settings (тот же источник истины, что
   // капсула выбора поисковика), а не отдельным параметром от renderer — не может разойтись.

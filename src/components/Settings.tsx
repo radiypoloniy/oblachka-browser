@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyRound, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, type LucideIcon } from 'lucide-react';
-import type { AdBlockState, BackfillProgress, PasswordMeta, PasswordCopyField } from '../../shared/ipc';
+import type { AdBlockState, BackfillProgress, HistoryContentCoverage, PasswordMeta, PasswordCopyField } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 
 interface SettingsProps {
@@ -437,11 +437,15 @@ function AiSection() {
 // в другой раз панели настроек, показываем актуальное состояние, а не всегда «Индексировать».
 function HistoryBackfillSection() {
   const [progress, setProgress] = useState<BackfillProgress | null>(null);
+  const [coverage, setCoverage] = useState<HistoryContentCoverage | null>(null);
+
+  const loadCoverage = () => { void window.oblako.getHistoryContentCoverage().then(setCoverage); };
 
   useEffect(() => {
     let mounted = true;
     window.oblako.getHistoryBackfillStatus().then((p) => { if (mounted) setProgress(p); });
     const unsub = window.oblako.onHistoryBackfillProgress((p) => { if (mounted) setProgress(p); });
+    loadCoverage();
     return () => { mounted = false; unsub(); };
   }, []);
 
@@ -461,11 +465,31 @@ function HistoryBackfillSection() {
           Индексация истории для поиска
         </h3>
         <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          Разовая фоновая обработка уже накопленной истории эмбеддингами — понадобится для
-          будущего семантического поиска. Считается локально на устройстве, ничего никуда
-          не отправляется. Идёт не одномоментно — маленькими порциями с паузами, чтобы не мешать
-          другим AI-функциям браузера.
+          Кнопка ниже — разовая обработка уже накопленной истории по заголовку и домену
+          (быстро, без открытия страниц). Полный текст страницы для умного поиска отдельно
+          появляется сам при обычном посещении/повторном визите — счётчик ниже показывает,
+          сколько страниц уже имеют полный текст. Всё считается локально на устройстве.
         </p>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
+          {coverage
+            ? `Полный текст: ${coverage.withContent} из ${coverage.total} страниц`
+            : 'Полный текст: считаю…'}
+        </span>
+        <button
+          onClick={loadCoverage}
+          title="Обновить счётчик"
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+            color: 'var(--text-muted)', display: 'flex', borderRadius: 'var(--radius-sm)',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
+        >
+          <RefreshCw size={12} />
+        </button>
       </div>
 
       {running ? (
