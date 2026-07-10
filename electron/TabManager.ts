@@ -1801,10 +1801,13 @@ export class TabManager {
     this.splitState.splitRatio = clamped;
     // Синхронизируем с SplitPairNode, чтобы следующий сейв взял актуальный ratio.
     const { leftId, rightId } = this.splitState;
-    const pair = this.nodes.find(
-      (n): n is SplitPairNode => n.type === 'split-pair' && n.leftTabId === leftId && n.rightTabId === rightId,
-    );
-    if (pair) pair.ratio = clamped;
+    const found = this.#findTabParent(leftId);
+    if (found) {
+      const pair = found.parent[found.idx];
+      if (pair.type === 'split-pair' && pair.leftTabId === leftId && pair.rightTabId === rightId) {
+        pair.ratio = clamped;
+      }
+    }
     this.repositionViews();
   }
 

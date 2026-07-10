@@ -28,6 +28,19 @@ const SIDEBAR_EXPAND_THRESHOLD   = 980;
 const SPLIT_RATIO_MIN = 0.2;
 const SPLIT_RATIO_MAX = 0.8;
 
+function findSplitPairRatio(nodes: SidebarNode[], leftId: string, rightId: string): number | null {
+  for (const node of nodes) {
+    if (node.type === 'split-pair' && node.leftTabId === leftId && node.rightTabId === rightId) {
+      return Math.max(SPLIT_RATIO_MIN, Math.min(SPLIT_RATIO_MAX, node.ratio));
+    }
+    if (node.type === 'group') {
+      const nested = findSplitPairRatio(node.children, leftId, rightId);
+      if (nested !== null) return nested;
+    }
+  }
+  return null;
+}
+
 export default function App() {
   console.log('[renderer-alive] App смонтирован')
 
@@ -160,6 +173,12 @@ export default function App() {
       setHasOrganizeSnapshot(s.hasOrganizeSnapshot);
       const active = s.tabs.find((x) => x.isActive);
       if (active) setActiveId(active.id);
+      const left = s.tabs.find((x) => x.splitSide === 'left');
+      const right = s.tabs.find((x) => x.splitSide === 'right');
+      if (active && left && right && (active.id === left.id || active.id === right.id)) {
+        const restoredRatio = findSplitPairRatio(s.nodes, left.id, right.id);
+        if (restoredRatio !== null) setSplitRatioState(restoredRatio);
+      }
     };
     let mounted = true;
     window.oblako.getSyncState().then((s) => { if (mounted) applySync(s); });
