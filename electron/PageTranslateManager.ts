@@ -10,9 +10,9 @@
 // ES5-стиль (var, без стрелочных функций) — тот же стиль, что у остальных инжектируемых скриптов
 // в проекте, исполняются в контексте ПРОИЗВОЛЬНОГО чужого сайта.
 import type { WebContents } from 'electron'
-import type { TabState, PageTranslateState } from '../shared/ipc'
+import type { TabState, PageTranslateState, PageTranslateProgress } from '../shared/ipc'
 import type { TabManager } from './TabManager'
-import { translatePageBatch, resolveDirection } from './TranslationService'
+import { translatePageBatch, resolveDirection, type PageBatchResult } from './TranslationService'
 
 let tabManagerRef: TabManager | null = null
 export function setTabManager(tm: TabManager): void {
@@ -25,6 +25,15 @@ export function setTabManager(tm: TabManager): void {
 let onStateChangedCb: ((state: PageTranslateState) => void) | null = null
 export function onStateChanged(cb: (state: PageTranslateState) => void): void {
   onStateChangedCb = cb
+}
+
+// Тот же приём, что onStateChangedCb выше, но для прогресса внутри 'translating' (см.
+// PageTranslateProgress в shared/ipc.ts) — отдельный колбэк, не переиспользует onStateChangedCb:
+// прогресс меняется на порядок чаще состояния (троттлится в runTranslation, но всё равно чаще,
+// чем idle/translating/translated), смешивать в один канал/тип незачем.
+let onProgressChangedCb: ((progress: PageTranslateProgress | null) => void) | null = null
+export function onProgressChanged(cb: (progress: PageTranslateProgress | null) => void): void {
+  onProgressChangedCb = cb
 }
 
 // ── Состояние по вкладке ──────────────────────────────────────────────────────────────────────
@@ -58,6 +67,12 @@ export function getActiveState(): PageTranslateState {
 function pushState(id: string, state: PageTranslateState): void {
   tabStates.set(id, state)
   if (id === activeTabId) onStateChangedCb?.(state)
+}
+
+// Прогресс — не хранится в tabStates (не переживает между запросами, незачем): только пуш активной
+// вкладке, тот же гейт id===activeTabId, что у pushState.
+function pushProgress(id: string, progress: PageTranslateProgress | null): void {
+  if (id === activeTabId) onProgressChangedCb?.(progress)
 }
 
 // Единственная точка входа из main.ts — тот же onChange-хук, что уже вызывает
@@ -108,9 +123,29 @@ const MAX_ROOTS = 400
 // (осознанное упрощение, см. план: сложные вложенные форматирования теряют внутреннее различие,
 // но структура DOM не ломается).
 const WALK_SCRIPT = `(function(){
+  // Сетка безопасности (см. runTranslation ниже, CRASH_CHECK_SCRIPT): buildApplyScript пересобирает
+  // DOM-узлы, а фреймворки вроде React/Next.js держат СВОИ ссылки на них — на следующем же своём
+  // обновлении фреймворк может упереться в рассинхрон и выбросить необработанное исключение,
+  // которое его error boundary красит во весь экран ("Application error..."). Сами мы это
+  // исключение поймать/предотвратить не можем (оно летит внутри чужого React), зато можем узнать
+  // ПОСТФАКТУМ через window.onerror/unhandledrejection и откатить перевод. Флаг сбрасывается на
+  // КАЖДЫЙ запуск (window.__oblakoTrCrashed = false ниже) — слушатель ставится один раз на JS-realm
+  // (переживает между раундами executeJavaScript, как и window.__oblakoTr).
+  window.__oblakoTrCrashed = false;
+  if (!window.__oblakoTrErrorGuardInstalled) {
+    window.__oblakoTrErrorGuardInstalled = true;
+    window.addEventListener('error', function(){ window.__oblakoTrCrashed = true; }, true);
+    window.addEventListener('unhandledrejection', function(){ window.__oblakoTrCrashed = true; });
+  }
   var MAX_ROOTS = ${MAX_ROOTS};
   var INLINE_TAGS = {A:1,B:1,STRONG:1,I:1,EM:1,SPAN:1,CODE:1,SUP:1,SUB:1,U:1,MARK:1,SMALL:1,ABBR:1,CITE:1,Q:1,BR:1,IMG:1};
   var SKIP_TAGS = {SCRIPT:1,STYLE:1,NOSCRIPT:1,CODE:1,PRE:1,TEXTAREA:1,SVG:1};
+  // Служебные зоны страницы (шапка/меню/футер/сайдбар) — не то, ради чего пользователь жмёт
+  // «перевести страницу» (см. живой репорт: перевод обвешивал ВСЮ страницу, а не суть). Пропускаем
+  // их безусловно, независимо от того, с какого корня начался walk() (см. findMainRoot ниже) —
+  // даже внутри <article> может затесаться <nav> (оглавление) или <aside> (похожие статьи).
+  var LANDMARK_TAGS = {NAV:1, HEADER:1, FOOTER:1, ASIDE:1};
+  var LANDMARK_ROLES = {navigation:1, banner:1, contentinfo:1, complementary:1, search:1};
   var OPEN = '\\u27EA', CLOSE = '\\u27EB';
 
   window.__oblakoTr = {};
@@ -172,6 +207,7 @@ const WALK_SCRIPT = `(function(){
     if (units.length >= MAX_ROOTS || el.nodeType !== 1) return;
     var tag = el.tagName;
     if (SKIP_TAGS[tag]) return;
+    if (LANDMARK_TAGS[tag] || LANDMARK_ROLES[el.getAttribute('role') || '']) return;
     if (el.hasAttribute('contenteditable')) return;
     if (el.getAttribute('translate') === 'no') return;
     if (!isVisible(el)) return;
@@ -181,7 +217,26 @@ const WALK_SCRIPT = `(function(){
     for (var i = 0; i < el.children.length; i++) walk(el.children[i]);
   }
 
-  if (document.body) walk(document.body);
+  function textLen(el) {
+    return (el.textContent || '').trim().length;
+  }
+
+  // Быстрый путь вместо полноценного Readability (как в AiPanelManager.ts::buildExtractionScript):
+  // тому Readability нужен для ЧИСТОГО HTML статьи (markdown в чат), и он ради этого гоняется по
+  // КЛОНУ документа — parse() перестраивает DOM. Нам клон не подходит: walk()/markRoot() держат
+  // identity живых узлов (innerHTML в window.__oblakoTr, атрибут data-oblako-tr-id), которая на
+  // клоне уже не та же самая нода, что на реальной странице. Семантических тегов достаточно на
+  // подавляющем большинстве контентных сайтов (новости/блоги/документация/Wikipedia/GitHub) —
+  // порог по длине текста страхует от пустых/декоративных <main> (SPA-обёртки без реальной
+  // семантики). Не нашли уверенного кандидата — как раньше, весь document.body (веб-приложения,
+  // дашборды и т.п., где понятия «главный контент» просто нет).
+  function findMainRoot() {
+    var explicit = document.querySelector('main, [role="main"], article');
+    return (explicit && textLen(explicit) > 200) ? explicit : document.body;
+  }
+
+  var root = findMainRoot();
+  if (root) walk(root);
   return { units: units, truncated: units.length >= MAX_ROOTS };
 })()`
 
@@ -251,15 +306,35 @@ const RESTORE_SCRIPT = `(function(){
   window.__oblakoTr = {};
 })()`
 
+// Читает флаг, выставленный слушателем error/unhandledrejection в WALK_SCRIPT — см. комментарий
+// там же. Простое выражение (не IIFE) — executeJavaScript возвращает значение выражения как есть;
+// если __oblakoTrCrashed ещё не определён (WALK_SCRIPT почему-то не выполнялся) — undefined,
+// сравнение с true даёт false, безопасный дефолт «не упало».
+const CRASH_CHECK_SCRIPT = 'window.__oblakoTrCrashed === true'
+
 // ── Батчинг и оркестрация перевода ───────────────────────────────────────────────────────────
 interface WalkUnit { id: number; text: string; visible: boolean }
 interface WalkResult { units: WalkUnit[]; truncated: boolean }
 
 // Перевод многих мелких юнитов ПО ОДНОМУ — неприемлемо медленно (оверхед сессии/prefill на вызов,
 // см. [perf] segment в TranslationService.ts): реальная страница легко даёт полсотни-сотню юнитов.
-// Группируем по MAX_UNITS_PER_BATCH/MAX_CHARS_PER_BATCH, что раньше сработает.
+// Группируем по MAX_UNITS_PER_BATCH/MAX_CHARS_PER_BATCH, что раньше сработает. Это батчи для
+// НЕвидимой (за кадром/ниже сгиба) части — там важен throughput, не задержка: пользователь их не
+// видит, пока не проскроллит, так что крупный батч (меньше накладных на сессию/prefill) не ощущается
+// как зависание.
 const MAX_UNITS_PER_BATCH = 12
 const MAX_CHARS_PER_BATCH = 3000
+// Видимая (в вьюпорте на момент старта) часть — units уже отсортированы visible-first (см.
+// runTranslation) — батчится МЕЛЬЧЕ, и не только первая порция, а ВСЯ видимая часть целиком (была
+// одна ошибка здесь: мельче делался только самый первый батч, а второй-третий видимый батч уже
+// снова прыгал на MAX_UNITS_PER_BATCH — на длинной видимой области перевод одним махом выдавал
+// сразу несколько экранов текста, и молчание модели на время генерации ЭТОГО одного гигантского
+// батча ощущалось как зависание, хотя суммарная скорость была та же). Каждый видимый батч — заведомо
+// меньше одного экрана, так что перевод виден заметными частыми приращениями, а не одним редким
+// скачком. Юниты, ниже сгиба, идут по MAX_UNITS_PER_BATCH — граница между видимой и невидимой
+// частью всегда становится границей батча (см. chunkUnits), они не смешиваются в одном вызове.
+const VISIBLE_BATCH_MAX_UNITS = 4
+const VISIBLE_BATCH_MAX_CHARS = 900
 // Сколько первых юнитов достаточно для определения языка страницы — не гонять resolveDirection
 // по всему тексту, короткого образца хватает (тот же приём, что quick-translate в AiPanelManager).
 const SAMPLE_UNITS_FOR_DETECT = 5
@@ -268,18 +343,31 @@ function chunkUnits(units: WalkUnit[]): WalkUnit[][] {
   const batches: WalkUnit[][] = []
   let current: WalkUnit[] = []
   let currentChars = 0
+  let currentVisible: boolean | null = null
   for (const u of units) {
-    if (current.length > 0 && (current.length >= MAX_UNITS_PER_BATCH || currentChars + u.text.length > MAX_CHARS_PER_BATCH)) {
+    const maxUnits = u.visible ? VISIBLE_BATCH_MAX_UNITS : MAX_UNITS_PER_BATCH
+    const maxChars = u.visible ? VISIBLE_BATCH_MAX_CHARS : MAX_CHARS_PER_BATCH
+    // Граница видимо/невидимо всегда рвёт батч — иначе последний видимый юнит мог бы утянуть за
+    // собой начало невидимого хвоста в тот же вызов (или наоборот), смазывая гарантию «видимый
+    // батч всегда маленький».
+    const crossesVisibilityBoundary = currentVisible !== null && currentVisible !== u.visible
+    if (current.length > 0 && (crossesVisibilityBoundary || current.length >= maxUnits || currentChars + u.text.length > maxChars)) {
       batches.push(current)
       current = []
       currentChars = 0
     }
     current.push(u)
     currentChars += u.text.length
+    currentVisible = u.visible
   }
   if (current.length > 0) batches.push(current)
   return batches
 }
+
+// Троттлинг push прогресса — токен-стриминг внутри батча зовёт колбэк на КАЖДЫЙ токен (десятки раз
+// в секунду), пуш каждого в renderer по IPC — шум без пользы (глазом всё равно не различить). То же
+// значение, что достаточно для «живого» ощущения в чат-стриминге Hub.
+const PROGRESS_THROTTLE_MS = 150
 
 // Возвращает true, если на странице вообще нашлось что переводить (для итогового
 // 'translated'/'idle' — см. togglePageTranslate). Батчи применяются ПО МЕРЕ готовности —
@@ -299,25 +387,89 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
   const sample = ordered.slice(0, SAMPLE_UNITS_FOR_DETECT).map((u) => u.text).join(' ')
   const { src, tgt } = await resolveDirection('auto', sample)
 
-  for (const batch of chunkUnits(ordered)) {
-    if (mySeq !== runSeqByTab.get(tabId)) return true // отменено (навигация/повторный клик/переключение и новый запуск этой же вкладки)
+  const batches = chunkUnits(ordered)
 
-    const result = await translatePageBatch(batch.map((u) => ({ id: u.id, text: u.text })), src, tgt)
-    if (mySeq !== runSeqByTab.get(tabId)) return true
+  const charsByBatch = new Array<number>(batches.length).fill(0)
+  let completedBatches = 0
+  let lastProgressPushAt = 0
+  const pushProgressThrottled = (force?: boolean) => {
+    const now = Date.now()
+    if (!force && now - lastProgressPushAt < PROGRESS_THROTTLE_MS) return
+    lastProgressPushAt = now
+    const charsStreamed = charsByBatch.reduce((a, b) => a + b, 0)
+    pushProgress(tabId, { batchIndex: completedBatches, batchCount: batches.length, charsStreamed })
+  }
 
-    if (!result.ok) {
-      console.error(`[page-translate] батч упал: ${result.error}`)
-      continue
-    }
-    if (result.translations.size === 0) continue
+  let crashedFlag = false
+  const isCancelled = () => mySeq !== runSeqByTab.get(tabId) || crashedFlag
 
-    if (wc.isDestroyed()) return true
-    const entries = [...result.translations.entries()].map(([id, text]) => ({ id, text }))
+  async function applyAndCheckCrash(entries: Array<{ id: number; text: string }>): Promise<boolean> {
+    if (wc.isDestroyed()) return false
     await wc.executeJavaScript(buildApplyScript(entries), true).catch((e) => {
       console.error('[page-translate] apply упал:', e)
     })
+
+    // Сетка безопасности: страницы на React/Next.js и подобных фреймворках держат СВОИ ссылки на
+    // DOM-узлы, которые buildApplyScript пересобирает (см. живой репорт — "Application error: a
+    // client-side exception has occurred", это штатный экран краша React, не текст от модели).
+    // Первопричину не лечим — нельзя: границы текста после перевода моделью уже не совпадают с
+    // оригинальными, сохранить identity исходных text-нод при этом физически невозможно. Вместо
+    // этого проверяем постфактум (см. CRASH_CHECK_SCRIPT/WALK_SCRIPT) — если фреймворк упал сразу
+    // после применения батча, откатываем страницу к оригиналу и останавливаем перевод, вместо того
+    // чтобы оставить пользователя с намертво сломанным сайтом.
+    if (wc.isDestroyed()) return false
+    const crashed = await wc.executeJavaScript(CRASH_CHECK_SCRIPT, true).catch(() => false)
+    if (crashed) {
+      console.error('[page-translate] страница выбросила необработанное исключение после применения батча — откатываю к оригиналу, перевод остановлен')
+      crashedFlag = true
+      await restoreOriginal(wc)
+      return false
+    }
+    return true
   }
-  return true
+
+  // Конвейеризация: генерация батча i+1 встаёт в очередь модели сразу после готовности батча i, не
+  // дожидаясь apply (executeJavaScript в вкладку — отдельный IPC-круговорот, во время которого
+  // модель иначе простаивала бы). Общая на процесс очередь Qwen (withQwenQueue в
+  // TranslationService.ts) сама сериализует фактические вызовы модели.
+  const startBatch = (i: number) =>
+    translatePageBatch(
+      batches[i]!.map((u) => ({ id: u.id, text: u.text })),
+      src, tgt,
+      (charsSoFar) => {
+        charsByBatch[i] = charsSoFar
+        pushProgressThrottled()
+      },
+    )
+  let nextTranslate: Promise<PageBatchResult> | null = batches.length > 0 ? startBatch(0) : null
+
+  for (let i = 0; i < batches.length; i++) {
+    if (isCancelled()) break
+    const result = await nextTranslate!
+    nextTranslate = i + 1 < batches.length ? startBatch(i + 1) : null
+    if (isCancelled()) break
+
+    if (!result.ok) {
+      console.error(`[page-translate] батч упал: ${result.error}`)
+      completedBatches++
+      pushProgressThrottled(true)
+      continue
+    }
+    if (result.translations.size === 0) {
+      completedBatches++
+      pushProgressThrottled(true)
+      continue
+    }
+
+    const entries = [...result.translations.entries()].map(([id, text]) => ({ id, text }))
+    if (!(await applyAndCheckCrash(entries))) break
+    completedBatches++
+    pushProgressThrottled(true) // граница батча — всегда видна, не только раз в PROGRESS_THROTTLE_MS
+  }
+
+  if (mySeq !== runSeqByTab.get(tabId)) { pushProgress(tabId, null); return true } // отменено (навигация/повторный клик/переключение и новый запуск этой же вкладки)
+  pushProgress(tabId, null)
+  return !crashedFlag
 }
 
 async function restoreOriginal(wc: WebContents): Promise<void> {

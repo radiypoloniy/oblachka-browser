@@ -206,6 +206,7 @@ export const IPC = {
   PAGE_TRANSLATE_TOGGLE:        'page-translate:toggle',         // renderer → main: тоггл для активной вкладки
   PAGE_TRANSLATE_GET_STATE:     'page-translate:get-state',      // renderer → main: текущее состояние активной вкладки (гонка старта — см. onPageTranslateStateChanged)
   PAGE_TRANSLATE_STATE_CHANGED: 'page-translate:state-changed',  // main → renderer: push PageTranslateState
+  PAGE_TRANSLATE_PROGRESS_CHANGED: 'page-translate:progress-changed', // main → renderer: push PageTranslateProgress|null
 
   // Дропдаун подсказок омнибокса — временный тумблер нативной тестовой вью (заход 2/5 переезда
   // с chrome-DOM, см. SuggestDropdownManager.ts), вешается на тот же момент, что и старый
@@ -562,6 +563,18 @@ export interface AdBlockState {
 // откатывает на оригинал (см. PAGE_TRANSLATE_TOGGLE) обратно в 'idle'.
 export type PageTranslateState = 'idle' | 'translating' | 'translated';
 
+// Прогресс во время 'translating' — batchIndex/batchCount (батч из скольких известен сразу после
+// обхода DOM, см. PageTranslateManager.ts::runTranslation) и charsStreamed — суммарные символы,
+// сгенерированные моделью с начала перевода СТРАНИЦЫ (растёт непрерывно по мере токен-стриминга
+// внутри каждого батча, не только на границах батчей) — единственная задача этого поля: дать
+// тулбару "живой" сигнал вместо голого спиннера на все 7-10+ секунд одного батча. null — сейчас
+// не 'translating' (см. pushProgress в PageTranslateManager.ts — гасится вместе с состоянием).
+export interface PageTranslateProgress {
+  batchIndex: number;
+  batchCount: number;
+  charsStreamed: number;
+}
+
 // ── AI-чат на Hub ───────────────────────────────────────────────────────────
 export type HubMode = 'tiles' | 'ai';
 
@@ -750,6 +763,10 @@ export interface OblakoApi {
   togglePageTranslate(): void;
   getPageTranslateState(): Promise<PageTranslateState>;
   onPageTranslateStateChanged(cb: (state: PageTranslateState) => void): () => void;
+  // Прогресс во время 'translating' — только push, без get: коротко живёт (секунды), гонка старта
+  // окна ей не грозит (пока подписка не пришла, идёт максимум idle→translating, кнопка и так уже
+  // рисует спиннер по state). См. PageTranslateProgress.
+  onPageTranslateProgressChanged(cb: (progress: PageTranslateProgress | null) => void): () => void;
 
   // Дропдаун подсказок омнибокса — временный тумблер тестовой нативной вью (заход 2/5,
   // см. SuggestDropdownManager.ts). Прямоугольник омнибокса — см. setOmniboxBounds выше.

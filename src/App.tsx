@@ -9,7 +9,7 @@ import Downloads from './components/Downloads';
 import PermissionPrompt from './components/PermissionPrompt';
 import { embeddingService } from './services/EmbeddingService';
 import { startEmbedRequestBridge } from './services/EmbedRequestBridge';
-import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, VpnConnectionState, AdBlockState, PageTranslateState } from '../shared/ipc';
+import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, VpnConnectionState, AdBlockState, PageTranslateState, PageTranslateProgress } from '../shared/ipc';
 import type { ClusterProposal } from './services/ClusteringService';
 
 const HUB_ID = 'hub';
@@ -60,6 +60,7 @@ export default function App() {
   // на тот же push-канал (тот же приём, что и с vpnConn выше).
   const [adBlockState, setAdBlockState] = useState<AdBlockState | null>(null);
   const [pageTranslateState, setPageTranslateState] = useState<PageTranslateState>('idle');
+  const [pageTranslateProgress, setPageTranslateProgress] = useState<PageTranslateProgress | null>(null);
   const [dark, setDark] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
@@ -246,6 +247,13 @@ export default function App() {
   useEffect(() => {
     void window.oblako.getPageTranslateState().then(setPageTranslateState);
     const unsub = window.oblako.onPageTranslateStateChanged(setPageTranslateState);
+    return () => unsub();
+  }, []);
+
+  // Прогресс перевода страницы (батч N/M + живой счётчик символов) — только push, без get: живёт
+  // секунды, гонка старта окна ей не грозит (см. PageTranslateProgress в shared/ipc.ts).
+  useEffect(() => {
+    const unsub = window.oblako.onPageTranslateProgressChanged(setPageTranslateProgress);
     return () => unsub();
   }, []);
 
@@ -484,6 +492,7 @@ export default function App() {
           onToggleDownloads={() => { setDownloadsOpen((v) => !v); }}
           onToggleAiPanel={() => { void window.oblako.toggleAiPanel(); }}
           pageTranslateState={pageTranslateState}
+          pageTranslateProgress={pageTranslateProgress}
           onTogglePageTranslate={() => { window.oblako.togglePageTranslate(); }}
         />
         {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView).

@@ -20,6 +20,7 @@ import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, Sideb
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
+import { warmup as warmupTranslation } from './TranslationService';
 import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
 import {
   togglePageTranslate,
@@ -27,6 +28,7 @@ import {
   onTabsSynced as onPageTranslateTabsSynced,
   setTabManager as setPageTranslateTabManager,
   onStateChanged as onPageTranslateStateChanged,
+  onProgressChanged as onPageTranslateProgressChanged,
 } from './PageTranslateManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
@@ -68,6 +70,13 @@ const DEV_URL = 'http://localhost:5173';
 // Одно место: env OBLAKO_PRELOAD_EMBED=0 npm start → предзагрузка эмбеддинг-модели отключена.
 // Используется в preload.ts (window.oblako.embedPreload) и для лога [startup] preload=on|off.
 const EMBED_PRELOAD = process.env.OBLAKO_PRELOAD_EMBED !== '0';
+
+// Пауза перед фоновым прогревом локальной LLM перевода (см. showWindow ниже) — даём чрому и первой
+// (разбуженной) вкладке спокойно отрисоваться/догрузиться, прежде чем начинать тяжёлую загрузку
+// модели (~5.7ГБ с диска + перенос в VRAM, см. TranslationService.ts::ensureLoaded). Без паузы
+// загрузка стартовала бы в тот же момент, что и показ окна, — конкуренция за диск/GPU как раз в
+// точке, где пользователь впервые видит интерфейс.
+const TRANSLATION_WARMUP_DELAY_MS = 3000;
 
 // Изолированные стенды AI-инфраструктурных тестов (WebGPU-эксперименты, node-llama-cpp).
 // OBLAKO_GPU_TEST=1 / OBLAKO_LLAMA_TEST=1 / OBLAKO_TRANSLATE_TEST=1 npm start → вместо боевого
@@ -190,6 +199,15 @@ function createWindow() {
         thisWin.show();
         console.log(`[startup] show reason=${reason} ${Date.now() - startT0}ms`);
       }
+      // Фоновый прогрев локальной LLM (перевод/AI-действия/чат) — только теперь, когда окно уже
+      // реально показано, и с задержкой (см. TRANSLATION_WARMUP_DELAY_MS): не соревнуется за
+      // диск/GPU с первой отрисовкой чрома и пробуждением активной вкладки. warmupTranslation()
+      // сама не блокирует и не бросает наружу — ensureLoaded() внутри дедуплицирует конкурентные
+      // вызовы (см. её же комментарий), так что ранний клик пользователя по AI-функции просто
+      // дождётся ЭТОЙ ЖЕ загрузки, а не запустит вторую.
+      setTimeout(() => {
+        if (!thisWin.isDestroyed()) void warmupTranslation();
+      }, TRANSLATION_WARMUP_DELAY_MS);
     };
     const onUiReady = () => showWindow('ui-ready');
     ipcMain.once(IPC.CHROME_UI_READY, onUiReady);
@@ -350,6 +368,9 @@ function createWindow() {
   setPageTranslateTabManager(tabs);
   onPageTranslateStateChanged((state) => {
     chromeView?.webContents.send(IPC.PAGE_TRANSLATE_STATE_CHANGED, state);
+  });
+  onPageTranslateProgressChanged((progress) => {
+    chromeView?.webContents.send(IPC.PAGE_TRANSLATE_PROGRESS_CHANGED, progress);
   });
   initPasswordPopover(() => chromeView?.webContents.send(IPC.PASSWORD_POPOVER_CLOSED));
   initVpnPopover(() => chromeView?.webContents.send(IPC.VPN_POPOVER_CLOSED));

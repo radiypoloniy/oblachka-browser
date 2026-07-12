@@ -84,6 +84,18 @@ const RU_CONFUSABLE = new Set(['bg', 'uk', 'be'])
 const ENGLISH_CONTRACTION_RE = /\b\w+'(s|t|re|ll|ve|d|m)\b/i
 const SHORT_TEXT_THRESHOLD = 80
 
+// Живой баг: страница на французском, franc отдал 'en' топ-кандидатом (сбит с толку англицизмами/
+// брендами, которых во французских текстах — тем более в тех. и поп-культурных статьях — хватает).
+// Направление 'auto' резолвилось в "translate FROM English", и Qwen честно переводил только
+// реально английские вкрапления (бренды/названия), оставляя весь остальной французский текст как
+// есть — не «отказ переводить», а буквальное следование ошибочной инструкции про исходный язык.
+// Не диакритика (à/é/ç... — тоже бывают в англ. заимствованиях типа café/résumé/naïve, ложные
+// срабатывания), а именно служебные слова — практически не встречаются в связном английском тексте
+// иначе как во французских цитатах. Гейт candidates.some(fra) — French должен быть хотя бы СРЕДИ
+// кандидатов franc (не обязательно первым), не подставляем язык, который franc вообще не рассматривал.
+const FRENCH_FUNCTION_WORD_RE = /\b(le|la|les|des|une|est|dans|avec|pour|qui|que|vous|nous|être|cette|ces|mais|sont|comme|leur|leurs|entre|sans)\b/gi
+const FRENCH_FUNCTION_WORD_MIN_HITS = 2
+
 function isMostlyCyrillic(text: string): boolean {
   const letters = text.match(/[a-zA-Zа-яёА-ЯЁ]/g)
   if (!letters || letters.length === 0) return false
@@ -107,6 +119,9 @@ async function detectLang(text: string): Promise<string> {
   } else if (text.length < SHORT_TEXT_THRESHOLD && code !== 'en' && ENGLISH_CONTRACTION_RE.test(text) && candidates.some(([c]) => c === 'eng')) {
     console.log(`[translate] detected=${code} (iso3=${iso3}), но есть англ. сокращение (that's/let's/...) — считаем английским`)
     iso3 = 'eng'; code = 'en'
+  } else if (code === 'en' && (text.match(FRENCH_FUNCTION_WORD_RE)?.length ?? 0) >= FRENCH_FUNCTION_WORD_MIN_HITS && candidates.some(([c]) => c === 'fra')) {
+    console.log(`[translate] detected=en (iso3=${iso3}), но найдены франц. служебные слова (le/la/des/dans/...) — считаем французским (FRENCH_FUNCTION_WORD)`)
+    iso3 = 'fra'; code = 'fr'
   }
 
   console.log(`[translate] detectLang: franc raw=${candidates[0]?.[0] ?? 'und'} -> mapped=${code} text="${text.slice(0, 60)}"`)
@@ -243,6 +258,21 @@ async function ensureLoaded(): Promise<number> {
     return performance.now() - t0
   })()
   return loadPromise
+}
+
+// Фоновый прогрев — main.ts зовёт это один раз вскоре после показа окна (см.
+// TRANSLATION_WARMUP_DELAY_MS в main.ts), чтобы модель была уже загружена к моменту первого
+// реального AI-запроса пользователя (перевод/действие/чат), а не заставляла его ждать полную
+// загрузку (~30с, см. комментарий у ensureLoaded) на первом же клике. Дедупликация уже встроена в
+// ensureLoaded() (общий module-level loadPromise) — если пользователь вызовет AI-функцию раньше,
+// чем прогрев успел закончиться, её вызов ensureLoaded() получит ТОТ ЖЕ промис, а не запустит
+// вторую параллельную загрузку модели.
+export async function warmup(): Promise<void> {
+  try {
+    await ensureLoaded()
+  } catch (e) {
+    console.error('[translate] фоновый прогрев модели упал:', e)
+  }
 }
 
 // ── Очередь Qwen-вызовов (диагностика "заход на умный поиск, п.4") ──────────────────────────
@@ -546,7 +576,17 @@ function parsePageBatchResponse(raw: string): Map<number, string> {
 
 // src/tgt — уже резолвлены ОДИН раз на всю страницу вызывающей стороной (PageTranslateManager.ts,
 // по образцу первых юнитов, через resolveDirection выше) — не пере-детектим язык на каждый батч.
-export async function translatePageBatch(units: PageBatchUnit[], src: string, tgt: string): Promise<PageBatchResult> {
+// onCharsStreamed (опционально) — суммарные символы сырого ответа модели, полученные К ЭТОМУ
+// МОМЕНТУ (не дельта чанка) — PageTranslateManager.ts использует это только как "живой" сигнал
+// прогресса в тулбаре (см. PageTranslateProgress в shared/ipc.ts), сам структурный парсинг
+// ###N### по-прежнему ждёт ПОЛНЫЙ ответ (см. parsePageBatchResponse ниже) — стримится только
+// индикатор, не применение перевода к DOM.
+export async function translatePageBatch(
+  units: PageBatchUnit[],
+  src: string,
+  tgt: string,
+  onCharsStreamed?: (charsSoFar: number) => void,
+): Promise<PageBatchResult> {
   if (units.length === 0) return { ok: true, translations: new Map() }
   try {
     // Нет «заботливого» вызывающего кода перед первым батчем (в отличие от translate()/
@@ -554,7 +594,12 @@ export async function translatePageBatch(units: PageBatchUnit[], src: string, tg
     // rerankHistoryCandidates выше, тот же явный ensureLoaded() здесь.
     await ensureLoaded()
     const prompt = buildPageBatchPrompt(src, tgt, units)
-    const { out } = await runPrompt(prompt, PAGE_BATCH_MAX_TOKENS)
+    let charsSoFar = 0
+    const onChunk = onCharsStreamed && ((text: string) => {
+      charsSoFar += text.length
+      onCharsStreamed(charsSoFar)
+    })
+    const { out } = await runPrompt(prompt, PAGE_BATCH_MAX_TOKENS, onChunk)
     const translations = parsePageBatchResponse(out)
     console.log(`[page-translate] батч ${units.length} юнит(ов) [${src}->${tgt}]: распознано ${translations.size}/${units.length}`)
     // Диагностика редкого бага: модель иногда вместо перевода конкретного юнита вставляет

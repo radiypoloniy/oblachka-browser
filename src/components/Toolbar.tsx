@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2 } from 'lucide-react';
-import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult, PasswordIndicatorState, PageTranslateState } from '../../shared/ipc';
+import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult, PasswordIndicatorState, PageTranslateState, PageTranslateProgress } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { stripEmoji } from '../../shared/text';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
@@ -87,6 +87,7 @@ interface ToolbarProps {
   onToggleDownloads: () => void;
   onToggleAiPanel: () => void; // тоггл правой AI-панели (оверлей, см. AiPanelManager.ts)
   pageTranslateState: PageTranslateState; // см. PageTranslateManager.ts
+  pageTranslateProgress: PageTranslateProgress | null; // батч N/M + живой счётчик символов, только пока translating
   onTogglePageTranslate: () => void;
 }
 
@@ -98,7 +99,7 @@ export default function Toolbar({
   tab, allTabs, vpnOn, vpnLabel, adBlockOn, onToggleAdBlock, omniboxRef: externalRef,
   onBack, onForward, onReload, onSubmit, onSuggestToggle,
   downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel,
-  pageTranslateState, onTogglePageTranslate,
+  pageTranslateState, pageTranslateProgress, onTogglePageTranslate,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
   const [value, setValue] = useState('');
@@ -855,7 +856,10 @@ export default function Toolbar({
         {!isHub && tab?.url && (
           <button
             title={
-              pageTranslateState === 'translating' ? 'Перевожу страницу…'
+              pageTranslateState === 'translating'
+                ? (pageTranslateProgress
+                    ? `Перевожу страницу… ${Math.min(pageTranslateProgress.batchIndex + 1, pageTranslateProgress.batchCount)}/${pageTranslateProgress.batchCount} · ${pageTranslateProgress.charsStreamed} симв.`
+                    : 'Перевожу страницу…')
                 : pageTranslateState === 'translated' ? 'Показать оригинал'
                 : 'Перевести страницу'
             }
