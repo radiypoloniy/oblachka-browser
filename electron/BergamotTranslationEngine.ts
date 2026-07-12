@@ -48,14 +48,20 @@ export class BergamotTranslationEngine implements ITranslationEngine {
     this.#service = new BergamotService(userDataPath)
   }
 
+  // ⚠️ Живой баг, пойманный на реальном прогоне: воркер репортит "ready" уже после того, как
+  // BatchTranslator/backing успешно СКОНСТРУИРОВАЛИСЬ — это происходит даже при ПОЛНОСТЬЮ пустом
+  // {userData}/models/translation/ (ноль файлов моделей, ничего не скачано вручную по README).
+  // Если isReady() отражает только "воркер жив", TranslationEngineRegistry.getActiveEngine()
+  // выбирает Bergamot, и КАЖДЫЙ вызов translateBatch тихо падает по каждому юниту ("No model
+  // available...", см. BergamotWorkerEntry.ts) — итог: кнопка перевода загорается ("translated"),
+  // а страница остаётся нетронутой, без единой видимой ошибки пользователю. #availablePairs.length
+  // здесь — обязательная часть проверки "готов", а не просто диагностика.
   isReady(): boolean {
-    return this.#service.isReady()
+    return this.#service.isReady() && this.#availablePairs.length > 0
   }
 
   // Прямая пара ИЛИ пивот через #pivotLanguage — та же логика, что TranslatorBacking.findModels
-  // (base-класс пакета, см. BergamotWorkerEntry.ts) применяет реально при переводе; здесь —
-  // предварительная проверка для UI/диагностики (не участвует в реальном выборе модели, тот
-  // делает сам BatchTranslator).
+  // (base-класс пакета, см. BergamotWorkerEntry.ts) применяет реально при переводе.
   supportsPair(from: string, to: string): boolean {
     if (!this.isReady()) return false
     if (this.#availablePairs.some((p) => p.from === from && p.to === to)) return true

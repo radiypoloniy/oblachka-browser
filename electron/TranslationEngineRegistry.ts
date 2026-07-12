@@ -39,18 +39,26 @@ export function setCacheManager(cache: TranslationCacheManager): void {
   cacheManager = cache
 }
 
-// Единственная точка получения текущего движка. Если выбранный движок не зарегистрирован или не
-// готов (Bergamot не поднялся — нет модели/воркер упал, см. план Этапа 3) — тихий откат на Qwen:
-// он всегда зарегистрирован и isReady() у него всегда true (см. QwenTranslationEngine.ts), так что
-// откат гарантированно не бросает исключение.
-export function getActiveEngine(): ITranslationEngine {
+// Единственная точка получения текущего движка. from/to — необязательны (диагностика/warmup не
+// всегда их знают), но PageTranslateManager.ts ВСЕГДА передаёт их (уже резолвлены через
+// resolveDirection к этому моменту) — иначе движок, у которого просто нет модели под ЭТУ пару
+// (при наличии моделей под другие пары, см. живой баг: Bergamot с одним en-ru молча "переводит"
+// французскую страницу в никуда), тихо выбирался бы и заваливал КАЖДЫЙ юнит без единого сигнала
+// наружу. Если выбранный движок не зарегистрирован, не готов ВООБЩЕ (см. ITranslationEngine.isReady)
+// или не поддерживает конкретно эту пару (supportsPair) — тихий откат на Qwen: он всегда
+// зарегистрирован, isReady() у него всегда true и supportsPair() всегда true (см.
+// QwenTranslationEngine.ts), так что откат гарантированно не бросает исключение и не заваливается
+// той же болезнью повторно.
+export function getActiveEngine(from?: string, to?: string): ITranslationEngine {
   const engine = engines.get(activeId)
+  const usable = !!engine && engine.isReady() && (from === undefined || to === undefined || engine.supportsPair(from, to))
   let real: ITranslationEngine
-  if (engine && engine.isReady()) {
-    real = engine
+  if (usable) {
+    real = engine!
   } else {
     if (activeId !== 'qwen') {
-      console.warn(`[translation-engine] "${activeId}" недоступен — откат на Qwen`)
+      const pairInfo = from && to ? ` для пары ${from}->${to}` : ''
+      console.warn(`[translation-engine] "${activeId}" недоступен${pairInfo} — откат на Qwen`)
     }
     real = engines.get('qwen')!
   }

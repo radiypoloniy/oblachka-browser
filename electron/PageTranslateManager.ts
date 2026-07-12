@@ -432,11 +432,14 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
 
   // Движок — через registry (getActiveEngine), не импортируется напрямую (см. TranslationEngine.ts/
   // TranslationEngineRegistry.ts) — DOM-слой не знает и не должен знать, Qwen сейчас активен или
-  // другой движок. Конвейеризация: генерация батча i+1 встаёт в очередь движка сразу после
-  // готовности батча i, не дожидаясь apply (executeJavaScript в вкладку — отдельный IPC-круговорот,
-  // во время которого движок иначе простаивал бы). Сериализация вызовов — забота самого движка
-  // (withQwenQueue в TranslationService.ts для Qwen).
-  const engine = getActiveEngine()
+  // другой движок. src/tgt передаются в getActiveEngine — если у активного движка нет модели именно
+  // под эту пару (см. живой баг: Bergamot выбирается, даже когда поддерживает только en-ru, а
+  // страница на французском), registry сам откатится на Qwen, а не завалит каждый юнит молча.
+  // Конвейеризация: генерация батча i+1 встаёт в очередь движка сразу после готовности батча i, не
+  // дожидаясь apply (executeJavaScript в вкладку — отдельный IPC-круговорот, во время которого
+  // движок иначе простаивал бы). Сериализация вызовов — забота самого движка (withQwenQueue в
+  // TranslationService.ts для Qwen).
+  const engine = getActiveEngine(src, tgt)
   const startBatch = (i: number) =>
     engine.translateBatch(
       batches[i]!.map((u) => ({ id: u.id, text: u.text })),
