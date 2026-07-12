@@ -30,8 +30,9 @@ import {
   onStateChanged as onPageTranslateStateChanged,
   onProgressChanged as onPageTranslateProgressChanged,
 } from './PageTranslateManager';
-import { setActiveEngineId, registerEngine } from './TranslationEngineRegistry';
+import { setActiveEngineId, registerEngine, setCacheManager } from './TranslationEngineRegistry';
 import { BergamotTranslationEngine } from './BergamotTranslationEngine';
+import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
@@ -151,6 +152,7 @@ const downloads   = new DownloadManager();
 const permissions = new PermissionManager();
 const settings    = new SettingsManager();
 const hubChat     = new HubChatManager();
+const translationCache = new TranslationCacheManager();
 
 // Применяем сохранённый выбор движка перевода СРАЗУ на старте (до первого клика «Перевести
 // страницу») — см. TranslationEngineRegistry.ts. Дефолт остаётся 'qwen' (см. SettingsManager.ts) —
@@ -1101,6 +1103,15 @@ app.whenReady().then(async () => {
   await permissions.initialize().catch((e) =>
     console.error('[Permissions] инициализация упала:', e),
   );
+
+  // Кэш переводов (Этап 4): та же гарантия — падение (нет better-sqlite3) не блокирует старт.
+  // setCacheManager регистрируется безусловно, даже если initialize() выше упал — get()/set()
+  // внутри TranslationCacheManager сами проверяют #db!==null и молча становятся no-op, так что
+  // регистрация "пустого" менеджера равносильна отсутствию кэша, а не ошибке.
+  await translationCache.initialize().catch((e) =>
+    console.error('[translation-cache] инициализация упала:', e),
+  );
+  setCacheManager(translationCache);
 
   // Ghostery ставит свой onBeforeRequest внутри initialize().
   // try/catch: падение адблока не должно блокировать запуск браузера.
