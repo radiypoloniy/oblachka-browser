@@ -9,7 +9,7 @@ import Downloads from './components/Downloads';
 import PermissionPrompt from './components/PermissionPrompt';
 import { embeddingService } from './services/EmbeddingService';
 import { startEmbedRequestBridge } from './services/EmbedRequestBridge';
-import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, VpnConnectionState, AdBlockState } from '../shared/ipc';
+import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, VpnConnectionState, AdBlockState, PageTranslateState } from '../shared/ipc';
 import type { ClusterProposal } from './services/ClusteringService';
 
 const HUB_ID = 'hub';
@@ -59,6 +59,7 @@ export default function App() {
   // Для кнопки адблока в тулбаре — независимая от Settings.tsx::AdBlockSection подписка
   // на тот же push-канал (тот же приём, что и с vpnConn выше).
   const [adBlockState, setAdBlockState] = useState<AdBlockState | null>(null);
+  const [pageTranslateState, setPageTranslateState] = useState<PageTranslateState>('idle');
   const [dark, setDark] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
@@ -238,6 +239,13 @@ export default function App() {
   useEffect(() => {
     void window.oblako.getAdBlockState().then(setAdBlockState);
     const unsub = window.oblako.onAdBlockStateChanged(setAdBlockState);
+    return () => unsub();
+  }, []);
+
+  // Состояние полностраничного перевода для кнопки в тулбаре (см. PageTranslateManager.ts).
+  useEffect(() => {
+    void window.oblako.getPageTranslateState().then(setPageTranslateState);
+    const unsub = window.oblako.onPageTranslateStateChanged(setPageTranslateState);
     return () => unsub();
   }, []);
 
@@ -475,6 +483,8 @@ export default function App() {
           downloadsOpen={downloadsOpen}
           onToggleDownloads={() => { setDownloadsOpen((v) => !v); }}
           onToggleAiPanel={() => { void window.oblako.toggleAiPanel(); }}
+          pageTranslateState={pageTranslateState}
+          onTogglePageTranslate={() => { window.oblako.togglePageTranslate(); }}
         />
         {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView).
             Margin — единственный источник воздуха: pushBounds меряет getBoundingClientRect()

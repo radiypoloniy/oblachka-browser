@@ -21,6 +21,13 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
+import {
+  togglePageTranslate,
+  getActiveState as getPageTranslateActiveState,
+  onTabsSynced as onPageTranslateTabsSynced,
+  setTabManager as setPageTranslateTabManager,
+  onStateChanged as onPageTranslateStateChanged,
+} from './PageTranslateManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
@@ -248,6 +255,9 @@ function createWindow() {
       // закрытие/смена URL), без новых колбэков в TabManager.ts (см. AiPanelManager.ts). Не во
       // время выхода — AI-панель и так исчезает вместе с окном, синкать её незачем.
       if (!isShuttingDown) onTabsSynced(tabsSnapshot);
+      // Тот же снапшот — привязка полностраничного перевода к активной вкладке (сброс состояния
+      // на навигацию/закрытие, см. PageTranslateManager.ts::onTabsSynced), тот же принцип.
+      if (!isShuttingDown) onPageTranslateTabsSynced(tabsSnapshot);
       // Тот же снапшот — чистка in-memory контекстов AI-чата Hub по закрытым вкладкам
       // (см. HubChatManager.ts::pruneClosedTabs, тот же принцип, что onTabsSynced выше).
       hubChat.pruneClosedTabs(new Set(tabsSnapshot.map((t) => t.id)));
@@ -335,6 +345,12 @@ function createWindow() {
   // Аналогично для FindBarManager — только чтобы вернуть OS-фокус активной вкладке после
   // закрытия по IPC (крестик/Esc-в-поле), см. FindBarManager.ts::ensureIpcRegistered.
   setFindBarTabManager(tabs);
+  // Аналогично — PageTranslateManager читает WebContents активной вкладки для обхода DOM/
+  // применения перевода (executeJavaScript), не управляет вкладками.
+  setPageTranslateTabManager(tabs);
+  onPageTranslateStateChanged((state) => {
+    chromeView?.webContents.send(IPC.PAGE_TRANSLATE_STATE_CHANGED, state);
+  });
   initPasswordPopover(() => chromeView?.webContents.send(IPC.PASSWORD_POPOVER_CLOSED));
   initVpnPopover(() => chromeView?.webContents.send(IPC.VPN_POPOVER_CLOSED));
   // Менеджер паролей, шаг 2: индикатор push идёт в chrome (не в конкретную вкладку) —
@@ -842,6 +858,11 @@ function registerIpc() {
     relayoutFindBar(); // свободная ширина под FindBar изменилась (см. FindBarManager.ts::computeBounds)
     return open;
   });
+
+  // Полностраничный перевод (см. PageTranslateManager.ts) — fire-and-forget, актуальное
+  // состояние приходит push'ем через onPageTranslateStateChanged (см. выше).
+  ipcMain.on(IPC.PAGE_TRANSLATE_TOGGLE, () => { void togglePageTranslate(); });
+  ipcMain.handle(IPC.PAGE_TRANSLATE_GET_STATE, () => getPageTranslateActiveState());
 
   // Нативное ПКМ-меню вкладки в сайдбаре.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {

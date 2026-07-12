@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown, KeyRound } from 'lucide-react';
-import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult, PasswordIndicatorState } from '../../shared/ipc';
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2 } from 'lucide-react';
+import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult, PasswordIndicatorState, PageTranslateState } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { stripEmoji } from '../../shared/text';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
@@ -86,6 +86,8 @@ interface ToolbarProps {
   downloadsOpen: boolean;     // панель загрузок сейчас открыта
   onToggleDownloads: () => void;
   onToggleAiPanel: () => void; // тоггл правой AI-панели (оверлей, см. AiPanelManager.ts)
+  pageTranslateState: PageTranslateState; // см. PageTranslateManager.ts
+  onTogglePageTranslate: () => void;
 }
 
 // ── Компонент ─────────────────────────────────────────────────────────────────
@@ -96,6 +98,7 @@ export default function Toolbar({
   tab, allTabs, vpnOn, vpnLabel, adBlockOn, onToggleAdBlock, omniboxRef: externalRef,
   onBack, onForward, onReload, onSubmit, onSuggestToggle,
   downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel,
+  pageTranslateState, onTogglePageTranslate,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
   const [value, setValue] = useState('');
@@ -843,6 +846,30 @@ export default function Toolbar({
         <div ref={vpnControlRef} style={{ display: 'inline-flex' }}>
           <VpnPill vpnOn={vpnOn} vpnLabel={vpnLabel} mode={vpnMode} onClick={toggleVpnPopover} active={vpnPopoverOpen} />
         </div>
+        {/* Полностраничный перевод (см. PageTranslateManager.ts) — только на реальной странице,
+            на хабе/истории/настройках переводить нечего. idle: приглушённая иконка, как адблок
+            выкл. translating: спиннер, клик игнорируется (та же неактивность по смыслу, что
+            disabled у кнопки «Обновить» на хабе — просто без атрибута disabled, там же логика
+            игнора живёт в PageTranslateManager.ts::togglePageTranslate). translated: подсветка
+            accent-soft — тот же тон, что у открытого поповера. */}
+        {!isHub && tab?.url && (
+          <button
+            title={
+              pageTranslateState === 'translating' ? 'Перевожу страницу…'
+                : pageTranslateState === 'translated' ? 'Показать оригинал'
+                : 'Перевести страницу'
+            }
+            onClick={onTogglePageTranslate}
+            style={islandBtn(
+              pageTranslateState === 'idle' ? 'var(--text-faint)' : 'var(--accent)',
+              pageTranslateState === 'translated' ? 'var(--accent-soft)' : undefined,
+            )}
+          >
+            {pageTranslateState === 'translating'
+              ? <Loader2 size={18} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+              : <Languages size={18} />}
+          </button>
+        )}
         <button title="AI-хаб" onClick={onToggleAiPanel}
           style={islandBtn('var(--accent)', 'var(--accent-soft)')}>
           <Sparkles size={18} />

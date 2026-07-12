@@ -199,6 +199,14 @@ export const IPC = {
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
 
+  // Полностраничный перевод (см. electron/PageTranslateManager.ts) — кнопка в тулбаре заменяет
+  // текст прямо в DOM активной вкладки локальным Qwen (TranslationService.ts::translatePageBatch),
+  // без поповера/панели. Только про АКТИВНУЮ вкладку — переключение вкладок само пересылает
+  // актуальное состояние (тот же принцип, что PASSWORDS_INDICATOR_CHANGED).
+  PAGE_TRANSLATE_TOGGLE:        'page-translate:toggle',         // renderer → main: тоггл для активной вкладки
+  PAGE_TRANSLATE_GET_STATE:     'page-translate:get-state',      // renderer → main: текущее состояние активной вкладки (гонка старта — см. onPageTranslateStateChanged)
+  PAGE_TRANSLATE_STATE_CHANGED: 'page-translate:state-changed',  // main → renderer: push PageTranslateState
+
   // Дропдаун подсказок омнибокса — временный тумблер нативной тестовой вью (заход 2/5 переезда
   // с chrome-DOM, см. SuggestDropdownManager.ts), вешается на тот же момент, что и старый
   // React-дропдаун (Toolbar.tsx::openDropdown/closeDropdown), который пока НЕ заменяет.
@@ -548,6 +556,12 @@ export interface AdBlockState {
   sessionBlockCount: number;  // счётчик за текущую сессию (сбрасывается при перезапуске)
 }
 
+// ── Полностраничный перевод (см. electron/PageTranslateManager.ts) ───────────
+// 'idle' — не переведена (или отключена: hub/history/settings, см. Toolbar.tsx). 'translating' —
+// идёт батчевый прогон через Qwen. 'translated' — все батчи применены, повторный клик кнопки
+// откатывает на оригинал (см. PAGE_TRANSLATE_TOGGLE) обратно в 'idle'.
+export type PageTranslateState = 'idle' | 'translating' | 'translated';
+
 // ── AI-чат на Hub ───────────────────────────────────────────────────────────
 export type HubMode = 'tiles' | 'ai';
 
@@ -727,6 +741,15 @@ export interface OblakoApi {
 
   // Правая AI-панель (оверлей поверх контента, см. AiPanelManager.ts)
   toggleAiPanel(): Promise<boolean>;
+
+  // Полностраничный перевод (см. electron/PageTranslateManager.ts) — тоггл для активной вкладки,
+  // fire-and-forget: актуальное состояние приходит через onPageTranslateStateChanged (main сам
+  // решает idle/translating/translated, renderer ничего не считает сам). getPageTranslateState —
+  // явный запрос на монтирование (та же пара get+onChanged, что getAdBlockState/onAdBlockStateChanged) —
+  // push мог уйти ДО того, как renderer подписался (гонка старта окна).
+  togglePageTranslate(): void;
+  getPageTranslateState(): Promise<PageTranslateState>;
+  onPageTranslateStateChanged(cb: (state: PageTranslateState) => void): () => void;
 
   // Дропдаун подсказок омнибокса — временный тумблер тестовой нативной вью (заход 2/5,
   // см. SuggestDropdownManager.ts). Прямоугольник омнибокса — см. setOmniboxBounds выше.

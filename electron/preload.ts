@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -191,6 +191,15 @@ const api: OblakoApi = {
 
   // Правая AI-панель
   toggleAiPanel: () => ipcRenderer.invoke(IPC.AI_PANEL_TOGGLE) as Promise<boolean>,
+
+  // Полностраничный перевод — fire-and-forget, актуальное состояние приходит push'ем.
+  togglePageTranslate: () => ipcRenderer.send(IPC.PAGE_TRANSLATE_TOGGLE),
+  getPageTranslateState: () => ipcRenderer.invoke(IPC.PAGE_TRANSLATE_GET_STATE) as Promise<PageTranslateState>,
+  onPageTranslateStateChanged: (cb: (state: PageTranslateState) => void) => {
+    const handler = (_e: unknown, state: PageTranslateState) => cb(state);
+    ipcRenderer.on(IPC.PAGE_TRANSLATE_STATE_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.PAGE_TRANSLATE_STATE_CHANGED, handler);
+  },
 
   // Дропдаун подсказок омнибокса (нативная вью)
   setSuggestDropdownOpen: (open: boolean) => ipcRenderer.invoke(IPC.SUGGEST_DROPDOWN_TOGGLE, open) as Promise<void>,

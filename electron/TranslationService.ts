@@ -222,6 +222,10 @@ async function ensureLoaded(): Promise<number> {
     // чтобы tsc его не транспилировал — тогда это настоящий динамический import.
     const nlc: typeof import('node-llama-cpp') = await Function('return import("node-llama-cpp")')()
     llama = await nlc.getLlama()
+    // Диагностика: 'cpu' здесь — главный подозреваемый при жалобах на скорость (9B-модель на CPU
+    // на порядок медленнее, чем на GPU) — без этой строки бэкенд не виден нигде в боевом логе
+    // (только в изолированном llamatest.ts).
+    console.log(`[gen] llama backend: gpu=${llama.gpu}`)
     LlamaChatSession = nlc.LlamaChatSession
     // variation:'3.5' — актуальный чат-шаблон Qwen3.5 (свой формат, не EuroLLM/Gemma).
     // thoughts:'discourage' — явно давим reasoning: у Qwen3.5-9B thinking по умолчанию off, но
@@ -498,6 +502,73 @@ export async function runAiAction(
   }
 }
 
+// ── Полностраничный перевод (кнопка в тулбаре, замена текста прямо в DOM вкладки) ───────────
+// PageTranslateManager.ts обходит DOM вкладки и шлёт сюда пронумерованные юниты БАТЧАМИ — один
+// вызов Qwen на батч из нескольких юнитов, а не один вызов на каждый мелкий абзац: оверхед
+// сессии/prefill на вызов (см. [perf] segment в runPromptQueued выше) на реальной странице
+// с полусотней-сотней юнитов иначе даёт неприемлемое суммарное время. ⟪N⟫/⟪/N⟫ — плейсхолдеры
+// инлайновых тегов (a/b/em/...) внутри юнита, расставленные PageTranslateManager ДО вызова сюда —
+// здесь только текст с этими маркерами, модель обязана скопировать их как есть, не переводя.
+export interface PageBatchUnit { id: number; text: string }
+export type PageBatchResult =
+  | { ok: true; translations: Map<number, string> }
+  | { ok: false; error: string }
+
+// ~10-15 юнитов/до ~3000 симв. входа на батч (см. PageTranslateManager.ts) — с запасом на
+// расширение перевода (кириллица/румынский и т.п. обычно длиннее исходника) и разметку заголовков.
+const PAGE_BATCH_MAX_TOKENS = 4000
+
+function buildPageBatchPrompt(src: string, tgt: string, units: PageBatchUnit[]): string {
+  const S = LANG_NAME[src] ?? src; const T = LANG_NAME[tgt] ?? tgt
+  const body = units.map((u) => `###${u.id}###\n${u.text}`).join('\n\n')
+  return `Translate each numbered block below from ${S} to ${T}. Blocks may contain markers like ` +
+    `⟪1⟫...⟪/1⟫ or a standalone ⟪2⟫ — copy every such marker EXACTLY as it appears, unchanged, in ` +
+    `the same relative position within your translation. Do not translate, remove, or renumber ` +
+    `markers. Output ONLY the translated blocks, each preceded by its exact "###N###" header from ` +
+    `the input, nothing else — no explanations, no extra commentary.\n\n${body}`
+}
+
+// Best-effort: рассинхрон/пропуск номера у модели — обычное дело на больших батчах, не бросаем.
+// Юнит, для которого не нашлось перевода, PageTranslateManager.ts оставляет как есть на странице
+// (тот же принцип «не ломать структуру ценой полноты», что и резервный путь при несовпадении
+// плейсхолдеров ⟪N⟫ внутри уже распознанного юнита — та часть логики уже в PageTranslateManager.ts,
+// не здесь).
+function parsePageBatchResponse(raw: string): Map<number, string> {
+  const result = new Map<number, string>()
+  const re = /###(\d+)###\s*([\s\S]*?)(?=###\d+###|$)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(raw))) {
+    const text = m[2].trim()
+    if (text) result.set(Number(m[1]), text)
+  }
+  return result
+}
+
+// src/tgt — уже резолвлены ОДИН раз на всю страницу вызывающей стороной (PageTranslateManager.ts,
+// по образцу первых юнитов, через resolveDirection выше) — не пере-детектим язык на каждый батч.
+export async function translatePageBatch(units: PageBatchUnit[], src: string, tgt: string): Promise<PageBatchResult> {
+  if (units.length === 0) return { ok: true, translations: new Map() }
+  try {
+    // Нет «заботливого» вызывающего кода перед первым батчем (в отличие от translate()/
+    // runAiAction(), которые грузят модель через runSegmented) — та же ситуация, что у
+    // rerankHistoryCandidates выше, тот же явный ensureLoaded() здесь.
+    await ensureLoaded()
+    const prompt = buildPageBatchPrompt(src, tgt, units)
+    const { out } = await runPrompt(prompt, PAGE_BATCH_MAX_TOKENS)
+    const translations = parsePageBatchResponse(out)
+    console.log(`[page-translate] батч ${units.length} юнит(ов) [${src}->${tgt}]: распознано ${translations.size}/${units.length}`)
+    // Диагностика редкого бага: модель иногда вместо перевода конкретного юнита вставляет
+    // отказ/пояснение на английском (см. живой репорт) — до сих пор нечем было поймать сырой
+    // ответ модели постфактум, только счётчик распознанных ###N### выше. Полный raw-текст в лог —
+    // единственный способ увидеть содержимое при следующем повторении (не воспроизводится по заказу).
+    console.log(`[page-translate] raw response:\n${out}`)
+    return { ok: true, translations }
+  } catch (e) {
+    console.error('[page-translate] батч упал:', e)
+    return { ok: false, error: String(e) }
+  }
+}
+
 // ── Чат в AI-панели (Заход 2, привязка к вкладке — Заход 3) ─────────────────────────────────
 // Отдельный вход поверх ТОГО ЖЕ движка (llama/model/context/sequence из ensureLoaded() выше) —
 // НЕ поднимает вторую копию модели (та занимает ~6.81ГБ из 8ГБ VRAM, вторая не влезет). Общий
@@ -530,7 +601,8 @@ const CHAT_MAX_TOKENS = 3072
 // невозможно быстро сверить с бюджетом контекста. n_ctx появится отдельной строкой после загрузки
 // модели (см. [gen] context в ensureLoaded) — здесь он ещё неизвестен.
 console.log(
-  `[gen] limits: translateSegment=${TRANSLATE_SEGMENT_MAX_TOKENS} action=${TEXT_ACTION_MAX_TOKENS} chat=${CHAT_MAX_TOKENS} (максимум токенов на выход, на прогон)`,
+  `[gen] limits: translateSegment=${TRANSLATE_SEGMENT_MAX_TOKENS} action=${TEXT_ACTION_MAX_TOKENS} ` +
+  `chat=${CHAT_MAX_TOKENS} pageBatch=${PAGE_BATCH_MAX_TOKENS} (максимум токенов на выход, на прогон)`,
 )
 
 // Через ту же очередь, что и runPrompt (см. withQwenQueue выше) — свой, отдельный от runPrompt
