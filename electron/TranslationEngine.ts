@@ -1,7 +1,7 @@
 // Абстракция движка перевода страниц — общий контракт для Qwen (QwenTranslationEngine.ts) и
-// будущего Bergamot. PageTranslateManager.ts (DOM-слой) зовёт ТОЛЬКО через этот интерфейс, никогда
-// не импортирует конкретный движок напрямую — какой движок сейчас активен, решает
-// TranslationEngineRegistry.ts, DOM-слой об этом не знает и не должен знать.
+// Bergamot (BergamotTranslationEngine.ts). PageTranslateManager.ts (DOM-слой) зовёт ТОЛЬКО через
+// этот интерфейс, никогда не импортирует конкретный движок напрямую — какой движок сейчас активен,
+// решает TranslationEngineRegistry.ts, DOM-слой об этом не знает и не должен знать.
 //
 // TranslationItem/TranslationResult — ровно та форма {id, text}, что уже ходит между DOM-слоем и
 // Qwen-переводом (PageBatchUnit на входе в TranslationService.ts::translatePageBatch, entries,
@@ -17,7 +17,12 @@ export interface TranslationResult {
   text: string
 }
 
-export type EngineId = 'qwen' | 'bergamot'
+// EngineId — алиас TranslationEngineId из shared/ipc.ts (тип нужен и renderer'у — Settings.tsx,
+// см. OblakoApi::getTranslationEngine/setTranslationEngine, — поэтому определение живёт в shared/,
+// не здесь). Локальное имя короче и не меняет существующие импорты (SettingsManager.ts,
+// TranslationEngineRegistry.ts).
+import type { TranslationEngineId } from '../shared/ipc'
+export type EngineId = TranslationEngineId
 
 export interface ITranslationEngine {
   readonly id: EngineId

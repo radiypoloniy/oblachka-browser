@@ -208,6 +208,15 @@ export const IPC = {
   PAGE_TRANSLATE_STATE_CHANGED: 'page-translate:state-changed',  // main → renderer: push PageTranslateState
   PAGE_TRANSLATE_PROGRESS_CHANGED: 'page-translate:progress-changed', // main → renderer: push PageTranslateProgress|null
 
+  // Выбор движка перевода страниц (Qwen/Bergamot, см. electron/TranslationEngineRegistry.ts) —
+  // настройки → секция AI. BERGAMOT_STATUS — только push, статус живёт в electron/BergamotService.ts
+  // (спавнится/греется на старте main.ts независимо от того, какой движок выбран активным —
+  // иначе переключатель в настройках не мог бы показать актуальный статус ДО первого переключения).
+  TRANSLATION_ENGINE_GET:            'translation-engine:get',
+  TRANSLATION_ENGINE_SET:            'translation-engine:set',
+  TRANSLATION_ENGINE_GET_BERGAMOT_STATUS: 'translation-engine:get-bergamot-status',
+  TRANSLATION_ENGINE_BERGAMOT_STATUS_CHANGED: 'translation-engine:bergamot-status-changed',
+
   // Дропдаун подсказок омнибокса — временный тумблер нативной тестовой вью (заход 2/5 переезда
   // с chrome-DOM, см. SuggestDropdownManager.ts), вешается на тот же момент, что и старый
   // React-дропдаун (Toolbar.tsx::openDropdown/closeDropdown), который пока НЕ заменяет.
@@ -575,6 +584,18 @@ export interface PageTranslateProgress {
   charsStreamed: number;
 }
 
+// Движки полностраничного перевода (см. electron/ITranslationEngine.ts::ITranslationEngine) — общий
+// тип, нужен и main (electron/TranslationEngineRegistry.ts, electron/SettingsManager.ts), и renderer
+// (Settings.tsx), поэтому живёт здесь, а не в electron/-only файле.
+export type TranslationEngineId = 'qwen' | 'bergamot';
+
+// Статус Bergamot-движка (см. electron/BergamotService.ts) — только push, не завязан на то, какой
+// движок сейчас АКТИВЕН в настройках: греется в фоне независимо (см. main.ts), чтобы переключатель
+// в Settings.tsx мог показать актуальный статус ДО того, как пользователь вообще попробует его
+// выбрать. 'unavailable' — воркер не поднялся или файлов моделей нет (см. живой лог main-процесса),
+// UI показывает «модель перевода не загружена», TranslationEngineRegistry тихо остаётся на Qwen.
+export type BergamotStatus = 'loading' | 'ready' | 'unavailable';
+
 // ── AI-чат на Hub ───────────────────────────────────────────────────────────
 export type HubMode = 'tiles' | 'ai';
 
@@ -767,6 +788,17 @@ export interface OblakoApi {
   // окна ей не грозит (пока подписка не пришла, идёт максимум idle→translating, кнопка и так уже
   // рисует спиннер по state). См. PageTranslateProgress.
   onPageTranslateProgressChanged(cb: (progress: PageTranslateProgress | null) => void): () => void;
+
+  // Выбор движка перевода страниц (Settings.tsx, секция AI) — get+set как у searchEngine/hubMode
+  // (SettingsManager.ts персистит значение). getBergamotStatus+onBergamotStatusChanged — та же
+  // пара, что getPageTranslateState/onPageTranslateStateChanged: Bergamot греется в фоне на старте
+  // main.ts независимо от того, что сейчас выбрано, и warmup мог УЖЕ завершиться до того, как
+  // Settings.tsx смонтируется и подпишется — без явного get секция настроек молча зависла бы на
+  // "Загрузка…" (гонка старта).
+  getTranslationEngine(): Promise<TranslationEngineId>;
+  setTranslationEngine(id: TranslationEngineId): Promise<void>;
+  getBergamotStatus(): Promise<BergamotStatus>;
+  onBergamotStatusChanged(cb: (status: BergamotStatus) => void): () => void;
 
   // Дропдаун подсказок омнибокса — временный тумблер тестовой нативной вью (заход 2/5,
   // см. SuggestDropdownManager.ts). Прямоугольник омнибокса — см. setOmniboxBounds выше.

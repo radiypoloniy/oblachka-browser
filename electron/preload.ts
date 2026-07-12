@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -204,6 +204,16 @@ const api: OblakoApi = {
     const handler = (_e: unknown, progress: PageTranslateProgress | null) => cb(progress);
     ipcRenderer.on(IPC.PAGE_TRANSLATE_PROGRESS_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.PAGE_TRANSLATE_PROGRESS_CHANGED, handler);
+  },
+
+  // Выбор движка перевода страниц (Settings.tsx, секция AI) — см. TranslationEngineRegistry.ts.
+  getTranslationEngine: () => ipcRenderer.invoke(IPC.TRANSLATION_ENGINE_GET) as Promise<TranslationEngineId>,
+  setTranslationEngine: (id: TranslationEngineId) => ipcRenderer.invoke(IPC.TRANSLATION_ENGINE_SET, id) as Promise<void>,
+  getBergamotStatus: () => ipcRenderer.invoke(IPC.TRANSLATION_ENGINE_GET_BERGAMOT_STATUS) as Promise<BergamotStatus>,
+  onBergamotStatusChanged: (cb: (status: BergamotStatus) => void) => {
+    const handler = (_e: unknown, status: BergamotStatus) => cb(status);
+    ipcRenderer.on(IPC.TRANSLATION_ENGINE_BERGAMOT_STATUS_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.TRANSLATION_ENGINE_BERGAMOT_STATUS_CHANGED, handler);
   },
 
   // Дропдаун подсказок омнибокса (нативная вью)

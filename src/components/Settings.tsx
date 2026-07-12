@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyRound, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, type LucideIcon } from 'lucide-react';
-import type { AdBlockState, BackfillProgress, HistoryContentCoverage, VpnStatus, VpnServerMeta, VpnConnectionState, PasswordMeta, PasswordCopyField } from '../../shared/ipc';
+import type { AdBlockState, BackfillProgress, HistoryContentCoverage, VpnStatus, VpnServerMeta, VpnConnectionState, PasswordMeta, PasswordCopyField, TranslationEngineId, BergamotStatus } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import { stripEmoji } from '../../shared/text';
 
@@ -677,8 +677,124 @@ function AiSection() {
         </div>
       )}
 
+      <TranslationEngineSection />
       <HistoryBackfillSection />
     </div>
+  );
+}
+
+// ── Движок полностраничного перевода (Qwen / Bergamot) ────────────────────────
+// Bergamot греется в фоне на старте main.ts независимо от того, что сейчас выбрано (см.
+// main.ts::warmupBergamot) — статус может прийти push'ем ДО монтирования этой секции ИЛИ уже
+// быть готовым к моменту get (та же пара get+onChanged, что у PageTranslateState — гонка старта).
+function TranslationEngineSection() {
+  const [engine, setEngineState] = useState<TranslationEngineId | null>(null);
+  const [bergamotStatus, setBergamotStatus] = useState<BergamotStatus | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    window.oblako.getTranslationEngine().then((v) => { if (mounted) setEngineState(v); });
+    window.oblako.getBergamotStatus().then((v) => { if (mounted) setBergamotStatus(v); });
+    const unsub = window.oblako.onBergamotStatusChanged((v) => { if (mounted) setBergamotStatus(v); });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
+  function select(id: TranslationEngineId) {
+    setEngineState(id); // оптимистично — setTranslationEngine не бросает и не гоняет туда-обратно
+    void window.oblako.setTranslationEngine(id);
+  }
+
+  const bergamotDisabled = bergamotStatus !== 'ready';
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 12,
+      paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
+    }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+          Движок перевода страниц
+        </h3>
+        <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+          Кнопка «Перевести страницу» в тулбаре может работать на одном из двух локальных движков.
+          Оба считают полностью на устройстве, ничего не уходит в сеть.
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <EngineOption
+          active={engine === 'qwen'}
+          onClick={() => select('qwen')}
+          title="Qwen (AI, точнее)"
+          subtitle="Универсальная модель — переводит любой язык, медленнее на CPU/GPU."
+        />
+        <EngineOption
+          active={engine === 'bergamot'}
+          disabled={bergamotDisabled}
+          onClick={() => { if (!bergamotDisabled) select('bergamot'); }}
+          title="Bergamot (быстрее, легче)"
+          subtitle={
+            bergamotStatus === 'loading' || bergamotStatus === null
+              ? 'Проверяю модель перевода…'
+              : bergamotStatus === 'unavailable'
+                ? 'Модель перевода не загружена — см. README (Bergamot).'
+                : 'Специализированная модель для CPU — en/ru и ещё несколько языков.'
+          }
+          badge={
+            bergamotStatus === 'unavailable'
+              ? { text: 'недоступен', color: 'var(--text-faint)' }
+              : bergamotStatus === 'ready'
+                ? { text: 'готов', color: 'var(--system)' }
+                : undefined
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+interface EngineOptionProps {
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  title: string;
+  subtitle: string;
+  badge?: { text: string; color: string };
+}
+
+function EngineOption({ active, disabled, onClick, title, subtitle, badge }: EngineOptionProps) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+        ...islandPlate, borderRadius: 'var(--radius-sm)', textAlign: 'left',
+        border: 'none', cursor: disabled ? 'default' : 'default',
+        boxShadow: active ? '0 0 0 1.5px var(--accent) inset' : undefined,
+        opacity: disabled ? 0.55 : 1,
+      }}
+    >
+      {active
+        ? <Check size={18} style={{ color: 'var(--accent)', flex: 'none' }} />
+        : <span style={{ width: 18, flex: 'none' }} />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+          {subtitle}
+        </div>
+      </div>
+      {badge && (
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
+          color: badge.color, flex: 'none',
+        }}>
+          {badge.text}
+        </span>
+      )}
+    </button>
   );
 }
 

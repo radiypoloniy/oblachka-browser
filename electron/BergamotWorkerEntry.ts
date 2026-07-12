@@ -144,6 +144,14 @@ async function main(): Promise<void> {
       return
     }
 
+    if (msg.type === 'list-pairs') {
+      // listAvailablePairs() уже прочитано один раз в loadModelRegistery() (backing.registry) —
+      // но это приватное поле переопределённого класса, зовём ту же функцию напрямую, а не лезем
+      // внутрь backing — дешевле (просто fs.readdirSync), чем городить публичный геттер.
+      port.postMessage({ type: 'pairs-result', reqId: msg.reqId, pairs: listAvailablePairs() })
+      return
+    }
+
     if (msg.type === 'translate-batch') {
       try {
         const results = await Promise.all(

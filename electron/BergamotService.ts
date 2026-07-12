@@ -133,6 +133,23 @@ export class BergamotService {
     })
   }
 
+  // Список пар языков, для которых на диске реально есть файлы модели (см.
+  // BergamotWorkerEntry.ts::listAvailablePairs) — используется BergamotTranslationEngine.supportsPair
+  // для решения "есть ли смысл вообще пробовать эту пару" (в т.ч. с учётом пивота через en).
+  async listPairs(): Promise<Array<{ from: string; to: string }>> {
+    if (this.#broken) return []
+    if (!this.#ready) await this.warmup()
+
+    const reqId = this.#nextReqId++
+    return new Promise<Array<{ from: string; to: string }>>((resolve, reject) => {
+      this.#pending.set(reqId, {
+        resolve: (msg) => resolve((msg as { pairs: Array<{ from: string; to: string }> }).pairs),
+        reject,
+      })
+      this.#worker!.postMessage({ type: 'list-pairs', reqId })
+    })
+  }
+
   async dispose(): Promise<void> {
     if (!this.#worker) return
     this.#worker.postMessage({ type: 'dispose' })

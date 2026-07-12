@@ -16,7 +16,7 @@ import { PermissionManager } from './PermissionManager';
 import { SettingsManager } from './SettingsManager';
 import { HubChatManager } from './HubChatManager';
 import { IPC } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, TranslationEngineId, BergamotStatus } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -30,7 +30,8 @@ import {
   onStateChanged as onPageTranslateStateChanged,
   onProgressChanged as onPageTranslateProgressChanged,
 } from './PageTranslateManager';
-import { setActiveEngineId } from './TranslationEngineRegistry';
+import { setActiveEngineId, registerEngine } from './TranslationEngineRegistry';
+import { BergamotTranslationEngine } from './BergamotTranslationEngine';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
@@ -152,9 +153,35 @@ const settings    = new SettingsManager();
 const hubChat     = new HubChatManager();
 
 // Применяем сохранённый выбор движка перевода СРАЗУ на старте (до первого клика «Перевести
-// страницу») — см. TranslationEngineRegistry.ts. UI-переключатель появится позже (план, Этап 3),
-// но настройка уже персистится в SettingsManager.ts, читаем её с первого дня.
+// страницу») — см. TranslationEngineRegistry.ts. Дефолт остаётся 'qwen' (см. SettingsManager.ts) —
+// переключатель в Settings.tsx позволяет выбрать 'bergamot' явно.
 setActiveEngineId(settings.getTranslationEngine());
+
+// Bergamot регистрируется в registry независимо от того, что сейчас активно, — так реестр может
+// откатиться на него/с него в любой момент смены настройки без пересоздания движка. Прогревается
+// (warmupBergamot ниже) тоже независимо от активного выбора — иначе Settings.tsx не смог бы
+// показать актуальный статус ДО того, как пользователь попробует переключиться (см. живой план,
+// Этап 3: "supportsPair/isReady возвращают false... в UI пометка «модель перевода не загружена»").
+const bergamotEngine = new BergamotTranslationEngine(app.getPath('userData'));
+registerEngine(bergamotEngine);
+
+let bergamotStatus: BergamotStatus = 'loading';
+function pushBergamotStatus(status: BergamotStatus): void {
+  bergamotStatus = status;
+  chromeView?.webContents.send(IPC.TRANSLATION_ENGINE_BERGAMOT_STATUS_CHANGED, status);
+}
+async function warmupBergamot(): Promise<void> {
+  try {
+    await bergamotEngine.warmup();
+    pushBergamotStatus('ready');
+  } catch (e) {
+    // Ожидаемый исход, если файлов моделей ещё нет на диске (см. README — Bergamot) или воркер
+    // не смог подняться — НЕ бросаем дальше: TranslationEngineRegistry.getActiveEngine() сам
+    // тихо откатится на Qwen (isReady()===false), а UI покажет "модель перевода не загружена".
+    console.error('[bergamot] прогрев упал, движок недоступен:', e);
+    pushBergamotStatus('unavailable');
+  }
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -213,6 +240,9 @@ function createWindow() {
       // дождётся ЭТОЙ ЖЕ загрузки, а не запустит вторую.
       setTimeout(() => {
         if (!thisWin.isDestroyed()) void warmupTranslation();
+        // Bergamot — свой воркер (см. BergamotService.ts), не конкурирует с Qwen за VRAM/диск,
+        // но всё равно на той же задержке: не соревнуется с первой отрисовкой чрома.
+        void warmupBergamot();
       }, TRANSLATION_WARMUP_DELAY_MS);
     };
     const onUiReady = () => showWindow('ui-ready');
@@ -658,6 +688,15 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.SETTINGS_GET_HUB_MODE, () => settings.getHubMode());
   ipcMain.handle(IPC.SETTINGS_SET_HUB_MODE, (_e, mode: HubMode) => settings.setHubMode(mode));
+
+  // Выбор движка перевода страниц (Settings.tsx, секция AI) — persist + сразу применяется к
+  // registry (см. TranslationEngineRegistry.ts::setActiveEngineId), без перезапуска приложения.
+  ipcMain.handle(IPC.TRANSLATION_ENGINE_GET, () => settings.getTranslationEngine());
+  ipcMain.handle(IPC.TRANSLATION_ENGINE_SET, (_e, id: TranslationEngineId) => {
+    settings.setTranslationEngine(id);
+    setActiveEngineId(id);
+  });
+  ipcMain.handle(IPC.TRANSLATION_ENGINE_GET_BERGAMOT_STATUS, () => bergamotStatus);
 
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
   // send — fire-and-forget (не invoke): ответ идёт стримом чанков + финальным результатом,
