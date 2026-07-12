@@ -40,7 +40,9 @@ console.log(`worker entry: ${workerEntry}`)
 console.log(`input: ${TEXT}`)
 
 const t0 = performance.now()
-const worker = new Worker(workerEntry, { workerData: { userDataPath: MODELS_ROOT } })
+// bundledModelsDir = тот же MODELS_ROOT — воркер теперь ждёт оба поля (см. BergamotWorkerEntry.ts),
+// для смоука разделять userData/бандл незачем, оба указывают в одно и то же место на диске.
+const worker = new Worker(workerEntry, { workerData: { userDataPath: MODELS_ROOT, bundledModelsDir: path.join(MODELS_ROOT, 'models', 'translation') } })
 
 let tReady = null
 let reqId = 0

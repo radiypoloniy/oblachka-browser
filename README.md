@@ -75,15 +75,16 @@ VPN, AI, пароли, усыпление вкладок, split view, закре
 
 ## Bergamot (альтернативный движок перевода страниц, WASM/CPU)
 
-Полностраничный перевод по умолчанию использует локальный Qwen (main-процесс,
-`electron/TranslationService.ts`). Bergamot (Marian NMT, WASM) — второй движок
-для той же фичи, специально лёгкий для CPU (в отличие от Qwen-9B, которому
-нужен GPU) — см. `electron/ITranslationEngine`-абстракцию (`electron/TranslationEngine.ts`,
-`electron/TranslationEngineRegistry.ts`). На момент этого README Bergamot ещё
-**не подключён к UI** (см. план внедрения) — есть только изолированный сервис
-(`electron/BergamotService.ts` + `electron/BergamotWorkerEntry.ts`, крутится в
-собственном `node:worker_threads.Worker`, НЕ в renderer) и CLI-инструмент для
-ручной проверки.
+Bergamot (Marian NMT, WASM) — дефолтный движок полностраничного перевода,
+специально лёгкий для CPU (в отличие от Qwen-9B, которому нужен GPU) — см.
+`electron/ITranslationEngine`-абстракцию (`electron/TranslationEngine.ts`,
+`electron/TranslationEngineRegistry.ts`). Переключатель движка — в Settings.tsx;
+если для конкретной пары языков у Bergamot нет модели, `TranslationEngineRegistry`
+тихо откатывается на Qwen (`electron/TranslationService.ts`), см. её же комментарии.
+Сам движок — изолированный сервис (`electron/BergamotService.ts` +
+`electron/BergamotWorkerEntry.ts`, крутится в собственном
+`node:worker_threads.Worker`, НЕ в renderer) плюс CLI-инструмент для ручной
+проверки (см. «Ручная проверка» ниже).
 
 ### Патч пакета (`npm install` делает это сам)
 
@@ -107,25 +108,30 @@ VPN, AI, пароли, усыпление вкладок, split view, закре
 
 ### Модели
 
-Модели перевода — **не бандлятся** и не тянутся дефолтным реестром пакета
-(тот CDN разъехался с собственными чексуммами, проверено вживую). Кладутся
-на диск в `{userData}/models/translation/{from}-{to}/` (в проде — реальный
-`app.getPath('userData')`, для локальной проверки — `resources/models/translation/`,
-см. ниже), файлы: `model.*.bin`, `lex*.bin`, `vocab*.spm`.
-
-Рабочий источник (та же версия моделей, что ожидает эта версия WASM —
-проверено по чексуммам) — Mozilla Remote Settings, реальный production-CDN
-Firefox Translations, версия записи `1.0a1`:
-
-```
-https://firefox.settings.services.mozilla.com/v1/buckets/main/collections/translations-models/records?_limit=20000
+```bash
+npm run download-translation-models
 ```
 
-Найти записи с нужными `fromLang`/`toLang` и `version === "1.0a1"`, скачать
-`attachment.location` с `https://firefox-settings-attachments.cdn.mozilla.net/`,
-положить в `{userData}/models/translation/{from}-{to}/` под именем `attachment.filename`.
-Готовый набор для `en-ru`/`ru-en` уже лежит в `resources/models/translation/`
-(в `.gitignore`, скачан вручную при разработке).
+Скачивает пары `en<->X` для каждого языка из `LANG_NAME`
+(`electron/TranslationService.ts`) из реестра Mozilla Remote Settings (реальный
+production-CDN Firefox Translations) в `resources/models/translation/{from}-{to}/`
+(в `.gitignore`, не бандлится в git). Версия моделей не зафиксирована одним
+номером — скрипт берёт самую свежую версию реестра, у которой есть полный
+комплект `model.*.bin`/`lex*.bin`/`vocab*.spm` (или раздельные
+`srcvocab*.spm`/`trgvocab*.spm`, см. `en-ja`/`en-ko`); совместимость с текущей
+WASM-сборкой проверена вживую смоук-тестом на всех языках. Не для всех языков
+есть модель в обе стороны (`be` — только `be->en`) или вообще (`zh` — нет
+записей в реестре); скрипт логирует такие случаи и не падает.
+
+Приоритет чтения на диске: `{userData}/models/translation/` (реальный
+`app.getPath('userData')` — можно докладывать/обновлять без пересборки), а если
+там пусто — автоматический фолбэк на бандл `resources/models/translation/`
+(см. `bundledModelsDir` в `electron/BergamotWorkerEntry.ts`/`BergamotService.ts`/
+`BergamotTranslationEngine.ts`, тот же принцип, что `resolveModelsBase` в
+`AppProtocol.ts`). Копировать файлы в userData вручную не нужно — раньше
+воркер смотрел ТОЛЬКО в userData, и после ручного скачивания в `resources/`
+Bergamot тихо считал себя неготовым и откатывался на Qwen (живой баг, см.
+историю) — фолбэк это устраняет.
 
 ### Ручная проверка (без UI)
 

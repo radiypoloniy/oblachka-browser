@@ -20,12 +20,27 @@ const port = parentPort
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Backing = any
 
-// {userData}/models/translation/{from}-{to}/ — см. план: НЕ resources/models (бандл, read-only),
-// а userData (пользовательский профиль) — модели перевода необязательно бандлить с приложением,
-// это отдельный, потенциально обновляемый набор данных, тот же принцип приоритета, что уже есть в
-// AppProtocol.ts::resolveModelsBase (userData сначала, resources как бандл — только там для другого:
-// для эмбеддингов, у Bergamot бандла вообще ещё нет).
-const MODELS_DIR = path.join(workerData.userDataPath, 'models', 'translation')
+// {userData}/models/translation/{from}-{to}/ — пользовательский профиль, туда можно докладывать/
+// обновлять модели без пересборки приложения. Живой баг (см. историю): раньше здесь была ТОЛЬКО
+// userData, без фолбэка на бандл — после npm run download-translation-models файлы оказывались в
+// resources/models/translation, а реальный воркер их не видел (только userData, пустая), и
+// TranslationEngineRegistry тихо откатывался на Qwen. bundledModelsDir — тот же принцип
+// приоритета, что уже есть в AppProtocol.ts::resolveModelsBase (userData сначала, resources как
+// бандл), посчитанный в main-процессе (BergamotTranslationEngine.ts, там доступны app.isPackaged/
+// process.resourcesPath) и переданный сюда готовым путём — воркер сам ничего не знает про Electron.
+const USER_MODELS_DIR = path.join(workerData.userDataPath, 'models', 'translation')
+const BUNDLED_MODELS_DIR: string = workerData.bundledModelsDir
+
+function hasAnyPairDir(dir: string): boolean {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true }).some((d) => d.isDirectory())
+  } catch {
+    return false
+  }
+}
+
+const MODELS_DIR = hasAnyPairDir(USER_MODELS_DIR) ? USER_MODELS_DIR : BUNDLED_MODELS_DIR
+console.log(`[bergamot-worker] models dir: ${MODELS_DIR} (userData=${hasAnyPairDir(USER_MODELS_DIR)})`)
 
 // Единственный файл с этим именем в директории пары — не жёсткое имя (у разных источников моделей
 // оно разное, см. живой пример из bergamot.s3.amazonaws.com/models/index.json:
@@ -45,6 +60,22 @@ function findOne(dir: string, prefix: string, ext: string): Buffer | null {
     console.warn(`[bergamot-worker] неоднозначность в ${dir}: несколько файлов ${prefix}*${ext} (${matches.join(', ')}) — беру первый`)
   }
   return fs.readFileSync(path.join(dir, matches.sort()[0]!))
+}
+
+// Живой баг, пойманный на смоук-тесте en-ja/en-ko: у части языков (проверено на японском и
+// корейском реестра Mozilla) исходный и целевой словарь — РАЗНЫЕ файлы, `srcvocab.*.spm`/
+// `trgvocab.*.spm`, а не общий `vocab.*.spm` (см. другие языки — en-ru/fr/de/... там один общий).
+// findOne(dir,'vocab','.spm') ищет ПРЕФИКС 'vocab' — 'srcvocab...'/'trgvocab...' под него не
+// попадают ('s'/'t' в начале, не 'v'), и listAvailablePairs() тихо считал такую пару "неполной",
+// хотя оба файла реально на диске. hasAnyVocab — по вхождению 'vocab' в имя, а не по префиксу.
+function hasAnyVocab(dir: string): boolean {
+  let entries: string[]
+  try {
+    entries = fs.readdirSync(dir)
+  } catch {
+    return false
+  }
+  return entries.some((f) => f.includes('vocab') && f.endsWith('.spm'))
 }
 
 function toArrayBuffer(buf: Buffer): ArrayBuffer {
@@ -71,7 +102,7 @@ function listAvailablePairs(): Array<{ from: string; to: string }> {
     const dir = path.join(MODELS_DIR, name)
     const hasModel = findOne(dir, 'model.', '.bin') !== null
     const hasLex = findOne(dir, 'lex', '.bin') !== null
-    const hasVocab = findOne(dir, 'vocab', '.spm') !== null
+    const hasVocab = hasAnyVocab(dir)
     if (hasModel && hasLex && hasVocab) pairs.push({ from: m[1]!, to: m[2]! })
     else console.warn(`[bergamot-worker] ${name}: неполный набор файлов модели — пропускаю (model=${hasModel} lex=${hasLex} vocab=${hasVocab})`)
   }
@@ -103,19 +134,19 @@ async function main(): Promise<void> {
       const dir = path.join(MODELS_DIR, `${from}-${to}`)
       const model = findOne(dir, 'model.', '.bin')
       const shortlist = findOne(dir, 'lex', '.bin')
-      // Один общий vocab.*.spm (одно совпадение) ЛИБО раздельные src/trg (два совпадения,
-      // сортировка по имени — детерминированный, но не гарантированно верный порядок для
-      // раздельных словарей; на практике модели с раздельными vocab называют файлы
-      // srcvocab.spm/trgvocab.spm или vocab.<from>.spm/vocab.<to>.spm, что и даёт нужный
-      // алфавитный порядок для большинства реальных наборов — если для конкретной пары окажется
-      // не так, здесь придётся дать точную маску, а не общий vocab.*.spm).
+      // Один общий vocab.*.spm (одно совпадение) ЛИБО раздельные src/trg (два совпадения) —
+      // includes('vocab'), не startsWith: реальные пары из реестра Mozilla (en-ja/en-ko, см.
+      // смоук-тест) называют раздельные словари srcvocab.*.spm/trgvocab.*.spm, 'srcvocab'
+      // не начинается с 'vocab', startsWith тут молча терял оба файла. Сортировка по имени даёт
+      // нужный алфавитный порядок src < trg для этой схемы — если у будущей пары окажется другая
+      // схема имён, здесь придётся дать точную маску, а не общий vocab.*.spm).
       let entries: string[]
       try {
         entries = fs.readdirSync(dir)
       } catch {
         entries = []
       }
-      const vocabFiles = entries.filter((f) => f.startsWith('vocab') && f.endsWith('.spm')).sort()
+      const vocabFiles = entries.filter((f) => f.includes('vocab') && f.endsWith('.spm')).sort()
       if (!model || !shortlist || vocabFiles.length === 0) {
         throw new Error(`[bergamot-worker] нет файлов модели для пары ${from}->${to} в ${dir}`)
       }

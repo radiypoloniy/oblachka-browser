@@ -164,7 +164,12 @@ setActiveEngineId(settings.getTranslationEngine());
 // (warmupBergamot ниже) тоже независимо от активного выбора — иначе Settings.tsx не смог бы
 // показать актуальный статус ДО того, как пользователь попробует переключиться (см. живой план,
 // Этап 3: "supportsPair/isReady возвращают false... в UI пометка «модель перевода не загружена»").
-const bergamotEngine = new BergamotTranslationEngine(app.getPath('userData'));
+// Фолбэк-путь к бандлу моделей (см. BergamotWorkerEntry.ts/scripts/download-translation-models.mjs) —
+// тот же приём packaged/dev, что resolveModelsBase в AppProtocol.ts.
+const bergamotBundledModelsDir = app.isPackaged
+  ? path.join(process.resourcesPath, 'models', 'translation')
+  : path.join(__dirname, '../../resources', 'models', 'translation');
+const bergamotEngine = new BergamotTranslationEngine(app.getPath('userData'), bergamotBundledModelsDir);
 registerEngine(bergamotEngine);
 
 let bergamotStatus: BergamotStatus = 'loading';

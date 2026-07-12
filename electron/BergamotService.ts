@@ -27,13 +27,19 @@ export class BergamotService {
   #pending = new Map<number, Pending>()
   #nextReqId = 0
   readonly #userDataPath: string
+  readonly #bundledModelsDir: string
   readonly #workerEntryPath: string
 
+  // bundledModelsDir — фолбэк-путь к бандлу моделей (resources/models/translation), см.
+  // BergamotWorkerEntry.ts: userData используется, только если там реально лежат пары, иначе
+  // воркер читает отсюда. Вычисляется вызывающей стороной (BergamotTranslationEngine.ts из main.ts),
+  // этот класс просто прокидывает готовый путь в workerData, ничего платформенного сам не знает.
   // workerEntryPath — по умолчанию рядом с этим же скомпилированным файлом (dist-electron/electron/
   // BergamotWorkerEntry.js), переопределяемо для standalone-запуска (bergamot-smoke.mjs собирает
   // main-процесс тем же tsc, но зовёт этот класс из другого места на диске).
-  constructor(userDataPath: string, workerEntryPath?: string) {
+  constructor(userDataPath: string, bundledModelsDir: string, workerEntryPath?: string) {
     this.#userDataPath = userDataPath
+    this.#bundledModelsDir = bundledModelsDir
     this.#workerEntryPath = workerEntryPath ?? path.join(__dirname, 'BergamotWorkerEntry.js')
   }
 
@@ -71,7 +77,9 @@ export class BergamotService {
 
   #spawn(): void {
     console.log(`[bergamot] запускаю воркер: ${this.#workerEntryPath}`)
-    const worker = new Worker(this.#workerEntryPath, { workerData: { userDataPath: this.#userDataPath } })
+    const worker = new Worker(this.#workerEntryPath, {
+      workerData: { userDataPath: this.#userDataPath, bundledModelsDir: this.#bundledModelsDir },
+    })
     this.#worker = worker
 
     worker.on('message', (msg: { type: string; reqId?: number; results?: unknown; message?: string }) => {

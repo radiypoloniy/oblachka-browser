@@ -44,8 +44,11 @@ export class BergamotTranslationEngine implements ITranslationEngine {
   // это не настраивается по отдельности с двух сторон.
   #pivotLanguage = 'en'
 
-  constructor(userDataPath: string) {
-    this.#service = new BergamotService(userDataPath)
+  // bundledModelsDir — фолбэк на бандл (resources/models/translation), см. BergamotWorkerEntry.ts:
+  // без него после npm run download-translation-models модели оказывались в resources/, а боевой
+  // воркер смотрел только в userData и тихо считал Bergamot неготовым (живой баг, см. историю).
+  constructor(userDataPath: string, bundledModelsDir: string) {
+    this.#service = new BergamotService(userDataPath, bundledModelsDir)
   }
 
   // ⚠️ Живой баг, пойманный на реальном прогоне: воркер репортит "ready" уже после того, как
