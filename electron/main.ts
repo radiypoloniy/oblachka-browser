@@ -30,6 +30,7 @@ import {
   onStateChanged as onPageTranslateStateChanged,
   onProgressChanged as onPageTranslateProgressChanged,
 } from './PageTranslateManager';
+import { setActiveEngineId } from './TranslationEngineRegistry';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
@@ -149,6 +150,11 @@ const downloads   = new DownloadManager();
 const permissions = new PermissionManager();
 const settings    = new SettingsManager();
 const hubChat     = new HubChatManager();
+
+// Применяем сохранённый выбор движка перевода СРАЗУ на старте (до первого клика «Перевести
+// страницу») — см. TranslationEngineRegistry.ts. UI-переключатель появится позже (план, Этап 3),
+// но настройка уже персистится в SettingsManager.ts, читаем её с первого дня.
+setActiveEngineId(settings.getTranslationEngine());
 
 function createWindow() {
   win = new BrowserWindow({

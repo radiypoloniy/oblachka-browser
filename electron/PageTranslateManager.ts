@@ -12,7 +12,9 @@
 import type { WebContents } from 'electron'
 import type { TabState, PageTranslateState, PageTranslateProgress } from '../shared/ipc'
 import type { TabManager } from './TabManager'
-import { translatePageBatch, resolveDirection, type PageBatchResult } from './TranslationService'
+import { resolveDirection } from './TranslationService'
+import { getActiveEngine } from './TranslationEngineRegistry'
+import type { TranslationResult } from './TranslationEngine'
 
 let tabManagerRef: TabManager | null = null
 export function setTabManager(tm: TabManager): void {
@@ -428,41 +430,48 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
     return true
   }
 
-  // Конвейеризация: генерация батча i+1 встаёт в очередь модели сразу после готовности батча i, не
-  // дожидаясь apply (executeJavaScript в вкладку — отдельный IPC-круговорот, во время которого
-  // модель иначе простаивала бы). Общая на процесс очередь Qwen (withQwenQueue в
-  // TranslationService.ts) сама сериализует фактические вызовы модели.
+  // Движок — через registry (getActiveEngine), не импортируется напрямую (см. TranslationEngine.ts/
+  // TranslationEngineRegistry.ts) — DOM-слой не знает и не должен знать, Qwen сейчас активен или
+  // другой движок. Конвейеризация: генерация батча i+1 встаёт в очередь движка сразу после
+  // готовности батча i, не дожидаясь apply (executeJavaScript в вкладку — отдельный IPC-круговорот,
+  // во время которого движок иначе простаивал бы). Сериализация вызовов — забота самого движка
+  // (withQwenQueue в TranslationService.ts для Qwen).
+  const engine = getActiveEngine()
   const startBatch = (i: number) =>
-    translatePageBatch(
+    engine.translateBatch(
       batches[i]!.map((u) => ({ id: u.id, text: u.text })),
       src, tgt,
+      undefined, // signal — отмена уже покрыта isCancelled()/bumpSeq на уровне оркестрации ниже
       (charsSoFar) => {
         charsByBatch[i] = charsSoFar
         pushProgressThrottled()
       },
     )
-  let nextTranslate: Promise<PageBatchResult> | null = batches.length > 0 ? startBatch(0) : null
+  let nextTranslate: Promise<TranslationResult[]> | null = batches.length > 0 ? startBatch(0) : null
 
   for (let i = 0; i < batches.length; i++) {
     if (isCancelled()) break
-    const result = await nextTranslate!
+    const current = nextTranslate!
     nextTranslate = i + 1 < batches.length ? startBatch(i + 1) : null
     if (isCancelled()) break
 
-    if (!result.ok) {
-      console.error(`[page-translate] батч упал: ${result.error}`)
-      completedBatches++
-      pushProgressThrottled(true)
-      continue
-    }
-    if (result.translations.size === 0) {
+    let result: TranslationResult[]
+    try {
+      result = await current
+    } catch (e) {
+      console.error(`[page-translate] батч упал: ${e}`)
       completedBatches++
       pushProgressThrottled(true)
       continue
     }
 
-    const entries = [...result.translations.entries()].map(([id, text]) => ({ id, text }))
-    if (!(await applyAndCheckCrash(entries))) break
+    if (result.length === 0) {
+      completedBatches++
+      pushProgressThrottled(true)
+      continue
+    }
+
+    if (!(await applyAndCheckCrash(result))) break
     completedBatches++
     pushProgressThrottled(true) // граница батча — всегда видна, не только раз в PROGRESS_THROTTLE_MS
   }
