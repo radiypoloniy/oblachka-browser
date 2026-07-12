@@ -725,8 +725,8 @@ function TranslationEngineSection() {
         <EngineOption
           active={engine === 'qwen'}
           onClick={() => select('qwen')}
-          title="Qwen (AI, точнее)"
-          subtitle="Универсальная модель — переводит любой язык, медленнее на CPU/GPU."
+          title="AI-перевод (медленно, выше качество)"
+          subtitle="Qwen — универсальная модель, переводит любой язык, медленнее на CPU/GPU."
         />
         <EngineOption
           active={engine === 'bergamot'}

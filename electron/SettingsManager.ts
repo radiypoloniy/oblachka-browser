@@ -7,10 +7,13 @@ import type { HubMode } from '../shared/ipc';
 import type { EngineId } from './TranslationEngine';
 
 const DEFAULT_HUB_MODE: HubMode = 'tiles';
-// 'qwen' — единственный движок, доступный на Этапе 1 (см. TranslationEngineRegistry.ts) — Bergamot
-// появится Этапом 3, но поле уже персистится сейчас, чтобы регистри могла читать сохранённый выбор
-// с первого дня, не дожидаясь UI-переключателя.
-const DEFAULT_TRANSLATION_ENGINE: EngineId = 'qwen';
+// 'bergamot' — дефолт с Этапа 5 (по ручной проверке пользователя после Этапов 1-4). Если файлов
+// модели нет на диске или воркер не поднялся — TranslationEngineRegistry.getActiveEngine() тихо
+// откатывается на Qwen (isReady()===false), см. её же комментарий — переключение дефолта не
+// требует, чтобы Bergamot гарантированно был доступен у конкретного пользователя, деградация
+// уже отработана раньше. Qwen остаётся выбираемым в Settings.tsx как «AI-перевод (медленно,
+// выше качество)».
+const DEFAULT_TRANSLATION_ENGINE: EngineId = 'bergamot';
 
 interface PersistedSettings {
   searchEngine: SearchEngineId;
