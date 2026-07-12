@@ -73,6 +73,71 @@ VPN, AI, пароли, усыпление вкладок, split view, закре
 которые жалко потерять. Автосейв состояния вкладок — задача Этапа 2, и его
 стоит сделать до того, как браузером начнут пользоваться всерьёз.
 
+## Bergamot (альтернативный движок перевода страниц, WASM/CPU)
+
+Полностраничный перевод по умолчанию использует локальный Qwen (main-процесс,
+`electron/TranslationService.ts`). Bergamot (Marian NMT, WASM) — второй движок
+для той же фичи, специально лёгкий для CPU (в отличие от Qwen-9B, которому
+нужен GPU) — см. `electron/ITranslationEngine`-абстракцию (`electron/TranslationEngine.ts`,
+`electron/TranslationEngineRegistry.ts`). На момент этого README Bergamot ещё
+**не подключён к UI** (см. план внедрения) — есть только изолированный сервис
+(`electron/BergamotService.ts` + `electron/BergamotWorkerEntry.ts`, крутится в
+собственном `node:worker_threads.Worker`, НЕ в renderer) и CLI-инструмент для
+ручной проверки.
+
+### Патч пакета (`npm install` делает это сам)
+
+`@browsermt/bergamot-translator` (опубликован в 2022, с тех пор не обновлялся)
+не работает из коробки в Node на Windows — три реальных бага, найденных живым
+прогоном (не в теории), пофикшены `scripts/patch-bergamot.mjs` (идемпотентен,
+запускается автоматически из `postinstall`):
+
+1. `worker/translator-worker.js` наследует `"type":"module"` от пакета, но его
+   же Node-совместимый слой зовёт голый `require(...)` (CommonJS-only) — под
+   ESM это `ReferenceError`. Фикс — `worker/package.json` с `{"type":"commonjs"}`.
+2. `self.location` строился как `` new URL(`file://${__filename}`) `` — на
+   Windows `__filename` с бэкслешами и буквой диска не парсится как валидный
+   URL. Фикс — `pathToFileURL(__filename)`.
+3. Та же болезнь в `self.fetch()` для `file://` — читал `url.pathname`
+   (`/C:/Users/...`, буквально как путь), получая `ENOENT` вида
+   `open 'C:\C:\Users\...'`. Фикс — `fileURLToPath(url)`.
+
+Если версия пакета сменится и патч перестанет находить нужные строки —
+скрипт явно упадёт с понятным сообщением, а не молча пропустит фикс.
+
+### Модели
+
+Модели перевода — **не бандлятся** и не тянутся дефолтным реестром пакета
+(тот CDN разъехался с собственными чексуммами, проверено вживую). Кладутся
+на диск в `{userData}/models/translation/{from}-{to}/` (в проде — реальный
+`app.getPath('userData')`, для локальной проверки — `resources/models/translation/`,
+см. ниже), файлы: `model.*.bin`, `lex*.bin`, `vocab*.spm`.
+
+Рабочий источник (та же версия моделей, что ожидает эта версия WASM —
+проверено по чексуммам) — Mozilla Remote Settings, реальный production-CDN
+Firefox Translations, версия записи `1.0a1`:
+
+```
+https://firefox.settings.services.mozilla.com/v1/buckets/main/collections/translations-models/records?_limit=20000
+```
+
+Найти записи с нужными `fromLang`/`toLang` и `version === "1.0a1"`, скачать
+`attachment.location` с `https://firefox-settings-attachments.cdn.mozilla.net/`,
+положить в `{userData}/models/translation/{from}-{to}/` под именем `attachment.filename`.
+Готовый набор для `en-ru`/`ru-en` уже лежит в `resources/models/translation/`
+(в `.gitignore`, скачан вручную при разработке).
+
+### Ручная проверка (без UI)
+
+```bash
+npm run build:electron   # BergamotWorkerEntry.ts должен быть скомпилирован
+npm run bergamot-smoke -- --from en --to ru --text "<p>Hello <b>world</b></p>"
+```
+
+`html: true` — Bergamot переносит инлайновую разметку через выравнивание
+(alignment), не через простой поиск-замену: `<b>`/`<a href=...>` остаются на
+переведённых словах. Печатает время инициализации воркера и время перевода.
+
 ## Заметки по реализации
 
 - В спеке окно описано как `BaseWindow`. На практике для слоя хрома взят
