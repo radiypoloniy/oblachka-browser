@@ -29,9 +29,13 @@ const GAP = 4 // зазор между низом омнибокса и верх
 // высота прилетает почти сразу после показа (did-finish-load уже отрендерил список), поэтому
 // стартовый флеш короткий и безвредный — тот же компромисс, что и у поповера.
 const INITIAL_HEIGHT = 48
-// Прозрачный запас под CSS box-shadow — WebContentsView обрезает всё, что рисуется за границей
-// своего прямоугольника (тот же приём, что SHADOW_MARGIN в FindBarManager.ts/TranslatePopoverManager.ts).
-const SHADOW_MARGIN = 16
+// Живой баг: тень выглядела «угловатой» и обрезанной — margin=16 был меньше реального охвата
+// тени карточки (offset+blur = 10+28 = 38px, см. suggestdropdown.tsx). WebContentsView обрезает
+// всё, что рисуется за границей своего прямоугольника — хвост тени срезался ровно по краю вью,
+// что и давало жёсткий «прямоугольник-подложку» вместо мягкого растворения. TranslatePopoverManager.ts
+// уже проходил через это же самое с той же тенью (см. его SHADOW_MARGIN=40) — берём то же значение.
+// Держать в синхроне с SHADOW_MARGIN в src/suggestdropdown.tsx.
+const SHADOW_MARGIN = 40
 
 let dropdownView: WebContentsView | null = null
 let attachedWin: BrowserWindow | null = null
@@ -52,6 +56,20 @@ let onPickCb: ((item: SuggestDropdownItem) => void) | null = null
 
 export function onPick(cb: (item: SuggestDropdownItem) => void): void {
   onPickCb = cb
+}
+
+// Живой баг: возврат OS-фокуса на chromeView (main.ts, IPC.SUGGEST_DROPDOWN_TOGGLE) после
+// addChildView срабатывает надёжно всегда, КРОМЕ самого первого показа за жизнь окна — тогда
+// дропдаун ещё не существовал, ensureDropdownView() только что создал НОВУЮ WebContentsView и
+// запустил её loadURL асинхронно; сам процесс её инициализации, судя по всему, отбирает фокус
+// ПОСЛЕ синхронного вызова .focus() у main.ts (гонка, а не логическая ошибка — на все последующие
+// показы та же вью уже готова, повторной гонки нет). Досылаем focus() ещё раз, когда сама вью
+// реально закончила загружаться (did-finish-load) — так же, как main.ts уже фокусирует chromeView
+// сразу после showSuggestDropdown(), просто с опозданием ровно на один этот, первый, раз.
+let onFirstLoadCb: (() => void) | null = null
+
+export function onFirstLoad(cb: () => void): void {
+  onFirstLoadCb = cb
 }
 
 function isAttached(): boolean {
@@ -120,6 +138,15 @@ function ensureDropdownView(): WebContentsView {
   // ⚠️ Здесь НЕТ wc.focus() — единственное отличие от аналогичного момента в FindBarManager.ts.
   dropdownView.webContents.once('did-finish-load', () => {
     dropdownView?.webContents.send('suggest-dropdown:items', lastItems)
+    // Живой баг: на тяжёлом старте (восстановление сессии из многих вкладок, индексация истории
+    // и т.п. одновременно) дропдаун иногда вообще не был виден при первом же показе. Позиционируем
+    // вью ЕЩЁ РАЗ по актуальным lastOmniboxBounds ровно в момент, когда страница реально
+    // догрузилась — на случай, если самое первое showSuggestDropdown() успело отработать раньше,
+    // чем сюда пришли верные данные (bounds ещё не долетели / высота ещё не измерена). Дёшево и
+    // безопасно перевызвать даже если всё и так было правильно — тот же принцип, что у onFirstLoadCb
+    // ниже (фокус) для того же самого класса гонки «первый показ отличается от всех следующих».
+    layoutDropdown()
+    onFirstLoadCb?.()
   })
   dropdownView.webContents.loadURL('oblako-chrome://localhost/suggestdropdown.html')
   return dropdownView
