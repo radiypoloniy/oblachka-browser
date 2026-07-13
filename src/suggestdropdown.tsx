@@ -7,14 +7,51 @@
 // контент на весь свой вьюпорт, инсетнутый на SHADOW_MARGIN под CSS-тень (тот же приём, что у
 // поповера перевода/FindBar). Заход 5 (кардинальный фикс): ВЫСОТА вью следует за реальной высотой
 // карточки (ResizeObserver → reportHeight → SuggestDropdownManager.ts пересчитывает bounds) —
-// вью не должна накрывать пустым местом кнопки/контент под собой (pointer-events между разными
-// WebContentsView не работает, см. прецедент AI-панели). maxHeight:280+overflowY — потолок самого
-// КОНТЕНТА (длинный список продолжает скроллиться внутри), а не фиксированный размер вью.
+// вью не должна накрывать пустым местом кнопки/контент под собой (pointer-события между разными
+// WebContentsView не работают, см. прецедент AI-панели). maxHeight+overflowY — потолок самого
+// КОНТЕНТА (длинный список продолжает скроллиться внутри), а не фиксированный размер вью. Порог —
+// с запасом под полный SUGGEST_MAX=8 (Toolbar.tsx) плюс герой плюс 2 подписи секций, чтобы обычно
+// вообще не приходилось скроллить (живой фидбэк — карточка казалась мельче, чем нужно).
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Search, Globe } from 'lucide-react';
 import './styles/global.css';
 import type { SuggestDropdownItem } from '../shared/ipc';
+
+// Фавикон строки — тот же приём, что TileCard в Hub.tsx (`${origin}/favicon.ico` + onError-
+// фолбэк на генерик-иконку): никакой новой инфраструктуры/IPC, страница просто пробует
+// стандартный путь к иконке сайта сама. search/suggest — не страницы, для них фавикона в
+// принципе не существует, там остаётся иконка-лупа, как и раньше.
+function originOf(url: string): string | null {
+  try { return new URL(url).origin; } catch { return null; }
+}
+
+function RowIcon({ item, size }: { item: SuggestDropdownItem; size: number }) {
+  const isSearchLike = item.kind === 'search' || item.kind === 'suggest';
+  const [ok, setOk] = useState(true);
+  const origin = isSearchLike ? null : originOf(item.url);
+  if (isSearchLike || !origin || !ok) {
+    const Icon = isSearchLike ? Search : Globe;
+    return (
+      <span style={{
+        width: size, height: size, flex: 'none',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--text-faint)',
+      }}>
+        <Icon size={Math.round(size * 0.62)} />
+      </span>
+    );
+  }
+  return (
+    <img
+      src={`${origin}/favicon.ico`}
+      alt=""
+      width={size} height={size}
+      style={{ borderRadius: 4, display: 'block', flex: 'none' }}
+      onError={() => setOk(false)}
+    />
+  );
+}
 
 declare global {
   interface Window {
@@ -27,8 +64,10 @@ declare global {
   }
 }
 
-// Держать в синхроне с SHADOW_MARGIN в electron/SuggestDropdownManager.ts.
-const SHADOW_MARGIN = 16;
+// Держать в синхроне с SHADOW_MARGIN в electron/SuggestDropdownManager.ts. 40 — с запасом покрывает
+// реальный охват тени карточки ниже (offset+blur = 10+28 = 38px), иначе WebContentsView обрезает
+// хвост тени по своей границе (тот самый «угловатый прямоугольник» вместо мягкой тени).
+const SHADOW_MARGIN = 40;
 
 function SuggestDropdown() {
   const [items, setItems] = useState<SuggestDropdownItem[]>([]);
@@ -55,7 +94,7 @@ function SuggestDropdown() {
   useEffect(() => window.suggestDropdown.onItems(setItems), []);
   useEffect(() => window.suggestDropdown.onHighlight(setKeyboardIdx), []);
 
-  // maxHeight:280 ниже остаётся потолком КОНТЕНТА (внутренний скролл для длинных списков) —
+  // maxHeight:460 ниже остаётся потолком КОНТЕНТА (внутренний скролл для длинных списков) —
   // измеряем реальный (уже упёршийся в этот потолок при необходимости) offsetHeight карточки.
   useEffect(() => {
     const el = cardRef.current;
@@ -88,46 +127,78 @@ function SuggestDropdown() {
         boxSizing: 'border-box',
         background: 'var(--surface-solid)',
         borderRadius: 'var(--radius-card)',
-        boxShadow: 'var(--shadow-island)',
+        // Живой баг: --shadow-island (7 слоёв, блюр до 90px) — используется только в главном
+        // chromeView (один общий webContents на всё React-UI). Все ОСТАЛЬНЫЕ изолированные
+        // прозрачные WebContentsView-оверлеи (findbar.tsx, translatepopover.tsx, aipanel.tsx) этот
+        // токен сознательно не используют — там либо --shadow-card (2 слоя), либо вот такая же
+        // простая одна тень. Тяжёлый многослойный box-shadow с большим блюром поверх per-pixel-alpha
+        // прозрачной WebContentsView (не полноценного окна) на Windows/Chromium рендерится с
+        // жёсткими краями вместо мягкого растворения — тот самый «угловатый» прямоугольник вместо
+        // тени. Та же простая тень, что уже проверена в translatepopover.tsx/aipanel.tsx.
+        boxShadow: '0 10px 28px rgba(40,30,80,0.16)',
         border: '1px solid var(--glass-edge)',
-        overflow: 'hidden', maxHeight: 280, overflowY: 'auto',
+        overflow: 'hidden', maxHeight: 460, overflowY: 'auto',
         fontFamily: 'var(--font-sans)',
       }}>
         {items.map((item, idx) => {
-          // 'suggest' (заход 10, живая веб-подсказка) — та же лупа, что 'search': оба ведут
-          // на результаты поиска фразы, не на посещённую страницу/вкладку (те — Globe).
-          const Icon = (item.kind === 'search' || item.kind === 'suggest') ? Search : Globe;
+          // «Герой» — самый релевантный вариант (Toolbar.tsx кладёт его первым в списке, СРАЗУ
+          // за ним — «искать в вебе», см. живое сравнение с Яндекс.Браузером). Поисковые пункты
+          // (search/suggest) в позиции 0 не бывает представителя истории/вкладки — тогда это
+          // сам поиск, увеличенная карточка ему не идёт (нечего в ней показывать крупно).
+          const isHero = idx === 0 && item.kind !== 'search' && item.kind !== 'suggest';
+          const active = activeIdx === idx;
+          // label у нас исторически = URL, sub = заголовок (см. Toolbar.tsx::buildSuggestions) —
+          // здесь разворачиваем порядок показа: крупным/жирным — читаемый заголовок (если есть),
+          // мелким — сам адрес, как у Chrome/Яндекса. Для search/suggest (sub нет) остаётся как есть.
+          const primary = item.sub || item.label;
+          const secondary = item.sub ? item.label : undefined;
           return (
+            <React.Fragment key={`${item.kind}-${item.url}`}>
+              {item.sectionHeader && (
+                <div style={{
+                  padding: '10px 14px 4px',
+                  fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)',
+                  textTransform: 'uppercase', letterSpacing: '0.03em',
+                  // Разделитель ТОЛЬКО если это не самая первая строка списка — иначе полоска
+                  // повисла бы над пустым местом ещё до первого реального ряда.
+                  borderTop: idx > 0 ? '1px solid var(--glass-edge)' : 'none',
+                  marginTop: idx > 0 ? 4 : 0,
+                }}>
+                  {item.sectionHeader}
+                </div>
+              )}
             <div
-              key={`${item.kind}-${item.url}`}
               // onMouseDown (не onClick) — регистрирует выбор ДО потенциального ухода фокуса у
               // омнибокса, а не после (см. закрытие без blur — Toolbar.tsx, заход 5).
               onMouseDown={() => window.suggestDropdown.pick(item)}
               onMouseMove={(e) => handleRowMouseMove(e, idx)}
               onMouseLeave={() => setHoverIdx((i) => (i === idx ? -1 : i))}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
+                display: 'flex', alignItems: 'center', gap: isHero ? 12 : 10,
+                padding: isHero ? '12px 14px' : '8px 14px',
                 cursor: 'default', minWidth: 0,
-                background: activeIdx === idx ? 'var(--surface-sunken)' : 'transparent',
+                background: active ? 'var(--accent-soft)' : (isHero ? 'var(--surface-sunken)' : 'transparent'),
+                borderBottom: isHero ? '1px solid var(--glass-edge)' : 'none',
                 transition: 'background 0.08s',
               }}
             >
-              <span style={{ color: 'var(--text-faint)', flex: 'none', display: 'inline-flex' }}>
-                <Icon size={13} />
-              </span>
+              <RowIcon item={item} size={isHero ? 30 : 16} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
-                  fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
+                  fontSize: isHero ? 'var(--fs-md)' : 'var(--fs-sm)',
+                  fontWeight: isHero ? 600 : 400,
+                  color: 'var(--text-strong)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
-                  {item.label}
+                  {primary}
                 </div>
-                {item.sub && (
+                {secondary && (
                   <div style={{
-                    fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
+                    fontSize: 'var(--fs-xs)',
+                    color: isHero ? 'var(--accent)' : 'var(--text-muted)',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
-                    {item.sub}
+                    {secondary}
                   </div>
                 )}
               </div>
@@ -137,6 +208,7 @@ function SuggestDropdown() {
                 </span>
               )}
             </div>
+            </React.Fragment>
           );
         })}
       </div>

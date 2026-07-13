@@ -541,6 +541,11 @@ export interface SuggestDropdownItem {
   sub?: string;
   url: string;
   tabId?: string;
+  // Подпись секции (по образцу Safari — «Предложения Google» / «Закладки и история») — ставится
+  // ТОЛЬКО на первый элемент новой секции (Toolbar.tsx::buildSuggestions). Вью дропдауна ничего
+  // не решает сама, просто рисует подпись, если она есть — источник группировки остаётся в
+  // Toolbar.tsx, не размазывается по двум местам.
+  sectionHeader?: string;
 }
 
 export type DownloadState = 'progressing' | 'completed' | 'cancelled' | 'interrupted';
