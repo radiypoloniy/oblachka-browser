@@ -118,6 +118,16 @@ export default function Toolbar({
   const inputRef = externalRef ?? internalRef;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suggestSeqRef = useRef(0);
+  // Черновик (набранный, но не отправленный текст) — по вкладке, переживает потерю фокуса и
+  // переключение вкладок, как в популярных браузерах: просто отвлечься на другую вкладку не должно
+  // стирать то, что печатали. Стирается явно — submit() (реальная навигация) и Escape (см.
+  // handleKeyDown) — а не любым blur/setEditing(false) (клик мимо, фокус на контент, тоггл
+  // поповера паролей/VPN и т.п. этот Map не трогают вовсе).
+  const draftsRef = useRef<Map<string, string>>(new Map());
+  // Последняя (id, url) АКТИВНОЙ вкладки — отличает «эта же вкладка реально куда-то перешла»
+  // (черновик стал неактуален) от «просто переключились на другую вкладку» (черновик той вкладки
+  // ещё жив и должен вернуться при переключении обратно). См. эффекты ниже.
+  const lastNavTabRef = useRef<{ id: string; url: string } | undefined>(undefined);
   // Заход 8 (реальный баг): дропдаун закрывался корректно, но САМ ОТКРЫВАЛСЯ ЗАНОВО при переходе
   // на страницу / клике по сайдбару — потому что закрытие (removeChildView нативной вью дропдауна
   // в main) отдаёт OS-фокус ОБРАТНО омниноксу (тот же класс поведения, что задокументированная
@@ -128,6 +138,15 @@ export default function Toolbar({
   // непосредственно перед focus (синхронно, тот же тик) — спонтанный refocus от removeChildView
   // этому не предшествует.
   const realMouseDownRef = useRef(false);
+  // Живой баг: выделение всего текста по клику (см. onMouseDown ниже) проверялось через
+  // document.activeElement — но тот же спонтанный refocus от removeChildView (см. комментарий у
+  // realMouseDownRef выше), который молча возвращает OS-фокус на инпут, ТАКЖЕ молча возвращает
+  // document.activeElement на него, хотя пользователь ничего не кликал. Из-за этого следующий
+  // РЕАЛЬНЫЙ клик видел «уже сфокусировано» и просто переставлял курсор, а не выделял всё. Здесь —
+  // собственный, не подделываемый спонтанным событием источник истины: true выставляется ТОЛЬКО
+  // настоящим mousedown по инпуту, false — только в местах, где мы САМИ явно решили закончить
+  // редактирование (см. stopEditing ниже), не блуром/фокусом как таковыми.
+  const hasRealFocusRef = useRef(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
   // «Таблетка» омнибокса (иконка+инпут+капсула/copy) — прямоугольник, под которым должен
   // вставать дропдаун подсказок. Пушится в main отдельным каналом (OMNIBOX_SET_BOUNDS) —
@@ -217,12 +236,53 @@ export default function Toolbar({
     // в зоне [200, 220) — не меняем, чтобы не мигало
   }, [omniboxWidth]);
 
-  // Пока не редактируем — поле отражает реальный URL вкладки.
+  // Живой баг: переход из хаба создаёт НОВУЮ вкладку (хаб — фиксированный HUB_ID, не переиспользуется),
+  // и у неё в первый момент url === '' (wc.getURL() до коммита навигации) — тот же пустой url, что
+  // и у хаба. Раз значение строки ('' === '') не изменилось, эффект «реальная навигация», раньше
+  // висевший отдельно на [tab?.url], НЕ срабатывал на само переключение и lastNavTabRef оставался
+  // указывать на СТАРУЮ (хаб) вкладку. Когда чуть позже url реально приходил (тот же id, новый url),
+  // это ошибочно классифицировалось как «другая вкладка» (сравнение шло со старым id) — и адрес так
+  // и оставался пустым навсегда, до принудительного пересчёта переключением вкладок туда-обратно.
+  // Единый эффект на [tab?.id, tab?.url] чинит это — lastNavTabRef обновляется на КАЖДЫЙ прогон,
+  // включая сам момент переключения, поэтому последующий приход url всегда сверяется с АКТУАЛЬНЫМ id.
   useEffect(() => {
-    if (!editing) setValue(isHub ? '' : (tab?.url ?? ''));
-  }, [tab?.url, isHub, editing]);
+    if (!tab) return;
+    const switchedTab = lastNavTabRef.current?.id !== tab.id;
+    lastNavTabRef.current = { id: tab.id, url: tab.url };
+    if (switchedTab) {
+      // Переключение вкладки — поднимаем ЕЁ черновик, если печатали в ней раньше и не отправили,
+      // иначе показываем её текущий url (может быть ещё пустым, если страница только начала
+      // грузиться — эта же ветка при следующем реальном приходе url сама всё поправит, см. ниже).
+      const draft = draftsRef.current.get(tab.id);
+      setValue(draft !== undefined ? draft : tab.url);
+      return;
+    }
+    // Та же вкладка — url изменился (реальная навигация либо url «доехал» уже после переключения
+    // на ещё не догрузившуюся вкладку) — черновик неактуален. editing — защита от другого случая:
+    // фоновая навигация той же вкладки не должна вырывать значение из-под рук, если человек как
+    // раз печатает что-то новое поверх старого адреса.
+    if (editing) return;
+    draftsRef.current.delete(tab.id);
+    setValue(tab.url);
+  }, [tab?.id, tab?.url]);
 
   const openDropdown = useCallback(() => {
+    // Живой баг: изредка на самом старте браузера (тяжёлый main-процесс — восстановление сессии,
+    // индексация истории и т.п. одновременно) дропдаун вообще не появлялся. Причина — гонка:
+    // прямоугольник омнибокса пушится в main отдельным эффектом на mount (см. useEffect выше),
+    // а main держит его как lastOmniboxBounds с дефолтом {0,0,0,0} до первого прихода. Если
+    // дропдаун открывается РАНЬШЕ, чем этот самый первый push успел долететь (при загруженном
+    // старте — не микросекунды, а заметная задержка), showSuggestDropdown считает bounds от
+    // нулевого прямоугольника — вью реально создаётся и крепится, просто в невидимой точке (0,0)
+    // вместо места под полем. Досылаем свежий прямоугольник СИНХРОННО прямо здесь, непосредственно
+    // перед открытием — тем же вызовом getBoundingClientRect(), что и в эффекте, но гарантированно
+    // не позже сигнала на открытие (тот же процесс, тот же тик — Electron сохраняет порядок IPC
+    // одного канала между одной парой процессов).
+    const el = omniboxPillRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      void window.oblako.setOmniboxBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+    }
     setDropdownOpen(true);
     onSuggestToggle?.(true);
   }, [onSuggestToggle]);
@@ -246,6 +306,16 @@ export default function Toolbar({
     void window.oblako.setSuggestDropdownHighlight(-1);
   }, [onSuggestToggle]);
 
+  // Единая точка «редактирование действительно закончилось» — вместо разрозненных setEditing(false)
+  // по всем местам. Синхронно гасит hasRealFocusRef (см. комментарий у него) — так спонтанный
+  // refocus от removeChildView, даже молча вернув document.activeElement на инпут, не может
+  // обмануть следующий реальный клик: hasRealFocusRef остаётся false, пока сюда не заглянет САМ
+  // пользователь новым mousedown.
+  const stopEditing = useCallback(() => {
+    setEditing(false);
+    hasRealFocusRef.current = false;
+  }, []);
+
   const pushPasswordPopoverBounds = useCallback(() => {
     const el = passwordControlRef.current;
     if (!el) return;
@@ -256,7 +326,7 @@ export default function Toolbar({
   const togglePasswordPopover = useCallback(() => {
     if (!passwordIndicator) return;
     closeDropdown('password-indicator');
-    setEditing(false);
+    stopEditing();
     if (passwordPopoverOpen) {
       setPasswordPopoverOpen(false);
       void window.oblako.closePasswordPopover();
@@ -265,7 +335,7 @@ export default function Toolbar({
     pushPasswordPopoverBounds();
     setPasswordPopoverOpen(true);
     void window.oblako.showPasswordPopover(passwordIndicator);
-  }, [closeDropdown, passwordIndicator, passwordPopoverOpen, pushPasswordPopoverBounds]);
+  }, [closeDropdown, stopEditing, passwordIndicator, passwordPopoverOpen, pushPasswordPopoverBounds]);
 
   const pushVpnPopoverBounds = useCallback(() => {
     const el = vpnControlRef.current;
@@ -276,7 +346,7 @@ export default function Toolbar({
 
   const toggleVpnPopover = useCallback(() => {
     closeDropdown('vpn-indicator');
-    setEditing(false);
+    stopEditing();
     if (passwordPopoverOpen) {
       setPasswordPopoverOpen(false);
       void window.oblako.closePasswordPopover();
@@ -289,7 +359,7 @@ export default function Toolbar({
     pushVpnPopoverBounds();
     setVpnPopoverOpen(true);
     void window.oblako.showVpnPopover();
-  }, [closeDropdown, passwordPopoverOpen, vpnPopoverOpen, pushVpnPopoverBounds]);
+  }, [closeDropdown, stopEditing, passwordPopoverOpen, vpnPopoverOpen, pushVpnPopoverBounds]);
 
   // ── Заход 5 (кардинальный фикс): закрытие БЕЗ blur ──────────────────────────────────────────
   // blur омнибокса — НЕ триггер закрытия (по образцу FindBar/поповера/AI-панели, см. BACKLOG.md:
@@ -318,12 +388,12 @@ export default function Toolbar({
       (window as any).ddlog?.log(`outside-click detected insidePill=${insidePill} target=${(target as HTMLElement)?.tagName ?? '?'}`);
       if (!insidePill) {
         closeDropdown('outside-click');
-        setEditing(false);
+        stopEditing();
       }
     };
     document.addEventListener('mousedown', onOutsideMouseDown, true);
     return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
-  }, [editing, closeDropdown]);
+  }, [editing, closeDropdown, stopEditing]);
 
   useEffect(() => {
     return window.oblako.onPasswordIndicatorChanged((state) => {
@@ -393,15 +463,15 @@ export default function Toolbar({
     return window.oblako.onSuggestDropdownContentFocus(() => {
       (window as any).ddlog?.log('content-focus signal received'); // ВРЕМЕННЫЙ лог диагностики
       closeDropdown('content-focus');
-      setEditing(false);
+      stopEditing();
     });
-  }, [editing, closeDropdown]);
+  }, [editing, closeDropdown, stopEditing]);
 
   // (3) Смена активной вкладки (мышью по сайдбару — уже покрыто (1); Ctrl+Tab/Ctrl+1-9 — нет) —
   // дропдаун анкорен к прежнему контексту, смысла в нём больше нет (тот же принцип, что
   // closeTranslatePopoverOnTabSwitch у поповера перевода).
   useEffect(() => {
-    if (editing) { closeDropdown('tab-switch'); setEditing(false); }
+    if (editing) { closeDropdown('tab-switch'); stopEditing(); }
     if (passwordPopoverOpen) {
       setPasswordPopoverOpen(false);
       void window.oblako.closePasswordPopover();
@@ -489,6 +559,36 @@ export default function Toolbar({
       if (!cur || scoreEntry(asEntry, now) > scoreEntry(cur, now)) byUrl.set(key, asEntry);
     }
 
+    // Матч «на границе слова» — то же, что делают HistoryQuickProvider в Chromium и
+    // location-bar в Firefox (bugzilla #393678/#429531): вхождение ПОСРЕДИ слова (например «ko»
+    // внутри «drugih» в транслитерированном пути) почти всегда СЛУЧАЙНО совпадает с запросом и
+    // не значит ничего для пользователя — особенно на коротких (2-3 симв.) запросах против
+    // транслитерированных кириллических путей. Вхождение В НАЧАЛЕ слова (kod.ru, /kotipizza) —
+    // обычно и есть то, что имел в виду пользователь. Оба браузера показывают «где угодно»-
+    // совпадения ТОЛЬКО как самый нижний фоллбэк — см. ту же идею ниже в calcMatchScore (tier 1).
+    function matchesAtWordBoundary(haystack: string, needle: string): boolean {
+      let idx = haystack.indexOf(needle);
+      while (idx !== -1) {
+        const prev = idx === 0 ? '' : haystack[idx - 1]!;
+        if (!/[a-z0-9а-яё]/i.test(prev)) return true;
+        idx = haystack.indexOf(needle, idx + 1);
+      }
+      return false;
+    }
+
+    // Живой тест на «ko» показал: граница слова САМА ПО СЕБЕ не спасает от мусора — URL-слаги
+    // русскоязычных сайтов это транслитерация кириллицы (rossiyskih-KOmand, KOtoryh, KOgda...),
+    // и короткий запрос — это ровно начало кучи бытовых русских слов-транслитераций, так что
+    // «в начале слова» массово совпадает, просто не показывая, что для пользователя оно значит.
+    // Домен/заголовок — курируемый текст (реальное имя сайта/статьи), а путь — машинный SEO-слаг,
+    // поэтому именно путь режем по длине запроса: короче порога — в пути вообще не ищем, отдаём
+    // площадь только домену/заголовку (которые остаются достаточно избирательны и на 2-3 символах).
+    const MIN_PATH_MATCH_LEN = 4;
+    // Верхний тир calcMatchScore — «запрос выглядит как имя домена целиком». Вынесен в константу,
+    // т.к. используется ещё раз ниже (см. синтез домашней страницы у byHost) — держать оба места
+    // в синхроне важнее, чем инлайнить магическое число дважды.
+    const HOSTNAME_PREFIX_TIER = 6;
+
     // Match-score: тип совпадения — главный сортировщик, frecency — вторичный.
     // query/hash-параметры намеренно исключены: они источник ложных хитов
     // (e.g. «the» в ?q=... подтягивает нерелевантные страницы).
@@ -501,16 +601,21 @@ export default function Toolbar({
         pathname = u.pathname.toLowerCase();
       } catch { /* невалидный URL */ }
       const title = e.title.toLowerCase();
-      if (hostname.startsWith(q))              return 4; // префикс домена → максимум
-      if (title.startsWith(q))                 return 3; // префикс заголовка
-      if (hostname.includes(q) || title.includes(q)) return 2; // вхождение в домен/заголовок
-      if (pathname.includes(q))                return 1; // только в пути
-      // Семантическое совпадение (заход G, блок 7) — ниже точных текстовых совпадений (1-4),
-      // но выше search-фоллбэка (тот вообще не участвует в match-tier). Проверяется ПОСЛЕДНИМ:
-      // страница, у которой и так есть лексический матч, получает свой обычный тир — семантика
-      // здесь только подстраховка для того, что calcMatchScore иначе отфильтровал бы как 0.
-      if (semanticKeys.has(normalizeForOmnibox(e.url))) return 1.5;
-      return 0; // ни лексического, ни семантического совпадения — отфильтровываем
+      const pathLongEnough = q.length >= MIN_PATH_MATCH_LEN;
+      if (hostname.startsWith(q))              return HOSTNAME_PREFIX_TIER; // префикс домена → максимум
+      if (title.startsWith(q))                 return 5; // префикс заголовка
+      if (matchesAtWordBoundary(hostname, q) || matchesAtWordBoundary(title, q)) return 4; // слово в домене/заголовке
+      if (pathLongEnough && matchesAtWordBoundary(pathname, q)) return 3; // слово в пути
+      // Семантическое совпадение (заход G, блок 7) — ниже «настоящих» текстовых совпадений (3-6).
+      if (semanticKeys.has(normalizeForOmnibox(e.url))) return 2;
+      // Живой фидбэк («пусть меньше, но качественнее»): раньше здесь был ещё фоллбэк —
+      // вхождение ГДЕ УГОДНО (в т.ч. посреди слова, без границы). Он и давал мусор вроде страниц
+      // логина/авторизации и случайных фото из истории — их заголовки/hostname часто СОДЕРЖАТ
+      // запрос как случайную подстроку (например «the» внутри «auTHEntication»), не имея к нему
+      // никакого смыслового отношения. Без него страница либо совпадает по-настоящему (домен/
+      // заголовок/путь на границе слова) или семантически, либо не показывается вообще — короче
+      // список, но каждая строка в нём объяснима.
+      return 0; // вообще ничего не совпало — отфильтровываем
     }
 
     // Итоговый скор: ×10000 за тип совпадения даёт ему абсолютный приоритет над частотой.
@@ -523,18 +628,60 @@ export default function Toolbar({
     function isHomepage(url: string): boolean {
       try { return new URL(url).pathname === '/'; } catch { return false; }
     }
+    function hostnameOf(url: string): string {
+      try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch { return url; }
+    }
 
     // Единый ранжированный список — history и «вкладка» больше не строятся отдельно
     // (tabItems раньше шли ПЕРВЫМИ безусловно, до среза по SUGGEST_MAX, вытесняя
     // отранжированные по frecency записи истории независимо от их релевантности).
-    const items: SuggestItem[] = [...byUrl.entries()]
+    const candidates = [...byUrl.entries()]
       .map(([key, e]) => ({
         e,
         match: calcMatchScore(e),
         freq: scoreEntry(e, now) * (isHomepage(e.url) ? HOMEPAGE_BOOST : 1),
         tabId: tabIdByUrl.get(key),
       }))
-      .filter(({ match }) => match > 0)
+      .filter(({ match }) => match > 0);
+
+    // Представитель домена (MAX_PER_HOSTNAME=1) — НЕ «первый после сортировки по скору»: живой
+    // баг показал, что недавняя (сегодняшняя) статья почти всегда обгоняет главную страницу по
+    // frecency (вес свежести ×4 против HOMEPAGE_BOOST ×1.5 — буст просто не отбивает разницу
+    // бакетов), поэтому кап раньше исправно резал дубли, но оставлял вместо чистой guardian.com
+    // случайную длинную статью. Матч по префиксу домена (tier 6, calcMatchScore) означает «это
+    // про сайт целиком» — поэтому здесь представитель домена явно предпочитает главную страницу,
+    // если она вообще есть среди совпавших кандидатов, и только при её отсутствии откатывается
+    // на лучший по скору.
+    const byHost = new Map<string, typeof candidates[number]>();
+    for (const c of candidates) {
+      const host = hostnameOf(c.e.url);
+      const existing = byHost.get(host);
+      if (!existing) { byHost.set(host, c); continue; }
+      const cHome = isHomepage(c.e.url);
+      const existingHome = isHomepage(existing.e.url);
+      if (cHome && !existingHome) { byHost.set(host, c); continue; }
+      if (!cHome && existingHome) continue;
+      const cScore = c.match * MATCH_TIER + c.freq;
+      const existingScore = existing.match * MATCH_TIER + existing.freq;
+      if (cScore > existingScore) byHost.set(host, c);
+    }
+
+    // Живой тест на «the»: у Guardian реальная главная НИ РАЗУ не посещалась (только статьи) —
+    // отбор выше честно откатывается на лучшую статью, но это по-прежнему случайная длинная
+    // ссылка вместо чистого сайта. Матч tier 6 (calcMatchScore) означает «запрос похож на ИМЯ
+    // САЙТА целиком», а не на конкретную статью — раз хомпейджа нет в истории, достраиваем его
+    // адрес сами (тот же приём, что HistoryURLProvider в Chromium: инференс канонической ссылки
+    // на сайт из одной только уверенности в домене, без обязательного точного визита на root).
+    // Открытые вкладки (tabId) не трогаем — там клик всё равно ведёт по tabId, а не по url, но
+    // подмена урла/тайтла исказила бы то, что реально показано во вкладке.
+    for (const [host, c] of byHost) {
+      if (c.tabId || c.match !== HOSTNAME_PREFIX_TIER || isHomepage(c.e.url)) continue;
+      let root: string;
+      try { root = `${new URL(c.e.url).protocol}//${host}/`; } catch { continue; }
+      byHost.set(host, { ...c, e: { ...c.e, url: root, title: '' } });
+    }
+
+    const items: SuggestItem[] = [...byHost.values()]
       .sort((a, b) => (b.match * MATCH_TIER + b.freq) - (a.match * MATCH_TIER + a.freq))
       .slice(0, SUGGEST_MAX - 1)
       .map(({ e, tabId }) => (
@@ -561,7 +708,24 @@ export default function Toolbar({
       url: getSearchEngine(searchEngineId).buildUrl(query),
     };
 
-    const deduped = [...items, ...suggestItems, searchItem];
+    // Порядок секций — по образцу Яндекс.Браузера (см. живое сравнение): самый релевантный
+    // результат наверху, СРАЗУ за ним — «искать в вебе» (это всегда доступный, надёжный
+    // вариант, не обязательно ждать, пока пользователь долистает всю историю до него), и только
+    // потом — остальные, менее уверенные совпадения из истории/вкладок и живые веб-подсказки
+    // (те — с самым слабым сигналом, значение не привязано к посещённым страницам вообще).
+    const [topItem, ...restItems] = items;
+    // Подписи секций — по образцу Safari («Предложения Google» / «Закладки и история»), см. живое
+    // сравнение. У героя (topItem) своей подписи нет — он и так визуально выделен отдельной
+    // карточкой (RowIcon/hero-стиль в suggestdropdown.tsx), подпись над одной строкой была бы
+    // лишним шумом. Ставим ТОЛЬКО на первый элемент каждой группы — вью просто рисует то, что
+    // получила, сама ничего не группирует (см. комментарий у sectionHeader в shared/ipc.ts).
+    if (restItems[0]) restItems[0] = { ...restItems[0], sectionHeader: 'История и вкладки' };
+    if (suggestItems[0]) {
+      suggestItems[0] = { ...suggestItems[0], sectionHeader: `Предложения ${getSearchEngine(searchEngineId).name}` };
+    }
+    const deduped = topItem
+      ? [topItem, searchItem, ...restItems, ...suggestItems]
+      : [searchItem, ...suggestItems];
     if (seq !== suggestSeqRef.current) return;
     setSuggestions(deduped);
     setSelectedIdx(-1);
@@ -587,9 +751,13 @@ export default function Toolbar({
     if (!v) return;
     onSubmit(v);
     inputRef.current?.blur();
-    setEditing(false);
+    stopEditing();
     closeDropdown('submit');
     setValue(v);
+    // Реальная навигация — черновик этой вкладки отправлен, хранить нечего (на случай, если
+    // url ещё не успел обновиться в проп tab — эффект на tab?.url ниже подчистил бы его и сам,
+    // но не сразу, а после того как навигация реально произойдёт).
+    if (tab) draftsRef.current.delete(tab.id);
   };
 
   const copyUrl = async () => {
@@ -605,7 +773,7 @@ export default function Toolbar({
     if (item.kind === 'tab' && item.tabId) {
       void window.oblako.activateTab(item.tabId);
       closeDropdown('pick-tab');
-      setEditing(false);
+      stopEditing();
     } else {
       submit(item.url);
     }
@@ -657,8 +825,12 @@ export default function Toolbar({
       if (dropdownOpen) {
         closeDropdown('escape');
       } else {
+        // Escape — явная отмена: в отличие от обычного клика мимо (тот черновик сохраняет),
+        // здесь пользователь осознанно откатывает правку, как и в любом браузере.
+        if (tab) draftsRef.current.delete(tab.id);
+        setValue(isHub ? '' : (tab?.url ?? ''));
         inputRef.current?.blur();
-        setEditing(false);
+        stopEditing();
       }
     }
   };
@@ -718,14 +890,36 @@ export default function Toolbar({
               ref={inputRef}
               value={value}
               placeholder={placeholderVisible ? 'Введите запрос или адрес' : ''}
-              onChange={(e) => { setValue(e.target.value); triggerSuggest(e.target.value); }}
-              onMouseDown={() => {
+              onChange={(e) => {
+                const v = e.target.value;
+                setValue(v);
+                if (tab) draftsRef.current.set(tab.id, v);
+                triggerSuggest(v);
+              }}
+              onMouseDown={(e) => {
                 realMouseDownRef.current = true;
                 // Самосброс на следующий тик — если фокус НЕ сменился (клик в уже сфокусированное
                 // поле, просто переставить курсор), onFocus не вызовется вообще и не консьюмит флаг
                 // сам; без этого он завис бы «true» до следующего, уже НЕ обязательно настоящего,
                 // focus-события (см. комментарий у realMouseDownRef).
                 setTimeout(() => { realMouseDownRef.current = false; }, 0);
+                // Выделение всего текста по клику — как в любом адресном поле. Только на ПЕРВОМ
+                // клике, переводящем фокус в поле — иначе повторный клик по уже сфокусированному
+                // полю не смог бы просто переставить курсор. preventDefault обязателен: браузер
+                // иначе сам расставит курсор по месту клика на mouseup ПОСЛЕ нашего select() и
+                // сотрёт выделение.
+                // ⚠️ Живой баг: раньше «уже сфокусировано» проверялось через document.activeElement —
+                // но спонтанный refocus от removeChildView (см. комментарий у realMouseDownRef выше)
+                // молча возвращает document.activeElement на этот инпут, хотя пользователь ничего не
+                // кликал. Из-за этого ПОСЛЕ любого закрытия дропдауна клик-мимо-и-обратно переставал
+                // выделять текст на некоторое время. hasRealFocusRef — свой источник истины, который
+                // спонтанный focus не трогает (см. комментарий у него/у stopEditing).
+                if (!hasRealFocusRef.current) {
+                  e.preventDefault();
+                  inputRef.current?.focus();
+                  inputRef.current?.select();
+                }
+                hasRealFocusRef.current = true;
               }}
               onFocus={() => {
                 setEditing(true);
