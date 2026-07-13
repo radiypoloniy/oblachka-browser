@@ -1,10 +1,18 @@
 /* ── Oblako corner radii ─────────────────────────────────────────────
    Nesting scale — respect the hierarchy:
-   islands (outermost) → cards → chips (innermost). */
+   islands (outermost) → cards → chips (innermost).
+   Заход 3 (новая дизайн-система): --radius-sm/--radius-island выровнены на
+   точные значения спеки (sm 8 / xl 20 — однозначные роли, ничего другого
+   этими токенами не подразумевается). --radius-chip теперь настоящая
+   пилюля (спека: чипы всегда radius = половина высоты, не отдельный тир).
+   --radius-card оставлен как есть — этот токен используется в 14 файлах
+   на ДВЕ разные роли новой спеки (маленькие icon-button'ы хотят md=12,
+   поповеры/дропдауны хотят xl=20) — один number не решает обе корректно,
+   нужен разбор по использованию, не слепая подмена значения. */
 :root {
-  --radius-island: 18px; /* floating shell plates, the big input island */
+  --radius-island: 20px; /* floating shell plates, the big input island — spec xl */
   --radius-card: 13px;   /* chat cards, dropdown panels, site tiles      */
-  --radius-chip: 9px;    /* model chip, segmented options, small chips   */
-  --radius-sm: 7px;      /* tiny controls, favicon tiles                 */
+  --radius-chip: 999px;  /* model chip, segmented options, small chips — spec: чипы это пилюли */
+  --radius-sm: 8px;      /* tiny controls, favicon tiles — spec sm */
   --radius-pill: 999px;  /* VPN pill, status pills, round icon buttons   */
 }

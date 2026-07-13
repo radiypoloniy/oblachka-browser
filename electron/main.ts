@@ -23,7 +23,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { warmup as warmupTranslation } from './TranslationService';
-import { toggleAiPanel, onTabsSynced, setTabManager } from './AiPanelManager';
+import { toggleAiPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager } from './AiPanelManager';
 import {
   togglePageTranslate,
   getActiveState as getPageTranslateActiveState,
@@ -164,6 +164,7 @@ const translationCache = new TranslationCacheManager();
 // страницу») — см. TranslationEngineRegistry.ts. Дефолт остаётся 'qwen' (см. SettingsManager.ts) —
 // переключатель в Settings.tsx позволяет выбрать 'bergamot' явно.
 setActiveEngineId(settings.getTranslationEngine());
+setAiPanelSettingsManager(settings); // ширина дока (заход 3) — персист через тот же SettingsManager
 
 // Bergamot регистрируется в registry независимо от того, что сейчас активно, — так реестр может
 // откатиться на него/с него в любой момент смены настройки без пересоздания движка. Прогревается
@@ -721,6 +722,7 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.SETTINGS_GET_HUB_MODE, () => settings.getHubMode());
   ipcMain.handle(IPC.SETTINGS_SET_HUB_MODE, (_e, mode: HubMode) => settings.setHubMode(mode));
+  ipcMain.handle(IPC.SETTINGS_GET_AI_PANEL_WIDTH, () => settings.getAiPanelWidth());
 
   // Выбор движка перевода страниц (Settings.tsx, секция AI) — persist + сразу применяется к
   // registry (см. TranslationEngineRegistry.ts::setActiveEngineId), без перезапуска приложения.

@@ -7,6 +7,11 @@ import type { HubMode } from '../shared/ipc';
 import type { EngineId } from './TranslationEngine';
 
 const DEFAULT_HUB_MODE: HubMode = 'tiles';
+// Ширина AI-дока (заход 3 — из поповера в правый split-view-подобный док). Клампы —
+// 300 (чат ещё читаем) / 640 (не должен отжирать пол-окна на обычных размерах).
+const DEFAULT_AI_PANEL_WIDTH = 360;
+const AI_PANEL_WIDTH_MIN = 300;
+const AI_PANEL_WIDTH_MAX = 640;
 // 'bergamot' — дефолт с Этапа 5 (по ручной проверке пользователя после Этапов 1-4). Если файлов
 // модели нет на диске или воркер не поднялся — TranslationEngineRegistry.getActiveEngine() тихо
 // откатывается на Qwen (isReady()===false), см. её же комментарий — переключение дефолта не
@@ -19,6 +24,11 @@ interface PersistedSettings {
   searchEngine: SearchEngineId;
   hubMode: HubMode;
   translationEngine: EngineId;
+  aiPanelWidth: number;
+}
+
+function clampAiPanelWidth(v: number): number {
+  return Math.max(AI_PANEL_WIDTH_MIN, Math.min(AI_PANEL_WIDTH_MAX, v));
 }
 
 function isHubMode(v: unknown): v is HubMode {
@@ -36,6 +46,7 @@ export class SettingsManager {
   #searchEngine: SearchEngineId = DEFAULT_SEARCH_ENGINE_ID;
   #hubMode: HubMode = DEFAULT_HUB_MODE;
   #translationEngine: EngineId = DEFAULT_TRANSLATION_ENGINE;
+  #aiPanelWidth: number = DEFAULT_AI_PANEL_WIDTH;
   readonly #settingsPath: string;
 
   constructor() {
@@ -73,6 +84,16 @@ export class SettingsManager {
     this.#write();
   }
 
+  getAiPanelWidth(): number {
+    return this.#aiPanelWidth;
+  }
+
+  setAiPanelWidth(px: number): void {
+    if (!Number.isFinite(px)) return;
+    this.#aiPanelWidth = clampAiPanelWidth(px);
+    this.#write();
+  }
+
   #load(): void {
     try {
       const raw = fs.readFileSync(this.#settingsPath, 'utf8');
@@ -84,6 +105,8 @@ export class SettingsManager {
         if (isHubMode(hm)) this.#hubMode = hm;
         const te = (data as Record<string, unknown>)['translationEngine'];
         if (isEngineId(te)) this.#translationEngine = te;
+        const pw = (data as Record<string, unknown>)['aiPanelWidth'];
+        if (typeof pw === 'number' && Number.isFinite(pw)) this.#aiPanelWidth = clampAiPanelWidth(pw);
       }
     } catch { /* файла нет или битый JSON — остаёмся на дефолте */ }
   }
@@ -93,6 +116,7 @@ export class SettingsManager {
       searchEngine: this.#searchEngine,
       hubMode: this.#hubMode,
       translationEngine: this.#translationEngine,
+      aiPanelWidth: this.#aiPanelWidth,
     };
     const tmpPath = this.#settingsPath + '.tmp';
     try {

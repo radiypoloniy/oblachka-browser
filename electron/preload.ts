@@ -206,8 +206,17 @@ const api: OblakoApi = {
   organizeApply:    (clusters: OrganizeCluster[]) => ipcRenderer.invoke(IPC.TABS_ORGANIZE_APPLY,    clusters) as Promise<void>,
   organizeRollback: ()                            => ipcRenderer.invoke(IPC.TABS_ORGANIZE_ROLLBACK)            as Promise<void>,
 
-  // Правая AI-панель
+  // Правая AI-панель (заход 3 — поповер → правый split-view-подобный док)
   toggleAiPanel: () => ipcRenderer.invoke(IPC.AI_PANEL_TOGGLE) as Promise<boolean>,
+  getAiPanelWidth: () => ipcRenderer.invoke(IPC.SETTINGS_GET_AI_PANEL_WIDTH) as Promise<number>,
+  // ad-hoc (не typed IPC) — тот же принцип, что остальная AI-panel-механика (ai-panel:*):
+  // fire-and-forget на каждый тик драга разделителя, как и остальные ai-panel:* каналы.
+  resizeAiPanel: (widthPx: number) => ipcRenderer.send('ai-panel:resize', widthPx),
+  onAiPanelStateChanged: (cb: (open: boolean) => void) => {
+    const handler = (_e: unknown, open: boolean) => cb(open);
+    ipcRenderer.on(IPC.AI_PANEL_STATE_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.AI_PANEL_STATE_CHANGED, handler);
+  },
 
   // Полностраничный перевод — fire-and-forget, актуальное состояние приходит push'ем.
   togglePageTranslate: () => ipcRenderer.send(IPC.PAGE_TRANSLATE_TOGGLE),

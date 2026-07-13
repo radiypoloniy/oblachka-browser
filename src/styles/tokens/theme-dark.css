@@ -1,27 +1,20 @@
 /* ── Oblako dark theme ───────────────────────────────────────────────
    Same meanings, different ground. Apply with <html data-theme="dark">.
    Deep cool charcoal ground; islands lift on slightly lighter glass.
-   Заход 2: акцент — бирюзовый (та же шкала "Ocean Blue Serenity", что в
-   colors.css), на 2 ступени светлее базового #00B4D8 для контраста на
-   тёмном фоне — тем же приёмом, каким раньше осветлялся violet-500.
-   Фиолетовый сузился до роли cloud/system (был акцентом). */
+   Заход 3: акцент — синий (та же спека новой дизайн-системы, что в
+   colors.css), светлее базового #2280C5 для контраста на тёмном фоне —
+   тем же приёмом, каким раньше осветлялся бирюзовый (заход 2).
+   Фиолетовый убран вместе с ролью cloud/system — спека её не содержит. */
 [data-theme="dark"] {
-  --accent:        #48CAE4;
-  --accent-hover:  #90E0EF;
-  --accent-active: #ADE8F4;
-  --accent-soft:   rgba(72,202,228,0.16);
-  --accent-soft-border: rgba(72,202,228,0.42);
-  /* Светлый бирюзовый тем более требует тёмного текста, не белого —
-     #03045E — самая тёмная ступень той же шкалы, не отдельный цвет. */
+  --accent:        #479FE6;
+  --accent-hover:  #6DB8F9;
+  --accent-active: #8DCBFF;
+  --accent-soft:   rgba(71,159,230,0.16);
+  --accent-soft-border: rgba(71,159,230,0.42);
+  /* Светлый синий тем более требует тёмного текста, не белого —
+     тёмно-синий, самая тёмная ступень той же шкалы, не отдельный цвет. */
   --on-accent: #03045E;
   --text-on-accent: #03045E;
-
-  --accent-warm:      #FB7EB0;
-  --accent-warm-soft: rgba(251,126,176,0.16);
-
-  --violet-500: #A571F5;
-  --system:      #A571F5;
-  --system-soft: rgba(165,113,245,0.16);
 
   --app-bg:         #15131A;
   --surface:        #201D28;
@@ -38,11 +31,12 @@
   --text-muted:  #918C9B;
   --text-faint:  #6C6776;
   --text-link:   #CBC7D2;
-  --text-link-hover: #90E0EF;
+  --text-link-hover: #6DB8F9;
 
   --dot-local: #4FC78E;
-  --dot-cloud: #A571F5;
   --dot-vpn:   #4FC78E;
+
+  --success-500: #4FC78E;
 
   --glass-tint: rgba(36,32,46,0.74);
 
@@ -53,6 +47,5 @@
     0 8px 24px rgba(0,0,0,0.40),
     0 24px 48px rgba(0,0,0,0.34);
   --shadow-pop: 0 2px 8px rgba(0,0,0,0.50), 0 12px 32px rgba(0,0,0,0.55);
-  --ring-accent: 0 0 0 3px rgba(72,202,228,0.32);
-  --ring-system: 0 0 0 3px rgba(165,113,245,0.28);
+  --ring-accent: 0 0 0 3px rgba(71,159,230,0.32);
 }

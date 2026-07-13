@@ -10,7 +10,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, X, Send, Globe, SearchCheck, Loader2 } from 'lucide-react';
+import { Sparkles, X, Send, Globe, SearchCheck, Loader2, LayoutGrid, Calculator, RefreshCw, Timer, Pipette } from 'lucide-react';
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 
@@ -113,6 +113,9 @@ function AiPanel() {
   // Плашка приватности перед вызовом (см. sendFactCheck ниже) — обязательна каждый раз, без «запомнить».
   const [showFactCheckConfirm, setShowFactCheckConfirm] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  // Заход 3 — переключатель AI/Приложения (см. дизайн-систему): локальный, не персистится —
+  // «Приложения» пока заглушка без функциональности, помнить выбор между сессиями незачем.
+  const [mode, setMode] = useState<'chat' | 'apps'>('chat')
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') window.aiPanel.close(); };
@@ -234,10 +237,8 @@ function AiPanel() {
           paddingBottom: 0,
           flexShrink: 0,
         }}>
-          <Sparkles size={18} style={{ color: 'var(--accent)' }} />
-          <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-strong)' }}>
-            AI
-          </span>
+          <ModeToggle mode={mode} onChange={setMode} />
+          <div style={{ flex: 1 }} />
           <button
             onClick={() => window.aiPanel.close()}
             title="Закрыть (Esc)"
@@ -254,6 +255,7 @@ function AiPanel() {
 
         {/* Чипс текущей страницы (как у Яндекса) — к чему привязана лента ниже. Смена URL внутри
             вкладки обновит и чипс, и ленту (сброшенную на новый разговор) одним и тем же onContext. */}
+        {mode === 'chat' && (<>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6,
           margin: `10px var(--pad-island) 0`,
@@ -355,7 +357,7 @@ function AiPanel() {
               margin: `0 var(--pad-island) 8px`,
               padding: '10px 12px',
               borderRadius: 'var(--radius-chip)',
-              background: 'var(--system-soft)',
+              background: 'var(--surface-sunken)',
               flexShrink: 0,
             }}>
               <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
@@ -377,7 +379,7 @@ function AiPanel() {
                   onClick={sendFactCheck}
                   style={{
                     padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
-                    background: 'var(--system)', color: '#fff',
+                    background: 'var(--accent)', color: 'var(--on-accent)',
                     fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer',
                   }}
                 >
@@ -416,9 +418,9 @@ function AiPanel() {
                 </button>
               ))}
               {/* Заход D — видна ТОЛЬКО когда ключ Gemini подключён (см. onKeyStatus выше), не
-                  disabled-серая: без ключа кнопки нет вообще. Цвет — var(--system) (облако/
-                  система, см. tokens/colors.css), не новый оттенок синего — тот же, что уже
-                  зарезервирован цветовым законом проекта под облачные/системные элементы. */}
+                  disabled-серая: без ключа кнопки нет вообще. Тот же нейтральный стиль, что у
+                  остальных подсказок — она такое же одно из равных действий, не отдельная
+                  система/облако-роль (заход 3, новая дизайн-система убрала эту роль у violet). */}
               {factCheckAvailable && (
                 <button
                   onClick={() => setShowFactCheckConfirm(true)}
@@ -428,9 +430,9 @@ function AiPanel() {
                     padding: '6px 12px',
                     borderRadius: 'var(--radius-chip)',
                     border: 'none',
-                    background: 'var(--system-soft)',
+                    background: 'var(--surface-sunken)',
                     boxShadow: 'var(--shadow-chip)',
-                    color: 'var(--system)',
+                    color: 'var(--text-body)',
                     fontSize: 'var(--fs-xs)', fontWeight: 500,
                     cursor: tabId ? 'pointer' : 'default',
                     opacity: tabId ? 1 : 0.5,
@@ -482,8 +484,95 @@ function AiPanel() {
             <Send size={15} strokeWidth={2} />
           </button>
         </div>
+        </>)}
+        {mode === 'apps' && <AppsGrid />}
       </div>
     </div>
+  );
+}
+
+// ── Режим «Приложения» — заглушка (заход 3, см. Oblako Design System) ──────────────────────────
+// Функциональность на потом (калькулятор/конвертер/таймер/цвет.пикер) — сейчас только визуал
+// по спеке: сетка плиток + пилюля «Скоро», без onClick.
+const APPS: { icon: typeof Calculator; label: string }[] = [
+  { icon: Calculator, label: 'Калькулятор' },
+  { icon: RefreshCw, label: 'Конвертер' },
+  { icon: Timer, label: 'Таймер' },
+  { icon: Pipette, label: 'Цвет.пикер' },
+];
+
+function AppsGrid() {
+  return (
+    <div style={{
+      flex: 1, minHeight: 0, overflowY: 'auto',
+      display: 'flex', flexDirection: 'column',
+      padding: `20px var(--pad-island)`,
+    }}>
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14,
+        alignContent: 'start',
+      }}>
+        {APPS.map(({ icon: Icon, label }) => (
+          <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: '100%', aspectRatio: '1 / 1',
+              borderRadius: 'var(--radius-card)',
+              background: 'var(--surface-sunken)',
+              border: '1px solid var(--glass-edge)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Icon size={22} strokeWidth={1.75} style={{ color: 'var(--text-faint)' }} />
+            </div>
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{label}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ flex: 1 }} />
+      <div style={{ textAlign: 'center' }}>
+        <span style={{
+          display: 'inline-flex', height: 26, padding: '0 12px', alignItems: 'center',
+          background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
+          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
+        }}>
+          Скоро
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Переключатель режимов AI/Приложения — визуально и структурно клон ModeToggle/ModeButton
+// из src/components/Hub.tsx (тот же --radius-pill/--surface-sunken/--shadow-chip рецепт), но
+// на свои два варианта — отдельный компонент, не общий с Hub.tsx: aipanel.tsx живёт в изолированной
+// WebContentsView со своим бандлом (см. vite.config.ts), общий импорт между entry-points не заведён.
+function ModeToggle({ mode, onChange }: { mode: 'chat' | 'apps'; onChange: (m: 'chat' | 'apps') => void }) {
+  return (
+    <div style={{
+      display: 'inline-flex', flex: 'none', padding: 3, gap: 2,
+      background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
+      border: '1px solid var(--glass-edge)',
+    }}>
+      <ModeButton active={mode === 'chat'} onClick={() => onChange('chat')} icon={<Sparkles size={14} />} label="AI" />
+      <ModeButton active={mode === 'apps'} onClick={() => onChange('apps')} icon={<LayoutGrid size={14} />} label="Приложения" />
+    </div>
+  );
+}
+
+function ModeButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: JSX.Element; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+        border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'pointer',
+        fontSize: 'var(--fs-xs)', fontWeight: 600,
+        background: active ? 'var(--surface-solid)' : 'transparent',
+        boxShadow: active ? 'var(--shadow-chip)' : 'none',
+        color: active ? 'var(--accent)' : 'var(--text-muted)',
+      }}
+    >
+      {icon}{label}
+    </button>
   );
 }
 

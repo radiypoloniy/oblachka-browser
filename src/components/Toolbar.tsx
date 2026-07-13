@@ -989,7 +989,9 @@ export default function Toolbar({
                     style={{
                       border: 'none', background: passwordPopoverOpen ? 'var(--accent-soft)' : 'transparent',
                       cursor: 'default', padding: 3, borderRadius: 'var(--radius-sm)',
-                      display: 'inline-flex', color: 'var(--accent)', position: 'relative',
+                      display: 'inline-flex',
+                      color: passwordPopoverOpen ? 'var(--accent)' : 'var(--text-muted)',
+                      position: 'relative',
                     }}
                   >
                     <KeyRound size={14} />
@@ -1008,7 +1010,7 @@ export default function Toolbar({
               <button title={bookmarked ? 'Удалить из закладок' : 'Добавить в закладки'}
                 onClick={toggleBookmark}
                 style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
-                         display: 'inline-flex', color: 'var(--accent)' }}>
+                         display: 'inline-flex', color: bookmarked ? 'var(--accent)' : 'var(--text-muted)' }}>
                 <Star size={14} fill={bookmarked ? 'var(--accent)' : 'none'} />
               </button>
             )}
@@ -1121,19 +1123,22 @@ export default function Toolbar({
           <Sparkles size={18} />
         </button>
         {/* Тоггл адблока — глобальный AdBlockState.enabled (тот же тумблер, что в Settings →
-            Блокировка). Выключено = приглушённая иконка, как у недоступной кнопки навигации. */}
+            Блокировка). Иконка всегда нейтральная (заход 3, новая дизайн-система): вкл/выкл
+            видно по подписи и настройкам, не по цвету щита — акцент не для постоянных состояний. */}
         <button
           title={adBlockOn ? 'Адблок включён' : 'Адблок выключен'}
           onClick={onToggleAdBlock}
-          style={islandBtn(adBlockOn ? 'var(--accent)' : 'var(--text-faint)', adBlockOn ? 'var(--accent-soft)' : undefined)}
+          style={islandBtn(adBlockOn ? 'var(--text-body)' : 'var(--text-faint)')}
         >
           <Ban size={18} />
         </button>
-        {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки */}
+        {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки. Иконка нейтральная
+            всегда (заход 3) — акцент не для постоянных/переключаемых состояний, только точка
+            новой активности остаётся акцентной (единичное уведомление, не постоянный статус). */}
         <button
           title="Загрузки"
           onClick={onToggleDownloads}
-          style={{ ...navBtn(false), position: 'relative', color: downloadsOpen ? 'var(--accent)' : 'var(--text-muted)' }}
+          style={{ ...navBtn(false), position: 'relative' }}
         >
           <Download size={18} />
           {downloadsActive && !downloadsOpen && (

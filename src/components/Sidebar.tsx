@@ -169,7 +169,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           className="no-drag"
           onClick={(e) => { e.stopPropagation(); onExitSplit(); }}
           title="Выйти из split (обе вкладки останутся)"
-          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--accent)', flex: 'none' }}
+          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-muted)', flex: 'none' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         ><Columns2 size={12} /></button>
@@ -290,7 +290,7 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
             className="no-drag"
             onClick={(e) => { e.stopPropagation(); onExitSplit(); }}
             title="Выйти из split (обе вкладки останутся)"
-            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--accent)' }}
+            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><Columns2 size={12} /></button>
@@ -336,7 +336,7 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
             className="no-drag"
             onClick={(e) => { e.stopPropagation(); onExitSplit(); }}
             title="Выйти из split (обе вкладки останутся)"
-            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--accent)' }}
+            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><Columns2 size={12} /></button>
@@ -1237,7 +1237,7 @@ export default function Sidebar({
               display: 'inline-flex', alignItems: 'center', gap: 4,
               border: 'none', background: 'transparent', cursor: 'default',
               padding: '2px 6px', borderRadius: 4,
-              color: 'var(--accent)', fontSize: 'var(--fs-xs)', fontWeight: 600,
+              color: 'var(--text-body)', fontSize: 'var(--fs-xs)', fontWeight: 600,
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}

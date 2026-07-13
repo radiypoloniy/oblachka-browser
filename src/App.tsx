@@ -29,6 +29,13 @@ const SIDEBAR_EXPAND_THRESHOLD   = 980;
 const SPLIT_RATIO_MIN = 0.2;
 const SPLIT_RATIO_MAX = 0.8;
 
+// Заход 3 — AI-хаб: поповер → правый док, тянется как split (см. App.tsx::handleAiDivider*).
+// Клампы дублируют electron/AiPanelManager.ts (главный источник истины — там; здесь только
+// живой визуальный превью во время драга, до подтверждения основным процессом).
+const AI_PANEL_WIDTH_MIN = 300;
+const AI_PANEL_WIDTH_MAX = 640;
+const AI_PANEL_DIVIDER_WIDTH = 8; // тот же приём, что SPLIT_GAP — зона хвата разделителя
+
 function findSplitPairRatio(nodes: SidebarNode[], leftId: string, rightId: string): number | null {
   for (const node of nodes) {
     if (node.type === 'split-pair' && node.leftTabId === leftId && node.rightTabId === rightId) {
@@ -69,6 +76,13 @@ export default function App() {
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
   const [splitDragOver, setSplitDragOver] = useState(false);
+
+  // AI-хаб (заход 3): правый док вместо поповера. aiPanelOpen — источник истины main
+  // (toggleAiPanel возвращает актуальное open), не локальный тоггл — тот же принцип, что и
+  // остальные push/invoke-состояния этого файла (vpnConn, adBlockState, ...).
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [aiPanelWidth, setAiPanelWidthState] = useState(360);
+  const [isAiPanelDragging, setIsAiPanelDragging] = useState(false);
 
   // AI-группировка: состояние флоу + предложения + наличие снимка для отката
   const [organizeState, setOrganizeState] = useState<'idle' | 'computing' | 'preview' | 'model-error'>('idle');
@@ -251,6 +265,19 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  // Персистентная ширина AI-дока (заход 3) — читаем один раз при маунте (как hubMode/searchEngine
+  // в Settings.tsx), дальше живёт в локальном стейте и обновляется во время драга.
+  useEffect(() => {
+    void window.oblako.getAiPanelWidth().then(setAiPanelWidthState);
+  }, []);
+
+  // Источник истины для aiPanelOpen — push из main на ЛЮБОЕ закрытие/открытие (крестик/Escape
+  // внутри панели тоже сюда доезжают, не только тоггл в тулбаре — см. AiPanelManager.ts::setOpenState).
+  useEffect(() => {
+    const unsub = window.oblako.onAiPanelStateChanged(setAiPanelOpen);
+    return () => unsub();
+  }, []);
+
   // Прогресс перевода страницы (батч N/M + живой счётчик символов) — только push, без get: живёт
   // секунды, гонка старта окна ей не грозит (см. PageTranslateProgress в shared/ipc.ts).
   useEffect(() => {
@@ -309,6 +336,33 @@ export default function App() {
 
   const handleDividerPointerUp = useCallback((_e: React.PointerEvent) => {
     setIsDragging(false);
+  }, []);
+
+  // ── Drag разделителя AI-дока (заход 3) — та же схема pointer capture, что у split-
+  // разделителя выше, только ширина считается от ПРАВОГО края контейнера (тянем левый край
+  // дока влево/вправо), а не ratio от левого. Контейнер — тот же самый div, что содержит и
+  // contentRef, и этот разделитель, и spacer дока (см. JSX ниже) — его правая граница
+  // совпадает с правым краем окна-контента.
+  const aiPanelContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleAiDividerPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setIsAiPanelDragging(true);
+  }, []);
+
+  const handleAiDividerPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) return;
+    const container = aiPanelContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const width = Math.max(AI_PANEL_WIDTH_MIN, Math.min(AI_PANEL_WIDTH_MAX, rect.right - e.clientX));
+    setAiPanelWidthState(width);
+    window.oblako.resizeAiPanel(width);
+  }, []);
+
+  const handleAiDividerPointerUp = useCallback((_e: React.PointerEvent) => {
+    setIsAiPanelDragging(false);
   }, []);
 
   // ── Главное: измеряем "дырку" под контент и сообщаем main, ──
@@ -441,7 +495,7 @@ export default function App() {
       {/* Оверлей во время drag разделителя: держит col-resize курсор по всей ширине
           и служит страховкой на случай если setPointerCapture не перехватит события
           над нативными WebContentsViews. */}
-      {isDragging && (
+      {(isDragging || isAiPanelDragging) && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,
           cursor: 'col-resize', userSelect: 'none',
@@ -497,6 +551,12 @@ export default function App() {
           pageTranslateProgress={pageTranslateProgress}
           onTogglePageTranslate={() => { window.oblako.togglePageTranslate(); }}
         />
+        {/* Строка контент+док: contentRef (в неё же меряет pushBounds) + разделитель + spacer
+            AI-дока (заход 3). Spacer ничего не рисует — реальный контент дока рисует main
+            отдельной WebContentsView поверх этой же зарезервированной области (тот же приём,
+            что и с вкладками: React рисует дырку, main кладёт вьюху). pushBounds НЕ меняется —
+            contentRef и так становится у́же благодаря соседям по флексу. */}
+        <div ref={aiPanelContainerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
         {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView).
             Margin — единственный источник воздуха: pushBounds меряет getBoundingClientRect()
             этого div, суженный margin'ом прямоугольник уезжает в main как есть, без правки
@@ -587,6 +647,31 @@ export default function App() {
               onRespond={handlePermissionRespond}
             />
           )}
+        </div>
+
+        {/* Разделитель + spacer AI-дока — только когда док открыт. Та же схема pointer capture,
+            что у split-разделителя выше, ширина — от правого края aiPanelContainerRef. */}
+        {aiPanelOpen && (
+          <>
+            <div
+              style={{
+                flex: 'none', width: AI_PANEL_DIVIDER_WIDTH, position: 'relative',
+                cursor: 'col-resize', userSelect: 'none',
+              }}
+              onPointerDown={handleAiDividerPointerDown}
+              onPointerMove={handleAiDividerPointerMove}
+              onPointerUp={handleAiDividerPointerUp}
+              onPointerCancel={handleAiDividerPointerUp}
+            >
+              <div style={{
+                position: 'absolute', top: 0, bottom: 0,
+                left: '50%', width: 2, transform: 'translateX(-50%)',
+                background: 'var(--divider-strong)', pointerEvents: 'none',
+              }} />
+            </div>
+            <div style={{ flex: 'none', width: aiPanelWidth }} />
+          </>
+        )}
         </div>
       </div>
     </div>

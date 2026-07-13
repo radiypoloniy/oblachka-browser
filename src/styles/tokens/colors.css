@@ -2,68 +2,32 @@
    Base palette + semantic aliases. Light theme default. Dark theme in
    theme-dark.css.
 
-   PALETTE (от пользователя, заход 2 — смена акцента):
-     accent (cyan) #00B4D8 — основной акцент, средняя ступень готовой
-       9-ступенчатой шкалы "Ocean Blue Serenity" (03045E…CAF0F8, см. ниже)
-     violet  #8A3FEE — сузился до одной роли: облако / система (раньше
-       был основным акцентом — вытеснен бирюзовым, не удалён)
-     pink    #FB7EB0 — тёплый вторичный акцент (без изменений)
-     peach   #FCC8BF — мягкий тёплый тинт (без изменений, вне --canvas
-       больше не используется — см. канвас ниже)
+   PALETTE (заход 3 — новая дизайн-система, см. Oblako Design System PDF):
+     accent (blue) #2280C5 — единственный tint, из спеки новой дизайн-
+       системы (oklch(0.58 0.135 246)) — сменил бирюзовый (заход 2), тот
+       был слишком ярким/неоновым (провал контраста с белым текстом)
      paper   #F6F5EF — историческое намерение фона приложения, факт см.
        --app-bg
 
-   RULES OF THE BRAND:
-   • Cyan accent is the ONE primary accent (active states, send, selection,
-     pinned-tab ring).
-   • Violet is reserved for CLOUD / SYSTEM signals only (cloud-model dot,
-     "через VPN-узел"). Never for names, links, or decoration.
-   • Pink / peach are sparse warm accents (highlights, soft fills).
+   RULES OF THE BRAND (новая дизайн-система — заход 3):
+   • Blue tint — ЕДИНСТВЕННЫЙ акцент, только для состояний и действий
+     (active states, send, selection, pinned-tab ring, toggle-on, primary
+     CTA). Не «два акцента» — раньше фиолетовый держал отдельную роль
+     облако/система, в новой системе такой роли нет вообще (спека не
+     содержит ни одного фиолетового/розового токена).
+   • danger / success / warning — только системные сообщения (ошибка /
+     сохранено-подключено-готово / предупреждение), не декоративные акценты.
 */
 :root {
-  /* Violet — primary accent */
-  --violet-50:  #F4ECFE;
-  --violet-100: #E7D6FD;
-  --violet-200: #D0B2FA;
-  --violet-300: #B488F5;
-  --violet-400: #9C5FF1;
-  --violet-500: #8A3FEE; /* brand violet */
-  --violet-600: #7A2EE0;
-  --violet-700: #6422BC;
-  --violet-800: #4E1B91;
-
-  /* Cyan — primary accent (заход 2). Готовая 9-ступенчатая шкала "Ocean
-     Blue Serenity" (Coolors), #00B4D8 — её родная средняя ступень, не
-     взята из воздуха. Соседние ступени — для hover/active/soft, не
-     программное затемнение/осветление на глаз. */
-  --cyan-50:  #CAF0F8;
-  --cyan-100: #ADE8F4;
-  --cyan-200: #90E0EF;
-  --cyan-300: #48CAE4;
-  --cyan-500: #00B4D8; /* brand cyan */
-  --cyan-600: #0096C7;
-  --cyan-700: #0077B6;
-  --cyan-800: #023E8A;
-  --cyan-900: #03045E;
-
-  /* Pink — warm secondary accent */
-  --pink-50:  #FFEAF3;
-  --pink-100: #FFD4E6;
-  --pink-300: #FFA8CD;
-  --pink-500: #FB7EB0;
-  --pink-600: #E85F98;
-
-  /* Peach — soft warm tint */
-  --peach-100: #FFE6E0;
-  --peach-300: #FCC8BF;
-  --peach-500: #F7A99B;
-
-  /* Cloud blue — system / cloud signals ONLY */
-  --cloud-50:  #E9F1FB;
-  --cloud-100: #CFE0F6;
-  --cloud-300: #8AB4EB;
-  --cloud-500: #4180DB;
-  --cloud-600: #2F69BC;
+  /* Blue — единственный акцент/tint (заход 3, из спеки новой дизайн-
+     системы). Значения — прямая конвертация oklch(...) из спеки в sRGB
+     hex, не на глаз. Только используемые ступени (soft-bg, soft-border,
+     base, hover, active) — остальных сейчас ничто не потребляет. */
+  --blue-50:  #D9EEFF; /* oklch(0.94 0.035 246) — tint-bg */
+  --blue-200: #96C3EC; /* oklch(0.80 0.075 246) — интерполяция для soft-border */
+  --blue-500: #2280C5; /* oklch(0.58 0.135 246) — tint */
+  --blue-600: #006DB1; /* oklch(0.52 0.135 246) — tint-hover */
+  --blue-700: #005C9E; /* oklch(0.46 0.135 246) — tint-active */
 
   /* Neutrals — warm paper grays */
   --white:      #FFFFFF;
@@ -82,45 +46,31 @@
 
   /* Status dots */
   --dot-local: #2FB07A; /* green = on-device / local model (functional online dot) */
-  --dot-cloud: var(--violet-500); /* violet = cloud model (переехал с синего вместе с --system) */
   --dot-vpn:   #2FB07A; /* VPN connected, healthy */
 
-  /* Feedback */
-  --danger-500: #D8584E;
-  --warning-500:#C98A2E;
+  /* Feedback — значения из спеки новой дизайн-системы (oklch → hex). */
+  --danger-500: #B54A46;
+  --warning-500:#C48D25;
+  --success-500:#3F834B;
 
   /* ── Semantic aliases (use these in product code) ── */
-  --accent:            var(--cyan-500);
-  --accent-hover:      var(--cyan-600);
-  --accent-active:     var(--cyan-700);
-  --accent-soft:       var(--cyan-50);
-  --accent-soft-border:var(--cyan-200);
-  /* Контраст белого текста на #00B4D8 ≈ 2.5:1 — проваливает WCAG AA.
-     Тёмный (neutral-900) на том же фоне ≈ 7:1. --text-on-accent — тот же
-     смысл, отдельный (легаси) токен — значение должно совпадать с этим. */
-  --on-accent:         var(--neutral-900);
-
-  --accent-warm:       var(--pink-500); /* sparse warm secondary — уже гармонирует с cyan, не менялся */
-  --accent-warm-soft:  var(--pink-50);
-
-  /* Фиолетовый сузился до одной роли — раньше был --accent, теперь только
-     облако/система (см. правило вверху файла). */
-  --system:            var(--violet-500);
-  --system-soft:       var(--violet-50);
+  --accent:            var(--blue-500);
+  --accent-hover:      var(--blue-600);
+  --accent-active:     var(--blue-700);
+  --accent-soft:       var(--blue-50);
+  --accent-soft-border:var(--blue-200);
+  /* Контраст белого текста на #2280C5 ≈ 4.2:1 — держит WCAG AA (в отличие
+     от прежнего #00B4D8 ≈ 2.5:1), белый текст снова можно использовать. */
+  --on-accent:         var(--white);
 
   /* ── Canvas ──────────────────────────────────────────────────────
-     The luminous ground liquid glass refracts. NOT a flat fill — soft
-     palette blooms (cyan accent ↖, violet system ↗, pink ↘) over a near-
-     white base. Persik-пятно убрано — четвёртый пастельный тон нигде не
-     использовался как токен, только добавлял мути; alpha снижена
-     (0.30-0.40 → 0.12-0.16), чтобы белые полупрозрачные поверхности сверху
-     реально читались белыми, а не серо-мутными.
-     Apply --canvas as a background-image on the app shell / specimen bg. */
+     The luminous ground liquid glass refracts. NOT a flat fill — a single
+     tint bloom (заход 3: violet/pink blooms убраны вместе с ролью
+     облако/система — этих цветов больше нет в палитре) over a near-white
+     base. Apply --canvas as a background-image on the app shell / specimen bg. */
   --app-bg:   #F7FBFC;  /* едва заметный холодный бирюзовый оттенок белого — не плоский #FFFFFF */
   --canvas:
-    radial-gradient(135% 130% at 10% 4%,  rgba(0,180,216,0.14), transparent 52%),
-    radial-gradient(120% 120% at 92% 2%,  rgba(138,63,238,0.12), transparent 50%),
-    radial-gradient(150% 130% at 86% 100%, rgba(251,126,176,0.14), transparent 54%),
+    radial-gradient(135% 130% at 10% 4%,  rgba(34,128,197,0.14), transparent 52%),
     var(--app-bg);
 
   /* ── Liquid glass fills ──────────────────────────────────────────
@@ -142,7 +92,7 @@
   --text-body:         var(--neutral-700);
   --text-muted:        var(--neutral-500);
   --text-faint:        var(--neutral-400);
-  --text-on-accent:    var(--neutral-900); /* тот же контраст-фикс, что --on-accent выше */
+  --text-on-accent:    var(--white); /* тот же контраст-фикс, что --on-accent выше */
   --text-link:         var(--text-body); /* links are NOT colored — neutral, accent on hover */
   --text-link-hover:   var(--accent-hover);
 }

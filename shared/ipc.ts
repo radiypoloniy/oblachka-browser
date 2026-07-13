@@ -210,6 +210,12 @@ export const IPC = {
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
+  // Заход 3: main → chrome, push при ЛЮБОМ закрытии/открытии дока (крестик и Escape ВНУТРИ
+  // панели идут через свой ad-hoc ai-panel:close — то не долетало до chrome, из-за чего
+  // резерв ширины в App.tsx оставался висеть после закрытия крестиком). Тот же паттерн, что
+  // ADBLOCK_STATE_CHANGED/VPN_CONNECTION_STATE_CHANGED — main единственный источник истины,
+  // chrome только слушает push, независимо от того, ЧЕМ панель закрыли.
+  AI_PANEL_STATE_CHANGED: 'ai-panel:state-changed',
 
   // Полностраничный перевод (см. electron/PageTranslateManager.ts) — кнопка в тулбаре заменяет
   // текст прямо в DOM активной вкладки локальным Qwen (TranslationService.ts::translatePageBatch),
@@ -258,6 +264,10 @@ export const IPC = {
   SETTINGS_SET_SEARCH_ENGINE: 'settings:set-search-engine', // renderer → main: сменить движок поиска
   SETTINGS_GET_HUB_MODE:      'settings:get-hub-mode',      // renderer → main: текущий HubMode
   SETTINGS_SET_HUB_MODE:      'settings:set-hub-mode',      // renderer → main: сменить режим Hub (плитки/AI)
+  // Ширина AI-дока (заход 3 — поповер → правый split-view-подобный док, см. AiPanelManager.ts).
+  // Читается один раз при маунте chrome; живой ресайз идёт отдельным ad-hoc каналом
+  // ai-panel:resize (не здесь — остальная AI-panel-механика уже сознательно вне typed-контракта).
+  SETTINGS_GET_AI_PANEL_WIDTH: 'settings:get-ai-panel-width', // renderer → main: текущая ширина дока (px)
 
   // Заход D: ключ Gemini для AI-фактчека (см. AiKeyStore.ts) — ключ сам НИКОГДА не идёт в
   // renderer обратно, только булев статус «подключён/нет». connected-статус пушится и в чром
@@ -835,8 +845,14 @@ export interface OblakoApi {
   organizeApply(clusters: OrganizeCluster[]): Promise<void>;
   organizeRollback(): Promise<void>;
 
-  // Правая AI-панель (оверлей поверх контента, см. AiPanelManager.ts)
+  // Правая AI-панель (заход 3 — правый split-view-подобный док, см. AiPanelManager.ts)
   toggleAiPanel(): Promise<boolean>;
+  getAiPanelWidth(): Promise<number>;
+  resizeAiPanel(widthPx: number): void; // ad-hoc, fire-and-forget — тот же принцип, что остальная ai-panel:* механика
+  // Источник истины для aiPanelOpen в App.tsx — единственный на ЛЮБОЕ закрытие/открытие
+  // (крестик/Escape внутри панели, тоггл в тулбаре, будущие пути) — не полагаться на
+  // возвращаемое значение toggleAiPanel() как на единственный сигнал.
+  onAiPanelStateChanged(cb: (open: boolean) => void): () => void;
 
   // Полностраничный перевод (см. electron/PageTranslateManager.ts) — тоггл для активной вкладки,
   // fire-and-forget: актуальное состояние приходит через onPageTranslateStateChanged (main сам

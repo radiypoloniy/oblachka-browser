@@ -12,14 +12,23 @@ import TurndownService from 'turndown'
 import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
 import { runFactCheck } from './GeminiFactCheck'
 import * as aiKeyStore from './AiKeyStore'
+import { IPC } from '../shared/ipc'
 import type { TabState } from '../shared/ipc'
 import type { TabManager } from './TabManager'
+import type { SettingsManager } from './SettingsManager'
 
 // html→markdown ТОЛЬКО для ветки чата (см. extractPageText/buildFirstTurnPrompt ниже) —
 // перевод (quick-translate) продолжает получать plain text, turndown его не касается.
 const turndownService = new TurndownService()
 
-const PANEL_WIDTH = 360
+// Заход 3: из поповера — в правый split-view-подобный док (тянется за левый край, см. App.tsx).
+// Ширина больше не константа — мутабельная, персистится через SettingsManager (как hubMode).
+let panelWidth = 360
+const AI_PANEL_WIDTH_MIN = 300
+const AI_PANEL_WIDTH_MAX = 640
+function clampPanelWidth(w: number): number {
+  return Math.max(AI_PANEL_WIDTH_MIN, Math.min(AI_PANEL_WIDTH_MAX, w))
+}
 // Держать в синхроне с TOOLBAR_HEIGHT в src/components/Toolbar.tsx — панель начинается СРАЗУ
 // ПОД тулбаром (он же кастомный titlebar), не залезает в него. Иначе она перекрывает
 // VPN/AI-кнопки и физически блокирует клики по ним: WebContentsView — прямоугольный
@@ -27,20 +36,20 @@ const PANEL_WIDTH = 360
 // внутри своей страницы — именно так ранее ломался повторный клик по AI-кнопке (панель сама
 // перекрывала кнопку, которой её открыли).
 const TOOLBAR_HEIGHT = 56
-// Воздух вокруг «плавающего острова» на все стороны (отступ от тулбара/правого края/низа окна) —
-// держать в синхроне с GUTTER в src/aipanel.tsx (тот инсетит видимую карточку внутри вьюпорта
-// ровно на столько же паддингом). Тот же запас служит зоной под CSS box-shadow «парящей»
-// карточки — WebContentsView обрезает всё, что рисуется за границей своего прямоугольника (тот
-// же приём, что и SHADOW_MARGIN в TranslatePopoverManager.ts). Сверху жёстко: view.y не может
-// быть меньше TOOLBAR_HEIGHT (см. комментарий выше) — справа/снизу больше и не нужно, тень
-// физически не может выйти за пределы окна.
-const GUTTER = 20
 
 let panelView: WebContentsView | null = null
 let attachedWin: BrowserWindow | null = null
 let resizeBoundWin: BrowserWindow | null = null
 let isOpen = false
 let ipcRegistered = false
+
+// Аналог TabManager-ref ниже — тем же путём (main.ts::setSettingsManager после инстанцирования)
+// прокидывается ссылка на единственный SettingsManager, чтобы персистить ширину дока при драге.
+let settingsRef: SettingsManager | null = null
+export function setSettingsManager(sm: SettingsManager): void {
+  settingsRef = sm
+  panelWidth = clampPanelWidth(sm.getAiPanelWidth())
+}
 
 // Единственный способ достать WebContents активной вкладки без нового кода в TabManager.ts —
 // готовый (ранее private, теперь public) TabManager.getActiveWebContents(), см. main.ts::setTabManager.
@@ -265,12 +274,16 @@ export function onTabsSynced(tabsSnapshot: TabState[]): void {
   if (switched || urlChanged) sendCurrentContext()
 }
 
+// Заход 3: док пристыкован (flush) к правому краю окна — ширина ровно равна тому, что chrome
+// зарезервировал под него в App.tsx (никакого лишнего зазора вокруг, как было у поповера).
+// Внутренний «остров» (скруглённые углы, тень) рисует сама aipanel.tsx своим паддингом
+// (GUTTER там же) — bounds самой WebContentsView этого не касаются.
 function computeBounds(win: BrowserWindow) {
   const { width, height } = win.getContentBounds()
   return {
-    x: width - PANEL_WIDTH - GUTTER * 2,
+    x: width - panelWidth,
     y: TOOLBAR_HEIGHT,
-    width: PANEL_WIDTH + GUTTER * 2,
+    width: panelWidth,
     height: height - TOOLBAR_HEIGHT,
   }
 }
@@ -280,17 +293,36 @@ function layoutPanel(): void {
   panelView.setBounds(computeBounds(attachedWin))
 }
 
+// Единственное место, где меняется isOpen — гарантирует, что chrome (App.tsx) узнаёт о
+// закрытии/открытии НЕЗАВИСИМО от того, что его вызвало (крестик/Escape внутри панели,
+// тоггл в тулбаре, будущие пути). Раньше isOpen менялся напрямую в двух местах — крестик/Escape
+// не долетали до chrome (свой ad-hoc ai-panel:close, не трогает окно), из-за чего резерв
+// ширины в App.tsx оставался висеть после закрытия панели не через тулбар.
+function setOpenState(win: BrowserWindow, open: boolean): void {
+  isOpen = open
+  win.webContents.send(IPC.AI_PANEL_STATE_CHANGED, open)
+}
+
 function closePanel(win: BrowserWindow): void {
   if (panelView) win.contentView.removeChildView(panelView)
-  isOpen = false
+  setOpenState(win, false)
+}
+
+// Живой ресайз — драг разделителя в App.tsx шлёт сюда каждый тик (ad-hoc ai-panel:resize,
+// см. ensureIpcRegistered). Клампит, применяет bounds немедленно, персистит через
+// SettingsManager (та же частота записи, что и у остальных простых настроек — редко и вручную,
+// без дебаунса, см. комментарий в SettingsManager.ts).
+export function resizeAiPanel(win: BrowserWindow, widthPx: number): void {
+  panelWidth = clampPanelWidth(widthPx)
+  if (panelView && attachedWin === win) panelView.setBounds(computeBounds(win))
+  settingsRef?.setAiPanelWidth(panelWidth)
 }
 
 // Read-only геометрия для координации с FindBarManager.ts (чтобы FindBar не центрировался под
-// открытой AI-панелью — она не двигает bounds контентной вкладки, поэтому FindBar иначе не узнал
-// бы, что справа занято). Ничего не меняет в самой панели, только сообщает, сколько px справа
-// окна она реально занимает прямо сейчас (0 — если закрыта или для другого окна).
+// открытым доком). Сообщает, сколько px справа окна он реально занимает прямо сейчас (0 — если
+// закрыт или для другого окна).
 export function getAiPanelReservedWidth(win: BrowserWindow): number {
-  return (isOpen && attachedWin === win) ? PANEL_WIDTH + GUTTER * 2 : 0
+  return (isOpen && attachedWin === win) ? panelWidth : 0
 }
 
 // Регистрируется один раз, лениво — на первое открытие панели, не на старте.
@@ -301,6 +333,13 @@ function ensureIpcRegistered(): void {
   // это внутренняя механика панели, а не контракт хром-обвязки.
   ipcMain.on('ai-panel:close', () => {
     if (attachedWin) closePanel(attachedWin)
+  })
+
+  // Драг разделителя дока (chrome, App.tsx) — приложение одно-оконное (см. остальные
+  // module-level синглтоны этого файла), поэтому применяем к attachedWin напрямую, как и
+  // layoutPanel/closePanel выше, без BrowserWindow.fromWebContents.
+  ipcMain.on('ai-panel:resize', (_event: IpcMainEvent, widthPx: number) => {
+    if (attachedWin) resizeAiPanel(attachedWin, widthPx)
   })
 
   // Чат — та же труба, что у поповера: runChatMessage стримит чанки по мере генерации, затем
@@ -501,7 +540,7 @@ export function toggleAiPanel(win: BrowserWindow): boolean {
   const view = ensurePanelView()
   view.setBounds(computeBounds(win))
   win.contentView.addChildView(view) // последней → поверх вкладки, а не под ней
-  isOpen = true
+  setOpenState(win, true)
   // При повторном открытии (view уже когда-то загрузился) did-finish-load больше не сработает —
   // шлём текущий контекст явно, чтобы панель не показывала последнюю беседу «протухшей» вкладки.
   if (alreadyLoaded) { sendCurrentContext(); sendKeyStatus() }

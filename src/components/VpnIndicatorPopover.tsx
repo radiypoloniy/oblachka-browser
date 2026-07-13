@@ -90,7 +90,7 @@ export default function VpnIndicatorPopover({ servers, connState, onConnect, onD
                 {busyId === s.id
                   ? <Loader2 size={14} style={{ color: 'var(--accent)', flex: 'none', animation: 'oblako-spin 1s linear infinite' }} />
                   : active
-                    ? <Check size={14} style={{ color: 'var(--accent)', flex: 'none' }} />
+                    ? <Check size={14} style={{ color: 'var(--success-500)', flex: 'none' }} />
                     : <span style={{ width: 14, flex: 'none' }} />}
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {stripEmoji(s.remark) || s.address}

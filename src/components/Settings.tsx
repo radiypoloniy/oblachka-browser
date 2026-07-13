@@ -212,7 +212,7 @@ function AdBlockSection({
           ...islandPlate,
           borderRadius: 'var(--radius-sm)', fontSize: 'var(--fs-sm)',
         }}>
-          <RotateCcw size={15} style={{ color: 'var(--accent)', flex: 'none' }} />
+          <RotateCcw size={15} style={{ color: 'var(--warning-500)', flex: 'none' }} />
           <span style={{ flex: 1, color: 'var(--text-body)' }}>
             {pendingReload === 'all'
               ? 'Обновить открытые вкладки, чтобы применить изменения?'
@@ -230,7 +230,7 @@ function AdBlockSection({
         borderRadius: 'var(--radius-sm)',
       }}>
         {state.enabled
-          ? <Shield size={22} style={{ color: 'var(--accent)', flex: 'none' }} />
+          ? <Shield size={22} style={{ color: 'var(--text-body)', flex: 'none' }} />
           : <ShieldOff size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
@@ -412,7 +412,7 @@ function VpnSection() {
         borderRadius: 'var(--radius-sm)',
       }}>
         {status.hasSubscription
-          ? <Check size={22} style={{ color: 'var(--system)', flex: 'none' }} />
+          ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
           : <Wifi size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
@@ -500,7 +500,7 @@ function VpnSection() {
                     style={{
                       ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '9px 14px',
                       display: 'flex', alignItems: 'center', gap: 10,
-                      boxShadow: isRunning ? '0 0 0 1.5px var(--system) inset' : undefined,
+                      boxShadow: isRunning ? '0 0 0 1.5px var(--success-500) inset' : undefined,
                     }}
                   >
                     <span style={{
@@ -617,7 +617,7 @@ function AiSection() {
         borderRadius: 'var(--radius-sm)',
       }}>
         {connected
-          ? <Check size={22} style={{ color: 'var(--system)', flex: 'none' }} />
+          ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
           : <KeyRound size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
@@ -744,7 +744,7 @@ function TranslationEngineSection() {
             bergamotStatus === 'unavailable'
               ? { text: 'недоступен', color: 'var(--text-faint)' }
               : bergamotStatus === 'ready'
-                ? { text: 'готов', color: 'var(--system)' }
+                ? { text: 'готов', color: 'var(--success-500)' }
                 : undefined
           }
         />
@@ -1307,7 +1307,7 @@ function IconBtn({ title, active, onClick, children }: { title: string; active?:
       style={{
         border: 'none', background: 'transparent', cursor: 'default', padding: 6,
         borderRadius: 6, display: 'inline-flex', flex: 'none',
-        color: active ? 'var(--system)' : 'var(--text-faint)',
+        color: active ? 'var(--success-500)' : 'var(--text-faint)',
       }}
       onMouseEnter={(e) => { if (!active) { e.currentTarget.style.color = 'var(--text-body)'; e.currentTarget.style.background = 'var(--surface-hover)'; } }}
       onMouseLeave={(e) => { if (!active) { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent'; } }}
