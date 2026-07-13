@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, Search, Star } from 'lucide-react';
-import type { BookmarkEntry } from '../../shared/ipc';
+import { X, Search, Star, Download, Loader2 } from 'lucide-react';
+import type { BookmarkEntry, BookmarkImportSource } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 
 interface BookmarksProps {
@@ -17,6 +17,12 @@ function domainOf(url: string): string {
 export default function Bookmarks({ onClose }: BookmarksProps) {
   const [entries, setEntries] = useState<BookmarkEntry[]>([]);
   const [query, setQuery] = useState('');
+  // Импорт из других браузеров (Feature 2) — открытый дропдаун со списком РЕАЛЬНО найденных на
+  // диске источников (см. electron/bookmarkImport/), тот же паттерн, что clearOpen в History.tsx.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSources, setImportSources] = useState<BookmarkImportSource[]>([]);
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const load = async () => {
     setEntries(await window.oblako.listBookmarks());
@@ -36,6 +42,30 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
   async function handleDelete(id: number) {
     await window.oblako.removeBookmark(id);
     void load();
+  }
+
+  async function toggleImport() {
+    if (importOpen) { setImportOpen(false); return; }
+    setImportOpen(true);
+    setImportMessage(null);
+    setImportSources(await window.oblako.listBookmarkImportSources());
+  }
+
+  async function handleImport(source: BookmarkImportSource) {
+    if (importingId) return; // уже что-то импортируется — второй клик игнорируем
+    setImportingId(source.id);
+    setImportMessage(null);
+    try {
+      const result = await window.oblako.runBookmarkImport(source.id);
+      setImportMessage(
+        result
+          ? `${source.label}: добавлено ${result.inserted}, пропущено (уже были) ${result.skipped}`
+          : `${source.label}: импорт не удался`,
+      );
+      void load(); // BOOKMARK_CHANGED тоже перечитает, но не ждём push ради мгновенного отклика
+    } finally {
+      setImportingId(null);
+    }
   }
 
   return (
@@ -62,6 +92,19 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
           Закладки
         </span>
         <button
+          onClick={() => void toggleImport()}
+          title="Импортировать из другого браузера"
+          style={{
+            background: importOpen ? 'var(--surface-hover)' : 'none', border: 'none', cursor: 'pointer', padding: 4,
+            color: 'var(--text-muted)', borderRadius: 'var(--radius-sm)',
+            display: 'flex', alignItems: 'center',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-body)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = importOpen ? 'var(--surface-hover)' : 'none'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+        >
+          <Download size={15} />
+        </button>
+        <button
           onClick={onClose}
           title="Закрыть"
           style={{
@@ -75,6 +118,58 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
           <X size={16} />
         </button>
       </div>
+
+      {/* Дропдаун импорта — список реально найденных браузеров (пусто, если ни один Chromium-
+          профиль не найден на диске). Позиционирование — тот же приём, что clearOpen в History.tsx. */}
+      {importOpen && (
+        <div style={{
+          position: 'absolute', top: 52, right: 52,
+          ...islandPlate,
+          borderRadius: 'var(--radius-card)',
+          zIndex: 200, overflow: 'hidden', minWidth: 200,
+        }}>
+          {importSources.length === 0 ? (
+            <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>
+              Ни один браузер не найден
+            </div>
+          ) : importSources.map((source) => (
+            <button
+              key={source.id}
+              onClick={() => void handleImport(source)}
+              disabled={importingId !== null}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                padding: '8px 14px', background: 'none', border: 'none',
+                cursor: importingId ? 'default' : 'pointer', fontSize: 13, color: 'var(--text-body)',
+              }}
+              onMouseEnter={(e) => { if (!importingId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+            >
+              {importingId === source.id && <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />}
+              {source.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {importMessage && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 20px', fontSize: 12,
+          color: 'var(--text-muted)', flexShrink: 0,
+        }}>
+          {importMessage}
+          <button
+            onClick={() => setImportMessage(null)}
+            style={{
+              marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
+              color: 'inherit', display: 'flex', padding: 2,
+            }}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {/* Поиск — на всю ширину плиты, клиентский фильтр */}
       <div style={{ padding: '10px 20px', flexShrink: 0 }}>

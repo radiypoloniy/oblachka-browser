@@ -11,6 +11,7 @@ import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
 import { HistoryManager } from './HistoryManager';
 import { BookmarkManager } from './BookmarkManager';
+import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImporter';
 import { PasswordManager } from './PasswordManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
@@ -149,6 +150,9 @@ let isShuttingDown = false;
 const adblock     = new AdBlockManager();
 const history     = new HistoryManager();
 const bookmarks   = new BookmarkManager();
+// Импорт закладок — список создаётся один раз, isAvailable() зовётся заново на каждый
+// BOOKMARK_IMPORT_LIST_SOURCES (профиль браузера-источника может появиться/пропасть между вызовами).
+const bookmarkImporters = createChromiumImporters(bookmarks);
 const passwords   = new PasswordManager();
 const downloads   = new DownloadManager();
 const permissions = new PermissionManager();
@@ -943,6 +947,17 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.BOOKMARK_LIST, () => bookmarks.list());
   ipcMain.handle(IPC.BOOKMARK_IS_BOOKMARKED, (_e, url: string) => bookmarks.isBookmarked(url));
+  // Импорт — isAvailable() зовётся заново на каждый список (профиль браузера-источника мог
+  // появиться/пропасть между вызовами, не кэшируем факт наличия).
+  ipcMain.handle(IPC.BOOKMARK_IMPORT_LIST_SOURCES, () =>
+    bookmarkImporters.filter((imp) => imp.isAvailable()).map((imp) => ({ id: imp.id, label: imp.label })));
+  ipcMain.handle(IPC.BOOKMARK_IMPORT_RUN, async (_e, sourceId: string) => {
+    const importer = bookmarkImporters.find((imp) => imp.id === sourceId);
+    if (!importer) return null;
+    const result = await importer.import();
+    chromeView?.webContents.send(IPC.BOOKMARK_CHANGED);
+    return result;
+  });
 
   // Разрешения сайтов
   ipcMain.handle(IPC.PERMISSION_RESPONSE,

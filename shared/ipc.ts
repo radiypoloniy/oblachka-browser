@@ -183,6 +183,10 @@ export const IPC = {
   BOOKMARK_LIST:          'bookmark:list',            // renderer → main: весь плоский список корня
   BOOKMARK_IS_BOOKMARKED: 'bookmark:is-bookmarked',   // renderer → main: url -> boolean
   BOOKMARK_CHANGED:       'bookmark:changed',         // main → renderer: что-то изменилось (push, без пейлоада)
+  // Импорт закладок из других браузеров (см. electron/bookmarkImport/) — пока только Chromium-
+  // семейство (Chrome/Edge/Brave/Яндекс.Браузер), Firefox/Safari тем же интерфейсом позже.
+  BOOKMARK_IMPORT_LIST_SOURCES: 'bookmark:import-list-sources', // renderer → main: реально найденные на диске браузеры
+  BOOKMARK_IMPORT_RUN:          'bookmark:import-run',          // renderer → main: sourceId -> {inserted, skipped} | null
 
   // Разрешения сайтов
   PERMISSION_REQUEST:  'permission:request',    // main → renderer: входящий запрос (PermissionRequest)
@@ -422,6 +426,17 @@ export interface BulkBookmarkInput {
   title: string;
   position: number;
   createdAt?: number;
+}
+
+// Источник импорта закладок — реально найденный на диске браузер (см. electron/bookmarkImport/).
+export interface BookmarkImportSource {
+  id: string;     // 'chrome' | 'edge' | 'brave' | 'yandex' — стабильный id для BOOKMARK_IMPORT_RUN
+  label: string;  // человекочитаемое имя для UI
+}
+
+export interface BookmarkImportResult {
+  inserted: number;
+  skipped: number;
 }
 
 // Заход G, блок 6/7 — результат векторного поиска. id/lastVisit/visitCount присутствуют
@@ -775,6 +790,9 @@ export interface OblakoApi {
   listBookmarks(): Promise<BookmarkEntry[]>;
   isBookmarked(url: string): Promise<boolean>;
   onBookmarksChanged(cb: () => void): () => void;
+  // Импорт из других браузеров (см. electron/bookmarkImport/) — пока только Chromium-семейство.
+  listBookmarkImportSources(): Promise<BookmarkImportSource[]>;
+  runBookmarkImport(sourceId: string): Promise<BookmarkImportResult | null>;
 
   // Заход G — общий канал эмбеддингов main→renderer→main (см. electron/EmbedClient.ts,
   // src/services/EmbedRequestBridge.ts). embeddingService живёт только в renderer.
