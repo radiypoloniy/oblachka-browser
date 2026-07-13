@@ -10,6 +10,7 @@ import { TabManager } from './TabManager';
 import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
 import { HistoryManager } from './HistoryManager';
+import { BookmarkManager } from './BookmarkManager';
 import { PasswordManager } from './PasswordManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
@@ -147,6 +148,7 @@ let omniboxBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
 let isShuttingDown = false;
 const adblock     = new AdBlockManager();
 const history     = new HistoryManager();
+const bookmarks   = new BookmarkManager();
 const passwords   = new PasswordManager();
 const downloads   = new DownloadManager();
 const permissions = new PermissionManager();
@@ -597,7 +599,7 @@ function registerIpc() {
   }));
   ipcMain.handle(IPC.TABS_GET_ALL, () => tabs?.snapshot() ?? []);
   ipcMain.handle(IPC.TAB_CREATE, (_e, url?: string) => tabs?.createTab(url));
-  ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (_e, kind: 'history' | 'settings') => tabs?.createSpecialTab(kind));
+  ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (_e, kind: 'history' | 'settings' | 'bookmarks') => tabs?.createSpecialTab(kind));
   ipcMain.handle(IPC.TAB_CLOSE, (_e, id: string) => tabs?.closeTab(id));
   ipcMain.handle(IPC.TAB_ACTIVATE, (_e, id: string) => tabs?.activate(id));
   ipcMain.handle(IPC.TAB_NAVIGATE, (_e, id: string, input: string) => tabs?.navigate(id, input));
@@ -924,6 +926,24 @@ function registerIpc() {
   // Умный поиск — Qwen-реранк, только по явному Enter (см. HistorySearch.ts::searchHistorySmart).
   ipcMain.handle(IPC.HISTORY_SEARCH_SMART, (_e, query: string) => searchHistorySmart(history, query));
 
+  // Закладки — пуш BOOKMARK_CHANGED в chromeView после каждой успешной мутации, тот же
+  // приём, что уже используется для PASSWORDS_CHANGED (инлайн, не через конструктор-колбэк).
+  ipcMain.handle(IPC.BOOKMARK_ADD, (_e, url: string, title: string) => {
+    const entry = bookmarks.add(url, title);
+    if (entry) chromeView?.webContents.send(IPC.BOOKMARK_CHANGED);
+    return entry;
+  });
+  ipcMain.handle(IPC.BOOKMARK_REMOVE, (_e, id: number) => {
+    bookmarks.remove(id);
+    chromeView?.webContents.send(IPC.BOOKMARK_CHANGED);
+  });
+  ipcMain.handle(IPC.BOOKMARK_REMOVE_BY_URL, (_e, url: string) => {
+    bookmarks.removeByUrl(url);
+    chromeView?.webContents.send(IPC.BOOKMARK_CHANGED);
+  });
+  ipcMain.handle(IPC.BOOKMARK_LIST, () => bookmarks.list());
+  ipcMain.handle(IPC.BOOKMARK_IS_BOOKMARKED, (_e, url: string) => bookmarks.isBookmarked(url));
+
   // Разрешения сайтов
   ipcMain.handle(IPC.PERMISSION_RESPONSE,
     (_e, requestId: string, granted: boolean, remember: boolean) =>
@@ -1110,6 +1130,10 @@ app.whenReady().then(async () => {
   // История: нативный модуль может отсутствовать — падение не блокирует запуск.
   await history.initialize().catch((e) =>
     console.error('[History] инициализация упала:', e),
+  );
+  // Закладки — тот же паттерн деградации, отдельный файл (см. BookmarkManager.ts).
+  await bookmarks.initialize().catch((e) =>
+    console.error('[Bookmarks] инициализация упала:', e),
   );
 
   // Сейф паролей: та же гарантия — падение (нет better-sqlite3, safeStorage недоступен) не

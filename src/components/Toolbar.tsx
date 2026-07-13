@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star } from 'lucide-react';
 import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult, PasswordIndicatorState, PageTranslateState, PageTranslateProgress } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { stripEmoji } from '../../shared/text';
@@ -113,6 +113,7 @@ export default function Toolbar({
   const [passwordIndicator, setPasswordIndicator] = useState<PasswordIndicatorState | null>(null);
   const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false);
   const [vpnPopoverOpen, setVpnPopoverOpen] = useState(false);
+  const [bookmarked, setBookmarked] = useState(false);
 
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = externalRef ?? internalRef;
@@ -265,6 +266,45 @@ export default function Toolbar({
     draftsRef.current.delete(tab.id);
     setValue(tab.url);
   }, [tab?.id, tab?.url]);
+
+  // Звезда «в закладках» — перепроверяем при каждой смене url активной вкладки. seq-ref —
+  // тот же приём, что searchSeqRef в History.tsx: быстрое переключение вкладок не должно
+  // позволить УСТАРЕВШЕМУ ответу isBookmarked(старый url) перезаписать состояние уже другой,
+  // текущей вкладки.
+  const bookmarkSeqRef = useRef(0);
+  useEffect(() => {
+    const url = !isHub ? tab?.url : undefined;
+    const seq = ++bookmarkSeqRef.current;
+    if (!url) { setBookmarked(false); return; }
+    void window.oblako.isBookmarked(url).then((v) => {
+      if (seq === bookmarkSeqRef.current) setBookmarked(v);
+    });
+  }, [isHub, tab?.url]);
+
+  // Мутация где угодно (например, удалили закладку из панели закладок, пока эта же страница
+  // ещё открыта в другой вкладке) — перепроверяем звезду ТЕКУЩЕЙ вкладки заново.
+  useEffect(() => {
+    return window.oblako.onBookmarksChanged(() => {
+      const url = !isHub ? tab?.url : undefined;
+      if (!url) return;
+      const seq = ++bookmarkSeqRef.current;
+      void window.oblako.isBookmarked(url).then((v) => {
+        if (seq === bookmarkSeqRef.current) setBookmarked(v);
+      });
+    });
+  }, [isHub, tab?.url]);
+
+  const toggleBookmark = () => {
+    if (!tab?.url) return;
+    const url = tab.url;
+    if (bookmarked) {
+      setBookmarked(false); // оптимистично — BOOKMARK_CHANGED ниже подтвердит/поправит
+      void window.oblako.removeBookmarkByUrl(url);
+    } else {
+      setBookmarked(true);
+      void window.oblako.addBookmark(url, tab.title || url);
+    }
+  };
 
   const openDropdown = useCallback(() => {
     // Живой баг: изредка на самом старте браузера (тяжёлый main-процесс — восстановление сессии,
@@ -962,6 +1002,14 @@ export default function Toolbar({
                 style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
                          display: 'inline-flex', color: copied ? 'var(--dot-local)' : 'var(--text-faint)' }}>
                 {copied ? <Check size={14} /> : <Copy size={14} />}
+              </button>
+            )}
+            {!isHub && tab?.url && (
+              <button title={bookmarked ? 'Удалить из закладок' : 'Добавить в закладки'}
+                onClick={toggleBookmark}
+                style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
+                         display: 'inline-flex', color: 'var(--accent)' }}>
+                <Star size={14} fill={bookmarked ? 'var(--accent)' : 'none'} />
               </button>
             )}
             {/* Капсула выбора поисковика — только на хабе, в контентных вкладках не рендерится вовсе.

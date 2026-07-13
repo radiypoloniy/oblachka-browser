@@ -5,6 +5,7 @@ import Hub from './components/Hub';
 import TabError from './components/TabError';
 import Settings from './components/Settings';
 import History from './components/History';
+import Bookmarks from './components/Bookmarks';
 import Downloads from './components/Downloads';
 import PermissionPrompt from './components/PermissionPrompt';
 import { embeddingService } from './services/EmbeddingService';
@@ -456,6 +457,7 @@ export default function App() {
         onExitSplit={() => { void window.oblako.exitSplit(); }}
         onSettings={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })(); setDownloadsOpen(false); }}
         onHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); setDownloadsOpen(false); }}
+        onBookmarks={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('bookmarks')); })(); setDownloadsOpen(false); }}
         onReorder={(section, ids) => { void window.oblako.reorderTabs(section, ids); }}
         onMoveSection={(tabId, section, idx) => { void window.oblako.moveTabSection(tabId, section, idx); }}
         sidebarNodes={sidebarNodes}
@@ -504,6 +506,8 @@ export default function App() {
             <Downloads downloads={downloads} onClose={() => setDownloadsOpen(false)} />
           ) : kind === 'history' ? (
             <History onClose={() => void window.oblako.closeTab(activeId)} />
+          ) : kind === 'bookmarks' ? (
+            <Bookmarks onClose={() => void window.oblako.closeTab(activeId)} />
           ) : kind === 'settings' ? (
             <Settings onClose={() => void window.oblako.closeTab(activeId)} />
           ) : isSplit ? (

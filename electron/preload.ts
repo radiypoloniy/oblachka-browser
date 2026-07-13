@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -9,7 +9,7 @@ const EMBED_PRELOAD = process.env.OBLAKO_PRELOAD_EMBED !== '0';
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
   createTab: (url?: string) => ipcRenderer.invoke(IPC.TAB_CREATE, url),
-  createSpecialTab: (kind: 'history' | 'settings') => ipcRenderer.invoke(IPC.TAB_CREATE_SPECIAL, kind),
+  createSpecialTab: (kind: 'history' | 'settings' | 'bookmarks') => ipcRenderer.invoke(IPC.TAB_CREATE_SPECIAL, kind),
   closeTab: (id: string) => ipcRenderer.invoke(IPC.TAB_CLOSE, id),
   activateTab: (id: string) => ipcRenderer.invoke(IPC.TAB_ACTIVATE, id),
   navigate: (id: string, input: string) => ipcRenderer.invoke(IPC.TAB_NAVIGATE, id, input),
@@ -92,6 +92,19 @@ const api: OblakoApi = {
     ipcRenderer.invoke(IPC.HISTORY_SEARCH_SEMANTIC, query) as Promise<SemanticSearchResult[]>,
   searchHistorySmart: (query: string) =>
     ipcRenderer.invoke(IPC.HISTORY_SEARCH_SMART, query) as Promise<SemanticSearchResult[]>,
+
+  // Закладки
+  addBookmark: (url: string, title: string) =>
+    ipcRenderer.invoke(IPC.BOOKMARK_ADD, url, title) as Promise<BookmarkEntry | null>,
+  removeBookmark: (id: number) => ipcRenderer.invoke(IPC.BOOKMARK_REMOVE, id),
+  removeBookmarkByUrl: (url: string) => ipcRenderer.invoke(IPC.BOOKMARK_REMOVE_BY_URL, url),
+  listBookmarks: () => ipcRenderer.invoke(IPC.BOOKMARK_LIST) as Promise<BookmarkEntry[]>,
+  isBookmarked: (url: string) => ipcRenderer.invoke(IPC.BOOKMARK_IS_BOOKMARKED, url) as Promise<boolean>,
+  onBookmarksChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.BOOKMARK_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.BOOKMARK_CHANGED, handler);
+  },
 
   // Заход G — общий канал эмбеддингов (см. shared/ipc.ts::EmbedRequestPayload).
   onEmbedRequest: (cb: (req: EmbedRequestPayload) => void) => {

@@ -59,7 +59,7 @@ export interface TabState {
   // экземплярах, не участвуют в сессии/истории/усыплении (см. TabManager.createSpecialTab —
   // тот же путь #tabUrl()==='' → savable()===false / isHttpView(null)===false, что уже
   // естественно исключает их из session snapshot и sleep-таймера, без отдельных правок там).
-  kind: 'page' | 'hub' | 'history' | 'settings';
+  kind: 'page' | 'hub' | 'history' | 'settings' | 'bookmarks';
 }
 
 // Атомарный снимок: вкладки + структура сайдбара в одном сообщении.
@@ -175,6 +175,14 @@ export const IPC = {
   // Умный поиск (Qwen-реранк top-k кандидатов от searchHistorySemantic) — только по явному
   // действию (Enter), НЕ на каждый keystroke, см. HistorySearch.ts::searchHistorySmart.
   HISTORY_SEARCH_SMART: 'history:search-smart', // renderer → main: query -> SemanticSearchResult[]
+
+  // Закладки — плоский список (parentId всегда null в Feature 1, см. BookmarkManager.ts)
+  BOOKMARK_ADD:           'bookmark:add',            // renderer → main: (url, title) -> BookmarkEntry | null
+  BOOKMARK_REMOVE:        'bookmark:remove',         // renderer → main: удалить по id (панель закладок)
+  BOOKMARK_REMOVE_BY_URL: 'bookmark:remove-by-url',  // renderer → main: снять звезду по url (омнибокс)
+  BOOKMARK_LIST:          'bookmark:list',            // renderer → main: весь плоский список корня
+  BOOKMARK_IS_BOOKMARKED: 'bookmark:is-bookmarked',   // renderer → main: url -> boolean
+  BOOKMARK_CHANGED:       'bookmark:changed',         // main → renderer: что-то изменилось (push, без пейлоада)
 
   // Разрешения сайтов
   PERMISSION_REQUEST:  'permission:request',    // main → renderer: входящий запрос (PermissionRequest)
@@ -392,6 +400,29 @@ export interface HistoryEntry {
 }
 
 export type HistoryClearPeriod = 'hour' | 'day' | 'week' | 'all';
+
+// ── Закладки ─────────────────────────────────────────────────────────────────
+// parentId/position уже присутствуют, хотя Feature 1 UI работает только с корнем
+// (parentId всегда null) — задел на будущие папки/сортировку без миграции формата,
+// когда появится реальный UI под них.
+export interface BookmarkEntry {
+  id: number;
+  url: string;
+  title: string;
+  parentId: number | null;
+  position: number;
+  createdAt: number;  // Unix ms
+}
+
+// Вход для BookmarkManager.bulkInsert — шов под будущий импорт из других браузеров
+// (Chromium сначала, см. дорожную карту). Ничего в Feature 1 этот тип не использует.
+export interface BulkBookmarkInput {
+  parentId: number | null;
+  url: string;
+  title: string;
+  position: number;
+  createdAt?: number;
+}
 
 // Заход G, блок 6/7 — результат векторного поиска. id/lastVisit/visitCount присутствуют
 // намеренно (не только url/title/score) — так результат напрямую совместим с HistoryEntry
@@ -661,7 +692,7 @@ export interface OblakoApi {
   createTab(url?: string): Promise<string>;       // вернёт id новой вкладки
   // Псевдо-вкладка (История/Настройки) — та же жизнь (закрытие/активация), что у обычной,
   // просто без WebContentsView. См. shared/ipc.ts::TabState.kind, TabManager.createSpecialTab.
-  createSpecialTab(kind: 'history' | 'settings'): Promise<string>;
+  createSpecialTab(kind: 'history' | 'settings' | 'bookmarks'): Promise<string>;
   closeTab(id: string): Promise<void>;
   activateTab(id: string): Promise<void>;
   navigate(id: string, input: string): Promise<void>;
@@ -736,6 +767,14 @@ export interface OblakoApi {
   searchHistorySemantic(query: string): Promise<SemanticSearchResult[]>;
   // Умный поиск — Qwen-реранк top-k кандидатов, только по явному Enter (см. HistorySearch.ts).
   searchHistorySmart(query: string): Promise<SemanticSearchResult[]>;
+
+  // Закладки — плоский список (parentId всегда null в Feature 1)
+  addBookmark(url: string, title: string): Promise<BookmarkEntry | null>;
+  removeBookmark(id: number): Promise<void>;
+  removeBookmarkByUrl(url: string): Promise<void>;
+  listBookmarks(): Promise<BookmarkEntry[]>;
+  isBookmarked(url: string): Promise<boolean>;
+  onBookmarksChanged(cb: () => void): () => void;
 
   // Заход G — общий канал эмбеддингов main→renderer→main (см. electron/EmbedClient.ts,
   // src/services/EmbedRequestBridge.ts). embeddingService живёт только в renderer.
