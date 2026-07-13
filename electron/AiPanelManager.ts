@@ -60,6 +60,18 @@ export function setTabManager(tm: TabManager): void {
   tabManagerRef = tm
 }
 
+// Заход 3: push'и состояния дока идут в chrome (React-хром), а не в win.webContents — это разные
+// вещи. win — это ОС-окно, chrome (сайдбар/тулбар/App.tsx) — свой WebContentsView-слой поверх
+// него (см. main.ts::chromeView), как и вкладки/AI-панель/поповеры — все они просто дети одного
+// win.contentView, а не webContents самого win. win.webContents.send(...) уходит в НИЧЕМ не
+// обслуживаемый дефолтный webContents окна — chrome его никогда не получит. Тот же приём, что
+// main.ts уже использует для ADBLOCK_STATE_CHANGED/DOWNLOADS_CHANGED/SYNC_CHANGED и т.п.
+// (chromeView?.webContents.send(...), не win.webContents.send(...)).
+let chromeViewRef: WebContentsView | null = null
+export function setChromeView(view: WebContentsView): void {
+  chromeViewRef = view
+}
+
 // ── Контекст чата по вкладке (Заход 3) ───────────────────────────────────────────────────────
 // Один движок (см. runChatMessage/ensureLoaded в TranslationService.ts), много контекстов: тут
 // только РАЗДЕЛЕНИЕ истории по вкладкам, а не отдельная модель на вкладку. Эфемерно, только в
@@ -298,14 +310,14 @@ function layoutPanel(): void {
 // тоггл в тулбаре, будущие пути). Раньше isOpen менялся напрямую в двух местах — крестик/Escape
 // не долетали до chrome (свой ad-hoc ai-panel:close, не трогает окно), из-за чего резерв
 // ширины в App.tsx оставался висеть после закрытия панели не через тулбар.
-function setOpenState(win: BrowserWindow, open: boolean): void {
+function setOpenState(open: boolean): void {
   isOpen = open
-  win.webContents.send(IPC.AI_PANEL_STATE_CHANGED, open)
+  chromeViewRef?.webContents.send(IPC.AI_PANEL_STATE_CHANGED, open)
 }
 
 function closePanel(win: BrowserWindow): void {
   if (panelView) win.contentView.removeChildView(panelView)
-  setOpenState(win, false)
+  setOpenState(false)
 }
 
 // Живой ресайз — драг разделителя в App.tsx шлёт сюда каждый тик (ad-hoc ai-panel:resize,
@@ -540,7 +552,7 @@ export function toggleAiPanel(win: BrowserWindow): boolean {
   const view = ensurePanelView()
   view.setBounds(computeBounds(win))
   win.contentView.addChildView(view) // последней → поверх вкладки, а не под ней
-  setOpenState(win, true)
+  setOpenState(true)
   // При повторном открытии (view уже когда-то загрузился) did-finish-load больше не сработает —
   // шлём текущий контекст явно, чтобы панель не показывала последнюю беседу «протухшей» вкладки.
   if (alreadyLoaded) { sendCurrentContext(); sendKeyStatus() }

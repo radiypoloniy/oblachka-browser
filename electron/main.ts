@@ -23,7 +23,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { warmup as warmupTranslation } from './TranslationService';
-import { toggleAiPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager } from './AiPanelManager';
+import { toggleAiPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
 import {
   togglePageTranslate,
   getActiveState as getPageTranslateActiveState,
@@ -227,6 +227,7 @@ function createWindow() {
   });
   win.contentView.addChildView(chromeView);
   setEmbedClientChromeView(chromeView); // заход G: мост эмбеддингов слушает этот же chromeView
+  setAiPanelChromeView(chromeView); // заход 3: push'и состояния дока (открыт/закрыт) идут сюда, не в win.webContents
   // Дефолтный фон WebContentsView — белый, и он перекрывает backgroundColor окна на всю площадь.
   // Красим под --app-bg, чтобы кадры до первой отрисовки React были цветом интерфейса.
   chromeView.setBackgroundColor('#E7E9F4');
