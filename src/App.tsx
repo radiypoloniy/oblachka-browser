@@ -726,11 +726,11 @@ export default function App() {
 
         {/* Разделитель + spacer AI-дока — только когда док открыт. Та же схема pointer capture,
             что у split-разделителя выше, ширина — от правого края aiPanelContainerRef.
-            Ширина = ISLAND_GAP (заход 1, зазоры): хэндл теперь занимает весь межостровный
-            зазор split↔AI целиком (contentRef справа больше воздуха не даёт, см. marginRight
-            выше) — линия 2px ниже остаётся отцентрована (left:50%), просто в более широкой
-            колонке. drag-математика ниже (handleAiDividerPointerMove) считает по абсолютной
-            позиции курсора от правого края контейнера — ширины хэндла не касается, чувствительность
+            Ширина = ISLAND_GAP: хэндл занимает весь межостровный зазор split↔AI целиком
+            (contentRef справа больше воздуха не даёт, см. marginRight выше). Капсула-грип по
+            центру — та же отрисовка, что у split-разделителя (не линия во всю высоту).
+            drag-математика ниже (handleAiDividerPointerMove) считает по абсолютной позиции
+            курсора от правого края контейнера — ширины хэндла не касается, чувствительность
             ресайза не меняется. */}
         {aiPanelOpen && (
           <>
@@ -745,9 +745,9 @@ export default function App() {
               onPointerCancel={handleAiDividerPointerUp}
             >
               <div style={{
-                position: 'absolute', top: 0, bottom: 0,
-                left: '50%', width: 2, transform: 'translateX(-50%)',
-                background: 'var(--divider-strong)', pointerEvents: 'none',
+                position: 'absolute', top: '50%', left: '50%',
+                width: 4, height: 32, transform: 'translate(-50%, -50%)',
+                borderRadius: 999, background: 'var(--divider-strong)', pointerEvents: 'none',
               }} />
             </div>
             <div style={{ flex: 'none', width: aiPanelWidth }} />
