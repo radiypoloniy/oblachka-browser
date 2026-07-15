@@ -60,7 +60,7 @@ interface SidebarProps {
   onOrganizeRollback: () => void;
 }
 
-function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
+export function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
   if (tab.isHub) {
     return (
       <span style={{

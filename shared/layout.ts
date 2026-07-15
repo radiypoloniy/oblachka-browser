@@ -6,3 +6,9 @@
 // избавляет от рассинхрона ЧИСЕЛ).
 export const SHELL_MARGIN = 12; // остров (сайдбар/AI-панель) — край окна
 export const ISLAND_GAP = 16;   // остров — соседний остров (split↔split, split↔AI-панель)
+
+// Полоса заголовка (favicon+title+×) над каждой split-панелью — вырезается сверху из bounds
+// контентной WebContentsView (TabManager.ts: y += SPLIT_HEADER_HEIGHT, height -= им же) и
+// рисуется чром-DOM в освободившейся зоне (App.tsx). Тот же приём, что и с самим контентом:
+// React рисует дырку, main кладёт вьюху — просто дырка теперь не на всю высоту острова.
+export const SPLIT_HEADER_HEIGHT = 36;

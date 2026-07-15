@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
-import Sidebar from './components/Sidebar';
+import { X } from 'lucide-react';
+import Sidebar, { FaviconTile } from './components/Sidebar';
 import Toolbar from './components/Toolbar';
 import Hub from './components/Hub';
 import TabError from './components/TabError';
@@ -12,7 +13,7 @@ import { islandPlate } from './styles/island';
 import { embeddingService } from './services/EmbeddingService';
 import { startEmbedRequestBridge } from './services/EmbedRequestBridge';
 import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, VpnConnectionState, AdBlockState, PageTranslateState, PageTranslateProgress } from '../shared/ipc';
-import { ISLAND_GAP, SHELL_MARGIN } from '../shared/layout';
+import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 import type { ClusterProposal } from './services/ClusteringService';
 
 const HUB_ID = 'hub';
@@ -44,6 +45,37 @@ const TAB_FRAME_STYLE: CSSProperties = {
   ...TAB_FRAME_VISUAL,
   pointerEvents: 'none',
 };
+
+// Полоса заголовка над split-панелью (favicon+title+×) — сидит в верхних SPLIT_HEADER_HEIGHT
+// px родительского TAB_FRAME_VISUAL, которые TabManager (getTabViewBounds/repositionViews)
+// больше не отдаёт под контентную WebContentsView (см. shared/layout.ts). Сама не скруглена —
+// верхние углы даёт overflow:hidden+border-radius родителя (панель), нижняя граница — просто
+// прямая линия-разделитель. Клик по пустому месту всплывает к onClick панели (фокус), крестик
+// сам себя останавливает и зовёт closeTab — тот же путь, что и обычное закрытие вкладки
+// (TabManager.closeTab уже схлопывает сплит через exitSplit, отдельного пути не заводим).
+function SplitPanelHeader({ tab, onClose }: { tab: TabState; onClose: () => void }) {
+  return (
+    <div style={{
+      position: 'absolute', top: 0, left: 0, right: 0, height: SPLIT_HEADER_HEIGHT,
+      display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px',
+      borderBottom: '1px solid var(--divider)',
+    }}>
+      <FaviconTile tab={tab} size={12} />
+      <span style={{
+        flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)', fontWeight: 500,
+        color: 'var(--text-body)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>{tab.title || tab.url || 'Загрузка…'}</span>
+      <button
+        onClick={(e) => { e.stopPropagation(); onClose(); }}
+        title="Закрыть"
+        style={{
+          border: 'none', background: 'transparent', cursor: 'default', padding: 2,
+          borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)',
+        }}
+      ><X size={12} /></button>
+    </div>
+  );
+}
 
 // Ниже COLLAPSE_THRESHOLD сайдбар схлопывается принудительно.
 // Выше EXPAND_THRESHOLD — восстанавливается желаемое состояние пользователя.
@@ -611,9 +643,12 @@ export default function App() {
                   if (activeId !== splitLeft!.id) void window.oblako.focusSplitPanel('left');
                 }}
               >
+                <SplitPanelHeader tab={splitLeft!} onClose={() => close(splitLeft!.id)} />
                 {splitLeft!.tabError && (
-                  <TabError error={splitLeft!.tabError} url={splitLeft!.url}
-                    onRetry={() => void window.oblako.reload(splitLeft!.id)} />
+                  <div style={{ position: 'absolute', top: SPLIT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0 }}>
+                    <TabError error={splitLeft!.tabError} url={splitLeft!.url}
+                      onRetry={() => void window.oblako.reload(splitLeft!.id)} />
+                  </div>
                 )}
               </div>
 
@@ -644,9 +679,12 @@ export default function App() {
                   if (activeId !== splitRight!.id) void window.oblako.focusSplitPanel('right');
                 }}
               >
+                <SplitPanelHeader tab={splitRight!} onClose={() => close(splitRight!.id)} />
                 {splitRight!.tabError && (
-                  <TabError error={splitRight!.tabError} url={splitRight!.url}
-                    onRetry={() => void window.oblako.reload(splitRight!.id)} />
+                  <div style={{ position: 'absolute', top: SPLIT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0 }}>
+                    <TabError error={splitRight!.tabError} url={splitRight!.url}
+                      onRetry={() => void window.oblako.reload(splitRight!.id)} />
+                  </div>
                 )}
               </div>
             </div>

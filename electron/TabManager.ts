@@ -7,7 +7,7 @@ import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, S
 import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef, SavedTab } from './SessionManager';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
-import { ISLAND_GAP } from '../shared/layout';
+import { ISLAND_GAP, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 
 const CLOSED_STACK_MAX = 10;
 
@@ -2208,12 +2208,17 @@ export class TabManager {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const { leftId, splitRatio } = this.splitState!;
     const leftWidth = Math.floor((this.bounds.width - ISLAND_GAP) * splitRatio);
+    // +/-SPLIT_HEADER_HEIGHT: над каждой split-панелью — полоса заголовка (favicon/title/×),
+    // рисуется React в App.tsx в освободившейся сверху зоне (см. shared/layout.ts).
     if (tabId === leftId) {
-      return { x: this.bounds.x, y: this.bounds.y, width: leftWidth, height: this.bounds.height };
+      return {
+        x: this.bounds.x, y: this.bounds.y + SPLIT_HEADER_HEIGHT,
+        width: leftWidth, height: this.bounds.height - SPLIT_HEADER_HEIGHT,
+      };
     }
     return {
-      x: this.bounds.x + leftWidth + ISLAND_GAP, y: this.bounds.y,
-      width: this.bounds.width - leftWidth - ISLAND_GAP, height: this.bounds.height,
+      x: this.bounds.x + leftWidth + ISLAND_GAP, y: this.bounds.y + SPLIT_HEADER_HEIGHT,
+      width: this.bounds.width - leftWidth - ISLAND_GAP, height: this.bounds.height - SPLIT_HEADER_HEIGHT,
     };
   }
 
@@ -2231,18 +2236,19 @@ export class TabManager {
       }
       return;
     }
-    // Split: разделяем bounds по текущему splitRatio с ISLAND_GAP-зазором.
+    // Split: разделяем bounds по текущему splitRatio с ISLAND_GAP-зазором. y/height дополнительно
+    // урезаны на SPLIT_HEADER_HEIGHT сверху — та же полоса заголовка, что и в getTabViewBounds.
     // splitState гарантированно не null: currentlyInSplit включает !!this.splitState.
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const { leftId, rightId, splitRatio } = this.splitState!;
     const leftWidth = Math.floor((this.bounds.width - ISLAND_GAP) * splitRatio);
     const leftB:  ContentBounds = {
-      x: this.bounds.x, y: this.bounds.y,
-      width: leftWidth, height: this.bounds.height,
+      x: this.bounds.x, y: this.bounds.y + SPLIT_HEADER_HEIGHT,
+      width: leftWidth, height: this.bounds.height - SPLIT_HEADER_HEIGHT,
     };
     const rightB: ContentBounds = {
-      x: this.bounds.x + leftWidth + ISLAND_GAP, y: this.bounds.y,
-      width: this.bounds.width - leftWidth - ISLAND_GAP, height: this.bounds.height,
+      x: this.bounds.x + leftWidth + ISLAND_GAP, y: this.bounds.y + SPLIT_HEADER_HEIGHT,
+      width: this.bounds.width - leftWidth - ISLAND_GAP, height: this.bounds.height - SPLIT_HEADER_HEIGHT,
     };
     this.applySplitBounds(leftId, leftB);
     this.applySplitBounds(rightId, rightB);
