@@ -41,6 +41,7 @@ import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPas
 import { initVpnPopover, showVpnPopover, closeVpnPopover, syncVpnPopoverAnchorBounds } from './VpnPopoverManager';
 import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
+import * as searxngKeyStore from './SearxngKeyStore';
 import * as vpnKeyStore from './VpnKeyStore';
 import * as vpnSubscription from './VpnSubscription';
 import * as vpnProcess from './VpnProcess';
@@ -767,6 +768,16 @@ function registerIpc() {
     chromeView?.webContents.send(IPC.AI_KEY_STATUS_CHANGED, connected);
   });
 
+  // Задел под web-grounding (SearXNG) — тот же контракт/паттерн, что у ключа Gemini выше.
+  // Пока только чром (секция настроек); AI-панель подключится отдельно, когда там появится
+  // сам тоггл — свой preload, своя видимость, заводить сейчас незачем.
+  ipcMain.handle(IPC.SEARXNG_GET_STATUS,    () => searxngKeyStore.getStatus());
+  ipcMain.handle(IPC.SEARXNG_SAVE_CONFIG,   (_e, config: { endpoint: string; token: string }) => searxngKeyStore.saveConfig(config));
+  ipcMain.handle(IPC.SEARXNG_DELETE_CONFIG, () => searxngKeyStore.deleteConfig());
+  searxngKeyStore.onStatusChanged((configured) => {
+    chromeView?.webContents.send(IPC.SEARXNG_STATUS_CHANGED, configured);
+  });
+
   // VPN, шаг 1 — подписка + список серверов. Ссылка и credential серверов остаются в main
   // (см. VpnKeyStore.ts) — тот же принцип, что у ключа Gemini чуть выше.
   const vpnStatus = () => ({
@@ -1143,6 +1154,7 @@ app.whenReady().then(async () => {
   // safeStorage требует app.isReady() — грузим сохранённый (зашифрованный) ключ Gemini здесь,
   // не на верхнем уровне модуля (см. AiKeyStore.ts, заход D шаг 3).
   aiKeyStore.loadFromDisk();
+  searxngKeyStore.loadFromDisk();
   vpnKeyStore.loadFromDisk();
 
   // История: нативный модуль может отсутствовать — падение не блокирует запуск.

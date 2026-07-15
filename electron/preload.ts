@@ -295,6 +295,17 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.AI_KEY_STATUS_CHANGED, handler);
   },
 
+  // Задел под web-grounding (SearXNG). Сам конфиг никогда не возвращается в renderer.
+  getSearxngStatus:    () => ipcRenderer.invoke(IPC.SEARXNG_GET_STATUS) as Promise<boolean>,
+  saveSearxngConfig:   (config: { endpoint: string; token: string }) =>
+    ipcRenderer.invoke(IPC.SEARXNG_SAVE_CONFIG, config) as Promise<boolean>,
+  deleteSearxngConfig: () => ipcRenderer.invoke(IPC.SEARXNG_DELETE_CONFIG) as Promise<void>,
+  onSearxngStatusChanged: (cb: (configured: boolean) => void) => {
+    const handler = (_e: unknown, configured: boolean) => cb(configured);
+    ipcRenderer.on(IPC.SEARXNG_STATUS_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.SEARXNG_STATUS_CHANGED, handler);
+  },
+
   // VPN, шаг 1 (см. electron/VpnSubscription.ts). Ссылка подписки и credential серверов
   // никогда не возвращаются в renderer — см. VpnStatus/VpnServerMeta в shared/ipc.ts.
   getVpnStatus:           () => ipcRenderer.invoke(IPC.VPN_GET_STATUS) as Promise<VpnStatus>,

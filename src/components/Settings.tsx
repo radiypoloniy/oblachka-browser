@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyRound, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, type LucideIcon } from 'lucide-react';
+import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyRound, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, Search, type LucideIcon } from 'lucide-react';
 import type { AdBlockState, BackfillProgress, HistoryContentCoverage, VpnStatus, VpnServerMeta, VpnConnectionState, PasswordMeta, PasswordCopyField, TranslationEngineId, BergamotStatus } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import { stripEmoji } from '../../shared/text';
@@ -677,8 +677,140 @@ function AiSection() {
         </div>
       )}
 
+      <SearxngSection />
       <TranslationEngineSection />
       <HistoryBackfillSection />
+    </div>
+  );
+}
+
+// ── SearXNG (задел под web-grounding в AI-панели) — тот же паттерн формы, что AiSection выше,
+// два поля вместо одного (endpoint + токен, оба через один saveSearxngConfig). Токен опционален —
+// не у каждого self-hosted SearXNG есть auth (см. SearxngKeyStore.ts::saveConfig).
+function SearxngSection() {
+  const [configured, setConfigured] = useState<boolean | null>(null); // null = ещё грузим статус
+  const [endpointInput, setEndpointInput] = useState('');
+  const [tokenInput, setTokenInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    window.oblako.getSearxngStatus().then((v) => { if (mounted) setConfigured(v); });
+    const unsub = window.oblako.onSearxngStatusChanged((v) => { if (mounted) setConfigured(v); });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
+  async function handleSave() {
+    const endpoint = endpointInput.trim();
+    if (!endpoint) { setSaveError('Введите адрес сервера'); return; }
+    setSaving(true);
+    setSaveError('');
+    const ok = await window.oblako.saveSearxngConfig({ endpoint, token: tokenInput.trim() });
+    setSaving(false);
+    if (ok) { setEndpointInput(''); setTokenInput(''); } else setSaveError('Не удалось сохранить конфиг');
+  }
+
+  async function handleDelete() {
+    await window.oblako.deleteSearxngConfig();
+  }
+
+  if (configured === null) {
+    return <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <h2 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>
+          SearXNG — веб-поиск для AI
+        </h2>
+        <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
+          Свой поисковый сервер для web-grounding в AI-панели. Адрес и токен хранятся зашифрованными,
+          не в виде обычного текста.
+        </p>
+      </div>
+
+      {/* Статус */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
+        ...islandPlate,
+        borderRadius: 'var(--radius-sm)',
+      }}>
+        {configured
+          ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
+          : <Search size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+            {configured ? 'Настроено' : 'Не настроено'}
+          </div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+            {configured
+              ? 'SearXNG подключён — веб-поиск доступен в AI-панели.'
+              : 'Добавьте адрес сервера, чтобы включить веб-поиск в AI-панели.'}
+          </div>
+        </div>
+        {configured && (
+          <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <Trash2 size={14} /> Удалить
+          </button>
+        )}
+      </div>
+
+      {/* Ввод — только пока не настроено; чтобы сменить, сначала «Удалить» (тот же приём, что у Gemini). */}
+      {!configured && (
+        <div>
+          <div style={{
+            fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
+            textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8,
+          }}>
+            Адрес сервера и токен
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input
+              type="text"
+              value={endpointInput}
+              placeholder="https://searx.example.com"
+              onChange={(e) => { setEndpointInput(e.target.value); setSaveError(''); }}
+              style={{
+                padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                border: saveError ? '1.5px solid var(--error, #e05)' : '1.5px solid var(--divider-strong)',
+                background: 'var(--surface)', color: 'var(--text-strong)',
+                fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = saveError ? 'var(--error, #e05)' : 'var(--divider-strong)')}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="password"
+                value={tokenInput}
+                placeholder="Токен (опционально)"
+                onChange={(e) => setTokenInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void handleSave(); }}
+                style={{
+                  flex: 1, padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                  border: '1.5px solid var(--divider-strong)',
+                  background: 'var(--surface)', color: 'var(--text-strong)',
+                  fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
+              />
+              <button
+                onClick={() => void handleSave()}
+                disabled={saving || !endpointInput.trim()}
+                style={{ ...btnPrimary, alignSelf: 'flex-start', opacity: saving || !endpointInput.trim() ? 0.6 : 1 }}
+              >
+                {saving ? 'Сохранение…' : 'Сохранить'}
+              </button>
+            </div>
+            {saveError && (
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)' }}>{saveError}</span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

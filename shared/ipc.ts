@@ -278,6 +278,14 @@ export const IPC = {
   AI_DELETE_KEY:          'ai:delete-key',          // renderer → main: удалить ключ
   AI_KEY_STATUS_CHANGED:  'ai:key-status-changed',  // main → renderer: push нового connected-статуса
 
+  // Задел под web-grounding в AI-панели (SearXNG) — тот же контракт, что у ключа Gemini выше:
+  // endpoint/токен никогда не возвращаются в renderer, только булев статус «настроено/нет»
+  // (см. electron/SearxngKeyStore.ts).
+  SEARXNG_GET_STATUS:      'searxng:get-status',      // renderer → main: configured: boolean
+  SEARXNG_SAVE_CONFIG:     'searxng:save-config',     // renderer → main: ({endpoint, token}) → boolean (успех)
+  SEARXNG_DELETE_CONFIG:   'searxng:delete-config',   // renderer → main: удалить конфиг
+  SEARXNG_STATUS_CHANGED:  'searxng:status-changed',  // main → renderer: push нового configured-статуса
+
   // VPN, шаг 1 (см. electron/VpnParser.ts, VpnKeyStore.ts, VpnSubscription.ts) — подписка и
   // список серверов. Сама ссылка подписки и credential (uuid/пароль) каждого сервера НИКОГДА
   // не пересекают эту границу — только редактированный VpnServerMeta[] и общий статус.
@@ -920,6 +928,13 @@ export interface OblakoApi {
   saveAiKey(key: string): Promise<boolean>;
   deleteAiKey(): Promise<void>;
   onAiKeyStatusChanged(cb: (connected: boolean) => void): () => void;
+
+  // Задел под web-grounding (SearXNG) — тот же контракт: endpoint/токен никогда не приходят
+  // в renderer, только статус «настроено/нет» (см. electron/SearxngKeyStore.ts).
+  getSearxngStatus(): Promise<boolean>;
+  saveSearxngConfig(config: { endpoint: string; token: string }): Promise<boolean>;
+  deleteSearxngConfig(): Promise<void>;
+  onSearxngStatusChanged(cb: (configured: boolean) => void): () => void;
 
   // VPN, шаг 1 — подписка + список серверов (см. electron/VpnSubscription.ts). Ссылка подписки
   // и credential серверов никогда не приходят в renderer — см. VpnServerMeta/VpnStatus выше.
