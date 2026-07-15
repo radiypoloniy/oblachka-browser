@@ -20,10 +20,14 @@ export function registerSchemesAsPrivileged(): void {
 
 // ── oblako-model:// ────────────────────────────────────────────────────────────
 
-// Приоритет: userData/models/ (пользовательские обновления) → resources/models/ (бандл).
-function resolveModelsBase(): string {
-  const userModels = path.join(app.getPath('userData'), 'models')
-  if (fs.existsSync(userModels)) return userModels
+// Бандл (resources/models) — фолбэк, когда файла нет в userData. Раньше приоритет между
+// userData и бандлом решался ОДИН раз на весь каталог models/ (fs.existsSync на сам каталог,
+// не на конкретный файл) — из-за этого частичная докладка в userData (например, только
+// userData/models/translation/ — см. BergamotWorkerEntry.ts, тот же класс бага) намертво
+// переключала резолвер на userData для ВСЕХ моделей, включая те, что там не докладывали
+// (onnx-community/embeddinggemma-…), хотя они были целы в resources/models/ — 404 при живых
+// файлах. Теперь фолбэк per-request, на уровне конкретного запрошенного файла (см. ниже).
+function resolveModelsBundledBase(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'models')
   // dev / npm start: __dirname = dist-electron/electron/ → ../../resources/models
   return path.join(__dirname, '../../resources', 'models')
@@ -31,20 +35,31 @@ function resolveModelsBase(): string {
 
 // Вызывается внутри app.whenReady().
 export function registerModelProtocol(): void {
-  const base = resolveModelsBase()
+  const userBase = path.join(app.getPath('userData'), 'models')
+  const bundledBase = resolveModelsBundledBase()
 
   protocol.handle('oblako-model', (request) => {
     const url = new URL(request.url)
     // pathname: /models/Xenova/all-MiniLM-L6-v2/tokenizer.json
     const relative = url.pathname.replace(/^\/models\//, '')
-    const filePath = path.join(base, relative)
 
-    // Защита от path traversal за пределы base.
-    if (!filePath.startsWith(base + path.sep) && filePath !== base) {
+    // userData сначала (пользовательские докладки/обновления), бандл — фолбэк. Проверяем
+    // существование каждого КОНКРЕТНОГО файла, а не каталога models/ целиком — так докладка
+    // одной модели в userData не экранирует остальные, которые остались только в бандле.
+    let filePath: string | null = null
+    let sawValidCandidate = false
+    for (const base of [userBase, bundledBase]) {
+      const p = path.join(base, relative)
+      // Защита от path traversal за пределы этой конкретной base.
+      if (!(p.startsWith(base + path.sep) || p === base)) continue
+      sawValidCandidate = true
+      if (fs.existsSync(p)) { filePath = p; break }
+    }
+    if (!sawValidCandidate) {
       return new Response('Forbidden', { status: 403 })
     }
-    if (!fs.existsSync(filePath)) {
-      console.warn(`[AppProtocol] не найден: ${filePath}`)
+    if (!filePath) {
+      console.warn(`[AppProtocol] не найден: ${relative} (искали в ${userBase} и ${bundledBase})`)
       return new Response('Not Found', { status: 404 })
     }
 
@@ -64,7 +79,7 @@ export function registerModelProtocol(): void {
     })
   })
 
-  console.log(`[AppProtocol] oblako-model:// → ${base}`)
+  console.log(`[AppProtocol] oblako-model:// → ${userBase} (userData) → ${bundledBase} (бандл, фолбэк)`)
 }
 
 // ── oblako-chrome:// ───────────────────────────────────────────────────────────
