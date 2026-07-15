@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw } from 'lucide-react';
 import type { ClusterProposal } from '../services/ClusteringService';
+import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import {
   DndContext, DragOverlay,
   PointerSensor, useSensor, useSensors,
@@ -70,6 +71,24 @@ export function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }
         alignItems: 'center', justifyContent: 'center',
       }}>
         <Cloud size={size} color="#fff" />
+      </span>
+    );
+  }
+
+  // Псевдо-вкладки (История/Закладки/Настройки) — раньше проваливались в ветку «нет favicon →
+  // буква домена» ниже и падали в new URL('') на пустом url (см. TabState.kind в shared/ipc.ts),
+  // отсюда «?». Единый маппинг kind → {Icon, color} — src/styles/tabKindTile.ts, не хардкод тут.
+  const kindTile = TAB_KIND_TILE[tab.kind];
+  if (kindTile) {
+    const tileSize = size + 6;
+    const { Icon, color } = kindTile;
+    return (
+      <span style={{
+        width: tileSize, height: tileSize, borderRadius: 'var(--radius-sm)',
+        background: color, display: 'inline-flex', flex: 'none',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Icon size={Math.round(tileSize * 0.65)} color="#fff" />
       </span>
     );
   }
