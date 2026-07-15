@@ -766,6 +766,9 @@ function SearxngSection() {
           }}>
             Адрес сервера и токен
           </div>
+          {/* Формат поля токена — «логин:пароль» (HTTP Basic), не API-ключ/Bearer: self-hosted
+              SearXNG почти всегда закрывают auth_basic на уровне reverse-proxy, не на своём уровне
+              (см. SearxngSearch.ts::searxngSearch). */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <input
               type="text"
@@ -785,7 +788,7 @@ function SearxngSection() {
               <input
                 type="password"
                 value={tokenInput}
-                placeholder="Токен (опционально)"
+                placeholder="Логин:Пароль (опционально)"
                 onChange={(e) => setTokenInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void handleSave(); }}
                 style={{

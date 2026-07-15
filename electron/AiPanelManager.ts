@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs'
 import TurndownService from 'turndown'
 import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
 import { runFactCheck } from './GeminiFactCheck'
+import { searxngSearch, buildGroundingPrompt, appendSearxngSources } from './SearxngSearch'
 import * as aiKeyStore from './AiKeyStore'
 import * as searxngKeyStore from './SearxngKeyStore'
 import { IPC } from '../shared/ipc'
@@ -370,13 +371,49 @@ function ensureIpcRegistered(): void {
   // равно уйдёт в правильный (фоновый) контекст, а в панель — только если она всё ещё показывает
   // именно эту вкладку к моменту прихода чанка/результата (иначе получился бы чужой текст поверх
   // чужого разговора).
-  ipcMain.on('ai-panel:chat-send', (event: IpcMainEvent, text: string) => {
+  ipcMain.on('ai-panel:chat-send', (event: IpcMainEvent, text: string, webGrounding: boolean) => {
     const wc = event.sender
     const tabId = activeTabId
     if (!tabId) return
     const title = activeTabTitle
     const ctx = getOrCreateContext(tabId, activeTabUrl)
     ctx.messages.push({ role: 'user', text })
+
+    // Web-grounding (SearXNG, заход 3 задела) — ОТДЕЛЬНАЯ ветка перед обычным путём Qwen ниже,
+    // целиком независимая: не трогает needsExtraction/pageText/buildFirstTurnPrompt — риск
+    // сломать обычный чат роутингом сводится к этому одному if с ранним return, сам обычный путь
+    // не модифицирован ни строкой. Промпт строится ТОЛЬКО из результатов поиска + вопрос —
+    // контекст страницы сюда не подмешивается, это отдельный режим ответа, не расширение обычного.
+    // ctx.history ОБНОВЛЯЕТСЯ (в отличие от фактчека) — это реальная генерация локального Qwen,
+    // не сторонняя модель, последующие сообщения в этом же разговоре видят её как обычный ход.
+    if (webGrounding) {
+      void (async () => {
+        const search = await searxngSearch(text)
+        if (!search.ok) {
+          if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+            wc.send('ai-panel:chat-result', { ok: false, error: search.error })
+          }
+          return
+        }
+        const promptText = buildGroundingPrompt(text, search.results)
+        const outcome = await runChatMessage(promptText, ctx.history, (chunkText) => {
+          if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+            wc.send('ai-panel:chat-chunk', chunkText)
+          }
+        })
+        if (outcome.ok) {
+          const withSources = appendSearxngSources(outcome.out, search.results)
+          ctx.messages.push({ role: 'assistant', text: withSources })
+          ctx.history = outcome.history
+          if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+            wc.send('ai-panel:chat-result', { ...outcome, out: withSources })
+          }
+        } else if (panelView && panelView.webContents === wc && activeTabId === tabId) {
+          wc.send('ai-panel:chat-result', outcome)
+        }
+      })()
+      return
+    }
 
     // Извлечение по требованию (Заход 4) — только на первое сообщение ЭТОЙ страницы (pageText
     // ещё null). WebContents страницы захватываем СЕЙЧАС, синхронно, до await: activeTabId точно

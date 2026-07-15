@@ -38,7 +38,8 @@ declare global {
   interface Window {
     aiPanel: {
       close: () => void
-      sendChat: (text: string) => void
+      // webGrounding — тоггл-глобус: true → main отвечает через SearXNG-ветку (см. AiPanelManager.ts).
+      sendChat: (text: string, webGrounding: boolean) => void
       quickTranslate: () => void
       onChatChunk: (cb: (text: string) => void) => () => void
       onChatResult: (cb: (outcome: ChatOutcome) => void) => () => void
@@ -123,6 +124,11 @@ function AiPanel() {
   const [webGroundingActive, setWebGroundingActive] = useState(false)
   const [searxngConfigured, setSearxngConfigured] = useState(false)
   const [showWebGroundingConfirm, setShowWebGroundingConfirm] = useState(false)
+  // Заход 3 задела (сквозной grounding) — фаза «идёт поиск в SearXNG», ДО первого чанка от Qwen:
+  // main сначала ждёт searxngSearch(), генерация стартует только после (см. AiPanelManager.ts).
+  // Без этого флага та же дыра, что чинил factChecking — пустой streamedText молча висел бы,
+  // читаясь как зависание. Гасится первым чанком (unsubChunk) — тем же сигналом «генерация началась».
+  const [webSearching, setWebSearching] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   // Заход 3 — переключатель AI/Приложения (см. дизайн-систему): локальный, не персистится —
   // «Приложения» пока заглушка без функциональности, помнить выбор между сессиями незачем.
@@ -147,14 +153,17 @@ function AiPanel() {
       setStreamedText('')
       setSending(false)
       setFactChecking(false)
+      setWebSearching(false)
       setError(null)
     })
     const unsubChunk = window.aiPanel.onChatChunk((chunkText) => {
+      setWebSearching(false)
       setStreamedText((prev) => prev + chunkText)
     })
     const unsubResult = window.aiPanel.onChatResult((outcome) => {
       setSending(false)
       setFactChecking(false)
+      setWebSearching(false)
       setStreamedText('')
       if (outcome.ok) {
         setMessages((prev) => [...prev, { role: 'assistant', text: outcome.out }])
@@ -188,7 +197,8 @@ function AiPanel() {
     setStreamedText('')
     setError(null)
     setSending(true)
-    window.aiPanel.sendChat(text)
+    setWebSearching(webGroundingActive)
+    window.aiPanel.sendChat(text, webGroundingActive)
   }
 
   const handleSend = () => sendText(input.trim())
@@ -365,6 +375,16 @@ function AiPanel() {
                 }}>
                   <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
                   Анализирую источники…
+                </span>
+              ) : webSearching ? (
+                // Та же дыра, что чинит factChecking выше: до первого чанка от Qwen main ещё ждёт
+                // ответа от SearXNG — без явного текста «…» читался бы как зависание.
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  fontSize: 'var(--fs-sm)', color: 'var(--text-faint)',
+                }}>
+                  <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+                  Ищу в интернете…
                 </span>
               ) : (
                 <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>…</span>

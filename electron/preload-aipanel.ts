@@ -6,7 +6,9 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('aiPanel', {
   close: () => ipcRenderer.send('ai-panel:close'),
 
-  sendChat: (text: string) => ipcRenderer.send('ai-panel:chat-send', text),
+  // webGrounding — тоггл-глобус (заход 2 задела): main решает по нему, идти ли через
+  // SearXNG-ветку или обычный путь Qwen, см. AiPanelManager.ts::ai-panel:chat-send.
+  sendChat: (text: string, webGrounding: boolean) => ipcRenderer.send('ai-panel:chat-send', text, webGrounding),
   // Кнопка-подсказка «Перевести» — без текста: направление (src/tgt) решает main после извлечения
   // и детекции языка страницы, см. AiPanelManager.ts.
   quickTranslate: () => ipcRenderer.send('ai-panel:quick-translate'),
