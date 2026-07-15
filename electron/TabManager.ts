@@ -7,6 +7,7 @@ import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, S
 import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef, SavedTab } from './SessionManager';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
+import { ISLAND_GAP } from '../shared/layout';
 
 const CLOSED_STACK_MAX = 10;
 
@@ -19,9 +20,6 @@ const CONTENT_PRELOAD_PATH = path.join(__dirname, 'preload-content.js');
 const ZOOM_MIN  = 0.5;
 const ZOOM_MAX  = 2.5;
 const ZOOM_STEP = 0.1; // 10% за шаг, как в Chrome
-
-// Ширина зазора между split-панелями (px). Должна совпадать с SPLIT_GAP в App.tsx.
-const SPLIT_GAP = 8;
 
 // Радиус скругления углов контентной вью (px). Должен совпадать с --radius-island
 // в src/styles/tokens/radii.css — то же скругление, что у сайдбара/панелей острова.
@@ -2209,13 +2207,13 @@ export class TabManager {
     if (!inSplit) return this.bounds;
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const { leftId, splitRatio } = this.splitState!;
-    const leftWidth = Math.floor((this.bounds.width - SPLIT_GAP) * splitRatio);
+    const leftWidth = Math.floor((this.bounds.width - ISLAND_GAP) * splitRatio);
     if (tabId === leftId) {
       return { x: this.bounds.x, y: this.bounds.y, width: leftWidth, height: this.bounds.height };
     }
     return {
-      x: this.bounds.x + leftWidth + SPLIT_GAP, y: this.bounds.y,
-      width: this.bounds.width - leftWidth - SPLIT_GAP, height: this.bounds.height,
+      x: this.bounds.x + leftWidth + ISLAND_GAP, y: this.bounds.y,
+      width: this.bounds.width - leftWidth - ISLAND_GAP, height: this.bounds.height,
     };
   }
 
@@ -2233,18 +2231,18 @@ export class TabManager {
       }
       return;
     }
-    // Split: разделяем bounds по текущему splitRatio с SPLIT_GAP-зазором.
+    // Split: разделяем bounds по текущему splitRatio с ISLAND_GAP-зазором.
     // splitState гарантированно не null: currentlyInSplit включает !!this.splitState.
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const { leftId, rightId, splitRatio } = this.splitState!;
-    const leftWidth = Math.floor((this.bounds.width - SPLIT_GAP) * splitRatio);
+    const leftWidth = Math.floor((this.bounds.width - ISLAND_GAP) * splitRatio);
     const leftB:  ContentBounds = {
       x: this.bounds.x, y: this.bounds.y,
       width: leftWidth, height: this.bounds.height,
     };
     const rightB: ContentBounds = {
-      x: this.bounds.x + leftWidth + SPLIT_GAP, y: this.bounds.y,
-      width: this.bounds.width - leftWidth - SPLIT_GAP, height: this.bounds.height,
+      x: this.bounds.x + leftWidth + ISLAND_GAP, y: this.bounds.y,
+      width: this.bounds.width - leftWidth - ISLAND_GAP, height: this.bounds.height,
     };
     this.applySplitBounds(leftId, leftB);
     this.applySplitBounds(rightId, rightB);

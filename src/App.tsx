@@ -20,15 +20,12 @@ const HUB_ID = 'hub';
 // Резерв для inline-prompt разрешений (высота панели 56px + 8px зазор).
 const PERMISSION_PROMPT_RESERVE = 64;
 
-// Ширина зазора-разделителя в split-режиме (px). Должна совпадать с SPLIT_GAP в TabManager.
-const SPLIT_GAP = 8;
-
 // «Остров» позади реальной вкладки (обычная страница/её ошибка, не hub) — та же плашка,
 // что уже рисуют History/Settings/Bookmarks под собой (radius-island/shadow-island,
 // CONTENT_CORNER_RADIUS в TabManager.ts). Реальная WebContentsView кладётся сверху
 // main-процессом ровно на тот же прямоугольник и непрозрачна — плашку целиком закрывает,
 // снаружи виден только хвост тени в margin:var(--gutter-shell) вокруг contentRef (и, в
-// split-режиме, в SPLIT_GAP между панелями). Hub сюда не входит намеренно: он прозрачный
+// split-режиме, в ISLAND_GAP между панелями). Hub сюда не входит намеренно: он прозрачный
 // по задумке (цветной --canvas просвечивает сквозь него), сплошная подложка убила бы этот
 // эффект — у Hub своя эстетика, не «страница».
 const TAB_FRAME_VISUAL: CSSProperties = {
@@ -605,7 +602,7 @@ export default function App() {
             <Settings onClose={() => void window.oblako.closeTab(activeId)} />
           ) : isSplit ? (
             <div style={{ display: 'flex', height: '100%' }}>
-              {/* Левая панель — flex: splitRatio даёт долю от (ширина - SPLIT_GAP). Тот же остров,
+              {/* Левая панель — flex: splitRatio даёт долю от (ширина - ISLAND_GAP). Тот же остров,
                   что у одиночной вкладки (TAB_FRAME_STYLE) — каждая split-половина сама себе
                   «вкладка», bounds считает TabManager.applySplitBounds по этому же прямоугольнику. */}
               <div
@@ -620,10 +617,10 @@ export default function App() {
                 )}
               </div>
 
-              {/* Разделитель: SPLIT_GAP шириной, визуальная линия по центру */}
+              {/* Разделитель: ISLAND_GAP шириной, визуальная линия по центру */}
               <div
                 style={{
-                  flex: 'none', width: SPLIT_GAP, position: 'relative',
+                  flex: 'none', width: ISLAND_GAP, position: 'relative',
                   cursor: 'col-resize', userSelect: 'none',
                 }}
                 onPointerDown={handleDividerPointerDown}
