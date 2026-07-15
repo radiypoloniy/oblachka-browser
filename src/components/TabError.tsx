@@ -30,6 +30,7 @@ export default function TabError({ error, url, onRetry }: Props) {
       position: 'absolute', inset: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'var(--app-bg)',
+      pointerEvents: 'auto', // может сидеть внутри TAB_FRAME_STYLE (App.tsx) с pointer-events:none — кнопка Retry должна остаться кликабельной
     }}>
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,

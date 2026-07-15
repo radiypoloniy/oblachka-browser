@@ -27,7 +27,7 @@ const SPLIT_GAP = 8;
 // в src/styles/tokens/radii.css — то же скругление, что у сайдбара/панелей острова.
 // setBorderRadius — чисто визуальный вырез; хит-тест углов остаётся прямоугольным
 // (штатное поведение Electron View.setBorderRadius, не дефект — см. заход).
-const CONTENT_CORNER_RADIUS = 18;
+const CONTENT_CORNER_RADIUS = 20;
 const SPLIT_RATIO_MIN = 0.2;
 const SPLIT_RATIO_MAX = 0.8;
 

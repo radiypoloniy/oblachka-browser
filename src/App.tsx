@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
 import Sidebar from './components/Sidebar';
 import Toolbar from './components/Toolbar';
 import Hub from './components/Hub';
@@ -8,6 +8,7 @@ import History from './components/History';
 import Bookmarks from './components/Bookmarks';
 import Downloads from './components/Downloads';
 import PermissionPrompt from './components/PermissionPrompt';
+import { islandPlate } from './styles/island';
 import { embeddingService } from './services/EmbeddingService';
 import { startEmbedRequestBridge } from './services/EmbedRequestBridge';
 import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, VpnConnectionState, AdBlockState, PageTranslateState, PageTranslateProgress } from '../shared/ipc';
@@ -20,6 +21,31 @@ const PERMISSION_PROMPT_RESERVE = 64;
 
 // Ширина зазора-разделителя в split-режиме (px). Должна совпадать с SPLIT_GAP в TabManager.
 const SPLIT_GAP = 8;
+
+// «Остров» позади реальной вкладки (обычная страница/её ошибка, не hub) — та же плашка,
+// что уже рисуют History/Settings/Bookmarks под собой (radius-island/shadow-island,
+// CONTENT_CORNER_RADIUS в TabManager.ts). Реальная WebContentsView кладётся сверху
+// main-процессом ровно на тот же прямоугольник и непрозрачна — плашку целиком закрывает,
+// снаружи виден только хвост тени в margin:var(--gutter-shell) вокруг contentRef (и, в
+// split-режиме, в SPLIT_GAP между панелями). Hub сюда не входит намеренно: он прозрачный
+// по задумке (цветной --canvas просвечивает сквозь него), сплошная подложка убила бы этот
+// эффект — у Hub своя эстетика, не «страница».
+const TAB_FRAME_VISUAL: CSSProperties = {
+  ...islandPlate,
+  borderRadius: 'var(--radius-island)',
+  boxShadow: 'var(--shadow-island)',
+  background: 'var(--surface-solid)',
+  overflow: 'hidden',
+};
+
+// Одиночная вкладка: плашка сама себе абсолютно спозиционированный слой позади контента,
+// pointer-events:none — она никогда не должна перехватывать клики (TabError включает их себе
+// обратно явно, см. TabError.tsx).
+const TAB_FRAME_STYLE: CSSProperties = {
+  position: 'absolute', inset: 0,
+  ...TAB_FRAME_VISUAL,
+  pointerEvents: 'none',
+};
 
 // Ниже COLLAPSE_THRESHOLD сайдбар схлопывается принудительно.
 // Выше EXPAND_THRESHOLD — восстанавливается желаемое состояние пользователя.
@@ -572,9 +598,11 @@ export default function App() {
             <Settings onClose={() => void window.oblako.closeTab(activeId)} />
           ) : isSplit ? (
             <div style={{ display: 'flex', height: '100%' }}>
-              {/* Левая панель — flex: splitRatio даёт долю от (ширина - SPLIT_GAP) */}
+              {/* Левая панель — flex: splitRatio даёт долю от (ширина - SPLIT_GAP). Тот же остров,
+                  что у одиночной вкладки (TAB_FRAME_STYLE) — каждая split-половина сама себе
+                  «вкладка», bounds считает TabManager.applySplitBounds по этому же прямоугольнику. */}
               <div
-                style={{ flex: splitRatio, position: 'relative', minWidth: 0 }}
+                style={{ ...TAB_FRAME_VISUAL, position: 'relative', flex: splitRatio, minWidth: 0 }}
                 onClick={() => {
                   if (activeId !== splitLeft!.id) void window.oblako.focusSplitPanel('left');
                 }}
@@ -603,9 +631,9 @@ export default function App() {
                 }} />
               </div>
 
-              {/* Правая панель */}
+              {/* Правая панель — тот же остров, что у левой (TAB_FRAME_VISUAL). */}
               <div
-                style={{ flex: 1 - splitRatio, position: 'relative', minWidth: 0 }}
+                style={{ ...TAB_FRAME_VISUAL, position: 'relative', flex: 1 - splitRatio, minWidth: 0 }}
                 onClick={() => {
                   if (activeId !== splitRight!.id) void window.oblako.focusSplitPanel('right');
                 }}
@@ -617,18 +645,21 @@ export default function App() {
               </div>
             </div>
           ) : (
-            /* Обычный режим: хаб, ошибка или «дырка» под WebContentsView */
-            <>
-              {isHub
-                ? <Hub tabId={activeId} onSubmit={submit} onOpenHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); }} />
-                : tabError
-                  ? <TabError
+            /* Обычный режим: хаб (прозрачный, без острова), либо реальная вкладка —
+               остров-подложка позади неё (см. TAB_FRAME_STYLE) плюс ошибка поверх, если есть. */
+            isHub
+              ? <Hub tabId={activeId} onSubmit={submit} onOpenHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); }} />
+              : (
+                <div style={TAB_FRAME_STYLE}>
+                  {tabError && (
+                    <TabError
                       error={tabError}
                       url={active?.url ?? ''}
                       onRetry={() => window.oblako.reload(activeId)}
                     />
-                  : null}
-            </>
+                  )}
+                </div>
+              )
           )}
           {/* Рамка drag-to-split: видна когда вкладка тащится над контентом. kind==='page' уже
               покрывает хаб/Историю/Настройки одним условием — раньше это были 3 отдельных флага. */}

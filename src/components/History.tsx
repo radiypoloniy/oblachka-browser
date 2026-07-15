@@ -193,7 +193,7 @@ export default function History({ onClose }: HistoryProps) {
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
       // Тот же "остров", что у сайдбара (Sidebar.tsx::asideBase) — radius-island/shadow-island
-      // совпадают с CONTENT_CORNER_RADIUS=18 у обычной вкладки (TabManager.ts), только фон
+      // совпадают с CONTENT_CORNER_RADIUS у обычной вкладки (TabManager.ts), только фон
       // непрозрачный (--surface-solid), не --surface-island: у сайдбара мало текста, лёгкая
       // прозрачность не мешает, а плотный список истории на полупрозрачном фоне читался бы хуже.
       // Отступ по периметру — НЕ здесь: contentRef в App.tsx уже даёт margin:var(--gutter-shell)
