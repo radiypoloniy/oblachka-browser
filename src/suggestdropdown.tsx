@@ -127,15 +127,10 @@ function SuggestDropdown() {
         boxSizing: 'border-box',
         background: 'var(--surface-solid)',
         borderRadius: 'var(--radius-card)',
-        // Живой баг: --shadow-island (7 слоёв, блюр до 90px) — используется только в главном
-        // chromeView (один общий webContents на всё React-UI). Все ОСТАЛЬНЫЕ изолированные
-        // прозрачные WebContentsView-оверлеи (findbar.tsx, translatepopover.tsx, aipanel.tsx) этот
-        // токен сознательно не используют — там либо --shadow-card (2 слоя), либо вот такая же
-        // простая одна тень. Тяжёлый многослойный box-shadow с большим блюром поверх per-pixel-alpha
-        // прозрачной WebContentsView (не полноценного окна) на Windows/Chromium рендерится с
-        // жёсткими краями вместо мягкого растворения — тот самый «угловатый» прямоугольник вместо
-        // тени. Та же простая тень, что уже проверена в translatepopover.tsx/aipanel.tsx.
-        boxShadow: '0 10px 28px rgba(40,30,80,0.16)',
+        // --shadow-overlay (не --shadow-island/-pop) — см. рационал в tokens/shadows.css:
+        // тяжёлая многослойная тень поверх прозрачной WebContentsView рендерится с жёсткими
+        // краями на Windows/Chromium. Тот же токен — в translatepopover.tsx/aipanel.tsx.
+        boxShadow: 'var(--shadow-overlay)',
         border: '1px solid var(--glass-edge)',
         overflow: 'hidden', maxHeight: 460, overflowY: 'auto',
         fontFamily: 'var(--font-sans)',

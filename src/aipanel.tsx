@@ -228,7 +228,7 @@ function AiPanel() {
         background: 'var(--surface-solid)',
         // var(--radius-island) — заметно круглее var(--radius-card): остров, а не карточка.
         borderRadius: 'var(--radius-island)',
-        boxShadow: '0 10px 28px rgba(40,30,80,0.16)',
+        boxShadow: 'var(--shadow-overlay)',
         fontFamily: 'var(--font-sans)',
       }}>
         <div style={{

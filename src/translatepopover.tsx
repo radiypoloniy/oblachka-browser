@@ -93,7 +93,7 @@ function Popover() {
           boxSizing: 'border-box',
           background: 'var(--surface-solid)',
           borderRadius: 'var(--radius-card)',
-          boxShadow: '0 10px 28px rgba(40,30,80,0.16)',
+          boxShadow: 'var(--shadow-overlay)',
           padding: 'var(--pad-card)',
           display: 'flex', flexDirection: 'column', gap: 8,
           fontFamily: 'var(--font-sans)',

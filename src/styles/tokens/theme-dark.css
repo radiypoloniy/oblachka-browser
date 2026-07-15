@@ -47,5 +47,6 @@
     0 8px 24px rgba(0,0,0,0.40),
     0 24px 48px rgba(0,0,0,0.34);
   --shadow-pop: 0 2px 8px rgba(0,0,0,0.50), 0 12px 32px rgba(0,0,0,0.55);
+  --shadow-overlay: 0 10px 28px rgba(0,0,0,0.45);
   --ring-accent: 0 0 0 3px rgba(71,159,230,0.32);
 }

@@ -1056,7 +1056,7 @@ export default function Toolbar({
                 position: 'fixed', top: btnRect.bottom + 6, left: btnRect.right - 140,
                 width: 140, zIndex: 9001,
                 background: 'var(--surface-solid)',
-                borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-island)',
+                borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)',
                 border: '1px solid var(--glass-edge)',
                 overflow: 'hidden', padding: 4,
               }}>
