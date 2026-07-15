@@ -13,6 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import { Sparkles, X, Send, Globe, SearchCheck, Loader2, LayoutGrid, Calculator, RefreshCw, Timer, Pipette } from 'lucide-react';
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
+import { SHELL_MARGIN } from '../shared/layout';
 
 // Форма ChatOutcome из electron/TranslationService.ts — не через shared/ipc.ts (ad-hoc канал,
 // как и у поповера, см. preload-aipanel.ts), поэтому просто зеркалим форму локально.
@@ -49,10 +50,11 @@ declare global {
   }
 }
 
-// Воздух вокруг острова на все стороны — держать в синхроне с GUTTER в
-// electron/AiPanelManager.ts (тот выделяет под него ровно столько же места в bounds
-// WebContentsView, отсчитывая от тулбара/правого края/низа окна). Тот же паддинг заодно
-// и зона под CSS box-shadow — WebContentsView обрезает всё, что рисуется за границей.
+// Воздух над/под карточкой (вертикаль) — bounds самой WebContentsView его не выделяют
+// (см. AiPanelManager.ts::computeBounds), это чистый CSS-padding внутри вью, и заодно зона
+// под CSS box-shadow — WebContentsView обрезает всё, что рисуется за границей.
+// Горизонталь GUTTER больше не задаёт (заход 1, зазоры): слева зазор целиком отдан
+// DOM-хэндлу в App.tsx (ISLAND_GAP), справа — SHELL_MARGIN (см. paddingLeft/paddingRight ниже).
 const GUTTER = 20;
 
 // Сырые отступы сверху/снизу от границ вьюпорта равны (оба GUTTER) — но у тулбара нет своего
@@ -217,8 +219,11 @@ function AiPanel() {
     <div style={{
       paddingTop: GUTTER - VERTICAL_OPTICAL_SHIFT,
       paddingBottom: GUTTER + VERTICAL_OPTICAL_SHIFT,
-      paddingLeft: GUTTER,
-      paddingRight: GUTTER,
+      // Слева — 0: зазор до split-контента теперь целиком у DOM-хэндла в App.tsx (ISLAND_GAP),
+      // карточка вплотную к левому краю своей вью. Справа — SHELL_MARGIN: тот же отступ, что у
+      // сайдбара от края окна (симметрия «остров — край окна»), не GUTTER.
+      paddingLeft: 0,
+      paddingRight: SHELL_MARGIN,
       boxSizing: 'border-box', width: '100%', height: '100vh',
     }}>
       <div style={{

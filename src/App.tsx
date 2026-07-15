@@ -12,6 +12,7 @@ import { islandPlate } from './styles/island';
 import { embeddingService } from './services/EmbeddingService';
 import { startEmbedRequestBridge } from './services/EmbedRequestBridge';
 import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, VpnConnectionState, AdBlockState, PageTranslateState, PageTranslateProgress } from '../shared/ipc';
+import { ISLAND_GAP, SHELL_MARGIN } from '../shared/layout';
 import type { ClusterProposal } from './services/ClusteringService';
 
 const HUB_ID = 'hub';
@@ -60,7 +61,6 @@ const SPLIT_RATIO_MAX = 0.8;
 // живой визуальный превью во время драга, до подтверждения основным процессом).
 const AI_PANEL_WIDTH_MIN = 300;
 const AI_PANEL_WIDTH_MAX = 640;
-const AI_PANEL_DIVIDER_WIDTH = 8; // тот же приём, что SPLIT_GAP — зона хвата разделителя
 
 function findSplitPairRatio(nodes: SidebarNode[], leftId: string, rightId: string): number | null {
   for (const node of nodes) {
@@ -586,8 +586,15 @@ export default function App() {
         {/* Контент-зона. Варианты: хаб, страница ошибки, split, "дырка" (WebContentsView).
             Margin — единственный источник воздуха: pushBounds меряет getBoundingClientRect()
             этого div, суженный margin'ом прямоугольник уезжает в main как есть, без правки
-            формул bounds. Воздух согласован с --gutter-shell (тем же, что у острова сайдбара). */}
-        <div ref={contentRef} style={{ flex: 1, minHeight: 0, position: 'relative', margin: 'var(--gutter-shell)' }}>
+            формул bounds. Слева/сверху/снизу — всегда --gutter-shell (как у острова сайдбара).
+            Справа — условно (заход 1, зазоры): при закрытой AI-панели тот же --gutter-shell
+            до края окна; при открытой — 0, потому что зазор до AI-острова теперь целиком
+            в DOM-хэндле (ISLAND_GAP, ниже), лишние 12px тут были бы паразитной прибавкой. */}
+        <div ref={contentRef} style={{
+          flex: 1, minHeight: 0, position: 'relative',
+          marginTop: 'var(--gutter-shell)', marginBottom: 'var(--gutter-shell)', marginLeft: 'var(--gutter-shell)',
+          marginRight: aiPanelOpen ? 0 : SHELL_MARGIN,
+        }}>
           {downloadsOpen ? (
             <Downloads downloads={downloads} onClose={() => setDownloadsOpen(false)} />
           ) : kind === 'history' ? (
@@ -681,12 +688,18 @@ export default function App() {
         </div>
 
         {/* Разделитель + spacer AI-дока — только когда док открыт. Та же схема pointer capture,
-            что у split-разделителя выше, ширина — от правого края aiPanelContainerRef. */}
+            что у split-разделителя выше, ширина — от правого края aiPanelContainerRef.
+            Ширина = ISLAND_GAP (заход 1, зазоры): хэндл теперь занимает весь межостровный
+            зазор split↔AI целиком (contentRef справа больше воздуха не даёт, см. marginRight
+            выше) — линия 2px ниже остаётся отцентрована (left:50%), просто в более широкой
+            колонке. drag-математика ниже (handleAiDividerPointerMove) считает по абсолютной
+            позиции курсора от правого края контейнера — ширины хэндла не касается, чувствительность
+            ресайза не меняется. */}
         {aiPanelOpen && (
           <>
             <div
               style={{
-                flex: 'none', width: AI_PANEL_DIVIDER_WIDTH, position: 'relative',
+                flex: 'none', width: ISLAND_GAP, position: 'relative',
                 cursor: 'col-resize', userSelect: 'none',
               }}
               onPointerDown={handleAiDividerPointerDown}
