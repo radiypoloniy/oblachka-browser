@@ -617,7 +617,9 @@ export default function App() {
                 )}
               </div>
 
-              {/* Разделитель: ISLAND_GAP шириной, визуальная линия по центру */}
+              {/* Разделитель: ISLAND_GAP шириной, хват — капсула-грип по центру (не линия
+                  во всю высоту — читается как ручка, не как шов). Колонка/хит-зона/pointer-
+                  логика не менялись, поменялась только отрисовка внутри. */}
               <div
                 style={{
                   flex: 'none', width: ISLAND_GAP, position: 'relative',
@@ -629,9 +631,9 @@ export default function App() {
                 onPointerCancel={handleDividerPointerUp}
               >
                 <div style={{
-                  position: 'absolute', top: 0, bottom: 0,
-                  left: '50%', width: 2, transform: 'translateX(-50%)',
-                  background: 'var(--divider-strong)', pointerEvents: 'none',
+                  position: 'absolute', top: '50%', left: '50%',
+                  width: 4, height: 32, transform: 'translate(-50%, -50%)',
+                  borderRadius: 999, background: 'var(--divider-strong)', pointerEvents: 'none',
                 }} />
               </div>
 
