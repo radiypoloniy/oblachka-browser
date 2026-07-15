@@ -39,4 +39,15 @@ contextBridge.exposeInMainWorld('aiPanel', {
     return () => ipcRenderer.removeListener('ai-panel:key-status', handler);
   },
   factCheck: () => ipcRenderer.send('ai-panel:fact-check'),
+
+  // Задел под web-grounding (SearXNG) — тот же приём, что onKeyStatus выше: пуш статуса,
+  // не отдельный get (панель узнаёт его при открытии/переключении вкладки, см. AiPanelManager.ts).
+  onSearxngStatus: (cb: (configured: boolean) => void) => {
+    const handler = (_e: unknown, configured: boolean) => cb(configured);
+    ipcRenderer.on('ai-panel:searxng-status', handler);
+    return () => ipcRenderer.removeListener('ai-panel:searxng-status', handler);
+  },
+  // Клик по глобусу, когда SearXNG не настроен — ведёт в настройки (вкладка Settings в чроме),
+  // а не молча включает пустой режим.
+  openSettings: () => ipcRenderer.send('ai-panel:open-settings'),
 })

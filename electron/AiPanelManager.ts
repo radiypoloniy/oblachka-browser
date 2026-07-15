@@ -12,6 +12,7 @@ import TurndownService from 'turndown'
 import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
 import { runFactCheck } from './GeminiFactCheck'
 import * as aiKeyStore from './AiKeyStore'
+import * as searxngKeyStore from './SearxngKeyStore'
 import { IPC } from '../shared/ipc'
 import type { TabState } from '../shared/ipc'
 import type { TabManager } from './TabManager'
@@ -245,6 +246,14 @@ function sendKeyStatus(): void {
 // Подписка на изменения статуса ключа (сохранили/удалили в настройках) — модуль загружается один
 // раз за жизнь процесса (импорт в main.ts), повторной регистрации не будет.
 aiKeyStore.onKeyStatusChanged(() => sendKeyStatus())
+
+// Задел под web-grounding (SearXNG) — тот же приём, что sendKeyStatus/aiKeyStore.onKeyStatusChanged
+// выше: пуш булева статуса, сам конфиг (endpoint/токен) сюда не попадает.
+function sendSearxngStatus(): void {
+  if (!panelView) return
+  panelView.webContents.send('ai-panel:searxng-status', searxngKeyStore.getStatus())
+}
+searxngKeyStore.onStatusChanged(() => sendSearxngStatus())
 
 // Единственная точка входа из main.ts — вызывается из УЖЕ существующего onChange (тот, что шлёт
 // SYNC_CHANGED в чром), TabManager.ts НЕ трогаем и новых колбэков туда не добавляем. onChange и
@@ -488,6 +497,14 @@ function ensureIpcRegistered(): void {
       }
     })()
   })
+
+  // Задел под web-grounding (SearXNG) — клик по глобусу, когда SearXNG не настроен, ведёт сюда:
+  // открываем вкладку настроек в чроме (тот же путь, что кнопка «Настройки» в сайдбаре —
+  // TabManager.createSpecialTab), а не молча включаем пустой режим. Сама AI-панель не закрывается —
+  // это отдельный, независимый от неё контент вкладки.
+  ipcMain.on('ai-panel:open-settings', () => {
+    tabManagerRef?.createSpecialTab('settings')
+  })
 }
 
 // Создаётся лениво на первое открытие — ничего не висит на старте браузера (тот же принцип,
@@ -507,7 +524,7 @@ function ensurePanelView(): WebContentsView {
   panelView.setBackgroundColor('#00000000')
   // Первый показ беседы активной вкладки — только после did-finish-load: раньше renderer ещё не
   // навесил обработчик onContext, сообщение потерялось бы. Статус ключа — тем же приёмом.
-  panelView.webContents.once('did-finish-load', () => { sendCurrentContext(); sendKeyStatus() })
+  panelView.webContents.once('did-finish-load', () => { sendCurrentContext(); sendKeyStatus(); sendSearxngStatus() })
 
   // Ссылки из ответа модели — обычные <a href> (react-markdown их не оборачивает, см. задачу):
   // без перехвата клик навигирует ЭТУ ЖЕ webContents на внешний сайт, затирая aipanel.html —
@@ -555,6 +572,6 @@ export function toggleAiPanel(win: BrowserWindow): boolean {
   setOpenState(true)
   // При повторном открытии (view уже когда-то загрузился) did-finish-load больше не сработает —
   // шлём текущий контекст явно, чтобы панель не показывала последнюю беседу «протухшей» вкладки.
-  if (alreadyLoaded) { sendCurrentContext(); sendKeyStatus() }
+  if (alreadyLoaded) { sendCurrentContext(); sendKeyStatus(); sendSearxngStatus() }
   return true
 }

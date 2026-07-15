@@ -46,6 +46,9 @@ declare global {
       // Заход D — кнопка фактчека: показывается только когда ключ Gemini подключён.
       onKeyStatus: (cb: (connected: boolean) => void) => () => void
       factCheck: () => void
+      // Задел под web-grounding (SearXNG) — тоггл-глобус в поле ввода.
+      onSearxngStatus: (cb: (configured: boolean) => void) => () => void
+      openSettings: () => void
     }
   }
 }
@@ -111,6 +114,15 @@ function AiPanel() {
   const [factChecking, setFactChecking] = useState(false)
   // Плашка приватности перед вызовом (см. sendFactCheck ниже) — обязательна каждый раз, без «запомнить».
   const [showFactCheckConfirm, setShowFactCheckConfirm] = useState(false)
+  // Задел под web-grounding (SearXNG) — тоггл-глобус в поле ввода. webGroundingActive: чисто
+  // локальный UI-стейт (не персистится, не переживает переключение вкладки/перезапуск панели —
+  // тот же принцип, что mode ниже). searxngConfigured — пуш из AiPanelManager.ts::sendSearxngStatus,
+  // тот же источник, что читает секция настроек. showWebGroundingConfirm — плашка согласия,
+  // обязательна перед КАЖДЫМ включением, тот же приём, что у фактчека, но свой флаг: это разные
+  // независимые действия, не должны гаситься/путаться друг с другом.
+  const [webGroundingActive, setWebGroundingActive] = useState(false)
+  const [searxngConfigured, setSearxngConfigured] = useState(false)
+  const [showWebGroundingConfirm, setShowWebGroundingConfirm] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   // Заход 3 — переключатель AI/Приложения (см. дизайн-систему): локальный, не персистится —
   // «Приложения» пока заглушка без функциональности, помнить выбор между сессиями незачем.
@@ -154,7 +166,10 @@ function AiPanel() {
     const unsubKeyStatus = window.aiPanel.onKeyStatus((connected) => {
       setFactCheckAvailable(connected)
     })
-    return () => { unsubContext(); unsubChunk(); unsubResult(); unsubKeyStatus() }
+    const unsubSearxngStatus = window.aiPanel.onSearxngStatus((configured) => {
+      setSearxngConfigured(configured)
+    })
+    return () => { unsubContext(); unsubChunk(); unsubResult(); unsubKeyStatus(); unsubSearxngStatus() }
   }, [])
 
   // Автоскролл вниз при новом тексте — свои сообщения, ответы AI, стриминг по ходу генерации.
@@ -201,6 +216,21 @@ function AiPanel() {
     setSending(true)
     setFactChecking(true)
     window.aiPanel.factCheck()
+  }
+
+  // Задел под web-grounding (SearXNG) — глобус в поле ввода. Три исхода клика:
+  // 1) не настроено (см. searxngConfigured выше) → в настройки, ничего не включаем;
+  // 2) выключен → плашка согласия (обязательна каждый раз, «запомнить» нет — тот же принцип,
+  //    что у фактчека, только текст честный про свою инфраструктуру, не «облако»);
+  // 3) включён → выключаем молча, без плашки (симметрично не требуется: гасить проще, чем зажигать).
+  const handleGlobeClick = () => {
+    if (!searxngConfigured) { window.aiPanel.openSettings(); return }
+    if (webGroundingActive) { setWebGroundingActive(false); return }
+    setShowWebGroundingConfirm(true)
+  }
+  const confirmWebGrounding = () => {
+    setShowWebGroundingConfirm(false)
+    setWebGroundingActive(true)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -448,14 +478,77 @@ function AiPanel() {
           )
         )}
 
+        {/* Плашка согласия на web-grounding — та же механика, что у фактчека (обязательна перед
+            КАЖДЫМ включением, без «запомнить»), но текст честный про СВОЮ инфраструктуру: это не
+            облако третьей стороны, а собственный сервер пользователя, поэтому и формулировка другая. */}
+        {showWebGroundingConfirm && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 8,
+            margin: `0 var(--pad-island) 8px`,
+            padding: '10px 12px',
+            borderRadius: 'var(--radius-chip)',
+            background: 'var(--surface-sunken)',
+            flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
+              Запросы поиска будут отправлены на твой поисковый сервер через VPN.
+            </span>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowWebGroundingConfirm(false)}
+                style={{
+                  padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
+                  background: 'transparent', color: 'var(--text-muted)',
+                  fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer',
+                }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={confirmWebGrounding}
+                style={{
+                  padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
+                  background: 'var(--accent)', color: 'var(--on-accent)',
+                  fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Продолжить
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Поле ввода — Enter отправляет, Shift+Enter переносит строку. Кнопка отправки —
             единственный акцентный (--accent) элемент здесь, как и просит цветовой закон
-            (send — одно из немногих мест, где акцент уместен). */}
+            (send — одно из немногих мест, где акцент уместен). Глобус — исключение по смыслу,
+            не по цвету: это НЕ send-действие, а залипающий тоггл состояния, поэтому активное
+            состояние светится accent-обводкой/фоном, а не отправляет ничего само по себе. */}
         <div style={{
           display: 'flex', alignItems: 'flex-end', gap: 8,
           padding: 'var(--pad-island)',
           flexShrink: 0,
         }}>
+          <button
+            onClick={handleGlobeClick}
+            title={
+              !searxngConfigured
+                ? 'Веб-поиск не настроен — открыть настройки'
+                : webGroundingActive
+                  ? 'Веб-поиск включён — нажмите, чтобы выключить'
+                  : 'Включить веб-поиск (SearXNG)'
+            }
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 34, height: 34, flexShrink: 0,
+              background: webGroundingActive ? 'var(--accent-soft)' : 'transparent',
+              border: webGroundingActive ? '1.5px solid var(--accent)' : '1.5px solid transparent',
+              borderRadius: '50%',
+              color: webGroundingActive ? 'var(--accent)' : 'var(--text-muted)',
+              cursor: 'pointer', padding: 0,
+            }}
+          >
+            <Globe size={16} strokeWidth={2} />
+          </button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
