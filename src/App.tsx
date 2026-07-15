@@ -688,7 +688,11 @@ export default function App() {
             /* Обычный режим: хаб (прозрачный, без острова), либо реальная вкладка —
                остров-подложка позади неё (см. TAB_FRAME_STYLE) плюс ошибка поверх, если есть. */
             isHub
-              ? <Hub tabId={activeId} onSubmit={submit} onOpenHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); }} />
+              ? <Hub
+                  tabId={activeId} onSubmit={submit}
+                  onOpenHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); }}
+                  onOpenSettings={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })(); }}
+                />
               : (
                 <div style={TAB_FRAME_STYLE}>
                   {tabError && (

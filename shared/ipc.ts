@@ -914,7 +914,8 @@ export interface OblakoApi {
 
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
   // send — fire-and-forget, ответ идёт стримом через onHubChatChunk/onHubChatResult.
-  sendHubChatMessage(tabId: string, text: string): void;
+  // grounding — тоггл-глобус в хабе (свой, не общий с AI-панелью, см. Hub.tsx::AiChatView).
+  sendHubChatMessage(tabId: string, text: string, grounding: boolean): void;
   onHubChatChunk(cb: (payload: { tabId: string; text: string }) => void): () => void;
   onHubChatResult(cb: (payload: { tabId: string; sessionId: number; outcome: HubChatOutcome }) => void): () => void;
   listHubChatSessions(): Promise<HubChatSessionMeta[]>;

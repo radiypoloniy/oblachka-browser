@@ -2,6 +2,7 @@ import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { runChatMessage, type ChatOutcome } from './TranslationService';
+import { appendSearxngSources, type SearxngResult } from './SearxngSearch';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
 // Грузим динамически, чтобы браузер запускался даже без C++ инструментов (тот же приём,
@@ -68,22 +69,34 @@ export class HubChatManager {
   // Отсутствие БД (initialize не удался) не роняет сам чат — просто без персистентности.
   // sessionId в ответе — id, под которым (будет) сохранён этот диалог, чтобы вызывающая сторона
   // могла сразу отправить его вместе с результатом в renderer (см. main.ts::HUB_CHAT_SEND).
-  async sendMessage(tabId: string, text: string, onChunk?: (chunk: string) => void): Promise<{ outcome: ChatOutcome; sessionId: number | null }> {
+  //
+  // grounding (опционально, web-grounding через SearXNG, см. main.ts::HUB_CHAT_SEND) — если задан,
+  // Qwen получает НЕ text, а grounding.promptText (пронумерованные сниппеты + вопрос), но text
+  // (сырой вопрос пользователя) всё равно то, что сохраняется/показывается как реплика user —
+  // никто не хочет видеть в истории чата вместо своего вопроса весь промпт со сниппетами.
+  // Источники приклеиваются к outcome.out ДО показа и ДО сохранения — что видно в ленте прямо
+  // сейчас, то же самое вернётся при resumeSession после перезапуска, без расхождений.
+  async sendMessage(
+    tabId: string, text: string, onChunk?: (chunk: string) => void,
+    grounding?: { promptText: string; sources: SearxngResult[] },
+  ): Promise<{ outcome: ChatOutcome; sessionId: number | null }> {
     const ctx = this.#getOrCreateCtx(tabId);
-    const outcome = await runChatMessage(text, ctx.history, onChunk);
+    const outcome = await runChatMessage(grounding?.promptText ?? text, ctx.history, onChunk);
     if (outcome.ok) {
       ctx.history = outcome.history;
+      const displayOut = grounding ? appendSearxngSources(outcome.out, grounding.sources) : outcome.out;
       if (this.#db) {
         try {
           const now = Date.now();
           if (ctx.sessionId === null) ctx.sessionId = this.#createSession(text, now);
           this.#appendMessage(ctx.sessionId, 'user', text, now);
-          this.#appendMessage(ctx.sessionId, 'assistant', outcome.out, now);
+          this.#appendMessage(ctx.sessionId, 'assistant', displayOut, now);
           this.#touchSession(ctx.sessionId, ctx.history, now);
         } catch (e) {
           console.warn('[HubChat] sendMessage persist error:', (e as Error).message);
         }
       }
+      return { outcome: { ...outcome, out: displayOut }, sessionId: ctx.sessionId };
     }
     return { outcome, sessionId: ctx.sessionId };
   }

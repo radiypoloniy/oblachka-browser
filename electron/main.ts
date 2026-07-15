@@ -17,12 +17,13 @@ import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
 import { SettingsManager } from './SettingsManager';
 import { HubChatManager } from './HubChatManager';
+import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, TranslationEngineId, BergamotStatus } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
-import { warmup as warmupTranslation } from './TranslationService';
+import { warmup as warmupTranslation, type ChatOutcome } from './TranslationService';
 import { toggleAiPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
 import {
   togglePageTranslate,
@@ -738,17 +739,38 @@ function registerIpc() {
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
   // send — fire-and-forget (не invoke): ответ идёт стримом чанков + финальным результатом,
   // так проще, чем тащить длинный запрос через invoke (тот же приём, что у AI-панели).
-  ipcMain.on(IPC.HUB_CHAT_SEND, (_e, payload: { tabId: string; text: string }) => {
-    const { tabId, text } = payload;
-    void (async () => {
-      const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, (chunkText) => {
-        chromeView?.webContents.send(IPC.HUB_CHAT_CHUNK, { tabId, text: chunkText });
-      });
+  ipcMain.on(IPC.HUB_CHAT_SEND, (_e, payload: { tabId: string; text: string; grounding: boolean }) => {
+    const { tabId, text, grounding } = payload;
+    const sendResult = (sessionId: number | null, outcome: ChatOutcome) => {
       chromeView?.webContents.send(IPC.HUB_CHAT_RESULT, {
         tabId,
         sessionId,
         outcome: outcome.ok ? { ok: true, out: outcome.out } : { ok: false, error: outcome.error },
       });
+    };
+    const onChunk = (chunkText: string) => {
+      chromeView?.webContents.send(IPC.HUB_CHAT_CHUNK, { tabId, text: chunkText });
+    };
+    void (async () => {
+      // Web-grounding (SearXNG) — ОТДЕЛЬНАЯ ветка перед обычным путём ниже, целиком независимая
+      // (тот же приём, что в AiPanelManager.ts::ai-panel:chat-send): риск сломать обычный
+      // хаб-чат/персистентность сессий сведён к этому одному if с ранним return, сам обычный
+      // путь (hubChat.sendMessage(tabId, text, onChunk) без 4-го аргумента) не тронут ни строкой.
+      // Нет извлечения страницы, в отличие от AI-панели — в Hub её физически нет (это не вкладка
+      // сайта), запрос = сырой текст пользователя как есть.
+      if (grounding) {
+        const search = await searxngSearch(text);
+        if (!search.ok) {
+          sendResult(null, { ok: false, error: search.error });
+          return;
+        }
+        const promptText = buildGroundingPrompt(text, search.results);
+        const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, { promptText, sources: search.results });
+        sendResult(sessionId, outcome);
+        return;
+      }
+      const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk);
+      sendResult(sessionId, outcome);
     })();
   });
   ipcMain.handle(IPC.HUB_CHAT_LIST_SESSIONS, () => hubChat.listSessions());

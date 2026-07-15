@@ -13,9 +13,10 @@ interface HubProps {
   tabId: string;
   onSubmit: (input: string) => void;
   onOpenHistory: () => void;
+  onOpenSettings: () => void;
 }
 
-export default function Hub({ tabId, onSubmit, onOpenHistory }: HubProps) {
+export default function Hub({ tabId, onSubmit, onOpenHistory, onOpenSettings }: HubProps) {
   const [tiles, setTiles] = useState<TileSite[]>([]);
   const [mode, setMode] = useState<HubMode>('tiles');
 
@@ -53,7 +54,7 @@ export default function Hub({ tabId, onSubmit, onOpenHistory }: HubProps) {
     }}>
       {mode === 'tiles'
         ? <TilesView tiles={tiles} onSubmit={onSubmit} onOpenHistory={onOpenHistory} mode={mode} onModeChange={pickMode} />
-        : <AiChatView tabId={tabId} mode={mode} onModeChange={pickMode} />}
+        : <AiChatView tabId={tabId} mode={mode} onModeChange={pickMode} onOpenSettings={onOpenSettings} />}
     </div>
   );
 }
@@ -239,7 +240,9 @@ const QUICK_PROMPTS: { icon: LucideIcon; text: string }[] = [
   { icon: Utensils, text: 'Как правильно питаться?' },
 ];
 
-function AiChatView({ tabId, mode, onModeChange }: { tabId: string; mode: HubMode; onModeChange: (m: HubMode) => void }) {
+function AiChatView({ tabId, mode, onModeChange, onOpenSettings }: {
+  tabId: string; mode: HubMode; onModeChange: (m: HubMode) => void; onOpenSettings: () => void;
+}) {
   const [sessions, setSessions] = useState<HubChatSessionMeta[]>([]);
   const [messages, setMessages] = useState<HubChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<number | null>(null);
@@ -249,6 +252,15 @@ function AiChatView({ tabId, mode, onModeChange }: { tabId: string; mode: HubMod
   const [error, setError] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Web-grounding (SearXNG) — та же капсула/поведение, что в aipanel.tsx, но СВОЙ локальный стейт:
+  // хаб и AI-панель — разные процессы (Hub рисуется в общем chrome-webContents, панель — в своей
+  // WebContentsView), общей памяти между ними нет физически. Статус конфига читаем напрямую через
+  // window.oblako (Hub уже в том же renderer, что Settings.tsx — не нужен отдельный preload-мост,
+  // как у панели). Консент — каждый раз при OFF→ON, без «запомнить» (тот же принцип, что в панели).
+  const [webGroundingActive, setWebGroundingActive] = useState(false);
+  const [searxngConfigured, setSearxngConfigured] = useState(false);
+  const [showWebGroundingConfirm, setShowWebGroundingConfirm] = useState(false);
+  const [webSearching, setWebSearching] = useState(false);
 
   const refreshSessions = () => {
     window.oblako.listHubChatSessions().then(setSessions).catch(() => { /* без персистентности — список пуст */ });
@@ -256,16 +268,25 @@ function AiChatView({ tabId, mode, onModeChange }: { tabId: string; mode: HubMod
 
   useEffect(refreshSessions, []);
 
+  useEffect(() => {
+    let mounted = true;
+    window.oblako.getSearxngStatus().then((v) => { if (mounted) setSearxngConfigured(v); });
+    const unsub = window.oblako.onSearxngStatusChanged((v) => { if (mounted) setSearxngConfigured(v); });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
   // Стриминг ответа — чанки и финальный результат маршрутизируются по tabId (main шлёт их всем
   // Hub-вкладкам разом через chromeView.webContents, т.к. Hub — не отдельная WebContentsView).
   useEffect(() => {
     const unsubChunk = window.oblako.onHubChatChunk((payload) => {
       if (payload.tabId !== tabId) return;
+      setWebSearching(false);
       setStreamText((prev) => prev + payload.text);
     });
     const unsubResult = window.oblako.onHubChatResult((payload) => {
       if (payload.tabId !== tabId) return;
       setStreaming(false);
+      setWebSearching(false);
       setStreamText('');
       if (payload.outcome.ok) {
         const out = payload.outcome.out;
@@ -293,7 +314,20 @@ function AiChatView({ tabId, mode, onModeChange }: { tabId: string; mode: HubMod
     setStreaming(true);
     setStreamText('');
     setError(null);
-    window.oblako.sendHubChatMessage(tabId, trimmed);
+    setWebSearching(webGroundingActive);
+    window.oblako.sendHubChatMessage(tabId, trimmed, webGroundingActive);
+  };
+
+  // Глобус — тот же контур, что в aipanel.tsx: не настроено → в настройки, ничего не включаем;
+  // выключен → плашка согласия (каждый раз, без «запомнить»); включён → гасим молча.
+  const handleGlobeClick = () => {
+    if (!searxngConfigured) { onOpenSettings(); return; }
+    if (webGroundingActive) { setWebGroundingActive(false); return; }
+    setShowWebGroundingConfirm(true);
+  };
+  const confirmWebGrounding = () => {
+    setShowWebGroundingConfirm(false);
+    setWebGroundingActive(true);
   };
 
   const newChat = () => {
@@ -362,7 +396,11 @@ function AiChatView({ tabId, mode, onModeChange }: { tabId: string; mode: HubMod
         }}>
           {messages.map((m, i) => <MessageBubble key={i} message={m} />)}
           {streaming && (
-            <MessageBubble message={{ role: 'assistant', text: streamText, createdAt: Date.now() }} pending />
+            <MessageBubble
+              message={{ role: 'assistant', text: streamText, createdAt: Date.now() }}
+              pending
+              placeholderText={webSearching ? 'Ищу в интернете…' : '…'}
+            />
           )}
         </div>
       )}
@@ -373,12 +411,72 @@ function AiChatView({ tabId, mode, onModeChange }: { tabId: string; mode: HubMod
         </div>
       )}
 
+      {/* Плашка согласия на web-grounding — та же механика/текст, что в aipanel.tsx (свой стейт,
+          свой процесс, но идентичное поведение и формулировка не путают пользователя разницей
+          между хабом и панелью). Обязательна при каждом OFF→ON, без «запомнить». */}
+      {showWebGroundingConfirm && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 8,
+          padding: '10px 12px',
+          borderRadius: 'var(--radius-chip)',
+          background: 'var(--surface-sunken)',
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
+            Запросы поиска будут отправлены на твой поисковый сервер через VPN.
+          </span>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => setShowWebGroundingConfirm(false)}
+              style={{
+                padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
+                background: 'transparent', color: 'var(--text-muted)',
+                fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer',
+              }}
+            >
+              Отмена
+            </button>
+            <button
+              onClick={confirmWebGrounding}
+              style={{
+                padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
+                background: 'var(--accent)', color: 'var(--on-accent)',
+                fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Продолжить
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{
         flex: 'none', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '12px 14px',
         background: 'var(--surface-solid)',
         borderRadius: 'var(--radius-island)', boxShadow: 'var(--shadow-card)',
         border: '1px solid var(--glass-edge)',
       }}>
+        <button
+          onClick={handleGlobeClick}
+          title={
+            !searxngConfigured
+              ? 'Веб-поиск не настроен — открыть настройки'
+              : webGroundingActive
+                ? 'Веб-поиск включён — нажмите, чтобы выключить'
+                : 'Включить веб-поиск (SearXNG)'
+          }
+          style={{
+            flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 36, height: 36,
+            background: webGroundingActive ? 'var(--accent-soft)' : 'transparent',
+            border: webGroundingActive ? '1.5px solid var(--accent)' : '1.5px solid transparent',
+            borderRadius: '50%',
+            color: webGroundingActive ? 'var(--accent)' : 'var(--text-faint)',
+            cursor: 'pointer', padding: 0,
+          }}
+        >
+          <Globe size={16} strokeWidth={2} />
+        </button>
         <textarea
           ref={textareaRef}
           value={input}
@@ -504,7 +602,9 @@ function QuickPromptChip({ icon: Icon, text, onClick }: { icon: LucideIcon; text
 // Пузырь — var(--surface-sunken) (тема-зависимый: тёмная уже сплошная, светлая полупрозрачная)
 // + бордер var(--divider) — на текущем почти-белом --app-bg одной полупрозрачной заливки
 // недостаточно, граница гарантирует видимость пузыря в обеих темах без хардкода цвета.
-function MessageBubble({ message, pending }: { message: HubChatMessage; pending?: boolean }) {
+function MessageBubble({ message, pending, placeholderText = '…' }: {
+  message: HubChatMessage; pending?: boolean; placeholderText?: string;
+}) {
   if (message.role === 'user') {
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -524,7 +624,7 @@ function MessageBubble({ message, pending }: { message: HubChatMessage; pending?
   return (
     <div style={{ width: '100%', opacity: showPlaceholder ? 0.6 : 1 }}>
       {showPlaceholder
-        ? <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-faint)' }}>…</span>
+        ? <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-faint)' }}>{placeholderText}</span>
         : <ReactMarkdown components={markdownComponents}>{message.text}</ReactMarkdown>}
     </div>
   );
