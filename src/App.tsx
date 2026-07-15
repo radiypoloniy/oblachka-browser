@@ -618,7 +618,7 @@ export default function App() {
             до края окна; при открытой — 0, потому что зазор до AI-острова теперь целиком
             в DOM-хэндле (ISLAND_GAP, ниже), лишние 12px тут были бы паразитной прибавкой. */}
         <div ref={contentRef} style={{
-          flex: 1, minHeight: 0, position: 'relative',
+          flex: 1, minWidth: 0, minHeight: 0, position: 'relative',
           marginTop: 'var(--gutter-shell)', marginBottom: 'var(--gutter-shell)', marginLeft: 'var(--gutter-shell)',
           marginRight: aiPanelOpen ? 0 : SHELL_MARGIN,
         }}>

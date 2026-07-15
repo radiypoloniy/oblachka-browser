@@ -210,7 +210,7 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
           {query ? 'Ничего не найдено' : 'Нет закладок'}
         </div>
       ) : (
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px' }}>
+        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}>
           {filtered.map((entry) => (
             <BookmarkRow key={entry.id} entry={entry} onDelete={handleDelete} />
           ))}
@@ -252,13 +252,15 @@ function BookmarkRow({ entry, onDelete }: { entry: BookmarkEntry; onDelete: (id:
       </span>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6 }}>
         <span style={{
+          flex: 1, minWidth: 0,
           fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {entry.title || entry.url}
         </span>
         <span style={{
-          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flexShrink: 3,
+          flexShrink: 3, minWidth: 0,
+          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {domain}

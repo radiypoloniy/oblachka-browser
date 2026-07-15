@@ -355,7 +355,7 @@ export default function History({ onClose }: HistoryProps) {
         </div>
       ) : smartResultsShown ? (
         // Умный поиск — плоский список в порядке релевантности (см. комментарий у smartResultsShown).
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px' }}
+        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}
           onClick={() => { if (clearOpen) setClearOpen(false); }}
         >
           {entries.map((entry) => (
@@ -388,7 +388,7 @@ export default function History({ onClose }: HistoryProps) {
               </button>
             ))}
           </nav>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px' }}
+          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}
             onClick={() => { if (clearOpen) setClearOpen(false); }}
           >
             {dayGroups.map((group) => (
@@ -456,13 +456,15 @@ function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: str
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
             <span style={{
+              flex: 1, minWidth: 0,
               fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {entry.title || entry.url}
             </span>
             <span style={{
-              fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flexShrink: 3,
+              flexShrink: 3, minWidth: 0,
+              fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {domain}
