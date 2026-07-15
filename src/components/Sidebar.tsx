@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Clock, Star, ChevronRight, ChevronDown, Sparkles, RotateCcw } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw } from 'lucide-react';
 import type { ClusterProposal } from '../services/ClusteringService';
 import {
   DndContext, DragOverlay,
@@ -42,8 +42,9 @@ interface SidebarProps {
   onSplit: (id: string) => void;
   onExitSplit: () => void;
   onSettings: () => void;
+  // История и Закладки объединены в одну точку входа (HistoryBookmarks.tsx) — одна иконка,
+  // всегда открывает секцию «История» (дефолт), переключение на «Закладки» — уже внутри панели.
   onHistory: () => void;
-  onBookmarks: () => void;
   onReorder: (section: 'normal' | 'pinned', orderedIds: string[]) => void;
   onMoveSection: (tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number) => void;
   getContentRect: () => DOMRect | null;
@@ -638,7 +639,7 @@ const floatingIconBtn: React.CSSProperties = {
 export default function Sidebar({
   tabs, sidebarNodes, activeId, collapsed, onCollapsedChange,
   onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit,
-  onSettings, onHistory, onBookmarks, onReorder, onMoveSection,
+  onSettings, onHistory, onReorder, onMoveSection,
   getContentRect, onDragOverContent, onDropOnContent,
   organizeTabsCount, organizeState, organizeProposal,
   hasOrganizeSnapshot, onOrganize, onOrganizeApply, onOrganizeCancel, onOrganizeRollback,
@@ -954,8 +955,7 @@ export default function Sidebar({
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
           ><Plus size={17} /></button>
-          <button className="icon-btn" title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
-          <button className="icon-btn" title="Закладки" style={iconBtn} onClick={onBookmarks}><Star size={17} /></button>
+          <button className="icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
           <button className="icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
         </div>
       </aside>
@@ -1264,8 +1264,7 @@ export default function Sidebar({
           <Plus size={17} />
           <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>Новая вкладка</span>
         </button>
-        <button className="no-drag icon-btn" title="История" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
-        <button className="no-drag icon-btn" title="Закладки" style={iconBtn} onClick={onBookmarks}><Star size={17} /></button>
+        <button className="no-drag icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
         <button className="no-drag icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
       </div>
     </aside>

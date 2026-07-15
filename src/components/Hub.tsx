@@ -94,7 +94,10 @@ function ModeToggle({ mode, onChange }: { mode: HubMode; onChange: (m: HubMode) 
   );
 }
 
-function ModeButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: JSX.Element; label: string }) {
+// Экспортирован — переиспользуется в HistoryBookmarks.tsx (переключатель История ⇄ Закладки),
+// та же капсула-кнопка, что и здесь у «Обзор/AI». Сам ModeToggle выше — нет, он завязан на
+// HubMode (два конкретных значения), под другие пары значений не подходит без переписывания.
+export function ModeButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: JSX.Element; label: string }) {
   return (
     <button
       onClick={onClick}
