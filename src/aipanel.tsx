@@ -455,17 +455,20 @@ function AiPanel() {
                   style={{
                     padding: '6px 12px',
                     borderRadius: 'var(--radius-chip)',
-                    border: 'none',
-                    // var(--shadow-chip) — та же лёгкая тень, что у чипов/карточек в остальном
-                    // хроме (tokens/shadows.css), не подобрана заново: иначе кнопки сливались
-                    // с фоном острова (тот же тон var(--surface-sunken)).
-                    background: 'var(--surface-sunken)',
+                    // Белая парящая кнопка — тот же принцип, что у поля ввода ниже (surface-solid +
+                    // glass-edge), просто мельче и с --shadow-chip вместо --shadow-card (для
+                    // чипа-кнопки уместнее лёгкая тень, не островная). Раньше сидела на
+                    // --surface-sunken (серая в покое внутри уже белой панели) без hover вообще.
+                    border: '1px solid var(--glass-edge)',
+                    background: 'var(--surface-solid)',
                     boxShadow: 'var(--shadow-chip)',
                     color: 'var(--text-body)',
                     fontSize: 'var(--fs-xs)', fontWeight: 500,
                     cursor: tabId ? 'pointer' : 'default',
                     opacity: tabId ? 1 : 0.5,
                   }}
+                  onMouseEnter={(e) => { if (tabId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
                 >
                   {qa.label}
                 </button>
@@ -482,14 +485,16 @@ function AiPanel() {
                     display: 'inline-flex', alignItems: 'center', gap: 5,
                     padding: '6px 12px',
                     borderRadius: 'var(--radius-chip)',
-                    border: 'none',
-                    background: 'var(--surface-sunken)',
+                    border: '1px solid var(--glass-edge)',
+                    background: 'var(--surface-solid)',
                     boxShadow: 'var(--shadow-chip)',
                     color: 'var(--text-body)',
                     fontSize: 'var(--fs-xs)', fontWeight: 500,
                     cursor: tabId ? 'pointer' : 'default',
                     opacity: tabId ? 1 : 0.5,
                   }}
+                  onMouseEnter={(e) => { if (tabId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
                 >
                   <SearchCheck size={13} /> Фактчек
                 </button>
