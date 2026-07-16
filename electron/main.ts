@@ -39,7 +39,7 @@ import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, onFirstLoad as onSuggestDropdownFirstLoad, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
-import { initVpnPopover, showVpnPopover, closeVpnPopover, syncVpnPopoverAnchorBounds, syncVpnPopoverActiveUrl } from './VpnPopoverManager';
+import { initVpnPopover, showVpnPopover, closeVpnPopover, syncVpnPopoverAnchorBounds, syncVpnPopoverActiveUrl, broadcastVpnState } from './VpnPopoverManager';
 import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
 import * as searxngKeyStore from './SearxngKeyStore';
@@ -855,7 +855,11 @@ function registerIpc() {
   vpnProcess.onStateChange((_state, error) => {
     lastVpnError = error;
     applyVpnProxy();
-    chromeView?.webContents.send(IPC.VPN_CONNECTION_STATE_CHANGED, vpnConnectionState());
+    // Второй получатель того же снапшота, не замена chromeView — поповер сам решает (broadcastVpnState),
+    // слать ли ему дальше, в зависимости от того, жив он/открыт ли сейчас.
+    const connState = vpnConnectionState();
+    chromeView?.webContents.send(IPC.VPN_CONNECTION_STATE_CHANGED, connState);
+    broadcastVpnState(connState);
   });
   applyVpnProxy(); // детерминированная база на старте — 'stopped' → direct, а не implicit-дефолт Electron
 

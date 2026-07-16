@@ -1,12 +1,14 @@
 // Поповер VPN у тулбарной пилюли — тот же приём, что PasswordPopoverManager.ts (отдельная
 // прозрачная WebContentsView поверх страницы: DOM внутри Toolbar не подходит, нативный
-// WebContentsView страницы перекрывает его независимо от z-index). Отличие от паролей: этому
-// поповеру не нужен "state" на входе — список серверов/статус подключения он сам запрашивает
-// через свой preload при показе (см. preload-vpnpopover.ts), main ничего не решает и не толкает.
+// WebContentsView страницы перекрывает его независимо от z-index). Список серверов/статус
+// подключения на показ он запрашивает сам через свой preload (см. preload-vpnpopover.ts) —
+// но живые апдейты, пока уже открыт, main всё же толкает явно (см. broadcastVpnState ниже):
+// иначе подсветка подключённого сервера обновлялась бы только при следующем открытии.
 import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
-import type { ContentBounds } from '../shared/ipc';
+import type { ContentBounds, VpnConnectionState } from '../shared/ipc';
+import { IPC } from '../shared/ipc';
 
 const POPOVER_WIDTH = 300;
 const INITIAL_HEIGHT = 160;
@@ -128,6 +130,20 @@ export function showVpnPopover(win: BrowserWindow): void {
 export function syncVpnPopoverActiveUrl(url: string): void {
   lastActiveUrl = url;
   if (popoverLoaded) popoverView?.webContents.send('vpn-popover:active-url', url);
+}
+
+// Живой пуш статуса подключения в саму вью поповера — до этого коммита сюда шёл только в
+// chromeView (main.ts::vpnProcess.onStateChange), а preload-vpnpopover.ts::onVpnConnectionStateChanged
+// слушал этот же канал, но никто в эту WebContentsView никогда не слал: подсветка активного
+// сервера обновлялась только на следующем открытии (onShow → повторный getVpnConnectionState()).
+// Инкапсуляция: main зовёт эту функцию, а не тянет popoverView наружу — сам менеджер решает,
+// жива ли вью (не destroyed — иначе крэш на send в мёртвый webContents) и показана ли она сейчас
+// (isOpen — нет смысла толкать в закрытую, следующий showVpnPopover() и так подтянет свежее
+// через onShow; popoverLoaded — до первого did-finish-load слушателя на renderer-стороне ещё нет).
+export function broadcastVpnState(state: VpnConnectionState): void {
+  if (!popoverView || popoverView.webContents.isDestroyed()) return;
+  if (!isOpen || !popoverLoaded) return;
+  popoverView.webContents.send(IPC.VPN_CONNECTION_STATE_CHANGED, state);
 }
 
 export function closeVpnPopover(): void {
