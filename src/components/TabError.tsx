@@ -1,5 +1,6 @@
 import { AlertTriangle, WifiOff, Globe, RotateCcw } from 'lucide-react';
 import type { TabErrorState } from '../../shared/ipc';
+import { islandPlate } from '../styles/island';
 
 interface Props {
   error: TabErrorState;
@@ -35,12 +36,8 @@ export default function TabError({ error, url, onRetry }: Props) {
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
         padding: '32px 40px',
-        background: 'var(--surface)',
-        backdropFilter: 'var(--glass-filter)',
-        WebkitBackdropFilter: 'var(--glass-filter)',
+        ...islandPlate,
         borderRadius: 'var(--radius-card)',
-        boxShadow: 'var(--shadow-card)',
-        border: '1px solid var(--glass-edge)',
         maxWidth: 420, textAlign: 'center',
       }}>
         <Icon size={36} color="var(--text-faint)" strokeWidth={1.5} />

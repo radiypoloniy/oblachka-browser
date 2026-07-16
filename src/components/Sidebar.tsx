@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw } from 'lucide-react';
 import type { ClusterProposal } from '../services/ClusteringService';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
+import { glassPlate, islandPlate } from '../styles/island';
 import {
   DndContext, DragOverlay,
   PointerSensor, useSensor, useSensors,
@@ -627,22 +628,16 @@ const asideBase: React.CSSProperties = {
   flex: 'none', display: 'flex', flexDirection: 'column',
   margin: 'var(--gutter-shell) 0 var(--gutter-shell) var(--gutter-shell)',
   borderRadius: 'var(--radius-island)',
-  background: 'var(--surface-island)',
-  backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
-  boxShadow: 'var(--shadow-island)',
+  ...glassPlate({ surface: 'surface-island', shadow: 'shadow-island', border: false }),
   overflow: 'hidden',
 };
 
 // Внутренние «плашки» сайдбара (пины / нижние утилиты) — парят уже ВНУТРИ острова
 // сайдбара, поэтому по вложенности это card-уровень, не island-уровень (см. radii.css).
-// Параметры стекла/тени/скругления не подбираются заново — те же, что уже отлажены
-// в FindBar/Hub/TabError (--surface + --glass-filter + --radius-card + --shadow-card).
+// Совпадает с islandPlate + radius-card — те же параметры, что уже отлажены в FindBar/Hub/TabError.
 const innerPlate: React.CSSProperties = {
-  background: 'var(--surface)',
-  backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
+  ...islandPlate,
   borderRadius: 'var(--radius-card)',
-  boxShadow: 'var(--shadow-card)',
-  border: '1px solid var(--glass-edge)',
 };
 
 // Маленький квадратный «остров» под одну иконку: кнопка сворачивания сайдбара

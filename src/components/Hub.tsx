@@ -8,6 +8,7 @@ import { getTopSites } from '../../shared/frecency';
 import type { TileSite } from '../../shared/frecency';
 import type { HubChatMessage, HubChatSessionMeta, HubMode } from '../../shared/ipc';
 import { markdownComponents } from './aiMarkdown';
+import { glassPlate } from '../styles/island';
 
 interface HubProps {
   tabId: string;
@@ -178,12 +179,8 @@ function TileCard({ site, onClick }: { site: TileSite; onClick: () => void }) {
       style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
         padding: '14px 10px',
-        background: 'var(--surface-island)',
-        backdropFilter: 'var(--glass-filter)',
-        WebkitBackdropFilter: 'var(--glass-filter)',
+        ...glassPlate({ surface: 'surface-island' }),
         borderRadius: 'var(--radius-card)',
-        boxShadow: 'var(--shadow-card)',
-        border: '1px solid var(--glass-edge)',
         cursor: 'default',
         minWidth: 0,
         transition: 'box-shadow 0.15s, transform 0.1s',
@@ -582,9 +579,8 @@ function QuickPromptChip({ icon: Icon, text, onClick }: { icon: LucideIcon; text
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px',
-        background: 'var(--surface-island)',
-        backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
-        border: '1px solid var(--glass-edge)', borderRadius: 'var(--radius-pill)',
+        ...glassPlate({ surface: 'surface-island', shadow: null }),
+        borderRadius: 'var(--radius-pill)',
         color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default',
       }}
       onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
