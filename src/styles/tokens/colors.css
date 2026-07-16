@@ -64,28 +64,38 @@
   --on-accent:         var(--white);
 
   /* ── Canvas ──────────────────────────────────────────────────────
-     The luminous ground liquid glass refracts. NOT a flat fill — a single
-     tint bloom (заход 3: violet/pink blooms убраны вместе с ролью
-     облако/система — этих цветов больше нет в палитре) over a near-white
-     base. Apply --canvas as a background-image on the app shell / specimen bg. */
-  --app-bg:   #F7FBFC;  /* едва заметный холодный бирюзовый оттенок белого — не плоский #FFFFFF */
+     Этап B (светлый непрозрачный каскад): --app-bg раньше был «едва заметный холодный
+     бирюзовый оттенок белого» — почти неотличим от белых островов, весь контраст острова
+     держался на блюре. Теперь заметно серее самих островов (см. --surface ниже) — острова
+     читаются каскадом светлоты, блюр (пока) остаётся сверху вторым слоем контраста, Этап C
+     его погасит. Apply --canvas as a background-image on the app shell / specimen bg. */
+  --app-bg:   #EEF1F4;  /* заметно серее #FFFFFF-островов — видимый шаг каскада, не сливается */
   --canvas:
     radial-gradient(135% 130% at 10% 4%,  rgba(34,128,197,0.14), transparent 52%),
     var(--app-bg);
 
   /* ── Liquid glass fills ──────────────────────────────────────────
      Translucent white plates that frost the canvas behind them. Pair
-     with --glass-blur + --shadow-glass (specular edge lives in shadow). */
+     with --glass-blur + --shadow-glass (specular edge lives in shadow).
+     Этап B: --surface/--surface-island больше НЕ читают эти токены (см. ниже, отдельные
+     непрозрачные значения) — --glass-fill* остаются как есть, но потребителей у них
+     теперь нет (Этап C добьёт --glass-filter, тогда эта секция станет полностью мёртвой). */
   --glass-fill:        rgba(255,255,255,0.52);  /* shell islands, input plate, menus */
   --glass-fill-strong: rgba(255,255,255,0.66);  /* dropdowns / scrims needing more body */
 
-  --surface:           rgba(255,255,255,0.66);  /* content cards, button plates, segmented */
-  --surface-island:    var(--glass-fill);       /* floating glass islands */
-  --surface-sunken:    rgba(255,255,255,0.34);  /* recessed wells (omnibox, chip track) */
-  /* Этап 1: hover/active — затемняющий чёрный слой, не белила-на-белилах. Островá и так уже
-     полупрозрачно-белые (--surface/--surface-sunken) поверх блюра — доп. белый слой той же
-     природы почти не даёт контраста (складываются два похожих полупрозрачных слоя). Чёрный
-     слой контрастирует с любым фоном под блюром и не спорит с блюром острова. active заметно
+  /* Этап B: непрозрачный каскад светлоты вместо полупрозрачных белил-на-блюре — тот же
+     принцип, что в dark (app-bg темнее всего → sunken → surface, лестница ступеней видна
+     без всякого блюра). surface-sunken — «утопленный» колодец: чуть темнее самого app-bg
+     (не между app-bg и surface, как в dark — по задумке брифа для light: колодец темнее
+     и окна, и острова, читается как выемка, а не как промежуточная ступень). */
+  --surface:           #FFFFFF;                 /* content cards, button plates, segmented */
+  --surface-island:    #FFFFFF;                 /* floating glass islands — Этап B: больше не алиас на --glass-fill */
+  --surface-sunken:    #E7EAED;                 /* recessed wells (omnibox, chip track) */
+  /* Этап 1: hover/active — затемняющий чёрный слой, не белила-на-белилах. На момент Этапа 1
+     --surface/--surface-sunken были полупрозрачно-белыми поверх блюра — доп. белый слой той
+     же природы почти не давал контраста (два похожих полупрозрачных слоя друг на друге).
+     Этап B перевёл сами --surface/--surface-sunken на непрозрачный каскад — черный hover/active
+     работает так же и здесь, просто снизу теперь сплошной цвет, а не блюр. active заметно
      темнее hover, но не чёрный. */
   --surface-hover:     rgba(0,0,0,0.05);
   --surface-active:    rgba(0,0,0,0.09);
