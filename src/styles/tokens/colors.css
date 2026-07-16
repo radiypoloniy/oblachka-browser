@@ -64,12 +64,10 @@
   --on-accent:         var(--white);
 
   /* ── Canvas ──────────────────────────────────────────────────────
-     Этап B (светлый непрозрачный каскад): --app-bg раньше был «едва заметный холодный
-     бирюзовый оттенок белого» — почти неотличим от белых островов, весь контраст острова
-     держался на блюре. Теперь заметно серее самих островов (см. --surface ниже) — острова
-     читаются каскадом светлоты, блюр (пока) остаётся сверху вторым слоем контраста, Этап C
-     его погасит. Apply --canvas as a background-image on the app shell / specimen bg. */
-  --app-bg:   #EEF1F4;  /* заметно серее #FFFFFF-островов — видимый шаг каскада, не сливается */
+     Коммит 1 (Apple Grouped-каскад): --app-bg — Apple Grouped Background, чуть теплее-
+     нейтральнее прежнего голубоватого #EEF1F4 (тот же принцип, что и раньше — заметно серее
+     белых островов). Apply --canvas as a background-image on the app shell / specimen bg. */
+  --app-bg:   #F2F2F7;  /* Apple Grouped Background — заметно серее #FFFFFF-островов */
   --canvas:
     radial-gradient(135% 130% at 10% 4%,  rgba(34,128,197,0.14), transparent 52%),
     var(--app-bg);
@@ -87,10 +85,12 @@
      принцип, что в dark (app-bg темнее всего → sunken → surface, лестница ступеней видна
      без всякого блюра). surface-sunken — «утопленный» колодец: чуть темнее самого app-bg
      (не между app-bg и surface, как в dark — по задумке брифа для light: колодец темнее
-     и окна, и острова, читается как выемка, а не как промежуточная ступень). */
+     и окна, и острова, читается как выемка, а не как промежуточная ступень).
+     Коммит 1: surface-sunken — Apple System Gray 5 (#E5E5EA), остальные в этой связке уже
+     совпадали с Apple (белые острова = Apple Secondary Grouped) — не трогаем. */
   --surface:           #FFFFFF;                 /* content cards, button plates, segmented */
   --surface-island:    #FFFFFF;                 /* floating glass islands — Этап B: больше не алиас на --glass-fill */
-  --surface-sunken:    #E7EAED;                 /* recessed wells (omnibox, chip track) */
+  --surface-sunken:    #E5E5EA;                 /* recessed wells (omnibox, chip track) — Apple System Gray 5 */
   /* Этап 1: hover/active — затемняющий чёрный слой, не белила-на-белилах. На момент Этапа 1
      --surface/--surface-sunken были полупрозрачно-белыми поверх блюра — доп. белый слой той
      же природы почти не давал контраста (два похожих полупрозрачных слоя друг на друге).
