@@ -1,13 +1,15 @@
-import { app, session as electronSession, ipcMain, net } from 'electron';
+import { app, session as electronSession, ipcMain, net, webContents as electronWebContents } from 'electron';
 import type {
   OnBeforeRequestListenerDetails, CallbackResponse,
   OnHeadersReceivedListenerDetails, HeadersReceivedResponse,
   WebContents, IpcMainInvokeEvent,
 } from 'electron';
 import { ElectronBlocker } from '@ghostery/adblocker-electron';
+import type { Request as AdblockRequest } from '@ghostery/adblocker-electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AdBlockState } from '../shared/ipc';
+import { normalizeDomain } from '../shared/domain';
 
 type Database = import('better-sqlite3').Database;
 type BetterSqlite3 = typeof import('better-sqlite3');
@@ -37,6 +39,14 @@ export class AdBlockManager {
   #enabled = true;
   #whitelist = new Set<string>();
   #sessionBlockCount = 0;
+  // Разбивка блоков по домену активной страницы — ключ это Electron WebContents.id, НЕ строковый
+  // id вкладки из TabManager (у AdBlockManager нет и не должно быть зависимости от TabManager,
+  // здесь работаем только с тем, что уже даёт Ghostery Request — request.tabId, см. #recordBlock).
+  // "Сброс на новый домен" не пишется отдельным обработчиком навигации (не трогаем hot-path
+  // TabManager.did-navigate ради этого) — вместо этого запись самовосстанавливается: и на записи
+  // (recordBlock), и на чтении (getBlockedCountForDomain) домен сверяется с ЖИВЫМ webContents.getURL(),
+  // если он разошёлся с сохранённым — счётчик для этой вкладки считается нулевым/пересозданным.
+  #tabDomainCounts = new Map<number, { domain: string; count: number }>();
   readonly #settingsPath: string;
   readonly #enginePath: string;
   readonly #dbPath: string;
@@ -75,9 +85,9 @@ export class AdBlockManager {
 
     // Нативный коллбэк Ghostery на каждую заблокированную сеть-заявку — считаем и логируем,
     // чтобы при жалобах на конкретный сайт было видно, что именно резалось.
-    blocker.on('request-blocked', (request) => {
-      this.recordBlock();
-      console.log(`[AdBlock] blocked ${request.url}`);
+    blocker.on('request-blocked', (request: AdblockRequest) => {
+      const siteCount = this.recordBlock(request);
+      console.log(`[AdBlock] blocked ${request.url} (site: ${siteCount?.domain ?? '?'}, на сайте: ${siteCount?.count ?? '?'})`);
     });
 
     if (this.#enabled) {
@@ -128,9 +138,68 @@ export class AdBlockManager {
     this.#notify();
   }
 
-  recordBlock(): void {
+  // Для будущего поповера «Защита» (тумблер «отключить на этом сайте») — раньше вызывающей
+  // стороне приходилось тащить весь AdBlockState.whitelist и проверять .includes() самой
+  // (как делает Settings.tsx), здесь достаточно домена. Нормализуем вход тем же normalizeDomain,
+  // что и addDomain — можно передать как голый домен, так и полный URL страницы.
+  isWhitelisted(raw: string): boolean {
+    const domain = normalizeDomain(raw);
+    return !!domain && this.#whitelist.has(domain);
+  }
+
+  // request необязателен (обратная совместимость сигнатуры на случай прямого вызова без контекста
+  // страницы) — без него инкрементится только глобальный счётчик, per-site разбивка не пишется.
+  // Возвращает {domain, count} для лога вызывающей стороны — самим методом наружу это не отдаётся.
+  recordBlock(request?: AdblockRequest): { domain: string; count: number } | null {
     this.#sessionBlockCount++;
     this.#scheduleStatsPush();
+    if (!request) return null;
+    return this.#bumpTabDomainCount(request.tabId);
+  }
+
+  // Заблокировано на домене X ПРЯМО СЕЙЧАС (суммируется по всем вкладкам, чей ЖИВОЙ домен
+  // совпадает с запрошенным, — на случай если сайт открыт в нескольких вкладках одновременно).
+  // Каждая запись сверяется с webContents.getURL() на чтении — вкладка, ушедшая с этого домена
+  // (навигация/закрытие), в сумму не попадает, даже если ни одного блока на новой странице ещё
+  // не было (иначе счётчик показывал бы блоки СТАРОЙ страницы до первого блока на новой).
+  getBlockedCountForDomain(raw: string): number {
+    const domain = normalizeDomain(raw);
+    if (!domain) return 0;
+    let total = 0;
+    for (const tabId of this.#tabDomainCounts.keys()) {
+      const live = this.#liveDomainForTab(tabId);
+      if (live === domain) total += this.#tabDomainCounts.get(tabId)!.count;
+    }
+    return total;
+  }
+
+  // Домен, на который СЕЙЧАС смотрит вкладка с данным webContents.id, или null, если вкладка
+  // закрыта/выгружена или её URL не резолвится в домен (about:blank, oblako-chrome:// и т.п.).
+  #liveDomainForTab(tabId: number): string | null {
+    const wc = electronWebContents.fromId(tabId);
+    if (!wc || wc.isDestroyed()) return null;
+    return normalizeDomain(wc.getURL());
+  }
+
+  // Хот-пас (вызывается на каждый заблокированный запрос) — держим дешёвым: один lookup
+  // WebContents по id (без IPC), один Map.get/set. Регистрируем once('destroyed'), чтобы запись
+  // не копилась в памяти вечно после закрытия вкладки (Map иначе растёт на каждый уникальный
+  // webContents.id за всю сессию).
+  #bumpTabDomainCount(tabId: number): { domain: string; count: number } | null {
+    const domain = this.#liveDomainForTab(tabId);
+    if (!domain) return null;
+    let entry = this.#tabDomainCounts.get(tabId);
+    if (!entry) {
+      entry = { domain, count: 0 };
+      this.#tabDomainCounts.set(tabId, entry);
+      electronWebContents.fromId(tabId)?.once('destroyed', () => this.#tabDomainCounts.delete(tabId));
+    } else if (entry.domain !== domain) {
+      // Вкладка навигировала на новый домен с прошлого блока — старый счёт для неё не тащим.
+      entry.domain = domain;
+      entry.count = 0;
+    }
+    entry.count++;
+    return entry;
   }
 
   // ── Блокировка: свои перехватчики ПЕРЕД движком, whitelist = «не трогать сайт вообще» ──
@@ -356,17 +425,4 @@ function isValidSettings(v: unknown): v is PersistedSettings {
   if (typeof v !== 'object' || v === null) return false;
   const d = v as Record<string, unknown>;
   return typeof d['enabled'] === 'boolean';
-}
-
-// Нормализует ввод пользователя (или URL страницы) до голого hostname.
-// "https://www.Reddit.com/r/..." → "reddit.com"
-export function normalizeDomain(raw: string): string | null {
-  let s = raw.trim().toLowerCase();
-  if (!s) return null;
-  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
-  try {
-    let host = new URL(s).hostname;
-    if (host.startsWith('www.')) host = host.slice(4);
-    return host || null;
-  } catch { return null; }
 }

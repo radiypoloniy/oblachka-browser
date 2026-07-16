@@ -163,6 +163,12 @@ export const IPC = {
   ADBLOCK_REMOVE_DOMAIN:  'adblock:remove-domain',  // renderer → main: убрать из whitelist
   ADBLOCK_RELOAD_TABS:    'adblock:reload-tabs',    // renderer → main: перезагрузить вкладки (domain?: string)
   ADBLOCK_STATE_CHANGED:  'adblock:state-changed',  // main → renderer: новый AdBlockState (push)
+  // Заход «Защита» (шаг 2, без UI) — точечный геттер вместо всего AdBlockState.whitelist,
+  // домен → в исключениях ли он. Пока без потребителя в window.oblako — заберёт поповер VPN-пилюли
+  // через свой отдельный мост (см. preload-vpnpopover.ts), когда адблок-секция въедет туда.
+  ADBLOCK_IS_WHITELISTED: 'adblock:is-whitelisted', // renderer → main: домен (или URL) → boolean
+  // Заход «Защита» (шаг 3) — per-site счётчик из AdBlockManager.getBlockedCountForDomain (шаг 1).
+  ADBLOCK_GET_SITE_BLOCK_COUNT: 'adblock:get-site-block-count', // renderer → main: домен (или URL) → number
 
   // История посещений
   HISTORY_GET:    'history:get',     // renderer → main: последние N записей
