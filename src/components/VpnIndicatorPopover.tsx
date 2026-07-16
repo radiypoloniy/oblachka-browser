@@ -67,7 +67,13 @@ export default function VpnIndicatorPopover({ servers, connState, onConnect, onD
       )}
 
       {(isRunning || isError) && (
-        <button onClick={() => void handleDisconnect()} disabled={disconnecting} style={btnGhost}>
+        <button
+          onClick={() => void handleDisconnect()}
+          disabled={disconnecting}
+          style={btnGhost}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        >
           {disconnecting ? 'Отключение…' : 'Отключить'}
         </button>
       )}
@@ -85,7 +91,18 @@ export default function VpnIndicatorPopover({ servers, connState, onConnect, onD
                 key={s.id}
                 disabled={busyId !== null || isStarting}
                 onClick={() => void handleConnect(s.id)}
-                style={{ ...btnGhost, textAlign: 'left', display: 'flex', gap: 8, alignItems: 'center' }}
+                style={{
+                  ...btnGhost, textAlign: 'left', display: 'flex', gap: 8, alignItems: 'center',
+                  // Активная (подключённая/подключается) строка — тот же accent-soft, что уже
+                  // используется для «активно» в проекте (см. Toolbar.tsx::VpnPill activeBg) —
+                  // отдельного --surface-active токена в системе нет, переиспользуем существующий.
+                  background: active ? 'var(--accent-soft)' : 'transparent',
+                  // Строки кликабельны (выбор сервера) — house-конвенция cursor:'default' у btnGhost
+                  // здесь намеренно переопределена, иначе строки не читаются как интерактивные.
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--accent-soft)' : 'transparent'; }}
               >
                 {busyId === s.id
                   ? <Loader2 size={14} style={{ color: 'var(--accent)', flex: 'none', animation: 'oblako-spin 1s linear infinite' }} />
@@ -104,8 +121,13 @@ export default function VpnIndicatorPopover({ servers, connState, onConnect, onD
   );
 }
 
+// Чистый Ghost (см. референс дизайн-системы, Oblako Design System.htm: Ghost = border-style: none
+// во всех состояниях, только заливка фона меняется) — раньше здесь была постоянная рамка
+// var(--divider-strong) и НИКАКОГО hover, кнопки выглядели «мёртвыми». border убран, hover —
+// тот же паттерн inline onMouseEnter/onMouseLeave → var(--surface-hover), что уже используется
+// в Toolbar.tsx/Settings.tsx/History.tsx/Sidebar.tsx (не изобретаем новый).
 const btnGhost: React.CSSProperties = {
   padding: '7px 14px', borderRadius: 'var(--radius-sm)',
-  border: '1px solid var(--divider-strong)', background: 'transparent',
+  border: 'none', background: 'transparent',
   color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default', flex: 'none',
 };

@@ -28,6 +28,11 @@ let isOpen = false;
 // здесь нет payload для повторной отправки, поэтому переотправляем сам факт показа по флагу isOpen).
 let popoverLoaded = false;
 let onClosedCb: (() => void) | null = null;
+// Домен активной вкладки для адблок-секции (заход «Защита», шаг 3) — приходит от Toolbar через
+// syncVpnPopoverActiveUrl, форвардится во вью 'vpn-popover:active-url'. Держим последнее значение
+// в модуле (как lastAnchorBounds выше), чтобы showVpnPopover/did-finish-load могли переотправить
+// его вью, даже если сама вью на момент прихода URL ещё грузилась.
+let lastActiveUrl = '';
 
 export function initVpnPopover(onClosed: () => void): void {
   onClosedCb = onClosed;
@@ -87,7 +92,10 @@ function ensurePopoverView(): WebContentsView {
   popoverView.setBackgroundColor('#00000000');
   popoverView.webContents.once('did-finish-load', () => {
     popoverLoaded = true;
-    if (isOpen) popoverView?.webContents.send('vpn-popover:show');
+    if (isOpen) {
+      popoverView?.webContents.send('vpn-popover:show');
+      popoverView?.webContents.send('vpn-popover:active-url', lastActiveUrl);
+    }
   });
   popoverView.webContents.loadURL('oblako-chrome://localhost/vpnpopover.html');
   return popoverView;
@@ -106,7 +114,20 @@ export function showVpnPopover(win: BrowserWindow): void {
   // Попап сам подтягивает свежие данные при показе (см. preload-vpnpopover.ts::onShow) —
   // не нуждается в payload с сервера, в отличие от паролей (там main решает has-saved/offer-*).
   // На первом открытии страница ещё грузится — did-finish-load выше пошлёт сам, когда догрузится.
-  if (popoverLoaded) view.webContents.send('vpn-popover:show');
+  if (popoverLoaded) {
+    view.webContents.send('vpn-popover:show');
+    view.webContents.send('vpn-popover:active-url', lastActiveUrl);
+  }
+}
+
+// Домен активной вкладки для адблок-секции — Toolbar шлёт это ПЕРЕД showVpnPopover() при открытии
+// (см. Toolbar.tsx::toggleVpnPopover) и повторно при навигации в той же вкладке, пока поповер
+// открыт. lastActiveUrl обновляется независимо от isOpen/popoverLoaded — так к моменту, когда
+// showVpnPopover()/did-finish-load решат отправить URL во вью, значение уже свежее. Живой push
+// (пока поповер уже открыт и загружен) шлём сразу же, без ожидания следующего показа.
+export function syncVpnPopoverActiveUrl(url: string): void {
+  lastActiveUrl = url;
+  if (popoverLoaded) popoverView?.webContents.send('vpn-popover:active-url', url);
 }
 
 export function closeVpnPopover(): void {

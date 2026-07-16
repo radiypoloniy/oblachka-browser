@@ -39,7 +39,7 @@ import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, onFirstLoad as onSuggestDropdownFirstLoad, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
-import { initVpnPopover, showVpnPopover, closeVpnPopover, syncVpnPopoverAnchorBounds } from './VpnPopoverManager';
+import { initVpnPopover, showVpnPopover, closeVpnPopover, syncVpnPopoverAnchorBounds, syncVpnPopoverActiveUrl } from './VpnPopoverManager';
 import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
 import * as searxngKeyStore from './SearxngKeyStore';
@@ -665,6 +665,9 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.VPN_POPOVER_CLOSE, () => {
     closeVpnPopover();
+  });
+  ipcMain.handle(IPC.VPN_POPOVER_SET_ACTIVE_URL, (_e, url: string) => {
+    syncVpnPopoverActiveUrl(url);
   });
   // ВРЕМЕННЫЙ канал диагностики залипания дропдауна — см. preload.ts::ddlog. Удалить вместе с ним.
   ipcMain.on('dd-log', (_e, msg: string) => console.log(`[DD] ${msg}`));

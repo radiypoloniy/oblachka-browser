@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Ban, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star } from 'lucide-react';
 import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult, PasswordIndicatorState, PageTranslateState, PageTranslateProgress } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
-import { stripEmoji } from '../../shared/text';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
 import { islandPlate, islandBtn, navBtn } from '../styles/island';
@@ -66,14 +65,13 @@ type SuggestItem = SuggestDropdownItem;
 interface ToolbarProps {
   tab: TabState | undefined;
   allTabs: TabState[];
+  // Заливка щита пилюли «Защита» — реальный статус VPN (VpnConnectionState.state === 'running'),
+  // не захардкоженный плейсхолдер (см. живой аудит: фейковый лейбл, не привязанный к реальному
+  // состоянию, — это то самое ложное чувство защищённости, от которого fail-closed на шаге 3
+  // явно уходит). Название сервера в саму пилюлю больше не выводим (заход «Защита», шаг 4) —
+  // оно осталось внутри поповера (VpnIndicatorPopover.tsx), кнопка объединяет VPN + адблок и
+  // больше не размечена под конкретный сервер.
   vpnOn: boolean;
-  // Реальный remark подключённого сервера (VpnConnectionState.serverRemark) — не показываем
-  // ничего, пока не подключено, вместо захардкоженной страны-плейсхолдера (см. живой аудит:
-  // фейковый лейбл, не привязанный к реальному состоянию, — это то самое ложное чувство
-  // защищённости, от которого fail-closed на шаге 3 явно уходит).
-  vpnLabel: string | null;
-  adBlockOn: boolean;         // AdBlockState.enabled — источник в App.tsx (getAdBlockState/onAdBlockStateChanged)
-  onToggleAdBlock: () => void;
   dark: boolean;
   omniboxRef?: React.RefObject<HTMLInputElement>;
   onToggleDark: () => void;
@@ -96,7 +94,7 @@ interface ToolbarProps {
 export default function Toolbar({
   // dark/onToggleDark остаются в контракте пропсов (механизм темы не трогаем,
   // см. задачу) — сама кнопка убрана из разметки, поэтому здесь они не нужны.
-  tab, allTabs, vpnOn, vpnLabel, adBlockOn, onToggleAdBlock, omniboxRef: externalRef,
+  tab, allTabs, vpnOn, omniboxRef: externalRef,
   onBack, onForward, onReload, onSubmit, onSuggestToggle,
   downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel,
   pageTranslateState, pageTranslateProgress, onTogglePageTranslate,
@@ -398,8 +396,19 @@ export default function Toolbar({
     }
     pushVpnPopoverBounds();
     setVpnPopoverOpen(true);
+    // Домен активной вкладки — ДО showVpnPopover(), не после: адблок-секция поповера должна
+    // увидеть актуальный URL уже к моменту первого показа (см. VpnPopoverManager.ts::lastActiveUrl).
+    void window.oblako.setVpnPopoverActiveUrl(tab?.url ?? '');
     void window.oblako.showVpnPopover();
-  }, [closeDropdown, stopEditing, passwordPopoverOpen, vpnPopoverOpen, pushVpnPopoverBounds]);
+  }, [closeDropdown, stopEditing, passwordPopoverOpen, vpnPopoverOpen, pushVpnPopoverBounds, tab?.url]);
+
+  // Навигация в ТОЙ ЖЕ вкладке, пока поповер уже открыт (смена самой вкладки поповер закрывает
+  // целиком, см. эффект по tab?.id ниже) — адблок-секция должна обновиться на новый домен, а не
+  // показывать whitelist-статус/счётчик страницы, с которой уже ушли.
+  useEffect(() => {
+    if (!vpnPopoverOpen) return;
+    void window.oblako.setVpnPopoverActiveUrl(tab?.url ?? '');
+  }, [vpnPopoverOpen, tab?.url]);
 
   // ── Заход 5 (кардинальный фикс): закрытие БЕЗ blur ──────────────────────────────────────────
   // blur омнибокса — НЕ триггер закрытия (по образцу FindBar/поповера/AI-панели, см. BACKLOG.md:
@@ -1085,11 +1094,11 @@ export default function Toolbar({
         })()}
       </div>
 
-      {/* Правая группа: VPN-пилюля (схлопывается) + AI + адблок.
+      {/* Правая группа: пилюля «Защита» (VPN + адблок, схлопывается) + AI.
           marginLeft:auto прижимает к правому краю flex-контейнера. */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
         <div ref={vpnControlRef} style={{ display: 'inline-flex' }}>
-          <VpnPill vpnOn={vpnOn} vpnLabel={vpnLabel} mode={vpnMode} onClick={toggleVpnPopover} active={vpnPopoverOpen} />
+          <VpnPill vpnOn={vpnOn} mode={vpnMode} onClick={toggleVpnPopover} active={vpnPopoverOpen} />
         </div>
         {/* Полностраничный перевод (см. PageTranslateManager.ts) — только на реальной странице,
             на хабе/истории/настройках переводить нечего. idle: приглушённая иконка, как адблок
@@ -1122,16 +1131,6 @@ export default function Toolbar({
           style={islandBtn('var(--accent)', 'var(--accent-soft)')}>
           <Sparkles size={18} />
         </button>
-        {/* Тоггл адблока — глобальный AdBlockState.enabled (тот же тумблер, что в Settings →
-            Блокировка). Иконка всегда нейтральная (заход 3, новая дизайн-система): вкл/выкл
-            видно по подписи и настройкам, не по цвету щита — акцент не для постоянных состояний. */}
-        <button
-          title={adBlockOn ? 'Адблок включён' : 'Адблок выключен'}
-          onClick={onToggleAdBlock}
-          style={islandBtn(adBlockOn ? 'var(--text-body)' : 'var(--text-faint)')}
-        >
-          <Ban size={18} />
-        </button>
         {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки. Иконка нейтральная
             всегда (заход 3) — акцент не для постоянных/переключаемых состояний, только точка
             новой активности остаётся акцентной (единичное уведомление, не постоянный статус). */}
@@ -1154,14 +1153,15 @@ export default function Toolbar({
   );
 }
 
-// ── VPN-пилюля ───────────────────────────────────────────────────────────────
+// ── Пилюля «Защита» (VPN + адблок) ────────────────────────────────────────────
 
-function VpnPill({ vpnOn, vpnLabel, mode, onClick, active }: { vpnOn: boolean; vpnLabel: string | null; mode: VpnMode; onClick: () => void; active: boolean }) {
+// Открывает объединённый поповер «Защита» (VPN + адблок, см. vpnpopover.tsx) — раньше это была
+// VPN-специфичная пилюля с именем подключённого сервера в подписи; заход «Защита» (шаг 4) убрал
+// эту деталь из самой кнопки (осталась внутри поповера, VpnIndicatorPopover.tsx уже её показывает),
+// т.к. кнопка теперь не только про VPN. Заливка щита по-прежнему = статус VPN (единственный
+// сигнал, для которого у кнопки есть надёжный источник правды без похода в поповер).
+function VpnPill({ vpnOn, mode, onClick, active }: { vpnOn: boolean; mode: VpnMode; onClick: () => void; active: boolean }) {
   const shieldColor = vpnOn ? 'var(--dot-vpn)' : 'var(--text-faint)';
-  // Флаг-эмодзи в remark (🇳🇱, 🇩🇪…) не всегда рендерится Windows как один глиф — в узкой пилюле/
-  // поповере это давало налезание символов друг на друга (см. shared/text.ts::stripEmoji).
-  const cleanLabel = vpnLabel ? stripEmoji(vpnLabel) : null;
-  const fullLabel = vpnOn ? `VPN · ${cleanLabel ?? '…'}` : 'VPN выкл.';
   // Заливка самого щита зелёным при включённом VPN — вместо отдельной точки-индикатора рядом
   // (пользователь: «мне не нравится зеленая точка... почему бы просто не делать заливку щита»).
   const shieldIcon = <Shield size={15} style={{ color: shieldColor }} fill={vpnOn ? shieldColor : 'none'} />;
@@ -1174,7 +1174,7 @@ function VpnPill({ vpnOn, vpnLabel, mode, onClick, active }: { vpnOn: boolean; v
     return (
       <button
         onClick={onClick}
-        title={fullLabel}
+        title="Защита"
         style={{
           ...navBtn(false),
           ...islandPlate,
@@ -1188,44 +1188,24 @@ function VpnPill({ vpnOn, vpnLabel, mode, onClick, active }: { vpnOn: boolean; v
     );
   }
 
-  if (mode === 'short') {
-    // «VPN» + щит — без страны. Плашка-остров всегда, вкл/выкл — тон фона.
-    return (
-      <button
-        onClick={onClick}
-        title={fullLabel}
-        style={{
-          ...islandPlate,
-          display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 10px',
-          borderRadius: 'var(--radius-pill)', cursor: 'default',
-          background: activeBg ?? (vpnOn ? 'var(--surface)' : 'var(--surface-sunken)'),
-          fontSize: 'var(--fs-sm)', fontWeight: 500,
-          color: vpnOn ? 'var(--text-strong)' : 'var(--text-muted)',
-        }}
-      >
-        {shieldIcon}
-        VPN
-      </button>
-    );
-  }
-
-  // full — полный лейбл. Та же плашка-остров, шире под текст.
+  // short/full — раньше отличались длиной подписи (VPN vs VPN · Страна), сейчас подпись
+  // фиксированная («Защита»), поэтому оба режима рендерят один и тот же widget; деление на
+  // два порога (VPN_THRESHOLD_SHORT/FULL) осталось только в RIGHT_RESERVE-расчёте омнибокса.
   return (
     <button
       onClick={onClick}
-      title="VPN"
+      title="Защита"
       style={{
         ...islandPlate,
-        display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 12px',
+        display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 10px',
         borderRadius: 'var(--radius-pill)', cursor: 'default',
         background: activeBg ?? (vpnOn ? 'var(--surface)' : 'var(--surface-sunken)'),
         fontSize: 'var(--fs-sm)', fontWeight: 500,
         color: vpnOn ? 'var(--text-strong)' : 'var(--text-muted)',
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}
     >
       {shieldIcon}
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullLabel}</span>
+      Защита
     </button>
   );
 }

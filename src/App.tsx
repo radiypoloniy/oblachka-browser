@@ -11,7 +11,7 @@ import PermissionPrompt from './components/PermissionPrompt';
 import { islandPlate } from './styles/island';
 import { embeddingService } from './services/EmbeddingService';
 import { startEmbedRequestBridge } from './services/EmbedRequestBridge';
-import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, VpnConnectionState, AdBlockState, PageTranslateState, PageTranslateProgress } from '../shared/ipc';
+import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, VpnConnectionState, PageTranslateState, PageTranslateProgress } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 import type { ClusterProposal } from './services/ClusteringService';
 
@@ -118,9 +118,6 @@ export default function App() {
   // сейчас блокируется/маршрутизируется трафик, — прямая противоположность тому, что должен
   // давать fail-closed (см. electron/main.ts::applyVpnProxy). null — статус ещё не загружен.
   const [vpnConn, setVpnConn] = useState<VpnConnectionState | null>(null);
-  // Для кнопки адблока в тулбаре — независимая от Settings.tsx::AdBlockSection подписка
-  // на тот же push-канал (тот же приём, что и с vpnConn выше).
-  const [adBlockState, setAdBlockState] = useState<AdBlockState | null>(null);
   const [pageTranslateState, setPageTranslateState] = useState<PageTranslateState>('idle');
   const [pageTranslateProgress, setPageTranslateProgress] = useState<PageTranslateProgress | null>(null);
   const [dark, setDark] = useState(false);
@@ -302,13 +299,6 @@ export default function App() {
   useEffect(() => {
     void window.oblako.getVpnConnectionState().then(setVpnConn);
     const unsub = window.oblako.onVpnConnectionStateChanged(setVpnConn);
-    return () => unsub();
-  }, []);
-
-  // Состояние адблока для кнопки в тулбаре.
-  useEffect(() => {
-    void window.oblako.getAdBlockState().then(setAdBlockState);
-    const unsub = window.oblako.onAdBlockStateChanged(setAdBlockState);
     return () => unsub();
   }, []);
 
@@ -582,9 +572,7 @@ export default function App() {
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
-          tab={active} allTabs={tabs} vpnOn={vpnConn?.state === 'running'} vpnLabel={vpnConn?.serverRemark ?? null} dark={dark}
-          adBlockOn={adBlockState?.enabled ?? true}
-          onToggleAdBlock={() => { if (adBlockState) void window.oblako.setAdBlockEnabled(!adBlockState.enabled); }}
+          tab={active} allTabs={tabs} vpnOn={vpnConn?.state === 'running'} dark={dark}
           omniboxRef={omniboxRef}
           onToggleDark={() => setDark((d) => !d)}
           onBack={() => window.oblako.goBack(activeId)}

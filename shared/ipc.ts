@@ -363,6 +363,12 @@ export const IPC = {
   VPN_POPOVER_SHOW:       'vpn-popover:show',
   VPN_POPOVER_CLOSE:      'vpn-popover:close',
   VPN_POPOVER_CLOSED:     'vpn-popover:closed',
+  // Заход «Защита» (шаг 3) — домен активной вкладки для адблок-секции поповера. Toolbar шлёт его
+  // и при открытии, и при навигации в ТОЙ ЖЕ вкладке, пока поповер открыт (смена вкладки поповер
+  // и так закрывает, см. Toolbar.tsx::useEffect по tab?.id). main форвардит в саму вью поповера
+  // отдельным push'ем 'vpn-popover:active-url' (см. VpnPopoverManager.ts) — этот канал в IPC-словаре
+  // только на renderer→main половину пути, ответной пары ADBLOCK_STATE_CHANGED-стиля у него нет.
+  VPN_POPOVER_SET_ACTIVE_URL: 'vpn-popover:set-active-url',
 
   // Заход 10: живые suggest-подсказки текущего поисковика (см. SearchSuggestFetcher.ts) —
   // fetch ТОЛЬКО из main (CORS, см. комментарий в SearchSuggestFetcher.ts). Движок берётся main'ом
@@ -995,6 +1001,9 @@ export interface OblakoApi {
   showVpnPopover(): Promise<void>;
   closeVpnPopover(): Promise<void>;
   onVpnPopoverClosed(cb: () => void): () => void;
+  // Домен активной вкладки для адблок-секции поповера (см. IPC.VPN_POPOVER_SET_ACTIVE_URL) —
+  // Toolbar шлёт при открытии и при навигации в той же вкладке, пока поповер открыт.
+  setVpnPopoverActiveUrl(url: string): Promise<void>;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;

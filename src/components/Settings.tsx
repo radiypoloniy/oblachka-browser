@@ -3,6 +3,7 @@ import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyR
 import type { AdBlockState, BackfillProgress, HistoryContentCoverage, VpnStatus, VpnServerMeta, VpnConnectionState, PasswordMeta, PasswordCopyField, TranslationEngineId, BergamotStatus } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import { stripEmoji } from '../../shared/text';
+import Toggle from './Toggle';
 
 interface SettingsProps {
   onClose: () => void;
@@ -1599,31 +1600,6 @@ function PassphrasePrompt({
       </div>
       {msg && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{msg}</span>}
     </div>
-  );
-}
-
-// ── Простой CSS-тумблер ────────────────────────────────────────────────────────
-
-function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={checked}
-      onClick={onChange}
-      style={{
-        position: 'relative', width: 44, height: 24, borderRadius: 12,
-        border: 'none', cursor: 'default', flex: 'none', padding: 0,
-        background: checked ? 'var(--accent)' : 'var(--neutral-300)',
-        transition: 'background var(--dur-fast) var(--ease-standard)',
-      }}
-    >
-      <span style={{
-        position: 'absolute', top: 3, left: checked ? 23 : 3,
-        width: 18, height: 18, borderRadius: '50%', background: '#fff',
-        transition: 'left var(--dur-fast) var(--ease-standard)',
-        boxShadow: '0 1px 3px rgba(0,0,0,.2)',
-      }} />
-    </button>
   );
 }
 

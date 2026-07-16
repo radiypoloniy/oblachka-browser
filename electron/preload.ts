@@ -376,6 +376,7 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.VPN_POPOVER_CLOSED, handler);
     return () => ipcRenderer.removeListener(IPC.VPN_POPOVER_CLOSED, handler);
   },
+  setVpnPopoverActiveUrl: (url: string) => ipcRenderer.invoke(IPC.VPN_POPOVER_SET_ACTIVE_URL, url) as Promise<void>,
 
   embedPreload: EMBED_PRELOAD,
 };
