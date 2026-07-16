@@ -544,61 +544,74 @@ function AiPanel() {
             не по цвету: это НЕ send-действие, а залипающий тоггл состояния, поэтому активное
             состояние светится accent-обводкой/фоном, а не отправляет ничего само по себе. */}
         <div style={{
-          display: 'flex', alignItems: 'flex-end', gap: 8,
           padding: 'var(--pad-island)',
           flexShrink: 0,
         }}>
-          <button
-            onClick={handleGlobeClick}
-            title={
-              !searxngConfigured
-                ? 'Веб-поиск не настроен — открыть настройки'
-                : webGroundingActive
-                  ? 'Веб-поиск включён — нажмите, чтобы выключить'
-                  : 'Включить веб-поиск (SearXNG)'
-            }
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 34, height: 34, flexShrink: 0,
-              background: webGroundingActive ? 'var(--accent-soft)' : 'transparent',
-              border: webGroundingActive ? '1.5px solid var(--accent)' : '1.5px solid transparent',
-              borderRadius: '50%',
-              color: webGroundingActive ? 'var(--accent)' : 'var(--text-muted)',
-              cursor: 'pointer', padding: 0,
-            }}
-          >
-            <Globe size={16} strokeWidth={2} />
-          </button>
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Написать сообщение…"
-            rows={1}
-            style={{
-              flex: 1, resize: 'none', maxHeight: 96,
-              border: 'none', outline: 'none',
-              background: 'var(--surface-sunken)', borderRadius: 'var(--radius-chip)',
-              padding: '8px 12px', fontSize: 'var(--fs-md)', fontFamily: 'var(--font-sans)',
-              color: 'var(--text-strong)',
-            }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={sending || !input.trim()}
-            title="Отправить"
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 34, height: 34, flexShrink: 0,
-              background: 'var(--accent)', border: 'none', borderRadius: '50%',
-              color: 'var(--text-on-accent)',
-              cursor: sending || !input.trim() ? 'default' : 'pointer',
-              opacity: sending || !input.trim() ? 0.45 : 1,
-              padding: 0,
-            }}
-          >
-            <Send size={15} strokeWidth={2} />
-          </button>
+          {/* Белая парящая карточка вместо серой заливки прямо на textarea — тот же стиль, что
+              у поля ввода в Hub.tsx (:450-454), переиспользован буквально (surface-solid +
+              glass-edge + shadow-card + radius-island), не изобретали новый. Внешний div выше
+              не трогали — это panel-edge отступ (--pad-island используется так же по всей
+              aipanel.tsx), card — отдельный вложенный уровень, чтобы не сдвинуть остальную
+              вёрстку панели. */}
+          <div style={{
+            display: 'flex', alignItems: 'flex-end', gap: 8,
+            padding: '12px 14px',
+            background: 'var(--surface-solid)',
+            borderRadius: 'var(--radius-island)', boxShadow: 'var(--shadow-card)',
+            border: '1px solid var(--glass-edge)',
+          }}>
+            <button
+              onClick={handleGlobeClick}
+              title={
+                !searxngConfigured
+                  ? 'Веб-поиск не настроен — открыть настройки'
+                  : webGroundingActive
+                    ? 'Веб-поиск включён — нажмите, чтобы выключить'
+                    : 'Включить веб-поиск (SearXNG)'
+              }
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 34, height: 34, flexShrink: 0,
+                background: webGroundingActive ? 'var(--accent-soft)' : 'transparent',
+                border: webGroundingActive ? '1.5px solid var(--accent)' : '1.5px solid transparent',
+                borderRadius: '50%',
+                color: webGroundingActive ? 'var(--accent)' : 'var(--text-muted)',
+                cursor: 'pointer', padding: 0,
+              }}
+            >
+              <Globe size={16} strokeWidth={2} />
+            </button>
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Написать сообщение…"
+              rows={1}
+              style={{
+                flex: 1, resize: 'none', maxHeight: 96,
+                border: 'none', outline: 'none',
+                background: 'transparent', borderRadius: 'var(--radius-chip)',
+                padding: '8px 12px', fontSize: 'var(--fs-md)', fontFamily: 'var(--font-sans)',
+                color: 'var(--text-strong)',
+              }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={sending || !input.trim()}
+              title="Отправить"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 34, height: 34, flexShrink: 0,
+                background: 'var(--accent)', border: 'none', borderRadius: '50%',
+                color: 'var(--text-on-accent)',
+                cursor: sending || !input.trim() ? 'default' : 'pointer',
+                opacity: sending || !input.trim() ? 0.45 : 1,
+                padding: 0,
+              }}
+            >
+              <Send size={15} strokeWidth={2} />
+            </button>
+          </div>
         </div>
         </>)}
         {mode === 'apps' && <AppsGrid />}
