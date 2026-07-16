@@ -681,7 +681,7 @@ export default function App() {
                остров-подложка позади неё (см. TAB_FRAME_STYLE) плюс ошибка поверх, если есть. */
             isHub
               ? <Hub
-                  tabId={activeId} onSubmit={submit}
+                  tabId={activeId} dark={dark} onSubmit={submit}
                   onOpenHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); }}
                   onOpenSettings={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })(); }}
                 />
