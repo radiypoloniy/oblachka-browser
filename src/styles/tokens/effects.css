@@ -12,7 +12,12 @@
   --blur-strong: 40px;  /* full-screen overlays / scrims */
 
   --glass-saturate: 1.7; /* @kind other */ /* colour bleed-through behind the frost */
-  --glass-filter:  blur(var(--blur-island)) saturate(var(--glass-saturate));
+  /* Этап C: в light острова уже держат контраст непрозрачным каскадом (Этап B) + тенью —
+     backdrop-filter больше не нужен, гасим (none). Формула (blur-island/glass-saturate)
+     оставлена в токенах на случай будущего возврата, просто не используется отсюда.
+     dark ЭТИМ заходом не трогали — там своя прозрачная лестница (surface-island/glass-tint
+     остаются полупрозрачными), блюр там всё ещё нужен: явный оверрайд в theme-dark.css. */
+  --glass-filter:  none;
   --glass-tint:    var(--glass-fill);            /* what sits behind the blur */
 
   /* Specular edge highlights — the "lit glass" rim. Compose into shadows. */
