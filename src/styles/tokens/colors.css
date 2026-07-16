@@ -82,7 +82,13 @@
   --surface:           rgba(255,255,255,0.66);  /* content cards, button plates, segmented */
   --surface-island:    var(--glass-fill);       /* floating glass islands */
   --surface-sunken:    rgba(255,255,255,0.34);  /* recessed wells (omnibox, chip track) */
-  --surface-hover:     rgba(255,255,255,0.58);
+  /* Этап 1: hover/active — затемняющий чёрный слой, не белила-на-белилах. Островá и так уже
+     полупрозрачно-белые (--surface/--surface-sunken) поверх блюра — доп. белый слой той же
+     природы почти не даёт контраста (складываются два похожих полупрозрачных слоя). Чёрный
+     слой контрастирует с любым фоном под блюром и не спорит с блюром острова. active заметно
+     темнее hover, но не чёрный. */
+  --surface-hover:     rgba(0,0,0,0.05);
+  --surface-active:    rgba(0,0,0,0.09);
   --surface-solid:     #FFFFFF;                 /* escape hatch when opacity is required */
 
   --divider:           rgba(40,30,70,0.10);

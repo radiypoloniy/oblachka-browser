@@ -93,16 +93,17 @@ export default function VpnIndicatorPopover({ servers, connState, onConnect, onD
                 onClick={() => void handleConnect(s.id)}
                 style={{
                   ...btnGhost, textAlign: 'left', display: 'flex', gap: 8, alignItems: 'center',
-                  // Активная (подключённая/подключается) строка — тот же accent-soft, что уже
-                  // используется для «активно» в проекте (см. Toolbar.tsx::VpnPill activeBg) —
-                  // отдельного --surface-active токена в системе нет, переиспользуем существующий.
-                  background: active ? 'var(--accent-soft)' : 'transparent',
+                  // Активная (подключённая/подключается) строка — серый --surface-active (Этап 1),
+                  // не accent-цвет. Раньше тут стоял --accent-soft как костыль — токена active
+                  // ещё не было (см. диагностику); теперь он есть, семантика верная: active —
+                  // тон поверхности на тон темнее hover, а не акцентная подсветка выбора.
+                  background: active ? 'var(--surface-active)' : 'transparent',
                   // Строки кликабельны (выбор сервера) — house-конвенция cursor:'default' у btnGhost
                   // здесь намеренно переопределена, иначе строки не читаются как интерактивные.
                   cursor: 'pointer',
                 }}
                 onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--accent-soft)' : 'transparent'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface-active)' : 'transparent'; }}
               >
                 {busyId === s.id
                   ? <Loader2 size={14} style={{ color: 'var(--accent)', flex: 'none', animation: 'oblako-spin 1s linear infinite' }} />
