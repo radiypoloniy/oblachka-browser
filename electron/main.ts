@@ -6,6 +6,7 @@ registerSchemesAsPrivileged();
 import type { MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { TabManager } from './TabManager';
 import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
@@ -44,6 +45,7 @@ import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
 import * as searxngKeyStore from './SearxngKeyStore';
 import * as vpnKeyStore from './VpnKeyStore';
+import * as skillsStore from './SkillsStore';
 import * as vpnSubscription from './VpnSubscription';
 import * as vpnProcess from './VpnProcess';
 import { toServerMeta } from './VpnParser';
@@ -607,7 +609,7 @@ function registerIpc() {
   }));
   ipcMain.handle(IPC.TABS_GET_ALL, () => tabs?.snapshot() ?? []);
   ipcMain.handle(IPC.TAB_CREATE, (_e, url?: string) => tabs?.createTab(url));
-  ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (_e, kind: 'history' | 'settings' | 'bookmarks') => tabs?.createSpecialTab(kind));
+  ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (_e, kind: 'history' | 'settings' | 'bookmarks', section?: string) => tabs?.createSpecialTab(kind, section));
   ipcMain.handle(IPC.TAB_CLOSE, (_e, id: string) => tabs?.closeTab(id));
   ipcMain.handle(IPC.TAB_ACTIVATE, (_e, id: string) => tabs?.activate(id));
   ipcMain.handle(IPC.TAB_NAVIGATE, (_e, id: string, input: string) => tabs?.navigate(id, input));
@@ -803,6 +805,22 @@ function registerIpc() {
   ipcMain.handle(IPC.SEARXNG_DELETE_CONFIG, () => searxngKeyStore.deleteConfig());
   searxngKeyStore.onStatusChanged((configured) => {
     chromeView?.webContents.send(IPC.SEARXNG_STATUS_CHANGED, configured);
+  });
+
+  // Реестр AI-скиллов (см. shared/ipc.ts::Skill, electron/SkillsStore.ts) — CRUD-мост для Settings
+  // (чром). id для add генерим здесь, а не в сторе (SkillsStore.add() ожидает готовый id на входе,
+  // сам не создаёт) — тем же приёмом, что TabManager.createSpecialTab использует randomUUID().
+  ipcMain.handle(IPC.SKILLS_LIST,   () => skillsStore.list());
+  ipcMain.handle(IPC.SKILLS_ADD,    (_e, input: { label: string; prompt: string; icon?: string }) =>
+    skillsStore.add({ id: randomUUID(), ...input }));
+  ipcMain.handle(IPC.SKILLS_UPDATE, (_e, id: string, patch: { label?: string; prompt?: string; icon?: string; visible?: boolean }) =>
+    skillsStore.update(id, patch));
+  ipcMain.handle(IPC.SKILLS_REMOVE, (_e, id: string) => skillsStore.remove(id));
+  // Пуш в чром (Settings) — НЕЗАВИСИМАЯ вторая подписка на тот же skillsStore.onSkillsChanged,
+  // что уже слушает AI-панель (AiPanelManager.ts:267, свой ad-hoc ai-panel:skills-list) — Set
+  // слушателей в SkillsStore поддерживает несколько подписчиков, тот пуш не трогаем/не дублируем.
+  skillsStore.onSkillsChanged((skills) => {
+    chromeView?.webContents.send(IPC.SKILLS_CHANGED, skills);
   });
 
   // VPN, шаг 1 — подписка + список серверов. Ссылка и credential серверов остаются в main
@@ -1187,6 +1205,7 @@ app.whenReady().then(async () => {
   aiKeyStore.loadFromDisk();
   searxngKeyStore.loadFromDisk();
   vpnKeyStore.loadFromDisk();
+  skillsStore.loadFromDisk();
 
   // История: нативный модуль может отсутствовать — падение не блокирует запуск.
   await history.initialize().catch((e) =>

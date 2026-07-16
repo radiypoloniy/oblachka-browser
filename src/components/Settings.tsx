@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Shield, ShieldOff, Wifi, Cpu, Palette, Plus, Trash2, RotateCcw, KeyRound, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, Search, type LucideIcon } from 'lucide-react';
-import type { AdBlockState, BackfillProgress, HistoryContentCoverage, VpnStatus, VpnServerMeta, VpnConnectionState, PasswordMeta, PasswordCopyField, TranslationEngineId, BergamotStatus } from '../../shared/ipc';
+import type { AdBlockState, BackfillProgress, HistoryContentCoverage, VpnStatus, VpnServerMeta, VpnConnectionState, PasswordMeta, PasswordCopyField, TranslationEngineId, BergamotStatus, Skill } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import { stripEmoji } from '../../shared/text';
 import Toggle from './Toggle';
 
 interface SettingsProps {
   onClose: () => void;
+  // Начальный раздел (напр. кнопка "+" в AI-панели открывает сразу на 'ai') — приходит из
+  // TabState.section (shared/ipc.ts), который типизирован просто string (main-процесс не знает
+  // SectionId), поэтому валидируем через isSectionId ниже, а не доверяем типу проп напрямую.
+  defaultSection?: string;
 }
 
 // Секции левого меню — «Блокировка» и «AI» рабочие, VPN/Интерфейс — placeholder для будущих
@@ -22,8 +26,12 @@ const NAV_ITEMS: NavItem[] = [
 ];
 type SectionId = 'adblock' | 'vpn' | 'ai' | 'passwords' | 'appearance';
 
-export default function Settings({ onClose }: SettingsProps) {
-  const [section, setSection] = useState<SectionId>('adblock');
+function isSectionId(v: unknown): v is SectionId {
+  return v === 'adblock' || v === 'vpn' || v === 'ai' || v === 'passwords' || v === 'appearance';
+}
+
+export default function Settings({ onClose, defaultSection }: SettingsProps) {
+  const [section, setSection] = useState<SectionId>(isSectionId(defaultSection) ? defaultSection : 'adblock');
   const [state, setState] = useState<AdBlockState | null>(null);
   const [domainInput, setDomainInput] = useState('');
   const [inputError, setInputError] = useState('');
@@ -681,6 +689,7 @@ function AiSection() {
       <SearxngSection />
       <TranslationEngineSection />
       <HistoryBackfillSection />
+      <SkillsSection />
     </div>
   );
 }
@@ -1103,6 +1112,216 @@ function HistoryContentBackfillSection({ onDone }: { onDone: () => void }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Секция «Скиллы» — CRUD-редактор prompt-кнопок AI-панели (см. electron/SkillsStore.ts,
+// мост в window.oblako.{list,add,update,remove}Skill/onSkillsChanged уже проложен отдельным
+// коммитом). Один источник правды — push из main: после add/update/remove локальный skills НЕ
+// правится вручную, список перерисуется сам через onSkillsChanged (тот же снапшот уходит и в
+// AI-панель её собственным ai-panel:skills-list, независимо от этого моста).
+function SkillsSection() {
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [labelInput, setLabelInput] = useState('');
+  const [promptInput, setPromptInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  // Подтверждение удаления — дёшево, предотвращает случайный клик по Trash2 в списке.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    window.oblako.listSkills().then((list) => { if (mounted) setSkills(list); });
+    const unsub = window.oblako.onSkillsChanged((list) => { if (mounted) setSkills(list); });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
+  function openAddForm() {
+    setEditingId(null);
+    setLabelInput(''); setPromptInput('');
+    setFormError(''); setFormOpen(true);
+  }
+
+  function openEditForm(skill: Skill) {
+    setEditingId(skill.id);
+    setLabelInput(skill.label); setPromptInput(skill.prompt);
+    setFormError(''); setFormOpen(true);
+  }
+
+  async function handleSave() {
+    const label = labelInput.trim();
+    const prompt = promptInput.trim();
+    // Кнопка и так disabled на пустых полях (canSave ниже) — эта проверка страхует от гонки
+    // (напр. Enter до ре-рендера disabled), не дублирует UI-гейт зря.
+    if (!label || !prompt) return;
+    setSaving(true);
+    setFormError('');
+    const ok = editingId === null
+      ? await window.oblako.addSkill({ label, prompt })
+      : await window.oblako.updateSkill(editingId, { label, prompt });
+    setSaving(false);
+    if (ok) setFormOpen(false); else setFormError('Не удалось сохранить');
+  }
+
+  async function handleDelete(id: string) {
+    setConfirmDeleteId(null);
+    await window.oblako.removeSkill(id);
+  }
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 12,
+      paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
+    }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+          Скиллы
+        </h3>
+        <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+          Кнопки-сценарии над полем ввода в AI-панели (Объяснить, Сделать саммари и ваши свои) —
+          каждая отправляет свой промпт про текущую страницу.
+        </p>
+      </div>
+
+      {!formOpen && (
+        <button onClick={openAddForm} style={{ ...btnPrimary, alignSelf: 'flex-start', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <Plus size={14} /> Новый скилл
+        </button>
+      )}
+
+      {formOpen && (
+        <SkillForm
+          labelInput={labelInput} onLabelChange={setLabelInput}
+          promptInput={promptInput} onPromptChange={setPromptInput}
+          formError={formError} saving={saving}
+          canSave={labelInput.trim().length > 0 && promptInput.trim().length > 0}
+          onSave={() => void handleSave()}
+          onCancel={() => setFormOpen(false)}
+        />
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {skills.map((skill) => (
+          <SkillRow
+            key={skill.id}
+            skill={skill}
+            confirmingDelete={confirmDeleteId === skill.id}
+            onToggleVisible={() => void window.oblako.updateSkill(skill.id, { visible: !skill.visible })}
+            onEdit={() => openEditForm(skill)}
+            onDeleteRequest={() => setConfirmDeleteId(skill.id)}
+            onDeleteCancel={() => setConfirmDeleteId(null)}
+            onDeleteConfirm={() => void handleDelete(skill.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface SkillRowProps {
+  skill: Skill;
+  confirmingDelete: boolean;
+  onToggleVisible: () => void;
+  onEdit: () => void;
+  onDeleteRequest: () => void;
+  onDeleteCancel: () => void;
+  onDeleteConfirm: () => void;
+}
+
+function SkillRow({ skill, confirmingDelete, onToggleVisible, onEdit, onDeleteRequest, onDeleteCancel, onDeleteConfirm }: SkillRowProps) {
+  const preview = skill.prompt.length > 80 ? `${skill.prompt.slice(0, 80)}…` : skill.prompt;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+      borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {skill.label}
+        </div>
+        <div style={{
+          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {preview}
+        </div>
+      </div>
+      {/* Видимость на панели — независима от builtin, доступна для ЛЮБОГО скилла (это и есть
+          способ спрятать встроенный, не удаляя — remove() для builtin всё равно вернёт false). */}
+      <div title={skill.visible ? 'Показывается в AI-панели' : 'Скрыта из AI-панели'} style={{ flex: 'none' }}>
+        <Toggle checked={skill.visible} onChange={onToggleVisible} />
+      </div>
+      {confirmingDelete ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Удалить скилл?</span>
+          <button onClick={onDeleteConfirm} style={{ ...btnGhost, padding: '4px 10px', color: 'var(--error, #e05)' }}>Да</button>
+          <button onClick={onDeleteCancel} style={{ ...btnGhost, padding: '4px 10px' }}>Нет</button>
+        </div>
+      ) : (
+        <>
+          <IconBtn title="Редактировать" onClick={onEdit}><Pencil size={14} /></IconBtn>
+          {/* Встроенные (Объяснить/Саммари) не удаляются — стор всё равно вернёт false (см.
+              SkillsStore.ts::remove), но кнопки нет вообще, а не disabled-заглушка. */}
+          {!skill.builtin && (
+            <IconBtn title="Удалить" onClick={onDeleteRequest}><Trash2 size={14} /></IconBtn>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+interface SkillFormProps {
+  labelInput: string; onLabelChange: (v: string) => void;
+  promptInput: string; onPromptChange: (v: string) => void;
+  formError: string; saving: boolean; canSave: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+}
+
+function SkillForm({
+  labelInput, onLabelChange, promptInput, onPromptChange, formError, saving, canSave, onSave, onCancel,
+}: SkillFormProps) {
+  const inputStyle: React.CSSProperties = {
+    padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--divider-strong)',
+    background: 'var(--surface)', color: 'var(--text-strong)', fontSize: 'var(--fs-sm)', outline: 'none',
+    width: '100%',
+  };
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', marginBottom: 10,
+      ...islandPlate, borderRadius: 'var(--radius-sm)',
+    }}>
+      <input
+        type="text" placeholder="Название кнопки" value={labelInput}
+        onChange={(e) => onLabelChange(e.target.value)}
+        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
+        style={inputStyle}
+      />
+      <textarea
+        placeholder="Промпт — что отправить модели про текущую страницу" value={promptInput} rows={3}
+        onChange={(e) => onPromptChange(e.target.value)}
+        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
+        style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+      />
+
+      {formError && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)' }}>{formError}</span>}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={onSave} disabled={saving || !canSave} style={{ ...btnPrimary, opacity: saving || !canSave ? 0.6 : 1 }}>
+          {saving ? 'Сохранение…' : 'Сохранить'}
+        </button>
+        <button onClick={onCancel} style={btnGhost}>Отмена</button>
+      </div>
     </div>
   );
 }

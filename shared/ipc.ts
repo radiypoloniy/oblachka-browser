@@ -60,6 +60,10 @@ export interface TabState {
   // тот же путь #tabUrl()==='' → savable()===false / isHttpView(null)===false, что уже
   // естественно исключает их из session snapshot и sleep-таймера, без отдельных правок там).
   kind: 'page' | 'hub' | 'history' | 'settings' | 'bookmarks';
+  // Начальный раздел для kind==='settings' (напр. 'ai') — необязателен, задаётся только когда
+  // createSpecialTab('settings', section) вызван с разделом (см. AiPanelManager.ts кнопка "+" в
+  // AI-панели). Для всех остальных kind не используется.
+  section?: string;
 }
 
 // Атомарный снимок: вкладки + структура сайдбара в одном сообщении.
@@ -291,6 +295,16 @@ export const IPC = {
   SEARXNG_SAVE_CONFIG:     'searxng:save-config',     // renderer → main: ({endpoint, token}) → boolean (успех)
   SEARXNG_DELETE_CONFIG:   'searxng:delete-config',   // renderer → main: удалить конфиг
   SEARXNG_STATUS_CHANGED:  'searxng:status-changed',  // main → renderer: push нового configured-статуса
+
+  // Реестр пользовательских AI-скиллов (см. Skill выше, electron/SkillsStore.ts) — CRUD-мост для
+  // Settings (чром). AI-панель продолжает получать список отдельным ad-hoc каналом
+  // (ai-panel:skills-list, preload-aipanel.ts) — не через этот typed-контракт, тот же source of
+  // truth (skillsStore), просто два независимых слушателя одного onSkillsChanged.
+  SKILLS_LIST:    'skills:list',     // renderer → main: Skill[]
+  SKILLS_ADD:     'skills:add',      // renderer → main: ({label, prompt, icon?}) → boolean (id генерит main)
+  SKILLS_UPDATE:  'skills:update',   // renderer → main: (id, {label?, prompt?, icon?, visible?}) → boolean
+  SKILLS_REMOVE:  'skills:remove',   // renderer → main: (id) → boolean
+  SKILLS_CHANGED: 'skills:changed',  // main → renderer: push актуального Skill[]
 
   // VPN, шаг 1 (см. electron/VpnParser.ts, VpnKeyStore.ts, VpnSubscription.ts) — подписка и
   // список серверов. Сама ссылка подписки и credential (uuid/пароль) каждого сервера НИКОГДА
@@ -727,6 +741,23 @@ export type AiActionOutcome =
   | { ok: true; out: string; action: AiAction; dirUsed?: TranslateDirection; ms: number; tokPerSec: number; loadMs: number | null }
   | { ok: false; error: string };
 
+// ── Реестр пользовательских AI-скиллов (prompt-кнопок AI-панели) ─────────────────────────────
+// Источник истины — electron/SkillsStore.ts::Skill (не трогаем, стор готов) — структурно
+// идентичная копия здесь, а не импорт: shared/ipc.ts бандлится и в renderer (Vite), а
+// SkillsStore.ts тянет 'electron'/node fs/path, которые в renderer-бандл тащить нельзя.
+// ⚠️ Держать поля в синхроне с electron/SkillsStore.ts::Skill вручную при любой правке одного из них.
+export interface Skill {
+  id: string;
+  label: string;
+  prompt: string;
+  icon?: string;
+  builtin?: boolean;
+  // Видимость кнопки в AI-панели — независима от builtin, тумблер в Settings может спрятать
+  // даже встроенный скилл, не удаляя его (см. SkillsStore.ts::remove — builtin по-прежнему
+  // неудаляем). Не optional — старые skills.json без этого поля мигрируются в SkillsStore.ts.
+  visible: boolean;
+}
+
 // Тип API, который preload пробрасывает в window.oblako
 export interface OblakoApi {
   // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).
@@ -737,7 +768,9 @@ export interface OblakoApi {
   createTab(url?: string): Promise<string>;       // вернёт id новой вкладки
   // Псевдо-вкладка (История/Настройки) — та же жизнь (закрытие/активация), что у обычной,
   // просто без WebContentsView. См. shared/ipc.ts::TabState.kind, TabManager.createSpecialTab.
-  createSpecialTab(kind: 'history' | 'settings' | 'bookmarks'): Promise<string>;
+  // section — необязательный начальный раздел Settings (см. TabState.section выше), для
+  // history/bookmarks игнорируется.
+  createSpecialTab(kind: 'history' | 'settings' | 'bookmarks', section?: string): Promise<string>;
   closeTab(id: string): Promise<void>;
   activateTab(id: string): Promise<void>;
   navigate(id: string, input: string): Promise<void>;
@@ -948,6 +981,15 @@ export interface OblakoApi {
   saveSearxngConfig(config: { endpoint: string; token: string }): Promise<boolean>;
   deleteSearxngConfig(): Promise<void>;
   onSearxngStatusChanged(cb: (configured: boolean) => void): () => void;
+
+  // Реестр пользовательских AI-скиллов (см. Skill выше, electron/SkillsStore.ts) — CRUD для
+  // редактора в Settings. id генерит main (crypto.randomUUID()) — renderer его не шлёт, см.
+  // SKILLS_ADD. visible в patch — тумблер видимости на панели (доступен и для builtin).
+  listSkills(): Promise<Skill[]>;
+  addSkill(input: { label: string; prompt: string; icon?: string }): Promise<boolean>;
+  updateSkill(id: string, patch: { label?: string; prompt?: string; icon?: string; visible?: boolean }): Promise<boolean>;
+  removeSkill(id: string): Promise<boolean>;
+  onSkillsChanged(cb: (skills: Skill[]) => void): () => void;
 
   // VPN, шаг 1 — подписка + список серверов (см. electron/VpnSubscription.ts). Ссылка подписки
   // и credential серверов никогда не приходят в renderer — см. VpnServerMeta/VpnStatus выше.

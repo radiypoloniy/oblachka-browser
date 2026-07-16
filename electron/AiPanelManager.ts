@@ -14,6 +14,7 @@ import { runFactCheck } from './GeminiFactCheck'
 import { searxngSearch, buildGroundingPrompt, appendSearxngSources } from './SearxngSearch'
 import * as aiKeyStore from './AiKeyStore'
 import * as searxngKeyStore from './SearxngKeyStore'
+import * as skillsStore from './SkillsStore'
 import { IPC } from '../shared/ipc'
 import type { TabState } from '../shared/ipc'
 import type { TabManager } from './TabManager'
@@ -22,6 +23,16 @@ import type { SettingsManager } from './SettingsManager'
 // html→markdown ТОЛЬКО для ветки чата (см. extractPageText/buildFirstTurnPrompt ниже) —
 // перевод (quick-translate) продолжает получать plain text, turndown его не касается.
 const turndownService = new TurndownService()
+// Медиа-узлы вырезаем целиком (не дефолтное <img>→![alt](src)) — иначе картинки из тела статьи
+// утекают в промпт Qwen как markdown-синтаксис, модель их цитирует в ответе, а react-markdown в
+// пузыре рендерит реальный <img> (текстовая модель картинок не генерит — они физически из
+// извлечения). .remove() — штатный приём Turndown выкинуть узел целиком (замена на '', не на
+// текстовое содержимое). 'a' НЕ трогаем — текстовые ссылки в статье остаются осмысленными для
+// саммари, режем только чистый медиа-контент (img/picture — обёртка над img для responsive-разметки/
+// svg — инлайн-векторная графика, тот же случай, что и img). Предикат, не массив тегов: 'svg' не
+// входит в HTMLElementTagNameMap (Turndown.TagName — HTML-only), массив ['img','picture','svg'] не
+// типизируется.
+turndownService.remove((node) => ['img', 'picture', 'svg'].includes(node.nodeName.toLowerCase()))
 
 // Заход 3: из поповера — в правый split-view-подобный док (тянется за левый край, см. App.tsx).
 // Ширина больше не константа — мутабельная, персистится через SettingsManager (как hubMode).
@@ -255,6 +266,15 @@ function sendSearxngStatus(): void {
   panelView.webContents.send('ai-panel:searxng-status', searxngKeyStore.getStatus())
 }
 searxngKeyStore.onStatusChanged(() => sendSearxngStatus())
+
+// Коммит 1 (реестр скиллов) — prompt-кнопки панели (Объяснить/Саммари и позже пользовательские)
+// теперь данные, не хардкод (см. QUICK_ACTIONS в aipanel.tsx до этого коммита). Перевести/Фактчек
+// остаются спец-кнопками вне реестра — этот пуш их не касается.
+function sendSkillsList(): void {
+  if (!panelView) return
+  panelView.webContents.send('ai-panel:skills-list', skillsStore.list())
+}
+skillsStore.onSkillsChanged(() => sendSkillsList())
 
 // Единственная точка входа из main.ts — вызывается из УЖЕ существующего onChange (тот, что шлёт
 // SYNC_CHANGED в чром), TabManager.ts НЕ трогаем и новых колбэков туда не добавляем. onChange и
@@ -539,8 +559,11 @@ function ensureIpcRegistered(): void {
   // открываем вкладку настроек в чроме (тот же путь, что кнопка «Настройки» в сайдбаре —
   // TabManager.createSpecialTab), а не молча включаем пустой режим. Сама AI-панель не закрывается —
   // это отдельный, независимый от неё контент вкладки.
-  ipcMain.on('ai-panel:open-settings', () => {
-    tabManagerRef?.createSpecialTab('settings')
+  // section (опционально) — начальный раздел Settings, см. TabManager.createSpecialTab. Кнопка "+"
+  // в ряду действий панели зовёт этот же канал с 'ai'; вызов без аргумента (глобус выше) остаётся
+  // как раньше — открывает Settings на дефолтном разделе.
+  ipcMain.on('ai-panel:open-settings', (_event: IpcMainEvent, section?: string) => {
+    tabManagerRef?.createSpecialTab('settings', section)
   })
 }
 
@@ -561,7 +584,7 @@ function ensurePanelView(): WebContentsView {
   panelView.setBackgroundColor('#00000000')
   // Первый показ беседы активной вкладки — только после did-finish-load: раньше renderer ещё не
   // навесил обработчик onContext, сообщение потерялось бы. Статус ключа — тем же приёмом.
-  panelView.webContents.once('did-finish-load', () => { sendCurrentContext(); sendKeyStatus(); sendSearxngStatus() })
+  panelView.webContents.once('did-finish-load', () => { sendCurrentContext(); sendKeyStatus(); sendSearxngStatus(); sendSkillsList() })
 
   // Ссылки из ответа модели — обычные <a href> (react-markdown их не оборачивает, см. задачу):
   // без перехвата клик навигирует ЭТУ ЖЕ webContents на внешний сайт, затирая aipanel.html —
@@ -609,6 +632,6 @@ export function toggleAiPanel(win: BrowserWindow): boolean {
   setOpenState(true)
   // При повторном открытии (view уже когда-то загрузился) did-finish-load больше не сработает —
   // шлём текущий контекст явно, чтобы панель не показывала последнюю беседу «протухшей» вкладки.
-  if (alreadyLoaded) { sendCurrentContext(); sendKeyStatus(); sendSearxngStatus() }
+  if (alreadyLoaded) { sendCurrentContext(); sendKeyStatus(); sendSearxngStatus(); sendSkillsList() }
   return true
 }

@@ -619,7 +619,7 @@ export default function App() {
           ) : kind === 'history' || kind === 'bookmarks' ? (
             <HistoryBookmarks defaultSection={kind} onClose={() => void window.oblako.closeTab(activeId)} />
           ) : kind === 'settings' ? (
-            <Settings onClose={() => void window.oblako.closeTab(activeId)} />
+            <Settings defaultSection={active?.section} onClose={() => void window.oblako.closeTab(activeId)} />
           ) : isSplit ? (
             <div style={{ display: 'flex', height: '100%' }}>
               {/* Левая панель — flex: splitRatio даёт долю от (ширина - ISLAND_GAP). Тот же остров,

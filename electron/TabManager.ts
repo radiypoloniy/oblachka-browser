@@ -83,6 +83,9 @@ interface ManagedTab {
   // сессии/сна без отдельных правок в SessionManager/sleep-таймере (см. диагностику, подтверждено
   // чтением кода: #serializeNodes фильтрует по savable(), sleep-таймер — по isHttpView).
   kind?: 'history' | 'settings' | 'bookmarks';
+  // Начальный раздел для kind==='settings' (см. createSpecialTab ниже) — необязателен, задаётся
+  // только когда вызывающая сторона просит конкретный раздел (напр. кнопка "+" в AI-панели).
+  section?: string;
 }
 
 // Скрипт проверки незаполненных форм — только top-frame (v1: поля внутри iframe не проверяются).
@@ -310,7 +313,7 @@ export class TabManager {
         tabError: null,
         url: '', title: t.kind === 'history' ? 'История посещений' : t.kind === 'bookmarks' ? 'Закладки' : 'Настройки',
         faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false,
-        isHub: false, isPinned, splitSide: null, isSleeping: false, kind: t.kind,
+        isHub: false, isPinned, splitSide: null, isSleeping: false, kind: t.kind, section: t.section,
       };
     }
     if (t.sleeping) {
@@ -714,9 +717,9 @@ export class TabManager {
   // на несколько экземпляров, а эта вкладка — обычная запись со своим id, закрываемая, можно
   // открыть несколько сразу). #tabUrl()==='' для неё уже естественно исключает её из
   // savable()/session-снимка и isHttpView()/sleep-таймера — без отдельных правок там.
-  createSpecialTab(kind: 'history' | 'settings' | 'bookmarks'): string {
+  createSpecialTab(kind: 'history' | 'settings' | 'bookmarks', section?: string): string {
     const id = randomUUID();
-    const tab: ManagedTab = { id, view: null, sleeping: null, lastActiveAt: Date.now(), kind };
+    const tab: ManagedTab = { id, view: null, sleeping: null, lastActiveAt: Date.now(), kind, section };
     this.tabMap.set(id, tab);
     this.nodes.push({ type: 'single', tabId: id });
     this.activate(id);

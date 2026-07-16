@@ -42,6 +42,15 @@ contextBridge.exposeInMainWorld('aiPanel', {
   },
   factCheck: () => ipcRenderer.send('ai-panel:fact-check'),
 
+  // Коммит 1 (реестр скиллов) — prompt-кнопки панели (Объяснить/Саммари, позже пользовательские)
+  // теперь пушатся из main (SkillsStore.ts), а не хардкожены в aipanel.tsx. Тот же приём, что
+  // onKeyStatus выше: пуш при (пере)открытии панели + на каждое изменение реестра.
+  onSkillsList: (cb: (skills: unknown) => void) => {
+    const handler = (_e: unknown, skills: unknown) => cb(skills);
+    ipcRenderer.on('ai-panel:skills-list', handler);
+    return () => ipcRenderer.removeListener('ai-panel:skills-list', handler);
+  },
+
   // Задел под web-grounding (SearXNG) — тот же приём, что onKeyStatus выше: пуш статуса,
   // не отдельный get (панель узнаёт его при открытии/переключении вкладки, см. AiPanelManager.ts).
   onSearxngStatus: (cb: (configured: boolean) => void) => {
@@ -50,6 +59,7 @@ contextBridge.exposeInMainWorld('aiPanel', {
     return () => ipcRenderer.removeListener('ai-panel:searxng-status', handler);
   },
   // Клик по глобусу, когда SearXNG не настроен — ведёт в настройки (вкладка Settings в чроме),
-  // а не молча включает пустой режим.
-  openSettings: () => ipcRenderer.send('ai-panel:open-settings'),
+  // а не молча включает пустой режим. section (опционально) — начальный раздел Settings (напр.
+  // 'ai' у кнопки "+" в ряду действий панели); без аргумента — дефолтный раздел, как раньше.
+  openSettings: (section?: string) => ipcRenderer.send('ai-panel:open-settings', section),
 })

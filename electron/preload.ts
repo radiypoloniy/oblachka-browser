@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -9,7 +9,7 @@ const EMBED_PRELOAD = process.env.OBLAKO_PRELOAD_EMBED !== '0';
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
   createTab: (url?: string) => ipcRenderer.invoke(IPC.TAB_CREATE, url),
-  createSpecialTab: (kind: 'history' | 'settings' | 'bookmarks') => ipcRenderer.invoke(IPC.TAB_CREATE_SPECIAL, kind),
+  createSpecialTab: (kind: 'history' | 'settings' | 'bookmarks', section?: string) => ipcRenderer.invoke(IPC.TAB_CREATE_SPECIAL, kind, section),
   closeTab: (id: string) => ipcRenderer.invoke(IPC.TAB_CLOSE, id),
   activateTab: (id: string) => ipcRenderer.invoke(IPC.TAB_ACTIVATE, id),
   navigate: (id: string, input: string) => ipcRenderer.invoke(IPC.TAB_NAVIGATE, id, input),
@@ -306,6 +306,20 @@ const api: OblakoApi = {
     const handler = (_e: unknown, configured: boolean) => cb(configured);
     ipcRenderer.on(IPC.SEARXNG_STATUS_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.SEARXNG_STATUS_CHANGED, handler);
+  },
+
+  // Реестр AI-скиллов (см. Skill в shared/ipc.ts, electron/SkillsStore.ts) — CRUD для редактора
+  // в Settings. id генерит main (SKILLS_ADD-хендлер), renderer его не передаёт.
+  listSkills:  () => ipcRenderer.invoke(IPC.SKILLS_LIST) as Promise<Skill[]>,
+  addSkill:    (input: { label: string; prompt: string; icon?: string }) =>
+    ipcRenderer.invoke(IPC.SKILLS_ADD, input) as Promise<boolean>,
+  updateSkill: (id: string, patch: { label?: string; prompt?: string; icon?: string; visible?: boolean }) =>
+    ipcRenderer.invoke(IPC.SKILLS_UPDATE, id, patch) as Promise<boolean>,
+  removeSkill: (id: string) => ipcRenderer.invoke(IPC.SKILLS_REMOVE, id) as Promise<boolean>,
+  onSkillsChanged: (cb: (skills: Skill[]) => void) => {
+    const handler = (_e: unknown, skills: Skill[]) => cb(skills);
+    ipcRenderer.on(IPC.SKILLS_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.SKILLS_CHANGED, handler);
   },
 
   // VPN, шаг 1 (см. electron/VpnSubscription.ts). Ссылка подписки и credential серверов

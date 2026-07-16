@@ -10,7 +10,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, X, Send, Globe, SearchCheck, Loader2, LayoutGrid, Calculator, RefreshCw, Timer, Pipette } from 'lucide-react';
+import { Sparkles, X, Send, Globe, SearchCheck, Loader2, LayoutGrid, Calculator, RefreshCw, Timer, Pipette, Plus } from 'lucide-react';
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 import { SHELL_MARGIN } from '../shared/layout';
@@ -24,6 +24,17 @@ type ChatOutcome =
 interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
+}
+
+// Форма Skill из electron/SkillsStore.ts — зеркалим локально, тот же приём, что у ChatOutcome
+// выше (ad-hoc канал, не через shared/ipc.ts).
+interface SkillItem {
+  id: string
+  label: string
+  prompt: string
+  icon?: string
+  builtin?: boolean
+  visible: boolean
 }
 
 // Форма пуша ai-panel:context из AiPanelManager.ts::sendCurrentContext.
@@ -47,9 +58,14 @@ declare global {
       // Заход D — кнопка фактчека: показывается только когда ключ Gemini подключён.
       onKeyStatus: (cb: (connected: boolean) => void) => () => void
       factCheck: () => void
+      // Коммит 1 (реестр скиллов) — prompt-кнопки панели (Объяснить/Саммари, позже пользовательские)
+      // приходят из main (SkillsStore.ts), а не хардкожены здесь.
+      onSkillsList: (cb: (skills: SkillItem[]) => void) => () => void
       // Задел под web-grounding (SearXNG) — тоггл-глобус в поле ввода.
       onSearxngStatus: (cb: (configured: boolean) => void) => () => void
-      openSettings: () => void
+      // section — необязательный начальный раздел Settings (напр. 'ai' у кнопки "+" в ряду
+      // действий); без аргумента — дефолтный раздел, как у клика по глобусу (handleGlobeClick).
+      openSettings: (section?: string) => void
     }
   }
 }
@@ -68,22 +84,15 @@ declare global {
 // быть НЕ произвольным (было 14/26 с оптической подгонкой под старый попап-дизайн), а тем же
 // SHELL_MARGIN — старые 14/26 расходились со split-островом на +2px сверху и +14px снизу.
 
-// Кнопки-подсказки над полем ввода (как у Яндекса) — статичный набор, НЕ генерируются под
-// страницу (это отдельный дорогой заход, в бэклог). Промпт-тексты — единственное место, легко
-// менять формулировки. Клик = отправка сообщения в чат текущей вкладки, как обычное — тот же
-// существующий стриминг/per-вкладочный контекст/извлечение текста страницы (заход 4). Результат
-// уходит в ПАНЕЛЬ — эти кнопки не трогают текст самой страницы.
-// «Перевести» — отдельный kind: направление (src/tgt) неизвестно ДО извлечения текста и детекции
-// языка страницы (двунаправленно, как перевод выделения — см. AiPanelManager.ts::resolveDirection/
-// buildPrompt), поэтому у неё нет готового prompt здесь — только сигнал quickTranslate() в main.
-type QuickAction =
-  | { kind: 'prompt'; label: string; prompt: string }
-  | { kind: 'translate'; label: string }
-const QUICK_ACTIONS: QuickAction[] = [
-  { kind: 'translate', label: 'Перевести' },
-  { kind: 'prompt', label: 'Объяснить', prompt: 'Объясни простыми словами, о чём эта страница.' },
-  { kind: 'prompt', label: 'Сделать саммари', prompt: 'Сделай краткое саммари этой страницы.' },
-];
+// Кнопки-подсказки над полем ввода (как у Яндекса) — Коммит 1 (реестр скиллов): prompt-кнопки
+// (Объяснить/Саммари, позже пользовательские) больше не хардкод здесь, а приходят из main
+// (SkillsStore.ts) через onSkillsList, см. skills-стейт ниже. Клик = отправка сообщения в чат
+// текущей вкладки, как обычное — тот же существующий стриминг/per-вкладочный контекст/извлечение
+// текста страницы (заход 4). Результат уходит в ПАНЕЛЬ — эти кнопки не трогают текст самой страницы.
+// «Перевести» остаётся отдельной спец-кнопкой ВНЕ реестра: направление (src/tgt) неизвестно ДО
+// извлечения текста и детекции языка страницы (двунаправленно, как перевод выделения — см.
+// AiPanelManager.ts::resolveDirection/buildPrompt), поэтому у неё нет готового prompt — только
+// сигнал quickTranslate() в main.
 
 // Хост без www. — компактнее в узкой (360px) панели. Пустой/нераспарсиваемый url (хаб,
 // oblako-chrome://) — просто ничего не показываем вторым сегментом чипса.
@@ -111,6 +120,10 @@ function AiPanel() {
   // текстовой/визуальной подписи «печатающегося» сообщения (см. рендер ленты ниже): вызов Gemini
   // с Search Grounding идёт заметно дольше локальной модели и без частичного стриминга, обычное
   // «…» выглядело бы как зависание — явный текст снижает риск повторного клика.
+  // Коммит 1 (реестр скиллов) — prompt-кнопки (Объяснить/Саммари, позже пользовательские) из
+  // main (SkillsStore.ts), см. onSkillsList ниже. Перевести/Фактчек в этот стейт не входят —
+  // они остаются спец-кнопками (см. комментарий выше про «Перевести»).
+  const [skills, setSkills] = useState<SkillItem[]>([])
   const [factCheckAvailable, setFactCheckAvailable] = useState(false)
   const [factChecking, setFactChecking] = useState(false)
   // Плашка приватности перед вызовом (см. sendFactCheck ниже) — обязательна каждый раз, без «запомнить».
@@ -175,10 +188,13 @@ function AiPanel() {
     const unsubKeyStatus = window.aiPanel.onKeyStatus((connected) => {
       setFactCheckAvailable(connected)
     })
+    const unsubSkillsList = window.aiPanel.onSkillsList((list) => {
+      setSkills(list)
+    })
     const unsubSearxngStatus = window.aiPanel.onSearxngStatus((configured) => {
       setSearxngConfigured(configured)
     })
-    return () => { unsubContext(); unsubChunk(); unsubResult(); unsubKeyStatus(); unsubSearxngStatus() }
+    return () => { unsubContext(); unsubChunk(); unsubResult(); unsubKeyStatus(); unsubSkillsList(); unsubSearxngStatus() }
   }, [])
 
   // Автоскролл вниз при новом тексте — свои сообщения, ответы AI, стриминг по ходу генерации.
@@ -271,7 +287,15 @@ function AiPanel() {
         background: 'var(--surface-solid)',
         // var(--radius-island) — заметно круглее var(--radius-card): остров, а не карточка.
         borderRadius: 'var(--radius-island)',
-        boxShadow: 'var(--shadow-overlay)',
+        // НЕ var(--shadow-overlay) — тот рассчитан на щедрый симметричный SHADOW_MARGIN=40
+        // (suggestdropdown.tsx/translatepopover.tsx), а тут padding теперь 0/12/12/12
+        // (см. paddingLeft/Top/Right/Bottom выше — заход про зазоры и SHELL_MARGIN ужал его).
+        // shadow-overlay при offset:10/blur:28 требует до 38px запаса на сторону — с 12px
+        // (и 0 слева) она обрезалась WebContentsView в жёсткий угловатый блок вместо мягкой
+        // тени. Своя маленькая асимметричная тень, подогнанная под фактический паддинг:
+        // offsetX:5/blur:5 — 0 слева (карточка и так вплотную к хэндлу, там нечему растворяться)
+        // и 10 справа (запас 2px); offsetY:2/blur:5 — 3 сверху и 7 снизу (запас 9/5px).
+        boxShadow: '5px 2px 5px rgba(40,30,80,0.20)',
         fontFamily: 'var(--font-sans)',
       }}>
         <div style={{
@@ -447,18 +471,42 @@ function AiPanel() {
               marginBottom: 8,
               flexShrink: 0,
             }}>
-              {QUICK_ACTIONS.map((qa) => (
+              {/* Перевести — спец-кнопка вне реестра скиллов (см. комментарий выше), всегда первая. */}
+              <button
+                onClick={sendQuickTranslate}
+                disabled={!tabId}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-chip)',
+                  // Белая парящая кнопка — тот же принцип, что у поля ввода ниже (surface-solid +
+                  // glass-edge), просто мельче и с --shadow-chip вместо --shadow-card (для
+                  // чипа-кнопки уместнее лёгкая тень, не островная). Раньше сидела на
+                  // --surface-sunken (серая в покое внутри уже белой панели) без hover вообще.
+                  border: '1px solid var(--glass-edge)',
+                  background: 'var(--surface-solid)',
+                  boxShadow: 'var(--shadow-chip)',
+                  color: 'var(--text-body)',
+                  fontSize: 'var(--fs-xs)', fontWeight: 500,
+                  cursor: tabId ? 'pointer' : 'default',
+                  opacity: tabId ? 1 : 0.5,
+                }}
+                onMouseEnter={(e) => { if (tabId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
+              >
+                Перевести
+              </button>
+              {/* Коммит 1 (реестр скиллов) — Объяснить/Саммари и позже пользовательские, из
+                  onSkillsList (SkillsStore.ts), тот же стиль кнопки, что и Перевести выше.
+                  Заход «видимость»: панель получает ПОЛНЫЙ список (включая скрытые) — фильтр
+                  на рендере, не на источнике (Settings показывает и скрытые тоже). */}
+              {skills.filter((skill) => skill.visible).map((skill) => (
                 <button
-                  key={qa.label}
-                  onClick={() => qa.kind === 'translate' ? sendQuickTranslate() : sendText(qa.prompt)}
+                  key={skill.id}
+                  onClick={() => sendText(skill.prompt)}
                   disabled={!tabId}
                   style={{
                     padding: '6px 12px',
                     borderRadius: 'var(--radius-chip)',
-                    // Белая парящая кнопка — тот же принцип, что у поля ввода ниже (surface-solid +
-                    // glass-edge), просто мельче и с --shadow-chip вместо --shadow-card (для
-                    // чипа-кнопки уместнее лёгкая тень, не островная). Раньше сидела на
-                    // --surface-sunken (серая в покое внутри уже белой панели) без hover вообще.
                     border: '1px solid var(--glass-edge)',
                     background: 'var(--surface-solid)',
                     boxShadow: 'var(--shadow-chip)',
@@ -470,7 +518,7 @@ function AiPanel() {
                   onMouseEnter={(e) => { if (tabId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
                 >
-                  {qa.label}
+                  {skill.label}
                 </button>
               ))}
               {/* Заход D — видна ТОЛЬКО когда ключ Gemini подключён (см. onKeyStatus выше), не
@@ -499,6 +547,31 @@ function AiPanel() {
                   <SearchCheck size={13} /> Фактчек
                 </button>
               )}
+              {/* "+" — ведёт в Settings сразу на разделе AI (редактор скиллов появится там
+                  отдельным коммитом). Не зависит от tabId (настройки — не действие над
+                  страницей), поэтому всегда активна. Последняя в ряду — не одна из
+                  подсказок/действий над страницей, а вход в настройки, стоит особняком.
+                  Синяя заливка (не outline-чип, как соседи) — та же пара, что у Send/«Продолжить»
+                  ниже (filled accent), но другим токеном фона: попросили точный #007AFF, такого
+                  токена нет НИГДЕ в теме (проверено src/styles/tokens/colors.css и весь src/styles —
+                  есть только --blue-500=#2280C5=--accent, другой хекс, дизайн-система из другого
+                  синего). TODO(цвет): имя-заглушка --system с фоллбэком на --accent — подставить
+                  реальный токен синей заливки под #007AFF, когда он появится в теме. */}
+              <button
+                onClick={() => window.aiPanel.openSettings('ai')}
+                title="Настроить AI"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '6px 10px',
+                  borderRadius: 'var(--radius-chip)',
+                  border: 'none',
+                  background: 'var(--system, var(--accent))',
+                  color: 'var(--text-on-accent)',
+                  cursor: 'pointer',
+                }}
+              >
+                <Plus size={13} />
+              </button>
             </div>
           )
         )}
