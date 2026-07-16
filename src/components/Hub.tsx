@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { StaticMeshGradient } from '@paper-design/shaders-react';
 import {
   Clock, Sparkles, LayoutGrid, MessageSquarePlus, Send, ArrowLeft,
   BookOpen, Lightbulb, Globe, Code2, Bookmark, Utensils, type LucideIcon,
@@ -11,24 +10,14 @@ import type { HubChatMessage, HubChatSessionMeta, HubMode } from '../../shared/i
 import { markdownComponents } from './aiMarkdown';
 import { glassPlate } from '../styles/island';
 
-// Статичный mesh-gradient обоями под хабом — только light. speed={0} (дефолт StaticMeshGradient)
-// принципиален: движок (@paper-design/shaders, shader-mount.js) сам гасит requestAnimationFrame
-// целиком, когда currentSpeed===0 — рендерит один кадр на монтаже/ресайзе и останавливается
-// (проверено по исходнику, не на глаз), никакого холостого GPU-цикла. Не подавать speed вообще —
-// дефолт уже 0, задавать 0 явно ничего не меняет, но легко случайно передать не то число при правке.
-// Цвета — не новые литералы, все четыре уже существующие токены палитры (--app-bg/--surface-sunken/
-// --blue-50/белый), чтобы обои не спорили с плоским фоном, на который они ложатся.
-const HUB_GRADIENT_COLORS = ['#F2F2F7', '#E5E5EA', '#D9EEFF', '#FFFFFF'];
-
 interface HubProps {
   tabId: string;
-  dark: boolean;
   onSubmit: (input: string) => void;
   onOpenHistory: () => void;
   onOpenSettings: () => void;
 }
 
-export default function Hub({ tabId, dark, onSubmit, onOpenHistory, onOpenSettings }: HubProps) {
+export default function Hub({ tabId, onSubmit, onOpenHistory, onOpenSettings }: HubProps) {
   const [tiles, setTiles] = useState<TileSite[]>([]);
   const [mode, setMode] = useState<HubMode>('tiles');
 
@@ -64,20 +53,6 @@ export default function Hub({ tabId, dark, onSubmit, onOpenHistory, onOpenSettin
       justifyContent: mode === 'tiles' ? 'center' : 'flex-start',
       padding: '32px 48px', overflowY: mode === 'tiles' ? 'auto' : 'hidden',
     }}>
-      {/* Обои под контентом — только light (см. HUB_GRADIENT_COLORS выше). position:absolute +
-          z-index:-1 достаточно, чтобы уйти под контент: TilesView/AiChatView — обычные
-          position:static flex-дети, при негативном z-index у позиционированного соседа они
-          красятся поверх него без какой-либо правки в них самих (стандартный порядок отрисовки
-          стековых контекстов — не нужно заворачивать контент в свой position:relative). Острова
-          хаба (поле ввода/чипы/плитки) все на непрозрачных surface-токенах (Apple-каскад) —
-          парят поверх, не сливаются. dark без обоев вообще — не тащим светлую палитру в тёмную
-          тему (отдельная так и не подобрана в этом заходе, решили не грузить оба варианта разом). */}
-      {!dark && (
-        <StaticMeshGradient
-          style={{ position: 'absolute', inset: 0, zIndex: -1 }}
-          colors={HUB_GRADIENT_COLORS}
-        />
-      )}
       {mode === 'tiles'
         ? <TilesView tiles={tiles} onSubmit={onSubmit} onOpenHistory={onOpenHistory} mode={mode} onModeChange={pickMode} />
         : <AiChatView tabId={tabId} mode={mode} onModeChange={pickMode} onOpenSettings={onOpenSettings} />}

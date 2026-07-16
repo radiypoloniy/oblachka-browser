@@ -31,7 +31,6 @@
     "@ghostery/adblocker-electron": "^2.18.0",
     "@huggingface/transformers": "^3.8.1",
     "@mozilla/readability": "^0.6.0",
-    "@paper-design/shaders-react": "^0.0.77",
     "better-sqlite3": "^12.11.1",
     "franc-min": "^6.2.0",
     "lucide-react": "0.383.0",
