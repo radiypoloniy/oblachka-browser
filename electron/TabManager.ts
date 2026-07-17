@@ -1150,6 +1150,25 @@ export class TabManager {
       if (p.linkURL) {
         items.push(
           { label: 'Открыть ссылку в новой вкладке', click: () => this.createTab(p.linkURL, true) },
+        );
+        // Пункт только когда текущая activeId ещё НЕ в показываемой паре — модель split
+        // строго бинарная (пара = 2 панели), добавить третью панель к уже сплитнутой
+        // вкладке некуда. Проверяем #activePair(), а не #currentlyInSplit-переменную —
+        // на неё смотрит здесь именно "текущая вкладка сейчас показывается как часть пары".
+        // ⚠️ Если activeId внутри группы, а новая вкладка (createTab — всегда топ-уровень)
+        // окажется в другом родителе дерева — enterSplit тихо не сработает (guard
+        // #findTabParent требует общего родителя, см. enterSplit). Известное ограничение,
+        // не фикс здесь — для вкладок вне групп путь рабочий.
+        if (!this.#activePair()) {
+          items.push({
+            label: 'Открыть ссылку в split',
+            click: () => {
+              const newId = this.createTab(p.linkURL, true); // background — не перебивать фокус до enterSplit
+              if (newId) this.enterSplit(newId); // activeId (текущая) → левая, newId → правая
+            },
+          });
+        }
+        items.push(
           { label: 'Копировать адрес ссылки', click: () => clipboard.writeText(p.linkURL) },
         );
       }
