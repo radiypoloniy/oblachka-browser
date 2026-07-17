@@ -1726,10 +1726,11 @@ export class TabManager {
   // Войти в split: текущая активная вкладка → левая панель, rightId → правая.
   // Только обычные (не закреплённые, не хаб) вкладки могут участвовать.
   enterSplit(rightId: string): void {
-    // Коммит 3: splitPairs — коллекция (готовит модель под несколько пар), но guard пока
-    // не пускает вторую — максимум одна пара во всём приложении, как и раньше. Снятие
-    // этого ограничения — отдельный коммит.
-    if (this.splitPairs.length > 0) return;
+    // Коммит 4: лимит на ОБЩЕЕ число пар снят — блокируем только если конкретно левая
+    // (текущая активная) или правая вкладка УЖЕ состоит в какой-то паре (нельзя одну и
+    // ту же вкладку впихнуть сразу в две). Разные вкладки без пары — новая пара разрешена,
+    // существующие пары это не блокирует (мульти-сплит).
+    if (this.#pairContaining(this.activeId) || this.#pairContaining(rightId)) return;
     this.clearOrganizeSnapshot();
     const rightTab = this.tabMap.get(rightId);
     if (!rightTab || (!this.isHttpView(rightTab.view) && !rightTab.sleeping) || this.isTabPinned(rightId)) return;
@@ -1752,6 +1753,10 @@ export class TabManager {
     this.findBarOpen = false;
     this.onFindCloseCb();
 
+    // Прячем ВСЁ постороннее — не только одиночные вкладки, но и панели ДРУГИХ пар, если
+    // такие уже есть. Корректно и под мульти-сплит: activeId уже равен leftId (см. выше),
+    // поэтому новая пара становится #activePair() автоматически — все остальные, включая
+    // прежде показываемую пару (если была), уходят в парковку (их узлы остаются в дереве).
     for (const t of this.tabMap.values()) {
       if (!this.isHttpView(t.view)) continue;
       if (t.id !== leftId && t.id !== rightId) t.view.setVisible(false);
@@ -1790,33 +1795,29 @@ export class TabManager {
   // Явный выход: пара удаляется из splitPairs насовсем. Отличается от «ухода» (activate
   // другой вкладки), который оставляет пару в коллекции для последующего восстановления.
   exitSplit(keepId?: string): void {
-    // #activePair() — обычный случай (сплит сейчас на экране). Фоллбэк на splitPairs[0] —
-    // явный выход из ПРИПАРКОВАННОЙ пары через кнопку в сайдбаре (доступна и для неё, см.
-    // Sidebar.tsx::SortablePairBlock leftShowExit) — под guard'ом enterSplit (максимум одна
-    // пара, см. выше) это всегда та же единственная пара, фоллбэк корректен. Явный выбор
-    // "какую из НЕСКОЛЬКИХ припаркованных пар выйти" — вопрос коммита, который снимет guard.
-    const pair = this.#activePair() ?? this.splitPairs[0];
+    // Коммит 4: строго #activePair() — пара, содержащая activeId, без фоллбэка на
+    // splitPairs[0]. Под несколькими парами фоллбэк разбирал бы ЧУЖУЮ (первую в
+    // коллекции), а не показываемую пару — см. историю коммита 3.
+    // ⚠️ Известное расхождение: кнопка "Выйти из split" в сайдбаре технически достижима и
+    // на строке ПРИПАРКОВАННОЙ (не показываемой) пары — см. Sidebar.tsx::SortablePairBlock
+    // leftShowExit = leftActive || !rightActive (левая ячейка показывает кнопку, даже если
+    // обе панели скрыты). IPC-контракт exitSplit() безаргументный — main не знает, какую
+    // именно пару имел в виду клик. С этим фоллбэком дело ограничивается no-op (если
+    // сейчас нет активной пары вовсе) — не может случайно разобрать ДРУГУЮ (показываемую)
+    // пару, но и саму нажатую (припаркованную) пару больше не разбирает. Осознанный трейд-
+    // офф этого коммита — правка кнопки/контракта (передавать id пары) вне его рамок.
+    const pair = this.#activePair();
     if (!pair) return;
     this.clearOrganizeSnapshot();
     const { leftId, rightId, activePanel } = pair;
 
-    const currentlyInSplit = pair === this.#activePair();
-
     // Всегда разворачиваем SplitPairNode → два SingleNode (до удаления пары из коллекции).
     this.#dissolveSplitPair(leftId, rightId);
-
-    // Явный выход при припаркованном split (кнопка в сайдбаре, пока смотрим другую вкладку):
-    // просто убираем пару из коллекции и остаёмся там, где были. Обе вкладки и так уже скрыты.
-    if (!currentlyInSplit && keepId === undefined) {
-      this.splitPairs = this.splitPairs.filter((p) => p !== pair);
-      this.onChange();
-      return;
-    }
+    this.splitPairs = this.splitPairs.filter((p) => p !== pair);
 
     const stayId = keepId ?? (activePanel === 'left' ? leftId : rightId);
     const hideId = stayId === leftId ? rightId : leftId;
 
-    this.splitPairs = this.splitPairs.filter((p) => p !== pair);
     console.log(`[shutdown] exitSplit: stayId=${stayId} hideId=${hideId} winDestroyed=${this.win.isDestroyed()}`);
 
     // isLiveHttpView (не isHttpView) — hideId часто ИМЕННО та вкладка, что сейчас закрывается

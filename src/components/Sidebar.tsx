@@ -129,11 +129,9 @@ interface TabRowProps {
   onExitSplit?: () => void;
   // Во время DragOverlay-рендера кнопки не нужны (ghost — только визуал).
   ghost?: boolean;
-  // Скрывает «открыть рядом», пока split уже активен (избегаем молчаливого no-op).
-  splitActive?: boolean;
 }
 
-function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitSplit, ghost, splitActive }: TabRowProps) {
+function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitSplit, ghost }: TabRowProps) {
   const [hovered, setHovered] = useState(false);
   const inSplit = tab.splitSide !== null;
   const bg = active ? 'var(--surface)'
@@ -184,7 +182,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
         ><Columns2 size={12} /></button>
       )}
 
-      {!ghost && hovered && !tab.isHub && !tab.isPinned && !inSplit && !active && !splitActive && onSplit && (
+      {!ghost && hovered && !tab.isHub && !tab.isPinned && !inSplit && !active && onSplit && (
         <button
           className="no-drag"
           onClick={(e) => { e.stopPropagation(); onSplit(); }}
@@ -405,14 +403,13 @@ interface GroupBlockProps {
   onContextMenu: (id: string) => void;
   onSplit: (id: string) => void;
   onExitSplit: () => void;
-  splitActive: boolean;
   renameGroupId: string | null;
   setRenameGroupId: (id: string | null) => void;
 }
 
 function SortableGroupBlock({
   group, tabMap, activeId, onSelect, onClose, onContextMenu,
-  onSplit, onExitSplit, splitActive, renameGroupId, setRenameGroupId,
+  onSplit, onExitSplit, renameGroupId, setRenameGroupId,
 }: GroupBlockProps) {
   const innerSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [localChildOrder, setLocalChildOrder] = useState<string[] | null>(null);
@@ -577,7 +574,6 @@ function SortableGroupBlock({
                       onContextMenu={() => onContextMenu(tab.id)}
                       onSplit={() => onSplit(tab.id)}
                       onExitSplit={onExitSplit}
-                      splitActive={splitActive}
                     />
                   );
                 }
@@ -695,8 +691,6 @@ export default function Sidebar({
   }, []);
 
   const pinnedBase = tabs.filter((t) => t.isPinned && !t.isHub);
-  // При любом активном split прячем кнопку «открыть рядом» на обычных вкладках.
-  const anySplitActive = tabs.some((t) => t.splitSide !== null);
 
   // Карта tabId → TabState для O(1)-поиска (нужна до pinned: при активной оптимистике
   // ищем вкладку здесь, а не в pinnedBase — tabs ещё не обновился).
@@ -1026,8 +1020,7 @@ export default function Sidebar({
                     onClose={() => onClose(tab.id)}
                     onContextMenu={() => onTabMenu(tab.id)}
                     onSplit={() => onSplit(tab.id)}
-                    onExitSplit={onExitSplit}
-                    splitActive={anySplitActive} />
+                    onExitSplit={onExitSplit} />
                 );
               }
               if (node.type === 'split-pair') {
@@ -1053,7 +1046,7 @@ export default function Sidebar({
                     activeId={activeId}
                     onSelect={onSelect} onClose={onClose}
                     onContextMenu={onTabMenu} onSplit={onSplit}
-                    onExitSplit={onExitSplit} splitActive={anySplitActive}
+                    onExitSplit={onExitSplit}
                     renameGroupId={renameGroupId}
                     setRenameGroupId={setRenameGroupId}
                   />
