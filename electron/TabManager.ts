@@ -1590,13 +1590,16 @@ export class TabManager {
 
   // ── Группы вкладок ───────────────────────────────────────────────────────────
 
-  // Оборачивает SingleNode в новую группу на том же уровне.
+  // Заворачивает узел, содержащий tabId, в новую группу целиком — SingleNode или
+  // SplitPairNode (пара переезжает ОБЕИМИ вкладками разом, ratio не трогаем, не разбираем
+  // её на две — #findTabParent уже матчит tabId по leftTabId/rightTabId, так что клик по
+  // любой из двух панелей резолвит один и тот же узел-пару).
   createGroup(tabId: string): void {
     const found = this.#findTabParent(tabId);
     if (!found) return;
     this.clearOrganizeSnapshot();
     const node = found.parent[found.idx];
-    if (node.type !== 'single') return; // split-pair в группу не заворачиваем
+    if (node.type === 'group') return; // группы не вложены (Phase 3) — сюда не попадаем
     const group: GroupNode = {
       type: 'group', id: randomUUID(),
       label: 'Новая группа', color: null, collapsed: false, children: [node],
@@ -1605,7 +1608,8 @@ export class TabManager {
     this.onChange();
   }
 
-  // Перемещает SingleNode в конец children указанной группы.
+  // Перемещает узел (SingleNode или SplitPairNode целиком) в конец children указанной
+  // группы — та же логика "не разбираем пару", что и в createGroup.
   addTabToGroup(groupId: string, tabId: string): void {
     const group = this.#findGroupById(groupId);
     if (!group) return;
@@ -1613,20 +1617,21 @@ export class TabManager {
     const found = this.#findTabParent(tabId);
     if (!found) return;
     const node = found.parent[found.idx];
-    if (node.type !== 'single') return;
+    if (node.type === 'group') return;
     found.parent.splice(found.idx, 1);
     group.children.push(node);
     this.onChange();
   }
 
-  // Вынимает вкладку из группы; помещает SingleNode после группы.
-  // Если группа опустела — расформировывает её.
+  // Вынимает вкладку (или ЕЁ ПАРУ целиком, если tabId — панель split-pair) из группы;
+  // помещает узел после группы. Если группа опустела — расформировывает её.
   removeTabFromGroup(groupId: string, tabId: string): void {
     const group = this.#findGroupById(groupId);
     if (!group) return;
     this.clearOrganizeSnapshot();
-    const childIdx = group.children.findIndex(
-      (c) => c.type === 'single' && (c as SingleNode).tabId === tabId,
+    const childIdx = group.children.findIndex((c) =>
+      (c.type === 'single' && c.tabId === tabId) ||
+      (c.type === 'split-pair' && (c.leftTabId === tabId || c.rightTabId === tabId)),
     );
     if (childIdx === -1) return;
     const [node] = group.children.splice(childIdx, 1);
