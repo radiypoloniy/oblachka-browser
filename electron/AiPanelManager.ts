@@ -567,8 +567,9 @@ function ensureIpcRegistered(): void {
   })
 }
 
-// Создаётся лениво на первое открытие — ничего не висит на старте браузера (тот же принцип,
-// что и у поповера перевода).
+// Создаётся лениво на первый вызов (клик по кнопке AI ЛИБО фоновый прогрев — см. prewarmPanel
+// ниже, main.ts вызывает его заранее после показа окна). Идемпотентна — повторный вызов (в
+// т.ч. из toggleAiPanel на реальном клике после прогрева) просто возвращает уже готовый view.
 function ensurePanelView(): WebContentsView {
   if (panelView) return panelView
   ensureIpcRegistered()
@@ -608,8 +609,32 @@ function ensurePanelView(): WebContentsView {
     return { action: 'deny' }
   })
 
+  // .catch — loadURL асинхронный, без обработчика упавший промис ушёл бы в unhandledRejection
+  // молча (раньше это было не критично: единственный вызывающий, клик пользователя, всё равно
+  // увидел бы пустую панель и мог попробовать снова). Теперь ensurePanelView зовётся ЕЩЁ и из
+  // фонового прогрева (prewarmPanel, без пользователя на экране) — там сбой обязан хотя бы
+  // залогироваться, иначе первый клик по AI тихо откатится к прежнему ленивому пути без объяснения.
   panelView.webContents.loadURL('oblako-chrome://localhost/aipanel.html')
+    .catch((e) => console.error('[ai-panel] loadURL упал:', e))
   return panelView
+}
+
+// Фоновый прогрев — вызывается ЗАРАНЕЕ (main.ts, после показа окна, с задержкой), ДО первого
+// клика по кнопке AI. Только создание WebContentsView + запуск loadURL — НЕ показывает панель
+// (никакого setBounds/addChildView/setOpenState, это исключительно дело toggleAiPanel). Пуши
+// did-finish-load (sendCurrentContext/sendKeyStatus/...) уйдут в ещё не показанную панель — это
+// безвредно (она просто копит состояние в невидимом renderer'е), а toggleAiPanel при реальном
+// открытии всё равно шлёт их заново (см. ветку alreadyLoaded ниже) — устаревший на момент
+// прогрева контекст никогда не остаётся показанным пользователю.
+// Не бросает наружу — тот же приём, что warmupBergamot/warmupTranslation в main.ts: сбой прогрева
+// не должен ронять старт браузера, в худшем случае первый клик по AI останется таким же ленивым,
+// как до этого коммита.
+export function prewarmPanel(): void {
+  try {
+    ensurePanelView()
+  } catch (e) {
+    console.error('[ai-panel] прогрев упал:', e)
+  }
 }
 
 // Тоггл по клику кнопки AI в тулбаре — возвращает новое состояние (true = открыта).

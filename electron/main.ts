@@ -25,7 +25,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { warmup as warmupTranslation, type ChatOutcome } from './TranslationService';
-import { toggleAiPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
+import { toggleAiPanel, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
 import {
   togglePageTranslate,
   getActiveState as getPageTranslateActiveState,
@@ -86,6 +86,14 @@ const EMBED_PRELOAD = process.env.OBLAKO_PRELOAD_EMBED !== '0';
 // загрузка стартовала бы в тот же момент, что и показ окна, — конкуренция за диск/GPU как раз в
 // точке, где пользователь впервые видит интерфейс.
 const TRANSLATION_WARMUP_DELAY_MS = 3000;
+
+// Прогрев AI-панели (см. showWindow ниже, AiPanelManager.ts::prewarmPanel) — своя, более ранняя
+// пауза: в отличие от перевода/Bergamot выше это НЕ модель (VRAM/GPU не трогает) — просто спавн
+// WebContentsView + загрузка её бандла (~280КБ, см. диагностику двухфазного показа панели), лёгкий
+// прогрев. Отдельная задержка (не тот же тик, что TRANSLATION_WARMUP_DELAY_MS) — чтобы не бить
+// оба прогрева в одну точку старта; панель раньше, т.к. дешевле и пользователь может кликнуть
+// по AI раньше, чем понадобится перевод.
+const AI_PANEL_PREWARM_DELAY_MS = 1500;
 
 // Изолированные стенды AI-инфраструктурных тестов (WebGPU-эксперименты, node-llama-cpp).
 // OBLAKO_GPU_TEST=1 / OBLAKO_LLAMA_TEST=1 / OBLAKO_TRANSLATE_TEST=1 npm start → вместо боевого
@@ -263,6 +271,12 @@ function createWindow() {
         // но всё равно на той же задержке: не соревнуется с первой отрисовкой чрома.
         void warmupBergamot();
       }, TRANSLATION_WARMUP_DELAY_MS);
+      // Прогрев AI-панели — своя, более ранняя задержка (см. AI_PANEL_PREWARM_DELAY_MS): лёгкий
+      // прогрев (не модель), staggered отдельно от warmupTranslation/warmupBergamot выше, чтобы не
+      // бить оба прогрева в одну точку старта.
+      setTimeout(() => {
+        if (!thisWin.isDestroyed()) prewarmPanel();
+      }, AI_PANEL_PREWARM_DELAY_MS);
     };
     const onUiReady = () => showWindow('ui-ready');
     ipcMain.once(IPC.CHROME_UI_READY, onUiReady);
