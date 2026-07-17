@@ -26,6 +26,21 @@ const nodeToTopId = (node: SidebarNode): string =>
   : node.type === 'split-pair' ? node.leftTabId
   : `group:${node.id}`;
 
+// Ищет узел дерева по его "верхнему" id (nodeToTopId) — рекурсивно, узел может лежать
+// внутри группы. Резолвит РЕАЛЬНЫЙ тип по дереву, а не по эвристике вида id (тот же
+// id — голый tabId — носят и одиночная вкладка, и левая панель пары, различить их
+// можно только так). Используется DragOverlay, чтобы понять, что именно тащат.
+const findNodeByTopId = (nodes: SidebarNode[], topId: string): SidebarNode | null => {
+  for (const node of nodes) {
+    if (nodeToTopId(node) === topId) return node;
+    if (node.type === 'group') {
+      const nested = findNodeByTopId(node.children, topId);
+      if (nested) return nested;
+    }
+  }
+  return null;
+};
+
 const GROUP_COLORS: Record<string, string> = {
   red: '#ef4444', orange: '#f97316', yellow: '#eab308',
   green: '#22c55e', blue: '#3b82f6', purple: '#a855f7',
@@ -234,10 +249,11 @@ function SortableTabRow(props: TabRowProps) {
   );
 }
 
-// Split-пара как единый drag-блок (id = left.id — nodeToTopId маппит split-pair
-// на leftTabId, TabManager.reorderTabs/reorderGroupChildren матчат по нему же).
-// Arc-стиль: одна горизонтальная строка с двумя mini-ячейками.
-function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContextMenu, onExitSplit }: {
+// Presentational: две mini-ячейки left/right + разделитель, БЕЗ useSortable/drag —
+// используется и внутри SortablePairBlock (интерактивная, оборачивает как
+// SortableTabRow оборачивает TabRow), и как DragOverlay-призрак (ghost — та же
+// разметка без кликов/кнопок, тот же контракт, что у TabRow с ghost).
+interface PairTileProps {
   left: TabState;
   right: TabState;
   activeId: string;
@@ -245,11 +261,11 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
   onClose: (id: string) => void;
   onContextMenu: (id: string) => void;
   onExitSplit: (tabId: string) => void;
-}) {
+  ghost?: boolean;
+}
+
+function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onExitSplit, ghost }: PairTileProps) {
   const [hoveredSide, setHoveredSide] = useState<'left' | 'right' | null>(null);
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-    id: left.id,
-  });
 
   const leftActive  = activeId === left.id;
   const rightActive = activeId === right.id;
@@ -257,27 +273,19 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
   const rightShowExit = rightActive;
 
   return (
-    <div
-      ref={setNodeRef}
-      style={{
-        ...innerPlate,
-        transform: CSS.Transform.toString(transform),
-        transition,
-        display: 'flex', alignItems: 'stretch',
-        overflow: 'hidden',
-        flexShrink: 0,
-        minHeight: 36,
-      }}
-      {...attributes}
-      {...listeners}
-    >
+    <div style={{
+      ...innerPlate,
+      display: 'flex', alignItems: 'stretch',
+      overflow: 'hidden',
+      minHeight: 36,
+    }}>
       {/* Левая ячейка */}
       <div
-        onClick={() => { if (!leftActive) onSelect(left.id); }}
-        onContextMenu={(e) => { e.preventDefault(); onContextMenu(left.id); }}
-        onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(left.id); } }}
-        onMouseEnter={() => setHoveredSide('left')}
-        onMouseLeave={() => setHoveredSide(null)}
+        onClick={ghost ? undefined : () => { if (!leftActive) onSelect(left.id); }}
+        onContextMenu={ghost ? undefined : (e) => { e.preventDefault(); onContextMenu(left.id); }}
+        onMouseDown={ghost ? undefined : (e) => { if (e.button === 1) { e.preventDefault(); onClose(left.id); } }}
+        onMouseEnter={ghost ? undefined : () => setHoveredSide('left')}
+        onMouseLeave={ghost ? undefined : () => setHoveredSide(null)}
         style={{
           flex: 1, display: 'flex', alignItems: 'center', gap: 4,
           padding: '0 8px', minWidth: 0, cursor: 'default',
@@ -292,7 +300,7 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
           color: leftActive ? 'var(--text-strong)' : 'var(--text-body)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>{left.title || left.url || 'Загрузка…'}</span>
-        {leftShowExit && (
+        {!ghost && leftShowExit && (
           <button
             className="no-drag"
             onClick={(e) => { e.stopPropagation(); onExitSplit(left.id); }}
@@ -302,7 +310,7 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><Columns2 size={12} /></button>
         )}
-        {hoveredSide === 'left' && (
+        {!ghost && hoveredSide === 'left' && (
           <button
             className="no-drag"
             onClick={(e) => { e.stopPropagation(); onClose(left.id); }}
@@ -319,11 +327,11 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
 
       {/* Правая ячейка */}
       <div
-        onClick={() => { if (!rightActive) onSelect(right.id); }}
-        onContextMenu={(e) => { e.preventDefault(); onContextMenu(right.id); }}
-        onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(right.id); } }}
-        onMouseEnter={() => setHoveredSide('right')}
-        onMouseLeave={() => setHoveredSide(null)}
+        onClick={ghost ? undefined : () => { if (!rightActive) onSelect(right.id); }}
+        onContextMenu={ghost ? undefined : (e) => { e.preventDefault(); onContextMenu(right.id); }}
+        onMouseDown={ghost ? undefined : (e) => { if (e.button === 1) { e.preventDefault(); onClose(right.id); } }}
+        onMouseEnter={ghost ? undefined : () => setHoveredSide('right')}
+        onMouseLeave={ghost ? undefined : () => setHoveredSide(null)}
         style={{
           flex: 1, display: 'flex', alignItems: 'center', gap: 4,
           padding: '0 8px', minWidth: 0, cursor: 'default',
@@ -338,7 +346,7 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
           color: rightActive ? 'var(--text-strong)' : 'var(--text-body)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>{right.title || right.url || 'Загрузка…'}</span>
-        {rightShowExit && (
+        {!ghost && rightShowExit && (
           <button
             className="no-drag"
             onClick={(e) => { e.stopPropagation(); onExitSplit(right.id); }}
@@ -348,7 +356,7 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><Columns2 size={12} /></button>
         )}
-        {hoveredSide === 'right' && (
+        {!ghost && hoveredSide === 'right' && (
           <button
             className="no-drag"
             onClick={(e) => { e.stopPropagation(); onClose(right.id); }}
@@ -359,6 +367,39 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
           ><X size={12} /></button>
         )}
       </div>
+    </div>
+  );
+}
+
+// Split-пара как единый drag-блок (id = left.id — nodeToTopId маппит split-pair
+// на leftTabId, TabManager.reorderTabs/reorderGroupChildren матчат по нему же).
+// Обёртка над PairTile — та же связка, что SortableTabRow/TabRow: тут только
+// useSortable и drag-handle, вся отрисовка — в PairTile.
+function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContextMenu, onExitSplit }: {
+  left: TabState;
+  right: TabState;
+  activeId: string;
+  onSelect: (id: string) => void;
+  onClose: (id: string) => void;
+  onContextMenu: (id: string) => void;
+  onExitSplit: (tabId: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: left.id,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, flexShrink: 0 }}
+      {...attributes}
+      {...listeners}
+    >
+      <PairTile
+        left={left} right={right} activeId={activeId}
+        onSelect={onSelect} onClose={onClose}
+        onContextMenu={onContextMenu} onExitSplit={onExitSplit}
+      />
     </div>
   );
 }
@@ -728,16 +769,21 @@ export default function Sidebar({
     return true;
   });
 
-  // ID активного drag-элемента (может быть tabId или 'group:${id}')
+  // ID активного drag-элемента (может быть tabId одиночной, left.id пары или
+  // 'group:${id}') — САМ id не говорит, какого типа узел: у одиночной и у левой
+  // панели пары id выглядит одинаково (голый tabId). Резолвим РЕАЛЬНЫЙ тип, найдя
+  // узел в дереве (findNodeByTopId), а не гадая по виду строки.
   const [dragActiveId, setDragActiveId] = useState<string | null>(null);
-  const dragTab: TabState | null = (dragActiveId && !dragActiveId.startsWith('group:'))
-    ? (tabs.find((t) => t.id === dragActiveId) ?? null)
+  const dragNode: SidebarNode | null = dragActiveId ? findNodeByTopId(sidebarNodes, dragActiveId) : null;
+  const dragTab: TabState | null = dragNode?.type === 'single'
+    ? (tabs.find((t) => t.id === dragNode.tabId) ?? null)
     : null;
-  const dragGroup: GroupNode | null = (() => {
-    if (!dragActiveId?.startsWith('group:')) return null;
-    const gId = dragActiveId.slice(6);
-    const found = sidebarNodes.find((n) => n.type === 'group' && n.id === gId);
-    return found?.type === 'group' ? found : null;
+  const dragGroup: GroupNode | null = dragNode?.type === 'group' ? dragNode : null;
+  const dragPairTabs: { left: TabState; right: TabState } | null = (() => {
+    if (dragNode?.type !== 'split-pair') return null;
+    const left  = tabs.find((t) => t.id === dragNode.leftTabId);
+    const right = tabs.find((t) => t.id === dragNode.rightTabId);
+    return left && right ? { left, right } : null;
   })();
 
   // PointerSensor с минимальным расстоянием активации: клики не превращаются в drag.
@@ -1057,8 +1103,9 @@ export default function Sidebar({
           </div>
         </SortableContext>
 
-        {/* DragOverlay: ghost-копия перетаскиваемого элемента.
-            Для вкладки — TabRow; для группы — минимальный заголовок. */}
+        {/* DragOverlay: ghost-копия перетаскиваемого элемента, по РЕАЛЬНОМУ типу узла
+            (dragNode/findNodeByTopId выше) — не по виду id. Одиночная — TabRow;
+            пара — PairTile (две ячейки); группа — минимальный заголовок. */}
         <DragOverlay>
           {dragTab && (
             <div style={{
@@ -1073,6 +1120,25 @@ export default function Sidebar({
                 onClick={() => {}}
                 onClose={() => {}}
                 onContextMenu={() => {}}
+                ghost
+              />
+            </div>
+          )}
+          {dragPairTabs && (
+            <div style={{
+              boxShadow: 'var(--shadow-card)',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--surface)',
+              opacity: 0.95,
+            }}>
+              <PairTile
+                left={dragPairTabs.left}
+                right={dragPairTabs.right}
+                activeId={activeId}
+                onSelect={() => {}}
+                onClose={() => {}}
+                onContextMenu={() => {}}
+                onExitSplit={() => {}}
                 ghost
               />
             </div>
