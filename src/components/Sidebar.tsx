@@ -454,6 +454,11 @@ function SortableGroupBlock({
 }: GroupBlockProps) {
   const innerSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [localChildOrder, setLocalChildOrder] = useState<string[] | null>(null);
+  // Своя пара state+DragOverlay — верхнеуровневый DragOverlay (Sidebar) не видит drag,
+  // стартовавший в ЭТОМ (вложенном) DndContext, dnd-kit не пробрасывает состояние между
+  // независимыми DndContext. Без этого SortableTabRow гасит себя (opacity:0 при isDragging)
+  // в расчёте на портал-призрак, которого тут не было — пустота при drag одиночной внутри группы.
+  const [childDragId, setChildDragId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState(group.label);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const isRenaming = renameGroupId === group.id;
@@ -498,7 +503,26 @@ function SortableGroupBlock({
     .map((id) => childNodeById.get(id))
     .filter((n): n is SidebarNode => n !== undefined);
 
+  // Тип перетаскиваемого ребёнка — простой поиск в effectiveChildren (уже в скоупе, не
+  // нужен рекурсивный обход всего дерева, как для top-level DragOverlay в Sidebar).
+  const dragChild = childDragId
+    ? effectiveChildren.find((c) => nodeToTopId(c) === childDragId) ?? null
+    : null;
+  const dragChildTab: TabState | null = dragChild?.type === 'single'
+    ? (tabMap.get(dragChild.tabId) ?? null)
+    : null;
+  const dragChildPairTabs: { left: TabState; right: TabState } | null = (() => {
+    if (dragChild?.type !== 'split-pair') return null;
+    const left  = tabMap.get(dragChild.leftTabId);
+    const right = tabMap.get(dragChild.rightTabId);
+    return left && right ? { left, right } : null;
+  })();
+
   const handleChildDragEnd = (e: DragEndEvent) => {
+    // Сброс ПЕРВЫМ, до любых ранних return — иначе drop без реального перемещения
+    // (over совпал с active, или вне списка) оставит childDragId висеть, а вместе с ним
+    // призрак и погашенный (opacity:0) оригинал.
+    setChildDragId(null);
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     const from = effectiveChildIds.indexOf(active.id as string);
@@ -597,7 +621,9 @@ function SortableGroupBlock({
           sensors={innerSensors}
           collisionDetection={closestCenter}
           modifiers={[restrictToVerticalAxis]}
+          onDragStart={(e) => setChildDragId(e.active.id as string)}
           onDragEnd={handleChildDragEnd}
+          onDragCancel={() => setChildDragId(null)}
         >
           <SortableContext items={effectiveChildIds} strategy={verticalListSortingStrategy}>
             <div style={{ paddingLeft: 14, paddingBottom: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -636,6 +662,49 @@ function SortableGroupBlock({
               })}
             </div>
           </SortableContext>
+
+          {/* Свой DragOverlay — портал живёт в своём DndContext, верхнеуровневый
+              (Sidebar) сюда не дотягивается. Та же разметка/стиль ghost-контейнера,
+              что в top-level DragOverlay (коммит 1) — только источник типа проще
+              (child уже под рукой в effectiveChildren, дерево обходить не нужно). */}
+          <DragOverlay>
+            {dragChildTab && (
+              <div style={{
+                boxShadow: 'var(--shadow-card)',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--surface)',
+                opacity: 0.95,
+              }}>
+                <TabRow
+                  tab={dragChildTab}
+                  active={activeId === dragChildTab.id}
+                  onClick={() => {}}
+                  onClose={() => {}}
+                  onContextMenu={() => {}}
+                  ghost
+                />
+              </div>
+            )}
+            {dragChildPairTabs && (
+              <div style={{
+                boxShadow: 'var(--shadow-card)',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--surface)',
+                opacity: 0.95,
+              }}>
+                <PairTile
+                  left={dragChildPairTabs.left}
+                  right={dragChildPairTabs.right}
+                  activeId={activeId}
+                  onSelect={() => {}}
+                  onClose={() => {}}
+                  onContextMenu={() => {}}
+                  onExitSplit={() => {}}
+                  ghost
+                />
+              </div>
+            )}
+          </DragOverlay>
         </DndContext>
       )}
     </div>
