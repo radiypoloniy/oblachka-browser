@@ -974,9 +974,13 @@ export class TabManager {
     // Когда WebContentsView получает OS-фокус от клика мышью — проверяем, не нужно ли
     // активировать панель split. DOM-дивы в renderer не получают клик, перекрытый вьюхой.
     wc.on('focus', () => {
+      // this.#currentlyInSplit() — не просто "id входит в какую-то пару", а "эта пара сейчас
+      // показывается" (activeId уже на её другой панели). Скрытая вьюха припаркованной пары
+      // в норме и так не должна получать OS-фокус, но проверка не полагается на это молча.
       if (this.splitState &&
           (id === this.splitState.leftId || id === this.splitState.rightId) &&
-          this.activeId !== id) {
+          this.activeId !== id &&
+          this.#currentlyInSplit()) {
         const side = id === this.splitState.leftId ? 'left' : 'right';
         this.focusSplitPanel(side);
       }
@@ -1004,18 +1008,22 @@ export class TabManager {
       const isActivePanel = this.activeId === id;
       const isInSplit = !!this.splitState
         && (id === this.splitState.leftId || id === this.splitState.rightId);
+      // Партнёр показывается прямо сейчас, только если сама пара активна (не припаркована) —
+      // навигация в скрытой/припаркованной паре не должна поднимать её вьюху поверх экрана.
+      const isShownSplitPartner = isInSplit && this.#currentlyInSplit();
       if (isActivePanel) {
         wc.stopFindInPage('clearSelection');
         this.lastQuery = '';
         this.onFindCloseCb();
       }
-      // Навигация = активность; обновляем lastActiveAt для активных/split-вкладок.
+      // Навигация = активность; обновляем lastActiveAt для активных/split-вкладок (в т.ч.
+      // припаркованных — это просто учёт активности, не показ).
       if (isActivePanel || isInSplit) {
         const tab = this.tabMap.get(id);
         if (tab) tab.lastActiveAt = Date.now();
       }
-      // Показываем вьюху как для активной вкладки, так и для split-партнёра.
-      if (isActivePanel || isInSplit) this.revealView(id);
+      // Показываем вьюху как для активной вкладки, так и для показываемого split-партнёра.
+      if (isActivePanel || isShownSplitPartner) this.revealView(id);
       // Записываем визит: один URL = один UPSERT с инкрементом счётчика.
       this.onNavigateCb?.(wc.getURL(), wc.getTitle(), wc);
       notify();
@@ -2095,11 +2103,17 @@ export class TabManager {
   private revealView(id: string): void {
     const tab = this.tabMap.get(id);
     if (!tab || !this.isHttpView(tab.view)) return;
+    const inSplit = !!this.splitState
+      && (id === this.splitState.leftId || id === this.splitState.rightId);
+    // Партнёр ПРИПАРКОВАННОЙ (не показываемой сейчас) пары — не поднимаем его вьюху поверх
+    // экрана из-за фоновой навигации. Самостоятельная гарантия здесь, не только у вызывающего
+    // кода (did-navigate уже фильтрует, но revealView не должен на это полагаться молча).
+    if (inSplit && !this.#currentlyInSplit()) return;
     const children = this.win.contentView.children;
     if (!children.includes(tab.view)) this.win.contentView.addChildView(tab.view);
     tab.view.setVisible(true);
-    // В split: перепозиционируем обе панели (bounds мог прийти раньше вьюхи).
-    if (this.splitState && (id === this.splitState.leftId || id === this.splitState.rightId)) {
+    // В (активной) паре: перепозиционируем обе панели (bounds мог прийти раньше вьюхи).
+    if (inSplit) {
       this.repositionViews();
     } else {
       this.applyBounds(tab.view);
@@ -2205,8 +2219,12 @@ export class TabManager {
   // СТРАНИЦЫ — чтобы получить оконные координаты для поповера паролей, нужно прибавить именно
   // этот оффсет, а не общий this.bounds (в split-режиме вкладка занимает только половину).
   getTabViewBounds(tabId: string): ContentBounds {
+    // #currentlyInSplit() — не просто "tabId в какой-то паре", а "эта пара сейчас показывается".
+    // Таб из припаркованной пары не занимает половину экрана визуально — для него полагается
+    // полный this.bounds, как для обычной невидимой вкладки.
     const inSplit = !!this.splitState
-      && (tabId === this.splitState.leftId || tabId === this.splitState.rightId);
+      && (tabId === this.splitState.leftId || tabId === this.splitState.rightId)
+      && this.#currentlyInSplit();
     if (!inSplit) return this.bounds;
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const { leftId, splitRatio } = this.splitState!;
