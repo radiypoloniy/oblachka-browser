@@ -68,6 +68,14 @@ interface SleepingMeta {
 // оффсетом view.getBounds(), готов к использованию для позиционирования поповера в main.ts.
 export interface SelectionRect { x: number; y: number; width: number; height: number }
 
+// Элемент коллекции активных split-пар (см. TabManager#splitPairs).
+interface SplitPair {
+  leftId: string;
+  rightId: string;
+  activePanel: 'left' | 'right';
+  splitRatio: number;
+}
+
 interface ManagedTab {
   id: string;
   view: WebContentsView | null; // null = хаб (sleeping===null) ИЛИ спящая (sleeping!==null) ИЛИ псевдо-вкладка (kind задан)
@@ -183,16 +191,13 @@ export class TabManager {
   // Снимок nodes до последней AI-группировки: null = нет чего откатывать.
   // Сбрасывается при любом ручном структурном изменении (drag, создание/удаление группы и т.п.).
   private organizeSnapshot: SidebarNode[] | null = null;
-  // Состояние split-режима: null = обычный режим.
-  // splitRatio — доля левой панели (0.2..0.8), сохраняется пока split существует.
-  // Phase 2: когда split-pair станет узлом в nodes, splitState уйдёт — split начнёт
-  // переживать рестарт. Это намеренный будущий эффект, пока не реализован.
-  private splitState: {
-    leftId: string;
-    rightId: string;
-    activePanel: 'left' | 'right';
-    splitRatio: number;
-  } | null = null;
+  // Коллекция активных split-пар. splitRatio — доля левой панели (0.2..0.8).
+  // Коммит 3: guard в enterSplit (см. ниже) по-прежнему не пускает вторую пару —
+  // коллекция здесь ради формы модели (готовит почву под несколько одновременных
+  // split), но фактически всегда держит ≤1 элемент, пока guard не снят отдельным
+  // коммитом. "Показываемая сейчас" пара — не отдельное поле, а #activePair():
+  // та единственная пара из коллекции, где activeId — одна из двух панелей.
+  private splitPairs: SplitPair[] = [];
 
   constructor(
     win: BrowserWindow,
@@ -325,10 +330,7 @@ export class TabManager {
         faviconUrl: t.sleeping.faviconData ?? t.sleeping.faviconUrl,
         isLoading: false, canGoBack: false, canGoForward: false,
         isHub: false, isPinned,
-        splitSide: !this.splitState ? null
-          : t.id === this.splitState.leftId  ? 'left' as const
-          : t.id === this.splitState.rightId ? 'right' as const
-          : null,
+        splitSide: this.#tabSplitSide(t.id),
         isSleeping: true, kind: 'page',
       };
     }
@@ -353,10 +355,7 @@ export class TabManager {
       canGoBack: wc.canGoBack(),
       canGoForward: wc.canGoForward(),
       isHub: false, isPinned,
-      splitSide: !this.splitState ? null
-        : t.id === this.splitState.leftId  ? 'left' as const
-        : t.id === this.splitState.rightId ? 'right' as const
-        : null,
+      splitSide: this.#tabSplitSide(t.id),
       isSleeping: false, kind: 'page',
     };
   }
@@ -482,12 +481,31 @@ export class TabManager {
     return false;
   }
 
-  // Активная вкладка сейчас — одна из двух панелей активного split (в противовес
-  // «припаркованному» split, где splitState есть, но activeId — сторонняя вкладка).
-  // Паттерн был текстуально продублирован в нескольких местах — один источник правды.
+  // Пара, которая ПОКАЗЫВАЕТСЯ сейчас — не отдельный указатель, а та единственная запись
+  // в splitPairs, где activeId — одна из двух панелей. Остальные пары (если появятся) —
+  // «припаркованы»: существуют в коллекции, но их вьюхи скрыты.
+  #activePair(): SplitPair | undefined {
+    return this.splitPairs.find((p) => p.leftId === this.activeId || p.rightId === this.activeId);
+  }
+
+  // Пара, содержащая конкретный tabId (не обязательно показываемая сейчас) — для мест,
+  // которым нужно "эта вкладка вообще в какой-то паре", а не "она в показываемой".
+  #pairContaining(id: string): SplitPair | undefined {
+    return this.splitPairs.find((p) => p.leftId === id || p.rightId === id);
+  }
+
+  // Активная вкладка сейчас — одна из двух панелей ПОКАЗЫВАЕМОЙ пары. Паттерн был
+  // текстуально продублирован в нескольких местах — один источник правды.
   #currentlyInSplit(): boolean {
-    return !!this.splitState
-      && (this.activeId === this.splitState.leftId || this.activeId === this.splitState.rightId);
+    return !!this.#activePair();
+  }
+
+  // Сторона вкладки в СВОЕЙ паре (не в показываемой — TabState.splitSide отражает
+  // "я вообще в сплите", парковка на это не влияет, см. Sidebar.tsx).
+  #tabSplitSide(id: string): 'left' | 'right' | null {
+    const pair = this.#pairContaining(id);
+    if (!pair) return null;
+    return id === pair.leftId ? 'left' : 'right';
   }
 
   // Вычисляет SavedActiveRef (v4 формат: 'url' вместо 'normal'/'split').
@@ -560,8 +578,10 @@ export class TabManager {
         const leftOk  = !!leftTab  && savable(leftTab);
         const rightOk = !!rightTab && savable(rightTab);
         if (leftOk && rightOk) {
-          const ratio = (this.splitState?.leftId === node.leftTabId)
-            ? this.splitState.splitRatio : node.ratio;
+          // "Живой" ratio — если эта пара сейчас в splitPairs (может быть показываемой или
+          // припаркованной, неважно — ratio актуален в обоих случаях), иначе берём из узла.
+          const livePair = this.#pairContaining(node.leftTabId);
+          const ratio = livePair ? livePair.splitRatio : node.ratio;
           const pairNode: SavedSplitPairNode = {
             type: 'split-pair', leftUrl: this.#tabUrl(leftTab!), rightUrl: this.#tabUrl(rightTab!), ratio,
           };
@@ -604,7 +624,7 @@ export class TabManager {
   // Вызывается после создания всех вкладок через createTab, ДО activate().
   rebuildNodeTree(savedNodes: SavedNode[], urlToIds: Map<string, string[]>): void {
     this.nodes = [];
-    this.splitState = null;
+    this.splitPairs = [];
     this.#buildNodesFromSaved(savedNodes, urlToIds, this.nodes);
     this.#detectSplitState(this.nodes);
   }
@@ -645,7 +665,7 @@ export class TabManager {
         if (!hasLeft || !hasRight) {
           console.error(
             `[TabMgr][${label}] SPLIT INVAR FAIL: leftTabId=${node.leftTabId}(in tabMap:${hasLeft}) rightTabId=${node.rightTabId}(in tabMap:${hasRight})`,
-            `| splitState=${JSON.stringify(this.splitState)}`,
+            `| splitPairs=${JSON.stringify(this.splitPairs)}`,
             `| activeId=${this.activeId}`,
             `| tabMap.size=${this.tabMap.size}`,
             `| nodes.length=${this.nodes.length}`,
@@ -668,19 +688,18 @@ export class TabManager {
     }
   }
 
-  // Проходит по nodes и устанавливает splitState для первой найденной пары.
+  // Проходит по nodes и регистрирует В splitPairs КАЖДУЮ найденную split-pair (рекурсивно,
+  // включая группы) — не только первую. Какая из них окажется "показываемой" после restore
+  // решает activate(targetId) через #pairContaining (см. activate ниже), не порядок здесь.
   #detectSplitState(nodes: SidebarNode[]): void {
     for (const node of nodes) {
       if (node.type === 'split-pair') {
-        this.splitState = {
+        this.splitPairs.push({
           leftId: node.leftTabId, rightId: node.rightTabId,
           activePanel: 'left', splitRatio: node.ratio,
-        };
-        return;
-      }
-      if (node.type === 'group') {
+        });
+      } else if (node.type === 'group') {
         this.#detectSplitState(node.children);
-        if (this.splitState) return;
       }
     }
   }
@@ -797,24 +816,26 @@ export class TabManager {
     if (pinnedIdx !== -1) {
       // Открепить: убрать из pinnedTabs, добавить SingleNode в конец nodes.
       const [tab] = this.pinnedTabs.splice(pinnedIdx, 1);
-      // Если вкладка была в split — снимаем split при откреплении (split не поддерживает закреплённые).
-      if (this.splitState && (id === this.splitState.leftId || id === this.splitState.rightId)) {
+      // Если вкладка была в split — снимаем split при откреплении (split не поддерживает
+      // закреплённые). На практике недостижимо: закрепление уже проходит через ветку ниже,
+      // которая всегда разбирает пару ДО пополнения pinnedTabs — оставлено как защита.
+      if (this.#pairContaining(id)) {
         this.exitSplit(id);
       }
       this.nodes.push({ type: 'single', tabId: tab.id });
     } else {
       // Закрепить: если вкладка в split — сначала выходим (другая остаётся).
-      if (this.splitState && (id === this.splitState.leftId || id === this.splitState.rightId)) {
-        const { leftId, rightId } = this.splitState;
-        const otherId = id === leftId ? rightId : leftId;
-        if (this.#currentlyInSplit()) {
-          this.exitSplit(otherId); // разворачивает пару в два SingleNode
+      const pair = this.#pairContaining(id);
+      if (pair) {
+        const otherId = id === pair.leftId ? pair.rightId : pair.leftId;
+        if (this.#activePair() === pair) {
+          this.exitSplit(otherId); // разворачивает ПОКАЗЫВАЕМУЮ пару в два SingleNode
         } else {
-          // Парковая пара: разбираем канонически (→ два SingleNode) — общий блок ниже
-          // (#findTabParent(id)) уберёт SingleNode самого id, останется только otherId,
-          // как и раньше.
-          this.#dissolveSplitPair(leftId, rightId);
-          this.splitState = null;
+          // Припаркованная (не показываемая) пара: разбираем канонически (→ два SingleNode) —
+          // общий блок ниже (#findTabParent(id)) уберёт SingleNode самого id, останется
+          // только otherId, как и раньше. Активную пару (если есть другая) не трогаем.
+          this.#dissolveSplitPair(pair.leftId, pair.rightId);
+          this.splitPairs = this.splitPairs.filter((p) => p !== pair);
         }
       }
       // Теперь id гарантированно в SingleNode — убираем из nodes (рекурсивно, если в группе).
@@ -895,13 +916,14 @@ export class TabManager {
   private startSleepTimer(): void {
     setInterval(async () => {
       const now = Date.now();
-      const currentlyInSplit = this.#currentlyInSplit();
+      const activePair = this.#activePair();
 
-      // Набор защищённых id: активная вкладка + обе панели активного split.
+      // Набор защищённых id: активная вкладка + обе панели ПОКАЗЫВАЕМОЙ пары.
+      // Припаркованные пары не защищены — их вкладки могут усыпляться как обычные.
       const protectedIds = new Set<string>([this.activeId]);
-      if (currentlyInSplit && this.splitState) {
-        protectedIds.add(this.splitState.leftId);
-        protectedIds.add(this.splitState.rightId);
+      if (activePair) {
+        protectedIds.add(activePair.leftId);
+        protectedIds.add(activePair.rightId);
       }
 
       for (const tab of this.tabMap.values()) {
@@ -927,14 +949,13 @@ export class TabManager {
         }
         if (hasForms) continue;
 
-        // Перепроверяем после await: вкладка могла стать активной пока шёл JS-запрос
+        // Перепроверяем после await: вкладка могла стать активной пока шёл JS-запрос —
+        // пересчитываем показываемую пару заново, старый activePair мог устареть.
         if (protectedIds.has(tab.id) || tab.sleeping || !this.isHttpView(tab.view)) continue;
         if (tab.id === this.activeId) continue;
-        if (this.splitState) {
-          const inActiveSplit = this.#currentlyInSplit();
-          if (inActiveSplit &&
-              (tab.id === this.splitState.leftId || tab.id === this.splitState.rightId)) continue;
-        }
+        const freshActivePair = this.#activePair();
+        if (freshActivePair
+            && (tab.id === freshActivePair.leftId || tab.id === freshActivePair.rightId)) continue;
 
         this.sleepTab(tab.id);
       }
@@ -974,14 +995,12 @@ export class TabManager {
     // Когда WebContentsView получает OS-фокус от клика мышью — проверяем, не нужно ли
     // активировать панель split. DOM-дивы в renderer не получают клик, перекрытый вьюхой.
     wc.on('focus', () => {
-      // this.#currentlyInSplit() — не просто "id входит в какую-то пару", а "эта пара сейчас
-      // показывается" (activeId уже на её другой панели). Скрытая вьюха припаркованной пары
-      // в норме и так не должна получать OS-фокус, но проверка не полагается на это молча.
-      if (this.splitState &&
-          (id === this.splitState.leftId || id === this.splitState.rightId) &&
-          this.activeId !== id &&
-          this.#currentlyInSplit()) {
-        const side = id === this.splitState.leftId ? 'left' : 'right';
+      // Пара, которую переключаем, должна быть ПОКАЗЫВАЕМОЙ (== #activePair()) — иначе это
+      // скрытая вьюха припаркованной пары, которая в норме и так не должна получать OS-фокус,
+      // но проверка не полагается на это молча.
+      const pair = this.#pairContaining(id);
+      if (pair && pair === this.#activePair() && this.activeId !== id) {
+        const side = id === pair.leftId ? 'left' : 'right';
         this.focusSplitPanel(side);
       }
       // Реальный клик в контент — не связан с addChildView chrome-оверлеев (дропдаун/поповер/
@@ -1006,11 +1025,11 @@ export class TabManager {
     // Не на did-start-loading: вьюха не должна мигать при retry, который снова упадёт.
     wc.on('did-navigate', () => {
       const isActivePanel = this.activeId === id;
-      const isInSplit = !!this.splitState
-        && (id === this.splitState.leftId || id === this.splitState.rightId);
-      // Партнёр показывается прямо сейчас, только если сама пара активна (не припаркована) —
-      // навигация в скрытой/припаркованной паре не должна поднимать её вьюху поверх экрана.
-      const isShownSplitPartner = isInSplit && this.#currentlyInSplit();
+      const pair = this.#pairContaining(id);
+      const isInSplit = !!pair;
+      // Партнёр показывается прямо сейчас, только если это ПОКАЗЫВАЕМАЯ пара (не
+      // припаркована) — навигация в скрытой паре не должна поднимать её вьюху поверх экрана.
+      const isShownSplitPartner = isInSplit && pair === this.#activePair();
       if (isActivePanel) {
         wc.stopFindInPage('clearSelection');
         this.lastQuery = '';
@@ -1092,8 +1111,7 @@ export class TabManager {
       if (!isMainFrame || errorCode === -3) return;
       const url = wc.getURL() || validatedURL;
       this.errors.set(id, { type: 'load', code: errorCode, url });
-      const isInSplit = !!this.splitState
-        && (id === this.splitState.leftId || id === this.splitState.rightId);
+      const isInSplit = !!this.#pairContaining(id);
       if (this.activeId === id || isInSplit) this.hideView(id);
       notify();
     });
@@ -1110,8 +1128,8 @@ export class TabManager {
       if (!tab || tab.view !== view) return;
       // [диагностика краша exitSplit/closeTab на shutdown] — какая вкладка, участник ли split,
       // на каком этапе относительно win.on('close')/('closed') это случилось (см. main.ts).
-      const inSplit = !!this.splitState && (id === this.splitState.leftId || id === this.splitState.rightId);
-      console.log(`[shutdown] tab destroyed id=${id} inSplit=${inSplit} splitState=${JSON.stringify(this.splitState)} tabMapSize=${this.tabMap.size}`);
+      const inSplit = !!this.#pairContaining(id);
+      console.log(`[shutdown] tab destroyed id=${id} inSplit=${inSplit} splitPairs=${JSON.stringify(this.splitPairs)} tabMapSize=${this.tabMap.size}`);
       this.closeTab(id);
     });
 
@@ -1119,8 +1137,7 @@ export class TabManager {
     wc.on('render-process-gone', () => {
       const url = wc.getURL();
       this.errors.set(id, { type: 'crash', code: 0, url });
-      const isInSplit = !!this.splitState
-        && (id === this.splitState.leftId || id === this.splitState.rightId);
+      const isInSplit = !!this.#pairContaining(id);
       if (this.activeId === id || isInSplit) this.hideView(id);
       notify();
     });
@@ -1266,31 +1283,34 @@ export class TabManager {
       this.findBarOpen = false; // FindBar уйдёт при смене activeId в renderer'е
     }
 
-    if (this.splitState) {
-      if (id === this.splitState.leftId || id === this.splitState.rightId) {
-        // Возврат к split-вкладке: восстанавливаем обе панели, скрываем постороннее.
-        const otherId = id === this.splitState.leftId ? this.splitState.rightId : this.splitState.leftId;
-        const otherTab = this.tabMap.get(otherId);
-        if (otherTab?.sleeping) this.wakeTab(otherId);
+    const pair = this.#pairContaining(id);
+    if (pair) {
+      // Возврат к split-вкладке: восстанавливаем обе панели ЭТОЙ пары, скрываем постороннее
+      // (в т.ч. панели других пар, если такие есть — тот же цикл ниже их не исключает).
+      const otherId = id === pair.leftId ? pair.rightId : pair.leftId;
+      const otherTab = this.tabMap.get(otherId);
+      if (otherTab?.sleeping) this.wakeTab(otherId);
 
-        this.splitState.activePanel = id === this.splitState.leftId ? 'left' : 'right';
-        this.activeId = id;
-        const activatedTab = this.tabMap.get(id);
-        if (activatedTab) activatedTab.lastActiveAt = Date.now();
+      pair.activePanel = id === pair.leftId ? 'left' : 'right';
+      this.activeId = id;
+      const activatedTab = this.tabMap.get(id);
+      if (activatedTab) activatedTab.lastActiveAt = Date.now();
 
-        for (const t of this.tabMap.values()) {
-          if (!this.isHttpView(t.view)) continue;
-          if (t.id !== this.splitState.leftId && t.id !== this.splitState.rightId) {
-            t.view.setVisible(false);
-          }
+      for (const t of this.tabMap.values()) {
+        if (!this.isHttpView(t.view)) continue;
+        if (t.id !== pair.leftId && t.id !== pair.rightId) {
+          t.view.setVisible(false);
         }
-        this.repositionViews();
-        this.onChange();
-        this.focusActiveView();
-        return;
       }
-      // Уход на стороннюю вкладку — прячем панели, НО splitState НЕ сбрасываем.
-      for (const splitId of [this.splitState.leftId, this.splitState.rightId]) {
+      this.repositionViews();
+      this.onChange();
+      this.focusActiveView();
+      return;
+    }
+    // Уход на вкладку вне какой-либо пары — прячем панели ВСЕХ существующих пар (каждая
+    // остаётся припаркована в splitPairs для последующего возврата, коллекция не чистится).
+    for (const p of this.splitPairs) {
+      for (const splitId of [p.leftId, p.rightId]) {
         const splitTab = this.tabMap.get(splitId);
         if (splitTab && this.isHttpView(splitTab.view)) splitTab.view.setVisible(false);
       }
@@ -1344,32 +1364,33 @@ export class TabManager {
     if (id === HUB_ID) return;
     if (this.isTabPinned(id)) return;
     this.clearOrganizeSnapshot();
-    console.log(`[shutdown] closeTab id=${id} splitState=${JSON.stringify(this.splitState)}`);
+    console.log(`[shutdown] closeTab id=${id} splitPairs=${JSON.stringify(this.splitPairs)}`);
 
-    // Закрытие вкладки, входящей в (возможно припаркованный) split.
-    if (this.splitState && (id === this.splitState.leftId || id === this.splitState.rightId)) {
-      const { leftId, rightId } = this.splitState;
+    // Закрытие вкладки, входящей в (возможно припаркованную) пару.
+    const closingPair = this.#pairContaining(id);
+    if (closingPair) {
+      const { leftId, rightId } = closingPair;
       const otherId = id === leftId ? rightId : leftId;
-      const currentlyInSplit = this.#currentlyInSplit();
+      const currentlyShown = closingPair === this.#activePair();
       // [диагностика] — есть ли ВТОРОЙ участник (otherId) в tabMap, и жив ли его webContents,
       // В МОМЕНТ, когда closeTab только начал разбирать split. Если otherTab тоже уже destroyed
       // (teardown всего окна валит обоих почти одновременно) — это отдельный путь от self-close.
       const otherTab = this.tabMap.get(otherId);
       const otherDestroyed = otherTab && this.isHttpView(otherTab.view) ? otherTab.view.webContents.isDestroyed() : 'no-view';
-      console.log(`[shutdown] closeTab: split branch, otherId=${otherId} currentlyInSplit=${currentlyInSplit} otherTabExists=${!!otherTab} otherDestroyed=${otherDestroyed}`);
-      if (currentlyInSplit) {
-        // ВНИМАНИЕ: id (сама закрываемая вкладка) в этот момент ещё в tabMap и ещё splitState-
-        // участник — exitSplit(otherId) резолвит её как hideId и трогает её view/webContents.
+      console.log(`[shutdown] closeTab: split branch, otherId=${otherId} currentlyInSplit=${currentlyShown} otherTabExists=${!!otherTab} otherDestroyed=${otherDestroyed}`);
+      if (currentlyShown) {
+        // ВНИМАНИЕ: id (сама закрываемая вкладка) в этот момент ещё в tabMap и ещё числится
+        // участником пары — exitSplit(otherId) резолвит её как hideId и трогает её view/webContents.
         // Если сюда пришли из wc.on('destroyed', ...) (self-close контента, напр. OAuth-логина),
         // этот webContents уже мёртв — exitSplit безопасен благодаря isLiveHttpView внутри
         // (проверяет isDestroyed(), не только не-null). Сама вкладка из tabMap уберётся ниже.
         this.exitSplit(otherId);
       } else {
-        // Парковый split: разбираем канонически (→ два SingleNode) — общий блок ниже
-        // (#findTabParent(id)) уберёт SingleNode самой закрываемой вкладки, останется
-        // только otherId, как и раньше.
+        // Припаркованная (не показываемая) пара: разбираем канонически (→ два SingleNode) —
+        // общий блок ниже (#findTabParent(id)) уберёт SingleNode самой закрываемой вкладки,
+        // останется только otherId. Другие пары (если есть) не трогаем.
         this.#dissolveSplitPair(leftId, rightId);
-        this.splitState = null;
+        this.splitPairs = this.splitPairs.filter((p) => p !== closingPair);
       }
     }
 
@@ -1506,7 +1527,7 @@ export class TabManager {
       const [tab] = this.pinnedTabs.splice(pinnedIdx, 1);
 
       // Если вкладка в split — снимаем (не должно быть для закреплённых, но защитно)
-      if (this.splitState && (tabId === this.splitState.leftId || tabId === this.splitState.rightId)) {
+      if (this.#pairContaining(tabId)) {
         this.exitSplit(tabId);
       }
 
@@ -1705,8 +1726,10 @@ export class TabManager {
   // Войти в split: текущая активная вкладка → левая панель, rightId → правая.
   // Только обычные (не закреплённые, не хаб) вкладки могут участвовать.
   enterSplit(rightId: string): void {
-    // Уже в split — блокируем: максимум 2 панели.
-    if (this.splitState) return;
+    // Коммит 3: splitPairs — коллекция (готовит модель под несколько пар), но guard пока
+    // не пускает вторую — максимум одна пара во всём приложении, как и раньше. Снятие
+    // этого ограничения — отдельный коммит.
+    if (this.splitPairs.length > 0) return;
     this.clearOrganizeSnapshot();
     const rightTab = this.tabMap.get(rightId);
     if (!rightTab || (!this.isHttpView(rightTab.view) && !rightTab.sleeping) || this.isTabPinned(rightId)) return;
@@ -1749,7 +1772,7 @@ export class TabManager {
     if (!pairInserted) newNodes.push(pair);
     targetNodes.splice(0, targetNodes.length, ...newNodes);
 
-    this.splitState = { leftId, rightId, activePanel: 'left', splitRatio: 0.5 };
+    this.splitPairs.push({ leftId, rightId, activePanel: 'left', splitRatio: 0.5 });
 
     for (const splitId of [leftId, rightId]) {
       const splitTab = this.tabMap.get(splitId);
@@ -1764,22 +1787,28 @@ export class TabManager {
   }
 
   // Выйти из split, оставив keepId активной вкладкой (по умолчанию — активная панель).
-  // Явный выход: splitState = null насовсем. Отличается от «ухода» (activate другой вкладки),
-  // который сохраняет splitState для последующего восстановления.
+  // Явный выход: пара удаляется из splitPairs насовсем. Отличается от «ухода» (activate
+  // другой вкладки), который оставляет пару в коллекции для последующего восстановления.
   exitSplit(keepId?: string): void {
-    if (!this.splitState) return;
+    // #activePair() — обычный случай (сплит сейчас на экране). Фоллбэк на splitPairs[0] —
+    // явный выход из ПРИПАРКОВАННОЙ пары через кнопку в сайдбаре (доступна и для неё, см.
+    // Sidebar.tsx::SortablePairBlock leftShowExit) — под guard'ом enterSplit (максимум одна
+    // пара, см. выше) это всегда та же единственная пара, фоллбэк корректен. Явный выбор
+    // "какую из НЕСКОЛЬКИХ припаркованных пар выйти" — вопрос коммита, который снимет guard.
+    const pair = this.#activePair() ?? this.splitPairs[0];
+    if (!pair) return;
     this.clearOrganizeSnapshot();
-    const { leftId, rightId, activePanel } = this.splitState;
+    const { leftId, rightId, activePanel } = pair;
 
-    const currentlyInSplit = this.#currentlyInSplit();
+    const currentlyInSplit = pair === this.#activePair();
 
-    // Всегда разворачиваем SplitPairNode → два SingleNode (до сброса splitState).
+    // Всегда разворачиваем SplitPairNode → два SingleNode (до удаления пары из коллекции).
     this.#dissolveSplitPair(leftId, rightId);
 
     // Явный выход при припаркованном split (кнопка в сайдбаре, пока смотрим другую вкладку):
-    // просто снимаем splitState и остаёмся там, где были. Обе вкладки и так уже скрыты.
+    // просто убираем пару из коллекции и остаёмся там, где были. Обе вкладки и так уже скрыты.
     if (!currentlyInSplit && keepId === undefined) {
-      this.splitState = null;
+      this.splitPairs = this.splitPairs.filter((p) => p !== pair);
       this.onChange();
       return;
     }
@@ -1787,7 +1816,7 @@ export class TabManager {
     const stayId = keepId ?? (activePanel === 'left' ? leftId : rightId);
     const hideId = stayId === leftId ? rightId : leftId;
 
-    this.splitState = null;
+    this.splitPairs = this.splitPairs.filter((p) => p !== pair);
     console.log(`[shutdown] exitSplit: stayId=${stayId} hideId=${hideId} winDestroyed=${this.win.isDestroyed()}`);
 
     // isLiveHttpView (не isHttpView) — hideId часто ИМЕННО та вкладка, что сейчас закрывается
@@ -1815,27 +1844,32 @@ export class TabManager {
     this.focusActiveView();
   }
 
-  // Установить соотношение панелей split (вызывается при drag разделителя).
+  // Установить соотношение панелей split (вызывается при drag разделителя) — относится
+  // к ПОКАЗЫВАЕМОЙ паре (renderer-контракт без id пары, drag-разделитель виден только
+  // у той, что сейчас на экране). Нет показываемой пары — no-op.
   setSplitRatio(ratio: number): void {
-    if (!this.splitState) return;
+    const pair = this.#activePair();
+    if (!pair) return;
     const clamped = Math.max(SPLIT_RATIO_MIN, Math.min(SPLIT_RATIO_MAX, ratio));
-    this.splitState.splitRatio = clamped;
+    pair.splitRatio = clamped;
     // Синхронизируем с SplitPairNode, чтобы следующий сейв взял актуальный ratio.
-    const { leftId, rightId } = this.splitState;
+    const { leftId, rightId } = pair;
     const found = this.#findTabParent(leftId);
     if (found) {
-      const pair = found.parent[found.idx];
-      if (pair.type === 'split-pair' && pair.leftTabId === leftId && pair.rightTabId === rightId) {
-        pair.ratio = clamped;
+      const node = found.parent[found.idx];
+      if (node.type === 'split-pair' && node.leftTabId === leftId && node.rightTabId === rightId) {
+        node.ratio = clamped;
       }
     }
     this.repositionViews();
   }
 
-  // Переключить фокус между левой и правой панелью split.
+  // Переключить фокус между левой и правой панелью split — та же логика: относится
+  // к ПОКАЗЫВАЕМОЙ паре. Нет показываемой пары — no-op.
   focusSplitPanel(side: 'left' | 'right'): void {
-    if (!this.splitState) return;
-    const newId = side === 'left' ? this.splitState.leftId : this.splitState.rightId;
+    const pair = this.#activePair();
+    if (!pair) return;
+    const newId = side === 'left' ? pair.leftId : pair.rightId;
     if (this.activeId === newId) return;
     this.onActiveTabChangedCb?.(); // та же логика, что и в activate() — активная панель реально меняется
 
@@ -1844,7 +1878,7 @@ export class TabManager {
     if (prevWc) { prevWc.stopFindInPage('clearSelection'); this.lastQuery = ''; }
     this.findBarOpen = false;
 
-    this.splitState.activePanel = side;
+    pair.activePanel = side;
     this.activeId = newId;
     const tab = this.tabMap.get(newId);
     if (tab) tab.lastActiveAt = Date.now();
@@ -2103,12 +2137,12 @@ export class TabManager {
   private revealView(id: string): void {
     const tab = this.tabMap.get(id);
     if (!tab || !this.isHttpView(tab.view)) return;
-    const inSplit = !!this.splitState
-      && (id === this.splitState.leftId || id === this.splitState.rightId);
+    const pair = this.#pairContaining(id);
+    const inSplit = !!pair;
     // Партнёр ПРИПАРКОВАННОЙ (не показываемой сейчас) пары — не поднимаем его вьюху поверх
     // экрана из-за фоновой навигации. Самостоятельная гарантия здесь, не только у вызывающего
     // кода (did-navigate уже фильтрует, но revealView не должен на это полагаться молча).
-    if (inSplit && !this.#currentlyInSplit()) return;
+    if (inSplit && pair !== this.#activePair()) return;
     const children = this.win.contentView.children;
     if (!children.includes(tab.view)) this.win.contentView.addChildView(tab.view);
     tab.view.setVisible(true);
@@ -2219,15 +2253,12 @@ export class TabManager {
   // СТРАНИЦЫ — чтобы получить оконные координаты для поповера паролей, нужно прибавить именно
   // этот оффсет, а не общий this.bounds (в split-режиме вкладка занимает только половину).
   getTabViewBounds(tabId: string): ContentBounds {
-    // #currentlyInSplit() — не просто "tabId в какой-то паре", а "эта пара сейчас показывается".
-    // Таб из припаркованной пары не занимает половину экрана визуально — для него полагается
+    // Пара, содержащая tabId, должна быть ИМЕННО показываемой (#activePair()) — таб из
+    // припаркованной пары не занимает половину экрана визуально, для него полагается
     // полный this.bounds, как для обычной невидимой вкладки.
-    const inSplit = !!this.splitState
-      && (tabId === this.splitState.leftId || tabId === this.splitState.rightId)
-      && this.#currentlyInSplit();
-    if (!inSplit) return this.bounds;
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const { leftId, splitRatio } = this.splitState!;
+    const pair = this.#pairContaining(tabId);
+    if (!pair || pair !== this.#activePair()) return this.bounds;
+    const { leftId, splitRatio } = pair;
     const leftWidth = Math.floor((this.bounds.width - ISLAND_GAP) * splitRatio);
     // +/-SPLIT_HEADER_HEIGHT: над каждой split-панелью — полоса заголовка (favicon/title/×),
     // рисуется React в App.tsx в освободившейся сверху зоне (см. shared/layout.ts).
@@ -2244,12 +2275,13 @@ export class TabManager {
   }
 
   // Позиционирует видимые вьюхи согласно текущему режиму (single / split).
-  // «Припаркованный» split (splitState есть, но активна другая вкладка) ведёт
-  // себя как single: позиционируем только текущую активную вкладку.
+  // «Припаркованные» пары (есть в splitPairs, но activeId — сторонняя вкладка) ведут
+  // себя как single: позиционируем только текущую активную вкладку. Раскладка остаётся
+  // строго бинарной — на ОДНУ показываемую (#activePair()) пару, не на всю коллекцию.
   private repositionViews(): void {
-    const currentlyInSplit = this.#currentlyInSplit();
+    const pair = this.#activePair();
 
-    if (!currentlyInSplit) {
+    if (!pair) {
       const active = this.tabMap.get(this.activeId);
       if (active && this.isHttpView(active.view) && !this.errors.has(this.activeId)) {
         this.applyBounds(active.view);
@@ -2258,9 +2290,7 @@ export class TabManager {
     }
     // Split: разделяем bounds по текущему splitRatio с ISLAND_GAP-зазором. y/height дополнительно
     // урезаны на SPLIT_HEADER_HEIGHT сверху — та же полоса заголовка, что и в getTabViewBounds.
-    // splitState гарантированно не null: currentlyInSplit включает !!this.splitState.
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const { leftId, rightId, splitRatio } = this.splitState!;
+    const { leftId, rightId, splitRatio } = pair;
     const leftWidth = Math.floor((this.bounds.width - ISLAND_GAP) * splitRatio);
     const leftB:  ContentBounds = {
       x: this.bounds.x, y: this.bounds.y + SPLIT_HEADER_HEIGHT,
