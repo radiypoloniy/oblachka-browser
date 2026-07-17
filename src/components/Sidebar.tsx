@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Moon, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw } from 'lucide-react';
 import type { ClusterProposal } from '../services/ClusteringService';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import { glassPlate, islandPlate } from '../styles/island';
@@ -99,7 +99,7 @@ export function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }
   if (tab.faviconUrl) {
     inner = (
       <img src={tab.faviconUrl} width={tileSize} height={tileSize}
-        style={{ borderRadius: 'var(--radius-sm)', objectFit: 'cover', opacity: tab.isSleeping ? 0.45 : 1 }}
+        style={{ borderRadius: 'var(--radius-sm)', objectFit: 'cover' }}
         alt="" />
     );
   } else {
@@ -111,23 +111,12 @@ export function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }
         width: tileSize, height: tileSize, borderRadius: 'var(--radius-sm)',
         background: 'var(--neutral-300)', color: 'var(--text-body)', flex: 'none',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 11, fontWeight: 600, opacity: tab.isSleeping ? 0.45 : 1,
+        fontSize: 11, fontWeight: 600,
       }}>{host}</span>
     );
   }
 
-  if (!tab.isSleeping) return <>{inner}</>;
-
-  return (
-    <span style={{ position: 'relative', display: 'inline-flex', flex: 'none' }}>
-      {inner}
-      <Moon size={8} style={{
-        position: 'absolute', bottom: -1, right: -1,
-        color: 'var(--text-faint)', background: 'var(--surface-island)',
-        borderRadius: '50%', padding: 1,
-      }} />
-    </span>
-  );
+  return <>{inner}</>;
 }
 
 interface TabRowProps {
@@ -167,7 +156,6 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
         background: bg,
         boxShadow: active ? 'var(--shadow-card)' : 'none',
         color: active ? 'var(--text-strong)' : 'var(--text-body)',
-        opacity: tab.isSleeping ? 0.6 : 1,
         transition: ghost ? undefined : 'background var(--dur-fast) var(--ease-standard)',
       }}
     >
@@ -395,7 +383,7 @@ function SortablePinCell({ tab, active, onClick, onContextMenu }: {
           border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
           background: active ? 'var(--surface)' : 'transparent',
           boxShadow: active ? 'var(--shadow-card)' : 'none',
-          opacity: tab.isSleeping ? 0.6 : 1, display: 'inline-flex',
+          display: 'inline-flex',
         }}
         onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
@@ -928,7 +916,6 @@ export default function Sidebar({
                   border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
                   background: activeId === t.id ? 'var(--surface)' : 'transparent',
                   boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
-                  opacity: t.isSleeping ? 0.6 : 1,
                 }}
                 onMouseEnter={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                 onMouseLeave={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'transparent'; }}
@@ -948,7 +935,6 @@ export default function Sidebar({
                 border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
                 background: activeId === t.id ? 'var(--surface)' : 'transparent',
                 boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
-                opacity: t.isSleeping ? 0.6 : 1,
               }}
               onMouseEnter={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'var(--surface-hover)'; }}
               onMouseLeave={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'transparent'; }}
