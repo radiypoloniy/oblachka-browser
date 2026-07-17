@@ -1119,7 +1119,7 @@ export class TabManager {
       // ── Ссылка ──────────────────────────────────────────────────────────────
       if (p.linkURL) {
         items.push(
-          { label: 'Открыть ссылку в новой вкладке', click: () => this.createTab(p.linkURL) },
+          { label: 'Открыть ссылку в новой вкладке', click: () => this.createTab(p.linkURL, true) },
           { label: 'Копировать адрес ссылки', click: () => clipboard.writeText(p.linkURL) },
         );
       }
@@ -1130,7 +1130,7 @@ export class TabManager {
         items.push(
           { label: 'Копировать картинку', click: () => wc.copyImageAt(p.x, p.y) },
           { label: 'Сохранить картинку как…', click: () => wc.downloadURL(p.srcURL) },
-          { label: 'Открыть картинку в новой вкладке', click: () => this.createTab(p.srcURL) },
+          { label: 'Открыть картинку в новой вкладке', click: () => this.createTab(p.srcURL, true) },
         );
       }
 
