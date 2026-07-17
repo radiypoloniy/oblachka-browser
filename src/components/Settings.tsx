@@ -1127,10 +1127,9 @@ function SkillsSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [labelInput, setLabelInput] = useState('');
   const [promptInput, setPromptInput] = useState('');
+  const [iconInput, setIconInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  // Подтверждение удаления — дёшево, предотвращает случайный клик по Trash2 в списке.
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -1141,13 +1140,13 @@ function SkillsSection() {
 
   function openAddForm() {
     setEditingId(null);
-    setLabelInput(''); setPromptInput('');
+    setLabelInput(''); setPromptInput(''); setIconInput('');
     setFormError(''); setFormOpen(true);
   }
 
   function openEditForm(skill: Skill) {
     setEditingId(skill.id);
-    setLabelInput(skill.label); setPromptInput(skill.prompt);
+    setLabelInput(skill.label); setPromptInput(skill.prompt); setIconInput(skill.icon ?? '');
     setFormError(''); setFormOpen(true);
   }
 
@@ -1157,18 +1156,21 @@ function SkillsSection() {
     // Кнопка и так disabled на пустых полях (canSave ниже) — эта проверка страхует от гонки
     // (напр. Enter до ре-рендера disabled), не дублирует UI-гейт зря.
     if (!label || !prompt) return;
+    // Пустой icon → undefined, не '' — валидатор стора принимает оба, но не плодим пустые
+    // строки в данных (см. SkillsStore.ts::isValidSkill).
+    const icon = iconInput.trim() || undefined;
     setSaving(true);
     setFormError('');
     const ok = editingId === null
-      ? await window.oblako.addSkill({ label, prompt })
-      : await window.oblako.updateSkill(editingId, { label, prompt });
+      ? await window.oblako.addSkill({ label, prompt, icon })
+      : await window.oblako.updateSkill(editingId, { label, prompt, icon });
     setSaving(false);
     if (ok) setFormOpen(false); else setFormError('Не удалось сохранить');
   }
 
   async function handleDelete(id: string) {
-    setConfirmDeleteId(null);
-    await window.oblako.removeSkill(id);
+    const ok = await window.oblako.removeSkill(id);
+    if (ok) setFormOpen(false);
   }
 
   return (
@@ -1194,12 +1196,16 @@ function SkillsSection() {
 
       {formOpen && (
         <SkillForm
+          key={editingId ?? 'new'}
+          iconInput={iconInput} onIconChange={setIconInput}
           labelInput={labelInput} onLabelChange={setLabelInput}
           promptInput={promptInput} onPromptChange={setPromptInput}
           formError={formError} saving={saving}
           canSave={labelInput.trim().length > 0 && promptInput.trim().length > 0}
           onSave={() => void handleSave()}
           onCancel={() => setFormOpen(false)}
+          showDelete={editingId !== null && !skills.find((s) => s.id === editingId)?.builtin}
+          onDelete={() => { if (editingId !== null) void handleDelete(editingId); }}
         />
       )}
 
@@ -1208,12 +1214,8 @@ function SkillsSection() {
           <SkillRow
             key={skill.id}
             skill={skill}
-            confirmingDelete={confirmDeleteId === skill.id}
             onToggleVisible={() => void window.oblako.updateSkill(skill.id, { visible: !skill.visible })}
             onEdit={() => openEditForm(skill)}
-            onDeleteRequest={() => setConfirmDeleteId(skill.id)}
-            onDeleteCancel={() => setConfirmDeleteId(null)}
-            onDeleteConfirm={() => void handleDelete(skill.id)}
           />
         ))}
       </div>
@@ -1223,21 +1225,20 @@ function SkillsSection() {
 
 interface SkillRowProps {
   skill: Skill;
-  confirmingDelete: boolean;
   onToggleVisible: () => void;
   onEdit: () => void;
-  onDeleteRequest: () => void;
-  onDeleteCancel: () => void;
-  onDeleteConfirm: () => void;
 }
 
-function SkillRow({ skill, confirmingDelete, onToggleVisible, onEdit, onDeleteRequest, onDeleteCancel, onDeleteConfirm }: SkillRowProps) {
+function SkillRow({ skill, onToggleVisible, onEdit }: SkillRowProps) {
   const preview = skill.prompt.length > 80 ? `${skill.prompt.slice(0, 80)}…` : skill.prompt;
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
       borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
     }}>
+      {skill.icon && (
+        <div style={{ flex: 'none', fontSize: 'var(--fs-md)', lineHeight: 1 }}>{skill.icon}</div>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
@@ -1257,37 +1258,29 @@ function SkillRow({ skill, confirmingDelete, onToggleVisible, onEdit, onDeleteRe
       <div title={skill.visible ? 'Показывается в AI-панели' : 'Скрыта из AI-панели'} style={{ flex: 'none' }}>
         <Toggle checked={skill.visible} onChange={onToggleVisible} />
       </div>
-      {confirmingDelete ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Удалить скилл?</span>
-          <button onClick={onDeleteConfirm} style={{ ...btnGhost, padding: '4px 10px', color: 'var(--error, #e05)' }}>Да</button>
-          <button onClick={onDeleteCancel} style={{ ...btnGhost, padding: '4px 10px' }}>Нет</button>
-        </div>
-      ) : (
-        <>
-          <IconBtn title="Редактировать" onClick={onEdit}><Pencil size={14} /></IconBtn>
-          {/* Встроенные (Объяснить/Саммари) не удаляются — стор всё равно вернёт false (см.
-              SkillsStore.ts::remove), но кнопки нет вообще, а не disabled-заглушка. */}
-          {!skill.builtin && (
-            <IconBtn title="Удалить" onClick={onDeleteRequest}><Trash2 size={14} /></IconBtn>
-          )}
-        </>
-      )}
+      <IconBtn title="Редактировать" onClick={onEdit}><Pencil size={14} /></IconBtn>
     </div>
   );
 }
 
 interface SkillFormProps {
+  iconInput: string; onIconChange: (v: string) => void;
   labelInput: string; onLabelChange: (v: string) => void;
   promptInput: string; onPromptChange: (v: string) => void;
   formError: string; saving: boolean; canSave: boolean;
   onSave: () => void;
   onCancel: () => void;
+  showDelete: boolean;
+  onDelete: () => void;
 }
 
 function SkillForm({
-  labelInput, onLabelChange, promptInput, onPromptChange, formError, saving, canSave, onSave, onCancel,
+  iconInput, onIconChange, labelInput, onLabelChange, promptInput, onPromptChange,
+  formError, saving, canSave, onSave, onCancel, showDelete, onDelete,
 }: SkillFormProps) {
+  // Подтверждение живёт локально в форме (не в SkillsSection) — компонент ремонтится при смене
+  // editingId (см. key={editingId} у вызывающего), так что confirm сам сбрасывается.
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const inputStyle: React.CSSProperties = {
     padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--divider-strong)',
     background: 'var(--surface)', color: 'var(--text-strong)', fontSize: 'var(--fs-sm)', outline: 'none',
@@ -1299,13 +1292,25 @@ function SkillForm({
       display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', marginBottom: 10,
       ...islandPlate, borderRadius: 'var(--radius-sm)',
     }}>
-      <input
-        type="text" placeholder="Название кнопки" value={labelInput}
-        onChange={(e) => onLabelChange(e.target.value)}
-        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
-        style={inputStyle}
-      />
+      <div style={{ display: 'flex', gap: 8 }}>
+        {/* Без maxLength=1 — составной эмодзи (семья, флаг, ZWJ-последовательность) занимает
+            несколько кодовых точек, обрезка по length искалечила бы его. Юзер вставляет из
+            системного эмодзи-пикера ОС, это не текстовый ввод произвольной длины. */}
+        <input
+          type="text" placeholder="🙂" value={iconInput} maxLength={8}
+          onChange={(e) => onIconChange(e.target.value)}
+          onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+          onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
+          style={{ ...inputStyle, width: 56, flex: 'none', textAlign: 'center' }}
+        />
+        <input
+          type="text" placeholder="Название кнопки" value={labelInput}
+          onChange={(e) => onLabelChange(e.target.value)}
+          onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+          onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
+          style={inputStyle}
+        />
+      </div>
       <textarea
         placeholder="Промпт — что отправить модели про текущую страницу" value={promptInput} rows={3}
         onChange={(e) => onPromptChange(e.target.value)}
@@ -1316,10 +1321,23 @@ function SkillForm({
 
       {formError && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)' }}>{formError}</span>}
 
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button onClick={onSave} disabled={saving || !canSave} style={{ ...btnPrimary, opacity: saving || !canSave ? 0.6 : 1 }}>
           {saving ? 'Сохранение…' : 'Сохранить'}
         </button>
+        {showDelete && (
+          confirmDelete ? (
+            <>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Удалить скилл?</span>
+              <button onClick={onDelete} style={{ ...btnGhost, color: 'var(--error, #e05)' }}>Да</button>
+              <button onClick={() => setConfirmDelete(false)} style={btnGhost}>Нет</button>
+            </>
+          ) : (
+            <button onClick={() => setConfirmDelete(true)} style={{ ...btnGhost, color: 'var(--error, #e05)' }}>
+              Удалить
+            </button>
+          )
+        )}
         <button onClick={onCancel} style={btnGhost}>Отмена</button>
       </div>
     </div>

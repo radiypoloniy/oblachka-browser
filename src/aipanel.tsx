@@ -10,7 +10,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, X, Send, Globe, SearchCheck, Loader2, LayoutGrid, Calculator, RefreshCw, Timer, Pipette, Plus } from 'lucide-react';
+import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Calculator, RefreshCw, Timer, Pipette, Plus } from 'lucide-react';
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 import { SHELL_MARGIN } from '../shared/layout';
@@ -476,6 +476,7 @@ function AiPanel() {
                 onClick={sendQuickTranslate}
                 disabled={!tabId}
                 style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
                   padding: '6px 12px',
                   borderRadius: 'var(--radius-chip)',
                   // Белая парящая кнопка — тот же принцип, что у поля ввода ниже (surface-solid +
@@ -493,7 +494,7 @@ function AiPanel() {
                 onMouseEnter={(e) => { if (tabId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
               >
-                Перевести
+                <span>🌐</span> Перевести
               </button>
               {/* Коммит 1 (реестр скиллов) — Объяснить/Саммари и позже пользовательские, из
                   onSkillsList (SkillsStore.ts), тот же стиль кнопки, что и Перевести выше.
@@ -505,6 +506,7 @@ function AiPanel() {
                   onClick={() => sendText(skill.prompt)}
                   disabled={!tabId}
                   style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
                     padding: '6px 12px',
                     borderRadius: 'var(--radius-chip)',
                     border: '1px solid var(--glass-edge)',
@@ -518,6 +520,7 @@ function AiPanel() {
                   onMouseEnter={(e) => { if (tabId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
                 >
+                  {skill.icon && <span>{skill.icon}</span>}
                   {skill.label}
                 </button>
               ))}
@@ -544,7 +547,7 @@ function AiPanel() {
                   onMouseEnter={(e) => { if (tabId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
                 >
-                  <SearchCheck size={13} /> Фактчек
+                  <span>🔍</span> Фактчек
                 </button>
               )}
               {/* "+" — ведёт в Settings сразу на разделе AI (редактор скиллов появится там
