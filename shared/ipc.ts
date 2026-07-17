@@ -803,7 +803,7 @@ export interface OblakoApi {
 
   // Split View
   enterSplit(rightId: string): Promise<void>;       // текущая активная → левая, rightId → правая
-  exitSplit(): Promise<void>;                       // схлопнуть split, обе вкладки остаются
+  exitSplit(tabId: string): Promise<void>;           // схлопнуть пару, содержащую tabId; обе вкладки остаются
   focusSplitPanel(side: 'left' | 'right'): Promise<void>; // переключить активную панель
   setSplitRatio(ratio: number): Promise<void>;      // drag разделителя: 0.2..0.8
 

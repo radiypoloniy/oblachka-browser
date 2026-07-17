@@ -56,7 +56,7 @@ const api: OblakoApi = {
   showTabMenu:  (id: string) => ipcRenderer.invoke(IPC.TAB_SHOW_MENU, id),
 
   enterSplit:      (rightId: string)            => ipcRenderer.invoke(IPC.TAB_ENTER_SPLIT, rightId),
-  exitSplit:       ()                           => ipcRenderer.invoke(IPC.TAB_EXIT_SPLIT),
+  exitSplit:       (tabId: string)              => ipcRenderer.invoke(IPC.TAB_EXIT_SPLIT, tabId),
   focusSplitPanel: (side: 'left' | 'right')    => ipcRenderer.invoke(IPC.TAB_SPLIT_FOCUS, side),
   setSplitRatio:   (ratio: number)             => ipcRenderer.invoke(IPC.TAB_SPLIT_RATIO, ratio),
 

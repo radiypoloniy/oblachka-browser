@@ -820,7 +820,7 @@ export class TabManager {
       // закреплённые). На практике недостижимо: закрепление уже проходит через ветку ниже,
       // которая всегда разбирает пару ДО пополнения pinnedTabs — оставлено как защита.
       if (this.#pairContaining(id)) {
-        this.exitSplit(id);
+        this.exitSplit(id, id);
       }
       this.nodes.push({ type: 'single', tabId: tab.id });
     } else {
@@ -829,7 +829,7 @@ export class TabManager {
       if (pair) {
         const otherId = id === pair.leftId ? pair.rightId : pair.leftId;
         if (this.#activePair() === pair) {
-          this.exitSplit(otherId); // разворачивает ПОКАЗЫВАЕМУЮ пару в два SingleNode
+          this.exitSplit(otherId, otherId); // разворачивает ПОКАЗЫВАЕМУЮ пару в два SingleNode
         } else {
           // Припаркованная (не показываемая) пара: разбираем канонически (→ два SingleNode) —
           // общий блок ниже (#findTabParent(id)) уберёт SingleNode самого id, останется
@@ -1380,11 +1380,11 @@ export class TabManager {
       console.log(`[shutdown] closeTab: split branch, otherId=${otherId} currentlyInSplit=${currentlyShown} otherTabExists=${!!otherTab} otherDestroyed=${otherDestroyed}`);
       if (currentlyShown) {
         // ВНИМАНИЕ: id (сама закрываемая вкладка) в этот момент ещё в tabMap и ещё числится
-        // участником пары — exitSplit(otherId) резолвит её как hideId и трогает её view/webContents.
+        // участником пары — exitSplit(otherId, otherId) резолвит её как hideId и трогает её view/webContents.
         // Если сюда пришли из wc.on('destroyed', ...) (self-close контента, напр. OAuth-логина),
         // этот webContents уже мёртв — exitSplit безопасен благодаря isLiveHttpView внутри
         // (проверяет isDestroyed(), не только не-null). Сама вкладка из tabMap уберётся ниже.
-        this.exitSplit(otherId);
+        this.exitSplit(otherId, otherId);
       } else {
         // Припаркованная (не показываемая) пара: разбираем канонически (→ два SingleNode) —
         // общий блок ниже (#findTabParent(id)) уберёт SingleNode самой закрываемой вкладки,
@@ -1528,7 +1528,7 @@ export class TabManager {
 
       // Если вкладка в split — снимаем (не должно быть для закреплённых, но защитно)
       if (this.#pairContaining(tabId)) {
-        this.exitSplit(tabId);
+        this.exitSplit(tabId, tabId);
       }
 
       // targetIndex — item-индекс (SplitPairNode считается единицей), граница = nodes.length.
@@ -1791,26 +1791,36 @@ export class TabManager {
     this.focusActiveView();
   }
 
-  // Выйти из split, оставив keepId активной вкладкой (по умолчанию — активная панель).
-  // Явный выход: пара удаляется из splitPairs насовсем. Отличается от «ухода» (activate
-  // другой вкладки), который оставляет пару в коллекции для последующего восстановления.
-  exitSplit(keepId?: string): void {
-    // Коммит 4: строго #activePair() — пара, содержащая activeId, без фоллбэка на
-    // splitPairs[0]. Под несколькими парами фоллбэк разбирал бы ЧУЖУЮ (первую в
-    // коллекции), а не показываемую пару — см. историю коммита 3.
-    // ⚠️ Известное расхождение: кнопка "Выйти из split" в сайдбаре технически достижима и
-    // на строке ПРИПАРКОВАННОЙ (не показываемой) пары — см. Sidebar.tsx::SortablePairBlock
-    // leftShowExit = leftActive || !rightActive (левая ячейка показывает кнопку, даже если
-    // обе панели скрыты). IPC-контракт exitSplit() безаргументный — main не знает, какую
-    // именно пару имел в виду клик. С этим фоллбэком дело ограничивается no-op (если
-    // сейчас нет активной пары вовсе) — не может случайно разобрать ДРУГУЮ (показываемую)
-    // пару, но и саму нажатую (припаркованную) пару больше не разбирает. Осознанный трейд-
-    // офф этого коммита — правка кнопки/контракта (передавать id пары) вне его рамок.
-    const pair = this.#activePair();
+  // Выйти из split пары, содержащей tabId (резолв через #pairContaining — любая из двух
+  // панелей подходит), keepId — какую панель НАЙДЕННОЙ пары оставить активной (по умолчанию —
+  // её текущая активная панель); имеет смысл только когда пара и так показываемая, семантически
+  // отдельно от tabId. Явный выход: пара удаляется из splitPairs насовсем. Отличается от «ухода»
+  // (activate другой вкладки), который оставляет пару в коллекции для последующего восстановления.
+  //
+  // Раньше резолвили пару через #activePair() (по activeId) — кнопка "Выйти из split" в сайдбаре
+  // технически достижима и на строке ПРИПАРКОВАННОЙ пары (см. Sidebar.tsx::SortablePairBlock
+  // leftShowExit = leftActive || !rightActive), и с #activePair() клик по ней тихо разбирал
+  // ПОКАЗЫВАЕМУЮ пару вместо той, на которой кликнули. #pairContaining(tabId) резолвит именно
+  // кликнутую пару; #activePair() ниже используется только чтобы отличить показываемую пару
+  // (полный флоу с фокусом/вьюхами) от припаркованной (чисто структурный разбор, см. ветку ниже
+  // — тот же паттерн, что уже в togglePin/closeTab).
+  exitSplit(tabId: string, keepId?: string): void {
+    const pair = this.#pairContaining(tabId);
     if (!pair) return;
     this.clearOrganizeSnapshot();
     const { leftId, rightId, activePanel } = pair;
 
+    if (pair !== this.#activePair()) {
+      // Припаркованная (не показываемая) пара: разбираем канонически (→ два SingleNode),
+      // текущий показ не трогаем — её вьюхи уже скрыты с момента парковки, activeId в этой
+      // паре не участвует (иначе она была бы #activePair()).
+      this.#dissolveSplitPair(leftId, rightId);
+      this.splitPairs = this.splitPairs.filter((p) => p !== pair);
+      this.onChange();
+      return;
+    }
+
+    // Показываемая пара — прежняя логика без изменений (фокус/видимость/bounds).
     // Всегда разворачиваем SplitPairNode → два SingleNode (до удаления пары из коллекции).
     this.#dissolveSplitPair(leftId, rightId);
     this.splitPairs = this.splitPairs.filter((p) => p !== pair);
@@ -1821,7 +1831,7 @@ export class TabManager {
     console.log(`[shutdown] exitSplit: stayId=${stayId} hideId=${hideId} winDestroyed=${this.win.isDestroyed()}`);
 
     // isLiveHttpView (не isHttpView) — hideId часто ИМЕННО та вкладка, что сейчас закрывается
-    // через closeTab → exitSplit(otherId) (см. closeTab ниже): её webContents уже может быть
+    // через closeTab → exitSplit(otherId, otherId) (см. closeTab ниже): её webContents уже может быть
     // destroyed (window.close() из контента, напр. OAuth-логина, либо снос окна при выходе
     // браузера), а из tabMap она пока не удалена — exitSplit вызывается раньше этой уборки.
     const hideTab = this.tabMap.get(hideId);

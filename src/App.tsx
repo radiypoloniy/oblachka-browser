@@ -560,7 +560,7 @@ export default function App() {
         onSelect={select} onClose={close} onNewTab={newTab}
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
         onSplit={(id) => { setSplitRatioState(0.5); void window.oblako.enterSplit(id); }}
-        onExitSplit={() => { void window.oblako.exitSplit(); }}
+        onExitSplit={(tabId) => { void window.oblako.exitSplit(tabId); }}
         onSettings={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })(); setDownloadsOpen(false); }}
         onHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); setDownloadsOpen(false); }}
         onReorder={(section, ids) => { void window.oblako.reorderTabs(section, ids); }}

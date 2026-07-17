@@ -42,7 +42,7 @@ interface SidebarProps {
   onNewTab: () => void;
   onTabMenu: (id: string) => void;
   onSplit: (id: string) => void;
-  onExitSplit: () => void;
+  onExitSplit: (tabId: string) => void;
   onSettings: () => void;
   // История и Закладки объединены в одну точку входа (HistoryBookmarks.tsx) — одна иконка,
   // всегда открывает секцию «История» (дефолт), переключение на «Закладки» — уже внутри панели.
@@ -126,7 +126,7 @@ interface TabRowProps {
   onClose: () => void;
   onContextMenu: () => void;
   onSplit?: () => void;
-  onExitSplit?: () => void;
+  onExitSplit?: (tabId: string) => void;
   // Во время DragOverlay-рендера кнопки не нужны (ghost — только визуал).
   ghost?: boolean;
 }
@@ -174,7 +174,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
       {!ghost && inSplit && onExitSplit && (
         <button
           className="no-drag"
-          onClick={(e) => { e.stopPropagation(); onExitSplit(); }}
+          onClick={(e) => { e.stopPropagation(); onExitSplit(tab.id); }}
           title="Выйти из split (обе вкладки останутся)"
           style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-muted)', flex: 'none' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
@@ -243,7 +243,7 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onContextMenu: (id: string) => void;
-  onExitSplit: () => void;
+  onExitSplit: (tabId: string) => void;
 }) {
   const [hoveredSide, setHoveredSide] = useState<'left' | 'right' | null>(null);
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -295,7 +295,7 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
         {leftShowExit && (
           <button
             className="no-drag"
-            onClick={(e) => { e.stopPropagation(); onExitSplit(); }}
+            onClick={(e) => { e.stopPropagation(); onExitSplit(left.id); }}
             title="Выйти из split (обе вкладки останутся)"
             style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
@@ -341,7 +341,7 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
         {rightShowExit && (
           <button
             className="no-drag"
-            onClick={(e) => { e.stopPropagation(); onExitSplit(); }}
+            onClick={(e) => { e.stopPropagation(); onExitSplit(right.id); }}
             title="Выйти из split (обе вкладки останутся)"
             style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
@@ -402,7 +402,7 @@ interface GroupBlockProps {
   onClose: (id: string) => void;
   onContextMenu: (id: string) => void;
   onSplit: (id: string) => void;
-  onExitSplit: () => void;
+  onExitSplit: (tabId: string) => void;
   renameGroupId: string | null;
   setRenameGroupId: (id: string | null) => void;
 }

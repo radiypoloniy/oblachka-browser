@@ -701,7 +701,7 @@ function registerIpc() {
 
   // Split View
   ipcMain.handle(IPC.TAB_ENTER_SPLIT, (_e, rightId: string)         => tabs?.enterSplit(rightId));
-  ipcMain.handle(IPC.TAB_EXIT_SPLIT,  ()                            => tabs?.exitSplit());
+  ipcMain.handle(IPC.TAB_EXIT_SPLIT,  (_e, tabId: string)           => tabs?.exitSplit(tabId));
   ipcMain.handle(IPC.TAB_SPLIT_FOCUS, (_e, side: 'left' | 'right') => tabs?.focusSplitPanel(side));
   ipcMain.handle(IPC.TAB_SPLIT_RATIO, (_e, ratio: number)           => tabs?.setSplitRatio(ratio));
 
