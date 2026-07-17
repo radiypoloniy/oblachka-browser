@@ -11,7 +11,7 @@ import PermissionPrompt from './components/PermissionPrompt';
 import { islandPlate } from './styles/island';
 import { embeddingService } from './services/EmbeddingService';
 import { startEmbedRequestBridge } from './services/EmbedRequestBridge';
-import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, VpnConnectionState, PageTranslateState, PageTranslateProgress } from '../shared/ipc';
+import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 import type { ClusterProposal } from './services/ClusteringService';
 
@@ -90,14 +90,17 @@ const SPLIT_RATIO_MAX = 0.8;
 const AI_PANEL_WIDTH_MIN = 300;
 const AI_PANEL_WIDTH_MAX = 640;
 
-function findSplitPairRatio(nodes: SidebarNode[], leftId: string, rightId: string): number | null {
+// Показываемая пара — не «первая в дереве с нужным splitSide» (при 2+ парах это может
+// быть ЧУЖАЯ, непоказываемая пара), а та, что реально содержит activeId — тот же принцип,
+// что #activePair() в TabManager.ts. Рекурсивно, т.к. пара может лежать внутри группы.
+function findActiveSplitPairNode(nodes: SidebarNode[], activeId: string): SplitPairNode | null {
   for (const node of nodes) {
-    if (node.type === 'split-pair' && node.leftTabId === leftId && node.rightTabId === rightId) {
-      return Math.max(SPLIT_RATIO_MIN, Math.min(SPLIT_RATIO_MAX, node.ratio));
+    if (node.type === 'split-pair' && (node.leftTabId === activeId || node.rightTabId === activeId)) {
+      return node;
     }
     if (node.type === 'group') {
-      const nested = findSplitPairRatio(node.children, leftId, rightId);
-      if (nested !== null) return nested;
+      const nested = findActiveSplitPairNode(node.children, activeId);
+      if (nested) return nested;
     }
   }
   return null;
@@ -160,14 +163,15 @@ export default function App() {
   // отдельно от isHub (тот трогать рискованно, читается ~15+ мест) — только для нового рендер-пути.
   const kind = active?.kind ?? 'hub';
 
-  // Split View: определяем участников по splitSide в снимке.
-  // isSplit = true только когда split реально на экране (активная вкладка — одна из панелей).
-  // При «припаркованном» split (смотрим другую вкладку) — isSplit = false,
-  // но splitSide у обеих вкладок не null → сайдбар показывает Columns2-индикатор.
-  const splitLeft  = tabs.find((t) => t.splitSide === 'left');
-  const splitRight = tabs.find((t) => t.splitSide === 'right');
-  const isSplit = !!splitLeft && !!splitRight
-    && (activeId === splitLeft.id || activeId === splitRight.id);
+  // Split View: показываемая пара — та, что в дереве СОДЕРЖИТ activeId (findActiveSplitPairNode),
+  // а не первая в tabs с нужным splitSide — при 2+ парах плоский .find() по splitSide всегда
+  // попадал бы на первую по порядку пару в дереве, а не на реально активную (см. историю).
+  // При «припаркованном» split (смотрим другую вкладку вне пары) — узел не найден, isSplit=false,
+  // но splitSide у обеих вкладок той пары не null → сайдбар показывает Columns2-индикатор.
+  const activeSplitPairNode = findActiveSplitPairNode(sidebarNodes, activeId);
+  const splitLeft  = activeSplitPairNode ? tabs.find((t) => t.id === activeSplitPairNode.leftTabId) : undefined;
+  const splitRight = activeSplitPairNode ? tabs.find((t) => t.id === activeSplitPairNode.rightTabId) : undefined;
+  const isSplit = !!splitLeft && !!splitRight;
 
   // Refs для использования актуальных значений внутри IPC-колбэков (замыкания).
   const isHubRef = useRef(isHub);
@@ -246,11 +250,11 @@ export default function App() {
       setHasOrganizeSnapshot(s.hasOrganizeSnapshot);
       const active = s.tabs.find((x) => x.isActive);
       if (active) setActiveId(active.id);
-      const left = s.tabs.find((x) => x.splitSide === 'left');
-      const right = s.tabs.find((x) => x.splitSide === 'right');
-      if (active && left && right && (active.id === left.id || active.id === right.id)) {
-        const restoredRatio = findSplitPairRatio(s.nodes, left.id, right.id);
-        if (restoredRatio !== null) setSplitRatioState(restoredRatio);
+      // Та же пара, что реально будет показана (findActiveSplitPairNode) — не первая в дереве
+      // с нужным splitSide, иначе при 2+ парах ratio восстанавливался бы для чужой пары.
+      const activePairNode = active ? findActiveSplitPairNode(s.nodes, active.id) : null;
+      if (activePairNode) {
+        setSplitRatioState(Math.max(SPLIT_RATIO_MIN, Math.min(SPLIT_RATIO_MAX, activePairNode.ratio)));
       }
     };
     let mounted = true;
