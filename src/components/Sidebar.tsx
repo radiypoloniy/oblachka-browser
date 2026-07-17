@@ -234,7 +234,8 @@ function SortableTabRow(props: TabRowProps) {
   );
 }
 
-// Split-пара как единый неперетаскиваемый блок (drag разблокируется в 2c).
+// Split-пара как единый drag-блок (id = left.id — nodeToTopId маппит split-pair
+// на leftTabId, TabManager.reorderTabs/reorderGroupChildren матчат по нему же).
 // Arc-стиль: одна горизонтальная строка с двумя mini-ячейками.
 function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContextMenu, onExitSplit }: {
   left: TabState;
@@ -248,7 +249,6 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
   const [hoveredSide, setHoveredSide] = useState<'left' | 'right' | null>(null);
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: left.id,
-    disabled: true,
   });
 
   const leftActive  = activeId === left.id;
