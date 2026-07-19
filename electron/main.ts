@@ -20,6 +20,7 @@ import { SettingsManager } from './SettingsManager';
 import * as ModelRegistry from './ModelRegistry';
 import * as HardwareInfo from './HardwareInfo';
 import * as ModelDownloader from './ModelDownloader';
+import * as ModelCatalog from './ModelCatalog';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC } from '../shared/ipc';
@@ -1213,6 +1214,9 @@ function registerIpc() {
   ipcMain.on(IPC.MODEL_DOWNLOAD_START, (_e, spec: ModelDownloadSpec) => { void ModelDownloader.startDownload(spec); });
   ipcMain.on(IPC.MODEL_DOWNLOAD_CANCEL, () => ModelDownloader.cancelDownload());
   ipcMain.handle(IPC.MODEL_DOWNLOAD_STATUS, () => ModelDownloader.getProgress());
+
+  // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей в UI нет.
+  ipcMain.handle(IPC.MODEL_CATALOG_GET, () => ModelCatalog.getCatalogWithFit());
 }
 
 // Собирает GroupNode[] плоским списком из верхнего уровня дерева.

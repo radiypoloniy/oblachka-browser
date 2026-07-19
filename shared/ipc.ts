@@ -445,6 +445,10 @@ export const IPC = {
   MODEL_DOWNLOAD_CANCEL:   'model-download:cancel',   // renderer → main: (без параметров)
   MODEL_DOWNLOAD_STATUS:   'model-download:status',   // renderer → main: DownloadProgress
   MODEL_DOWNLOAD_PROGRESS: 'model-download:progress', // main → renderer: push DownloadProgress
+
+  // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей в UI пока
+  // нет. Read-only: считает HardwareSnapshot внутри и сразу отдаёт каталог с посчитанным fit.
+  MODEL_CATALOG_GET: 'model-catalog:get', // renderer → main: CatalogEntryWithFit[]
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -789,6 +793,37 @@ export interface ModelDownloadSpec {
   label: string;
 }
 
+// Курируемый каталог моделей (см. electron/ModelCatalog.ts::CatalogModel/ModelFit) — структурно
+// идентичная копия здесь, а не импорт: shared/ipc.ts бандлится и в renderer (Vite), а
+// ModelCatalog.ts тянет ModelRegistry.ts → 'electron' (app.getPath), которые в renderer-бандл
+// тащить нельзя. Тот же приём, что Skill/SkillsStore.ts ниже.
+export interface CatalogModel {
+  id: string;
+  fileName: string;
+  label: string;
+  quant: string;
+  url: string;
+  sizeBytes: number;
+  totalLayers: number;
+  vramFullOffloadBytes: number;
+  contextVramPerToken: number;
+  qualityTier: 1 | 2 | 3;
+}
+
+export type FitCategory = 'light' | 'recommended' | 'heavy' | 'not-recommended';
+
+export interface ModelFit {
+  category: FitCategory;
+  maxContextTokens: number;
+  fitsFullyOnGpu: boolean;
+  note: string | null;
+}
+
+export interface CatalogEntryWithFit {
+  model: CatalogModel;
+  fit: ModelFit;
+}
+
 export type AiActionOutcome =
   | { ok: true; out: string; action: AiAction; dirUsed?: TranslateDirection; ms: number; tokPerSec: number; loadMs: number | null }
   | { ok: false; error: string; errorCode?: ModelErrorCode };
@@ -1108,6 +1143,9 @@ export interface OblakoApi {
   cancelModelDownload(): void;
   getModelDownloadProgress(): Promise<DownloadProgress>;
   onModelDownloadProgress(cb: (p: DownloadProgress) => void): () => void;
+
+  // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей в UI пока нет.
+  getModelCatalog(): Promise<CatalogEntryWithFit[]>;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;
