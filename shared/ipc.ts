@@ -808,7 +808,7 @@ export interface CatalogModel {
   vramFullOffloadBytes: number;
   contextVramPerToken: number;
   contextVramBaseBytes: number;
-  qualityTier: 1 | 2 | 3;
+  qualityTier: 1 | 2 | 3 | 4 | 5;
 }
 
 export type FitCategory = 'light' | 'recommended' | 'heavy' | 'not-recommended';

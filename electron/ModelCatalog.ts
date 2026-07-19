@@ -43,7 +43,27 @@ export type { CatalogModel, ModelFit, FitCategory, CatalogEntryWithFit }
 // НЕ зависящий от contextSize, — отрезок при N→0 прямой, восстановленный из той же точки 8192:
 // base = contextVramBytes(8192) − 8192 × contextVramPerToken. Без этого слагаемого формула
 // evaluateFit систематически завышала maxContextTokens (для 9B — примерно на 17 600 токенов).
+//
+// 0.8B и 27B добавлены отдельной разведкой той же методикой (те же 5 точек контекста, наклон по
+// крайним точкам 8192→131072). Линейность у обеих в пределах допуска (макс. отклонение сегмента
+// от среднего: 0.8B — 7.45%, 27B — 2.19%, обе <10% — порог остановки не сработал). У 27B наклон
+// не круглое число (66423.3165... байт/токен) в отличие от 2B/4B/9B — округлён до 66423,
+// contextVramBaseBytes для неё пересчитан от УЖЕ округлённого наклона (не от сырого дробного),
+// чтобы сохранённые наклон и база были взаимно согласованы.
 export const CATALOG: CatalogModel[] = [
+  {
+    id: slugify('Qwen3.5-0.8B-Q4_K_M.gguf'),
+    fileName: 'Qwen3.5-0.8B-Q4_K_M.gguf',
+    label: 'Qwen3.5 0.8B',
+    quant: 'Q4_K_M',
+    url: 'https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf',
+    sizeBytes: 532517120,
+    totalLayers: 25,
+    vramFullOffloadBytes: 521555200,
+    contextVramPerToken: 12288,
+    contextVramBaseBytes: 532955136,
+    qualityTier: 1,
+  },
   {
     id: slugify('Qwen3.5-2B-Q4_K_M.gguf'),
     fileName: 'Qwen3.5-2B-Q4_K_M.gguf',
@@ -55,7 +75,7 @@ export const CATALOG: CatalogModel[] = [
     vramFullOffloadBytes: 1269873920,
     contextVramPerToken: 12288,
     contextVramBaseBytes: 537149440,
-    qualityTier: 1,
+    qualityTier: 2,
   },
   {
     id: slugify('Qwen3.5-4B-Q4_K_M.gguf'),
@@ -68,7 +88,7 @@ export const CATALOG: CatalogModel[] = [
     vramFullOffloadBytes: 2729969664,
     contextVramPerToken: 32768,
     contextVramBaseBytes: 571736064,
-    qualityTier: 2,
+    qualityTier: 3,
   },
   {
     id: slugify('Qwen3.5-9B-Q4_K_M.gguf'),
@@ -81,7 +101,20 @@ export const CATALOG: CatalogModel[] = [
     vramFullOffloadBytes: 5097424896,
     contextVramPerToken: 32768,
     contextVramBaseBytes: 578027520,
-    qualityTier: 3,
+    qualityTier: 4,
+  },
+  {
+    id: slugify('Qwen3.5-27B-Q4_K_M.gguf'),
+    fileName: 'Qwen3.5-27B-Q4_K_M.gguf',
+    label: 'Qwen3.5 27B',
+    quant: 'Q4_K_M',
+    url: 'https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/Qwen3.5-27B-Q4_K_M.gguf',
+    sizeBytes: 16740812704,
+    totalLayers: 65,
+    vramFullOffloadBytes: 16014657536,
+    contextVramPerToken: 66423,
+    contextVramBaseBytes: 687564816,
+    qualityTier: 5,
   },
 ]
 
@@ -124,11 +157,13 @@ const NO_VRAM_DETECTED_NOTE = 'Не удалось определить виде
 // или перед переключением).
 export function evaluateFit(model: CatalogModel, hw: HardwareSnapshot): ModelFit {
   if (hw.vramTotalBytes === null) {
-    // Детект не удался — не гадаем: только 1-й (самый лёгкий) уровень получает благосклонное
-    // "recommended", остальные — "not-recommended". Это НЕ реальная оценка вместимости, а
-    // консервативная заглушка на случай отсутствия данных.
+    // Детект не удался — не гадаем: только tier 2 (2B — после сдвига тиров это самый лёгкий
+    // уровень, ЗАСЛУЖИВАЮЩИЙ доверия без замера; 0.8B/tier 1 достаточно урезана по качеству, что
+    // рекомендовать её вслепую хуже, чем 2B) получает благосклонное "recommended", остальные —
+    // "not-recommended". Это НЕ реальная оценка вместимости, а консервативная заглушка на случай
+    // отсутствия данных.
     return {
-      category: model.qualityTier === 1 ? 'recommended' : 'not-recommended',
+      category: model.qualityTier === 2 ? 'recommended' : 'not-recommended',
       maxContextTokens: 0,
       fitsFullyOnGpu: false,
       note: NO_VRAM_DETECTED_NOTE,
