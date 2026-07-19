@@ -19,6 +19,7 @@
     "download-xray": "node scripts/download-xray.mjs",
     "download-translation-models": "node scripts/download-translation-models.mjs",
     "bergamot-smoke": "node scripts/bergamot-smoke.mjs",
+    "measure-model": "node scripts/measure-model-requirements.mjs",
     "postinstall:sqlite": "electron-rebuild -f -w better-sqlite3 || echo [postinstall] better-sqlite3 rebuild skipped — history unavailable without C++ tools",
     "postinstall:bergamot": "node scripts/patch-bergamot.mjs",
     "postinstall": "npm run postinstall:sqlite && npm run postinstall:bergamot"
