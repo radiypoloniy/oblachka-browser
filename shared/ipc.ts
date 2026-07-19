@@ -807,6 +807,7 @@ export interface CatalogModel {
   totalLayers: number;
   vramFullOffloadBytes: number;
   contextVramPerToken: number;
+  contextVramBaseBytes: number;
   qualityTier: 1 | 2 | 3;
 }
 

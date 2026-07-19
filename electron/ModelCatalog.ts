@@ -23,7 +23,9 @@ export type { CatalogModel, ModelFit, FitCategory, CatalogEntryWithFit }
 // сверки SHA256 в предыдущей задаче).
 //
 // vramFullOffloadBytes — estimateModelResourceRequirementsV2({gpuLayers: totalLayers}).gpuVram
-// (все слои на GPU).
+// (все слои на GPU). Сверено отдельной задачей: model+contextVramBaseBytes+43520×наклон против
+// реально замеренного расхода VRAM на живом прогоне (7 266 283 520 байт) — разошлось на 2.27%,
+// в пределах допуска.
 //
 // contextVramPerToken — наклон gpuVram по числу токенов контекста между contextSize=8192 и
 // contextSize=131072 (estimateContextResourceRequirementsV2, gpuLayers=totalLayers), т.е.
@@ -34,7 +36,13 @@ export type { CatalogModel, ModelFit, FitCategory, CatalogEntryWithFit }
 // точками (8192→131072) дал ровно 32768 — то же значение, что у 9B (ожидаемо: у обеих моделей
 // totalLayers=33 и, судя по всему, одинаковая конфигурация KV-голов в семействе Qwen3.5, поэтому
 // стоимость контекста на токен от ширины embedding/FFN не зависит). Использовано значение по
-// крайним точкам как более устойчивое к локальному "дребезгу" среднего замера.
+// крайним точкам (8192→131072) как более устойчивое к локальному "дребезгу" среднего замера —
+// для 4B тоже взято по этому плечу, а не по соседним отрезкам, по той же причине устойчивости.
+//
+// contextVramBaseBytes — фиксированный оверхед контекста (графовые/батчевые буферы и т.п.),
+// НЕ зависящий от contextSize, — отрезок при N→0 прямой, восстановленный из той же точки 8192:
+// base = contextVramBytes(8192) − 8192 × contextVramPerToken. Без этого слагаемого формула
+// evaluateFit систематически завышала maxContextTokens (для 9B — примерно на 17 600 токенов).
 export const CATALOG: CatalogModel[] = [
   {
     id: slugify('Qwen3.5-2B-Q4_K_M.gguf'),
@@ -46,6 +54,7 @@ export const CATALOG: CatalogModel[] = [
     totalLayers: 25,
     vramFullOffloadBytes: 1269873920,
     contextVramPerToken: 12288,
+    contextVramBaseBytes: 537149440,
     qualityTier: 1,
   },
   {
@@ -58,6 +67,7 @@ export const CATALOG: CatalogModel[] = [
     totalLayers: 33,
     vramFullOffloadBytes: 2729969664,
     contextVramPerToken: 32768,
+    contextVramBaseBytes: 571736064,
     qualityTier: 2,
   },
   {
@@ -70,20 +80,30 @@ export const CATALOG: CatalogModel[] = [
     totalLayers: 33,
     vramFullOffloadBytes: 5097424896,
     contextVramPerToken: 32768,
+    contextVramBaseBytes: 578027520,
     qualityTier: 3,
   },
 ]
 
-// Резерв под систему/десктоп-композитор/другие процессы на GPU — НЕ бюджет самой модели.
-// 1.5 ГиБ — измерено на живом браузере с 20+ восстановленными вкладками (обратный расчёт по
-// vramFreeBytes ДО/ПОСЛЕ загрузки модели и известному vramFullOffloadBytes показал ~1.51 ГиБ
-// расхождения, не объяснимого весом модели и её контекстом — это Chromium + драйвер + ОС).
-// Это НЕ запас "на всякий случай" и не теоретическая прикидка — это нормальный рабочий режим
-// продукта (браузер с открытыми вкладками, не пустой процесс), поэтому бюджет считается именно
-// от него, а не от гипотетического "чистого" GPU. Прежнее значение 0.5 ГиБ было подобрано без
-// такого замера и давало на живой проверке расхождение расчётного maxContextTokens с фактическим
-// n_ctx примерно в 2 раза.
-const SYSTEM_RESERVE_BYTES = 1.5 * 1024 ** 3 // 1 610 612 736
+// Резерв под систему/Chromium/драйвер/ОС на GPU — НЕ бюджет самой модели.
+// 0.90 ГиБ — измерено на ЧИСТОЙ машине (посторонние браузеры/приложения с видео закрыты), только
+// сам Oblako, вкладки спящие: замер до загрузки модели с 1 открытой вкладкой и с 23 (10 закреп +
+// спящие/активные) дал ПРАКТИЧЕСКИ ОДИНАКОВЫЙ результат (~0.9002-0.9011 ГиБ) — спящие вкладки не
+// держат GPU-память, число вкладок в этом диапазоне не влияет.
+// ⚠️ Это ПОЛ, не потолок: активное видео/тяжёлая графика в самом Oblako (не в стороннем браузере)
+// добавит сверху — величина этой надбавки не измерена, здесь не учтена.
+// Прежнее значение 1.5 ГиБ мерилось при параллельно работавшем стороннем браузере с видео —
+// было завышено примерно на 0.6 ГиБ по вине чужого процесса, не самого Oblako.
+const SYSTEM_RESERVE_BYTES = Math.round(0.9 * 1024 ** 3) // 966 367 642 (0.9 не делится на 1024 без остатка — округляем до целого байта)
+
+// llama.cpp при gpuLayers/contextSize "auto" не выбирает ВСЮ доступную (после вычета
+// SYSTEM_RESERVE_BYTES) память под модель+контекст — оставляет что-то нетронутым из осторожности
+// самого резолвера (см. resolveModelGpuLayersOption.js в node-llama-cpp). На живом замере (модель+
+// контекст загружены, тот же прогон, что дал n_ctx) осталось 367 517 696 байт свободной VRAM,
+// хотя по budget-SYSTEM_RESERVE_BYTES она была доступна. Это НЕ резерв под систему (тот уже вычтен
+// выше) — отдельная константа, потому что калибруется независимо (свойство самой библиотеки,
+// не системы/ОС).
+const LLAMA_HEADROOM_BYTES = Math.round(0.35 * 1024 ** 3) // 375 809 638 (округлено до целого байта)
 
 // Пороги категорий по maxContextTokens — именованные константы рядом с формулой, чтобы править
 // в одном месте, а не в теле evaluateFit ниже.
@@ -115,8 +135,8 @@ export function evaluateFit(model: CatalogModel, hw: HardwareSnapshot): ModelFit
     }
   }
 
-  const budget = hw.vramTotalBytes - SYSTEM_RESERVE_BYTES
-  const remaining = budget - model.vramFullOffloadBytes
+  const budget = hw.vramTotalBytes - SYSTEM_RESERVE_BYTES - LLAMA_HEADROOM_BYTES
+  const remaining = budget - model.vramFullOffloadBytes - model.contextVramBaseBytes
   const fitsFullyOnGpu = remaining > 0
   const maxContextTokens = remaining > 0 ? Math.floor(remaining / model.contextVramPerToken) : 0
 
