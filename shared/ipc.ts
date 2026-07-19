@@ -433,6 +433,18 @@ export const IPC = {
   HUB_CHAT_NEW_SESSION:   'hub-chat:new-session',    // renderer → main: tabId — сбросить текущий диалог вкладки
   HUB_CHAT_RESUME_SESSION: 'hub-chat:resume-session', // renderer → main: { tabId, sessionId } → HubChatMessage[] — продолжить старый диалог
   HUB_CHAT_DELETE_SESSION: 'hub-chat:delete-session', // renderer → main: sessionId
+
+  // Детект железа (см. electron/HardwareInfo.ts) — задел под подбор GGUF-модели по VRAM. Read-only,
+  // ленивый (без вызова на старте): первый запрос считает и кэширует, дальше отдаёт из кэша.
+  HARDWARE_GET_SNAPSHOT: 'hardware:get-snapshot', // renderer → main: HardwareSnapshot (из кэша)
+
+  // Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей в UI пока нет.
+  // Тот же контракт, что HISTORY_CONTENT_BACKFILL_* (start/cancel fire-and-forget, status — invoke
+  // для гонки старта монтирования, progress — push).
+  MODEL_DOWNLOAD_START:    'model-download:start',    // renderer → main: ModelDownloadSpec
+  MODEL_DOWNLOAD_CANCEL:   'model-download:cancel',   // renderer → main: (без параметров)
+  MODEL_DOWNLOAD_STATUS:   'model-download:status',   // renderer → main: DownloadProgress
+  MODEL_DOWNLOAD_PROGRESS: 'model-download:progress', // main → renderer: push DownloadProgress
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -741,6 +753,41 @@ export type TranslateDirection = `${string}->${string}`;
 // см. electron/ModelRegistry.ts) — рядом с человекочитаемым error, а не вместо него. Опционально:
 // прочие ошибки (не про модель — франк, парсинг и т.п.) errorCode не выставляют, как и раньше.
 export type ModelErrorCode = 'NO_MODEL_INSTALLED' | 'MODEL_FILE_MISSING' | 'LOAD_FAILED';
+
+// Снапшот железа (см. electron/HardwareInfo.ts) — задел под подбор GGUF-модели по доступной VRAM.
+// vram*/gpuBackend — null, если детект упал (нет подходящего GPU/драйвера) или ещё не запускался;
+// ram*/cpuCores — всегда заполнены (через os, от llama/GPU не зависят). error — причина отказа
+// детекта VRAM/GPU, если она есть; null означает "vram*/gpuBackend успешно определены".
+export interface HardwareSnapshot {
+  vramTotalBytes: number | null;
+  vramFreeBytes: number | null;
+  gpuBackend: string | null;
+  ramTotalBytes: number;
+  ramFreeBytes: number;
+  cpuCores: number;
+  detectedAt: number;
+  error: string | null;
+}
+
+// Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей в UI пока нет.
+// Одновременно допускается только одна загрузка на процесс. modelId — slug (та же slugify(), что
+// у ModelRegistry.ts) целевого файла, известен с самого начала (до появления файла на диске).
+export interface DownloadProgress {
+  modelId: string | null;
+  receivedBytes: number;
+  totalBytes: number | null;
+  running: boolean;
+  cancelled: boolean;
+  error: string | null;
+}
+
+// Параметры одной загрузки — курируемый каталог моделей будет отдельным заходом (6c), сейчас
+// приходят снаружи как есть.
+export interface ModelDownloadSpec {
+  url: string;
+  fileName: string;
+  label: string;
+}
 
 export type AiActionOutcome =
   | { ok: true; out: string; action: AiAction; dirUsed?: TranslateDirection; ms: number; tokPerSec: number; loadMs: number | null }
@@ -1051,6 +1098,16 @@ export interface OblakoApi {
   // Домен активной вкладки для адблок-секции поповера (см. IPC.VPN_POPOVER_SET_ACTIVE_URL) —
   // Toolbar шлёт при открытии и при навигации в той же вкладке, пока поповер открыт.
   setVpnPopoverActiveUrl(url: string): Promise<void>;
+
+  // Детект железа (см. electron/HardwareInfo.ts) — задел под подбор модели, потребителей в UI
+  // пока нет. Read-only, из кэша main-процесса (или первый расчёт, если кэша ещё нет).
+  getHardwareSnapshot(): Promise<HardwareSnapshot>;
+
+  // Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей в UI пока нет.
+  startModelDownload(spec: ModelDownloadSpec): void;
+  cancelModelDownload(): void;
+  getModelDownloadProgress(): Promise<DownloadProgress>;
+  onModelDownloadProgress(cb: (p: DownloadProgress) => void): () => void;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;

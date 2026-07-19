@@ -93,7 +93,7 @@ function load(): void {
 // Расширение срезается ДО слагификации (иначе ".gguf" даёт лишний хвост "-gguf" в каждом id),
 // группы non-alnum схлопываются в один дефис, дефисы по краям обрезаются — иначе "Qwen3.5-9B..."
 // с точкой и дефисом подряд дал бы "qwen3--5-9b" вместо чистого "qwen3-5-9b".
-function slugify(filename: string): string {
+export function slugify(filename: string): string {
   const base = filename.slice(0, filename.length - path.extname(filename).length)
   return base
     .toLowerCase()
@@ -108,7 +108,7 @@ function legacyGgufDir(): string {
   return path.dirname(legacyModelPath)
 }
 
-function userGgufDir(): string {
+export function userGgufDir(): string {
   return path.join(app.getPath('userData'), 'models', 'gguf')
 }
 
@@ -188,10 +188,19 @@ export function setDefault(id: string): void {
   write()
 }
 
-export function add(model: InstalledModel): void {
-  if (getById(model.id)) return // id — стабильный slug, дубликат игнорируем
+export type AddModelResult =
+  | { ok: true }
+  | { ok: false; reason: 'DUPLICATE_ID'; existing: InstalledModel }
+
+// Тихого no-op на дубликате больше нет — вызывающая сторона обязана сама решить, что делать
+// с уже существующей записью (ModelDownloader.ts: не тратить трафик на заведомый дубликат,
+// см. предварительную проверку перед сетевым запросом).
+export function add(model: InstalledModel): AddModelResult {
+  const existing = getById(model.id)
+  if (existing) return { ok: false, reason: 'DUPLICATE_ID', existing }
   state.models.push(model)
   write()
+  return { ok: true }
 }
 
 // Только запись реестра — файл на диске не трогаем. Удаление файла будет отдельным коммитом

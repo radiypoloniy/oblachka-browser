@@ -10,6 +10,7 @@
 import fs from 'node:fs'
 import { getTargetLang } from './TranslationConfig'
 import * as ModelRegistry from './ModelRegistry'
+import { getLlamaBackend, getNlc } from './LlamaBackend'
 import type { AiAction, AiActionOutcome, ModelErrorCode } from '../shared/ipc'
 
 // Дискриминируемая ошибка загрузки модели — ensureLoaded() бросает объекты этой формы вместо
@@ -258,12 +259,11 @@ async function ensureLoaded(): Promise<number> {
       throw { code: 'MODEL_FILE_MISSING', message: 'Файл модели не найден на диске' } satisfies ModelError
     }
 
-    // ESM-only пакет, main собран в CommonJS — обычный import() tsc превратил бы в require(),
-    // а у node-llama-cpp top-level await внутри графа модулей (ERR_REQUIRE_ASYNC_MODULE).
-    // Официальный обход из доков библиотеки: спрятать import() внутри Function(),
-    // чтобы tsc его не транспилировал — тогда это настоящий динамический import.
-    const nlc: typeof import('node-llama-cpp') = await Function('return import("node-llama-cpp")')()
-    llama = await nlc.getLlama()
+    // Инстанс llama-бэкенда и сам модуль node-llama-cpp — через LlamaBackend.ts, не напрямую:
+    // единственная точка, чтобы будущий детект железа (HardwareInfo.ts) переиспользовал ТОТ ЖЕ
+    // инстанс, а не заводил второй независимый backend на том же GPU.
+    const nlc = await getNlc()
+    llama = await getLlamaBackend()
     // Диагностика: 'cpu' здесь — главный подозреваемый при жалобах на скорость (9B-модель на CPU
     // на порядок медленнее, чем на GPU) — без этой строки бэкенд не виден нигде в боевом логе
     // (только в изолированном llamatest.ts).

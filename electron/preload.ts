@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -391,6 +391,19 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.VPN_POPOVER_CLOSED, handler);
   },
   setVpnPopoverActiveUrl: (url: string) => ipcRenderer.invoke(IPC.VPN_POPOVER_SET_ACTIVE_URL, url) as Promise<void>,
+
+  // Детект железа (см. electron/HardwareInfo.ts) — задел, потребителей пока нет.
+  getHardwareSnapshot: () => ipcRenderer.invoke(IPC.HARDWARE_GET_SNAPSHOT) as Promise<HardwareSnapshot>,
+
+  // Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей пока нет.
+  startModelDownload: (spec: ModelDownloadSpec) => ipcRenderer.send(IPC.MODEL_DOWNLOAD_START, spec),
+  cancelModelDownload: () => ipcRenderer.send(IPC.MODEL_DOWNLOAD_CANCEL),
+  getModelDownloadProgress: () => ipcRenderer.invoke(IPC.MODEL_DOWNLOAD_STATUS) as Promise<DownloadProgress>,
+  onModelDownloadProgress: (cb: (p: DownloadProgress) => void) => {
+    const handler = (_e: unknown, p: DownloadProgress) => cb(p);
+    ipcRenderer.on(IPC.MODEL_DOWNLOAD_PROGRESS, handler);
+    return () => ipcRenderer.removeListener(IPC.MODEL_DOWNLOAD_PROGRESS, handler);
+  },
 
   embedPreload: EMBED_PRELOAD,
 };

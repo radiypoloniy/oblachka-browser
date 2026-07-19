@@ -18,10 +18,12 @@ import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
 import { SettingsManager } from './SettingsManager';
 import * as ModelRegistry from './ModelRegistry';
+import * as HardwareInfo from './HardwareInfo';
+import * as ModelDownloader from './ModelDownloader';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, TranslationEngineId, BergamotStatus } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -1187,6 +1189,20 @@ function registerIpc() {
   ipcMain.handle(IPC.GROUP_TOGGLE_COLLAPSE,  (_e, gId: string)                 => tabs?.toggleGroupCollapse(gId));
   ipcMain.handle(IPC.GROUP_DISBAND,          (_e, gId: string)                 => tabs?.disbandGroup(gId));
   ipcMain.handle(IPC.GROUP_REORDER_CHILDREN, (_e, gId: string, ids: string[])  => tabs?.reorderGroupChildren(gId, ids));
+
+  // Детект железа (см. electron/HardwareInfo.ts) — задел под подбор модели. Ленивый: ничего не
+  // считает на старте, первый запрос из renderer инициирует расчёт.
+  ipcMain.handle(IPC.HARDWARE_GET_SNAPSHOT, () => HardwareInfo.get());
+
+  // Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей в UI нет.
+  // Тот же приём, что HISTORY_CONTENT_BACKFILL_PROGRESS (main.ts:1006-1010): модуль зовёт колбэк,
+  // main решает, куда слать (chromeView), сам модуль про chromeView не знает.
+  ModelDownloader.setProgressListener((p) => {
+    chromeView?.webContents.send(IPC.MODEL_DOWNLOAD_PROGRESS, p);
+  });
+  ipcMain.on(IPC.MODEL_DOWNLOAD_START, (_e, spec: ModelDownloadSpec) => { void ModelDownloader.startDownload(spec); });
+  ipcMain.on(IPC.MODEL_DOWNLOAD_CANCEL, () => ModelDownloader.cancelDownload());
+  ipcMain.handle(IPC.MODEL_DOWNLOAD_STATUS, () => ModelDownloader.getProgress());
 }
 
 // Собирает GroupNode[] плоским списком из верхнего уровня дерева.
