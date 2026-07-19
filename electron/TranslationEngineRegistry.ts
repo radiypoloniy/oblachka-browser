@@ -39,28 +39,46 @@ export function setCacheManager(cache: TranslationCacheManager): void {
   cacheManager = cache
 }
 
+function isUsable(engine: ITranslationEngine, from?: string, to?: string): boolean {
+  return engine.isReady() && (from === undefined || to === undefined || engine.supportsPair(from, to))
+}
+
 // Единственная точка получения текущего движка. from/to — необязательны (диагностика/warmup не
 // всегда их знают), но PageTranslateManager.ts ВСЕГДА передаёт их (уже резолвлены через
 // resolveDirection к этому моменту) — иначе движок, у которого просто нет модели под ЭТУ пару
 // (при наличии моделей под другие пары, см. живой баг: Bergamot с одним en-ru молча "переводит"
 // французскую страницу в никуда), тихо выбирался бы и заваливал КАЖДЫЙ юнит без единого сигнала
-// наружу. Если выбранный движок не зарегистрирован, не готов ВООБЩЕ (см. ITranslationEngine.isReady)
-// или не поддерживает конкретно эту пару (supportsPair) — тихий откат на Qwen: он всегда
-// зарегистрирован, isReady() у него всегда true и supportsPair() всегда true (см.
-// QwenTranslationEngine.ts), так что откат гарантированно не бросает исключение и не заваливается
-// той же болезнью повторно.
-export function getActiveEngine(from?: string, to?: string): ITranslationEngine {
-  const engine = engines.get(activeId)
-  const usable = !!engine && engine.isReady() && (from === undefined || to === undefined || engine.supportsPair(from, to))
-  let real: ITranslationEngine
-  if (usable) {
-    real = engine!
+// наружу.
+//
+// Больше нет спец-случая для Qwen: раньше QwenTranslationEngine.isReady() был безусловным true,
+// и non-null фолбэк на него (engines.get('qwen')!) был гарантированно рабочим. Теперь Qwen —
+// обычный движок в реестре (сверяется с ModelRegistry.ts), поэтому при неготовности активного
+// движка перебираются ВСЕ зарегистрированные движки в детерминированном порядке вставки в Map
+// (см. начальный литерал ниже — 'qwen' вставлен первым, 'bergamot' — вторым через registerEngine()
+// в main.ts) и возвращается первый usable. Если usable нет ни одного — null: вызывающая сторона
+// (PageTranslateManager.ts) обязана обработать этот случай сама, гарантии «движок всегда есть»
+// больше нет.
+export function getActiveEngine(from?: string, to?: string): ITranslationEngine | null {
+  const active = engines.get(activeId)
+  let real: ITranslationEngine | null = null
+
+  if (active && isUsable(active, from, to)) {
+    real = active
   } else {
-    if (activeId !== 'qwen') {
+    if (active) {
       const pairInfo = from && to ? ` для пары ${from}->${to}` : ''
-      console.warn(`[translation-engine] "${activeId}" недоступен${pairInfo} — откат на Qwen`)
+      console.warn(`[translation-engine] "${activeId}" недоступен${pairInfo} — ищу другой готовый движок`)
     }
-    real = engines.get('qwen')!
+    for (const engine of engines.values()) {
+      if (engine === active) continue // уже проверен выше
+      if (isUsable(engine, from, to)) { real = engine; break }
+    }
   }
+
+  if (!real) {
+    console.error('[translation-engine] ни один зарегистрированный движок перевода не готов')
+    return null
+  }
+
   return cacheManager ? new CachingTranslationEngine(real, cacheManager) : real
 }

@@ -7,9 +7,21 @@
 // первому вызову translate(), НЕ при старте браузера — иначе окно подвиснет на открытии. Загрузка
 // заметно дольше, чем у EuroLLM (~30с против ~5с, соло-замер на чистых 8ГБ VRAM) — see
 // translatepopover.tsx: текст плейсхолдера отражает это честно.
-import path from 'node:path'
+import fs from 'node:fs'
 import { getTargetLang } from './TranslationConfig'
-import type { AiAction, AiActionOutcome } from '../shared/ipc'
+import * as ModelRegistry from './ModelRegistry'
+import type { AiAction, AiActionOutcome, ModelErrorCode } from '../shared/ipc'
+
+// Дискриминируемая ошибка загрузки модели — ensureLoaded() бросает объекты этой формы вместо
+// сырого исключения node-llama-cpp, чтобы вызывающая сторона могла показать пользователю
+// осмысленный код причины (errorCode), а не String(e). Сама ensureLoaded() модели не знает,
+// откуда пришёл путь — только что ModelRegistry.getDefault() либо файл на диске могут отсутствовать.
+type ModelError = { code: ModelErrorCode; message: string }
+
+function isModelError(e: unknown): e is ModelError {
+  return typeof e === 'object' && e !== null && 'code' in e && 'message' in e &&
+    typeof (e as { message: unknown }).message === 'string'
+}
 
 // 'ru->en' и т.п. — для ручного теста (translateTestBridge.ts/translatetest.ts, там всегда пара
 // ru/en). 'auto' — боевой путь (ПКМ → «Перевести»): язык определяется по тексту, см. detectLang.
@@ -19,7 +31,7 @@ export type ResolvedDirection = `${string}->${string}`
 
 export type TranslateResult =
   | { ok: true; out: string; dirUsed: ResolvedDirection; ms: number; tokPerSec: number; loadMs: number | null }
-  | { ok: false; error: string }
+  | { ok: false; error: string; errorCode?: ModelErrorCode }
 
 // Английские имена языков для промпт-шаблона — только те, что реально можно определить
 // (см. FRANC_TO_CODE) и передать модели по имени. Список — не «все языки мира», а разумный набор
@@ -229,8 +241,23 @@ let loadPromise: Promise<number> | null = null
 
 async function ensureLoaded(): Promise<number> {
   if (loadPromise) return loadPromise
-  loadPromise = (async () => {
+  const attempt = (async () => {
     const t0 = performance.now()
+
+    // Путь к модели больше не хардкод — берётся из ModelRegistry.ts (сид-скан диска на старте,
+    // см. main.ts). Пустой реестр (пользователь ещё не установил ни одной модели) — не зовём
+    // node-llama-cpp вовсе, сразу типизированная ошибка.
+    const installed = ModelRegistry.getDefault()
+    if (!installed) {
+      throw { code: 'NO_MODEL_INSTALLED', message: 'Модель не установлена' } satisfies ModelError
+    }
+    // Реестр мог найти файл на старте, но пользователь мог удалить/переместить его вручную уже
+    // после сид-скана — проверяем существование прямо перед загрузкой, не доверяя тому, что
+    // записано в models.json.
+    if (!fs.existsSync(installed.filePath)) {
+      throw { code: 'MODEL_FILE_MISSING', message: 'Файл модели не найден на диске' } satisfies ModelError
+    }
+
     // ESM-only пакет, main собран в CommonJS — обычный import() tsc превратил бы в require(),
     // а у node-llama-cpp top-level await внутри графа модулей (ERR_REQUIRE_ASYNC_MODULE).
     // Официальный обход из доков библиотеки: спрятать import() внутри Function(),
@@ -247,8 +274,11 @@ async function ensureLoaded(): Promise<number> {
     // задача была УБЕДИТЬСЯ, а не полагаться на дефолт (подтверждено на живых прогонах: без утечек
     // <think> ни разу — доп. защита всё равно есть в stripThinking() ниже).
     qwenChatWrapper = new nlc.QwenChatWrapper({ variation: '3.5', thoughts: 'discourage' })
-    const modelPath = path.join(__dirname, '../../resources/models/gguf/Qwen3.5-9B-Q4_K_M.gguf')
-    model = await llama.loadModel({ modelPath })
+    try {
+      model = await llama.loadModel({ modelPath: installed.filePath })
+    } catch (e) {
+      throw { code: 'LOAD_FAILED', message: `Не удалось загрузить модель: ${String(e)}` } satisfies ModelError
+    }
     context = await model.createContext({ sequences: 1 })
     sequence = context.getSequence()
     // contextSize — не задаём явно (createContext сам подбирает "auto" под доступную VRAM и
@@ -257,6 +287,27 @@ async function ensureLoaded(): Promise<number> {
     console.log(`[gen] context: n_ctx=${context.contextSize} trainContextSize=${model.trainContextSize}`)
     return performance.now() - t0
   })()
+  loadPromise = attempt
+  // NO_MODEL_INSTALLED/MODEL_FILE_MISSING — дешёвые проверки (реестр + existsSync), без
+  // обращения к GPU и без чтения файла: сбрасываем кэш отказа, чтобы следующий вызов сделал
+  // новую попытку — иначе после докладки модели в реестр генерация не оживёт до перезапуска
+  // браузера. LOAD_FAILED оставляем закэшированным до конца процесса, как раньше: реальная
+  // попытка загрузки уже потрачена, повтор может занять десятки секунд и в OOM-сценарии
+  // повторно давить на VRAM.
+  // Сброс — через setImmediate, НЕ в том же микротаске, где attempt отклонился. Проверено на
+  // живом прогоне: для этих кодов throw происходит синхронно (до первого await), поэтому
+  // микротаск-сброс срабатывает быстрее, чем успевает дойти IPC-сообщение ВТОРОГО, реально
+  // одновременного запроса (ipcRenderer.invoke/.send — не тот же тик, идёт через отдельный
+  // цикл event loop) — в результате он не заставал loadPromise ещё установленным и порождал
+  // свою отдельную попытку вместо дедупликации. setImmediate откладывает сброс на следующую
+  // итерацию event loop — уже поставленные в очередь на момент отказа IPC-сообщения успевают
+  // отработать раньше и застать loadPromise === attempt.
+  attempt.catch((e) => {
+    if (!(isModelError(e) && (e.code === 'NO_MODEL_INSTALLED' || e.code === 'MODEL_FILE_MISSING'))) return
+    setImmediate(() => {
+      if (loadPromise === attempt) loadPromise = null
+    })
+  })
   return loadPromise
 }
 
@@ -490,6 +541,7 @@ export async function translate(
     return { ok: true, out, dirUsed, ms, tokPerSec, loadMs }
   } catch (e) {
     console.error('[translate] error:', e)
+    if (isModelError(e)) return { ok: false, error: e.message, errorCode: e.code }
     return { ok: false, error: String(e) }
   }
 }
@@ -528,6 +580,7 @@ export async function runAiAction(
     return { ok: true, out, action, ms, tokPerSec, loadMs }
   } catch (e) {
     console.error('[ai-action] error:', e)
+    if (isModelError(e)) return { ok: false, error: e.message, errorCode: e.code }
     return { ok: false, error: String(e) }
   }
 }
@@ -542,7 +595,7 @@ export async function runAiAction(
 export interface PageBatchUnit { id: number; text: string }
 export type PageBatchResult =
   | { ok: true; translations: Map<number, string> }
-  | { ok: false; error: string }
+  | { ok: false; error: string; errorCode?: ModelErrorCode }
 
 // ~10-15 юнитов/до ~3000 симв. входа на батч (см. PageTranslateManager.ts) — с запасом на
 // расширение перевода (кириллица/румынский и т.п. обычно длиннее исходника) и разметку заголовков.
@@ -610,6 +663,7 @@ export async function translatePageBatch(
     return { ok: true, translations }
   } catch (e) {
     console.error('[page-translate] батч упал:', e)
+    if (isModelError(e)) return { ok: false, error: e.message, errorCode: e.code }
     return { ok: false, error: String(e) }
   }
 }
@@ -628,7 +682,7 @@ export async function translatePageBatch(
 export type ChatOutcome =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | { ok: true; out: string; history: any[]; ms: number; tokPerSec: number; loadMs: number | null }
-  | { ok: false; error: string }
+  | { ok: false; error: string; errorCode?: ModelErrorCode }
 
 const CHAT_SYSTEM_PROMPT = 'You are a helpful, concise assistant built into a web browser. Respond in the same language the user writes in.'
 // Было 700 — обрывало развёрнутые ответы и (особенно) кнопку «Перевести страницу» в AI-панели
@@ -707,6 +761,7 @@ async function runChatMessageQueued(
     return { ok: true, out, history: newHistory, ms, tokPerSec: tokens / (ms / 1000), loadMs: wasLoaded ? null : loadMs }
   } catch (e) {
     console.error('[chat] error:', e)
+    if (isModelError(e)) return { ok: false, error: e.message, errorCode: e.code }
     return { ok: false, error: String(e) }
   }
 }

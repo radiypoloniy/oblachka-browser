@@ -737,9 +737,14 @@ export type AiAction = 'translate' | 'summarize' | 'simplify' | 'explain';
 // у них нет пары src->tgt.
 export type TranslateDirection = `${string}->${string}`;
 
+// Дискриминируемый код причины отказа генерации, когда она известна (реестр GGUF-моделей,
+// см. electron/ModelRegistry.ts) — рядом с человекочитаемым error, а не вместо него. Опционально:
+// прочие ошибки (не про модель — франк, парсинг и т.п.) errorCode не выставляют, как и раньше.
+export type ModelErrorCode = 'NO_MODEL_INSTALLED' | 'MODEL_FILE_MISSING' | 'LOAD_FAILED';
+
 export type AiActionOutcome =
   | { ok: true; out: string; action: AiAction; dirUsed?: TranslateDirection; ms: number; tokPerSec: number; loadMs: number | null }
-  | { ok: false; error: string };
+  | { ok: false; error: string; errorCode?: ModelErrorCode };
 
 // ── Реестр пользовательских AI-скиллов (prompt-кнопок AI-панели) ─────────────────────────────
 // Источник истины — electron/SkillsStore.ts::Skill (не трогаем, стор готов) — структурно

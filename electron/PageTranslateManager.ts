@@ -434,12 +434,18 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
   // TranslationEngineRegistry.ts) — DOM-слой не знает и не должен знать, Qwen сейчас активен или
   // другой движок. src/tgt передаются в getActiveEngine — если у активного движка нет модели именно
   // под эту пару (см. живой баг: Bergamot выбирается, даже когда поддерживает только en-ru, а
-  // страница на французском), registry сам откатится на Qwen, а не завалит каждый юнит молча.
+  // страница на французском), registry сам откатится на другой готовый движок, а не завалит каждый
+  // юнит молча. null — ни один зарегистрированный движок не готов (например, ни Qwen без GGUF-файла,
+  // ни Bergamot без моделей на диске) — тот же путь ошибки, что и у остальных сбоев runTranslation:
+  // исключение ловит togglePageTranslate() ниже (см. её try/catch) и переводит вкладку в 'idle'.
   // Конвейеризация: генерация батча i+1 встаёт в очередь движка сразу после готовности батча i, не
   // дожидаясь apply (executeJavaScript в вкладку — отдельный IPC-круговорот, во время которого
   // движок иначе простаивал бы). Сериализация вызовов — забота самого движка (withQwenQueue в
   // TranslationService.ts для Qwen).
   const engine = getActiveEngine(src, tgt)
+  if (!engine) {
+    throw new Error('Перевод недоступен: нет готового движка')
+  }
   const startBatch = (i: number) =>
     engine.translateBatch(
       batches[i]!.map((u) => ({ id: u.id, text: u.text })),

@@ -17,6 +17,7 @@ import { PasswordManager } from './PasswordManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
 import { SettingsManager } from './SettingsManager';
+import * as ModelRegistry from './ModelRegistry';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC } from '../shared/ipc';
@@ -172,6 +173,15 @@ const settings    = new SettingsManager();
 const hubChat     = new HubChatManager();
 const translationCache = new TranslationCacheManager();
 
+// Реестр установленных GGUF-моделей (см. ModelRegistry.ts) — только чтение диска на этом этапе,
+// ни один потребитель AI сейчас на него не завязан (TranslationService.ts всё ещё грузит модель
+// по старому хардкоду). Сбой не должен ронять старт браузера — только лог.
+try {
+  ModelRegistry.init();
+} catch (e) {
+  console.error('[model-registry] init упал:', e);
+}
+
 // Применяем сохранённый выбор движка перевода СРАЗУ на старте (до первого клика «Перевести
 // страницу») — см. TranslationEngineRegistry.ts. Дефолт остаётся 'qwen' (см. SettingsManager.ts) —
 // переключатель в Settings.tsx позволяет выбрать 'bergamot' явно.
@@ -266,7 +276,16 @@ function createWindow() {
       // вызовы (см. её же комментарий), так что ранний клик пользователя по AI-функции просто
       // дождётся ЭТОЙ ЖЕ загрузки, а не запустит вторую.
       setTimeout(() => {
-        if (!thisWin.isDestroyed()) void warmupTranslation();
+        if (!thisWin.isDestroyed()) {
+          // Без модели в реестре (ModelRegistry.ts) ensureLoaded() внутри warmupTranslation()
+          // гарантированно упадёт с NO_MODEL_INSTALLED — не дёргаем её вовсе, чтобы не сыпать
+          // исключением в консоль на каждом старте без установленной модели.
+          if (ModelRegistry.getDefault()) {
+            void warmupTranslation();
+          } else {
+            console.log('[startup] GGUF-модель не установлена — прогрев Qwen пропущен');
+          }
+        }
         // Bergamot — свой воркер (см. BergamotService.ts), не конкурирует с Qwen за VRAM/диск,
         // но всё равно на той же задержке: не соревнуется с первой отрисовкой чрома.
         void warmupBergamot();
