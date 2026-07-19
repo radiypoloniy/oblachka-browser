@@ -184,6 +184,16 @@ try {
   console.error('[model-registry] init упал:', e);
 }
 
+// Уборка осиротевших .part-файлов (см. ModelDownloader.ts::cleanupOrphanedParts) — синхронно,
+// прямо здесь, а не с задержкой в фоне: на этом этапе (до registerIpc()/показа окна) пользователь
+// физически не может запустить новую загрузку, так что снести .part активной загрузки нельзя.
+// Отложенный/фоновый вызов такой гарантии уже не даёт.
+try {
+  ModelDownloader.cleanupOrphanedParts();
+} catch (e) {
+  console.error('[model-download] уборка .part-файлов при старте упала:', e);
+}
+
 // Применяем сохранённый выбор движка перевода СРАЗУ на старте (до первого клика «Перевести
 // страницу») — см. TranslationEngineRegistry.ts. Дефолт остаётся 'qwen' (см. SettingsManager.ts) —
 // переключатель в Settings.tsx позволяет выбрать 'bergamot' явно.

@@ -2,10 +2,8 @@
 // публикацией. Скелет по образцу HistoryContentBackfill.ts (module-level running/cancelRequested/
 // onProgress-колбэк) — не изобретаем новый.
 //
-// ⚠️ Уборка мусора при старте НЕ реализована в этом коммите. Если процесс убьют/упадёт посреди
-// скачивания, .part-файл в ModelRegistry.userGgufDir() останется на диске — реальный риск
-// засорения гигабайтами (файл мог успеть вырасти почти до полного размера перед крахом).
-// Уборка — отдельный коммит.
+// Уборка осиротевших .part-файлов — cleanupOrphanedParts(), зовётся из main.ts синхронно при
+// старте (ДО того, как пользователь может запустить новую загрузку) — см. её же комментарий.
 //
 // ⚠️ net.fetch (модуль Electron), НЕ глобальный fetch() — тот не уважает session.setProxy(),
 // см. AdBlockManager.ts:268-272 (тот же живой аудит утечек VPN). Скачивание с HuggingFace обязано
@@ -214,5 +212,44 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
     report({ running: false, error: (e as Error).message ?? String(e) })
   } finally {
     running = false
+  }
+}
+
+// Уборка осиротевших .part-файлов — краш/убийство процесса посреди скачивания оставляет
+// частично записанный файл в userGgufDir() (см. startDownload — .part удаляется только на
+// штатных путях: отмена/ошибка/успех, ни один из них не отрабатывает при grubом завершении
+// процесса). Зовётся из main.ts СИНХРОННО при старте, ДО того, как пользователь вообще может
+// нажать «скачать» — на этот момент активных загрузок в процессе быть не может (running всегда
+// false сразу после старта модуля), поэтому снести .part реальной, только что начатой загрузки
+// здесь невозможно.
+export function cleanupOrphanedParts(): void {
+  const dir = ModelRegistry.userGgufDir()
+  let entries: string[]
+  try {
+    entries = fs.readdirSync(dir)
+  } catch {
+    return // каталога нет — нечего убирать, это норма (ни одной модели ещё не скачивали)
+  }
+
+  let removedCount = 0
+  let removedBytes = 0
+  for (const name of entries) {
+    if (!name.endsWith('.part')) continue
+    const filePath = path.join(dir, name)
+    try {
+      const size = fs.statSync(filePath).size
+      fs.unlinkSync(filePath)
+      removedCount++
+      removedBytes += size
+    } catch (e) {
+      // Файл может быть залочен (антивирус, ещё не закрытый хендл) — не повод прерывать уборку
+      // остальных .part-файлов, просто пропускаем этот.
+      console.warn(`[model-download] не удалось удалить осиротевший .part-файл ${filePath}:`, (e as Error).message)
+    }
+  }
+
+  if (removedCount > 0) {
+    const gb = (n: number) => (n / 1024 ** 3).toFixed(2)
+    console.log(`[model-download] уборка при старте: удалено ${removedCount} осиротевших .part-файлов, освобождено ~${gb(removedBytes)} ГБ`)
   }
 }
