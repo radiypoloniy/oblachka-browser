@@ -207,6 +207,15 @@ const COMFORTABLE_CONTEXT_TOKENS = 16384
 
 const WEAK_HARDWARE_RECOMMENDED_NOTE = 'Видеопамяти мало для комфортного контекста ни у одной модели — показан лучший доступный вариант'
 
+// Модель годится в heavy, только если её требования (полный вес + база контекста) превышают
+// бюджет не более чем на 30%. Выше — это не «медленнее», а практически неработоспособно: больше
+// половины слоёв уходит на CPU, единицы токенов в секунду — пользователь скачает несколько
+// гигабайт и получит нерабочее.
+// ⚠️ Значение НЕ измерено, оценочное. Калибруется замером реального tok/s у модели, превышающей
+// бюджет на ~30%, против полностью помещающейся. Цена ошибки низкая: пользователь просто не
+// увидит модель, которую и не стоило показывать.
+const HEAVY_MAX_OVERSHOOT = 1.3
+
 // "Модель хоть как-то запускается" — для роли heavy (кандидат ВЫШЕ recommended) и для аварийного
 // выбора recommended в вырожденном случае (см. assignRoles). На нынешней формуле evaluateFit это
 // тождественно true для любой модели/железа (fitsFullyOnGpu=true ⟹ maxContextTokens>0 и наоборот,
@@ -217,18 +226,27 @@ function runsAtAll(fit: ModelFit): boolean {
   return fit.maxContextTokens > 0 || !fit.fitsFullyOnGpu
 }
 
+// Доп. фильтр ТОЛЬКО для роли heavy — независимо от runsAtAll (которая на нынешней формуле всегда
+// true и потому не отсекает откровенно нежизнеспособные варианты). budget пересчитан по той же
+// формуле, что в evaluateFit (SYSTEM_RESERVE_BYTES/LLAMA_HEADROOM_BYTES) — evaluateFit его наружу
+// не отдаёт, а трогать её сигнатуру в этой задаче нельзя.
+function withinHeavyOvershoot(model: CatalogModel, budget: number): boolean {
+  if (budget <= 0) return false
+  return (model.vramFullOffloadBytes + model.contextVramBaseBytes) / budget <= HEAVY_MAX_OVERSHOOT
+}
+
 function findNearestByTier(
   fits: { model: CatalogModel; fit: ModelFit }[],
   fromTierExclusive: number,
   direction: 1 | -1,
-  predicate: (fit: ModelFit) => boolean,
+  predicate: (entry: { model: CatalogModel; fit: ModelFit }) => boolean,
 ): { model: CatalogModel; fit: ModelFit } | null {
   const tiers = fits.map((f) => f.model.qualityTier).sort((a, b) => a - b)
   const minTier = tiers[0]
   const maxTier = tiers[tiers.length - 1]
   for (let t = fromTierExclusive + direction; direction > 0 ? t <= maxTier : t >= minTier; t += direction) {
     const entry = fits.find((f) => f.model.qualityTier === t)
-    if (entry && predicate(entry.fit)) return entry
+    if (entry && predicate(entry)) return entry
   }
   return null
 }
@@ -274,8 +292,14 @@ export function assignRoles(hw: HardwareSnapshot): CatalogEntry[] {
     // При нынешней formula недостижимо (runsAtAll всегда true), но не форсируем это допущение.
   }
 
-  const lightEntry = recommendedTier !== null ? findNearestByTier(fits, recommendedTier, -1, (fit) => fit.fitsFullyOnGpu) : null
-  const heavyEntry = recommendedTier !== null ? findNearestByTier(fits, recommendedTier, 1, runsAtAll) : null
+  // budget тот же, что внутри evaluateFit — нужен здесь только для withinHeavyOvershoot ниже.
+  const budget = hw.vramTotalBytes - SYSTEM_RESERVE_BYTES - LLAMA_HEADROOM_BYTES
+
+  const lightEntry = recommendedTier !== null ? findNearestByTier(fits, recommendedTier, -1, (e) => e.fit.fitsFullyOnGpu) : null
+  const heavyEntry =
+    recommendedTier !== null
+      ? findNearestByTier(fits, recommendedTier, 1, (e) => runsAtAll(e.fit) && withinHeavyOvershoot(e.model, budget))
+      : null
 
   return fits.map(({ model, fit }) => {
     let role: ModelRole | null = null
