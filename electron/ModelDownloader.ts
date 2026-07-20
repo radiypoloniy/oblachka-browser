@@ -10,6 +10,7 @@
 // идти через тот же туннель, что и остальной трафик, когда VPN включён.
 import fs from 'node:fs'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import { net } from 'electron'
 import * as ModelRegistry from './ModelRegistry'
 import { ensureDir, getFreeSpaceBytes } from './FsUtils'
@@ -87,12 +88,16 @@ function removePartFile(partPath: string): void {
 // потоковой записи тела: url/fileName — на случай если сам .part потеряет расширение/переименуется
 // (не должно, но не полагаемся), totalBytes/etag — то, с чем сверяем сервер при докачке
 // (см. startDownload), startedAt — для RESUMABLE_MAX_AGE_MS в cleanupOrphanedParts().
+// expectedSha256 — сохраняется здесь же (не берётся заново из каталога при возобновлении после
+// перезапуска браузера: к тому моменту вызывающая сторона может передать другой spec, а сверять
+// докачку нужно с тем же эталоном, с которым начинали, см. её же комментарий у startDownload).
 interface PartSidecar {
   url: string
   fileName: string
   totalBytes: number
   etag: string
   startedAt: number
+  expectedSha256: string | null
 }
 
 function sidecarPathFor(partPath: string): string {
@@ -118,14 +123,20 @@ function readSidecar(partPath: string): PartSidecar | null {
     const data = JSON.parse(raw) as unknown
     if (typeof data !== 'object' || data === null) return null
     const d = data as Record<string, unknown>
+    const validExpectedSha256 = d.expectedSha256 === null ||
+      (typeof d.expectedSha256 === 'string' && d.expectedSha256.length > 0)
     if (
       typeof d.url === 'string' && d.url.length > 0 &&
       typeof d.fileName === 'string' && d.fileName.length > 0 &&
       typeof d.totalBytes === 'number' && Number.isFinite(d.totalBytes) &&
       typeof d.etag === 'string' && d.etag.length > 0 &&
-      typeof d.startedAt === 'number' && Number.isFinite(d.startedAt)
+      typeof d.startedAt === 'number' && Number.isFinite(d.startedAt) &&
+      validExpectedSha256
     ) {
-      return { url: d.url, fileName: d.fileName, totalBytes: d.totalBytes, etag: d.etag, startedAt: d.startedAt }
+      return {
+        url: d.url, fileName: d.fileName, totalBytes: d.totalBytes, etag: d.etag, startedAt: d.startedAt,
+        expectedSha256: (d.expectedSha256 as string | null | undefined) ?? null,
+      }
     }
     return null
   } catch {
@@ -144,6 +155,19 @@ function removePartAndSidecar(partPath: string): void {
   } catch (e) {
     console.warn(`[model-download] не удалось удалить sidecar ${sidecarPathFor(partPath)}:`, (e as Error).message)
   }
+}
+
+// Скармливает хэшеру уже скачанные байты .part ПОТОКОМ (не читает файл целиком в память) —
+// нужно ТОЛЬКО при возобновлении: SHA256 всегда эталон для ПОЛНОГО файла, а без этого шага хэш
+// посчитался бы только по новым байтам этой сессии и никогда бы не сошёлся. Await'ится ДО начала
+// чтения новых чанков из сети — порядок update() должен быть строго "старые байты, потом новые".
+function seedHashFromExistingPart(partPath: string, hasher: crypto.Hash): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const stream = fs.createReadStream(partPath)
+    stream.on('data', (chunk) => hasher.update(chunk))
+    stream.on('end', resolve)
+    stream.on('error', reject)
+  })
 }
 
 export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
@@ -208,6 +232,11 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
     let res: Awaited<ReturnType<typeof net.fetch>>
     let totalBytes: number | null = null
     let needSidecarWrite = false
+    // Эталон для проверки — сначала из spec (обычный путь). При подтверждённой докачке НИЖЕ
+    // подменяется на сохранённый в sidecar: тот же принцип, что и totalBytes = sidecar.totalBytes —
+    // сверяем с тем, с чем начинали ЭТУ загрузку, а не с тем, что вызывающая сторона передала
+    // заново (после перезапуска браузера это может быть другой вызов с тем же spec, но не факт).
+    let expectedSha256: string | null = spec.expectedSha256 ?? null
 
     if (sidecar !== null) {
       resumeFromBytes = fs.statSync(partPath).size
@@ -217,6 +246,7 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
         console.log(`[model-download] "${spec.fileName}": докачка с ${resumeFromBytes} байт (код 206, ETag совпал)`)
         res = resumeRes
         totalBytes = sidecar.totalBytes
+        expectedSha256 = sidecar.expectedSha256
       } else {
         // ⚠️ Молча продолжать дописывать НЕЛЬЗЯ — совпадение размера у склейки байт от другой
         // ревизии файла и правда возможно, но сами байты будут чужими: получим файл правильной
@@ -231,6 +261,7 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
         resumeFromBytes = 0
         res = await net.fetch(spec.url, { redirect: 'follow' })
         needSidecarWrite = true
+        expectedSha256 = spec.expectedSha256 ?? null
       }
     } else {
       res = await net.fetch(spec.url, { redirect: 'follow' })
@@ -250,7 +281,7 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
       // этого файла, не крах). Пишем ДО начала чтения тела — атомарно (tmp+rename).
       const etag = res.headers.get('etag')
       if (totalBytes !== null && etag !== null) {
-        writeSidecar(partPath, { url: spec.url, fileName: spec.fileName, totalBytes, etag, startedAt: Date.now() })
+        writeSidecar(partPath, { url: spec.url, fileName: spec.fileName, totalBytes, etag, startedAt: Date.now(), expectedSha256 })
       }
     }
 
@@ -278,6 +309,24 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
       throw new Error('Сервер не вернул тело ответа')
     }
 
+    // Хэш считается ПОТОКОВО во время скачивания (update на каждом чанке ниже) — отдельного
+    // прохода по файлу после публикации нет, это было бы лишним чтением гигабайтов. hasher===null,
+    // если эталона нет вовсе — тогда просто не считаем (незачем тратить CPU на хэш, который
+    // не с чем сравнивать), проверка ниже сама пропустится по этому же признаку.
+    if (expectedSha256 === null) {
+      console.warn(`[model-download] "${spec.fileName}": нет эталонного SHA256 — проверка целостности пропущена`)
+    }
+    const hasher = expectedSha256 !== null ? crypto.createHash('sha256') : null
+
+    // ⚠️ При докачке — обязательно скормить хэшеру уже лежащие на диске байты ДО первого нового
+    // чанка из сети, иначе хэш посчитается только по хвосту и никогда не сойдётся с эталоном
+    // (тот всегда для ПОЛНОГО файла). Отдельная строка в лог — чтение с диска не мгновенно
+    // (гигабайты), пользователь должен понимать, откуда пауза перед стартом сети.
+    if (hasher !== null && resumeFromBytes > 0) {
+      console.log(`[model-download] "${spec.fileName}": пересчитываю хэш уже скачанных ${resumeFromBytes} байт перед докачкой...`)
+      await seedHashFromExistingPart(partPath, hasher)
+    }
+
     // 4-6. Потоковая запись — fs.createWriteStream, НЕ накопление в памяти (flags:'a' — дозапись
     // при докачке, обычный режим при первом скачивании). Проверка отмены на каждой итерации
     // чтения (= на каждом чанке). receivedBytes стартует не с нуля — прогресс учитывает то, что
@@ -297,6 +346,7 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
       if (done) break
       receivedBytes += value.byteLength
       writeStream.write(value)
+      hasher?.update(value)
       reportProgressThrottled(receivedBytes)
     }
 
@@ -323,6 +373,22 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
     if (progress.totalBytes !== null && actualSize !== progress.totalBytes) {
       removePartAndSidecar(partPath)
       throw new Error(`Размер файла не совпал: ожидалось ${progress.totalBytes} байт, получено ${actualSize} байт`)
+    }
+
+    // 7б. Хэш — СТРОГО до rename, чтобы битый файл никогда не появился под финальным именем
+    // (то, под которым его увидит ModelRegistry.add() и, следом, node-llama-cpp). Регистронезависимо —
+    // HF отдаёт lfs.oid в нижнем регистре, но не полагаемся на регистр строки, которую передал
+    // вызывающий код каталога.
+    if (hasher !== null && expectedSha256 !== null) {
+      const digest = hasher.digest('hex')
+      if (digest.toLowerCase() !== expectedSha256.toLowerCase()) {
+        removePartAndSidecar(partPath)
+        console.error(
+          `[model-download] "${spec.fileName}": SHA256 не совпал (ожидался ${expectedSha256}, получен ${digest}) — файл удалён`,
+        )
+        throw new Error('Файл повреждён при загрузке')
+      }
+      console.log(`[model-download] "${spec.fileName}": SHA256 совпал (${digest}) — проверка целостности пройдена`)
     }
 
     // 8. Атомарная публикация — оба пути в одном каталоге (userGgufDir()), rename атомарен.

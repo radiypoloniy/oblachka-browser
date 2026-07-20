@@ -44,6 +44,11 @@ export type { CatalogModel, ModelFit, FitCategory, ModelRole, CatalogEntry }
 // base = contextVramBytes(8192) − 8192 × contextVramPerToken. Без этого слагаемого формула
 // evaluateFit систематически завышала maxContextTokens (для 9B — примерно на 17 600 токенов).
 //
+// expectedSha256 — поле `lfs.oid` из HuggingFace API (`api/models/{repo}/tree/main`), НЕ
+// `oid`/`xetHash` того же ответа (это разные хэши разных слоёв HF — git-blob SHA256 у lfs.oid
+// стабилен и совпадает с тем, что реально течёт по Range-запросам через Xet-CDN, см. разведку
+// ModelDownloader.ts). Сверяется потоково при скачивании (electron/ModelDownloader.ts).
+//
 // 0.8B и 27B добавлены отдельной разведкой той же методикой (те же 5 точек контекста, наклон по
 // крайним точкам 8192→131072). Линейность у обеих в пределах допуска (макс. отклонение сегмента
 // от среднего: 0.8B — 7.45%, 27B — 2.19%, обе <10% — порог остановки не сработал). У 27B наклон
@@ -63,6 +68,7 @@ export const CATALOG: CatalogModel[] = [
     contextVramPerToken: 12288,
     contextVramBaseBytes: 532955136,
     qualityTier: 10,
+    expectedSha256: 'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517',
   },
   {
     id: slugify('Qwen3.5-2B-Q4_K_M.gguf'),
@@ -76,6 +82,7 @@ export const CATALOG: CatalogModel[] = [
     contextVramPerToken: 12288,
     contextVramBaseBytes: 537149440,
     qualityTier: 20,
+    expectedSha256: 'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223',
   },
   {
     id: slugify('Qwen3.5-4B-Q4_K_M.gguf'),
@@ -89,6 +96,7 @@ export const CATALOG: CatalogModel[] = [
     contextVramPerToken: 32768,
     contextVramBaseBytes: 571736064,
     qualityTier: 30,
+    expectedSha256: '00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4',
   },
   {
     id: slugify('Qwen3.5-9B-Q4_K_M.gguf'),
@@ -102,6 +110,7 @@ export const CATALOG: CatalogModel[] = [
     contextVramPerToken: 32768,
     contextVramBaseBytes: 578027520,
     qualityTier: 40,
+    expectedSha256: '03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8',
   },
   {
     id: slugify('Qwen3.5-27B-Q4_K_M.gguf'),
@@ -115,6 +124,7 @@ export const CATALOG: CatalogModel[] = [
     contextVramPerToken: 66423,
     contextVramBaseBytes: 687564816,
     qualityTier: 50,
+    expectedSha256: '84b5f7f112156d63836a01a69dc3f11a6ba63b10a23b8ca7a7efaf52d5a2d806',
   },
 ]
 

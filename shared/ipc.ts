@@ -803,6 +803,10 @@ export interface ModelDownloadSpec {
   url: string;
   fileName: string;
   label: string;
+  // Эталонный SHA256 (см. electron/ModelDownloader.ts) — сверяется потоково во время скачивания,
+  // без отдельного прохода по файлу после. null — модель без снятого хэша (см. CatalogModel),
+  // тогда проверка пропускается с предупреждением в лог, а не блокирует загрузку.
+  expectedSha256?: string | null;
 }
 
 // Курируемый каталог моделей (см. electron/ModelCatalog.ts::CatalogModel/ModelFit) — структурно
@@ -825,6 +829,10 @@ export interface CatalogModel {
   // промежутка (45) и не требует перенумеровывать соседей. number, а не union конкретных значений —
   // union пришлось бы расширять на каждую новую ступень (см. историю этого поля).
   qualityTier: number;
+  // lfs.oid с HF API (tree/main) — сверяется потоково при скачивании (см. ModelDownloader.ts).
+  // null допустим (модель без снятого хэша) — тогда проверка при загрузке пропускается,
+  // не блокирует её.
+  expectedSha256: string | null;
 }
 
 export type FitCategory = 'light' | 'recommended' | 'heavy' | 'not-recommended';
