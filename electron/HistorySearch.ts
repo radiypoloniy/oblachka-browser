@@ -121,6 +121,28 @@ const SMART_CANDIDATE_LIMIT = 20;
 const SMART_LEXICAL_CANDIDATE_LIMIT = 8;
 const SMART_SEMANTIC_MIN_SCORE = 0.35;
 
+// Одна страница обычно разбита на несколько чанков (до HISTORY_CHUNK_MAX=8, см. HistoryIndexer.ts) —
+// SQL-запрос к FTS идёт по чанкам, не по страницам, поэтому топ-N строк bm25 может оказаться
+// несколькими чанками ОДНОЙ страницы (живая проверка на "apple": 4 из 12 строк — один и тот же
+// историId). SMART_FTS_SQL_LIMIT — запас по чанкам, из которого дедуп по historyId ниже
+// (dedupChunksByHistoryId) достаёт уже SMART_FTS_CANDIDATE_LIMIT РАЗНЫХ страниц.
+const SMART_FTS_SQL_LIMIT = 60;
+const SMART_FTS_CANDIDATE_LIMIT = 12;
+
+// Строки уже отсортированы по bm25 (searchContentChunksFts::ORDER BY rank ASC) — первое
+// вхождение historyId в порядке обхода и есть лучший по релевантности чанк этой страницы.
+function dedupChunksByHistoryId(chunks: HistoryContentChunk[], limit: number): HistoryContentChunk[] {
+  const seen = new Set<number>();
+  const result: HistoryContentChunk[] = [];
+  for (const chunk of chunks) {
+    if (seen.has(chunk.historyId)) continue;
+    seen.add(chunk.historyId);
+    result.push(chunk);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
 function historyEntryToSemanticResult(entry: HistoryEntry, score: number): SemanticSearchResult {
   return {
     id: entry.id,
@@ -147,7 +169,8 @@ export async function searchHistorySmart(
     const queryEmbedding = { vector: embedded.vector, modelVersion: embedded.modelVersion };
     semanticCandidates = scoreSemanticCandidates(history, queryEmbedding, SMART_CANDIDATE_LIMIT)
       .filter((c) => c.score >= SMART_SEMANTIC_MIN_SCORE);
-    ftsCandidates = history.searchContentChunksFts(q, queryEmbedding.modelVersion, 12)
+    const ftsChunks = history.searchContentChunksFts(q, queryEmbedding.modelVersion, SMART_FTS_SQL_LIMIT);
+    ftsCandidates = dedupChunksByHistoryId(ftsChunks, SMART_FTS_CANDIDATE_LIMIT)
       .map((chunk) => chunkToResult(chunk, 1.12));
   } catch (e) {
     console.warn('[HistorySearch] embed запроса для smart search не удался:', (e as Error).message);
