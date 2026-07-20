@@ -121,6 +121,22 @@ const SMART_CANDIDATE_LIMIT = 20;
 const SMART_LEXICAL_CANDIDATE_LIMIT = 8;
 const SMART_SEMANTIC_MIN_SCORE = 0.35;
 
+// По диагностике от 2026-07-20 (11 живых запросов, 8 присутствующих тем + 3 заведомо
+// отсутствующих, вручную размечено по title/url): cosine по этому корпусу структурно не даёт
+// сигнала для коротких запросов — фиксированный набор generic-«магнитов» (Unsplash-главная,
+// CMS-админка admin.imweb.ru, Remnawave-дашборд, Wikipedia-главная, Газета.Ru-главная,
+// французская статья "Porc — Wikipédia") доминирует топ-20 ПОЧТИ ДЛЯ ЛЮБОГО запроса
+// (0.53–0.85), включая заведомо отсутствующие темы (потолок шума там — 0.75). Диапазон
+// релевантных результатов (0.53–0.84) целиком лежит внутри диапазона шума — порога, отделяющего
+// одно от другого, не существует (см. диагностику). Единственные случаи, где скор хоть что-то
+// показывал — буквальное лексическое пересечение слова запроса с заголовком (не семантика).
+// Возможная причина — эмбеддинг без task-префиксов EmbeddingGemma (модель ожидает
+// query/document-префиксы для осмысленного different-typed similarity, конвейер их не
+// проставляет); до проверки этой гипотезы семантическая ветка в умном поиске отключена.
+// scoreSemanticCandidates НЕ удалена — переключить обратно можно одной строкой, когда гипотеза
+// проверена (или найдено другое решение).
+const SEMANTIC_IN_SMART_SEARCH = false;
+
 // Одна страница обычно разбита на несколько чанков (до HISTORY_CHUNK_MAX=8, см. HistoryIndexer.ts) —
 // SQL-запрос к FTS идёт по чанкам, не по страницам, поэтому топ-N строк bm25 может оказаться
 // несколькими чанками ОДНОЙ страницы (живая проверка на "apple": 4 из 12 строк — один и тот же
@@ -167,8 +183,13 @@ export async function searchHistorySmart(
   try {
     const embedded = await requestEmbedding(q);
     const queryEmbedding = { vector: embedded.vector, modelVersion: embedded.modelVersion };
-    semanticCandidates = scoreSemanticCandidates(history, queryEmbedding, SMART_CANDIDATE_LIMIT)
-      .filter((c) => c.score >= SMART_SEMANTIC_MIN_SCORE);
+    // SEMANTIC_IN_SMART_SEARCH=false — semanticCandidates остаётся [] (см. комментарий у флага
+    // выше). Эмбеддинг запроса всё равно нужен ниже для FTS-пути (searchContentChunksFts берёт
+    // modelVersion из него, не сам вектор), поэтому requestEmbedding() не пропускаем.
+    if (SEMANTIC_IN_SMART_SEARCH) {
+      semanticCandidates = scoreSemanticCandidates(history, queryEmbedding, SMART_CANDIDATE_LIMIT)
+        .filter((c) => c.score >= SMART_SEMANTIC_MIN_SCORE);
+    }
     // Фильтр шума — до дедупа (не после), чтобы шумная страница не отъедала слот у
     // SMART_FTS_CANDIDATE_LIMIT впустую (тот же порядок «фильтр → лимит», что и в
     // scoreSemanticCandidates ниже). h.title (см. коммит "заголовок из history, не из чанка") —
@@ -186,6 +207,12 @@ export async function searchHistorySmart(
     .map((entry) => historyEntryToSemanticResult(entry, 1));
 
   const lexicalKeys = new Set(lexicalCandidates.map((c) => normalizeForOmnibox(c.url)));
+  // Лексика → FTS → семантика (при SEMANTIC_IN_SMART_SEARCH=false — пустой хвост): точное
+  // совпадение по заголовку/URL (лексика) весомее текстового FTS-совпадения внутри чанка,
+  // поэтому идёт первым — при коллизии URL ниже побеждает бОльший score, а не порядок сам
+  // по себе, но порядок определяет, чья версия («первая встреченная» при равном score) войдёт
+  // в byUrl. SMART_LEXICAL_CANDIDATE_LIMIT(8) + SMART_FTS_CANDIDATE_LIMIT(12) = SMART_CANDIDATE_LIMIT(20)
+  // — весь бюджет кандидатов теперь честно делят только эти два источника.
   const byUrl = new Map<string, SemanticSearchResult>();
   for (const c of [...lexicalCandidates, ...ftsCandidates, ...semanticCandidates]) {
     const key = normalizeForOmnibox(c.url);
