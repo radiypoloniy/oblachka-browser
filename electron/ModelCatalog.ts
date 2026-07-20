@@ -62,7 +62,7 @@ export const CATALOG: CatalogModel[] = [
     vramFullOffloadBytes: 521555200,
     contextVramPerToken: 12288,
     contextVramBaseBytes: 532955136,
-    qualityTier: 1,
+    qualityTier: 10,
   },
   {
     id: slugify('Qwen3.5-2B-Q4_K_M.gguf'),
@@ -75,7 +75,7 @@ export const CATALOG: CatalogModel[] = [
     vramFullOffloadBytes: 1269873920,
     contextVramPerToken: 12288,
     contextVramBaseBytes: 537149440,
-    qualityTier: 2,
+    qualityTier: 20,
   },
   {
     id: slugify('Qwen3.5-4B-Q4_K_M.gguf'),
@@ -88,7 +88,7 @@ export const CATALOG: CatalogModel[] = [
     vramFullOffloadBytes: 2729969664,
     contextVramPerToken: 32768,
     contextVramBaseBytes: 571736064,
-    qualityTier: 3,
+    qualityTier: 30,
   },
   {
     id: slugify('Qwen3.5-9B-Q4_K_M.gguf'),
@@ -101,7 +101,7 @@ export const CATALOG: CatalogModel[] = [
     vramFullOffloadBytes: 5097424896,
     contextVramPerToken: 32768,
     contextVramBaseBytes: 578027520,
-    qualityTier: 4,
+    qualityTier: 40,
   },
   {
     id: slugify('Qwen3.5-27B-Q4_K_M.gguf'),
@@ -114,7 +114,7 @@ export const CATALOG: CatalogModel[] = [
     vramFullOffloadBytes: 16014657536,
     contextVramPerToken: 66423,
     contextVramBaseBytes: 687564816,
-    qualityTier: 5,
+    qualityTier: 50,
   },
 ]
 
@@ -157,13 +157,13 @@ const NO_VRAM_DETECTED_NOTE = 'Не удалось определить виде
 // или перед переключением).
 export function evaluateFit(model: CatalogModel, hw: HardwareSnapshot): ModelFit {
   if (hw.vramTotalBytes === null) {
-    // Детект не удался — не гадаем: только tier 2 (2B — после сдвига тиров это самый лёгкий
-    // уровень, ЗАСЛУЖИВАЮЩИЙ доверия без замера; 0.8B/tier 1 достаточно урезана по качеству, что
+    // Детект не удался — не гадаем: только tier 20 (2B — второй по счёту, самый лёгкий уровень,
+    // ЗАСЛУЖИВАЮЩИЙ доверия без замера; 0.8B/tier 10 достаточно урезана по качеству, что
     // рекомендовать её вслепую хуже, чем 2B) получает благосклонное "recommended", остальные —
     // "not-recommended". Это НЕ реальная оценка вместимости, а консервативная заглушка на случай
     // отсутствия данных.
     return {
-      fitQuality: model.qualityTier === 2 ? 'recommended' : 'not-recommended',
+      fitQuality: model.qualityTier === 20 ? 'recommended' : 'not-recommended',
       maxContextTokens: 0,
       fitsFullyOnGpu: false,
       contextEstimateReliable: false,
@@ -261,11 +261,11 @@ export function assignRoles(hw: HardwareSnapshot): CatalogEntry[] {
 
   if (hw.vramTotalBytes === null) {
     // Детект не удался — сохраняем прежнее поведение evaluateFit один в один: recommended только
-    // у tier 2 (2B), у остальных роли нет вовсе (а не light/heavy — на отсутствии данных
+    // у tier 20 (2B), у остальных роли нет вовсе (а не light/heavy — на отсутствии данных
     // достраивать окно вокруг recommended не на чем).
     return sorted.map((model) => {
       const fit = evaluateFit(model, hw)
-      const role: ModelRole | null = model.qualityTier === 2 ? 'recommended' : null
+      const role: ModelRole | null = model.qualityTier === 20 ? 'recommended' : null
       return { model, fit, role, visibleByDefault: role !== null }
     })
   }

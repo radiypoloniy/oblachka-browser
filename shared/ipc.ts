@@ -808,7 +808,11 @@ export interface CatalogModel {
   vramFullOffloadBytes: number;
   contextVramPerToken: number;
   contextVramBaseBytes: number;
-  qualityTier: 1 | 2 | 3 | 4 | 5;
+  // Разреженная нумерация (шаг 10: 10/20/30/40/50/...) — НАМЕРЕННО, не 1/2/3/4/5: вставка новой
+  // ступени между существующими (напр. Gemma 4 12B между 9B и 27B) получает своё число из
+  // промежутка (45) и не требует перенумеровывать соседей. number, а не union конкретных значений —
+  // union пришлось бы расширять на каждую новую ступень (см. историю этого поля).
+  qualityTier: number;
 }
 
 export type FitCategory = 'light' | 'recommended' | 'heavy' | 'not-recommended';
