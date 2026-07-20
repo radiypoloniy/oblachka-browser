@@ -1221,6 +1221,10 @@ function registerIpc() {
   // Явная выгрузка модели из VRAM (см. TranslationService.ts::unloadModel) — задел, потребителей
   // в UI нет.
   ipcMain.handle(IPC.MODEL_UNLOAD, () => unloadModel());
+
+  // Удаление модели с диска (см. ModelRegistry.ts::deleteModel) — задел, потребителей в UI нет.
+  // Необратимо.
+  ipcMain.handle(IPC.MODEL_DELETE, (_e, id: string) => ModelRegistry.deleteModel(id));
 }
 
 // Собирает GroupNode[] плоским списком из верхнего уровня дерева.

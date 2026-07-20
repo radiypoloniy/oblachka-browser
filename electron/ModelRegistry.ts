@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
+import { unloadModel, getLoadedModelId } from './TranslationService'
 
 // Реестр установленных на диске GGUF-моделей — первый шаг к тому, чтобы браузер запускался и
 // работал без единой модели на диске (сейчас путь к Qwen захардкожен, см.
@@ -203,12 +204,59 @@ export function add(model: InstalledModel): AddModelResult {
   return { ok: true }
 }
 
-// Только запись реестра — файл на диске не трогаем. Удаление файла будет отдельным коммитом
-// после того, как появится корректный dispose (см. задачу).
+// Только запись реестра — файл на диске не трогаем (см. deleteModel ниже — та удаляет и файл, и
+// запись, в правильном порядке, зовя эту функцию последним шагом). remove() остаётся отдельной
+// низкоуровневой операцией на случай, если когда-нибудь понадобится убрать ТОЛЬКО запись без файла.
 export function remove(id: string): void {
   const next = state.models.filter((m) => m.id !== id)
   if (next.length === state.models.length) return
   state.models = next
   if (state.defaultModelId === id) state.defaultModelId = null
   write()
+}
+
+export type DeleteModelResult = { ok: true } | { ok: false; reason: string }
+
+// Удаление модели целиком — файл на диске + запись реестра. Порядок шагов НЕ переставлять:
+// 1) не бывает записи без проверки, 2) legacy-файлы (сейчас — EuroLLM в resources/) лежат вне
+// зоны ответственности приложения (не userData, не скачаны нами) — восстановить их нечем, поэтому
+// физическое удаление запрещено категорически (запись из реестра при желании можно убрать через
+// remove() отдельным вызовом — это уже осознанное решение вызывающей стороны, не часть удаления
+// модели), 3) не оставляем пользователя без единой модели через кнопку удаления, 4) на Windows
+// mmap загруженной модели держит файловый лок — unlink на ней даст EBUSY, поэтому активную модель
+// сначала обязательно выгружаем (unloadModel() сама дожидается текущей генерации, см. её очередь
+// в TranslationService.ts), 5) сам файл, 6) запись реестра — СТРОГО после успешного удаления файла:
+// если rmSync упал, запись остаётся, иначе получили бы файл-сироту, невидимый приложению.
+export async function deleteModel(id: string): Promise<DeleteModelResult> {
+  const installed = getById(id)
+  if (!installed) return { ok: false, reason: 'NOT_FOUND' }
+
+  if (installed.source === 'legacy') {
+    return { ok: false, reason: 'LEGACY_NOT_DELETABLE' }
+  }
+
+  if (state.models.length === 1) {
+    return { ok: false, reason: 'LAST_MODEL' }
+  }
+
+  if (getLoadedModelId() === id) {
+    await unloadModel()
+  }
+
+  try {
+    fs.rmSync(installed.filePath, { force: true })
+  } catch (e) {
+    return { ok: false, reason: `FS_ERROR: ${(e as Error).message}` }
+  }
+
+  const wasDefault = state.defaultModelId === id
+  remove(id)
+  // remove() сбрасывает defaultModelId в null, если удалённая была дефолтом (см. её код выше) —
+  // но оставлять пользователя вовсе без выбранной модели незачем, когда есть на что переставить.
+  // Проверка LAST_MODEL выше гарантирует, что здесь всегда останется хотя бы одна запись.
+  if (wasDefault && state.models.length > 0) {
+    setDefault(state.models[0]!.id)
+  }
+
+  return { ok: true }
 }

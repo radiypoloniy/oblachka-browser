@@ -455,6 +455,12 @@ export const IPC = {
   // фактического освобождения памяти (dispose дожидается текущей генерации), а не просто отправить
   // команду и гадать, когда она применится.
   MODEL_UNLOAD: 'model:unload', // renderer → main: (без параметров) -> void, после факта выгрузки
+
+  // Удаление модели с диска (см. electron/ModelRegistry.ts::deleteModel) — задел, потребителей
+  // в UI пока нет. Необратимая операция — invoke, вызывающая сторона обязана дождаться и увидеть
+  // ok:false с причиной отказа (NOT_FOUND/LEGACY_NOT_DELETABLE/LAST_MODEL/FS_ERROR:...), а не
+  // fire-and-forget.
+  MODEL_DELETE: 'model:delete', // renderer → main: id: string -> DeleteModelResult
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -846,6 +852,13 @@ export interface CatalogEntry {
   visibleByDefault: boolean;
 }
 
+// Результат удаления модели (см. electron/ModelRegistry.ts::deleteModel) — структурно идентичная
+// копия здесь, а не импорт: та же причина, что у CatalogModel/ModelFit выше — ModelRegistry.ts
+// тянет 'electron' (app.getPath), чего в renderer-бандл тащить нельзя. reason — свободная строка
+// (не union литералов): NOT_FOUND/LEGACY_NOT_DELETABLE/LAST_MODEL — фиксированные, но FS_ERROR
+// включает динамический текст исключения ФС.
+export type DeleteModelResult = { ok: true } | { ok: false; reason: string };
+
 export type AiActionOutcome =
   | { ok: true; out: string; action: AiAction; dirUsed?: TranslateDirection; ms: number; tokPerSec: number; loadMs: number | null }
   | { ok: false; error: string; errorCode?: ModelErrorCode };
@@ -1172,6 +1185,10 @@ export interface OblakoApi {
   // Явная выгрузка текущей модели из VRAM (см. electron/TranslationService.ts::unloadModel) —
   // задел, потребителей в UI пока нет.
   unloadModel(): Promise<void>;
+
+  // Удаление модели с диска (см. electron/ModelRegistry.ts::deleteModel) — задел, потребителей
+  // в UI пока нет. Необратимо.
+  deleteModel(id: string): Promise<DeleteModelResult>;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;

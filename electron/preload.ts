@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -411,6 +411,10 @@ const api: OblakoApi = {
   // Явная выгрузка модели из VRAM (см. electron/TranslationService.ts::unloadModel) — задел,
   // потребителей пока нет.
   unloadModel: () => ipcRenderer.invoke(IPC.MODEL_UNLOAD) as Promise<void>,
+
+  // Удаление модели с диска (см. electron/ModelRegistry.ts::deleteModel) — задел, потребителей
+  // пока нет. Необратимо.
+  deleteModel: (id: string) => ipcRenderer.invoke(IPC.MODEL_DELETE, id) as Promise<DeleteModelResult>,
 
   embedPreload: EMBED_PRELOAD,
 };

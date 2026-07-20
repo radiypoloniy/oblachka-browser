@@ -244,6 +244,18 @@ let LlamaChatSession: any = null
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let chatWrapper: any = null
 let loadPromise: Promise<number> | null = null
+// id (ModelRegistry.InstalledModel.id) загруженной СЕЙЧАС модели — нужен вызывающей стороне
+// (ModelRegistry.ts::deleteModel), чтобы узнать, не пытается ли она удалить файл модели, которая
+// прямо сейчас держит mmap-лок (на Windows unlink на такой файл даст EBUSY). Заполняется/обнуляется
+// в той же группе, что и model/context/sequence/chatWrapper — см. их же комментарий.
+let loadedModelId: string | null = null
+
+// Единственный способ узнать, какая модель загружена ПРЯМО СЕЙЧАС (id из ModelRegistry, не путь) —
+// без этого геттера ModelRegistry.ts::deleteModel() не смог бы отличить "надо выгрузить перед
+// удалением" от "можно удалять смело", не изобретая обходной путь через сравнение путей/файлов.
+export function getLoadedModelId(): string | null {
+  return loadedModelId
+}
 
 // Настройки QwenChatWrapper, которые ОБЯЗАТЕЛЬНО сохраняются, когда resolveChatWrapper решит, что
 // загруженная модель — Qwen. thoughts:'discourage' давит reasoning (это не опционально: без него
@@ -287,6 +299,7 @@ async function ensureLoaded(): Promise<number> {
     } catch (e) {
       throw { code: 'LOAD_FAILED', message: `Не удалось загрузить модель: ${String(e)}` } satisfies ModelError
     }
+    loadedModelId = installed.id
 
     // Автоопределение обёртки чата по РЕАЛЬНО загруженной модели (GGUF-метаданные/токенизатор/BOS),
     // а не жёсткая Qwen-обёртка на весь процесс, как раньше — эта же ensureLoaded() в будущем
@@ -430,6 +443,7 @@ async function unloadModelQueued(): Promise<void> {
   context = null
   sequence = null
   chatWrapper = null
+  loadedModelId = null
   // loadPromise = null — следующий ensureLoaded() увидит `if (loadPromise) return loadPromise` как
   // false и выполнит тело заново: та же логика сброса при NO_MODEL_INSTALLED/MODEL_FILE_MISSING
   // (см. setImmediate ниже в ensureLoaded) не тронута — она снова сработает, если к тому моменту
