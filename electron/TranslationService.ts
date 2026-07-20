@@ -236,9 +236,22 @@ let context: any = null
 let sequence: any = null
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let LlamaChatSession: any = null
+// Больше не "qwenChatWrapper" — обёртка определяется по фактически загруженной модели (см.
+// resolveChatWrapper в ensureLoaded), а не жёстко под Qwen. Живёт рядом с model/context/sequence:
+// один и тот же набор переменных заполняется одним и тем же куском ensureLoaded() и относится
+// к одной и той же загруженной модели — если позже появится смена модели в рантайме, эти
+// переменные и должны сбрасываться/пересчитываться вместе, а не по отдельности.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let qwenChatWrapper: any = null
+let chatWrapper: any = null
 let loadPromise: Promise<number> | null = null
+
+// Настройки QwenChatWrapper, которые ОБЯЗАТЕЛЬНО сохраняются, когда resolveChatWrapper решит, что
+// загруженная модель — Qwen. thoughts:'discourage' давит reasoning (это не опционально: без него
+// в панели полезут <think>-блоки — stripThinking() ниже подчищает, если утечка всё же случится, но
+// это подстраховка, не замена настройке). variation:'3.5' — актуальный чат-шаблон линейки.
+// customWrapperSettings передаётся резолверу заранее и применяется, ТОЛЬКО если он сам решит, что
+// это qwen-обёртка (см. ensureLoaded ниже) — на любую другую модель эти настройки не действуют.
+const QWEN_CHAT_WRAPPER_SETTINGS = { variation: '3.5' as const, thoughts: 'discourage' as const }
 
 async function ensureLoaded(): Promise<number> {
   if (loadPromise) return loadPromise
@@ -269,16 +282,45 @@ async function ensureLoaded(): Promise<number> {
     // (только в изолированном llamatest.ts).
     console.log(`[gen] llama backend: gpu=${llama.gpu}`)
     LlamaChatSession = nlc.LlamaChatSession
-    // variation:'3.5' — актуальный чат-шаблон Qwen3.5 (свой формат, не EuroLLM/Gemma).
-    // thoughts:'discourage' — явно давим reasoning: у Qwen3.5-9B thinking по умолчанию off, но
-    // задача была УБЕДИТЬСЯ, а не полагаться на дефолт (подтверждено на живых прогонах: без утечек
-    // <think> ни разу — доп. защита всё равно есть в stripThinking() ниже).
-    qwenChatWrapper = new nlc.QwenChatWrapper({ variation: '3.5', thoughts: 'discourage' })
     try {
       model = await llama.loadModel({ modelPath: installed.filePath })
     } catch (e) {
       throw { code: 'LOAD_FAILED', message: `Не удалось загрузить модель: ${String(e)}` } satisfies ModelError
     }
+
+    // Автоопределение обёртки чата по РЕАЛЬНО загруженной модели (GGUF-метаданные/токенизатор/BOS),
+    // а не жёсткая Qwen-обёртка на весь процесс, как раньше — эта же ensureLoaded() в будущем
+    // сможет загружать не только Qwen (см. каталог моделей, ModelCatalog.ts). Форма вызова —
+    // options-объект (а не resolveChatWrapper(model, ...)), потому что та форма ВСЕГДА возвращает
+    // непустую обёртку (падает на GeneralChatWrapper внутри себя) — нам же нужно самим отличить
+    // "определил конкретный тип" от "не определил вообще ничего", чтобы залогировать это и выбрать
+    // свой fallback (Jinja из GGUF), а не молча получить общий шаблон без предупреждения.
+    const resolved = nlc.resolveChatWrapper({
+      bosString: model.tokens.bosString,
+      filename: model.filename,
+      fileInfo: model.fileInfo,
+      tokenizer: model.tokenizer,
+      customWrapperSettings: { qwen: QWEN_CHAT_WRAPPER_SETTINGS },
+    })
+    if (resolved != null) {
+      chatWrapper = resolved
+    } else {
+      // Не подставляем молча Qwen-обёртку чужой модели и не падаем — предупреждаем и используем
+      // универсальный Jinja-шаблон из самого GGUF (честная разметка диалога вместо угадывания);
+      // если и его нет в метаданных, GeneralChatWrapper — самый нейтральный вариант из встроенных.
+      const jinjaTemplate = model.fileInfo?.metadata?.tokenizer?.chat_template
+      console.warn(
+        `[gen] resolveChatWrapper не смог определить обёртку для модели "${installed.label}" — использую ` +
+        `${jinjaTemplate ? 'JinjaTemplateChatWrapper (шаблон из GGUF)' : 'GeneralChatWrapper (нет даже Jinja-шаблона в метаданных)'}`,
+      )
+      chatWrapper = jinjaTemplate != null
+        ? new nlc.JinjaTemplateChatWrapper({ tokenizer: model.tokenizer, template: jinjaTemplate })
+        : new nlc.GeneralChatWrapper()
+    }
+    // Пригодится и дальше (см. задачу с Gemma 4/другими архитектурами) — подтверждает на живом
+    // логе, какую обёртку резолвер реально выбрал для конкретной модели.
+    console.log(`[gen] chat wrapper: ${chatWrapper.constructor.name}`)
+
     context = await model.createContext({ sequences: 1 })
     sequence = context.getSequence()
     // contextSize — не задаём явно (createContext сам подбирает "auto" под доступную VRAM и
@@ -360,7 +402,7 @@ async function runPrompt(prompt: string, maxTokens: number, onChunk?: (text: str
 
 async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number }> {
   const tSessionStart = performance.now()
-  const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper: qwenChatWrapper })
+  const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper })
   const tSessionCreated = performance.now()
 
   const inputTokens = model.tokenize(prompt).length
@@ -727,7 +769,7 @@ async function runChatMessageQueued(
     const wasLoaded = loadPromise !== null
     const loadMs = await ensureLoaded()
 
-    const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: CHAT_SYSTEM_PROMPT, chatWrapper: qwenChatWrapper })
+    const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: CHAT_SYSTEM_PROMPT, chatWrapper })
     session.setChatHistory(history) // предыдущие ходы ЭТОЙ вкладки (пусто на первом сообщении/новой странице)
 
     const t0 = performance.now()
