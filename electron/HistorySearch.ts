@@ -169,7 +169,13 @@ export async function searchHistorySmart(
     const queryEmbedding = { vector: embedded.vector, modelVersion: embedded.modelVersion };
     semanticCandidates = scoreSemanticCandidates(history, queryEmbedding, SMART_CANDIDATE_LIMIT)
       .filter((c) => c.score >= SMART_SEMANTIC_MIN_SCORE);
-    const ftsChunks = history.searchContentChunksFts(q, queryEmbedding.modelVersion, SMART_FTS_SQL_LIMIT);
+    // Фильтр шума — до дедупа (не после), чтобы шумная страница не отъедала слот у
+    // SMART_FTS_CANDIDATE_LIMIT впустую (тот же порядок «фильтр → лимит», что и в
+    // scoreSemanticCandidates ниже). h.title (см. коммит "заголовок из history, не из чанка") —
+    // без него isNoisyForEmbedding почти всегда сработал бы по isBareDomainTitle: заголовок-URL
+    // выглядит как «домен целиком», что выкосило бы валидные результаты, а не только шум.
+    const ftsChunks = history.searchContentChunksFts(q, queryEmbedding.modelVersion, SMART_FTS_SQL_LIMIT)
+      .filter((chunk) => !isNoisyForEmbedding(chunk.url, chunk.title));
     ftsCandidates = dedupChunksByHistoryId(ftsChunks, SMART_FTS_CANDIDATE_LIMIT)
       .map((chunk) => chunkToResult(chunk, 1.12));
   } catch (e) {
