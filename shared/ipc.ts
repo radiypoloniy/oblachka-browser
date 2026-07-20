@@ -448,7 +448,7 @@ export const IPC = {
 
   // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей в UI пока
   // нет. Read-only: считает HardwareSnapshot внутри и сразу отдаёт каталог с посчитанным fit.
-  MODEL_CATALOG_GET: 'model-catalog:get', // renderer → main: CatalogEntryWithFit[]
+  MODEL_CATALOG_GET: 'model-catalog:get', // renderer → main: CatalogEntry[]
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -814,15 +814,26 @@ export interface CatalogModel {
 export type FitCategory = 'light' | 'recommended' | 'heavy' | 'not-recommended';
 
 export interface ModelFit {
-  category: FitCategory;
+  fitQuality: FitCategory;
+  // maxContextTokens калибрована ТОЛЬКО для случая, когда модель целиком помещается в GPU —
+  // если fitsFullyOnGpu===false, число недостоверно (формула не учитывает частичный оффлоад на
+  // CPU). contextEstimateReliable дублирует fitsFullyOnGpu как явный сигнал для UI: не показывать
+  // число контекста, когда false, а не полагаться на то, что потребитель сам вспомнит про эту связь.
   maxContextTokens: number;
   fitsFullyOnGpu: boolean;
+  contextEstimateReliable: boolean;
   note: string | null;
 }
 
-export interface CatalogEntryWithFit {
+// Роль модели ОТНОСИТЕЛЬНО ВСЕГО КАТАЛОГА на данном железе (см. electron/ModelCatalog.ts::assignRoles)
+// — в отличие от ModelFit.fitQuality (объективная характеристика ОДНОЙ модели самой по себе).
+export type ModelRole = 'light' | 'recommended' | 'heavy';
+
+export interface CatalogEntry {
   model: CatalogModel;
   fit: ModelFit;
+  role: ModelRole | null; // null = вне окна рекомендаций — модель остаётся в массиве, но скрыта по умолчанию
+  visibleByDefault: boolean;
 }
 
 export type AiActionOutcome =
@@ -1146,7 +1157,7 @@ export interface OblakoApi {
   onModelDownloadProgress(cb: (p: DownloadProgress) => void): () => void;
 
   // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей в UI пока нет.
-  getModelCatalog(): Promise<CatalogEntryWithFit[]>;
+  getModelCatalog(): Promise<CatalogEntry[]>;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;

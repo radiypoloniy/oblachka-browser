@@ -12,9 +12,9 @@
 // llama-инстансом (getLlama(), backend=vulkan), иначе они были бы мусором.
 import { slugify } from './ModelRegistry'
 import * as HardwareInfo from './HardwareInfo'
-import type { HardwareSnapshot, CatalogModel, ModelFit, FitCategory, CatalogEntryWithFit } from '../shared/ipc'
+import type { HardwareSnapshot, CatalogModel, ModelFit, FitCategory, ModelRole, CatalogEntry } from '../shared/ipc'
 
-export type { CatalogModel, ModelFit, FitCategory, CatalogEntryWithFit }
+export type { CatalogModel, ModelFit, FitCategory, ModelRole, CatalogEntry }
 
 // sizeBytes — размер САМОГО .gguf-файла (для скачивания/проверки свободного места), НЕ
 // estimateModelResourceRequirementsV2 (та считает только память под тензоры — без метаданных/
@@ -163,9 +163,10 @@ export function evaluateFit(model: CatalogModel, hw: HardwareSnapshot): ModelFit
     // "not-recommended". Это НЕ реальная оценка вместимости, а консервативная заглушка на случай
     // отсутствия данных.
     return {
-      category: model.qualityTier === 2 ? 'recommended' : 'not-recommended',
+      fitQuality: model.qualityTier === 2 ? 'recommended' : 'not-recommended',
       maxContextTokens: 0,
       fitsFullyOnGpu: false,
+      contextEstimateReliable: false,
       note: NO_VRAM_DETECTED_NOTE,
     }
   }
@@ -173,28 +174,127 @@ export function evaluateFit(model: CatalogModel, hw: HardwareSnapshot): ModelFit
   const budget = hw.vramTotalBytes - SYSTEM_RESERVE_BYTES - LLAMA_HEADROOM_BYTES
   const remaining = budget - model.vramFullOffloadBytes - model.contextVramBaseBytes
   const fitsFullyOnGpu = remaining > 0
+  // ⚠️ maxContextTokens откалиброван ТОЛЬКО на живых замерах с полным оффлоадом на GPU (сверка
+  // с реальным n_ctx на живом прогоне — см. git-историю формулы). Когда fitsFullyOnGpu===false,
+  // часть слоёв уходит на CPU и реальное поведение контекста/памяти этой формулой не проверялось —
+  // число ниже в этом случае всё равно считается (для внутренних сравнений типа "heavy"), но
+  // ПОТРЕБИТЕЛЯМ (UI) отдавать его как достоверное нельзя — для этого есть contextEstimateReliable.
   const maxContextTokens = remaining > 0 ? Math.floor(remaining / model.contextVramPerToken) : 0
 
-  let category: FitCategory
+  let fitQuality: FitCategory
   let note: string | null = null
   if (!fitsFullyOnGpu || maxContextTokens < HEAVY_MIN_CONTEXT_TOKENS) {
-    category = 'not-recommended'
+    fitQuality = 'not-recommended'
     note = NOT_RECOMMENDED_NOTE
   } else if (maxContextTokens < RECOMMENDED_MIN_CONTEXT_TOKENS) {
-    category = 'heavy'
+    fitQuality = 'heavy'
     note = HEAVY_NOTE
   } else if (maxContextTokens < LIGHT_MIN_CONTEXT_TOKENS) {
-    category = 'recommended'
+    fitQuality = 'recommended'
   } else {
-    category = 'light'
+    fitQuality = 'light'
   }
 
-  return { category, maxContextTokens, fitsFullyOnGpu, note }
+  return { fitQuality, maxContextTokens, fitsFullyOnGpu, contextEstimateReliable: fitsFullyOnGpu, note }
+}
+
+// Порог «комфортного» контекста для ВЫБОРА РОЛИ модели среди каталога (assignRoles ниже) — не
+// путать с RECOMMENDED_MIN_CONTEXT_TOKENS внутри evaluateFit (та про категорию ОДНОЙ модели саму
+// по себе). Сейчас совпадает по значению с RECOMMENDED_MIN_CONTEXT_TOKENS, но это НЕЗАВИСИМАЯ
+// константа для независимого решения — evaluateFit трогать в этой задаче нельзя, поэтому её
+// константу переиспользовать нельзя даже при случайном совпадении числа.
+const COMFORTABLE_CONTEXT_TOKENS = 16384
+
+const WEAK_HARDWARE_RECOMMENDED_NOTE = 'Видеопамяти мало для комфортного контекста ни у одной модели — показан лучший доступный вариант'
+
+// "Модель хоть как-то запускается" — для роли heavy (кандидат ВЫШЕ recommended) и для аварийного
+// выбора recommended в вырожденном случае (см. assignRoles). На нынешней формуле evaluateFit это
+// тождественно true для любой модели/железа (fitsFullyOnGpu=true ⟹ maxContextTokens>0 и наоборот,
+// см. комментарий у maxContextTokens выше) — то есть каталог не умеет говорить "не запустится
+// вообще". Проверяем явно, а не считаем эту true по умолчанию: если formula когда-нибудь получит
+// сигнал полного отказа, отбор ролей отреагирует сам, без правки этой функции.
+function runsAtAll(fit: ModelFit): boolean {
+  return fit.maxContextTokens > 0 || !fit.fitsFullyOnGpu
+}
+
+function findNearestByTier(
+  fits: { model: CatalogModel; fit: ModelFit }[],
+  fromTierExclusive: number,
+  direction: 1 | -1,
+  predicate: (fit: ModelFit) => boolean,
+): { model: CatalogModel; fit: ModelFit } | null {
+  const tiers = fits.map((f) => f.model.qualityTier).sort((a, b) => a - b)
+  const minTier = tiers[0]
+  const maxTier = tiers[tiers.length - 1]
+  for (let t = fromTierExclusive + direction; direction > 0 ? t <= maxTier : t >= minTier; t += direction) {
+    const entry = fits.find((f) => f.model.qualityTier === t)
+    if (entry && predicate(entry.fit)) return entry
+  }
+  return null
+}
+
+// Назначает роли (light/recommended/heavy/null) моделям каталога под конкретное железо —
+// поверх объективного per-модельного evaluateFit. Роль — это ОТНОСИТЕЛЬНЫЙ выбор внутри всего
+// каталога (см. shared/ipc.ts::ModelRole), а не свойство одной модели. Ничего из каталога не
+// вырезается — модели без роли остаются в массиве с visibleByDefault=false, UI прячет их за
+// «показать все модели».
+export function assignRoles(hw: HardwareSnapshot): CatalogEntry[] {
+  const sorted = [...CATALOG].sort((a, b) => a.qualityTier - b.qualityTier)
+
+  if (hw.vramTotalBytes === null) {
+    // Детект не удался — сохраняем прежнее поведение evaluateFit один в один: recommended только
+    // у tier 2 (2B), у остальных роли нет вовсе (а не light/heavy — на отсутствии данных
+    // достраивать окно вокруг recommended не на чем).
+    return sorted.map((model) => {
+      const fit = evaluateFit(model, hw)
+      const role: ModelRole | null = model.qualityTier === 2 ? 'recommended' : null
+      return { model, fit, role, visibleByDefault: role !== null }
+    })
+  }
+
+  const fits = sorted.map((model) => ({ model, fit: evaluateFit(model, hw) }))
+
+  const comfortable = fits.filter((f) => f.fit.fitsFullyOnGpu && f.fit.maxContextTokens >= COMFORTABLE_CONTEXT_TOKENS)
+
+  let recommendedTier: number | null = null
+  let degenerate = false
+  if (comfortable.length > 0) {
+    recommendedTier = comfortable.reduce((max, f) => Math.max(max, f.model.qualityTier), -Infinity)
+  } else {
+    // Вырожденный случай — железо слабое, ни одна модель не набирает комфортный контекст целиком
+    // на GPU. Рекомендуем минимальную по тиру модель среди тех, что вообще запускаются (см.
+    // runsAtAll) — при текущей формуле это весь каталог, поэтому фактически tier 1, но выбор
+    // сделан через явный фильтр, а не жёстко зашит.
+    const runnable = fits.filter((f) => runsAtAll(f.fit))
+    if (runnable.length > 0) {
+      recommendedTier = runnable.reduce((min, f) => Math.min(min, f.model.qualityTier), Infinity)
+      degenerate = true
+    }
+    // else: recommendedTier остаётся null — «не запускается вообще ничего», список без recommended.
+    // При нынешней formula недостижимо (runsAtAll всегда true), но не форсируем это допущение.
+  }
+
+  const lightEntry = recommendedTier !== null ? findNearestByTier(fits, recommendedTier, -1, (fit) => fit.fitsFullyOnGpu) : null
+  const heavyEntry = recommendedTier !== null ? findNearestByTier(fits, recommendedTier, 1, runsAtAll) : null
+
+  return fits.map(({ model, fit }) => {
+    let role: ModelRole | null = null
+    if (recommendedTier !== null && model.qualityTier === recommendedTier) role = 'recommended'
+    else if (lightEntry && model.id === lightEntry.model.id) role = 'light'
+    else if (heavyEntry && model.id === heavyEntry.model.id) role = 'heavy'
+
+    // В вырожденном случае note обязана предупреждать — независимо от того, что уже выставил
+    // evaluateFit (heavy/not-recommended и так несут note, но полагаться на совпадение констант
+    // COMFORTABLE_CONTEXT_TOKENS/RECOMMENDED_MIN_CONTEXT_TOKENS для этой гарантии нельзя, см. выше).
+    const note = degenerate && role === 'recommended' ? WEAK_HARDWARE_RECOMMENDED_NOTE : fit.note
+
+    return { model, fit: note === fit.note ? fit : { ...fit, note }, role, visibleByDefault: role !== null }
+  })
 }
 
 // Единая точка для IPC — считает HardwareSnapshot один раз (из кэша HardwareInfo.ts, если он уже
-// есть) и применяет evaluateFit ко всему каталогу.
-export async function getCatalogWithFit(): Promise<CatalogEntryWithFit[]> {
+// есть) и применяет assignRoles ко всему каталогу.
+export async function getCatalogWithFit(): Promise<CatalogEntry[]> {
   const hw = await HardwareInfo.get()
-  return CATALOG.map((model) => ({ model, fit: evaluateFit(model, hw) }))
+  return assignRoles(hw)
 }
