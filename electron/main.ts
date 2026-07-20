@@ -28,7 +28,7 @@ import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, Sideb
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
-import { warmup as warmupTranslation, type ChatOutcome } from './TranslationService';
+import { warmup as warmupTranslation, unloadModel, type ChatOutcome } from './TranslationService';
 import { toggleAiPanel, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
 import {
   togglePageTranslate,
@@ -1217,6 +1217,10 @@ function registerIpc() {
 
   // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей в UI нет.
   ipcMain.handle(IPC.MODEL_CATALOG_GET, () => ModelCatalog.getCatalogWithFit());
+
+  // Явная выгрузка модели из VRAM (см. TranslationService.ts::unloadModel) — задел, потребителей
+  // в UI нет.
+  ipcMain.handle(IPC.MODEL_UNLOAD, () => unloadModel());
 }
 
 // Собирает GroupNode[] плоским списком из верхнего уровня дерева.

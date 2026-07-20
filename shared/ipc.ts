@@ -449,6 +449,12 @@ export const IPC = {
   // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей в UI пока
   // нет. Read-only: считает HardwareSnapshot внутри и сразу отдаёт каталог с посчитанным fit.
   MODEL_CATALOG_GET: 'model-catalog:get', // renderer → main: CatalogEntry[]
+
+  // Явная выгрузка текущей модели из VRAM (см. electron/TranslationService.ts::unloadModel) —
+  // задел, потребителей в UI пока нет. invoke, не send: вызывающая сторона должна знать МОМЕНТ
+  // фактического освобождения памяти (dispose дожидается текущей генерации), а не просто отправить
+  // команду и гадать, когда она применится.
+  MODEL_UNLOAD: 'model:unload', // renderer → main: (без параметров) -> void, после факта выгрузки
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -1162,6 +1168,10 @@ export interface OblakoApi {
 
   // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей в UI пока нет.
   getModelCatalog(): Promise<CatalogEntry[]>;
+
+  // Явная выгрузка текущей модели из VRAM (см. electron/TranslationService.ts::unloadModel) —
+  // задел, потребителей в UI пока нет.
+  unloadModel(): Promise<void>;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;

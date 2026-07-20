@@ -408,6 +408,10 @@ const api: OblakoApi = {
   // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей пока нет.
   getModelCatalog: () => ipcRenderer.invoke(IPC.MODEL_CATALOG_GET) as Promise<CatalogEntry[]>,
 
+  // Явная выгрузка модели из VRAM (см. electron/TranslationService.ts::unloadModel) — задел,
+  // потребителей пока нет.
+  unloadModel: () => ipcRenderer.invoke(IPC.MODEL_UNLOAD) as Promise<void>,
+
   embedPreload: EMBED_PRELOAD,
 };
 

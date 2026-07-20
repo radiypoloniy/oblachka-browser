@@ -391,6 +391,46 @@ function withQwenQueue<T>(fn: () => Promise<T>): Promise<T> {
   return result
 }
 
+// Явная выгрузка модели из VRAM — обратная сторона ensureLoaded(). ⚠️ dispose во время активной
+// генерации роняет нативный код (не JS-исключение) — поэтому ждём qwenQueueTail: она сериализует
+// ОБА входа в Qwen (runPrompt И runChatMessage, см. withQwenQueue выше), значит await на её текущем
+// значении гарантированно дожидается всего, что уже поставлено в очередь, включая генерацию, идущую
+// прямо сейчас. Это НЕ защищает от НОВОГО запроса, вставшего в очередь ПОСЛЕ того, как мы прочитали
+// qwenQueueTail здесь, — сериализация ждёт только то, что уже в очереди на момент вызова. Полная
+// защита (флаг "недоступно на время выгрузки", отклоняющий новые запросы) — отдельная задача,
+// сознательно не добавлена здесь.
+export async function unloadModel(): Promise<void> {
+  if (model === null) {
+    console.log('[gen] unloadModel: модель уже выгружена — no-op')
+    return
+  }
+
+  await qwenQueueTail
+
+  // ИМЕННО в этом порядке: context (владеет sequence/KV-cache) — до model. llama (бэкенд) НЕ
+  // трогаем — он закэширован в LlamaBackend.ts и им пользуется HardwareInfo.ts; уничтожение
+  // бэкенда оставило бы тот синглтон с мёртвой ссылкой.
+  await context.dispose()
+  await model.dispose()
+
+  // sequence отдельно не disposeим — у неё нет собственного нативного выделения (это ID в общем
+  // буфере context'а, см. разведку node-llama-cpp 3.19: LlamaContextSequence слушает только
+  // model.onDispose, не context.onDispose, но VRAM освобождается вместе с native _ctx выше).
+  // Отдельный sequence.dispose() освободил бы только JS-бухгалтерию (чекпоинты/пул id), которая
+  // всё равно исчезает вместе с уже уничтоженным контекстом — обнуляем ссылку и всё.
+  model = null
+  context = null
+  sequence = null
+  chatWrapper = null
+  // loadPromise = null — следующий ensureLoaded() увидит `if (loadPromise) return loadPromise` как
+  // false и выполнит тело заново: та же логика сброса при NO_MODEL_INSTALLED/MODEL_FILE_MISSING
+  // (см. setImmediate ниже в ensureLoaded) не тронута — она снова сработает, если к тому моменту
+  // реестр вдруг окажется пуст.
+  loadPromise = null
+
+  console.log('[gen] модель выгружена из VRAM')
+}
+
 // Диагностика скорости по этапам (см. задачу замера) — ASCII-теги [perf], кириллица в stdout
 // превращается в кракозябры. Общий низкоуровневый вызов Qwen — единственное место в этом файле,
 // где реально зовётся session.prompt() (кроме runChatMessage — у того своя, тоже через очередь
