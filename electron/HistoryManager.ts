@@ -273,7 +273,7 @@ export class HistoryManager {
     try {
       return this.#db.prepare(`
         SELECT c.id AS chunkId, c.history_id AS historyId, c.chunk_index AS chunkIndex,
-               c.url, c.title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
+               c.url, h.title AS title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
                c.vector, c.dims, c.model_version AS modelVersion
         FROM history_content_chunks c
         JOIN history h ON h.id = c.history_id
@@ -292,7 +292,7 @@ export class HistoryManager {
     try {
       return this.#db.prepare(`
         SELECT c.id AS chunkId, c.history_id AS historyId, c.chunk_index AS chunkIndex,
-               c.url, c.title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
+               c.url, h.title AS title, c.text, h.last_visit AS lastVisit, h.visit_count AS visitCount,
                c.vector, c.dims, c.model_version AS modelVersion,
                bm25(history_content_chunks_fts) AS rank
         FROM history_content_chunks_fts
