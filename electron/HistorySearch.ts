@@ -11,7 +11,7 @@ import { requestEmbedding } from './EmbedClient';
 import { rerankHistoryCandidates } from './TranslationService';
 import { isNoisyForEmbedding } from './HistoryNoiseFilter';
 import { normalizeForOmnibox } from '../shared/frecency';
-import type { HistoryEntry, SemanticSearchResult } from '../shared/ipc';
+import type { HistoryEntry, SemanticSearchResult, SmartSearchResponse } from '../shared/ipc';
 
 function cosineSim(a: Float32Array, b: Float32Array): number {
   let dot = 0;
@@ -158,9 +158,9 @@ export async function searchHistorySmart(
   history: HistoryManager,
   query: string,
   limit = 8,
-): Promise<SemanticSearchResult[]> {
+): Promise<SmartSearchResponse> {
   const q = query.trim();
-  if (!q) return [];
+  if (!q) return { results: [], degraded: false };
 
   let semanticCandidates: SemanticSearchResult[] = [];
   let ftsCandidates: SemanticSearchResult[] = [];
@@ -193,7 +193,7 @@ export async function searchHistorySmart(
     if (!existing || c.score > existing.score) byUrl.set(key, c);
   }
   const candidates = [...byUrl.values()].slice(0, SMART_CANDIDATE_LIMIT);
-  if (candidates.length === 0) return [];
+  if (candidates.length === 0) return { results: [], degraded: false };
 
   let order: number[];
   try {
@@ -205,13 +205,15 @@ export async function searchHistorySmart(
       snippet: c.snippet,
     })));
   } catch (e) {
+    // degraded:true — вызывающая сторона (History.tsx) честно показывает пользователю, что это
+    // cosine top-k без участия Qwen, а не молчаливая подмена результата умного поиска.
     console.warn('[HistorySearch] Qwen-реранк не удался, отдаю cosine top-k как есть:', (e as Error).message);
-    return candidates.slice(0, limit);
+    return { results: candidates.slice(0, limit), degraded: true };
   }
 
   if (order.length === 0 && lexicalKeys.size > 0) {
-    return candidates.filter((c) => lexicalKeys.has(normalizeForOmnibox(c.url))).slice(0, limit);
+    return { results: candidates.filter((c) => lexicalKeys.has(normalizeForOmnibox(c.url))).slice(0, limit), degraded: false };
   }
 
-  return order.slice(0, limit).map((i) => candidates[i]!);
+  return { results: order.slice(0, limit).map((i) => candidates[i]!), degraded: false };
 }

@@ -113,6 +113,11 @@ export default function History({ onClose }: HistoryProps) {
   // ниже (load() как был) — включается только по явному Enter (см. handleSearchKeyDown).
   const [smartOn, setSmartOn] = useState(false);
   const [smartLoading, setSmartLoading] = useState(false);
+  // true — последний показанный результат умного поиска на самом деле cosine top-k без Qwen
+  // (реранк упал/недоступен, см. SmartSearchResponse.degraded в shared/ipc.ts). Не то же самое,
+  // что smartResultsShown=false — там результат вообще не от умного поиска, здесь он от него,
+  // просто без LLM-шага.
+  const [smartDegraded, setSmartDegraded] = useState(false);
   // true — entries сейчас содержит Qwen-реранк (порядок релевантности), не хронологию. Группировка
   // по дню/навигация по датам в этом случае показывать нельзя — она молча разрушила бы порядок
   // релевантности, раскидав результаты по датам. Плоский список — та же логика, что и раньше.
@@ -135,6 +140,7 @@ export default function History({ onClose }: HistoryProps) {
     if (searchSeqRef.current !== seq) return; // подоспел более новый запрос — этот ответ устарел
     setEntries(result);
     setSmartResultsShown(false);
+    setSmartDegraded(false);
   }, [query]);
 
   useEffect(() => { void load(); }, [load]);
@@ -171,10 +177,11 @@ export default function History({ onClose }: HistoryProps) {
     const seq = ++searchSeqRef.current;
     setSmartLoading(true);
     try {
-      const results = await window.oblako.searchHistorySmart(q);
-      if (searchSeqRef.current === seq) { setEntries(results); setSmartResultsShown(true); } // иначе — устарело, юзер уже дальше
+      const { results, degraded } = await window.oblako.searchHistorySmart(q);
+      if (searchSeqRef.current === seq) { setEntries(results); setSmartResultsShown(true); setSmartDegraded(degraded); } // иначе — устарело, юзер уже дальше
     } catch {
-      // Qwen/IPC недоступны — не оставляем список пустым молча, просто откатываемся
+      // IPC целиком недоступен (не то же самое, что "реранк внутри упал" — то помечено полем
+      // degraded в успешном ответе выше) — не оставляем список пустым молча, просто откатываемся
       // на обычный поиск (load() уже отработал по этому же query per keystroke), но тоже
       // только если этот запрос всё ещё актуален.
       if (searchSeqRef.current === seq) void load();
@@ -340,9 +347,18 @@ export default function History({ onClose }: HistoryProps) {
           color: 'var(--text-muted)', fontSize: 12, padding: '0 20px 8px', flexShrink: 0,
         }}>
           <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-          {/* ВРЕМЕННО "Ищу…" вместо "Qwen переранжирует…" — сам Qwen-реранк сейчас отключён
-              (см. HistorySearch.ts::searchHistorySmart), нечестно утверждать, что он думает. */}
-          Ищу…
+          Qwen переранжирует…
+        </div>
+      )}
+
+      {/* Реранк не отработал (упал/недоступна модель) — вместо молчаливой подмены честно
+          показываем, что порядок ниже — cosine top-k, не решение Qwen (SmartSearchResponse.degraded). */}
+      {smartResultsShown && smartDegraded && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '0 20px 8px', fontSize: 12, color: 'var(--warning-500)', flexShrink: 0,
+        }}>
+          Показан быстрый результат — AI не ответил, порядок по сходству, не по смыслу.
         </div>
       )}
 

@@ -184,7 +184,7 @@ export const IPC = {
   HISTORY_SEARCH_SEMANTIC: 'history:search-semantic', // renderer → main: query -> SemanticSearchResult[]
   // Умный поиск (Qwen-реранк top-k кандидатов от searchHistorySemantic) — только по явному
   // действию (Enter), НЕ на каждый keystroke, см. HistorySearch.ts::searchHistorySmart.
-  HISTORY_SEARCH_SMART: 'history:search-smart', // renderer → main: query -> SemanticSearchResult[]
+  HISTORY_SEARCH_SMART: 'history:search-smart', // renderer → main: query -> SmartSearchResponse
 
   // Закладки — плоский список (parentId всегда null в Feature 1, см. BookmarkManager.ts)
   BOOKMARK_ADD:           'bookmark:add',            // renderer → main: (url, title) -> BookmarkEntry | null
@@ -523,6 +523,15 @@ export interface SemanticSearchResult {
   visitCount: number;
   score: number;
   snippet?: string;
+}
+
+// Ответ умного поиска (searchHistorySmart) — degraded:true означает, что Qwen-реранк не
+// отработал (упал/недоступна модель) и results — это cosine top-k без участия LLM, не то,
+// что пользователь запросил кнопкой «умный поиск». false — реранк реально отработал (даже
+// если вернул пустой список: это ЕГО осознанный ответ «ничего релевантного», не деградация).
+export interface SmartSearchResponse {
+  results: SemanticSearchResult[];
+  degraded: boolean;
 }
 
 // ── Эмбеддинги (заход G) ─────────────────────────────────────────────────────
@@ -974,7 +983,8 @@ export interface OblakoApi {
   // Заход G, блок 7 — векторный поиск (см. electron/HistorySearch.ts, блок 6).
   searchHistorySemantic(query: string): Promise<SemanticSearchResult[]>;
   // Умный поиск — Qwen-реранк top-k кандидатов, только по явному Enter (см. HistorySearch.ts).
-  searchHistorySmart(query: string): Promise<SemanticSearchResult[]>;
+  // degraded:true в ответе — реранк не отработал, results это cosine top-k без LLM (см. SmartSearchResponse).
+  searchHistorySmart(query: string): Promise<SmartSearchResponse>;
 
   // Закладки — плоский список (parentId всегда null в Feature 1)
   addBookmark(url: string, title: string): Promise<BookmarkEntry | null>;
