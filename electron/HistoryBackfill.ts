@@ -106,7 +106,7 @@ export async function startBackfill(history: HistoryManager): Promise<void> {
         const text = `${row.title} ${hostnameOf(row.url)}`.trim();
         if (text) {
           try {
-            const embedded = await requestEmbedding(text);
+            const embedded = await requestEmbedding(text, 'document');
             try {
               history.saveEmbedding(row.id, embedded.vector, embedded.dims, embedded.modelVersion);
             } catch (e) {

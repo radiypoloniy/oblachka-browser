@@ -123,14 +123,14 @@ export async function startContentBackfill(history: HistoryManager, win: Browser
         try {
           const enrichedText = await extractEnrichedText(view.webContents, row.url);
           if (enrichedText) {
-            const embedded = await requestEmbedding(enrichedText.slice(0, HISTORY_EMBED_TEXT_MAX_CHARS));
+            const embedded = await requestEmbedding(enrichedText.slice(0, HISTORY_EMBED_TEXT_MAX_CHARS), 'document');
             history.saveEmbedding(row.id, embedded.vector, embedded.dims, embedded.modelVersion);
 
             const chunks = buildTextChunks(enrichedText);
             const chunkInputs = [];
             for (let i = 0; i < chunks.length; i++) {
               try {
-                const chunkEmbedded = await requestEmbedding(chunks[i]!);
+                const chunkEmbedded = await requestEmbedding(chunks[i]!, 'document');
                 chunkInputs.push({
                   chunkIndex: i, url: row.url, title: row.title,
                   text: chunks[i]!, vector: chunkEmbedded.vector, dims: chunkEmbedded.dims,

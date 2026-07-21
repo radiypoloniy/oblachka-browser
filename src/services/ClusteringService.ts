@@ -154,6 +154,15 @@ export async function clusterTabs(
   const candidates = buildCandidates(nodes, tabMap)
   if (candidates.length < 2) return []
 
+  // CLUSTERING_EMBED_PREFIXED = false — НАМЕРЕННО, не забыто. EmbeddingGemma task-префиксы
+  // (см. electron/EmbedClient.ts::requestEmbedding — 'query'/'document') сюда не применяются:
+  // это отдельный потребитель EmbeddingService, зовёт embeddingService.embed() напрямую в
+  // renderer (свой канал, не requestEmbedding()/EmbedClient.ts — тот только для main→renderer→
+  // main моста истории/поиска). 'query'/'document' шаблон не подходит один-в-один: кластеризация
+  // сравнивает сигналы вкладок друг с другом симметрично (agglomerate ниже), а не запрос против
+  // документа — по модельной карте EmbeddingGemma для такой задачи нужен другой префикс
+  // (условно STS/clustering-шаблон, не search result/document). Решение отложено — см.
+  // диагностику EmbeddingGemma task-префиксов, решаем отдельно от умного поиска истории.
   const vecs = await embeddingService.embed(candidates.map((c) => c.signal))
 
   const groups = agglomerate(vecs, threshold)

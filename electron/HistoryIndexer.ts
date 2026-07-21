@@ -178,7 +178,7 @@ export async function indexVisit(
   // Шаг 2: embed.
   let embedded: Awaited<ReturnType<typeof requestEmbedding>>;
   try {
-    embedded = await requestEmbedding(text);
+    embedded = await requestEmbedding(text, 'document');
   } catch (e) {
     console.warn(`[HistoryIndexer] embed не удался для ${url}:`, (e as Error).message);
     return; // не помечаем как проиндексированную — следующий визит попробует снова
@@ -194,7 +194,7 @@ export async function indexVisit(
       const chunkInputs = [];
       for (let i = 0; i < chunks.length; i++) {
         try {
-          const chunkEmbedded = await requestEmbedding(chunks[i]!);
+          const chunkEmbedded = await requestEmbedding(chunks[i]!, 'document');
           chunkInputs.push({
             chunkIndex: i,
             url,

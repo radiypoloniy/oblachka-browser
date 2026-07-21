@@ -94,7 +94,7 @@ export async function searchHistorySemantic(
 
   let queryEmbedding: QueryEmbedding;
   try {
-    const embedded = await requestEmbedding(q);
+    const embedded = await requestEmbedding(q, 'query');
     queryEmbedding = { vector: embedded.vector, modelVersion: embedded.modelVersion };
   } catch (e) {
     console.warn('[HistorySearch] embed запроса не удался:', (e as Error).message);
@@ -181,7 +181,7 @@ export async function searchHistorySmart(
   let semanticCandidates: SemanticSearchResult[] = [];
   let ftsCandidates: SemanticSearchResult[] = [];
   try {
-    const embedded = await requestEmbedding(q);
+    const embedded = await requestEmbedding(q, 'query');
     const queryEmbedding = { vector: embedded.vector, modelVersion: embedded.modelVersion };
     // SEMANTIC_IN_SMART_SEARCH=false — semanticCandidates остаётся [] (см. комментарий у флага
     // выше). Эмбеддинг запроса всё равно нужен ниже для FTS-пути (searchContentChunksFts берёт
