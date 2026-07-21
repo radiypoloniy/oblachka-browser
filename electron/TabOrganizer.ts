@@ -173,10 +173,24 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
     const prompt = buildPrompt(lines);
 
     console.log(`[organize] промпт (${unique.length} вкладок, ${duplicates.length} дублей):\n${prompt}`);
-    const raw = await runTabOrganizePrompt(prompt);
+    const { out: raw, stopReason } = await runTabOrganizePrompt(prompt);
     console.log(`[organize] сырой ответ модели:\n${raw}`);
 
-    clusters.push(...parseAndValidate(raw, unique));
+    // Обрыв по лимиту токенов (не eogToken) — последняя строка ответа заведомо неполная (могла
+    // потерять номера или название группы целиком), а не осмысленный конец. Отбрасываем только
+    // её — остальные строки (уже сгенерированные полностью группы) остаются валидными.
+    let cleanRaw = raw;
+    if (stopReason !== 'eogToken') {
+      const respLines = raw.split('\n');
+      const droppedLine = respLines.pop();
+      cleanRaw = respLines.join('\n');
+      console.warn(
+        `[organize] ⚠️ обрыв генерации по лимиту токенов (stopReason=${stopReason}) — ` +
+        `последняя строка ответа отброшена как неполная: ${JSON.stringify(droppedLine)}`,
+      );
+    }
+
+    clusters.push(...parseAndValidate(cleanRaw, unique));
   }
 
   // Группа дублей — добавляется отдельно, после групп модели, без участия модели вообще.

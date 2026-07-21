@@ -458,11 +458,11 @@ async function unloadModelQueued(): Promise<void> {
 // где реально зовётся session.prompt() (кроме runChatMessage — у того своя, тоже через очередь
 // выше); и перевод, и остальные AI-действия проходят через него (см. translateSegment/runSegmented
 // ниже) — «разные промпты поверх одной трубы», не разные движки.
-async function runPrompt(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number }> {
+async function runPrompt(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number; stopReason: string }> {
   return withQwenQueue(() => runPromptQueued(prompt, maxTokens, onChunk))
 }
 
-async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number }> {
+async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number; stopReason: string }> {
   const tSessionStart = performance.now()
   const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper })
   const tSessionCreated = performance.now()
@@ -516,7 +516,7 @@ async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (tex
     `[gen] stopped: ${stopReason === 'maxTokens' ? 'maxTokens reached' : `stop token (${stopReason})`} (limit=${maxTokens}, genTokens=${genTokenCount})`,
   )
 
-  return { out, tokens }
+  return { out, tokens, stopReason }
 }
 
 // ── Умный поиск истории (Qwen-реранк top-k кандидатов от эмбеддинга) ────────────────────────
@@ -583,19 +583,24 @@ export async function rerankHistoryCandidates(query: string, candidates: RerankC
   return result
 }
 
-// Лимит вывода для группировки вкладок (TabOrganizer.ts) — формат компактный (построчно
-// "Название: 1,4,7"), даже на 8-10 групп с запасом укладывается в этот бюджет. Того же порядка,
-// что RERANK_MAX_TOKENS выше — обе задачи возвращают короткий структурированный текст, не прозу.
-const ORGANIZE_MAX_TOKENS = 500
+// Лимит вывода для группировки вкладок (TabOrganizer.ts) — на живом замере (20 вкладок) валидный
+// ответ укладывается в 109-131 токен; 200 — запас примерно x1.5-2, а не x4-5, как было при 500
+// (при котором модель на одном из прогонов ушла в разнос и сгенерировала все 500, вместо
+// естественной остановки — 9.8с вместо 2.2с). Столкновение с лимитом теперь — сигнал ошибки
+// генерации, а не норма (см. runTabOrganizePrompt ниже).
+const ORGANIZE_MAX_TOKENS = 200
 
 // Тонкая обёртка над runPrompt для TabOrganizer.ts — та же труба (withQwenQueue внутри runPrompt),
 // что перевод/умный поиск/чат, отдельного способа звать модель не заводим. В отличие от
 // rerankHistoryCandidates выше НЕ вызывает ensureLoaded() сама — TabOrganizer.ts обязан
 // проверить getLoadedModelId()!==null ДО вызова (гейт MODEL_NOT_LOADED: группировка вкладок не
 // должна триггерить холодную загрузку модели по своей инициативе, в отличие от умного поиска).
-export async function runTabOrganizePrompt(prompt: string): Promise<string> {
-  const { out } = await runPrompt(prompt, ORGANIZE_MAX_TOKENS)
-  return out
+// stopReason пробрасывается наружу — TabOrganizer.ts должен отличить естественный конец ответа
+// (eogToken) от обрыва по лимиту токенов (ответ обрезан на полуслове, последняя строка заведомо
+// неполная).
+export async function runTabOrganizePrompt(prompt: string): Promise<{ out: string; stopReason: string }> {
+  const { out, stopReason } = await runPrompt(prompt, ORGANIZE_MAX_TOKENS)
+  return { out, stopReason }
 }
 
 // Один сегмент — одно предложение (см. splitSentences). 300 токенов — запас x2-3 над типичной
