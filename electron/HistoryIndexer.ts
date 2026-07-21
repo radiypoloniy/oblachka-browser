@@ -11,19 +11,37 @@
 // extractPageText из AiPanelManager.ts — тот же пайплайн, что у AI-панели, не дублируем его.
 import type { WebContents } from 'electron';
 import type { HistoryManager } from './HistoryManager';
-import { requestEmbedding } from './EmbedClient';
+import { requestEmbedding, requestEmbeddingModelVersion } from './EmbedClient';
 import { extractPageText } from './AiPanelManager';
 import { isNoisyForEmbedding } from './HistoryNoiseFilter';
 
-// Блок 4: не в HistoryManager.ts (тот в этом заходе не трогается) — держим факт «уже
-// проиндексирована в этой сессии» здесь же, в памяти процесса. Не персистентно между
-// перезапусками (после рестарта первая ревизита ранее проиндексированной страницы отправит
-// embed() ещё раз один-единственный раз, дальше снова тихо пропускается) — сознательный
-// компромис ради того, чтобы не трогать HistoryManager.ts. Без этой проверки каждая
-// ПОВТОРНАЯ навигация на уже посещённую страницу (recordVisit — upsert, стреляет на любой
-// повторный визит, не только на первый) слала бы новый embed:request в ту же очередь, что
-// кластеризация вкладок — то, от чего явно предостерегает бриф блока 4.
+// Живой замер (диагностика "переиндексация при рестарте"): 750-850% CPU на 40с при рестарте
+// с 10 закреплёнными вкладками — каждая переиндексировалась заново при том, что содержимое не
+// менялось. Причина была здесь: раньше этот Set был ЕДИНСТВЕННЫМ источником факта «уже
+// проиндексирована» — не персистентно между перезапусками, поэтому каждый рестарт считал всё
+// заново непроиндексированным. Источник истины теперь HistoryManager.hasEmbeddingForVersion()
+// (БД, переживает рестарт) — см. indexVisit ниже. Set остаётся как дешёвый кэш ПОВЕРХ БД-проверки:
+// экономит один SQL-запрос на повторные навигации в рамках уже открытого процесса (recordVisit —
+// upsert, стреляет на любой повторный визит, не только на первый), но НЕ является источником
+// истины сам по себе — на старте процесса он пуст, и это нормально, БД-проверка ниже подхватывает.
 const indexedHistoryIds = new Set<number>();
+
+// Версия модели не меняется в рамках одного запущенного процесса (ACTIVE_MODEL — статический
+// конфиг EmbeddingService.ts, не переключается на лету) — кэшируем один раз, а не спрашиваем
+// renderer на каждый визит. requestEmbeddingModelVersion() не гоняет инференс (только читает
+// статичную строку конфигурации + суффикс версии, см. EmbedClient.ts), но всё равно IPC
+// round-trip main→renderer→main, незачем платить за него на каждой навигации.
+let cachedModelVersion: string | null = null;
+async function getCurrentModelVersion(): Promise<string | null> {
+  if (cachedModelVersion !== null) return cachedModelVersion;
+  try {
+    cachedModelVersion = await requestEmbeddingModelVersion();
+  } catch (e) {
+    console.warn('[HistoryIndexer] не удалось определить текущую версию модели:', (e as Error).message);
+    return null;
+  }
+  return cachedModelVersion;
+}
 
 // Сколько ждать did-finish-load, прежде чем сдаться и уйти в fallback (title+hostname) —
 // страница может вообще не догрузиться (сеть/ошибка/редирект в никуда), fire-and-forget
@@ -147,8 +165,33 @@ export async function indexVisit(
   if (historyId === null) return; // #shouldRecord отфильтровал (about:/поиск-result/…) — индексировать нечего
 
   // Идемпотентность (блок 4): ревизит уже проиндексированной страницы — no-op, не спамим
-  // очередь embed() повторно на каждый повторный визит.
+  // очередь embed() повторно на каждый повторный визит. Сначала дешёвый in-memory кэш (без
+  // похода в БД для уже проверенных в этом процессе historyId), потом источник истины — БД
+  // на ТЕКУЩУЮ версию модели: страница, проиндексированная СТАРОЙ версией (например, без
+  // '+prefixed'), для этой проверки не считается проиндексированной и переиндексируется —
+  // это нужно, чтобы будущий пересчёт базы после смены версии модели вообще мог подобрать
+  // старые записи, а не пропускал их навсегда.
   if (indexedHistoryIds.has(historyId)) return;
+  const currentModelVersion = await getCurrentModelVersion();
+  // Живая проверка поймала реальную гонку: закреплённые вкладки грузятся синхронно ОЧЕНЬ рано в
+  // main.ts (createPinnedTab → loadURL сразу), а startEmbedRequestBridge() в chrome UI вешается
+  // только из useEffect ПОСЛЕ первого рендера React (App.tsx:114) — did-navigate первых
+  // закреплённых вкладок стабильно опережает готовность моста, getCurrentModelVersion() уходит
+  // в таймаут EmbedClient.ts (20с). Если не знаем текущую версию — НЕ индексируем (fail-closed),
+  // а не проваливаемся дальше к полной переиндексации: тот самый fallback «версия неизвестна →
+  // индексируем на всякий случай» и был бы вернувшимся 750-850% CPU, просто по новой причине.
+  // Не помечаем historyId как проиндексированный — эта же вкладка ещё раз попадёт под индексацию
+  // при следующей навигации в рамках сессии (мост к тому моменту уже будет готов) или её подберёт
+  // HistoryContentBackfill.ts по явному действию пользователя.
+  if (currentModelVersion === null) {
+    console.warn(`[HistoryIndexer] версия модели неизвестна — пропускаю индексацию ${url} до следующей попытки`);
+    return;
+  }
+  const already = history.hasEmbeddingForVersion(historyId, currentModelVersion);
+  if (already) {
+    indexedHistoryIds.add(historyId); // закэшировать — не спрашивать БД повторно в этом процессе
+    return;
+  }
 
   // Шумные для эмбеддинга страницы (логин/OAuth/голый домен/техническая заглушка, см.
   // HistoryNoiseFilter.ts) — в history остаются как есть, просто не индексируем вектором.

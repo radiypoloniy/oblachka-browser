@@ -89,6 +89,27 @@ export class HistoryManager {
     }
   }
 
+  // Для HistoryIndexer.ts::indexVisit — источник истины «уже проиндексирована ли эта страница
+  // ТЕКУЩЕЙ версией модели», вместо in-memory Set, который не переживает рестарт (живой замер:
+  // 750-850% CPU на 40с при рестарте с 10 закреплёнными вкладками — каждая переиндексировалась
+  // заново, хотя содержимое не менялось). history_id — PRIMARY KEY history_embeddings (см. #setup
+  // ниже), поэтому WHERE history_id=? — точечный поиск по уже существующему PK-индексу, не полный
+  // скан; отдельная миграция/индекс не нужны. На пару (history_id, currentVersion) в этой таблице
+  // всегда максимум одна строка (PK не составной) — ON CONFLICT(history_id) DO UPDATE в
+  // saveEmbedding() перезаписывает старую версию новой, не добавляет вторую строку.
+  hasEmbeddingForVersion(historyId: number, modelVersion: string): boolean {
+    if (!this.#db) return false;
+    try {
+      const row = this.#db.prepare(`
+        SELECT 1 FROM history_embeddings WHERE history_id = ? AND model_version = ?
+      `).get(historyId, modelVersion);
+      return row !== undefined;
+    } catch (e) {
+      console.warn('[History] hasEmbeddingForVersion error:', (e as Error).message);
+      return false;
+    }
+  }
+
   // Блок 6: все проиндексированные записи с векторами для brute-force top-k поиска —
   // на объёме ~700 строк полный скан дешевле, чем инфраструктура ANN-индекса ради этого.
   getAllEmbeddings(modelVersion?: string): Array<{ id: number; url: string; title: string; lastVisit: number; visitCount: number; vector: Buffer; dims: number; modelVersion: string }> {
