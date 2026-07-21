@@ -32,6 +32,11 @@ function l2NormalizeInPlace(v: Float32Array): void {
   if (norm > 1e-12) for (let i = 0; i < v.length; i++) v[i]! /= norm
 }
 
+// Индексация истории — фоновая работа за спиной пользователя, не должна забирать большую
+// часть машины во время активного браузинга. Живой замер: 8 потоков на 12-ядерной машине
+// давали 800% CPU (66% системы) устойчиво почти минуту при открытии нескольких вкладок.
+const EMBED_MAX_THREADS = 3
+
 async function init(
   modelId: string,
   dtype: string,
@@ -41,11 +46,11 @@ async function init(
   let activeBackend: 'webgpu' | 'wasm' = 'wasm'
 
   // Включаем WASM-многопоточность ORT если SAB доступен.
-  // Оставляем 1 ядро UI/main; берём остальные (не больше 8).
+  // Оставляем 1 ядро UI/main; берём остальные, но не больше EMBED_MAX_THREADS.
   const sabAvail  = typeof SharedArrayBuffer !== 'undefined'
   const coi       = typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : false
   const hwThreads = navigator.hardwareConcurrency ?? 1
-  const ortThreads = sabAvail ? Math.max(1, Math.min(hwThreads - 1, 8)) : 1
+  const ortThreads = sabAvail ? Math.min(Math.max(hwThreads - 1, 1), EMBED_MAX_THREADS) : 1
   if (sabAvail && device !== 'webgpu') {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
