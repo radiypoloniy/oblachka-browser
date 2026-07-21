@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import type { HistoryEntry, HistoryClearPeriod } from '../shared/ipc';
 import { isSearchResultUrl } from '../shared/searchEngines';
+import { normalizeForOmnibox } from '../shared/frecency';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
 // Грузим динамически, чтобы браузер запускался даже без C++ инструментов.
@@ -304,6 +305,43 @@ export class HistoryManager {
       console.warn('[History] getAllContentChunks error:', (e as Error).message);
       return [];
     }
+  }
+
+  // Для кластеризации вкладок (сниппет первого чанка каждой открытой вкладки без повторного
+  // извлечения текста страницы) — один запрос вместо N обращений в цикле. Сопоставление по URL,
+  // не historyId: у вызывающего есть только url живой вкладки. history.url — UNIQUE (см. #setup
+  // ниже) → это уже индекс, WHERE ... IN (...) на десятки значений идёт по нему, не полным
+  // сканом. Текст обрезан до 300 символов прямо в SQL (substr) — не тащить килобайты через
+  // границу FFI ради сниппета.
+  // ⚠️ Сопоставление IN идёт по СЫРЫМ url, как записаны в history.url при визите (recordVisit
+  // ничего не нормализует — см. её же тело выше). Если переданный url чуть отличается от
+  // сохранённого (другой utm/слэш/фрагмент), матча не будет. Возвращаемый Map намеренно ключуется
+  // normalizeForOmnibox(row.url) — тем же нормализованным ключом, что уже используют
+  // Toolbar.tsx/HistorySearch.ts (см. shared/frecency.ts), а не сырым url — вызывающая сторона
+  // должна нормализовать СВОЙ ключ поиска так же перед обращением к Map.
+  // На одном historyId может быть больше одной строки chunk_index=0 (старая версия эмбеддинга +
+  // '+prefixed' — обе хранятся, пока explicit не удалены), ORDER BY indexed_at DESC + "не
+  // перезаписывать уже увиденный ключ" ниже оставляет самую свежую версию.
+  getFirstChunksByUrls(urls: string[]): Map<string, string> {
+    const result = new Map<string, string>();
+    if (!this.#db || urls.length === 0) return result;
+    try {
+      const placeholders = urls.map(() => '?').join(',');
+      const rows = this.#db.prepare(`
+        SELECT h.url AS historyUrl, substr(c.text, 1, 300) AS text
+        FROM history h
+        JOIN history_content_chunks c ON c.history_id = h.id AND c.chunk_index = 0
+        WHERE h.url IN (${placeholders})
+        ORDER BY c.indexed_at DESC
+      `).all(...urls) as Array<{ historyUrl: string; text: string }>;
+      for (const row of rows) {
+        const key = normalizeForOmnibox(row.historyUrl);
+        if (!result.has(key)) result.set(key, row.text);
+      }
+    } catch (e) {
+      console.warn('[History] getFirstChunksByUrls error:', (e as Error).message);
+    }
+    return result;
   }
 
   searchContentChunksFts(query: string, modelVersion: string, limit: number): HistoryContentChunk[] {
