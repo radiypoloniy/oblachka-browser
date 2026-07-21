@@ -274,6 +274,8 @@ export const IPC = {
   SETTINGS_SET_SEARCH_ENGINE: 'settings:set-search-engine', // renderer → main: сменить движок поиска
   SETTINGS_GET_HUB_MODE:      'settings:get-hub-mode',      // renderer → main: текущий HubMode
   SETTINGS_SET_HUB_MODE:      'settings:set-hub-mode',      // renderer → main: сменить режим Hub (плитки/AI)
+  SETTINGS_GET_MODEL_LOAD_MODE: 'settings:get-model-load-mode', // renderer → main: текущий ModelLoadMode
+  SETTINGS_SET_MODEL_LOAD_MODE: 'settings:set-model-load-mode', // renderer → main: сменить режим загрузки модели
   // Ширина AI-дока (заход 3 — поповер → правый split-view-подобный док, см. AiPanelManager.ts).
   // Читается один раз при маунте chrome; живой ресайз идёт отдельным ad-hoc каналом
   // ai-panel:resize (не здесь — остальная AI-panel-механика уже сознательно вне typed-контракта).
@@ -731,6 +733,14 @@ export type BergamotStatus = 'loading' | 'ready' | 'unavailable';
 // ── AI-чат на Hub ───────────────────────────────────────────────────────────
 export type HubMode = 'tiles' | 'ai';
 
+// Режим загрузки GGUF-модели (SettingsManager.ts): 'startup' — прогрев сразу после показа окна
+// (см. main.ts, warmupTranslation), модель занимает ~6 ГБ RAM постоянно, но первый AI-ответ
+// быстрый. 'on-demand' (дефолт) — прогрев откладывается до явного намерения пользователя
+// поработать с AI (открытие AI-панели/хаба в режиме AI, см. main.ts), экономит память, но первый
+// ответ ждёт полную загрузку модели (~30с). Не путать с Bergamot — тот всегда греется безусловно
+// (свой лёгкий движок, к GGUF отношения не имеет).
+export type ModelLoadMode = 'startup' | 'on-demand';
+
 export interface HubChatMessage {
   role: 'user' | 'assistant';
   text: string;
@@ -1096,6 +1106,8 @@ export interface OblakoApi {
   setSearchEngine(id: SearchEngineId): Promise<void>;
   getHubMode(): Promise<HubMode>;
   setHubMode(mode: HubMode): Promise<void>;
+  getModelLoadMode(): Promise<ModelLoadMode>;
+  setModelLoadMode(mode: ModelLoadMode): Promise<void>;
 
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
   // send — fire-and-forget, ответ идёт стримом через onHubChatChunk/onHubChatResult.

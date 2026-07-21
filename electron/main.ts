@@ -24,7 +24,7 @@ import * as ModelCatalog from './ModelCatalog';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -232,6 +232,25 @@ async function warmupBergamot(): Promise<void> {
   }
 }
 
+// Ленивый прогрев в режиме modelLoadMode==='on-demand' (см. SettingsManager.ts) — только по
+// явному намерению пользователя поработать с AI (открытие AI-панели/хаба в режиме AI, см. вызовы
+// ниже). НЕ вызывается с путей перевода выделения/страницы/реранка в умном поиске — те грузят
+// модель по факту вызова через ensureLoaded(), как и раньше; иначе «ленивый» режим срабатывал бы,
+// когда пользователь ничего от AI не просил (например, на первом же поиске по истории).
+// warmupTranslation() сама дедуплицирует конкурентные вызовы (module-level loadPromise в
+// TranslationService.ts) — повторное открытие панели/хаба не запускает вторую загрузку.
+// Тот же guard на пустой реестр моделей, что у стартового прогрева (см. showWindow ниже) — не
+// сыпать NO_MODEL_INSTALLED в консоль на каждое открытие панели без установленной модели.
+function maybeLazyWarmupOnDemand(): void {
+  if (settings.getModelLoadMode() !== 'on-demand') return;
+  if (!ModelRegistry.getDefault()) return;
+  void warmupTranslation();
+}
+
+// См. комментарий у SETTINGS_GET_HUB_MODE — отличает пассивное восстановление сессии (первый
+// запрос режима хаба за процесс) от реальной навигации пользователя (все последующие).
+let hubModeQueried = false;
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -290,10 +309,15 @@ function createWindow() {
       // дождётся ЭТОЙ ЖЕ загрузки, а не запустит вторую.
       setTimeout(() => {
         if (!thisWin.isDestroyed()) {
+          // modelLoadMode==='on-demand' (дефолт, см. SettingsManager.ts) — прогрев на старте
+          // пропускается, модель поднимется по явному намерению пользователя (см.
+          // maybeLazyWarmupOnDemand выше, вызовы у AI_PANEL_TOGGLE/SETTINGS_*_HUB_MODE ниже).
           // Без модели в реестре (ModelRegistry.ts) ensureLoaded() внутри warmupTranslation()
           // гарантированно упадёт с NO_MODEL_INSTALLED — не дёргаем её вовсе, чтобы не сыпать
           // исключением в консоль на каждом старте без установленной модели.
-          if (ModelRegistry.getDefault()) {
+          if (settings.getModelLoadMode() !== 'startup') {
+            console.log('[startup] modelLoadMode=on-demand — прогрев Qwen отложен до открытия AI');
+          } else if (ModelRegistry.getDefault()) {
             void warmupTranslation();
           } else {
             console.log('[startup] GGUF-модель не установлена — прогрев Qwen пропущен');
@@ -776,9 +800,26 @@ function registerIpc() {
     settings.setSearchEngine(id);
     tabs?.setSearchEngine(id);
   });
-  ipcMain.handle(IPC.SETTINGS_GET_HUB_MODE, () => settings.getHubMode());
-  ipcMain.handle(IPC.SETTINGS_SET_HUB_MODE, (_e, mode: HubMode) => settings.setHubMode(mode));
+  ipcMain.handle(IPC.SETTINGS_GET_HUB_MODE, () => {
+    const mode = settings.getHubMode();
+    // Hub.tsx зовёт этот геттер на каждом маунте (=каждое открытие хаба, компонент размонтируется
+    // при уходе с хаба) — «открытие хаба в режиме AI» из брифа лазит именно сюда. Живая проверка
+    // поймала реальную гонку: САМЫЙ ПЕРВЫЙ такой вызов процесса — не пользовательское намерение,
+    // а пассивное восстановление сессии (activeRef может оказаться хабом, hubMode — 'ai' с
+    // прошлого раза) — без этой отсечки прогрев запускался бы на каждом старте с хабом-в-AI-режиме
+    // в сессии, тот самый сценарий, который modelLoadMode='on-demand' обязан избегать (проверка 1).
+    // Второй и все последующие вызовы — уже реальная навигация пользователя в рамках этого запуска.
+    if (mode === 'ai' && hubModeQueried) maybeLazyWarmupOnDemand();
+    hubModeQueried = true;
+    return mode;
+  });
+  ipcMain.handle(IPC.SETTINGS_SET_HUB_MODE, (_e, mode: HubMode) => {
+    settings.setHubMode(mode);
+    if (mode === 'ai') maybeLazyWarmupOnDemand();
+  });
   ipcMain.handle(IPC.SETTINGS_GET_AI_PANEL_WIDTH, () => settings.getAiPanelWidth());
+  ipcMain.handle(IPC.SETTINGS_GET_MODEL_LOAD_MODE, () => settings.getModelLoadMode());
+  ipcMain.handle(IPC.SETTINGS_SET_MODEL_LOAD_MODE, (_e, mode: ModelLoadMode) => settings.setModelLoadMode(mode));
 
   // Выбор движка перевода страниц (Settings.tsx, секция AI) — persist + сразу применяется к
   // registry (см. TranslationEngineRegistry.ts::setActiveEngineId), без перезапуска приложения.
@@ -1093,6 +1134,7 @@ function registerIpc() {
     if (!win) return false;
     const open = toggleAiPanel(win);
     relayoutFindBar(); // свободная ширина под FindBar изменилась (см. FindBarManager.ts::computeBounds)
+    if (open) maybeLazyWarmupOnDemand(); // явное намерение — открытие AI-панели
     return open;
   });
 
