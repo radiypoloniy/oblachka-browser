@@ -61,6 +61,11 @@ import { startBackfill, cancelBackfill, setBackfillProgressListener } from './Hi
 import { startContentBackfill, cancelContentBackfill, setContentBackfillProgressListener } from './HistoryContentBackfill';
 import type { BackfillProgress } from '../shared/ipc';
 import { searchHistorySemantic, searchHistorySmart } from './HistorySearch';
+import {
+  suggestGroups,
+  setTabManager as setOrganizerTabManager,
+  setHistoryManager as setOrganizerHistoryManager,
+} from './TabOrganizer';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -165,6 +170,7 @@ let omniboxBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
 let isShuttingDown = false;
 const adblock     = new AdBlockManager();
 const history     = new HistoryManager();
+setOrganizerHistoryManager(history);
 const bookmarks   = new BookmarkManager();
 // Импорт закладок — список создаётся один раз, isAvailable() зовётся заново на каждый
 // BOOKMARK_IMPORT_LIST_SOURCES (профиль браузера-источника может появиться/пропасть между вызовами).
@@ -491,6 +497,10 @@ function createWindow() {
   // Аналогично — PageTranslateManager читает WebContents активной вкладки для обхода DOM/
   // применения перевода (executeJavaScript), не управляет вкладками.
   setPageTranslateTabManager(tabs);
+  // TabOrganizer.ts (Qwen-группировка вкладок) — читает sidebarNodesSnapshot()/snapshot(),
+  // управлением вкладок не занимается (применение — через уже существующий organizeApply/
+  // TabManager.applyOrganize()).
+  setOrganizerTabManager(tabs);
   onPageTranslateStateChanged((state) => {
     chromeView?.webContents.send(IPC.PAGE_TRANSLATE_STATE_CHANGED, state);
   });
@@ -1128,6 +1138,7 @@ function registerIpc() {
   // AI-группировка вкладок (Phase 4)
   ipcMain.handle(IPC.TABS_ORGANIZE_APPLY,    (_e, clusters: OrganizeCluster[]) => tabs?.applyOrganize(clusters));
   ipcMain.handle(IPC.TABS_ORGANIZE_ROLLBACK, ()                                => tabs?.rollbackOrganize());
+  ipcMain.handle(IPC.TABS_SUGGEST_GROUPS,    ()                                => suggestGroups());
 
   // Правая AI-панель (см. AiPanelManager.ts)
   ipcMain.handle(IPC.AI_PANEL_TOGGLE, () => {

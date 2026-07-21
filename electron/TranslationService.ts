@@ -583,6 +583,21 @@ export async function rerankHistoryCandidates(query: string, candidates: RerankC
   return result
 }
 
+// Лимит вывода для группировки вкладок (TabOrganizer.ts) — формат компактный (построчно
+// "Название: 1,4,7"), даже на 8-10 групп с запасом укладывается в этот бюджет. Того же порядка,
+// что RERANK_MAX_TOKENS выше — обе задачи возвращают короткий структурированный текст, не прозу.
+const ORGANIZE_MAX_TOKENS = 500
+
+// Тонкая обёртка над runPrompt для TabOrganizer.ts — та же труба (withQwenQueue внутри runPrompt),
+// что перевод/умный поиск/чат, отдельного способа звать модель не заводим. В отличие от
+// rerankHistoryCandidates выше НЕ вызывает ensureLoaded() сама — TabOrganizer.ts обязан
+// проверить getLoadedModelId()!==null ДО вызова (гейт MODEL_NOT_LOADED: группировка вкладок не
+// должна триггерить холодную загрузку модели по своей инициативе, в отличие от умного поиска).
+export async function runTabOrganizePrompt(prompt: string): Promise<string> {
+  const { out } = await runPrompt(prompt, ORGANIZE_MAX_TOKENS)
+  return out
+}
+
 // Один сегмент — одно предложение (см. splitSentences). 300 токенов — запас x2-3 над типичной
 // длиной перевода одного предложения (было 150 — обрывало редкие длинные/составные предложения
 // на полуслове). Каждый сегмент — независимый прогон (своя LlamaChatSession, own history пустая),

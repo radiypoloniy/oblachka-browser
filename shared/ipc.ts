@@ -75,12 +75,20 @@ export interface SyncState {
   hasOrganizeSnapshot: boolean; // true = доступен откат последней AI-группировки
 }
 
-// Один предложенный кластер от ClusteringService → TabManager.applyOrganize().
+// Один предложенный кластер от ClusteringService/TabOrganizer.ts → TabManager.applyOrganize().
 export interface OrganizeCluster {
   nodeIds:   string[];                       // tabId (single) или leftTabId (split-pair)
   nodeTypes: ('single' | 'split-pair')[];   // по позиции
   label:     string;                         // название группы
 }
+
+// Результат TabOrganizer.ts::suggestGroups() — та же форма кластеров (OrganizeCluster), что уже
+// умеет применять TabManager.applyOrganize()/renderer-превью, плюс явный отказ без исключения:
+// getLoadedModelId()===null — обычный, ожидаемый исход (модель не загружена в режиме on-demand),
+// не ошибка выполнения.
+export type OrganizeProposal =
+  | { ok: true; clusters: OrganizeCluster[] }
+  | { ok: false; code: 'MODEL_NOT_LOADED' };
 
 // Геометрия "дырки" под контент в координатах окна (CSS-пиксели).
 // Renderer измеряет область и сообщает main, куда класть WebContentsView.
@@ -217,6 +225,7 @@ export const IPC = {
   // AI-группировка вкладок (Phase 4)
   TABS_ORGANIZE_APPLY:    'tabs:organize-apply',    // renderer → main: OrganizeCluster[] → сгруппировать
   TABS_ORGANIZE_ROLLBACK: 'tabs:organize-rollback', // renderer → main: откатить последнюю группировку
+  TABS_SUGGEST_GROUPS:    'tabs:suggest-groups',    // renderer → main: TabOrganizer.ts::suggestGroups() → OrganizeProposal
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
@@ -1047,6 +1056,10 @@ export interface OblakoApi {
   // AI-группировка вкладок (Phase 4)
   organizeApply(clusters: OrganizeCluster[]): Promise<void>;
   organizeRollback(): Promise<void>;
+  // TabOrganizer.ts::suggestGroups() — Qwen-группировка открытых вкладок (заменяет
+  // ClusteringService.ts как источник предложений, тот же формат применения через
+  // organizeApply выше). Request/response, не fire-and-forget — как searchHistorySmart.
+  suggestGroups(): Promise<OrganizeProposal>;
 
   // Правая AI-панель (заход 3 — правый split-view-подобный док, см. AiPanelManager.ts)
   toggleAiPanel(): Promise<boolean>;
