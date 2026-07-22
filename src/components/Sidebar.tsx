@@ -548,10 +548,18 @@ function SortableGroupBlock({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1, flexShrink: 0 }}
     >
-      {/* Заголовок группы — drag handle (listeners отключены при переименовании) */}
+      {/* Заголовок группы — drag handle (listeners отключены при переименовании). Клик по всей
+          строке тоже тогглит collapsed, не только иконка-стрелка (см. её onClick ниже) — тот же
+          элемент одновременно источник onClick и drag handle, как у TabRow/SortableTabRow: PointerSensor
+          с activationConstraint.distance (см. sensors выше) сам разводит клик и драг, отдельного
+          «только что было перетаскивание» флага для этого в проекте нет и не нужен — клик без
+          сдвига курсора не становится драгом, а реальный драг не долетает как click. Отключаем
+          вместе с listeners при переименовании — иначе клик в поле ради позиционирования курсора
+          тоже сворачивал бы группу. */}
       <div
         {...attributes}
         {...(isRenaming ? {} : listeners)}
+        onClick={isRenaming ? undefined : () => { void window.oblako.toggleGroupCollapse(group.id); }}
         onContextMenu={(e) => {
           if (isRenaming) return;
           e.preventDefault();
