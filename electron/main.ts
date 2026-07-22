@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 
 // ДО app.whenReady() — Electron требует это до события ready.
@@ -655,6 +655,15 @@ function applyVpnProxy(): void {
   void session.defaultSession.setProxy({ proxyRules });
 }
 
+// Для «Скопировать содержимое» группы (GROUP_SHOW_MENU) — title/url там из чужих страниц,
+// не доверенный ввод; экранируем перед склейкой в HTML-строку для буфера обмена.
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function escapeHtmlAttr(s: string): string {
+  return escapeHtml(s).replace(/"/g, '&quot;');
+}
+
 // ── IPC: renderer (хром) управляет движком вкладок ──
 function registerIpc() {
   ipcMain.handle(IPC.SYNC_GET, () => ({
@@ -1196,10 +1205,34 @@ function registerIpc() {
         label: 'Свернуть / развернуть',
         click: () => tabs!.toggleGroupCollapse(groupId),
       },
+      {
+        label: 'Скопировать содержимое',
+        click: () => {
+          const contents = tabs!.getGroupContents(groupId);
+          if (contents.length === 0) return;
+          // Оба формата одним clipboard.write() — атомарно, оба представления сразу доступны любому
+          // приёмнику: html для редакторов с форматированием, text — Markdown-подобный список для
+          // обычных текстовых полей. Экранируем title — заголовок страницы задаёт сам сайт,
+          // не доверенный ввод для сборки HTML-строки руками.
+          // <p> вместо <br><br> — двойной <br> в HTML даёт неряшливый сдвоенный отступ, абзацы
+          // разделяются самим редактором единообразно с тем, как он разделяет свои собственные.
+          const html = contents
+            .map(({ url, title }) => `<p><a href="${escapeHtmlAttr(url)}">${escapeHtml(title)}</a></p>`)
+            .join('');
+          // '\n\n' (не '\n') — пустая строка между ссылками при вставке в обычное текстовое поле;
+          // join не оставляет заключающего разделителя, поэтому хвостовой пустой строки в конце нет.
+          const text = contents.map(({ url, title }) => `[${title}](${url})`).join('\n\n');
+          clipboard.write({ text, html });
+        },
+      },
       { type: 'separator' },
       {
         label: 'Расформировать группу',
         click: () => tabs!.disbandGroup(groupId),
+      },
+      {
+        label: 'Закрыть группу и вкладки',
+        click: () => tabs!.closeGroupAndTabs(groupId),
       },
     ];
     Menu.buildFromTemplate(items).popup({ window: win });

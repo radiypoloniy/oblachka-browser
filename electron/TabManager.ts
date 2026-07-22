@@ -1690,6 +1690,35 @@ export class TabManager {
     return false;
   }
 
+  // {url,title} каждой листовой вкладки группы (рекурсивно, split-pair — обе половины) — для
+  // «Скопировать содержимое» в ПКМ-меню группы (main.ts::GROUP_SHOW_MENU). title падает на url,
+  // если страница ещё не отдала заголовок (см. #tabTitle) — пустой текст ссылки хуже, чем URL дважды.
+  getGroupContents(groupId: string): Array<{ url: string; title: string }> {
+    const group = this.#findGroupById(groupId);
+    if (!group) return [];
+    const result: Array<{ url: string; title: string }> = [];
+    for (const tab of this.#flattenNodes(group.children)) {
+      const url = this.#tabUrl(tab);
+      if (!/^https?:\/\//i.test(url)) continue; // псевдо-вкладки/ещё не открывшиеся сюда попасть не должны, но не доверяем вслепую
+      result.push({ url, title: this.#tabTitle(tab) || url });
+    }
+    return result;
+  }
+
+  // Закрывает группу целиком: каждую листовую вкладку — через штатный closeTab() (снимает
+  // WebContentsView, разбирает split-pair, чистит tabMap), узел группы не трогаем напрямую —
+  // closeTab() уже вызывает #pruneEmptyGroups(this.nodes) на каждом вызове, последний оставшийся
+  // ребёнок уберёт опустевшую группу сам. Снимок листьев берём ДО цикла: closeTab мутирует
+  // group.children на каждой итерации (в т.ч. может разобрать split-pair на два SingleNode).
+  // closeTab() также вызывает clearOrganizeSnapshot() на каждом шаге — organizeRollback() после
+  // этого недоступен (hasOrganizeSnapshot()===false), «Вернуть» не спутать с отменой закрытия.
+  closeGroupAndTabs(groupId: string): void {
+    const group = this.#findGroupById(groupId);
+    if (!group) return;
+    const tabs = this.#flattenNodes(group.children);
+    for (const tab of tabs) this.closeTab(tab.id);
+  }
+
   // Перестановка детей внутри группы (аналог reorderTabs для group.children).
   reorderGroupChildren(groupId: string, orderedIds: string[]): void {
     const group = this.#findGroupById(groupId);
