@@ -2246,7 +2246,7 @@ export class TabManager {
       if (children.length === 0) continue;
       newGroups.push({
         type: 'group', id: randomUUID(),
-        label: c.label, color: null, collapsed: false, children,
+        label: c.label, color: null, collapsed: true, children,
       });
     }
 
