@@ -17,12 +17,6 @@ import type { ClusterProposal } from './services/ClusteringService';
 
 const HUB_ID = 'hub';
 
-// Порог переключения текста индикатора «Навести порядок» с тёплого («Читаю вкладки…») на холодный
-// («Модель загружается…», см. handleOrganize) — чуть выше типичных ~3с тёплого прогона (замер
-// TabOrganizer.ts на 20 вкладках, уже загруженная модель), чтобы длинное сообщение про холодную
-// загрузку не мелькало зря, когда модель и так уже в памяти.
-const ORGANIZE_COLD_START_THRESHOLD_MS = 4000;
-
 // Резерв для inline-prompt разрешений (высота панели 56px + 8px зазор).
 const PERMISSION_PROMPT_RESERVE = 64;
 
@@ -148,13 +142,11 @@ export default function App() {
   const [organizeState, setOrganizeState] = useState<'idle' | 'computing' | 'preview' | 'model-error'>('idle');
   const [organizeProposal, setOrganizeProposal] = useState<ClusterProposal[]>([]);
   const [hasOrganizeSnapshot, setHasOrganizeSnapshot] = useState(false);
-  // Пока идёт 'computing', suggestGroups() не сообщает о статусе загрузки модели ДО того, как сам
-  // ответ придёт (modelWasCold приезжает вместе с результатом) — поэтому UI сперва показывает
-  // «тёплый» текст, а если ответ не пришёл за ORGANIZE_COLD_START_THRESHOLD_MS, переключается на
-  // текст про холодную загрузку модели. organizeLongWaitTimerRef — id таймера, чтобы погасить его,
-  // если ответ пришёл раньше (или пользователь отменил) и не дать тексту переключиться зря.
+  // Какой текст показывать в 'computing' — спрашиваем факт (getLoadedModelId()) ДО вызова
+  // suggestGroups(), а не гадаем по времени: таймер на фиксированный порог однажды дал ложное
+  // срабатывание (тёплый прогон уложился в 4070мс при пороге 4000мс — сообщение о загрузке начало
+  // бы мелькать при уже тёплой модели). См. handleOrganize.
   const [organizeLongWait, setOrganizeLongWait] = useState(false);
-  const organizeLongWaitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // desired — что выбрал пользователь (идёт в автосейв, когда он появится).
   // effective — что реально отображается (может быть принудительно true при узком окне).
@@ -498,12 +490,14 @@ export default function App() {
   const handleOrganize = useCallback(() => {
     if (organizeState === 'computing') return
     setOrganizeState('computing');
-    setOrganizeLongWait(false);
-    if (organizeLongWaitTimerRef.current) clearTimeout(organizeLongWaitTimerRef.current);
-    organizeLongWaitTimerRef.current = setTimeout(() => setOrganizeLongWait(true), ORGANIZE_COLD_START_THRESHOLD_MS);
-
-    void window.oblako.suggestGroups().then((proposal) => {
-      if (organizeLongWaitTimerRef.current) { clearTimeout(organizeLongWaitTimerRef.current); organizeLongWaitTimerRef.current = null; }
+    // Спрашиваем факт (была ли модель загружена ДО вызова), а не гадаем по времени — см. комментарий
+    // у organizeLongWait. Если модель загрузится между этим вызовом и suggestGroups() (маловероятно,
+    // но возможно) — покажем длинное сообщение зря на секунду-другую, ответ придёт быстро и оно
+    // само исчезнет; ложная тревога в редком случае лучше, чем мелькание в обычном.
+    void window.oblako.getLoadedModelId().then((loadedId) => {
+      setOrganizeLongWait(loadedId === null);
+      return window.oblako.suggestGroups();
+    }).then((proposal) => {
       if (!proposal.ok) { setOrganizeState('model-error'); return; }
       // suggestGroups() возвращает OrganizeCluster[] (без titles) — превью в Sidebar рисует titles
       // (см. ClusterProposal), достаём их здесь же из актуального списка вкладок.
@@ -517,7 +511,6 @@ export default function App() {
       setOrganizeProposal(proposals);
       setOrganizeState('preview');
     }).catch(() => {
-      if (organizeLongWaitTimerRef.current) { clearTimeout(organizeLongWaitTimerRef.current); organizeLongWaitTimerRef.current = null; }
       setOrganizeState('model-error');
     });
   }, [organizeState]);
