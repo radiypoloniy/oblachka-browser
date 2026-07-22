@@ -192,7 +192,11 @@ export const IPC = {
   HISTORY_DELETE: 'history:delete',  // renderer → main: удалить запись (id: number)
   HISTORY_CLEAR:  'history:clear',   // renderer → main: очистить за период ('hour'|'day'|'week'|'all')
   HISTORY_OPEN:   'history:open',    // main → renderer: открыть панель истории (Ctrl+H)
-  // Заход G, блок 7: векторный поиск для омнибокса (см. electron/HistorySearch.ts, блок 6).
+  // МЁРТВЫЙ, удаляется вместе с эмбеддингами (этап D): омнибокс больше не показывает семантические
+  // подсказки (диагностика — «магниты» без порога отделения от шума, см. Toolbar.tsx::buildSuggestions),
+  // а других вызывающих у этого канала не было. Канал/функция (HistorySearch.ts::searchHistorySemantic)
+  // намеренно НЕ удалены в этом коммите — вырезаются вместе с EmbedClient.ts на этапе полного
+  // удаления эмбеддингов, не раньше.
   HISTORY_SEARCH_SEMANTIC: 'history:search-semantic', // renderer → main: query -> SemanticSearchResult[]
   // Умный поиск (Qwen-реранк top-k кандидатов от searchHistorySemantic) — только по явному
   // действию (Enter), НЕ на каждый keystroke, см. HistorySearch.ts::searchHistorySmart.

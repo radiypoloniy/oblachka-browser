@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star } from 'lucide-react';
-import type { TabState, HistoryEntry, SuggestDropdownItem, SemanticSearchResult, PasswordIndicatorState, PageTranslateState, PageTranslateProgress } from '../../shared/ipc';
+import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
@@ -541,28 +541,14 @@ export default function Toolbar({
     // ловится там и превращается в []), но изоляция здесь дублируется намеренно: buildSuggestions
     // не должен зависеть от внутренней гарантии другого модуля, чтобы сбой suggest-API НИ ПРИ
     // КАКИХ обстоятельствах не уронил историю/вкладки.
-    // Заход G, блок 7: семантический поиск — третья ветка в том же allSettled, та же изоляция
-    // (embed-мост может отвалиться по таймауту/недоступности chromeView — не должен уронить
-    // ни обычную историю, ни живые подсказки).
-    // ⚠️ Promise.allSettled ждёт САМУЮ МЕДЛЕННУЮ ветку — без обёртки ниже холодный старт
-    // эмбеддинг-модели (3-6с, см. замеры захода F) держал бы показ УЖЕ готовых history/suggest
-    // результатов, хотя раньше омнибокс отвечал мгновенно. Таймаут — только на семантическую
-    // ветку: если не успела за 400мс, просто не участвует в ЭТОМ показе (не отменяет сам запрос —
-    // он может тихо доработать в фоне, результат достанется следующему keystroke, если такой будет).
-    const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> =>
-      Promise.race([p, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
-
     let histEntries: HistoryEntry[] = [];
     let suggestPhrases: string[] = [];
-    let semanticEntries: SemanticSearchResult[] = [];
-    const [histResult, suggestResult, semanticResult] = await Promise.allSettled([
+    const [histResult, suggestResult] = await Promise.allSettled([
       window.oblako.searchHistory(query),
       window.oblako.fetchSuggestions(query),
-      withTimeout(window.oblako.searchHistorySemantic(query), 400, [] as SemanticSearchResult[]),
     ]);
     if (histResult.status === 'fulfilled') histEntries = histResult.value;
     if (suggestResult.status === 'fulfilled') suggestPhrases = suggestResult.value;
-    if (semanticResult.status === 'fulfilled') semanticEntries = semanticResult.value;
     if (seq !== suggestSeqRef.current) return;
 
     const now = Date.now();
@@ -588,24 +574,6 @@ export default function Toolbar({
       const key = normalizeForOmnibox(e.url);
       const cur = byUrl.get(key);
       if (!cur || scoreEntry(e, now) > scoreEntry(cur, now)) byUrl.set(key, e);
-    }
-
-    // Заход G, блок 7: семантические результаты сливаются в тот же byUrl-конвейер — дедуп по
-    // URL срабатывает автоматически (если страница уже есть от обычного поиска по истории,
-    // семантическое совпадение её не дублирует). Порог 0.5 — общие короткие заголовки
-    // (логины, главные страницы) не должны лезть во всё подряд, как показал живой тест блока 6:
-    // короткие тайтлы вроде "ChatGPT"/"Twitch"/"Авторизация" систематически давали высокий
-    // cosine независимо от смысла запроса — отсечка убирает часть таких ложных срабатываний,
-    // не устраняя саму причину (сигнал title+hostname), это осталось на будущее.
-    const SEMANTIC_MIN_SCORE = 0.5;
-    const semanticKeys = new Set<string>();
-    for (const s of semanticEntries) {
-      if (s.score < SEMANTIC_MIN_SCORE) continue;
-      const key = normalizeForOmnibox(s.url);
-      semanticKeys.add(key);
-      const cur = byUrl.get(key);
-      const asEntry: HistoryEntry = { id: s.id, url: s.url, title: s.title, lastVisit: s.lastVisit, visitCount: s.visitCount };
-      if (!cur || scoreEntry(asEntry, now) > scoreEntry(cur, now)) byUrl.set(key, asEntry);
     }
 
     // Матч «на границе слова» — то же, что делают HistoryQuickProvider в Chromium и
@@ -655,15 +623,13 @@ export default function Toolbar({
       if (title.startsWith(q))                 return 5; // префикс заголовка
       if (matchesAtWordBoundary(hostname, q) || matchesAtWordBoundary(title, q)) return 4; // слово в домене/заголовке
       if (pathLongEnough && matchesAtWordBoundary(pathname, q)) return 3; // слово в пути
-      // Семантическое совпадение (заход G, блок 7) — ниже «настоящих» текстовых совпадений (3-6).
-      if (semanticKeys.has(normalizeForOmnibox(e.url))) return 2;
       // Живой фидбэк («пусть меньше, но качественнее»): раньше здесь был ещё фоллбэк —
       // вхождение ГДЕ УГОДНО (в т.ч. посреди слова, без границы). Он и давал мусор вроде страниц
       // логина/авторизации и случайных фото из истории — их заголовки/hostname часто СОДЕРЖАТ
       // запрос как случайную подстроку (например «the» внутри «auTHEntication»), не имея к нему
       // никакого смыслового отношения. Без него страница либо совпадает по-настоящему (домен/
-      // заголовок/путь на границе слова) или семантически, либо не показывается вообще — короче
-      // список, но каждая строка в нём объяснима.
+      // заголовок/путь на границе слова), либо не показывается вообще — короче список, но каждая
+      // строка в нём объяснима.
       return 0; // вообще ничего не совпало — отфильтровываем
     }
 
