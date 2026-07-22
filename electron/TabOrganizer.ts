@@ -147,16 +147,15 @@ function parseAndValidate(raw: string, unique: Candidate[]): OrganizeCluster[] {
 }
 
 export async function suggestGroups(): Promise<OrganizeProposal> {
-  // Гейт: НЕ грузим модель по своей инициативе — только если она уже загружена (on-demand режим,
-  // см. SettingsManager.ts::modelLoadMode). В отличие от rerankHistoryCandidates (умный поиск),
-  // которая сама вызывает ensureLoaded() — здесь осознанно другое поведение по брифу.
-  if (getLoadedModelId() === null) {
-    return { ok: false, code: 'MODEL_NOT_LOADED' };
-  }
+  // modelWasCold фиксируется ДО вызова модели (не после) — UI использует его, чтобы решить, было ли
+  // это холодным стартом (ensureLoaded() внутри runTabOrganizePrompt ниже сама грузит модель, если
+  // её ещё нет — гейта MODEL_NOT_LOADED больше нет, группировка теперь такой же явный триггер
+  // загрузки, как открытие AI-панели, пользователь сам нажал кнопку).
+  const modelWasCold = getLoadedModelId() === null;
 
   const tabs = tabManagerRef;
   const history = historyRef;
-  if (!tabs || !history) return { ok: true, clusters: [] };
+  if (!tabs || !history) return { ok: true, clusters: [], modelWasCold };
 
   const nodes = tabs.sidebarNodesSnapshot();
   const tabStates = tabs.snapshot();
@@ -173,7 +172,11 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
     const prompt = buildPrompt(lines);
 
     console.log(`[organize] промпт (${unique.length} вкладок, ${duplicates.length} дублей):\n${prompt}`);
-    const { out: raw, stopReason } = await runTabOrganizePrompt(prompt);
+    const result = await runTabOrganizePrompt(prompt);
+    if (!result.ok) {
+      return { ok: false, error: result.error, errorCode: result.errorCode };
+    }
+    const { out: raw, stopReason } = result;
     console.log(`[organize] сырой ответ модели:\n${raw}`);
 
     // Обрыв по лимиту токенов (не eogToken) — последняя строка ответа заведомо неполная (могла
@@ -202,5 +205,5 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
     });
   }
 
-  return { ok: true, clusters };
+  return { ok: true, clusters, modelWasCold };
 }

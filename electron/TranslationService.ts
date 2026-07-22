@@ -591,16 +591,31 @@ export async function rerankHistoryCandidates(query: string, candidates: RerankC
 const ORGANIZE_MAX_TOKENS = 200
 
 // Тонкая обёртка над runPrompt для TabOrganizer.ts — та же труба (withQwenQueue внутри runPrompt),
-// что перевод/умный поиск/чат, отдельного способа звать модель не заводим. В отличие от
-// rerankHistoryCandidates выше НЕ вызывает ensureLoaded() сама — TabOrganizer.ts обязан
-// проверить getLoadedModelId()!==null ДО вызова (гейт MODEL_NOT_LOADED: группировка вкладок не
-// должна триггерить холодную загрузку модели по своей инициативе, в отличие от умного поиска).
-// stopReason пробрасывается наружу — TabOrganizer.ts должен отличить естественный конец ответа
-// (eogToken) от обрыва по лимиту токенов (ответ обрезан на полуслове, последняя строка заведомо
-// неполная).
-export async function runTabOrganizePrompt(prompt: string): Promise<{ out: string; stopReason: string }> {
-  const { out, stopReason } = await runPrompt(prompt, ORGANIZE_MAX_TOKENS)
-  return { out, stopReason }
+// что перевод/умный поиск/чат, отдельного способа звать модель не заводим. Раньше НЕ вызывала
+// ensureLoaded() сама (TabOrganizer.ts отказывал с MODEL_NOT_LOADED до вызова) — теперь, по брифу
+// «группировка — ещё один явный триггер загрузки, пользователь сам нажал кнопку», зовёт её как
+// rerankHistoryCandidates/translate() ниже. ensureLoaded() дедуплицирует конкурентные вызовы через
+// module-level loadPromise — если модель уже грузится (например, пользователь параллельно открыл
+// AI-панель), этот вызов просто дождётся ТОЙ ЖЕ загрузки, вторую не запустит.
+// Ошибка try/catch — тот же приём, что у translate()/runAiAction() выше: ModelError → { errorCode },
+// прочее → String(e). Раньше исключение при загрузке модели здесь было невозможно (гейт не пускал
+// без уже загруженной модели) — теперь возможно, и TabOrganizer.ts должен получить его как
+// значение, а не ловить необработанное исключение через IPC.
+// stopReason пробрасывается наружу при успехе — TabOrganizer.ts должен отличить естественный конец
+// ответа (eogToken) от обрыва по лимиту токенов (ответ обрезан на полуслове, последняя строка
+// заведомо неполная).
+export async function runTabOrganizePrompt(
+  prompt: string,
+): Promise<{ ok: true; out: string; stopReason: string } | { ok: false; error: string; errorCode?: ModelErrorCode }> {
+  try {
+    await ensureLoaded()
+    const { out, stopReason } = await runPrompt(prompt, ORGANIZE_MAX_TOKENS)
+    return { ok: true, out, stopReason }
+  } catch (e) {
+    console.error('[organize] error:', e)
+    if (isModelError(e)) return { ok: false, error: e.message, errorCode: e.code }
+    return { ok: false, error: String(e) }
+  }
 }
 
 // Один сегмент — одно предложение (см. splitSentences). 300 токенов — запас x2-3 над типичной

@@ -17,6 +17,12 @@ import type { ClusterProposal } from './services/ClusteringService';
 
 const HUB_ID = 'hub';
 
+// Порог переключения текста индикатора «Навести порядок» с тёплого («Читаю вкладки…») на холодный
+// («Модель загружается…», см. handleOrganize) — чуть выше типичных ~3с тёплого прогона (замер
+// TabOrganizer.ts на 20 вкладках, уже загруженная модель), чтобы длинное сообщение про холодную
+// загрузку не мелькало зря, когда модель и так уже в памяти.
+const ORGANIZE_COLD_START_THRESHOLD_MS = 4000;
+
 // Резерв для inline-prompt разрешений (высота панели 56px + 8px зазор).
 const PERMISSION_PROMPT_RESERVE = 64;
 
@@ -142,6 +148,13 @@ export default function App() {
   const [organizeState, setOrganizeState] = useState<'idle' | 'computing' | 'preview' | 'model-error'>('idle');
   const [organizeProposal, setOrganizeProposal] = useState<ClusterProposal[]>([]);
   const [hasOrganizeSnapshot, setHasOrganizeSnapshot] = useState(false);
+  // Пока идёт 'computing', suggestGroups() не сообщает о статусе загрузки модели ДО того, как сам
+  // ответ придёт (modelWasCold приезжает вместе с результатом) — поэтому UI сперва показывает
+  // «тёплый» текст, а если ответ не пришёл за ORGANIZE_COLD_START_THRESHOLD_MS, переключается на
+  // текст про холодную загрузку модели. organizeLongWaitTimerRef — id таймера, чтобы погасить его,
+  // если ответ пришёл раньше (или пользователь отменил) и не дать тексту переключиться зря.
+  const [organizeLongWait, setOrganizeLongWait] = useState(false);
+  const organizeLongWaitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // desired — что выбрал пользователь (идёт в автосейв, когда он появится).
   // effective — что реально отображается (может быть принудительно true при узком окне).
@@ -187,9 +200,8 @@ export default function App() {
   const pendingPermissionsRef = useRef(pendingPermissions);
   pendingPermissionsRef.current = pendingPermissions;
 
-  // Рефы с актуальными значениями — нужны для organize (читаются вне рендер-цикла).
-  const sidebarNodesRef = useRef(sidebarNodes);
-  sidebarNodesRef.current = sidebarNodes;
+  // Реф с актуальным значением — нужен для organize (читается вне рендер-цикла, при построении
+  // titles для превью из ответа suggestGroups()).
   const allTabsRef = useRef(tabs);
   allTabsRef.current = tabs;
 
@@ -485,16 +497,27 @@ export default function App() {
 
   const handleOrganize = useCallback(() => {
     if (organizeState === 'computing') return
-    // При ошибке модели: сбросить и перезапустить загрузку перед инференсом.
-    if (organizeState === 'model-error') embeddingService.retry()
     setOrganizeState('computing');
-    const tabMap = new Map(allTabsRef.current.map((x) => [x.id, x]));
-    void import('./services/ClusteringService').then(({ clusterTabs, DEFAULT_SIMILARITY_THRESHOLD }) =>
-      clusterTabs(sidebarNodesRef.current, tabMap, DEFAULT_SIMILARITY_THRESHOLD),
-    ).then((proposals) => {
+    setOrganizeLongWait(false);
+    if (organizeLongWaitTimerRef.current) clearTimeout(organizeLongWaitTimerRef.current);
+    organizeLongWaitTimerRef.current = setTimeout(() => setOrganizeLongWait(true), ORGANIZE_COLD_START_THRESHOLD_MS);
+
+    void window.oblako.suggestGroups().then((proposal) => {
+      if (organizeLongWaitTimerRef.current) { clearTimeout(organizeLongWaitTimerRef.current); organizeLongWaitTimerRef.current = null; }
+      if (!proposal.ok) { setOrganizeState('model-error'); return; }
+      // suggestGroups() возвращает OrganizeCluster[] (без titles) — превью в Sidebar рисует titles
+      // (см. ClusterProposal), достаём их здесь же из актуального списка вкладок.
+      const tabMap = new Map(allTabsRef.current.map((x) => [x.id, x]));
+      const proposals: ClusterProposal[] = proposal.clusters.map((c) => ({
+        nodeIds: c.nodeIds,
+        nodeTypes: c.nodeTypes,
+        titles: c.nodeIds.map((id) => tabMap.get(id)?.title ?? ''),
+        suggestedName: c.label,
+      }));
       setOrganizeProposal(proposals);
       setOrganizeState('preview');
     }).catch(() => {
+      if (organizeLongWaitTimerRef.current) { clearTimeout(organizeLongWaitTimerRef.current); organizeLongWaitTimerRef.current = null; }
       setOrganizeState('model-error');
     });
   }, [organizeState]);
@@ -571,6 +594,7 @@ export default function App() {
         onDropOnContent={handleDropOnContent}
         organizeTabsCount={organizeTabsCount}
         organizeState={organizeState}
+        organizeLongWait={organizeLongWait}
         organizeProposal={organizeProposal}
         hasOrganizeSnapshot={hasOrganizeSnapshot}
         onOrganize={handleOrganize}

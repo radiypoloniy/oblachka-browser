@@ -83,12 +83,16 @@ export interface OrganizeCluster {
 }
 
 // Результат TabOrganizer.ts::suggestGroups() — та же форма кластеров (OrganizeCluster), что уже
-// умеет применять TabManager.applyOrganize()/renderer-превью, плюс явный отказ без исключения:
-// getLoadedModelId()===null — обычный, ожидаемый исход (модель не загружена в режиме on-demand),
-// не ошибка выполнения.
+// умеет применять TabManager.applyOrganize()/renderer-превью. modelWasCold — была ли модель
+// незагруженной НА ВХОДЕ в вызов (on-demand режим): группировка сама триггерит холодную загрузку,
+// не отказывает — UI использует этот флаг, чтобы решить, показывать ли предупреждение про долгую
+// первую загрузку (см. App.tsx::handleOrganize). ok:false — тот же формат ошибки, что
+// TranslateResult/AiActionOutcome (errorCode из ModelErrorCode, где применимо) — раньше здесь была
+// узкая MODEL_NOT_LOADED, но с уходом гейта вызов может упасть на реальной загрузке модели
+// (NO_MODEL_INSTALLED/MODEL_FILE_MISSING/т.п.), а не только по этой одной причине.
 export type OrganizeProposal =
-  | { ok: true; clusters: OrganizeCluster[] }
-  | { ok: false; code: 'MODEL_NOT_LOADED' };
+  | { ok: true; clusters: OrganizeCluster[]; modelWasCold: boolean }
+  | { ok: false; error: string; errorCode?: ModelErrorCode };
 
 // Геометрия "дырки" под контент в координатах окна (CSS-пиксели).
 // Renderer измеряет область и сообщает main, куда класть WebContentsView.

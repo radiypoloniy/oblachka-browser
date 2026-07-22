@@ -70,6 +70,9 @@ interface SidebarProps {
   // AI-группировка
   organizeTabsCount: number;
   organizeState: 'idle' | 'computing' | 'preview' | 'model-error';
+  // true — 'computing' идёт дольше ORGANIZE_COLD_START_THRESHOLD_MS (App.tsx) без ответа, похоже на
+  // холодную загрузку модели, а не тёплый прогон — переключает текст индикатора.
+  organizeLongWait: boolean;
   organizeProposal: ClusterProposal[];
   hasOrganizeSnapshot: boolean;
   onOrganize: () => void;
@@ -749,7 +752,7 @@ export default function Sidebar({
   onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit,
   onSettings, onHistory, onReorder, onMoveSection,
   getContentRect, onDragOverContent, onDropOnContent,
-  organizeTabsCount, organizeState, organizeProposal,
+  organizeTabsCount, organizeState, organizeLongWait, organizeProposal,
   hasOrganizeSnapshot, onOrganize, onOrganizeApply, onOrganizeCancel, onOrganizeRollback,
 }: SidebarProps) {
 
@@ -1329,7 +1332,7 @@ export default function Sidebar({
                 border: '2px solid var(--divider-strong)', borderTopColor: 'var(--accent)',
                 animation: 'oblako-spin 0.7s linear infinite',
               }} />
-              Группирую…
+              {organizeLongWait ? 'Модель загружается в память, это займёт около минуты, потерпите' : 'Читаю вкладки…'}
             </>
           ) : organizeState === 'model-error' ? (
             <>
