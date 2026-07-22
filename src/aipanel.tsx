@@ -165,27 +165,6 @@ function AiPanel() {
   // «Приложения» пока заглушка без функциональности, помнить выбор между сессиями незачем.
   const [mode, setMode] = useState<'chat' | 'apps'>('chat')
 
-  // Панель не знает свою ширину сама — ею рулит drag снаружи (App.tsx, диапазон 300–640px),
-  // здесь только читаем фактическую ширину через ResizeObserver, чтобы прятать плейсхолдер
-  // пустого состояния на узкой панели (см. showPlaceholder ниже).
-  const rootRef = useRef<HTMLDivElement>(null)
-  const [panelWidth, setPanelWidth] = useState<number | null>(null)
-
-  useEffect(() => {
-    const el = rootRef.current
-    if (!el) return
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width
-      if (typeof w === 'number') setPanelWidth(w)
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  const PLACEHOLDER_MIN_WIDTH = 340
-  // null на первом рендере (до первого ResizeObserver-колбэка) — показываем, чтобы не мигало
-  // скрытием текста сразу после (пере)открытия панели.
-  const showPlaceholder = panelWidth === null || panelWidth >= PLACEHOLDER_MIN_WIDTH
-
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') window.aiPanel.close(); };
     document.addEventListener('keydown', onKeyDown);
@@ -318,7 +297,7 @@ function AiPanel() {
   }
 
   return (
-    <div ref={rootRef} style={{
+    <div className="ai-panel-root" style={{
       // Верх/низ = SHELL_MARGIN — совпадает с верхом/низом split-острова (см. комментарий выше).
       paddingTop: SHELL_MARGIN,
       paddingBottom: SHELL_MARGIN,
@@ -424,8 +403,8 @@ function AiPanel() {
           display: 'flex', flexDirection: 'column', gap: 10,
           padding: `10px var(--pad-island) var(--pad-island)`,
         }}>
-          {messages.length === 0 && !sending && showPlaceholder && (
-            <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
+          {messages.length === 0 && !sending && (
+            <span className="ai-empty-hint" style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
               Спросите что-нибудь у Qwen про эту страницу. Первый ответ может занять до 30–40 секунд —
               модель загружается.
             </span>

@@ -34,3 +34,13 @@ body {
    JS-state (там ещё нужен hover для условных кнопок split/close) — здесь проще и достаточно CSS. */
 .icon-btn { transition: background var(--dur-fast) var(--ease-standard); }
 .icon-btn:hover { background: var(--surface-hover); }
+
+/* AI-панель (aipanel.tsx): плейсхолдер пустого состояния прячется по реальной ширине
+   панели, а не по ResizeObserver-стейту — панель живёт в отдельной WebContentsView,
+   которую main ресайзит через bounds напрямую (drag снаружи, в App.tsx), JS-обсёрвер на
+   такой ресайз не всегда успевал среагировать. Container query детерминированно решает
+   то же самое чистым CSS. */
+.ai-panel-root { container-type: inline-size; }
+@container (max-width: 340px) {
+  .ai-empty-hint { display: none; }
+}
