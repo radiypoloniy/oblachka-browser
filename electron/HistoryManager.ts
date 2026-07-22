@@ -12,6 +12,14 @@ type BetterSqlite3 = typeof import('better-sqlite3');
 
 const RECENT_LIMIT = 500;
 
+// Версия поколения ИЗВЛЕЧЕНИЯ+ЧАНКИНГА текста (HistoryIndexer.ts::buildTextChunks/extractEnrichedText),
+// независима от версии эмбеддинг-модели — раньше model_version в history_content_chunks паразитировал
+// на embeddingService.getModelVersion() (единственная причина, по которой searchHistorySmart/
+// saveContentChunks вообще звали requestEmbedding), хотя текст чанка от эмбеддинг-модели никак не
+// зависит. Инкрементировать при изменении логики извлечения/чанкинга — старые чанки перестанут
+// совпадать по версии и переиндексируются, как и раньше при смене версии эмбеддинг-модели.
+export const TEXT_EXTRACTION_VERSION = 'text-v1';
+
 export interface ContentChunkInput {
   chunkIndex: number;
   url: string;
@@ -56,6 +64,7 @@ export class HistoryManager {
     try {
       this.#db = new SqliteConstructor(this.#dbPath);
       this.#setup();
+      this.#migrateContentChunksToTextVersion();
       console.log('[History] база инициализирована:', this.#dbPath);
     } catch (e) {
       console.error('[History] не удалось открыть БД:', (e as Error).message);
@@ -64,6 +73,7 @@ export class HistoryManager {
         fs.unlinkSync(this.#dbPath);
         this.#db = new SqliteConstructor!(this.#dbPath);
         this.#setup();
+        this.#migrateContentChunksToTextVersion();
         console.log('[History] БД пересоздана после ошибки');
       } catch (e2) {
         console.error('[History] пересоздание БД провалилось — история отключена:', (e2 as Error).message);
@@ -527,6 +537,48 @@ export class HistoryManager {
       `);
     } catch (e) {
       console.warn('[History] FTS5 для content chunks недоступен:', (e as Error).message);
+    }
+  }
+
+  // Разовая (идемпотентная) миграция на TEXT_EXTRACTION_VERSION — вызывается на каждом старте после
+  // #setup(), но реально что-то трогает только один раз (после первого прогона WHERE ниже не находит
+  // строк). Старые чанки тегированы версией ЭМБЕДДИНГ-модели (см. историю ниже) — просто UPDATE
+  // model_version='text-v1' сломал бы UNIQUE(history_id, chunk_index, model_version): на живой базе
+  // подтверждено (2026-07-2x) — 116 пар (history_id, chunk_index) одновременно держат СТАРУЮ
+  // (без суффикса) и НОВУЮ (+prefixed) версию одного и того же чанка (смена схемы префиксов раньше
+  // не удаляла старые строки, см. EmbedClient.ts::MODEL_VERSION_SUFFIX) — обе версии сколлапсировались
+  // бы в один и тот же (history_id, chunk_index, 'text-v1') ключ. Поэтому сначала дедуп: в каждой
+  // такой паре остаётся строка с МАКСИМАЛЬНЫМ id (PRIMARY KEY AUTOINCREMENT — самая свежая по вставке,
+  // без ничьих, в отличие от indexed_at, где коллизия миллисекунды теоретически возможна), остальные
+  // и их FTS-записи удаляются. Текст не меняется нигде — только тег версии и то, какая из ДУБЛИРУЮЩИХ
+  // записей одного чанка остаётся.
+  #migrateContentChunksToTextVersion(): void {
+    if (!this.#db) return;
+    const db = this.#db;
+    try {
+      const run = db.transaction(() => {
+        const stale = db.prepare(`
+          SELECT id FROM history_content_chunks
+          WHERE id NOT IN (SELECT MAX(id) FROM history_content_chunks GROUP BY history_id, chunk_index)
+        `).all() as Array<{ id: number }>;
+        if (stale.length > 0) {
+          let deleteFts: import('better-sqlite3').Statement | null = null;
+          try { deleteFts = db.prepare(`DELETE FROM history_content_chunks_fts WHERE rowid = ?`); } catch { /* FTS может быть недоступен */ }
+          const deleteChunk = db.prepare(`DELETE FROM history_content_chunks WHERE id = ?`);
+          for (const row of stale) {
+            try { deleteFts?.run(row.id); } catch { /* FTS может быть недоступен */ }
+            deleteChunk.run(row.id);
+          }
+          console.log(`[History] миграция text-v1: удалено ${stale.length} устаревших дублей чанков (разные версии одного (history_id, chunk_index))`);
+        }
+        const { changes } = db.prepare(`
+          UPDATE history_content_chunks SET model_version = ? WHERE model_version != ?
+        `).run(TEXT_EXTRACTION_VERSION, TEXT_EXTRACTION_VERSION);
+        if (changes > 0) console.log(`[History] миграция text-v1: перетегировано ${changes} чанков`);
+      });
+      run();
+    } catch (e) {
+      console.warn('[History] migrateContentChunksToTextVersion error:', (e as Error).message);
     }
   }
 

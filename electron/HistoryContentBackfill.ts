@@ -15,6 +15,7 @@
 import { WebContentsView } from 'electron';
 import type { BrowserWindow } from 'electron';
 import type { HistoryManager } from './HistoryManager';
+import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
 import type { BackfillProgress } from '../shared/ipc';
 import { requestEmbedding, isAvailable as isEmbedClientAvailable } from './EmbedClient';
 import { isNoisyForEmbedding } from './HistoryNoiseFilter';
@@ -139,7 +140,9 @@ export async function startContentBackfill(history: HistoryManager, win: Browser
                 console.warn(`[HistoryContentBackfill] embed чанка не удался для ${row.url}:`, (e as Error).message);
               }
             }
-            history.saveContentChunks(row.id, chunkInputs, embedded.modelVersion);
+            // TEXT_EXTRACTION_VERSION, не embedded.modelVersion — см. комментарий в HistoryManager.ts
+            // и тот же приём в HistoryIndexer.ts::indexVisit.
+            history.saveContentChunks(row.id, chunkInputs, TEXT_EXTRACTION_VERSION);
           }
         } catch (e) {
           console.warn(`[HistoryContentBackfill] страница пропущена (${row.url}):`, (e as Error).message);

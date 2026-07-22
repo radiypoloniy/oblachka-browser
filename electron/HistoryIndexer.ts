@@ -14,6 +14,7 @@ import type { HistoryManager } from './HistoryManager';
 import { requestEmbedding, requestEmbeddingModelVersion } from './EmbedClient';
 import { extractPageText } from './AiPanelManager';
 import { isNoisyForEmbedding } from './HistoryNoiseFilter';
+import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
 
 // Живой замер (диагностика "переиндексация при рестарте"): 750-850% CPU на 40с при рестарте
 // с 10 закреплёнными вкладками — каждая переиндексировалась заново при том, что содержимое не
@@ -250,7 +251,10 @@ export async function indexVisit(
           console.warn(`[HistoryIndexer] embed чанка не удался для ${url}:`, (e as Error).message);
         }
       }
-      history.saveContentChunks(historyId, chunkInputs, embedded.modelVersion);
+      // TEXT_EXTRACTION_VERSION, не embedded.modelVersion — текст чанка не зависит от версии
+      // эмбеддинг-модели (см. её комментарий в HistoryManager.ts). embedded.vector/dims выше пока
+      // считаются (вырезаются отдельным этапом), но modelVersion от него в текстовые пути больше не течёт.
+      history.saveContentChunks(historyId, chunkInputs, TEXT_EXTRACTION_VERSION);
     }
     indexedHistoryIds.add(historyId); // помечаем ТОЛЬКО после реально успешной записи
   } catch (e) {

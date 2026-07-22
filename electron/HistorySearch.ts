@@ -7,6 +7,7 @@
 // electron/tsconfig.json, где нет DOM lib) — сама математика (скалярное произведение уже
 // нормализованных моделью векторов) зафиксирована и не должна расходиться между копиями.
 import type { HistoryContentChunk, HistoryManager } from './HistoryManager';
+import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
 import { requestEmbedding } from './EmbedClient';
 import { rerankHistoryCandidates } from './TranslationService';
 import { isNoisyForEmbedding } from './HistoryNoiseFilter';
@@ -125,23 +126,17 @@ export async function searchHistorySemantic(
 // решает, что из них реально релевантно, cosine-порядок для неё только черновой.
 const SMART_CANDIDATE_LIMIT = 20;
 const SMART_LEXICAL_CANDIDATE_LIMIT = 8;
-const SMART_SEMANTIC_MIN_SCORE = 0.35;
 
 // По диагностике от 2026-07-20 (11 живых запросов, 8 присутствующих тем + 3 заведомо
 // отсутствующих, вручную размечено по title/url): cosine по этому корпусу структурно не даёт
 // сигнала для коротких запросов — фиксированный набор generic-«магнитов» (Unsplash-главная,
 // CMS-админка admin.imweb.ru, Remnawave-дашборд, Wikipedia-главная, Газета.Ru-главная,
-// французская статья "Porc — Wikipédia") доминирует топ-20 ПОЧТИ ДЛЯ ЛЮБОГО запроса
-// (0.53–0.85), включая заведомо отсутствующие темы (потолок шума там — 0.75). Диапазон
-// релевантных результатов (0.53–0.84) целиком лежит внутри диапазона шума — порога, отделяющего
-// одно от другого, не существует (см. диагностику). Единственные случаи, где скор хоть что-то
-// показывал — буквальное лексическое пересечение слова запроса с заголовком (не семантика).
-// Возможная причина — эмбеддинг без task-префиксов EmbeddingGemma (модель ожидает
-// query/document-префиксы для осмысленного different-typed similarity, конвейер их не
-// проставляет); до проверки этой гипотезы семантическая ветка в умном поиске отключена.
-// scoreSemanticCandidates НЕ удалена — переключить обратно можно одной строкой, когда гипотеза
-// проверена (или найдено другое решение).
-const SEMANTIC_IN_SMART_SEARCH = false;
+// французская статья "Porc — Wikipédia") доминировал топ-20 ПОЧТИ ДЛЯ ЛЮБОГО запроса
+// (0.53–0.85), включая заведомо отсутствующие темы (потолок шума там — 0.75). Семантическая
+// ветка была отключена флагом, а не удалена — вырезана entirely следующим коммитом
+// (searchHistorySmart больше не зовёт requestEmbedding вообще, см. её тело ниже);
+// scoreSemanticCandidates осталась только для searchHistorySemantic (мёртвой с точки зрения UI,
+// см. её же комментарий выше).
 
 // Одна страница обычно разбита на несколько чанков (до HISTORY_CHUNK_MAX=8, см. HistoryIndexer.ts) —
 // SQL-запрос к FTS идёт по чанкам, не по страницам, поэтому топ-N строк bm25 может оказаться
@@ -184,43 +179,34 @@ export async function searchHistorySmart(
   const q = query.trim();
   if (!q) return { results: [], degraded: false };
 
-  let semanticCandidates: SemanticSearchResult[] = [];
   let ftsCandidates: SemanticSearchResult[] = [];
   try {
-    const embedded = await requestEmbedding(q, 'query');
-    const queryEmbedding = { vector: embedded.vector, modelVersion: embedded.modelVersion };
-    // SEMANTIC_IN_SMART_SEARCH=false — semanticCandidates остаётся [] (см. комментарий у флага
-    // выше). Эмбеддинг запроса всё равно нужен ниже для FTS-пути (searchContentChunksFts берёт
-    // modelVersion из него, не сам вектор), поэтому requestEmbedding() не пропускаем.
-    if (SEMANTIC_IN_SMART_SEARCH) {
-      semanticCandidates = scoreSemanticCandidates(history, queryEmbedding, SMART_CANDIDATE_LIMIT)
-        .filter((c) => c.score >= SMART_SEMANTIC_MIN_SCORE);
-    }
-    // Фильтр шума — до дедупа (не после), чтобы шумная страница не отъедала слот у
-    // SMART_FTS_CANDIDATE_LIMIT впустую (тот же порядок «фильтр → лимит», что и в
-    // scoreSemanticCandidates ниже). h.title (см. коммит "заголовок из history, не из чанка") —
-    // без него isNoisyForEmbedding почти всегда сработал бы по isBareDomainTitle: заголовок-URL
-    // выглядит как «домен целиком», что выкосило бы валидные результаты, а не только шум.
-    const ftsChunks = history.searchContentChunksFts(q, queryEmbedding.modelVersion, SMART_FTS_SQL_LIMIT)
+    // TEXT_EXTRACTION_VERSION вместо версии эмбеддинг-модели — FTS-путь текстовый, эмбеддинги
+    // больше не трогает (раньше modelVersion брался из requestEmbedding(q, 'query') исключительно
+    // ради этого тега, сам вектор никогда не использовался при SEMANTIC_IN_SMART_SEARCH=false —
+    // см. историю функции). Фильтр шума — до дедупа (не после), чтобы шумная страница не отъедала
+    // слот у SMART_FTS_CANDIDATE_LIMIT впустую. h.title (см. коммит "заголовок из history, не из
+    // чанка") — без него isNoisyForEmbedding почти всегда сработал бы по isBareDomainTitle:
+    // заголовок-URL выглядит как «домен целиком», что выкосило бы валидные результаты, а не только шум.
+    const ftsChunks = history.searchContentChunksFts(q, TEXT_EXTRACTION_VERSION, SMART_FTS_SQL_LIMIT)
       .filter((chunk) => !isNoisyForEmbedding(chunk.url, chunk.title));
     ftsCandidates = dedupChunksByHistoryId(ftsChunks, SMART_FTS_CANDIDATE_LIMIT)
       .map((chunk) => chunkToResult(chunk, 1.12));
   } catch (e) {
-    console.warn('[HistorySearch] embed запроса для smart search не удался:', (e as Error).message);
+    console.warn('[HistorySearch] FTS для smart search не удался:', (e as Error).message);
   }
   const lexicalCandidates = history.search(q)
     .slice(0, SMART_LEXICAL_CANDIDATE_LIMIT)
     .map((entry) => historyEntryToSemanticResult(entry, 1));
 
   const lexicalKeys = new Set(lexicalCandidates.map((c) => normalizeForOmnibox(c.url)));
-  // Лексика → FTS → семантика (при SEMANTIC_IN_SMART_SEARCH=false — пустой хвост): точное
-  // совпадение по заголовку/URL (лексика) весомее текстового FTS-совпадения внутри чанка,
-  // поэтому идёт первым — при коллизии URL ниже побеждает бОльший score, а не порядок сам
-  // по себе, но порядок определяет, чья версия («первая встреченная» при равном score) войдёт
+  // Лексика → FTS: точное совпадение по заголовку/URL (лексика) весомее текстового FTS-совпадения
+  // внутри чанка, поэтому идёт первым — при коллизии URL ниже побеждает бОльший score, а не порядок
+  // сам по себе, но порядок определяет, чья версия («первая встреченная» при равном score) войдёт
   // в byUrl. SMART_LEXICAL_CANDIDATE_LIMIT(8) + SMART_FTS_CANDIDATE_LIMIT(12) = SMART_CANDIDATE_LIMIT(20)
-  // — весь бюджет кандидатов теперь честно делят только эти два источника.
+  // — весь бюджет кандидатов честно делят эти два источника.
   const byUrl = new Map<string, SemanticSearchResult>();
-  for (const c of [...lexicalCandidates, ...ftsCandidates, ...semanticCandidates]) {
+  for (const c of [...lexicalCandidates, ...ftsCandidates]) {
     const key = normalizeForOmnibox(c.url);
     const existing = byUrl.get(key);
     if (!existing || c.score > existing.score) byUrl.set(key, c);
