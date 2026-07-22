@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import type { HistoryEntry, HistoryClearPeriod } from '../shared/ipc';
 import { isSearchResultUrl } from '../shared/searchEngines';
 import { normalizeForOmnibox } from '../shared/frecency';
+import { stemText, stemQuery, STEM_VERSION } from './textStemming';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
 // Грузим динамически, чтобы браузер запускался даже без C++ инструментов.
@@ -153,7 +154,10 @@ export class HistoryManager {
             historyId, chunk.chunkIndex, chunk.url, chunk.title, chunk.text,
             buf, chunk.dims, modelVersion, indexedAt,
           );
-          try { insertFts?.run(Number(info.lastInsertRowid), chunk.text, chunk.title, chunk.url); } catch { /* FTS может быть недоступен */ }
+          // Стеммим ТОЛЬКО копию для FTS — chunk.text/chunk.title выше в history_content_chunks
+          // остаются как есть (сниппеты, промпт Qwen). url не стеммим — не проза, стеммер на нём
+          // не навредит (латиница проходит без изменений), но и пользы нет, лишний повод для сомнений.
+          try { insertFts?.run(Number(info.lastInsertRowid), stemText(chunk.text), stemText(chunk.title), chunk.url); } catch { /* FTS может быть недоступен */ }
         }
       });
       run();
@@ -417,6 +421,13 @@ export class HistoryManager {
       );
       CREATE INDEX IF NOT EXISTS idx_history_content_chunks_history ON history_content_chunks(history_id);
       CREATE INDEX IF NOT EXISTS idx_history_content_chunks_model ON history_content_chunks(model_version);
+
+      -- Key-value для разовых идемпотентных миграций, которым нужен явный маркер «уже сделано»,
+      -- а не переносимый в данные признак (см. #rebuildFtsWithStemming — версия стемминга FTS).
+      CREATE TABLE IF NOT EXISTS history_meta (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
     `);
     try {
       db.exec(`
@@ -513,7 +524,10 @@ export class HistoryManager {
 }
 
 function buildFtsQuery(query: string): string {
-  const terms = query
+  // stemQuery ДО разбиения на термины — тот же textStemming.ts::stemText, что уже стеммит
+  // индекс при записи (см. saveContentChunks/rebuildFtsWithStemming). Расхождение здесь дало бы
+  // тихий пустой результат: запрос искал бы нестеммленные токены в стеммленном индексе.
+  const terms = stemQuery(query)
     .toLowerCase()
     .split(/[\s\-_/|·•,.:;!?()[\]{}'"«»—–]+/)
     .map((x) => x.trim())
