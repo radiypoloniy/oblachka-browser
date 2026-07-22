@@ -777,6 +777,31 @@ export class TabManager {
     return id;
   }
 
+  // ── Закреплённая вкладка, рождённая СРАЗУ спящей — тот же приём, что createSleepingTab ниже
+  // (view:null + sleeping:meta, атомарно), только кладёт запись в pinnedTabs, а не в nodes.
+  // Для восстановления сессии: раньше закреплённые ВСЕГДА поднимались через createPinnedTab
+  // (реальный WebContentsView + loadURL для каждой сразу) — при 10 закреплённых это 10
+  // параллельных загрузок страниц на старте (см. живой замер CPU-пика). isTabPinned()/#tabUrl()/
+  // #tabTitle() уже одинаково работают что с живым view, что со sleeping (см. их тела) — ничего
+  // в остальном коде эту вкладку от «настоящей» закреплённой не отличит, пока её не разбудят.
+  createSleepingPinnedTab(rawUrl: string, seedTitle?: string, seedFaviconData?: string): string {
+    const id = randomUUID();
+    const url = this.resolveInput(rawUrl);
+    const tab: ManagedTab = {
+      id, view: null, lastActiveAt: Date.now(),
+      sleeping: {
+        url,
+        title: seedTitle || domainFromUrl(url),
+        faviconUrl: null,
+        faviconData: seedFaviconData ?? null,
+      },
+    };
+    this.tabMap.set(id, tab);
+    this.pinnedTabs.push(tab);
+    this.onChange();
+    return id;
+  }
+
   // ── Создаёт вкладку СРАЗУ спящей (view:null + sleeping:meta) — для ленивого восстановления
   // сессии: не создаёт WebContentsView, не грузит URL, ничего не ест до первого клика.
   // sleeping заполняется в ТОМ ЖЕ объекте, что и view:null, — атомарно, без промежуточного

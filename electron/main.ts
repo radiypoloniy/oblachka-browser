@@ -496,11 +496,17 @@ function createWindow() {
 
   // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).
   if (restored) {
-    // Закреплённые сначала — стабильный порядок, всегда вверху сайдбара.
+    // Закреплённые сначала — стабильный порядок, всегда вверху сайдбара. Рождаются СПЯЩИМИ
+    // (createSleepingPinnedTab — раньше здесь был createPinnedTab, реальный WebContentsView+
+    // loadURL для КАЖДОЙ сразу: 10 закреплённых = 10 параллельных загрузок страниц на старте,
+    // видимый пик CPU). Закреплённость больше не значит «грузить eagerly» — только activeRef
+    // ниже решает, кого разбудить; будет ли разбуженная вкладка закреплённой или нет, роли не
+    // играет (см. activate()::wakeTab — ему всё равно, откуда пришёл id, tabMap/pinnedTabs же
+    // общий индекс).
     const pinnedIds: string[] = [];
     const pinnedUrlToId = new Map<string, string>();
-    for (const { url, faviconData } of restored.pinnedTabs) {
-      const id = tabs.createPinnedTab(url, faviconData);
+    for (const { url, title, faviconData } of restored.pinnedTabs) {
+      const id = tabs.createSleepingPinnedTab(url, title, faviconData);
       pinnedIds.push(id);
       pinnedUrlToId.set(url, id);
     }
@@ -557,7 +563,16 @@ function createWindow() {
         : paired.find((t) => t.splitSide === 'right');
       targetId = target?.id;
     }
-    // ref.type === 'hub' → остаёмся на хабе (дефолт TabManager).
+    // ref.type === 'hub' → остаёмся на хабе (дефолт TabManager) — единственный НАМЕРЕННЫЙ случай
+    // без targetId. Любой другой (activeRef битый/указывает на несуществующую вкладку — старая
+    // ссылка на URL, которого больше нет, повреждённый JSON и т.п.) теперь тоже дал бы пустой
+    // targetId — раньше это было безобидно (все вкладки уже жили eagerly, хаб был просто не тем
+    // экраном), теперь, когда всё спит по умолчанию, обвал разрешения activeRef молча оставил бы
+    // старт БЕЗ единой живой вкладки. Фоллбэк: первая по порядку сайдбара (pinned, потом обычные —
+    // тот же порядок, что и в tabs.snapshot()), лишь бы не пустой экран без реального контента.
+    if (!targetId && ref.type !== 'hub') {
+      targetId = tabs.snapshot().find((t) => !t.isHub)?.id;
+    }
     if (targetId) tabs.activate(targetId);
 
     // Диагностика ленивого восстановления: сколько вкладок реально восстановилось (сверить с
