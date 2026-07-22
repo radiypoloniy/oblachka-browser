@@ -109,6 +109,7 @@ const tabContexts = new Map<string, TabChatContext>()
 let activeTabId: string | null = null
 let activeTabUrl = ''
 let activeTabTitle = ''
+let activeTabFavicon: string | null = null
 
 function getOrCreateContext(id: string, url: string): TabChatContext {
   let ctx = tabContexts.get(id)
@@ -244,7 +245,7 @@ function sendCurrentContext(): void {
   if (!panelView || !activeTabId) return
   const ctx = getOrCreateContext(activeTabId, activeTabUrl)
   panelView.webContents.send('ai-panel:context', {
-    tabId: activeTabId, url: activeTabUrl, title: activeTabTitle, messages: ctx.messages,
+    tabId: activeTabId, url: activeTabUrl, title: activeTabTitle, favicon: activeTabFavicon, messages: ctx.messages,
   })
 }
 
@@ -310,6 +311,7 @@ export function onTabsSynced(tabsSnapshot: TabState[]): void {
   activeTabId = active.id
   activeTabUrl = active.url
   activeTabTitle = active.title
+  activeTabFavicon = active.faviconUrl ?? null
 
   // Переключение активной вкладки (или смена её URL) — если панель открыта, показываем актуальную
   // беседу немедленно, а не ждём следующего действия пользователя внутри панели.

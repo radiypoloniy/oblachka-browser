@@ -46,6 +46,7 @@ interface TabContext {
   tabId: string
   url: string
   title: string
+  favicon?: string | null
   messages: ChatMessage[]
 }
 
@@ -98,16 +99,6 @@ declare global {
 // AiPanelManager.ts::resolveDirection/buildPrompt), поэтому у неё нет готового prompt — только
 // сигнал quickTranslate() в main.
 
-// Хост без www. — компактнее в узкой (360px) панели. Пустой/нераспарсиваемый url (хаб,
-// oblako-chrome://) — просто ничего не показываем вторым сегментом чипса.
-function hostnameOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return ''
-  }
-}
-
 // Человекочитаемая карточка вместо сырого String(e) — NO_MODEL_INSTALLED/MODEL_FILE_MISSING
 // ведут в Настройки (showModelButton), LOAD_FAILED и всё прочее без errorCode — просто внятная
 // подводка над текстом ошибки от бэкенда (он уже человекочитаем, см. TranslationService.ts).
@@ -132,7 +123,8 @@ function describeChatError(error: string, code: ModelErrorCode | null): { headin
 function AiPanel() {
   const [tabId, setTabId] = useState<string | null>(null)
   const [pageTitle, setPageTitle] = useState('')
-  const [pageUrl, setPageUrl] = useState('')
+  const [pageFavicon, setPageFavicon] = useState<string | null>(null)
+  const [faviconError, setFaviconError] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   // Копится по мере генерации (тот же токен-стриминг, что у поповера/AI-действий) — показывается
@@ -187,7 +179,7 @@ function AiPanel() {
     const unsubContext = window.aiPanel.onContext((ctx) => {
       setTabId(ctx.tabId)
       setPageTitle(ctx.title)
-      setPageUrl(ctx.url)
+      setPageFavicon(ctx.favicon ?? null)
       setMessages(ctx.messages)
       setStreamedText('')
       setSending(false)
@@ -225,6 +217,10 @@ function AiPanel() {
     })
     return () => { unsubContext(); unsubChunk(); unsubResult(); unsubKeyStatus(); unsubSkillsList(); unsubSearxngStatus() }
   }, [])
+
+  // Смена favicon (переключение вкладки/навигация) — сбрасываем прошлую ошибку загрузки,
+  // иначе новая иконка не покажется, если старая когда-то не загрузилась.
+  useEffect(() => { setFaviconError(false) }, [pageFavicon])
 
   // Автоскролл вниз при новом тексте — свои сообщения, ответы AI, стриминг по ходу генерации.
   useEffect(() => {
@@ -288,14 +284,17 @@ function AiPanel() {
     setWebGroundingActive(true)
   }
 
+  const handleDetachFromPage = () => {
+    // TODO: механика отвязки панели от активной вкладки — реализуем отдельно.
+    // Пока только визуальный элемент; кнопка намеренно ничего не делает.
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
   }
-
-  const host = hostnameOf(pageUrl)
 
   return (
     <div style={{
@@ -349,26 +348,52 @@ function AiPanel() {
           </button>
         </div>
 
-        {/* Чипс текущей страницы (как у Яндекса) — к чему привязана лента ниже. Смена URL внутри
-            вкладки обновит и чипс, и ленту (сброшенную на новый разговор) одним и тем же onContext. */}
+        {/* Индикатор текущей страницы — парящий островок. Смена URL внутри вкладки обновит и его,
+            и ленту (сброшенную на новый разговор) одним и тем же onContext. Крестик = отвязать
+            панель от страницы (механика позже, см. handleDetachFromPage). */}
         {mode === 'chat' && (<>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
+          display: 'flex', alignItems: 'center', gap: 8,
           margin: `10px var(--pad-island) 0`,
-          padding: '6px 10px',
-          background: 'var(--surface-sunken)',
-          borderRadius: 'var(--radius-chip)',
+          padding: '7px 8px 7px 12px',
+          background: 'var(--surface-solid)',
+          border: '1px solid var(--glass-edge)',
+          boxShadow: 'var(--shadow-card)',
+          borderRadius: 'var(--radius-card)',
           flexShrink: 0,
           minWidth: 0,
         }}>
-          <Globe size={12} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
+          {pageFavicon && !faviconError ? (
+            <img
+              src={pageFavicon}
+              alt=""
+              width={16}
+              height={16}
+              onError={() => setFaviconError(true)}
+              style={{ flexShrink: 0, borderRadius: 3, objectFit: 'contain' }}
+            />
+          ) : (
+            <Globe size={16} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
+          )}
           <span style={{
-            fontSize: 'var(--fs-xs)', fontWeight: 500, color: 'var(--text-muted)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
+            flex: 1, minWidth: 0,
+            fontSize: 'var(--fs-sm)', fontWeight: 500, color: 'var(--text-body)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {pageTitle || 'Новая вкладка'}
-            {host && <span style={{ color: 'var(--text-faint)' }}> · {host}</span>}
           </span>
+          <button
+            onClick={handleDetachFromPage}
+            title="Отвязать панель от страницы"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 22, height: 22, flexShrink: 0,
+              background: 'transparent', border: 'none', borderRadius: '50%',
+              color: 'var(--text-faint)', cursor: 'pointer', padding: 0,
+            }}
+          >
+            <X size={13} strokeWidth={2} />
+          </button>
         </div>
 
         {/* Лента сообщений — minHeight:0 обязателен, иначе flex-контейнер не даёт себе схлопнуться
