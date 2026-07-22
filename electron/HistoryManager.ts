@@ -101,22 +101,21 @@ export class HistoryManager {
   }
 
   // Для HistoryIndexer.ts::indexVisit — источник истины «уже проиндексирована ли эта страница
-  // ТЕКУЩЕЙ версией модели», вместо in-memory Set, который не переживает рестарт (живой замер:
-  // 750-850% CPU на 40с при рестарте с 10 закреплёнными вкладками — каждая переиндексировалась
-  // заново, хотя содержимое не менялось). history_id — PRIMARY KEY history_embeddings (см. #setup
-  // ниже), поэтому WHERE history_id=? — точечный поиск по уже существующему PK-индексу, не полный
-  // скан; отдельная миграция/индекс не нужны. На пару (history_id, currentVersion) в этой таблице
-  // всегда максимум одна строка (PK не составной) — ON CONFLICT(history_id) DO UPDATE в
-  // saveEmbedding() перезаписывает старую версию новой, не добавляет вторую строку.
-  hasEmbeddingForVersion(historyId: number, modelVersion: string): boolean {
+  // ТЕКУЩЕЙ версией извлечения текста (TEXT_EXTRACTION_VERSION)», вместо in-memory Set, который
+  // не переживает рестарт (живой замер: 750-850% CPU на 40с при рестарте с 10 закреплёнными
+  // вкладками — каждая переиндексировалась заново, хотя содержимое не менялось). Раньше этот же
+  // источник истины смотрел в history_embeddings (hasEmbeddingForVersion, удалена вместе с
+  // вызовом embed из indexVisit — эмбеддинги в пути индексации больше не считаются) — теперь
+  // history_content_chunks, где реально пишется text-v1.
+  hasContentForVersion(historyId: number, textVersion: string): boolean {
     if (!this.#db) return false;
     try {
       const row = this.#db.prepare(`
-        SELECT 1 FROM history_embeddings WHERE history_id = ? AND model_version = ?
-      `).get(historyId, modelVersion);
+        SELECT 1 FROM history_content_chunks WHERE history_id = ? AND model_version = ? LIMIT 1
+      `).get(historyId, textVersion);
       return row !== undefined;
     } catch (e) {
-      console.warn('[History] hasEmbeddingForVersion error:', (e as Error).message);
+      console.warn('[History] hasContentForVersion error:', (e as Error).message);
       return false;
     }
   }

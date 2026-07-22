@@ -53,6 +53,16 @@ function wait(ms: number): Promise<void> {
 }
 
 export async function startBackfill(history: HistoryManager): Promise<void> {
+  // Обезврежен: этот бэкфилл считал ТОЛЬКО заголовочные ЭМБЕДДИНГИ
+  // (title+hostname → вектор в history_embeddings) — текста не касался вообще (см. шапку файла).
+  // Эмбеддинги убраны из пути индексации (HistoryIndexer.ts/HistoryContentBackfill.ts больше их
+  // не считают) — вектору, который посчитал бы этот бэкфилл, некуда деться: history_embeddings
+  // никто не читает (searchHistorySemantic мертва). Файл не удалён — удаление файлов отдельным
+  // этапом D, — но кнопка «Индексировать историю» (Settings.tsx) не должна греть CPU впустую.
+  // Тело ниже (реальный embed-цикл) осталось нетронутым, просто недостижимо.
+  onProgress?.({ processed: 0, total: 0, running: false, cancelled: false });
+  return;
+
   if (running) return; // защита от повторного запуска — простой флаг, ничего сложнее не нужно
   running = true;
   cancelRequested = false;

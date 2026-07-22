@@ -17,9 +17,8 @@ import type { BrowserWindow } from 'electron';
 import type { HistoryManager } from './HistoryManager';
 import { TEXT_EXTRACTION_VERSION } from './HistoryManager';
 import type { BackfillProgress } from '../shared/ipc';
-import { requestEmbedding, isAvailable as isEmbedClientAvailable } from './EmbedClient';
 import { isNoisyForEmbedding } from './HistoryNoiseFilter';
-import { extractEnrichedText, buildTextChunks, HISTORY_EMBED_TEXT_MAX_CHARS } from './HistoryIndexer';
+import { extractEnrichedText, buildTextChunks } from './HistoryIndexer';
 import { markBackground, unmarkBackground } from './BackgroundWebContents';
 
 // Заметно консервативнее лёгкого бэкфилла (HistoryBackfill.ts::PAUSE_BETWEEN_CHUNKS_MS): там
@@ -106,10 +105,6 @@ export async function startContentBackfill(history: HistoryManager, win: Browser
     for (const row of rows) {
       if (cancelRequested) break;
       if (win.isDestroyed()) break;
-      if (!isEmbedClientAvailable()) {
-        console.warn('[HistoryContentBackfill] chromeView недоступен — останавливаюсь');
-        break;
-      }
 
       // Шумные (логин/OAuth/голый домен) и прямые ссылки на файлы — не открываем вообще,
       // не только не индексируем результат (экономит сеть и не рискует случайной загрузкой).
@@ -124,24 +119,13 @@ export async function startContentBackfill(history: HistoryManager, win: Browser
         try {
           const enrichedText = await extractEnrichedText(view.webContents, row.url);
           if (enrichedText) {
-            const embedded = await requestEmbedding(enrichedText.slice(0, HISTORY_EMBED_TEXT_MAX_CHARS), 'document');
-            history.saveEmbedding(row.id, embedded.vector, embedded.dims, embedded.modelVersion);
-
             const chunks = buildTextChunks(enrichedText);
-            const chunkInputs = [];
-            for (let i = 0; i < chunks.length; i++) {
-              try {
-                const chunkEmbedded = await requestEmbedding(chunks[i]!, 'document');
-                chunkInputs.push({
-                  chunkIndex: i, url: row.url, title: row.title,
-                  text: chunks[i]!, vector: chunkEmbedded.vector, dims: chunkEmbedded.dims,
-                });
-              } catch (e) {
-                console.warn(`[HistoryContentBackfill] embed чанка не удался для ${row.url}:`, (e as Error).message);
-              }
-            }
-            // TEXT_EXTRACTION_VERSION, не embedded.modelVersion — см. комментарий в HistoryManager.ts
-            // и тот же приём в HistoryIndexer.ts::indexVisit.
+            // Векторные колонки (vector/dims) — NOT NULL, но мёртвые: эмбеддинги убраны из пути
+            // индексации на этом этапе (см. git log), схему не мигрируем — пишем пустышку.
+            const chunkInputs = chunks.map((chunkText, i) => ({
+              chunkIndex: i, url: row.url, title: row.title,
+              text: chunkText, vector: new Float32Array(0), dims: 0,
+            }));
             history.saveContentChunks(row.id, chunkInputs, TEXT_EXTRACTION_VERSION);
           }
         } catch (e) {
