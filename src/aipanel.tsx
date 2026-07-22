@@ -535,12 +535,14 @@ function AiPanel() {
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 8,
               margin: `0 var(--pad-island) 8px`,
-              padding: '10px 12px',
-              borderRadius: 'var(--radius-chip)',
-              background: 'var(--surface-sunken)',
+              padding: '12px 14px',
+              borderRadius: 'var(--radius-card)',
+              background: 'var(--surface-solid)',
+              border: '1px solid var(--glass-edge)',
+              boxShadow: 'var(--shadow-card)',
               flexShrink: 0,
             }}>
-              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)', overflowWrap: 'anywhere' }}>
                 Текст страницы и запрос уйдут в облако (Google Gemini) для проверки по реальным
                 источникам в интернете.
               </span>
@@ -689,12 +691,14 @@ function AiPanel() {
           <div style={{
             display: 'flex', flexDirection: 'column', gap: 8,
             margin: `0 var(--pad-island) 8px`,
-            padding: '10px 12px',
-            borderRadius: 'var(--radius-chip)',
-            background: 'var(--surface-sunken)',
+            padding: '12px 14px',
+            borderRadius: 'var(--radius-card)',
+            background: 'var(--surface-solid)',
+            border: '1px solid var(--glass-edge)',
+            boxShadow: 'var(--shadow-card)',
             flexShrink: 0,
           }}>
-            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)', overflowWrap: 'anywhere' }}>
               Запросы поиска будут отправлены на твой поисковый сервер через VPN.
             </span>
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
