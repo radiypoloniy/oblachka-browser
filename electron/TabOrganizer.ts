@@ -1,8 +1,6 @@
-// Qwen-группировка открытых вкладок — замена ClusteringService.ts (эмбеддинг+агломерация в
-// renderer) на прямой промпт модели: список вкладок целиком, названия групп придумывает сама
-// модель по смыслу, а не частотный разбор слов заголовка (см. ClusteringService.ts::
-// extractGroupName). ClusteringService.ts пока НЕ удалена — отдельным коммитом, после того как
-// этот путь заработает на практике (см. бриф этого захода).
+// Qwen-группировка открытых вкладок — замена бывшей эмбеддинг-кластеризации (ClusteringService.ts,
+// удалена) на прямой промпт модели: список вкладок целиком, названия групп придумывает сама
+// модель по смыслу, а не частотный разбор слов заголовка.
 import type { TabManager } from './TabManager';
 import type { HistoryManager } from './HistoryManager';
 import type { SidebarNode, TabState, OrganizeCluster, OrganizeProposal } from '../shared/ipc';

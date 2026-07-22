@@ -65,6 +65,7 @@ export class HistoryManager {
       this.#db = new SqliteConstructor(this.#dbPath);
       this.#setup();
       this.#migrateContentChunksToTextVersion();
+      this.#dropEmbeddingsTable();
       console.log('[History] база инициализирована:', this.#dbPath);
     } catch (e) {
       console.error('[History] не удалось открыть БД:', (e as Error).message);
@@ -74,6 +75,7 @@ export class HistoryManager {
         this.#db = new SqliteConstructor!(this.#dbPath);
         this.#setup();
         this.#migrateContentChunksToTextVersion();
+        this.#dropEmbeddingsTable();
         console.log('[History] БД пересоздана после ошибки');
       } catch (e2) {
         console.error('[History] пересоздание БД провалилось — история отключена:', (e2 as Error).message);
@@ -117,101 +119,6 @@ export class HistoryManager {
     } catch (e) {
       console.warn('[History] hasContentForVersion error:', (e as Error).message);
       return false;
-    }
-  }
-
-  // Блок 6: все проиндексированные записи с векторами для brute-force top-k поиска —
-  // на объёме ~700 строк полный скан дешевле, чем инфраструктура ANN-индекса ради этого.
-  getAllEmbeddings(modelVersion?: string): Array<{ id: number; url: string; title: string; lastVisit: number; visitCount: number; vector: Buffer; dims: number; modelVersion: string }> {
-    if (!this.#db) return [];
-    try {
-      const sql = `
-        SELECT h.id, h.url, h.title, h.last_visit AS lastVisit, h.visit_count AS visitCount,
-               he.vector, he.dims, he.model_version AS modelVersion
-        FROM history_embeddings he
-        JOIN history h ON h.id = he.history_id
-        ${modelVersion ? 'WHERE he.model_version = ?' : ''}
-      `;
-      return this.#db.prepare(sql).all(...(modelVersion ? [modelVersion] : [])) as Array<{ id: number; url: string; title: string; lastVisit: number; visitCount: number; vector: Buffer; dims: number; modelVersion: string }>;
-    } catch (e) {
-      console.warn('[History] getAllEmbeddings error:', (e as Error).message);
-      return [];
-    }
-  }
-
-  // Разовый бэкфилл (заход G, блок 5): чанк ещё не проиндексированных записей, свежее/чаще
-  // посещаемое — первым (last_visit DESC), чтобы при прерывании уже сделанная часть была
-  // максимально полезной. NOT IN на history_embeddings естественно даёт возобновляемость —
-  // повторный вызов после прерывания просто не вернёт уже обработанные строки.
-  getUnindexedHistory(limit: number, modelVersion?: string): Array<{ id: number; url: string; title: string }> {
-    if (!this.#db) return [];
-    try {
-      if (modelVersion) {
-        return this.#db.prepare(`
-          SELECT id, url, title FROM history
-          WHERE id NOT IN (
-            SELECT history_id FROM history_embeddings
-            WHERE model_version = ? OR model_version = 'excluded'
-          )
-          ORDER BY last_visit DESC
-          LIMIT ?
-        `).all(modelVersion, limit) as Array<{ id: number; url: string; title: string }>;
-      }
-      return this.#db.prepare(`
-        SELECT id, url, title FROM history
-        WHERE id NOT IN (SELECT history_id FROM history_embeddings)
-        ORDER BY last_visit DESC
-        LIMIT ?
-      `).all(limit) as Array<{ id: number; url: string; title: string }>;
-    } catch (e) {
-      console.warn('[History] getUnindexedHistory error:', (e as Error).message);
-      return [];
-    }
-  }
-
-  // Общее число невыполненных записей — для индикатора прогресса бэкфилла (блок 5).
-  countUnindexed(modelVersion?: string): number {
-    if (!this.#db) return 0;
-    try {
-      if (modelVersion) {
-        const row = this.#db.prepare(`
-          SELECT COUNT(*) c FROM history
-          WHERE id NOT IN (
-            SELECT history_id FROM history_embeddings
-            WHERE model_version = ? OR model_version = 'excluded'
-          )
-        `).get(modelVersion) as { c: number };
-        return row.c;
-      }
-      const row = this.#db.prepare(`
-        SELECT COUNT(*) c FROM history
-        WHERE id NOT IN (SELECT history_id FROM history_embeddings)
-      `).get() as { c: number };
-      return row.c;
-    } catch (e) {
-      console.warn('[History] countUnindexed error:', (e as Error).message);
-      return 0;
-    }
-  }
-
-  // Пишет/обновляет вектор эмбеддинга для уже существующей строки history (заход G).
-  // ON CONFLICT — та же логика, что и у recordVisit: повторная индексация той же страницы
-  // (ревизит, или переиндексация после смены модели) молча перезаписывает, не падает на PK.
-  saveEmbedding(historyId: number, vector: Float32Array, dims: number, modelVersion: string): void {
-    if (!this.#db) return;
-    try {
-      const buf = Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength);
-      this.#db.prepare(`
-        INSERT INTO history_embeddings (history_id, vector, dims, model_version, indexed_at)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(history_id) DO UPDATE SET
-          vector        = excluded.vector,
-          dims          = excluded.dims,
-          model_version = excluded.model_version,
-          indexed_at    = excluded.indexed_at
-      `).run(historyId, buf, dims, modelVersion, Date.now());
-    } catch (e) {
-      console.warn('[History] saveEmbedding error:', (e as Error).message);
     }
   }
 
@@ -438,7 +345,6 @@ export class HistoryManager {
     if (!this.#db) return;
     try {
       this.#deleteContentChunksForHistoryIds([id]);
-      this.#db.prepare(`DELETE FROM history_embeddings WHERE history_id = ?`).run(id);
       this.#db.prepare(`DELETE FROM history WHERE id = ?`).run(id);
     } catch (e) {
       console.warn('[History] deleteEntry error:', (e as Error).message);
@@ -453,13 +359,11 @@ export class HistoryManager {
     try {
       const run = db.transaction(() => {
         if (period === 'all') {
-          // history_embeddings.history_id → history(id) БЕЗ ON DELETE CASCADE, а foreign_keys=ON
-          // (#setup) — DELETE FROM history без предварительной чистки детей падает на FK constraint
-          // (проверено на копии боевой БД: 627 строк с эмбеддингами → весь DELETE откатывался,
-          // ни одна запись не удалялась). Порядок обязателен: сначала дети, потом родители.
+          // history_content_chunks.history_id → history(id) БЕЗ ON DELETE CASCADE, а foreign_keys=ON
+          // (#setup) — DELETE FROM history без предварительной чистки детей падает на FK constraint.
+          // Порядок обязателен: сначала дети, потом родители.
           try { db.prepare(`DELETE FROM history_content_chunks_fts`).run(); } catch { /* FTS может быть недоступен */ }
           db.prepare(`DELETE FROM history_content_chunks`).run();
-          db.prepare(`DELETE FROM history_embeddings`).run();
           db.prepare(`DELETE FROM history`).run();
         } else {
           const ms: Record<HistoryClearPeriod, number> = {
@@ -471,10 +375,6 @@ export class HistoryManager {
           const cutoff = Date.now() - ms[period];
           const rows = db.prepare(`SELECT id FROM history WHERE last_visit >= ?`).all(cutoff) as Array<{ id: number }>;
           this.#deleteContentChunksForHistoryIds(rows.map((r) => r.id));
-          db.prepare(`
-            DELETE FROM history_embeddings
-            WHERE history_id IN (SELECT id FROM history WHERE last_visit >= ?)
-          `).run(cutoff);
           db.prepare(`DELETE FROM history WHERE last_visit >= ?`).run(cutoff);
         }
       });
@@ -501,17 +401,6 @@ export class HistoryManager {
         visit_count INTEGER NOT NULL DEFAULT 1
       );
       CREATE INDEX IF NOT EXISTS idx_history_last_visit ON history(last_visit DESC);
-
-      -- Эмбеддинги истории для семантического поиска (заход G). Аддитивная таблица —
-      -- не меняет и не блокирует history, проверено на копии боевой БД (688 строк,
-      -- контрольные суммы совпали до/после, FK на history(id) реально работает).
-      CREATE TABLE IF NOT EXISTS history_embeddings (
-        history_id    INTEGER PRIMARY KEY REFERENCES history(id),
-        vector        BLOB    NOT NULL,
-        dims          INTEGER NOT NULL,
-        model_version TEXT    NOT NULL,
-        indexed_at    INTEGER NOT NULL
-      );
 
       CREATE TABLE IF NOT EXISTS history_content_chunks (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -578,6 +467,21 @@ export class HistoryManager {
       run();
     } catch (e) {
       console.warn('[History] migrateContentChunksToTextVersion error:', (e as Error).message);
+    }
+  }
+
+  // Разовая (идемпотентная) миграция — вызывается на каждом старте после #setup(), реально
+  // что-то делает только один раз. history_embeddings (векторы истории для семантического поиска)
+  // осталась без единого вызывающего после удаления searchHistorySemantic/getAllEmbeddings/
+  // HistoryBackfill.ts — грепом по кодовой базе перед этим коммитом подтверждено, что таблица
+  // ничем больше не читается и не пишется. IF EXISTS — не падает на уже удалённой таблице
+  // при повторных запусках.
+  #dropEmbeddingsTable(): void {
+    if (!this.#db) return;
+    try {
+      this.#db.exec(`DROP TABLE IF EXISTS history_embeddings;`);
+    } catch (e) {
+      console.warn('[History] dropEmbeddingsTable error:', (e as Error).message);
     }
   }
 

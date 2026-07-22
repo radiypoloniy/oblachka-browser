@@ -75,11 +75,23 @@ export interface SyncState {
   hasOrganizeSnapshot: boolean; // true = доступен откат последней AI-группировки
 }
 
-// Один предложенный кластер от ClusteringService/TabOrganizer.ts → TabManager.applyOrganize().
+// Один предложенный кластер от TabOrganizer.ts → TabManager.applyOrganize().
 export interface OrganizeCluster {
   nodeIds:   string[];                       // tabId (single) или leftTabId (split-pair)
   nodeTypes: ('single' | 'split-pair')[];   // по позиции
   label:     string;                         // название группы
+}
+
+// Тот же кластер, но для renderer-превью в App.tsx/Sidebar.tsx (до применения): titles — заголовки
+// вкладок для показа списком, suggestedName — предложенное имя ДО того, как пользователь мог его
+// принять (после «Применить» оно становится OrganizeCluster.label). Раньше жил в
+// ClusteringService.ts (эмбеддинг-кластеризация, удалена) — тип пережил саму реализацию, всё ещё
+// нужен для формы превью TabOrganizer.ts::suggestGroups().
+export interface ClusterProposal {
+  nodeIds: string[];
+  nodeTypes: ('single' | 'split-pair')[];
+  titles: string[];
+  suggestedName: string;
 }
 
 // Результат TabOrganizer.ts::suggestGroups() — та же форма кластеров (OrganizeCluster), что уже
@@ -192,13 +204,7 @@ export const IPC = {
   HISTORY_DELETE: 'history:delete',  // renderer → main: удалить запись (id: number)
   HISTORY_CLEAR:  'history:clear',   // renderer → main: очистить за период ('hour'|'day'|'week'|'all')
   HISTORY_OPEN:   'history:open',    // main → renderer: открыть панель истории (Ctrl+H)
-  // МЁРТВЫЙ, удаляется вместе с эмбеддингами (этап D): омнибокс больше не показывает семантические
-  // подсказки (диагностика — «магниты» без порога отделения от шума, см. Toolbar.tsx::buildSuggestions),
-  // а других вызывающих у этого канала не было. Канал/функция (HistorySearch.ts::searchHistorySemantic)
-  // намеренно НЕ удалены в этом коммите — вырезаются вместе с EmbedClient.ts на этапе полного
-  // удаления эмбеддингов, не раньше.
-  HISTORY_SEARCH_SEMANTIC: 'history:search-semantic', // renderer → main: query -> SemanticSearchResult[]
-  // Умный поиск (Qwen-реранк top-k кандидатов от searchHistorySemantic) — только по явному
+  // Умный поиск (лексика + FTS по тексту чанков, Qwen-реранк top-k кандидатов) — только по явному
   // действию (Enter), НЕ на каждый keystroke, см. HistorySearch.ts::searchHistorySmart.
   HISTORY_SEARCH_SMART: 'history:search-smart', // renderer → main: query -> SmartSearchResponse
 
@@ -412,28 +418,12 @@ export const IPC = {
   // (против белого экрана) и показывается по этому сигналу (см. main.ts::createWindow).
   CHROME_UI_READY: 'chrome:ui-ready',
 
-  // Заход G: эмбеддинги считаются ТОЛЬКО в renderer (embeddingService — WASM/WebGPU worker,
-  // требует DOM lib, недоступен из electron/main.ts, см. electron/EmbedClient.ts). Общий канал
-  // main→renderer→main: одна фраза → один вектор, ничего не знает о вызывающей стороне —
-  // используется и индексатором истории (electron/HistoryIndexer.ts), и позже семантическим
-  // поиском (блок 6). Логика «что делать с вектором» остаётся у вызывающего в main, не здесь.
-  EMBED_REQUEST:  'embed:request',   // main → renderer: { requestId, text }
-  EMBED_RESPONSE: 'embed:response',  // renderer → main: EmbedResponsePayload (fire-and-forget send)
-
-  // Заход G, блок 5: разовый бэкфилл уже накопленной истории эмбеддингами. Запускается ТОЛЬКО
-  // по явному действию пользователя (см. Settings.tsx::HistoryBackfillSection) — не автоматически.
-  HISTORY_BACKFILL_START:    'history:backfill-start',    // renderer → main: запустить (no-op если уже идёт)
-  HISTORY_BACKFILL_CANCEL:   'history:backfill-cancel',   // renderer → main: остановить между чанками
-  HISTORY_BACKFILL_STATUS:   'history:backfill-status',   // renderer → main: текущий прогресс (синк при открытии панели)
-  HISTORY_BACKFILL_PROGRESS: 'history:backfill-progress', // main → renderer: push прогресса
-
   // Индикатор качества индекса умного поиска (см. Settings.tsx::HistoryBackfillSection) — сколько
   // страниц истории реально имеют извлечённый текст (chunks), а не только заголовок+домен.
   HISTORY_CONTENT_COVERAGE: 'history:content-coverage', // renderer → main: снимок охвата на момент запроса
 
   // Рискованный бэкфилл полного текста (см. electron/HistoryContentBackfill.ts) — тихое
-  // переоткрытие старых URL. Только по явному действию в отдельной, явно промаркированной
-  // секции Settings.tsx — не совмещён с HISTORY_BACKFILL_* (тот делает совсем другое и дешёвое).
+  // переоткрытие старых URL. Только по явному действию в отдельной, явно промаркированной секции Settings.tsx.
   HISTORY_CONTENT_BACKFILL_START:    'history:content-backfill-start',
   HISTORY_CONTENT_BACKFILL_CANCEL:   'history:content-backfill-cancel',
   HISTORY_CONTENT_BACKFILL_STATUS:   'history:content-backfill-status',
@@ -565,18 +555,6 @@ export interface SmartSearchResponse {
   results: SemanticSearchResult[];
   degraded: boolean;
 }
-
-// ── Эмбеддинги (заход G) ─────────────────────────────────────────────────────
-// Общий транспорт main↔renderer: текст на входе, вектор на выходе. requestId — корреляция
-// ответа с запросом (в main может быть несколько requestEmbedding() в полёте одновременно).
-export interface EmbedRequestPayload {
-  requestId: number;
-  text: string;
-  modelVersionOnly?: boolean;
-}
-export type EmbedResponsePayload =
-  | { requestId: number; ok: true; vector: Float32Array; dims: number; modelVersion: string }
-  | { requestId: number; ok: false; error: string };
 
 // Заход G, блок 5 — прогресс разового бэкфилла истории.
 export interface BackfillProgress {
@@ -1039,10 +1017,8 @@ export interface OblakoApi {
   deleteHistoryEntry(id: number): Promise<void>;
   clearHistory(period: HistoryClearPeriod): Promise<boolean>; // false — очистка не выполнилась, см. HistoryManager.ts::clearHistory
   onHistoryOpen(cb: () => void): () => void;
-  // Заход G, блок 7 — векторный поиск (см. electron/HistorySearch.ts, блок 6).
-  searchHistorySemantic(query: string): Promise<SemanticSearchResult[]>;
   // Умный поиск — Qwen-реранк top-k кандидатов, только по явному Enter (см. HistorySearch.ts).
-  // degraded:true в ответе — реранк не отработал, results это cosine top-k без LLM (см. SmartSearchResponse).
+  // degraded:true в ответе — реранк не отработал, results это лексика+FTS top-k без LLM (см. SmartSearchResponse).
   searchHistorySmart(query: string): Promise<SmartSearchResponse>;
 
   // Закладки — плоский список (parentId всегда null в Feature 1)
@@ -1056,21 +1032,11 @@ export interface OblakoApi {
   listBookmarkImportSources(): Promise<BookmarkImportSource[]>;
   runBookmarkImport(sourceId: string): Promise<BookmarkImportResult | null>;
 
-  // Заход G — общий канал эмбеддингов main→renderer→main (см. electron/EmbedClient.ts,
-  // src/services/EmbedRequestBridge.ts). embeddingService живёт только в renderer.
-  onEmbedRequest(cb: (req: EmbedRequestPayload) => void): () => void;
-  sendEmbedResponse(res: EmbedResponsePayload): void;
-
-  // Заход G, блок 5 — разовый бэкфилл истории (см. electron/HistoryBackfill.ts).
-  startHistoryBackfill(): void;
-  cancelHistoryBackfill(): void;
-  getHistoryBackfillStatus(): Promise<BackfillProgress>;
-  onHistoryBackfillProgress(cb: (p: BackfillProgress) => void): () => void;
   // Индикатор качества индекса умного поиска — сколько страниц реально имеют извлечённый текст.
   getHistoryContentCoverage(): Promise<HistoryContentCoverage>;
 
   // Рискованный бэкфилл полного текста (electron/HistoryContentBackfill.ts) — тихое переоткрытие
-  // старых URL. Тот же прогресс-контракт, что у HISTORY_BACKFILL_* (BackfillProgress), но
+  // старых URL. Тот же прогресс-контракт (BackfillProgress), но
   // отдельные каналы/методы — это независимый, гораздо более тяжёлый и рискованный процесс.
   startHistoryContentBackfill(): void;
   cancelHistoryContentBackfill(): void;
@@ -1287,7 +1253,4 @@ export interface OblakoApi {
   // Модель, сейчас загруженная в VRAM (см. electron/TranslationService.ts::getLoadedModelId) —
   // задел, потребителей в UI пока нет. Read-only.
   getLoadedModelId(): Promise<string | null>;
-
-  // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
-  readonly embedPreload: boolean;
 }

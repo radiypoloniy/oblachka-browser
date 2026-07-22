@@ -55,12 +55,10 @@ import * as vpnProcess from './VpnProcess';
 import { toServerMeta } from './VpnParser';
 import type { VpnConnectionState } from '../shared/ipc';
 import * as passwordAutofill from './PasswordAutofillManager';
-import { setChromeView as setEmbedClientChromeView } from './EmbedClient';
 import { indexVisit } from './HistoryIndexer';
-import { startBackfill, cancelBackfill, setBackfillProgressListener } from './HistoryBackfill';
 import { startContentBackfill, cancelContentBackfill, setContentBackfillProgressListener } from './HistoryContentBackfill';
 import type { BackfillProgress } from '../shared/ipc';
-import { searchHistorySemantic, searchHistorySmart } from './HistorySearch';
+import { searchHistorySmart } from './HistorySearch';
 import {
   suggestGroups,
   setTabManager as setOrganizerTabManager,
@@ -85,10 +83,6 @@ process.on('unhandledRejection', (reason) => {
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
 
-// Одно место: env OBLAKO_PRELOAD_EMBED=0 npm start → предзагрузка эмбеддинг-модели отключена.
-// Используется в preload.ts (window.oblako.embedPreload) и для лога [startup] preload=on|off.
-const EMBED_PRELOAD = process.env.OBLAKO_PRELOAD_EMBED !== '0';
-
 // Пауза перед фоновым прогревом локальной LLM перевода (см. showWindow ниже) — даём чрому и первой
 // (разбуженной) вкладке спокойно отрисоваться/догрузиться, прежде чем начинать тяжёлую загрузку
 // модели (~5.7ГБ с диска + перенос в VRAM, см. TranslationService.ts::ensureLoaded). Без паузы
@@ -104,28 +98,11 @@ const TRANSLATION_WARMUP_DELAY_MS = 3000;
 // по AI раньше, чем понадобится перевод.
 const AI_PANEL_PREWARM_DELAY_MS = 1500;
 
-// Изолированные стенды AI-инфраструктурных тестов (WebGPU-эксперименты, node-llama-cpp).
-// OBLAKO_GPU_TEST=1 / OBLAKO_LLAMA_TEST=1 / OBLAKO_TRANSLATE_TEST=1 npm start → вместо боевого
-// окна открывается только тестовое, боевой чром (TabManager/SessionManager/adblock/history)
-// не инициализируется.
-const GPU_TEST = process.env.OBLAKO_GPU_TEST === '1';
+// Изолированные стенды AI-инфраструктурных тестов (node-llama-cpp).
+// OBLAKO_LLAMA_TEST=1 / OBLAKO_TRANSLATE_TEST=1 npm start → вместо боевого окна открывается
+// только тестовое, боевой чром (TabManager/SessionManager/adblock/history) не инициализируется.
 const LLAMA_TEST = process.env.OBLAKO_LLAMA_TEST === '1';
 const TRANSLATE_TEST = process.env.OBLAKO_TRANSLATE_TEST === '1';
-
-// html — страница из src/*.html (Vite multi-entry, см. vite.config.ts).
-// logPrefix — ASCII-тег, по которому строки console.log форвардятся в main stdout как есть;
-// всё остальное (шум ORT/браузера) помечается tag:console, чтобы не путать с результатами теста.
-function runIsolatedTestWindow(html: string, logPrefix: string): void {
-  const testWin = new BrowserWindow({ width: 900, height: 600, show: true });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  testWin.webContents.on('console-message', (event: any) => {
-    const msg: string = event.message ?? '';
-    if (msg.startsWith(logPrefix)) process.stdout.write(msg + '\n');
-    else process.stdout.write(`${logPrefix}:console ${msg}\n`);
-  });
-  testWin.on('closed', () => app.quit());
-  testWin.loadURL(`oblako-chrome://localhost/${html}`);
-}
 
 // Тест-мост перевода: нужен свой preload (contextBridge → window.translateTest) и IPC-хендлер
 // в main (node-llama-cpp работает только там) — в отличие от runIsolatedTestWindow это не просто
@@ -286,7 +263,6 @@ function createWindow() {
     },
   });
   win.contentView.addChildView(chromeView);
-  setEmbedClientChromeView(chromeView); // заход G: мост эмбеддингов слушает этот же chromeView
   setAiPanelChromeView(chromeView); // заход 3: push'и состояния дока (открыт/закрыт) идут сюда, не в win.webContents
   // Дефолтный фон WebContentsView — белый, и он перекрывает backgroundColor окна на всю площадь.
   // Красим под --app-bg, чтобы кадры до первой отрисовки React были цветом интерфейса.
@@ -652,7 +628,6 @@ function createWindow() {
   win.on('closed', () => {
     console.log('[shutdown] win closed: обнуляю win/chromeView/tabs/sess');
     win = null; chromeView = null; tabs = null; sess = null;
-    setEmbedClientChromeView(null); // заход G: мост эмбеддингов больше не должен слать в мёртвый webContents
   });
 }
 
@@ -1046,17 +1021,6 @@ function registerIpc() {
   ipcMain.handle(IPC.PASSWORDS_INDICATOR_DISMISS, () => passwordAutofill.handleDismiss());
   ipcMain.handle(IPC.PASSWORDS_INDICATOR_GENERATE, () => passwordAutofill.handleGenerateAndFill());
 
-  // Заход G, блок 5 — разовый бэкфилл истории. Запускается только по явному действию
-  // пользователя (Settings.tsx), никогда автоматически. lastBackfillProgress — чтобы панель
-  // настроек могла синхронизироваться при открытии, если бэкфилл уже идёт (или уже завершился).
-  let lastBackfillProgress: BackfillProgress = { processed: 0, total: 0, running: false, cancelled: false };
-  setBackfillProgressListener((p) => {
-    lastBackfillProgress = p;
-    chromeView?.webContents.send(IPC.HISTORY_BACKFILL_PROGRESS, p);
-  });
-  ipcMain.on(IPC.HISTORY_BACKFILL_START,  () => { void startBackfill(history); });
-  ipcMain.on(IPC.HISTORY_BACKFILL_CANCEL, () => { cancelBackfill(); });
-  ipcMain.handle(IPC.HISTORY_BACKFILL_STATUS, () => lastBackfillProgress);
   // Индикатор качества индекса умного поиска (Settings.tsx) — снимок на момент запроса,
   // не подписка: панель настроек открывают редко, push-канал ради этого избыточен.
   ipcMain.handle(IPC.HISTORY_CONTENT_COVERAGE, () => ({
@@ -1085,8 +1049,6 @@ function registerIpc() {
   ipcMain.handle(IPC.HISTORY_SEARCH, (_e, query: string)            => history.search(query));
   ipcMain.handle(IPC.HISTORY_DELETE, (_e, id: number)               => history.deleteEntry(id));
   ipcMain.handle(IPC.HISTORY_CLEAR,  (_e, period: HistoryClearPeriod) => history.clearHistory(period));
-  // Заход G, блок 7 — векторный поиск для омнибокса (searchHistorySemantic — блок 6).
-  ipcMain.handle(IPC.HISTORY_SEARCH_SEMANTIC, (_e, query: string) => searchHistorySemantic(history, query));
   // Умный поиск — Qwen-реранк, только по явному Enter (см. HistorySearch.ts::searchHistorySmart).
   ipcMain.handle(IPC.HISTORY_SEARCH_SMART, (_e, query: string) => searchHistorySmart(history, query));
 
@@ -1321,15 +1283,10 @@ app.on('web-contents-created', (_e, contents) => {
 
 app.whenReady().then(async () => {
   startT0 = Date.now();
-  console.log(`[startup] preload=${EMBED_PRELOAD ? 'on' : 'off'}`);
   Menu.setApplicationMenu(null); // прячем дефолтное меню — у нас свой хром
   registerModelProtocol();
   registerChromeProtocol();
 
-  if (GPU_TEST) {
-    runIsolatedTestWindow('gputest.html', '[gputest]');
-    return;
-  }
   if (LLAMA_TEST) {
     // node-llama-cpp работает только в main-процессе — своё окно не нужно, только stdout.
     const { runLlamaTest } = await import('./llamatest');

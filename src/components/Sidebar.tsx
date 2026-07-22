@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw } from 'lucide-react';
-import type { ClusterProposal } from '../services/ClusteringService';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import { glassPlate, islandPlate } from '../styles/island';
 import {
@@ -15,7 +14,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import type { TabState, SidebarNode, GroupNode } from '../../shared/ipc';
+import type { TabState, SidebarNode, GroupNode, ClusterProposal } from '../../shared/ipc';
 
 // Стабильный id droppable-контейнера секции «Открытые вкладки».
 const SECTION_NORMAL_ID = 'drop-section-normal';

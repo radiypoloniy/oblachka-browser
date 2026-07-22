@@ -1,10 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
-
-// В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
-const EMBED_PRELOAD = process.env.OBLAKO_PRELOAD_EMBED !== '0';
 
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
@@ -88,8 +85,6 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.HISTORY_OPEN, handler);
     return () => ipcRenderer.removeListener(IPC.HISTORY_OPEN, handler);
   },
-  searchHistorySemantic: (query: string) =>
-    ipcRenderer.invoke(IPC.HISTORY_SEARCH_SEMANTIC, query) as Promise<SemanticSearchResult[]>,
   searchHistorySmart: (query: string) =>
     ipcRenderer.invoke(IPC.HISTORY_SEARCH_SMART, query) as Promise<SmartSearchResponse>,
 
@@ -110,23 +105,6 @@ const api: OblakoApi = {
   runBookmarkImport: (sourceId: string) =>
     ipcRenderer.invoke(IPC.BOOKMARK_IMPORT_RUN, sourceId) as Promise<BookmarkImportResult | null>,
 
-  // Заход G — общий канал эмбеддингов (см. shared/ipc.ts::EmbedRequestPayload).
-  onEmbedRequest: (cb: (req: EmbedRequestPayload) => void) => {
-    const handler = (_e: unknown, req: EmbedRequestPayload) => cb(req);
-    ipcRenderer.on(IPC.EMBED_REQUEST, handler);
-    return () => ipcRenderer.removeListener(IPC.EMBED_REQUEST, handler);
-  },
-  sendEmbedResponse: (res: EmbedResponsePayload) => ipcRenderer.send(IPC.EMBED_RESPONSE, res),
-
-  // Заход G, блок 5 — разовый бэкфилл истории.
-  startHistoryBackfill:  () => ipcRenderer.send(IPC.HISTORY_BACKFILL_START),
-  cancelHistoryBackfill: () => ipcRenderer.send(IPC.HISTORY_BACKFILL_CANCEL),
-  getHistoryBackfillStatus: () => ipcRenderer.invoke(IPC.HISTORY_BACKFILL_STATUS) as Promise<BackfillProgress>,
-  onHistoryBackfillProgress: (cb: (p: BackfillProgress) => void) => {
-    const handler = (_e: unknown, p: BackfillProgress) => cb(p);
-    ipcRenderer.on(IPC.HISTORY_BACKFILL_PROGRESS, handler);
-    return () => ipcRenderer.removeListener(IPC.HISTORY_BACKFILL_PROGRESS, handler);
-  },
   getHistoryContentCoverage: () =>
     ipcRenderer.invoke(IPC.HISTORY_CONTENT_COVERAGE) as Promise<HistoryContentCoverage>,
 
@@ -431,8 +409,6 @@ const api: OblakoApi = {
   // Модель, сейчас загруженная в VRAM (см. electron/TranslationService.ts::getLoadedModelId) —
   // задел, потребителей пока нет.
   getLoadedModelId: () => ipcRenderer.invoke(IPC.MODEL_LOADED_GET) as Promise<string | null>,
-
-  embedPreload: EMBED_PRELOAD,
 };
 
 contextBridge.exposeInMainWorld('oblako', api);

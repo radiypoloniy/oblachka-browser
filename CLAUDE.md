@@ -26,8 +26,10 @@ npm run dev              # Vite (5173) + Electron dev-режим одновре�
 npm run build             # vite build + tsc -p electron/tsconfig.json (прод-сборка)
 npm start                 # запуск собранного прод-приложения (dist-electron)
 npm run download-filters  # скачать EasyList-фильтры для адблока
-npm run download-model    # скачать локальную LLM/эмбеддинг-модель
 ```
+
+Локальная LLM (GGUF) скачивается из UI (реестр/каталог моделей, `electron/ModelDownloader.ts` +
+`src/components/ModelsSection.tsx`), отдельного npm-скрипта для неё нет.
 
 Проверка типов ОБОИХ таргетов (обязательна после изменений, см. «Ритм работы»):
 
@@ -74,6 +76,11 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   через `node-llama-cpp`. Каждый со своим preload-файлом
   (`preload-aipanel.ts`, `preload-translatepopover.ts`) — не переиспользуют
   боевой `preload.ts`, т.к. живут в изолированных `WebContentsView`.
+- `electron/TabOrganizer.ts` — AI-группировка открытых вкладок: список вкладок
+  прямым промптом в Qwen (через `TranslationService.ts::runTabOrganizePrompt`),
+  модель сама придумывает названия групп по смыслу → `OrganizeCluster[]` →
+  `TabManager.applyOrganize()`. Эмбеддинг-кластеризация (косинус поверх
+  векторов) отсюда удалена — модель работает по сырым заголовкам/URL.
 - `electron/AppProtocol.ts` — кастомные протоколы (`oblako-chrome://` для прод-
   загрузки хрома с COOP/COEP-заголовками, protocol для локальной AI-модели).
 - `electron/preload.ts` — безопасный мост боевого хрома: типизированный
@@ -90,10 +97,6 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
 - `src/aipanel.tsx`, `src/translatepopover.tsx` — отдельные React-точки входа
   (свои HTML/entry в `vite.config.ts`) для AI-панели и поповера перевода —
   у них своя `WebContentsView` и свой preload, это не часть `src/App.tsx`.
-- `src/services/EmbeddingService.ts` + `src/workers/embedding.worker.ts` —
-  эмбеддинги для AI-группировки вкладок считаются в Web Worker, не блокируют
-  UI-поток. `src/services/ClusteringService.ts` — кластеризация вкладок поверх
-  эмбеддингов → `OrganizeCluster[]` → `TabManager.applyOrganize()`.
 - `src/styles/tokens/` — токены дизайн-системы. Цвета/радиусы/тени берутся
   отсюда через `var(--...)`, **не хардкодить цвета в компонентах.**
 

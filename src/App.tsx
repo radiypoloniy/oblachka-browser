@@ -9,11 +9,8 @@ import HistoryBookmarks from './components/HistoryBookmarks';
 import Downloads from './components/Downloads';
 import PermissionPrompt from './components/PermissionPrompt';
 import { islandPlate } from './styles/island';
-import { embeddingService } from './services/EmbeddingService';
-import { startEmbedRequestBridge } from './services/EmbedRequestBridge';
-import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress } from '../shared/ipc';
+import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT } from '../shared/layout';
-import type { ClusterProposal } from './services/ClusteringService';
 
 const HUB_ID = 'hub';
 
@@ -109,10 +106,6 @@ function findActiveSplitPairNode(nodes: SidebarNode[], activeId: string): SplitP
 export default function App() {
   console.log('[renderer-alive] App смонтирован')
 
-  // Заход G: отвечает на embed:request от main реальным embeddingService — общий канал для
-  // индексатора истории и (позже) семантического поиска, см. EmbedRequestBridge.ts.
-  useEffect(() => startEmbedRequestBridge(), []);
-
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [sidebarNodes, setSidebarNodes] = useState<SidebarNode[]>([]);
   const [activeId, setActiveId] = useState(HUB_ID);
@@ -196,36 +189,6 @@ export default function App() {
   // titles для превью из ответа suggestGroups()).
   const allTabsRef = useRef(tabs);
   allTabsRef.current = tabs;
-
-  // Предзагрузка модели эмбеддингов: стартует ПОСЛЕ первого paint оболочки.
-  // Double-rAF гарантирует, что первый кадр (сайдбар/тулбар/хаб) уже скомпозичен
-  // прежде чем worker поднимает 8 WASM-потоков и начинает конкурировать с CPU.
-  // Отключается через OBLAKO_PRELOAD_EMBED=0 npm start (для замера влияния на старт).
-  useEffect(() => {
-    if (!window.oblako.embedPreload) return
-
-    let raf1 = 0, raf2 = 0, idle = 0
-    const useIdle = typeof requestIdleCallback !== 'undefined'
-
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        // Первый кадр отрисован — грузим модель только в реальный idle.
-        // timeout=10000: если пользователь активен, не ждать больше 10с.
-        if (useIdle) {
-          idle = requestIdleCallback(() => { embeddingService.preload() }, { timeout: 10_000 })
-        } else {
-          idle = window.setTimeout(() => { embeddingService.preload() }, 500)
-        }
-      })
-    })
-
-    return () => {
-      cancelAnimationFrame(raf1)
-      cancelAnimationFrame(raf2)
-      if (useIdle) cancelIdleCallback(idle)
-      else clearTimeout(idle)
-    }
-  }, [])
 
   // Тема
   useEffect(() => {

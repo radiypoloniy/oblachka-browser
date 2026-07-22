@@ -972,29 +972,20 @@ export function EngineOption({ active, disabled, onClick, title, subtitle, badge
   );
 }
 
-// ── Разовый бэкфилл истории эмбеддингами (заход G, блок 5) ────────────────────
-// Триггер — только явный клик по кнопке здесь; никогда автоматически. Прогресс синхронизируется
-// при монтировании (getHistoryBackfillStatus) — если бэкфилл уже идёт/завершился при открытой
-// в другой раз панели настроек, показываем актуальное состояние, а не всегда «Индексировать».
+// ── Индекс полнотекстового поиска по истории ───────────────────────────────────
+// Индексация текста идёт сама при обычном посещении/повторном визите — здесь только счётчик
+// охвата и (ниже) отдельная секция ручного бэкфилла старых страниц. Разовый эмбеддинг-бэкфилл
+// (кнопка «Индексировать историю» по заголовку+домену) убран вместе с эмбеддингами — счётчик
+// ниже всегда считает страницы с реально сохранённым текстом, эмбеддинги в этом счёте
+// никогда не участвовали.
 function HistoryBackfillSection() {
-  const [progress, setProgress] = useState<BackfillProgress | null>(null);
   const [coverage, setCoverage] = useState<HistoryContentCoverage | null>(null);
 
   const loadCoverage = () => { void window.oblako.getHistoryContentCoverage().then(setCoverage); };
 
   useEffect(() => {
-    let mounted = true;
-    window.oblako.getHistoryBackfillStatus().then((p) => { if (mounted) setProgress(p); });
-    const unsub = window.oblako.onHistoryBackfillProgress((p) => { if (mounted) setProgress(p); });
     loadCoverage();
-    return () => { mounted = false; unsub(); };
   }, []);
-
-  const running = progress?.running ?? false;
-  const processed = progress?.processed ?? 0;
-  const total = progress?.total ?? 0;
-  const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
-  const finishedClean = !!progress && !running && total > 0 && processed >= total && !progress.cancelled;
 
   return (
     <div style={{
@@ -1006,10 +997,9 @@ function HistoryBackfillSection() {
           Индексация истории для поиска
         </h3>
         <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          Кнопка ниже — разовая обработка уже накопленной истории по заголовку и домену
-          (быстро, без открытия страниц). Полный текст страницы для умного поиска отдельно
-          появляется сам при обычном посещении/повторном визите — счётчик ниже показывает,
-          сколько страниц уже имеют полный текст. Всё считается локально на устройстве.
+          Полный текст страницы для умного поиска появляется сам при обычном посещении/повторном
+          визите — счётчик ниже показывает, сколько страниц уже имеют полный текст. Всё считается
+          локально на устройстве.
         </p>
       </div>
 
@@ -1032,37 +1022,6 @@ function HistoryBackfillSection() {
           <RefreshCw size={12} />
         </button>
       </div>
-
-      {running ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
-            Обработано {processed} из {total}…
-          </div>
-          <div style={{ height: 6, borderRadius: 3, background: 'var(--surface-hover)', overflow: 'hidden' }}>
-            <div style={{
-              height: '100%', width: `${pct}%`, background: 'var(--accent)',
-              transition: 'width 0.2s ease-out',
-            }} />
-          </div>
-          <button
-            onClick={() => window.oblako.cancelHistoryBackfill()}
-            style={{ ...btnGhost, alignSelf: 'flex-start' }}
-          >
-            Остановить
-          </button>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={() => window.oblako.startHistoryBackfill()} style={btnPrimary}>
-            {finishedClean ? 'Переиндексировать заново' : 'Индексировать историю'}
-          </button>
-          {progress && total > 0 && (progress.cancelled || finishedClean) && (
-            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-              {progress.cancelled ? `Остановлено: ${processed} из ${total}` : `Готово: ${processed} из ${total}`}
-            </span>
-          )}
-        </div>
-      )}
 
       <HistoryContentBackfillSection onDone={loadCoverage} />
     </div>
