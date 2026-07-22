@@ -28,7 +28,7 @@ import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, Sideb
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
-import { warmup as warmupTranslation, unloadModel, type ChatOutcome } from './TranslationService';
+import { warmup as warmupTranslation, unloadModel, getLoadedModelId, type ChatOutcome } from './TranslationService';
 import { toggleAiPanel, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
 import {
   togglePageTranslate,
@@ -1257,6 +1257,7 @@ function registerIpc() {
   // Детект железа (см. electron/HardwareInfo.ts) — задел под подбор модели. Ленивый: ничего не
   // считает на старте, первый запрос из renderer инициирует расчёт.
   ipcMain.handle(IPC.HARDWARE_GET_SNAPSHOT, () => HardwareInfo.get());
+  ipcMain.handle(IPC.HARDWARE_REFRESH_SNAPSHOT, () => HardwareInfo.refresh());
 
   // Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей в UI нет.
   // Тот же приём, что HISTORY_CONTENT_BACKFILL_PROGRESS (main.ts:1006-1010): модуль зовёт колбэк,
@@ -1278,6 +1279,25 @@ function registerIpc() {
   // Удаление модели с диска (см. ModelRegistry.ts::deleteModel) — задел, потребителей в UI нет.
   // Необратимо.
   ipcMain.handle(IPC.MODEL_DELETE, (_e, id: string) => ModelRegistry.deleteModel(id));
+
+  // Список установленных моделей (см. ModelRegistry.ts::list) — задел, потребителей в UI нет.
+  ipcMain.handle(IPC.MODEL_INSTALLED_LIST, () => ModelRegistry.list());
+
+  // Дефолтная модель (см. ModelRegistry.ts::getDefault/setDefault) — задел, потребителей в UI нет.
+  // ModelRegistry.setDefault() сама молча игнорирует неизвестный id (void, без сигнала об ошибке) —
+  // валидация NOT_FOUND сделана здесь, на границе IPC, а не внутри ModelRegistry.ts (её логику эта
+  // задача не трогает). Установка несуществующего дефолта иначе сломала бы ensureLoaded() при следующем
+  // старте. Смена дефолта НЕ выгружает уже загруженную модель — та остаётся в VRAM до unloadModel().
+  ipcMain.handle(IPC.MODEL_DEFAULT_GET, () => ModelRegistry.getDefault()?.id ?? null);
+  ipcMain.handle(IPC.MODEL_DEFAULT_SET, (_e, id: string) => {
+    if (!ModelRegistry.getById(id)) return { ok: false, reason: 'NOT_FOUND' };
+    ModelRegistry.setDefault(id);
+    return { ok: true };
+  });
+
+  // Модель, сейчас загруженная в VRAM (см. TranslationService.ts::getLoadedModelId) — задел,
+  // потребителей в UI нет.
+  ipcMain.handle(IPC.MODEL_LOADED_GET, () => getLoadedModelId());
 }
 
 // Собирает GroupNode[] плоским списком из верхнего уровня дерева.

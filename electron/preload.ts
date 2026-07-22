@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, EmbedRequestPayload, EmbedResponsePayload, BackfillProgress, HistoryContentCoverage, SemanticSearchResult, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 // В preload (sandbox: false) process.env доступен — читаем флаг напрямую, без IPC.
@@ -397,6 +397,7 @@ const api: OblakoApi = {
 
   // Детект железа (см. electron/HardwareInfo.ts) — задел, потребителей пока нет.
   getHardwareSnapshot: () => ipcRenderer.invoke(IPC.HARDWARE_GET_SNAPSHOT) as Promise<HardwareSnapshot>,
+  refreshHardwareSnapshot: () => ipcRenderer.invoke(IPC.HARDWARE_REFRESH_SNAPSHOT) as Promise<HardwareSnapshot>,
 
   // Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей пока нет.
   startModelDownload: (spec: ModelDownloadSpec) => ipcRenderer.send(IPC.MODEL_DOWNLOAD_START, spec),
@@ -418,6 +419,18 @@ const api: OblakoApi = {
   // Удаление модели с диска (см. electron/ModelRegistry.ts::deleteModel) — задел, потребителей
   // пока нет. Необратимо.
   deleteModel: (id: string) => ipcRenderer.invoke(IPC.MODEL_DELETE, id) as Promise<DeleteModelResult>,
+
+  // Список установленных моделей (см. electron/ModelRegistry.ts::list) — задел, потребителей пока нет.
+  getInstalledModels: () => ipcRenderer.invoke(IPC.MODEL_INSTALLED_LIST) as Promise<InstalledModel[]>,
+
+  // Дефолтная модель (см. electron/ModelRegistry.ts::getDefault/setDefault) — задел, потребителей
+  // пока нет. Смена дефолта не выгружает уже загруженную модель — см. SetDefaultModelResult в shared/ipc.ts.
+  getDefaultModelId: () => ipcRenderer.invoke(IPC.MODEL_DEFAULT_GET) as Promise<string | null>,
+  setDefaultModel: (id: string) => ipcRenderer.invoke(IPC.MODEL_DEFAULT_SET, id) as Promise<SetDefaultModelResult>,
+
+  // Модель, сейчас загруженная в VRAM (см. electron/TranslationService.ts::getLoadedModelId) —
+  // задел, потребителей пока нет.
+  getLoadedModelId: () => ipcRenderer.invoke(IPC.MODEL_LOADED_GET) as Promise<string | null>,
 
   embedPreload: EMBED_PRELOAD,
 };

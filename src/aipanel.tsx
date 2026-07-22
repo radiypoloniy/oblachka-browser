@@ -15,11 +15,15 @@ import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 import { SHELL_MARGIN } from '../shared/layout';
 
+// Код причины отказа (см. electron/TranslationService.ts::ModelError, shared/ipc.ts::ModelErrorCode)
+// — зеркалим локально, тот же приём, что и у ChatOutcome ниже.
+type ModelErrorCode = 'NO_MODEL_INSTALLED' | 'MODEL_FILE_MISSING' | 'LOAD_FAILED'
+
 // Форма ChatOutcome из electron/TranslationService.ts — не через shared/ipc.ts (ad-hoc канал,
 // как и у поповера, см. preload-aipanel.ts), поэтому просто зеркалим форму локально.
 type ChatOutcome =
   | { ok: true; out: string; ms: number; tokPerSec: number; loadMs: number | null }
-  | { ok: false; error: string }
+  | { ok: false; error: string; errorCode?: ModelErrorCode }
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -104,6 +108,27 @@ function hostnameOf(url: string): string {
   }
 }
 
+// Человекочитаемая карточка вместо сырого String(e) — NO_MODEL_INSTALLED/MODEL_FILE_MISSING
+// ведут в Настройки (showModelButton), LOAD_FAILED и всё прочее без errorCode — просто внятная
+// подводка над текстом ошибки от бэкенда (он уже человекочитаем, см. TranslationService.ts).
+function describeChatError(error: string, code: ModelErrorCode | null): { heading: string; detail: string; showModelButton: boolean } {
+  if (code === 'NO_MODEL_INSTALLED') {
+    return {
+      heading: 'Локальная модель не установлена',
+      detail: 'AI считает прямо на этом устройстве, без облака — модель нужно скачать один раз, дальше всё работает офлайн.',
+      showModelButton: true,
+    }
+  }
+  if (code === 'MODEL_FILE_MISSING') {
+    return {
+      heading: 'Файл модели не найден',
+      detail: 'Похоже, файл модели переместили или удалили с диска. Выберите модель заново.',
+      showModelButton: true,
+    }
+  }
+  return { heading: 'Не удалось получить ответ', detail: error, showModelButton: false }
+}
+
 function AiPanel() {
   const [tabId, setTabId] = useState<string | null>(null)
   const [pageTitle, setPageTitle] = useState('')
@@ -115,6 +140,7 @@ function AiPanel() {
   const [streamedText, setStreamedText] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorCode, setErrorCode] = useState<ModelErrorCode | null>(null)
   // Заход D — кнопка фактчека видна только когда ключ Gemini подключён (см. AiKeyStore.ts,
   // пуш через AiPanelManager.ts::sendKeyStatus). factChecking — отдельный флаг ТОЛЬКО для
   // текстовой/визуальной подписи «печатающегося» сообщения (см. рендер ленты ниже): вызов Gemini
@@ -168,6 +194,7 @@ function AiPanel() {
       setFactChecking(false)
       setWebSearching(false)
       setError(null)
+      setErrorCode(null)
     })
     const unsubChunk = window.aiPanel.onChatChunk((chunkText) => {
       setWebSearching(false)
@@ -181,8 +208,10 @@ function AiPanel() {
       if (outcome.ok) {
         setMessages((prev) => [...prev, { role: 'assistant', text: outcome.out }])
         setError(null)
+        setErrorCode(null)
       } else {
         setError(outcome.error)
+        setErrorCode(outcome.errorCode ?? null)
       }
     })
     const unsubKeyStatus = window.aiPanel.onKeyStatus((connected) => {
@@ -416,11 +445,38 @@ function AiPanel() {
             </div>
           )}
 
-          {error && (
-            <span style={{ fontSize: 'var(--fs-sm)', color: 'rgba(200,50,50,0.85)' }}>
-              Ошибка: {error}
-            </span>
-          )}
+          {error && (() => {
+            const { heading, detail, showModelButton } = describeChatError(error, errorCode)
+            return (
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 8,
+                padding: '10px 12px',
+                borderRadius: 'var(--radius-chip)',
+                background: 'color-mix(in srgb, var(--danger-500) 10%, var(--surface-solid))',
+                border: '1px solid color-mix(in srgb, var(--danger-500) 30%, transparent)',
+              }}>
+                <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+                  {heading}
+                </div>
+                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', lineHeight: 'var(--lh-body)' }}>
+                  {detail}
+                </div>
+                {showModelButton && (
+                  <button
+                    onClick={() => window.aiPanel.openSettings('ai')}
+                    style={{
+                      alignSelf: 'flex-start',
+                      padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
+                      background: 'var(--accent)', color: 'var(--on-accent)',
+                      fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    Выбрать модель
+                  </button>
+                )}
+              </div>
+            )
+          })()}
         </div>
 
         {/* Кнопки-подсказки — только пока беседа пуста (как у Яндекса, над полем ввода). Как только

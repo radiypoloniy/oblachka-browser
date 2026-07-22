@@ -4,6 +4,7 @@ import type { AdBlockState, BackfillProgress, HistoryContentCoverage, VpnStatus,
 import { islandPlate } from '../styles/island';
 import { stripEmoji } from '../../shared/text';
 import Toggle from './Toggle';
+import ModelsSection from './ModelsSection';
 
 interface SettingsProps {
   onClose: () => void;
@@ -686,6 +687,7 @@ function AiSection() {
         </div>
       )}
 
+      <ModelsSection />
       <SearxngSection />
       <TranslationEngineSection />
       <HistoryBackfillSection />
@@ -835,12 +837,17 @@ function SearxngSection() {
 function TranslationEngineSection() {
   const [engine, setEngineState] = useState<TranslationEngineId | null>(null);
   const [bergamotStatus, setBergamotStatus] = useState<BergamotStatus | null>(null);
+  // Разовая проверка на монтировании — есть ли хоть одна установленная модель для AI-перевода
+  // (Qwen-обёртка работает на дефолтной модели реестра, см. ModelsSection.tsx). Без модели выбор
+  // этого движка даёт молчаливый отказ при переводе — бейдж должен предупредить заранее.
+  const [hasInstalledModel, setHasInstalledModel] = useState<boolean | null>(null);
 
   useEffect(() => {
     let mounted = true;
     window.oblako.getTranslationEngine().then((v) => { if (mounted) setEngineState(v); });
     window.oblako.getBergamotStatus().then((v) => { if (mounted) setBergamotStatus(v); });
     const unsub = window.oblako.onBergamotStatusChanged((v) => { if (mounted) setBergamotStatus(v); });
+    window.oblako.getInstalledModels().then((list) => { if (mounted) setHasInstalledModel(list.length > 0); });
     return () => { mounted = false; unsub(); };
   }, []);
 
@@ -872,6 +879,13 @@ function TranslationEngineSection() {
           onClick={() => select('qwen')}
           title="AI-перевод (медленно, выше качество)"
           subtitle="Qwen — универсальная модель, переводит любой язык, медленнее на CPU/GPU."
+          badge={
+            hasInstalledModel === null
+              ? undefined
+              : hasInstalledModel
+                ? { text: 'готов', color: 'var(--success-500)' }
+                : { text: 'нет модели', color: 'var(--warning-500)' }
+          }
         />
         <EngineOption
           active={engine === 'bergamot'}
@@ -905,9 +919,12 @@ interface EngineOptionProps {
   title: string;
   subtitle: string;
   badge?: { text: string; color: string };
+  // Второй независимый бейдж (напр. «в памяти» рядом с «активна» у моделей, ModelsSection.tsx) —
+  // не форкаем компонент ради второй метки, см. CLAUDE.md про переиспользование готовых компонентов.
+  badge2?: { text: string; color: string };
 }
 
-function EngineOption({ active, disabled, onClick, title, subtitle, badge }: EngineOptionProps) {
+export function EngineOption({ active, disabled, onClick, title, subtitle, badge, badge2 }: EngineOptionProps) {
   return (
     <button
       onClick={onClick}
@@ -931,13 +948,25 @@ function EngineOption({ active, disabled, onClick, title, subtitle, badge }: Eng
           {subtitle}
         </div>
       </div>
-      {badge && (
-        <span style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
-          color: badge.color, flex: 'none',
-        }}>
-          {badge.text}
-        </span>
+      {(badge || badge2) && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flex: 'none' }}>
+          {badge && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
+              color: badge.color,
+            }}>
+              {badge.text}
+            </span>
+          )}
+          {badge2 && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
+              color: badge2.color,
+            }}>
+              {badge2.text}
+            </span>
+          )}
+        </div>
       )}
     </button>
   );
@@ -1842,12 +1871,12 @@ function PassphrasePrompt({
 
 // ── Стили кнопок ──────────────────────────────────────────────────────────────
 
-const btnPrimary: React.CSSProperties = {
+export const btnPrimary: React.CSSProperties = {
   padding: '7px 14px', borderRadius: 'var(--radius-sm)', border: 'none',
   background: 'var(--accent)', color: '#fff',
   fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default', flex: 'none',
 };
-const btnGhost: React.CSSProperties = {
+export const btnGhost: React.CSSProperties = {
   padding: '7px 14px', borderRadius: 'var(--radius-sm)',
   border: '1px solid var(--divider-strong)', background: 'transparent',
   color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default', flex: 'none',

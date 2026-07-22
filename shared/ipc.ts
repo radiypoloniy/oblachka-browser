@@ -453,6 +453,11 @@ export const IPC = {
   // ленивый (без вызова на старте): первый запрос считает и кэширует, дальше отдаёт из кэша.
   HARDWARE_GET_SNAPSHOT: 'hardware:get-snapshot', // renderer → main: HardwareSnapshot (из кэша)
 
+  // Принудительный пересчёт (HardwareInfo.ts::refresh) — в отличие от HARDWARE_GET_SNAPSHOT, не
+  // отдаёт кэш. Нужен там, где vramFree/ramFree заведомо изменились (после unloadModel()) —
+  // строка состояния памяти в ModelsSection.tsx иначе покажет цифру, актуальную на старте процесса.
+  HARDWARE_REFRESH_SNAPSHOT: 'hardware:refresh-snapshot', // renderer → main: HardwareSnapshot (свежий пересчёт)
+
   // Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей в UI пока нет.
   // Тот же контракт, что HISTORY_CONTENT_BACKFILL_* (start/cancel fire-and-forget, status — invoke
   // для гонки старта монтирования, progress — push).
@@ -476,6 +481,14 @@ export const IPC = {
   // ok:false с причиной отказа (NOT_FOUND/LEGACY_NOT_DELETABLE/LAST_MODEL/FS_ERROR:...), а не
   // fire-and-forget.
   MODEL_DELETE: 'model:delete', // renderer → main: id: string -> DeleteModelResult
+
+  // Проброс ModelRegistry.ts/TranslationService.ts наружу для UI управления моделями — read-only
+  // (список установленных, дефолт) плюс смена дефолта. Дефолтная модель ≠ загруженная модель:
+  // MODEL_LOADED_GET отдельно, т.к. смена дефолта не выгружает уже загруженную (см. MODEL_DEFAULT_SET).
+  MODEL_INSTALLED_LIST: 'model:installed-list', // renderer → main: InstalledModel[]
+  MODEL_DEFAULT_GET:    'model:default-get',    // renderer → main: string | null
+  MODEL_DEFAULT_SET:    'model:default-set',    // renderer → main: id: string -> SetDefaultModelResult
+  MODEL_LOADED_GET:     'model:loaded-get',     // renderer → main: string | null (id загруженной в VRAM модели)
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -899,6 +912,25 @@ export interface CatalogEntry {
 // включает динамический текст исключения ФС.
 export type DeleteModelResult = { ok: true } | { ok: false; reason: string };
 
+// Установленная на диске модель (см. electron/ModelRegistry.ts::InstalledModel) — структурно
+// идентичная копия здесь, а не импорт: та же причина, что у CatalogModel/DeleteModelResult выше —
+// ModelRegistry.ts тянет 'electron' (app.getPath), чего в renderer-бандл тащить нельзя. filePath
+// отдаётся как есть, включая легаси-записи вне userData — UI сам решает, что показать пользователю.
+export interface InstalledModel {
+  id: string;
+  label: string;
+  filePath: string;
+  sizeBytes: number;
+  source: 'legacy' | 'downloaded';
+}
+
+// Результат смены дефолтной модели (см. electron/ModelRegistry.ts::setDefault). Валидация id
+// (NOT_FOUND) сделана на уровне IPC-обработчика в main.ts — само ModelRegistry.setDefault() при
+// неизвестном id молча ничего не делает (void), а не сообщает об ошибке. Важно: успешная смена
+// дефолта НЕ выгружает уже загруженную модель из VRAM — та остаётся прежней до явного unloadModel(),
+// UI обязан отражать дефолт и загруженную модель как два независимых состояния.
+export type SetDefaultModelResult = { ok: true } | { ok: false; reason: string };
+
 export type AiActionOutcome =
   | { ok: true; out: string; action: AiAction; dirUsed?: TranslateDirection; ms: number; tokPerSec: number; loadMs: number | null }
   | { ok: false; error: string; errorCode?: ModelErrorCode };
@@ -1219,6 +1251,8 @@ export interface OblakoApi {
   // Детект железа (см. electron/HardwareInfo.ts) — задел под подбор модели, потребителей в UI
   // пока нет. Read-only, из кэша main-процесса (или первый расчёт, если кэша ещё нет).
   getHardwareSnapshot(): Promise<HardwareSnapshot>;
+  // Принудительный пересчёт снапшота — не кэш, см. HARDWARE_REFRESH_SNAPSHOT.
+  refreshHardwareSnapshot(): Promise<HardwareSnapshot>;
 
   // Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей в UI пока нет.
   startModelDownload(spec: ModelDownloadSpec): void;
@@ -1236,6 +1270,19 @@ export interface OblakoApi {
   // Удаление модели с диска (см. electron/ModelRegistry.ts::deleteModel) — задел, потребителей
   // в UI пока нет. Необратимо.
   deleteModel(id: string): Promise<DeleteModelResult>;
+
+  // Список установленных моделей (см. electron/ModelRegistry.ts::list) — задел, потребителей
+  // в UI пока нет. Read-only.
+  getInstalledModels(): Promise<InstalledModel[]>;
+
+  // Дефолтная модель (см. electron/ModelRegistry.ts::getDefault/setDefault) — задел, потребителей
+  // в UI пока нет. Смена дефолта НЕ выгружает уже загруженную модель — см. SetDefaultModelResult.
+  getDefaultModelId(): Promise<string | null>;
+  setDefaultModel(id: string): Promise<SetDefaultModelResult>;
+
+  // Модель, сейчас загруженная в VRAM (см. electron/TranslationService.ts::getLoadedModelId) —
+  // задел, потребителей в UI пока нет. Read-only.
+  getLoadedModelId(): Promise<string | null>;
 
   // Флаг предзагрузки эмбеддинг-модели: false при OBLAKO_PRELOAD_EMBED=0.
   readonly embedPreload: boolean;
