@@ -221,12 +221,12 @@ function AdBlockSection({
       {/* Уведомление о перезагрузке */}
       {pendingReload !== null && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+          display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', flexWrap: 'wrap',
           ...islandPlate,
           borderRadius: 'var(--radius-sm)', fontSize: 'var(--fs-sm)',
         }}>
           <RotateCcw size={15} style={{ color: 'var(--warning-500)', flex: 'none' }} />
-          <span style={{ flex: 1, color: 'var(--text-body)' }}>
+          <span style={{ flex: '1 1 160px', minWidth: 0, color: 'var(--text-body)' }}>
             {pendingReload === 'all'
               ? 'Обновить открытые вкладки, чтобы применить изменения?'
               : `Обновить вкладки ${pendingReload}?`}
@@ -238,14 +238,14 @@ function AdBlockSection({
 
       {/* Тумблер */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
+        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', flexWrap: 'wrap',
         ...islandPlate,
         borderRadius: 'var(--radius-sm)',
       }}>
         {state.enabled
           ? <Shield size={22} style={{ color: 'var(--text-body)', flex: 'none' }} />
           : <ShieldOff size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: '1 1 160px', minWidth: 0 }}>
           <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
             {state.enabled ? 'Блокировка включена' : 'Блокировка выключена'}
           </div>
@@ -424,14 +424,14 @@ function VpnSection() {
 
       {/* Статус */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
+        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', flexWrap: 'wrap',
         ...islandPlate,
         borderRadius: 'var(--radius-sm)',
       }}>
         {status.hasSubscription
           ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
           : <Wifi size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: '1 1 180px', minWidth: 0 }}>
           <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
             {status.hasSubscription ? `Подписка сохранена — серверов: ${status.serverCount}` : 'Подписка не добавлена'}
           </div>
@@ -442,7 +442,7 @@ function VpnSection() {
           )}
         </div>
         {status.hasSubscription && (
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
               onClick={() => void handleRefresh()}
               disabled={refreshing}
@@ -517,7 +517,7 @@ function VpnSection() {
                   <div
                     style={{
                       ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '9px 14px',
-                      display: 'flex', alignItems: 'center', gap: 10,
+                      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
                       boxShadow: isRunning ? '0 0 0 1.5px var(--success-500) inset' : undefined,
                     }}
                   >
@@ -528,7 +528,7 @@ function VpnSection() {
                       {s.protocol}
                     </span>
                     <span style={{
-                      flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
+                      flex: '1 1 120px', minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
                       {stripEmoji(s.remark) || s.address}
@@ -630,14 +630,14 @@ function AiSection() {
 
       {/* Статус */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
+        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', flexWrap: 'wrap',
         ...islandPlate,
         borderRadius: 'var(--radius-sm)',
       }}>
         {connected
           ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
           : <KeyRound size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: '1 1 180px', minWidth: 0 }}>
           <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
             {connected ? 'Подключено' : 'Не подключено'}
           </div>
@@ -754,14 +754,14 @@ function SearxngSection() {
 
       {/* Статус */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
+        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', flexWrap: 'wrap',
         ...islandPlate,
         borderRadius: 'var(--radius-sm)',
       }}>
         {configured
           ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
           : <Search size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: '1 1 180px', minWidth: 0 }}>
           <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
             {configured ? 'Настроено' : 'Не настроено'}
           </div>
