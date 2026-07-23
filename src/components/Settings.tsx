@@ -5,6 +5,13 @@ import { islandPlate } from '../styles/island';
 import { stripEmoji } from '../../shared/text';
 import Toggle from './Toggle';
 import ModelsSection from './ModelsSection';
+import {
+  btnPrimary, btnGhost, IconBtn, EngineOption, SectionHeader, CapsLabel,
+  LoadingNote, StatusCard, TextField, InputRow, fieldFlex,
+} from './settings/kit';
+
+// Реэкспорт для внешних потребителей (ModelsSection.tsx импортирует отсюда) — до их миграции на kit.
+export { btnPrimary, btnGhost, EngineOption };
 
 interface SettingsProps {
   onClose: () => void;
@@ -203,20 +210,15 @@ function AdBlockSection({
   onToggle, onDomainChange, onAddDomain, onRemoveDomain, onReload, onDismissReload,
 }: AdBlockSectionProps) {
   if (!state) {
-    return <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
+    return <LoadingNote />;
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>
-          Блокировка рекламы и трекеров
-        </h2>
-        <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-          Фильтрует рекламу и трекеры через EasyList / EasyPrivacy.
-          Работает на уровне сетевых запросов — быстрее расширений браузера.
-        </p>
-      </div>
+      <SectionHeader title="Блокировка рекламы и трекеров">
+        Фильтрует рекламу и трекеры через EasyList / EasyPrivacy.
+        Работает на уровне сетевых запросов — быстрее расширений браузера.
+      </SectionHeader>
 
       {/* Уведомление о перезагрузке */}
       {pendingReload !== null && (
@@ -237,33 +239,18 @@ function AdBlockSection({
       )}
 
       {/* Тумблер */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', flexWrap: 'wrap',
-        ...islandPlate,
-        borderRadius: 'var(--radius-sm)',
-      }}>
-        {state.enabled
+      <StatusCard
+        icon={state.enabled
           ? <Shield size={22} style={{ color: 'var(--text-body)', flex: 'none' }} />
           : <ShieldOff size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
-        <div style={{ flex: '1 1 160px', minWidth: 0 }}>
-          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-            {state.enabled ? 'Блокировка включена' : 'Блокировка выключена'}
-          </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-            Заблокировано за сессию: {state.sessionBlockCount.toLocaleString('ru')}
-          </div>
-        </div>
-        <Toggle checked={state.enabled} onChange={onToggle} />
-      </div>
+        title={state.enabled ? 'Блокировка включена' : 'Блокировка выключена'}
+        subtitle={`Заблокировано за сессию: ${state.sessionBlockCount.toLocaleString('ru')}`}
+        actions={<Toggle checked={state.enabled} onChange={onToggle} />}
+      />
 
       {/* Исключения */}
       <div>
-        <div style={{
-          fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-          textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8,
-        }}>
-          Исключения
-        </div>
+        <CapsLabel>Исключения</CapsLabel>
         <p style={{ margin: '0 0 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
           На этих сайтах реклама блокироваться не будет.
           Домен покрывает и все поддомены (например, www.example.com).
@@ -283,49 +270,29 @@ function AdBlockSection({
                 }}>
                   {domain}
                 </span>
-                <button
-                  onClick={() => onRemoveDomain(domain)}
-                  title="Убрать из исключений"
-                  style={{
-                    border: 'none', background: 'transparent', cursor: 'default', padding: 4,
-                    borderRadius: 4, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent'; }}
-                ><Trash2 size={14} /></button>
+                <IconBtn title="Убрать из исключений" onClick={() => onRemoveDomain(domain)}>
+                  <Trash2 size={14} />
+                </IconBtn>
               </div>
             ))}
           </div>
         )}
 
         {/* Добавить домен */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flexBasis: 200 }}>
-            <input
-              ref={inputRef}
-              type="text"
-              value={domainInput}
-              placeholder="example.com"
-              onChange={(e) => onDomainChange(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') onAddDomain(); }}
-              style={{
-                padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-                border: inputError ? '1.5px solid var(--error, #e05)' : '1.5px solid var(--divider-strong)',
-                background: 'var(--surface)', color: 'var(--text-strong)',
-                fontSize: 'var(--fs-sm)', outline: 'none',
-                width: '100%', minWidth: 0, boxSizing: 'border-box',
-              }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = inputError ? 'var(--error, #e05)' : 'var(--divider-strong)')}
-            />
-            {inputError && (
-              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)' }}>{inputError}</span>
-            )}
-          </div>
+        <InputRow>
+          <TextField
+            inputRef={inputRef}
+            value={domainInput}
+            placeholder="example.com"
+            onChange={onDomainChange}
+            onEnter={onAddDomain}
+            error={inputError || undefined}
+            style={fieldFlex}
+          />
           <button onClick={onAddDomain} style={{ ...btnPrimary, alignSelf: 'flex-start', display: 'flex', gap: 6, alignItems: 'center' }}>
             <Plus size={14} /> Добавить
           </button>
-        </div>
+        </InputRow>
       </div>
     </div>
   );
@@ -405,7 +372,7 @@ function VpnSection() {
   }
 
   if (status === null) {
-    return <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
+    return <LoadingNote />;
   }
 
   return (
@@ -613,7 +580,7 @@ function AiSection() {
   }
 
   if (connected === null) {
-    return <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
+    return <LoadingNote />;
   }
 
   return (
@@ -737,7 +704,7 @@ function SearxngSection() {
   }
 
   if (configured === null) {
-    return <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
+    return <LoadingNote />;
   }
 
   return (
@@ -920,66 +887,6 @@ function TranslationEngineSection() {
         />
       </div>
     </div>
-  );
-}
-
-interface EngineOptionProps {
-  active: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  title: string;
-  subtitle: string;
-  badge?: { text: string; color: string };
-  // Второй независимый бейдж (напр. «в памяти» рядом с «активна» у моделей, ModelsSection.tsx) —
-  // не форкаем компонент ради второй метки, см. CLAUDE.md про переиспользование готовых компонентов.
-  badge2?: { text: string; color: string };
-}
-
-export function EngineOption({ active, disabled, onClick, title, subtitle, badge, badge2 }: EngineOptionProps) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-        ...islandPlate, borderRadius: 'var(--radius-sm)', textAlign: 'left',
-        border: 'none', cursor: disabled ? 'default' : 'default',
-        boxShadow: active ? '0 0 0 1.5px var(--accent) inset' : undefined,
-        opacity: disabled ? 0.55 : 1,
-      }}
-    >
-      {active
-        ? <Check size={18} style={{ color: 'var(--accent)', flex: 'none' }} />
-        : <span style={{ width: 18, flex: 'none' }} />}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-          {title}
-        </div>
-        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-          {subtitle}
-        </div>
-      </div>
-      {(badge || badge2) && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flex: 'none' }}>
-          {badge && (
-            <span style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
-              color: badge.color,
-            }}>
-              {badge.text}
-            </span>
-          )}
-          {badge2 && (
-            <span style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
-              color: badge2.color,
-            }}>
-              {badge2.text}
-            </span>
-          )}
-        </div>
-      )}
-    </button>
   );
 }
 
@@ -1482,7 +1389,7 @@ function PasswordsSection() {
   }
 
   if (entries === null) {
-    return <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
+    return <LoadingNote />;
   }
 
   return (
@@ -1672,22 +1579,6 @@ function PasswordRow({ entry, revealedValue, copiedKey, onToggleReveal, onCopy, 
   );
 }
 
-function IconBtn({ title, active, onClick, children }: { title: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      title={title}
-      onClick={onClick}
-      style={{
-        border: 'none', background: 'transparent', cursor: 'default', padding: 6,
-        borderRadius: 6, display: 'inline-flex', flex: 'none',
-        color: active ? 'var(--success-500)' : 'var(--text-faint)',
-      }}
-      onMouseEnter={(e) => { if (!active) { e.currentTarget.style.color = 'var(--text-body)'; e.currentTarget.style.background = 'var(--surface-hover)'; } }}
-      onMouseLeave={(e) => { if (!active) { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent'; } }}
-    >{children}</button>
-  );
-}
-
 // ── Форма добавления/редактирования записи ─────────────────────────────────────
 
 interface PasswordFormProps {
@@ -1841,16 +1732,3 @@ function PassphrasePrompt({
   );
 }
 
-// ── Стили кнопок ──────────────────────────────────────────────────────────────
-
-export const btnPrimary: React.CSSProperties = {
-  padding: '7px 14px', borderRadius: 'var(--radius-sm)', border: 'none',
-  background: 'var(--accent)', color: '#fff',
-  fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default', flex: 'none',
-  whiteSpace: 'nowrap',
-};
-export const btnGhost: React.CSSProperties = {
-  padding: '7px 14px', borderRadius: 'var(--radius-sm)',
-  border: '1px solid var(--divider-strong)', background: 'transparent',
-  color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default', flex: 'none',
-};
