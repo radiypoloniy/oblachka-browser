@@ -11,9 +11,6 @@ import {
   errorColor,
 } from './settings/kit';
 
-// Реэкспорт для внешних потребителей (ModelsSection.tsx импортирует отсюда) — до их миграции на kit.
-export { btnPrimary, btnGhost, EngineOption };
-
 interface SettingsProps {
   onClose: () => void;
   // Начальный раздел (напр. кнопка "+" в AI-панели открывает сразу на 'ai') — приходит из
@@ -1240,26 +1237,20 @@ function PasswordsSection() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>
-          Пароли
-        </h2>
-        <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-          Зашифрованный сейф на этом устройстве — записи защищены ключом, привязанным к вашей
-          учётной записи Windows. Автозаполнение в веб-формы появится отдельным шагом.
-        </p>
-      </div>
+      <SectionHeader title="Пароли">
+        Зашифрованный сейф на этом устройстве — записи защищены ключом, привязанным к вашей
+        учётной записи Windows. Автозаполнение в веб-формы появится отдельным шагом.
+      </SectionHeader>
 
       {/* Список сохранённых записей */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-          <div style={{
-            fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-            textTransform: 'uppercase', color: 'var(--text-faint)', flex: 1,
-            minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          <CapsLabel style={{
+            flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap', marginBottom: 0,
           }}>
             Сохранённые пароли
-          </div>
+          </CapsLabel>
           {!formOpen && (
             <button onClick={openAddForm} style={{ ...btnPrimary, display: 'flex', gap: 6, alignItems: 'center' }}>
               <Plus size={14} /> Добавить
@@ -1311,12 +1302,7 @@ function PasswordsSection() {
 
       {/* Экспорт / импорт */}
       <div style={{ paddingTop: 20, borderTop: '1px solid var(--divider)' }}>
-        <div style={{
-          fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-          textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8,
-        }}>
-          Экспорт и импорт
-        </div>
+        <CapsLabel>Экспорт и импорт</CapsLabel>
         <p style={{ margin: '0 0 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
           Ключ сейфа привязан к этому Windows-профилю и не переживёт переустановку — сохраните
           зашифрованную копию отдельной парольной фразой, чтобы не потерять пароли.
@@ -1356,12 +1342,7 @@ function PasswordsSection() {
       <div style={{
         paddingTop: 20, borderTop: '1px solid var(--divider)', opacity: 0.45,
       }}>
-        <div style={{
-          fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-          textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8,
-        }}>
-          Подключить внешний менеджер
-        </div>
+        <CapsLabel>Подключить внешний менеджер</CapsLabel>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
           ...islandPlate, borderRadius: 'var(--radius-sm)',
@@ -1451,44 +1432,26 @@ function PasswordForm({
   genLength, onGenLength, genLower, onGenLower, genUpper, onGenUpper, genDigits, onGenDigits,
   genSymbols, onGenSymbols, onGenerate, onSave, onCancel,
 }: PasswordFormProps) {
-  const inputStyle: React.CSSProperties = {
-    padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--divider-strong)',
-    background: 'var(--surface)', color: 'var(--text-strong)', fontSize: 'var(--fs-sm)', outline: 'none',
-    width: '100%', minWidth: 0, boxSizing: 'border-box',
-  };
-
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', marginBottom: 10,
       ...islandPlate, borderRadius: 'var(--radius-sm)',
     }}>
-      <input
-        type="text" placeholder="example.com" value={urlInput}
-        onChange={(e) => onUrlChange(e.target.value)}
-        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
-        style={inputStyle}
-      />
-      <input
-        type="text" placeholder="Логин / e-mail" value={usernameInput}
-        onChange={(e) => onUsernameChange(e.target.value)}
-        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
-        style={inputStyle}
-      />
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input
-          type="text" placeholder={editing ? 'Новый пароль (не менять — оставить пустым)' : 'Пароль'}
-          value={passwordInput} onChange={(e) => onPasswordChange(e.target.value)}
-          onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-          onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
-          style={{ ...inputStyle, fontFamily: 'monospace', flex: 1, flexBasis: 200 }}
+      <TextField value={urlInput} placeholder="example.com" onChange={onUrlChange} />
+      <TextField value={usernameInput} placeholder="Логин / e-mail" onChange={onUsernameChange} />
+      <InputRow>
+        <TextField
+          value={passwordInput}
+          placeholder={editing ? 'Новый пароль (не менять — оставить пустым)' : 'Пароль'}
+          mono
+          onChange={onPasswordChange}
+          style={fieldFlex}
         />
         <button
           title="Генератор паролей" onClick={onToggleGenerator}
           style={{ ...btnGhost, flex: 'none', display: 'flex', alignItems: 'center' }}
         ><RefreshCw size={14} /></button>
-      </div>
+      </InputRow>
 
       {generatorOpen && (
         <div style={{
@@ -1513,15 +1476,11 @@ function PasswordForm({
         </div>
       )}
 
-      <textarea
-        placeholder="Заметки (необязательно)" value={notesInput} rows={2}
-        onChange={(e) => onNotesChange(e.target.value)}
-        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
-        style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+      <TextArea
+        value={notesInput} placeholder="Заметки (необязательно)" rows={2} onChange={onNotesChange}
       />
 
-      {formError && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)' }}>{formError}</span>}
+      {formError && <InlineError>{formError}</InlineError>}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={onSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>
@@ -1555,25 +1514,17 @@ function PassphrasePrompt({
       display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', marginBottom: 8,
       ...islandPlate, borderRadius: 'var(--radius-sm)',
     }}>
-      <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{label}</span>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input
-          type="password" value={value} onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(); }}
-          style={{
-            flex: 1, flexBasis: 200, minWidth: 0, boxSizing: 'border-box',
-            padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-            border: '1.5px solid var(--divider-strong)', background: 'var(--surface)',
-            color: 'var(--text-strong)', fontSize: 'var(--fs-sm)', outline: 'none',
-          }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-          onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
+      <InlineHint>{label}</InlineHint>
+      <InputRow>
+        <TextField
+          type="password" value={value} onChange={onChange} onEnter={onConfirm}
+          style={fieldFlex}
         />
         <button onClick={onConfirm} disabled={busy} style={{ ...btnPrimary, opacity: busy ? 0.6 : 1, flex: 'none' }}>
           {busy ? '…' : actionLabel}
         </button>
-      </div>
-      {msg && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{msg}</span>}
+      </InputRow>
+      {msg && <InlineHint>{msg}</InlineHint>}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
-import { EngineOption, btnPrimary, btnGhost } from './Settings';
+import { EngineOption, btnPrimary, btnGhost } from './settings/kit';
 
 function gb(bytes: number): string {
   return (bytes / 1e9).toFixed(1);
