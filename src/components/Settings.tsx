@@ -274,7 +274,10 @@ function AdBlockSection({
                 display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
                 borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
               }}>
-                <span style={{ flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-body)', fontFamily: 'monospace' }}>
+                <span style={{
+                  flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-body)', fontFamily: 'monospace',
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
                   {domain}
                 </span>
                 <button
@@ -293,8 +296,8 @@ function AdBlockSection({
         )}
 
         {/* Добавить домен */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flexBasis: 200 }}>
             <input
               ref={inputRef}
               type="text"
@@ -307,6 +310,7 @@ function AdBlockSection({
                 border: inputError ? '1.5px solid var(--error, #e05)' : '1.5px solid var(--divider-strong)',
                 background: 'var(--surface)', color: 'var(--text-strong)',
                 fontSize: 'var(--fs-sm)', outline: 'none',
+                width: '100%', minWidth: 0, boxSizing: 'border-box',
               }}
               onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
               onBlur={(e) => (e.currentTarget.style.borderColor = inputError ? 'var(--error, #e05)' : 'var(--divider-strong)')}
@@ -459,8 +463,8 @@ function VpnSection() {
         }}>
           Ссылка подписки
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flexBasis: 200 }}>
             <input
               type="text"
               value={urlInput}
@@ -472,6 +476,7 @@ function VpnSection() {
                 border: error ? '1.5px solid var(--error, #e05)' : '1.5px solid var(--divider-strong)',
                 background: 'var(--surface)', color: 'var(--text-strong)',
                 fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
+                width: '100%', minWidth: 0, boxSizing: 'border-box',
               }}
               onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
               onBlur={(e) => (e.currentTarget.style.borderColor = error ? 'var(--error, #e05)' : 'var(--divider-strong)')}
@@ -655,8 +660,8 @@ function AiSection() {
           }}>
             Gemini API-ключ
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flexBasis: 200 }}>
               <input
                 type="password"
                 value={keyInput}
@@ -668,6 +673,7 @@ function AiSection() {
                   border: saveError ? '1.5px solid var(--error, #e05)' : '1.5px solid var(--divider-strong)',
                   background: 'var(--surface)', color: 'var(--text-strong)',
                   fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
+                  width: '100%', minWidth: 0, boxSizing: 'border-box',
                 }}
                 onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
                 onBlur={(e) => (e.currentTarget.style.borderColor = saveError ? 'var(--error, #e05)' : 'var(--divider-strong)')}
@@ -792,11 +798,12 @@ function SearxngSection() {
                 border: saveError ? '1.5px solid var(--error, #e05)' : '1.5px solid var(--divider-strong)',
                 background: 'var(--surface)', color: 'var(--text-strong)',
                 fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
+                width: '100%', minWidth: 0, boxSizing: 'border-box',
               }}
               onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
               onBlur={(e) => (e.currentTarget.style.borderColor = saveError ? 'var(--error, #e05)' : 'var(--divider-strong)')}
             />
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input
                 type="password"
                 value={tokenInput}
@@ -804,10 +811,11 @@ function SearxngSection() {
                 onChange={(e) => setTokenInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void handleSave(); }}
                 style={{
-                  flex: 1, padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                  flex: 1, flexBasis: 200, padding: '8px 12px', borderRadius: 'var(--radius-sm)',
                   border: '1.5px solid var(--divider-strong)',
                   background: 'var(--surface)', color: 'var(--text-strong)',
                   fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
+                  minWidth: 0, boxSizing: 'border-box',
                 }}
                 onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
                 onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
@@ -1272,7 +1280,7 @@ function SkillForm({
   const inputStyle: React.CSSProperties = {
     padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--divider-strong)',
     background: 'var(--surface)', color: 'var(--text-strong)', fontSize: 'var(--fs-sm)', outline: 'none',
-    width: '100%',
+    width: '100%', minWidth: 0, boxSizing: 'border-box',
   };
 
   return (
@@ -1280,7 +1288,7 @@ function SkillForm({
       display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', marginBottom: 10,
       ...islandPlate, borderRadius: 'var(--radius-sm)',
     }}>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {/* Без maxLength=1 — составной эмодзи (семья, флаг, ZWJ-последовательность) занимает
             несколько кодовых точек, обрезка по length искалечила бы его. Юзер вставляет из
             системного эмодзи-пикера ОС, это не текстовый ввод произвольной длины. */}
@@ -1296,7 +1304,7 @@ function SkillForm({
           onChange={(e) => onLabelChange(e.target.value)}
           onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
           onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
-          style={inputStyle}
+          style={{ ...inputStyle, flex: 1, flexBasis: 200 }}
         />
       </div>
       <textarea
@@ -1492,6 +1500,7 @@ function PasswordsSection() {
           <div style={{
             fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
             textTransform: 'uppercase', color: 'var(--text-faint)', flex: 1,
+            minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             Сохранённые пароли
           </div>
@@ -1705,7 +1714,7 @@ function PasswordForm({
   const inputStyle: React.CSSProperties = {
     padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--divider-strong)',
     background: 'var(--surface)', color: 'var(--text-strong)', fontSize: 'var(--fs-sm)', outline: 'none',
-    width: '100%',
+    width: '100%', minWidth: 0, boxSizing: 'border-box',
   };
 
   return (
@@ -1727,13 +1736,13 @@ function PasswordForm({
         onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
         style={inputStyle}
       />
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input
           type="text" placeholder={editing ? 'Новый пароль (не менять — оставить пустым)' : 'Пароль'}
           value={passwordInput} onChange={(e) => onPasswordChange(e.target.value)}
           onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
           onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
-          style={{ ...inputStyle, fontFamily: 'monospace' }}
+          style={{ ...inputStyle, fontFamily: 'monospace', flex: 1, flexBasis: 200 }}
         />
         <button
           title="Генератор паролей" onClick={onToggleGenerator}
@@ -1807,12 +1816,13 @@ function PassphrasePrompt({
       ...islandPlate, borderRadius: 'var(--radius-sm)',
     }}>
       <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{label}</span>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input
           type="password" value={value} onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(); }}
           style={{
-            flex: 1, padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+            flex: 1, flexBasis: 200, minWidth: 0, boxSizing: 'border-box',
+            padding: '8px 12px', borderRadius: 'var(--radius-sm)',
             border: '1.5px solid var(--divider-strong)', background: 'var(--surface)',
             color: 'var(--text-strong)', fontSize: 'var(--fs-sm)', outline: 'none',
           }}
@@ -1834,6 +1844,7 @@ export const btnPrimary: React.CSSProperties = {
   padding: '7px 14px', borderRadius: 'var(--radius-sm)', border: 'none',
   background: 'var(--accent)', color: '#fff',
   fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default', flex: 'none',
+  whiteSpace: 'nowrap',
 };
 export const btnGhost: React.CSSProperties = {
   padding: '7px 14px', borderRadius: 'var(--radius-sm)',
