@@ -78,6 +78,12 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   через `node-llama-cpp`. Каждый со своим preload-файлом
   (`preload-aipanel.ts`, `preload-translatepopover.ts`) — не переиспользуют
   боевой `preload.ts`, т.к. живут в изолированных `WebContentsView`.
+- `electron/WebAppManager.ts` — веб-приложения раздела «Приложения» AI-панели:
+  чужие сайты в отдельных WebContentsView (sandbox, без preload, мобильный UA)
+  в «дырках», размеченных панелью; перевод координат — в AiPanelManager.
+- `electron/CurrencyRates.ts`, `electron/WeatherService.ts` — курсы ЦБ РФ и
+  погода (Open-Meteo) для конвертера/виджетов панели: fetch в main через
+  net.fetch (CORS/прокси), кэш, ad-hoc invoke-каналы `ai-panel:*`.
 - `electron/TabOrganizer.ts` — AI-группировка открытых вкладок: список вкладок
   прямым промптом в Qwen (через `TranslationService.ts::runTabOrganizePrompt`),
   модель сама придумывает названия групп по смыслу → `OrganizeCluster[]` →
@@ -103,6 +109,8 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
 - `src/aipanel.tsx`, `src/translatepopover.tsx` — отдельные React-точки входа
   (свои HTML/entry в `vite.config.ts`) для AI-панели и поповера перевода —
   у них своя `WebContentsView` и свой preload, это не часть `src/App.tsx`.
+  Раздел «Приложения» панели — `src/components/aiApps.tsx` (домашний экран,
+  обои, локальные приложения, виджеты, веб-слоты; токены — `tokens/apps.css`).
 - `src/styles/tokens/` — токены дизайн-системы. Цвета/радиусы/тени берутся
   отсюда через `var(--...)`, **не хардкодить цвета в компонентах.**
 
