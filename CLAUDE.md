@@ -25,7 +25,7 @@ AI — `node-llama-cpp` (LLM) + `@huggingface/transformers` (эмбеддинг�
 npm run dev              # Vite (5173) + Electron dev-режим одновременно
 npm run build             # vite build + tsc -p electron/tsconfig.json (прод-сборка)
 npm start                 # запуск собранного прод-приложения (dist-electron)
-npm run download-filters  # скачать EasyList-фильтры для адблока
+npm run download-filters  # (легаси) EasyList в resources/ — текущий адблок их НЕ читает
 ```
 
 Локальная LLM (GGUF) скачивается из UI (реестр/каталог моделей, `electron/ModelDownloader.ts` +
@@ -59,8 +59,10 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   усыпление, drag-and-drop порядок. **Логика живёт здесь, не в компонентах.**
 - `electron/SessionManager.ts` — автосейв/восстановление дерева вкладок
   (`session.json`, версионированный формат, дебаунс-сохранение).
-- `electron/AdBlockManager.ts` — блокировка рекламы (`@ghostery/adblocker-electron`
-  + EasyList из `download-filters`), whitelist по доменам.
+- `electron/AdBlockManager.ts` — блокировка рекламы: `@ghostery/adblocker-electron`,
+  prebuilt-движок с CDN Ghostery (EasyList + uBO-листы, включая quick-fixes/unbreak и
+  YouTube-фильтры, + EasyPrivacy), кэш в userData с фоновым автообновлением раз в 3 дня
+  при старте; whitelist по доменам. EasyList из `download-filters` движок НЕ использует.
 - `electron/HistoryManager.ts` — история посещений на `better-sqlite3`.
 - `electron/BookmarkManager.ts` — закладки на своём `bookmarks.sqlite`
   (отдельный файл от истории, не таблица внутри неё — разный профиль риска).
@@ -170,7 +172,7 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
 
 Сделано: автосейв сессии, контекстные меню ПКМ (вкладка/группа), хоткеи,
 закреплённые вкладки, усыпление, split view, drag-and-drop, группы вкладок,
-адблок (webRequest + EasyList), история посещений, менеджер загрузок,
+адблок (Ghostery prebuilt, автообновление листов), история посещений, менеджер загрузок,
 разрешения сайтов, AI-поповер над выделением (перевод/пересказ/упрощение/
 объяснение), AI-группировка вкладок, боковая AI-панель с чатом, закладки
 (звезда в омнибоксе + панель, `electron/BookmarkManager.ts`) с импортом из

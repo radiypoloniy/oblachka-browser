@@ -38,6 +38,7 @@
     "react-dom": "18.3.1",
     "react-markdown": "^10.1.0",
     "snowball-stemmers": "^0.6.0",
+    "tldts-experimental": "^7.4.3",
     "turndown": "^7.2.4"
   },
   "devDependencies": {

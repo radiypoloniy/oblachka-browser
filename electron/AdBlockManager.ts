@@ -6,6 +6,10 @@ import type {
 } from 'electron';
 import { ElectronBlocker } from '@ghostery/adblocker-electron';
 import type { Request as AdblockRequest } from '@ghostery/adblocker-electron';
+// Тот же парсер hostname/domain, что внутри adblocker-electron (его прямая зависимость,
+// зафиксирована и у нас в package.json) — нужен нашей копии инъекции косметики, см.
+// #injectCosmetics: параметры getCosmeticsFilters должны совпадать с оригиналом 1-в-1.
+import { parse as parseTld } from 'tldts-experimental';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AdBlockState } from '../shared/ipc';
@@ -22,8 +26,26 @@ const STATS_PUSH_DEBOUNCE_MS = 1_000;
 // Если кэш engine.bin уже есть — fromPrebuiltAdsAndTracking грузит его без сети
 // и завершается до дедлайна; таймер лишь предохраняет от зависания при отсутствии сети.
 const FETCH_TIMEOUT_MS = 15_000;
+// Возраст кэша движка, после которого листы протухли и обновляются В ФОНЕ при старте.
+// До этого фикса кэш не обновлялся НИКОГДА (fromCached: файл прочитался — сеть не трогается),
+// движок замерзал датой первого запуска — а вместе с ним uBO quick-fixes/unbreak, листы,
+// которыми апстрим оперативно чинит поломанные фильтрами сайты (кейс ChatGPT/Pinterest).
+// 3 дня — баланс: и YouTube-фильтры (меняются часто), и ~7МБ трафика не на каждый старт.
+const ENGINE_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+// Таймаут фонового обновления — щедрее стартового: качается ~десяток листов + resources.json,
+// и никого не блокирует (старт уже прошёл на кэшовом движке).
+const REFRESH_TIMEOUT_MS = 60_000;
 
 // ── Типы ─────────────────────────────────────────────────────────────────────
+
+// Форма msg DOM-обновлений от preload-скрипта Ghostery (см. #injectCosmetics) — библиотека
+// свой тип наружу не экспортирует, зеркалим используемые поля.
+interface CosmeticsUpdateMsg {
+  classes?: string[];
+  hrefs?: string[];
+  ids?: string[];
+  lifecycle?: string;
+}
 
 interface PersistedSettings {
   enabled: boolean;
@@ -82,13 +104,7 @@ export class AdBlockManager {
     }
 
     this.#blocker = blocker;
-
-    // Нативный коллбэк Ghostery на каждую заблокированную сеть-заявку — считаем и логируем,
-    // чтобы при жалобах на конкретный сайт было видно, что именно резалось.
-    blocker.on('request-blocked', (request: AdblockRequest) => {
-      const siteCount = this.recordBlock(request);
-      console.log(`[AdBlock] blocked ${request.url} (site: ${siteCount?.domain ?? '?'}, на сайте: ${siteCount?.count ?? '?'})`);
-    });
+    this.#attachBlockerEvents(blocker);
 
     if (this.#enabled) {
       this.#enableBlocking();
@@ -96,6 +112,70 @@ export class AdBlockManager {
     } else {
       console.log('[AdBlock] Ghostery загружен, но блокировка выключена пользователем');
     }
+
+    // Fire-and-forget: старт не ждёт, при протухшем кэше свежий движок подменится горячо.
+    void this.#refreshEngineIfStale();
+  }
+
+  // Нативный коллбэк Ghostery на каждую заблокированную сеть-заявку — считаем и логируем,
+  // чтобы при жалобах на конкретный сайт было видно, что именно резалось. Вынесено из
+  // initialize: горячая подмена движка (#swapBlocker) должна вешать тот же слушатель на
+  // новый инстанс.
+  #attachBlockerEvents(blocker: ElectronBlocker): void {
+    blocker.on('request-blocked', (request: AdblockRequest) => {
+      const siteCount = this.recordBlock(request);
+      console.log(`[AdBlock] blocked ${request.url} (site: ${siteCount?.domain ?? '?'}, на сайте: ${siteCount?.count ?? '?'})`);
+    });
+  }
+
+  // Фоновое обновление листов: кэш-файл движка старше ENGINE_MAX_AGE_MS → скачиваем свежий
+  // движок МИМО кэша (fromCached с кэшем никогда не рефетчит — причина бага), пишем на диск
+  // атомарно и горячо подменяем текущий. При сбое сети остаёмся на прежнем движке — следующая
+  // попытка на следующем старте.
+  async #refreshEngineIfStale(): Promise<void> {
+    if (!this.#blocker) return;
+    let ageMs: number;
+    try {
+      ageMs = Date.now() - fs.statSync(this.#enginePath).mtimeMs;
+    } catch {
+      return; // файла нет — движок только что скачан свежим, кэш запишется сам
+    }
+    if (ageMs < ENGINE_MAX_AGE_MS) return;
+    console.log(`[AdBlock] кэшу листов ~${Math.round(ageMs / 86_400_000)} дн. — фоновое обновление…`);
+    try {
+      const deadline = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('adblock refresh timeout')), REFRESH_TIMEOUT_MS),
+      );
+      const fresh = await Promise.race([
+        ElectronBlocker.fromPrebuiltAdsAndTracking((url) => net.fetch(url)),
+        deadline,
+      ]);
+      // tmp+rename — битый недописанный кэш при падении на середине не должен подменить целый
+      // (deserialize его отвергнет и перекачает, но это лишний сетевой старт).
+      const tmp = this.#enginePath + '.tmp';
+      await fs.promises.writeFile(tmp, Buffer.from(fresh.serialize()));
+      await fs.promises.rename(tmp, this.#enginePath);
+      this.#swapBlocker(fresh);
+      console.log('[AdBlock] листы обновлены и применены (горячая подмена движка)');
+    } catch (e) {
+      console.warn('[AdBlock] фоновое обновление листов не удалось (остаёмся на кэше):', (e as Error).message);
+    }
+  }
+
+  // Горячая подмена движка. Порядок важен: у старого СНАЧАЛА снимается его session-обвязка
+  // (disableBlockingInSession удаляет в т.ч. preload-скрипт косметики этого инстанса — без
+  // этого preload'ы копились бы по одному на каждую подмену), и только потом новый включается
+  // тем же #enableBlocking, что и при старте — с нашим whitelist-гейтом поверх. Всё синхронно,
+  // окна «без блокировки» между disable и enable нет.
+  #swapBlocker(fresh: ElectronBlocker): void {
+    const session = electronSession.defaultSession;
+    const old = this.#blocker;
+    if (old !== null && old.isBlockingEnabled(session)) {
+      old.disableBlockingInSession(session);
+    }
+    this.#blocker = fresh;
+    this.#attachBlockerEvents(fresh);
+    if (this.#enabled) this.#enableBlocking();
   }
 
   // ── Публичный API ──────────────────────────────────────────────────────────
@@ -241,12 +321,60 @@ export class AdBlockManager {
 
     // Косметика идёт через IPC (не webRequest) — ipcMain.handle бросает при повторной регистрации
     // на тот же канал без предварительного removeHandler (в отличие от webRequest, который просто
-    // молча замещает слушателя).
+    // молча замещает слушателя). Вместо blocker.onInjectCosmeticFilters — своя копия #injectCosmetics
+    // (почему — см. комментарий у метода).
     ipcMain.removeHandler('@ghostery/adblocker/inject-cosmetic-filters');
-    ipcMain.handle('@ghostery/adblocker/inject-cosmetic-filters', ((event: IpcMainInvokeEvent, url: string, msg?: unknown) => {
+    ipcMain.handle('@ghostery/adblocker/inject-cosmetic-filters', (event: IpcMainInvokeEvent, url: string, msg?: unknown) => {
       if (this.#isWhitelistedDomain(undefined, url)) return;
-      return blocker.onInjectCosmeticFilters(event, url, msg as Parameters<typeof blocker.onInjectCosmeticFilters>[2]);
-    }) as typeof blocker.onInjectCosmeticFilters);
+      this.#injectCosmetics(event, url, msg as CosmeticsUpdateMsg | undefined);
+    });
+  }
+
+  // Инъекция косметики/скриптлетов — копия оригинального adblocker-electron
+  // onInjectCosmeticFilters (dist/commonjs/index.js, v2.18.0) с ЕДИНСТВЕННЫМ отличием: все
+  // скриптлеты страницы выполняются ОДНИМ executeJavaScript, а не каждый отдельно.
+  // Причина: Ghostery рендерит каждый скриптлет самодостаточным скриптом со СВОЕЙ копией
+  // uBO-обвязки (proxyApplyFn и др.). Два скриптлета, оборачивающих одну и ту же функцию
+  // (живой кейс — chatgpt.com: два prevent-fetch на window.fetch из uBO privacy-листа),
+  // из РАЗНЫХ копий обвязки зацикливаются друг в друге («Maximum call stack size exceeded»)
+  // и кладут SPA целиком. В одном скрипте объявления функций хоистятся в общий скоуп —
+  // обвязка остаётся одна, обёртки строятся цепочкой, ровно как в самом uBlock Origin.
+  // Параметры getCosmeticsFilters — 1-в-1 с оригиналом, менять их отдельно от апгрейда
+  // библиотеки нельзя.
+  #injectCosmetics(event: IpcMainInvokeEvent, url: string, msg?: CosmeticsUpdateMsg): void {
+    const blocker = this.#blocker;
+    if (!blocker) return;
+    const parsed = parseTld(url);
+    const hostname = parsed.hostname ?? '';
+    const domain = parsed.domain ?? '';
+    // msg отсутствует у первичного вызова из preload и присутствует у DOM-обновлений.
+    const isFirstRun = msg === undefined;
+    const { active, styles, scripts } = blocker.getCosmeticsFilters({
+      domain,
+      hostname,
+      url,
+      classes: msg?.classes,
+      hrefs: msg?.hrefs,
+      ids: msg?.ids,
+      getBaseRules: isFirstRun,
+      getInjectionRules: isFirstRun,
+      getExtendedRules: false,
+      getRulesFromHostname: isFirstRun,
+      getRulesFromDOM: !isFirstRun,
+      callerContext: {
+        frameId: event.frameId,
+        processId: event.processId,
+        lifecycle: msg?.lifecycle,
+      },
+    });
+    if (active === false) return;
+    if (styles.length > 0) {
+      event.sender.insertCSS(styles, { cssOrigin: 'user' });
+    }
+    if (scripts.length > 0) {
+      event.sender.executeJavaScript(scripts.join('\n;\n'), true)
+        .catch((e) => console.error('[AdBlock] скриптлеты упали:', e));
+    }
   }
 
   // pageUrl резолвится из webContents.getURL() (надёжнее referrer — тот пуст при строгой
