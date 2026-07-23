@@ -6,8 +6,9 @@ import { stripEmoji } from '../../shared/text';
 import Toggle from './Toggle';
 import ModelsSection from './ModelsSection';
 import {
-  btnPrimary, btnGhost, IconBtn, EngineOption, SectionHeader, CapsLabel,
-  LoadingNote, InlineError, StatusCard, TextField, InputRow, fieldFlex,
+  btnPrimary, btnGhost, IconBtn, EngineOption, SectionHeader, Subsection, CapsLabel,
+  LoadingNote, InlineError, InlineHint, StatusCard, TextField, TextArea, InputRow, fieldFlex,
+  errorColor,
 } from './settings/kit';
 
 // Реэкспорт для внешних потребителей (ModelsSection.tsx импортирует отсюда) — до их миграции на kit.
@@ -548,73 +549,42 @@ function AiSection() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>
-          AI — фактчек
-        </h2>
-        <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-          Ключ Gemini нужен для фактчека в AI-панели — проверки утверждений страницы по реальным
-          источникам в интернете. Хранится зашифрованным, не в виде обычного текста.
-        </p>
-      </div>
+      <SectionHeader title="AI — фактчек">
+        Ключ Gemini нужен для фактчека в AI-панели — проверки утверждений страницы по реальным
+        источникам в интернете. Хранится зашифрованным, не в виде обычного текста.
+      </SectionHeader>
 
       {/* Статус */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', flexWrap: 'wrap',
-        ...islandPlate,
-        borderRadius: 'var(--radius-sm)',
-      }}>
-        {connected
+      <StatusCard
+        icon={connected
           ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
           : <KeyRound size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
-        <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-            {connected ? 'Подключено' : 'Не подключено'}
-          </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-            {connected
-              ? 'Ключ Gemini сохранён — кнопка фактчека доступна в AI-панели.'
-              : 'Добавьте ключ, чтобы включить фактчек в AI-панели.'}
-          </div>
-        </div>
-        {connected && (
+        title={connected ? 'Подключено' : 'Не подключено'}
+        subtitle={connected
+          ? 'Ключ Gemini сохранён — кнопка фактчека доступна в AI-панели.'
+          : 'Добавьте ключ, чтобы включить фактчек в AI-панели.'}
+        actions={connected && (
           <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}>
             <Trash2 size={14} /> Удалить
           </button>
         )}
-      </div>
+      />
 
       {/* Ввод ключа — только пока не подключено; чтобы сменить ключ, сначала «Удалить». */}
       {!connected && (
         <div>
-          <div style={{
-            fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-            textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8,
-          }}>
-            Gemini API-ключ
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flexBasis: 200 }}>
-              <input
-                type="password"
-                value={keyInput}
-                placeholder="AIza…"
-                onChange={(e) => { setKeyInput(e.target.value); setSaveError(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') void handleSave(); }}
-                style={{
-                  padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-                  border: saveError ? '1.5px solid var(--error, #e05)' : '1.5px solid var(--divider-strong)',
-                  background: 'var(--surface)', color: 'var(--text-strong)',
-                  fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
-                  width: '100%', minWidth: 0, boxSizing: 'border-box',
-                }}
-                onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-                onBlur={(e) => (e.currentTarget.style.borderColor = saveError ? 'var(--error, #e05)' : 'var(--divider-strong)')}
-              />
-              {saveError && (
-                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)' }}>{saveError}</span>
-              )}
-            </div>
+          <CapsLabel>Gemini API-ключ</CapsLabel>
+          <InputRow>
+            <TextField
+              type="password"
+              value={keyInput}
+              placeholder="AIza…"
+              mono
+              onChange={(v) => { setKeyInput(v); setSaveError(''); }}
+              onEnter={() => void handleSave()}
+              error={saveError || undefined}
+              style={fieldFlex}
+            />
             <button
               onClick={() => void handleSave()}
               disabled={saving || !keyInput.trim()}
@@ -622,7 +592,7 @@ function AiSection() {
             >
               {saving ? 'Сохранение…' : 'Сохранить'}
             </button>
-          </div>
+          </InputRow>
         </div>
       )}
 
@@ -672,86 +642,51 @@ function SearxngSection() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>
-          SearXNG — веб-поиск для AI
-        </h2>
-        <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-          Свой поисковый сервер для web-grounding в AI-панели. Адрес и токен хранятся зашифрованными,
-          не в виде обычного текста.
-        </p>
-      </div>
+      <SectionHeader title="SearXNG — веб-поиск для AI">
+        Свой поисковый сервер для web-grounding в AI-панели. Адрес и токен хранятся зашифрованными,
+        не в виде обычного текста.
+      </SectionHeader>
 
       {/* Статус */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', flexWrap: 'wrap',
-        ...islandPlate,
-        borderRadius: 'var(--radius-sm)',
-      }}>
-        {configured
+      <StatusCard
+        icon={configured
           ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
           : <Search size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
-        <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-            {configured ? 'Настроено' : 'Не настроено'}
-          </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-            {configured
-              ? 'SearXNG подключён — веб-поиск доступен в AI-панели.'
-              : 'Добавьте адрес сервера, чтобы включить веб-поиск в AI-панели.'}
-          </div>
-        </div>
-        {configured && (
+        title={configured ? 'Настроено' : 'Не настроено'}
+        subtitle={configured
+          ? 'SearXNG подключён — веб-поиск доступен в AI-панели.'
+          : 'Добавьте адрес сервера, чтобы включить веб-поиск в AI-панели.'}
+        actions={configured && (
           <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}>
             <Trash2 size={14} /> Удалить
           </button>
         )}
-      </div>
+      />
 
       {/* Ввод — только пока не настроено; чтобы сменить, сначала «Удалить» (тот же приём, что у Gemini). */}
       {!configured && (
         <div>
-          <div style={{
-            fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-            textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8,
-          }}>
-            Адрес сервера и токен
-          </div>
+          <CapsLabel>Адрес сервера и токен</CapsLabel>
           {/* Формат поля токена — «логин:пароль» (HTTP Basic), не API-ключ/Bearer: self-hosted
               SearXNG почти всегда закрывают auth_basic на уровне reverse-proxy, не на своём уровне
               (см. SearxngSearch.ts::searxngSearch). */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <input
-              type="text"
+            <TextField
               value={endpointInput}
               placeholder="https://searx.example.com"
-              onChange={(e) => { setEndpointInput(e.target.value); setSaveError(''); }}
-              style={{
-                padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-                border: saveError ? '1.5px solid var(--error, #e05)' : '1.5px solid var(--divider-strong)',
-                background: 'var(--surface)', color: 'var(--text-strong)',
-                fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
-                width: '100%', minWidth: 0, boxSizing: 'border-box',
-              }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = saveError ? 'var(--error, #e05)' : 'var(--divider-strong)')}
+              mono
+              onChange={(v) => { setEndpointInput(v); setSaveError(''); }}
+              error={saveError || undefined}
             />
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input
+            <InputRow>
+              <TextField
                 type="password"
                 value={tokenInput}
                 placeholder="Логин:Пароль (опционально)"
-                onChange={(e) => setTokenInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') void handleSave(); }}
-                style={{
-                  flex: 1, flexBasis: 200, padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-                  border: '1.5px solid var(--divider-strong)',
-                  background: 'var(--surface)', color: 'var(--text-strong)',
-                  fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
-                  minWidth: 0, boxSizing: 'border-box',
-                }}
-                onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-                onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
+                mono
+                onChange={setTokenInput}
+                onEnter={() => void handleSave()}
+                style={fieldFlex}
               />
               <button
                 onClick={() => void handleSave()}
@@ -760,10 +695,7 @@ function SearxngSection() {
               >
                 {saving ? 'Сохранение…' : 'Сохранить'}
               </button>
-            </div>
-            {saveError && (
-              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)' }}>{saveError}</span>
-            )}
+            </InputRow>
           </div>
         </div>
       )}
@@ -800,20 +732,11 @@ function TranslationEngineSection() {
   const bergamotDisabled = bergamotStatus !== 'ready';
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 12,
-      paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
-    }}>
-      <div>
-        <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-          Движок перевода страниц
-        </h3>
-        <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          Кнопка «Перевести страницу» в тулбаре может работать на одном из двух локальных движков.
-          Оба считают полностью на устройстве, ничего не уходит в сеть.
-        </p>
-      </div>
-
+    <Subsection
+      title="Движок перевода страниц"
+      description="Кнопка «Перевести страницу» в тулбаре может работать на одном из двух локальных
+        движков. Оба считают полностью на устройстве, ничего не уходит в сеть."
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <EngineOption
           active={engine === 'qwen'}
@@ -849,7 +772,7 @@ function TranslationEngineSection() {
           }
         />
       </div>
-    </div>
+    </Subsection>
   );
 }
 
@@ -869,21 +792,12 @@ function HistoryBackfillSection() {
   }, []);
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 12,
-      paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
-    }}>
-      <div>
-        <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-          Индексация истории для поиска
-        </h3>
-        <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          Полный текст страницы для умного поиска появляется сам при обычном посещении/повторном
-          визите — счётчик ниже показывает, сколько страниц уже имеют полный текст. Всё считается
-          локально на устройстве.
-        </p>
-      </div>
-
+    <Subsection
+      title="Индексация истории для поиска"
+      description="Полный текст страницы для умного поиска появляется сам при обычном посещении/повторном
+        визите — счётчик ниже показывает, сколько страниц уже имеют полный текст. Всё считается
+        локально на устройстве."
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
           {coverage
@@ -905,7 +819,7 @@ function HistoryBackfillSection() {
       </div>
 
       <HistoryContentBackfillSection onDone={loadCoverage} />
-    </div>
+    </Subsection>
   );
 }
 
@@ -935,22 +849,14 @@ function HistoryContentBackfillSection({ onDone }: { onDone: () => void }) {
   const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 12,
-      paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
-    }}>
-      <div>
-        <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-          Полная индексация истории (эксперимент)
-        </h3>
-        <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--danger-500)' }}>
-          Тихо переоткрывает старые страницы из истории в фоне (невидимо для вас), чтобы забрать
-          их текст для умного поиска. Это значит реальные сетевые запросы к этим сайтам — часть
-          страниц может показать капчу, разлогинить или уже не существовать (такие просто
-          пропускаются). Может занять долго на большой истории. Можно остановить в любой момент.
-        </p>
-      </div>
-
+    <Subsection
+      title="Полная индексация истории (эксперимент)"
+      danger
+      description="Тихо переоткрывает старые страницы из истории в фоне (невидимо для вас), чтобы забрать
+        их текст для умного поиска. Это значит реальные сетевые запросы к этим сайтам — часть
+        страниц может показать капчу, разлогинить или уже не существовать (такие просто
+        пропускаются). Может занять долго на большой истории. Можно остановить в любой момент."
+    >
       {running ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
@@ -981,7 +887,7 @@ function HistoryContentBackfillSection({ onDone }: { onDone: () => void }) {
           )}
         </div>
       )}
-    </div>
+    </Subsection>
   );
 }
 
@@ -1043,20 +949,11 @@ function SkillsSection() {
   }
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 12,
-      paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
-    }}>
-      <div>
-        <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-          Скиллы
-        </h3>
-        <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          Кнопки-сценарии над полем ввода в AI-панели (Объяснить, Сделать саммари и ваши свои) —
-          каждая отправляет свой промпт про текущую страницу.
-        </p>
-      </div>
-
+    <Subsection
+      title="Скиллы"
+      description="Кнопки-сценарии над полем ввода в AI-панели (Объяснить, Сделать саммари и ваши свои) —
+        каждая отправляет свой промпт про текущую страницу."
+    >
       {!formOpen && (
         <button onClick={openAddForm} style={{ ...btnPrimary, alignSelf: 'flex-start', display: 'flex', gap: 6, alignItems: 'center' }}>
           <Plus size={14} /> Новый скилл
@@ -1088,7 +985,7 @@ function SkillsSection() {
           />
         ))}
       </div>
-    </div>
+    </Subsection>
   );
 }
 
@@ -1150,45 +1047,31 @@ function SkillForm({
   // Подтверждение живёт локально в форме (не в SkillsSection) — компонент ремонтится при смене
   // editingId (см. key={editingId} у вызывающего), так что confirm сам сбрасывается.
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const inputStyle: React.CSSProperties = {
-    padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--divider-strong)',
-    background: 'var(--surface)', color: 'var(--text-strong)', fontSize: 'var(--fs-sm)', outline: 'none',
-    width: '100%', minWidth: 0, boxSizing: 'border-box',
-  };
 
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', marginBottom: 10,
       ...islandPlate, borderRadius: 'var(--radius-sm)',
     }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <InputRow>
         {/* Без maxLength=1 — составной эмодзи (семья, флаг, ZWJ-последовательность) занимает
             несколько кодовых точек, обрезка по length искалечила бы его. Юзер вставляет из
             системного эмодзи-пикера ОС, это не текстовый ввод произвольной длины. */}
-        <input
-          type="text" placeholder="🙂" value={iconInput} maxLength={8}
-          onChange={(e) => onIconChange(e.target.value)}
-          onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-          onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
-          style={{ ...inputStyle, width: 56, flex: 'none', textAlign: 'center' }}
+        <TextField
+          value={iconInput} placeholder="🙂" maxLength={8} onChange={onIconChange}
+          style={{ flex: 'none', width: 56 }} inputStyle={{ textAlign: 'center' }}
         />
-        <input
-          type="text" placeholder="Название кнопки" value={labelInput}
-          onChange={(e) => onLabelChange(e.target.value)}
-          onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-          onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
-          style={{ ...inputStyle, flex: 1, flexBasis: 200 }}
+        <TextField
+          value={labelInput} placeholder="Название кнопки" onChange={onLabelChange}
+          style={fieldFlex}
         />
-      </div>
-      <textarea
-        placeholder="Промпт — что отправить модели про текущую страницу" value={promptInput} rows={3}
-        onChange={(e) => onPromptChange(e.target.value)}
-        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--divider-strong)')}
-        style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+      </InputRow>
+      <TextArea
+        value={promptInput} placeholder="Промпт — что отправить модели про текущую страницу"
+        rows={3} onChange={onPromptChange}
       />
 
-      {formError && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)' }}>{formError}</span>}
+      {formError && <InlineError>{formError}</InlineError>}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button onClick={onSave} disabled={saving || !canSave} style={{ ...btnPrimary, opacity: saving || !canSave ? 0.6 : 1 }}>
@@ -1197,12 +1080,12 @@ function SkillForm({
         {showDelete && (
           confirmDelete ? (
             <>
-              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Удалить скилл?</span>
-              <button onClick={onDelete} style={{ ...btnGhost, color: 'var(--error, #e05)' }}>Да</button>
+              <InlineHint>Удалить скилл?</InlineHint>
+              <button onClick={onDelete} style={{ ...btnGhost, color: errorColor }}>Да</button>
               <button onClick={() => setConfirmDelete(false)} style={btnGhost}>Нет</button>
             </>
           ) : (
-            <button onClick={() => setConfirmDelete(true)} style={{ ...btnGhost, color: 'var(--error, #e05)' }}>
+            <button onClick={() => setConfirmDelete(true)} style={{ ...btnGhost, color: errorColor }}>
               Удалить
             </button>
           )
