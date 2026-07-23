@@ -163,18 +163,24 @@ export default function VpnSection() {
                     }}>
                       {s.protocol}
                     </span>
-                    <span style={{
-                      flex: '1 1 120px', minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    }}>
-                      {stripEmoji(s.remark) || s.address}
-                    </span>
-                    <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontFamily: 'monospace', flex: 'none' }}>
-                      {s.address}:{s.port}
-                    </span>
-                    <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
-                      {s.transport}/{s.security}
-                    </span>
+                    {/* Название и «адрес · транспорт» — одна сжимаемая колонка (как у StatusCard):
+                        кнопки во всех рядах стоят в одном месте на любой ширине, длинный текст
+                        обрезается многоточием, а не растаскивает ряд по строкам вразнобой. */}
+                    <div style={{ flex: '1 1 140px', minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                        {stripEmoji(s.remark) || s.address}
+                      </div>
+                      <div style={{
+                        fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                        <span style={{ fontFamily: 'monospace' }}>{s.address}:{s.port}</span>
+                        {' · '}{s.transport}/{s.security}
+                      </div>
+                    </div>
                     {isRunning ? (
                       <button onClick={() => void handleDisconnect()} style={{ ...btnGhost, flex: 'none', padding: '5px 10px' }}>
                         Отключить
