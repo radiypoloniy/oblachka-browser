@@ -2052,7 +2052,9 @@ export class TabManager {
   // username отсутствует (не пустая строка, а именно отсутствует) — не трогать поле логина,
   // см. handleGenerateAndFill(): генератор пишет только пароль, не должен затирать то, что
   // пользователь уже успел ввести в поле логина.
-  sendPasswordFill(tabId: string, payload: { username?: string; password: string }): boolean {
+  // onlyIfEmpty — автозаполнение без клика (PasswordAutofillManager.handleFormDetected): страница
+  // НЕ должна затирать уже введённое пользователем, preload-content пропустит непустые поля.
+  sendPasswordFill(tabId: string, payload: { username?: string; password: string; onlyIfEmpty?: boolean }): boolean {
     const tab = this.tabMap.get(tabId);
     const wc = tab?.view?.webContents;
     if (!wc || wc.isDestroyed()) return false;

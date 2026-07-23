@@ -18,6 +18,13 @@ let onListChangedCb: (() => void) | null = null;
 // границу IPC как есть (только через handleSave/handleUpdate, которые сами зовут PasswordManager).
 const tabStates = new Map<string, PasswordIndicatorState | null>();
 const pendingSecrets = new Map<string, { username: string; password: string; matchId?: number }>();
+// Сгенерированный из поля пароль СРАЗУ сохранён в сейф (см. handleGenerateAndFill — фикс дыры
+// «сгенерировали и потеряли»); здесь помним id записи, чтобы первый submit с этим паролем и
+// непустым логином молча дописал логин в ту же запись, а не предлагал сохранить дубликат.
+const pendingGenerated = new Map<string, { origin: string; password: string; id: number }>();
+// Автозаполнение без кликов: origin, уже заполненный в этой вкладке, — чтобы не перезаполнять
+// на каждый пересчёт формы (SPA держит форму в DOM постоянно). Сбрасывается, когда форма ушла.
+const autofilledTabs = new Map<string, string>();
 
 export function init(
   tm: TabManager,
@@ -91,9 +98,26 @@ export async function handleGenerateAndFill(): Promise<boolean> {
 
     const password = pm.generate(INLINE_GENERATE_OPTS);
     // Только пароль (username отсутствует в payload) — не трогаем поле логина, пользователь
-    // мог его уже начать заполнять. Реальное сохранение — тем же путём, что и раньше: обычный
-    // submit-детектор content-preload сам предложит offer-save/offer-update при отправке формы.
-    return tm.sendPasswordFill(tabId, { password });
+    // мог его уже начать заполнять.
+    const filled = tm.sendPasswordFill(tabId, { password });
+    if (!filled) return false;
+
+    // Фикс дыры «сгенерировали и потеряли»: пароль сохраняется в сейф НЕМЕДЛЕННО (с пустым
+    // username — логина мы ещё не знаем), а не «когда-нибудь на submit» — раньше при пропуске
+    // submit-детектора (не всякая SPA ловится) свежесозданный аккаунт оставался без пароля.
+    // Первый submit с этим же паролем и непустым логином молча допишет логин в эту же запись
+    // (см. handleCredentialSubmitted), а не создаст дубликат.
+    const title = hostnameOf(state.origin);
+    if (pm.add({ url: state.origin, username: '', password, title })) {
+      // add() возвращает только boolean — id свежей записи достаём из list() (самая новая
+      // запись этого origin с пустым username); API сейфа ради этого не расширяем.
+      const entry = pm.list()
+        .filter((e) => e.origin === state.origin && e.username === '')
+        .sort((a, b) => b.createdAt - a.createdAt)[0];
+      if (entry) pendingGenerated.set(tabId, { origin: state.origin, password, id: entry.id });
+      onListChangedCb?.();
+    }
+    return true;
   } catch (e) {
     console.warn('[PasswordAutofill] handleGenerateAndFill error:', (e as Error).message);
     return false;
@@ -105,13 +129,33 @@ export function handleFormDetected(tabId: string, hasLoginForm: boolean, hasUser
     const pm = passwordManagerRef;
     if (!pm) return;
     if (!hasLoginForm) {
+      // Форма ушла (логин успешен / страница сменилась) — следующее её появление на этом
+      // origin (например, после logout) снова получит автозаполнение.
+      autofilledTabs.delete(tabId);
       tabStates.delete(tabId);
       pushIfActive(tabId, null);
       return;
     }
-    const state = computeHasSavedState(pm, originOf(url));
+    const origin = originOf(url);
+    const state = computeHasSavedState(pm, origin);
     tabStates.set(tabId, state);
     pushIfActive(tabId, state);
+
+    // Автозаполнение без кликов (как у Яндекса): для origin сохранён РОВНО один логин —
+    // подставляем сразу при обнаружении формы. Несколько сохранённых — неоднозначно, ждём
+    // выбора через иконку в поле/поповер. onlyIfEmpty — не затирать уже введённое руками
+    // (preload-content пропустит непустые поля). Повторно не заполняем, пока форма не
+    // исчезала (см. autofilledTabs) — иначе на SPA, где форма живёт в DOM постоянно,
+    // перезаполняли бы на каждый пересчёт.
+    if (state !== null && state.kind === 'has-saved' && state.matches.length === 1
+      && autofilledTabs.get(tabId) !== origin) {
+      const match = state.matches[0]!;
+      const password = pm.reveal(match.id);
+      if (password !== null
+        && tabManagerRef?.sendPasswordFill(tabId, { username: match.username, password, onlyIfEmpty: true })) {
+        autofilledTabs.set(tabId, origin);
+      }
+    }
   } catch (e) {
     console.warn('[PasswordAutofill] handleFormDetected error:', (e as Error).message);
   }
@@ -122,6 +166,21 @@ export function handleCredentialSubmitted(tabId: string, username: string, passw
     const pm = passwordManagerRef;
     if (!pm) return;
     const origin = originOf(url);
+
+    // Сгенерированный из поля пароль уже лежит в сейфе с пустым username (handleGenerateAndFill):
+    // первый submit тем же паролем дописывает логин в ТУ ЖЕ запись молча — без offer-save,
+    // который создал бы дубликат. Если пароль успели сменить руками — обычный путь ниже.
+    const generated = pendingGenerated.get(tabId);
+    if (generated !== undefined && generated.origin === origin && generated.password === password) {
+      if (username !== '' && pm.update({ id: generated.id, username })) {
+        onListChangedCb?.();
+      }
+      pendingGenerated.delete(tabId);
+      tabStates.delete(tabId);
+      pushIfActive(tabId, null);
+      return;
+    }
+
     const result = pm.checkCredential(origin, username, password);
 
     if (result.status === 'match') {
@@ -159,6 +218,8 @@ export function onActiveTabChanged(): void {
 export function onTabClosed(tabId: string): void {
   tabStates.delete(tabId);
   pendingSecrets.delete(tabId);
+  pendingGenerated.delete(tabId);
+  autofilledTabs.delete(tabId);
 }
 
 // ── Действия из поповера (см. main.ts::registerIpc, PASSWORDS_INDICATOR_*) — всегда про

@@ -52,8 +52,10 @@ function isVisible(el: Element): boolean {
 
 // Ищет ближайшее текстовое/email/tel поле той же формы — сначала назад по DOM-порядку от поля
 // пароля (типичный порядок «логин, затем пароль»), потом любое подходящее поле в той же форме.
+// getRootNode вместо document — поле может жить в shadow root (см. collectPasswordInputs),
+// document его соседей просто не увидит.
 function findUsernameField(passwordField: HTMLInputElement): HTMLInputElement | null {
-  const scope: ParentNode = passwordField.form ?? document;
+  const scope: ParentNode = passwordField.form ?? (passwordField.getRootNode() as ParentNode);
   const candidates = Array.from(scope.querySelectorAll('input')) as HTMLInputElement[];
   const idx = candidates.indexOf(passwordField);
   const isUsernameType = (el: HTMLInputElement) => ['text', 'email', 'tel'].includes((el.type || 'text').toLowerCase());
@@ -63,8 +65,25 @@ function findUsernameField(passwordField: HTMLInputElement): HTMLInputElement | 
   return candidates.find((c) => c !== passwordField && isUsernameType(c)) ?? null;
 }
 
+// Обход С заходом в открытые shadow root'ы — современные UI-киты (web components) прячут поля
+// туда, document.querySelectorAll их не видит (живой кейс: поле логина панели без иконки).
+// Закрытые shadow root'ы физически недоступны — там честно пасуем. Полный проход по '*' на
+// каждый скан дёшев относительно debounce 300ms (см. scheduleScan) — глубина обхода
+// ограничена реальной вложенностью shadow-деревьев, обычно 0–1.
+function collectPasswordInputs(root: ParentNode, out: HTMLInputElement[]): void {
+  for (const el of Array.from(root.querySelectorAll('input[type="password"]'))) {
+    out.push(el as HTMLInputElement);
+  }
+  for (const el of Array.from(root.querySelectorAll('*'))) {
+    const shadow = (el as HTMLElement).shadowRoot;
+    if (shadow) collectPasswordInputs(shadow, out);
+  }
+}
+
 function visiblePasswordFields(): HTMLInputElement[] {
-  return (Array.from(document.querySelectorAll('input[type="password"]')) as HTMLInputElement[]).filter(isVisible);
+  const all: HTMLInputElement[] = [];
+  collectPasswordInputs(document, all);
+  return all.filter(isVisible);
 }
 
 function scanForms(pwFields: HTMLInputElement[]): { hasLoginForm: boolean; hasUsernameField: boolean } {
@@ -260,6 +279,18 @@ try {
 
 document.addEventListener('DOMContentLoaded', scheduleScan);
 window.addEventListener('load', scheduleScan);
+try {
+  // Поля, появившиеся БЕЗ DOM-мутаций, MutationObserver не поймает: CSS-анимация довела
+  // opacity 0→1 уже после скана (isVisible отсеял поле навсегда), или поле живёт в shadow
+  // root (мутации внутри него observer на documentElement не видит). Пересканируем по
+  // пользовательским сигналам: фокус (composed — всплывает и из shadow) и конец
+  // анимаций/переходов. Всё гасится тем же debounce 300ms — частые transitionend не страшны.
+  window.addEventListener('focusin', scheduleScan, true);
+  window.addEventListener('animationend', scheduleScan, true);
+  window.addEventListener('transitionend', scheduleScan, true);
+} catch {
+  // noop
+}
 scheduleScan(); // на случай, если preload выполнился уже после DOMContentLoaded
 
 // ── Детект сохранения — submit с непустым паролем + SPA-эвристика ──────────────────────────────
@@ -339,14 +370,19 @@ function setNativeValue(input: HTMLInputElement, value: string): void {
 // username: undefined (поле ОТСУТСТВУЕТ в payload, не пустая строка) — не трогать поле логина.
 // Нужно генератору пароля: пользователь мог уже начать вводить логин, затирать его нельзя.
 // Пустая строка — легитимное значение сохранённого логина (сайт без поля логина вообще).
-function fillCredential(username: string | undefined, password: string): boolean {
+// onlyIfEmpty — автозаполнение без клика (main шлёт его при обнаружении формы): непустые поля
+// не трогаем вовсе — то, что пользователь уже ввёл руками, важнее сохранённого.
+function fillCredential(username: string | undefined, password: string, onlyIfEmpty?: boolean): boolean {
   try {
     if (!isTopFrame()) return false;
     const passwordField = visiblePasswordFields()[0];
     if (!passwordField) return false;
+    if (onlyIfEmpty && passwordField.value) return false;
     if (typeof username === 'string') {
       const usernameField = findUsernameField(passwordField);
-      if (usernameField && isVisible(usernameField)) setNativeValue(usernameField, username);
+      if (usernameField && isVisible(usernameField) && !(onlyIfEmpty && usernameField.value)) {
+        setNativeValue(usernameField, username);
+      }
     }
     setNativeValue(passwordField, password);
     return true;
@@ -356,10 +392,10 @@ function fillCredential(username: string | undefined, password: string): boolean
 }
 
 try {
-  ipcRenderer.on(CH_FILL, (_e, payload: { username?: string; password?: string }) => {
+  ipcRenderer.on(CH_FILL, (_e, payload: { username?: string; password?: string; onlyIfEmpty?: boolean }) => {
     try {
       if (typeof payload?.password !== 'string') return;
-      fillCredential(payload.username, payload.password);
+      fillCredential(payload.username, payload.password, payload.onlyIfEmpty === true);
     } catch {
       // исполнитель не должен ронять страницу
     }
