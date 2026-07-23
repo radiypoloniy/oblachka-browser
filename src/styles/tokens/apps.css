@@ -1,0 +1,38 @@
+/* ── Раздел «Приложения» AI-панели (src/components/aiApps.tsx) ───────────────
+   Градиенты иконок приложений и обоев «домашнего экрана». Это КОНТЕНТНЫЕ
+   цвета (как favicon или обложка сайта), а не UI-акценты — цветовой закон
+   (один акцент / синий=система / зелёный=функционально) на них не
+   распространяется. Но значения всё равно живут здесь, а не в компоненте —
+   перекраска подменой значений токенов, как велит дизайн-система.
+   Темы не касаются этих токенов намеренно (только :root, без theme-dark):
+   обои и иконки — как на телефоне, одинаковы в светлой и тёмной теме. */
+:root {
+  /* Иконки приложений — «сквиркл» с вертикальным градиентом в стиле iOS,
+     белый глиф. Один тон на приложение, светлее сверху. */
+  --appicon-calc:    linear-gradient(180deg, #5C6672, #2F343D);
+  --appicon-convert: linear-gradient(180deg, #4CD08A, #2E9E5B);
+  --appicon-timer:   linear-gradient(180deg, #FFB03A, #F27121);
+  --appicon-color:   linear-gradient(180deg, #C86DD7, #7F53AC);
+  /* Веб-приложения: встроенный переводчик и пользовательские URL (буквенная иконка). */
+  --appicon-web:       linear-gradient(180deg, #6D8DE8, #3D55C4);
+  --appicon-webcustom: linear-gradient(180deg, #8E9AAB, #566073);
+  /* Котёнок-тамагочи (будущий маскот). */
+  --appicon-kitten:    linear-gradient(180deg, #F7A8B8, #E0638F);
+  /* Счётчик символов. */
+  --appicon-counter:   linear-gradient(180deg, #5BC8D8, #2E93A6);
+  --appicon-glyph:   #FFFFFF;
+  --appicon-shadow:  0 5px 12px rgba(20, 20, 40, 0.28);
+
+  /* Подписи под иконками — всегда белые с тенью (как на iOS), обои под ними
+     любой светлоты из набора ниже. */
+  --app-label:        #FFFFFF;
+  --app-label-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+
+  /* Обои домашнего экрана — все средне-тёмные, чтобы белые подписи читались
+     на любых. Порядок тот же, что в WALLPAPERS (aiApps.tsx). */
+  --wallpaper-ocean:    linear-gradient(165deg, #6EA8E8 0%, #3B6BC4 55%, #27418F 100%);
+  --wallpaper-sunset:   linear-gradient(165deg, #FFB88C 0%, #E8746B 50%, #9F4A8E 100%);
+  --wallpaper-aurora:   linear-gradient(165deg, #43CEA2 0%, #2C7FA8 60%, #185A9D 100%);
+  --wallpaper-lavender: linear-gradient(165deg, #B79FE0 0%, #8368C4 55%, #4E3D8F 100%);
+  --wallpaper-graphite: linear-gradient(165deg, #4A4E58 0%, #2A2D34 60%, #17181C 100%);
+}

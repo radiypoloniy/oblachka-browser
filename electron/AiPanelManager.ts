@@ -15,6 +15,9 @@ import { searxngSearch, buildGroundingPrompt, appendSearxngSources } from './Sea
 import * as aiKeyStore from './AiKeyStore'
 import * as searxngKeyStore from './SearxngKeyStore'
 import * as skillsStore from './SkillsStore'
+import { getCurrencyRates } from './CurrencyRates'
+import { getWeather } from './WeatherService'
+import * as webApps from './WebAppManager'
 import { IPC } from '../shared/ipc'
 import type { TabState } from '../shared/ipc'
 import type { TabManager } from './TabManager'
@@ -71,6 +74,9 @@ export function setSettingsManager(sm: SettingsManager): void {
 let tabManagerRef: TabManager | null = null
 export function setTabManager(tm: TabManager): void {
   tabManagerRef = tm
+  // Форвард в WebAppManager (веб-приложения раздела «Приложения») — чтобы main.ts не пришлось
+  // знать о ещё одном модуле: window.open из веб-слота уходит обычной вкладкой через тот же tm.
+  webApps.setTabManager(tm)
 }
 
 // Заход 3: push'и состояния дока идут в chrome (React-хром), а не в win.webContents — это разные
@@ -348,6 +354,7 @@ function setOpenState(open: boolean): void {
 }
 
 function closePanel(win: BrowserWindow): void {
+  webApps.setPanelVisible(win, false) // веб-слоты прячутся вместе с панелью (но живут в памяти)
   if (panelView) win.contentView.removeChildView(panelView)
   setOpenState(false)
 }
@@ -567,6 +574,40 @@ function ensureIpcRegistered(): void {
   ipcMain.on('ai-panel:open-settings', (_event: IpcMainEvent, section?: string) => {
     tabManagerRef?.createSpecialTab('settings', section)
   })
+
+  // Курсы валют для конвертера раздела «Приложения» (aiApps.tsx) — invoke/handle, не пуш:
+  // данные нужны только по заходу пользователя в категорию «Валюты», рассылать их каждому
+  // открытию панели незачем. Сам fetch и кэш — CurrencyRates.ts, здесь только труба.
+  ipcMain.handle('ai-panel:currency-rates', () => getCurrencyRates())
+
+  // Погода для виджета «Приложений» — та же схема, что курсы выше (fetch/кэш в WeatherService.ts).
+  ipcMain.handle('ai-panel:weather', (_event, city: unknown) => getWeather(typeof city === 'string' ? city : ''))
+
+  // Веб-приложения (заход 3): чужой сайт в слоте — отдельная WebContentsView (WebAppManager.ts).
+  // Панель шлёт прямоугольник «дырки» В СВОЁМ вьюпорте; в координаты окна он переводится
+  // ЗДЕСЬ — только этот модуль знает ширину дока (panelWidth) и высоту тулбара, WebAppManager
+  // про геометрию панели не знает намеренно.
+  ipcMain.on('ai-panel:webapp-open', (_event: IpcMainEvent, appId: unknown, url: unknown) => {
+    if (attachedWin && typeof appId === 'string' && typeof url === 'string') {
+      webApps.openWebApp(attachedWin, appId, url)
+    }
+  })
+  ipcMain.on('ai-panel:webapp-bounds', (_event: IpcMainEvent, appId: unknown, rect: unknown) => {
+    if (!attachedWin || typeof appId !== 'string') return
+    const r = rect as { x?: unknown; y?: unknown; width?: unknown; height?: unknown } | null
+    if (!r || typeof r.x !== 'number' || typeof r.y !== 'number'
+      || typeof r.width !== 'number' || typeof r.height !== 'number') return
+    const { width } = attachedWin.getContentBounds()
+    webApps.setWebAppBounds(attachedWin, appId, {
+      x: Math.round(width - panelWidth + r.x),
+      y: Math.round(TOOLBAR_HEIGHT + r.y),
+      width: Math.round(r.width),
+      height: Math.round(r.height),
+    })
+  })
+  ipcMain.on('ai-panel:webapp-close', (_event: IpcMainEvent, appId: unknown) => {
+    if (attachedWin && typeof appId === 'string') webApps.closeWebApp(attachedWin, appId)
+  })
 }
 
 // Создаётся лениво на первый вызов (клик по кнопке AI ЛИБО фоновый прогрев — см. prewarmPanel
@@ -656,6 +697,8 @@ export function toggleAiPanel(win: BrowserWindow): boolean {
   const view = ensurePanelView()
   view.setBounds(computeBounds(win))
   win.contentView.addChildView(view) // последней → поверх вкладки, а не под ней
+  // Веб-слоты — ПОСЛЕ панели: их view должны лечь поверх неё (в дырки), см. WebAppManager.
+  webApps.setPanelVisible(win, true)
   setOpenState(true)
   // При повторном открытии (view уже когда-то загрузился) did-finish-load больше не сработает —
   // шлём текущий контекст явно, чтобы панель не показывала последнюю беседу «протухшей» вкладки.

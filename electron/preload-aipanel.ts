@@ -62,4 +62,19 @@ contextBridge.exposeInMainWorld('aiPanel', {
   // а не молча включает пустой режим. section (опционально) — начальный раздел Settings (напр.
   // 'ai' у кнопки "+" в ряду действий панели); без аргумента — дефолтный раздел, как раньше.
   openSettings: (section?: string) => ipcRenderer.send('ai-panel:open-settings', section),
+
+  // Курсы валют (конвертер раздела «Приложения») — invoke: ответ нужен только запросившему.
+  // Форма CurrencyRatesResult (electron/CurrencyRates.ts) зеркалится в renderer локально
+  // (aiApps.tsx) — ad-hoc канал, как и chat-result выше, не контракт shared/ipc.ts.
+  currencyRates: () => ipcRenderer.invoke('ai-panel:currency-rates'),
+  // Погода для виджета «Приложений» — та же схема (форма WeatherResult зеркалится в aiApps.tsx).
+  weather: (city: string) => ipcRenderer.invoke('ai-panel:weather', city),
+
+  // Веб-приложения (заход 3, см. WebAppManager.ts): открытие/позиционирование/закрытие
+  // WebContentsView чужого сайта в «дырке» слота. bounds — в координатах вьюпорта панели,
+  // в окно переводит AiPanelManager.
+  webappOpen: (appId: string, url: string) => ipcRenderer.send('ai-panel:webapp-open', appId, url),
+  webappBounds: (appId: string, rect: { x: number; y: number; width: number; height: number }) =>
+    ipcRenderer.send('ai-panel:webapp-bounds', appId, rect),
+  webappClose: (appId: string) => ipcRenderer.send('ai-panel:webapp-close', appId),
 })

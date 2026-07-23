@@ -6,6 +6,7 @@
 @import "./tokens/radii.css";
 @import "./tokens/shadows.css";
 @import "./tokens/effects.css";
+@import "./tokens/apps.css";
 @import "./tokens/theme-dark.css";
 
 html, body, #root { margin: 0; height: 100%; background: var(--app-bg); }
@@ -20,6 +21,19 @@ body {
 /* Тот же keyframe-приём, что и src/index.html (спиннер до React) — здесь для React-точек входа,
    не грузящих index.html (aipanel.tsx и т.п.), см. заход D: индикатор фактчека. */
 @keyframes oblako-spin { to { transform: rotate(360deg); } }
+/* Котёнок-тамагочи в AI-панели (aiApps.tsx::KittenApp): дыхание в покое + прыжок-реакция
+   на действие. Основа под будущего маскота — новые анимации добавлять сюда же. */
+@keyframes oblako-kitten-idle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes oblako-kitten-hop {
+  0% { transform: translateY(0); }
+  30% { transform: translateY(-12px) scale(1.08); }
+  60% { transform: translateY(0); }
+  80% { transform: translateY(-5px); }
+  100% { transform: translateY(0); }
+}
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb {
   background: rgba(60,50,90,0.22); border-radius: 6px;

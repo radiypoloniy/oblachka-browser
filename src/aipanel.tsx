@@ -10,9 +10,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Calculator, RefreshCw, Timer, Pipette, Plus } from 'lucide-react';
+import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Plus } from 'lucide-react';
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
+import { AppsMode, loadWallpaper, saveWallpaper, wallpaperBackground } from './components/aiApps';
+import type { CurrencyRatesResult, WeatherResult } from './components/aiApps';
 import { SHELL_MARGIN } from '../shared/layout';
 
 // Код причины отказа (см. electron/TranslationService.ts::ModelError, shared/ipc.ts::ModelErrorCode)
@@ -71,6 +73,14 @@ declare global {
       // section — необязательный начальный раздел Settings (напр. 'ai' у кнопки "+" в ряду
       // действий); без аргумента — дефолтный раздел, как у клика по глобусу (handleGlobeClick).
       openSettings: (section?: string) => void
+      // Курсы валют (конвертер) и погода (виджет) «Приложений» — формы ответов зеркалятся
+      // в aiApps.tsx (ad-hoc каналы, как остальные ai-panel:*).
+      currencyRates: () => Promise<CurrencyRatesResult>
+      weather: (city: string) => Promise<WeatherResult>
+      // Веб-приложения (заход 3) — open/bounds/close веб-слотов, см. WebAppManager.ts.
+      webappOpen: (appId: string, url: string) => void
+      webappBounds: (appId: string, rect: { x: number; y: number; width: number; height: number }) => void
+      webappClose: (appId: string) => void
     }
   }
 }
@@ -161,9 +171,22 @@ function AiPanel() {
   // читаясь как зависание. Гасится первым чанком (unsubChunk) — тем же сигналом «генерация началась».
   const [webSearching, setWebSearching] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
-  // Заход 3 — переключатель AI/Приложения (см. дизайн-систему): локальный, не персистится —
-  // «Приложения» пока заглушка без функциональности, помнить выбор между сессиями незачем.
+  // Заход 3 — переключатель AI/Приложения (см. дизайн-систему): локальный, не персистится.
+  // «Приложения» (aiApps.tsx) в режиме чата НЕ размонтируются, а прячутся display:none (см.
+  // рендер ниже) — иначе переключение в чат убивало бы их состояние (идущий таймер и т.п.).
   const [mode, setMode] = useState<'chat' | 'apps'>('chat')
+  // Обои «Приложений» — стейт здесь, а не в AppsMode: обоями красится ВЕСЬ остров панели
+  // (включая фон за шапкой, см. стиль острова ниже), не только область под сеткой.
+  const [wallpaper, setWallpaper] = useState<string>(loadWallpaper)
+  // rev — форс-перерисовка острова, когда id НЕ меняется, а картинка под ним — да: повторная
+  // загрузка своего фото при уже выбранном 'custom' (setState тем же 'custom' React бы съел,
+  // и wallpaperBackground не перечитал бы обновлённый кэш).
+  const [, setWallpaperRev] = useState(0)
+  const selectWallpaper = (id: string) => {
+    setWallpaper(id)
+    setWallpaperRev((r) => r + 1)
+    saveWallpaper(id)
+  }
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') window.aiPanel.close(); };
@@ -312,7 +335,10 @@ function AiPanel() {
         width: '100%', height: '100%', boxSizing: 'border-box',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
-        background: 'var(--surface-solid)',
+        backgroundColor: 'var(--surface-solid)',
+        // Режим «Приложения»: весь остров целиком заливается обоями (фикс-холст с кропом при
+        // ресайзе — см. wallpaperBackground), шапка с переключателем просто парит поверх.
+        ...(mode === 'apps' ? wallpaperBackground(wallpaper) : null),
         // var(--radius-island) — заметно круглее var(--radius-card): остров, а не карточка.
         borderRadius: 'var(--radius-island)',
         // НЕ var(--shadow-overlay) — тот рассчитан на щедрый симметричный SHADOW_MARGIN=40
@@ -782,57 +808,14 @@ function AiPanel() {
           </div>
         </div>
         </>)}
-        {mode === 'apps' && <AppsGrid />}
-      </div>
-    </div>
-  );
-}
-
-// ── Режим «Приложения» — заглушка (заход 3, см. Oblako Design System) ──────────────────────────
-// Функциональность на потом (калькулятор/конвертер/таймер/цвет.пикер) — сейчас только визуал
-// по спеке: сетка плиток + пилюля «Скоро», без onClick.
-const APPS: { icon: typeof Calculator; label: string }[] = [
-  { icon: Calculator, label: 'Калькулятор' },
-  { icon: RefreshCw, label: 'Конвертер' },
-  { icon: Timer, label: 'Таймер' },
-  { icon: Pipette, label: 'Цвет.пикер' },
-];
-
-function AppsGrid() {
-  return (
-    <div style={{
-      flex: 1, minHeight: 0, overflowY: 'auto',
-      display: 'flex', flexDirection: 'column',
-      padding: `20px var(--pad-island)`,
-    }}>
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14,
-        alignContent: 'start',
-      }}>
-        {APPS.map(({ icon: Icon, label }) => (
-          <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: '100%', aspectRatio: '1 / 1',
-              borderRadius: 'var(--radius-card)',
-              background: 'var(--surface-sunken)',
-              border: '1px solid var(--glass-edge)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Icon size={22} strokeWidth={1.75} style={{ color: 'var(--text-faint)' }} />
-            </div>
-            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{label}</span>
-          </div>
-        ))}
-      </div>
-      <div style={{ flex: 1 }} />
-      <div style={{ textAlign: 'center' }}>
-        <span style={{
-          display: 'inline-flex', height: 26, padding: '0 12px', alignItems: 'center',
-          background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
-          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
+        {/* display:none, а не условный рендер — состояние приложений (идущий таймер, набранное
+            в калькуляторе) переживает переключение в чат и обратно. */}
+        <div style={{
+          flex: 1, minHeight: 0,
+          display: mode === 'apps' ? 'flex' : 'none', flexDirection: 'column',
         }}>
-          Скоро
-        </span>
+          <AppsMode wallpaper={wallpaper} onSelectWallpaper={selectWallpaper} />
+        </div>
       </div>
     </div>
   );
