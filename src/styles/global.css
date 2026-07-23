@@ -66,3 +66,23 @@ body {
    что-то печатает (реальный текст, возможно многострочный через Shift+Enter), класс перестаёт
    матчиться и нативный скролл возвращается — там он нужен по-настоящему. */
 .ai-composer-input:placeholder-shown { overflow-y: hidden; }
+
+/* Настройки: боковой нав сворачивается в столбик иконок при узкой ширине контентной
+   колонки (см. Settings.tsx — root несёт .settings-root). Инлайновые стили в Settings.tsx
+   по каскаду выигрывают у обычных правил из таблицы стилей — !important здесь обязателен,
+   чтобы это override сработал, не костыль. */
+.settings-root { container-type: inline-size; }
+@container (max-width: 640px) {
+  .settings-nav {
+    width: 52px !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+  .settings-nav-item {
+    justify-content: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .settings-nav-label,
+  .settings-nav-badge { display: none !important; }
+}

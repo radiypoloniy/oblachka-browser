@@ -82,7 +82,7 @@ export default function Settings({ onClose, defaultSection }: SettingsProps) {
   }
 
   return (
-    <div style={{
+    <div className="settings-root" style={{
       display: 'flex', flexDirection: 'column', height: '100%',
       overflow: 'hidden',
       // Тот же "остров", что у сайдбара (Sidebar.tsx::asideBase) — см. подробный комментарий
@@ -115,7 +115,7 @@ export default function Settings({ onClose, defaultSection }: SettingsProps) {
       {/* Тело: левое меню + контент */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* Левая навигация */}
-        <nav style={{
+        <nav className="settings-nav" style={{
           width: 200, flex: 'none', borderRight: '1px solid var(--divider-strong)',
           padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: 2,
         }}>
@@ -124,8 +124,11 @@ export default function Settings({ onClose, defaultSection }: SettingsProps) {
             return (
               <button
                 key={id}
+                className="settings-nav-item"
                 disabled={!!soon}
                 onClick={() => { if (!soon) setSection(id as SectionId); }}
+                title={label}
+                aria-label={label}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
@@ -142,9 +145,9 @@ export default function Settings({ onClose, defaultSection }: SettingsProps) {
                 onMouseLeave={(e) => { if (!active && !soon) e.currentTarget.style.background = 'transparent'; }}
               >
                 <Icon size={15} />
-                {label}
+                <span className="settings-nav-label">{label}</span>
                 {soon && (
-                  <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-faint)', fontWeight: 400 }}>
+                  <span className="settings-nav-badge" style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-faint)', fontWeight: 400 }}>
                     скоро
                   </span>
                 )}
