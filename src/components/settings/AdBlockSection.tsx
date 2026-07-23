@@ -1,0 +1,118 @@
+import { Shield, ShieldOff, Plus, Trash2, RotateCcw } from 'lucide-react';
+import type { AdBlockState } from '../../../shared/ipc';
+import { islandPlate } from '../../styles/island';
+import Toggle from '../Toggle';
+import {
+  btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote,
+  StatusCard, TextField, InputRow, fieldFlex,
+} from './kit';
+
+// ── Секция «Блокировка рекламы» ───────────────────────────────────────────────
+
+interface AdBlockSectionProps {
+  state: AdBlockState | null;
+  domainInput: string;
+  inputError: string;
+  pendingReload: string | null;
+  inputRef: React.RefObject<HTMLInputElement>;
+  onToggle: () => void;
+  onDomainChange: (v: string) => void;
+  onAddDomain: () => void;
+  onRemoveDomain: (domain: string) => void;
+  onReload: () => void;
+  onDismissReload: () => void;
+}
+
+export default function AdBlockSection({
+  state, domainInput, inputError, pendingReload, inputRef,
+  onToggle, onDomainChange, onAddDomain, onRemoveDomain, onReload, onDismissReload,
+}: AdBlockSectionProps) {
+  if (!state) {
+    return <LoadingNote />;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
+      <SectionHeader title="Блокировка рекламы и трекеров">
+        Фильтрует рекламу и трекеры через EasyList / EasyPrivacy.
+        Работает на уровне сетевых запросов — быстрее расширений браузера.
+      </SectionHeader>
+
+      {/* Уведомление о перезагрузке */}
+      {pendingReload !== null && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', flexWrap: 'wrap',
+          ...islandPlate,
+          borderRadius: 'var(--radius-sm)', fontSize: 'var(--fs-sm)',
+        }}>
+          <RotateCcw size={15} style={{ color: 'var(--warning-500)', flex: 'none' }} />
+          <span style={{ flex: '1 1 160px', minWidth: 0, color: 'var(--text-body)' }}>
+            {pendingReload === 'all'
+              ? 'Обновить открытые вкладки, чтобы применить изменения?'
+              : `Обновить вкладки ${pendingReload}?`}
+          </span>
+          <button onClick={onReload} style={btnPrimary}>Обновить</button>
+          <button onClick={onDismissReload} style={btnGhost}>Позже</button>
+        </div>
+      )}
+
+      {/* Тумблер */}
+      <StatusCard
+        icon={state.enabled
+          ? <Shield size={22} style={{ color: 'var(--text-body)', flex: 'none' }} />
+          : <ShieldOff size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
+        title={state.enabled ? 'Блокировка включена' : 'Блокировка выключена'}
+        subtitle={`Заблокировано за сессию: ${state.sessionBlockCount.toLocaleString('ru')}`}
+        actions={<Toggle checked={state.enabled} onChange={onToggle} />}
+      />
+
+      {/* Исключения */}
+      <div>
+        <CapsLabel>Исключения</CapsLabel>
+        <p style={{ margin: '0 0 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
+          На этих сайтах реклама блокироваться не будет.
+          Домен покрывает и все поддомены (например, www.example.com).
+        </p>
+
+        {/* Список исключений */}
+        {state.whitelist.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+            {state.whitelist.map((domain) => (
+              <div key={domain} style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
+              }}>
+                <span style={{
+                  flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-body)', fontFamily: 'monospace',
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {domain}
+                </span>
+                <IconBtn title="Убрать из исключений" onClick={() => onRemoveDomain(domain)}>
+                  <Trash2 size={14} />
+                </IconBtn>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Добавить домен */}
+        <InputRow>
+          <TextField
+            inputRef={inputRef}
+            value={domainInput}
+            placeholder="example.com"
+            onChange={onDomainChange}
+            onEnter={onAddDomain}
+            error={inputError || undefined}
+            style={fieldFlex}
+          />
+          <button onClick={onAddDomain} style={{ ...btnPrimary, alignSelf: 'flex-start', display: 'flex', gap: 6, alignItems: 'center' }}>
+            <Plus size={14} /> Добавить
+          </button>
+        </InputRow>
+      </div>
+    </div>
+  );
+}
+
