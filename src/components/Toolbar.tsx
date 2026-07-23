@@ -127,25 +127,16 @@ export default function Toolbar({
   // (черновик стал неактуален) от «просто переключились на другую вкладку» (черновик той вкладки
   // ещё жив и должен вернуться при переключении обратно). См. эффекты ниже.
   const lastNavTabRef = useRef<{ id: string; url: string } | undefined>(undefined);
-  // Заход 8 (реальный баг): дропдаун закрывался корректно, но САМ ОТКРЫВАЛСЯ ЗАНОВО при переходе
-  // на страницу / клике по сайдбару — потому что закрытие (removeChildView нативной вью дропдауна
-  // в main) отдаёт OS-фокус ОБРАТНО омниноксу (тот же класс поведения, что задокументированная
-  // спонтанная blur-пара при addChildView — тут симметрично, спонтанный focus при removeChildView).
-  // onFocus ниже слепо перезапускал triggerSuggest(value), если в поле ещё оставался старый текст —
-  // при спонтанном refocus это ОТКРЫВАЛО дропдаун заново без участия пользователя. Различаем
-  // настоящий клик от спонтанного refocus: настоящий клик ВСЕГДА даёт mousedown НА ЭТОМ инпуте
-  // непосредственно перед focus (синхронно, тот же тик) — спонтанный refocus от removeChildView
-  // этому не предшествует.
-  const realMouseDownRef = useRef(false);
-  // Живой баг: выделение всего текста по клику (см. onMouseDown ниже) проверялось через
-  // document.activeElement — но тот же спонтанный refocus от removeChildView (см. комментарий у
-  // realMouseDownRef выше), который молча возвращает OS-фокус на инпут, ТАКЖЕ молча возвращает
-  // document.activeElement на него, хотя пользователь ничего не кликал. Из-за этого следующий
-  // РЕАЛЬНЫЙ клик видел «уже сфокусировано» и просто переставлял курсор, а не выделял всё. Здесь —
-  // собственный, не подделываемый спонтанным событием источник истины: true выставляется ТОЛЬКО
-  // настоящим mousedown по инпуту, false — только в местах, где мы САМИ явно решили закончить
-  // редактирование (см. stopEditing ниже), не блуром/фокусом как таковыми.
-  const hasRealFocusRef = useRef(false);
+  // Unified focus tracker: объединяет realMouseDownRef + hasRealFocusRef в один объект.
+  // Отличает настоящий клик пользователя от спонтанных событий фокуса при addChildView/removeChildView
+  // нативной WebContentsView дропдауна. isRealFocus = true выставляется ТОЛЬКО настоящим mousedown
+  // по инпуту, false — только когда мы САМИ явно закончили редактирование (см. closeDropdownFully).
+  // mouseDownOnInput — кратковременный флаг (автосброс через RAF), различающий «клик в инпут» от
+  // «спонтанный refocus после removeChildView» (тот не предшествует синхронному mousedown).
+  const focusTracker = useRef({
+    isRealFocus: false,
+    mouseDownOnInput: false,
+  });
   const toolbarRef = useRef<HTMLDivElement>(null);
   // «Таблетка» омнибокса (иконка+инпут+капсула/copy) — прямоугольник, под которым должен
   // вставать дропдаун подсказок. Пушится в main отдельным каналом (OMNIBOX_SET_BOUNDS) —
@@ -325,34 +316,41 @@ export default function Toolbar({
     onSuggestToggle?.(true);
   }, [onSuggestToggle]);
 
-  const closeDropdown = useCallback((reason = 'unknown') => {
+  // Унифицированное закрытие дропдауна — единая точка для ВСЕХ путей закрытия (клик мимо,
+  // Esc, выбор, смена вкладки, фокус на контент и т.д.). Синхронизирует React-состояние,
+  // нативную вью (setSuggestDropdownOpen) и состояние редактирования в одном месте.
+  const closeDropdown = useCallback((_reason = 'unknown') => {
     suggestSeqRef.current++;
-    (window as any).ddlog?.log(`closeDropdown called reason=${reason}`); // ВРЕМЕННЫЙ лог диагностики
     setDropdownOpen(false);
     setSuggestions([]);
     setSelectedIdx(-1);
     onSuggestToggle?.(false);
-    // Заход 6: открепление нативной вью — НЕ через опциональный onSuggestToggle (тот
-    // существует для внешней синхронизации App.tsx, но closeDropdown не должен ЗАВИСЕТЬ от
-    // того, передан ли он вообще). Прямой вызов того же канала, что открытие — единственная
-    // точка закрытия (эту функцию), гарантированно доводит React-состояние и факт прикрепления
-    // вью (isAttached() в SuggestDropdownManager.ts) до одного и того же результата на КАЖДОМ
-    // пути закрытия (клик-вне, Esc, выбор, очистка ввода — все идут через closeDropdown).
+    // Открепление нативной вью — НЕ через опциональный onSuggestToggle (тот существует для
+    // внешней синхронизации App.tsx, но closeDropdown не должен ЗАВИСЕТЬ от того, передан ли он
+    // вообще). Прямой вызов того же канала, что открытие — единственная точка закрытия (эту
+    // функцию), гарантированно доводит React-состояние и факт прикрепления вью (isAttached() в
+    // SuggestDropdownManager.ts) до одного и того же результата на КАЖДОМ пути закрытия.
     void window.oblako.setSuggestDropdownOpen(false);
     // Снимаем клавиатурную подсветку во вью — иначе при следующем открытии на миг мелькнёт
-    // подсветка строки от предыдущей сессии (заход 4/5).
+    // подсветка строки от предыдущей сессии.
     void window.oblako.setSuggestDropdownHighlight(-1);
   }, [onSuggestToggle]);
 
-  // Единая точка «редактирование действительно закончилось» — вместо разрозненных setEditing(false)
-  // по всем местам. Синхронно гасит hasRealFocusRef (см. комментарий у него) — так спонтанный
-  // refocus от removeChildView, даже молча вернув document.activeElement на инпут, не может
-  // обмануть следующий реальный клик: hasRealFocusRef остаётся false, пока сюда не заглянет САМ
-  // пользователь новым mousedown.
-  const stopEditing = useCallback(() => {
+  // Полное закрытие дропдауна + завершение редактирования — используется когда пользователь
+  // действительно закончил работу с омнибоксом (клик мимо, фокус на контент, смена вкладки).
+  // Синхронно гасит focusTracker.isRealFocus — так спонтанный refocus от removeChildView,
+  // даже молча вернув document.activeElement на инпут, не может обмануть следующий реальный
+  // клик: isRealFocus остаётся false, пока сюда не заглянет САМ пользователь новым mousedown.
+  const closeDropdownFully = useCallback((reason: string) => {
+    closeDropdown(reason);
     setEditing(false);
-    hasRealFocusRef.current = false;
-  }, []);
+    focusTracker.current.isRealFocus = false;
+  }, [closeDropdown]);
+
+  // Ref для closeDropdownFully — чтобы слушатель mousedown не пересоздавался при каждом изменении
+  // колбэка, но всегда вызывал актуальную версию. Тот же приём, что pickSuggestionRef ниже.
+  const closeDropdownFullyRef = useRef(closeDropdownFully);
+  closeDropdownFullyRef.current = closeDropdownFully;
 
   const pushPasswordPopoverBounds = useCallback(() => {
     const el = passwordControlRef.current;
@@ -363,8 +361,7 @@ export default function Toolbar({
 
   const togglePasswordPopover = useCallback(() => {
     if (!passwordIndicator) return;
-    closeDropdown('password-indicator');
-    stopEditing();
+    closeDropdownFully('password-indicator');
     if (passwordPopoverOpen) {
       setPasswordPopoverOpen(false);
       void window.oblako.closePasswordPopover();
@@ -373,7 +370,7 @@ export default function Toolbar({
     pushPasswordPopoverBounds();
     setPasswordPopoverOpen(true);
     void window.oblako.showPasswordPopover(passwordIndicator);
-  }, [closeDropdown, stopEditing, passwordIndicator, passwordPopoverOpen, pushPasswordPopoverBounds]);
+  }, [closeDropdownFully, passwordIndicator, passwordPopoverOpen, pushPasswordPopoverBounds]);
 
   const pushVpnPopoverBounds = useCallback(() => {
     const el = vpnControlRef.current;
@@ -383,8 +380,7 @@ export default function Toolbar({
   }, []);
 
   const toggleVpnPopover = useCallback(() => {
-    closeDropdown('vpn-indicator');
-    stopEditing();
+    closeDropdownFully('vpn-indicator');
     if (passwordPopoverOpen) {
       setPasswordPopoverOpen(false);
       void window.oblako.closePasswordPopover();
@@ -400,7 +396,7 @@ export default function Toolbar({
     // увидеть актуальный URL уже к моменту первого показа (см. VpnPopoverManager.ts::lastActiveUrl).
     void window.oblako.setVpnPopoverActiveUrl(tab?.url ?? '');
     void window.oblako.showVpnPopover();
-  }, [closeDropdown, stopEditing, passwordPopoverOpen, vpnPopoverOpen, pushVpnPopoverBounds, tab?.url]);
+  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, pushVpnPopoverBounds, tab?.url]);
 
   // Навигация в ТОЙ ЖЕ вкладке, пока поповер уже открыт (смена самой вкладки поповер закрывает
   // целиком, см. эффект по tab?.id ниже) — адблок-секция должна обновиться на новый домен, а не
@@ -431,18 +427,16 @@ export default function Toolbar({
     if (!editing) return;
     const onOutsideMouseDown = (e: MouseEvent) => {
       const target = e.target as Node;
-      const insidePill = omniboxPillRef.current?.contains(target) ?? false;
-      // ВРЕМЕННЫЙ лог диагностики — видно КАЖДЫЙ mousedown в chromeView, пока editing=true,
-      // и что именно решил слушатель (insidePill=true -> игнор, false -> должен закрыть).
-      (window as any).ddlog?.log(`outside-click detected insidePill=${insidePill} target=${(target as HTMLElement)?.tagName ?? '?'}`);
-      if (!insidePill) {
-        closeDropdown('outside-click');
-        stopEditing();
-      }
+      // Клик внутри самого омнибокса — не закрывать (продолжаем редактирование)
+      const insidePill = omniboxPillRef.current?.contains(target);
+      if (insidePill) return;
+
+      // Клик мимо — закрываем дропдаун и завершаем редактирование
+      closeDropdownFullyRef.current('outside-click');
     };
     document.addEventListener('mousedown', onOutsideMouseDown, true);
     return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
-  }, [editing, closeDropdown, stopEditing]);
+  }, [editing]);
 
   useEffect(() => {
     return window.oblako.onPasswordIndicatorChanged((state) => {
@@ -510,17 +504,19 @@ export default function Toolbar({
   useEffect(() => {
     if (!editing) return;
     return window.oblako.onSuggestDropdownContentFocus(() => {
-      (window as any).ddlog?.log('content-focus signal received'); // ВРЕМЕННЫЙ лог диагностики
-      closeDropdown('content-focus');
-      stopEditing();
+      closeDropdownFullyRef.current('content-focus');
     });
-  }, [editing, closeDropdown, stopEditing]);
+  }, [editing]);
 
   // (3) Смена активной вкладки (мышью по сайдбару — уже покрыто (1); Ctrl+Tab/Ctrl+1-9 — нет) —
   // дропдаун анкорен к прежнему контексту, смысла в нём больше нет (тот же принцип, что
   // closeTranslatePopoverOnTabSwitch у поповера перевода).
+  // ⚠️ Зависимость — ТОЛЬКО tab?.id, намеренно: эффект должен стрелять исключительно на смену
+  // вкладки. editing/поповеры здесь читаются из замыкания последнего рендера (эффект выполняется
+  // после него, значения актуальны). Добавить editing в deps = эффект срабатывает на сам вход в
+  // режим редактирования и мгновенно его гасит — омнибокс становится неуправляемым.
   useEffect(() => {
-    if (editing) { closeDropdown('tab-switch'); stopEditing(); }
+    if (editing) { closeDropdownFullyRef.current('tab-switch'); }
     if (passwordPopoverOpen) {
       setPasswordPopoverOpen(false);
       void window.oblako.closePasswordPopover();
@@ -766,8 +762,7 @@ export default function Toolbar({
     if (!v) return;
     onSubmit(v);
     inputRef.current?.blur();
-    stopEditing();
-    closeDropdown('submit');
+    closeDropdownFully('submit');
     setValue(v);
     // Реальная навигация — черновик этой вкладки отправлен, хранить нечего (на случай, если
     // url ещё не успел обновиться в проп tab — эффект на tab?.url ниже подчистил бы его и сам,
@@ -787,8 +782,7 @@ export default function Toolbar({
   const pickSuggestion = (item: SuggestItem) => {
     if (item.kind === 'tab' && item.tabId) {
       void window.oblako.activateTab(item.tabId);
-      closeDropdown('pick-tab');
-      stopEditing();
+      closeDropdownFully('pick-tab');
     } else {
       submit(item.url);
     }
@@ -811,8 +805,6 @@ export default function Toolbar({
         e.preventDefault();
         const next = Math.min(selectedIdx + 1, suggestions.length - 1);
         setSelectedIdx(next);
-        // Заход 4/5: та же подсветка — во вью нативного дропдауна (омнибокс остаётся владельцем
-        // selectedIdx, вью только рисует по номеру, ничего не решая сама).
         void window.oblako.setSuggestDropdownHighlight(next);
         return;
       }
@@ -821,6 +813,19 @@ export default function Toolbar({
         const next = Math.max(selectedIdx - 1, -1);
         setSelectedIdx(next);
         void window.oblako.setSuggestDropdownHighlight(next);
+        return;
+      }
+      if (e.code === 'Home') {
+        e.preventDefault();
+        setSelectedIdx(0);
+        void window.oblako.setSuggestDropdownHighlight(0);
+        return;
+      }
+      if (e.code === 'End') {
+        e.preventDefault();
+        const last = suggestions.length - 1;
+        setSelectedIdx(last);
+        void window.oblako.setSuggestDropdownHighlight(last);
         return;
       }
       if (e.code === 'Enter') {
@@ -845,7 +850,7 @@ export default function Toolbar({
         if (tab) draftsRef.current.delete(tab.id);
         setValue(isHub ? '' : (tab?.url ?? ''));
         inputRef.current?.blur();
-        stopEditing();
+        closeDropdownFully('escape-clear');
       }
     }
   };
@@ -912,37 +917,39 @@ export default function Toolbar({
                 triggerSuggest(v);
               }}
               onMouseDown={(e) => {
-                realMouseDownRef.current = true;
-                // Самосброс на следующий тик — если фокус НЕ сменился (клик в уже сфокусированное
-                // поле, просто переставить курсор), onFocus не вызовется вообще и не консьюмит флаг
-                // сам; без этого он завис бы «true» до следующего, уже НЕ обязательно настоящего,
-                // focus-события (см. комментарий у realMouseDownRef).
-                setTimeout(() => { realMouseDownRef.current = false; }, 0);
+                focusTracker.current.mouseDownOnInput = true;
+                // Самосброс через RAF — если фокус НЕ сменился (клик в уже сфокусированное
+                // поле, просто переставить курсор), onFocus не вызовется вообще и не консьюмит
+                // флаг сам; без этого он завис бы «true» до следующего, уже НЕ обязательно
+                // настоящего, focus-события.
+                requestAnimationFrame(() => {
+                  focusTracker.current.mouseDownOnInput = false;
+                });
                 // Выделение всего текста по клику — как в любом адресном поле. Только на ПЕРВОМ
                 // клике, переводящем фокус в поле — иначе повторный клик по уже сфокусированному
                 // полю не смог бы просто переставить курсор. preventDefault обязателен: браузер
                 // иначе сам расставит курсор по месту клика на mouseup ПОСЛЕ нашего select() и
                 // сотрёт выделение.
-                // ⚠️ Живой баг: раньше «уже сфокусировано» проверялось через document.activeElement —
-                // но спонтанный refocus от removeChildView (см. комментарий у realMouseDownRef выше)
-                // молча возвращает document.activeElement на этот инпут, хотя пользователь ничего не
-                // кликал. Из-за этого ПОСЛЕ любого закрытия дропдауна клик-мимо-и-обратно переставал
-                // выделять текст на некоторое время. hasRealFocusRef — свой источник истины, который
-                // спонтанный focus не трогает (см. комментарий у него/у stopEditing).
-                if (!hasRealFocusRef.current) {
+                if (!focusTracker.current.isRealFocus) {
                   e.preventDefault();
                   inputRef.current?.focus();
                   inputRef.current?.select();
                 }
-                hasRealFocusRef.current = true;
+                focusTracker.current.isRealFocus = true;
               }}
               onFocus={() => {
                 setEditing(true);
-                // Реальный клик — realMouseDownRef успел взвестись только что (onMouseDown на ЭТОМ
-                // же инпуте синхронно предшествует onFocus). Спонтанный refocus (см. комментарий у
-                // realMouseDownRef выше) этого сигнала не имеет — дропдаун не переоткрываем.
-                if (realMouseDownRef.current && value.trim()) triggerSuggest(value);
-                realMouseDownRef.current = false;
+                // Реальный клик — mouseDownOnInput успел взвестись только что (onMouseDown на ЭТОМ
+                // же инпуте синхронно предшествует onFocus). Спонтанный refocus (removeChildView
+                // возвращает OS-фокус обратно на инпут) этого сигнала не имеет — дропдаун не
+                // переоткрываем.
+                if (focusTracker.current.mouseDownOnInput && value.trim()) {
+                  triggerSuggest(value);
+                }
+                // Синхронный консюм флага после использования (как в исходной версии) — RAF-автосброс
+                // из onMouseDown сработает только к следующему кадру, а спонтанный refocus от
+                // removeChildView может прилететь раньше и увидеть залипший true.
+                focusTracker.current.mouseDownOnInput = false;
               }}
               // ⚠️ Намеренно БЕЗ onBlur. blur — не триггер закрытия дропдауна ни в каком виде (см.
               // «Заход 5» выше — независимые сигналы вместо него). Раньше отсюда же сбрасывался

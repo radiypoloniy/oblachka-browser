@@ -428,7 +428,6 @@ function createWindow() {
     // вкладке, безусловный main-side хук на КАЖДУЮ реальную смену активной, а не только
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
-      console.log('[DD] onActiveTabChangedCb fired'); // ВРЕМЕННЫЙ лог диагностики
       closeTranslatePopoverOnTabSwitch(); closeFindBar(); hideSuggestDropdown(); closePasswordPopover(); closeVpnPopover();
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
       // её текущее состояние (или null) при каждом реальном переключении.
@@ -438,7 +437,6 @@ function createWindow() {
     // Заход 5: реальный клик в контент вкладки (не blur омнибокса) — закрывает дропдаун подсказок
     // в chrome, см. shared/ipc.ts::SUGGEST_DROPDOWN_CONTENT_FOCUS, Toolbar.tsx.
     () => {
-      console.log('[DD] onContentFocusCb fired (tab wc gained OS focus)'); // ВРЕМЕННЫЙ лог диагностики
       chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS);
       closePasswordPopover();
       closeVpnPopover();
@@ -712,7 +710,6 @@ function registerIpc() {
   // Тумблер показа вью дропдауна — вешается на тот же момент, что и старый React-дропдаун
   // (Toolbar.tsx::openDropdown/closeDropdown), который пока не заменяет (работают параллельно).
   ipcMain.handle(IPC.SUGGEST_DROPDOWN_TOGGLE, (_e, open: boolean) => {
-    console.log(`[DD] main received SUGGEST_DROPDOWN_TOGGLE open=${open}`); // ВРЕМЕННЫЙ лог диагностики
     if (open) {
       if (win) showSuggestDropdown(win);
       // addChildView (внутри showSuggestDropdown) спонтанно уводит OS-фокус с омнибокса — это
@@ -750,8 +747,6 @@ function registerIpc() {
   ipcMain.handle(IPC.VPN_POPOVER_SET_ACTIVE_URL, (_e, url: string) => {
     syncVpnPopoverActiveUrl(url);
   });
-  // ВРЕМЕННЫЙ канал диагностики залипания дропдауна — см. preload.ts::ddlog. Удалить вместе с ним.
-  ipcMain.on('dd-log', (_e, msg: string) => console.log(`[DD] ${msg}`));
   // Живой список подсказок (заход 3/5) — buildSuggestions в Toolbar.tsx шлёт тот же массив,
   // что кладёт в setSuggestions() для старого дропдауна; main пересылает его во вью.
   ipcMain.handle(IPC.SUGGEST_DROPDOWN_SET_ITEMS, (_e, items: SuggestDropdownItem[]) => {
