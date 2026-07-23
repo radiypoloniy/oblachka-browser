@@ -94,6 +94,10 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   шлёт bounds в main. `src/components/` — Sidebar/Toolbar/Hub/History/
   Downloads/Settings/FindBar/PermissionPrompt — **только рисуют то, что им
   дали**, зовут `window.oblako.*`, никакой бизнес-логики вкладок внутри.
+- `src/components/settings/` — секции настроек по файлам (AdBlock/Vpn/Ai/
+  Skills/Passwords), `Settings.tsx` — только корень и навигация. UI-элементы
+  настроек (кнопки, поля, карточки статуса, заголовки) берутся из
+  `settings/kit.tsx` — **не рисовать с нуля в секциях.**
 - `src/aipanel.tsx`, `src/translatepopover.tsx` — отдельные React-точки входа
   (свои HTML/entry в `vite.config.ts`) для AI-панели и поповера перевода —
   у них своя `WebContentsView` и свой preload, это не часть `src/App.tsx`.
