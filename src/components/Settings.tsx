@@ -7,7 +7,7 @@ import Toggle from './Toggle';
 import ModelsSection from './ModelsSection';
 import {
   btnPrimary, btnGhost, IconBtn, EngineOption, SectionHeader, CapsLabel,
-  LoadingNote, StatusCard, TextField, InputRow, fieldFlex,
+  LoadingNote, InlineError, StatusCard, TextField, InputRow, fieldFlex,
 } from './settings/kit';
 
 // Реэкспорт для внешних потребителей (ModelsSection.tsx импортирует отсюда) — до их миграции на kit.
@@ -377,38 +377,21 @@ function VpnSection() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>
-          VPN
-        </h2>
-        <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-          Вставьте ссылку подписки от вашего VPN-сервиса (vless/trojan) — так же, как в Happ или
-          Hiddify. Ссылка и серверы хранятся зашифрованными на этом устройстве, никуда, кроме
-          вашего провайдера, не отправляются. Подключение пока экспериментальное: поднимает
-          локальный туннель, но ещё не переключает на него трафик вкладок — это следующий шаг.
-        </p>
-      </div>
+      <SectionHeader title="VPN">
+        Вставьте ссылку подписки от вашего VPN-сервиса (vless/trojan) — так же, как в Happ или
+        Hiddify. Ссылка и серверы хранятся зашифрованными на этом устройстве, никуда, кроме
+        вашего провайдера, не отправляются. Подключение пока экспериментальное: поднимает
+        локальный туннель, но ещё не переключает на него трафик вкладок — это следующий шаг.
+      </SectionHeader>
 
       {/* Статус */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', flexWrap: 'wrap',
-        ...islandPlate,
-        borderRadius: 'var(--radius-sm)',
-      }}>
-        {status.hasSubscription
+      <StatusCard
+        icon={status.hasSubscription
           ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
           : <Wifi size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
-        <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-            {status.hasSubscription ? `Подписка сохранена — серверов: ${status.serverCount}` : 'Подписка не добавлена'}
-          </div>
-          {status.fetchedAt && (
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-              Обновлено: {new Date(status.fetchedAt).toLocaleString('ru-RU')}
-            </div>
-          )}
-        </div>
-        {status.hasSubscription && (
+        title={status.hasSubscription ? `Подписка сохранена — серверов: ${status.serverCount}` : 'Подписка не добавлена'}
+        subtitle={status.fetchedAt ? `Обновлено: ${new Date(status.fetchedAt).toLocaleString('ru-RU')}` : undefined}
+        actions={status.hasSubscription && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
               onClick={() => void handleRefresh()}
@@ -422,38 +405,23 @@ function VpnSection() {
             </button>
           </div>
         )}
-      </div>
+      />
 
       {/* Ввод ссылки — доступен всегда (не только при первом добавлении): пользователь может
           захотеть сменить провайдера, новая ссылка просто перезапишет текущую подписку. */}
       <div>
-        <div style={{
-          fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-          textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8,
-        }}>
-          Ссылка подписки
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flexBasis: 200 }}>
-            <input
-              type="text"
-              value={urlInput}
-              placeholder="https://…/sub"
-              onChange={(e) => { setUrlInput(e.target.value); setError(''); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') void handleSave(); }}
-              style={{
-                padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-                border: error ? '1.5px solid var(--error, #e05)' : '1.5px solid var(--divider-strong)',
-                background: 'var(--surface)', color: 'var(--text-strong)',
-                fontSize: 'var(--fs-sm)', outline: 'none', fontFamily: 'monospace',
-                width: '100%', minWidth: 0, boxSizing: 'border-box',
-              }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = error ? 'var(--error, #e05)' : 'var(--divider-strong)')}
-            />
-            {error && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)' }}>{error}</span>}
-            {!error && info && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{info}</span>}
-          </div>
+        <CapsLabel>Ссылка подписки</CapsLabel>
+        <InputRow>
+          <TextField
+            value={urlInput}
+            placeholder="https://…/sub"
+            mono
+            onChange={(v) => { setUrlInput(v); setError(''); }}
+            onEnter={() => void handleSave()}
+            error={error || undefined}
+            info={info || undefined}
+            style={fieldFlex}
+          />
           <button
             onClick={() => void handleSave()}
             disabled={saving || !urlInput.trim()}
@@ -461,18 +429,13 @@ function VpnSection() {
           >
             {saving ? 'Сохранение…' : 'Сохранить'}
           </button>
-        </div>
+        </InputRow>
       </div>
 
       {/* Список серверов — только чтение, без credential (см. VpnServerMeta). */}
       {servers.length > 0 && (
         <div>
-          <div style={{
-            fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-            textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8,
-          }}>
-            Серверы ({servers.length})
-          </div>
+          <CapsLabel>Серверы ({servers.length})</CapsLabel>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {servers.map((s) => {
               const isTarget = conn?.serverId === s.id;
@@ -538,8 +501,8 @@ function VpnSection() {
                     )}
                   </div>
                   {isError && conn?.error && (
-                    <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #e05)', padding: '3px 14px 0' }}>
-                      {conn.error}
+                    <div style={{ padding: '3px 14px 0' }}>
+                      <InlineError>{conn.error}</InlineError>
                     </div>
                   )}
                 </div>
