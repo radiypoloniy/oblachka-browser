@@ -1,9 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   FileText, Plus, X, ArrowLeft, Sparkles, Network, BarChart3, ListChecks, Link2, AlignLeft,
   Loader2, RotateCw,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { Transformer } from 'markmap-lib';
+import { Markmap } from 'markmap-view';
 import { islandPlate } from '../styles/island';
 import { markdownComponents } from './aiMarkdown';
 import {
@@ -89,7 +91,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   const selectedCount = sources.filter((s) => selected.has(s.id) && s.status === 'ready').length;
 
   // Реализованные типы Студии (остальные — свои заходы, пока показывают заметку «скоро»).
-  const STUDIO_IMPLEMENTED = new Set<StudioKind>(['summary']);
+  const STUDIO_IMPLEMENTED = new Set<StudioKind>(['summary', 'mindmap']);
   async function handleStudio(kind: StudioKind) {
     const label = STUDIO.find((s) => s.kind === kind)!.label;
     const ctx = getSelectedSourceContext();
@@ -128,19 +130,21 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   );
 }
 
-// Модалка результата Студии. Саммари рендерим как Markdown; будущие типы (майндкарта/инфографика/
-// тест) добавят свои рендеры этим же контейнером.
+// Модалка результата Студии. Саммари — Markdown; майндкарта — SVG через markmap; будущие типы
+// (инфографика/тест) добавят свои рендеры этим же контейнером.
 function StudioResultModal({ state, onClose }: {
   state: { kind: StudioKind; label: string; busy: boolean; text?: string; error?: string };
   onClose: () => void;
 }) {
+  const isMindmap = state.kind === 'mindmap';
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, zIndex: 500, background: 'var(--scrim, rgba(0,0,0,0.4))',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: 680, maxWidth: 'calc(100vw - 48px)', maxHeight: 'calc(100vh - 96px)',
+        // Майндкарте нужен простор — модалка шире.
+        width: isMindmap ? 960 : 680, maxWidth: 'calc(100vw - 48px)', maxHeight: 'calc(100vh - 96px)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         ...islandPlate, borderRadius: 'var(--radius-island)', boxShadow: 'var(--shadow-island)', background: 'var(--surface-solid)',
       }}>
@@ -148,13 +152,15 @@ function StudioResultModal({ state, onClose }: {
           <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>{state.label}</span>
           <button onClick={onClose} style={xBtn}><X size={16} /></button>
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px' }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMindmap ? 0 : '16px 20px' }}>
           {state.busy ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)', fontSize: 'var(--fs-sm)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', padding: isMindmap ? '16px 20px' : 0 }}>
               <Loader2 size={16} style={{ animation: 'oblako-spin 1s linear infinite' }} /> Генерирую по источникам…
             </div>
           ) : state.error ? (
-            <div style={{ color: 'var(--danger-500)', fontSize: 'var(--fs-sm)' }}>{state.error}</div>
+            <div style={{ color: 'var(--danger-500)', fontSize: 'var(--fs-sm)', padding: isMindmap ? '16px 20px' : 0 }}>{state.error}</div>
+          ) : isMindmap ? (
+            <MindmapView markdown={state.text || ''} />
           ) : (
             <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
               <ReactMarkdown components={markdownComponents}>{state.text || ''}</ReactMarkdown>
@@ -164,6 +170,22 @@ function StudioResultModal({ state, onClose }: {
       </div>
     </div>
   );
+}
+
+// Майндкарта: markdown-аутлайн модели → дерево (markmap-lib) → интерактивный SVG (markmap-view).
+// Рендер полностью офлайн и детерминирован; модель отвечает только за структуру текста.
+function MindmapView({ markdown }: { markdown: string }) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || !markdown.trim()) return;
+    const { root } = new Transformer().transform(markdown);
+    const mm = Markmap.create(svg, { duration: 200, spacingVertical: 8 }, root);
+    // fit после отрисовки — иначе дерево может выйти за пределы вьюпорта SVG.
+    void mm.fit();
+    return () => mm.destroy();
+  }, [markdown]);
+  return <svg ref={svgRef} style={{ width: '100%', height: 'min(70vh, 560px)', display: 'block' }} />;
 }
 
 // ── Источники (слева) ──────────────────────────────────────────────────────────
