@@ -165,6 +165,41 @@ export class PasswordManager {
     }
   }
 
+  // Массовый импорт паролей из другого браузера (electron/browserImport/). Строго неразрушающий:
+  // только вставка НОВЫХ записей, дедуп по (origin, username) — существующий пароль пользователя
+  // никогда не перезаписывается (в отличие от update()), совпадение считается skipped. Секреты
+  // шифруются нашим DEK при вставке, ровно как в add(). Одна транзакция.
+  bulkImport(items: Array<{ url: string; username: string; password: string }>): { inserted: number; skipped: number } {
+    if (!this.#db || !this.#dek || items.length === 0) return { inserted: 0, skipped: 0 };
+    const db = this.#db;
+    const dek = this.#dek;
+    let inserted = 0;
+    let skipped = 0;
+    try {
+      const existsStmt = db.prepare(`SELECT 1 FROM credentials WHERE origin = ? AND username = ? LIMIT 1`);
+      const insert = db.prepare(`
+        INSERT INTO credentials (origin, url, username, secret, title, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const run = db.transaction(() => {
+        for (const it of items) {
+          if (!it.url || !it.password) { skipped++; continue; }
+          const origin = originOf(it.url);
+          if (existsStmt.get(origin, it.username) !== undefined) { skipped++; continue; }
+          const secret = VaultCrypto.encryptField(dek, it.password);
+          const now = Date.now();
+          // Заголовок — хост (как показывается в списке паролей), notes у импортированных нет.
+          insert.run(origin, it.url, it.username, secret, hostOf(it.url), null, now, now);
+          inserted++;
+        }
+      });
+      run();
+    } catch (e) {
+      console.warn('[Passwords] bulkImport error:', (e as Error).message);
+    }
+    return { inserted, skipped };
+  }
+
   update(input: PasswordUpdateInput): boolean {
     if (!this.#db || !this.#dek) return false;
     const db = this.#db;
@@ -332,6 +367,16 @@ export class PasswordManager {
 export function originOf(url: string): string {
   try {
     return new URL(url).origin;
+  } catch {
+    return url;
+  }
+}
+
+// Хост без www — используется как заголовок импортированной записи (то, что видно в списке
+// паролей). Отдельно от originOf: там нужна схема+порт для матчинга, здесь — человекочитаемое имя.
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
   } catch {
     return url;
   }
