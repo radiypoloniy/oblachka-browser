@@ -37,10 +37,18 @@ const VENDORS: ChromiumVendor[] = [
 // паролей и info_cache с именами профилей). Оба нужны: ключ паролей общий на User Data, а не на профиль.
 export interface DiscoveredProfile {
   sourceId: string;      // 'chrome::Default' — то, что уйдёт в ImportSource.id
+  vendorId: string;      // 'chrome' | 'yandex' | … — для выбора вендор-специфичного ридера паролей
   vendorLabel: string;   // 'Google Chrome'
   profileLabel: string;  // 'Профиль 1' | 'Default' | '' — человекочитаемое имя профиля (из Local State)
   profilePath: string;   // …\User Data\Default
   userDataPath: string;  // …\User Data
+}
+
+// Имя файла БД паролей у профиля зависит от вендора: Яндекс.Браузер хранит их в `Ya Passman Data`
+// (со своей схемой шифрования, см. YandexPasswordReader), остальные Chromium — в `Login Data`.
+// Именно из-за этого раньше у Яндекса не появлялась галочка «Пароли»: проверяли только `Login Data`.
+export function passwordDbFile(vendorId: string): string {
+  return vendorId === 'yandex' ? 'Ya Passman Data' : 'Login Data';
 }
 
 function rootDir(root: 'local' | 'roaming'): string {
@@ -99,6 +107,7 @@ export function discoverChromiumProfiles(): DiscoveredProfile[] {
         const label = multi && profileLabel ? `${vendor.label} — ${profileLabel}` : vendor.label;
         out.push({
           sourceId: `${vendor.id}::${dir}`,
+          vendorId: vendor.id,
           vendorLabel: label,
           profileLabel,
           profilePath: path.join(userDataPath, dir),
@@ -109,6 +118,7 @@ export function discoverChromiumProfiles(): DiscoveredProfile[] {
       // Opera: сам каталог = профиль, Local State там же.
       out.push({
         sourceId: `${vendor.id}::.`,
+        vendorId: vendor.id,
         vendorLabel: vendor.label,
         profileLabel: '',
         profilePath: userDataPath,
@@ -128,6 +138,7 @@ export function availableDataTypes(profile: DiscoveredProfile): ImportDataType[]
   const types: ImportDataType[] = [];
   if (has('Bookmarks')) types.push('bookmarks');
   if (has('History')) types.push('history');
-  if (has('Login Data')) types.push('passwords');
+  // Имя файла паролей вендор-специфично (Яндекс — `Ya Passman Data`, см. passwordDbFile).
+  if (has(passwordDbFile(profile.vendorId))) types.push('passwords');
   return types;
 }

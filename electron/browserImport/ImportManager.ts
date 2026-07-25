@@ -6,6 +6,7 @@ import { discoverChromiumProfiles, availableDataTypes, type DiscoveredProfile } 
 import { importChromiumBookmarks } from './ChromiumBookmarksReader';
 import { importChromiumHistory } from './ChromiumHistoryReader';
 import { importChromiumPasswords } from './ChromiumPasswordReader';
+import { importYandexPasswords } from './YandexPasswordReader';
 
 // Оркестратор общего импорта данных из других браузеров. Знает про discovery (какие браузеры/
 // профили есть) и про менеджеры-приёмники (куда класть). Renderer видит только ImportSource/
@@ -63,7 +64,10 @@ export class ImportManager {
           result.history = importChromiumHistory(profile.profilePath, this.#deps.history);
           break;
         case 'passwords':
-          result.passwords = importChromiumPasswords(profile.profilePath, profile.userDataPath, this.#deps.passwords);
+          // Яндекс.Браузер — своя схема (файл Ya Passman Data + доп. ключ), остальные Chromium — общая.
+          result.passwords = profile.vendorId === 'yandex'
+            ? importYandexPasswords(profile.profilePath, profile.userDataPath, this.#deps.passwords)
+            : importChromiumPasswords(profile.profilePath, profile.userDataPath, this.#deps.passwords);
           break;
       }
     }
