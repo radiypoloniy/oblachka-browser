@@ -416,16 +416,20 @@ function AiChatView({ tabId, onModeChange, onOpenSettings }: {
     );
   }
 
-  // Пустой экран: прокручивается ВСЯ панель целиком (не отдельная область). Порядок — шапка,
-  // подсказки, СТРОКА ВВОДА, затем список недавних чатов под ней (видно один, остальные — прокруткой).
+  // Пустой экран: прокручивается ВСЯ панель целиком. «Первый экран» (minHeight:100%) заполняет
+  // видимую высоту, спейсер прижимает СТРОКУ ВВОДА к его низу — на первом экране виден ввод внизу.
+  // Список недавних чатов идёт НИЖЕ первого экрана (под сгибом) — большая часть доступна прокруткой.
   return (
-    <div style={{ flex: 1, width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column', minHeight: 0, overflowY: 'auto', gap: 16, padding: '2px' }}>
-      {topBar}
-      {promptsBlock}
-      {errorBlock}
-      {consentBlock}
-      {inputRow}
-      {recentChats}
+    <div style={{ flex: 1, width: '100%', maxWidth: 760, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px' }}>
+      <div style={{ flex: 'none', minHeight: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {topBar}
+        {promptsBlock}
+        <div style={{ flex: 1, minHeight: 12 }} />
+        {errorBlock}
+        {consentBlock}
+        {inputRow}
+      </div>
+      {recentChats && <div style={{ flex: 'none', marginTop: 16 }}>{recentChats}</div>}
     </div>
   );
 }
