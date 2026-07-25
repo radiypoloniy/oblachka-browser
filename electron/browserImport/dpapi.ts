@@ -18,6 +18,11 @@ export function dpapiUnprotect(data: Buffer): Buffer | null {
     // Блоб передаём через переменную окружения, а не аргументом командной строки — так нет проблем
     // с экранированием/длиной и байты не мелькают в списке процессов.
     const script =
+      // В Windows PowerShell 5.1 тип ProtectedData НЕ загружен по умолчанию (живёт в сборке
+      // System.Security, которая не входит в автозагружаемые) — без Add-Type скрипт падает с
+      // «Unable to find type», из-за чего мастер-ключ не разворачивался и импорт паролей давал
+      // «не удалось прочитать». Загружаем сборку явно.
+      'Add-Type -AssemblyName System.Security;' +
       '$b=[Convert]::FromBase64String($env:OBLAKO_DPAPI_BLOB);' +
       '$d=[System.Security.Cryptography.ProtectedData]::Unprotect($b,$null,' +
       "[System.Security.Cryptography.DataProtectionScope]::CurrentUser);" +
