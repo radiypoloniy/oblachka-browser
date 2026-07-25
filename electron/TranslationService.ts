@@ -295,7 +295,17 @@ async function ensureLoaded(): Promise<number> {
     console.log(`[gen] llama backend: gpu=${llama.gpu}`)
     LlamaChatSession = nlc.LlamaChatSession
     try {
-      model = await llama.loadModel({ modelPath: installed.filePath })
+      // Flash attention + 8-битный (Q8_0) KV-кэш: примерно вдвое меньше VRAM под контекст (KV-кэш
+      // — основной потребитель памяти на длинных диалогах/источниках), заметно отзывчивее, потеря
+      // качества у Q8_0 близка к нулю. Квантованный KV в llama.cpp работает только с flash attention
+      // — включаем в паре. Опции experimental* — публичный API node-llama-cpp 3.19 (см. loadModel
+      // LlamaModelOptions). Одна точка загрузки покрывает весь AI-стек (перевод/панель/хаб/группировка).
+      model = await llama.loadModel({
+        modelPath: installed.filePath,
+        defaultContextFlashAttention: true,
+        experimentalDefaultContextKvCacheKeyType: 'Q8_0',
+        experimentalDefaultContextKvCacheValueType: 'Q8_0',
+      })
     } catch (e) {
       throw { code: 'LOAD_FAILED', message: `Не удалось загрузить модель: ${String(e)}` } satisfies ModelError
     }
@@ -340,6 +350,8 @@ async function ensureLoaded(): Promise<number> {
     // trainContextSize модели), поэтому фактический n_ctx известен только ПОСЛЕ загрузки —
     // логируем сразу, чтобы не гадать, укладывается ли вход+выход в бюджет (см. [gen] limits выше).
     console.log(`[gen] context: n_ctx=${context.contextSize} trainContextSize=${model.trainContextSize}`)
+    // Подтверждаем, что flash attention + Q8_0 KV-кэш реально применились (см. loadModel выше).
+    try { console.log(`[gen] flashAttention=${model.defaultContextFlashAttention} kvCache=Q8_0`) } catch { /* геттер мог отсутствовать в иной версии */ }
     return performance.now() - t0
   })()
   loadPromise = attempt
