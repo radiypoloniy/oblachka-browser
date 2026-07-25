@@ -43,6 +43,10 @@ export default function NewTab({ onSubmit, onOpenAi, tiles }: NewTabProps) {
         )}
       </div>
 
+      {settings.weather.show && settings.weather.city.trim() && (
+        <WeatherWidget city={settings.weather.city.trim()} units={settings.weather.units} />
+      )}
+
       {/* Незаметный переход в AI-режим — правый верхний угол */}
       <button
         onClick={onOpenAi}
@@ -159,6 +163,51 @@ function SearchBar({ onSubmit }: { onSubmit: (input: string) => void }) {
         />
       </div>
     </form>
+  );
+}
+
+// ── Погода ────────────────────────────────────────────────────────────────────
+// WMO weather_code → эмодзи + короткая подпись (компактно, покрывает основные группы).
+function wmo(code: number): { icon: string; label: string } {
+  if (code === 0) return { icon: '☀️', label: 'Ясно' };
+  if (code >= 1 && code <= 2) return { icon: '🌤️', label: 'Малооблачно' };
+  if (code === 3) return { icon: '☁️', label: 'Облачно' };
+  if (code === 45 || code === 48) return { icon: '🌫️', label: 'Туман' };
+  if (code >= 51 && code <= 57) return { icon: '🌦️', label: 'Морось' };
+  if (code >= 61 && code <= 67) return { icon: '🌧️', label: 'Дождь' };
+  if (code >= 71 && code <= 77) return { icon: '❄️', label: 'Снег' };
+  if (code >= 80 && code <= 82) return { icon: '🌧️', label: 'Ливень' };
+  if (code >= 85 && code <= 86) return { icon: '❄️', label: 'Снег' };
+  if (code >= 95) return { icon: '⛈️', label: 'Гроза' };
+  return { icon: '🌡️', label: '' };
+}
+
+function WeatherWidget({ city, units }: { city: string; units: 'c' | 'f' }) {
+  const [data, setData] = useState<import('../../shared/ipc').WeatherInfo | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => { void window.oblako.getWeather(city).then((w) => { if (alive) setData(w); }); };
+    load();
+    const t = setInterval(load, 15 * 60_000); // раз в 15 минут
+    return () => { alive = false; clearInterval(t); };
+  }, [city]);
+
+  if (!data || !data.ok || data.tempC === undefined) return null;
+  const w = wmo(data.weatherCode ?? -1);
+  const temp = units === 'f' ? Math.round(data.tempC * 9 / 5 + 32) : Math.round(data.tempC);
+  return (
+    <div style={{
+      position: 'absolute', top: 16, left: 16, zIndex: 3,
+      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 999,
+      background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(12px)',
+      color: TEXT, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+    }} title={`${data.city ?? city} · ${w.label}`}>
+      <span style={{ fontSize: 18, lineHeight: 1 }}>{w.icon}</span>
+      <span style={{ fontSize: 15, fontWeight: 600 }}>{temp}°{units === 'f' ? 'F' : 'C'}</span>
+      <span style={{ fontSize: 13, color: TEXT_SOFT, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {data.city ?? city}
+      </span>
+    </div>
   );
 }
 

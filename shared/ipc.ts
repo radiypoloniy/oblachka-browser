@@ -169,6 +169,7 @@ export const IPC = {
   TAB_SHOW_MENU:  'tab:show-menu',  // renderer → main: показать нативное ПКМ-меню вкладки
   NEW_TAB_SHOW_MENU: 'tab:new-menu', // renderer → main: ПКМ по кнопке «Новая вкладка» (обычная/инкогнито/восстановить)
   CHROME_THEME_SET: 'chrome:theme-set', // renderer → main: тема chrome (dark+incognito) для раздачи во все поповеры/вью
+  WEATHER_GET: 'weather:get', // renderer → main: погода по городу для виджета новой вкладки (WeatherService)
 
   // Split View
   TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (правая вкладка)
@@ -1060,6 +1061,17 @@ export type AutofillFieldKey =
 // заполняет те поля, для которых нашёл категорию на странице; лишние ключи игнорируются.
 export type AutofillFillFields = Partial<Record<AutofillFieldKey, string>>;
 
+// Погода для виджета новой вкладки (electron/WeatherService.ts, Open-Meteo). tempC — цельсии,
+// weatherCode — WMO. Конвертация в °F и иконка/подпись — на стороне рендера.
+export interface WeatherInfo {
+  ok: boolean;
+  city?: string;
+  tempC?: number;
+  weatherCode?: number;
+  windKmh?: number;
+  error?: string;
+}
+
 // Тип API, который preload пробрасывает в window.oblako
 export interface OblakoApi {
   // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).
@@ -1105,6 +1117,7 @@ export interface OblakoApi {
   showTabMenu(id: string): Promise<void>;
   showNewTabMenu(): Promise<void>; // ПКМ по кнопке «Новая вкладка»: обычная / инкогнито / восстановить
   setChromeTheme(dark: boolean, incognito: boolean): Promise<void>; // раздать тему во все chrome-вью (поповеры)
+  getWeather(city: string): Promise<WeatherInfo>; // погода для виджета новой вкладки
 
   // Split View
   enterSplit(rightId: string): Promise<void>;       // текущая активная → левая, rightId → правая

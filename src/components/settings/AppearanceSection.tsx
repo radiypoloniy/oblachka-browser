@@ -22,6 +22,7 @@ export default function AppearanceSection() {
   const patchBg = (p: Partial<NewTabSettings['background']>) => apply({ ...s, background: { ...s.background, ...p } });
   const patchClock = (p: Partial<NewTabSettings['clock']>) => apply({ ...s, clock: { ...s.clock, ...p } });
   const patchGreeting = (p: Partial<NewTabSettings['greeting']>) => apply({ ...s, greeting: { ...s.greeting, ...p } });
+  const patchWeather = (p: Partial<NewTabSettings['weather']>) => apply({ ...s, weather: { ...s.weather, ...p } });
 
   function onPickFile(file: File | undefined) {
     if (!file) return;
@@ -132,6 +133,19 @@ export default function AppearanceSection() {
           <SliderRow label="Сколько ссылок" value={s.quickLinks.count} min={4} max={12} step={1}
             onChange={(v) => apply({ ...s, quickLinks: { ...s.quickLinks, count: v } })} format={(v) => String(v)} />
         )}
+      </Subsection>
+
+      {/* ── Погода ── */}
+      <Subsection title="Погода" description="Небольшой виджет в углу вкладки.">
+        <ToggleRow label="Показывать погоду" checked={s.weather.show} onChange={(v) => patchWeather({ show: v })} />
+        {s.weather.show && <>
+          <TextField value={s.weather.city} placeholder="Город (например, Москва)"
+            onChange={(v) => patchWeather({ city: v })} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <SegBtn active={s.weather.units === 'c'} onClick={() => patchWeather({ units: 'c' })}>°C</SegBtn>
+            <SegBtn active={s.weather.units === 'f'} onClick={() => patchWeather({ units: 'f' })}>°F</SegBtn>
+          </div>
+        </>}
       </Subsection>
     </div>
   );

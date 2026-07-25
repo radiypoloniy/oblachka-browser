@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 const api: OblakoApi = {
@@ -54,6 +54,7 @@ const api: OblakoApi = {
   showTabMenu:  (id: string) => ipcRenderer.invoke(IPC.TAB_SHOW_MENU, id),
   showNewTabMenu: () => ipcRenderer.invoke(IPC.NEW_TAB_SHOW_MENU) as Promise<void>,
   setChromeTheme: (dark: boolean, incognito: boolean) => ipcRenderer.invoke(IPC.CHROME_THEME_SET, dark, incognito) as Promise<void>,
+  getWeather: (city: string) => ipcRenderer.invoke(IPC.WEATHER_GET, city) as Promise<WeatherInfo>,
 
   enterSplit:      (rightId: string)            => ipcRenderer.invoke(IPC.TAB_ENTER_SPLIT, rightId),
   exitSplit:       (tabId: string)              => ipcRenderer.invoke(IPC.TAB_EXIT_SPLIT, tabId),
