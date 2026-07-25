@@ -92,7 +92,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   const selectedCount = sources.filter((s) => selected.has(s.id) && s.status === 'ready').length;
 
   // Реализованные типы Студии (остальные — свои заходы, пока показывают заметку «скоро»).
-  const STUDIO_IMPLEMENTED = new Set<StudioKind>(['summary', 'mindmap', 'infographic']);
+  const STUDIO_IMPLEMENTED = new Set<StudioKind>(['summary', 'mindmap', 'infographic', 'quiz']);
   async function handleStudio(kind: StudioKind) {
     const label = STUDIO.find((s) => s.kind === kind)!.label;
     const ctx = getSelectedSourceContext();
@@ -166,6 +166,8 @@ function StudioResultModal({ state, onClose }: {
             <MindmapView markdown={state.text || ''} />
           ) : isInfographic ? (
             <InfographicView syntax={state.text || ''} />
+          ) : state.kind === 'quiz' ? (
+            <QuizView json={state.text || ''} />
           ) : (
             <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
               <ReactMarkdown components={markdownComponents}>{state.text || ''}</ReactMarkdown>
@@ -209,6 +211,57 @@ function InfographicView({ syntax }: { syntax: string }) {
     return () => ig.destroy();
   }, [syntax]);
   return <div ref={boxRef} style={{ width: '100%', height: 'min(72vh, 580px)' }} />;
+}
+
+// Тест: JSON от модели ({questions:[{q,options,answer}]}, уже провалидирован в main) →
+// интерактивные вопросы. По клику вариант подсвечивается: правильный — акцентом, ошибочный — красным.
+interface QuizQ { q: string; options: string[]; answer: number }
+function QuizView({ json }: { json: string }) {
+  const questions: QuizQ[] = (() => {
+    try { return (JSON.parse(json).questions as QuizQ[]) || []; } catch { return []; }
+  })();
+  // Выбранный вариант по каждому вопросу (индекс), пока не отвечен — undefined.
+  const [picked, setPicked] = useState<Record<number, number>>({});
+  if (!questions.length) return <div style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-sm)' }}>Тест пуст.</div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {questions.map((item, qi) => {
+        const chosen = picked[qi];
+        const answered = chosen !== undefined;
+        return (
+          <div key={qi} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+              {qi + 1}. {item.q}
+            </div>
+            {item.options.map((opt, oi) => {
+              const isRight = oi === item.answer;
+              const isChosen = chosen === oi;
+              // Цвета проявляются только после ответа: правильный — всегда акцентом, выбранный неверный — красным.
+              const border = answered && isRight ? 'var(--accent)'
+                : answered && isChosen ? 'var(--danger-500)' : 'var(--divider-strong)';
+              const bg = answered && isRight ? 'var(--accent-soft)'
+                : answered && isChosen ? 'color-mix(in srgb, var(--danger-500) 12%, transparent)' : 'var(--surface)';
+              return (
+                <button key={oi} disabled={answered}
+                  onClick={() => setPicked((p) => ({ ...p, [qi]: oi }))}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', width: '100%',
+                    padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: `1px solid ${border}`,
+                    background: bg, color: 'var(--text-body)', fontSize: 'var(--fs-sm)',
+                    cursor: answered ? 'default' : 'pointer',
+                  }}>
+                  <span style={{ flex: 1 }}>{opt}</span>
+                  {answered && isRight && <ListChecks size={15} style={{ color: 'var(--accent)', flex: 'none' }} />}
+                  {answered && isChosen && !isRight && <X size={15} style={{ color: 'var(--danger-500)', flex: 'none' }} />}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 // ── Источники (слева) ──────────────────────────────────────────────────────────

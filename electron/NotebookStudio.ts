@@ -39,9 +39,41 @@ function buildPrompt(kind: StudioKind, context: string): string | null {
         + '      desc Пояснение\n\n'
         + 'Сделай 4–6 пунктов. Пиши по-русски. Опирайся ТОЛЬКО на источники, ничего не выдумывай.\n\n'
         + context;
+    case 'quiz':
+      // Модель выдаёт СТРОГО JSON, интерактивный тест из него рисует renderer. JSON парсим и
+      // валидируем на нашей стороне (normalizeQuiz) — в renderer уходит только чистая структура.
+      return 'По приведённым ниже источникам составь тест из 4–5 вопросов с вариантами ответа. '
+        + 'Ответь СТРОГО валидным JSON без пояснений и без ограждений ```. Формат:\n'
+        + '{"questions":[{"q":"текст вопроса","options":["вариант A","вариант B","вариант C","вариант D"],"answer":0}]}\n'
+        + 'Поле answer — индекс правильного варианта (0-based, от 0 до 3). По каждому вопросу ровно '
+        + '4 варианта. Пиши по-русски. Опирайся ТОЛЬКО на источники, ничего не выдумывай.\n\n'
+        + context;
     default:
-      return null; // quiz — заход 5b
+      return null;
   }
+}
+
+// Достаёт и валидирует JSON теста из ответа модели. Возвращает нормализованную структуру строкой
+// (renderer её парсит), либо null — тогда генерацию считаем неудачной и предлагаем повтор.
+function normalizeQuiz(raw: string): string | null {
+  const s = raw.replace(/```[a-z]*\n?/gi, '');
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b <= a) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(s.slice(a, b + 1)); } catch { return null; }
+  const qs = (parsed as { questions?: unknown }).questions;
+  if (!Array.isArray(qs)) return null;
+  const questions = qs
+    .map((q) => {
+      const o = q as { q?: unknown; options?: unknown; answer?: unknown };
+      const text = typeof o.q === 'string' ? o.q.trim() : '';
+      const options = Array.isArray(o.options) ? o.options.filter((x): x is string => typeof x === 'string').map((x) => x.trim()) : [];
+      let answer = typeof o.answer === 'number' ? Math.floor(o.answer) : 0;
+      if (answer < 0 || answer >= options.length) answer = 0; // страхуемся от битого индекса
+      return { q: text, options, answer };
+    })
+    .filter((q) => q.q && q.options.length >= 2);
+  return questions.length ? JSON.stringify({ questions }) : null;
 }
 
 export async function generateStudio(kind: StudioKind, context: string): Promise<{ ok: boolean; text?: string; error?: string }> {
@@ -49,5 +81,10 @@ export async function generateStudio(kind: StudioKind, context: string): Promise
   const prompt = buildPrompt(kind, context);
   if (prompt === null) return { ok: false, error: 'Этот тип пока не поддерживается' };
   const outcome = await runChatMessage(prompt, []);
-  return outcome.ok ? { ok: true, text: outcome.out } : { ok: false, error: String(outcome.error) };
+  if (!outcome.ok) return { ok: false, error: String(outcome.error) };
+  if (kind === 'quiz') {
+    const json = normalizeQuiz(outcome.out);
+    return json ? { ok: true, text: json } : { ok: false, error: 'Не удалось разобрать тест — попробуйте ещё раз' };
+  }
+  return { ok: true, text: outcome.out };
 }
