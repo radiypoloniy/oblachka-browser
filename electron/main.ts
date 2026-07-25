@@ -497,7 +497,8 @@ function createWindow() {
     // Менеджер паролей, шаг 2, коммит 2 — сигналы content-preload идут в PasswordAutofillManager,
     // который сверяется с сейфом и решает, показывать ли индикатор/поповер.
     (tabId, hasLoginForm, hasUsernameField, url) => passwordAutofill.handleFormDetected(tabId, hasLoginForm, hasUsernameField, url),
-    (tabId, username, password, url) => passwordAutofill.handleCredentialSubmitted(tabId, username, password, url),
+    // В инкогнито не предлагаем СОХРАНИТЬ пароль (заполнение уже сохранённым — работает, как Chrome).
+    (tabId, username, password, url) => { if (!tabs?.isIncognito(tabId)) passwordAutofill.handleCredentialSubmitted(tabId, username, password, url); },
     // Иконка в поле пароля — та же карточка, что у тулбарной иконки-ключа (PasswordPopoverManager),
     // просто заякорена на позицию поля. rect приходит в координатах вьюпорта СТРАНИЦЫ —
     // прибавляем bounds именно ЭТОЙ вкладки (не активной вообще — split может показывать другую).
@@ -531,8 +532,10 @@ function createWindow() {
     // Отправка формы с адресом/картой → предложение сохранить. Поповер якорим к верху окна
     // (форма отправлена, поля-якоря могло не остаться) — как «пузырь» под тулбаром справа.
     (tabId, kind, fields, url) => {
-      void tabId; void url;
+      void url;
       if (!win) return;
+      // В инкогнито не предлагаем сохранить адрес/карту (как Chrome) — приватная сессия следов не оставляет.
+      if (tabs?.isIncognito(tabId)) return;
       const state = autofillOrchestrator.handleAutofillSubmit(kind, fields);
       if (!state) return;
       const cb = win.getContentBounds();
