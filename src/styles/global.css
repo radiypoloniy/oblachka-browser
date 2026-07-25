@@ -103,3 +103,8 @@ body {
 
 /* Плейсхолдер строки поиска новой вкладки — читаемый поверх тёмного стекла (см. NewTab.tsx). */
 .newtab-search-input::placeholder { color: rgba(255, 255, 255, 0.72); }
+
+/* Скрыть полосу прокрутки, оставив саму прокрутку (колёсико/тачпад) — для центральной панели
+   блокнота: полоса у края maxWidth-колонки выглядела нелепо и резала пространство (см. NewTab-хаб). */
+.oblako-hide-scrollbar { scrollbar-width: none; }
+.oblako-hide-scrollbar::-webkit-scrollbar { width: 0; height: 0; display: none; }

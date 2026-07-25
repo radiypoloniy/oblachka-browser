@@ -399,7 +399,7 @@ function AiChatView({ tabId, onModeChange, onOpenSettings }: {
     return (
       <div style={{ flex: 1, width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column', minHeight: 0, gap: 12 }}>
         {topBar}
-        <div ref={transcriptRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 2px' }}>
+        <div ref={transcriptRef} className="oblako-hide-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 2px' }}>
           {messages.map((m, i) => <MessageBubble key={i} message={m} />)}
           {streaming && (
             <MessageBubble
@@ -420,7 +420,7 @@ function AiChatView({ tabId, onModeChange, onOpenSettings }: {
   // видимую высоту, спейсер прижимает СТРОКУ ВВОДА к его низу — на первом экране виден ввод внизу.
   // Список недавних чатов идёт НИЖЕ первого экрана (под сгибом) — большая часть доступна прокруткой.
   return (
-    <div style={{ flex: 1, width: '100%', maxWidth: 760, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px' }}>
+    <div className="oblako-hide-scrollbar" style={{ flex: 1, width: '100%', maxWidth: 760, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px' }}>
       <div style={{ flex: 'none', minHeight: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {topBar}
         {promptsBlock}
