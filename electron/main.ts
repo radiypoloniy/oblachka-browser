@@ -170,10 +170,11 @@ async function ensurePasswordAuth(message: string): Promise<boolean> {
   if (!settings.getPasswordAuthEnabled()) return true;               // проверка выключена в настройках
   if (Date.now() - lastPasswordAuthOk < PASSWORD_AUTH_GRACE_MS) return true; // ещё в окне доверия
   const res = await verifyUser('Oblako — пароли', message);
-  if (res === 'denied') return false;                                // неверный пароль/отмена — не показываем
-  // 'ok' или 'unavailable' — разрешаем (unavailable = механизм не сработал, не лочим свои пароли),
-  // и в обоих случаях взводим окно, чтобы не дёргать диалог/сбойный механизм на каждый клик.
-  lastPasswordAuthOk = Date.now();
+  if (res === 'denied') return false;                                // отмена/исчерпаны попытки — не показываем
+  // Окно доверия продлеваем ТОЛЬКО при реальном подтверждении Hello. При 'unavailable' (Hello не
+  // настроен/сбой) разрешаем по месту (не лочим свои пароли), но окно НЕ ставим — иначе один сбой
+  // молча отключил бы проверку на 5 минут (был такой баг с LogonUser).
+  if (res === 'ok') lastPasswordAuthOk = Date.now();
   return true;
 }
 const downloads   = new DownloadManager();
