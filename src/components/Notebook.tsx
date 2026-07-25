@@ -1,9 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   FileText, Plus, X, ArrowLeft, Sparkles, Network, BarChart3, ListChecks, Link2, AlignLeft,
+  Loader2, RotateCw,
 } from 'lucide-react';
 import { islandPlate } from '../styles/island';
-import { loadSources, saveSources, sourceFromInput, type NotebookSource } from '../newtab/notebook';
+import {
+  loadSources, saveSources, sourceFromInput, loadSelectedIds, saveSelectedIds, subscribeNotebook,
+  type NotebookSource,
+} from '../newtab/notebook';
 
 // Большой AI-экран как «блокнот» (NotebookLM-подобный): 3 колонки — Источники / Чат / Студия.
 // Центр (children) — существующий чат хаба (AiChatView, движок HubChatManager), не переписываем.
@@ -26,27 +30,59 @@ const STUDIO: { kind: StudioKind; label: string; Icon: typeof FileText; hint: st
 
 export default function Notebook({ children, onBack }: NotebookProps) {
   const [sources, setSources] = useState<NotebookSource[]>(() => loadSources());
-  // По умолчанию выбраны все — как в NotebookLM. Пустой Set трактуем как «выбраны все» до первого снятия.
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(loadSources().map((s) => s.id)));
+  // По умолчанию выбраны все (как в NotebookLM): loadSelectedIds()===null → берём все текущие id.
+  const [selected, setSelected] = useState<Set<string>>(() => {
+    const ids = loadSelectedIds();
+    return new Set(ids ?? loadSources().map((s) => s.id));
+  });
   const [studioNote, setStudioNote] = useState<string | null>(null);
 
+  // Внешние изменения стора (напр. из другой вкладки) — перечитываем.
+  useEffect(() => subscribeNotebook(() => setSources(loadSources())), []);
+
   const persist = (list: NotebookSource[]) => { setSources(list); saveSources(list); };
+  const persistSelected = (next: Set<string>) => { setSelected(next); saveSelectedIds([...next]); };
+
+  // Извлечение текста URL после добавления/по повтору. Обновляем именно этот источник, читая
+  // актуальный список (функциональный setState — без гонки с параллельными добавлениями).
+  async function extractSource(src: NotebookSource) {
+    const res = await window.oblako.extractNotebookUrl(src.content);
+    setSources((prev) => {
+      const upd = prev.map((s) => s.id !== src.id ? s : (
+        res.ok
+          ? { ...s, title: res.title || s.title, content: res.text || '', status: 'ready' as const }
+          : { ...s, status: 'error' as const }
+      ));
+      saveSources(upd);
+      return upd;
+    });
+  }
 
   function addSource(raw: string) {
     const src = sourceFromInput(raw);
     if (!src) return;
     persist([...sources, src]);
-    setSelected((prev) => new Set(prev).add(src.id));
+    persistSelected(new Set(selected).add(src.id));
+    if (src.kind === 'url') void extractSource(src);
+  }
+  function retrySource(id: string) {
+    const src = sources.find((s) => s.id === id);
+    if (!src) return;
+    const loading = sources.map((s) => s.id === id ? { ...s, status: 'loading' as const } : s);
+    persist(loading);
+    void extractSource({ ...src, status: 'loading' });
   }
   function removeSource(id: string) {
     persist(sources.filter((s) => s.id !== id));
-    setSelected((prev) => { const n = new Set(prev); n.delete(id); return n; });
+    const n = new Set(selected); n.delete(id); persistSelected(n);
   }
   function toggle(id: string) {
-    setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const n = new Set(selected);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    persistSelected(n);
   }
 
-  const selectedCount = selected.size;
+  const selectedCount = sources.filter((s) => selected.has(s.id) && s.status === 'ready').length;
 
   return (
     <div style={{
@@ -55,7 +91,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
     }}>
       <SourcesPanel
         sources={sources} selected={selected}
-        onAdd={addSource} onRemove={removeSource} onToggle={toggle} onBack={onBack}
+        onAdd={addSource} onRemove={removeSource} onToggle={toggle} onRetry={retrySource} onBack={onBack}
       />
 
       {/* Центр — чат (children). AiChatView сам flex:1 внутри — даём ему высоту колонки. */}
@@ -74,9 +110,10 @@ export default function Notebook({ children, onBack }: NotebookProps) {
 }
 
 // ── Источники (слева) ──────────────────────────────────────────────────────────
-function SourcesPanel({ sources, selected, onAdd, onRemove, onToggle, onBack }: {
+function SourcesPanel({ sources, selected, onAdd, onRemove, onToggle, onRetry, onBack }: {
   sources: NotebookSource[]; selected: Set<string>;
-  onAdd: (raw: string) => void; onRemove: (id: string) => void; onToggle: (id: string) => void; onBack: () => void;
+  onAdd: (raw: string) => void; onRemove: (id: string) => void; onToggle: (id: string) => void;
+  onRetry: (id: string) => void; onBack: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [value, setValue] = useState('');
@@ -107,16 +144,31 @@ function SourcesPanel({ sources, selected, onAdd, onRemove, onToggle, onBack }: 
         <Empty>Добавьте сайты или тексты — на них будет опираться чат и Студия.</Empty>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
-          {sources.map((s) => (
-            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: 'var(--radius-sm)' }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
-              <input type="checkbox" checked={selected.has(s.id)} onChange={() => onToggle(s.id)} style={{ flex: 'none' }} />
-              {s.kind === 'url' ? <Link2 size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} /> : <AlignLeft size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
-              <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</span>
-              <button onClick={() => onRemove(s.id)} title="Удалить" style={xBtn}><X size={13} /></button>
-            </div>
-          ))}
+          {sources.map((s) => {
+            const loading = s.status === 'loading';
+            const failed = s.status === 'error';
+            return (
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: 'var(--radius-sm)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                {/* Пока не извлечён — чекбокс неактивен (нечего подмешивать в чат). */}
+                <input type="checkbox" checked={selected.has(s.id)} disabled={loading || failed}
+                  onChange={() => onToggle(s.id)} style={{ flex: 'none' }} />
+                {loading
+                  ? <Loader2 size={14} style={{ color: 'var(--text-faint)', flex: 'none', animation: 'oblako-spin 1s linear infinite' }} />
+                  : s.kind === 'url'
+                    ? <Link2 size={14} style={{ color: failed ? 'var(--danger-500)' : 'var(--text-faint)', flex: 'none' }} />
+                    : <AlignLeft size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
+                  {loading && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>извлекается…</div>}
+                  {failed && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger-500)' }}>не удалось извлечь</div>}
+                </div>
+                {failed && <button onClick={() => onRetry(s.id)} title="Повторить" style={xBtn}><RotateCw size={13} /></button>}
+                <button onClick={() => onRemove(s.id)} title="Удалить" style={xBtn}><X size={13} /></button>
+              </div>
+            );
+          })}
         </div>
       )}
     </Panel>
