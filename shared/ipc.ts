@@ -402,6 +402,12 @@ export const IPC = {
   // вьюпорта страницы; TabManager транслирует их в оконные, прибавляя bounds вьюхи вкладки.
   PASSWORDS_FIELD_ICON_CLICK: 'passwords:field-icon-click', // гостевая страница → TabManager: { rect: {x,y,width,height} }
 
+  // Автозаполнение форм — сигналы между гостевой страницей и TabManager (per-view webContents.ipc,
+  // как у паролей). url НИКОГДА не из payload — main берёт wc.getURL(). Адреса/карты не привязаны к
+  // origin (в отличие от паролей), url нужен лишь чтобы отсечь служебные схемы.
+  AUTOFILL_FIELD_FOCUS: 'autofill:field-focus', // гостевая страница → TabManager: { rect, kind: 'address'|'card' }
+  AUTOFILL_FILL_FIELDS: 'autofill:fill-fields', // TabManager → гостевая вкладка: карта значений полей для подстановки
+
   // Менеджер паролей, шаг 2 — индикатор-«ключ» в omnibox + поповер (см. PasswordIndicatorPopover.tsx,
   // electron/PasswordAutofillManager.ts). Только про АКТИВНУЮ вкладку — переключение вкладок само
   // пересылает актуальное состояние (или null).
@@ -1031,6 +1037,17 @@ export interface CardUpdate {
   expMonth?: number;
   expYear?: number;
 }
+
+// Категории полей формы для автозаполнения — общий словарь между детектором (preload-content) и
+// значениями, которые main шлёт на подстановку. Адресные + карточные (карты — заход 3).
+export type AutofillFieldKey =
+  | 'fullName' | 'givenName' | 'familyName' | 'email' | 'phone'
+  | 'street' | 'addressLine2' | 'city' | 'region' | 'postalCode' | 'country' | 'organization'
+  | 'ccName' | 'ccNumber' | 'ccExpMonth' | 'ccExpYear' | 'ccExp';
+
+// Плоская карта «категория поля → значение» для подстановки (AUTOFILL_FILL_FIELDS). preload-content
+// заполняет те поля, для которых нашёл категорию на странице; лишние ключи игнорируются.
+export type AutofillFillFields = Partial<Record<AutofillFieldKey, string>>;
 
 // Тип API, который preload пробрасывает в window.oblako
 export interface OblakoApi {

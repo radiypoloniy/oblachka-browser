@@ -31,6 +31,10 @@ const CH_FORM_DETECTED = 'passwords:form-detected';
 const CH_CREDENTIAL_SUBMITTED = 'passwords:credential-submitted';
 const CH_FILL = 'passwords:fill';
 const CH_FIELD_ICON_CLICK = 'passwords:field-icon-click';
+// Автозаполнение форм (адреса/карты) — ДОЛЖНЫ совпадать с shared/ipc.ts::IPC.AUTOFILL_FIELD_FOCUS/
+// AUTOFILL_FILL_FIELDS (см. выше про невозможность импорта shared в sandboxed preload).
+const CH_AUTOFILL_FIELD_FOCUS = 'autofill:field-focus';
+const CH_AUTOFILL_FILL = 'autofill:fill-fields';
 
 function isTopFrame(): boolean {
   try {
@@ -402,4 +406,123 @@ try {
   });
 } catch {
   // IPC недоступен — автозаполнение просто не работает
+}
+
+// ── Автозаполнение форм: адреса и карты ─────────────────────────────────────────────────────
+// Детект категории поля: сначала по autocomplete-токену (надёжнее всего), затем эвристика по
+// name/id/placeholder/aria-label (в т.ч. рус.). Ключи совпадают с shared/ipc.ts::AutofillFieldKey.
+// Заход 2 использует адресные ключи; карточные (cc*) детектятся тоже — для захода 3.
+type AfKey =
+  | 'fullName' | 'givenName' | 'familyName' | 'email' | 'phone'
+  | 'street' | 'addressLine2' | 'city' | 'region' | 'postalCode' | 'country' | 'organization'
+  | 'ccName' | 'ccNumber' | 'ccExpMonth' | 'ccExpYear' | 'ccExp';
+
+const AF_ADDRESS_KEYS: ReadonlySet<AfKey> = new Set<AfKey>([
+  'fullName', 'givenName', 'familyName', 'email', 'phone',
+  'street', 'addressLine2', 'city', 'region', 'postalCode', 'country', 'organization',
+]);
+
+const AC_TO_KEY: Record<string, AfKey> = {
+  'name': 'fullName', 'given-name': 'givenName', 'family-name': 'familyName',
+  'email': 'email', 'tel': 'phone', 'tel-national': 'phone', 'tel-local': 'phone',
+  'street-address': 'street', 'address-line1': 'street', 'address-line2': 'addressLine2',
+  'address-level2': 'city', 'address-level1': 'region',
+  'postal-code': 'postalCode', 'country': 'country', 'country-name': 'country',
+  'organization': 'organization',
+  'cc-name': 'ccName', 'cc-number': 'ccNumber', 'cc-exp': 'ccExp',
+  'cc-exp-month': 'ccExpMonth', 'cc-exp-year': 'ccExpYear',
+};
+
+type FillField = HTMLInputElement | HTMLSelectElement;
+
+function detectFieldKey(el: FillField): AfKey | null {
+  const type = (el.getAttribute('type') || 'text').toLowerCase();
+  if (['password', 'hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'range', 'color', 'image'].includes(type)) {
+    return null;
+  }
+  // autocomplete может нести секции/billing/shipping — берём последний осмысленный токен.
+  const acRaw = (el.getAttribute('autocomplete') || '').toLowerCase().trim();
+  for (const token of acRaw.split(/\s+/).reverse()) {
+    if (AC_TO_KEY[token]) return AC_TO_KEY[token]!;
+  }
+  // Эвристика по атрибутам. cc-csc (CVC) намеренно НЕ детектим — мы его не храним и не заполняем.
+  const hay = [el.getAttribute('name'), el.id, el.getAttribute('placeholder'), el.getAttribute('aria-label')]
+    .filter(Boolean).join(' ').toLowerCase();
+  if (/csc|cvv|cvc|security code|код.*карт/.test(hay)) return null;
+  if (type === 'email' || /e-?mail|почт/.test(hay)) return 'email';
+  if (type === 'tel' || /phone|\btel\b|моб|телефон/.test(hay)) return 'phone';
+  if (/card.?number|cc-?num|номер.?карт/.test(hay)) return 'ccNumber';
+  if (/card.?holder|name.?on.?card|владел.*карт|держател/.test(hay)) return 'ccName';
+  if (/zip|postal|индекс/.test(hay)) return 'postalCode';
+  if (/country|страна/.test(hay)) return 'country';
+  if (/\bstate\b|province|region|област|регион|\bкрай\b|республик/.test(hay)) return 'region';
+  if (/\bcity\b|town|город/.test(hay)) return 'city';
+  if (/organiz|company|компан|организац/.test(hay)) return 'organization';
+  if (/street|address|\baddr\b|улиц|адрес/.test(hay)) return 'street';
+  if (/full.?name|\bф\.?и\.?о|fio|полное имя/.test(hay)) return 'fullName';
+  return null;
+}
+
+function collectAutofillFields(): Array<{ key: AfKey; el: FillField }> {
+  const out: Array<{ key: AfKey; el: FillField }> = [];
+  try {
+    for (const el of Array.from(document.querySelectorAll('input, select')) as FillField[]) {
+      if (!isVisible(el)) continue;
+      const key = detectFieldKey(el);
+      if (key) out.push({ key, el });
+    }
+  } catch {
+    // сбой сканера не должен ронять страницу
+  }
+  return out;
+}
+
+function setSelectValue(sel: HTMLSelectElement, value: string): void {
+  const v = value.trim().toLowerCase();
+  for (const opt of Array.from(sel.options)) {
+    if (opt.value.trim().toLowerCase() === v || opt.text.trim().toLowerCase() === v) {
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event('input', { bubbles: true }));
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
+  }
+}
+
+// Фокус на поле автозаполнения (top-frame) → сообщаем main позицию поля и вид формы, чтобы он
+// показал поповер выбора. Тот же top-frame-гвард, что у паролей: из кросс-origin iframe не шлём.
+window.addEventListener('focusin', (e) => {
+  try {
+    if (!isTopFrame()) return;
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement)) return;
+    const key = detectFieldKey(t);
+    if (!key) return;
+    const kind = AF_ADDRESS_KEYS.has(key) ? 'address' : 'card';
+    const r = t.getBoundingClientRect();
+    ipcRenderer.send(CH_AUTOFILL_FIELD_FOCUS, {
+      rect: { x: r.x, y: r.y, width: r.width, height: r.height }, kind,
+    });
+  } catch {
+    // noop
+  }
+}, true);
+
+// Подстановка выбранного профиля/карты: main шлёт карту «категория → значение», заполняем поля.
+try {
+  ipcRenderer.on(CH_AUTOFILL_FILL, (_e, fields: Partial<Record<AfKey, string>>) => {
+    try {
+      if (!isTopFrame() || !fields || typeof fields !== 'object') return;
+      for (const { key, el } of collectAutofillFields()) {
+        const value = fields[key];
+        if (typeof value !== 'string' || value === '') continue;
+        if (el instanceof HTMLSelectElement) setSelectValue(el, value);
+        else setNativeValue(el, value);
+      }
+    } catch {
+      // исполнитель не должен ронять страницу
+    }
+  });
+} catch {
+  // IPC недоступен
 }

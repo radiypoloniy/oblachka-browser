@@ -48,6 +48,8 @@ import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, onFirstLoad as onSuggestDropdownFirstLoad, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
+import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
+import * as autofillOrchestrator from './AutofillOrchestrator';
 import { initVpnPopover, showVpnPopover, closeVpnPopover, syncVpnPopoverAnchorBounds, syncVpnPopoverActiveUrl, broadcastVpnState } from './VpnPopoverManager';
 import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
@@ -455,17 +457,18 @@ function createWindow() {
     // вкладке, безусловный main-side хук на КАЖДУЮ реальную смену активной, а не только
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(); hideSuggestDropdown(); closePasswordPopover(); closeVpnPopover();
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(); hideSuggestDropdown(); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover();
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
       // её текущее состояние (или null) при каждом реальном переключении.
       passwordAutofill.onActiveTabChanged();
     },
-    (wc, tabId) => { closeTranslatePopoverForClosedTab(wc); closePasswordPopover(); closeVpnPopover(); passwordAutofill.onTabClosed(tabId); },
+    (wc, tabId) => { closeTranslatePopoverForClosedTab(wc); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover(); passwordAutofill.onTabClosed(tabId); },
     // Заход 5: реальный клик в контент вкладки (не blur омнибокса) — закрывает дропдаун подсказок
     // в chrome, см. shared/ipc.ts::SUGGEST_DROPDOWN_CONTENT_FOCUS, Toolbar.tsx.
     () => {
       chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS);
       closePasswordPopover();
+      closeAutofillPopover();
       closeVpnPopover();
     },
     // Менеджер паролей, шаг 2, коммит 2 — сигналы content-preload идут в PasswordAutofillManager,
@@ -484,6 +487,21 @@ function createWindow() {
         width: rect.width, height: rect.height,
       });
       showPasswordPopover(win, state);
+    },
+    // Автозаполнение — фокус на поле адреса/карты показывает поповер выбора профиля, заякоренный
+    // на поле (та же трансляция координат вьюпорта страницы в оконные, что у иконки пароля). Карты
+    // (kind==='card') — заход 3, сейчас игнорируем.
+    (tabId, rect, kind, url) => {
+      if (kind !== 'address') return;
+      void url; // адреса не привязаны к origin — url здесь не нужен (нужен был бы для отсечки схем)
+      const list = autofillOrchestrator.handleAddressFieldFocus(tabId);
+      if (!list || !win || !tabs) return;
+      const viewBounds = tabs.getTabViewBounds(tabId);
+      syncAutofillPopoverAnchorBounds({
+        x: viewBounds.x + rect.x, y: viewBounds.y + rect.y,
+        width: rect.width, height: rect.height,
+      });
+      showAutofillPopover(win, { kind: 'address', addresses: list });
     },
   );
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
@@ -510,6 +528,10 @@ function createWindow() {
   });
   initPasswordPopover(() => chromeView?.webContents.send(IPC.PASSWORD_POPOVER_CLOSED));
   initVpnPopover(() => chromeView?.webContents.send(IPC.VPN_POPOVER_CLOSED));
+  // Автозаполнение форм: оркестратор (хранилище ↔ страница ↔ поповер) + поповер выбора профиля.
+  // onPick поповера — подстановка выбранного адреса в ту вкладку, где было сфокусировано поле.
+  autofillOrchestrator.initAutofillOrchestrator(tabs, autofill);
+  initAutofillPopover(() => {}, (id) => { autofillOrchestrator.handleFillAddress(id); });
   // Менеджер паролей, шаг 2: индикатор push идёт в chrome (не в конкретную вкладку) —
   // PASSWORDS_CHANGED переиспользует существующий канал шага 1 (список в Settings→Пароли).
   passwordAutofill.init(

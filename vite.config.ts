@@ -29,6 +29,8 @@ export default defineConfig({
         // Поповер паролей — отдельная WebContentsView поверх контента (см. PasswordPopoverManager.ts),
         // тот же нативный слой, что FindBar/SuggestDropdown.
         passwordpopover: resolve(__dirname, 'src/passwordpopover.html'),
+        // Поповер автозаполнения адресов/карт — та же техника (см. AutofillPopoverManager.ts).
+        autofillpopover: resolve(__dirname, 'src/autofillpopover.html'),
         // Поповер VPN-пилюли — та же техника (см. VpnPopoverManager.ts).
         vpnpopover: resolve(__dirname, 'src/vpnpopover.html'),
         // Тестовая вью дропдауна подсказок омнибокса (заход 2/5 переезда с chrome-DOM, см.

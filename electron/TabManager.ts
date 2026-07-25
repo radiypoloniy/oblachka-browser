@@ -182,6 +182,8 @@ export class TabManager {
   // Иконка в поле пароля (не в тулбаре) — rect в координатах вьюпорта СТРАНИЦЫ, main сам
   // транслирует в оконные через getTabViewBounds() (см. PasswordAutofillManager.ts).
   private onPasswordFieldIconClickCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void;
+  // Автозаполнение форм — фокус на поле адреса/карты (см. wirePageEvents). url — из wc.getURL().
+  private onAutofillFieldFocusCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void;
   private firstTabLoaded = false; // защита: колбэк вызывается ровно один раз
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
@@ -218,6 +220,7 @@ export class TabManager {
     onPasswordForm?: (tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string) => void,
     onPasswordSubmit?: (tabId: string, username: string, password: string, url: string) => void,
     onPasswordFieldIconClick?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void,
+    onAutofillFieldFocus?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void,
   ) {
     this.win = win;
     this.onChange = onChange;
@@ -237,6 +240,7 @@ export class TabManager {
     this.onPasswordFormCb = onPasswordForm;
     this.onPasswordSubmitCb = onPasswordSubmit;
     this.onPasswordFieldIconClickCb = onPasswordFieldIconClick;
+    this.onAutofillFieldFocusCb = onAutofillFieldFocus;
     // Хаб существует всегда; не входит в tabMap, pinnedTabs или nodes.
     this.hubTab = { id: HUB_ID, view: null, sleeping: null, lastActiveAt: 0 };
     this.startSleepTimer();
@@ -1014,6 +1018,14 @@ export class TabManager {
         this.onPasswordFieldIconClickCb?.(id, payload.rect, wc.getURL());
       } catch (e) {
         console.warn('[TabMgr] onPasswordFieldIconClickCb error:', (e as Error).message);
+      }
+    });
+    // Автозаполнение — фокус на поле адреса/карты. Origin/url — из wc.getURL() (не из payload).
+    wc.ipc.on(IPC.AUTOFILL_FIELD_FOCUS, (_e, payload: { rect: { x: number; y: number; width: number; height: number }; kind: 'address' | 'card' }) => {
+      try {
+        this.onAutofillFieldFocusCb?.(id, payload.rect, payload.kind, wc.getURL());
+      } catch (e) {
+        console.warn('[TabMgr] onAutofillFieldFocusCb error:', (e as Error).message);
       }
     });
 
@@ -2059,6 +2071,16 @@ export class TabManager {
     const wc = tab?.view?.webContents;
     if (!wc || wc.isDestroyed()) return false;
     wc.send(IPC.PASSWORDS_FILL, payload);
+    return true;
+  }
+
+  // Автозаполнение — карта «категория поля → значение» уходит в конкретную гостевую вкладку (не
+  // broadcast). preload-content заполнит только те поля, что нашёл, и только в top-frame.
+  sendAutofillFill(tabId: string, fields: Record<string, string>): boolean {
+    const tab = this.tabMap.get(tabId);
+    const wc = tab?.view?.webContents;
+    if (!wc || wc.isDestroyed()) return false;
+    wc.send(IPC.AUTOFILL_FILL_FIELDS, fields);
     return true;
   }
 
