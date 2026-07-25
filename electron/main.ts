@@ -505,6 +505,17 @@ function createWindow() {
       });
       showAutofillPopover(win, state);
     },
+    // Отправка формы с адресом/картой → предложение сохранить. Поповер якорим к верху окна
+    // (форма отправлена, поля-якоря могло не остаться) — как «пузырь» под тулбаром справа.
+    (tabId, kind, fields, url) => {
+      void tabId; void url;
+      if (!win) return;
+      const state = autofillOrchestrator.handleAutofillSubmit(kind, fields);
+      if (!state) return;
+      const cb = win.getContentBounds();
+      syncAutofillPopoverAnchorBounds({ x: Math.max(8, cb.width - 316), y: 48, width: 0, height: 0 });
+      showAutofillPopover(win, state);
+    },
   );
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
   tabs.setSearchEngine(settings.getSearchEngine());
@@ -535,15 +546,20 @@ function createWindow() {
   autofillOrchestrator.initAutofillOrchestrator(tabs, autofill);
   // Выбор в поповере: адрес подставляем сразу; карту — только после подтверждения Windows Hello
   // (полный номер — чувствительный, тот же гейт, что показ пароля/номера в настройках).
-  initAutofillPopover(() => {}, (id) => {
-    if (autofillOrchestrator.getLastKind() === 'card') {
-      void ensurePasswordAuth('Заполнить данные карты').then((ok) => {
-        if (ok) autofillOrchestrator.handleFillCard(id);
-      });
-    } else {
-      autofillOrchestrator.handleFillAddress(id);
-    }
-  });
+  initAutofillPopover(
+    () => {},
+    (id) => {
+      if (autofillOrchestrator.getLastKind() === 'card') {
+        void ensurePasswordAuth('Заполнить данные карты').then((ok) => {
+          if (ok) autofillOrchestrator.handleFillCard(id);
+        });
+      } else {
+        autofillOrchestrator.handleFillAddress(id);
+      }
+    },
+    // «Сохранить» из предложения offer-save — кладём в хранилище и обновляем список в настройках.
+    () => { if (autofillOrchestrator.saveSubmitted()) chromeView?.webContents.send(IPC.AUTOFILL_CHANGED); },
+  );
   // Менеджер паролей, шаг 2: индикатор push идёт в chrome (не в конкретную вкладку) —
   // PASSWORDS_CHANGED переиспользует существующий канал шага 1 (список в Settings→Пароли).
   passwordAutofill.init(

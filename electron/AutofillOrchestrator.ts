@@ -4,13 +4,17 @@
 // карты НЕ привязаны к origin — поповер показывает все сохранённые профили.
 import type { TabManager } from './TabManager';
 import type { AutofillManager } from './AutofillManager';
-import type { AddressProfile, CardMeta, AutofillFillFields } from '../shared/ipc';
+import type { AddressProfile, CardMeta, AddressInput, CardInput, AutofillFillFields } from '../shared/ipc';
+import type { AutofillPopoverState } from './AutofillPopoverManager';
 
 let tmRef: TabManager | null = null;
 let amRef: AutofillManager | null = null;
 // Вкладка и вид формы, где было сфокусировано поле — туда уйдёт подстановка после выбора в поповере.
 let lastFocusTabId: string | null = null;
 let lastKind: 'address' | 'card' | null = null;
+// Данные из отправленной формы, ожидающие подтверждения «Сохранить» (offer-save). Полный номер
+// карты живёт здесь в main до явного согласия пользователя; в поповер уходит только маска.
+let pendingSave: { kind: 'address'; input: AddressInput } | { kind: 'card'; input: CardInput } | null = null;
 
 export function initAutofillOrchestrator(tm: TabManager, am: AutofillManager): void {
   tmRef = tm;
@@ -62,6 +66,74 @@ export function handleFillCard(id: number): boolean {
     ccExp: card.expMonth && card.expYear ? `${String(card.expMonth).padStart(2, '0')}/${String(card.expYear).slice(-2)}` : '',
   };
   return tmRef.sendAutofillFill(lastFocusTabId, fields);
+}
+
+// ── Offer-save после отправки формы ─────────────────────────────────────────────────────────
+// Решает, предлагать ли сохранить отправленные данные (новые, не дубль). Возвращает состояние
+// поповера-предложения или null. Полный номер карты кладём в pendingSave (main), в поповер — маска.
+export function handleAutofillSubmit(kind: 'address' | 'card', fields: AutofillFillFields): AutofillPopoverState | null {
+  if (!amRef) return null;
+  if (kind === 'card') {
+    const digits = (fields.ccNumber ?? '').replace(/\D/g, '');
+    if (digits.length < 12) return null;
+    const last4 = digits.slice(-4);
+    // Дубль по последним 4 цифрам — не спамим предложением уже сохранённой картой.
+    if (amRef.listCards().some((c) => c.last4 === last4)) return null;
+    const { month, year } = parseExp(fields);
+    const input: CardInput = { cardholder: fields.ccName ?? '', number: digits, expMonth: month, expYear: year };
+    pendingSave = { kind: 'card', input };
+    return { kind: 'save-card', title: `•••• ${last4}`, sub: input.cardholder };
+  }
+  const input = fieldsToAddress(fields);
+  if (meaningfulCount(input) < 2) return null;
+  if (amRef.listAddresses().some((a) => sameAddress(a, input))) return null; // уже сохранён
+  pendingSave = { kind: 'address', input };
+  return {
+    kind: 'save-address',
+    title: input.fullName || input.email || input.phone || 'Адрес',
+    sub: [input.street, input.city].filter(Boolean).join(', '),
+  };
+}
+
+// Подтверждение «Сохранить» из поповера — кладём отложенные данные в хранилище.
+export function saveSubmitted(): boolean {
+  if (!amRef || !pendingSave) return false;
+  const ok = pendingSave.kind === 'card' ? amRef.addCard(pendingSave.input) : amRef.addAddress(pendingSave.input);
+  pendingSave = null;
+  return ok;
+}
+
+function parseExp(f: AutofillFillFields): { month: number; year: number } {
+  let month = Number((f.ccExpMonth ?? '').replace(/\D/g, ''));
+  let year = Number((f.ccExpYear ?? '').replace(/\D/g, ''));
+  if ((!month || !year) && f.ccExp) {
+    const m = f.ccExp.match(/(\d{1,2})\s*[/\-.]\s*(\d{2,4})/);
+    if (m) { month = Number(m[1]); year = Number(m[2]); }
+  }
+  if (year && year < 100) year += 2000;
+  return { month: month || 0, year: year || 0 };
+}
+
+function fieldsToAddress(f: AutofillFillFields): AddressInput {
+  const fullName = f.fullName || [f.givenName, f.familyName].filter(Boolean).join(' ');
+  return {
+    fullName: fullName ?? '', organization: f.organization ?? '', email: f.email ?? '',
+    phone: f.phone ?? '', street: f.street ?? '', city: f.city ?? '', region: f.region ?? '',
+    postalCode: f.postalCode ?? '', country: f.country ?? '',
+  };
+}
+
+function meaningfulCount(a: AddressInput): number {
+  return [a.fullName, a.email, a.phone, a.street, a.city, a.postalCode].filter((v) => v && v.trim()).length;
+}
+
+// Дубль адреса: совпал непустой e-mail ЛИБО связка улица+город+индекс — этого достаточно, чтобы
+// не предлагать сохранить уже известное.
+function sameAddress(a: AddressProfile, b: AddressInput): boolean {
+  const eq = (x: string, y: string) => x.trim().toLowerCase() === y.trim().toLowerCase();
+  if (a.email && b.email && eq(a.email, b.email)) return true;
+  if (a.street && b.street && eq(a.street, b.street) && eq(a.city, b.city) && eq(a.postalCode, b.postalCode)) return true;
+  return false;
 }
 
 // Раскладываем адрес по словарю категорий полей (см. shared/ipc.ts::AutofillFieldKey). fullName

@@ -14,10 +14,14 @@ const WINDOW_MARGIN = 8;
 // Держать в синхроне с SHADOW_MARGIN в src/autofillpopover.tsx.
 const SHADOW_MARGIN = 16;
 
-// Что показывает поповер — список адресов ЛИБО карт. Выбор пользователя (id) уходит в оркестратор.
+// Что показывает поповер: список для подстановки (адреса/карты) ЛИБО предложение сохранить после
+// отправки формы (save-*). Сами данные для сохранения держит оркестратор (pendingSave) — в поповер
+// уходит только текст для показа (полный номер карты сюда не попадает).
 export type AutofillPopoverState =
   | { kind: 'address'; addresses: AddressProfile[] }
-  | { kind: 'card'; cards: CardMeta[] };
+  | { kind: 'card'; cards: CardMeta[] }
+  | { kind: 'save-address'; title: string; sub: string }
+  | { kind: 'save-card'; title: string; sub: string };
 
 let popoverView: WebContentsView | null = null;
 let attachedWin: BrowserWindow | null = null;
@@ -28,10 +32,12 @@ let currentHeight = INITIAL_HEIGHT;
 let lastState: AutofillPopoverState | null = null;
 let onClosedCb: (() => void) | null = null;
 let onPickCb: ((id: number) => void) | null = null;
+let onSaveCb: (() => void) | null = null;
 
-export function initAutofillPopover(onClosed: () => void, onPick: (id: number) => void): void {
+export function initAutofillPopover(onClosed: () => void, onPick: (id: number) => void, onSave: () => void): void {
   onClosedCb = onClosed;
   onPickCb = onPick;
+  onSaveCb = onSave;
 }
 
 function isAttached(): boolean {
@@ -75,6 +81,10 @@ function ensureIpcRegistered(): void {
   });
   ipcMain.on('autofill-popover:pick', (_e, id: number) => {
     onPickCb?.(id);
+    closeAutofillPopover();
+  });
+  ipcMain.on('autofill-popover:save', () => {
+    onSaveCb?.();
     closeAutofillPopover();
   });
 }

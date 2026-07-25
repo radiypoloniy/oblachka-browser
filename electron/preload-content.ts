@@ -35,6 +35,7 @@ const CH_FIELD_ICON_CLICK = 'passwords:field-icon-click';
 // AUTOFILL_FILL_FIELDS (см. выше про невозможность импорта shared в sandboxed preload).
 const CH_AUTOFILL_FIELD_FOCUS = 'autofill:field-focus';
 const CH_AUTOFILL_FILL = 'autofill:fill-fields';
+const CH_AUTOFILL_SUBMIT = 'autofill:submit';
 
 function isTopFrame(): boolean {
   try {
@@ -507,6 +508,50 @@ window.addEventListener('focusin', (e) => {
     // noop
   }
 }, true);
+
+// Отправка формы с данными адреса/карты → предлагаем сохранить (offer-save, как у паролей).
+// Собираем ТЕКУЩИЕ значения распознанных полей; если это карта (есть номер) — kind 'card', иначе
+// адрес (если заполнено хоть сколько-то осмысленных полей). Только top-frame.
+function gatherAutofillSubmit(): { kind: 'address' | 'card'; fields: Partial<Record<AfKey, string>> } | null {
+  const values: Partial<Record<AfKey, string>> = {};
+  for (const { key, el } of collectAutofillFields()) {
+    const v = (el.value || '').trim();
+    if (v) values[key] = v;
+  }
+  // Карта: есть номер (>=12 цифр). CVC не собираем (детектор его и не отдаёт).
+  if (values.ccNumber && values.ccNumber.replace(/\D/g, '').length >= 12) {
+    return { kind: 'card', fields: values };
+  }
+  // Адрес: хотя бы два осмысленных поля из ключевых — иначе это не форма адреса.
+  const addressKeys: AfKey[] = ['fullName', 'givenName', 'familyName', 'email', 'phone', 'street', 'city', 'postalCode', 'region', 'country'];
+  const filled = addressKeys.filter((k) => values[k]);
+  if (filled.length >= 2) return { kind: 'address', fields: values };
+  return null;
+}
+
+function reportAutofillSubmit() {
+  try {
+    if (!isTopFrame()) return;
+    const payload = gatherAutofillSubmit();
+    if (payload) ipcRenderer.send(CH_AUTOFILL_SUBMIT, payload);
+  } catch {
+    // детектор не должен ронять страницу
+  }
+}
+
+// Тот же submit-хук, что у паролей (и SPA-навигация через pushState/popstate, уже перехваченные
+// выше для checkSpaSubmit) — переиспользуем событие submit; SPA-случай ловим в тех же местах.
+document.addEventListener('submit', () => reportAutofillSubmit(), true);
+try {
+  const origPush = history.pushState.bind(history);
+  history.pushState = function (...args: Parameters<typeof history.pushState>) {
+    reportAutofillSubmit();
+    return origPush(...args);
+  };
+  window.addEventListener('popstate', reportAutofillSubmit);
+} catch {
+  // сайт мог заморозить history — offer-save на SPA просто не сработает
+}
 
 // Подстановка выбранного профиля/карты: main шлёт карту «категория → значение», заполняем поля.
 try {

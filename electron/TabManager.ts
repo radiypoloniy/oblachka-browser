@@ -184,6 +184,8 @@ export class TabManager {
   private onPasswordFieldIconClickCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void;
   // Автозаполнение форм — фокус на поле адреса/карты (см. wirePageEvents). url — из wc.getURL().
   private onAutofillFieldFocusCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void;
+  // Автозаполнение — отправка формы с данными адреса/карты (offer-save). url — из wc.getURL().
+  private onAutofillSubmitCb?: (tabId: string, kind: 'address' | 'card', fields: Record<string, string>, url: string) => void;
   private firstTabLoaded = false; // защита: колбэк вызывается ровно один раз
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
@@ -221,6 +223,7 @@ export class TabManager {
     onPasswordSubmit?: (tabId: string, username: string, password: string, url: string) => void,
     onPasswordFieldIconClick?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void,
     onAutofillFieldFocus?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void,
+    onAutofillSubmit?: (tabId: string, kind: 'address' | 'card', fields: Record<string, string>, url: string) => void,
   ) {
     this.win = win;
     this.onChange = onChange;
@@ -241,6 +244,7 @@ export class TabManager {
     this.onPasswordSubmitCb = onPasswordSubmit;
     this.onPasswordFieldIconClickCb = onPasswordFieldIconClick;
     this.onAutofillFieldFocusCb = onAutofillFieldFocus;
+    this.onAutofillSubmitCb = onAutofillSubmit;
     // Хаб существует всегда; не входит в tabMap, pinnedTabs или nodes.
     this.hubTab = { id: HUB_ID, view: null, sleeping: null, lastActiveAt: 0 };
     this.startSleepTimer();
@@ -1026,6 +1030,13 @@ export class TabManager {
         this.onAutofillFieldFocusCb?.(id, payload.rect, payload.kind, wc.getURL());
       } catch (e) {
         console.warn('[TabMgr] onAutofillFieldFocusCb error:', (e as Error).message);
+      }
+    });
+    wc.ipc.on(IPC.AUTOFILL_SUBMIT, (_e, payload: { kind: 'address' | 'card'; fields: Record<string, string> }) => {
+      try {
+        this.onAutofillSubmitCb?.(id, payload.kind, payload.fields, wc.getURL());
+      } catch (e) {
+        console.warn('[TabMgr] onAutofillSubmitCb error:', (e as Error).message);
       }
     });
 

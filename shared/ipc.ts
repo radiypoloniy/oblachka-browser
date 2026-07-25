@@ -407,6 +407,7 @@ export const IPC = {
   // origin (в отличие от паролей), url нужен лишь чтобы отсечь служебные схемы.
   AUTOFILL_FIELD_FOCUS: 'autofill:field-focus', // гостевая страница → TabManager: { rect, kind: 'address'|'card' }
   AUTOFILL_FILL_FIELDS: 'autofill:fill-fields', // TabManager → гостевая вкладка: карта значений полей для подстановки
+  AUTOFILL_SUBMIT:      'autofill:submit',      // гостевая страница → TabManager: { kind, fields } при отправке формы (offer-save)
 
   // Менеджер паролей, шаг 2 — индикатор-«ключ» в omnibox + поповер (см. PasswordIndicatorPopover.tsx,
   // electron/PasswordAutofillManager.ts). Только про АКТИВНУЮ вкладку — переключение вкладок само

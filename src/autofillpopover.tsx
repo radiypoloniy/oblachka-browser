@@ -8,12 +8,15 @@ import './styles/global.css';
 // Состояние поповера (совпадает с electron/AutofillPopoverManager.ts::AutofillPopoverState).
 type AutofillPopoverState =
   | { kind: 'address'; addresses: AddressProfile[] }
-  | { kind: 'card'; cards: CardMeta[] };
+  | { kind: 'card'; cards: CardMeta[] }
+  | { kind: 'save-address'; title: string; sub: string }
+  | { kind: 'save-card'; title: string; sub: string };
 
 declare global {
   interface Window {
     autofillPopover: {
       pick: (id: number) => void;
+      save: () => void;
       close: () => void;
       reportHeight: (px: number) => void;
       onShow: (cb: (state: AutofillPopoverState) => void) => () => void;
@@ -23,6 +26,19 @@ declare global {
 
 // Держать в синхроне с SHADOW_MARGIN в electron/AutofillPopoverManager.ts.
 const SHADOW_MARGIN = 16;
+
+const cardShell: React.CSSProperties = {
+  ...islandPlate, borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-island)',
+  background: 'var(--surface-solid)', overflow: 'hidden',
+};
+const btnPrimary: React.CSSProperties = {
+  padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
+  background: 'var(--accent)', color: '#fff', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default',
+};
+const btnGhost: React.CSSProperties = {
+  padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--divider-strong)',
+  background: 'transparent', color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default',
+};
 
 function summary(a: AddressProfile): string {
   return [a.street, a.city, a.country].filter(Boolean).join(', ');
@@ -48,18 +64,40 @@ function AutofillPopoverApp() {
   }, [state]);
 
   if (!state) return null;
+
+  // Режим предложения сохранить (после отправки формы).
+  if (state.kind === 'save-address' || state.kind === 'save-card') {
+    return (
+      <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
+        <div ref={cardRef} style={cardShell}>
+          <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            {state.kind === 'save-card'
+              ? <CreditCard size={18} style={{ color: 'var(--text-muted)', flex: 'none' }} />
+              : <MapPin size={18} style={{ color: 'var(--text-muted)', flex: 'none' }} />}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+                {state.kind === 'save-card' ? 'Сохранить карту в Oblako?' : 'Сохранить адрес в Oblako?'}
+              </div>
+              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {state.title}{state.sub ? `  ·  ${state.sub}` : ''}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, padding: '4px 14px 12px', justifyContent: 'flex-end' }}>
+            <button onClick={() => window.autofillPopover.close()} style={btnGhost}>Не сохранять</button>
+            <button onClick={() => window.autofillPopover.save()} style={btnPrimary}>Сохранить</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const items = state.kind === 'address' ? state.addresses : state.cards;
   if (items.length === 0) return null;
 
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
-      <div ref={cardRef} style={{
-        ...islandPlate,
-        borderRadius: 'var(--radius-card)',
-        boxShadow: 'var(--shadow-island)',
-        background: 'var(--surface-solid)',
-        overflow: 'hidden',
-      }}>
+      <div ref={cardRef} style={cardShell}>
         <div style={{
           padding: '8px 12px', fontSize: 'var(--fs-xs)', fontWeight: 600,
           color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 'var(--ls-caps)',
