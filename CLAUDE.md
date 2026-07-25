@@ -210,10 +210,17 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   шлёт bounds в main. `src/components/` — Sidebar/Toolbar/Hub/History/
   Downloads/Settings/FindBar/PermissionPrompt — **только рисуют то, что им
   дали**, зовут `window.oblako.*`, никакой бизнес-логики вкладок внутри.
-- `src/components/settings/` — секции настроек по файлам (AdBlock/Vpn/Ai/
-  Skills/Passwords), `Settings.tsx` — только корень и навигация. UI-элементы
-  настроек (кнопки, поля, карточки статуса, заголовки) берутся из
+- `src/components/settings/` — секции настроек по файлам (General/AdBlock/Vpn/Ai/
+  Passwords/Autofill/Appearance), `Settings.tsx` — только корень и навигация.
+  UI-элементы настроек (кнопки, поля, карточки статуса, заголовки) берутся из
   `settings/kit.tsx` — **не рисовать с нуля в секциях.**
+- Новая вкладка (минимал, в духе Bonjourr) — `src/components/NewTab.tsx` (рендерится
+  Hub'ом в режиме 'tiles'): полноэкранный фон, часы, приветствие, поиск, быстрые
+  ссылки (топ-сайты), виджет погоды. Настройки — `src/newtab/settings.ts`
+  (localStorage, общий origin с разделом «Интерфейс», живое применение через
+  window-событие), редактор — `settings/AppearanceSection.tsx`. Фон «фото дня» —
+  `electron/NewTabPhoto.ts` (качает через main/net.fetch, кэш на день); погода —
+  `WeatherService` через typed-канал `WEATHER_GET` в главном preload.
 - `src/aipanel.tsx`, `src/translatepopover.tsx`, `src/findbar.tsx`,
   `src/passwordpopover.tsx`, `src/vpnpopover.tsx`, `src/suggestdropdown.tsx` —
   отдельные React-точки входа (свои HTML/entry в `vite.config.ts`), у каждой
@@ -293,7 +300,8 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
 Сделано: автосейв сессии, контекстные меню ПКМ (вкладка/группа), хоткеи,
 закреплённые вкладки, усыпление, split view, drag-and-drop, группы вкладок,
 режим инкогнито (приватные вкладки: in-memory сессия, без истории/автосейва,
-адблок+VPN honored),
+адблок+VPN honored), минималистичная новая вкладка (фон/часы/приветствие/поиск/
+быстрые ссылки/погода/«фото дня») с разделом настроек «Интерфейс»,
 адблок (Ghostery prebuilt, автообновление листов), история посещений с
 полнотекстовым поиском (FTS5 + Qwen-реранк), менеджер загрузок, разрешения
 сайтов, AI-поповер над выделением (перевод/пересказ/упрощение/объяснение),
