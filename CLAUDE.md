@@ -132,6 +132,18 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
 - `electron/FaviconService.ts` — favicon для адресов (список паролей): тянет
   ТОЛЬКО с самого домена через `net.fetch` (без сторонних favicon-сервисов),
   двойной кэш (файлы в userData + память), канал `FAVICON_GET`.
+- Автозаполнение форм (адреса/карты, НЕ логин/пароль): `AutofillManager.ts`
+  (свой `autofill.sqlite` + свой DEK через `VaultCrypto`; адрес шифруется целиком
+  блобом, номер карты — отдельно, наружу только маска last4+бренд, полный номер —
+  `revealCardNumber` под Hello; CVC не храним) → `AutofillOrchestrator.ts`
+  (связывает сигналы страницы, хранилище и поповер; помнит вид формы/вкладку для
+  подстановки; offer-save с дедупом) → `AutofillPopoverManager.ts` +
+  `preload-autofillpopover.ts` + `src/autofillpopover.tsx` (поповер выбора
+  профиля/карты и предложения сохранить, отдельная `WebContentsView`, как у
+  паролей). Детект полей — в `preload-content.ts` (по autocomplete-токену +
+  эвристике, top-frame гвард; каналы `AUTOFILL_FIELD_FOCUS`/`AUTOFILL_FILL_FIELDS`/
+  `AUTOFILL_SUBMIT`). Подстановка карты — под Windows Hello. CRUD — раздел
+  настроек `src/components/settings/AutofillSection.tsx`.
 - `electron/DownloadManager.ts`, `electron/PermissionManager.ts` — перехват
   загрузок и запросов разрешений сайтов (камера/микрофон/геолокация/…) на
   `session.defaultSession`.
@@ -296,9 +308,11 @@ Chromium-браузеров (`electron/bookmarkImport/`), VPN (Xray-core доч�
    Firefox (`places.sqlite` + `logins.json`/NSS) и Safari (macOS, plist) тем же
    контрактом `ImportSource`/`IMPORT_RUN`; пароли v20 (App-Bound, Chrome 127+)
    требуют SYSTEM-DPAPI — сейчас помечаются unsupported.
-3. Автозаполнение форм (адреса, банковские карты) — сейчас автозаполнение
-   есть только для логина/пароля (`PasswordAutofillManager.ts`), общих
-   данных форм (не логин/пароль) в браузере ещё нет вообще.
+3. Автозаполнение форм (адреса, банковские карты) — СДЕЛАНО
+   (`electron/AutofillManager.ts`/`AutofillOrchestrator.ts`/`AutofillPopoverManager.ts`,
+   детект в `preload-content.ts`, раздел настроек `AutofillSection.tsx`): хранилище
+   с шифрованием, детект полей, подстановка с поповером, номер карты под Windows
+   Hello, offer-save при отправке формы.
 4. Локальная фонтов-бандловка вместо Google Fonts для офлайна/прода
    (см. «Платформа» ниже).
 5. Vision (распознавание картинок) для Qwen в AI-хабе — **отложено**:
