@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star, VenetianMask } from 'lucide-react';
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
@@ -903,8 +903,9 @@ export default function Toolbar({
             display: 'flex', alignItems: 'center', gap: 8, height: 38,
             padding: '0 12px', borderRadius: 'var(--radius-pill)',
           }}>
-            <span style={{ color: 'var(--text-faint)', display: 'inline-flex' }}>
-              {isHub ? <Search size={15} /> : <Lock size={14} />}
+            <span style={{ color: tab?.incognito ? 'var(--text-body)' : 'var(--text-faint)', display: 'inline-flex' }}
+              title={tab?.incognito ? 'Приватная вкладка' : undefined}>
+              {tab?.incognito ? <VenetianMask size={14} /> : isHub ? <Search size={15} /> : <Lock size={14} />}
             </span>
             <input
               ref={inputRef}

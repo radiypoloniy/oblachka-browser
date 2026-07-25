@@ -113,6 +113,18 @@ export function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }
   }
 
   const tileSize = size + 6;
+  // Инкогнито-вкладка — плитка-маска вместо favicon: мгновенно читается как приватная.
+  if (tab.incognito) {
+    return (
+      <span style={{
+        width: tileSize, height: tileSize, borderRadius: 'var(--radius-sm)', flex: 'none',
+        background: 'var(--neutral-700, #3a3a42)', color: '#fff',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      }} title="Приватная вкладка">
+        <VenetianMask size={Math.round(tileSize * 0.6)} />
+      </span>
+    );
+  }
   let inner: React.ReactNode;
   if (tab.faviconUrl) {
     inner = (

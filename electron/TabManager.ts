@@ -189,6 +189,8 @@ export class TabManager {
   private onAutofillFieldFocusCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void;
   // Автозаполнение — отправка формы с данными адреса/карты (offer-save). url — из wc.getURL().
   private onAutofillSubmitCb?: (tabId: string, kind: 'address' | 'card', fields: Record<string, string>, url: string) => void;
+  // Взводится при создании инкогнито-вкладки; см. takeIncognitoClearIfDone (чистка сессии инкогнито).
+  #pendingIncognitoClear = false;
   private firstTabLoaded = false; // защита: колбэк вызывается ровно один раз
   private closedTabs: string[] = []; // стек URL закрытых вкладок для Ctrl+Shift+T
   private errors = new Map<string, TabErrorState>(); // per-tab ошибки загрузки/краша
@@ -303,7 +305,7 @@ export class TabManager {
       url: '', title: 'Новая вкладка · AI-хаб',
       faviconUrl: null, isLoading: false,
       canGoBack: false, canGoForward: false, isHub: true, isPinned: false,
-      splitSide: null, isSleeping: false, kind: 'hub',
+      splitSide: null, isSleeping: false, incognito: false, kind: 'hub',
     });
 
     // Закреплённые
@@ -329,7 +331,7 @@ export class TabManager {
         tabError: null,
         url: '', title: t.kind === 'history' ? 'История посещений' : t.kind === 'bookmarks' ? 'Закладки' : 'Настройки',
         faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false,
-        isHub: false, isPinned, splitSide: null, isSleeping: false, kind: t.kind, section: t.section,
+        isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: false, kind: t.kind, section: t.section,
       };
     }
     if (t.sleeping) {
@@ -342,7 +344,7 @@ export class TabManager {
         isLoading: false, canGoBack: false, canGoForward: false,
         isHub: false, isPinned,
         splitSide: this.#tabSplitSide(t.id),
-        isSleeping: true, kind: 'page',
+        isSleeping: true, incognito: !!t.incognito, kind: 'page',
       };
     }
     if (!this.isHttpView(t.view) || t.view.webContents.isDestroyed()) {
@@ -352,7 +354,7 @@ export class TabManager {
         id: t.id, isActive: t.id === this.activeId,
         tabError: null, url: '', title: '', faviconUrl: null,
         isLoading: false, canGoBack: false, canGoForward: false,
-        isHub: false, isPinned, splitSide: null, isSleeping: false, kind: 'page',
+        isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: !!t.incognito, kind: 'page',
       };
     }
     const wc = t.view.webContents;
@@ -367,7 +369,7 @@ export class TabManager {
       canGoForward: wc.canGoForward(),
       isHub: false, isPinned,
       splitSide: this.#tabSplitSide(t.id),
-      isSleeping: false, kind: 'page',
+      isSleeping: false, incognito: !!t.incognito, kind: 'page',
     };
   }
 
@@ -730,6 +732,18 @@ export class TabManager {
     return !!this.tabMap.get(tabId)?.incognito;
   }
 
+  // Нужно ли ЧИСТИТЬ in-memory сессию инкогнито прямо сейчас (закрылась последняя приватная
+  // вкладка). Взводится при создании инкогнито-вкладки, гасится здесь — main зовёт на закрытии
+  // любой вкладки и, получив true, чистит storage. Так работает и для кнопки, и для хоткея, без
+  // дублирования флага в main.
+  takeIncognitoClearIfDone(): boolean {
+    if (this.#pendingIncognitoClear && !this.hasIncognitoTabs()) {
+      this.#pendingIncognitoClear = false;
+      return true;
+    }
+    return false;
+  }
+
   // ── Создание новой вкладки с реальной страницей ──
   // background=true: вкладка создаётся в фоне, без переключения (средний клик по ссылке).
   createTab(rawUrl?: string, background = false, ephemeral = false, incognito = false): string {
@@ -750,6 +764,7 @@ export class TabManager {
       },
     });
     const tab: ManagedTab = { id, view, sleeping: null, lastActiveAt: Date.now(), ephemeral, incognito };
+    if (incognito) this.#pendingIncognitoClear = true; // при закрытии последней приватной — чистим сессию
     this.tabMap.set(id, tab);
     this.nodes.push({ type: 'single', tabId: id });
     this.wirePageEvents(id, view);
@@ -1221,6 +1236,7 @@ export class TabManager {
       if (p.linkURL) {
         items.push(
           { label: 'Открыть ссылку в новой вкладке', click: () => this.createTab(p.linkURL, true) },
+          { label: 'Открыть ссылку в инкогнито', click: () => this.createTab(p.linkURL, true, false, true) },
         );
         // Пункт только когда текущая activeId ещё НЕ в показываемой паре — модель split
         // строго бинарная (пара = 2 панели), добавить третью панель к уже сплитнутой
@@ -2235,6 +2251,9 @@ export class TabManager {
       } else if (code === 'KeyT' && shift) {
         event.preventDefault();
         this.reopenLastClosedTab();         // Ctrl+Shift+T: восстановить закрытую
+      } else if (code === 'KeyN' && shift) {
+        event.preventDefault();
+        this.createTab(undefined, false, false, true); // Ctrl+Shift+N: новая вкладка инкогнито
       } else if (code === 'KeyW' && !shift) {
         event.preventDefault();
         this.closeTab(this.activeId);       // Ctrl+W: закрыть активную (хаб защищён)

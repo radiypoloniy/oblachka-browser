@@ -144,9 +144,8 @@ let startT0 = 0;
 let win: BrowserWindow | null = null;
 let chromeView: WebContentsView | null = null; // слой нашего React-хрома
 // In-memory сессия инкогнито-вкладок (см. INCOGNITO_PARTITION). Создаётся при старте окна; её
-// storage чистится, когда закрыта последняя инкогнито-вкладка (hadIncognitoTabs ниже).
+// storage чистится, когда закрыта последняя инкогнито-вкладка (TabManager.takeIncognitoClearIfDone).
 let incognitoSession: Session | null = null;
-let hadIncognitoTabs = false;
 let tabs: TabManager | null = null;
 let sess: SessionManager | null = null;
 // Последний присланный прямоугольник омнибокса (см. IPC.OMNIBOX_SET_BOUNDS) — пока без
@@ -480,11 +479,9 @@ function createWindow() {
     (wc, tabId) => {
       closeTranslatePopoverForClosedTab(wc); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover(); passwordAutofill.onTabClosed(tabId);
       // Закрылась последняя инкогнито-вкладка → стираем in-memory данные приватной сессии (куки/
-      // хранилище), Chrome-подобно. hadIncognitoTabs гарантирует, что не чистим зря на обычных вкладках.
-      if (hadIncognitoTabs && tabs && !tabs.hasIncognitoTabs()) {
-        hadIncognitoTabs = false;
-        void incognitoSession?.clearStorageData();
-      }
+      // хранилище), Chrome-подобно. takeIncognitoClearIfDone сам знает, когда это уместно (работает
+      // и для кнопки, и для хоткея Ctrl+Shift+N).
+      if (tabs?.takeIncognitoClearIfDone()) void incognitoSession?.clearStorageData();
     },
     // Заход 5: реальный клик в контент вкладки (не blur омнибокса) — закрывает дропдаун подсказок
     // в chrome, см. shared/ipc.ts::SUGGEST_DROPDOWN_CONTENT_FOCUS, Toolbar.tsx.
@@ -792,10 +789,7 @@ function registerIpc() {
   }));
   ipcMain.handle(IPC.TABS_GET_ALL, () => tabs?.snapshot() ?? []);
   ipcMain.handle(IPC.TAB_CREATE, (_e, url?: string) => tabs?.createTab(url));
-  ipcMain.handle(IPC.TAB_CREATE_INCOGNITO, (_e, url?: string) => {
-    hadIncognitoTabs = true; // взводим — при закрытии последней инкогнито-вкладки чистим сессию
-    return tabs?.createTab(url, false, false, true);
-  });
+  ipcMain.handle(IPC.TAB_CREATE_INCOGNITO, (_e, url?: string) => tabs?.createTab(url, false, false, true));
   ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (_e, kind: 'history' | 'settings' | 'bookmarks', section?: string) => tabs?.createSpecialTab(kind, section));
   ipcMain.handle(IPC.TAB_CLOSE, (_e, id: string) => tabs?.closeTab(id));
   ipcMain.handle(IPC.TAB_ACTIVATE, (_e, id: string) => tabs?.activate(id));

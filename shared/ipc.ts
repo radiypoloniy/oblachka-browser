@@ -58,6 +58,7 @@ export interface TabState {
   isPinned: boolean;    // закреплена — переживает перезапуск, нельзя закрыть крестиком
   splitSide: 'left' | 'right' | null; // null = не в split-режиме
   isSleeping: boolean;  // WebContentsView выгружен, хранятся только url/title/favicon
+  incognito: boolean;   // приватная вкладка (in-memory сессия, без истории) — для бейджа в UI
   // Вид содержимого вкладки — 'page' обычная страница (реальный WebContentsView), 'hub' —
   // единственный синглтон-хаб (isHub уже покрывает это, kind добавлен для полноты и симметрии
   // с history/settings). 'history'/'settings' — псевдо-вкладки без WebContentsView (view: null
