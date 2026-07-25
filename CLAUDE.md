@@ -26,7 +26,10 @@ UI построен на дизайн-системе Oblako (Liquid Glass) че�
 `TabOrganizer.ts` и `HistorySearch.ts` ниже). Перевод страниц — движок Bergamot
 (WASM/CPU, `@browsermt/bergamot-translator`, свой `worker_thread`) с фолбэком на
 Qwen. История — `better-sqlite3` (нативный модуль, требует пересборки под
-Electron ABI, см. `postinstall`).
+Electron ABI, см. `postinstall`). Артефакты «Студии» блокнота рисуют
+детерминированные либы в renderer: майндкарты — `markmap-lib` + `markmap-view`
+(SVG), инфографика — `@antv/infographic` (SVG по декларативному DSL); модель
+отдаёт только структуру/текст (см. «Блокнот» ниже).
 
 ## Команды
 
@@ -176,6 +179,26 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   эндпоинт/токен из настроек). `GeminiFactCheck.ts` + `AiKeyStore.ts` —
   облачный фактчек через Gemini API (ключ persist через `safeStorage`) — это
   единственная не-локальная модель в проекте, остальной AI — локальный Qwen.
+- Блокнот (NotebookLM-подобный большой AI-экран, открывается ТОЛЬКО с новой
+  вкладки — режим 'ai' Hub'а). 3 колонки: Источники / Чат / Студия.
+  `src/components/Notebook.tsx` — каркас-обёртка (рисует левую и правую колонки,
+  в центр кладёт прежний `AiChatView` — движок чата не переписан, лишь заземлён);
+  `src/newtab/notebook.ts` — стор источников в localStorage (`NotebookSource`,
+  выбор чекбоксами, `getSelectedSourceContext()` собирает текст выбранных
+  источников с лимитом символов). **Заземление чата:** выбранный контекст
+  подмешивается в промпт (prompt stuffing, без эмбеддингов) — `send()` шлёт его
+  четвёртым аргументом `sendHubChatMessage`, в `main.ts` строится
+  grounding-промпт. Веб-grounding (SearXNG) и источники взаимоисключающи.
+  `electron/NotebookExtract.ts` — извлечение текста URL-источника в СКРЫТОМ
+  `WebContentsView` (markBackground, нулевые bounds) через тот же
+  `extractEnrichedText`, что и индексатор истории. `electron/NotebookStudio.ts` —
+  «Студия»: генерация 4 артефактов по выбранным источникам одноразовым прогоном
+  `runChatMessage(prompt, [])`. Принцип: модель отдаёт ТОЛЬКО структуру/текст,
+  рендер детерминированный в renderer (модалка в `Notebook.tsx`): саммари →
+  Markdown; майндкарта → markdown-аутлайн → `markmap`; инфографика → DSL AntV
+  → `@antv/infographic`; тест → строгий JSON (валидируется `normalizeQuiz` в
+  main, страхует битый индекс ответа) → интерактивный `QuizView`. Каналы
+  `NOTEBOOK_EXTRACT_URL`/`NOTEBOOK_STUDIO_GEN`.
 - `electron/WebAppManager.ts` — веб-приложения раздела «Приложения» AI-панели:
   чужие сайты в отдельных WebContentsView (sandbox, без preload, мобильный UA)
   в «дырках», размеченных панелью; перевод координат — в AiPanelManager.
@@ -314,7 +337,10 @@ Chromium-браузеров (`electron/bookmarkImport/`), VPN (Xray-core доч�
 (`VaultCrypto.ts` + `PasswordManager.ts`, автозаполнение без кликов,
 инлайн-генератор с автосейвом), общий импорт данных из других браузеров
 (закладки/история/пароли v10/v11 — `electron/browserImport/`, диалог импорта +
-онбординг первого запуска, раздел настроек «Браузер»).
+онбординг первого запуска, раздел настроек «Браузер»), блокнот на большом
+AI-экране (NotebookLM-подобный: источники с извлечением текста, заземлённый на
+них чат, «Студия» — саммари/майндкарта/инфографика/тест — `Notebook.tsx` +
+`NotebookExtract.ts` + `NotebookStudio.ts`).
 
 Осталось по дорожной карте:
 1. Страницы ошибок навигации / падения рендер-процесса — есть частично
