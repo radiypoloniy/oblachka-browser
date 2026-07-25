@@ -160,6 +160,9 @@ export default function App() {
   const omniboxRef = useRef<HTMLInputElement>(null);
 
   const active = tabs.find((t) => t.id === activeId);
+  // Активна ли приватная вкладка — тогда весь chrome (острова, тулбар, титлбар) уходит в тёмный
+  // «инкогнито»-режим (как отдельное окно инкогнито в Chrome, но у нас — по активной вкладке).
+  const activeIncognito = active?.incognito ?? false;
   const isHub = active?.isHub ?? true;
   const tabError = active?.tabError ?? null;
   // kind — заход на псевдо-вкладки (История/Настройки, см. shared/ipc.ts::TabState.kind):
@@ -195,10 +198,14 @@ export default function App() {
   const allTabsRef = useRef(tabs);
   allTabsRef.current = tabs;
 
-  // Тема
+  // Тема. Инкогнито принудительно тёмный (data-theme="dark") + флаг data-incognito, который в
+  // theme-dark.css перекрашивает острова в «приятно-чёрный» (см. блок [data-incognito]).
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  }, [dark]);
+    const root = document.documentElement;
+    root.setAttribute('data-theme', (dark || activeIncognito) ? 'dark' : 'light');
+    if (activeIncognito) root.setAttribute('data-incognito', 'true');
+    else root.removeAttribute('data-incognito');
+  }, [dark, activeIncognito]);
 
   // Онбординг: однократное предложение импорта из другого браузера при первом запуске (если на
   // диске реально найден источник). shouldOfferImport вернёт false после первого показа (флаг
@@ -223,11 +230,13 @@ export default function App() {
   // symbolColor = --text-body темы: light уже совпадал (#46443F), dark раньше был #EAE8E3 —
   // не совпадал с реальным --text-body dark (#CBC7D2), исправлено заодно.
   useEffect(() => {
+    // Инкогнито — свой near-black фон титлбара (совпадает с --app-bg блока [data-incognito]
+    // в theme-dark.css); иначе обычная light/dark логика.
     void window.oblako.setTitleBarOverlay({
-      color: dark ? '#15131A' : '#F2F2F7',
-      symbolColor: dark ? '#CBC7D2' : '#46443F',
+      color: activeIncognito ? '#121216' : dark ? '#15131A' : '#F2F2F7',
+      symbolColor: (dark || activeIncognito) ? '#CBC7D2' : '#46443F',
     });
-  }, [dark]);
+  }, [dark, activeIncognito]);
 
   // Атомарная подписка: tabs + nodes в одном IPC-сообщении → один рендер, нет рассинхрона.
   useEffect(() => {
@@ -530,7 +539,6 @@ export default function App() {
 
   const select = (id: string) => { setActiveId(id); window.oblako.activateTab(id); };
   const newTab = () => { setActiveId(HUB_ID); window.oblako.activateTab(HUB_ID); };
-  const newIncognitoTab = () => { void (async () => { setActiveId(await window.oblako.createIncognitoTab()); })(); };
   const close = (id: string) => { window.oblako.closeTab(id); };
 
   const submit = async (input: string) => {
@@ -557,7 +565,7 @@ export default function App() {
         tabs={tabs} activeId={activeId}
         collapsed={effectiveCollapsed}
         onCollapsedChange={handleSidebarCollapse}
-        onSelect={select} onClose={close} onNewTab={newTab} onNewIncognitoTab={newIncognitoTab}
+        onSelect={select} onClose={close} onNewTab={newTab} onNewTabMenu={() => { void window.oblako.showNewTabMenu(); }}
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
         onSplit={(id) => { setSplitRatioState(0.5); void window.oblako.enterSplit(id); }}
         onExitSplit={(tabId) => { void window.oblako.exitSplit(tabId); }}

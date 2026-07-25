@@ -7,7 +7,7 @@ import type { MenuItemConstructorOptions, Session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { TabManager } from './TabManager';
+import { TabManager, HUB_ID } from './TabManager';
 import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
 import { HistoryManager } from './HistoryManager';
@@ -1329,6 +1329,17 @@ function registerIpc() {
       click: () => tabs!.closeTab(id),
     });
     Menu.buildFromTemplate(items).popup({ window: win });
+  });
+
+  // ПКМ по кнопке «Новая вкладка» — обычная / инкогнито / восстановить закрытую (как в Chrome).
+  ipcMain.handle(IPC.NEW_TAB_SHOW_MENU, () => {
+    if (!tabs || !win) return;
+    Menu.buildFromTemplate([
+      { label: 'Новая вкладка', accelerator: 'Ctrl+T', click: () => tabs!.activate(HUB_ID) },
+      { label: 'Новая вкладка инкогнито', accelerator: 'Ctrl+Shift+N', click: () => tabs!.createTab(undefined, false, false, true) },
+      { type: 'separator' },
+      { label: 'Открыть закрытую вкладку', accelerator: 'Ctrl+Shift+T', enabled: tabs.hasClosedTabs(), click: () => tabs!.reopenLastClosedTab() },
+    ]).popup({ window: win });
   });
 
   // Нативное ПКМ-меню заголовка группы.

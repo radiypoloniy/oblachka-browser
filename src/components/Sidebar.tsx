@@ -54,7 +54,7 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onNewTab: () => void;
-  onNewIncognitoTab: () => void;
+  onNewTabMenu: () => void; // ПКМ по кнопке «Новая вкладка» (обычная/инкогнито/восстановить)
   onTabMenu: (id: string) => void;
   onSplit: (id: string) => void;
   onExitSplit: (tabId: string) => void;
@@ -769,7 +769,7 @@ const floatingIconBtn: React.CSSProperties = {
 
 export default function Sidebar({
   tabs, sidebarNodes, activeId, collapsed, onCollapsedChange,
-  onSelect, onClose, onNewTab, onNewIncognitoTab, onTabMenu, onSplit, onExitSplit,
+  onSelect, onClose, onNewTab, onNewTabMenu, onTabMenu, onSplit, onExitSplit,
   onSettings, onHistory, onReorder, onMoveSection,
   getContentRect, onDragOverContent, onDropOnContent,
   organizeTabsCount, organizeState, organizeLongWait, organizeProposal,
@@ -1081,9 +1081,10 @@ export default function Sidebar({
         }}>
           <button
             className="no-drag"
-            title="Новая вкладка"
+            title="Новая вкладка (ПКМ — инкогнито / восстановить)"
             style={floatingIconBtn}
             onClick={onNewTab}
+            onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
           ><Plus size={17} /></button>
@@ -1402,20 +1403,20 @@ export default function Sidebar({
       {/* «Новая вкладка» — отдельная плашка-остров; история/настройки — лёгкие иконки рядом,
           НЕ часть плашки (не сливаются в общую пластину). */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
-        <button className="no-drag" title="Новая вкладка"
+        <button className="no-drag" title="Новая вкладка (ПКМ — инкогнито / восстановить)"
           style={{
             ...innerPlate,
             flex: 1, display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 12px', color: 'var(--text-muted)', cursor: 'default',
           }}
           onClick={onNewTab}
+          onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
         >
           <Plus size={17} />
           <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>Новая вкладка</span>
         </button>
-        <button className="no-drag icon-btn" title="Новая вкладка инкогнито" style={iconBtn} onClick={onNewIncognitoTab}><VenetianMask size={17} /></button>
         <button className="no-drag icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
         <button className="no-drag icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
       </div>
