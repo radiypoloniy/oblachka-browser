@@ -5,31 +5,46 @@
 ## Что это за проект
 
 Oblako — приватный браузер на Electron (Chromium + Node), Windows x64, со
-встроенным VPN и локальным AI. Ядро (окно, вкладки, омнибокс, split, группы,
-закреп, усыпление, автосейв сессии), сантехника (адблок, история, загрузки,
-разрешения сайтов) и первая часть AI (перевод/пересказ/объяснение выделения,
-AI-группировка вкладок, боковая AI-панель с чатом) — уже реализованы. VPN
-пока мок-пилюля в тулбаре (см. `src/components/Toolbar.tsx`), реального
-Xray-процесса ещё нет. Актуальный список готового/недостающего — в README.md
-и в разделе «Дорожная карта» ниже.
+встроенным VPN и AI. Ядро (окно, вкладки, омнибокс, split, группы, закреп,
+усыпление, автосейв сессии), сантехника (адблок, история, загрузки, разрешения
+сайтов, пароли/vault) и AI (локальный инференс Qwen через `node-llama-cpp` —
+перевод/пересказ/объяснение выделения, перевод страниц, AI-группировка
+вкладок, боковая AI-панель с чатом; плюс облачные интеграции — AI-хаб на
+новой вкладке с веб-поиском через SearXNG и фактчек через Gemini) — уже
+реализованы. VPN — Xray-core дочерним процессом (импорт подписки, генерация
+конфига, `session.setProxy`, fail-closed kill switch), поповер «Защита» в
+тулбаре объединяет VPN и адблок (см. `src/components/Toolbar.tsx`). Не
+позиционируем браузер как «только локальный ИИ» — часть AI-функций облачная,
+см. ниже. Актуальный список готового/недостающего — в README.md и в разделе
+«Дорожная карта» ниже.
 
 Стек: **Electron 40 + TypeScript (strict) + Vite + React 18**. Иконки — lucide-react.
-UI построен на дизайн-системе Oblako (Liquid Glass) через CSS-токены. Локальный
-AI — `node-llama-cpp` (LLM) + `@huggingface/transformers` (эмбеддинги, в воркере)
-+ `@mozilla/readability` (извлечение текста страницы). История — `better-sqlite3`
-(нативный модуль, требует пересборки под Electron ABI, см. `postinstall`).
+UI построен на дизайн-системе Oblako (Liquid Glass) через CSS-токены. AI-инференс —
+`node-llama-cpp` (локальная LLM Qwen) + `@mozilla/readability` (извлечение текста
+страницы). Эмбеддинги/векторный поиск (`@huggingface/transformers`) испытывались
+и были удалены из проекта целиком — тупиковый подход на этом корпусе, не баг (см.
+`TabOrganizer.ts` и `HistorySearch.ts` ниже). Перевод страниц — движок Bergamot
+(WASM/CPU, `@browsermt/bergamot-translator`, свой `worker_thread`) с фолбэком на
+Qwen. История — `better-sqlite3` (нативный модуль, требует пересборки под
+Electron ABI, см. `postinstall`).
 
 ## Команды
 
 ```bash
-npm run dev              # Vite (5173) + Electron dev-режим одновременно
-npm run build             # vite build + tsc -p electron/tsconfig.json (прод-сборка)
-npm start                 # запуск собранного прод-приложения (dist-electron)
-npm run download-filters  # (легаси) EasyList в resources/ — текущий адблок их НЕ читает
+npm run dev                          # Vite (5173) + Electron dev-режим одновременно
+npm run build                        # vite build + tsc -p electron/tsconfig.json (прод-сборка)
+npm start                            # запуск собранного прод-приложения (dist-electron)
+npm run download-filters             # (легаси) EasyList в resources/ — текущий адблок их НЕ читает
+npm run download-xray                # бинарник Xray-core для VPN (electron/VpnProcess.ts)
+npm run download-translation-models  # пары en<->X для Bergamot из реестра Mozilla Remote Settings
+npm run bergamot-smoke               # ручная проверка перевода страниц без UI (см. README)
+npm run measure-model                # замер требований GGUF-модели (VRAM/RAM) до скачивания
 ```
 
-Локальная LLM (GGUF) скачивается из UI (реестр/каталог моделей, `electron/ModelDownloader.ts` +
-`src/components/ModelsSection.tsx`), отдельного npm-скрипта для неё нет.
+Локальная LLM (GGUF, Qwen) скачивается из UI (реестр/каталог моделей —
+`electron/ModelDownloader.ts` + `electron/ModelCatalog.ts` + `electron/ModelRegistry.ts` +
+`electron/HardwareInfo.ts` (замер VRAM/RAM) + `src/components/ModelsSection.tsx`), отдельного
+npm-скрипта для загрузки самой модели нет.
 
 Проверка типов ОБОИХ таргетов (обязательна после изменений, см. «Ритм работы»):
 
@@ -64,20 +79,84 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   YouTube-фильтры, + EasyPrivacy), кэш в userData с фоновым автообновлением раз в 3 дня
   при старте; whitelist по доменам. EasyList из `download-filters` движок НЕ использует.
 - `electron/HistoryManager.ts` — история посещений на `better-sqlite3`.
+  Полнотекстовый поиск поверх неё: `HistoryIndexer.ts` (FTS5-индекс контента,
+  стемминг через `textStemming.ts`/`snowball-stemmers`), `HistorySearch.ts`
+  (умный поиск — FTS5 + Qwen-реранк, без эмбеддингов, см. «Стек» выше),
+  `HistoryContentBackfill.ts` (докачка контента старых визитов),
+  `HistoryNoiseFilter.ts` (фильтр шумных URL из выдачи).
 - `electron/BookmarkManager.ts` — закладки на своём `bookmarks.sqlite`
   (отдельный файл от истории, не таблица внутри неё — разный профиль риска).
-  `electron/bookmarkImport/` — импорт из других браузеров за интерфейсом
-  `BookmarkImporter` (сейчас — Chromium-семейство).
+  `electron/bookmarkImport/` — legacy-импорт ТОЛЬКО закладок за интерфейсом
+  `BookmarkImporter` (дропдаун в панели закладок, Chromium-семейство).
+- `electron/browserImport/` — общий мультитиповый импорт данных из других
+  браузеров (закладки/история/пароли) для диалога импорта и онбординга первого
+  запуска, отдельно от bookmarkImport выше. `ChromiumDiscovery.ts` — перечисление
+  всех профилей Chrome/Edge/Brave/Яндекс/Opera/Vivaldi на диске (не только
+  Default); `ImportManager.ts` — оркестратор (гейт `IMPLEMENTED_TYPES` решает,
+  какие типы реально показываются в диалоге); ридеры по типу данных
+  (`ChromiumBookmarksReader`/`ChromiumHistoryReader`/`ChromiumPasswordReader`).
+  `chromiumSqlite.ts` — чтение залоченных БД (History/Login Data) через копию в
+  temp (+WAL/SHM), readonly; `dpapi.ts` — Windows DPAPI-разворачивание
+  мастер-ключа паролей через PowerShell (без нативной зависимости, за
+  платформенным интерфейсом под macOS-порт). Пароли обычного Chromium
+  (`ChromiumPasswordReader`): v10/v11 (AES-256-GCM), v20 (App-Bound) не
+  поддержан — нужен SYSTEM-DPAPI. Яндекс.Браузер — СВОЯ схема
+  (`YandexPasswordReader`): файл `Ya Passman Data` (не `Login Data`), ключ из
+  `meta.local_encryptor_data` (завёрнут мастер-ключом + сигнатура Яндекса), AAD =
+  SHA1 полей записи; мастер-пароль Яндекса не поддержан. Имя файла паролей по
+  вендору — `passwordDbFile()` в discovery. `PasswordManager.bulkImport` строго
+  неразрушающий (только вставка новых, дедуп по origin+username).
+- VPN: `electron/VpnSubscription.ts`/`VpnParser.ts` (импорт подписки,
+  vless/trojan) → `VpnKeyStore.ts` (зашифрованное хранение) →
+  `VpnConfigBuilder.ts` (генерация конфига Xray) → `VpnProcess.ts` (дочерний
+  процесс Xray-core, `session.setProxy`, fail-closed kill switch) →
+  `VpnPopoverManager.ts` + `preload-vpnpopover.ts` (поповер «Защита» —
+  список серверов, статус подключения, объединён с адблоком).
+- Пароли/vault: `electron/VaultCrypto.ts` (конверт DEK/KEK, DEK завёрнут через
+  `safeStorage` — уже кроссплатформенно, отдельного `SecretStore`-интерфейса
+  не потребовалось) → `PasswordManager.ts` (сейф на своём `passwords.sqlite`)
+  → `PasswordAutofillManager.ts` (автозаполнение логина/пароля на странице) →
+  `PasswordPopoverManager.ts` + `preload-passwordpopover.ts` (поповер над
+  полем: подсказки, инлайн-генератор с автосейвом сгенерированного). Список
+  паролей в настройках — поиск по сайту/логину, favicon-иконки (см.
+  `FaviconService.ts`) и OS-гейт показа/копирования пароля (см. `osAuth.ts`).
+- `electron/osAuth.ts` — подтверждение личности через ОС перед показом/копированием
+  пароля через **Windows Hello** (WinRT `UserConsentVerifier.RequestVerificationAsync`
+  — PIN/биометрия/пароль, как у Яндекса). WinRT зовётся из PowerShell (нативный
+  доступ к типу + AsTask-рефлексия; C#-Add-Type не годится — не находит WinMD).
+  ⚠️ .ps1 пишется с UTF-8 BOM — иначе PowerShell 5.1 читает его в ANSI и кириллица
+  ломает парсер. (Прежний CredUI+`LogonUser` не работал: LogonUser не валидирует
+  PIN/Microsoft-аккаунт.) За платформенным интерфейсом `verifyUser()` под
+  macOS-порт; гейт в main (окно доверия 5 мин продлевается только при Verified +
+  тумблер `passwordAuthEnabled`). Fail-safe: отмена → запрет, Hello недоступен → разрешение.
+- `electron/FaviconService.ts` — favicon для адресов (список паролей): тянет
+  ТОЛЬКО с самого домена через `net.fetch` (без сторонних favicon-сервисов),
+  двойной кэш (файлы в userData + память), канал `FAVICON_GET`.
 - `electron/DownloadManager.ts`, `electron/PermissionManager.ts` — перехват
   загрузок и запросов разрешений сайтов (камера/микрофон/геолокация/…) на
   `session.defaultSession`.
-- `electron/AiPanelManager.ts`, `electron/TranslatePopoverManager.ts`,
-  `electron/TranslationService.ts` — локальный AI: боковая AI-панель с чатом
-  (оверлей поверх контента, свой `webContents`+preload), поповер над
-  выделением текста (перевод/пересказ/упрощение/объяснение), сам инференс
-  через `node-llama-cpp`. Каждый со своим preload-файлом
-  (`preload-aipanel.ts`, `preload-translatepopover.ts`) — не переиспользуют
-  боевой `preload.ts`, т.к. живут в изолированных `WebContentsView`.
+- `electron/AiPanelManager.ts`, `electron/TranslatePopoverManager.ts` —
+  боковая AI-панель с чатом (оверлей поверх контента, свой
+  `webContents`+preload) и поповер над выделением текста (перевод/пересказ/
+  упрощение/объяснение), инференс через `node-llama-cpp` (`TranslationService.ts`).
+  Каждый со своим preload-файлом (`preload-aipanel.ts`,
+  `preload-translatepopover.ts`) — не переиспользуют боевой `preload.ts`,
+  т.к. живут в изолированных `WebContentsView`.
+- Перевод страниц — абстракция `ITranslationEngine`
+  (`electron/TranslationEngine.ts`, `TranslationEngineRegistry.ts`): дефолт —
+  `BergamotService.ts`/`BergamotWorkerEntry.ts`/`BergamotTranslationEngine.ts`
+  (WASM/CPU, свой `worker_threads.Worker`), фолбэк — `QwenTranslationEngine.ts`
+  (если для пары языков нет модели Bergamot). `CachingTranslationEngine.ts` +
+  `TranslationCacheManager.ts` — кэш переводов в SQLite,
+  `TranslationConfig.ts` — настройки движка, `PageTranslateManager.ts` —
+  оркестрация перевода активной вкладки.
+- `electron/HubChatManager.ts` — чат AI-хаба на новой вкладке, свой файл БД
+  (тот же приём изоляции, что у `passwords.sqlite`), инференс через
+  `TranslationService.ts::runChatMessage`. `SearxngSearch.ts` +
+  `SearxngKeyStore.ts` — веб-grounding хаба (SearXNG → Qwen со стримом,
+  эндпоинт/токен из настроек). `GeminiFactCheck.ts` + `AiKeyStore.ts` —
+  облачный фактчек через Gemini API (ключ persist через `safeStorage`) — это
+  единственная не-локальная модель в проекте, остальной AI — локальный Qwen.
 - `electron/WebAppManager.ts` — веб-приложения раздела «Приложения» AI-панели:
   чужие сайты в отдельных WebContentsView (sandbox, без preload, мобильный UA)
   в «дырках», размеченных панелью; перевод координат — в AiPanelManager.
@@ -89,6 +168,16 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   модель сама придумывает названия групп по смыслу → `OrganizeCluster[]` →
   `TabManager.applyOrganize()`. Эмбеддинг-кластеризация (косинус поверх
   векторов) отсюда удалена — модель работает по сырым заголовкам/URL.
+- `electron/ModelDownloader.ts`/`ModelCatalog.ts`/`ModelRegistry.ts` — каталог
+  и загрузка GGUF-моделей Qwen; `HardwareInfo.ts` — замер VRAM/RAM для подбора
+  модели под железо; `LlamaBackend.ts` — обёртка над `node-llama-cpp`
+  (инициализация контекста/сессии инференса), общая для AI-панели, хаба,
+  перевода и группировки вкладок.
+- `electron/FindBarManager.ts` + `preload-findbar.ts` — поиск по странице
+  (Ctrl+F), свой `WebContentsView`-оверлей, как AI-панель/поповеры.
+- `electron/SuggestDropdownManager.ts` + `preload-suggestdropdown.ts` —
+  выпадашка подсказок омнибокса, тоже отдельный `WebContentsView`;
+  `SearchSuggestFetcher.ts` — подтягивает живые поисковые подсказки.
 - `electron/AppProtocol.ts` — кастомные протоколы (`oblako-chrome://` для прод-
   загрузки хрома с COOP/COEP-заголовками, protocol для локальной AI-модели).
 - `electron/preload.ts` — безопасный мост боевого хрома: типизированный
@@ -106,9 +195,10 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   Skills/Passwords), `Settings.tsx` — только корень и навигация. UI-элементы
   настроек (кнопки, поля, карточки статуса, заголовки) берутся из
   `settings/kit.tsx` — **не рисовать с нуля в секциях.**
-- `src/aipanel.tsx`, `src/translatepopover.tsx` — отдельные React-точки входа
-  (свои HTML/entry в `vite.config.ts`) для AI-панели и поповера перевода —
-  у них своя `WebContentsView` и свой preload, это не часть `src/App.tsx`.
+- `src/aipanel.tsx`, `src/translatepopover.tsx`, `src/findbar.tsx`,
+  `src/passwordpopover.tsx`, `src/vpnpopover.tsx`, `src/suggestdropdown.tsx` —
+  отдельные React-точки входа (свои HTML/entry в `vite.config.ts`), у каждой
+  своя `WebContentsView` и свой preload, это не часть `src/App.tsx`.
   Раздел «Приложения» панели — `src/components/aiApps.tsx` (домашний экран,
   обои, локальные приложения, виджеты, веб-слоты; токены — `tokens/apps.css`).
 - `src/styles/tokens/` — токены дизайн-системы. Цвета/радиусы/тени берутся
@@ -150,8 +240,11 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
 Проект сейчас Windows x64, но macOS-версия в планах. Чтобы порт был «дописать
 слой», а не «переписать проект», ВЕСЬ платформенно-зависимый код изолируй за
 интерфейсами/абстракциями, а не размазывай по проекту:
-- **Хранилище секретов** (пароли, позже): абстрактный `SecretStore`, под капотом
-  Windows DPAPI / macOS Keychain. Остальной код знает только интерфейс.
+- **Хранилище секретов** (пароли/vault, ключи Gemini): уже кроссплатформенно —
+  `electron/VaultCrypto.ts`/`AiKeyStore.ts` заворачивают через Electron
+  `safeStorage` (DPAPI на Windows, Keychain на macOS из коробки), отдельный
+  `SecretStore`-интерфейс не потребовался. Остальной код не завязан на
+  конкретный механизм шифрования.
 - **Запуск VPN/Xray**: абстракция над спавном процесса и настройкой прокси —
   реализации Windows / macOS отдельные.
 - **AI-runtime / VRAM-бюджет**: учитывать, что Windows = NVIDIA/CUDA + выделенная
@@ -180,35 +273,70 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
 
 Сделано: автосейв сессии, контекстные меню ПКМ (вкладка/группа), хоткеи,
 закреплённые вкладки, усыпление, split view, drag-and-drop, группы вкладок,
-адблок (Ghostery prebuilt, автообновление листов), история посещений, менеджер загрузок,
-разрешения сайтов, AI-поповер над выделением (перевод/пересказ/упрощение/
-объяснение), AI-группировка вкладок, боковая AI-панель с чатом, закладки
-(звезда в омнибоксе + панель, `electron/BookmarkManager.ts`) с импортом из
-Chromium-браузеров (`electron/bookmarkImport/`).
+адблок (Ghostery prebuilt, автообновление листов), история посещений с
+полнотекстовым поиском (FTS5 + Qwen-реранк), менеджер загрузок, разрешения
+сайтов, AI-поповер над выделением (перевод/пересказ/упрощение/объяснение),
+перевод страниц (Bergamot WASM + фолбэк Qwen, кэш переводов), AI-группировка
+вкладок, боковая AI-панель с чатом, AI-хаб на новой вкладке (свой чат,
+веб-grounding через SearXNG, фактчек через Gemini), закладки (звезда в
+омнибоксе + панель, `electron/BookmarkManager.ts`) с импортом из
+Chromium-браузеров (`electron/bookmarkImport/`), VPN (Xray-core дочерним
+процессом — подписка, конфиг, kill switch, поповер «Защита»), пароли/vault
+(`VaultCrypto.ts` + `PasswordManager.ts`, автозаполнение без кликов,
+инлайн-генератор с автосейвом), общий импорт данных из других браузеров
+(закладки/история/пароли v10/v11 — `electron/browserImport/`, диалог импорта +
+онбординг первого запуска, раздел настроек «Браузер»).
 
 Осталось по дорожной карте:
 1. Страницы ошибок навигации / падения рендер-процесса — есть частично
    (`src/components/TabError.tsx`, `TabErrorState` в `shared/ipc.ts`), уточнять
    охват перед доработкой.
-2. VPN: Xray дочерним процессом (сейчас в тулбаре только мок-пилюля).
-3. Пароли / vault (см. раздел «Кроссплатформенность» — `SecretStore` за
-   платформенным интерфейсом, DPAPI на Windows).
-4. Импорт паролей из других браузеров (Chrome/Edge/Яндекс — их `Login Data`,
-   зашифрован через Windows DPAPI) — зависит от готового vault (пункт 3),
-   делать после него. Выше риском, чем импорт закладок — работа с чужим
-   зашифрованным хранилищем учётных данных, не просто парсинг JSON.
-5. Автозаполнение форм (адреса, банковские карты) — сейчас автозаполнение
+2. Импорт данных из браузеров — СДЕЛАНО для Chromium-семейства
+   (закладки/история/пароли v10/v11, `electron/browserImport/`). Осталось:
+   Firefox (`places.sqlite` + `logins.json`/NSS) и Safari (macOS, plist) тем же
+   контрактом `ImportSource`/`IMPORT_RUN`; пароли v20 (App-Bound, Chrome 127+)
+   требуют SYSTEM-DPAPI — сейчас помечаются unsupported.
+3. Автозаполнение форм (адреса, банковские карты) — сейчас автозаполнение
    есть только для логина/пароля (`PasswordAutofillManager.ts`), общих
    данных форм (не логин/пароль) в браузере ещё нет вообще.
-6. Локальная фонтов-бандловка вместо Google Fonts для офлайна/прода
+4. Локальная фонтов-бандловка вместо Google Fonts для офлайна/прода
    (см. «Платформа» ниже).
-7. Vision (распознавание картинок) для Qwen в AI-хабе — **отложено**:
+5. Vision (распознавание картинок) для Qwen в AI-хабе — **отложено**:
    `node-llama-cpp` (Node-обёртка над llama.cpp, которой пользуется проект)
    физически не прокидывает мультимодальность в свой API ни в установленной
    версии (3.19.0), ни в последней доступной (та же 3.19.0) — сама llama.cpp
    давно умеет (`libmtmd`, Qwen2-VL/2.5-VL и т.п.), но именно связка с Node
    этого не выставляет. Не вопрос усилий — библиотека физически не даёт.
    Возвращаться при обновлении node-llama-cpp.
+
+## Безопасность паролей — бэклог усиления (аудит 2026-07-25)
+
+Прямых утечек нет, архитектура надёжная (шифрование AES-256-GCM + safeStorage,
+plaintext не пишется на диск/в логи, к веб-страницам API не пробрасывается,
+origin из доверенного `wc.getURL()`, автофилл гейтится top-frame с обеих сторон).
+Реализовать по мере готовности (порядок — по значимости):
+1. **KDF экспорта.** `VaultCrypto.encryptWithPassphrase` использует `scryptSync`
+   с дефолтами Node (N=2¹⁴) — слабовато для переносимого файла при слабой фразе.
+   Поднять до N=2¹⁶–2¹⁷ (r=8,p=1) + явный `maxmem`, параметры писать в конверт
+   (`v:2`, старые файлы читать по-старому).
+2. **Буфер обмена.** `PasswordManager.copyField` чистит буфер через 30с, но
+   Windows Clipboard History / облачный буфер могут сохранить пароль. Писать в
+   буфер с флагом «исключить из истории» (`ExcludeClipboardContentFromMonitor
+   Processing`/`CanIncludeInClipboardHistory=0`) — Electron не умеет, нужен
+   маленький нативный/PowerShell-хелпер за платформенным интерфейсом.
+3. **Hello и для автозаполнения (опция).** Сейчас Hello-гейт (см. `osAuth.ts`)
+   закрывает только просмотр/копирование в настройках; автофилл в страницу и
+   «Заполнить» из поповера не гейтятся (как у Chrome/Яндекса). Добавить тумблер
+   «требовать Hello и для автозаполнения».
+4. **Приватность favicon.** `FaviconService` при открытии списка ходит на каждый
+   домен сохранённого пароля (в т.ч. импортированных) — раскрывает список
+   аккаунтов серверам, запрос через default-сессию (может нести куки). Ходить в
+   сессии без кук и/или лениво (только видимые строки).
+5. **Окно доверия Hello.** Сейчас глобальное 5 мин на все записи — сделать
+   настраиваемым/короче при желании.
+6. **Метаданные в открытом виде.** В `passwords.sqlite` `origin/url/username/
+   title` — plaintext (шифруются только `secret`/`notes`), как у Chrome. Список
+   аккаунтов виден при доступе к файлу; шифрование метаданных — если понадобится.
 
 ## Платформа
 
