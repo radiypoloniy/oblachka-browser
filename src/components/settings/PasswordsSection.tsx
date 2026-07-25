@@ -18,6 +18,7 @@ export default function PasswordsSection() {
   const [revealed, setRevealed] = useState<Record<number, string>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [authEnabled, setAuthEnabled] = useState(true);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -51,11 +52,17 @@ export default function PasswordsSection() {
   useEffect(() => {
     let mounted = true;
     window.oblako.listPasswords().then((list) => { if (mounted) setEntries(list); });
+    window.oblako.getPasswordAuthEnabled().then((v) => { if (mounted) setAuthEnabled(v); });
     const unsub = window.oblako.onPasswordsChanged(() => {
       window.oblako.listPasswords().then((list) => { if (mounted) setEntries(list); });
     });
     return () => { mounted = false; unsub(); };
   }, []);
+
+  async function handleToggleAuth() {
+    const next = await window.oblako.setPasswordAuthEnabled(!authEnabled);
+    setAuthEnabled(next);
+  }
 
   function openAddForm() {
     setEditingId(null);
@@ -168,6 +175,23 @@ export default function PasswordsSection() {
         Зашифрованный сейф на этом устройстве — записи защищены ключом, привязанным к вашей
         учётной записи Windows. Автозаполнение в веб-формы появится отдельным шагом.
       </SectionHeader>
+
+      {/* Доп. защита: подтверждение Windows перед показом/копированием пароля (electron/osAuth.ts) */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+        ...islandPlate, borderRadius: 'var(--radius-sm)',
+      }}>
+        <Lock size={18} style={{ color: 'var(--text-faint)', flex: 'none' }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+            Подтверждение Windows для показа пароля
+          </div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+            Спрашивать пароль/PIN Windows перед тем, как показать или скопировать сохранённый пароль.
+          </div>
+        </div>
+        <Toggle checked={authEnabled} onChange={() => void handleToggleAuth()} />
+      </div>
 
       {/* Список сохранённых записей */}
       <div>

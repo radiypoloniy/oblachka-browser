@@ -370,6 +370,8 @@ export const IPC = {
   PASSWORDS_EXPORT:   'passwords:export',   // renderer → main: passphrase → boolean (диалог сохранения в main)
   PASSWORDS_IMPORT:   'passwords:import',   // renderer → main: passphrase → число импортированных записей
   PASSWORDS_CHANGED:  'passwords:changed',  // main → renderer: push после любой мутации (тот же приём, что ADBLOCK_STATE_CHANGED)
+  PASSWORDS_AUTH_GET: 'passwords:auth-get', // renderer → main: включена ли OS-проверка перед показом пароля
+  PASSWORDS_AUTH_SET: 'passwords:auth-set', // renderer → main: включить/выключить, возвращает актуальное значение
 
   // Favicon для адресов (список паролей и т.п.) — качается ТОЛЬКО с самого сайта, кэш в main.
   FAVICON_GET:        'favicon:get',        // renderer → main: host → data-URL иконки | null
@@ -1232,6 +1234,10 @@ export interface OblakoApi {
 
   // Favicon сайта (data-URL) или null — тянется только с самого домена, кэш в main (FaviconService).
   getFavicon(host: string): Promise<string | null>;
+
+  // OS-проверка (нативный диалог Windows) перед показом/копированием пароля — тумблер в настройках.
+  getPasswordAuthEnabled(): Promise<boolean>;
+  setPasswordAuthEnabled(enabled: boolean): Promise<boolean>;
   addPassword(input: PasswordAddInput): Promise<boolean>;
   updatePassword(input: PasswordUpdateInput): Promise<boolean>;
   deletePassword(id: number): Promise<void>;

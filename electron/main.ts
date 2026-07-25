@@ -15,6 +15,7 @@ import { BookmarkManager } from './BookmarkManager';
 import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImporter';
 import { ImportManager } from './browserImport/ImportManager';
 import { faviconService } from './FaviconService';
+import { verifyUser } from './osAuth';
 import { PasswordManager } from './PasswordManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
@@ -159,6 +160,22 @@ const bookmarkImporters = createChromiumImporters(bookmarks);
 // Отдельно от bookmarkImporters выше (тот обслуживает только дропдаун панели закладок).
 const passwords   = new PasswordManager();
 const importManager = new ImportManager({ bookmarks, history, passwords });
+
+// Гейт показа/копирования пароля через подтверждение Windows (electron/osAuth.ts). Успех держится
+// ограниченное окно, чтобы серия действий (показать → скопировать → ещё раз) не дёргала диалог
+// каждый раз. Хранится в памяти main, сбрасывается с рестартом.
+const PASSWORD_AUTH_GRACE_MS = 5 * 60_000;
+let lastPasswordAuthOk = 0;
+async function ensurePasswordAuth(message: string): Promise<boolean> {
+  if (!settings.getPasswordAuthEnabled()) return true;               // проверка выключена в настройках
+  if (Date.now() - lastPasswordAuthOk < PASSWORD_AUTH_GRACE_MS) return true; // ещё в окне доверия
+  const res = await verifyUser('Oblako — пароли', message);
+  if (res === 'denied') return false;                                // неверный пароль/отмена — не показываем
+  // 'ok' или 'unavailable' — разрешаем (unavailable = механизм не сработал, не лочим свои пароли),
+  // и в обоих случаях взводим окно, чтобы не дёргать диалог/сбойный механизм на каждый клик.
+  lastPasswordAuthOk = Date.now();
+  return true;
+}
 const downloads   = new DownloadManager();
 const permissions = new PermissionManager();
 const settings    = new SettingsManager();
@@ -981,8 +998,21 @@ function registerIpc() {
   // Менеджер паролей, шаг 1 (см. electron/PasswordManager.ts). Пароль пересекает IPC только
   // через reveal/generate — list его не отдаёт, copy сам кладёт в буфер и наружу не возвращает.
   ipcMain.handle(IPC.PASSWORDS_LIST,     () => passwords.list());
-  ipcMain.handle(IPC.PASSWORDS_REVEAL,   (_e, id: number) => passwords.reveal(id));
-  ipcMain.handle(IPC.PASSWORDS_COPY,     (_e, id: number, field: PasswordCopyField) => passwords.copyField(id, field));
+  // Показ/копирование пароля гейтится подтверждением Windows (osAuth), если включено в настройках.
+  // Успешная проверка держится PASSWORD_AUTH_GRACE_MS, чтобы не спрашивать на каждый клик подряд.
+  // 'unavailable' (механизм не сработал) трактуем как разрешение — не лочим доступ к своим паролям.
+  ipcMain.handle(IPC.PASSWORDS_REVEAL,   async (_e, id: number) =>
+    (await ensurePasswordAuth('Показать сохранённый пароль')) ? passwords.reveal(id) : null);
+  ipcMain.handle(IPC.PASSWORDS_COPY,     async (_e, id: number, field: PasswordCopyField) => {
+    // Логин копировать можно без подтверждения — под гейтом только сам пароль.
+    if (field === 'password' && !(await ensurePasswordAuth('Скопировать сохранённый пароль'))) return false;
+    return passwords.copyField(id, field);
+  });
+  ipcMain.handle(IPC.PASSWORDS_AUTH_GET, () => settings.getPasswordAuthEnabled());
+  ipcMain.handle(IPC.PASSWORDS_AUTH_SET, (_e, enabled: boolean) => {
+    settings.setPasswordAuthEnabled(enabled);
+    return settings.getPasswordAuthEnabled();
+  });
   ipcMain.handle(IPC.FAVICON_GET,        (_e, host: string) => faviconService.get(host));
   ipcMain.handle(IPC.PASSWORDS_GENERATE, (_e, opts: PasswordGenerateOptions) => passwords.generate(opts));
   ipcMain.handle(IPC.PASSWORDS_ADD, (_e, input: PasswordAddInput) => {

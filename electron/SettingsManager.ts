@@ -33,6 +33,10 @@ interface PersistedSettings {
   // Онбординг импорта из другого браузера показывался ли уже (см. electron/browserImport/).
   // Однократное предложение при первом запуске — потом только вручную из настроек.
   importOffered: boolean;
+  // Требовать подтверждение Windows (нативный диалог, см. electron/osAuth.ts) перед показом/
+  // копированием пароля. Тумблер в настройках паролей; он же — страховка от лок-аута, если
+  // проверка на конкретной машине не срабатывает.
+  passwordAuthEnabled: boolean;
 }
 
 function clampAiPanelWidth(v: number): number {
@@ -61,6 +65,7 @@ export class SettingsManager {
   #aiPanelWidth: number = DEFAULT_AI_PANEL_WIDTH;
   #modelLoadMode: ModelLoadMode = DEFAULT_MODEL_LOAD_MODE;
   #importOffered = false;
+  #passwordAuthEnabled = true; // доп. защита по умолчанию включена (см. PersistedSettings)
   readonly #settingsPath: string;
 
   constructor() {
@@ -130,6 +135,15 @@ export class SettingsManager {
     this.#write();
   }
 
+  getPasswordAuthEnabled(): boolean {
+    return this.#passwordAuthEnabled;
+  }
+
+  setPasswordAuthEnabled(enabled: boolean): void {
+    this.#passwordAuthEnabled = !!enabled;
+    this.#write();
+  }
+
   #load(): void {
     try {
       const raw = fs.readFileSync(this.#settingsPath, 'utf8');
@@ -147,6 +161,8 @@ export class SettingsManager {
         if (isModelLoadMode(lm)) this.#modelLoadMode = lm;
         const io = (data as Record<string, unknown>)['importOffered'];
         if (typeof io === 'boolean') this.#importOffered = io;
+        const pa = (data as Record<string, unknown>)['passwordAuthEnabled'];
+        if (typeof pa === 'boolean') this.#passwordAuthEnabled = pa;
       }
     } catch { /* файла нет или битый JSON — остаёмся на дефолте */ }
   }
@@ -159,6 +175,7 @@ export class SettingsManager {
       aiPanelWidth: this.#aiPanelWidth,
       modelLoadMode: this.#modelLoadMode,
       importOffered: this.#importOffered,
+      passwordAuthEnabled: this.#passwordAuthEnabled,
     };
     const tmpPath = this.#settingsPath + '.tmp';
     try {
