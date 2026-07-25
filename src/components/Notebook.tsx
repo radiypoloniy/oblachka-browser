@@ -6,6 +6,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { Transformer } from 'markmap-lib';
 import { Markmap } from 'markmap-view';
+import { Infographic } from '@antv/infographic';
 import { islandPlate } from '../styles/island';
 import { markdownComponents } from './aiMarkdown';
 import {
@@ -91,7 +92,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   const selectedCount = sources.filter((s) => selected.has(s.id) && s.status === 'ready').length;
 
   // Реализованные типы Студии (остальные — свои заходы, пока показывают заметку «скоро»).
-  const STUDIO_IMPLEMENTED = new Set<StudioKind>(['summary', 'mindmap']);
+  const STUDIO_IMPLEMENTED = new Set<StudioKind>(['summary', 'mindmap', 'infographic']);
   async function handleStudio(kind: StudioKind) {
     const label = STUDIO.find((s) => s.kind === kind)!.label;
     const ctx = getSelectedSourceContext();
@@ -137,14 +138,16 @@ function StudioResultModal({ state, onClose }: {
   onClose: () => void;
 }) {
   const isMindmap = state.kind === 'mindmap';
+  const isInfographic = state.kind === 'infographic';
+  const wide = isMindmap || isInfographic;
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, zIndex: 500, background: 'var(--scrim, rgba(0,0,0,0.4))',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        // Майндкарте нужен простор — модалка шире.
-        width: isMindmap ? 960 : 680, maxWidth: 'calc(100vw - 48px)', maxHeight: 'calc(100vh - 96px)',
+        // Майндкарте/инфографике нужен простор — модалка шире.
+        width: wide ? 960 : 680, maxWidth: 'calc(100vw - 48px)', maxHeight: 'calc(100vh - 96px)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         ...islandPlate, borderRadius: 'var(--radius-island)', boxShadow: 'var(--shadow-island)', background: 'var(--surface-solid)',
       }}>
@@ -152,15 +155,17 @@ function StudioResultModal({ state, onClose }: {
           <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>{state.label}</span>
           <button onClick={onClose} style={xBtn}><X size={16} /></button>
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMindmap ? 0 : '16px 20px' }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: wide ? 0 : '16px 20px' }}>
           {state.busy ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', padding: isMindmap ? '16px 20px' : 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', padding: wide ? '16px 20px' : 0 }}>
               <Loader2 size={16} style={{ animation: 'oblako-spin 1s linear infinite' }} /> Генерирую по источникам…
             </div>
           ) : state.error ? (
-            <div style={{ color: 'var(--danger-500)', fontSize: 'var(--fs-sm)', padding: isMindmap ? '16px 20px' : 0 }}>{state.error}</div>
+            <div style={{ color: 'var(--danger-500)', fontSize: 'var(--fs-sm)', padding: wide ? '16px 20px' : 0 }}>{state.error}</div>
           ) : isMindmap ? (
             <MindmapView markdown={state.text || ''} />
+          ) : isInfographic ? (
+            <InfographicView syntax={state.text || ''} />
           ) : (
             <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
               <ReactMarkdown components={markdownComponents}>{state.text || ''}</ReactMarkdown>
@@ -186,6 +191,24 @@ function MindmapView({ markdown }: { markdown: string }) {
     return () => mm.destroy();
   }, [markdown]);
   return <svg ref={svgRef} style={{ width: '100%', height: 'min(70vh, 560px)', display: 'block' }} />;
+}
+
+// Инфографика: декларативный синтаксис AntV Infographic от модели → SVG движком @antv/infographic.
+// Чистим возможные ```-ограждения и обрезаем до строки "infographic ..." (модель иногда добавляет прозу).
+function InfographicView({ syntax }: { syntax: string }) {
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    let src = syntax.replace(/```[a-z]*\n?/gi, '').trim();
+    const at = src.indexOf('infographic ');
+    if (at > 0) src = src.slice(at);
+    if (!src) return;
+    const ig = new Infographic({ container: box, width: '100%', height: '100%' });
+    ig.render(src);
+    return () => ig.destroy();
+  }, [syntax]);
+  return <div ref={boxRef} style={{ width: '100%', height: 'min(72vh, 580px)' }} />;
 }
 
 // ── Источники (слева) ──────────────────────────────────────────────────────────
