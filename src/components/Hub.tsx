@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
-  Sparkles, LayoutGrid, MessageSquarePlus, Send, ArrowLeft,
+  LayoutGrid, MessageSquarePlus, Send, ArrowLeft, Trash2,
   BookOpen, Lightbulb, Globe, Code2, Bookmark, Utensils, type LucideIcon,
 } from 'lucide-react';
 import { getTopSites } from '../../shared/frecency';
@@ -57,45 +57,9 @@ export default function Hub({ tabId, onSubmit, onOpenSettings }: HubProps) {
       : (
         // Большой AI-экран как блокнот (NotebookLM-подобный): 3 колонки, центр — существующий чат.
         <Notebook onBack={() => pickMode('tiles')}>
-          <AiChatView tabId={tabId} mode={mode} onModeChange={pickMode} onOpenSettings={onOpenSettings} />
+          <AiChatView tabId={tabId} onModeChange={pickMode} onOpenSettings={onOpenSettings} />
         </Notebook>
       )
-  );
-}
-
-// ── Общая шапка (заголовок + переключатель режимов) — общий для обоих режимов вид ──────
-
-function HubHeader({ title, subtitle, mode, onModeChange }: {
-  title: ReactNode; subtitle: string; mode: HubMode; onModeChange: (m: HubMode) => void;
-}) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, textAlign: 'center' }}>
-      <div>
-        <h1 style={{
-          margin: '0 0 6px', fontSize: 'var(--fs-2xl)', fontWeight: 700,
-          letterSpacing: 'var(--ls-tight)', color: 'var(--text-strong)',
-        }}>
-          {title}
-        </h1>
-        <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 'var(--fs-md)' }}>
-          {subtitle}
-        </p>
-      </div>
-      <ModeToggle mode={mode} onChange={onModeChange} />
-    </div>
-  );
-}
-
-function ModeToggle({ mode, onChange }: { mode: HubMode; onChange: (m: HubMode) => void }) {
-  return (
-    <div style={{
-      display: 'inline-flex', flex: 'none', padding: 3, gap: 2,
-      background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
-      border: '1px solid var(--glass-edge)',
-    }}>
-      <ModeButton active={mode === 'tiles'} onClick={() => onChange('tiles')} icon={<LayoutGrid size={14} />} label="Обзор" />
-      <ModeButton active={mode === 'ai'} onClick={() => onChange('ai')} icon={<Sparkles size={14} />} label="AI" />
-    </div>
   );
 }
 
@@ -135,8 +99,8 @@ const QUICK_PROMPTS: { icon: LucideIcon; text: string }[] = [
   { icon: Utensils, text: 'Как правильно питаться?' },
 ];
 
-function AiChatView({ tabId, mode, onModeChange, onOpenSettings }: {
-  tabId: string; mode: HubMode; onModeChange: (m: HubMode) => void; onOpenSettings: () => void;
+function AiChatView({ tabId, onModeChange, onOpenSettings }: {
+  tabId: string; onModeChange: (m: HubMode) => void; onOpenSettings: () => void;
 }) {
   const [sessions, setSessions] = useState<HubChatSessionMeta[]>([]);
   const [messages, setMessages] = useState<HubChatMessage[]>([]);
@@ -159,6 +123,11 @@ function AiChatView({ tabId, mode, onModeChange, onOpenSettings }: {
 
   const refreshSessions = () => {
     window.oblako.listHubChatSessions().then(setSessions).catch(() => { /* без персистентности — список пуст */ });
+  };
+
+  const deleteSession = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // не открывать чат при клике на «удалить»
+    void window.oblako.deleteHubChatSession(id).then(refreshSessions);
   };
 
   useEffect(refreshSessions, []);
@@ -257,48 +226,117 @@ function AiChatView({ tabId, mode, onModeChange, onOpenSettings }: {
       flex: 1, width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column',
       minHeight: 0, gap: 20,
     }}>
-      {hasConversation
-        ? (
-          <div style={{ flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <button
-              onClick={newChat}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
-                border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'default',
-                fontSize: 'var(--fs-xs)', fontWeight: 600,
-                background: 'transparent', color: 'var(--text-muted)',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-strong)'; e.currentTarget.style.background = 'var(--surface-hover)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
-            >
-              <ArrowLeft size={14} /> Назад к списку
-            </button>
-            <ModeToggle mode={mode} onChange={onModeChange} />
+      {/* Верхняя панель: слева заголовок или «назад к списку», справа кнопка «Обзор»
+          (замена ползунка-переключателя режимов — см. правки по центральной панели). */}
+      <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+        {hasConversation ? (
+          <button
+            onClick={newChat}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
+              border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'default',
+              fontSize: 'var(--fs-xs)', fontWeight: 600, background: 'transparent', color: 'var(--text-muted)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-strong)'; e.currentTarget.style.background = 'var(--surface-hover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+          >
+            <ArrowLeft size={14} /> Назад к списку
+          </button>
+        ) : (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text-strong)' }}>Спросите что угодно</div>
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Отвечает локальная модель, без интернета</div>
           </div>
-        )
-        : (
-          <HubHeader
-            title="Спросите что угодно"
-            subtitle="Отвечает локальная модель, без интернета"
-            mode={mode} onModeChange={onModeChange}
-          />
         )}
+        {hasConversation && <div style={{ flex: 1 }} />}
+        <button
+          onClick={() => onModeChange('tiles')}
+          title="К обзору"
+          style={{
+            flex: 'none', display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
+            border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'default',
+            fontSize: 'var(--fs-xs)', fontWeight: 600, background: 'var(--surface-sunken)', color: 'var(--text-body)',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-sunken)'; }}
+        >
+          <LayoutGrid size={14} /> Обзор
+        </button>
+      </div>
 
-      {hasConversation && (
-        <div ref={transcriptRef} style={{
-          flex: 1, minHeight: 0, overflowY: 'auto',
-          display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 2px',
-        }}>
-          {messages.map((m, i) => <MessageBubble key={i} message={m} />)}
-          {streaming && (
-            <MessageBubble
-              message={{ role: 'assistant', text: streamText, createdAt: Date.now() }}
-              pending
-              placeholderText={webSearching ? 'Ищу в интернете…' : '…'}
-            />
-          )}
-        </div>
-      )}
+      {/* Середина (скролл): диалог ИЛИ — на пустом — подсказки и недавние запросы (уехали вниз,
+          доступны прокруткой; у каждого чата — кнопка удаления). Подсказки станут контекстными
+          по источникам отдельным заходом. */}
+      <div ref={transcriptRef} style={{
+        flex: 1, minHeight: 0, overflowY: 'auto',
+        display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 2px',
+      }}>
+        {hasConversation ? (
+          <>
+            {messages.map((m, i) => <MessageBubble key={i} message={m} />)}
+            {streaming && (
+              <MessageBubble
+                message={{ role: 'assistant', text: streamText, createdAt: Date.now() }}
+                pending
+                placeholderText={webSearching ? 'Ищу в интернете…' : '…'}
+              />
+            )}
+          </>
+        ) : (
+          <>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+              {QUICK_PROMPTS.map((p) => (
+                <QuickPromptChip key={p.text} icon={p.icon} text={p.text} onClick={() => pickPrompt(p.text)} />
+              ))}
+            </div>
+            {sessions.length > 0 && (
+              <div style={{ marginTop: 4 }}>
+                <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)', marginBottom: 8 }}>
+                  Недавние запросы
+                </div>
+                <div style={{
+                  background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
+                  boxShadow: 'var(--shadow-card)', border: '1px solid var(--glass-edge)', overflow: 'hidden',
+                }}>
+                  {sessions.map((s, i) => (
+                    <div
+                      key={s.id}
+                      onClick={() => openSession(s.id)}
+                      style={{
+                        display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+                        padding: '10px 14px', cursor: 'default',
+                        borderTop: i === 0 ? 'none' : '1px solid var(--glass-edge)',
+                        color: 'var(--text-body)', fontSize: 'var(--fs-sm)',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {s.title || 'Без названия'}
+                      </span>
+                      <span style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-xs)', flex: 'none' }}>
+                        {formatSessionTime(s.updatedAt)}
+                      </span>
+                      <button
+                        onClick={(e) => deleteSession(s.id, e)}
+                        title="Удалить чат"
+                        style={{
+                          flex: 'none', border: 'none', background: 'transparent', cursor: 'default',
+                          padding: 4, borderRadius: 'var(--radius-sm)', color: 'var(--text-faint)', display: 'inline-flex',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger-500)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {error && (
         <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', padding: '0 4px' }}>
@@ -414,59 +452,6 @@ function AiChatView({ tabId, mode, onModeChange, onOpenSettings }: {
         </button>
       </div>
 
-      {!hasConversation && (
-        <>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-            {QUICK_PROMPTS.map((p) => (
-              <QuickPromptChip key={p.text} icon={p.icon} text={p.text} onClick={() => pickPrompt(p.text)} />
-            ))}
-          </div>
-
-          {sessions.length > 0 && (
-            <div>
-              <div style={{
-                fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)', marginBottom: 8,
-              }}>
-                Недавние запросы
-              </div>
-              <div style={{
-                background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
-                boxShadow: 'var(--shadow-card)', border: '1px solid var(--glass-edge)', overflow: 'hidden',
-              }}>
-                {sessions.map((s, i) => (
-                  <button
-                    key={s.id}
-                    onClick={() => openSession(s.id)}
-                    style={{
-                      display: 'flex', width: '100%', alignItems: 'center', gap: 8,
-                      padding: '12px 16px', textAlign: 'left', cursor: 'default',
-                      border: 'none', borderTop: i === 0 ? 'none' : '1px solid var(--glass-edge)',
-                      background: 'transparent', color: 'var(--text-body)', fontSize: 'var(--fs-sm)',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {s.title || 'Без названия'}
-                    </span>
-                    <span style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-xs)', flex: 'none' }}>
-                      {formatSessionTime(s.updatedAt)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={{
-            textAlign: 'center', color: 'var(--text-faint)', fontSize: 'var(--fs-xs)',
-            lineHeight: 1.6, marginTop: 4,
-          }}>
-            <div>Локальная модель работает на вашем устройстве.</div>
-            <div>Ваши данные не покидают устройство.</div>
-          </div>
-        </>
-      )}
     </div>
   );
 }
