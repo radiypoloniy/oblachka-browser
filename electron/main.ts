@@ -3,7 +3,7 @@ import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProto
 
 // ДО app.whenReady() — Electron требует это до события ready.
 registerSchemesAsPrivileged();
-import type { MenuItemConstructorOptions } from 'electron';
+import type { MenuItemConstructorOptions, Session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -27,7 +27,7 @@ import * as ModelDownloader from './ModelDownloader';
 import * as ModelCatalog from './ModelCatalog';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
-import { IPC } from '../shared/ipc';
+import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
@@ -66,6 +66,7 @@ import { startContentBackfill, cancelContentBackfill, setContentBackfillProgress
 import type { BackfillProgress } from '../shared/ipc';
 import type { ImportDataType } from '../shared/ipc';
 import type { AddressInput, AddressUpdate, CardInput, CardUpdate } from '../shared/ipc';
+import type { PermissionRequest } from '../shared/ipc';
 import { searchHistorySmart } from './HistorySearch';
 import {
   suggestGroups,
@@ -142,6 +143,10 @@ let startT0 = 0;
 
 let win: BrowserWindow | null = null;
 let chromeView: WebContentsView | null = null; // слой нашего React-хрома
+// In-memory сессия инкогнито-вкладок (см. INCOGNITO_PARTITION). Создаётся при старте окна; её
+// storage чистится, когда закрыта последняя инкогнито-вкладка (hadIncognitoTabs ниже).
+let incognitoSession: Session | null = null;
+let hadIncognitoTabs = false;
 let tabs: TabManager | null = null;
 let sess: SessionManager | null = null;
 // Последний присланный прямоугольник омнибокса (см. IPC.OMNIBOX_SET_BOUNDS) — пока без
@@ -372,14 +377,24 @@ function createWindow() {
     chromeView?.webContents.send(IPC.DOWNLOADS_CHANGED, entries);
   });
 
-  // Разрешения: оба хендлера на дефолтной сессии. Инкогнито (будущее) — отдельный attach.
-  permissions.attach(session.defaultSession, (req) => {
+  // Разрешения: хендлер на дефолтной сессии + на инкогнито-сессии (ниже) — обе через один колбэк.
+  const onPermissionRequest = (req: PermissionRequest) => {
     // Входящий запрос разрешения занимает то же место, что FindBar — закрываем его (та же логика,
     // что раньше жила в App.tsx::onPermissionRequest, до переезда FindBar в отдельную WebContentsView).
     tabs?.stopFind();
     closeFindBar();
     chromeView?.webContents.send(IPC.PERMISSION_REQUEST, req);
-  });
+  };
+  permissions.attach(session.defaultSession, onPermissionRequest);
+
+  // Инкогнито-сессия (in-memory, см. INCOGNITO_PARTITION). Привязываем к ней тот же набор, что к
+  // дефолтной, чтобы приватный режим был НЕ хуже обычного: адблок, загрузки, разрешения. Прокси
+  // VPN — в applyVpnProxy (обязательно, иначе инкогнито-трафик тёк бы мимо VPN/kill-switch).
+  incognitoSession = session.fromPartition(INCOGNITO_PARTITION);
+  adblock.attachSession(incognitoSession);
+  downloads.observeSession(incognitoSession);
+  permissions.attach(incognitoSession, onPermissionRequest);
+  applyVpnProxy(); // синхронизируем прокси инкогнито-сессии с текущим состоянием VPN сразу
 
   // Загружаем сохранённую сессию ДО создания TabManager.
   sess = new SessionManager();
@@ -462,7 +477,15 @@ function createWindow() {
       // её текущее состояние (или null) при каждом реальном переключении.
       passwordAutofill.onActiveTabChanged();
     },
-    (wc, tabId) => { closeTranslatePopoverForClosedTab(wc); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover(); passwordAutofill.onTabClosed(tabId); },
+    (wc, tabId) => {
+      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover(); passwordAutofill.onTabClosed(tabId);
+      // Закрылась последняя инкогнито-вкладка → стираем in-memory данные приватной сессии (куки/
+      // хранилище), Chrome-подобно. hadIncognitoTabs гарантирует, что не чистим зря на обычных вкладках.
+      if (hadIncognitoTabs && tabs && !tabs.hasIncognitoTabs()) {
+        hadIncognitoTabs = false;
+        void incognitoSession?.clearStorageData();
+      }
+    },
     // Заход 5: реальный клик в контент вкладки (не blur омнибокса) — закрывает дропдаун подсказок
     // в chrome, см. shared/ipc.ts::SUGGEST_DROPDOWN_CONTENT_FOCUS, Toolbar.tsx.
     () => {
@@ -743,6 +766,9 @@ function applyVpnProxy(): void {
       ? VPN_KILL_SWITCH_PROXY_RULES
       : 'direct://'; // 'stopped'/'starting' — обычный режим, VPN не задействован
   void session.defaultSession.setProxy({ proxyRules });
+  // Инкогнито-сессия ОБЯЗАНА следовать тем же прокси/kill-switch, иначе приватный трафик тёк бы
+  // мимо VPN (утечка). Держим её в синхроне при каждой смене состояния VPN.
+  void incognitoSession?.setProxy({ proxyRules });
 }
 
 // Для «Скопировать содержимое» группы (GROUP_SHOW_MENU) — title/url там из чужих страниц,
@@ -763,6 +789,10 @@ function registerIpc() {
   }));
   ipcMain.handle(IPC.TABS_GET_ALL, () => tabs?.snapshot() ?? []);
   ipcMain.handle(IPC.TAB_CREATE, (_e, url?: string) => tabs?.createTab(url));
+  ipcMain.handle(IPC.TAB_CREATE_INCOGNITO, (_e, url?: string) => {
+    hadIncognitoTabs = true; // взводим — при закрытии последней инкогнито-вкладки чистим сессию
+    return tabs?.createTab(url, false, false, true);
+  });
   ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (_e, kind: 'history' | 'settings' | 'bookmarks', section?: string) => tabs?.createSpecialTab(kind, section));
   ipcMain.handle(IPC.TAB_CLOSE, (_e, id: string) => tabs?.closeTab(id));
   ipcMain.handle(IPC.TAB_ACTIVATE, (_e, id: string) => tabs?.activate(id));

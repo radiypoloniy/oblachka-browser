@@ -2,7 +2,7 @@ import { app, session as electronSession, ipcMain, net, webContents as electronW
 import type {
   OnBeforeRequestListenerDetails, CallbackResponse,
   OnHeadersReceivedListenerDetails, HeadersReceivedResponse,
-  WebContents, IpcMainInvokeEvent,
+  WebContents, IpcMainInvokeEvent, Session,
 } from 'electron';
 import { ElectronBlocker } from '@ghostery/adblocker-electron';
 import type { Request as AdblockRequest } from '@ghostery/adblocker-electron';
@@ -61,6 +61,9 @@ export class AdBlockManager {
   #enabled = true;
   #whitelist = new Set<string>();
   #sessionBlockCount = 0;
+  // Доп. сессии, на которые тоже распространяется блокировка (сейчас — инкогнито-сессия, см.
+  // attachSession). defaultSession обрабатывается всегда отдельно; здесь только «прочие».
+  #extraSessions = new Set<Session>();
   // Разбивка блоков по домену активной страницы — ключ это Electron WebContents.id, НЕ строковый
   // id вкладки из TabManager (у AdBlockManager нет и не должно быть зависимости от TabManager,
   // здесь работаем только с тем, что уже даёт Ghostery Request — request.tabId, см. #recordBlock).
@@ -170,9 +173,10 @@ export class AdBlockManager {
   #swapBlocker(fresh: ElectronBlocker): void {
     const session = electronSession.defaultSession;
     const old = this.#blocker;
-    if (old !== null && old.isBlockingEnabled(session)) {
-      old.disableBlockingInSession(session);
-    }
+    // Полная обвязка была только у defaultSession — её и снимаем (косметический preload/хендлеры).
+    // Инкогнито-сессиям хватит переустановки webRequest-гейтов в #enableBlocking ниже (замещают
+    // слушателя, ссылку на старый blocker не держат после этого).
+    if (old !== null && old.isBlockingEnabled(session)) old.disableBlockingInSession(session);
     this.#blocker = fresh;
     this.#attachBlockerEvents(fresh);
     if (this.#enabled) this.#enableBlocking();
@@ -195,6 +199,8 @@ export class AdBlockManager {
         this.#enableBlocking();
       } else {
         this.#blocker.disableBlockingInSession(electronSession.defaultSession);
+        // Инкогнито включалось только сетевыми гейтами (не enableBlockingInSession) — снимаем их же.
+        for (const s of this.#extraSessions) this.#disableNetworkBlocking(s);
       }
     }
     this.#scheduleSettingsSave();
@@ -299,10 +305,42 @@ export class AdBlockManager {
   // сайт целиком, а не только не блокировать его запросы). Иначе — тот же details/callback/msg
   // уходит в соответствующий bound-метод blocker.* без изменений, просто позже нашего гейта.
   #enableBlocking(): void {
-    const session = electronSession.defaultSession;
+    // defaultSession — полный движок (сеть + косметика через глобальные ipcMain-хендлеры + preload,
+    // которые ставит blocker.enableBlockingInSession). Доп. сессии (инкогнито) — только СЕТЕВАЯ
+    // блокировка (наши webRequest-гейты): enableBlockingInSession нельзя звать второй раз — она
+    // регистрирует несколько глобальных ipcMain.handle и бросает «second handler». Сеть — это
+    // главная, приватностно-значимая часть (блок запросов к трекерам); косметика в инкогнито не
+    // применяется (её глобальные хендлеры и так живут от defaultSession, но per-session preload там
+    // не ставится — приемлемый компромисс).
+    this.#enableFullBlocking(electronSession.defaultSession);
+    for (const s of this.#extraSessions) this.#enableNetworkBlocking(s);
+  }
+
+  // Полная блокировка (движок + косметика) — только для defaultSession.
+  #enableFullBlocking(session: Session): void {
     const blocker = this.#blocker!;
     blocker.enableBlockingInSession(session);
+    this.#wireNetworkGates(session);
 
+    // Косметика идёт через IPC (не webRequest) — ipcMain.handle бросает при повторной регистрации
+    // без предварительного removeHandler. Вместо blocker.onInjectCosmeticFilters — своя копия
+    // #injectCosmetics (single executeJavaScript, см. метод). Хендлер глобальный, обслуживает все сессии.
+    ipcMain.removeHandler('@ghostery/adblocker/inject-cosmetic-filters');
+    ipcMain.handle('@ghostery/adblocker/inject-cosmetic-filters', (event: IpcMainInvokeEvent, url: string, msg?: unknown) => {
+      if (this.#isWhitelistedDomain(undefined, url)) return;
+      this.#injectCosmetics(event, url, msg as CosmeticsUpdateMsg | undefined);
+    });
+  }
+
+  // Только сетевая блокировка на сессии (для инкогнито) — без enableBlockingInSession и его
+  // глобальных хендлеров. blocker.onBeforeRequest/onHeadersReceived решают блок по тем же листам.
+  #enableNetworkBlocking(session: Session): void {
+    this.#wireNetworkGates(session);
+  }
+
+  // Наши whitelist-гейты поверх сетевых решений движка (webRequest per-session, замещает слушателя).
+  #wireNetworkGates(session: Session): void {
+    const blocker = this.#blocker!;
     session.webRequest.onBeforeRequest(
       { urls: ['<all_urls>'] },
       (details: OnBeforeRequestListenerDetails, callback: (r: CallbackResponse) => void) => {
@@ -310,7 +348,6 @@ export class AdBlockManager {
         blocker.onBeforeRequest(details, callback);
       },
     );
-
     session.webRequest.onHeadersReceived(
       { urls: ['<all_urls>'] },
       (details: OnHeadersReceivedListenerDetails, callback: (r: HeadersReceivedResponse) => void) => {
@@ -318,16 +355,19 @@ export class AdBlockManager {
         blocker.onHeadersReceived(details, callback);
       },
     );
+  }
 
-    // Косметика идёт через IPC (не webRequest) — ipcMain.handle бросает при повторной регистрации
-    // на тот же канал без предварительного removeHandler (в отличие от webRequest, который просто
-    // молча замещает слушателя). Вместо blocker.onInjectCosmeticFilters — своя копия #injectCosmetics
-    // (почему — см. комментарий у метода).
-    ipcMain.removeHandler('@ghostery/adblocker/inject-cosmetic-filters');
-    ipcMain.handle('@ghostery/adblocker/inject-cosmetic-filters', (event: IpcMainInvokeEvent, url: string, msg?: unknown) => {
-      if (this.#isWhitelistedDomain(undefined, url)) return;
-      this.#injectCosmetics(event, url, msg as CosmeticsUpdateMsg | undefined);
-    });
+  // Снимает наши сетевые гейты с сессии (для инкогнито при выключении адблока).
+  #disableNetworkBlocking(session: Session): void {
+    session.webRequest.onBeforeRequest(null);
+    session.webRequest.onHeadersReceived(null);
+  }
+
+  // Распространяет сетевую блокировку на дополнительную сессию (инкогнито). Идемпотентно.
+  attachSession(session: Session): void {
+    if (this.#extraSessions.has(session)) return;
+    this.#extraSessions.add(session);
+    if (this.#enabled && this.#blocker) this.#enableNetworkBlocking(session);
   }
 
   // Инъекция косметики/скриптлетов — копия оригинального adblocker-electron

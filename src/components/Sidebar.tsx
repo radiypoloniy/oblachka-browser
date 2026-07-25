@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import { glassPlate, islandPlate } from '../styles/island';
 import {
@@ -54,6 +54,7 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onNewTab: () => void;
+  onNewIncognitoTab: () => void;
   onTabMenu: (id: string) => void;
   onSplit: (id: string) => void;
   onExitSplit: (tabId: string) => void;
@@ -756,7 +757,7 @@ const floatingIconBtn: React.CSSProperties = {
 
 export default function Sidebar({
   tabs, sidebarNodes, activeId, collapsed, onCollapsedChange,
-  onSelect, onClose, onNewTab, onTabMenu, onSplit, onExitSplit,
+  onSelect, onClose, onNewTab, onNewIncognitoTab, onTabMenu, onSplit, onExitSplit,
   onSettings, onHistory, onReorder, onMoveSection,
   getContentRect, onDragOverContent, onDropOnContent,
   organizeTabsCount, organizeState, organizeLongWait, organizeProposal,
@@ -1402,6 +1403,7 @@ export default function Sidebar({
           <Plus size={17} />
           <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>Новая вкладка</span>
         </button>
+        <button className="no-drag icon-btn" title="Новая вкладка инкогнито" style={iconBtn} onClick={onNewIncognitoTab}><VenetianMask size={17} /></button>
         <button className="no-drag icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
         <button className="no-drag icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
       </div>

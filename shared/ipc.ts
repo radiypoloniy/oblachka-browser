@@ -38,6 +38,12 @@ export interface TabErrorState {
   url: string;    // URL, который не открылся — для показа и retry
 }
 
+// Партиция инкогнито-вкладок: БЕЗ префикса 'persist:' → сессия in-memory (куки/кэш/хранилище не
+// пишутся на диск, живут только в памяти процесса). Общая для всех инкогнито-вкладок текущего
+// запуска. Импортируется и main (создание сессии/привязка адблока/прокси), и TabManager
+// (webPreferences.partition новой вьюхи). Данные чистятся при закрытии последней инкогнито-вкладки.
+export const INCOGNITO_PARTITION = 'oblako-incognito';
+
 export interface TabState {
   id: string;
   isActive: boolean;    // true = эта вкладка сейчас активна в main-процессе
@@ -120,6 +126,7 @@ export const IPC = {
   // Запросы (renderer -> main, ожидают ответ)
   TABS_GET_ALL: 'tabs:get-all',
   TAB_CREATE: 'tab:create',
+  TAB_CREATE_INCOGNITO: 'tab:create-incognito', // приватная вкладка: in-memory сессия, без истории/автосейва
   // Псевдо-вкладка (История/Настройки) — тот же tabMap/nodes-механизм, что обычная вкладка
   // (createTab), но без WebContentsView (kind вместо реального url). См. TabManager.createSpecialTab.
   TAB_CREATE_SPECIAL: 'tab:create-special',
@@ -1058,6 +1065,7 @@ export interface OblakoApi {
 
   getAllTabs(): Promise<TabState[]>;
   createTab(url?: string): Promise<string>;       // вернёт id новой вкладки
+  createIncognitoTab(url?: string): Promise<string>; // приватная вкладка (in-memory сессия, без истории)
   // Псевдо-вкладка (История/Настройки) — та же жизнь (закрытие/активация), что у обычной,
   // просто без WebContentsView. См. shared/ipc.ts::TabState.kind, TabManager.createSpecialTab.
   // section — необязательный начальный раздел Settings (см. TabState.section выше), для

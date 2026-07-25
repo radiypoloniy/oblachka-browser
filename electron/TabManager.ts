@@ -2,7 +2,7 @@ import { WebContentsView, BrowserWindow, Menu, clipboard, net } from 'electron';
 import type { MenuItemConstructorOptions, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { IPC } from '../shared/ipc';
+import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction } from '../shared/ipc';
 import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef, SavedTab } from './SessionManager';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
@@ -84,6 +84,9 @@ interface ManagedTab {
   // Короткоживущая вкладка (напр. OAuth-попап из window.open с фичами окна, disposition='new-window'):
   // не участвует в автосейве/восстановлении сессии — иначе при рестарте «воскреснет» мёртвая страница логина.
   ephemeral?: boolean;
+  // Приватная (инкогнито) вкладка: своя in-memory сессия (partition INCOGNITO_PARTITION), не пишем
+  // историю, исключена из автосейва, не усыпляется (иначе in-memory сессия потерялась бы).
+  incognito?: boolean;
   // Псевдо-вкладка (История/Настройки, см. createSpecialTab) — обычная запись в tabMap/nodes
   // (не синглтон-хаб: свой id, закрываемая, можно открыть несколько), но БЕЗ WebContentsView —
   // переиспользован только сам приём хаба (view: null). #tabUrl() для такой вкладки вернёт ''
@@ -545,7 +548,8 @@ export class TabManager {
     const isReal = (url: string) => /^https?:\/\//i.test(url);
     // Короткоживущие вкладки (OAuth-попапы, см. wirePageEvents/setWindowOpenHandler) в сейв не идут —
     // при рестарте нет смысла «воскрешать» страницу логина.
-    const savable = (t: ManagedTab) => !t.ephemeral && isReal(this.#tabUrl(t));
+    // Инкогнито не попадает в автосейв (как и ephemeral) — приватные вкладки не «воскресают».
+    const savable = (t: ManagedTab) => !t.ephemeral && !t.incognito && isReal(this.#tabUrl(t));
 
     const pinnedTabs: SavedTab[] = [];
     for (const t of this.pinnedTabs) {
@@ -714,9 +718,21 @@ export class TabManager {
 
   getActiveId() { return this.activeId; }
 
+  // Есть ли ещё живые инкогнито-вкладки — main чистит in-memory сессию инкогнито, когда закрылась
+  // последняя (Chrome-подобное поведение: приватные данные живут только пока открыт инкогнито).
+  hasIncognitoTabs(): boolean {
+    for (const t of this.tabMap.values()) if (t.incognito) return true;
+    return false;
+  }
+
+  // Инкогнито ли вкладка — для подавления offer-save паролей/автозаполнения (заход 2).
+  isIncognito(tabId: string): boolean {
+    return !!this.tabMap.get(tabId)?.incognito;
+  }
+
   // ── Создание новой вкладки с реальной страницей ──
   // background=true: вкладка создаётся в фоне, без переключения (средний клик по ссылке).
-  createTab(rawUrl?: string, background = false, ephemeral = false): string {
+  createTab(rawUrl?: string, background = false, ephemeral = false, incognito = false): string {
     const id = randomUUID();
     const view = new WebContentsView({
       webPreferences: {
@@ -728,9 +744,12 @@ export class TabManager {
         // nodeIntegrationInSubFrames — preload намеренно НЕ выполняется в кросс-origin iframe
         // (структурный гвард против чтения/заполнения чужого origin, см. PasswordAutofillManager.ts).
         preload: CONTENT_PRELOAD_PATH,
+        // Инкогнито: in-memory сессия (общая для всех приватных вкладок, не пишется на диск).
+        // Обычные вкладки partition не задают → defaultSession.
+        ...(incognito ? { partition: INCOGNITO_PARTITION } : {}),
       },
     });
-    const tab: ManagedTab = { id, view, sleeping: null, lastActiveAt: Date.now(), ephemeral };
+    const tab: ManagedTab = { id, view, sleeping: null, lastActiveAt: Date.now(), ephemeral, incognito };
     this.tabMap.set(id, tab);
     this.nodes.push({ type: 'single', tabId: id });
     this.wirePageEvents(id, view);
@@ -962,6 +981,9 @@ export class TabManager {
       for (const tab of this.tabMap.values()) {
         // Пропускаем: уже спящие, защищённые вкладки, не-http вьюхи
         if (tab.sleeping || protectedIds.has(tab.id)) continue;
+        // Инкогнито не усыпляем: усыпление уничтожает WebContentsView, а с ним потерялась бы
+        // in-memory сессия приватных вкладок (куки/логины текущей приватной сессии).
+        if (tab.incognito) continue;
         if (!this.isHttpView(tab.view)) continue;
 
         // Таймаут ещё не истёк — не трогаем (и не гоняем дорогой JS-запрос зря)
@@ -1091,8 +1113,9 @@ export class TabManager {
       }
       // Показываем вьюху как для активной вкладки, так и для показываемого split-партнёра.
       if (isActivePanel || isShownSplitPartner) this.revealView(id);
-      // Записываем визит: один URL = один UPSERT с инкрементом счётчика.
-      this.onNavigateCb?.(wc.getURL(), wc.getTitle(), wc);
+      // Записываем визит: один URL = один UPSERT с инкрементом счётчика. Инкогнито НЕ пишем в
+      // историю — приватная вкладка не оставляет следа (onNavigate у нас только про историю/индекс).
+      if (!this.tabMap.get(id)?.incognito) this.onNavigateCb?.(wc.getURL(), wc.getTitle(), wc);
       notify();
     });
     wc.on('did-navigate-in-page', notify);

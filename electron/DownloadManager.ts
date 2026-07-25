@@ -18,7 +18,17 @@ export class DownloadManager {
   attach(sess: Session, onChange: (entries: DownloadEntry[]) => void): void {
     this.#session = sess;
     this.#onChange = onChange;
+    this.#wireWillDownload(sess);
+  }
 
+  // Наблюдать загрузки ещё одной сессии (инкогнито), не делая её основной: перехват will-download
+  // тот же, но #session (для retry/downloadURL) остаётся дефолтной. Загрузки из инкогнито попадают
+  // в тот же список — сами файлы на диске, не приватны (пользователь их сам сохранил).
+  observeSession(sess: Session): void {
+    this.#wireWillDownload(sess);
+  }
+
+  #wireWillDownload(sess: Session): void {
     sess.on('will-download', (_event, item, wc) => {
       // Фоновая (не пользователем открытая) вкладка — см. BackgroundWebContents.ts. Отменяем
       // молча: прямая ссылка на файл на переоткрытой в фоне странице не должна класть файл

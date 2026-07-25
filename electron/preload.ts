@@ -6,6 +6,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
   createTab: (url?: string) => ipcRenderer.invoke(IPC.TAB_CREATE, url),
+  createIncognitoTab: (url?: string) => ipcRenderer.invoke(IPC.TAB_CREATE_INCOGNITO, url) as Promise<string>,
   createSpecialTab: (kind: 'history' | 'settings' | 'bookmarks', section?: string) => ipcRenderer.invoke(IPC.TAB_CREATE_SPECIAL, kind, section),
   closeTab: (id: string) => ipcRenderer.invoke(IPC.TAB_CLOSE, id),
   activateTab: (id: string) => ipcRenderer.invoke(IPC.TAB_ACTIVATE, id),

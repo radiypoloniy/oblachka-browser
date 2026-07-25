@@ -530,6 +530,7 @@ export default function App() {
 
   const select = (id: string) => { setActiveId(id); window.oblako.activateTab(id); };
   const newTab = () => { setActiveId(HUB_ID); window.oblako.activateTab(HUB_ID); };
+  const newIncognitoTab = () => { void (async () => { setActiveId(await window.oblako.createIncognitoTab()); })(); };
   const close = (id: string) => { window.oblako.closeTab(id); };
 
   const submit = async (input: string) => {
@@ -556,7 +557,7 @@ export default function App() {
         tabs={tabs} activeId={activeId}
         collapsed={effectiveCollapsed}
         onCollapsedChange={handleSidebarCollapse}
-        onSelect={select} onClose={close} onNewTab={newTab}
+        onSelect={select} onClose={close} onNewTab={newTab} onNewIncognitoTab={newIncognitoTab}
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
         onSplit={(id) => { setSplitRatioState(0.5); void window.oblako.enterSplit(id); }}
         onExitSplit={(tabId) => { void window.oblako.exitSplit(tabId); }}
