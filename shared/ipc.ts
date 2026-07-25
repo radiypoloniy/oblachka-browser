@@ -168,6 +168,7 @@ export const IPC = {
   TAB_PIN_TOGGLE: 'tab:pin-toggle', // renderer → main: закрепить / открепить вкладку
   TAB_SHOW_MENU:  'tab:show-menu',  // renderer → main: показать нативное ПКМ-меню вкладки
   NEW_TAB_SHOW_MENU: 'tab:new-menu', // renderer → main: ПКМ по кнопке «Новая вкладка» (обычная/инкогнито/восстановить)
+  CHROME_THEME_SET: 'chrome:theme-set', // renderer → main: тема chrome (dark+incognito) для раздачи во все поповеры/вью
 
   // Split View
   TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (правая вкладка)
@@ -1103,6 +1104,7 @@ export interface OblakoApi {
   togglePinTab(id: string): Promise<void>;
   showTabMenu(id: string): Promise<void>;
   showNewTabMenu(): Promise<void>; // ПКМ по кнопке «Новая вкладка»: обычная / инкогнито / восстановить
+  setChromeTheme(dark: boolean, incognito: boolean): Promise<void>; // раздать тему во все chrome-вью (поповеры)
 
   // Split View
   enterSplit(rightId: string): Promise<void>;       // текущая активная → левая, rightId → правая

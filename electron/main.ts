@@ -1,4 +1,5 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard, webContents } from 'electron';
+import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 
 // ДО app.whenReady() — Electron требует это до события ready.
@@ -146,6 +147,32 @@ let chromeView: WebContentsView | null = null; // слой нашего React-х
 // In-memory сессия инкогнито-вкладок (см. INCOGNITO_PARTITION). Создаётся при старте окна; её
 // storage чистится, когда закрыта последняя инкогнито-вкладка (TabManager.takeIncognitoClearIfDone).
 let incognitoSession: Session | null = null;
+
+// Тема chrome-страниц. Главный рендерер (App.tsx) сам ставит data-theme/data-incognito на свой
+// documentElement, но КАЖДЫЙ поповер/дропдаун (AI-панель, перевод, findbar, пароли, VPN,
+// автозаполнение, дропдаун подсказок) — отдельная WebContentsView со своим document, который
+// этих атрибутов не видит. Держим актуальную тему в main и раскидываем во ВСЕ наши chrome-вью
+// (oblako-chrome://…) через executeJavaScript — без правок в каждом preload/entry. Реальные
+// сайты (гостевые вкладки) не трогаем (isChromePageUrl отсекает по URL).
+let currentChromeTheme = { dark: false, incognito: false };
+function isChromePageUrl(u: string): boolean {
+  return u.startsWith('oblako-chrome://') || u.includes('localhost:5173'); // прод + dev-сервер Vite
+}
+function chromeThemeJs(t: { dark: boolean; incognito: boolean }): string {
+  return `(function(){try{var r=document.documentElement;`
+    + `r.setAttribute('data-theme','${t.dark ? 'dark' : 'light'}');`
+    + (t.incognito ? `r.setAttribute('data-incognito','true');` : `r.removeAttribute('data-incognito');`)
+    + `}catch(e){}})()`;
+}
+function applyChromeThemeTo(wc: WebContents): void {
+  try {
+    if (wc.isDestroyed() || !isChromePageUrl(wc.getURL())) return;
+    void wc.executeJavaScript(chromeThemeJs(currentChromeTheme)).catch(() => { /* вью уже закрыта */ });
+  } catch { /* getURL на мёртвой вью */ }
+}
+function broadcastChromeTheme(): void {
+  for (const wc of webContents.getAllWebContents()) applyChromeThemeTo(wc);
+}
 let tabs: TabManager | null = null;
 let sess: SessionManager | null = null;
 // Последний присланный прямоугольник омнибокса (см. IPC.OMNIBOX_SET_BOUNDS) — пока без
@@ -788,6 +815,11 @@ function registerIpc() {
     hasOrganizeSnapshot: tabs?.hasOrganizeSnapshot() ?? false,
   }));
   ipcMain.handle(IPC.TABS_GET_ALL, () => tabs?.snapshot() ?? []);
+  // Тема chrome (light/dark + инкогнито) от главного рендерера → раскидываем во все наши вью.
+  ipcMain.handle(IPC.CHROME_THEME_SET, (_e, dark: boolean, incognito: boolean) => {
+    currentChromeTheme = { dark: !!dark, incognito: !!incognito };
+    broadcastChromeTheme();
+  });
   ipcMain.handle(IPC.TAB_CREATE, (_e, url?: string) => tabs?.createTab(url));
   ipcMain.handle(IPC.TAB_CREATE_INCOGNITO, (_e, url?: string) => tabs?.createTab(url, false, false, true));
   ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (_e, kind: 'history' | 'settings' | 'bookmarks', section?: string) => tabs?.createSpecialTab(kind, section));
@@ -1478,6 +1510,9 @@ app.on('web-contents-created', (_e, contents) => {
       shell.openExternal(url).catch(() => { /* тихо игнорируем */ });
     }
   });
+  // Любая наша chrome-страница (главный рендерер + все поповеры), догрузившись, получает текущую
+  // тему — так лениво создаваемые поповеры сразу открываются в нужном (в т.ч. инкогнито) виде.
+  contents.on('did-finish-load', () => applyChromeThemeTo(contents));
 });
 
 app.whenReady().then(async () => {

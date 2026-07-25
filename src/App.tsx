@@ -205,6 +205,9 @@ export default function App() {
     root.setAttribute('data-theme', (dark || activeIncognito) ? 'dark' : 'light');
     if (activeIncognito) root.setAttribute('data-incognito', 'true');
     else root.removeAttribute('data-incognito');
+    // Раздаём ту же тему во все отдельные chrome-вью (поповеры/дропдаун живут в своих document,
+    // этот атрибут сам по себе до них не дойдёт) — см. main.ts::broadcastChromeTheme.
+    void window.oblako.setChromeTheme(dark || activeIncognito, activeIncognito);
   }, [dark, activeIncognito]);
 
   // Онбординг: однократное предложение импорта из другого браузера при первом запуске (если на
