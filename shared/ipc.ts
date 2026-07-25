@@ -371,6 +371,9 @@ export const IPC = {
   PASSWORDS_IMPORT:   'passwords:import',   // renderer → main: passphrase → число импортированных записей
   PASSWORDS_CHANGED:  'passwords:changed',  // main → renderer: push после любой мутации (тот же приём, что ADBLOCK_STATE_CHANGED)
 
+  // Favicon для адресов (список паролей и т.п.) — качается ТОЛЬКО с самого сайта, кэш в main.
+  FAVICON_GET:        'favicon:get',        // renderer → main: host → data-URL иконки | null
+
   // Менеджер паролей, шаг 2 (см. electron/preload-content.ts, electron/TabManager.ts) — канал
   // ГОСТЕВАЯ СТРАНИЦА ↔ TabManager, через per-view webContents.ipc (не общий ipcMain — main точно
   // знает, какая вкладка прислала сообщение). Content-preload НИКОГДА не шлёт origin — main сам
@@ -1226,6 +1229,9 @@ export interface OblakoApi {
   listPasswords(): Promise<PasswordMeta[]>;
   revealPassword(id: number): Promise<string | null>;
   copyPasswordField(id: number, field: PasswordCopyField): Promise<boolean>;
+
+  // Favicon сайта (data-URL) или null — тянется только с самого домена, кэш в main (FaviconService).
+  getFavicon(host: string): Promise<string | null>;
   addPassword(input: PasswordAddInput): Promise<boolean>;
   updatePassword(input: PasswordUpdateInput): Promise<boolean>;
   deletePassword(id: number): Promise<void>;

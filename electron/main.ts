@@ -14,6 +14,7 @@ import { HistoryManager } from './HistoryManager';
 import { BookmarkManager } from './BookmarkManager';
 import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImporter';
 import { ImportManager } from './browserImport/ImportManager';
+import { faviconService } from './FaviconService';
 import { PasswordManager } from './PasswordManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
@@ -982,6 +983,7 @@ function registerIpc() {
   ipcMain.handle(IPC.PASSWORDS_LIST,     () => passwords.list());
   ipcMain.handle(IPC.PASSWORDS_REVEAL,   (_e, id: number) => passwords.reveal(id));
   ipcMain.handle(IPC.PASSWORDS_COPY,     (_e, id: number, field: PasswordCopyField) => passwords.copyField(id, field));
+  ipcMain.handle(IPC.FAVICON_GET,        (_e, host: string) => faviconService.get(host));
   ipcMain.handle(IPC.PASSWORDS_GENERATE, (_e, opts: PasswordGenerateOptions) => passwords.generate(opts));
   ipcMain.handle(IPC.PASSWORDS_ADD, (_e, input: PasswordAddInput) => {
     const ok = passwords.add(input);
