@@ -156,7 +156,7 @@ const bookmarks   = new BookmarkManager();
 const bookmarkImporters = createChromiumImporters(bookmarks);
 // Общий мультитиповый импорт (закладки/история/пароли + онбординг) — см. electron/browserImport/.
 // Отдельно от bookmarkImporters выше (тот обслуживает только дропдаун панели закладок).
-const importManager = new ImportManager({ bookmarks });
+const importManager = new ImportManager({ bookmarks, history });
 const passwords   = new PasswordManager();
 const downloads   = new DownloadManager();
 const permissions = new PermissionManager();

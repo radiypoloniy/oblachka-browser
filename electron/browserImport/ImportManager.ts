@@ -1,7 +1,9 @@
 import type { BookmarkManager } from '../BookmarkManager';
+import type { HistoryManager } from '../HistoryManager';
 import type { ImportSource, ImportDataType, ImportRunResult } from '../../shared/ipc';
 import { discoverChromiumProfiles, availableDataTypes, type DiscoveredProfile } from './ChromiumDiscovery';
 import { importChromiumBookmarks } from './ChromiumBookmarksReader';
+import { importChromiumHistory } from './ChromiumHistoryReader';
 
 // Оркестратор общего импорта данных из других браузеров. Знает про discovery (какие браузеры/
 // профили есть) и про менеджеры-приёмники (куда класть). Renderer видит только ImportSource/
@@ -11,10 +13,11 @@ import { importChromiumBookmarks } from './ChromiumBookmarksReader';
 //   заход 1 — bookmarks (здесь), заход 2 — history, заход 3 — passwords.
 // IMPLEMENTED_TYPES гейтит, что реально показывается пользователю в диалоге: тип из профиля
 // попадёт в ImportSource.dataTypes только если его файл есть на диске И импортёр уже написан.
-const IMPLEMENTED_TYPES: ReadonlySet<ImportDataType> = new Set<ImportDataType>(['bookmarks']);
+const IMPLEMENTED_TYPES: ReadonlySet<ImportDataType> = new Set<ImportDataType>(['bookmarks', 'history']);
 
 interface ImportDeps {
   bookmarks: BookmarkManager;
+  history: HistoryManager;
 }
 
 export class ImportManager {
@@ -48,7 +51,10 @@ export class ImportManager {
         case 'bookmarks':
           result.bookmarks = importChromiumBookmarks(profile.profilePath, this.#deps.bookmarks);
           break;
-        // history/passwords — заходы 2 и 3
+        case 'history':
+          result.history = importChromiumHistory(profile.profilePath, this.#deps.history);
+          break;
+        // passwords — заход 3
       }
     }
     return result;

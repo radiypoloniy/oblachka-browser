@@ -103,6 +103,43 @@ export class HistoryManager {
     }
   }
 
+  // Массовый импорт визитов из другого браузера (electron/browserImport/). Отличается от
+  // recordVisit: сохраняет исходный visit_count источника (не единица за визит), при конфликте по
+  // url СУММИРУЕТ счётчики и берёт более позднюю дату (повторный импорт/пересечение с нашей
+  // историей не затирает, а сливается). Тот же #shouldRecord, что у обычной записи, — импорт не
+  // тащит в историю то, что мы и сами бы не записали (шумные/служебные URL). Контент не
+  // индексируется (FTS докачается лениво при реальном визите) — сознательно, это тяжёлый процесс.
+  bulkImportVisits(visits: Array<{ url: string; title: string; lastVisit: number; visitCount: number }>): { inserted: number; skipped: number } {
+    if (!this.#db || visits.length === 0) return { inserted: 0, skipped: 0 };
+    const db = this.#db;
+    let inserted = 0;
+    let skipped = 0;
+    try {
+      const existsStmt = db.prepare(`SELECT 1 FROM history WHERE url = ? LIMIT 1`);
+      const upsert = db.prepare(`
+        INSERT INTO history (url, title, last_visit, visit_count)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(url) DO UPDATE SET
+          title       = excluded.title,
+          last_visit  = MAX(history.last_visit, excluded.last_visit),
+          visit_count = history.visit_count + excluded.visit_count
+      `);
+      const run = db.transaction(() => {
+        for (const v of visits) {
+          if (!this.#shouldRecord(v.url)) { skipped++; continue; }
+          // «Уже были» для отчёта = слияние с существующим url (не ошибка, просто не новая строка).
+          const isNew = existsStmt.get(v.url) === undefined;
+          upsert.run(v.url, v.title || v.url, v.lastVisit, Math.max(1, v.visitCount));
+          if (isNew) inserted++; else skipped++;
+        }
+      });
+      run();
+    } catch (e) {
+      console.warn('[History] bulkImportVisits error:', (e as Error).message);
+    }
+    return { inserted, skipped };
+  }
+
   // Для HistoryIndexer.ts::indexVisit — источник истины «уже проиндексирована ли эта страница
   // ТЕКУЩЕЙ версией извлечения текста (TEXT_EXTRACTION_VERSION)», вместо in-memory Set, который
   // не переживает рестарт (живой замер: 750-850% CPU на 40с при рестарте с 10 закреплёнными
