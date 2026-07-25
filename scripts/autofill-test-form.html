@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Oblako — тест автозаполнения</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 40px auto; padding: 0 16px; }
+    h1 { font-size: 18px; } h2 { font-size: 14px; margin-top: 28px; color: #666; }
+    label { display: block; margin: 10px 0 3px; font-size: 13px; color: #333; }
+    input, select { width: 100%; padding: 8px 10px; font-size: 14px; box-sizing: border-box;
+      border: 1px solid #ccc; border-radius: 6px; }
+    .row { display: flex; gap: 10px; } .row > div { flex: 1; }
+  </style>
+</head>
+<body>
+  <h1>Тест автозаполнения Oblako</h1>
+  <p style="font-size:13px;color:#666">Сначала добавь адрес/карту в Настройки → Автозаполнение, затем
+  кликни в поле ниже — должен всплыть поповер выбора.</p>
+
+  <h2>Адрес (autocomplete-токены)</h2>
+  <form>
+    <label>Имя</label><input autocomplete="name" />
+    <div class="row">
+      <div><label>E-mail</label><input type="email" autocomplete="email" /></div>
+      <div><label>Телефон</label><input type="tel" autocomplete="tel" /></div>
+    </div>
+    <label>Организация</label><input autocomplete="organization" />
+    <label>Улица, дом</label><input autocomplete="street-address" />
+    <div class="row">
+      <div><label>Город</label><input autocomplete="address-level2" /></div>
+      <div><label>Индекс</label><input autocomplete="postal-code" /></div>
+    </div>
+    <div class="row">
+      <div><label>Регион</label><input autocomplete="address-level1" /></div>
+      <div><label>Страна</label><input autocomplete="country-name" /></div>
+    </div>
+  </form>
+
+  <h2>Адрес (без autocomplete, рус. подписи — проверка эвристики)</h2>
+  <form>
+    <label>ФИО</label><input name="fullname" placeholder="Фамилия Имя" />
+    <label>Электронная почта</label><input name="user_mail" placeholder="Почта" />
+    <div class="row">
+      <div><label>Город</label><input name="town" placeholder="Город" /></div>
+      <div><label>Индекс</label><input name="zip" placeholder="Индекс" /></div>
+    </div>
+  </form>
+
+  <h2>Карта (заход 3 — поповер карт пока не показывается)</h2>
+  <form>
+    <label>Владелец карты</label><input autocomplete="cc-name" />
+    <label>Номер карты</label><input autocomplete="cc-number" inputmode="numeric" />
+    <div class="row">
+      <div><label>Срок (MM/ГГ)</label><input autocomplete="cc-exp" placeholder="12/29" /></div>
+      <div><label>CVC (не сохраняется)</label><input autocomplete="cc-csc" placeholder="•••" /></div>
+    </div>
+  </form>
+</body>
+</html>
