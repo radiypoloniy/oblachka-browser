@@ -35,26 +35,26 @@ export default function NewTab({ onSubmit, onOpenAi, tiles }: NewTabProps) {
   }, [settings.background.kind]);
 
   return (
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+    // Скругление под тот же радиус, что у островов-вкладок (см. History/Settings) — фон не должен
+    // упираться в прямые углы контент-области.
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 'var(--radius-island)' }}>
       <Background bg={settings.background} photoUrl={photoUrl} />
 
       {/* Контент поверх фона */}
       <div style={{
         position: 'absolute', inset: 0, zIndex: 2,
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 28, padding: '48px', textAlign: 'center',
+        gap: 22, padding: '48px', textAlign: 'center',
       }}>
         {settings.clock.show && <Clock opts={settings.clock} />}
-        {settings.greeting.show && <Greeting name={settings.greeting.name} />}
-        {settings.search.show && <SearchBar onSubmit={onSubmit} />}
-        {settings.quickLinks.show && tiles.length > 0 && (
-          <QuickLinks tiles={tiles.slice(0, settings.quickLinks.count)} onSubmit={onSubmit} />
+        {settings.weather.show && settings.weather.city.trim() && (
+          <WeatherWidget city={settings.weather.city.trim()} units={settings.weather.units} />
         )}
+        {settings.greeting.show && <Greeting name={settings.greeting.name} />}
+        {settings.search.show && <div style={{ height: 6 }} />}
+        {settings.search.show && <SearchBar onSubmit={onSubmit} />}
+        {settings.quickLinks.show && <QuickLinks cfg={settings.quickLinks} tiles={tiles} onSubmit={onSubmit} />}
       </div>
-
-      {settings.weather.show && settings.weather.city.trim() && (
-        <WeatherWidget city={settings.weather.city.trim()} units={settings.weather.units} />
-      )}
 
       {/* Незаметный переход в AI-режим — правый верхний угол */}
       <button
@@ -159,18 +159,20 @@ function SearchBar({ onSubmit }: { onSubmit: (input: string) => void }) {
     >
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10, height: 52, padding: '0 20px',
-        borderRadius: 999, background: 'rgba(255,255,255,0.16)', backdropFilter: 'blur(16px)',
-        border: '1px solid rgba(255,255,255,0.18)', boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
+        // Тёмное стекло вместо светлого — белый текст на нём читаем поверх любого фона.
+        borderRadius: 999, background: 'rgba(0,0,0,0.30)', backdropFilter: 'blur(16px)',
+        border: '1px solid rgba(255,255,255,0.22)', boxShadow: '0 4px 24px rgba(0,0,0,0.22)',
       }}>
-        <Search size={18} style={{ color: TEXT_SOFT, flex: 'none' }} />
+        <Search size={18} style={{ color: 'rgba(255,255,255,0.85)', flex: 'none' }} />
         <input
+          className="newtab-search-input"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="Поиск или адрес"
           autoFocus
           style={{
             flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none',
-            fontSize: 17, color: TEXT,
+            fontSize: 17, color: '#fff',
           }}
         />
       </div>
@@ -207,16 +209,17 @@ function WeatherWidget({ city, units }: { city: string; units: 'c' | 'f' }) {
   if (!data || !data.ok || data.tempC === undefined) return null;
   const w = wmo(data.weatherCode ?? -1);
   const temp = units === 'f' ? Math.round(data.tempC * 9 / 5 + 32) : Math.round(data.tempC);
+  // Прямо под часами, по центру — заметный «стеклянный» бейдж (было в углу, терялось).
   return (
     <div style={{
-      position: 'absolute', top: 16, left: 16, zIndex: 3,
-      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 999,
-      background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(12px)',
+      display: 'inline-flex', alignItems: 'center', gap: 9, padding: '8px 16px', borderRadius: 999,
+      background: 'rgba(0,0,0,0.24)', backdropFilter: 'blur(12px)',
+      border: '1px solid rgba(255,255,255,0.16)',
       color: TEXT, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
     }} title={`${data.city ?? city} · ${w.label}`}>
-      <span style={{ fontSize: 18, lineHeight: 1 }}>{w.icon}</span>
-      <span style={{ fontSize: 15, fontWeight: 600 }}>{temp}°{units === 'f' ? 'F' : 'C'}</span>
-      <span style={{ fontSize: 13, color: TEXT_SOFT, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: 20, lineHeight: 1 }}>{w.icon}</span>
+      <span style={{ fontSize: 17, fontWeight: 600 }}>{temp}°{units === 'f' ? 'F' : 'C'}</span>
+      <span style={{ fontSize: 14, color: TEXT_SOFT, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {data.city ?? city}
       </span>
     </div>
@@ -224,21 +227,33 @@ function WeatherWidget({ city, units }: { city: string; units: 'c' | 'f' }) {
 }
 
 // ── Быстрые ссылки ────────────────────────────────────────────────────────────
-function QuickLinks({ tiles, onSubmit }: { tiles: TileSite[]; onSubmit: (input: string) => void }) {
+// Источник: топ-сайты из истории ЛИБО свой набор (см. настройки). Приводим оба к единому виду
+// {url, origin, title} для рендера.
+function QuickLinks({ cfg, tiles, onSubmit }: { cfg: NewTabSettings['quickLinks']; tiles: TileSite[]; onSubmit: (input: string) => void }) {
+  const items: { url: string; origin: string; title: string }[] = cfg.source === 'custom'
+    ? cfg.custom.map((l) => ({ url: l.url, origin: originOf(l.url), title: l.title || hostOf(l.url) }))
+    : tiles.slice(0, cfg.count).map((t) => ({ url: t.url, origin: t.origin, title: t.title || t.origin.replace(/^https?:\/\//, '') }));
+  if (items.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'center', maxWidth: 560 }}>
-      {tiles.map((site) => <QuickLink key={site.origin} site={site} onClick={() => onSubmit(site.url)} />)}
+      {items.map((it, i) => <QuickLink key={it.origin + i} origin={it.origin} title={it.title} onClick={() => onSubmit(it.url)} />)}
     </div>
   );
 }
-function QuickLink({ site, onClick }: { site: TileSite; onClick: () => void }) {
+function originOf(url: string): string {
+  try { return new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).origin; } catch { return url; }
+}
+function hostOf(url: string): string {
+  try { return new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname.replace(/^www\./, ''); } catch { return url; }
+}
+function QuickLink({ origin, title, onClick }: { origin: string; title: string; onClick: () => void }) {
   const [ok, setOk] = useState(true);
-  const domain = site.origin.replace(/^https?:\/\//, '');
+  const domain = origin.replace(/^https?:\/\//, '');
   const letter = domain.charAt(0).toUpperCase();
   return (
     <button
       onClick={onClick}
-      title={site.title || domain}
+      title={title || domain}
       style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7,
         width: 76, background: 'none', border: 'none', cursor: 'default',
@@ -251,7 +266,7 @@ function QuickLink({ site, onClick }: { site: TileSite; onClick: () => void }) {
         border: '1px solid rgba(255,255,255,0.14)',
       }}>
         {ok
-          ? <img src={`${site.origin}/favicon.ico`} width={26} height={26} alt="" style={{ borderRadius: 6 }} onError={() => setOk(false)} />
+          ? <img src={`${origin}/favicon.ico`} width={26} height={26} alt="" style={{ borderRadius: 6 }} onError={() => setOk(false)} />
           : <span style={{ color: TEXT, fontSize: 20, fontWeight: 600 }}>{letter}</span>}
       </span>
       <span style={{

@@ -100,3 +100,6 @@ body {
   .settings-nav-label,
   .settings-nav-badge { display: none !important; }
 }
+
+/* Плейсхолдер строки поиска новой вкладки — читаемый поверх тёмного стекла (см. NewTab.tsx). */
+.newtab-search-input::placeholder { color: rgba(255, 255, 255, 0.72); }

@@ -19,7 +19,12 @@ export interface NewTabSettings {
   clock: { show: boolean; seconds: boolean; hour24: boolean };
   greeting: { show: boolean; name: string };
   search: { show: boolean };
-  quickLinks: { show: boolean; count: number };
+  quickLinks: {
+    show: boolean;
+    count: number;                 // сколько показывать при source==='top'
+    source: 'top' | 'custom';      // топ-сайты из истории ИЛИ свой набор ссылок
+    custom: { url: string; title: string }[]; // свои ссылки (source==='custom')
+  };
   weather: { show: boolean; city: string; units: 'c' | 'f' };
 }
 
@@ -28,7 +33,7 @@ export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
   clock: { show: true, seconds: false, hour24: true },
   greeting: { show: true, name: '' },
   search: { show: true },
-  quickLinks: { show: true, count: 8 },
+  quickLinks: { show: true, count: 8, source: 'top', custom: [] },
   weather: { show: false, city: '', units: 'c' },
 };
 

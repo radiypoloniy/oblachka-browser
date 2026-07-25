@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { Upload, Trash2 } from 'lucide-react';
-import { SectionHeader, Subsection, InlineError, TextField, btnGhost } from './kit';
+import { Upload, Trash2, Plus } from 'lucide-react';
+import { SectionHeader, Subsection, InlineError, TextField, btnGhost, IconBtn, fieldFlex } from './kit';
 import Toggle from '../Toggle';
 import {
   loadNewTabSettings, saveNewTabSettings, setNewTabCustomImage, getNewTabCustomImage,
@@ -23,6 +23,8 @@ export default function AppearanceSection() {
   const patchClock = (p: Partial<NewTabSettings['clock']>) => apply({ ...s, clock: { ...s.clock, ...p } });
   const patchGreeting = (p: Partial<NewTabSettings['greeting']>) => apply({ ...s, greeting: { ...s.greeting, ...p } });
   const patchWeather = (p: Partial<NewTabSettings['weather']>) => apply({ ...s, weather: { ...s.weather, ...p } });
+  const patchQL = (p: Partial<NewTabSettings['quickLinks']>) => apply({ ...s, quickLinks: { ...s.quickLinks, ...p } });
+  const setLinks = (custom: NewTabSettings['quickLinks']['custom']) => patchQL({ custom });
 
   function onPickFile(file: File | undefined) {
     if (!file) return;
@@ -134,11 +136,20 @@ export default function AppearanceSection() {
       {/* ── Поиск и ссылки ── */}
       <Subsection title="Поиск и ссылки">
         <ToggleRow label="Строка поиска" checked={s.search.show} onChange={(v) => apply({ ...s, search: { show: v } })} />
-        <ToggleRow label="Быстрые ссылки" checked={s.quickLinks.show} onChange={(v) => apply({ ...s, quickLinks: { ...s.quickLinks, show: v } })} />
-        {s.quickLinks.show && (
-          <SliderRow label="Сколько ссылок" value={s.quickLinks.count} min={4} max={12} step={1}
-            onChange={(v) => apply({ ...s, quickLinks: { ...s.quickLinks, count: v } })} format={(v) => String(v)} />
-        )}
+        <ToggleRow label="Быстрые ссылки" checked={s.quickLinks.show} onChange={(v) => patchQL({ show: v })} />
+        {s.quickLinks.show && <>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <SegBtn active={s.quickLinks.source === 'top'} onClick={() => patchQL({ source: 'top' })}>Топ-сайты</SegBtn>
+            <SegBtn active={s.quickLinks.source === 'custom'} onClick={() => patchQL({ source: 'custom' })}>Свои ссылки</SegBtn>
+          </div>
+          {s.quickLinks.source === 'top' && (
+            <SliderRow label="Сколько ссылок" value={s.quickLinks.count} min={4} max={12} step={1}
+              onChange={(v) => patchQL({ count: v })} format={(v) => String(v)} />
+          )}
+          {s.quickLinks.source === 'custom' && (
+            <CustomLinks links={s.quickLinks.custom} onChange={setLinks} />
+          )}
+        </>}
       </Subsection>
 
       {/* ── Погода ── */}
@@ -167,6 +178,34 @@ function SegBtn({ active, onClick, children }: { active: boolean; onClick: () =>
       boxShadow: active ? 'var(--shadow-card)' : 'none',
       color: active ? 'var(--text-strong)' : 'var(--text-body)',
     }}>{children}</button>
+  );
+}
+
+// Редактор своих быстрых ссылок: строки «название + адрес», добавление/удаление. Пустые строки
+// (без адреса) вкладка просто не покажет, поэтому чистить их отдельно не нужно.
+function CustomLinks({ links, onChange }: {
+  links: { url: string; title: string }[];
+  onChange: (next: { url: string; title: string }[]) => void;
+}) {
+  const update = (i: number, patch: Partial<{ url: string; title: string }>) =>
+    onChange(links.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const remove = (i: number) => onChange(links.filter((_, idx) => idx !== i));
+  const add = () => onChange([...links, { title: '', url: '' }]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {links.map((l, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <TextField value={l.title} placeholder="Название" onChange={(v) => update(i, { title: v })} style={fieldFlex} />
+          <TextField value={l.url} placeholder="example.com" onChange={(v) => update(i, { url: v })} style={fieldFlex} />
+          <IconBtn title="Удалить" onClick={() => remove(i)}><Trash2 size={14} /></IconBtn>
+        </div>
+      ))}
+      <button style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center', alignSelf: 'flex-start' }} onClick={add}>
+        <Plus size={14} /> Добавить ссылку
+      </button>
+      {links.length === 0 && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Пока нет своих ссылок.</span>}
+    </div>
   );
 }
 
