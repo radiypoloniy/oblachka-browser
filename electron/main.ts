@@ -17,6 +17,7 @@ import { ImportManager } from './browserImport/ImportManager';
 import { faviconService } from './FaviconService';
 import { verifyUser } from './osAuth';
 import { PasswordManager } from './PasswordManager';
+import { AutofillManager } from './AutofillManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
 import { SettingsManager } from './SettingsManager';
@@ -62,6 +63,7 @@ import { indexVisit } from './HistoryIndexer';
 import { startContentBackfill, cancelContentBackfill, setContentBackfillProgressListener } from './HistoryContentBackfill';
 import type { BackfillProgress } from '../shared/ipc';
 import type { ImportDataType } from '../shared/ipc';
+import type { AddressInput, AddressUpdate, CardInput, CardUpdate } from '../shared/ipc';
 import { searchHistorySmart } from './HistorySearch';
 import {
   suggestGroups,
@@ -159,6 +161,7 @@ const bookmarkImporters = createChromiumImporters(bookmarks);
 // Общий мультитиповый импорт (закладки/история/пароли + онбординг) — см. electron/browserImport/.
 // Отдельно от bookmarkImporters выше (тот обслуживает только дропдаун панели закладок).
 const passwords   = new PasswordManager();
+const autofill    = new AutofillManager();
 const importManager = new ImportManager({ bookmarks, history, passwords });
 
 // Гейт показа/копирования пароля через подтверждение Windows (electron/osAuth.ts). Успех держится
@@ -1015,6 +1018,21 @@ function registerIpc() {
     return settings.getPasswordAuthEnabled();
   });
   ipcMain.handle(IPC.FAVICON_GET,        (_e, host: string) => faviconService.get(host));
+
+  // Автозаполнение — адреса и карты (electron/AutofillManager.ts). Полный номер карты (reveal) —
+  // под тем же OS-подтверждением, что показ пароля (ensurePasswordAuth); list/add/update номер
+  // наружу не отдают.
+  const pushAutofillChanged = () => chromeView?.webContents.send(IPC.AUTOFILL_CHANGED);
+  ipcMain.handle(IPC.AUTOFILL_ADDRESS_LIST,   () => autofill.listAddresses());
+  ipcMain.handle(IPC.AUTOFILL_ADDRESS_ADD,    (_e, input: AddressInput) => { const ok = autofill.addAddress(input); if (ok) pushAutofillChanged(); return ok; });
+  ipcMain.handle(IPC.AUTOFILL_ADDRESS_UPDATE, (_e, input: AddressUpdate) => { const ok = autofill.updateAddress(input); if (ok) pushAutofillChanged(); return ok; });
+  ipcMain.handle(IPC.AUTOFILL_ADDRESS_DELETE, (_e, id: number) => { const ok = autofill.deleteAddress(id); if (ok) pushAutofillChanged(); return ok; });
+  ipcMain.handle(IPC.AUTOFILL_CARD_LIST,      () => autofill.listCards());
+  ipcMain.handle(IPC.AUTOFILL_CARD_ADD,       (_e, input: CardInput) => { const ok = autofill.addCard(input); if (ok) pushAutofillChanged(); return ok; });
+  ipcMain.handle(IPC.AUTOFILL_CARD_UPDATE,    (_e, input: CardUpdate) => { const ok = autofill.updateCard(input); if (ok) pushAutofillChanged(); return ok; });
+  ipcMain.handle(IPC.AUTOFILL_CARD_DELETE,    (_e, id: number) => { const ok = autofill.deleteCard(id); if (ok) pushAutofillChanged(); return ok; });
+  ipcMain.handle(IPC.AUTOFILL_CARD_REVEAL,    async (_e, id: number) =>
+    (await ensurePasswordAuth('Показать номер карты')) ? autofill.revealCardNumber(id) : null);
   ipcMain.handle(IPC.PASSWORDS_GENERATE, (_e, opts: PasswordGenerateOptions) => passwords.generate(opts));
   ipcMain.handle(IPC.PASSWORDS_ADD, (_e, input: PasswordAddInput) => {
     const ok = passwords.add(input);
@@ -1414,6 +1432,12 @@ app.whenReady().then(async () => {
   // блокирует старт, браузер работает без него (см. PasswordManager.ts::initialize).
   await passwords.initialize().catch((e) =>
     console.error('[Passwords] инициализация упала:', e),
+  );
+
+  // Автозаполнение (адреса/карты): та же гарантия — падение не блокирует старт (см.
+  // AutofillManager.ts::initialize).
+  await autofill.initialize().catch((e) =>
+    console.error('[Autofill] инициализация упала:', e),
   );
 
   // История AI-чата Hub: та же гарантия — падение не блокирует старт, чат работает без

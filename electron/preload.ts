@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 const api: OblakoApi = {
@@ -343,6 +343,22 @@ const api: OblakoApi = {
   getFavicon:        (host: string)                             => ipcRenderer.invoke(IPC.FAVICON_GET, host) as Promise<string | null>,
   getPasswordAuthEnabled: ()                                     => ipcRenderer.invoke(IPC.PASSWORDS_AUTH_GET) as Promise<boolean>,
   setPasswordAuthEnabled: (enabled: boolean)                     => ipcRenderer.invoke(IPC.PASSWORDS_AUTH_SET, enabled) as Promise<boolean>,
+
+  // Автозаполнение — адреса и карты. Полный номер карты — только revealCardNumber (под Hello).
+  listAddresses:    ()                        => ipcRenderer.invoke(IPC.AUTOFILL_ADDRESS_LIST) as Promise<AddressProfile[]>,
+  addAddress:       (input: AddressInput)     => ipcRenderer.invoke(IPC.AUTOFILL_ADDRESS_ADD, input) as Promise<boolean>,
+  updateAddress:    (input: AddressUpdate)    => ipcRenderer.invoke(IPC.AUTOFILL_ADDRESS_UPDATE, input) as Promise<boolean>,
+  deleteAddress:    (id: number)              => ipcRenderer.invoke(IPC.AUTOFILL_ADDRESS_DELETE, id) as Promise<boolean>,
+  listCards:        ()                        => ipcRenderer.invoke(IPC.AUTOFILL_CARD_LIST) as Promise<CardMeta[]>,
+  addCard:          (input: CardInput)        => ipcRenderer.invoke(IPC.AUTOFILL_CARD_ADD, input) as Promise<boolean>,
+  updateCard:       (input: CardUpdate)       => ipcRenderer.invoke(IPC.AUTOFILL_CARD_UPDATE, input) as Promise<boolean>,
+  deleteCard:       (id: number)              => ipcRenderer.invoke(IPC.AUTOFILL_CARD_DELETE, id) as Promise<boolean>,
+  revealCardNumber: (id: number)              => ipcRenderer.invoke(IPC.AUTOFILL_CARD_REVEAL, id) as Promise<string | null>,
+  onAutofillChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.AUTOFILL_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.AUTOFILL_CHANGED, handler);
+  },
   addPassword:       (input: PasswordAddInput)                  => ipcRenderer.invoke(IPC.PASSWORDS_ADD, input) as Promise<boolean>,
   updatePassword:    (input: PasswordUpdateInput)                => ipcRenderer.invoke(IPC.PASSWORDS_UPDATE, input) as Promise<boolean>,
   deletePassword:    (id: number)                               => ipcRenderer.invoke(IPC.PASSWORDS_DELETE, id) as Promise<void>,

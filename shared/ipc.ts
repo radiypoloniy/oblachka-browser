@@ -376,6 +376,19 @@ export const IPC = {
   // Favicon для адресов (список паролей и т.п.) — качается ТОЛЬКО с самого сайта, кэш в main.
   FAVICON_GET:        'favicon:get',        // renderer → main: host → data-URL иконки | null
 
+  // Автозаполнение форм — адреса и карты (electron/AutofillManager.ts). НЕ логин/пароль (те —
+  // PasswordManager). Номер карты шифруется; в renderer уходит только маска, полный — под Hello.
+  AUTOFILL_ADDRESS_LIST:   'autofill:address-list',   // renderer → main: AddressProfile[]
+  AUTOFILL_ADDRESS_ADD:    'autofill:address-add',    // renderer → main: AddressInput → boolean
+  AUTOFILL_ADDRESS_UPDATE: 'autofill:address-update', // renderer → main: AddressUpdate → boolean
+  AUTOFILL_ADDRESS_DELETE: 'autofill:address-delete', // renderer → main: id → boolean
+  AUTOFILL_CARD_LIST:      'autofill:card-list',      // renderer → main: CardMeta[] (без полного номера)
+  AUTOFILL_CARD_ADD:       'autofill:card-add',       // renderer → main: CardInput → boolean
+  AUTOFILL_CARD_UPDATE:    'autofill:card-update',    // renderer → main: CardUpdate → boolean
+  AUTOFILL_CARD_DELETE:    'autofill:card-delete',    // renderer → main: id → boolean
+  AUTOFILL_CARD_REVEAL:    'autofill:card-reveal',    // renderer → main: id → полный номер | null (под Hello)
+  AUTOFILL_CHANGED:        'autofill:changed',        // main → renderer: push после любой мутации
+
   // Менеджер паролей, шаг 2 (см. electron/preload-content.ts, electron/TabManager.ts) — канал
   // ГОСТЕВАЯ СТРАНИЦА ↔ TabManager, через per-view webContents.ipc (не общий ipcMain — main точно
   // знает, какая вкладка прислала сообщение). Content-preload НИКОГДА не шлёт origin — main сам
@@ -973,6 +986,52 @@ export interface Skill {
   visible: boolean;
 }
 
+// ── Автозаполнение форм (electron/AutofillManager.ts) ──────────────────────────
+// Адрес — все поля PII, шифруются одним блобом at rest (наружу отдаём в полном виде: renderer —
+// доверенный chrome-UI). Набор полей — прагматичный, покрывает типовые формы доставки/контактов.
+export interface AddressProfile {
+  id: number;
+  fullName: string;
+  organization: string;
+  email: string;
+  phone: string;
+  street: string;      // улица + дом, одной строкой
+  city: string;
+  region: string;      // область/штат/край
+  postalCode: string;
+  country: string;
+  createdAt: number;
+  updatedAt: number;
+}
+export type AddressInput = Omit<AddressProfile, 'id' | 'createdAt' | 'updatedAt'>;
+export interface AddressUpdate extends AddressInput { id: number; }
+
+// Карта: CVC НЕ хранится (PCI, как во всех браузерах). Полный номер шифруется и наружу массово не
+// уходит — только маска last4 + бренд; полный номер — через revealCardNumber (под Windows Hello).
+export interface CardMeta {
+  id: number;
+  cardholder: string;
+  brand: string;       // 'Visa' | 'Mastercard' | 'Amex' | 'Mir' | … | '' — вычисляется по номеру
+  last4: string;
+  expMonth: number;    // 1..12
+  expYear: number;     // полный год, напр. 2029
+  createdAt: number;
+  updatedAt: number;
+}
+export interface CardInput {
+  cardholder: string;
+  number: string;      // полный номер (цифры/пробелы) — только на вход, наружу не возвращается
+  expMonth: number;
+  expYear: number;
+}
+export interface CardUpdate {
+  id: number;
+  cardholder?: string;
+  number?: string;     // undefined — номер не менять
+  expMonth?: number;
+  expYear?: number;
+}
+
 // Тип API, который preload пробрасывает в window.oblako
 export interface OblakoApi {
   // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).
@@ -1238,6 +1297,19 @@ export interface OblakoApi {
   // OS-проверка (нативный диалог Windows) перед показом/копированием пароля — тумблер в настройках.
   getPasswordAuthEnabled(): Promise<boolean>;
   setPasswordAuthEnabled(enabled: boolean): Promise<boolean>;
+
+  // Автозаполнение форм — адреса и карты (electron/AutofillManager.ts). Полный номер карты наружу
+  // массово не отдаётся: list — только маска, полный номер — revealCardNumber под Windows Hello.
+  listAddresses(): Promise<AddressProfile[]>;
+  addAddress(input: AddressInput): Promise<boolean>;
+  updateAddress(input: AddressUpdate): Promise<boolean>;
+  deleteAddress(id: number): Promise<boolean>;
+  listCards(): Promise<CardMeta[]>;
+  addCard(input: CardInput): Promise<boolean>;
+  updateCard(input: CardUpdate): Promise<boolean>;
+  deleteCard(id: number): Promise<boolean>;
+  revealCardNumber(id: number): Promise<string | null>;
+  onAutofillChanged(cb: () => void): () => void;
   addPassword(input: PasswordAddInput): Promise<boolean>;
   updatePassword(input: PasswordUpdateInput): Promise<boolean>;
   deletePassword(id: number): Promise<void>;

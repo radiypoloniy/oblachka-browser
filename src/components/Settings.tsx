@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Shield, Wifi, Cpu, Palette, Lock, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { X, Shield, Wifi, Cpu, Palette, Lock, SlidersHorizontal, CreditCard, type LucideIcon } from 'lucide-react';
 import type { AdBlockState } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import AdBlockSection from './settings/AdBlockSection';
 import VpnSection from './settings/VpnSection';
 import AiSection from './settings/AiSection';
 import PasswordsSection from './settings/PasswordsSection';
+import AutofillSection from './settings/AutofillSection';
 import GeneralSection from './settings/GeneralSection';
 
 interface SettingsProps {
@@ -29,12 +30,13 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'vpn',        label: 'VPN',         Icon: Wifi },
   { id: 'ai',         label: 'AI',          Icon: Cpu },
   { id: 'passwords',  label: 'Пароли',      Icon: Lock },
+  { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard },
   { id: 'appearance', label: 'Интерфейс',   Icon: Palette, soon: true },
 ];
-type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'passwords' | 'appearance';
+type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'passwords' | 'autofill' | 'appearance';
 
 function isSectionId(v: unknown): v is SectionId {
-  return v === 'general' || v === 'adblock' || v === 'vpn' || v === 'ai' || v === 'passwords' || v === 'appearance';
+  return v === 'general' || v === 'adblock' || v === 'vpn' || v === 'ai' || v === 'passwords' || v === 'autofill' || v === 'appearance';
 }
 
 export default function Settings({ onClose, defaultSection, onOpenImport }: SettingsProps) {
@@ -183,6 +185,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
           {section === 'vpn' && <VpnSection />}
           {section === 'ai' && <AiSection />}
           {section === 'passwords' && <PasswordsSection />}
+          {section === 'autofill' && <AutofillSection />}
         </div>
       </div>
     </div>
