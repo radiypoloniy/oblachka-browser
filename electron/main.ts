@@ -488,20 +488,22 @@ function createWindow() {
       });
       showPasswordPopover(win, state);
     },
-    // Автозаполнение — фокус на поле адреса/карты показывает поповер выбора профиля, заякоренный
-    // на поле (та же трансляция координат вьюпорта страницы в оконные, что у иконки пароля). Карты
-    // (kind==='card') — заход 3, сейчас игнорируем.
+    // Автозаполнение — фокус на поле адреса/карты показывает поповер выбора, заякоренный на поле
+    // (та же трансляция координат вьюпорта страницы в оконные, что у иконки пароля). Адреса и карты
+    // не привязаны к origin — показываем все сохранённые.
     (tabId, rect, kind, url) => {
-      if (kind !== 'address') return;
-      void url; // адреса не привязаны к origin — url здесь не нужен (нужен был бы для отсечки схем)
-      const list = autofillOrchestrator.handleAddressFieldFocus(tabId);
-      if (!list || !win || !tabs) return;
+      void url; // адреса/карты не привязаны к origin — url нужен был бы лишь для отсечки схем
+      if (!win || !tabs) return;
+      const state = kind === 'card'
+        ? (() => { const cards = autofillOrchestrator.handleCardFieldFocus(tabId); return cards ? { kind: 'card' as const, cards } : null; })()
+        : (() => { const list = autofillOrchestrator.handleAddressFieldFocus(tabId); return list ? { kind: 'address' as const, addresses: list } : null; })();
+      if (!state) return;
       const viewBounds = tabs.getTabViewBounds(tabId);
       syncAutofillPopoverAnchorBounds({
         x: viewBounds.x + rect.x, y: viewBounds.y + rect.y,
         width: rect.width, height: rect.height,
       });
-      showAutofillPopover(win, { kind: 'address', addresses: list });
+      showAutofillPopover(win, state);
     },
   );
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
@@ -531,7 +533,17 @@ function createWindow() {
   // Автозаполнение форм: оркестратор (хранилище ↔ страница ↔ поповер) + поповер выбора профиля.
   // onPick поповера — подстановка выбранного адреса в ту вкладку, где было сфокусировано поле.
   autofillOrchestrator.initAutofillOrchestrator(tabs, autofill);
-  initAutofillPopover(() => {}, (id) => { autofillOrchestrator.handleFillAddress(id); });
+  // Выбор в поповере: адрес подставляем сразу; карту — только после подтверждения Windows Hello
+  // (полный номер — чувствительный, тот же гейт, что показ пароля/номера в настройках).
+  initAutofillPopover(() => {}, (id) => {
+    if (autofillOrchestrator.getLastKind() === 'card') {
+      void ensurePasswordAuth('Заполнить данные карты').then((ok) => {
+        if (ok) autofillOrchestrator.handleFillCard(id);
+      });
+    } else {
+      autofillOrchestrator.handleFillAddress(id);
+    }
+  });
   // Менеджер паролей, шаг 2: индикатор push идёт в chrome (не в конкретную вкладку) —
   // PASSWORDS_CHANGED переиспользует существующий канал шага 1 (список в Settings→Пароли).
   passwordAutofill.init(

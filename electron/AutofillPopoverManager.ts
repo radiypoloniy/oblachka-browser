@@ -5,7 +5,7 @@
 import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
-import type { ContentBounds, AddressProfile } from '../shared/ipc';
+import type { ContentBounds, AddressProfile, CardMeta } from '../shared/ipc';
 
 const POPOVER_WIDTH = 300;
 const INITIAL_HEIGHT = 120;
@@ -14,11 +14,10 @@ const WINDOW_MARGIN = 8;
 // Держать в синхроне с SHADOW_MARGIN в src/autofillpopover.tsx.
 const SHADOW_MARGIN = 16;
 
-// Что показывает поповер. kind под заход 3 (карты) — сейчас всегда 'address'.
-export interface AutofillPopoverState {
-  kind: 'address';
-  addresses: AddressProfile[];
-}
+// Что показывает поповер — список адресов ЛИБО карт. Выбор пользователя (id) уходит в оркестратор.
+export type AutofillPopoverState =
+  | { kind: 'address'; addresses: AddressProfile[] }
+  | { kind: 'card'; cards: CardMeta[] };
 
 let popoverView: WebContentsView | null = null;
 let attachedWin: BrowserWindow | null = null;

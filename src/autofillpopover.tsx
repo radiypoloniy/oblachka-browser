@@ -1,15 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { MapPin } from 'lucide-react';
-import type { AddressProfile } from '../shared/ipc';
+import { MapPin, CreditCard } from 'lucide-react';
+import type { AddressProfile, CardMeta } from '../shared/ipc';
 import { islandPlate } from './styles/island';
 import './styles/global.css';
 
 // Состояние поповера (совпадает с electron/AutofillPopoverManager.ts::AutofillPopoverState).
-interface AutofillPopoverState {
-  kind: 'address';
-  addresses: AddressProfile[];
-}
+type AutofillPopoverState =
+  | { kind: 'address'; addresses: AddressProfile[] }
+  | { kind: 'card'; cards: CardMeta[] };
 
 declare global {
   interface Window {
@@ -48,7 +47,9 @@ function AutofillPopoverApp() {
     return () => ro.disconnect();
   }, [state]);
 
-  if (!state || state.addresses.length === 0) return null;
+  if (!state) return null;
+  const items = state.kind === 'address' ? state.addresses : state.cards;
+  if (items.length === 0) return null;
 
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
@@ -64,38 +65,50 @@ function AutofillPopoverApp() {
           color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 'var(--ls-caps)',
           borderBottom: '1px solid var(--divider)',
         }}>
-          Заполнить адрес
+          {state.kind === 'address' ? 'Заполнить адрес' : 'Заполнить карту'}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', padding: 4 }}>
-          {state.addresses.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => window.autofillPopover.pick(a.id)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
-                padding: '8px 10px', borderRadius: 'var(--radius-sm)', border: 'none',
-                background: 'transparent', cursor: 'default',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <MapPin size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{primaryLabel(a)}</div>
-                <div style={{
-                  fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 1,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{summary(a) || a.email || '—'}</div>
-              </div>
-            </button>
-          ))}
+          {state.kind === 'address'
+            ? state.addresses.map((a) => (
+                <Row key={a.id} icon={<MapPin size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />}
+                  title={primaryLabel(a)} sub={summary(a) || a.email || '—'} onClick={() => window.autofillPopover.pick(a.id)} />
+              ))
+            : state.cards.map((c) => (
+                <Row key={c.id} icon={<CreditCard size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />}
+                  title={[c.brand, `•••• ${c.last4}`].filter(Boolean).join(' ')}
+                  sub={[c.cardholder, fmtExp(c.expMonth, c.expYear)].filter(Boolean).join('  ·  ') || '—'}
+                  onClick={() => window.autofillPopover.pick(c.id)} />
+              ))}
         </div>
       </div>
     </div>
   );
+}
+
+function Row({ icon, title, sub, onClick }: { icon: React.ReactNode; title: string; sub: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+        padding: '8px 10px', borderRadius: 'var(--radius-sm)', border: 'none',
+        background: 'transparent', cursor: 'default',
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+    >
+      {icon}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
+        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>
+      </div>
+    </button>
+  );
+}
+
+function fmtExp(m: number, y: number): string {
+  if (!m || !y) return '';
+  return `${String(m).padStart(2, '0')}/${String(y).slice(-2)}`;
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
