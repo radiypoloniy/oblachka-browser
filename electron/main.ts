@@ -19,6 +19,7 @@ import { faviconService } from './FaviconService';
 import { getWeather } from './WeatherService';
 import { getPhotoOfDay } from './NewTabPhoto';
 import { extractUrlText } from './NotebookExtract';
+import { generateStudio, type StudioKind } from './NotebookStudio';
 import { verifyUser } from './osAuth';
 import { PasswordManager } from './PasswordManager';
 import { AutofillManager } from './AutofillManager';
@@ -1146,6 +1147,8 @@ function registerIpc() {
   ipcMain.handle(IPC.NEWTAB_PHOTO_GET,   () => getPhotoOfDay());
   ipcMain.handle(IPC.NOTEBOOK_EXTRACT_URL, (_e, url: string) =>
     win ? extractUrlText(win, typeof url === 'string' ? url : '') : { ok: false });
+  ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (_e, kind: StudioKind, context: string) =>
+    generateStudio(kind, typeof context === 'string' ? context : ''));
 
   // Автозаполнение — адреса и карты (electron/AutofillManager.ts). Полный номер карты (reveal) —
   // под тем же OS-подтверждением, что показ пароля (ensurePasswordAuth); list/add/update номер

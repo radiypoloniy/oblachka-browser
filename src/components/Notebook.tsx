@@ -3,10 +3,12 @@ import {
   FileText, Plus, X, ArrowLeft, Sparkles, Network, BarChart3, ListChecks, Link2, AlignLeft,
   Loader2, RotateCw,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { islandPlate } from '../styles/island';
+import { markdownComponents } from './aiMarkdown';
 import {
   loadSources, saveSources, sourceFromInput, loadSelectedIds, saveSelectedIds, subscribeNotebook,
-  type NotebookSource,
+  getSelectedSourceContext, type NotebookSource,
 } from '../newtab/notebook';
 
 // Большой AI-экран как «блокнот» (NotebookLM-подобный): 3 колонки — Источники / Чат / Студия.
@@ -36,6 +38,8 @@ export default function Notebook({ children, onBack }: NotebookProps) {
     return new Set(ids ?? loadSources().map((s) => s.id));
   });
   const [studioNote, setStudioNote] = useState<string | null>(null);
+  // Открытый результат Студии (модалка). busy — идёт генерация; text/error — итог.
+  const [studio, setStudio] = useState<{ kind: StudioKind; label: string; busy: boolean; text?: string; error?: string } | null>(null);
 
   // Внешние изменения стора (напр. из другой вкладки) — перечитываем.
   useEffect(() => subscribeNotebook(() => setSources(loadSources())), []);
@@ -84,6 +88,19 @@ export default function Notebook({ children, onBack }: NotebookProps) {
 
   const selectedCount = sources.filter((s) => selected.has(s.id) && s.status === 'ready').length;
 
+  // Реализованные типы Студии (остальные — свои заходы, пока показывают заметку «скоро»).
+  const STUDIO_IMPLEMENTED = new Set<StudioKind>(['summary']);
+  async function handleStudio(kind: StudioKind) {
+    const label = STUDIO.find((s) => s.kind === kind)!.label;
+    const ctx = getSelectedSourceContext();
+    if (!ctx) { setStudioNote('Выберите источники с текстом — по ним построю материал.'); return; }
+    if (!STUDIO_IMPLEMENTED.has(kind)) { setStudioNote(`«${label}» — скоро, генерация появится следующим заходом.`); return; }
+    setStudioNote(null);
+    setStudio({ kind, label, busy: true });
+    const r = await window.oblako.generateStudio(kind, ctx);
+    setStudio({ kind, label, busy: false, text: r.ok ? r.text : undefined, error: r.ok ? undefined : (r.error || 'Не удалось сгенерировать') });
+  }
+
   return (
     <div style={{
       position: 'absolute', inset: 0,
@@ -103,8 +120,48 @@ export default function Notebook({ children, onBack }: NotebookProps) {
         {children}
       </div>
 
-      <StudioPanel selectedCount={selectedCount} note={studioNote}
-        onGenerate={(k) => setStudioNote(`Скоро: сгенерирую «${STUDIO.find((s) => s.kind === k)!.label}» по выбранным источникам (${selectedCount})`)} />
+      <StudioPanel selectedCount={selectedCount} note={studioNote} busyKind={studio?.busy ? studio.kind : null}
+        onGenerate={(k) => void handleStudio(k)} />
+
+      {studio && <StudioResultModal state={studio} onClose={() => setStudio(null)} />}
+    </div>
+  );
+}
+
+// Модалка результата Студии. Саммари рендерим как Markdown; будущие типы (майндкарта/инфографика/
+// тест) добавят свои рендеры этим же контейнером.
+function StudioResultModal({ state, onClose }: {
+  state: { kind: StudioKind; label: string; busy: boolean; text?: string; error?: string };
+  onClose: () => void;
+}) {
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 500, background: 'var(--scrim, rgba(0,0,0,0.4))',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: 680, maxWidth: 'calc(100vw - 48px)', maxHeight: 'calc(100vh - 96px)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        ...islandPlate, borderRadius: 'var(--radius-island)', boxShadow: 'var(--shadow-island)', background: 'var(--surface-solid)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', borderBottom: '1px solid var(--divider-strong)', flex: 'none' }}>
+          <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>{state.label}</span>
+          <button onClick={onClose} style={xBtn}><X size={16} /></button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px' }}>
+          {state.busy ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)', fontSize: 'var(--fs-sm)' }}>
+              <Loader2 size={16} style={{ animation: 'oblako-spin 1s linear infinite' }} /> Генерирую по источникам…
+            </div>
+          ) : state.error ? (
+            <div style={{ color: 'var(--danger-500)', fontSize: 'var(--fs-sm)' }}>{state.error}</div>
+          ) : (
+            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
+              <ReactMarkdown components={markdownComponents}>{state.text || ''}</ReactMarkdown>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -176,8 +233,8 @@ function SourcesPanel({ sources, selected, onAdd, onRemove, onToggle, onRetry, o
 }
 
 // ── Студия (справа) ─────────────────────────────────────────────────────────────
-function StudioPanel({ selectedCount, note, onGenerate }: {
-  selectedCount: number; note: string | null; onGenerate: (k: StudioKind) => void;
+function StudioPanel({ selectedCount, note, busyKind, onGenerate }: {
+  selectedCount: number; note: string | null; busyKind: StudioKind | null; onGenerate: (k: StudioKind) => void;
 }) {
   return (
     <Panel title="Студия">
@@ -194,7 +251,9 @@ function StudioPanel({ selectedCount, note, onGenerate }: {
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--surface)')}>
-            <Icon size={18} style={{ color: 'var(--accent)', flex: 'none' }} />
+            {busyKind === kind
+              ? <Loader2 size={18} style={{ color: 'var(--accent)', flex: 'none', animation: 'oblako-spin 1s linear infinite' }} />
+              : <Icon size={18} style={{ color: 'var(--accent)', flex: 'none' }} />}
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>{label}</div>
               <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{hint}</div>

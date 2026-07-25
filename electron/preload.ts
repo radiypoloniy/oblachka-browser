@@ -57,6 +57,7 @@ const api: OblakoApi = {
   getWeather: (city: string) => ipcRenderer.invoke(IPC.WEATHER_GET, city) as Promise<WeatherInfo>,
   getNewtabPhoto: () => ipcRenderer.invoke(IPC.NEWTAB_PHOTO_GET) as Promise<{ ok: boolean; dataUrl?: string }>,
   extractNotebookUrl: (url: string) => ipcRenderer.invoke(IPC.NOTEBOOK_EXTRACT_URL, url) as Promise<{ ok: boolean; title?: string; text?: string }>,
+  generateStudio: (kind: string, context: string) => ipcRenderer.invoke(IPC.NOTEBOOK_STUDIO_GEN, kind, context) as Promise<{ ok: boolean; text?: string; error?: string }>,
 
   enterSplit:      (rightId: string)            => ipcRenderer.invoke(IPC.TAB_ENTER_SPLIT, rightId),
   exitSplit:       (tabId: string)              => ipcRenderer.invoke(IPC.TAB_EXIT_SPLIT, tabId),
