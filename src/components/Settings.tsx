@@ -8,6 +8,7 @@ import AiSection from './settings/AiSection';
 import PasswordsSection from './settings/PasswordsSection';
 import AutofillSection from './settings/AutofillSection';
 import GeneralSection from './settings/GeneralSection';
+import AppearanceSection from './settings/AppearanceSection';
 
 interface SettingsProps {
   onClose: () => void;
@@ -31,7 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'ai',         label: 'AI',          Icon: Cpu },
   { id: 'passwords',  label: 'Пароли',      Icon: Lock },
   { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard },
-  { id: 'appearance', label: 'Интерфейс',   Icon: Palette, soon: true },
+  { id: 'appearance', label: 'Интерфейс',   Icon: Palette },
 ];
 type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'passwords' | 'autofill' | 'appearance';
 
@@ -186,6 +187,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
           {section === 'ai' && <AiSection />}
           {section === 'passwords' && <PasswordsSection />}
           {section === 'autofill' && <AutofillSection />}
+          {section === 'appearance' && <AppearanceSection />}
         </div>
       </div>
     </div>
