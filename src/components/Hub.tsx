@@ -10,6 +10,7 @@ import type { HubChatMessage, HubChatSessionMeta, HubMode } from '../../shared/i
 import { markdownComponents } from './aiMarkdown';
 import { glassPlate } from '../styles/island';
 import NewTab from './NewTab';
+import Notebook from './Notebook';
 
 interface HubProps {
   tabId: string;
@@ -54,13 +55,10 @@ export default function Hub({ tabId, onSubmit, onOpenSettings }: HubProps) {
     mode === 'tiles'
       ? <NewTab onSubmit={onSubmit} onOpenAi={() => pickMode('ai')} tiles={tiles} />
       : (
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          justifyContent: 'flex-start', padding: '32px 48px', overflowY: 'hidden',
-        }}>
+        // Большой AI-экран как блокнот (NotebookLM-подобный): 3 колонки, центр — существующий чат.
+        <Notebook onBack={() => pickMode('tiles')}>
           <AiChatView tabId={tabId} mode={mode} onModeChange={pickMode} onOpenSettings={onOpenSettings} />
-        </div>
+        </Notebook>
       )
   );
 }
