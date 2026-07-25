@@ -221,237 +221,211 @@ function AiChatView({ tabId, onModeChange, onOpenSettings }: {
 
   const hasConversation = messages.length > 0 || streaming;
 
-  return (
-    <div style={{
-      flex: 1, width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column',
-      minHeight: 0, gap: 20,
-    }}>
-      {/* Верхняя панель: слева заголовок или «назад к списку», справа кнопка «Обзор»
-          (замена ползунка-переключателя режимов — см. правки по центральной панели). */}
-      <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
-        {hasConversation ? (
-          <button
-            onClick={newChat}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
-              border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'default',
-              fontSize: 'var(--fs-xs)', fontWeight: 600, background: 'transparent', color: 'var(--text-muted)',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-strong)'; e.currentTarget.style.background = 'var(--surface-hover)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
-          >
-            <ArrowLeft size={14} /> Назад к списку
-          </button>
-        ) : (
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text-strong)' }}>Спросите что угодно</div>
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Отвечает локальная модель, без интернета</div>
-          </div>
-        )}
-        {hasConversation && <div style={{ flex: 1 }} />}
-        <button
-          onClick={() => onModeChange('tiles')}
-          title="К обзору"
-          style={{
-            flex: 'none', display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
-            border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'default',
-            fontSize: 'var(--fs-xs)', fontWeight: 600, background: 'var(--surface-sunken)', color: 'var(--text-body)',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-sunken)'; }}
-        >
-          <LayoutGrid size={14} /> Обзор
-        </button>
-      </div>
-
-      {/* Середина (скролл): диалог ИЛИ — на пустом — подсказки и недавние запросы (уехали вниз,
-          доступны прокруткой; у каждого чата — кнопка удаления). Подсказки станут контекстными
-          по источникам отдельным заходом. */}
-      <div ref={transcriptRef} style={{
-        flex: 1, minHeight: 0, overflowY: 'auto',
-        display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 2px',
-      }}>
-        {hasConversation ? (
-          <>
-            {messages.map((m, i) => <MessageBubble key={i} message={m} />)}
-            {streaming && (
-              <MessageBubble
-                message={{ role: 'assistant', text: streamText, createdAt: Date.now() }}
-                pending
-                placeholderText={webSearching ? 'Ищу в интернете…' : '…'}
-              />
-            )}
-          </>
-        ) : (
-          <>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-              {QUICK_PROMPTS.map((p) => (
-                <QuickPromptChip key={p.text} icon={p.icon} text={p.text} onClick={() => pickPrompt(p.text)} />
-              ))}
-            </div>
-            {sessions.length > 0 && (
-              <div style={{ marginTop: 4 }}>
-                <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)', marginBottom: 8 }}>
-                  Недавние запросы
-                </div>
-                <div style={{
-                  background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
-                  boxShadow: 'var(--shadow-card)', border: '1px solid var(--glass-edge)', overflow: 'hidden',
-                }}>
-                  {sessions.map((s, i) => (
-                    <div
-                      key={s.id}
-                      onClick={() => openSession(s.id)}
-                      style={{
-                        display: 'flex', width: '100%', alignItems: 'center', gap: 8,
-                        padding: '10px 14px', cursor: 'default',
-                        borderTop: i === 0 ? 'none' : '1px solid var(--glass-edge)',
-                        color: 'var(--text-body)', fontSize: 'var(--fs-sm)',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                    >
-                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {s.title || 'Без названия'}
-                      </span>
-                      <span style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-xs)', flex: 'none' }}>
-                        {formatSessionTime(s.updatedAt)}
-                      </span>
-                      <button
-                        onClick={(e) => deleteSession(s.id, e)}
-                        title="Удалить чат"
-                        style={{
-                          flex: 'none', border: 'none', background: 'transparent', cursor: 'default',
-                          padding: 4, borderRadius: 'var(--radius-sm)', color: 'var(--text-faint)', display: 'inline-flex',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger-500)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {error && (
-        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', padding: '0 4px' }}>
-          Ошибка: {error}
-        </div>
-      )}
-
-      {/* Плашка согласия на web-grounding — та же механика/текст, что в aipanel.tsx (свой стейт,
-          свой процесс, но идентичное поведение и формулировка не путают пользователя разницей
-          между хабом и панелью). Обязательна при каждом OFF→ON, без «запомнить». */}
-      {showWebGroundingConfirm && (
-        <div style={{
-          display: 'flex', flexDirection: 'column', gap: 8,
-          padding: '10px 12px',
-          borderRadius: 'var(--radius-chip)',
-          background: 'var(--surface-sunken)',
-          flexShrink: 0,
-        }}>
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
-            Запросы поиска будут отправлены на твой поисковый сервер через VPN.
-          </span>
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => setShowWebGroundingConfirm(false)}
-              style={{
-                padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
-                background: 'transparent', color: 'var(--text-muted)',
-                fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer',
-              }}
-            >
-              Отмена
-            </button>
-            <button
-              onClick={confirmWebGrounding}
-              style={{
-                padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
-                background: 'var(--accent)', color: 'var(--on-accent)',
-                fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              Продолжить
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div style={{
-        flex: 'none', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '12px 14px',
-        background: 'var(--surface-solid)',
-        borderRadius: 'var(--radius-island)', boxShadow: 'var(--shadow-card)',
-        border: '1px solid var(--glass-edge)',
-      }}>
-        <button
-          onClick={handleGlobeClick}
-          title={
-            !searxngConfigured
-              ? 'Веб-поиск не настроен — открыть настройки'
-              : webGroundingActive
-                ? 'Веб-поиск включён — нажмите, чтобы выключить'
-                : 'Включить веб-поиск (SearXNG)'
-          }
-          style={{
-            flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 36, height: 36,
-            background: webGroundingActive ? 'var(--accent-soft)' : 'transparent',
-            border: webGroundingActive ? '1.5px solid var(--accent)' : '1.5px solid transparent',
-            borderRadius: '50%',
-            color: webGroundingActive ? 'var(--accent)' : 'var(--text-faint)',
-            cursor: 'pointer', padding: 0,
-          }}
-        >
-          <Globe size={16} strokeWidth={2} />
-        </button>
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); }
-          }}
-          placeholder="Напишите сообщение…"
-          rows={1}
-          style={{
-            flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent',
-            color: 'var(--text-strong)', fontSize: 'var(--fs-md)', fontFamily: 'inherit',
-            maxHeight: 140, minHeight: 24, padding: '6px 8px',
-          }}
-        />
+  // Верхняя панель: заголовок / «назад к списку» + кнопка «Обзор» (замена ползунка режимов).
+  const topBar = (
+    <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+      {hasConversation ? (
         <button
           onClick={newChat}
-          title="Новый чат"
           style={{
-            flex: 'none', border: 'none', background: 'transparent', cursor: 'default', padding: 8,
-            borderRadius: 'var(--radius-sm)', display: 'inline-flex', color: 'var(--text-faint)',
+            display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
+            border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'default',
+            fontSize: 'var(--fs-xs)', fontWeight: 600, background: 'transparent', color: 'var(--text-muted)',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; e.currentTarget.style.background = 'var(--surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent'; }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-strong)'; e.currentTarget.style.background = 'var(--surface-hover)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
         >
-          <MessageSquarePlus size={17} />
+          <ArrowLeft size={14} /> Назад к списку
         </button>
-        <button
-          onClick={() => send(input)}
-          disabled={streaming || !input.trim()}
-          title="Отправить"
-          style={{
-            flex: 'none', border: 'none', borderRadius: '50%', cursor: 'default',
-            width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            background: input.trim() && !streaming ? 'var(--accent)' : 'var(--surface-sunken)',
-            color: input.trim() && !streaming ? 'var(--on-accent)' : 'var(--text-faint)',
-          }}
-        >
-          <Send size={15} />
-        </button>
-      </div>
+      ) : (
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text-strong)' }}>Спросите что угодно</div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Отвечает локальная модель, без интернета</div>
+        </div>
+      )}
+      {hasConversation && <div style={{ flex: 1 }} />}
+      <button
+        onClick={() => onModeChange('tiles')}
+        title="К обзору"
+        style={{
+          flex: 'none', display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
+          border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'default',
+          fontSize: 'var(--fs-xs)', fontWeight: 600, background: 'var(--surface-sunken)', color: 'var(--text-body)',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-sunken)'; }}
+      >
+        <LayoutGrid size={14} /> Обзор
+      </button>
+    </div>
+  );
 
+  const promptsBlock = (
+    <div style={{ flex: 'none', display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+      {QUICK_PROMPTS.map((p) => (
+        <QuickPromptChip key={p.text} icon={p.icon} text={p.text} onClick={() => pickPrompt(p.text)} />
+      ))}
+    </div>
+  );
+
+  // Недавние запросы — под вводом (в потоке), у каждого кнопка удаления. Скроллится вся панель
+  // целиком (см. корневой контейнер empty-state ниже), а не отдельная область списка.
+  const recentChats = sessions.length > 0 && (
+    <div style={{ flex: 'none' }}>
+      <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)', marginBottom: 8 }}>
+        Недавние запросы
+      </div>
+      <div style={{
+        background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
+        boxShadow: 'var(--shadow-card)', border: '1px solid var(--glass-edge)', overflow: 'hidden',
+      }}>
+        {sessions.map((s, i) => (
+          <div
+            key={s.id}
+            onClick={() => openSession(s.id)}
+            style={{
+              display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+              padding: '10px 14px', cursor: 'default',
+              borderTop: i === 0 ? 'none' : '1px solid var(--glass-edge)',
+              color: 'var(--text-body)', fontSize: 'var(--fs-sm)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {s.title || 'Без названия'}
+            </span>
+            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-xs)', flex: 'none' }}>
+              {formatSessionTime(s.updatedAt)}
+            </span>
+            <button
+              onClick={(e) => deleteSession(s.id, e)}
+              title="Удалить чат"
+              style={{
+                flex: 'none', border: 'none', background: 'transparent', cursor: 'default',
+                padding: 4, borderRadius: 'var(--radius-sm)', color: 'var(--text-faint)', display: 'inline-flex',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger-500)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const errorBlock = error && (
+    <div style={{ flex: 'none', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', padding: '0 4px' }}>
+      Ошибка: {error}
+    </div>
+  );
+
+  // Плашка согласия на web-grounding — та же механика/текст, что в aipanel.tsx.
+  const consentBlock = showWebGroundingConfirm && (
+    <div style={{
+      flex: 'none', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px',
+      borderRadius: 'var(--radius-chip)', background: 'var(--surface-sunken)',
+    }}>
+      <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
+        Запросы поиска будут отправлены на твой поисковый сервер через VPN.
+      </span>
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+        <button onClick={() => setShowWebGroundingConfirm(false)} style={{ padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer' }}>Отмена</button>
+        <button onClick={confirmWebGrounding} style={{ padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer' }}>Продолжить</button>
+      </div>
+    </div>
+  );
+
+  const inputRow = (
+    <div style={{
+      flex: 'none', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '12px 14px',
+      background: 'var(--surface-solid)', borderRadius: 'var(--radius-island)',
+      boxShadow: 'var(--shadow-card)', border: '1px solid var(--glass-edge)',
+    }}>
+      <button
+        onClick={handleGlobeClick}
+        title={!searxngConfigured ? 'Веб-поиск не настроен — открыть настройки' : webGroundingActive ? 'Веб-поиск включён — нажмите, чтобы выключить' : 'Включить веб-поиск (SearXNG)'}
+        style={{
+          flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36,
+          background: webGroundingActive ? 'var(--accent-soft)' : 'transparent',
+          border: webGroundingActive ? '1.5px solid var(--accent)' : '1.5px solid transparent',
+          borderRadius: '50%', color: webGroundingActive ? 'var(--accent)' : 'var(--text-faint)', cursor: 'pointer', padding: 0,
+        }}
+      >
+        <Globe size={16} strokeWidth={2} />
+      </button>
+      <textarea
+        ref={textareaRef}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
+        placeholder="Напишите сообщение…"
+        rows={1}
+        style={{
+          flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent',
+          color: 'var(--text-strong)', fontSize: 'var(--fs-md)', fontFamily: 'inherit',
+          maxHeight: 140, minHeight: 24, padding: '6px 8px',
+        }}
+      />
+      <button
+        onClick={newChat}
+        title="Новый чат"
+        style={{ flex: 'none', border: 'none', background: 'transparent', cursor: 'default', padding: 8, borderRadius: 'var(--radius-sm)', display: 'inline-flex', color: 'var(--text-faint)' }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; e.currentTarget.style.background = 'var(--surface-hover)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent'; }}
+      >
+        <MessageSquarePlus size={17} />
+      </button>
+      <button
+        onClick={() => send(input)}
+        disabled={streaming || !input.trim()}
+        title="Отправить"
+        style={{
+          flex: 'none', border: 'none', borderRadius: '50%', cursor: 'default', width: 36, height: 36,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          background: input.trim() && !streaming ? 'var(--accent)' : 'var(--surface-sunken)',
+          color: input.trim() && !streaming ? 'var(--on-accent)' : 'var(--text-faint)',
+        }}
+      >
+        <Send size={15} />
+      </button>
+    </div>
+  );
+
+  // Диалог: стандартный чат — прокручивается лента, ввод закреплён снизу.
+  if (hasConversation) {
+    return (
+      <div style={{ flex: 1, width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column', minHeight: 0, gap: 12 }}>
+        {topBar}
+        <div ref={transcriptRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 2px' }}>
+          {messages.map((m, i) => <MessageBubble key={i} message={m} />)}
+          {streaming && (
+            <MessageBubble
+              message={{ role: 'assistant', text: streamText, createdAt: Date.now() }}
+              pending
+              placeholderText={webSearching ? 'Ищу в интернете…' : '…'}
+            />
+          )}
+        </div>
+        {errorBlock}
+        {consentBlock}
+        {inputRow}
+      </div>
+    );
+  }
+
+  // Пустой экран: прокручивается ВСЯ панель целиком (не отдельная область). Порядок — шапка,
+  // подсказки, СТРОКА ВВОДА, затем список недавних чатов под ней (видно один, остальные — прокруткой).
+  return (
+    <div style={{ flex: 1, width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column', minHeight: 0, overflowY: 'auto', gap: 16, padding: '2px' }}>
+      {topBar}
+      {promptsBlock}
+      {errorBlock}
+      {consentBlock}
+      {inputRow}
+      {recentChats}
     </div>
   );
 }
