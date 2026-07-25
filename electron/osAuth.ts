@@ -38,13 +38,26 @@ function buildPsScript(message: string): string {
   // JS-шаблон (он бы оборвал template literal). ? матчит ровно символ арности (бэктик).
   return [
     `$ErrorActionPreference='Stop'`,
+    // Win32-хелпер: диалог Hello создаётся системным брокером и без окна-владельца (powershell
+    // скрыт) не выходит на передний план — висит в таскбаре. Вытаскиваем окно диалога учётных
+    // данных (класс 'Credential Dialog Xaml Host') на передний план, пока пользователь не ответил.
+    `Add-Type -Namespace OblakoFg -Name Win -MemberDefinition @'`,
+    `[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string a, string b);`,
+    `[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);`,
+    `'@`,
     `[void][Windows.Security.Credentials.UI.UserConsentVerifier,Windows.Security.Credentials.UI,ContentType=WindowsRuntime]`,
     `Add-Type -AssemblyName System.Runtime.WindowsRuntime`,
     `$asTaskGeneric=([System.WindowsRuntimeSystemExtensions].GetMethods()|Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -like 'IAsyncOperation?1' })[0]`,
     `$op=[Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync('${msg}')`,
     `$asTask=$asTaskGeneric.MakeGenericMethod([Windows.Security.Credentials.UI.UserConsentVerificationResult])`,
     `$task=$asTask.Invoke($null,@($op))`,
-    `if($task.Wait(90000)){ $task.Result.ToString() } else { 'Timeout' }`,
+    // Поллим появление окна диалога и разово выводим его вперёд; дальше просто ждём ответа.
+    `$brought=$false; $deadline=(Get-Date).AddSeconds(90)`,
+    `while(-not $task.IsCompleted -and (Get-Date) -lt $deadline){`,
+    `  if(-not $brought){ $h=[OblakoFg.Win]::FindWindow('Credential Dialog Xaml Host',$null); if($h -ne [IntPtr]::Zero){ [void][OblakoFg.Win]::SetForegroundWindow($h); $brought=$true } }`,
+    `  Start-Sleep -Milliseconds 100`,
+    `}`,
+    `if($task.IsCompleted){ $task.Result.ToString() } else { 'Timeout' }`,
   ].join('\n');
 }
 
