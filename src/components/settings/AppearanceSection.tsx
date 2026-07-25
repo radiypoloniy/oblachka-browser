@@ -52,12 +52,18 @@ export default function AppearanceSection() {
 
       {/* ── Фон ── */}
       <Subsection title="Фон" description="Градиент, свой цвет или изображение.">
-        <div style={{ display: 'flex', gap: 6 }}>
-          {([['preset', 'Градиент'], ['color', 'Цвет'], ['custom', 'Своё фото']] as [BackgroundKind, string][]).map(([kind, label]) => (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {([['preset', 'Градиент'], ['color', 'Цвет'], ['custom', 'Своё фото'], ['photo', 'Фото дня']] as [BackgroundKind, string][]).map(([kind, label]) => (
             <SegBtn key={kind} active={s.background.kind === kind}
               onClick={() => patchBg({ kind })}>{label}</SegBtn>
           ))}
         </div>
+
+        {s.background.kind === 'photo' && (
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+            Новое фото каждый день (загружается из интернета через ваше соединение/VPN, кэшируется на день).
+          </span>
+        )}
 
         {s.background.kind === 'preset' && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>

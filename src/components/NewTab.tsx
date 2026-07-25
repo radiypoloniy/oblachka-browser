@@ -25,9 +25,18 @@ export default function NewTab({ onSubmit, onOpenAi, tiles }: NewTabProps) {
   const [settings, setSettings] = useState<NewTabSettings>(() => loadNewTabSettings());
   useEffect(() => subscribeNewTabSettings(() => setSettings(loadNewTabSettings())), []);
 
+  // «Фото дня» — тянется через main (кэш на день), только при выбранном фоне 'photo'.
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (settings.background.kind !== 'photo') return;
+    let alive = true;
+    void window.oblako.getNewtabPhoto().then((r) => { if (alive && r.ok && r.dataUrl) setPhotoUrl(r.dataUrl); });
+    return () => { alive = false; };
+  }, [settings.background.kind]);
+
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-      <Background bg={settings.background} />
+      <Background bg={settings.background} photoUrl={photoUrl} />
 
       {/* Контент поверх фона */}
       <div style={{
@@ -68,7 +77,7 @@ export default function NewTab({ onSubmit, onOpenAi, tiles }: NewTabProps) {
 }
 
 // ── Фон ────────────────────────────────────────────────────────────────────────
-function Background({ bg }: { bg: NewTabSettings['background'] }) {
+function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoUrl: string | null }) {
   const layer = useMemo<React.CSSProperties>(() => {
     const base: React.CSSProperties = {
       position: 'absolute', inset: 0, zIndex: 0,
@@ -79,9 +88,12 @@ function Background({ bg }: { bg: NewTabSettings['background'] }) {
       const url = getNewTabCustomImage();
       return url ? { ...base, backgroundImage: `url("${url}")` } : { ...base, background: presetCss('aurora') };
     }
-    // 'photo' появится заходом позже — до тех пор ведёт себя как пресет.
+    if (bg.kind === 'photo') {
+      // Пока фото не загрузилось (или офлайн) — показываем пресет, чтобы не мигать пустотой.
+      return photoUrl ? { ...base, backgroundImage: `url("${photoUrl}")` } : { ...base, background: presetCss(bg.preset) };
+    }
     return { ...base, background: presetCss(bg.preset) };
-  }, [bg.kind, bg.preset, bg.color]);
+  }, [bg.kind, bg.preset, bg.color, photoUrl]);
 
   // Размытие фона отдельным слоем со scale — чтобы размытые края не оголяли фон окна.
   const blurred = bg.blur > 0 ? { ...layer, filter: `blur(${bg.blur}px)`, transform: 'scale(1.08)' } : layer;

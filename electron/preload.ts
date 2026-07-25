@@ -55,6 +55,7 @@ const api: OblakoApi = {
   showNewTabMenu: () => ipcRenderer.invoke(IPC.NEW_TAB_SHOW_MENU) as Promise<void>,
   setChromeTheme: (dark: boolean, incognito: boolean) => ipcRenderer.invoke(IPC.CHROME_THEME_SET, dark, incognito) as Promise<void>,
   getWeather: (city: string) => ipcRenderer.invoke(IPC.WEATHER_GET, city) as Promise<WeatherInfo>,
+  getNewtabPhoto: () => ipcRenderer.invoke(IPC.NEWTAB_PHOTO_GET) as Promise<{ ok: boolean; dataUrl?: string }>,
 
   enterSplit:      (rightId: string)            => ipcRenderer.invoke(IPC.TAB_ENTER_SPLIT, rightId),
   exitSplit:       (tabId: string)              => ipcRenderer.invoke(IPC.TAB_EXIT_SPLIT, tabId),

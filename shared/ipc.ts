@@ -170,6 +170,7 @@ export const IPC = {
   NEW_TAB_SHOW_MENU: 'tab:new-menu', // renderer → main: ПКМ по кнопке «Новая вкладка» (обычная/инкогнито/восстановить)
   CHROME_THEME_SET: 'chrome:theme-set', // renderer → main: тема chrome (dark+incognito) для раздачи во все поповеры/вью
   WEATHER_GET: 'weather:get', // renderer → main: погода по городу для виджета новой вкладки (WeatherService)
+  NEWTAB_PHOTO_GET: 'newtab:photo-get', // renderer → main: «фото дня» для фона вкладки (data-URL), кэш на день
 
   // Split View
   TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (правая вкладка)
@@ -1118,6 +1119,7 @@ export interface OblakoApi {
   showNewTabMenu(): Promise<void>; // ПКМ по кнопке «Новая вкладка»: обычная / инкогнито / восстановить
   setChromeTheme(dark: boolean, incognito: boolean): Promise<void>; // раздать тему во все chrome-вью (поповеры)
   getWeather(city: string): Promise<WeatherInfo>; // погода для виджета новой вкладки
+  getNewtabPhoto(): Promise<{ ok: boolean; dataUrl?: string }>; // «фото дня» для фона новой вкладки
 
   // Split View
   enterSplit(rightId: string): Promise<void>;       // текущая активная → левая, rightId → правая

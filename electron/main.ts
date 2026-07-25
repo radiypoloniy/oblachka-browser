@@ -17,6 +17,7 @@ import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImport
 import { ImportManager } from './browserImport/ImportManager';
 import { faviconService } from './FaviconService';
 import { getWeather } from './WeatherService';
+import { getPhotoOfDay } from './NewTabPhoto';
 import { verifyUser } from './osAuth';
 import { PasswordManager } from './PasswordManager';
 import { AutofillManager } from './AutofillManager';
@@ -1131,6 +1132,7 @@ function registerIpc() {
   // Погода для виджета новой вкладки (тот же WeatherService, что у AI-панели; отдельный typed-канал
   // для главного рендерера — preload-aipanel до него не относится).
   ipcMain.handle(IPC.WEATHER_GET,        (_e, city: string) => getWeather(typeof city === 'string' ? city : ''));
+  ipcMain.handle(IPC.NEWTAB_PHOTO_GET,   () => getPhotoOfDay());
 
   // Автозаполнение — адреса и карты (electron/AutofillManager.ts). Полный номер карты (reveal) —
   // под тем же OS-подтверждением, что показ пароля (ensurePasswordAuth); list/add/update номер
