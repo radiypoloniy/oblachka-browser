@@ -18,6 +18,7 @@ import { ImportManager } from './browserImport/ImportManager';
 import { faviconService } from './FaviconService';
 import { getWeather } from './WeatherService';
 import { getPhotoOfDay } from './NewTabPhoto';
+import { extractUrlText } from './NotebookExtract';
 import { verifyUser } from './osAuth';
 import { PasswordManager } from './PasswordManager';
 import { AutofillManager } from './AutofillManager';
@@ -1133,6 +1134,8 @@ function registerIpc() {
   // для главного рендерера — preload-aipanel до него не относится).
   ipcMain.handle(IPC.WEATHER_GET,        (_e, city: string) => getWeather(typeof city === 'string' ? city : ''));
   ipcMain.handle(IPC.NEWTAB_PHOTO_GET,   () => getPhotoOfDay());
+  ipcMain.handle(IPC.NOTEBOOK_EXTRACT_URL, (_e, url: string) =>
+    win ? extractUrlText(win, typeof url === 'string' ? url : '') : { ok: false });
 
   // Автозаполнение — адреса и карты (electron/AutofillManager.ts). Полный номер карты (reveal) —
   // под тем же OS-подтверждением, что показ пароля (ensurePasswordAuth); list/add/update номер
