@@ -230,13 +230,17 @@ function WeatherWidget({ city, units }: { city: string; units: 'c' | 'f' }) {
 // Источник: топ-сайты из истории ЛИБО свой набор (см. настройки). Приводим оба к единому виду
 // {url, origin, title} для рендера.
 function QuickLinks({ cfg, tiles, onSubmit }: { cfg: NewTabSettings['quickLinks']; tiles: TileSite[]; onSubmit: (input: string) => void }) {
-  const items: { url: string; origin: string; title: string }[] = cfg.source === 'custom'
-    ? cfg.custom.map((l) => ({ url: l.url, origin: originOf(l.url), title: l.title || hostOf(l.url) }))
-    : tiles.slice(0, cfg.count).map((t) => ({ url: t.url, origin: t.origin, title: t.title || t.origin.replace(/^https?:\/\//, '') }));
+  // label — что показываем ПОДПИСЬЮ: для своих ссылок это заданное имя (иначе — хост), для
+  // топ-сайтов — домен (полные заголовки страниц слишком длинные).
+  const items: { url: string; origin: string; label: string }[] = cfg.source === 'custom'
+    ? cfg.custom
+        .filter((l) => l.url.trim())
+        .map((l) => ({ url: l.url, origin: originOf(l.url), label: l.title.trim() || hostOf(l.url) }))
+    : tiles.slice(0, cfg.count).map((t) => ({ url: t.url, origin: t.origin, label: t.origin.replace(/^https?:\/\//, '') }));
   if (items.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'center', maxWidth: 560 }}>
-      {items.map((it, i) => <QuickLink key={it.origin + i} origin={it.origin} title={it.title} onClick={() => onSubmit(it.url)} />)}
+      {items.map((it, i) => <QuickLink key={it.origin + i} origin={it.origin} label={it.label} onClick={() => onSubmit(it.url)} />)}
     </div>
   );
 }
@@ -246,14 +250,13 @@ function originOf(url: string): string {
 function hostOf(url: string): string {
   try { return new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname.replace(/^www\./, ''); } catch { return url; }
 }
-function QuickLink({ origin, title, onClick }: { origin: string; title: string; onClick: () => void }) {
+function QuickLink({ origin, label, onClick }: { origin: string; label: string; onClick: () => void }) {
   const [ok, setOk] = useState(true);
-  const domain = origin.replace(/^https?:\/\//, '');
-  const letter = domain.charAt(0).toUpperCase();
+  const letter = label.charAt(0).toUpperCase();
   return (
     <button
       onClick={onClick}
-      title={title || domain}
+      title={label}
       style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7,
         width: 76, background: 'none', border: 'none', cursor: 'default',
@@ -272,7 +275,7 @@ function QuickLink({ origin, title, onClick }: { origin: string; title: string; 
       <span style={{
         fontSize: 12, color: TEXT_SOFT, textShadow: TEXT_SHADOW, maxWidth: '100%',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{domain}</span>
+      }}>{label}</span>
     </button>
   );
 }
