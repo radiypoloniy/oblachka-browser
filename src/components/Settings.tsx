@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Shield, Wifi, Cpu, Palette, Lock, type LucideIcon } from 'lucide-react';
+import { X, Shield, Wifi, Cpu, Palette, Lock, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import type { AdBlockState } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import AdBlockSection from './settings/AdBlockSection';
 import VpnSection from './settings/VpnSection';
 import AiSection from './settings/AiSection';
 import PasswordsSection from './settings/PasswordsSection';
+import GeneralSection from './settings/GeneralSection';
 
 interface SettingsProps {
   onClose: () => void;
+  // Открыть диалог импорта данных из другого браузера — модалка живёт в App.tsx (поверх всего
+  // chrome), Settings только прокидывает команду в раздел «Браузер» (см. ImportDialog.tsx).
+  onOpenImport: () => void;
   // Начальный раздел (напр. кнопка "+" в AI-панели открывает сразу на 'ai') — приходит из
   // TabState.section (shared/ipc.ts), который типизирован просто string (main-процесс не знает
   // SectionId), поэтому валидируем через isSectionId ниже, а не доверяем типу проп напрямую.
@@ -20,19 +24,20 @@ interface SettingsProps {
 // ниже) — точечно снят только у 'ai', остальные пункты и их поведение не тронуты.
 type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean };
 const NAV_ITEMS: NavItem[] = [
+  { id: 'general',    label: 'Браузер',    Icon: SlidersHorizontal },
   { id: 'adblock',    label: 'Блокировка', Icon: Shield },
   { id: 'vpn',        label: 'VPN',         Icon: Wifi },
   { id: 'ai',         label: 'AI',          Icon: Cpu },
   { id: 'passwords',  label: 'Пароли',      Icon: Lock },
   { id: 'appearance', label: 'Интерфейс',   Icon: Palette, soon: true },
 ];
-type SectionId = 'adblock' | 'vpn' | 'ai' | 'passwords' | 'appearance';
+type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'passwords' | 'appearance';
 
 function isSectionId(v: unknown): v is SectionId {
-  return v === 'adblock' || v === 'vpn' || v === 'ai' || v === 'passwords' || v === 'appearance';
+  return v === 'general' || v === 'adblock' || v === 'vpn' || v === 'ai' || v === 'passwords' || v === 'appearance';
 }
 
-export default function Settings({ onClose, defaultSection }: SettingsProps) {
+export default function Settings({ onClose, defaultSection, onOpenImport }: SettingsProps) {
   const [section, setSection] = useState<SectionId>(isSectionId(defaultSection) ? defaultSection : 'adblock');
   const [state, setState] = useState<AdBlockState | null>(null);
   const [domainInput, setDomainInput] = useState('');
@@ -159,6 +164,7 @@ export default function Settings({ onClose, defaultSection }: SettingsProps) {
 
         {/* Контент выбранной секции */}
         <div style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}>
+          {section === 'general' && <GeneralSection onOpenImport={onOpenImport} />}
           {section === 'adblock' && (
             <AdBlockSection
               state={state}

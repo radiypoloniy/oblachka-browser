@@ -30,6 +30,9 @@ interface PersistedSettings {
   translationEngine: EngineId;
   aiPanelWidth: number;
   modelLoadMode: ModelLoadMode;
+  // Онбординг импорта из другого браузера показывался ли уже (см. electron/browserImport/).
+  // Однократное предложение при первом запуске — потом только вручную из настроек.
+  importOffered: boolean;
 }
 
 function clampAiPanelWidth(v: number): number {
@@ -57,6 +60,7 @@ export class SettingsManager {
   #translationEngine: EngineId = DEFAULT_TRANSLATION_ENGINE;
   #aiPanelWidth: number = DEFAULT_AI_PANEL_WIDTH;
   #modelLoadMode: ModelLoadMode = DEFAULT_MODEL_LOAD_MODE;
+  #importOffered = false;
   readonly #settingsPath: string;
 
   constructor() {
@@ -114,6 +118,18 @@ export class SettingsManager {
     this.#write();
   }
 
+  getImportOffered(): boolean {
+    return this.#importOffered;
+  }
+
+  // Взводится однократно после показа онбординга импорта — обратно не сбрасывается (повторно
+  // предлагать импорт при каждом старте не нужно, дальше только вручную из настроек).
+  setImportOffered(): void {
+    if (this.#importOffered) return;
+    this.#importOffered = true;
+    this.#write();
+  }
+
   #load(): void {
     try {
       const raw = fs.readFileSync(this.#settingsPath, 'utf8');
@@ -129,6 +145,8 @@ export class SettingsManager {
         if (typeof pw === 'number' && Number.isFinite(pw)) this.#aiPanelWidth = clampAiPanelWidth(pw);
         const lm = (data as Record<string, unknown>)['modelLoadMode'];
         if (isModelLoadMode(lm)) this.#modelLoadMode = lm;
+        const io = (data as Record<string, unknown>)['importOffered'];
+        if (typeof io === 'boolean') this.#importOffered = io;
       }
     } catch { /* файла нет или битый JSON — остаёмся на дефолте */ }
   }
@@ -140,6 +158,7 @@ export class SettingsManager {
       translationEngine: this.#translationEngine,
       aiPanelWidth: this.#aiPanelWidth,
       modelLoadMode: this.#modelLoadMode,
+      importOffered: this.#importOffered,
     };
     const tmpPath = this.#settingsPath + '.tmp';
     try {

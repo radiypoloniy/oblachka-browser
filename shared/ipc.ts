@@ -220,6 +220,14 @@ export const IPC = {
   BOOKMARK_IMPORT_LIST_SOURCES: 'bookmark:import-list-sources', // renderer → main: реально найденные на диске браузеры
   BOOKMARK_IMPORT_RUN:          'bookmark:import-run',          // renderer → main: sourceId -> {inserted, skipped} | null
 
+  // Общий импорт данных из других браузеров (закладки/история/пароли) — см. electron/browserImport/.
+  // В отличие от BOOKMARK_IMPORT_* (панель закладок, только закладки) — это мультитиповый импорт с
+  // выбором пользователя, что переносить (диалог импорта + онбординг первого запуска).
+  IMPORT_LIST_SOURCES: 'import:list-sources', // renderer → main: ImportSource[] (браузер+профиль + доступные типы)
+  IMPORT_RUN:          'import:run',          // renderer → main: (sourceId, dataTypes[]) -> ImportRunResult
+  IMPORT_SHOULD_OFFER: 'import:should-offer', // renderer → main: показать ли онбординг импорта на этом старте
+  IMPORT_MARK_OFFERED: 'import:mark-offered', // renderer → main: пометить, что предложение импорта уже показано
+
   // Разрешения сайтов
   PERMISSION_REQUEST:  'permission:request',    // main → renderer: входящий запрос (PermissionRequest)
   PERMISSION_RESPONSE: 'permission:response',   // renderer → main: ответ пользователя (requestId, granted, remember)
@@ -532,6 +540,32 @@ export interface BookmarkImportResult {
   inserted: number;
   skipped: number;
 }
+
+// ── Общий импорт данных из браузеров (electron/browserImport/) ──────────────────
+// Типы данных, которые умеем переносить из другого браузера. Автозаполнение (адреса/карты)
+// сознательно НЕ входит — в браузере пока нет подсистемы автозаполнения форм, хранить нечего
+// (дорожная карта п.3). Firefox/Safari добавятся тем же контрактом позже.
+export type ImportDataType = 'bookmarks' | 'history' | 'passwords';
+
+// Источник импорта = конкретный ПРОФИЛЬ конкретного браузера, реально найденный на диске.
+// id — составной (вендор + каталог профиля), непрозрачен для renderer, только для IMPORT_RUN.
+export interface ImportSource {
+  id: string;               // напр. 'chrome::Default' — стабильный ключ для IMPORT_RUN
+  label: string;            // 'Google Chrome' или 'Google Chrome — Профиль 1' (если профилей несколько)
+  dataTypes: ImportDataType[]; // типы, которые для ЭТОГО источника И доступны на диске, И уже поддержаны
+}
+
+// Результат по одному типу. unsupported — записи, которые физически нельзя перенести (напр. пароли
+// с App-Bound-шифрованием Chrome 127+, требующим SYSTEM-прав) — отдельно от skipped (дубли/уже были).
+export interface ImportTypeResult {
+  inserted: number;
+  skipped: number;
+  unsupported?: number;
+}
+
+// Ключи — из ImportDataType; присутствуют только реально запрошенные типы. null-значение типа —
+// импортёр этого типа упал целиком (в отличие от {inserted:0} — отработал, но нечего было переносить).
+export type ImportRunResult = Partial<Record<ImportDataType, ImportTypeResult | null>>;
 
 // Заход G, блок 6/7 — результат векторного поиска. id/lastVisit/visitCount присутствуют
 // намеренно (не только url/title/score) — так результат напрямую совместим с HistoryEntry
@@ -1031,6 +1065,14 @@ export interface OblakoApi {
   // Импорт из других браузеров (см. electron/bookmarkImport/) — пока только Chromium-семейство.
   listBookmarkImportSources(): Promise<BookmarkImportSource[]>;
   runBookmarkImport(sourceId: string): Promise<BookmarkImportResult | null>;
+
+  // Общий мультитиповый импорт (закладки/история/пароли) — диалог импорта + онбординг первого
+  // запуска (см. electron/browserImport/). Отдельно от bookmark-only каналов выше.
+  listImportSources(): Promise<ImportSource[]>;
+  runImport(sourceId: string, dataTypes: ImportDataType[]): Promise<ImportRunResult>;
+  // Онбординг: показывать ли предложение импорта на этом старте (первый запуск + есть источники).
+  shouldOfferImport(): Promise<boolean>;
+  markImportOffered(): Promise<void>;
 
   // Индикатор качества индекса умного поиска — сколько страниц реально имеют извлечённый текст.
   getHistoryContentCoverage(): Promise<HistoryContentCoverage>;

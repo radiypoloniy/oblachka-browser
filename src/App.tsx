@@ -6,6 +6,7 @@ import Hub from './components/Hub';
 import TabError from './components/TabError';
 import Settings from './components/Settings';
 import HistoryBookmarks from './components/HistoryBookmarks';
+import ImportDialog from './components/ImportDialog';
 import Downloads from './components/Downloads';
 import PermissionPrompt from './components/PermissionPrompt';
 import { islandPlate } from './styles/island';
@@ -117,6 +118,10 @@ export default function App() {
   const [pageTranslateState, setPageTranslateState] = useState<PageTranslateState>('idle');
   const [pageTranslateProgress, setPageTranslateProgress] = useState<PageTranslateProgress | null>(null);
   const [dark, setDark] = useState(false);
+  // Импорт данных из другого браузера — модалка поверх всего chrome. 'manual' — открыта кнопкой
+  // из настроек, 'onboarding' — авто-предложение первого запуска (мягче тон + «Пропустить»),
+  // null — закрыта. См. ImportDialog.tsx / electron/browserImport/.
+  const [importDialog, setImportDialog] = useState<'manual' | 'onboarding' | null>(null);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
@@ -603,7 +608,7 @@ export default function App() {
           ) : kind === 'history' || kind === 'bookmarks' ? (
             <HistoryBookmarks defaultSection={kind} onClose={() => void window.oblako.closeTab(activeId)} />
           ) : kind === 'settings' ? (
-            <Settings defaultSection={active?.section} onClose={() => void window.oblako.closeTab(activeId)} />
+            <Settings defaultSection={active?.section} onClose={() => void window.oblako.closeTab(activeId)} onOpenImport={() => setImportDialog('manual')} />
           ) : isSplit ? (
             <div style={{ display: 'flex', height: '100%' }}>
               {/* Левая панель — flex: splitRatio даёт долю от (ширина - ISLAND_GAP). Тот же остров,
@@ -731,6 +736,15 @@ export default function App() {
         )}
         </div>
       </div>
+
+      {/* Диалог импорта из другого браузера — модалка поверх всего chrome (fixed). Открывается из
+          раздела настроек «Браузер» и онбординга первого запуска (заход 4). */}
+      {importDialog && (
+        <ImportDialog
+          onboarding={importDialog === 'onboarding'}
+          onClose={() => setImportDialog(null)}
+        />
+      )}
     </div>
   );
 }

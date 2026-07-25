@@ -1,0 +1,35 @@
+import { Download } from 'lucide-react';
+import { SectionHeader, Subsection, StatusCard, btnPrimary } from './kit';
+
+interface GeneralSectionProps {
+  // Открыть диалог импорта — состояние живёт в App.tsx (модалка поверх всего chrome), сюда
+  // приходит только команда, самого диалога секция не рисует (см. ImportDialog.tsx).
+  onOpenImport: () => void;
+}
+
+// Раздел «Браузер» — общие настройки браузера. Пока единственный блок — импорт данных из другого
+// браузера (закладки/история/пароли, см. electron/browserImport/). Дальше сюда переедут поисковик
+// по умолчанию, поведение при старте и т.п.
+export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <SectionHeader title="Браузер">
+        Общие настройки браузера.
+      </SectionHeader>
+
+      <Subsection
+        title="Импорт данных"
+        description="Перенос закладок, истории и сохранённых паролей из другого браузера на этом компьютере."
+      >
+        <StatusCard
+          icon={<Download size={20} style={{ color: 'var(--text-muted)' }} />}
+          title="Импорт из другого браузера"
+          subtitle="Chrome, Edge, Brave, Яндекс.Браузер, Opera, Vivaldi"
+          actions={
+            <button style={btnPrimary} onClick={onOpenImport}>Импортировать…</button>
+          }
+        />
+      </Subsection>
+    </div>
+  );
+}

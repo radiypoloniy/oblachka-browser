@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 const api: OblakoApi = {
@@ -104,6 +104,16 @@ const api: OblakoApi = {
     ipcRenderer.invoke(IPC.BOOKMARK_IMPORT_LIST_SOURCES) as Promise<BookmarkImportSource[]>,
   runBookmarkImport: (sourceId: string) =>
     ipcRenderer.invoke(IPC.BOOKMARK_IMPORT_RUN, sourceId) as Promise<BookmarkImportResult | null>,
+
+  // Общий мультитиповый импорт (закладки/история/пароли) — диалог импорта + онбординг.
+  listImportSources: () =>
+    ipcRenderer.invoke(IPC.IMPORT_LIST_SOURCES) as Promise<ImportSource[]>,
+  runImport: (sourceId: string, dataTypes: ImportDataType[]) =>
+    ipcRenderer.invoke(IPC.IMPORT_RUN, sourceId, dataTypes) as Promise<ImportRunResult>,
+  shouldOfferImport: () =>
+    ipcRenderer.invoke(IPC.IMPORT_SHOULD_OFFER) as Promise<boolean>,
+  markImportOffered: () =>
+    ipcRenderer.invoke(IPC.IMPORT_MARK_OFFERED) as Promise<void>,
 
   getHistoryContentCoverage: () =>
     ipcRenderer.invoke(IPC.HISTORY_CONTENT_COVERAGE) as Promise<HistoryContentCoverage>,

@@ -13,6 +13,7 @@ import { AdBlockManager } from './AdBlockManager';
 import { HistoryManager } from './HistoryManager';
 import { BookmarkManager } from './BookmarkManager';
 import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImporter';
+import { ImportManager } from './browserImport/ImportManager';
 import { PasswordManager } from './PasswordManager';
 import { DownloadManager } from './DownloadManager';
 import { PermissionManager } from './PermissionManager';
@@ -58,6 +59,7 @@ import * as passwordAutofill from './PasswordAutofillManager';
 import { indexVisit } from './HistoryIndexer';
 import { startContentBackfill, cancelContentBackfill, setContentBackfillProgressListener } from './HistoryContentBackfill';
 import type { BackfillProgress } from '../shared/ipc';
+import type { ImportDataType } from '../shared/ipc';
 import { searchHistorySmart } from './HistorySearch';
 import {
   suggestGroups,
@@ -152,6 +154,9 @@ const bookmarks   = new BookmarkManager();
 // Импорт закладок — список создаётся один раз, isAvailable() зовётся заново на каждый
 // BOOKMARK_IMPORT_LIST_SOURCES (профиль браузера-источника может появиться/пропасть между вызовами).
 const bookmarkImporters = createChromiumImporters(bookmarks);
+// Общий мультитиповый импорт (закладки/история/пароли + онбординг) — см. electron/browserImport/.
+// Отдельно от bookmarkImporters выше (тот обслуживает только дропдаун панели закладок).
+const importManager = new ImportManager({ bookmarks });
 const passwords   = new PasswordManager();
 const downloads   = new DownloadManager();
 const permissions = new PermissionManager();
@@ -1099,6 +1104,18 @@ function registerIpc() {
     chromeView?.webContents.send(IPC.BOOKMARK_CHANGED);
     return result;
   });
+
+  // Общий мультитиповый импорт (закладки/история/пароли) — диалог импорта + онбординг.
+  ipcMain.handle(IPC.IMPORT_LIST_SOURCES, () => importManager.listSources());
+  ipcMain.handle(IPC.IMPORT_RUN, async (_e, sourceId: string, dataTypes: ImportDataType[]) => {
+    const result = await importManager.run(sourceId, Array.isArray(dataTypes) ? dataTypes : []);
+    // Любой перенос мог задеть закладки/историю/сейф — толкаем их слушателей перечитать.
+    if (result.bookmarks) chromeView?.webContents.send(IPC.BOOKMARK_CHANGED);
+    return result;
+  });
+  ipcMain.handle(IPC.IMPORT_SHOULD_OFFER, () =>
+    !settings.getImportOffered() && importManager.listSources().length > 0);
+  ipcMain.handle(IPC.IMPORT_MARK_OFFERED, () => { settings.setImportOffered(); });
 
   // Разрешения сайтов
   ipcMain.handle(IPC.PERMISSION_RESPONSE,
