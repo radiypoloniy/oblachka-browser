@@ -200,6 +200,21 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   }, [dark]);
 
+  // Онбординг: однократное предложение импорта из другого браузера при первом запуске (если на
+  // диске реально найден источник). shouldOfferImport вернёт false после первого показа (флаг
+  // importOffered в SettingsManager) и при отсутствии источников. Помечаем показанным сразу —
+  // чтобы не всплывать повторно, даже если пользователь просто закрыл окно. Модалка ложится поверх
+  // Хаба (первый запуск = активна вкладка Хаба, контент-область не перекрыта WebContentsView).
+  useEffect(() => {
+    let cancelled = false;
+    void window.oblako.shouldOfferImport().then((offer) => {
+      if (cancelled || !offer) return;
+      setImportDialog('onboarding');
+      void window.oblako.markImportOffered();
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   // Синхронизируем фон и цвет иконок зоны системных кнопок с темой.
   // color = --app-bg темы (прозрачность не работает: Windows рисует backgroundColor окна,
   // а не web-контент, что даёт видимую плашку при несовпадении). Нативный Electron API,
