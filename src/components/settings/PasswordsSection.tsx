@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, Search } from 'lucide-react';
 import type { PasswordMeta, PasswordCopyField } from '../../../shared/ipc';
 import { islandPlate } from '../../styles/island';
 import Toggle from '../Toggle';
@@ -17,6 +17,7 @@ export default function PasswordsSection() {
   const [entries, setEntries] = useState<PasswordMeta[] | null>(null);
   const [revealed, setRevealed] = useState<Record<number, string>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -146,6 +147,17 @@ export default function PasswordsSection() {
     if (count > 0) { setImportPassphrase(''); refresh(); }
   }
 
+  // Клиентский фильтр по сайту/логину — список может быть на десятки записей, без поиска нужную
+  // не найти. entries === null (ещё грузим) обрабатывается ниже, здесь уже массив либо null.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || !entries) return entries ?? [];
+    return entries.filter((e) =>
+      e.title.toLowerCase().includes(q) ||
+      e.origin.toLowerCase().includes(q) ||
+      e.username.toLowerCase().includes(q));
+  }, [entries, query]);
+
   if (entries === null) {
     return <LoadingNote />;
   }
@@ -199,8 +211,35 @@ export default function PasswordsSection() {
           </div>
         )}
 
+        {/* Поиск — показываем, когда есть что искать (несколько записей). Инлайн-плита в стиле
+            поиска Истории/Закладок, чтобы список из десятков паролей был обозрим. */}
+        {entries.length > 1 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+            ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '6px 10px',
+          }}>
+            <Search size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Поиск по сайту или логину…"
+              style={{
+                flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none',
+                fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
+              }}
+            />
+            {query && (
+              <button
+                onClick={() => setQuery('')}
+                title="Очистить"
+                style={{ background: 'none', border: 'none', cursor: 'default', padding: 2, color: 'var(--text-faint)', display: 'flex', fontSize: 15, lineHeight: 1 }}
+              >×</button>
+            )}
+          </div>
+        )}
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {entries.map((entry) => (
+          {filtered.map((entry) => (
             <PasswordRow
               key={entry.id}
               entry={entry}
@@ -212,6 +251,11 @@ export default function PasswordsSection() {
               onDelete={() => void handleDelete(entry.id)}
             />
           ))}
+          {entries.length > 0 && filtered.length === 0 && (
+            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '8px 4px' }}>
+              Ничего не найдено.
+            </div>
+          )}
         </div>
       </div>
 
