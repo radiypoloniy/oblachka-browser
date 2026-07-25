@@ -11,6 +11,7 @@ import { markdownComponents } from './aiMarkdown';
 import { glassPlate } from '../styles/island';
 import NewTab from './NewTab';
 import Notebook from './Notebook';
+import { getSelectedSourceContext } from '../newtab/notebook';
 
 interface HubProps {
   tabId: string;
@@ -179,7 +180,10 @@ function AiChatView({ tabId, onModeChange, onOpenSettings }: {
     setStreamText('');
     setError(null);
     setWebSearching(webGroundingActive);
-    window.oblako.sendHubChatMessage(tabId, trimmed, webGroundingActive);
+    // Заземление на источники блокнота: если web-поиск выключен, подмешиваем текст выбранных
+    // источников (см. src/newtab/notebook.ts::getSelectedSourceContext). Web-grounding имеет приоритет.
+    const sourcesContext = webGroundingActive ? undefined : (getSelectedSourceContext() ?? undefined);
+    window.oblako.sendHubChatMessage(tabId, trimmed, webGroundingActive, sourcesContext);
   };
 
   // Глобус — тот же контур, что в aipanel.tsx: не настроено → в настройки, ничего не включаем;

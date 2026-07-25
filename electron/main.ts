@@ -976,8 +976,8 @@ function registerIpc() {
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
   // send — fire-and-forget (не invoke): ответ идёт стримом чанков + финальным результатом,
   // так проще, чем тащить длинный запрос через invoke (тот же приём, что у AI-панели).
-  ipcMain.on(IPC.HUB_CHAT_SEND, (_e, payload: { tabId: string; text: string; grounding: boolean }) => {
-    const { tabId, text, grounding } = payload;
+  ipcMain.on(IPC.HUB_CHAT_SEND, (_e, payload: { tabId: string; text: string; grounding: boolean; sourcesContext?: string }) => {
+    const { tabId, text, grounding, sourcesContext } = payload;
     const sendResult = (sessionId: number | null, outcome: ChatOutcome) => {
       chromeView?.webContents.send(IPC.HUB_CHAT_RESULT, {
         tabId,
@@ -1003,6 +1003,16 @@ function registerIpc() {
         }
         const promptText = buildGroundingPrompt(text, search.results);
         const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, { promptText, sources: search.results });
+        sendResult(sessionId, outcome);
+        return;
+      }
+      // Грунтинг блокнота: подмешиваем текст выбранных источников в промпт (модель отвечает по ним),
+      // но в истории/показе остаётся сырой вопрос пользователя. sources пуст → ссылки не дописываются.
+      if (sourcesContext && sourcesContext.trim()) {
+        const promptText =
+          'Отвечай, опираясь на приведённые источники. Если ответа в них нет — так и скажи, не выдумывай.\n\n'
+          + sourcesContext + '\n\nВопрос: ' + text;
+        const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, { promptText, sources: [] });
         sendResult(sessionId, outcome);
         return;
       }

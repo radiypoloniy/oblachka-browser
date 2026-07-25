@@ -84,7 +84,9 @@ export class HubChatManager {
     const outcome = await runChatMessage(grounding?.promptText ?? text, ctx.history, onChunk);
     if (outcome.ok) {
       ctx.history = outcome.history;
-      const displayOut = grounding ? appendSearxngSources(outcome.out, grounding.sources) : outcome.out;
+      // Источники-ссылки приклеиваем только у web-grounding (SearXNG). У грунтинга блокнота
+      // (свои источники) sources пуст — ничего не дописываем, промпт лишь несёт контекст.
+      const displayOut = grounding && grounding.sources.length ? appendSearxngSources(outcome.out, grounding.sources) : outcome.out;
       if (this.#db) {
         try {
           const now = Date.now();
