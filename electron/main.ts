@@ -12,6 +12,7 @@ import { TabManager, HUB_ID } from './TabManager';
 import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
 import { UpdateManager } from './UpdateManager';
+import { BangStore } from './BangStore';
 import { HistoryManager } from './HistoryManager';
 import { BookmarkManager } from './BookmarkManager';
 import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImporter';
@@ -34,7 +35,7 @@ import * as ModelCatalog from './ModelCatalog';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -190,6 +191,7 @@ let omniboxBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
 // синхронный (win.on('close') ниже), от этого флага не зависит.
 let isShuttingDown = false;
 const adblock     = new AdBlockManager();
+const bangs       = new BangStore();
 const updates     = new UpdateManager();
 const history     = new HistoryManager();
 setOrganizerHistoryManager(history);
@@ -575,6 +577,7 @@ function createWindow() {
   );
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
   tabs.setSearchEngine(settings.getSearchEngine());
+  tabs.setBangStore(bangs); // бэнги омнибокса — см. TabManager.resolveInput/resolveBang
   // Единственная точка, где AiPanelManager получает доступ к вкладкам — только для чтения
   // WebContents активной вкладки при извлечении текста страницы в чат (Заход 4), см.
   // TabManager.getActiveWebContents(). Не влияет на управление вкладками.
@@ -933,6 +936,18 @@ function registerIpc() {
   ipcMain.handle(IPC.ADBLOCK_RELOAD_TABS,    (_e, d?: string)      => tabs?.reloadTabsForDomain(d));
   ipcMain.handle(IPC.ADBLOCK_IS_WHITELISTED, (_e, d: string)       => adblock.isWhitelisted(d));
   ipcMain.handle(IPC.ADBLOCK_GET_SITE_BLOCK_COUNT, (_e, d: string) => adblock.getBlockedCountForDomain(d));
+
+  // Бэнги омнибокса. Всё invoke: пользователь должен видеть результат (причину отказа при
+  // сохранении, число импортированных), а не отправлять команду в пустоту.
+  ipcMain.handle(IPC.BANGS_LIST, () => ({
+    user: bangs.listUser(),
+    builtin: bangs.listBuiltin(),
+    importedCount: bangs.importedCount(),
+  }));
+  ipcMain.handle(IPC.BANGS_UPSERT, (_e, b: BangDefWire) => bangs.upsertUser(b));
+  ipcMain.handle(IPC.BANGS_REMOVE, (_e, key: string) => { bangs.removeUser(key); });
+  ipcMain.handle(IPC.BANGS_IMPORT_DDG, () => bangs.importDuckDuckGoBangs());
+  ipcMain.handle(IPC.BANGS_CLEAR_IMPORTED, () => { bangs.clearImported(); });
 
   // Возврат OS-фокуса чрому по требованию renderer'а. Тот же приём, что уже применяется на
   // Ctrl+L и при открытии дропдауна подсказок, — просто доступный ещё и из омнибокса.

@@ -7,6 +7,8 @@ import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, S
 import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef, SavedTab } from './SessionManager';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
+import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
+import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 
 const CLOSED_STACK_MAX = 10;
@@ -149,6 +151,9 @@ export class TabManager {
   // Применяется извне через setSearchEngine() сразу после конструктора (см. main.ts,
   // SettingsManager) и при смене настройки — сам TabManager настройку не персистирует.
   private searchEngineId: SearchEngineId = DEFAULT_SEARCH_ENGINE_ID;
+  // Хранилище бэнгов — подключается извне сразу после конструктора (main.ts), как и поисковик.
+  // Не обязательно: изолированные стенды за флагами OBLAKO_*_TEST поднимают TabManager без него.
+  private bangs: BangStore | null = null;
   private onChange: () => void;
   private onFindResultCb: (r: FindResult) => void;
   private onFindOpenCb: () => void;
@@ -260,11 +265,21 @@ export class TabManager {
     this.searchEngineId = id;
   }
 
+  setBangStore(store: BangStore): void {
+    this.bangs = store;
+  }
+
   // ── Парсинг omnibox: это URL или поисковый запрос ──
   // Явные правила из спеки (3.7). Edge-кейсы лучше прописать заранее.
   private resolveInput(input: string): string {
     const s = input.trim();
     if (!s) return 'about:blank';
+    // Бэнги («!yt котики», «котики !yt») — ДО проверки на схему и хост: строка с бэнгом никогда
+    // не является ни URL, ни именем хоста, а вот обратное неверно, и порядок тут единственно
+    // возможный. Неизвестный ключ бэнгом не считается и уходит дальше как обычный запрос —
+    // поэтому текст, случайно начатый с «!», не превращается в навигацию в никуда.
+    const bangUrl = this.resolveBang(s);
+    if (bangUrl) return bangUrl;
     // Уже есть схема
     if (/^(https?|file|about):/i.test(s)) return s;
     // localhost / IP / есть точка и нет пробела -> трактуем как хост
@@ -274,6 +289,20 @@ export class TabManager {
       (!/\s/.test(s) && /\.[a-z]{2,}(:\d+)?(\/.*)?$/i.test(s));
     if (looksLikeHost) return `https://${s}`;
     return getSearchEngine(this.searchEngineId).buildUrl(s);
+  }
+
+  // Разбор бэнга. null — «это не бэнг», строка уходит в обычную ветку resolveInput.
+  // Хранилище может быть не подключено (тесты, стенды за флагами OBLAKO_*_TEST) — тогда бэнгов
+  // просто нет, а не падение.
+  private resolveBang(s: string): string | null {
+    if (!this.bangs) return null;
+    const parsed = parseBangCandidate(s);
+    if (!parsed) return null;
+    const bang = this.bangs.find(parsed.key);
+    if (!bang) return null;
+    // «!yt» без запроса — на главную сайта, как в DuckDuckGo: пользователь явно назвал сайт,
+    // подставлять пустой поиск бессмысленно.
+    return parsed.query ? applyBangTemplate(bang.template, parsed.query) : bangHomeUrl(bang);
   }
 
   private isHttpView(view: WebContentsView | null): view is WebContentsView {

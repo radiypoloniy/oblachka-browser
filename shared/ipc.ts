@@ -531,6 +531,14 @@ export const IPC = {
   MODEL_DEFAULT_SET:    'model:default-set',    // renderer → main: id: string -> SetDefaultModelResult
   MODEL_LOADED_GET:     'model:loaded-get',     // renderer → main: string | null (id загруженной в VRAM модели)
 
+  // Бэнги омнибокса (см. electron/BangStore.ts, shared/bangs.ts). CRUD только для
+  // пользовательских — встроенные неизменяемы и отдаются отдельным списком.
+  BANGS_LIST:           'bangs:list',            // renderer → main: BangsSnapshot
+  BANGS_UPSERT:         'bangs:upsert',          // renderer → main: BangDef -> string | null (причина отказа)
+  BANGS_REMOVE:         'bangs:remove',          // renderer → main: key: string
+  BANGS_IMPORT_DDG:     'bangs:import-ddg',      // renderer → main: -> ImportBangsResult
+  BANGS_CLEAR_IMPORTED: 'bangs:clear-imported',  // renderer → main: (без параметров)
+
   // Явный возврат OS-фокуса вебконтентам чрома. Нужен из-за того, что дропдаун подсказок —
   // отдельная WebContentsView: её addChildView уводит фокус с омнибокса, и main компенсирует это
   // только в МОМЕНТ открытия (см. SUGGEST_DROPDOWN_TOGGLE). Клик по инпуту при уже открытом
@@ -904,6 +912,32 @@ export interface HardwareSnapshot {
 // Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей в UI пока нет.
 // Одновременно допускается только одна загрузка на процесс. modelId — slug (та же slugify(), что
 // у ModelRegistry.ts) целевого файла, известен с самого начала (до появления файла на диске).
+// ── Бэнги омнибокса (electron/BangStore.ts) ───────────────────────────────────
+
+// Три источника разом, чтобы UI мог показать их раздельно: встроенные удалить нельзя,
+// пользовательские правятся, импортированные существуют только числом (список на ~13 000
+// записей в renderer не отдаём — незачем гонять его через IPC).
+export interface BangsSnapshot {
+  user: BangDefWire[];
+  builtin: BangDefWire[];
+  importedCount: number;
+}
+
+// Тот же BangDef, что в shared/bangs.ts, — продублирован здесь как «форма на проводе», чтобы
+// contract-файл не зависел от модуля с данными (в остальном контракте так же).
+export interface BangDefWire {
+  key: string;
+  name: string;
+  template: string;
+  home?: string;
+}
+
+export interface ImportBangsResult {
+  ok: boolean;
+  imported: number;
+  error: string | null;
+}
+
 // ── Автообновление (electron/UpdateManager.ts) ────────────────────────────────
 
 // 'disabled' — не ошибка, а штатное состояние: electron-updater работает только с установленным
@@ -1478,6 +1512,14 @@ export interface OblakoApi {
   // Вернуть OS-фокус вебконтентам чрома (см. CHROME_FOCUS). Какой DOM-элемент внутри был
   // активен — renderer помнит сам, довозвращать вручную не нужно.
   focusChrome(): void;
+
+  // Бэнги омнибокса (см. electron/BangStore.ts). upsertBang возвращает причину отказа строкой
+  // или null при успехе — это ответ на пользовательский ввод, а не исключение.
+  listBangs(): Promise<BangsSnapshot>;
+  upsertBang(bang: BangDefWire): Promise<string | null>;
+  removeBang(key: string): Promise<void>;
+  importDuckDuckGoBangs(): Promise<ImportBangsResult>;
+  clearImportedBangs(): Promise<void>;
 
   // Автообновление (см. electron/UpdateManager.ts). checkForUpdate/downloadUpdate — команды без
   // ответа, результат приходит через onUpdateStatusChanged. installUpdate закрывает приложение.

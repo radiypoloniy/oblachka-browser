@@ -1,6 +1,7 @@
 import { Download } from 'lucide-react';
 import { SectionHeader, Subsection, StatusCard, btnPrimary } from './kit';
 import UpdatesBlock from './UpdatesBlock';
+import BangsBlock from './BangsBlock';
 
 interface GeneralSectionProps {
   // Открыть диалог импорта — состояние живёт в App.tsx (модалка поверх всего chrome), сюда
@@ -23,6 +24,13 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
         description="Браузер проверяет наличие новой версии при запуске. Загрузка и установка — только по вашей команде."
       >
         <UpdatesBlock />
+      </Subsection>
+
+      <Subsection
+        title="Бэнги адресной строки"
+        description="Быстрый переход к поиску по конкретному сайту прямо из адресной строки."
+      >
+        <BangsBlock />
       </Subsection>
 
       <Subsection
