@@ -1,11 +1,15 @@
 // Проверяет реальную ширину сайдбара через CDP.
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = 'C:/Users/arkie/Desktop/oblako';
+// Корень считаем от расположения скрипта, как в smoke-test.mjs/diag-hub-shadow.mjs —
+// абсолютный путь конкретной машины сюда прописывать нельзя (утекает имя пользователя).
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CDP_PORT = 19236;
 
-const child = spawn(ROOT + '/node_modules/electron/dist/electron.exe',
+const child = spawn(resolve(ROOT, 'node_modules', 'electron', 'dist', 'electron.exe'),
   ['--remote-debugging-port=' + CDP_PORT, ROOT],
   { env: { ...process.env, NODE_ENV: 'production' }, stdio: ['ignore', 'pipe', 'pipe'] }
 );

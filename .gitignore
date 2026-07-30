@@ -6,3 +6,14 @@ dist-electron/
 scripts/shots/
 resources/models/
 resources/xray/
+
+# Локальные настройки Claude Code — содержат абсолютные пути этой машины (имя пользователя).
+# Глобальный ~/.config/git/ignore их уже ловит, но он живёт вне репозитория: дублируем здесь,
+# чтобы защита ехала вместе с проектом на любой клон.
+.claude/settings.local.json
+
+# Выгрузка дизайн-системы из внешнего инструмента (PDF + HTM с примотанными react.min.js).
+# Сборке не нужна, репозиторий раздувает; боевой источник токенов — src/styles/tokens/.
+Oblako Design System.pdf
+Oblako Design System.htm
+Oblako Design System_files/
