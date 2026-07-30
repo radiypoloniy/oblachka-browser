@@ -28,6 +28,12 @@ files:
   # основной CUDA-бэкенд не увидел GPU (см. node-llama-cpp/dist/bindings/Llama.js — loadBackends
   # с fallbackBackendsDir). Для таких редких карт остаётся Vulkan, он работает и на NVIDIA.
   - '!**/node_modules/@node-llama-cpp/win-x64-cuda-ext/**'
+  # cmake-js — тулчейн сборки нативных биндингов, в рантайме не используется: node-llama-cpp
+  # упоминает его только как имя npm-скрипта (`npm run -s cmake-js-llama` в compileLLamaCpp.js),
+  # то есть при компиляции llama.cpp из исходников — чего в упакованном приложении не бывает.
+  # Заодно из сборки уходит его зависимость tar (3.4 МБ вместе), у которой открыт ворох
+  # DoS-уязвимостей: недостижимый код лучше не поставлять вовсе.
+  - '!**/node_modules/cmake-js/**'
   # Только git-бандл исходников llama.cpp (32 МБ) — он нужен исключительно для локальной
   # пересборки биндингов. Всю папку llama/ исключать НЕЛЬЗЯ: рядом лежат крошечные, но
   # обязательные в рантайме binariesGithubRelease.json и grammars/ (~380 КБ на всё) —
