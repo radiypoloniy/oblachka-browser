@@ -18,14 +18,11 @@ const SRC = resolve(ROOT, 'build', 'logo-source.png');
 const DEST = resolve(ROOT, 'build', 'icon.png');
 
 const OUT = 512;
-const SS = 2;                 // рисуем в 2× и усредняем — сглаживает край squircle
+const SS = 2;                 // рисуем в 2× и усредняем — сглаживает край круга
 const W = OUT * SS;
-const LOGO_SCALE = 0.76;      // доля ширины плитки под логотип: iOS оставляет заметные поля
-const SQUIRCLE_N = 5;         // показатель суперэллипса; ~5 даёт форму, близкую к иконкам Apple
-// Подложка — очень светлый градиент: логотип сам светло-голубой, тёмный фон убил бы
-// его собственный синий контур. Верх — тот же белый, что в исходнике, низ — лёгкий голубой.
-const BG_TOP = [0xff, 0xff, 0xff];
-const BG_BOTTOM = [0xe4, 0xef, 0xfb];
+// Логотип занимает всю плитку: он сам по себе круг, отдельная подложка ему не нужна —
+// собственная форма и есть форма иконки, вокруг прозрачность.
+const LOGO_SCALE = 1.0;
 
 // ── декодер PNG (8 бит/канал, без интерлейса, colorType 2/6) ──────────────────
 function decodePng(buf) {
@@ -150,24 +147,8 @@ for (let y = 0; y < src.height; y++) for (let x = 0; x < src.width; x++) {
 const logoW = maxX - minX + 1, logoH = maxY - minY + 1;
 
 // ── 3. рисуем плитку ─────────────────────────────────────────────────────────
+// Холст полностью прозрачный: подложки нет, форму задаёт сам логотип.
 const canvas = new Float32Array(W * W * 4);
-// Суперэллипс |2x/W−1|^n + |2y/W−1|^n ≤ 1 — та самая «непрерывная» скруглённость Apple,
-// в отличие от скруглённого прямоугольника с дугами по углам.
-const inSquircle = (x, y) => {
-  const u = Math.abs((2 * (x + 0.5)) / W - 1), v = Math.abs((2 * (y + 0.5)) / W - 1);
-  return Math.pow(u, SQUIRCLE_N) + Math.pow(v, SQUIRCLE_N) <= 1;
-};
-for (let y = 0; y < W; y++) {
-  const t = y / (W - 1);
-  const r = BG_TOP[0] + (BG_BOTTOM[0] - BG_TOP[0]) * t;
-  const g = BG_TOP[1] + (BG_BOTTOM[1] - BG_TOP[1]) * t;
-  const b = BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * t;
-  for (let x = 0; x < W; x++) {
-    const o = (y * W + x) * 4;
-    if (!inSquircle(x, y)) continue;
-    canvas[o] = r; canvas[o + 1] = g; canvas[o + 2] = b; canvas[o + 3] = 1;
-  }
-}
 
 // Логотип: вписываем по большей стороне, центрируем по габаритам.
 const target = W * LOGO_SCALE;
@@ -190,12 +171,15 @@ for (let y = 0; y < W; y++) {
     }
     if (a <= 0) continue;
     const o = (y * W + x) * 4;
-    // Composite «source-over» по премультиплицированным значениям.
+    // Полная формула source-over с учётом альфы ПРИЁМНИКА. Упрощённый вариант
+    // (src*a + dst*(1−a)) верен только поверх непрозрачного фона; на прозрачном холсте
+    // он оставил бы цвет домноженным на альфу — по краю круга полез бы тёмный ореол.
     const dstA = canvas[o + 3];
-    canvas[o] = (r / a) * a + canvas[o] * (1 - a);
-    canvas[o + 1] = (g / a) * a + canvas[o + 1] * (1 - a);
-    canvas[o + 2] = (b / a) * a + canvas[o + 2] * (1 - a);
-    canvas[o + 3] = a + dstA * (1 - a);
+    const outA = a + dstA * (1 - a);
+    canvas[o] = ((r / a) * a + canvas[o] * dstA * (1 - a)) / outA;
+    canvas[o + 1] = ((g / a) * a + canvas[o + 1] * dstA * (1 - a)) / outA;
+    canvas[o + 2] = ((b / a) * a + canvas[o + 2] * dstA * (1 - a)) / outA;
+    canvas[o + 3] = outA;
   }
 }
 
