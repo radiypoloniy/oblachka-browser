@@ -89,6 +89,14 @@ export class AdBlockManager {
     this.#enginePath = path.join(userData, 'ghostery-engine-prebuilt.bin');
   }
 
+  // Лежит ли уже готовый движок на диске. Нужно main-процессу, чтобы решить, ЖДАТЬ ли
+  // инициализацию перед созданием окна: с кэшем она стоит десятки миллисекунд (десериализация
+  // локального файла), без кэша — сетевая загрузка с CDN вплоть до FETCH_TIMEOUT_MS. Синхронный
+  // existsSync здесь уместен: один вызов на весь запуск, до появления окна, ничего не блокирует.
+  hasCachedEngine(): boolean {
+    try { return fs.existsSync(this.#enginePath); } catch { return false; }
+  }
+
   // Загружает настройки + строит движок. Вызывается один раз при старте приложения.
   async initialize(onStateChange: (state: AdBlockState) => void): Promise<void> {
     this.#onStateChange = onStateChange;
