@@ -17,3 +17,14 @@ resources/xray/
 Oblako Design System.pdf
 Oblako Design System.htm
 Oblako Design System_files/
+
+# Страховка от случайной утечки пользовательских данных. Боевой профиль лежит в
+# app.getPath('userData') (вне проекта), git его не видит — но диагностический скрипт или
+# ручное копирование могут когда-нибудь положить дамп сюда. Эти маски ловят такое заранее:
+# это ИМЕННО форматы наших хранилищ (см. PasswordManager/HistoryManager/VaultCrypto/AiKeyStore).
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.enc
+.env
+.env.*
