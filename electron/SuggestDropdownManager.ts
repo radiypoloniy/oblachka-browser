@@ -6,11 +6,24 @@
 // ЕДИНСТВЕННЫМ владельцем selectedIdx, вью только рисует по номеру, Enter выполняется локально
 // в омнибоксе без обращения к этой вью.
 //
-// ⚠️ Единственное принципиальное отличие от FindBar/AI-панели/поповера — эта вью НИКОГДА не
-// вызывает webContents.focus(). Фокус должен остаться в омнибоксе (другой webContents,
-// chromeView) — addChildView сам по себе OS-фокус не крадёт (подтверждено поведением, добытым
-// в ad5cfed/при отладке FindBar: Windows не передаёт фокус дочерним view автоматически, значит
-// бездействие здесь — и есть решение, а не случайность).
+// ⚠️ ФОКУС. Эта вью НИКОГДА не вызывает webContents.focus() сама — фокус обязан жить в омнибоксе
+// (другой webContents, chromeView). Но одного бездействия НЕДОСТАТОЧНО, и прежний комментарий
+// здесь утверждал обратное («addChildView сам по себе OS-фокус не крадёт») — это неверно и
+// противоречило main.ts, который тот же фокус вынужденно возвращал. Замер подтвердил: при показе
+// дропдауна document.hasFocus() в чроме становится false.
+//
+// Первопричина — незакрытое ограничение самого Electron: electron/electron#42922 («Implement
+// focusable in WebContentsView») открыт, реализации нет, и в его же постановке сказано, что
+// способа держать две WebContentsView в одном окне без взаимного перехвата фокуса не существует.
+// Отсюда единственная рабочая защита — СТРАЖ: подписка на событие 'focus' у этой вью, которая
+// немедленно возвращает фокус чрому (приём из обсуждения того же issue). Он покрывает ВСЕ пути
+// перехвата, а не только момент открытия, — прежняя точечная компенсация в main.ts не спасала,
+// например, от клика по омнибоксу при уже открытом дропдауне.
+//
+// ⚠️ ПРИКРЕПЛЕНИЕ. Вью прикрепляется к окну ОДИН раз и больше не открепляется: показ/скрытие —
+// это setVisible(), а не addChildView/removeChildView. Так убран и сам триггер перехвата фокуса,
+// и путь с известными багами Electron (electron/electron#44652 — после removeChildView
+// последующие add/remove начинают работать неправильно, вью залипают на экране).
 //
 // isAttached()-проверка по факту прикрепления вместо отдельного флага — тот же урок, что и в
 // FindBarManager.ts (флаг мог разойтись с реальностью и ломать повторный показ).
@@ -58,20 +71,20 @@ export function onPick(cb: (item: SuggestDropdownItem) => void): void {
   onPickCb = cb
 }
 
-// Живой баг: возврат OS-фокуса на chromeView (main.ts, IPC.SUGGEST_DROPDOWN_TOGGLE) после
-// addChildView срабатывает надёжно всегда, КРОМЕ самого первого показа за жизнь окна — тогда
-// дропдаун ещё не существовал, ensureDropdownView() только что создал НОВУЮ WebContentsView и
-// запустил её loadURL асинхронно; сам процесс её инициализации, судя по всему, отбирает фокус
-// ПОСЛЕ синхронного вызова .focus() у main.ts (гонка, а не логическая ошибка — на все последующие
-// показы та же вью уже готова, повторной гонки нет). Досылаем focus() ещё раз, когда сама вью
-// реально закончила загружаться (did-finish-load) — так же, как main.ts уже фокусирует chromeView
-// сразу после showSuggestDropdown(), просто с опозданием ровно на один этот, первый, раз.
-let onFirstLoadCb: (() => void) | null = null
+// Страж фокуса (см. блок «ФОКУС» в шапке). main.ts передаёт сюда возврат фокуса чрому; вызывается
+// на КАЖДЫЙ перехват, кем бы он ни был спровоцирован — загрузкой вью, показом, кликом мимо.
+// Заменяет собой прежний onFirstLoad-костыль, который лечил лишь один частный случай (самый
+// первый показ за жизнь окна).
+let restoreChromeFocusCb: (() => void) | null = null
 
-export function onFirstLoad(cb: () => void): void {
-  onFirstLoadCb = cb
+export function onFocusStolen(cb: () => void): void {
+  restoreChromeFocusCb = cb
 }
 
+// Прикреплена ли вью к окну. С переходом на setVisible() это состояние стало почти вечным
+// (прикрепили один раз — и до закрытия окна), но проверка по ФАКТУ, а не по флагу, остаётся:
+// флаг уже однажды расходился с реальностью и ломал повторный показ (тот же урок, что в
+// FindBarManager.ts).
 function isAttached(): boolean {
   return !!dropdownView && !!attachedWin && attachedWin.contentView.children.includes(dropdownView)
 }
@@ -80,14 +93,15 @@ function computeBounds(height: number): { x: number; y: number; width: number; h
   const ob = lastOmniboxBounds
   const x = ob.x
   const y = ob.y + ob.height + GAP
-  const result = {
+  // Лог отсюда убран: функция зовётся на каждый OMNIBOX_SET_BOUNDS (ResizeObserver омнибокса) и
+  // на каждый замер высоты — в проде это поток строк с содержимым адресной строки, см. CLAUDE.md
+  // («уровни логирования; в prod — без URL/текстов»).
+  return {
     x: x - SHADOW_MARGIN,
     y: y - SHADOW_MARGIN,
     width: ob.width + SHADOW_MARGIN * 2,
     height: height + SHADOW_MARGIN * 2,
   }
-  console.log(`[suggest-dropdown] computeBounds: omnibox=${JSON.stringify(ob)} height=${height} -> ${JSON.stringify(result)}`)
-  return result
 }
 
 function layoutDropdown(): void {
@@ -132,6 +146,16 @@ function ensureDropdownView(): WebContentsView {
   // Обязателен на самой view (не только CSS background:transparent) — иначе виден непрозрачный
   // прямоугольник-подложка вокруг списка (тот же инвариант, что у FindBar/AI-панели/поповера).
   dropdownView.setBackgroundColor('#00000000')
+  // Создаём скрытой: sendSuggestItems() может создать вью задолго до первого показа (список
+  // подсказок приходит раньше решения показать дропдаун), а прикрепление теперь навсегда —
+  // без этого вью мелькнула бы на экране до showSuggestDropdown().
+  dropdownView.setVisible(false)
+  // СТРАЖ ФОКУСА (см. шапку). Любой перехват фокуса этой вью — Electron не даёт его запретить
+  // (#42922) — немедленно откатываем. setImmediate, а не синхронно: вернуть фокус нужно ПОСЛЕ
+  // того, как Chromium доведёт до конца текущую передачу, иначе он перетрёт наш вызов своим же.
+  dropdownView.webContents.on('focus', () => {
+    setImmediate(() => restoreChromeFocusCb?.())
+  })
   // Если sendSuggestItems() пришёл ДО того, как страница успела загрузиться, .send() тогда
   // ушёл бы в никуда (preload ещё не навесил ipcRenderer.on) — did-finish-load переотправляет
   // последний известный список явно, тем же приёмом, что 'findbar:show' в FindBarManager.ts.
@@ -146,7 +170,10 @@ function ensureDropdownView(): WebContentsView {
     // безопасно перевызвать даже если всё и так было правильно — тот же принцип, что у onFirstLoadCb
     // ниже (фокус) для того же самого класса гонки «первый показ отличается от всех следующих».
     layoutDropdown()
-    onFirstLoadCb?.()
+    // Загрузка вью — известный момент перехвата фокуса (electron/electron#42578). Страж на
+    // событии 'focus' его и так поймает; этот вызов оставлен как дешёвая страховка ровно на
+    // первый показ, где раньше была отдельная onFirstLoad-заплатка.
+    restoreChromeFocusCb?.()
   })
   dropdownView.webContents.loadURL('oblako-chrome://localhost/suggestdropdown.html')
   return dropdownView
@@ -159,11 +186,14 @@ export function showSuggestDropdown(win: BrowserWindow): void {
     resizeBoundWin = win
   }
 
-  if (isAttached()) return // уже показан — просто пересчитать (см. layoutDropdown выше)
-
   const view = ensureDropdownView()
   view.setBounds(computeBounds(currentHeight))
-  win.contentView.addChildView(view) // последней → нативный z-order поверх уже добавленной вкладки
+  // Прикрепляем ОДИН раз за жизнь окна. Повторные addChildView/removeChildView на каждый показ
+  // были и триггером перехвата фокуса, и путём с известными багами Electron (#44652).
+  if (!isAttached()) {
+    win.contentView.addChildView(view) // последней → нативный z-order поверх уже добавленной вкладки
+  }
+  view.setVisible(true)
   // ⚠️ НИКАКОГО view.webContents.focus() здесь — критичный инвариант этого модуля.
 }
 
@@ -176,9 +206,11 @@ export function sendSuggestItems(items: SuggestDropdownItem[]): void {
   view.webContents.send('suggest-dropdown:items', items)
 }
 
+// Скрытие — setVisible(false), а НЕ removeChildView: вью остаётся прикреплённой (см. шапку).
+// Скрытая вью не рисуется и не участвует в хит-тесте, так что прежняя проблема «мёртвая зона
+// перехватывает клики под собой» этим не возвращается.
 export function hideSuggestDropdown(): void {
-  if (!isAttached()) return
-  try { attachedWin!.contentView.removeChildView(dropdownView!) } catch { /* окно могло уже закрыться */ }
+  dropdownView?.setVisible(false)
 }
 
 // Клавиатурная подсветка (заход 4/5) — омнибокс держит selectedIdx, эта функция просто

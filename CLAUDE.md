@@ -235,6 +235,14 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
 - `electron/SuggestDropdownManager.ts` + `preload-suggestdropdown.ts` —
   выпадашка подсказок омнибокса, тоже отдельный `WebContentsView`;
   `SearchSuggestFetcher.ts` — подтягивает живые поисковые подсказки.
+  ⚠️ **Два инварианта, оба выстраданы багами:** вью прикрепляется к окну ОДИН
+  раз, показ/скрытие — через `setVisible()`, а НЕ `addChildView`/
+  `removeChildView` (те крадут фокус и лежат на пути известных багов Electron,
+  см. electron/electron#44652); и на её `webContents` висит **страж фокуса**,
+  возвращающий фокус чрому на каждое событие `focus`. Запретить вью забирать
+  фокус штатно нельзя — electron/electron#42922 («focusable в WebContentsView»)
+  открыт, реализации нет. Точечные компенсации «только при открытии» не
+  работают: ломался клик по омнибоксу при уже открытом дропдауне.
 - `electron/AppProtocol.ts` — кастомные протоколы (`oblako-chrome://` для прод-
   загрузки хрома с COOP/COEP-заголовками, protocol для локальной AI-модели).
 - `electron/preload.ts` — безопасный мост боевого хрома: типизированный

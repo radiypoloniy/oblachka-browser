@@ -52,7 +52,7 @@ import { setActiveEngineId, registerEngine, setCacheManager } from './Translatio
 import { BergamotTranslationEngine } from './BergamotTranslationEngine';
 import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
-import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, onFirstLoad as onSuggestDropdownFirstLoad, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
+import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, onFocusStolen as onSuggestDropdownFocusStolen, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
 import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
 import * as autofillOrchestrator from './AutofillOrchestrator';
@@ -854,15 +854,9 @@ function registerIpc() {
   ipcMain.handle(IPC.SUGGEST_DROPDOWN_TOGGLE, (_e, open: boolean) => {
     if (open) {
       if (win) showSuggestDropdown(win);
-      // addChildView (внутри showSuggestDropdown) спонтанно уводит OS-фокус с омнибокса — это
-      // задокументировано в SuggestDropdownManager.ts/Toolbar.tsx как «безобидное» для ЛОГИКИ
-      // закрытия (blur там не триггерит закрытие), но саму КЛАВИАТУРУ никто обратно не возвращал:
-      // removeChildView (hideSuggestDropdown) отдаёт фокус омнибоксу спонтанно сам, а вот у
-      // addChildView симметричной пары нет — значит с момента первого показа дропдауна и до его
-      // закрытия <input> реально не имеет OS-фокуса, и следующие нажатия клавиш никуда не долетают
-      // (нужен повторный клик). Тот же приём, что уже используется на Ctrl+L (см. выше в этом же
-      // файле) — .focus() возвращает OS-фокус вебконтентам чрома, а какой именно DOM-элемент внутри
-      // него был активен — помнит сам renderer, довозвращать вручную не нужно.
+      // Показ дропдауна — момент, когда фокус уходит чаще всего. Страж (onSuggestDropdownFocusStolen
+      // выше) поймает это и сам, но возвращаем фокус ещё и здесь, синхронно: так между показом и
+      // откатом не остаётся кадра, в котором клавиатура «не там».
       chromeView?.webContents.focus();
     } else {
       hideSuggestDropdown();
@@ -897,12 +891,11 @@ function registerIpc() {
   // Клик по строке ВО вью дропдауна (другой webContents) — пересылаем в chrome, где Toolbar.tsx
   // вызывает свой существующий pickSuggestion(), не дублируя его поведение (activateTab/навигация).
   onSuggestDropdownPick((item) => { chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_PICKED, item); });
-  // Живой баг: на самый первый показ дропдауна за жизнь окна .focus() ниже (в обработчике
-  // SUGGEST_DROPDOWN_TOGGLE) проигрывает гонку — сама вью только создаётся и грузится
-  // асинхронно, что-то в этом процессе перехватывает фокус ПОСЛЕ него. На все следующие показы
-  // вью уже готова, гонки нет. Досылаем фокус ещё раз, когда именно ЭТА, первая, загрузка
-  // реально завершилась (см. onFirstLoad в SuggestDropdownManager.ts).
-  onSuggestDropdownFirstLoad(() => chromeView?.webContents.focus());
+  // Страж фокуса дропдауна (см. блок «ФОКУС» в шапке SuggestDropdownManager.ts). Electron не даёт
+  // запретить вью забирать фокус (electron/electron#42922 открыт), поэтому единственная надёжная
+  // защита — откатывать КАЖДЫЙ перехват, а не компенсировать отдельные известные моменты. Заменяет
+  // прежние точечные заплатки (onFirstLoad + разовый focus() при открытии).
+  onSuggestDropdownFocusStolen(() => chromeView?.webContents.focus());
   // Клавиатурная подсветка (заход 4/5) — омнибокс шлёт номер строки (-1 снимает), main просто
   // пересылает во вью; выбор (Enter) остаётся локальным в омнибоксе, эта вью в нём не участвует.
   ipcMain.handle(IPC.SUGGEST_DROPDOWN_HIGHLIGHT, (_e, idx: number) => {
