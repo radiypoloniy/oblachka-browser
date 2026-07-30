@@ -28,8 +28,11 @@ files:
   # основной CUDA-бэкенд не увидел GPU (см. node-llama-cpp/dist/bindings/Llama.js — loadBackends
   # с fallbackBackendsDir). Для таких редких карт остаётся Vulkan, он работает и на NVIDIA.
   - '!**/node_modules/@node-llama-cpp/win-x64-cuda-ext/**'
-  # Исходники llama.cpp — нужны только при локальной пересборке биндингов, в рантайме нет.
-  - '!**/node_modules/node-llama-cpp/llama/**'
+  # Только git-бандл исходников llama.cpp (32 МБ) — он нужен исключительно для локальной
+  # пересборки биндингов. Всю папку llama/ исключать НЕЛЬЗЯ: рядом лежат крошечные, но
+  # обязательные в рантайме binariesGithubRelease.json и grammars/ (~380 КБ на всё) —
+  # без них node-llama-cpp падает с ENOENT ещё до загрузки модели.
+  - '!**/node_modules/node-llama-cpp/llama/gitRelease.bundle'
 
 # Нативный код обязан лежать распакованным: .node и .dll нельзя загрузить из asar-архива.
 asarUnpack:
