@@ -1,0 +1,88 @@
+﻿# Упаковка Windows-установщика (electron-builder). Отдельным файлом, а не блоком в
+# package.json — конфиг объёмный и требует комментариев, которые JSON не позволяет.
+
+# ВНИМАНИЕ: appId менять нельзя после первого релиза — Windows считает приложение с другим
+# appId ДРУГОЙ программой: обновление встанет второй копией рядом, а не поверх.
+appId: com.oblako.browser
+# productName задаёт имя .exe, папки установки и ярлыка. НЕ влияет на app.getName(), который
+# читает поле name из package.json (oblako-browser) — а значит и на app.getPath('userData').
+# Это намеренно: профиль пользователя (пароли, история, сессия) остаётся по прежнему пути и
+# смена витринного имени не «теряет» его данные. Не добавлять productName в package.json.
+productName: Oblako
+copyright: Oblako
+
+directories:
+  output: release
+  buildResources: build
+
+# node_modules боевых зависимостей electron-builder добавляет сам, перечислять не нужно —
+# здесь только собственные артефакты сборки плюс точечные исключения.
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+  # Бэкенды node-llama-cpp под чужое железо — мёртвый вес в сборке под win-x64.
+  # win-arm64: цель — x64, эта сборка не запустится в принципе (21 МБ).
+  - '!**/node_modules/@node-llama-cpp/win-arm64/**'
+  # win-x64-cuda-ext: 361 МБ ради одного ggml-cuda.dll в папке fallback/. Грузится только если
+  # основной CUDA-бэкенд не увидел GPU (см. node-llama-cpp/dist/bindings/Llama.js — loadBackends
+  # с fallbackBackendsDir). Для таких редких карт остаётся Vulkan, он работает и на NVIDIA.
+  - '!**/node_modules/@node-llama-cpp/win-x64-cuda-ext/**'
+  # Исходники llama.cpp — нужны только при локальной пересборке биндингов, в рантайме нет.
+  - '!**/node_modules/node-llama-cpp/llama/**'
+
+# Нативный код обязан лежать распакованным: .node и .dll нельзя загрузить из asar-архива.
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+  - '**/node_modules/node-llama-cpp/**'
+  - '**/node_modules/@node-llama-cpp/**'
+
+# Кладётся в resources/ рядом с app.asar — ровно туда, куда смотрит код при app.isPackaged
+# (VpnProcess.ts:66 → resourcesPath/xray/xray.exe, main.ts:258 → resourcesPath/models/translation).
+extraResources:
+  - from: resources/xray
+    to: xray
+  # Bergamot: только ru↔en (44 МБ). Все 41 пара — это +1.3 ГБ в установщике, при том что
+  # рантайм-докачки пар пока нет (есть лишь build-time scripts/download-translation-models.mjs).
+  # Для остальных языков движок отдаёт isReady()===false и перевод тихо уходит на Qwen —
+  # медленнее, но рабочий путь (см. warmupBergamot в main.ts). Расширять список — здесь.
+  - from: resources/models/translation/ru-en
+    to: models/translation/ru-en
+  - from: resources/models/translation/en-ru
+    to: models/translation/en-ru
+# GGUF-модели (resources/models/gguf, 6.3 ГБ) в установщик НЕ кладутся сознательно: они
+# качаются пользователем из UI в userData (ModelDownloader.ts/ModelRegistry.ts).
+
+# better-sqlite3 уже пересобран под ABI Electron через electron-rebuild (postinstall в
+# package.json). Повторная пересборка силами electron-builder только добавляет шанс уронить
+# рабочий модуль на машине без C++ tools — а результат тот же самый.
+npmRebuild: false
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+# Без пробелов в имени артефакта. По умолчанию получается «Oblako Setup 0.1.0.exe», но в
+# latest.yml (фид апдейтера) electron-builder пишет уже URL-безопасный вариант через дефисы —
+# потому что GitHub переименовывает файлы с пробелами при загрузке в релиз. Две разные строки
+# для одного файла — готовый источник «обновление не скачивается»; фиксируем имя явно.
+artifactName: ${productName}-Setup-${version}.${ext}
+
+nsis:
+  # Установка в профиль пользователя, без прав администратора. Это принципиально для
+  # автообновления: perMachine потребовал бы UAC-подтверждения на КАЖДОЕ обновление.
+  perMachine: false
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  # Блок-карта для дифференциальных обновлений: следующая версия качает только изменившиеся
+  # блоки, а не весь установщик целиком. При ~600 МБ бинарников AI это разница между
+  # «обновление на 10 МБ» и «обновление на полгигабайта».
+  differentialPackage: true
+
+publish:
+  provider: github
+  owner: radiypoloniy
+  repo: oblachka-browser
