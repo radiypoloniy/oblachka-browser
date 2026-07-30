@@ -420,6 +420,20 @@ export default function App() {
   // ── куда положить WebContentsView активной вкладки.       ──
   //
   // Callback стабилен (deps=[]), читает актуальные значения через рефы.
+  // Отсечение повторов: pushBounds дёргается из ResizeObserver, window.resize и нескольких
+  // эффектов сразу, и они регулярно приходят с ОДНИМ И ТЕМ ЖЕ прямоугольником. Каждое сообщение
+  // заставляет main синхронно переставлять WebContentsView активной вкладки (см. чек-лист
+  // производительности: «главный поток заблокирован» + «чрезмерный IPC»), поэтому молчание при
+  // отсутствии изменений — не микрооптимизация, а снятие лишней работы с main-потока.
+  // Модуль-скоуп для ref не годится (компонент один, но так честнее к React) — храним в ref ниже.
+  const lastContentBoundsRef = useRef('');
+  const sendContentBounds = useCallback((b: { x: number; y: number; width: number; height: number }) => {
+    const key = `${b.x},${b.y},${b.width},${b.height}`;
+    if (key === lastContentBoundsRef.current) return;
+    lastContentBoundsRef.current = key;
+    void window.oblako.setContentBounds(b);
+  }, []);
+
   const pushBounds = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
@@ -429,7 +443,7 @@ export default function App() {
     // вьюху (тот же путь, что при переключении на хаб), отдельный зов не нужен — подтверждено
     // чтением TabManager.activate()/repositionViews().
     if (downloadsOpenRef.current) {
-      void window.oblako.setContentBounds({ x: 0, y: 0, width: 0, height: 0 });
+      sendContentBounds({ x: 0, y: 0, width: 0, height: 0 });
       return;
     }
     const r = el.getBoundingClientRect();
@@ -440,7 +454,7 @@ export default function App() {
     // (kind==='page' — не хаб и не псевдо-вкладка История/Настройки).
     const permReserve = (pendingPermissionsRef.current.length > 0 && kindRef.current === 'page' && !tabErrorRef.current)
       ? PERMISSION_PROMPT_RESERVE : 0;
-    void window.oblako.setContentBounds({
+    sendContentBounds({
       x: r.left, y: r.top + permReserve,
       width: r.width, height: Math.max(0, r.height - permReserve),
     });

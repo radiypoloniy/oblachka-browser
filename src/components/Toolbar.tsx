@@ -199,25 +199,36 @@ export default function Toolbar({
   // него), при этом её собственная ширина может в моменте не измениться — поэтому дублируем пуш
   // явным эффектом на toolbarWidth: он меняется во ВСЕХ трёх случаях (ресайз окна и сворачивание
   // сайдбара напрямую меняют ширину тулбара, порог VPN-пилюли — производная от неё же величина).
-  useEffect(() => {
+  // Единая точка пуша геометрии омнибокса. Мест вызова три, и они намеренно перекрываются (см.
+  // комментарии рядом) — но перекрытие означало и дублирующий IPC: замер показал ровно два
+  // одинаковых сообщения подряд на каждое изменение. Каждое такое сообщение в main двигает
+  // WebContentsView дропдауна синхронно, поэтому отсекаем повтор здесь, а не считаем его дешёвым.
+  // Сравнение с последним ОТПРАВЛЕННЫМ значением, не с текущим DOM: при перезагрузке чрома ref
+  // обнулится и первый пуш уйдёт в любом случае.
+  const lastOmniboxBoundsRef = useRef('');
+  const pushOmniboxBounds = useCallback(() => {
     const el = omniboxPillRef.current;
     if (!el) return;
-    const push = () => {
-      const r = el.getBoundingClientRect();
-      void window.oblako.setOmniboxBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
-    };
-    push();
-    const ro = new ResizeObserver(push);
-    ro.observe(el);
-    return () => ro.disconnect();
+    const r = el.getBoundingClientRect();
+    const b = { x: r.left, y: r.top, width: r.width, height: r.height };
+    const key = `${b.x},${b.y},${b.width},${b.height}`;
+    if (key === lastOmniboxBoundsRef.current) return;
+    lastOmniboxBoundsRef.current = key;
+    void window.oblako.setOmniboxBounds(b);
   }, []);
 
   useEffect(() => {
     const el = omniboxPillRef.current;
     if (!el) return;
-    const r = el.getBoundingClientRect();
-    void window.oblako.setOmniboxBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
-  }, [toolbarWidth]);
+    pushOmniboxBounds();
+    const ro = new ResizeObserver(pushOmniboxBounds);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pushOmniboxBounds]);
+
+  useEffect(() => {
+    pushOmniboxBounds();
+  }, [toolbarWidth, pushOmniboxBounds]);
 
   // Гистерезис плейсхолдера: прячем когда поле узкое, возвращаем с запасом.
   useEffect(() => {
@@ -307,14 +318,13 @@ export default function Toolbar({
     // перед открытием — тем же вызовом getBoundingClientRect(), что и в эффекте, но гарантированно
     // не позже сигнала на открытие (тот же процесс, тот же тик — Electron сохраняет порядок IPC
     // одного канала между одной парой процессов).
-    const el = omniboxPillRef.current;
-    if (el) {
-      const r = el.getBoundingClientRect();
-      void window.oblako.setOmniboxBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
-    }
+    // Через ту же дедуплицирующую точку: если прямоугольник не менялся, main уже знает верное
+    // значение и повторное сообщение ничего не добавляет (сам смысл этого досыла — не оставить
+    // main со СТАРЫМ/нулевым прямоугольником, а не отправить именно ещё один пакет).
+    pushOmniboxBounds();
     setDropdownOpen(true);
     onSuggestToggle?.(true);
-  }, [onSuggestToggle]);
+  }, [onSuggestToggle, pushOmniboxBounds]);
 
   // Унифицированное закрытие дропдауна — единая точка для ВСЕХ путей закрытия (клик мимо,
   // Esc, выбор, смена вкладки, фокус на контент и т.д.). Синхронизирует React-состояние,

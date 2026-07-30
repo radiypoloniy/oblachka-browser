@@ -846,7 +846,8 @@ function registerIpc() {
   // дропдаун этот канал не читает, продолжает позиционироваться от toolbarRef как раньше.
   ipcMain.handle(IPC.OMNIBOX_SET_BOUNDS, (_e, b: ContentBounds) => {
     omniboxBounds = b;
-    console.log(`[omnibox] bounds: ${JSON.stringify(b)}`);
+    // Лог убран: канал горячий (ResizeObserver омнибокса + смена ширины тулбара), в проде это
+    // поток строк ни о чём — см. CLAUDE.md, «уровни логирования; в prod — без URL/текстов».
     syncOmniboxBounds(b);
   });
   // Тумблер показа вью дропдауна — вешается на тот же момент, что и старый React-дропдаун
