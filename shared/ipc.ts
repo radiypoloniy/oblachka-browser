@@ -530,6 +530,16 @@ export const IPC = {
   MODEL_DEFAULT_GET:    'model:default-get',    // renderer → main: string | null
   MODEL_DEFAULT_SET:    'model:default-set',    // renderer → main: id: string -> SetDefaultModelResult
   MODEL_LOADED_GET:     'model:loaded-get',     // renderer → main: string | null (id загруженной в VRAM модели)
+
+  // Автообновление (см. electron/UpdateManager.ts). Тот же контракт, что MODEL_DOWNLOAD_*:
+  // команды — fire-and-forget send, STATUS — invoke (на случай гонки с монтированием секции
+  // настроек), CHANGED — push. Загрузка и установка НИКОГДА не начинаются сами: и то и другое
+  // требует явного действия пользователя.
+  UPDATE_CHECK:    'update:check',    // renderer → main: (без параметров) — запустить проверку
+  UPDATE_DOWNLOAD: 'update:download', // renderer → main: (без параметров) — качать найденное
+  UPDATE_INSTALL:  'update:install',  // renderer → main: (без параметров) — выйти и установить
+  UPDATE_STATUS:   'update:status',   // renderer → main: UpdateStatus
+  UPDATE_CHANGED:  'update:changed',  // main → renderer: push UpdateStatus
 } as const;
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
@@ -888,6 +898,35 @@ export interface HardwareSnapshot {
 // Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей в UI пока нет.
 // Одновременно допускается только одна загрузка на процесс. modelId — slug (та же slugify(), что
 // у ModelRegistry.ts) целевого файла, известен с самого начала (до появления файла на диске).
+// ── Автообновление (electron/UpdateManager.ts) ────────────────────────────────
+
+// 'disabled' — не ошибка, а штатное состояние: electron-updater работает только с установленным
+// приложением, в dev-режиме (npm run dev / npm start) он физически неприменим. UI в этом случае
+// честно пишет «доступно только в установленной версии», а не притворяется, что всё в порядке.
+export type UpdateStatusKind =
+  | 'disabled'
+  | 'idle'
+  | 'checking'
+  | 'not-available'
+  | 'available'      // нашли версию новее — ждём решения пользователя, сами НЕ качаем
+  | 'downloading'
+  | 'downloaded'     // скачано, ждём согласия перезапуститься
+  | 'error';
+
+export interface UpdateStatus {
+  kind: UpdateStatusKind;
+  currentVersion: string;
+  // Версия, доступная к установке. Не null только при available/downloading/downloaded.
+  newVersion: string | null;
+  // Прогресс загрузки, 0..100. Осмыслен только при downloading.
+  percent: number;
+  // Причина отказа для показа пользователю. Не null только при error.
+  error: string | null;
+  // Момент последней УСПЕШНОЙ проверки (Date.now()), чтобы UI мог написать «проверено тогда-то».
+  // null — успешных проверок в этой установке ещё не было.
+  lastCheckedAt: number | null;
+}
+
 export interface DownloadProgress {
   modelId: string | null;
   receivedBytes: number;
@@ -1429,4 +1468,12 @@ export interface OblakoApi {
   // Модель, сейчас загруженная в VRAM (см. electron/TranslationService.ts::getLoadedModelId) —
   // задел, потребителей в UI пока нет. Read-only.
   getLoadedModelId(): Promise<string | null>;
+
+  // Автообновление (см. electron/UpdateManager.ts). checkForUpdate/downloadUpdate — команды без
+  // ответа, результат приходит через onUpdateStatusChanged. installUpdate закрывает приложение.
+  checkForUpdate(): void;
+  downloadUpdate(): void;
+  installUpdate(): void;
+  getUpdateStatus(): Promise<UpdateStatus>;
+  onUpdateStatusChanged(cb: (s: UpdateStatus) => void): () => void;
 }

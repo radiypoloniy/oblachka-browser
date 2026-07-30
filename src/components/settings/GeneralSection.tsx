@@ -1,5 +1,6 @@
 import { Download } from 'lucide-react';
 import { SectionHeader, Subsection, StatusCard, btnPrimary } from './kit';
+import UpdatesBlock from './UpdatesBlock';
 
 interface GeneralSectionProps {
   // Открыть диалог импорта — состояние живёт в App.tsx (модалка поверх всего chrome), сюда
@@ -16,6 +17,13 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
       <SectionHeader title="Браузер">
         Общие настройки браузера.
       </SectionHeader>
+
+      <Subsection
+        title="Обновления"
+        description="Браузер проверяет наличие новой версии при запуске. Загрузка и установка — только по вашей команде."
+      >
+        <UpdatesBlock />
+      </Subsection>
 
       <Subsection
         title="Импорт данных"

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 
 const api: OblakoApi = {
@@ -421,6 +421,17 @@ const api: OblakoApi = {
     const handler = (_e: unknown, p: DownloadProgress) => cb(p);
     ipcRenderer.on(IPC.MODEL_DOWNLOAD_PROGRESS, handler);
     return () => ipcRenderer.removeListener(IPC.MODEL_DOWNLOAD_PROGRESS, handler);
+  },
+
+  // Автообновление (см. electron/UpdateManager.ts).
+  checkForUpdate: () => ipcRenderer.send(IPC.UPDATE_CHECK),
+  downloadUpdate: () => ipcRenderer.send(IPC.UPDATE_DOWNLOAD),
+  installUpdate: () => ipcRenderer.send(IPC.UPDATE_INSTALL),
+  getUpdateStatus: () => ipcRenderer.invoke(IPC.UPDATE_STATUS) as Promise<UpdateStatus>,
+  onUpdateStatusChanged: (cb: (s: UpdateStatus) => void) => {
+    const handler = (_e: unknown, s: UpdateStatus) => cb(s);
+    ipcRenderer.on(IPC.UPDATE_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_CHANGED, handler);
   },
 
   // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей пока нет.

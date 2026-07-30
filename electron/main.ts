@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { TabManager, HUB_ID } from './TabManager';
 import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
+import { UpdateManager } from './UpdateManager';
 import { HistoryManager } from './HistoryManager';
 import { BookmarkManager } from './BookmarkManager';
 import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImporter';
@@ -189,6 +190,7 @@ let omniboxBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
 // синхронный (win.on('close') ниже), от этого флага не зависит.
 let isShuttingDown = false;
 const adblock     = new AdBlockManager();
+const updates     = new UpdateManager();
 const history     = new HistoryManager();
 setOrganizerHistoryManager(history);
 const bookmarks   = new BookmarkManager();
@@ -938,6 +940,13 @@ function registerIpc() {
   ipcMain.handle(IPC.ADBLOCK_IS_WHITELISTED, (_e, d: string)       => adblock.isWhitelisted(d));
   ipcMain.handle(IPC.ADBLOCK_GET_SITE_BLOCK_COUNT, (_e, d: string) => adblock.getBlockedCountForDomain(d));
 
+  // Автообновление. Команды — on, а не handle: ответ не нужен, результат приходит пушем
+  // UPDATE_CHANGED (см. UpdateManager.initialize ниже).
+  ipcMain.on(IPC.UPDATE_CHECK,    () => updates.check());
+  ipcMain.on(IPC.UPDATE_DOWNLOAD, () => updates.download());
+  ipcMain.on(IPC.UPDATE_INSTALL,  () => updates.install());
+  ipcMain.handle(IPC.UPDATE_STATUS, () => updates.getStatus());
+
   // Настройки
   ipcMain.handle(IPC.SETTINGS_GET_SEARCH_ENGINE, () => settings.getSearchEngine());
   ipcMain.handle(IPC.SETTINGS_SET_SEARCH_ENGINE, (_e, id: SearchEngineId) => {
@@ -1614,6 +1623,11 @@ app.whenReady().then(async () => {
   } catch (e) {
     console.error('[AdBlock] инициализация упала, браузер работает без блокировки:', e);
   }
+
+  // Автообновление. Ставится ПОСЛЕ adblock и БЕЗ await: initialize() только подписывается на
+  // события и заводит отложенный таймер, сеть трогается через 20 с после старта — запуск окна
+  // это не задерживает ни на миллисекунду. В dev-режиме метод не делает вообще ничего.
+  updates.initialize((s) => chromeView?.webContents.send(IPC.UPDATE_CHANGED, s));
 
   createWindow();
 

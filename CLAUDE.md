@@ -37,6 +37,9 @@ Electron ABI, см. `postinstall`). Артефакты «Студии» блок
 npm run dev                          # Vite (5173) + Electron dev-режим одновременно
 npm run build                        # vite build + tsc -p electron/tsconfig.json (прод-сборка)
 npm start                            # запуск собранного прод-приложения (dist-electron)
+npm run dist                         # NSIS-установщик в release/ (без публикации)
+npm run release                      # то же + выкладка релиза на GitHub (нужен GH_TOKEN)
+npm run make-icon                    # build/icon.png из build/logo-source.png
 npm run download-filters             # (легаси) EasyList в resources/ — текущий адблок их НЕ читает
 npm run download-xray                # бинарник Xray-core для VPN (electron/VpnProcess.ts)
 npm run download-translation-models  # пары en<->X для Bergamot из реестра Mozilla Remote Settings
@@ -157,6 +160,18 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
 - `electron/DownloadManager.ts`, `electron/PermissionManager.ts` — перехват
   загрузок и запросов разрешений сайтов (камера/микрофон/геолокация/…) на
   `session.defaultSession`.
+- `electron/UpdateManager.ts` — автообновление через `electron-updater`. Адрес
+  фида в коде НЕ прописан: `electron-builder` кладёт рядом с asar `app-update.yml`
+  (блок `publish` в `electron-builder.yml`), апдейтер читает его сам. Политика
+  консервативная: `autoDownload=false`, `autoInstallOnAppQuit=false` — и загрузка,
+  и установка только по явной команде пользователя; стартовая проверка отложена
+  на 20 с и не задерживает окно. В dev-режиме менеджер полностью инертен
+  (`app.isPackaged` → состояние `disabled`, модуль даже не грузится). Каналы
+  `UPDATE_CHECK`/`DOWNLOAD`/`INSTALL`/`STATUS`/`CHANGED`, UI —
+  `src/components/settings/UpdatesBlock.tsx` в разделе «Браузер».
+  ⚠️ Известные границы: сборка не подписана, поэтому на Windows 11 со Smart App
+  Control установка скачанного обновления блокируется системой; пока
+  GitHub-репозиторий закрыт, проверка отдаёт 404 (трактуется как «релизов нет»).
 - `electron/AiPanelManager.ts`, `electron/TranslatePopoverManager.ts` —
   боковая AI-панель с чатом (оверлей поверх контента, свой
   `webContents`+preload) и поповер над выделением текста (перевод/пересказ/
@@ -343,6 +358,14 @@ AI-экране (NotebookLM-подобный: источники с извлеч
 `NotebookExtract.ts` + `NotebookStudio.ts`).
 
 Осталось по дорожной карте:
+0. **Подпись кода (Authenticode) — блокер распространения.** Без неё: Smart App
+   Control (включён по умолчанию на чистых Windows 11) блокирует установщик
+   намертво, а SmartScreen пугает на каждой установке. Автообновление на таких
+   машинах тоже не сработает: `electron-updater` скачает и запустит установщик,
+   который система заблокирует. Поля подписи в `electron-builder.yml` заранее
+   не заданы — добавить `win.certificateFile`/`certificateSubjectName` +
+   `publisherName`, когда появится сертификат. Оговорка: подпись необходима,
+   но не мгновенно достаточна — SAC учитывает ещё и репутацию издателя.
 1. Страницы ошибок навигации / падения рендер-процесса — есть частично
    (`src/components/TabError.tsx`, `TabErrorState` в `shared/ipc.ts`), уточнять
    охват перед доработкой.
