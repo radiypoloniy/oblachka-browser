@@ -90,6 +90,68 @@ export function parseBangCandidate(input: string): ParsedBang | null {
   return null;
 }
 
+// ── Вывод бэнга из адреса открытой страницы ───────────────────────────────────
+//
+// Ручное составление шаблона — самое неудобное место фичи: пользователь обязан сам понять
+// структуру URL и подставить {query}. Здесь браузер делает это за него: если человек уже
+// выполнил поиск на сайте, адрес результатов содержит и параметр, и введённое слово — этого
+// достаточно, чтобы восстановить шаблон.
+//
+// Почему по URL, а не по <form> на странице: у сайтов на React формы часто нет вовсе (живой
+// пример — overgear.com, поиск там компонент без action), а адрес результатов есть всегда.
+
+// Имена параметров, под которыми сайты обычно передают поисковый запрос. Порядок важен: при
+// нескольких совпадениях берём первое, более специфичное.
+const SEARCH_PARAM_NAMES = [
+  'q', 'query', 'search', 'search_query', 'searchquery', 'text', 'keyword', 'keywords',
+  'term', 'wd', 'kp_query', 's', 'k', 'p',
+];
+
+export interface DerivedBang {
+  key: string;
+  name: string;
+  template: string;
+  // Параметр, по которому распознали поиск, — UI показывает его, чтобы человек мог убедиться,
+  // что браузер понял страницу правильно, а не поверил вслепую.
+  param: string;
+}
+
+// Возвращает заготовку бэнга по адресу страницы результатов поиска. null — если в адресе нет
+// ничего, похожего на поисковый запрос (обычная страница сайта).
+export function deriveBangFromUrl(rawUrl: string): DerivedBang | null {
+  let u: URL;
+  try { u = new URL(rawUrl); } catch { return null; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+
+  // Ищем параметр с НЕПУСТЫМ значением: пустой (?q=) шаблоном не поможет — непонятно, что
+  // именно подставлять, и в каком виде сайт ждёт запрос.
+  let param: string | null = null;
+  for (const name of SEARCH_PARAM_NAMES) {
+    const v = u.searchParams.get(name);
+    if (v !== null && v.trim() !== '') { param = name; break; }
+  }
+  if (param === null) return null;
+
+  // Значение подменяем плейсхолдером, остальные параметры сохраняем как есть — они бывают
+  // обязательными (язык, раздел каталога, тип поиска).
+  const copy = new URL(u.toString());
+  copy.searchParams.set(param, '__OBLAKO_QUERY__');
+  // searchParams при сериализации кодирует плейсхолдер — возвращаем его обратно в читаемый вид.
+  const template = copy.toString().replace(/__OBLAKO_QUERY__/g, '{query}');
+  if (!isValidBangTemplate(template)) return null;
+
+  const host = u.hostname.replace(/^www\./i, '');
+  const label = host.split('.')[0] ?? host;
+  return {
+    // Ключ — первая метка домена: короткий, узнаваемый и почти всегда свободный. Человек
+    // всё равно увидит его в форме и сможет сократить до «og».
+    key: label.toLowerCase().replace(/[^a-z0-9_-]/g, ''),
+    name: label.charAt(0).toUpperCase() + label.slice(1),
+    template,
+    param,
+  };
+}
+
 // Валидация ключа для пользовательского ввода в настройках. Отдельно от парсера: тот разбирает
 // уже введённое, а этот — решает, можно ли ТАКОЕ сохранить.
 export function isValidBangKey(key: string): boolean {

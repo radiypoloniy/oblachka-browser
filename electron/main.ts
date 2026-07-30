@@ -13,6 +13,7 @@ import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
 import { UpdateManager } from './UpdateManager';
 import { BangStore } from './BangStore';
+import { deriveBangFromUrl } from '../shared/bangs';
 import { HistoryManager } from './HistoryManager';
 import { BookmarkManager } from './BookmarkManager';
 import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImporter';
@@ -35,7 +36,7 @@ import * as ModelCatalog from './ModelCatalog';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -946,6 +947,21 @@ function registerIpc() {
   }));
   ipcMain.handle(IPC.BANGS_UPSERT, (_e, b: BangDefWire) => bangs.upsertUser(b));
   ipcMain.handle(IPC.BANGS_REMOVE, (_e, key: string) => { bangs.removeUser(key); });
+  // Заготовки по адресам открытых вкладок. Работа целиком в main: у renderer нет URL чужих
+  // вкладок, да и деривация — не его дело (см. CLAUDE.md — компоненты только рисуют).
+  ipcMain.handle(IPC.BANGS_DERIVE_TABS, () => {
+    const out: DerivedBangCandidate[] = [];
+    const seen = new Set<string>();
+    for (const t of tabs?.snapshot() ?? []) {
+      if (t.isHub || !t.url) continue;
+      const d = deriveBangFromUrl(t.url);
+      // Дедуп по шаблону: две вкладки одного поиска дали бы две одинаковые строки в списке.
+      if (!d || seen.has(d.template)) continue;
+      seen.add(d.template);
+      out.push({ ...d, tabTitle: t.title || d.name, tabUrl: t.url });
+    }
+    return out;
+  });
   ipcMain.handle(IPC.BANGS_IMPORT_DDG, () => bangs.importDuckDuckGoBangs());
   ipcMain.handle(IPC.BANGS_CLEAR_IMPORTED, () => { bangs.clearImported(); });
 

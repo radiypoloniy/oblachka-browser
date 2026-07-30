@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Zap, Trash2, Download, Plus } from 'lucide-react';
+import { Zap, Trash2, Download, Plus, Wand2 } from 'lucide-react';
 import { StatusCard, btnPrimary, btnGhost, TextField, InputRow, fieldFlex, InlineError, InlineHint, CapsLabel } from './kit';
-import type { BangsSnapshot, BangDefWire } from '../../../shared/ipc';
+import type { BangsSnapshot, BangDefWire, DerivedBangCandidate } from '../../../shared/ipc';
 
 // Блок «Бэнги» раздела «Браузер». Только рисует то, что прислал main (см. CLAUDE.md): разбор
 // строки и хранилище живут в electron/BangStore.ts + shared/bangs.ts, здесь — список и форма.
@@ -14,6 +14,12 @@ export default function BangsBlock() {
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importNote, setImportNote] = useState<string | null>(null);
+  // null — распознавание ещё не запускали (показываем кнопку), [] — запускали и не нашли.
+  const [found, setFound] = useState<DerivedBangCandidate[] | null>(null);
+
+  async function detect() {
+    setFound(await window.oblako.deriveBangsFromTabs());
+  }
 
   const reload = useCallback(() => { void window.oblako.listBangs().then(setSnap); }, []);
   useEffect(reload, [reload]);
@@ -74,6 +80,43 @@ export default function BangsBlock() {
           ))}
         </div>
       )}
+
+      {/* Заготовки из открытых вкладок — главный способ добавить бэнг без возни с URL */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <CapsLabel>Взять из открытой вкладки</CapsLabel>
+        {found === null ? (
+          <StatusCard
+            icon={<Wand2 size={18} style={{ color: 'var(--accent)' }} />}
+            title="Распознать поиск на открытых сайтах"
+            subtitle="Откройте сайт, выполните на нём любой поиск — и браузер сам составит шаблон по адресу результатов."
+            actions={<button style={btnPrimary} onClick={() => void detect()}>Распознать</button>}
+          />
+        ) : found.length === 0 ? (
+          <InlineHint>
+            Среди открытых вкладок поиска не нашлось. Откройте нужный сайт, найдите на нём
+            что-нибудь и нажмите «Распознать» ещё раз.{' '}
+            <span style={{ cursor: 'default', textDecoration: 'underline' }} onClick={() => setFound(null)}>Скрыть</span>
+          </InlineHint>
+        ) : (
+          found.map((c) => (
+            <StatusCard
+              key={c.template}
+              icon={<Wand2 size={18} style={{ color: 'var(--accent)' }} />}
+              title={`${c.name} — параметр «${c.param}»`}
+              subtitle={c.template}
+              actions={
+                <button style={btnPrimary} onClick={() => {
+                  // Не сохраняем сразу: человек должен увидеть ключ и при желании сократить его
+                  // («overgear» → «og») до того, как бэнг появится в списке.
+                  setKey(c.key); setName(c.name); setTemplate(c.template); setError(null); setFound(null);
+                }}>
+                  Заполнить
+                </button>
+              }
+            />
+          ))
+        )}
+      </div>
 
       {/* Форма добавления */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

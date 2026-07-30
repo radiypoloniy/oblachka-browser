@@ -537,6 +537,7 @@ export const IPC = {
   BANGS_UPSERT:         'bangs:upsert',          // renderer → main: BangDef -> string | null (причина отказа)
   BANGS_REMOVE:         'bangs:remove',          // renderer → main: key: string
   BANGS_IMPORT_DDG:     'bangs:import-ddg',      // renderer → main: -> ImportBangsResult
+  BANGS_DERIVE_TABS:    'bangs:derive-tabs',     // renderer → main: -> DerivedBangCandidate[]
   BANGS_CLEAR_IMPORTED: 'bangs:clear-imported',  // renderer → main: (без параметров)
 
   // Явный возврат OS-фокуса вебконтентам чрома. Нужен из-за того, что дропдаун подсказок —
@@ -936,6 +937,17 @@ export interface ImportBangsResult {
   ok: boolean;
   imported: number;
   error: string | null;
+}
+
+// Заготовка бэнга, распознанная по адресу открытой вкладки (см. deriveBangFromUrl).
+// tabTitle/tabUrl — чтобы пользователь понял, из какой именно вкладки взята заготовка.
+export interface DerivedBangCandidate {
+  key: string;
+  name: string;
+  template: string;
+  param: string;
+  tabTitle: string;
+  tabUrl: string;
 }
 
 // ── Автообновление (electron/UpdateManager.ts) ────────────────────────────────
@@ -1518,6 +1530,8 @@ export interface OblakoApi {
   listBangs(): Promise<BangsSnapshot>;
   upsertBang(bang: BangDefWire): Promise<string | null>;
   removeBang(key: string): Promise<void>;
+  // Заготовки бэнгов по адресам открытых вкладок — избавляет от ручного составления шаблона.
+  deriveBangsFromTabs(): Promise<DerivedBangCandidate[]>;
   importDuckDuckGoBangs(): Promise<ImportBangsResult>;
   clearImportedBangs(): Promise<void>;
 
