@@ -935,7 +935,20 @@ export default function Toolbar({
                   e.preventDefault();
                   inputRef.current?.focus();
                   inputRef.current?.select();
+                } else if (document.activeElement !== inputRef.current) {
+                  // Повторный клик, но DOM-фокус фактически потерян. Ветка выше сюда не заходит
+                  // (isRealFocus уже true), а полагаться на нативную фокусировку нельзя: пока
+                  // открыт дропдаун, чром может не иметь OS-фокуса — тогда браузер выставит
+                  // activeElement, но клавиши всё равно уйдут в другую вью. Возвращаем фокус явно
+                  // и БЕЗ select(): повторный клик обязан просто ставить курсор, не выделять всё.
+                  inputRef.current?.focus();
                 }
+                // Дропдаун подсказок — отдельная WebContentsView; её addChildView уводит OS-фокус
+                // с чрома, а компенсация в main срабатывает только в МОМЕНТ открытия (см.
+                // main.ts::SUGGEST_DROPDOWN_TOGGLE). Клик по инпуту при уже открытом дропдауне
+                // компенсации не получал — отсюда «поле не активно, текст не дописать» после
+                // навигации стрелками. Возвращаем OS-фокус явно; вызов идемпотентный.
+                if (dropdownOpen) void window.oblako.focusChrome();
                 focusTracker.current.isRealFocus = true;
               }}
               onFocus={() => {

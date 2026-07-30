@@ -423,6 +423,9 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.MODEL_DOWNLOAD_PROGRESS, handler);
   },
 
+  // Возврат OS-фокуса чрому (см. IPC.CHROME_FOCUS).
+  focusChrome: () => ipcRenderer.send(IPC.CHROME_FOCUS),
+
   // Автообновление (см. electron/UpdateManager.ts).
   checkForUpdate: () => ipcRenderer.send(IPC.UPDATE_CHECK),
   downloadUpdate: () => ipcRenderer.send(IPC.UPDATE_DOWNLOAD),

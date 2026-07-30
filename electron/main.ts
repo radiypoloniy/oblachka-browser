@@ -940,6 +940,10 @@ function registerIpc() {
   ipcMain.handle(IPC.ADBLOCK_IS_WHITELISTED, (_e, d: string)       => adblock.isWhitelisted(d));
   ipcMain.handle(IPC.ADBLOCK_GET_SITE_BLOCK_COUNT, (_e, d: string) => adblock.getBlockedCountForDomain(d));
 
+  // Возврат OS-фокуса чрому по требованию renderer'а. Тот же приём, что уже применяется на
+  // Ctrl+L и при открытии дропдауна подсказок, — просто доступный ещё и из омнибокса.
+  ipcMain.on(IPC.CHROME_FOCUS, () => chromeView?.webContents.focus());
+
   // Автообновление. Команды — on, а не handle: ответ не нужен, результат приходит пушем
   // UPDATE_CHANGED (см. UpdateManager.initialize ниже).
   ipcMain.on(IPC.UPDATE_CHECK,    () => updates.check());

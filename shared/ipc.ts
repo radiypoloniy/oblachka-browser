@@ -531,6 +531,12 @@ export const IPC = {
   MODEL_DEFAULT_SET:    'model:default-set',    // renderer → main: id: string -> SetDefaultModelResult
   MODEL_LOADED_GET:     'model:loaded-get',     // renderer → main: string | null (id загруженной в VRAM модели)
 
+  // Явный возврат OS-фокуса вебконтентам чрома. Нужен из-за того, что дропдаун подсказок —
+  // отдельная WebContentsView: её addChildView уводит фокус с омнибокса, и main компенсирует это
+  // только в МОМЕНТ открытия (см. SUGGEST_DROPDOWN_TOGGLE). Клик по инпуту при уже открытом
+  // дропдауне остаётся без компенсации — DOM-фокус есть, OS-фокуса нет, клавиши уходят мимо.
+  CHROME_FOCUS: 'chrome:focus', // renderer → main: (без параметров)
+
   // Автообновление (см. electron/UpdateManager.ts). Тот же контракт, что MODEL_DOWNLOAD_*:
   // команды — fire-and-forget send, STATUS — invoke (на случай гонки с монтированием секции
   // настроек), CHANGED — push. Загрузка и установка НИКОГДА не начинаются сами: и то и другое
@@ -1468,6 +1474,10 @@ export interface OblakoApi {
   // Модель, сейчас загруженная в VRAM (см. electron/TranslationService.ts::getLoadedModelId) —
   // задел, потребителей в UI пока нет. Read-only.
   getLoadedModelId(): Promise<string | null>;
+
+  // Вернуть OS-фокус вебконтентам чрома (см. CHROME_FOCUS). Какой DOM-элемент внутри был
+  // активен — renderer помнит сам, довозвращать вручную не нужно.
+  focusChrome(): void;
 
   // Автообновление (см. electron/UpdateManager.ts). checkForUpdate/downloadUpdate — команды без
   // ответа, результат приходит через onUpdateStatusChanged. installUpdate закрывает приложение.
