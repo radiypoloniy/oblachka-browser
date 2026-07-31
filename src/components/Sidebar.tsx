@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Folder, FolderOpen } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import { glassPlate, islandPlate } from '../styles/island';
 import {
@@ -421,19 +421,21 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
   );
 }
 
-// Ячейка сетки закреплённых: favicon + tooltip, без крестика.
-// Presentational, без useSortable — та же связка, что TabRow/SortableTabRow и
-// PairTile/SortablePairBlock: одна разметка обслуживает и живую ячейку, и ghost
-// в DragOverlay (ghost — только визуал, без кликов и tooltip).
-function PinTile({ tab, active, onClick, onContextMenu, ghost }: {
+// Ячейка «только иконка»: favicon + tooltip, без заголовка и крестика. Одна разметка на три
+// места — сетка закреплённых, ghost в DragOverlay и вся свёрнутая панель (та же связка, что
+// TabRow/SortableTabRow и PairTile/SortablePairBlock). ghost — только визуал, без кликов.
+function IconCell({ tab, active, onClick, onContextMenu, onMiddleClick, ghost }: {
   tab: TabState; active: boolean;
-  onClick?: () => void; onContextMenu?: () => void; ghost?: boolean;
+  onClick?: () => void; onContextMenu?: () => void; onMiddleClick?: () => void; ghost?: boolean;
 }) {
   return (
     <button
       className="no-drag"
       onClick={ghost ? undefined : onClick}
       onContextMenu={ghost ? undefined : (e) => { e.preventDefault(); onContextMenu?.(); }}
+      onMouseDown={ghost || !onMiddleClick ? undefined : (e) => {
+        if (e.button === 1) { e.preventDefault(); onMiddleClick(); }
+      }}
       title={ghost ? undefined : (tab.title || tab.url || '')}
       style={{
         border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
@@ -444,7 +446,18 @@ function PinTile({ tab, active, onClick, onContextMenu, ghost }: {
       onMouseEnter={ghost ? undefined : (e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
       onMouseLeave={ghost ? undefined : (e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
     >
-      <FaviconTile tab={tab} size={18} />
+      {/* Точка загрузки вместо спиннера с текстом: в 56-пиксельной полосе о состоянии вкладки
+          больше нечем сказать, а «крутится/не крутится» — единственное, что тут вообще читается. */}
+      <span style={{ position: 'relative', display: 'inline-flex' }}>
+        <FaviconTile tab={tab} size={18} />
+        {!ghost && tab.isLoading && !tab.isSleeping && (
+          <span style={{
+            position: 'absolute', right: -2, bottom: -2, width: 7, height: 7,
+            borderRadius: '50%', background: 'var(--accent)',
+            boxShadow: '0 0 0 1.5px var(--surface-island)',
+          }} />
+        )}
+      </span>
     </button>
   );
 }
@@ -457,7 +470,119 @@ function SortablePinCell({ tab, active, onClick, onContextMenu }: {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }} {...attributes} {...listeners}>
-      <PinTile tab={tab} active={active} onClick={onClick} onContextMenu={onContextMenu} />
+      <IconCell tab={tab} active={active} onClick={onClick} onContextMenu={onContextMenu} />
+    </div>
+  );
+}
+
+// ── Свёрнутая панель ──────────────────────────────────────────────────────────
+// Есть ли активная вкладка внутри узлов (рекурсивно — группа может лежать в группе).
+// Нужно свёрнутой панели: у сложенной папки содержимое не видно, и без этой пометки
+// пользователь теряет активную вкладку из виду совсем.
+const nodesContainTab = (nodes: SidebarNode[], tabId: string): boolean =>
+  nodes.some((n) =>
+    n.type === 'single' ? n.tabId === tabId
+    : n.type === 'split-pair' ? n.leftTabId === tabId || n.rightTabId === tabId
+    : nodesContainTab(n.children, tabId));
+
+interface CollapsedCellsProps {
+  node: SidebarNode;
+  tabMap: Map<string, TabState>;
+  activeId: string;
+  onSelect: (id: string) => void;
+  onClose: (id: string) => void;
+  onTabMenu: (id: string) => void;
+}
+
+// Узел дерева → ячейки свёрнутой полосы. Общий кусок для верхнего уровня и для детей папки:
+// одиночная — одна ячейка, split-пара — две подряд (в 56 пикселях ширины «плиткой» пару не
+// нарисовать, но порядок и соседство сохраняются — плоский список не давал и этого).
+function CollapsedNodeCells({ node, tabMap, activeId, onSelect, onClose, onTabMenu }: CollapsedCellsProps) {
+  const cell = (tab: TabState) => (
+    <IconCell
+      key={tab.id}
+      tab={tab}
+      active={activeId === tab.id}
+      onClick={() => onSelect(tab.id)}
+      onContextMenu={() => onTabMenu(tab.id)}
+      onMiddleClick={() => onClose(tab.id)}
+    />
+  );
+
+  if (node.type === 'single') {
+    const tab = tabMap.get(node.tabId);
+    return tab ? cell(tab) : null;
+  }
+  if (node.type === 'split-pair') {
+    const left = tabMap.get(node.leftTabId);
+    const right = tabMap.get(node.rightTabId);
+    if (!left || !right) return null;
+    return <>{cell(left)}{cell(right)}</>;
+  }
+  return null; // группы рисует CollapsedGroupIsland
+}
+
+// Папка в свёрнутой панели: остров с иконкой, без названия. Клик по иконке — раскрыть/сложить
+// (то же состояние group.collapsed, что и в развёрнутой панели, — одна правда, и она уже
+// переживает перезапуск). Тон острова: нейтральный, если цвет папки не задан, иначе — бледная
+// заливка её цветом, чтобы принадлежность читалась без подписи.
+function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTabMenu }: {
+  group: GroupNode;
+  tabMap: Map<string, TabState>;
+  activeId: string;
+  onSelect: (id: string) => void;
+  onClose: (id: string) => void;
+  onTabMenu: (id: string) => void;
+}) {
+  const color = group.color ? (GROUP_COLORS[group.color] ?? null) : null;
+  const hasActive = nodesContainTab(group.children, activeId);
+  const FolderIcon = group.collapsed ? Folder : FolderOpen;
+
+  return (
+    <div
+      className="no-drag"
+      style={{
+        ...innerPlate,
+        // Бледная заливка = цвет папки, приглушённый до фона: сам цвет остаётся узнаваем,
+        // но остров не начинает конкурировать с активной вкладкой за внимание.
+        ...(color ? {
+          background: `color-mix(in srgb, ${color} 14%, var(--surface))`,
+          border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
+        } : {}),
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+        padding: '6px 5px', flex: 'none',
+      }}
+    >
+      <button
+        className="no-drag"
+        onClick={() => { void window.oblako.toggleGroupCollapse(group.id); }}
+        onContextMenu={(e) => { e.preventDefault(); void window.oblako.showGroupMenu(group.id); }}
+        title={group.label}
+        style={{
+          border: 'none', background: 'transparent', cursor: 'default',
+          padding: 5, borderRadius: 'var(--radius-sm)', display: 'inline-flex',
+          position: 'relative', color: color ?? 'var(--text-muted)',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      >
+        <FolderIcon size={18} />
+        {/* Активная вкладка внутри сложенной папки — иначе она исчезает из панели бесследно. */}
+        {group.collapsed && hasActive && (
+          <span style={{
+            position: 'absolute', right: 2, bottom: 1, width: 6, height: 6,
+            borderRadius: '50%', background: 'var(--accent)',
+          }} />
+        )}
+      </button>
+
+      {!group.collapsed && group.children.map((child) => (
+        <CollapsedNodeCells
+          key={nodeToTopId(child)}
+          node={child} tabMap={tabMap} activeId={activeId}
+          onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
+        />
+      ))}
     </div>
   );
 }
@@ -1051,7 +1176,6 @@ export default function Sidebar({
 
   // ── Свёрнутый режим: узкая полоса иконок ──
   if (collapsed) {
-    const openBase = tabs.filter((t) => !t.isHub && !t.isPinned);
     return (
       <aside className="drag" style={{ ...asideBase, width: 56, alignItems: 'center', padding: '12px 0 14px' }}>
 
@@ -1075,38 +1199,36 @@ export default function Sidebar({
             padding: '8px 6px', marginBottom: 10,
           }}>
             {pinned.map((t) => (
-              <button key={t.id} onClick={() => onSelect(t.id)}
-                onContextMenu={(e) => { e.preventDefault(); onTabMenu(t.id); }}
-                title={t.title}
-                style={{
-                  border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
-                  background: activeId === t.id ? 'var(--surface)' : 'transparent',
-                  boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
-                }}
-                onMouseEnter={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                onMouseLeave={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <FaviconTile tab={t} size={18} />
-              </button>
+              <IconCell key={t.id} tab={t} active={activeId === t.id}
+                onClick={() => onSelect(t.id)}
+                onContextMenu={() => onTabMenu(t.id)} />
             ))}
           </div>
         )}
 
-        <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, overflowY: 'auto', flex: 1, paddingTop: 4 }}>
-          {openBase.map((t) => (
-            <button key={t.id} onClick={() => onSelect(t.id)} title={t.title}
-              onContextMenu={(e) => { e.preventDefault(); onTabMenu(t.id); }}
-              onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(t.id); } }}
-              style={{
-                border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
-                background: activeId === t.id ? 'var(--surface)' : 'transparent',
-                boxShadow: activeId === t.id ? 'var(--shadow-card)' : 'none',
-              }}
-              onMouseEnter={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-              onMouseLeave={(e) => { if (activeId !== t.id) e.currentTarget.style.background = 'transparent'; }}
-            >
-              <FaviconTile tab={t} size={18} />
-            </button>
+        {/* Список вкладок. oblako-hide-scrollbar — полоса прокрутки съедала ~10px из 56 и
+            дёргала центровку иконок при переполнении; сама прокрутка (колесо/тачпад) цела.
+            Рисуем дерево (effectiveNodes), а не плоский tabs.filter: тот показывал вкладки из
+            папок и split-пар вперемешку в порядке создания, а папок в свёрнутой панели не было
+            вовсе — то есть свернуть панель означало потерять всю структуру. */}
+        <div className="no-drag oblako-hide-scrollbar" style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+          overflowY: 'auto', flex: 1, paddingTop: 4, width: '100%',
+        }}>
+          {effectiveNodes.map((node) => (
+            node.type === 'group' ? (
+              <CollapsedGroupIsland
+                key={node.id}
+                group={node} tabMap={tabMap} activeId={activeId}
+                onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
+              />
+            ) : (
+              <CollapsedNodeCells
+                key={nodeToTopId(node)}
+                node={node} tabMap={tabMap} activeId={activeId}
+                onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
+              />
+            )
           ))}
         </div>
 
@@ -1251,7 +1373,7 @@ export default function Sidebar({
               opacity: 0.95,
               display: 'inline-flex',
             }}>
-              <PinTile tab={dragPinnedTab} active={activeId === dragPinnedTab.id} ghost />
+              <IconCell tab={dragPinnedTab} active={activeId === dragPinnedTab.id} ghost />
             </div>
           )}
           {dragTab && (
