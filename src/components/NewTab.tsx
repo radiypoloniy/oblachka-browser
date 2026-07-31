@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sparkles, Search } from 'lucide-react';
+import { Sparkles, Search, Workflow } from 'lucide-react';
 import type { TileSite } from '../../shared/frecency';
 import {
   loadNewTabSettings, subscribeNewTabSettings, presetCss, getNewTabCustomImage,
@@ -15,6 +15,7 @@ import {
 interface NewTabProps {
   onSubmit: (input: string) => void; // омнибокс-сабмит (URL или запрос) — тот же, что у плиток
   onOpenAi: () => void;              // переключение Hub в AI-режим
+  onOpenGraph: () => void;           // переключение Hub в граф-воркспейс
   tiles: TileSite[];                 // топ-сайты для быстрых ссылок (из истории, см. Hub)
 }
 
@@ -26,7 +27,7 @@ const TEXT_SOFT = 'rgba(255,255,255,0.78)';
 // оба слабее прежнего, суммарно тише и без ореола.
 const TEXT_SHADOW = '0 1px 2px rgba(0,0,0,0.28), 0 2px 10px rgba(0,0,0,0.18)';
 
-export default function NewTab({ onSubmit, onOpenAi, tiles }: NewTabProps) {
+export default function NewTab({ onSubmit, onOpenAi, onOpenGraph, tiles }: NewTabProps) {
   const [settings, setSettings] = useState<NewTabSettings>(() => loadNewTabSettings());
   useEffect(() => subscribeNewTabSettings(() => setSettings(loadNewTabSettings())), []);
 
@@ -65,25 +66,31 @@ export default function NewTab({ onSubmit, onOpenAi, tiles }: NewTabProps) {
         {settings.quickLinks.show && <QuickLinks cfg={settings.quickLinks} tiles={tiles} onSubmit={onSubmit} />}
       </div>
 
-      {/* Незаметный переход в AI-режим — правый верхний угол */}
-      <button
-        onClick={onOpenAi}
-        title="AI-режим"
-        style={{
-          position: 'absolute', top: 16, right: 16, zIndex: 3,
-          width: 40, height: 40, borderRadius: 999, border: 'none', cursor: 'default',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(12px)',
-          color: TEXT, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.24)')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
-      >
-        <Sparkles size={18} />
-      </button>
+      {/* Незаметные переходы в большие режимы — правый верхний угол */}
+      <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 3, display: 'flex', gap: 8 }}>
+        <button onClick={onOpenGraph} title="Граф-воркспейс" style={cornerButton}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.24)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
+        >
+          <Workflow size={18} />
+        </button>
+        <button onClick={onOpenAi} title="AI-режим" style={cornerButton}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.24)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
+        >
+          <Sparkles size={18} />
+        </button>
+      </div>
     </div>
   );
 }
+
+const cornerButton: React.CSSProperties = {
+  width: 40, height: 40, borderRadius: 999, border: 'none', cursor: 'default',
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(12px)',
+  color: TEXT, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+};
 
 // ── Фон ────────────────────────────────────────────────────────────────────────
 function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoUrl: string | null }) {

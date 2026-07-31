@@ -19,6 +19,9 @@ import { BangStore } from './BangStore';
 import { deriveBangFromUrl } from '../shared/bangs';
 import { HistoryManager } from './HistoryManager';
 import { BookmarkManager } from './BookmarkManager';
+import { GraphStore } from './GraphStore';
+import { cancelGraphRun, runGraph } from './GraphEngine';
+import type { GraphStructure } from '../shared/graph';
 import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImporter';
 import { ImportManager } from './browserImport/ImportManager';
 import { faviconService } from './FaviconService';
@@ -214,6 +217,8 @@ const bookmarks   = new BookmarkManager();
 const bookmarkImporters = createChromiumImporters(bookmarks);
 // Общий мультитиповый импорт (закладки/история/пароли + онбординг) — см. electron/browserImport/.
 // Отдельно от bookmarkImporters выше (тот обслуживает только дропдаун панели закладок).
+// Граф-воркспейс — свой файл graphs.sqlite, тот же паттерн «один менеджер, один файл».
+const graphs      = new GraphStore();
 const passwords   = new PasswordManager();
 const autofill    = new AutofillManager();
 const importManager = new ImportManager({ bookmarks, history, passwords });
@@ -1385,6 +1390,30 @@ function registerIpc() {
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (_e, kind: StudioKind, context: string) =>
     generateStudio(kind, typeof context === 'string' ? context : ''));
 
+  // Граф-воркспейс. Структуру пишет renderer (GRAPH_SAVE), результаты узлов — только движок
+  // (см. шапку GraphStore.ts). GRAPH_RUN — send, а не handle: прогон длинный, ход идёт
+  // отдельными событиями GRAPH_PROGRESS, ждать его одним ответом нечем.
+  ipcMain.handle(IPC.GRAPH_LIST, () => graphs.list());
+  ipcMain.handle(IPC.GRAPH_CREATE, (_e, title: string) =>
+    graphs.create(typeof title === 'string' ? title : ''));
+  ipcMain.handle(IPC.GRAPH_GET, (_e, graphId: number) => graphs.get(graphId));
+  ipcMain.handle(IPC.GRAPH_SAVE, (_e, graphId: number, structure: GraphStructure) => {
+    graphs.saveStructure(graphId, structure);
+  });
+  ipcMain.handle(IPC.GRAPH_RENAME, (_e, graphId: number, title: string) => {
+    graphs.rename(graphId, typeof title === 'string' ? title : '');
+  });
+  ipcMain.handle(IPC.GRAPH_DELETE, (_e, graphId: number) => graphs.remove(graphId));
+  ipcMain.handle(IPC.GRAPH_CANCEL, (_e, graphId: number) => cancelGraphRun(graphId));
+  ipcMain.on(IPC.GRAPH_RUN, (_e, graphId: number, nodeId: string | null) => {
+    // Прогон графа — явное намерение поработать с AI, значит модель пора греть (тот же
+    // приём, что у AI_PANEL_TOGGLE и SETTINGS_*_HUB_MODE).
+    maybeLazyWarmupOnDemand();
+    void runGraph(win, graphs, graphId, typeof nodeId === 'string' ? nodeId : null, (p) => {
+      chromeView?.webContents.send(IPC.GRAPH_PROGRESS, p);
+    });
+  });
+
   // Автозаполнение — адреса и карты (electron/AutofillManager.ts). Полный номер карты (reveal) —
   // под тем же OS-подтверждением, что показ пароля (ensurePasswordAuth); list/add/update номер
   // наружу не отдают.
@@ -1807,6 +1836,10 @@ app.whenReady().then(async () => {
   // Закладки — тот же паттерн деградации, отдельный файл (см. BookmarkManager.ts).
   await bookmarks.initialize().catch((e) =>
     console.error('[Bookmarks] инициализация упала:', e),
+  );
+  // Графы — та же деградация: нет better-sqlite3, значит вкладка графов пустая, браузер цел.
+  await graphs.initialize().catch((e) =>
+    console.error('[Graph] инициализация упала:', e),
   );
 
   // Сейф паролей: та же гарантия — падение (нет better-sqlite3, safeStorage недоступен) не

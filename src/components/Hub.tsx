@@ -11,6 +11,7 @@ import { markdownComponents } from './aiMarkdown';
 import { glassPlate } from '../styles/island';
 import NewTab from './NewTab';
 import Notebook from './Notebook';
+import GraphCanvas from './GraphCanvas';
 import { getSelectedSourceContext } from '../newtab/notebook';
 
 interface HubProps {
@@ -75,7 +76,9 @@ export default function Hub({ tabId, onSubmit, onOpenSettings }: HubProps) {
     // поэтому её ветка — без внешнего padding/flex-обёртки (иначе фон не дотянулся бы до краёв).
     // AI-режим сохраняет прежнюю обёртку с отступами.
     mode === 'tiles'
-      ? <NewTab onSubmit={onSubmit} onOpenAi={() => pickMode('ai')} tiles={tiles} />
+      ? <NewTab onSubmit={onSubmit} onOpenAi={() => pickMode('ai')} onOpenGraph={() => pickMode('graph')} tiles={tiles} />
+      : mode === 'graph'
+      ? <GraphCanvas onBack={() => pickMode('tiles')} />
       : (
         // Большой AI-экран как блокнот (NotebookLM-подобный): 3 колонки, центр — существующий чат.
         <Notebook onBack={() => pickMode('tiles')}>

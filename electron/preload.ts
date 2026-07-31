@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
+import type { GraphDoc, GraphMeta, GraphProgress, GraphStructure } from '../shared/graph';
 
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
@@ -285,6 +286,24 @@ const api: OblakoApi = {
   resumeHubChatSession: (tabId: string, sessionId: number) =>
     ipcRenderer.invoke(IPC.HUB_CHAT_RESUME_SESSION, tabId, sessionId) as Promise<HubChatMessage[]>,
   deleteHubChatSession: (sessionId: number) => ipcRenderer.invoke(IPC.HUB_CHAT_DELETE_SESSION, sessionId) as Promise<void>,
+
+  // Граф-воркспейс (electron/GraphStore.ts + GraphEngine.ts). saveGraph шлёт только структуру —
+  // результаты узлов пишет движок, см. шапку GraphStore.ts.
+  listGraphs: () => ipcRenderer.invoke(IPC.GRAPH_LIST) as Promise<GraphMeta[]>,
+  createGraph: (title: string) => ipcRenderer.invoke(IPC.GRAPH_CREATE, title) as Promise<GraphMeta | null>,
+  getGraph: (graphId: number) => ipcRenderer.invoke(IPC.GRAPH_GET, graphId) as Promise<GraphDoc | null>,
+  saveGraph: (graphId: number, structure: GraphStructure) =>
+    ipcRenderer.invoke(IPC.GRAPH_SAVE, graphId, structure) as Promise<void>,
+  renameGraph: (graphId: number, title: string) =>
+    ipcRenderer.invoke(IPC.GRAPH_RENAME, graphId, title) as Promise<void>,
+  deleteGraph: (graphId: number) => ipcRenderer.invoke(IPC.GRAPH_DELETE, graphId) as Promise<void>,
+  runGraph: (graphId: number, nodeId: string | null) => ipcRenderer.send(IPC.GRAPH_RUN, graphId, nodeId),
+  cancelGraphRun: (graphId: number) => ipcRenderer.invoke(IPC.GRAPH_CANCEL, graphId) as Promise<void>,
+  onGraphProgress: (cb: (p: GraphProgress) => void) => {
+    const handler = (_e: unknown, p: GraphProgress) => cb(p);
+    ipcRenderer.on(IPC.GRAPH_PROGRESS, handler);
+    return () => ipcRenderer.removeListener(IPC.GRAPH_PROGRESS, handler);
+  },
 
   // Заход D — ключ Gemini (AI-фактчек). Сам ключ никогда не возвращается в renderer.
   getAiKeyStatus: () => ipcRenderer.invoke(IPC.AI_GET_KEY_STATUS) as Promise<boolean>,

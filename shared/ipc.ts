@@ -2,6 +2,7 @@
 // renderer (хром-UI) и main (движок вкладок). Импортируется обеими сторонами.
 
 import type { SearchEngineId } from './searchEngines';
+import type { GraphDoc, GraphMeta, GraphProgress, GraphStructure } from './graph';
 
 // ── Узлы сайдбара ─────────────────────────────────────────────────────────────
 // Дискриминированное объединение для трёх типов узлов.
@@ -249,6 +250,18 @@ export const IPC = {
   NEWTAB_PHOTO_GET: 'newtab:photo-get', // renderer → main: «фото дня» для фона вкладки (data-URL), кэш на день
   NOTEBOOK_EXTRACT_URL: 'notebook:extract-url', // renderer → main: извлечь читаемый текст URL-источника блокнота
   NOTEBOOK_STUDIO_GEN:  'notebook:studio-gen',  // renderer → main: (kind, context) → материал Студии (текст/спек)
+
+  // Граф-воркспейс (electron/GraphStore.ts + GraphEngine.ts). Структуру пишет renderer,
+  // результаты узлов — только движок, см. шапку GraphStore.
+  GRAPH_LIST:     'graph:list',     // renderer → main: список воркспейсов (GraphMeta[])
+  GRAPH_CREATE:   'graph:create',   // renderer → main: title → GraphMeta
+  GRAPH_GET:      'graph:get',      // renderer → main: graphId → GraphDoc
+  GRAPH_SAVE:     'graph:save',     // renderer → main: (graphId, GraphStructure) — дебаунс на стороне холста
+  GRAPH_RENAME:   'graph:rename',   // renderer → main: (graphId, title)
+  GRAPH_DELETE:   'graph:delete',   // renderer → main: graphId
+  GRAPH_RUN:      'graph:run',      // renderer → main: (graphId, nodeId|null) fire-and-forget, ход идёт через GRAPH_PROGRESS
+  GRAPH_CANCEL:   'graph:cancel',   // renderer → main: graphId — не начинать следующий узел (текущий не прервать)
+  GRAPH_PROGRESS: 'graph:progress', // main → renderer: GraphProgress (статусы + стрим-чанки)
 
   // Split View
   TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (правая вкладка)
@@ -919,7 +932,10 @@ export type TranslationEngineId = 'qwen' | 'bergamot';
 export type BergamotStatus = 'loading' | 'ready' | 'unavailable';
 
 // ── AI-чат на Hub ───────────────────────────────────────────────────────────
-export type HubMode = 'tiles' | 'ai';
+// 'graph' — граф-воркспейс (src/components/GraphCanvas.tsx). Пока живёт рядом с блокнотом:
+// по плану граф его поглотит (Источники и Студия станут типами узлов), но миграция
+// сохранённых источников — отдельный, более рискованный заход.
+export type HubMode = 'tiles' | 'ai' | 'graph';
 
 // Режим загрузки GGUF-модели (SettingsManager.ts): 'startup' — прогрев сразу после показа окна
 // (см. main.ts, warmupTranslation), модель занимает ~6 ГБ RAM постоянно, но первый AI-ответ
@@ -1480,6 +1496,20 @@ export interface OblakoApi {
   newHubChatSession(tabId: string): Promise<void>;
   resumeHubChatSession(tabId: string, sessionId: number): Promise<HubChatMessage[]>;
   deleteHubChatSession(sessionId: number): Promise<void>;
+
+  // Граф-воркспейс (electron/GraphStore.ts + GraphEngine.ts).
+  // saveGraph шлёт ТОЛЬКО структуру: результаты узлов принадлежат движку, и холст не должен
+  // их затирать своей — уже устаревшей — копией (см. шапку GraphStore.ts).
+  // runGraph — fire-and-forget: ход прогона приезжает через onGraphProgress.
+  listGraphs(): Promise<GraphMeta[]>;
+  createGraph(title: string): Promise<GraphMeta | null>;
+  getGraph(graphId: number): Promise<GraphDoc | null>;
+  saveGraph(graphId: number, structure: GraphStructure): Promise<void>;
+  renameGraph(graphId: number, title: string): Promise<void>;
+  deleteGraph(graphId: number): Promise<void>;
+  runGraph(graphId: number, nodeId: string | null): void;
+  cancelGraphRun(graphId: number): Promise<void>;
+  onGraphProgress(cb: (p: GraphProgress) => void): () => void;
 
   // Заход D — ключ Gemini (AI-фактчек). Сам ключ никогда не приходит в renderer — только статус.
   getAiKeyStatus(): Promise<boolean>;

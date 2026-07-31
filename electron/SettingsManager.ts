@@ -63,7 +63,7 @@ function clampAiPanelWidth(v: number): number {
 }
 
 function isHubMode(v: unknown): v is HubMode {
-  return v === 'tiles' || v === 'ai';
+  return v === 'tiles' || v === 'ai' || v === 'graph';
 }
 
 function isEngineId(v: unknown): v is EngineId {

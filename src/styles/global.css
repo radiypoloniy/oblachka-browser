@@ -108,3 +108,11 @@ body {
    блокнота: полоса у края maxWidth-колонки выглядела нелепо и резала пространство (см. NewTab-хаб). */
 .oblako-hide-scrollbar { scrollbar-width: none; }
 .oblako-hide-scrollbar::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* Индикатор «узел считается» на холсте графа (см. GraphNodeCard.tsx). Уважает системную
+   настройку уменьшенного движения: там иконка просто замирает, статус читается по цвету. */
+@keyframes oblako-graph-spin { to { transform: rotate(360deg); } }
+.oblako-graph-spin { animation: oblako-graph-spin 900ms linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .oblako-graph-spin { animation: none; }
+}
