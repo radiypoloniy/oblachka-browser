@@ -365,13 +365,15 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           <button
             type="button"
             onClick={onBack}
-            title="К новой вкладке"
+            title="Выйти из графов — к новой вкладке"
             style={{
-              display: 'inline-flex', background: 'none', border: 0, padding: 4,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 26, height: 26, flex: 'none',
+              background: 'none', border: 0, padding: 0,
               borderRadius: 7, color: 'var(--text-body)', cursor: 'pointer',
             }}
           >
-            <ArrowLeft size={15} />
+            <ArrowLeft size={16} />
           </button>
           <span
             style={{
@@ -415,12 +417,16 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                 type="button"
                 title="Удалить воркспейс"
                 onClick={(e) => { e.stopPropagation(); void deleteWorkspace(meta.id); }}
+                // Цель клика 26×26, а не по размеру иконки: с прежними 17 пикселями в
+                // корзину приходилось целиться, и промах читался как «кнопка не работает».
                 style={{
-                  display: 'inline-flex', background: 'none', border: 0, padding: 2,
-                  borderRadius: 5, color: 'var(--text-faint)', cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 26, height: 26, flex: 'none',
+                  background: 'none', border: 0, padding: 0,
+                  borderRadius: 7, color: 'var(--text-faint)', cursor: 'pointer',
                 }}
               >
-                <Trash2 size={13} />
+                <Trash2 size={14} />
               </button>
             </div>
           ))}

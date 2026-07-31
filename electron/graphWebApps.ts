@@ -80,10 +80,26 @@ export function buildInsertScript(text: string): string {
       if (setter) setter.call(el, text); else el.value = text;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
-    } else {
-      el.textContent = text;
-      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
+      return 'ok';
     }
+
+    // Contenteditable у современных чатов — это редактор (ProseMirror у ChatGPT, Lexical у
+    // других), который держит СВОЮ модель документа. Присваивание textContent меняет DOM в
+    // обход редактора: текст видно, но состояние редактора остаётся пустым — кнопка отправки
+    // не оживает, а первая же правка стирает вставленное. execCommand('insertText') идёт
+    // штатным путём редактирования (beforeinput/input), и редактор принимает текст как
+    // набранный руками. Метод помечен устаревшим, но остаётся единственным способом
+    // отдать текст произвольному редактору снаружи.
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    if (document.execCommand('insertText', false, text)) return 'ok';
+
+    // Фолбэк для полей попроще, где execCommand запрещён.
+    el.textContent = text;
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
     return 'ok';
   })()`;
 }

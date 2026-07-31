@@ -109,7 +109,20 @@ export default function GraphWebAppWindow({
     void window.oblako.setGraphWebAppBounds({ x: 0, y: 0, width: 0, height: 0 });
   }, []);
 
+  // Esc — страховочный выход. Нативная вью лежит поверх React и закрывает часть экрана;
+  // если до крестика почему-то не добраться, окно всё равно должно убираться с клавиатуры.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const onPointerDown = useCallback((mode: 'move' | 'resize') => (e: React.PointerEvent) => {
+    // ⚠️ Клик по кнопке в шапке не должен становиться перетаскиванием. setPointerCapture
+    // на шапке перехватывает указатель ЦЕЛИКОМ: последующие pointer-события уходят шапке,
+    // до кнопки не доходят, и click не рождается вовсе. Из-за этого не работали разом
+    // крестик, вставка промпта и забор ответа — при живой логике под ними.
+    if (mode === 'move' && (e.target as HTMLElement).closest('button')) return;
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = mode === 'move'
