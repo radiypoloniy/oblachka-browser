@@ -1,6 +1,5 @@
-import { AlertTriangle, WifiOff, Globe, RotateCcw, ArrowLeft, ShieldAlert, ShieldOff, Ban, ServerCrash, Clock } from 'lucide-react';
 import type { TabErrorState } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
+import { glassPlate } from '../styles/island';
 
 interface Props {
   error: TabErrorState;
@@ -10,135 +9,141 @@ interface Props {
   onBack?: () => void;
 }
 
-// Экран вместо не открывшейся страницы. Три вещи, и все три обязательны: ЧТО случилось (заголовок),
-// ПОЧЕМУ (деталь) и ЧТО ДЕЛАТЬ (подсказка). Голый «код ошибки -105» — не сообщение об ошибке, а
-// отписка: человеку он не говорит ни одного из трёх.
+// Экран вместо не открывшейся страницы — крупный остров дизайн-системы, а не мелкая табличка.
+// Три вещи, и все три обязательны: ЧТО случилось (заголовок), ПОЧЕМУ (объяснение) и ЧТО ДЕЛАТЬ
+// (совет отдельной карточкой внутри острова). Тон — человеческий: страница ошибки ловит человека
+// в момент, когда у него уже не получилось, и «ERR_NAME_NOT_RESOLVED» в этот момент помогает
+// примерно никак.
+//
+// Иконки — эмодзи, а не lucide: они цветные, крупные и сразу задают настроение, а рисовать свой
+// набор цветных глифов ради восьми состояний незачем. Тот же приём уже работает в виджете погоды
+// (NewTab.tsx). На Windows их рисует системный Segoe UI Emoji — набор Apple забандлить нельзя,
+// его лицензия не выпускает шрифт за пределы устройств Apple.
 interface Info {
-  Icon: typeof Globe;
+  emoji: string;
   title: string;
   detail: string;
-  hint?: string;
+  hint: string;
 }
 
 function hostOf(raw: string): string {
   try { return new URL(raw).hostname; } catch { return raw; }
 }
 
-// Коды Chromium (net_error_list.h). Здесь только те, что реально видит пользователь браузера;
-// остальное честно уходит в общую ветку с кодом — врать выдуманным диагнозом хуже, чем признать
-// незнание.
+// Коды Chromium (net_error_list.h) — только те, что реально видит человек за браузером.
+// Остальное честно уходит в общую ветку: выдуманный диагноз хуже признания незнания.
 function loadInfo(code: number, host: string): Info {
   switch (code) {
     case -105: // ERR_NAME_NOT_RESOLVED
     case -137: // ERR_NAME_RESOLUTION_FAILED
       return {
-        Icon: Globe, title: 'Не удалось найти сервер',
-        detail: `DNS не знает адреса для ${host}.`,
-        hint: 'Проверьте, нет ли опечатки в адресе. Если адрес верный — сайт мог переехать или его больше нет.',
+        emoji: '🔍', title: 'Такого сайта не нашлось',
+        detail: `Мы спросили адрес ${host}, но в справочнике DNS о нём не слышали.`,
+        hint: 'Чаще всего виновата опечатка в адресе. Если адрес точно верный — сайт мог переехать или закрыться.',
       };
     case -106: // ERR_INTERNET_DISCONNECTED
       return {
-        Icon: WifiOff, title: 'Нет подключения к интернету',
-        detail: 'Браузер не видит сети.',
-        hint: 'Проверьте Wi-Fi или кабель, затем обновите страницу.',
+        emoji: '📡', title: 'Интернета нет',
+        detail: 'Браузер вообще не видит сети — дело не в сайте.',
+        hint: 'Проверьте Wi-Fi или кабель и обновите страницу.',
       };
     case -102: // ERR_CONNECTION_REFUSED
       return {
-        Icon: ServerCrash, title: 'Сервер отклонил соединение',
-        detail: `${host} ответил отказом на попытку подключиться.`,
-        hint: 'Обычно это значит, что сайт лежит или закрыт для внешних подключений. Стоит попробовать позже.',
+        emoji: '🚪', title: 'Сервер не открыл дверь',
+        detail: `${host} получил запрос и ответил отказом.`,
+        hint: 'Обычно так выглядит сайт, который лёг или закрыт для внешних подключений. Имеет смысл зайти позже.',
       };
     case -101: // ERR_CONNECTION_RESET
     case -100: // ERR_CONNECTION_CLOSED
     case -104: // ERR_CONNECTION_FAILED
       return {
-        Icon: ServerCrash, title: 'Соединение оборвалось',
-        detail: `Связь с ${host} разорвана на полпути.`,
-        hint: 'Чаще всего помогает просто обновить. Если повторяется — виновата сеть между вами и сайтом.',
+        emoji: '🔌', title: 'Связь оборвалась',
+        detail: `Разговор с ${host} прервался на полуслове.`,
+        hint: 'Почти всегда лечится обновлением. Если повторяется — виновата сеть между вами и сайтом.',
       };
     case -7:   // ERR_TIMED_OUT
     case -118: // ERR_CONNECTION_TIMED_OUT
       return {
-        Icon: Clock, title: 'Сайт не ответил вовремя',
+        emoji: '⏳', title: 'Сайт молчит',
         detail: `${host} не прислал ответ за отведённое время.`,
-        hint: 'Сайт перегружен или недоступен из вашей сети. Попробуйте обновить или зайти позже.',
+        hint: 'Похоже, он перегружен или недоступен из вашей сети. Попробуйте обновить или вернуться позже.',
       };
     case -109: // ERR_ADDRESS_UNREACHABLE
       return {
-        Icon: Globe, title: 'Адрес недостижим',
-        detail: `К ${host} нет маршрута из вашей сети.`,
+        emoji: '🗺️', title: 'До этого адреса нет дороги',
+        detail: `Из вашей сети до ${host} не проложить маршрут.`,
         hint: 'Так бывает при проблемах с роутером или когда сайт закрыт для вашего региона — здесь может выручить VPN.',
       };
     case -20: // ERR_BLOCKED_BY_CLIENT
       return {
-        Icon: Ban, title: 'Запрос заблокирован',
-        detail: 'Загрузку остановил сам браузер.',
+        emoji: '🛡️', title: 'Это остановил сам браузер',
+        detail: 'Запрос не ушёл наружу — его перехватила защита.',
         hint: 'Скорее всего сработал встроенный блокировщик. Отключите его для этого сайта в поповере «Защита» и обновите страницу.',
       };
     case -21: // ERR_NETWORK_CHANGED
       return {
-        Icon: WifiOff, title: 'Сеть сменилась во время загрузки',
+        emoji: '🔄', title: 'Сеть сменилась на полпути',
         detail: 'Подключение переключилось, пока страница грузилась.',
-        hint: 'Обычная история при включении или отключении VPN. Достаточно обновить страницу.',
+        hint: 'Обычное дело при включении или отключении VPN. Достаточно обновить.',
       };
     case -130: // ERR_PROXY_CONNECTION_FAILED
-    case -337: // ERR_PROXY_AUTH_REQUESTED (близкий по смыслу для пользователя)
+    case -337: // ERR_PROXY_AUTH_REQUESTED — для человека причина та же: трафик не прошёл через прокси
       return {
-        Icon: ShieldOff, title: 'Прокси не отвечает',
-        detail: 'Не удалось подключиться через прокси-сервер.',
-        hint: 'Если включён VPN — проверьте подключение в поповере «Защита»: сервер мог отвалиться, а kill switch не пускает трафик мимо него.',
+        emoji: '🛰️', title: 'Прокси не отвечает',
+        detail: 'Подключиться через прокси-сервер не вышло.',
+        hint: 'Если включён VPN — загляните в поповер «Защита»: сервер мог отвалиться, а kill switch не пускает трафик в обход.',
       };
     case -310: // ERR_TOO_MANY_REDIRECTS
       return {
-        Icon: AlertTriangle, title: 'Слишком много переадресаций',
-        detail: `${host} зациклил перенаправления.`,
-        hint: 'Часто лечится очисткой кук этого сайта. Либо сайт сломан на своей стороне.',
+        emoji: '🌀', title: 'Страница зациклилась',
+        detail: `${host} перекидывает с адреса на адрес по кругу.`,
+        hint: 'Часто помогает очистить куки этого сайта. Если нет — он сломан на своей стороне.',
       };
     case -324: // ERR_EMPTY_RESPONSE
       return {
-        Icon: ServerCrash, title: 'Сервер прислал пустой ответ',
-        detail: `${host} закрыл соединение, ничего не передав.`,
-        hint: 'Обычно временный сбой на стороне сайта — попробуйте обновить.',
+        emoji: '📭', title: 'Ответ пришёл пустым',
+        detail: `${host} закрыл соединение, не передав ни байта.`,
+        hint: 'Обычно это временный сбой на стороне сайта — попробуйте обновить.',
       };
     case -312: // ERR_UNSAFE_PORT
       return {
-        Icon: Ban, title: 'Порт заблокирован',
-        detail: 'Chromium не открывает адреса на этом порту.',
-        hint: 'Список портов зашит в движок ради безопасности (почта, FTP и подобные). Обойти его из браузера нельзя — нужен другой порт.',
+        emoji: '🚧', title: 'Этот порт закрыт',
+        detail: 'Chromium не открывает адреса на таком порту.',
+        hint: 'Список запрещённых портов зашит в движок ради безопасности — почта, FTP и подобные. Обойти его из браузера нельзя.',
       };
     case -300: // ERR_INVALID_URL
       return {
-        Icon: AlertTriangle, title: 'Неверный адрес',
-        detail: 'Такой адрес нельзя открыть.',
-        hint: 'Проверьте строку адреса: возможно, в ней лишний символ или неизвестная схема.',
+        emoji: '✏️', title: 'Адрес не разобрать',
+        detail: 'Такую строку нельзя открыть как ссылку.',
+        hint: 'Проверьте адрес: возможно, в нём лишний символ или незнакомая схема.',
       };
     case -6: // ERR_FILE_NOT_FOUND
       return {
-        Icon: AlertTriangle, title: 'Файл не найден',
-        detail: 'По этому пути на диске ничего нет.',
-        hint: 'Файл могли переместить, переименовать или удалить.',
+        emoji: '📄', title: 'Файла нет на месте',
+        detail: 'По этому пути на диске ничего не лежит.',
+        hint: 'Его могли переместить, переименовать или удалить.',
       };
     case -107: // ERR_SSL_PROTOCOL_ERROR
     case -501: // ERR_INSECURE_RESPONSE
       return {
-        Icon: ShieldAlert, title: 'Защищённое соединение не установлено',
-        detail: `Не удалось договориться о шифровании с ${host}.`,
-        hint: 'Сайт настроен неправильно либо соединение кто-то подменяет. Вводить пароли на нём сейчас не стоит.',
+        emoji: '🔐', title: 'Защищённое соединение не сложилось',
+        detail: `Договориться о шифровании с ${host} не удалось.`,
+        hint: 'Либо сайт настроен неправильно, либо соединение кто-то подменяет. Пароли на нём сейчас вводить не стоит.',
       };
     default:
-      // Сертификатные ошибки идут сплошным блоком -200…-219 — разбирать каждую по отдельности
-      // пользователю незачем, вывод для всех один и тот же.
+      // Сертификатные ошибки идут сплошным блоком -200…-219. Разбирать каждую по отдельности
+      // человеку незачем: вывод для всех один и тот же.
       if (code <= -200 && code >= -219) {
         return {
-          Icon: ShieldAlert, title: 'Сертификат сайта не в порядке',
+          emoji: '🔒', title: 'С сертификатом что-то не так',
           detail: `Браузер не доверяет сертификату ${host} (код ${code}).`,
-          hint: 'Сертификат мог истечь или быть выписан не на этот домен. Пока причина не ясна, не вводите на сайте пароли и карты.',
+          hint: 'Он мог истечь или быть выписан на другой домен. Пока причина не ясна, не вводите здесь пароли и данные карт.',
         };
       }
       return {
-        Icon: AlertTriangle, title: 'Не удалось открыть страницу',
+        emoji: '😕', title: 'Страница не открылась',
         detail: `Загрузка прервалась с кодом ${code}.`,
-        hint: 'Попробуйте обновить. Если повторяется — проблема, скорее всего, на стороне сайта.',
+        hint: 'Попробуйте обновить. Если повторится — проблема, скорее всего, на стороне сайта.',
       };
   }
 }
@@ -146,16 +151,16 @@ function loadInfo(code: number, host: string): Info {
 function errorInfo(error: TabErrorState): Info {
   if (error.type === 'crash') {
     return {
-      Icon: AlertTriangle, title: 'Вкладка упала',
-      detail: 'Процесс, отвечавший за эту страницу, завершился неожиданно.',
-      hint: 'Остальные вкладки не пострадали — эту достаточно перезагрузить.',
+      emoji: '💥', title: 'Вкладка не выдержала',
+      detail: 'Процесс, который рисовал эту страницу, завершился сам собой.',
+      hint: 'Остальные вкладки целы — эту достаточно перезагрузить.',
     };
   }
-  // Сеть отсутствовала в момент ошибки — тогда неважно, какой именно код прислал Chromium:
-  // причина одна, и совет по коду («сайт перегружен», «проверьте адрес») только собьёт с толку.
+  // Сети не было в момент ошибки — какой именно код прислал Chromium, уже неважно: причина одна,
+  // а советы по коду («сайт перегружен», «проверьте адрес») в этой ситуации только сбивают.
   if (error.offline) {
     return {
-      Icon: WifiOff, title: 'Нет подключения к интернету',
+      emoji: '📡', title: 'Кажется, интернет пропал',
       detail: 'В момент загрузки браузер не видел сети.',
       hint: 'Проверьте Wi-Fi или кабель. Если пользуетесь VPN — убедитесь, что он подключён.',
     };
@@ -163,74 +168,91 @@ function errorInfo(error: TabErrorState): Info {
   return loadInfo(error.code, hostOf(error.url));
 }
 
+// Крупные кнопки: остров задаёт масштаб, мелкая кнопка в нём смотрелась бы случайной.
+function buttonBase(): React.CSSProperties {
+  return {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    height: 44, padding: '0 26px', border: 'none', borderRadius: 'var(--radius-pill)',
+    fontSize: 'var(--fs-md)', fontWeight: 600, cursor: 'default',
+  };
+}
+
 export default function TabError({ error, url, onRetry, canGoBack, onBack }: Props) {
-  const { Icon, title, detail, hint } = errorInfo(error);
-  const displayUrl = url.length > 60 ? url.slice(0, 57) + '…' : url;
+  const { emoji, title, detail, hint } = errorInfo(error);
+  const displayUrl = url.length > 72 ? url.slice(0, 69) + '…' : url;
 
   return (
     <div style={{
       position: 'absolute', inset: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 32,
       background: 'var(--app-bg)',
       pointerEvents: 'auto', // может сидеть внутри TAB_FRAME_STYLE (App.tsx) с pointer-events:none — кнопки должны остаться кликабельными
     }}>
       <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
-        padding: '32px 40px',
-        ...islandPlate,
-        borderRadius: 'var(--radius-card)',
-        maxWidth: 460, textAlign: 'center',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        gap: 'var(--space-4)',
+        padding: '48px 52px 40px',
+        // Внешний остров — тот же рецепт, что у плавающих оболочек (сайдбар, Hub), не карточка
+        // внутри поверхности: страница ошибки ЗАМЕЩАЕТ сайт, а не лежит поверх нашего же UI.
+        ...glassPlate({ surface: 'surface-island', shadow: 'shadow-island' }),
+        borderRadius: 'var(--radius-island)',
+        maxWidth: 560, width: '100%', textAlign: 'center',
       }}>
-        <Icon size={36} color="var(--text-faint)" strokeWidth={1.5} />
-        <p style={{ margin: 0, fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text-strong)' }}>
+        <div style={{ fontSize: 64, lineHeight: 1, userSelect: 'none' }} aria-hidden>{emoji}</div>
+
+        <h1 style={{
+          margin: 0, fontSize: 'var(--fs-2xl)', fontWeight: 600,
+          color: 'var(--text-strong)', letterSpacing: '-0.01em',
+        }}>
           {title}
-        </p>
-        <p style={{ margin: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        </h1>
+
+        <p style={{
+          margin: 0, fontSize: 'var(--fs-lg)', color: 'var(--text-muted)',
+          lineHeight: 1.5, maxWidth: 420,
+        }}>
           {detail}
         </p>
-        {hint && (
-          <p style={{ margin: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', lineHeight: 1.5 }}>
-            {hint}
-          </p>
-        )}
+
+        {/* Совет — «утопленной» карточкой внутри острова, чтобы «что делать» отделялось от «что
+            случилось» не только отступом. Именно --surface-sunken, а НЕ --surface: последний в
+            светлой теме тот же белый, что и сам остров, — карточка на нём не читается вовсе. */}
+        <div style={{
+          marginTop: 'var(--space-1)',
+          padding: '14px 18px', borderRadius: 'var(--radius-card)',
+          background: 'var(--surface-sunken)',
+          fontSize: 'var(--fs-md)', color: 'var(--text-body)', lineHeight: 1.5,
+          maxWidth: 440,
+        }}>
+          {hint}
+        </div>
+
         {url && (
-          <p style={{ margin: 0, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', wordBreak: 'break-all' }}>
+          // Адрес — без плашки: «утопленную» роль в острове уже занял совет выше, вторая серая
+          // плитка рядом читалась бы как ещё один блок, хотя это всего лишь сноска.
+          <div style={{
+            maxWidth: '100%',
+            fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
             {displayUrl}
-          </p>
+          </div>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
           {canGoBack && onBack && (
             <button
               onClick={onBack}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '8px 16px',
-                background: 'var(--surface-sunken)',
-                color: 'var(--text-body)',
-                border: 'none',
-                borderRadius: 'calc(var(--radius-card) / 2)',
-                fontSize: 'var(--fs-sm)', fontWeight: 500, cursor: 'pointer',
-              }}
+              style={{ ...buttonBase(), background: 'var(--surface-sunken)', color: 'var(--text-body)' }}
             >
-              <ArrowLeft size={14} strokeWidth={2} />
               Назад
             </button>
           )}
           <button
             onClick={onRetry}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '8px 20px',
-              background: 'var(--accent)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 'calc(var(--radius-card) / 2)',
-              fontSize: 'var(--fs-sm)',
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
+            style={{ ...buttonBase(), background: 'var(--accent)', color: '#fff' }}
           >
-            <RotateCcw size={14} strokeWidth={2} />
             Обновить
           </button>
         </div>
