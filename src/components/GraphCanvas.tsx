@@ -7,13 +7,14 @@ import {
 import '@xyflow/react/dist/style.css';
 import {
   Plus, Play, Square, Trash2, FileText, Globe, Sparkles, ArrowLeft, ArrowRight,
-  AlignLeft, Network, BarChart3, ListChecks, MessagesSquare, X, ClipboardPaste, Download,
+  AlignLeft, Network, BarChart3, ListChecks, MessagesSquare,
 } from 'lucide-react';
 import type {
   GraphDoc, GraphMeta, GraphNodeConfig, GraphNodeKind, GraphNodeStatus, GraphStructure,
 } from '../../shared/graph';
 import { NODE_KINDS } from '../../shared/graph';
 import GraphNodeCard, { DEFAULT_NODE_SIZE, type GraphNodeData } from './graph/GraphNodeCard';
+import GraphWebAppWindow from './graph/GraphWebAppWindow';
 import { downstreamOf } from '../../shared/graph';
 
 // Граф-воркспейс: холст рисует и складывает структуру, считает всё main (GraphEngine.ts).
@@ -22,7 +23,8 @@ import { downstreamOf } from '../../shared/graph';
 //
 // Живые WebContentsView в узлы намеренно НЕ кладутся: нативные view нельзя ни отмасштабировать
 // вместе с холстом, ни обрезать по его краю, ни увести под связи — они всегда рисуются поверх
-// React-слоя. Веб-приложения приедут отдельным типом узла с панелью 1:1 (срез 3).
+// React-слоя. Поэтому узел webapp.chat остаётся карточкой, а сайт открывается плавающим окном
+// поверх холста (GraphWebAppWindow) — тем же слотом-приложением, что в разделе «Приложения».
 
 type RFNode = Node<GraphNodeData>;
 
@@ -50,20 +52,6 @@ const NEW_NODE_ICONS: Record<GraphNodeKind, JSX.Element> = {
 };
 
 const SAVE_DEBOUNCE_MS = 600;
-
-const panelButton: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6,
-  background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-  borderRadius: 9, padding: '6px 11px', cursor: 'pointer',
-  color: 'var(--text-body)', font: 'inherit',
-  fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
-};
-
-const panelPrimary: React.CSSProperties = {
-  ...panelButton,
-  background: 'var(--accent)', color: 'var(--text-on-accent)',
-  border: '1px solid transparent', fontWeight: 'var(--fw-medium)',
-};
 
 function toRFNodes(doc: GraphDoc): RFNode[] {
   return doc.nodes.map((n) => ({
@@ -110,9 +98,10 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   // Открытый узел-веб-приложение. Панель одна и показывает ровно один сайт: нативная вью
   // не умеет ни масштабироваться с холстом, ни обрезаться по его краю (см. шапку файла).
-  const [webApp, setWebApp] = useState<{ nodeId: string; url: string } | null>(null);
+  const [webApp, setWebApp] = useState<
+    { nodeId: string; url: string; title: string; hostLabel: string } | null
+  >(null);
   const [webAppNote, setWebAppNote] = useState<string | null>(null);
-  const webAppHoleRef = useRef<HTMLDivElement | null>(null);
 
   // Пока идёт загрузка графа, автосейв обязан молчать: иначе пустое стартовое состояние
   // успело бы записаться поверх только что открытого воркспейса.
@@ -175,7 +164,9 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         }
         if (p.output !== undefined) data.output = p.output;
         if (p.outputTitle !== undefined) data.outputTitle = p.outputTitle;
-        if (p.status === 'error') data.error = p.error ?? 'Не получилось';
+        // awaiting несёт не ошибку, а подсказку «что от вас требуется» — показываем её тем
+        // же полем, карточка красит его жёлтым, а не красным (см. GraphNodeCard).
+        if (p.status === 'error' || p.status === 'awaiting') data.error = p.error ?? 'Не получилось';
         if (p.status === 'done') data.error = null;
         return { ...n, data };
       }));
@@ -269,37 +260,25 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
 
   const openWebApp = useCallback((id: string) => {
     setNodes((ns) => {
-      const raw = (ns.find((n) => n.id === id)?.data.config.url ?? '').trim();
+      const node = ns.find((n) => n.id === id);
+      const raw = (node?.data.config.url ?? '').trim();
       if (raw) {
+        const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+        // Имя хоста — подпись окна и буква иконки, как у пользовательских веб-приложений
+        // панели. Заголовок узла важнее: его человек писал сам.
+        let host = url;
+        try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { /* оставим как есть */ }
         setWebAppNote(null);
-        setWebApp({ nodeId: id, url: /^https?:\/\//i.test(raw) ? raw : `https://${raw}` });
+        setWebApp({
+          nodeId: id,
+          url,
+          title: (node?.data.title ?? '').trim() || host,
+          hostLabel: host,
+        });
       }
       return ns; // читаем актуальный узел из состояния, само состояние не трогаем
     });
   }, []);
-
-  // Панель меряет свою «дырку» и шлёт координаты в main — тот же приём, что у контента
-  // вкладок в App.tsx: React рисует рамку, main кладёт в неё WebContentsView.
-  useEffect(() => {
-    const hole = webAppHoleRef.current;
-    if (!webApp || !hole || currentId === null) return;
-    const rectOf = () => {
-      const r = hole.getBoundingClientRect();
-      return { x: r.left, y: r.top, width: r.width, height: r.height };
-    };
-    void window.oblako.showGraphWebApp(currentId, webApp.nodeId, webApp.url, rectOf());
-    const push = () => { void window.oblako.setGraphWebAppBounds(rectOf()); };
-    const ro = new ResizeObserver(push);
-    ro.observe(hole);
-    window.addEventListener('resize', push);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', push);
-      // Нулевой прямоугольник — сентинел «панель закрыта». Срабатывает и при уходе с
-      // граф-режима: компонент размонтируется, чужой сайт не должен остаться поверх вкладок.
-      void window.oblako.setGraphWebAppBounds({ x: 0, y: 0, width: 0, height: 0 });
-    };
-  }, [webApp, currentId]);
 
   const insertPrompt = async () => {
     if (!webApp || currentId === null) return;
@@ -547,60 +526,18 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           </div>
 
           {webApp && (
-            <aside
-              style={{
-                width: 'min(48%, 720px)', minWidth: 380, flex: 'none',
-                display: 'flex', flexDirection: 'column',
-                borderLeft: '1px solid var(--divider)', background: 'var(--surface)',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap',
-                  padding: '9px 12px', borderBottom: '1px solid var(--divider)',
-                }}
-              >
-                <button type="button" onClick={() => void insertPrompt()} style={panelPrimary}>
-                  <ClipboardPaste size={13} />
-                  Вставить промпт
-                </button>
-                <button type="button" onClick={() => void captureAnswer('selection')} style={panelButton}>
-                  <Download size={13} />
-                  Забрать выделенное
-                </button>
-                <button type="button" onClick={() => void captureAnswer('last')} style={panelButton}>
-                  Последний ответ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setWebApp(null); setWebAppNote(null); }}
-                  title="Закрыть панель"
-                  style={{
-                    marginLeft: 'auto', display: 'inline-flex', background: 'none', border: 0,
-                    padding: 5, borderRadius: 7, color: 'var(--text-body)', cursor: 'pointer',
-                  }}
-                >
-                  <X size={15} />
-                </button>
-              </div>
-
-              {/* Подсказка про ручной обмен — она же место для ответа кнопок. Текст постоянный,
-                  потому что это главное правило узла, а не разовое уведомление. */}
-              <div
-                style={{
-                  padding: '7px 12px', borderBottom: '1px solid var(--divider)',
-                  fontSize: 'var(--fs-sm)', lineHeight: 'var(--lh-snug)',
-                  color: webAppNote ? 'var(--text-strong)' : 'var(--text-muted)',
-                  background: 'var(--surface-sunken)',
-                }}
-              >
-                {webAppNote ?? 'Отправляете вы сами: граф вставит промпт, а ответ заберёт по кнопке.'}
-              </div>
-
-              {/* «Дырка» под нативную вью — сюда main кладёт WebContentsView по координатам,
-                  которые меряет этот div. Своего содержимого у него нет и быть не должно. */}
-              <div ref={webAppHoleRef} style={{ flex: 1, minHeight: 0 }} />
-            </aside>
+            <GraphWebAppWindow
+              graphId={currentId!}
+              nodeId={webApp.nodeId}
+              url={webApp.url}
+              title={webApp.title}
+              hostLabel={webApp.hostLabel}
+              note={webAppNote}
+              onClose={() => { setWebApp(null); setWebAppNote(null); }}
+              onInsert={() => void insertPrompt()}
+              onCaptureSelection={() => void captureAnswer('selection')}
+              onCaptureLast={() => void captureAnswer('last')}
+            />
           )}
         </div>
       </div>
