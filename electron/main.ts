@@ -59,6 +59,7 @@ import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSearchPopover, closeSearchPopover, syncSearchPopoverBounds, relayoutSearchPopover, setOnSearchRun, setTabManager as setSearchPopoverTabManager } from './SearchPopoverManager';
 import { buildSearchTargets } from './SearchTargets';
+import { SearchTargetStore } from './SearchTargetStore';
 import { applyBangTemplate, isValidBangTemplate } from '../shared/bangs';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, onFocusStolen as onSuggestDropdownFocusStolen, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
@@ -199,6 +200,9 @@ let omniboxBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
 let isShuttingDown = false;
 const adblock     = new AdBlockManager();
 const bangs       = new BangStore();
+// Выученные цели быстрого поиска (Ctrl+E) — сайты, где человек уже искал. Читается с диска
+// лениво, на первое обращение (см. SearchTargetStore).
+const searchTargets = new SearchTargetStore();
 const updates     = new UpdateManager();
 const history     = new HistoryManager();
 setOrganizerHistoryManager(history);
@@ -489,6 +493,10 @@ function createWindow() {
     ()              => chromeView?.webContents.focus(),
     (url, title, wc) => {
       history.recordVisit(url, title);
+      // Тот же адрес — материал для целей быстрого поиска: если он похож на выдачу, сайт
+      // становится целью Ctrl+E навсегда. Колбэк не приходит для инкогнито (TabManager),
+      // поэтому приватные вкладки сюда не попадают по построению.
+      searchTargets.learnFromUrl(url);
       // Заход G, блок 3: индексация эмбеддингом — только на визит (не на updateTitle ниже,
       // который может стрелять много раз на SPA, см. HistoryManager.ts::updateTitle — это
       // спамило бы единственный embed-воркер на каждое SPA-обновление заголовка одной страницы).
@@ -600,6 +608,7 @@ function createWindow() {
     // навигация по неподтверждённому шаблону — ровно то, от чего защищается импорт бэнгов.
     if (!tabs || !isValidBangTemplate(target.template)) return;
     const url = applyBangTemplate(target.template, query);
+    searchTargets.noteUse(target.template); // частые цели поднимаются в полосе чипов
     if (sameTab) tabs.navigate(tabs.getActiveId(), url);
     else tabs.createTab(url);
   });
@@ -631,6 +640,7 @@ function createWindow() {
           engineId: settings.getSearchEngine(),
           faviconUrl: active?.faviconUrl ?? null,
           bangs,
+          learned: searchTargets,
         }),
         prefill,
       });

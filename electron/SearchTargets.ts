@@ -18,6 +18,7 @@ import { getSearchEngine } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SearchTarget } from '../shared/ipc';
 import type { BangStore } from './BangStore';
+import type { SearchTargetStore } from './SearchTargetStore';
 
 // Сколько бэнгов показываем чипами. Полный список из настроек сюда не влезет и не нужен:
 // поповер — про быстрый выбор, а не про справочник; неуместившееся по-прежнему доступно
@@ -41,6 +42,8 @@ export interface SearchContext {
   engineId: SearchEngineId;
   faviconUrl?: string | null;
   bangs: BangStore | null;
+  // Сайты, на которых человек уже искал (SearchTargetStore) — заполняются сами, см. там же.
+  learned: SearchTargetStore | null;
 }
 
 export function buildSearchTargets(ctx: SearchContext): SearchTarget[] {
@@ -58,22 +61,24 @@ export function buildSearchTargets(ctx: SearchContext): SearchTarget[] {
   const userBangs: BangDef[] = ctx.bangs?.listUser() ?? [];
   const host = hostOf(ctx.url);
 
-  // 1. Текущий сайт — первым, это и есть смысл всей затеи.
+  // 1. Текущий сайт — первым, это и есть смысл всей затеи. Три источника по убыванию точности:
+  //    адрес прямо сейчас похож на выдачу → выученное по этому хосту → бэнг с тем же хостом.
   if (host) {
     const derived = deriveBangFromUrl(ctx.url);
-    if (derived) {
+    const remembered = ctx.learned?.findByHost(host) ?? null;
+    const sameHostBang = [...userBangs, ...BUILTIN_BANGS].find((b) => hostOf(b.template) === host);
+    const site = derived
+      ? { name: derived.name, template: derived.template }
+      : remembered
+      ? { name: remembered.name, template: remembered.template }
+      : sameHostBang
+      ? { name: sameHostBang.name, template: sameHostBang.template }
+      : null;
+    if (site) {
       push({
-        id: `site:${host}`, name: host, kind: 'site',
-        template: derived.template, faviconUrl: ctx.faviconUrl ?? null,
+        id: `site:${host}`, name: site.name, kind: 'site',
+        template: site.template, faviconUrl: ctx.faviconUrl ?? null,
       });
-    } else {
-      const sameHost = [...userBangs, ...BUILTIN_BANGS].find((b) => hostOf(b.template) === host);
-      if (sameHost) {
-        push({
-          id: `site:${host}`, name: sameHost.name, kind: 'site',
-          template: sameHost.template, faviconUrl: ctx.faviconUrl ?? null,
-        });
-      }
     }
   }
 
@@ -81,9 +86,19 @@ export function buildSearchTargets(ctx: SearchContext): SearchTarget[] {
   const engine = getSearchEngine(ctx.engineId);
   push({ id: 'engine', name: engine.name, kind: 'engine', template: engineTemplate(ctx.engineId) });
 
-  // 3. Пользовательские бэнги вперёд встроенных — тот же приоритет, что и при разрешении
-  //    «!ключ» в BangStore: заведённое руками всегда главнее нашего курируемого набора.
-  for (const b of [...userBangs, ...BUILTIN_BANGS]) {
+  // 3. Пользовательские бэнги, потом выученные сайты, потом встроенные.
+  //    Заведённое руками — главнее всего (тот же приоритет, что при разрешении «!ключ» в
+  //    BangStore). Выученное идёт ВПЕРЕДИ встроенного набора: сайты, где человек искал сам,
+  //    для него важнее наших двадцати курируемых, какими бы разумными те ни были.
+  for (const b of userBangs) {
+    if (targets.length >= MAX_BANG_CHIPS + 2) break;
+    push({ id: `bang:${b.key}`, name: b.name, kind: 'bang', template: b.template });
+  }
+  for (const t of ctx.learned?.list() ?? []) {
+    if (targets.length >= MAX_BANG_CHIPS + 2) break;
+    push({ id: `site:${t.host}`, name: t.name, kind: 'bang', template: t.template });
+  }
+  for (const b of BUILTIN_BANGS) {
     if (targets.length >= MAX_BANG_CHIPS + 2) break;
     push({ id: `bang:${b.key}`, name: b.name, kind: 'bang', template: b.template });
   }
