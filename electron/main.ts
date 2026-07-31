@@ -59,6 +59,7 @@ import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSearchPopover, closeSearchPopover, syncSearchPopoverBounds, relayoutSearchPopover, setOnSearchRun, setOnQuickQuery, setOnQuickOpen, setTabManager as setSearchPopoverTabManager } from './SearchPopoverManager';
 import { buildSearchTargets } from './SearchTargets';
+import { readPageSelection } from './PageSelection';
 import { SearchTargetStore } from './SearchTargetStore';
 import { applyBangTemplate, isValidBangTemplate, parseBangCandidate, bangHomeUrl } from '../shared/bangs';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, onFocusStolen as onSuggestDropdownFocusStolen, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
@@ -716,12 +717,11 @@ function createWindow() {
       // Гонка с таймаутом, а не голый await: чтение выделения — УДОБСТВО, а поповер по хоткею
       // обязан появиться всегда. Занятый главный поток страницы (тяжёлый скрипт, зависший
       // фрейм) не должен превращать Ctrl+E в «ничего не произошло».
-      const readSelection = wc.executeJavaScript('String(window.getSelection() ?? "")', true)
-        .then((v: unknown) => (typeof v === 'string' ? v : ''))
-        .catch(() => '');
+      // Опрос идёт по фреймам (см. PageSelection.ts): в верхнем документе выделения может не
+      // быть вовсе, если страница собрана из iframe — как весь интерфейс Intercom.
       const sel = await Promise.race([
-        readSelection,
-        new Promise<string>((r) => setTimeout(() => r(''), 150)),
+        readPageSelection(wc).catch(() => ''),
+        new Promise<string>((r) => setTimeout(() => r(''), 250)),
       ]);
       const prefill = sel.trim().replace(/\s+/g, ' ').slice(0, 200);
       const targets = buildSearchTargets({
