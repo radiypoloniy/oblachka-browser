@@ -7,7 +7,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import {
   Plus, Play, Square, Trash2, FileText, Globe, Sparkles, ArrowLeft, ArrowRight,
-  AlignLeft, Network, BarChart3, ListChecks, MessagesSquare,
+  AlignLeft, Network, BarChart3, ListChecks, MessagesSquare, Pencil,
 } from 'lucide-react';
 import type {
   GraphDoc, GraphMeta, GraphNodeConfig, GraphNodeKind, GraphNodeStatus, GraphStructure,
@@ -74,6 +74,7 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
       error: n.error,
       onPatch: () => {},
       onRun: () => {},
+      onDelete: () => {},
       onOpenWebApp: () => {},
     },
   }));
@@ -102,6 +103,9 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
     { nodeId: string; url: string; title: string; hostLabel: string } | null
   >(null);
   const [webAppNote, setWebAppNote] = useState<string | null>(null);
+  // Переименование воркспейса прямо в списке: id строки в правке и текущий черновик.
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
 
   // Пока идёт загрузка графа, автосейв обязан молчать: иначе пустое стартовое состояние
   // успело бы записаться поверх только что открытого воркспейса.
@@ -258,6 +262,13 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
     window.oblako.runGraph(currentId, id);
   }, [currentId]);
 
+  // Удаление узла. Связи чистим сами: applyNodeChanges убирает только сам узел, а висячая
+  // связь на удалённый узел ломала бы топологическую сортировку в движке.
+  const deleteNode = useCallback((id: string) => {
+    onNodesChange([{ type: 'remove', id }]);
+    setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
+  }, [onNodesChange]);
+
   const openWebApp = useCallback((id: string) => {
     setNodes((ns) => {
       const node = ns.find((n) => n.id === id);
@@ -317,6 +328,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           error: null,
           onPatch: () => {},
           onRun: () => {},
+          onDelete: () => {},
           onOpenWebApp: () => {},
         },
       }];
@@ -332,11 +344,24 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         ...n.data,
         onPatch: (patch: { title?: string; config?: GraphNodeConfig }) => patchNode(n.id, patch),
         onRun: () => runNode(n.id),
+        onDelete: () => deleteNode(n.id),
         onOpenWebApp: () => openWebApp(n.id),
       },
     })),
-    [nodes, patchNode, runNode, openWebApp],
+    [nodes, patchNode, runNode, deleteNode, openWebApp],
   );
+
+  const commitRename = async () => {
+    if (renamingId === null) return;
+    const name = renameDraft.trim();
+    const id = renamingId;
+    setRenamingId(null);
+    // Пустое имя — отказ от правки, а не «стереть название»: безымянный воркспейс в списке
+    // не отличить от соседних.
+    if (!name) return;
+    await window.oblako.renameGraph(id, name);
+    await refreshList();
+  };
 
   const createWorkspace = async () => {
     const meta = await window.oblako.createGraph('Новый граф');
@@ -410,9 +435,57 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
               }}
               onClick={() => { if (meta.id !== currentId) void openGraph(meta.id); }}
             >
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {meta.title}
-              </span>
+              {renamingId === meta.id ? (
+                <input
+                  autoFocus
+                  value={renameDraft}
+                  onChange={(e) => setRenameDraft(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onBlur={() => void commitRename()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void commitRename();
+                    if (e.key === 'Escape') setRenamingId(null);
+                  }}
+                  style={{
+                    flex: 1, minWidth: 0, background: 'var(--surface-sunken)',
+                    border: '1px solid var(--accent)', borderRadius: 6, padding: '3px 6px',
+                    color: 'var(--text-strong)', font: 'inherit',
+                    fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)', outline: 'none',
+                  }}
+                />
+              ) : (
+                <span
+                  // Двойной клик — привычный способ переименования списка; кнопка-карандаш
+                  // рядом нужна, чтобы способ вообще было видно.
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setRenameDraft(meta.title);
+                    setRenamingId(meta.id);
+                  }}
+                  style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
+                  {meta.title}
+                </span>
+              )}
+              {renamingId !== meta.id && (
+                <button
+                  type="button"
+                  title="Переименовать"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenameDraft(meta.title);
+                    setRenamingId(meta.id);
+                  }}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 26, height: 26, flex: 'none',
+                    background: 'none', border: 0, padding: 0,
+                    borderRadius: 7, color: 'var(--text-faint)', cursor: 'pointer',
+                  }}
+                >
+                  <Pencil size={13} />
+                </button>
+              )}
               <button
                 type="button"
                 title="Удалить воркспейс"
@@ -523,6 +596,10 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             onConnect={onConnect}
             colorMode="system"
             proOptions={{ hideAttribution: false }}
+            // Только Delete: Backspace на Windows слишком легко нажать по привычке правки
+            // текста. React Flow сам не реагирует на клавиши внутри полей ввода, так что
+            // печатать в узлах безопасно. Связь удаляется так же — выделить и нажать Delete.
+            deleteKeyCode={['Delete']}
             fitView
           >
             <Background gap={18} size={1} />

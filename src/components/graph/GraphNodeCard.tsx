@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import { Handle, NodeResizer, Position } from '@xyflow/react';
-import { Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink } from 'lucide-react';
+import { Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink, X } from 'lucide-react';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
 import { NODE_KINDS } from '../../../shared/graph';
 import { markdownComponents } from '../aiMarkdown';
@@ -19,6 +19,7 @@ export interface GraphNodeData extends Record<string, unknown> {
   error: string | null;
   onPatch: (patch: { title?: string; config?: GraphNodeConfig }) => void;
   onRun: () => void;
+  onDelete: () => void;
   // Только для webapp.chat — открыть живой сайт в панели 1:1 (в карточку нативную вью
   // положить нельзя, см. шапку GraphCanvas.tsx).
   onOpenWebApp: () => void;
@@ -181,6 +182,20 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           }}
         >
           <Play size={13} />
+        </button>
+        <button
+          type="button"
+          className="nodrag"
+          onClick={data.onDelete}
+          title="Удалить узел"
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 22, height: 22, flex: 'none', padding: 0,
+            background: 'none', border: 0, borderRadius: 6,
+            color: 'var(--text-faint)', cursor: 'pointer',
+          }}
+        >
+          <X size={13} />
         </button>
       </div>
 
