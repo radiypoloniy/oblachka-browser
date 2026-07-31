@@ -20,10 +20,10 @@ import type { SearchTarget, SearchChipsConfig } from '../shared/ipc';
 import type { BangStore } from './BangStore';
 import type { SearchTargetStore } from './SearchTargetStore';
 
-// Сколько бэнгов показываем чипами. Полный список из настроек сюда не влезет и не нужен:
-// поповер — про быстрый выбор, а не про справочник; неуместившееся по-прежнему доступно
-// набором «!ключ» прямо в строке запроса.
-const MAX_BANG_CHIPS = 8;
+// Сколько целей отдаём поповеру. Полоса показывает первые несколько, остальные — под кнопкой
+// «ещё» (разворот там же, в поповере). Полный набор сюда всё равно не влезет и не нужен:
+// импортированный список DDG (~13 000) доступен набором «!ключ» прямо в строке запроса.
+const MAX_TARGETS = 24;
 
 function hostOf(rawUrl: string): string | null {
   try { return new URL(rawUrl).hostname.replace(/^www\./i, '').toLowerCase(); } catch { return null; }
@@ -94,9 +94,9 @@ export function buildSearchTargets(ctx: SearchContext): SearchTarget[] {
     // Заведённое руками — главнее всего (тот же приоритет, что при разрешении «!ключ» в
     // BangStore). Выученное идёт ВПЕРЕДИ встроенного набора: сайты, где человек искал сам,
     // для него важнее наших двадцати курируемых, какими бы разумными те ни были.
-    ...userBangs.map((b) => ({ id: `bang:${b.key}`, name: b.name, kind: 'bang' as const, template: b.template })),
+    ...userBangs.map((b) => ({ id: `bang:${b.key}`, name: b.name, kind: 'bang' as const, template: b.template, bangKey: b.key })),
     ...(ctx.learned?.list() ?? []).map((t) => ({ id: `site:${t.host}`, name: t.name, kind: 'bang' as const, template: t.template })),
-    ...BUILTIN_BANGS.map((b) => ({ id: `bang:${b.key}`, name: b.name, kind: 'bang' as const, template: b.template })),
+    ...BUILTIN_BANGS.map((b) => ({ id: `bang:${b.key}`, name: b.name, kind: 'bang' as const, template: b.template, bangKey: b.key })),
   ];
 
   if (ctx.chips.mode === 'pinned') {
@@ -108,7 +108,7 @@ export function buildSearchTargets(ctx: SearchContext): SearchTarget[] {
     }
   } else {
     for (const t of rest) {
-      if (targets.length >= MAX_BANG_CHIPS + 2) break;
+      if (targets.length >= MAX_TARGETS) break;
       push(t);
     }
   }

@@ -12,7 +12,7 @@
 import { WebContentsView, ipcMain } from 'electron'
 import type { BrowserWindow } from 'electron'
 import path from 'node:path'
-import type { ContentBounds, SearchTarget, QuickHit } from '../shared/ipc'
+import type { ContentBounds, SearchTarget, QuickHit, QuickQueryResult } from '../shared/ipc'
 import { getAiPanelReservedWidth } from './AiPanelManager'
 import type { TabManager } from './TabManager'
 
@@ -45,7 +45,7 @@ let resizeBoundWin: BrowserWindow | null = null
 let ipcRegistered = false
 let tabManagerRef: TabManager | null = null
 let onRunCb: ((req: SearchRunRequest) => void) | null = null
-let onQueryCb: ((text: string) => QuickHit[]) | null = null
+let onQueryCb: ((text: string) => QuickQueryResult) | null = null
 let onOpenCb: ((hit: QuickHit) => void) | null = null
 // Текущая высота карточки. Сбрасывается на базовую при каждом показе: поповер открывается
 // пустым, и висящая с прошлого раза высота дала бы пустой прямоугольник поверх страницы.
@@ -66,7 +66,7 @@ export function setOnSearchRun(cb: (req: SearchRunRequest) => void): void {
 }
 
 // Поиск по своим данным и открытие находки — тоже main: вкладки, история и закладки живут там.
-export function setOnQuickQuery(cb: (text: string) => QuickHit[]): void {
+export function setOnQuickQuery(cb: (text: string) => QuickQueryResult): void {
   onQueryCb = cb
 }
 
@@ -131,7 +131,8 @@ function ensureIpcRegistered(): void {
     onRunCb?.(req)
   })
 
-  ipcMain.handle('searchpopover:query', (_e, text: string) => onQueryCb?.(text) ?? [])
+  ipcMain.handle('searchpopover:query', (_e, text: string) =>
+    onQueryCb?.(text) ?? { hits: [], bangTarget: null, strippedQuery: text })
 
   ipcMain.on('searchpopover:open', (_e, hit: QuickHit) => {
     closeSearchPopover()

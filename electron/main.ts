@@ -39,7 +39,7 @@ import * as ModelCatalog from './ModelCatalog';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchChipsConfig, SearchChipCandidate } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -60,7 +60,7 @@ import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutF
 import { showSearchPopover, closeSearchPopover, syncSearchPopoverBounds, relayoutSearchPopover, setOnSearchRun, setOnQuickQuery, setOnQuickOpen, setTabManager as setSearchPopoverTabManager } from './SearchPopoverManager';
 import { buildSearchTargets } from './SearchTargets';
 import { SearchTargetStore } from './SearchTargetStore';
-import { applyBangTemplate, isValidBangTemplate } from '../shared/bangs';
+import { applyBangTemplate, isValidBangTemplate, parseBangCandidate, bangHomeUrl } from '../shared/bangs';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, onFocusStolen as onSuggestDropdownFocusStolen, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
 import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
@@ -604,11 +604,22 @@ function createWindow() {
   // а решение «куда открыть найденное» остаётся здесь — вкладками владеет main.
   setSearchPopoverTabManager(tabs);
   setOnSearchRun(({ query, target, sameTab }) => {
+    if (!tabs) return;
+    // Бэнг в строке главнее выбранного чипа и разбирается ЗДЕСЬ, а не в поповере: BangStore
+    // видит все три источника (свои, встроенные, импортированные), а второй парсер в вью
+    // неминуемо разъехался бы с этим. Раньше строка уходила в шаблон цели как есть — и
+    // «!wb Xiaomi» честно искалось в гугле вместе с самим «!wb».
+    const bang = resolvePopoverBang(query);
+    const effectiveTarget = bang?.target ?? target;
+    const effectiveQuery = bang?.query ?? query;
     // Шаблон приходит из вью поповера. Она наша (не веб-страница), но проверка обязательна:
     // навигация по неподтверждённому шаблону — ровно то, от чего защищается импорт бэнгов.
-    if (!tabs || !isValidBangTemplate(target.template)) return;
-    const url = applyBangTemplate(target.template, query);
-    searchTargets.noteUse(target.template); // частые цели поднимаются в полосе чипов
+    if (!isValidBangTemplate(effectiveTarget.template)) return;
+    // «!wb» без запроса — на главную сайта, как в омнибоксе: цель названа, искать нечего.
+    const url = effectiveQuery
+      ? applyBangTemplate(effectiveTarget.template, effectiveQuery)
+      : bangHomeUrl({ key: '', name: '', template: effectiveTarget.template });
+    searchTargets.noteUse(effectiveTarget.template); // частые цели поднимаются в полосе чипов
 
     if (sameTab) tabs.navigate(tabs.getActiveId(), url);
     else tabs.createTab(url);
@@ -618,6 +629,31 @@ function createWindow() {
   // нажатие клавиши, тяжёлому умному поиску (FTS5 + переранжирование Qwen, HistorySearch.ts)
   // здесь не место, он живёт в панели истории, где его ждут дольше 100 мс.
   setOnQuickQuery((text) => {
+    // Бэнг разбираем на КАЖДЫЙ ввод, чтобы поповер показал цель сразу, как её назвали, а не
+    // только после Enter: иначе набравший «!wb» не понимает, услышали его или нет.
+    const bang = resolvePopoverBang(text);
+    const effective = bang?.query ?? text;
+    return {
+      hits: quickHits(effective),
+      bangTarget: bang?.target ?? null,
+      strippedQuery: effective,
+    };
+  });
+  // Разбор бэнга из строки поповера: null — бэнга нет (обычный запрос).
+  function resolvePopoverBang(text: string): { target: SearchTarget; query: string } | null {
+    const parsed = parseBangCandidate(text);
+    if (!parsed) return null;
+    const bang = bangs.find(parsed.key);
+    if (!bang) return null; // неизвестный ключ бэнгом не считается — как и в омнибоксе
+    return {
+      target: {
+        id: `bang:${bang.key}`, name: bang.name, kind: 'bang',
+        template: bang.template, bangKey: bang.key,
+      },
+      query: parsed.query,
+    };
+  }
+  function quickHits(text: string): QuickHit[] {
     const q = text.trim().toLowerCase();
     if (q.length < 2 || !tabs) return [];
     const hits: QuickHit[] = [];
@@ -655,7 +691,7 @@ function createWindow() {
     }
 
     return hits;
-  });
+  }
   setOnQuickOpen((hit) => {
     if (!tabs) return;
     // Вкладка уже открыта — переключаемся на неё, а не плодим копию. Если её успели закрыть
