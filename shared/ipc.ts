@@ -108,6 +108,9 @@ export interface TabErrorState {
   type: 'load' | 'crash';
   code: number;   // errorCode из did-fail-load; 0 при краше
   url: string;    // URL, который не открылся — для показа и retry
+  // Была ли сеть жива в момент ошибки (net.isOnline() в main). Один и тот же код приходит и
+  // когда лежит сайт, и когда отвалился Wi-Fi, — а советовать в этих случаях надо разное.
+  offline: boolean;
 }
 
 // Партиция инкогнито-вкладок: БЕЗ префикса 'persist:' → сессия in-memory (куки/кэш/хранилище не

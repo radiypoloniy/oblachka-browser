@@ -1233,7 +1233,9 @@ export class TabManager {
     wc.on('did-fail-load', (_e, errorCode, _desc, validatedURL, isMainFrame) => {
       if (!isMainFrame || errorCode === -3) return;
       const url = wc.getURL() || validatedURL;
-      this.errors.set(id, { type: 'load', code: errorCode, url });
+      // Снимаем состояние сети ЗДЕСЬ, а не в renderer: к моменту показа плашки сеть может уже
+      // вернуться, и совет «проверьте подключение» окажется враньём задним числом.
+      this.errors.set(id, { type: 'load', code: errorCode, url, offline: !net.isOnline() });
       const isInSplit = !!this.#pairContaining(id);
       if (this.activeId === id || isInSplit) this.hideView(id);
       notify();
@@ -1259,7 +1261,7 @@ export class TabManager {
     // Краш рендер-процесса: вьюха мертва — прячем, показываем экран ошибки.
     wc.on('render-process-gone', () => {
       const url = wc.getURL();
-      this.errors.set(id, { type: 'crash', code: 0, url });
+      this.errors.set(id, { type: 'crash', code: 0, url, offline: false });
       const isInSplit = !!this.#pairContaining(id);
       if (this.activeId === id || isInSplit) this.hideView(id);
       notify();

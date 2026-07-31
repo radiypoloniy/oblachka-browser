@@ -665,7 +665,9 @@ export default function App() {
                 {splitLeft!.tabError && (
                   <div style={{ position: 'absolute', top: SPLIT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0 }}>
                     <TabError error={splitLeft!.tabError} url={splitLeft!.url}
-                      onRetry={() => void window.oblako.reload(splitLeft!.id)} />
+                      onRetry={() => void window.oblako.reload(splitLeft!.id)}
+                      canGoBack={splitLeft!.canGoBack}
+                      onBack={() => void window.oblako.goBack(splitLeft!.id)} />
                   </div>
                 )}
               </div>
@@ -701,7 +703,9 @@ export default function App() {
                 {splitRight!.tabError && (
                   <div style={{ position: 'absolute', top: SPLIT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0 }}>
                     <TabError error={splitRight!.tabError} url={splitRight!.url}
-                      onRetry={() => void window.oblako.reload(splitRight!.id)} />
+                      onRetry={() => void window.oblako.reload(splitRight!.id)}
+                      canGoBack={splitRight!.canGoBack}
+                      onBack={() => void window.oblako.goBack(splitRight!.id)} />
                   </div>
                 )}
               </div>
@@ -722,6 +726,8 @@ export default function App() {
                       error={tabError}
                       url={active?.url ?? ''}
                       onRetry={() => window.oblako.reload(activeId)}
+                      canGoBack={active?.canGoBack ?? false}
+                      onBack={() => void window.oblako.goBack(activeId)}
                     />
                   )}
                 </div>
