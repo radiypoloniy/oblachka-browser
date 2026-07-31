@@ -48,6 +48,18 @@ export interface SearchTarget {
   faviconUrl?: string | null;
 }
 
+// Находка в СВОИХ данных для того же поповера: открытая вкладка, история, закладка.
+// Веб-поиск отвечает на «что об этом пишут», а это — на «где я это уже видел»; второе
+// в браузере спрашивают не реже, а идти за ним приходилось в отдельную панель.
+export interface QuickHit {
+  kind: 'tab' | 'history' | 'bookmark';
+  // Для 'tab' — id вкладки: её не открывают заново, на неё переключаются.
+  tabId?: string;
+  url: string;
+  title: string;
+  faviconUrl?: string | null;
+}
+
 export interface TabErrorState {
   type: 'load' | 'crash';
   code: number;   // errorCode из did-fail-load; 0 при краше

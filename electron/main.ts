@@ -39,7 +39,7 @@ import * as ModelCatalog from './ModelCatalog';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -57,7 +57,7 @@ import { setActiveEngineId, registerEngine, setCacheManager } from './Translatio
 import { BergamotTranslationEngine } from './BergamotTranslationEngine';
 import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
-import { showSearchPopover, closeSearchPopover, syncSearchPopoverBounds, relayoutSearchPopover, setOnSearchRun, setTabManager as setSearchPopoverTabManager } from './SearchPopoverManager';
+import { showSearchPopover, closeSearchPopover, syncSearchPopoverBounds, relayoutSearchPopover, setOnSearchRun, setOnQuickQuery, setOnQuickOpen, setTabManager as setSearchPopoverTabManager } from './SearchPopoverManager';
 import { buildSearchTargets } from './SearchTargets';
 import { SearchTargetStore } from './SearchTargetStore';
 import { applyBangTemplate, isValidBangTemplate } from '../shared/bangs';
@@ -609,8 +609,62 @@ function createWindow() {
     if (!tabs || !isValidBangTemplate(target.template)) return;
     const url = applyBangTemplate(target.template, query);
     searchTargets.noteUse(target.template); // частые цели поднимаются в полосе чипов
+
     if (sameTab) tabs.navigate(tabs.getActiveId(), url);
     else tabs.createTab(url);
+  });
+  // Поиск по своим данным для того же поповера: открытые вкладки, история, закладки.
+  // Всё синхронное и дешёвое — LIKE по истории и фильтр по памяти: запрос идёт на каждое
+  // нажатие клавиши, тяжёлому умному поиску (FTS5 + переранжирование Qwen, HistorySearch.ts)
+  // здесь не место, он живёт в панели истории, где его ждут дольше 100 мс.
+  setOnQuickQuery((text) => {
+    const q = text.trim().toLowerCase();
+    if (q.length < 2 || !tabs) return [];
+    const hits: QuickHit[] = [];
+    const seen = new Set<string>();
+    const add = (h: QuickHit): void => {
+      const key = h.kind === 'tab' ? `tab:${h.tabId}` : h.url;
+      if (seen.has(key)) return;
+      seen.add(key);
+      hits.push(h);
+    };
+    const matches = (title: string, url: string): boolean =>
+      title.toLowerCase().includes(q) || url.toLowerCase().includes(q);
+
+    // Открытые вкладки — первыми: «где я это уже видел» чаще всего означает «оно ещё открыто»,
+    // и переключение дешевле открытия копии. Инкогнито из выдачи исключаем: приватная вкладка
+    // не должна всплывать в общем поиске.
+    for (const t of tabs.snapshot()) {
+      if (hits.length >= 3) break;
+      if (t.isHub || t.incognito || !t.url) continue;
+      if (matches(t.title, t.url)) {
+        add({ kind: 'tab', tabId: t.id, url: t.url, title: t.title || t.url, faviconUrl: t.faviconUrl });
+      }
+    }
+
+    for (const b of bookmarks.list()) {
+      if (hits.length >= 6) break;
+      if (matches(b.title ?? '', b.url)) {
+        add({ kind: 'bookmark', url: b.url, title: b.title || b.url });
+      }
+    }
+
+    for (const h of history.search(text.trim())) {
+      if (hits.length >= 9) break;
+      add({ kind: 'history', url: h.url, title: h.title || h.url });
+    }
+
+    return hits;
+  });
+  setOnQuickOpen((hit) => {
+    if (!tabs) return;
+    // Вкладка уже открыта — переключаемся на неё, а не плодим копию. Если её успели закрыть
+    // между показом и выбором, открываем адрес заново: пустой клик хуже лишней вкладки.
+    if (hit.kind === 'tab' && hit.tabId && tabs.snapshot().some((t) => t.id === hit.tabId)) {
+      tabs.activate(hit.tabId);
+      return;
+    }
+    tabs.createTab(hit.url);
   });
   tabs.setOnQuickSearch(() => {
     void (async () => {

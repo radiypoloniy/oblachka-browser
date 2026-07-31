@@ -12,12 +12,14 @@
 import { WebContentsView, ipcMain } from 'electron'
 import type { BrowserWindow } from 'electron'
 import path from 'node:path'
-import type { ContentBounds, SearchTarget } from '../shared/ipc'
+import type { ContentBounds, SearchTarget, QuickHit } from '../shared/ipc'
 import { getAiPanelReservedWidth } from './AiPanelManager'
 import type { TabManager } from './TabManager'
 
 const POPOVER_WIDTH = 520
-const POPOVER_HEIGHT = 108
+// Высота БЕЗ списка находок — с ним карточка растёт, и её сообщает сам поповер (см.
+// 'searchpopover:resize'): сколько строк поместилось, знает только он.
+const POPOVER_BASE_HEIGHT = 108
 const TOP_GAP = 8
 // Прозрачный запас под CSS box-shadow — WebContentsView обрезает всё за своим прямоугольником
 // (тот же приём и то же значение, что в FindBarManager.ts).
@@ -43,6 +45,11 @@ let resizeBoundWin: BrowserWindow | null = null
 let ipcRegistered = false
 let tabManagerRef: TabManager | null = null
 let onRunCb: ((req: SearchRunRequest) => void) | null = null
+let onQueryCb: ((text: string) => QuickHit[]) | null = null
+let onOpenCb: ((hit: QuickHit) => void) | null = null
+// Текущая высота карточки. Сбрасывается на базовую при каждом показе: поповер открывается
+// пустым, и висящая с прошлого раза высота дала бы пустой прямоугольник поверх страницы.
+let popoverHeight = POPOVER_BASE_HEIGHT
 // Контекст последнего показа: вью персистентная, а did-finish-load бывает только раз — при
 // повторных открытиях контекст досылается явным сигналом (тот же приём, что у FindBar).
 let pendingContext: SearchPopoverContext | null = null
@@ -58,6 +65,15 @@ export function setOnSearchRun(cb: (req: SearchRunRequest) => void): void {
   onRunCb = cb
 }
 
+// Поиск по своим данным и открытие находки — тоже main: вкладки, история и закладки живут там.
+export function setOnQuickQuery(cb: (text: string) => QuickHit[]): void {
+  onQueryCb = cb
+}
+
+export function setOnQuickOpen(cb: (hit: QuickHit) => void): void {
+  onOpenCb = cb
+}
+
 function computeBounds(): { x: number; y: number; width: number; height: number } {
   const cb = lastContentBounds
   const aiPanelWidth = attachedWin ? getAiPanelReservedWidth(attachedWin) : 0
@@ -66,11 +82,14 @@ function computeBounds(): { x: number; y: number; width: number; height: number 
   const usableRight = naiveRight > panelLeft ? panelLeft : cb.x + cb.width
   const x = (cb.x + usableRight) / 2 - POPOVER_WIDTH / 2
   const y = cb.y + TOP_GAP
+  // Ниже контентной зоны карточка уехать не имеет права: WebContentsView не обрезается окном
+  // и вылезла бы за него целиком, вместе со списком находок.
+  const maxHeight = Math.max(POPOVER_BASE_HEIGHT, cb.height - TOP_GAP * 2)
   return {
     x: x - SHADOW_MARGIN,
     y: y - SHADOW_MARGIN,
     width: POPOVER_WIDTH + SHADOW_MARGIN * 2,
-    height: POPOVER_HEIGHT + SHADOW_MARGIN * 2,
+    height: Math.min(popoverHeight, maxHeight) + SHADOW_MARGIN * 2,
   }
 }
 
@@ -111,6 +130,21 @@ function ensureIpcRegistered(): void {
     closeSearchPopover()
     onRunCb?.(req)
   })
+
+  ipcMain.handle('searchpopover:query', (_e, text: string) => onQueryCb?.(text) ?? [])
+
+  ipcMain.on('searchpopover:open', (_e, hit: QuickHit) => {
+    closeSearchPopover()
+    onOpenCb?.(hit)
+  })
+
+  ipcMain.on('searchpopover:resize', (_e, height: number) => {
+    if (typeof height !== 'number' || !Number.isFinite(height)) return
+    const next = Math.max(POPOVER_BASE_HEIGHT, Math.round(height))
+    if (next === popoverHeight) return
+    popoverHeight = next
+    layout()
+  })
 }
 
 function ensureView(): WebContentsView {
@@ -136,6 +170,9 @@ export function showSearchPopover(win: BrowserWindow, ctx: SearchPopoverContext)
   ensureIpcRegistered()
   attachedWin = win
   pendingContext = ctx
+  // Открываемся всегда пустыми — высота с прошлого показа оставила бы поверх страницы
+  // пустой прямоугольник до первого ввода.
+  popoverHeight = POPOVER_BASE_HEIGHT
   if (resizeBoundWin !== win) {
     win.on('resize', layout)
     resizeBoundWin = win
