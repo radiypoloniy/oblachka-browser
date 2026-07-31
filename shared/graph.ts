@@ -13,6 +13,8 @@ export type PortType = 'text' | 'textList'
 export type GraphNodeKind =
   | 'source.url'      // URL → читаемый текст страницы (NotebookExtract)
   | 'source.note'     // просто текст, введённый руками
+  // Локальный документ: txt/md/csv/json, docx и pdf (см. electron/FileExtract.ts).
+  | 'source.file'
   | 'qwen.transform'  // инструкция + входы → ответ локальной модели
   // Чужой AI-сайт (ChatGPT и т.п.) в панели 1:1. Обмен ТОЛЬКО через руку человека:
   // граф готовит промпт, кнопка кладёт его в поле, отправляет пользователь, кнопка
@@ -62,6 +64,13 @@ export const NODE_KINDS: Record<GraphNodeKind, NodeKindSpec> = {
     label: 'Заметка',
     hint: 'Произвольный текст, который вы вводите сами',
     emoji: '📝',
+    inputs: [],
+    outputs: [{ id: 'text', label: 'текст', type: 'text' }],
+  },
+  'source.file': {
+    label: 'Файл',
+    hint: 'Документ с диска: Word, PDF, текст, таблица CSV',
+    emoji: '📎',
     inputs: [],
     outputs: [{ id: 'text', label: 'текст', type: 'text' }],
   },
@@ -143,6 +152,7 @@ export const GRAPH_NODE_KINDS = Object.keys(NODE_KINDS) as GraphNodeKind[]
 // типы на каждом чтении из БД без реальной пользы.
 export interface GraphNodeConfig {
   url?: string          // source.url, webapp.chat (адрес сайта)
+  path?: string         // source.file — абсолютный путь к документу на диске
   text?: string         // source.note
   instruction?: string  // qwen.transform, webapp.chat (что дописать перед материалом)
 }

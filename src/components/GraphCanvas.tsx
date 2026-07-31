@@ -32,7 +32,7 @@ const nodeTypes = { oblako: GraphNodeCard };
 // Панель сгруппирована по роли узла, а не свалена в один ряд: восемь одинаковых кнопок
 // подряд не читаются, а группы отвечают на вопрос «откуда взять — что сделать — что получить».
 const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
-  { title: 'Откуда', kinds: ['source.url', 'source.note'] },
+  { title: 'Откуда', kinds: ['source.url', 'source.file', 'source.note'] },
   { title: 'Обработка', kinds: ['qwen.transform', 'webapp.chat'] },
   { title: 'Проверка', kinds: ['search.web', 'factcheck.gemini'] },
   { title: 'Артефакты', kinds: ['artifact.summary', 'artifact.mindmap', 'artifact.infographic', 'artifact.quiz'] },
@@ -63,6 +63,7 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
       onPatch: () => {},
       onRun: () => {},
       onDelete: () => {},
+      onPickFile: () => {},
       onOpenWebApp: () => {},
     },
   }));
@@ -260,6 +261,16 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
     setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
   }, [onNodesChange]);
 
+  // Диалог открывает main; сюда возвращается только путь, чтобы показать имя файла
+  // и положить его в конфиг. Читает документ всегда main (electron/FileExtract.ts).
+  const pickFile = useCallback(async (id: string) => {
+    const chosen = await window.oblako.pickGraphFile();
+    if (!chosen) return;
+    setNodes((ns) => ns.map((n) => (n.id === id
+      ? { ...n, data: { ...n.data, config: { ...n.data.config, path: chosen } } }
+      : n)));
+  }, []);
+
   const openWebApp = useCallback((id: string) => {
     setNodes((ns) => {
       const node = ns.find((n) => n.id === id);
@@ -338,6 +349,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           onPatch: () => {},
           onRun: () => {},
           onDelete: () => {},
+          onPickFile: () => {},
           onOpenWebApp: () => {},
         },
       }];
@@ -354,10 +366,11 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         onPatch: (patch: { title?: string; config?: GraphNodeConfig }) => patchNode(n.id, patch),
         onRun: () => runNode(n.id),
         onDelete: () => deleteNode(n.id),
+        onPickFile: () => void pickFile(n.id),
         onOpenWebApp: () => openWebApp(n.id),
       },
     })),
-    [nodes, patchNode, runNode, deleteNode, openWebApp],
+    [nodes, patchNode, runNode, deleteNode, pickFile, openWebApp],
   );
 
   const commitRename = async () => {

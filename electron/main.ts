@@ -27,6 +27,7 @@ import {
   setTabManager as setGraphWebAppTabManager,
 } from './GraphWebAppManager';
 import type { GraphStructure } from '../shared/graph';
+import { SUPPORTED_FILE_EXTENSIONS } from './FileExtract';
 import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImporter';
 import { ImportManager } from './browserImport/ImportManager';
 import { faviconService } from './FaviconService';
@@ -1413,6 +1414,18 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.GRAPH_DELETE, (_e, graphId: number) => graphs.remove(graphId));
   ipcMain.handle(IPC.GRAPH_CANCEL, (_e, graphId: number) => cancelGraphRun(graphId));
+  ipcMain.handle(IPC.GRAPH_PICK_FILE, async () => {
+    if (!win) return null;
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Документ для узла графа',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Документы', extensions: SUPPORTED_FILE_EXTENSIONS },
+        { name: 'Все файлы', extensions: ['*'] },
+      ],
+    });
+    return res.canceled || !res.filePaths[0] ? null : res.filePaths[0];
+  });
   // Electron принимает только целые пиксели, а renderer меряет getBoundingClientRect()
   // и присылает дробные — та же нормализация, что в TabManager.setContentBounds.
   const toRect = (b: ContentBounds) => ({

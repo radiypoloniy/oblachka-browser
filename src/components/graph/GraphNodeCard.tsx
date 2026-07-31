@@ -20,6 +20,8 @@ export interface GraphNodeData extends Record<string, unknown> {
   onPatch: (patch: { title?: string; config?: GraphNodeConfig }) => void;
   onRun: () => void;
   onDelete: () => void;
+  // Только для source.file — нативный диалог выбора документа (его открывает main).
+  onPickFile: () => void;
   // Только для webapp.chat — открыть живой сайт в панели 1:1 (в карточку нативную вью
   // положить нельзя, см. шапку GraphCanvas.tsx).
   onOpenWebApp: () => void;
@@ -31,6 +33,7 @@ export interface GraphNodeData extends Record<string, unknown> {
 export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> = {
   'source.url': { w: 268, h: 268 },
   'source.note': { w: 268, h: 236 },
+  'source.file': { w: 280, h: 260 },
   'qwen.transform': { w: 304, h: 320 },
   'webapp.chat': { w: 300, h: 300 },
   'search.web': { w: 320, h: 340 },
@@ -228,6 +231,36 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             onChange={(e) => data.onPatch({ config: { ...data.config, url: e.target.value } })}
             style={{ ...fieldStyle, flex: 'none' }}
           />
+        )}
+
+        {data.kind === 'source.file' && (
+          <>
+            <button
+              type="button"
+              className="nodrag"
+              onClick={data.onPickFile}
+              style={{
+                flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                background: 'var(--surface-sunken)', color: 'var(--text-body)',
+                border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm, 8px)',
+                padding: '8px 12px', cursor: 'pointer', font: 'inherit',
+                fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
+              }}
+            >
+              📎 {data.config.path ? 'Другой файл' : 'Выбрать файл'}
+            </button>
+            {data.config.path && (
+              <div
+                title={data.config.path}
+                style={{
+                  flex: 'none', fontSize: 'var(--fs-sm)', color: 'var(--text-muted)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}
+              >
+                {data.config.path.split(/[\/]/).pop()}
+              </div>
+            )}
+          </>
         )}
 
         {data.kind === 'source.note' && (

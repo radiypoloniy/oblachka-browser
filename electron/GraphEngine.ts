@@ -3,6 +3,7 @@ import type { BrowserWindow } from 'electron';
 import type { GraphDoc, GraphNode, GraphProgress } from '../shared/graph';
 import { downstreamOf, topoOrder, upstreamOf } from '../shared/graph';
 import type { GraphStore } from './GraphStore';
+import { extractFileText } from './FileExtract';
 import { extractUrlText } from './NotebookExtract';
 import { generateStudio, type StudioKind } from './NotebookStudio';
 import { runFactCheck } from './GeminiFactCheck';
@@ -121,6 +122,15 @@ async function executeNode(
     case 'source.note': {
       const text = (node.config.text ?? '').trim();
       return text ? { ok: true, output: text } : { ok: false, error: 'Заметка пустая' };
+    }
+
+    case 'source.file': {
+      const file = (node.config.path ?? '').trim();
+      if (!file) return { ok: false, error: 'Файл не выбран' };
+      const res = await extractFileText(file);
+      return res.ok && res.text
+        ? { ok: true, output: res.text, outputTitle: res.title }
+        : { ok: false, error: res.error ?? 'Не удалось прочитать файл' };
     }
 
     case 'source.url': {

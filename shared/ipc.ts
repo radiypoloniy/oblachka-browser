@@ -261,6 +261,7 @@ export const IPC = {
   GRAPH_DELETE:   'graph:delete',   // renderer → main: graphId
   GRAPH_RUN:      'graph:run',      // renderer → main: (graphId, nodeId|null) fire-and-forget, ход идёт через GRAPH_PROGRESS
   GRAPH_CANCEL:   'graph:cancel',   // renderer → main: graphId — не начинать следующий узел (текущий не прервать)
+  GRAPH_PICK_FILE: 'graph:pick-file',  // renderer → main: нативный диалог выбора документа для узла-файла
   GRAPH_PROGRESS: 'graph:progress', // main → renderer: GraphProgress (статусы + стрим-чанки)
 
   // Узел-веб-приложение: чужой AI-сайт в панели 1:1. Обмен только через руку человека —
@@ -1517,6 +1518,9 @@ export interface OblakoApi {
   renameGraph(graphId: number, title: string): Promise<void>;
   deleteGraph(graphId: number): Promise<void>;
   runGraph(graphId: number, nodeId: string | null): void;
+  // Нативный диалог выбора документа. Путь возвращается в renderer только чтобы показать
+  // имя файла и положить его в конфиг узла; читает файл всегда main (electron/FileExtract.ts).
+  pickGraphFile(): Promise<string | null>;
   cancelGraphRun(graphId: number): Promise<void>;
   onGraphProgress(cb: (p: GraphProgress) => void): () => void;
 

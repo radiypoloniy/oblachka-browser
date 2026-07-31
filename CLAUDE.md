@@ -246,6 +246,14 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   `addChildView`, и без синхронизации сверху оказалась бы рамка одного окна с
   сайтом другого. Клик поднимает разом обе (`raiseGraphWebApp` + перестановка
   окна последним в массиве).
+  `electron/FileExtract.ts` — узел-файл: txt/md/csv/json читаются напрямую, docx через
+  `mammoth`, pdf через `pdfjs-dist`. ⚠️ pdfjs v6 — ESM-only, а `electron/` компилируется
+  в CommonJS: динамический импорт спрятан за `new Function`, иначе TypeScript превратит
+  его в `require`, который .mjs не возьмёт. `destroy()` висит на ЗАДАЧЕ загрузки, а не на
+  документе. Путь к `standard_fonts` передаётся с ПРЯМЫМИ слешами и слешем на конце —
+  на путь Windows pdfjs ругается, а `file://`-URL его фабрика шрифтов в Node не читает.
+  Лишние части pdfjs (сорсмапы, вьюер, не-legacy сборка) вырезаны из установщика в
+  `electron-builder.yml`.
   `electron/GraphWebAppManager.ts` — вью чужого AI-сайта (sandbox +
   contextIsolation, БЕЗ preload, как `WebAppManager`). ⚠️ Вью создаёт и двигает
   САМО окно, а не родитель: дочерние эффекты в React выполняются раньше
