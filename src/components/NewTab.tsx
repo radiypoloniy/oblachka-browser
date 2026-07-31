@@ -3,7 +3,7 @@ import { Sparkles, Search } from 'lucide-react';
 import type { TileSite } from '../../shared/frecency';
 import {
   loadNewTabSettings, subscribeNewTabSettings, presetCss, getNewTabCustomImage,
-  ensureCustomImageShrunk,
+  ensureCustomImageShrunk, rateSymbol,
   type NewTabSettings,
 } from '../newtab/settings';
 
@@ -58,9 +58,7 @@ export default function NewTab({ onSubmit, onOpenAi, tiles }: NewTabProps) {
         gap: 22, padding: '48px', textAlign: 'center',
       }}>
         {settings.clock.show && <Clock opts={settings.clock} />}
-        {settings.weather.show && settings.weather.city.trim() && (
-          <WeatherWidget city={settings.weather.city.trim()} units={settings.weather.units} />
-        )}
+        <InfoRow settings={settings} />
         {settings.greeting.show && <Greeting name={settings.greeting.name} />}
         {settings.search.show && <div style={{ height: 6 }} />}
         {settings.search.show && <SearchBar onSubmit={onSubmit} />}
@@ -191,8 +189,8 @@ function SearchBar({ onSubmit }: { onSubmit: (input: string) => void }) {
   );
 }
 
-// ── Погода ────────────────────────────────────────────────────────────────────
-// WMO weather_code → эмодзи + короткая подпись (компактно, покрывает основные группы).
+// ── Погода: WMO weather_code → эмодзи + короткая подпись ───────────────────────
+// (компактно, покрывает основные группы; сам виджет — часть InfoRow ниже)
 function wmo(code: number): { icon: string; label: string } {
   if (code === 0) return { icon: '☀️', label: 'Ясно' };
   if (code >= 1 && code <= 2) return { icon: '🌤️', label: 'Малооблачно' };
@@ -207,32 +205,108 @@ function wmo(code: number): { icon: string; label: string } {
   return { icon: '🌡️', label: '' };
 }
 
-function WeatherWidget({ city, units }: { city: string; units: 'c' | 'f' }) {
-  const [data, setData] = useState<import('../../shared/ipc').WeatherInfo | null>(null);
+// ── Инфо-строка под часами: дата · погода · курс ───────────────────────────────
+// Один бейдж на все три, а не три бейджа в столбик: вкладка минималистичная, и каждый
+// отдельный «остров» под часами ломает её тем сильнее, чем их больше. Данные тянут оба
+// источника независимо, поэтому строка собирается из тех кусков, что реально доехали, —
+// отвалившаяся сеть просто убирает свой кусок, а не оставляет пустую плашку.
+const RATE_FMT = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function InfoRow({ settings }: { settings: NewTabSettings }) {
+  const showDate = settings.clock.date;
+  const city = settings.weather.city.trim();
+  const showWeather = settings.weather.show && city !== '';
+  const codes = settings.rates.codes;
+  const showRates = settings.rates.show && codes.length > 0;
+
+  // Дата: тикаем раз в минуту — этого хватает, чтобы строка сама пережила полночь на
+  // долгооткрытой вкладке, и не будит рендер каждую секунду ради неменяющегося текста.
+  const [today, setToday] = useState(() => new Date());
   useEffect(() => {
+    if (!showDate) return;
+    const t = setInterval(() => setToday(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, [showDate]);
+
+  const [weather, setWeather] = useState<import('../../shared/ipc').WeatherInfo | null>(null);
+  useEffect(() => {
+    if (!showWeather) { setWeather(null); return; }
     let alive = true;
-    const load = () => { void window.oblako.getWeather(city).then((w) => { if (alive) setData(w); }); };
+    const load = () => { void window.oblako.getWeather(city).then((w) => { if (alive) setWeather(w); }); };
     load();
     const t = setInterval(load, 15 * 60_000); // раз в 15 минут
     return () => { alive = false; clearInterval(t); };
-  }, [city]);
+  }, [showWeather, city]);
 
-  if (!data || !data.ok || data.tempC === undefined) return null;
-  const w = wmo(data.weatherCode ?? -1);
-  const temp = units === 'f' ? Math.round(data.tempC * 9 / 5 + 32) : Math.round(data.tempC);
-  // Прямо под часами, по центру — заметный «стеклянный» бейдж (было в углу, терялось).
+  const [rates, setRates] = useState<Record<string, number> | null>(null);
+  useEffect(() => {
+    if (!showRates) { setRates(null); return; }
+    let alive = true;
+    // Курс ЦБ — суточный, и в main уже лежит часовой кэш (CurrencyRates.ts): свой интервал здесь
+    // нужен только чтобы долгооткрытая вкладка подхватила курс следующего дня.
+    const load = () => { void window.oblako.getCurrencyRates().then((r) => { if (alive && r.ok && r.rates) setRates(r.rates); }); };
+    load();
+    const t = setInterval(load, 60 * 60_000);
+    return () => { alive = false; clearInterval(t); };
+  }, [showRates]);
+
+  const parts: React.ReactNode[] = [];
+
+  if (showDate) {
+    const text = today.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+    parts.push(<span key="date">{text.charAt(0).toUpperCase() + text.slice(1)}</span>);
+  }
+
+  if (weather?.ok && weather.tempC !== undefined) {
+    const w = wmo(weather.weatherCode ?? -1);
+    const temp = settings.weather.units === 'f'
+      ? Math.round(weather.tempC * 9 / 5 + 32)
+      : Math.round(weather.tempC);
+    parts.push(
+      <span key="weather" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
+        title={`${weather.city ?? city} · ${w.label}`}>
+        <span style={{ fontSize: 17, lineHeight: 1 }}>{w.icon}</span>
+        <span style={{ fontWeight: 600 }}>{temp}°{settings.weather.units === 'f' ? 'F' : 'C'}</span>
+        <span style={{ color: TEXT_SOFT, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {weather.city ?? city}
+        </span>
+      </span>,
+    );
+  }
+
+  if (rates) {
+    // Показываем только те коды, что реально пришли от ЦБ, — иначе строка молча теряет смысл.
+    const shown = codes.filter((c) => typeof rates[c] === 'number');
+    if (shown.length > 0) {
+      parts.push(
+        <span key="rates" style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }} title="Курс ЦБ РФ">
+          {shown.map((c) => (
+            <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ color: TEXT_SOFT }}>{rateSymbol(c)}</span>
+              <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{RATE_FMT.format(rates[c]!)}</span>
+            </span>
+          ))}
+        </span>,
+      );
+    }
+  }
+
+  if (parts.length === 0) return null;
+
   return (
     <div style={{
-      display: 'inline-flex', alignItems: 'center', gap: 9, padding: '8px 16px', borderRadius: 999,
+      display: 'inline-flex', alignItems: 'center', gap: 12, padding: '8px 16px', borderRadius: 999,
       background: 'rgba(0,0,0,0.24)', backdropFilter: 'blur(12px)',
       border: '1px solid rgba(255,255,255,0.16)',
-      color: TEXT, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
-    }} title={`${data.city ?? city} · ${w.label}`}>
-      <span style={{ fontSize: 20, lineHeight: 1 }}>{w.icon}</span>
-      <span style={{ fontSize: 17, fontWeight: 600 }}>{temp}°{units === 'f' ? 'F' : 'C'}</span>
-      <span style={{ fontSize: 14, color: TEXT_SOFT, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {data.city ?? city}
-      </span>
+      color: TEXT, fontSize: 15, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+      maxWidth: '100%', flexWrap: 'wrap', justifyContent: 'center',
+    }}>
+      {parts.map((p, i) => (
+        <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+          {i > 0 && <span aria-hidden style={{ color: 'rgba(255,255,255,0.32)' }}>·</span>}
+          {p}
+        </span>
+      ))}
     </div>
   );
 }

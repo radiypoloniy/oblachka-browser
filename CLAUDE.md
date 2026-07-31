@@ -278,11 +278,19 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   `settings/kit.tsx` — **не рисовать с нуля в секциях.**
 - Новая вкладка (минимал, в духе Bonjourr) — `src/components/NewTab.tsx` (рендерится
   Hub'ом в режиме 'tiles'): полноэкранный фон, часы, приветствие, поиск, быстрые
-  ссылки (топ-сайты), виджет погоды. Настройки — `src/newtab/settings.ts`
+  ссылки (топ-сайты) и одна инфо-строка под часами (`InfoRow`) — дата, погода,
+  курс валют в ОДНОМ бейдже, каждый кусок независимо выключается и независимо
+  исчезает при сбое своего источника. Настройки — `src/newtab/settings.ts`
   (localStorage, общий origin с разделом «Интерфейс», живое применение через
   window-событие), редактор — `settings/AppearanceSection.tsx`. Фон «фото дня» —
   `electron/NewTabPhoto.ts` (качает через main/net.fetch, кэш на день); погода —
-  `WeatherService` через typed-канал `WEATHER_GET` в главном preload.
+  `WeatherService` через typed-канал `WEATHER_GET`, курсы — `CurrencyRates.ts`
+  через `CURRENCY_GET` (отдельный канал от ad-hoc `ai-panel:currency-rates`
+  конвертера панели, но модуль и его часовой кэш — общие) в главном preload.
+  ⚠️ Своё фото фона ужимается до 2560px при сохранении (`shrinkBackgroundImage`)
+  и одноразово у уже сохранённых (`ensureCustomImageShrunk`): полноразмерный
+  кадр с камеры не влезал в кэш картинок рендерера и декодировался заново почти
+  на каждый показ вкладки — 232 мс на ровном месте.
 - `src/aipanel.tsx`, `src/translatepopover.tsx`, `src/findbar.tsx`,
   `src/passwordpopover.tsx`, `src/vpnpopover.tsx`, `src/suggestdropdown.tsx` —
   отдельные React-точки входа (свои HTML/entry в `vite.config.ts`), у каждой

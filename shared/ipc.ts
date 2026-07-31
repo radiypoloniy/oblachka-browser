@@ -242,6 +242,7 @@ export const IPC = {
   NEW_TAB_SHOW_MENU: 'tab:new-menu', // renderer → main: ПКМ по кнопке «Новая вкладка» (обычная/инкогнито/восстановить)
   CHROME_THEME_SET: 'chrome:theme-set', // renderer → main: тема chrome (dark+incognito) для раздачи во все поповеры/вью
   WEATHER_GET: 'weather:get', // renderer → main: погода по городу для виджета новой вкладки (WeatherService)
+  CURRENCY_GET: 'currency:get', // renderer → main: курсы ЦБ РФ для виджета новой вкладки (CurrencyRates)
   NEWTAB_PHOTO_GET: 'newtab:photo-get', // renderer → main: «фото дня» для фона вкладки (data-URL), кэш на день
   NOTEBOOK_EXTRACT_URL: 'notebook:extract-url', // renderer → main: извлечь читаемый текст URL-источника блокнота
   NOTEBOOK_STUDIO_GEN:  'notebook:studio-gen',  // renderer → main: (kind, context) → материал Студии (текст/спек)
@@ -1244,6 +1245,17 @@ export interface WeatherInfo {
   error?: string;
 }
 
+// Курсы валют для виджета новой вкладки (electron/CurrencyRates.ts, суточные курсы ЦБ РФ).
+// rates — «сколько рублей стоит ОДНА единица валюты» (RUB=1, номинал уже приведён к единице).
+// Тот же тип, что отдаёт конвертер AI-панели, но здесь он в общем контракте: виджет вкладки
+// живёт в боевом рендерере и ходит типизированным каналом, а не ad-hoc `ai-panel:*`.
+export interface CurrencyRatesInfo {
+  ok: boolean;
+  date?: string;
+  rates?: Record<string, number>;
+  error?: string;
+}
+
 // Тип API, который preload пробрасывает в window.oblako
 export interface OblakoApi {
   // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).
@@ -1290,6 +1302,7 @@ export interface OblakoApi {
   showNewTabMenu(): Promise<void>; // ПКМ по кнопке «Новая вкладка»: обычная / инкогнито / восстановить
   setChromeTheme(dark: boolean, incognito: boolean): Promise<void>; // раздать тему во все chrome-вью (поповеры)
   getWeather(city: string): Promise<WeatherInfo>; // погода для виджета новой вкладки
+  getCurrencyRates(): Promise<CurrencyRatesInfo>; // курсы ЦБ РФ для виджета новой вкладки
   getNewtabPhoto(): Promise<{ ok: boolean; dataUrl?: string }>; // «фото дня» для фона новой вкладки
   extractNotebookUrl(url: string): Promise<{ ok: boolean; title?: string; text?: string }>; // текст URL-источника блокнота
   generateStudio(kind: string, context: string): Promise<{ ok: boolean; text?: string; error?: string }>; // материал Студии блокнота

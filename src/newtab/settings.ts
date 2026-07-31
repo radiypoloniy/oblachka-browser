@@ -16,7 +16,7 @@ export interface NewTabSettings {
     dim: number;      // 0..0.8 — затемняющий оверлей поверх фона (читаемость текста)
     blur: number;     // 0..40 px — размытие фона
   };
-  clock: { show: boolean; seconds: boolean; hour24: boolean };
+  clock: { show: boolean; seconds: boolean; hour24: boolean; date: boolean };
   greeting: { show: boolean; name: string };
   search: { show: boolean };
   quickLinks: {
@@ -26,16 +26,37 @@ export interface NewTabSettings {
     custom: { url: string; title: string }[]; // свои ссылки (source==='custom')
   };
   weather: { show: boolean; city: string; units: 'c' | 'f' };
+  // Курсы ЦБ РФ: codes — коды валют (USD/EUR/…), показываются как «сколько рублей за единицу».
+  rates: { show: boolean; codes: string[] };
 }
 
 export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
   background: { kind: 'preset', preset: 'aurora', color: '#1e1e24', dim: 0.28, blur: 0 },
-  clock: { show: true, seconds: false, hour24: true },
+  clock: { show: true, seconds: false, hour24: true, date: true },
   greeting: { show: true, name: '' },
   search: { show: true },
   quickLinks: { show: true, count: 8, source: 'top', custom: [] },
   weather: { show: false, city: '', units: 'c' },
+  rates: { show: false, codes: ['USD', 'EUR'] },
 };
+
+// Валюты, предлагаемые в настройках. Не весь список ЦБ (там ~40 позиций) — те, что осмысленно
+// держать перед глазами; коды совпадают с ключами rates из CurrencyRates.ts.
+export const RATE_CHOICES: { code: string; label: string; symbol: string }[] = [
+  { code: 'USD', label: 'Доллар',  symbol: '$' },
+  { code: 'EUR', label: 'Евро',    symbol: '€' },
+  { code: 'CNY', label: 'Юань',    symbol: '¥' },
+  { code: 'GBP', label: 'Фунт',    symbol: '£' },
+  { code: 'JPY', label: 'Иена',    symbol: '¥' },
+  { code: 'KZT', label: 'Тенге',   symbol: '₸' },
+  { code: 'TRY', label: 'Лира',    symbol: '₺' },
+  { code: 'BYN', label: 'Бел. рубль', symbol: 'Br' },
+  { code: 'AMD', label: 'Драм',    symbol: '֏' },
+  { code: 'GEL', label: 'Лари',    symbol: '₾' },
+];
+export function rateSymbol(code: string): string {
+  return RATE_CHOICES.find((c) => c.code === code)?.symbol ?? code;
+}
 
 // Пресеты фона — те же градиент-токены, что у обоев домашнего экрана (tokens/apps.css). Общий
 // список для вкладки (рендер) и раздела «Интерфейс» (пикер).
@@ -68,6 +89,7 @@ function merge(raw: unknown): NewTabSettings {
     search: { ...d.search, ...(r.search ?? {}) },
     quickLinks: { ...d.quickLinks, ...(r.quickLinks ?? {}) },
     weather: { ...d.weather, ...(r.weather ?? {}) },
+    rates: { ...d.rates, ...(r.rates ?? {}) },
   };
 }
 

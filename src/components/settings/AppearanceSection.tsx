@@ -5,7 +5,7 @@ import Toggle from '../Toggle';
 import {
   loadNewTabSettings, saveNewTabSettings, setNewTabCustomImage, getNewTabCustomImage,
   shrinkBackgroundImage,
-  WALLPAPER_PRESETS, type NewTabSettings, type BackgroundKind,
+  WALLPAPER_PRESETS, RATE_CHOICES, type NewTabSettings, type BackgroundKind,
 } from '../../newtab/settings';
 
 // Раздел «Интерфейс» — кастомизация минималистичной новой вкладки (см. src/components/NewTab.tsx).
@@ -24,6 +24,16 @@ export default function AppearanceSection() {
   const patchClock = (p: Partial<NewTabSettings['clock']>) => apply({ ...s, clock: { ...s.clock, ...p } });
   const patchGreeting = (p: Partial<NewTabSettings['greeting']>) => apply({ ...s, greeting: { ...s.greeting, ...p } });
   const patchWeather = (p: Partial<NewTabSettings['weather']>) => apply({ ...s, weather: { ...s.weather, ...p } });
+  const patchRates = (p: Partial<NewTabSettings['rates']>) => apply({ ...s, rates: { ...s.rates, ...p } });
+  // Порядок валют в строке — порядок RATE_CHOICES, а не порядок кликов: иначе набор из тех же
+  // валют выглядит по-разному в зависимости от того, как его собирали.
+  const toggleRateCode = (code: string) => {
+    const has = s.rates.codes.includes(code);
+    const next = has
+      ? s.rates.codes.filter((c) => c !== code)
+      : RATE_CHOICES.map((c) => c.code).filter((c) => c === code || s.rates.codes.includes(c));
+    patchRates({ codes: next });
+  };
   const patchQL = (p: Partial<NewTabSettings['quickLinks']>) => apply({ ...s, quickLinks: { ...s.quickLinks, ...p } });
   const setLinks = (custom: NewTabSettings['quickLinks']['custom']) => patchQL({ custom });
 
@@ -129,6 +139,7 @@ export default function AppearanceSection() {
           <ToggleRow label="24-часовой формат" checked={s.clock.hour24} onChange={(v) => patchClock({ hour24: v })} />
           <ToggleRow label="Секунды" checked={s.clock.seconds} onChange={(v) => patchClock({ seconds: v })} />
         </>}
+        <ToggleRow label="Дата и день недели" checked={s.clock.date} onChange={(v) => patchClock({ date: v })} />
       </Subsection>
 
       {/* ── Приветствие ── */}
@@ -160,7 +171,7 @@ export default function AppearanceSection() {
       </Subsection>
 
       {/* ── Погода ── */}
-      <Subsection title="Погода" description="Небольшой виджет в углу вкладки.">
+      <Subsection title="Погода" description="Показывается в строке под часами, рядом с датой и курсом.">
         <ToggleRow label="Показывать погоду" checked={s.weather.show} onChange={(v) => patchWeather({ show: v })} />
         {s.weather.show && <>
           <TextField value={s.weather.city} placeholder="Город (например, Москва)"
@@ -170,6 +181,20 @@ export default function AppearanceSection() {
             <SegBtn active={s.weather.units === 'f'} onClick={() => patchWeather({ units: 'f' })}>°F</SegBtn>
           </div>
         </>}
+      </Subsection>
+
+      {/* ── Курс валют ── */}
+      <Subsection title="Курс валют" description="Официальный курс ЦБ РФ, обновляется раз в сутки.">
+        <ToggleRow label="Показывать курс" checked={s.rates.show} onChange={(v) => patchRates({ show: v })} />
+        {s.rates.show && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {RATE_CHOICES.map((c) => (
+              <SegBtn key={c.code} active={s.rates.codes.includes(c.code)} onClick={() => toggleRateCode(c.code)}>
+                {c.symbol} {c.label}
+              </SegBtn>
+            ))}
+          </div>
+        )}
       </Subsection>
     </div>
   );

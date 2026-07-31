@@ -23,6 +23,7 @@ import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImport
 import { ImportManager } from './browserImport/ImportManager';
 import { faviconService } from './FaviconService';
 import { getWeather } from './WeatherService';
+import { getCurrencyRates } from './CurrencyRates';
 import { getPhotoOfDay } from './NewTabPhoto';
 import { extractUrlText } from './NotebookExtract';
 import { generateStudio, type StudioKind } from './NotebookStudio';
@@ -1375,6 +1376,10 @@ function registerIpc() {
   // для главного рендерера — preload-aipanel до него не относится).
   ipcMain.handle(IPC.WEATHER_GET,        (_e, city: string) => getWeather(typeof city === 'string' ? city : ''));
   ipcMain.handle(IPC.NEWTAB_PHOTO_GET,   () => getPhotoOfDay());
+  // Курсы для виджета новой вкладки. Отдельный канал от 'ai-panel:currency-rates' (там своя
+  // труба к панели), но за ними ОДИН модуль с общим часовым кэшем — второго сетевого похода
+  // открытая панель и открытая вкладка не устроят.
+  ipcMain.handle(IPC.CURRENCY_GET,        () => getCurrencyRates());
   ipcMain.handle(IPC.NOTEBOOK_EXTRACT_URL, (_e, url: string) =>
     win ? extractUrlText(win, typeof url === 'string' ? url : '') : { ok: false });
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (_e, kind: StudioKind, context: string) =>
