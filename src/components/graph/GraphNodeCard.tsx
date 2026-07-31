@@ -33,6 +33,8 @@ export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> 
   'source.note': { w: 268, h: 236 },
   'qwen.transform': { w: 304, h: 320 },
   'webapp.chat': { w: 300, h: 300 },
+  'search.web': { w: 320, h: 340 },
+  'factcheck.gemini': { w: 340, h: 340 },
   // Визуальным артефактам нужна площадь: дерево майндкарты и инфографика в узкой
   // карточке нечитаемы, а тест — это список вопросов с вариантами.
   'artifact.summary': { w: 380, h: 340 },
@@ -109,7 +111,8 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
   // Вывод модели — это Markdown, и читать его сырым (## и ** в тексте) неудобно. Источники
   // отдают текст чужой страницы: там разметки нет, а случайные # и * только исказили бы её.
   const asMarkdown = data.kind === 'qwen.transform' || data.kind === 'output.text'
-    || data.kind === 'artifact.summary';
+    || data.kind === 'artifact.summary' || data.kind === 'search.web'
+    || data.kind === 'factcheck.gemini';
   // Артефакты, которые рисуют себя во всю площадь контейнера, а не текстом со скроллом.
   const visual = data.kind === 'artifact.mindmap' || data.kind === 'artifact.infographic';
   const min = DEFAULT_NODE_SIZE[data.kind];
@@ -271,6 +274,16 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
               Открыть чат
             </button>
           </>
+        )}
+
+        {data.kind === 'search.web' && (
+          <input
+            className="nodrag"
+            value={data.config.text ?? ''}
+            placeholder="Что искать (пусто — возьмёт со входа)"
+            onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
+            style={{ ...fieldStyle, flex: 'none' }}
+          />
         )}
 
         {data.kind === 'qwen.transform' && (

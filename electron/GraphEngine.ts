@@ -5,6 +5,8 @@ import { downstreamOf, topoOrder, upstreamOf } from '../shared/graph';
 import type { GraphStore } from './GraphStore';
 import { extractUrlText } from './NotebookExtract';
 import { generateStudio, type StudioKind } from './NotebookStudio';
+import { runFactCheck } from './GeminiFactCheck';
+import { searxngSearch } from './SearxngSearch';
 import { runChatMessage } from './TranslationService';
 
 // Исполнитель графа. Живёт в main, потому что ему нужны Qwen и фоновое извлечение страниц;
@@ -159,6 +161,33 @@ async function executeNode(
         : { ok: false, error: res.error ?? 'Не получилось' };
     }
 
+    case 'search.web': {
+      // Запрос берём из поля узла, а если оно пустое — из того, что пришло на вход:
+      // «Qwen сформулировал запрос → поиск» такой же нормальный сценарий, как ручной.
+      const typed = (node.config.text ?? '').trim();
+      const query = typed || buildContext(inputs).slice(0, 300).trim();
+      if (!query) return { ok: false, error: 'Не задан поисковый запрос' };
+      const res = await searxngSearch(query);
+      if (!res.ok) return { ok: false, error: res.error };
+      if (!res.results.length) return { ok: false, error: 'Ничего не нашлось' };
+      // Отдаём находки читаемым Markdown, а не промптом: узел — это материал, а что с ним
+      // делать, решает следующий по цепочке (buildGroundingPrompt пригодится там, не здесь).
+      const text = res.results
+        .map((r) => `### ${r.title}\n${r.url}\n\n${r.content}`)
+        .join('\n\n');
+      return { ok: true, output: text, outputTitle: `Поиск: ${query}` };
+    }
+
+    case 'factcheck.gemini': {
+      const text = buildContext(inputs);
+      if (!text) return { ok: false, error: 'На вход не пришёл текст' };
+      // runFactCheck рассчитан на страницу (заголовок + URL в промпте). В графе источник
+      // произвольный, поэтому подставляем имя узла, а URL оставляем пустым — модель и так
+      // проверяет сам текст, адрес ей нужен лишь как контекст.
+      const res = await runFactCheck(text, node.title || 'Материал из графа', '');
+      return res.ok ? { ok: true, output: res.out } : { ok: false, error: res.error };
+    }
+
     case 'webapp.chat':
       // Сюда поток не доходит: узел перехвачен в runGraph до вызова executeNode (обмен —
       // через руку человека). Ветка оставлена, чтобы switch оставался исчерпывающим.
@@ -245,7 +274,14 @@ export async function runGraph(
       const hash = hashInputs(node, inputs);
 
       // Кэш: и отпечаток совпал, и результат есть, и прошлый прогон не был ошибкой.
-      if (node.inputHash === hash && node.output !== null && !node.error) {
+      //
+      // Кроме узла, который человек ткнул явно: «посчитать вот этот» обязано считать, а не
+      // молча возвращать прошлый результат. Без исключения кнопка ▷ на готовом узле не
+      // делала бы ничего, а поиск и фактчек нельзя было бы переспросить вовсе — их ответ
+      // зависит от момента, а не только от входов. Питающая цепочка при этом по-прежнему
+      // берётся из кэша: перезапрашивать её никто не просил.
+      const forced = nodeId === targetNodeId;
+      if (!forced && node.inputHash === hash && node.output !== null && !node.error) {
         outputs.set(nodeId, node.output);
         emit({ graphId, nodeId, status: 'done', output: node.output, outputTitle: node.outputTitle ?? undefined });
         continue;

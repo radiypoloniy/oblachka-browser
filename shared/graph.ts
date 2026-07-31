@@ -18,6 +18,11 @@ export type GraphNodeKind =
   // граф готовит промпт, кнопка кладёт его в поле, отправляет пользователь, кнопка
   // забирает ответ. Автоматической отправки нет по замыслу — см. electron/graphWebApps.ts.
   | 'webapp.chat'
+  // Веб-поиск через SearXNG (эндпоинт и токен — в настройках AI).
+  | 'search.web'
+  // Фактчек через Gemini с грунтингом в Google Search. Единственная не-локальная модель
+  // в проекте; без ключа узел честно говорит, что ключа нет.
+  | 'factcheck.gemini'
   // Артефакты «Студии» — тот же generateStudio, что у блокнота: модель отдаёт структуру,
   // картинку детерминированно рисует renderer (markmap / @antv/infographic / QuizView).
   | 'artifact.summary'
@@ -65,6 +70,18 @@ export const NODE_KINDS: Record<GraphNodeKind, NodeKindSpec> = {
     hint: 'Чужой AI-сайт в панели: граф готовит промпт, отправляете вы',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'ответ', type: 'text' }],
+  },
+  'search.web': {
+    label: 'Веб-поиск',
+    hint: 'Ищет в интернете через SearXNG и отдаёт найденные сниппеты',
+    inputs: [{ id: 'context', label: 'запрос', type: 'textList' }],
+    outputs: [{ id: 'text', label: 'находки', type: 'text' }],
+  },
+  'factcheck.gemini': {
+    label: 'Фактчек',
+    hint: 'Проверяет утверждения через Gemini с поиском Google (облако, нужен ключ)',
+    inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
+    outputs: [{ id: 'text', label: 'разбор', type: 'text' }],
   },
   'artifact.summary': {
     label: 'Саммари',

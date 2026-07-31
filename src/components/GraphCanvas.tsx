@@ -7,7 +7,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import {
   Plus, Play, Square, Trash2, FileText, Globe, Sparkles, ArrowLeft, ArrowRight,
-  AlignLeft, Network, BarChart3, ListChecks, MessagesSquare, Pencil,
+  AlignLeft, Network, BarChart3, ListChecks, MessagesSquare, Pencil, Search, ShieldCheck,
 } from 'lucide-react';
 import type {
   GraphDoc, GraphMeta, GraphNodeConfig, GraphNodeKind, GraphNodeStatus, GraphStructure,
@@ -35,6 +35,7 @@ const nodeTypes = { oblako: GraphNodeCard };
 const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
   { title: 'Откуда', kinds: ['source.url', 'source.note'] },
   { title: 'Обработка', kinds: ['qwen.transform', 'webapp.chat'] },
+  { title: 'Проверка', kinds: ['search.web', 'factcheck.gemini'] },
   { title: 'Артефакты', kinds: ['artifact.summary', 'artifact.mindmap', 'artifact.infographic', 'artifact.quiz'] },
   { title: 'Итог', kinds: ['output.text'] },
 ];
@@ -44,6 +45,8 @@ const NEW_NODE_ICONS: Record<GraphNodeKind, JSX.Element> = {
   'source.note': <FileText size={14} />,
   'qwen.transform': <Sparkles size={14} />,
   'webapp.chat': <MessagesSquare size={14} />,
+  'search.web': <Search size={14} />,
+  'factcheck.gemini': <ShieldCheck size={14} />,
   'artifact.summary': <AlignLeft size={14} />,
   'artifact.mindmap': <Network size={14} />,
   'artifact.infographic': <BarChart3 size={14} />,
