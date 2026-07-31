@@ -9,7 +9,7 @@ import {
   type DragStartEvent, type DragEndEvent,
 } from '@dnd-kit/core';
 import {
-  SortableContext, verticalListSortingStrategy,
+  SortableContext, verticalListSortingStrategy, rectSortingStrategy,
   useSortable, arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -420,7 +420,34 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
 }
 
 // Ячейка сетки закреплённых: favicon + tooltip, без крестика.
-// DnD сохраняется — перетаскивание для изменения порядка пинов.
+// Presentational, без useSortable — та же связка, что TabRow/SortableTabRow и
+// PairTile/SortablePairBlock: одна разметка обслуживает и живую ячейку, и ghost
+// в DragOverlay (ghost — только визуал, без кликов и tooltip).
+function PinTile({ tab, active, onClick, onContextMenu, ghost }: {
+  tab: TabState; active: boolean;
+  onClick?: () => void; onContextMenu?: () => void; ghost?: boolean;
+}) {
+  return (
+    <button
+      className="no-drag"
+      onClick={ghost ? undefined : onClick}
+      onContextMenu={ghost ? undefined : (e) => { e.preventDefault(); onContextMenu?.(); }}
+      title={ghost ? undefined : (tab.title || tab.url || '')}
+      style={{
+        border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
+        background: active ? 'var(--surface)' : 'transparent',
+        boxShadow: active ? 'var(--shadow-card)' : 'none',
+        display: 'inline-flex',
+      }}
+      onMouseEnter={ghost ? undefined : (e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+      onMouseLeave={ghost ? undefined : (e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
+    >
+      <FaviconTile tab={tab} size={18} />
+    </button>
+  );
+}
+
+// DnD-обёртка ячейки пина — перетаскивание меняет порядок закреплённых.
 function SortablePinCell({ tab, active, onClick, onContextMenu }: {
   tab: TabState; active: boolean;
   onClick: () => void; onContextMenu: () => void;
@@ -428,22 +455,7 @@ function SortablePinCell({ tab, active, onClick, onContextMenu }: {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }} {...attributes} {...listeners}>
-      <button
-        className="no-drag"
-        onClick={onClick}
-        onContextMenu={(e) => { e.preventDefault(); onContextMenu(); }}
-        title={tab.title || tab.url || ''}
-        style={{
-          border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
-          background: active ? 'var(--surface)' : 'transparent',
-          boxShadow: active ? 'var(--shadow-card)' : 'none',
-          display: 'inline-flex',
-        }}
-        onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
-      >
-        <FaviconTile tab={tab} size={18} />
-      </button>
+      <PinTile tab={tab} active={active} onClick={onClick} onContextMenu={onContextMenu} />
     </div>
   );
 }
@@ -866,7 +878,17 @@ export default function Sidebar({
   // панели пары id выглядит одинаково (голый tabId). Резолвим РЕАЛЬНЫЙ тип, найдя
   // узел в дереве (findNodeByTopId), а не гадая по виду строки.
   const [dragActiveId, setDragActiveId] = useState<string | null>(null);
-  const dragNode: SidebarNode | null = dragActiveId ? findNodeByTopId(sidebarNodes, dragActiveId) : null;
+  // Закреплённые живут ОТДЕЛЬНОЙ структурой (TabManager.pinnedTabs), в sidebarNodes их нет —
+  // findNodeByTopId по дереву пин не находит. Отсюда и пропадала иконка при перетаскивании:
+  // оригинал гасил себя (opacity:0 в расчёте на призрак), а призрака никто не рисовал.
+  // Резолвим пин отдельно и ДО дерева — заодно исключает двойной призрак в окне
+  // рассинхрона, когда только что закреплённая вкладка ещё висит и в sidebarNodes.
+  const dragPinnedTab: TabState | null = dragActiveId
+    ? (pinned.find((t) => t.id === dragActiveId) ?? null)
+    : null;
+  const dragNode: SidebarNode | null = dragActiveId && !dragPinnedTab
+    ? findNodeByTopId(sidebarNodes, dragActiveId)
+    : null;
   const dragTab: TabState | null = dragNode?.type === 'single'
     ? (tabs.find((t) => t.id === dragNode.tabId) ?? null)
     : null;
@@ -1117,7 +1139,12 @@ export default function Sidebar({
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
-        modifiers={[restrictToVerticalAxis]}
+        // Закреплённые выложены сеткой по горизонтали, и вертикальное ограничение делало их
+        // перестановку между собой физически невозможной: модификатор режет X у transform, а
+        // collisionDetection считает по СМЕЩЁННОМУ прямоугольнику — сосед справа никогда не
+        // становился ближайшим, over всегда совпадал с active и drop уходил в no-op. Для пина
+        // ось не ограничиваем (ему нужно и вбок, и вниз — в обычные), для списка оставляем.
+        modifiers={dragPinnedTab ? [] : [restrictToVerticalAxis]}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
@@ -1125,7 +1152,10 @@ export default function Sidebar({
             Плашка-обёртка — СНАРУЖИ SortableContext, сам dnd-контекст и ячейки не тронуты. */}
         {pinned.length > 0 && (
           <div className="no-drag" style={{ ...innerPlate, padding: 8, marginBottom: 10 }}>
-            <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
+            {/* rect-, а не verticalList-стратегия: пины лежат сеткой с переносом строк, и
+                вертикальная стратегия расталкивала соседей по Y — не в ту сторону, куда
+                едет курсор. rectSortingStrategy считает по реальным прямоугольникам. */}
+            <SortableContext items={pinnedIds} strategy={rectSortingStrategy}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {pinned.map((t) => (
                   <SortablePinCell key={t.id} tab={t} active={activeId === t.id}
@@ -1200,6 +1230,17 @@ export default function Sidebar({
             (dragNode/findNodeByTopId выше) — не по виду id. Одиночная — TabRow;
             пара — PairTile (две ячейки); группа — минимальный заголовок. */}
         <DragOverlay>
+          {dragPinnedTab && (
+            <div style={{
+              boxShadow: 'var(--shadow-card)',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--surface)',
+              opacity: 0.95,
+              display: 'inline-flex',
+            }}>
+              <PinTile tab={dragPinnedTab} active={activeId === dragPinnedTab.id} ghost />
+            </div>
+          )}
           {dragTab && (
             <div style={{
               boxShadow: 'var(--shadow-card)',
