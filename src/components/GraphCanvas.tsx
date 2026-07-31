@@ -6,8 +6,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
-  Plus, Play, Square, Trash2, FileText, Globe, Sparkles, ArrowLeft, ArrowRight,
-  AlignLeft, Network, BarChart3, ListChecks, MessagesSquare, Pencil, Search, ShieldCheck,
+  Plus, Play, Square, Trash2, ArrowLeft, Pencil,
 } from 'lucide-react';
 import type {
   GraphDoc, GraphMeta, GraphNodeConfig, GraphNodeKind, GraphNodeStatus, GraphStructure,
@@ -39,20 +38,6 @@ const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
   { title: 'Артефакты', kinds: ['artifact.summary', 'artifact.mindmap', 'artifact.infographic', 'artifact.quiz'] },
   { title: 'Итог', kinds: ['output.text'] },
 ];
-
-const NEW_NODE_ICONS: Record<GraphNodeKind, JSX.Element> = {
-  'source.url': <Globe size={14} />,
-  'source.note': <FileText size={14} />,
-  'qwen.transform': <Sparkles size={14} />,
-  'webapp.chat': <MessagesSquare size={14} />,
-  'search.web': <Search size={14} />,
-  'factcheck.gemini': <ShieldCheck size={14} />,
-  'artifact.summary': <AlignLeft size={14} />,
-  'artifact.mindmap': <Network size={14} />,
-  'artifact.infographic': <BarChart3 size={14} />,
-  'artifact.quiz': <ListChecks size={14} />,
-  'output.text': <ArrowRight size={14} />,
-};
 
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -565,7 +550,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                     fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
                   }}
                 >
-                  {NEW_NODE_ICONS[kind]}
+                  <span style={{ fontSize: 14, lineHeight: 1 }}>{NODE_KINDS[kind].emoji}</span>
                   {NODE_KINDS[kind].label}
                 </button>
               ))}

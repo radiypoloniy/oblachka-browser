@@ -40,6 +40,10 @@ export interface PortSpec {
 export interface NodeKindSpec {
   label: string
   hint: string
+  // Эмодзи вместо иконки — тон холста намеренно дружелюбный, а не «инженерная панель».
+  // Живёт здесь, а не в компоненте: значок один и тот же в кнопке панели и в шапке
+  // карточки, и разъехаться они не должны.
+  emoji: string
   inputs: PortSpec[]
   outputs: PortSpec[]
 }
@@ -50,66 +54,77 @@ export const NODE_KINDS: Record<GraphNodeKind, NodeKindSpec> = {
   'source.url': {
     label: 'Страница',
     hint: 'Загружает URL в фоне и достаёт читаемый текст',
+    emoji: '🌐',
     inputs: [],
     outputs: [{ id: 'text', label: 'текст', type: 'text' }],
   },
   'source.note': {
     label: 'Заметка',
     hint: 'Произвольный текст, который вы вводите сами',
+    emoji: '📝',
     inputs: [],
     outputs: [{ id: 'text', label: 'текст', type: 'text' }],
   },
   'qwen.transform': {
     label: 'Qwen',
     hint: 'Выполняет вашу инструкцию над тем, что пришло на вход',
+    emoji: '🧠',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'ответ', type: 'text' }],
   },
   'webapp.chat': {
     label: 'Веб-чат',
     hint: 'Чужой AI-сайт в панели: граф готовит промпт, отправляете вы',
+    emoji: '💬',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'ответ', type: 'text' }],
   },
   'search.web': {
     label: 'Веб-поиск',
     hint: 'Ищет в интернете через SearXNG и отдаёт найденные сниппеты',
+    emoji: '🔍',
     inputs: [{ id: 'context', label: 'запрос', type: 'textList' }],
     outputs: [{ id: 'text', label: 'находки', type: 'text' }],
   },
   'factcheck.gemini': {
     label: 'Фактчек',
     hint: 'Проверяет утверждения через Gemini с поиском Google (облако, нужен ключ)',
+    emoji: '🕵️',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'разбор', type: 'text' }],
   },
   'artifact.summary': {
     label: 'Саммари',
     hint: 'Краткая структурированная выжимка по входу',
+    emoji: '📋',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'текст', type: 'text' }],
   },
   'artifact.mindmap': {
     label: 'Майндкарта',
     hint: 'Иерархия понятий по входу, рисуется как дерево',
+    emoji: '🗺️',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'аутлайн', type: 'text' }],
   },
   'artifact.infographic': {
     label: 'Инфографика',
     hint: 'Визуальная сводка по входу',
+    emoji: '📊',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'спека', type: 'text' }],
   },
   'artifact.quiz': {
     label: 'Тест',
     hint: 'Вопросы с вариантами ответа по входу',
+    emoji: '❓',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'JSON', type: 'text' }],
   },
   'output.text': {
     label: 'Результат',
     hint: 'Показывает итог и даёт его скопировать',
+    emoji: '📤',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [],
   },

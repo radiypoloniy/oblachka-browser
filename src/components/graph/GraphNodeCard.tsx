@@ -162,6 +162,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         title={STATUS_HINT[data.status]}
       >
         <StatusIcon status={data.status} />
+        <span style={{ fontSize: 14, lineHeight: 1, flex: 'none' }}>{spec.emoji}</span>
         <span
           style={{
             fontSize: 'var(--fs-xs)', fontWeight: 'var(--fw-semibold)',
