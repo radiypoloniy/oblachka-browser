@@ -20,9 +20,19 @@ interface HubProps {
   onOpenSettings: () => void;
 }
 
+// Режим хаба глобальный (живёт в SettingsManager главного процесса), но приезжает сюда
+// асинхронным IPC — а Hub размонтируется при уходе с хаба и монтируется заново на КАЖДОЕ
+// открытие новой вкладки. Пока ответ в пути, стартовое значение useState рисовалось как
+// настоящее: в AI-режиме пользователь на кадр видел минимал-вкладку и только потом блокнот.
+// Чром — один долгоживущий рендерер на всё окно, поэтому прочитанный режим переживает смену
+// вкладок в обычной модульной переменной: со второго открытия он известен уже к первому кадру.
+let cachedHubMode: HubMode | null = null;
+
 export default function Hub({ tabId, onSubmit, onOpenSettings }: HubProps) {
   const [tiles, setTiles] = useState<TileSite[]>([]);
-  const [mode, setMode] = useState<HubMode>('tiles');
+  // null — режим в этом запуске ещё ни разу не отвечал (единственный такой маунт за процесс).
+  // Тогда не рисуем ничего: пустой кадр честнее заведомо неверного экрана.
+  const [mode, setMode] = useState<HubMode | null>(cachedHubMode);
 
   useEffect(() => {
     window.oblako.getHistory().then((entries) => {
@@ -35,14 +45,25 @@ export default function Hub({ tabId, onSubmit, onOpenSettings }: HubProps) {
   // читаем и пишем.
   useEffect(() => {
     let mounted = true;
-    window.oblako.getHubMode().then((m) => { if (mounted) setMode(m); });
+    // Зовём на КАЖДОМ маунте, даже когда режим уже лежит в кэше. Геттер не чистый: этим же
+    // вызовом main отличает реальное открытие хаба от восстановления сессии и запускает
+    // ленивый прогрев модели (см. SETTINGS_GET_HUB_MODE в main.ts). Срезать вызов ради кэша
+    // значило бы тихо выключить прогрев в режиме on-demand.
+    window.oblako.getHubMode().then((m) => {
+      cachedHubMode = m;
+      if (mounted) setMode(m);
+    });
     return () => { mounted = false; };
   }, []);
 
   const pickMode = (m: HubMode) => {
+    cachedHubMode = m;
     setMode(m);
     void window.oblako.setHubMode(m);
   };
+
+  // Все хуки выше — ранний выход только после них.
+  if (mode === null) return null;
 
   return (
     // position:absolute/inset:0 — тот же приём, что у TabError.tsx: родитель (contentRef в
