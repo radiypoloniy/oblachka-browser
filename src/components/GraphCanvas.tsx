@@ -15,6 +15,8 @@ import { NODE_KINDS } from '../../shared/graph';
 import GraphNodeCard, { DEFAULT_NODE_SIZE, type GraphNodeData } from './graph/GraphNodeCard';
 import GraphWebAppWindow from './graph/GraphWebAppWindow';
 import ImagePresetEditor from './graph/ImagePresetEditor';
+import TemplatePicker from './graph/TemplatePicker';
+import type { GraphTemplate } from '../../shared/graphTemplates';
 import { BUILT_IN_IMAGE_PRESETS } from '../../shared/imagePresets';
 import type { ImagePreset } from '../../shared/imagePresets';
 import { downstreamOf } from '../../shared/graph';
@@ -106,6 +108,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   // Пресеты картинок: встроенные приходят из shared, пользовательские — из базы.
   const [userPresets, setUserPresets] = useState<ImagePreset[]>([]);
   const [presetEditorOpen, setPresetEditorOpen] = useState(false);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const allPresets = useMemo(
     () => [...BUILT_IN_IMAGE_PRESETS, ...userPresets],
     [userPresets],
@@ -153,10 +156,13 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
       if (metas.length > 0) {
         await openGraph(metas[0]!.id);
       } else {
+        // Первый запуск: пустой воркспейс заводим сразу (иначе холсту нечего показывать),
+        // но следом открываем выбор схемы — это первое, что видит человек.
         const created = await window.oblako.createGraph('Мой первый граф');
         if (!alive || !created) { setLoading(false); return; }
         await refreshList();
         await openGraph(created.id);
+        if (alive) setTemplatePickerOpen(true);
       }
     })();
     return () => { alive = false; };
@@ -406,9 +412,31 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
     await refreshList();
   };
 
-  const createWorkspace = async () => {
-    const meta = await window.oblako.createGraph('Новый граф');
+  // Шаблон — чистые данные; свежие uuid раздаём здесь, иначе два графа из одной схемы
+  // делили бы ключи узлов и правка одного ломала бы другой.
+  const createWorkspace = async (template: GraphTemplate | null) => {
+    const meta = await window.oblako.createGraph(template ? template.label : 'Новый граф');
     if (!meta) return;
+    if (template) {
+      const idMap = new Map(template.nodes.map((n) => [n.id, crypto.randomUUID()]));
+      await window.oblako.saveGraph(meta.id, {
+        nodes: template.nodes.map((n) => ({
+          id: idMap.get(n.id)!,
+          kind: n.kind,
+          x: n.x, y: n.y, w: null, h: null,
+          title: n.title,
+          config: { ...n.config },
+        })),
+        edges: template.edges.map((e) => ({
+          id: crypto.randomUUID(),
+          fromNode: idMap.get(e.from)!,
+          // Порт входа у всех типов один и тот же — 'context'; выход источников — 'text'.
+          fromPort: 'text',
+          toNode: idMap.get(e.to)!,
+          toPort: 'context',
+        })),
+      });
+    }
     await refreshList();
     await openGraph(meta.id);
   };
@@ -453,7 +481,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           </span>
           <button
             type="button"
-            onClick={() => void createWorkspace()}
+            onClick={() => setTemplatePickerOpen(true)}
             title="Новый воркспейс"
             style={{
               marginLeft: 'auto', display: 'inline-flex', background: 'none', border: 0,
@@ -650,6 +678,13 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             <MiniMap pannable zoomable />
           </ReactFlow>
           </div>
+
+          {templatePickerOpen && (
+            <TemplatePicker
+              onClose={() => setTemplatePickerOpen(false)}
+              onPick={(template) => { setTemplatePickerOpen(false); void createWorkspace(template); }}
+            />
+          )}
 
           {presetEditorOpen && (
             <ImagePresetEditor
