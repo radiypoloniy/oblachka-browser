@@ -3,6 +3,7 @@ import { Sparkles, Search } from 'lucide-react';
 import type { TileSite } from '../../shared/frecency';
 import {
   loadNewTabSettings, subscribeNewTabSettings, presetCss, getNewTabCustomImage,
+  ensureCustomImageShrunk,
   type NewTabSettings,
 } from '../newtab/settings';
 
@@ -19,11 +20,21 @@ interface NewTabProps {
 
 const TEXT = 'rgba(255,255,255,0.96)';
 const TEXT_SOFT = 'rgba(255,255,255,0.78)';
-const TEXT_SHADOW = '0 1px 16px rgba(0,0,0,0.35)';
+// Тень под текстом — ради читаемости поверх произвольного фото, но КОРОТКАЯ. Было одно широкое
+// пятно (16px, 0.35): на крупном тонком шрифте часов оно читается не как тень, а как грязная
+// обводка вокруг букв. Два слоя: 2px держит край буквы, 10px даёт мягкий контраст с фоном —
+// оба слабее прежнего, суммарно тише и без ореола.
+const TEXT_SHADOW = '0 1px 2px rgba(0,0,0,0.28), 0 2px 10px rgba(0,0,0,0.18)';
 
 export default function NewTab({ onSubmit, onOpenAi, tiles }: NewTabProps) {
   const [settings, setSettings] = useState<NewTabSettings>(() => loadNewTabSettings());
   useEffect(() => subscribeNewTabSettings(() => setSettings(loadNewTabSettings())), []);
+
+  // Своё фото могло быть сохранено полноразмерным (раньше усадки не было вовсе) — ужимаем один
+  // раз в фоне, иначе каждый показ вкладки платит за декодирование гигантского кадра.
+  useEffect(() => {
+    if (settings.background.kind === 'custom') ensureCustomImageShrunk();
+  }, [settings.background.kind]);
 
   // «Фото дня» — тянется через main (кэш на день), только при выбранном фоне 'photo'.
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);

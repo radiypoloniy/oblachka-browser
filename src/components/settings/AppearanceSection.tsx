@@ -4,6 +4,7 @@ import { SectionHeader, Subsection, InlineError, TextField, btnGhost, IconBtn, f
 import Toggle from '../Toggle';
 import {
   loadNewTabSettings, saveNewTabSettings, setNewTabCustomImage, getNewTabCustomImage,
+  shrinkBackgroundImage,
   WALLPAPER_PRESETS, type NewTabSettings, type BackgroundKind,
 } from '../../newtab/settings';
 
@@ -32,9 +33,15 @@ export default function AppearanceSection() {
     setImgError('');
     const reader = new FileReader();
     reader.onload = () => {
-      setNewTabCustomImage(reader.result as string);
+      const raw = reader.result as string;
+      // Показываем сразу, а ужимаем следом (см. shrinkBackgroundImage): полноразмерное фото с
+      // телефона/камеры стоит рендереру сотни миллисекунд на каждый показ новой вкладки.
+      setNewTabCustomImage(raw);
       setHasCustom(true);
       patchBg({ kind: 'custom' });
+      void shrinkBackgroundImage(raw)
+        .then((small) => { if (small.length < raw.length) setNewTabCustomImage(small); })
+        .catch(() => { /* не вышло — останется исходная картинка */ });
     };
     reader.onerror = () => setImgError('Не удалось прочитать файл');
     reader.readAsDataURL(file);

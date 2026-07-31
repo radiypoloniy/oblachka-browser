@@ -109,3 +109,54 @@ export function setNewTabCustomImage(dataUrl: string | null): void {
     window.dispatchEvent(new CustomEvent(EVENT));
   } catch { /* см. saveNewTabSettings */ }
 }
+
+// ── Усадка своего фона ────────────────────────────────────────────────────────
+// Фон клался в localStorage ровно таким, каким его выбрали. На живом профиле это оказалась
+// фотография 6720×4480 — 3.5 МБ base64 и 115 МБ в РАСПАКОВАННОМ виде. Столько кэш картинок
+// рендерера не держит, поэтому кадр декодировался заново почти на каждый показ новой вкладки:
+// замерено 232 мс на декодирование (плюс blur, который тоже считается по полному разрешению).
+// Отсюда и «странная задержка при клике на новую вкладку».
+//
+// 2560 по длинной стороне: фон лежит под затемнением и обычно под размытием, разглядеть в нём
+// больше нечего, а цена — квадратичная по стороне. JPEG, а не PNG: прозрачность обоям не нужна.
+const MAX_IMAGE_SIDE = 2560;
+const IMAGE_QUALITY = 0.88;
+// Порог одноразовой усадки: ~1 МБ base64. Ниже него возиться не с чем.
+const SHRINK_TRIGGER = 1_000_000;
+
+export async function shrinkBackgroundImage(dataUrl: string): Promise<string> {
+  const blob = await (await fetch(dataUrl)).blob();
+  const probe = await createImageBitmap(blob);
+  // Размеры снимаем ДО close(): у закрытого ImageBitmap они обнуляются.
+  const { width, height } = probe;
+  probe.close();
+  const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(width, height));
+  if (scale === 1) return dataUrl; // уже небольшая — перекодировать смысла нет
+
+  const w = Math.round(width * scale);
+  const h = Math.round(height * scale);
+  // resizeWidth/Height у createImageBitmap — масштабирование самим декодером, без промежуточного
+  // полноразмерного холста на 115 МБ.
+  const bmp = await createImageBitmap(blob, { resizeWidth: w, resizeHeight: h, resizeQuality: 'high' });
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) { bmp.close(); return dataUrl; }
+  ctx.drawImage(bmp, 0, 0);
+  bmp.close();
+  return canvas.toDataURL('image/jpeg', IMAGE_QUALITY);
+}
+
+// Одноразовая усадка уже сохранённого фона — чтобы чинить не только новые картинки, но и ту,
+// что человек поставил раньше. Молча и в фоне: результат применится сам через EVENT.
+let shrinkChecked = false;
+export function ensureCustomImageShrunk(): void {
+  if (shrinkChecked) return;
+  shrinkChecked = true;
+  const cur = getNewTabCustomImage();
+  if (!cur || cur.length <= SHRINK_TRIGGER) return;
+  void shrinkBackgroundImage(cur)
+    .then((small) => { if (small.length < cur.length) setNewTabCustomImage(small); })
+    .catch(() => { /* не вышло — остаёмся с исходной картинкой, это не повод ломать вкладку */ });
+}

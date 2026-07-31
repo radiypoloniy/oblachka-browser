@@ -304,10 +304,24 @@ async function warmupBergamot(): Promise<void> {
 // TranslationService.ts) — повторное открытие панели/хаба не запускает вторую загрузку.
 // Тот же guard на пустой реестр моделей, что у стартового прогрева (см. showWindow ниже) — не
 // сыпать NO_MODEL_INSTALLED в консоль на каждое открытие панели без установленной модели.
+// Отсрочка прогрева от самого клика. Загрузка модели — нативная работа llama.cpp, и она НЕ
+// уступает event-loop main-процесса: замерено, что вызов прямо из обработчика съедает 382 мс
+// подряд плюс серию всплесков 60–175 мс в следующие ~1.5 с. Всё это время окно не отвечает —
+// именно так и ощущался «тормоз при переключении в AI-режим». Задержка ничего не ускоряет, но
+// уводит фриз с кадра, в котором происходит переход: клик отрабатывает мгновенно, экран
+// перерисовывается, и только потом начинается тяжёлое. Настоящее лечение — унести инференс из
+// main в отдельный процесс, это отдельная большая задача (см. «Дорожная карта» в CLAUDE.md).
+const WARMUP_DEFER_MS = 700;
+let warmupTimer: NodeJS.Timeout | null = null;
+
 function maybeLazyWarmupOnDemand(): void {
   if (settings.getModelLoadMode() !== 'on-demand') return;
   if (!ModelRegistry.getDefault()) return;
-  void warmupTranslation();
+  if (warmupTimer) return; // прогрев уже назначен — второй таймер ни к чему
+  warmupTimer = setTimeout(() => {
+    warmupTimer = null;
+    void warmupTranslation();
+  }, WARMUP_DEFER_MS);
 }
 
 // См. комментарий у SETTINGS_GET_HUB_MODE — отличает пассивное восстановление сессии (первый
