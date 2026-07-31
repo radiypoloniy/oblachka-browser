@@ -1,10 +1,14 @@
 /* ── Oblako typography ───────────────────────────────────────────────
-   Brand sans: Onest (neutral geometric grotesque, Cyrillic-native).
+   Brand sans: Golos Text (Paratype — гуманистический гротеск, кириллица
+               рисовалась первой, а не достраивалась к латинице; сменил
+               Onest ради более мягкого мелкого кегля 13–15 px, на котором
+               живёт бо́льшая часть интерфейса).
    Mono:       JetBrains Mono (model ids, configs, technical readouts).
    No serif anywhere — the brand deliberately avoids the "AI default"
-   cream + serif look. */
+   cream + serif look.
+   Оба семейства вшиты локально, см. tokens/fonts.css. */
 :root {
-  --font-sans: "Onest", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Golos Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
 
   /* Type scale (px). Display = the personal greeting on the hub. */
@@ -22,6 +26,11 @@
   --lh-body:  1.5;  /* @kind font */
 
   /* Weights */
+  /* ⚠️ У Golos Text ось веса — 400..700, светлого начертания у него нет:
+     300 браузер поджимает к 400. Токен оставлен как намерение («самый
+     светлый в шкале»), но визуально он сейчас равен --fw-regular. Это
+     заметно на часах новой вкладки (NewTab.tsx) — там 300 стоял ради
+     тонкого крупного кегля. */
   --fw-light: 300;    /* @kind font */
   --fw-regular: 400;  /* @kind font */
   --fw-medium: 500;   /* @kind font */

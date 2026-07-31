@@ -40,6 +40,7 @@ npm start                            # запуск собранного про�
 npm run dist                         # NSIS-установщик в release/ (без публикации)
 npm run release                      # то же + выкладка релиза на GitHub (нужен GH_TOKEN)
 npm run make-icon                    # build/icon.png из build/logo-source.png
+npm run download-fonts               # woff2-субсеты Golos Text + JetBrains Mono в src/assets/fonts
 npm run download-filters             # (легаси) EasyList в resources/ — текущий адблок их НЕ читает
 npm run download-xray                # бинарник Xray-core для VPN (electron/VpnProcess.ts)
 npm run download-translation-models  # пары en<->X для Bergamot из реестра Mozilla Remote Settings
@@ -417,8 +418,14 @@ AI-экране (NotebookLM-подобный: источники с извлеч
    детект в `preload-content.ts`, раздел настроек `AutofillSection.tsx`): хранилище
    с шифрованием, детект полей, подстановка с поповером, номер карты под Windows
    Hello, offer-save при отправке формы.
-4. Локальная фонтов-бандловка вместо Google Fonts для офлайна/прода
-   (см. «Платформа» ниже).
+4. Локальная бандловка шрифтов вместо Google Fonts — СДЕЛАНО. Брендовый sans
+   сменён с Onest на **Golos Text** (Paratype), моно осталось JetBrains Mono;
+   оба под SIL OFL 1.1, субсеты woff2 закоммичены в `src/assets/fonts` вместе
+   с текстами лицензий, `@font-face` — в `tokens/fonts.css`, обновление —
+   `npm run download-fonts`. `@import` с fonts.googleapis.com убран: браузер
+   рисует свой UI без сети и не сообщает гуглу о запуске. ⚠️ Ось веса Golos
+   Text — 400..700, светлого начертания нет, поэтому `--fw-light: 300`
+   поджимается к 400 (заметно на часах новой вкладки).
 5. Vision (распознавание картинок) для Qwen в AI-хабе — **отложено**:
    `node-llama-cpp` (Node-обёртка над llama.cpp, которой пользуется проект)
    физически не прокидывает мультимодальность в свой API ни в установленной
@@ -459,4 +466,5 @@ origin из доверенного `wc.getURL()`, автофилл гейтит�
 ## Платформа
 
 Цель — Windows x64. Код кроссплатформенный, но titlebarOverlay и DPAPI (позже) —
-Windows-специфика. Шрифты сейчас с Google Fonts; для прода забандлить локально.
+Windows-специфика. Шрифты вшиты локально (`src/assets/fonts` + `tokens/fonts.css`),
+внешних CDN у интерфейса не осталось.
