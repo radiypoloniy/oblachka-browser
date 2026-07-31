@@ -1,9 +1,12 @@
 import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard, webContents } from 'electron';
 import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
+import { applyChromeUserAgent } from './BrowserIdentity';
 
 // ДО app.whenReady() — Electron требует это до события ready.
 registerSchemesAsPrivileged();
+// Тоже до ready и до первой сессии: иначе часть запросов уйдёт со старым UA.
+applyChromeUserAgent();
 import type { MenuItemConstructorOptions, Session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';

@@ -245,6 +245,12 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   работают: ломался клик по омнибоксу при уже открытом дропдауне.
 - `electron/AppProtocol.ts` — кастомные протоколы (`oblako-chrome://` для прод-
   загрузки хрома с COOP/COEP-заголовками, protocol для локальной AI-модели).
+- `electron/BrowserIdentity.ts` — как браузер представляется сайтам: подменяет
+  `app.userAgentFallback` на UA настоящего Chrome (без токена `Electron/` и с
+  редуцированной версией `Chrome/N.0.0.0`, как шлёт Chrome с 2022 года) —
+  иначе антиботы режут по этим признакам (капча Wildberries). Зовётся из
+  `main.ts` ДО `whenReady()` и до создания сессий, иначе часть запросов уйдёт
+  со старым UA. Платформенный токен UA — одной функцией внутри, под macOS-порт.
 - `electron/preload.ts` — безопасный мост боевого хрома: типизированный
   `window.oblako` через contextBridge. Страницы изолированы
   (contextIsolation + sandbox, без Node).
