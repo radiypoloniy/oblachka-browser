@@ -14,6 +14,10 @@ export type GraphNodeKind =
   | 'source.url'      // URL → читаемый текст страницы (NotebookExtract)
   | 'source.note'     // просто текст, введённый руками
   | 'qwen.transform'  // инструкция + входы → ответ локальной модели
+  // Чужой AI-сайт (ChatGPT и т.п.) в панели 1:1. Обмен ТОЛЬКО через руку человека:
+  // граф готовит промпт, кнопка кладёт его в поле, отправляет пользователь, кнопка
+  // забирает ответ. Автоматической отправки нет по замыслу — см. electron/graphWebApps.ts.
+  | 'webapp.chat'
   // Артефакты «Студии» — тот же generateStudio, что у блокнота: модель отдаёт структуру,
   // картинку детерминированно рисует renderer (markmap / @antv/infographic / QuizView).
   | 'artifact.summary'
@@ -53,6 +57,12 @@ export const NODE_KINDS: Record<GraphNodeKind, NodeKindSpec> = {
   'qwen.transform': {
     label: 'Qwen',
     hint: 'Выполняет вашу инструкцию над тем, что пришло на вход',
+    inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
+    outputs: [{ id: 'text', label: 'ответ', type: 'text' }],
+  },
+  'webapp.chat': {
+    label: 'Веб-чат',
+    hint: 'Чужой AI-сайт в панели: граф готовит промпт, отправляете вы',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'ответ', type: 'text' }],
   },
@@ -100,14 +110,17 @@ export const GRAPH_NODE_KINDS = Object.keys(NODE_KINDS) as GraphNodeKind[]
 // ездит в SQLite как JSON и правится в форме узла, а строгий union заставлял бы приводить
 // типы на каждом чтении из БД без реальной пользы.
 export interface GraphNodeConfig {
-  url?: string          // source.url
+  url?: string          // source.url, webapp.chat (адрес сайта)
   text?: string         // source.note
-  instruction?: string  // qwen.transform
+  instruction?: string  // qwen.transform, webapp.chat (что дописать перед материалом)
 }
 
 // Статус — РАНТАЙМ, в базу не пишется. Что переживает перезапуск — output/inputHash/error
 // (см. GraphStore): по ним renderer сам решает, узел готов или устарел.
-export type GraphNodeStatus = 'idle' | 'stale' | 'queued' | 'running' | 'done' | 'error'
+// 'awaiting' — узел не может посчитаться сам и ждёт действия человека (узел-веб-приложение:
+// вставить промпт, отправить, забрать ответ). Отличать его от 'running' обязательно: иначе
+// прогон выглядел бы зависшим, хотя ждёт не машину, а пользователя.
+export type GraphNodeStatus = 'idle' | 'stale' | 'queued' | 'running' | 'awaiting' | 'done' | 'error'
 
 export interface GraphNode {
   id: string

@@ -20,7 +20,11 @@ import { deriveBangFromUrl } from '../shared/bangs';
 import { HistoryManager } from './HistoryManager';
 import { BookmarkManager } from './BookmarkManager';
 import { GraphStore } from './GraphStore';
-import { cancelGraphRun, runGraph } from './GraphEngine';
+import { cancelGraphRun, composeWebAppPrompt, computeNodeInputHash, runGraph } from './GraphEngine';
+import {
+  captureAnswer, closeGraphWebApp, insertPrompt, setGraphWebAppBounds, showGraphWebApp,
+  setTabManager as setGraphWebAppTabManager,
+} from './GraphWebAppManager';
 import type { GraphStructure } from '../shared/graph';
 import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImporter';
 import { ImportManager } from './browserImport/ImportManager';
@@ -624,6 +628,9 @@ function createWindow() {
   // Быстрый поиск (Ctrl+E): поповеру нужен тот же возврат OS-фокуса странице, что и FindBar,
   // а решение «куда открыть найденное» остаётся здесь — вкладками владеет main.
   setSearchPopoverTabManager(tabs);
+  // Узлу-веб-приложению графа — только чтобы target=_blank со стороннего сайта уходил
+  // обычной вкладкой Oblako, а не отдельным Chromium-окном (как у WebAppManager).
+  setGraphWebAppTabManager(tabs);
   setOnSearchRun(({ query, target, sameTab }) => {
     if (!tabs) return;
     // Бэнг в строке главнее выбранного чипа и разбирается ЗДЕСЬ, а не в поповере: BangStore
@@ -1405,6 +1412,51 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.GRAPH_DELETE, (_e, graphId: number) => graphs.remove(graphId));
   ipcMain.handle(IPC.GRAPH_CANCEL, (_e, graphId: number) => cancelGraphRun(graphId));
+  // Electron принимает только целые пиксели, а renderer меряет getBoundingClientRect()
+  // и присылает дробные — та же нормализация, что в TabManager.setContentBounds.
+  const toRect = (b: ContentBounds) => ({
+    x: Math.round(b.x), y: Math.round(b.y),
+    width: Math.max(0, Math.round(b.width)),
+    height: Math.max(0, Math.round(b.height)),
+  });
+
+  // Узел-веб-приложение. Промпт собирает main из СОХРАНЁННОГО графа, а не renderer:
+  // так «что вставили» и «по каким входам посчитан отпечаток» — один и тот же источник.
+  ipcMain.handle(IPC.GRAPH_WEBAPP_SHOW, (_e, graphId: number, nodeId: string, url: string, b: ContentBounds) => {
+    if (win) showGraphWebApp(win, graphId, nodeId, url, toRect(b));
+  });
+  ipcMain.handle(IPC.GRAPH_WEBAPP_BOUNDS, (_e, b: ContentBounds) => {
+    if (win) setGraphWebAppBounds(win, toRect(b));
+  });
+  ipcMain.handle(IPC.GRAPH_WEBAPP_CLOSE, (_e, graphId: number, nodeId: string) => {
+    if (win) closeGraphWebApp(win, graphId, nodeId);
+  });
+  ipcMain.handle(IPC.GRAPH_WEBAPP_INSERT, (_e, graphId: number, nodeId: string) => {
+    const doc = graphs.get(graphId);
+    if (!doc) return false;
+    return insertPrompt(graphId, nodeId, composeWebAppPrompt(doc, nodeId));
+  });
+  ipcMain.handle(IPC.GRAPH_WEBAPP_CAPTURE, async (_e, graphId: number, nodeId: string, mode: 'selection' | 'last') => {
+    const text = await captureAnswer(graphId, nodeId, mode === 'last' ? 'last' : 'selection');
+    if (!text) return '';
+    // Результат пишет main, а не renderer: инвариант «результаты узлов принадлежат движку»
+    // (см. шапку GraphStore.ts) держится и здесь, просто источник ответа — человек.
+    // Отпечаток берём тот же, что посчитал бы движок, — тогда ответ живёт ровно до правки
+    // входов узла и не считается устаревшим на пустом месте.
+    const doc = graphs.get(graphId);
+    if (!doc) return '';
+    graphs.setNodeResult(graphId, nodeId, {
+      inputHash: computeNodeInputHash(doc, nodeId),
+      output: text,
+      outputTitle: null,
+      error: null,
+    });
+    chromeView?.webContents.send(IPC.GRAPH_PROGRESS, {
+      graphId, nodeId, status: 'done', output: text,
+    });
+    return text;
+  });
+
   ipcMain.on(IPC.GRAPH_RUN, (_e, graphId: number, nodeId: string | null) => {
     // Прогон графа — явное намерение поработать с AI, значит модель пора греть (тот же
     // приём, что у AI_PANEL_TOGGLE и SETTINGS_*_HUB_MODE).

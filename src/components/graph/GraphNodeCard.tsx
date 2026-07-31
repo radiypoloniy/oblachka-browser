@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import { Handle, NodeResizer, Position } from '@xyflow/react';
-import { Play, AlertCircle, Loader2, Check, Clock } from 'lucide-react';
+import { Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink } from 'lucide-react';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
 import { NODE_KINDS } from '../../../shared/graph';
 import { markdownComponents } from '../aiMarkdown';
@@ -19,6 +19,9 @@ export interface GraphNodeData extends Record<string, unknown> {
   error: string | null;
   onPatch: (patch: { title?: string; config?: GraphNodeConfig }) => void;
   onRun: () => void;
+  // Только для webapp.chat — открыть живой сайт в панели 1:1 (в карточку нативную вью
+  // положить нельзя, см. шапку GraphCanvas.tsx).
+  onOpenWebApp: () => void;
 }
 
 // Размер по умолчанию на тип узла. Задаём его ВСЕГДА (даже узлам, сохранённым до появления
@@ -28,6 +31,7 @@ export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> 
   'source.url': { w: 268, h: 268 },
   'source.note': { w: 268, h: 236 },
   'qwen.transform': { w: 304, h: 320 },
+  'webapp.chat': { w: 300, h: 300 },
   // Визуальным артефактам нужна площадь: дерево майндкарты и инфографика в узкой
   // карточке нечитаемы, а тест — это список вопросов с вариантами.
   'artifact.summary': { w: 380, h: 340 },
@@ -42,6 +46,8 @@ const STATUS_TONE: Record<GraphNodeStatus, string> = {
   stale: 'var(--warning-500)',
   queued: 'var(--text-muted)',
   running: 'var(--accent)',
+  // Жёлтый, как и «устарел»: оба состояния означают «нужно вмешательство», а не поломку.
+  awaiting: 'var(--warning-500)',
   // Зелёный функционален по цветовому закону проекта: результат посчитан локальной моделью
   // на этой машине — тот же смысл, что у --dot-local в статусе модели.
   done: 'var(--dot-local)',
@@ -53,6 +59,7 @@ const STATUS_HINT: Record<GraphNodeStatus, string> = {
   stale: 'Устарел — входные данные изменились',
   queued: 'Ждёт очереди',
   running: 'Считается',
+  awaiting: 'Ждёт вас — откройте чат и заберите ответ',
   done: 'Готово',
   error: 'Ошибка',
 };
@@ -60,6 +67,7 @@ const STATUS_HINT: Record<GraphNodeStatus, string> = {
 function StatusIcon({ status }: { status: GraphNodeStatus }) {
   const color = STATUS_TONE[status];
   if (status === 'running') return <Loader2 size={13} color={color} className="oblako-graph-spin" />;
+  if (status === 'awaiting') return <Hand size={13} color={color} />;
   if (status === 'error') return <AlertCircle size={13} color={color} />;
   if (status === 'done') return <Check size={13} color={color} />;
   if (status === 'queued') return <Clock size={13} color={color} />;
@@ -213,6 +221,43 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           />
         )}
 
+        {data.kind === 'webapp.chat' && (
+          <>
+            <input
+              className="nodrag"
+              value={data.config.url ?? ''}
+              placeholder="https://chatgpt.com/"
+              onChange={(e) => data.onPatch({ config: { ...data.config, url: e.target.value } })}
+              style={{ ...fieldStyle, flex: 'none' }}
+            />
+            <textarea
+              className="nodrag"
+              value={data.config.instruction ?? ''}
+              placeholder="Что дописать перед материалом (необязательно)"
+              onChange={(e) => data.onPatch({ config: { ...data.config, instruction: e.target.value } })}
+              style={{ ...fieldStyle, flex: 'none', height: 64 }}
+            />
+            <button
+              type="button"
+              className="nodrag"
+              onClick={data.onOpenWebApp}
+              disabled={!(data.config.url ?? '').trim()}
+              style={{
+                flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                background: 'var(--accent)', color: 'var(--text-on-accent)', border: 0,
+                borderRadius: 'var(--radius-sm, 8px)', padding: '8px 12px',
+                cursor: (data.config.url ?? '').trim() ? 'pointer' : 'default',
+                opacity: (data.config.url ?? '').trim() ? 1 : 0.5,
+                font: 'inherit', fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)',
+                fontFamily: 'var(--font-sans)',
+              }}
+            >
+              <ExternalLink size={13} />
+              Открыть чат
+            </button>
+          </>
+        )}
+
         {data.kind === 'qwen.transform' && (
           <textarea
             className="nodrag"
@@ -226,7 +271,13 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         )}
 
         {data.error && (
-          <div style={{ flex: 'none', fontSize: 'var(--fs-sm)', color: 'var(--danger-500)', lineHeight: 'var(--lh-snug)' }}>
+          <div
+            style={{
+              flex: 'none', fontSize: 'var(--fs-sm)', lineHeight: 'var(--lh-snug)',
+              // «Ждёт вас» — не поломка, а приглашение к действию, и красным его красить нельзя.
+              color: data.status === 'awaiting' ? 'var(--warning-500)' : 'var(--danger-500)',
+            }}
+          >
             {data.error}
           </div>
         )}

@@ -263,6 +263,14 @@ export const IPC = {
   GRAPH_CANCEL:   'graph:cancel',   // renderer → main: graphId — не начинать следующий узел (текущий не прервать)
   GRAPH_PROGRESS: 'graph:progress', // main → renderer: GraphProgress (статусы + стрим-чанки)
 
+  // Узел-веб-приложение: чужой AI-сайт в панели 1:1. Обмен только через руку человека —
+  // автоматической отправки нет по замыслу (см. electron/graphWebApps.ts).
+  GRAPH_WEBAPP_SHOW:    'graph:webapp-show',    // renderer → main: (graphId, nodeId, url, bounds) — показать сайт в панели
+  GRAPH_WEBAPP_BOUNDS:  'graph:webapp-bounds',  // renderer → main: новый прямоугольник панели (нулевой = закрыть)
+  GRAPH_WEBAPP_CLOSE:   'graph:webapp-close',   // renderer → main: (graphId, nodeId) — уничтожить вью узла
+  GRAPH_WEBAPP_INSERT:  'graph:webapp-insert',  // renderer → main: (graphId, nodeId) → положить промпт графа в поле ввода
+  GRAPH_WEBAPP_CAPTURE: 'graph:webapp-capture', // renderer → main: (graphId, nodeId, mode) → забрать ответ в результат узла
+
   // Split View
   TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (правая вкладка)
   TAB_EXIT_SPLIT:   'tab:exit-split',   // renderer → main: выйти из split, обе вкладки остаются
@@ -1510,6 +1518,15 @@ export interface OblakoApi {
   runGraph(graphId: number, nodeId: string | null): void;
   cancelGraphRun(graphId: number): Promise<void>;
   onGraphProgress(cb: (p: GraphProgress) => void): () => void;
+
+  // Узел-веб-приложение. Промпт для вставки собирает main из сохранённого графа (renderer
+  // его не считает — иначе состояние разъехалось бы), пойманный ответ main же и пишет в
+  // результат узла с правильным отпечатком входов.
+  showGraphWebApp(graphId: number, nodeId: string, url: string, bounds: ContentBounds): Promise<void>;
+  setGraphWebAppBounds(bounds: ContentBounds): Promise<void>;
+  closeGraphWebApp(graphId: number, nodeId: string): Promise<void>;
+  insertGraphWebAppPrompt(graphId: number, nodeId: string): Promise<boolean>;
+  captureGraphWebAppAnswer(graphId: number, nodeId: string, mode: 'selection' | 'last'): Promise<string>;
 
   // Заход D — ключ Gemini (AI-фактчек). Сам ключ никогда не приходит в renderer — только статус.
   getAiKeyStatus(): Promise<boolean>;

@@ -79,6 +79,36 @@ interface NodeOutcome {
   error?: string;
 }
 
+// ── Помощь узлу-веб-приложению ───────────────────────────────────────────────
+// Прогонять его движок не может: обмен идёт через руку человека (см. graphWebApps.ts).
+// Поэтому наружу отдаются две чистые функции — панель спрашивает ими «что вставлять»
+// и «каким отпечатком помечать пойманный ответ», а состояние нигде не дублируется.
+
+function inputsForNode(doc: GraphDoc, nodeId: string): string[] {
+  const outputs = new Map<string, string>();
+  for (const n of doc.nodes) if (n.output) outputs.set(n.id, n.output);
+  return collectInputs(doc, nodeId, outputs);
+}
+
+// Отпечаток входов узла по СОХРАНЁННОМУ графу. Нужен, чтобы пойманный человеком ответ
+// лёг в базу с тем же хешем, что посчитал бы движок: тогда ответ живёт ровно до правки
+// входов и не пересчитывается зря.
+export function computeNodeInputHash(doc: GraphDoc, nodeId: string): string | null {
+  const node = doc.nodes.find((n) => n.id === nodeId);
+  if (!node) return null;
+  return hashInputs(node, inputsForNode(doc, nodeId));
+}
+
+// Текст, который кнопка «Вставить» кладёт в поле чужого чата.
+export function composeWebAppPrompt(doc: GraphDoc, nodeId: string): string {
+  const node = doc.nodes.find((n) => n.id === nodeId);
+  if (!node) return '';
+  const instruction = (node.config.instruction ?? '').trim();
+  const context = buildContext(inputsForNode(doc, nodeId));
+  if (!context) return instruction;
+  return instruction ? `${instruction}\n\n${context}` : context;
+}
+
 async function executeNode(
   win: BrowserWindow | null,
   node: GraphNode,
@@ -128,6 +158,11 @@ async function executeNode(
         ? { ok: true, output: res.text }
         : { ok: false, error: res.error ?? 'Не получилось' };
     }
+
+    case 'webapp.chat':
+      // Сюда поток не доходит: узел перехвачен в runGraph до вызова executeNode (обмен —
+      // через руку человека). Ветка оставлена, чтобы switch оставался исчерпывающим.
+      return { ok: false, error: 'Этот узел заполняете вы' };
 
     case 'output.text': {
       const joined = buildContext(inputs);
@@ -213,6 +248,20 @@ export async function runGraph(
       if (node.inputHash === hash && node.output !== null && !node.error) {
         outputs.set(nodeId, node.output);
         emit({ graphId, nodeId, status: 'done', output: node.output, outputTitle: node.outputTitle ?? undefined });
+        continue;
+      }
+
+      // Узел-веб-приложение машина посчитать не может — за него отвечает человек.
+      // Честно останавливаем ветку в состоянии «ждёт вас», а не делаем вид, что считаем:
+      // иначе прогон выглядел бы зависшим. Соседние ветки продолжаются.
+      if (node.kind === 'webapp.chat') {
+        emit({
+          graphId, nodeId, status: 'awaiting',
+          error: 'Откройте узел, вставьте промпт, отправьте и заберите ответ',
+        });
+        for (const dep of downstreamOf([nodeId], doc.edges)) {
+          if (dep !== nodeId && planSet.has(dep)) broken.add(dep);
+        }
         continue;
       }
 

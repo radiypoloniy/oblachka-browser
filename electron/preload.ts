@@ -305,6 +305,18 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.GRAPH_PROGRESS, handler);
   },
 
+  // Узел-веб-приложение графа: живой чужой сайт в панели 1:1, обмен через руку человека.
+  showGraphWebApp: (graphId: number, nodeId: string, url: string, bounds: ContentBounds) =>
+    ipcRenderer.invoke(IPC.GRAPH_WEBAPP_SHOW, graphId, nodeId, url, bounds) as Promise<void>,
+  setGraphWebAppBounds: (bounds: ContentBounds) =>
+    ipcRenderer.invoke(IPC.GRAPH_WEBAPP_BOUNDS, bounds) as Promise<void>,
+  closeGraphWebApp: (graphId: number, nodeId: string) =>
+    ipcRenderer.invoke(IPC.GRAPH_WEBAPP_CLOSE, graphId, nodeId) as Promise<void>,
+  insertGraphWebAppPrompt: (graphId: number, nodeId: string) =>
+    ipcRenderer.invoke(IPC.GRAPH_WEBAPP_INSERT, graphId, nodeId) as Promise<boolean>,
+  captureGraphWebAppAnswer: (graphId: number, nodeId: string, mode: 'selection' | 'last') =>
+    ipcRenderer.invoke(IPC.GRAPH_WEBAPP_CAPTURE, graphId, nodeId, mode) as Promise<string>,
+
   // Заход D — ключ Gemini (AI-фактчек). Сам ключ никогда не возвращается в renderer.
   getAiKeyStatus: () => ipcRenderer.invoke(IPC.AI_GET_KEY_STATUS) as Promise<boolean>,
   saveAiKey:      (key: string) => ipcRenderer.invoke(IPC.AI_SAVE_KEY, key) as Promise<boolean>,
