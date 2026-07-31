@@ -437,12 +437,15 @@ function AiPanel() {
           )}
 
           {messages.map((m, i) => (
+            // Ответ модели — БЕЗ подложки и во всю ширину: так он выглядит в любом чат-боте,
+            // и так его удобнее читать. Пузырь остаётся только у реплики пользователя —
+            // он короткий и его роль в том, чтобы отделиться от ответа (ср. Hub.tsx).
             <div key={i} style={{
-              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-              maxWidth: '82%',
-              padding: '8px 12px',
-              borderRadius: 14,
-              background: m.role === 'user' ? 'var(--accent)' : 'var(--surface-sunken)',
+              alignSelf: m.role === 'user' ? 'flex-end' : 'stretch',
+              maxWidth: m.role === 'user' ? '82%' : '100%',
+              padding: m.role === 'user' ? '8px 12px' : '2px 0',
+              borderRadius: m.role === 'user' ? 14 : 0,
+              background: m.role === 'user' ? 'var(--accent)' : 'transparent',
               color: m.role === 'user' ? 'var(--text-on-accent)' : 'var(--text-strong)',
               overflowWrap: 'anywhere',
             }}>

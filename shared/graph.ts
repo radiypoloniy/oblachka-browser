@@ -29,7 +29,7 @@ export type GraphNodeKind =
   // в проекте; без ключа узел честно говорит, что ключа нет.
   | 'factcheck.gemini'
   // Артефакты «Студии» — тот же generateStudio, что у блокнота: модель отдаёт структуру,
-  // картинку детерминированно рисует renderer (markmap / @antv/infographic / QuizView).
+  // картинку детерминированно рисует renderer (markmap / своя вёрстка / QuizView).
   | 'artifact.summary'
   | 'artifact.mindmap'
   | 'artifact.infographic'

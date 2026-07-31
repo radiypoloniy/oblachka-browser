@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Transformer } from 'markmap-lib';
 import { Markmap } from 'markmap-view';
-import { Infographic } from '@antv/infographic';
 import { ListChecks, X } from 'lucide-react';
 
 // Детерминированные рендереры материалов «Студии». Модель отдаёт ТОЛЬКО структуру/текст,
@@ -29,22 +28,106 @@ export function MindmapView({ markdown, height }: { markdown: string; height?: s
   return <svg ref={svgRef} style={{ width: '100%', height: height ?? MODAL_MINDMAP_HEIGHT, display: 'block' }} />;
 }
 
-// Инфографика: декларативный синтаксис AntV Infographic от модели → SVG движком @antv/infographic.
-// Чистим возможные ```-ограждения и обрезаем до строки "infographic ..." (модель иногда добавляет прозу).
+// Инфографика: JSON от модели (уже провалидирован normalizeInfographic в main) → своя вёрстка.
+//
+// Раньше рисовал движок @antv/infographic по декларативному синтаксису, и вёрстка ломалась
+// об него постоянно: у шаблонов фиксированная ширина полей, длинное значение наезжало на
+// описание, а заголовок — сам на себя. Промптом это не лечилось, только ужиманием текста до
+// четырёх символов. Своя раскладка потоковая: наезжать нечему, длинный текст переносится,
+// всё живёт на токенах темы и работает в тёмной так же, как в светлой.
+interface InfographicItem { label: string; value: string; desc: string }
+
 export function InfographicView({ syntax, height }: { syntax: string; height?: string }) {
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const box = boxRef.current;
-    if (!box) return;
-    let src = syntax.replace(/```[a-z]*\n?/gi, '').trim();
-    const at = src.indexOf('infographic ');
-    if (at > 0) src = src.slice(at);
-    if (!src) return;
-    const ig = new Infographic({ container: box, width: '100%', height: '100%' });
-    ig.render(src);
-    return () => ig.destroy();
-  }, [syntax]);
-  return <div ref={boxRef} style={{ width: '100%', height: height ?? MODAL_INFOGRAPHIC_HEIGHT }} />;
+  const data = (() => {
+    try {
+      const parsed = JSON.parse(syntax) as { title?: string; items?: InfographicItem[] };
+      return { title: parsed.title ?? '', items: Array.isArray(parsed.items) ? parsed.items : [] };
+    } catch {
+      return { title: '', items: [] as InfographicItem[] };
+    }
+  })();
+
+  if (!data.items.length) {
+    return <div style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-sm)' }}>Инфографика пуста.</div>;
+  }
+
+  return (
+    <div
+      style={{
+        width: '100%', height: height ?? MODAL_INFOGRAPHIC_HEIGHT,
+        overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16,
+        padding: '4px 2px',
+      }}
+    >
+      {data.title && (
+        <div
+          style={{
+            fontSize: 'var(--fs-xl)', fontWeight: 'var(--fw-semibold)',
+            lineHeight: 'var(--lh-snug)', letterSpacing: 'var(--ls-tight)',
+            color: 'var(--text-strong)', textWrap: 'balance',
+          }}
+        >
+          {data.title}
+        </div>
+      )}
+
+      {/* auto-fit: карточки сами раскладываются в 1–3 колонки по ширине узла или модалки,
+          поэтому одна и та же инфографика читается и в маленьком узле, и на весь экран. */}
+      <div
+        style={{
+          display: 'grid', gap: 10,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        }}
+      >
+        {data.items.map((item, i) => (
+          <div
+            key={i}
+            style={{
+              display: 'flex', flexDirection: 'column', gap: 4,
+              padding: '12px 14px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--surface)',
+              border: '1px solid var(--divider)',
+              // Полоска слева — единственная декорация; акцент один на всю систему.
+              borderLeft: '3px solid var(--accent)',
+            }}
+          >
+            {item.value && (
+              <div
+                style={{
+                  fontSize: 'var(--fs-2xl)', fontWeight: 'var(--fw-semibold)',
+                  lineHeight: 1.1, letterSpacing: 'var(--ls-tight)',
+                  color: 'var(--accent)', overflowWrap: 'anywhere',
+                }}
+              >
+                {item.value}
+              </div>
+            )}
+            {item.label && (
+              <div
+                style={{
+                  fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-semibold)',
+                  color: 'var(--text-strong)', lineHeight: 'var(--lh-snug)',
+                }}
+              >
+                {item.label}
+              </div>
+            )}
+            {item.desc && (
+              <div
+                style={{
+                  fontSize: 'var(--fs-sm)', color: 'var(--text-muted)',
+                  lineHeight: 'var(--lh-body)',
+                }}
+              >
+                {item.desc}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // Тест: JSON от модели ({questions:[{q,options,answer}]}, уже провалидирован в main) →

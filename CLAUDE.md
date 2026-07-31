@@ -28,7 +28,9 @@ UI построен на дизайн-системе Oblako (Liquid Glass) че�
 Qwen. История — `better-sqlite3` (нативный модуль, требует пересборки под
 Electron ABI, см. `postinstall`). Артефакты «Студии» блокнота рисуют
 детерминированные либы в renderer: майндкарты — `markmap-lib` + `markmap-view`
-(SVG), инфографика — `@antv/infographic` (SVG по декларативному DSL); модель
+(SVG), инфографика — своя вёрстка карточек в `studioViews.tsx` (движок
+`@antv/infographic` убран: его шаблоны с фиксированной шириной полей ломали
+раскладку, и промптом это не лечилось); модель
 отдаёт только структуру/текст (см. «Блокнот» ниже).
 
 ## Команды
@@ -211,8 +213,9 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   «Студия»: генерация 4 артефактов по выбранным источникам одноразовым прогоном
   `runChatMessage(prompt, [])`. Принцип: модель отдаёт ТОЛЬКО структуру/текст,
   рендер детерминированный в renderer (модалка в `Notebook.tsx`): саммари →
-  Markdown; майндкарта → markdown-аутлайн → `markmap`; инфографика → DSL AntV
-  → `@antv/infographic`; тест → строгий JSON (валидируется `normalizeQuiz` в
+  Markdown; майндкарта → markdown-аутлайн → `markmap`; инфографика → строгий
+  JSON (валидируется `normalizeInfographic` в main) → своя сетка карточек;
+  тест → строгий JSON (валидируется `normalizeQuiz` в
   main, страхует битый индекс ответа) → интерактивный `QuizView`. Каналы
   `NOTEBOOK_EXTRACT_URL`/`NOTEBOOK_STUDIO_GEN`.
 - Граф-воркспейс (исследовательский холст, режим `'graph'` новой вкладки).

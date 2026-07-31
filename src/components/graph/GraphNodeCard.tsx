@@ -110,13 +110,13 @@ const headerButton: React.CSSProperties = {
   color: 'var(--text-faint)', cursor: 'pointer',
 };
 
+// Вывод модели — БЕЗ подложки: чёрным по фону карточки, как текст в любом чат-боте.
+// Серая плашка тут только отнимала контраст и делала ответ похожим на поле ввода.
 const outputBox: React.CSSProperties = {
   flex: 1,
   minHeight: 0,
   overflowY: 'auto',
-  background: 'var(--surface-sunken)',
-  borderRadius: 'var(--radius-sm, 8px)',
-  padding: '8px 10px',
+  padding: '2px 0',
   fontSize: 'var(--fs-sm)',
   lineHeight: 'var(--lh-body)',
   color: 'var(--text-body)',
@@ -430,9 +430,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             // скролл и отступы только мешают, они масштабируются под контейнер. Подложку
             // тоже снимаем: с ней рисунок читается как вклеенный скриншот, а не как
             // содержимое карточки.
-            style={visual
-              ? { ...outputBox, overflow: 'hidden', padding: 0, background: 'transparent' }
-              : outputBox}
+            style={visual ? { ...outputBox, overflow: 'auto', padding: 0 } : outputBox}
           >
             {data.outputTitle && !visual && (
               <div style={{ fontWeight: 'var(--fw-semibold)', color: 'var(--text-strong)', marginBottom: 4 }}>
