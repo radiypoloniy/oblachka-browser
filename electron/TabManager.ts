@@ -166,6 +166,7 @@ export class TabManager {
   private onNavigateCb?: (url: string, title: string, wc: WebContents) => void;
   private onTitleUpdateCb?: (url: string, title: string) => void;
   private onHistoryOpenCb?: () => void;
+  private onQuickSearchCb?: () => void;
   private onFirstTabLoadCb?: () => void;
   // Общий колбэк для ВСЕХ AI-действий над выделением (перевод/выжимка/пересказ/объяснение) — та же
   // труба «координаты → Qwen → поповер», разные action только меняют промпт (см. TranslationService.ts).
@@ -263,6 +264,13 @@ export class TabManager {
   // Меняет движок для omnibox-навигации и ПКМ-поиска (единый источник для обеих точек).
   setSearchEngine(id: SearchEngineId): void {
     this.searchEngineId = id;
+  }
+
+  // Ctrl+E — поповер быстрого поиска (SearchPopoverManager.ts). Отдельным сеттером, а не ещё
+  // одним аргументом конструктора: их там уже двадцать, и позиционный список давно на пределе
+  // читаемости.
+  setOnQuickSearch(cb: () => void): void {
+    this.onQuickSearchCb = cb;
   }
 
   setBangStore(store: BangStore): void {
@@ -2310,6 +2318,9 @@ export class TabManager {
         event.preventDefault();
         this.findBarOpen = true;
         this.onFindOpenCb();                // Ctrl+F: открыть / сфокусировать FindBar
+      } else if (code === 'KeyE' && !shift) {
+        event.preventDefault();
+        this.onQuickSearchCb?.();           // Ctrl+E: поповер быстрого поиска поверх страницы
       } else if (code === 'KeyR' && !shift) {
         event.preventDefault();
         this.reload(this.activeId);         // Ctrl+R: обновить страницу

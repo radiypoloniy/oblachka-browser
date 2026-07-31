@@ -26,6 +26,9 @@ export default defineConfig({
         // FindBar (Ctrl+F) — отдельная WebContentsView поверх контента (см. FindBarManager.ts),
         // создаётся лениво на первый Ctrl+F, не при старте браузера.
         findbar: resolve(__dirname, 'src/findbar.html'),
+        // Поповер быстрого поиска (Ctrl+E) — отдельная WebContentsView поверх контента
+        // (см. SearchPopoverManager.ts), тоже лениво, на первое нажатие.
+        searchpopover: resolve(__dirname, 'src/searchpopover.html'),
         // Поповер паролей — отдельная WebContentsView поверх контента (см. PasswordPopoverManager.ts),
         // тот же нативный слой, что FindBar/SuggestDropdown.
         passwordpopover: resolve(__dirname, 'src/passwordpopover.html'),

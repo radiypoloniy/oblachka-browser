@@ -57,6 +57,9 @@ import { setActiveEngineId, registerEngine, setCacheManager } from './Translatio
 import { BergamotTranslationEngine } from './BergamotTranslationEngine';
 import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
+import { showSearchPopover, closeSearchPopover, syncSearchPopoverBounds, relayoutSearchPopover, setOnSearchRun, setTabManager as setSearchPopoverTabManager } from './SearchPopoverManager';
+import { buildSearchTargets } from './SearchTargets';
+import { applyBangTemplate, isValidBangTemplate } from '../shared/bangs';
 import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, onFocusStolen as onSuggestDropdownFocusStolen, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
 import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
@@ -510,7 +513,7 @@ function createWindow() {
     // вкладке, безусловный main-side хук на КАЖДУЮ реальную смену активной, а не только
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(); hideSuggestDropdown(); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover();
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(); closeSearchPopover(); hideSuggestDropdown(); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover();
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
       // её текущее состояние (или null) при каждом реальном переключении.
       passwordAutofill.onActiveTabChanged();
@@ -589,6 +592,50 @@ function createWindow() {
   // Аналогично для FindBarManager — только чтобы вернуть OS-фокус активной вкладке после
   // закрытия по IPC (крестик/Esc-в-поле), см. FindBarManager.ts::ensureIpcRegistered.
   setFindBarTabManager(tabs);
+  // Быстрый поиск (Ctrl+E): поповеру нужен тот же возврат OS-фокуса странице, что и FindBar,
+  // а решение «куда открыть найденное» остаётся здесь — вкладками владеет main.
+  setSearchPopoverTabManager(tabs);
+  setOnSearchRun(({ query, target, sameTab }) => {
+    // Шаблон приходит из вью поповера. Она наша (не веб-страница), но проверка обязательна:
+    // навигация по неподтверждённому шаблону — ровно то, от чего защищается импорт бэнгов.
+    if (!tabs || !isValidBangTemplate(target.template)) return;
+    const url = applyBangTemplate(target.template, query);
+    if (sameTab) tabs.navigate(tabs.getActiveId(), url);
+    else tabs.createTab(url);
+  });
+  tabs.setOnQuickSearch(() => {
+    void (async () => {
+      if (!win || !tabs) return;
+      const wc = tabs.getActiveWebContents();
+      if (!wc) return; // хаб: там своя поисковая строка, поповер поверх неё был бы дублем
+      const active = tabs.snapshot().find((t) => t.isActive);
+      // Выделенный текст — самый частый повод жать Ctrl+E, поэтому он же и запрос по умолчанию.
+      // Через executeJavaScript, а не через контекстное меню (как у AI-поповера): у хоткея
+      // никакого params.selectionText нет. Ограничение длины — чтобы случайно выделенная
+      // простыня не уехала в поле целиком.
+      //
+      // Гонка с таймаутом, а не голый await: чтение выделения — УДОБСТВО, а поповер по хоткею
+      // обязан появиться всегда. Занятый главный поток страницы (тяжёлый скрипт, зависший
+      // фрейм) не должен превращать Ctrl+E в «ничего не произошло».
+      const readSelection = wc.executeJavaScript('String(window.getSelection() ?? "")', true)
+        .then((v: unknown) => (typeof v === 'string' ? v : ''))
+        .catch(() => '');
+      const sel = await Promise.race([
+        readSelection,
+        new Promise<string>((r) => setTimeout(() => r(''), 150)),
+      ]);
+      const prefill = sel.trim().replace(/\s+/g, ' ').slice(0, 200);
+      showSearchPopover(win, {
+        targets: buildSearchTargets({
+          url: active?.url ?? '',
+          engineId: settings.getSearchEngine(),
+          faviconUrl: active?.faviconUrl ?? null,
+          bangs,
+        }),
+        prefill,
+      });
+    })();
+  });
   // Аналогично — PageTranslateManager читает WebContents активной вкладки для обхода DOM/
   // применения перевода (executeJavaScript), не управляет вкладками.
   setPageTranslateTabManager(tabs);
@@ -847,6 +894,7 @@ function registerIpc() {
     // Та же геометрия двигает FindBar — центрирование по контентной зоне (учитывает сайдбар) и
     // авто-скрытие при настройках/истории/загрузках (нулевые bounds — тот же сентинел, см. FindBarManager.ts).
     syncFindBarBounds(b);
+    syncSearchPopoverBounds(b); // тот же сентинел нулевых bounds — прячем поповер вместе с контентом
   });
   // Прямоугольник омнибокса — двигает нативную вью дропдауна подсказок (см.
   // shared/ipc.ts::IPC.OMNIBOX_SET_BOUNDS, SuggestDropdownManager.ts) — старый chrome-DOM
@@ -1365,6 +1413,7 @@ function registerIpc() {
   ipcMain.handle(IPC.AI_PANEL_TOGGLE, () => {
     if (!win) return false;
     const open = toggleAiPanel(win);
+    relayoutSearchPopover(); // та же свободная ширина, что у FindBar
     relayoutFindBar(); // свободная ширина под FindBar изменилась (см. FindBarManager.ts::computeBounds)
     if (open) maybeLazyWarmupOnDemand(); // явное намерение — открытие AI-панели
     return open;

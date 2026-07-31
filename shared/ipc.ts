@@ -32,6 +32,22 @@ export interface FindResult {
   count: number;       // всего совпадений
 }
 
+// Цель быстрого поиска (Ctrl+E, см. electron/SearchTargets.ts + SearchPopoverManager.ts).
+// Смысл фичи — не заставлять называть цель ДО запроса («!yt котики»), а предложить её самой:
+// первой идёт текущий сайт, если по его адресу удалось восстановить шаблон поиска.
+export interface SearchTarget {
+  // 'site' — текущий сайт, 'bang' — бэнг из хранилища, 'engine' — поисковик по умолчанию.
+  id: string;
+  name: string;
+  kind: 'site' | 'bang' | 'engine';
+  // Шаблон с {query} (тот же формат, что у бэнгов). Едет в поповер и возвращается обратно —
+  // main обязан ПРОВЕРИТЬ его (isValidBangTemplate) перед навигацией, а не доверять на слово.
+  template: string;
+  // Только для 'site' — favicon уже открытой страницы. Остальным целям иконку не тянем:
+  // это значило бы ходить на чужие домены при каждом открытии поповера.
+  faviconUrl?: string | null;
+}
+
 export interface TabErrorState {
   type: 'load' | 'crash';
   code: number;   // errorCode из did-fail-load; 0 при краше
