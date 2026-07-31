@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Folder, FolderOpen } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import { glassPlate, islandPlate } from '../styles/island';
 import {
@@ -476,6 +476,34 @@ function SortablePinCell({ tab, active, onClick, onContextMenu }: {
 }
 
 // ── Свёрнутая панель ──────────────────────────────────────────────────────────
+// Глиф папки в духе системной иконки macOS: не контур в одну линию, а две залитые стенки —
+// задняя с язычком и передняя поверх неё. Объём даётся ВТОРЫМ ТОНОМ, а не тенью: передняя
+// стенка — тот же цвет, подмешанный к фону (color-mix), то есть непрозрачный светлый оттенок.
+// Полупрозрачность тут не годится — на перекрытии двух слоёв она давала бы третий, грязный тон.
+//
+// tone — цвет папки (или нейтральный токен) ЯВНЫМ значением, а не через currentColor:
+// подмешивание идёт тем же color-mix, что уже держит заливку острова, и в этой форме
+// (конкретный цвет + var(--surface)) оно в проекте проверено.
+function FolderGlyph({ tone, size = 18, open }: { tone: string; size?: number; open?: boolean }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden focusable="false">
+      {/* Задняя стенка с язычком */}
+      <path
+        fill={tone}
+        d="M2 7.4C2 6 3.1 4.9 4.5 4.9h4.2c.7 0 1.4.3 1.9.8l1.1 1.2c.3.3.7.5 1.1.5h6.7c1.4 0 2.5 1.1 2.5 2.5v2.2H2V7.4z"
+      />
+      {/* Передняя стенка. У раскрытой папки слегка отклонена от нижней кромки — тот же приём,
+          которым открытую папку показывает сама система. */}
+      <path
+        fill={`color-mix(in srgb, ${tone} 58%, var(--surface))`}
+        transform={open ? 'rotate(-7 3.5 19.4)' : undefined}
+        d="M2 10.8c0-1 .8-1.8 1.8-1.8h16.4c1 0 1.8.8 1.8 1.8v6.7c0 1.4-1.1 2.5-2.5 2.5H4.5C3.1 20 2 18.9 2 17.5v-6.7z"
+      />
+    </svg>
+  );
+}
+
+
 // Есть ли активная вкладка внутри узлов (рекурсивно — группа может лежать в группе).
 // Нужно свёрнутой панели: у сложенной папки содержимое не видно, и без этой пометки
 // пользователь теряет активную вкладку из виду совсем.
@@ -601,7 +629,6 @@ function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTa
 
   const color = group.color ? (GROUP_COLORS[group.color] ?? null) : null;
   const hasActive = nodesContainTab(group.children, activeId);
-  const FolderIcon = group.collapsed ? Folder : FolderOpen;
 
   return (
     <div
@@ -643,7 +670,7 @@ function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTa
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
         >
-          <FolderIcon size={18} />
+          <FolderGlyph tone={color ?? 'var(--text-muted)'} size={18} open={!group.collapsed} />
           {/* Активная вкладка внутри сложенной папки — иначе она исчезает из панели бесследно. */}
           {group.collapsed && hasActive && (
             <span style={{
@@ -1391,11 +1418,11 @@ export default function Sidebar({
               </div>
             )}
             {dragGroup && (
-              <div style={{
-                ...collapsedGhostPlate,
-                padding: 5, color: (dragGroup.color ? GROUP_COLORS[dragGroup.color] : null) ?? 'var(--text-muted)',
-              }}>
-                <Folder size={18} />
+              <div style={{ ...collapsedGhostPlate, padding: 5 }}>
+                <FolderGlyph
+                  tone={(dragGroup.color ? GROUP_COLORS[dragGroup.color] : null) ?? 'var(--text-muted)'}
+                  size={18}
+                />
               </div>
             )}
           </DragOverlay>
