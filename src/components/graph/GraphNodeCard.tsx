@@ -1,6 +1,8 @@
 import ReactMarkdown from 'react-markdown';
 import { Handle, NodeResizer, Position } from '@xyflow/react';
-import { Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink, X, Copy, Download } from 'lucide-react';
+import {
+  Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink, X, Copy, Download, Files,
+} from 'lucide-react';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
 import { NODE_KINDS } from '../../../shared/graph';
 import type { ImagePreset } from '../../../shared/imagePresets';
@@ -21,6 +23,7 @@ export interface GraphNodeData extends Record<string, unknown> {
   onPatch: (patch: { title?: string; config?: GraphNodeConfig }) => void;
   onRun: () => void;
   onDelete: () => void;
+  onDuplicate: () => void;
   // Только для source.file — нативный диалог выбора документа (его открывает main).
   onPickFile: () => void;
   // Только для image.prompt: список доступных пресетов и запрос на открытие редактора своих.
@@ -188,6 +191,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             fontSize: 'var(--fs-xs)', fontWeight: 'var(--fw-semibold)',
             letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
             color: 'var(--text-muted)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
           }}
         >
           {spec.label}
@@ -229,6 +233,15 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             </button>
           </>
         )}
+        <button
+          type="button"
+          className="nodrag"
+          onClick={data.onDuplicate}
+          title="Дублировать узел (Ctrl+D)"
+          style={headerButton}
+        >
+          <Files size={13} />
+        </button>
         <button
           type="button"
           className="nodrag"

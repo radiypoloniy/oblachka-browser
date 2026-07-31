@@ -68,6 +68,7 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
       onPatch: () => {},
       onRun: () => {},
       onDelete: () => {},
+      onDuplicate: () => {},
       onPickFile: () => {},
       imagePresets: [],
       onEditPresets: () => {},
@@ -129,6 +130,8 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   // колбэки на каждое движение мыши по холсту — держим их зеркалом в ref.
   const edgesRef = useRef<Edge[]>([]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
+  const nodesRef = useRef<RFNode[]>([]);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
 
   const refreshList = useCallback(async () => {
     const metas = await window.oblako.listGraphs();
@@ -318,6 +321,59 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
     });
   }, []);
 
+  // Дублирование. Копируем настройку узла (тип, заголовок, конфиг, размер), но НЕ результат:
+  // у копии свои входы, и чужой выхлоп с чужим отпечатком выглядел бы как уже посчитанный.
+  // Связи МЕЖДУ копируемыми узлами тоже дублируются — иначе копировать цепочку бессмысленно,
+  // а связи наружу нет: к какому из двух одинаковых узлов их вести, решает человек.
+  const duplicateNodes = useCallback((ids: string[]) => {
+    const source = nodesRef.current.filter((n) => ids.includes(n.id));
+    if (!source.length) return;
+    const idMap = new Map(source.map((n) => [n.id, crypto.randomUUID()]));
+
+    setNodes((ns) => [
+      ...ns.map((n) => ({ ...n, selected: false })),
+      ...source.map((n) => ({
+        ...n,
+        id: idMap.get(n.id)!,
+        position: { x: n.position.x + 48, y: n.position.y + 48 },
+        selected: true,
+        data: {
+          ...n.data,
+          status: 'idle' as GraphNodeStatus,
+          output: null, outputTitle: null, error: null,
+        },
+      })),
+    ]);
+    setEdges((es) => [
+      ...es,
+      ...es
+        .filter((e) => idMap.has(e.source) && idMap.has(e.target))
+        .map((e) => ({
+          ...e,
+          id: crypto.randomUUID(),
+          source: idMap.get(e.source)!,
+          target: idMap.get(e.target)!,
+        })),
+    ]);
+  }, []);
+
+  // Ctrl+D. Печать в полях узла не должна дублировать узел, поэтому пропускаем событие,
+  // если фокус в поле ввода — тот же гвард, что React Flow ставит своим горячим клавишам.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.key.toLowerCase() !== 'd') return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
+      const selected = nodesRef.current.filter((n) => n.selected).map((n) => n.id);
+      if (!selected.length) return;
+      e.preventDefault();
+      duplicateNodes(selected);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [duplicateNodes]);
+
   const openWebApp = useCallback((id: string) => {
     setNodes((ns) => {
       const node = ns.find((n) => n.id === id);
@@ -396,6 +452,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           onPatch: () => {},
           onRun: () => {},
           onDelete: () => {},
+          onDuplicate: () => {},
           onPickFile: () => {},
           imagePresets: [],
           onEditPresets: () => {},
@@ -417,6 +474,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         onPatch: (patch: { title?: string; config?: GraphNodeConfig }) => patchNode(n.id, patch),
         onRun: () => runNode(n.id),
         onDelete: () => deleteNode(n.id),
+        onDuplicate: () => duplicateNodes([n.id]),
         onPickFile: () => void pickFile(n.id),
         imagePresets: allPresets,
         onEditPresets: () => setPresetEditorOpen(true),
@@ -425,8 +483,8 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         onOpenWebApp: () => openWebApp(n.id),
       },
     })),
-    [nodes, patchNode, runNode, deleteNode, pickFile, openWebApp, allPresets,
-      copyOutput, saveOutput],
+    [nodes, patchNode, runNode, deleteNode, duplicateNodes, pickFile, openWebApp,
+      allPresets, copyOutput, saveOutput],
   );
 
   const commitRename = async () => {
