@@ -266,7 +266,8 @@ export const IPC = {
   // Узел-веб-приложение: чужой AI-сайт в панели 1:1. Обмен только через руку человека —
   // автоматической отправки нет по замыслу (см. electron/graphWebApps.ts).
   GRAPH_WEBAPP_SHOW:    'graph:webapp-show',    // renderer → main: (graphId, nodeId, url, bounds) — показать сайт в панели
-  GRAPH_WEBAPP_BOUNDS:  'graph:webapp-bounds',  // renderer → main: новый прямоугольник панели (нулевой = закрыть)
+  GRAPH_WEBAPP_BOUNDS:  'graph:webapp-bounds',  // renderer → main: (graphId, nodeId, bounds) — нулевой прямоугольник = скрыть окно
+  GRAPH_WEBAPP_RAISE:   'graph:webapp-raise',   // renderer → main: поднять окно узла над остальными
   GRAPH_WEBAPP_CLOSE:   'graph:webapp-close',   // renderer → main: (graphId, nodeId) — уничтожить вью узла
   GRAPH_WEBAPP_INSERT:  'graph:webapp-insert',  // renderer → main: (graphId, nodeId) → положить промпт графа в поле ввода
   GRAPH_WEBAPP_CAPTURE: 'graph:webapp-capture', // renderer → main: (graphId, nodeId, mode) → забрать ответ в результат узла
@@ -1523,7 +1524,8 @@ export interface OblakoApi {
   // его не считает — иначе состояние разъехалось бы), пойманный ответ main же и пишет в
   // результат узла с правильным отпечатком входов.
   showGraphWebApp(graphId: number, nodeId: string, url: string, bounds: ContentBounds): Promise<void>;
-  setGraphWebAppBounds(bounds: ContentBounds): Promise<void>;
+  setGraphWebAppBounds(graphId: number, nodeId: string, bounds: ContentBounds): Promise<void>;
+  raiseGraphWebApp(graphId: number, nodeId: string): Promise<void>;
   closeGraphWebApp(graphId: number, nodeId: string): Promise<void>;
   insertGraphWebAppPrompt(graphId: number, nodeId: string): Promise<boolean>;
   captureGraphWebAppAnswer(graphId: number, nodeId: string, mode: 'selection' | 'last'): Promise<string>;

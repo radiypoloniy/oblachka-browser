@@ -308,8 +308,10 @@ const api: OblakoApi = {
   // Узел-веб-приложение графа: живой чужой сайт в панели 1:1, обмен через руку человека.
   showGraphWebApp: (graphId: number, nodeId: string, url: string, bounds: ContentBounds) =>
     ipcRenderer.invoke(IPC.GRAPH_WEBAPP_SHOW, graphId, nodeId, url, bounds) as Promise<void>,
-  setGraphWebAppBounds: (bounds: ContentBounds) =>
-    ipcRenderer.invoke(IPC.GRAPH_WEBAPP_BOUNDS, bounds) as Promise<void>,
+  setGraphWebAppBounds: (graphId: number, nodeId: string, bounds: ContentBounds) =>
+    ipcRenderer.invoke(IPC.GRAPH_WEBAPP_BOUNDS, graphId, nodeId, bounds) as Promise<void>,
+  raiseGraphWebApp: (graphId: number, nodeId: string) =>
+    ipcRenderer.invoke(IPC.GRAPH_WEBAPP_RAISE, graphId, nodeId) as Promise<void>,
   closeGraphWebApp: (graphId: number, nodeId: string) =>
     ipcRenderer.invoke(IPC.GRAPH_WEBAPP_CLOSE, graphId, nodeId) as Promise<void>,
   insertGraphWebAppPrompt: (graphId: number, nodeId: string) =>

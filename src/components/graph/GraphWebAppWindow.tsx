@@ -21,6 +21,10 @@ interface Props {
   title: string;
   hostLabel: string;
   note: string | null;
+  // Порядковый номер открытия — окна раскладываются лесенкой, чтобы второй чат не лёг
+  // ровно поверх первого (сравнивать два ответа рядом — основной сценарий).
+  index: number;
+  onFocus: () => void;
   onClose: () => void;
   onInsert: () => void;
   onCaptureSelection: () => void;
@@ -65,10 +69,12 @@ function HeaderButton({ title, onClick, children }: {
 }
 
 export default function GraphWebAppWindow({
-  graphId, nodeId, url, title, hostLabel, note,
-  onClose, onInsert, onCaptureSelection, onCaptureLast,
+  graphId, nodeId, url, title, hostLabel, note, index,
+  onFocus, onClose, onInsert, onCaptureSelection, onCaptureLast,
 }: Props) {
-  const [rect, setRect] = useState({ x: 120, y: 60, w: 460, h: 560 });
+  const [rect, setRect] = useState(() => ({
+    x: 100 + (index % 4) * 40, y: 50 + (index % 4) * 34, w: 460, h: 560,
+  }));
   const holeRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ mode: 'move' | 'resize'; dx: number; dy: number } | null>(null);
   const shownRef = useRef(false);
@@ -94,7 +100,7 @@ export default function GraphWebAppWindow({
         void window.oblako.showGraphWebApp(graphId, nodeId, url, box());
         return;
       }
-      void window.oblako.setGraphWebAppBounds(box());
+      void window.oblako.setGraphWebAppBounds(graphId, nodeId, box());
     };
     send();
     const ro = new ResizeObserver(send);
@@ -106,8 +112,8 @@ export default function GraphWebAppWindow({
   // Закрытие окна прячет вью, но НЕ уничтожает её: переписка в чужом чате должна пережить
   // сворачивание. Уничтожается вью только вместе с узлом (см. onNodesChange в GraphCanvas).
   useEffect(() => () => {
-    void window.oblako.setGraphWebAppBounds({ x: 0, y: 0, width: 0, height: 0 });
-  }, []);
+    void window.oblako.setGraphWebAppBounds(graphId, nodeId, { x: 0, y: 0, width: 0, height: 0 });
+  }, [graphId, nodeId]);
 
   // Esc — страховочный выход. Нативная вью лежит поверх React и закрывает часть экрана;
   // если до крестика почему-то не добраться, окно всё равно должно убираться с клавиатуры.
@@ -148,6 +154,9 @@ export default function GraphWebAppWindow({
 
   return (
     <div
+      // Любое касание окна поднимает его наверх — и React-рамку, и нативную вью разом,
+      // иначе их порядки разъезжаются (см. raiseGraphWebApp в GraphWebAppManager).
+      onPointerDownCapture={onFocus}
       style={{
         position: 'fixed', left: rect.x, top: rect.y, width: rect.w, height: rect.h,
         zIndex: 5, display: 'flex', flexDirection: 'column',

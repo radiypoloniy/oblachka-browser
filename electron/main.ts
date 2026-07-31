@@ -22,7 +22,8 @@ import { BookmarkManager } from './BookmarkManager';
 import { GraphStore } from './GraphStore';
 import { cancelGraphRun, composeWebAppPrompt, computeNodeInputHash, runGraph } from './GraphEngine';
 import {
-  captureAnswer, closeGraphWebApp, insertPrompt, setGraphWebAppBounds, showGraphWebApp,
+  captureAnswer, closeGraphWebApp, insertPrompt, raiseGraphWebApp,
+  setGraphWebAppBounds, showGraphWebApp,
   setTabManager as setGraphWebAppTabManager,
 } from './GraphWebAppManager';
 import type { GraphStructure } from '../shared/graph';
@@ -1425,8 +1426,11 @@ function registerIpc() {
   ipcMain.handle(IPC.GRAPH_WEBAPP_SHOW, (_e, graphId: number, nodeId: string, url: string, b: ContentBounds) => {
     if (win) showGraphWebApp(win, graphId, nodeId, url, toRect(b));
   });
-  ipcMain.handle(IPC.GRAPH_WEBAPP_BOUNDS, (_e, b: ContentBounds) => {
-    if (win) setGraphWebAppBounds(win, toRect(b));
+  ipcMain.handle(IPC.GRAPH_WEBAPP_BOUNDS, (_e, graphId: number, nodeId: string, b: ContentBounds) => {
+    if (win) setGraphWebAppBounds(win, graphId, nodeId, toRect(b));
+  });
+  ipcMain.handle(IPC.GRAPH_WEBAPP_RAISE, (_e, graphId: number, nodeId: string) => {
+    if (win) raiseGraphWebApp(win, graphId, nodeId);
   });
   ipcMain.handle(IPC.GRAPH_WEBAPP_CLOSE, (_e, graphId: number, nodeId: string) => {
     if (win) closeGraphWebApp(win, graphId, nodeId);

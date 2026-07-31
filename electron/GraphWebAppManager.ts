@@ -20,11 +20,12 @@ import {
 interface Entry {
   view: WebContentsView;
   url: string;
+  visible: boolean;
 }
 
-const views = new Map<string, Entry>(); // ключ — `${graphId}:${nodeId}`
-let visibleKey: string | null = null;
-let lastBounds: Rectangle | null = null;
+// Ключ — `${graphId}:${nodeId}`. Открытых окон может быть несколько: сравнивать ответы двух
+// моделей рядом — обычный сценарий графа, ради него всё и затевалось.
+const views = new Map<string, Entry>();
 
 let tabManagerRef: TabManager | null = null;
 export function setTabManager(tm: TabManager): void {
@@ -78,45 +79,54 @@ function ensureView(win: BrowserWindow, key: string, url: string): Entry | null 
   });
 
   view.webContents.loadURL(url).catch(() => { /* покажет сама страница */ });
-  const entry: Entry = { view, url };
+  const entry: Entry = { view, url, visible: false };
   views.set(key, entry);
   void win;
   return entry;
 }
 
-// Показать сайт узла в панели. Одновременно виден ровно один — панель одна.
+function hideEntry(win: BrowserWindow, entry: Entry): void {
+  if (!entry.visible) return;
+  if (!win.isDestroyed()) {
+    try { win.contentView.removeChildView(entry.view); } catch { /* окно уже закрылось */ }
+  }
+  entry.visible = false;
+}
+
 export function showGraphWebApp(
   win: BrowserWindow, graphId: number, nodeId: string, url: string, bounds: Rectangle,
 ): void {
-  const key = keyOf(graphId, nodeId);
-  const entry = ensureView(win, key, url);
+  const entry = ensureView(win, keyOf(graphId, nodeId), url);
   if (!entry) return;
-
-  if (visibleKey && visibleKey !== key) hideCurrent(win);
-  if (visibleKey !== key) {
+  if (!entry.visible) {
     win.contentView.addChildView(entry.view);
-    visibleKey = key;
+    entry.visible = true;
   }
-  lastBounds = bounds;
   entry.view.setBounds(bounds);
 }
 
-export function setGraphWebAppBounds(win: BrowserWindow, bounds: Rectangle): void {
-  if (!visibleKey) return;
-  // Нулевой прямоугольник — сентинел «панель закрыта», тот же приём, что у контента вкладок.
-  if (bounds.width < 2 || bounds.height < 2) { hideCurrent(win); return; }
-  lastBounds = bounds;
-  views.get(visibleKey)?.view.setBounds(bounds);
+export function setGraphWebAppBounds(
+  win: BrowserWindow, graphId: number, nodeId: string, bounds: Rectangle,
+): void {
+  const entry = views.get(keyOf(graphId, nodeId));
+  if (!entry) return;
+  // Нулевой прямоугольник — сентинел «окно закрыто», тот же приём, что у контента вкладок.
+  if (bounds.width < 2 || bounds.height < 2) { hideEntry(win, entry); return; }
+  if (!entry.visible) {
+    win.contentView.addChildView(entry.view);
+    entry.visible = true;
+  }
+  entry.view.setBounds(bounds);
 }
 
-export function hideCurrent(win: BrowserWindow): void {
-  if (!visibleKey) return;
-  const entry = views.get(visibleKey);
-  if (entry && !win.isDestroyed()) {
-    try { win.contentView.removeChildView(entry.view); } catch { /* окно уже закрылось */ }
-  }
-  visibleKey = null;
-  void lastBounds;
+// Поднять окно над остальными. Нативные вью стыкуются по порядку добавления, а React-рамки —
+// по порядку в DOM. Если их не синхронизировать, при наложении окон сверху окажется рамка
+// одного окна с сайтом другого. addChildView для уже добавленной вью переносит её в конец,
+// то есть наверх; renderer в тот же момент переставляет своё окно последним в списке.
+export function raiseGraphWebApp(win: BrowserWindow, graphId: number, nodeId: string): void {
+  const entry = views.get(keyOf(graphId, nodeId));
+  if (!entry || !entry.visible || win.isDestroyed()) return;
+  try { win.contentView.addChildView(entry.view); } catch { /* окно закрылось */ }
 }
 
 // Узел удалили с холста — вью больше не нужна.
@@ -124,7 +134,7 @@ export function closeGraphWebApp(win: BrowserWindow, graphId: number, nodeId: st
   const key = keyOf(graphId, nodeId);
   const entry = views.get(key);
   if (!entry) return;
-  if (visibleKey === key) hideCurrent(win);
+  hideEntry(win, entry);
   try { entry.view.webContents.close(); } catch { /* уже закрыт */ }
   views.delete(key);
 }

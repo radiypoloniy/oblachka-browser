@@ -97,12 +97,15 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   const [edges, setEdges] = useState<Edge[]>([]);
   const [running, setRunning] = useState(false);
   const [loading, setLoading] = useState(true);
-  // Открытый узел-веб-приложение. Панель одна и показывает ровно один сайт: нативная вью
-  // не умеет ни масштабироваться с холстом, ни обрезаться по его краю (см. шапку файла).
-  const [webApp, setWebApp] = useState<
-    { nodeId: string; url: string; title: string; hostLabel: string } | null
-  >(null);
-  const [webAppNote, setWebAppNote] = useState<string | null>(null);
+  // Открытые узлы-веб-приложения. Их может быть несколько: держать рядом ChatGPT и Gemini,
+  // сравнивая ответы, — основной сценарий графа. Порядок в массиве = порядок наложения,
+  // последний сверху (см. focusWebApp).
+  const [webApps, setWebApps] = useState<
+    { nodeId: string; url: string; title: string; hostLabel: string }[]
+  >([]);
+  // Подсказка последнего действия — своя у каждого окна, иначе ответ одной кнопки
+  // появлялся бы в чужом чате.
+  const [webAppNotes, setWebAppNotes] = useState<Record<string, string>>({});
   // Переименование воркспейса прямо в списке: id строки в правке и текущий черновик.
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
@@ -220,7 +223,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
       // страницы остался бы висеть до конца сессии. Для не-веб-узлов вызов безвреден.
       if (ch.type === 'remove' && currentId !== null) {
         void window.oblako.closeGraphWebApp(currentId, ch.id);
-        setWebApp((cur) => (cur?.nodeId === ch.id ? null : cur));
+        setWebApps((cur) => cur.filter((w) => w.nodeId !== ch.id));
       }
     }
     setNodes((ns) => applyNodeChanges(changes, ns));
@@ -279,33 +282,51 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         // панели. Заголовок узла важнее: его человек писал сам.
         let host = url;
         try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { /* оставим как есть */ }
-        setWebAppNote(null);
-        setWebApp({
-          nodeId: id,
-          url,
-          title: (node?.data.title ?? '').trim() || host,
-          hostLabel: host,
+        setWebAppNotes((prev) => { const next = { ...prev }; delete next[id]; return next; });
+        setWebApps((cur) => {
+          // Повторное «Открыть чат» не плодит окно, а поднимает уже открытое.
+          const without = cur.filter((w) => w.nodeId !== id);
+          return [...without, {
+            nodeId: id,
+            url,
+            title: (node?.data.title ?? '').trim() || host,
+            hostLabel: host,
+          }];
         });
       }
       return ns; // читаем актуальный узел из состояния, само состояние не трогаем
     });
   }, []);
 
-  const insertPrompt = async () => {
-    if (!webApp || currentId === null) return;
-    const ok = await window.oblako.insertGraphWebAppPrompt(currentId, webApp.nodeId);
-    setWebAppNote(ok
+  const setNote = (nodeId: string, text: string) =>
+    setWebAppNotes((prev) => ({ ...prev, [nodeId]: text }));
+
+  const insertPrompt = async (nodeId: string) => {
+    if (currentId === null) return;
+    const ok = await window.oblako.insertGraphWebAppPrompt(currentId, nodeId);
+    setNote(nodeId, ok
       ? 'Промпт вставлен — отправьте его сами'
       : 'Не нашёл поле ввода. Дождитесь загрузки страницы или вставьте текст вручную');
   };
 
-  const captureAnswer = async (mode: 'selection' | 'last') => {
-    if (!webApp || currentId === null) return;
-    const text = await window.oblako.captureGraphWebAppAnswer(currentId, webApp.nodeId, mode);
-    if (text) { setWebAppNote(`Забрано ${text.length} символов — ответ лёг в узел`); return; }
-    setWebAppNote(mode === 'selection'
+  const captureAnswer = async (nodeId: string, mode: 'selection' | 'last') => {
+    if (currentId === null) return;
+    const text = await window.oblako.captureGraphWebAppAnswer(currentId, nodeId, mode);
+    if (text) { setNote(nodeId, `Забрано ${text.length} символов — ответ лёг в узел`); return; }
+    setNote(nodeId, mode === 'selection'
       ? 'Ничего не выделено — выделите ответ мышью и нажмите ещё раз'
       : 'Не нашёл последний ответ на этой странице — выделите его мышью');
+  };
+
+  // Клик по окну поднимает его над остальными — и React-рамку (последний в массиве),
+  // и нативную вью (raiseGraphWebApp). Порядки обязаны совпадать.
+  const focusWebApp = (nodeId: string) => {
+    if (currentId !== null) void window.oblako.raiseGraphWebApp(currentId, nodeId);
+    setWebApps((cur) => {
+      if (cur[cur.length - 1]?.nodeId === nodeId) return cur; // уже сверху
+      const target = cur.find((w) => w.nodeId === nodeId);
+      return target ? [...cur.filter((w) => w.nodeId !== nodeId), target] : cur;
+    });
   };
 
   const addNode = useCallback((kind: GraphNodeKind) => {
@@ -608,20 +629,23 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           </ReactFlow>
           </div>
 
-          {webApp && (
+          {currentId !== null && webApps.map((app, i) => (
             <GraphWebAppWindow
-              graphId={currentId!}
-              nodeId={webApp.nodeId}
-              url={webApp.url}
-              title={webApp.title}
-              hostLabel={webApp.hostLabel}
-              note={webAppNote}
-              onClose={() => { setWebApp(null); setWebAppNote(null); }}
-              onInsert={() => void insertPrompt()}
-              onCaptureSelection={() => void captureAnswer('selection')}
-              onCaptureLast={() => void captureAnswer('last')}
+              key={app.nodeId}
+              graphId={currentId}
+              nodeId={app.nodeId}
+              url={app.url}
+              title={app.title}
+              hostLabel={app.hostLabel}
+              note={webAppNotes[app.nodeId] ?? null}
+              index={i}
+              onFocus={() => focusWebApp(app.nodeId)}
+              onClose={() => setWebApps((cur) => cur.filter((w) => w.nodeId !== app.nodeId))}
+              onInsert={() => void insertPrompt(app.nodeId)}
+              onCaptureSelection={() => void captureAnswer(app.nodeId, 'selection')}
+              onCaptureLast={() => void captureAnswer(app.nodeId, 'last')}
             />
-          )}
+          ))}
         </div>
       </div>
     </div>
