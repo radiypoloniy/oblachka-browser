@@ -265,6 +265,7 @@ export const IPC = {
   GRAPH_PRESETS_LIST:  'graph:presets-list',   // renderer → main: пользовательские пресеты картинок
   GRAPH_PRESET_SAVE:   'graph:preset-save',    // renderer → main: создать/обновить свой пресет
   GRAPH_PRESET_DELETE: 'graph:preset-delete',  // renderer → main: удалить свой пресет
+  GRAPH_SAVE_OUTPUT: 'graph:save-output',  // renderer → main: диалог «сохранить результат узла в файл»
   GRAPH_PICK_FILE: 'graph:pick-file',  // renderer → main: нативный диалог выбора документа для узла-файла
   GRAPH_PROGRESS: 'graph:progress', // main → renderer: GraphProgress (статусы + стрим-чанки)
 
@@ -1525,6 +1526,9 @@ export interface OblakoApi {
   // Нативный диалог выбора документа. Путь возвращается в renderer только чтобы показать
   // имя файла и положить его в конфиг узла; читает файл всегда main (electron/FileExtract.ts).
   pickGraphFile(): Promise<string | null>;
+  // Сохранение результата узла на диск. Диалог и запись — в main; renderer отдаёт только
+  // текст и предлагаемое имя.
+  saveGraphOutput(suggestedName: string, text: string): Promise<boolean>;
   // Пресеты генератора промптов для картинок. Встроенные лежат в shared/imagePresets.ts и
   // через IPC не ездят — сюда приходят только пользовательские.
   listImagePresets(): Promise<ImagePreset[]>;

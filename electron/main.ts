@@ -10,6 +10,7 @@ applyChromeUserAgent();
 import type { MenuItemConstructorOptions, Session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { TabManager, HUB_ID } from './TabManager';
 import { SessionManager } from './SessionManager';
@@ -1420,6 +1421,28 @@ function registerIpc() {
   ipcMain.handle(IPC.GRAPH_PRESETS_LIST, () => graphs.listImagePresets());
   ipcMain.handle(IPC.GRAPH_PRESET_SAVE, (_e, preset: ImagePreset) => graphs.saveImagePreset(preset));
   ipcMain.handle(IPC.GRAPH_PRESET_DELETE, (_e, id: string) => graphs.deleteImagePreset(id));
+  ipcMain.handle(IPC.GRAPH_SAVE_OUTPUT, async (_e, suggestedName: string, text: string) => {
+    if (!win || typeof text !== 'string' || !text) return false;
+    // Имя чистим от того, что Windows не пустит в путь: заголовок узла пишет человек,
+    // и двоеточие в «Поиск: чайники» иначе сорвало бы сохранение.
+    const safe = (suggestedName || 'результат').replace(/[\/:*?"<>|]/g, ' ').trim().slice(0, 80);
+    const res = await dialog.showSaveDialog(win, {
+      title: 'Сохранить результат',
+      defaultPath: `${safe || 'результат'}.md`,
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'Текст', extensions: ['txt'] },
+      ],
+    });
+    if (res.canceled || !res.filePath) return false;
+    try {
+      await fsp.writeFile(res.filePath, text, 'utf8');
+      return true;
+    } catch (e) {
+      console.warn('[Graph] сохранение результата упало:', (e as Error).message);
+      return false;
+    }
+  });
   ipcMain.handle(IPC.GRAPH_PICK_FILE, async () => {
     if (!win) return null;
     const res = await dialog.showOpenDialog(win, {

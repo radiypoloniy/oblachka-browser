@@ -71,6 +71,8 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
       onPickFile: () => {},
       imagePresets: [],
       onEditPresets: () => {},
+      onCopyOutput: () => {},
+      onSaveOutput: () => {},
       onOpenWebApp: () => {},
     },
   }));
@@ -294,6 +296,28 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
       : n)));
   }, []);
 
+  // Результат наружу. Обе операции читают актуальный узел из состояния через setNodes:
+  // замыкание на nodes пересоздавало бы колбэки на каждое движение по холсту.
+  const copyOutput = useCallback((id: string) => {
+    setNodes((ns) => {
+      const text = ns.find((n) => n.id === id)?.data.output;
+      if (text) void navigator.clipboard.writeText(text);
+      return ns;
+    });
+  }, []);
+
+  const saveOutput = useCallback((id: string) => {
+    setNodes((ns) => {
+      const node = ns.find((n) => n.id === id);
+      const text = node?.data.output;
+      if (text) {
+        const name = (node?.data.outputTitle || node?.data.title || 'результат').trim();
+        void window.oblako.saveGraphOutput(name, text);
+      }
+      return ns;
+    });
+  }, []);
+
   const openWebApp = useCallback((id: string) => {
     setNodes((ns) => {
       const node = ns.find((n) => n.id === id);
@@ -375,6 +399,8 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           onPickFile: () => {},
           imagePresets: [],
           onEditPresets: () => {},
+          onCopyOutput: () => {},
+          onSaveOutput: () => {},
           onOpenWebApp: () => {},
         },
       }];
@@ -394,10 +420,13 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         onPickFile: () => void pickFile(n.id),
         imagePresets: allPresets,
         onEditPresets: () => setPresetEditorOpen(true),
+        onCopyOutput: () => void copyOutput(n.id),
+        onSaveOutput: () => void saveOutput(n.id),
         onOpenWebApp: () => openWebApp(n.id),
       },
     })),
-    [nodes, patchNode, runNode, deleteNode, pickFile, openWebApp, allPresets],
+    [nodes, patchNode, runNode, deleteNode, pickFile, openWebApp, allPresets,
+      copyOutput, saveOutput],
   );
 
   const commitRename = async () => {

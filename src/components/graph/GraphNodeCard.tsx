@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import { Handle, NodeResizer, Position } from '@xyflow/react';
-import { Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink, X } from 'lucide-react';
+import { Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink, X, Copy, Download } from 'lucide-react';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
 import { NODE_KINDS } from '../../../shared/graph';
 import type { ImagePreset } from '../../../shared/imagePresets';
@@ -26,6 +26,9 @@ export interface GraphNodeData extends Record<string, unknown> {
   // Только для image.prompt: список доступных пресетов и запрос на открытие редактора своих.
   imagePresets: ImagePreset[];
   onEditPresets: () => void;
+  // Вынести результат наружу: в буфер обмена и файлом на диск.
+  onCopyOutput: () => void;
+  onSaveOutput: () => void;
   // Только для webapp.chat — открыть живой сайт в панели 1:1 (в карточку нативную вью
   // положить нельзя, см. шапку GraphCanvas.tsx).
   onOpenWebApp: () => void;
@@ -98,6 +101,13 @@ const fieldStyle: React.CSSProperties = {
   padding: '7px 9px',
   outline: 'none',
   resize: 'none',
+};
+
+const headerButton: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 22, height: 22, flex: 'none', padding: 0,
+  background: 'none', border: 0, borderRadius: 6,
+  color: 'var(--text-faint)', cursor: 'pointer',
 };
 
 const outputBox: React.CSSProperties = {
@@ -197,6 +207,28 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         >
           <Play size={13} />
         </button>
+        {data.output && (
+          <>
+            <button
+              type="button"
+              className="nodrag"
+              onClick={data.onCopyOutput}
+              title="Скопировать результат"
+              style={headerButton}
+            >
+              <Copy size={13} />
+            </button>
+            <button
+              type="button"
+              className="nodrag"
+              onClick={data.onSaveOutput}
+              title="Сохранить результат в файл"
+              style={headerButton}
+            >
+              <Download size={13} />
+            </button>
+          </>
+        )}
         <button
           type="button"
           className="nodrag"
