@@ -14,6 +14,12 @@ export type GraphNodeKind =
   | 'source.url'      // URL → читаемый текст страницы (NotebookExtract)
   | 'source.note'     // просто текст, введённый руками
   | 'qwen.transform'  // инструкция + входы → ответ локальной модели
+  // Артефакты «Студии» — тот же generateStudio, что у блокнота: модель отдаёт структуру,
+  // картинку детерминированно рисует renderer (markmap / @antv/infographic / QuizView).
+  | 'artifact.summary'
+  | 'artifact.mindmap'
+  | 'artifact.infographic'
+  | 'artifact.quiz'
   | 'output.text'     // терминал: показать и дать скопировать
 
 export interface PortSpec {
@@ -50,12 +56,42 @@ export const NODE_KINDS: Record<GraphNodeKind, NodeKindSpec> = {
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'ответ', type: 'text' }],
   },
+  'artifact.summary': {
+    label: 'Саммари',
+    hint: 'Краткая структурированная выжимка по входу',
+    inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
+    outputs: [{ id: 'text', label: 'текст', type: 'text' }],
+  },
+  'artifact.mindmap': {
+    label: 'Майндкарта',
+    hint: 'Иерархия понятий по входу, рисуется как дерево',
+    inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
+    outputs: [{ id: 'text', label: 'аутлайн', type: 'text' }],
+  },
+  'artifact.infographic': {
+    label: 'Инфографика',
+    hint: 'Визуальная сводка по входу',
+    inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
+    outputs: [{ id: 'text', label: 'спека', type: 'text' }],
+  },
+  'artifact.quiz': {
+    label: 'Тест',
+    hint: 'Вопросы с вариантами ответа по входу',
+    inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
+    outputs: [{ id: 'text', label: 'JSON', type: 'text' }],
+  },
   'output.text': {
     label: 'Результат',
     hint: 'Показывает итог и даёт его скопировать',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [],
   },
+}
+
+// Артефакты отдают наружу свою сырую структуру (аутлайн, спеку, JSON) — её осмысленно
+// подать дальше в Qwen («сделай тест сложнее»), поэтому выход есть у всех четырёх.
+export function isArtifactKind(kind: GraphNodeKind): boolean {
+  return kind.startsWith('artifact.')
 }
 
 export const GRAPH_NODE_KINDS = Object.keys(NODE_KINDS) as GraphNodeKind[]

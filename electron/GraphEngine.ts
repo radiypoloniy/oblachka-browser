@@ -4,6 +4,7 @@ import type { GraphDoc, GraphNode, GraphProgress } from '../shared/graph';
 import { downstreamOf, topoOrder, upstreamOf } from '../shared/graph';
 import type { GraphStore } from './GraphStore';
 import { extractUrlText } from './NotebookExtract';
+import { generateStudio, type StudioKind } from './NotebookStudio';
 import { runChatMessage } from './TranslationService';
 
 // Исполнитель графа. Живёт в main, потому что ему нужны Qwen и фоновое извлечение страниц;
@@ -111,6 +112,21 @@ async function executeNode(
       if (!outcome.ok) return { ok: false, error: String(outcome.error) };
       const out = outcome.out.trim();
       return out ? { ok: true, output: out } : { ok: false, error: 'Модель вернула пустой ответ' };
+    }
+
+    case 'artifact.summary':
+    case 'artifact.mindmap':
+    case 'artifact.infographic':
+    case 'artifact.quiz': {
+      const context = buildContext(inputs);
+      if (!context) return { ok: false, error: 'На вход не пришёл текст' };
+      // Тот же generateStudio, что у блокнота: он сам валидирует JSON теста (normalizeQuiz),
+      // поэтому в renderer уезжает уже разобранная структура, а не сырой ответ модели.
+      const kind = node.kind.slice('artifact.'.length) as StudioKind;
+      const res = await generateStudio(kind, context);
+      return res.ok && res.text
+        ? { ok: true, output: res.text }
+        : { ok: false, error: res.error ?? 'Не получилось' };
     }
 
     case 'output.text': {

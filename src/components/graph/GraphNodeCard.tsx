@@ -4,6 +4,7 @@ import { Play, AlertCircle, Loader2, Check, Clock } from 'lucide-react';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
 import { NODE_KINDS } from '../../../shared/graph';
 import { markdownComponents } from '../aiMarkdown';
+import { InfographicView, MindmapView, QuizView } from '../studioViews';
 
 // Карточка узла на холсте. Только рисует и зовёт колбэки — планирование и прогон живут
 // в main (electron/GraphEngine.ts).
@@ -27,6 +28,12 @@ export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> 
   'source.url': { w: 268, h: 268 },
   'source.note': { w: 268, h: 236 },
   'qwen.transform': { w: 304, h: 320 },
+  // Визуальным артефактам нужна площадь: дерево майндкарты и инфографика в узкой
+  // карточке нечитаемы, а тест — это список вопросов с вариантами.
+  'artifact.summary': { w: 380, h: 340 },
+  'artifact.mindmap': { w: 520, h: 400 },
+  'artifact.infographic': { w: 520, h: 420 },
+  'artifact.quiz': { w: 420, h: 440 },
   'output.text': { w: 380, h: 360 },
 };
 
@@ -92,7 +99,10 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
   const busy = data.status === 'running' || data.status === 'queued';
   // Вывод модели — это Markdown, и читать его сырым (## и ** в тексте) неудобно. Источники
   // отдают текст чужой страницы: там разметки нет, а случайные # и * только исказили бы её.
-  const asMarkdown = data.kind === 'qwen.transform' || data.kind === 'output.text';
+  const asMarkdown = data.kind === 'qwen.transform' || data.kind === 'output.text'
+    || data.kind === 'artifact.summary';
+  // Артефакты, которые рисуют себя во всю площадь контейнера, а не текстом со скроллом.
+  const visual = data.kind === 'artifact.mindmap' || data.kind === 'artifact.infographic';
   const min = DEFAULT_NODE_SIZE[data.kind];
 
   return (
@@ -224,15 +234,32 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         {/* У заметки вывод равен введённому тексту — показывать его вторым блоком значит
             дублировать одно и то же и вдвое урезать полезную площадь карточки. */}
         {data.output && data.kind !== 'source.note' && (
-          <div className="nodrag nowheel" style={outputBox}>
-            {data.outputTitle && (
+          <div
+            className="nodrag nowheel"
+            // Майндкарта и инфографика рисуют себя сами во всю высоту — им внутренний
+            // скролл и отступы только мешают, они масштабируются под контейнер. Подложку
+            // тоже снимаем: с ней рисунок читается как вклеенный скриншот, а не как
+            // содержимое карточки.
+            style={visual
+              ? { ...outputBox, overflow: 'hidden', padding: 0, background: 'transparent' }
+              : outputBox}
+          >
+            {data.outputTitle && !visual && (
               <div style={{ fontWeight: 'var(--fw-semibold)', color: 'var(--text-strong)', marginBottom: 4 }}>
                 {data.outputTitle}
               </div>
             )}
-            {asMarkdown
-              ? <ReactMarkdown components={markdownComponents}>{data.output}</ReactMarkdown>
-              : <div style={{ whiteSpace: 'pre-wrap' }}>{data.output}</div>}
+            {data.kind === 'artifact.mindmap' ? (
+              <MindmapView markdown={data.output} height="100%" />
+            ) : data.kind === 'artifact.infographic' ? (
+              <InfographicView syntax={data.output} height="100%" />
+            ) : data.kind === 'artifact.quiz' ? (
+              <QuizView json={data.output} />
+            ) : asMarkdown ? (
+              <ReactMarkdown components={markdownComponents}>{data.output}</ReactMarkdown>
+            ) : (
+              <div style={{ whiteSpace: 'pre-wrap' }}>{data.output}</div>
+            )}
           </div>
         )}
       </div>

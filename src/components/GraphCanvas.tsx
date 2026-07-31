@@ -5,7 +5,10 @@ import {
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Play, Square, Trash2, FileText, Globe, Sparkles, ArrowLeft } from 'lucide-react';
+import {
+  Plus, Play, Square, Trash2, FileText, Globe, Sparkles, ArrowLeft, ArrowRight,
+  AlignLeft, Network, BarChart3, ListChecks,
+} from 'lucide-react';
 import type {
   GraphDoc, GraphMeta, GraphNodeConfig, GraphNodeKind, GraphNodeStatus, GraphStructure,
 } from '../../shared/graph';
@@ -25,11 +28,24 @@ type RFNode = Node<GraphNodeData>;
 
 const nodeTypes = { oblako: GraphNodeCard };
 
-const NEW_NODE_LABELS: Record<GraphNodeKind, { icon: JSX.Element; label: string }> = {
-  'source.url': { icon: <Globe size={14} />, label: 'Страница' },
-  'source.note': { icon: <FileText size={14} />, label: 'Заметка' },
-  'qwen.transform': { icon: <Sparkles size={14} />, label: 'Qwen' },
-  'output.text': { icon: <ArrowLeft size={14} style={{ transform: 'rotate(180deg)' }} />, label: 'Результат' },
+// Панель сгруппирована по роли узла, а не свалена в один ряд: восемь одинаковых кнопок
+// подряд не читаются, а группы отвечают на вопрос «откуда взять — что сделать — что получить».
+const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
+  { title: 'Откуда', kinds: ['source.url', 'source.note'] },
+  { title: 'Обработка', kinds: ['qwen.transform'] },
+  { title: 'Артефакты', kinds: ['artifact.summary', 'artifact.mindmap', 'artifact.infographic', 'artifact.quiz'] },
+  { title: 'Итог', kinds: ['output.text'] },
+];
+
+const NEW_NODE_ICONS: Record<GraphNodeKind, JSX.Element> = {
+  'source.url': <Globe size={14} />,
+  'source.note': <FileText size={14} />,
+  'qwen.transform': <Sparkles size={14} />,
+  'artifact.summary': <AlignLeft size={14} />,
+  'artifact.mindmap': <Network size={14} />,
+  'artifact.infographic': <BarChart3 size={14} />,
+  'artifact.quiz': <ListChecks size={14} />,
+  'output.text': <ArrowRight size={14} />,
 };
 
 const SAVE_DEBOUNCE_MS = 600;
@@ -359,23 +375,38 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             background: 'var(--surface)',
           }}
         >
-          {(Object.keys(NEW_NODE_LABELS) as GraphNodeKind[]).map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              onClick={() => addNode(kind)}
-              title={NODE_KINDS[kind].hint}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-                borderRadius: 9, padding: '6px 11px', cursor: 'pointer',
-                color: 'var(--text-body)', font: 'inherit',
-                fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
-              }}
-            >
-              {NEW_NODE_LABELS[kind].icon}
-              {NEW_NODE_LABELS[kind].label}
-            </button>
+          {NODE_GROUPS.map((group, gi) => (
+            <div key={group.title} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              {gi > 0 && (
+                <span style={{ width: 1, height: 20, background: 'var(--divider)', marginRight: 3 }} />
+              )}
+              <span
+                style={{
+                  fontSize: 'var(--fs-xs)', letterSpacing: 'var(--ls-caps)',
+                  textTransform: 'uppercase', color: 'var(--text-faint)', marginRight: 1,
+                }}
+              >
+                {group.title}
+              </span>
+              {group.kinds.map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => addNode(kind)}
+                  title={NODE_KINDS[kind].hint}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
+                    borderRadius: 9, padding: '6px 11px', cursor: 'pointer',
+                    color: 'var(--text-body)', font: 'inherit',
+                    fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  {NEW_NODE_ICONS[kind]}
+                  {NODE_KINDS[kind].label}
+                </button>
+              ))}
+            </div>
           ))}
 
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 7 }}>
