@@ -16,10 +16,10 @@ import type { ContentBounds, SearchTarget, QuickHit } from '../shared/ipc'
 import { getAiPanelReservedWidth } from './AiPanelManager'
 import type { TabManager } from './TabManager'
 
-const POPOVER_WIDTH = 520
+const POPOVER_WIDTH = 620
 // Высота БЕЗ списка находок — с ним карточка растёт, и её сообщает сам поповер (см.
 // 'searchpopover:resize'): сколько строк поместилось, знает только он.
-const POPOVER_BASE_HEIGHT = 108
+const POPOVER_BASE_HEIGHT = 124
 const TOP_GAP = 8
 // Прозрачный запас под CSS box-shadow — WebContentsView обрезает всё за своим прямоугольником
 // (тот же приём и то же значение, что в FindBarManager.ts).

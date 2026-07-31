@@ -14,6 +14,7 @@
 import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { parse as parseTld } from 'tldts-experimental';
 import { deriveBangFromUrl, isValidBangTemplate } from '../shared/bangs';
 
 // Потолок на число сайтов: список живёт в памяти и целиком уходит в поповер при показе.
@@ -27,6 +28,22 @@ export interface LearnedTarget {
   template: string;
   hits: number;
   lastAt: number;
+}
+
+// Имя цели человеку — по РЕГИСТРИРУЕМОМУ домену, а не по первой метке хоста. deriveBangFromUrl
+// берёт именно первую метку (для «завести бэнг из вкладки» это разумно: ключ должен быть
+// коротким), но в полосе чипов так рождался мусор — en.wikipedia.org и ru.wikipedia.org
+// подписывались «En» и «Ru», что не значит ничего.
+function displayName(host: string): string {
+  const domain = parseTld(host).domainWithoutSuffix ?? host.split('.')[0] ?? host;
+  return domain.charAt(0).toUpperCase() + domain.slice(1);
+}
+
+// Ключ схлопывания в полосе чипов: en/ru/de-википедии — один сайт, а не пять целей подряд.
+// В самом хранилище записи остаются пер-хостовыми: на ru.wikipedia.org чип «этот сайт» обязан
+// искать по РУССКОЙ википедии, а не по той, которой пользовались чаще.
+function siteKey(host: string): string {
+  return parseTld(host).domain ?? host;
 }
 
 export class SearchTargetStore {
@@ -105,7 +122,7 @@ export class SearchTargetStore {
       if (derived.template.length < prev.template.length) prev.template = derived.template;
     } else {
       map.set(host, {
-        host, name: derived.name, template: derived.template, hits: 1, lastAt: Date.now(),
+        host, name: displayName(host), template: derived.template, hits: 1, lastAt: Date.now(),
       });
       this.#evictIfNeeded(map);
     }
@@ -126,12 +143,23 @@ export class SearchTargetStore {
   }
 
   // Цель по хосту — для чипа «этот сайт», когда адрес текущей страницы сам поиском не является.
+  // Именно по точному хосту: на ru.wikipedia.org нужен поиск по русской википедии.
   findByHost(host: string): LearnedTarget | null {
-    return this.#load().get(host) ?? null;
+    const t = this.#load().get(host);
+    return t ? { ...t, name: displayName(t.host) } : null;
   }
 
-  // Все выученные, частые вперёд.
+  // Все выученные, частые вперёд, ПО ОДНОЙ на сайт. Имя пересчитываем на выдаче, а не только
+  // при записи: в файле уже могли осесть записи со старым именованием по первой метке.
   list(): LearnedTarget[] {
-    return [...this.#load().values()].sort((a, b) => (b.hits - a.hits) || (b.lastAt - a.lastAt));
+    const sorted = [...this.#load().values()]
+      .sort((a, b) => (b.hits - a.hits) || (b.lastAt - a.lastAt));
+    const bySite = new Map<string, LearnedTarget>();
+    for (const t of sorted) {
+      const key = siteKey(t.host);
+      if (bySite.has(key)) continue; // первым идёт самый используемый — он и остаётся
+      bySite.set(key, { ...t, name: displayName(t.host) });
+    }
+    return [...bySite.values()];
   }
 }

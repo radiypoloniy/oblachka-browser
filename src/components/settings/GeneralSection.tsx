@@ -2,6 +2,7 @@ import { Download } from 'lucide-react';
 import { SectionHeader, Subsection, StatusCard, btnPrimary } from './kit';
 import UpdatesBlock from './UpdatesBlock';
 import BangsBlock from './BangsBlock';
+import SearchChipsBlock from './SearchChipsBlock';
 
 interface GeneralSectionProps {
   // Открыть диалог импорта — состояние живёт в App.tsx (модалка поверх всего chrome), сюда
@@ -31,6 +32,13 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
         description="Быстрый переход к поиску по конкретному сайту прямо из адресной строки."
       >
         <BangsBlock />
+      </Subsection>
+
+      <Subsection
+        title="Цели быстрого поиска"
+        description="Что предлагать в полосе целей поповера Ctrl+E: подбирать по ходу работы или показывать закреплённый вами набор."
+      >
+        <SearchChipsBlock />
       </Subsection>
 
       <Subsection

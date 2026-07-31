@@ -48,6 +48,26 @@ export interface SearchTarget {
   faviconUrl?: string | null;
 }
 
+// Чем наполнять полосу целей быстрого поиска (Ctrl+E).
+// 'auto' — контекстом: выученные сайты и свои бэнги, частые вперёд (см. SearchTargetStore).
+// 'pinned' — строго набором, который человек закрепил сам.
+// Текущий сайт и поисковик по умолчанию остаются в обоих режимах: первый — весь смысл фичи,
+// второй — единственная цель, подходящая к любому запросу.
+export interface SearchChipsConfig {
+  mode: 'auto' | 'pinned';
+  pinned: string[]; // id целей (bang:<ключ> / site:<хост>) в порядке закрепления
+}
+
+// Кандидат для закрепления — то, из чего выбирают в настройках.
+export interface SearchChipCandidate {
+  id: string;
+  name: string;
+  kind: 'bang' | 'site';
+  // Откуда взялся: свой бэнг, встроенный или выученный сайт — UI это показывает,
+  // иначе в общем списке не отличить «моё» от «наше».
+  source: 'user' | 'builtin' | 'learned';
+}
+
 // Находка в СВОИХ данных для того же поповера: открытая вкладка, история, закладка.
 // Веб-поиск отвечает на «что об этом пишут», а это — на «где я это уже видел»; второе
 // в браузере спрашивают не реже, а идти за ним приходилось в отдельную панель.
@@ -567,6 +587,11 @@ export const IPC = {
   BANGS_IMPORT_DDG:     'bangs:import-ddg',      // renderer → main: -> ImportBangsResult
   BANGS_DERIVE_TABS:    'bangs:derive-tabs',     // renderer → main: -> DerivedBangCandidate[]
   BANGS_CLEAR_IMPORTED: 'bangs:clear-imported',  // renderer → main: (без параметров)
+
+  // Полоса целей быстрого поиска (Ctrl+E): режим наполнения и закреплённый набор.
+  SEARCH_CHIPS_GET:        'search-chips:get',        // renderer → main: -> SearchChipsConfig
+  SEARCH_CHIPS_SET:        'search-chips:set',        // renderer → main: SearchChipsConfig
+  SEARCH_CHIPS_CANDIDATES: 'search-chips:candidates', // renderer → main: -> SearchChipCandidate[]
 
   // Явный возврат OS-фокуса вебконтентам чрома. Нужен из-за того, что дропдаун подсказок —
   // отдельная WebContentsView: её addChildView уводит фокус с омнибокса, и main компенсирует это
@@ -1562,6 +1587,11 @@ export interface OblakoApi {
   deriveBangsFromTabs(): Promise<DerivedBangCandidate[]>;
   importDuckDuckGoBangs(): Promise<ImportBangsResult>;
   clearImportedBangs(): Promise<void>;
+
+  // Полоса целей быстрого поиска (Ctrl+E)
+  getSearchChips(): Promise<SearchChipsConfig>;
+  setSearchChips(cfg: SearchChipsConfig): Promise<void>;
+  listSearchChipCandidates(): Promise<SearchChipCandidate[]>;
 
   // Автообновление (см. electron/UpdateManager.ts). checkForUpdate/downloadUpdate — команды без
   // ответа, результат приходит через onUpdateStatusChanged. installUpdate закрывает приложение.

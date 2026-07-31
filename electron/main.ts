@@ -39,7 +39,7 @@ import * as ModelCatalog from './ModelCatalog';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchChipsConfig, SearchChipCandidate } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -688,16 +688,32 @@ function createWindow() {
         new Promise<string>((r) => setTimeout(() => r(''), 150)),
       ]);
       const prefill = sel.trim().replace(/\s+/g, ' ').slice(0, 200);
-      showSearchPopover(win, {
-        targets: buildSearchTargets({
-          url: active?.url ?? '',
-          engineId: settings.getSearchEngine(),
-          faviconUrl: active?.faviconUrl ?? null,
-          bangs,
-          learned: searchTargets,
-        }),
-        prefill,
+      const targets = buildSearchTargets({
+        url: active?.url ?? '',
+        engineId: settings.getSearchEngine(),
+        faviconUrl: active?.faviconUrl ?? null,
+        bangs,
+        learned: searchTargets,
+        chips: settings.getSearchChips(),
       });
+      // Иконки целям — через FaviconService (тот ходит ТОЛЬКО на сам домен, без сторонних
+      // favicon-сервисов, и кэширует на диск). Да, при первом показе это запрос к каждому
+      // домену из полосы — но домены тут либо свои бэнги, либо сайты, где человек уже искал,
+      // и после первого раза всё берётся из кэша.
+      //
+      // Гонка с таймаутом по той же причине, что и чтение выделения: иконка — украшение,
+      // поповер обязан появиться сразу. Не успевшие подтянутся при следующем открытии.
+      await Promise.race([
+        Promise.all(targets.map(async (t) => {
+          if (t.faviconUrl) return;
+          try {
+            const host = new URL(applyBangTemplate(t.template, 'x')).hostname;
+            t.faviconUrl = await faviconService.get(host);
+          } catch { /* кривой шаблон — просто без иконки */ }
+        })),
+        new Promise((r) => setTimeout(r, 250)),
+      ]);
+      showSearchPopover(win, { targets, prefill });
     })();
   });
   // Аналогично — PageTranslateManager читает WebContents активной вкладки для обхода DOM/
@@ -1079,6 +1095,18 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.BANGS_IMPORT_DDG, () => bangs.importDuckDuckGoBangs());
   ipcMain.handle(IPC.BANGS_CLEAR_IMPORTED, () => { bangs.clearImported(); });
+
+  // ── Полоса целей быстрого поиска (Ctrl+E) ──
+  ipcMain.handle(IPC.SEARCH_CHIPS_GET, (): SearchChipsConfig => settings.getSearchChips());
+  ipcMain.handle(IPC.SEARCH_CHIPS_SET, (_e, cfg: SearchChipsConfig) => { settings.setSearchChips(cfg); });
+  // Кандидаты на закрепление — из тех же трёх источников, что и сама полоса. Импортированный
+  // список DDG (~13 000) сюда не попадает намеренно: закреплять из него — это не список, а
+  // поиск по списку, для чего в строке уже есть «!ключ».
+  ipcMain.handle(IPC.SEARCH_CHIPS_CANDIDATES, (): SearchChipCandidate[] => [
+    ...bangs.listUser().map((b) => ({ id: `bang:${b.key}`, name: b.name, kind: 'bang' as const, source: 'user' as const })),
+    ...searchTargets.list().map((t) => ({ id: `site:${t.host}`, name: t.name, kind: 'site' as const, source: 'learned' as const })),
+    ...bangs.listBuiltin().map((b) => ({ id: `bang:${b.key}`, name: b.name, kind: 'bang' as const, source: 'builtin' as const })),
+  ]);
 
   // Возврат OS-фокуса чрому по требованию renderer'а. Тот же приём, что уже применяется на
   // Ctrl+L и при открытии дропдауна подсказок, — просто доступный ещё и из омнибокса.

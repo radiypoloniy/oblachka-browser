@@ -16,7 +16,7 @@ import { BUILTIN_BANGS, deriveBangFromUrl, isValidBangTemplate } from '../shared
 import type { BangDef } from '../shared/bangs';
 import { getSearchEngine } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
-import type { SearchTarget } from '../shared/ipc';
+import type { SearchTarget, SearchChipsConfig } from '../shared/ipc';
 import type { BangStore } from './BangStore';
 import type { SearchTargetStore } from './SearchTargetStore';
 
@@ -44,6 +44,8 @@ export interface SearchContext {
   bangs: BangStore | null;
   // Сайты, на которых человек уже искал (SearchTargetStore) — заполняются сами, см. там же.
   learned: SearchTargetStore | null;
+  // Чем наполнять полосу: контекстом или закреплённым набором (настройка, см. shared/ipc.ts).
+  chips: SearchChipsConfig;
 }
 
 export function buildSearchTargets(ctx: SearchContext): SearchTarget[] {
@@ -86,21 +88,29 @@ export function buildSearchTargets(ctx: SearchContext): SearchTarget[] {
   const engine = getSearchEngine(ctx.engineId);
   push({ id: 'engine', name: engine.name, kind: 'engine', template: engineTemplate(ctx.engineId) });
 
-  // 3. Пользовательские бэнги, потом выученные сайты, потом встроенные.
-  //    Заведённое руками — главнее всего (тот же приоритет, что при разрешении «!ключ» в
-  //    BangStore). Выученное идёт ВПЕРЕДИ встроенного набора: сайты, где человек искал сам,
-  //    для него важнее наших двадцати курируемых, какими бы разумными те ни были.
-  for (const b of userBangs) {
-    if (targets.length >= MAX_BANG_CHIPS + 2) break;
-    push({ id: `bang:${b.key}`, name: b.name, kind: 'bang', template: b.template });
-  }
-  for (const t of ctx.learned?.list() ?? []) {
-    if (targets.length >= MAX_BANG_CHIPS + 2) break;
-    push({ id: `site:${t.host}`, name: t.name, kind: 'bang', template: t.template });
-  }
-  for (const b of BUILTIN_BANGS) {
-    if (targets.length >= MAX_BANG_CHIPS + 2) break;
-    push({ id: `bang:${b.key}`, name: b.name, kind: 'bang', template: b.template });
+  // 3. Остальная полоса. Текущий сайт и поисковик выше от режима не зависят: первый — весь
+  //    смысл фичи, второй подходит к любому запросу.
+  const rest: SearchTarget[] = [
+    // Заведённое руками — главнее всего (тот же приоритет, что при разрешении «!ключ» в
+    // BangStore). Выученное идёт ВПЕРЕДИ встроенного набора: сайты, где человек искал сам,
+    // для него важнее наших двадцати курируемых, какими бы разумными те ни были.
+    ...userBangs.map((b) => ({ id: `bang:${b.key}`, name: b.name, kind: 'bang' as const, template: b.template })),
+    ...(ctx.learned?.list() ?? []).map((t) => ({ id: `site:${t.host}`, name: t.name, kind: 'bang' as const, template: t.template })),
+    ...BUILTIN_BANGS.map((b) => ({ id: `bang:${b.key}`, name: b.name, kind: 'bang' as const, template: b.template })),
+  ];
+
+  if (ctx.chips.mode === 'pinned') {
+    // Порядок задаёт сам список закреплений, а не наши приоритеты: человек его и составлял.
+    const byId = new Map(rest.map((t) => [t.id, t]));
+    for (const id of ctx.chips.pinned) {
+      const t = byId.get(id);
+      if (t) push(t);
+    }
+  } else {
+    for (const t of rest) {
+      if (targets.length >= MAX_BANG_CHIPS + 2) break;
+      push(t);
+    }
   }
 
   return targets;

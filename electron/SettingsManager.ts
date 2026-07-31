@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_SEARCH_ENGINE_ID, isSearchEngineId } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
-import type { HubMode, ModelLoadMode } from '../shared/ipc';
+import type { HubMode, ModelLoadMode, SearchChipsConfig } from '../shared/ipc';
 import type { EngineId } from './TranslationEngine';
 
 const DEFAULT_HUB_MODE: HubMode = 'tiles';
@@ -66,6 +66,7 @@ export class SettingsManager {
   #modelLoadMode: ModelLoadMode = DEFAULT_MODEL_LOAD_MODE;
   #importOffered = false;
   #passwordAuthEnabled = true; // доп. защита по умолчанию включена (см. PersistedSettings)
+  #searchChips: SearchChipsConfig = { mode: 'auto', pinned: [] };
   readonly #settingsPath: string;
 
   constructor() {
@@ -141,6 +142,18 @@ export class SettingsManager {
 
   setPasswordAuthEnabled(enabled: boolean): void {
     this.#passwordAuthEnabled = !!enabled;
+    this.#write();
+  }
+
+  getSearchChips(): SearchChipsConfig {
+    return { mode: this.#searchChips.mode, pinned: [...this.#searchChips.pinned] };
+  }
+
+  setSearchChips(cfg: SearchChipsConfig): void {
+    this.#searchChips = {
+      mode: cfg.mode === 'pinned' ? 'pinned' : 'auto',
+      pinned: Array.isArray(cfg.pinned) ? cfg.pinned.filter((x) => typeof x === 'string') : [],
+    };
     this.#write();
   }
 
