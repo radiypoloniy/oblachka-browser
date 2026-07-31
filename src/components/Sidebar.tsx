@@ -399,14 +399,16 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
   onContextMenu: (id: string) => void;
   onExitSplit: (tabId: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: left.id,
   });
 
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, flexShrink: 0 }}
+      // Оригинал гасим на время драга, как SortableTabRow/SortablePinCell: призрак пары
+      // DragOverlay уже рисует, без этого пара во время перетаскивания видна дважды.
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1, flexShrink: 0 }}
       {...attributes}
       {...listeners}
     >
@@ -927,7 +929,12 @@ export default function Sidebar({
     document.addEventListener('pointermove', onMove);
   };
 
-  const handleDragEnd = (e: DragEndEvent) => {
+  // Хвост любого драга — снять слушатель, погасить подсветку контент-зоны, сбросить id.
+  // Отдельной функцией, потому что нужен и в конце драга, и в ОТМЕНЕ (Esc, потеря указателя):
+  // при отмене dnd-kit зовёт onDragCancel вместо onDragEnd, и без этого pointermove-слушатель
+  // оставался висеть на document навсегда, продолжая дёргать onDragOverContent на каждое
+  // движение мыши, а подсветка «бросить сюда» — залипать.
+  const finishDrag = (): boolean => {
     if (moveListenerRef.current) {
       document.removeEventListener('pointermove', moveListenerRef.current);
       moveListenerRef.current = null;
@@ -936,6 +943,11 @@ export default function Sidebar({
     contentOverRef.current = false;
     onDragOverContent(false);
     setDragActiveId(null);
+    return wasOverContent;
+  };
+
+  const handleDragEnd = (e: DragEndEvent) => {
+    const wasOverContent = finishDrag();
 
     const { active, over } = e;
 
@@ -1147,6 +1159,7 @@ export default function Sidebar({
         modifiers={dragPinnedTab ? [] : [restrictToVerticalAxis]}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onDragCancel={() => { finishDrag(); }}
       >
         {/* Закреплённые: сетка favicon, tooltip с заголовком, без крестика.
             Плашка-обёртка — СНАРУЖИ SortableContext, сам dnd-контекст и ячейки не тронуты. */}
