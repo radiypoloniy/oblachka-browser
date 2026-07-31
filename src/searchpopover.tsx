@@ -12,7 +12,7 @@
 // отделяет его от чужой вёрстки под ним. Каждый остров собран по общему рецепту дизайн-системы
 // (см. islandCard ниже), размеры взяты «на палец», а не «на пиксель»: это поиск, в него целятся
 // мышью и читают краем глаза.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Search, CornerDownLeft, Clock, Star, PanelTop, Globe, ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react';
 import './styles/global.css';
@@ -133,6 +133,10 @@ function SearchPopover() {
   // Горизонтальная прокрутка отсюда убрана совсем: она не показывала ни сколько целей всего,
   // ни где ты в них находишься.
   const [chipsExpanded, setChipsExpanded] = useState(false);
+  // Счётчик показов. Нужен ровно затем, чтобы на КАЖДОЕ открытие пересчитать и доложить высоту:
+  // main сбрасывает её в базовую при каждом показе (см. showSearchPopover), а вот наш DOM при
+  // повторном открытии с тем же набором целей не меняется — и ResizeObserver молчит.
+  const [showSeq, setShowSeq] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const chipsRef = useRef<HTMLDivElement>(null);
@@ -150,6 +154,7 @@ function SearchPopover() {
       setBangTarget(null);
       setStrippedQuery('');
       setChipsExpanded(false);
+      setShowSeq((n) => n + 1);
       // Выделение со страницы — уже готовый запрос: чаще всего Ctrl+E жмут именно ради него.
       if (p.prefill) setQuery(p.prefill);
       requestAnimationFrame(() => {
@@ -168,15 +173,26 @@ function SearchPopover() {
   // выглядел обрезанным снизу, и починить это можно было только развернув список (та мерка
   // запускалась заново). Наблюдатель ловит любую причину смены высоты, включая эту.
   // Тот же приём, которым App.tsx меряет область контента.
+  const report = useCallback(() => {
+    const h = cardRef.current?.offsetHeight;
+    if (h) window.searchPopover.resize(h);
+  }, []);
+
   useEffect(() => {
     const el = cardRef.current;
     if (!el) return;
-    const report = () => { const h = el.offsetHeight; if (h) window.searchPopover.resize(h); };
     const ro = new ResizeObserver(report);
     ro.observe(el);
-    report();
     return () => ro.disconnect();
-  }, []);
+  }, [report]);
+
+  // ...и отдельно — доклад на каждое ОТКРЫТИЕ, даже если DOM не изменился. Наблюдателя выше для
+  // этого не хватает: он срабатывает только на смену высоты, а при повторном Ctrl+E с тем же
+  // набором целей высота карточки та же — при том, что main уже сбросил свою в базовую. Ровно
+  // так поповер и оказывался обрезанным по первой строке чипов при втором и последующих
+  // открытиях. useLayoutEffect, а не rAF: он гарантированно бежит после того, как React положил
+  // в DOM новое состояние показа.
+  useLayoutEffect(report, [showSeq, report]);
 
   // Поиск по своим данным на каждое изменение строки, с дебаунсом.
   useEffect(() => {

@@ -436,7 +436,8 @@ const api: OblakoApi = {
 
   getSearchChips: () => ipcRenderer.invoke(IPC.SEARCH_CHIPS_GET) as Promise<SearchChipsConfig>,
   setSearchChips: (cfg: SearchChipsConfig) => ipcRenderer.invoke(IPC.SEARCH_CHIPS_SET, cfg) as Promise<void>,
-  listSearchChipCandidates: () => ipcRenderer.invoke(IPC.SEARCH_CHIPS_CANDIDATES) as Promise<SearchChipCandidate[]>,
+  searchSearchChipCandidates: (query: string) => ipcRenderer.invoke(IPC.SEARCH_CHIPS_SEARCH, query) as Promise<SearchChipCandidate[]>,
+  resolveSearchChipCandidates: (ids: string[]) => ipcRenderer.invoke(IPC.SEARCH_CHIPS_RESOLVE, ids) as Promise<SearchChipCandidate[]>,
 
   // Автообновление (см. electron/UpdateManager.ts).
   checkForUpdate: () => ipcRenderer.send(IPC.UPDATE_CHECK),

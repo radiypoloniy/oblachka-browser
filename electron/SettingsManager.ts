@@ -37,6 +37,25 @@ interface PersistedSettings {
   // копированием пароля. Тумблер в настройках паролей; он же — страховка от лок-аута, если
   // проверка на конкретной машине не срабатывает.
   passwordAuthEnabled: boolean;
+  // Полоса целей поповера Ctrl+E (режим, закреплённые, цель по умолчанию — см. shared/ipc.ts).
+  searchChips: SearchChipsConfig;
+}
+
+const DEFAULT_SEARCH_CHIPS: SearchChipsConfig = { mode: 'auto', pinned: [], defaultId: null };
+
+// Настройка приходит из renderer и читается с диска — оба источника недоверенные, поэтому
+// один нормализатор на обе двери.
+function normalizeSearchChips(v: unknown): SearchChipsConfig {
+  if (typeof v !== 'object' || v === null) return { ...DEFAULT_SEARCH_CHIPS };
+  const cfg = v as Partial<SearchChipsConfig>;
+  return {
+    mode: cfg.mode === 'pinned' ? 'pinned' : 'auto',
+    pinned: Array.isArray(cfg.pinned) ? cfg.pinned.filter((x): x is string => typeof x === 'string') : [],
+    // Существует ли такая цель на самом деле, здесь не проверяем: список целей собирается
+    // динамически (бэнги/выученные сайты), и цель может временно отсутствовать. Промах гасится
+    // в SearchTargets.ts — просто вернётся прежний порядок.
+    defaultId: typeof cfg.defaultId === 'string' && cfg.defaultId ? cfg.defaultId : null,
+  };
 }
 
 function clampAiPanelWidth(v: number): number {
@@ -66,7 +85,7 @@ export class SettingsManager {
   #modelLoadMode: ModelLoadMode = DEFAULT_MODEL_LOAD_MODE;
   #importOffered = false;
   #passwordAuthEnabled = true; // доп. защита по умолчанию включена (см. PersistedSettings)
-  #searchChips: SearchChipsConfig = { mode: 'auto', pinned: [] };
+  #searchChips: SearchChipsConfig = { ...DEFAULT_SEARCH_CHIPS };
   readonly #settingsPath: string;
 
   constructor() {
@@ -146,14 +165,11 @@ export class SettingsManager {
   }
 
   getSearchChips(): SearchChipsConfig {
-    return { mode: this.#searchChips.mode, pinned: [...this.#searchChips.pinned] };
+    return { ...this.#searchChips, pinned: [...this.#searchChips.pinned] };
   }
 
   setSearchChips(cfg: SearchChipsConfig): void {
-    this.#searchChips = {
-      mode: cfg.mode === 'pinned' ? 'pinned' : 'auto',
-      pinned: Array.isArray(cfg.pinned) ? cfg.pinned.filter((x) => typeof x === 'string') : [],
-    };
+    this.#searchChips = normalizeSearchChips(cfg);
     this.#write();
   }
 
@@ -176,6 +192,11 @@ export class SettingsManager {
         if (typeof io === 'boolean') this.#importOffered = io;
         const pa = (data as Record<string, unknown>)['passwordAuthEnabled'];
         if (typeof pa === 'boolean') this.#passwordAuthEnabled = pa;
+        // Раньше полоса целей не сохранялась вовсе (в #write её просто не было) — режим и
+        // закреплённые сбрасывались на каждый запуск. Ключа нет у старых профилей — нормализатор
+        // отдаст дефолт.
+        const sc = (data as Record<string, unknown>)['searchChips'];
+        if (sc !== undefined) this.#searchChips = normalizeSearchChips(sc);
       }
     } catch { /* файла нет или битый JSON — остаёмся на дефолте */ }
   }
@@ -189,6 +210,7 @@ export class SettingsManager {
       modelLoadMode: this.#modelLoadMode,
       importOffered: this.#importOffered,
       passwordAuthEnabled: this.#passwordAuthEnabled,
+      searchChips: this.#searchChips,
     };
     const tmpPath = this.#settingsPath + '.tmp';
     try {

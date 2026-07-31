@@ -69,16 +69,27 @@ export interface QuickQueryResult {
 export interface SearchChipsConfig {
   mode: 'auto' | 'pinned';
   pinned: string[]; // id целей (bang:<ключ> / site:<хост>) в порядке закрепления
+  // Цель, НА КОТОРОЙ поповер открывается: она стоит первой и уже выбрана, то есть Enter сразу
+  // после набора уходит именно туда — без единого клика по полосе и без набора бэнга.
+  // null — прежнее поведение: первым идёт сайт, на котором человек сейчас (а если цели для него
+  // нет — поисковик по умолчанию). Кроме 'bang:'/'site:' допустимо 'engine' — поисковик.
+  defaultId: string | null;
 }
 
-// Кандидат для закрепления — то, из чего выбирают в настройках.
+// Кандидат в цели — то, из чего выбирают в настройках. Список НЕ отдаётся целиком: источников
+// вместе с импортированным набором DDG — тысячи, поэтому наружу он доступен только поиском
+// (SEARCH_CHIPS_SEARCH) и точечным разрешением уже выбранных id (SEARCH_CHIPS_RESOLVE).
 export interface SearchChipCandidate {
   id: string;
   name: string;
   kind: 'bang' | 'site';
-  // Откуда взялся: свой бэнг, встроенный или выученный сайт — UI это показывает,
-  // иначе в общем списке не отличить «моё» от «наше».
-  source: 'user' | 'builtin' | 'learned';
+  // Откуда взялся: свой бэнг, встроенный, выученный сайт или импортированный из DDG — UI это
+  // показывает, иначе в общем списке не отличить «моё» от «наше».
+  source: 'user' | 'builtin' | 'learned' | 'imported';
+  // Домен цели — только под favicon в настройках (FaviconService), не для навигации.
+  host: string;
+  // Ключ бэнга, если он есть: та же цель зовётся «!wb» прямо из строки поиска.
+  bangKey?: string;
 }
 
 // Находка в СВОИХ данных для того же поповера: открытая вкладка, история, закладка.
@@ -604,7 +615,8 @@ export const IPC = {
   // Полоса целей быстрого поиска (Ctrl+E): режим наполнения и закреплённый набор.
   SEARCH_CHIPS_GET:        'search-chips:get',        // renderer → main: -> SearchChipsConfig
   SEARCH_CHIPS_SET:        'search-chips:set',        // renderer → main: SearchChipsConfig
-  SEARCH_CHIPS_CANDIDATES: 'search-chips:candidates', // renderer → main: -> SearchChipCandidate[]
+  SEARCH_CHIPS_SEARCH:     'search-chips:search',     // renderer → main: строка -> SearchChipCandidate[] (короткая выдача)
+  SEARCH_CHIPS_RESOLVE:    'search-chips:resolve',    // renderer → main: id[] -> SearchChipCandidate[] (что нашлось)
 
   // Явный возврат OS-фокуса вебконтентам чрома. Нужен из-за того, что дропдаун подсказок —
   // отдельная WebContentsView: её addChildView уводит фокус с омнибокса, и main компенсирует это
@@ -1604,7 +1616,11 @@ export interface OblakoApi {
   // Полоса целей быстрого поиска (Ctrl+E)
   getSearchChips(): Promise<SearchChipsConfig>;
   setSearchChips(cfg: SearchChipsConfig): Promise<void>;
-  listSearchChipCandidates(): Promise<SearchChipCandidate[]>;
+  // Поиск по целям (свои бэнги, выученные сайты, встроенные, импортированные из DDG). Пустая
+  // строка — короткий список «что есть под рукой», импортированные в него не входят.
+  searchSearchChipCandidates(query: string): Promise<SearchChipCandidate[]>;
+  // Разрешение уже выбранных id в карточки — чтобы показать выбор, не листая тысячи целей.
+  resolveSearchChipCandidates(ids: string[]): Promise<SearchChipCandidate[]>;
 
   // Автообновление (см. electron/UpdateManager.ts). checkForUpdate/downloadUpdate — команды без
   // ответа, результат приходит через onUpdateStatusChanged. installUpdate закрывает приложение.

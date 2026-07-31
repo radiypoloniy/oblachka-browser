@@ -5,7 +5,7 @@ import { islandPlate } from '../../styles/island';
 import Toggle from '../Toggle';
 import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote,
-  InlineError, InlineHint, TextField, TextArea, InputRow, fieldFlex,
+  InlineError, InlineHint, TextField, TextArea, InputRow, fieldFlex, Favicon,
 } from './kit';
 
 // ── Секция «Пароли» — сейф на этом устройстве (менеджер паролей, шаг 1) ───────
@@ -355,40 +355,6 @@ interface PasswordRowProps {
 
 function hostOf(origin: string): string {
   try { return new URL(origin).hostname.replace(/^www\./, ''); } catch { return origin; }
-}
-
-// Модульный кэш обещаний favicon — один запрос на host на всю сессию renderer, независимо от того,
-// сколько строк/перерендеров его просят (main тоже кэширует, но так не спамим IPC).
-const faviconCache = new Map<string, Promise<string | null>>();
-function loadFavicon(host: string): Promise<string | null> {
-  let p = faviconCache.get(host);
-  if (!p) { p = window.oblako.getFavicon(host); faviconCache.set(host, p); }
-  return p;
-}
-
-// Favicon сайта с фолбэком на букву-заглушку (тот же приём, что в History/Bookmarks-строках,
-// пока/если иконки нет). data-URL приходит из main (FaviconService), тянется только с самого сайта.
-function Favicon({ host }: { host: string }) {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    setSrc(null);
-    void loadFavicon(host).then((url) => { if (alive) setSrc(url); });
-    return () => { alive = false; };
-  }, [host]);
-
-  const box: React.CSSProperties = {
-    width: 20, height: 20, borderRadius: 'var(--radius-sm)', flexShrink: 0,
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-  };
-  if (src) {
-    return <span style={box}><img src={src} alt="" width={16} height={16} style={{ objectFit: 'contain' }} /></span>;
-  }
-  return (
-    <span style={{ ...box, background: 'var(--neutral-300)', color: 'var(--text-body)', fontSize: 10, fontWeight: 600 }}>
-      {host.charAt(0).toUpperCase() || '?'}
-    </span>
-  );
 }
 
 function PasswordRow({ entry, revealedValue, copiedKey, onToggleReveal, onCopy, onEdit, onDelete }: PasswordRowProps) {

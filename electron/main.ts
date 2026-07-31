@@ -58,7 +58,7 @@ import { BergamotTranslationEngine } from './BergamotTranslationEngine';
 import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { showSearchPopover, closeSearchPopover, syncSearchPopoverBounds, relayoutSearchPopover, setOnSearchRun, setOnQuickQuery, setOnQuickOpen, setTabManager as setSearchPopoverTabManager } from './SearchPopoverManager';
-import { buildSearchTargets } from './SearchTargets';
+import { buildSearchTargets, searchChipCandidates, resolveChipCandidates } from './SearchTargets';
 import { readPageSelection } from './PageSelection';
 import { SearchTargetStore } from './SearchTargetStore';
 import { applyBangTemplate, isValidBangTemplate, parseBangCandidate, bangHomeUrl } from '../shared/bangs';
@@ -1135,14 +1135,13 @@ function registerIpc() {
   // ── Полоса целей быстрого поиска (Ctrl+E) ──
   ipcMain.handle(IPC.SEARCH_CHIPS_GET, (): SearchChipsConfig => settings.getSearchChips());
   ipcMain.handle(IPC.SEARCH_CHIPS_SET, (_e, cfg: SearchChipsConfig) => { settings.setSearchChips(cfg); });
-  // Кандидаты на закрепление — из тех же трёх источников, что и сама полоса. Импортированный
-  // список DDG (~13 000) сюда не попадает намеренно: закреплять из него — это не список, а
-  // поиск по списку, для чего в строке уже есть «!ключ».
-  ipcMain.handle(IPC.SEARCH_CHIPS_CANDIDATES, (): SearchChipCandidate[] => [
-    ...bangs.listUser().map((b) => ({ id: `bang:${b.key}`, name: b.name, kind: 'bang' as const, source: 'user' as const })),
-    ...searchTargets.list().map((t) => ({ id: `site:${t.host}`, name: t.name, kind: 'site' as const, source: 'learned' as const })),
-    ...bangs.listBuiltin().map((b) => ({ id: `bang:${b.key}`, name: b.name, kind: 'bang' as const, source: 'builtin' as const })),
-  ]);
+  // Выбор цели в настройках — только поиском и разрешением выбранных id: целиком список не
+  // отдаётся, вместе с импортированным набором DDG их тысячи (см. SearchTargets.ts).
+  ipcMain.handle(IPC.SEARCH_CHIPS_SEARCH, (_e, query: string): SearchChipCandidate[] =>
+    searchChipCandidates(typeof query === 'string' ? query : '', { bangs, learned: searchTargets }));
+  ipcMain.handle(IPC.SEARCH_CHIPS_RESOLVE, (_e, ids: string[]): SearchChipCandidate[] =>
+    resolveChipCandidates(Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : [],
+      { bangs, learned: searchTargets }));
 
   // Возврат OS-фокуса чрому по требованию renderer'а. Тот же приём, что уже применяется на
   // Ctrl+L и при открытии дропдауна подсказок, — просто доступный ещё и из омнибокса.

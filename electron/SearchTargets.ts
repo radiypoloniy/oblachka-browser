@@ -16,7 +16,7 @@ import { BUILTIN_BANGS, deriveBangFromUrl, isValidBangTemplate } from '../shared
 import type { BangDef } from '../shared/bangs';
 import { getSearchEngine } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
-import type { SearchTarget, SearchChipsConfig } from '../shared/ipc';
+import type { SearchTarget, SearchChipsConfig, SearchChipCandidate } from '../shared/ipc';
 import type { BangStore } from './BangStore';
 import type { SearchTargetStore } from './SearchTargetStore';
 
@@ -48,6 +48,98 @@ export interface SearchContext {
   chips: SearchChipsConfig;
 }
 
+// ── Выбор цели в настройках ────────────────────────────────────────────────────
+// Полный список кандидатов наружу не отдаётся: со встроенными и импортированными из DDG их
+// тысячи, и стеной чипов такое не показать. Наружу — только поиск и разрешение выбранных id.
+
+// Сколько строк показываем в выдаче. Больше десяти — это уже не «выбрал глазами», а список,
+// по которому опять нужен поиск.
+export const CHIP_SEARCH_LIMIT = 10;
+
+export interface ChipSources {
+  bangs: BangStore | null;
+  learned: SearchTargetStore | null;
+}
+
+function candidateFromBang(b: BangDef, source: 'user' | 'builtin' | 'imported'): SearchChipCandidate {
+  return { id: `bang:${b.key}`, name: b.name, kind: 'bang', source, host: hostOf(b.template) ?? '', bangKey: b.key };
+}
+
+export function searchChipCandidates(query: string, src: ChipSources): SearchChipCandidate[] {
+  const q = query.trim().toLowerCase();
+  const out: SearchChipCandidate[] = [];
+  const seen = new Set<string>();
+  const add = (c: SearchChipCandidate): void => {
+    // Схлопываем не только по id, но и по паре «домен + название»: один и тот же Wildberries
+    // приходит и выученным сайтом, и встроенным бэнгом — в короткой выдаче это две неотличимые
+    // строки. Именно домен И название, а не домен: на google.com живут и веб-поиск, и «Картинки
+    // Google», и это разные цели.
+    const label = `${c.host}|${c.name.toLowerCase()}`;
+    if (seen.has(c.id) || seen.has(label) || out.length >= CHIP_SEARCH_LIMIT) return;
+    seen.add(c.id);
+    seen.add(label);
+    out.push(c);
+  };
+
+  // Выученные сайты — впереди бэнгов: это места, где человек искал сам, и в коротком списке
+  // они полезнее любого курируемого набора (тот же приоритет, что в полосе чипов выше).
+  for (const t of src.learned?.list() ?? []) {
+    if (q && !t.name.toLowerCase().includes(q) && !t.host.includes(q)) continue;
+    add({ id: `site:${t.host}`, name: t.name, kind: 'site', source: 'learned', host: t.host });
+  }
+  for (const { bang, source } of src.bangs?.searchAll(q, CHIP_SEARCH_LIMIT) ?? []) {
+    add(candidateFromBang(bang, source));
+  }
+  return out;
+}
+
+// Показать уже выбранное (цель по умолчанию, закреплённые) нужно, не листая тысячи целей —
+// поэтому разрешение точечное, по id. Неизвестные id молча выпадают: цель могли удалить.
+export function resolveChipCandidates(ids: string[], src: ChipSources): SearchChipCandidate[] {
+  const out: SearchChipCandidate[] = [];
+  for (const id of ids) {
+    if (id.startsWith('bang:')) {
+      const key = id.slice('bang:'.length);
+      // find() ищет во всех трёх источниках, включая импортированные, — цель по умолчанию можно
+      // выбрать и из набора DDG, и подписать её потом надо честно.
+      const b = src.bangs?.find(key) ?? null;
+      if (b && src.bangs) {
+        const source = src.bangs.listUser().some((x) => x.key === key) ? 'user'
+          : src.bangs.listBuiltin().some((x) => x.key === key) ? 'builtin'
+          : 'imported';
+        out.push(candidateFromBang(b, source));
+      }
+    } else if (id.startsWith('site:')) {
+      const host = id.slice('site:'.length);
+      const t = src.learned?.findByHost(host) ?? null;
+      if (t) out.push({ id, name: t.name, kind: 'site', source: 'learned', host });
+    }
+  }
+  return out;
+}
+
+// Цель, назначенную по умолчанию, надо уметь достать по id ДО того, как собрана полоса: она
+// встаёт первой, а в режиме 'pinned' её вообще может не быть среди закреплённых. Источники — те
+// же, что у списка кандидатов в настройках (свои бэнги → выученные сайты → встроенные);
+// импортированный список DDG сюда не входит намеренно, см. шапку модуля.
+function resolveTargetById(id: string, ctx: SearchContext, userBangs: BangDef[]): SearchTarget | null {
+  if (id === 'engine') {
+    const engine = getSearchEngine(ctx.engineId);
+    return { id: 'engine', name: engine.name, kind: 'engine', template: engineTemplate(ctx.engineId) };
+  }
+  if (id.startsWith('bang:')) {
+    const key = id.slice('bang:'.length);
+    const b = userBangs.find((x) => x.key === key) ?? BUILTIN_BANGS.find((x) => x.key === key);
+    return b ? { id, name: b.name, kind: 'bang', template: b.template, bangKey: b.key } : null;
+  }
+  if (id.startsWith('site:')) {
+    const host = id.slice('site:'.length);
+    const t = ctx.learned?.findByHost(host) ?? null;
+    return t ? { id, name: t.name, kind: 'bang', template: t.template } : null;
+  }
+  return null;
+}
+
 export function buildSearchTargets(ctx: SearchContext): SearchTarget[] {
   const targets: SearchTarget[] = [];
   const seenTemplates = new Set<string>();
@@ -62,6 +154,16 @@ export function buildSearchTargets(ctx: SearchContext): SearchTarget[] {
 
   const userBangs: BangDef[] = ctx.bangs?.listUser() ?? [];
   const host = hostOf(ctx.url);
+
+  // 0. Цель по умолчанию, если человек её назначил (настройки → «Цели быстрого поиска»). Идёт
+  //    ПЕРЕД текущим сайтом, и это осознанно: контекстная догадка хороша, пока человек не сказал
+  //    иначе — а сказав, он ждёт, что Enter уйдёт туда, куда он велел, а не куда мы подумали.
+  //    Поповер выбирает первый чип, так что «первой» здесь и означает «выбрана по умолчанию».
+  if (ctx.chips.defaultId) {
+    const def = resolveTargetById(ctx.chips.defaultId, ctx, userBangs);
+    // Промах (бэнг удалили, сайт забыли) не ломает ничего: полоса просто соберётся как раньше.
+    if (def) push(def);
+  }
 
   // 1. Текущий сайт — первым, это и есть смысл всей затеи. Три источника по убыванию точности:
   //    адрес прямо сейчас похож на выдачу → выученное по этому хосту → бэнг с тем же хостом.

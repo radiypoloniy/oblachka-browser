@@ -3,6 +3,7 @@ import { SectionHeader, Subsection, StatusCard, btnPrimary } from './kit';
 import UpdatesBlock from './UpdatesBlock';
 import BangsBlock from './BangsBlock';
 import SearchChipsBlock from './SearchChipsBlock';
+import DefaultSearchBlock from './DefaultSearchBlock';
 
 interface GeneralSectionProps {
   // Открыть диалог импорта — состояние живёт в App.tsx (модалка поверх всего chrome), сюда
@@ -10,15 +11,22 @@ interface GeneralSectionProps {
   onOpenImport: () => void;
 }
 
-// Раздел «Браузер» — общие настройки браузера. Пока единственный блок — импорт данных из другого
-// браузера (закладки/история/пароли, см. electron/browserImport/). Дальше сюда переедут поисковик
-// по умолчанию, поведение при старте и т.п.
+// Раздел «Браузер» — общие настройки браузера: поиск по умолчанию, обновления, бэнги, цели
+// быстрого поиска, импорт данных из другого браузера (закладки/история/пароли, см.
+// electron/browserImport/). Дальше сюда же — поведение при старте и т.п.
 export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <SectionHeader title="Браузер">
         Общие настройки браузера.
       </SectionHeader>
+
+      <Subsection
+        title="Поиск по умолчанию"
+        description="Куда уходит запрос из адресной строки, если это не адрес сайта."
+      >
+        <DefaultSearchBlock />
+      </Subsection>
 
       <Subsection
         title="Обновления"
@@ -36,7 +44,7 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
 
       <Subsection
         title="Цели быстрого поиска"
-        description="Что предлагать в полосе целей поповера Ctrl+E: подбирать по ходу работы или показывать закреплённый вами набор."
+        description="Поповер Ctrl+E: куда уходит Enter по умолчанию и чем наполнять полосу целей рядом."
       >
         <SearchChipsBlock />
       </Subsection>

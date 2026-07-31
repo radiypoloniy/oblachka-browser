@@ -6,6 +6,7 @@ import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
 import { islandPlate, islandBtn, navBtn } from '../styles/island';
+import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
 
 // Высота тулбара — должна совпадать с CSS-значением (56px).
 const TOOLBAR_HEIGHT = 56;
@@ -151,7 +152,10 @@ export default function Toolbar({
   useEffect(() => {
     let mounted = true;
     window.oblako.getSearchEngine().then((id) => { if (mounted) setSearchEngineId(id); });
-    return () => { mounted = false; };
+    // Тот же выбор есть в настройках («Браузер» → «Поиск по умолчанию»), а тулбар над открытыми
+    // настройками остаётся на экране — без подписки капсула показывала бы прежний движок.
+    const off = subscribeDefaultSearchEngine((id) => { if (mounted) setSearchEngineId(id); });
+    return () => { mounted = false; off(); };
   }, []);
 
   // Капсула выбора поисковика — только на хабе (isHub), см. omnibox ниже.
@@ -162,7 +166,7 @@ export default function Toolbar({
   const pickEngine = (id: SearchEngineId) => {
     setSearchEngineId(id);
     setEngineMenuOpen(false);
-    void window.oblako.setSearchEngine(id);
+    setDefaultSearchEngine(id);
   };
 
   // Измеряем ширину тулбара для расчёта режима VPN и ширины омнибокса.

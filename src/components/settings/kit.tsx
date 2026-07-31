@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
 import { islandPlate } from '../../styles/island';
 
@@ -23,6 +24,44 @@ export const btnGhost: React.CSSProperties = {
   border: '1px solid var(--divider-strong)', background: 'transparent',
   color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default', flex: 'none',
 };
+
+// ── Favicon сайта ─────────────────────────────────────────────────────────────
+// Модульный кэш обещаний — один запрос на host на всю сессию renderer, независимо от того,
+// сколько строк/перерендеров его просят (main тоже кэширует, но так не спамим IPC).
+const faviconCache = new Map<string, Promise<string | null>>();
+function loadFavicon(host: string): Promise<string | null> {
+  let p = faviconCache.get(host);
+  if (!p) { p = window.oblako.getFavicon(host); faviconCache.set(host, p); }
+  return p;
+}
+
+// Иконка сайта с фолбэком на букву-заглушку (тот же приём, что в History/Bookmarks-строках,
+// пока/если иконки нет). data-URL приходит из main (FaviconService), тянется только с самого
+// сайта. Жил локально в PasswordsSection — переехал сюда, когда понадобился второму списку.
+export function Favicon({ host, size = 20 }: { host: string; size?: number }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setSrc(null);
+    if (!host) return () => { alive = false; };
+    void loadFavicon(host).then((url) => { if (alive) setSrc(url); });
+    return () => { alive = false; };
+  }, [host]);
+
+  const box: React.CSSProperties = {
+    width: size, height: size, borderRadius: 'var(--radius-sm)', flexShrink: 0,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  };
+  if (src) {
+    const inner = Math.round(size * 0.8);
+    return <span style={box}><img src={src} alt="" width={inner} height={inner} style={{ objectFit: 'contain' }} /></span>;
+  }
+  return (
+    <span style={{ ...box, background: 'var(--neutral-300)', color: 'var(--text-body)', fontSize: Math.round(size / 2), fontWeight: 600 }}>
+      {host.charAt(0).toUpperCase() || '?'}
+    </span>
+  );
+}
 
 export function IconBtn({ title, active, onClick, children }: {
   title: string; active?: boolean; onClick: () => void; children: React.ReactNode;

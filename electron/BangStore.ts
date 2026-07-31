@@ -25,6 +25,11 @@ const MAX_IMPORTED = 20_000;
 // Формат записи в bang.js: t — триггер, s — имя, u — шаблон с плейсхолдером {{{s}}}.
 interface DdgBangRaw { t?: unknown; s?: unknown; u?: unknown }
 
+// Домен из шаблона — для поиска по адресу («wildberries» находит цель, названную «WB»).
+function hostOf(template: string): string {
+  try { return new URL(template).hostname.replace(/^www\./i, '').toLowerCase(); } catch { return ''; }
+}
+
 export interface ImportBangsResult {
   ok: boolean;
   imported: number;
@@ -89,6 +94,43 @@ export class BangStore {
       seen.add(b.key);
       out.push({ ...b });
       if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  // Поиск по ВСЕМ трём источникам — для выбора цели в настройках. В отличие от suggest() выше
+  // импортированные сюда входят: там подсказка по префиксу ключа на горячем пути ввода, а здесь
+  // человек осознанно ищет среди тринадцати тысяч, и не найти в них Wildberries было бы странно.
+  //
+  // ⚠️ Импортированные подтягиваются с диска только при НЕПУСТОМ запросе — пустой отдаёт то, что
+  // и так в памяти, и ленивая загрузка (см. шапку) остаётся ленивой, пока человек не начал искать.
+  // Перебор ~13 000 записей на запрос — обычный проход по массиву строк, дешевле одного кадра.
+  searchAll(query: string, limit: number): { bang: BangDef; source: 'user' | 'builtin' | 'imported' }[] {
+    const q = query.trim().toLowerCase().replace(/^!/, '');
+    const pools: { list: Iterable<BangDef>; source: 'user' | 'builtin' | 'imported' }[] = [
+      { list: this.#user, source: 'user' },
+      { list: BUILTIN_BANGS, source: 'builtin' },
+    ];
+    if (q) pools.push({ list: this.#ensureImported().values(), source: 'imported' });
+
+    const out: { bang: BangDef; source: 'user' | 'builtin' | 'imported' }[] = [];
+    const seen = new Set<string>();
+    // Два прохода на источник: сначала точные/начальные совпадения, потом вхождения. Иначе
+    // «ozon» тонул бы в двадцати ozon-подобных именах, пришедших по алфавиту раньше.
+    for (const pass of [0, 1]) {
+      for (const { list, source } of pools) {
+        for (const b of list) {
+          if (out.length >= limit) return out;
+          if (seen.has(b.key)) continue;
+          const name = b.name.toLowerCase();
+          const strong = !q || b.key === q || name.startsWith(q) || b.key.startsWith(q);
+          const weak = q ? name.includes(q) || hostOf(b.template).includes(q) : false;
+          if (pass === 0 ? !strong : !weak) continue;
+          seen.add(b.key);
+          out.push({ bang: { ...b }, source });
+        }
+      }
+      if (!q) break; // пустой запрос — второго прохода нет, всё уже отдано первым
     }
     return out;
   }
