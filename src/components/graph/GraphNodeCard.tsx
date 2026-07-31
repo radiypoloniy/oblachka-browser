@@ -1,10 +1,12 @@
-import { Handle, Position } from '@xyflow/react';
+import ReactMarkdown from 'react-markdown';
+import { Handle, NodeResizer, Position } from '@xyflow/react';
 import { Play, AlertCircle, Loader2, Check, Clock } from 'lucide-react';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
 import { NODE_KINDS } from '../../../shared/graph';
+import { markdownComponents } from '../aiMarkdown';
 
-// Карточка узла на холсте. Только рисует и зовёт колбэки — вся логика прогона живёт в main
-// (electron/GraphEngine.ts), здесь нет ни планирования, ни обращений к модели.
+// Карточка узла на холсте. Только рисует и зовёт колбэки — планирование и прогон живут
+// в main (electron/GraphEngine.ts).
 
 export interface GraphNodeData extends Record<string, unknown> {
   kind: GraphNodeKind;
@@ -18,15 +20,34 @@ export interface GraphNodeData extends Record<string, unknown> {
   onRun: () => void;
 }
 
+// Размер по умолчанию на тип узла. Задаём его ВСЕГДА (даже узлам, сохранённым до появления
+// колонок w/h) — так высота карточки определённая, и внутренние области могут честно
+// растягиваться по flex вместо подпорок с maxHeight.
+export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> = {
+  'source.url': { w: 268, h: 268 },
+  'source.note': { w: 268, h: 236 },
+  'qwen.transform': { w: 304, h: 320 },
+  'output.text': { w: 380, h: 360 },
+};
+
 const STATUS_TONE: Record<GraphNodeStatus, string> = {
   idle: 'var(--text-faint)',
   stale: 'var(--warning-500)',
   queued: 'var(--text-muted)',
   running: 'var(--accent)',
-  // Зелёный здесь функционален по цветовому закону проекта: результат посчитан локальной
-  // моделью на этой машине, ровно тот же смысл, что у --dot-local в статусе модели.
+  // Зелёный функционален по цветовому закону проекта: результат посчитан локальной моделью
+  // на этой машине — тот же смысл, что у --dot-local в статусе модели.
   done: 'var(--dot-local)',
   error: 'var(--danger-500)',
+};
+
+const STATUS_HINT: Record<GraphNodeStatus, string> = {
+  idle: 'Не считался',
+  stale: 'Устарел — входные данные изменились',
+  queued: 'Ждёт очереди',
+  running: 'Считается',
+  done: 'Готово',
+  error: 'Ошибка',
 };
 
 function StatusIcon({ status }: { status: GraphNodeStatus }) {
@@ -35,7 +56,7 @@ function StatusIcon({ status }: { status: GraphNodeStatus }) {
   if (status === 'error') return <AlertCircle size={13} color={color} />;
   if (status === 'done') return <Check size={13} color={color} />;
   if (status === 'queued') return <Clock size={13} color={color} />;
-  return <span style={{ width: 7, height: 7, borderRadius: '50%', background: color }} />;
+  return <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, display: 'inline-block' }} />;
 }
 
 const fieldStyle: React.CSSProperties = {
@@ -50,25 +71,52 @@ const fieldStyle: React.CSSProperties = {
   fontFamily: 'var(--font-sans)',
   padding: '7px 9px',
   outline: 'none',
-  resize: 'vertical',
+  resize: 'none',
+};
+
+const outputBox: React.CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  overflowY: 'auto',
+  background: 'var(--surface-sunken)',
+  borderRadius: 'var(--radius-sm, 8px)',
+  padding: '8px 10px',
+  fontSize: 'var(--fs-sm)',
+  lineHeight: 'var(--lh-body)',
+  color: 'var(--text-body)',
+  wordBreak: 'break-word',
 };
 
 export default function GraphNodeCard({ data, selected }: { data: GraphNodeData; selected?: boolean }) {
   const spec = NODE_KINDS[data.kind];
   const busy = data.status === 'running' || data.status === 'queued';
+  // Вывод модели — это Markdown, и читать его сырым (## и ** в тексте) неудобно. Источники
+  // отдают текст чужой страницы: там разметки нет, а случайные # и * только исказили бы её.
+  const asMarkdown = data.kind === 'qwen.transform' || data.kind === 'output.text';
+  const min = DEFAULT_NODE_SIZE[data.kind];
 
   return (
     <div
       style={{
-        width: 264,
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
         background: 'var(--surface-island)',
         border: `1px solid ${selected ? 'var(--accent)' : 'var(--divider)'}`,
         borderRadius: 'var(--radius-md, 12px)',
         boxShadow: 'var(--shadow-island, 0 6px 20px -10px rgba(0,0,0,.3))',
         overflow: 'hidden',
-        // nodrag на полях ввода ниже — иначе React Flow таскает узел вместо выделения текста.
       }}
     >
+      <NodeResizer
+        minWidth={min.w}
+        minHeight={180}
+        isVisible={!!selected}
+        lineStyle={{ borderColor: 'var(--accent)' }}
+        handleStyle={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent)', border: 0 }}
+      />
+
       {spec.inputs.map((port, i) => (
         <Handle
           key={port.id}
@@ -86,10 +134,10 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
 
       <div
         style={{
-          display: 'flex', alignItems: 'center', gap: 7,
-          padding: '9px 11px',
-          borderBottom: '1px solid var(--divider)',
+          display: 'flex', alignItems: 'center', gap: 7, flex: 'none',
+          padding: '9px 11px', borderBottom: '1px solid var(--divider)',
         }}
+        title={STATUS_HINT[data.status]}
       >
         <StatusIcon status={data.status} />
         <span
@@ -106,7 +154,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           className="nodrag"
           onClick={data.onRun}
           disabled={busy}
-          title={busy ? 'Уже в работе' : 'Посчитать этот узел и то, что его питает'}
+          title={busy ? 'Уже в работе' : 'Посчитать этот узел и всё, что от него зависит'}
           style={{
             marginLeft: 'auto', display: 'inline-flex', alignItems: 'center',
             background: 'none', border: 0, padding: 3, borderRadius: 6,
@@ -118,13 +166,21 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         </button>
       </div>
 
-      <div style={{ padding: '10px 11px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div
+        style={{
+          flex: 1, minHeight: 0, padding: '10px 11px',
+          display: 'flex', flexDirection: 'column', gap: 8,
+        }}
+      >
         <input
           className="nodrag"
           value={data.title}
           placeholder="Название узла"
           onChange={(e) => data.onPatch({ title: e.target.value })}
-          style={{ ...fieldStyle, background: 'transparent', border: 0, padding: 0, fontWeight: 'var(--fw-medium)', fontSize: 'var(--fs-md)' }}
+          style={{
+            ...fieldStyle, flex: 'none', background: 'transparent', border: 0, padding: 0,
+            fontWeight: 'var(--fw-medium)', fontSize: 'var(--fs-md)',
+          }}
         />
 
         {data.kind === 'source.url' && (
@@ -133,7 +189,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             value={data.config.url ?? ''}
             placeholder="https://…"
             onChange={(e) => data.onPatch({ config: { ...data.config, url: e.target.value } })}
-            style={fieldStyle}
+            style={{ ...fieldStyle, flex: 'none' }}
           />
         )}
 
@@ -142,9 +198,8 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             className="nodrag"
             value={data.config.text ?? ''}
             placeholder="Текст, который пойдёт дальше по графу"
-            rows={4}
             onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
-            style={fieldStyle}
+            style={{ ...fieldStyle, flex: 1, minHeight: 60 }}
           />
         )}
 
@@ -153,36 +208,31 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             className="nodrag"
             value={data.config.instruction ?? ''}
             placeholder="Что сделать с тем, что придёт на вход"
-            rows={4}
             onChange={(e) => data.onPatch({ config: { ...data.config, instruction: e.target.value } })}
-            style={fieldStyle}
+            // Инструкцию пишут один раз, а результат перечитывают — поэтому при растягивании
+            // узла место достаётся выводу, а не полю ввода.
+            style={{ ...fieldStyle, flex: 'none', height: 86, resize: 'none' }}
           />
         )}
 
         {data.error && (
-          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--danger-500)', lineHeight: 'var(--lh-snug)' }}>
+          <div style={{ flex: 'none', fontSize: 'var(--fs-sm)', color: 'var(--danger-500)', lineHeight: 'var(--lh-snug)' }}>
             {data.error}
           </div>
         )}
 
-        {data.output && (
-          <div
-            className="nodrag nowheel"
-            style={{
-              maxHeight: 132, overflowY: 'auto',
-              background: 'var(--surface-sunken)',
-              borderRadius: 'var(--radius-sm, 8px)',
-              padding: '7px 9px',
-              fontSize: 'var(--fs-sm)', lineHeight: 'var(--lh-body)',
-              color: 'var(--text-body)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            }}
-          >
+        {/* У заметки вывод равен введённому тексту — показывать его вторым блоком значит
+            дублировать одно и то же и вдвое урезать полезную площадь карточки. */}
+        {data.output && data.kind !== 'source.note' && (
+          <div className="nodrag nowheel" style={outputBox}>
             {data.outputTitle && (
               <div style={{ fontWeight: 'var(--fw-semibold)', color: 'var(--text-strong)', marginBottom: 4 }}>
                 {data.outputTitle}
               </div>
             )}
-            {data.output}
+            {asMarkdown
+              ? <ReactMarkdown components={markdownComponents}>{data.output}</ReactMarkdown>
+              : <div style={{ whiteSpace: 'pre-wrap' }}>{data.output}</div>}
           </div>
         )}
       </div>

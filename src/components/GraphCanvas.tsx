@@ -10,7 +10,8 @@ import type {
   GraphDoc, GraphMeta, GraphNodeConfig, GraphNodeKind, GraphNodeStatus, GraphStructure,
 } from '../../shared/graph';
 import { NODE_KINDS } from '../../shared/graph';
-import GraphNodeCard, { type GraphNodeData } from './graph/GraphNodeCard';
+import GraphNodeCard, { DEFAULT_NODE_SIZE, type GraphNodeData } from './graph/GraphNodeCard';
+import { downstreamOf } from '../../shared/graph';
 
 // Граф-воркспейс: холст рисует и складывает структуру, считает всё main (GraphEngine.ts).
 // Логика прогона, обращения к модели и извлечение страниц сюда не переезжают — компонент
@@ -38,6 +39,10 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
     id: n.id,
     type: 'oblako',
     position: { x: n.x, y: n.y },
+    // Размер задаём всегда, в том числе узлам, сохранённым до появления колонок w/h:
+    // при определённой высоте внутренности карточки растягиваются по flex честно.
+    width: n.w ?? DEFAULT_NODE_SIZE[n.kind].w,
+    height: n.h ?? DEFAULT_NODE_SIZE[n.kind].h,
     data: {
       kind: n.kind,
       title: n.title,
@@ -76,6 +81,10 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   // успело бы записаться поверх только что открытого воркспейса.
   const loadedIdRef = useRef<number | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Связи нужны patchNode для пометки «устарел», но через замыкание они пересоздавали бы
+  // колбэки на каждое движение мыши по холсту — держим их зеркалом в ref.
+  const edgesRef = useRef<Edge[]>([]);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
 
   const refreshList = useCallback(async () => {
     const metas = await window.oblako.listGraphs();
@@ -155,6 +164,8 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           kind: n.data.kind,
           x: n.position.x,
           y: n.position.y,
+          w: n.width ?? null,
+          h: n.height ?? null,
           title: n.data.title,
           config: n.data.config,
         })),
@@ -185,7 +196,26 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   );
 
   const patchNode = useCallback((id: string, patch: { title?: string; config?: GraphNodeConfig }) => {
-    setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
+    setNodes((ns) => {
+      // Правка конфига обесценивает и сам узел, и всё, что от него питается: результаты ниже
+      // посчитаны по прежним входам. Без этой пометки они стояли бы с зелёной галкой «готово»
+      // и выдавали устаревший текст за актуальный — ровно та ложь, из-за которой прогон узла
+      // теперь тянет downstream (см. GraphEngine.runGraph). Переименование не в счёт: в
+      // отпечаток входов заголовок не входит.
+      const affected = patch.config
+        ? downstreamOf([id], edgesRef.current.map((e) => ({
+            id: e.id, fromNode: e.source, fromPort: e.sourceHandle ?? 'text',
+            toNode: e.target, toPort: e.targetHandle ?? 'context',
+          })))
+        : new Set<string>();
+
+      return ns.map((n) => {
+        const base = n.id === id ? { ...n.data, ...patch } : n.data;
+        const goesStale = affected.has(n.id) && base.status === 'done';
+        if (n.id !== id && !goesStale) return n;
+        return { ...n, data: goesStale ? { ...base, status: 'stale' as GraphNodeStatus } : base };
+      });
+    });
   }, []);
 
   const runNode = useCallback((id: string) => {
@@ -201,6 +231,8 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         id: crypto.randomUUID(),
         type: 'oblako',
         position: { x: 80 + (offset % 340), y: 80 + offset * 0.6 },
+        width: DEFAULT_NODE_SIZE[kind].w,
+        height: DEFAULT_NODE_SIZE[kind].h,
         data: {
           kind,
           title: NODE_KINDS[kind].label,

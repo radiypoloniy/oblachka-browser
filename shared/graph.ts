@@ -78,6 +78,11 @@ export interface GraphNode {
   kind: GraphNodeKind
   x: number
   y: number
+  // Размер карточки, если человек её растягивал. null — по содержимому.
+  // Живёт ОТДЕЛЬНО от config намеренно: config участвует в отпечатке входов, и подтянутый
+  // уголок узла заставлял бы пересчитывать его заново — раскладка не влияет на смысл.
+  w: number | null
+  h: number | null
   title: string
   config: GraphNodeConfig
   // Отпечаток входов последнего успешного прогона. Совпал с текущим — пересчитывать нечего,
@@ -116,6 +121,8 @@ export interface GraphStructureNode {
   kind: GraphNodeKind
   x: number
   y: number
+  w: number | null
+  h: number | null
   title: string
   config: GraphNodeConfig
 }

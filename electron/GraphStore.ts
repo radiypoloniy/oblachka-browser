@@ -26,6 +26,8 @@ interface NodeRow {
   kind: string;
   x: number;
   y: number;
+  w: number | null;
+  h: number | null;
   title: string;
   config: string;
   input_hash: string | null;
@@ -120,7 +122,7 @@ export class GraphStore {
       if (!meta) return null;
 
       const nodeRows = this.#db.prepare(`
-        SELECT id, kind, x, y, title, config, input_hash, output, output_title, error
+        SELECT id, kind, x, y, w, h, title, config, input_hash, output, output_title, error
         FROM graph_nodes WHERE graph_id = ?
       `).all(graphId) as NodeRow[];
       const edgeRows = this.#db.prepare(`
@@ -132,6 +134,8 @@ export class GraphStore {
         kind: r.kind as GraphNodeKind,
         x: r.x,
         y: r.y,
+        w: r.w,
+        h: r.h,
         title: r.title,
         // Битый JSON конфига не должен ронять открытие всего графа — узел просто откроется пустым.
         config: safeParseConfig(r.config),
@@ -183,15 +187,18 @@ export class GraphStore {
     try {
       const run = db.transaction(() => {
         const upsertNode = db.prepare(`
-          INSERT INTO graph_nodes (graph_id, id, kind, x, y, title, config)
-          VALUES (@graphId, @id, @kind, @x, @y, @title, @config)
+          INSERT INTO graph_nodes (graph_id, id, kind, x, y, w, h, title, config)
+          VALUES (@graphId, @id, @kind, @x, @y, @w, @h, @title, @config)
           ON CONFLICT(graph_id, id) DO UPDATE SET
             kind = excluded.kind, x = excluded.x, y = excluded.y,
+            w = excluded.w, h = excluded.h,
             title = excluded.title, config = excluded.config
         `);
         for (const n of structure.nodes) {
           upsertNode.run({
             graphId, id: n.id, kind: n.kind, x: Math.round(n.x), y: Math.round(n.y),
+            w: n.w === null || n.w === undefined ? null : Math.round(n.w),
+            h: n.h === null || n.h === undefined ? null : Math.round(n.h),
             title: n.title ?? '', config: JSON.stringify(n.config ?? {}),
           });
         }
@@ -264,6 +271,8 @@ export class GraphStore {
         kind         TEXT    NOT NULL,
         x            INTEGER NOT NULL DEFAULT 0,
         y            INTEGER NOT NULL DEFAULT 0,
+        w            INTEGER,
+        h            INTEGER,
         title        TEXT    NOT NULL DEFAULT '',
         config       TEXT    NOT NULL DEFAULT '{}',
         input_hash   TEXT,
@@ -283,6 +292,15 @@ export class GraphStore {
       );
       CREATE INDEX IF NOT EXISTS idx_graph_edges_graph ON graph_edges(graph_id);
     `);
+
+    // Колонки размера появились после первой версии схемы: CREATE TABLE IF NOT EXISTS их
+    // в уже существующую таблицу не добавит. Миграция неразрушающая — только ADD COLUMN,
+    // существующие узлы получают NULL («размер по содержимому»).
+    const columns = new Set(
+      (db.pragma('table_info(graph_nodes)') as { name: string }[]).map((c) => c.name),
+    );
+    if (!columns.has('w')) db.exec(`ALTER TABLE graph_nodes ADD COLUMN w INTEGER`);
+    if (!columns.has('h')) db.exec(`ALTER TABLE graph_nodes ADD COLUMN h INTEGER`);
   }
 }
 

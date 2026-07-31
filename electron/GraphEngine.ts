@@ -123,8 +123,12 @@ async function executeNode(
   }
 }
 
-// targetNodeId=null — считать весь граф. Иначе считаем только цепочку, питающую этот узел
-// (upstream), — «пересчитать вот это» не должно молча трогать соседние ветки.
+// targetNodeId=null — считать весь граф. Иначе берём цепочку, которая узел ПИТАЕТ (upstream,
+// чтобы входы были свежими), сам узел и всё, что ниже по течению (downstream).
+//
+// Downstream здесь не роскошь: без него прогон Qwen-узла оставлял «Результат» ниже с прошлым
+// содержимым и зелёной галкой «готово» — то есть узел показывал устаревший текст как
+// актуальный. Соседние ветки, не связанные с этим узлом, по-прежнему не трогаются.
 export async function runGraph(
   win: BrowserWindow | null,
   store: GraphStore,
@@ -148,7 +152,11 @@ export async function runGraph(
   }
 
   const byId = new Map(doc.nodes.map((n) => [n.id, n]));
-  const scope = targetNodeId ? upstreamOf(targetNodeId, doc.edges) : null;
+  let scope: Set<string> | null = null;
+  if (targetNodeId) {
+    scope = upstreamOf(targetNodeId, doc.edges);
+    for (const id of downstreamOf([targetNodeId], doc.edges)) scope.add(id);
+  }
   const plan = order.filter((id) => byId.has(id) && (!scope || scope.has(id)));
 
   const token = { cancelled: false };
