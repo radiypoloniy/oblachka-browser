@@ -160,10 +160,23 @@ function SearchPopover() {
   }, []);
 
   // Высота карточки → main: WebContentsView не растёт под контент сама (см. канал resize).
+  //
+  // Именно ResizeObserver, а не мерка по изменению данных: перенос чипов на вторую строку
+  // зависит от ШИРИНЫ текста, а та доезжает позже самих данных — когда догрузится веб-шрифт
+  // (шрифты пока с Google Fonts, см. CLAUDE.md). Мерка «на изменение targets» успевала снять
+  // высоту в один ряд, потом строка переносилась, а вью оставалась низкой — остров с целями
+  // выглядел обрезанным снизу, и починить это можно было только развернув список (та мерка
+  // запускалась заново). Наблюдатель ловит любую причину смены высоты, включая эту.
+  // Тот же приём, которым App.tsx меряет область контента.
   useEffect(() => {
-    const h = cardRef.current?.offsetHeight;
-    if (h) window.searchPopover.resize(h);
-  }, [hits.length, targets.length, chipsExpanded, bangTarget]);
+    const el = cardRef.current;
+    if (!el) return;
+    const report = () => { const h = el.offsetHeight; if (h) window.searchPopover.resize(h); };
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    report();
+    return () => ro.disconnect();
+  }, []);
 
   // Поиск по своим данным на каждое изменение строки, с дебаунсом.
   useEffect(() => {

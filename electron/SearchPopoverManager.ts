@@ -181,7 +181,10 @@ export function showSearchPopover(win: BrowserWindow, ctx: SearchPopoverContext)
 
   if (isAttached()) {
     // Повторный Ctrl+E при открытом поповере — обновить контекст и выделить набранное
-    // (тот же UX, что у повторного Ctrl+F).
+    // (тот же UX, что у повторного Ctrl+F). layout() обязателен: высоту мы только что сбросили
+    // в базовую, и без пересчёта вью осталась бы растянутой с прошлого показа — прозрачной,
+    // но перехватывающей клики по странице под собой.
+    layout()
     popoverView?.webContents.send('searchpopover:show', ctx)
     popoverView?.webContents.focus()
     return
