@@ -485,6 +485,12 @@ const nodesContainTab = (nodes: SidebarNode[], tabId: string): boolean =>
     : n.type === 'split-pair' ? n.leftTabId === tabId || n.rightTabId === tabId
     : nodesContainTab(n.children, tabId));
 
+// Обёртка призрака DragOverlay — одна на все «иконочные» призраки свёрнутой полосы.
+const collapsedGhostPlate: React.CSSProperties = {
+  boxShadow: 'var(--shadow-card)', borderRadius: 'var(--radius-sm)',
+  background: 'var(--surface)', opacity: 0.95, display: 'inline-flex',
+};
+
 interface CollapsedCellsProps {
   node: SidebarNode;
   tabMap: Map<string, TabState>;
@@ -492,34 +498,85 @@ interface CollapsedCellsProps {
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onTabMenu: (id: string) => void;
+  ghost?: boolean;
 }
 
-// Узел дерева → ячейки свёрнутой полосы. Общий кусок для верхнего уровня и для детей папки:
-// одиночная — одна ячейка, split-пара — две подряд (в 56 пикселях ширины «плиткой» пару не
-// нарисовать, но порядок и соседство сохраняются — плоский список не давал и этого).
-function CollapsedNodeCells({ node, tabMap, activeId, onSelect, onClose, onTabMenu }: CollapsedCellsProps) {
+// Split-пара в узкой полосе: две иконки на общей утопленной подложке с волосяной линией между
+// ними. Без подложки пара неотличима от двух соседних вкладок — а это разные вещи: она и
+// переезжает, и закрывается как одно целое.
+function CollapsedPairTile({ left, right, activeId, onSelect, onClose, onTabMenu, ghost }: {
+  left: TabState; right: TabState; activeId: string;
+  onSelect: (id: string) => void;
+  onClose: (id: string) => void;
+  onTabMenu: (id: string) => void;
+  ghost?: boolean;
+}) {
   const cell = (tab: TabState) => (
     <IconCell
-      key={tab.id}
-      tab={tab}
-      active={activeId === tab.id}
+      tab={tab} active={activeId === tab.id} ghost={ghost}
       onClick={() => onSelect(tab.id)}
       onContextMenu={() => onTabMenu(tab.id)}
       onMiddleClick={() => onClose(tab.id)}
     />
   );
+  return (
+    <div style={{
+      background: 'var(--surface-sunken)', borderRadius: 'var(--radius-sm)',
+      padding: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+    }}>
+      {cell(left)}
+      <span style={{ width: 14, height: 1, background: 'var(--divider)', flex: 'none' }} />
+      {cell(right)}
+    </div>
+  );
+}
 
+// Узел дерева → ячейки свёрнутой полосы. Общий кусок для верхнего уровня и для детей папки.
+function CollapsedNodeCells({ node, tabMap, activeId, onSelect, onClose, onTabMenu, ghost }: CollapsedCellsProps) {
   if (node.type === 'single') {
     const tab = tabMap.get(node.tabId);
-    return tab ? cell(tab) : null;
+    if (!tab) return null;
+    return (
+      <IconCell
+        tab={tab} active={activeId === tab.id} ghost={ghost}
+        onClick={() => onSelect(tab.id)}
+        onContextMenu={() => onTabMenu(tab.id)}
+        onMiddleClick={() => onClose(tab.id)}
+      />
+    );
   }
   if (node.type === 'split-pair') {
     const left = tabMap.get(node.leftTabId);
     const right = tabMap.get(node.rightTabId);
     if (!left || !right) return null;
-    return <>{cell(left)}{cell(right)}</>;
+    return (
+      <CollapsedPairTile
+        left={left} right={right} activeId={activeId} ghost={ghost}
+        onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
+      />
+    );
   }
-  return null; // группы рисует CollapsedGroupIsland
+  return null; // папки рисует CollapsedGroupIsland
+}
+
+// DnD-обёртка элемента свёрнутой полосы: пин, одиночная вкладка, split-пара. Папка тащится не
+// так (см. CollapsedGroupIsland): у неё listeners висят на иконке-ручке, а не на всём острове,
+// иначе перетаскивание ребёнка внутри раскрытой папки поднимало бы заодно и саму папку.
+function SortableCollapsedItem({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform), transition,
+        opacity: isDragging ? 0 : 1, flex: 'none',
+      }}
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </div>
+  );
 }
 
 // Папка в свёрнутой панели: остров с иконкой, без названия. Клик по иконке — раскрыть/сложить
@@ -534,57 +591,170 @@ function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTa
   onClose: (id: string) => void;
   onTabMenu: (id: string) => void;
 }) {
+  const innerSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const {
+    effectiveChildIds, effectiveChildren, dragChild, setChildDragId, handleChildDragEnd,
+  } = useGroupChildOrder(group);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `group:${group.id}`,
+  });
+
   const color = group.color ? (GROUP_COLORS[group.color] ?? null) : null;
   const hasActive = nodesContainTab(group.children, activeId);
   const FolderIcon = group.collapsed ? Folder : FolderOpen;
 
   return (
     <div
-      className="no-drag"
+      ref={setNodeRef}
       style={{
-        ...innerPlate,
-        // Бледная заливка = цвет папки, приглушённый до фона: сам цвет остаётся узнаваем,
-        // но остров не начинает конкурировать с активной вкладкой за внимание.
-        ...(color ? {
-          background: `color-mix(in srgb, ${color} 14%, var(--surface))`,
-          border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
-        } : {}),
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-        padding: '6px 5px', flex: 'none',
+        transform: CSS.Transform.toString(transform), transition,
+        opacity: isDragging ? 0 : 1, flex: 'none',
       }}
     >
-      <button
+      <div
         className="no-drag"
-        onClick={() => { void window.oblako.toggleGroupCollapse(group.id); }}
-        onContextMenu={(e) => { e.preventDefault(); void window.oblako.showGroupMenu(group.id); }}
-        title={group.label}
         style={{
-          border: 'none', background: 'transparent', cursor: 'default',
-          padding: 5, borderRadius: 'var(--radius-sm)', display: 'inline-flex',
-          position: 'relative', color: color ?? 'var(--text-muted)',
+          ...innerPlate,
+          // Бледная заливка = цвет папки, приглушённый до фона: сам цвет остаётся узнаваем,
+          // но остров не начинает конкурировать с активной вкладкой за внимание.
+          ...(color ? {
+            background: `color-mix(in srgb, ${color} 14%, var(--surface))`,
+            border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
+          } : {}),
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+          padding: '6px 5px',
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
       >
-        <FolderIcon size={18} />
-        {/* Активная вкладка внутри сложенной папки — иначе она исчезает из панели бесследно. */}
-        {group.collapsed && hasActive && (
-          <span style={{
-            position: 'absolute', right: 2, bottom: 1, width: 6, height: 6,
-            borderRadius: '50%', background: 'var(--accent)',
-          }} />
-        )}
-      </button>
+        {/* Иконка — и кнопка «раскрыть/сложить», и ручка перетаскивания всей папки. Как у
+            заголовка группы в развёрнутой панели: PointerSensor с activationConstraint.distance
+            сам разводит клик и драг, клик без сдвига курсора драгом не становится. */}
+        <button
+          className="no-drag"
+          {...attributes}
+          {...listeners}
+          onClick={() => { void window.oblako.toggleGroupCollapse(group.id); }}
+          onContextMenu={(e) => { e.preventDefault(); void window.oblako.showGroupMenu(group.id); }}
+          title={group.label}
+          style={{
+            border: 'none', background: 'transparent', cursor: 'grab',
+            padding: 5, borderRadius: 'var(--radius-sm)', display: 'inline-flex',
+            position: 'relative', color: color ?? 'var(--text-muted)',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          <FolderIcon size={18} />
+          {/* Активная вкладка внутри сложенной папки — иначе она исчезает из панели бесследно. */}
+          {group.collapsed && hasActive && (
+            <span style={{
+              position: 'absolute', right: 2, bottom: 1, width: 6, height: 6,
+              borderRadius: '50%', background: 'var(--accent)',
+            }} />
+          )}
+        </button>
 
-      {!group.collapsed && group.children.map((child) => (
-        <CollapsedNodeCells
-          key={nodeToTopId(child)}
-          node={child} tabMap={tabMap} activeId={activeId}
-          onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
-        />
-      ))}
+        {/* Свой DndContext на детей — ровно как у развёрнутой группы: порядок внутри папки
+            меняется и в узкой полосе, а наружу такой драг не выходит (это отдельный контекст). */}
+        {!group.collapsed && (
+          <DndContext
+            sensors={innerSensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragStart={(e) => setChildDragId(e.active.id as string)}
+            onDragEnd={handleChildDragEnd}
+            onDragCancel={() => setChildDragId(null)}
+          >
+            <SortableContext items={effectiveChildIds} strategy={verticalListSortingStrategy}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                {effectiveChildren.map((child) => (
+                  <SortableCollapsedItem key={nodeToTopId(child)} id={nodeToTopId(child)}>
+                    <CollapsedNodeCells
+                      node={child} tabMap={tabMap} activeId={activeId}
+                      onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
+                    />
+                  </SortableCollapsedItem>
+                ))}
+              </div>
+            </SortableContext>
+
+            {/* Портал призрака живёт в своём DndContext — верхний сюда не дотягивается. */}
+            <DragOverlay>
+              {dragChild && (
+                <div style={collapsedGhostPlate}>
+                  <CollapsedNodeCells
+                    node={dragChild} tabMap={tabMap} activeId={activeId}
+                    onSelect={() => {}} onClose={() => {}} onTabMenu={() => {}}
+                    ghost
+                  />
+                </div>
+              )}
+            </DragOverlay>
+          </DndContext>
+        )}
+      </div>
     </div>
   );
+}
+
+// Порядок детей группы — общий для обеих панелей (развёрнутой и свёрнутой): оптимистичный
+// локальный порядок, его сверка с приходящим из main и отправка нового порядка туда же.
+// Вынесено в хук, когда сортировка внутри папки понадобилась и в узкой полосе: две копии
+// этой машинки разъехались бы при первой же правке.
+function useGroupChildOrder(group: GroupNode) {
+  const [localChildOrder, setLocalChildOrder] = useState<string[] | null>(null);
+  // Своя пара state+DragOverlay на каждый вложенный DndContext — верхнеуровневый DragOverlay
+  // не видит drag, стартовавший в НЁМ, dnd-kit не пробрасывает состояние между независимыми
+  // DndContext. Без этого ряд гасит себя (opacity:0 при isDragging) в расчёте на портал-призрак,
+  // которого там нет — пустота при перетаскивании вкладки внутри папки.
+  const [childDragId, setChildDragId] = useState<string | null>(null);
+
+  const childIds = group.children.map(nodeToTopId);
+
+  // Сбросить оптимистичный порядок детей при изменении состава группы из main
+  useEffect(() => {
+    if (!localChildOrder) return;
+    const curSet = new Set(localChildOrder);
+    if (localChildOrder.length !== childIds.length || childIds.some((id) => !curSet.has(id))) {
+      setLocalChildOrder(null);
+      return;
+    }
+    if (localChildOrder.every((id, i) => id === childIds[i])) {
+      setLocalChildOrder(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group.children]);
+
+  const effectiveChildIds = localChildOrder ?? childIds;
+  const childNodeById = new Map<string, SidebarNode>();
+  for (const child of group.children) {
+    childNodeById.set(nodeToTopId(child), child);
+  }
+  const effectiveChildren = effectiveChildIds
+    .map((id) => childNodeById.get(id))
+    .filter((n): n is SidebarNode => n !== undefined);
+
+  // Тип перетаскиваемого ребёнка — простой поиск в effectiveChildren (уже под рукой, не нужен
+  // рекурсивный обход всего дерева, как для top-level DragOverlay в Sidebar).
+  const dragChild = childDragId
+    ? effectiveChildren.find((c) => nodeToTopId(c) === childDragId) ?? null
+    : null;
+
+  const handleChildDragEnd = (e: DragEndEvent) => {
+    // Сброс ПЕРВЫМ, до любых ранних return — иначе drop без реального перемещения
+    // (over совпал с active, или вне списка) оставит childDragId висеть, а вместе с ним
+    // призрак и погашенный (opacity:0) оригинал.
+    setChildDragId(null);
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = effectiveChildIds.indexOf(active.id as string);
+    const to   = effectiveChildIds.indexOf(over.id as string);
+    if (from < 0 || to < 0 || from === to) return;
+    const newOrder = arrayMove(effectiveChildIds, from, to);
+    setLocalChildOrder(newOrder);
+    void window.oblako.reorderGroupChildren(group.id, newOrder);
+  };
+
+  return { effectiveChildIds, effectiveChildren, dragChild, setChildDragId, handleChildDragEnd };
 }
 
 // Блок группы: заголовок (drag handle для внешнего DndContext)
@@ -607,12 +777,9 @@ function SortableGroupBlock({
   onSplit, onExitSplit, renameGroupId, setRenameGroupId,
 }: GroupBlockProps) {
   const innerSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  const [localChildOrder, setLocalChildOrder] = useState<string[] | null>(null);
-  // Своя пара state+DragOverlay — верхнеуровневый DragOverlay (Sidebar) не видит drag,
-  // стартовавший в ЭТОМ (вложенном) DndContext, dnd-kit не пробрасывает состояние между
-  // независимыми DndContext. Без этого SortableTabRow гасит себя (opacity:0 при isDragging)
-  // в расчёте на портал-призрак, которого тут не было — пустота при drag одиночной внутри группы.
-  const [childDragId, setChildDragId] = useState<string | null>(null);
+  const {
+    effectiveChildIds, effectiveChildren, dragChild, setChildDragId, handleChildDragEnd,
+  } = useGroupChildOrder(group);
   const [renameValue, setRenameValue] = useState(group.label);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const isRenaming = renameGroupId === group.id;
@@ -620,22 +787,6 @@ function SortableGroupBlock({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `group:${group.id}`,
   });
-
-  const childIds = group.children.map(nodeToTopId);
-
-  // Сбросить оптимистичный порядок детей при изменении состава группы из main
-  useEffect(() => {
-    if (!localChildOrder) return;
-    const curSet = new Set(localChildOrder);
-    if (localChildOrder.length !== childIds.length || childIds.some((id) => !curSet.has(id))) {
-      setLocalChildOrder(null);
-      return;
-    }
-    if (localChildOrder.every((id, i) => id === childIds[i])) {
-      setLocalChildOrder(null);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [group.children]);
 
   // При активации переименования — синхронизировать текущий label и сфокусировать
   useEffect(() => {
@@ -648,20 +799,6 @@ function SortableGroupBlock({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRenaming]);
 
-  const effectiveChildIds = localChildOrder ?? childIds;
-  const childNodeById = new Map<string, SidebarNode>();
-  for (const child of group.children) {
-    childNodeById.set(nodeToTopId(child), child);
-  }
-  const effectiveChildren = effectiveChildIds
-    .map((id) => childNodeById.get(id))
-    .filter((n): n is SidebarNode => n !== undefined);
-
-  // Тип перетаскиваемого ребёнка — простой поиск в effectiveChildren (уже в скоупе, не
-  // нужен рекурсивный обход всего дерева, как для top-level DragOverlay в Sidebar).
-  const dragChild = childDragId
-    ? effectiveChildren.find((c) => nodeToTopId(c) === childDragId) ?? null
-    : null;
   const dragChildTab: TabState | null = dragChild?.type === 'single'
     ? (tabMap.get(dragChild.tabId) ?? null)
     : null;
@@ -671,21 +808,6 @@ function SortableGroupBlock({
     const right = tabMap.get(dragChild.rightTabId);
     return left && right ? { left, right } : null;
   })();
-
-  const handleChildDragEnd = (e: DragEndEvent) => {
-    // Сброс ПЕРВЫМ, до любых ранних return — иначе drop без реального перемещения
-    // (over совпал с active, или вне списка) оставит childDragId висеть, а вместе с ним
-    // призрак и погашенный (opacity:0) оригинал.
-    setChildDragId(null);
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    const from = effectiveChildIds.indexOf(active.id as string);
-    const to   = effectiveChildIds.indexOf(over.id as string);
-    if (from < 0 || to < 0 || from === to) return;
-    const newOrder = arrayMove(effectiveChildIds, from, to);
-    setLocalChildOrder(newOrder);
-    void window.oblako.reorderGroupChildren(group.id, newOrder);
-  };
 
   const commitRename = () => {
     const trimmed = renameValue.trim();
@@ -1192,45 +1314,92 @@ export default function Sidebar({
           </button>
         </div>
 
-        {pinned.length > 0 && (
-          <div className="no-drag" style={{
-            ...innerPlate,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-            padding: '8px 6px', marginBottom: 10,
-          }}>
-            {pinned.map((t) => (
-              <IconCell key={t.id} tab={t} active={activeId === t.id}
-                onClick={() => onSelect(t.id)}
-                onContextMenu={() => onTabMenu(t.id)} />
-            ))}
-          </div>
-        )}
+        {/* Тот же DndContext и те же обработчики, что в развёрнутой панели: id элементов
+            совпадают (nodeToTopId), значит порядок, перенос между секциями и дроп в контент-зону
+            (→ split) работают одинаково в обоих режимах. Ось тут ограничиваем всегда — обе
+            секции в узкой полосе вертикальные, в отличие от сетки пинов в развёрнутой. */}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis]}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => { finishDrag(); }}
+        >
+          {pinned.length > 0 && (
+            <div className="no-drag" style={{
+              ...innerPlate,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+              padding: '8px 6px', marginBottom: 10,
+            }}>
+              <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
+                {pinned.map((t) => (
+                  <SortableCollapsedItem key={t.id} id={t.id}>
+                    <IconCell tab={t} active={activeId === t.id}
+                      onClick={() => onSelect(t.id)}
+                      onContextMenu={() => onTabMenu(t.id)} />
+                  </SortableCollapsedItem>
+                ))}
+              </SortableContext>
+            </div>
+          )}
 
-        {/* Список вкладок. oblako-hide-scrollbar — полоса прокрутки съедала ~10px из 56 и
-            дёргала центровку иконок при переполнении; сама прокрутка (колесо/тачпад) цела.
-            Рисуем дерево (effectiveNodes), а не плоский tabs.filter: тот показывал вкладки из
-            папок и split-пар вперемешку в порядке создания, а папок в свёрнутой панели не было
-            вовсе — то есть свернуть панель означало потерять всю структуру. */}
-        <div className="no-drag oblako-hide-scrollbar" style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-          overflowY: 'auto', flex: 1, paddingTop: 4, width: '100%',
-        }}>
-          {effectiveNodes.map((node) => (
-            node.type === 'group' ? (
-              <CollapsedGroupIsland
-                key={node.id}
-                group={node} tabMap={tabMap} activeId={activeId}
-                onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
-              />
-            ) : (
-              <CollapsedNodeCells
-                key={nodeToTopId(node)}
-                node={node} tabMap={tabMap} activeId={activeId}
-                onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
-              />
-            )
-          ))}
-        </div>
+          {/* Список вкладок. oblako-hide-scrollbar — полоса прокрутки съедала ~10px из 56 и
+              дёргала центровку иконок при переполнении; сама прокрутка (колесо/тачпад) цела.
+              Рисуем дерево (effectiveNodes), а не плоский tabs.filter: тот показывал вкладки из
+              папок и split-пар вперемешку в порядке создания, а папок в свёрнутой панели не было
+              вовсе — то есть свернуть панель означало потерять всю структуру. */}
+          <SortableContext items={openIds} strategy={verticalListSortingStrategy}>
+            <div ref={setNormalDropRef} className="no-drag oblako-hide-scrollbar" style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+              overflowY: 'auto', flex: 1, paddingTop: 4, width: '100%',
+            }}>
+              {effectiveNodes.map((node) => (
+                node.type === 'group' ? (
+                  <CollapsedGroupIsland
+                    key={node.id}
+                    group={node} tabMap={tabMap} activeId={activeId}
+                    onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
+                  />
+                ) : (
+                  <SortableCollapsedItem key={nodeToTopId(node)} id={nodeToTopId(node)}>
+                    <CollapsedNodeCells
+                      node={node} tabMap={tabMap} activeId={activeId}
+                      onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
+                    />
+                  </SortableCollapsedItem>
+                )
+              ))}
+            </div>
+          </SortableContext>
+
+          {/* Призраки — по тому же резолву типа узла, что и в развёрнутой панели
+              (dragPinnedTab / dragNode), только в «иконочной» подаче. */}
+          <DragOverlay>
+            {dragPinnedTab && (
+              <div style={collapsedGhostPlate}>
+                <IconCell tab={dragPinnedTab} active={activeId === dragPinnedTab.id} ghost />
+              </div>
+            )}
+            {dragNode && dragNode.type !== 'group' && (
+              <div style={collapsedGhostPlate}>
+                <CollapsedNodeCells
+                  node={dragNode} tabMap={tabMap} activeId={activeId}
+                  onSelect={() => {}} onClose={() => {}} onTabMenu={() => {}}
+                  ghost
+                />
+              </div>
+            )}
+            {dragGroup && (
+              <div style={{
+                ...collapsedGhostPlate,
+                padding: 5, color: (dragGroup.color ? GROUP_COLORS[dragGroup.color] : null) ?? 'var(--text-muted)',
+              }}>
+                <Folder size={18} />
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
 
         <div className="no-drag" style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginTop: 8,
