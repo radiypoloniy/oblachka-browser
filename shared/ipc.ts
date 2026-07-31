@@ -3,6 +3,7 @@
 
 import type { SearchEngineId } from './searchEngines';
 import type { GraphDoc, GraphMeta, GraphProgress, GraphStructure } from './graph';
+import type { ImagePreset } from './imagePresets';
 
 // ── Узлы сайдбара ─────────────────────────────────────────────────────────────
 // Дискриминированное объединение для трёх типов узлов.
@@ -261,6 +262,9 @@ export const IPC = {
   GRAPH_DELETE:   'graph:delete',   // renderer → main: graphId
   GRAPH_RUN:      'graph:run',      // renderer → main: (graphId, nodeId|null) fire-and-forget, ход идёт через GRAPH_PROGRESS
   GRAPH_CANCEL:   'graph:cancel',   // renderer → main: graphId — не начинать следующий узел (текущий не прервать)
+  GRAPH_PRESETS_LIST:  'graph:presets-list',   // renderer → main: пользовательские пресеты картинок
+  GRAPH_PRESET_SAVE:   'graph:preset-save',    // renderer → main: создать/обновить свой пресет
+  GRAPH_PRESET_DELETE: 'graph:preset-delete',  // renderer → main: удалить свой пресет
   GRAPH_PICK_FILE: 'graph:pick-file',  // renderer → main: нативный диалог выбора документа для узла-файла
   GRAPH_PROGRESS: 'graph:progress', // main → renderer: GraphProgress (статусы + стрим-чанки)
 
@@ -1521,6 +1525,11 @@ export interface OblakoApi {
   // Нативный диалог выбора документа. Путь возвращается в renderer только чтобы показать
   // имя файла и положить его в конфиг узла; читает файл всегда main (electron/FileExtract.ts).
   pickGraphFile(): Promise<string | null>;
+  // Пресеты генератора промптов для картинок. Встроенные лежат в shared/imagePresets.ts и
+  // через IPC не ездят — сюда приходят только пользовательские.
+  listImagePresets(): Promise<ImagePreset[]>;
+  saveImagePreset(preset: ImagePreset): Promise<void>;
+  deleteImagePreset(id: string): Promise<void>;
   cancelGraphRun(graphId: number): Promise<void>;
   onGraphProgress(cb: (p: GraphProgress) => void): () => void;
 

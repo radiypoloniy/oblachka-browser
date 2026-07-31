@@ -16,6 +16,9 @@ export type GraphNodeKind =
   // Локальный документ: txt/md/csv/json, docx и pdf (см. electron/FileExtract.ts).
   | 'source.file'
   | 'qwen.transform'  // инструкция + входы → ответ локальной модели
+  // Промпт для генератора картинок. Отдельный тип, а не qwen.transform с текстом руками:
+  // качество здесь делает подробная зашитая инструкция, см. shared/imagePresets.ts.
+  | 'image.prompt'
   // Чужой AI-сайт (ChatGPT и т.п.) в панели 1:1. Обмен ТОЛЬКО через руку человека:
   // граф готовит промпт, кнопка кладёт его в поле, отправляет пользователь, кнопка
   // забирает ответ. Автоматической отправки нет по замыслу — см. electron/graphWebApps.ts.
@@ -80,6 +83,13 @@ export const NODE_KINDS: Record<GraphNodeKind, NodeKindSpec> = {
     emoji: '🧠',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'ответ', type: 'text' }],
+  },
+  'image.prompt': {
+    label: 'Промпт картинки',
+    hint: 'Собирает готовый промпт для Midjourney/DALL·E по выбранному стилю',
+    emoji: '🎨',
+    inputs: [{ id: 'context', label: 'материал', type: 'textList' }],
+    outputs: [{ id: 'text', label: 'промпт', type: 'text' }],
   },
   'webapp.chat': {
     label: 'Веб-чат',
@@ -153,6 +163,7 @@ export const GRAPH_NODE_KINDS = Object.keys(NODE_KINDS) as GraphNodeKind[]
 export interface GraphNodeConfig {
   url?: string          // source.url, webapp.chat (адрес сайта)
   path?: string         // source.file — абсолютный путь к документу на диске
+  preset?: string       // image.prompt — id пресета стиля (встроенного или своего)
   text?: string         // source.note
   instruction?: string  // qwen.transform, webapp.chat (что дописать перед материалом)
 }

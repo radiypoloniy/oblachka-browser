@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import type {
   GraphDoc, GraphEdge, GraphMeta, GraphNode, GraphNodeKind, GraphStructure,
 } from '../shared/graph';
+import type { ImagePreset } from '../shared/imagePresets';
 
 // Хранилище граф-воркспейсов. Свой файл, не таблица внутри истории/закладок — тот же приём
 // «один менеджер, один файл», что у bookmarks.sqlite и passwords.sqlite: у графов свой
@@ -252,6 +253,47 @@ export class GraphStore {
     }
   }
 
+  // ── Пресеты картинок ────────────────────────────────────────────────────────
+
+  listImagePresets(): ImagePreset[] {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(
+        `SELECT id, label, emoji, guidance FROM image_presets ORDER BY created_at ASC`,
+      ).all() as ImagePreset[];
+    } catch (e) {
+      console.warn('[Graph] listImagePresets error:', (e as Error).message);
+      return [];
+    }
+  }
+
+  saveImagePreset(preset: ImagePreset): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare(`
+        INSERT INTO image_presets (id, label, emoji, guidance, created_at)
+        VALUES (@id, @label, @emoji, @guidance, @createdAt)
+        ON CONFLICT(id) DO UPDATE SET
+          label = excluded.label, emoji = excluded.emoji, guidance = excluded.guidance
+      `).run({
+        id: preset.id, label: preset.label || 'Свой пресет',
+        emoji: preset.emoji || '🎨', guidance: preset.guidance || '',
+        createdAt: Date.now(),
+      });
+    } catch (e) {
+      console.warn('[Graph] saveImagePreset error:', (e as Error).message);
+    }
+  }
+
+  deleteImagePreset(id: string): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare(`DELETE FROM image_presets WHERE id = ?`).run(id);
+    } catch (e) {
+      console.warn('[Graph] deleteImagePreset error:', (e as Error).message);
+    }
+  }
+
   // ── Приватное ────────────────────────────────────────────────────────────────
 
   #setup(): void {
@@ -291,6 +333,15 @@ export class GraphStore {
         PRIMARY KEY (graph_id, id)
       );
       CREATE INDEX IF NOT EXISTS idx_graph_edges_graph ON graph_edges(graph_id);
+      -- Пользовательские пресеты генератора промптов для картинок. Своя таблица здесь, а не
+      -- отдельный файл: данные графовые, мелкие и живут ровно столько же, сколько воркспейсы.
+      CREATE TABLE IF NOT EXISTS image_presets (
+        id         TEXT PRIMARY KEY,
+        label      TEXT NOT NULL,
+        emoji      TEXT NOT NULL DEFAULT '🎨',
+        guidance   TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
     `);
 
     // Колонки размера появились после первой версии схемы: CREATE TABLE IF NOT EXISTS их

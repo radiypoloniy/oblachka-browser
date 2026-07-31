@@ -3,6 +3,7 @@ import { IPC } from '../shared/ipc';
 import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { GraphDoc, GraphMeta, GraphProgress, GraphStructure } from '../shared/graph';
+import type { ImagePreset } from '../shared/imagePresets';
 
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
@@ -299,6 +300,9 @@ const api: OblakoApi = {
   deleteGraph: (graphId: number) => ipcRenderer.invoke(IPC.GRAPH_DELETE, graphId) as Promise<void>,
   runGraph: (graphId: number, nodeId: string | null) => ipcRenderer.send(IPC.GRAPH_RUN, graphId, nodeId),
   pickGraphFile: () => ipcRenderer.invoke(IPC.GRAPH_PICK_FILE) as Promise<string | null>,
+  listImagePresets: () => ipcRenderer.invoke(IPC.GRAPH_PRESETS_LIST) as Promise<ImagePreset[]>,
+  saveImagePreset: (preset: ImagePreset) => ipcRenderer.invoke(IPC.GRAPH_PRESET_SAVE, preset) as Promise<void>,
+  deleteImagePreset: (id: string) => ipcRenderer.invoke(IPC.GRAPH_PRESET_DELETE, id) as Promise<void>,
   cancelGraphRun: (graphId: number) => ipcRenderer.invoke(IPC.GRAPH_CANCEL, graphId) as Promise<void>,
   onGraphProgress: (cb: (p: GraphProgress) => void) => {
     const handler = (_e: unknown, p: GraphProgress) => cb(p);

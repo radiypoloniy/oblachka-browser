@@ -3,6 +3,7 @@ import { Handle, NodeResizer, Position } from '@xyflow/react';
 import { Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink, X } from 'lucide-react';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
 import { NODE_KINDS } from '../../../shared/graph';
+import type { ImagePreset } from '../../../shared/imagePresets';
 import { markdownComponents } from '../aiMarkdown';
 import { InfographicView, MindmapView, QuizView } from '../studioViews';
 
@@ -22,6 +23,9 @@ export interface GraphNodeData extends Record<string, unknown> {
   onDelete: () => void;
   // Только для source.file — нативный диалог выбора документа (его открывает main).
   onPickFile: () => void;
+  // Только для image.prompt: список доступных пресетов и запрос на открытие редактора своих.
+  imagePresets: ImagePreset[];
+  onEditPresets: () => void;
   // Только для webapp.chat — открыть живой сайт в панели 1:1 (в карточку нативную вью
   // положить нельзя, см. шапку GraphCanvas.tsx).
   onOpenWebApp: () => void;
@@ -35,6 +39,7 @@ export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> 
   'source.note': { w: 268, h: 236 },
   'source.file': { w: 280, h: 260 },
   'qwen.transform': { w: 304, h: 320 },
+  'image.prompt': { w: 330, h: 380 },
   'webapp.chat': { w: 300, h: 300 },
   'search.web': { w: 320, h: 340 },
   'factcheck.gemini': { w: 340, h: 340 },
@@ -116,6 +121,8 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
   const asMarkdown = data.kind === 'qwen.transform' || data.kind === 'output.text'
     || data.kind === 'artifact.summary' || data.kind === 'search.web'
     || data.kind === 'factcheck.gemini';
+  // Промпт картинки показываем сырым моноширинным текстом: это строка для копирования
+  // в генератор, и markdown-обработка исказила бы её (звёздочки, подчёркивания).
   // Артефакты, которые рисуют себя во всю площадь контейнера, а не текстом со скроллом.
   const visual = data.kind === 'artifact.mindmap' || data.kind === 'artifact.infographic';
   const min = DEFAULT_NODE_SIZE[data.kind];
@@ -318,6 +325,44 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
             style={{ ...fieldStyle, flex: 'none' }}
           />
+        )}
+
+        {data.kind === 'image.prompt' && (
+          <>
+            <div style={{ flex: 'none', display: 'flex', gap: 6 }}>
+              <select
+                className="nodrag"
+                value={data.config.preset ?? data.imagePresets[0]?.id ?? ''}
+                onChange={(e) => data.onPatch({ config: { ...data.config, preset: e.target.value } })}
+                style={{ ...fieldStyle, flex: 1, cursor: 'pointer' }}
+              >
+                {data.imagePresets.map((p) => (
+                  <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="nodrag"
+                onClick={data.onEditPresets}
+                title="Свои пресеты"
+                style={{
+                  flex: 'none', width: 34, display: 'inline-flex', alignItems: 'center',
+                  justifyContent: 'center', background: 'var(--surface-sunken)',
+                  border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm, 8px)',
+                  color: 'var(--text-body)', cursor: 'pointer', fontSize: 14,
+                }}
+              >
+                ⚙
+              </button>
+            </div>
+            <textarea
+              className="nodrag"
+              value={data.config.instruction ?? ''}
+              placeholder="Пожелания: вертикально, зима, без людей…"
+              onChange={(e) => data.onPatch({ config: { ...data.config, instruction: e.target.value } })}
+              style={{ ...fieldStyle, flex: 'none', height: 56 }}
+            />
+          </>
         )}
 
         {data.kind === 'qwen.transform' && (

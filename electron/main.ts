@@ -20,7 +20,10 @@ import { deriveBangFromUrl } from '../shared/bangs';
 import { HistoryManager } from './HistoryManager';
 import { BookmarkManager } from './BookmarkManager';
 import { GraphStore } from './GraphStore';
-import { cancelGraphRun, composeWebAppPrompt, computeNodeInputHash, runGraph } from './GraphEngine';
+import {
+  cancelGraphRun, composeWebAppPrompt, computeNodeInputHash, runGraph, setImagePresetsSource,
+} from './GraphEngine';
+import type { ImagePreset } from '../shared/imagePresets';
 import {
   captureAnswer, closeGraphWebApp, insertPrompt, raiseGraphWebApp,
   setGraphWebAppBounds, showGraphWebApp,
@@ -1414,6 +1417,9 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.GRAPH_DELETE, (_e, graphId: number) => graphs.remove(graphId));
   ipcMain.handle(IPC.GRAPH_CANCEL, (_e, graphId: number) => cancelGraphRun(graphId));
+  ipcMain.handle(IPC.GRAPH_PRESETS_LIST, () => graphs.listImagePresets());
+  ipcMain.handle(IPC.GRAPH_PRESET_SAVE, (_e, preset: ImagePreset) => graphs.saveImagePreset(preset));
+  ipcMain.handle(IPC.GRAPH_PRESET_DELETE, (_e, id: string) => graphs.deleteImagePreset(id));
   ipcMain.handle(IPC.GRAPH_PICK_FILE, async () => {
     if (!win) return null;
     const res = await dialog.showOpenDialog(win, {
@@ -1910,6 +1916,8 @@ app.whenReady().then(async () => {
   await graphs.initialize().catch((e) =>
     console.error('[Graph] инициализация упала:', e),
   );
+  // Движок должен видеть пользовательские пресеты картинок, но не знать про хранилище.
+  setImagePresetsSource(() => graphs.listImagePresets());
 
   // Сейф паролей: та же гарантия — падение (нет better-sqlite3, safeStorage недоступен) не
   // блокирует старт, браузер работает без него (см. PasswordManager.ts::initialize).

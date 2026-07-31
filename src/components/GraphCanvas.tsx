@@ -14,6 +14,9 @@ import type {
 import { NODE_KINDS } from '../../shared/graph';
 import GraphNodeCard, { DEFAULT_NODE_SIZE, type GraphNodeData } from './graph/GraphNodeCard';
 import GraphWebAppWindow from './graph/GraphWebAppWindow';
+import ImagePresetEditor from './graph/ImagePresetEditor';
+import { BUILT_IN_IMAGE_PRESETS } from '../../shared/imagePresets';
+import type { ImagePreset } from '../../shared/imagePresets';
 import { downstreamOf } from '../../shared/graph';
 
 // Граф-воркспейс: холст рисует и складывает структуру, считает всё main (GraphEngine.ts).
@@ -33,7 +36,7 @@ const nodeTypes = { oblako: GraphNodeCard };
 // подряд не читаются, а группы отвечают на вопрос «откуда взять — что сделать — что получить».
 const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
   { title: 'Откуда', kinds: ['source.url', 'source.file', 'source.note'] },
-  { title: 'Обработка', kinds: ['qwen.transform', 'webapp.chat'] },
+  { title: 'Обработка', kinds: ['qwen.transform', 'image.prompt', 'webapp.chat'] },
   { title: 'Проверка', kinds: ['search.web', 'factcheck.gemini'] },
   { title: 'Артефакты', kinds: ['artifact.summary', 'artifact.mindmap', 'artifact.infographic', 'artifact.quiz'] },
   { title: 'Итог', kinds: ['output.text'] },
@@ -64,6 +67,8 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
       onRun: () => {},
       onDelete: () => {},
       onPickFile: () => {},
+      imagePresets: [],
+      onEditPresets: () => {},
       onOpenWebApp: () => {},
     },
   }));
@@ -98,6 +103,18 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   // Переименование воркспейса прямо в списке: id строки в правке и текущий черновик.
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
+  // Пресеты картинок: встроенные приходят из shared, пользовательские — из базы.
+  const [userPresets, setUserPresets] = useState<ImagePreset[]>([]);
+  const [presetEditorOpen, setPresetEditorOpen] = useState(false);
+  const allPresets = useMemo(
+    () => [...BUILT_IN_IMAGE_PRESETS, ...userPresets],
+    [userPresets],
+  );
+
+  const refreshPresets = useCallback(async () => {
+    setUserPresets(await window.oblako.listImagePresets());
+  }, []);
+  useEffect(() => { void refreshPresets(); }, [refreshPresets]);
 
   // Пока идёт загрузка графа, автосейв обязан молчать: иначе пустое стартовое состояние
   // успело бы записаться поверх только что открытого воркспейса.
@@ -350,6 +367,8 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           onRun: () => {},
           onDelete: () => {},
           onPickFile: () => {},
+          imagePresets: [],
+          onEditPresets: () => {},
           onOpenWebApp: () => {},
         },
       }];
@@ -367,10 +386,12 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         onRun: () => runNode(n.id),
         onDelete: () => deleteNode(n.id),
         onPickFile: () => void pickFile(n.id),
+        imagePresets: allPresets,
+        onEditPresets: () => setPresetEditorOpen(true),
         onOpenWebApp: () => openWebApp(n.id),
       },
     })),
-    [nodes, patchNode, runNode, deleteNode, pickFile, openWebApp],
+    [nodes, patchNode, runNode, deleteNode, pickFile, openWebApp, allPresets],
   );
 
   const commitRename = async () => {
@@ -629,6 +650,15 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             <MiniMap pannable zoomable />
           </ReactFlow>
           </div>
+
+          {presetEditorOpen && (
+            <ImagePresetEditor
+              presets={userPresets}
+              onClose={() => setPresetEditorOpen(false)}
+              onSave={async (preset) => { await window.oblako.saveImagePreset(preset); await refreshPresets(); }}
+              onDelete={async (id) => { await window.oblako.deleteImagePreset(id); await refreshPresets(); }}
+            />
+          )}
 
           {currentId !== null && webApps.map((app, i) => (
             <GraphWebAppWindow

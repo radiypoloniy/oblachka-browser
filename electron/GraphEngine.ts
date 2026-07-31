@@ -9,6 +9,20 @@ import { generateStudio, type StudioKind } from './NotebookStudio';
 import { runFactCheck } from './GeminiFactCheck';
 import { searxngSearch } from './SearxngSearch';
 import { runChatMessage } from './TranslationService';
+import { BUILT_IN_IMAGE_PRESETS, buildImagePromptRequest } from '../shared/imagePresets';
+import type { ImagePreset } from '../shared/imagePresets';
+
+// Пресет ищем сначала среди встроенных, потом среди пользовательских. Ставится извне
+// (main при инициализации), чтобы движок не зависел от хранилища напрямую.
+let userPresetsSource: (() => ImagePreset[]) | null = null;
+export function setImagePresetsSource(fn: () => ImagePreset[]): void {
+  userPresetsSource = fn;
+}
+function resolveImagePreset(id: string): ImagePreset | null {
+  return BUILT_IN_IMAGE_PRESETS.find((p) => p.id === id)
+    ?? userPresetsSource?.().find((p) => p.id === id)
+    ?? null;
+}
 
 // Исполнитель графа. Живёт в main, потому что ему нужны Qwen и фоновое извлечение страниц;
 // renderer только рисует холст и просит «посчитай», результаты приезжают событиями.
@@ -154,6 +168,27 @@ async function executeNode(
       if (!outcome.ok) return { ok: false, error: String(outcome.error) };
       const out = outcome.out.trim();
       return out ? { ok: true, output: out } : { ok: false, error: 'Модель вернула пустой ответ' };
+    }
+
+    case 'image.prompt': {
+      const material = buildContext(inputs);
+      if (!material) return { ok: false, error: 'На вход не пришёл материал для картинки' };
+      const presetId = (node.config.preset ?? BUILT_IN_IMAGE_PRESETS[0]!.id).trim();
+      const preset = resolveImagePreset(presetId);
+      if (!preset) return { ok: false, error: 'Пресет не найден — выберите другой' };
+      const prompt = buildImagePromptRequest(preset.guidance, node.config.instruction ?? '', material);
+      const outcome = await runChatMessage(prompt, [], onChunk);
+      if (!outcome.ok) return { ok: false, error: String(outcome.error) };
+      // Модель периодически всё-таки оборачивает ответ в кавычки или дописывает «Prompt:» —
+      // подчищаем на нашей стороне, потому что промпт уходит человеку на вставку как есть.
+      const cleaned = outcome.out
+        .replace(/```[a-z]*\n?/gi, '')
+        .replace(/^\s*(prompt|промпт)\s*[:—-]\s*/i, '')
+        .replace(/^["«»']+|["«»']+$/g, '')
+        .trim();
+      return cleaned
+        ? { ok: true, output: cleaned, outputTitle: `${preset.emoji} ${preset.label}` }
+        : { ok: false, error: 'Модель вернула пустой промпт' };
     }
 
     case 'artifact.summary':
