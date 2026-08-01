@@ -395,7 +395,7 @@ function wireSharedSessions(): void {
     // Входящий запрос разрешения занимает то же место, что FindBar — закрываем его (та же логика,
     // что раньше жила в App.tsx::onPermissionRequest, до переезда FindBar в отдельную WebContentsView).
     mainTabs?.stopFind();
-    closeFindBar();
+    closeFindBar(mainWin);
     mainChromeView?.webContents.send(IPC.PERMISSION_REQUEST, req);
   };
   permissions.attach(session.defaultSession, onPermissionRequest);
@@ -575,9 +575,9 @@ function createWindow(role: WindowRole = 'main') {
     // FindBar — теперь отдельная WebContentsView (FindBarManager.ts), не React в chromeView.
     // Сам поиск (findInPage/found-in-page) не меняется — меняется только, куда идёт push
     // результата и что открывает/закрывает панель.
-    (r: FindResult) => sendFindResult(r),
+    (r: FindResult) => sendFindResult(win, r),
     ()              => { if (win && tabs?.getActiveWebContents()) showFindBar(win); }, // Ctrl+F: не открываем на хабе (getActiveWebContents()===null)
-    ()              => { tabs?.stopFind(); closeFindBar(); tabs?.focusActiveView(); }, // Esc-на-странице/did-navigate — вернуть OS-фокус, иначе Ctrl+F повторно не долетит
+    ()              => { tabs?.stopFind(); closeFindBar(win); tabs?.focusActiveView(); }, // Esc-на-странице/did-navigate — вернуть OS-фокус, иначе Ctrl+F повторно не долетит
     ()              => chromeView?.webContents.send(IPC.OMNIBOX_FOCUS),
     ()              => chromeView?.webContents.focus(),
     (url, title, wc) => {
@@ -610,7 +610,7 @@ function createWindow(role: WindowRole = 'main') {
     // вкладке, безусловный main-side хук на КАЖДУЮ реальную смену активной, а не только
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(); closeSearchPopover(); hideSuggestDropdown(); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover();
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover();
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
       // её текущее состояние (или null) при каждом реальном переключении.
       passwordAutofill.onActiveTabChanged();
@@ -689,6 +689,10 @@ function createWindow(role: WindowRole = 'main') {
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
   tabs.setSearchEngine(settings.getSearchEngine());
   tabs.setBangStore(bangs); // бэнги омнибокса — см. TabManager.resolveInput/resolveBang
+  // Поиск по странице — СВОЙ у каждого окна (FindBarManager.ts), поэтому регистрируется всегда:
+  // менеджер вкладок нужен ему, чтобы вернуть OS-фокус активной вкладке после закрытия по IPC
+  // (крестик/Esc-в-поле), см. FindBarManager.ts::ensureIpcRegistered.
+  setFindBarTabManager(win, tabs);
   // ⚠️ Ниже — служба, которая существует в приложении в ОДНОМ экземпляре и помнит ровно один
   // менеджер вкладок. Регистрирует её только полное окно: лёгкое, записавшись последним, увело
   // бы службу себе, и, например, Ctrl+E из главного окна открывал бы найденное в лёгком.
@@ -698,9 +702,6 @@ function createWindow(role: WindowRole = 'main') {
     // WebContents активной вкладки при извлечении текста страницы в чат (Заход 4), см.
     // TabManager.getActiveWebContents(). Не влияет на управление вкладками.
     setTabManager(tabs);
-    // Аналогично для FindBarManager — только чтобы вернуть OS-фокус активной вкладке после
-    // закрытия по IPC (крестик/Esc-в-поле), см. FindBarManager.ts::ensureIpcRegistered.
-    setFindBarTabManager(tabs);
     // Быстрый поиск (Ctrl+E): поповеру нужен тот же возврат OS-фокуса странице, что и FindBar,
     // а решение «куда открыть найденное» остаётся здесь — вкладками владеет main.
     setSearchPopoverTabManager(tabs);
@@ -1160,7 +1161,8 @@ function registerIpc() {
     tabsOf(e)?.setContentBounds(b);
     // Та же геометрия двигает FindBar — центрирование по контентной зоне (учитывает сайдбар) и
     // авто-скрытие при настройках/истории/загрузках (нулевые bounds — тот же сентинел, см. FindBarManager.ts).
-    syncFindBarBounds(b);
+    const fbWin = winOf(e);
+    if (fbWin) syncFindBarBounds(fbWin, b);
     syncSearchPopoverBounds(b); // тот же сентинел нулевых bounds — прячем поповер вместе с контентом
   });
   // Прямоугольник омнибокса — двигает нативную вью дропдауна подсказок (см.
@@ -1891,7 +1893,7 @@ function registerIpc() {
     if (!w) return false;
     const open = toggleAiPanel(w);
     relayoutSearchPopover(); // та же свободная ширина, что у FindBar
-    relayoutFindBar(); // свободная ширина под FindBar изменилась (см. FindBarManager.ts::computeBounds)
+    relayoutFindBar(w); // свободная ширина под FindBar изменилась (см. FindBarManager.ts::computeBounds)
     if (open) maybeLazyWarmupOnDemand(); // явное намерение — открытие AI-панели
     return open;
   });
