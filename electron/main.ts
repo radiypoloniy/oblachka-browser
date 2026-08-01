@@ -4,6 +4,7 @@ import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProto
 import { applyChromeUserAgent } from './BrowserIdentity';
 import { showSplash, closeSplash } from './SplashWindow';
 import { registerWindow, contextFromSender, broadcastToChrome } from './WindowRegistry';
+import type { WindowRole } from './WindowRegistry';
 
 // ДО app.whenReady() — Electron требует это до события ready.
 registerSchemesAsPrivileged();
@@ -175,8 +176,13 @@ async function runTranslateTestWindow(): Promise<void> {
 // t0 стартовых тайминов: фиксируем в app.whenReady, до createWindow.
 let startT0 = 0;
 
-let win: BrowserWindow | null = null;
-let chromeView: WebContentsView | null = null; // слой нашего React-хрома
+// Главное окно и его слой хрома. ⚠️ Это НЕ «текущее окно»: с появлением второго окна каждое
+// держит своё в реестре (WindowRegistry.ts), а эти ссылки остаются запасным путём для отправителей,
+// которых в реестре нет (ранние сообщения при старте, изолированные тестовые окна), и адресом
+// финального сохранения сессии. Внутри createWindow одноимённые ПЕРЕМЕННЫЕ локальные — там речь
+// всегда о создаваемом окне.
+let mainWin: BrowserWindow | null = null;
+let mainChromeView: WebContentsView | null = null; // слой нашего React-хрома
 // In-memory сессия инкогнито-вкладок (см. INCOGNITO_PARTITION). Создаётся при старте окна; её
 // storage чистится, когда закрыта последняя инкогнито-вкладка (TabManager.takeIncognitoClearIfDone).
 let incognitoSession: Session | null = null;
@@ -206,8 +212,10 @@ function applyChromeThemeTo(wc: WebContents): void {
 function broadcastChromeTheme(): void {
   for (const wc of webContents.getAllWebContents()) applyChromeThemeTo(wc);
 }
-let tabs: TabManager | null = null;
-let sess: SessionManager | null = null;
+let mainTabs: TabManager | null = null;
+// Сессия одна на приложение и принадлежит главному окну: дерево вкладок из session.json — его
+// (см. SessionManager.setOwner, срез 1). Лёгкие окна её не пишут и не читают.
+let mainSess: SessionManager | null = null;
 // Последний присланный прямоугольник омнибокса (см. IPC.OMNIBOX_SET_BOUNDS) — пока без
 // потребителя, только хранится для будущей нативной вью дропдауна подсказок.
 let omniboxBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
@@ -353,8 +361,58 @@ function notifyGraphChanged(graphId: number): void {
 // запрос режима хаба за процесс) от реальной навигации пользователя (все последующие).
 let hubModeQueried = false;
 
-function createWindow() {
-  win = new BrowserWindow({
+// Создание окна. Роль решает, что окну достаётся сверх собственных вкладок: полное окно ('main')
+// владеет сессией и теми менеджерами, что пока существуют в приложении в одном экземпляре
+// (AI-панель, поповеры, быстрый поиск); лёгкое ('light') получает только своё — окно, слой хрома,
+// свой TabManager и хоткеи. Общая проводка сессий (загрузки, разрешения, инкогнито) ставится один
+// раз на приложение, а не на каждое окно, — иначе второе окно навесило бы вторых слушателей и
+// каждая загрузка считалась бы дважды.
+// Проводка, общая для всего приложения, а не для окна: орфография, перехват загрузок, разрешения
+// сайтов, инкогнито-сессия. ⚠️ Ровно один раз за процесс. Раньше всё это жило в createWindow, и на
+// macOS путь app.on('activate') уже мог позвать её повторно — второй downloads.attach навесил бы
+// второй will-download, и каждая загрузка считалась бы дважды (см. AUDIT.md, п.9). Со вторым окном
+// это перестаёт быть теорией.
+let sharedSessionsWired = false;
+function wireSharedSessions(): void {
+  if (sharedSessionsWired) return;
+  sharedSessionsWired = true;
+
+  // Орфография (ru+en): одна сессия на все вкладки — одного вызова достаточно.
+  session.defaultSession.setSpellCheckerLanguages(['ru', 'en-US']);
+
+  // Перехватываем все загрузки на дефолтной сессии (вкладки partition не задают). Список загрузок
+  // общий для приложения — потому и рассылка во все окна, а не пуш в одно.
+  downloads.attach(session.defaultSession, (entries) => {
+    broadcastToChrome(IPC.DOWNLOADS_CHANGED, entries);
+  });
+
+  // Разрешения: хендлер на дефолтной сессии + на инкогнито-сессии (ниже) — обе через один колбэк.
+  // ⚠️ Запрос приходит от вкладки, но PermissionManager не сообщает, от какой именно, — поэтому
+  // приглашение уходит в главное окно. Со вторым окном это станет заметно (запрос камеры из окна
+  // B всплывёт в окне A) и чинится вместе с остальными оверлеями, когда те научатся находить
+  // своё окно.
+  const onPermissionRequest = (req: PermissionRequest) => {
+    // Входящий запрос разрешения занимает то же место, что FindBar — закрываем его (та же логика,
+    // что раньше жила в App.tsx::onPermissionRequest, до переезда FindBar в отдельную WebContentsView).
+    mainTabs?.stopFind();
+    closeFindBar();
+    mainChromeView?.webContents.send(IPC.PERMISSION_REQUEST, req);
+  };
+  permissions.attach(session.defaultSession, onPermissionRequest);
+
+  // Инкогнито-сессия (in-memory, см. INCOGNITO_PARTITION). Привязываем к ней тот же набор, что к
+  // дефолтной, чтобы приватный режим был НЕ хуже обычного: адблок, загрузки, разрешения. Прокси
+  // VPN — в applyVpnProxy (обязательно, иначе инкогнито-трафик тёк бы мимо VPN/kill-switch).
+  incognitoSession = session.fromPartition(INCOGNITO_PARTITION);
+  adblock.attachSession(incognitoSession);
+  downloads.observeSession(incognitoSession);
+  permissions.attach(incognitoSession, onPermissionRequest);
+  applyVpnProxy(); // синхронизируем прокси инкогнито-сессии с текущим состоянием VPN сразу
+}
+
+function createWindow(role: WindowRole = 'main') {
+  const isMain = role === 'main';
+  const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 900,
@@ -373,7 +431,7 @@ function createWindow() {
   });
 
   // Слой хрома (сайдбар+тулбар+хаб) — обычный WebContentsView во всё окно.
-  chromeView = new WebContentsView({
+  const chromeView = new WebContentsView({
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -382,7 +440,9 @@ function createWindow() {
     },
   });
   win.contentView.addChildView(chromeView);
-  setAiPanelChromeView(chromeView); // заход 3: push'и состояния дока (открыт/закрыт) идут сюда, не в win.webContents
+  // AI-панель пока одна на приложение — её пуши состояния дока идут в главное окно (заход 3:
+  // не в win.webContents, а в слой хрома).
+  if (isMain) setAiPanelChromeView(chromeView);
   // Дефолтный фон WebContentsView — белый, и он перекрывает backgroundColor окна на всю площадь.
   // Красим под --app-bg, чтобы кадры до первой отрисовки React были цветом интерфейса.
   chromeView.setBackgroundColor('#F2F2F7');
@@ -411,6 +471,8 @@ function createWindow() {
       // сама не блокирует и не бросает наружу — ensureLoaded() внутри дедуплицирует конкурентные
       // вызовы (см. её же комментарий), так что ранний клик пользователя по AI-функции просто
       // дождётся ЭТОЙ ЖЕ загрузки, а не запустит вторую.
+      // Прогревы — про приложение, а не про окно: второй показ не должен запускать их заново.
+      if (!isMain) return;
       setTimeout(() => {
         if (!thisWin.isDestroyed()) {
           // modelLoadMode==='on-demand' (дефолт, см. SettingsManager.ts) — прогрев на старте
@@ -438,8 +500,12 @@ function createWindow() {
         if (!thisWin.isDestroyed()) prewarmPanel();
       }, AI_PANEL_PREWARM_DELAY_MS);
     };
-    const onUiReady = () => showWindow('ui-ready');
-    ipcMain.once(IPC.CHROME_UI_READY, onUiReady);
+    // ⚠️ Сигнал принимаем только от СВОЕГО слоя хрома: канал общий на приложение, и окно,
+    // созданное вторым, показалось бы по чужой готовности — до того, как отрисуется само.
+    const onUiReady = (e: Electron.IpcMainEvent) => {
+      if (e.sender === chromeView.webContents) showWindow('ui-ready');
+    };
+    ipcMain.on(IPC.CHROME_UI_READY, onUiReady);
     const fallbackTimer = setTimeout(() => showWindow('fallback-timeout'), 3000);
     // Окно закрыли до показа (или до сигнала) — подчистить, чтобы таймер/слушатель не дёргали труп.
     thisWin.on('closed', () => {
@@ -450,43 +516,23 @@ function createWindow() {
   }
 
   const layoutChrome = () => {
-    if (!win || !chromeView) return;
     const { width, height } = win.getContentBounds();
     chromeView.setBounds({ x: 0, y: 0, width, height });
   };
   layoutChrome();
   win.on('resize', layoutChrome);
 
-  // Орфография (ru+en): одна сессия на все вкладки — одного вызова достаточно.
-  session.defaultSession.setSpellCheckerLanguages(['ru', 'en-US']);
+  wireSharedSessions();
 
-  // Перехватываем все загрузки на дефолтной сессии (вкладки partition не задают).
-  downloads.attach(session.defaultSession, (entries) => {
-    broadcastToChrome(IPC.DOWNLOADS_CHANGED, entries);
-  });
+  // Сессия — только у главного окна (см. mainSess): дерево вкладок в session.json принадлежит ему.
+  // Лёгкое окно её не читает и не пишет, поэтому и восстанавливать ему нечего.
+  const sess = isMain ? new SessionManager() : null;
+  const restored = sess?.load() ?? null; // загружаем ДО создания TabManager
 
-  // Разрешения: хендлер на дефолтной сессии + на инкогнито-сессии (ниже) — обе через один колбэк.
-  const onPermissionRequest = (req: PermissionRequest) => {
-    // Входящий запрос разрешения занимает то же место, что FindBar — закрываем его (та же логика,
-    // что раньше жила в App.tsx::onPermissionRequest, до переезда FindBar в отдельную WebContentsView).
-    tabs?.stopFind();
-    closeFindBar();
-    chromeView?.webContents.send(IPC.PERMISSION_REQUEST, req);
-  };
-  permissions.attach(session.defaultSession, onPermissionRequest);
-
-  // Инкогнито-сессия (in-memory, см. INCOGNITO_PARTITION). Привязываем к ней тот же набор, что к
-  // дефолтной, чтобы приватный режим был НЕ хуже обычного: адблок, загрузки, разрешения. Прокси
-  // VPN — в applyVpnProxy (обязательно, иначе инкогнито-трафик тёк бы мимо VPN/kill-switch).
-  incognitoSession = session.fromPartition(INCOGNITO_PARTITION);
-  adblock.attachSession(incognitoSession);
-  downloads.observeSession(incognitoSession);
-  permissions.attach(incognitoSession, onPermissionRequest);
-  applyVpnProxy(); // синхронизируем прокси инкогнито-сессии с текущим состоянием VPN сразу
-
-  // Загружаем сохранённую сессию ДО создания TabManager.
-  sess = new SessionManager();
-  const restored = sess.load();
+  // Менеджер вкладок — СВОЙ у каждого окна. Обнуляется в win.on('closed'), поэтому let и null:
+  // часть вкладок дозакрывается асинхронно уже после закрытия окна, и колбэки ниже обязаны это
+  // пережить (см. гарды `tabs?.` внутри).
+  let tabs: TabManager | null = null;
 
   // При любом изменении: обновляем UI и планируем сохранение сессии.
   // scheduleSave молча игнорирует вызовы до sess.enable() — это защита
@@ -633,71 +679,81 @@ function createWindow() {
       showAutofillPopover(win, state);
     },
   );
-  // Регистрируем окно в реестре: пока оно одно и роль у него 'main'. Отсюда же берётся
-  // владелец сессии — дерево вкладок принадлежит полному окну, и только его снимок имеет
-  // право попасть в session.json (см. SessionManager.setOwner).
-  if (chromeView) registerWindow({ win, chromeView, tabs, role: 'main' });
-  sess.setOwner(tabs);
+  // Регистрируем окно в реестре — с этого момента его находят по отправителю IPC. Владелец
+  // сессии ставится тут же: дерево вкладок принадлежит полному окну, и только его снимок имеет
+  // право попасть в session.json (см. SessionManager.setOwner) — чужой отбрасывается молча.
+  registerWindow({ win, chromeView, tabs, role });
+  sess?.setOwner(tabs);
+  if (isMain) { mainWin = win; mainChromeView = chromeView; mainTabs = tabs; mainSess = sess; }
 
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
   tabs.setSearchEngine(settings.getSearchEngine());
   tabs.setBangStore(bangs); // бэнги омнибокса — см. TabManager.resolveInput/resolveBang
-  // Единственная точка, где AiPanelManager получает доступ к вкладкам — только для чтения
-  // WebContents активной вкладки при извлечении текста страницы в чат (Заход 4), см.
-  // TabManager.getActiveWebContents(). Не влияет на управление вкладками.
-  setTabManager(tabs);
-  // Аналогично для FindBarManager — только чтобы вернуть OS-фокус активной вкладке после
-  // закрытия по IPC (крестик/Esc-в-поле), см. FindBarManager.ts::ensureIpcRegistered.
-  setFindBarTabManager(tabs);
-  // Быстрый поиск (Ctrl+E): поповеру нужен тот же возврат OS-фокуса странице, что и FindBar,
-  // а решение «куда открыть найденное» остаётся здесь — вкладками владеет main.
-  setSearchPopoverTabManager(tabs);
-  // Узлу-веб-приложению графа — только чтобы target=_blank со стороннего сайта уходил
-  // обычной вкладкой Oblako, а не отдельным Chromium-окном (как у WebAppManager).
-  setGraphWebAppTabManager(tabs);
-  // Извлечению — доступ к открытым вкладкам: страница, уже открытая пользователем, прошла
-  // антибот и дорисована, и читать надо её, а не открывать сайт вторым заходом.
-  setNotebookExtractTabManager(tabs);
+  // ⚠️ Ниже — служба, которая существует в приложении в ОДНОМ экземпляре и помнит ровно один
+  // менеджер вкладок. Регистрирует её только полное окно: лёгкое, записавшись последним, увело
+  // бы службу себе, и, например, Ctrl+E из главного окна открывал бы найденное в лёгком.
+  // Развязка по окнам — следующий срез.
+  if (isMain) {
+    // Единственная точка, где AiPanelManager получает доступ к вкладкам — только для чтения
+    // WebContents активной вкладки при извлечении текста страницы в чат (Заход 4), см.
+    // TabManager.getActiveWebContents(). Не влияет на управление вкладками.
+    setTabManager(tabs);
+    // Аналогично для FindBarManager — только чтобы вернуть OS-фокус активной вкладке после
+    // закрытия по IPC (крестик/Esc-в-поле), см. FindBarManager.ts::ensureIpcRegistered.
+    setFindBarTabManager(tabs);
+    // Быстрый поиск (Ctrl+E): поповеру нужен тот же возврат OS-фокуса странице, что и FindBar,
+    // а решение «куда открыть найденное» остаётся здесь — вкладками владеет main.
+    setSearchPopoverTabManager(tabs);
+    // Узлу-веб-приложению графа — только чтобы target=_blank со стороннего сайта уходил
+    // обычной вкладкой Oblako, а не отдельным Chromium-окном (как у WebAppManager).
+    setGraphWebAppTabManager(tabs);
+    // Извлечению — доступ к открытым вкладкам: страница, уже открытая пользователем, прошла
+    // антибот и дорисована, и читать надо её, а не открывать сайт вторым заходом.
+    setNotebookExtractTabManager(tabs);
+  }
   // ПКМ по ссылке на странице → «Добавить в граф». Пункт строит main (у него хранилище),
   // TabManager только вставляет готовое в своё меню.
   tabs.setGraphMenuBuilder((items, sticker) =>
     buildAddToGraphMenuItem(graphs, items, sticker, notifyGraphChanged));
-  setOnSearchRun(({ query, target, sameTab }) => {
-    if (!tabs) return;
-    // Бэнг в строке главнее выбранного чипа и разбирается ЗДЕСЬ, а не в поповере: BangStore
-    // видит все три источника (свои, встроенные, импортированные), а второй парсер в вью
-    // неминуемо разъехался бы с этим. Раньше строка уходила в шаблон цели как есть — и
-    // «!wb Xiaomi» честно искалось в гугле вместе с самим «!wb».
-    const bang = resolvePopoverBang(query);
-    const effectiveTarget = bang?.target ?? target;
-    const effectiveQuery = bang?.query ?? query;
-    // Шаблон приходит из вью поповера. Она наша (не веб-страница), но проверка обязательна:
-    // навигация по неподтверждённому шаблону — ровно то, от чего защищается импорт бэнгов.
-    if (!isValidBangTemplate(effectiveTarget.template)) return;
-    // «!wb» без запроса — на главную сайта, как в омнибоксе: цель названа, искать нечего.
-    const url = effectiveQuery
-      ? applyBangTemplate(effectiveTarget.template, effectiveQuery)
-      : bangHomeUrl({ key: '', name: '', template: effectiveTarget.template });
-    searchTargets.noteUse(effectiveTarget.template); // частые цели поднимаются в полосе чипов
+  // Тоже служба в одном экземпляре — только полное окно (см. оговорку выше).
+  if (isMain) {
+    setOnSearchRun(({ query, target, sameTab }) => {
+      if (!tabs) return;
+      // Бэнг в строке главнее выбранного чипа и разбирается ЗДЕСЬ, а не в поповере: BangStore
+      // видит все три источника (свои, встроенные, импортированные), а второй парсер в вью
+      // неминуемо разъехался бы с этим. Раньше строка уходила в шаблон цели как есть — и
+      // «!wb Xiaomi» честно искалось в гугле вместе с самим «!wb».
+      const bang = resolvePopoverBang(query);
+      const effectiveTarget = bang?.target ?? target;
+      const effectiveQuery = bang?.query ?? query;
+      // Шаблон приходит из вью поповера. Она наша (не веб-страница), но проверка обязательна:
+      // навигация по неподтверждённому шаблону — ровно то, от чего защищается импорт бэнгов.
+      if (!isValidBangTemplate(effectiveTarget.template)) return;
+      // «!wb» без запроса — на главную сайта, как в омнибоксе: цель названа, искать нечего.
+      const url = effectiveQuery
+        ? applyBangTemplate(effectiveTarget.template, effectiveQuery)
+        : bangHomeUrl({ key: '', name: '', template: effectiveTarget.template });
+      searchTargets.noteUse(effectiveTarget.template); // частые цели поднимаются в полосе чипов
 
-    if (sameTab) tabs.navigate(tabs.getActiveId(), url);
-    else tabs.createTab(url);
-  });
-  // Поиск по своим данным для того же поповера: открытые вкладки, история, закладки.
-  // Всё синхронное и дешёвое — LIKE по истории и фильтр по памяти: запрос идёт на каждое
-  // нажатие клавиши, тяжёлому умному поиску (FTS5 + переранжирование Qwen, HistorySearch.ts)
-  // здесь не место, он живёт в панели истории, где его ждут дольше 100 мс.
-  setOnQuickQuery((text) => {
-    // Бэнг разбираем на КАЖДЫЙ ввод, чтобы поповер показал цель сразу, как её назвали, а не
-    // только после Enter: иначе набравший «!wb» не понимает, услышали его или нет.
-    const bang = resolvePopoverBang(text);
-    const effective = bang?.query ?? text;
-    return {
-      hits: quickHits(effective),
-      bangTarget: bang?.target ?? null,
-      strippedQuery: effective,
-    };
-  });
+      if (sameTab) tabs.navigate(tabs.getActiveId(), url);
+      else tabs.createTab(url);
+    });
+    // Поиск по своим данным для того же поповера: открытые вкладки, история, закладки.
+    // Всё синхронное и дешёвое — LIKE по истории и фильтр по памяти: запрос идёт на каждое
+    // нажатие клавиши, тяжёлому умному поиску (FTS5 + переранжирование Qwen, HistorySearch.ts)
+    // здесь не место, он живёт в панели истории, где его ждут дольше 100 мс.
+    setOnQuickQuery((text) => {
+      // Бэнг разбираем на КАЖДЫЙ ввод, чтобы поповер показал цель сразу, как её назвали, а не
+      // только после Enter: иначе набравший «!wb» не понимает, услышали его или нет.
+      const bang = resolvePopoverBang(text);
+      const effective = bang?.query ?? text;
+      return {
+        hits: quickHits(effective),
+        bangTarget: bang?.target ?? null,
+        strippedQuery: effective,
+      };
+    });
+  }
   // Разбор бэнга из строки поповера: null — бэнга нет (обычный запрос).
   function resolvePopoverBang(text: string): { target: SearchTarget; query: string } | null {
     const parsed = parseBangCandidate(text);
@@ -751,16 +807,19 @@ function createWindow() {
 
     return hits;
   }
-  setOnQuickOpen((hit) => {
-    if (!tabs) return;
-    // Вкладка уже открыта — переключаемся на неё, а не плодим копию. Если её успели закрыть
-    // между показом и выбором, открываем адрес заново: пустой клик хуже лишней вкладки.
-    if (hit.kind === 'tab' && hit.tabId && tabs.snapshot().some((t) => t.id === hit.tabId)) {
-      tabs.activate(hit.tabId);
-      return;
-    }
-    tabs.createTab(hit.url);
-  });
+  // Тоже служба в одном экземпляре — только полное окно (см. оговорку выше).
+  if (isMain) {
+    setOnQuickOpen((hit) => {
+      if (!tabs) return;
+      // Вкладка уже открыта — переключаемся на неё, а не плодим копию. Если её успели закрыть
+      // между показом и выбором, открываем адрес заново: пустой клик хуже лишней вкладки.
+      if (hit.kind === 'tab' && hit.tabId && tabs.snapshot().some((t) => t.id === hit.tabId)) {
+        tabs.activate(hit.tabId);
+        return;
+      }
+      tabs.createTab(hit.url);
+    });
+  }
   tabs.setOnQuickSearch(() => {
     void (async () => {
       if (!win || !tabs) return;
@@ -810,50 +869,53 @@ function createWindow() {
       showSearchPopover(win, { targets, prefill });
     })();
   });
-  // Аналогично — PageTranslateManager читает WebContents активной вкладки для обхода DOM/
-  // применения перевода (executeJavaScript), не управляет вкладками.
-  setPageTranslateTabManager(tabs);
-  // TabOrganizer.ts (Qwen-группировка вкладок) — читает sidebarNodesSnapshot()/snapshot(),
-  // управлением вкладок не занимается (применение — через уже существующий organizeApply/
-  // TabManager.applyOrganize()).
-  setOrganizerTabManager(tabs);
-  onPageTranslateStateChanged((state) => {
-    chromeView?.webContents.send(IPC.PAGE_TRANSLATE_STATE_CHANGED, state);
-  });
-  onPageTranslateProgressChanged((progress) => {
-    chromeView?.webContents.send(IPC.PAGE_TRANSLATE_PROGRESS_CHANGED, progress);
-  });
-  initPasswordPopover(() => chromeView?.webContents.send(IPC.PASSWORD_POPOVER_CLOSED));
-  initVpnPopover(() => chromeView?.webContents.send(IPC.VPN_POPOVER_CLOSED));
-  // Автозаполнение форм: оркестратор (хранилище ↔ страница ↔ поповер) + поповер выбора профиля.
-  // onPick поповера — подстановка выбранного адреса в ту вкладку, где было сфокусировано поле.
-  autofillOrchestrator.initAutofillOrchestrator(tabs, autofill);
-  // Выбор в поповере: адрес подставляем сразу; карту — только после подтверждения Windows Hello
-  // (полный номер — чувствительный, тот же гейт, что показ пароля/номера в настройках).
-  initAutofillPopover(
-    () => {},
-    (id) => {
-      if (autofillOrchestrator.getLastKind() === 'card') {
-        void ensurePasswordAuth('Заполнить данные карты').then((ok) => {
-          if (ok) autofillOrchestrator.handleFillCard(id);
-        });
-      } else {
-        autofillOrchestrator.handleFillAddress(id);
-      }
-    },
-    // «Сохранить» из предложения offer-save — кладём в хранилище и обновляем список в настройках.
-    () => { if (autofillOrchestrator.saveSubmitted()) broadcastToChrome(IPC.AUTOFILL_CHANGED); },
-  );
-  // Менеджер паролей, шаг 2: индикатор push идёт в chrome (не в конкретную вкладку) —
-  // PASSWORDS_CHANGED переиспользует существующий канал шага 1 (список в Settings→Пароли).
-  passwordAutofill.init(
-    tabs,
-    passwords,
-    // Индикатор в омнибоксе — про АКТИВНУЮ вкладку этого окна, поэтому адресный пуш, не рассылка.
-    (state) => chromeView?.webContents.send(IPC.PASSWORDS_INDICATOR_CHANGED, state),
-    // А сам сейф один на приложение — список паролей обязан обновиться во всех окнах.
-    () => broadcastToChrome(IPC.PASSWORDS_CHANGED),
-  );
+  // Тоже служба в одном экземпляре — только полное окно (см. оговорку выше).
+  if (isMain) {
+    // Аналогично — PageTranslateManager читает WebContents активной вкладки для обхода DOM/
+    // применения перевода (executeJavaScript), не управляет вкладками.
+    setPageTranslateTabManager(tabs);
+    // TabOrganizer.ts (Qwen-группировка вкладок) — читает sidebarNodesSnapshot()/snapshot(),
+    // управлением вкладок не занимается (применение — через уже существующий organizeApply/
+    // TabManager.applyOrganize()).
+    setOrganizerTabManager(tabs);
+    onPageTranslateStateChanged((state) => {
+      chromeView?.webContents.send(IPC.PAGE_TRANSLATE_STATE_CHANGED, state);
+    });
+    onPageTranslateProgressChanged((progress) => {
+      chromeView?.webContents.send(IPC.PAGE_TRANSLATE_PROGRESS_CHANGED, progress);
+    });
+    initPasswordPopover(() => chromeView?.webContents.send(IPC.PASSWORD_POPOVER_CLOSED));
+    initVpnPopover(() => chromeView?.webContents.send(IPC.VPN_POPOVER_CLOSED));
+    // Автозаполнение форм: оркестратор (хранилище ↔ страница ↔ поповер) + поповер выбора профиля.
+    // onPick поповера — подстановка выбранного адреса в ту вкладку, где было сфокусировано поле.
+    autofillOrchestrator.initAutofillOrchestrator(tabs, autofill);
+    // Выбор в поповере: адрес подставляем сразу; карту — только после подтверждения Windows Hello
+    // (полный номер — чувствительный, тот же гейт, что показ пароля/номера в настройках).
+    initAutofillPopover(
+      () => {},
+      (id) => {
+        if (autofillOrchestrator.getLastKind() === 'card') {
+          void ensurePasswordAuth('Заполнить данные карты').then((ok) => {
+            if (ok) autofillOrchestrator.handleFillCard(id);
+          });
+        } else {
+          autofillOrchestrator.handleFillAddress(id);
+        }
+      },
+      // «Сохранить» из предложения offer-save — кладём в хранилище и обновляем список в настройках.
+      () => { if (autofillOrchestrator.saveSubmitted()) broadcastToChrome(IPC.AUTOFILL_CHANGED); },
+    );
+    // Менеджер паролей, шаг 2: индикатор push идёт в chrome (не в конкретную вкладку) —
+    // PASSWORDS_CHANGED переиспользует существующий канал шага 1 (список в Settings→Пароли).
+    passwordAutofill.init(
+      tabs,
+      passwords,
+      // Индикатор в омнибоксе — про АКТИВНУЮ вкладку этого окна, поэтому адресный пуш, не рассылка.
+      (state) => chromeView?.webContents.send(IPC.PASSWORDS_INDICATOR_CHANGED, state),
+      // А сам сейф один на приложение — список паролей обязан обновиться во всех окнах.
+      () => broadcastToChrome(IPC.PASSWORDS_CHANGED),
+    );
+  }
 
   // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).
   if (restored) {
@@ -946,8 +1008,8 @@ function createWindow() {
     );
   }
 
-  // Только после восстановления разрешаем автосейв.
-  sess.enable();
+  // Только после восстановления разрешаем автосейв (у лёгкого окна сессии нет вовсе).
+  sess?.enable();
 
   // Форвардинг логов воркера эмбеддингов из renderer → stdout.
   // Новый API Electron: событие console-message передаёт поля через Event-объект.
@@ -990,7 +1052,12 @@ function createWindow() {
   // window-all-closed зовёт app.quit() уже ПОСЛЕ того, как это окно закрылось — то есть
   // before-quit неизбежно видит win/tabs/sess уже обнулёнными (см. win.on('closed') ниже) и
   // реально ничего не сохраняет. 'close' — единственная точка, где всё ещё гарантированно живо.
+  //
+  // ⚠️ Всё, что здесь делается, — про ВЫХОД ИЗ ПРИЛОЖЕНИЯ, а не про закрытие окна: сохранение
+  // сессии, флаг остановки, убийство xray.exe. Закрытие лёгкого окна не должно ни ронять VPN,
+  // ни трогать session.json — иначе окно с одной вкладкой унесло бы за собой дерево из десятков.
   win.on('close', () => {
+    if (!isMain) { console.log('[shutdown] закрыто лёгкое окно — сессия и VPN не тронуты'); return; }
     isShuttingDown = true; // до сохранения — далее tabs/sess ещё какое-то время живы, но выходим
     console.log('[shutdown] win close: старт, isShuttingDown=true, сохраняю сессию');
     if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot(), tabs);
@@ -1002,8 +1069,11 @@ function createWindow() {
   });
 
   win.on('closed', () => {
-    console.log('[shutdown] win closed: обнуляю win/chromeView/tabs/sess');
-    win = null; chromeView = null; tabs = null; sess = null;
+    console.log(`[shutdown] win closed (${role}): обнуляю вкладки окна`);
+    tabs = null;
+    // Запасные ссылки на главное окно снимаем только вместе с ним самим — иначе закрытие
+    // лёгкого окна оставило бы приложение без адресата для отправителей вне реестра.
+    if (isMain) { mainWin = null; mainChromeView = null; mainTabs = null; mainSess = null; }
   });
 }
 
@@ -1049,16 +1119,16 @@ function registerIpc() {
   // но со вторым окном разница станет решающей: без маршрутизации клик в новом окне менял бы
   // вкладки в старом. Запасной путь на глобальный tabs оставлен для отправителей, которых нет
   // в реестре (ранние сообщения при старте, изолированные тестовые окна).
-  const tabsOf = (e: { sender: Electron.WebContents }) => contextFromSender(e.sender)?.tabs ?? tabs;
+  const tabsOf = (e: { sender: Electron.WebContents }) => contextFromSender(e.sender)?.tabs ?? mainTabs;
   // Окно отправителя — для диалогов, меню и оверлеев: они обязаны открываться над тем окном,
   // где человек кликнул, а не над первым попавшимся.
-  const winOf = (e: { sender: Electron.WebContents }) => contextFromSender(e.sender)?.win ?? win;
+  const winOf = (e: { sender: Electron.WebContents }) => contextFromSender(e.sender)?.win ?? mainWin;
   // Слой хрома отправителя — для ОТВЕТНЫХ пушей: стрим чата хаба, прогресс узла графа,
   // приглашение переименовать папку. Это ответ на конкретный запрос, а не общее состояние
   // приложения, — рассылать его во все окна (broadcastToChrome) значило бы вписывать чужой
   // ответ в чат соседнего окна.
   const chromeOf = (e: { sender: Electron.WebContents }) =>
-    contextFromSender(e.sender)?.chromeView.webContents ?? chromeView?.webContents ?? null;
+    contextFromSender(e.sender)?.chromeView.webContents ?? mainChromeView?.webContents ?? null;
   // Адресат запоминается в момент запроса, а ответ приходит асинхронно — окно к тому времени
   // может закрыться, и send по мёртвому webContents бросит. Прежний код от этого защищал `?.`
   // по обнуляемой глобальной переменной; с захваченной ссылкой нужна явная проверка.
@@ -1111,7 +1181,7 @@ function registerIpc() {
       // Показ дропдауна — момент, когда фокус уходит чаще всего. Страж (onSuggestDropdownFocusStolen
       // выше) поймает это и сам, но возвращаем фокус ещё и здесь, синхронно: так между показом и
       // откатом не остаётся кадра, в котором клавиатура «не там».
-      chromeView?.webContents.focus();
+      chromeOf(e)?.focus();
     } else {
       hideSuggestDropdown();
     }
@@ -1146,12 +1216,15 @@ function registerIpc() {
   });
   // Клик по строке ВО вью дропдауна (другой webContents) — пересылаем в chrome, где Toolbar.tsx
   // вызывает свой существующий pickSuggestion(), не дублируя его поведение (activateTab/навигация).
-  onSuggestDropdownPick((item) => { chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_PICKED, item); });
+  // ⚠️ Дропдаун подсказок — один на приложение (модульный синглтон SuggestDropdownManager), своего
+  // окна он не помнит: выбор уходит в главное окно. Со вторым окном это придётся развязать вместе
+  // с остальными оверлеями.
+  onSuggestDropdownPick((item) => { mainChromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_PICKED, item); });
   // Страж фокуса дропдауна (см. блок «ФОКУС» в шапке SuggestDropdownManager.ts). Electron не даёт
   // запретить вью забирать фокус (electron/electron#42922 открыт), поэтому единственная надёжная
   // защита — откатывать КАЖДЫЙ перехват, а не компенсировать отдельные известные моменты. Заменяет
   // прежние точечные заплатки (onFirstLoad + разовый focus() при открытии).
-  onSuggestDropdownFocusStolen(() => chromeView?.webContents.focus());
+  onSuggestDropdownFocusStolen(() => mainChromeView?.webContents.focus());
   // Клавиатурная подсветка (заход 4/5) — омнибокс шлёт номер строки (-1 снимает), main просто
   // пересылает во вью; выбор (Enter) остаётся локальным в омнибоксе, эта вью в нём не участвует.
   ipcMain.handle(IPC.SUGGEST_DROPDOWN_HIGHLIGHT, (_e, idx: number) => {
@@ -1229,7 +1302,7 @@ function registerIpc() {
 
   // Возврат OS-фокуса чрому по требованию renderer'а. Тот же приём, что уже применяется на
   // Ctrl+L и при открытии дропдауна подсказок, — просто доступный ещё и из омнибокса.
-  ipcMain.on(IPC.CHROME_FOCUS, () => chromeView?.webContents.focus());
+  ipcMain.on(IPC.CHROME_FOCUS, (e) => chromeOf(e)?.focus());
 
   // Автообновление. Команды — on, а не handle: ответ не нужен, результат приходит пушем
   // UPDATE_CHANGED (см. UpdateManager.initialize ниже).
@@ -2176,5 +2249,5 @@ app.on('window-all-closed', () => {
 // путь, где сработает эта подстраховка. Оставлено ради будущего macOS-порта (см. CLAUDE.md).
 app.on('before-quit', () => {
   isShuttingDown = true; // macOS Cmd+Q путь — здесь ещё раньше, чем win.on('close') выше
-  if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot(), tabs);
+  if (mainTabs && mainSess) mainSess.saveNow(mainTabs.getSessionSnapshot(), mainTabs);
 });
