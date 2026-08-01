@@ -36,16 +36,129 @@ export function MindmapView({ markdown, height }: { markdown: string; height?: s
 // четырёх символов. Своя раскладка потоковая: наезжать нечему, длинный текст переносится,
 // всё живёт на токенах темы и работает в тёмной так же, как в светлой.
 interface InfographicItem { label: string; value: string; desc: string }
+interface CompareItem { name: string; specs: Record<string, string> }
+
+// Направление «лучше» знаем только для очевидных параметров. Для всего остального лидера НЕ
+// помечаем: у «Экран 6.9 дюймов» больше — не обязательно лучше, и врать подсветкой хуже,
+// чем не подсвечивать вовсе.
+const LOWER_IS_BETTER = /цена|стоимость|price|вес|масса|weight/i;
+const HIGHER_IS_BETTER = /[ёе]мкост|аккумул|батаре|battery|память|memory|ram|частот|герц|hz|разрешен|мегапиксел|камер|рейтинг|скорост|мощност/i;
+
+// Число из «71 391 ₽», «6,9 дюйма», «5160 мАч». Пробелы-разделители тысяч убираем, запятую
+// приводим к точке. Значения с «/» («12/512 ГБ») — это две величины сразу, их не сравниваем.
+function numericValue(raw: string): number | null {
+  if (!raw || raw.includes('/')) return null;
+  const m = raw.replace(/(\d)[\s ](?=\d{3}\b)/g, '$1').replace(',', '.').match(/-?\d+(?:\.\d+)?/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Сравнение: строки — параметры, столбцы — товары. Лидера в строке считает КОД, а не модель:
+// именно на ранжировании локальная 9B путалась и называла лидером сразу двоих.
+function CompareView({ title, items, height }: { title: string; items: CompareItem[]; height?: string }) {
+  // Порядок параметров — по первому появлению: так таблица идёт в логике источника.
+  const params: string[] = [];
+  for (const it of items) for (const k of Object.keys(it.specs)) if (!params.includes(k)) params.push(k);
+
+  // Для каждой строки — индексы победителей (может не быть вовсе).
+  const winners = new Map<string, Set<number>>();
+  for (const p of params) {
+    const lower = LOWER_IS_BETTER.test(p);
+    if (!lower && !HIGHER_IS_BETTER.test(p)) continue;
+    const nums = items.map((it) => numericValue(it.specs[p] ?? ''));
+    if (nums.some((n) => n === null)) continue;   // хоть одно не разобрали — не сравниваем
+    const vals = nums as number[];
+    const best = lower ? Math.min(...vals) : Math.max(...vals);
+    if (vals.every((v) => v === best)) continue;  // все равны — лидера нет
+    winners.set(p, new Set(vals.map((v, i) => (v === best ? i : -1)).filter((i) => i >= 0)));
+  }
+
+  const cell: React.CSSProperties = {
+    padding: '8px 12px', textAlign: 'left', verticalAlign: 'top',
+    fontSize: 'var(--fs-sm)', lineHeight: 'var(--lh-body)',
+    borderTop: '1px solid var(--divider)',
+  };
+
+  return (
+    <div style={{ width: '100%', height: height ?? MODAL_INFOGRAPHIC_HEIGHT, overflow: 'auto', padding: '4px 2px' }}>
+      {title && (
+        <div
+          style={{
+            fontSize: 'var(--fs-xl)', fontWeight: 'var(--fw-semibold)', marginBottom: 12,
+            lineHeight: 'var(--lh-snug)', letterSpacing: 'var(--ls-tight)',
+            color: 'var(--text-strong)', textWrap: 'balance',
+          }}
+        >
+          {title}
+        </div>
+      )}
+      <table
+        style={{
+          borderCollapse: 'collapse', width: '100%', minWidth: 120 + items.length * 150,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        <thead>
+          <tr>
+            <th style={{ ...cell, borderTop: 'none', color: 'var(--text-muted)', fontWeight: 'var(--fw-medium)' }} />
+            {items.map((it, i) => (
+              <th
+                key={i}
+                style={{ ...cell, borderTop: 'none', color: 'var(--text-strong)', fontWeight: 'var(--fw-semibold)' }}
+              >
+                {it.name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {params.map((p) => {
+            const win = winners.get(p);
+            return (
+              <tr key={p}>
+                <td style={{ ...cell, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{p}</td>
+                {items.map((it, i) => {
+                  const best = !!win?.has(i);
+                  return (
+                    <td
+                      key={i}
+                      style={{
+                        ...cell,
+                        color: best ? 'var(--accent)' : 'var(--text-strong)',
+                        fontWeight: best ? 'var(--fw-semibold)' : 'var(--fw-regular)',
+                      }}
+                    >
+                      {it.specs[p] || '—'}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export function InfographicView({ syntax, height }: { syntax: string; height?: string }) {
-  const data = (() => {
-    try {
-      const parsed = JSON.parse(syntax) as { title?: string; items?: InfographicItem[] };
-      return { title: parsed.title ?? '', items: Array.isArray(parsed.items) ? parsed.items : [] };
-    } catch {
-      return { title: '', items: [] as InfographicItem[] };
-    }
+  const parsed = (() => {
+    try { return JSON.parse(syntax) as { title?: string; items?: unknown }; } catch { return null; }
   })();
+  const rawItems = Array.isArray(parsed?.items) ? (parsed!.items as unknown[]) : [];
+
+  // Форму выбирает содержимое: со specs пришло сравнение нескольких источников, без них —
+  // обычная карточная сводка по одному.
+  const compare = rawItems.filter((i): i is CompareItem => {
+    const o = i as CompareItem;
+    return !!o && typeof o.name === 'string' && !!o.specs && typeof o.specs === 'object';
+  });
+  if (compare.length >= 2 && compare.length === rawItems.length) {
+    return <CompareView title={parsed?.title ?? ''} items={compare} height={height} />;
+  }
+
+  const data = { title: parsed?.title ?? '', items: rawItems as InfographicItem[] };
 
   if (!data.items.length) {
     return <div style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-sm)' }}>Инфографика пуста.</div>;

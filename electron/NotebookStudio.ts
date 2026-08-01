@@ -76,6 +76,57 @@ function normalizeQuiz(raw: string): string | null {
   return questions.length ? JSON.stringify({ questions }) : null;
 }
 
+// Сравнение нескольких источников. Модель делает ровно одну вещь, которая ей даётся, —
+// ВЫПИСЫВАЕТ значения из текста по каждому товару отдельно. Ранжировать, считать максимумы
+// и решать, кто лидер, её не просим: это арифметика, и на ней маленькая локальная модель
+// путается (живой случай: «лидер по ёмкости» назначен дважды разным моделям). Сравнение
+// делает таблица в renderer, где значения просто стоят рядом.
+function buildComparisonPrompt(items: string[]): string {
+  const blocks = items
+    .map((t, i) => `### Источник ${i + 1}\n${t.trim().slice(0, 6000)}`)
+    .join('\n\n');
+  return 'Ниже описания нескольких товаров, каждый под своим заголовком. Составь таблицу '
+    + 'сравнения. Ответь СТРОГО валидным JSON без пояснений и без ограждений ```. Формат:\n'
+    + '{"title":"Заголовок сравнения","items":[{"name":"Краткое имя товара",'
+    + '"specs":{"Параметр":"значение","Параметр 2":"значение"}}]}\n'
+    + 'Один элемент items — ОДИН источник, в том же порядке. Имя товара делай коротким '
+    + '(2–4 слова), без слов «купить», «доставка» и артикулов. Параметры выбери 5–8 штук и '
+    + 'назови их ОДИНАКОВО у всех товаров, иначе таблица не сойдётся: например «Экран», '
+    + '«Процессор», «Память», «Батарея», «Цена». Значения переписывай из источника как есть, '
+    + 'с единицами измерения. Если параметра у товара нет — поставь пустую строку. Ничего не '
+    + 'выдумывай и НЕ делай выводов о том, что лучше.\n\n'
+    + blocks;
+}
+
+// Валидация сравнения: в renderer уезжает только чистая структура.
+function normalizeComparison(raw: string): string | null {
+  const s = raw.replace(/```[a-z]*\n?/gi, '');
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b <= a) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(s.slice(a, b + 1)); } catch { return null; }
+  const src = parsed as { title?: unknown; items?: unknown };
+  if (!Array.isArray(src.items)) return null;
+  const items = src.items
+    .map((raw2) => {
+      const o = raw2 as { name?: unknown; specs?: unknown };
+      const specs: Record<string, string> = {};
+      if (o.specs && typeof o.specs === 'object') {
+        for (const [k, v] of Object.entries(o.specs as Record<string, unknown>)) {
+          const key = String(k).trim();
+          const val = v == null ? '' : String(v).trim();
+          if (key) specs[key] = val;
+        }
+      }
+      return { name: typeof o.name === 'string' ? o.name.trim() : '', specs };
+    })
+    .filter((i) => i.name && Object.keys(i.specs).length);
+  // Сравнивать нечего, если товар остался один — пусть узел скажет об этом честно.
+  return items.length >= 2
+    ? JSON.stringify({ title: typeof src.title === 'string' ? src.title.trim() : '', items })
+    : null;
+}
+
 // Достаёт и валидирует JSON инфографики. Тот же приём, что normalizeQuiz: в renderer
 // уезжает только чистая структура, а не сырой ответ модели.
 function normalizeInfographic(raw: string): string | null {
@@ -102,9 +153,17 @@ function normalizeInfographic(raw: string): string | null {
   return items.length ? JSON.stringify({ title, items }) : null
 }
 
-export async function generateStudio(kind: StudioKind, context: string): Promise<{ ok: boolean; text?: string; error?: string }> {
+// items — тексты источников ПООТДЕЛЬНОСТИ. Нужны инфографике: когда источников несколько,
+// человек ждёт сравнение, а не сводку по одному из них наугад (живой случай: пять карточек
+// смартфонов на входе — и инфографика про батарею одного из них).
+export async function generateStudio(
+  kind: StudioKind,
+  context: string,
+  items?: string[],
+): Promise<{ ok: boolean; text?: string; error?: string }> {
   if (!context || !context.trim()) return { ok: false, error: 'Не выбраны источники с текстом' };
-  const prompt = buildPrompt(kind, context);
+  const comparison = kind === 'infographic' && !!items && items.length > 1;
+  const prompt = comparison ? buildComparisonPrompt(items!) : buildPrompt(kind, context);
   if (prompt === null) return { ok: false, error: 'Этот тип пока не поддерживается' };
   const outcome = await runChatMessage(prompt, []);
   if (!outcome.ok) return { ok: false, error: String(outcome.error) };
@@ -113,7 +172,7 @@ export async function generateStudio(kind: StudioKind, context: string): Promise
     return json ? { ok: true, text: json } : { ok: false, error: 'Не удалось разобрать тест — попробуйте ещё раз' };
   }
   if (kind === 'infographic') {
-    const json = normalizeInfographic(outcome.out);
+    const json = comparison ? normalizeComparison(outcome.out) : normalizeInfographic(outcome.out);
     return json ? { ok: true, text: json } : { ok: false, error: 'Не удалось разобрать инфографику — попробуйте ещё раз' };
   }
   return { ok: true, text: outcome.out };

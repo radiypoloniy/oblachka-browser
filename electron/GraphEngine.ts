@@ -206,7 +206,9 @@ async function executeNode(
       // Тот же generateStudio, что у блокнота: он сам валидирует JSON теста (normalizeQuiz),
       // поэтому в renderer уезжает уже разобранная структура, а не сырой ответ модели.
       const kind = node.kind.slice('artifact.'.length) as StudioKind;
-      const res = await generateStudio(kind, context);
+      // Источники передаём и поотдельности: инфографика по нескольким входам должна стать
+      // сравнением, а не сводкой по одному из них наугад.
+      const res = await generateStudio(kind, context, inputs);
       return res.ok && res.text
         ? { ok: true, output: res.text }
         : { ok: false, error: res.error ?? 'Не получилось' };
