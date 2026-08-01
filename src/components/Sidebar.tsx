@@ -1079,6 +1079,10 @@ export default function Sidebar({
   const openTimeoutRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pinnedTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentOverRef    = useRef(false);
+  // Указатель уехал за пределы окна — вкладку вытаскивают в своё окно (как в Chrome/Яндексе).
+  // Запас в DETACH_MARGIN обязателен: без него любой промах мимо края сайдбара на пиксель
+  // отрывал бы вкладку, хотя человек просто менял порядок.
+  const outsideWindowRef  = useRef(false);
   const moveListenerRef   = useRef<((e: PointerEvent) => void) | null>(null);
 
   // Валидация оптимистичного порядка при любом изменении tabs или sidebarNodes.
@@ -1192,6 +1196,9 @@ export default function Sidebar({
   const pinnedIds = pinned.map((t) => t.id);
   const openIds = (localOpenOrder ?? topLevelOpenIds).filter((id) => !effectivePinnedIds.has(id));
 
+  // Насколько далеко за край окна надо увести указатель, чтобы это считалось «вытащить вкладку».
+  const DETACH_MARGIN = 48;
+
   const handleDragStart = (e: DragStartEvent) => {
     setDragActiveId(e.active.id as string);
     const onMove = (ev: PointerEvent) => {
@@ -1203,6 +1210,11 @@ export default function Sidebar({
         contentOverRef.current = over;
         onDragOverContent(over);
       }
+      // Указатель за краем окна (в другое окно, на второй монитор, на рабочий стол) — событие
+      // продолжает приходить, потому что кнопка ещё зажата и указатель захвачен.
+      outsideWindowRef.current =
+        ev.clientX < -DETACH_MARGIN || ev.clientX > window.innerWidth + DETACH_MARGIN
+        || ev.clientY < -DETACH_MARGIN || ev.clientY > window.innerHeight + DETACH_MARGIN;
     };
     moveListenerRef.current = onMove;
     document.addEventListener('pointermove', onMove);
@@ -1213,22 +1225,42 @@ export default function Sidebar({
   // при отмене dnd-kit зовёт onDragCancel вместо onDragEnd, и без этого pointermove-слушатель
   // оставался висеть на document навсегда, продолжая дёргать onDragOverContent на каждое
   // движение мыши, а подсветка «бросить сюда» — залипать.
-  const finishDrag = (): boolean => {
+  const finishDrag = (): { overContent: boolean; outsideWindow: boolean } => {
     if (moveListenerRef.current) {
       document.removeEventListener('pointermove', moveListenerRef.current);
       moveListenerRef.current = null;
     }
     const wasOverContent = contentOverRef.current;
+    const wasOutside = outsideWindowRef.current;
     contentOverRef.current = false;
+    outsideWindowRef.current = false;
     onDragOverContent(false);
     setDragActiveId(null);
-    return wasOverContent;
+    return { overContent: wasOverContent, outsideWindow: wasOutside };
   };
 
   const handleDragEnd = (e: DragEndEvent) => {
-    const wasOverContent = finishDrag();
+    const { overContent: wasOverContent, outsideWindow } = finishDrag();
 
     const { active, over } = e;
+
+    // Вытащили за пределы окна → вкладка уезжает в своё окно ЖИВОЙ (main переносит саму вью,
+    // см. TabManager.detachTabForMove). Проверяем раньше split: указатель за краем окна над
+    // контент-зоной оказаться не может, но порядок делает намерение явным.
+    if (outsideWindow) {
+      const draggedId = active.id as string;
+      if (!draggedId.startsWith('group:')) {
+        const draggedTab = tabs.find((t) => t.id === draggedId);
+        // Те же ограничения, что у пункта меню «Открыть в новом окне»: хаб, закреплённые,
+        // спящие и участники split не переносятся. Отказ main просто ничего не сделает,
+        // но и тащить заведомо непереносимое не показываем.
+        if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned
+          && !draggedTab.isSleeping && draggedTab.splitSide === null) {
+          void window.oblako.moveTabToNewWindow(draggedId);
+          return;
+        }
+      }
+    }
 
     // Дроп в контент-зону → split вместо reorder.
     // Группы в split не входят — проверяем только обычные вкладки.
