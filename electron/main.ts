@@ -3,7 +3,7 @@ import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent } from './BrowserIdentity';
 import { showSplash, closeSplash } from './SplashWindow';
-import { registerWindow } from './WindowRegistry';
+import { registerWindow, contextFromSender } from './WindowRegistry';
 
 // ДО app.whenReady() — Electron требует это до события ready.
 registerSchemesAsPrivileged();
@@ -1043,28 +1043,34 @@ function escapeHtmlAttr(s: string): string {
 
 // ── IPC: renderer (хром) управляет движком вкладок ──
 function registerIpc() {
-  ipcMain.handle(IPC.SYNC_GET, () => ({
-    tabs:  tabs?.snapshot()              ?? [],
-    nodes: tabs?.sidebarNodesSnapshot() ?? [],
-    hasOrganizeSnapshot: tabs?.hasOrganizeSnapshot() ?? false,
+  // Менеджер вкладок ТОГО окна, из которого пришёл вызов. Пока окно одно, это всегда он же —
+  // но со вторым окном разница станет решающей: без маршрутизации клик в новом окне менял бы
+  // вкладки в старом. Запасной путь на глобальный tabs оставлен для отправителей, которых нет
+  // в реестре (ранние сообщения при старте, изолированные тестовые окна).
+  const tabsOf = (e: { sender: Electron.WebContents }) => contextFromSender(e.sender)?.tabs ?? tabs;
+
+  ipcMain.handle(IPC.SYNC_GET, (e) => ({
+    tabs:  tabsOf(e)?.snapshot()              ?? [],
+    nodes: tabsOf(e)?.sidebarNodesSnapshot() ?? [],
+    hasOrganizeSnapshot: tabsOf(e)?.hasOrganizeSnapshot() ?? false,
   }));
-  ipcMain.handle(IPC.TABS_GET_ALL, () => tabs?.snapshot() ?? []);
+  ipcMain.handle(IPC.TABS_GET_ALL, (e) => tabsOf(e)?.snapshot() ?? []);
   // Тема chrome (light/dark + инкогнито) от главного рендерера → раскидываем во все наши вью.
   ipcMain.handle(IPC.CHROME_THEME_SET, (_e, dark: boolean, incognito: boolean) => {
     currentChromeTheme = { dark: !!dark, incognito: !!incognito };
     broadcastChromeTheme();
   });
-  ipcMain.handle(IPC.TAB_CREATE, (_e, url?: string) => tabs?.createTab(url));
-  ipcMain.handle(IPC.TAB_CREATE_INCOGNITO, (_e, url?: string) => tabs?.createTab(url, false, false, true));
-  ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (_e, kind: 'history' | 'settings' | 'bookmarks', section?: string) => tabs?.createSpecialTab(kind, section));
-  ipcMain.handle(IPC.TAB_CLOSE, (_e, id: string) => tabs?.closeTab(id));
-  ipcMain.handle(IPC.TAB_ACTIVATE, (_e, id: string) => tabs?.activate(id));
-  ipcMain.handle(IPC.TAB_NAVIGATE, (_e, id: string, input: string) => tabs?.navigate(id, input));
-  ipcMain.handle(IPC.TAB_GO_BACK, (_e, id: string) => tabs?.goBack(id));
-  ipcMain.handle(IPC.TAB_GO_FORWARD, (_e, id: string) => tabs?.goForward(id));
-  ipcMain.handle(IPC.TAB_RELOAD, (_e, id: string) => tabs?.reload(id));
-  ipcMain.handle(IPC.CONTENT_SET_BOUNDS, (_e, b: ContentBounds) => {
-    tabs?.setContentBounds(b);
+  ipcMain.handle(IPC.TAB_CREATE, (e, url?: string) => tabsOf(e)?.createTab(url));
+  ipcMain.handle(IPC.TAB_CREATE_INCOGNITO, (e, url?: string) => tabsOf(e)?.createTab(url, false, false, true));
+  ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (e, kind: 'history' | 'settings' | 'bookmarks', section?: string) => tabsOf(e)?.createSpecialTab(kind, section));
+  ipcMain.handle(IPC.TAB_CLOSE, (e, id: string) => tabsOf(e)?.closeTab(id));
+  ipcMain.handle(IPC.TAB_ACTIVATE, (e, id: string) => tabsOf(e)?.activate(id));
+  ipcMain.handle(IPC.TAB_NAVIGATE, (e, id: string, input: string) => tabsOf(e)?.navigate(id, input));
+  ipcMain.handle(IPC.TAB_GO_BACK, (e, id: string) => tabsOf(e)?.goBack(id));
+  ipcMain.handle(IPC.TAB_GO_FORWARD, (e, id: string) => tabsOf(e)?.goForward(id));
+  ipcMain.handle(IPC.TAB_RELOAD, (e, id: string) => tabsOf(e)?.reload(id));
+  ipcMain.handle(IPC.CONTENT_SET_BOUNDS, (e, b: ContentBounds) => {
+    tabsOf(e)?.setContentBounds(b);
     // Та же геометрия двигает FindBar — центрирование по контентной зоне (учитывает сайдбар) и
     // авто-скрытие при настройках/истории/загрузках (нулевые bounds — тот же сентинел, см. FindBarManager.ts).
     syncFindBarBounds(b);
@@ -1132,26 +1138,26 @@ function registerIpc() {
     setSuggestDropdownHighlight(idx);
   });
   ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (_e, opts: TitleBarOpts) => win?.setTitleBarOverlay(opts));
-  ipcMain.handle(IPC.FIND_START, (_e, q: string, fwd: boolean) => tabs?.findInPage(q, fwd));
-  ipcMain.handle(IPC.FIND_NEXT,  (_e, fwd: boolean)            => tabs?.findNext(fwd));
-  ipcMain.handle(IPC.FIND_STOP,  ()                            => tabs?.stopFind());
+  ipcMain.handle(IPC.FIND_START, (e, q: string, fwd: boolean) => tabsOf(e)?.findInPage(q, fwd));
+  ipcMain.handle(IPC.FIND_NEXT,  (e, fwd: boolean)            => tabsOf(e)?.findNext(fwd));
+  ipcMain.handle(IPC.FIND_STOP,  (e)                            => tabsOf(e)?.stopFind());
 
-  ipcMain.handle(IPC.TAB_PIN_TOGGLE, (_e, id: string) => tabs?.togglePin(id));
+  ipcMain.handle(IPC.TAB_PIN_TOGGLE, (e, id: string) => tabsOf(e)?.togglePin(id));
 
   // Split View
-  ipcMain.handle(IPC.TAB_ENTER_SPLIT, (_e, rightId: string)         => tabs?.enterSplit(rightId));
-  ipcMain.handle(IPC.TAB_EXIT_SPLIT,  (_e, tabId: string)           => tabs?.exitSplit(tabId));
-  ipcMain.handle(IPC.TAB_SPLIT_FOCUS, (_e, side: 'left' | 'right') => tabs?.focusSplitPanel(side));
-  ipcMain.handle(IPC.TAB_SPLIT_RATIO, (_e, ratio: number)           => tabs?.setSplitRatio(ratio));
+  ipcMain.handle(IPC.TAB_ENTER_SPLIT, (e, rightId: string)         => tabsOf(e)?.enterSplit(rightId));
+  ipcMain.handle(IPC.TAB_EXIT_SPLIT,  (e, tabId: string)           => tabsOf(e)?.exitSplit(tabId));
+  ipcMain.handle(IPC.TAB_SPLIT_FOCUS, (e, side: 'left' | 'right') => tabsOf(e)?.focusSplitPanel(side));
+  ipcMain.handle(IPC.TAB_SPLIT_RATIO, (e, ratio: number)           => tabsOf(e)?.setSplitRatio(ratio));
 
   ipcMain.handle(IPC.TAB_REORDER,
-    (_e, section: 'normal' | 'pinned', orderedIds: string[]) =>
-      tabs?.reorderTabs(section, orderedIds),
+    (e, section: 'normal' | 'pinned', orderedIds: string[]) =>
+      tabsOf(e)?.reorderTabs(section, orderedIds),
   );
 
   ipcMain.handle(IPC.TAB_MOVE_SECTION,
-    (_e, tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number) =>
-      tabs?.moveTabSection(tabId, targetSection, targetIndex),
+    (e, tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number) =>
+      tabsOf(e)?.moveTabSection(tabId, targetSection, targetIndex),
   );
 
   // AdBlock
@@ -1159,7 +1165,7 @@ function registerIpc() {
   ipcMain.handle(IPC.ADBLOCK_SET_ENABLED,    (_e, v: boolean)      => adblock.setEnabled(v));
   ipcMain.handle(IPC.ADBLOCK_ADD_DOMAIN,     (_e, d: string)       => adblock.addDomain(d));
   ipcMain.handle(IPC.ADBLOCK_REMOVE_DOMAIN,  (_e, d: string)       => adblock.removeDomain(d));
-  ipcMain.handle(IPC.ADBLOCK_RELOAD_TABS,    (_e, d?: string)      => tabs?.reloadTabsForDomain(d));
+  ipcMain.handle(IPC.ADBLOCK_RELOAD_TABS,    (e, d?: string)      => tabsOf(e)?.reloadTabsForDomain(d));
   ipcMain.handle(IPC.ADBLOCK_IS_WHITELISTED, (_e, d: string)       => adblock.isWhitelisted(d));
   ipcMain.handle(IPC.ADBLOCK_GET_SITE_BLOCK_COUNT, (_e, d: string) => adblock.getBlockedCountForDomain(d));
 
@@ -1174,10 +1180,10 @@ function registerIpc() {
   ipcMain.handle(IPC.BANGS_REMOVE, (_e, key: string) => { bangs.removeUser(key); });
   // Заготовки по адресам открытых вкладок. Работа целиком в main: у renderer нет URL чужих
   // вкладок, да и деривация — не его дело (см. CLAUDE.md — компоненты только рисуют).
-  ipcMain.handle(IPC.BANGS_DERIVE_TABS, () => {
+  ipcMain.handle(IPC.BANGS_DERIVE_TABS, (e) => {
     const out: DerivedBangCandidate[] = [];
     const seen = new Set<string>();
-    for (const t of tabs?.snapshot() ?? []) {
+    for (const t of tabsOf(e)?.snapshot() ?? []) {
       if (t.isHub || !t.url) continue;
       const d = deriveBangFromUrl(t.url);
       // Дедуп по шаблону: две вкладки одного поиска дали бы две одинаковые строки в списке.
@@ -1214,9 +1220,9 @@ function registerIpc() {
 
   // Настройки
   ipcMain.handle(IPC.SETTINGS_GET_SEARCH_ENGINE, () => settings.getSearchEngine());
-  ipcMain.handle(IPC.SETTINGS_SET_SEARCH_ENGINE, (_e, id: SearchEngineId) => {
+  ipcMain.handle(IPC.SETTINGS_SET_SEARCH_ENGINE, (e, id: SearchEngineId) => {
     settings.setSearchEngine(id);
-    tabs?.setSearchEngine(id);
+    tabsOf(e)?.setSearchEngine(id);
   });
   ipcMain.handle(IPC.SETTINGS_GET_HUB_MODE, () => {
     const mode = settings.getHubMode();
@@ -1762,8 +1768,8 @@ function registerIpc() {
   ipcMain.handle(IPC.DOWNLOAD_RETRY,       (_e, id: string) => downloads.retry(id));
 
   // AI-группировка вкладок (Phase 4)
-  ipcMain.handle(IPC.TABS_ORGANIZE_APPLY,    (_e, clusters: OrganizeCluster[]) => tabs?.applyOrganize(clusters));
-  ipcMain.handle(IPC.TABS_ORGANIZE_ROLLBACK, ()                                => tabs?.rollbackOrganize());
+  ipcMain.handle(IPC.TABS_ORGANIZE_APPLY,    (e, clusters: OrganizeCluster[]) => tabsOf(e)?.applyOrganize(clusters));
+  ipcMain.handle(IPC.TABS_ORGANIZE_ROLLBACK, (e)                                => tabsOf(e)?.rollbackOrganize());
   ipcMain.handle(IPC.TABS_SUGGEST_GROUPS,    ()                                => suggestGroups());
 
   // Правая AI-панель (см. AiPanelManager.ts)
@@ -1782,7 +1788,7 @@ function registerIpc() {
   ipcMain.handle(IPC.PAGE_TRANSLATE_GET_STATE, () => getPageTranslateActiveState());
 
   // Нативное ПКМ-меню вкладки в сайдбаре.
-  ipcMain.handle(IPC.TAB_SHOW_MENU, (_e, id: string) => {
+  ipcMain.handle(IPC.TAB_SHOW_MENU, (e, id: string) => {
     if (!tabs || !win) return;
     const isPinned = tabs.isTabPinned(id);
     const groupId  = tabs.getTabGroupId(id);
@@ -1794,7 +1800,7 @@ function registerIpc() {
     const items: MenuItemConstructorOptions[] = [
       {
         label: isPinned ? 'Открепить вкладку' : 'Закрепить вкладку',
-        click: () => tabs!.togglePin(id),
+        click: () => tabsOf(e)!.togglePin(id),
       },
       ...(toGraph ? [toGraph] : []),
       { type: 'separator' },
@@ -1804,12 +1810,12 @@ function registerIpc() {
       if (groupId) {
         items.push({
           label: 'Убрать из группы',
-          click: () => tabs!.removeTabFromGroup(groupId, id),
+          click: () => tabsOf(e)!.removeTabFromGroup(groupId, id),
         });
       } else {
         items.push({
           label: 'Создать группу',
-          click: () => tabs!.createGroup(id),
+          click: () => tabsOf(e)!.createGroup(id),
         });
       }
 
@@ -1821,7 +1827,7 @@ function registerIpc() {
           label: 'Добавить в группу',
           submenu: otherGroups.map((g) => ({
             label: g.label || 'Группа',
-            click: () => tabs!.addTabToGroup(g.id, id),
+            click: () => tabsOf(e)!.addTabToGroup(g.id, id),
           })),
         });
       }
@@ -1832,24 +1838,24 @@ function registerIpc() {
     items.push({
       label: 'Закрыть вкладку',
       enabled: !isPinned,
-      click: () => tabs!.closeTab(id),
+      click: () => tabsOf(e)!.closeTab(id),
     });
     Menu.buildFromTemplate(items).popup({ window: win });
   });
 
   // ПКМ по кнопке «Новая вкладка» — обычная / инкогнито / восстановить закрытую (как в Chrome).
-  ipcMain.handle(IPC.NEW_TAB_SHOW_MENU, () => {
+  ipcMain.handle(IPC.NEW_TAB_SHOW_MENU, (e) => {
     if (!tabs || !win) return;
     Menu.buildFromTemplate([
-      { label: 'Новая вкладка', accelerator: 'Ctrl+T', click: () => tabs!.activate(HUB_ID) },
-      { label: 'Новая вкладка инкогнито', accelerator: 'Ctrl+Shift+N', click: () => tabs!.createTab(undefined, false, false, true) },
+      { label: 'Новая вкладка', accelerator: 'Ctrl+T', click: () => tabsOf(e)!.activate(HUB_ID) },
+      { label: 'Новая вкладка инкогнито', accelerator: 'Ctrl+Shift+N', click: () => tabsOf(e)!.createTab(undefined, false, false, true) },
       { type: 'separator' },
-      { label: 'Открыть закрытую вкладку', accelerator: 'Ctrl+Shift+T', enabled: tabs.hasClosedTabs(), click: () => tabs!.reopenLastClosedTab() },
+      { label: 'Открыть закрытую вкладку', accelerator: 'Ctrl+Shift+T', enabled: tabs.hasClosedTabs(), click: () => tabsOf(e)!.reopenLastClosedTab() },
     ]).popup({ window: win });
   });
 
   // Нативное ПКМ-меню заголовка группы.
-  ipcMain.handle(IPC.GROUP_SHOW_MENU, (_e, groupId: string) => {
+  ipcMain.handle(IPC.GROUP_SHOW_MENU, (e, groupId: string) => {
     if (!tabs || !win || !chromeView) return;
     const GROUP_COLORS: Array<{ label: string; value: string }> = [
       { label: 'Без цвета',   value: '' },
@@ -1873,19 +1879,19 @@ function registerIpc() {
         label: 'Цвет',
         submenu: GROUP_COLORS.map(({ label, value }) => ({
           label,
-          click: () => tabs!.setGroupColor(groupId, value || null),
+          click: () => tabsOf(e)!.setGroupColor(groupId, value || null),
         })),
       },
       ...(groupToGraph ? [groupToGraph] : []),
       { type: 'separator' },
       {
         label: 'Свернуть / развернуть',
-        click: () => tabs!.toggleGroupCollapse(groupId),
+        click: () => tabsOf(e)!.toggleGroupCollapse(groupId),
       },
       {
         label: 'Скопировать содержимое',
         click: () => {
-          const contents = tabs!.getGroupContents(groupId);
+          const contents = tabsOf(e)!.getGroupContents(groupId);
           if (contents.length === 0) return;
           // Оба формата одним clipboard.write() — атомарно, оба представления сразу доступны любому
           // приёмнику: html для редакторов с форматированием, text — Markdown-подобный список для
@@ -1905,26 +1911,26 @@ function registerIpc() {
       { type: 'separator' },
       {
         label: 'Расформировать группу',
-        click: () => tabs!.disbandGroup(groupId),
+        click: () => tabsOf(e)!.disbandGroup(groupId),
       },
       {
         label: 'Закрыть группу и вкладки',
-        click: () => tabs!.closeGroupAndTabs(groupId),
+        click: () => tabsOf(e)!.closeGroupAndTabs(groupId),
       },
     ];
     Menu.buildFromTemplate(items).popup({ window: win });
   });
 
   // Группо-операции.
-  ipcMain.handle(IPC.SIDEBAR_NODES_GET,      ()                                => tabs?.sidebarNodesSnapshot() ?? []);
-  ipcMain.handle(IPC.GROUP_CREATE,           (_e, tabId: string)               => tabs?.createGroup(tabId));
-  ipcMain.handle(IPC.GROUP_ADD_TAB,          (_e, gId: string, tabId: string)  => tabs?.addTabToGroup(gId, tabId));
-  ipcMain.handle(IPC.GROUP_REMOVE_TAB,       (_e, gId: string, tabId: string)  => tabs?.removeTabFromGroup(gId, tabId));
-  ipcMain.handle(IPC.GROUP_RENAME,           (_e, gId: string, label: string)  => tabs?.renameGroup(gId, label));
-  ipcMain.handle(IPC.GROUP_COLOR,            (_e, gId: string, color: string | null) => tabs?.setGroupColor(gId, color));
-  ipcMain.handle(IPC.GROUP_TOGGLE_COLLAPSE,  (_e, gId: string)                 => tabs?.toggleGroupCollapse(gId));
-  ipcMain.handle(IPC.GROUP_DISBAND,          (_e, gId: string)                 => tabs?.disbandGroup(gId));
-  ipcMain.handle(IPC.GROUP_REORDER_CHILDREN, (_e, gId: string, ids: string[])  => tabs?.reorderGroupChildren(gId, ids));
+  ipcMain.handle(IPC.SIDEBAR_NODES_GET,      (e)                                => tabsOf(e)?.sidebarNodesSnapshot() ?? []);
+  ipcMain.handle(IPC.GROUP_CREATE,           (e, tabId: string)               => tabsOf(e)?.createGroup(tabId));
+  ipcMain.handle(IPC.GROUP_ADD_TAB,          (e, gId: string, tabId: string)  => tabsOf(e)?.addTabToGroup(gId, tabId));
+  ipcMain.handle(IPC.GROUP_REMOVE_TAB,       (e, gId: string, tabId: string)  => tabsOf(e)?.removeTabFromGroup(gId, tabId));
+  ipcMain.handle(IPC.GROUP_RENAME,           (e, gId: string, label: string)  => tabsOf(e)?.renameGroup(gId, label));
+  ipcMain.handle(IPC.GROUP_COLOR,            (e, gId: string, color: string | null) => tabsOf(e)?.setGroupColor(gId, color));
+  ipcMain.handle(IPC.GROUP_TOGGLE_COLLAPSE,  (e, gId: string)                 => tabsOf(e)?.toggleGroupCollapse(gId));
+  ipcMain.handle(IPC.GROUP_DISBAND,          (e, gId: string)                 => tabsOf(e)?.disbandGroup(gId));
+  ipcMain.handle(IPC.GROUP_REORDER_CHILDREN, (e, gId: string, ids: string[])  => tabsOf(e)?.reorderGroupChildren(gId, ids));
 
   // Детект железа (см. electron/HardwareInfo.ts) — задел под подбор модели. Ленивый: ничего не
   // считает на старте, первый запрос из renderer инициирует расчёт.
