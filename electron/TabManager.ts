@@ -154,6 +154,10 @@ export class TabManager {
 
   private activeId: string = HUB_ID;
   private bounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
+  // Вкладка, страница которой ушла в полноэкранный режим (видео). Пока он держится, её вью
+  // занимает всё окно, а присланные рендерером bounds на неё не действуют — иначе первый же
+  // ResizeObserver вернул бы кадр обратно в дырку под контент.
+  private fullscreenTabId: string | null = null;
   // Поисковик для omnibox-навигации и ПКМ-поиска — единый источник для обеих точек.
   // Применяется извне через setSearchEngine() сразу после конструктора (см. main.ts,
   // SettingsManager) и при смене настройки — сам TabManager настройку не персистирует.
@@ -1178,6 +1182,25 @@ export class TabManager {
       notify();
     });
     wc.on('did-navigate-in-page', notify);
+
+    // Полноэкранное видео. Без этого «на весь экран» означало лишь «на всю дырку под
+    // контент»: Chromium растягивает видео по своей WebContentsView, а она у нас занимает
+    // только область страницы — сайдбар, тулбар и поля оставались на виду.
+    //
+    // Разворачиваем И вью на всё окно, И само окно: полноэкранный ролик не должен упираться
+    // в заголовок окна и панель задач. Вью вкладки лежит выше хрома по порядку addChildView,
+    // так что интерфейс она закрывает собой — прятать его отдельно не требуется.
+    wc.on('enter-html-full-screen', () => {
+      this.fullscreenTabId = id;
+      if (!this.win.isDestroyed()) this.win.setFullScreen(true);
+      this.repositionViews();
+    });
+    wc.on('leave-html-full-screen', () => {
+      if (this.fullscreenTabId !== id) return;
+      this.fullscreenTabId = null;
+      if (!this.win.isDestroyed()) this.win.setFullScreen(false);
+      this.repositionViews();
+    });
     wc.on('page-title-updated', (_e, title) => {
       // Обновляем только заголовок — без инкремента счётчика посещений.
       this.onTitleUpdateCb?.(wc.getURL(), title);
@@ -2583,6 +2606,14 @@ export class TabManager {
   }
 
   private applyBounds(view: WebContentsView) {
+    // Полноэкранный ролик занимает ВСЁ окно, а не дырку под контент. Скругление снимаем:
+    // на краю экрана оно давало бы чёрные засечки по углам кадра.
+    if (this.fullscreenTabId && this.tabMap.get(this.fullscreenTabId)?.view === view) {
+      const { width: w, height: h } = this.win.getContentBounds();
+      view.setBounds({ x: 0, y: 0, width: w, height: h });
+      view.setBorderRadius(0);
+      return;
+    }
     const { x, y, width, height } = this.bounds;
     view.setBounds({
       x: Math.round(x), y: Math.round(y),
