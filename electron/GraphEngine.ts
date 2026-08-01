@@ -116,6 +116,12 @@ export function computeNodeInputHash(doc: GraphDoc, nodeId: string): string | nu
   return hashInputs(node, inputsForNode(doc, nodeId));
 }
 
+// Материал, пришедший узлу на вход, готовым текстом. Нужен узлу-диалогу (GraphChat.ts):
+// он подмешивает его в первую реплику, чтобы модель видела, о чём речь.
+export function contextForNode(doc: GraphDoc, nodeId: string): string {
+  return buildContext(inputsForNode(doc, nodeId));
+}
+
 // Текст, который кнопка «Вставить» кладёт в поле чужого чата.
 export function composeWebAppPrompt(doc: GraphDoc, nodeId: string): string {
   const node = doc.nodes.find((n) => n.id === nodeId);
@@ -233,6 +239,7 @@ async function executeNode(
       return res.ok ? { ok: true, output: res.out } : { ok: false, error: res.error };
     }
 
+    case 'qwen.chat':
     case 'webapp.chat':
       // Сюда поток не доходит: узел перехвачен в runGraph до вызова executeNode (обмен —
       // через руку человека). Ветка оставлена, чтобы switch оставался исчерпывающим.
@@ -335,6 +342,17 @@ export async function runGraph(
       // Узел-веб-приложение машина посчитать не может — за него отвечает человек.
       // Честно останавливаем ветку в состоянии «ждёт вас», а не делаем вид, что считаем:
       // иначе прогон выглядел бы зависшим. Соседние ветки продолжаются.
+      if (node.kind === 'qwen.chat') {
+        emit({
+          graphId, nodeId, status: 'awaiting',
+          error: 'Раскройте узел и задайте вопрос — ответ станет выходом',
+        });
+        for (const dep of downstreamOf([nodeId], doc.edges)) {
+          if (dep !== nodeId && planSet.has(dep)) broken.add(dep);
+        }
+        continue;
+      }
+
       if (node.kind === 'webapp.chat') {
         emit({
           graphId, nodeId, status: 'awaiting',

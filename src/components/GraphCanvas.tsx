@@ -40,7 +40,7 @@ const nodeTypes = { oblako: GraphNodeCard };
 // подряд не читаются, а группы отвечают на вопрос «откуда взять — что сделать — что получить».
 const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
   { title: 'Откуда', kinds: ['source.url', 'source.file', 'source.note'] },
-  { title: 'Обработка', kinds: ['qwen.transform', 'image.prompt', 'webapp.chat'] },
+  { title: 'Обработка', kinds: ['qwen.transform', 'qwen.chat', 'image.prompt', 'webapp.chat'] },
   { title: 'Проверка', kinds: ['search.web', 'factcheck.gemini'] },
   { title: 'Артефакты', kinds: ['artifact.summary', 'artifact.mindmap', 'artifact.infographic', 'artifact.quiz'] },
   { title: 'Итог', kinds: ['output.text'] },
@@ -837,6 +837,8 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
 
           {expandedNode && currentId !== null && (
             <NodeFullscreen
+              graphId={currentId}
+              nodeId={expandedNode.id}
               kind={expandedNode.data.kind}
               title={expandedNode.data.title}
               status={expandedNode.data.status}

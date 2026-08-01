@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
-import type { GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../shared/graph';
+import type {
+  GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure,
+} from '../shared/graph';
 import type { ImagePreset } from '../shared/imagePresets';
 
 const api: OblakoApi = {
@@ -299,6 +301,26 @@ const api: OblakoApi = {
     ipcRenderer.invoke(IPC.GRAPH_RENAME, graphId, title) as Promise<void>,
   deleteGraph: (graphId: number) => ipcRenderer.invoke(IPC.GRAPH_DELETE, graphId) as Promise<void>,
   runGraph: (graphId: number, nodeId: string | null) => ipcRenderer.send(IPC.GRAPH_RUN, graphId, nodeId),
+  listGraphChat: (graphId: number, nodeId: string) =>
+    ipcRenderer.invoke(IPC.GRAPH_CHAT_LIST, graphId, nodeId) as Promise<GraphChatMessage[]>,
+  sendGraphChat: (graphId: number, nodeId: string, text: string) =>
+    ipcRenderer.send(IPC.GRAPH_CHAT_SEND, graphId, nodeId, text),
+  clearGraphChat: (graphId: number, nodeId: string) =>
+    ipcRenderer.invoke(IPC.GRAPH_CHAT_CLEAR, graphId, nodeId) as Promise<void>,
+  onGraphChatChunk: (cb: (p: { graphId: number; nodeId: string; text: string }) => void) => {
+    const handler = (_e: unknown, p: { graphId: number; nodeId: string; text: string }) => cb(p);
+    ipcRenderer.on(IPC.GRAPH_CHAT_CHUNK, handler);
+    return () => ipcRenderer.removeListener(IPC.GRAPH_CHAT_CHUNK, handler);
+  },
+  onGraphChatDone: (
+    cb: (p: { graphId: number; nodeId: string; ok: boolean; text?: string; error?: string }) => void,
+  ) => {
+    const handler = (
+      _e: unknown, p: { graphId: number; nodeId: string; ok: boolean; text?: string; error?: string },
+    ) => cb(p);
+    ipcRenderer.on(IPC.GRAPH_CHAT_DONE, handler);
+    return () => ipcRenderer.removeListener(IPC.GRAPH_CHAT_DONE, handler);
+  },
   pickGraphFile: () => ipcRenderer.invoke(IPC.GRAPH_PICK_FILE) as Promise<string | null>,
   listNodeHistory: (graphId: number, nodeId: string) =>
     ipcRenderer.invoke(IPC.GRAPH_NODE_HISTORY, graphId, nodeId) as Promise<GraphNodeVersion[]>,

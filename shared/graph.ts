@@ -19,6 +19,11 @@ export type GraphNodeKind =
   // Промпт для генератора картинок. Отдельный тип, а не qwen.transform с текстом руками:
   // качество здесь делает подробная зашитая инструкция, см. shared/imagePresets.ts.
   | 'image.prompt'
+  // Диалог с локальной моделью прямо в графе. ОТДЕЛЬНЫЙ тип, а не режим qwen.transform:
+  // у того детерминированность несущая (кэш по отпечатку входов, на нём стоят шаблоны),
+  // а диалог по природе другой — те же входы дают другой ответ, потому что копится
+  // переписка. Наружу узел отдаёт последний ответ модели.
+  | 'qwen.chat'
   // Чужой AI-сайт (ChatGPT и т.п.) в панели 1:1. Обмен ТОЛЬКО через руку человека:
   // граф готовит промпт, кнопка кладёт его в поле, отправляет пользователь, кнопка
   // забирает ответ. Автоматической отправки нет по замыслу — см. electron/graphWebApps.ts.
@@ -90,6 +95,13 @@ export const NODE_KINDS: Record<GraphNodeKind, NodeKindSpec> = {
     emoji: '🎨',
     inputs: [{ id: 'context', label: 'материал', type: 'textList' }],
     outputs: [{ id: 'text', label: 'промпт', type: 'text' }],
+  },
+  'qwen.chat': {
+    label: 'Диалог',
+    hint: 'Переписка с локальной моделью; материал со входа она видит',
+    emoji: '🗨️',
+    inputs: [{ id: 'context', label: 'материал', type: 'textList' }],
+    outputs: [{ id: 'text', label: 'последний ответ', type: 'text' }],
   },
   'webapp.chat': {
     label: 'Веб-чат',
@@ -201,6 +213,14 @@ export interface GraphNodeVersion {
   at: number
   output: string
   outputTitle: string | null
+}
+
+// Реплика в диалоге узла. Хранится отдельно от результата: результат — это ПОСЛЕДНИЙ ответ
+// (он течёт дальше по графу), а переписка нужна модели как контекст и человеку как история.
+export interface GraphChatMessage {
+  at: number
+  role: 'user' | 'assistant'
+  text: string
 }
 
 export interface GraphEdge {

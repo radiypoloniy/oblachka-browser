@@ -49,6 +49,7 @@ export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> 
   'source.file': { w: 280, h: 260 },
   'qwen.transform': { w: 304, h: 320 },
   'image.prompt': { w: 330, h: 380 },
+  'qwen.chat': { w: 320, h: 340 },
   'webapp.chat': { w: 300, h: 300 },
   'search.web': { w: 320, h: 340 },
   'factcheck.gemini': { w: 340, h: 340 },
@@ -313,6 +314,23 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
             style={{ ...fieldStyle, flex: 1, minHeight: 60 }}
           />
+        )}
+
+        {data.kind === 'qwen.chat' && (
+          <button
+            type="button"
+            className="nodrag"
+            onClick={data.onExpand}
+            style={{
+              flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              background: 'var(--accent)', color: 'var(--text-on-accent)', border: 0,
+              borderRadius: 'var(--radius-sm, 8px)', padding: '8px 12px', cursor: 'pointer',
+              font: 'inherit', fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)',
+              fontFamily: 'var(--font-sans)',
+            }}
+          >
+            🗨️ Открыть диалог
+          </button>
         )}
 
         {data.kind === 'webapp.chat' && (

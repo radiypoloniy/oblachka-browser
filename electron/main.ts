@@ -25,6 +25,7 @@ import {
   cancelGraphRun, composeWebAppPrompt, computeNodeInputHash, runGraph, setImagePresetsSource,
 } from './GraphEngine';
 import type { ImagePreset } from '../shared/imagePresets';
+import { sendChatMessage } from './GraphChat';
 import {
   captureAnswer, closeGraphWebApp, insertPrompt, raiseGraphWebApp,
   setGraphWebAppBounds, showGraphWebApp,
@@ -1442,6 +1443,27 @@ function registerIpc() {
       console.warn('[Graph] сохранение результата упало:', (e as Error).message);
       return false;
     }
+  });
+  ipcMain.handle(IPC.GRAPH_CHAT_LIST, (_e, graphId: number, nodeId: string) =>
+    graphs.listChatMessages(graphId, nodeId));
+  ipcMain.handle(IPC.GRAPH_CHAT_CLEAR, (_e, graphId: number, nodeId: string) => {
+    graphs.clearChat(graphId, nodeId);
+  });
+  ipcMain.on(IPC.GRAPH_CHAT_SEND, (_e, graphId: number, nodeId: string, text: string) => {
+    // Диалог с моделью — явное намерение поработать с AI, значит её пора греть.
+    maybeLazyWarmupOnDemand();
+    void sendChatMessage(graphs, graphId, nodeId, typeof text === 'string' ? text : '', {
+      chunk: (chunk) => chromeView?.webContents.send(IPC.GRAPH_CHAT_CHUNK, { graphId, nodeId, text: chunk }),
+      done: (outcome) => {
+        chromeView?.webContents.send(IPC.GRAPH_CHAT_DONE, { graphId, nodeId, ...outcome });
+        // Ответ стал выходом узла — холст должен увидеть это как обычный результат.
+        if (outcome.ok) {
+          chromeView?.webContents.send(IPC.GRAPH_PROGRESS, {
+            graphId, nodeId, status: 'done', output: outcome.text,
+          });
+        }
+      },
+    });
   });
   ipcMain.handle(IPC.GRAPH_NODE_HISTORY, (_e, graphId: number, nodeId: string) =>
     graphs.listNodeHistory(graphId, nodeId));

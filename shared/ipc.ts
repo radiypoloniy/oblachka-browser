@@ -2,7 +2,9 @@
 // renderer (хром-UI) и main (движок вкладок). Импортируется обеими сторонами.
 
 import type { SearchEngineId } from './searchEngines';
-import type { GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from './graph';
+import type {
+  GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure,
+} from './graph';
 import type { ImagePreset } from './imagePresets';
 
 // ── Узлы сайдбара ─────────────────────────────────────────────────────────────
@@ -267,6 +269,12 @@ export const IPC = {
   GRAPH_PRESET_DELETE: 'graph:preset-delete',  // renderer → main: удалить свой пресет
   GRAPH_SAVE_OUTPUT: 'graph:save-output',  // renderer → main: диалог «сохранить результат узла в файл»
   GRAPH_NODE_HISTORY: 'graph:node-history',  // renderer → main: прошлые результаты узла
+  // Узел-диалог с локальной моделью. send — fire-and-forget, ответ идёт стримом.
+  GRAPH_CHAT_LIST:  'graph:chat-list',   // renderer → main: переписка узла
+  GRAPH_CHAT_SEND:  'graph:chat-send',   // renderer → main: (graphId, nodeId, text)
+  GRAPH_CHAT_CLEAR: 'graph:chat-clear',  // renderer → main: очистить переписку узла
+  GRAPH_CHAT_CHUNK: 'graph:chat-chunk',  // main → renderer: { graphId, nodeId, text }
+  GRAPH_CHAT_DONE:  'graph:chat-done',   // main → renderer: { graphId, nodeId, ok, text?, error? }
   GRAPH_PICK_FILE: 'graph:pick-file',  // renderer → main: нативный диалог выбора документа для узла-файла
   GRAPH_PROGRESS: 'graph:progress', // main → renderer: GraphProgress (статусы + стрим-чанки)
 
@@ -1529,6 +1537,15 @@ export interface OblakoApi {
   pickGraphFile(): Promise<string | null>;
   // Прошлые результаты узла (до пяти, свежие первыми) — для сравнения формулировок.
   listNodeHistory(graphId: number, nodeId: string): Promise<GraphNodeVersion[]>;
+
+  // Узел-диалог: переписка живёт в main, наружу узел отдаёт последний ответ модели.
+  listGraphChat(graphId: number, nodeId: string): Promise<GraphChatMessage[]>;
+  sendGraphChat(graphId: number, nodeId: string, text: string): void;
+  clearGraphChat(graphId: number, nodeId: string): Promise<void>;
+  onGraphChatChunk(cb: (p: { graphId: number; nodeId: string; text: string }) => void): () => void;
+  onGraphChatDone(
+    cb: (p: { graphId: number; nodeId: string; ok: boolean; text?: string; error?: string }) => void,
+  ): () => void;
   // Сохранение результата узла на диск. Диалог и запись — в main; renderer отдаёт только
   // текст и предлагаемое имя.
   saveGraphOutput(suggestedName: string, text: string): Promise<boolean>;

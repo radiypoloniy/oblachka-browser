@@ -5,6 +5,7 @@ import type { GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
 import { NODE_KINDS } from '../../../shared/graph';
 import { markdownComponents } from '../aiMarkdown';
 import { InfographicView, MindmapView, QuizView } from '../studioViews';
+import NodeChatView from './NodeChatView';
 
 // Раскрытый узел — один общий механизм на все типы, а не три похожих режима.
 // Внутри меняется только содержимое: артефакт рисуется своим рендерером, текст — разметкой,
@@ -16,6 +17,8 @@ import { InfographicView, MindmapView, QuizView } from '../studioViews';
 // раскрыть, удалить.
 
 interface Props {
+  graphId: number;
+  nodeId: string;
   kind: GraphNodeKind;
   title: string;
   status: GraphNodeStatus;
@@ -37,7 +40,7 @@ const headerButton: React.CSSProperties = {
 };
 
 export default function NodeFullscreen({
-  kind, title, status, output, outputTitle, error,
+  graphId, nodeId, kind, title, status, output, outputTitle, error,
   onClose, onRun, onCopyOutput, onSaveOutput, onShowHistory,
 }: Props) {
   const spec = NODE_KINDS[kind];
@@ -101,7 +104,9 @@ export default function NodeFullscreen({
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: 20, display: 'flex', flexDirection: 'column' }}>
-        <Body kind={kind} output={output} outputTitle={outputTitle} error={error} status={status} />
+        {kind === 'qwen.chat'
+          ? <NodeChatView graphId={graphId} nodeId={nodeId} />
+          : <Body kind={kind} output={output} outputTitle={outputTitle} error={error} status={status} />}
       </div>
     </div>
   );

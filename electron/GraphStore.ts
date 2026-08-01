@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import type {
   GraphDoc, GraphEdge, GraphMeta, GraphNode, GraphNodeKind, GraphStructure,
-  GraphNodeVersion,
+  GraphNodeVersion, GraphChatMessage,
 } from '../shared/graph';
 import type { ImagePreset } from '../shared/imagePresets';
 
@@ -212,6 +212,8 @@ export class GraphStore {
         if (keptNodes.length === 0) {
           db.prepare(`DELETE FROM graph_nodes WHERE graph_id = ?`).run(graphId);
           db.prepare(`DELETE FROM graph_node_history WHERE graph_id = ?`).run(graphId);
+          db.prepare(`DELETE FROM graph_chat_messages WHERE graph_id = ?`).run(graphId);
+          db.prepare(`DELETE FROM graph_chat_state WHERE graph_id = ?`).run(graphId);
         } else {
           const marks = keptNodes.map(() => '?').join(',');
           db.prepare(`DELETE FROM graph_nodes WHERE graph_id = ? AND id NOT IN (${marks})`)
@@ -219,6 +221,10 @@ export class GraphStore {
           // История удалённого узла уходит вместе с ним: каскада тут нет (ключ узла
           // составной и на него нет внешней ссылки), поэтому чистим явно.
           db.prepare(`DELETE FROM graph_node_history WHERE graph_id = ? AND node_id NOT IN (${marks})`)
+            .run(graphId, ...keptNodes);
+          db.prepare(`DELETE FROM graph_chat_messages WHERE graph_id = ? AND node_id NOT IN (${marks})`)
+            .run(graphId, ...keptNodes);
+          db.prepare(`DELETE FROM graph_chat_state WHERE graph_id = ? AND node_id NOT IN (${marks})`)
             .run(graphId, ...keptNodes);
         }
 
@@ -301,6 +307,73 @@ export class GraphStore {
     } catch (e) {
       console.warn('[Graph] listNodeHistory error:', (e as Error).message);
       return [];
+    }
+  }
+
+  // ── Переписка узла-диалога ──────────────────────────────────────────────────
+
+  listChatMessages(graphId: number, nodeId: string): GraphChatMessage[] {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT at, role, text FROM graph_chat_messages
+        WHERE graph_id = ? AND node_id = ? ORDER BY at ASC
+      `).all(graphId, nodeId) as GraphChatMessage[];
+    } catch (e) {
+      console.warn('[Graph] listChatMessages error:', (e as Error).message);
+      return [];
+    }
+  }
+
+  appendChatMessage(graphId: number, nodeId: string, role: 'user' | 'assistant', text: string): void {
+    if (!this.#db || !text) return;
+    try {
+      this.#db.prepare(`
+        INSERT INTO graph_chat_messages (graph_id, node_id, at, role, text) VALUES (?, ?, ?, ?, ?)
+      `).run(graphId, nodeId, Date.now(), role, text);
+    } catch (e) {
+      console.warn('[Graph] appendChatMessage error:', (e as Error).message);
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getChatHistory(graphId: number, nodeId: string): any[] {
+    if (!this.#db) return [];
+    try {
+      const row = this.#db.prepare(
+        `SELECT history_json FROM graph_chat_state WHERE graph_id = ? AND node_id = ?`,
+      ).get(graphId, nodeId) as { history_json: string } | undefined;
+      if (!row) return [];
+      const parsed: unknown = JSON.parse(row.history_json);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.warn('[Graph] getChatHistory error:', (e as Error).message);
+      return [];
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setChatHistory(graphId: number, nodeId: string, history: any[]): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare(`
+        INSERT INTO graph_chat_state (graph_id, node_id, history_json) VALUES (?, ?, ?)
+        ON CONFLICT(graph_id, node_id) DO UPDATE SET history_json = excluded.history_json
+      `).run(graphId, nodeId, JSON.stringify(history ?? []));
+    } catch (e) {
+      console.warn('[Graph] setChatHistory error:', (e as Error).message);
+    }
+  }
+
+  clearChat(graphId: number, nodeId: string): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare(`DELETE FROM graph_chat_state WHERE graph_id = ? AND node_id = ?`)
+        .run(graphId, nodeId);
+      this.#db.prepare(`DELETE FROM graph_chat_messages WHERE graph_id = ? AND node_id = ?`)
+        .run(graphId, nodeId);
+    } catch (e) {
+      console.warn('[Graph] clearChat error:', (e as Error).message);
     }
   }
 
@@ -394,6 +467,24 @@ export class GraphStore {
         output_title TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_graph_history_node ON graph_node_history(graph_id, node_id, at DESC);
+      -- Переписка узлов-диалогов.
+      CREATE TABLE IF NOT EXISTS graph_chat_messages (
+        graph_id INTEGER NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
+        node_id  TEXT    NOT NULL,
+        at       INTEGER NOT NULL,
+        role     TEXT    NOT NULL,
+        text     TEXT    NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_graph_chat_node ON graph_chat_messages(graph_id, node_id, at);
+      -- Внутренний контекст node-llama-cpp одной строкой. Храним ИМЕННО то, что вернул
+      -- runChatMessage, а не собранный руками формат: он opaque и меняется вместе с
+      -- библиотекой (тот же приём, что history_json у HubChatManager).
+      CREATE TABLE IF NOT EXISTS graph_chat_state (
+        graph_id     INTEGER NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
+        node_id      TEXT    NOT NULL,
+        history_json TEXT    NOT NULL,
+        PRIMARY KEY (graph_id, node_id)
+      );
       -- Пользовательские пресеты генератора промптов для картинок. Своя таблица здесь, а не
       -- отдельный файл: данные графовые, мелкие и живут ровно столько же, сколько воркспейсы.
       CREATE TABLE IF NOT EXISTS image_presets (
