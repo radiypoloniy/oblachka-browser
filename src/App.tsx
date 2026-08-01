@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { X } from 'lucide-react';
 import Sidebar, { FaviconTile } from './components/Sidebar';
+import type { ContentDropZone } from './components/Sidebar';
 import Toolbar from './components/Toolbar';
 import Hub from './components/Hub';
 import TabError from './components/TabError';
@@ -130,7 +131,9 @@ export default function App() {
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
-  const [splitDragOver, setSplitDragOver] = useState(false);
+  // Что произойдёт, если отпустить вкладку прямо сейчас: край контента — разделить экран,
+  // середина — вынести в новое окно (см. zoneAt в Sidebar.tsx). null — вкладка не над контентом.
+  const [dropZone, setDropZone] = useState<ContentDropZone | null>(null);
 
   // AI-хаб (заход 3): правый док вместо поповера. aiPanelOpen — источник истины main
   // (toggleAiPanel возвращает актуальное open), не локальный тоггл — тот же принцип, что и
@@ -369,7 +372,7 @@ export default function App() {
   // уходит над нативными WebContentsViews (в Electron/Aura все вьюхи в одном HWND).
   // Вкладка сброшена в область контента → split (dragged = right, activeId = left).
   const handleDropOnContent = useCallback((tabId: string) => {
-    setSplitDragOver(false);
+    setDropZone(null);
     setSplitRatioState(0.5);
     void window.oblako.enterSplit(tabId);
   }, []);
@@ -594,7 +597,7 @@ export default function App() {
         onMoveSection={(tabId, section, idx) => { void window.oblako.moveTabSection(tabId, section, idx); }}
         sidebarNodes={sidebarNodes}
         getContentRect={() => contentRectRef.current}
-        onDragOverContent={setSplitDragOver}
+        onDragOverContent={setDropZone}
         onDropOnContent={handleDropOnContent}
         organizeTabsCount={isLightWindow ? 0 : organizeTabsCount}
         organizeState={organizeState}
@@ -737,13 +740,26 @@ export default function App() {
                 </div>
               )
           )}
-          {/* Рамка drag-to-split: видна когда вкладка тащится над контентом. kind==='page' уже
-              покрывает хаб/Историю/Настройки одним условием — раньше это были 3 отдельных флага. */}
-          {splitDragOver && !isSplit && kind === 'page' && (
+          {/* Подсказка при перетаскивании вкладки над страницей. Рамка была и раньше (drag-to-split),
+              теперь к ней добавлена подпись: у дропа два исхода, и человек должен видеть, какой из
+              них он сейчас получит, ДО того как отпустит. Разделение по-прежнему только там, где
+              оно возможно (kind==='page' покрывает хаб/Историю/Настройки одним условием), а вынос
+              в окно предлагается всегда — он от содержимого экрана не зависит. */}
+          {dropZone !== null && (dropZone === 'window' || (!isSplit && kind === 'page')) && (
             <div style={{
               position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none',
               border: '2px dashed var(--accent)', borderRadius: 'var(--radius-sm)',
-            }} />
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <div style={{
+                padding: '8px 14px', borderRadius: 'var(--radius-pill)',
+                background: 'var(--accent)', color: 'var(--on-accent)',
+                fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)',
+                boxShadow: 'var(--shadow-pop)',
+              }}>
+                {dropZone === 'split' ? 'Разделить экран' : 'Открыть в новом окне'}
+              </div>
+            </div>
           )}
 
           {/* Inline-prompt разрешений: показываем первый из очереди. */}

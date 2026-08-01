@@ -1348,6 +1348,9 @@ export class TabManager {
       if (p.linkURL) {
         items.push(
           { label: 'Открыть ссылку в новой вкладке', click: () => this.createTab(p.linkURL, true) },
+          // Окно создаёт main — TabManager про окна не знает (тот же приём, что у пункта
+          // «Добавить в граф»: сюда приходит готовый колбэк).
+          { label: 'Открыть ссылку в новом окне', click: () => this.onOpenInNewWindowCb?.(p.linkURL) },
           { label: 'Открыть ссылку в инкогнито', click: () => this.createTab(p.linkURL, true, false, true) },
         );
         // Пункт только когда текущая activeId ещё НЕ в показываемой паре — модель split
@@ -2452,6 +2455,10 @@ export class TabManager {
   // приходит только «человек попросил новое окно», как и с быстрым поиском по Ctrl+E.
   private onNewWindowCb: (() => void) | null = null;
   setOnNewWindow(cb: () => void): void { this.onNewWindowCb = cb; }
+
+  // ПКМ по ссылке → «Открыть ссылку в новом окне». Тоже отдаём наружу: окно создаёт main.
+  private onOpenInNewWindowCb: ((url: string) => void) | null = null;
+  setOnOpenInNewWindow(cb: (url: string) => void): void { this.onOpenInNewWindowCb = cb; }
 
   registerHotkeyHandler(wc: WebContents): void {
     wc.on('before-input-event', (event, input) => {
