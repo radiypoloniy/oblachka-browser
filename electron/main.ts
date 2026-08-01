@@ -40,7 +40,7 @@ import { faviconService } from './FaviconService';
 import { getWeather } from './WeatherService';
 import { getCurrencyRates } from './CurrencyRates';
 import { getPhotoOfDay } from './NewTabPhoto';
-import { extractUrlText } from './NotebookExtract';
+import { extractUrlText, setTabManager as setNotebookExtractTabManager } from './NotebookExtract';
 import { generateStudio, type StudioKind } from './NotebookStudio';
 import { verifyUser } from './osAuth';
 import { PasswordManager } from './PasswordManager';
@@ -644,6 +644,9 @@ function createWindow() {
   // Узлу-веб-приложению графа — только чтобы target=_blank со стороннего сайта уходил
   // обычной вкладкой Oblako, а не отдельным Chromium-окном (как у WebAppManager).
   setGraphWebAppTabManager(tabs);
+  // Извлечению — доступ к открытым вкладкам: страница, уже открытая пользователем, прошла
+  // антибот и дорисована, и читать надо её, а не открывать сайт вторым заходом.
+  setNotebookExtractTabManager(tabs);
   // ПКМ по ссылке на странице → «Добавить в граф». Пункт строит main (у него хранилище),
   // TabManager только вставляет готовое в своё меню.
   tabs.setGraphMenuBuilder((items, sticker) =>

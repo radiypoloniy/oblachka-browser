@@ -1844,6 +1844,30 @@ export class TabManager {
     this.#graphMenuBuilder = fn;
   }
 
+  // WebContents уже открытой вкладки с этим адресом. Нужен извлечению (NotebookExtract):
+  // страница у пользователя УЖЕ прошла антибот, капчу и логин и полностью дорисована —
+  // открывать её второй раз в скрытой вью значит начинать всё это заново и упираться в
+  // защиту от ботов на ровном месте. Спящие вкладки пропускаем: у них нет вью, и будить
+  // их ради извлечения — сюрприз для пользователя.
+  //
+  // Сначала точное совпадение, потом по origin+pathname: у товарных ссылок хвост запроса
+  // (utm, spm, sku_id) меняется от клика к клику, а страница за ними одна и та же.
+  getWebContentsForUrl(url: string): WebContents | null {
+    const norm = (u: string): string => {
+      try { const p = new URL(u); return p.origin + p.pathname.replace(/\/+$/, ''); } catch { return u; }
+    };
+    const wanted = norm(url);
+    let fallback: WebContents | null = null;
+    for (const tab of this.tabMap.values()) {
+      if (!tab.view || tab.sleeping || tab.view.webContents.isDestroyed()) continue;
+      const current = tab.view.webContents.getURL();
+      if (!/^https?:\/\//i.test(current)) continue;
+      if (current === url) return tab.view.webContents;
+      if (!fallback && norm(current) === wanted) fallback = tab.view.webContents;
+    }
+    return fallback;
+  }
+
   // Имя группы для подписи стикера при «Добавить в граф» (main.ts::GROUP_SHOW_MENU).
   getGroupTitle(groupId: string): string | null {
     return this.#findGroupById(groupId)?.label ?? null;

@@ -1,5 +1,6 @@
 import { WebContentsView } from 'electron';
 import type { BrowserWindow } from 'electron';
+import type { TabManager } from './TabManager';
 import { markBackground, unmarkBackground } from './BackgroundWebContents';
 import { extractEnrichedText } from './HistoryIndexer';
 
@@ -19,9 +20,30 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   return Promise.race([p, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))]);
 }
 
+// Ссылка на менеджер вкладок — ставится из main. Нужна, чтобы сперва поискать УЖЕ открытую
+// вкладку с этим адресом (см. ниже), а не лезть в сеть повторно.
+let tabsRef: TabManager | null = null;
+export function setTabManager(tm: TabManager): void {
+  tabsRef = tm;
+}
+
 export async function extractUrlText(win: BrowserWindow, url: string): Promise<{ ok: boolean; title?: string; text?: string }> {
   if (win.isDestroyed()) return { ok: false };
   const target = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+
+  // ⚠️ Сначала — уже открытая вкладка. Она прошла антибот, капчу и логин, полностью
+  // дорисована и ничего не стоит. Скрытая вью ниже открывает страницу ЗАНОВО, и магазины
+  // встречают её защитой от ботов — проблема не в разборе, а в том, что мы сами создаём
+  // себе второй заход. Живую вкладку при этом не трогаем: только читаем DOM.
+  const open = tabsRef?.getWebContentsForUrl(target) ?? null;
+  if (open && !open.isDestroyed()) {
+    try {
+      const text = await extractEnrichedText(open, open.getURL(), { allowNavigation: true });
+      const title = open.isDestroyed() ? undefined : (open.getTitle() || undefined);
+      if (text) return { ok: true, title, text: text.slice(0, MAX_TEXT_CHARS) };
+      // Пусто — не сдаёмся, пробуем обычным путём ниже: вкладка могла быть на полпути.
+    } catch { /* читать из чужой вкладки не вышло — идём штатным путём */ }
+  }
 
   const view = new WebContentsView({
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
