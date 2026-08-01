@@ -13,7 +13,7 @@ import type {
 } from '../../shared/graph';
 import { NODE_KINDS } from '../../shared/graph';
 import GraphNodeCard, { DEFAULT_NODE_SIZE, type GraphNodeData } from './graph/GraphNodeCard';
-import GraphWebAppWindow from './graph/GraphWebAppWindow';
+import GraphWebAppWindow, { type WebAppMode } from './graph/GraphWebAppWindow';
 import ImagePresetEditor from './graph/ImagePresetEditor';
 import TemplatePicker from './graph/TemplatePicker';
 import NodeHistoryPanel from './graph/NodeHistoryPanel';
@@ -104,7 +104,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   // сравнивая ответы, — основной сценарий графа. Порядок в массиве = порядок наложения,
   // последний сверху (см. focusWebApp).
   const [webApps, setWebApps] = useState<
-    { nodeId: string; url: string; title: string; hostLabel: string }[]
+    { nodeId: string; url: string; title: string; hostLabel: string; mode: WebAppMode }[]
   >([]);
   // Подсказка последнего действия — своя у каждого окна, иначе ответ одной кнопки
   // появлялся бы в чужом чате.
@@ -410,6 +410,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             url,
             title: (node?.data.title ?? '').trim() || host,
             hostLabel: host,
+            mode: 'floating' as WebAppMode,
           }];
         });
       }
@@ -435,6 +436,24 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
     setNote(nodeId, mode === 'selection'
       ? 'Ничего не выделено — выделите ответ мышью и нажмите ещё раз'
       : 'Не нашёл последний ответ на этой странице — выделите его мышью');
+  };
+
+  const setWebAppMode = (nodeId: string, mode: WebAppMode) => {
+    setWebApps((cur) => {
+      const next = cur.map((w) => {
+        if (w.nodeId === nodeId) return { ...w, mode };
+        // Развёрнутый сайт ровно один: предыдущий возвращается в плавающий режим.
+        if (mode === 'fullscreen' && w.mode === 'fullscreen') return { ...w, mode: 'floating' as WebAppMode };
+        return w;
+      });
+      if (mode !== 'docked') return next;
+      // В доке помещаются два. Третий вытесняет самый старый — он же самый дальний
+      // в массиве, порядок которого совпадает с порядком открытия и подъёма.
+      const docked = next.filter((w) => w.mode === 'docked');
+      if (docked.length <= 2) return next;
+      const evicted = docked.slice(0, docked.length - 2).map((w) => w.nodeId);
+      return next.map((w) => (evicted.includes(w.nodeId) ? { ...w, mode: 'floating' as WebAppMode } : w));
+    });
   };
 
   // Клик по окну поднимает его над остальными — и React-рамку (последний в массиве),
@@ -522,6 +541,35 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
 
   // Шаблон — чистые данные; свежие uuid раздаём здесь, иначе два графа из одной схемы
   // делили бы ключи узлов и правка одного ломала бы другой.
+  // Развёрнутый сайт ровно один, и пока он есть — остальные прячутся: нативные вью
+  // всплыли бы поверх него, React-слой их не перекрывает.
+  const fullscreenAppId = webApps.find((w) => w.mode === 'fullscreen')?.nodeId ?? null;
+  const dockedApps = webApps.filter((w) => w.mode === 'docked');
+
+  const renderWebApp = (
+    app: { nodeId: string; url: string; title: string; hostLabel: string; mode: WebAppMode },
+    graphId: number,
+  ) => (
+    <GraphWebAppWindow
+      key={app.nodeId}
+      graphId={graphId}
+      nodeId={app.nodeId}
+      url={app.url}
+      title={app.title}
+      hostLabel={app.hostLabel}
+      note={webAppNotes[app.nodeId] ?? null}
+      index={webApps.findIndex((w) => w.nodeId === app.nodeId)}
+      mode={app.mode}
+      hidden={fullscreenAppId !== null && app.nodeId !== fullscreenAppId}
+      onSetMode={(mode) => setWebAppMode(app.nodeId, mode)}
+      onFocus={() => focusWebApp(app.nodeId)}
+      onClose={() => setWebApps((cur) => cur.filter((w) => w.nodeId !== app.nodeId))}
+      onInsert={() => void insertPrompt(app.nodeId)}
+      onCaptureSelection={() => void captureAnswer(app.nodeId, 'selection')}
+      onCaptureLast={() => void captureAnswer(app.nodeId, 'last')}
+    />
+  );
+
   const createWorkspace = async (template: GraphTemplate | null) => {
     const meta = await window.oblako.createGraph(template ? template.label : 'Новый граф');
     if (!meta) return;
@@ -833,23 +881,23 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             />
           )}
 
-          {currentId !== null && webApps.map((app, i) => (
-            <GraphWebAppWindow
-              key={app.nodeId}
-              graphId={currentId}
-              nodeId={app.nodeId}
-              url={app.url}
-              title={app.title}
-              hostLabel={app.hostLabel}
-              note={webAppNotes[app.nodeId] ?? null}
-              index={i}
-              onFocus={() => focusWebApp(app.nodeId)}
-              onClose={() => setWebApps((cur) => cur.filter((w) => w.nodeId !== app.nodeId))}
-              onInsert={() => void insertPrompt(app.nodeId)}
-              onCaptureSelection={() => void captureAnswer(app.nodeId, 'selection')}
-              onCaptureLast={() => void captureAnswer(app.nodeId, 'last')}
-            />
-          ))}
+          {/* Все открытые сайты рисуются одним компонентом; раскладку задаёт режим.
+              Закреплённые лежат в правом доке (он сжимает холст, как боковая панель
+              браузера), остальные — поверх. */}
+          {currentId !== null && dockedApps.length > 0 && (
+            <aside
+              style={{
+                width: 'min(38%, 460px)', minWidth: 340, flex: 'none',
+                display: 'flex', flexDirection: 'column', gap: 8, padding: 8,
+                borderLeft: '1px solid var(--divider)', background: 'var(--app-bg)',
+              }}
+            >
+              {dockedApps.map((app) => renderWebApp(app, currentId))}
+            </aside>
+          )}
+          {currentId !== null && webApps
+            .filter((app) => app.mode !== 'docked')
+            .map((app) => renderWebApp(app, currentId))}
         </div>
       </div>
     </div>

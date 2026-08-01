@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ClipboardPaste, Download, ListEnd, X } from 'lucide-react';
+import {
+  ClipboardPaste, Download, ListEnd, X, PanelRight, Maximize2, Minimize2,
+} from 'lucide-react';
 
-// Плавающее окно веб-приложения над холстом графа. Внешне — тот же слот, что в разделе
+export type WebAppMode = 'floating' | 'docked' | 'fullscreen'
+
+// Окно веб-приложения над холстом графа. Внешне — тот же слот, что в разделе
 // «Приложения» AI-панели (см. SlotFrame в src/components/aiApps.tsx): карточка с шапкой,
 // иконкой, названием и крестиком, а сайт живёт в «дырке» под шапкой.
 //
@@ -24,6 +28,11 @@ interface Props {
   // Порядковый номер открытия — окна раскладываются лесенкой, чтобы второй чат не лёг
   // ровно поверх первого (сравнивать два ответа рядом — основной сценарий).
   index: number;
+  mode: WebAppMode;
+  // Развёрнут другой сайт — этот надо спрятать, иначе всплывёт поверх него: у нативных вью
+  // свой порядок наложения, и React-слой их не перекрывает.
+  hidden: boolean;
+  onSetMode: (mode: WebAppMode) => void;
   onFocus: () => void;
   onClose: () => void;
   onInsert: () => void;
@@ -69,8 +78,8 @@ function HeaderButton({ title, onClick, children }: {
 }
 
 export default function GraphWebAppWindow({
-  graphId, nodeId, url, title, hostLabel, note, index,
-  onFocus, onClose, onInsert, onCaptureSelection, onCaptureLast,
+  graphId, nodeId, url, title, hostLabel, note, index, mode, hidden,
+  onSetMode, onFocus, onClose, onInsert, onCaptureSelection, onCaptureLast,
 }: Props) {
   const [rect, setRect] = useState(() => ({
     x: 100 + (index % 4) * 40, y: 50 + (index % 4) * 34, w: 460, h: 560,
@@ -95,19 +104,22 @@ export default function GraphWebAppWindow({
       return { x: r.x, y: r.y, width: r.width, height: r.height };
     };
     const send = () => {
+      // Нулевой прямоугольник — сентинел «спрятать». Пока развёрнут другой сайт, этот
+      // обязан уйти с экрана целиком, а не просто оказаться под ним.
+      const rect = hidden ? { x: 0, y: 0, width: 0, height: 0 } : box();
       if (!shownRef.current) {
         shownRef.current = true;
-        void window.oblako.showGraphWebApp(graphId, nodeId, url, box());
+        void window.oblako.showGraphWebApp(graphId, nodeId, url, rect);
         return;
       }
-      void window.oblako.setGraphWebAppBounds(graphId, nodeId, box());
+      void window.oblako.setGraphWebAppBounds(graphId, nodeId, rect);
     };
     send();
     const ro = new ResizeObserver(send);
     ro.observe(el);
     window.addEventListener('resize', send);
     return () => { ro.disconnect(); window.removeEventListener('resize', send); };
-  }, [rect, graphId, nodeId, url]);
+  }, [rect, graphId, nodeId, url, hidden, mode]);
 
   // Закрытие окна прячет вью, но НЕ уничтожает её: переписка в чужом чате должна пережить
   // сворачивание. Уничтожается вью только вместе с узлом (см. onNodesChange в GraphCanvas).
@@ -123,18 +135,20 @@ export default function GraphWebAppWindow({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const dragMode = mode;
   const onPointerDown = useCallback((mode: 'move' | 'resize') => (e: React.PointerEvent) => {
     // ⚠️ Клик по кнопке в шапке не должен становиться перетаскиванием. setPointerCapture
     // на шапке перехватывает указатель ЦЕЛИКОМ: последующие pointer-события уходят шапке,
     // до кнопки не доходят, и click не рождается вовсе. Из-за этого не работали разом
     // крестик, вставка промпта и забор ответа — при живой логике под ними.
     if (mode === 'move' && (e.target as HTMLElement).closest('button')) return;
+    if (dragMode !== 'floating') return; // закреплённое и развёрнутое окно не таскают
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = mode === 'move'
       ? { mode, dx: e.clientX - rect.x, dy: e.clientY - rect.y }
       : { mode, dx: e.clientX - rect.w, dy: e.clientY - rect.h };
-  }, [rect]);
+  }, [rect, dragMode]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current;
@@ -158,11 +172,21 @@ export default function GraphWebAppWindow({
       // иначе их порядки разъезжаются (см. raiseGraphWebApp в GraphWebAppManager).
       onPointerDownCapture={onFocus}
       style={{
-        position: 'fixed', left: rect.x, top: rect.y, width: rect.w, height: rect.h,
-        zIndex: 5, display: 'flex', flexDirection: 'column',
-        background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
-        boxShadow: 'var(--shadow-card)', overflow: 'hidden',
-        border: '1px solid var(--glass-edge)',
+        // Три раскладки одной карточки. Плавающая — по своим координатам поверх всего;
+        // закреплённая — обычный блок в правом доке, размер даёт родитель; развёрнутая —
+        // во всю область графа. Внутренности во всех трёх одинаковые, поэтому шапка,
+        // «дырка» и вся логика координат не дублируются.
+        ...(mode === 'floating'
+          ? { position: 'fixed' as const, left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: 5 }
+          : mode === 'fullscreen'
+            ? { position: 'absolute' as const, inset: 0, zIndex: 16 }
+            : { position: 'relative' as const, flex: 1, minHeight: 0, width: '100%' }),
+        display: hidden ? 'none' : 'flex', flexDirection: 'column',
+        background: 'var(--surface-solid)',
+        borderRadius: mode === 'fullscreen' ? 0 : 'var(--radius-card)',
+        boxShadow: mode === 'floating' ? 'var(--shadow-card)' : 'none',
+        overflow: 'hidden',
+        border: mode === 'fullscreen' ? 'none' : '1px solid var(--glass-edge)',
       }}
     >
       <div
@@ -172,7 +196,7 @@ export default function GraphWebAppWindow({
         style={{
           display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
           flexShrink: 0, borderBottom: '1px solid var(--divider)',
-          cursor: 'move', touchAction: 'none',
+          cursor: mode === 'floating' ? 'move' : 'default', touchAction: 'none',
         }}
       >
         <LetterBadge label={hostLabel} />
@@ -192,6 +216,20 @@ export default function GraphWebAppWindow({
         </HeaderButton>
         <HeaderButton title="Забрать последний ответ в узел" onClick={onCaptureLast}>
           <ListEnd size={13} strokeWidth={2} />
+        </HeaderButton>
+        <HeaderButton
+          title={mode === 'docked' ? 'Открепить' : 'Закрепить справа'}
+          onClick={() => onSetMode(mode === 'docked' ? 'floating' : 'docked')}
+        >
+          <PanelRight size={13} strokeWidth={2} />
+        </HeaderButton>
+        <HeaderButton
+          title={mode === 'fullscreen' ? 'Свернуть' : 'На весь экран'}
+          onClick={() => onSetMode(mode === 'fullscreen' ? 'floating' : 'fullscreen')}
+        >
+          {mode === 'fullscreen'
+            ? <Minimize2 size={13} strokeWidth={2} />
+            : <Maximize2 size={13} strokeWidth={2} />}
         </HeaderButton>
         <HeaderButton title="Закрыть приложение" onClick={onClose}>
           <X size={13} strokeWidth={2} />
@@ -224,7 +262,9 @@ export default function GraphWebAppWindow({
         </div>
       </div>
 
-      {/* Уголок изменения размера — окно должно тянуться, чат бывает длинным. */}
+      {/* Уголок изменения размера — только у плавающего: у закреплённого размер задаёт док,
+          у развёрнутого — вся область. */}
+      {mode === 'floating' && (
       <div
         onPointerDown={onPointerDown('resize')}
         onPointerMove={onPointerMove}
@@ -234,6 +274,7 @@ export default function GraphWebAppWindow({
           cursor: 'nwse-resize', touchAction: 'none',
         }}
       />
+      )}
     </div>
   );
 }
