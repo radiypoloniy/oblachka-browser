@@ -57,6 +57,10 @@ asarUnpack:
 # Кладётся в resources/ рядом с app.asar — ровно туда, куда смотрит код при app.isPackaged
 # (VpnProcess.ts:66 → resourcesPath/xray/xray.exe, main.ts:258 → resourcesPath/models/translation).
 extraResources:
+  # Логотип для окна-заставки: она рисуется ДО главного окна и не может тянуть ассеты из
+  # бандла рендерера, поэтому файл нужен на диске рядом с приложением.
+  - from: resources/brand
+    to: brand
   - from: resources/xray
     to: xray
   # Bergamot: только ru↔en (44 МБ). Все 41 пара — это +1.3 ГБ в установщике, при том что

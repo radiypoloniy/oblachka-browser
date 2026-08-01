@@ -2,6 +2,7 @@ import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dia
 import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent } from './BrowserIdentity';
+import { showSplash, closeSplash } from './SplashWindow';
 
 // ДО app.whenReady() — Electron требует это до события ready.
 registerSchemesAsPrivileged();
@@ -400,6 +401,9 @@ function createWindow() {
         thisWin.show();
         console.log(`[startup] show reason=${reason} ${Date.now() - startT0}ms`);
       }
+      // Заставка уходит ровно здесь: после неё человек сразу видит готовое окно, без
+      // промежуточного кадра с пустотой.
+      closeSplash();
       // Фоновый прогрев локальной LLM (перевод/AI-действия/чат) — только теперь, когда окно уже
       // реально показано, и с задержкой (см. TRANSLATION_WARMUP_DELAY_MS): не соревнуется за
       // диск/GPU с первой отрисовкой чрома и пробуждением активной вкладки. warmupTranslation()
@@ -1985,6 +1989,9 @@ app.on('web-contents-created', (_e, contents) => {
 
 app.whenReady().then(async () => {
   startT0 = Date.now();
+  // Заставка — САМОЕ первое, что делаем: она закрывает паузу между кликом по ярлыку и
+  // появлением окна, а эта пауза и ощущается зависанием. Всё тяжёлое идёт после.
+  if (!LLAMA_TEST && !TRANSLATE_TEST) showSplash();
   Menu.setApplicationMenu(null); // прячем дефолтное меню — у нас свой хром
   registerModelProtocol();
   registerChromeProtocol();
