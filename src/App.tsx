@@ -611,6 +611,7 @@ export default function App() {
           downloadsOpen={kind === 'downloads'}
           onToggleDownloads={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('downloads')); })(); }}
           onToggleAiPanel={() => { void window.oblako.toggleAiPanel(); }}
+          aiPanelOpen={aiPanelOpen}
           pageTranslateState={pageTranslateState}
           pageTranslateProgress={pageTranslateProgress}
           onTogglePageTranslate={() => { window.oblako.togglePageTranslate(); }}

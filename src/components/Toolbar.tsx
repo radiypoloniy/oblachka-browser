@@ -85,6 +85,7 @@ interface ToolbarProps {
   downloadsOpen: boolean;     // панель загрузок сейчас открыта
   onToggleDownloads: () => void;
   onToggleAiPanel: () => void; // тоггл правой AI-панели (оверлей, см. AiPanelManager.ts)
+  aiPanelOpen: boolean;       // панель открыта — кнопка подсвечена акцентом
   pageTranslateState: PageTranslateState; // см. PageTranslateManager.ts
   pageTranslateProgress: PageTranslateProgress | null; // батч N/M + живой счётчик символов, только пока translating
   onTogglePageTranslate: () => void;
@@ -97,7 +98,7 @@ export default function Toolbar({
   // см. задачу) — сама кнопка убрана из разметки, поэтому здесь они не нужны.
   tab, allTabs, vpnOn, omniboxRef: externalRef,
   onBack, onForward, onReload, onSubmit, onSuggestToggle,
-  downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel,
+  downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel, aiPanelOpen,
   pageTranslateState, pageTranslateProgress, onTogglePageTranslate,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
@@ -1131,8 +1132,15 @@ export default function Toolbar({
               : <Languages size={18} />}
           </button>
         )}
-        <button title="AI-хаб" onClick={onToggleAiPanel}
-          style={islandBtn('var(--accent)', 'var(--accent-soft)')}>
+        {/* Тот же вид, что у «назад/вперёд/обновить»: в покое — нейтральный значок без плашки.
+            Акцент включается ТОЛЬКО когда панель открыта, то есть обозначает состояние, а не
+            просто «здесь важная кнопка». */}
+        <button title="AI-панель" onClick={onToggleAiPanel}
+          style={{
+            ...navBtn(false),
+            color: aiPanelOpen ? 'var(--accent)' : 'var(--text-muted)',
+            background: aiPanelOpen ? 'var(--accent-soft)' : 'transparent',
+          }}>
           <Sparkles size={18} />
         </button>
         {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки. Иконка нейтральная
@@ -1141,7 +1149,11 @@ export default function Toolbar({
         <button
           title="Загрузки"
           onClick={onToggleDownloads}
-          style={{ ...navBtn(false), position: 'relative' }}
+          style={{
+            ...navBtn(false), position: 'relative',
+            color: downloadsOpen ? 'var(--accent)' : 'var(--text-muted)',
+            background: downloadsOpen ? 'var(--accent-soft)' : 'transparent',
+          }}
         >
           <Download size={18} />
           {downloadsActive && !downloadsOpen && (
@@ -1181,10 +1193,12 @@ function VpnPill({ vpnOn, mode, onClick, active }: { vpnOn: boolean; mode: VpnMo
         title="Защита"
         style={{
           ...navBtn(false),
-          ...islandPlate,
           position: 'relative',
-          background: activeBg ?? (vpnOn ? 'var(--surface)' : 'var(--surface-sunken)'),
-          borderRadius: 'var(--radius-card)',
+          // Плашка-остров снята: в покое кнопка выглядит как навигационные. Акцент — признак
+          // того, что VPN реально поднят, а не постоянное украшение.
+          color: vpnOn ? 'var(--accent)' : 'var(--text-muted)',
+          background: activeBg ?? (vpnOn ? 'var(--accent-soft)' : 'transparent'),
+          borderRadius: 'var(--radius-sm)',
         }}
       >
         {shieldIcon}
@@ -1200,12 +1214,13 @@ function VpnPill({ vpnOn, mode, onClick, active }: { vpnOn: boolean; mode: VpnMo
       onClick={onClick}
       title="Защита"
       style={{
-        ...islandPlate,
         display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 10px',
-        borderRadius: 'var(--radius-pill)', cursor: 'default',
-        background: activeBg ?? (vpnOn ? 'var(--surface)' : 'var(--surface-sunken)'),
+        border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'default',
+        // Без канта и стеклянной плашки — как навигационные кнопки. Цветом отмечен только
+        // поднятый VPN либо открытый поповер (activeBg).
+        background: activeBg ?? (vpnOn ? 'var(--accent-soft)' : 'transparent'),
         fontSize: 'var(--fs-sm)', fontWeight: 500,
-        color: vpnOn ? 'var(--text-strong)' : 'var(--text-muted)',
+        color: vpnOn ? 'var(--accent)' : 'var(--text-muted)',
       }}
     >
       {shieldIcon}
