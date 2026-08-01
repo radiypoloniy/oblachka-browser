@@ -178,9 +178,13 @@ function buildExtractionScript(): string {
       // переезжают на клон вместе с узлами. Раньше здесь был перенос по индексному пути от
       // корня — и он ломался: после первого же удаления индексы соседей съезжали, и остальные
       // пути вели не туда, из-за чего блок отзывов выживал целиком.
+      //
+      // ⚠️ Страховка от жадности ниже: если после чистки от страницы почти ничего не
+      // осталось, значит эвристика зацепила само содержимое (бывает на нестандартной
+      // вёрстке) — тогда честнее вернуть неочищенный текст, чем отдать модели огрызок.
       var marked = [];
       try {
-        marked = __oblakoReviewNodes();
+        marked = __oblakoJunkNodes();
         for (var i = 0; i < marked.length; i++) marked[i].setAttribute('data-oblako-junk', '1');
       } catch (e) { marked = []; }
 
@@ -216,7 +220,18 @@ function buildExtractionScript(): string {
       fullText = fullText.replace(/[ \\t]+/g, " ").replace(/(\\r?\\n){3,}/g, "\\n\\n").trim();
     } catch (e) { fullText = ''; }
     // Клон не в дереве отрисовки — если текста не добыть, берём живую страницу как есть.
-    if (!fullText && document.body) fullText = document.body.innerText || '';
+    var liveText = document.body ? (document.body.innerText || '') : '';
+    if (!fullText) fullText = liveText;
+
+    // Чистка сработала слишком жадно: осталась десятая часть или вовсе крохи. Значит
+    // эвристика приняла содержимое за обвязку — откатываемся на неочищенный текст.
+    var tooGreedy = liveText.length > 500
+      && (fullText.length < 400 || fullText.length < liveText.length * 0.1);
+    if (tooGreedy) {
+      fullText = liveText;
+      readabilityText = '';   // заставит пойти по ветке fallback ниже
+      articleHtml = '';
+    }
 
     if (facts) facts.removedReviewChars = removedChars;
     return {

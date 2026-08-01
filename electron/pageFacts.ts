@@ -43,26 +43,50 @@ function __oblakoText(el, limit) {
   return limit ? t.slice(0, limit) : t;
 }
 
-// Блоки отзывов. Ищем и по семантике (id/class/data-widget), и по заголовку секции:
-// у Ozon это data-widget="webListReviews", у большинства магазинов — класс или заголовок.
-function __oblakoReviewNodes() {
+// Мусор, который надо убрать ДО Readability. Две группы с разной степенью уверенности.
+//
+// Отзывы: на карточке товара они длиннее описания, и Readability уверенно выбирает именно
+// их — не проваливаясь, поэтому фолбэк по «слишком мало текста» не срабатывал.
+//
+// Обвязка сайта: шапка, футер, навигация. На маркетплейсах это десятки ссылок («Москва,
+// Отели, Авиабилеты, Стать продавцом…»), которые идут ПЕРЕД товаром и съедают бюджет
+// символов раньше, чем до товара дойдёт очередь.
+//
+// Здесь намеренно НЕ ловим по вольным словам вроде promo/banner/sidebar: на товарных
+// страницах такие классы часто висят на самом товаре, и жадная чистка убила бы содержимое.
+// Берём только структурные теги, ARIA-роли и узкий список имён с границами слова.
+function __oblakoJunkNodes() {
   var found = [];
-  var attrHit = /review|otzyv|otziv|comment|feedback|\\u043e\\u0442\\u0437\\u044b\\u0432/i;
-  var all = document.querySelectorAll('[data-widget], [id], [class]');
-  for (var i = 0; i < all.length; i++) {
-    var el = all[i];
-    var sig = (el.getAttribute('data-widget') || '') + ' ' + (el.id || '') + ' ' + (typeof el.className === 'string' ? el.className : '');
-    if (attrHit.test(sig)) found.push(el);
+  function add(el) { if (el && found.indexOf(el) < 0) found.push(el); }
+
+  // ── Отзывы ──
+  var reviewAttr = /review|otzyv|otziv|comment|feedback|\\u043e\\u0442\\u0437\\u044b\\u0432/i;
+  var withAttrs = document.querySelectorAll('[data-widget], [id], [class]');
+  for (var i = 0; i < withAttrs.length; i++) {
+    var el = withAttrs[i];
+    var sig = (el.getAttribute('data-widget') || '') + ' ' + (el.id || '') + ' '
+      + (typeof el.className === 'string' ? el.className : '');
+    if (reviewAttr.test(sig)) add(el);
   }
-  // Секции, у которых ЗАГОЛОВОК про отзывы: вырезаем секцию целиком, а не один заголовок.
   var heads = document.querySelectorAll('h1, h2, h3');
   var headHit = /^\\s*(\\u043e\\u0442\\u0437\\u044b\\u0432|review|\\u043a\\u043e\\u043c\\u043c\\u0435\\u043d\\u0442\\u0430\\u0440)/i;
   for (var j = 0; j < heads.length; j++) {
-    if (headHit.test(heads[j].textContent || '')) {
-      var sec = heads[j].closest('section, div');
-      if (sec) found.push(sec);
-    }
+    if (headHit.test(heads[j].textContent || '')) add(heads[j].closest('section, div'));
   }
+
+  // ── Обвязка сайта ──
+  var chrome = document.querySelectorAll(
+    'header, footer, nav, aside, [role="navigation"], [role="banner"], [role="contentinfo"]'
+  );
+  for (var c = 0; c < chrome.length; c++) add(chrome[c]);
+
+  var nameHit = /(^|[-_ ])(header|footer|nav|navbar|navigation|menu|breadcrumbs?|cookie|newsletter|subscribe)([-_ ]|$)/i;
+  for (var n = 0; n < withAttrs.length; n++) {
+    var e2 = withAttrs[n];
+    var sig2 = (e2.id || '') + ' ' + (typeof e2.className === 'string' ? e2.className : '');
+    if (nameHit.test(sig2)) add(e2);
+  }
+
   return found;
 }
 
