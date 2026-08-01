@@ -100,7 +100,7 @@ const fieldStyle: React.CSSProperties = {
   boxSizing: 'border-box',
   background: 'var(--surface-sunken)',
   border: '1px solid var(--divider)',
-  borderRadius: 'var(--radius-sm, 8px)',
+  borderRadius: 'var(--radius-sm)',
   color: 'var(--text-strong)',
   font: 'inherit',
   fontSize: 'var(--fs-sm)',
@@ -113,7 +113,7 @@ const fieldStyle: React.CSSProperties = {
 const headerButton: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   width: 22, height: 22, flex: 'none', padding: 0,
-  background: 'none', border: 0, borderRadius: 6,
+  background: 'none', border: 0, borderRadius: '50%',
   color: 'var(--text-faint)', cursor: 'pointer',
 };
 
@@ -153,7 +153,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         flexDirection: 'column',
         background: 'var(--surface-island)',
         border: `1px solid ${selected ? 'var(--accent)' : 'var(--divider)'}`,
-        borderRadius: 'var(--radius-md, 12px)',
+        borderRadius: 'var(--radius-card)',
         boxShadow: 'var(--shadow-island, 0 6px 20px -10px rgba(0,0,0,.3))',
         overflow: 'hidden',
       }}
@@ -208,7 +208,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           title={busy ? 'Уже в работе' : 'Посчитать этот узел и всё, что от него зависит'}
           style={{
             marginLeft: 'auto', display: 'inline-flex', alignItems: 'center',
-            background: 'none', border: 0, padding: 3, borderRadius: 6,
+            background: 'none', border: 0, padding: 3, borderRadius: '50%',
             color: busy ? 'var(--text-faint)' : 'var(--text-body)',
             cursor: busy ? 'default' : 'pointer',
           }}
@@ -241,7 +241,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             width: 22, height: 22, flex: 'none', padding: 0,
-            background: 'none', border: 0, borderRadius: 6,
+            background: 'none', border: 0, borderRadius: '50%',
             color: 'var(--text-faint)', cursor: 'pointer',
           }}
         >
@@ -285,7 +285,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
               style={{
                 flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 background: 'var(--surface-sunken)', color: 'var(--text-body)',
-                border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm, 8px)',
+                border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)',
                 padding: '8px 12px', cursor: 'pointer', font: 'inherit',
                 fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
               }}
@@ -324,7 +324,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
             style={{
               flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               background: 'var(--accent)', color: 'var(--text-on-accent)', border: 0,
-              borderRadius: 'var(--radius-sm, 8px)', padding: '8px 12px', cursor: 'pointer',
+              borderRadius: 'var(--radius-sm)', padding: '8px 12px', cursor: 'pointer',
               font: 'inherit', fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)',
               fontFamily: 'var(--font-sans)',
             }}
@@ -357,7 +357,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
               style={{
                 flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 background: 'var(--accent)', color: 'var(--text-on-accent)', border: 0,
-                borderRadius: 'var(--radius-sm, 8px)', padding: '8px 12px',
+                borderRadius: 'var(--radius-sm)', padding: '8px 12px',
                 cursor: (data.config.url ?? '').trim() ? 'pointer' : 'default',
                 opacity: (data.config.url ?? '').trim() ? 1 : 0.5,
                 font: 'inherit', fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)',
@@ -401,7 +401,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
                 style={{
                   flex: 'none', width: 34, display: 'inline-flex', alignItems: 'center',
                   justifyContent: 'center', background: 'var(--surface-sunken)',
-                  border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm, 8px)',
+                  border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)',
                   color: 'var(--text-body)', cursor: 'pointer', fontSize: 14,
                 }}
               >

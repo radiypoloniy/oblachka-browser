@@ -20,7 +20,7 @@ export default function TemplatePicker({ onPick, onClose }: {
         onClick={(e) => e.stopPropagation()}
         style={{
           width: 'min(620px, 100%)', maxHeight: '100%', display: 'flex', flexDirection: 'column',
-          background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
+          background: 'var(--surface-solid)', borderRadius: 'var(--radius-island)',
           boxShadow: 'var(--shadow-card)', overflow: 'hidden',
         }}
       >
@@ -78,7 +78,7 @@ function Row({ emoji, label, summary, onClick }: {
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', width: '100%',
-        padding: '11px 12px', borderRadius: 'var(--radius-sm, 8px)',
+        padding: '11px 12px', borderRadius: 'var(--radius-sm)',
         background: 'var(--surface-sunken)', border: '1px solid transparent',
         cursor: 'pointer', font: 'inherit', fontFamily: 'var(--font-sans)',
       }}

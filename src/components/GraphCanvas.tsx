@@ -622,7 +622,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               width: 26, height: 26, flex: 'none',
               background: 'none', border: 0, padding: 0,
-              borderRadius: 7, color: 'var(--text-body)', cursor: 'pointer',
+              borderRadius: '50%', color: 'var(--text-body)', cursor: 'pointer',
             }}
           >
             <ArrowLeft size={16} />
@@ -641,7 +641,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             title="Новый воркспейс"
             style={{
               marginLeft: 'auto', display: 'inline-flex', background: 'none', border: 0,
-              padding: 4, borderRadius: 7, color: 'var(--text-body)', cursor: 'pointer',
+              padding: 4, borderRadius: '50%', color: 'var(--text-body)', cursor: 'pointer',
             }}
           >
             <Plus size={15} />
@@ -654,7 +654,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
               key={meta.id}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                padding: '7px 8px', borderRadius: 8, cursor: 'pointer',
+                padding: '7px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
                 background: meta.id === currentId ? 'var(--surface)' : 'transparent',
                 color: meta.id === currentId ? 'var(--text-strong)' : 'var(--text-body)',
                 fontSize: 'var(--fs-sm)',
@@ -675,7 +675,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                   }}
                   style={{
                     flex: 1, minWidth: 0, background: 'var(--surface-sunken)',
-                    border: '1px solid var(--accent)', borderRadius: 6, padding: '3px 6px',
+                    border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)', padding: '3px 6px',
                     color: 'var(--text-strong)', font: 'inherit',
                     fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)', outline: 'none',
                   }}
@@ -707,7 +707,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     width: 26, height: 26, flex: 'none',
                     background: 'none', border: 0, padding: 0,
-                    borderRadius: 7, color: 'var(--text-faint)', cursor: 'pointer',
+                    borderRadius: '50%', color: 'var(--text-faint)', cursor: 'pointer',
                   }}
                 >
                   <Pencil size={13} />
@@ -723,7 +723,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   width: 26, height: 26, flex: 'none',
                   background: 'none', border: 0, padding: 0,
-                  borderRadius: 7, color: 'var(--text-faint)', cursor: 'pointer',
+                  borderRadius: '50%', color: 'var(--text-faint)', cursor: 'pointer',
                 }}
               >
                 <Trash2 size={14} />
@@ -763,7 +763,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-                    borderRadius: 9, padding: '6px 11px', cursor: 'pointer',
+                    borderRadius: 'var(--radius-chip)', padding: '6px 11px', cursor: 'pointer',
                     color: 'var(--text-body)', font: 'inherit',
                     fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
                   }}
@@ -784,7 +784,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 background: running ? 'var(--surface-sunken)' : 'var(--accent)',
                 color: running ? 'var(--text-muted)' : 'var(--text-on-accent)',
-                border: 0, borderRadius: 9, padding: '7px 13px',
+                border: 0, borderRadius: 'var(--radius-chip)', padding: '7px 13px',
                 cursor: running ? 'default' : 'pointer', font: 'inherit',
                 fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)', fontFamily: 'var(--font-sans)',
               }}
@@ -800,7 +800,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-                  borderRadius: 9, padding: '7px 13px', cursor: 'pointer',
+                  borderRadius: 'var(--radius-chip)', padding: '7px 13px', cursor: 'pointer',
                   color: 'var(--text-body)', font: 'inherit',
                   fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
                 }}

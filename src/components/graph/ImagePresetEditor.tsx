@@ -18,7 +18,7 @@ const EMPTY = { id: '', label: '', emoji: '🎨', guidance: '' };
 const field: React.CSSProperties = {
   width: '100%', boxSizing: 'border-box',
   background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-  borderRadius: 'var(--radius-sm, 8px)', color: 'var(--text-strong)',
+  borderRadius: 'var(--radius-sm)', color: 'var(--text-strong)',
   font: 'inherit', fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
   padding: '8px 10px', outline: 'none', resize: 'none',
 };
@@ -56,7 +56,7 @@ export default function ImagePresetEditor({ presets, onClose, onSave, onDelete }
         onClick={(e) => e.stopPropagation()}
         style={{
           width: 'min(560px, 100%)', maxHeight: '100%', display: 'flex', flexDirection: 'column',
-          background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
+          background: 'var(--surface-solid)', borderRadius: 'var(--radius-island)',
           boxShadow: 'var(--shadow-card)', overflow: 'hidden',
         }}
       >
@@ -90,7 +90,7 @@ export default function ImagePresetEditor({ presets, onClose, onSave, onDelete }
                   key={p.id}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-                    background: 'var(--surface-sunken)', borderRadius: 'var(--radius-sm, 8px)',
+                    background: 'var(--surface-sunken)', borderRadius: 'var(--radius-sm)',
                     cursor: 'pointer',
                   }}
                   onClick={() => setDraft(p)}
@@ -104,7 +104,7 @@ export default function ImagePresetEditor({ presets, onClose, onSave, onDelete }
                     onClick={(e) => { e.stopPropagation(); void onDelete(p.id); }}
                     style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      width: 26, height: 26, background: 'none', border: 0, borderRadius: 7,
+                      width: 26, height: 26, background: 'none', border: 0, borderRadius: 'var(--radius-sm)',
                       color: 'var(--text-faint)', cursor: 'pointer',
                     }}
                   >
@@ -151,7 +151,7 @@ export default function ImagePresetEditor({ presets, onClose, onSave, onDelete }
               alignSelf: 'flex-start',
               background: draft.label.trim() && draft.guidance.trim() ? 'var(--accent)' : 'var(--surface-sunken)',
               color: draft.label.trim() && draft.guidance.trim() ? 'var(--text-on-accent)' : 'var(--text-faint)',
-              border: 0, borderRadius: 9, padding: '8px 16px',
+              border: 0, borderRadius: 'var(--radius-chip)', padding: '8px 16px',
               cursor: draft.label.trim() && draft.guidance.trim() ? 'pointer' : 'default',
               font: 'inherit', fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)',
               fontFamily: 'var(--font-sans)',

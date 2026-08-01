@@ -35,7 +35,7 @@ interface Props {
 const headerButton: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   width: 30, height: 30, flex: 'none', padding: 0,
-  background: 'none', border: 0, borderRadius: 8,
+  background: 'none', border: 0, borderRadius: '50%',
   color: 'var(--text-body)', cursor: 'pointer',
 };
 
@@ -58,7 +58,9 @@ export default function NodeFullscreen({
       style={{
         position: 'absolute', inset: 0, zIndex: 15,
         display: 'flex', flexDirection: 'column',
-        background: 'var(--app-bg)',
+        // У диалога — белый лист, как у чата в AI-панели и на странице. Остальные типы
+        // остаются на фоне приложения: там содержимое само лежит на карточках.
+        background: kind === 'qwen.chat' ? 'var(--surface-solid)' : 'var(--app-bg)',
       }}
     >
       <div

@@ -42,7 +42,7 @@ export default function NodeHistoryPanel({ graphId, nodeId, nodeTitle, current, 
         onClick={(e) => e.stopPropagation()}
         style={{
           width: 'min(720px, 100%)', maxHeight: '100%', display: 'flex', flexDirection: 'column',
-          background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
+          background: 'var(--surface-solid)', borderRadius: 'var(--radius-island)',
           boxShadow: 'var(--shadow-card)', overflow: 'hidden',
         }}
       >
@@ -114,7 +114,7 @@ function Version({ label, text, highlight }: { label: string; text: string; high
           onClick={() => void navigator.clipboard.writeText(text)}
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 24, height: 24, background: 'none', border: 0, borderRadius: 6,
+            width: 24, height: 24, background: 'none', border: 0, borderRadius: '50%',
             color: 'var(--text-faint)', cursor: 'pointer',
           }}
         >

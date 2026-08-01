@@ -7,8 +7,10 @@ import { markdownComponents } from '../aiMarkdown';
 // Диалог узла в раскрытом виде. Переписка живёт в main (electron/GraphChat.ts), сюда
 // приезжает списком и стримом — компонент только рисует и отправляет.
 //
-// Ответ модели БЕЗ подложки, во всю ширину; пузырь только у реплики человека — тот же
-// расклад, что в чате хаба и AI-панели, и так это выглядит в любом чат-боте.
+// Оформление списано с чата AI-панели (src/aipanel.tsx) буквально, а не «в том же духе»:
+// пузырь пользователя — акцентный с белым текстом, ответ модели без подложки во всю ширину,
+// поле ввода — белая парящая карточка с круглой кнопкой отправки. Диалог в графе и диалог
+// на странице должны быть одним и тем же элементом, а не двумя похожими.
 
 export default function NodeChatView({ graphId, nodeId }: { graphId: number; nodeId: string }) {
   const [messages, setMessages] = useState<GraphChatMessage[]>([]);
@@ -82,10 +84,10 @@ export default function NodeChatView({ graphId, nodeId }: { graphId: number; nod
               <div key={i} style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <div
                   style={{
-                    maxWidth: '80%', padding: '8px 14px', borderRadius: 'var(--radius-card)',
-                    background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-                    color: 'var(--text-strong)', fontSize: 'var(--fs-md)',
-                    lineHeight: 'var(--lh-body)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                    maxWidth: '82%', padding: '8px 12px', borderRadius: 14,
+                    background: 'var(--accent)', color: 'var(--text-on-accent)',
+                    fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)',
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                   }}
                 >
                   {m.text}
@@ -93,13 +95,13 @@ export default function NodeChatView({ graphId, nodeId }: { graphId: number; nod
               </div>
             )
             : (
-              <div key={i} style={{ fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-body)' }}>
+              <div key={i} style={{ fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-strong)' }}>
                 <ReactMarkdown components={markdownComponents}>{m.text}</ReactMarkdown>
               </div>
             )))}
 
           {streaming && (
-            <div style={{ fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-body)' }}>
+            <div style={{ fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-strong)' }}>
               <ReactMarkdown components={markdownComponents}>{streaming}</ReactMarkdown>
             </div>
           )}
@@ -113,49 +115,59 @@ export default function NodeChatView({ graphId, nodeId }: { graphId: number; nod
         </div>
       </div>
 
-      <div style={{ flex: 'none', maxWidth: 780, width: '100%', margin: '0 auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter отправляет, Shift+Enter переносит строку — как в любом чате.
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-          }}
-          placeholder="Спросите что-нибудь…"
-          rows={2}
+      <div style={{ flex: 'none', maxWidth: 780, width: '100%', margin: '0 auto' }}>
+        <div
           style={{
-            flex: 1, boxSizing: 'border-box', resize: 'none',
-            background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-            borderRadius: 'var(--radius-card)', padding: '10px 12px',
-            color: 'var(--text-strong)', font: 'inherit',
-            fontSize: 'var(--fs-md)', fontFamily: 'var(--font-sans)', outline: 'none',
-          }}
-        />
-        <button
-          type="button" onClick={clear} disabled={busy || messages.length === 0}
-          title="Очистить переписку"
-          style={{
-            flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 40, height: 40, borderRadius: 'var(--radius-card)',
-            background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-            color: 'var(--text-muted)', cursor: busy || messages.length === 0 ? 'default' : 'pointer',
+            display: 'flex', alignItems: 'flex-end', gap: 8, padding: '12px 14px',
+            background: 'var(--surface-solid)', borderRadius: 'var(--radius-island)',
+            boxShadow: 'var(--shadow-card)', border: '1px solid var(--glass-edge)',
           }}
         >
-          <Trash2 size={15} />
-        </button>
-        <button
-          type="button" onClick={send} disabled={!input.trim() || busy}
-          title="Отправить (Enter)"
-          style={{
-            flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 40, height: 40, borderRadius: 'var(--radius-card)', border: 0,
-            background: input.trim() && !busy ? 'var(--accent)' : 'var(--surface-sunken)',
-            color: input.trim() && !busy ? 'var(--text-on-accent)' : 'var(--text-faint)',
-            cursor: input.trim() && !busy ? 'pointer' : 'default',
-          }}
-        >
-          <Send size={15} />
-        </button>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter отправляет, Shift+Enter переносит строку — как в любом чате.
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+            }}
+            placeholder="Написать сообщение…"
+            rows={1}
+            style={{
+              flex: 1, resize: 'none', maxHeight: 96,
+              border: 'none', outline: 'none', background: 'transparent',
+              padding: '8px 12px', fontSize: 'var(--fs-md)', fontFamily: 'var(--font-sans)',
+              color: 'var(--text-strong)',
+            }}
+          />
+          <button
+            type="button" onClick={clear} disabled={busy || messages.length === 0}
+            title="Очистить переписку"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 34, height: 34, flexShrink: 0, padding: 0,
+              background: 'transparent', border: 'none', borderRadius: '50%',
+              color: 'var(--text-muted)',
+              cursor: busy || messages.length === 0 ? 'default' : 'pointer',
+              opacity: busy || messages.length === 0 ? 0.45 : 1,
+            }}
+          >
+            <Trash2 size={15} strokeWidth={2} />
+          </button>
+          <button
+            type="button" onClick={send} disabled={!input.trim() || busy}
+            title="Отправить"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 34, height: 34, flexShrink: 0, padding: 0,
+              background: 'var(--accent)', border: 'none', borderRadius: '50%',
+              color: 'var(--text-on-accent)',
+              cursor: !input.trim() || busy ? 'default' : 'pointer',
+              opacity: !input.trim() || busy ? 0.45 : 1,
+            }}
+          >
+            <Send size={15} strokeWidth={2} />
+          </button>
+        </div>
       </div>
     </div>
   );
