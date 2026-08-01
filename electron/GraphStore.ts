@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import type {
   GraphDoc, GraphEdge, GraphMeta, GraphNode, GraphNodeKind, GraphStructure,
+  GraphNodeVersion,
 } from '../shared/graph';
 import type { ImagePreset } from '../shared/imagePresets';
 
@@ -210,9 +211,14 @@ export class GraphStore {
         const keptNodes = structure.nodes.map((n) => n.id);
         if (keptNodes.length === 0) {
           db.prepare(`DELETE FROM graph_nodes WHERE graph_id = ?`).run(graphId);
+          db.prepare(`DELETE FROM graph_node_history WHERE graph_id = ?`).run(graphId);
         } else {
           const marks = keptNodes.map(() => '?').join(',');
           db.prepare(`DELETE FROM graph_nodes WHERE graph_id = ? AND id NOT IN (${marks})`)
+            .run(graphId, ...keptNodes);
+          // История удалённого узла уходит вместе с ним: каскада тут нет (ключ узла
+          // составной и на него нет внешней ссылки), поэтому чистим явно.
+          db.prepare(`DELETE FROM graph_node_history WHERE graph_id = ? AND node_id NOT IN (${marks})`)
             .run(graphId, ...keptNodes);
         }
 
@@ -250,6 +256,51 @@ export class GraphStore {
       `).run(result.inputHash, result.output, result.outputTitle, result.error, graphId, nodeId);
     } catch (e) {
       console.warn('[Graph] setNodeResult error:', (e as Error).message);
+    }
+  }
+
+  // ── История результатов узла ────────────────────────────────────────────────
+
+  // Сколько прошлых результатов храним на узел. Пять — чтобы сравнить пару-тройку
+  // формулировок промпта и не раздуть базу текстами страниц.
+  static readonly HISTORY_LIMIT = 5;
+
+  pushNodeHistory(graphId: number, nodeId: string, output: string, outputTitle: string | null): void {
+    if (!this.#db || !output) return;
+    const db = this.#db;
+    try {
+      const run = db.transaction(() => {
+        db.prepare(`
+          INSERT INTO graph_node_history (graph_id, node_id, at, output, output_title)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(graphId, nodeId, Date.now(), output, outputTitle);
+        // Подрезаем сразу при вставке: иначе история узла, который гоняют десятками раз,
+        // росла бы без предела текстами по сотне килобайт.
+        db.prepare(`
+          DELETE FROM graph_node_history
+          WHERE graph_id = ? AND node_id = ? AND rowid NOT IN (
+            SELECT rowid FROM graph_node_history
+            WHERE graph_id = ? AND node_id = ? ORDER BY at DESC LIMIT ?
+          )
+        `).run(graphId, nodeId, graphId, nodeId, GraphStore.HISTORY_LIMIT);
+      });
+      run();
+    } catch (e) {
+      console.warn('[Graph] pushNodeHistory error:', (e as Error).message);
+    }
+  }
+
+  listNodeHistory(graphId: number, nodeId: string): GraphNodeVersion[] {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT at, output, output_title AS outputTitle
+        FROM graph_node_history WHERE graph_id = ? AND node_id = ?
+        ORDER BY at DESC
+      `).all(graphId, nodeId) as GraphNodeVersion[];
+    } catch (e) {
+      console.warn('[Graph] listNodeHistory error:', (e as Error).message);
+      return [];
     }
   }
 
@@ -333,6 +384,16 @@ export class GraphStore {
         PRIMARY KEY (graph_id, id)
       );
       CREATE INDEX IF NOT EXISTS idx_graph_edges_graph ON graph_edges(graph_id);
+      -- Прошлые результаты узлов. Отдельная таблица, а не колонка-JSON в graph_nodes:
+      -- версии добавляются по одной и подрезаются по количеству, для чего строки удобнее.
+      CREATE TABLE IF NOT EXISTS graph_node_history (
+        graph_id     INTEGER NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
+        node_id      TEXT    NOT NULL,
+        at           INTEGER NOT NULL,
+        output       TEXT    NOT NULL,
+        output_title TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_graph_history_node ON graph_node_history(graph_id, node_id, at DESC);
       -- Пользовательские пресеты генератора промптов для картинок. Своя таблица здесь, а не
       -- отдельный файл: данные графовые, мелкие и живут ровно столько же, сколько воркспейсы.
       CREATE TABLE IF NOT EXISTS image_presets (

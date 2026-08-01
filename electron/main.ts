@@ -1443,6 +1443,8 @@ function registerIpc() {
       return false;
     }
   });
+  ipcMain.handle(IPC.GRAPH_NODE_HISTORY, (_e, graphId: number, nodeId: string) =>
+    graphs.listNodeHistory(graphId, nodeId));
   ipcMain.handle(IPC.GRAPH_PICK_FILE, async () => {
     if (!win) return null;
     const res = await dialog.showOpenDialog(win, {

@@ -16,6 +16,7 @@ import GraphNodeCard, { DEFAULT_NODE_SIZE, type GraphNodeData } from './graph/Gr
 import GraphWebAppWindow from './graph/GraphWebAppWindow';
 import ImagePresetEditor from './graph/ImagePresetEditor';
 import TemplatePicker from './graph/TemplatePicker';
+import NodeHistoryPanel from './graph/NodeHistoryPanel';
 import type { GraphTemplate } from '../../shared/graphTemplates';
 import { BUILT_IN_IMAGE_PRESETS } from '../../shared/imagePresets';
 import type { ImagePreset } from '../../shared/imagePresets';
@@ -69,6 +70,7 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
       onRun: () => {},
       onDelete: () => {},
       onDuplicate: () => {},
+      onShowHistory: () => {},
       onPickFile: () => {},
       imagePresets: [],
       onEditPresets: () => {},
@@ -112,6 +114,9 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   const [userPresets, setUserPresets] = useState<ImagePreset[]>([]);
   const [presetEditorOpen, setPresetEditorOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [historyFor, setHistoryFor] = useState<
+    { nodeId: string; title: string; output: string | null } | null
+  >(null);
   const allPresets = useMemo(
     () => [...BUILT_IN_IMAGE_PRESETS, ...userPresets],
     [userPresets],
@@ -453,6 +458,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           onRun: () => {},
           onDelete: () => {},
           onDuplicate: () => {},
+          onShowHistory: () => {},
           onPickFile: () => {},
           imagePresets: [],
           onEditPresets: () => {},
@@ -475,6 +481,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         onRun: () => runNode(n.id),
         onDelete: () => deleteNode(n.id),
         onDuplicate: () => duplicateNodes([n.id]),
+        onShowHistory: () => setHistoryFor({ nodeId: n.id, title: n.data.title || NODE_KINDS[n.data.kind].label, output: n.data.output }),
         onPickFile: () => void pickFile(n.id),
         imagePresets: allPresets,
         onEditPresets: () => setPresetEditorOpen(true),
@@ -770,6 +777,16 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             <TemplatePicker
               onClose={() => setTemplatePickerOpen(false)}
               onPick={(template) => { setTemplatePickerOpen(false); void createWorkspace(template); }}
+            />
+          )}
+
+          {historyFor && currentId !== null && (
+            <NodeHistoryPanel
+              graphId={currentId}
+              nodeId={historyFor.nodeId}
+              nodeTitle={historyFor.title}
+              current={historyFor.output}
+              onClose={() => setHistoryFor(null)}
             />
           )}
 

@@ -358,6 +358,12 @@ export async function runGraph(
 
       if (outcome.ok && outcome.output) {
         outputs.set(nodeId, outcome.output);
+        // Прошлый результат уезжает в историю ДО перезаписи — иначе сравнить «до и после
+        // правки промпта» нечем. Одинаковый текст не сохраняем: повтор без изменений
+        // засорял бы историю копиями.
+        if (node.output && node.output !== outcome.output) {
+          store.pushNodeHistory(graphId, nodeId, node.output, node.outputTitle);
+        }
         store.setNodeResult(graphId, nodeId, {
           inputHash: hash,
           output: outcome.output,

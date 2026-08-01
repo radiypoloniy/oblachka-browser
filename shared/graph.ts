@@ -195,6 +195,14 @@ export interface GraphNode {
   error: string | null
 }
 
+// Прошлый результат узла. Нужен, чтобы сравнивать «до и после правки промпта» — подбор
+// формулировок это основная работа с графом, а без истории каждый прогон затирал предыдущий.
+export interface GraphNodeVersion {
+  at: number
+  output: string
+  outputTitle: string | null
+}
+
 export interface GraphEdge {
   id: string
   fromNode: string
