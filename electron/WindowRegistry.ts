@@ -16,7 +16,9 @@ import type { TabManager } from './TabManager';
 // Разделение ролей окна — из замысла: полное окно с сайдбаром и деревом вкладок ровно одно,
 // дополнительные лёгкие — без дерева. Отсюда роль в контексте, а не просто список окон.
 
-export type WindowRole = 'main' | 'light';
+// Тип роли живёт в общем контракте: её знает и renderer (лёгкое окно рисует меньше).
+export type { WindowRole } from '../shared/ipc';
+import type { WindowRole } from '../shared/ipc';
 
 export interface WindowContext {
   win: BrowserWindow;

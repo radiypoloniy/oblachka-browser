@@ -2336,6 +2336,11 @@ export class TabManager {
   //
   // ВСЕ хоткеи матчим по input.code (физическая позиция клавиши), а НЕ по input.key.
   // input.key зависит от раскладки: на русской F→«а», W→«ц» и т.д.
+  // Ctrl+N. Само окно этот класс не создаёт — окнами владеет main (см. createWindow), сюда
+  // приходит только «человек попросил новое окно», как и с быстрым поиском по Ctrl+E.
+  private onNewWindowCb: (() => void) | null = null;
+  setOnNewWindow(cb: () => void): void { this.onNewWindowCb = cb; }
+
   registerHotkeyHandler(wc: WebContents): void {
     wc.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown') return;
@@ -2389,6 +2394,9 @@ export class TabManager {
       } else if (code === 'KeyT' && shift) {
         event.preventDefault();
         this.reopenLastClosedTab();         // Ctrl+Shift+T: восстановить закрытую
+      } else if (code === 'KeyN' && !shift) {
+        event.preventDefault();
+        this.onNewWindowCb?.();             // Ctrl+N: новое окно (main решает, какой роли)
       } else if (code === 'KeyN' && shift) {
         event.preventDefault();
         this.createTab(undefined, false, false, true); // Ctrl+Shift+N: новая вкладка инкогнито

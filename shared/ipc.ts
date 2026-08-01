@@ -223,6 +223,10 @@ export const IPC = {
   // и геометрия омнибокса меняются по разным причинам (сайдбар/VPN-пилюля vs reserve-панели).
   OMNIBOX_SET_BOUNDS: 'omnibox:set-bounds',
   WINDOW_SET_OVERLAY: 'window:set-overlay', // обновить цвет иконок titleBarOverlay
+  // Роль окна (см. WindowRole ниже). Спрашивается один раз при монтировании чрома: от неё
+  // зависит, что окно вообще рисует.
+  WINDOW_GET_ROLE: 'window:get-role',
+  WINDOW_OPEN: 'window:open', // открыть новое (лёгкое) окно — Ctrl+N, пункт меню
 
   // Атомарный push: заменяет раздельные TABS_CHANGED + SIDEBAR_NODES_CHANGED.
   // Один IPC-пакет = один рендер = нет рассинхрона между вкладками и деревом узлов.
@@ -1304,6 +1308,11 @@ export interface CurrencyRatesInfo {
 }
 
 // Тип API, который preload пробрасывает в window.oblako
+// Роль окна. Полное окно ровно одно: оно владеет сессией (деревом вкладок в session.json) и теми
+// службами, что существуют в приложении в одном экземпляре. Лёгкие окна — вкладки, омнибокс,
+// поиск по странице, пароли/автозаполнение.
+export type WindowRole = 'main' | 'light';
+
 export interface OblakoApi {
   // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).
   getSyncState(): Promise<SyncState>;
@@ -1328,6 +1337,11 @@ export interface OblakoApi {
   // без вью-потребителя (см. shared/ipc.ts::IPC).
   setOmniboxBounds(bounds: ContentBounds): Promise<void>;
   setTitleBarOverlay(opts: TitleBarOpts): Promise<void>;
+  // Роль ЭТОГО окна — см. WindowRole. Полное окно рисует всё; лёгкое прячет то, что живёт в
+  // приложении в одном экземпляре и принадлежит полному (AI-панель, быстрый поиск, перевод
+  // страницы, граф/блокнот на новой вкладке).
+  getWindowRole(): Promise<WindowRole>;
+  openWindow(): Promise<void>;
   // Сигнал «оболочка отрисована» — main показывает скрытое до этого окно (см. IPC.CHROME_UI_READY).
   chromeUiReady(): void;
   onTabsChanged(cb: (tabs: TabState[]) => void): () => void; // вернёт unsubscribe

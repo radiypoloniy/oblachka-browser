@@ -109,6 +109,10 @@ export default function App() {
 
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [sidebarNodes, setSidebarNodes] = useState<SidebarNode[]>([]);
+  // Роль своего окна (см. shared/ipc.ts::WindowRole). Спрашивается один раз: окно не меняет роль
+  // за свою жизнь. До ответа считаем окно полным — это состояние живёт доли секунды и только в
+  // главном окне выглядит правильно; в лёгком лишние кнопки просто исчезнут первым же ответом.
+  const [isLightWindow, setIsLightWindow] = useState(false);
   const [activeId, setActiveId] = useState(HUB_ID);
   // VPN, шаг 3 — реальное состояние вместо мока (было: локальный boolean, всегда true при старте,
   // «Финляндия» захардкожена в Toolbar.tsx). Индикатор, который не отражает, действительно ли
@@ -196,6 +200,12 @@ export default function App() {
 
   // Тема. Инкогнито принудительно тёмный (data-theme="dark") + флаг data-incognito, который в
   // theme-dark.css перекрашивает острова в «приятно-чёрный» (см. блок [data-incognito]).
+  useEffect(() => {
+    window.oblako.getWindowRole()
+      .then((role) => setIsLightWindow(role === 'light'))
+      .catch(() => { /* роль не пришла — остаёмся полным окном, как было до многооконности */ });
+  }, []);
+
   useEffect(() => {
     const root = document.documentElement;
     root.setAttribute('data-theme', (dark || activeIncognito) ? 'dark' : 'light');
@@ -567,6 +577,9 @@ export default function App() {
           cursor: 'col-resize', userSelect: 'none',
         }} />
       )}
+      {/* AI-группировка вкладок живёт в приложении в одном экземпляре и принадлежит полному окну,
+          поэтому в лёгком её кнопки нет: organizeTabsCount=0 гасит её тем же условием, что и
+          «вкладок слишком мало» (см. Sidebar.tsx). */}
       <Sidebar
         tabs={tabs} activeId={activeId}
         collapsed={effectiveCollapsed}
@@ -583,7 +596,7 @@ export default function App() {
         getContentRect={() => contentRectRef.current}
         onDragOverContent={setSplitDragOver}
         onDropOnContent={handleDropOnContent}
-        organizeTabsCount={organizeTabsCount}
+        organizeTabsCount={isLightWindow ? 0 : organizeTabsCount}
         organizeState={organizeState}
         organizeLongWait={organizeLongWait}
         organizeProposal={organizeProposal}
@@ -596,6 +609,7 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
           tab={active} allTabs={tabs} vpnOn={vpnConn?.state === 'running'} dark={dark}
+          isLightWindow={isLightWindow}
           omniboxRef={omniboxRef}
           onToggleDark={() => setDark((d) => !d)}
           onBack={() => window.oblako.goBack(activeId)}
@@ -705,7 +719,7 @@ export default function App() {
                остров-подложка позади неё (см. TAB_FRAME_STYLE) плюс ошибка поверх, если есть. */
             isHub
               ? <Hub
-                  tabId={activeId} onSubmit={submit}
+                  tabId={activeId} onSubmit={submit} isLightWindow={isLightWindow}
                   onOpenHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); }}
                   onOpenSettings={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })(); }}
                 />

@@ -16,6 +16,8 @@ interface NewTabProps {
   onSubmit: (input: string) => void; // омнибокс-сабмит (URL или запрос) — тот же, что у плиток
   onOpenAi: () => void;              // переключение Hub в AI-режим
   onOpenGraph: () => void;           // переключение Hub в граф-воркспейс
+  // В лёгком окне больших режимов нет: и блокнот, и холст графа завязаны на службы полного окна.
+  isLightWindow?: boolean;
   tiles: TileSite[];                 // топ-сайты для быстрых ссылок (из истории, см. Hub)
 }
 
@@ -27,7 +29,7 @@ const TEXT_SOFT = 'rgba(255,255,255,0.78)';
 // оба слабее прежнего, суммарно тише и без ореола.
 const TEXT_SHADOW = '0 1px 2px rgba(0,0,0,0.28), 0 2px 10px rgba(0,0,0,0.18)';
 
-export default function NewTab({ onSubmit, onOpenAi, onOpenGraph, tiles }: NewTabProps) {
+export default function NewTab({ onSubmit, onOpenAi, onOpenGraph, tiles, isLightWindow = false }: NewTabProps) {
   const [settings, setSettings] = useState<NewTabSettings>(() => loadNewTabSettings());
   useEffect(() => subscribeNewTabSettings(() => setSettings(loadNewTabSettings())), []);
 
@@ -69,6 +71,7 @@ export default function NewTab({ onSubmit, onOpenAi, onOpenGraph, tiles }: NewTa
       </div>
 
       {/* Незаметные переходы в большие режимы — правый верхний угол */}
+      {!isLightWindow && (
       <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 3, display: 'flex', gap: 8 }}>
         <button onClick={onOpenGraph} title="Граф-воркспейс" style={cornerButton}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.24)')}
@@ -83,6 +86,7 @@ export default function NewTab({ onSubmit, onOpenAi, onOpenGraph, tiles }: NewTa
           <Sparkles size={18} />
         </button>
       </div>
+      )}
     </div>
   );
 }

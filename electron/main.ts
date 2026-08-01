@@ -852,7 +852,12 @@ function createWindow(role: WindowRole = 'main') {
       tabs.createTab(hit.url);
     });
   }
-  tabs.setOnQuickSearch(() => {
+  // Новое окно по Ctrl+N — из любого окна; создаётся всегда лёгкое (полное ровно одно).
+  tabs.setOnNewWindow(() => { createWindow('light'); });
+  // ⚠️ Быстрый поиск (Ctrl+E) регистрируем только у полного окна: сам поповер — служба-одиночка,
+  // и найденное он открывает через setOnQuickOpen, который принадлежит полному окну. В лёгком
+  // окне колбэк просто не назначен, и хоткей молча ничего не делает (см. onQuickSearchCb?.()).
+  if (isMain) tabs.setOnQuickSearch(() => {
     void (async () => {
       if (!win || !tabs) return;
       const wc = tabs.getActiveWebContents();
@@ -1237,6 +1242,12 @@ function registerIpc() {
     if (w) setSuggestDropdownHighlight(w, idx);
   });
   ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (e, opts: TitleBarOpts) => winOf(e)?.setTitleBarOverlay(opts));
+  // Роль окна — чром спрашивает её один раз при монтировании и по ней решает, что рисовать.
+  // Отправитель вне реестра (такого быть не должно) трактуем как лёгкое окно: спрятать лишнее
+  // безопаснее, чем показать кнопку, которая полезет в чужие вкладки.
+  ipcMain.handle(IPC.WINDOW_GET_ROLE, (e): WindowRole => contextFromSender(e.sender)?.role ?? 'light');
+  // Новое окно — всегда лёгкое: полное ровно одно, оно владеет сессией.
+  ipcMain.handle(IPC.WINDOW_OPEN, () => { createWindow('light'); });
   ipcMain.handle(IPC.FIND_START, (e, q: string, fwd: boolean) => tabsOf(e)?.findInPage(q, fwd));
   ipcMain.handle(IPC.FIND_NEXT,  (e, fwd: boolean)            => tabsOf(e)?.findNext(fwd));
   ipcMain.handle(IPC.FIND_STOP,  (e)                            => tabsOf(e)?.stopFind());

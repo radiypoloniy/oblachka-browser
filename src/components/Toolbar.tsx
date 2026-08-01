@@ -89,6 +89,10 @@ interface ToolbarProps {
   pageTranslateState: PageTranslateState; // см. PageTranslateManager.ts
   pageTranslateProgress: PageTranslateProgress | null; // батч N/M + живой счётчик символов, только пока translating
   onTogglePageTranslate: () => void;
+  // Роль окна: в лёгком окне AI-панели и перевода страниц нет — обе службы живут в приложении
+  // в одном экземпляре и принадлежат полному окну (см. WindowRegistry.ts). Показывать кнопку,
+  // которая полезет в чужие вкладки, хуже, чем не показывать её вовсе.
+  isLightWindow?: boolean;
 }
 
 // ── Компонент ─────────────────────────────────────────────────────────────────
@@ -99,7 +103,7 @@ export default function Toolbar({
   tab, allTabs, vpnOn, omniboxRef: externalRef,
   onBack, onForward, onReload, onSubmit, onSuggestToggle,
   downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel, aiPanelOpen,
-  pageTranslateState, pageTranslateProgress, onTogglePageTranslate,
+  pageTranslateState, pageTranslateProgress, onTogglePageTranslate, isLightWindow = false,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
   const [value, setValue] = useState('');
@@ -1111,7 +1115,7 @@ export default function Toolbar({
             disabled у кнопки «Обновить» на хабе — просто без атрибута disabled, там же логика
             игнора живёт в PageTranslateManager.ts::togglePageTranslate). translated: подсветка
             accent-soft — тот же тон, что у открытого поповера. */}
-        {!isHub && tab?.url && (
+        {!isHub && tab?.url && !isLightWindow && (
           <button
             title={
               pageTranslateState === 'translating'
@@ -1135,12 +1139,14 @@ export default function Toolbar({
         {/* Плашка-остров остаётся — как у всех кнопок тулбара. Меняется только ТОН: в покое
             нейтральный значок на обычной плашке, ровно как «назад/вперёд/обновить»; акцент
             загорается, когда панель открыта, то есть означает состояние, а не важность. */}
-        <button title="AI-панель" onClick={onToggleAiPanel}
-          style={aiPanelOpen
-            ? islandBtn('var(--accent)', 'var(--accent-soft)')
-            : islandBtn()}>
-          <Sparkles size={18} />
-        </button>
+        {!isLightWindow && (
+          <button title="AI-панель" onClick={onToggleAiPanel}
+            style={aiPanelOpen
+              ? islandBtn('var(--accent)', 'var(--accent-soft)')
+              : islandBtn()}>
+            <Sparkles size={18} />
+          </button>
+        )}
         {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки. Иконка нейтральная
             всегда (заход 3) — акцент не для постоянных/переключаемых состояний, только точка
             новой активности остаётся акцентной (единичное уведомление, не постоянный статус). */}
