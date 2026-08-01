@@ -5,6 +5,7 @@ import path from 'node:path';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction } from '../shared/ipc';
 import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef, SavedTab } from './SessionManager';
+import { PIP_ENTER_SCRIPT, PIP_EXIT_SCRIPT } from './videoPip';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
@@ -1498,6 +1499,12 @@ export class TabManager {
       }
     }
 
+    // Уходим с вкладки, где играет видео, — кадр уезжает в окошко поверх окон и следует за
+    // человеком. Возвращаемся — кадр возвращается в страницу (иначе ролик виден дважды).
+    const leaving = this.activeId;
+    if (leaving && leaving !== id) this.sendPip(leaving, PIP_ENTER_SCRIPT);
+    this.sendPip(id, PIP_EXIT_SCRIPT);
+
     this.activeId = id;
     tab.lastActiveAt = Date.now();
 
@@ -2527,6 +2534,18 @@ export class TabManager {
   }
 
   // ── Геометрия "дырки" под контент ──
+  // Просьба к странице увести/вернуть кадр из окошка поверх окон. ⚠️ Второй аргумент
+  // executeJavaScript означает «это действие человека»: без него запрос на
+  // Picture-in-Picture отклоняется — API требует жеста, а переключение вкладки им и было.
+  // Ошибки глушим намеренно: у страницы может не быть видео вовсе, и это норма.
+  private sendPip(tabId: string, script: string): void {
+    const tab = this.tabMap.get(tabId);
+    if (!tab || !this.isHttpView(tab.view)) return;
+    const wc = tab.view.webContents;
+    if (wc.isDestroyed()) return;
+    wc.executeJavaScript(script, true).catch(() => { /* нет видео — обычное дело */ });
+  }
+
   setContentBounds(b: ContentBounds) {
     this.bounds = b;
     this.repositionViews();

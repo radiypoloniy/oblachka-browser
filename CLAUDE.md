@@ -88,6 +88,17 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
   ТОЛЬКО сетевая блокировка: `enableBlockingInSession` нельзя звать дважды);
   очистка in-memory данных при закрытии последней приватной вкладки —
   `TabManager.takeIncognitoClearIfDone`.
+- Видео: полноэкранный режим и «кадр следует за вами» — в `TabManager.ts` плюс
+  `electron/videoPip.ts`. ⚠️ Полный экран: Chromium растягивает видео по СВОЕЙ
+  `WebContentsView`, а она занимает лишь дырку под контент, — поэтому на
+  `enter-html-full-screen` вью раздвигается на всё окно (и окно уходит в fullscreen),
+  скругление снимается, а присланные рендерером bounds на эту вкладку не действуют, иначе
+  первый же `ResizeObserver` вернул бы кадр в дырку. ⚠️ Picture-in-Picture: замерено, что
+  Electron 40 поддерживает его целиком и окошко ПЕРЕЖИВАЕТ переключение вкладки (видео
+  играет, хотя `document.hidden` истинно) — своё плавающее окно не понадобилось. Запрос
+  требует жеста человека, поэтому скрипт идёт через `executeJavaScript(code, true)`; без
+  второго аргумента он отклоняется. Уводим только играющее видео заметного размера и
+  уважаем `disablePictureInPicture`.
 - `electron/SessionManager.ts` — автосейв/восстановление дерева вкладок
   (`session.json`, версионированный формат, дебаунс-сохранение).
 - `electron/AdBlockManager.ts` — блокировка рекламы: `@ghostery/adblocker-electron`,
