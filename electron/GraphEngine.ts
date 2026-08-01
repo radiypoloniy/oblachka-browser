@@ -127,6 +127,13 @@ function renderTemplate(template: string, inputs: NodeInput[]): string {
   });
 }
 
+// Узел, которому вход уже не нужен: черновик, в котором человек что-то написал. Движок
+// отдаёт наружу его текст, а не то, что пришло по связям, — значит упавший или ждущий
+// узел выше на него не влияет.
+function isSelfSufficient(node: GraphNode): boolean {
+  return node.kind === 'draft.text' && !!(node.config.text ?? '').trim();
+}
+
 interface NodeOutcome {
   ok: boolean;
   output?: string;
@@ -384,6 +391,27 @@ export async function runGraph(
   const broken = new Set<string>();
   const planSet = new Set(plan);
 
+  // Гасим ветку ниже узла — но ОБРЫВАЕМСЯ на самодостаточном узле и не идём сквозь него.
+  // Черновик с собственным текстом входа не читает: движок всё равно отдаст наружу то, что
+  // написал человек. Типичный случай — веб-чат стоит в «ждёт вас», а его ответ человек уже
+  // вставил в черновик руками; раньше это вешало всю цепочку до самой сборки, и даже кнопка
+  // ▷ на черновике не спасала, потому что он тоже оказывался в наборе broken.
+  const markBrokenBelow = (fromId: string): void => {
+    const queue = [fromId];
+    const seen = new Set<string>([fromId]);
+    while (queue.length) {
+      const cur = queue.shift()!;
+      for (const e of doc.edges) {
+        if (e.fromNode !== cur || seen.has(e.toNode)) continue;
+        seen.add(e.toNode);
+        const next = byId.get(e.toNode);
+        if (next && isSelfSufficient(next)) continue;   // ниже него материал есть — ветка живая
+        if (planSet.has(e.toNode)) broken.add(e.toNode);
+        queue.push(e.toNode);
+      }
+    }
+  };
+
   try {
     for (const nodeId of plan) {
       if (token.cancelled) {
@@ -420,9 +448,7 @@ export async function runGraph(
           graphId, nodeId, status: 'awaiting',
           error: 'Раскройте узел и задайте вопрос — ответ станет выходом',
         });
-        for (const dep of downstreamOf([nodeId], doc.edges)) {
-          if (dep !== nodeId && planSet.has(dep)) broken.add(dep);
-        }
+        markBrokenBelow(nodeId);
         continue;
       }
 
@@ -431,9 +457,7 @@ export async function runGraph(
           graphId, nodeId, status: 'awaiting',
           error: 'Откройте узел, вставьте промпт, отправьте и заберите ответ',
         });
-        for (const dep of downstreamOf([nodeId], doc.edges)) {
-          if (dep !== nodeId && planSet.has(dep)) broken.add(dep);
-        }
+        markBrokenBelow(nodeId);
         continue;
       }
 
@@ -473,9 +497,7 @@ export async function runGraph(
         });
         emit({ graphId, nodeId, status: 'error', error: outcome.error ?? 'Не получилось' });
         // Ветку ниже по течению гасим, соседние ветки продолжаем — они не виноваты.
-        for (const id of downstreamOf([nodeId], doc.edges)) {
-          if (id !== nodeId && planSet.has(id)) broken.add(id);
-        }
+        markBrokenBelow(nodeId);
       }
     }
   } finally {
