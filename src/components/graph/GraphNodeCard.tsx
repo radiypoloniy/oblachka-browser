@@ -1,8 +1,8 @@
 import ReactMarkdown from 'react-markdown';
 import { Handle, NodeResizer, Position } from '@xyflow/react';
 import {
-  Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink, X, Copy, Download, Files,
-  History,
+  Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink, X, Files,
+  Maximize2,
 } from 'lucide-react';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
 import { NODE_KINDS } from '../../../shared/graph';
@@ -26,6 +26,7 @@ export interface GraphNodeData extends Record<string, unknown> {
   onDelete: () => void;
   onDuplicate: () => void;
   onShowHistory: () => void;
+  onExpand: () => void;
   // Только для source.file — нативный диалог выбора документа (его открывает main).
   onPickFile: () => void;
   // Только для image.prompt: список доступных пресетов и запрос на открытие редактора своих.
@@ -213,37 +214,6 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         >
           <Play size={13} />
         </button>
-        {data.output && (
-          <>
-            <button
-              type="button"
-              className="nodrag"
-              onClick={data.onCopyOutput}
-              title="Скопировать результат"
-              style={headerButton}
-            >
-              <Copy size={13} />
-            </button>
-            <button
-              type="button"
-              className="nodrag"
-              onClick={data.onSaveOutput}
-              title="Сохранить результат в файл"
-              style={headerButton}
-            >
-              <Download size={13} />
-            </button>
-            <button
-              type="button"
-              className="nodrag"
-              onClick={data.onShowHistory}
-              title="Прошлые результаты"
-              style={headerButton}
-            >
-              <History size={13} />
-            </button>
-          </>
-        )}
         <button
           type="button"
           className="nodrag"
@@ -252,6 +222,15 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           style={headerButton}
         >
           <Files size={13} />
+        </button>
+        <button
+          type="button"
+          className="nodrag"
+          onClick={data.onExpand}
+          title="Раскрыть на весь экран"
+          style={headerButton}
+        >
+          <Maximize2 size={13} />
         </button>
         <button
           type="button"

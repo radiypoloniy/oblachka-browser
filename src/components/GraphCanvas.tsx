@@ -17,6 +17,7 @@ import GraphWebAppWindow from './graph/GraphWebAppWindow';
 import ImagePresetEditor from './graph/ImagePresetEditor';
 import TemplatePicker from './graph/TemplatePicker';
 import NodeHistoryPanel from './graph/NodeHistoryPanel';
+import NodeFullscreen from './graph/NodeFullscreen';
 import type { GraphTemplate } from '../../shared/graphTemplates';
 import { BUILT_IN_IMAGE_PRESETS } from '../../shared/imagePresets';
 import type { ImagePreset } from '../../shared/imagePresets';
@@ -71,6 +72,7 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
       onDelete: () => {},
       onDuplicate: () => {},
       onShowHistory: () => {},
+      onExpand: () => {},
       onPickFile: () => {},
       imagePresets: [],
       onEditPresets: () => {},
@@ -114,9 +116,19 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   const [userPresets, setUserPresets] = useState<ImagePreset[]>([]);
   const [presetEditorOpen, setPresetEditorOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  // Раскрытый узел — один на холст. Держим id, а не копию данных: узел продолжает считаться,
+  // и раскрытый вид должен показывать тот же стрим, что и карточка.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<
     { nodeId: string; title: string; output: string | null } | null
   >(null);
+  // Берём узел из состояния по id: пока он раскрыт, стрим Qwen продолжает докладывать
+  // чанки, и раскрытый вид обязан их показывать так же, как карточка.
+  const expandedNode = useMemo(
+    () => (expandedId ? nodes.find((n) => n.id === expandedId) ?? null : null),
+    [expandedId, nodes],
+  );
+
   const allPresets = useMemo(
     () => [...BUILT_IN_IMAGE_PRESETS, ...userPresets],
     [userPresets],
@@ -459,6 +471,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           onDelete: () => {},
           onDuplicate: () => {},
           onShowHistory: () => {},
+          onExpand: () => {},
           onPickFile: () => {},
           imagePresets: [],
           onEditPresets: () => {},
@@ -482,6 +495,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         onDelete: () => deleteNode(n.id),
         onDuplicate: () => duplicateNodes([n.id]),
         onShowHistory: () => setHistoryFor({ nodeId: n.id, title: n.data.title || NODE_KINDS[n.data.kind].label, output: n.data.output }),
+        onExpand: () => setExpandedId(n.id),
         onPickFile: () => void pickFile(n.id),
         imagePresets: allPresets,
         onEditPresets: () => setPresetEditorOpen(true),
@@ -772,6 +786,26 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             <MiniMap pannable zoomable />
           </ReactFlow>
           </div>
+
+          {expandedNode && currentId !== null && (
+            <NodeFullscreen
+              kind={expandedNode.data.kind}
+              title={expandedNode.data.title}
+              status={expandedNode.data.status}
+              output={expandedNode.data.output}
+              outputTitle={expandedNode.data.outputTitle}
+              error={expandedNode.data.error}
+              onClose={() => setExpandedId(null)}
+              onRun={() => runNode(expandedNode.id)}
+              onCopyOutput={() => copyOutput(expandedNode.id)}
+              onSaveOutput={() => void saveOutput(expandedNode.id)}
+              onShowHistory={() => setHistoryFor({
+                nodeId: expandedNode.id,
+                title: expandedNode.data.title || NODE_KINDS[expandedNode.data.kind].label,
+                output: expandedNode.data.output,
+              })}
+            />
+          )}
 
           {templatePickerOpen && (
             <TemplatePicker
