@@ -3,7 +3,7 @@ import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent } from './BrowserIdentity';
 import { showSplash, closeSplash } from './SplashWindow';
-import { registerWindow, contextFromSender } from './WindowRegistry';
+import { registerWindow, contextFromSender, broadcastToChrome } from './WindowRegistry';
 
 // ДО app.whenReady() — Electron требует это до события ready.
 registerSchemesAsPrivileged();
@@ -300,7 +300,7 @@ registerEngine(bergamotEngine);
 let bergamotStatus: BergamotStatus = 'loading';
 function pushBergamotStatus(status: BergamotStatus): void {
   bergamotStatus = status;
-  chromeView?.webContents.send(IPC.TRANSLATION_ENGINE_BERGAMOT_STATUS_CHANGED, status);
+  broadcastToChrome(IPC.TRANSLATION_ENGINE_BERGAMOT_STATUS_CHANGED, status);
 }
 async function warmupBergamot(): Promise<void> {
   try {
@@ -346,7 +346,7 @@ function maybeLazyWarmupOnDemand(): void {
 
 // Открытый холст графа должен перечитать граф, если тот пополнился из контекстного меню.
 function notifyGraphChanged(graphId: number): void {
-  chromeView?.webContents.send(IPC.GRAPH_CHANGED, graphId);
+  broadcastToChrome(IPC.GRAPH_CHANGED, graphId);
 }
 
 // См. комментарий у SETTINGS_GET_HUB_MODE — отличает пассивное восстановление сессии (первый
@@ -462,7 +462,7 @@ function createWindow() {
 
   // Перехватываем все загрузки на дефолтной сессии (вкладки partition не задают).
   downloads.attach(session.defaultSession, (entries) => {
-    chromeView?.webContents.send(IPC.DOWNLOADS_CHANGED, entries);
+    broadcastToChrome(IPC.DOWNLOADS_CHANGED, entries);
   });
 
   // Разрешения: хендлер на дефолтной сессии + на инкогнито-сессии (ниже) — обе через один колбэк.
@@ -842,15 +842,17 @@ function createWindow() {
       }
     },
     // «Сохранить» из предложения offer-save — кладём в хранилище и обновляем список в настройках.
-    () => { if (autofillOrchestrator.saveSubmitted()) chromeView?.webContents.send(IPC.AUTOFILL_CHANGED); },
+    () => { if (autofillOrchestrator.saveSubmitted()) broadcastToChrome(IPC.AUTOFILL_CHANGED); },
   );
   // Менеджер паролей, шаг 2: индикатор push идёт в chrome (не в конкретную вкладку) —
   // PASSWORDS_CHANGED переиспользует существующий канал шага 1 (список в Settings→Пароли).
   passwordAutofill.init(
     tabs,
     passwords,
+    // Индикатор в омнибоксе — про АКТИВНУЮ вкладку этого окна, поэтому адресный пуш, не рассылка.
     (state) => chromeView?.webContents.send(IPC.PASSWORDS_INDICATOR_CHANGED, state),
-    () => chromeView?.webContents.send(IPC.PASSWORDS_CHANGED),
+    // А сам сейф один на приложение — список паролей обязан обновиться во всех окнах.
+    () => broadcastToChrome(IPC.PASSWORDS_CHANGED),
   );
 
   // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).
@@ -1051,6 +1053,18 @@ function registerIpc() {
   // Окно отправителя — для диалогов, меню и оверлеев: они обязаны открываться над тем окном,
   // где человек кликнул, а не над первым попавшимся.
   const winOf = (e: { sender: Electron.WebContents }) => contextFromSender(e.sender)?.win ?? win;
+  // Слой хрома отправителя — для ОТВЕТНЫХ пушей: стрим чата хаба, прогресс узла графа,
+  // приглашение переименовать папку. Это ответ на конкретный запрос, а не общее состояние
+  // приложения, — рассылать его во все окна (broadcastToChrome) значило бы вписывать чужой
+  // ответ в чат соседнего окна.
+  const chromeOf = (e: { sender: Electron.WebContents }) =>
+    contextFromSender(e.sender)?.chromeView.webContents ?? chromeView?.webContents ?? null;
+  // Адресат запоминается в момент запроса, а ответ приходит асинхронно — окно к тому времени
+  // может закрыться, и send по мёртвому webContents бросит. Прежний код от этого защищал `?.`
+  // по обнуляемой глобальной переменной; с захваченной ссылкой нужна явная проверка.
+  const sendTo = (wc: Electron.WebContents | null, channel: string, ...args: unknown[]): void => {
+    if (wc && !wc.isDestroyed()) wc.send(channel, ...args);
+  };
 
   ipcMain.handle(IPC.SYNC_GET, (e) => ({
     tabs:  tabsOf(e)?.snapshot()              ?? [],
@@ -1263,17 +1277,20 @@ function registerIpc() {
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
   // send — fire-and-forget (не invoke): ответ идёт стримом чанков + финальным результатом,
   // так проще, чем тащить длинный запрос через invoke (тот же приём, что у AI-панели).
-  ipcMain.on(IPC.HUB_CHAT_SEND, (_e, payload: { tabId: string; text: string; grounding: boolean; sourcesContext?: string }) => {
+  ipcMain.on(IPC.HUB_CHAT_SEND, (e, payload: { tabId: string; text: string; grounding: boolean; sourcesContext?: string }) => {
     const { tabId, text, grounding, sourcesContext } = payload;
+    // Адресат ответа фиксируется в момент запроса: стрим приходит асинхронно, и к его концу
+    // фокус может быть уже в другом окне — искать окно заново было бы поздно и неверно.
+    const target = chromeOf(e);
     const sendResult = (sessionId: number | null, outcome: ChatOutcome) => {
-      chromeView?.webContents.send(IPC.HUB_CHAT_RESULT, {
+      sendTo(target, IPC.HUB_CHAT_RESULT, {
         tabId,
         sessionId,
         outcome: outcome.ok ? { ok: true, out: outcome.out } : { ok: false, error: outcome.error },
       });
     };
     const onChunk = (chunkText: string) => {
-      chromeView?.webContents.send(IPC.HUB_CHAT_CHUNK, { tabId, text: chunkText });
+      sendTo(target, IPC.HUB_CHAT_CHUNK, { tabId, text: chunkText });
     };
     void (async () => {
       // Web-grounding (SearXNG) — ОТДЕЛЬНАЯ ветка перед обычным путём ниже, целиком независимая
@@ -1321,7 +1338,7 @@ function registerIpc() {
   // Пуш статуса в чром (секция настроек) — тот же источник, что слушает и AI-панель отдельно
   // (см. AiPanelManager.ts, заход D шаг 4), оба подписаны на один aiKeyStore.onKeyStatusChanged.
   aiKeyStore.onKeyStatusChanged((connected) => {
-    chromeView?.webContents.send(IPC.AI_KEY_STATUS_CHANGED, connected);
+    broadcastToChrome(IPC.AI_KEY_STATUS_CHANGED, connected);
   });
 
   // Задел под web-grounding (SearXNG) — тот же контракт/паттерн, что у ключа Gemini выше.
@@ -1331,7 +1348,7 @@ function registerIpc() {
   ipcMain.handle(IPC.SEARXNG_SAVE_CONFIG,   (_e, config: { endpoint: string; token: string }) => searxngKeyStore.saveConfig(config));
   ipcMain.handle(IPC.SEARXNG_DELETE_CONFIG, () => searxngKeyStore.deleteConfig());
   searxngKeyStore.onStatusChanged((configured) => {
-    chromeView?.webContents.send(IPC.SEARXNG_STATUS_CHANGED, configured);
+    broadcastToChrome(IPC.SEARXNG_STATUS_CHANGED, configured);
   });
 
   // Реестр AI-скиллов (см. shared/ipc.ts::Skill, electron/SkillsStore.ts) — CRUD-мост для Settings
@@ -1347,7 +1364,7 @@ function registerIpc() {
   // что уже слушает AI-панель (AiPanelManager.ts:267, свой ad-hoc ai-panel:skills-list) — Set
   // слушателей в SkillsStore поддерживает несколько подписчиков, тот пуш не трогаем/не дублируем.
   skillsStore.onSkillsChanged((skills) => {
-    chromeView?.webContents.send(IPC.SKILLS_CHANGED, skills);
+    broadcastToChrome(IPC.SKILLS_CHANGED, skills);
   });
 
   // VPN, шаг 1 — подписка + список серверов. Ссылка и credential серверов остаются в main
@@ -1363,7 +1380,7 @@ function registerIpc() {
   ipcMain.handle(IPC.VPN_DELETE_SUBSCRIPTION, () => vpnKeyStore.deleteSubscription());
   ipcMain.handle(IPC.VPN_LIST_SERVERS, () => vpnKeyStore.getServers().map(toServerMeta));
   vpnKeyStore.onChanged(() => {
-    chromeView?.webContents.send(IPC.VPN_STATUS_CHANGED, vpnStatus());
+    broadcastToChrome(IPC.VPN_STATUS_CHANGED, vpnStatus());
   });
 
   // VPN, шаг 2 — только процесс Xray + локальный SOCKS-порт (electron/VpnProcess.ts).
@@ -1400,10 +1417,10 @@ function registerIpc() {
   vpnProcess.onStateChange((_state, error) => {
     lastVpnError = error;
     applyVpnProxy();
-    // Второй получатель того же снапшота, не замена chromeView — поповер сам решает (broadcastVpnState),
-    // слать ли ему дальше, в зависимости от того, жив он/открыт ли сейчас.
+    // Второй получатель того же снапшота, не замена рассылки по окнам — поповер сам решает
+    // (broadcastVpnState), слать ли ему дальше, в зависимости от того, жив он/открыт ли сейчас.
     const connState = vpnConnectionState();
-    chromeView?.webContents.send(IPC.VPN_CONNECTION_STATE_CHANGED, connState);
+    broadcastToChrome(IPC.VPN_CONNECTION_STATE_CHANGED, connState);
     broadcastVpnState(connState);
   });
   applyVpnProxy(); // детерминированная база на старте — 'stopped' → direct, а не implicit-дефолт Electron
@@ -1490,16 +1507,17 @@ function registerIpc() {
   ipcMain.handle(IPC.GRAPH_CHAT_CLEAR, (_e, graphId: number, nodeId: string) => {
     graphs.clearChat(graphId, nodeId);
   });
-  ipcMain.on(IPC.GRAPH_CHAT_SEND, (_e, graphId: number, nodeId: string, text: string) => {
+  ipcMain.on(IPC.GRAPH_CHAT_SEND, (e, graphId: number, nodeId: string, text: string) => {
     // Диалог с моделью — явное намерение поработать с AI, значит её пора греть.
     maybeLazyWarmupOnDemand();
+    const target = chromeOf(e); // холст того окна, где ведут диалог, — см. chromeOf выше
     void sendChatMessage(graphs, graphId, nodeId, typeof text === 'string' ? text : '', {
-      chunk: (chunk) => chromeView?.webContents.send(IPC.GRAPH_CHAT_CHUNK, { graphId, nodeId, text: chunk }),
+      chunk: (chunk) => sendTo(target, IPC.GRAPH_CHAT_CHUNK, { graphId, nodeId, text: chunk }),
       done: (outcome) => {
-        chromeView?.webContents.send(IPC.GRAPH_CHAT_DONE, { graphId, nodeId, ...outcome });
+        sendTo(target, IPC.GRAPH_CHAT_DONE, { graphId, nodeId, ...outcome });
         // Ответ стал выходом узла — холст должен увидеть это как обычный результат.
         if (outcome.ok) {
-          chromeView?.webContents.send(IPC.GRAPH_PROGRESS, {
+          sendTo(target, IPC.GRAPH_PROGRESS, {
             graphId, nodeId, status: 'done', output: outcome.text,
           });
         }
@@ -1589,7 +1607,7 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.GRAPH_WEBAPP_CAPTURE_IMAGE, (_e, graphId: number, nodeId: string) =>
     captureImage(graphId, nodeId));
-  ipcMain.handle(IPC.GRAPH_WEBAPP_CAPTURE, async (_e, graphId: number, nodeId: string, mode: 'selection' | 'last') => {
+  ipcMain.handle(IPC.GRAPH_WEBAPP_CAPTURE, async (e, graphId: number, nodeId: string, mode: 'selection' | 'last') => {
     const text = await captureAnswer(graphId, nodeId, mode === 'last' ? 'last' : 'selection');
     if (!text) return '';
     // Результат пишет main, а не renderer: инвариант «результаты узлов принадлежат движку»
@@ -1604,7 +1622,7 @@ function registerIpc() {
       outputTitle: null,
       error: null,
     });
-    chromeView?.webContents.send(IPC.GRAPH_PROGRESS, {
+    sendTo(chromeOf(e), IPC.GRAPH_PROGRESS, {
       graphId, nodeId, status: 'done', output: text,
     });
     return text;
@@ -1615,15 +1633,16 @@ function registerIpc() {
     // Прогон графа — явное намерение поработать с AI, значит модель пора греть (тот же
     // приём, что у AI_PANEL_TOGGLE и SETTINGS_*_HUB_MODE).
     maybeLazyWarmupOnDemand();
+    const target = chromeOf(e);
     void runGraph(w, graphs, graphId, typeof nodeId === 'string' ? nodeId : null, (p) => {
-      chromeView?.webContents.send(IPC.GRAPH_PROGRESS, p);
+      sendTo(target, IPC.GRAPH_PROGRESS, p);
     });
   });
 
   // Автозаполнение — адреса и карты (electron/AutofillManager.ts). Полный номер карты (reveal) —
   // под тем же OS-подтверждением, что показ пароля (ensurePasswordAuth); list/add/update номер
   // наружу не отдают.
-  const pushAutofillChanged = () => chromeView?.webContents.send(IPC.AUTOFILL_CHANGED);
+  const pushAutofillChanged = () => broadcastToChrome(IPC.AUTOFILL_CHANGED);
   ipcMain.handle(IPC.AUTOFILL_ADDRESS_LIST,   () => autofill.listAddresses());
   ipcMain.handle(IPC.AUTOFILL_ADDRESS_ADD,    (_e, input: AddressInput) => { const ok = autofill.addAddress(input); if (ok) pushAutofillChanged(); return ok; });
   ipcMain.handle(IPC.AUTOFILL_ADDRESS_UPDATE, (_e, input: AddressUpdate) => { const ok = autofill.updateAddress(input); if (ok) pushAutofillChanged(); return ok; });
@@ -1637,17 +1656,17 @@ function registerIpc() {
   ipcMain.handle(IPC.PASSWORDS_GENERATE, (_e, opts: PasswordGenerateOptions) => passwords.generate(opts));
   ipcMain.handle(IPC.PASSWORDS_ADD, (_e, input: PasswordAddInput) => {
     const ok = passwords.add(input);
-    if (ok) chromeView?.webContents.send(IPC.PASSWORDS_CHANGED);
+    if (ok) broadcastToChrome(IPC.PASSWORDS_CHANGED);
     return ok;
   });
   ipcMain.handle(IPC.PASSWORDS_UPDATE, (_e, input: PasswordUpdateInput) => {
     const ok = passwords.update(input);
-    if (ok) chromeView?.webContents.send(IPC.PASSWORDS_CHANGED);
+    if (ok) broadcastToChrome(IPC.PASSWORDS_CHANGED);
     return ok;
   });
   ipcMain.handle(IPC.PASSWORDS_DELETE, (_e, id: number) => {
     passwords.delete(id);
-    chromeView?.webContents.send(IPC.PASSWORDS_CHANGED);
+    broadcastToChrome(IPC.PASSWORDS_CHANGED);
   });
   // Экспорт/импорт — диалог выбора файла целиком в main, на диск попадает только уже
   // зашифрованная под passphrase строка (см. PasswordManager.exportVault/importVault),
@@ -1687,7 +1706,7 @@ function registerIpc() {
       return 0;
     }
     const count = passwords.importVault(passphrase, payload);
-    if (count > 0) chromeView?.webContents.send(IPC.PASSWORDS_CHANGED);
+    if (count > 0) broadcastToChrome(IPC.PASSWORDS_CHANGED);
     return count;
   });
 
@@ -1712,7 +1731,7 @@ function registerIpc() {
   let lastContentBackfillProgress: BackfillProgress = { processed: 0, total: 0, running: false, cancelled: false };
   setContentBackfillProgressListener((p) => {
     lastContentBackfillProgress = p;
-    chromeView?.webContents.send(IPC.HISTORY_CONTENT_BACKFILL_PROGRESS, p);
+    broadcastToChrome(IPC.HISTORY_CONTENT_BACKFILL_PROGRESS, p);
   });
   ipcMain.on(IPC.HISTORY_CONTENT_BACKFILL_START, (e) => {
     const w = winOf(e); if (w) void startContentBackfill(history, w); });
@@ -1731,20 +1750,20 @@ function registerIpc() {
   // Умный поиск — Qwen-реранк, только по явному Enter (см. HistorySearch.ts::searchHistorySmart).
   ipcMain.handle(IPC.HISTORY_SEARCH_SMART, (_e, query: string) => searchHistorySmart(history, query));
 
-  // Закладки — пуш BOOKMARK_CHANGED в chromeView после каждой успешной мутации, тот же
+  // Закладки — пуш BOOKMARK_CHANGED во все окна после каждой успешной мутации, тот же
   // приём, что уже используется для PASSWORDS_CHANGED (инлайн, не через конструктор-колбэк).
   ipcMain.handle(IPC.BOOKMARK_ADD, (_e, url: string, title: string) => {
     const entry = bookmarks.add(url, title);
-    if (entry) chromeView?.webContents.send(IPC.BOOKMARK_CHANGED);
+    if (entry) broadcastToChrome(IPC.BOOKMARK_CHANGED);
     return entry;
   });
   ipcMain.handle(IPC.BOOKMARK_REMOVE, (_e, id: number) => {
     bookmarks.remove(id);
-    chromeView?.webContents.send(IPC.BOOKMARK_CHANGED);
+    broadcastToChrome(IPC.BOOKMARK_CHANGED);
   });
   ipcMain.handle(IPC.BOOKMARK_REMOVE_BY_URL, (_e, url: string) => {
     bookmarks.removeByUrl(url);
-    chromeView?.webContents.send(IPC.BOOKMARK_CHANGED);
+    broadcastToChrome(IPC.BOOKMARK_CHANGED);
   });
   ipcMain.handle(IPC.BOOKMARK_LIST, () => bookmarks.list());
   ipcMain.handle(IPC.BOOKMARK_IS_BOOKMARKED, (_e, url: string) => bookmarks.isBookmarked(url));
@@ -1756,7 +1775,7 @@ function registerIpc() {
     const importer = bookmarkImporters.find((imp) => imp.id === sourceId);
     if (!importer) return null;
     const result = await importer.import();
-    chromeView?.webContents.send(IPC.BOOKMARK_CHANGED);
+    broadcastToChrome(IPC.BOOKMARK_CHANGED);
     return result;
   });
 
@@ -1765,7 +1784,7 @@ function registerIpc() {
   ipcMain.handle(IPC.IMPORT_RUN, async (_e, sourceId: string, dataTypes: ImportDataType[]) => {
     const result = await importManager.run(sourceId, Array.isArray(dataTypes) ? dataTypes : []);
     // Любой перенос мог задеть закладки/историю/сейф — толкаем их слушателей перечитать.
-    if (result.bookmarks) chromeView?.webContents.send(IPC.BOOKMARK_CHANGED);
+    if (result.bookmarks) broadcastToChrome(IPC.BOOKMARK_CHANGED);
     return result;
   });
   ipcMain.handle(IPC.IMPORT_SHOULD_OFFER, () =>
@@ -1812,10 +1831,15 @@ function registerIpc() {
   // Нативное ПКМ-меню вкладки в сайдбаре.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (e, id: string) => {
     const w = winOf(e);
-    if (!tabs || !w) return;
-    const isPinned = tabs.isTabPinned(id);
-    const groupId  = tabs.getTabGroupId(id);
-    const state = tabs.snapshot().find((t) => t.id === id);
+    // ⚠️ Меню ЧИТАЕТСЯ и КЛИКАЕТСЯ из одного менеджера — того, чьё окно прислало вызов. Раньше
+    // содержимое собиралось по глобальному tabs, а клики шли в tabsOf(e): при одном окне это одно
+    // и то же, при двух — меню описывало бы чужую вкладку. Локальная переменная ещё и сужает тип,
+    // избавляя от `!` на каждом клике.
+    const t = tabsOf(e);
+    if (!t || !w) return;
+    const isPinned = t.isTabPinned(id);
+    const groupId  = t.getTabGroupId(id);
+    const state = t.snapshot().find((tab) => tab.id === id);
     const toGraph = state
       ? buildAddToGraphMenuItem(graphs, [{ url: state.url, title: state.title || state.url }], undefined, notifyGraphChanged)
       : null;
@@ -1823,7 +1847,7 @@ function registerIpc() {
     const items: MenuItemConstructorOptions[] = [
       {
         label: isPinned ? 'Открепить вкладку' : 'Закрепить вкладку',
-        click: () => tabsOf(e)!.togglePin(id),
+        click: () => t.togglePin(id),
       },
       ...(toGraph ? [toGraph] : []),
       { type: 'separator' },
@@ -1833,24 +1857,24 @@ function registerIpc() {
       if (groupId) {
         items.push({
           label: 'Убрать из группы',
-          click: () => tabsOf(e)!.removeTabFromGroup(groupId, id),
+          click: () => t.removeTabFromGroup(groupId, id),
         });
       } else {
         items.push({
           label: 'Создать группу',
-          click: () => tabsOf(e)!.createGroup(id),
+          click: () => t.createGroup(id),
         });
       }
 
       // Подменю «Добавить в группу» — только если есть группы.
-      const allGroups = collectGroups(tabs.sidebarNodesSnapshot());
+      const allGroups = collectGroups(t.sidebarNodesSnapshot());
       const otherGroups = allGroups.filter((g) => g.id !== groupId);
       if (otherGroups.length > 0) {
         items.push({
           label: 'Добавить в группу',
           submenu: otherGroups.map((g) => ({
             label: g.label || 'Группа',
-            click: () => tabsOf(e)!.addTabToGroup(g.id, id),
+            click: () => t.addTabToGroup(g.id, id),
           })),
         });
       }
@@ -1861,7 +1885,7 @@ function registerIpc() {
     items.push({
       label: 'Закрыть вкладку',
       enabled: !isPinned,
-      click: () => tabsOf(e)!.closeTab(id),
+      click: () => t.closeTab(id),
     });
     Menu.buildFromTemplate(items).popup({ window: w });
   });
@@ -1869,19 +1893,23 @@ function registerIpc() {
   // ПКМ по кнопке «Новая вкладка» — обычная / инкогнито / восстановить закрытую (как в Chrome).
   ipcMain.handle(IPC.NEW_TAB_SHOW_MENU, (e) => {
     const w = winOf(e);
-    if (!tabs || !w) return;
+    const t = tabsOf(e);
+    if (!t || !w) return;
     Menu.buildFromTemplate([
-      { label: 'Новая вкладка', accelerator: 'Ctrl+T', click: () => tabsOf(e)!.activate(HUB_ID) },
-      { label: 'Новая вкладка инкогнито', accelerator: 'Ctrl+Shift+N', click: () => tabsOf(e)!.createTab(undefined, false, false, true) },
+      { label: 'Новая вкладка', accelerator: 'Ctrl+T', click: () => t.activate(HUB_ID) },
+      { label: 'Новая вкладка инкогнито', accelerator: 'Ctrl+Shift+N', click: () => t.createTab(undefined, false, false, true) },
       { type: 'separator' },
-      { label: 'Открыть закрытую вкладку', accelerator: 'Ctrl+Shift+T', enabled: tabs.hasClosedTabs(), click: () => tabsOf(e)!.reopenLastClosedTab() },
+      // Список закрытых — у каждого окна свой: вернуть в этом окне вкладку, закрытую в соседнем,
+      // человек не просил.
+      { label: 'Открыть закрытую вкладку', accelerator: 'Ctrl+Shift+T', enabled: t.hasClosedTabs(), click: () => t.reopenLastClosedTab() },
     ]).popup({ window: w });
   });
 
   // Нативное ПКМ-меню заголовка группы.
   ipcMain.handle(IPC.GROUP_SHOW_MENU, (e, groupId: string) => {
     const w = winOf(e);
-    if (!tabs || !w || !chromeView) return;
+    const t = tabsOf(e);
+    if (!t || !w) return;
     const GROUP_COLORS: Array<{ label: string; value: string }> = [
       { label: 'Без цвета',   value: '' },
       { label: 'Красный',     value: 'red' },
@@ -1891,32 +1919,32 @@ function registerIpc() {
       { label: 'Синий',       value: 'blue' },
       { label: 'Фиолетовый',  value: 'purple' },
     ];
-    const groupTitle = tabs.getGroupTitle(groupId) || 'Папка';
+    const groupTitle = t.getGroupTitle(groupId) || 'Папка';
     const groupToGraph = buildAddToGraphMenuItem(
-      graphs, tabs.getGroupContents(groupId), groupTitle, notifyGraphChanged,
+      graphs, t.getGroupContents(groupId), groupTitle, notifyGraphChanged,
     );
     const items: MenuItemConstructorOptions[] = [
       {
         label: 'Переименовать',
-        click: () => chromeView?.webContents.send(IPC.GROUP_RENAME_PROMPT, groupId),
+        click: () => sendTo(chromeOf(e), IPC.GROUP_RENAME_PROMPT, groupId),
       },
       {
         label: 'Цвет',
         submenu: GROUP_COLORS.map(({ label, value }) => ({
           label,
-          click: () => tabsOf(e)!.setGroupColor(groupId, value || null),
+          click: () => t.setGroupColor(groupId, value || null),
         })),
       },
       ...(groupToGraph ? [groupToGraph] : []),
       { type: 'separator' },
       {
         label: 'Свернуть / развернуть',
-        click: () => tabsOf(e)!.toggleGroupCollapse(groupId),
+        click: () => t.toggleGroupCollapse(groupId),
       },
       {
         label: 'Скопировать содержимое',
         click: () => {
-          const contents = tabsOf(e)!.getGroupContents(groupId);
+          const contents = t.getGroupContents(groupId);
           if (contents.length === 0) return;
           // Оба формата одним clipboard.write() — атомарно, оба представления сразу доступны любому
           // приёмнику: html для редакторов с форматированием, text — Markdown-подобный список для
@@ -1936,11 +1964,11 @@ function registerIpc() {
       { type: 'separator' },
       {
         label: 'Расформировать группу',
-        click: () => tabsOf(e)!.disbandGroup(groupId),
+        click: () => t.disbandGroup(groupId),
       },
       {
         label: 'Закрыть группу и вкладки',
-        click: () => tabsOf(e)!.closeGroupAndTabs(groupId),
+        click: () => t.closeGroupAndTabs(groupId),
       },
     ];
     Menu.buildFromTemplate(items).popup({ window: w });
@@ -1964,9 +1992,10 @@ function registerIpc() {
 
   // Загрузчик GGUF-моделей (см. electron/ModelDownloader.ts) — задел, потребителей в UI нет.
   // Тот же приём, что HISTORY_CONTENT_BACKFILL_PROGRESS (main.ts:1006-1010): модуль зовёт колбэк,
-  // main решает, куда слать (chromeView), сам модуль про chromeView не знает.
+  // main решает, куда слать, сам модуль про окна не знает. Загрузка одна на приложение — её
+  // прогресс идёт во все окна, иначе полоса замерла бы у того, кто открыл настройки вторым.
   ModelDownloader.setProgressListener((p) => {
-    chromeView?.webContents.send(IPC.MODEL_DOWNLOAD_PROGRESS, p);
+    broadcastToChrome(IPC.MODEL_DOWNLOAD_PROGRESS, p);
   });
   ipcMain.on(IPC.MODEL_DOWNLOAD_START, (_e, spec: ModelDownloadSpec) => { void ModelDownloader.startDownload(spec); });
   ipcMain.on(IPC.MODEL_DOWNLOAD_CANCEL, () => ModelDownloader.cancelDownload());
@@ -2117,7 +2146,7 @@ app.whenReady().then(async () => {
   //     сетевой операции. Плата за это ровно одна и разовая: на ПЕРВОМ запуске восстановленная
   //     активная вкладка может успеть загрузиться до того, как фильтр встанет.
   const adblockReady = adblock
-    .initialize((state) => { chromeView?.webContents.send(IPC.ADBLOCK_STATE_CHANGED, state); })
+    .initialize((state) => { broadcastToChrome(IPC.ADBLOCK_STATE_CHANGED, state); })
     .catch((e) => { console.error('[AdBlock] инициализация упала, браузер работает без блокировки:', e); });
   if (adblock.hasCachedEngine()) {
     await adblockReady;
@@ -2128,7 +2157,7 @@ app.whenReady().then(async () => {
   // Автообновление. Ставится ПОСЛЕ adblock и БЕЗ await: initialize() только подписывается на
   // события и заводит отложенный таймер, сеть трогается через 20 с после старта — запуск окна
   // это не задерживает ни на миллисекунду. В dev-режиме метод не делает вообще ничего.
-  updates.initialize((s) => chromeView?.webContents.send(IPC.UPDATE_CHANGED, s));
+  updates.initialize((s) => broadcastToChrome(IPC.UPDATE_CHANGED, s));
 
   createWindow();
 

@@ -60,3 +60,17 @@ export function mainContext(): WindowContext | null {
 export function allContexts(): WindowContext[] {
   return [...contexts.values()];
 }
+
+// Пуш в слой хрома ВСЕХ окон. Состояние приложения — закладки, пароли, автозаполнение, VPN,
+// адблок, загрузки, модели, обновления — окну не принадлежит: файл на диске один, а копия списка
+// у каждого окна своя. Окно, не получившее сообщение, показывало бы устаревшее, и «добавил
+// закладку тут — её нет там» выглядело бы как потеря данных.
+//
+// ⚠️ Оконное состояние так рассылать НЕЛЬЗЯ: дерево вкладок, фокус омнибокса, поповеры, прогресс
+// перевода страницы принадлежат конкретному окну — для них есть contextFromSender.
+export function broadcastToChrome(channel: string, ...args: unknown[]): void {
+  for (const ctx of contexts.values()) {
+    const wc = ctx.chromeView.webContents;
+    if (!wc.isDestroyed()) wc.send(channel, ...args);
+  }
+}
