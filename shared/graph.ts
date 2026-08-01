@@ -40,6 +40,9 @@ export type GraphNodeKind =
   | 'artifact.infographic'
   | 'artifact.quiz'
   | 'output.text'     // терминал: показать и дать скопировать
+  // Подпись на холсте: ни входов, ни выходов, движок его не считает. Нужен, чтобы
+  // помечать участки — например, откуда пришла пачка ссылок.
+  | 'sticker'
 
 export interface PortSpec {
   id: string
@@ -151,6 +154,13 @@ export const NODE_KINDS: Record<GraphNodeKind, NodeKindSpec> = {
     emoji: '❓',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'JSON', type: 'text' }],
+  },
+  'sticker': {
+    label: 'Заметка на холсте',
+    hint: 'Подпись к участку графа — ничего не считает',
+    emoji: '📌',
+    inputs: [],
+    outputs: [],
   },
   'output.text': {
     label: 'Результат',

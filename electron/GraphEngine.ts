@@ -239,6 +239,10 @@ async function executeNode(
       return res.ok ? { ok: true, output: res.out } : { ok: false, error: res.error };
     }
 
+    case 'sticker':
+      // Не исполняется: в план прогона стикер не попадает (см. runGraph).
+      return { ok: false, error: 'Заметка ничего не считает' };
+
     case 'qwen.chat':
     case 'webapp.chat':
       // Сюда поток не доходит: узел перехвачен в runGraph до вызова executeNode (обмен —
@@ -289,7 +293,12 @@ export async function runGraph(
     scope = upstreamOf(targetNodeId, doc.edges);
     for (const id of downstreamOf([targetNodeId], doc.edges)) scope.add(id);
   }
-  const plan = order.filter((id) => byId.has(id) && (!scope || scope.has(id)));
+  // Стикеры — подписи на холсте, считать в них нечего: в план не попадают вовсе,
+  // иначе прогон спотыкался бы на узле без входов и выходов.
+  const plan = order.filter((id) => {
+    const node = byId.get(id);
+    return !!node && node.kind !== 'sticker' && (!scope || scope.has(id));
+  });
 
   const token = { cancelled: false };
   running.set(graphId, token);

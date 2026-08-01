@@ -133,6 +133,13 @@ const SELECTION_RECT_SCRIPT = `(function(){
 export class TabManager {
   private win: BrowserWindow;
 
+  // Строитель пункта «Добавить в граф» для ПКМ-меню ссылки. Ставится из main
+  // (setGraphMenuBuilder): TabManager не должен знать про хранилище графов — ему отдают
+  // готовый пункт меню, тот же приём, что с tabManagerRef у менеджеров вью.
+  #graphMenuBuilder:
+    | ((items: Array<{ url: string; title: string }>, sticker?: string) => MenuItemConstructorOptions | null)
+    | null = null;
+
   // ── Единый источник истины — три структуры ──────────────────────────────────
   // hubTab   — хаб (всегда существует, не входит в nodes и pinnedTabs).
   // pinnedTabs — упорядоченный список закреплённых (переживают рестарт).
@@ -1297,6 +1304,13 @@ export class TabManager {
         items.push(
           { label: 'Копировать адрес ссылки', click: () => clipboard.writeText(p.linkURL) },
         );
+        // «Добавить в граф» строит main: TabManager не должен знать про хранилище графов,
+        // ему отдают готовый пункт меню (тот же приём, что с tabManagerRef у менеджеров вью).
+        const toGraph = this.#graphMenuBuilder?.(
+          [{ url: p.linkURL, title: p.linkText || p.linkURL }],
+          undefined,
+        );
+        if (toGraph) items.push({ type: 'separator' }, toGraph);
       }
 
       // ── Картинка ─────────────────────────────────────────────────────────────
@@ -1824,6 +1838,17 @@ export class TabManager {
   // {url,title} каждой листовой вкладки группы (рекурсивно, split-pair — обе половины) — для
   // «Скопировать содержимое» в ПКМ-меню группы (main.ts::GROUP_SHOW_MENU). title падает на url,
   // если страница ещё не отдала заголовок (см. #tabTitle) — пустой текст ссылки хуже, чем URL дважды.
+  setGraphMenuBuilder(
+    fn: (items: Array<{ url: string; title: string }>, sticker?: string) => MenuItemConstructorOptions | null,
+  ): void {
+    this.#graphMenuBuilder = fn;
+  }
+
+  // Имя группы для подписи стикера при «Добавить в граф» (main.ts::GROUP_SHOW_MENU).
+  getGroupTitle(groupId: string): string | null {
+    return this.#findGroupById(groupId)?.label ?? null;
+  }
+
   getGroupContents(groupId: string): Array<{ url: string; title: string }> {
     const group = this.#findGroupById(groupId);
     if (!group) return [];

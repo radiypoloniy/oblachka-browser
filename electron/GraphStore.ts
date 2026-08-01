@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import type {
   GraphDoc, GraphEdge, GraphMeta, GraphNode, GraphNodeKind, GraphStructure,
-  GraphNodeVersion, GraphChatMessage,
+  GraphNodeVersion, GraphChatMessage, GraphStructureNode,
 } from '../shared/graph';
 import type { ImagePreset } from '../shared/imagePresets';
 
@@ -244,6 +244,49 @@ export class GraphStore {
       run();
     } catch (e) {
       console.warn('[Graph] saveStructure error:', (e as Error).message);
+    }
+  }
+
+  // Дописывает узлы в граф, НЕ трогая существующие. Отдельно от saveStructure: та
+  // заменяет структуру целиком (это её работа — она принимает полное состояние холста),
+  // а «добавить в граф» из контекстного меню приходит извне и обязано быть безопасным,
+  // даже если холст сейчас открыт и вот-вот пришлёт своё состояние.
+  appendNodes(graphId: number, nodes: GraphStructureNode[]): void {
+    if (!this.#db || nodes.length === 0) return;
+    const db = this.#db;
+    try {
+      const run = db.transaction(() => {
+        const insert = db.prepare(`
+          INSERT INTO graph_nodes (graph_id, id, kind, x, y, w, h, title, config)
+          VALUES (@graphId, @id, @kind, @x, @y, @w, @h, @title, @config)
+          ON CONFLICT(graph_id, id) DO NOTHING
+        `);
+        for (const n of nodes) {
+          insert.run({
+            graphId, id: n.id, kind: n.kind, x: Math.round(n.x), y: Math.round(n.y),
+            w: n.w === null || n.w === undefined ? null : Math.round(n.w),
+            h: n.h === null || n.h === undefined ? null : Math.round(n.h),
+            title: n.title ?? '', config: JSON.stringify(n.config ?? {}),
+          });
+        }
+        db.prepare(`UPDATE graphs SET updated_at = ? WHERE id = ?`).run(Date.now(), graphId);
+      });
+      run();
+    } catch (e) {
+      console.warn('[Graph] appendNodes error:', (e as Error).message);
+    }
+  }
+
+  // Самая правая точка графа — новые узлы кладём за ней, чтобы не сесть поверх имеющихся.
+  rightEdge(graphId: number): number {
+    if (!this.#db) return 0;
+    try {
+      const row = this.#db.prepare(
+        `SELECT COALESCE(MAX(x + COALESCE(w, 300)), 0) AS edge FROM graph_nodes WHERE graph_id = ?`,
+      ).get(graphId) as { edge: number };
+      return row.edge;
+    } catch {
+      return 0;
     }
   }
 

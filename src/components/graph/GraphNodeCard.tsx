@@ -60,6 +60,7 @@ export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> 
   'artifact.infographic': { w: 520, h: 420 },
   'artifact.quiz': { w: 420, h: 440 },
   'output.text': { w: 380, h: 360 },
+  'sticker': { w: 300, h: 96 },
 };
 
 const STATUS_TONE: Record<GraphNodeStatus, string> = {
@@ -132,6 +133,47 @@ const outputBox: React.CSSProperties = {
 
 export default function GraphNodeCard({ data, selected }: { data: GraphNodeData; selected?: boolean }) {
   const spec = NODE_KINDS[data.kind];
+
+  // Стикер — подпись на холсте, а не узел конвейера: ни портов, ни статуса, ни кнопки
+  // «посчитать». Отдельная ветка целиком, потому что общая шапка ему вся не нужна.
+  if (data.kind === 'sticker') {
+    return (
+      <div
+        style={{
+          width: '100%', height: '100%', display: 'flex', boxSizing: 'border-box',
+          padding: '10px 12px',
+          background: 'var(--accent-soft)',
+          border: `1px solid ${selected ? 'var(--accent)' : 'var(--accent-soft-border)'}`,
+          borderRadius: 'var(--radius-card)',
+        }}
+      >
+        <NodeResizer
+          minWidth={160} minHeight={56} isVisible={!!selected}
+          lineStyle={{ borderColor: 'var(--accent)' }}
+          handleStyle={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent)', border: 0 }}
+        />
+        <textarea
+          className="nodrag"
+          value={data.config.text ?? ''}
+          placeholder="Подпись к участку графа"
+          onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
+          style={{
+            flex: 1, resize: 'none', border: 0, outline: 'none', background: 'transparent',
+            color: 'var(--text-strong)', font: 'inherit',
+            fontSize: 'var(--fs-md)', fontWeight: 'var(--fw-medium)',
+            fontFamily: 'var(--font-sans)', lineHeight: 'var(--lh-snug)',
+          }}
+        />
+        <button
+          type="button" className="nodrag" onClick={data.onDelete} title="Удалить заметку"
+          style={{ ...headerButton, alignSelf: 'flex-start' }}
+        >
+          <X size={13} />
+        </button>
+      </div>
+    );
+  }
+
   const busy = data.status === 'running' || data.status === 'queued';
   // Вывод модели — это Markdown, и читать его сырым (## и ** в тексте) неудобно. Источники
   // отдают текст чужой страницы: там разметки нет, а случайные # и * только исказили бы её.

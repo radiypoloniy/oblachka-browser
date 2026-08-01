@@ -276,6 +276,7 @@ export const IPC = {
   GRAPH_CHAT_CHUNK: 'graph:chat-chunk',  // main → renderer: { graphId, nodeId, text }
   GRAPH_CHAT_DONE:  'graph:chat-done',   // main → renderer: { graphId, nodeId, ok, text?, error? }
   GRAPH_PICK_FILE: 'graph:pick-file',  // renderer → main: нативный диалог выбора документа для узла-файла
+  GRAPH_CHANGED:  'graph:changed',   // main → renderer: граф пополнился извне (ПКМ «Добавить в граф»)
   GRAPH_PROGRESS: 'graph:progress', // main → renderer: GraphProgress (статусы + стрим-чанки)
 
   // Узел-веб-приложение: чужой AI-сайт в панели 1:1. Обмен только через руку человека —
@@ -1556,6 +1557,8 @@ export interface OblakoApi {
   deleteImagePreset(id: string): Promise<void>;
   cancelGraphRun(graphId: number): Promise<void>;
   onGraphProgress(cb: (p: GraphProgress) => void): () => void;
+  // Граф пополнился снаружи — открытый холст должен перечитать его.
+  onGraphChanged(cb: (graphId: number) => void): () => void;
 
   // Узел-веб-приложение. Промпт для вставки собирает main из сохранённого графа (renderer
   // его не считает — иначе состояние разъехалось бы), пойманный ответ main же и пишет в

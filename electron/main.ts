@@ -26,6 +26,7 @@ import {
 } from './GraphEngine';
 import type { ImagePreset } from '../shared/imagePresets';
 import { sendChatMessage } from './GraphChat';
+import { addItemsToGraph, buildAddToGraphMenuItem } from './GraphInbox';
 import {
   captureAnswer, closeGraphWebApp, insertPrompt, raiseGraphWebApp,
   setGraphWebAppBounds, showGraphWebApp,
@@ -341,6 +342,11 @@ function maybeLazyWarmupOnDemand(): void {
   }, WARMUP_DEFER_MS);
 }
 
+// Открытый холст графа должен перечитать граф, если тот пополнился из контекстного меню.
+function notifyGraphChanged(graphId: number): void {
+  chromeView?.webContents.send(IPC.GRAPH_CHANGED, graphId);
+}
+
 // См. комментарий у SETTINGS_GET_HUB_MODE — отличает пассивное восстановление сессии (первый
 // запрос режима хаба за процесс) от реальной навигации пользователя (все последующие).
 let hubModeQueried = false;
@@ -638,6 +644,10 @@ function createWindow() {
   // Узлу-веб-приложению графа — только чтобы target=_blank со стороннего сайта уходил
   // обычной вкладкой Oblako, а не отдельным Chromium-окном (как у WebAppManager).
   setGraphWebAppTabManager(tabs);
+  // ПКМ по ссылке на странице → «Добавить в граф». Пункт строит main (у него хранилище),
+  // TabManager только вставляет готовое в своё меню.
+  tabs.setGraphMenuBuilder((items, sticker) =>
+    buildAddToGraphMenuItem(graphs, items, sticker, notifyGraphChanged));
   setOnSearchRun(({ query, target, sameTab }) => {
     if (!tabs) return;
     // Бэнг в строке главнее выбранного чипа и разбирается ЗДЕСЬ, а не в поповере: BangStore
@@ -1726,12 +1736,17 @@ function registerIpc() {
     if (!tabs || !win) return;
     const isPinned = tabs.isTabPinned(id);
     const groupId  = tabs.getTabGroupId(id);
+    const state = tabs.snapshot().find((t) => t.id === id);
+    const toGraph = state
+      ? buildAddToGraphMenuItem(graphs, [{ url: state.url, title: state.title || state.url }], undefined, notifyGraphChanged)
+      : null;
 
     const items: MenuItemConstructorOptions[] = [
       {
         label: isPinned ? 'Открепить вкладку' : 'Закрепить вкладку',
         click: () => tabs!.togglePin(id),
       },
+      ...(toGraph ? [toGraph] : []),
       { type: 'separator' },
     ];
 
@@ -1795,6 +1810,10 @@ function registerIpc() {
       { label: 'Синий',       value: 'blue' },
       { label: 'Фиолетовый',  value: 'purple' },
     ];
+    const groupTitle = tabs.getGroupTitle(groupId) || 'Папка';
+    const groupToGraph = buildAddToGraphMenuItem(
+      graphs, tabs.getGroupContents(groupId), groupTitle, notifyGraphChanged,
+    );
     const items: MenuItemConstructorOptions[] = [
       {
         label: 'Переименовать',
@@ -1807,6 +1826,7 @@ function registerIpc() {
           click: () => tabs!.setGroupColor(groupId, value || null),
         })),
       },
+      ...(groupToGraph ? [groupToGraph] : []),
       { type: 'separator' },
       {
         label: 'Свернуть / развернуть',

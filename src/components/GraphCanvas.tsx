@@ -44,6 +44,7 @@ const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
   { title: 'Проверка', kinds: ['search.web', 'factcheck.gemini'] },
   { title: 'Артефакты', kinds: ['artifact.summary', 'artifact.mindmap', 'artifact.infographic', 'artifact.quiz'] },
   { title: 'Итог', kinds: ['output.text'] },
+  { title: 'Пометки', kinds: ['sticker'] },
 ];
 
 const SAVE_DEBOUNCE_MS = 600;
@@ -206,6 +207,16 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
       }
     })();
     return () => { alive = false; };
+  }, [openGraph, refreshList]);
+
+  // Граф мог пополниться снаружи — из ПКМ «Добавить в граф» на странице или в сайдбаре.
+  // Перечитываем целиком: узлы добавились в базу мимо холста, и локального состояния,
+  // которое можно было бы подшить, у нас нет.
+  useEffect(() => {
+    return window.oblako.onGraphChanged((graphId) => {
+      void refreshList();
+      if (graphId === loadedIdRef.current) void openGraph(graphId);
+    });
   }, [openGraph, refreshList]);
 
   // Ход прогона из main. Чанки Qwen приходят потоком — дописываем их в вывод узла.

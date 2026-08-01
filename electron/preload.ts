@@ -330,6 +330,11 @@ const api: OblakoApi = {
   saveImagePreset: (preset: ImagePreset) => ipcRenderer.invoke(IPC.GRAPH_PRESET_SAVE, preset) as Promise<void>,
   deleteImagePreset: (id: string) => ipcRenderer.invoke(IPC.GRAPH_PRESET_DELETE, id) as Promise<void>,
   cancelGraphRun: (graphId: number) => ipcRenderer.invoke(IPC.GRAPH_CANCEL, graphId) as Promise<void>,
+  onGraphChanged: (cb: (graphId: number) => void) => {
+    const handler = (_e: unknown, graphId: number) => cb(graphId);
+    ipcRenderer.on(IPC.GRAPH_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.GRAPH_CHANGED, handler);
+  },
   onGraphProgress: (cb: (p: GraphProgress) => void) => {
     const handler = (_e: unknown, p: GraphProgress) => cb(p);
     ipcRenderer.on(IPC.GRAPH_PROGRESS, handler);
