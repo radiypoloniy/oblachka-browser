@@ -116,3 +116,23 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .oblako-graph-spin { animation: none; }
 }
+
+/* Новая вкладка: ступенчатое появление блоков. Часы, инфо-строка, приветствие, поиск и
+   плитки въезжают по очереди с шагом 60 мс — это первое, что видит человек при открытии
+   вкладки, и единственное место, где длинная (420 мс) анимация уместна: она играет один
+   раз и не стоит на пути. Двигаем opacity и transform — вёрстка не пересчитывается. */
+@keyframes oblako-newtab-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+.oblako-newtab-in > * {
+  animation: oblako-newtab-in 420ms var(--ease-out) both;
+}
+.oblako-newtab-in > *:nth-child(2) { animation-delay: 60ms; }
+.oblako-newtab-in > *:nth-child(3) { animation-delay: 120ms; }
+.oblako-newtab-in > *:nth-child(4) { animation-delay: 150ms; }
+.oblako-newtab-in > *:nth-child(5) { animation-delay: 180ms; }
+.oblako-newtab-in > *:nth-child(6) { animation-delay: 260ms; }
+@media (prefers-reduced-motion: reduce) {
+  .oblako-newtab-in > * { animation: none; }
+}

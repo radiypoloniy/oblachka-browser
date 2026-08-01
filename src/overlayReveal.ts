@@ -19,13 +19,17 @@
 const STYLE_ID = 'oblako-overlay-reveal';
 const CLASS = 'oblako-reveal';
 
+// Сдвиг и масштаб намеренно ЗАМЕТНЫЕ. Первая версия делала 4 px за 180 мс — механика
+// работала, но глаз этого просто не регистрировал: получался не переход, а тот же щелчок,
+// только мягкий. Движение должно читаться, иначе его нет смысла делать.
 const CSS = `
 @keyframes ${CLASS}-in {
-  from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+  from { opacity: 0; transform: translateY(-10px) scale(0.96); }
   to   { opacity: 1; transform: none; }
 }
 body.${CLASS} > * {
-  animation: ${CLASS}-in var(--dur-base, 180ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  animation: ${CLASS}-in 220ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  transform-origin: top center;
 }
 @media (prefers-reduced-motion: reduce) {
   body.${CLASS} > * { animation: none; }

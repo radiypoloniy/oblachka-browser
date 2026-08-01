@@ -52,8 +52,10 @@ export default function NewTab({ onSubmit, onOpenAi, onOpenGraph, tiles }: NewTa
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 'var(--radius-island)' }}>
       <Background bg={settings.background} photoUrl={photoUrl} />
 
-      {/* Контент поверх фона */}
-      <div style={{
+      {/* Контент поверх фона. Появляется ступенчато (см. .oblako-newtab-in в global.css):
+          новая вкладка — единственное место, где заметная анимация уместна, потому что она
+          играет один раз и ничему не мешает. */}
+      <div className="oblako-newtab-in" style={{
         position: 'absolute', inset: 0, zIndex: 2,
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         gap: 22, padding: '48px', textAlign: 'center',
