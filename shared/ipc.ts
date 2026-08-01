@@ -145,7 +145,7 @@ export interface TabState {
   // экземплярах, не участвуют в сессии/истории/усыплении (см. TabManager.createSpecialTab —
   // тот же путь #tabUrl()==='' → savable()===false / isHttpView(null)===false, что уже
   // естественно исключает их из session snapshot и sleep-таймера, без отдельных правок там).
-  kind: 'page' | 'hub' | 'history' | 'settings' | 'bookmarks';
+  kind: 'page' | 'hub' | 'history' | 'settings' | 'bookmarks' | 'downloads';
   // Начальный раздел для kind==='settings' (напр. 'ai') — необязателен, задаётся только когда
   // createSpecialTab('settings', section) вызван с разделом (см. AiPanelManager.ts кнопка "+" в
   // AI-панели). Для всех остальных kind не используется.
@@ -1316,7 +1316,7 @@ export interface OblakoApi {
   // просто без WebContentsView. См. shared/ipc.ts::TabState.kind, TabManager.createSpecialTab.
   // section — необязательный начальный раздел Settings (см. TabState.section выше), для
   // history/bookmarks игнорируется.
-  createSpecialTab(kind: 'history' | 'settings' | 'bookmarks', section?: string): Promise<string>;
+  createSpecialTab(kind: 'history' | 'settings' | 'bookmarks' | 'downloads', section?: string): Promise<string>;
   closeTab(id: string): Promise<void>;
   activateTab(id: string): Promise<void>;
   navigate(id: string, input: string): Promise<void>;

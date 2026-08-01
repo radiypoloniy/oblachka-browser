@@ -987,7 +987,10 @@ export default function Toolbar({
               style={{
                 flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none',
                 fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
-                fontFamily: isHub ? 'var(--font-sans)' : 'var(--font-mono)',
+                // Брендовый Golos и для адреса тоже. Моноширинный тут стоял ради ровных
+                // символов URL, но выбивался из всего остального интерфейса — а адрес человек
+                // читает как текст, а не как код.
+                fontFamily: 'var(--font-sans)',
               }}
             />
             {!isHub && tab?.url && (

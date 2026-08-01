@@ -1,4 +1,4 @@
-import { Clock, Star, Settings, type LucideIcon } from 'lucide-react';
+import { Clock, Star, Settings, Download, type LucideIcon } from 'lucide-react';
 import type { TabState } from '../../shared/ipc';
 
 // Единый маппинг kind → цветная плитка для псевдо-вкладок (История/Закладки/Настройки) в
@@ -13,8 +13,11 @@ import type { TabState } from '../../shared/ipc';
 // Bookmarks оба на accent — тот же токен, что уже красит Cloud-иконку хаба; различаются глифом,
 // не цветом. Settings — нейтральный var(--neutral-300), тот же серый, что и буква-фолбэк
 // favicon чуть ниже в этом же компоненте (визуальная согласованность плиток одного семейства).
+// Цвет здесь — опознавательный знак, а не состояние: плитки различаются им так же, как
+// значки разделов в iOS. Токены живут в colors.css (--tile-*), в компонентах не хардкодятся.
 export const TAB_KIND_TILE: Partial<Record<TabState['kind'], { Icon: LucideIcon; color: string }>> = {
-  history:   { Icon: Clock,    color: 'var(--accent)' },
-  bookmarks: { Icon: Star,     color: 'var(--accent)' },
-  settings:  { Icon: Settings, color: 'var(--neutral-300)' },
+  history:   { Icon: Clock,    color: 'var(--tile-orange)' },
+  bookmarks: { Icon: Star,     color: 'var(--tile-pink)' },
+  settings:  { Icon: Settings, color: 'var(--tile-grey)' },
+  downloads: { Icon: Download, color: 'var(--tile-teal)' },
 };

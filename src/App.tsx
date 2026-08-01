@@ -122,7 +122,6 @@ export default function App() {
   // из настроек, 'onboarding' — авто-предложение первого запуска (мягче тон + «Пропустить»),
   // null — закрыта. См. ImportDialog.tsx / electron/browserImport/.
   const [importDialog, setImportDialog] = useState<'manual' | 'onboarding' | null>(null);
-  const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
   const [splitRatio, setSplitRatioState] = useState(0.5);
@@ -187,9 +186,6 @@ export default function App() {
   // tabErrorRef нужен в pushBounds: reserve не применяем когда показана страница ошибки.
   const tabErrorRef = useRef(tabError);
   tabErrorRef.current = tabError;
-  // downloadsOpenRef: пока открыты Загрузки (оверлей), скрываем WebContentsView нулевыми bounds.
-  const downloadsOpenRef = useRef(downloadsOpen);
-  downloadsOpenRef.current = downloadsOpen;
   const pendingPermissionsRef = useRef(pendingPermissions);
   pendingPermissionsRef.current = pendingPermissions;
 
@@ -276,11 +272,11 @@ export default function App() {
     // без «переключиться на уже открытую, если есть»).
     const unsubHistory = window.oblako.onHistoryOpen(() => {
       void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })();
-      setDownloadsOpen(false);
+      
     });
 
     const unsubDownloadsOpen = window.oblako.onDownloadsOpen(() => {
-      setDownloadsOpen((v) => !v);
+      void (async () => { setActiveId(await window.oblako.createSpecialTab('downloads')); })();
     });
 
     const unsubPermission = window.oblako.onPermissionRequest((req) => {
@@ -437,15 +433,9 @@ export default function App() {
   const pushBounds = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
-    // Загрузки всё ещё оверлей (не тронуты этим заходом) — скрываем WebContentsView нулевыми
-    // bounds, пока он открыт. История/Настройки — теперь псевдо-вкладки (view: null в TabManager,
-    // тот же приём, что у хаба): activate() на них уже сам прячет любую ранее показанную реальную
-    // вьюху (тот же путь, что при переключении на хаб), отдельный зов не нужен — подтверждено
-    // чтением TabManager.activate()/repositionViews().
-    if (downloadsOpenRef.current) {
-      sendContentBounds({ x: 0, y: 0, width: 0, height: 0 });
-      return;
-    }
+    // Загрузки теперь такая же псевдо-вкладка, как История и Настройки (view: null в
+    // TabManager, приём хаба): activate() сам прячет ранее показанную реальную вьюху, и
+    // отдельное «спрятать контент нулевыми bounds» для оверлея больше не нужно.
     const r = el.getBoundingClientRect();
     // Дропдаун омнибокса больше НЕ резервирует место — нативная вью (SuggestDropdownManager.ts)
     // плавает поверх контента как самостоятельный оверлей (native z-order, addChildView), контенту
@@ -488,7 +478,6 @@ export default function App() {
   useEffect(() => { pushBounds(); }, [activeId, isHub, pushBounds]);
 
   // То же для панели загрузок (всё ещё оверлей, не тронута этим заходом).
-  useEffect(() => { pushBounds(); }, [downloadsOpen, pushBounds]);
 
   // Количество незакреплённых, негруппированных вкладок-единиц верхнего уровня.
   // GroupNode и pinned в счёт не идут — только top-level single + split-pair.
@@ -586,8 +575,8 @@ export default function App() {
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
         onSplit={(id) => { setSplitRatioState(0.5); void window.oblako.enterSplit(id); }}
         onExitSplit={(tabId) => { void window.oblako.exitSplit(tabId); }}
-        onSettings={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })(); setDownloadsOpen(false); }}
-        onHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); setDownloadsOpen(false); }}
+        onSettings={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })();  }}
+        onHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })();  }}
         onReorder={(section, ids) => { void window.oblako.reorderTabs(section, ids); }}
         onMoveSection={(tabId, section, idx) => { void window.oblako.moveTabSection(tabId, section, idx); }}
         sidebarNodes={sidebarNodes}
@@ -619,8 +608,8 @@ export default function App() {
             void window.oblako.setSuggestDropdownOpen(open);
           }}
           downloadsActive={downloadsActive}
-          downloadsOpen={downloadsOpen}
-          onToggleDownloads={() => { setDownloadsOpen((v) => !v); }}
+          downloadsOpen={kind === 'downloads'}
+          onToggleDownloads={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('downloads')); })(); }}
           onToggleAiPanel={() => { void window.oblako.toggleAiPanel(); }}
           pageTranslateState={pageTranslateState}
           pageTranslateProgress={pageTranslateProgress}
@@ -644,8 +633,8 @@ export default function App() {
           marginTop: 'var(--gutter-shell)', marginBottom: 'var(--gutter-shell)', marginLeft: 'var(--gutter-shell)',
           marginRight: aiPanelOpen ? 0 : SHELL_MARGIN,
         }}>
-          {downloadsOpen ? (
-            <Downloads downloads={downloads} onClose={() => setDownloadsOpen(false)} />
+          {kind === 'downloads' ? (
+            <Downloads downloads={downloads} onClose={() => void window.oblako.closeTab(activeId)} />
           ) : kind === 'history' || kind === 'bookmarks' ? (
             <HistoryBookmarks defaultSection={kind} onClose={() => void window.oblako.closeTab(activeId)} />
           ) : kind === 'settings' ? (
@@ -735,7 +724,7 @@ export default function App() {
           )}
           {/* Рамка drag-to-split: видна когда вкладка тащится над контентом. kind==='page' уже
               покрывает хаб/Историю/Настройки одним условием — раньше это были 3 отдельных флага. */}
-          {splitDragOver && !isSplit && kind === 'page' && !downloadsOpen && (
+          {splitDragOver && !isSplit && kind === 'page' && (
             <div style={{
               position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none',
               border: '2px dashed var(--accent)', borderRadius: 'var(--radius-sm)',
@@ -744,7 +733,7 @@ export default function App() {
 
           {/* Inline-prompt разрешений: показываем первый из очереди. */}
           {/* Промпт в chrome-зоне, WebContentsView сдвинут вниз через pushBounds. */}
-          {pendingPermissions.length > 0 && kind === 'page' && !tabError && !downloadsOpen && (
+          {pendingPermissions.length > 0 && kind === 'page' && !tabError && (
             <PermissionPrompt
               request={pendingPermissions[0]}
               onRespond={handlePermissionRespond}

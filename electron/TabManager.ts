@@ -96,7 +96,7 @@ interface ManagedTab {
   // (см. ниже) → savable()===false и isHttpView(null)===false уже естественно исключают её из
   // сессии/сна без отдельных правок в SessionManager/sleep-таймере (см. диагностику, подтверждено
   // чтением кода: #serializeNodes фильтрует по savable(), sleep-таймер — по isHttpView).
-  kind?: 'history' | 'settings' | 'bookmarks';
+  kind?: 'history' | 'settings' | 'bookmarks' | 'downloads';
   // Начальный раздел для kind==='settings' (см. createSpecialTab ниже) — необязателен, задаётся
   // только когда вызывающая сторона просит конкретный раздел (напр. кнопка "+" в AI-панели).
   section?: string;
@@ -378,7 +378,9 @@ export class TabManager {
       return {
         id: t.id, isActive: t.id === this.activeId,
         tabError: null,
-        url: '', title: t.kind === 'history' ? 'История посещений' : t.kind === 'bookmarks' ? 'Закладки' : 'Настройки',
+        url: '', title: t.kind === 'history' ? 'История посещений'
+          : t.kind === 'bookmarks' ? 'Закладки'
+          : t.kind === 'downloads' ? 'Загрузки' : 'Настройки',
         faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false,
         isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: false, kind: t.kind, section: t.section,
       };
@@ -835,7 +837,7 @@ export class TabManager {
   // на несколько экземпляров, а эта вкладка — обычная запись со своим id, закрываемая, можно
   // открыть несколько сразу). #tabUrl()==='' для неё уже естественно исключает её из
   // savable()/session-снимка и isHttpView()/sleep-таймера — без отдельных правок там.
-  createSpecialTab(kind: 'history' | 'settings' | 'bookmarks', section?: string): string {
+  createSpecialTab(kind: 'history' | 'settings' | 'bookmarks' | 'downloads', section?: string): string {
     const id = randomUUID();
     const tab: ManagedTab = { id, view: null, sleeping: null, lastActiveAt: Date.now(), kind, section };
     this.tabMap.set(id, tab);

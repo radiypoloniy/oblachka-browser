@@ -25,15 +25,17 @@ interface SettingsProps {
 // Секции левого меню — «Блокировка» и «AI» рабочие, VPN/Интерфейс — placeholder для будущих
 // этапов. soon — единственный флаг, гоняющий и активность, и клик, и стиль (см. рендер-цикл
 // ниже) — точечно снят только у 'ai', остальные пункты и их поведение не тронуты.
-type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean };
+type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean; tint: string };
+// Цвет значка — опознавательный знак раздела, как в настройках iOS: глаз находит нужную
+// строку по пятну раньше, чем прочитает подпись. Токены --tile-* живут в colors.css.
 const NAV_ITEMS: NavItem[] = [
-  { id: 'general',    label: 'Браузер',    Icon: SlidersHorizontal },
-  { id: 'adblock',    label: 'Блокировка', Icon: Shield },
-  { id: 'vpn',        label: 'VPN',         Icon: Wifi },
-  { id: 'ai',         label: 'AI',          Icon: Cpu },
-  { id: 'passwords',  label: 'Пароли',      Icon: Lock },
-  { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard },
-  { id: 'appearance', label: 'Интерфейс',   Icon: Palette },
+  { id: 'general',    label: 'Браузер',        Icon: SlidersHorizontal, tint: 'var(--tile-grey)' },
+  { id: 'adblock',    label: 'Блокировка',     Icon: Shield,            tint: 'var(--tile-green)' },
+  { id: 'vpn',        label: 'VPN',            Icon: Wifi,              tint: 'var(--tile-blue)' },
+  { id: 'ai',         label: 'AI',             Icon: Cpu,               tint: 'var(--tile-indigo)' },
+  { id: 'passwords',  label: 'Пароли',         Icon: Lock,              tint: 'var(--tile-grey)' },
+  { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard,        tint: 'var(--tile-orange)' },
+  { id: 'appearance', label: 'Интерфейс',      Icon: Palette,           tint: 'var(--tile-purple)' },
 ];
 type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'passwords' | 'autofill' | 'appearance';
 
@@ -132,7 +134,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
           width: 200, flex: 'none', borderRight: '1px solid var(--divider-strong)',
           padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: 2,
         }}>
-          {NAV_ITEMS.map(({ id, label, Icon, soon }) => {
+          {NAV_ITEMS.map(({ id, label, Icon, soon, tint }) => {
             const active = section === id && !soon;
             return (
               <button
@@ -157,7 +159,15 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
                 onMouseEnter={(e) => { if (!active && !soon) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                 onMouseLeave={(e) => { if (!active && !soon) e.currentTarget.style.background = 'transparent'; }}
               >
-                <Icon size={15} />
+                {/* Квадратик со скруглением и белым глифом — та же плитка, что у псевдо-вкладок
+                    в сайдбаре (src/styles/tabKindTile.ts), чтобы язык значков был один. */}
+                <span style={{
+                  width: 22, height: 22, flex: 'none', borderRadius: 6,
+                  background: tint ?? 'var(--tile-grey)', color: '#fff',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Icon size={13} strokeWidth={2.4} />
+                </span>
                 <span className="settings-nav-label">{label}</span>
                 {soon && (
                   <span className="settings-nav-badge" style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-faint)', fontWeight: 400 }}>
