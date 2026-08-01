@@ -713,7 +713,8 @@ function createWindow(role: WindowRole = 'main') {
   // Регистрируем окно в реестре — с этого момента его находят по отправителю IPC. Владелец
   // сессии ставится тут же: дерево вкладок принадлежит полному окну, и только его снимок имеет
   // право попасть в session.json (см. SessionManager.setOwner) — чужой отбрасывается молча.
-  registerWindow({ win, chromeView, tabs, role });
+  const ctx = { win, chromeView, tabs, role };
+  registerWindow(ctx);
   sess?.setOwner(tabs);
   if (isMain) { mainWin = win; mainChromeView = chromeView; mainTabs = tabs; mainSess = sess; }
 
@@ -1075,6 +1076,8 @@ function createWindow(role: WindowRole = 'main') {
     void vpnProcess.stop();
   });
 
+  // Контекст наружу — вызывающей стороне (перенос вкладки) нужен менеджер вкладок нового окна.
+  // Возврат стоит ДО подписок на закрытие ниже только ради читаемости — они уже навешены выше.
   win.on('closed', () => {
     console.log(`[shutdown] win closed (${role}): обнуляю вкладки окна`);
     tabs = null;
@@ -1082,6 +1085,23 @@ function createWindow(role: WindowRole = 'main') {
     // лёгкого окна оставило бы приложение без адресата для отправителей вне реестра.
     if (isMain) { mainWin = null; mainChromeView = null; mainTabs = null; mainSess = null; }
   });
+
+  return ctx; // вызывающей стороне (перенос вкладки) нужен менеджер вкладок нового окна
+}
+
+// Перенос вкладки в новое окно. Порядок важен: сначала СНИМАЕМ вкладку со старого окна и только
+// потом создаём новое. Наоборот — и при отказе снять (спящая, split, закреплённая) на экране
+// осталось бы пустое окно, которого никто не просил.
+function moveTabToNewWindow(from: TabManager, tabId: string): boolean {
+  const detached = from.detachTabForMove(tabId);
+  if (!detached) return false;
+  const target = createWindow('light');
+  if (target.tabs.adoptTab(detached)) return true;
+  // Новое окно вкладку не приняло (страница успела умереть) — не бросаем вью в никуда.
+  if (!detached.view.webContents.isDestroyed()) {
+    (detached.view.webContents as unknown as { close?: () => void }).close?.();
+  }
+  return false;
 }
 
 // VPN, шаг 3 — единственное место, которое решает, куда идёт ВЕСЬ трафик вкладок
@@ -1248,6 +1268,13 @@ function registerIpc() {
   ipcMain.handle(IPC.WINDOW_GET_ROLE, (e): WindowRole => contextFromSender(e.sender)?.role ?? 'light');
   // Новое окно — всегда лёгкое: полное ровно одно, оно владеет сессией.
   ipcMain.handle(IPC.WINDOW_OPEN, () => { createWindow('light'); });
+  // Перенос вкладки в новое окно. Порядок важен: сначала СНИМАЕМ вкладку со старого окна и только
+  // потом создаём новое. Наоборот — и при отказе снять (спящая, split, закреплённая) на экране
+  // оставалось бы пустое окно, которого никто не просил.
+  ipcMain.handle(IPC.WINDOW_MOVE_TAB, (e, tabId: string) => {
+    const from = tabsOf(e);
+    return from ? moveTabToNewWindow(from, tabId) : false;
+  });
   ipcMain.handle(IPC.FIND_START, (e, q: string, fwd: boolean) => tabsOf(e)?.findInPage(q, fwd));
   ipcMain.handle(IPC.FIND_NEXT,  (e, fwd: boolean)            => tabsOf(e)?.findNext(fwd));
   ipcMain.handle(IPC.FIND_STOP,  (e)                            => tabsOf(e)?.stopFind());
@@ -1940,6 +1967,14 @@ function registerIpc() {
       {
         label: isPinned ? 'Открепить вкладку' : 'Закрепить вкладку',
         click: () => t.togglePin(id),
+      },
+      // Перенос живой страницы в своё окно. Пункт неактивен там, где перенос не поддержан:
+      // закреплённая полоса своя у окна, спящая вкладка ещё не имеет вью, участник split увёл бы
+      // за собой половину пары (см. TabManager.detachTabForMove).
+      {
+        label: 'Открыть в новом окне',
+        enabled: !isPinned && state !== undefined && !state.isSleeping && state.splitSide === null,
+        click: () => { void moveTabToNewWindow(t, id); },
       },
       ...(toGraph ? [toGraph] : []),
       { type: 'separator' },

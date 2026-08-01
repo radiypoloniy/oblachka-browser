@@ -102,6 +102,14 @@ interface ManagedTab {
   section?: string;
 }
 
+// Вкладка, снятая с окна и ждущая нового владельца (см. detachTabForMove/adoptTab). Намеренно
+// несёт только вью и признак приватности: заголовок, favicon и историю страница знает сама, а
+// id новый менеджер выдаёт свой.
+export interface DetachedTab {
+  view: WebContentsView;
+  incognito: boolean;
+}
+
 // Скрипт проверки незаполненных форм — только top-frame (v1: поля внутри iframe не проверяются).
 const HAS_FILLED_FORMS_SCRIPT = `(function(){
   var sel='input:not([type=checkbox]):not([type=radio]):not([type=hidden])' +
@@ -1085,13 +1093,21 @@ export class TabManager {
 
   private wirePageEvents(id: string, view: WebContentsView) {
     const wc = view.webContents;
-    const notify = () => this.onChange();
+    // ⚠️ Вкладку можно передать другому окну (см. detachTabForMove). Слушатели, навешенные ЭТИМ
+    // менеджером, остаются на её webContents навсегда: снять их выборочно нечем, а
+    // removeAllListeners снёс бы и чужие (видео, PiP, индексация истории). Поэтому каждый
+    // обработчик сначала спрашивает, наша ли это ещё вкладка. Иначе прежнее окно продолжало бы
+    // писать её визиты в историю вторым экземпляром, ловить found-in-page в свою панель поиска
+    // и раздвигаться на полный экран из чужого видео.
+    const mine = () => this.tabMap.has(id);
+    const notify = () => { if (mine()) this.onChange(); };
 
     // Менеджер паролей, шаг 2 — per-view IPC (webContents.ipc, не общий ipcMain): main точно
     // знает, какая вкладка прислала сообщение, без реверс-маппинга webContents.id → tabId.
     // Origin НЕ берём из payload content-preload (недоверенный источник) — только из wc.getURL()
     // здесь, в main, в момент события (см. PasswordAutofillManager.ts).
     wc.ipc.on(IPC.PASSWORDS_FORM_DETECTED, (_e, payload: { hasLoginForm: boolean; hasUsernameField: boolean }) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       try {
         this.onPasswordFormCb?.(id, payload.hasLoginForm, payload.hasUsernameField, wc.getURL());
       } catch (e) {
@@ -1099,6 +1115,7 @@ export class TabManager {
       }
     });
     wc.ipc.on(IPC.PASSWORDS_CREDENTIAL_SUBMITTED, (_e, payload: { username: string; password: string }) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       try {
         this.onPasswordSubmitCb?.(id, payload.username, payload.password, wc.getURL());
       } catch (e) {
@@ -1106,6 +1123,7 @@ export class TabManager {
       }
     });
     wc.ipc.on(IPC.PASSWORDS_FIELD_ICON_CLICK, (_e, payload: { rect: { x: number; y: number; width: number; height: number } }) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       try {
         this.onPasswordFieldIconClickCb?.(id, payload.rect, wc.getURL());
       } catch (e) {
@@ -1114,6 +1132,7 @@ export class TabManager {
     });
     // Автозаполнение — фокус на поле адреса/карты. Origin/url — из wc.getURL() (не из payload).
     wc.ipc.on(IPC.AUTOFILL_FIELD_FOCUS, (_e, payload: { rect: { x: number; y: number; width: number; height: number }; kind: 'address' | 'card' }) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       try {
         this.onAutofillFieldFocusCb?.(id, payload.rect, payload.kind, wc.getURL());
       } catch (e) {
@@ -1121,6 +1140,7 @@ export class TabManager {
       }
     });
     wc.ipc.on(IPC.AUTOFILL_SUBMIT, (_e, payload: { kind: 'address' | 'card'; fields: Record<string, string> }) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       try {
         this.onAutofillSubmitCb?.(id, payload.kind, payload.fields, wc.getURL());
       } catch (e) {
@@ -1131,6 +1151,7 @@ export class TabManager {
     // Когда WebContentsView получает OS-фокус от клика мышью — проверяем, не нужно ли
     // активировать панель split. DOM-дивы в renderer не получают клик, перекрытый вьюхой.
     wc.on('focus', () => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       // Пара, которую переключаем, должна быть ПОКАЗЫВАЕМОЙ (== #activePair()) — иначе это
       // скрытая вьюха припаркованной пары, которая в норме и так не должна получать OS-фокус,
       // но проверка не полагается на это молча.
@@ -1155,11 +1176,12 @@ export class TabManager {
     }
 
     // Новая попытка загрузки — очищаем предыдущую ошибку сразу.
-    wc.on('did-start-loading', () => { this.errors.delete(id); notify(); });
+    wc.on('did-start-loading', () => { if (!mine()) return; this.errors.delete(id); notify(); });
     wc.on('did-stop-loading', notify);
     // Успешный коммит навигации — показываем вьюху + сбрасываем поиск.
     // Не на did-start-loading: вьюха не должна мигать при retry, который снова упадёт.
     wc.on('did-navigate', () => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       const isActivePanel = this.activeId === id;
       const pair = this.#pairContaining(id);
       const isInSplit = !!pair;
@@ -1199,6 +1221,7 @@ export class TabManager {
     // задать вью новые границы, она полсекунды живёт не по размеру окна — кадр прыгает, а по
     // краям мелькает пустота. Отсюда подписка на события окна, а не немедленный вызов.
     wc.on('enter-html-full-screen', () => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       this.fullscreenTabId = id;
       if (this.win.isDestroyed()) return;
       if (this.win.isFullScreen()) { this.repositionViews(); return; }
@@ -1206,6 +1229,7 @@ export class TabManager {
       this.win.setFullScreen(true);
     });
     wc.on('leave-html-full-screen', () => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       if (this.fullscreenTabId !== id) return;
       this.fullscreenTabId = null;
       if (this.win.isDestroyed()) return;
@@ -1214,12 +1238,14 @@ export class TabManager {
       this.win.setFullScreen(false);
     });
     wc.on('page-title-updated', (_e, title) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       // Обновляем только заголовок — без инкремента счётчика посещений.
       this.onTitleUpdateCb?.(wc.getURL(), title);
       notify();
     });
 
     wc.on('page-favicon-updated', (_e, favicons) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       const url = favicons?.[0];
       (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon = url;
       notify();
@@ -1228,6 +1254,7 @@ export class TabManager {
 
     // Результат findInPage — пробрасываем в renderer для обновления счётчика.
     wc.on('found-in-page', (_e, result) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       this.onFindResultCb({ activeMatch: result.activeMatchOrdinal, count: result.matches });
     });
 
@@ -1266,6 +1293,7 @@ export class TabManager {
     // Ctrl+колесо → наш зум (preventDefault гасит нативный зум Chromium).
     // Chromium перехватывает Ctrl+scroll как gesture, поэтому страница не скроллится.
     wc.on('zoom-changed', (event, direction) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       event.preventDefault();
       this.adjustZoom(direction === 'in' ? ZOOM_STEP : -ZOOM_STEP);
     });
@@ -1273,6 +1301,7 @@ export class TabManager {
     // Ошибка загрузки основного фрейма (DNS, сеть, TLS…)
     // errorCode === -3 (ERR_ABORTED) — пользователь остановил загрузку; не ошибка.
     wc.on('did-fail-load', (_e, errorCode, _desc, validatedURL, isMainFrame) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       if (!isMainFrame || errorCode === -3) return;
       const url = wc.getURL() || validatedURL;
       // Снимаем состояние сети ЗДЕСЬ, а не в renderer: к моменту показа плашки сеть может уже
@@ -1291,6 +1320,7 @@ export class TabManager {
     // усыпление (sleepTab) и обычный closeTab() сами обнуляют/удаляют tab.view ДО close(),
     // так что к моменту этого события они уже не совпадут и повторной уборки не случится.
     wc.on('destroyed', () => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       const tab = this.tabMap.get(id);
       if (!tab || tab.view !== view) return;
       // [диагностика краша exitSplit/closeTab на shutdown] — какая вкладка, участник ли split,
@@ -1645,6 +1675,63 @@ export class TabManager {
     } else {
       this.onChange();
     }
+  }
+
+  // ── Перенос вкладки в другое окно ───────────────────────────────────────────
+  //
+  // Отдаём ЖИВУЮ вью, а не адрес. Открыть URL заново в новом окне было бы вдвое проще, но
+  // человек потерял бы всё, ради чего вкладку и вытаскивают: историю «назад», позицию прокрутки,
+  // набранный в форме текст, авторизованное состояние SPA.
+  //
+  // ⚠️ Ограничения намеренные: хаб, псевдо-вкладки (История/Настройки), спящие и участники split
+  // не переносятся. У спящей нет вью — переносить нечего, кроме адреса; из split надо сначала
+  // выйти, иначе пара осталась бы половиной в одном окне, половиной в другом.
+  detachTabForMove(id: string): DetachedTab | null {
+    if (id === HUB_ID) return null;
+    const tab = this.tabMap.get(id);
+    if (!tab || !this.isLiveHttpView(tab.view)) return null;
+    if (this.#pairContaining(id)) return null;
+    if (this.isTabPinned(id)) return null; // закреплённые живут в своей полосе — не переносим
+
+    const view = tab.view;
+    this.clearOrganizeSnapshot();
+
+    // Из дерева узлов — тем же путём, что closeTab (вкладка может лежать внутри группы).
+    const found = this.#findTabParent(id);
+    if (found && found.parent[found.idx]?.type === 'single') {
+      found.parent.splice(found.idx, 1);
+      this.#pruneEmptyGroups(this.nodes);
+    }
+    this.tabMap.delete(id);
+    this.errors.delete(id);
+    // Снимаем вью с окна, но НЕ закрываем webContents — она сейчас же встанет в другое окно.
+    try { this.win.contentView.removeChildView(view); } catch { /* окно могло уже закрыться */ }
+
+    // Ушла активная — показываем соседнюю, как при закрытии.
+    if (this.activeId === id) {
+      const ordered = this.tabsInVisualOrder(true);
+      const next = ordered[0] ?? this.hubTab;
+      this.activate(next.id);
+    } else {
+      this.onChange();
+    }
+    return { view, incognito: tab.incognito === true };
+  }
+
+  // Принять вкладку, отданную другим окном. Слушатели навешиваются заново — уже на ЭТОТ менеджер
+  // (у прежнего они остались, но молчат: см. mine() в wirePageEvents).
+  adoptTab(d: DetachedTab): string | null {
+    if (d.view.webContents.isDestroyed()) return null;
+    const id = randomUUID(); // свой id: прежний принадлежал дереву того окна
+    const tab: ManagedTab = {
+      id, view: d.view, sleeping: null, lastActiveAt: Date.now(), incognito: d.incognito,
+    };
+    if (d.incognito) this.#pendingIncognitoClear = true;
+    this.tabMap.set(id, tab);
+    this.nodes.push({ type: 'single', tabId: id });
+    this.wirePageEvents(id, d.view);
+    this.activate(id); // activate сам добавит вью в окно и выставит bounds
+    return id;
   }
 
   reopenLastClosedTab(): void {

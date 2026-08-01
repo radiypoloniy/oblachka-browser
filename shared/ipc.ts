@@ -227,6 +227,9 @@ export const IPC = {
   // зависит, что окно вообще рисует.
   WINDOW_GET_ROLE: 'window:get-role',
   WINDOW_OPEN: 'window:open', // открыть новое (лёгкое) окно — Ctrl+N, пункт меню
+  // Перенести вкладку в новое окно: живая страница уезжает целиком (история «назад», прокрутка,
+  // введённое в форму), а не открывается заново по адресу. См. TabManager.detachTabForMove.
+  WINDOW_MOVE_TAB: 'window:move-tab',
 
   // Атомарный push: заменяет раздельные TABS_CHANGED + SIDEBAR_NODES_CHANGED.
   // Один IPC-пакет = один рендер = нет рассинхрона между вкладками и деревом узлов.
@@ -1342,6 +1345,8 @@ export interface OblakoApi {
   // страницы, граф/блокнот на новой вкладке).
   getWindowRole(): Promise<WindowRole>;
   openWindow(): Promise<void>;
+  // Перенести вкладку в новое окно (ПКМ по вкладке, вытаскивание из сайдбара).
+  moveTabToNewWindow(tabId: string): Promise<boolean>;
   // Сигнал «оболочка отрисована» — main показывает скрытое до этого окно (см. IPC.CHROME_UI_READY).
   chromeUiReady(): void;
   onTabsChanged(cb: (tabs: TabState[]) => void): () => void; // вернёт unsubscribe

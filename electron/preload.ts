@@ -23,6 +23,7 @@ const api: OblakoApi = {
   setTitleBarOverlay: (opts: TitleBarOpts) => ipcRenderer.invoke(IPC.WINDOW_SET_OVERLAY, opts),
   getWindowRole: () => ipcRenderer.invoke(IPC.WINDOW_GET_ROLE) as Promise<WindowRole>,
   openWindow: () => ipcRenderer.invoke(IPC.WINDOW_OPEN) as Promise<void>,
+  moveTabToNewWindow: (tabId: string) => ipcRenderer.invoke(IPC.WINDOW_MOVE_TAB, tabId) as Promise<boolean>,
   chromeUiReady: () => ipcRenderer.send(IPC.CHROME_UI_READY),
   onTabsChanged: (cb: (tabs: TabState[]) => void) => {
     const handler = (_e: unknown, tabs: TabState[]) => cb(tabs);
