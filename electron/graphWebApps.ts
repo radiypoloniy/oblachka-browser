@@ -108,6 +108,54 @@ export function buildInsertScript(text: string): string {
 // ни от того, чат это вообще или обычная страница.
 export const SELECTION_SCRIPT = `(() => (window.getSelection()?.toString() ?? '').trim())()`;
 
+// Поиск сгенерированной картинки в чужом чате. Селекторов сайта здесь НЕТ намеренно: они
+// гниют быстрее всего, а «крупная картинка в переписке» — признак, который переживёт
+// редизайн. Аватарки, иконки и логотипы отсекаются по размеру.
+//
+// Берём ПОСЛЕДНЮЮ подходящую: за сессию человек генерирует несколько вариантов, и нужен
+// свежий. Если что-то выделено мышью — предпочитаем картинку внутри выделения: это явное
+// «вот эту», и оно важнее эвристики.
+//
+// blob:/data: главный процесс скачать не может (URL живёт только в этой странице), поэтому
+// такие превращаем в data-URL прямо здесь. Обычные ссылки отдаём как есть — main заберёт их
+// той же сессией с куками, иначе подписанная ссылка ответит 403.
+export const IMAGE_CAPTURE_SCRIPT = `(async () => {
+  var MIN = 256;
+  var all = Array.prototype.slice.call(document.images || []);
+  var big = all.filter(function (im) {
+    var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
+    return w >= MIN && h >= MIN && im.src;
+  });
+  if (!big.length) return { error: 'В чате не нашлось картинки — сгенерируйте её и попробуйте снова' };
+
+  var sel = window.getSelection();
+  var picked = null;
+  if (sel && sel.rangeCount && !sel.isCollapsed) {
+    var range = sel.getRangeAt(0);
+    for (var i = big.length - 1; i >= 0; i--) {
+      if (range.intersectsNode(big[i])) { picked = big[i]; break; }
+    }
+  }
+  if (!picked) picked = big[big.length - 1];
+
+  var src = picked.currentSrc || picked.src;
+  if (/^(blob:|data:)/i.test(src)) {
+    try {
+      var blob = await (await fetch(src)).blob();
+      var dataUrl = await new Promise(function (ok, no) {
+        var fr = new FileReader();
+        fr.onload = function () { ok(fr.result); };
+        fr.onerror = function () { no(new Error('read')); };
+        fr.readAsDataURL(blob);
+      });
+      return { dataUrl: dataUrl };
+    } catch (e) {
+      return { error: 'Картинка не читается со страницы' };
+    }
+  }
+  return { url: src };
+})()`;
+
 // Забирает последний ответ ассистента по селектору профиля. Быстрее выделения руками, но
 // именно эта часть и гниёт — поэтому пустой результат не ошибка, а сигнал показать
 // человеку подсказку про выделение.

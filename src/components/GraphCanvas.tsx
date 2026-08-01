@@ -478,6 +478,40 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
       : 'Не нашёл последний ответ на этой странице — выделите его мышью');
   };
 
+  // Картинка из чата: main сохраняет файл, холст заводит рядом узел «Картинка». Узел, а не
+  // поле у веб-чата: изображение — самостоятельный материал, его подключают куда нужно.
+  const captureImage = async (nodeId: string) => {
+    if (currentId === null) return;
+    setNote(nodeId, 'Забираю картинку…');
+    const res = await window.oblako.captureWebAppImage(currentId, nodeId);
+    if (!res.ok || !res.path) {
+      setNote(nodeId, res.error ?? 'Картинку забрать не вышло');
+      return;
+    }
+    const from = nodesRef.current.find((n) => n.id === nodeId);
+    const id = crypto.randomUUID();
+    setNodes((ns) => [...ns, {
+      id,
+      type: 'oblako',
+      position: { x: (from?.position.x ?? 0) + 360, y: (from?.position.y ?? 0) + 120 },
+      width: DEFAULT_NODE_SIZE['source.image'].w,
+      height: DEFAULT_NODE_SIZE['source.image'].h,
+      data: {
+        kind: 'source.image' as GraphNodeKind,
+        title: 'Картинка из чата',
+        config: { path: res.path },
+        status: 'idle' as GraphNodeStatus,
+        output: null, outputTitle: null, error: null,
+        onPatch: () => {}, onRun: () => {}, onDelete: () => {}, onDuplicate: () => {},
+        onShowHistory: () => {}, onExpand: () => {}, onPickFile: () => {}, onPickImage: () => {},
+        imagePresets: [], onEditPresets: () => {},
+        onCopyOutput: () => {}, onSaveOutput: () => {}, onOpenWebApp: () => {},
+        pullFromInput: null, inputLabels: [],
+      },
+    }]);
+    setNote(nodeId, 'Картинка забрана — узел появился на холсте');
+  };
+
   const setWebAppMode = (nodeId: string, mode: WebAppMode) => {
     setWebApps((cur) => {
       const next = cur.map((w) => {
@@ -636,6 +670,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
       onInsert={() => void insertPrompt(app.nodeId)}
       onCaptureSelection={() => void captureAnswer(app.nodeId, 'selection')}
       onCaptureLast={() => void captureAnswer(app.nodeId, 'last')}
+      onCaptureImage={() => void captureImage(app.nodeId)}
     />
   );
 

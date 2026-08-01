@@ -28,7 +28,7 @@ import type { ImagePreset } from '../shared/imagePresets';
 import { sendChatMessage } from './GraphChat';
 import { addItemsToGraph, buildAddToGraphMenuItem } from './GraphInbox';
 import {
-  captureAnswer, closeGraphWebApp, insertPrompt, raiseGraphWebApp,
+  captureAnswer, captureImage, closeGraphWebApp, insertPrompt, raiseGraphWebApp,
   setGraphWebAppBounds, showGraphWebApp,
   setTabManager as setGraphWebAppTabManager,
 } from './GraphWebAppManager';
@@ -1553,6 +1553,8 @@ function registerIpc() {
     if (!doc) return false;
     return insertPrompt(graphId, nodeId, composeWebAppPrompt(doc, nodeId));
   });
+  ipcMain.handle(IPC.GRAPH_WEBAPP_CAPTURE_IMAGE, (_e, graphId: number, nodeId: string) =>
+    captureImage(graphId, nodeId));
   ipcMain.handle(IPC.GRAPH_WEBAPP_CAPTURE, async (_e, graphId: number, nodeId: string, mode: 'selection' | 'last') => {
     const text = await captureAnswer(graphId, nodeId, mode === 'last' ? 'last' : 'selection');
     if (!text) return '';

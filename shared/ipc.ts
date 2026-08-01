@@ -289,6 +289,7 @@ export const IPC = {
   GRAPH_WEBAPP_CLOSE:   'graph:webapp-close',   // renderer → main: (graphId, nodeId) — уничтожить вью узла
   GRAPH_WEBAPP_INSERT:  'graph:webapp-insert',  // renderer → main: (graphId, nodeId) → положить промпт графа в поле ввода
   GRAPH_WEBAPP_CAPTURE: 'graph:webapp-capture', // renderer → main: (graphId, nodeId, mode) → забрать ответ в результат узла
+  GRAPH_WEBAPP_CAPTURE_IMAGE: 'graph:webapp-capture-image', // renderer → main: забрать картинку из чата на диск
 
   // Split View
   TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (правая вкладка)
@@ -1539,6 +1540,9 @@ export interface OblakoApi {
   // имя файла и положить его в конфиг узла; читает файл всегда main (electron/FileExtract.ts).
   pickGraphFile(): Promise<string | null>;
   pickGraphImage(): Promise<string | null>;
+  // Забрать сгенерированную картинку из открытого веб-чата: main сохраняет файл и отдаёт
+  // путь, холст заводит по нему узел «Картинка».
+  captureWebAppImage(graphId: number, nodeId: string): Promise<{ ok: boolean; path?: string; error?: string }>;
   // Превью картинки узла: main читает файл с диска и отдаёт уменьшенный data-URL. Прямой
   // доступ к file:// у renderer закрыт, да и полноразмерный кадр в карточке ни к чему.
   graphImagePreview(path: string): Promise<string | null>;

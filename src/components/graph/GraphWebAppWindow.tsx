@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ClipboardPaste, Download, ListEnd, X, PanelRight, Maximize2, Minimize2,
+  ClipboardPaste, Download, ListEnd, ImageDown, X, PanelRight, Maximize2, Minimize2,
 } from 'lucide-react';
 
 export type WebAppMode = 'floating' | 'docked' | 'fullscreen'
@@ -42,6 +42,7 @@ interface Props {
   onInsert: () => void;
   onCaptureSelection: () => void;
   onCaptureLast: () => void;
+  onCaptureImage: () => void;
 }
 
 // Буквенная иконка — тот же приём, что у пользовательских веб-приложений панели
@@ -83,7 +84,7 @@ function HeaderButton({ title, onClick, children }: {
 
 export default function GraphWebAppWindow({
   graphId, nodeId, url, title, hostLabel, note, index, mode, hidden, area,
-  onSetMode, onFocus, onClose, onInsert, onCaptureSelection, onCaptureLast,
+  onSetMode, onFocus, onClose, onInsert, onCaptureSelection, onCaptureLast, onCaptureImage,
 }: Props) {
   const [rect, setRect] = useState(() => ({
     x: area.x + 24 + (index % 4) * 40,
@@ -234,6 +235,9 @@ export default function GraphWebAppWindow({
         </HeaderButton>
         <HeaderButton title="Забрать последний ответ в узел" onClick={onCaptureLast}>
           <ListEnd size={13} strokeWidth={2} />
+        </HeaderButton>
+        <HeaderButton title="Забрать сгенерированную картинку в узел" onClick={onCaptureImage}>
+          <ImageDown size={13} strokeWidth={2} />
         </HeaderButton>
         <HeaderButton
           title={mode === 'docked' ? 'Открепить' : 'Закрепить справа'}

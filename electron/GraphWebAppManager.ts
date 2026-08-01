@@ -1,8 +1,11 @@
-import { WebContentsView } from 'electron';
+import { WebContentsView, app, session } from 'electron';
 import type { BrowserWindow, Rectangle } from 'electron';
+import path from 'node:path';
+import fsp from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import type { TabManager } from './TabManager';
 import {
-  SELECTION_SCRIPT, buildInsertScript, buildLastAnswerScript, profileForUrl,
+  SELECTION_SCRIPT, IMAGE_CAPTURE_SCRIPT, buildInsertScript, buildLastAnswerScript, profileForUrl,
 } from './graphWebApps';
 
 // Живой чужой сайт для узла-веб-приложения графа. Один узел — одна WebContentsView,
@@ -156,6 +159,54 @@ export async function insertPrompt(graphId: number, nodeId: string, text: string
     return res === 'ok';
   } catch {
     return false; // страница ещё грузится или сменила вёрстку — кнопка просто не сработала
+  }
+}
+
+// Забираем сгенерированную картинку из чата на диск и отдаём путь — дальше холст заведёт
+// узел «Картинка». Файл кладём в userData, а не во «Загрузки»: это рабочий материал графа,
+// и мусорить в папку пользователя незачем.
+//
+// ⚠️ Скачивает main той же session.defaultSession, в которой живёт вью: ссылки на картинки
+// у ChatGPT подписанные и с проверкой куки — «голый» запрос получил бы 403.
+export async function captureImage(
+  graphId: number, nodeId: string,
+): Promise<{ ok: boolean; path?: string; error?: string }> {
+  const wc = activeContents(graphId, nodeId);
+  if (!wc) return { ok: false, error: 'Окно чата закрыто' };
+
+  let found: { url?: string; dataUrl?: string; error?: string };
+  try {
+    found = await wc.executeJavaScript(IMAGE_CAPTURE_SCRIPT, true) as typeof found;
+  } catch {
+    return { ok: false, error: 'Не удалось прочитать страницу чата' };
+  }
+  if (!found || found.error) return { ok: false, error: found?.error ?? 'Картинка не найдена' };
+
+  try {
+    let body: Buffer;
+    let ext = 'png';
+    if (found.dataUrl) {
+      const m = /^data:image\/([a-z0-9.+-]+);base64,(.*)$/is.exec(found.dataUrl);
+      if (!m) return { ok: false, error: 'Картинка пришла в непонятном формате' };
+      ext = m[1]!.toLowerCase() === 'jpeg' ? 'jpg' : m[1]!.toLowerCase();
+      body = Buffer.from(m[2]!, 'base64');
+    } else {
+      const res = await session.defaultSession.fetch(found.url!);
+      if (!res.ok) return { ok: false, error: `Сайт не отдал картинку (${res.status})` };
+      body = Buffer.from(await res.arrayBuffer());
+      const mime = (res.headers.get('content-type') ?? '').split(';')[0]!.trim();
+      const guess = mime.startsWith('image/') ? mime.slice('image/'.length) : '';
+      if (guess) ext = guess === 'jpeg' ? 'jpg' : guess;
+    }
+    if (!body.length) return { ok: false, error: 'Картинка пришла пустой' };
+
+    const dir = path.join(app.getPath('userData'), 'graph-images');
+    await fsp.mkdir(dir, { recursive: true });
+    const file = path.join(dir, `${Date.now()}-${randomUUID().slice(0, 8)}.${ext.replace(/[^a-z0-9]/gi, '') || 'png'}`);
+    await fsp.writeFile(file, body);
+    return { ok: true, path: file };
+  } catch {
+    return { ok: false, error: 'Не удалось сохранить картинку' };
   }
 }
 
