@@ -76,6 +76,7 @@ import { setActiveEngineId, registerEngine, setCacheManager } from './Translatio
 import { BergamotTranslationEngine } from './BergamotTranslationEngine';
 import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
+import { startTabDrag, endTabDrag, syncDropZoneBounds } from './DropZoneManager';
 import { showSearchPopover, closeSearchPopover, syncSearchPopoverBounds, relayoutSearchPopover, setOnSearchRun, setOnQuickQuery, setOnQuickOpen, setTabManager as setSearchPopoverTabManager } from './SearchPopoverManager';
 import { buildSearchTargets, searchChipCandidates, resolveChipCandidates } from './SearchTargets';
 import { readPageSelection } from './PageSelection';
@@ -1192,7 +1193,10 @@ function registerIpc() {
     // Та же геометрия двигает FindBar — центрирование по контентной зоне (учитывает сайдбар) и
     // авто-скрытие при настройках/истории/загрузках (нулевые bounds — тот же сентинел, см. FindBarManager.ts).
     const fbWin = winOf(e);
-    if (fbWin) syncFindBarBounds(fbWin, b);
+    if (fbWin) {
+      syncFindBarBounds(fbWin, b);
+      syncDropZoneBounds(fbWin, b); // та же геометрия — зоны дропа рисуются ровно по контенту
+    }
     syncSearchPopoverBounds(b); // тот же сентинел нулевых bounds — прячем поповер вместе с контентом
   });
   // Прямоугольник омнибокса — двигает нативную вью дропдауна подсказок (см.
@@ -1275,17 +1279,9 @@ function registerIpc() {
   // Перенос вкладки в новое окно. Порядок важен: сначала СНИМАЕМ вкладку со старого окна и только
   // потом создаём новое. Наоборот — и при отказе снять (спящая, split, закреплённая) на экране
   // оставалось бы пустое окно, которого никто не просил.
-  // ⚠️ Спрашивает сайдбар в момент отпускания вкладки. Renderer сам этого знать не может:
-  // как только курсор уходит за край окна, движения ему больше не доставляются, а последние
-  // виденные координаты упираются в границу — вытаскивание «за окно» так не поймать.
-  // Экранные координаты, поэтому сверяем с getBounds() (рамка окна), а не с contentBounds.
-  ipcMain.handle(IPC.WINDOW_POINTER_OUTSIDE, (e) => {
-    const w = winOf(e);
-    if (!w || w.isDestroyed()) return false;
-    const p = screen.getCursorScreenPoint();
-    const b = w.getBounds();
-    return p.x < b.x || p.x > b.x + b.width || p.y < b.y || p.y > b.y + b.height;
-  });
+  // Перетаскивание вкладки: зоны поверх страницы + слежение за курсором (см. DropZoneManager.ts).
+  ipcMain.handle(IPC.TAB_DRAG_START, (e) => { const w = winOf(e); if (w) startTabDrag(w); });
+  ipcMain.handle(IPC.TAB_DRAG_END, (e) => { const w = winOf(e); return w ? endTabDrag(w) : null; });
   ipcMain.handle(IPC.WINDOW_MOVE_TAB, (e, tabId: string) => {
     const from = tabsOf(e);
     return from ? moveTabToNewWindow(from, tabId) : false;

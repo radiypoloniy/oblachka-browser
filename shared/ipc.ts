@@ -230,10 +230,10 @@ export const IPC = {
   // Перенести вкладку в новое окно: живая страница уезжает целиком (история «назад», прокрутка,
   // введённое в форму), а не открывается заново по адресу. См. TabManager.detachTabForMove.
   WINDOW_MOVE_TAB: 'window:move-tab',
-  // Курсор сейчас за пределами этого окна? Спрашивается в момент отпускания вкладки: координаты
-  // указателя за краем окна рендереру не приходят (их некому доставить — курсор уже над другим
-  // окном или рабочим столом), а main видит их через screen.getCursorScreenPoint().
-  WINDOW_POINTER_OUTSIDE: 'window:pointer-outside',
+  // Перетаскивание вкладки: показать/убрать зоны дропа поверх страницы. Конец возвращает зону,
+  // в которой отпустили, — по ней сайдбар и решает, что сделать (см. TabDropZone).
+  TAB_DRAG_START: 'tab:drag-start',
+  TAB_DRAG_END: 'tab:drag-end',
 
   // Атомарный push: заменяет раздельные TABS_CHANGED + SIDEBAR_NODES_CHANGED.
   // Один IPC-пакет = один рендер = нет рассинхрона между вкладками и деревом узлов.
@@ -1320,6 +1320,11 @@ export interface CurrencyRatesInfo {
 // поиск по странице, пароли/автозаполнение.
 export type WindowRole = 'main' | 'light';
 
+// Куда попадёт вкладка, если отпустить её сейчас: край страницы — разделить экран, середина или
+// вообще вне окна — новое окно, null — обычное переупорядочивание в сайдбаре. Считает MAIN
+// (см. electron/DropZoneManager.ts): чром теряет указатель, как только тот уходит на страницу.
+export type TabDropZone = 'split' | 'window';
+
 export interface OblakoApi {
   // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).
   getSyncState(): Promise<SyncState>;
@@ -1351,8 +1356,9 @@ export interface OblakoApi {
   openWindow(): Promise<void>;
   // Перенести вкладку в новое окно (ПКМ по вкладке, вытаскивание из сайдбара).
   moveTabToNewWindow(tabId: string): Promise<boolean>;
-  // Указатель вне окна — см. IPC.WINDOW_POINTER_OUTSIDE.
-  isPointerOutsideWindow(): Promise<boolean>;
+  // Перетаскивание вкладки в сайдбаре — см. IPC.TAB_DRAG_START/TAB_DRAG_END.
+  tabDragStart(): Promise<void>;
+  tabDragEnd(): Promise<TabDropZone | null>;
   // Сигнал «оболочка отрисована» — main показывает скрытое до этого окно (см. IPC.CHROME_UI_READY).
   chromeUiReady(): void;
   onTabsChanged(cb: (tabs: TabState[]) => void): () => void; // вернёт unsubscribe

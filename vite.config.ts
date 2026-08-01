@@ -39,6 +39,7 @@ export default defineConfig({
         // Тестовая вью дропдауна подсказок омнибокса (заход 2/5 переезда с chrome-DOM, см.
         // SuggestDropdownManager.ts) — статичный список, не боевая пока.
         suggestdropdown: resolve(__dirname, 'src/suggestdropdown.html'),
+        dropzones: resolve(__dirname, 'src/dropzones.html'),
       },
     },
   },

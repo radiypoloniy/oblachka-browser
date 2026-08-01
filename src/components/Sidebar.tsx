@@ -14,7 +14,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import type { TabState, SidebarNode, GroupNode, ClusterProposal } from '../../shared/ipc';
+import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropZone } from '../../shared/ipc';
 
 // Стабильный id droppable-контейнера секции «Открытые вкладки».
 const SECTION_NORMAL_ID = 'drop-section-normal';
@@ -64,10 +64,8 @@ interface SidebarProps {
   onHistory: () => void;
   onReorder: (section: 'normal' | 'pinned', orderedIds: string[]) => void;
   onMoveSection: (tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number) => void;
-  getContentRect: () => DOMRect | null;
-  // Куда попадёт вкладка, если отпустить сейчас: край контента — разделить экран, середина —
-  // новое окно, null — не над контентом. См. ContentDropZone и комментарий у zoneAt().
-  onDragOverContent: (zone: ContentDropZone | null) => void;
+  // Разделить экран этой вкладкой (дроп у края страницы). Куда именно попадёт вкладка, решает
+  // main: чром теряет указатель, как только тот уходит на страницу (см. DropZoneManager.ts).
   onDropOnContent: (tabId: string) => void;
   // AI-группировка
   organizeTabsCount: number;
@@ -480,28 +478,6 @@ function SortablePinCell({ tab, active, onClick, onContextMenu }: {
       <IconCell tab={tab} active={active} onClick={onClick} onContextMenu={onContextMenu} />
     </div>
   );
-}
-
-// ── Зоны дропа поверх контента ────────────────────────────────────────────────
-//
-// Куда попадёт вкладка, если отпустить её над страницей. Так это устроено в браузерах, где есть
-// и разделение экрана, и вынос вкладки в окно (Zen, Arc, Vivaldi): по краям — разделить, в
-// середине — новое окно. Chrome с горизонтальной полосой вкладок делает проще — «вытащил из
-// полосы» и есть «новое окно», — но у нас полоса вертикальная, и всё, что вне её, это страница,
-// на которую уже назначено разделение экрана.
-//
-// ⚠️ Главное, ради чего зоны и заведены: у окна во весь экран нет «снаружи». Проверка «курсор
-// вышел за рамку» там не срабатывает никогда, и вынести вкладку мышью было невозможно.
-export type ContentDropZone = 'split' | 'window';
-
-// Доля ширины контента с каждого края, отданная разделению экрана. Остаток посередине — окно.
-const SPLIT_EDGE_RATIO = 0.35;
-
-function zoneAt(rect: DOMRect | null, x: number, y: number): ContentDropZone | null {
-  if (!rect) return null;
-  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
-  const edge = rect.width * SPLIT_EDGE_RATIO;
-  return (x < rect.left + edge || x > rect.right - edge) ? 'split' : 'window';
 }
 
 // ── Свёрнутая панель ──────────────────────────────────────────────────────────
@@ -1088,7 +1064,7 @@ export default function Sidebar({
   tabs, sidebarNodes, activeId, collapsed, onCollapsedChange,
   onSelect, onClose, onNewTab, onNewTabMenu, onTabMenu, onSplit, onExitSplit,
   onSettings, onHistory, onReorder, onMoveSection,
-  getContentRect, onDragOverContent, onDropOnContent,
+  onDropOnContent,
   organizeTabsCount, organizeState, organizeLongWait, organizeProposal,
   hasOrganizeSnapshot, onOrganize, onOrganizeApply, onOrganizeCancel, onOrganizeRollback,
 }: SidebarProps) {
@@ -1102,11 +1078,7 @@ export default function Sidebar({
   const REORDER_CONFIRM_MS = 3000;
   const openTimeoutRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pinnedTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const contentZoneRef    = useRef<ContentDropZone | null>(null);
-  // Указатель уехал за пределы окна — вкладку вытаскивают в своё окно (как в Chrome/Яндексе).
-  // Запас в DETACH_MARGIN обязателен: без него любой промах мимо края сайдбара на пиксель
-  // отрывал бы вкладку, хотя человек просто менял порядок.
-  const outsideWindowRef  = useRef(false);
+
   const moveListenerRef   = useRef<((e: PointerEvent) => void) | null>(null);
 
   // Валидация оптимистичного порядка при любом изменении tabs или sidebarNodes.
@@ -1220,25 +1192,11 @@ export default function Sidebar({
   const pinnedIds = pinned.map((t) => t.id);
   const openIds = (localOpenOrder ?? topLevelOpenIds).filter((id) => !effectivePinnedIds.has(id));
 
-  // Насколько далеко за край окна надо увести указатель, чтобы это считалось «вытащить вкладку».
-  const DETACH_MARGIN = 48;
-
   const handleDragStart = (e: DragStartEvent) => {
     setDragActiveId(e.active.id as string);
-    const onMove = (ev: PointerEvent) => {
-      const zone = zoneAt(getContentRect(), ev.clientX, ev.clientY);
-      if (zone !== contentZoneRef.current) {
-        contentZoneRef.current = zone;
-        onDragOverContent(zone);
-      }
-      // Указатель за краем окна (в другое окно, на второй монитор, на рабочий стол) — событие
-      // продолжает приходить, потому что кнопка ещё зажата и указатель захвачен.
-      outsideWindowRef.current =
-        ev.clientX < -DETACH_MARGIN || ev.clientX > window.innerWidth + DETACH_MARGIN
-        || ev.clientY < -DETACH_MARGIN || ev.clientY > window.innerHeight + DETACH_MARGIN;
-    };
-    moveListenerRef.current = onMove;
-    document.addEventListener('pointermove', onMove);
+    // Зоны дропа поверх страницы и слежение за курсором — на стороне main: нативная вью страницы
+    // и рисовать поверх себя не даёт, и указатель у чрома забирает (см. DropZoneManager.ts).
+    void window.oblako.tabDragStart();
   };
 
   // Хвост любого драга — снять слушатель, погасить подсветку контент-зоны, сбросить id.
@@ -1246,52 +1204,36 @@ export default function Sidebar({
   // при отмене dnd-kit зовёт onDragCancel вместо onDragEnd, и без этого pointermove-слушатель
   // оставался висеть на document навсегда, продолжая дёргать onDragOverContent на каждое
   // движение мыши, а подсветка «бросить сюда» — залипать.
-  const finishDrag = (): { zone: ContentDropZone | null; outsideWindow: boolean } => {
-    if (moveListenerRef.current) {
-      document.removeEventListener('pointermove', moveListenerRef.current);
-      moveListenerRef.current = null;
-    }
-    const zone = contentZoneRef.current;
-    const wasOutside = outsideWindowRef.current;
-    contentZoneRef.current = null;
-    outsideWindowRef.current = false;
-    onDragOverContent(null);
+  // Хвост любого драга: убрать зоны и вернуть последнюю — main считает её по реальному курсору.
+  // Зовётся и в конце, и в ОТМЕНЕ (Esc, потеря указателя), иначе зоны остались бы висеть.
+  const finishDrag = (): Promise<TabDropZone | null> => {
     setDragActiveId(null);
-    return { zone, outsideWindow: wasOutside };
+    return window.oblako.tabDragEnd().catch(() => null);
   };
 
+  // Зону, в которой отпустили, знает main (см. finishDrag) — поэтому решение асинхронное.
+  // Задержка на один вызов IPC на глаз незаметна: вкладка в этот момент и так уже отпущена.
   const handleDragEnd = (e: DragEndEvent) => {
-    const { zone, outsideWindow } = finishDrag();
+    void (async () => {
+      const zone = await finishDrag();
+      applyDrop(e, zone);
+    })();
+  };
 
-    // Вытащили за пределы окна → вкладка уезжает в своё окно (main переносит живую вью, а спящую —
-    // описанием, см. TabManager.detachTabForMove). Своих координат тут мало: как только курсор
-    // уходит за край окна, движения рендереру больше не доставляются, и последнее виденное
-    // значение упирается в границу. Поэтому решающее слово за main — он видит курсор на экране.
-    // Асинхронная проверка задерживает обычный путь на один вызов IPC; на глаз это незаметно,
-    // потому что вкладка в этот момент и так «отпущена».
+  const applyDrop = (e: DragEndEvent, zone: TabDropZone | null) => {
     const draggedId = e.active.id as string;
     const draggedTab = draggedId.startsWith('group:') ? undefined : tabs.find((t) => t.id === draggedId);
     // Группу и участника split не выносим: у первой нет одной страницы, второй увёл бы за собой
     // половину пары. Хаб — не страница вовсе.
     const canDetach = !!draggedTab && !draggedTab.isHub && draggedTab.splitSide === null;
 
-    // Середина контента — «новое окно». Это и есть ответ на развёрнутое во весь экран окно:
-    // выйти за его край там некуда, поэтому жест не должен зависеть от границы окна (так же
-    // устроено в браузерах с вертикальными вкладками — зоны рисуются внутри страницы).
+    // Середина страницы (и всё, что вне окна) — «новое окно». Это и есть ответ на развёрнутое во
+    // весь экран окно: выйти за его край там некуда, поэтому жест не должен зависеть от границы.
     if (zone === 'window' && canDetach) {
       void window.oblako.moveTabToNewWindow(draggedId);
       return;
     }
-    const wasOverContent = zone !== null;
-    if (canDetach && !wasOverContent) {
-      void (async () => {
-        const outside = outsideWindow || await window.oblako.isPointerOutsideWindow().catch(() => false);
-        if (outside) { void window.oblako.moveTabToNewWindow(draggedId); return; }
-        applyDragEnd(e, wasOverContent);
-      })();
-      return;
-    }
-    applyDragEnd(e, wasOverContent);
+    applyDragEnd(e, zone === 'split');
   };
 
   // Обычный исход драга: split при дропе в контент-зону либо переупорядочивание.
@@ -1424,7 +1366,7 @@ export default function Sidebar({
           modifiers={[restrictToVerticalAxis]}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
-          onDragCancel={() => { finishDrag(); }}
+          onDragCancel={() => { void finishDrag(); }}
         >
           {pinned.length > 0 && (
             <div className="no-drag" style={{
@@ -1550,7 +1492,7 @@ export default function Sidebar({
         modifiers={dragPinnedTab ? [] : [restrictToVerticalAxis]}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
-        onDragCancel={() => { finishDrag(); }}
+        onDragCancel={() => { void finishDrag(); }}
       >
         {/* Закреплённые: сетка favicon, tooltip с заголовком, без крестика.
             Плашка-обёртка — СНАРУЖИ SortableContext, сам dnd-контекст и ячейки не тронуты. */}
