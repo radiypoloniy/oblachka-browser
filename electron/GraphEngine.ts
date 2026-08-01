@@ -54,29 +54,43 @@ export function cancelGraphRun(graphId: number): void {
   if (token) token.cancelled = true;
 }
 
+// Вход узла: текст И имя узла, который его дал. Имя нужно шаблону сборки ({Черновик}),
+// поэтому оно едет рядом с текстом, а не добывается отдельным проходом — иначе список имён
+// и список текстов могли бы разъехаться (узлы без выхлопа пропускаются).
+interface NodeInput { text: string; title: string }
+
 // Отпечаток входов: тип узла + его конфиг + тексты, пришедшие на вход. Совпал с сохранённым —
 // пересчитывать нечего. Именно поэтому правка одного узла не гонит весь граф заново.
-function hashInputs(node: GraphNode, inputs: string[]): string {
+function hashInputs(node: GraphNode, inputs: NodeInput[]): string {
+  // Обычным узлам важны только тексты: переименование питающего узла не должно гнать
+  // заново всю цепочку Qwen. Сборка — исключение: её шаблон ссылается на имена, и от
+  // переименования её результат ДЕЙСТВИТЕЛЬНО меняется.
+  const payload = node.kind === 'compose.doc'
+    ? inputs.map((i) => ({ t: i.text, n: i.title }))
+    : inputs.map((i) => i.text);
   return createHash('sha256')
-    .update(JSON.stringify({ kind: node.kind, config: node.config, inputs }))
+    .update(JSON.stringify({ kind: node.kind, config: node.config, inputs: payload }))
     .digest('hex');
 }
 
-function collectInputs(doc: GraphDoc, nodeId: string, outputs: Map<string, string>): string[] {
-  const result: string[] = [];
+function collectInputs(doc: GraphDoc, nodeId: string, outputs: Map<string, string>): NodeInput[] {
+  const result: NodeInput[] = [];
   for (const e of doc.edges) {
     if (e.toNode !== nodeId) continue;
     const value = outputs.get(e.fromNode);
-    if (value) result.push(value);
+    if (value) {
+      const from = doc.nodes.find((n) => n.id === e.fromNode);
+      result.push({ text: value, title: (from?.title ?? '').trim() });
+    }
   }
   return result;
 }
 
-function buildContext(inputs: string[]): string {
+function buildContext(inputs: NodeInput[]): string {
   let total = 0;
   const parts: string[] = [];
   for (const raw of inputs) {
-    const chunk = raw.trim();
+    const chunk = raw.text.trim();
     if (!chunk) continue;
     if (total + chunk.length > CONTEXT_MAX_CHARS) {
       const left = CONTEXT_MAX_CHARS - total;
@@ -87,6 +101,30 @@ function buildContext(inputs: string[]): string {
     total += chunk.length;
   }
   return parts.join('\n\n---\n\n');
+}
+
+// Подстановка блоков в шаблон сборки. Два способа ссылаться на вход: по номеру ({1} —
+// первая связь) и по имени питающего узла ({Черновик}). Имена читаемее, номера надёжнее
+// при одинаковых заголовках — поэтому оба.
+//
+// ⚠️ Нераспознанный плейсхолдер остаётся в тексте как есть. Молча подставить пустоту хуже:
+// человек увидит дыру в готовой рассылке, только когда она уже уйдёт, а видимый {Заголовк}
+// он заметит сразу.
+//
+// Лимит CONTEXT_MAX_CHARS здесь НЕ применяется: это документ для человека, а не промпт для
+// модели — резать его на 24 000 символов значило бы терять хвост рассылки.
+function renderTemplate(template: string, inputs: NodeInput[]): string {
+  return template.replace(/\{([^{}\n]{1,80})\}/g, (whole, raw: string) => {
+    const key = raw.trim();
+    if (/^\d+$/.test(key)) {
+      const found = inputs[Number(key) - 1];
+      return found ? found.text.trim() : whole;
+    }
+    const hits = inputs.filter((i) => i.title.toLowerCase() === key.toLowerCase());
+    // Ровно одно совпадение — подставляем. Несколько узлов с одним именем разрешить нельзя:
+    // выбор был бы случайным, и документ молча собрался бы не из того блока.
+    return hits.length === 1 ? hits[0]!.text.trim() : whole;
+  });
 }
 
 interface NodeOutcome {
@@ -101,7 +139,7 @@ interface NodeOutcome {
 // Поэтому наружу отдаются две чистые функции — панель спрашивает ими «что вставлять»
 // и «каким отпечатком помечать пойманный ответ», а состояние нигде не дублируется.
 
-function inputsForNode(doc: GraphDoc, nodeId: string): string[] {
+function inputsForNode(doc: GraphDoc, nodeId: string): NodeInput[] {
   const outputs = new Map<string, string>();
   for (const n of doc.nodes) if (n.output) outputs.set(n.id, n.output);
   return collectInputs(doc, nodeId, outputs);
@@ -135,7 +173,7 @@ export function composeWebAppPrompt(doc: GraphDoc, nodeId: string): string {
 async function executeNode(
   win: BrowserWindow | null,
   node: GraphNode,
-  inputs: string[],
+  inputs: NodeInput[],
   onChunk: (text: string) => void,
 ): Promise<NodeOutcome> {
   switch (node.kind) {
@@ -173,6 +211,17 @@ async function executeNode(
       return passthrough
         ? { ok: true, output: passthrough }
         : { ok: false, error: 'Черновик пуст и на вход ничего не пришло' };
+    }
+
+    case 'compose.doc': {
+      if (!inputs.length) return { ok: false, error: 'На вход не пришло ни одного блока' };
+      const template = (node.config.text ?? '').trim();
+      // Без шаблона — просто склейка блоков по порядку связей: узел полезен сразу, а
+      // шаблон пишут, когда понадобится своя структура.
+      if (!template) {
+        return { ok: true, output: inputs.map((i) => i.text.trim()).filter(Boolean).join('\n\n') };
+      }
+      return { ok: true, output: renderTemplate(template, inputs) };
     }
 
     case 'qwen.transform': {
@@ -221,7 +270,7 @@ async function executeNode(
       const kind = node.kind.slice('artifact.'.length) as StudioKind;
       // Источники передаём и поотдельности: инфографика по нескольким входам должна стать
       // сравнением, а не сводкой по одному из них наугад.
-      const res = await generateStudio(kind, context, inputs);
+      const res = await generateStudio(kind, context, inputs.map((i) => i.text));
       return res.ok && res.text
         ? { ok: true, output: res.text }
         : { ok: false, error: res.error ?? 'Не получилось' };

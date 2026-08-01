@@ -41,6 +41,10 @@ export interface GraphNodeData extends Record<string, unknown> {
   // Только для draft.text: подставить в черновик выхлоп питающих узлов. Текст берёт холст —
   // карточка про соседние узлы не знает. null, если подставлять нечего.
   pullFromInput: (() => void) | null;
+  // Только для compose.doc: питающие узлы в порядке связей — из них строится легенда
+  // шаблона. ready=false у тех, что ещё не посчитаны: движок берёт только готовые, и
+  // нумерация в легенде обязана совпадать с той, что увидит шаблон.
+  inputLabels: { title: string; ready: boolean }[];
 }
 
 // Размер по умолчанию на тип узла. Задаём его ВСЕГДА (даже узлам, сохранённым до появления
@@ -65,6 +69,8 @@ export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> 
   'output.text': { w: 380, h: 360 },
   // Черновик правят руками — ему нужна площадь под связный текст, а не под пару строк.
   'draft.text': { w: 400, h: 380 },
+  // Сборке нужны шаблон, легенда входов и предпросмотр документа — всё сразу.
+  'compose.doc': { w: 420, h: 440 },
   'sticker': { w: 300, h: 96 },
 };
 
@@ -184,7 +190,9 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
   // отдают текст чужой страницы: там разметки нет, а случайные # и * только исказили бы её.
   const asMarkdown = data.kind === 'qwen.transform' || data.kind === 'output.text'
     || data.kind === 'artifact.summary' || data.kind === 'search.web'
-    || data.kind === 'factcheck.gemini';
+    || data.kind === 'factcheck.gemini'
+    // Сборка отдаёт готовый документ — его и показываем свёрстанным, а не сырой разметкой.
+    || data.kind === 'compose.doc';
   // Промпт картинки показываем сырым моноширинным текстом: это строка для копирования
   // в генератор, и markdown-обработка исказила бы её (звёздочки, подчёркивания).
   // Артефакты, которые рисуют себя во всю площадь контейнера, а не текстом со скроллом.
@@ -396,6 +404,44 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
               placeholder="Пусто — материал со входа пройдёт дальше как есть. Возьмите его кнопкой выше и правьте здесь."
               onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
               style={{ ...fieldStyle, flex: 1, minHeight: 80, lineHeight: 'var(--lh-body)' }}
+            />
+          </>
+        )}
+
+        {data.kind === 'compose.doc' && (
+          <>
+            {/* Легенда: чем подставится {1}, {2}… Без неё номера в шаблоне — угадайка. */}
+            <div
+              className="nodrag nowheel"
+              style={{
+                flex: 'none', maxHeight: 84, overflowY: 'auto',
+                display: 'flex', flexDirection: 'column', gap: 2,
+                fontSize: 'var(--fs-sm)', color: 'var(--text-muted)',
+                lineHeight: 'var(--lh-snug)',
+              }}
+            >
+              {data.inputLabels.filter((l) => l.ready).map((l, i) => (
+                <div key={i} style={{ overflowWrap: 'anywhere' }}>
+                  <code style={{ color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
+                    {`{${i + 1}}`}
+                  </code>
+                  {l.title ? ` · ${l.title}` : ''}
+                </div>
+              ))}
+              {data.inputLabels.some((l) => !l.ready) && (
+                <div style={{ color: 'var(--text-faint)' }}>
+                  ещё не посчитаны: {data.inputLabels.filter((l) => !l.ready)
+                    .map((l) => l.title || 'без имени').join(', ')}
+                </div>
+              )}
+              {!data.inputLabels.length && <div>Подключите блоки — они появятся здесь</div>}
+            </div>
+            <textarea
+              className="nodrag"
+              value={data.config.text ?? ''}
+              placeholder={'Шаблон документа. Пусто — блоки склеятся по порядку.\n\n# {1}\n\n{Черновик}'}
+              onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
+              style={{ ...fieldStyle, flex: 1, minHeight: 70, fontFamily: 'var(--font-mono)' }}
             />
           </>
         )}

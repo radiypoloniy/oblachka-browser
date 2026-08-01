@@ -43,7 +43,7 @@ const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
   { title: 'Обработка', kinds: ['qwen.transform', 'qwen.chat', 'image.prompt', 'webapp.chat'] },
   { title: 'Проверка', kinds: ['search.web', 'factcheck.gemini'] },
   { title: 'Артефакты', kinds: ['artifact.summary', 'artifact.mindmap', 'artifact.infographic', 'artifact.quiz'] },
-  { title: 'Итог', kinds: ['draft.text', 'output.text'] },
+  { title: 'Итог', kinds: ['draft.text', 'compose.doc', 'output.text'] },
   { title: 'Пометки', kinds: ['sticker'] },
 ];
 
@@ -81,6 +81,7 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
       onSaveOutput: () => {},
       onOpenWebApp: () => {},
       pullFromInput: null,
+      inputLabels: [],
     },
   }));
 }
@@ -528,6 +529,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           onSaveOutput: () => {},
           onOpenWebApp: () => {},
           pullFromInput: null,
+          inputLabels: [],
         },
       }];
     });
@@ -565,6 +567,17 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           const text = feed.join('\n\n');
           return () => patchNode(n.id, { config: { ...n.data.config, text } });
         })(),
+        // Легенда шаблона сборки. Порядок — по связям, ровно как собирает движок; ready
+        // отмечает узлы без результата, потому что их движок в нумерацию не берёт.
+        inputLabels: n.data.kind !== 'compose.doc' ? [] : edges
+          .filter((e) => e.target === n.id)
+          .map((e) => {
+            const from = nodes.find((x) => x.id === e.source);
+            return {
+              title: from?.data.title || (from ? NODE_KINDS[from.data.kind].label : ''),
+              ready: typeof from?.data.output === 'string' && from.data.output.trim().length > 0,
+            };
+          }),
       },
     })),
     [nodes, edges, patchNode, runNode, deleteNode, duplicateNodes, pickFile, openWebApp,
