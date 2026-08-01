@@ -6,15 +6,15 @@
    тем же приёмом, каким раньше осветлялся бирюзовый (заход 2).
    Фиолетовый убран вместе с ролью cloud/system — спека её не содержит. */
 [data-theme="dark"] {
-  --accent:        #479FE6;
-  --accent-hover:  #6DB8F9;
-  --accent-active: #8DCBFF;
-  --accent-soft:   rgba(71,159,230,0.16);
-  --accent-soft-border: rgba(71,159,230,0.42);
+  --accent:        #0A84FF; /* Apple systemBlue dark */
+  --accent-hover:  #409CFF;
+  --accent-active: #64B0FF;
+  --accent-soft:   rgba(10,132,255,0.20);
+  --accent-soft-border: rgba(10,132,255,0.45);
   /* Светлый синий тем более требует тёмного текста, не белого —
      тёмно-синий, самая тёмная ступень той же шкалы, не отдельный цвет. */
-  --on-accent: #03045E;
-  --text-on-accent: #03045E;
+  --on-accent: #FFFFFF;
+  --text-on-accent: #FFFFFF;
 
   /* Коммит 1 (Apple Grouped-каскад): app-bg НЕ трогаем (осознанно, по рекомендации брифа —
      чистый чёрный #000000 жёстче для браузера, #15131A уже даёт лестницу). Остальные
@@ -25,30 +25,32 @@
      ИМЕННО через surface-island, не surface; оставить их фиолетовыми обесценило бы весь коммит
      для самых заметных тёмных поверхностей). Альфа surface-island (0.74) сохранена — это
      по-прежнему полупрозрачная плашка под живым блюром (Этап C blur в dark не трогал). */
-  --app-bg:         #15131A;
+  --app-bg:         #121214; /* нейтральный near-black, без пурпура */
   --surface:        #1C1C1E;  /* Apple dark Secondary Grouped — нейтральный, без пурпура */
   --surface-solid:  #1C1C1E;  /* escape hatch: тёмный аналог #FFFFFF в светлой теме */
   --surface-island: rgba(28,28,30,0.74);  /* та же нейтральная база (#1C1C1E), альфа как была */
-  --surface-sunken: #141416;  /* темнее островов, нейтральный — та же логика колодца, что в light */
-  --surface-hover:  #2C2C2E;  /* Apple System Gray 5 dark */
+  --surface-sunken: #2C2C2E;  /* Apple gray5 dark — СВЕТЛЕЕ острова, как заливки полей у Apple */
+  --surface-hover:  rgba(255,255,255,0.07);
   /* Этап 1: следующая ступень той же шкалы (sunken → surface → hover → active) — сохранена,
      просто на новой нейтральной базе вместо фиолетоватой. */
-  --surface-active: #3A3A3C;  /* Apple System Gray 4 dark */
+  --surface-active: rgba(255,255,255,0.12);
 
-  --divider:        rgba(255,255,255,0.07);
-  --divider-strong: rgba(255,255,255,0.12);
+  --divider:        rgba(255,255,255,0.10);
+  --divider-strong: rgba(255,255,255,0.17);
 
-  --text-strong: #F3F1F6;
-  --text-body:   #CBC7D2;
-  --text-muted:  #918C9B;
-  --text-faint:  #6C6776;
-  --text-link:   #CBC7D2;
-  --text-link-hover: #6DB8F9;
+  --text-strong: #FFFFFF;
+  --text-body:   #EBEBF5;
+  --text-muted:  #A1A1A8;
+  --text-faint:  #7C7C84;
+  --text-link:   #EBEBF5;
+  --text-link-hover: #409CFF;
 
-  --dot-local: #4FC78E;
-  --dot-vpn:   #4FC78E;
+  --dot-local: #30D158; /* systemGreen dark */
+  --dot-vpn:   #30D158;
 
-  --success-500: #4FC78E;
+  --success-500: #30D158;
+  --danger-500:  #FF453A; /* systemRed dark */
+  --warning-500: #FF9F0A; /* systemOrange dark */
 
   --glass-tint: rgba(28,28,30,0.74);  /* Коммит 1: та же нейтральная база, что surface-island — не потребляется нигде в коде, синхронизирован для порядка */
   /* Этап C (light-only): effects.css погасил --glass-filter в none — здесь восстанавливаем
@@ -66,7 +68,7 @@
     0 24px 48px rgba(0,0,0,0.34);
   --shadow-pop: 0 2px 8px rgba(0,0,0,0.50), 0 12px 32px rgba(0,0,0,0.55);
   --shadow-overlay: 0 10px 28px rgba(0,0,0,0.45);
-  --ring-accent: 0 0 0 3px rgba(71,159,230,0.32);
+  --ring-accent: 0 0 0 3px rgba(10,132,255,0.35);
 }
 
 /* ── Инкогнито ────────────────────────────────────────────────────────
@@ -78,12 +80,12 @@
    перекраска поверхностей. Идёт ПОСЛЕ [data-theme="dark"] → выигрывает при
    совпадении обоих селекторов на :root. */
 [data-incognito="true"] {
-  --app-bg:         #121216;  /* глубокий near-black фон окна */
-  --surface:        #1D1D22;  /* острова: мягкий холодный уголь-чёрный (B чуть > R) */
-  --surface-solid:  #1D1D22;
-  --surface-island: rgba(29,29,34,0.82);  /* та же база под блюром */
-  --surface-sunken: #161619;  /* колодцы темнее островов */
-  --surface-hover:  #2A2A31;
-  --surface-active: #34343C;
-  --glass-tint:     rgba(29,29,34,0.82);
+  --app-bg:         #0B0B0D;  /* глубже обычной тёмной — приватный режим виден сразу */
+  --surface:        #18181A;
+  --surface-solid:  #18181A;
+  --surface-island: rgba(24,24,26,0.82);
+  --surface-sunken: #28282A;  /* светлее острова, как в обычной тёмной */
+  --surface-hover:  rgba(255,255,255,0.07);
+  --surface-active: rgba(255,255,255,0.12);
+  --glass-tint:     rgba(24,24,26,0.82);
 }
