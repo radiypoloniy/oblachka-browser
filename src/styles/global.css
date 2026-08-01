@@ -173,3 +173,14 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .oblako-node-out { animation: none; }
 }
+
+/* Системные элементы форм (ползунки, флажки, переключатели, полосы прогресса) без явного
+   accent-color берут цвет оформления ОС — на Windows это выбранный пользователем цвет темы,
+   у нас он проявлялся бирюзовым в настройках. Задаём наш акцент один раз на все, а не по
+   месту: иначе каждый новый ползунок снова притащит чужой цвет. */
+input[type="range"],
+input[type="checkbox"],
+input[type="radio"],
+progress {
+  accent-color: var(--accent);
+}
