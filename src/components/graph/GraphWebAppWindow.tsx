@@ -32,6 +32,10 @@ interface Props {
   // Развёрнут другой сайт — этот надо спрятать, иначе всплывёт поверх него: у нативных вью
   // свой порядок наложения, и React-слой их не перекрывает.
   hidden: boolean;
+  // Прямоугольник области графа в координатах окна. Плавающее окно живёт ВНУТРИ него:
+  // position:fixed отсчитывается от вьюпорта, и без этого окно садилось поверх сайдбара
+  // браузера и тулбара — то есть за пределами графа, которому принадлежит.
+  area: { x: number; y: number; w: number; h: number };
   onSetMode: (mode: WebAppMode) => void;
   onFocus: () => void;
   onClose: () => void;
@@ -78,11 +82,14 @@ function HeaderButton({ title, onClick, children }: {
 }
 
 export default function GraphWebAppWindow({
-  graphId, nodeId, url, title, hostLabel, note, index, mode, hidden,
+  graphId, nodeId, url, title, hostLabel, note, index, mode, hidden, area,
   onSetMode, onFocus, onClose, onInsert, onCaptureSelection, onCaptureLast,
 }: Props) {
   const [rect, setRect] = useState(() => ({
-    x: 100 + (index % 4) * 40, y: 50 + (index % 4) * 34, w: 460, h: 560,
+    x: area.x + 24 + (index % 4) * 40,
+    y: area.y + 20 + (index % 4) * 34,
+    w: Math.min(460, Math.max(MIN_W, area.w - 48)),
+    h: Math.min(560, Math.max(MIN_H, area.h - 40)),
   }));
   const holeRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ mode: 'move' | 'resize'; dx: number; dy: number } | null>(null);
@@ -135,6 +142,11 @@ export default function GraphWebAppWindow({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Область меняется при ресайзе окна и при открытии дока — читаем её через ref, чтобы
+  // обработчики перетаскивания не пересоздавались на каждое изменение.
+  const areaRef = useRef(area);
+  areaRef.current = area;
+
   const dragMode = mode;
   const onPointerDown = useCallback((mode: 'move' | 'resize') => (e: React.PointerEvent) => {
     // ⚠️ Клик по кнопке в шапке не должен становиться перетаскиванием. setPointerCapture
@@ -154,7 +166,13 @@ export default function GraphWebAppWindow({
     const drag = dragRef.current;
     if (!drag || !(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) return;
     if (drag.mode === 'move') {
-      setRect((r) => ({ ...r, x: Math.max(0, e.clientX - drag.dx), y: Math.max(0, e.clientY - drag.dy) }));
+      // Держим окно в границах графа: за них ему выезжать некуда — нативная вью всё равно
+      // не обрежется по краю области и легла бы поверх чужого интерфейса.
+      setRect((r) => ({
+        ...r,
+        x: Math.min(Math.max(areaRef.current.x, e.clientX - drag.dx), areaRef.current.x + areaRef.current.w - r.w),
+        y: Math.min(Math.max(areaRef.current.y, e.clientY - drag.dy), areaRef.current.y + areaRef.current.h - r.h),
+      }));
     } else {
       setRect((r) => ({
         ...r,

@@ -150,6 +150,24 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   const nodesRef = useRef<RFNode[]>([]);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
 
+  // Прямоугольник графа в координатах окна — плавающие окна веб-приложений позиционируются
+  // относительно него, а не вьюпорта (иначе садятся поверх сайдбара браузера).
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [area, setArea] = useState({ x: 0, y: 0, w: 1200, h: 800 });
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setArea({ x: r.x, y: r.y, w: r.width, h: r.height });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+
   const refreshList = useCallback(async () => {
     const metas = await window.oblako.listGraphs();
     setList(metas);
@@ -560,6 +578,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
       note={webAppNotes[app.nodeId] ?? null}
       index={webApps.findIndex((w) => w.nodeId === app.nodeId)}
       mode={app.mode}
+      area={area}
       hidden={fullscreenAppId !== null && app.nodeId !== fullscreenAppId}
       onSetMode={(mode) => setWebAppMode(app.nodeId, mode)}
       onFocus={() => focusWebApp(app.nodeId)}
@@ -606,11 +625,25 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div style={{ position: 'absolute', inset: 0, display: 'flex', background: 'var(--app-bg)' }}>
+    // Граф — «страница», а не прозрачный экран хаба: Hub намеренно не получает островной
+    // рамки (сквозь него просвечивает --canvas, см. TAB_FRAME_VISUAL в App.tsx), поэтому
+    // плиту граф заводит себе сам. Без неё его непрозрачные подложки шли до краёв области
+    // с прямыми углами и выбивались из системы.
+    <div
+      ref={rootRef}
+      style={{
+        position: 'absolute', inset: 0, display: 'flex', overflow: 'hidden',
+        background: 'var(--surface-solid)',
+        borderRadius: 'var(--radius-island)',
+        boxShadow: 'var(--shadow-island)',
+      }}
+    >
       <aside
         style={{
           width: 208, flex: 'none', display: 'flex', flexDirection: 'column',
-          borderRight: '1px solid var(--divider)', background: 'var(--surface-sunken)',
+          // Тот же рецепт, что у навигации настроек (Settings.tsx): прозрачный рейл на плите
+          // страницы и разделитель --divider-strong. Своей серой заливки он иметь не должен.
+          borderRight: '1px solid var(--divider-strong)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 12px 8px' }}>
@@ -656,9 +689,10 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '7px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
                 background: meta.id === currentId ? 'var(--surface)' : 'transparent',
+                boxShadow: meta.id === currentId ? 'var(--shadow-card)' : 'none',
                 color: meta.id === currentId ? 'var(--text-strong)' : 'var(--text-body)',
                 fontSize: 'var(--fs-sm)',
-                fontWeight: meta.id === currentId ? 'var(--fw-medium)' : 'var(--fw-regular)',
+                fontWeight: meta.id === currentId ? 'var(--fw-semibold)' : 'var(--fw-regular)',
               }}
               onClick={() => { if (meta.id !== currentId) void openGraph(meta.id); }}
             >
@@ -736,13 +770,12 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div
           style={{
-            display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap',
-            padding: '10px 14px', borderBottom: '1px solid var(--divider)',
-            background: 'var(--surface)',
+            display: 'flex', alignItems: 'center', gap: 6, rowGap: 6, flexWrap: 'wrap',
+            padding: '9px 12px', borderBottom: '1px solid var(--divider-strong)',
           }}
         >
           {NODE_GROUPS.map((group, gi) => (
-            <div key={group.title} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <div key={group.title} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {gi > 0 && (
                 <span style={{ width: 1, height: 20, background: 'var(--divider)', marginRight: 3 }} />
               )}
@@ -763,7 +796,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-                    borderRadius: 'var(--radius-chip)', padding: '6px 11px', cursor: 'pointer',
+                    borderRadius: 'var(--radius-chip)', padding: '5px 10px', cursor: 'pointer',
                     color: 'var(--text-body)', font: 'inherit',
                     fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
                   }}
@@ -812,7 +845,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', background: 'var(--surface-sunken)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
           <ReactFlow
             nodes={rfNodes}
@@ -891,7 +924,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
               style={{
                 width: 'min(38%, 460px)', minWidth: 340, flex: 'none',
                 display: 'flex', flexDirection: 'column', gap: 8, padding: 8,
-                borderLeft: '1px solid var(--divider)', background: 'var(--app-bg)',
+                borderLeft: '1px solid var(--divider-strong)',
               }}
             >
               {dockedApps.map((app) => renderWebApp(app, currentId))}

@@ -60,14 +60,16 @@ export default function NodeFullscreen({
         display: 'flex', flexDirection: 'column',
         // У диалога — белый лист, как у чата в AI-панели и на странице. Остальные типы
         // остаются на фоне приложения: там содержимое само лежит на карточках.
-        background: kind === 'qwen.chat' ? 'var(--surface-solid)' : 'var(--app-bg)',
+        // Диалог — белый лист, как чат на странице; остальным нужен «колодец», на котором
+        // читаются белые карточки артефактов (тот же тон, что у холста).
+        background: kind === 'qwen.chat' ? 'var(--surface-solid)' : 'var(--surface-sunken)',
       }}
     >
       <div
         style={{
           display: 'flex', alignItems: 'center', gap: 8, flex: 'none',
-          padding: '10px 14px', borderBottom: '1px solid var(--divider)',
-          background: 'var(--surface)',
+          padding: '10px 14px', borderBottom: '1px solid var(--divider-strong)',
+          background: 'var(--surface-solid)',
         }}
       >
         <button type="button" onClick={onClose} title="Вернуться к графу (Esc)" style={headerButton}>
