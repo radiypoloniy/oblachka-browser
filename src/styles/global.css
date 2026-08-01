@@ -157,3 +157,15 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .oblako-section-in, .oblako-tab-in { animation: none; }
 }
+
+/* Результат узла графа. Блок монтируется в момент, когда выхлоп появился, — анимация играет
+   ровно один раз и не мешает стриму: дальше содержимое обновляется внутри уже показанного
+   блока. Сдвиг маленький: карточка небольшая, и большой прыжок в ней читался бы как рывок. */
+@keyframes oblako-node-out {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.oblako-node-out { animation: oblako-node-out 200ms var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) {
+  .oblako-node-out { animation: none; }
+}

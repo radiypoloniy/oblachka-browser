@@ -1191,16 +1191,25 @@ export class TabManager {
     // Разворачиваем И вью на всё окно, И само окно: полноэкранный ролик не должен упираться
     // в заголовок окна и панель задач. Вью вкладки лежит выше хрома по порядку addChildView,
     // так что интерфейс она закрывает собой — прятать его отдельно не требуется.
+    //
+    // ⚠️ Вью перекладываем ПОСЛЕ того, как окно закончило собственный переход, а не сразу.
+    // setFullScreen асинхронен: система разворачивает окно со своей анимацией, и если тут же
+    // задать вью новые границы, она полсекунды живёт не по размеру окна — кадр прыгает, а по
+    // краям мелькает пустота. Отсюда подписка на события окна, а не немедленный вызов.
     wc.on('enter-html-full-screen', () => {
       this.fullscreenTabId = id;
-      if (!this.win.isDestroyed()) this.win.setFullScreen(true);
-      this.repositionViews();
+      if (this.win.isDestroyed()) return;
+      if (this.win.isFullScreen()) { this.repositionViews(); return; }
+      this.win.once('enter-full-screen', () => this.repositionViews());
+      this.win.setFullScreen(true);
     });
     wc.on('leave-html-full-screen', () => {
       if (this.fullscreenTabId !== id) return;
       this.fullscreenTabId = null;
-      if (!this.win.isDestroyed()) this.win.setFullScreen(false);
-      this.repositionViews();
+      if (this.win.isDestroyed()) return;
+      if (!this.win.isFullScreen()) { this.repositionViews(); return; }
+      this.win.once('leave-full-screen', () => this.repositionViews());
+      this.win.setFullScreen(false);
     });
     wc.on('page-title-updated', (_e, title) => {
       // Обновляем только заголовок — без инкремента счётчика посещений.

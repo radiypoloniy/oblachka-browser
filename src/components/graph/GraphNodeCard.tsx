@@ -611,7 +611,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         {data.output && data.kind !== 'source.note' && data.kind !== 'draft.text'
           && data.kind !== 'source.image' && (
           <div
-            className="nodrag nowheel"
+            className="nodrag nowheel oblako-node-out"
             // Майндкарта и инфографика рисуют себя сами во всю высоту — им внутренний
             // скролл и отступы только мешают, они масштабируются под контейнер. Подложку
             // тоже снимаем: с ней рисунок читается как вклеенный скриншот, а не как
