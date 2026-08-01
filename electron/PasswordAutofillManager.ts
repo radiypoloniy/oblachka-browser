@@ -3,15 +3,24 @@
 // AiPanelManager.ts/TranslatePopoverManager.ts: модуль с экспортированными функциями +
 // setTabManager(), не класс — сама «бизнес-логика вкладок» остаётся в TabManager.ts, этот модуль
 // только реагирует на её колбэки.
+import type { BrowserWindow } from 'electron';
 import type { TabManager } from './TabManager';
 import type { PasswordManager } from './PasswordManager';
 import { originOf } from './PasswordManager';
 import type { PasswordIndicatorState } from '../shared/ipc';
+import { contextForWindow } from './WindowRegistry';
 
-let tabManagerRef: TabManager | null = null;
+// ⚠️ Менеджер вкладок здесь НЕ хранится: каждая точка входа получает окно, а вкладки берутся из
+// реестра по нему. Прежняя единственная ссылка означала бы, что форма входа в одном окне ищет
+// активную вкладку в другом — и пароль ушёл бы на чужую страницу. Состояние по вкладкам (ниже)
+// общее на все окна намеренно: ключ — id вкладки, а он уникален в приложении.
 let passwordManagerRef: PasswordManager | null = null;
-let onIndicatorChangedCb: ((state: PasswordIndicatorState | null) => void) | null = null;
+let onIndicatorChangedCb: ((win: BrowserWindow, state: PasswordIndicatorState | null) => void) | null = null;
 let onListChangedCb: (() => void) | null = null;
+
+function tabsOf(win: BrowserWindow): TabManager | null {
+  return contextForWindow(win)?.tabs ?? null;
+}
 
 // Текущее состояние индикатора по вкладке — chrome видит только состояние АКТИВНОЙ (см.
 // pushIfActive). Ожидающий подтверждения секрет — ОТДЕЛЬНАЯ карта, никогда не пересекает
@@ -27,20 +36,20 @@ const pendingGenerated = new Map<string, { origin: string; password: string; id:
 const autofilledTabs = new Map<string, string>();
 
 export function init(
-  tm: TabManager,
   pm: PasswordManager,
-  onIndicatorChanged: (state: PasswordIndicatorState | null) => void,
+  onIndicatorChanged: (win: BrowserWindow, state: PasswordIndicatorState | null) => void,
   onListChanged: () => void,
 ): void {
-  tabManagerRef = tm;
   passwordManagerRef = pm;
   onIndicatorChangedCb = onIndicatorChanged;
   onListChangedCb = onListChanged;
 }
 
-function pushIfActive(tabId: string, state: PasswordIndicatorState | null): void {
-  if (tabManagerRef?.getActiveId() !== tabId) return;
-  onIndicatorChangedCb?.(state);
+// Индикатор-«ключ» показывает состояние АКТИВНОЙ вкладки — и активной именно в том окне, откуда
+// пришёл сигнал: в соседнем окне активна своя вкладка, и подсветить там чужой ключ было бы враньём.
+function pushIfActive(win: BrowserWindow, tabId: string, state: PasswordIndicatorState | null): void {
+  if (tabsOf(win)?.getActiveId() !== tabId) return;
+  onIndicatorChangedCb?.(win, state);
 }
 
 function computeHasSavedState(pm: PasswordManager, origin: string): PasswordIndicatorState | null {
@@ -58,7 +67,7 @@ function computeHasSavedState(pm: PasswordManager, origin: string): PasswordIndi
 // ничего не сохранено, offer-generate (похоже на регистрацию — предложить сгенерировать).
 // Позиция поповера (заякорен на поле, не на тулбар) считается вызывающей стороной (main.ts) —
 // этот модуль ничего не знает про геометрию окна.
-export function handleFieldIconClick(tabId: string, url: string): PasswordIndicatorState | null {
+export function handleFieldIconClick(_win: BrowserWindow, tabId: string, url: string): PasswordIndicatorState | null {
   try {
     const pm = passwordManagerRef;
     if (!pm) return null;
@@ -83,10 +92,10 @@ export function handleFieldIconClick(tabId: string, url: string): PasswordIndica
 // зайти в Настройки → Пароли за тонкой настройкой длины/набора символов.
 const INLINE_GENERATE_OPTS = { length: 20, lower: true, upper: true, digits: true, symbols: true };
 
-export async function handleGenerateAndFill(): Promise<boolean> {
+export async function handleGenerateAndFill(win: BrowserWindow): Promise<boolean> {
   try {
     const pm = passwordManagerRef;
-    const tm = tabManagerRef;
+    const tm = tabsOf(win);
     const tabId = tm?.getActiveId();
     if (!pm || !tm || !tabId) return false;
 
@@ -124,7 +133,7 @@ export async function handleGenerateAndFill(): Promise<boolean> {
   }
 }
 
-export function handleFormDetected(tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string): void {
+export function handleFormDetected(win: BrowserWindow, tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string): void {
   try {
     const pm = passwordManagerRef;
     if (!pm) return;
@@ -133,13 +142,13 @@ export function handleFormDetected(tabId: string, hasLoginForm: boolean, hasUser
       // origin (например, после logout) снова получит автозаполнение.
       autofilledTabs.delete(tabId);
       tabStates.delete(tabId);
-      pushIfActive(tabId, null);
+      pushIfActive(win, tabId, null);
       return;
     }
     const origin = originOf(url);
     const state = computeHasSavedState(pm, origin);
     tabStates.set(tabId, state);
-    pushIfActive(tabId, state);
+    pushIfActive(win, tabId, state);
 
     // Автозаполнение без кликов (как у Яндекса): для origin сохранён РОВНО один логин —
     // подставляем сразу при обнаружении формы. Несколько сохранённых — неоднозначно, ждём
@@ -152,7 +161,7 @@ export function handleFormDetected(tabId: string, hasLoginForm: boolean, hasUser
       const match = state.matches[0]!;
       const password = pm.reveal(match.id);
       if (password !== null
-        && tabManagerRef?.sendPasswordFill(tabId, { username: match.username, password, onlyIfEmpty: true })) {
+        && tabsOf(win)?.sendPasswordFill(tabId, { username: match.username, password, onlyIfEmpty: true })) {
         autofilledTabs.set(tabId, origin);
       }
     }
@@ -161,7 +170,7 @@ export function handleFormDetected(tabId: string, hasLoginForm: boolean, hasUser
   }
 }
 
-export function handleCredentialSubmitted(tabId: string, username: string, password: string, url: string): void {
+export function handleCredentialSubmitted(win: BrowserWindow, tabId: string, username: string, password: string, url: string): void {
   try {
     const pm = passwordManagerRef;
     if (!pm) return;
@@ -177,7 +186,7 @@ export function handleCredentialSubmitted(tabId: string, username: string, passw
       }
       pendingGenerated.delete(tabId);
       tabStates.delete(tabId);
-      pushIfActive(tabId, null);
+      pushIfActive(win, tabId, null);
       return;
     }
 
@@ -187,7 +196,7 @@ export function handleCredentialSubmitted(tabId: string, username: string, passw
       // Уже сохранено ровно так же — ничего не предлагаем (никогда не спамим уже известным).
       pendingSecrets.delete(tabId);
       tabStates.delete(tabId);
-      pushIfActive(tabId, null);
+      pushIfActive(win, tabId, null);
       return;
     }
 
@@ -196,7 +205,7 @@ export function handleCredentialSubmitted(tabId: string, username: string, passw
       : { kind: 'offer-update', origin, username, matchId: result.matchId! };
     pendingSecrets.set(tabId, { username, password, matchId: result.status === 'differs' ? result.matchId : undefined });
     tabStates.set(tabId, state);
-    pushIfActive(tabId, state);
+    pushIfActive(win, tabId, state);
   } catch (e) {
     console.warn('[PasswordAutofill] handleCredentialSubmitted error:', (e as Error).message);
   }
@@ -205,11 +214,11 @@ export function handleCredentialSubmitted(tabId: string, username: string, passw
 // ── Реакция на смену активной вкладки / закрытие (main.ts подключает к уже существующим
 // колбэкам TabManager — onActiveTabChangedCb/onTabClosedCb, без новых параметров конструктора) ──
 
-export function onActiveTabChanged(): void {
+export function onActiveTabChanged(win: BrowserWindow): void {
   try {
-    const tabId = tabManagerRef?.getActiveId();
+    const tabId = tabsOf(win)?.getActiveId();
     if (!tabId) return;
-    onIndicatorChangedCb?.(tabStates.get(tabId) ?? null);
+    onIndicatorChangedCb?.(win, tabStates.get(tabId) ?? null);
   } catch (e) {
     console.warn('[PasswordAutofill] onActiveTabChanged error:', (e as Error).message);
   }
@@ -225,10 +234,10 @@ export function onTabClosed(tabId: string): void {
 // ── Действия из поповера (см. main.ts::registerIpc, PASSWORDS_INDICATOR_*) — всегда про
 // ТЕКУЩУЮ активную вкладку (поповер анкерится к omnibox, не к конкретной вкладке в стороне) ──
 
-export function handleSave(): boolean {
+export function handleSave(win: BrowserWindow): boolean {
   try {
     const pm = passwordManagerRef;
-    const tabId = tabManagerRef?.getActiveId();
+    const tabId = tabsOf(win)?.getActiveId();
     if (!pm || !tabId) return false;
     const pending = pendingSecrets.get(tabId);
     const state = tabStates.get(tabId);
@@ -239,7 +248,7 @@ export function handleSave(): boolean {
     if (ok) {
       pendingSecrets.delete(tabId);
       tabStates.delete(tabId);
-      pushIfActive(tabId, null);
+      pushIfActive(win, tabId, null);
       onListChangedCb?.();
     }
     return ok;
@@ -249,10 +258,10 @@ export function handleSave(): boolean {
   }
 }
 
-export function handleUpdate(): boolean {
+export function handleUpdate(win: BrowserWindow): boolean {
   try {
     const pm = passwordManagerRef;
-    const tabId = tabManagerRef?.getActiveId();
+    const tabId = tabsOf(win)?.getActiveId();
     if (!pm || !tabId) return false;
     const pending = pendingSecrets.get(tabId);
     const state = tabStates.get(tabId);
@@ -262,7 +271,7 @@ export function handleUpdate(): boolean {
     if (ok) {
       pendingSecrets.delete(tabId);
       tabStates.delete(tabId);
-      pushIfActive(tabId, null);
+      pushIfActive(win, tabId, null);
       onListChangedCb?.();
     }
     return ok;
@@ -272,10 +281,10 @@ export function handleUpdate(): boolean {
   }
 }
 
-export function handleFill(id: number): boolean {
+export function handleFill(win: BrowserWindow, id: number): boolean {
   try {
     const pm = passwordManagerRef;
-    const tm = tabManagerRef;
+    const tm = tabsOf(win);
     const tabId = tm?.getActiveId();
     if (!pm || !tm || !tabId) return false;
 
@@ -301,13 +310,13 @@ export function handleFill(id: number): boolean {
   }
 }
 
-export function handleDismiss(): void {
+export function handleDismiss(win: BrowserWindow): void {
   try {
-    const tabId = tabManagerRef?.getActiveId();
+    const tabId = tabsOf(win)?.getActiveId();
     if (!tabId) return;
     pendingSecrets.delete(tabId);
     tabStates.delete(tabId);
-    pushIfActive(tabId, null);
+    pushIfActive(win, tabId, null);
   } catch (e) {
     console.warn('[PasswordAutofill] handleDismiss error:', (e as Error).message);
   }

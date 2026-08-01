@@ -2,6 +2,9 @@
 // поле формы. Тот же приём, что PasswordPopoverManager (DOM внутри chrome перекрывается нативной
 // вьюхой страницы). Показывает список сохранённых профилей (адреса; карты — заход 3); выбор
 // пользователя уходит в оркестратор, который шлёт значения на подстановку в страницу.
+//
+// ⚠️ ПОПОВЕР — СВОЙ У КАЖДОГО ОКНА, как и у паролей: якорь считается по полю конкретной страницы,
+// и выбор обязан вернуться в то окно, где кликнули.
 import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
@@ -23,107 +26,148 @@ export type AutofillPopoverState =
   | { kind: 'save-address'; title: string; sub: string }
   | { kind: 'save-card'; title: string; sub: string };
 
-let popoverView: WebContentsView | null = null;
-let attachedWin: BrowserWindow | null = null;
-let resizeBoundWin: BrowserWindow | null = null;
-let ipcRegistered = false;
-let lastAnchorBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
-let currentHeight = INITIAL_HEIGHT;
-let lastState: AutofillPopoverState | null = null;
-let onClosedCb: (() => void) | null = null;
-let onPickCb: ((id: number) => void) | null = null;
-let onSaveCb: (() => void) | null = null;
+interface WindowPopover {
+  win: BrowserWindow;
+  view: WebContentsView | null;
+  resizeBound: boolean;
+  anchor: ContentBounds;
+  height: number;
+  state: AutofillPopoverState | null;
+}
 
-export function initAutofillPopover(onClosed: () => void, onPick: (id: number) => void, onSave: () => void): void {
+const popovers = new Map<number, WindowPopover>();
+let ipcRegistered = false;
+let onClosedCb: ((win: BrowserWindow) => void) | null = null;
+let onPickCb: ((win: BrowserWindow, id: number) => void) | null = null;
+let onSaveCb: ((win: BrowserWindow) => void) | null = null;
+
+export function initAutofillPopover(
+  onClosed: (win: BrowserWindow) => void,
+  onPick: (win: BrowserWindow, id: number) => void,
+  onSave: (win: BrowserWindow) => void,
+): void {
   onClosedCb = onClosed;
   onPickCb = onPick;
   onSaveCb = onSave;
 }
 
-function isAttached(): boolean {
-  return !!popoverView && !!attachedWin && attachedWin.contentView.children.includes(popoverView);
+function stateFor(win: BrowserWindow): WindowPopover {
+  const existing = popovers.get(win.id);
+  if (existing) return existing;
+  const created: WindowPopover = {
+    win, view: null, resizeBound: false,
+    anchor: { x: 0, y: 0, width: 0, height: 0 },
+    height: INITIAL_HEIGHT, state: null,
+  };
+  popovers.set(win.id, created);
+  win.once('closed', () => { popovers.delete(win.id); });
+  return created;
 }
 
-function computeBounds(): { x: number; y: number; width: number; height: number } {
-  const winBounds = attachedWin?.getContentBounds() ?? { width: 1200, height: 800 };
+// Окно по вью-отправителю — см. ту же функцию в PasswordPopoverManager.ts.
+function stateBySender(sender: Electron.WebContents): WindowPopover | null {
+  for (const st of popovers.values()) if (st.view?.webContents === sender) return st;
+  return null;
+}
+
+function isAttached(st: WindowPopover): boolean {
+  return !!st.view && !st.win.isDestroyed() && st.win.contentView.children.includes(st.view);
+}
+
+function computeBounds(st: WindowPopover): { x: number; y: number; width: number; height: number } {
+  const winBounds = st.win.isDestroyed() ? { width: 1200, height: 800 } : st.win.getContentBounds();
   const maxX = Math.max(WINDOW_MARGIN, winBounds.width - POPOVER_WIDTH - WINDOW_MARGIN);
-  const cardX = Math.min(Math.max(WINDOW_MARGIN, lastAnchorBounds.x), maxX);
-  const belowY = lastAnchorBounds.y + lastAnchorBounds.height + GAP;
-  const aboveY = lastAnchorBounds.y - currentHeight - GAP;
-  const cardY = belowY + currentHeight + WINDOW_MARGIN <= winBounds.height
+  const cardX = Math.min(Math.max(WINDOW_MARGIN, st.anchor.x), maxX);
+  const belowY = st.anchor.y + st.anchor.height + GAP;
+  const aboveY = st.anchor.y - st.height - GAP;
+  const cardY = belowY + st.height + WINDOW_MARGIN <= winBounds.height
     ? belowY
     : Math.max(WINDOW_MARGIN, aboveY);
   return {
     x: cardX - SHADOW_MARGIN,
     y: cardY - SHADOW_MARGIN,
     width: POPOVER_WIDTH + SHADOW_MARGIN * 2,
-    height: currentHeight + SHADOW_MARGIN * 2,
+    height: st.height + SHADOW_MARGIN * 2,
   };
 }
 
-function layoutPopover(): void {
-  if (!isAttached()) return;
-  popoverView!.setBounds(computeBounds());
+function layoutPopover(st: WindowPopover): void {
+  if (!isAttached(st)) return;
+  st.view!.setBounds(computeBounds(st));
 }
 
-export function syncAutofillPopoverAnchorBounds(b: ContentBounds): void {
-  lastAnchorBounds = b;
-  layoutPopover();
+export function syncAutofillPopoverAnchorBounds(win: BrowserWindow, b: ContentBounds): void {
+  const st = stateFor(win);
+  st.anchor = b;
+  layoutPopover(st);
 }
 
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return;
   ipcRegistered = true;
-  ipcMain.on('autofill-popover:close', () => closeAutofillPopover());
-  ipcMain.on('autofill-popover:height', (_e, px: number) => {
-    currentHeight = Math.max(1, px);
-    layoutPopover();
+  ipcMain.on('autofill-popover:close', (e) => {
+    const st = stateBySender(e.sender);
+    if (st) closeAutofillPopover(st.win);
   });
-  ipcMain.on('autofill-popover:pick', (_e, id: number) => {
-    onPickCb?.(id);
-    closeAutofillPopover();
+  ipcMain.on('autofill-popover:height', (e, px: number) => {
+    const st = stateBySender(e.sender);
+    if (!st) return;
+    st.height = Math.max(1, px);
+    layoutPopover(st);
   });
-  ipcMain.on('autofill-popover:save', () => {
-    onSaveCb?.();
-    closeAutofillPopover();
+  ipcMain.on('autofill-popover:pick', (e, id: number) => {
+    const st = stateBySender(e.sender);
+    if (!st) return;
+    onPickCb?.(st.win, id);
+    closeAutofillPopover(st.win);
+  });
+  ipcMain.on('autofill-popover:save', (e) => {
+    const st = stateBySender(e.sender);
+    if (!st) return;
+    onSaveCb?.(st.win);
+    closeAutofillPopover(st.win);
   });
 }
 
-function ensurePopoverView(): WebContentsView {
-  if (popoverView) return popoverView;
+function ensurePopoverView(st: WindowPopover): WebContentsView {
+  if (st.view) return st.view;
   ensureIpcRegistered();
-  popoverView = new WebContentsView({
+  const view = new WebContentsView({
     webPreferences: {
       preload: path.join(__dirname, 'preload-autofillpopover.js'),
       contextIsolation: true,
       sandbox: false,
     },
   });
-  popoverView.setBackgroundColor('#00000000');
-  popoverView.webContents.once('did-finish-load', () => {
-    if (lastState) popoverView?.webContents.send('autofill-popover:show', lastState);
+  st.view = view;
+  view.setBackgroundColor('#00000000');
+  view.webContents.once('did-finish-load', () => {
+    if (st.state) view.webContents.send('autofill-popover:show', st.state);
   });
-  popoverView.webContents.loadURL('oblako-chrome://localhost/autofillpopover.html');
-  return popoverView;
+  view.webContents.loadURL('oblako-chrome://localhost/autofillpopover.html');
+  return view;
 }
 
 export function showAutofillPopover(win: BrowserWindow, state: AutofillPopoverState): void {
-  attachedWin = win;
-  lastState = state;
-  if (resizeBoundWin !== win) {
-    win.on('resize', layoutPopover);
-    resizeBoundWin = win;
+  const st = stateFor(win);
+  st.state = state;
+  if (!st.resizeBound) {
+    win.on('resize', () => layoutPopover(st));
+    st.resizeBound = true;
   }
-  const view = ensurePopoverView();
-  view.setBounds(computeBounds());
-  if (!isAttached()) win.contentView.addChildView(view);
+  const view = ensurePopoverView(st);
+  view.setBounds(computeBounds(st));
+  if (!isAttached(st)) win.contentView.addChildView(view);
   view.webContents.send('autofill-popover:show', state);
 }
 
-export function closeAutofillPopover(): void {
-  lastState = null;
-  if (isAttached()) {
-    try { attachedWin!.contentView.removeChildView(popoverView!); } catch { /* окно могло уже закрыться */ }
+export function closeAutofillPopover(win: BrowserWindow | null): void {
+  if (!win) return;
+  const st = popovers.get(win.id);
+  if (!st) return;
+  st.state = null;
+  if (isAttached(st)) {
+    try { st.win.contentView.removeChildView(st.view!); } catch { /* окно могло уже закрыться */ }
   }
-  onClosedCb?.();
+  onClosedCb?.(st.win);
 }

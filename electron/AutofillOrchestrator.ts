@@ -2,58 +2,81 @@
 // (AutofillManager) и поповер выбора (AutofillPopoverManager). Тот же приём, что
 // PasswordAutofillManager: модуль с функциями + init(), без класса. В отличие от паролей, адреса/
 // карты НЕ привязаны к origin — поповер показывает все сохранённые профили.
-import type { TabManager } from './TabManager';
+import type { BrowserWindow } from 'electron';
 import type { AutofillManager } from './AutofillManager';
 import type { AddressProfile, CardMeta, AddressInput, CardInput, AutofillFillFields } from '../shared/ipc';
 import type { AutofillPopoverState } from './AutofillPopoverManager';
+import { contextForWindow } from './WindowRegistry';
 
-let tmRef: TabManager | null = null;
 let amRef: AutofillManager | null = null;
-// Вкладка и вид формы, где было сфокусировано поле — туда уйдёт подстановка после выбора в поповере.
-let lastFocusTabId: string | null = null;
-let lastKind: 'address' | 'card' | null = null;
-// Данные из отправленной формы, ожидающие подтверждения «Сохранить» (offer-save). Полный номер
-// карты живёт здесь в main до явного согласия пользователя; в поповер уходит только маска.
-let pendingSave: { kind: 'address'; input: AddressInput } | { kind: 'card'; input: CardInput } | null = null;
 
-export function initAutofillOrchestrator(tm: TabManager, am: AutofillManager): void {
-  tmRef = tm;
+// ⚠️ Состояние — ПО ОКНУ. Формы заполняют в разных окнах независимо, и одна общая запись означала
+// бы, что выбор профиля в окне B подставляется в поле, сфокусированное в окне A, а «Сохранить» в
+// одном окне кладёт в сейф карту, отправленную в другом. Менеджер вкладок здесь не хранится вовсе:
+// он берётся из реестра по окну — так он не может устареть после закрытия окна.
+interface WindowAutofill {
+  // Вкладка и вид формы, где было сфокусировано поле — туда уйдёт подстановка после выбора в поповере.
+  focusTabId: string | null;
+  kind: 'address' | 'card' | null;
+  // Данные из отправленной формы, ожидающие подтверждения «Сохранить» (offer-save). Полный номер
+  // карты живёт здесь в main до явного согласия пользователя; в поповер уходит только маска.
+  pendingSave: { kind: 'address'; input: AddressInput } | { kind: 'card'; input: CardInput } | null;
+}
+
+const perWindow = new Map<number, WindowAutofill>();
+
+function stateFor(win: BrowserWindow): WindowAutofill {
+  const existing = perWindow.get(win.id);
+  if (existing) return existing;
+  const created: WindowAutofill = { focusTabId: null, kind: null, pendingSave: null };
+  perWindow.set(win.id, created);
+  win.once('closed', () => { perWindow.delete(win.id); });
+  return created;
+}
+
+export function initAutofillOrchestrator(am: AutofillManager): void {
   amRef = am;
 }
 
-export function getLastKind(): 'address' | 'card' | null {
-  return lastKind;
+export function getLastKind(win: BrowserWindow): 'address' | 'card' | null {
+  return perWindow.get(win.id)?.kind ?? null;
 }
 
 // Фокус на поле адреса → список профилей для поповера (null — нечего показывать).
-export function handleAddressFieldFocus(tabId: string): AddressProfile[] | null {
-  lastFocusTabId = tabId;
-  lastKind = 'address';
+export function handleAddressFieldFocus(win: BrowserWindow, tabId: string): AddressProfile[] | null {
+  const st = stateFor(win);
+  st.focusTabId = tabId;
+  st.kind = 'address';
   const list = amRef?.listAddresses() ?? [];
   return list.length > 0 ? list : null;
 }
 
 // Фокус на поле карты → список карт для поповера (null — нечего показывать).
-export function handleCardFieldFocus(tabId: string): CardMeta[] | null {
-  lastFocusTabId = tabId;
-  lastKind = 'card';
+export function handleCardFieldFocus(win: BrowserWindow, tabId: string): CardMeta[] | null {
+  const st = stateFor(win);
+  st.focusTabId = tabId;
+  st.kind = 'card';
   const list = amRef?.listCards() ?? [];
   return list.length > 0 ? list : null;
 }
 
 // Выбор профиля в поповере → подставляем в ту вкладку, где было сфокусировано поле.
-export function handleFillAddress(id: number): boolean {
-  if (!amRef || !tmRef || !lastFocusTabId) return false;
+export function handleFillAddress(win: BrowserWindow, id: number): boolean {
+  const st = perWindow.get(win.id);
+  const tm = contextForWindow(win)?.tabs;
+  if (!amRef || !tm || !st?.focusTabId) return false;
   const addr = amRef.listAddresses().find((a) => a.id === id);
   if (!addr) return false;
-  return tmRef.sendAutofillFill(lastFocusTabId, addressToFields(addr));
+  return tm.sendAutofillFill(st.focusTabId, addressToFields(addr));
 }
 
 // Выбор карты → расшифровываем полный номер (revealCardNumber) и подставляем. ВНИМАНИЕ: гейт
 // Windows Hello делается вызывающей стороной (main.ts) ДО вызова этой функции — здесь номер уже
 // считается разрешённым к подстановке.
-export function handleFillCard(id: number): boolean {
-  if (!amRef || !tmRef || !lastFocusTabId) return false;
+export function handleFillCard(win: BrowserWindow, id: number): boolean {
+  const st = perWindow.get(win.id);
+  const tm = contextForWindow(win)?.tabs;
+  if (!amRef || !tm || !st?.focusTabId) return false;
   const card = amRef.listCards().find((c) => c.id === id);
   if (!card) return false;
   const number = amRef.revealCardNumber(id);
@@ -65,14 +88,15 @@ export function handleFillCard(id: number): boolean {
     ccExpYear: card.expYear ? String(card.expYear) : '',
     ccExp: card.expMonth && card.expYear ? `${String(card.expMonth).padStart(2, '0')}/${String(card.expYear).slice(-2)}` : '',
   };
-  return tmRef.sendAutofillFill(lastFocusTabId, fields);
+  return tm.sendAutofillFill(st.focusTabId, fields);
 }
 
 // ── Offer-save после отправки формы ─────────────────────────────────────────────────────────
 // Решает, предлагать ли сохранить отправленные данные (новые, не дубль). Возвращает состояние
 // поповера-предложения или null. Полный номер карты кладём в pendingSave (main), в поповер — маска.
-export function handleAutofillSubmit(kind: 'address' | 'card', fields: AutofillFillFields): AutofillPopoverState | null {
+export function handleAutofillSubmit(win: BrowserWindow, kind: 'address' | 'card', fields: AutofillFillFields): AutofillPopoverState | null {
   if (!amRef) return null;
+  const st = stateFor(win);
   if (kind === 'card') {
     const digits = (fields.ccNumber ?? '').replace(/\D/g, '');
     if (digits.length < 12) return null;
@@ -81,13 +105,13 @@ export function handleAutofillSubmit(kind: 'address' | 'card', fields: AutofillF
     if (amRef.listCards().some((c) => c.last4 === last4)) return null;
     const { month, year } = parseExp(fields);
     const input: CardInput = { cardholder: fields.ccName ?? '', number: digits, expMonth: month, expYear: year };
-    pendingSave = { kind: 'card', input };
+    st.pendingSave = { kind: 'card', input };
     return { kind: 'save-card', title: `•••• ${last4}`, sub: input.cardholder };
   }
   const input = fieldsToAddress(fields);
   if (meaningfulCount(input) < 2) return null;
   if (amRef.listAddresses().some((a) => sameAddress(a, input))) return null; // уже сохранён
-  pendingSave = { kind: 'address', input };
+  st.pendingSave = { kind: 'address', input };
   return {
     kind: 'save-address',
     title: input.fullName || input.email || input.phone || 'Адрес',
@@ -96,10 +120,12 @@ export function handleAutofillSubmit(kind: 'address' | 'card', fields: AutofillF
 }
 
 // Подтверждение «Сохранить» из поповера — кладём отложенные данные в хранилище.
-export function saveSubmitted(): boolean {
-  if (!amRef || !pendingSave) return false;
-  const ok = pendingSave.kind === 'card' ? amRef.addCard(pendingSave.input) : amRef.addAddress(pendingSave.input);
-  pendingSave = null;
+export function saveSubmitted(win: BrowserWindow): boolean {
+  const st = perWindow.get(win.id);
+  if (!amRef || !st?.pendingSave) return false;
+  const pending = st.pendingSave;
+  const ok = pending.kind === 'card' ? amRef.addCard(pending.input) : amRef.addAddress(pending.input);
+  st.pendingSave = null;
   return ok;
 }
 

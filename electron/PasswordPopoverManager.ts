@@ -1,6 +1,10 @@
 // Поповер паролей — отдельная прозрачная WebContentsView поверх страницы, как FindBar и
 // SuggestDropdown. DOM внутри Toolbar не подходит: нативный WebContentsView страницы перекрывает
 // его независимо от z-index.
+//
+// ⚠️ ПОПОВЕР — СВОЙ У КАЖДОГО ОКНА (та же причина, что у FindBarManager/SuggestDropdownManager):
+// он заякорен на поле конкретной страницы, и якорь из окна B двигал бы карточку, висящую над
+// окном A. Состояние — в карте по id окна, умирает вместе с окном.
 import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
@@ -13,95 +17,129 @@ const WINDOW_MARGIN = 8;
 // Держать в синхроне с SHADOW_MARGIN в src/passwordpopover.tsx.
 const SHADOW_MARGIN = 16;
 
-let popoverView: WebContentsView | null = null;
-let attachedWin: BrowserWindow | null = null;
-let resizeBoundWin: BrowserWindow | null = null;
-let ipcRegistered = false;
-let lastAnchorBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
-let currentHeight = INITIAL_HEIGHT;
-let lastState: PasswordIndicatorState | null = null;
-let onClosedCb: (() => void) | null = null;
+interface WindowPopover {
+  win: BrowserWindow;
+  view: WebContentsView | null;
+  resizeBound: boolean;
+  anchor: ContentBounds;
+  height: number;
+  state: PasswordIndicatorState | null;
+}
 
-export function initPasswordPopover(onClosed: () => void): void {
+const popovers = new Map<number, WindowPopover>();
+let ipcRegistered = false;
+let onClosedCb: ((win: BrowserWindow) => void) | null = null;
+
+export function initPasswordPopover(onClosed: (win: BrowserWindow) => void): void {
   onClosedCb = onClosed;
 }
 
-function isAttached(): boolean {
-  return !!popoverView && !!attachedWin && attachedWin.contentView.children.includes(popoverView);
+function stateFor(win: BrowserWindow): WindowPopover {
+  const existing = popovers.get(win.id);
+  if (existing) return existing;
+  const created: WindowPopover = {
+    win, view: null, resizeBound: false,
+    anchor: { x: 0, y: 0, width: 0, height: 0 },
+    height: INITIAL_HEIGHT, state: null,
+  };
+  popovers.set(win.id, created);
+  win.once('closed', () => { popovers.delete(win.id); });
+  return created;
 }
 
-function computeBounds(): { x: number; y: number; width: number; height: number } {
-  const winBounds = attachedWin?.getContentBounds() ?? { width: 1200, height: 800 };
+// Окно по вью-отправителю: каналы поповера общие на все окна, а BrowserWindow.fromWebContents
+// для дочерней вью возвращает null (тот же случай, что в WindowRegistry.contextFromSender).
+function stateBySender(sender: Electron.WebContents): WindowPopover | null {
+  for (const st of popovers.values()) if (st.view?.webContents === sender) return st;
+  return null;
+}
+
+function isAttached(st: WindowPopover): boolean {
+  return !!st.view && !st.win.isDestroyed() && st.win.contentView.children.includes(st.view);
+}
+
+function computeBounds(st: WindowPopover): { x: number; y: number; width: number; height: number } {
+  const winBounds = st.win.isDestroyed() ? { width: 1200, height: 800 } : st.win.getContentBounds();
   const maxX = Math.max(WINDOW_MARGIN, winBounds.width - POPOVER_WIDTH - WINDOW_MARGIN);
-  const cardX = Math.min(Math.max(WINDOW_MARGIN, lastAnchorBounds.x + lastAnchorBounds.width - POPOVER_WIDTH), maxX);
-  const belowY = lastAnchorBounds.y + lastAnchorBounds.height + GAP;
-  const aboveY = lastAnchorBounds.y - currentHeight - GAP;
-  const cardY = belowY + currentHeight + WINDOW_MARGIN <= winBounds.height
+  const cardX = Math.min(Math.max(WINDOW_MARGIN, st.anchor.x + st.anchor.width - POPOVER_WIDTH), maxX);
+  const belowY = st.anchor.y + st.anchor.height + GAP;
+  const aboveY = st.anchor.y - st.height - GAP;
+  const cardY = belowY + st.height + WINDOW_MARGIN <= winBounds.height
     ? belowY
     : Math.max(WINDOW_MARGIN, aboveY);
   return {
     x: cardX - SHADOW_MARGIN,
     y: cardY - SHADOW_MARGIN,
     width: POPOVER_WIDTH + SHADOW_MARGIN * 2,
-    height: currentHeight + SHADOW_MARGIN * 2,
+    height: st.height + SHADOW_MARGIN * 2,
   };
 }
 
-function layoutPopover(): void {
-  if (!isAttached()) return;
-  popoverView!.setBounds(computeBounds());
+function layoutPopover(st: WindowPopover): void {
+  if (!isAttached(st)) return;
+  st.view!.setBounds(computeBounds(st));
 }
 
-export function syncPasswordPopoverAnchorBounds(b: ContentBounds): void {
-  lastAnchorBounds = b;
-  layoutPopover();
+export function syncPasswordPopoverAnchorBounds(win: BrowserWindow, b: ContentBounds): void {
+  const st = stateFor(win);
+  st.anchor = b;
+  layoutPopover(st);
 }
 
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return;
   ipcRegistered = true;
-  ipcMain.on('password-popover:close', () => closePasswordPopover());
-  ipcMain.on('password-popover:height', (_e, px: number) => {
-    currentHeight = Math.max(1, px);
-    layoutPopover();
+  ipcMain.on('password-popover:close', (e) => {
+    const st = stateBySender(e.sender);
+    if (st) closePasswordPopover(st.win);
+  });
+  ipcMain.on('password-popover:height', (e, px: number) => {
+    const st = stateBySender(e.sender);
+    if (!st) return;
+    st.height = Math.max(1, px);
+    layoutPopover(st);
   });
 }
 
-function ensurePopoverView(): WebContentsView {
-  if (popoverView) return popoverView;
+function ensurePopoverView(st: WindowPopover): WebContentsView {
+  if (st.view) return st.view;
   ensureIpcRegistered();
-  popoverView = new WebContentsView({
+  const view = new WebContentsView({
     webPreferences: {
       preload: path.join(__dirname, 'preload-passwordpopover.js'),
       contextIsolation: true,
       sandbox: false,
     },
   });
-  popoverView.setBackgroundColor('#00000000');
-  popoverView.webContents.once('did-finish-load', () => {
-    if (lastState) popoverView?.webContents.send('password-popover:show', lastState);
+  st.view = view;
+  view.setBackgroundColor('#00000000');
+  view.webContents.once('did-finish-load', () => {
+    if (st.state) view.webContents.send('password-popover:show', st.state);
   });
-  popoverView.webContents.loadURL('oblako-chrome://localhost/passwordpopover.html');
-  return popoverView;
+  view.webContents.loadURL('oblako-chrome://localhost/passwordpopover.html');
+  return view;
 }
 
 export function showPasswordPopover(win: BrowserWindow, state: PasswordIndicatorState): void {
-  attachedWin = win;
-  lastState = state;
-  if (resizeBoundWin !== win) {
-    win.on('resize', layoutPopover);
-    resizeBoundWin = win;
+  const st = stateFor(win);
+  st.state = state;
+  if (!st.resizeBound) {
+    win.on('resize', () => layoutPopover(st));
+    st.resizeBound = true;
   }
-  const view = ensurePopoverView();
-  view.setBounds(computeBounds());
-  if (!isAttached()) win.contentView.addChildView(view);
+  const view = ensurePopoverView(st);
+  view.setBounds(computeBounds(st));
+  if (!isAttached(st)) win.contentView.addChildView(view);
   view.webContents.send('password-popover:show', state);
 }
 
-export function closePasswordPopover(): void {
-  lastState = null;
-  if (isAttached()) {
-    try { attachedWin!.contentView.removeChildView(popoverView!); } catch { /* окно могло уже закрыться */ }
+export function closePasswordPopover(win: BrowserWindow | null): void {
+  if (!win) return;
+  const st = popovers.get(win.id);
+  if (!st) return;
+  st.state = null;
+  if (isAttached(st)) {
+    try { st.win.contentView.removeChildView(st.view!); } catch { /* окно могло уже закрыться */ }
   }
-  onClosedCb?.();
+  onClosedCb?.(st.win);
 }

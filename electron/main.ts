@@ -405,6 +405,41 @@ function wireSharedSessions(): void {
   downloads.observeSession(incognitoSession);
   permissions.attach(incognitoSession, onPermissionRequest);
   applyVpnProxy(); // синхронизируем прокси инкогнито-сессии с текущим состоянием VPN сразу
+
+  // Пароли и автозаполнение форм. Ставится один раз на приложение, хотя работает в каждом окне:
+  // и поповеры, и оркестраторы теперь получают окно на каждом вызове, а вкладки берут из реестра
+  // по нему — своего состояния «на одно окно» у них не осталось. Пуши уходят в слой хрома ТОГО
+  // окна, где событие произошло: индикатор-«ключ» и закрытие поповера — про его активную вкладку.
+  const chromeOfWin = (w: BrowserWindow) => contextForWindow(w)?.chromeView.webContents ?? null;
+  initPasswordPopover((w) => chromeOfWin(w)?.send(IPC.PASSWORD_POPOVER_CLOSED));
+  // Автозаполнение форм: оркестратор (хранилище ↔ страница ↔ поповер) + поповер выбора профиля.
+  // onPick поповера — подстановка выбранного адреса в ту вкладку, где было сфокусировано поле.
+  autofillOrchestrator.initAutofillOrchestrator(autofill);
+  // Выбор в поповере: адрес подставляем сразу; карту — только после подтверждения Windows Hello
+  // (полный номер — чувствительный, тот же гейт, что показ пароля/номера в настройках).
+  initAutofillPopover(
+    () => {},
+    (w, id) => {
+      if (autofillOrchestrator.getLastKind(w) === 'card') {
+        void ensurePasswordAuth('Заполнить данные карты').then((ok) => {
+          if (ok) autofillOrchestrator.handleFillCard(w, id);
+        });
+      } else {
+        autofillOrchestrator.handleFillAddress(w, id);
+      }
+    },
+    // «Сохранить» из предложения offer-save — кладём в хранилище и обновляем список в настройках.
+    (w) => { if (autofillOrchestrator.saveSubmitted(w)) broadcastToChrome(IPC.AUTOFILL_CHANGED); },
+  );
+  // Менеджер паролей, шаг 2: индикатор push идёт в chrome (не в конкретную вкладку) —
+  // PASSWORDS_CHANGED переиспользует существующий канал шага 1 (список в Settings→Пароли).
+  passwordAutofill.init(
+    passwords,
+    // Индикатор в омнибоксе — про АКТИВНУЮ вкладку своего окна, поэтому адресный пуш, не рассылка.
+    (w, state) => chromeOfWin(w)?.send(IPC.PASSWORDS_INDICATOR_CHANGED, state),
+    // А сам сейф один на приложение — список паролей обязан обновиться во всех окнах.
+    () => broadcastToChrome(IPC.PASSWORDS_CHANGED),
+  );
 }
 
 function createWindow(role: WindowRole = 'main') {
@@ -607,13 +642,13 @@ function createWindow(role: WindowRole = 'main') {
     // вкладке, безусловный main-side хук на КАЖДУЮ реальную смену активной, а не только
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover();
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover();
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
       // её текущее состояние (или null) при каждом реальном переключении.
-      passwordAutofill.onActiveTabChanged();
+      passwordAutofill.onActiveTabChanged(win);
     },
     (wc, tabId) => {
-      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover(); passwordAutofill.onTabClosed(tabId);
+      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); passwordAutofill.onTabClosed(tabId);
       // Закрылась последняя инкогнито-вкладка → стираем in-memory данные приватной сессии (куки/
       // хранилище), Chrome-подобно. takeIncognitoClearIfDone сам знает, когда это уместно (работает
       // и для кнопки, и для хоткея Ctrl+Shift+N).
@@ -623,23 +658,23 @@ function createWindow(role: WindowRole = 'main') {
     // в chrome, см. shared/ipc.ts::SUGGEST_DROPDOWN_CONTENT_FOCUS, Toolbar.tsx.
     () => {
       chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS);
-      closePasswordPopover();
-      closeAutofillPopover();
+      closePasswordPopover(win);
+      closeAutofillPopover(win);
       closeVpnPopover();
     },
     // Менеджер паролей, шаг 2, коммит 2 — сигналы content-preload идут в PasswordAutofillManager,
     // который сверяется с сейфом и решает, показывать ли индикатор/поповер.
-    (tabId, hasLoginForm, hasUsernameField, url) => passwordAutofill.handleFormDetected(tabId, hasLoginForm, hasUsernameField, url),
+    (tabId, hasLoginForm, hasUsernameField, url) => passwordAutofill.handleFormDetected(win, tabId, hasLoginForm, hasUsernameField, url),
     // В инкогнито не предлагаем СОХРАНИТЬ пароль (заполнение уже сохранённым — работает, как Chrome).
-    (tabId, username, password, url) => { if (!tabs?.isIncognito(tabId)) passwordAutofill.handleCredentialSubmitted(tabId, username, password, url); },
+    (tabId, username, password, url) => { if (!tabs?.isIncognito(tabId)) passwordAutofill.handleCredentialSubmitted(win, tabId, username, password, url); },
     // Иконка в поле пароля — та же карточка, что у тулбарной иконки-ключа (PasswordPopoverManager),
     // просто заякорена на позицию поля. rect приходит в координатах вьюпорта СТРАНИЦЫ —
     // прибавляем bounds именно ЭТОЙ вкладки (не активной вообще — split может показывать другую).
     (tabId, rect, url) => {
-      const state = passwordAutofill.handleFieldIconClick(tabId, url);
-      if (!state || !win || !tabs) return;
+      const state = passwordAutofill.handleFieldIconClick(win, tabId, url);
+      if (!state || !tabs) return;
       const viewBounds = tabs.getTabViewBounds(tabId);
-      syncPasswordPopoverAnchorBounds({
+      syncPasswordPopoverAnchorBounds(win, {
         x: viewBounds.x + rect.x, y: viewBounds.y + rect.y,
         width: rect.width, height: rect.height,
       });
@@ -650,13 +685,13 @@ function createWindow(role: WindowRole = 'main') {
     // не привязаны к origin — показываем все сохранённые.
     (tabId, rect, kind, url) => {
       void url; // адреса/карты не привязаны к origin — url нужен был бы лишь для отсечки схем
-      if (!win || !tabs) return;
+      if (!tabs) return;
       const state = kind === 'card'
-        ? (() => { const cards = autofillOrchestrator.handleCardFieldFocus(tabId); return cards ? { kind: 'card' as const, cards } : null; })()
-        : (() => { const list = autofillOrchestrator.handleAddressFieldFocus(tabId); return list ? { kind: 'address' as const, addresses: list } : null; })();
+        ? (() => { const cards = autofillOrchestrator.handleCardFieldFocus(win, tabId); return cards ? { kind: 'card' as const, cards } : null; })()
+        : (() => { const list = autofillOrchestrator.handleAddressFieldFocus(win, tabId); return list ? { kind: 'address' as const, addresses: list } : null; })();
       if (!state) return;
       const viewBounds = tabs.getTabViewBounds(tabId);
-      syncAutofillPopoverAnchorBounds({
+      syncAutofillPopoverAnchorBounds(win, {
         x: viewBounds.x + rect.x, y: viewBounds.y + rect.y,
         width: rect.width, height: rect.height,
       });
@@ -666,13 +701,12 @@ function createWindow(role: WindowRole = 'main') {
     // (форма отправлена, поля-якоря могло не остаться) — как «пузырь» под тулбаром справа.
     (tabId, kind, fields, url) => {
       void url;
-      if (!win) return;
       // В инкогнито не предлагаем сохранить адрес/карту (как Chrome) — приватная сессия следов не оставляет.
       if (tabs?.isIncognito(tabId)) return;
-      const state = autofillOrchestrator.handleAutofillSubmit(kind, fields);
+      const state = autofillOrchestrator.handleAutofillSubmit(win, kind, fields);
       if (!state) return;
       const cb = win.getContentBounds();
-      syncAutofillPopoverAnchorBounds({ x: Math.max(8, cb.width - 316), y: 48, width: 0, height: 0 });
+      syncAutofillPopoverAnchorBounds(win, { x: Math.max(8, cb.width - 316), y: 48, width: 0, height: 0 });
       showAutofillPopover(win, state);
     },
   );
@@ -882,37 +916,7 @@ function createWindow(role: WindowRole = 'main') {
     onPageTranslateProgressChanged((progress) => {
       chromeView?.webContents.send(IPC.PAGE_TRANSLATE_PROGRESS_CHANGED, progress);
     });
-    initPasswordPopover(() => chromeView?.webContents.send(IPC.PASSWORD_POPOVER_CLOSED));
     initVpnPopover(() => chromeView?.webContents.send(IPC.VPN_POPOVER_CLOSED));
-    // Автозаполнение форм: оркестратор (хранилище ↔ страница ↔ поповер) + поповер выбора профиля.
-    // onPick поповера — подстановка выбранного адреса в ту вкладку, где было сфокусировано поле.
-    autofillOrchestrator.initAutofillOrchestrator(tabs, autofill);
-    // Выбор в поповере: адрес подставляем сразу; карту — только после подтверждения Windows Hello
-    // (полный номер — чувствительный, тот же гейт, что показ пароля/номера в настройках).
-    initAutofillPopover(
-      () => {},
-      (id) => {
-        if (autofillOrchestrator.getLastKind() === 'card') {
-          void ensurePasswordAuth('Заполнить данные карты').then((ok) => {
-            if (ok) autofillOrchestrator.handleFillCard(id);
-          });
-        } else {
-          autofillOrchestrator.handleFillAddress(id);
-        }
-      },
-      // «Сохранить» из предложения offer-save — кладём в хранилище и обновляем список в настройках.
-      () => { if (autofillOrchestrator.saveSubmitted()) broadcastToChrome(IPC.AUTOFILL_CHANGED); },
-    );
-    // Менеджер паролей, шаг 2: индикатор push идёт в chrome (не в конкретную вкладку) —
-    // PASSWORDS_CHANGED переиспользует существующий канал шага 1 (список в Settings→Пароли).
-    passwordAutofill.init(
-      tabs,
-      passwords,
-      // Индикатор в омнибоксе — про АКТИВНУЮ вкладку этого окна, поэтому адресный пуш, не рассылка.
-      (state) => chromeView?.webContents.send(IPC.PASSWORDS_INDICATOR_CHANGED, state),
-      // А сам сейф один на приложение — список паролей обязан обновиться во всех окнах.
-      () => broadcastToChrome(IPC.PASSWORDS_CHANGED),
-    );
   }
 
   // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).
@@ -1185,15 +1189,16 @@ function registerIpc() {
       hideSuggestDropdown(w);
     }
   });
-  ipcMain.handle(IPC.PASSWORD_POPOVER_SET_BOUNDS, (_e, b: ContentBounds) => {
-    syncPasswordPopoverAnchorBounds(b);
+  ipcMain.handle(IPC.PASSWORD_POPOVER_SET_BOUNDS, (e, b: ContentBounds) => {
+    const w = winOf(e);
+    if (w) syncPasswordPopoverAnchorBounds(w, b);
   });
   ipcMain.handle(IPC.PASSWORD_POPOVER_SHOW, (e, state) => {
     const w = winOf(e);
     if (w) showPasswordPopover(w, state);
   });
-  ipcMain.handle(IPC.PASSWORD_POPOVER_CLOSE, () => {
-    closePasswordPopover();
+  ipcMain.handle(IPC.PASSWORD_POPOVER_CLOSE, (e) => {
+    closePasswordPopover(winOf(e));
   });
   ipcMain.handle(IPC.VPN_POPOVER_SET_BOUNDS, (_e, b: ContentBounds) => {
     syncVpnPopoverAnchorBounds(b);
@@ -1786,11 +1791,13 @@ function registerIpc() {
 
   // Менеджер паролей, шаг 2 — действия из поповера индикатора (всегда про активную вкладку,
   // см. PasswordAutofillManager.ts::handleSave/handleUpdate/handleDismiss).
-  ipcMain.handle(IPC.PASSWORDS_INDICATOR_SAVE,    () => passwordAutofill.handleSave());
-  ipcMain.handle(IPC.PASSWORDS_INDICATOR_UPDATE,  () => passwordAutofill.handleUpdate());
-  ipcMain.handle(IPC.PASSWORDS_INDICATOR_FILL,    (_e, id: number) => passwordAutofill.handleFill(id));
-  ipcMain.handle(IPC.PASSWORDS_INDICATOR_DISMISS, () => passwordAutofill.handleDismiss());
-  ipcMain.handle(IPC.PASSWORDS_INDICATOR_GENERATE, () => passwordAutofill.handleGenerateAndFill());
+  // ⚠️ «Активная вкладка» здесь — активная в окне ОТПРАВИТЕЛЯ: пароль обязан уйти на ту страницу,
+  // где человек его и вводит, а не на активную вкладку соседнего окна.
+  ipcMain.handle(IPC.PASSWORDS_INDICATOR_SAVE,    (e) => { const w = winOf(e); return w ? passwordAutofill.handleSave(w) : false; });
+  ipcMain.handle(IPC.PASSWORDS_INDICATOR_UPDATE,  (e) => { const w = winOf(e); return w ? passwordAutofill.handleUpdate(w) : false; });
+  ipcMain.handle(IPC.PASSWORDS_INDICATOR_FILL,    (e, id: number) => { const w = winOf(e); return w ? passwordAutofill.handleFill(w, id) : false; });
+  ipcMain.handle(IPC.PASSWORDS_INDICATOR_DISMISS, (e) => { const w = winOf(e); if (w) passwordAutofill.handleDismiss(w); });
+  ipcMain.handle(IPC.PASSWORDS_INDICATOR_GENERATE, (e) => { const w = winOf(e); return w ? passwordAutofill.handleGenerateAndFill(w) : false; });
 
   // Индикатор качества индекса умного поиска (Settings.tsx) — снимок на момент запроса,
   // не подписка: панель настроек открывают редко, push-канал ради этого избыточен.
