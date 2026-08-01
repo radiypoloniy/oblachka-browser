@@ -276,6 +276,8 @@ export const IPC = {
   GRAPH_CHAT_CHUNK: 'graph:chat-chunk',  // main → renderer: { graphId, nodeId, text }
   GRAPH_CHAT_DONE:  'graph:chat-done',   // main → renderer: { graphId, nodeId, ok, text?, error? }
   GRAPH_PICK_FILE: 'graph:pick-file',  // renderer → main: нативный диалог выбора документа для узла-файла
+  GRAPH_PICK_IMAGE: 'graph:pick-image',      // renderer → main: диалог выбора картинки для узла-картинки
+  GRAPH_IMAGE_PREVIEW: 'graph:image-preview',// renderer → main: путь → data-URL уменьшенного превью | null
   GRAPH_CHANGED:  'graph:changed',   // main → renderer: граф пополнился извне (ПКМ «Добавить в граф»)
   GRAPH_PROGRESS: 'graph:progress', // main → renderer: GraphProgress (статусы + стрим-чанки)
 
@@ -1536,6 +1538,10 @@ export interface OblakoApi {
   // Нативный диалог выбора документа. Путь возвращается в renderer только чтобы показать
   // имя файла и положить его в конфиг узла; читает файл всегда main (electron/FileExtract.ts).
   pickGraphFile(): Promise<string | null>;
+  pickGraphImage(): Promise<string | null>;
+  // Превью картинки узла: main читает файл с диска и отдаёт уменьшенный data-URL. Прямой
+  // доступ к file:// у renderer закрыт, да и полноразмерный кадр в карточке ни к чему.
+  graphImagePreview(path: string): Promise<string | null>;
   // Прошлые результаты узла (до пяти, свежие первыми) — для сравнения формулировок.
   listNodeHistory(graphId: number, nodeId: string): Promise<GraphNodeVersion[]>;
 

@@ -6,6 +6,7 @@ import { NODE_KINDS } from '../../../shared/graph';
 import { markdownComponents } from '../aiMarkdown';
 import { InfographicView, MindmapView, QuizView } from '../studioViews';
 import NodeChatView from './NodeChatView';
+import { ImagePreview } from './GraphNodeCard';
 
 // Раскрытый узел — один общий механизм на все типы, а не три похожих режима.
 // Внутри меняется только содержимое: артефакт рисуется своим рендерером, текст — разметкой,
@@ -34,6 +35,8 @@ interface Props {
   // а рабочее место — связный текст в карточке 400 px не вычитывают.
   draftText?: string;
   onDraftChange?: (text: string) => void;
+  // Только для source.image — путь к файлу, превью строит тот же компонент, что в карточке.
+  imagePath?: string;
 }
 
 const headerButton: React.CSSProperties = {
@@ -46,7 +49,7 @@ const headerButton: React.CSSProperties = {
 export default function NodeFullscreen({
   graphId, nodeId, kind, title, status, output, outputTitle, error,
   onClose, onRun, onCopyOutput, onSaveOutput, onShowHistory,
-  draftText, onDraftChange,
+  draftText, onDraftChange, imagePath,
 }: Props) {
   const spec = NODE_KINDS[kind];
   const busy = status === 'running' || status === 'queued';
@@ -132,6 +135,8 @@ export default function NodeFullscreen({
               lineHeight: 'var(--lh-body)',
             }}
           />
+        ) : kind === 'source.image' ? (
+          <ImagePreview path={imagePath ?? ''} />
         ) : (
           <Body kind={kind} output={output} outputTitle={outputTitle} error={error} status={status} />
         )}

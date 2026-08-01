@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { basename } from 'node:path';
 import type { BrowserWindow } from 'electron';
 import type { GraphDoc, GraphNode, GraphProgress } from '../shared/graph';
 import { downstreamOf, topoOrder, upstreamOf } from '../shared/graph';
@@ -196,6 +198,23 @@ async function executeNode(
       return res.ok && res.text
         ? { ok: true, output: res.text, outputTitle: res.title }
         : { ok: false, error: res.error ?? 'Не удалось прочитать файл' };
+    }
+
+    case 'source.image': {
+      const file = (node.config.path ?? '').trim();
+      if (!file) return { ok: false, error: 'Картинка не выбрана' };
+      if (!existsSync(file)) return { ok: false, error: 'Файл не найден — выберите картинку заново' };
+      const name = basename(file);
+      const caption = (node.config.text ?? '').trim();
+      // Наружу уходит ТЕКСТОВАЯ ссылка, а не разметка с картинкой: собранный документ
+      // уезжает в почтовый конструктор или в Discord, где локальный путь всё равно не
+      // подтянется — файл человек прикладывает руками. Markdown-картинка дала бы там
+      // битую иконку вместо честной строчки «вот этот файл».
+      return {
+        ok: true,
+        output: caption ? `Картинка: ${caption}\nФайл: ${file}` : `Картинка: ${name}\nФайл: ${file}`,
+        outputTitle: name,
+      };
     }
 
     case 'source.url': {

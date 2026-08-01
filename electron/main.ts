@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard, webContents } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard, webContents, nativeImage } from 'electron';
 import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent } from './BrowserIdentity';
@@ -1491,6 +1491,40 @@ function registerIpc() {
       ],
     });
     return res.canceled || !res.filePaths[0] ? null : res.filePaths[0];
+  });
+  ipcMain.handle(IPC.GRAPH_PICK_IMAGE, async () => {
+    if (!win) return null;
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Картинка для узла графа',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Изображения', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'avif'] },
+        { name: 'Все файлы', extensions: ['*'] },
+      ],
+    });
+    return res.canceled || !res.filePaths[0] ? null : res.filePaths[0];
+  });
+  // Превью картинки узла. Файл читает main: у renderer нет доступа к file://, а тащить в
+  // карточку полноразмерный кадр с генератора незачем — data-URL раздулся бы на десятки МБ.
+  ipcMain.handle(IPC.GRAPH_IMAGE_PREVIEW, async (_e, filePath: string) => {
+    try {
+      const stat = await fsp.stat(filePath);
+      if (!stat.isFile() || stat.size > 40 * 1024 * 1024) return null;
+      const img = nativeImage.createFromPath(filePath);
+      if (!img.isEmpty()) {
+        const { width } = img.getSize();
+        // 1280 хватает и карточке, и раскрытому виду — двух размеров не заводим.
+        return (width > 1280 ? img.resize({ width: 1280 }) : img).toDataURL();
+      }
+      // nativeImage декодирует не всё (svg, часть webp/avif). Такие отдаём как есть —
+      // <img> в renderer их понимает сам.
+      const ext = path.extname(filePath).slice(1).toLowerCase();
+      if (stat.size > 8 * 1024 * 1024) return null;
+      const mime = ext === 'svg' ? 'image/svg+xml' : `image/${ext || 'png'}`;
+      return `data:${mime};base64,${(await fsp.readFile(filePath)).toString('base64')}`;
+    } catch {
+      return null;   // файла нет или он не читается — карточка покажет это сама
+    }
   });
   // Electron принимает только целые пиксели, а renderer меряет getBoundingClientRect()
   // и присылает дробные — та же нормализация, что в TabManager.setContentBounds.

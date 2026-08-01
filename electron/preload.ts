@@ -322,6 +322,9 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.GRAPH_CHAT_DONE, handler);
   },
   pickGraphFile: () => ipcRenderer.invoke(IPC.GRAPH_PICK_FILE) as Promise<string | null>,
+  pickGraphImage: () => ipcRenderer.invoke(IPC.GRAPH_PICK_IMAGE) as Promise<string | null>,
+  graphImagePreview: (path: string) =>
+    ipcRenderer.invoke(IPC.GRAPH_IMAGE_PREVIEW, path) as Promise<string | null>,
   listNodeHistory: (graphId: number, nodeId: string) =>
     ipcRenderer.invoke(IPC.GRAPH_NODE_HISTORY, graphId, nodeId) as Promise<GraphNodeVersion[]>,
   saveGraphOutput: (suggestedName: string, text: string) =>

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Handle, NodeResizer, Position } from '@xyflow/react';
 import {
@@ -29,6 +30,8 @@ export interface GraphNodeData extends Record<string, unknown> {
   onExpand: () => void;
   // Только для source.file — нативный диалог выбора документа (его открывает main).
   onPickFile: () => void;
+  // Только для source.image — тот же диалог, но с фильтром по картинкам.
+  onPickImage: () => void;
   // Только для image.prompt: список доступных пресетов и запрос на открытие редактора своих.
   imagePresets: ImagePreset[];
   onEditPresets: () => void;
@@ -54,6 +57,8 @@ export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> 
   'source.url': { w: 268, h: 268 },
   'source.note': { w: 268, h: 236 },
   'source.file': { w: 280, h: 260 },
+  // Картинке нужна площадь под саму картинку — иначе миниатюра нечитаема.
+  'source.image': { w: 300, h: 340 },
   'qwen.transform': { w: 304, h: 320 },
   'image.prompt': { w: 330, h: 380 },
   'qwen.chat': { w: 320, h: 340 },
@@ -361,6 +366,33 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           </>
         )}
 
+        {data.kind === 'source.image' && (
+          <>
+            <button
+              type="button"
+              className="nodrag"
+              onClick={data.onPickImage}
+              style={{
+                flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                background: 'var(--surface-sunken)', color: 'var(--text-body)',
+                border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)',
+                padding: '8px 12px', cursor: 'pointer', font: 'inherit',
+                fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
+              }}
+            >
+              🖼️ {data.config.path ? 'Другая картинка' : 'Выбрать картинку'}
+            </button>
+            <ImagePreview path={data.config.path ?? ''} />
+            <input
+              className="nodrag"
+              value={data.config.text ?? ''}
+              placeholder="Подпись (необязательно)"
+              onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
+              style={{ ...fieldStyle, flex: 'none' }}
+            />
+          </>
+        )}
+
         {data.kind === 'source.note' && (
           <textarea
             className="nodrag"
@@ -574,7 +606,8 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
 
         {/* У заметки и черновика вывод равен введённому тексту — показывать его вторым
             блоком значит дублировать одно и то же и вдвое урезать полезную площадь карточки. */}
-        {data.output && data.kind !== 'source.note' && data.kind !== 'draft.text' && (
+        {data.output && data.kind !== 'source.note' && data.kind !== 'draft.text'
+          && data.kind !== 'source.image' && (
           <div
             className="nodrag nowheel"
             // Майндкарта и инфографика рисуют себя сами во всю высоту — им внутренний
@@ -617,6 +650,47 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           }}
         />
       ))}
+    </div>
+  );
+}
+
+// Превью картинки узла. Файл читает main и отдаёт уменьшенный data-URL: у renderer нет
+// доступа к file://. Тот же компонент рисует и миниатюру в карточке, и крупный вид в
+// раскрытом узле — разница только в высоте контейнера.
+export function ImagePreview({ path }: { path: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setSrc(null);
+    setFailed(false);
+    if (!path) return;
+    void window.oblako.graphImagePreview(path).then((data) => {
+      if (!alive) return;
+      if (data) setSrc(data); else setFailed(true);
+    });
+    return () => { alive = false; };
+  }, [path]);
+
+  const box: React.CSSProperties = {
+    flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: 'var(--surface-sunken)', borderRadius: 'var(--radius-sm)',
+    overflow: 'hidden', padding: 4,
+    fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', textAlign: 'center',
+  };
+
+  if (!path) return <div style={box}>Картинка не выбрана</div>;
+  if (failed) return <div style={box}>Файл не найден или не читается</div>;
+  if (!src) return <div style={box}>…</div>;
+  return (
+    <div style={box}>
+      <img
+        src={src}
+        alt=""
+        // contain, а не cover: реф нужно видеть целиком, обрезка исказила бы композицию.
+        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
+      />
     </div>
   );
 }

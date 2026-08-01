@@ -39,7 +39,7 @@ const nodeTypes = { oblako: GraphNodeCard };
 // Панель сгруппирована по роли узла, а не свалена в один ряд: восемь одинаковых кнопок
 // подряд не читаются, а группы отвечают на вопрос «откуда взять — что сделать — что получить».
 const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
-  { title: 'Откуда', kinds: ['source.url', 'source.file', 'source.note'] },
+  { title: 'Откуда', kinds: ['source.url', 'source.file', 'source.note', 'source.image'] },
   { title: 'Обработка', kinds: ['qwen.transform', 'qwen.chat', 'image.prompt', 'webapp.chat'] },
   { title: 'Проверка', kinds: ['search.web', 'factcheck.gemini'] },
   { title: 'Артефакты', kinds: ['artifact.summary', 'artifact.mindmap', 'artifact.infographic', 'artifact.quiz'] },
@@ -75,6 +75,7 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
       onShowHistory: () => {},
       onExpand: () => {},
       onPickFile: () => {},
+      onPickImage: () => {},
       imagePresets: [],
       onEditPresets: () => {},
       onCopyOutput: () => {},
@@ -347,6 +348,14 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
       : n)));
   }, []);
 
+  const pickImage = useCallback(async (id: string) => {
+    const chosen = await window.oblako.pickGraphImage();
+    if (!chosen) return;
+    setNodes((ns) => ns.map((n) => (n.id === id
+      ? { ...n, data: { ...n.data, config: { ...n.data.config, path: chosen } } }
+      : n)));
+  }, []);
+
   // Результат наружу. Обе операции читают актуальный узел из состояния через setNodes:
   // замыкание на nodes пересоздавало бы колбэки на каждое движение по холсту.
   const copyOutput = useCallback((id: string) => {
@@ -523,6 +532,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           onShowHistory: () => {},
           onExpand: () => {},
           onPickFile: () => {},
+          onPickImage: () => {},
           imagePresets: [],
           onEditPresets: () => {},
           onCopyOutput: () => {},
@@ -549,6 +559,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         onShowHistory: () => setHistoryFor({ nodeId: n.id, title: n.data.title || NODE_KINDS[n.data.kind].label, output: n.data.output }),
         onExpand: () => setExpandedId(n.id),
         onPickFile: () => void pickFile(n.id),
+        onPickImage: () => void pickImage(n.id),
         imagePresets: allPresets,
         onEditPresets: () => setPresetEditorOpen(true),
         onCopyOutput: () => void copyOutput(n.id),
@@ -580,7 +591,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           }),
       },
     })),
-    [nodes, edges, patchNode, runNode, deleteNode, duplicateNodes, pickFile, openWebApp,
+    [nodes, edges, patchNode, runNode, deleteNode, duplicateNodes, pickFile, pickImage, openWebApp,
       allPresets, copyOutput, saveOutput],
   );
 
@@ -926,6 +937,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                 title: expandedNode.data.title || NODE_KINDS[expandedNode.data.kind].label,
                 output: expandedNode.data.output,
               })}
+              imagePath={expandedNode.data.config.path ?? ''}
               draftText={expandedNode.data.config.text ?? ''}
               onDraftChange={(text) => patchNode(expandedNode.id, {
                 config: { ...expandedNode.data.config, text },
