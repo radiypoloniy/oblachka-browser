@@ -23,35 +23,35 @@
      системы). Значения — прямая конвертация oklch(...) из спеки в sRGB
      hex, не на глаз. Только используемые ступени (soft-bg, soft-border,
      base, hover, active) — остальных сейчас ничто не потребляет. */
-  --blue-50:  #D9EEFF; /* oklch(0.94 0.035 246) — tint-bg */
-  --blue-200: #96C3EC; /* oklch(0.80 0.075 246) — интерполяция для soft-border */
-  --blue-500: #2280C5; /* oklch(0.58 0.135 246) — tint */
-  --blue-600: #006DB1; /* oklch(0.52 0.135 246) — tint-hover */
-  --blue-700: #005C9E; /* oklch(0.46 0.135 246) — tint-active */
+  --blue-50:  #E8F1FF; /* подложка под акцентом (Apple tint bg) */
+  --blue-200: #A8CBFF; /* кант мягкой подложки */
+  --blue-500: #007AFF; /* Apple systemBlue — основной акцент */
+  --blue-600: #0062CC; /* наведение */
+  --blue-700: #0051A8; /* нажатие */
 
   /* Neutrals — warm paper grays */
   --white:      #FFFFFF;
-  --neutral-25: #FBFAF7;
-  --neutral-50: #F6F5EF; /* paper — app bg */
-  --neutral-100:#EFEEE8;
-  --neutral-150:#E7E5DE;
-  --neutral-200:#DDDBD3;
-  --neutral-300:#C7C4BB;
-  --neutral-400:#A6A39A;
-  --neutral-500:#827F77;
-  --neutral-600:#615E57;
-  --neutral-700:#46443F;
-  --neutral-800:#2D2B27;
-  --neutral-900:#1C1B18;
+  --neutral-25: #FCFCFD;
+  --neutral-50: #F2F2F7; /* systemGray6 */
+  --neutral-100:#EBEBF0;
+  --neutral-150:#E5E5EA; /* systemGray5 */
+  --neutral-200:#D1D1D6; /* systemGray4 */
+  --neutral-300:#C7C7CC; /* systemGray3 */
+  --neutral-400:#AEAEB2; /* systemGray2 */
+  --neutral-500:#8E8E93; /* systemGray */
+  --neutral-600:#6C6C70;
+  --neutral-700:#3C3C43; /* Apple label */
+  --neutral-800:#2C2C2E;
+  --neutral-900:#1C1C1E;
 
   /* Status dots */
-  --dot-local: #2FB07A; /* green = on-device / local model (functional online dot) */
-  --dot-vpn:   #2FB07A; /* VPN connected, healthy */
+  --dot-local: #34C759; /* green = on-device / local model (functional online dot) */
+  --dot-vpn:   #34C759; /* VPN connected, healthy */
 
   /* Feedback — значения из спеки новой дизайн-системы (oklch → hex). */
-  --danger-500: #B54A46;
-  --warning-500:#C48D25;
-  --success-500:#3F834B;
+  --danger-500: #FF3B30; /* systemRed */
+  --warning-500:#FF9500; /* systemOrange */
+  --success-500:#34C759; /* systemGreen */
 
   /* ── Semantic aliases (use these in product code) ── */
   --accent:            var(--blue-500);
@@ -101,8 +101,8 @@
   --surface-active:    rgba(0,0,0,0.09);
   --surface-solid:     #FFFFFF;                 /* escape hatch when opacity is required */
 
-  --divider:           rgba(40,30,70,0.10);
-  --divider-strong:    rgba(40,30,70,0.16);
+  --divider:           rgba(60,60,67,0.12);
+  --divider-strong:    rgba(60,60,67,0.20);
 
   --text-strong:       var(--neutral-900);
   --text-body:         var(--neutral-700);

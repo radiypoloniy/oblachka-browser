@@ -358,15 +358,15 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: '#E7E9F4', // совпадает с --app-bg, чтобы не мигало белым
+    backgroundColor: '#F2F2F7', // ровно --app-bg, чтобы не мигало белым и не было шва под шапкой
     // Кастомный titlebar: системные кнопки в своём оформлении (спека, тех.стек).
     // show:false — против белого экрана: окно покажем, когда React-оболочка отрисуется
     // (сигнал CHROME_UI_READY из src/main.tsx), с fallback-таймаутом ниже.
     show: false,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#E7E9F4',   // --app-bg светлой темы; обновляется через IPC при смене темы
-      symbolColor: '#46443F',
+      color: '#F2F2F7',   // --app-bg светлой темы; обновляется через IPC при смене темы
+      symbolColor: '#3C3C43',
       height: 56,
     },
   });
@@ -384,7 +384,7 @@ function createWindow() {
   setAiPanelChromeView(chromeView); // заход 3: push'и состояния дока (открыт/закрыт) идут сюда, не в win.webContents
   // Дефолтный фон WebContentsView — белый, и он перекрывает backgroundColor окна на всю площадь.
   // Красим под --app-bg, чтобы кадры до первой отрисовки React были цветом интерфейса.
-  chromeView.setBackgroundColor('#E7E9F4');
+  chromeView.setBackgroundColor('#F2F2F7');
 
   // Показ окна: ждём сигнал «оболочка отрисована» (useEffect+rAF в src/main.tsx). Fallback-таймаут
   // обязателен — если сигнал не пришёл (упал preload/React, Vite ещё не поднялся в dev),

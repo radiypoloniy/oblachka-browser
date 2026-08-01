@@ -39,16 +39,16 @@ function buildHtml(logo: string): string {
   .card {
     height: 100%; box-sizing: border-box;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px;
-    background: #E7E9F4; border-radius: 18px;
+    background: #F2F2F7; border-radius: 18px;
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     animation: in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
   img { width: 132px; height: 132px; display: block; -webkit-user-drag: none; }
-  .name { font-size: 19px; font-weight: 600; color: #46443F; letter-spacing: 0.2px; margin-top: -8px; }
+  .name { font-size: 19px; font-weight: 600; color: #3C3C43; letter-spacing: 0.2px; margin-top: -8px; }
   .track { width: 168px; height: 4px; border-radius: 999px; background: rgba(70,68,63,.13); overflow: hidden; }
   /* Бегунок ходит внутри дорожки, а не растёт от края: так честнее выглядит неопределённость. */
-  .bar { width: 42%; height: 100%; border-radius: 999px; background: #46443F; opacity: .55;
+  .bar { width: 42%; height: 100%; border-radius: 999px; background: #3C3C43; opacity: .55;
          animation: run 1150ms cubic-bezier(0.45, 0, 0.55, 1) infinite; }
   @keyframes run { 0% { transform: translateX(-115%); } 100% { transform: translateX(275%); } }
 </style>

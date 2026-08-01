@@ -226,14 +226,14 @@ export default function App() {
   // а не web-контент, что даёт видимую плашку при несовпадении). Нативный Electron API,
   // CSS-переменную сюда не прокинуть — литералы обязаны совпадать с токенами вручную
   // (Коммит 1: light --app-bg сменился на #F2F2F7, синхронизировано; dark --app-bg не менялся).
-  // symbolColor = --text-body темы: light уже совпадал (#46443F), dark раньше был #EAE8E3 —
+  // symbolColor = --text-body темы: light — Apple label (#3C3C43), dark раньше был #EAE8E3 —
   // не совпадал с реальным --text-body dark (#CBC7D2), исправлено заодно.
   useEffect(() => {
     // Инкогнито — свой near-black фон титлбара (совпадает с --app-bg блока [data-incognito]
     // в theme-dark.css); иначе обычная light/dark логика.
     void window.oblako.setTitleBarOverlay({
       color: activeIncognito ? '#121216' : dark ? '#15131A' : '#F2F2F7',
-      symbolColor: (dark || activeIncognito) ? '#CBC7D2' : '#46443F',
+      symbolColor: (dark || activeIncognito) ? '#CBC7D2' : '#3C3C43',
     });
   }, [dark, activeIncognito]);
 
