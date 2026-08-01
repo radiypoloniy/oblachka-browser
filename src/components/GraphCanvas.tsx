@@ -886,7 +886,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                     fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
                   }}
                 >
-                  <span style={{ fontSize: 14, lineHeight: 1 }}>{NODE_KINDS[kind].emoji}</span>
+                  <span style={{ fontSize: 'var(--fs-md)', lineHeight: 1 }}>{NODE_KINDS[kind].emoji}</span>
                   {NODE_KINDS[kind].label}
                 </button>
               ))}

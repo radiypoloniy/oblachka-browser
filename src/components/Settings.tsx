@@ -170,7 +170,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
                 </span>
                 <span className="settings-nav-label">{label}</span>
                 {soon && (
-                  <span className="settings-nav-badge" style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-faint)', fontWeight: 400 }}>
+                  <span className="settings-nav-badge" style={{ marginLeft: 'auto', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontWeight: 400 }}>
                     скоро
                   </span>
                 )}

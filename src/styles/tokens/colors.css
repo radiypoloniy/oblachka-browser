@@ -106,8 +106,12 @@
 
   --text-strong:       var(--neutral-900);
   --text-body:         var(--neutral-700);
-  --text-muted:        var(--neutral-500);
-  --text-faint:        var(--neutral-400);
+  /* ⚠️ На ступень темнее, чем просится по названию шкалы. systemGray (#8E8E93) — честный
+     «вторичный» цвет Apple, но там он живёт на 13–15 pt; у нас им набраны подписи мельче, и
+     на белом острове они проваливались до нечитаемости. Роли сдвинуты вниз по шкале:
+     контраст вырос, иерархия «основной → приглушённый → едва заметный» сохранилась. */
+  --text-muted:        var(--neutral-600);
+  --text-faint:        var(--neutral-500);
   --text-on-accent:    var(--white); /* тот же контраст-фикс, что --on-accent выше */
   --text-link:         var(--text-body); /* links are NOT colored — neutral, accent on hover */
   --text-link-hover:   var(--accent-hover);

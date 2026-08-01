@@ -141,7 +141,7 @@ export function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }
         width: tileSize, height: tileSize, borderRadius: 'var(--radius-sm)',
         background: 'var(--neutral-300)', color: 'var(--text-body)', flex: 'none',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 11, fontWeight: 600,
+        fontSize: 'var(--fs-xs)', fontWeight: 600,
       }}>{host}</span>
     );
   }
@@ -1734,7 +1734,7 @@ export default function Sidebar({
             </>
           ) : organizeState === 'model-error' ? (
             <>
-              <span style={{ fontSize: 13, lineHeight: 1 }}>⚠</span>
+              <span style={{ fontSize: 'var(--fs-sm)', lineHeight: 1 }}>⚠</span>
               Повторить
             </>
           ) : (

@@ -218,7 +218,7 @@ export default function History({ onClose }: HistoryProps) {
         flexShrink: 0,
       }}>
         <Clock size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-strong)', flex: 1 }}>
+        <span style={{ fontWeight: 600, fontSize: 'var(--fs-md)', color: 'var(--text-strong)', flex: 1 }}>
           История посещений
         </span>
         <button
@@ -252,7 +252,7 @@ export default function History({ onClose }: HistoryProps) {
       {clearError && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 20px', fontSize: 12,
+          padding: '8px 20px', fontSize: 'var(--fs-sm)',
           background: 'color-mix(in srgb, var(--danger-500) 12%, transparent)',
           color: 'var(--danger-500)', flexShrink: 0,
         }}>
@@ -284,7 +284,7 @@ export default function History({ onClose }: HistoryProps) {
               style={{
                 display: 'block', width: '100%', textAlign: 'left',
                 padding: '8px 14px', background: 'none', border: 'none',
-                cursor: 'pointer', fontSize: 13, color: 'var(--text-body)',
+                cursor: 'pointer', fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
@@ -311,7 +311,7 @@ export default function History({ onClose }: HistoryProps) {
             placeholder="Поиск в истории…"
             style={{
               flex: 1, background: 'none', border: 'none', outline: 'none',
-              fontSize: 13, color: 'var(--text-body)',
+              fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
             }}
           />
           {query && (
@@ -344,7 +344,7 @@ export default function History({ onClose }: HistoryProps) {
       {smartLoading && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          color: 'var(--text-muted)', fontSize: 12, padding: '0 20px 8px', flexShrink: 0,
+          color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', padding: '0 20px 8px', flexShrink: 0,
         }}>
           <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
           Qwen переранжирует…
@@ -356,7 +356,7 @@ export default function History({ onClose }: HistoryProps) {
       {smartResultsShown && smartDegraded && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          padding: '0 20px 8px', fontSize: 12, color: 'var(--warning-500)', flexShrink: 0,
+          padding: '0 20px 8px', fontSize: 'var(--fs-sm)', color: 'var(--warning-500)', flexShrink: 0,
         }}>
           Показан быстрый результат — AI не ответил, порядок по сходству, не по смыслу.
         </div>
@@ -365,7 +365,7 @@ export default function History({ onClose }: HistoryProps) {
       {entries.length === 0 ? (
         <div style={{
           textAlign: 'center', color: 'var(--text-muted)',
-          fontSize: 13, marginTop: 48,
+          fontSize: 'var(--fs-sm)', marginTop: 48,
         }}>
           {query ? 'Ничего не найдено' : 'История пуста'}
         </div>
@@ -464,7 +464,7 @@ function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: str
         width: 20, height: 20, borderRadius: 'var(--radius-sm)', flexShrink: 0,
         background: 'var(--neutral-300)', color: 'var(--text-body)',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 10, fontWeight: 600,
+        fontSize: 'var(--fs-xs)', fontWeight: 600,
       }}>
         {domain.charAt(0).toUpperCase() || '?'}
       </span>

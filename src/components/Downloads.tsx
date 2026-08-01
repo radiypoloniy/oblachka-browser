@@ -101,7 +101,7 @@ export default function Downloads({ downloads, onClose }: DownloadsProps) {
       {/* Список */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 20px 16px' }}>
         {downloads.length === 0 ? (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginTop: 48 }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', marginTop: 48 }}>
             Нет загрузок
           </div>
         ) : (
@@ -137,19 +137,19 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
       {/* Имя файла + статус */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
         <span style={{
-          fontSize: 13, fontWeight: 600, color: 'var(--text-strong)',
+          fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0,
         }}>
           {d.filename}
         </span>
-        <span style={{ fontSize: 11, color: STATE_COLOR[d.state], flexShrink: 0 }}>
+        <span style={{ fontSize: 'var(--fs-xs)', color: STATE_COLOR[d.state], flexShrink: 0 }}>
           {STATE_LABEL[d.state]}
         </span>
       </div>
 
       {/* URL */}
       <div style={{
-        fontSize: 11, color: 'var(--text-faint)',
+        fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         marginBottom: 6,
       }}>
@@ -180,8 +180,8 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
             )}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>{sizeLabel}</span>
-            {speed && <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>{speed}</span>}
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{sizeLabel}</span>
+            {speed && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{speed}</span>}
           </div>
         </div>
       )}
@@ -189,7 +189,7 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
       {/* Для завершённых — путь сохранения */}
       {isDone && d.savePath && (
         <div style={{
-          fontSize: 11, color: 'var(--text-faint)',
+          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           marginBottom: 6,
         }}>
@@ -264,7 +264,7 @@ function ActionBtn({ icon, label, onClick }: { icon: React.ReactNode; label: str
         borderRadius: 'var(--radius-sm)',
         background: 'var(--surface)',
         boxShadow: 'var(--shadow-card)',
-        fontSize: 11, color: 'var(--text-muted)',
+        fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
       }}
       onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}

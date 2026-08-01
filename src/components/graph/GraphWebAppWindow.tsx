@@ -54,7 +54,7 @@ function LetterBadge({ label }: { label: string }) {
         width: 20, height: 20, flexShrink: 0, borderRadius: 'var(--radius-sm)',
         background: 'var(--appicon-webcustom)', color: '#fff',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+        fontSize: 'var(--fs-xs)', fontWeight: 700, textTransform: 'uppercase',
       }}
     >
       {label.slice(0, 1)}

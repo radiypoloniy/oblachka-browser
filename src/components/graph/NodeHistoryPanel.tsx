@@ -52,7 +52,7 @@ export default function NodeHistoryPanel({ graphId, nodeId, nodeTitle, current, 
             padding: '12px 14px', borderBottom: '1px solid var(--divider)',
           }}
         >
-          <span style={{ fontSize: 16 }}>🕘</span>
+          <span style={{ fontSize: 'var(--fs-lg)' }}>🕘</span>
           <span
             style={{
               flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

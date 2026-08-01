@@ -88,7 +88,7 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
         flexShrink: 0,
       }}>
         <Star size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-strong)', flex: 1 }}>
+        <span style={{ fontWeight: 600, fontSize: 'var(--fs-md)', color: 'var(--text-strong)', flex: 1 }}>
           Закладки
         </span>
         <button
@@ -129,7 +129,7 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
           zIndex: 200, overflow: 'hidden', minWidth: 200,
         }}>
           {importSources.length === 0 ? (
-            <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>
+            <div style={{ padding: '10px 14px', fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>
               Ни один браузер не найден
             </div>
           ) : importSources.map((source) => (
@@ -140,7 +140,7 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
                 padding: '8px 14px', background: 'none', border: 'none',
-                cursor: importingId ? 'default' : 'pointer', fontSize: 13, color: 'var(--text-body)',
+                cursor: importingId ? 'default' : 'pointer', fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
               }}
               onMouseEnter={(e) => { if (!importingId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
@@ -155,7 +155,7 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
       {importMessage && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 20px', fontSize: 12,
+          padding: '8px 20px', fontSize: 'var(--fs-sm)',
           color: 'var(--text-muted)', flexShrink: 0,
         }}>
           {importMessage}
@@ -185,7 +185,7 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
             placeholder="Поиск в закладках…"
             style={{
               flex: 1, background: 'none', border: 'none', outline: 'none',
-              fontSize: 13, color: 'var(--text-body)',
+              fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
             }}
           />
           {query && (
@@ -205,7 +205,7 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
       {filtered.length === 0 ? (
         <div style={{
           textAlign: 'center', color: 'var(--text-muted)',
-          fontSize: 13, marginTop: 48,
+          fontSize: 'var(--fs-sm)', marginTop: 48,
         }}>
           {query ? 'Ничего не найдено' : 'Нет закладок'}
         </div>
@@ -246,7 +246,7 @@ function BookmarkRow({ entry, onDelete }: { entry: BookmarkEntry; onDelete: (id:
         width: 20, height: 20, borderRadius: 'var(--radius-sm)', flexShrink: 0,
         background: 'var(--neutral-300)', color: 'var(--text-body)',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 10, fontWeight: 600,
+        fontSize: 'var(--fs-xs)', fontWeight: 600,
       }}>
         {domain.charAt(0).toUpperCase() || '?'}
       </span>

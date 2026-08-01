@@ -167,7 +167,7 @@ export default function ImportDialog({ onClose, onboarding }: ImportDialogProps)
                           width: 22, height: 22, borderRadius: 'var(--radius-sm)', flexShrink: 0,
                           background: 'var(--neutral-300)', color: 'var(--text-body)',
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 11, fontWeight: 700,
+                          fontSize: 'var(--fs-xs)', fontWeight: 700,
                         }}>{source.label.charAt(0)}</span>
                         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {source.label}

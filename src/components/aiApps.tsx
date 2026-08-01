@@ -1104,7 +1104,7 @@ function CalcApp() {
               style={{
                 gridColumn: k.span ? `span ${k.span}` : undefined,
                 height: 42, border: 'none', borderRadius: 'var(--radius-pill)', padding: 0,
-                fontSize: 16, fontWeight: 500, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                fontSize: 'var(--fs-lg)', fontWeight: 500, fontFamily: 'var(--font-sans)', cursor: 'pointer',
                 background: activeOp ? 'var(--accent-soft)'
                   : k.kind === 'op' ? 'var(--accent)' : 'var(--surface-sunken)',
                 color: activeOp ? 'var(--accent)'

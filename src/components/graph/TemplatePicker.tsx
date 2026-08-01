@@ -30,7 +30,7 @@ export default function TemplatePicker({ onPick, onClose }: {
             padding: '12px 14px', borderBottom: '1px solid var(--divider)',
           }}
         >
-          <span style={{ fontSize: 16 }}>🧩</span>
+          <span style={{ fontSize: 'var(--fs-lg)' }}>🧩</span>
           <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-strong)' }}>
             С чего начать
           </span>

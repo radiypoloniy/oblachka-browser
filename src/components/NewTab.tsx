@@ -190,7 +190,7 @@ function SearchBar({ onSubmit }: { onSubmit: (input: string) => void }) {
           autoFocus
           style={{
             flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none',
-            fontSize: 17, color: '#fff',
+            fontSize: 'var(--fs-lg)', color: '#fff',
           }}
         />
       </div>
@@ -274,7 +274,7 @@ function InfoRow({ settings }: { settings: NewTabSettings }) {
     parts.push(
       <span key="weather" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
         title={`${weather.city ?? city} · ${w.label}`}>
-        <span style={{ fontSize: 17, lineHeight: 1 }}>{w.icon}</span>
+        <span style={{ fontSize: 'var(--fs-lg)', lineHeight: 1 }}>{w.icon}</span>
         <span style={{ fontWeight: 600 }}>{temp}°{settings.weather.units === 'f' ? 'F' : 'C'}</span>
         <span style={{ color: TEXT_SOFT, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {weather.city ?? city}
@@ -307,7 +307,7 @@ function InfoRow({ settings }: { settings: NewTabSettings }) {
       display: 'inline-flex', alignItems: 'center', gap: 12, padding: '8px 16px', borderRadius: 999,
       background: 'rgba(0,0,0,0.24)', backdropFilter: 'blur(12px)',
       border: '1px solid rgba(255,255,255,0.16)',
-      color: TEXT, fontSize: 15, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+      color: TEXT, fontSize: 'var(--fs-md)', boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
       maxWidth: '100%', flexWrap: 'wrap', justifyContent: 'center',
     }}>
       {parts.map((p, i) => (
@@ -367,7 +367,7 @@ function QuickLink({ origin, label, onClick }: { origin: string; label: string; 
           : <span style={{ color: TEXT, fontSize: 20, fontWeight: 600 }}>{letter}</span>}
       </span>
       <span style={{
-        fontSize: 12, color: TEXT_SOFT, textShadow: TEXT_SHADOW, maxWidth: '100%',
+        fontSize: 'var(--fs-sm)', color: TEXT_SOFT, textShadow: TEXT_SHADOW, maxWidth: '100%',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>{label}</span>
     </button>

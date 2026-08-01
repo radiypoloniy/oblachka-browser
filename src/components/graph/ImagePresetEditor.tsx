@@ -66,7 +66,7 @@ export default function ImagePresetEditor({ presets, onClose, onSave, onDelete }
             padding: '12px 14px', borderBottom: '1px solid var(--divider)',
           }}
         >
-          <span style={{ fontSize: 16 }}>🎨</span>
+          <span style={{ fontSize: 'var(--fs-lg)' }}>🎨</span>
           <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-strong)' }}>
             Свои пресеты стиля
           </span>
@@ -96,7 +96,7 @@ export default function ImagePresetEditor({ presets, onClose, onSave, onDelete }
                   onClick={() => setDraft(p)}
                   title="Открыть для правки"
                 >
-                  <span style={{ fontSize: 15 }}>{p.emoji}</span>
+                  <span style={{ fontSize: 'var(--fs-md)' }}>{p.emoji}</span>
                   <span style={{ flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>{p.label}</span>
                   <button
                     type="button"

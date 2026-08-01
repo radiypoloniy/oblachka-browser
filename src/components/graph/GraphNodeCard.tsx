@@ -249,7 +249,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         title={STATUS_HINT[data.status]}
       >
         <StatusIcon status={data.status} />
-        <span style={{ fontSize: 14, lineHeight: 1, flex: 'none' }}>{spec.emoji}</span>
+        <span style={{ fontSize: 'var(--fs-md)', lineHeight: 1, flex: 'none' }}>{spec.emoji}</span>
         <span
           style={{
             fontSize: 'var(--fs-xs)', fontWeight: 'var(--fw-semibold)',
@@ -566,7 +566,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
                   flex: 'none', width: 34, display: 'inline-flex', alignItems: 'center',
                   justifyContent: 'center', background: 'var(--surface-sunken)',
                   border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)',
-                  color: 'var(--text-body)', cursor: 'pointer', fontSize: 14,
+                  color: 'var(--text-body)', cursor: 'pointer', fontSize: 'var(--fs-md)',
                 }}
               >
                 ⚙

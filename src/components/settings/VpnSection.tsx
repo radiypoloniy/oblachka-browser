@@ -158,7 +158,7 @@ export default function VpnSection() {
                     }}
                   >
                     <span style={{
-                      fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
+                      fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
                       color: 'var(--text-faint)', flex: 'none', width: 44,
                     }}>
                       {s.protocol}

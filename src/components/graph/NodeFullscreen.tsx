@@ -90,7 +90,7 @@ export default function NodeFullscreen({
         <button type="button" onClick={onClose} title="Вернуться к графу (Esc)" style={headerButton}>
           <ArrowLeft size={17} />
         </button>
-        <span style={{ fontSize: 17, flex: 'none' }}>{spec.emoji}</span>
+        <span style={{ fontSize: 'var(--fs-lg)', flex: 'none' }}>{spec.emoji}</span>
         <span
           style={{
             flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

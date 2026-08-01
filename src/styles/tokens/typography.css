@@ -12,13 +12,16 @@
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
 
   /* Type scale (px). Display = the personal greeting on the hub. */
-  --fs-display: 33px;
-  --fs-2xl: 24px;
-  --fs-xl:  20px;
-  --fs-lg:  17px;
-  --fs-md:  15px;   /* body base */
-  --fs-sm:  13px;
-  --fs-xs:  11.5px; /* labels, section captions */
+  /* Шкала поднята на ступень: прежняя (33/24/20/17/15/13/11.5) была рассчитана на плотный
+     интерфейс, но в браузере, где читают подолгу, мелкий текст утомляет — особенно подписи
+     на 11.5 px. Пропорции между ступенями сохранены, изменился только базовый размер. */
+  --fs-display: 36px;
+  --fs-2xl: 26px;
+  --fs-xl:  22px;
+  --fs-lg:  18px;
+  --fs-md:  16px;   /* body base */
+  --fs-sm:  14px;
+  --fs-xs:  12.5px; /* labels, section captions */
 
   /* Line heights */
   --lh-tight: 1.15; /* @kind font */

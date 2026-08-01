@@ -311,7 +311,7 @@ export function EngineOption({ active, disabled, onClick, title, subtitle, badge
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flex: 'none' }}>
           {badge && (
             <span style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
+              fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
               color: badge.color,
             }}>
               {badge.text}
@@ -319,7 +319,7 @@ export function EngineOption({ active, disabled, onClick, title, subtitle, badge
           )}
           {badge2 && (
             <span style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
+              fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
               color: badge2.color,
             }}>
               {badge2.text}

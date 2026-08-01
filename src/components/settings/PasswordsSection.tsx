@@ -256,7 +256,7 @@ export default function PasswordsSection() {
               <button
                 onClick={() => setQuery('')}
                 title="Очистить"
-                style={{ background: 'none', border: 'none', cursor: 'default', padding: 2, color: 'var(--text-faint)', display: 'flex', fontSize: 15, lineHeight: 1 }}
+                style={{ background: 'none', border: 'none', cursor: 'default', padding: 2, color: 'var(--text-faint)', display: 'flex', fontSize: 'var(--fs-md)', lineHeight: 1 }}
               >×</button>
             )}
           </div>
@@ -334,7 +334,7 @@ export default function PasswordsSection() {
           <span style={{ flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
             Bitwarden и другие менеджеры
           </span>
-          <span style={{ fontSize: 10, color: 'var(--text-faint)', fontWeight: 600 }}>скоро</span>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontWeight: 600 }}>скоро</span>
         </div>
       </div>
     </div>
