@@ -16,13 +16,21 @@ export default function Toggle({ checked, onChange }: { checked: boolean; onChan
         // Трек в покое — recessed well (тот же токен, что и «chip track», см. colors.css::
         // --surface-sunken), не сырой --neutral-300.
         background: checked ? 'var(--accent)' : 'var(--surface-sunken)',
-        transition: 'background var(--dur-fast) var(--ease-standard)',
+        transition: 'background 220ms var(--ease-standard)',
       }}
     >
       <span style={{
-        position: 'absolute', top: 3, left: checked ? 23 : 3,
+        // Бегунок ездит ТРАНСФОРМОМ, а не свойством left: left — это вёрстка, браузер
+        // пересчитывает её на каждом кадре, и переключатель выглядел мёртвым. transform
+        // живёт на компоновщике и идёт ровно.
+        position: 'absolute', top: 3, left: 3,
+        transform: checked ? 'translateX(20px)' : 'none',
         width: 18, height: 18, borderRadius: '50%', background: '#fff',
-        transition: 'left var(--dur-fast) var(--ease-standard)',
+        // Лёгкий перелёт: бегунок чуть проскакивает и возвращается — от этого переключение
+        // читается как физическое действие, а не как смена картинки. Это сознательное
+        // отступление от «no bounces» в токенах движения: там правило про интерфейс в целом,
+        // а тумблер — единственный элемент, который человек буквально «дёргает».
+        transition: 'transform 220ms cubic-bezier(0.34, 1.4, 0.64, 1)',
         // Литерал намеренно: ближайший токен --shadow-chip (0 1px 2px rgba(30,25,60,.07)) заметно
         // слабее/светлее — бегунку нужна более контрастная тень, чтобы читаться поверх заливки
         // трека (--accent/--surface-sunken), готового токена под это в системе нет.

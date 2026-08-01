@@ -2058,7 +2058,11 @@ export class TabManager {
       if (!children.includes(splitTab.view)) this.win.contentView.addChildView(splitTab.view);
     }
 
+    // Левая панель встаёт на место сразу (одна смена размера), правая приезжает из-за
+    // правого края — так появление сплита читается как действие, а не как щелчок.
     this.repositionViews();
+    const right = this.getTabViewBounds(rightId);
+    this.slideIn(rightId, right, this.bounds.x + this.bounds.width);
     this.onChange();
     this.focusActiveView();
   }
@@ -2555,6 +2559,37 @@ export class TabManager {
     wc.executeJavaScript(script, true).catch(() => { /* нет видео — обычное дело */ });
   }
 
+  // Вью, которая сейчас въезжает, — repositionViews её не трогает, иначе первый же
+  // ResizeObserver рендерера поставил бы её на место посреди движения.
+  private slidingId: string | null = null;
+
+  // Въезд панели сплита справа. ⚠️ Двигаем ТОЛЬКО x, размер задан сразу конечный: смена
+  // размера заставляет страницу пересчитывать вёрстку на каждом кадре (два тяжёлых сайта
+  // разом — гарантированные рывки), а сдвиг по горизонтали для страницы бесплатен, она о
+  // нём вовсе не знает. Поэтому панель не «разворачивается», а именно приезжает.
+  private slideIn(tabId: string, to: ContentBounds, fromX: number): void {
+    const tab = this.tabMap.get(tabId);
+    if (!tab || !this.isHttpView(tab.view)) return;
+    const view = tab.view;
+    const DUR = 240;
+    const start = Date.now();
+    this.slidingId = tabId;
+
+    const step = (): void => {
+      if (this.slidingId !== tabId || view.webContents.isDestroyed()) return;
+      const t = Math.min(1, (Date.now() - start) / DUR);
+      // Та же кривая, что у --ease-out в токенах: быстрый старт, мягкая остановка.
+      const e = 1 - Math.pow(1 - t, 3);
+      const x = Math.round(fromX + (to.x - fromX) * e);
+      view.setBounds({ x, y: Math.round(to.y), width: Math.round(to.width), height: Math.round(to.height) });
+      if (t < 1) setTimeout(step, 16);
+      else this.slidingId = null;
+    };
+    view.setBounds({ x: Math.round(fromX), y: Math.round(to.y), width: Math.round(to.width), height: Math.round(to.height) });
+    view.setBorderRadius(CONTENT_CORNER_RADIUS);
+    setTimeout(step, 16);
+  }
+
   setContentBounds(b: ContentBounds) {
     this.bounds = b;
     this.repositionViews();
@@ -2619,6 +2654,7 @@ export class TabManager {
 
   // Позиционирует одну split-панель; при ошибке скрывает вьюху (React рисует TabError).
   private applySplitBounds(id: string, b: ContentBounds): void {
+    if (this.slidingId === id) return;   // панель ещё въезжает — не сбивать её на месте
     const tab = this.tabMap.get(id);
     if (!tab || !this.isHttpView(tab.view)) return;
     if (this.errors.has(id)) { tab.view.setVisible(false); return; }

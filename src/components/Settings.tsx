@@ -9,6 +9,7 @@ import PasswordsSection from './settings/PasswordsSection';
 import AutofillSection from './settings/AutofillSection';
 import GeneralSection from './settings/GeneralSection';
 import AppearanceSection from './settings/AppearanceSection';
+import { useRubberBand } from '../rubberBand';
 
 interface SettingsProps {
   onClose: () => void;
@@ -41,6 +42,9 @@ function isSectionId(v: unknown): v is SectionId {
 }
 
 export default function Settings({ onClose, defaultSection, onOpenImport }: SettingsProps) {
+  // Пружинистая отдача на краях прокрутки — своя, платформа такого не даёт.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useRubberBand(scrollRef);
   const [section, setSection] = useState<SectionId>(isSectionId(defaultSection) ? defaultSection : 'adblock');
   const [state, setState] = useState<AdBlockState | null>(null);
   const [domainInput, setDomainInput] = useState('');
@@ -168,7 +172,10 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
         {/* Контент выбранной секции */}
         {/* key по разделу — чтобы React пересоздал узел и CSS-анимация сыграла заново:
             без пересоздания браузер считает элемент тем же и проигрывать отказывается. */}
-        <div key={section} className="oblako-section-in" style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}>
+        <div ref={scrollRef} key={section} className="oblako-section-in" style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}>
+          {/* Внутренняя обёртка нужна отдачe: двигать надо содержимое, а не сам контейнер
+              прокрутки — иначе вместе с ним уехали бы его края и полоса прокрутки. */}
+          <div>
           {section === 'general' && <GeneralSection onOpenImport={onOpenImport} />}
           {section === 'adblock' && (
             <AdBlockSection
@@ -190,6 +197,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
           {section === 'passwords' && <PasswordsSection />}
           {section === 'autofill' && <AutofillSection />}
           {section === 'appearance' && <AppearanceSection />}
+          </div>
         </div>
       </div>
     </div>
