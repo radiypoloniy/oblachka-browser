@@ -10,6 +10,7 @@ import path from 'node:path'
 import { readFileSync } from 'node:fs'
 import TurndownService from 'turndown'
 import { PAGE_FACTS_SCRIPT, composeFactsCard, factsAreUseful, type PageFacts } from './pageFacts'
+import { TRANSCRIPT_SCRIPT, composeTranscript, isVideoPage } from './videoTranscript'
 import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
 import { runFactCheck } from './GeminiFactCheck'
 import { searxngSearch, buildGroundingPrompt, appendSearxngSources } from './SearxngSearch'
@@ -265,6 +266,24 @@ export interface ExtractedPage {
 export async function extractPageText(wc: WebContents | null): Promise<ExtractedPage> {
   if (!wc || wc.isDestroyed()) return { text: '', markdown: null }
   try {
+    // Страница ролика: содержание лежит в субтитрах, а Readability возьмёт описание и
+    // комментарии. Пробуем расшифровку ПЕРВОЙ; не вышло — идём обычным путём, потому что
+    // субтитров у ролика может не быть вовсе.
+    if (isVideoPage(wc.getURL())) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res: any = await wc.executeJavaScript(TRANSCRIPT_SCRIPT, true)
+      if (res?.ok && Array.isArray(res.lines) && res.lines.length) {
+        const text = composeTranscript({
+          title: String(res.title ?? ''),
+          channel: String(res.channel ?? ''),
+          lines: res.lines as { t: string; text: string }[],
+        }).slice(0, PAGE_TEXT_MAX_CHARS)
+        console.log(`[ai-panel] извлечение: расшифровка видео, ${res.lines.length} строк, ${text.length} симв.`)
+        return { text, markdown: null }
+      }
+      console.log(`[ai-panel] расшифровка недоступна (${res?.reason ?? 'нет ответа'}) — обычное извлечение`)
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: any = await wc.executeJavaScript(buildExtractionScript(), true)
     const readabilityText: string = typeof result?.readabilityText === 'string' ? result.readabilityText : ''
