@@ -172,10 +172,12 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
         {/* Контент выбранной секции */}
         {/* key по разделу — чтобы React пересоздал узел и CSS-анимация сыграла заново:
             без пересоздания браузер считает элемент тем же и проигрывать отказывается. */}
-        <div ref={scrollRef} key={section} className="oblako-section-in" style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}>
-          {/* Внутренняя обёртка нужна отдачe: двигать надо содержимое, а не сам контейнер
-              прокрутки — иначе вместе с ним уехали бы его края и полоса прокрутки. */}
-          <div>
+        {/* ⚠️ key висит на ВНУТРЕННЕЙ обёртке, а не на контейнере прокрутки: контейнер обязан
+            пережить смену раздела, иначе слушатель колеса остаётся на выброшенном узле и
+            резинка работает ровно один раз. Обёртка же нужна самой отдаче — двигать надо
+            содержимое, а не контейнер, иначе уедут его края и полоса прокрутки. */}
+        <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}>
+          <div key={section} className="oblako-section-in">
           {section === 'general' && <GeneralSection onOpenImport={onOpenImport} />}
           {section === 'adblock' && (
             <AdBlockSection

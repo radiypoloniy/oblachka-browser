@@ -7,7 +7,7 @@
 // приходит через onContext при переключении/навигации/(пере)открытии панели. Свой собственный
 // messages-стейт здесь — витрина: пополняется оптимистично при отправке и полностью ЗАМЕНЯЕТСЯ
 // целиком при каждом onContext (переключили вкладку → другая лента, не дописывание к старой).
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
 import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Plus } from 'lucide-react';
@@ -830,29 +830,114 @@ function AiPanel() {
 // на свои два варианта — отдельный компонент, не общий с Hub.tsx: aipanel.tsx живёт в изолированной
 // WebContentsView со своим бандлом (см. vite.config.ts), общий импорт между entry-points не заведён.
 function ModeToggle({ mode, onChange }: { mode: 'chat' | 'apps'; onChange: (m: 'chat' | 'apps') => void }) {
+  const wrap = useRef<HTMLDivElement | null>(null);
+  const btns = useRef<(HTMLButtonElement | null)[]>([]);
+  // Геометрия плашки. Считаем по реальным кнопкам: «AI» и «Приложения» разной ширины, и
+  // делить пополам нельзя — плашка не совпала бы с подписью.
+  const [box, setBox] = useState({ left: 3, width: 0 });
+  const [drag, setDrag] = useState<number | null>(null);   // смещение под пальцем, px
+  const index = mode === 'chat' ? 0 : 1;
+
+  const measure = useCallback(() => {
+    const host = wrap.current;
+    const b = btns.current[index];
+    if (!host || !b) return;
+    setBox({ left: b.offsetLeft, width: b.offsetWidth });
+  }, [index]);
+
+  useEffect(() => {
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (wrap.current) ro.observe(wrap.current);
+    return () => ro.disconnect();
+  }, [measure]);
+
+  // Перетаскивание плашки. Пока тянут — она идёт за курсором без перехода, на отпускании
+  // выбирается ближайшая половина и включается плавный доводчик.
+  const onPointerDown = (e: React.PointerEvent) => {
+    const host = wrap.current;
+    if (!host) return;
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    const startX = e.clientX;
+    const base = box.left;
+    const move = (ev: PointerEvent) => {
+      const first = btns.current[0], second = btns.current[1];
+      if (!first || !second) return;
+      const min = first.offsetLeft, max = second.offsetLeft;
+      setDrag(Math.max(min - base, Math.min(max - base, ev.clientX - startX)));
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      const first = btns.current[0], second = btns.current[1];
+      setDrag(null);
+      if (!first || !second) return;
+      // Куда ближе центр плашки — тот режим и включаем.
+      const centre = base + (ev.clientX - startX) + box.width / 2;
+      const nearFirst = Math.abs(centre - (first.offsetLeft + first.offsetWidth / 2))
+        <= Math.abs(centre - (second.offsetLeft + second.offsetWidth / 2));
+      onChange(nearFirst ? 'chat' : 'apps');
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   return (
-    <div style={{
-      display: 'inline-flex', flex: 'none', padding: 3, gap: 2,
-      background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
-      border: '1px solid var(--glass-edge)',
-    }}>
-      <ModeButton active={mode === 'chat'} onClick={() => onChange('chat')} icon={<Sparkles size={14} />} label="AI" />
-      <ModeButton active={mode === 'apps'} onClick={() => onChange('apps')} icon={<LayoutGrid size={14} />} label="Приложения" />
+    <div
+      ref={wrap}
+      style={{
+        position: 'relative', display: 'inline-flex', flex: 'none', padding: 3, gap: 2,
+        background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
+        border: '1px solid var(--glass-edge)',
+      }}
+    >
+      {/* Плашка — ОДИН элемент, который ездит, а не белый фон, перескакивающий с кнопки на
+          кнопку. Именно от перескока переключатель и выглядел мёртвым. */}
+      <div
+        onPointerDown={onPointerDown}
+        style={{
+          position: 'absolute', top: 3, bottom: 3, left: box.left, width: box.width,
+          background: 'var(--surface-solid)', boxShadow: 'var(--shadow-chip)',
+          borderRadius: 'var(--radius-pill)', cursor: 'grab', touchAction: 'none',
+          transform: drag === null ? 'none' : `translateX(${drag}px)`,
+          // Пока тянут — никакого перехода, плашка обязана идти ровно за курсором.
+          transition: drag === null
+            ? 'left 260ms cubic-bezier(0.34, 1.3, 0.64, 1), width 260ms var(--ease-out)'
+            : 'none',
+        }}
+      />
+      <ModeButton
+        refCb={(el) => { btns.current[0] = el; }} active={mode === 'chat'}
+        onClick={() => onChange('chat')} onPointerDown={onPointerDown}
+        icon={<Sparkles size={14} />} label="AI"
+      />
+      <ModeButton
+        refCb={(el) => { btns.current[1] = el; }} active={mode === 'apps'}
+        onClick={() => onChange('apps')} onPointerDown={onPointerDown}
+        icon={<LayoutGrid size={14} />} label="Приложения"
+      />
     </div>
   );
 }
 
-function ModeButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: JSX.Element; label: string }) {
+function ModeButton({ active, onClick, onPointerDown, icon, label, refCb }: {
+  active: boolean; onClick: () => void; onPointerDown: (e: React.PointerEvent) => void;
+  icon: JSX.Element; label: string; refCb: (el: HTMLButtonElement | null) => void;
+}) {
   return (
     <button
+      ref={refCb}
       onClick={onClick}
+      onPointerDown={onPointerDown}
       style={{
+        position: 'relative', zIndex: 1,
         display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
         border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'pointer',
         fontSize: 'var(--fs-xs)', fontWeight: 600,
-        background: active ? 'var(--surface-solid)' : 'transparent',
-        boxShadow: active ? 'var(--shadow-chip)' : 'none',
+        background: 'transparent', boxShadow: 'none',
         color: active ? 'var(--accent)' : 'var(--text-muted)',
+        transition: 'color 200ms var(--ease-standard)',
+        touchAction: 'none',
       }}
     >
       {icon}{label}
