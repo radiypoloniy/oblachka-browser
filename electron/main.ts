@@ -3,7 +3,7 @@ import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent } from './BrowserIdentity';
 import { showSplash, closeSplash } from './SplashWindow';
-import { registerWindow, contextFromSender, broadcastToChrome } from './WindowRegistry';
+import { registerWindow, contextFromSender, contextForWindow, broadcastToChrome } from './WindowRegistry';
 import type { WindowRole } from './WindowRegistry';
 
 // ДО app.whenReady() — Electron требует это до события ready.
@@ -216,9 +216,6 @@ let mainTabs: TabManager | null = null;
 // Сессия одна на приложение и принадлежит главному окну: дерево вкладок из session.json — его
 // (см. SessionManager.setOwner, срез 1). Лёгкие окна её не пишут и не читают.
 let mainSess: SessionManager | null = null;
-// Последний присланный прямоугольник омнибокса (см. IPC.OMNIBOX_SET_BOUNDS) — пока без
-// потребителя, только хранится для будущей нативной вью дропдауна подсказок.
-let omniboxBounds: ContentBounds = { x: 0, y: 0, width: 0, height: 0 };
 // Взводится ДО того, как tabs/sess начинают асинхронно обнуляться/дозакрываться (win.on('close')/
 // before-quit) — сигнал побочным подписчикам onChange (сейчас только AiPanelManager.onTabsSynced)
 // не синкаться во время выхода: AI-панель и так исчезает вместе с окном, а сама TabManager к этому
@@ -610,7 +607,7 @@ function createWindow(role: WindowRole = 'main') {
     // вкладке, безусловный main-side хук на КАЖДУЮ реальную смену активной, а не только
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover();
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(); closeAutofillPopover(); closeVpnPopover();
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
       // её текущее состояние (или null) при каждом реальном переключении.
       passwordAutofill.onActiveTabChanged();
@@ -1168,11 +1165,11 @@ function registerIpc() {
   // Прямоугольник омнибокса — двигает нативную вью дропдауна подсказок (см.
   // shared/ipc.ts::IPC.OMNIBOX_SET_BOUNDS, SuggestDropdownManager.ts) — старый chrome-DOM
   // дропдаун этот канал не читает, продолжает позиционироваться от toolbarRef как раньше.
-  ipcMain.handle(IPC.OMNIBOX_SET_BOUNDS, (_e, b: ContentBounds) => {
-    omniboxBounds = b;
+  ipcMain.handle(IPC.OMNIBOX_SET_BOUNDS, (e, b: ContentBounds) => {
     // Лог убран: канал горячий (ResizeObserver омнибокса + смена ширины тулбара), в проде это
     // поток строк ни о чём — см. CLAUDE.md, «уровни логирования; в prod — без URL/текстов».
-    syncOmniboxBounds(b);
+    const w = winOf(e);
+    if (w) syncOmniboxBounds(w, b);
   });
   // Тумблер показа вью дропдауна — вешается на тот же момент, что и старый React-дропдаун
   // (Toolbar.tsx::openDropdown/closeDropdown), который пока не заменяет (работают параллельно).
@@ -1185,7 +1182,7 @@ function registerIpc() {
       // откатом не остаётся кадра, в котором клавиатура «не там».
       chromeOf(e)?.focus();
     } else {
-      hideSuggestDropdown();
+      hideSuggestDropdown(w);
     }
   });
   ipcMain.handle(IPC.PASSWORD_POPOVER_SET_BOUNDS, (_e, b: ContentBounds) => {
@@ -1213,24 +1210,26 @@ function registerIpc() {
   });
   // Живой список подсказок (заход 3/5) — buildSuggestions в Toolbar.tsx шлёт тот же массив,
   // что кладёт в setSuggestions() для старого дропдауна; main пересылает его во вью.
-  ipcMain.handle(IPC.SUGGEST_DROPDOWN_SET_ITEMS, (_e, items: SuggestDropdownItem[]) => {
-    sendSuggestItems(items);
+  ipcMain.handle(IPC.SUGGEST_DROPDOWN_SET_ITEMS, (e, items: SuggestDropdownItem[]) => {
+    const w = winOf(e);
+    if (w) sendSuggestItems(w, items);
   });
   // Клик по строке ВО вью дропдауна (другой webContents) — пересылаем в chrome, где Toolbar.tsx
   // вызывает свой существующий pickSuggestion(), не дублируя его поведение (activateTab/навигация).
-  // ⚠️ Дропдаун подсказок — один на приложение (модульный синглтон SuggestDropdownManager), своего
-  // окна он не помнит: выбор уходит в главное окно. Со вторым окном это придётся развязать вместе
-  // с остальными оверлеями.
-  onSuggestDropdownPick((item) => { mainChromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_PICKED, item); });
+  // Выбор возвращается в омнибокс ТОГО окна, где кликнули, — дропдаун теперь свой у каждого.
+  onSuggestDropdownPick((w, item) => {
+    contextForWindow(w)?.chromeView.webContents.send(IPC.SUGGEST_DROPDOWN_PICKED, item);
+  });
   // Страж фокуса дропдауна (см. блок «ФОКУС» в шапке SuggestDropdownManager.ts). Electron не даёт
   // запретить вью забирать фокус (electron/electron#42922 открыт), поэтому единственная надёжная
   // защита — откатывать КАЖДЫЙ перехват, а не компенсировать отдельные известные моменты. Заменяет
   // прежние точечные заплатки (onFirstLoad + разовый focus() при открытии).
-  onSuggestDropdownFocusStolen(() => mainChromeView?.webContents.focus());
+  onSuggestDropdownFocusStolen((w) => { contextForWindow(w)?.chromeView.webContents.focus(); });
   // Клавиатурная подсветка (заход 4/5) — омнибокс шлёт номер строки (-1 снимает), main просто
   // пересылает во вью; выбор (Enter) остаётся локальным в омнибоксе, эта вью в нём не участвует.
-  ipcMain.handle(IPC.SUGGEST_DROPDOWN_HIGHLIGHT, (_e, idx: number) => {
-    setSuggestDropdownHighlight(idx);
+  ipcMain.handle(IPC.SUGGEST_DROPDOWN_HIGHLIGHT, (e, idx: number) => {
+    const w = winOf(e);
+    if (w) setSuggestDropdownHighlight(w, idx);
   });
   ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (e, opts: TitleBarOpts) => winOf(e)?.setTitleBarOverlay(opts));
   ipcMain.handle(IPC.FIND_START, (e, q: string, fwd: boolean) => tabsOf(e)?.findInPage(q, fwd));
