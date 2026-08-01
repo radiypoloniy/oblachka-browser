@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ArrowLeft, Copy, Download, History, Play } from 'lucide-react';
-import type { GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
+import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
 import { NODE_KINDS } from '../../../shared/graph';
 import { markdownComponents } from '../aiMarkdown';
 import { InfographicView, MindmapView, QuizView } from '../studioViews';
@@ -31,13 +31,22 @@ interface Props {
   onCopyOutput: () => void;
   onSaveOutput: () => void;
   onShowHistory: () => void;
-  // Только для draft.text: текст черновика и его правка. Раскрытый вид здесь не витрина,
-  // а рабочее место — связный текст в карточке 400 px не вычитывают.
-  draftText?: string;
-  onDraftChange?: (text: string) => void;
-  // Только для source.image — путь к файлу, превью строит тот же компонент, что в карточке.
-  imagePath?: string;
+  // Конфиг узла целиком и правка его текстового поля. Раскрытый вид здесь не витрина, а
+  // рабочее место: в карточке 300–400 px связный текст не пишут и не вычитывают.
+  config: GraphNodeConfig;
+  onConfigChange: (config: GraphNodeConfig) => void;
 }
+
+// Какое поле конфига правится в раскрытом виде и как оно подписано. Отдельной таблицей, а не
+// ветками в разметке: типов много, и подписи не должны разъезжаться с полями.
+const EDITABLE: Partial<Record<GraphNodeKind, { key: 'text' | 'instruction'; label: string; hint: string }>> = {
+  'source.note': { key: 'text', label: 'Текст заметки', hint: 'Текст, который пойдёт дальше по графу' },
+  'draft.text': { key: 'text', label: 'Черновик', hint: 'Пусто — материал со входа пройдёт дальше как есть' },
+  'compose.doc': { key: 'text', label: 'Шаблон документа', hint: 'Пусто — блоки склеятся по порядку. Ссылки на блоки: номер или имя узла в фигурных скобках' },
+  'qwen.transform': { key: 'instruction', label: 'Инструкция', hint: 'Что сделать с тем, что придёт на вход' },
+  'webapp.chat': { key: 'instruction', label: 'Что дописать перед материалом', hint: 'Промпт, который уедет в чат вместе с входом' },
+  'image.prompt': { key: 'instruction', label: 'Пожелания к картинке', hint: 'Вертикально, зима, без людей…' },
+};
 
 const headerButton: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -49,7 +58,7 @@ const headerButton: React.CSSProperties = {
 export default function NodeFullscreen({
   graphId, nodeId, kind, title, status, output, outputTitle, error,
   onClose, onRun, onCopyOutput, onSaveOutput, onShowHistory,
-  draftText, onDraftChange, imagePath,
+  config, onConfigChange,
 }: Props) {
   const spec = NODE_KINDS[kind];
   const busy = status === 'running' || status === 'queued';
@@ -66,12 +75,9 @@ export default function NodeFullscreen({
       style={{
         position: 'absolute', inset: 0, zIndex: 15,
         display: 'flex', flexDirection: 'column',
-        // У диалога — белый лист, как у чата в AI-панели и на странице. Остальные типы
-        // остаются на фоне приложения: там содержимое само лежит на карточках.
-        // Диалог — белый лист, как чат на странице; остальным нужен «колодец», на котором
-        // читаются белые карточки артефактов (тот же тон, что у холста).
-        background: kind === 'qwen.chat' || kind === 'draft.text'
-          ? 'var(--surface-solid)' : 'var(--surface-sunken)',
+        // Белый лист на ВСЕ типы. Карточка узла на холсте тоже белая, и раскрытие не должно
+        // менять тон под тем же содержимым: серый «колодец» читался как чужая подложка.
+        background: 'var(--surface-solid)',
       }}
     >
       <div
@@ -119,27 +125,84 @@ export default function NodeFullscreen({
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: 20, display: 'flex', flexDirection: 'column' }}>
         {kind === 'qwen.chat' ? (
           <NodeChatView graphId={graphId} nodeId={nodeId} />
-        ) : kind === 'draft.text' ? (
-          <textarea
-            value={draftText ?? ''}
-            placeholder="Пусто — материал со входа пройдёт дальше как есть."
-            onChange={(e) => onDraftChange?.(e.target.value)}
-            style={{
-              flex: 1, minHeight: 0, width: '100%', resize: 'none',
-              // Колонка ограничена по ширине: вычитывать текст во весь экран невозможно,
-              // глаз теряет строку. Та же мера, что у прозы в остальном интерфейсе.
-              maxWidth: 760, margin: '0 auto',
-              background: 'transparent', border: 0, outline: 'none',
-              color: 'var(--text-strong)', font: 'inherit',
-              fontFamily: 'var(--font-sans)', fontSize: 'var(--fs-md)',
-              lineHeight: 'var(--lh-body)',
-            }}
-          />
         ) : kind === 'source.image' ? (
-          <ImagePreview path={imagePath ?? ''} />
+          <ImagePreview path={config.path ?? ''} />
         ) : (
-          <Body kind={kind} output={output} outputTitle={outputTitle} error={error} status={status} />
+          <Editable
+            kind={kind} config={config} onConfigChange={onConfigChange}
+            output={output} outputTitle={outputTitle} error={error} status={status}
+          />
         )}
+      </div>
+    </div>
+  );
+}
+
+// Редактируемое поле узла и его результат в одном раскрытом виде. У заметки и черновика
+// результат равен полю — второй блок был бы дублем, поэтому редактор занимает всю высоту.
+function Editable({ kind, config, onConfigChange, output, outputTitle, error, status }: {
+  kind: GraphNodeKind; config: GraphNodeConfig;
+  onConfigChange: (config: GraphNodeConfig) => void;
+  output: string | null; outputTitle: string | null;
+  error: string | null; status: GraphNodeStatus;
+}) {
+  const field = EDITABLE[kind];
+  // Отдельный блок результата нужен только там, где он НЕ равен введённому тексту.
+  const showsOutput = kind !== 'source.note' && kind !== 'draft.text';
+
+  if (!field) {
+    return <Body kind={kind} output={output} outputTitle={outputTitle} error={error} status={status} />;
+  }
+
+  const editor = (
+    <div
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0,
+        flex: showsOutput ? 'none' : 1,
+      }}
+    >
+      <div
+        style={{
+          flex: 'none', fontSize: 'var(--fs-xs)', fontWeight: 'var(--fw-semibold)',
+          letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase', color: 'var(--text-muted)',
+        }}
+      >
+        {field.label}
+      </div>
+      <textarea
+        className="nowheel"
+        value={config[field.key] ?? ''}
+        placeholder={field.hint}
+        onChange={(e) => onConfigChange({ ...config, [field.key]: e.target.value })}
+        style={{
+          // Когда следом идёт результат, полю хватает трети экрана: инструкцию пишут один
+          // раз, а перечитывают выхлоп. Где результата нет — поле забирает всю высоту.
+          ...(showsOutput ? { height: '32vh', flex: 'none' } : { flex: 1, minHeight: 0 }),
+          width: '100%', boxSizing: 'border-box', resize: 'none',
+          background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
+          borderRadius: 'var(--radius-sm)', padding: '10px 12px',
+          outline: 'none', color: 'var(--text-strong)', font: 'inherit',
+          fontFamily: kind === 'compose.doc' ? 'var(--font-mono)' : 'var(--font-sans)',
+          fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)',
+        }}
+      />
+    </div>
+  );
+
+  // Колонка ограничена по ширине: вычитывать текст во весь экран нельзя, глаз теряет строку.
+  if (!showsOutput) {
+    return (
+      <div style={{ flex: 1, minHeight: 0, width: '100%', maxWidth: 760, margin: '0 auto', display: 'flex' }}>
+        {editor}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {editor}
+      <div className="nowheel" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <Body kind={kind} output={output} outputTitle={outputTitle} error={error} status={status} />
       </div>
     </div>
   );

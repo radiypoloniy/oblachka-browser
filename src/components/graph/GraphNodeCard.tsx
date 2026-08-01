@@ -169,7 +169,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           handleStyle={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent)', border: 0 }}
         />
         <textarea
-          className="nodrag"
+          className="nodrag nowheel"
           value={data.config.text ?? ''}
           placeholder="Подпись к участку графа"
           onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
@@ -360,7 +360,9 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}
               >
-                {data.config.path.split(/[\/]/).pop()}
+                {/* В классе символов обязателен и обратный слэш: путь Windows
+                    C:\docs\файл.docx иначе не режется вовсе, и в карточке висел целиком. */}
+                {data.config.path.split(/[\\/]/).pop()}
               </div>
             )}
           </>
@@ -395,7 +397,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
 
         {data.kind === 'source.note' && (
           <textarea
-            className="nodrag"
+            className="nodrag nowheel"
             value={data.config.text ?? ''}
             placeholder="Текст, который пойдёт дальше по графу"
             onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
@@ -431,7 +433,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
               ⬇ Взять со входа
             </button>
             <textarea
-              className="nodrag"
+              className="nodrag nowheel"
               value={data.config.text ?? ''}
               placeholder="Пусто — материал со входа пройдёт дальше как есть. Возьмите его кнопкой выше и правьте здесь."
               onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
@@ -469,7 +471,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
               {!data.inputLabels.length && <div>Подключите блоки — они появятся здесь</div>}
             </div>
             <textarea
-              className="nodrag"
+              className="nodrag nowheel"
               value={data.config.text ?? ''}
               placeholder={'Шаблон документа. Пусто — блоки склеятся по порядку.\n\n# {1}\n\n{Черновик}'}
               onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
@@ -505,11 +507,11 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
               style={{ ...fieldStyle, flex: 'none' }}
             />
             <textarea
-              className="nodrag"
+              className="nodrag nowheel"
               value={data.config.instruction ?? ''}
               placeholder="Что дописать перед материалом (необязательно)"
               onChange={(e) => data.onPatch({ config: { ...data.config, instruction: e.target.value } })}
-              style={{ ...fieldStyle, flex: 'none', height: 64 }}
+              style={{ ...fieldStyle, ...(data.output ? { flex: 'none' as const, height: 64 } : { flex: 1, minHeight: 64 }), resize: 'vertical' as const }}
             />
             <button
               type="button"
@@ -546,7 +548,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           <>
             <div style={{ flex: 'none', display: 'flex', gap: 6 }}>
               <select
-                className="nodrag"
+                className="nodrag nowheel"
                 value={data.config.preset ?? data.imagePresets[0]?.id ?? ''}
                 onChange={(e) => data.onPatch({ config: { ...data.config, preset: e.target.value } })}
                 style={{ ...fieldStyle, flex: 1, cursor: 'pointer' }}
@@ -571,24 +573,24 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
               </button>
             </div>
             <textarea
-              className="nodrag"
+              className="nodrag nowheel"
               value={data.config.instruction ?? ''}
               placeholder="Пожелания: вертикально, зима, без людей…"
               onChange={(e) => data.onPatch({ config: { ...data.config, instruction: e.target.value } })}
-              style={{ ...fieldStyle, flex: 'none', height: 56 }}
+              style={{ ...fieldStyle, ...(data.output ? { flex: 'none' as const, height: 56 } : { flex: 1, minHeight: 56 }), resize: 'vertical' as const }}
             />
           </>
         )}
 
         {data.kind === 'qwen.transform' && (
           <textarea
-            className="nodrag"
+            className="nodrag nowheel"
             value={data.config.instruction ?? ''}
             placeholder="Что сделать с тем, что придёт на вход"
             onChange={(e) => data.onPatch({ config: { ...data.config, instruction: e.target.value } })}
             // Инструкцию пишут один раз, а результат перечитывают — поэтому при растягивании
             // узла место достаётся выводу, а не полю ввода.
-            style={{ ...fieldStyle, flex: 'none', height: 86, resize: 'none' }}
+            style={{ ...fieldStyle, ...(data.output ? { flex: 'none' as const, height: 86 } : { flex: 1, minHeight: 86 }), resize: 'vertical' as const }}
           />
         )}
 

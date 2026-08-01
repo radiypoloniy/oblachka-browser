@@ -972,11 +972,8 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                 title: expandedNode.data.title || NODE_KINDS[expandedNode.data.kind].label,
                 output: expandedNode.data.output,
               })}
-              imagePath={expandedNode.data.config.path ?? ''}
-              draftText={expandedNode.data.config.text ?? ''}
-              onDraftChange={(text) => patchNode(expandedNode.id, {
-                config: { ...expandedNode.data.config, text },
-              })}
+              config={expandedNode.data.config}
+              onConfigChange={(config) => patchNode(expandedNode.id, { config })}
             />
           )}
 
