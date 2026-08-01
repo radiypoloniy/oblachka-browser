@@ -107,23 +107,32 @@ function stillOnPage(wc: WebContents, url: string): boolean {
 // Экспортирована для HistoryContentBackfill.ts — тот же did-finish-load/SPA-settle пайплайн,
 // что и обычная индексация визита, просто источник wc другой (скрытая фоновая вьюха, не
 // реальная вкладка пользователя).
-export async function extractEnrichedText(wc: WebContents | null, url: string): Promise<string | null> {
+// allowNavigation — для СВОЕЙ фоновой вью (NotebookExtract), которой мы владеем целиком.
+// Проверка «юзер ушёл со страницы» осмысленна только для реальной вкладки: там смена URL
+// значит «извлекать больше нечего». В своей вью смена URL — это обычный клиентский редирект
+// (магазины так делают постоянно), и бросать работу из-за него — терять страницу на ровном месте.
+export async function extractEnrichedText(
+  wc: WebContents | null,
+  url: string,
+  opts?: { allowNavigation?: boolean },
+): Promise<string | null> {
   if (!wc || wc.isDestroyed()) return null;
+  const onPage = (): boolean => (opts?.allowNavigation ? !wc.isDestroyed() : stillOnPage(wc, url));
   await waitForFinishLoad(wc);
-  if (!stillOnPage(wc, url)) return null;
+  if (!onPage()) return null;
 
   // Первый снимок — не сразу: см. SPA_SETTLE_DELAY_MS про скелетон/спиннер SPA на did-finish-load.
   await wait(SPA_SETTLE_DELAY_MS);
-  if (!stillOnPage(wc, url)) return null;
+  if (!onPage()) return null;
   const first = await extractPageText(wc);
-  if (!stillOnPage(wc, url)) return first.text || null;
+  if (!onPage()) return first.text || null;
 
   // Повторный снимок: если текст заметно вырос — страница ещё дорисовывалась на первом снимке,
   // берём более полный второй. Иначе первый снимок уже стабилен — не тратим лишний прогон.
   await wait(SPA_SETTLE_RECHECK_MS);
-  if (!stillOnPage(wc, url)) return first.text || null;
+  if (!onPage()) return first.text || null;
   const second = await extractPageText(wc);
-  if (!stillOnPage(wc, url)) return first.text || null;
+  if (!onPage()) return first.text || null;
 
   if (second.text.length > first.text.length * SPA_SETTLE_GROWTH_RATIO) return second.text || null;
   return first.text || second.text || null;

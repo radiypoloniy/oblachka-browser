@@ -10,7 +10,10 @@ import { extractEnrichedText } from './HistoryIndexer';
 // (через сессию/VPN приложения) — как и обычная навигация; вызывается по явному добавлению источника.
 
 const PAGE_LOAD_TIMEOUT_MS = 20_000;
-const MAX_TEXT_CHARS = 200_000; // защита от гигантских страниц — на грунтинг всё равно режем сильнее
+const MAX_TEXT_CHARS = 200_000;
+// Окно «как у настоящего браузера»: от ширины зависит, покажет ли сайт десктопную вёрстку
+// с характеристиками или мобильную заглушку.
+const EXTRACT_VIEWPORT = { width: 1280, height: 900 }; // защита от гигантских страниц — на грунтинг всё равно режем сильнее
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   return Promise.race([p, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))]);
@@ -25,12 +28,17 @@ export async function extractUrlText(win: BrowserWindow, url: string): Promise<{
   });
   markBackground(view.webContents.id);
   win.contentView.addChildView(view);
-  view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+  // ⚠️ Размер НАСТОЯЩИЙ, вью просто уведена за левый край окна. С нулевыми bounds у страницы
+  // нет раскладки: innerText пуст, ленивые блоки не рисуются, и SPA магазинов отдавали пустоту.
+  // Прятать размером нельзя — прятать можно только положением.
+  view.setBounds({ x: -EXTRACT_VIEWPORT.width - 100, y: 0, ...EXTRACT_VIEWPORT });
 
   try {
     const ok = await withTimeout(view.webContents.loadURL(target).then(() => true), PAGE_LOAD_TIMEOUT_MS);
     if (!ok || view.webContents.isDestroyed()) return { ok: false };
-    const text = await extractEnrichedText(view.webContents, view.webContents.getURL());
+    // allowNavigation: вью наша, и клиентский редирект (обычное дело у магазинов) не повод
+    // бросать извлечение — в отличие от реальной вкладки, где смена URL значит «юзер ушёл».
+    const text = await extractEnrichedText(view.webContents, view.webContents.getURL(), { allowNavigation: true });
     const title = view.webContents.isDestroyed() ? undefined : (view.webContents.getTitle() || undefined);
     if (!text) return { ok: false, title };
     return { ok: true, title, text: text.slice(0, MAX_TEXT_CHARS) };

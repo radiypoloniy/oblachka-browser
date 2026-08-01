@@ -9,6 +9,7 @@ import type { BrowserWindow, IpcMainEvent, WebContents } from 'electron'
 import path from 'node:path'
 import { readFileSync } from 'node:fs'
 import TurndownService from 'turndown'
+import { PAGE_FACTS_SCRIPT, composeFactsCard, factsAreUseful, type PageFacts } from './pageFacts'
 import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
 import { runFactCheck } from './GeminiFactCheck'
 import { searxngSearch, buildGroundingPrompt, appendSearxngSources } from './SearxngSearch'
@@ -159,16 +160,69 @@ const READABILITY_MIN_RATIO = 0.15
 function buildExtractionScript(): string {
   return `(function(){
     ${getReadabilitySource()}
+    ${PAGE_FACTS_SCRIPT}
+
+    // Сначала факты — по НЕТРОНУТОМУ документу: чистка ниже могла бы задеть разметку,
+    // из которой они читаются.
+    var facts;
+    try { facts = __oblakoCollectFacts(); } catch (e) { facts = null; }
+
+    // Затем клон БЕЗ блоков отзывов. Это ключевая часть: на карточке товара отзывы длиннее
+    // описания, и Readability уверенно выбирает именно их — не проваливаясь, поэтому прежний
+    // фолбэк не срабатывал. Режем на клоне, живую страницу пользователя не трогаем.
+    var removedChars = 0;
     var readabilityText = '';
     var articleHtml = '';
     try {
+      // Помечаем находки атрибутом и клонируем СРАЗУ, без единого await между: так метки
+      // переезжают на клон вместе с узлами. Раньше здесь был перенос по индексному пути от
+      // корня — и он ломался: после первого же удаления индексы соседей съезжали, и остальные
+      // пути вели не туда, из-за чего блок отзывов выживал целиком.
+      var marked = [];
+      try {
+        marked = __oblakoReviewNodes();
+        for (var i = 0; i < marked.length; i++) marked[i].setAttribute('data-oblako-junk', '1');
+      } catch (e) { marked = []; }
+
       var docClone = document.cloneNode(true);
+
+      // Живую страницу возвращаем в исходный вид немедленно — она пользователя, не наша.
+      for (var u = 0; u < marked.length; u++) {
+        try { marked[u].removeAttribute('data-oblako-junk'); } catch (e) { /* узел исчез */ }
+      }
+
+      try {
+        var junk = docClone.querySelectorAll('[data-oblako-junk]');
+        for (var j = 0; j < junk.length; j++) {
+          if (!junk[j].parentNode) continue; // уже уехал вместе с удалённым предком
+          removedChars += (junk[j].textContent || '').length;
+          junk[j].parentNode.removeChild(junk[j]);
+        }
+      } catch (e) { /* не вышло вычистить — Readability отработает по полному клону */ }
+
       var article = new Readability(docClone).parse();
       readabilityText = (article && article.textContent) ? article.textContent.trim() : '';
       articleHtml = (article && article.content) ? article.content : '';
     } catch (e) { readabilityText = ''; articleHtml = ''; }
-    var fullText = document.body ? document.body.innerText : '';
-    return { readabilityText: readabilityText, fullText: fullText, articleHtml: articleHtml };
+
+    // ⚠️ Полный текст берём с ОЧИЩЕННОГО клона, а не с живой страницы. Иначе выходит две
+    // беды разом: фолбэк возвращает отзывы, которые мы только что вырезали, и сравнение
+    // «Readability дала слишком мало относительно всей страницы» становится нечестным —
+    // очищенный результат меряется против неочищенного оригинала и всегда проигрывает.
+    var fullText = '';
+    try {
+      var cloneBody = docClone.body;
+      fullText = cloneBody ? (cloneBody.innerText || cloneBody.textContent || '') : '';
+      fullText = fullText.replace(/[ \\t]+/g, " ").replace(/(\\r?\\n){3,}/g, "\\n\\n").trim();
+    } catch (e) { fullText = ''; }
+    // Клон не в дереве отрисовки — если текста не добыть, берём живую страницу как есть.
+    if (!fullText && document.body) fullText = document.body.innerText || '';
+
+    if (facts) facts.removedReviewChars = removedChars;
+    return {
+      readabilityText: readabilityText, fullText: fullText,
+      articleHtml: articleHtml, facts: facts
+    };
   })()`
 }
 
@@ -208,7 +262,14 @@ export async function extractPageText(wc: WebContents | null): Promise<Extracted
     const tooShortRelative = fullText.length > 0 && readabilityText.length < fullText.length * READABILITY_MIN_RATIO
     const readabilityFailed = tooShortAbsolute || tooShortRelative
 
-    const text = (readabilityFailed ? fullText : readabilityText).slice(0, PAGE_TEXT_MAX_CHARS)
+    // Карточка фактов идёт ПЕРЕД прозой: лимит режет хвост, и факты обязаны быть в начале,
+    // иначе их срежет первыми — ровно та проблема, из-за которой в модель уезжали отзывы.
+    const facts: PageFacts | null = result?.facts ?? null
+    const card = facts && factsAreUseful(facts) ? composeFactsCard(facts) : ''
+    const prose = readabilityFailed ? fullText : readabilityText
+    const text = (card ? `${card}
+
+${prose}` : prose).slice(0, PAGE_TEXT_MAX_CHARS)
 
     // Markdown — только когда Readability реально удалась И html статьи есть. Обрезаем ПОСЛЕ
     // конвертации (markdown чуть длиннее plain text за счёт разметки — лимит должен быть на
@@ -216,7 +277,10 @@ export async function extractPageText(wc: WebContents | null): Promise<Extracted
     let markdown: string | null = null
     if (!readabilityFailed && articleHtml) {
       try {
-        markdown = turndownService.turndown(articleHtml).trim().slice(0, PAGE_TEXT_MAX_CHARS)
+        const body = turndownService.turndown(articleHtml).trim()
+        markdown = (card ? `${card}
+
+${body}` : body).slice(0, PAGE_TEXT_MAX_CHARS)
       } catch (e) {
         console.error('[ai-panel] html→markdown упало:', e)
         markdown = null
@@ -227,6 +291,9 @@ export async function extractPageText(wc: WebContents | null): Promise<Extracted
       console.log(`[ai-panel] извлечение: fallback (readability слишком мало: ${readabilityText.length} из ${fullText.length}) ${text.length} симв.`)
     } else {
       console.log(`[ai-panel] извлечение: readability ${text.length} симв.` + (markdown ? `, markdown ${markdown.length} симв.` : ', markdown недоступен'))
+    }
+    if (facts && card) {
+      console.log(`[ai-panel] факты: ${facts.kind ?? 'без типа'}, характеристик ${facts.specs.length}, отзывов вырезано ${facts.removedReviewChars} симв.`)
     }
     return { text, markdown }
   } catch (e) {

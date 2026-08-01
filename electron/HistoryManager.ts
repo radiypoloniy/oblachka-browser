@@ -19,7 +19,7 @@ const RECENT_LIMIT = 500;
 // saveContentChunks вообще звали requestEmbedding), хотя текст чанка от эмбеддинг-модели никак не
 // зависит. Инкрементировать при изменении логики извлечения/чанкинга — старые чанки перестанут
 // совпадать по версии и переиндексируются, как и раньше при смене версии эмбеддинг-модели.
-export const TEXT_EXTRACTION_VERSION = 'text-v1';
+export const TEXT_EXTRACTION_VERSION = 'text-v2';
 
 export interface ContentChunkInput {
   chunkIndex: number;
