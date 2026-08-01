@@ -18,11 +18,20 @@ import type { RefObject } from 'react';
 
 // Предел упругости — доля высоты окна прокрутки. У Apple он тоже пропорционален размеру:
 // в маленькой панели большая оттяжка выглядела бы поломкой раскладки.
-const LIMIT_RATIO = 0.14;
-// Жёсткость: меньше — туже резинка. 0.5 близко к ощущению UIScrollView.
-const STIFFNESS = 0.5;
-const RETURN_MS = 420;
-const IDLE_MS = 80;
+// Предел упругости — доля высоты окна прокрутки. У Apple он тоже пропорционален размеру:
+// в маленькой панели большая оттяжка выглядела бы поломкой раскладки.
+const LIMIT_RATIO = 0.08;
+// Жёсткость: МЕНЬШЕ — туже резинка, оттянуть труднее. Первая версия стояла на 0.5, и одного
+// щелчка колеса хватало, чтобы выбросить ленту почти на весь ход.
+const STIFFNESS = 0.3;
+// Пауза без событий колеса, после которой считаем жест законченным. Держать её короткой
+// нельзя: щелчки колеса идут с промежутком в сотню миллисекунд, и лента успевала отскочить
+// назад между ними — от этого дёрганья и раздражение.
+const IDLE_MS = 170;
+// Насколько быстро нарисованное догоняет натяжение. Оттяжка — живее, возврат — заметно
+// мягче: одинаковые скорости давали ощущение щелчка, а не пружины.
+const EASE_PULL = 0.16;
+const EASE_BACK = 0.085;
 
 function rubberBand(raw: number, limit: number): number {
   const sign = raw < 0 ? -1 : 1;
@@ -41,32 +50,33 @@ export function useRubberBand(ref: RefObject<HTMLElement | null>): void {
     // узел — ровно поэтому резинка срабатывала один раз и умирала.
     const innerOf = (): HTMLElement | null => box.firstElementChild as HTMLElement | null;
 
-    let raw = 0;
+    let target = 0;    // накопленное натяжение (сырые дельты колеса)
+    let shown = 0;     // то, что нарисовано на экране
+    let raf = 0;
     let idle = 0;
-    let returning = false;
 
-    const draw = (): void => {
+    // ⚠️ Нарисованное ДОГОНЯЕТ натяжение покадрово, а не ставится сразу. Колесо мыши шлёт
+    // рывками по ~100 px за щелчок, и мгновенное применение выбрасывало ленту на треть хода
+    // одним кадром — это и ощущалось резко. Здесь любой ввод, хоть дискретный, превращается
+    // в непрерывное движение.
+    const tick = (): void => {
       const inner = innerOf();
-      if (!inner) return;
-      const limit = Math.max(60, box.clientHeight * LIMIT_RATIO);
-      const offset = rubberBand(raw, limit);
-      inner.style.transform = raw ? `translate3d(0, ${(-offset).toFixed(2)}px, 0)` : '';
+      if (!inner) { raf = 0; return; }
+      const limit = Math.max(28, box.clientHeight * LIMIT_RATIO);
+      const want = rubberBand(target, limit);
+      shown += (want - shown) * (target === 0 ? EASE_BACK : EASE_PULL);
+
+      if (target === 0 && Math.abs(shown) < 0.25) {
+        shown = 0;
+        inner.style.transform = '';
+        raf = 0;
+        return;
+      }
+      inner.style.transform = `translate3d(0, ${(-shown).toFixed(2)}px, 0)`;
+      raf = requestAnimationFrame(tick);
     };
 
-    const release = (): void => {
-      if (!raw) return;
-      raw = 0;
-      const inner = innerOf();
-      if (!inner) return;
-      returning = true;
-      inner.style.transition = `transform ${RETURN_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`;
-      inner.style.transform = '';
-      window.setTimeout(() => {
-        const cur = innerOf();
-        if (cur) cur.style.transition = '';
-        returning = false;
-      }, RETURN_MS + 20);
-    };
+    const kick = (): void => { if (!raf) raf = requestAnimationFrame(tick); };
 
     const onWheel = (e: WheelEvent): void => {
       const atTop = box.scrollTop <= 0;
@@ -74,25 +84,20 @@ export function useRubberBand(ref: RefObject<HTMLElement | null>): void {
       const beyond = (e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom);
 
       // Внутри содержимого не вмешиваемся: обычная прокрутка должна остаться обычной.
-      if (!beyond) { if (raw) release(); return; }
+      if (!beyond) { if (target) { target = 0; kick(); } return; }
 
       e.preventDefault();
-      if (returning) {
-        const inner = innerOf();
-        if (inner) inner.style.transition = '';
-        returning = false;
-      }
-
-      raw += e.deltaY;
-      draw();
+      target += e.deltaY;
+      kick();
       window.clearTimeout(idle);
-      idle = window.setTimeout(release, IDLE_MS);
+      idle = window.setTimeout(() => { target = 0; kick(); }, IDLE_MS);
     };
 
     box.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       box.removeEventListener('wheel', onWheel);
       window.clearTimeout(idle);
+      if (raf) cancelAnimationFrame(raf);
       const inner = innerOf();
       if (inner) { inner.style.transition = ''; inner.style.transform = ''; }
     };
