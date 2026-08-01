@@ -230,6 +230,10 @@ export const IPC = {
   // Перенести вкладку в новое окно: живая страница уезжает целиком (история «назад», прокрутка,
   // введённое в форму), а не открывается заново по адресу. См. TabManager.detachTabForMove.
   WINDOW_MOVE_TAB: 'window:move-tab',
+  // Курсор сейчас за пределами этого окна? Спрашивается в момент отпускания вкладки: координаты
+  // указателя за краем окна рендереру не приходят (их некому доставить — курсор уже над другим
+  // окном или рабочим столом), а main видит их через screen.getCursorScreenPoint().
+  WINDOW_POINTER_OUTSIDE: 'window:pointer-outside',
 
   // Атомарный push: заменяет раздельные TABS_CHANGED + SIDEBAR_NODES_CHANGED.
   // Один IPC-пакет = один рендер = нет рассинхрона между вкладками и деревом узлов.
@@ -1347,6 +1351,8 @@ export interface OblakoApi {
   openWindow(): Promise<void>;
   // Перенести вкладку в новое окно (ПКМ по вкладке, вытаскивание из сайдбара).
   moveTabToNewWindow(tabId: string): Promise<boolean>;
+  // Указатель вне окна — см. IPC.WINDOW_POINTER_OUTSIDE.
+  isPointerOutsideWindow(): Promise<boolean>;
   // Сигнал «оболочка отрисована» — main показывает скрытое до этого окно (см. IPC.CHROME_UI_READY).
   chromeUiReady(): void;
   onTabsChanged(cb: (tabs: TabState[]) => void): () => void; // вернёт unsubscribe

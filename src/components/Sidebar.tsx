@@ -1242,25 +1242,31 @@ export default function Sidebar({
   const handleDragEnd = (e: DragEndEvent) => {
     const { overContent: wasOverContent, outsideWindow } = finishDrag();
 
-    const { active, over } = e;
-
-    // Вытащили за пределы окна → вкладка уезжает в своё окно ЖИВОЙ (main переносит саму вью,
-    // см. TabManager.detachTabForMove). Проверяем раньше split: указатель за краем окна над
-    // контент-зоной оказаться не может, но порядок делает намерение явным.
-    if (outsideWindow) {
-      const draggedId = active.id as string;
-      if (!draggedId.startsWith('group:')) {
-        const draggedTab = tabs.find((t) => t.id === draggedId);
-        // Те же ограничения, что у пункта меню «Открыть в новом окне»: хаб, закреплённые,
-        // спящие и участники split не переносятся. Отказ main просто ничего не сделает,
-        // но и тащить заведомо непереносимое не показываем.
-        if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned
-          && !draggedTab.isSleeping && draggedTab.splitSide === null) {
-          void window.oblako.moveTabToNewWindow(draggedId);
-          return;
-        }
-      }
+    // Вытащили за пределы окна → вкладка уезжает в своё окно (main переносит живую вью, а спящую —
+    // описанием, см. TabManager.detachTabForMove). Своих координат тут мало: как только курсор
+    // уходит за край окна, движения рендереру больше не доставляются, и последнее виденное
+    // значение упирается в границу. Поэтому решающее слово за main — он видит курсор на экране.
+    // Асинхронная проверка задерживает обычный путь на один вызов IPC; на глаз это незаметно,
+    // потому что вкладка в этот момент и так «отпущена».
+    const draggedId = e.active.id as string;
+    const draggedTab = draggedId.startsWith('group:') ? undefined : tabs.find((t) => t.id === draggedId);
+    // Группу и участника split не выносим: у первой нет одной страницы, второй увёл бы за собой
+    // половину пары. Хаб — не страница вовсе.
+    const canDetach = !!draggedTab && !draggedTab.isHub && draggedTab.splitSide === null;
+    if (canDetach && !wasOverContent) {
+      void (async () => {
+        const outside = outsideWindow || await window.oblako.isPointerOutsideWindow().catch(() => false);
+        if (outside) { void window.oblako.moveTabToNewWindow(draggedId); return; }
+        applyDragEnd(e, wasOverContent);
+      })();
+      return;
     }
+    applyDragEnd(e, wasOverContent);
+  };
+
+  // Обычный исход драга: split при дропе в контент-зону либо переупорядочивание.
+  const applyDragEnd = (e: DragEndEvent, wasOverContent: boolean) => {
+    const { active, over } = e;
 
     // Дроп в контент-зону → split вместо reorder.
     // Группы в split не входят — проверяем только обычные вкладки.

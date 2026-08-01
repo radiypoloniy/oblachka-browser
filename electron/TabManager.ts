@@ -102,13 +102,14 @@ interface ManagedTab {
   section?: string;
 }
 
-// Вкладка, снятая с окна и ждущая нового владельца (см. detachTabForMove/adoptTab). Намеренно
-// несёт только вью и признак приватности: заголовок, favicon и историю страница знает сама, а
-// id новый менеджер выдаёт свой.
-export interface DetachedTab {
-  view: WebContentsView;
-  incognito: boolean;
-}
+// Вкладка, снятая с окна и ждущая нового владельца (см. detachTabForMove/adoptTab).
+// Два случая, и оба нужны: живая страница переезжает вью (иначе потерялись бы история «назад»,
+// прокрутка и введённое в форму), спящая — своим описанием, потому что вью у неё ещё нет и
+// терять нечего. После перезапуска почти все вкладки спящие, и без второго случая пункт «Открыть
+// в новом окне» был бы неактивен ровно тогда, когда им и хотят воспользоваться.
+export type DetachedTab =
+  | { kind: 'live'; view: WebContentsView; incognito: boolean }
+  | { kind: 'sleeping'; sleeping: SleepingMeta; incognito: boolean };
 
 // Скрипт проверки незаполненных форм — только top-frame (v1: поля внутри iframe не проверяются).
 const HAS_FILLED_FORMS_SCRIPT = `(function(){
@@ -1683,29 +1684,38 @@ export class TabManager {
   // человек потерял бы всё, ради чего вкладку и вытаскивают: историю «назад», позицию прокрутки,
   // набранный в форме текст, авторизованное состояние SPA.
   //
-  // ⚠️ Ограничения намеренные: хаб, псевдо-вкладки (История/Настройки), спящие и участники split
-  // не переносятся. У спящей нет вью — переносить нечего, кроме адреса; из split надо сначала
-  // выйти, иначе пара осталась бы половиной в одном окне, половиной в другом.
+  // ⚠️ Не переносятся только хаб, псевдо-вкладки (История/Настройки) и участники split: из пары
+  // надо сначала выйти, иначе она осталась бы половиной в одном окне, половиной в другом.
+  // Закреплённая переносится и в новом окне становится обычной — как в Chrome: закреп это место
+  // в полосе конкретного окна, а не свойство самой страницы.
   detachTabForMove(id: string): DetachedTab | null {
     if (id === HUB_ID) return null;
-    const tab = this.tabMap.get(id);
-    if (!tab || !this.isLiveHttpView(tab.view)) return null;
+    const pinnedIdx = this.pinnedTabs.findIndex((t) => t.id === id);
+    const tab = pinnedIdx >= 0 ? this.pinnedTabs[pinnedIdx]! : this.tabMap.get(id);
+    if (!tab) return null;
+    if (tab.kind) return null;                 // История/Настройки — не страница, переносить нечего
     if (this.#pairContaining(id)) return null;
-    if (this.isTabPinned(id)) return null; // закреплённые живут в своей полосе — не переносим
+    const live = this.isLiveHttpView(tab.view) ? tab.view : null;
+    if (!live && !tab.sleeping) return null;   // ни вью, ни описания — переносить нечего
 
-    const view = tab.view;
     this.clearOrganizeSnapshot();
 
-    // Из дерева узлов — тем же путём, что closeTab (вкладка может лежать внутри группы).
-    const found = this.#findTabParent(id);
-    if (found && found.parent[found.idx]?.type === 'single') {
-      found.parent.splice(found.idx, 1);
-      this.#pruneEmptyGroups(this.nodes);
+    if (pinnedIdx >= 0) {
+      this.pinnedTabs.splice(pinnedIdx, 1);
+    } else {
+      // Из дерева узлов — тем же путём, что closeTab (вкладка может лежать внутри группы).
+      const found = this.#findTabParent(id);
+      if (found && found.parent[found.idx]?.type === 'single') {
+        found.parent.splice(found.idx, 1);
+        this.#pruneEmptyGroups(this.nodes);
+      }
     }
     this.tabMap.delete(id);
     this.errors.delete(id);
     // Снимаем вью с окна, но НЕ закрываем webContents — она сейчас же встанет в другое окно.
-    try { this.win.contentView.removeChildView(view); } catch { /* окно могло уже закрыться */ }
+    if (live) {
+      try { this.win.contentView.removeChildView(live); } catch { /* окно могло уже закрыться */ }
+    }
 
     // Ушла активная — показываем соседнюю, как при закрытии.
     if (this.activeId === id) {
@@ -1715,14 +1725,29 @@ export class TabManager {
     } else {
       this.onChange();
     }
-    return { view, incognito: tab.incognito === true };
+    const incognito = tab.incognito === true;
+    return live
+      ? { kind: 'live', view: live, incognito }
+      : { kind: 'sleeping', sleeping: tab.sleeping!, incognito };
   }
 
   // Принять вкладку, отданную другим окном. Слушатели навешиваются заново — уже на ЭТОТ менеджер
   // (у прежнего они остались, но молчат: см. mine() в wirePageEvents).
   adoptTab(d: DetachedTab): string | null {
-    if (d.view.webContents.isDestroyed()) return null;
     const id = randomUUID(); // свой id: прежний принадлежал дереву того окна
+    if (d.kind === 'sleeping') {
+      // Спящую заводим спящей же и сразу активируем: разбудит её обычный путь activate/wakeTab,
+      // тот самый, что будит восстановленные из сессии.
+      const tab: ManagedTab = {
+        id, view: null, lastActiveAt: Date.now(), sleeping: d.sleeping, incognito: d.incognito,
+      };
+      if (d.incognito) this.#pendingIncognitoClear = true;
+      this.tabMap.set(id, tab);
+      this.nodes.push({ type: 'single', tabId: id });
+      this.activate(id);
+      return id;
+    }
+    if (d.view.webContents.isDestroyed()) return null;
     const tab: ManagedTab = {
       id, view: d.view, sleeping: null, lastActiveAt: Date.now(), incognito: d.incognito,
     };

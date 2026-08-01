@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard, webContents, nativeImage } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard, webContents, nativeImage, screen } from 'electron';
 import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent } from './BrowserIdentity';
@@ -1098,7 +1098,7 @@ function moveTabToNewWindow(from: TabManager, tabId: string): boolean {
   const target = createWindow('light');
   if (target.tabs.adoptTab(detached)) return true;
   // Новое окно вкладку не приняло (страница успела умереть) — не бросаем вью в никуда.
-  if (!detached.view.webContents.isDestroyed()) {
+  if (detached.kind === 'live' && !detached.view.webContents.isDestroyed()) {
     (detached.view.webContents as unknown as { close?: () => void }).close?.();
   }
   return false;
@@ -1271,6 +1271,17 @@ function registerIpc() {
   // Перенос вкладки в новое окно. Порядок важен: сначала СНИМАЕМ вкладку со старого окна и только
   // потом создаём новое. Наоборот — и при отказе снять (спящая, split, закреплённая) на экране
   // оставалось бы пустое окно, которого никто не просил.
+  // ⚠️ Спрашивает сайдбар в момент отпускания вкладки. Renderer сам этого знать не может:
+  // как только курсор уходит за край окна, движения ему больше не доставляются, а последние
+  // виденные координаты упираются в границу — вытаскивание «за окно» так не поймать.
+  // Экранные координаты, поэтому сверяем с getBounds() (рамка окна), а не с contentBounds.
+  ipcMain.handle(IPC.WINDOW_POINTER_OUTSIDE, (e) => {
+    const w = winOf(e);
+    if (!w || w.isDestroyed()) return false;
+    const p = screen.getCursorScreenPoint();
+    const b = w.getBounds();
+    return p.x < b.x || p.x > b.x + b.width || p.y < b.y || p.y > b.y + b.height;
+  });
   ipcMain.handle(IPC.WINDOW_MOVE_TAB, (e, tabId: string) => {
     const from = tabsOf(e);
     return from ? moveTabToNewWindow(from, tabId) : false;
@@ -1968,12 +1979,12 @@ function registerIpc() {
         label: isPinned ? 'Открепить вкладку' : 'Закрепить вкладку',
         click: () => t.togglePin(id),
       },
-      // Перенос живой страницы в своё окно. Пункт неактивен там, где перенос не поддержан:
-      // закреплённая полоса своя у окна, спящая вкладка ещё не имеет вью, участник split увёл бы
-      // за собой половину пары (см. TabManager.detachTabForMove).
+      // Перенос страницы в своё окно. Живая уезжает вью (с историей и введённым в форму),
+      // спящая — своим описанием. Неактивен только для участника split: тот увёл бы за собой
+      // половину пары (см. TabManager.detachTabForMove).
       {
         label: 'Открыть в новом окне',
-        enabled: !isPinned && state !== undefined && !state.isSleeping && state.splitSide === null,
+        enabled: state !== undefined && state.splitSide === null,
         click: () => { void moveTabToNewWindow(t, id); },
       },
       ...(toGraph ? [toGraph] : []),
