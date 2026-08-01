@@ -1048,6 +1048,9 @@ function registerIpc() {
   // вкладки в старом. Запасной путь на глобальный tabs оставлен для отправителей, которых нет
   // в реестре (ранние сообщения при старте, изолированные тестовые окна).
   const tabsOf = (e: { sender: Electron.WebContents }) => contextFromSender(e.sender)?.tabs ?? tabs;
+  // Окно отправителя — для диалогов, меню и оверлеев: они обязаны открываться над тем окном,
+  // где человек кликнул, а не над первым попавшимся.
+  const winOf = (e: { sender: Electron.WebContents }) => contextFromSender(e.sender)?.win ?? win;
 
   ipcMain.handle(IPC.SYNC_GET, (e) => ({
     tabs:  tabsOf(e)?.snapshot()              ?? [],
@@ -1087,9 +1090,10 @@ function registerIpc() {
   });
   // Тумблер показа вью дропдауна — вешается на тот же момент, что и старый React-дропдаун
   // (Toolbar.tsx::openDropdown/closeDropdown), который пока не заменяет (работают параллельно).
-  ipcMain.handle(IPC.SUGGEST_DROPDOWN_TOGGLE, (_e, open: boolean) => {
+  ipcMain.handle(IPC.SUGGEST_DROPDOWN_TOGGLE, (e, open: boolean) => {
+    const w = winOf(e);
     if (open) {
-      if (win) showSuggestDropdown(win);
+      if (w) showSuggestDropdown(w);
       // Показ дропдауна — момент, когда фокус уходит чаще всего. Страж (onSuggestDropdownFocusStolen
       // выше) поймает это и сам, но возвращаем фокус ещё и здесь, синхронно: так между показом и
       // откатом не остаётся кадра, в котором клавиатура «не там».
@@ -1101,8 +1105,9 @@ function registerIpc() {
   ipcMain.handle(IPC.PASSWORD_POPOVER_SET_BOUNDS, (_e, b: ContentBounds) => {
     syncPasswordPopoverAnchorBounds(b);
   });
-  ipcMain.handle(IPC.PASSWORD_POPOVER_SHOW, (_e, state) => {
-    if (win) showPasswordPopover(win, state);
+  ipcMain.handle(IPC.PASSWORD_POPOVER_SHOW, (e, state) => {
+    const w = winOf(e);
+    if (w) showPasswordPopover(w, state);
   });
   ipcMain.handle(IPC.PASSWORD_POPOVER_CLOSE, () => {
     closePasswordPopover();
@@ -1110,8 +1115,9 @@ function registerIpc() {
   ipcMain.handle(IPC.VPN_POPOVER_SET_BOUNDS, (_e, b: ContentBounds) => {
     syncVpnPopoverAnchorBounds(b);
   });
-  ipcMain.handle(IPC.VPN_POPOVER_SHOW, () => {
-    if (win) showVpnPopover(win);
+  ipcMain.handle(IPC.VPN_POPOVER_SHOW, (e) => {
+    const w = winOf(e);
+    if (w) showVpnPopover(w);
   });
   ipcMain.handle(IPC.VPN_POPOVER_CLOSE, () => {
     closeVpnPopover();
@@ -1137,7 +1143,7 @@ function registerIpc() {
   ipcMain.handle(IPC.SUGGEST_DROPDOWN_HIGHLIGHT, (_e, idx: number) => {
     setSuggestDropdownHighlight(idx);
   });
-  ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (_e, opts: TitleBarOpts) => win?.setTitleBarOverlay(opts));
+  ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (e, opts: TitleBarOpts) => winOf(e)?.setTitleBarOverlay(opts));
   ipcMain.handle(IPC.FIND_START, (e, q: string, fwd: boolean) => tabsOf(e)?.findInPage(q, fwd));
   ipcMain.handle(IPC.FIND_NEXT,  (e, fwd: boolean)            => tabsOf(e)?.findNext(fwd));
   ipcMain.handle(IPC.FIND_STOP,  (e)                            => tabsOf(e)?.stopFind());
@@ -1429,8 +1435,12 @@ function registerIpc() {
   // труба к панели), но за ними ОДИН модуль с общим часовым кэшем — второго сетевого похода
   // открытая панель и открытая вкладка не устроят.
   ipcMain.handle(IPC.CURRENCY_GET,        () => getCurrencyRates());
-  ipcMain.handle(IPC.NOTEBOOK_EXTRACT_URL, (_e, url: string) =>
-    win ? extractUrlText(win, typeof url === 'string' ? url : '') : { ok: false });
+  ipcMain.handle(IPC.NOTEBOOK_EXTRACT_URL, (e, url: string) => {
+    // Локальная переменная, а не два вызова подряд: при повторном вызове TypeScript теряет
+    // проверку на null, и это уже не тот же самый объект по смыслу.
+    const w = winOf(e);
+    return w ? extractUrlText(w, typeof url === 'string' ? url : '') : { ok: false };
+  });
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (_e, kind: StudioKind, context: string) =>
     generateStudio(kind, typeof context === 'string' ? context : ''));
 
@@ -1452,12 +1462,13 @@ function registerIpc() {
   ipcMain.handle(IPC.GRAPH_PRESETS_LIST, () => graphs.listImagePresets());
   ipcMain.handle(IPC.GRAPH_PRESET_SAVE, (_e, preset: ImagePreset) => graphs.saveImagePreset(preset));
   ipcMain.handle(IPC.GRAPH_PRESET_DELETE, (_e, id: string) => graphs.deleteImagePreset(id));
-  ipcMain.handle(IPC.GRAPH_SAVE_OUTPUT, async (_e, suggestedName: string, text: string) => {
-    if (!win || typeof text !== 'string' || !text) return false;
+  ipcMain.handle(IPC.GRAPH_SAVE_OUTPUT, async (e, suggestedName: string, text: string) => {
+    const w = winOf(e);
+    if (!w || typeof text !== 'string' || !text) return false;
     // Имя чистим от того, что Windows не пустит в путь: заголовок узла пишет человек,
     // и двоеточие в «Поиск: чайники» иначе сорвало бы сохранение.
     const safe = (suggestedName || 'результат').replace(/[\/:*?"<>|]/g, ' ').trim().slice(0, 80);
-    const res = await dialog.showSaveDialog(win, {
+    const res = await dialog.showSaveDialog(w, {
       title: 'Сохранить результат',
       defaultPath: `${safe || 'результат'}.md`,
       filters: [
@@ -1497,9 +1508,10 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.GRAPH_NODE_HISTORY, (_e, graphId: number, nodeId: string) =>
     graphs.listNodeHistory(graphId, nodeId));
-  ipcMain.handle(IPC.GRAPH_PICK_FILE, async () => {
-    if (!win) return null;
-    const res = await dialog.showOpenDialog(win, {
+  ipcMain.handle(IPC.GRAPH_PICK_FILE, async (e) => {
+    const w = winOf(e);
+    if (!w) return null;
+    const res = await dialog.showOpenDialog(w, {
       title: 'Документ для узла графа',
       properties: ['openFile'],
       filters: [
@@ -1509,9 +1521,10 @@ function registerIpc() {
     });
     return res.canceled || !res.filePaths[0] ? null : res.filePaths[0];
   });
-  ipcMain.handle(IPC.GRAPH_PICK_IMAGE, async () => {
-    if (!win) return null;
-    const res = await dialog.showOpenDialog(win, {
+  ipcMain.handle(IPC.GRAPH_PICK_IMAGE, async (e) => {
+    const w = winOf(e);
+    if (!w) return null;
+    const res = await dialog.showOpenDialog(w, {
       title: 'Картинка для узла графа',
       properties: ['openFile'],
       filters: [
@@ -1553,17 +1566,21 @@ function registerIpc() {
 
   // Узел-веб-приложение. Промпт собирает main из СОХРАНЁННОГО графа, а не renderer:
   // так «что вставили» и «по каким входам посчитан отпечаток» — один и тот же источник.
-  ipcMain.handle(IPC.GRAPH_WEBAPP_SHOW, (_e, graphId: number, nodeId: string, url: string, b: ContentBounds) => {
-    if (win) showGraphWebApp(win, graphId, nodeId, url, toRect(b));
+  ipcMain.handle(IPC.GRAPH_WEBAPP_SHOW, (e, graphId: number, nodeId: string, url: string, b: ContentBounds) => {
+    const w = winOf(e);
+    if (w) showGraphWebApp(w, graphId, nodeId, url, toRect(b));
   });
-  ipcMain.handle(IPC.GRAPH_WEBAPP_BOUNDS, (_e, graphId: number, nodeId: string, b: ContentBounds) => {
-    if (win) setGraphWebAppBounds(win, graphId, nodeId, toRect(b));
+  ipcMain.handle(IPC.GRAPH_WEBAPP_BOUNDS, (e, graphId: number, nodeId: string, b: ContentBounds) => {
+    const w = winOf(e);
+    if (w) setGraphWebAppBounds(w, graphId, nodeId, toRect(b));
   });
-  ipcMain.handle(IPC.GRAPH_WEBAPP_RAISE, (_e, graphId: number, nodeId: string) => {
-    if (win) raiseGraphWebApp(win, graphId, nodeId);
+  ipcMain.handle(IPC.GRAPH_WEBAPP_RAISE, (e, graphId: number, nodeId: string) => {
+    const w = winOf(e);
+    if (w) raiseGraphWebApp(w, graphId, nodeId);
   });
-  ipcMain.handle(IPC.GRAPH_WEBAPP_CLOSE, (_e, graphId: number, nodeId: string) => {
-    if (win) closeGraphWebApp(win, graphId, nodeId);
+  ipcMain.handle(IPC.GRAPH_WEBAPP_CLOSE, (e, graphId: number, nodeId: string) => {
+    const w = winOf(e);
+    if (w) closeGraphWebApp(w, graphId, nodeId);
   });
   ipcMain.handle(IPC.GRAPH_WEBAPP_INSERT, (_e, graphId: number, nodeId: string) => {
     const doc = graphs.get(graphId);
@@ -1593,11 +1610,12 @@ function registerIpc() {
     return text;
   });
 
-  ipcMain.on(IPC.GRAPH_RUN, (_e, graphId: number, nodeId: string | null) => {
+  ipcMain.on(IPC.GRAPH_RUN, (e, graphId: number, nodeId: string | null) => {
+    const w = winOf(e);
     // Прогон графа — явное намерение поработать с AI, значит модель пора греть (тот же
     // приём, что у AI_PANEL_TOGGLE и SETTINGS_*_HUB_MODE).
     maybeLazyWarmupOnDemand();
-    void runGraph(win, graphs, graphId, typeof nodeId === 'string' ? nodeId : null, (p) => {
+    void runGraph(w, graphs, graphId, typeof nodeId === 'string' ? nodeId : null, (p) => {
       chromeView?.webContents.send(IPC.GRAPH_PROGRESS, p);
     });
   });
@@ -1634,10 +1652,11 @@ function registerIpc() {
   // Экспорт/импорт — диалог выбора файла целиком в main, на диск попадает только уже
   // зашифрованная под passphrase строка (см. PasswordManager.exportVault/importVault),
   // никогда не расшифрованный JSON.
-  ipcMain.handle(IPC.PASSWORDS_EXPORT, async (_e, passphrase: string) => {
+  ipcMain.handle(IPC.PASSWORDS_EXPORT, async (e, passphrase: string) => {
+    const w = winOf(e);
     const payload = passwords.exportVault(passphrase);
-    if (payload === null || !win) return false;
-    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    if (payload === null || !w) return false;
+    const { canceled, filePath } = await dialog.showSaveDialog(w, {
       title: 'Экспорт паролей',
       defaultPath: 'oblako-passwords.json',
       filters: [{ name: 'Зашифрованный экспорт', extensions: ['json'] }],
@@ -1651,9 +1670,10 @@ function registerIpc() {
       return false;
     }
   });
-  ipcMain.handle(IPC.PASSWORDS_IMPORT, async (_e, passphrase: string) => {
-    if (!win) return 0;
-    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+  ipcMain.handle(IPC.PASSWORDS_IMPORT, async (e, passphrase: string) => {
+    const w = winOf(e);
+    if (!w) return 0;
+    const { canceled, filePaths } = await dialog.showOpenDialog(w, {
       title: 'Импорт паролей',
       filters: [{ name: 'Зашифрованный экспорт', extensions: ['json'] }],
       properties: ['openFile'],
@@ -1694,7 +1714,8 @@ function registerIpc() {
     lastContentBackfillProgress = p;
     chromeView?.webContents.send(IPC.HISTORY_CONTENT_BACKFILL_PROGRESS, p);
   });
-  ipcMain.on(IPC.HISTORY_CONTENT_BACKFILL_START, () => { if (win) void startContentBackfill(history, win); });
+  ipcMain.on(IPC.HISTORY_CONTENT_BACKFILL_START, (e) => {
+    const w = winOf(e); if (w) void startContentBackfill(history, w); });
   ipcMain.on(IPC.HISTORY_CONTENT_BACKFILL_CANCEL, () => { cancelContentBackfill(); });
   ipcMain.handle(IPC.HISTORY_CONTENT_BACKFILL_STATUS, () => lastContentBackfillProgress);
 
@@ -1773,9 +1794,10 @@ function registerIpc() {
   ipcMain.handle(IPC.TABS_SUGGEST_GROUPS,    ()                                => suggestGroups());
 
   // Правая AI-панель (см. AiPanelManager.ts)
-  ipcMain.handle(IPC.AI_PANEL_TOGGLE, () => {
-    if (!win) return false;
-    const open = toggleAiPanel(win);
+  ipcMain.handle(IPC.AI_PANEL_TOGGLE, (e) => {
+    const w = winOf(e);
+    if (!w) return false;
+    const open = toggleAiPanel(w);
     relayoutSearchPopover(); // та же свободная ширина, что у FindBar
     relayoutFindBar(); // свободная ширина под FindBar изменилась (см. FindBarManager.ts::computeBounds)
     if (open) maybeLazyWarmupOnDemand(); // явное намерение — открытие AI-панели
@@ -1789,7 +1811,8 @@ function registerIpc() {
 
   // Нативное ПКМ-меню вкладки в сайдбаре.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (e, id: string) => {
-    if (!tabs || !win) return;
+    const w = winOf(e);
+    if (!tabs || !w) return;
     const isPinned = tabs.isTabPinned(id);
     const groupId  = tabs.getTabGroupId(id);
     const state = tabs.snapshot().find((t) => t.id === id);
@@ -1840,23 +1863,25 @@ function registerIpc() {
       enabled: !isPinned,
       click: () => tabsOf(e)!.closeTab(id),
     });
-    Menu.buildFromTemplate(items).popup({ window: win });
+    Menu.buildFromTemplate(items).popup({ window: w });
   });
 
   // ПКМ по кнопке «Новая вкладка» — обычная / инкогнито / восстановить закрытую (как в Chrome).
   ipcMain.handle(IPC.NEW_TAB_SHOW_MENU, (e) => {
-    if (!tabs || !win) return;
+    const w = winOf(e);
+    if (!tabs || !w) return;
     Menu.buildFromTemplate([
       { label: 'Новая вкладка', accelerator: 'Ctrl+T', click: () => tabsOf(e)!.activate(HUB_ID) },
       { label: 'Новая вкладка инкогнито', accelerator: 'Ctrl+Shift+N', click: () => tabsOf(e)!.createTab(undefined, false, false, true) },
       { type: 'separator' },
       { label: 'Открыть закрытую вкладку', accelerator: 'Ctrl+Shift+T', enabled: tabs.hasClosedTabs(), click: () => tabsOf(e)!.reopenLastClosedTab() },
-    ]).popup({ window: win });
+    ]).popup({ window: w });
   });
 
   // Нативное ПКМ-меню заголовка группы.
   ipcMain.handle(IPC.GROUP_SHOW_MENU, (e, groupId: string) => {
-    if (!tabs || !win || !chromeView) return;
+    const w = winOf(e);
+    if (!tabs || !w || !chromeView) return;
     const GROUP_COLORS: Array<{ label: string; value: string }> = [
       { label: 'Без цвета',   value: '' },
       { label: 'Красный',     value: 'red' },
@@ -1918,7 +1943,7 @@ function registerIpc() {
         click: () => tabsOf(e)!.closeGroupAndTabs(groupId),
       },
     ];
-    Menu.buildFromTemplate(items).popup({ window: win });
+    Menu.buildFromTemplate(items).popup({ window: w });
   });
 
   // Группо-операции.
