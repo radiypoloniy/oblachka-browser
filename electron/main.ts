@@ -3,6 +3,7 @@ import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent } from './BrowserIdentity';
 import { showSplash, closeSplash } from './SplashWindow';
+import { registerWindow } from './WindowRegistry';
 
 // ДО app.whenReady() — Electron требует это до события ready.
 registerSchemesAsPrivileged();
@@ -632,6 +633,12 @@ function createWindow() {
       showAutofillPopover(win, state);
     },
   );
+  // Регистрируем окно в реестре: пока оно одно и роль у него 'main'. Отсюда же берётся
+  // владелец сессии — дерево вкладок принадлежит полному окну, и только его снимок имеет
+  // право попасть в session.json (см. SessionManager.setOwner).
+  if (chromeView) registerWindow({ win, chromeView, tabs, role: 'main' });
+  sess.setOwner(tabs);
+
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
   tabs.setSearchEngine(settings.getSearchEngine());
   tabs.setBangStore(bangs); // бэнги омнибокса — см. TabManager.resolveInput/resolveBang
@@ -984,7 +991,7 @@ function createWindow() {
   win.on('close', () => {
     isShuttingDown = true; // до сохранения — далее tabs/sess ещё какое-то время живы, но выходим
     console.log('[shutdown] win close: старт, isShuttingDown=true, сохраняю сессию');
-    if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot());
+    if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot(), tabs);
     console.log('[shutdown] win close: сессия сохранена');
     // Windows не убивает дочерние процессы автоматически при выходе родителя — без явной
     // остановки xray.exe продолжил бы висеть в фоне (и туннелировать трафик) уже после
@@ -2109,5 +2116,5 @@ app.on('window-all-closed', () => {
 // путь, где сработает эта подстраховка. Оставлено ради будущего macOS-порта (см. CLAUDE.md).
 app.on('before-quit', () => {
   isShuttingDown = true; // macOS Cmd+Q путь — здесь ещё раньше, чем win.on('close') выше
-  if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot());
+  if (tabs && sess) sess.saveNow(tabs.getSessionSnapshot(), tabs);
 });

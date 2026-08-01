@@ -261,7 +261,23 @@ export class SessionManager {
     }, DEBOUNCE_MS);
   }
 
-  saveNow(snapshot: SessionSnapshot | null): void {
+  // ⚠️ Сессия принадлежит ТОЛЬКО полному окну. Дополнительные (лёгкие) окна в session.json не
+  // сохраняются вовсе — как инкогнито-вкладки. Без этого закрытие лёгкого окна с одной
+  // вкладкой перезаписало бы дерево из десятков вкладок: последний, кто закрылся, тот и прав.
+  //
+  // Владелец фиксируется явно и проверяется здесь, а не держится договорённостью на уровне
+  // вызовов: однажды сохранение позовут не оттуда, и заметим мы это уже после потери дерева.
+  #owner: unknown = null;
+
+  setOwner(owner: unknown): void {
+    this.#owner = owner;
+  }
+
+  saveNow(snapshot: SessionSnapshot | null, from?: unknown): void {
+    if (from !== undefined && this.#owner !== null && from !== this.#owner) {
+      console.log('[session] снимок не от владеющего окна — не сохраняю');
+      return;
+    }
     if (!this.#enabled || !snapshot) return;
     if (this.#debounceTimer !== null) {
       clearTimeout(this.#debounceTimer);
