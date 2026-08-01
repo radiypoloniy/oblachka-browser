@@ -10,6 +10,7 @@ import ReactDOM from 'react-dom/client';
 import { ChevronUp, ChevronDown, X } from 'lucide-react';
 import './styles/global.css';
 import type { FindResult } from '../shared/ipc';
+import { installOverlayReveal } from './overlayReveal';
 
 declare global {
   interface Window {
@@ -165,6 +166,8 @@ function btnStyle(disabled: boolean): React.CSSProperties {
     padding: 0,
   };
 }
+
+installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import type { PasswordIndicatorState } from '../shared/ipc';
 import PasswordIndicatorPopover from './components/PasswordIndicatorPopover';
 import './styles/global.css';
+import { installOverlayReveal } from './overlayReveal';
 
 declare global {
   interface Window {
@@ -53,6 +54,8 @@ function PasswordPopoverApp() {
     </div>
   );
 }
+
+installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -16,6 +16,7 @@ import { markdownComponents } from './components/aiMarkdown';
 import { AppsMode, loadWallpaper, saveWallpaper, wallpaperBackground } from './components/aiApps';
 import type { CurrencyRatesResult, WeatherResult } from './components/aiApps';
 import { SHELL_MARGIN } from '../shared/layout';
+import { installOverlayReveal } from './overlayReveal';
 
 // Код причины отказа (см. electron/TranslationService.ts::ModelError, shared/ipc.ts::ModelErrorCode)
 // — зеркалим локально, тот же приём, что и у ChatOutcome ниже.
@@ -858,6 +859,8 @@ function ModeButton({ active, onClick, icon, label }: { active: boolean; onClick
     </button>
   );
 }
+
+installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

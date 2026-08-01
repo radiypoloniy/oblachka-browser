@@ -17,6 +17,7 @@ import ReactDOM from 'react-dom/client';
 import { Search, Globe } from 'lucide-react';
 import './styles/global.css';
 import type { SuggestDropdownItem } from '../shared/ipc';
+import { installOverlayReveal } from './overlayReveal';
 
 // Фавикон строки — тот же приём, что TileCard в Hub.tsx (`${origin}/favicon.ico` + onError-
 // фолбэк на генерик-иконку): никакой новой инфраструктуры/IPC, страница просто пробует
@@ -210,6 +211,8 @@ function SuggestDropdown() {
     </div>
   );
 }
+
+installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

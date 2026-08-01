@@ -4,6 +4,7 @@ import { MapPin, CreditCard } from 'lucide-react';
 import type { AddressProfile, CardMeta } from '../shared/ipc';
 import { islandPlate } from './styles/island';
 import './styles/global.css';
+import { installOverlayReveal } from './overlayReveal';
 
 // Состояние поповера (совпадает с electron/AutofillPopoverManager.ts::AutofillPopoverState).
 type AutofillPopoverState =
@@ -148,6 +149,8 @@ function fmtExp(m: number, y: number): string {
   if (!m || !y) return '';
   return `${String(m).padStart(2, '0')}/${String(y).slice(-2)}`;
 }
+
+installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

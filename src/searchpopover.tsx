@@ -17,6 +17,7 @@ import ReactDOM from 'react-dom/client';
 import { Search, CornerDownLeft, Clock, Star, PanelTop, Globe, ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react';
 import './styles/global.css';
 import type { SearchTarget, QuickHit, QuickQueryResult } from '../shared/ipc';
+import { installOverlayReveal } from './overlayReveal';
 
 interface ShowPayload { targets: SearchTarget[]; prefill: string }
 
@@ -427,6 +428,8 @@ function SearchPopover() {
     </div>
   );
 }
+
+installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

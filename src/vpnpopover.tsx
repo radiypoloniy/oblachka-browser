@@ -5,6 +5,7 @@ import { normalizeDomain } from '../shared/domain';
 import VpnIndicatorPopover from './components/VpnIndicatorPopover';
 import AdBlockSitePanel from './components/AdBlockSitePanel';
 import './styles/global.css';
+import { installOverlayReveal } from './overlayReveal';
 
 declare global {
   interface Window {
@@ -122,6 +123,8 @@ function VpnPopoverApp() {
     </div>
   );
 }
+
+installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

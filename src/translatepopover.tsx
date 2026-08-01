@@ -11,6 +11,7 @@ import { Languages, Wand2, HelpCircle, ListChecks, X, type LucideIcon } from 'lu
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 import type { AiAction, AiActionOutcome } from '../shared/ipc';
+import { installOverlayReveal } from './overlayReveal';
 
 declare global {
   interface Window {
@@ -161,6 +162,8 @@ function Popover() {
     </div>
   )
 }
+
+installOverlayReveal();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
