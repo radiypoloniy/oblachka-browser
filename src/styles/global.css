@@ -143,7 +143,11 @@ body {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: none; }
 }
-.oblako-section-in { animation: oblako-section-in 160ms var(--ease-out) both; }
+/* ⚠️ fill-mode именно `backwards`, а не `both`: с `both` конечное состояние (transform: none)
+   держится вечно и перебивает inline-стиль, а этим же элементом двигает резинка прокрутки —
+   она работала, но её сдвиг молча затирался анимацией. `backwards` красит только вход, после
+   чего свойство возвращается под управление inline-стиля. */
+.oblako-section-in { animation: oblako-section-in 160ms var(--ease-out) backwards; }
 
 /* Вкладка, появившаяся в сайдбаре. Список — самый живой элемент интерфейса, и новая строка
    не должна впрыгивать. Только opacity и transform: анимировать высоту нельзя, это дёргало

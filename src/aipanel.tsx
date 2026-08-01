@@ -854,15 +854,19 @@ function ModeToggle({ mode, onChange }: { mode: 'chat' | 'apps'; onChange: (m: '
 
   // Перетаскивание плашки. Пока тянут — она идёт за курсором без перехода, на отпускании
   // выбирается ближайшая половина и включается плавный доводчик.
+  // ⚠️ Тащить можно ТОЛЬКО за плашку. Когда этот же обработчик висел и на кнопках, перетаскивание
+  // с кнопки заканчивалось её обычным click — он возвращал прежний режим, и выбор откатывался.
+  // Визуально плашка ехала, а результат не менялся.
   const onPointerDown = (e: React.PointerEvent) => {
     const host = wrap.current;
     if (!host) return;
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     const startX = e.clientX;
+    let moved = false;
     const base = box.left;
     const move = (ev: PointerEvent) => {
       const first = btns.current[0], second = btns.current[1];
       if (!first || !second) return;
+      if (Math.abs(ev.clientX - startX) > 3) moved = true;
       const min = first.offsetLeft, max = second.offsetLeft;
       setDrag(Math.max(min - base, Math.min(max - base, ev.clientX - startX)));
     };
@@ -872,11 +876,13 @@ function ModeToggle({ mode, onChange }: { mode: 'chat' | 'apps'; onChange: (m: '
       const first = btns.current[0], second = btns.current[1];
       setDrag(null);
       if (!first || !second) return;
-      // Куда ближе центр плашки — тот режим и включаем.
+      // Клик по самой плашке (без протаскивания) режим не меняет — менять нечего.
+      if (!moved) return;
+      // Перевалили середину между центрами кнопок — переключаемся.
       const centre = base + (ev.clientX - startX) + box.width / 2;
-      const nearFirst = Math.abs(centre - (first.offsetLeft + first.offsetWidth / 2))
-        <= Math.abs(centre - (second.offsetLeft + second.offsetWidth / 2));
-      onChange(nearFirst ? 'chat' : 'apps');
+      const middle = (first.offsetLeft + first.offsetWidth / 2
+        + second.offsetLeft + second.offsetWidth / 2) / 2;
+      onChange(centre < middle ? 'chat' : 'apps');
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -908,27 +914,26 @@ function ModeToggle({ mode, onChange }: { mode: 'chat' | 'apps'; onChange: (m: '
       />
       <ModeButton
         refCb={(el) => { btns.current[0] = el; }} active={mode === 'chat'}
-        onClick={() => onChange('chat')} onPointerDown={onPointerDown}
+        onClick={() => onChange('chat')}
         icon={<Sparkles size={14} />} label="AI"
       />
       <ModeButton
         refCb={(el) => { btns.current[1] = el; }} active={mode === 'apps'}
-        onClick={() => onChange('apps')} onPointerDown={onPointerDown}
+        onClick={() => onChange('apps')}
         icon={<LayoutGrid size={14} />} label="Приложения"
       />
     </div>
   );
 }
 
-function ModeButton({ active, onClick, onPointerDown, icon, label, refCb }: {
-  active: boolean; onClick: () => void; onPointerDown: (e: React.PointerEvent) => void;
+function ModeButton({ active, onClick, icon, label, refCb }: {
+  active: boolean; onClick: () => void;
   icon: JSX.Element; label: string; refCb: (el: HTMLButtonElement | null) => void;
 }) {
   return (
     <button
       ref={refCb}
       onClick={onClick}
-      onPointerDown={onPointerDown}
       style={{
         position: 'relative', zIndex: 1,
         display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
