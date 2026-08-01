@@ -136,3 +136,24 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .oblako-newtab-in > * { animation: none; }
 }
+
+/* Раздел настроек при переключении. Двигается вся правая колонка — площадь большая, поэтому
+   хватает короткого 160 мс и сдвига в 8 px: длиннее было бы вязко на каждом клике по меню. */
+@keyframes oblako-section-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.oblako-section-in { animation: oblako-section-in 160ms var(--ease-out) both; }
+
+/* Вкладка, появившаяся в сайдбаре. Список — самый живой элемент интерфейса, и новая строка
+   не должна впрыгивать. Только opacity и transform: анимировать высоту нельзя, это дёргало
+   бы весь список ниже. */
+@keyframes oblako-tab-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: none; }
+}
+.oblako-tab-in { animation: oblako-tab-in 200ms var(--ease-out) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .oblako-section-in, .oblako-tab-in { animation: none; }
+}

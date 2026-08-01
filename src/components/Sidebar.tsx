@@ -259,7 +259,12 @@ function SortableTabRow(props: TabRowProps) {
       {...attributes}
       {...listeners}
     >
-      <TabRow {...props} />
+      {/* Класс появления — на ВНУТРЕННЕМ узле, а не на обёртке dnd-kit. CSS-анимация
+          перебивает inline-стили, и с fill-mode её конечный `transform: none` держался бы
+          вечно, насмерть ломая перетаскивание вкладок. */}
+      <div className="oblako-tab-in">
+        <TabRow {...props} />
+      </div>
     </div>
   );
 }

@@ -166,7 +166,9 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
         </nav>
 
         {/* Контент выбранной секции */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}>
+        {/* key по разделу — чтобы React пересоздал узел и CSS-анимация сыграла заново:
+            без пересоздания браузер считает элемент тем же и проигрывать отказывается. */}
+        <div key={section} className="oblako-section-in" style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}>
           {section === 'general' && <GeneralSection onOpenImport={onOpenImport} />}
           {section === 'adblock' && (
             <AdBlockSection
