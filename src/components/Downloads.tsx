@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Download, FolderOpen, ExternalLink, RotateCcw, Pause, Play, XCircle, Trash2 } from 'lucide-react';
 import type { DownloadEntry, DownloadState } from '../../shared/ipc';
+import { islandPlate } from '../styles/island';
 
 function formatBytes(n: number): string {
   if (n <= 0) return '0 Б';
@@ -48,20 +49,31 @@ export default function Downloads({ downloads, onClose }: DownloadsProps) {
 
   return (
     <div style={{
-      position: 'absolute', inset: 0,
-      background: 'var(--app-bg)',
-      display: 'flex', flexDirection: 'column',
-      zIndex: 100,
+      // Тот же остров, что у Настроек и Истории (см. Settings.tsx::settings-root): раньше
+      // Загрузки были оверлеем поверх контента и несли своё оформление — фон приложения,
+      // растяжку на весь контейнер и никакого острова. Отступ по периметру даёт contentRef
+      // в App.tsx, здесь его быть не должно.
+      display: 'flex', flexDirection: 'column', height: '100%',
+      overflow: 'hidden',
+      ...islandPlate,
+      borderRadius: 'var(--radius-island)',
+      boxShadow: 'var(--shadow-island)',
+      background: 'var(--surface-solid)',
     }}>
       {/* Заголовок */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '16px 20px 12px',
-        borderBottom: '1px solid var(--border)',
-        flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 12, padding: '18px 24px',
+        borderBottom: '1px solid var(--divider-strong)', flex: 'none',
       }}>
-        <Download size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-strong)', flex: 1 }}>
+        {/* Тот же квадратный значок, что у раздела в сайдбаре и в настройках — язык один. */}
+        <span style={{
+          width: 22, height: 22, flex: 'none', borderRadius: 6,
+          background: 'var(--tile-teal)', color: '#fff',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Download size={13} strokeWidth={2.4} />
+        </span>
+        <span style={{ fontWeight: 600, fontSize: 'var(--fs-md)', color: 'var(--text-strong)', flex: 1 }}>
           Загрузки
         </span>
         {hasFinished && (
