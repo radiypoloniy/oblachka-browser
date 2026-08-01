@@ -1132,15 +1132,13 @@ export default function Toolbar({
               : <Languages size={18} />}
           </button>
         )}
-        {/* Тот же вид, что у «назад/вперёд/обновить»: в покое — нейтральный значок без плашки.
-            Акцент включается ТОЛЬКО когда панель открыта, то есть обозначает состояние, а не
-            просто «здесь важная кнопка». */}
+        {/* Плашка-остров остаётся — как у всех кнопок тулбара. Меняется только ТОН: в покое
+            нейтральный значок на обычной плашке, ровно как «назад/вперёд/обновить»; акцент
+            загорается, когда панель открыта, то есть означает состояние, а не важность. */}
         <button title="AI-панель" onClick={onToggleAiPanel}
-          style={{
-            ...navBtn(false),
-            color: aiPanelOpen ? 'var(--accent)' : 'var(--text-muted)',
-            background: aiPanelOpen ? 'var(--accent-soft)' : 'transparent',
-          }}>
+          style={aiPanelOpen
+            ? islandBtn('var(--accent)', 'var(--accent-soft)')
+            : islandBtn()}>
           <Sparkles size={18} />
         </button>
         {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки. Иконка нейтральная
@@ -1150,9 +1148,8 @@ export default function Toolbar({
           title="Загрузки"
           onClick={onToggleDownloads}
           style={{
-            ...navBtn(false), position: 'relative',
-            color: downloadsOpen ? 'var(--accent)' : 'var(--text-muted)',
-            background: downloadsOpen ? 'var(--accent-soft)' : 'transparent',
+            ...(downloadsOpen ? islandBtn('var(--accent)', 'var(--accent-soft)') : islandBtn()),
+            position: 'relative',
           }}
         >
           <Download size={18} />
@@ -1192,13 +1189,10 @@ function VpnPill({ vpnOn, mode, onClick, active }: { vpnOn: boolean; mode: VpnMo
         onClick={onClick}
         title="Защита"
         style={{
-          ...navBtn(false),
+          // Остров на месте; акцентом отмечен только реально поднятый VPN.
+          ...(vpnOn ? islandBtn('var(--accent)', 'var(--accent-soft)') : islandBtn()),
           position: 'relative',
-          // Плашка-остров снята: в покое кнопка выглядит как навигационные. Акцент — признак
-          // того, что VPN реально поднят, а не постоянное украшение.
-          color: vpnOn ? 'var(--accent)' : 'var(--text-muted)',
-          background: activeBg ?? (vpnOn ? 'var(--accent-soft)' : 'transparent'),
-          borderRadius: 'var(--radius-sm)',
+          ...(activeBg ? { background: activeBg } : null),
         }}
       >
         {shieldIcon}
@@ -1214,11 +1208,11 @@ function VpnPill({ vpnOn, mode, onClick, active }: { vpnOn: boolean; mode: VpnMo
       onClick={onClick}
       title="Защита"
       style={{
+        ...islandPlate,
         display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 10px',
-        border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'default',
-        // Без канта и стеклянной плашки — как навигационные кнопки. Цветом отмечен только
-        // поднятый VPN либо открытый поповер (activeBg).
-        background: activeBg ?? (vpnOn ? 'var(--accent-soft)' : 'transparent'),
+        borderRadius: 'var(--radius-pill)', cursor: 'default',
+        // Плашка та же, что была; акцентом отмечен только поднятый VPN либо открытый поповер.
+        background: activeBg ?? (vpnOn ? 'var(--accent-soft)' : 'var(--surface)'),
         fontSize: 'var(--fs-sm)', fontWeight: 500,
         color: vpnOn ? 'var(--accent)' : 'var(--text-muted)',
       }}
