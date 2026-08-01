@@ -30,6 +30,10 @@ interface Props {
   onCopyOutput: () => void;
   onSaveOutput: () => void;
   onShowHistory: () => void;
+  // Только для draft.text: текст черновика и его правка. Раскрытый вид здесь не витрина,
+  // а рабочее место — связный текст в карточке 400 px не вычитывают.
+  draftText?: string;
+  onDraftChange?: (text: string) => void;
 }
 
 const headerButton: React.CSSProperties = {
@@ -42,6 +46,7 @@ const headerButton: React.CSSProperties = {
 export default function NodeFullscreen({
   graphId, nodeId, kind, title, status, output, outputTitle, error,
   onClose, onRun, onCopyOutput, onSaveOutput, onShowHistory,
+  draftText, onDraftChange,
 }: Props) {
   const spec = NODE_KINDS[kind];
   const busy = status === 'running' || status === 'queued';
@@ -62,7 +67,8 @@ export default function NodeFullscreen({
         // остаются на фоне приложения: там содержимое само лежит на карточках.
         // Диалог — белый лист, как чат на странице; остальным нужен «колодец», на котором
         // читаются белые карточки артефактов (тот же тон, что у холста).
-        background: kind === 'qwen.chat' ? 'var(--surface-solid)' : 'var(--surface-sunken)',
+        background: kind === 'qwen.chat' || kind === 'draft.text'
+          ? 'var(--surface-solid)' : 'var(--surface-sunken)',
       }}
     >
       <div
@@ -108,9 +114,27 @@ export default function NodeFullscreen({
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: 20, display: 'flex', flexDirection: 'column' }}>
-        {kind === 'qwen.chat'
-          ? <NodeChatView graphId={graphId} nodeId={nodeId} />
-          : <Body kind={kind} output={output} outputTitle={outputTitle} error={error} status={status} />}
+        {kind === 'qwen.chat' ? (
+          <NodeChatView graphId={graphId} nodeId={nodeId} />
+        ) : kind === 'draft.text' ? (
+          <textarea
+            value={draftText ?? ''}
+            placeholder="Пусто — материал со входа пройдёт дальше как есть."
+            onChange={(e) => onDraftChange?.(e.target.value)}
+            style={{
+              flex: 1, minHeight: 0, width: '100%', resize: 'none',
+              // Колонка ограничена по ширине: вычитывать текст во весь экран невозможно,
+              // глаз теряет строку. Та же мера, что у прозы в остальном интерфейсе.
+              maxWidth: 760, margin: '0 auto',
+              background: 'transparent', border: 0, outline: 'none',
+              color: 'var(--text-strong)', font: 'inherit',
+              fontFamily: 'var(--font-sans)', fontSize: 'var(--fs-md)',
+              lineHeight: 'var(--lh-body)',
+            }}
+          />
+        ) : (
+          <Body kind={kind} output={output} outputTitle={outputTitle} error={error} status={status} />
+        )}
       </div>
     </div>
   );

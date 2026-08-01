@@ -43,7 +43,7 @@ const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
   { title: 'Обработка', kinds: ['qwen.transform', 'qwen.chat', 'image.prompt', 'webapp.chat'] },
   { title: 'Проверка', kinds: ['search.web', 'factcheck.gemini'] },
   { title: 'Артефакты', kinds: ['artifact.summary', 'artifact.mindmap', 'artifact.infographic', 'artifact.quiz'] },
-  { title: 'Итог', kinds: ['output.text'] },
+  { title: 'Итог', kinds: ['draft.text', 'output.text'] },
   { title: 'Пометки', kinds: ['sticker'] },
 ];
 
@@ -80,6 +80,7 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
       onCopyOutput: () => {},
       onSaveOutput: () => {},
       onOpenWebApp: () => {},
+      pullFromInput: null,
     },
   }));
 }
@@ -526,6 +527,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           onCopyOutput: () => {},
           onSaveOutput: () => {},
           onOpenWebApp: () => {},
+          pullFromInput: null,
         },
       }];
     });
@@ -550,9 +552,22 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         onCopyOutput: () => void copyOutput(n.id),
         onSaveOutput: () => void saveOutput(n.id),
         onOpenWebApp: () => openWebApp(n.id),
+        // Черновик: подставить выхлоп питающих узлов. Считаем прямо здесь, потому что связи
+        // и соседние узлы знает только холст. null — значит подставлять пока нечего, и
+        // кнопка в карточке гаснет сама.
+        pullFromInput: (() => {
+          if (n.data.kind !== 'draft.text') return null;
+          const feed = edges
+            .filter((e) => e.target === n.id)
+            .map((e) => nodes.find((x) => x.id === e.source)?.data.output)
+            .filter((o): o is string => typeof o === 'string' && o.trim().length > 0);
+          if (!feed.length) return null;
+          const text = feed.join('\n\n');
+          return () => patchNode(n.id, { config: { ...n.data.config, text } });
+        })(),
       },
     })),
-    [nodes, patchNode, runNode, deleteNode, duplicateNodes, pickFile, openWebApp,
+    [nodes, edges, patchNode, runNode, deleteNode, duplicateNodes, pickFile, openWebApp,
       allPresets, copyOutput, saveOutput],
   );
 
@@ -897,6 +912,10 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                 nodeId: expandedNode.id,
                 title: expandedNode.data.title || NODE_KINDS[expandedNode.data.kind].label,
                 output: expandedNode.data.output,
+              })}
+              draftText={expandedNode.data.config.text ?? ''}
+              onDraftChange={(text) => patchNode(expandedNode.id, {
+                config: { ...expandedNode.data.config, text },
               })}
             />
           )}

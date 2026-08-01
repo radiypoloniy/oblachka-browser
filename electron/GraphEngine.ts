@@ -162,6 +162,19 @@ async function executeNode(
       return { ok: true, output: res.text, outputTitle: res.title };
     }
 
+    case 'draft.text': {
+      // Правки человека главнее входа: если он что-то написал, прогон это НЕ трогает —
+      // иначе повторный запуск цепочки стирал бы вычитанный текст ответом модели.
+      // Подстановка со входа — только по кнопке в узле (она пишет config.text).
+      const edited = (node.config.text ?? '').trim();
+      if (edited) return { ok: true, output: edited };
+      // Пустой черновик не рвёт цепочку, а пропускает материал дальше как есть.
+      const passthrough = buildContext(inputs);
+      return passthrough
+        ? { ok: true, output: passthrough }
+        : { ok: false, error: 'Черновик пуст и на вход ничего не пришло' };
+    }
+
     case 'qwen.transform': {
       const instruction = (node.config.instruction ?? '').trim();
       if (!instruction) return { ok: false, error: 'Не задана инструкция' };

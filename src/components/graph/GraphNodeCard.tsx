@@ -38,6 +38,9 @@ export interface GraphNodeData extends Record<string, unknown> {
   // Только для webapp.chat — открыть живой сайт в панели 1:1 (в карточку нативную вью
   // положить нельзя, см. шапку GraphCanvas.tsx).
   onOpenWebApp: () => void;
+  // Только для draft.text: подставить в черновик выхлоп питающих узлов. Текст берёт холст —
+  // карточка про соседние узлы не знает. null, если подставлять нечего.
+  pullFromInput: (() => void) | null;
 }
 
 // Размер по умолчанию на тип узла. Задаём его ВСЕГДА (даже узлам, сохранённым до появления
@@ -60,6 +63,8 @@ export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> 
   'artifact.infographic': { w: 520, h: 420 },
   'artifact.quiz': { w: 420, h: 440 },
   'output.text': { w: 380, h: 360 },
+  // Черновик правят руками — ему нужна площадь под связный текст, а не под пару строк.
+  'draft.text': { w: 400, h: 380 },
   'sticker': { w: 300, h: 96 },
 };
 
@@ -358,6 +363,43 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           />
         )}
 
+        {data.kind === 'draft.text' && (
+          <>
+            {/* Подстановка со входа — только по кнопке и только осознанно: автоматическая
+                затирала бы вычитанный текст при каждом прогоне цепочки. */}
+            <button
+              type="button"
+              className="nodrag"
+              onClick={() => {
+                const has = (data.config.text ?? '').trim().length > 0;
+                if (has && !window.confirm('Заменить текст черновика тем, что пришло на вход?')) return;
+                data.pullFromInput?.();
+              }}
+              disabled={!data.pullFromInput}
+              title={data.pullFromInput
+                ? 'Подставить текст питающих узлов'
+                : 'Питающие узлы ещё ничего не выдали'}
+              style={{
+                flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                gap: 6, background: 'var(--surface)', color: 'var(--text-strong)',
+                border: '1px solid var(--divider-strong)', borderRadius: 'var(--radius-sm)',
+                padding: '6px 10px', cursor: data.pullFromInput ? 'pointer' : 'default',
+                font: 'inherit', fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
+                opacity: data.pullFromInput ? 1 : 0.5,
+              }}
+            >
+              ⬇ Взять со входа
+            </button>
+            <textarea
+              className="nodrag"
+              value={data.config.text ?? ''}
+              placeholder="Пусто — материал со входа пройдёт дальше как есть. Возьмите его кнопкой выше и правьте здесь."
+              onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
+              style={{ ...fieldStyle, flex: 1, minHeight: 80, lineHeight: 'var(--lh-body)' }}
+            />
+          </>
+        )}
+
         {data.kind === 'qwen.chat' && (
           <button
             type="button"
@@ -484,9 +526,9 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           </div>
         )}
 
-        {/* У заметки вывод равен введённому тексту — показывать его вторым блоком значит
-            дублировать одно и то же и вдвое урезать полезную площадь карточки. */}
-        {data.output && data.kind !== 'source.note' && (
+        {/* У заметки и черновика вывод равен введённому тексту — показывать его вторым
+            блоком значит дублировать одно и то же и вдвое урезать полезную площадь карточки. */}
+        {data.output && data.kind !== 'source.note' && data.kind !== 'draft.text' && (
           <div
             className="nodrag nowheel"
             // Майндкарта и инфографика рисуют себя сами во всю высоту — им внутренний

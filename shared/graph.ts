@@ -16,6 +16,11 @@ export type GraphNodeKind =
   // Локальный документ: txt/md/csv/json, docx и pdf (см. electron/FileExtract.ts).
   | 'source.file'
   | 'qwen.transform'  // инструкция + входы → ответ локальной модели
+  // Текст, который человек правит ПОСРЕДИ цепочки. Заметка для этого не годится: у неё нет
+  // входа, она живёт только в начале графа. Без черновика шаг «корректировка и редактура»
+  // выпадает из графа наружу — ответ модели копируют в документ, правят и несут обратно,
+  // и связь с тем, что ниже, теряется. Правки человека прогон НЕ затирает.
+  | 'draft.text'
   // Промпт для генератора картинок. Отдельный тип, а не qwen.transform с текстом руками:
   // качество здесь делает подробная зашитая инструкция, см. shared/imagePresets.ts.
   | 'image.prompt'
@@ -91,6 +96,13 @@ export const NODE_KINDS: Record<GraphNodeKind, NodeKindSpec> = {
     emoji: '🧠',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'ответ', type: 'text' }],
+  },
+  'draft.text': {
+    label: 'Черновик',
+    hint: 'Текст, который вы правите руками посреди цепочки',
+    emoji: '✏️',
+    inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
+    outputs: [{ id: 'text', label: 'текст', type: 'text' }],
   },
   'image.prompt': {
     label: 'Промпт картинки',
