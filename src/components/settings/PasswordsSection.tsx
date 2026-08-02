@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, Search } from 'lucide-react';
+import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, Search, ChevronRight } from 'lucide-react';
 import type { PasswordMeta, PasswordCopyField } from '../../../shared/ipc';
 import { islandPlate } from '../../styles/island';
 import Toggle from '../Toggle';
@@ -19,6 +19,13 @@ export default function PasswordsSection() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [authEnabled, setAuthEnabled] = useState(true);
+  // Список свёрнут по умолчанию. Две причины, и вторая важнее косметической:
+  // (1) при десятках записей секция превращалась в простыню, и до экспорта/импорта и подключения
+  //     внешнего менеджера внизу приходилось листать весь сейф;
+  // (2) каждая строка рисует <Favicon>, а тот идёт в сеть НА КАЖДЫЙ домен сохранённого пароля —
+  //     то есть простое открытие настроек рассылало серверам список аккаунтов человека
+  //     (пункт 4 «бэклога усиления паролей» в CLAUDE.md). Свёрнутый список туда не ходит.
+  const [listOpen, setListOpen] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -65,6 +72,7 @@ export default function PasswordsSection() {
   }
 
   function openAddForm() {
+    setListOpen(true); // форма живёт внутри свёрнутого блока — иначе кнопка «Добавить» ничего не даёт
     setEditingId(null);
     setUrlInput(''); setUsernameInput(''); setPasswordInput(''); setNotesInput('');
     setFormError(''); setGeneratorOpen(false); setFormOpen(true);
@@ -165,9 +173,10 @@ export default function PasswordsSection() {
       e.username.toLowerCase().includes(q));
   }, [entries, query]);
 
-  if (entries === null) {
-    return <LoadingNote />;
-  }
+  // ⚠️ Раньше вся секция отдавала <LoadingNote/>, пока грузился список, — из-за одного запроса к
+  // сейфу не рисовались ни тумблер Windows-подтверждения, ни экспорт. Теперь ожидание локально
+  // внутри списка, остальное видно сразу.
+  const count = entries?.length ?? null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
@@ -193,15 +202,41 @@ export default function PasswordsSection() {
         <Toggle checked={authEnabled} onChange={() => void handleToggleAuth()} />
       </div>
 
-      {/* Список сохранённых записей */}
+      {/* Список сохранённых записей — раскрывается по требованию, см. listOpen выше */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-          <CapsLabel style={{
-            flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap', marginBottom: 0,
-          }}>
-            Сохранённые пароли
-          </CapsLabel>
+          <button
+            onClick={() => setListOpen((v) => !v)}
+            style={{
+              flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
+              background: 'none', border: 'none', padding: 0, cursor: 'default', textAlign: 'left',
+            }}
+          >
+            {/* Поворот стрелки, а не подмена иконки: один элемент, который едет по --dur-fast,
+                читается как «раскрылось», а не как «сменилась картинка». */}
+            <ChevronRight
+              size={14}
+              style={{
+                color: 'var(--text-faint)', flex: 'none',
+                transform: listOpen ? 'rotate(90deg)' : 'none',
+                transition: 'transform var(--dur-fast) var(--ease-standard)',
+              }}
+            />
+            <CapsLabel style={{
+              minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap', marginBottom: 0,
+            }}>
+              Сохранённые пароли
+            </CapsLabel>
+            {/* Счётчик — единственная причина, по которой метаданные всё же читаются при открытии
+                настроек: это локальный запрос к SQLite без сети, а без числа свёрнутый блок
+                не отвечает на вопрос «а есть ли там вообще что-то». */}
+            {count !== null && (
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
+                {count}
+              </span>
+            )}
+          </button>
           {!formOpen && (
             <button onClick={openAddForm} style={{ ...btnPrimary, display: 'flex', gap: 6, alignItems: 'center' }}>
               <Plus size={14} /> Добавить
@@ -209,6 +244,10 @@ export default function PasswordsSection() {
           )}
         </div>
 
+        {listOpen && entries === null && <LoadingNote />}
+
+        {listOpen && entries !== null && (
+        <>
         {formOpen && (
           <PasswordForm
             editing={editingId !== null}
@@ -262,7 +301,12 @@ export default function PasswordsSection() {
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {/* Своя прокрутка с потолком высоты: даже раскрытый сейф на сотню записей не должен
+            отодвигать экспорт и подключение внешнего менеджера за край страницы. */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 4,
+          maxHeight: 420, overflowY: 'auto',
+        }}>
           {filtered.map((entry) => (
             <PasswordRow
               key={entry.id}
@@ -281,6 +325,8 @@ export default function PasswordsSection() {
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
 
       {/* Экспорт / импорт */}
