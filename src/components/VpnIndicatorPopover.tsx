@@ -3,6 +3,8 @@ import type React from 'react';
 import { Check, Shield, Loader2 } from 'lucide-react';
 import type { VpnServerMeta, VpnConnectionState } from '../../shared/ipc';
 import { stripEmoji } from '../../shared/text';
+import { detectCountry } from '../../shared/countries';
+import CountryFlag from './CountryFlag';
 import { islandPlate } from '../styles/island';
 
 // VPN-пилюля, шаг 4 — карточка поповера. Тот же слой, что PasswordIndicatorPopover.tsx
@@ -23,6 +25,7 @@ export default function VpnIndicatorPopover({ servers, connState, onConnect, onD
   const isStarting = connState?.state === 'starting';
   const isRunning = connState?.state === 'running';
   const isError = connState?.state === 'error';
+  const connectedCountry = detectCountry(connState?.serverRemark ?? '');
 
   async function handleConnect(id: string) {
     setBusyId(id);
@@ -50,9 +53,15 @@ export default function VpnIndicatorPopover({ servers, connState, onConnect, onD
       display: 'flex', flexDirection: 'column', gap: 10,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Shield size={16} style={{ color: isRunning ? 'var(--dot-vpn)' : 'var(--text-faint)' }}
+        <Shield size={16} style={{ color: isRunning ? 'var(--dot-vpn)' : 'var(--text-faint)', flex: 'none' }}
           fill={isRunning ? 'var(--dot-vpn)' : 'none'} />
-        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)', fontWeight: 600 }}>
+        {isRunning && connectedCountry && (
+          <CountryFlag code={connectedCountry.code} title={connectedCountry.name} width={18} />
+        )}
+        <div style={{
+          fontSize: 'var(--fs-sm)', color: 'var(--text-strong)', fontWeight: 600,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
           {isRunning ? `Подключено · ${stripEmoji(connState!.serverRemark ?? '')}`
             : isStarting ? 'Подключение…'
             : isError ? 'Ошибка подключения'
@@ -86,6 +95,10 @@ export default function VpnIndicatorPopover({ servers, connState, onConnect, onD
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 260, overflowY: 'auto' }}>
           {servers.map((s) => {
             const active = connState?.serverId === s.id && (isRunning || isStarting);
+            const country = detectCountry(s.remark);
+            // Имя без эмодзи может схлопнуться в пустоту («🇳🇱» и ничего больше) — тогда
+            // подписью работает страна, а адрес остаётся последним рубежом.
+            const label = stripEmoji(s.remark) || country?.name || s.address;
             return (
               <button
                 key={s.id}
@@ -105,14 +118,21 @@ export default function VpnIndicatorPopover({ servers, connState, onConnect, onD
                 onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface-active)' : 'transparent'; }}
               >
+                {/* Место под флаг держим всегда — иначе строки без распознанной страны
+                    выбивались бы из общей вертикали и список «прыгал». */}
+                <span style={{ width: 20, flex: 'none', display: 'flex', justifyContent: 'center' }}>
+                  {country && <CountryFlag code={country.code} title={country.name} />}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {label}
+                </span>
+                {/* Состояние — справа: слева его место занял флаг, а два разнородных якоря
+                    подряд читались бы хуже, чем колонка флагов и колонка отметок. */}
                 {busyId === s.id
                   ? <Loader2 size={14} style={{ color: 'var(--accent)', flex: 'none', animation: 'oblako-spin 1s linear infinite' }} />
                   : active
                     ? <Check size={14} style={{ color: 'var(--success-500)', flex: 'none' }} />
                     : <span style={{ width: 14, flex: 'none' }} />}
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {stripEmoji(s.remark) || s.address}
-                </span>
               </button>
             );
           })}

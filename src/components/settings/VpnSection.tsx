@@ -3,6 +3,8 @@ import { Check, Wifi, RefreshCw, Trash2 } from 'lucide-react';
 import type { VpnStatus, VpnServerMeta, VpnConnectionState } from '../../../shared/ipc';
 import { islandPlate } from '../../styles/island';
 import { stripEmoji } from '../../../shared/text';
+import { detectCountry } from '../../../shared/countries';
+import CountryFlag from '../CountryFlag';
 import {
   btnPrimary, btnGhost, SectionHeader, CapsLabel, LoadingNote, InlineError,
   StatusCard, TextField, InputRow, fieldFlex,
@@ -148,6 +150,7 @@ export default function VpnSection() {
               const isRunning = isTarget && conn?.state === 'running';
               const isStarting = (isTarget && conn?.state === 'starting') || connectingId === s.id;
               const isError = isTarget && conn?.state === 'error';
+              const country = detectCountry(s.remark);
               return (
                 <div key={s.id}>
                   <div
@@ -157,6 +160,11 @@ export default function VpnSection() {
                       boxShadow: isRunning ? '0 0 0 1.5px var(--success-500) inset' : undefined,
                     }}
                   >
+                    {/* Флаг — крайний левый якорь ряда. Место держим и для нераспознанных,
+                        иначе колонка протоколов ходила бы туда-сюда от строки к строке. */}
+                    <span style={{ width: 20, flex: 'none', display: 'flex', justifyContent: 'center' }}>
+                      {country && <CountryFlag code={country.code} title={country.name} />}
+                    </span>
                     <span style={{
                       fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
                       color: 'var(--text-faint)', flex: 'none', width: 44,
