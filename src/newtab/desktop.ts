@@ -153,9 +153,12 @@ export function defaultLayout(): DesktopLayout {
   return {
     version: 1,
     items: [
-      { id: 'w-clock',    kind: 'widget', widget: 'clock',    size: WIDGET_SIZES.medium },
-      { id: 'w-weather',  kind: 'widget', widget: 'weather',  size: WIDGET_SIZES.small },
+      // ⚠️ Погода стоит широкой: в маленькой плитке почасовой ряд не помещается, а без него
+      // виджет выглядит пустым — ровно та претензия, из-за которой их и переделывали.
+      { id: 'w-weather',  kind: 'widget', widget: 'weather',  size: WIDGET_SIZES.medium },
+      { id: 'w-clock',    kind: 'widget', widget: 'clock',    size: WIDGET_SIZES.small },
       { id: 'w-rates',    kind: 'widget', widget: 'rates',    size: WIDGET_SIZES.small },
+      { id: 'w-tasks',    kind: 'widget', widget: 'tasks',    size: WIDGET_SIZES.medium },
       { id: 'w-topsites', kind: 'widget', widget: 'topsites', size: WIDGET_SIZES.medium },
       { id: 'a-calc',     kind: 'app', appId: 'calc',    size: { w: 1, h: 1 } },
       { id: 'a-convert',  kind: 'app', appId: 'convert', size: { w: 1, h: 1 } },

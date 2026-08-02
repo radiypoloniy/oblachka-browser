@@ -1325,6 +1325,14 @@ export type AutofillFillFields = Partial<Record<AutofillFieldKey, string>>;
 // Погода для виджета новой вкладки (electron/WeatherService.ts, Open-Meteo). tempC — цельсии,
 // weatherCode — WMO. Конвертация в °F и иконка/подпись — на стороне рендера.
 export interface WeatherInfo {
+  /** Ощущается как — Apple показывает её первой строкой под температурой. */
+  feelsC?: number
+  /** День или ночь по данным станции: от этого зависит цвет плитки виджета. */
+  isDay?: boolean
+  maxC?: number
+  minC?: number
+  /** Ближайшие часы, начиная с текущего. */
+  hours?: { hour: number; tempC: number; code: number }[]
   ok: boolean;
   city?: string;
   tempC?: number;
