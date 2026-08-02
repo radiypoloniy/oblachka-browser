@@ -35,4 +35,18 @@
   --wallpaper-aurora:   linear-gradient(165deg, #43CEA2 0%, #2C7FA8 60%, #185A9D 100%);
   --wallpaper-lavender: linear-gradient(165deg, #B79FE0 0%, #8368C4 55%, #4E3D8F 100%);
   --wallpaper-graphite: linear-gradient(165deg, #4A4E58 0%, #2A2D34 60%, #17181C 100%);
+  /* Галерея градиентов для новой вкладки. Значения — из открытых коллекций градиентов
+     (uiGradients, MIT): это просто пары цветов, никакой библиотеки в зависимости не тянем.
+     Светлые (--wallpaper-*-light по смыслу, помечены в WALLPAPER_PRESETS флагом light) требуют
+     тёмного текста — см. isLightBackground в src/newtab/settings.ts. */
+  --wallpaper-peach:    linear-gradient(165deg, #FFD3A5 0%, #FD9A87 55%, #FD6585 100%);
+  --wallpaper-mint:     linear-gradient(165deg, #A8EDEA 0%, #D5E4E8 50%, #FED6E3 100%);
+  --wallpaper-sky:      linear-gradient(165deg, #E0EAFC 0%, #D6E2F5 50%, #CFDEF3 100%);
+  --wallpaper-blossom:  linear-gradient(165deg, #FFDEE9 0%, #E4EEFB 55%, #B5FFFC 100%);
+  --wallpaper-indigo:   linear-gradient(165deg, #4B6CB7 0%, #34518A 55%, #182848 100%);
+  --wallpaper-emerald:  linear-gradient(165deg, #11998E 0%, #24C583 55%, #38EF7D 100%);
+  --wallpaper-ember:    linear-gradient(165deg, #F12711 0%, #F26D15 55%, #F5AF19 100%);
+  --wallpaper-midnight: linear-gradient(165deg, #232526 0%, #333537 60%, #414345 100%);
+  --wallpaper-pearl:    linear-gradient(165deg, #C9D6FF 0%, #D9DEED 55%, #E2E2E2 100%);
+  --wallpaper-plum:     linear-gradient(165deg, #654EA3 0%, #9A6FB0 55%, #EAAFC8 100%);
 }

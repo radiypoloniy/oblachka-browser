@@ -3,13 +3,14 @@ import { Sparkles, Search, Workflow } from 'lucide-react';
 import type { TileSite } from '../../shared/frecency';
 import {
   loadNewTabSettings, subscribeNewTabSettings, presetCss, getNewTabCustomImage,
-  ensureCustomImageShrunk, rateSymbol,
+  ensureCustomImageShrunk, rateSymbol, isLightBackground,
   type NewTabSettings,
 } from '../newtab/settings';
 
 // Минималистичная новая вкладка (в духе Bonjourr): полноэкранный фон, крупные часы, приветствие,
 // строка поиска и быстрые ссылки. Настройки читаются из localStorage (см. src/newtab/settings.ts)
-// и применяются живьём — раздел «Интерфейс» пишет туда же. Текст всегда светлый с мягкой тенью:
+// и применяются живьём — раздел «Интерфейс» пишет туда же. Палитра текста и плашек зависит от
+// светлоты фона (см. isLightBackground): на градиентах и фото — светлая с мягкой тенью:
 // он лежит поверх произвольного фона (градиент/фото), не поверх surface-токенов темы.
 
 interface NewTabProps {
@@ -21,17 +22,65 @@ interface NewTabProps {
   tiles: TileSite[];                 // топ-сайты для быстрых ссылок (из истории, см. Hub)
 }
 
-const TEXT = 'rgba(255,255,255,0.96)';
-const TEXT_SOFT = 'rgba(255,255,255,0.78)';
+// ⚠️ Палитра вкладки живёт в CSS-переменных, а не в константах: фон бывает и светлым (белый по
+// умолчанию, нежные градиенты «Мята»/«Небо»), и на нём белый текст попросту не виден. Значения
+// подставляются на корневом контейнере по isLightBackground — ниже все цвета берутся отсюда.
+const TEXT = 'var(--nt-text)';
+const TEXT_SOFT = 'var(--nt-text-soft)';
+// Плашки (кнопки в углу, чипы быстрых ссылок, строка поиска): на тёмном фоне — светлое стекло,
+// на светлом — тёмное. Иначе на белом получаются белые кнопки на белом.
+const CHIP = 'var(--nt-chip)';
+const CHIP_HOVER = 'var(--nt-chip-hover)';
 // Тень под текстом — ради читаемости поверх произвольного фото, но КОРОТКАЯ. Было одно широкое
 // пятно (16px, 0.35): на крупном тонком шрифте часов оно читается не как тень, а как грязная
 // обводка вокруг букв. Два слоя: 2px держит край буквы, 10px даёт мягкий контраст с фоном —
 // оба слабее прежнего, суммарно тише и без ореола.
-const TEXT_SHADOW = '0 1px 2px rgba(0,0,0,0.28), 0 2px 10px rgba(0,0,0,0.18)';
+const TEXT_SHADOW = 'var(--nt-shadow)';
+
+// Тёмный фон (градиенты, фото): светлый текст и светлое стекло — как было.
+const DARK_PALETTE: Record<string, string> = {
+  '--nt-text': 'rgba(255,255,255,0.96)',
+  '--nt-text-soft': 'rgba(255,255,255,0.78)',
+  // Тень под текстом — ради читаемости поверх произвольного фото, но КОРОТКАЯ. Было одно широкое
+  // пятно (16px, 0.35): на крупном тонком шрифте часов оно читается не как тень, а как грязная
+  // обводка вокруг букв. Два слоя: 2px держит край буквы, 10px даёт мягкий контраст с фоном.
+  '--nt-shadow': '0 1px 2px rgba(0,0,0,0.28), 0 2px 10px rgba(0,0,0,0.18)',
+  '--nt-chip': 'rgba(255,255,255,0.14)',
+  '--nt-chip-hover': 'rgba(255,255,255,0.24)',
+  '--nt-field': 'rgba(0,0,0,0.30)',
+  '--nt-field-border': 'rgba(255,255,255,0.22)',
+  '--nt-field-text': '#fff',
+  '--nt-plate': 'rgba(0,0,0,0.24)',
+  '--nt-plate-border': 'rgba(255,255,255,0.16)',
+  '--nt-tile': 'rgba(255,255,255,0.16)',
+  '--nt-tile-border': 'rgba(255,255,255,0.14)',
+  '--nt-sep': 'rgba(255,255,255,0.32)',
+};
+
+// Светлый фон (белый по умолчанию, нежные градиенты): тёмный текст, тень не нужна вовсе —
+// на ровном светлом она читалась бы грязью, а не глубиной.
+const LIGHT_PALETTE: Record<string, string> = {
+  '--nt-text': 'rgba(28,28,32,0.92)',
+  '--nt-text-soft': 'rgba(28,28,32,0.62)',
+  '--nt-shadow': 'none',
+  '--nt-chip': 'rgba(0,0,0,0.05)',
+  '--nt-chip-hover': 'rgba(0,0,0,0.10)',
+  // Поле поиска на светлом — белая плашка с мягкой рамкой и тенью: то же, что у поисковиков,
+  // и единственный способ показать «сюда можно печатать» без контраста наизнанку.
+  '--nt-field': 'rgba(255,255,255,0.92)',
+  '--nt-field-border': 'rgba(0,0,0,0.10)',
+  '--nt-field-text': 'rgba(28,28,32,0.92)',
+  '--nt-plate': 'rgba(255,255,255,0.72)',
+  '--nt-plate-border': 'rgba(0,0,0,0.07)',
+  '--nt-tile': 'rgba(255,255,255,0.82)',
+  '--nt-tile-border': 'rgba(0,0,0,0.07)',
+  '--nt-sep': 'rgba(28,28,32,0.28)',
+};
 
 export default function NewTab({ onSubmit, onOpenAi, onOpenGraph, tiles, isLightWindow = false }: NewTabProps) {
   const [settings, setSettings] = useState<NewTabSettings>(() => loadNewTabSettings());
   useEffect(() => subscribeNewTabSettings(() => setSettings(loadNewTabSettings())), []);
+  const light = isLightBackground(settings.background);
 
   // Своё фото могло быть сохранено полноразмерным (раньше усадки не было вовсе) — ужимаем один
   // раз в фоне, иначе каждый показ вкладки платит за декодирование гигантского кадра.
@@ -51,7 +100,10 @@ export default function NewTab({ onSubmit, onOpenAi, onOpenGraph, tiles, isLight
   return (
     // Скругление под тот же радиус, что у островов-вкладок (см. History/Settings) — фон не должен
     // упираться в прямые углы контент-области.
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 'var(--radius-island)' }}>
+    <div style={{
+      position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 'var(--radius-island)',
+      ...(light ? LIGHT_PALETTE : DARK_PALETTE),
+    } as React.CSSProperties}>
       <Background bg={settings.background} photoUrl={photoUrl} />
 
       {/* Контент поверх фона. Появляется ступенчато (см. .oblako-newtab-in в global.css):
@@ -74,14 +126,14 @@ export default function NewTab({ onSubmit, onOpenAi, onOpenGraph, tiles, isLight
       {!isLightWindow && (
       <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 3, display: 'flex', gap: 8 }}>
         <button onClick={onOpenGraph} title="Граф-воркспейс" style={cornerButton}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.24)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
+          onMouseEnter={(e) => (e.currentTarget.style.background = CHIP_HOVER)}
+          onMouseLeave={(e) => (e.currentTarget.style.background = CHIP)}
         >
           <Workflow size={18} />
         </button>
         <button onClick={onOpenAi} title="AI-режим" style={cornerButton}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.24)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
+          onMouseEnter={(e) => (e.currentTarget.style.background = CHIP_HOVER)}
+          onMouseLeave={(e) => (e.currentTarget.style.background = CHIP)}
         >
           <Sparkles size={18} />
         </button>
@@ -94,8 +146,8 @@ export default function NewTab({ onSubmit, onOpenAi, onOpenGraph, tiles, isLight
 const cornerButton: React.CSSProperties = {
   width: 40, height: 40, borderRadius: 999, border: 'none', cursor: 'default',
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(12px)',
-  color: TEXT, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+  background: CHIP, backdropFilter: 'blur(12px)',
+  color: TEXT, boxShadow: 'var(--nt-chip-shadow, 0 2px 12px rgba(0,0,0,0.18))',
 };
 
 // ── Фон ────────────────────────────────────────────────────────────────────────
@@ -181,11 +233,12 @@ function SearchBar({ onSubmit }: { onSubmit: (input: string) => void }) {
     >
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10, height: 52, padding: '0 20px',
-        // Тёмное стекло вместо светлого — белый текст на нём читаем поверх любого фона.
-        borderRadius: 999, background: 'rgba(0,0,0,0.30)', backdropFilter: 'blur(16px)',
-        border: '1px solid rgba(255,255,255,0.22)', boxShadow: '0 4px 24px rgba(0,0,0,0.22)',
+        // Стекло по светлоте фона: на тёмном — тёмное с белым текстом, на светлом — белое с
+        // тёмным (см. LIGHT_PALETTE/DARK_PALETTE).
+        borderRadius: 999, background: 'var(--nt-field)', backdropFilter: 'blur(16px)',
+        border: '1px solid var(--nt-field-border)', boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
       }}>
-        <Search size={18} style={{ color: 'rgba(255,255,255,0.85)', flex: 'none' }} />
+        <Search size={18} style={{ color: 'var(--nt-field-text)', opacity: 0.8, flex: 'none' }} />
         <input
           className="newtab-search-input"
           value={value}
@@ -194,7 +247,7 @@ function SearchBar({ onSubmit }: { onSubmit: (input: string) => void }) {
           autoFocus
           style={{
             flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none',
-            fontSize: 'var(--fs-lg)', color: '#fff',
+            fontSize: 'var(--fs-lg)', color: 'var(--nt-field-text)',
           }}
         />
       </div>
@@ -309,14 +362,14 @@ function InfoRow({ settings }: { settings: NewTabSettings }) {
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: 12, padding: '8px 16px', borderRadius: 999,
-      background: 'rgba(0,0,0,0.24)', backdropFilter: 'blur(12px)',
-      border: '1px solid rgba(255,255,255,0.16)',
-      color: TEXT, fontSize: 'var(--fs-md)', boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+      background: 'var(--nt-plate)', backdropFilter: 'blur(12px)',
+      border: '1px solid var(--nt-plate-border)',
+      color: TEXT, fontSize: 'var(--fs-md)', boxShadow: '0 2px 12px rgba(0,0,0,0.10)',
       maxWidth: '100%', flexWrap: 'wrap', justifyContent: 'center',
     }}>
       {parts.map((p, i) => (
         <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
-          {i > 0 && <span aria-hidden style={{ color: 'rgba(255,255,255,0.32)' }}>·</span>}
+          {i > 0 && <span aria-hidden style={{ color: 'var(--nt-sep)' }}>·</span>}
           {p}
         </span>
       ))}
@@ -363,8 +416,8 @@ function QuickLink({ origin, label, onClick }: { origin: string; label: string; 
       <span style={{
         width: 52, height: 52, borderRadius: 16, flex: 'none',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(255,255,255,0.16)', backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(255,255,255,0.14)',
+        background: 'var(--nt-tile)', backdropFilter: 'blur(12px)',
+        border: '1px solid var(--nt-tile-border)',
       }}>
         {ok
           ? <img src={`${origin}/favicon.ico`} width={26} height={26} alt="" style={{ borderRadius: 6 }} onError={() => setOk(false)} />

@@ -31,7 +31,10 @@ export interface NewTabSettings {
 }
 
 export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
-  background: { kind: 'preset', preset: 'aurora', color: '#1e1e24', dim: 0.28, blur: 0 },
+  // ⚠️ По умолчанию — чистый белый, а не градиент. Пёстрый фон при первом запуске спорит и с
+  // приветственным экраном, и с самим содержимым вкладки; выбрать себе градиент человек может
+  // в «Интерфейсе» одним кликом, а вот убрать навязанный — заметно дороже.
+  background: { kind: 'color', preset: 'aurora', color: '#FFFFFF', dim: 0, blur: 0 },
   clock: { show: true, seconds: false, hour24: true, date: true },
   greeting: { show: true, name: '' },
   search: { show: true },
@@ -60,13 +63,44 @@ export function rateSymbol(code: string): string {
 
 // Пресеты фона — те же градиент-токены, что у обоев домашнего экрана (tokens/apps.css). Общий
 // список для вкладки (рендер) и раздела «Интерфейс» (пикер).
-export const WALLPAPER_PRESETS: { id: string; label: string; css: string }[] = [
-  { id: 'aurora',   label: 'Аврора',  css: 'var(--wallpaper-aurora)' },
-  { id: 'ocean',    label: 'Океан',   css: 'var(--wallpaper-ocean)' },
-  { id: 'sunset',   label: 'Закат',   css: 'var(--wallpaper-sunset)' },
-  { id: 'lavender', label: 'Лаванда', css: 'var(--wallpaper-lavender)' },
-  { id: 'graphite', label: 'Графит',  css: 'var(--wallpaper-graphite)' },
+// light: фон светлый, поверх него текст должен быть ТЁМНЫМ (см. isLightBackground). Без этой
+// пометки нежные градиенты выглядели бы пустыми: белые часы на бело-розовом фоне не видно.
+export const WALLPAPER_PRESETS: { id: string; label: string; css: string; light?: boolean }[] = [
+  { id: 'aurora',   label: 'Аврора',   css: 'var(--wallpaper-aurora)' },
+  { id: 'ocean',    label: 'Океан',    css: 'var(--wallpaper-ocean)' },
+  { id: 'sunset',   label: 'Закат',    css: 'var(--wallpaper-sunset)' },
+  { id: 'lavender', label: 'Лаванда',  css: 'var(--wallpaper-lavender)' },
+  { id: 'graphite', label: 'Графит',   css: 'var(--wallpaper-graphite)' },
+  { id: 'indigo',   label: 'Индиго',   css: 'var(--wallpaper-indigo)' },
+  { id: 'emerald',  label: 'Изумруд',  css: 'var(--wallpaper-emerald)' },
+  { id: 'ember',    label: 'Пламя',    css: 'var(--wallpaper-ember)' },
+  { id: 'plum',     label: 'Слива',    css: 'var(--wallpaper-plum)' },
+  { id: 'midnight', label: 'Полночь',  css: 'var(--wallpaper-midnight)' },
+  { id: 'peach',    label: 'Персик',   css: 'var(--wallpaper-peach)' },
+  { id: 'mint',     label: 'Мята',     css: 'var(--wallpaper-mint)',    light: true },
+  { id: 'sky',      label: 'Небо',     css: 'var(--wallpaper-sky)',     light: true },
+  { id: 'blossom',  label: 'Цветение', css: 'var(--wallpaper-blossom)', light: true },
+  { id: 'pearl',    label: 'Жемчуг',   css: 'var(--wallpaper-pearl)',   light: true },
 ];
+
+// Светлый ли фон — от этого зависит цвет текста и плашек на вкладке.
+// Для своего цвета считаем яркость по формуле восприятия (зелёный весит больше синего);
+// фото и своя картинка всегда идут с затемнением, поэтому считаются тёмными.
+export function isLightBackground(bg: NewTabSettings['background']): boolean {
+  if (bg.kind === 'color') {
+    const hex = bg.color.replace('#', '');
+    if (hex.length !== 6) return false;
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    // Порог 0.62, а не 0.5: тёмный текст читается и на средних тонах, а белый на них — уже нет.
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62 && bg.dim < 0.2;
+  }
+  if (bg.kind === 'preset') {
+    return !!WALLPAPER_PRESETS.find((p) => p.id === bg.preset)?.light && bg.dim < 0.2;
+  }
+  return false;
+}
 export function presetCss(id: string): string {
   return WALLPAPER_PRESETS.find((p) => p.id === id)?.css ?? WALLPAPER_PRESETS[0]!.css;
 }
