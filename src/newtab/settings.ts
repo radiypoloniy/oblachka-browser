@@ -16,7 +16,9 @@ export interface NewTabSettings {
     dim: number;      // 0..0.8 — затемняющий оверлей поверх фона (читаемость текста)
     blur: number;     // 0..40 px — размытие фона
   };
-  clock: { show: boolean; seconds: boolean; hour24: boolean; date: boolean };
+  // face — вид виджета часов: циферблат со стрелками или цифры. hour24 осмыслен только у цифр,
+  // seconds у циферблата означает наличие секундной стрелки.
+  clock: { show: boolean; seconds: boolean; hour24: boolean; date: boolean; face: 'analog' | 'digital' };
   greeting: { show: boolean; name: string };
   search: { show: boolean };
   quickLinks: {
@@ -39,7 +41,7 @@ export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
   // приветственным экраном, и с самим содержимым вкладки; выбрать себе градиент человек может
   // в «Интерфейсе» одним кликом, а вот убрать навязанный — заметно дороже.
   background: { kind: 'color', preset: 'aurora', color: '#FFFFFF', dim: 0, blur: 0 },
-  clock: { show: true, seconds: false, hour24: true, date: true },
+  clock: { show: true, seconds: false, hour24: true, date: true, face: 'analog' },
   greeting: { show: true, name: '' },
   search: { show: true },
   quickLinks: { show: true, count: 8, source: 'top', custom: [] },

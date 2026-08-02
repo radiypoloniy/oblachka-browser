@@ -231,9 +231,18 @@ export default function AppearanceSection() {
           экрана определяется тем, какие виджеты на нём стоят (см. src/newtab/desktop.ts), а
           два разных способа убрать одно и то же неизбежно разошлись бы. Здесь остались только
           настройки САМИХ виджетов — формат времени, город, валюты. */}
-      <Subsection title="Часы" description="Формат виджета часов на новой вкладке.">
-        <ToggleRow label="24-часовой формат" checked={s.clock.hour24} onChange={(v) => patchClock({ hour24: v })} />
-        <ToggleRow label="Секунды" checked={s.clock.seconds} onChange={(v) => patchClock({ seconds: v })} />
+      <Subsection title="Часы" description="Вид и формат виджета часов на новой вкладке.">
+        <div style={{ display: 'flex', gap: 6 }}>
+          <SegBtn active={s.clock.face !== 'digital'} onClick={() => patchClock({ face: 'analog' })}>Циферблат</SegBtn>
+          <SegBtn active={s.clock.face === 'digital'} onClick={() => patchClock({ face: 'digital' })}>Цифры</SegBtn>
+        </div>
+        {/* 24-часовой формат у циферблата смысла не имеет — прячем, а не показываем неработающий
+            тумблер. «Секунды» осмысленны у обоих: у стрелок это секундная стрелка. */}
+        {s.clock.face === 'digital' && (
+          <ToggleRow label="24-часовой формат" checked={s.clock.hour24} onChange={(v) => patchClock({ hour24: v })} />
+        )}
+        <ToggleRow label={s.clock.face === 'digital' ? 'Секунды' : 'Секундная стрелка'}
+          checked={s.clock.seconds} onChange={(v) => patchClock({ seconds: v })} />
         <ToggleRow label="Дата и день недели" checked={s.clock.date} onChange={(v) => patchClock({ date: v })} />
       </Subsection>
 

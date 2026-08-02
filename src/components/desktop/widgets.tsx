@@ -77,10 +77,18 @@ function TileCaption({ children }: { children: React.ReactNode }) {
 const TILE_SLATE = 'linear-gradient(160deg, #47566B 0%, #333E52 55%, #2A3242 100%)';
 
 // ── Часы ──────────────────────────────────────────────────────────────────────
+//
+// Два вида, выбор в настройках: циферблат со стрелками (по умолчанию) и прежние цифры.
+// ⚠️ Секундная стрелка — тёплая, а не акцентная синяя: у механических часов и у системных часов
+// Apple секундная всегда контрастного тёплого цвета, потому что она единственная движется
+// непрерывно и должна отделяться от двух статичных. Цветовой закон это не нарушает — он про
+// интерфейс браузера, а плитки стола сознательно живут своими цветами (см. шапку файла).
+const CLOCK_SECOND = '#FF9F0A';
 
 export function ClockWidget({ box }: WidgetProps) {
   const [now, setNow] = useState(() => new Date());
   const opts = loadNewTabSettings().clock;
+  const analog = opts.face !== 'digital';
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), opts.seconds ? 1_000 : 15_000);
@@ -101,21 +109,92 @@ export function ClockWidget({ box }: WidgetProps) {
   const avail = box.width - 32; // минус паддинги плитки
   const fs = Math.round(Math.min(box.height * 0.42, avail / (time.length * 0.56), 92));
 
+  // Циферблат — КРУГ, поэтому его размер держит меньшая из сторон свободного места, иначе на
+  // широкой плитке он вылез бы за нижний край. Подпись сверху и дата снизу вычитаются заранее.
+  const dateH = opts.date ? 26 : 0;
+  const dial = Math.max(64, Math.min(avail, box.height - 32 - 20 - dateH));
+
   return (
     <Tile tint={TILE_SLATE}>
       <TileCaption>{weekday}</TileCaption>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      {analog ? (
         <div style={{
-          fontSize: fs, fontWeight: 250, lineHeight: 1,
-          fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em',
-        }}>{time}</div>
-        {opts.date && (
-          <div style={{ marginTop: 10, fontSize: Math.max(13, Math.round(fs * 0.2)), opacity: 0.8 }}>
-            {dayMonth}
-          </div>
-        )}
-      </div>
+          flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 8,
+        }}>
+          <AnalogFace size={dial} now={now} seconds={opts.seconds} />
+          {opts.date && (
+            <div style={{ fontSize: 13, opacity: 0.8, textAlign: 'center' }}>{dayMonth}</div>
+          )}
+        </div>
+      ) : (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{
+            fontSize: fs, fontWeight: 250, lineHeight: 1,
+            fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em',
+          }}>{time}</div>
+          {opts.date && (
+            <div style={{ marginTop: 10, fontSize: Math.max(13, Math.round(fs * 0.2)), opacity: 0.8 }}>
+              {dayMonth}
+            </div>
+          )}
+        </div>
+      )}
     </Tile>
+  );
+}
+
+/**
+ * Циферблат. Рисуем сами SVG в системе координат 100×100 и масштабируем размером самого <svg> —
+ * так же, как спарклайн ниже: круг, дюжина рисок и три стрелки не стоят внешней зависимости, а
+ * фиксированный вьюбокс избавляет от пересчёта всех координат под резиновую плитку.
+ */
+function AnalogFace({ size, now, seconds }: { size: number; now: Date; seconds: boolean }) {
+  const h = now.getHours() % 12;
+  const m = now.getMinutes();
+  const s = now.getSeconds();
+  // Часовая идёт ПЛАВНО за минутами (+0.5° на минуту), минутная — за секундами. Иначе в 10:59
+  // часовая всё ещё указывала бы ровно на 10, и время читалось бы неверно на целый час.
+  const hourAngle = h * 30 + m * 0.5;
+  const minAngle  = m * 6 + s * 0.1;
+  const secAngle  = s * 6;
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" style={{ display: 'block', flex: 'none' }}>
+      <circle cx="50" cy="50" r="47" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.20)" strokeWidth="1" />
+      {/* Двенадцать рисок; каждая третья (12/3/6/9) крупнее — по ним глаз и цепляется. */}
+      {Array.from({ length: 12 }, (_, i) => {
+        const major = i % 3 === 0;
+        return (
+          <line
+            key={i}
+            x1="50" y1={major ? 8 : 9.5} x2="50" y2={major ? 15 : 13}
+            stroke="#fff" strokeOpacity={major ? 1 : 0.5}
+            strokeWidth={major ? 2.6 : 1.4} strokeLinecap="round"
+            transform={`rotate(${i * 30} 50 50)`}
+          />
+        );
+      })}
+      <Hand angle={hourAngle} length={25} width={4.8} color="#fff" />
+      <Hand angle={minAngle}  length={36} width={3.2} color="#fff" />
+      {seconds && <Hand angle={secAngle} length={40} width={1.3} color={CLOCK_SECOND} tail={9} />}
+      <circle cx="50" cy="50" r="3" fill="#fff" />
+      {seconds && <circle cx="50" cy="50" r="1.5" fill={CLOCK_SECOND} />}
+    </svg>
+  );
+}
+
+// Стрелка — линия из центра вверх, повёрнутая на угол. tail — хвостик за центром (есть только у
+// секундной, как у настоящих часов).
+function Hand({ angle, length, width, color, tail = 0 }: {
+  angle: number; length: number; width: number; color: string; tail?: number;
+}) {
+  return (
+    <line
+      x1="50" y1={50 + tail} x2="50" y2={50 - length}
+      stroke={color} strokeWidth={width} strokeLinecap="round"
+      transform={`rotate(${angle} 50 50)`}
+    />
   );
 }
 
