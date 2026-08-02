@@ -18,8 +18,6 @@ import type { RefObject } from 'react';
 
 // Предел упругости — доля высоты окна прокрутки. У Apple он тоже пропорционален размеру:
 // в маленькой панели большая оттяжка выглядела бы поломкой раскладки.
-// Предел упругости — доля высоты окна прокрутки. У Apple он тоже пропорционален размеру:
-// в маленькой панели большая оттяжка выглядела бы поломкой раскладки.
 const LIMIT_RATIO = 0.08;
 // Жёсткость: МЕНЬШЕ — туже резинка, оттянуть труднее. Первая версия стояла на 0.5, и одного
 // щелчка колеса хватало, чтобы выбросить ленту почти на весь ход.
@@ -28,15 +26,29 @@ const STIFFNESS = 0.3;
 // нельзя: щелчки колеса идут с промежутком в сотню миллисекунд, и лента успевала отскочить
 // назад между ними — от этого дёрганья и раздражение.
 const IDLE_MS = 170;
-// Насколько быстро нарисованное догоняет натяжение. Оттяжка — живее, возврат — заметно
-// мягче: одинаковые скорости давали ощущение щелчка, а не пружины.
-const EASE_PULL = 0.16;
-const EASE_BACK = 0.085;
+// Постоянная времени оттяжки. ⚠️ Считается через exp(−dt/τ), а не «доля за кадр»: покадровый
+// коэффициент привязывает скорость к частоте экрана — на 144 Гц то же движение шло втрое
+// быстрее, а на просадке кадров проваливалось. Именно отсюда бралась рваность.
+const PULL_TAU_MS = 95;
+// Возврат — НЕ асимптотика, а анимация с концом. Прежний покадровый лерп (0.085) полз к нулю
+// около 950 мс и обрывался жёсткой отсечкой на 0.25 px: хвост тянулся дольше, чем всё
+// движение до него. Длительность берём из токенов движения (--dur-base/--dur-slow) и мерим
+// от величины оттяжки — маленькой возвращаться долго незачем.
+const BACK_MIN_MS = 140;
+const BACK_MAX_MS = 260;
 
 function rubberBand(raw: number, limit: number): number {
   const sign = raw < 0 ? -1 : 1;
   const x = Math.abs(raw);
   return sign * (1 - 1 / ((x * STIFFNESS) / limit + 1)) * limit;
+}
+
+// Форма --ease-out (cubic-bezier(0.16,1,0.3,1)): резкий старт, тихий хвост. Точную безье в
+// JS считать незачем — четвёртая степень повторяет её с точностью до пикселя (в середине
+// пути расхождение меньше сотой доли хода).
+function easeOut(t: number): number {
+  const inv = 1 - t;
+  return 1 - inv * inv * inv * inv;
 }
 
 export function useRubberBand(ref: RefObject<HTMLElement | null>): void {
@@ -54,24 +66,43 @@ export function useRubberBand(ref: RefObject<HTMLElement | null>): void {
     let shown = 0;     // то, что нарисовано на экране
     let raf = 0;
     let idle = 0;
+    let last = 0;      // время предыдущего кадра — оттяжка считается по реальному dt
+    // Идущий возврат: откуда начали, когда и за сколько. Заводится в момент отпускания и
+    // живёт до нуля; новый щелчок колеса его отменяет прямо посреди пути.
+    let back: { from: number; start: number; dur: number } | null = null;
 
     // ⚠️ Нарисованное ДОГОНЯЕТ натяжение покадрово, а не ставится сразу. Колесо мыши шлёт
     // рывками по ~100 px за щелчок, и мгновенное применение выбрасывало ленту на треть хода
     // одним кадром — это и ощущалось резко. Здесь любой ввод, хоть дискретный, превращается
     // в непрерывное движение.
-    const tick = (): void => {
+    const tick = (now: number): void => {
       const inner = innerOf();
       if (!inner) { raf = 0; return; }
       const limit = Math.max(28, box.clientHeight * LIMIT_RATIO);
-      const want = rubberBand(target, limit);
-      shown += (want - shown) * (target === 0 ? EASE_BACK : EASE_PULL);
 
-      if (target === 0 && Math.abs(shown) < 0.25) {
-        shown = 0;
-        inner.style.transform = '';
-        raf = 0;
-        return;
+      if (target !== 0) {
+        back = null;
+        // ⚠️ dt подрезаем: после пропущенных кадров (или возврата на вкладку) разница бывает
+        // в сотни миллисекунд, и лента прыгнула бы к натяжению одним скачком.
+        const dt = last ? Math.min(now - last, 50) : 16.7;
+        const want = rubberBand(target, limit);
+        shown += (want - shown) * (1 - Math.exp(-dt / PULL_TAU_MS));
+      } else {
+        if (!back) {
+          const reach = Math.min(1, Math.abs(shown) / limit);
+          back = { from: shown, start: now, dur: BACK_MIN_MS + (BACK_MAX_MS - BACK_MIN_MS) * reach };
+        }
+        const t = Math.min(1, (now - back.start) / back.dur);
+        shown = back.from * (1 - easeOut(t));
+        if (t >= 1) {
+          // Конец назначен временем, а не порогом близости к нулю: ленте нечего доползать.
+          shown = 0; back = null; last = 0; raf = 0;
+          inner.style.transform = '';
+          return;
+        }
       }
+
+      last = now;
       inner.style.transform = `translate3d(0, ${(-shown).toFixed(2)}px, 0)`;
       raf = requestAnimationFrame(tick);
     };
