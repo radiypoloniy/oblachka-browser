@@ -74,6 +74,9 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   const [drag, setDrag] = useState<{
     id: string; overIndex: number;
     startX: number; startY: number; dx: number; dy: number;
+    // ⚠️ Позиция элемента В МОМЕНТ ЗАХВАТА. Он рисуется от неё, а не от будущей клетки: место
+    // назначения меняется по ходу жеста, и элемент прыгал следом за ним, уезжая из-под курсора.
+    originX: number; originY: number;
   } | null>(null);
   const [resizing, setResizing] = useState<{ id: string; w: number; h: number } | null>(null);
 
@@ -192,9 +195,11 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
     if (!editing || e.button !== 0) return;
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    const at = placed.find((p) => p.item.id === id);
     setDrag({
       id, overIndex: layout.items.findIndex((i) => i.id === id),
       startX: e.clientX, startY: e.clientY, dx: 0, dy: 0,
+      originX: (at?.col ?? 0) * step, originY: (at?.row ?? 0) * step,
     });
   };
 
@@ -260,24 +265,10 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
               cursor: editing ? (drag ? 'grabbing' : 'grab') : undefined,
             }}
           >
-            {/* Тень места назначения: пока элемент в руке, на его будущей клетке лежит контур.
-                Без него человек догадывается о результате только по расступившимся соседям. */}
-            {ready && drag && (() => {
-              const target = placed.find((p) => p.item.id === drag.id);
-              if (!target) return null;
-              return (
-                <div style={{
-                  position: 'absolute', left: 0, top: 0, pointerEvents: 'none',
-                  transform: `translate3d(${target.col * step}px, ${target.row * step}px, 0)`,
-                  width: target.w * grid.cell + (target.w - 1) * grid.gap,
-                  height: target.h * grid.cell + (target.h - 1) * grid.gap,
-                  borderRadius: 'var(--radius-card)',
-                  background: 'rgba(255,255,255,0.14)',
-                  border: '2px dashed rgba(255,255,255,0.45)',
-                  transition: 'transform 220ms var(--ease-out)',
-                }} />
-              );
-            })()}
+            {/* ⚠️ Подсветки будущего места здесь НЕТ намеренно. Она сбивала: на экране
+                одновременно оказывались элемент под курсором, контур цели и разъехавшиеся
+                соседи — три сигнала об одном и том же. Расступившиеся соседи показывают исход
+                однозначно, как на домашнем экране iPad. */}
 
             {ready && placed.map(({ item, col, row, w, h }) => {
               // Размер во время жеста уже новый: раскладка считается по preview (см. выше), так
@@ -289,15 +280,17 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                 height: live.h * grid.cell + (live.h - 1) * grid.gap,
               };
               const dragging = drag?.id === item.id;
-              // Перетаскиваемый едет за курсором: к позиции его будущей клетки прибавляется
-              // смещение указателя. Приподнимаем масштабом и тенью — «взял в руку».
-              const lift = dragging ? ` translate3d(${drag.dx}px, ${drag.dy}px, 0) scale(1.06)` : '';
+              // Перетаскиваемый живёт отдельно от сетки: он идёт от места захвата за курсором и
+              // НЕ переезжает вместе с расчётом будущей клетки.
+              const held = dragging
+                ? `translate3d(${drag.originX + drag.dx}px, ${drag.originY + drag.dy}px, 0) scale(1.04)`
+                : null;
               const style: React.CSSProperties = {
                 position: 'absolute', left: 0, top: 0,
                 // ⚠️ Позиция — transform, а не left/top. Смена left/top заставляет браузер
                 // пересчитывать раскладку и перерисовывать слой на каждом кадре анимации;
                 // transform уходит в композитор и двигает уже готовую текстуру.
-                transform: `translate3d(${col * step}px, ${row * step}px, 0)${lift}`,
+                transform: held ?? `translate3d(${col * step}px, ${row * step}px, 0)`,
                 width: box.width, height: box.height,
                 zIndex: dragging || resizing?.id === item.id ? 5 : 1,
                 // Пока элемент в руке — никакого перехода: он обязан быть точно под курсором,
