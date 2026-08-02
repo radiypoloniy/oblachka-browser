@@ -4,7 +4,7 @@ import { Search, Sparkles, Workflow, Check, Plus, X, LayoutGrid } from 'lucide-r
 import type { TileSite } from '../../../shared/frecency';
 import {
   loadDesktop, saveDesktop, subscribeDesktop, computeGrid, layoutItems,
-  moveItem, resizeItem, removeItem, addItem,
+  resizeItem, removeItem, addItem,
   type DesktopLayout,
 } from '../../newtab/desktop';
 import AddSheet from './AddSheet';
@@ -126,11 +126,32 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   // ⚠️ Раскладка считается по ПРЕДПОЛАГАЕМОМУ состоянию: во время перетаскивания элемент уже
   // стоит на новом месте, во время растягивания — уже нового размера. Соседи из-за этого
   // разъезжаются прямо под рукой (у них transition на transform), а не прыгают после отпускания.
+  // ⚠️ Раскладка БЕЗ перетаскиваемого элемента — стабильная база для расчёта места вставки.
+  //
+  // Здесь была настоящая ловушка обратной связи: место считалось по той же раскладке, которую
+  // сам расчёт и менял. Элемент вставал на новое место → соседи сдвигались → под курсором
+  // оказывалась другая клетка → индекс менялся обратно → и так каждый кадр. Именно это и
+  // выглядело как резкая дрожь в конце движения. База, из которой элемент изъят, от индекса не
+  // зависит, поэтому колебаться нечему.
+  const dragBase = useMemo(
+    () => (drag ? layout.items.filter((i) => i.id !== drag.id) : layout.items),
+    [layout.items, drag],
+  );
+  const basePlaced = useMemo(
+    () => (drag ? layoutItems(dragBase, grid.cols).placed : null),
+    [dragBase, grid.cols, drag],
+  );
+
   const preview = useMemo(() => {
-    if (drag) return moveItem(layout, drag.id, drag.overIndex);
+    if (drag) {
+      const item = layout.items.find((i) => i.id === drag.id);
+      if (!item) return layout;
+      const at = Math.max(0, Math.min(dragBase.length, drag.overIndex));
+      return { ...layout, items: [...dragBase.slice(0, at), item, ...dragBase.slice(at)] };
+    }
     if (resizing) return resizeItem(layout, resizing.id, { w: resizing.w, h: resizing.h });
     return layout;
-  }, [layout, drag, resizing]);
+  }, [layout, drag, resizing, dragBase]);
 
   const { placed, rows } = useMemo(
     () => layoutItems(preview.items, grid.cols),
@@ -146,22 +167,25 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   // Индекс места, куда встанет перетаскиваемый элемент. Считаем по клетке под курсором, а не по
   // пересечению с соседями: сетка резиновая, а клетка — единственная величина, одинаково
   // понятная и человеку, и укладчику.
+  // Индекс вставки СРЕДИ ОСТАВШИХСЯ элементов (см. dragBase выше). Возвращает позицию в
+  // списке без перетаскиваемого — именно её ждёт preview.
   const indexAtPoint = (clientX: number, clientY: number): number => {
     const box = gridRef.current?.getBoundingClientRect();
-    if (!box) return layout.items.length;
+    const base = basePlaced;
+    if (!box || !base) return dragBase.length;
     const col = Math.max(0, Math.min(grid.cols - 1, Math.floor((clientX - box.left) / step)));
     const row = Math.max(0, Math.floor((clientY - box.top) / step));
-    // Ищем, какой элемент занимает эту клетку; если пусто — считаем, что элемент идёт в конец
-    // текущей строки, то есть перед первым элементом ниже.
-    const hit = placed.find((p) => col >= p.col && col < p.col + p.w && row >= p.row && row < p.row + p.h);
+    const hit = base.find((p) => col >= p.col && col < p.col + p.w && row >= p.row && row < p.row + p.h);
     if (hit) {
-      const idx = layout.items.findIndex((i) => i.id === hit.item.id);
-      // Правая половина занятой клетки — «после неё», левая — «перед».
-      const half = (clientX - box.left) - (hit.col * step) > (hit.w * step) / 2;
+      const idx = dragBase.findIndex((i) => i.id === hit.item.id);
+      // Правая половина занятой клетки — «после неё», левая — «перед». ⚠️ Порог с запасом
+      // (55/45), а не ровно посередине: на границе половин дрожание вернулось бы уже из-за
+      // сотых долей пикселя при движении мыши.
+      const half = (clientX - box.left) - (hit.col * step) > (hit.w * step) * 0.55;
       return half ? idx + 1 : idx;
     }
-    const below = placed.find((p) => p.row > row);
-    return below ? layout.items.findIndex((i) => i.id === below.item.id) : layout.items.length;
+    const below = base.find((p) => p.row > row);
+    return below ? dragBase.findIndex((i) => i.id === below.item.id) : dragBase.length;
   };
 
   const onItemPointerDown = (e: React.PointerEvent, id: string): void => {
@@ -195,7 +219,9 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   };
 
   const onGridPointerUp = (): void => {
-    if (drag) { apply(moveItem(layout, drag.id, drag.overIndex)); setDrag(null); }
+    // Применяем ровно ту раскладку, которую человек видел под рукой: пересчитывать её заново
+    // другим способом — верный путь к «отпустил, а встало не туда».
+    if (drag) { apply(preview); setDrag(null); }
     if (resizing) { apply(resizeItem(layout, resizing.id, { w: resizing.w, h: resizing.h })); setResizing(null); }
   };
 
