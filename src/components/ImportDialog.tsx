@@ -4,15 +4,13 @@ import type { ImportSource, ImportDataType, ImportRunResult, ImportTypeResult } 
 import { islandPlate } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
 
-// Диалог импорта данных из другого браузера. Открывается из раздела настроек «Браузер» и из
-// онбординга первого запуска (см. electron/browserImport/, App.tsx). Вся вендор-специфика — в main;
+// Диалог импорта данных из другого браузера. Открывается ТОЛЬКО из раздела настроек «Браузер»:
+// первый запуск ведёт свой экран (см. src/components/Onboarding.tsx), с другим тоном и объёмом. Вся вендор-специфика — в main;
 // здесь только выбор источника, выбор типов данных галочками и отчёт. Модалка поверх всего chrome
 // (fixed) — вызывается только когда контент-область не перекрыта WebContentsView (Настройки/Хаб).
 
 interface ImportDialogProps {
   onClose: () => void;
-  // Онбординг: заголовок и подпись мягче («Перенесите данные…»), плюс кнопка «Пропустить».
-  onboarding?: boolean;
 }
 
 const TYPE_LABELS: Record<ImportDataType, string> = {
@@ -32,7 +30,7 @@ function resultLine(type: ImportDataType, res: ImportTypeResult | null): string 
   return `${label}: ${parts.join(', ')}`;
 }
 
-export default function ImportDialog({ onClose, onboarding }: ImportDialogProps) {
+export default function ImportDialog({ onClose }: ImportDialogProps) {
   const [sources, setSources] = useState<ImportSource[] | null>(null); // null — ещё грузим
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Выбранные типы для текущего источника. Ключ — sourceId, чтобы смена источника не тащила
@@ -110,7 +108,7 @@ export default function ImportDialog({ onClose, onboarding }: ImportDialogProps)
         }}>
           <Download size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
           <span style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)', flex: 1 }}>
-            {onboarding ? 'Перенос данных из браузера' : 'Импорт из другого браузера'}
+            Импорт из другого браузера
           </span>
           <button
             onClick={onClose}
@@ -125,13 +123,6 @@ export default function ImportDialog({ onClose, onboarding }: ImportDialogProps)
 
         {/* Тело */}
         <div style={{ padding: '18px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {onboarding && (
-            <p style={{ margin: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-              Перенесите закладки, историю и сохранённые пароли из браузера, которым пользуетесь.
-              Ничего не будет удалено на его стороне — данные только копируются.
-            </p>
-          )}
-
           {sources === null ? (
             <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Поиск браузеров…</div>
           ) : sources.length === 0 ? (
@@ -241,7 +232,7 @@ export default function ImportDialog({ onClose, onboarding }: ImportDialogProps)
         }}>
           <div style={{ flex: 1 }} />
           <button style={btnGhost} onClick={onClose}>
-            {onboarding && !report ? 'Пропустить' : 'Закрыть'}
+            Закрыть
           </button>
           {sources && sources.length > 0 && !report && (
             <button

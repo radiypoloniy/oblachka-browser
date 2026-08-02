@@ -21,6 +21,17 @@ body {
 /* Тот же keyframe-приём, что и src/index.html (спиннер до React) — здесь для React-точек входа,
    не грузящих index.html (aipanel.tsx и т.п.), см. заход D: индикатор фактчека. */
 @keyframes oblako-spin { to { transform: rotate(360deg); } }
+/* Экран первого запуска (Onboarding.tsx): появление элементов слайда. Только transform и
+   opacity — вёрстки не трогают, кадры не съедают (см. правило про анимации в CLAUDE.md). */
+@keyframes oblako-onb-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Стрелка «данные переезжают» — короткий сдвиг вправо и обратно, без отскока. */
+@keyframes oblako-onb-nudge {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(5px); }
+}
 /* Котёнок-тамагочи в AI-панели (aiApps.tsx::KittenApp): дыхание в покое + прыжок-реакция
    на действие. Основа под будущего маскота — новые анимации добавлять сюда же. */
 @keyframes oblako-kitten-idle {
