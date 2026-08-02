@@ -4,6 +4,8 @@ import UpdatesBlock from './UpdatesBlock';
 import BangsBlock from './BangsBlock';
 import SearchChipsBlock from './SearchChipsBlock';
 import DefaultSearchBlock from './DefaultSearchBlock';
+import DefaultBrowserBlock from './DefaultBrowserBlock';
+import DownloadsBlock from './DownloadsBlock';
 
 interface GeneralSectionProps {
   // Открыть диалог импорта — состояние живёт в App.tsx (модалка поверх всего chrome), сюда
@@ -26,6 +28,20 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
         description="Куда уходит запрос из адресной строки, если это не адрес сайта."
       >
         <DefaultSearchBlock />
+      </Subsection>
+
+      <Subsection
+        title="Браузер по умолчанию"
+        description="Кто открывает ссылки из других программ — почты, мессенджеров, документов."
+      >
+        <DefaultBrowserBlock />
+      </Subsection>
+
+      <Subsection
+        title="Загрузки"
+        description="Куда попадают скачанные файлы и о чём браузер спрашивает заранее."
+      >
+        <DownloadsBlock />
       </Subsection>
 
       <Subsection

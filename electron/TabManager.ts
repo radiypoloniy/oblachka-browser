@@ -100,6 +100,10 @@ interface ManagedTab {
   // Начальный раздел для kind==='settings' (см. createSpecialTab ниже) — необязателен, задаётся
   // только когда вызывающая сторона просит конкретный раздел (напр. кнопка "+" в AI-панели).
   section?: string;
+  // Имя, придуманное моделью по содержимому страницы (см. electron/TabRenamer.ts). Пустое у
+  // подавляющего большинства вкладок: переименование — явное действие человека, а не фон.
+  // ⚠️ Сбрасывается при уходе на другой адрес: имя описывало ТУ страницу, и на новой оно врёт.
+  aiTitle?: string;
 }
 
 // Вкладка, снятая с окна и ждущая нового владельца (см. detachTabForMove/adoptTab).
@@ -227,6 +231,10 @@ export class TabManager {
   // Снимок nodes до последней AI-группировки: null = нет чего откатывать.
   // Сбрасывается при любом ручном структурном изменении (drag, создание/удаление группы и т.п.).
   private organizeSnapshot: SidebarNode[] | null = null;
+  // Имена вкладок ДО массового переименования (tabId → прежнее умное имя или undefined).
+  // Отдельно от organizeSnapshot: «навести порядок» делает два разных дела, и откатывать их
+  // человек может по отдельности — вернуть привычные названия, но оставить разложенные группы.
+  private renameSnapshot: Map<string, string | undefined> | null = null;
   // Коллекция активных split-пар. splitRatio — доля левой панели (0.2..0.8).
   // Коммит 3: guard в enterSplit (см. ниже) по-прежнему не пускает вторую пару —
   // коллекция здесь ради формы модели (готовит почву под несколько одновременных
@@ -398,7 +406,7 @@ export class TabManager {
       return {
         id: t.id, isActive: t.id === this.activeId,
         tabError: null,
-        url: t.sleeping.url, title: t.sleeping.title,
+        url: t.sleeping.url, title: t.aiTitle || t.sleeping.title,
         // Кэш (base64, офлайн) приоритетнее «живого» URL — тот требует сети прямо сейчас.
         faviconUrl: t.sleeping.faviconData ?? t.sleeping.faviconUrl,
         isLoading: false, canGoBack: false, canGoForward: false,
@@ -422,7 +430,7 @@ export class TabManager {
       id: t.id, isActive: t.id === this.activeId,
       tabError: this.errors.get(t.id) ?? null,
       url: wc.getURL(),
-      title: wc.getTitle() || wc.getURL() || 'Загрузка…',
+      title: t.aiTitle || wc.getTitle() || wc.getURL() || 'Загрузка…',
       faviconUrl: (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon ?? null,
       isLoading: wc.isLoadingMainFrame(),
       canGoBack: wc.canGoBack(),
@@ -502,6 +510,14 @@ export class TabManager {
   // Title вкладки для сохранения в сессию (заход C) — undefined, если не знаем (напр. страница
   // ещё не отдала title) — писать в session.json нечего, поле останется отсутствующим (optional).
   #tabTitle(tab: ManagedTab): string | undefined {
+    // Умное имя старше заголовка страницы: человек попросил называть вкладку так.
+    //
+    // ⚠️ Отсюда оно попадает и в session.json — как обычный title спящей вкладки, СВОЕГО поля в
+    // формате сессии у него нет. Последствие осознанное: после перезапуска подпись сохраняется,
+    // но при пробуждении вкладки заменяется настоящим заголовком страницы. Отдельное поле
+    // означало бы правку формата, где лежат реальные вкладки пользователя, — ради подписи это
+    // несоразмерный риск (см. CLAUDE.md, «Безопасность данных»).
+    if (tab.aiTitle) return tab.aiTitle;
     if (tab.sleeping) return tab.sleeping.title || undefined;
     if (this.isHttpView(tab.view) && !tab.view.webContents.isDestroyed()) {
       return tab.view.webContents.getTitle() || undefined;
@@ -1040,8 +1056,15 @@ export class TabManager {
   }
 
   // ── Таймер засыпания: периодически проверяет кандидатов ──
+  //
+  // ⚠️ Ссылку на таймер держим ради остановки. Пока окно было одно, интервал жил столько же,
+  // сколько процесс, и разницы не было. С несколькими окнами каждый открытый-и-закрытый экземпляр
+  // оставлял бы после себя вечный минутный таймер, ходящий по мёртвому менеджеру, — их набирается
+  // ровно столько, сколько окон человек успел закрыть за сеанс. Останавливаем в dispose().
+  private sleepTimer: NodeJS.Timeout | null = null;
+
   private startSleepTimer(): void {
-    setInterval(async () => {
+    this.sleepTimer = setInterval(async () => {
       const now = Date.now();
       const activePair = this.#activePair();
 
@@ -1090,6 +1113,13 @@ export class TabManager {
         this.sleepTab(tab.id);
       }
     }, SLEEP_CHECK_INTERVAL);
+  }
+
+  // Окно закрылось — менеджер больше никому не нужен. Снимаем всё, что переживает окно само по
+  // себе: сейчас это таймер сна (слушатели на webContents уходят вместе со своими вью, а те
+  // уничтожает Electron вместе с contentView).
+  dispose(): void {
+    if (this.sleepTimer) { clearInterval(this.sleepTimer); this.sleepTimer = null; }
   }
 
   private wirePageEvents(id: string, view: WebContentsView) {
@@ -1183,6 +1213,11 @@ export class TabManager {
     // Не на did-start-loading: вьюха не должна мигать при retry, который снова упадёт.
     wc.on('did-navigate', () => {
       if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
+      // ⚠️ Умное имя описывало ПРЕЖНЮЮ страницу — на новой оно было бы прямой ложью в списке
+      // вкладок. Снимаем на did-navigate (полная навигация), а не на did-navigate-in-page:
+      // якорь и history.pushState страницу не меняют.
+      const tab = this.tabMap.get(id) ?? this.pinnedTabs.find((t) => t.id === id);
+      if (tab?.aiTitle) tab.aiTitle = undefined;
       const isActivePanel = this.activeId === id;
       const pair = this.#pairContaining(id);
       const isInSplit = !!pair;
@@ -2024,6 +2059,40 @@ export class TabManager {
     return fallback;
   }
 
+  // Принадлежит ли этот webContents вкладке ЭТОГО окна. Нужно запросам разрешений: они
+  // приходят от страницы, а показать вопрос надо в том окне, где она открыта (см.
+  // PermissionPopoverManager). Сравниваем по id, а не по объекту: у Chromium запрос приходит
+  // с «сырым» wc, и объект может быть не тем же самым обёрточным экземпляром.
+  ownsWebContents(wcId: number): boolean {
+    for (const tab of this.tabMap.values()) {
+      const wc = tab.view?.webContents;
+      if (wc && !wc.isDestroyed() && wc.id === wcId) return true;
+    }
+    return false;
+  }
+
+  // ── Умное имя вкладки (см. electron/TabRenamer.ts) ─────────────────────────
+  // Сам текст придумывает модель в main; сюда приезжает готовый результат. Менеджер вкладок про
+  // модель не знает — тот же приём, что с пунктом графа в меню (setGraphMenuBuilder).
+  setAiTitle(id: string, title: string | null): void {
+    const tab = this.tabMap.get(id) ?? this.pinnedTabs.find((t) => t.id === id);
+    if (!tab) return;
+    tab.aiTitle = title ?? undefined;
+    this.onChange();
+  }
+
+  getAiTitle(id: string): string | null {
+    const tab = this.tabMap.get(id) ?? this.pinnedTabs.find((t) => t.id === id);
+    return tab?.aiTitle ?? null;
+  }
+
+  // WebContents вкладки — нужен переименованию, чтобы прочитать содержимое страницы.
+  getWebContentsForTab(id: string): WebContents | null {
+    const tab = this.tabMap.get(id) ?? this.pinnedTabs.find((t) => t.id === id);
+    const wc = tab?.view?.webContents;
+    return wc && !wc.isDestroyed() ? wc : null;
+  }
+
   // Имя группы для подписи стикера при «Добавить в граф» (main.ts::GROUP_SHOW_MENU).
   getGroupTitle(groupId: string): string | null {
     return this.#findGroupById(groupId)?.label ?? null;
@@ -2460,8 +2529,23 @@ export class TabManager {
   private onOpenInNewWindowCb: ((url: string) => void) | null = null;
   setOnOpenInNewWindow(cb: (url: string) => void): void { this.onOpenInNewWindowCb = cb; }
 
-  registerHotkeyHandler(wc: WebContents): void {
+  // Ctrl+Shift+M — вернуть активную вкладку в другое окно. Про другие окна этот класс не знает
+  // (реестр окон живёт в main), поэтому наружу уходит только «человек попросил вернуть вкладку»
+  // с её id — тот же приём, что у Ctrl+N выше.
+  private onReturnTabCb: ((tabId: string) => void) | null = null;
+  setOnReturnTab(cb: (tabId: string) => void): void { this.onReturnTabCb = cb; }
+
+  // source — откуда пришёл ввод. Слой хрома принадлежит окну навсегда и никуда не переезжает;
+  // вкладка — может (см. detachTabForMove), и это решает всё, см. гвард ниже.
+  registerHotkeyHandler(wc: WebContents, source: 'chrome' | 'tab' = 'tab'): void {
     wc.on('before-input-event', (event, input) => {
+      // ⚠️ Тот же закон, что у mine() в wirePageEvents, только здесь он был пропущен: после
+      // переезда вкладки в другое окно слушатель ПРЕЖНЕГО менеджера остаётся на её webContents
+      // навсегда, снять его нечем. Без этой проверки один Ctrl+W закрывал бы вкладку и здесь,
+      // и в старом окне (там — свою активную, ни в чём не виноватую), а Ctrl+T открывал бы хаб
+      // в обоих. Поймано живой проверкой возврата вкладки: жест срабатывал сразу в двух окнах
+      // и отменял сам себя.
+      if (source === 'tab' && !this.ownsWebContents(wc.id)) return;
       if (input.type !== 'keyDown') return;
       const { code, shift } = input;
 
@@ -2519,6 +2603,9 @@ export class TabManager {
       } else if (code === 'KeyN' && shift) {
         event.preventDefault();
         this.createTab(undefined, false, false, true); // Ctrl+Shift+N: новая вкладка инкогнито
+      } else if (code === 'KeyM' && shift) {
+        event.preventDefault();
+        this.onReturnTabCb?.(this.activeId); // Ctrl+Shift+M: вернуть вкладку в другое окно
       } else if (code === 'KeyW' && !shift) {
         event.preventDefault();
         this.closeTab(this.activeId);       // Ctrl+W: закрыть активную (хаб защищён)
@@ -2599,6 +2686,55 @@ export class TabManager {
 
   hasOrganizeSnapshot(): boolean {
     return this.organizeSnapshot !== null;
+  }
+
+  hasRenameSnapshot(): boolean {
+    return this.renameSnapshot !== null;
+  }
+
+  // Запомнить нынешние имена перед пачкой переименований. ⚠️ Пишем и undefined тоже: «имени не
+  // было» — это состояние, к которому надо уметь вернуться, а не отсутствие записи.
+  beginRenameBatch(ids: string[]): void {
+    const snap = new Map<string, string | undefined>();
+    for (const id of ids) {
+      const tab = this.tabMap.get(id) ?? this.pinnedTabs.find((t) => t.id === id);
+      if (tab) snap.set(id, tab.aiTitle);
+    }
+    this.renameSnapshot = snap;
+  }
+
+  rollbackRenames(): void {
+    if (!this.renameSnapshot) return;
+    for (const [id, prev] of this.renameSnapshot) {
+      const tab = this.tabMap.get(id) ?? this.pinnedTabs.find((t) => t.id === id);
+      if (tab) tab.aiTitle = prev;
+    }
+    this.renameSnapshot = null;
+    this.onChange();
+  }
+
+  // Список вкладок, которым имеет смысл придумывать имя: обычные страницы, без хаба,
+  // псевдо-вкладок и уже переименованных вручную в этом заходе.
+  renamableTabIds(): string[] {
+    const ids: string[] = [];
+    for (const tab of [...this.pinnedTabs, ...this.tabMap.values()]) {
+      if (tab.kind || tab.id === HUB_ID) continue;
+      const url = tab.sleeping?.url ?? (this.isHttpView(tab.view) ? tab.view.webContents.getURL() : '');
+      if (!/^https?:/i.test(url)) continue;
+      if (!ids.includes(tab.id)) ids.push(tab.id);
+    }
+    return ids;
+  }
+
+  // Материал для имени: у живой вкладки — её webContents, у спящей — только адрес и заголовок
+  // (будить вкладку ради подписи нельзя, это вернуло бы к жизни десятки страниц разом).
+  renameSourceFor(id: string): { wc: WebContents | null; title: string; url: string } | null {
+    const tab = this.tabMap.get(id) ?? this.pinnedTabs.find((t) => t.id === id);
+    if (!tab) return null;
+    if (tab.sleeping) return { wc: null, title: tab.sleeping.title, url: tab.sleeping.url };
+    const wc = tab.view?.webContents;
+    if (!wc || wc.isDestroyed()) return null;
+    return { wc, title: wc.getTitle(), url: wc.getURL() };
   }
 
   // Очищает снимок; вызывается в начале каждого структурного метода (drag, создание/удаление группы и т.п.),

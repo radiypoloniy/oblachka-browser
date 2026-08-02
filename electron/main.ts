@@ -3,7 +3,7 @@ import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent } from './BrowserIdentity';
 import { showSplash, closeSplash } from './SplashWindow';
-import { registerWindow, contextFromSender, contextForWindow, broadcastToChrome } from './WindowRegistry';
+import { registerWindow, contextFromSender, contextForWindow, broadcastToChrome, allContexts, mainContext } from './WindowRegistry';
 import type { WindowRole } from './WindowRegistry';
 
 // ДО app.whenReady() — Electron требует это до события ready.
@@ -77,6 +77,12 @@ import { BergamotTranslationEngine } from './BergamotTranslationEngine';
 import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { startTabDrag, endTabDrag, syncDropZoneBounds } from './DropZoneManager';
+import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
+import { suggestTabTitle } from './TabRenamer';
+import {
+  showPermissionRequest, permissionAnswered, syncPermissionPopoverBounds,
+  setPermissionPopoverHeight, dropPermissionRequests,
+} from './PermissionPopoverManager';
 import { showSearchPopover, closeSearchPopover, syncSearchPopoverBounds, relayoutSearchPopover, setOnSearchRun, setOnQuickQuery, setOnQuickOpen, setTabManager as setSearchPopoverTabManager } from './SearchPopoverManager';
 import { buildSearchTargets, searchChipCandidates, resolveChipCandidates } from './SearchTargets';
 import { readPageSelection } from './PageSelection';
@@ -172,6 +178,19 @@ async function runTranslateTestWindow(): Promise<void> {
   });
   testWin.on('closed', () => app.quit());
   testWin.loadURL('oblako-chrome://localhost/translatetest.html');
+}
+
+// Адрес, пришедший до того, как окно готово его принять (macOS open-url на холодном старте).
+let pendingStartUrl: string | null = null;
+
+// Ссылка среди аргументов запуска. ⚠️ Берём только http/https: в argv лежат и путь к самому
+// приложению, и ключи Chromium (--user-data-dir и прочие), и принимать оттуда произвольную
+// строку как адрес — значит открывать что попало по чужой команде.
+function firstUrlFromArgv(argv: string[]): string | null {
+  for (const arg of argv.slice(1)) {
+    if (/^https?:\/\//i.test(arg)) return arg;
+  }
+  return null;
 }
 
 // t0 стартовых тайминов: фиксируем в app.whenReady, до createWindow.
@@ -380,6 +399,9 @@ function wireSharedSessions(): void {
 
   // Перехватываем все загрузки на дефолтной сессии (вкладки partition не задают). Список загрузок
   // общий для приложения — потому и рассылка во все окна, а не пуш в одно.
+  // Поведение сохранения из настроек — до первой загрузки, иначе первый же файл ушёл бы по
+  // дефолтному правилу вместо выбранного человеком.
+  downloads.setAskLocation(settings.getAskDownloadLocation());
   downloads.attach(session.defaultSession, (entries) => {
     broadcastToChrome(IPC.DOWNLOADS_CHANGED, entries);
   });
@@ -389,12 +411,18 @@ function wireSharedSessions(): void {
   // приглашение уходит в главное окно. Со вторым окном это станет заметно (запрос камеры из окна
   // B всплывёт в окне A) и чинится вместе с остальными оверлеями, когда те научатся находить
   // своё окно.
-  const onPermissionRequest = (req: PermissionRequest) => {
-    // Входящий запрос разрешения занимает то же место, что FindBar — закрываем его (та же логика,
-    // что раньше жила в App.tsx::onPermissionRequest, до переезда FindBar в отдельную WebContentsView).
-    mainTabs?.stopFind();
-    closeFindBar(mainWin);
-    mainChromeView?.webContents.send(IPC.PERMISSION_REQUEST, req);
+  const onPermissionRequest = (req: PermissionRequest, requesterWcId: number | null) => {
+    // ⚠️ Окно ищем по САМОЙ странице-просителю, а не берём главное: запрос камеры из второго
+    // окна раньше всплывал в первом — человек видел вопрос там, где ничего не нажимал.
+    const owner = requesterWcId === null
+      ? null
+      : allContexts().find((c) => c.tabs.ownsWebContents(requesterWcId)) ?? null;
+    const win = owner?.win ?? mainWin;
+    if (!win) return;
+    // FindBar живёт в том же углу контентной зоны — двум оверлеям там тесно.
+    owner?.tabs.stopFind();
+    closeFindBar(win);
+    showPermissionRequest(win, req);
   };
   permissions.attach(session.defaultSession, onPermissionRequest);
 
@@ -586,6 +614,7 @@ function createWindow(role: WindowRole = 'main') {
         tabs: tabsSnapshot,
         nodes: tabs.sidebarNodesSnapshot(),
         hasOrganizeSnapshot: tabs.hasOrganizeSnapshot(),
+        hasRenameSnapshot: tabs.hasRenameSnapshot(),
       });
       // Тот же снапшот — источник правды для привязки чата AI-панели к вкладке (переключение/
       // закрытие/смена URL), без новых колбэков в TabManager.ts (см. AiPanelManager.ts). Не во
@@ -610,7 +639,12 @@ function createWindow(role: WindowRole = 'main') {
     // результата и что открывает/закрывает панель.
     (r: FindResult) => sendFindResult(win, r),
     ()              => { if (win && tabs?.getActiveWebContents()) showFindBar(win); }, // Ctrl+F: не открываем на хабе (getActiveWebContents()===null)
-    ()              => { tabs?.stopFind(); closeFindBar(win); tabs?.focusActiveView(); }, // Esc-на-странице/did-navigate — вернуть OS-фокус, иначе Ctrl+F повторно не долетит
+    ()              => {
+      tabs?.stopFind(); closeFindBar(win); tabs?.focusActiveView(); // Esc-на-странице/did-navigate — вернуть OS-фокус, иначе Ctrl+F повторно не долетит
+      // Ушли со страницы (или нажали Esc) — её вопрос про камеру больше не актуален. Молча
+      // убрать карточку нельзя: колбэк Chromium останется висеть, поэтому отвечаем «нет».
+      if (win) for (const id of dropPermissionRequests(win)) permissions.cancel(id);
+    },
     ()              => chromeView?.webContents.send(IPC.OMNIBOX_FOCUS),
     ()              => chromeView?.webContents.focus(),
     (url, title, wc) => {
@@ -644,6 +678,8 @@ function createWindow(role: WindowRole = 'main') {
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
       closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover();
+      // Вопрос о разрешении привязан к конкретной странице — над чужой вкладкой ему не место.
+      if (win) for (const id of dropPermissionRequests(win)) permissions.cancel(id);
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
       // её текущее состояние (или null) при каждом реальном переключении.
       passwordAutofill.onActiveTabChanged(win);
@@ -860,6 +896,14 @@ function createWindow(role: WindowRole = 'main') {
   // «создать здесь и перенести»: промежуточная вкладка мелькнула бы в этом окне и успела бы
   // попасть в его дерево и автосейв.
   tabs.setOnOpenInNewWindow((url) => { createWindow('light').tabs.createTab(url); });
+  // Ctrl+Shift+M — вернуть активную вкладку в другое окно. Цель выбираем сами: из лёгкого окна
+  // это всегда главное (обратный жест к «вытащил по ошибке»), из главного — единственное лёгкое,
+  // если оно одно. Когда лёгких несколько, гадать не нужно — для выбора есть меню.
+  tabs.setOnReturnTab((tabId) => {
+    const others = allContexts().filter((c) => c.win.id !== win?.id && !c.win.isDestroyed());
+    const target = others.find((c) => c.role === 'main') ?? (others.length === 1 ? others[0] : null);
+    if (target && tabs) moveTabToExistingWindow(tabs, tabId, target.win.id);
+  });
   // ⚠️ Быстрый поиск (Ctrl+E) регистрируем только у полного окна: сам поповер — служба-одиночка,
   // и найденное он открывает через setOnQuickOpen, который принадлежит полному окну. В лёгком
   // окне колбэк просто не назначен, и хоткей молча ничего не делает (см. onQuickSearchCb?.()).
@@ -1046,7 +1090,7 @@ function createWindow(role: WindowRole = 'main') {
   });
 
   // Хоткеи для хром-слоя (хаб, омнибокс). Вкладки получают их через wirePageEvents.
-  tabs.registerHotkeyHandler(chromeView.webContents);
+  tabs.registerHotkeyHandler(chromeView.webContents, 'chrome');
 
   // Таймер окна: did-finish-load chromeView = React-UI загружен и отрисован.
   chromeView.webContents.once('did-finish-load', () => {
@@ -1085,6 +1129,7 @@ function createWindow(role: WindowRole = 'main') {
   // Возврат стоит ДО подписок на закрытие ниже только ради читаемости — они уже навешены выше.
   win.on('closed', () => {
     console.log(`[shutdown] win closed (${role}): обнуляю вкладки окна`);
+    tabs?.dispose(); // снять таймер сна — он переживает окно и ходил бы по мёртвому менеджеру
     tabs = null;
     // Запасные ссылки на главное окно снимаем только вместе с ним самим — иначе закрытие
     // лёгкого окна оставило бы приложение без адресата для отправителей вне реестра.
@@ -1107,6 +1152,87 @@ function moveTabToNewWindow(from: TabManager, tabId: string): boolean {
     (detached.view.webContents as unknown as { close?: () => void }).close?.();
   }
   return false;
+}
+
+// Обратный жест: вернуть вкладку в УЖЕ ОТКРЫТОЕ окно. Нужен, потому что вытащить вкладку легко
+// (и легко случайно), а вернуть было нечем — оставалось закрыть окно вместе со страницей.
+// Тот же порядок, что при выносе: сначала снять, потом отдать.
+function moveTabToExistingWindow(from: TabManager, tabId: string, targetWindowId: number): boolean {
+  const target = allContexts().find((c) => c.win.id === targetWindowId && !c.win.isDestroyed());
+  if (!target || target.tabs === from) return false;
+  const detached = from.detachTabForMove(tabId);
+  if (!detached) return false;
+  if (!target.tabs.adoptTab(detached)) {
+    if (detached.kind === 'live' && !detached.view.webContents.isDestroyed()) {
+      (detached.view.webContents as unknown as { close?: () => void }).close?.();
+    }
+    return false;
+  }
+  // Окно-приёмник поднимаем: вкладка уехала туда, и смотреть человеку теперь надо туда же.
+  if (target.win.isMinimized()) target.win.restore();
+  target.win.focus();
+  console.log(`[window] вкладка переехала в окно ${target.win.id} (${target.role})`);
+  closeIfEmptyLight(from);
+  return true;
+}
+
+// Запуск переименования из меню.
+//
+// ⚠️ Ход работы показываем ПОДПИСЬЮ САМОЙ ВКЛАДКИ, а не тостом: прогон Qwen занимает секунды,
+// молчащий пункт меню в это время выглядит как «ничего не произошло», а отдельной системы
+// уведомлений в чроме нет — заводить её ради одного сообщения дороже, чем сказать то же самое
+// в том месте, куда человек и так смотрит.
+async function renameTabSmart(tabs: TabManager, tabId: string): Promise<void> {
+  const before = tabs.snapshot().find((t) => t.id === tabId);
+  if (!before) return;
+  tabs.setAiTitle(tabId, 'Придумываю название…');
+
+  const res = await suggestTabTitle(tabs.getWebContentsForTab(tabId), before.title, before.url);
+
+  // ⚠️ За время прогона человек мог уйти на другую страницу — did-navigate уже снял временную
+  // подпись, и ставить готовое имя поверх новой страницы значило бы соврать. Сверяем адрес.
+  const after = tabs.snapshot().find((t) => t.id === tabId);
+  if (!after || after.url !== before.url) return;
+
+  tabs.setAiTitle(tabId, res.ok ? res.title : null);
+  if (!res.ok) console.warn(`[rename] не вышло: ${res.error}`);
+}
+
+// Пункты «вернуть вкладку в другое окно» для ПКМ-меню. Одно чужое окно — одна прямая команда;
+// несколько — подменю со списком. Главное окно называем главным, а не по заголовку страницы:
+// заголовок меняется от вкладки к вкладке, а «главное» — устойчивый ориентир.
+function buildMoveToWindowItems(
+  win: BrowserWindow, from: TabManager, tabId: string, enabled: boolean,
+): MenuItemConstructorOptions[] {
+  const others = allContexts().filter((c) => c.win.id !== win.id && !c.win.isDestroyed());
+  if (others.length === 0) return [];
+  const nameOf = (c: { role: WindowRole; win: BrowserWindow }, i: number): string =>
+    c.role === 'main' ? 'главное окно' : `окно ${i + 1}`;
+  if (others.length === 1) {
+    return [{
+      label: `Вернуть в ${nameOf(others[0], 0)}`,
+      enabled,
+      click: () => { moveTabToExistingWindow(from, tabId, others[0].win.id); },
+    }];
+  }
+  return [{
+    label: 'Перенести в окно',
+    enabled,
+    submenu: others.map((c, i) => ({
+      label: nameOf(c, i),
+      click: () => { moveTabToExistingWindow(from, tabId, c.win.id); },
+    })),
+  }];
+}
+
+// Лёгкое окно, из которого унесли последнюю страницу, закрываем: пустое окно с одним хабом на
+// экране — мусор, которого никто не просил (так же ведёт себя Chrome). Полное окно не трогаем
+// НИКОГДА: оно владеет сессией, и его закрытие — это выход из приложения.
+function closeIfEmptyLight(from: TabManager): void {
+  const ctx = allContexts().find((c) => c.tabs === from);
+  if (!ctx || ctx.role !== 'light' || ctx.win.isDestroyed()) return;
+  if (ctx.tabs.snapshot().some((t) => !t.isHub)) return;
+  ctx.win.close();
 }
 
 // VPN, шаг 3 — единственное место, которое решает, куда идёт ВЕСЬ трафик вкладок
@@ -1172,6 +1298,7 @@ function registerIpc() {
     tabs:  tabsOf(e)?.snapshot()              ?? [],
     nodes: tabsOf(e)?.sidebarNodesSnapshot() ?? [],
     hasOrganizeSnapshot: tabsOf(e)?.hasOrganizeSnapshot() ?? false,
+    hasRenameSnapshot: tabsOf(e)?.hasRenameSnapshot() ?? false,
   }));
   ipcMain.handle(IPC.TABS_GET_ALL, (e) => tabsOf(e)?.snapshot() ?? []);
   // Тема chrome (light/dark + инкогнито) от главного рендерера → раскидываем во все наши вью.
@@ -1196,6 +1323,7 @@ function registerIpc() {
     if (fbWin) {
       syncFindBarBounds(fbWin, b);
       syncDropZoneBounds(fbWin, b); // та же геометрия — зоны дропа рисуются ровно по контенту
+      syncPermissionPopoverBounds(fbWin, b); // и запрос разрешения — он тоже привязан к контенту
     }
     syncSearchPopoverBounds(b); // тот же сентинел нулевых bounds — прячем поповер вместе с контентом
   });
@@ -1281,10 +1409,14 @@ function registerIpc() {
   // оставалось бы пустое окно, которого никто не просил.
   // Перетаскивание вкладки: зоны поверх страницы + слежение за курсором (см. DropZoneManager.ts).
   ipcMain.handle(IPC.TAB_DRAG_START, (e) => { const w = winOf(e); if (w) startTabDrag(w); });
-  ipcMain.handle(IPC.TAB_DRAG_END, (e) => { const w = winOf(e); return w ? endTabDrag(w) : null; });
+  ipcMain.handle(IPC.TAB_DRAG_END, (e) => { const w = winOf(e); return w ? endTabDrag(w) : { zone: null }; });
   ipcMain.handle(IPC.WINDOW_MOVE_TAB, (e, tabId: string) => {
     const from = tabsOf(e);
     return from ? moveTabToNewWindow(from, tabId) : false;
+  });
+  ipcMain.handle(IPC.WINDOW_MOVE_TAB_TO, (e, tabId: string, windowId: number) => {
+    const from = tabsOf(e);
+    return from ? moveTabToExistingWindow(from, tabId, windowId) : false;
   });
   ipcMain.handle(IPC.FIND_START, (e, q: string, fwd: boolean) => tabsOf(e)?.findInPage(q, fwd));
   ipcMain.handle(IPC.FIND_NEXT,  (e, fwd: boolean)            => tabsOf(e)?.findNext(fwd));
@@ -1917,15 +2049,32 @@ function registerIpc() {
     if (result.bookmarks) broadcastToChrome(IPC.BOOKMARK_CHANGED);
     return result;
   });
-  ipcMain.handle(IPC.IMPORT_SHOULD_OFFER, () =>
-    !settings.getImportOffered() && importManager.listSources().length > 0);
-  ipcMain.handle(IPC.IMPORT_MARK_OFFERED, () => { settings.setImportOffered(); });
+  // ⚠️ Наличие браузеров для импорта здесь БОЛЬШЕ НЕ ПРОВЕРЯЕТСЯ: раньше экран первого запуска
+  // был только предложением импорта, и без источников показывать было нечего. Теперь это ещё и
+  // рассказ о браузере — он нужен и тому, у кого переносить нечего (шаг переноса в этом случае
+  // сам скажет, что источников не нашлось).
+  ipcMain.handle(IPC.DOWNLOADS_GET_ASK_LOCATION, () => settings.getAskDownloadLocation());
+  ipcMain.handle(IPC.DOWNLOADS_SET_ASK_LOCATION, (_e, value: boolean) => {
+    settings.setAskDownloadLocation(value);
+    downloads.setAskLocation(value);
+  });
 
-  // Разрешения сайтов
+  ipcMain.handle(IPC.DEFAULT_BROWSER_IS, () => isDefaultBrowser());
+  ipcMain.handle(IPC.DEFAULT_BROWSER_REQUEST, () => requestDefaultBrowser());
+
+  ipcMain.handle(IPC.ONBOARDING_SHOULD_SHOW, () => !settings.getImportOffered());
+  ipcMain.handle(IPC.ONBOARDING_MARK_SHOWN, () => { settings.setImportOffered(); });
+
+  // Разрешения сайтов. Ответ приходит из вью поповера (preload-permissionpopover.ts); после
+  // него снимаем вопрос с очереди — там может ждать следующий (сайт умеет попросить камеру и
+  // геолокацию подряд).
   ipcMain.handle(IPC.PERMISSION_RESPONSE,
-    (_e, requestId: string, granted: boolean, remember: boolean) =>
-      permissions.respond(requestId, granted, remember),
+    (_e, requestId: string, granted: boolean, remember: boolean) => {
+      permissions.respond(requestId, granted, remember);
+      permissionAnswered(requestId);
+    },
   );
+  ipcMain.on('permission-popover:height', (e, px: number) => setPermissionPopoverHeight(e.sender, px));
 
   // Загрузки
   ipcMain.handle(IPC.DOWNLOADS_GET_ALL,    ()               => downloads.getAll());
@@ -1941,6 +2090,37 @@ function registerIpc() {
   ipcMain.handle(IPC.TABS_ORGANIZE_APPLY,    (e, clusters: OrganizeCluster[]) => tabsOf(e)?.applyOrganize(clusters));
   ipcMain.handle(IPC.TABS_ORGANIZE_ROLLBACK, (e)                                => tabsOf(e)?.rollbackOrganize());
   ipcMain.handle(IPC.TABS_SUGGEST_GROUPS,    ()                                => suggestGroups());
+  ipcMain.handle(IPC.TABS_RENAME_ROLLBACK,   (e)                               => tabsOf(e)?.rollbackRenames());
+  // Массовое переименование — вторая половина «навести порядок».
+  //
+  // ⚠️ Строго ПОСЛЕДОВАТЕЛЬНО и без параллелизма: у node-llama-cpp один контекст на приложение,
+  // и TranslationService всё равно сериализует входы своей очередью (тот же довод, что у
+  // GraphEngine). Каждое готовое имя ставится сразу — список приводится в порядок на глазах,
+  // а не рывком в конце; при двадцати вкладках это разница между «работает» и «завис».
+  ipcMain.handle(IPC.TABS_RENAME_ALL, async (e) => {
+    const t = tabsOf(e);
+    const ctx = contextFromSender(e.sender);
+    if (!t) return;
+    const ids = t.renamableTabIds();
+    if (ids.length === 0) return;
+    t.beginRenameBatch(ids);
+
+    const progress = (done: number) => {
+      const wc = ctx?.chromeView.webContents;
+      if (wc && !wc.isDestroyed()) wc.send(IPC.TABS_RENAME_PROGRESS, { done, total: ids.length });
+    };
+    progress(0);
+
+    for (const [i, id] of ids.entries()) {
+      const src = t.renameSourceFor(id);
+      // Вкладку могли закрыть, пока очередь дошла до неё, — это норма, а не сбой.
+      if (src) {
+        const res = await suggestTabTitle(src.wc, src.title, src.url);
+        if (res.ok) t.setAiTitle(id, res.title);
+      }
+      progress(i + 1);
+    }
+  });
 
   // Правая AI-панель (см. AiPanelManager.ts)
   ipcMain.handle(IPC.AI_PANEL_TOGGLE, (e) => {
@@ -1987,6 +2167,20 @@ function registerIpc() {
         enabled: state !== undefined && state.splitSide === null,
         click: () => { void moveTabToNewWindow(t, id); },
       },
+      // Обратный жест. Пункт появляется, только когда есть куда переносить: в единственном окне
+      // он был бы вечно серым и лишь занимал место. Пока окон два (обычный случай) — это прямая
+      // команда без подменю, потому что выбирать не из чего.
+      ...buildMoveToWindowItems(w, t, id, state !== undefined && state.splitSide === null),
+      // Умное имя. Живой странице есть что читать; у спящей и псевдо-вкладок содержимого нет.
+      {
+        label: t.getAiTitle(id) ? 'Придумать название заново' : 'Придумать название по смыслу',
+        enabled: t.getWebContentsForTab(id) !== null,
+        click: () => { void renameTabSmart(t, id); },
+      },
+      ...(t.getAiTitle(id) ? [{
+        label: 'Вернуть заголовок страницы',
+        click: () => t.setAiTitle(id, null),
+      }] : []),
       ...(toGraph ? [toGraph] : []),
       { type: 'separator' },
     ];
@@ -2192,6 +2386,38 @@ app.on('web-contents-created', (_e, contents) => {
   contents.on('did-finish-load', () => applyChromeThemeTo(contents));
 });
 
+// ── Одна копия на профиль ──────────────────────────────────────────────────────
+//
+// ⚠️ Обязательно именно для роли браузера по умолчанию: система запускает нас заново на КАЖДУЮ
+// открытую ссылку. Без замка это был бы второй процесс на том же userData — два владельца
+// session.json и открытых SQLite-баз разом, то есть прямая дорога к потере вкладок и битым
+// файлам. Со замком второй запуск умирает сразу, передав адрес уже работающему окну.
+//
+// Исключение — изолированные тестовые стенды (OBLAKO_*_TEST): они намеренно живут отдельно и
+// боевого профиля не касаются.
+const singleInstance = LLAMA_TEST || TRANSLATE_TEST || app.requestSingleInstanceLock();
+if (!singleInstance) {
+  app.quit();
+} else {
+
+// Ссылка из другого приложения при УЖЕ запущенном браузере: открываем вкладку и поднимаем окно.
+app.on('second-instance', (_e, argv) => {
+  const url = firstUrlFromArgv(argv);
+  const ctx = mainContext() ?? allContexts()[0];
+  if (!ctx) return;
+  if (ctx.win.isMinimized()) ctx.win.restore();
+  ctx.win.focus();
+  if (url) ctx.tabs.createTab(url);
+});
+
+// macOS отдаёт ссылки не аргументом, а событием. Пути расходятся только здесь.
+app.on('open-url', (e, url) => {
+  e.preventDefault();
+  const ctx = mainContext() ?? allContexts()[0];
+  if (ctx) ctx.tabs.createTab(url);
+  else pendingStartUrl = url;
+});
+
 app.whenReady().then(async () => {
   startT0 = Date.now();
   // Заставка — САМОЕ первое, что делаем: она закрывает паузу между кликом по ярлыку и
@@ -2299,10 +2525,19 @@ app.whenReady().then(async () => {
 
   createWindow();
 
+  // Холодный старт по ссылке (кликнули по ссылке в почте, браузер ещё не запущен): адрес
+  // приезжает аргументом командной строки. Открываем ПОСЛЕ восстановления сессии — иначе
+  // вкладка-гостья появилась бы раньше, чем вернулись свои, и осталась бы в конце списка.
+  const startUrl = pendingStartUrl ?? firstUrlFromArgv(process.argv);
+  pendingStartUrl = null;
+  if (startUrl) mainTabs?.createTab(startUrl);
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+} // конец ветки single-instance
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

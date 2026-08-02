@@ -159,6 +159,7 @@ export interface SyncState {
   tabs: TabState[];
   nodes: SidebarNode[];
   hasOrganizeSnapshot: boolean; // true = доступен откат последней AI-группировки
+  hasRenameSnapshot: boolean;   // true = доступен откат последнего массового переименования
 }
 
 // Один предложенный кластер от TabOrganizer.ts → TabManager.applyOrganize().
@@ -230,6 +231,10 @@ export const IPC = {
   // Перенести вкладку в новое окно: живая страница уезжает целиком (история «назад», прокрутка,
   // введённое в форму), а не открывается заново по адресу. См. TabManager.detachTabForMove.
   WINDOW_MOVE_TAB: 'window:move-tab',
+  // Обратный жест: вернуть вкладку в УЖЕ ОТКРЫТОЕ окно (перетаскиванием на него, пунктом меню
+  // «Вернуть в главное окно», хоткеем). Без него вытащенное по ошибке окно можно было только
+  // закрыть, потеряв страницу.
+  WINDOW_MOVE_TAB_TO: 'window:move-tab-to',
   // Перетаскивание вкладки: показать/убрать зоны дропа поверх страницы. Конец возвращает зону,
   // в которой отпустили, — по ней сайдбар и решает, что сделать (см. TabDropZone).
   TAB_DRAG_START: 'tab:drag-start',
@@ -367,12 +372,27 @@ export const IPC = {
   // выбором пользователя, что переносить (диалог импорта + онбординг первого запуска).
   IMPORT_LIST_SOURCES: 'import:list-sources', // renderer → main: ImportSource[] (браузер+профиль + доступные типы)
   IMPORT_RUN:          'import:run',          // renderer → main: (sourceId, dataTypes[]) -> ImportRunResult
-  IMPORT_SHOULD_OFFER: 'import:should-offer', // renderer → main: показать ли онбординг импорта на этом старте
-  IMPORT_MARK_OFFERED: 'import:mark-offered', // renderer → main: пометить, что предложение импорта уже показано
+  // Браузер по умолчанию (см. electron/DefaultBrowser.ts). ⚠️ Назначить себя программно нельзя —
+  // REQUEST только открывает системный выбор, решение принимает человек.
+  // Спрашивать ли папку для каждой загрузки (по умолчанию нет, см. electron/DownloadManager.ts).
+  DOWNLOADS_GET_ASK_LOCATION: 'downloads:get-ask-location',
+  DOWNLOADS_SET_ASK_LOCATION: 'downloads:set-ask-location',
 
-  // Разрешения сайтов
-  PERMISSION_REQUEST:  'permission:request',    // main → renderer: входящий запрос (PermissionRequest)
-  PERMISSION_RESPONSE: 'permission:response',   // renderer → main: ответ пользователя (requestId, granted, remember)
+  DEFAULT_BROWSER_IS: 'default-browser:is',
+  DEFAULT_BROWSER_REQUEST: 'default-browser:request',
+
+  // Экран первого запуска (рассказ о браузере + перенос данных, см. src/components/Onboarding.tsx).
+  // ⚠️ Показывается независимо от того, нашлись ли браузеры для импорта: рассказ нужен и тому, у
+  // кого переносить нечего. Флаг на диске по-прежнему зовётся importOffered — переименовывать поле
+  // значило бы городить миграцию settings.json ради названия.
+  ONBOARDING_SHOULD_SHOW: 'onboarding:should-show', // renderer → main: первый ли это запуск
+  ONBOARDING_MARK_SHOWN: 'onboarding:mark-shown',   // renderer → main: экран показан, больше не предлагать
+
+  // Разрешения сайтов. Сам вопрос в хром больше НЕ уходит — его рисует своя WebContentsView
+  // (electron/PermissionPopoverManager.ts), и канал показа у неё свой, маленький
+  // (permission-popover:request), как у findbar/translate-popover. Ответ остался общим каналом:
+  // труба разрешений не менялась, поменялась только вью, в которой задают вопрос.
+  PERMISSION_RESPONSE: 'permission:response',   // поповер → main: ответ пользователя (requestId, granted, remember)
 
   // Загрузки
   DOWNLOADS_GET_ALL:    'downloads:get-all',    // renderer → main: текущий список
@@ -389,6 +409,12 @@ export const IPC = {
   // AI-группировка вкладок (Phase 4)
   TABS_ORGANIZE_APPLY:    'tabs:organize-apply',    // renderer → main: OrganizeCluster[] → сгруппировать
   TABS_ORGANIZE_ROLLBACK: 'tabs:organize-rollback', // renderer → main: откатить последнюю группировку
+  // Массовое переименование — вторая половина «навести порядок». Имена приезжают в UI по одному
+  // обычным SYNC_CHANGED (человек видит, как список приводится в порядок), поэтому канал ничего
+  // не возвращает кроме факта завершения.
+  TABS_RENAME_ALL:      'tabs:rename-all',      // renderer → main: придумать имена всем вкладкам
+  TABS_RENAME_ROLLBACK: 'tabs:rename-rollback', // renderer → main: вернуть прежние названия
+  TABS_RENAME_PROGRESS: 'tabs:rename-progress', // main → renderer: { done, total } для индикатора
   TABS_SUGGEST_GROUPS:    'tabs:suggest-groups',    // renderer → main: TabOrganizer.ts::suggestGroups() → OrganizeProposal
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
@@ -1320,10 +1346,23 @@ export interface CurrencyRatesInfo {
 // поиск по странице, пароли/автозаполнение.
 export type WindowRole = 'main' | 'light';
 
-// Куда попадёт вкладка, если отпустить её сейчас: край страницы — разделить экран, середина или
-// вообще вне окна — новое окно, null — обычное переупорядочивание в сайдбаре. Считает MAIN
-// (см. electron/DropZoneManager.ts): чром теряет указатель, как только тот уходит на страницу.
-export type TabDropZone = 'split' | 'window';
+// Чем закончилась просьба «сделай нас браузером по умолчанию»: 'already' — уже мы,
+// 'settings-opened' — открыт системный выбор и слово за человеком, 'unsupported' — просить
+// негде (не Windows или неупакованная сборка). См. electron/DefaultBrowser.ts.
+export type DefaultBrowserRequest = 'already' | 'settings-opened' | 'unsupported';
+
+// Куда попадёт вкладка, если отпустить её сейчас: край страницы — разделить экран, середина —
+// новое окно, 'adopt' — курсор над ДРУГИМ окном Oblako, вкладка переедет туда, null — обычное
+// переупорядочивание в сайдбаре. Считает MAIN (см. electron/DropZoneManager.ts): чром теряет
+// указатель, как только тот уходит на страницу.
+export type TabDropZone = 'split' | 'window' | 'adopt';
+
+// Результат отпускания. windowId нужен только для 'adopt' — какое именно окно принимает вкладку;
+// одной зоны мало, окон может быть сколько угодно.
+export interface TabDropResult {
+  zone: TabDropZone | null;
+  windowId?: number;
+}
 
 export interface OblakoApi {
   // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).
@@ -1356,9 +1395,11 @@ export interface OblakoApi {
   openWindow(): Promise<void>;
   // Перенести вкладку в новое окно (ПКМ по вкладке, вытаскивание из сайдбара).
   moveTabToNewWindow(tabId: string): Promise<boolean>;
+  // Вернуть вкладку в уже открытое окно — обратный жест к moveTabToNewWindow.
+  moveTabToWindow(tabId: string, windowId: number): Promise<boolean>;
   // Перетаскивание вкладки в сайдбаре — см. IPC.TAB_DRAG_START/TAB_DRAG_END.
   tabDragStart(): Promise<void>;
-  tabDragEnd(): Promise<TabDropZone | null>;
+  tabDragEnd(): Promise<TabDropResult>;
   // Сигнал «оболочка отрисована» — main показывает скрытое до этого окно (см. IPC.CHROME_UI_READY).
   chromeUiReady(): void;
   onTabsChanged(cb: (tabs: TabState[]) => void): () => void; // вернёт unsubscribe
@@ -1444,9 +1485,24 @@ export interface OblakoApi {
   // запуска (см. electron/browserImport/). Отдельно от bookmark-only каналов выше.
   listImportSources(): Promise<ImportSource[]>;
   runImport(sourceId: string, dataTypes: ImportDataType[]): Promise<ImportRunResult>;
-  // Онбординг: показывать ли предложение импорта на этом старте (первый запуск + есть источники).
-  shouldOfferImport(): Promise<boolean>;
-  markImportOffered(): Promise<void>;
+  // «Навести порядок», вторая половина: имена вкладок по содержимому. Прогресс приходит
+  // отдельным push'ем, сами имена — обычным SYNC_CHANGED по мере готовности.
+  renameAllTabs(): Promise<void>;
+  rollbackRenames(): Promise<void>;
+  onRenameProgress(cb: (p: { done: number; total: number }) => void): () => void;
+
+  // Экран первого запуска (см. ONBOARDING_SHOULD_SHOW): рассказ о браузере и перенос данных.
+  shouldShowOnboarding(): Promise<boolean>;
+  markOnboardingShown(): Promise<void>;
+
+  // Спрашивать ли, куда сохранять каждый файл.
+  getAskDownloadLocation(): Promise<boolean>;
+  setAskDownloadLocation(value: boolean): Promise<void>;
+
+  // Браузер по умолчанию. requestDefaultBrowser открывает системный выбор и возвращает, что
+  // именно произошло, — назначить себя молча Windows не даёт (см. electron/DefaultBrowser.ts).
+  isDefaultBrowser(): Promise<boolean>;
+  requestDefaultBrowser(): Promise<DefaultBrowserRequest>;
 
   // Индикатор качества индекса умного поиска — сколько страниц реально имеют извлечённый текст.
   getHistoryContentCoverage(): Promise<HistoryContentCoverage>;
@@ -1459,9 +1515,8 @@ export interface OblakoApi {
   getHistoryContentBackfillStatus(): Promise<BackfillProgress>;
   onHistoryContentBackfillProgress(cb: (p: BackfillProgress) => void): () => void;
 
-  // Разрешения сайтов
-  respondPermission(requestId: string, granted: boolean, remember: boolean): Promise<void>;
-  onPermissionRequest(cb: (req: PermissionRequest) => void): () => void;
+  // Разрешений здесь нет: и вопрос, и ответ живут в собственной вью поповера
+  // (electron/PermissionPopoverManager.ts + preload-permissionpopover.ts).
 
   // Загрузки
   getDownloads(): Promise<DownloadEntry[]>;

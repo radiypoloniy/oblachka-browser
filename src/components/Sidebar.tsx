@@ -14,7 +14,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropZone } from '../../shared/ipc';
+import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropResult } from '../../shared/ipc';
 
 // Стабильный id droppable-контейнера секции «Открытые вкладки».
 const SECTION_NORMAL_ID = 'drop-section-normal';
@@ -75,10 +75,17 @@ interface SidebarProps {
   organizeLongWait: boolean;
   organizeProposal: ClusterProposal[];
   hasOrganizeSnapshot: boolean;
+  hasRenameSnapshot: boolean;
+  // Сколько имён придумано из скольких; null — переименование не идёт.
+  renameProgress: { done: number; total: number } | null;
+  undoDismissed: boolean;
   onOrganize: () => void;
   onOrganizeApply: () => void;
   onOrganizeCancel: () => void;
   onOrganizeRollback: () => void;
+  onRenameRollback: () => void;
+  onRollbackAll: () => void;
+  onDismissUndo: () => void;
 }
 
 export function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
@@ -1060,13 +1067,38 @@ const floatingIconBtn: React.CSSProperties = {
   display: 'inline-flex',
 };
 
+// Кнопка отката одного вида изменений. Подпись строится как «Вернуть …»: три отдельные
+// формулировки в ряд читались бы длиннее, чем сама полоса вкладок.
+function UndoChip({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      className="no-drag"
+      onClick={onClick}
+      title={`Вернуть ${label}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        border: 'none', background: 'var(--surface-sunken)', cursor: 'default',
+        padding: '3px 8px', borderRadius: 'var(--radius-pill)',
+        color: 'var(--text-body)', fontSize: 'var(--fs-xs)',
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-active)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+    >
+      <RotateCcw size={10} />
+      {label}
+    </button>
+  );
+}
+
 export default function Sidebar({
   tabs, sidebarNodes, activeId, collapsed, onCollapsedChange,
   onSelect, onClose, onNewTab, onNewTabMenu, onTabMenu, onSplit, onExitSplit,
   onSettings, onHistory, onReorder, onMoveSection,
   onDropOnContent,
   organizeTabsCount, organizeState, organizeLongWait, organizeProposal,
-  hasOrganizeSnapshot, onOrganize, onOrganizeApply, onOrganizeCancel, onOrganizeRollback,
+  hasOrganizeSnapshot, hasRenameSnapshot, renameProgress, undoDismissed,
+  onOrganize, onOrganizeApply, onOrganizeCancel, onOrganizeRollback,
+  onRenameRollback, onRollbackAll, onDismissUndo,
 }: SidebarProps) {
 
   // Оптимистичный порядок: применяется сразу при drop, до ответа main.
@@ -1206,21 +1238,21 @@ export default function Sidebar({
   // движение мыши, а подсветка «бросить сюда» — залипать.
   // Хвост любого драга: убрать зоны и вернуть последнюю — main считает её по реальному курсору.
   // Зовётся и в конце, и в ОТМЕНЕ (Esc, потеря указателя), иначе зоны остались бы висеть.
-  const finishDrag = (): Promise<TabDropZone | null> => {
+  const finishDrag = (): Promise<TabDropResult> => {
     setDragActiveId(null);
-    return window.oblako.tabDragEnd().catch(() => null);
+    return window.oblako.tabDragEnd().catch(() => ({ zone: null }));
   };
 
   // Зону, в которой отпустили, знает main (см. finishDrag) — поэтому решение асинхронное.
   // Задержка на один вызов IPC на глаз незаметна: вкладка в этот момент и так уже отпущена.
   const handleDragEnd = (e: DragEndEvent) => {
     void (async () => {
-      const zone = await finishDrag();
-      applyDrop(e, zone);
+      const drop = await finishDrag();
+      applyDrop(e, drop);
     })();
   };
 
-  const applyDrop = (e: DragEndEvent, zone: TabDropZone | null) => {
+  const applyDrop = (e: DragEndEvent, { zone, windowId }: TabDropResult) => {
     const draggedId = e.active.id as string;
     const draggedTab = draggedId.startsWith('group:') ? undefined : tabs.find((t) => t.id === draggedId);
     // Группу и участника split не выносим: у первой нет одной страницы, второй увёл бы за собой
@@ -1231,6 +1263,12 @@ export default function Sidebar({
     // весь экран окно: выйти за его край там некуда, поэтому жест не должен зависеть от границы.
     if (zone === 'window' && canDetach) {
       void window.oblako.moveTabToNewWindow(draggedId);
+      return;
+    }
+    // Отпустили над ДРУГИМ окном Oblako — вкладка переезжает в него. Это обратный жест к
+    // выносу: вытащенное по ошибке окно возвращается перетаскиванием, а не только закрытием.
+    if (zone === 'adopt' && windowId !== undefined && canDetach) {
+      void window.oblako.moveTabToWindow(draggedId, windowId);
       return;
     }
     applyDragEnd(e, zone === 'split');
@@ -1756,34 +1794,64 @@ export default function Sidebar({
         </button>
       )}
 
-      {/* ── Баннер отката: показываем после применения, пока нет ручных изменений ── */}
-      {organizeState === 'idle' && hasOrganizeSnapshot && (
+      {/* ── Идёт переименование: видно, что порядок наводится, и сколько осталось ── */}
+      {renameProgress && (
         <div className="no-drag" style={{
           display: 'flex', alignItems: 'center', gap: 8, marginTop: 4,
-          padding: '6px 10px',
+          padding: '6px 10px', background: 'var(--surface-hover)',
+          borderRadius: 'var(--radius-sm)', border: '1px solid var(--divider-strong)',
+        }}>
+          <span style={{
+            width: 12, height: 12, flex: 'none', borderRadius: '50%',
+            border: '2px solid var(--divider-strong)', borderTopColor: 'var(--accent)',
+            animation: 'oblako-spin 0.7s linear infinite',
+          }} />
+          <span style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
+            Придумываю названия… {renameProgress.done} из {renameProgress.total}
+          </span>
+        </div>
+      )}
+
+      {/* ── Баннер отката. Показывается после «навести порядок» и гаснет сам через 15 секунд
+             (см. App.tsx): раньше он висел до первого ручного изменения, то есть в спокойном
+             сеансе — бесконечно. Откаты раздельные: человеку может понравиться раскладка по
+             группам, но не понравиться новые названия. ── */}
+      {organizeState === 'idle' && !renameProgress && !undoDismissed
+        && (hasOrganizeSnapshot || hasRenameSnapshot) && (
+        <div className="no-drag" style={{
+          display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4,
+          padding: '8px 10px',
           background: 'var(--surface-hover)',
           borderRadius: 'var(--radius-sm)',
           border: '1px solid var(--divider-strong)',
         }}>
-          <span style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
-            Вкладки сгруппированы
-          </span>
-          <button
-            className="no-drag"
-            onClick={onOrganizeRollback}
-            title="Вернуть прежний порядок"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              border: 'none', background: 'transparent', cursor: 'default',
-              padding: '2px 6px', borderRadius: 4,
-              color: 'var(--text-body)', fontSize: 'var(--fs-xs)', fontWeight: 600,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <RotateCcw size={11} />
-            Вернуть
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
+              {hasOrganizeSnapshot && hasRenameSnapshot ? 'Порядок наведён'
+                : hasOrganizeSnapshot ? 'Вкладки сгруппированы'
+                : 'Вкладки переименованы'}
+            </span>
+            <button
+              className="no-drag"
+              onClick={onDismissUndo}
+              title="Скрыть"
+              style={{
+                border: 'none', background: 'transparent', cursor: 'default',
+                padding: 2, borderRadius: 4, color: 'var(--text-faint)', display: 'inline-flex', flex: 'none',
+              }}
+            ><X size={11} /></button>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {hasRenameSnapshot && (
+              <UndoChip label="названия" onClick={onRenameRollback} />
+            )}
+            {hasOrganizeSnapshot && (
+              <UndoChip label="группы" onClick={onOrganizeRollback} />
+            )}
+            {hasOrganizeSnapshot && hasRenameSnapshot && (
+              <UndoChip label="всё" onClick={onRollbackAll} />
+            )}
+          </div>
         </div>
       )}
 

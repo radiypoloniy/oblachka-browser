@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropZone } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type {
   GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure,
@@ -24,8 +24,10 @@ const api: OblakoApi = {
   getWindowRole: () => ipcRenderer.invoke(IPC.WINDOW_GET_ROLE) as Promise<WindowRole>,
   openWindow: () => ipcRenderer.invoke(IPC.WINDOW_OPEN) as Promise<void>,
   moveTabToNewWindow: (tabId: string) => ipcRenderer.invoke(IPC.WINDOW_MOVE_TAB, tabId) as Promise<boolean>,
+  moveTabToWindow: (tabId: string, windowId: number) =>
+    ipcRenderer.invoke(IPC.WINDOW_MOVE_TAB_TO, tabId, windowId) as Promise<boolean>,
   tabDragStart: () => ipcRenderer.invoke(IPC.TAB_DRAG_START) as Promise<void>,
-  tabDragEnd: () => ipcRenderer.invoke(IPC.TAB_DRAG_END) as Promise<TabDropZone | null>,
+  tabDragEnd: () => ipcRenderer.invoke(IPC.TAB_DRAG_END) as Promise<TabDropResult>,
   chromeUiReady: () => ipcRenderer.send(IPC.CHROME_UI_READY),
   onTabsChanged: (cb: (tabs: TabState[]) => void) => {
     const handler = (_e: unknown, tabs: TabState[]) => cb(tabs);
@@ -127,10 +129,25 @@ const api: OblakoApi = {
     ipcRenderer.invoke(IPC.IMPORT_LIST_SOURCES) as Promise<ImportSource[]>,
   runImport: (sourceId: string, dataTypes: ImportDataType[]) =>
     ipcRenderer.invoke(IPC.IMPORT_RUN, sourceId, dataTypes) as Promise<ImportRunResult>,
-  shouldOfferImport: () =>
-    ipcRenderer.invoke(IPC.IMPORT_SHOULD_OFFER) as Promise<boolean>,
-  markImportOffered: () =>
-    ipcRenderer.invoke(IPC.IMPORT_MARK_OFFERED) as Promise<void>,
+  renameAllTabs: () => ipcRenderer.invoke(IPC.TABS_RENAME_ALL) as Promise<void>,
+  rollbackRenames: () => ipcRenderer.invoke(IPC.TABS_RENAME_ROLLBACK) as Promise<void>,
+  onRenameProgress: (cb: (p: { done: number; total: number }) => void) => {
+    const handler = (_e: unknown, p: { done: number; total: number }) => cb(p);
+    ipcRenderer.on(IPC.TABS_RENAME_PROGRESS, handler);
+    return () => ipcRenderer.removeListener(IPC.TABS_RENAME_PROGRESS, handler);
+  },
+  getAskDownloadLocation: () =>
+    ipcRenderer.invoke(IPC.DOWNLOADS_GET_ASK_LOCATION) as Promise<boolean>,
+  setAskDownloadLocation: (value: boolean) =>
+    ipcRenderer.invoke(IPC.DOWNLOADS_SET_ASK_LOCATION, value) as Promise<void>,
+  isDefaultBrowser: () =>
+    ipcRenderer.invoke(IPC.DEFAULT_BROWSER_IS) as Promise<boolean>,
+  requestDefaultBrowser: () =>
+    ipcRenderer.invoke(IPC.DEFAULT_BROWSER_REQUEST) as Promise<DefaultBrowserRequest>,
+  shouldShowOnboarding: () =>
+    ipcRenderer.invoke(IPC.ONBOARDING_SHOULD_SHOW) as Promise<boolean>,
+  markOnboardingShown: () =>
+    ipcRenderer.invoke(IPC.ONBOARDING_MARK_SHOWN) as Promise<void>,
 
   getHistoryContentCoverage: () =>
     ipcRenderer.invoke(IPC.HISTORY_CONTENT_COVERAGE) as Promise<HistoryContentCoverage>,
@@ -166,14 +183,8 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.DOWNLOADS_OPEN, handler);
   },
 
-  // Разрешения сайтов
-  respondPermission: (requestId: string, granted: boolean, remember: boolean) =>
-    ipcRenderer.invoke(IPC.PERMISSION_RESPONSE, requestId, granted, remember),
-  onPermissionRequest: (cb: (req: PermissionRequest) => void) => {
-    const handler = (_e: unknown, req: PermissionRequest) => cb(req);
-    ipcRenderer.on(IPC.PERMISSION_REQUEST, handler);
-    return () => ipcRenderer.removeListener(IPC.PERMISSION_REQUEST, handler);
-  },
+  // Разрешения сайтов моста хрома БОЛЬШЕ НЕ КАСАЮТСЯ: вопрос рисует своя WebContentsView
+  // (electron/PermissionPopoverManager.ts) со своим preload — preload-permissionpopover.ts.
 
   // Атомарный снимок состояния (вкладки + узлы сайдбара в одном сообщении)
   getSyncState: () => ipcRenderer.invoke(IPC.SYNC_GET) as Promise<SyncState>,

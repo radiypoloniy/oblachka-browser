@@ -7,16 +7,13 @@ import TabError from './components/TabError';
 import Settings from './components/Settings';
 import HistoryBookmarks from './components/HistoryBookmarks';
 import ImportDialog from './components/ImportDialog';
+import Onboarding from './components/Onboarding';
 import Downloads from './components/Downloads';
-import PermissionPrompt from './components/PermissionPrompt';
 import { islandPlate } from './styles/island';
-import type { SyncState, TabState, DownloadEntry, PermissionRequest, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal } from '../shared/ipc';
+import type { SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 
 const HUB_ID = 'hub';
-
-// Резерв для inline-prompt разрешений (высота панели 56px + 8px зазор).
-const PERMISSION_PROMPT_RESERVE = 64;
 
 // «Остров» позади реальной вкладки (обычная страница/её ошибка, не hub) — та же плашка,
 // что уже рисуют History/Settings/Bookmarks под собой (radius-island/shadow-island,
@@ -125,9 +122,11 @@ export default function App() {
   // Импорт данных из другого браузера — модалка поверх всего chrome. 'manual' — открыта кнопкой
   // из настроек, 'onboarding' — авто-предложение первого запуска (мягче тон + «Пропустить»),
   // null — закрыта. См. ImportDialog.tsx / electron/browserImport/.
-  const [importDialog, setImportDialog] = useState<'manual' | 'onboarding' | null>(null);
+  const [importDialog, setImportDialog] = useState<'manual' | null>(null);
+  // Экран первого запуска — рассказ о браузере + перенос данных (см. Onboarding.tsx). Отдельно
+  // от importDialog: тот остался ручным импортом из настроек, с другим тоном и объёмом.
+  const [onboarding, setOnboarding] = useState(false);
   const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
-  const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -142,6 +141,13 @@ export default function App() {
   const [organizeState, setOrganizeState] = useState<'idle' | 'computing' | 'preview' | 'model-error'>('idle');
   const [organizeProposal, setOrganizeProposal] = useState<ClusterProposal[]>([]);
   const [hasOrganizeSnapshot, setHasOrganizeSnapshot] = useState(false);
+  const [hasRenameSnapshot, setHasRenameSnapshot] = useState(false);
+  // Сколько имён уже придумано из скольких — вторая половина «навести порядок» идёт секундами
+  // на вкладку, и без счётчика она выглядит зависанием.
+  const [renameProgress, setRenameProgress] = useState<{ done: number; total: number } | null>(null);
+  // Баннер отката человек уже видел и закрыл (или он погас сам по таймеру). Снимок в main при
+  // этом жив — но навязывать плашку до конца сеанса незачем.
+  const [undoDismissed, setUndoDismissed] = useState(false);
   // Какой текст показывать в 'computing' — спрашиваем факт (getLoadedModelId()) ДО вызова
   // suggestGroups(), а не гадаем по времени: таймер на фиксированный порог однажды дал ложное
   // срабатывание (тёплый прогон уложился в 4070мс при пороге 4000мс — сообщение о загрузке начало
@@ -189,8 +195,6 @@ export default function App() {
   // tabErrorRef нужен в pushBounds: reserve не применяем когда показана страница ошибки.
   const tabErrorRef = useRef(tabError);
   tabErrorRef.current = tabError;
-  const pendingPermissionsRef = useRef(pendingPermissions);
-  pendingPermissionsRef.current = pendingPermissions;
 
   // Реф с актуальным значением — нужен для organize (читается вне рендер-цикла, при построении
   // titles для превью из ответа suggestGroups()).
@@ -222,10 +226,10 @@ export default function App() {
   // Хаба (первый запуск = активна вкладка Хаба, контент-область не перекрыта WebContentsView).
   useEffect(() => {
     let cancelled = false;
-    void window.oblako.shouldOfferImport().then((offer) => {
-      if (cancelled || !offer) return;
-      setImportDialog('onboarding');
-      void window.oblako.markImportOffered();
+    void window.oblako.shouldShowOnboarding().then((show) => {
+      if (cancelled || !show) return;
+      setOnboarding(true);
+      void window.oblako.markOnboardingShown();
     });
     return () => { cancelled = true; };
   }, []);
@@ -252,6 +256,7 @@ export default function App() {
       setTabs(s.tabs);
       setSidebarNodes(s.nodes);
       setHasOrganizeSnapshot(s.hasOrganizeSnapshot);
+      setHasRenameSnapshot(s.hasRenameSnapshot);
       const active = s.tabs.find((x) => x.isActive);
       if (active) setActiveId(active.id);
       // Та же пара, что реально будет показана (findActiveSplitPairNode) — не первая в дереве
@@ -288,15 +293,9 @@ export default function App() {
       void (async () => { setActiveId(await window.oblako.createSpecialTab('downloads')); })();
     });
 
-    const unsubPermission = window.oblako.onPermissionRequest((req) => {
-      // FindBar на входящий запрос разрешения закрывается в main (см. permissions.attach в
-      // main.ts) — та же логика, что была здесь, просто рядом с источником события.
-      setPendingPermissions((prev) => [...prev, req]);
-    });
-
     return () => {
       unsubOmnibox();
-      unsubHistory(); unsubDownloadsOpen(); unsubPermission();
+      unsubHistory(); unsubDownloadsOpen();
     };
   }, []);
 
@@ -448,14 +447,10 @@ export default function App() {
     // Дропдаун омнибокса больше НЕ резервирует место — нативная вью (SuggestDropdownManager.ts)
     // плавает поверх контента как самостоятельный оверлей (native z-order, addChildView), контенту
     // сдвигаться незачем (заход 5: устранена дублирующая система, см. Toolbar.tsx).
-    // Inline-prompt разрешений: резерв только при наличии pending запроса на реальной странице
-    // (kind==='page' — не хаб и не псевдо-вкладка История/Настройки).
-    const permReserve = (pendingPermissionsRef.current.length > 0 && kindRef.current === 'page' && !tabErrorRef.current)
-      ? PERMISSION_PROMPT_RESERVE : 0;
-    sendContentBounds({
-      x: r.left, y: r.top + permReserve,
-      width: r.width, height: Math.max(0, r.height - permReserve),
-    });
+    // ⚠️ Резерва под запрос разрешения здесь больше НЕТ. Приглашение переехало в собственную
+    // WebContentsView поверх страницы (electron/PermissionPopoverManager.ts) — раньше оно
+    // откусывало 64 px сверху и роняло вёрстку живой страницы вниз-вверх на каждый вопрос.
+    sendContentBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
   }, []);
 
   useLayoutEffect(() => {
@@ -475,9 +470,6 @@ export default function App() {
     window.addEventListener('resize', updateSidebarCollapse);
     return () => window.removeEventListener('resize', updateSidebarCollapse);
   }, [updateSidebarCollapse]);
-
-  // Пересчёт bounds при смене очереди разрешений.
-  useEffect(() => { pushBounds(); }, [pendingPermissions, pushBounds]);
 
   // когда переключаемся между хабом/страницей/псевдо-вкладкой (История/Настройки), геометрия
   // дырки та же, но main должен переотобразить вьюху — пушим bounds ещё раз. activeId один уже
@@ -521,6 +513,23 @@ export default function App() {
     });
   }, [organizeState]);
 
+  // Прогресс массового переименования: приезжает push'ем из main по одному имени.
+  useEffect(() => window.oblako.onRenameProgress((p) => {
+    setRenameProgress(p.done >= p.total ? null : p);
+  }), []);
+
+  // ⚠️ Баннер отката гаснет сам. Раньше он висел, пока человек не тронет вкладки руками, —
+  // то есть в спокойном сеансе бесконечно, занимая место в полосе вкладок и намекая на
+  // незавершённое действие. Пятнадцать секунд — столько живёт «Отменить» у почтовых клиентов:
+  // хватает передумать, но плашка не становится частью интерфейса.
+  useEffect(() => {
+    if (undoDismissed) return;
+    if (!hasOrganizeSnapshot && !hasRenameSnapshot) return;
+    if (renameProgress) return; // пока имена ещё придумываются, отсчёт не начинаем
+    const t = setTimeout(() => setUndoDismissed(true), 15000);
+    return () => clearTimeout(t);
+  }, [hasOrganizeSnapshot, hasRenameSnapshot, renameProgress, undoDismissed]);
+
   const handleOrganizeApply = useCallback(() => {
     if (organizeProposal.length === 0) { setOrganizeState('idle'); return; }
     const clusters = organizeProposal.map((p) => ({
@@ -531,6 +540,10 @@ export default function App() {
     void window.oblako.organizeApply(clusters);
     setOrganizeState('idle');
     setOrganizeProposal([]);
+    // «Навести порядок» — это два действия подряд: разложить по группам и назвать по-человечески.
+    // Второе запускаем сразу за первым, не спрашивая отдельно: человек уже сказал, чего хочет.
+    setUndoDismissed(false);
+    void window.oblako.renameAllTabs();
   }, [organizeProposal]);
 
   const handleOrganizeCancel = useCallback(() => {
@@ -538,18 +551,25 @@ export default function App() {
     setOrganizeProposal([]);
   }, []);
 
+  // Три отката: только названия, только группы, всё разом. Порознь — потому что «навести
+  // порядок» делает два разных дела, и человеку может понравиться одно, но не другое.
   const handleOrganizeRollback = useCallback(() => {
     void window.oblako.organizeRollback();
+    setUndoDismissed(true);
+  }, []);
+
+  const handleRenameRollback = useCallback(() => {
+    void window.oblako.rollbackRenames();
+    setUndoDismissed(true);
+  }, []);
+
+  const handleRollbackAll = useCallback(() => {
+    void window.oblako.rollbackRenames();
+    void window.oblako.organizeRollback();
+    setUndoDismissed(true);
   }, []);
 
   const downloadsActive = downloads.some((d) => d.state === 'progressing');
-
-  const handlePermissionRespond = (granted: boolean, remember: boolean) => {
-    const [current, ...rest] = pendingPermissions;
-    if (!current) return;
-    void window.oblako.respondPermission(current.requestId, granted, remember);
-    setPendingPermissions(rest);
-  };
 
   const select = (id: string) => { setActiveId(id); window.oblako.activateTab(id); };
   const newTab = () => { setActiveId(HUB_ID); window.oblako.activateTab(HUB_ID); };
@@ -597,6 +617,12 @@ export default function App() {
         organizeLongWait={organizeLongWait}
         organizeProposal={organizeProposal}
         hasOrganizeSnapshot={hasOrganizeSnapshot}
+        hasRenameSnapshot={hasRenameSnapshot}
+        renameProgress={renameProgress}
+        undoDismissed={undoDismissed}
+        onRenameRollback={handleRenameRollback}
+        onRollbackAll={handleRollbackAll}
+        onDismissUndo={() => setUndoDismissed(true)}
         onOrganize={handleOrganize}
         onOrganizeApply={handleOrganizeApply}
         onOrganizeCancel={handleOrganizeCancel}
@@ -738,14 +764,8 @@ export default function App() {
               физически не видно. Зоны рисует своя прозрачная вью поверх страницы — см.
               electron/DropZoneManager.ts и src/dropzones.tsx. */}
 
-          {/* Inline-prompt разрешений: показываем первый из очереди. */}
-          {/* Промпт в chrome-зоне, WebContentsView сдвинут вниз через pushBounds. */}
-          {pendingPermissions.length > 0 && kind === 'page' && !tabError && (
-            <PermissionPrompt
-              request={pendingPermissions[0]}
-              onRespond={handlePermissionRespond}
-            />
-          )}
+          {/* ⚠️ Запроса разрешений здесь тоже нет — по той же причине, что и зон дропа выше:
+              он рисуется своей вью поверх страницы (electron/PermissionPopoverManager.ts). */}
         </div>
 
         {/* Разделитель + spacer AI-дока — только когда док открыт. Та же схема pointer capture,
@@ -780,14 +800,12 @@ export default function App() {
         </div>
       </div>
 
-      {/* Диалог импорта из другого браузера — модалка поверх всего chrome (fixed). Открывается из
-          раздела настроек «Браузер» и онбординга первого запуска (заход 4). */}
-      {importDialog && (
-        <ImportDialog
-          onboarding={importDialog === 'onboarding'}
-          onClose={() => setImportDialog(null)}
-        />
-      )}
+      {/* Диалог импорта из другого браузера — модалка поверх всего chrome (fixed). Открывается
+          только из раздела настроек «Браузер»: первый запуск теперь ведёт Onboarding ниже. */}
+      {importDialog && <ImportDialog onClose={() => setImportDialog(null)} />}
+
+      {/* Экран первого запуска. Поверх всего и без закрытия кликом мимо — см. Onboarding.tsx. */}
+      {onboarding && <Onboarding onFinish={() => setOnboarding(false)} />}
     </div>
   );
 }
