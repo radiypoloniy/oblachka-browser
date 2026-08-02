@@ -10,7 +10,8 @@ import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { islandPlate } from './styles/island';
 import { subscribeScrim, dimColor } from './scrimState';
-import type { SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal } from '../shared/ipc';
+import { isDarkTheme } from '../shared/ipc';
+import type { SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal, ThemePrefs } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 
 const HUB_ID = 'hub';
@@ -118,7 +119,11 @@ export default function App() {
   const [vpnConn, setVpnConn] = useState<VpnConnectionState | null>(null);
   const [pageTranslateState, setPageTranslateState] = useState<PageTranslateState>('idle');
   const [pageTranslateProgress, setPageTranslateProgress] = useState<PageTranslateProgress | null>(null);
-  const [dark, setDark] = useState(false);
+  // Оформление (см. ThemePrefs в shared/ipc.ts). Владеет значением main — оно на диске и одно на
+  // все окна; здесь только копия для отрисовки. До первого ответа держим светлую — она же дефолт
+  // настроек, поэтому мигания «тёмная → светлая» на старте не будет.
+  const [themePrefs, setThemePrefs] = useState<ThemePrefs>({ mode: 'light', palette: 'charcoal', systemDark: false });
+  const dark = isDarkTheme(themePrefs);
   // Импорт данных из другого браузера — модалка поверх всего chrome. 'manual' — открыта кнопкой
   // из настроек, 'onboarding' — авто-предложение первого запуска (мягче тон + «Пропустить»),
   // null — закрыта. См. ImportDialog.tsx / electron/browserImport/.
@@ -209,15 +214,26 @@ export default function App() {
       .catch(() => { /* роль не пришла — остаёмся полным окном, как было до многооконности */ });
   }, []);
 
+  // Выбор темы живёт в main (settings.json): читаем при старте и слушаем изменения — их шлёт и
+  // соседнее окно, где человек ткнул настройку, и сама система при смене светлой/тёмной.
+  useEffect(() => {
+    void window.oblako.getTheme().then(setThemePrefs).catch(() => { /* останемся на светлой */ });
+    return window.oblako.onThemeChanged(setThemePrefs);
+  }, []);
+
   useEffect(() => {
     const root = document.documentElement;
     root.setAttribute('data-theme', (dark || activeIncognito) ? 'dark' : 'light');
+    // Палитра — вторая ось (см. palettes.css). В инкогнито она тоже проставляется, но правил там
+    // не даёт: приватный режим обязан выглядеть одинаково независимо от вкуса, иначе он перестаёт
+    // читаться как режим.
+    root.setAttribute('data-palette', themePrefs.palette);
     if (activeIncognito) root.setAttribute('data-incognito', 'true');
     else root.removeAttribute('data-incognito');
     // Раздаём ту же тему во все отдельные chrome-вью (поповеры/дропдаун живут в своих document,
     // этот атрибут сам по себе до них не дойдёт) — см. main.ts::broadcastChromeTheme.
-    void window.oblako.setChromeTheme(dark || activeIncognito, activeIncognito);
-  }, [dark, activeIncognito]);
+    void window.oblako.setChromeTheme(dark || activeIncognito, activeIncognito, themePrefs.palette);
+  }, [dark, activeIncognito, themePrefs.palette]);
 
   // Онбординг: однократное предложение импорта из другого браузера при первом запуске (если на
   // диске реально найден источник). shouldOfferImport вернёт false после первого показа (флаг
@@ -247,9 +263,13 @@ export default function App() {
   useEffect(() => subscribeScrim(setScrimActive), []);
 
   useEffect(() => {
-    // Инкогнито — свой near-black фон титлбара (совпадает с --app-bg блока [data-incognito]
-    // в theme-dark.css); иначе обычная light/dark логика.
-    const base = activeIncognito ? '#0B0B0D' : dark ? '#121214' : '#F2F2F7';
+    // ⚠️ Фон берём из ЖИВОГО значения --app-bg, а не из литерала: с палитрами (см. palettes.css)
+    // теней у этого токена стало восемь, и любой захардкоженный хекс означал бы полосу системных
+    // кнопок чужого цвета в большинстве палитр. Эффект стоит ПОСЛЕ того, который проставляет
+    // data-theme/data-palette (порядок объявления = порядок выполнения), поэтому читается уже
+    // применённая палитра. Фолбэк — прежний литерал светлой темы, если строка вдруг не хекс.
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--app-bg').trim();
+    const base = /^#[0-9a-f]{6}$/i.test(raw) ? raw : '#F2F2F7';
     void window.oblako.setTitleBarOverlay({
       // Под модалкой титлбар темнеет ровно на ту же долю, что и фон под scrim'ом, — иначе
       // светлый прямоугольник с кнопками остаётся единственным незатемнённым местом экрана.
@@ -257,7 +277,9 @@ export default function App() {
       // На затемнённом фоне символы всегда светлые: тёмные на сером читались бы хуже в обеих темах.
       symbolColor: scrimActive ? '#FFFFFF' : (dark || activeIncognito) ? '#EBEBF5' : '#3C3C43',
     });
-  }, [dark, activeIncognito, scrimActive]);
+    // themePrefs.palette в зависимостях не ради самого значения, а ради ПЕРЕЧИТЫВАНИЯ --app-bg:
+    // палитра меняет его, не меняя ни dark, ни incognito.
+  }, [dark, activeIncognito, scrimActive, themePrefs.palette]);
 
   // Атомарная подписка: tabs + nodes в одном IPC-сообщении → один рендер, нет рассинхрона.
   useEffect(() => {
@@ -639,10 +661,9 @@ export default function App() {
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
-          tab={active} allTabs={tabs} vpnOn={vpnConn?.state === 'running'} dark={dark}
+          tab={active} allTabs={tabs} vpnOn={vpnConn?.state === 'running'}
           isLightWindow={isLightWindow}
           omniboxRef={omniboxRef}
-          onToggleDark={() => setDark((d) => !d)}
           onBack={() => window.oblako.goBack(activeId)}
           onForward={() => window.oblako.goForward(activeId)}
           onReload={() => window.oblako.reload(activeId)}

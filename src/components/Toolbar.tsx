@@ -73,9 +73,7 @@ interface ToolbarProps {
   // оно осталось внутри поповера (VpnIndicatorPopover.tsx), кнопка объединяет VPN + адблок и
   // больше не размечена под конкретный сервер.
   vpnOn: boolean;
-  dark: boolean;
   omniboxRef?: React.RefObject<HTMLInputElement>;
-  onToggleDark: () => void;
   onBack: () => void;
   onForward: () => void;
   onReload: () => void;
@@ -96,8 +94,10 @@ interface ToolbarProps {
 // ── Компонент ─────────────────────────────────────────────────────────────────
 
 export default function Toolbar({
-  // dark/onToggleDark остаются в контракте пропсов (механизм темы не трогаем,
-  // см. задачу) — сама кнопка убрана из разметки, поэтому здесь они не нужны.
+  // dark/onToggleDark из пропсов убраны совсем: кнопку темы отсюда сняли ещё раньше, а теперь у
+  // темы есть настоящий дом — раздел «Интерфейс» (см. AppearanceSection.tsx). Держать мёртвую
+  // пару пропсов «на всякий случай» значило бы оставить второй, ни к чему не подключённый способ
+  // менять тему.
   tab, allTabs, vpnOn, omniboxRef: externalRef,
   onBack, onForward, onReload, onSubmit, onSuggestToggle,
   downloadsActive, onToggleAiPanel, aiPanelOpen,

@@ -1,20 +1,52 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Upload, Trash2 } from 'lucide-react';
 import { SectionHeader, Subsection, InlineError, TextField, btnGhost } from './kit';
 import Toggle from '../Toggle';
+import { isDarkTheme } from '../../../shared/ipc';
+import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../../../shared/ipc';
 import {
   loadNewTabSettings, saveNewTabSettings, setNewTabCustomImage, getNewTabCustomImage,
   shrinkBackgroundImage,
   WALLPAPER_PRESETS, RATE_CHOICES, CRYPTO_CHOICES, type NewTabSettings, type BackgroundKind,
 } from '../../newtab/settings';
 
-// Раздел «Интерфейс» — кастомизация минималистичной новой вкладки (см. src/components/NewTab.tsx).
-// Пишет в тот же localStorage-стор, что читает вкладка; saveNewTabSettings шлёт событие → открытая
-// вкладка применяет изменения живьём. UI-примитивы — из settings/kit + общий Toggle.
+// Раздел «Интерфейс» — оформление самого браузера (тема и палитра) и новой вкладки.
+// Настройки вкладки пишутся в localStorage-стор (saveNewTabSettings шлёт событие → открытая
+// вкладка применяет изменения живьём), тема — в main, потому что её обязаны знать все окна и
+// каждый поповер (см. shared/ipc.ts::ThemePrefs). UI-примитивы — из settings/kit + общий Toggle.
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // свыше — риск переполнить квоту localStorage
+
+const THEME_MODES: [ThemeMode, string][] = [['light', 'Светлая'], ['dark', 'Тёмная'], ['system', 'Как в системе']];
+
+// Образцы палитр для превью. ⚠️ Значения продублированы из palettes.css сознательно: показать
+// невыбранную палитру можно только её собственными цветами, а прочитать CSS-переменные темы,
+// которая сейчас не применена, нельзя в принципе. Дублируются ТОЛЬКО три ступени: фон окна,
+// поверхность острова и текст на нём — из них и складывается узнаваемый вид палитры. Полоска
+// текста в образце не украшение: без неё «Уголь» и «Бумага» на квадратике 64×44 различались бы
+// только оттенком фона, а тёплое/холодное как раз заметнее всего именно на тексте.
+type Swatch = [ground: string, surface: string, text: string];
+const PALETTES: { id: ThemePaletteId; label: string; hint: string; light: Swatch; dark: Swatch }[] = [
+  { id: 'charcoal', label: 'Уголь',  hint: 'Как в iOS',   light: ['#F2F2F7', '#FFFFFF', '#3C3C43'], dark: ['#121214', '#1C1C1E', '#EBEBF5'] },
+  { id: 'graphite', label: 'Графит', hint: 'Как в macOS', light: ['#ECECEC', '#FFFFFF', '#3C3C43'], dark: ['#1E1E1E', '#2C2C2C', '#EBEBF5'] },
+  { id: 'slate',    label: 'Сланец', hint: 'Холодный',    light: ['#E5E9F0', '#FFFFFF', '#3B4252'], dark: ['#2E3440', '#3B4252', '#E5E9F0'] },
+  { id: 'paper',    label: 'Бумага', hint: 'Тёплый',      light: ['#F1EDE4', '#FDFBF6', '#3A332A'], dark: ['#14120F', '#1C1917', '#E9E3D9'] },
+];
 
 export default function AppearanceSection() {
   const [s, setS] = useState<NewTabSettings>(() => loadNewTabSettings());
+  // Тема живёт в main; здесь только копия для отрисовки. Подписка нужна не для своих же кликов, а
+  // для чужих: то же самое окно настроек может стоять открытым, пока тему меняют в другом окне или
+  // пока система сама переключает светлую/тёмную.
+  const [theme, setTheme] = useState<ThemePrefs>({ mode: 'light', palette: 'charcoal', systemDark: false });
+  useEffect(() => {
+    void window.oblako.getTheme().then(setTheme).catch(() => { /* останется дефолт */ });
+    return window.oblako.onThemeChanged(setTheme);
+  }, []);
+  const applyTheme = (mode: ThemeMode, palette: ThemePaletteId) => {
+    setTheme((t) => ({ ...t, mode, palette })); // сразу, не дожидаясь ответа: кнопка не должна «залипать»
+    void window.oblako.setTheme(mode, palette);
+  };
+  const themeIsDark = isDarkTheme(theme);
   const [hasCustom, setHasCustom] = useState(() => getNewTabCustomImage() !== null);
   const [imgError, setImgError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -72,8 +104,64 @@ export default function AppearanceSection() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
       <SectionHeader title="Интерфейс">
-        Оформление новой вкладки — фон, часы, приветствие и быстрые ссылки.
+        Тема и палитра браузера, оформление новой вкладки — фон, часы, приветствие и быстрые ссылки.
       </SectionHeader>
+
+      {/* ── Тема ── */}
+      <Subsection title="Тема" description="Светлая, тёмная или вслед за системой.">
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {THEME_MODES.map(([mode, label]) => (
+            <SegBtn key={mode} active={theme.mode === mode} onClick={() => applyTheme(mode, theme.palette)}>
+              {label}
+            </SegBtn>
+          ))}
+        </div>
+        {/* Приватные вкладки всегда тёмные и всегда одного вида — иначе режим перестаёт читаться
+            как режим. Сказать об этом здесь дешевле, чем оставить человека гадать, почему выбор
+            не подействовал на окно инкогнито. */}
+        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+          Приватные вкладки остаются тёмными при любой теме.
+        </span>
+      </Subsection>
+
+      {/* ── Палитра ── */}
+      <Subsection title="Палитра" description="Оттенок нейтрали: фон, поверхности и текст. Акцентный цвет не меняется.">
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {PALETTES.map((p) => {
+            const [ground, surface, text] = themeIsDark ? p.dark : p.light;
+            const active = theme.palette === p.id;
+            return (
+              <button key={p.id} title={p.hint} onClick={() => applyTheme(theme.mode, p.id)}
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
+                  padding: 0, border: 'none', background: 'none', cursor: 'default',
+                }}>
+                {/* Образец рисуется той же лестницей, что и сам интерфейс: земля, на ней
+                    приподнятый остров, на острове строка текста. */}
+                <span style={{
+                  width: 64, height: 44, borderRadius: 'var(--radius-sm)', background: ground,
+                  display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 6,
+                  outline: active ? '2px solid var(--accent)' : '2px solid transparent', outlineOffset: 2,
+                  boxShadow: 'inset 0 0 0 1px var(--divider)',
+                }}>
+                  <span style={{
+                    width: 44, height: 22, borderRadius: 6, background: surface,
+                    display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3, padding: '0 6px',
+                  }}>
+                    <span style={{ height: 3, borderRadius: 2, background: text, opacity: 0.85 }} />
+                    <span style={{ height: 3, borderRadius: 2, background: text, opacity: 0.45, width: '65%' }} />
+                  </span>
+                </span>
+                <span style={{
+                  fontSize: 'var(--fs-xs)',
+                  color: active ? 'var(--text-body)' : 'var(--text-faint)',
+                  fontWeight: active ? 600 : 400,
+                }}>{p.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </Subsection>
 
       {/* ── Фон ── */}
       <Subsection title="Фон" description="Градиент, свой цвет или изображение.">

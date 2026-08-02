@@ -8,6 +8,9 @@
 @import "./tokens/effects.css";
 @import "./tokens/apps.css";
 @import "./tokens/theme-dark.css";
+/* Палитры — ПОСЛЕ тёмной темы: они переопределяют землю обеих тем, а инкогнито из theme-dark.css
+   защищено гвардом внутри самого файла палитр (см. шапку palettes.css). */
+@import "./tokens/palettes.css";
 
 html, body, #root { margin: 0; height: 100%; background: var(--app-bg); }
 body {

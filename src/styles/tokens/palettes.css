@@ -1,0 +1,147 @@
+/* ── Oblako neutral palettes ──────────────────────────────────────────
+   Палитра — это ЗЕМЛЯ интерфейса: фон окна, поверхности островов, колодцы
+   полей, разделители и текст. Акцент палитра НЕ трогает: цветовой закон
+   прежний — акцент один (--accent), зелёный значит «локально/VPN жив»,
+   красный/оранжевый — системные сообщения. Меняется оттенок нейтрали, а не
+   смысл цветов.
+
+   Две оси, не одна: ТЕМА отвечает на вопрос «светло или темно»
+   (data-theme), ПАЛИТРА — «какой оттенок нейтрали» (data-palette).
+   Поэтому у каждой палитры есть оба варианта; выбор палитры не должен
+   отменять выбор темы.
+
+   ⚠️ Селекторы намеренно писаны парами :not(...), а не «светлый блок +
+   тёмный оверрайд»:
+   • светлый блок отсекает :not([data-theme="dark"]) — иначе он применялся
+     бы и в тёмной теме (атрибут палитры-то на месте) и перекрывал бы
+     тёмный блок из-за порядка подключения;
+   • тёмный отсекает :not([data-incognito="true"]) — инкогнито обязано
+     оставаться «приятно-чёрным» независимо от выбранной палитры (это
+     опознавательный знак режима, см. theme-dark.css), а его селектор
+     (0,1,0) слабее пары атрибутов (0,2,0) и без гварда проиграл бы.
+
+   Значения — не на глаз: см. комментарий у каждой палитры. Своими руками
+   добраны только те ступени, которых в источнике нет (у Apple и Nord нет
+   наших ролей «muted/faint»), и только чтобы удержать контраст текста.
+*/
+
+/* ── Уголь (по умолчанию) ─────────────────────────────────────────────
+   Правил здесь нет намеренно: это базовые значения из colors.css и
+   theme-dark.css (Apple iOS — near-black #121214, поверхности #1C1C1E /
+   #2C2C2E). Палитра существует как ВЫБОР в настройках, а не как оверрайд —
+   дублировать её значения здесь значило бы завести второй источник правды. */
+
+/* ── Графит (macOS) ───────────────────────────────────────────────────
+   Настольная тема Apple, а не мобильная: windowBackgroundColor #ECECEC /
+   dark #323232, controlBackgroundColor #FFFFFF / dark #1E1E1E,
+   separatorColor rgba(0,0,0,0.1) → rgba(255,255,255,0.1). Плоская, без
+   цветной подсветки фона: у окон macOS её нет, поэтому --canvas здесь
+   просто заливка, а не радиальный градиент. */
+[data-palette="graphite"]:not([data-theme="dark"]) {
+  --app-bg:          #ECECEC;
+  --canvas:          var(--app-bg);
+  --surface:         #FFFFFF;
+  --surface-island:  #FFFFFF;
+  --surface-solid:   #FFFFFF;
+  --surface-sunken:  #DFDFDF; /* колодец темнее фона окна — правило светлой темы, см. colors.css */
+  --divider:         rgba(0,0,0,0.12);
+  --divider-strong:  rgba(0,0,0,0.20);
+}
+[data-palette="graphite"][data-theme="dark"]:not([data-incognito="true"]) {
+  --app-bg:          #1E1E1E; /* macOS controlBackground/textBackground dark */
+  --canvas:          var(--app-bg);
+  --surface:         #2C2C2C;
+  --surface-island:  rgba(44,44,44,0.74); /* альфа как у базовой тёмной — под островами живой блюр */
+  --surface-solid:   #2C2C2C;
+  --surface-sunken:  #3A3A3A; /* в тёмной теме колодец СВЕТЛЕЕ острова, как заливки полей у Apple */
+  /* Земля здесь светлее базовой тёмной (#1E1E1E против #121214), поэтому приглушённый текст
+     поднят на ступень: на #2C2C2C базовый #7C7C84 давал ~3.3:1 вместо ~4:1. */
+  --text-faint:      #8A8A92;
+}
+
+/* ── Сланец (Nord) ────────────────────────────────────────────────────
+   Polar Night / Snow Storm из палитры Nord: nord0 #2E3440, nord1 #3B4252,
+   nord2 #434C5E, nord4 #D8DEE9, nord5 #E5E9F0, nord6 #ECEFF4; подсветка
+   фона — nord10 #5E81AC. Холодная сине-серая земля.
+   ⚠️ У Nord нет ступеней под наши роли «muted/faint» (их nord3 #4C566A —
+   цвет комментариев в коде, на светлом острове он читается, на тёмном
+   пропадает). Эти две ступени добраны в том же семействе по контрасту. */
+[data-palette="slate"]:not([data-theme="dark"]) {
+  --app-bg:          #E5E9F0; /* nord5 */
+  --canvas:
+    radial-gradient(135% 130% at 10% 4%, rgba(94,129,172,0.16), transparent 52%),
+    var(--app-bg);
+  --surface:         #FFFFFF;
+  --surface-island:  #FFFFFF;
+  --surface-solid:   #FFFFFF;
+  --surface-sunken:  #D8DEE9; /* nord4 */
+  --divider:         rgba(46,52,64,0.14);
+  --divider-strong:  rgba(46,52,64,0.22);
+  --text-strong:     #2E3440; /* nord0 */
+  --text-body:       #3B4252; /* nord1 */
+  --text-muted:      #4C566A; /* nord3 */
+  --text-faint:      #6E7889; /* добрано: nord3 в роли faint сливался бы с muted */
+}
+[data-palette="slate"][data-theme="dark"]:not([data-incognito="true"]) {
+  --app-bg:          #2E3440; /* nord0 */
+  --canvas:
+    radial-gradient(135% 130% at 10% 4%, rgba(94,129,172,0.20), transparent 52%),
+    var(--app-bg);
+  --surface:         #3B4252; /* nord1 */
+  --surface-island:  rgba(59,66,82,0.74);
+  --surface-solid:   #3B4252;
+  --surface-sunken:  #434C5E; /* nord2 — светлее острова */
+  --divider:         rgba(216,222,233,0.12);
+  --divider-strong:  rgba(216,222,233,0.20);
+  --text-strong:     #ECEFF4; /* nord6 */
+  --text-body:       #E5E9F0; /* nord5 */
+  --text-muted:      #B4BECE; /* добрано: земля Nord светлее нашей базовой тёмной, */
+  --text-faint:      #98A3B8; /* поэтому обе приглушённые ступени тоже светлее базовых */
+}
+
+/* ── Бумага (тёплая) ──────────────────────────────────────────────────
+   Возврат к историческому намерению проекта — тёплый paper #F6F5EF, с
+   которого дизайн-система начиналась (см. colors.css). Тёмный вариант — в
+   том же тёплом семействе, по ступеням Tailwind Stone (#1C1917 / #292524):
+   у нейтрали Apple зелёно-синий уклон, и рядом с тёплым светлым вариантом
+   она читалась бы как другая палитра, а не как её ночь.
+   ⚠️ Белый здесь не чисто белый (#FDFBF6), а hover/active подкрашены
+   тёплым: чистый #FFFFFF и серый нейтральный hover на тёплом фоне дают
+   заметный синий отлив — тот же эффект, из-за которого в тёмной теме
+   когда-то убрали пурпурные поверхности. */
+[data-palette="paper"]:not([data-theme="dark"]) {
+  --app-bg:          #F1EDE4;
+  --canvas:
+    radial-gradient(135% 130% at 10% 4%, rgba(190,150,90,0.14), transparent 52%),
+    var(--app-bg);
+  --surface:         #FDFBF6;
+  --surface-island:  #FDFBF6;
+  --surface-solid:   #FDFBF6;
+  --surface-sunken:  #E6E0D3;
+  --surface-hover:   rgba(60,45,20,0.05);
+  --surface-active:  rgba(60,45,20,0.09);
+  --divider:         rgba(60,50,35,0.14);
+  --divider-strong:  rgba(60,50,35,0.22);
+  --text-strong:     #1F1B15;
+  --text-body:       #3A332A;
+  --text-muted:      #6B6153;
+  --text-faint:      #8B8173;
+}
+[data-palette="paper"][data-theme="dark"]:not([data-incognito="true"]) {
+  --app-bg:          #14120F;
+  --canvas:
+    radial-gradient(135% 130% at 10% 4%, rgba(190,150,90,0.10), transparent 52%),
+    var(--app-bg);
+  --surface:         #1C1917; /* Stone 900 */
+  --surface-island:  rgba(28,25,23,0.76);
+  --surface-solid:   #1C1917;
+  --surface-sunken:  #292524; /* Stone 800 — светлее острова */
+  --surface-hover:   rgba(255,246,230,0.07);
+  --surface-active:  rgba(255,246,230,0.12);
+  --divider:         rgba(245,240,230,0.10);
+  --divider-strong:  rgba(245,240,230,0.17);
+  --text-strong:     #FAF7F2;
+  --text-body:       #E9E3D9;
+  --text-muted:      #A9A093;
+  --text-faint:      #857C70;
+}

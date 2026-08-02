@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_SEARCH_ENGINE_ID, isSearchEngineId } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
-import type { HubMode, ModelLoadMode, SearchChipsConfig } from '../shared/ipc';
+import { THEME_PALETTE_IDS } from '../shared/ipc';
+import type { HubMode, ModelLoadMode, SearchChipsConfig, ThemeMode, ThemePaletteId } from '../shared/ipc';
 import type { EngineId } from './TranslationEngine';
 
 const DEFAULT_HUB_MODE: HubMode = 'tiles';
@@ -40,6 +41,9 @@ interface PersistedSettings {
   passwordAuthEnabled: boolean;
   // Полоса целей поповера Ctrl+E (режим, закреплённые, цель по умолчанию — см. shared/ipc.ts).
   searchChips: SearchChipsConfig;
+  // Оформление: светло/темно/как в системе + нейтральная палитра (см. ThemePrefs в shared/ipc.ts).
+  themeMode: ThemeMode;
+  themePalette: ThemePaletteId;
 }
 
 const DEFAULT_SEARCH_CHIPS: SearchChipsConfig = { mode: 'auto', pinned: [], defaultId: null };
@@ -75,6 +79,14 @@ function isModelLoadMode(v: unknown): v is ModelLoadMode {
   return v === 'startup' || v === 'on-demand';
 }
 
+function isThemeMode(v: unknown): v is ThemeMode {
+  return v === 'light' || v === 'dark' || v === 'system';
+}
+
+function isThemePalette(v: unknown): v is ThemePaletteId {
+  return typeof v === 'string' && (THEME_PALETTE_IDS as readonly string[]).includes(v);
+}
+
 // Простые пользовательские настройки (поисковик по умолчанию + режим Hub) — JSON в userData,
 // атомарная запись через tmp-файл, по паттерну AdBlockManager#writeSettings. Записи редкие
 // (смена настройки вручную/капсулой), поэтому без дебаунса — пишем сразу.
@@ -89,6 +101,11 @@ export class SettingsManager {
   #askDownloadLocation = false;
   #passwordAuthEnabled = true; // доп. защита по умолчанию включена (см. PersistedSettings)
   #searchChips: SearchChipsConfig = { ...DEFAULT_SEARCH_CHIPS };
+  // Светлая по умолчанию, а не 'system': тёмной темы в браузере до сих пор не было вовсе, и
+  // молча перекрасить интерфейс у тех, у кого Windows в тёмном режиме, значило бы сменить вид
+  // приложения без единого действия человека. Выбор «как в системе» стоит рядом в настройках.
+  #themeMode: ThemeMode = 'light';
+  #themePalette: ThemePaletteId = 'charcoal';
   readonly #settingsPath: string;
 
   constructor() {
@@ -185,6 +202,22 @@ export class SettingsManager {
     this.#write();
   }
 
+  getThemeMode(): ThemeMode {
+    return this.#themeMode;
+  }
+
+  getThemePalette(): ThemePaletteId {
+    return this.#themePalette;
+  }
+
+  // Одной дверью: тема и палитра меняются из одного места в UI, и раздельная запись означала бы
+  // два сообщения и два перерисованных окна на одно действие человека.
+  setTheme(mode: ThemeMode, palette: ThemePaletteId): void {
+    if (isThemeMode(mode)) this.#themeMode = mode;
+    if (isThemePalette(palette)) this.#themePalette = palette;
+    this.#write();
+  }
+
   #load(): void {
     try {
       const raw = fs.readFileSync(this.#settingsPath, 'utf8');
@@ -211,6 +244,10 @@ export class SettingsManager {
         // отдаст дефолт.
         const sc = (data as Record<string, unknown>)['searchChips'];
         if (sc !== undefined) this.#searchChips = normalizeSearchChips(sc);
+        const tm = (data as Record<string, unknown>)['themeMode'];
+        if (isThemeMode(tm)) this.#themeMode = tm;
+        const tp = (data as Record<string, unknown>)['themePalette'];
+        if (isThemePalette(tp)) this.#themePalette = tp;
       }
     } catch { /* файла нет или битый JSON — остаёмся на дефолте */ }
   }
@@ -226,6 +263,8 @@ export class SettingsManager {
       askDownloadLocation: this.#askDownloadLocation,
       passwordAuthEnabled: this.#passwordAuthEnabled,
       searchChips: this.#searchChips,
+      themeMode: this.#themeMode,
+      themePalette: this.#themePalette,
     };
     const tmpPath = this.#settingsPath + '.tmp';
     try {

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type {
   GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure,
@@ -64,7 +64,16 @@ const api: OblakoApi = {
   togglePinTab: (id: string) => ipcRenderer.invoke(IPC.TAB_PIN_TOGGLE, id),
   showTabMenu:  (id: string) => ipcRenderer.invoke(IPC.TAB_SHOW_MENU, id),
   showNewTabMenu: () => ipcRenderer.invoke(IPC.NEW_TAB_SHOW_MENU) as Promise<void>,
-  setChromeTheme: (dark: boolean, incognito: boolean) => ipcRenderer.invoke(IPC.CHROME_THEME_SET, dark, incognito) as Promise<void>,
+  setChromeTheme: (dark: boolean, incognito: boolean, palette: ThemePaletteId) =>
+    ipcRenderer.invoke(IPC.CHROME_THEME_SET, dark, incognito, palette) as Promise<void>,
+  getTheme: () => ipcRenderer.invoke(IPC.THEME_GET) as Promise<ThemePrefs>,
+  setTheme: (mode: ThemeMode, palette: ThemePaletteId) =>
+    ipcRenderer.invoke(IPC.THEME_SET, mode, palette) as Promise<void>,
+  onThemeChanged: (cb: (prefs: ThemePrefs) => void) => {
+    const handler = (_e: unknown, prefs: ThemePrefs) => cb(prefs);
+    ipcRenderer.on(IPC.THEME_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.THEME_CHANGED, handler);
+  },
   getWeather: (city: string) => ipcRenderer.invoke(IPC.WEATHER_GET, city) as Promise<WeatherInfo>,
   getCurrencyRates: () => ipcRenderer.invoke(IPC.CURRENCY_GET) as Promise<CurrencyRatesInfo>,
   getCryptoRates: () => ipcRenderer.invoke(IPC.CRYPTO_GET) as Promise<CryptoRatesInfo>,

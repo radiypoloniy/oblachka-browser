@@ -263,7 +263,13 @@ export const IPC = {
   TAB_PIN_TOGGLE: 'tab:pin-toggle', // renderer → main: закрепить / открепить вкладку
   TAB_SHOW_MENU:  'tab:show-menu',  // renderer → main: показать нативное ПКМ-меню вкладки
   NEW_TAB_SHOW_MENU: 'tab:new-menu', // renderer → main: ПКМ по кнопке «Новая вкладка» (обычная/инкогнито/восстановить)
-  CHROME_THEME_SET: 'chrome:theme-set', // renderer → main: тема chrome (dark+incognito) для раздачи во все поповеры/вью
+  CHROME_THEME_SET: 'chrome:theme-set', // renderer → main: тема chrome (dark+incognito+палитра) для раздачи во все поповеры/вью
+  // Выбор человека: светлая/тёмная/как в системе + нейтральная палитра (см. ThemePrefs ниже).
+  // Живёт в main (settings.json), а не в localStorage рендерера: тему обязаны знать ВСЕ окна и
+  // каждый поповер со своим document — источник истины должен быть один и переживать перезапуск.
+  THEME_GET:     'theme:get',
+  THEME_SET:     'theme:set',
+  THEME_CHANGED: 'theme:changed', // main → renderer: выбор сменили в другом окне ИЛИ система переключила тему
   WEATHER_GET: 'weather:get', // renderer → main: погода по городу для виджета новой вкладки (WeatherService)
   CURRENCY_GET: 'currency:get', // renderer → main: курсы ЦБ РФ для виджета новой вкладки (CurrencyRates)
   CRYPTO_GET: 'crypto:get', // renderer → main: курсы криптовалют для виджета «Крипта» (CryptoRates)
@@ -1384,6 +1390,32 @@ export interface CryptoRatesInfo {
   error?: string;
 }
 
+// ── Тема оформления ─────────────────────────────────────────────────────────
+// 'system' — следовать ОС. Считает это main через nativeTheme.shouldUseDarkColors и присылает
+// готовый systemDark: рендерер мог бы спросить matchMedia сам, но тогда у каждого окна и каждого
+// поповера была бы своя точка правды, а расходиться им нельзя.
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+// Нейтральные палитры — это ЗЕМЛЯ интерфейса (фон, поверхности, разделители, текст), а не
+// перекраска акцента: цветовой закон не меняется, акцент по-прежнему один, зелёный по-прежнему
+// значит «локально/VPN жив». У каждой палитры есть и светлый, и тёмный вариант — палитра
+// отвечает на вопрос «какой оттенок нейтрали», тема на вопрос «светло или темно».
+export const THEME_PALETTE_IDS = ['charcoal', 'graphite', 'slate', 'paper'] as const;
+export type ThemePaletteId = typeof THEME_PALETTE_IDS[number];
+
+export interface ThemePrefs {
+  mode: ThemeMode;
+  palette: ThemePaletteId;
+  /** Что сейчас говорит ОС. Осмысленно только при mode==='system', но приходит всегда. */
+  systemDark: boolean;
+}
+
+/** Темно ли сейчас на самом деле. Общая для main, чрома и настроек — три копии одного тернарника
+ *  разошлись бы ровно в тот день, когда к режимам добавится четвёртый. */
+export function isDarkTheme(p: ThemePrefs): boolean {
+  return p.mode === 'system' ? p.systemDark : p.mode === 'dark';
+}
+
 // Тип API, который preload пробрасывает в window.oblako
 // Роль окна. Полное окно ровно одно: оно владеет сессией (деревом вкладок в session.json) и теми
 // службами, что существуют в приложении в одном экземпляре. Лёгкие окна — вкладки, омнибокс,
@@ -1463,7 +1495,14 @@ export interface OblakoApi {
   togglePinTab(id: string): Promise<void>;
   showTabMenu(id: string): Promise<void>;
   showNewTabMenu(): Promise<void>; // ПКМ по кнопке «Новая вкладка»: обычная / инкогнито / восстановить
-  setChromeTheme(dark: boolean, incognito: boolean): Promise<void>; // раздать тему во все chrome-вью (поповеры)
+  setChromeTheme(dark: boolean, incognito: boolean, palette: ThemePaletteId): Promise<void>; // раздать тему во все chrome-вью (поповеры)
+
+  // Тема оформления (см. ThemePrefs). setTheme пишет выбор на диск и рассылает его во все окна —
+  // применяет тему по-прежнему сам рендерер, у себя на documentElement.
+  getTheme(): Promise<ThemePrefs>;
+  setTheme(mode: ThemeMode, palette: ThemePaletteId): Promise<void>;
+  onThemeChanged(cb: (prefs: ThemePrefs) => void): () => void;
+
   getWeather(city: string): Promise<WeatherInfo>; // погода для виджета новой вкладки
   getCurrencyRates(): Promise<CurrencyRatesInfo>; // курсы ЦБ РФ для виджета новой вкладки
   getCryptoRates(): Promise<CryptoRatesInfo>;     // курсы криптовалют для виджета «Крипта»

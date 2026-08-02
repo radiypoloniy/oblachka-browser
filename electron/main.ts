@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard, webContents, nativeImage, screen } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard, webContents, nativeImage, screen, nativeTheme } from 'electron';
 import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent } from './BrowserIdentity';
@@ -58,7 +58,8 @@ import * as ModelDownloader from './ModelDownloader';
 import * as ModelCatalog from './ModelCatalog';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
-import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
+import { IPC, INCOGNITO_PARTITION, THEME_PALETTE_IDS, isDarkTheme } from '../shared/ipc';
+import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
@@ -215,13 +216,17 @@ let incognitoSession: Session | null = null;
 // этих атрибутов не видит. Держим актуальную тему в main и раскидываем во ВСЕ наши chrome-вью
 // (oblako-chrome://…) через executeJavaScript — без правок в каждом preload/entry. Реальные
 // сайты (гостевые вкладки) не трогаем (isChromePageUrl отсекает по URL).
-let currentChromeTheme = { dark: false, incognito: false };
+let currentChromeTheme: { dark: boolean; incognito: boolean; palette: ThemePaletteId } =
+  { dark: false, incognito: false, palette: 'charcoal' };
 function isChromePageUrl(u: string): boolean {
   return u.startsWith('oblako-chrome://') || u.includes('localhost:5173'); // прод + dev-сервер Vite
 }
-function chromeThemeJs(t: { dark: boolean; incognito: boolean }): string {
+function chromeThemeJs(t: { dark: boolean; incognito: boolean; palette: ThemePaletteId }): string {
   return `(function(){try{var r=document.documentElement;`
     + `r.setAttribute('data-theme','${t.dark ? 'dark' : 'light'}');`
+    // Палитра — вторая ось темы (см. palettes.css): без неё поповеры остались бы на базовой земле,
+    // а окно перекрасилось бы, и стык был бы виден на каждом дропдауне.
+    + `r.setAttribute('data-palette','${t.palette}');`
     + (t.incognito ? `r.setAttribute('data-incognito','true');` : `r.removeAttribute('data-incognito');`)
     + `}catch(e){}})()`;
 }
@@ -233,6 +238,18 @@ function applyChromeThemeTo(wc: WebContents): void {
 }
 function broadcastChromeTheme(): void {
   for (const wc of webContents.getAllWebContents()) applyChromeThemeTo(wc);
+}
+
+// Выбор человека + то, что сейчас говорит ОС. ⚠️ nativeTheme.themeSource мы НЕ трогаем: он
+// управляет и тем, какой prefers-color-scheme видят САМИ САЙТЫ. Тёмный интерфейс браузера — не
+// повод переключать в тёмное чужие страницы (Chrome тоже разводит это на два разных решения),
+// поэтому отсюда только читаем.
+function currentThemePrefs(): ThemePrefs {
+  return {
+    mode: settings.getThemeMode(),
+    palette: settings.getThemePalette(),
+    systemDark: nativeTheme.shouldUseDarkColors,
+  };
 }
 let mainTabs: TabManager | null = null;
 // Сессия одна на приложение и принадлежит главному окну: дерево вкладок из session.json — его
@@ -398,6 +415,19 @@ function wireSharedSessions(): void {
 
   // Орфография (ru+en): одна сессия на все вкладки — одного вызова достаточно.
   session.defaultSession.setSpellCheckerLanguages(['ru', 'en-US']);
+
+  // Тема, известная main'у ДО того, как хром успеет её прислать. Без этого поповер, созданный
+  // раньше первого CHROME_THEME_SET, открывался бы светлым в тёмной теме — видимая вспышка.
+  const startPrefs = currentThemePrefs();
+  currentChromeTheme = { dark: isDarkTheme(startPrefs), incognito: false, palette: startPrefs.palette };
+
+  // Система переключила светлую/тёмную (расписание Windows или руками в параметрах). Значение
+  // хранит ОС, а не мы, поэтому здесь только пересылка: окна с режимом «как в системе» перекрасятся
+  // сами, с явно выбранной темой — проигнорируют (см. App.tsx). Подписка живёт в wireSharedSessions,
+  // а не в createWindow: nativeTheme один на приложение, второе окно навесило бы второго слушателя.
+  nativeTheme.on('updated', () => {
+    broadcastToChrome(IPC.THEME_CHANGED, currentThemePrefs());
+  });
 
   // Перехватываем все загрузки на дефолтной сессии (вкладки partition не задают). Список загрузок
   // общий для приложения — потому и рассылка во все окна, а не пуш в одно.
@@ -1314,10 +1344,23 @@ function registerIpc() {
     hasRenameSnapshot: tabsOf(e)?.hasRenameSnapshot() ?? false,
   }));
   ipcMain.handle(IPC.TABS_GET_ALL, (e) => tabsOf(e)?.snapshot() ?? []);
-  // Тема chrome (light/dark + инкогнито) от главного рендерера → раскидываем во все наши вью.
-  ipcMain.handle(IPC.CHROME_THEME_SET, (_e, dark: boolean, incognito: boolean) => {
-    currentChromeTheme = { dark: !!dark, incognito: !!incognito };
+  // Тема chrome (light/dark + инкогнито + палитра) от главного рендерера → раскидываем во все наши вью.
+  ipcMain.handle(IPC.CHROME_THEME_SET, (_e, dark: boolean, incognito: boolean, palette: ThemePaletteId) => {
+    currentChromeTheme = {
+      dark: !!dark,
+      incognito: !!incognito,
+      // Пришло из рендерера — значит недоверенное; промах гасим базовой палитрой, а не пишем
+      // в атрибут произвольную строку.
+      palette: (THEME_PALETTE_IDS as readonly string[]).includes(palette) ? palette : 'charcoal',
+    };
     broadcastChromeTheme();
+  });
+  // Выбор темы: читает настройки, пишет настройки, рассылает всем окнам. Применяет по-прежнему
+  // рендерер у себя (см. App.tsx) — main только владеет значением и системным признаком.
+  ipcMain.handle(IPC.THEME_GET, (): ThemePrefs => currentThemePrefs());
+  ipcMain.handle(IPC.THEME_SET, (_e, mode: ThemeMode, palette: ThemePaletteId) => {
+    settings.setTheme(mode, palette);
+    broadcastToChrome(IPC.THEME_CHANGED, currentThemePrefs());
   });
   ipcMain.handle(IPC.TAB_CREATE, (e, url?: string) => tabsOf(e)?.createTab(url));
   ipcMain.handle(IPC.TAB_CREATE_INCOGNITO, (e, url?: string) => tabsOf(e)?.createTab(url, false, false, true));
