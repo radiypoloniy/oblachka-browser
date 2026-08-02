@@ -5,6 +5,7 @@ import type { ImportSource, ImportDataType, ImportRunResult, ImportTypeResult } 
 import { islandPlate } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
 import BrowserLogo from './BrowserLogo';
+import { useScrim } from '../scrimState';
 
 // Экран первого запуска: короткий рассказ о том, чем этот браузер отличается, и перенос данных
 // из привычного браузера последним шагом.
@@ -185,6 +186,7 @@ function resultLine(type: ImportDataType, res: ImportTypeResult | null): string 
 }
 
 export default function Onboarding({ onFinish }: Props) {
+  useScrim(); // затемняем и нативную зону системных кнопок, см. src/scrimState.ts
   // step: 0..SLIDES.length-1 — рассказ, SLIDES.length — перенос данных.
   const [step, setStep] = useState(0);
   const [sources, setSources] = useState<ImportSource[] | null>(null);

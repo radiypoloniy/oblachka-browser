@@ -10,6 +10,7 @@ import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import Downloads from './components/Downloads';
 import { islandPlate } from './styles/island';
+import { subscribeScrim, dimColor } from './scrimState';
 import type { SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 
@@ -241,14 +242,23 @@ export default function App() {
   // (Коммит 1: light --app-bg сменился на #F2F2F7, синхронизировано; dark --app-bg не менялся).
   // symbolColor = --text-body темы: light — Apple label (#3C3C43), dark раньше был #EAE8E3 —
   // не совпадал с реальным --text-body dark, исправлено заодно; значения = --app-bg темы.
+  // Затемнён ли чром модалкой (см. src/scrimState.ts) — от этого зависит цвет зоны системных
+  // кнопок: она нативная, и CSS-затемнение до неё не достаёт.
+  const [scrimActive, setScrimActive] = useState(false);
+  useEffect(() => subscribeScrim(setScrimActive), []);
+
   useEffect(() => {
     // Инкогнито — свой near-black фон титлбара (совпадает с --app-bg блока [data-incognito]
     // в theme-dark.css); иначе обычная light/dark логика.
+    const base = activeIncognito ? '#0B0B0D' : dark ? '#121214' : '#F2F2F7';
     void window.oblako.setTitleBarOverlay({
-      color: activeIncognito ? '#0B0B0D' : dark ? '#121214' : '#F2F2F7',
-      symbolColor: (dark || activeIncognito) ? '#EBEBF5' : '#3C3C43',
+      // Под модалкой титлбар темнеет ровно на ту же долю, что и фон под scrim'ом, — иначе
+      // светлый прямоугольник с кнопками остаётся единственным незатемнённым местом экрана.
+      color: scrimActive ? dimColor(base) : base,
+      // На затемнённом фоне символы всегда светлые: тёмные на сером читались бы хуже в обеих темах.
+      symbolColor: scrimActive ? '#FFFFFF' : (dark || activeIncognito) ? '#EBEBF5' : '#3C3C43',
     });
-  }, [dark, activeIncognito]);
+  }, [dark, activeIncognito, scrimActive]);
 
   // Атомарная подписка: tabs + nodes в одном IPC-сообщении → один рендер, нет рассинхрона.
   useEffect(() => {

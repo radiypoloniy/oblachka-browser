@@ -3,6 +3,7 @@ import { X, Download, Loader2, Check } from 'lucide-react';
 import type { ImportSource, ImportDataType, ImportRunResult, ImportTypeResult } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
+import { useScrim } from '../scrimState';
 
 // Диалог импорта данных из другого браузера. Открывается ТОЛЬКО из раздела настроек «Браузер»:
 // первый запуск ведёт свой экран (см. src/components/Onboarding.tsx), с другим тоном и объёмом. Вся вендор-специфика — в main;
@@ -31,6 +32,7 @@ function resultLine(type: ImportDataType, res: ImportTypeResult | null): string 
 }
 
 export default function ImportDialog({ onClose }: ImportDialogProps) {
+  useScrim(); // затемняем и нативную зону системных кнопок, см. src/scrimState.ts
   const [sources, setSources] = useState<ImportSource[] | null>(null); // null — ещё грузим
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Выбранные типы для текущего источника. Ключ — sourceId, чтобы смена источника не тащила

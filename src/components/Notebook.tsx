@@ -11,6 +11,7 @@ import {
   loadSources, saveSources, sourceFromInput, loadSelectedIds, saveSelectedIds, subscribeNotebook,
   getSelectedSourceContext, type NotebookSource,
 } from '../newtab/notebook';
+import { useScrim } from '../scrimState';
 
 // Большой AI-экран как «блокнот» (NotebookLM-подобный): 3 колонки — Источники / Чат / Студия.
 // Центр (children) — существующий чат хаба (AiChatView, движок HubChatManager), не переписываем.
@@ -135,6 +136,7 @@ function StudioResultModal({ state, onClose }: {
   state: { kind: StudioKind; label: string; busy: boolean; text?: string; error?: string };
   onClose: () => void;
 }) {
+  useScrim(); // модалка затемняет весь чром — вместе с ним темнеет и зона системных кнопок
   const isMindmap = state.kind === 'mindmap';
   const isInfographic = state.kind === 'infographic';
   const wide = isMindmap || isInfographic;
