@@ -11,6 +11,7 @@ import {
   Play, Pause, RotateCcw, ArrowDownUp, ArrowUpDown, Copy, Check, Loader2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { AppGlyph, hasGlyph } from './appGlyphs'
 
 // Форма ответа ai-panel:currency-rates (electron/CurrencyRates.ts) — зеркалим локально,
 // тот же приём, что у ChatOutcome в aipanel.tsx (ad-hoc канал, не через shared/ipc.ts).
@@ -583,6 +584,8 @@ const SQUIRCLE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' v
 // белый силуэт. Маска красит его заливкой родителя и не требует ни правки самих SVG, ни
 // filter-хаков вроде invert. Если файла нет (пользовательское веб-приложение) — остаётся
 // прежняя буквенная подпись.
+// Свои составные глифы (см. src/components/appGlyphs.tsx) — они рисуют сам предмет, а не его
+// силуэт. Маски Phosphor остались только запасным путём для приложений без своего глифа.
 const PHOSPHOR_APPS = new Set(['calc', 'convert', 'timer', 'color', 'kitten', 'counter'])
 
 // Цвет глифа для СВЕТЛЫХ плиток (см. --appicon-counter/--appicon-color в tokens/apps.css):
@@ -648,7 +651,11 @@ export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
             : 'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 12%, rgba(0,0,0,0) 78%, rgba(0,0,0,0.10) 100%)',
         }} />
 
-        {maskFile ? (
+        {hasGlyph(app.id) || (app.kind === 'web' && hasGlyph('web')) ? (
+          <span style={{ position: 'relative', display: 'inline-flex', filter: isLightTile ? undefined : 'drop-shadow(0 1px 1px rgba(0,0,0,0.18))' }}>
+            <AppGlyph id={hasGlyph(app.id) ? app.id : 'web'} size={iconSize} color={glyphColor} />
+          </span>
+        ) : maskFile ? (
           <span style={{
             width: iconSize, height: iconSize, position: 'relative',
             background: glyphColor,
