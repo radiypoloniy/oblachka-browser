@@ -8,7 +8,6 @@ import Settings from './components/Settings';
 import HistoryBookmarks from './components/HistoryBookmarks';
 import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
-import Downloads from './components/Downloads';
 import { islandPlate } from './styles/island';
 import { subscribeScrim, dimColor } from './scrimState';
 import type { SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal } from '../shared/ipc';
@@ -654,8 +653,6 @@ export default function App() {
             void window.oblako.setSuggestDropdownOpen(open);
           }}
           downloadsActive={downloadsActive}
-          downloadsOpen={kind === 'downloads'}
-          onToggleDownloads={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('downloads')); })(); }}
           onToggleAiPanel={() => { void window.oblako.toggleAiPanel(); }}
           aiPanelOpen={aiPanelOpen}
           pageTranslateState={pageTranslateState}
@@ -680,10 +677,9 @@ export default function App() {
           marginTop: 'var(--gutter-shell)', marginBottom: 'var(--gutter-shell)', marginLeft: 'var(--gutter-shell)',
           marginRight: aiPanelOpen ? 0 : SHELL_MARGIN,
         }}>
-          {kind === 'downloads' ? (
-            <Downloads downloads={downloads} onClose={() => void window.oblako.closeTab(activeId)} />
-          ) : kind === 'history' || kind === 'bookmarks' ? (
-            <HistoryBookmarks defaultSection={kind} onClose={() => void window.oblako.closeTab(activeId)} />
+          {kind === 'history' || kind === 'bookmarks' || kind === 'downloads' ? (
+            // Загрузки теперь третья секция того же острова, а не свой экран — см. HistoryBookmarks.
+            <HistoryBookmarks defaultSection={kind} downloads={downloads} onClose={() => void window.oblako.closeTab(activeId)} />
           ) : kind === 'settings' ? (
             <Settings defaultSection={active?.section} onClose={() => void window.oblako.closeTab(activeId)} onOpenImport={() => setImportDialog('manual')} />
           ) : isSplit ? (

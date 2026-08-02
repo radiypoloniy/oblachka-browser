@@ -616,6 +616,17 @@ export const IPC = {
   // только на renderer→main половину пути, ответной пары ADBLOCK_STATE_CHANGED-стиля у него нет.
   VPN_POPOVER_SET_ACTIVE_URL: 'vpn-popover:set-active-url',
 
+  // Поповер загрузок у одноимённой кнопки тулбара — та же техника, что VPN_POPOVER_* выше
+  // (см. electron/DownloadsPopoverManager.ts). Список поповер запрашивает сам через свой preload,
+  // а живой прогресс main толкает в саму вью (иначе полоска замерла бы до переоткрытия).
+  DOWNLOADS_POPOVER_SET_BOUNDS: 'downloads-popover:set-bounds',
+  DOWNLOADS_POPOVER_SHOW:       'downloads-popover:show',
+  DOWNLOADS_POPOVER_CLOSE:      'downloads-popover:close',
+  DOWNLOADS_POPOVER_CLOSED:     'downloads-popover:closed',
+  // «Все загрузки» со дна поповера: сама вью открыть вкладку не может (она не знает про окно и
+  // не имеет боевого preload), поэтому просит main, а тот просит хром своего окна.
+  DOWNLOADS_POPOVER_OPEN_ALL:   'downloads-popover:open-all',
+
   // Заход 10: живые suggest-подсказки текущего поисковика (см. SearchSuggestFetcher.ts) —
   // fetch ТОЛЬКО из main (CORS, см. комментарий в SearchSuggestFetcher.ts). Движок берётся main'ом
   // самостоятельно через SettingsManager.getSearchEngine() — тот же источник истины, что капсула.
@@ -1788,6 +1799,13 @@ export interface OblakoApi {
   // Домен активной вкладки для адблок-секции поповера (см. IPC.VPN_POPOVER_SET_ACTIVE_URL) —
   // Toolbar шлёт при открытии и при навигации в той же вкладке, пока поповер открыт.
   setVpnPopoverActiveUrl(url: string): Promise<void>;
+
+  // Поповер загрузок (см. IPC.DOWNLOADS_POPOVER_*, electron/DownloadsPopoverManager.ts) —
+  // как и у VPN, здесь только геометрия анкора и открытие/закрытие: список карточка берёт сама.
+  setDownloadsPopoverAnchorBounds(bounds: ContentBounds): Promise<void>;
+  showDownloadsPopover(): Promise<void>;
+  closeDownloadsPopover(): Promise<void>;
+  onDownloadsPopoverClosed(cb: () => void): () => void;
 
   // Детект железа (см. electron/HardwareInfo.ts) — задел под подбор модели, потребителей в UI
   // пока нет. Read-only, из кэша main-процесса (или первый расчёт, если кэша ещё нет).

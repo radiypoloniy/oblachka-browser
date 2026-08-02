@@ -1,36 +1,10 @@
 import { useState } from 'react';
 import { X, Download, FolderOpen, ExternalLink, RotateCcw, Pause, Play, XCircle, Trash2 } from 'lucide-react';
-import type { DownloadEntry, DownloadState } from '../../shared/ipc';
+import type { DownloadEntry } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
-
-function formatBytes(n: number): string {
-  if (n <= 0) return '0 Б';
-  if (n < 1024) return `${n} Б`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} КБ`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} МБ`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} ГБ`;
-}
-
-function formatSpeed(bps: number): string {
-  if (bps <= 0) return '';
-  if (bps < 1024) return `${bps} Б/с`;
-  if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(0)} КБ/с`;
-  return `${(bps / (1024 * 1024)).toFixed(1)} МБ/с`;
-}
-
-const STATE_LABEL: Record<DownloadState, string> = {
-  progressing: 'Загрузка',
-  completed:   'Готово',
-  cancelled:   'Отменено',
-  interrupted: 'Прервано',
-};
-
-const STATE_COLOR: Record<DownloadState, string> = {
-  progressing: 'var(--text-muted)',
-  completed:   'var(--dot-local)',
-  cancelled:   'var(--text-faint)',
-  interrupted: 'var(--text-muted)',
-};
+// Форматирование, подписи состояний и значок по типу файла — общие с поповером у кнопки тулбара
+// (см. downloadsShared.tsx): один и тот же файл в двух местах должен выглядеть одинаково.
+import { FileKindIcon, formatBytes, formatSpeed, STATE_LABEL, STATE_COLOR } from './downloadsShared';
 
 interface DownloadsProps {
   downloads: DownloadEntry[];
@@ -116,8 +90,10 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
   const [hovered, setHovered] = useState(false);
 
   const isActive   = d.state === 'progressing';
-  const isDone     = d.state === 'completed';
-  const isFailed   = d.state === 'interrupted' || d.state === 'cancelled';
+  // Скачано, но файла на месте уже нет — открывать нечего, зато можно скачать заново.
+  const isGone     = d.state === 'completed' && !!d.fileMissing;
+  const isDone     = d.state === 'completed' && !isGone;
+  const isFailed   = d.state === 'interrupted' || d.state === 'cancelled' || isGone;
   const pct        = d.totalBytes > 0 ? Math.round(d.receivedBytes / d.totalBytes * 100) : 0;
   const speed      = formatSpeed(d.bytesPerSec);
   const sizeLabel  = d.totalBytes > 0
@@ -127,6 +103,7 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
   return (
     <div
       style={{
+        display: 'flex', alignItems: 'flex-start', gap: 12,
         padding: '10px 8px', borderRadius: 'var(--radius-sm)',
         background: hovered ? 'var(--surface-hover)' : 'transparent',
         marginBottom: 2,
@@ -134,6 +111,8 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      <FileKindIcon filename={d.filename} size={34} muted={isFailed} />
+      <div style={{ flex: 1, minWidth: 0 }}>
       {/* Имя файла + статус */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
         <span style={{
@@ -142,8 +121,11 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
         }}>
           {d.filename}
         </span>
-        <span style={{ fontSize: 'var(--fs-xs)', color: STATE_COLOR[d.state], flexShrink: 0 }}>
-          {STATE_LABEL[d.state]}
+        <span style={{
+          fontSize: 'var(--fs-xs)', flexShrink: 0,
+          color: isGone ? 'var(--text-faint)' : STATE_COLOR[d.state],
+        }}>
+          {isGone ? 'Файла нет' : STATE_LABEL[d.state]}
         </span>
       </div>
 
@@ -248,6 +230,7 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
             onClick={() => void window.oblako.clearDownload(d.id)}
           />
         )}
+      </div>
       </div>
     </div>
   );

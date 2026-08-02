@@ -1,13 +1,18 @@
 import { useState } from 'react';
-import { Clock, Star } from 'lucide-react';
+import { Clock, Star, Download } from 'lucide-react';
 import { ModeButton } from './Hub';
 import History from './History';
 import Bookmarks from './Bookmarks';
+import Downloads from './Downloads';
+import type { DownloadEntry } from '../../shared/ipc';
 
-type Section = 'history' | 'bookmarks';
+type Section = 'history' | 'bookmarks' | 'downloads';
 
 interface Props {
   defaultSection: Section;
+  // Список загрузок держит App.tsx (он подписан на DOWNLOADS_CHANGED для точки на кнопке тулбара) —
+  // сюда приходит готовым, как и всё остальное в src/components: компоненты только рисуют.
+  downloads: DownloadEntry[];
   onClose: () => void;
 }
 
@@ -18,7 +23,7 @@ interface Props {
 // и переиспользован, не переизобретён). Секция — локальный React-стейт: createSpecialTab() всегда
 // создаёт новую вкладку (не переиспользует существующую), так что при каждом открытии это заведомо
 // свежий инстанс — «пережить рестарт» не про что.
-export default function HistoryBookmarks({ defaultSection, onClose }: Props) {
+export default function HistoryBookmarks({ defaultSection, downloads, onClose }: Props) {
   const [section, setSection] = useState<Section>(defaultSection);
 
   return (
@@ -42,10 +47,16 @@ export default function HistoryBookmarks({ defaultSection, onClose }: Props) {
         }}>
           <ModeButton active={section === 'history'} onClick={() => setSection('history')} icon={<Clock size={14} />} label="История" />
           <ModeButton active={section === 'bookmarks'} onClick={() => setSection('bookmarks')} icon={<Star size={14} />} label="Закладки" />
+          {/* Загрузки — третьим сюда же, а не отдельной вкладкой: это такой же архив «что я уже
+              видел/взял», и держать его в стороне от истории значило бы разводить по разным
+              экранам вещи, за которыми человек приходит с одним и тем же вопросом. */}
+          <ModeButton active={section === 'downloads'} onClick={() => setSection('downloads')} icon={<Download size={14} />} label="Загрузки" />
         </div>
       </div>
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-        {section === 'history' ? <History onClose={onClose} /> : <Bookmarks onClose={onClose} />}
+        {section === 'history' ? <History onClose={onClose} />
+          : section === 'bookmarks' ? <Bookmarks onClose={onClose} />
+          : <Downloads downloads={downloads} onClose={onClose} />}
       </div>
     </div>
   );

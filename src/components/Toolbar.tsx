@@ -82,8 +82,6 @@ interface ToolbarProps {
   onSubmit: (input: string) => void;
   onSuggestToggle?: (open: boolean) => void;
   downloadsActive: boolean;   // есть хотя бы одна активная загрузка
-  downloadsOpen: boolean;     // панель загрузок сейчас открыта
-  onToggleDownloads: () => void;
   onToggleAiPanel: () => void; // тоггл правой AI-панели (оверлей, см. AiPanelManager.ts)
   aiPanelOpen: boolean;       // панель открыта — кнопка подсвечена акцентом
   pageTranslateState: PageTranslateState; // см. PageTranslateManager.ts
@@ -102,7 +100,7 @@ export default function Toolbar({
   // см. задачу) — сама кнопка убрана из разметки, поэтому здесь они не нужны.
   tab, allTabs, vpnOn, omniboxRef: externalRef,
   onBack, onForward, onReload, onSubmit, onSuggestToggle,
-  downloadsActive, downloadsOpen, onToggleDownloads, onToggleAiPanel, aiPanelOpen,
+  downloadsActive, onToggleAiPanel, aiPanelOpen,
   pageTranslateState, pageTranslateProgress, onTogglePageTranslate, isLightWindow = false,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
@@ -117,6 +115,7 @@ export default function Toolbar({
   const [passwordIndicator, setPasswordIndicator] = useState<PasswordIndicatorState | null>(null);
   const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false);
   const [vpnPopoverOpen, setVpnPopoverOpen] = useState(false);
+  const [downloadsPopoverOpen, setDownloadsPopoverOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
 
   const internalRef = useRef<HTMLInputElement>(null);
@@ -150,6 +149,7 @@ export default function Toolbar({
   const omniboxPillRef = useRef<HTMLDivElement>(null);
   const passwordControlRef = useRef<HTMLDivElement>(null);
   const vpnControlRef = useRef<HTMLDivElement>(null);
+  const downloadsControlRef = useRef<HTMLDivElement>(null);
 
   // Текущий выбранный поисковик — источник истины в main (SettingsManager); здесь только
   // читаем id и строим URL по общему шаблону (shared/searchEngines.ts), не хардкодим движок.
@@ -417,6 +417,53 @@ export default function Toolbar({
     void window.oblako.showVpnPopover();
   }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, pushVpnPopoverBounds, tab?.url]);
 
+  const pushDownloadsPopoverBounds = useCallback(() => {
+    const el = downloadsControlRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    void window.oblako.setDownloadsPopoverAnchorBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+  }, []);
+
+  const toggleDownloadsPopover = useCallback(() => {
+    closeDropdownFully('downloads-button');
+    // Двум поповерам в тулбаре одновременно места нет — открывая один, гасим соседей.
+    if (passwordPopoverOpen) { setPasswordPopoverOpen(false); void window.oblako.closePasswordPopover(); }
+    if (vpnPopoverOpen) { setVpnPopoverOpen(false); void window.oblako.closeVpnPopover(); }
+    if (downloadsPopoverOpen) {
+      setDownloadsPopoverOpen(false);
+      void window.oblako.closeDownloadsPopover();
+      return;
+    }
+    pushDownloadsPopoverBounds();
+    setDownloadsPopoverOpen(true);
+    void window.oblako.showDownloadsPopover();
+  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen, pushDownloadsPopoverBounds]);
+
+  useEffect(() => window.oblako.onDownloadsPopoverClosed(() => setDownloadsPopoverOpen(false)), []);
+
+  useEffect(() => {
+    if (!downloadsPopoverOpen) return;
+    pushDownloadsPopoverBounds();
+    const el = downloadsControlRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(pushDownloadsPopoverBounds);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [downloadsPopoverOpen, toolbarWidth, pushDownloadsPopoverBounds]);
+
+  useEffect(() => {
+    if (!downloadsPopoverOpen) return;
+    const onOutsideMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!downloadsControlRef.current?.contains(target)) {
+        setDownloadsPopoverOpen(false);
+        void window.oblako.closeDownloadsPopover();
+      }
+    };
+    document.addEventListener('mousedown', onOutsideMouseDown, true);
+    return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
+  }, [downloadsPopoverOpen]);
+
   // Навигация в ТОЙ ЖЕ вкладке, пока поповер уже открыт (смена самой вкладки поповер закрывает
   // целиком, см. эффект по tab?.id ниже) — адблок-секция должна обновиться на новый домен, а не
   // показывать whitelist-статус/счётчик страницы, с которой уже ушли.
@@ -543,6 +590,10 @@ export default function Toolbar({
     if (vpnPopoverOpen) {
       setVpnPopoverOpen(false);
       void window.oblako.closeVpnPopover();
+    }
+    if (downloadsPopoverOpen) {
+      setDownloadsPopoverOpen(false);
+      void window.oblako.closeDownloadsPopover();
     }
   }, [tab?.id]);
 
@@ -1149,24 +1200,29 @@ export default function Toolbar({
         )}
         {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки. Иконка нейтральная
             всегда (заход 3) — акцент не для постоянных/переключаемых состояний, только точка
-            новой активности остаётся акцентной (единичное уведомление, не постоянный статус). */}
-        <button
-          title="Загрузки"
-          onClick={onToggleDownloads}
-          style={{
-            ...(downloadsOpen ? islandBtn('var(--accent)', 'var(--accent-soft)') : islandBtn()),
-            position: 'relative',
-          }}
-        >
-          <Download size={18} />
-          {downloadsActive && !downloadsOpen && (
-            <span style={{
-              position: 'absolute', bottom: 5, right: 5,
-              width: 5, height: 5, borderRadius: '50%',
-              background: 'var(--accent)',
-            }} />
-          )}
-        </button>
+            новой активности остаётся акцентной (единичное уведомление, не постоянный статус).
+            Клик открывает поповер с последними загрузками (см. DownloadsPopoverManager.ts), а не
+            раздел целиком: посмотреть только что скачанный файл — самый частый повод сюда нажать,
+            и ради него не должна уезжать открытая страница. Полный список — со дна поповера. */}
+        <div ref={downloadsControlRef} style={{ display: 'inline-flex' }}>
+          <button
+            title="Загрузки"
+            onClick={toggleDownloadsPopover}
+            style={{
+              ...(downloadsPopoverOpen ? islandBtn('var(--accent)', 'var(--accent-soft)') : islandBtn()),
+              position: 'relative',
+            }}
+          >
+            <Download size={18} />
+            {downloadsActive && !downloadsPopoverOpen && (
+              <span style={{
+                position: 'absolute', bottom: 5, right: 5,
+                width: 5, height: 5, borderRadius: '50%',
+                background: 'var(--accent)',
+              }} />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

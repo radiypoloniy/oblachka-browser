@@ -93,6 +93,7 @@ import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPas
 import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
 import * as autofillOrchestrator from './AutofillOrchestrator';
 import { initVpnPopover, showVpnPopover, closeVpnPopover, syncVpnPopoverAnchorBounds, syncVpnPopoverActiveUrl, broadcastVpnState } from './VpnPopoverManager';
+import { initDownloadsPopover, showDownloadsPopover, closeDownloadsPopover, syncDownloadsPopoverAnchorBounds, broadcastDownloads } from './DownloadsPopoverManager';
 import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
 import * as searxngKeyStore from './SearxngKeyStore';
@@ -404,6 +405,9 @@ function wireSharedSessions(): void {
   downloads.setAskLocation(settings.getAskDownloadLocation());
   downloads.attach(session.defaultSession, (entries) => {
     broadcastToChrome(IPC.DOWNLOADS_CHANGED, entries);
+    // Отдельным пушем — в открытый поповер: broadcastToChrome доходит только до слоёв хрома,
+    // а поповер живёт своей WebContentsView и иначе показывал бы замерший прогресс.
+    broadcastDownloads(entries);
   });
 
   // Разрешения: хендлер на дефолтной сессии + на инкогнито-сессии (ниже) — обе через один колбэк.
@@ -441,6 +445,13 @@ function wireSharedSessions(): void {
   // окна, где событие произошло: индикатор-«ключ» и закрытие поповера — про его активную вкладку.
   const chromeOfWin = (w: BrowserWindow) => contextForWindow(w)?.chromeView.webContents ?? null;
   initPasswordPopover((w) => chromeOfWin(w)?.send(IPC.PASSWORD_POPOVER_CLOSED));
+  // Поповер загрузок — тоже один на приложение, но адресуется по окну: кнопка есть в каждом.
+  // «Все загрузки» переиспользует канал Ctrl+J (DOWNLOADS_OPEN) — это ровно то же действие,
+  // и заводить второй путь к одному разделу значило бы разъехаться в поведении.
+  initDownloadsPopover(
+    (w) => chromeOfWin(w)?.send(IPC.DOWNLOADS_POPOVER_CLOSED),
+    (w) => chromeOfWin(w)?.send(IPC.DOWNLOADS_OPEN),
+  );
   // Автозаполнение форм: оркестратор (хранилище ↔ страница ↔ поповер) + поповер выбора профиля.
   // onPick поповера — подстановка выбранного адреса в ту вкладку, где было сфокусировано поле.
   autofillOrchestrator.initAutofillOrchestrator(autofill);
@@ -677,7 +688,7 @@ function createWindow(role: WindowRole = 'main') {
     // вкладке, безусловный main-side хук на КАЖДУЮ реальную смену активной, а не только
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover();
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover();
       // Вопрос о разрешении привязан к конкретной странице — над чужой вкладкой ему не место.
       if (win) for (const id of dropPermissionRequests(win)) permissions.cancel(id);
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
@@ -685,7 +696,7 @@ function createWindow(role: WindowRole = 'main') {
       passwordAutofill.onActiveTabChanged(win);
     },
     (wc, tabId) => {
-      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); passwordAutofill.onTabClosed(tabId);
+      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); passwordAutofill.onTabClosed(tabId);
       // Закрылась последняя инкогнито-вкладка → стираем in-memory данные приватной сессии (куки/
       // хранилище), Chrome-подобно. takeIncognitoClearIfDone сам знает, когда это уместно (работает
       // и для кнопки, и для хоткея Ctrl+Shift+N).
@@ -698,6 +709,7 @@ function createWindow(role: WindowRole = 'main') {
       closePasswordPopover(win);
       closeAutofillPopover(win);
       closeVpnPopover();
+      closeDownloadsPopover();
     },
     // Менеджер паролей, шаг 2, коммит 2 — сигналы content-preload идут в PasswordAutofillManager,
     // который сверяется с сейфом и решает, показывать ли индикатор/поповер.
@@ -1373,6 +1385,16 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.VPN_POPOVER_SET_ACTIVE_URL, (_e, url: string) => {
     syncVpnPopoverActiveUrl(url);
+  });
+  ipcMain.handle(IPC.DOWNLOADS_POPOVER_SET_BOUNDS, (_e, b: ContentBounds) => {
+    syncDownloadsPopoverAnchorBounds(b);
+  });
+  ipcMain.handle(IPC.DOWNLOADS_POPOVER_SHOW, (e) => {
+    const w = winOf(e);
+    if (w) showDownloadsPopover(w);
+  });
+  ipcMain.handle(IPC.DOWNLOADS_POPOVER_CLOSE, () => {
+    closeDownloadsPopover();
   });
   // Живой список подсказок (заход 3/5) — buildSuggestions в Toolbar.tsx шлёт тот же массив,
   // что кладёт в setSuggestions() для старого дропдауна; main пересылает его во вью.

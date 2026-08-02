@@ -504,6 +504,16 @@ const api: OblakoApi = {
   },
   setVpnPopoverActiveUrl: (url: string) => ipcRenderer.invoke(IPC.VPN_POPOVER_SET_ACTIVE_URL, url) as Promise<void>,
 
+  // Поповер загрузок (см. shared/ipc.ts::IPC.DOWNLOADS_POPOVER_*).
+  setDownloadsPopoverAnchorBounds: (b: ContentBounds) => ipcRenderer.invoke(IPC.DOWNLOADS_POPOVER_SET_BOUNDS, b) as Promise<void>,
+  showDownloadsPopover:            () => ipcRenderer.invoke(IPC.DOWNLOADS_POPOVER_SHOW) as Promise<void>,
+  closeDownloadsPopover:           () => ipcRenderer.invoke(IPC.DOWNLOADS_POPOVER_CLOSE) as Promise<void>,
+  onDownloadsPopoverClosed: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.DOWNLOADS_POPOVER_CLOSED, handler);
+    return () => ipcRenderer.removeListener(IPC.DOWNLOADS_POPOVER_CLOSED, handler);
+  },
+
   // Детект железа (см. electron/HardwareInfo.ts) — задел, потребителей пока нет.
   getHardwareSnapshot: () => ipcRenderer.invoke(IPC.HARDWARE_GET_SNAPSHOT) as Promise<HardwareSnapshot>,
   refreshHardwareSnapshot: () => ipcRenderer.invoke(IPC.HARDWARE_REFRESH_SNAPSHOT) as Promise<HardwareSnapshot>,
