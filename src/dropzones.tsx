@@ -10,7 +10,10 @@ import './styles/global.css';
 // Что подсвечивать. Стороны разведены ради честной картинки: подсветить оба края и написать
 // подпись дважды значило бы соврать, куда попадёт вкладка. Держать в синхроне с ZoneVisual
 // в electron/DropZoneManager.ts.
-type ZoneVisual = 'split-left' | 'split-right' | 'window';
+//
+// 'adopt' рисуется в окне-ПРИЁМНИКЕ: вкладку тащат из другого окна, и подсказка нужна там, куда
+// смотрит человек. Зона у него одна на всю страницу — делить её на края незачем, исход всего один.
+type ZoneVisual = 'split-left' | 'split-right' | 'window' | 'adopt';
 
 declare global {
   interface Window {
@@ -55,6 +58,17 @@ function DropZones() {
 
   const edge = `${SPLIT_EDGE_RATIO * 100}%`;
   const middle = `${(1 - SPLIT_EDGE_RATIO * 2) * 100}%`;
+
+  // Приём вкладки из другого окна — одна зона во всю страницу, без деления на края: разделять
+  // экран чужой вкладкой на лету мы не умеем, и обещать этого нельзя.
+  if (zone === 'adopt') {
+    return (
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+        <Zone label="Перенести вкладку сюда" active style={{ left: 0, right: 0 }} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       <Zone label="Разделить экран" active={zone === 'split-left'} style={{ left: 0, width: edge }} />

@@ -13,12 +13,15 @@
 import { WebContentsView, screen } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
-import type { ContentBounds, TabDropZone } from '../shared/ipc';
-import { contextForWindow } from './WindowRegistry';
+import type { ContentBounds, TabDropResult, TabDropZone } from '../shared/ipc';
+import { contextForWindow, allContexts } from './WindowRegistry';
 
 // Что подсвечивать во вью. Стороны разделены только ради картинки: подсвечивать оба края разом
 // и писать подпись дважды — врать про то, куда именно попадёт вкладка.
-type ZoneVisual = 'split-left' | 'split-right' | 'window';
+//
+// 'adopt' — курсор ушёл на ДРУГОЕ окно Oblako, и вкладка переедет в него. Подсветка при этом
+// рисуется в окне-приёмнике, а не в окне-источнике: человек смотрит туда, куда тащит.
+type ZoneVisual = 'split-left' | 'split-right' | 'window' | 'adopt';
 
 // Доля ширины контента с каждого края, отданная разделению экрана. Остаток посередине — новое
 // окно. Так же разводят эти два жеста браузеры с вертикальными вкладками и сплитом.
@@ -30,22 +33,37 @@ interface WindowDropZones {
   win: BrowserWindow;
   view: WebContentsView | null;
   content: ContentBounds;
-  timer: NodeJS.Timeout | null;
-  zone: ZoneVisual | null;
 }
 
 const perWindow = new Map<number, WindowDropZones>();
+
+// Перетаскивание идёт ровно одно на всё приложение — мышь одна. Поэтому его состояние живёт
+// здесь, а не в записи окна: в ходе одного жеста участвуют ДВА окна (откуда тащат и куда), и
+// «чей это драг» иначе пришлось бы выяснять на каждом тике.
+interface ActiveDrag {
+  source: WindowDropZones;
+  // Окно, в котором сейчас показан оверлей: своё при обычном дропе, чужое — при переносе в него.
+  shown: WindowDropZones | null;
+  zone: ZoneVisual | null;
+  // Окно-приёмник для 'adopt'. Держим отдельно от shown: shown обнуляется при снятии оверлея,
+  // а решение об исходе принимается в момент отпускания.
+  target: WindowDropZones | null;
+  timer: NodeJS.Timeout | null;
+}
+
+let drag: ActiveDrag | null = null;
 
 function stateFor(win: BrowserWindow): WindowDropZones {
   const existing = perWindow.get(win.id);
   if (existing) return existing;
   const created: WindowDropZones = {
-    win, view: null, content: { x: 0, y: 0, width: 0, height: 0 }, timer: null, zone: null,
+    win, view: null, content: { x: 0, y: 0, width: 0, height: 0 },
   };
   perWindow.set(win.id, created);
   win.once('closed', () => {
-    const st = perWindow.get(win.id);
-    if (st?.timer) clearInterval(st.timer);
+    // Окно закрылось посреди жеста — драг обрывается вместе с ним, иначе таймер продолжил бы
+    // опрашивать курсор и слать сообщения в уничтоженную вью.
+    if (drag && (drag.source.win.id === win.id || drag.shown?.win.id === win.id)) stopDrag();
     perWindow.delete(win.id);
   });
   return created;
@@ -74,9 +92,9 @@ function ensureView(st: WindowDropZones): WebContentsView {
   return view;
 }
 
-// Курсор в координатах контентной зоны — или null, если он вне окна.
-function cursorInContent(st: WindowDropZones): { x: number; y: number } | null {
-  if (st.win.isDestroyed()) return null;
+// Курсор в координатах окна — или null, если он вне его.
+function cursorInWindow(st: WindowDropZones): { x: number; y: number } | null {
+  if (st.win.isDestroyed() || st.win.isMinimized()) return null;
   const cursor = screen.getCursorScreenPoint();
   const wb = st.win.getContentBounds();
   if (cursor.x < wb.x || cursor.x > wb.x + wb.width || cursor.y < wb.y || cursor.y > wb.y + wb.height) {
@@ -85,10 +103,25 @@ function cursorInContent(st: WindowDropZones): { x: number; y: number } | null {
   return { x: cursor.x - wb.x, y: cursor.y - wb.y };
 }
 
-function zoneNow(st: WindowDropZones): ZoneVisual | null {
-  const p = cursorInContent(st);
-  // Курсор вообще вне окна — это по-прежнему «вынести в окно»: привычный жест на нескольких
-  // мониторах, и он не должен исчезнуть из-за появления зон.
+// Какое окно Oblako сейчас под курсором. Своё проверяем первым: при перекрытии окон человек,
+// не уводивший мышь со своего окна, ожидает обычного исхода, а не переноса.
+// ⚠️ Настоящего порядка окон по глубине Electron не отдаёт, поэтому среди ЧУЖИХ берём первое
+// подходящее. Ошибка возможна только когда два окна лежат друг на друге и курсор попал в
+// пересечение — там же, где и человеку не очевидно, куда он целится.
+function windowUnderCursor(source: WindowDropZones): WindowDropZones | null {
+  if (cursorInWindow(source)) return source;
+  for (const ctx of allContexts()) {
+    if (ctx.win.id === source.win.id) continue;
+    const st = stateFor(ctx.win);
+    if (cursorInWindow(st)) return st;
+  }
+  return null;
+}
+
+// Зона внутри СВОЕГО окна: край контента — разделить экран, середина — новое окно, шапка и
+// сайдбар — обычное переупорядочивание.
+function zoneInSource(st: WindowDropZones): ZoneVisual | null {
+  const p = cursorInWindow(st);
   if (!p) return 'window';
   const c = st.content;
   if (p.x < c.x || p.x > c.x + c.width || p.y < c.y || p.y > c.y + c.height) return null; // сайдбар/тулбар
@@ -100,52 +133,101 @@ function zoneNow(st: WindowDropZones): ZoneVisual | null {
 
 // Наружу отдаём ДЕЙСТВИЕ, а не картинку: сайдбару всё равно, за какой край тянули.
 function toAction(z: ZoneVisual | null): TabDropZone | null {
-  return z === null ? null : z === 'window' ? 'window' : 'split';
+  if (z === null) return null;
+  if (z === 'adopt') return 'adopt';
+  return z === 'window' ? 'window' : 'split';
 }
 
-// Начало перетаскивания вкладки: показываем зоны и начинаем следить за курсором.
-export function startTabDrag(win: BrowserWindow): void {
-  const st = stateFor(win);
+// Показать оверлей в окне (своём или принимающем) и погасить его там, где он был до этого.
+function showOverlayIn(st: WindowDropZones): void {
   if (st.content.width === 0 || st.content.height === 0) return; // контента нет (настройки/история)
   const view = ensureView(st);
   // ⚠️ Страж фокуса, как у выпадашки подсказок: новая вью на экране норовит забрать фокус
   // (electron/electron#42922 не даёт это запретить), а вместе с ним оборвалось бы само
   // перетаскивание — оно живёт на захвате указателя в слое хрома.
-  const chrome = contextForWindow(win)?.chromeView;
+  const chrome = contextForWindow(st.win)?.chromeView;
   if (chrome && !view.webContents.listenerCount('focus')) {
     view.webContents.on('focus', () => {
       setImmediate(() => { if (!chrome.webContents.isDestroyed()) chrome.webContents.focus(); });
     });
   }
   view.setBounds({ x: st.content.x, y: st.content.y, width: st.content.width, height: st.content.height });
-  if (!win.contentView.children.includes(view)) {
-    win.contentView.addChildView(view); // последней → поверх нативной вью страницы
+  if (!st.win.contentView.children.includes(view)) {
+    st.win.contentView.addChildView(view); // последней → поверх нативной вью страницы
   }
   // ⚠️ Никакого view.webContents.focus(): фокус обязан остаться в чроме, иначе перетаскивание
   // оборвётся на полуслове (тот же инвариант, что у выпадашки подсказок).
-  const push = () => {
-    const zone = zoneNow(st);
-    if (zone === st.zone) return;
-    st.zone = zone;
-    if (!view.webContents.isDestroyed()) view.webContents.send('dropzones:zone', zone);
-  };
-  st.zone = null;
-  push();
-  if (st.timer) clearInterval(st.timer);
-  st.timer = setInterval(push, POLL_MS);
 }
 
-// Конец перетаскивания: прячем зоны и отдаём последнюю посчитанную — по ней сайдбар и решает,
-// что сделать (разделить экран, вынести в окно или просто переупорядочить).
-export function endTabDrag(win: BrowserWindow): TabDropZone | null {
-  const st = perWindow.get(win.id);
-  if (!st) return null;
-  if (st.timer) { clearInterval(st.timer); st.timer = null; }
-  // Пересчитываем на месте: последний тик мог быть до 30 мс назад, а решает именно точка отпускания.
-  const zone = toAction(zoneNow(st));
-  st.zone = null;
-  if (st.view && !st.win.isDestroyed() && st.win.contentView.children.includes(st.view)) {
-    try { st.win.contentView.removeChildView(st.view); } catch { /* окно могло закрыться */ }
+function hideOverlayIn(st: WindowDropZones | null): void {
+  if (!st?.view || st.win.isDestroyed()) return;
+  if (!st.win.contentView.children.includes(st.view)) return;
+  try { st.win.contentView.removeChildView(st.view); } catch { /* окно могло закрыться */ }
+}
+
+function sendZone(st: WindowDropZones | null, zone: ZoneVisual | null): void {
+  const wc = st?.view?.webContents;
+  if (wc && !wc.isDestroyed()) wc.send('dropzones:zone', zone);
+}
+
+// Один тик слежения: где курсор, что из этого следует и в каком окне это рисовать.
+function updateDrag(): void {
+  if (!drag) return;
+  const under = windowUnderCursor(drag.source);
+  // Курсор вне любого окна Oblako — по-прежнему «вынести в новое окно»: привычный жест на
+  // нескольких мониторах, и он не должен исчезнуть из-за появления зон.
+  const overSource = under === null || under === drag.source;
+  const shouldShowIn = overSource ? drag.source : under;
+  const zone: ZoneVisual | null = overSource
+    ? (under === null ? 'window' : zoneInSource(drag.source))
+    : 'adopt';
+
+  drag.target = overSource ? null : under;
+
+  if (drag.shown !== shouldShowIn) {
+    // Гасим подсветку на прежнем окне ПЕРЕД снятием: вью переживает драг и в следующий раз
+    // показалась бы с чужой подсветкой ещё до первого тика.
+    sendZone(drag.shown, null);
+    hideOverlayIn(drag.shown);
+    showOverlayIn(shouldShowIn);
+    drag.shown = shouldShowIn;
+    drag.zone = null; // новое окно ещё ничего не знает — заставляем послать зону ниже
   }
-  return zone;
+  if (zone !== drag.zone) {
+    drag.zone = zone;
+    sendZone(drag.shown, zone);
+  }
+}
+
+function stopDrag(): void {
+  if (!drag) return;
+  if (drag.timer) clearInterval(drag.timer);
+  sendZone(drag.shown, null);
+  hideOverlayIn(drag.shown);
+  drag = null;
+}
+
+// Начало перетаскивания вкладки: показываем зоны и начинаем следить за курсором.
+export function startTabDrag(win: BrowserWindow): void {
+  stopDrag(); // предыдущий жест мог не закрыться штатно (окно закрылось, дроп отменили)
+  const st = stateFor(win);
+  if (st.content.width === 0 || st.content.height === 0) return; // контента нет (настройки/история)
+  drag = { source: st, shown: null, zone: null, target: null, timer: null };
+  updateDrag();
+  drag.timer = setInterval(updateDrag, POLL_MS);
+}
+
+// Конец перетаскивания: прячем зоны и отдаём последнее посчитанное — по нему сайдбар и решает,
+// что сделать (разделить экран, вынести в окно, отдать другому окну или просто переупорядочить).
+export function endTabDrag(win: BrowserWindow): TabDropResult {
+  if (!drag || drag.source.win.id !== win.id) return { zone: null };
+  // Пересчитываем на месте: последний тик мог быть до 30 мс назад, а решает именно точка отпускания.
+  updateDrag();
+  const zone = toAction(drag.zone);
+  const windowId = drag.target?.win.id;
+  stopDrag();
+  // 'adopt' без живого приёмника — не исход, а полпути: лучше ничего не делать, чем унести
+  // вкладку неизвестно куда.
+  if (zone === 'adopt' && windowId === undefined) return { zone: null };
+  return windowId === undefined ? { zone } : { zone, windowId };
 }
