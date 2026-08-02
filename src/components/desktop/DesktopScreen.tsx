@@ -68,7 +68,13 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   const [sheetOpen, setSheetOpen] = useState(false);
   // Что сейчас тащат/тянут. Держим отдельно от раскладки: пока жест идёт, на диск ничего не
   // пишем — иначе каждое движение мыши превращалось бы в запись в localStorage.
-  const [drag, setDrag] = useState<{ id: string; overIndex: number } | null>(null);
+  // ⚠️ Хранит не только «куда встанет», но и смещение курсора: без него элемент оставался
+  // на месте, пока его тащили, — двигалась лишь прозрачность. Именно это и выглядело криво:
+  // жест есть, отклика нет.
+  const [drag, setDrag] = useState<{
+    id: string; overIndex: number;
+    startX: number; startY: number; dx: number; dy: number;
+  } | null>(null);
   const [resizing, setResizing] = useState<{ id: string; w: number; h: number } | null>(null);
 
   useEffect(() => subscribeNewTabSettings(() => setSettings(loadNewTabSettings())), []);
@@ -117,9 +123,18 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
 
   const light = isLightBackground(settings.background);
   const grid = useMemo(() => computeGrid(Math.max(320, width)), [width]);
+  // ⚠️ Раскладка считается по ПРЕДПОЛАГАЕМОМУ состоянию: во время перетаскивания элемент уже
+  // стоит на новом месте, во время растягивания — уже нового размера. Соседи из-за этого
+  // разъезжаются прямо под рукой (у них transition на transform), а не прыгают после отпускания.
+  const preview = useMemo(() => {
+    if (drag) return moveItem(layout, drag.id, drag.overIndex);
+    if (resizing) return resizeItem(layout, resizing.id, { w: resizing.w, h: resizing.h });
+    return layout;
+  }, [layout, drag, resizing]);
+
   const { placed, rows } = useMemo(
-    () => layoutItems(layout.items, grid.cols),
-    [layout.items, grid.cols],
+    () => layoutItems(preview.items, grid.cols),
+    [preview.items, grid.cols],
   );
 
   // Пока ширина не измерена, сетки нет вовсе: показать её «как получится» и переставить через
@@ -152,12 +167,23 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   const onItemPointerDown = (e: React.PointerEvent, id: string): void => {
     if (!editing || e.button !== 0) return;
     e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    setDrag({ id, overIndex: layout.items.findIndex((i) => i.id === id) });
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    setDrag({
+      id, overIndex: layout.items.findIndex((i) => i.id === id),
+      startX: e.clientX, startY: e.clientY, dx: 0, dy: 0,
+    });
   };
 
   const onGridPointerMove = (e: React.PointerEvent): void => {
-    if (drag) { setDrag({ ...drag, overIndex: indexAtPoint(e.clientX, e.clientY) }); return; }
+    if (drag) {
+      setDrag({
+        ...drag,
+        overIndex: indexAtPoint(e.clientX, e.clientY),
+        dx: e.clientX - drag.startX,
+        dy: e.clientY - drag.startY,
+      });
+      return;
+    }
     if (!resizing) return;
     const box = gridRef.current?.getBoundingClientRect();
     const item = placed.find((p) => p.item.id === resizing.id);
@@ -208,33 +234,56 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
               cursor: editing ? (drag ? 'grabbing' : 'grab') : undefined,
             }}
           >
+            {/* Тень места назначения: пока элемент в руке, на его будущей клетке лежит контур.
+                Без него человек догадывается о результате только по расступившимся соседям. */}
+            {ready && drag && (() => {
+              const target = placed.find((p) => p.item.id === drag.id);
+              if (!target) return null;
+              return (
+                <div style={{
+                  position: 'absolute', left: 0, top: 0, pointerEvents: 'none',
+                  transform: `translate3d(${target.col * step}px, ${target.row * step}px, 0)`,
+                  width: target.w * grid.cell + (target.w - 1) * grid.gap,
+                  height: target.h * grid.cell + (target.h - 1) * grid.gap,
+                  borderRadius: 'var(--radius-card)',
+                  background: 'rgba(255,255,255,0.14)',
+                  border: '2px dashed rgba(255,255,255,0.45)',
+                  transition: 'transform 220ms var(--ease-out)',
+                }} />
+              );
+            })()}
+
             {ready && placed.map(({ item, col, row, w, h }) => {
-              // Во время растягивания показываем БУДУЩИЙ размер, а не сохранённый: иначе жест
-              // выглядит так, будто ничего не происходит, пока не отпустишь.
-              const live = resizing && resizing.id === item.id ? { w: Math.min(resizing.w, grid.cols), h: resizing.h } : { w, h };
+              // Размер во время жеста уже новый: раскладка считается по preview (см. выше), так
+              // что и сам элемент, и расступившиеся соседи двигаются одновременно.
+              const live = { w, h };
+              const stretching = resizing?.id === item.id;
               const box = {
                 width: live.w * grid.cell + (live.w - 1) * grid.gap,
                 height: live.h * grid.cell + (live.h - 1) * grid.gap,
               };
               const dragging = drag?.id === item.id;
+              // Перетаскиваемый едет за курсором: к позиции его будущей клетки прибавляется
+              // смещение указателя. Приподнимаем масштабом и тенью — «взял в руку».
+              const lift = dragging ? ` translate3d(${drag.dx}px, ${drag.dy}px, 0) scale(1.06)` : '';
               const style: React.CSSProperties = {
                 position: 'absolute', left: 0, top: 0,
                 // ⚠️ Позиция — transform, а не left/top. Смена left/top заставляет браузер
                 // пересчитывать раскладку и перерисовывать слой на каждом кадре анимации;
-                // transform уходит в композитор и двигает уже готовую текстуру. Именно на этом
-                // перестановка выглядела рывками.
-                transform: `translate3d(${col * step}px, ${row * step}px, 0)`,
+                // transform уходит в композитор и двигает уже готовую текстуру.
+                transform: `translate3d(${col * step}px, ${row * step}px, 0)${lift}`,
                 width: box.width, height: box.height,
-                // Перетаскиваемый приподнят и полупрозрачен — видно, что он «в руке».
-                opacity: dragging ? 0.55 : 1,
                 zIndex: dragging || resizing?.id === item.id ? 5 : 1,
-                // Анимируем только transform: он не трогает вёрстку. Пока элемент тащат — без
-                // перехода, иначе он тянулся бы за курсором с задержкой.
-                transition: dragging || !ready ? undefined : 'transform 220ms var(--ease-out)',
+                // Пока элемент в руке — никакого перехода: он обязан быть точно под курсором,
+                // иначе тянется следом с задержкой и промахивается мимо места.
+                transition: dragging || !ready ? undefined
+                  : stretching ? 'transform 220ms var(--ease-out)'
+                  : 'transform 220ms var(--ease-out), width 180ms var(--ease-out), height 180ms var(--ease-out)',
+                filter: dragging ? 'drop-shadow(0 12px 24px rgba(10,12,20,0.35))' : undefined,
                 touchAction: editing ? 'none' : undefined,
                 // ⚠️ Дрожание вешаем на ВНУТРЕННИЙ слой (см. ниже), а не сюда: анимация transform
                 // на этом элементе затёрла бы позиционирующий translate3d.
-                willChange: editing ? 'transform' : undefined,
+                willChange: dragging || editing ? 'transform' : undefined,
               };
 
               const content = item.kind === 'widget' ? (() => {
@@ -278,6 +327,9 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
               return (
                 <div
                   key={item.id}
+                  // Атрибут нужен диагностике: по нему проверка находит конкретный элемент
+                  // сетки, не угадывая его по стилям.
+                  data-desktop-item={item.id}
                   style={style}
                   onPointerDown={(e) => onItemPointerDown(e, item.id)}
                 >
@@ -319,9 +371,12 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                           style={{
                             position: 'absolute', right: -6, bottom: -6, zIndex: 6,
                             width: 20, height: 20, borderRadius: 999,
-                            background: 'rgba(30,30,34,0.92)', cursor: 'nwse-resize',
+                            background: stretching ? 'var(--accent)' : 'rgba(30,30,34,0.92)',
+                            cursor: 'nwse-resize',
                             boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            transform: stretching ? 'scale(1.15)' : undefined,
+                            transition: 'transform 120ms var(--ease-out), background 120ms var(--ease-standard)',
                           }}
                         >
                           <span style={{
