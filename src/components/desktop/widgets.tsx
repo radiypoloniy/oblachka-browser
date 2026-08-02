@@ -549,6 +549,7 @@ export function TasksWidget({ box }: WidgetProps) {
         style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none', marginTop: 8 }}
       >
         <input
+          className="oblako-tile-input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Новое дело"

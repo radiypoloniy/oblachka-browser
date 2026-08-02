@@ -162,8 +162,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                       <AppIconBadge
                         app={app}
                         size={iconSize}
-                        radius={Math.round(iconSize * 0.235)}
-                        iconSize={Math.round(iconSize * 0.45)}
+                        iconSize={Math.round(iconSize * 0.56)}
                         shadow
                       />
                       <span style={{

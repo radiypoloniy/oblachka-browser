@@ -570,63 +570,108 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
 // onWallpaper: подписи иконок белые с тенью только ПОВЕРХ обоев; на «Без обоев» (белый остров)
 // они переходят на цвета темы — иначе нечитаемы.
 // Иконка приложения: lucide-глиф либо первая буква названия (пользовательские веб-приложения).
-// Плитки приложений с готовыми глифами Phosphor (см. scripts/download-icons.mjs).
+// Плитки приложений.
 //
+// ⚠️ Форма — SQUIRCLE (суперэллипс), а не border-radius. Это не придирка: у Apple иконки
+// строятся по суперэллипсу, где кривизна нарастает плавно, а обычное скругление даёт прямые
+// участки сторон и заметный «стык» с дугой. Именно этот силуэт первым выдаёт самоделку, даже
+// когда цвет и глиф подобраны верно. Задаётся маской с data-URI: id-шный clipPath работал бы
+// только в своём документе, а плитки живут в двух разных (чром и AI-панель).
+const SQUIRCLE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath d='M50 0C77.6 0 88.8 3.4 94.2 11.8C98.4 18.4 100 27.4 100 50C100 72.6 98.4 81.6 94.2 88.2C88.8 96.6 77.6 100 50 100C22.4 100 11.2 96.6 5.8 88.2C1.6 81.6 0 72.6 0 50C0 27.4 1.6 18.4 5.8 11.8C11.2 3.4 22.4 0 50 0Z' fill='%23000'/%3E%3C/svg%3E"
+
 // ⚠️ Глиф рисуется CSS-МАСКОЙ, а не <img>: файлы Phosphor чёрные, а на цветной плитке нужен
 // белый силуэт. Маска красит его заливкой родителя и не требует ни правки самих SVG, ни
 // filter-хаков вроде invert. Если файла нет (пользовательское веб-приложение) — остаётся
 // прежняя буквенная подпись.
-//
-// ⚠️ Тонкие штриховые иконки заменены на ПЛОТНЫЕ силуэты, и это не вкусовщина: на 90-пиксельной
-// плитке линия толщиной 1.9 px не держит форму — иконка выглядит выцветшей. У Apple глиф всегда
-// сплошной. Блик по верхнему краю и внутренняя рамка — оттуда же: без них плитка читается как
-// плоский прямоугольник, а не как объёмная кнопка.
 const PHOSPHOR_APPS = new Set(['calc', 'convert', 'timer', 'color', 'kitten', 'counter'])
+
+// Цвет глифа для СВЕТЛЫХ плиток (см. --appicon-counter/--appicon-color в tokens/apps.css):
+// на белой поверхности белый силуэт, разумеется, не виден, и цвет берёт на себя он.
+const GLYPH_TINT: Record<string, string> = {
+  counter: '#007AFF', // systemBlue
+  color: '#AF52DE',   // systemPurple
+}
+
+// Светлым плиткам нужна собственная кромка: на белом фоне светлые блики не работают, а без
+// границы иконка сливается со светлыми обоями.
+const LIGHT_TILES = new Set(Object.keys(GLYPH_TINT))
 
 export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
   app: AppDef
   size: number
-  radius: number | string
+  /** Оставлен для совместимости с вызовами; форму задаёт squircle-маска, а не радиус. */
+  radius?: number | string
   iconSize: number
   shadow?: boolean
 }) {
+  void radius
   const Icon = app.icon
   const maskFile = PHOSPHOR_APPS.has(app.id) ? app.id : app.kind === 'web' ? 'web' : null
+  const glyphColor = GLYPH_TINT[app.id] ?? 'var(--appicon-glyph)'
+  const isLightTile = LIGHT_TILES.has(app.id)
+  const squircle: React.CSSProperties = {
+    WebkitMaskImage: `url("${SQUIRCLE}")`,
+    maskImage: `url("${SQUIRCLE}")`,
+    WebkitMaskSize: '100% 100%',
+    maskSize: '100% 100%',
+    WebkitMaskRepeat: 'no-repeat',
+    maskRepeat: 'no-repeat',
+  }
+
   return (
+    // Внешняя обёртка несёт ТЕНЬ: тень от элемента с маской обрезается вместе с ним, поэтому
+    // отбрасывать её должен слой снаружи маски (drop-shadow, а не box-shadow — он повторяет
+    // форму суперэллипса, а не прямоугольника).
     <span style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      width: size, height: size, borderRadius: radius, flexShrink: 0,
-      background: app.gradient,
-      boxShadow: shadow
-        ? 'var(--appicon-shadow), inset 0 1px 0 rgba(255,255,255,0.34), inset 0 0 0 1px rgba(255,255,255,0.10)'
-        : 'inset 0 1px 0 rgba(255,255,255,0.30)',
-      position: 'relative', overflow: 'hidden',
+      display: 'inline-flex', width: size, height: size, flexShrink: 0, position: 'relative',
+      filter: shadow ? 'drop-shadow(0 1px 2px rgba(12,14,24,0.28)) drop-shadow(0 7px 14px rgba(12,14,24,0.30))' : undefined,
     }}>
-      {/* Мягкая засветка сверху — та же, что делает объём у иконок iOS. */}
       <span style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none',
-        background: 'linear-gradient(180deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.05) 42%, rgba(0,0,0,0.05) 100%)',
-      }} />
-      {maskFile ? (
+        ...squircle,
+        position: 'relative', width: size, height: size,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: app.gradient,
+      }}>
+        {/* Слои света. Порядок и смысл те же, что у иконок iOS: мягкая засветка сверху-слева
+            (откуда «падает свет»), тонкая светлая кромка по верхнему краю и лёгкое затемнение
+            к низу. Каждый по отдельности почти незаметен — вместе они и дают объём. */}
         <span style={{
-          width: iconSize, height: iconSize, position: 'relative',
-          background: 'var(--appicon-glyph)',
-          WebkitMaskImage: `url("./appicons/${maskFile}.svg")`,
-          maskImage: `url("./appicons/${maskFile}.svg")`,
-          WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-          WebkitMaskPosition: 'center', maskPosition: 'center',
-          WebkitMaskSize: 'contain', maskSize: 'contain',
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: isLightTile
+            ? 'radial-gradient(120% 90% at 28% 0%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 60%)'
+            : 'radial-gradient(120% 90% at 28% 0%, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.10) 45%, rgba(255,255,255,0) 70%)',
         }} />
-      ) : Icon !== null ? (
-        <Icon size={iconSize} strokeWidth={2.4} style={{ color: 'var(--appicon-glyph)', position: 'relative' }} />
-      ) : (
         <span style={{
-          fontSize: Math.round(iconSize * 0.85), fontWeight: 600, lineHeight: 1,
-          color: 'var(--appicon-glyph)', position: 'relative',
-        }}>
-          {app.label.charAt(0).toUpperCase()}
-        </span>
-      )}
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: isLightTile
+            ? 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(0,0,0,0.05) 100%)'
+            : 'linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 14%, rgba(0,0,0,0) 72%, rgba(0,0,0,0.16) 100%)',
+        }} />
+
+        {maskFile ? (
+          <span style={{
+            width: iconSize, height: iconSize, position: 'relative',
+            background: glyphColor,
+            WebkitMaskImage: `url("./appicons/${maskFile}.svg")`,
+            maskImage: `url("./appicons/${maskFile}.svg")`,
+            WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+            WebkitMaskPosition: 'center', maskPosition: 'center',
+            WebkitMaskSize: 'contain', maskSize: 'contain',
+            // Тень под глифом — он должен лежать НА поверхности, а не быть в неё впечатан.
+            filter: isLightTile ? undefined : 'drop-shadow(0 1px 1px rgba(0,0,0,0.22))',
+          }} />
+        ) : Icon !== null ? (
+          <Icon size={iconSize} strokeWidth={2.4} style={{ color: 'var(--appicon-glyph)', position: 'relative' }} />
+        ) : (
+          <span style={{
+            fontSize: Math.round(iconSize * 0.82), fontWeight: 600, lineHeight: 1,
+            color: 'var(--appicon-glyph)', position: 'relative',
+            textShadow: '0 1px 1px rgba(0,0,0,0.22)',
+          }}>
+            {app.label.charAt(0).toUpperCase()}
+          </span>
+        )}
+      </span>
     </span>
   )
 }
@@ -668,7 +713,7 @@ function HomeGrid({ apps, openApps, onOpen, widgets, weatherCity, onWallpaper }:
               }}
             >
               {/* --radius-card (13px) на 54px — те же ~24% скругления, что у иконок iOS. */}
-              <AppIconBadge app={app} size={54} radius="var(--radius-card)" iconSize={24} shadow />
+              <AppIconBadge app={app} size={54} iconSize={30} shadow />
               <span style={{
                 maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 fontSize: 'var(--fs-xs)', fontWeight: 500,
