@@ -69,11 +69,15 @@ interface PendingEntry {
   keysToStore: PermKey[];
 }
 
+// Кто спрашивает — нужно, чтобы вопрос всплыл В ТОМ ЖЕ окне, где живёт вкладка. Раньше он
+// всегда уходил в главное окно, и запрос камеры из второго окна появлялся в первом.
+export type SendPermissionRequest = (req: PermissionRequest, requesterWcId: number | null) => void;
+
 export class PermissionManager {
   #db: Database | null = null;
   #dbPath: string;
   #pending = new Map<string, PendingEntry>();
-  #sendRequest: ((req: PermissionRequest) => void) | null = null;
+  #sendRequest: SendPermissionRequest | null = null;
 
   constructor() {
     this.#dbPath = path.join(app.getPath('userData'), 'permissions.sqlite');
@@ -106,7 +110,7 @@ export class PermissionManager {
     }
   }
 
-  attach(sess: Session, sendRequest: (req: PermissionRequest) => void): void {
+  attach(sess: Session, sendRequest: SendPermissionRequest): void {
     this.#sendRequest = sendRequest;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -140,7 +144,7 @@ export class PermissionManager {
 
         const requestId = randomUUID();
         this.#pending.set(requestId, { callback, origin, keysToStore: keys });
-        this.#sendRequest?.({ requestId, origin, permission: displayKey });
+        this.#sendRequest?.({ requestId, origin, permission: displayKey }, wc?.id ?? null);
       },
     );
 
@@ -167,6 +171,16 @@ export class PermissionManager {
         this.#store(entry.origin, key, granted ? 'granted' : 'denied');
       }
     }
+  }
+
+  // Вопрос снят не человеком, а обстоятельствами (ушли со страницы, закрыли вкладку). Отвечаем
+  // «нет» и ничего не запоминаем: молча забыть запись нельзя — колбэк Chromium остался бы
+  // неотвеченным навсегда, и сайт ждал бы ответа до конца жизни страницы.
+  cancel(requestId: string): void {
+    const entry = this.#pending.get(requestId);
+    if (!entry) return;
+    this.#pending.delete(requestId);
+    entry.callback(false);
   }
 
   // ── Приватное ────────────────────────────────────────────────────────────────
