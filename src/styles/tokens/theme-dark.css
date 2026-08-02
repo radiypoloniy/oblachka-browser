@@ -48,6 +48,13 @@
   --dot-local: #30D158; /* systemGreen dark */
   --dot-vpn:   #30D158;
 
+  /* Тона курса (см. colors.css): светлые ступени той же пары. Тёмно-зелёный #15803D на плитке
+     #1C1C1E давал контраст около 2:1 — процент роста просто пропадал. */
+  --tone-green:      #30D158; /* systemGreen dark */
+  --tone-warm:       #FF9F0A; /* systemOrange dark */
+  --tone-green-fill: rgba(48,209,88,0.16);
+  --tone-warm-fill:  rgba(255,159,10,0.16);
+
   --success-500: #30D158;
   --danger-500:  #FF453A; /* systemRed dark */
   --warning-500: #FF9F0A; /* systemOrange dark */

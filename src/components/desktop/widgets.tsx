@@ -27,26 +27,33 @@ export interface WidgetProps {
 }
 
 // ── Плитка ────────────────────────────────────────────────────────────────────
-function Tile({ children, tint, padding = 16, light }: {
+//
+// Два вида, и это не вкус, а разное назначение:
+//  • ЦВЕТНАЯ (tint) — носитель со своим настроением: погода, часы, часто открываемые сайты;
+//  • ПЛИТКА ТЕМЫ (surface) — та, что раньше была просто белой. Теперь она берёт поверхность из
+//    темы (var(--surface)), то есть темнеет вместе с интерфейсом и следует выбранной палитре.
+//    Прежний литерал #FFFFFF в тёмной теме светил на весь стол белым прямоугольником, а тёмный
+//    текст на нём оставался тёмным.
+function Tile({ children, tint, padding = 16, surface }: {
   children: React.ReactNode;
-  /** Заливка. Задаётся всегда: прозрачных виджетов на столе нет. */
-  tint: string;
+  /** Заливка цветной плитки. Игнорируется при surface. */
+  tint?: string;
   padding?: number;
-  /** Белый «парящий остров»: тёмный текст, мягкая тень, тонкая кромка. */
-  light?: boolean;
+  /** Плитка идёт за темой и палитрой, а не за собственным цветом. */
+  surface?: boolean;
 }) {
   return (
     <div style={{
       width: '100%', height: '100%', overflow: 'hidden',
       borderRadius: 'var(--radius-card)',
-      background: tint,
-      // ⚠️ У светлого острова тень мягче и холоднее, а по краю идёт кромка: белое на светлых
-      // обоях иначе сливается с фоном и перестаёт читаться как отдельная плитка.
-      boxShadow: light
+      background: surface ? 'var(--surface)' : tint,
+      // ⚠️ У плитки темы тень мягче, а по краю идёт кромка: и белая на светлых обоях, и тёмная на
+      // тёмных иначе сливается с фоном и перестаёт читаться как отдельный остров.
+      boxShadow: surface
         ? '0 1px 2px rgba(16,20,40,0.10), 0 10px 28px rgba(16,20,40,0.16)'
         : '0 6px 20px rgba(16,20,40,0.22)',
-      border: light ? '1px solid rgba(0,0,0,0.06)' : undefined,
-      color: light ? 'rgba(28,28,32,0.92)' : '#fff',
+      border: surface ? '1px solid var(--divider)' : undefined,
+      color: surface ? 'var(--text-body)' : '#fff',
       padding,
       display: 'flex', flexDirection: 'column',
     }}>{children}</div>
@@ -62,8 +69,14 @@ function TileCaption({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Общий цвет содержательных плиток — часы и часто открываемые сайты. ⚠️ Раньше у них были два
+// разных сине-серых градиента (почти одинаковых, но не совпадающих), и стол выглядел пёстрым от
+// оттенков, которые ничего не различали. Один приглушённый графитово-синий работает и на светлых
+// обоях, и на тёмных, и не спорит ни с одной палитрой: цвет здесь — носитель, а не сигнал.
+// Погода намеренно осталась при своём — там цвет означает время суток и погоду.
+const TILE_SLATE = 'linear-gradient(160deg, #47566B 0%, #333E52 55%, #2A3242 100%)';
+
 // ── Часы ──────────────────────────────────────────────────────────────────────
-const CLOCK_TINT = 'linear-gradient(160deg, #2B3242 0%, #1B2030 60%, #141720 100%)';
 
 export function ClockWidget({ box }: WidgetProps) {
   const [now, setNow] = useState(() => new Date());
@@ -89,7 +102,7 @@ export function ClockWidget({ box }: WidgetProps) {
   const fs = Math.round(Math.min(box.height * 0.42, avail / (time.length * 0.56), 92));
 
   return (
-    <Tile tint={CLOCK_TINT}>
+    <Tile tint={TILE_SLATE}>
       <TileCaption>{weekday}</TileCaption>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div style={{
@@ -251,9 +264,8 @@ export function WeatherWidget({ size, box, city }: WidgetProps) {
 }
 
 // ── Курсы валют ───────────────────────────────────────────────────────────────
-// Белый остров: слишком много ярких плиток рядом превращают стол в витрину. Начинка та же,
-// но цвет остаётся только там, где он что-то значит, — в стрелках роста и падения.
-const RATES_TINT = 'linear-gradient(180deg, #FFFFFF 0%, #F7F8FA 100%)';
+// Плитка темы, а не собственный цвет: слишком много ярких островов рядом превращают стол в
+// витрину. Цвет остаётся только там, где он что-то значит, — в стрелках роста и падения.
 const RATE_SYMBOL: Record<string, string> = {
   USD: '$', EUR: '€', CNY: '¥', GBP: '£', JPY: '¥', KZT: '₸', TRY: '₺', BYN: 'Br', AMD: '֏', GEL: '₾',
 };
@@ -261,8 +273,12 @@ const RATE_SYMBOL: Record<string, string> = {
 // ⚠️ Названы по ЦВЕТУ, а не по смыслу («рост»/«падение»), и это принципиально: у курса ЦБ рост
 // значения красят тёплым (рубль слабеет), у крипты рост — зелёным (актив дорожает). Одно имя
 // вроде TONE_UP склеило бы два противоположных правила в одно и рано или поздно их перепутало.
-const TONE_GREEN = '#15803D';
-const TONE_WARM  = '#C2410C';
+// Значения — в токенах (colors.css + theme-dark.css): на тёмной плитке прежние тёмные литералы
+// не читались вовсе.
+const TONE_GREEN = 'var(--tone-green)';
+const TONE_WARM  = 'var(--tone-warm)';
+const FILL_GREEN = 'var(--tone-green-fill)';
+const FILL_WARM  = 'var(--tone-warm-fill)';
 
 export function RatesWidget({ size, box }: WidgetProps) {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
@@ -297,11 +313,11 @@ export function RatesWidget({ size, box }: WidgetProps) {
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
-    <Tile tint={RATES_TINT} light>
+    <Tile surface>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
         <TileCaption>Курс ЦБ</TileCaption>
         {history.length > 1 && (
-          <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.75 }}>{main} · 30 дней</span>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>{main} · 30 дней</span>
         )}
       </div>
 
@@ -396,14 +412,14 @@ export function CryptoWidget({ size, box }: WidgetProps) {
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
-    <Tile tint={RATES_TINT} light>
+    <Tile surface>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
         {/* ⚠️ Валюта — в подписи, а не в каждой строке: «₿ 5.02 млн» без неё не отвечает на вопрос
             «миллиона чего» (у соседнего виджета символ слева говорит это сам — «$ 78.42» читается
             как «рублей за доллар»). В строке ₽ не помещался и переносил её на две. */}
         <TileCaption>Крипта, ₽</TileCaption>
         {history.length > 1 && (
-          <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.75 }}>{main} · 30 дней</span>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>{main} · 30 дней</span>
         )}
       </div>
 
@@ -444,7 +460,7 @@ export function CryptoWidget({ size, box }: WidgetProps) {
           values={history}
           height={chartH}
           color={mainUp ? TONE_GREEN : TONE_WARM}
-          fill={mainUp ? 'rgba(21,128,61,0.14)' : 'rgba(194,65,12,0.14)'}
+          fill={mainUp ? FILL_GREEN : FILL_WARM}
         />
       )}
     </Tile>
@@ -456,7 +472,7 @@ export function CryptoWidget({ size, box }: WidgetProps) {
  * осей и подписей — это десяток строк, а любая charting-библиотека тянет за собой сотни
  * килобайт ради того же результата.
  */
-function Sparkline({ values, height, color = TONE_GREEN, fill = 'rgba(21,128,61,0.14)' }: {
+function Sparkline({ values, height, color = TONE_GREEN, fill = FILL_GREEN }: {
   values: number[];
   height: number;
   // Цвет задаётся снаружи ради виджета «Крипта»: там линия должна краснеть на падающем активе,
@@ -499,7 +515,6 @@ function Sparkline({ values, height, color = TONE_GREEN, fill = 'rgba(21,128,61,
 }
 
 // ── Часто открываете ──────────────────────────────────────────────────────────
-const SITES_TINT = 'linear-gradient(160deg, #4C5B78 0%, #333F58 100%)';
 
 function hostLabel(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
@@ -554,7 +569,7 @@ export function TopSitesWidget({ box, tiles, onOpen }: WidgetProps) {
   const shown = tiles.slice(0, cols * rows);
 
   return (
-    <Tile tint={SITES_TINT}>
+    <Tile tint={TILE_SLATE}>
       <TileCaption>Часто открываете</TileCaption>
       {shown.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.85 }}>
@@ -592,7 +607,6 @@ export function TopSitesWidget({ box, tiles, onOpen }: WidgetProps) {
 // ── Дела ──────────────────────────────────────────────────────────────────────
 // Тоже белый остров — по той же причине, что и курс. Заодно снялся вопрос читаемости: тёмный
 // текст на белом не требует подбора контраста вовсе.
-const TASKS_TINT = 'linear-gradient(180deg, #FFFFFF 0%, #F7F8FA 100%)';
 // Акцент дел — тёплый янтарный: он остался в галочках и кнопке, где и нужен.
 const TASKS_ACCENT = '#E08A1E';
 const TASKS_KEY = 'oblako-desktop-tasks';
@@ -635,10 +649,10 @@ export function TasksWidget({ box }: WidgetProps) {
   const left = tasks.filter((t) => !t.done).length;
 
   return (
-    <Tile tint={TASKS_TINT} light>
+    <Tile surface>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
         <TileCaption>Дела</TileCaption>
-        <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.85 }}>
+        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
           {tasks.length === 0 ? '' : left ? `осталось ${left}` : 'всё сделано'}
         </span>
       </div>
@@ -672,7 +686,7 @@ export function TasksWidget({ box }: WidgetProps) {
           </div>
         ))}
         {tasks.length === 0 && (
-          <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.92 }}>Записывайте, что нужно не забыть.</div>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>Записывайте, что нужно не забыть.</div>
         )}
       </div>
 
@@ -685,10 +699,13 @@ export function TasksWidget({ box }: WidgetProps) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Новое дело"
+          // ⚠️ Поле осталось с тех пор, когда плитка была цветной: белый текст на почти чёрной
+          // подложке. На белой плитке это давало белые буквы на светло-сером — набранное дело было
+          // не видно вовсе. Теперь поле берёт колодец и текст из темы, как все поля в браузере.
           style={{
             flex: 1, minWidth: 0, height: 30, padding: '0 10px',
-            borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)',
-            background: 'rgba(0,0,0,0.18)', color: '#fff',
+            borderRadius: 999, border: '1px solid var(--divider)',
+            background: 'var(--surface-sunken)', color: 'var(--text-body)',
             fontSize: 'var(--fs-sm)', outline: 'none',
           }}
         />

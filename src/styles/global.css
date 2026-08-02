@@ -37,8 +37,10 @@ body {
 /* Поля ввода на цветных плитках виджетов (см. desktop/widgets.tsx). ⚠️ Отдельный класс нужен
    потому, что ::placeholder из inline-стиля не задаётся вовсе: браузер рисует подсказку своим
    цветом с пониженной прозрачностью, и на насыщенном фоне она почти не читалась. */
-.oblako-tile-input::placeholder { color: rgba(28,28,32,0.45); }
-.oblako-tile-input:focus { border-color: rgba(0,0,0,0.28); }
+/* Поле «Новое дело» на плитке темы (widgets.tsx): и подсказка, и кромка фокуса берутся из токенов —
+   литералы держались только за белую плитку, а она теперь темнеет вместе с темой. */
+.oblako-tile-input::placeholder { color: var(--text-faint); }
+.oblako-tile-input:focus { border-color: var(--divider-strong); }
 /* Экран первого запуска (Onboarding.tsx): появление элементов слайда. Только transform и
    opacity — вёрстки не трогают, кадры не съедают (см. правило про анимации в CLAUDE.md). */
 @keyframes oblako-onb-rise {
