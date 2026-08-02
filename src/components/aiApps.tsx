@@ -570,6 +570,19 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
 // onWallpaper: подписи иконок белые с тенью только ПОВЕРХ обоев; на «Без обоев» (белый остров)
 // они переходят на цвета темы — иначе нечитаемы.
 // Иконка приложения: lucide-глиф либо первая буква названия (пользовательские веб-приложения).
+// Плитки приложений с готовыми глифами Phosphor (см. scripts/download-icons.mjs).
+//
+// ⚠️ Глиф рисуется CSS-МАСКОЙ, а не <img>: файлы Phosphor чёрные, а на цветной плитке нужен
+// белый силуэт. Маска красит его заливкой родителя и не требует ни правки самих SVG, ни
+// filter-хаков вроде invert. Если файла нет (пользовательское веб-приложение) — остаётся
+// прежняя буквенная подпись.
+//
+// ⚠️ Тонкие штриховые иконки заменены на ПЛОТНЫЕ силуэты, и это не вкусовщина: на 90-пиксельной
+// плитке линия толщиной 1.9 px не держит форму — иконка выглядит выцветшей. У Apple глиф всегда
+// сплошной. Блик по верхнему краю и внутренняя рамка — оттуда же: без них плитка читается как
+// плоский прямоугольник, а не как объёмная кнопка.
+const PHOSPHOR_APPS = new Set(['calc', 'convert', 'timer', 'color', 'kitten', 'counter'])
+
 export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
   app: AppDef
   size: number
@@ -578,19 +591,38 @@ export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
   shadow?: boolean
 }) {
   const Icon = app.icon
+  const maskFile = PHOSPHOR_APPS.has(app.id) ? app.id : app.kind === 'web' ? 'web' : null
   return (
     <span style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       width: size, height: size, borderRadius: radius, flexShrink: 0,
       background: app.gradient,
-      boxShadow: shadow ? 'var(--appicon-shadow)' : undefined,
+      boxShadow: shadow
+        ? 'var(--appicon-shadow), inset 0 1px 0 rgba(255,255,255,0.34), inset 0 0 0 1px rgba(255,255,255,0.10)'
+        : 'inset 0 1px 0 rgba(255,255,255,0.30)',
+      position: 'relative', overflow: 'hidden',
     }}>
-      {Icon !== null ? (
-        <Icon size={iconSize} strokeWidth={1.9} style={{ color: 'var(--appicon-glyph)' }} />
+      {/* Мягкая засветка сверху — та же, что делает объём у иконок iOS. */}
+      <span style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.05) 42%, rgba(0,0,0,0.05) 100%)',
+      }} />
+      {maskFile ? (
+        <span style={{
+          width: iconSize, height: iconSize, position: 'relative',
+          background: 'var(--appicon-glyph)',
+          WebkitMaskImage: `url("./appicons/${maskFile}.svg")`,
+          maskImage: `url("./appicons/${maskFile}.svg")`,
+          WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+          WebkitMaskPosition: 'center', maskPosition: 'center',
+          WebkitMaskSize: 'contain', maskSize: 'contain',
+        }} />
+      ) : Icon !== null ? (
+        <Icon size={iconSize} strokeWidth={2.4} style={{ color: 'var(--appicon-glyph)', position: 'relative' }} />
       ) : (
         <span style={{
           fontSize: Math.round(iconSize * 0.85), fontWeight: 600, lineHeight: 1,
-          color: 'var(--appicon-glyph)',
+          color: 'var(--appicon-glyph)', position: 'relative',
         }}>
           {app.label.charAt(0).toUpperCase()}
         </span>

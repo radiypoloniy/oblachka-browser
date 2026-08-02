@@ -41,7 +41,7 @@ import { createChromiumImporters } from './bookmarkImport/ChromiumBookmarkImport
 import { ImportManager } from './browserImport/ImportManager';
 import { faviconService } from './FaviconService';
 import { getWeather } from './WeatherService';
-import { getCurrencyRates } from './CurrencyRates';
+import { getCurrencyRates, getCurrencyHistory } from './CurrencyRates';
 import { getPhotoOfDay } from './NewTabPhoto';
 import { extractUrlText, setTabManager as setNotebookExtractTabManager } from './NotebookExtract';
 import { generateStudio, type StudioKind } from './NotebookStudio';
@@ -2053,6 +2053,8 @@ function registerIpc() {
   // был только предложением импорта, и без источников показывать было нечего. Теперь это ещё и
   // рассказ о браузере — он нужен и тому, у кого переносить нечего (шаг переноса в этом случае
   // сам скажет, что источников не нашлось).
+  ipcMain.handle(IPC.CURRENCY_HISTORY, (_e, code: string, days?: number) => getCurrencyHistory(code, days));
+
   ipcMain.handle(IPC.AI_PANEL_OPEN_APP, (e, appId: string) => {
     const w = winOf(e);
     if (w) openAiPanelApp(w, appId);

@@ -106,17 +106,35 @@ interface WeatherState {
   hours: { hour: number; tempC: number; code: number }[];
 }
 
-function wmoIcon(code: number, day = true): string {
-  if (code === 0) return day ? '☀️' : '🌙';
-  if (code <= 2) return day ? '🌤️' : '☁️';
-  if (code === 3) return '☁️';
-  if (code <= 48) return '🌫️';
-  if (code <= 57) return '🌦️';
-  if (code <= 67) return '🌧️';
-  if (code <= 77) return '🌨️';
-  if (code <= 82) return '🌦️';
-  if (code <= 86) return '🌨️';
-  return '⛈️';
+// WMO-код → имя файла Meteocons (см. scripts/download-icons.mjs).
+//
+// ⚠️ Эмодзи здесь не годятся: они рисуются шрифтом системы, выглядят по-разному на разных
+// машинах и рядом с крупной температурой смотрятся наклейкой. Meteocons — цветные объёмные
+// SVG в том же стиле, что системный виджет Apple.
+function wmoIconName(code: number, day = true): string {
+  if (code === 0) return day ? 'clear-day' : 'clear-night';
+  if (code <= 2) return day ? 'partly-cloudy-day' : 'partly-cloudy-night';
+  if (code === 3) return day ? 'overcast-day' : 'overcast-night';
+  if (code <= 48) return day ? 'fog-day' : 'fog-night';
+  if (code <= 57) return 'drizzle';
+  if (code <= 67) return 'rain';
+  if (code <= 77) return 'snow';
+  if (code <= 82) return 'rain';
+  if (code <= 86) return 'sleet';
+  if (code <= 99) return day ? 'thunderstorms-day-rain' : 'thunderstorms-night-rain';
+  return 'not-available';
+}
+
+function WeatherIcon({ code, day, size }: { code: number; day: boolean; size: number }) {
+  return (
+    <img
+      src={`./weather/${wmoIconName(code, day)}.svg`}
+      alt=""
+      width={size}
+      height={size}
+      style={{ width: size, height: size, flex: 'none', display: 'block' }}
+    />
+  );
 }
 
 function wmoText(code: number): string {
@@ -193,16 +211,14 @@ export function WeatherWidget({ size, box, city }: WidgetProps) {
         )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, flex: 'none' }}>
         <span style={{ fontSize: tempSize, fontWeight: 250, lineHeight: 1, letterSpacing: '-0.03em' }}>
           {data ? `${data.t}°` : '—'}
         </span>
-        <span style={{ fontSize: Math.round(tempSize * 0.62), lineHeight: 1 }}>
-          {wmoIcon(data?.code ?? 0, data?.isDay ?? true)}
-        </span>
+        <WeatherIcon code={data?.code ?? 0} day={data?.isDay ?? true} size={Math.round(tempSize * 1.05)} />
       </div>
 
-      <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.9, marginTop: 2 }}>
+      <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.9, marginTop: 2, flex: 'none' }}>
         {wmoText(data?.code ?? 0)}
         {data?.feels !== undefined && `, ощущается ${data.feels}°`}
       </div>
@@ -217,7 +233,7 @@ export function WeatherWidget({ size, box, city }: WidgetProps) {
           {hours.map((h) => (
             <div key={h.hour} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
               <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.8 }}>{String(h.hour).padStart(2, '0')}</span>
-              <span style={{ fontSize: 15, lineHeight: 1 }}>{wmoIcon(h.code, h.hour >= 7 && h.hour <= 20)}</span>
+              <WeatherIcon code={h.code} day={h.hour >= 7 && h.hour <= 20} size={30} />
               <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600 }}>{Math.round(h.tempC)}°</span>
             </div>
           ))}
@@ -235,38 +251,120 @@ const RATE_SYMBOL: Record<string, string> = {
 
 export function RatesWidget({ size, box }: WidgetProps) {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
+  const [prev, setPrev] = useState<Record<string, number>>({});
+  const [history, setHistory] = useState<number[]>([]);
+
+  const chosen = loadNewTabSettings().rates.codes;
+  const codes = (chosen.length ? chosen : ['USD', 'EUR']).slice(0, size.w >= 4 ? 3 : 2);
+  const main = codes[0] ?? 'USD';
 
   useEffect(() => {
     let alive = true;
     void window.oblako.getCurrencyRates().then((r) => {
-      if (alive && r.rates) setRates(r.rates as Record<string, number>);
+      if (!alive || !r.rates) return;
+      setRates(r.rates as Record<string, number>);
+      setPrev((r.prev ?? {}) as Record<string, number>);
     }).catch(() => { /* курс — украшение, молчим */ });
     return () => { alive = false; };
   }, []);
 
-  const chosen = loadNewTabSettings().rates.codes;
-  const codes = (chosen.length ? chosen : ['USD', 'EUR']).slice(0, size.w >= 4 ? 4 : 3);
-  // Кегль числа — от того, сколько строк реально помещается: три валюты в маленькой плитке
-  // должны читаться так же спокойно, как одна.
-  const rowFs = Math.round(Math.min((box.height - 46) / codes.length * 0.5, 30));
+  // График строим по ПЕРВОЙ выбранной валюте: несколько линий в плитке такого размера
+  // превратились бы в кашу, а одна показывает то, ради чего на курс и смотрят, — куда идёт.
+  useEffect(() => {
+    let alive = true;
+    void window.oblako.getCurrencyHistory(main, 30).then((v) => {
+      if (alive) setHistory(v);
+    }).catch(() => { /* график необязателен */ });
+    return () => { alive = false; };
+  }, [main]);
+
+  const rowFs = Math.round(Math.min((box.height - 60) / codes.length * 0.46, 26));
+  const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
     <Tile tint={RATES_TINT}>
-      <TileCaption>Курс ЦБ</TileCaption>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 6 }}>
-        {codes.map((c) => (
-          <div key={c} style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <span style={{ fontSize: Math.round(rowFs * 0.78), width: '1.3em', opacity: 0.9, flex: 'none' }}>
-              {RATE_SYMBOL[c] ?? c}
-            </span>
-            <span style={{ fontSize: rowFs, fontWeight: 500, fontVariantNumeric: 'tabular-nums', lineHeight: 1.15 }}>
-              {rates?.[c] !== undefined ? rates[c].toFixed(2) : '—'}
-            </span>
-            <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.7 }}>{c}</span>
-          </div>
-        ))}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
+        <TileCaption>Курс ЦБ</TileCaption>
+        {history.length > 1 && (
+          <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.75 }}>{main} · 30 дней</span>
+        )}
       </div>
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 5 }}>
+        {codes.map((c) => {
+          const now = rates?.[c];
+          const before = prev[c];
+          // Дельта за день: ЦБ отдаёт вчерашний курс в том же ответе, отдельный запрос не нужен.
+          const delta = now !== undefined && before !== undefined && before > 0
+            ? ((now - before) / before) * 100
+            : null;
+          return (
+            <div key={c} style={{ display: 'flex', alignItems: 'baseline', gap: 9 }}>
+              <span style={{ fontSize: Math.round(rowFs * 0.78), width: '1.2em', opacity: 0.9, flex: 'none' }}>
+                {RATE_SYMBOL[c] ?? c}
+              </span>
+              <span style={{ fontSize: rowFs, fontWeight: 500, fontVariantNumeric: 'tabular-nums', lineHeight: 1.15 }}>
+                {now !== undefined ? now.toFixed(2) : '—'}
+              </span>
+              {delta !== null && (
+                <span style={{
+                  fontSize: 'var(--fs-xs)', fontWeight: 600,
+                  // ⚠️ Цвет тут не про «хорошо/плохо», а про направление: рубль дешевеет — это
+                  // рост курса валюты. Красим сдержанно, без светофора на весь виджет.
+                  color: delta >= 0 ? 'rgba(255,235,180,0.95)' : 'rgba(200,255,220,0.95)',
+                }}>
+                  {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(2)}%
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {history.length > 1 && box.height > 150 && (
+        <Sparkline values={history} height={chartH} />
+      )}
     </Tile>
+  );
+}
+
+/**
+ * Спарклайн курса. Рисуем сами SVG-полилинией, а не библиотекой: линия из тридцати точек без
+ * осей и подписей — это десяток строк, а любая charting-библиотека тянет за собой сотни
+ * килобайт ради того же результата.
+ */
+function Sparkline({ values, height }: { values: number[]; height: number }) {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const w = 100; // работаем в процентах вьюбокса — плитка резиновая
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * w;
+    const y = height - ((v - min) / span) * (height - 6) - 3;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  });
+
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${height}`}
+      preserveAspectRatio="none"
+      style={{ width: '100%', height, marginTop: 8, flex: 'none', overflow: 'visible' }}
+    >
+      {/* Заливка под линией — она и придаёт графику «вес», без неё это просто царапина. */}
+      <polygon
+        points={`0,${height} ${pts.join(' ')} ${w},${height}`}
+        fill="rgba(255,255,255,0.16)"
+      />
+      <polyline
+        points={pts.join(' ')}
+        fill="none"
+        stroke="rgba(255,255,255,0.92)"
+        strokeWidth={1.6}
+        vectorEffect="non-scaling-stroke"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
@@ -275,6 +373,42 @@ const SITES_TINT = 'linear-gradient(160deg, #4C5B78 0%, #333F58 100%)';
 
 function hostLabel(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+}
+
+/**
+ * Иконка сайта внутри виджета. ⚠️ У сайта без favicon.ico картинка не грузится, и раньше на её
+ * месте оставалась ДЫРА (visibility: hidden) — ряд выглядел дырявым и неряшливым. Теперь на это
+ * место встаёт буква на цветной подложке: место занято всегда, а цвет выводится из имени домена,
+ * поэтому у одного сайта он не меняется от запуска к запуску.
+ */
+function FaviconTile({ host }: { host: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    let hash = 0;
+    for (let i = 0; i < host.length; i++) hash = (hash * 31 + host.charCodeAt(i)) | 0;
+    const hue = Math.abs(hash) % 360;
+    return (
+      <span style={{
+        width: 44, height: 44, borderRadius: 12, flex: 'none',
+        background: `linear-gradient(180deg, hsl(${hue} 60% 62%), hsl(${hue} 55% 48%))`,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 19, fontWeight: 600, color: '#fff',
+      }}>{(host.charAt(0) || '?').toUpperCase()}</span>
+    );
+  }
+
+  return (
+    <img
+      src={`https://${host}/favicon.ico`}
+      alt=""
+      onError={() => setFailed(true)}
+      style={{
+        width: 44, height: 44, borderRadius: 12, objectFit: 'contain', flex: 'none',
+        background: 'rgba(255,255,255,0.94)', padding: 7, boxSizing: 'border-box',
+      }}
+    />
+  );
 }
 
 export function TopSitesWidget({ box, tiles, onOpen }: WidgetProps) {
@@ -312,15 +446,7 @@ export function TopSitesWidget({ box, tiles, onOpen }: WidgetProps) {
                 minWidth: 0, color: 'inherit',
               }}
             >
-              <img
-                src={`https://${hostLabel(t.url)}/favicon.ico`}
-                alt=""
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                style={{
-                  width: 44, height: 44, borderRadius: 12, objectFit: 'contain', flex: 'none',
-                  background: 'rgba(255,255,255,0.94)', padding: 7, boxSizing: 'border-box',
-                }}
-              />
+              <FaviconTile host={hostLabel(t.url)} />
               <span style={{
                 maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 fontSize: 'var(--fs-xs)', opacity: 0.9,
@@ -334,7 +460,9 @@ export function TopSitesWidget({ box, tiles, onOpen }: WidgetProps) {
 }
 
 // ── Дела ──────────────────────────────────────────────────────────────────────
-const TASKS_TINT = 'linear-gradient(160deg, #E9A93C 0%, #D8862B 60%, #BE6E1E 100%)';
+// ⚠️ Заметно темнее первой версии: белый текст на светло-оранжевом фоне почти не читался —
+// контраст был около 2:1 при минимально приемлемых 4.5:1 для мелкого текста.
+const TASKS_TINT = 'linear-gradient(160deg, #C2761B 0%, #A65D13 60%, #8A4A0D 100%)';
 const TASKS_KEY = 'oblako-desktop-tasks';
 
 interface Task { id: string; text: string; done: boolean }
@@ -395,7 +523,7 @@ export function TasksWidget({ box }: WidgetProps) {
                 background: t.done ? 'rgba(255,255,255,0.95)' : 'transparent',
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0,
               }}
-            >{t.done && <Check size={12} style={{ color: '#BE6E1E' }} />}</button>
+            >{t.done && <Check size={12} style={{ color: '#8A4A0D' }} />}</button>
             <span style={{
               flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', textAlign: 'left',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -412,7 +540,7 @@ export function TasksWidget({ box }: WidgetProps) {
           </div>
         ))}
         {tasks.length === 0 && (
-          <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.85 }}>Записывайте, что нужно не забыть.</div>
+          <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.92 }}>Записывайте, что нужно не забыть.</div>
         )}
       </div>
 
@@ -427,7 +555,7 @@ export function TasksWidget({ box }: WidgetProps) {
           style={{
             flex: 1, minWidth: 0, height: 30, padding: '0 10px',
             borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)',
-            background: 'rgba(255,255,255,0.16)', color: '#fff',
+            background: 'rgba(0,0,0,0.18)', color: '#fff',
             fontSize: 'var(--fs-sm)', outline: 'none',
           }}
         />
@@ -436,7 +564,7 @@ export function TasksWidget({ box }: WidgetProps) {
           title="Добавить"
           style={{
             width: 30, height: 30, flex: 'none', borderRadius: 999, border: 'none', cursor: 'default',
-            background: 'rgba(255,255,255,0.92)', color: '#BE6E1E',
+            background: 'rgba(255,255,255,0.95)', color: '#8A4A0D',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}
         ><Plus size={16} /></button>

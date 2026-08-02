@@ -60,7 +60,7 @@ export function sizeName(size: CellSize): WidgetSizeName | null {
 // большом экране сетка перестаёт расти и просто центрируется — как springboard на iPad.
 const CELL_TARGET = 108; // желаемый шаг сетки, от него считается число колонок
 export const CELL_MIN = 78;
-export const CELL_MAX = 124;
+export const CELL_MAX = 132;
 export const COLS_MIN = 4;
 export const COLS_MAX = 10;
 export const GRID_GAP = 14;

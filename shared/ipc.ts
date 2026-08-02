@@ -381,6 +381,8 @@ export const IPC = {
   // Открыть AI-панель сразу на нужном приложении (иконки калькулятора и прочих на рабочем
   // столе новой вкладки — сами приложения живут в панели, см. electron/AiPanelManager.ts).
   AI_PANEL_OPEN_APP: 'ai-panel:open-app-request',
+  // Ряд значений курса за последние дни — спарклайн виджета «Курс ЦБ».
+  CURRENCY_HISTORY: 'currency:history',
 
   DEFAULT_BROWSER_IS: 'default-browser:is',
   DEFAULT_BROWSER_REQUEST: 'default-browser:request',
@@ -1346,6 +1348,8 @@ export interface WeatherInfo {
 // Тот же тип, что отдаёт конвертер AI-панели, но здесь он в общем контракте: виджет вкладки
 // живёт в боевом рендерере и ходит типизированным каналом, а не ad-hoc `ai-panel:*`.
 export interface CurrencyRatesInfo {
+  /** Курс предыдущего рабочего дня — для стрелки «вырос/упал» в виджете. */
+  prev?: Record<string, number>;
   ok: boolean;
   date?: string;
   rates?: Record<string, number>;
@@ -1509,6 +1513,8 @@ export interface OblakoApi {
 
   // Открыть приложение панели (калькулятор, конвертер…) с рабочего стола новой вкладки.
   openPanelApp(appId: string): Promise<void>;
+  /** Курс валюты за последние N дней (для графика в виджете). Пустой массив — данных нет. */
+  getCurrencyHistory(code: string, days?: number): Promise<number[]>;
 
   // Спрашивать ли, куда сохранять каждый файл.
   getAskDownloadLocation(): Promise<boolean>;

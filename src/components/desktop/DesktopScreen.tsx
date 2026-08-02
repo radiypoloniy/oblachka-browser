@@ -108,6 +108,12 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         padding: '28px 24px 40px',
       }}>
+        {/* ⚠️ Содержимое центрируется по вертикали ЧЕРЕЗ auto-поля, а не justify-content: center.
+            На большом экране стол занимал верхнюю треть, и низ выглядел брошенным; но обычное
+            центрирование во flex при переполнении срезает ВЕРХ содержимого — прокрутить к нему
+            уже нельзя. Auto-поля в переполненном контейнере схлопываются в ноль, и список
+            остаётся целым. */}
+        <div style={{ marginTop: 'auto', flex: 'none' }} />
         {settings.search.show && <SearchBar onSubmit={onSubmit} />}
 
         {/* Область сетки: меряем её ширину, а саму сетку центрируем — на широком экране она
@@ -185,6 +191,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
             })}
           </div>
         </div>
+        <div style={{ marginBottom: 'auto', flex: 'none' }} />
       </div>
 
       {/* Переходы в большие режимы — там же, где были на минималистичной вкладке. */}
