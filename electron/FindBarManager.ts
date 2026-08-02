@@ -81,14 +81,16 @@ function computeBounds(st: WindowFindBar): { x: number; y: number; width: number
   const usableRight = naiveRight > panelLeft ? panelLeft : cb.x + cb.width
   const x = (cb.x + usableRight) / 2 - FINDBAR_WIDTH / 2
   const y = cb.y + TOP_GAP
-  const result = {
+  // ⚠️ Логировать здесь нельзя: функция зовётся на КАЖДЫЙ CONTENT_SET_BOUNDS, то есть на каждый
+  // кадр ресайза окна и перетаскивания разделителя split. Прежний console.log с двумя
+  // JSON.stringify исполнялся десятки раз в секунду в main-процессе — том самом, который в это
+  // время двигает нативные вью (тот же довод, что уже записан для OMNIBOX_SET_BOUNDS).
+  return {
     x: x - SHADOW_MARGIN,
     y: y - SHADOW_MARGIN,
     width: FINDBAR_WIDTH + SHADOW_MARGIN * 2,
     height: FINDBAR_HEIGHT + SHADOW_MARGIN * 2,
   }
-  console.log(`[findbar] computeBounds: content=${JSON.stringify(cb)} aiPanelWidth=${aiPanelWidth} -> ${JSON.stringify(result)}`)
-  return result
 }
 
 // Единственный источник истины «открыта ли панель» — реальное присутствие вью среди детей
