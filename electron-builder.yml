@@ -93,6 +93,10 @@ win:
 artifactName: ${productName}-Setup-${version}.${ext}
 
 nsis:
+  # Регистрация браузера в реестре Windows (RegisteredApplications/Capabilities). Без неё
+  # Oblako не появляется в системном списке «Приложения по умолчанию», и назначить его
+  # браузером нельзя в принципе — см. build/installer.nsh и electron/DefaultBrowser.ts.
+  include: build/installer.nsh
   # Установка в профиль пользователя, без прав администратора. Это принципиально для
   # автообновления: perMachine потребовал бы UAC-подтверждения на КАЖДОЕ обновление.
   perMachine: false
