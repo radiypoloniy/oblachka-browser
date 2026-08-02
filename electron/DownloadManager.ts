@@ -1,19 +1,42 @@
 import type { Session, DownloadItem } from 'electron';
-import { shell } from 'electron';
+import { app, dialog, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { DownloadEntry } from '../shared/ipc';
 import { isBackgroundWebContents } from './BackgroundWebContents';
+import { markDownloadedFile, isRiskyDownload } from './DownloadSafety';
 
 // Минимальный интервал отправки обновлений прогресса в renderer.
 // Каждый байт не шлём — слишком шумно.
 const THROTTLE_MS = 200;
+
+// Свободное имя в папке загрузок: «отчёт.pdf» → «отчёт (1).pdf». ⚠️ Без этого второй файл с тем
+// же именем молча затирал бы первый — Electron перезаписывает по заданному savePath без вопросов.
+function uniquePath(dir: string, filename: string): string {
+  const ext = path.extname(filename);
+  const base = path.basename(filename, ext);
+  let candidate = path.join(dir, filename);
+  for (let i = 1; fs.existsSync(candidate) && i < 1000; i++) {
+    candidate = path.join(dir, `${base} (${i})${ext}`);
+  }
+  return candidate;
+}
 
 export class DownloadManager {
   #entries = new Map<string, DownloadEntry>();
   #items   = new Map<string, DownloadItem>(); // только активные (not 'done')
   #session: Session | null = null;
   #onChange: ((entries: DownloadEntry[]) => void) | null = null;
+  // Спрашивать ли, куда сохранять. По умолчанию НЕТ: системный диалог на каждую картинку с
+  // фотостока — самое частое раздражение в браузере, и ни один массовый браузер так не делает.
+  // Настройка остаётся для тех, кто раскладывает файлы по папкам вручную.
+  #askLocation = false;
   #throttleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  setAskLocation(value: boolean): void {
+    this.#askLocation = value;
+  }
 
   attach(sess: Session, onChange: (entries: DownloadEntry[]) => void): void {
     this.#session = sess;
@@ -34,6 +57,30 @@ export class DownloadManager {
       // молча: прямая ссылка на файл на переоткрытой в фоне странице не должна класть файл
       // пользователю в Загрузки без его ведома.
       if (isBackgroundWebContents(wc.id)) { item.cancel(); return; }
+
+      // ⚠️ Путь задаём САМИ — иначе Electron показывает системный диалог «Сохранить как» на
+      // каждый файл (именно так и было). setSavePath отменяет диалог целиком.
+      const dir = app.getPath('downloads');
+      const filename = item.getFilename();
+      const risky = isRiskyDownload(filename);
+      if (!this.#askLocation && !risky) {
+        try { item.setSavePath(uniquePath(dir, filename)); }
+        catch { /* путь недоступен — пусть Electron спросит сам, это лучше отмены */ }
+      } else if (risky) {
+        // Программы и скрипты — единственный случай, где вопрос уместен: цена ошибки не
+        // «лишний файл в Загрузках», а запущенный чужой код. Так же поступает Chrome.
+        const choice = dialog.showMessageBoxSync({
+          type: 'warning',
+          buttons: ['Отмена', 'Сохранить'],
+          defaultId: 0,
+          cancelId: 0,
+          title: 'Подозрительный файл',
+          message: `«${filename}» — программа или скрипт`,
+          detail: 'Такие файлы могут навредить компьютеру. Сохраняйте их, только если доверяете источнику.',
+        });
+        if (choice !== 1) { item.cancel(); return; }
+        try { item.setSavePath(uniquePath(dir, filename)); } catch { /* см. выше */ }
+      }
 
       const id = randomUUID();
       const entry: DownloadEntry = {
@@ -88,6 +135,8 @@ export class DownloadManager {
         e.savePath      = item.getSavePath();
         e.isPaused      = false;
         e.bytesPerSec   = 0;
+        // Метка «файл из интернета» — сразу после успешного завершения, см. DownloadSafety.ts.
+        if (e.state === 'completed' && e.savePath) markDownloadedFile(e.savePath, e.url);
         this.#notify();
       });
     });

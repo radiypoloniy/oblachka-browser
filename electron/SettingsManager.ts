@@ -33,6 +33,7 @@ interface PersistedSettings {
   // Онбординг импорта из другого браузера показывался ли уже (см. electron/browserImport/).
   // Однократное предложение при первом запуске — потом только вручную из настроек.
   importOffered: boolean;
+  askDownloadLocation: boolean;
   // Требовать подтверждение Windows (нативный диалог, см. electron/osAuth.ts) перед показом/
   // копированием пароля. Тумблер в настройках паролей; он же — страховка от лок-аута, если
   // проверка на конкретной машине не срабатывает.
@@ -84,6 +85,8 @@ export class SettingsManager {
   #aiPanelWidth: number = DEFAULT_AI_PANEL_WIDTH;
   #modelLoadMode: ModelLoadMode = DEFAULT_MODEL_LOAD_MODE;
   #importOffered = false;
+  // Спрашивать папку для каждого файла. По умолчанию НЕТ — см. DownloadManager.
+  #askDownloadLocation = false;
   #passwordAuthEnabled = true; // доп. защита по умолчанию включена (см. PersistedSettings)
   #searchChips: SearchChipsConfig = { ...DEFAULT_SEARCH_CHIPS };
   readonly #settingsPath: string;
@@ -155,6 +158,15 @@ export class SettingsManager {
     this.#write();
   }
 
+  getAskDownloadLocation(): boolean {
+    return this.#askDownloadLocation;
+  }
+
+  setAskDownloadLocation(value: boolean): void {
+    this.#askDownloadLocation = value;
+    this.#write();
+  }
+
   getPasswordAuthEnabled(): boolean {
     return this.#passwordAuthEnabled;
   }
@@ -190,6 +202,8 @@ export class SettingsManager {
         if (isModelLoadMode(lm)) this.#modelLoadMode = lm;
         const io = (data as Record<string, unknown>)['importOffered'];
         if (typeof io === 'boolean') this.#importOffered = io;
+        const dl = (data as Record<string, unknown>)['askDownloadLocation'];
+        if (typeof dl === 'boolean') this.#askDownloadLocation = dl;
         const pa = (data as Record<string, unknown>)['passwordAuthEnabled'];
         if (typeof pa === 'boolean') this.#passwordAuthEnabled = pa;
         // Раньше полоса целей не сохранялась вовсе (в #write её просто не было) — режим и
@@ -209,6 +223,7 @@ export class SettingsManager {
       aiPanelWidth: this.#aiPanelWidth,
       modelLoadMode: this.#modelLoadMode,
       importOffered: this.#importOffered,
+      askDownloadLocation: this.#askDownloadLocation,
       passwordAuthEnabled: this.#passwordAuthEnabled,
       searchChips: this.#searchChips,
     };
