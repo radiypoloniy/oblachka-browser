@@ -57,6 +57,8 @@ declare global {
   interface Window {
     aiPanel: {
       close: () => void
+      // Иконка приложения на рабочем столе новой вкладки открывает панель сразу на нём.
+      onOpenApp: (cb: (appId: string) => void) => () => void
       // webGrounding — тоггл-глобус: true → main отвечает через SearXNG-ветку (см. AiPanelManager.ts).
       sendChat: (text: string, webGrounding: boolean) => void
       quickTranslate: () => void
@@ -176,6 +178,14 @@ function AiPanel() {
   // «Приложения» (aiApps.tsx) в режиме чата НЕ размонтируются, а прячутся display:none (см.
   // рендер ниже) — иначе переключение в чат убивало бы их состояние (идущий таймер и т.п.).
   const [mode, setMode] = useState<'chat' | 'apps'>('chat')
+  // Приложение, которое просили открыть снаружи (иконка на рабочем столе). Считается один раз:
+  // AppsMode сбрасывает его через onRequestHandled, иначе повторный клик по той же иконке уже
+  // ничего бы не делал — значение не менялось бы.
+  const [requestedApp, setRequestedApp] = useState<string | null>(null)
+  useEffect(() => window.aiPanel.onOpenApp((appId) => {
+    setMode('apps')
+    setRequestedApp(appId)
+  }), [])
   // Обои «Приложений» — стейт здесь, а не в AppsMode: обоями красится ВЕСЬ остров панели
   // (включая фон за шапкой, см. стиль острова ниже), не только область под сеткой.
   const [wallpaper, setWallpaper] = useState<string>(loadWallpaper)
@@ -818,7 +828,12 @@ function AiPanel() {
           flex: 1, minHeight: 0,
           display: mode === 'apps' ? 'flex' : 'none', flexDirection: 'column',
         }}>
-          <AppsMode wallpaper={wallpaper} onSelectWallpaper={selectWallpaper} />
+          <AppsMode
+            wallpaper={wallpaper}
+            onSelectWallpaper={selectWallpaper}
+            requestedApp={requestedApp}
+            onRequestHandled={() => setRequestedApp(null)}
+          />
         </div>
       </div>
     </div>

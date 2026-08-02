@@ -4,6 +4,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('aiPanel', {
+  // Иконка приложения на рабочем столе новой вкладки → панель открывается сразу на нём.
+  onOpenApp: (cb: (appId: string) => void) => {
+    const handler = (_e: unknown, appId: string) => cb(appId)
+    ipcRenderer.on('ai-panel:open-app', handler)
+    return () => ipcRenderer.removeListener('ai-panel:open-app', handler)
+  },
   close: () => ipcRenderer.send('ai-panel:close'),
 
   // webGrounding — тоггл-глобус (заход 2 задела): main решает по нему, идти ли через

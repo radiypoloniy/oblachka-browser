@@ -136,6 +136,7 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.TABS_RENAME_PROGRESS, handler);
     return () => ipcRenderer.removeListener(IPC.TABS_RENAME_PROGRESS, handler);
   },
+  openPanelApp: (appId: string) => ipcRenderer.invoke(IPC.AI_PANEL_OPEN_APP, appId) as Promise<void>,
   getAskDownloadLocation: () =>
     ipcRenderer.invoke(IPC.DOWNLOADS_GET_ASK_LOCATION) as Promise<boolean>,
   setAskDownloadLocation: (value: boolean) =>

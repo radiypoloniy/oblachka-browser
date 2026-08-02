@@ -63,7 +63,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { warmup as warmupTranslation, unloadModel, getLoadedModelId, type ChatOutcome } from './TranslationService';
-import { toggleAiPanel, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
+import { toggleAiPanel, openAiPanelApp, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
 import {
   togglePageTranslate,
   getActiveState as getPageTranslateActiveState,
@@ -2053,6 +2053,11 @@ function registerIpc() {
   // был только предложением импорта, и без источников показывать было нечего. Теперь это ещё и
   // рассказ о браузере — он нужен и тому, у кого переносить нечего (шаг переноса в этом случае
   // сам скажет, что источников не нашлось).
+  ipcMain.handle(IPC.AI_PANEL_OPEN_APP, (e, appId: string) => {
+    const w = winOf(e);
+    if (w) openAiPanelApp(w, appId);
+  });
+
   ipcMain.handle(IPC.DOWNLOADS_GET_ASK_LOCATION, () => settings.getAskDownloadLocation());
   ipcMain.handle(IPC.DOWNLOADS_SET_ASK_LOCATION, (_e, value: boolean) => {
     settings.setAskDownloadLocation(value);

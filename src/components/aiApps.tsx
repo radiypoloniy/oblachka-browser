@@ -45,7 +45,7 @@ declare global {
 // добавляются в этот же список динамически (см. loadCustomApps).
 export type AppId = string
 
-interface AppDef {
+export interface AppDef {
   id: AppId
   label: string
   kind: 'local' | 'web'
@@ -54,7 +54,7 @@ interface AppDef {
   url?: string // только для kind 'web'
 }
 
-const APPS: AppDef[] = [
+export const APPS: AppDef[] = [
   { id: 'calc', label: 'Калькулятор', kind: 'local', icon: Calculator, gradient: 'var(--appicon-calc)' },
   { id: 'convert', label: 'Конвертер', kind: 'local', icon: RefreshCw, gradient: 'var(--appicon-convert)' },
   { id: 'timer', label: 'Таймер', kind: 'local', icon: Timer, gradient: 'var(--appicon-timer)' },
@@ -200,9 +200,12 @@ function saveWeatherCity(city: string): void {
 // ── Корень раздела ───────────────────────────────────────────────────────────────────────────
 // Обои сюда приходят пропсами: стейт живёт в aipanel.tsx, потому что обоями красится весь
 // остров панели (включая фон за шапкой), а не только эта область.
-export function AppsMode({ wallpaper, onSelectWallpaper }: {
+export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequestHandled }: {
   wallpaper: string
   onSelectWallpaper: (id: string) => void
+  /** Приложение, запрошенное снаружи (иконка на рабочем столе новой вкладки). */
+  requestedApp?: string | null
+  onRequestHandled?: () => void
 }) {
   const [openApps, setOpenApps] = useState<AppId[]>([])
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -222,6 +225,16 @@ export function AppsMode({ wallpaper, onSelectWallpaper }: {
     setOpenApps((prev) => (prev.includes(id) || prev.length >= 2 ? prev : [...prev, id]))
   }
   const closeApp = (id: AppId) => setOpenApps((prev) => prev.filter((a) => a !== id))
+
+  // Внешний запрос: открыть приложение и сразу сообщить, что он обработан, — иначе повторный
+  // клик по той же иконке не сработал бы (значение в родителе не поменялось бы).
+  useEffect(() => {
+    if (!requestedApp) return
+    openApp(requestedApp)
+    onRequestHandled?.()
+    // openApp/onRequestHandled стабильны по смыслу вызова; следим только за самим запросом.
+     
+  }, [requestedApp])
   // Обмен верхнего/нижнего слота — ключи не меняются, React переставляет DOM без ремаунта,
   // состояние приложений (набранное в калькуляторе, таймер) переезжает вместе со слотом.
   const swapSlots = () => setOpenApps((prev) => (prev.length === 2 ? [prev[1], prev[0]] : prev))
@@ -557,7 +570,7 @@ export function AppsMode({ wallpaper, onSelectWallpaper }: {
 // onWallpaper: подписи иконок белые с тенью только ПОВЕРХ обоев; на «Без обоев» (белый остров)
 // они переходят на цвета темы — иначе нечитаемы.
 // Иконка приложения: lucide-глиф либо первая буква названия (пользовательские веб-приложения).
-function AppIconBadge({ app, size, radius, iconSize, shadow }: {
+export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
   app: AppDef
   size: number
   radius: number | string

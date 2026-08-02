@@ -378,6 +378,10 @@ export const IPC = {
   DOWNLOADS_GET_ASK_LOCATION: 'downloads:get-ask-location',
   DOWNLOADS_SET_ASK_LOCATION: 'downloads:set-ask-location',
 
+  // Открыть AI-панель сразу на нужном приложении (иконки калькулятора и прочих на рабочем
+  // столе новой вкладки — сами приложения живут в панели, см. electron/AiPanelManager.ts).
+  AI_PANEL_OPEN_APP: 'ai-panel:open-app-request',
+
   DEFAULT_BROWSER_IS: 'default-browser:is',
   DEFAULT_BROWSER_REQUEST: 'default-browser:request',
 
@@ -1494,6 +1498,9 @@ export interface OblakoApi {
   // Экран первого запуска (см. ONBOARDING_SHOULD_SHOW): рассказ о браузере и перенос данных.
   shouldShowOnboarding(): Promise<boolean>;
   markOnboardingShown(): Promise<void>;
+
+  // Открыть приложение панели (калькулятор, конвертер…) с рабочего стола новой вкладки.
+  openPanelApp(appId: string): Promise<void>;
 
   // Спрашивать ли, куда сохранять каждый файл.
   getAskDownloadLocation(): Promise<boolean>;

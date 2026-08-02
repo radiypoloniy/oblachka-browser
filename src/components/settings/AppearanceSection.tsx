@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { Upload, Trash2, Plus } from 'lucide-react';
-import { SectionHeader, Subsection, InlineError, TextField, btnGhost, IconBtn, fieldFlex } from './kit';
+import { Upload, Trash2 } from 'lucide-react';
+import { SectionHeader, Subsection, InlineError, TextField, btnGhost } from './kit';
 import Toggle from '../Toggle';
 import {
   loadNewTabSettings, saveNewTabSettings, setNewTabCustomImage, getNewTabCustomImage,
@@ -22,7 +22,6 @@ export default function AppearanceSection() {
   function apply(next: NewTabSettings) { setS(next); saveNewTabSettings(next); }
   const patchBg = (p: Partial<NewTabSettings['background']>) => apply({ ...s, background: { ...s.background, ...p } });
   const patchClock = (p: Partial<NewTabSettings['clock']>) => apply({ ...s, clock: { ...s.clock, ...p } });
-  const patchGreeting = (p: Partial<NewTabSettings['greeting']>) => apply({ ...s, greeting: { ...s.greeting, ...p } });
   const patchWeather = (p: Partial<NewTabSettings['weather']>) => apply({ ...s, weather: { ...s.weather, ...p } });
   const patchRates = (p: Partial<NewTabSettings['rates']>) => apply({ ...s, rates: { ...s.rates, ...p } });
   // Порядок валют в строке — порядок RATE_CHOICES, а не порядок кликов: иначе набор из тех же
@@ -34,8 +33,6 @@ export default function AppearanceSection() {
       : RATE_CHOICES.map((c) => c.code).filter((c) => c === code || s.rates.codes.includes(c));
     patchRates({ codes: next });
   };
-  const patchQL = (p: Partial<NewTabSettings['quickLinks']>) => apply({ ...s, quickLinks: { ...s.quickLinks, ...p } });
-  const setLinks = (custom: NewTabSettings['quickLinks']['custom']) => patchQL({ custom });
 
   function onPickFile(file: File | undefined) {
     if (!file) return;
@@ -133,68 +130,42 @@ export default function AppearanceSection() {
       </Subsection>
 
       {/* ── Часы ── */}
-      <Subsection title="Часы">
-        <ToggleRow label="Показывать часы" checked={s.clock.show} onChange={(v) => patchClock({ show: v })} />
-        {s.clock.show && <>
-          <ToggleRow label="24-часовой формат" checked={s.clock.hour24} onChange={(v) => patchClock({ hour24: v })} />
-          <ToggleRow label="Секунды" checked={s.clock.seconds} onChange={(v) => patchClock({ seconds: v })} />
-        </>}
+      {/* ⚠️ Тумблера «показывать» здесь больше нет ни у часов, ни у погоды с курсами: состав
+          экрана определяется тем, какие виджеты на нём стоят (см. src/newtab/desktop.ts), а
+          два разных способа убрать одно и то же неизбежно разошлись бы. Здесь остались только
+          настройки САМИХ виджетов — формат времени, город, валюты. */}
+      <Subsection title="Часы" description="Формат виджета часов на новой вкладке.">
+        <ToggleRow label="24-часовой формат" checked={s.clock.hour24} onChange={(v) => patchClock({ hour24: v })} />
+        <ToggleRow label="Секунды" checked={s.clock.seconds} onChange={(v) => patchClock({ seconds: v })} />
         <ToggleRow label="Дата и день недели" checked={s.clock.date} onChange={(v) => patchClock({ date: v })} />
       </Subsection>
 
-      {/* ── Приветствие ── */}
-      <Subsection title="Приветствие">
-        <ToggleRow label="Показывать приветствие" checked={s.greeting.show} onChange={(v) => patchGreeting({ show: v })} />
-        {s.greeting.show && (
-          <TextField value={s.greeting.name} placeholder="Ваше имя (необязательно)"
-            onChange={(v) => patchGreeting({ name: v })} />
-        )}
-      </Subsection>
-
-      {/* ── Поиск и ссылки ── */}
-      <Subsection title="Поиск и ссылки">
+      {/* ── Поиск ── */}
+      <Subsection title="Поиск">
         <ToggleRow label="Строка поиска" checked={s.search.show} onChange={(v) => apply({ ...s, search: { show: v } })} />
-        <ToggleRow label="Быстрые ссылки" checked={s.quickLinks.show} onChange={(v) => patchQL({ show: v })} />
-        {s.quickLinks.show && <>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <SegBtn active={s.quickLinks.source === 'top'} onClick={() => patchQL({ source: 'top' })}>Топ-сайты</SegBtn>
-            <SegBtn active={s.quickLinks.source === 'custom'} onClick={() => patchQL({ source: 'custom' })}>Свои ссылки</SegBtn>
-          </div>
-          {s.quickLinks.source === 'top' && (
-            <SliderRow label="Сколько ссылок" value={s.quickLinks.count} min={4} max={12} step={1}
-              onChange={(v) => patchQL({ count: v })} format={(v) => String(v)} />
-          )}
-          {s.quickLinks.source === 'custom' && (
-            <CustomLinks links={s.quickLinks.custom} onChange={setLinks} />
-          )}
-        </>}
       </Subsection>
 
       {/* ── Погода ── */}
-      <Subsection title="Погода" description="Показывается в строке под часами, рядом с датой и курсом.">
-        <ToggleRow label="Показывать погоду" checked={s.weather.show} onChange={(v) => patchWeather({ show: v })} />
-        {s.weather.show && <>
+      <Subsection title="Погода" description="Город для виджета погоды на новой вкладке.">
+        <>
           <TextField value={s.weather.city} placeholder="Город (например, Москва)"
             onChange={(v) => patchWeather({ city: v })} />
           <div style={{ display: 'flex', gap: 6 }}>
             <SegBtn active={s.weather.units === 'c'} onClick={() => patchWeather({ units: 'c' })}>°C</SegBtn>
             <SegBtn active={s.weather.units === 'f'} onClick={() => patchWeather({ units: 'f' })}>°F</SegBtn>
           </div>
-        </>}
+        </>
       </Subsection>
 
       {/* ── Курс валют ── */}
-      <Subsection title="Курс валют" description="Официальный курс ЦБ РФ, обновляется раз в сутки.">
-        <ToggleRow label="Показывать курс" checked={s.rates.show} onChange={(v) => patchRates({ show: v })} />
-        {s.rates.show && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {RATE_CHOICES.map((c) => (
-              <SegBtn key={c.code} active={s.rates.codes.includes(c.code)} onClick={() => toggleRateCode(c.code)}>
-                {c.symbol} {c.label}
-              </SegBtn>
-            ))}
-          </div>
-        )}
+      <Subsection title="Курс валют" description="Какие валюты показывает виджет курса (данные ЦБ РФ).">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {RATE_CHOICES.map((c) => (
+            <SegBtn key={c.code} active={s.rates.codes.includes(c.code)} onClick={() => toggleRateCode(c.code)}>
+              {c.symbol} {c.label}
+            </SegBtn>
+          ))}
+        </div>
       </Subsection>
     </div>
   );
@@ -215,31 +186,6 @@ function SegBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 
 // Редактор своих быстрых ссылок: строки «название + адрес», добавление/удаление. Пустые строки
 // (без адреса) вкладка просто не покажет, поэтому чистить их отдельно не нужно.
-function CustomLinks({ links, onChange }: {
-  links: { url: string; title: string }[];
-  onChange: (next: { url: string; title: string }[]) => void;
-}) {
-  const update = (i: number, patch: Partial<{ url: string; title: string }>) =>
-    onChange(links.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
-  const remove = (i: number) => onChange(links.filter((_, idx) => idx !== i));
-  const add = () => onChange([...links, { title: '', url: '' }]);
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {links.map((l, i) => (
-        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <TextField value={l.title} placeholder="Название" onChange={(v) => update(i, { title: v })} style={fieldFlex} />
-          <TextField value={l.url} placeholder="example.com" onChange={(v) => update(i, { url: v })} style={fieldFlex} />
-          <IconBtn title="Удалить" onClick={() => remove(i)}><Trash2 size={14} /></IconBtn>
-        </div>
-      ))}
-      <button style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center', alignSelf: 'flex-start' }} onClick={add}>
-        <Plus size={14} /> Добавить ссылку
-      </button>
-      {links.length === 0 && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Пока нет своих ссылок.</span>}
-    </div>
-  );
-}
 
 function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (

@@ -782,6 +782,19 @@ export function prewarmPanel(): void {
 }
 
 // Тоггл по клику кнопки AI в тулбаре — возвращает новое состояние (true = открыта).
+// Открыть панель на конкретном приложении — вход с иконки рабочего стола новой вкладки.
+// ⚠️ Панель может быть закрыта, только что созданной или уже открытой: во всех трёх случаях
+// сообщение шлём ПОСЛЕ того, как вью существует, иначе первый клик по иконке уходил бы в никуда.
+export function openAiPanelApp(win: BrowserWindow, appId: string): void {
+  if (!isOpen) toggleAiPanel(win)
+  const view = ensurePanelView()
+  const send = (): void => {
+    if (!view.webContents.isDestroyed()) view.webContents.send('ai-panel:open-app', appId)
+  }
+  if (view.webContents.isLoading()) view.webContents.once('did-finish-load', send)
+  else send()
+}
+
 export function toggleAiPanel(win: BrowserWindow): boolean {
   attachedWin = win
   if (resizeBoundWin !== win) {

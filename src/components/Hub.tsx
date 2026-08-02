@@ -9,7 +9,7 @@ import type { TileSite } from '../../shared/frecency';
 import type { HubChatMessage, HubChatSessionMeta, HubMode } from '../../shared/ipc';
 import { markdownComponents } from './aiMarkdown';
 import { glassPlate } from '../styles/island';
-import NewTab from './NewTab';
+import DesktopScreen from './desktop/DesktopScreen';
 import Notebook from './Notebook';
 import GraphCanvas from './GraphCanvas';
 import { getSelectedSourceContext } from '../newtab/notebook';
@@ -79,11 +79,18 @@ export default function Hub({ tabId, onSubmit, onOpenSettings, isLightWindow = f
     // именно из-за неё раньше не работал внутренний скролл ленты чата: без реальной границы
     // высоты у Hub не было от чего схлопнуться overflowY:auto у транскрипта, контент просто
     // вылезал за пределы contentRef и обрезался самым внешним overflow:hidden в App.tsx).
-    // Минимал-вкладка (mode==='tiles') сама рисует полноэкранный фон и центрирует контент,
+    // Рабочий стол (mode==='tiles') сам рисует полноэкранный фон и сетку,
     // поэтому её ветка — без внешнего padding/flex-обёртки (иначе фон не дотянулся бы до краёв).
     // AI-режим сохраняет прежнюю обёртку с отступами.
     effectiveMode === 'tiles'
-      ? <NewTab onSubmit={onSubmit} onOpenAi={() => pickMode('ai')} onOpenGraph={() => pickMode('graph')} tiles={tiles} isLightWindow={isLightWindow} />
+      ? <DesktopScreen
+          onSubmit={onSubmit}
+          onOpenAi={() => pickMode('ai')}
+          onOpenGraph={() => pickMode('graph')}
+          tiles={tiles}
+          isLightWindow={isLightWindow}
+          onOpenApp={(appId) => { void window.oblako.openPanelApp(appId); }}
+        />
       : effectiveMode === 'graph'
       ? <GraphCanvas onBack={() => pickMode('tiles')} />
       : (
