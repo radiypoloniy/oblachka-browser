@@ -18,6 +18,8 @@
     "dist": "npm run build && electron-builder --win --publish never",
     "release": "npm run build && electron-builder --win --publish always",
     "download-fonts": "node scripts/download-fonts.mjs",
+    "download-flags": "node scripts/download-flags.mjs",
+    "download-browser-logos": "node scripts/download-browser-logos.mjs",
     "download-filters": "node scripts/download-filters.mjs",
     "download-xray": "node scripts/download-xray.mjs",
     "download-translation-models": "node scripts/download-translation-models.mjs",
