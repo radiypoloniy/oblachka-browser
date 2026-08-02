@@ -199,3 +199,44 @@ export function subscribeDesktop(cb: () => void): () => void {
   window.addEventListener(EVENT, handler);
   return () => window.removeEventListener(EVENT, handler);
 }
+
+// ── Правка раскладки ──────────────────────────────────────────────────────────
+// Все операции возвращают НОВЫЙ объект раскладки: состояние живёт в React, и мутация на месте
+// не вызвала бы перерисовку.
+
+/** Переставить элемент на новое место в порядке укладки. */
+export function moveItem(layout: DesktopLayout, id: string, toIndex: number): DesktopLayout {
+  const from = layout.items.findIndex((i) => i.id === id);
+  if (from < 0) return layout;
+  const items = [...layout.items];
+  const [item] = items.splice(from, 1);
+  // ⚠️ Индекс назначения считается по списку БЕЗ переносимого элемента: иначе при движении
+  // вперёд элемент вставал бы на позицию раньше желаемой ровно на единицу.
+  const to = Math.max(0, Math.min(items.length, toIndex > from ? toIndex - 1 : toIndex));
+  items.splice(to, 0, item);
+  return { ...layout, items };
+}
+
+/** Изменить размер элемента. Иконки не растягиваются — у них смысл ровно одна клетка. */
+export function resizeItem(layout: DesktopLayout, id: string, size: CellSize): DesktopLayout {
+  return {
+    ...layout,
+    items: layout.items.map((i) => (i.id === id && i.kind === 'widget'
+      ? { ...i, size: { w: Math.max(1, Math.min(6, size.w)), h: Math.max(1, Math.min(4, size.h)) } }
+      : i)),
+  };
+}
+
+export function removeItem(layout: DesktopLayout, id: string): DesktopLayout {
+  return { ...layout, items: layout.items.filter((i) => i.id !== id) };
+}
+
+export function addItem(layout: DesktopLayout, item: Omit<DesktopItem, 'id'>): DesktopLayout {
+  const id = `${item.kind}-${Date.now().toString(36)}`;
+  return { ...layout, items: [...layout.items, { ...item, id }] };
+}
+
+/** Уже стоит ли на столе это приложение/виджет — чтобы палитра не предлагала дубль. */
+export function hasItem(layout: DesktopLayout, kind: DesktopItemKind, key: string): boolean {
+  return layout.items.some((i) => i.kind === kind && (i.appId === key || i.widget === key));
+}

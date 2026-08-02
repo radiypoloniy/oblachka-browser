@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { Search, Sparkles, Workflow } from 'lucide-react';
+import { Search, Sparkles, Workflow, Check, Plus, X, LayoutGrid } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import {
-  loadDesktop, subscribeDesktop, computeGrid, layoutItems,
+  loadDesktop, saveDesktop, subscribeDesktop, computeGrid, layoutItems,
+  moveItem, resizeItem, removeItem, addItem,
   type DesktopLayout,
 } from '../../newtab/desktop';
+import AddSheet from './AddSheet';
 import {
   loadNewTabSettings, subscribeNewTabSettings, presetCss, getNewTabCustomImage,
   ensureCustomImageShrunk, isLightBackground, type NewTabSettings,
@@ -58,6 +60,16 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [width, setWidth] = useState(0);
   const areaRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  // Режим правки. Пока он включён, элементы не открываются по клику: попасть по крестику и
+  // случайно уйти на сайт — самая обидная ошибка такого интерфейса.
+  const [editing, setEditing] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // Что сейчас тащат/тянут. Держим отдельно от раскладки: пока жест идёт, на диск ничего не
+  // пишем — иначе каждое движение мыши превращалось бы в запись в localStorage.
+  const [drag, setDrag] = useState<{ id: string; overIndex: number } | null>(null);
+  const [resizing, setResizing] = useState<{ id: string; w: number; h: number } | null>(null);
 
   useEffect(() => subscribeNewTabSettings(() => setSettings(loadNewTabSettings())), []);
   useEffect(() => subscribeDesktop(() => setLayout(loadDesktop())), []);
@@ -86,6 +98,10 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
     return () => ro.disconnect();
   }, []);
 
+  // Правка раскладки: сохраняем сразу — стол это косметика, отдельной кнопки «применить» тут
+  // не нужно, а неожиданно потерянная перестановка раздражает сильнее лишней записи.
+  const apply = (next: DesktopLayout): void => { setLayout(next); saveDesktop(next); };
+
   const light = isLightBackground(settings.background);
   const grid = useMemo(() => computeGrid(Math.max(320, width)), [width]);
   const { placed, rows } = useMemo(
@@ -95,6 +111,51 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
 
   const step = grid.cell + grid.gap;
   const appById = useMemo(() => new Map(APPS.map((a) => [a.id, a])), []);
+
+  // Индекс места, куда встанет перетаскиваемый элемент. Считаем по клетке под курсором, а не по
+  // пересечению с соседями: сетка резиновая, а клетка — единственная величина, одинаково
+  // понятная и человеку, и укладчику.
+  const indexAtPoint = (clientX: number, clientY: number): number => {
+    const box = gridRef.current?.getBoundingClientRect();
+    if (!box) return layout.items.length;
+    const col = Math.max(0, Math.min(grid.cols - 1, Math.floor((clientX - box.left) / step)));
+    const row = Math.max(0, Math.floor((clientY - box.top) / step));
+    // Ищем, какой элемент занимает эту клетку; если пусто — считаем, что элемент идёт в конец
+    // текущей строки, то есть перед первым элементом ниже.
+    const hit = placed.find((p) => col >= p.col && col < p.col + p.w && row >= p.row && row < p.row + p.h);
+    if (hit) {
+      const idx = layout.items.findIndex((i) => i.id === hit.item.id);
+      // Правая половина занятой клетки — «после неё», левая — «перед».
+      const half = (clientX - box.left) - (hit.col * step) > (hit.w * step) / 2;
+      return half ? idx + 1 : idx;
+    }
+    const below = placed.find((p) => p.row > row);
+    return below ? layout.items.findIndex((i) => i.id === below.item.id) : layout.items.length;
+  };
+
+  const onItemPointerDown = (e: React.PointerEvent, id: string): void => {
+    if (!editing || e.button !== 0) return;
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    setDrag({ id, overIndex: layout.items.findIndex((i) => i.id === id) });
+  };
+
+  const onGridPointerMove = (e: React.PointerEvent): void => {
+    if (drag) { setDrag({ ...drag, overIndex: indexAtPoint(e.clientX, e.clientY) }); return; }
+    if (!resizing) return;
+    const box = gridRef.current?.getBoundingClientRect();
+    const item = placed.find((p) => p.item.id === resizing.id);
+    if (!box || !item) return;
+    // Тянем от левого-верхнего угла элемента: сколько клеток укладывается до курсора.
+    const w = Math.max(1, Math.min(grid.cols, Math.round((e.clientX - box.left - item.col * step) / step)));
+    const h = Math.max(1, Math.min(4, Math.round((e.clientY - box.top - item.row * step) / step)));
+    if (w !== resizing.w || h !== resizing.h) setResizing({ ...resizing, w, h });
+  };
+
+  const onGridPointerUp = (): void => {
+    if (drag) { apply(moveItem(layout, drag.id, drag.overIndex)); setDrag(null); }
+    if (resizing) { apply(resizeItem(layout, resizing.id, { w: resizing.w, h: resizing.h })); setResizing(null); }
+  };
 
   return (
     <div style={{
@@ -119,72 +180,131 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
         {/* Область сетки: меряем её ширину, а саму сетку центрируем — на широком экране она
             перестаёт расти (см. потолки в computeGrid) и стоит по центру, как springboard. */}
         <div ref={areaRef} style={{ width: '100%', maxWidth: 1320, marginTop: settings.search.show ? 26 : 0 }}>
-          <div style={{
-            position: 'relative', margin: '0 auto',
-            width: grid.width, height: rows * step - grid.gap,
-          }}>
+          <div
+            ref={gridRef}
+            onPointerMove={onGridPointerMove}
+            onPointerUp={onGridPointerUp}
+            onPointerCancel={onGridPointerUp}
+            style={{
+              position: 'relative', margin: '0 auto',
+              width: grid.width, height: rows * step - grid.gap,
+              // В режиме правки курсор над сеткой сообщает, что элементы можно двигать.
+              cursor: editing ? (drag ? 'grabbing' : 'grab') : undefined,
+            }}
+          >
             {placed.map(({ item, col, row, w, h }) => {
+              // Во время растягивания показываем БУДУЩИЙ размер, а не сохранённый: иначе жест
+              // выглядит так, будто ничего не происходит, пока не отпустишь.
+              const live = resizing && resizing.id === item.id ? { w: Math.min(resizing.w, grid.cols), h: resizing.h } : { w, h };
               const box = {
-                width: w * grid.cell + (w - 1) * grid.gap,
-                height: h * grid.cell + (h - 1) * grid.gap,
+                width: live.w * grid.cell + (live.w - 1) * grid.gap,
+                height: live.h * grid.cell + (live.h - 1) * grid.gap,
               };
+              const dragging = drag?.id === item.id;
               const style: React.CSSProperties = {
                 position: 'absolute',
                 left: col * step, top: row * step,
                 width: box.width, height: box.height,
+                // Перетаскиваемый приподнят и полупрозрачен — видно, что он «в руке».
+                opacity: dragging ? 0.55 : 1,
+                zIndex: dragging || resizing?.id === item.id ? 5 : 1,
+                transition: dragging ? undefined : 'left 160ms var(--ease-out), top 160ms var(--ease-out)',
+                animation: editing && !dragging ? 'oblako-jiggle 1.6s ease-in-out infinite' : undefined,
+                animationDelay: editing ? `${(col + row) % 5 * 90}ms` : undefined,
+                touchAction: editing ? 'none' : undefined,
               };
 
-              if (item.kind === 'widget') {
+              const content = item.kind === 'widget' ? (() => {
                 const Render = WIDGET_RENDERERS[item.widget ?? ''];
-                if (!Render) return null;
-                return (
-                  <div key={item.id} style={style}>
-                    <Render size={item.size} box={box} tiles={tiles} onOpen={onSubmit} city={settings.weather.city} />
-                  </div>
-                );
-              }
-
-              if (item.kind === 'app') {
+                return Render ? (
+                  <Render size={item.size} box={box} tiles={tiles} onOpen={onSubmit} city={settings.weather.city} />
+                ) : null;
+              })() : item.kind === 'app' ? (() => {
                 const app = appById.get(item.appId ?? '');
                 if (!app) return null;
                 const iconSize = Math.round(grid.cell * 0.72);
                 return (
-                  <div key={item.id} style={style}>
-                    <button
-                      onClick={() => onOpenApp(app.id)}
-                      title={app.label}
-                      style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                        width: '100%', height: '100%', padding: 0, border: 'none',
-                        background: 'transparent', cursor: 'default',
-                      }}
-                    >
-                      <AppIconBadge
-                        app={app}
-                        size={iconSize}
-                        iconSize={Math.round(iconSize * 0.56)}
-                        shadow
-                      />
-                      <span style={{
-                        maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        fontSize: 'var(--fs-xs)', fontWeight: 500,
-                        color: 'var(--nt-text)', textShadow: 'var(--nt-shadow)',
-                      }}>{app.label}</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => { if (!editing) onOpenApp(app.id); }}
+                    title={app.label}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                      width: '100%', height: '100%', padding: 0, border: 'none',
+                      background: 'transparent', cursor: 'default',
+                    }}
+                  >
+                    <AppIconBadge app={app} size={iconSize} iconSize={Math.round(iconSize * 0.56)} shadow />
+                    <span style={{
+                      maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      fontSize: 'var(--fs-xs)', fontWeight: 500,
+                      color: 'var(--nt-text)', textShadow: 'var(--nt-shadow)',
+                    }}>{app.label}</span>
+                  </button>
                 );
-              }
+              })() : (
+                <SiteIcon
+                  url={item.url ?? ''}
+                  title={item.title ?? ''}
+                  size={Math.round(grid.cell * 0.72)}
+                  onOpen={(url) => { if (!editing) onSubmit(url); }}
+                  labelColor="var(--nt-text)"
+                  labelShadow="var(--nt-shadow)"
+                />
+              );
 
               return (
-                <div key={item.id} style={style}>
-                  <SiteIcon
-                    url={item.url ?? ''}
-                    title={item.title ?? ''}
-                    size={Math.round(grid.cell * 0.72)}
-                    onOpen={onSubmit}
-                    labelColor="var(--nt-text)"
-                    labelShadow="var(--nt-shadow)"
-                  />
+                <div
+                  key={item.id}
+                  style={style}
+                  onPointerDown={(e) => onItemPointerDown(e, item.id)}
+                >
+                  {/* ⚠️ В режиме правки перехватываем указатель ПЕРЕД содержимым: иначе клик по
+                      кнопке приложения открывал бы его прямо во время перестановки. */}
+                  {editing && <div style={{ position: 'absolute', inset: 0, zIndex: 2 }} />}
+                  {content}
+
+                  {editing && (
+                    <>
+                      <button
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => apply(removeItem(layout, item.id))}
+                        title="Убрать с экрана"
+                        style={{
+                          position: 'absolute', top: -8, left: -8, zIndex: 6,
+                          width: 22, height: 22, borderRadius: 999, border: 'none', cursor: 'default',
+                          background: 'rgba(30,30,34,0.92)', color: '#fff',
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+                        }}
+                      ><X size={13} /></button>
+
+                      {/* Уголок растягивания — только у виджетов: иконка занимает ровно клетку,
+                          и «растянутая» иконка была бы просто размытым квадратом. */}
+                      {item.kind === 'widget' && (
+                        <div
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+                            setResizing({ id: item.id, w, h });
+                          }}
+                          title="Потяните, чтобы изменить размер"
+                          style={{
+                            position: 'absolute', right: -6, bottom: -6, zIndex: 6,
+                            width: 20, height: 20, borderRadius: 999,
+                            background: 'rgba(30,30,34,0.92)', cursor: 'nwse-resize',
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          <span style={{
+                            width: 8, height: 8, borderRight: '2px solid #fff', borderBottom: '2px solid #fff',
+                            transform: 'translate(-1px,-1px)',
+                          }} />
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -193,12 +313,45 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
         <div style={{ marginBottom: 'auto', flex: 'none' }} />
       </div>
 
-      {/* Переходы в большие режимы — там же, где были на минималистичной вкладке. */}
-      {!isLightWindow && (
-        <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 3, display: 'flex', gap: 8 }}>
-          <CornerButton title="Граф-воркспейс" onClick={onOpenGraph}><Workflow size={18} /></CornerButton>
-          <CornerButton title="AI-режим" onClick={onOpenAi}><Sparkles size={18} /></CornerButton>
-        </div>
+      {/* Управление. В режиме правки набор кнопок другой: добавить и «Готово» — остальное
+          сейчас неуместно, человек занят одним делом. */}
+      <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 30, display: 'flex', gap: 8 }}>
+        {editing ? (
+          <>
+            <CornerButton title="Добавить виджет, приложение или сайт" onClick={() => setSheetOpen(true)}>
+              <Plus size={18} />
+            </CornerButton>
+            <button
+              onClick={() => { setEditing(false); setSheetOpen(false); }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, height: 40, padding: '0 16px',
+                borderRadius: 999, border: 'none', cursor: 'default',
+                background: 'var(--accent)', color: 'var(--on-accent)',
+                fontSize: 'var(--fs-sm)', fontWeight: 600, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+              }}
+            ><Check size={16} /> Готово</button>
+          </>
+        ) : (
+          <>
+            <CornerButton title="Настроить экран" onClick={() => setEditing(true)}>
+              <LayoutGrid size={18} />
+            </CornerButton>
+            {!isLightWindow && (
+              <>
+                <CornerButton title="Граф-воркспейс" onClick={onOpenGraph}><Workflow size={18} /></CornerButton>
+                <CornerButton title="AI-режим" onClick={onOpenAi}><Sparkles size={18} /></CornerButton>
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      {sheetOpen && (
+        <AddSheet
+          layout={layout}
+          onAdd={(item) => { apply(addItem(layout, item)); setSheetOpen(false); }}
+          onClose={() => setSheetOpen(false)}
+        />
       )}
     </div>
   );

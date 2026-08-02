@@ -21,6 +21,16 @@ body {
 /* Тот же keyframe-приём, что и src/index.html (спиннер до React) — здесь для React-точек входа,
    не грузящих index.html (aipanel.tsx и т.п.), см. заход D: индикатор фактчека. */
 @keyframes oblako-spin { to { transform: rotate(360deg); } }
+/* Режим правки рабочего стола (desktop/DesktopScreen.tsx): элементы «дрожат», как на iPad.
+   ⚠️ Амплитуда меньше, чем у Apple: там жест пальцем и экран в руках, здесь курсор и большой
+   монитор — на нём то же покачивание читается как дефект рендера. Только transform. */
+@keyframes oblako-jiggle {
+  0%, 100% { transform: rotate(-0.5deg); }
+  50%      { transform: rotate(0.5deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes oblako-jiggle { 0%, 100% { transform: none; } }
+}
 /* Поля ввода на цветных плитках виджетов (см. desktop/widgets.tsx). ⚠️ Отдельный класс нужен
    потому, что ::placeholder из inline-стиля не задаётся вовсе: браузер рисует подсказку своим
    цветом с пониженной прозрачностью, и на насыщенном фоне она почти не читалась. */
