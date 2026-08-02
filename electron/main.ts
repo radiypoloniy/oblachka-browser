@@ -42,6 +42,7 @@ import { ImportManager } from './browserImport/ImportManager';
 import { faviconService } from './FaviconService';
 import { getWeather } from './WeatherService';
 import { getCurrencyRates, getCurrencyHistory } from './CurrencyRates';
+import { getCryptoRates, getCryptoHistory } from './CryptoRates';
 import { getPhotoOfDay } from './NewTabPhoto';
 import { extractUrlText, setTabManager as setNotebookExtractTabManager } from './NotebookExtract';
 import { generateStudio, type StudioKind } from './NotebookStudio';
@@ -1734,6 +1735,7 @@ function registerIpc() {
   // труба к панели), но за ними ОДИН модуль с общим часовым кэшем — второго сетевого похода
   // открытая панель и открытая вкладка не устроят.
   ipcMain.handle(IPC.CURRENCY_GET,        () => getCurrencyRates());
+  ipcMain.handle(IPC.CRYPTO_GET,          () => getCryptoRates());
   ipcMain.handle(IPC.NOTEBOOK_EXTRACT_URL, (e, url: string) => {
     // Локальная переменная, а не два вызова подряд: при повторном вызове TypeScript теряет
     // проверку на null, и это уже не тот же самый объект по смыслу.
@@ -2076,6 +2078,7 @@ function registerIpc() {
   // рассказ о браузере — он нужен и тому, у кого переносить нечего (шаг переноса в этом случае
   // сам скажет, что источников не нашлось).
   ipcMain.handle(IPC.CURRENCY_HISTORY, (_e, code: string, days?: number) => getCurrencyHistory(code, days));
+  ipcMain.handle(IPC.CRYPTO_HISTORY, (_e, ticker: string, days?: number) => getCryptoHistory(ticker, days));
 
   ipcMain.handle(IPC.AI_PANEL_OPEN_APP, (e, appId: string) => {
     const w = winOf(e);

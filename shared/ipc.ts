@@ -266,6 +266,7 @@ export const IPC = {
   CHROME_THEME_SET: 'chrome:theme-set', // renderer → main: тема chrome (dark+incognito) для раздачи во все поповеры/вью
   WEATHER_GET: 'weather:get', // renderer → main: погода по городу для виджета новой вкладки (WeatherService)
   CURRENCY_GET: 'currency:get', // renderer → main: курсы ЦБ РФ для виджета новой вкладки (CurrencyRates)
+  CRYPTO_GET: 'crypto:get', // renderer → main: курсы криптовалют для виджета «Крипта» (CryptoRates)
   NEWTAB_PHOTO_GET: 'newtab:photo-get', // renderer → main: «фото дня» для фона вкладки (data-URL), кэш на день
   NOTEBOOK_EXTRACT_URL: 'notebook:extract-url', // renderer → main: извлечь читаемый текст URL-источника блокнота
   NOTEBOOK_STUDIO_GEN:  'notebook:studio-gen',  // renderer → main: (kind, context) → материал Студии (текст/спек)
@@ -383,6 +384,9 @@ export const IPC = {
   AI_PANEL_OPEN_APP: 'ai-panel:open-app-request',
   // Ряд значений курса за последние дни — спарклайн виджета «Курс ЦБ».
   CURRENCY_HISTORY: 'currency:history',
+  // То же для виджета «Крипта» (см. electron/CryptoRates.ts) — отдельный канал, потому что
+  // отдельный источник и другой ритм обновления, а не потому что данные другой формы.
+  CRYPTO_HISTORY: 'crypto:history',
 
   DEFAULT_BROWSER_IS: 'default-browser:is',
   DEFAULT_BROWSER_REQUEST: 'default-browser:request',
@@ -1371,6 +1375,15 @@ export interface CurrencyRatesInfo {
   error?: string;
 }
 
+export interface CryptoRatesInfo {
+  ok: boolean;
+  /** «Сколько RUB стоит единица актива», ключ — тикер (BTC, ETH…). */
+  rates?: Record<string, number>;
+  /** Изменение за 24 часа в процентах — для стрелки в виджете. */
+  change24h?: Record<string, number>;
+  error?: string;
+}
+
 // Тип API, который preload пробрасывает в window.oblako
 // Роль окна. Полное окно ровно одно: оно владеет сессией (деревом вкладок в session.json) и теми
 // службами, что существуют в приложении в одном экземпляре. Лёгкие окна — вкладки, омнибокс,
@@ -1453,6 +1466,7 @@ export interface OblakoApi {
   setChromeTheme(dark: boolean, incognito: boolean): Promise<void>; // раздать тему во все chrome-вью (поповеры)
   getWeather(city: string): Promise<WeatherInfo>; // погода для виджета новой вкладки
   getCurrencyRates(): Promise<CurrencyRatesInfo>; // курсы ЦБ РФ для виджета новой вкладки
+  getCryptoRates(): Promise<CryptoRatesInfo>;     // курсы криптовалют для виджета «Крипта»
   getNewtabPhoto(): Promise<{ ok: boolean; dataUrl?: string }>; // «фото дня» для фона новой вкладки
   extractNotebookUrl(url: string): Promise<{ ok: boolean; title?: string; text?: string }>; // текст URL-источника блокнота
   generateStudio(kind: string, context: string): Promise<{ ok: boolean; text?: string; error?: string }>; // материал Студии блокнота
@@ -1530,6 +1544,8 @@ export interface OblakoApi {
   openPanelApp(appId: string): Promise<void>;
   /** Курс валюты за последние N дней (для графика в виджете). Пустой массив — данных нет. */
   getCurrencyHistory(code: string, days?: number): Promise<number[]>;
+  /** То же для криптоактива по тикеру (BTC, ETH…). */
+  getCryptoHistory(ticker: string, days?: number): Promise<number[]>;
 
   // Спрашивать ли, куда сохранять каждый файл.
   getAskDownloadLocation(): Promise<boolean>;

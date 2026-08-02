@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, DownloadEntry, PermissionRequest, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type {
   GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure,
@@ -67,6 +67,7 @@ const api: OblakoApi = {
   setChromeTheme: (dark: boolean, incognito: boolean) => ipcRenderer.invoke(IPC.CHROME_THEME_SET, dark, incognito) as Promise<void>,
   getWeather: (city: string) => ipcRenderer.invoke(IPC.WEATHER_GET, city) as Promise<WeatherInfo>,
   getCurrencyRates: () => ipcRenderer.invoke(IPC.CURRENCY_GET) as Promise<CurrencyRatesInfo>,
+  getCryptoRates: () => ipcRenderer.invoke(IPC.CRYPTO_GET) as Promise<CryptoRatesInfo>,
   getNewtabPhoto: () => ipcRenderer.invoke(IPC.NEWTAB_PHOTO_GET) as Promise<{ ok: boolean; dataUrl?: string }>,
   extractNotebookUrl: (url: string) => ipcRenderer.invoke(IPC.NOTEBOOK_EXTRACT_URL, url) as Promise<{ ok: boolean; title?: string; text?: string }>,
   generateStudio: (kind: string, context: string) => ipcRenderer.invoke(IPC.NOTEBOOK_STUDIO_GEN, kind, context) as Promise<{ ok: boolean; text?: string; error?: string }>,
@@ -138,6 +139,8 @@ const api: OblakoApi = {
   },
   getCurrencyHistory: (code: string, days?: number) =>
     ipcRenderer.invoke(IPC.CURRENCY_HISTORY, code, days) as Promise<number[]>,
+  getCryptoHistory: (ticker: string, days?: number) =>
+    ipcRenderer.invoke(IPC.CRYPTO_HISTORY, ticker, days) as Promise<number[]>,
   openPanelApp: (appId: string) => ipcRenderer.invoke(IPC.AI_PANEL_OPEN_APP, appId) as Promise<void>,
   getAskDownloadLocation: () =>
     ipcRenderer.invoke(IPC.DOWNLOADS_GET_ASK_LOCATION) as Promise<boolean>,

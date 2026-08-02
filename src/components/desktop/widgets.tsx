@@ -3,7 +3,7 @@ import type React from 'react';
 import { Check, Plus, X } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import type { CellSize } from '../../newtab/desktop';
-import { loadNewTabSettings } from '../../newtab/settings';
+import { loadNewTabSettings, cryptoSymbol } from '../../newtab/settings';
 
 // Виджеты рабочего стола.
 //
@@ -258,6 +258,12 @@ const RATE_SYMBOL: Record<string, string> = {
   USD: '$', EUR: '€', CNY: '¥', GBP: '£', JPY: '¥', KZT: '₸', TRY: '₺', BYN: 'Br', AMD: '֏', GEL: '₾',
 };
 
+// ⚠️ Названы по ЦВЕТУ, а не по смыслу («рост»/«падение»), и это принципиально: у курса ЦБ рост
+// значения красят тёплым (рубль слабеет), у крипты рост — зелёным (актив дорожает). Одно имя
+// вроде TONE_UP склеило бы два противоположных правила в одно и рано или поздно их перепутало.
+const TONE_GREEN = '#15803D';
+const TONE_WARM  = '#C2410C';
+
 export function RatesWidget({ size, box }: WidgetProps) {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [prev, setPrev] = useState<Record<string, number>>({});
@@ -320,7 +326,7 @@ export function RatesWidget({ size, box }: WidgetProps) {
                   fontSize: 'var(--fs-xs)', fontWeight: 600,
                   // ⚠️ Цвет тут не про «хорошо/плохо», а про направление: рубль дешевеет — это
                   // рост курса валюты. Красим сдержанно, без светофора на весь виджет.
-                  color: delta >= 0 ? '#C2410C' : '#15803D',
+                  color: delta >= 0 ? TONE_WARM : TONE_GREEN,
                 }}>
                   {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(2)}%
                 </span>
@@ -337,12 +343,127 @@ export function RatesWidget({ size, box }: WidgetProps) {
   );
 }
 
+// ── Крипта ────────────────────────────────────────────────────────────────────
+// Отдельный виджет, а не строки в «Курсе ЦБ» выше. Три причины, и все три — не про вкус:
+//  • цвет означает противоположное (см. TONE_GREEN/TONE_WARM);
+//  • у ЦБ курс живёт сутки, у биткоина — минуты, и общий кэш врал бы одному из двух;
+//  • подпись «Курс ЦБ» перестала бы быть правдой — крипты у ЦБ нет.
+// Плитка намеренно такая же белая, как соседняя: пёстрые острова рядом превращают стол в витрину.
+
+// Цена в рублях компактно. ⚠️ Без этого BTC (~9 500 000 ₽) в toFixed(2) даёт «9512340.00» и
+// разрывает плитку: в строке кегль под 26px, а цифр четырнадцать.
+function formatRub(v: number): string {
+  if (!Number.isFinite(v)) return '—';
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)} млн`;
+  if (v >= 10_000)    return `${Math.round(v / 1000).toLocaleString('ru')} тыс`;
+  if (v >= 100)       return Math.round(v).toLocaleString('ru');
+  if (v >= 1)         return v.toFixed(2);
+  return v.toFixed(4); // мелочь вроде DOGE — иначе на экране был бы честный, но бесполезный «0.00»
+}
+
+export function CryptoWidget({ size, box }: WidgetProps) {
+  const [rates, setRates] = useState<Record<string, number> | null>(null);
+  const [change, setChange] = useState<Record<string, number>>({});
+  const [history, setHistory] = useState<number[]>([]);
+
+  const chosen = loadNewTabSettings().crypto.codes;
+  const codes = (chosen.length ? chosen : ['BTC', 'ETH']).slice(0, size.w >= 4 ? 3 : 2);
+  const main = codes[0] ?? 'BTC';
+
+  useEffect(() => {
+    let alive = true;
+    void window.oblako.getCryptoRates().then((r) => {
+      if (!alive || !r.rates) return;
+      setRates(r.rates);
+      setChange(r.change24h ?? {});
+    }).catch(() => { /* курс — украшение, молчим */ });
+    return () => { alive = false; };
+  }, []);
+
+  // График — по ПЕРВОМУ выбранному активу, тот же довод, что у курса ЦБ: несколько линий
+  // в плитке такого размера превращаются в кашу.
+  useEffect(() => {
+    let alive = true;
+    void window.oblako.getCryptoHistory(main, 30).then((v) => {
+      if (alive) setHistory(v);
+    }).catch(() => { /* график необязателен */ });
+    return () => { alive = false; };
+  }, [main]);
+
+  // Тренд по первому активу — им же красим спарклайн, чтобы линия и стрелка не спорили.
+  const mainUp = (change[main] ?? 0) >= 0;
+  const rowFs = Math.round(Math.min((box.height - 60) / codes.length * 0.46, 26));
+  const chartH = Math.max(30, Math.round(box.height * 0.26));
+
+  return (
+    <Tile tint={RATES_TINT} light>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
+        {/* ⚠️ Валюта — в подписи, а не в каждой строке: «₿ 5.02 млн» без неё не отвечает на вопрос
+            «миллиона чего» (у соседнего виджета символ слева говорит это сам — «$ 78.42» читается
+            как «рублей за доллар»). В строке ₽ не помещался и переносил её на две. */}
+        <TileCaption>Крипта, ₽</TileCaption>
+        {history.length > 1 && (
+          <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.75 }}>{main} · 30 дней</span>
+        )}
+      </div>
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 5 }}>
+        {codes.map((c) => {
+          const now = rates?.[c];
+          const delta = change[c];
+          // nowrap: «5.02 млн» + процент в узкой плитке иначе переносятся на вторую строку и
+          // ломают ровный столбец цифр. Лучше подрезать, чем разъехаться.
+          return (
+            <div key={c} style={{ display: 'flex', alignItems: 'baseline', gap: 9, whiteSpace: 'nowrap' }}>
+              <span style={{
+                fontSize: Math.round(rowFs * 0.7), minWidth: '1.2em', opacity: 0.9, flex: 'none',
+              }}>
+                {cryptoSymbol(c)}
+              </span>
+              <span style={{
+                fontSize: rowFs, fontWeight: 500, fontVariantNumeric: 'tabular-nums', lineHeight: 1.15,
+              }}>
+                {now !== undefined ? formatRub(now) : '—'}
+              </span>
+              {delta !== undefined && (
+                <span style={{
+                  fontSize: 'var(--fs-xs)', fontWeight: 600,
+                  // Здесь, в отличие от соседнего виджета, зелёный = вырос: так это читают все.
+                  color: delta >= 0 ? TONE_GREEN : TONE_WARM,
+                }}>
+                  {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(2)}%
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {history.length > 1 && box.height > 150 && (
+        <Sparkline
+          values={history}
+          height={chartH}
+          color={mainUp ? TONE_GREEN : TONE_WARM}
+          fill={mainUp ? 'rgba(21,128,61,0.14)' : 'rgba(194,65,12,0.14)'}
+        />
+      )}
+    </Tile>
+  );
+}
+
 /**
  * Спарклайн курса. Рисуем сами SVG-полилинией, а не библиотекой: линия из тридцати точек без
  * осей и подписей — это десяток строк, а любая charting-библиотека тянет за собой сотни
  * килобайт ради того же результата.
  */
-function Sparkline({ values, height }: { values: number[]; height: number }) {
+function Sparkline({ values, height, color = TONE_GREEN, fill = 'rgba(21,128,61,0.14)' }: {
+  values: number[];
+  height: number;
+  // Цвет задаётся снаружи ради виджета «Крипта»: там линия должна краснеть на падающем активе,
+  // а у курса ЦБ смысл цвета обратный — единого «правильного» цвета у спарклайна нет.
+  color?: string;
+  fill?: string;
+}) {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
@@ -362,12 +483,12 @@ function Sparkline({ values, height }: { values: number[]; height: number }) {
       {/* Заливка под линией — она и придаёт графику «вес», без неё это просто царапина. */}
       <polygon
         points={`0,${height} ${pts.join(' ')} ${w},${height}`}
-        fill="rgba(21,128,61,0.14)"
+        fill={fill}
       />
       <polyline
         points={pts.join(' ')}
         fill="none"
-        stroke="#15803D"
+        stroke={color}
         strokeWidth={1.6}
         vectorEffect="non-scaling-stroke"
         strokeLinejoin="round"
@@ -589,6 +710,7 @@ export const WIDGET_RENDERERS: Record<string, (p: WidgetProps) => React.ReactEle
   clock: ClockWidget,
   weather: WeatherWidget,
   rates: RatesWidget,
+  crypto: CryptoWidget,
   topsites: TopSitesWidget,
   tasks: TasksWidget,
 };

@@ -5,7 +5,7 @@ import Toggle from '../Toggle';
 import {
   loadNewTabSettings, saveNewTabSettings, setNewTabCustomImage, getNewTabCustomImage,
   shrinkBackgroundImage,
-  WALLPAPER_PRESETS, RATE_CHOICES, type NewTabSettings, type BackgroundKind,
+  WALLPAPER_PRESETS, RATE_CHOICES, CRYPTO_CHOICES, type NewTabSettings, type BackgroundKind,
 } from '../../newtab/settings';
 
 // Раздел «Интерфейс» — кастомизация минималистичной новой вкладки (см. src/components/NewTab.tsx).
@@ -32,6 +32,15 @@ export default function AppearanceSection() {
       ? s.rates.codes.filter((c) => c !== code)
       : RATE_CHOICES.map((c) => c.code).filter((c) => c === code || s.rates.codes.includes(c));
     patchRates({ codes: next });
+  };
+
+  // Тот же приём для крипты — порядок из CRYPTO_CHOICES, а не из порядка кликов.
+  const toggleCryptoCode = (code: string) => {
+    const has = s.crypto.codes.includes(code);
+    const next = has
+      ? s.crypto.codes.filter((c) => c !== code)
+      : CRYPTO_CHOICES.map((c) => c.code).filter((c) => c === code || s.crypto.codes.includes(c));
+    apply({ ...s, crypto: { ...s.crypto, codes: next } });
   };
 
   function onPickFile(file: File | undefined) {
@@ -162,6 +171,17 @@ export default function AppearanceSection() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {RATE_CHOICES.map((c) => (
             <SegBtn key={c.code} active={s.rates.codes.includes(c.code)} onClick={() => toggleRateCode(c.code)}>
+              {c.symbol} {c.label}
+            </SegBtn>
+          ))}
+        </div>
+      </Subsection>
+
+      {/* ── Крипта ── */}
+      <Subsection title="Крипта" description="Какие активы показывает виджет «Крипта» (цены в рублях, источник — CoinGecko).">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {CRYPTO_CHOICES.map((c) => (
+            <SegBtn key={c.code} active={s.crypto.codes.includes(c.code)} onClick={() => toggleCryptoCode(c.code)}>
               {c.symbol} {c.label}
             </SegBtn>
           ))}

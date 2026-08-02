@@ -28,6 +28,10 @@ export interface NewTabSettings {
   weather: { show: boolean; city: string; units: 'c' | 'f' };
   // Курсы ЦБ РФ: codes — коды валют (USD/EUR/…), показываются как «сколько рублей за единицу».
   rates: { show: boolean; codes: string[] };
+  // Крипта: тикеры (BTC/ETH/…), тоже в рублях за единицу. Отдельно от rates выше, а не одним
+  // списком — у виджетов разные источники, разный ритм обновления и, главное, ПРОТИВОПОЛОЖНОЕ
+  // значение цвета: рост курса доллара красят красным (рубль слабеет), рост биткоина — зелёным.
+  crypto: { codes: string[] };
 }
 
 export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
@@ -41,6 +45,7 @@ export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
   quickLinks: { show: true, count: 8, source: 'top', custom: [] },
   weather: { show: false, city: '', units: 'c' },
   rates: { show: false, codes: ['USD', 'EUR'] },
+  crypto: { codes: ['BTC', 'ETH'] },
 };
 
 // Валюты, предлагаемые в настройках. Не весь список ЦБ (там ~40 позиций) — те, что осмысленно
@@ -59,6 +64,22 @@ export const RATE_CHOICES: { code: string; label: string; symbol: string }[] = [
 ];
 export function rateSymbol(code: string): string {
   return RATE_CHOICES.find((c) => c.code === code)?.symbol ?? code;
+}
+
+// Криптоактивы, предлагаемые в настройках. Тикеры совпадают с ключами COIN_IDS в
+// electron/CryptoRates.ts — id самого CoinGecko сюда не протекают, это деталь чужого API.
+export const CRYPTO_CHOICES: { code: string; label: string; symbol: string }[] = [
+  { code: 'BTC',  label: 'Bitcoin',  symbol: '₿' },
+  { code: 'ETH',  label: 'Ethereum', symbol: 'Ξ' },
+  { code: 'TON',  label: 'Toncoin',  symbol: 'TON' },
+  { code: 'SOL',  label: 'Solana',   symbol: 'SOL' },
+  { code: 'XRP',  label: 'XRP',      symbol: 'XRP' },
+  { code: 'DOGE', label: 'Dogecoin', symbol: 'Ð' },
+  { code: 'USDT', label: 'Tether',   symbol: '₮' },
+  { code: 'BNB',  label: 'BNB',      symbol: 'BNB' },
+];
+export function cryptoSymbol(code: string): string {
+  return CRYPTO_CHOICES.find((c) => c.code === code)?.symbol ?? code;
 }
 
 // Пресеты фона — те же градиент-токены, что у обоев домашнего экрана (tokens/apps.css). Общий
@@ -124,6 +145,7 @@ function merge(raw: unknown): NewTabSettings {
     quickLinks: { ...d.quickLinks, ...(r.quickLinks ?? {}) },
     weather: { ...d.weather, ...(r.weather ?? {}) },
     rates: { ...d.rates, ...(r.rates ?? {}) },
+    crypto: { ...d.crypto, ...(r.crypto ?? {}) },
   };
 }
 
