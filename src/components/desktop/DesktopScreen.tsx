@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { Search, Sparkles, Workflow, Check, Plus, X, LayoutGrid } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
@@ -88,14 +88,27 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   }, [settings.background.kind]);
 
   // Ширина области сетки — от неё считаются колонки и размер клетки.
-  useEffect(() => {
+  //
+  // ⚠️ useLayoutEffect, а не useEffect: при обычном эффекте первый кадр успевал нарисоваться с
+  // width===0, то есть с минимальными четырьмя колонками и мелкой клеткой — виджеты сваливались
+  // в кучу и через мгновение прыгали на места. Здесь замер происходит ДО того, как браузер
+  // покажет кадр, и промежуточного состояния не существует.
+  //
+  // ⚠️ Обновления ResizeObserver прогоняются через requestAnimationFrame: тянущий границу окна
+  // человек генерирует десятки событий в секунду, и каждое пересчитывало всю раскладку прямо в
+  // обработчике — отсюда рывки при ресайзе.
+  useLayoutEffect(() => {
     const el = areaRef.current;
     if (!el) return;
-    const measure = (): void => setWidth(el.clientWidth);
-    measure();
+    let frame = 0;
+    const measure = (): void => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setWidth(el.clientWidth));
+    };
+    setWidth(el.clientWidth);
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => { cancelAnimationFrame(frame); ro.disconnect(); };
   }, []);
 
   // Правка раскладки: сохраняем сразу — стол это косметика, отдельной кнопки «применить» тут
@@ -109,6 +122,9 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
     [layout.items, grid.cols],
   );
 
+  // Пока ширина не измерена, сетки нет вовсе: показать её «как получится» и переставить через
+  // кадр — это и есть та самая куча при запуске.
+  const ready = width > 0;
   const step = grid.cell + grid.gap;
   const appById = useMemo(() => new Map(APPS.map((a) => [a.id, a])), []);
 
@@ -192,7 +208,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
               cursor: editing ? (drag ? 'grabbing' : 'grab') : undefined,
             }}
           >
-            {placed.map(({ item, col, row, w, h }) => {
+            {ready && placed.map(({ item, col, row, w, h }) => {
               // Во время растягивания показываем БУДУЩИЙ размер, а не сохранённый: иначе жест
               // выглядит так, будто ничего не происходит, пока не отпустишь.
               const live = resizing && resizing.id === item.id ? { w: Math.min(resizing.w, grid.cols), h: resizing.h } : { w, h };
@@ -202,16 +218,23 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
               };
               const dragging = drag?.id === item.id;
               const style: React.CSSProperties = {
-                position: 'absolute',
-                left: col * step, top: row * step,
+                position: 'absolute', left: 0, top: 0,
+                // ⚠️ Позиция — transform, а не left/top. Смена left/top заставляет браузер
+                // пересчитывать раскладку и перерисовывать слой на каждом кадре анимации;
+                // transform уходит в композитор и двигает уже готовую текстуру. Именно на этом
+                // перестановка выглядела рывками.
+                transform: `translate3d(${col * step}px, ${row * step}px, 0)`,
                 width: box.width, height: box.height,
                 // Перетаскиваемый приподнят и полупрозрачен — видно, что он «в руке».
                 opacity: dragging ? 0.55 : 1,
                 zIndex: dragging || resizing?.id === item.id ? 5 : 1,
-                transition: dragging ? undefined : 'left 160ms var(--ease-out), top 160ms var(--ease-out)',
-                animation: editing && !dragging ? 'oblako-jiggle 1.6s ease-in-out infinite' : undefined,
-                animationDelay: editing ? `${(col + row) % 5 * 90}ms` : undefined,
+                // Анимируем только transform: он не трогает вёрстку. Пока элемент тащат — без
+                // перехода, иначе он тянулся бы за курсором с задержкой.
+                transition: dragging || !ready ? undefined : 'transform 220ms var(--ease-out)',
                 touchAction: editing ? 'none' : undefined,
+                // ⚠️ Дрожание вешаем на ВНУТРЕННИЙ слой (см. ниже), а не сюда: анимация transform
+                // на этом элементе затёрла бы позиционирующий translate3d.
+                willChange: editing ? 'transform' : undefined,
               };
 
               const content = item.kind === 'widget' ? (() => {
@@ -261,7 +284,11 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                   {/* ⚠️ В режиме правки перехватываем указатель ПЕРЕД содержимым: иначе клик по
                       кнопке приложения открывал бы его прямо во время перестановки. */}
                   {editing && <div style={{ position: 'absolute', inset: 0, zIndex: 2 }} />}
-                  {content}
+                  <div style={{
+                    width: '100%', height: '100%',
+                    animation: editing && !dragging ? 'oblako-jiggle 1.6s ease-in-out infinite' : undefined,
+                    animationDelay: editing ? `${((col + row) % 5) * 90}ms` : undefined,
+                  }}>{content}</div>
 
                   {editing && (
                     <>

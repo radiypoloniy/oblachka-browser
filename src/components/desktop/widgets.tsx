@@ -27,19 +27,26 @@ export interface WidgetProps {
 }
 
 // ── Плитка ────────────────────────────────────────────────────────────────────
-function Tile({ children, tint, padding = 16 }: {
+function Tile({ children, tint, padding = 16, light }: {
   children: React.ReactNode;
-  /** Градиент-заливка. Задаётся всегда: прозрачных виджетов на столе больше нет. */
+  /** Заливка. Задаётся всегда: прозрачных виджетов на столе нет. */
   tint: string;
   padding?: number;
+  /** Белый «парящий остров»: тёмный текст, мягкая тень, тонкая кромка. */
+  light?: boolean;
 }) {
   return (
     <div style={{
       width: '100%', height: '100%', overflow: 'hidden',
       borderRadius: 'var(--radius-card)',
       background: tint,
-      boxShadow: '0 6px 20px rgba(16,20,40,0.22)',
-      color: '#fff',
+      // ⚠️ У светлого острова тень мягче и холоднее, а по краю идёт кромка: белое на светлых
+      // обоях иначе сливается с фоном и перестаёт читаться как отдельная плитка.
+      boxShadow: light
+        ? '0 1px 2px rgba(16,20,40,0.10), 0 10px 28px rgba(16,20,40,0.16)'
+        : '0 6px 20px rgba(16,20,40,0.22)',
+      border: light ? '1px solid rgba(0,0,0,0.06)' : undefined,
+      color: light ? 'rgba(28,28,32,0.92)' : '#fff',
       padding,
       display: 'flex', flexDirection: 'column',
     }}>{children}</div>
@@ -244,7 +251,9 @@ export function WeatherWidget({ size, box, city }: WidgetProps) {
 }
 
 // ── Курсы валют ───────────────────────────────────────────────────────────────
-const RATES_TINT = 'linear-gradient(160deg, #2E9E6B 0%, #1F7A55 60%, #16603F 100%)';
+// Белый остров: слишком много ярких плиток рядом превращают стол в витрину. Начинка та же,
+// но цвет остаётся только там, где он что-то значит, — в стрелках роста и падения.
+const RATES_TINT = 'linear-gradient(180deg, #FFFFFF 0%, #F7F8FA 100%)';
 const RATE_SYMBOL: Record<string, string> = {
   USD: '$', EUR: '€', CNY: '¥', GBP: '£', JPY: '¥', KZT: '₸', TRY: '₺', BYN: 'Br', AMD: '֏', GEL: '₾',
 };
@@ -282,7 +291,7 @@ export function RatesWidget({ size, box }: WidgetProps) {
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
-    <Tile tint={RATES_TINT}>
+    <Tile tint={RATES_TINT} light>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
         <TileCaption>Курс ЦБ</TileCaption>
         {history.length > 1 && (
@@ -311,7 +320,7 @@ export function RatesWidget({ size, box }: WidgetProps) {
                   fontSize: 'var(--fs-xs)', fontWeight: 600,
                   // ⚠️ Цвет тут не про «хорошо/плохо», а про направление: рубль дешевеет — это
                   // рост курса валюты. Красим сдержанно, без светофора на весь виджет.
-                  color: delta >= 0 ? 'rgba(255,235,180,0.95)' : 'rgba(200,255,220,0.95)',
+                  color: delta >= 0 ? '#C2410C' : '#15803D',
                 }}>
                   {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(2)}%
                 </span>
@@ -353,12 +362,12 @@ function Sparkline({ values, height }: { values: number[]; height: number }) {
       {/* Заливка под линией — она и придаёт графику «вес», без неё это просто царапина. */}
       <polygon
         points={`0,${height} ${pts.join(' ')} ${w},${height}`}
-        fill="rgba(255,255,255,0.16)"
+        fill="rgba(21,128,61,0.14)"
       />
       <polyline
         points={pts.join(' ')}
         fill="none"
-        stroke="rgba(255,255,255,0.92)"
+        stroke="#15803D"
         strokeWidth={1.6}
         vectorEffect="non-scaling-stroke"
         strokeLinejoin="round"
@@ -460,9 +469,11 @@ export function TopSitesWidget({ box, tiles, onOpen }: WidgetProps) {
 }
 
 // ── Дела ──────────────────────────────────────────────────────────────────────
-// ⚠️ Заметно темнее первой версии: белый текст на светло-оранжевом фоне почти не читался —
-// контраст был около 2:1 при минимально приемлемых 4.5:1 для мелкого текста.
-const TASKS_TINT = 'linear-gradient(160deg, #C2761B 0%, #A65D13 60%, #8A4A0D 100%)';
+// Тоже белый остров — по той же причине, что и курс. Заодно снялся вопрос читаемости: тёмный
+// текст на белом не требует подбора контраста вовсе.
+const TASKS_TINT = 'linear-gradient(180deg, #FFFFFF 0%, #F7F8FA 100%)';
+// Акцент дел — тёплый янтарный: он остался в галочках и кнопке, где и нужен.
+const TASKS_ACCENT = '#E08A1E';
 const TASKS_KEY = 'oblako-desktop-tasks';
 
 interface Task { id: string; text: string; done: boolean }
@@ -503,7 +514,7 @@ export function TasksWidget({ box }: WidgetProps) {
   const left = tasks.filter((t) => !t.done).length;
 
   return (
-    <Tile tint={TASKS_TINT}>
+    <Tile tint={TASKS_TINT} light>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
         <TileCaption>Дела</TileCaption>
         <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.85 }}>
@@ -519,11 +530,11 @@ export function TasksWidget({ box }: WidgetProps) {
               title={t.done ? 'Вернуть в дела' : 'Сделано'}
               style={{
                 width: 18, height: 18, flex: 'none', borderRadius: 6, cursor: 'default',
-                border: t.done ? 'none' : '1.5px solid rgba(255,255,255,0.75)',
-                background: t.done ? 'rgba(255,255,255,0.95)' : 'transparent',
+                border: t.done ? 'none' : `1.5px solid ${TASKS_ACCENT}`,
+                background: t.done ? TASKS_ACCENT : 'transparent',
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0,
               }}
-            >{t.done && <Check size={12} style={{ color: '#8A4A0D' }} />}</button>
+            >{t.done && <Check size={12} style={{ color: '#fff' }} />}</button>
             <span style={{
               flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', textAlign: 'left',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -565,7 +576,7 @@ export function TasksWidget({ box }: WidgetProps) {
           title="Добавить"
           style={{
             width: 30, height: 30, flex: 'none', borderRadius: 999, border: 'none', cursor: 'default',
-            background: 'rgba(255,255,255,0.95)', color: '#8A4A0D',
+            background: TASKS_ACCENT, color: '#fff',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}
         ><Plus size={16} /></button>

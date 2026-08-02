@@ -639,13 +639,13 @@ export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
           position: 'absolute', inset: 0, pointerEvents: 'none',
           background: isLightTile
             ? 'radial-gradient(120% 90% at 28% 0%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 60%)'
-            : 'radial-gradient(120% 90% at 28% 0%, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.10) 45%, rgba(255,255,255,0) 70%)',
+            : 'radial-gradient(130% 100% at 30% -10%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.06) 55%, rgba(255,255,255,0) 78%)',
         }} />
         <span style={{
           position: 'absolute', inset: 0, pointerEvents: 'none',
           background: isLightTile
             ? 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(0,0,0,0.05) 100%)'
-            : 'linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 14%, rgba(0,0,0,0) 72%, rgba(0,0,0,0.16) 100%)',
+            : 'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 12%, rgba(0,0,0,0) 78%, rgba(0,0,0,0.10) 100%)',
         }} />
 
         {maskFile ? (
@@ -713,7 +713,7 @@ function HomeGrid({ apps, openApps, onOpen, widgets, weatherCity, onWallpaper }:
               }}
             >
               {/* --radius-card (13px) на 54px — те же ~24% скругления, что у иконок iOS. */}
-              <AppIconBadge app={app} size={54} iconSize={30} shadow />
+              <AppIconBadge app={app} size={54} iconSize={32} shadow />
               <span style={{
                 maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 fontSize: 'var(--fs-xs)', fontWeight: 500,
