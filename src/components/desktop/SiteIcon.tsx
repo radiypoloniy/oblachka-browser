@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 // ⚠️ Почему не просто favicon. Favicon у большинства сайтов 16×16: растянутый до 96 px он
 // превращается в мыло, и весь экран выглядит дёшево. Поэтому сначала пробуем apple-touch-icon —
 // сайты держат её именно для домашнего экрана, она квадратная, крупная (180×180) и уже с полями.
-// Favicon остаётся запасным путём: тогда рисуем его мелко по центру подложки, а не растягиваем.
+// Favicon остаётся запасным путём — размер значка в любом случае решает MARK_RATIO ниже.
 //
 // Загрузку apple-touch-icon делает сам renderer обычной <img>: это картинка с того же адреса,
 // который человек и так открывает, никакого нового доступа она не требует. Ответ от FaviconService
@@ -25,9 +25,17 @@ interface Props {
 
 type IconState =
   | { kind: 'loading' }
-  | { kind: 'touch'; src: string }    // крупная квадратная — на всю плитку
-  | { kind: 'favicon'; src: string; natural: number }  // мелкая — по центру подложки
+  | { kind: 'touch'; src: string }    // крупная квадратная (apple-touch-icon)
+  | { kind: 'favicon'; src: string; natural: number }  // значок из FaviconService
   | { kind: 'letter' };               // ничего не нашлось
+
+// ⚠️ ОДНО правило на все виды значков: марка сайта живёт ВНУТРИ плитки с полями, а не в край.
+// Разводить «apple-touch-icon — во всю плитку, favicon — с полями» бессмысленно: FaviconService
+// сам ищет apple-touch-icon по разметке и отдаёт её же под видом favicon, то есть вид значка
+// зависел бы от того, лежит ли она по каноническому адресу, — лотерея, а не правило.
+// Сама доля выстрадана двумя крайностями: 16 px по центру плитки в 90 («супер мелкая») и значок
+// в край (красный квадрат ютуба вплотную к кромке — «слишком большая»). 0.72 — то самое среднее.
+const MARK_RATIO = 0.72;
 
 function hostOf(url: string): string {
   try { return new URL(url).hostname; } catch { return ''; }
@@ -95,28 +103,28 @@ export default function SiteIcon({ url, title, size, onOpen, labelColor, labelSh
         border: '1px solid var(--divider)',
         boxShadow: 'var(--appicon-shadow)',
       }}>
-        {icon.kind === 'touch' && (
-          <img src={icon.src} alt="" width={size} height={size} style={{ width: size, height: size, objectFit: 'cover' }} />
-        )}
-        {icon.kind === 'favicon' && (() => {
-          // ⚠️ ЛЕСТНИЦА по собственному размеру значка, а не одно правило на всех. Прошлый заход
-          // менял крайности местами: сперва любую фавиконку растягивали до 62% плитки (крупно,
-          // но в лесенках), потом жёстко запретили растягивать (чётко, но 16 px посреди плитки
-          // в 90 — это и есть «супер мелкая»). Ни то, ни другое не годится, потому что значки
-          // приходят РАЗНЫЕ: FaviconService нарочно ищет крупный (apple-touch-icon и
-          // <link sizes>), и когда он его находит, значок обязан занять плитку целиком.
-          //  • от 64 px — настоящая иконка приложения, кладём во всю плитку;
-          //  • 32…63 — приличный значок, даём 62% и чуть-чуть растягиваем, это незаметно;
-          //  • меньше 32 — только по своему размеру, растягивать нечего.
+        {(icon.kind === 'touch' || icon.kind === 'favicon') && (() => {
+          const full = Math.round(size * MARK_RATIO);
+          // Растягивать растр нельзя — только не растягивать: 16-пиксельный значок, раздутый до
+          // 65 px, и есть те самые пиксельные лесенки. Крупный (от 32 px) чуть подтянуть можно,
+          // этого глаз не ловит; мелкий рисуем по его собственному размеру.
           const dpr = window.devicePixelRatio || 1;
-          const nat = icon.natural;
-          if (nat >= 64) {
-            return <img src={icon.src} alt="" width={size} height={size} style={{ width: size, height: size, objectFit: 'cover' }} />;
-          }
-          const px = nat >= 32
-            ? Math.round(size * 0.62)
-            : Math.min(Math.round(size * 0.62), Math.round(nat / dpr));
-          return <img src={icon.src} alt="" style={{ width: px, height: px, objectFit: 'contain' }} />;
+          const px = icon.kind === 'touch' || icon.natural >= 32
+            ? full
+            : Math.min(full, Math.round(icon.natural / dpr));
+          return (
+            <img
+              src={icon.src}
+              alt=""
+              style={{
+                width: px, height: px, objectFit: 'contain',
+                // Скругление — ради непрозрачных квадратных значков (их кладут те, кто рисовал
+                // иконку для домашнего экрана): без него они торчали бы острыми углами внутри
+                // скруглённой плитки. Прозрачной марке скругление не видно вовсе.
+                borderRadius: Math.round(px * 0.235),
+              }}
+            />
+          );
         })()}
         {(icon.kind === 'letter' || icon.kind === 'loading') && (
           <span style={{
