@@ -3,7 +3,7 @@ import type React from 'react';
 import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import {
-  loadDesktop, saveDesktop, subscribeDesktop, computeGrid, layoutItems,
+  loadDesktop, saveDesktop, subscribeDesktop, computeGrid, placeItems, moveItemTo, normalize,
   resizeItem, removeItem, addItem, DEFAULT_COLS,
   type DesktopLayout,
 } from '../../newtab/desktop';
@@ -86,13 +86,14 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   // на месте, пока его тащили, — двигалась лишь прозрачность. Именно это и выглядело криво:
   // жест есть, отклика нет.
   const [drag, setDrag] = useState<{
-    id: string; overIndex: number;
+    id: string;
     startX: number; startY: number; dx: number; dy: number;
-    // Точка, в которой индекс сменился в прошлый раз — от неё считается порог гистерезиса.
-    lastX: number; lastY: number;
-    // ⚠️ Позиция элемента В МОМЕНТ ЗАХВАТА. Он рисуется от неё, а не от будущей клетки: место
+    // ⚠️ Позиция элемента В МОМЕНТ ЗАХВАТА. Он рисуется от неё, а не от целевой клетки: место
     // назначения меняется по ходу жеста, и элемент прыгал следом за ним, уезжая из-под курсора.
     originX: number; originY: number;
+    // Клетка, в которую он встанет, если отпустить. Считается от угла самой плитки, а не от
+    // курсора, — плитка примагничивается к ближайшей клетке, как иконка на springboard.
+    col: number; row: number;
   } | null>(null);
   const [resizing, setResizing] = useState<{ id: string; w: number; h: number } | null>(null);
 
@@ -138,86 +139,55 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
 
   // Правка раскладки: сохраняем сразу — стол это косметика, отдельной кнопки «применить» тут
   // не нужно, а неожиданно потерянная перестановка раздражает сильнее лишней записи.
-  const apply = (next: DesktopLayout): void => { setLayout(next); saveDesktop(next); };
+  // ⚠️ normalize — не косметика: у только что добавленного элемента координат ещё нет, их
+  // назначает укладчик. Без записи назад сохранённая раскладка отличалась бы от увиденной, и
+  // первая же смена плотности разложила бы стол не так, как он выглядел.
+  const apply = (next: DesktopLayout): void => {
+    const n = normalize(next);
+    setLayout(n);
+    saveDesktop(n);
+  };
 
   const light = isLightBackground(settings.background);
   // Колонки берутся из раскладки, а не из ширины окна (см. computeGrid): расклад не должен
   // перестраиваться от того, что окно потянули за край.
   const grid = useMemo(() => computeGrid(Math.max(320, width), layout.cols ?? DEFAULT_COLS), [width, layout.cols]);
   // ⚠️ Раскладка считается по ПРЕДПОЛАГАЕМОМУ состоянию: во время перетаскивания элемент уже
-  // стоит на новом месте, во время растягивания — уже нового размера. Соседи из-за этого
-  // разъезжаются прямо под рукой (у них transition на transform), а не прыгают после отпускания.
-  // ⚠️ Раскладка БЕЗ перетаскиваемого элемента — стабильная база для расчёта места вставки.
+  // стоит в целевой клетке, во время растягивания — уже нового размера. Отпускание тогда ничего
+  // не меняет, и «отпустил, а встало не туда» невозможно по построению.
   //
-  // Здесь была настоящая ловушка обратной связи: место считалось по той же раскладке, которую
-  // сам расчёт и менял. Элемент вставал на новое место → соседи сдвигались → под курсором
-  // оказывалась другая клетка → индекс менялся обратно → и так каждый кадр. Именно это и
-  // выглядело как резкая дрожь в конце движения. База, из которой элемент изъят, от индекса не
-  // зависит, поэтому колебаться нечему.
-  const dragBase = useMemo(
-    () => (drag ? layout.items.filter((i) => i.id !== drag.id) : layout.items),
-    [layout.items, drag],
-  );
-  const basePlaced = useMemo(
-    () => (drag ? layoutItems(dragBase, grid.cols).placed : null),
-    [dragBase, grid.cols, drag],
-  );
-
+  // ⚠️ Прежней ловушки обратной связи (место считалось по раскладке, которую сам расчёт и менял,
+  // отчего в конце жеста начиналась дрожь) здесь больше нет вовсе: на координатах перенос одного
+  // элемента не двигает соседей, поэтому и колебаться нечему. Гистерезис, база «без элемента» и
+  // порог в треть клетки уехали вместе с укладкой по порядку.
   const preview = useMemo(() => {
-    if (drag) {
-      const item = layout.items.find((i) => i.id === drag.id);
-      if (!item) return layout;
-      const at = Math.max(0, Math.min(dragBase.length, drag.overIndex));
-      return { ...layout, items: [...dragBase.slice(0, at), item, ...dragBase.slice(at)] };
-    }
+    if (drag) return moveItemTo(layout, drag.id, drag.col, drag.row);
     if (resizing) return resizeItem(layout, resizing.id, { w: resizing.w, h: resizing.h });
     return layout;
-  }, [layout, drag, resizing, dragBase]);
+  }, [layout, drag, resizing]);
 
   const { placed, rows } = useMemo(
-    () => layoutItems(preview.items, grid.cols),
-    [preview.items, grid.cols],
+    () => placeItems(preview.items, grid.cols, drag?.id ?? resizing?.id),
+    [preview.items, grid.cols, drag?.id, resizing?.id],
   );
+
+  // Встанет ли плитка туда, куда её тянут. Отказ (занято чем-то другого размера) виден сразу:
+  // подсветки целевой клетки нет, и плитка вернётся на место — гадать после отпускания не нужно.
+  const dropOk = drag ? preview !== layout : false;
+  // Где рисовать контур цели. Берём МЕСТО ИЗ РАСЧЁТА, а не желаемую клетку: укладчик мог
+  // подвинуть плитку (например, край сетки), и контур обязан показывать правду.
+  const dropCell = useMemo(() => {
+    const at = drag ? placed.find((p) => p.item.id === drag.id) : null;
+    return at ?? { col: 0, row: 0, w: 1, h: 1 };
+  }, [placed, drag]);
 
   // Пока ширина не измерена, сетки нет вовсе: показать её «как получится» и переставить через
   // кадр — это и есть та самая куча при запуске.
   const ready = width > 0;
   const step = grid.cell + grid.gap;
+  // Запасная строка снизу в режиме правки — иначе положить плитку ниже последней некуда.
+  const gridRows = rows + (editing ? 1 : 0);
   const appById = useMemo(() => new Map(APPS.map((a) => [a.id, a])), []);
-
-  // Индекс места, куда встанет перетаскиваемый элемент. Считаем по клетке под курсором, а не по
-  // пересечению с соседями: сетка резиновая, а клетка — единственная величина, одинаково
-  // понятная и человеку, и укладчику.
-  // Индекс вставки СРЕДИ ОСТАВШИХСЯ элементов (см. dragBase выше). Возвращает позицию в
-  // списке без перетаскиваемого — именно её ждёт preview.
-  const indexAtPoint = (clientX: number, clientY: number): number => {
-    const box = gridRef.current?.getBoundingClientRect();
-    const base = basePlaced;
-    if (!box || !base) return dragBase.length;
-    const col = Math.max(0, Math.min(grid.cols - 1, Math.floor((clientX - box.left) / step)));
-    const row = Math.max(0, Math.floor((clientY - box.top) / step));
-    const hit = base.find((p) => col >= p.col && col < p.col + p.w && row >= p.row && row < p.row + p.h);
-    if (hit) {
-      const idx = dragBase.findIndex((i) => i.id === hit.item.id);
-      // Правая половина занятой клетки — «после неё», левая — «перед». ⚠️ Порог с запасом
-      // (55/45), а не ровно посередине: на границе половин дрожание вернулось бы уже из-за
-      // сотых долей пикселя при движении мыши.
-      const half = (clientX - box.left) - (hit.col * step) > (hit.w * step) * 0.55;
-      return half ? idx + 1 : idx;
-    }
-    // ⚠️ Курсор над ПУСТОЙ клеткой. Раньше здесь искался первый элемент строкой НИЖЕ и вставка
-    // шла перед ним — то есть попасть в саму дырку было нельзя в принципе: элемент уезжал в
-    // начало следующей строки. Это и есть «на некоторые позиции иконки упорно не хотят вставать,
-    // хотя клетка свободна» — причём дыры появились как раз после перехода на последовательную
-    // укладку, поэтому баг и стал заметным.
-    //
-    // Правильный ответ — место в ПОРЯДКЕ ЧТЕНИЯ: первый элемент, который стоит не раньше клетки
-    // под курсором. Порядок чтения теперь совпадает с порядком списка (см. layoutItems), поэтому
-    // такой индекс и означает ровно «сюда».
-    const key = row * grid.cols + col;
-    const after = base.find((p) => p.row * grid.cols + p.col >= key);
-    return after ? dragBase.findIndex((i) => i.id === after.item.id) : dragBase.length;
-  };
 
   const onItemPointerDown = (e: React.PointerEvent, id: string): void => {
     if (!editing || e.button !== 0) return;
@@ -225,34 +195,23 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     const at = placed.find((p) => p.item.id === id);
     setDrag({
-      id, overIndex: layout.items.findIndex((i) => i.id === id),
+      id,
       startX: e.clientX, startY: e.clientY, dx: 0, dy: 0,
-      lastX: e.clientX, lastY: e.clientY,
       originX: (at?.col ?? 0) * step, originY: (at?.row ?? 0) * step,
+      col: at?.col ?? 0, row: at?.row ?? 0,
     });
   };
 
   const onGridPointerMove = (e: React.PointerEvent): void => {
     if (drag) {
-      // ⚠️ ГИСТЕРЕЗИС на месте вставки, и вот зачем. Вставка сдвигает ВСЁ, что стоит после неё
-      // (укладка последовательная — см. layoutItems), поэтому смена индекса на единицу
-      // перекладывает весь хвост экрана. Пока порога не было, крошечное движение мыши у границы
-      // двух клеток переключало индекс туда-обратно, и виджеты «лихорадочно ездили в поисках
-      // места» — ровно то, что описано в жалобе, и заметнее всего там, где элементу негде встать
-      // и перекладка получается самой длинной.
-      // Порог — треть клетки от точки, где индекс сменился в прошлый раз: случайное дрожание
-      // руки и субпиксельные колебания курсора в него укладываются, осмысленное движение — нет.
-      const next = indexAtPoint(e.clientX, e.clientY);
-      const moved = Math.hypot(e.clientX - drag.lastX, e.clientY - drag.lastY);
-      const commit = next !== drag.overIndex && moved > step / 3;
-      setDrag({
-        ...drag,
-        overIndex: commit ? next : drag.overIndex,
-        lastX: commit ? e.clientX : drag.lastX,
-        lastY: commit ? e.clientY : drag.lastY,
-        dx: e.clientX - drag.startX,
-        dy: e.clientY - drag.startY,
-      });
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      // Клетка — по УГЛУ плитки, а не по курсору: плитка примагничивается к ближайшей клетке,
+      // как иконка на springboard. Курсор при этом может быть где угодно внутри плитки, и
+      // широкий виджет не прыгает вбок оттого, что взяли его за правый край.
+      const col = Math.round((drag.originX + dx) / step);
+      const row = Math.round((drag.originY + dy) / step);
+      setDrag({ ...drag, dx, dy, col, row });
       return;
     }
     if (!resizing) return;
@@ -313,7 +272,10 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
             onPointerCancel={onGridPointerUp}
             style={{
               position: 'relative', margin: '0 auto',
-              width: grid.width, height: rows * step - grid.gap,
+              // ⚠️ В режиме правки снизу добавляется ПУСТАЯ строка. Дыры теперь законны, и без
+              // запасной строки положить плитку ниже последней было бы физически некуда —
+              // сетка кончалась ровно на последнем элементе.
+              width: grid.width, height: gridRows * step - grid.gap,
               // В режиме правки курсор над сеткой сообщает, что элементы можно двигать.
               cursor: editing ? (drag ? 'grabbing' : 'grab') : undefined,
             }}
@@ -322,7 +284,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                 курсором, соседи расступались, но КУДА он встанет и по какой сетке — человек
                 достраивал в уме. Пунктирные клетки отвечают на это прямо, а вне правки исчезают:
                 на обычном экране решётка поверх обоев была бы шумом. */}
-            {editing && Array.from({ length: rows * grid.cols }).map((_, i) => (
+            {editing && Array.from({ length: gridRows * grid.cols }).map((_, i) => (
               <div
                 key={`cell-${i}`}
                 style={{
@@ -336,10 +298,23 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
               />
             ))}
 
-            {/* ⚠️ Подсветки будущего места здесь НЕТ намеренно. Она сбивала: на экране
-                одновременно оказывались элемент под курсором, контур цели и разъехавшиеся
-                соседи — три сигнала об одном и том же. Расступившиеся соседи показывают исход
-                однозначно, как на домашнем экране iPad. */}
+            {/* ⚠️ Подсветка будущего места ВЕРНУЛАСЬ, и вот почему. Раньше её убрали как третий
+                лишний сигнал: исход показывали расступившиеся соседи. На координатах соседи не
+                расступаются вовсе (перенос одного элемента больше никого не касается) — и без
+                контура жест снова стал бы вслепую. Контура нет, когда встать нельзя: это и есть
+                ответ «сюда не влезет», данный ДО отпускания, а не после. */}
+            {drag && dropOk && (
+              <div style={{
+                position: 'absolute', left: 0, top: 0, pointerEvents: 'none', zIndex: 4,
+                transform: `translate3d(${dropCell.col * step}px, ${dropCell.row * step}px, 0)`,
+                width: dropCell.w * grid.cell + (dropCell.w - 1) * grid.gap,
+                height: dropCell.h * grid.cell + (dropCell.h - 1) * grid.gap,
+                borderRadius: 'var(--radius-card)',
+                border: '2px solid var(--accent)',
+                background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                transition: 'transform 120ms var(--ease-out)',
+              }} />
+            )}
 
             {ready && placed.map(({ item, col, row, w, h }) => {
               // Размер во время жеста уже новый: раскладка считается по preview (см. выше), так

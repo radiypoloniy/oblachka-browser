@@ -20,6 +20,15 @@ export interface DesktopItem {
   id: string;
   kind: DesktopItemKind;
   size: CellSize;
+  /**
+   * Место в сетке — 0-based клетка левого верхнего угла. Хранить координаты стало можно ровно
+   * тогда, когда число колонок перестало зависеть от ширины окна (см. computeGrid): пока сетка
+   * плавала, клетка №7 существовала не при всякой ширине, и приходилось хранить порядок.
+   * ⚠️ Отсутствуют у только что добавленного элемента — он встаёт в первую свободную клетку
+   * (см. placeItems). Это не «неопределённое состояние», а честное «человек ещё не выбирал».
+   */
+  col?: number;
+  row?: number;
   /** kind==='site': адрес и подпись. */
   url?: string;
   title?: string;
@@ -38,7 +47,8 @@ export interface DesktopItem {
 }
 
 export interface DesktopLayout {
-  version: 1;
+  /** 2 — элементы хранят координаты. 1 (только на диске) — хранился порядок, см. loadDesktop. */
+  version: 2;
   items: DesktopItem[];
   /**
    * Число колонок сетки. Живёт ЗДЕСЬ, а не в настройках вкладки (src/newtab/settings.ts), хотя
@@ -132,9 +142,107 @@ export interface PlacedItem {
   h: number;
 }
 
+/** Сетка занятости — общая механика для обеих укладок ниже. */
+function makeGrid(cols: number) {
+  const occupied: boolean[][] = [];
+  const rowAt = (r: number): boolean[] => {
+    while (occupied.length <= r) occupied.push(new Array<boolean>(cols).fill(false));
+    return occupied[r]!;
+  };
+  const fits = (r: number, c: number, w: number, h: number): boolean => {
+    if (c < 0 || r < 0 || c + w > cols) return false;
+    for (let dr = 0; dr < h; dr++) {
+      const row = rowAt(r + dr);
+      for (let dc = 0; dc < w; dc++) if (row[c + dc]) return false;
+    }
+    return true;
+  };
+  const occupy = (r: number, c: number, w: number, h: number): void => {
+    for (let dr = 0; dr < h; dr++) {
+      const row = rowAt(r + dr);
+      for (let dc = 0; dc < w; dc++) row[c + dc] = true;
+    }
+  };
+  /** Первая свободная клетка в порядке чтения, начиная с указанной строки. */
+  const firstFree = (w: number, h: number, fromRow = 0): { col: number; row: number } => {
+    for (let r = Math.max(0, fromRow); r < 500; r++) {
+      for (let c = 0; c + w <= cols; c++) if (fits(r, c, w, h)) return { col: c, row: r };
+    }
+    return { col: 0, row: 0 }; // недостижимо: пустых строк снизу бесконечно много
+  };
+  return { fits, occupy, firstFree };
+}
+
+function byRowCol(a: DesktopItem, b: DesktopItem): number {
+  return (a.row ?? 0) - (b.row ?? 0) || (a.col ?? 0) - (b.col ?? 0);
+}
+
+/**
+ * Раскладка ПО КООРДИНАТАМ: элемент стоит там, куда его положили, и дыры между элементами
+ * сохраняются — это выбор человека, а не побочный эффект укладки.
+ *
+ * ⚠️ Ничего никуда не «всплывает». Это главное отличие от прежней укладки по порядку: там место
+ * элемента зависело от размеров всех предыдущих, поэтому любая правка могла сдвинуть половину
+ * экрана, а поставить плитку в конкретную клетку было нельзя в принципе. Здесь правка одного
+ * элемента не касается остальных вообще.
+ *
+ * Разбираются ровно два случая, и оба — про данные, которые не человек писал:
+ *  • элемент без координат (только что добавленный) — встаёт в первую свободную клетку;
+ *  • наложение (сменилась плотность сетки, изменился размер виджета, кто-то поправил
+ *    localStorage) — проигравший сдвигается в ближайшую свободную клетку, а не исчезает.
+ * Кто «выигрывает» при наложении — решает порядок чтения (сверху слева), плюс priorityId:
+ * при растягивании виджета на месте обязан остаться именно тот, который тянут.
+ */
+export function placeItems(items: DesktopItem[], colsSetting: number, priorityId?: string): { placed: PlacedItem[]; rows: number } {
+  const cols = clampCols(colsSetting);
+  const { fits, occupy, firstFree } = makeGrid(cols);
+  const placed: PlacedItem[] = [];
+  let maxRow = 0;
+
+  const positioned = items.filter((i) => typeof i.col === 'number' && typeof i.row === 'number');
+  const floating = items.filter((i) => typeof i.col !== 'number' || typeof i.row !== 'number');
+  const ordered = positioned.sort(byRowCol);
+  if (priorityId) {
+    const idx = ordered.findIndex((i) => i.id === priorityId);
+    if (idx > 0) ordered.unshift(...ordered.splice(idx, 1));
+  }
+
+  for (const item of [...ordered, ...floating]) {
+    const w = Math.min(item.size.w, cols); // виджет шире сетки сжимается, а не выпадает
+    const h = item.size.h;
+    let col = Math.max(0, Math.min(cols - w, item.col ?? 0));
+    let row = Math.max(0, item.row ?? 0);
+    if (!fits(row, col, w, h)) ({ col, row } = firstFree(w, h, typeof item.row === 'number' ? row : 0));
+    occupy(row, col, w, h);
+    placed.push({ item, col, row, w, h });
+    maxRow = Math.max(maxRow, row + h);
+  }
+
+  return { placed, rows: maxRow };
+}
+
+/**
+ * Записать фактические координаты обратно в раскладку. Нужна там, где расстановку решал не
+ * человек, а код (миграция, смена плотности, растягивание виджета в тесноте): без этого
+ * сохранённое состояние разошлось бы с тем, что человек видит на экране.
+ */
+export function normalize(layout: DesktopLayout, priorityId?: string): DesktopLayout {
+  const { placed } = placeItems(layout.items, layout.cols ?? DEFAULT_COLS, priorityId);
+  return {
+    ...layout,
+    items: placed
+      .map((p) => ({ ...p.item, col: p.col, row: p.row }))
+      .sort(byRowCol), // порядок в файле = порядок чтения на экране, так его хотя бы можно читать
+  };
+}
+
 /**
  * Последовательная укладка слева направо с переносом: место элемента — функция его НОМЕРА и
  * размеров всех, кто стоит до него. Ничего больше.
+ *
+ * ⚠️ Больше НЕ рисует экран — с переходом на координаты (см. placeItems) она осталась ровно для
+ * двух случаев, где расставлять приходится за человека: перенос старой раскладки, хранившей
+ * порядок, и смена плотности сетки, после которой прежние координаты недействительны.
  *
  * ⚠️ Раньше здесь была ЖАДНАЯ укладка: каждый элемент искал первое подходящее место с начала
  * сетки. Из-за этого мелкая иконка, стоящая в списке ДЕСЯТОЙ, запрыгивала в дырку, оставшуюся
@@ -154,28 +262,9 @@ export interface PlacedItem {
  * ⚠️ Порядок элементов сохраняется всегда: человек расставил их сам, и «оптимизация» с
  * перестановкой местами выглядела бы как самовольство интерфейса.
  */
-export function layoutItems(items: DesktopItem[], cols: number): { placed: PlacedItem[]; rows: number } {
-  // Карта занятости: индекс строки → массив булевых по колонкам.
-  const occupied: boolean[][] = [];
-  const rowAt = (r: number): boolean[] => {
-    while (occupied.length <= r) occupied.push(new Array<boolean>(cols).fill(false));
-    return occupied[r];
-  };
-  const fits = (r: number, c: number, w: number, h: number): boolean => {
-    if (c + w > cols) return false;
-    for (let dr = 0; dr < h; dr++) {
-      const row = rowAt(r + dr);
-      for (let dc = 0; dc < w; dc++) if (row[c + dc]) return false;
-    }
-    return true;
-  };
-  const occupy = (r: number, c: number, w: number, h: number): void => {
-    for (let dr = 0; dr < h; dr++) {
-      const row = rowAt(r + dr);
-      for (let dc = 0; dc < w; dc++) row[c + dc] = true;
-    }
-  };
-
+export function layoutItems(items: DesktopItem[], colsSetting: number): { placed: PlacedItem[]; rows: number } {
+  const cols = clampCols(colsSetting);
+  const { fits, occupy } = makeGrid(cols);
   const placed: PlacedItem[] = [];
   let maxRow = 0;
 
@@ -235,9 +324,11 @@ const EVENT = 'oblako-desktop-changed';
 
 // Стартовый набор. Виджеты сверху, приложения следом — тот же порядок, что на реф-скриншотах
 // iPad: сначала то, что показывает данные, потом то, что запускают.
+// ⚠️ Координат у стартовых элементов нет намеренно: их расставит placeItems в первые свободные
+// клетки, и это ровно то же, что человек увидел бы, разложив их сам сверху вниз.
 export function defaultLayout(): DesktopLayout {
   return {
-    version: 1,
+    version: 2,
     cols: DEFAULT_COLS,
     items: [
       // ⚠️ Виджетов, ходящих в СЕТЬ (погода, курсы, крипта), в стартовом наборе НЕТ намеренно.
@@ -270,7 +361,17 @@ export function loadDesktop(): DesktopLayout {
     const items = parsed.items.filter((i): i is DesktopItem =>
       !!i && typeof i.id === 'string' && typeof i.kind === 'string'
       && !!i.size && typeof i.size.w === 'number' && typeof i.size.h === 'number');
-    return { version: 1, cols: clampCols(parsed.cols), items };
+    const cols = clampCols(parsed.cols);
+    if (parsed.version === 2) return { version: 2, cols, items };
+
+    // ⚠️ ПЕРЕНОС со старого формата (хранился только порядок). Координаты берём из ТОЙ ЖЕ
+    // последовательной укладки, которой этот стол и рисовался, — человек не должен заметить
+    // смены формата: экран после обновления обязан выглядеть ровно так же, как до него.
+    const { placed } = layoutItems(items, cols);
+    return {
+      version: 2, cols,
+      items: placed.map((p) => ({ ...p.item, col: p.col, row: p.row })),
+    };
   } catch {
     return defaultLayout();
   }
@@ -293,32 +394,73 @@ export function subscribeDesktop(cb: () => void): () => void {
 // Все операции возвращают НОВЫЙ объект раскладки: состояние живёт в React, и мутация на месте
 // не вызвала бы перерисовку.
 
-/** Переставить элемент на новое место в порядке укладки. */
-export function moveItem(layout: DesktopLayout, id: string, toIndex: number): DesktopLayout {
-  const from = layout.items.findIndex((i) => i.id === id);
-  if (from < 0) return layout;
-  const items = [...layout.items];
-  const [item] = items.splice(from, 1);
-  // ⚠️ Индекс назначения считается по списку БЕЗ переносимого элемента: иначе при движении
-  // вперёд элемент вставал бы на позицию раньше желаемой ровно на единицу.
-  const to = Math.max(0, Math.min(items.length, toIndex > from ? toIndex - 1 : toIndex));
-  items.splice(to, 0, item);
-  return { ...layout, items };
-}
+/**
+ * Поставить элемент в клетку (col, row). Возвращает ПРЕЖНЮЮ раскладку, если так нельзя, —
+ * тогда плитка на экране просто вернётся откуда взяли.
+ *
+ * ⚠️ Занятая клетка разбирается ровно двумя исходами, и оба человек может предсказать:
+ *  • под плиткой ровно ОДИН элемент того же размера — меняются местами (иначе поменять две
+ *    иконки местами было бы нечем: свободной клетки рядом может не быть вовсе);
+ *  • во всех остальных случаях — отказ. Раздвигать соседей «как получится» здесь нельзя:
+ *    ровно от самовольных переездов мы и уходили, переводя стол на координаты.
+ */
+export function moveItemTo(layout: DesktopLayout, id: string, col: number, row: number): DesktopLayout {
+  const cols = clampCols(layout.cols);
+  const item = layout.items.find((i) => i.id === id);
+  if (!item) return layout;
+  const w = Math.min(item.size.w, cols);
+  const h = item.size.h;
+  const c = Math.max(0, Math.min(cols - w, Math.round(col)));
+  const r = Math.max(0, Math.round(row));
+  if (c === item.col && r === item.row) return layout;
 
-/** Сменить плотность сетки. Единственный момент, когда расклад меняется не по воле человека. */
-export function setCols(layout: DesktopLayout, cols: number): DesktopLayout {
-  return { ...layout, cols: clampCols(cols) };
-}
+  // Кто стоит на целевых клетках. Считаем по ФАКТИЧЕСКОЙ раскладке, а не по сохранённым полям:
+  // у только что добавленного элемента координат ещё нет, но место на экране он уже занимает.
+  const placedNow = placeItems(layout.items, cols).placed;
+  const hit = placedNow.filter((p) => p.item.id !== id
+    && c < p.col + p.w && c + w > p.col && r < p.row + p.h && r + h > p.row);
 
-/** Изменить размер элемента. Иконки не растягиваются — у них смысл ровно одна клетка. */
-export function resizeItem(layout: DesktopLayout, id: string, size: CellSize): DesktopLayout {
+  if (hit.length === 0) {
+    return { ...layout, items: layout.items.map((i) => (i.id === id ? { ...i, col: c, row: r } : i)) };
+  }
+  const other = hit[0]!;
+  if (hit.length > 1 || other.w !== w || other.h !== h) return layout;
+  const mine = placedNow.find((p) => p.item.id === id);
   return {
+    ...layout,
+    items: layout.items.map((i) => {
+      if (i.id === id) return { ...i, col: c, row: r };
+      if (i.id === other.item.id) return { ...i, col: mine?.col ?? other.col, row: mine?.row ?? other.row };
+      return i;
+    }),
+  };
+}
+
+/**
+ * Сменить плотность сетки — ЕДИНСТВЕННЫЙ момент, когда расклад перестраивается не по воле
+ * человека. Иначе никак: в сетке из пяти колонок нет клетки №7, и прежние координаты
+ * недействительны все разом. Раскладываем последовательно по порядку чтения — то есть так же,
+ * как выглядел экран до смены, насколько это вообще возможно в другой сетке.
+ */
+export function setCols(layout: DesktopLayout, cols: number): DesktopLayout {
+  const next = clampCols(cols);
+  if (next === clampCols(layout.cols)) return layout;
+  const { placed } = layoutItems([...layout.items].sort(byRowCol), next);
+  return { ...layout, cols: next, items: placed.map((p) => ({ ...p.item, col: p.col, row: p.row })) };
+}
+
+/**
+ * Изменить размер элемента. Иконки не растягиваются — у них смысл ровно одна клетка.
+ * ⚠️ Растянутый виджет остаётся НА МЕСТЕ, а подвинется тот, на кого он наехал (priorityId в
+ * normalize): человек тянет за угол конкретной плитки и ждёт, что двигается именно она.
+ */
+export function resizeItem(layout: DesktopLayout, id: string, size: CellSize): DesktopLayout {
+  return normalize({
     ...layout,
     items: layout.items.map((i) => (i.id === id && i.kind === 'widget'
       ? { ...i, size: { w: Math.max(1, Math.min(6, size.w)), h: Math.max(1, Math.min(4, size.h)) } }
       : i)),
-  };
+  }, id);
 }
 
 export function removeItem(layout: DesktopLayout, id: string): DesktopLayout {
