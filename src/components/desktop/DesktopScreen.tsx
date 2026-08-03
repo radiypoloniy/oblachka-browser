@@ -4,7 +4,7 @@ import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal } from 'l
 import type { TileSite } from '../../../shared/frecency';
 import {
   loadDesktop, saveDesktop, subscribeDesktop, computeGrid, layoutItems,
-  resizeItem, removeItem, addItem,
+  resizeItem, removeItem, addItem, DEFAULT_COLS,
   type DesktopLayout,
 } from '../../newtab/desktop';
 import AddSheet from './AddSheet';
@@ -141,7 +141,9 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   const apply = (next: DesktopLayout): void => { setLayout(next); saveDesktop(next); };
 
   const light = isLightBackground(settings.background);
-  const grid = useMemo(() => computeGrid(Math.max(320, width)), [width]);
+  // Колонки берутся из раскладки, а не из ширины окна (см. computeGrid): расклад не должен
+  // перестраиваться от того, что окно потянули за край.
+  const grid = useMemo(() => computeGrid(Math.max(320, width), layout.cols ?? DEFAULT_COLS), [width, layout.cols]);
   // ⚠️ Раскладка считается по ПРЕДПОЛАГАЕМОМУ состоянию: во время перетаскивания элемент уже
   // стоит на новом месте, во время растягивания — уже нового размера. Соседи из-за этого
   // разъезжаются прямо под рукой (у них transition на transform), а не прыгают после отпускания.
@@ -278,11 +280,12 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
       <Background bg={settings.background} photoUrl={photoUrl} />
 
       {/* ⚠️ scrollbarGutter: stable — не косметика, а вторая половина починки дрожания (первая
-          в computeGrid). Полоса прокрутки отнимает ~15 px ширины, ширина задаёт число колонок,
-          число колонок задаёт высоту, а высота решает, нужна ли полоса. Замкнутый круг: на
+          в computeGrid). Полоса прокрутки отнимает ~15 px ширины, ширина задаёт размер клетки,
+          размер клетки задаёт высоту, а высота решает, нужна ли полоса. Замкнутый круг: на
           некоторых размерах окна раскладка колебалась между «с полосой» и «без полосы»
           несколько раз в секунду. Постоянно зарезервированный жёлоб разрывает связь ширины с
-          наличием полосы — мерить становится нечего. */}
+          наличием полосы — мерить становится нечего. (Число колонок с шириной больше не
+          связано вовсе, но связь «ширина → высота» осталась, значит остаётся и жёлоб.) */}
       <div style={{
         position: 'absolute', inset: 0, zIndex: 2, overflowY: 'auto', scrollbarGutter: 'stable',
         display: 'flex', flexDirection: 'column', alignItems: 'center',

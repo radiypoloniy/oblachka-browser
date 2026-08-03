@@ -40,6 +40,13 @@ export interface DesktopItem {
 export interface DesktopLayout {
   version: 1;
   items: DesktopItem[];
+  /**
+   * Число колонок сетки. Живёт ЗДЕСЬ, а не в настройках вкладки (src/newtab/settings.ts), хотя
+   * человек меняет его в той же панели: это не украшение, а система координат раскладки —
+   * размеры элементов заданы в клетках, и менять их порознь нельзя. Отсутствует у раскладок,
+   * сохранённых до появления настройки, — тогда DEFAULT_COLS.
+   */
+  cols?: number;
 }
 
 // ── Размеры ───────────────────────────────────────────────────────────────────
@@ -62,15 +69,35 @@ export function sizeName(size: CellSize): WidgetSizeName | null {
 
 // ── Геометрия сетки ───────────────────────────────────────────────────────────
 //
-// ⚠️ Два потолка ниже — это ровно то, из-за чего сетка не выглядит ни мелкой, ни раздутой.
-// Без потолка колонок на экране 2560 px получилось бы под двадцать колонок мелких иконок;
-// без потолка размера клетки те же иконки на широком окне раздулись бы в лапти. Поэтому на
-// большом экране сетка перестаёт расти и просто центрируется — как springboard на iPad.
-const CELL_TARGET = 108; // желаемый шаг сетки, от него считается число колонок
+// ⚠️ ЧИСЛО КОЛОНОК ПОСТОЯННО и от ширины окна не зависит — это главное решение всего экрана,
+// и оно же лечит сразу две жалобы, которые казались разными.
+//
+// Раньше колонки считались от ширины (от 4 до 10), и отсюда шло всё остальное: раз в сетке
+// то пять колонок, то девять, координаты элемента хранить нельзя (в сетке из пяти нет клетки
+// №7), значит хранится порядок, значит место вычисляется заново на каждую ширину — а любое
+// правило пересчёта это выбор из двух зол. Жадное затыкает дыры, но плитки переезжают сами;
+// последовательное никого не двигает, но оставляет дыры. Обе жалобы («при сжатии окна
+// появляются пустоты» и «поставить как нравится нельзя») — это одна и та же плавающая сетка.
+//
+// Теперь при сжатии окна меняется РАЗМЕР КЛЕТКИ, а не расклад: сетка одна и та же от 520 px
+// до 2560 px, как springboard на iPad — там она 6×5 и на 11", и на 13", отличается только шаг.
+//
+// Два потолка ниже — то, из-за чего сетка не выглядит ни мелкой, ни раздутой: без потолка
+// клетки иконки на широком окне раздулись бы в лапти, а без потолка зазора между ними
+// появились бы коридоры. Упёрлись в оба — сетка просто центрируется.
 export const CELL_MAX = 132;
+export const GRID_GAP = 14;
+const GAP_MAX = 40;
 export const COLS_MIN = 4;
 export const COLS_MAX = 10;
-export const GRID_GAP = 14;
+export const DEFAULT_COLS = 6;
+/** Плотность на выбор (см. панель «Настройка экрана»). Больше колонок — мельче плитки. */
+export const COLS_CHOICES = [5, 6, 8] as const;
+
+export function clampCols(cols: number | undefined): number {
+  if (!cols || !Number.isFinite(cols)) return DEFAULT_COLS;
+  return Math.max(COLS_MIN, Math.min(COLS_MAX, Math.round(cols)));
+}
 
 export interface GridMetrics {
   cols: number;
@@ -80,19 +107,19 @@ export interface GridMetrics {
   width: number;
 }
 
-export function computeGrid(available: number): GridMetrics {
-  const gap = GRID_GAP;
-  const raw = Math.floor((available + gap) / (CELL_TARGET + gap));
-  const cols = Math.max(COLS_MIN, Math.min(COLS_MAX, raw || COLS_MIN));
-  const fit = (available - (cols - 1) * gap) / cols;
-  // ⚠️ Нижнего порога клетки здесь НЕТ намеренно, хотя он тут был. Он вступал в силу только
-  // на COLS_MIN (выше колонки считаются от CELL_TARGET, а тот заведомо больше порога) — и
-  // ровно там делал сетку ШИРЕ отведённой области. Дальше начинался цикл: горизонтальная
-  // полоса прокрутки съедала высоту → появлялась вертикальная → та отнимала ширину → сетка
-  // пересчитывалась → полосы менялись местами. Это и было дрожанием виджетов на узком окне:
-  // не рывок, а колебание между двумя раскладками несколько раз в секунду. Влезть в область
-  // важнее, чем не мельчать.
+export function computeGrid(available: number, colsSetting: number): GridMetrics {
+  const cols = clampCols(colsSetting);
+  const fit = (available - (cols - 1) * GRID_GAP) / cols;
+  // ⚠️ Нижнего порога клетки здесь НЕТ намеренно, хотя он тут был. Он делал сетку ШИРЕ
+  // отведённой области, и дальше начинался цикл: горизонтальная полоса прокрутки съедала
+  // высоту → появлялась вертикальная → та отнимала ширину → сетка пересчитывалась → полосы
+  // менялись местами. Это и было дрожанием виджетов на узком окне: не рывок, а колебание
+  // между двумя раскладками несколько раз в секунду. Влезть в область важнее, чем не мельчать.
   const cell = Math.min(CELL_MAX, fit);
+  // Клетка упёрлась в потолок, а место ещё осталось — отдаём его ЗАЗОРУ, а не плиткам: иначе
+  // на широком окне шесть колонок собирались бы в тесный островок посреди пустоты.
+  const slack = Math.max(0, available - (cols * cell + (cols - 1) * GRID_GAP));
+  const gap = cols > 1 ? Math.min(GAP_MAX, GRID_GAP + slack / (cols - 1)) : GRID_GAP;
   return { cols, cell, gap, width: cols * cell + (cols - 1) * gap };
 }
 
@@ -211,6 +238,7 @@ const EVENT = 'oblako-desktop-changed';
 export function defaultLayout(): DesktopLayout {
   return {
     version: 1,
+    cols: DEFAULT_COLS,
     items: [
       // ⚠️ Виджетов, ходящих в СЕТЬ (погода, курсы, крипта), в стартовом наборе НЕТ намеренно.
       // Стол показывается на каждой новой вкладке, то есть по умолчанию браузер сам, без единого
@@ -242,7 +270,7 @@ export function loadDesktop(): DesktopLayout {
     const items = parsed.items.filter((i): i is DesktopItem =>
       !!i && typeof i.id === 'string' && typeof i.kind === 'string'
       && !!i.size && typeof i.size.w === 'number' && typeof i.size.h === 'number');
-    return { version: 1, items };
+    return { version: 1, cols: clampCols(parsed.cols), items };
   } catch {
     return defaultLayout();
   }
@@ -276,6 +304,11 @@ export function moveItem(layout: DesktopLayout, id: string, toIndex: number): De
   const to = Math.max(0, Math.min(items.length, toIndex > from ? toIndex - 1 : toIndex));
   items.splice(to, 0, item);
   return { ...layout, items };
+}
+
+/** Сменить плотность сетки. Единственный момент, когда расклад меняется не по воле человека. */
+export function setCols(layout: DesktopLayout, cols: number): DesktopLayout {
+  return { ...layout, cols: clampCols(cols) };
 }
 
 /** Изменить размер элемента. Иконки не растягиваются — у них смысл ровно одна клетка. */
