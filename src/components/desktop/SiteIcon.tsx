@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { siteTint } from './siteTint';
 
 // Иконка сайта на рабочем столе — квадрат со скруглением, как на домашнем экране iPad.
 //
@@ -79,19 +78,27 @@ export default function SiteIcon({ url, title, size, onOpen, labelColor, labelSh
         width: size, height: size, borderRadius: radius, flex: 'none',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden',
-        background: icon.kind === 'touch' ? 'var(--surface-solid)' : siteTint(host),
+        // ⚠️ Подложка БЕЛАЯ у всех видов, а не выведенный из домена цвет. Хешированный оттенок
+        // задумывался как способ различать плитки, но на деле давал случайные пятна: сайт с
+        // прозрачным логотипом получал фон, к которому не имеет никакого отношения — красный
+        // ютуб рядом с зелёным конвертером выглядели набором чужих наклеек. Белая плитка с
+        // тенью — то же, что у иконок приложений на светлом фоне: форма читается, а цвет несёт
+        // сам логотип, которому для этого никто не мешает.
+        background: 'var(--surface-solid)',
+        border: '1px solid var(--divider)',
         boxShadow: 'var(--appicon-shadow)',
       }}>
         {icon.kind === 'touch' && (
           <img src={icon.src} alt="" width={size} height={size} style={{ width: size, height: size, objectFit: 'cover' }} />
         )}
         {icon.kind === 'favicon' && (
-          <img src={icon.src} alt="" style={{ width: Math.round(size * 0.5), height: Math.round(size * 0.5), objectFit: 'contain' }} />
+          <img src={icon.src} alt="" style={{ width: Math.round(size * 0.62), height: Math.round(size * 0.62), objectFit: 'contain' }} />
         )}
         {(icon.kind === 'letter' || icon.kind === 'loading') && (
           <span style={{
             fontSize: Math.round(size * 0.42), fontWeight: 600, lineHeight: 1,
-            color: 'var(--appicon-glyph)',
+            // На белой плитке белая буква не видна — берём цвет текста темы.
+            color: 'var(--text-muted)',
             // Пока идёт проверка иконки, буква уже стоит на месте: подмена картинкой не двигает
             // раскладку, а пустая плитка выглядела бы поломкой.
             opacity: icon.kind === 'loading' ? 0.75 : 1,
