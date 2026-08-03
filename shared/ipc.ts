@@ -451,6 +451,12 @@ export const IPC = {
   // только когда обычное совпадение по заголовку/адресу не нашло ничего. Отдаёт id вкладок.
   TABS_SEARCH_SMART:      'tabs:search-smart',      // renderer → main: запрос → id подходящих вкладок
 
+  // «Итоги дня» — несколько строк о том, чем человек сегодня занимался (см. electron/DayDigest.ts).
+  // GET ничего не считает и модель не трогает; BUILD — явное действие человека, ему позволено
+  // дождаться загрузки модели.
+  DIGEST_GET:   'digest:get',
+  DIGEST_BUILD: 'digest:build',
+
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
   // Заход 3: main → chrome, push при ЛЮБОМ закрытии/открытии дока (крестик и Escape ВНУТРИ
@@ -778,6 +784,18 @@ export interface HistoryEntry {
 }
 
 export type HistoryClearPeriod = 'hour' | 'day' | 'week' | 'all';
+
+// «Итоги дня» (electron/DayDigest.ts). 'empty' с причиной, а не пустой список: виджету нужно
+// сказать человеку разное — «сегодня ещё нечего обобщать» и «итог просто не собирали».
+export interface DayDigestData {
+  date: string;      // YYYY-MM-DD
+  lines: string[];
+  builtAt: number;
+  visits: number;
+}
+export type DayDigestState =
+  | { state: 'ready'; digest: DayDigestData }
+  | { state: 'empty'; reason: 'no-history' | 'not-built' };
 
 // ── Закладки ─────────────────────────────────────────────────────────────────
 // ⚠️ Папка и ссылка — ОДНА таблица и один тип, различаются полем kind. Отличать их «по пустому
@@ -1537,6 +1555,10 @@ export interface OblakoApi {
   activateTab(id: string): Promise<void>;
   /** Вкладки, подходящие запросу по смыслу (локальная модель). Пусто — не нашлось или модели нет. */
   searchTabsSmart(query: string): Promise<string[]>;
+  /** Готовые «итоги дня» (ничего не считает). */
+  getDayDigest(): Promise<DayDigestState>;
+  /** Собрать «итоги дня» сейчас — явное действие человека, может занять до полуминуты. */
+  buildDayDigest(): Promise<DayDigestState>;
   navigate(id: string, input: string): Promise<void>;
   goBack(id: string): Promise<void>;
   goForward(id: string): Promise<void>;

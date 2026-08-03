@@ -365,6 +365,23 @@ export class HistoryManager {
     }
   }
 
+  /** Визиты начиная с момента времени — для «итогов дня» (см. DayDigest.ts). Только чтение. */
+  getSince(sinceMs: number, limit = 400): HistoryEntry[] {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT id, url, title, last_visit AS lastVisit, visit_count AS visitCount
+        FROM history
+        WHERE last_visit >= ?
+        ORDER BY last_visit DESC
+        LIMIT ?
+      `).all(sinceMs, limit) as HistoryEntry[];
+    } catch (e) {
+      console.warn('[History] getSince error:', (e as Error).message);
+      return [];
+    }
+  }
+
   search(query: string): HistoryEntry[] {
     if (!this.#db) return [];
     try {

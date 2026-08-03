@@ -60,7 +60,7 @@ import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION, THEME_PALETTE_IDS, isDarkTheme } from '../shared/ipc';
 import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -81,6 +81,7 @@ import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutF
 import { captureTabScreenshot, saveCurrentScreenshot, closeScreenshot, syncScreenshotBounds, relayoutScreenshot, setScreenshotTabManager } from './ScreenshotManager';
 import { searchTabsByMeaning } from './TabSearch';
 import { mapFormFields, type FormFieldDescriptor } from './AutofillFieldMapper';
+import { getDigest, buildDigest, shouldRefresh } from './DayDigest';
 import { startTabDrag, endTabDrag, syncDropZoneBounds } from './DropZoneManager';
 import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
 import { suggestTabTitle } from './TabRenamer';
@@ -1501,6 +1502,20 @@ function registerIpc() {
       smartTabSearchBusy = false;
     }
   });
+  // «Итоги дня» (см. DayDigest.ts). GET модель не трогает вовсе — отдаёт готовое или «нет».
+  ipcMain.handle(IPC.DIGEST_GET, (): DayDigestState => {
+    // Заодно решаем, не пора ли обновить фоном: условие внутри (прошёл час И прибавилось
+    // страниц) и только на тёплой модели, так что обычно это дешёвая проверка без последствий.
+    if (shouldRefresh((since) => history.getSince(since))) {
+      void buildDigest((since) => history.getSince(since), false)
+        .then((st) => { if (st.state === 'ready') broadcastToChrome(IPC.DIGEST_GET, st); })
+        .catch(() => { /* фоновая пересборка — не повод шуметь */ });
+    }
+    return getDigest();
+  });
+  // Явное «собрать» — человек нажал кнопку и готов подождать загрузку модели.
+  ipcMain.handle(IPC.DIGEST_BUILD, (): Promise<DayDigestState> =>
+    buildDigest((since) => history.getSince(since), true));
   ipcMain.handle(IPC.CONTENT_SET_BOUNDS, (e, b: ContentBounds) => {
     tabsOf(e)?.setContentBounds(b);
     // Та же геометрия двигает FindBar — центрирование по контентной зоне (учитывает сайдбар) и

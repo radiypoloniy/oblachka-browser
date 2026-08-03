@@ -6,7 +6,7 @@ import type { CellSize } from '../../newtab/desktop';
 import { loadNewTabSettings } from '../../newtab/settings';
 import CryptoIcon from '../CryptoIcon';
 import { siteTint } from './siteTint';
-import { MoonWidget, ShieldWidget, DownloadsWidget, HolidayWidget } from './localWidgets';
+import { MoonWidget, ShieldWidget, DownloadsWidget, HolidayWidget, DigestWidget } from './localWidgets';
 
 // Виджеты рабочего стола.
 //
@@ -953,6 +953,7 @@ export const WIDGET_RENDERERS: Record<string, (p: WidgetProps) => React.ReactEle
   // Без сети — см. localWidgets.tsx.
   moon: MoonWidget,
   shield: ShieldWidget,
+  digest: DigestWidget,
   downloads: DownloadsWidget,
   holiday: HolidayWidget,
 };

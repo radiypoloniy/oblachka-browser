@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Tile, TileCaption, type WidgetProps } from './widgets';
+import type { DayDigestState } from '../../../shared/ipc';
 
 // Виджеты, которым НЕ НУЖНА СЕТЬ. Отдельным файлом не только ради объёма widgets.tsx: это
 // смысловая граница. Всё здесь строится из того, что браузер уже знает про себя, поэтому такой
@@ -164,6 +165,87 @@ function StatusDot({ on, label }: { on: boolean; label: string }) {
       }} />
       {on ? label : `${label} выкл`}
     </span>
+  );
+}
+
+// ── Итоги дня ─────────────────────────────────────────────────────────────────
+//
+// ⚠️ Первый сбор — ТОЛЬКО по кнопке, и это не лень интерфейса. Материал берётся из истории
+// посещений, а считает его локальная модель, которая может быть выгружена: холодная загрузка —
+// около полуминуты и несколько гигабайт видеопамяти. Делать это молча оттого, что человек открыл
+// новую вкладку, нельзя (то же правило, что у поиска вкладок и разбора полей формы). Дальше итог
+// живёт в кэше весь день и обновляется фоном — уже на тёплой модели.
+//
+// ⚠️ Виджет НЕ показывает список посещённых страниц. Он для того, чтобы вспомнить, чем был занят
+// день, а не чтобы выставить историю на всеобщее обозрение поверх обоев: экран новой вкладки
+// видят и через плечо, и на демонстрации экрана.
+export function DigestWidget({ box, fill }: WidgetProps) {
+  const [state, setState] = useState<DayDigestState | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void window.oblako.getDayDigest().then((s) => { if (alive) setState(s); }).catch(() => { /* итог — не критично */ });
+    return () => { alive = false; };
+  }, []);
+
+  const build = (): void => {
+    setBusy(true);
+    void window.oblako.buildDayDigest()
+      .then((s) => setState(s))
+      .catch(() => { /* модели нет — останется прежнее состояние */ })
+      .finally(() => setBusy(false));
+  };
+
+  const lines = state?.state === 'ready' ? state.digest.lines : [];
+  const capacity = Math.max(1, Math.floor((box.height - 64) / 24));
+  const builtAt = state?.state === 'ready' ? new Date(state.digest.builtAt) : null;
+
+  return (
+    <Tile surface fill={fill}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, flex: 'none' }}>
+        <TileCaption>Чем занимался</TileCaption>
+        {builtAt && (
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+            {builtAt.getHours()}:{String(builtAt.getMinutes()).padStart(2, '0')}
+          </span>
+        )}
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {lines.slice(0, capacity).map((line, i) => (
+          <div key={i} style={{ display: 'flex', gap: 7, fontSize: 'var(--fs-sm)', lineHeight: 1.25 }}>
+            <span style={{ opacity: 0.45, flex: 'none' }}>•</span>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{line}</span>
+          </div>
+        ))}
+
+        {lines.length === 0 && (
+          <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>
+            {busy ? 'Читаю историю за сегодня…'
+              : state?.state === 'empty' && state.reason === 'no-history'
+                ? 'Сегодня ещё нечего обобщать'
+                : 'Соберу итог дня по вашей истории — локально, без сети'}
+          </span>
+        )}
+      </div>
+
+      {lines.length === 0 && !(state?.state === 'empty' && state.reason === 'no-history') && (
+        <button
+          onClick={build}
+          disabled={busy}
+          style={{
+            flex: 'none', alignSelf: 'flex-start', marginTop: 8,
+            border: 'none', background: busy ? 'var(--surface-sunken)' : 'var(--accent)',
+            color: busy ? 'var(--text-muted)' : 'var(--on-accent)',
+            padding: '6px 12px', borderRadius: 'var(--radius-sm)', cursor: 'default',
+            fontSize: 'var(--fs-sm)', fontWeight: 500, fontFamily: 'inherit',
+          }}
+        >
+          {busy ? 'Собираю…' : 'Собрать'}
+        </button>
+      )}
+    </Tile>
   );
 }
 

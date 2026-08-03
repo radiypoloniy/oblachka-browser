@@ -99,6 +99,7 @@ export const WIDGET_MIN: Record<string, CellSize> = {
   tasks:     { w: 2, h: 2 },
   downloads: { w: 2, h: 2 },
   topsites:  { w: 2, h: 2 },
+  digest:    { w: 4, h: 2 },  // строки итога — фразы, в две клетки ширины они не читаются
   // Часам хватает и клетки: циферблат просто становится меньше, налезать там нечему.
   clock: { w: 1, h: 1 },
 };

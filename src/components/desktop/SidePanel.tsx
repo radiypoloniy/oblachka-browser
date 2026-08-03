@@ -39,6 +39,7 @@ const WIDGET_GROUPS: { title: string; note?: string; items: { key: string; label
       { key: 'shield',    label: 'Защита',           icon: '🛡', size: 'small' },
       { key: 'tasks',     label: 'Дела',             icon: '✓',  size: 'medium' },
       { key: 'downloads', label: 'Загрузки',         icon: '⤓',  size: 'medium' },
+      { key: 'digest',    label: 'Чем занимался',   icon: '✦',  size: 'medium' },
       { key: 'topsites',  label: 'Часто открываете', icon: '★',  size: 'medium' },
     ],
   },
