@@ -713,11 +713,12 @@ function createWindow(role: WindowRole = 'main') {
     (url, title)    => history.updateTitle(url, title),
     ()              => chromeView?.webContents.send(IPC.HISTORY_OPEN),
     ()              => console.log(`[startup] firsttab ${Date.now() - startT0}ms`),
-    (action, text, rect, wc) => {
+    (action, text, rect, wc, canReplace) => {
       // Поповер у выделения, поверх контента (см. TranslatePopoverManager.ts) — не панель в чроме.
       // Ленивый: WebContentsView+preload поповера создаются только этим вызовом. Один поповер на
-      // все AI-действия (перевод/выжимка/пересказ/объяснение) — action меняет только промпт.
-      if (win) showTranslatePopover(win, action, text, rect, wc);
+      // все AI-действия (перевод/выжимка/пересказ/объяснение/правка) — action меняет только промпт.
+      // canReplace — текст взят из поля ввода, поповер покажет «Заменить в поле».
+      if (win) showTranslatePopover(win, action, text, rect, wc, canReplace);
     },
     // Заход 6: дропдаун подсказок — та же логика, что у поповера/FindBar (анкерен к прежней
     // вкладке, безусловный main-side хук на КАЖДУЮ реальную смену активной, а не только

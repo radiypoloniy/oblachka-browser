@@ -7,7 +7,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
-import { Languages, Wand2, HelpCircle, ListChecks, X, type LucideIcon } from 'lucide-react';
+import { Languages, Wand2, HelpCircle, ListChecks, SpellCheck, Scissors, Smile, X, type LucideIcon } from 'lucide-react';
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 import type { AiAction, AiActionOutcome } from '../shared/ipc';
@@ -16,7 +16,8 @@ import { installOverlayReveal } from './overlayReveal';
 declare global {
   interface Window {
     translatePopover: {
-      onOpen: (cb: (text: string, action: AiAction) => void) => () => void
+      onOpen: (cb: (text: string, action: AiAction, canReplace: boolean) => void) => () => void
+      replace: (text: string) => void
       onChunk: (cb: (text: string) => void) => () => void
       onResult: (cb: (outcome: AiActionOutcome) => void) => () => void
       reportHeight: (px: number) => void
@@ -36,9 +37,11 @@ const SHADOW_MARGIN = 40
 // TranslationService.ts, пункт меню в TabManager.ts. Больше поповер трогать не нужно.
 const ACTION_ICON: Record<AiAction, LucideIcon> = {
   translate: Languages, simplify: Wand2, explain: HelpCircle, summarize: ListChecks,
+  fix: SpellCheck, shorten: Scissors, polite: Smile,
 }
 const ACTION_VERB: Record<AiAction, string> = {
   translate: 'Перевожу', simplify: 'Упрощаю', explain: 'Объясняю', summarize: 'Делаю выжимку',
+  fix: 'Исправляю', shorten: 'Сокращаю', polite: 'Смягчаю',
 }
 
 function Popover() {
@@ -51,10 +54,14 @@ function Popover() {
   // (см. runSegmented в TranslationService.ts).
   const [streamedText, setStreamedText] = useState('')
   const [outcome, setOutcome] = useState<AiActionOutcome | null>(null)
+  // Текст пришёл из поля ввода — значит правку можно вернуть туда же (см. TabManager: «Править текст»).
+  const [canReplace, setCanReplace] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const unsubOpen = window.translatePopover.onOpen((t, a) => { setText(t); setAction(a); setOutcome(null); setStreamedText('') })
+    const unsubOpen = window.translatePopover.onOpen((t, a, replaceable) => {
+      setText(t); setAction(a); setCanReplace(replaceable); setOutcome(null); setStreamedText('')
+    })
     const unsubChunk = window.translatePopover.onChunk((chunkText) => {
       setStreamedText((prev) => prev + chunkText)
     })
@@ -142,6 +149,23 @@ function Popover() {
             {/* Индикатор «идёт обработка» — пока не пришёл финальный результат (outcome ещё null). */}
             {outcome === null && (
               <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-faint)' }}>…</span>
+            )}
+            {/* Вставка правки обратно в поле — только когда текст оттуда и пришёл, и только после
+                финального результата: подставлять недогенерированный текст в форму человека нельзя.
+                Одной кнопкой, без «применить ко всему»: решение остаётся за человеком, а Ctrl+Z в
+                самом поле вернёт исходник (см. buildReplaceScript в TranslatePopoverManager.ts). */}
+            {canReplace && outcome?.ok === true && (
+              <button
+                onClick={() => window.translatePopover.replace(outcome.out)}
+                style={{
+                  alignSelf: 'flex-start', marginTop: 2,
+                  border: 'none', background: 'var(--accent)', color: 'var(--on-accent)',
+                  padding: '6px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                  fontSize: 'var(--fs-sm)', fontWeight: 500, fontFamily: 'inherit',
+                }}
+              >
+                Заменить в поле
+              </button>
             )}
             {/* Техстрока (скорость/тайминг) — доступна, но не должна цеплять взгляд. Только после финала. */}
             {outcome?.ok === true && (

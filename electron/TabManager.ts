@@ -144,6 +144,26 @@ const SELECTION_RECT_SCRIPT = `(function(){
   return { x: r.left, y: r.top, width: r.width, height: r.height };
 })()`;
 
+// Правка своего текста в поле ввода: снимаем содержимое поля под курсором и ПОМЕЧАЕМ само поле,
+// чтобы потом было куда вернуть исправленный текст.
+//
+// ⚠️ Поле ищем по координатам клика (elementFromPoint), а не по document.activeElement: правый
+// клик не всегда переводит фокус в поле, а к моменту вставки фокус вообще будет у поповера.
+// Метка атрибутом — тот же приём, что в pageFacts.ts: ссылку на узел через мост не передать, а
+// путь по индексам протухает от любой перерисовки страницы (SPA перерисовывает форму на каждый
+// ввод). Атрибут переживает перерисовку React'ом ровно потому, что он на том же DOM-узле.
+const EDIT_FIELD_CAPTURE_SCRIPT = (x: number, y: number): string => `(function(){
+  var el = document.elementFromPoint(${x}, ${y});
+  var ed = el && el.closest ? el.closest('input, textarea, [contenteditable=""], [contenteditable="true"]') : null;
+  if (!ed) return null;
+  var prev = document.querySelector('[data-oblako-edit]');
+  if (prev) prev.removeAttribute('data-oblako-edit');
+  ed.setAttribute('data-oblako-edit', '1');
+  var value = ('value' in ed) ? ed.value : ed.innerText;
+  var r = ed.getBoundingClientRect();
+  return { text: String(value || ''), rect: { x: r.left, y: r.top, width: r.width, height: r.height } };
+})()`;
+
 export class TabManager {
   private win: BrowserWindow;
 
@@ -199,7 +219,8 @@ export class TabManager {
   private onFirstTabLoadCb?: () => void;
   // Общий колбэк для ВСЕХ AI-действий над выделением (перевод/выжимка/пересказ/объяснение) — та же
   // труба «координаты → Qwen → поповер», разные action только меняют промпт (см. TranslationService.ts).
-  private onAiActionCb?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents) => void;
+  // canReplace — текст взят из поля ввода и его можно вернуть обратно (см. EDIT_FIELD_CAPTURE_SCRIPT).
+  private onAiActionCb?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents, canReplace?: boolean) => void;
   // Поповер перевода анкорится к конкретной вкладке/области — при смене активной вкладки его
   // позиция теряет смысл, при закрытии ИМЕННО этой вкладки — тем более. Два отдельных сигнала
   // (не переиспользуем onChange — он общий и палит на ~20 несвязанных мутаций).
@@ -259,7 +280,7 @@ export class TabManager {
     onTitleUpdate?: (url: string, title: string) => void,
     onHistoryOpen?: () => void,
     onFirstTabLoad?: () => void,
-    onAiAction?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents) => void,
+    onAiAction?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents, canReplace?: boolean) => void,
     onActiveTabChanged?: () => void,
     onTabClosed?: (wc: WebContents, tabId: string) => void,
     onContentFocus?: () => void,
@@ -1448,6 +1469,38 @@ export class TabManager {
           items.push({
             label: `Поиск «${truncate(p.selectionText)}» в ${engine.name}`,
             click: () => this.createTab(engine.buildUrl(p.selectionText)),
+          });
+        }
+        // ── Правка своего текста локальной моделью ──────────────────────────
+        // Работаем с ВЫДЕЛЕНИЕМ, если оно есть, иначе со всем содержимым поля: человек чаще
+        // всего хочет причесать весь черновик, а не кусок. Текст поля тянем скриптом — в
+        // params контекстного меню его нет (там только selectionText).
+        if (this.onAiActionCb) {
+          const dispatchEdit = (action: AiAction) => {
+            void (async () => {
+              let captured: { text: string; rect: { x: number; y: number; width: number; height: number } } | null = null;
+              try { captured = await wc.executeJavaScript(EDIT_FIELD_CAPTURE_SCRIPT(p.x, p.y), true); } catch { /* поле пропало */ }
+              const selected = p.selectionText.trim();
+              const text = selected || (captured?.text ?? '').trim();
+              if (!text) return; // пустое поле — править нечего, молча выходим
+              const viewBounds = view.getBounds();
+              const local = captured?.rect ?? { x: p.x, y: p.y, width: 0, height: 0 };
+              const rect: SelectionRect = {
+                x: viewBounds.x + local.x, y: viewBounds.y + local.y,
+                width: local.width, height: local.height,
+              };
+              // Пятый аргумент — «результат можно вернуть в поле»: поповер покажет «Заменить».
+              this.onAiActionCb!(action, text, rect, wc, true);
+            })();
+          };
+          items.push({ type: 'separator' });
+          items.push({
+            label: 'Править текст',
+            submenu: [
+              { label: 'Исправить ошибки', click: () => dispatchEdit('fix') },
+              { label: 'Сделать короче',   click: () => dispatchEdit('shorten') },
+              { label: 'Смягчить тон',     click: () => dispatchEdit('polite') },
+            ],
           });
         }
       } else if (p.selectionText.trim()) {

@@ -63,8 +63,57 @@ function computeBounds(win: BrowserWindow, rect: SelectionRect, height: number) 
   return result
 }
 
+// Вернуть исправленный текст в то самое поле (см. EDIT_FIELD_CAPTURE_SCRIPT в TabManager.ts —
+// оно помечено атрибутом ещё в момент вызова меню).
+//
+// ⚠️ Вставляем через execCommand('insertText'), а не присваиванием value. Только он кладёт правку
+// в СОБСТВЕННУЮ историю поля, то есть Ctrl+Z возвращает человеку его текст — а без этого правка
+// модели была бы необратимой прямо посреди недописанного письма. Присваивание оставлено запасным
+// путём, и там значение ставится через нативный сеттер прототипа: React не замечает прямого
+// присваивания и уходит с пустым состоянием (тот же приём и та же причина, что в graphWebApps.ts).
+function buildReplaceScript(text: string): string {
+  const payload = JSON.stringify(text)
+  return `(function(){
+    var el = document.querySelector('[data-oblako-edit]');
+    if (!el) return false;
+    el.removeAttribute('data-oblako-edit');
+    var text = ${payload};
+    try {
+      el.focus();
+      var isField = ('value' in el);
+      if (isField) { el.setSelectionRange(0, el.value.length); }
+      else {
+        var r = document.createRange(); r.selectNodeContents(el);
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      }
+      if (document.execCommand('insertText', false, text)) return true;
+      if (isField) {
+        var proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        var setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+        setter.call(el, text);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+      el.textContent = text;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    } catch (e) { return false; }
+  })()`
+}
+
+// Метка на поле не должна пережить поповер: следующий вызов иначе мог бы вставить текст в поле,
+// про которое человек уже забыл. Снимаем при любом закрытии, это дешёвый best-effort.
+function clearEditMark(wc: WebContents | null): void {
+  if (!wc || wc.isDestroyed()) return
+  void wc.executeJavaScript(
+    `(function(){var e=document.querySelector('[data-oblako-edit]');if(e)e.removeAttribute('data-oblako-edit');})()`,
+  ).catch(() => { /* страница ушла — и не надо */ })
+}
+
 function cleanup(): void {
   if (!popoverView) return
+  clearEditMark(scrollWc)
   if (attachedWin) {
     try { attachedWin.contentView.removeChildView(popoverView) } catch { /* окно могло уже закрыться */ }
   }
@@ -106,9 +155,22 @@ function ensureIpcRegistered(): void {
 
   // Крестик / Esc внутри поповера — надёжные пути закрытия.
   ipcMain.on('translate-popover:close', () => cleanup())
+
+  // «Заменить» — вернуть правку в поле и закрыться. ⚠️ Вкладку берём ту же, на которой поповер
+  // и висит (scrollWc): за время генерации человек мог кликнуть куда угодно, и искать «активную»
+  // вкладку к моменту ответа — верный способ вставить текст в чужую страницу.
+  ipcMain.on('translate-popover:replace', (_e, replacement: string) => {
+    const wc = scrollWc
+    if (!wc || wc.isDestroyed() || typeof replacement !== 'string' || !replacement) { cleanup(); return }
+    // userGesture=true: без него Chromium отклоняет команды редактирования из скрипта.
+    void wc.executeJavaScript(buildReplaceScript(replacement), true)
+      .catch((e: unknown) => console.warn('[popover] вставка в поле не удалась:', e))
+    scrollWc = null // метку уже снял сам скрипт — cleanup'у чистить нечего
+    cleanup()
+  })
 }
 
-export function showTranslatePopover(win: BrowserWindow, action: AiAction, text: string, rect: SelectionRect, tabWc: WebContents): void {
+export function showTranslatePopover(win: BrowserWindow, action: AiAction, text: string, rect: SelectionRect, tabWc: WebContents, canReplace = false): void {
   ensureIpcRegistered()
   cleanup() // на случай, если предыдущий поповер ещё не закрыт (повторный клик «Перевести»)
 
@@ -142,7 +204,7 @@ export function showTranslatePopover(win: BrowserWindow, action: AiAction, text:
   // Закрытие — только явные действия: крестик/Esc (ipc), повторный клик «Перевести» (re-show выше),
   // скролл страницы (best-effort ниже).
   wc.once('did-finish-load', () => {
-    wc.send('translate-popover:open', { text, action })
+    wc.send('translate-popover:open', { text, action, canReplace })
     wc.focus()
   })
   wc.loadURL('oblako-chrome://localhost/translatepopover.html')

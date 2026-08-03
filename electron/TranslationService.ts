@@ -190,6 +190,24 @@ function buildActionPrompt(action: Exclude<AiAction, 'translate'>, lang: string,
     return `Explain the following ${L} text: clarify its meaning, context, and any technical terms in ` +
       `plain language. Respond in ${L}. Output ONLY the explanation, with no additional commentary.\n\n${text}`
   }
+  // ── Правка СВОЕГО текста (см. AiAction в shared/ipc.ts) ──────────────────────────────────────
+  // Общее у всех трёх: «верни только текст» и «не додумывай». Второе важнее первого — модель этого
+  // размера охотно дописывает за человека абзац, которого он не писал, а в поле ввода это уже не
+  // помощь, а подлог.
+  if (action === 'fix') {
+    return `Fix spelling, grammar and punctuation in the following ${L} text. Keep the author's ` +
+      `wording, tone and formatting; do not rephrase, do not add or remove any information. ` +
+      `Respond in ${L}. Output ONLY the corrected text.\n\n${text}`
+  }
+  if (action === 'shorten') {
+    return `Make the following ${L} text shorter and tighter while keeping every fact and the ` +
+      `author's tone. Do not add anything new. Respond in ${L}. Output ONLY the shortened text.\n\n${text}`
+  }
+  if (action === 'polite') {
+    return `Rewrite the following ${L} text to sound polite and businesslike, keeping the same ` +
+      `meaning and all the facts. Do not add new information. Respond in ${L}. ` +
+      `Output ONLY the rewritten text.\n\n${text}`
+  }
   // summarize
   return `Summarize the following ${L} text as 2-3 key points (a short list). ` +
     `Respond in ${L}. Output ONLY the summary, with no additional commentary.\n\n${text}`
@@ -716,6 +734,39 @@ export async function translate(
 // функция, то же поведение, никакого дублирования) и просто помечает результат action'ом; остальные
 // действия отвечают на языке оригинала (detectLang, не resolveDirection — направления нет).
 // Добавить новое действие = добавить сюда промпт (buildActionPrompt) и пункт меню в TabManager.ts.
+// Действия над своим текстом — их результат уезжает прямо в поле ввода, поэтому чистится строже
+// осмысляющих (см. cleanEditOutput).
+const EDIT_ACTIONS = new Set<AiAction>(['fix', 'shorten', 'polite'])
+
+/**
+ * Дочистка ответа для правки текста.
+ *
+ * ⚠️ Промпт просит «только текст», но модель этого размера правило нарушает — ровно та же беда,
+ * из-за которой в TabRenamer.ts живёт чистка имени вкладки. Разница в цене ошибки: там мусор
+ * видно в подписи вкладки, здесь он уедет в форму, которую человек отправит. Поэтому снимаем
+ * вводную строку («Вот исправленный текст:»), обрамляющие кавычки и обёртку ```…```.
+ */
+function cleanEditOutput(text: string): string {
+  let s = text.trim()
+  // Кодовый блок целиком — модель иногда «оформляет» ответ.
+  const fence = /^```[a-z]*\n([\s\S]*?)\n?```$/i.exec(s)
+  if (fence) s = fence[1]!.trim()
+  // Вводная строка перед текстом: короткая, заканчивается двоеточием, и после неё есть что вернуть.
+  const firstBreak = s.indexOf('\n')
+  if (firstBreak > 0 && firstBreak < 80 && s.slice(0, firstBreak).trimEnd().endsWith(':')) {
+    s = s.slice(firstBreak + 1).trim()
+  }
+  // Кавычки вокруг всего ответа — только парные, чтобы не съесть прямую речь внутри текста.
+  const pairs: [string, string][] = [['"', '"'], ['«', '»'], ['“', '”'], ["'", "'"]]
+  for (const [open, close] of pairs) {
+    if (s.length > 1 && s.startsWith(open) && s.endsWith(close) && !s.slice(1, -1).includes(close)) {
+      s = s.slice(1, -1).trim()
+      break
+    }
+  }
+  return s
+}
+
 export async function runAiAction(
   action: AiAction,
   text: string,
@@ -735,7 +786,8 @@ export async function runAiAction(
     // Один связный ответ на весь текст (explain/simplify — пересказ длиной с оригинал; summarize —
     // компактнее, но всё равно длиннее одного переводческого предложения) — см. TEXT_ACTION_MAX_TOKENS
     // выше (модульная константа, не локальная — нужна и здесь, и в стартовом логе [gen] limits).
-    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), TEXT_ACTION_MAX_TOKENS, onChunk)
+    const { out: raw, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), TEXT_ACTION_MAX_TOKENS, onChunk)
+    const out = EDIT_ACTIONS.has(action) ? cleanEditOutput(raw) : raw
 
     console.log(
       `[ai-action] [${action}][${lang}] ${segments.length} seg(s): "${text.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +

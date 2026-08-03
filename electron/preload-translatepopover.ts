@@ -5,8 +5,10 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { AiAction, AiActionOutcome } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('translatePopover', {
-  onOpen: (cb: (text: string, action: AiAction) => void) => {
-    const handler = (_e: unknown, payload: { text: string; action: AiAction }) => cb(payload.text, payload.action);
+  // canReplace — текст пришёл из поля ввода, результат можно вернуть туда же (см. «Заменить»).
+  onOpen: (cb: (text: string, action: AiAction, canReplace: boolean) => void) => {
+    const handler = (_e: unknown, payload: { text: string; action: AiAction; canReplace?: boolean }) =>
+      cb(payload.text, payload.action, !!payload.canReplace);
     ipcRenderer.on('translate-popover:open', handler);
     return () => ipcRenderer.removeListener('translate-popover:open', handler);
   },
@@ -24,4 +26,6 @@ contextBridge.exposeInMainWorld('translatePopover', {
   },
   reportHeight: (px: number) => ipcRenderer.send('translate-popover:height', px),
   close: () => ipcRenderer.send('translate-popover:close'),
+  // Вставить результат обратно в поле, откуда взяли текст, и закрыться.
+  replace: (text: string) => ipcRenderer.send('translate-popover:replace', text),
 })
