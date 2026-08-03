@@ -3,7 +3,9 @@ import {
   DndContext, DragOverlay, PointerSensor, closestCenter, useDroppable, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core';
-import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import {
+  SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Check, ChevronRight, Folder, FolderPlus, Pencil, Star, X } from 'lucide-react';
 import type { BookmarkNode } from '../../shared/ipc';
@@ -53,6 +55,9 @@ export default function SidebarBookmarks({ onOpen }: Props) {
   // сразу, не дожидаясь ответа main, иначе после отпускания он на кадр прыгает обратно.
   const [localOrder, setLocalOrder] = useState<number[] | null>(null);
   const orderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Свой оптимистичный порядок у сетки папок — она переставляется отдельно от списка.
+  const [localFolderOrder, setLocalFolderOrder] = useState<number[] | null>(null);
+  const folderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = async (): Promise<void> => setTree(await window.oblako.listBookmarkTree());
   useEffect(() => { void load(); }, []);
@@ -60,7 +65,10 @@ export default function SidebarBookmarks({ onOpen }: Props) {
   useEffect(() => window.oblako.onBookmarksChanged(() => void load()), []);
   useEffect(() => () => { if (orderTimer.current) clearTimeout(orderTimer.current); }, []);
 
-  const rootFolders = tree.filter((n) => n.kind === 'folder');
+  const folderBase = tree.filter((n) => n.kind === 'folder');
+  const rootFolders = localFolderOrder
+    ? localFolderOrder.map((id) => folderBase.find((f) => f.id === id)).filter((f): f is BookmarkNode => !!f)
+    : folderBase;
   const current = folderId === null ? null : findNode(tree, folderId);
   // В корне показываем только ссылки: папки корня уже стоят сеткой выше.
   const base = folderId === null ? tree.filter((n) => n.kind === 'link') : (current?.children ?? []);
@@ -100,26 +108,48 @@ export default function SidebarBookmarks({ onOpen }: Props) {
     await window.oblako.removeBookmark(node.id);
   };
 
+  // ⚠️ Что означает перетаскивание, решает пара «откуда → куда», а не один только id цели.
+  // Раньше цель узнавалась по префиксу id, и этого хватало ровно до тех пор, пока сетка была
+  // только МИШЕНЬЮ. Теперь папки в ней ещё и переставляются, то есть у одной и той же ячейки два
+  // разных смысла: для закладки из списка — «положить внутрь», для соседней папки — «встать
+  // сюда». Поэтому и у ячеек, и у строк в data лежит зона, и разбор идёт по ней.
   const onDragEnd = (e: DragEndEvent): void => {
     setDragId(null);
     const { active, over } = e;
     if (!over) return;
-    const id = Number(active.id);
+    const fromGrid = active.data.current?.zone === 'grid';
+    const toGrid = over.data.current?.zone === 'grid';
+    const id = Number(active.data.current?.nodeId ?? active.id);
 
-    // Дроп на ячейку папки в сетке — перенос на другой уровень. ⚠️ Это ЕДИНСТВЕННЫЙ способ
-    // сменить уровень перетаскиванием, и намеренно: строка папки в списке одновременно и
-    // сортируемая, и потенциальная цель, так что дроп на неё нельзя однозначно прочитать —
-    // «встать перед ней» и «положить внутрь» выглядели бы одинаково.
-    const cell = String(over.id);
-    if (cell.startsWith(CELL_PREFIX)) {
-      const target = cell.slice(CELL_PREFIX.length);
-      const parentId = target === 'root' ? null : Number(target);
-      if (parentId === id) return; // папку саму в себя — молча мимо, схему этим не тревожим
-      void window.oblako.moveBookmark(id, parentId);
+    // Папку тащат по сетке — переставляем папки корня между собой.
+    if (fromGrid) {
+      if (!toGrid) return;
+      const targetId = over.data.current?.nodeId;
+      // «Все закладки» — не папка и места в порядке не занимает; бросок на неё ничего не значит.
+      if (typeof targetId !== 'number' || targetId === id) return;
+      const ids = rootFolders.map((f) => f.id);
+      const from = ids.indexOf(id);
+      const to = ids.indexOf(targetId);
+      if (from < 0 || to < 0) return;
+      const next = arrayMove(ids, from, to);
+      setLocalFolderOrder(next);
+      if (folderTimer.current) clearTimeout(folderTimer.current);
+      folderTimer.current = setTimeout(() => { setLocalFolderOrder(null); folderTimer.current = null; }, 3000);
+      void window.oblako.reorderBookmarks(null, next);
       return;
     }
 
-    // Иначе — перестановка внутри уровня.
+    // Закладку из списка бросили на ячейку — перенос на другой уровень. ⚠️ Это по-прежнему
+    // ЕДИНСТВЕННЫЙ способ сменить уровень: строка папки в списке одновременно и сортируемая, и
+    // потенциальная цель, так что дроп на неё нельзя прочитать однозначно.
+    if (toGrid) {
+      const parentId = over.data.current?.nodeId ?? null;
+      if (parentId === id) return; // папку саму в себя — молча мимо
+      void window.oblako.moveBookmark(id, typeof parentId === 'number' ? parentId : null);
+      return;
+    }
+
+    // Иначе — перестановка внутри уровня списка.
     const overId = Number(over.id);
     if (id === overId) return;
     const ids = items.map((n) => n.id);
@@ -140,7 +170,9 @@ export default function SidebarBookmarks({ onOpen }: Props) {
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
-      onDragStart={(e: DragStartEvent) => setDragId(Number(e.active.id))}
+      // ⚠️ id берём из data, а не из active.id: у ячеек сетки id строковый («bmfolder:5»), и
+      // Number() по нему дал бы NaN — призрак не находился бы и драг выглядел бы пустым.
+      onDragStart={(e: DragStartEvent) => setDragId(Number(e.active.data.current?.nodeId ?? e.active.id))}
       onDragEnd={onDragEnd}
       onDragCancel={() => setDragId(null)}
     >
@@ -153,11 +185,16 @@ export default function SidebarBookmarks({ onOpen }: Props) {
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, alignItems: 'start',
         }}>
-          <FolderCell id="root" label="Все" active={folderId === null} onClick={() => setFolderId(null)} all />
-          {rootFolders.map((f) => (
-            <FolderCell key={f.id} id={String(f.id)} label={f.title}
-              active={folderId === f.id} onClick={() => setFolderId(f.id)} />
-          ))}
+          <FolderCell nodeId={null} label="Все" active={folderId === null} onClick={() => setFolderId(null)} all />
+          {/* Папки корня переставляются перетаскиванием — rect-стратегия, а не вертикальная:
+              они лежат сеткой с переносом строк, и вертикальная расталкивала бы соседей по Y,
+              не в ту сторону, куда едет курсор (та же поправка, что у закреплённых вкладок). */}
+          <SortableContext items={rootFolders.map((f) => `bmfolder:${f.id}`)} strategy={rectSortingStrategy}>
+            {rootFolders.map((f) => (
+              <FolderCell key={f.id} nodeId={f.id} label={f.title}
+                active={folderId === f.id} onClick={() => setFolderId(f.id)} />
+            ))}
+          </SortableContext>
           <button
             className="no-drag"
             onClick={() => setCreating(true)}
@@ -193,6 +230,7 @@ export default function SidebarBookmarks({ onOpen }: Props) {
         <SortableContext items={items.map((n) => n.id)} strategy={verticalListSortingStrategy}>
           {items.map((node) => (
             <SortableRow key={node.id} node={node} depth={0} expanded={expanded} onToggle={toggle}
+            zone="list"
               onOpen={onOpen} renameId={renameId} setRenameId={setRenameId} onRemove={removeNode} />
           ))}
         </SortableContext>
@@ -200,7 +238,11 @@ export default function SidebarBookmarks({ onOpen }: Props) {
 
       {/* Призрак — как у вкладок: оригинал гасится, за курсором едет копия строки. */}
       <DragOverlay>
-        {dragNode && (
+        {dragNode && (dragNode.kind === 'folder' ? (
+          // Папку тащат самим значком, без плашки: она и так узнаваемая фигура, а рамка вокруг
+          // неё выглядела бы вторым объектом.
+          <FolderGlyph title={dragNode.title} size={40} />
+        ) : (
           <div style={{
             ...PLATE, padding: '6px 10px', opacity: 0.95,
             display: 'flex', alignItems: 'center', gap: 8, boxShadow: 'var(--shadow-card)',
@@ -210,15 +252,11 @@ export default function SidebarBookmarks({ onOpen }: Props) {
               {dragNode.title || dragNode.url}
             </span>
           </div>
-        )}
+        ))}
       </DragOverlay>
     </DndContext>
   );
 }
-
-// Префикс id ячеек сетки — чтобы отличить дроп «в папку» от дропа «перед строкой»: у строк id
-// это голое число (того же вида, что в SortableContext), пересечься они не должны.
-const CELL_PREFIX = 'bmfolder:';
 
 // ── Строка списка ────────────────────────────────────────────────────────────────────────────
 // Рекурсивная: вложенная папка раскрывается прямо под собой, детей рисует та же компонента с
@@ -227,9 +265,12 @@ const CELL_PREFIX = 'bmfolder:';
 // ⚠️ Сортируется ТОЛЬКО верхний уровень списка: раскрытые дети рисуются вне SortableContext.
 // Иначе перестановка «через уровень» означала бы неявную смену родителя — жест, который человек
 // не заказывал, а отменить его нечем.
-function SortableRow(props: RowProps) {
+function SortableRow({ zone, ...props }: RowProps & { zone: 'list' }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.node.id,
+    // Зона в data: по ней onDragEnd отличает «строка списка» от «ячейка сетки», у которых
+    // одно и то же перетаскивание означает разное.
+    data: { zone, nodeId: props.node.id },
     disabled: props.renameId === props.node.id, // переименование не должно превращаться в драг
   });
   return (
@@ -424,15 +465,25 @@ function BookmarkIcon({ node }: { node: BookmarkNode }) {
 // ⚠️ Ячейка — ещё и ЦЕЛЬ ДРОПА: перенести закладку на другой уровень можно только сюда.
 // «Все закладки» при этом означает «вынуть из папки в корень» — без неё закладка, однажды
 // положенная в папку, осталась бы там навсегда.
-function FolderCell({ id, label, active, onClick, all }: {
-  id: string; label: string; active: boolean; onClick: () => void; all?: boolean;
+function FolderCell({ nodeId, label, active, onClick, all }: {
+  /** null — ячейка «Все закладки»: она мишень для дропа, но сама не переставляется. */
+  nodeId: number | null; label: string; active: boolean; onClick: () => void; all?: boolean;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: CELL_PREFIX + id });
+  // ⚠️ «Все закладки» — только droppable, папки — sortable. Разные хуки на разных ветках, но
+  // React запрещает условный вызов, поэтому зовём оба и берём нужный: droppable-ветка получает
+  // id, которого нет в SortableContext, и наоборот. Лишний хук ничего не стоит.
+  const drop = useDroppable({ id: 'bmall', data: { zone: 'grid', nodeId: null } });
+  const sort = useSortable({ id: `bmfolder:${nodeId ?? 0}`, data: { zone: 'grid', nodeId } });
+  const ref = all ? drop.setNodeRef : sort.setNodeRef;
+  const isOver = all ? drop.isOver : sort.isOver;
+  const dragProps = all ? {} : { ...sort.attributes, ...sort.listeners };
+
   return (
     <button
-      ref={setNodeRef}
+      ref={ref}
       className="no-drag"
       onClick={onClick}
+      {...dragProps}
       title={all ? 'Все закладки (перетащите сюда, чтобы вынуть из папки)' : label}
       style={{
         border: 'none', cursor: 'default', padding: '6px 2px 4px', borderRadius: 'var(--radius-sm)',
@@ -441,6 +492,12 @@ function FolderCell({ id, label, active, onClick, all }: {
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 0,
         color: isOver ? 'var(--accent)' : active ? 'var(--text-strong)' : 'var(--text-muted)',
         transition: 'background var(--dur-fast) var(--ease-standard)',
+        // Перетаскиваемая папка гасится — за курсором её рисует DragOverlay.
+        ...(all ? {} : {
+          transform: CSS.Transform.toString(sort.transform),
+          transition: sort.transition,
+          opacity: sort.isDragging ? 0 : 1,
+        }),
       }}
       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
