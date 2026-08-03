@@ -88,6 +88,8 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   const [drag, setDrag] = useState<{
     id: string; overIndex: number;
     startX: number; startY: number; dx: number; dy: number;
+    // Точка, в которой индекс сменился в прошлый раз — от неё считается порог гистерезиса.
+    lastX: number; lastY: number;
     // ⚠️ Позиция элемента В МОМЕНТ ЗАХВАТА. Он рисуется от неё, а не от будущей клетки: место
     // назначения меняется по ходу жеста, и элемент прыгал следом за ним, уезжая из-под курсора.
     originX: number; originY: number;
@@ -223,15 +225,29 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
     setDrag({
       id, overIndex: layout.items.findIndex((i) => i.id === id),
       startX: e.clientX, startY: e.clientY, dx: 0, dy: 0,
+      lastX: e.clientX, lastY: e.clientY,
       originX: (at?.col ?? 0) * step, originY: (at?.row ?? 0) * step,
     });
   };
 
   const onGridPointerMove = (e: React.PointerEvent): void => {
     if (drag) {
+      // ⚠️ ГИСТЕРЕЗИС на месте вставки, и вот зачем. Вставка сдвигает ВСЁ, что стоит после неё
+      // (укладка последовательная — см. layoutItems), поэтому смена индекса на единицу
+      // перекладывает весь хвост экрана. Пока порога не было, крошечное движение мыши у границы
+      // двух клеток переключало индекс туда-обратно, и виджеты «лихорадочно ездили в поисках
+      // места» — ровно то, что описано в жалобе, и заметнее всего там, где элементу негде встать
+      // и перекладка получается самой длинной.
+      // Порог — треть клетки от точки, где индекс сменился в прошлый раз: случайное дрожание
+      // руки и субпиксельные колебания курсора в него укладываются, осмысленное движение — нет.
+      const next = indexAtPoint(e.clientX, e.clientY);
+      const moved = Math.hypot(e.clientX - drag.lastX, e.clientY - drag.lastY);
+      const commit = next !== drag.overIndex && moved > step / 3;
       setDrag({
         ...drag,
-        overIndex: indexAtPoint(e.clientX, e.clientY),
+        overIndex: commit ? next : drag.overIndex,
+        lastX: commit ? e.clientX : drag.lastX,
+        lastY: commit ? e.clientY : drag.lastY,
         dx: e.clientX - drag.startX,
         dy: e.clientY - drag.startY,
       });

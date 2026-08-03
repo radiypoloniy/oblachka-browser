@@ -26,7 +26,7 @@ interface Props {
 type IconState =
   | { kind: 'loading' }
   | { kind: 'touch'; src: string }    // крупная квадратная — на всю плитку
-  | { kind: 'favicon'; src: string }  // мелкая — по центру подложки
+  | { kind: 'favicon'; src: string; natural: number }  // мелкая — по центру подложки
   | { kind: 'letter' };               // ничего не нашлось
 
 function hostOf(url: string): string {
@@ -53,7 +53,14 @@ export default function SiteIcon({ url, title, size, onOpen, labelColor, labelSh
       // Запасной путь — favicon из main (кэш на диске + память, ходит только на сам домен).
       void window.oblako.getFavicon(host).then((data) => {
         if (!alive) return;
-        setIcon(data ? { kind: 'favicon', src: data } : { kind: 'letter' });
+        if (!data) { setIcon({ kind: 'letter' }); return; }
+        // ⚠️ Запоминаем СОБСТВЕННЫЙ размер значка. Без него мы растягивали 16-пиксельную
+        // фавиконку до 60 px и получали ровно те пиксельные лесенки, на которые жалуются:
+        // растянуть растр без потерь нельзя, можно только не растягивать.
+        const probe = new Image();
+        probe.onload = () => { if (alive) setIcon({ kind: 'favicon', src: data, natural: probe.naturalWidth || 16 }); };
+        probe.onerror = () => { if (alive) setIcon({ kind: 'favicon', src: data, natural: 16 }); };
+        probe.src = data;
       }).catch(() => { if (alive) setIcon({ kind: 'letter' }); });
     };
     probe.src = `https://${host}/apple-touch-icon.png`;
@@ -91,9 +98,15 @@ export default function SiteIcon({ url, title, size, onOpen, labelColor, labelSh
         {icon.kind === 'touch' && (
           <img src={icon.src} alt="" width={size} height={size} style={{ width: size, height: size, objectFit: 'cover' }} />
         )}
-        {icon.kind === 'favicon' && (
-          <img src={icon.src} alt="" style={{ width: Math.round(size * 0.62), height: Math.round(size * 0.62), objectFit: 'contain' }} />
-        )}
+        {icon.kind === 'favicon' && (() => {
+          // Больше собственного размера значок не растягиваем — только уменьшаем. Мелкая
+          // фавиконка останется мелкой и чёткой, крупная займёт положенные 62% плитки.
+          // Множитель на devicePixelRatio: на экране со 150% масштабом 32-пиксельный значок
+          // честно занимает 21 CSS-px без единой лесенки.
+          const dpr = window.devicePixelRatio || 1;
+          const px = Math.min(Math.round(size * 0.62), Math.round(icon.natural / dpr));
+          return <img src={icon.src} alt="" style={{ width: px, height: px, objectFit: 'contain' }} />;
+        })()}
         {(icon.kind === 'letter' || icon.kind === 'loading') && (
           <span style={{
             fontSize: Math.round(size * 0.42), fontWeight: 600, lineHeight: 1,
