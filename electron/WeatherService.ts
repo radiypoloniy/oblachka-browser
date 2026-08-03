@@ -19,6 +19,11 @@ export interface WeatherResult {
   tempC?: number
   weatherCode?: number
   windKmh?: number
+  /** Восход и закат «ЧЧ:ММ» — приходят тем же запросом прогноза, отдельного вызова не требуют. */
+  sunrise?: string
+  sunset?: string
+  /** Европейский индекс качества воздуха. Тот же Open-Meteo — нового получателя данных нет. */
+  aqi?: number
   error?: string
 }
 
@@ -54,7 +59,7 @@ export async function getWeather(cityQuery: string): Promise<WeatherResult> {
     const wRes = await net.fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}` +
       `&current=temperature_2m,weather_code,wind_speed_10m,apparent_temperature,is_day` +
-      `&hourly=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min` +
+      `&hourly=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset` +
       `&forecast_days=2&timezone=auto`,
     )
     if (!wRes.ok) throw new Error(`прогноз: HTTP ${wRes.status}`)
@@ -64,7 +69,7 @@ export async function getWeather(cityQuery: string): Promise<WeatherResult> {
         wind_speed_10m?: unknown; apparent_temperature?: unknown; is_day?: unknown
       }
       hourly?: { time?: unknown[]; temperature_2m?: unknown[]; weather_code?: unknown[] }
-      daily?: { temperature_2m_max?: unknown[]; temperature_2m_min?: unknown[] }
+      daily?: { temperature_2m_max?: unknown[]; temperature_2m_min?: unknown[]; sunrise?: unknown[]; sunset?: unknown[] }
     }
     const cur = w.current
     if (!cur || typeof cur.temperature_2m !== 'number') throw new Error('пустой ответ прогноза')
@@ -101,11 +106,43 @@ export async function getWeather(cityQuery: string): Promise<WeatherResult> {
       maxC: Array.isArray(maxArr) && typeof maxArr[0] === 'number' ? maxArr[0] : undefined,
       minC: Array.isArray(minArr) && typeof minArr[0] === 'number' ? minArr[0] : undefined,
       hours,
+      sunrise: hhmm(w.daily?.sunrise?.[0]),
+      sunset: hhmm(w.daily?.sunset?.[0]),
+      // ⚠️ Качество воздуха запрашивается ОТДЕЛЬНЫМ вызовом, но у ТОГО ЖЕ Open-Meteo (у них это
+      // другой хост, одним запросом не объединяется). Новый получатель данных при этом не
+      // появляется — ровно поэтому воздух и вшит в погоду, а не заведён отдельной плиткой:
+      // отдельная означала бы ещё один сервис, знающий, где человек находится.
+      // ⚠️ Свой try/catch: воздух — добавка. Если он не приехал, погода обязана показаться.
+      aqi: await fetchAqi(place.latitude, place.longitude),
     }
     cache.set(key, { at: Date.now(), result })
     return result
   } catch (e) {
     console.error('[weather] загрузка погоды упала:', e)
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+// «2026-08-03T05:12» → «05:12». Формат Open-Meteo фиксированный, разбирать датой незачем.
+function hhmm(v: unknown): string | undefined {
+  return typeof v === 'string' && v.length >= 16 ? v.slice(11, 16) : undefined
+}
+
+// Европейский индекс качества воздуха (0…100+, чем меньше, тем лучше) — у Open-Meteo он уже
+// посчитан, свою шкалу из PM2.5 выводить не нужно.
+// ⚠️ Отказ здесь НЕ роняет погоду: воздух — добавка к плитке, и «не смогли узнать» тут честный
+// исход, а не ошибка. Поэтому undefined, а не throw.
+async function fetchAqi(lat: number, lon: number): Promise<number | undefined> {
+  try {
+    const res = await net.fetch(
+      `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}` +
+      `&current=european_aqi&timezone=auto`,
+    )
+    if (!res.ok) return undefined
+    const j = (await res.json()) as { current?: { european_aqi?: unknown } }
+    const v = j.current?.european_aqi
+    return typeof v === 'number' ? Math.round(v) : undefined
+  } catch {
+    return undefined
   }
 }

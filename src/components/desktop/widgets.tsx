@@ -227,9 +227,21 @@ function Hand({ angle, length, width, color, tail = 0 }: {
 }
 
 // ── Погода ────────────────────────────────────────────────────────────────────
+// Пороги европейского индекса качества воздуха (EAQI) — из шкалы самого Open-Meteo, а не
+// придуманные: до 20 «хорошо», до 40 «нормально», до 60 «средне», до 80 «плохо», выше «очень
+// плохо». Цифра без слова человеку ничего не говорит, поэтому рядом всегда стоит подпись.
+function aqiLabel(v: number): string {
+  if (v <= 20) return 'хорошо';
+  if (v <= 40) return 'нормально';
+  if (v <= 60) return 'средне';
+  if (v <= 80) return 'плохо';
+  return 'очень плохо';
+}
+
 interface WeatherState {
   t: number; code: number; city: string;
   feels?: number; max?: number; min?: number; isDay: boolean;
+  aqi?: number; sunrise?: string; sunset?: string;
   hours: { hour: number; tempC: number; code: number }[];
 }
 
@@ -303,6 +315,7 @@ export function WeatherWidget({ size, box, city }: WidgetProps) {
         max: w.maxC !== undefined ? Math.round(w.maxC) : undefined,
         min: w.minC !== undefined ? Math.round(w.minC) : undefined,
         isDay: w.isDay !== false,
+        aqi: w.aqi, sunrise: w.sunrise, sunset: w.sunset,
         hours: w.hours ?? [],
       });
     }).catch(() => { if (alive) setFailed(true); });
@@ -349,6 +362,21 @@ export function WeatherWidget({ size, box, city }: WidgetProps) {
         {wmoText(data?.code ?? 0)}
         {data?.feels !== undefined && `, ощущается ${data.feels}°`}
       </div>
+
+      {/* Воздух и солнце — ВНУТРИ погоды, а не отдельными плитками. Данные приходят от того же
+          Open-Meteo, то есть нового получателя не появляется; а качество воздуха без погоды
+          рядом и не читается — «европейский индекс 34» сам по себе человеку ничего не говорит,
+          а «34, хорошо» рядом с +19° и солнцем складывается в одну картину дня.
+          Строка появляется, только если место есть: в маленькой плитке ей не встать. */}
+      {(data?.aqi !== undefined || data?.sunrise) && box.height > 120 && (
+        <div style={{
+          display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap',
+          fontSize: 'var(--fs-xs)', opacity: 0.85,
+        }}>
+          {data.aqi !== undefined && <span>Воздух: {data.aqi} · {aqiLabel(data.aqi)}</span>}
+          {data.sunrise && data.sunset && <span>↑ {data.sunrise} ↓ {data.sunset}</span>}
+        </div>
+      )}
 
       {/* Почасовой ряд — то, чем виджет Apple заполняет нижнюю половину. Появляется, только
           если место под него реально есть: втиснутый в низкую плитку он был бы кашей. */}

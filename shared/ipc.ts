@@ -1419,6 +1419,11 @@ export interface WeatherInfo {
   tempC?: number;
   weatherCode?: number;
   windKmh?: number;
+  /** Восход и закат «ЧЧ:ММ» — приходят тем же запросом прогноза, отдельного вызова не требуют. */
+  sunrise?: string;
+  sunset?: string;
+  /** Европейский индекс качества воздуха. Тот же Open-Meteo — нового получателя данных нет. */
+  aqi?: number;
   error?: string;
 }
 
