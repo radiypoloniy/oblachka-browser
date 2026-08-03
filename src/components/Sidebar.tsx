@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import { glassPlate, islandPlate } from '../styles/island';
+import SidebarBookmarks from './SidebarBookmarks';
 import {
   DndContext, DragOverlay,
   PointerSensor, useSensor, useSensors,
@@ -1067,6 +1068,42 @@ const floatingIconBtn: React.CSSProperties = {
   display: 'inline-flex',
 };
 
+// Переключатель режима сайдбара. Намеренно КРОШЕЧНЫЙ: он не команда, а указатель «где я», и
+// стоять рядом с полосой вкладок ему положено тише, чем самим вкладкам. Отсюда же подписи
+// текстом, а не иконками: две иконки рядом (страница и звезда) в 20 px читаются хуже, чем два
+// коротких слова, а места занимают столько же.
+function ModeSwitch({ mode, onChange }: { mode: 'tabs' | 'bookmarks'; onChange: (m: 'tabs' | 'bookmarks') => void }) {
+  const seg = (m: 'tabs' | 'bookmarks', label: string): React.ReactNode => {
+    const active = mode === m;
+    return (
+      <button
+        className="no-drag"
+        onClick={() => onChange(m)}
+        style={{
+          flex: 1, border: 'none', cursor: 'default', padding: '4px 0',
+          borderRadius: 'calc(var(--radius-sm) - 2px)',
+          background: active ? 'var(--surface)' : 'transparent',
+          boxShadow: active ? 'var(--shadow-card)' : 'none',
+          color: active ? 'var(--text-strong)' : 'var(--text-muted)',
+          fontSize: 'var(--fs-xs)', fontWeight: active ? 600 : 400,
+          transition: 'background var(--dur-fast) var(--ease-standard)',
+        }}
+        onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
+      >{label}</button>
+    );
+  };
+  return (
+    <div className="no-drag" style={{
+      display: 'flex', gap: 2, padding: 2, marginBottom: 10,
+      background: 'var(--surface-sunken)', borderRadius: 'var(--radius-sm)',
+    }}>
+      {seg('tabs', 'Вкладки')}
+      {seg('bookmarks', 'Закладки')}
+    </div>
+  );
+}
+
 // Кнопка отката одного вида изменений. Подпись строится как «Вернуть …»: три отдельные
 // формулировки в ряд читались бы длиннее, чем сама полоса вкладок.
 function UndoChip({ label, onClick }: { label: string; onClick: () => void }) {
@@ -1106,6 +1143,9 @@ export default function Sidebar({
   const [localOpenOrder,   setLocalOpenOrder]   = useState<string[] | null>(null);
   // ID группы, которая сейчас в режиме inline-переименования
   const [renameGroupId, setRenameGroupId] = useState<string | null>(null);
+  // Что показывает сайдбар. Состояние взгляда, а не данных: переживать перезапуск ему незачем,
+  // а по умолчанию браузер обязан открываться на вкладках.
+  const [mode, setMode] = useState<'tabs' | 'bookmarks'>('tabs');
 
   const REORDER_CONFIRM_MS = 3000;
   const openTimeoutRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1541,7 +1581,24 @@ export default function Sidebar({
         </button>
       </div>
 
+      {/* ⚠️ Переключатель «Вкладки | Закладки» — ОДНА область сайдбара на две сущности, а не два
+          похожих ряда иконок рядом. Именно поэтому сетку вверху нельзя спутать: в режиме вкладок
+          там закреплённые СТРАНИЦЫ, в режиме закладок — ПАПКИ, и одновременно их не бывает. */}
+      <ModeSwitch mode={mode} onChange={setMode} />
+
+      {mode === 'bookmarks' && (
+        <SidebarBookmarks onOpen={(url) => {
+          void window.oblako.createTab(url);
+          // ⚠️ Возврат к вкладкам сразу после открытия — ЗДЕСЬ, одной строкой, намеренно: в
+          // режиме закладок не видно ни полосы вкладок, ни того, какая активна, и без возврата
+          // человек теряет из виду, куда он вообще попал. Поведение пробное (открыть несколько
+          // закладок подряд станет дороже на клик) — если не приживётся, убирается эта строка.
+          setMode('tabs');
+        }} />
+      )}
+
       {/* Один внешний DndContext для обеих секций */}
+      {mode === 'tabs' && (
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -1703,9 +1760,10 @@ export default function Sidebar({
           )}
         </DragOverlay>
       </DndContext>
+      )}
 
       {/* ── Превью AI-группировки: заменяет список вкладок ── */}
-      {organizeState === 'preview' && (
+      {mode === 'tabs' && organizeState === 'preview' && (
         <div className="no-drag" style={{
           flex: 1, display: 'flex', flexDirection: 'column', gap: 0,
           overflow: 'hidden', marginTop: 4,

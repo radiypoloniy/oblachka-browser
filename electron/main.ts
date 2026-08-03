@@ -2095,6 +2095,7 @@ function registerIpc() {
     broadcastToChrome(IPC.BOOKMARK_CHANGED);
   });
   ipcMain.handle(IPC.BOOKMARK_LIST, () => bookmarks.list());
+  ipcMain.handle(IPC.BOOKMARK_LIST_TREE, () => bookmarks.listTree());
   ipcMain.handle(IPC.BOOKMARK_IS_BOOKMARKED, (_e, url: string) => bookmarks.isBookmarked(url));
   // Импорт — isAvailable() зовётся заново на каждый список (профиль браузера-источника мог
   // появиться/пропасть между вызовами, не кэшируем факт наличия).

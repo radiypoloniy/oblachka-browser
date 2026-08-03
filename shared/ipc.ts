@@ -367,6 +367,7 @@ export const IPC = {
   BOOKMARK_REMOVE:        'bookmark:remove',         // renderer → main: удалить по id (панель закладок)
   BOOKMARK_REMOVE_BY_URL: 'bookmark:remove-by-url',  // renderer → main: снять звезду по url (омнибокс)
   BOOKMARK_LIST:          'bookmark:list',            // renderer → main: весь плоский список корня
+  BOOKMARK_LIST_TREE:     'bookmark:list-tree',       // renderer → main: всё дерево с папками (сайдбар)
   BOOKMARK_IS_BOOKMARKED: 'bookmark:is-bookmarked',   // renderer → main: url -> boolean
   BOOKMARK_CHANGED:       'bookmark:changed',         // main → renderer: что-то изменилось (push, без пейлоада)
   // Импорт закладок из других браузеров (см. electron/bookmarkImport/) — пока только Chromium-
@@ -1569,6 +1570,8 @@ export interface OblakoApi {
   removeBookmark(id: number): Promise<void>;
   removeBookmarkByUrl(url: string): Promise<void>;
   listBookmarks(): Promise<BookmarkEntry[]>;
+  // Дерево целиком — режим «Закладки» в сайдбаре рисует его сам, поэтому уровни не догружает.
+  listBookmarkTree(): Promise<BookmarkNode[]>;
   isBookmarked(url: string): Promise<boolean>;
   onBookmarksChanged(cb: () => void): () => void;
   // Импорт из других браузеров (см. electron/bookmarkImport/) — пока только Chromium-семейство.
