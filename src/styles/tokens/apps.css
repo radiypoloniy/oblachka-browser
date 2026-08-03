@@ -32,7 +32,9 @@
 
   /* Светлые — как Заметки и Файлы: почти белая плитка, цвет берёт на себя глиф. */
   --appicon-counter:   linear-gradient(180deg, #FFFFFF 0%, #F2F4F7 100%);
-  --appicon-color:     linear-gradient(180deg, #FFFFFF 0%, #F4F2F8 100%);
+  /* ⚠️ Нижняя ступень нейтральная, а не сиреневая (#F4F2F8): фиолетового подтона в системе
+     нет вовсе — см. --tile-* в colors.css. */
+  --appicon-color:     linear-gradient(180deg, #FFFFFF 0%, #F2F4F7 100%);
 
   --appicon-glyph:   #FFFFFF;
   /* Тень двухслойная: близкая держит контакт с фоном, дальняя даёт глубину. */

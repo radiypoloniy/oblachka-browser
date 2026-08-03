@@ -1243,16 +1243,41 @@ export default function Sidebar({
     return window.oblako.tabDragEnd().catch(() => ({ zone: null }));
   };
 
+  // Сброс оптимистичного порядка вместе с таймерами подтверждения — нужен, когда дроп
+  // оказался не перестановкой в сайдбаре, а split/выносом в окно (см. handleDragEnd).
+  const revertLocalOrder = (): void => {
+    if (openTimeoutRef.current)   { clearTimeout(openTimeoutRef.current);   openTimeoutRef.current   = null; }
+    if (pinnedTimeoutRef.current) { clearTimeout(pinnedTimeoutRef.current); pinnedTimeoutRef.current = null; }
+    setLocalOpenOrder(null);
+    setLocalPinnedOrder(null);
+  };
+
   // Зону, в которой отпустили, знает main (см. finishDrag) — поэтому решение асинхронное.
-  // Задержка на один вызов IPC на глаз незаметна: вкладка в этот момент и так уже отпущена.
+  //
+  // ⚠️ Но НОВЫЙ ПОРЯДОК В СПИСКЕ применяется синхронно, прямо здесь, до всякого ожидания.
+  // Раньше ждали и его тоже, и от этого перетаскивание выглядело сломанным: dnd-kit запускает
+  // анимацию приземления в тот же миг, когда обработчик вернул управление, и меряет исходный
+  // ряд ТАМ, ГДЕ ОН СЕЙЧАС. А он в этот момент ещё на старом месте — призрак улетал обратно,
+  // откуда вкладку взяли, и только потом список перескакивал в новый порядок. Механика при
+  // этом работала верно, врала одна анимация.
+  // Порядок и так оптимистичный (localOpenOrder/localPinnedOrder — см. выше), main его лишь
+  // подтверждает, поэтому применить на кадр раньше ничего не стоит. Команда же в main уходит
+  // по-прежнему только после ответа о зоне, а если зона оказалась не сайдбаром — порядок
+  // откатывается тем же кадром, в котором пришёл ответ.
   const handleDragEnd = (e: DragEndEvent) => {
+    const commit = planReorder(e);
     void (async () => {
       const drop = await finishDrag();
-      applyDrop(e, drop);
+      if (applyZoneDrop(e, drop)) { revertLocalOrder(); return; }
+      commit?.();
     })();
   };
 
-  const applyDrop = (e: DragEndEvent, { zone, windowId }: TabDropResult) => {
+  /**
+   * Исходы, которые перестановкой в сайдбаре не являются: split, вынос в новое окно, передача
+   * в соседнее. Возвращает true, если дроп забрала зона, — тогда локальный порядок откатывается.
+   */
+  const applyZoneDrop = (e: DragEndEvent, { zone, windowId }: TabDropResult): boolean => {
     const draggedId = e.active.id as string;
     const draggedTab = draggedId.startsWith('group:') ? undefined : tabs.find((t) => t.id === draggedId);
     // Группу и участника split не выносим: у первой нет одной страницы, второй увёл бы за собой
@@ -1263,35 +1288,34 @@ export default function Sidebar({
     // весь экран окно: выйти за его край там некуда, поэтому жест не должен зависеть от границы.
     if (zone === 'window' && canDetach) {
       void window.oblako.moveTabToNewWindow(draggedId);
-      return;
+      return true;
     }
     // Отпустили над ДРУГИМ окном Oblako — вкладка переезжает в него. Это обратный жест к
     // выносу: вытащенное по ошибке окно возвращается перетаскиванием, а не только закрытием.
     if (zone === 'adopt' && windowId !== undefined && canDetach) {
       void window.oblako.moveTabToWindow(draggedId, windowId);
-      return;
+      return true;
     }
-    applyDragEnd(e, zone === 'split');
-  };
-
-  // Обычный исход драга: split при дропе в контент-зону либо переупорядочивание.
-  const applyDragEnd = (e: DragEndEvent, wasOverContent: boolean) => {
-    const { active, over } = e;
-
     // Дроп в контент-зону → split вместо reorder.
     // Группы в split не входят — проверяем только обычные вкладки.
-    if (wasOverContent) {
-      const draggedId = active.id as string;
-      if (!draggedId.startsWith('group:')) {
-        const draggedTab = tabs.find((t) => t.id === draggedId);
-        if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
-          onDropOnContent(draggedId);
-        }
+    if (zone === 'split') {
+      if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
+        onDropOnContent(draggedId);
       }
-      return;
+      return true;
     }
+    return false;
+  };
 
-    if (!over || active.id === over.id) return;
+  /**
+   * Перестановка в сайдбаре: локальный порядок применяется СРАЗУ (ради анимации приземления,
+   * см. handleDragEnd), а команду в main возвращаем отложенной — её отправит только тот, кто
+   * дождался зоны. null — дроп ничего не меняет.
+   */
+  const planReorder = (e: DragEndEvent): (() => void) | null => {
+    const { active, over } = e;
+
+    if (!over || active.id === over.id) return null;
 
     const activeItemId = active.id as string;
     const overId       = over.id  as string;
@@ -1304,13 +1328,13 @@ export default function Sidebar({
     const overInPinned = overIsPinnedTab;
     const overInNormal = overIsNormalItem || overIsNormalSection;
 
-    if (!overInPinned && !overInNormal) return;
+    if (!overInPinned && !overInNormal) return null;
 
     const crossSection = (isActivePinned && overInNormal) || (!isActivePinned && overInPinned);
 
     if (crossSection) {
       // Группы нельзя перемещать в закреплённые — это операция только над вкладками
-      if (activeItemId.startsWith('group:')) return;
+      if (activeItemId.startsWith('group:')) return null;
 
       const targetSection: 'pinned' | 'normal' = overInNormal ? 'normal' : 'pinned';
 
@@ -1344,15 +1368,14 @@ export default function Sidebar({
         openTimeoutRef.current   = setTimeout(() => { setLocalOpenOrder(null);   openTimeoutRef.current   = null; }, REORDER_CONFIRM_MS);
         pinnedTimeoutRef.current = setTimeout(() => { setLocalPinnedOrder(null); pinnedTimeoutRef.current = null; }, REORDER_CONFIRM_MS);
       }
-      onMoveSection(activeItemId, targetSection, targetIndex);
-      return;
+      return () => onMoveSection(activeItemId, targetSection, targetIndex);
     }
 
     // ── Перемещение внутри секции ─────────────────────────────────────────
     if (isActivePinned) {
       const oldIdx = pinnedIds.indexOf(activeItemId);
       const newIdx = overIsPinnedTab ? pinnedIds.indexOf(overId) : -1;
-      if (newIdx < 0 || oldIdx === newIdx) return;
+      if (newIdx < 0 || oldIdx === newIdx) return null;
       const newOrder = arrayMove(pinnedIds, oldIdx, newIdx);
       if (pinnedTimeoutRef.current) clearTimeout(pinnedTimeoutRef.current);
       setLocalPinnedOrder(newOrder);
@@ -1360,20 +1383,20 @@ export default function Sidebar({
         setLocalPinnedOrder(null);
         pinnedTimeoutRef.current = null;
       }, REORDER_CONFIRM_MS);
-      onReorder('pinned', newOrder);
-    } else {
-      const oldIdx = openIds.indexOf(activeItemId);
-      const newIdx = overIsNormalItem ? openIds.indexOf(overId) : -1;
-      if (newIdx < 0 || oldIdx === newIdx) return;
-      const newOrder = arrayMove(openIds, oldIdx, newIdx);
-      if (openTimeoutRef.current) clearTimeout(openTimeoutRef.current);
-      setLocalOpenOrder(newOrder);
-      openTimeoutRef.current = setTimeout(() => {
-        setLocalOpenOrder(null);
-        openTimeoutRef.current = null;
-      }, REORDER_CONFIRM_MS);
-      onReorder('normal', newOrder);
+      return () => onReorder('pinned', newOrder);
     }
+
+    const oldIdx = openIds.indexOf(activeItemId);
+    const newIdx = overIsNormalItem ? openIds.indexOf(overId) : -1;
+    if (newIdx < 0 || oldIdx === newIdx) return null;
+    const newOrder = arrayMove(openIds, oldIdx, newIdx);
+    if (openTimeoutRef.current) clearTimeout(openTimeoutRef.current);
+    setLocalOpenOrder(newOrder);
+    openTimeoutRef.current = setTimeout(() => {
+      setLocalOpenOrder(null);
+      openTimeoutRef.current = null;
+    }, REORDER_CONFIRM_MS);
+    return () => onReorder('normal', newOrder);
   };
 
   // ── Свёрнутый режим: узкая полоса иконок ──

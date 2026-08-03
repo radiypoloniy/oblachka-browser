@@ -237,8 +237,14 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
     } as React.CSSProperties}>
       <Background bg={settings.background} photoUrl={photoUrl} />
 
+      {/* ⚠️ scrollbarGutter: stable — не косметика, а вторая половина починки дрожания (первая
+          в computeGrid). Полоса прокрутки отнимает ~15 px ширины, ширина задаёт число колонок,
+          число колонок задаёт высоту, а высота решает, нужна ли полоса. Замкнутый круг: на
+          некоторых размерах окна раскладка колебалась между «с полосой» и «без полосы»
+          несколько раз в секунду. Постоянно зарезервированный жёлоб разрывает связь ширины с
+          наличием полосы — мерить становится нечего. */}
       <div style={{
-        position: 'absolute', inset: 0, zIndex: 2, overflowY: 'auto',
+        position: 'absolute', inset: 0, zIndex: 2, overflowY: 'auto', scrollbarGutter: 'stable',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         padding: '28px 24px 40px',
       }}>

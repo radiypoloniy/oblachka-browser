@@ -32,10 +32,10 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'general',    label: 'Браузер',        Icon: SlidersHorizontal, tint: 'var(--tile-grey)' },
   { id: 'adblock',    label: 'Блокировка',     Icon: Shield,            tint: 'var(--tile-green)' },
   { id: 'vpn',        label: 'VPN',            Icon: Wifi,              tint: 'var(--tile-blue)' },
-  { id: 'ai',         label: 'AI',             Icon: Cpu,               tint: 'var(--tile-indigo)' },
+  { id: 'ai',         label: 'AI',             Icon: Cpu,               tint: 'var(--tile-teal)' },
   { id: 'passwords',  label: 'Пароли',         Icon: Lock,              tint: 'var(--tile-grey)' },
   { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard,        tint: 'var(--tile-orange)' },
-  { id: 'appearance', label: 'Интерфейс',      Icon: Palette,           tint: 'var(--tile-purple)' },
+  { id: 'appearance', label: 'Интерфейс',      Icon: Palette,           tint: 'var(--tile-pink)' },
 ];
 type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'passwords' | 'autofill' | 'appearance';
 
@@ -160,13 +160,19 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
                 onMouseLeave={(e) => { if (!active && !soon) e.currentTarget.style.background = 'transparent'; }}
               >
                 {/* Квадратик со скруглением и белым глифом — та же плитка, что у псевдо-вкладок
-                    в сайдбаре (src/styles/tabKindTile.ts), чтобы язык значков был один. */}
+                    в сайдбаре (src/styles/tabKindTile.ts), чтобы язык значков был один.
+                    ⚠️ Плитка 28, а не 22, и глиф 18, а не 13. Прежние 13 px — это 0.54 сетки
+                    lucide (все иконки набора нарисованы на 24), то есть каждая линия рисунка
+                    попадала между пикселями, а обводка 2.4 давала на экране 1.3 px и
+                    размазывалась на два. Внутренние детали — грани куба, зубцы ключа, лепестки
+                    палитры — на таком размере просто не выживали. 18 = ровно три четверти сетки
+                    при штатной толщине 2. */}
                 <span style={{
-                  width: 22, height: 22, flex: 'none', borderRadius: 6,
+                  width: 28, height: 28, flex: 'none', borderRadius: 8,
                   background: tint ?? 'var(--tile-grey)', color: '#fff',
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Icon size={13} strokeWidth={2.4} />
+                  <Icon size={18} strokeWidth={2} />
                 </span>
                 <span className="settings-nav-label">{label}</span>
                 {soon && (

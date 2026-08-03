@@ -59,7 +59,6 @@ export function sizeName(size: CellSize): WidgetSizeName | null {
 // без потолка размера клетки те же иконки на широком окне раздулись бы в лапти. Поэтому на
 // большом экране сетка перестаёт расти и просто центрируется — как springboard на iPad.
 const CELL_TARGET = 108; // желаемый шаг сетки, от него считается число колонок
-export const CELL_MIN = 78;
 export const CELL_MAX = 132;
 export const COLS_MIN = 4;
 export const COLS_MAX = 10;
@@ -78,7 +77,14 @@ export function computeGrid(available: number): GridMetrics {
   const raw = Math.floor((available + gap) / (CELL_TARGET + gap));
   const cols = Math.max(COLS_MIN, Math.min(COLS_MAX, raw || COLS_MIN));
   const fit = (available - (cols - 1) * gap) / cols;
-  const cell = Math.max(CELL_MIN, Math.min(CELL_MAX, fit));
+  // ⚠️ Нижнего порога клетки здесь НЕТ намеренно, хотя он тут был. Он вступал в силу только
+  // на COLS_MIN (выше колонки считаются от CELL_TARGET, а тот заведомо больше порога) — и
+  // ровно там делал сетку ШИРЕ отведённой области. Дальше начинался цикл: горизонтальная
+  // полоса прокрутки съедала высоту → появлялась вертикальная → та отнимала ширину → сетка
+  // пересчитывалась → полосы менялись местами. Это и было дрожанием виджетов на узком окне:
+  // не рывок, а колебание между двумя раскладками несколько раз в секунду. Влезть в область
+  // важнее, чем не мельчать.
+  const cell = Math.min(CELL_MAX, fit);
   return { cols, cell, gap, width: cols * cell + (cols - 1) * gap };
 }
 

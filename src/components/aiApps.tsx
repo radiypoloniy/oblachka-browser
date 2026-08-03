@@ -592,7 +592,7 @@ const PHOSPHOR_APPS = new Set(['calc', 'convert', 'timer', 'color', 'kitten', 'c
 // на белой поверхности белый силуэт, разумеется, не виден, и цвет берёт на себя он.
 const GLYPH_TINT: Record<string, string> = {
   counter: '#007AFF', // systemBlue
-  color: '#AF52DE',   // systemPurple
+  color: '#FF2D55',   // systemPink — фиолетового в системе нет, см. --tile-* в colors.css
 }
 
 // Светлым плиткам нужна собственная кромка: на белом фоне светлые блики не работают, а без

@@ -70,19 +70,21 @@ export function rateSymbol(code: string): string {
 
 // Криптоактивы, предлагаемые в настройках. Тикеры совпадают с ключами COIN_IDS в
 // electron/CryptoRates.ts — id самого CoinGecko сюда не протекают, это деталь чужого API.
-export const CRYPTO_CHOICES: { code: string; label: string; symbol: string }[] = [
-  { code: 'BTC',  label: 'Bitcoin',  symbol: '₿' },
-  { code: 'ETH',  label: 'Ethereum', symbol: 'Ξ' },
-  { code: 'TON',  label: 'Toncoin',  symbol: 'TON' },
-  { code: 'SOL',  label: 'Solana',   symbol: 'SOL' },
-  { code: 'XRP',  label: 'XRP',      symbol: 'XRP' },
-  { code: 'DOGE', label: 'Dogecoin', symbol: 'Ð' },
-  { code: 'USDT', label: 'Tether',   symbol: '₮' },
-  { code: 'BNB',  label: 'BNB',      symbol: 'BNB' },
+//
+// ⚠️ В отличие от валют выше, поля symbol здесь НЕТ: у монеты либо нет своего знака в Unicode
+// вовсе (SOL, XRP, TON), либо шрифт рисует его неузнаваемо («Ξ», «Ð»). Значок берётся
+// картинкой — см. src/components/CryptoIcon.tsx и scripts/download-crypto-icons.mjs, тот же
+// приём, что с флагами стран. Список кодов читает и сам скрипт загрузки значков.
+export const CRYPTO_CHOICES: { code: string; label: string }[] = [
+  { code: 'BTC',  label: 'Bitcoin'  },
+  { code: 'ETH',  label: 'Ethereum' },
+  { code: 'TON',  label: 'Toncoin'  },
+  { code: 'SOL',  label: 'Solana'   },
+  { code: 'XRP',  label: 'XRP'      },
+  { code: 'DOGE', label: 'Dogecoin' },
+  { code: 'USDT', label: 'Tether'   },
+  { code: 'BNB',  label: 'BNB'      },
 ];
-export function cryptoSymbol(code: string): string {
-  return CRYPTO_CHOICES.find((c) => c.code === code)?.symbol ?? code;
-}
 
 // Пресеты фона — те же градиент-токены, что у обоев домашнего экрана (tokens/apps.css). Общий
 // список для вкладки (рендер) и раздела «Интерфейс» (пикер).

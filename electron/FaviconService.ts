@@ -1,4 +1,4 @@
-import { app, net } from 'electron';
+import { app, nativeImage, net } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -8,10 +8,19 @@ import path from 'node:path';
 // + файлы в userData (иконки маленькие, но повторно дёргать сеть при каждом открытии настроек не
 // нужно). Негативы (иконки нет) кэшируются только в памяти — вдруг сайт добавит favicon позже.
 
-const CACHE_DIR = path.join(app.getPath('userData'), 'favicon-cache');
+// ⚠️ Каталог сменил имя вместе с правилом отбора иконки (см. #fetchForHost): в прежнем лежат
+// сохранённые 16×16, и без смены имени человек так и остался бы с лесенками — кэш отдавал бы
+// старую мелкую иконку раньше, чем дело дошло бы до новой логики.
+const CACHE_DIR = path.join(app.getPath('userData'), 'favicon-cache-hidpi');
+const LEGACY_CACHE_DIR = path.join(app.getPath('userData'), 'favicon-cache');
 const MAX_BYTES = 256 * 1024;       // иконка больше четверти мегабайта — почти наверняка не иконка
 const FETCH_TIMEOUT_MS = 6000;
 const MAX_HTML_BYTES = 512 * 1024;  // парсим только начало страницы ради <link rel=icon>
+
+// Ниже этого размера иконку в интерфейсе уже растягивают, и она рассыпается в пиксельные
+// лесенки: строка списка паролей рисует favicon в 16 CSS-px, а на мониторе со 125-150%
+// масштабом это 20–24 физических пикселя из 16-пиксельного исходника.
+const MIN_CRISP_PX = 48;
 
 // Магия форматов картинок — content-type сервера бывает враньём (favicon.ico часто отдаётся как
 // text/html 404-страницей), поэтому определяем тип по байтам. null — это не картинка.
@@ -29,12 +38,52 @@ function sniffImageMime(buf: Buffer): string | null {
   return null;
 }
 
+// Сторона картинки в пикселях — по ней решаем, хватит ли иконки без растягивания.
+// ICO и PNG разбираем по заголовку (это 99% фавиконок и никакой возни с декодерами), остальное
+// отдаём nativeImage. Векторной иконке размер не нужен — она хороша при любом.
+function imagePixelSize(buf: Buffer, mime: string): number {
+  if (mime === 'image/svg+xml') return Number.POSITIVE_INFINITY;
+  if (mime === 'image/x-icon') {
+    // Каталог ICO: 6 байт заголовка, дальше записи по 16 байт, первый байт записи — ширина
+    // (0 означает 256). В файле обычно несколько размеров — берём наибольший.
+    const count = buf.readUInt16LE(4);
+    let best = 0;
+    for (let i = 0; i < count; i++) {
+      const off = 6 + i * 16;
+      if (off >= buf.length) break;
+      best = Math.max(best, buf[off] === 0 ? 256 : buf[off]);
+    }
+    return best;
+  }
+  if (mime === 'image/png' && buf.length >= 24) return buf.readUInt32BE(16);
+  try {
+    const { width } = nativeImage.createFromBuffer(buf).getSize();
+    return width;
+  } catch {
+    return 0;
+  }
+}
+
 function sanitizeHostForFile(host: string): string {
   return host.replace(/[^a-z0-9.-]/gi, '_');
 }
 
+/** Кандидат в иконки из разметки страницы: чем крупнее заявлен, тем раньше пробуем. */
+interface IconCandidate { href: string; score: number }
+
 class FaviconService {
   #mem = new Map<string, string | null>();
+  #sweptLegacy = false;
+
+  // Прежний каталог кэша осиротел вместе со сменой правила отбора (см. CACHE_DIR). Сносим его —
+  // это кэш и только кэш, любая иконка перекачивается сама; иначе мегабайт мелких png будет
+  // лежать в профиле вечно. Лениво, при первом же запросе: в конструкторе это была бы работа
+  // на старте приложения ради того, что никто ещё не попросил.
+  #sweepLegacyCache(): void {
+    if (this.#sweptLegacy) return;
+    this.#sweptLegacy = true;
+    try { fs.rmSync(LEGACY_CACHE_DIR, { recursive: true, force: true }); } catch { /* и не надо */ }
+  }
 
   async get(host: string): Promise<string | null> {
     if (!host) return null;
@@ -42,6 +91,7 @@ class FaviconService {
     const cached = this.#mem.get(key);
     if (cached !== undefined) return cached;
 
+    this.#sweepLegacyCache();
     const disk = this.#readDisk(key);
     if (disk !== undefined) { this.#mem.set(key, disk); return disk; }
 
@@ -53,45 +103,62 @@ class FaviconService {
 
   // ── Сеть ──────────────────────────────────────────────────────────────────
 
+  // ⚠️ Порядок «сначала /favicon.ico, а разметку страницы только если его нет» изменён:
+  // /favicon.ico есть почти у всех и почти всегда он 16×16 — то есть прежний код надёжно
+  // выбирал САМУЮ мелкую из имеющихся иконок, а интерфейс потом её растягивал. Теперь
+  // /favicon.ico по-прежнему пробуется первым (один дешёвый запрос вместо разбора страницы),
+  // но принимается, только если он крупный; мелкий держим про запас и идём за apple-touch-icon
+  // и <link rel=icon sizes=...> — их сайты кладут именно для крупного показа.
   async #fetchForHost(host: string): Promise<string | null> {
-    // 1) стандартный /favicon.ico на самом домене.
-    const direct = await this.#tryImage(`https://${host}/favicon.ico`);
-    if (direct) return direct;
-    // 2) фолбэк — распарсить <link rel="icon"> с главной страницы того же сайта (href может вести
-    //    на CDN самого сайта — это его выбор, не выбранный нами трекер).
-    const href = await this.#findIconHref(`https://${host}/`);
-    if (href) {
+    const fallback = await this.#tryImage(`https://${host}/favicon.ico`);
+    if (fallback && fallback.px >= MIN_CRISP_PX) return fallback.dataUrl;
+
+    // href может вести на CDN самого сайта — это его выбор, не выбранный нами трекер.
+    for (const cand of await this.#findIconCandidates(`https://${host}/`)) {
       try {
-        const abs = new URL(href, `https://${host}/`).toString();
+        const abs = new URL(cand.href, `https://${host}/`).toString();
         const img = await this.#tryImage(abs);
-        if (img) return img;
+        // Не «первая попавшаяся», а именно крупная: иначе разметка вернула бы тот же 16×16,
+        // только другим путём.
+        if (img && img.px >= MIN_CRISP_PX) return img.dataUrl;
       } catch { /* битый href — пропускаем */ }
     }
-    return null;
+    return fallback?.dataUrl ?? null;
   }
 
-  async #tryImage(url: string): Promise<string | null> {
+  async #tryImage(url: string): Promise<{ dataUrl: string; px: number } | null> {
     const buf = await this.#fetchBytes(url, MAX_BYTES);
     if (!buf) return null;
     const mime = sniffImageMime(buf);
     if (!mime) return null;
-    return `data:${mime};base64,${buf.toString('base64')}`;
+    return { dataUrl: `data:${mime};base64,${buf.toString('base64')}`, px: imagePixelSize(buf, mime) };
   }
 
-  async #findIconHref(pageUrl: string): Promise<string | null> {
+  /** Иконки, объявленные самой страницей, — от самой перспективной к самой сомнительной. */
+  async #findIconCandidates(pageUrl: string): Promise<IconCandidate[]> {
     const buf = await this.#fetchBytes(pageUrl, MAX_HTML_BYTES);
-    if (!buf) return null;
+    if (!buf) return [];
     const html = buf.toString('utf8');
+    const out: IconCandidate[] = [];
     // Ищем <link ... rel="...icon..." ... href="..."> в любом порядке атрибутов.
     const linkRe = /<link\b[^>]*>/gi;
     let m: RegExpExecArray | null;
     while ((m = linkRe.exec(html)) !== null) {
       const tag = m[0];
-      if (!/\brel\s*=\s*["'][^"']*icon[^"']*["']/i.test(tag)) continue;
-      const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(tag);
-      if (href?.[1]) return href[1];
+      const rel = /\brel\s*=\s*["']([^"']*)["']/i.exec(tag)?.[1] ?? '';
+      if (!/icon/i.test(rel)) continue;
+      const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1];
+      if (!href) continue;
+
+      // Вектор — вне конкуренции: он хорош при любом размере. Дальше — заявленный размер
+      // (sizes="180x180"), а apple-touch-icon без размера всё равно крупная по определению:
+      // её кладут для домашнего экрана телефона.
+      const declared = Number(/\b(\d{2,4})x\d{2,4}/i.exec(/\bsizes\s*=\s*["']([^"']*)["']/i.exec(tag)?.[1] ?? '')?.[1] ?? 0);
+      const score = /\.svg(\?|$)/i.test(href) ? 10_000
+        : declared || (/apple-touch-icon/i.test(rel) ? 180 : 0);
+      out.push({ href, score });
     }
-    return null;
+    return out.sort((a, b) => b.score - a.score);
   }
 
   async #fetchBytes(url: string, maxBytes: number): Promise<Buffer | null> {

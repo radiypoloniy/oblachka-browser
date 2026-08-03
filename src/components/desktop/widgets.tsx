@@ -3,7 +3,8 @@ import type React from 'react';
 import { Check, Plus, X } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import type { CellSize } from '../../newtab/desktop';
-import { loadNewTabSettings, cryptoSymbol } from '../../newtab/settings';
+import { loadNewTabSettings } from '../../newtab/settings';
+import CryptoIcon from '../CryptoIcon';
 
 // Виджеты рабочего стола.
 //
@@ -509,12 +510,12 @@ export function CryptoWidget({ size, box }: WidgetProps) {
           // nowrap: «5.02 млн» + процент в узкой плитке иначе переносятся на вторую строку и
           // ломают ровный столбец цифр. Лучше подрезать, чем разъехаться.
           return (
-            <div key={c} style={{ display: 'flex', alignItems: 'baseline', gap: 9, whiteSpace: 'nowrap' }}>
-              <span style={{
-                fontSize: Math.round(rowFs * 0.7), minWidth: '1.2em', opacity: 0.9, flex: 'none',
-              }}>
-                {cryptoSymbol(c)}
-              </span>
+            <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 9, whiteSpace: 'nowrap' }}>
+              {/* ⚠️ Значок — картинка с логотипом монеты, а не символ из шрифта (см.
+                  CryptoIcon.tsx): «Ξ» и «Ð» шрифт рисует неузнаваемо, а у SOL/XRP/TON знака
+                  в Unicode нет вовсе и там оставался голый тикер. Выравнивание строки при
+                  этом сменилось с baseline на center: у картинки базовой линии нет. */}
+              <CryptoIcon code={c} size={Math.round(rowFs * 0.86)} />
               <span style={{
                 fontSize: rowFs, fontWeight: 500, fontVariantNumeric: 'tabular-nums', lineHeight: 1.15,
               }}>

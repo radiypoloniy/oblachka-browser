@@ -9,6 +9,7 @@ import {
   shrinkBackgroundImage,
   WALLPAPER_PRESETS, RATE_CHOICES, CRYPTO_CHOICES, type NewTabSettings, type BackgroundKind,
 } from '../../newtab/settings';
+import CryptoIcon from '../CryptoIcon';
 
 // Раздел «Интерфейс» — оформление самого браузера (тема и палитра) и новой вкладки.
 // Настройки вкладки пишутся в localStorage-стор (saveNewTabSettings шлёт событие → открытая
@@ -279,7 +280,10 @@ export default function AppearanceSection() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {CRYPTO_CHOICES.map((c) => (
             <SegBtn key={c.code} active={s.crypto.codes.includes(c.code)} onClick={() => toggleCryptoCode(c.code)}>
-              {c.symbol} {c.label}
+              {/* Тот же значок, что в самом виджете, — выбирают по нему, а не по названию. */}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                <CryptoIcon code={c.code} size={16} /> {c.label}
+              </span>
             </SegBtn>
           ))}
         </div>

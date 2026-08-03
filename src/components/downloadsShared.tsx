@@ -53,14 +53,16 @@ const KIND_BY_EXT: Record<string, FileKind> = {
 // Плитки берут те же токены --tile-*, что значки разделов в сайдбаре, — язык интерфейса один.
 // ⚠️ Зелёного и синего здесь нет намеренно: по цветовому закону они функциональны (локальная
 // модель / VPN и облако-система), и тип файла ими краситься не должен.
+// ⚠️ Фиолетового нет вовсе (см. --tile-* в colors.css): картинка и код красились им и индиго,
+// а сиреневый в системе не предусмотрен спекой вообще.
 const KIND_STYLE: Record<FileKind, { color: string; Icon: typeof File }> = {
-  image:   { color: 'var(--tile-purple)', Icon: Image },
-  audio:   { color: 'var(--tile-pink)',   Icon: Music },
-  video:   { color: 'var(--tile-indigo)', Icon: Video },
+  image:   { color: 'var(--tile-pink)',   Icon: Image },
+  audio:   { color: 'var(--tile-red)',    Icon: Music },
+  video:   { color: 'var(--tile-slate)',  Icon: Video },
   archive: { color: 'var(--tile-grey)',   Icon: FileArchive },
-  doc:     { color: 'var(--tile-teal)',   Icon: FileText },
+  doc:     { color: 'var(--tile-brown)',  Icon: FileText },
   sheet:   { color: 'var(--tile-orange)', Icon: FileSpreadsheet },
-  code:    { color: 'var(--tile-indigo)', Icon: FileCode },
+  code:    { color: 'var(--tile-teal)',   Icon: FileCode },
   app:     { color: 'var(--tile-grey)',   Icon: Package },
   other:   { color: 'var(--tile-grey)',   Icon: File },
 };
@@ -69,6 +71,17 @@ function kindOf(filename: string): FileKind {
   const dot = filename.lastIndexOf('.');
   if (dot < 0) return 'other';
   return KIND_BY_EXT[filename.slice(dot + 1).toLowerCase()] ?? 'other';
+}
+
+// ⚠️ Размер глифа — не «доля от плитки», а ближайшая ЧИСТАЯ доля сетки lucide (все иконки
+// набора нарисованы на 24). При произвольном множителе (было 0.5 → 15 px, то есть 0.625 сетки)
+// линии рисунка ложатся между пикселями: обводка выходит толщиной 1.37 px и размазывается на
+// два, а мелкие детали — складка листа, ноты, клавиши — сливаются в кашу. На половине и трёх
+// четвертях сетки координаты попадают на полупиксель, и глиф остаётся читаемым.
+const GLYPH_STEPS = [12, 18, 24];
+function glyphFor(size: number): number {
+  const target = size * 0.6; // пропорция значка внутри плитки, как у iOS
+  return GLYPH_STEPS.reduce((best, s) => (Math.abs(s - target) < Math.abs(best - target) ? s : best));
 }
 
 export function FileKindIcon({ filename, size = 30, muted = false }: {
@@ -86,7 +99,9 @@ export function FileKindIcon({ filename, size = 30, muted = false }: {
       color: muted ? 'var(--text-faint)' : '#fff',
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     }}>
-      <Icon size={Math.round(size * 0.5)} strokeWidth={2.2} />
+      {/* strokeWidth ровно 2 — та толщина, под которую набор и нарисован; дробные значения
+          (было 2.2) съезжают с сетки вместе с рисунком. */}
+      <Icon size={glyphFor(size)} strokeWidth={2} />
     </span>
   );
 }
