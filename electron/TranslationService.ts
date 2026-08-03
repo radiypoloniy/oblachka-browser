@@ -11,6 +11,7 @@ import fs from 'node:fs'
 import { getTargetLang } from './TranslationConfig'
 import * as ModelRegistry from './ModelRegistry'
 import { getLlamaBackend, getNlc } from './LlamaBackend'
+import { enqueueQwen, isQwenBusy } from './QwenQueue'
 import type { AiAction, AiActionOutcome, ModelErrorCode } from '../shared/ipc'
 
 // Дискриминируемая ошибка загрузки модели — ensureLoaded() бросает объекты этой формы вместо
@@ -431,18 +432,22 @@ export async function warmup(): Promise<void> {
 // chaining) — там нашли ровно этот класс гонки на общем worker'е. Хвост ОДИН на весь модуль и
 // оборачивает ОБЕ точки входа (runPrompt И runChatMessage), а не только новую фичу поиска —
 // иначе следующий добавленный потребитель Qwen снова пробил бы ту же гонку.
-let qwenQueueTail: Promise<unknown> = Promise.resolve()
-
-// Слот освобождается в .then(fn, fn) — вызывается СЛЕДУЮЩИМ независимо от исхода предыдущего
-// (успех/ошибка/таймаут). Забытая ветка здесь означает подвешенную очередь для ВСЕХ AI-функций
-// процесса разом (перевод/действия/чат), не только для одного вызывающего — цена ошибки та же,
-// что была у embed(). queueTail сам гасит исход в .then(()=>undefined,()=>undefined), чтобы
-// отклонение НЕ-последнего вызова в цепочке не всплыло необработанным rejection у самого хвоста
-// (у него никогда нет своего .catch) — результат КОНКРЕТНОГО вызова всё равно возвращается через `result`.
+// ⚠️ Сама очередь переехала в electron/QwenQueue.ts и стала ДВУХПОЛОСНОЙ: фоновая задача
+// начинается только тогда, когда человеку ничего не нужно. Раньше полоса была одна и честно
+// FIFO — то есть любая фоновая затея вставала перед человеком, нажавшим «перевести». Вынесена
+// отдельным модулем не ради красоты: без импортов node-llama-cpp её можно прогнать прямыми
+// вызовами и доказать порядок, а не надеяться на него.
 function withQwenQueue<T>(fn: () => Promise<T>): Promise<T> {
-  const result = qwenQueueTail.then(fn, fn)
-  qwenQueueTail = result.then(() => undefined, () => undefined)
-  return result
+  return enqueueQwen(fn, 'user')
+}
+
+/**
+ * То же самое, но полосой ниже: для того, чего человек не заказывал (итоги дня, разбор полей,
+ * «уже читал»). Пока в пользовательской полосе есть работа, эта задача не начнётся.
+ * `signal` снимает задачу, ПОКА ОНА ЖДЁТ, — начатую генерацию прервать нечем (см. QwenQueue.ts).
+ */
+export function withQwenQueueBackground<T>(fn: () => Promise<T>, signal?: { aborted: boolean }): Promise<T> {
+  return enqueueQwen(fn, 'background', signal)
 }
 
 // Явная выгрузка модели из VRAM — обратная сторона ensureLoaded(). ⚠️ dispose во время активной
@@ -499,8 +504,14 @@ async function unloadModelQueued(): Promise<void> {
 // где реально зовётся session.prompt() (кроме runChatMessage — у того своя, тоже через очередь
 // выше); и перевод, и остальные AI-действия проходят через него (см. translateSegment/runSegmented
 // ниже) — «разные промпты поверх одной трубы», не разные движки.
-async function runPrompt(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number; stopReason: string }> {
-  return withQwenQueue(() => runPromptQueued(prompt, maxTokens, onChunk))
+async function runPrompt(
+  prompt: string,
+  maxTokens: number,
+  onChunk?: (text: string) => void,
+  opts?: { background?: boolean; signal?: { aborted: boolean } },
+): Promise<{ out: string; tokens: number; stopReason: string }> {
+  const run = () => runPromptQueued(prompt, maxTokens, onChunk)
+  return opts?.background ? withQwenQueueBackground(run, opts.signal) : withQwenQueue(run)
 }
 
 async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number; stopReason: string }> {
@@ -647,10 +658,13 @@ const ORGANIZE_MAX_TOKENS = 200
 // заведомо неполная).
 export async function runTabOrganizePrompt(
   prompt: string,
+  // background — задача, которой человек не заказывал (разбор полей формы, поиск вкладки при
+  // наборе, будущие итоги дня). Такая ждёт, пока пользовательская полоса не опустеет.
+  opts?: { background?: boolean; signal?: { aborted: boolean } },
 ): Promise<{ ok: true; out: string; stopReason: string } | { ok: false; error: string; errorCode?: ModelErrorCode }> {
   try {
     await ensureLoaded()
-    const { out, stopReason } = await runPrompt(prompt, ORGANIZE_MAX_TOKENS)
+    const { out, stopReason } = await runPrompt(prompt, ORGANIZE_MAX_TOKENS, undefined, opts)
     return { ok: true, out, stopReason }
   } catch (e) {
     console.error('[organize] error:', e)
@@ -746,6 +760,10 @@ export async function translate(
 export function isModelWarm(): boolean {
   return loadPromise !== null
 }
+
+// Занята ли модель прямо сейчас. Пробрасываем наружу из очереди, чтобы фоновым фичам не нужно
+// было знать про её устройство (см. QwenQueue.ts).
+export { isQwenBusy }
 
 // Действия над своим текстом — их результат уезжает прямо в поле ввода, поэтому чистится строже
 // осмысляющих (см. cleanEditOutput).

@@ -97,7 +97,9 @@ export async function searchTabsByMeaning(query: string, tabs: TabState[]): Prom
   if (candidates.length < 2) return [];
 
   const lines = candidates.map((t, i) => `${i + 1}. ${t.title.trim() || t.url} — ${hostOf(t.url)}`);
-  const res = await runTabOrganizePrompt(buildPrompt(q, lines));
+  // ⚠️ Фоновая полоса: человек печатает в омнибоксе, а не заказывал генерацию. Если он в этот
+  // же момент нажмёт «перевести», перевод пойдёт первым (см. QwenQueue.ts).
+  const res = await runTabOrganizePrompt(buildPrompt(q, lines), { background: true });
   if (!res.ok) {
     console.warn('[tab-search] модель не ответила:', res.error);
     return [];
