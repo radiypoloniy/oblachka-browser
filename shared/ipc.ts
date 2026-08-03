@@ -802,6 +802,17 @@ export interface BookmarkNode extends BookmarkEntry {
   children?: BookmarkNode[];
 }
 
+// Дерево для импорта из другого браузера — as is, каким его отдал источник. id папок здесь нет
+// вовсе: они узнаются только в момент вставки, поэтому родитель передаётся вложенностью, а не
+// ссылкой (см. BookmarkManager.bulkInsertTree).
+export interface ImportBookmarkNode {
+  kind: BookmarkKind;
+  title: string;
+  url?: string;        // только у ссылок
+  createdAt?: number;
+  children?: ImportBookmarkNode[];
+}
+
 // Вход для BookmarkManager.bulkInsert — импорт из других браузеров. Элементы обязаны идти
 // родитель-перед-детьми: вызывающая сторона формирует такой порядок обходом дерева источника.
 export interface BulkBookmarkInput {

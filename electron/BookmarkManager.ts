@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { BookmarkEntry, BookmarkNode, BulkBookmarkInput } from '../shared/ipc';
+import type { BookmarkEntry, BookmarkNode, BulkBookmarkInput, ImportBookmarkNode } from '../shared/ipc';
 import { setupBookmarksSchema } from './bookmarksSchema';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
@@ -292,6 +292,69 @@ export class BookmarkManager {
       run();
     } catch (e) {
       console.warn('[Bookmarks] bulkInsert error:', (e as Error).message);
+    }
+    return { inserted, skipped };
+  }
+
+  /**
+   * Импорт ДЕРЕВОМ: папки создаются, вложенность сохраняется. Одной транзакцией — импорт либо
+   * приезжает целиком, либо не приезжает вовсе, а не половиной дерева.
+   *
+   * ⚠️ Пустые папки НЕ создаются. У любого живого профиля Chrome их десятки (заготовки, следы
+   * синхронизации), и перенести их значило бы отдать человеку дерево, где половина веток пустая.
+   *
+   * ⚠️ Папка с ТАКИМ ЖЕ именем у того же родителя ПЕРЕИСПОЛЬЗУЕТСЯ, а не создаётся второй раз.
+   * Это расходится с createFolder, где одноимённые папки законны, и намеренно: там имя выбирает
+   * человек и две «Работы» — его право, а здесь повторный импорт иначе удваивал бы всё дерево.
+   * Ссылки от дублей защищает индекс уникальности (origin+url в пределах папки).
+   */
+  bulkInsertTree(nodes: ImportBookmarkNode[], parentId: number | null = null): { inserted: number; skipped: number } {
+    if (!this.#db || nodes.length === 0) return { inserted: 0, skipped: 0 };
+    const db = this.#db;
+    let inserted = 0;
+    let skipped = 0;
+
+    // Есть ли внутри ветки хоть одна ссылка — иначе папку не заводим.
+    const hasLinks = (n: ImportBookmarkNode): boolean =>
+      n.kind === 'link' ? !!n.url : (n.children ?? []).some(hasLinks);
+
+    try {
+      const insertLink = db.prepare(`
+        INSERT OR IGNORE INTO bookmarks (kind, url, title, parent_id, position, created_at)
+        VALUES ('link', ?, ?, ?, ?, ?)
+      `);
+      // Поиск существующей папки — два подготовленных запроса, а не один с подстановкой:
+      // parent_id сравнивается через IS NULL либо через =, и одним текстом это не выражается.
+      const findRootFolder = db.prepare(`SELECT id FROM bookmarks WHERE kind='folder' AND title=? AND parent_id IS NULL`);
+      const findSubFolder = db.prepare(`SELECT id FROM bookmarks WHERE kind='folder' AND title=? AND parent_id=?`);
+      const insertFolder = db.prepare(`
+        INSERT INTO bookmarks (kind, url, title, parent_id, position, created_at)
+        VALUES ('folder', '', ?, ?, ?, ?)
+      `);
+
+      const walk = (list: ImportBookmarkNode[], parent: number | null): void => {
+        let pos = this.#nextPosition(parent);
+        for (const n of list) {
+          if (n.kind === 'link') {
+            if (!n.url) continue;
+            const info = insertLink.run(n.url, n.title || n.url, parent, pos++, n.createdAt ?? Date.now());
+            if (info.changes > 0) inserted++; else skipped++;
+            continue;
+          }
+          if (!hasLinks(n)) continue;
+          const existing = (parent === null
+            ? findRootFolder.get(n.title)
+            : findSubFolder.get(n.title, parent)) as { id: number } | undefined;
+          const folderId = existing?.id ?? Number(
+            insertFolder.run(n.title || 'Без названия', parent, pos++, n.createdAt ?? Date.now()).lastInsertRowid,
+          );
+          walk(n.children ?? [], folderId);
+        }
+      };
+
+      db.transaction(() => walk(nodes, parentId))();
+    } catch (e) {
+      console.warn('[Bookmarks] bulkInsertTree error:', (e as Error).message);
     }
     return { inserted, skipped };
   }

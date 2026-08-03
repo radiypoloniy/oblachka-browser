@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { BookmarkManager } from '../BookmarkManager';
-import type { BulkBookmarkInput } from '../../shared/ipc';
+import type { ImportBookmarkNode } from '../../shared/ipc';
 import type { BookmarkImporter } from './BookmarkImporter';
 
 interface ChromiumBookmarkNode {
@@ -30,22 +30,19 @@ function chromeTimeToUnixMs(raw: string | undefined): number {
   }
 }
 
-// Плоский обход — папки (bookmark_bar/other/synced и вложенные пользовательские) НЕ переносятся
-// как структура: у нас пока нет UI папок (см. план закладок), поэтому все реальные страницы
-// (type==='url') на любой глубине сплющиваются в корень. Факт «была в папке X» при этом теряется —
-// сознательный компромисс первой версии импорта, а не недосмотр.
-function flattenBookmarks(node: ChromiumBookmarkNode, out: BulkBookmarkInput[]): void {
-  if (node.type === 'url' && node.url) {
-    out.push({
-      parentId: null,
-      url: node.url,
-      title: node.name || node.url,
-      position: out.length,
-      createdAt: chromeTimeToUnixMs(node.date_added),
-    });
-    return;
+// ⚠️ Обход СОХРАНЯЕТ дерево. Прежний сплющивал всё в корень с пометкой «у нас пока нет UI папок»
+// — папки появились, и сплющивание стало главной претензией к импорту: два десятка папок из
+// Chrome превращались в плоскую кучу из сотен строк. Пустые папки не переносим (см.
+// BookmarkManager.bulkInsertTree): в живом профиле их десятки.
+function toTree(node: ChromiumBookmarkNode): ImportBookmarkNode | null {
+  if (node.type === 'url') {
+    return node.url
+      ? { kind: 'link', title: node.name || node.url, url: node.url, createdAt: chromeTimeToUnixMs(node.date_added) }
+      : null;
   }
-  for (const child of node.children ?? []) flattenBookmarks(child, out);
+  const children = (node.children ?? []).map(toTree).filter((n): n is ImportBookmarkNode => n !== null);
+  if (children.length === 0) return null;
+  return { kind: 'folder', title: node.name || 'Без названия', createdAt: chromeTimeToUnixMs(node.date_added), children };
 }
 
 export class ChromiumBookmarkImporter implements BookmarkImporter {
@@ -76,9 +73,15 @@ export class ChromiumBookmarkImporter implements BookmarkImporter {
     try {
       const raw = fs.readFileSync(this.#bookmarksPath, 'utf8');
       const data = JSON.parse(raw) as ChromiumBookmarksFile;
-      const items: BulkBookmarkInput[] = [];
-      for (const root of Object.values(data.roots ?? {})) flattenBookmarks(root, items);
-      return this.#bookmarks.bulkInsert(items);
+      // Содержимое корней Chrome кладём на наш корень, а не в папки с их именами: «Панель
+      // закладок» для человека — место, а не папка, и заворачивать её значило бы добавить
+      // уровень, которого у него не было.
+      const items: ImportBookmarkNode[] = [];
+      for (const root of Object.values(data.roots ?? {})) {
+        const tree = toTree(root);
+        if (tree?.children) items.push(...tree.children);
+      }
+      return this.#bookmarks.bulkInsertTree(items, null);
     } catch (e) {
       console.warn(`[BookmarkImport:${this.id}] import error:`, (e as Error).message);
       return { inserted: 0, skipped: 0 };

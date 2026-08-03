@@ -197,6 +197,49 @@ console.log('папки через BookmarkManager');
     && bm.list(inner.id).length === 0);
 }
 
+// ── 7. Импорт ДЕРЕВОМ ───────────────────────────────────────────────────────────────────────
+// Ради этого папки и затевались: раньше импорт сплющивал дерево Chrome в плоскую кучу.
+console.log('импорт дерева');
+{
+  const { BookmarkManager } = require('../dist-electron/electron/BookmarkManager.js');
+  const bm = new BookmarkManager(path.join(dir, 'import.sqlite'));
+  await bm.initialize();
+
+  const tree = [
+    { kind: 'folder', title: 'Работа', children: [
+      { kind: 'link', title: 'Почта', url: 'https://mail.example/' },
+      { kind: 'folder', title: 'Проекты', children: [
+        { kind: 'link', title: 'Трекер', url: 'https://tracker.example/' },
+      ] },
+      { kind: 'folder', title: 'Пустая', children: [] },
+    ] },
+    { kind: 'folder', title: 'Совсем пустая', children: [
+      { kind: 'folder', title: 'И тут пусто', children: [] },
+    ] },
+    { kind: 'link', title: 'Хабр', url: 'https://habr.example/' },
+  ];
+
+  const r1 = bm.bulkInsertTree(tree, null);
+  check('ссылки вставлены', r1.inserted === 3, JSON.stringify(r1));
+
+  const roots = bm.listTree();
+  const work = roots.find((n) => n.title === 'Работа');
+  check('папка верхнего уровня создана', !!work && work.kind === 'folder');
+  check('вложенная папка создана', !!work?.children?.find((n) => n.title === 'Проекты'));
+  check('вложенность сохранена', work.children.find((n) => n.title === 'Проекты').children.length === 1);
+  check('пустые папки НЕ создаются', !work.children.some((n) => n.title === 'Пустая'));
+  check('ветка целиком без ссылок пропущена', !roots.some((n) => n.title === 'Совсем пустая'));
+  check('ссылка корня на месте', roots.some((n) => n.kind === 'link' && n.title === 'Хабр'));
+
+  // Повторный импорт — главное, ради чего папки переиспользуются по имени: без этого второй
+  // прогон удвоил бы всё дерево.
+  const r2 = bm.bulkInsertTree(tree, null);
+  check('повтор ничего не добавил', r2.inserted === 0, JSON.stringify(r2));
+  const roots2 = bm.listTree();
+  check('папки не удвоились', roots2.filter((n) => n.title === 'Работа').length === 1);
+  check('всего узлов столько же', JSON.stringify(roots2.map((n) => n.title)) === JSON.stringify(roots.map((n) => n.title)));
+}
+
 // Уборка «по возможности»: последняя база осталась открытой менеджером, а Windows не даёт
 // удалить файл под живым дескриптором. Заводить close() в менеджере ради одного скрипта не
 // стали — ни у одного другого менеджера в проекте его нет, а временную папку подчистит система.
