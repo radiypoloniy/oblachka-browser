@@ -315,16 +315,14 @@ export default function Toolbar({
     });
   }, [isHub, tab?.url]);
 
+  // ⚠️ Звезда больше не ТУМБЛЕР. Прежнее поведение («нажал — сохранил в корень, нажал ещё —
+  // удалил») не давало положить страницу в папку вовсе: единственным местом закладки был корень,
+  // и разгребать его приходилось потом руками. Теперь клик сохраняет и сразу предлагает папку —
+  // тем же меню, что и Ctrl+D. Удаление никуда не делось, оно последним пунктом того же меню.
   const toggleBookmark = () => {
     if (!tab?.url) return;
-    const url = tab.url;
-    if (bookmarked) {
-      setBookmarked(false); // оптимистично — BOOKMARK_CHANGED ниже подтвердит/поправит
-      void window.oblako.removeBookmarkByUrl(url);
-    } else {
-      setBookmarked(true);
-      void window.oblako.addBookmark(url, tab.title || url);
-    }
+    setBookmarked(true); // оптимистично — BOOKMARK_CHANGED подтвердит или поправит
+    void window.oblako.showBookmarkMenu();
   };
 
   const openDropdown = useCallback(() => {

@@ -119,7 +119,7 @@ import {
   setHistoryManager as setOrganizerHistoryManager,
 } from './TabOrganizer';
 import { suggestBookmarkFolders } from './BookmarkOrganizer';
-import type { BookmarkFolderProposal, PermKey } from '../shared/ipc';
+import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -937,6 +937,10 @@ function createWindow(role: WindowRole = 'main') {
   }
   // Новое окно по Ctrl+N — из любого окна; создаётся всегда лёгкое (полное ровно одно).
   tabs.setOnNewWindow(() => { createWindow('light'); });
+  // Ctrl+D — то же меню, что у звезды в омнибоксе; Ctrl+Shift+O — раздел закладок. Оба хоткея
+  // работают и на странице, и в хроме, поэтому висят на TabManager, а не на слое чрома.
+  tabs.setOnBookmarkPage(() => { if (tabs) showBookmarkMenu(win, tabs); });
+  tabs.setOnBookmarksOpen(() => { tabs?.createSpecialTab('bookmarks'); });
   // ПКМ по ссылке → «Открыть ссылку в новом окне». Сразу заводим вкладку в НОВОМ окне, а не
   // «создать здесь и перенести»: промежуточная вкладка мелькнула бы в этом окне и успела бы
   // попасть в его дерево и автосейв.
@@ -1268,6 +1272,78 @@ function buildMoveToWindowItems(
       click: () => { moveTabToExistingWindow(from, tabId, c.win.id); },
     })),
   }];
+}
+
+/**
+ * Звезда в омнибоксе и Ctrl+D — одно и то же действие.
+ *
+ * ⚠️ Страница СНАЧАЛА сохраняется, и только потом предлагается папка. Порядок не косметический:
+ * человек нажал «в закладки», и результат этого нажатия не должен зависеть от того, выберет ли
+ * он что-то в меню дальше. Закрыл меню мимо — закладка всё равно сохранена, как в Chrome.
+ *
+ * ⚠️ Меню НАТИВНОЕ, а не свой поповер. Своя вью потребовалась бы (как у паролей и VPN) только
+ * ради того, чтобы выпасть ПОВЕРХ страницы — нативное меню это умеет само, силами ОС, и не
+ * заводит ни четвёртого entry в vite.config, ни своего preload ради выбора из списка папок.
+ */
+function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): void {
+  const wc = tabs.getActiveWebContents();
+  if (!wc) return;
+  const url = wc.getURL();
+  if (!url || !/^https?:/i.test(url)) return; // хаб и служебные страницы в закладки не идут
+  const title = wc.getTitle() || url;
+
+  const existing = bookmarks.listTree();
+  const findByUrl = (nodes: BookmarkNode[]): BookmarkNode | null => {
+    for (const n of nodes) {
+      if (n.kind === 'link' && n.url === url) return n;
+      const hit = n.children ? findByUrl(n.children) : null;
+      if (hit) return hit;
+    }
+    return null;
+  };
+
+  let entry = findByUrl(existing);
+  if (!entry) {
+    const added = bookmarks.add(url, title);
+    if (!added) return;
+    entry = { ...added, children: undefined };
+    broadcastToChrome(IPC.BOOKMARK_CHANGED);
+  }
+  const bookmarkId = entry.id;
+  const currentParent = entry.parentId;
+
+  // Плоский перечень папок с отступами — вложенность в нативном меню показать больше нечем.
+  const folders: { id: number; title: string; depth: number }[] = [];
+  const walk = (nodes: BookmarkNode[], depth: number): void => {
+    for (const n of nodes) {
+      if (n.kind !== 'folder') continue;
+      folders.push({ id: n.id, title: n.title, depth });
+      walk(n.children ?? [], depth + 1);
+    }
+  };
+  walk(bookmarks.listTree(), 0);
+
+  const pick = (parentId: number | null): void => {
+    if (bookmarks.move(bookmarkId, parentId)) broadcastToChrome(IPC.BOOKMARK_CHANGED);
+  };
+
+  const template: MenuItemConstructorOptions[] = [
+    { label: 'Сохранено в закладки', enabled: false },
+    { type: 'separator' },
+    { label: 'Все закладки', type: 'radio', checked: currentParent === null, click: () => pick(null) },
+    ...folders.map((f): MenuItemConstructorOptions => ({
+      label: `${'    '.repeat(f.depth)}${f.title}`,
+      type: 'radio',
+      checked: currentParent === f.id,
+      click: () => pick(f.id),
+    })),
+    { type: 'separator' },
+    {
+      label: 'Удалить из закладок',
+      click: () => { bookmarks.remove(bookmarkId); broadcastToChrome(IPC.BOOKMARK_CHANGED); },
+    },
+  ];
+  Menu.buildFromTemplate(template).popup({ window: win });
 }
 
 // Лёгкое окно, из которого унесли последнюю страницу, закрываем: пустое окно с одним хабом на
@@ -2098,6 +2174,10 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.BOOKMARK_LIST, () => bookmarks.list());
   ipcMain.handle(IPC.BOOKMARK_LIST_TREE, () => bookmarks.listTree());
+  ipcMain.handle(IPC.BOOKMARK_SHOW_MENU, (e) => {
+    const ctx = contextFromSender(e.sender);
+    if (ctx) showBookmarkMenu(ctx.win, ctx.tabs);
+  });
   // Правки дерева. broadcastToChrome, а не ответ вызывающему: закладки — общее состояние
   // приложения, файл на диске один, а копия дерева своя у КАЖДОГО окна (см. WindowRegistry).
   ipcMain.handle(IPC.BOOKMARK_CREATE_FOLDER, (_e, title: string, parentId: number | null) => {

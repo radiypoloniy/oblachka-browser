@@ -130,6 +130,7 @@ const api: OblakoApi = {
 
   listBookmarks: () => ipcRenderer.invoke(IPC.BOOKMARK_LIST) as Promise<BookmarkEntry[]>,
   listBookmarkTree: () => ipcRenderer.invoke(IPC.BOOKMARK_LIST_TREE) as Promise<BookmarkNode[]>,
+  showBookmarkMenu: () => ipcRenderer.invoke(IPC.BOOKMARK_SHOW_MENU) as Promise<void>,
   createBookmarkFolder: (title: string, parentId: number | null) =>
     ipcRenderer.invoke(IPC.BOOKMARK_CREATE_FOLDER, title, parentId) as Promise<BookmarkEntry | null>,
   renameBookmark: (id: number, title: string) =>

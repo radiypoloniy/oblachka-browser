@@ -368,6 +368,7 @@ export const IPC = {
   BOOKMARK_REMOVE_BY_URL: 'bookmark:remove-by-url',  // renderer → main: снять звезду по url (омнибокс)
   BOOKMARK_LIST:          'bookmark:list',            // renderer → main: весь плоский список корня
   BOOKMARK_LIST_TREE:     'bookmark:list-tree',       // renderer → main: всё дерево с папками (сайдбар)
+  BOOKMARK_SHOW_MENU:     'bookmark:show-menu',       // renderer → main: звезда/Ctrl+D — сохранить и предложить папку
   BOOKMARK_CREATE_FOLDER: 'bookmark:create-folder',   // renderer → main: (title, parentId) -> BookmarkEntry | null
   BOOKMARK_RENAME:        'bookmark:rename',          // renderer → main: (id, title) -> boolean
   BOOKMARK_MOVE:          'bookmark:move',            // renderer → main: (id, parentId) -> boolean, в конец уровня
@@ -1619,6 +1620,10 @@ export interface OblakoApi {
   listBookmarks(): Promise<BookmarkEntry[]>;
   // Дерево целиком — режим «Закладки» в сайдбаре рисует его сам, поэтому уровни не догружает.
   listBookmarkTree(): Promise<BookmarkNode[]>;
+  // Звезда в омнибоксе и Ctrl+D: сохранить активную страницу и предложить папку. Адрес и
+  // заголовок берёт сам main — у него активная вкладка под рукой, а рендереру пришлось бы их
+  // передавать и рисковать разъехаться с реальной страницей.
+  showBookmarkMenu(): Promise<void>;
   createBookmarkFolder(title: string, parentId: number | null): Promise<BookmarkEntry | null>;
   renameBookmark(id: number, title: string): Promise<boolean>;
   // Перенос в другого родителя, в конец уровня. Порядок внутри уровня — отдельно, reorderBookmarks.

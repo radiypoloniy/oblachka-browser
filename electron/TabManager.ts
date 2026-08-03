@@ -191,6 +191,10 @@ export class TabManager {
   private onNavigateCb?: (url: string, title: string, wc: WebContents) => void;
   private onTitleUpdateCb?: (url: string, title: string) => void;
   private onHistoryOpenCb?: () => void;
+  // Ctrl+D / Ctrl+Shift+O. Отдельными сеттерами, а не через конструктор: закладки появились
+  // позже, и расширять и без того длинный список параметров ради двух колбэков незачем.
+  private onBookmarkPageCb?: () => void;
+  private onBookmarksOpenCb?: () => void;
   private onQuickSearchCb?: () => void;
   private onFirstTabLoadCb?: () => void;
   // Общий колбэк для ВСЕХ AI-действий над выделением (перевод/выжимка/пересказ/объяснение) — та же
@@ -2523,6 +2527,8 @@ export class TabManager {
   // Ctrl+N. Само окно этот класс не создаёт — окнами владеет main (см. createWindow), сюда
   // приходит только «человек попросил новое окно», как и с быстрым поиском по Ctrl+E.
   private onNewWindowCb: (() => void) | null = null;
+  setOnBookmarkPage(cb: () => void): void { this.onBookmarkPageCb = cb; }
+  setOnBookmarksOpen(cb: () => void): void { this.onBookmarksOpenCb = cb; }
   setOnNewWindow(cb: () => void): void { this.onNewWindowCb = cb; }
 
   // ПКМ по ссылке → «Открыть ссылку в новом окне». Тоже отдаём наружу: окно создаёт main.
@@ -2640,6 +2646,12 @@ export class TabManager {
       } else if (code === 'KeyH' && !shift) {
         event.preventDefault();
         this.onHistoryOpenCb?.();           // Ctrl+H: открыть панель истории
+      } else if (code === 'KeyD' && !shift) {
+        event.preventDefault();
+        this.onBookmarkPageCb?.();          // Ctrl+D: сохранить страницу в закладки
+      } else if (code === 'KeyO' && shift) {
+        event.preventDefault();
+        this.onBookmarksOpenCb?.();         // Ctrl+Shift+O: открыть раздел закладок
       } else if (code === 'KeyI' && shift) {
         event.preventDefault();
         this.toggleActiveDevTools();        // Ctrl+Shift+I: DevTools (альтернатива F12)
