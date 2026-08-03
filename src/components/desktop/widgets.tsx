@@ -98,12 +98,11 @@ function TileCaption({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Общий цвет содержательных плиток — часы и часто открываемые сайты. ⚠️ Раньше у них были два
-// разных сине-серых градиента (почти одинаковых, но не совпадающих), и стол выглядел пёстрым от
-// оттенков, которые ничего не различали. Один приглушённый графитово-синий работает и на светлых
-// обоях, и на тёмных, и не спорит ни с одной палитрой: цвет здесь — носитель, а не сигнал.
-// Погода намеренно осталась при своём — там цвет означает время суток и погоду.
-const TILE_SLATE = 'linear-gradient(160deg, #47566B 0%, #333E52 55%, #2A3242 100%)';
+// ⚠️ Общего «слейта» у часов и топ-сайтов БОЛЬШЕ НЕТ. Он был их несменяемым цветом, и когда
+// появился выбор заливки, пункт «как тема» на них не работал вовсе: у виджета с собственным
+// tint тема просто не побеждала — то есть сделать часы белыми было физически нельзя. Теперь по
+// умолчанию за темой идёт всё, кроме погоды (там цвет означает время суток и саму погоду), а
+// прежний слейт остался одним из выбираемых цветов — 'slate' в WIDGET_FILLS.
 
 // ── Часы ──────────────────────────────────────────────────────────────────────
 //
@@ -144,7 +143,7 @@ export function ClockWidget({ box, fill }: WidgetProps) {
   const dial = Math.max(64, Math.min(avail, box.height - 32 - 20 - dateH));
 
   return (
-    <Tile tint={TILE_SLATE} fill={fill}>
+    <Tile surface fill={fill}>
       <TileCaption>{weekday}</TileCaption>
       {analog ? (
         <div style={{
@@ -674,7 +673,7 @@ export function TopSitesWidget({ box, tiles, onOpen, fill }: WidgetProps) {
   const shown = tiles.slice(0, cols * rows);
 
   return (
-    <Tile tint={TILE_SLATE} fill={fill}>
+    <Tile surface fill={fill}>
       <TileCaption>Часто открываете</TileCaption>
       {shown.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.85 }}>

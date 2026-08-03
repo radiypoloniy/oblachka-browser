@@ -10,6 +10,18 @@ import { WIDGET_SIZES, type DesktopItem, type DesktopLayout, hasItem } from '../
 // погоды — не фича, а недосмотр, который человек потом молча удаляет. Сайты — исключение:
 // их сколько угодно, они все разные.
 
+// ⚠️ Кто из виджетов ходит В СЕТЬ и КУДА ИМЕННО. Именно поэтому их нет в стартовом наборе
+// (см. defaultLayout в newtab/desktop.ts): стол открывается на каждой новой вкладке, и виджет
+// по умолчанию означал бы, что браузер сам, без единого действия человека, регулярно
+// отчитывается стороннему сервису — а погода вдобавок сообщает город.
+// Имя сервиса названо прямо: общая фраза «данные могут передаваться» — это шум, который
+// прокликивают не читая, и от неё нет никакой пользы ни человеку, ни нам.
+const NETWORK_WIDGETS: Record<string, string> = {
+  weather: 'Open-Meteo',
+  rates: 'ЦБ РФ',
+  crypto: 'CoinGecko',
+};
+
 const WIDGET_CHOICES: { key: string; label: string; hint: string; size: keyof typeof WIDGET_SIZES }[] = [
   { key: 'weather',  label: 'Погода',           hint: 'Прогноз на ближайшие часы', size: 'medium' },
   { key: 'clock',    label: 'Часы',             hint: 'Время и дата',              size: 'small' },
@@ -72,7 +84,11 @@ export default function AddSheet({ layout, onAdd, onClose }: Props) {
             <Row
               key={w.key}
               title={w.label}
-              hint={w.hint}
+              // ⚠️ Про сеть сказано ЗДЕСЬ и с ИМЕНЕМ сервиса, а не общей фразой «данные могут
+              // передаваться» — такую прокликивают не читая. Момент выбран тот же: человек
+              // решает, ставить ли виджет, и ровно в этот момент узнаёт цену.
+              hint={NETWORK_WIDGETS[w.key] ? `${w.hint} · Запрашивает данные у ${NETWORK_WIDGETS[w.key]}` : w.hint}
+              warn={!!NETWORK_WIDGETS[w.key]}
               onAdd={() => onAdd({ kind: 'widget', widget: w.key, size: WIDGET_SIZES[w.size] })}
               badge={<span style={{
                 width: 40, height: 40, borderRadius: 10, flex: 'none',
@@ -141,8 +157,10 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function Row({ title, hint, badge, onAdd }: {
+function Row({ title, hint, badge, onAdd, warn }: {
   title: string; hint: string; badge: React.ReactNode; onAdd: () => void;
+  /** Виджет ходит в сеть — подпись подсвечена, чтобы её увидели, а не только прочитали. */
+  warn?: boolean;
 }) {
   return (
     <button
@@ -158,7 +176,7 @@ function Row({ title, hint, badge, onAdd }: {
       {badge}
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>{title}</span>
-        <span style={{ display: 'block', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{hint}</span>
+        <span style={{ display: 'block', fontSize: 'var(--fs-xs)', color: warn ? 'var(--warning-500)' : 'var(--text-faint)' }}>{hint}</span>
       </span>
       <Plus size={16} style={{ color: 'var(--text-faint)', flex: 'none' }} />
     </button>

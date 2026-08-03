@@ -167,11 +167,13 @@ export function defaultLayout(): DesktopLayout {
   return {
     version: 1,
     items: [
-      // ⚠️ Погода стоит широкой: в маленькой плитке почасовой ряд не помещается, а без него
-      // виджет выглядит пустым — ровно та претензия, из-за которой их и переделывали.
-      { id: 'w-weather',  kind: 'widget', widget: 'weather',  size: WIDGET_SIZES.medium },
+      // ⚠️ Виджетов, ходящих в СЕТЬ (погода, курсы, крипта), в стартовом наборе НЕТ намеренно.
+      // Стол показывается на каждой новой вкладке, то есть по умолчанию браузер сам, без единого
+      // действия человека, регулярно стучался бы в Open-Meteo, ЦБ РФ и CoinGecko — и рассказывал
+      // бы им, когда человек открывает вкладки, а погода вдобавок и в каком он городе. Для
+      // приватного браузера это не мелочь. Добавляются они через «+», и там же сказано, куда
+      // именно уйдёт запрос (см. NETWORK_WIDGETS в AddSheet.tsx).
       { id: 'w-clock',    kind: 'widget', widget: 'clock',    size: WIDGET_SIZES.small },
-      { id: 'w-rates',    kind: 'widget', widget: 'rates',    size: WIDGET_SIZES.small },
       { id: 'w-tasks',    kind: 'widget', widget: 'tasks',    size: WIDGET_SIZES.medium },
       { id: 'w-topsites', kind: 'widget', widget: 'topsites', size: WIDGET_SIZES.medium },
       { id: 'a-calc',     kind: 'app', appId: 'calc',    size: { w: 1, h: 1 } },
