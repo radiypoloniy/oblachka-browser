@@ -436,6 +436,45 @@ const AC_TO_KEY: Record<string, AfKey> = {
 
 type FillField = HTMLInputElement | HTMLSelectElement;
 
+/**
+ * Человеческая подпись поля: текст <label>, а не только атрибуты.
+ *
+ * ⚠️ Раньше эвристика смотрела ТОЛЬКО name/id/placeholder/aria-label — то есть на то, что писал
+ * программист, а не на то, что видит человек. На форме, где подпись живёт в теге <label> (это
+ * половина русских сайтов, особенно без плейсхолдеров), автозаполнение молчало вовсе: поле с
+ * подписью «Индекс» и name="pc_2" не распознавалось ничем.
+ * Порядок поиска — от самого надёжного: aria-labelledby → label[for] → обёртка <label> → соседняя
+ * ячейка/абзац перед полем.
+ */
+function labelTextFor(el: FillField): string {
+  const clean = (s: string | null | undefined): string => (s || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  try {
+    const root = el.getRootNode() as Document | ShadowRoot;
+    const labelledBy = el.getAttribute('aria-labelledby');
+    if (labelledBy) {
+      const parts = labelledBy.split(/\s+/)
+        .map((id) => (root as Document).getElementById?.(id)?.textContent)
+        .filter(Boolean);
+      if (parts.length) return clean(parts.join(' '));
+    }
+    if (el.id) {
+      // CSS.escape есть во всех Chromium; id вида «user.name» без него ломает селектор.
+      const esc = (window.CSS && CSS.escape) ? CSS.escape(el.id) : el.id;
+      const forLabel = (root as Document).querySelector?.(`label[for="${esc}"]`);
+      if (forLabel?.textContent) return clean(forLabel.textContent);
+    }
+    const wrapping = el.closest('label');
+    if (wrapping?.textContent) return clean(wrapping.textContent);
+    // Последний шанс — текст непосредственно перед полем (частая вёрстка «<div>Индекс</div><input>»).
+    const prev = el.previousElementSibling;
+    if (prev && !prev.querySelector?.('input, select, textarea') && prev.textContent) {
+      const t = clean(prev.textContent);
+      if (t.length >= 2 && t.length <= 40) return t;
+    }
+  } catch { /* доступ к DOM подписи не критичен */ }
+  return '';
+}
+
 function detectFieldKey(el: FillField): AfKey | null {
   const type = (el.getAttribute('type') || 'text').toLowerCase();
   if (['password', 'hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'range', 'color', 'image'].includes(type)) {
@@ -446,8 +485,9 @@ function detectFieldKey(el: FillField): AfKey | null {
   for (const token of acRaw.split(/\s+/).reverse()) {
     if (AC_TO_KEY[token]) return AC_TO_KEY[token]!;
   }
-  // Эвристика по атрибутам. cc-csc (CVC) намеренно НЕ детектим — мы его не храним и не заполняем.
-  const hay = [el.getAttribute('name'), el.id, el.getAttribute('placeholder'), el.getAttribute('aria-label')]
+  // Эвристика по атрибутам И по видимой подписи поля (см. labelTextFor).
+  // cc-csc (CVC) намеренно НЕ детектим — мы его не храним и не заполняем.
+  const hay = [el.getAttribute('name'), el.id, el.getAttribute('placeholder'), el.getAttribute('aria-label'), labelTextFor(el)]
     .filter(Boolean).join(' ').toLowerCase();
   if (/csc|cvv|cvc|security code|код.*карт/.test(hay)) return null;
   if (type === 'email' || /e-?mail|почт/.test(hay)) return 'email';
@@ -456,11 +496,23 @@ function detectFieldKey(el: FillField): AfKey | null {
   if (/card.?holder|name.?on.?card|владел.*карт|держател/.test(hay)) return 'ccName';
   if (/zip|postal|индекс/.test(hay)) return 'postalCode';
   if (/country|страна/.test(hay)) return 'country';
-  if (/\bstate\b|province|region|област|регион|\bкрай\b|республик/.test(hay)) return 'region';
+  // ⚠️ Для кириллицы граница слова — ТОЛЬКО через lookaround, а не \b. В JS \w это [A-Za-z0-9_],
+  // русская буква для регулярки «не буква», поэтому между пробелом и «к» границы нет и шаблон
+  // /\bкрай\b/ не совпадал НИКОГДА (он тут жил с самого начала и молча ничего не ловил). Ровно на
+  // это же напоролась новая проверка «Имя»: /\bимя\b/ не сработала ни разу.
+  if (/\bstate\b|province|region|област|регион|(?<![а-яё])край(?![а-яё])|республик/.test(hay)) return 'region';
   if (/\bcity\b|town|город/.test(hay)) return 'city';
   if (/organiz|company|компан|организац/.test(hay)) return 'organization';
+  // ⚠️ Квартира/корпус — ДО улицы: их подписи часто соседствуют со словом «адрес», и общий
+  // «адресный» шаблон ниже забрал бы их себе, подставив в квартиру название улицы.
+  if (/\bapt\b|apartment|suite|\bunit\b|квартир|(?<![а-яё])кв\.|корпус|строени/.test(hay)) return 'addressLine2';
   if (/street|address|\baddr\b|улиц|адрес/.test(hay)) return 'street';
-  if (/full.?name|\bф\.?и\.?о|fio|полное имя/.test(hay)) return 'fullName';
+  if (/full.?name|(?<![а-яё])ф\.?и\.?о|fio|полное имя/.test(hay)) return 'fullName';
+  // ⚠️ Фамилия и имя по-русски раньше не детектились ВООБЩЕ: они узнавались только по
+  // autocomplete-токенам given-name/family-name, которых на русских формах обычно нет.
+  if (/last.?name|surname|фамили/.test(hay)) return 'familyName';
+  // «Имя» — только если это не «имя пользователя»: то поле про логин, и адрес туда не подставляют.
+  if (!/пользовател|логин|user|account/.test(hay) && /first.?name|given.?name|(?<![а-яё])имя(?![а-яё])/.test(hay)) return 'givenName';
   return null;
 }
 
