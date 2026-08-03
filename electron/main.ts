@@ -80,6 +80,7 @@ import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { captureTabScreenshot, saveCurrentScreenshot, closeScreenshot, syncScreenshotBounds, relayoutScreenshot, setScreenshotTabManager } from './ScreenshotManager';
 import { searchTabsByMeaning } from './TabSearch';
+import { mapFormFields, type FormFieldDescriptor } from './AutofillFieldMapper';
 import { startTabDrag, endTabDrag, syncDropZoneBounds } from './DropZoneManager';
 import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
 import { suggestTabTitle } from './TabRenamer';
@@ -818,6 +819,21 @@ function createWindow(role: WindowRole = 'main') {
   // Снимок вкладки (Ctrl+Shift+S) — тоже СВОЙ у каждого окна: снимают ту вкладку, в чьём окне
   // нажали, включая лёгкие. Менеджеру карточки вкладки нужны и для самого снимка, и чтобы
   // вернуть странице фокус, если карточка его перехватила (см. ScreenshotManager.ts).
+  // Распознавание полей формы моделью — второй эшелон автозаполнения (см. AutofillFieldMapper.ts).
+  // Валидацию присланного страницей делаем ЗДЕСЬ: сюда приходит payload с гостевого сайта, и он
+  // может быть каким угодно.
+  tabs.setAutofillFieldMapper(async (origin, raw) => {
+    if (!Array.isArray(raw)) return {};
+    const fields: FormFieldDescriptor[] = [];
+    for (const item of raw.slice(0, 12)) {
+      if (!item || typeof item !== 'object') continue;
+      const f = item as Record<string, unknown>;
+      if (typeof f.i !== 'number' || !Number.isInteger(f.i) || f.i < 0 || f.i > 200) continue;
+      const str = (v: unknown): string => (typeof v === 'string' ? v.slice(0, 80) : '');
+      fields.push({ i: f.i, label: str(f.label), name: str(f.name), placeholder: str(f.placeholder), type: str(f.type) || 'text' });
+    }
+    return await mapFormFields(origin, fields);
+  });
   setScreenshotTabManager(win, tabs);
   tabs.setOnScreenshot(() => { if (win && tabs) void captureTabScreenshot(win, tabs); });
   tabs.setOnScreenshotSave(() => { if (win) saveCurrentScreenshot(win); });

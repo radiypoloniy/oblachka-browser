@@ -174,6 +174,13 @@ export class TabManager {
     | ((items: Array<{ url: string; title: string }>, sticker?: string) => MenuItemConstructorOptions | null)
     | null = null;
 
+  // Распознавание полей формы моделью (AutofillFieldMapper.ts). Тот же приём, что с
+  // #graphMenuBuilder: менеджер вкладок про модель и кэш не знает, ему дают готовую функцию.
+  #autofillMapper: ((origin: string, fields: unknown) => Promise<Record<number, string>>) | null = null;
+  setAutofillFieldMapper(fn: (origin: string, fields: unknown) => Promise<Record<number, string>>): void {
+    this.#autofillMapper = fn;
+  }
+
   // ── Единый источник истины — три структуры ──────────────────────────────────
   // hubTab   — хаб (всегда существует, не входит в nodes и pinnedTabs).
   // pinnedTabs — упорядоченный список закреплённых (переживают рестарт).
@@ -1193,6 +1200,22 @@ export class TabManager {
         this.onAutofillFieldFocusCb?.(id, payload.rect, payload.kind, wc.getURL());
       } catch (e) {
         console.warn('[TabMgr] onAutofillFieldFocusCb error:', (e as Error).message);
+      }
+    });
+    // «Что это за поля?» — страница спрашивает про те, что не осилила её эвристика (см.
+    // AutofillFieldMapper.ts). ⚠️ Origin берём из wc.getURL(), а НЕ из payload: адрес, присланный
+    // самой страницей, — это то, что она захотела сообщить, а не то, где она открыта, и по нему
+    // страница могла бы прочитать чужой кэш полей.
+    wc.ipc.handle(IPC.AUTOFILL_MAP_FIELDS, async (_e, payload: { fields?: unknown }) => {
+      if (!mine()) return {};
+      try {
+        let origin = '';
+        try { origin = new URL(wc.getURL()).origin; } catch { return {}; }
+        if (!origin.startsWith('http')) return {}; // локальные/служебные страницы не обслуживаем
+        return await this.#autofillMapper?.(origin, payload?.fields) ?? {};
+      } catch (e) {
+        console.warn('[TabMgr] autofill map error:', (e as Error).message);
+        return {};
       }
     });
     wc.ipc.on(IPC.AUTOFILL_SUBMIT, (_e, payload: { kind: 'address' | 'card'; fields: Record<string, string> }) => {

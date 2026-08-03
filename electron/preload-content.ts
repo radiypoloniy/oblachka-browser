@@ -36,6 +36,7 @@ const CH_FIELD_ICON_CLICK = 'passwords:field-icon-click';
 const CH_AUTOFILL_FIELD_FOCUS = 'autofill:field-focus';
 const CH_AUTOFILL_FILL = 'autofill:fill-fields';
 const CH_AUTOFILL_SUBMIT = 'autofill:submit';
+const CH_AUTOFILL_MAP_FIELDS = 'autofill:map-fields';
 
 function isTopFrame(): boolean {
   try {
@@ -475,7 +476,22 @@ function labelTextFor(el: FillField): string {
   return '';
 }
 
+// ── Второй эшелон детекта: категории, присланные моделью (см. AutofillFieldMapper.ts) ─────────
+// WeakMap, а не атрибут на элементе: ничего в чужой DOM не пишем, и запись умирает вместе с полем.
+const aiKeyByEl = new WeakMap<FillField, AfKey>();
+// Спрашиваем ОДИН раз на загрузку страницы. Форма может дорисоваться позже, но повторные вопросы
+// на каждую перерисовку — прямой путь занять очередь генерации ради одной и той же формы.
+let aiMapAsked = false;
+
 function detectFieldKey(el: FillField): AfKey | null {
+  const known = detectFieldKeyStrict(el);
+  if (known) return known;
+  // ⚠️ Ответ модели — ТОЛЬКО там, где эвристика промолчала. Уверенный autocomplete-токен всегда
+  // сильнее догадки: перебивать его моделью значило бы менять надёжное на вероятное.
+  return aiKeyByEl.get(el) ?? null;
+}
+
+function detectFieldKeyStrict(el: FillField): AfKey | null {
   const type = (el.getAttribute('type') || 'text').toLowerCase();
   if (['password', 'hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'range', 'color', 'image'].includes(type)) {
     return null;
@@ -542,6 +558,57 @@ function setSelectValue(sel: HTMLSelectElement, value: string): void {
   }
 }
 
+/** Поле, про которое имеет смысл спрашивать: видимое, текстовое и ещё не распознанное. */
+function isAskableField(el: FillField): boolean {
+  const type = (el.getAttribute('type') || 'text').toLowerCase();
+  if (!['text', 'tel', 'email', 'number', 'search', ''].includes(type) && el.tagName !== 'SELECT') return false;
+  if (detectFieldKeyStrict(el)) return false;
+  return isVisible(el);
+}
+
+/**
+ * Спросить main (а он — модель или кэш), что за поля на этой форме.
+ *
+ * ⚠️ Порог в три неопознанных поля — не перестраховка. Одно-два безымянных текстовых поля есть
+ * почти на каждом сайте (поиск, промокод, подписка на рассылку), и спрашивать про них модель
+ * значит греть очередь генерации на каждой странице интернета. Три и больше — это уже форма.
+ */
+async function askAiFieldMap(): Promise<boolean> {
+  if (aiMapAsked) return false;
+  aiMapAsked = true;
+  try {
+    const askable = (Array.from(document.querySelectorAll('input, select')) as FillField[]).filter(isAskableField);
+    if (askable.length < 3) return false;
+    const fields = askable.slice(0, 12).map((el, i) => ({
+      i,
+      label: labelTextFor(el),
+      name: el.getAttribute('name') || el.id || '',
+      placeholder: el.getAttribute('placeholder') || '',
+      type: (el.getAttribute('type') || (el.tagName === 'SELECT' ? 'select' : 'text')).toLowerCase(),
+    }));
+    // Наружу уходят ТОЛЬКО подписи полей — ни введённых значений, ни содержимого страницы.
+    const map = await ipcRenderer.invoke(CH_AUTOFILL_MAP_FIELDS, { fields }) as Record<string, AfKey>;
+    let got = 0;
+    for (const [idx, key] of Object.entries(map || {})) {
+      const el = askable[Number(idx)];
+      if (el && key) { aiKeyByEl.set(el, key); got++; }
+    }
+    return got > 0;
+  } catch {
+    return false; // модели нет, ответа нет — работает как раньше
+  }
+}
+
+function reportAutofillFocus(el: FillField): void {
+  const key = detectFieldKey(el);
+  if (!key) return;
+  const kind = AF_ADDRESS_KEYS.has(key) ? 'address' : 'card';
+  const r = el.getBoundingClientRect();
+  ipcRenderer.send(CH_AUTOFILL_FIELD_FOCUS, {
+    rect: { x: r.x, y: r.y, width: r.width, height: r.height }, kind,
+  });
+}
+
 // Фокус на поле автозаполнения (top-frame) → сообщаем main позицию поля и вид формы, чтобы он
 // показал поповер выбора. Тот же top-frame-гвард, что у паролей: из кросс-origin iframe не шлём.
 window.addEventListener('focusin', (e) => {
@@ -549,12 +616,16 @@ window.addEventListener('focusin', (e) => {
     if (!isTopFrame()) return;
     const t = e.target;
     if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement)) return;
-    const key = detectFieldKey(t);
-    if (!key) return;
-    const kind = AF_ADDRESS_KEYS.has(key) ? 'address' : 'card';
-    const r = t.getBoundingClientRect();
-    ipcRenderer.send(CH_AUTOFILL_FIELD_FOCUS, {
-      rect: { x: r.x, y: r.y, width: r.width, height: r.height }, kind,
+    if (detectFieldKey(t)) { reportAutofillFocus(t); return; }
+    // Поле не узнали — это и есть повод спросить модель. ⚠️ Ответ приходит асинхронно, и к этому
+    // моменту человек мог уйти в другое поле: поповер показываем не «тому полю, про которое
+    // спрашивали», а тому, где фокус СЕЙЧАС, — иначе карточка всплывёт над полем, которое человек
+    // уже покинул.
+    if (!isAskableField(t)) return;
+    void askAiFieldMap().then((gotSomething) => {
+      if (!gotSomething) return;
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLSelectElement) reportAutofillFocus(active);
     });
   } catch {
     // noop
