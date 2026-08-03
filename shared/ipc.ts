@@ -759,22 +759,32 @@ export interface HistoryEntry {
 export type HistoryClearPeriod = 'hour' | 'day' | 'week' | 'all';
 
 // ── Закладки ─────────────────────────────────────────────────────────────────
-// parentId/position уже присутствуют, хотя Feature 1 UI работает только с корнем
-// (parentId всегда null) — задел на будущие папки/сортировку без миграции формата,
-// когда появится реальный UI под них.
+// ⚠️ Папка и ссылка — ОДНА таблица и один тип, различаются полем kind. Отличать их «по пустому
+// url» нельзя: пустая строка — такое же значение, как любое другое, и две папки немедленно
+// столкнулись бы в индексе уникальности адресов (подробности — в electron/bookmarksSchema.ts).
+export type BookmarkKind = 'link' | 'folder';
+
 export interface BookmarkEntry {
   id: number;
-  url: string;
+  kind: BookmarkKind;
+  url: string;        // у папки всегда '' — адреса у неё нет
   title: string;
-  parentId: number | null;
-  position: number;
+  parentId: number | null;  // null — корень
+  position: number;         // порядок внутри своего родителя
   createdAt: number;  // Unix ms
 }
 
-// Вход для BookmarkManager.bulkInsert — шов под будущий импорт из других браузеров
-// (Chromium сначала, см. дорожную карту). Ничего в Feature 1 этот тип не использует.
+// Узел дерева (BookmarkManager.listTree). children есть ТОЛЬКО у папок — по нему же в UI и
+// отличается разворачиваемый узел от конечного, без повторной проверки kind.
+export interface BookmarkNode extends BookmarkEntry {
+  children?: BookmarkNode[];
+}
+
+// Вход для BookmarkManager.bulkInsert — импорт из других браузеров. Элементы обязаны идти
+// родитель-перед-детьми: вызывающая сторона формирует такой порядок обходом дерева источника.
 export interface BulkBookmarkInput {
   parentId: number | null;
+  kind?: BookmarkKind;  // по умолчанию 'link' — папки появились позже импорта
   url: string;
   title: string;
   position: number;
