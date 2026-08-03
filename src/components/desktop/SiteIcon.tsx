@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { siteTint } from './siteTint';
 
 // Иконка сайта на рабочем столе — квадрат со скруглением, как на домашнем экране iPad.
 //
@@ -33,14 +34,6 @@ function hostOf(url: string): string {
   try { return new URL(url).hostname; } catch { return ''; }
 }
 
-// Цвет подложки под мелкую иконку и под букву. Берём из имени домена — так две разные плитки
-// не сливаются в одинаковые серые квадраты, а цвет у сайта всегда один и тот же.
-function tintFor(host: string): string {
-  let hash = 0;
-  for (let i = 0; i < host.length; i++) hash = (hash * 31 + host.charCodeAt(i)) | 0;
-  const hue = Math.abs(hash) % 360;
-  return `linear-gradient(180deg, hsl(${hue} 62% 62%), hsl(${hue} 58% 48%))`;
-}
 
 export default function SiteIcon({ url, title, size, onOpen, labelColor, labelShadow }: Props) {
   const [icon, setIcon] = useState<IconState>({ kind: 'loading' });
@@ -86,7 +79,7 @@ export default function SiteIcon({ url, title, size, onOpen, labelColor, labelSh
         width: size, height: size, borderRadius: radius, flex: 'none',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden',
-        background: icon.kind === 'touch' ? 'var(--surface-solid)' : tintFor(host),
+        background: icon.kind === 'touch' ? 'var(--surface-solid)' : siteTint(host),
         boxShadow: 'var(--appicon-shadow)',
       }}>
         {icon.kind === 'touch' && (

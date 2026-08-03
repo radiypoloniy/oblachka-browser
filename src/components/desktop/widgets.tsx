@@ -5,6 +5,7 @@ import type { TileSite } from '../../../shared/frecency';
 import type { CellSize } from '../../newtab/desktop';
 import { loadNewTabSettings } from '../../newtab/settings';
 import CryptoIcon from '../CryptoIcon';
+import { siteTint } from './siteTint';
 
 // Виджеты рабочего стола.
 //
@@ -610,13 +611,10 @@ function FaviconTile({ host }: { host: string }) {
   const [failed, setFailed] = useState(false);
 
   if (failed) {
-    let hash = 0;
-    for (let i = 0; i < host.length; i++) hash = (hash * 31 + host.charCodeAt(i)) | 0;
-    const hue = Math.abs(hash) % 360;
     return (
       <span style={{
         width: 44, height: 44, borderRadius: 12, flex: 'none',
-        background: `linear-gradient(180deg, hsl(${hue} 60% 62%), hsl(${hue} 55% 48%))`,
+        background: siteTint(host),
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 19, fontWeight: 600, color: '#fff',
       }}>{(host.charAt(0) || '?').toUpperCase()}</span>
