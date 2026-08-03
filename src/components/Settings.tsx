@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Shield, Wifi, Cpu, Palette, Lock, SlidersHorizontal, CreditCard, type LucideIcon } from 'lucide-react';
+import { X, Shield, ShieldCheck, Wifi, Cpu, Palette, Lock, SlidersHorizontal, CreditCard, type LucideIcon } from 'lucide-react';
 import type { AdBlockState } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import AdBlockSection from './settings/AdBlockSection';
@@ -8,6 +8,7 @@ import AiSection from './settings/AiSection';
 import PasswordsSection from './settings/PasswordsSection';
 import AutofillSection from './settings/AutofillSection';
 import GeneralSection from './settings/GeneralSection';
+import PermissionsSection from './settings/PermissionsSection';
 import AppearanceSection from './settings/AppearanceSection';
 import { useRubberBand } from '../rubberBand';
 
@@ -35,12 +36,13 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'ai',         label: 'AI',             Icon: Cpu,               tint: 'var(--tile-teal)' },
   { id: 'passwords',  label: 'Пароли',         Icon: Lock,              tint: 'var(--tile-grey)' },
   { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard,        tint: 'var(--tile-orange)' },
+  { id: 'permissions', label: 'Разрешения',    Icon: ShieldCheck,       tint: 'var(--tile-slate)' },
   { id: 'appearance', label: 'Интерфейс',      Icon: Palette,           tint: 'var(--tile-pink)' },
 ];
-type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'passwords' | 'autofill' | 'appearance';
+type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'passwords' | 'autofill' | 'permissions' | 'appearance';
 
 function isSectionId(v: unknown): v is SectionId {
-  return v === 'general' || v === 'adblock' || v === 'vpn' || v === 'ai' || v === 'passwords' || v === 'autofill' || v === 'appearance';
+  return v === 'general' || v === 'adblock' || v === 'vpn' || v === 'ai' || v === 'passwords' || v === 'autofill' || v === 'permissions' || v === 'appearance';
 }
 
 export default function Settings({ onClose, defaultSection, onOpenImport }: SettingsProps) {
@@ -214,6 +216,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
           {section === 'ai' && <AiSection />}
           {section === 'passwords' && <PasswordsSection />}
           {section === 'autofill' && <AutofillSection />}
+          {section === 'permissions' && <PermissionsSection />}
           {section === 'appearance' && <AppearanceSection />}
           </div>
         </div>

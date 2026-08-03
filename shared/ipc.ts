@@ -418,6 +418,10 @@ export const IPC = {
   // (permission-popover:request), как у findbar/translate-popover. Ответ остался общим каналом:
   // труба разрешений не менялась, поменялась только вью, в которой задают вопрос.
   PERMISSION_RESPONSE: 'permission:response',   // поповер → main: ответ пользователя (requestId, granted, remember)
+  // Раздел настроек «Разрешения сайтов» — посмотреть и поменять уже принятые решения.
+  PERMISSION_LIST:   'permission:list',    // renderer → main: -> PermissionRecord[]
+  PERMISSION_SET:    'permission:set',     // renderer → main: (origin, key, decision)
+  PERMISSION_REVOKE: 'permission:revoke',  // renderer → main: (origin, key?) — забыть, а не запретить
 
   // Загрузки
   DOWNLOADS_GET_ALL:    'downloads:get-all',    // renderer → main: текущий список
@@ -1100,6 +1104,16 @@ export interface PermissionRequest {
   permission: PermKey;
 }
 
+// Сохранённое решение по сайту — то, что показывает и правит раздел настроек «Разрешения».
+// ⚠️ Отсутствие записи и запрет — РАЗНЫЕ вещи: нет записи означает «спросим», а не «нельзя».
+// Поэтому «Забыть» и «Запретить» — две отдельные операции, а не одна.
+export interface PermissionRecord {
+  origin: string;
+  permission: PermKey;
+  decision: 'granted' | 'denied';
+  updatedAt: number;
+}
+
 // ── AI-действия над выделением (перевод / пересказ / объяснение / выжимка) ───
 // Общая труба: выделение → координаты → Qwen (промпт зависит от action) → поповер → стриминг.
 // Добавить новое действие = добавить пункт меню (TabManager.ts) + промпт (TranslationService.ts) —
@@ -1586,6 +1600,11 @@ export interface OblakoApi {
   addBookmark(url: string, title: string): Promise<BookmarkEntry | null>;
   removeBookmark(id: number): Promise<void>;
   removeBookmarkByUrl(url: string): Promise<void>;
+  // Разрешения сайтов (раздел настроек). revokePermission без key забывает ВСЁ по сайту.
+  listPermissions(): Promise<PermissionRecord[]>;
+  setPermission(origin: string, key: PermKey, decision: 'granted' | 'denied'): Promise<void>;
+  revokePermission(origin: string, key?: PermKey): Promise<void>;
+
   listBookmarks(): Promise<BookmarkEntry[]>;
   // Дерево целиком — режим «Закладки» в сайдбаре рисует его сам, поэтому уровни не догружает.
   listBookmarkTree(): Promise<BookmarkNode[]>;

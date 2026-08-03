@@ -119,7 +119,7 @@ import {
   setHistoryManager as setOrganizerHistoryManager,
 } from './TabOrganizer';
 import { suggestBookmarkFolders } from './BookmarkOrganizer';
-import type { BookmarkFolderProposal } from '../shared/ipc';
+import type { BookmarkFolderProposal, PermKey } from '../shared/ipc';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -2189,6 +2189,16 @@ function registerIpc() {
     },
   );
   ipcMain.on('permission-popover:height', (e, px: number) => setPermissionPopoverHeight(e.sender, px));
+  // Раздел настроек «Разрешения сайтов». ⚠️ Отозвать (забыть) и запретить — РАЗНЫЕ операции:
+  // забытый сайт спросит снова, запрещённый не спросит никогда. Склеить их в одну кнопку значило
+  // бы лишить человека способа исправить своё же ошибочное «нет».
+  ipcMain.handle(IPC.PERMISSION_LIST, () => permissions.list());
+  ipcMain.handle(IPC.PERMISSION_SET, (_e, origin: string, key: PermKey, decision: 'granted' | 'denied') => {
+    permissions.set(origin, key, decision);
+  });
+  ipcMain.handle(IPC.PERMISSION_REVOKE, (_e, origin: string, key?: PermKey) => {
+    permissions.revoke(origin, key);
+  });
 
   // Загрузки
   ipcMain.handle(IPC.DOWNLOADS_GET_ALL,    ()               => downloads.getAll());
