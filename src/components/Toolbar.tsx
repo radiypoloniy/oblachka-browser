@@ -804,7 +804,24 @@ export default function Toolbar({
     // вариант, не обязательно ждать, пока пользователь долистает всю историю до него), и только
     // потом — остальные, менее уверенные совпадения из истории/вкладок и живые веб-подсказки
     // (те — с самым слабым сигналом, значение не привязано к посещённым страницам вообще).
-    const [topItem, ...restItems] = items;
+    // ── Открытые вкладки, которых нет в истории ──────────────────────────────────────────────
+    // ⚠️ Выше вкладка попадала в подсказки, ТОЛЬКО если её адрес нашёлся в истории (tabIdByUrl
+    // навешивает пометку на запись истории). Открытая пять минут назад страница, до которой
+    // frecency ещё не дорос, не показывалась вовсе — а именно её и ищут чаще всего.
+    // Совпадение считаем сами, тем же правилом границы слова, что и для истории.
+    const alreadyShown = new Set(items.map((i) => i.tabId).filter(Boolean));
+    const liveTabItems: SuggestItem[] = allTabs
+      .filter((t) => !t.isHub && !alreadyShown.has(t.id))
+      .filter((t) => {
+        const host = hostnameOf(t.url);
+        const title = (t.title || '').toLowerCase();
+        return host.startsWith(q) || title.startsWith(q)
+          || matchesAtWordBoundary(host, q) || matchesAtWordBoundary(title, q);
+      })
+      .slice(0, 3)
+      .map((t) => ({ kind: 'tab' as SuggestKind, label: t.url, sub: t.title, url: t.url, tabId: t.id }));
+
+    const [topItem, ...restItems] = [...items, ...liveTabItems];
     // Подписи секций — по образцу Safari («Предложения Google» / «Закладки и история»), см. живое
     // сравнение. У героя (topItem) своей подписи нет — он и так визуально выделен отдельной
     // карточкой (RowIcon/hero-стиль в suggestdropdown.tsx), подпись над одной строкой была бы
@@ -828,6 +845,39 @@ export default function Toolbar({
     // Новый список — снимаем клавиатурную подсветку синхронно со сбросом selectedIdx выше
     // (заход 4/5): иначе вью продолжила бы подсвечивать строку, которой уже нет/сместилась.
     void window.oblako.setSuggestDropdownHighlight(-1);
+
+    // ── Второй эшелон: вкладка ПО СМЫСЛУ (локальная модель, см. electron/TabSearch.ts) ────────
+    //
+    // ⚠️ Условия намеренно узкие, и каждое — про цену. Очередь генерации в проекте одна и общая,
+    // прервать начатую генерацию node-llama-cpp не даёт, поэтому спрашивать модель на каждую
+    // букву нельзя: она заняла бы себя устаревшими запросами, а человек ждал бы перевод.
+    //  • ничего не нашлось обычным способом — иначе модель решает уже решённое;
+    //  • запрос похож на ОПИСАНИЕ (есть пробел, от 6 символов), а не на начало адреса;
+    //  • вкладок достаточно, чтобы их не было видно глазами.
+    // Результат приезжает отдельным обновлением списка: ждать модель, ничего не показывая, нельзя.
+    const hasTabHit = deduped.some((i) => i.kind === 'tab');
+    if (!hasTabHit && q.includes(' ') && q.length >= 6 && allTabs.length >= 5) {
+      const smartIds = await window.oblako.searchTabsSmart(query).catch(() => [] as string[]);
+      if (seq !== suggestSeqRef.current || smartIds.length === 0) return;
+      const byId = new Map(allTabs.map((t) => [t.id, t]));
+      const smartItems: SuggestItem[] = smartIds
+        .map((id) => byId.get(id))
+        .filter((t): t is NonNullable<typeof t> => !!t)
+        .map((t, idx) => ({
+          kind: 'tab' as SuggestKind,
+          label: t.url,
+          sub: t.title,
+          url: t.url,
+          tabId: t.id,
+          // Подпись честная: человек должен понимать, что эти строки нашлись НЕ по совпадению
+          // слов, а моделью, — иначе они выглядят как случайные (слов запроса в них нет).
+          ...(idx === 0 ? { sectionHeader: 'Вкладки по смыслу' } : {}),
+        }));
+      if (smartItems.length === 0) return;
+      const withSmart = [...deduped, ...smartItems];
+      setSuggestions(withSmart);
+      void window.oblako.setSuggestDropdownItems(withSmart);
+    }
   }, [allTabs, openDropdown, closeDropdown, searchEngineId]);
 
   const triggerSuggest = useCallback((q: string) => {

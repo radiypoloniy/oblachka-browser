@@ -14,6 +14,7 @@ const api: OblakoApi = {
   createSpecialTab: (kind: 'history' | 'settings' | 'bookmarks', section?: string) => ipcRenderer.invoke(IPC.TAB_CREATE_SPECIAL, kind, section),
   closeTab: (id: string) => ipcRenderer.invoke(IPC.TAB_CLOSE, id),
   activateTab: (id: string) => ipcRenderer.invoke(IPC.TAB_ACTIVATE, id),
+  searchTabsSmart: (query: string) => ipcRenderer.invoke(IPC.TABS_SEARCH_SMART, query) as Promise<string[]>,
   navigate: (id: string, input: string) => ipcRenderer.invoke(IPC.TAB_NAVIGATE, id, input),
   goBack: (id: string) => ipcRenderer.invoke(IPC.TAB_GO_BACK, id),
   goForward: (id: string) => ipcRenderer.invoke(IPC.TAB_GO_FORWARD, id),

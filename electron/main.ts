@@ -64,7 +64,7 @@ import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, Sideb
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
-import { warmup as warmupTranslation, unloadModel, getLoadedModelId, type ChatOutcome } from './TranslationService';
+import { warmup as warmupTranslation, unloadModel, getLoadedModelId, isModelWarm, type ChatOutcome } from './TranslationService';
 import { toggleAiPanel, openAiPanelApp, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
 import {
   togglePageTranslate,
@@ -79,6 +79,7 @@ import { BergamotTranslationEngine } from './BergamotTranslationEngine';
 import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { captureTabScreenshot, saveCurrentScreenshot, closeScreenshot, syncScreenshotBounds, relayoutScreenshot, setScreenshotTabManager } from './ScreenshotManager';
+import { searchTabsByMeaning } from './TabSearch';
 import { startTabDrag, endTabDrag, syncDropZoneBounds } from './DropZoneManager';
 import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
 import { suggestTabTitle } from './TabRenamer';
@@ -265,6 +266,9 @@ let mainSess: SessionManager | null = null;
 // моменту может уже дотла закрывать вкладки асинхронно. НЕ влияет на финальный автосейв — тот
 // синхронный (win.on('close') ниже), от этого флага не зависит.
 let isShuttingDown = false;
+// Идёт ли прямо сейчас смысловой поиск вкладки (см. TABS_SEARCH_SMART) — один за раз на всё
+// приложение, как и сама модель.
+let smartTabSearchBusy = false;
 const adblock     = new AdBlockManager();
 const bangs       = new BangStore();
 // Выученные цели быстрого поиска (Ctrl+E) — сайты, где человек уже искал. Читается с диска
@@ -1460,6 +1464,27 @@ function registerIpc() {
   ipcMain.handle(IPC.TAB_GO_BACK, (e, id: string) => tabsOf(e)?.goBack(id));
   ipcMain.handle(IPC.TAB_GO_FORWARD, (e, id: string) => tabsOf(e)?.goForward(id));
   ipcMain.handle(IPC.TAB_RELOAD, (e, id: string) => tabsOf(e)?.reload(id));
+  // Поиск вкладки по смыслу (см. TabSearch.ts). ⚠️ ОДИН запрос за раз: очередь генерации в
+  // проекте общая и FIFO (withQwenQueue), а человек в омнибоксе печатает быстрее, чем модель
+  // отвечает. Без этого гварда каждая буква превращалась бы в отдельный прогон, и они выстроились
+  // бы в хвост, заняв модель на десятки секунд ради подсказки, которая давно устарела.
+  ipcMain.handle(IPC.TABS_SEARCH_SMART, async (e, query: string): Promise<string[]> => {
+    const tabs = tabsOf(e);
+    // ⚠️ Только на ТЁПЛОЙ модели. Замерено: холодная загрузка 9B — 31 секунда и ~6 ГБ VRAM.
+    // Человек, печатающий фразу в омнибоксе, этого не заказывал; подсказка не стоит того, чтобы
+    // поднимать модель. Пока она холодная, фича просто молчит — а после первого явного обращения
+    // к AI (перевод, панель, правка текста) начинает работать сама собой.
+    if (!tabs || smartTabSearchBusy || !isModelWarm()) return [];
+    smartTabSearchBusy = true;
+    try {
+      return await searchTabsByMeaning(query, tabs.snapshot());
+    } catch (err) {
+      console.warn('[tab-search] ошибка:', err);
+      return [];
+    } finally {
+      smartTabSearchBusy = false;
+    }
+  });
   ipcMain.handle(IPC.CONTENT_SET_BOUNDS, (e, b: ContentBounds) => {
     tabsOf(e)?.setContentBounds(b);
     // Та же геометрия двигает FindBar — центрирование по контентной зоне (учитывает сайдбар) и

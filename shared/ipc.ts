@@ -447,6 +447,9 @@ export const IPC = {
   TABS_RENAME_ROLLBACK: 'tabs:rename-rollback', // renderer → main: вернуть прежние названия
   TABS_RENAME_PROGRESS: 'tabs:rename-progress', // main → renderer: { done, total } для индикатора
   TABS_SUGGEST_GROUPS:    'tabs:suggest-groups',    // renderer → main: TabOrganizer.ts::suggestGroups() → OrganizeProposal
+  // Поиск вкладки ПО СМЫСЛУ (см. electron/TabSearch.ts) — второй эшелон омнибокса, дёргается
+  // только когда обычное совпадение по заголовку/адресу не нашло ничего. Отдаёт id вкладок.
+  TABS_SEARCH_SMART:      'tabs:search-smart',      // renderer → main: запрос → id подходящих вкладок
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
@@ -1529,6 +1532,8 @@ export interface OblakoApi {
   createSpecialTab(kind: 'history' | 'settings' | 'bookmarks' | 'downloads', section?: string): Promise<string>;
   closeTab(id: string): Promise<void>;
   activateTab(id: string): Promise<void>;
+  /** Вкладки, подходящие запросу по смыслу (локальная модель). Пусто — не нашлось или модели нет. */
+  searchTabsSmart(query: string): Promise<string[]>;
   navigate(id: string, input: string): Promise<void>;
   goBack(id: string): Promise<void>;
   goForward(id: string): Promise<void>;
