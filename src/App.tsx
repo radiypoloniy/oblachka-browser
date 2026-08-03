@@ -620,7 +620,10 @@ export default function App() {
     const ids = new Set(downloads.map((d) => d.id));
     // Первый приход списка — это восстановление с диска, а не новые загрузки: запоминаем молча.
     if (seenDownloadIds.current === null) { seenDownloadIds.current = ids; return; }
-    const fresh = downloads.some((d) => !seenDownloadIds.current!.has(d.id) && d.state === 'progressing');
+    // ⚠️ Ловим ЛЮБОЙ новый id, а не только 'progressing'. Мелкий файл успевает докачаться до
+    // того, как список доедет до рендерера, и приходит уже 'completed' — по прежнему условию
+    // такая загрузка проходила молча, то есть анимация не играла именно на быстрых файлах.
+    const fresh = downloads.some((d) => !seenDownloadIds.current!.has(d.id));
     seenDownloadIds.current = ids;
     if (fresh) setDownloadStartTick((n) => n + 1);
   }, [downloads]);

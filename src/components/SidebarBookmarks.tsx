@@ -8,6 +8,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Check, ChevronRight, Folder, FolderPlus, Pencil, Star, X } from 'lucide-react';
 import type { BookmarkNode } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
+import FolderGlyph from './FolderGlyph';
 
 // Режим «Закладки» в сайдбаре — содержимое, которое встаёт на место полосы вкладок.
 //
@@ -144,10 +145,15 @@ export default function SidebarBookmarks({ onOpen }: Props) {
       onDragCancel={() => setDragId(null)}
     >
       {/* Сетка папок корня — на месте закреплённых вкладок. Показывается, даже когда папок нет:
-          иначе «+» негде было бы разместить, а первую папку нечем создать. */}
+          иначе «+» негде было бы разместить, а первую папку нечем создать.
+          ⚠️ У каждой ячейки ЕСТЬ ПОДПИСЬ. Раньше здесь стояли одинаковые контурные значки без
+          имён — по такой сетке нельзя ответить даже на вопрос «что это за папки», не то что
+          выбрать нужную. Раскладка — как на домашнем экране: значок и подпись под ним. */}
       <div className="no-drag" style={{ ...PLATE, padding: 8, marginBottom: 10 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-          <FolderCell id="root" label="Все закладки" active={folderId === null} onClick={() => setFolderId(null)} all />
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, alignItems: 'start',
+        }}>
+          <FolderCell id="root" label="Все" active={folderId === null} onClick={() => setFolderId(null)} all />
           {rootFolders.map((f) => (
             <FolderCell key={f.id} id={String(f.id)} label={f.title}
               active={folderId === f.id} onClick={() => setFolderId(f.id)} />
@@ -157,13 +163,21 @@ export default function SidebarBookmarks({ onOpen }: Props) {
             onClick={() => setCreating(true)}
             title={folderId === null ? 'Новая папка' : 'Новая папка внутри текущей'}
             style={{
-              border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
-              background: 'transparent', color: 'var(--text-faint)', display: 'inline-flex',
+              border: 'none', cursor: 'default', padding: '6px 2px 4px', borderRadius: 'var(--radius-sm)',
+              background: 'transparent', color: 'var(--text-faint)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
-            <FolderPlus size={18} strokeWidth={2} />
+            <span style={{
+              width: 40, height: 40, borderRadius: 11, display: 'inline-flex',
+              alignItems: 'center', justifyContent: 'center',
+              border: '1.5px dashed var(--divider-strong)',
+            }}>
+              <FolderPlus size={17} strokeWidth={2} />
+            </span>
+            <span style={{ fontSize: 'var(--fs-xs)', lineHeight: 1.1 }}>Новая</span>
           </button>
         </div>
         {creating && <NameInput placeholder="Название папки" onDone={(v) => void createFolder(v)} onCancel={() => setCreating(false)} />}
@@ -420,17 +434,34 @@ function FolderCell({ id, label, active, onClick, all }: {
       onClick={onClick}
       title={all ? 'Все закладки (перетащите сюда, чтобы вынуть из папки)' : label}
       style={{
-        border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
+        border: 'none', cursor: 'default', padding: '6px 2px 4px', borderRadius: 'var(--radius-sm)',
         background: isOver ? 'var(--accent-soft)' : active ? 'var(--surface)' : 'transparent',
         boxShadow: isOver ? 'inset 0 0 0 1.5px var(--accent)' : active ? 'var(--shadow-card)' : 'none',
-        display: 'inline-flex',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 0,
         color: isOver ? 'var(--accent)' : active ? 'var(--text-strong)' : 'var(--text-muted)',
         transition: 'background var(--dur-fast) var(--ease-standard)',
       }}
       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
     >
-      {all ? <Star size={18} strokeWidth={2} /> : <Folder size={18} strokeWidth={2} />}
+      {all ? (
+        // «Все закладки» — не папка, и значок у неё другой намеренно: это не место, а «показать
+        // всё». Тот же приём, что у пункта «Все закладки» в колонке раздела.
+        <span style={{
+          width: 40, height: 40, borderRadius: 11, display: 'inline-flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'linear-gradient(180deg, hsl(42 92% 62%), hsl(36 88% 50%))',
+          color: '#fff', boxShadow: 'var(--appicon-shadow)',
+        }}>
+          <Star size={20} strokeWidth={2.2} fill="currentColor" />
+        </span>
+      ) : (
+        <FolderGlyph title={label} size={40} />
+      )}
+      <span style={{
+        maxWidth: '100%', fontSize: 'var(--fs-xs)', lineHeight: 1.1,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{label}</span>
     </button>
   );
 }

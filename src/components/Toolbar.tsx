@@ -126,7 +126,7 @@ export default function Toolbar({
   useEffect(() => {
     if (downloadStartTick === 0) return; // стартовое значение, загрузок ещё не было
     setFlying(true);
-    const t = setTimeout(() => setFlying(false), 460);
+    const t = setTimeout(() => setFlying(false), 820);
     return () => clearTimeout(t);
   }, [downloadStartTick]);
 
@@ -1225,7 +1225,7 @@ export default function Toolbar({
               position: 'relative',
             }}
           >
-            <Download size={18} style={flying ? { animation: 'oblako-dl-land 420ms var(--ease-out)' } : undefined} />
+            <Download size={18} style={flying ? { animation: 'oblako-dl-land 520ms var(--ease-out)' } : undefined} />
 
             {/* ⚠️ Прилетающий файл — единственный момент, когда человеку СООБЩАЮТ, что загрузка
                 вообще началась: у нас нет ни системы тостов, ни полосы загрузок снизу, и раньше
@@ -1233,17 +1233,27 @@ export default function Toolbar({
                 замечал. Летит снизу-слева, со стороны страницы, — оттуда файл и «пришёл».
                 Только transform и opacity: они не трогают раскладку и уходят в композитор. */}
             {flying && (
-              <span
-                aria-hidden
-                style={{
-                  position: 'absolute', inset: 0, display: 'flex',
-                  alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--accent)', pointerEvents: 'none',
-                  animation: 'oblako-dl-fly 420ms var(--ease-out)',
-                }}
-              >
-                <Download size={18} />
-              </span>
+              <>
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute', inset: 0, display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                    color: 'var(--accent)', pointerEvents: 'none', zIndex: 1,
+                    animation: 'oblako-dl-fly 520ms var(--ease-out)',
+                  }}
+                >
+                  <Download size={18} />
+                </span>
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute', inset: 0, borderRadius: '50%',
+                    pointerEvents: 'none',
+                    animation: 'oblako-dl-halo 520ms var(--ease-out) 260ms',
+                  }}
+                />
+              </>
             )}
 
             {/* Идёт скачивание — дуга прогресса по кругу кнопки. Прежняя статичная точка не

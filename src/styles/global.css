@@ -31,14 +31,22 @@ body {
    ⚠️ Дуга прогресса крутится СВОИМ кадром, а не общим oblako-spin: у неё есть базовый поворот
    на -90° (старт сверху), и общий кадр, задающий только `to`, этот поворот бы сбросил. */
 @keyframes oblako-dl-fly {
-  from { transform: translate(-16px, 22px) scale(1.15); opacity: 0; }
-  35%  { opacity: 1; }
-  to   { transform: translate(0, 0) scale(0.55); opacity: 0; }
+  from { transform: translate(-26px, 46px) scale(1.5); opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  to   { transform: translate(0, 0) scale(0.5); opacity: 0; }
 }
 @keyframes oblako-dl-land {
-  0%, 55% { transform: none; }
-  72%     { transform: scale(0.86) translateY(1px); }
+  0%, 58% { transform: none; }
+  74%     { transform: scale(0.8) translateY(2px); }
+  88%     { transform: scale(1.08); }
   100%    { transform: none; }
+}
+/* Короткая вспышка вокруг кнопки в момент приземления — без неё «прилетело» читается только у
+   того, кто в этот момент смотрел прямо на кнопку. */
+@keyframes oblako-dl-halo {
+  from { box-shadow: 0 0 0 0 var(--accent); opacity: 0.55; }
+  to   { box-shadow: 0 0 0 14px var(--accent); opacity: 0; }
 }
 @keyframes oblako-dl-spin {
   from { transform: rotate(-90deg); }
