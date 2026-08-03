@@ -128,6 +128,12 @@ export function TileCaption({ children }: { children: React.ReactNode }) {
 // интерфейс браузера, а плитки стола сознательно живут своими цветами (см. шапку файла).
 const CLOCK_SECOND = '#FF9F0A';
 
+function tinyDial(box: { width: number; height: number }, avail: number, dateH: number): number {
+  const small = box.height < 150;
+  const reserved = small ? 0 : 20 + dateH;
+  return Math.max(44, Math.min(avail, box.height - (small ? 24 : 32) - reserved));
+}
+
 export function ClockWidget({ box, fill }: WidgetProps) {
   const [now, setNow] = useState(() => new Date());
   const opts = loadNewTabSettings().clock;
@@ -155,28 +161,43 @@ export function ClockWidget({ box, fill }: WidgetProps) {
   // Циферблат — КРУГ, поэтому его размер держит меньшая из сторон свободного места, иначе на
   // широкой плитке он вылез бы за нижний край. Подпись сверху и дата снизу вычитаются заранее.
   const dateH = opts.date ? 26 : 0;
-  const dial = Math.max(64, Math.min(avail, box.height - 32 - 20 - dateH));
+  // ⚠️ На одноклеточной плитке подписи сверху и снизу больше нет, поэтому и вычитать под них
+  // нечего: прежняя формула резервировала 46 px, которых не существует, и циферблат упирался в
+  // нижний потолок 64 px, вылезая за плитку. Отсюда и «плывёт разметка» на мелком размере.
+  const dial = tinyDial(box, avail, dateH);
 
+  // ⚠️ На плитке в ОДНУ клетку подпись дня и дата не показываются. Втроём (день сверху, время,
+  // дата снизу) они физически не влезают в ~124 px: содержимое вылезало за края — это и было
+  // «плывёт разметка». Размер меняет СОДЕРЖАНИЕ, а не масштаб — то же правило, что у погоды.
+  const tiny = box.height < 150;
   return (
-    <Tile surface fill={fill}>
-      <TileCaption>{weekday}</TileCaption>
+    <Tile surface fill={fill} padding={tiny ? 12 : 16}>
+      {!tiny && <TileCaption>{weekday}</TileCaption>}
       {analog ? (
         <div style={{
           flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: 8,
         }}>
           <AnalogFace size={dial} now={now} seconds={opts.seconds} />
-          {opts.date && (
+          {opts.date && !tiny && (
             <div style={{ fontSize: 13, opacity: 0.8, textAlign: 'center' }}>{dayMonth}</div>
           )}
         </div>
       ) : (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        // ⚠️ На широкой плитке содержимое ЦЕНТРИРУЕТСЯ. Прижатое влево время оставляло справа
+        // пустоту в половину виджета — на 4 клетки это выглядело как незаполненная заготовка.
+        // Порог по пропорции, а не по числу клеток: клетка резиновая, а «шире, чем высокая» —
+        // это ровно тот случай, когда прижатый край и читается пустотой.
+        <div style={{
+          flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center',
+          alignItems: box.width > box.height * 1.6 ? 'center' : 'flex-start',
+          textAlign: box.width > box.height * 1.6 ? 'center' : 'left',
+        }}>
           <div style={{
             fontSize: fs, fontWeight: 250, lineHeight: 1,
             fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em',
           }}>{time}</div>
-          {opts.date && (
+          {opts.date && !tiny && (
             <div style={{ marginTop: 10, fontSize: Math.max(13, Math.round(fs * 0.2)), opacity: 0.8 }}>
               {dayMonth}
             </div>
@@ -204,7 +225,11 @@ function AnalogFace({ size, now, seconds }: { size: number; now: Date; seconds: 
 
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" style={{ display: 'block', flex: 'none' }}>
-      <circle cx="50" cy="50" r="47" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.20)" strokeWidth="1" />
+      {/* ⚠️ Циферблат рисуется currentColor, а не белым. Он делался под тёмную плитку, и когда часы
+          пошли за темой, весь циферблат стал белым по белому — со стороны это выглядело как
+          «аналоговые часы не работают», хотя они исправно рисовались невидимыми. currentColor
+          наследуется от плитки: тёмный на светлой поверхности, белый на выбранной заливке. */}
+      <circle cx="50" cy="50" r="47" fill="currentColor" fillOpacity="0.05" stroke="currentColor" strokeOpacity="0.22" strokeWidth="1" />
       {/* Двенадцать рисок; каждая третья (12/3/6/9) крупнее — по ним глаз и цепляется. */}
       {Array.from({ length: 12 }, (_, i) => {
         const major = i % 3 === 0;
@@ -212,16 +237,16 @@ function AnalogFace({ size, now, seconds }: { size: number; now: Date; seconds: 
           <line
             key={i}
             x1="50" y1={major ? 8 : 9.5} x2="50" y2={major ? 15 : 13}
-            stroke="#fff" strokeOpacity={major ? 1 : 0.5}
+            stroke="currentColor" strokeOpacity={major ? 0.85 : 0.4}
             strokeWidth={major ? 2.6 : 1.4} strokeLinecap="round"
             transform={`rotate(${i * 30} 50 50)`}
           />
         );
       })}
-      <Hand angle={hourAngle} length={25} width={4.8} color="#fff" />
-      <Hand angle={minAngle}  length={36} width={3.2} color="#fff" />
+      <Hand angle={hourAngle} length={25} width={4.8} color="currentColor" />
+      <Hand angle={minAngle}  length={36} width={3.2} color="currentColor" />
       {seconds && <Hand angle={secAngle} length={40} width={1.3} color={CLOCK_SECOND} tail={9} />}
-      <circle cx="50" cy="50" r="3" fill="#fff" />
+      <circle cx="50" cy="50" r="3" fill="currentColor" />
       {seconds && <circle cx="50" cy="50" r="1.5" fill={CLOCK_SECOND} />}
     </svg>
   );

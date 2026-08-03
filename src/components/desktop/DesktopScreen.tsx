@@ -201,8 +201,18 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
       const half = (clientX - box.left) - (hit.col * step) > (hit.w * step) * 0.55;
       return half ? idx + 1 : idx;
     }
-    const below = base.find((p) => p.row > row);
-    return below ? dragBase.findIndex((i) => i.id === below.item.id) : dragBase.length;
+    // ⚠️ Курсор над ПУСТОЙ клеткой. Раньше здесь искался первый элемент строкой НИЖЕ и вставка
+    // шла перед ним — то есть попасть в саму дырку было нельзя в принципе: элемент уезжал в
+    // начало следующей строки. Это и есть «на некоторые позиции иконки упорно не хотят вставать,
+    // хотя клетка свободна» — причём дыры появились как раз после перехода на последовательную
+    // укладку, поэтому баг и стал заметным.
+    //
+    // Правильный ответ — место в ПОРЯДКЕ ЧТЕНИЯ: первый элемент, который стоит не раньше клетки
+    // под курсором. Порядок чтения теперь совпадает с порядком списка (см. layoutItems), поэтому
+    // такой индекс и означает ровно «сюда».
+    const key = row * grid.cols + col;
+    const after = base.find((p) => p.row * grid.cols + p.col >= key);
+    return after ? dragBase.findIndex((i) => i.id === after.item.id) : dragBase.length;
   };
 
   const onItemPointerDown = (e: React.PointerEvent, id: string): void => {
