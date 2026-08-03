@@ -26,6 +26,8 @@ export interface WidgetProps {
   onOpen: (url: string) => void;
   /** Город для погоды — из настроек вкладки; пустой означает «человек ещё не выбрал». */
   city: string;
+  /** Выбранная человеком заливка (id из WIDGET_FILLS). Погода его игнорирует — см. ниже. */
+  fill?: string;
 }
 
 // ── Плитка ────────────────────────────────────────────────────────────────────
@@ -36,26 +38,51 @@ export interface WidgetProps {
 //    темы (var(--surface)), то есть темнеет вместе с интерфейсом и следует выбранной палитре.
 //    Прежний литерал #FFFFFF в тёмной теме светил на весь стол белым прямоугольником, а тёмный
 //    текст на нём оставался тёмным.
-function Tile({ children, tint, padding = 16, surface }: {
+// ── Заливки виджетов ──────────────────────────────────────────────────────────
+// ⚠️ 'theme' — заливка ПО УМОЛЧАНИЮ и не случайно: плитка темы берёт var(--surface) и темнеет
+// вместе с интерфейсом и палитрой, а выбранный цвет живёт своей жизнью. Поэтому список начинается
+// с темы, а не с цвета, и поэтому здесь id, а не готовые цвета в раскладке стола.
+// ⚠️ Фиолетового нет — то же правило, что у --tile-* и подложек иконок сайтов.
+export const WIDGET_FILLS: { id: string; label: string; css: string | null }[] = [
+  { id: 'theme',  label: 'Как тема', css: null },
+  { id: 'blue',   label: 'Синий',    css: 'linear-gradient(165deg, #4E92E8 0%, #2E6FC4 100%)' },
+  { id: 'teal',   label: 'Бирюза',   css: 'linear-gradient(165deg, #35B6C4 0%, #2391A4 100%)' },
+  { id: 'green',  label: 'Зелёный',  css: 'linear-gradient(165deg, #46BE7A 0%, #2FA063 100%)' },
+  { id: 'orange', label: 'Оранж',    css: 'linear-gradient(165deg, #FFA53D 0%, #F1811A 100%)' },
+  { id: 'pink',   label: 'Розовый',  css: 'linear-gradient(165deg, #F2708F 0%, #DF5175 100%)' },
+  { id: 'slate',  label: 'Графит',   css: 'linear-gradient(165deg, #5A6472 0%, #3B4350 100%)' },
+];
+
+export function fillCss(id: string | undefined): string | null {
+  return WIDGET_FILLS.find((f) => f.id === id)?.css ?? null;
+}
+
+function Tile({ children, tint, padding = 16, surface, fill }: {
   children: React.ReactNode;
   /** Заливка цветной плитки. Игнорируется при surface. */
   tint?: string;
   padding?: number;
   /** Плитка идёт за темой и палитрой, а не за собственным цветом. */
   surface?: boolean;
+  /** Выбранная человеком заливка (id из WIDGET_FILLS). Перебивает surface. */
+  fill?: string;
 }) {
+  const custom = fillCss(fill);
+  const onSurface = surface && !custom;
   return (
     <div style={{
       width: '100%', height: '100%', overflow: 'hidden',
       borderRadius: 'var(--radius-card)',
-      background: surface ? 'var(--surface)' : tint,
+      background: custom ?? (surface ? 'var(--surface)' : tint),
       // ⚠️ У плитки темы тень мягче, а по краю идёт кромка: и белая на светлых обоях, и тёмная на
       // тёмных иначе сливается с фоном и перестаёт читаться как отдельный остров.
-      boxShadow: surface
+      boxShadow: onSurface
         ? '0 1px 2px rgba(16,20,40,0.10), 0 10px 28px rgba(16,20,40,0.16)'
         : '0 6px 20px rgba(16,20,40,0.22)',
-      border: surface ? '1px solid var(--divider)' : undefined,
-      color: surface ? 'var(--text-body)' : '#fff',
+      border: onSurface ? '1px solid var(--divider)' : undefined,
+      // На выбранной заливке текст всегда белый: все заливки набора тёмные настолько, что
+      // --text-body на них не читался бы.
+      color: onSurface ? 'var(--text-body)' : '#fff',
       padding,
       display: 'flex', flexDirection: 'column',
     }}>{children}</div>
@@ -87,7 +114,7 @@ const TILE_SLATE = 'linear-gradient(160deg, #47566B 0%, #333E52 55%, #2A3242 100
 // интерфейс браузера, а плитки стола сознательно живут своими цветами (см. шапку файла).
 const CLOCK_SECOND = '#FF9F0A';
 
-export function ClockWidget({ box }: WidgetProps) {
+export function ClockWidget({ box, fill }: WidgetProps) {
   const [now, setNow] = useState(() => new Date());
   const opts = loadNewTabSettings().clock;
   const analog = opts.face !== 'digital';
@@ -117,7 +144,7 @@ export function ClockWidget({ box }: WidgetProps) {
   const dial = Math.max(64, Math.min(avail, box.height - 32 - 20 - dateH));
 
   return (
-    <Tile tint={TILE_SLATE}>
+    <Tile tint={TILE_SLATE} fill={fill}>
       <TileCaption>{weekday}</TileCaption>
       {analog ? (
         <div style={{
@@ -361,7 +388,7 @@ const TONE_WARM  = 'var(--tone-warm)';
 const FILL_GREEN = 'var(--tone-green-fill)';
 const FILL_WARM  = 'var(--tone-warm-fill)';
 
-export function RatesWidget({ size, box }: WidgetProps) {
+export function RatesWidget({ size, box, fill }: WidgetProps) {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [prev, setPrev] = useState<Record<string, number>>({});
   const [history, setHistory] = useState<number[]>([]);
@@ -394,7 +421,7 @@ export function RatesWidget({ size, box }: WidgetProps) {
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
-    <Tile surface>
+    <Tile surface fill={fill}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
         <TileCaption>Курс ЦБ</TileCaption>
         {history.length > 1 && (
@@ -458,7 +485,7 @@ function formatRub(v: number): string {
   return v.toFixed(4); // мелочь вроде DOGE — иначе на экране был бы честный, но бесполезный «0.00»
 }
 
-export function CryptoWidget({ size, box }: WidgetProps) {
+export function CryptoWidget({ size, box, fill }: WidgetProps) {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [change, setChange] = useState<Record<string, number>>({});
   const [history, setHistory] = useState<number[]>([]);
@@ -493,7 +520,7 @@ export function CryptoWidget({ size, box }: WidgetProps) {
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
-    <Tile surface>
+    <Tile surface fill={fill}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
         {/* ⚠️ Валюта — в подписи, а не в каждой строке: «₿ 5.02 млн» без неё не отвечает на вопрос
             «миллиона чего» (у соседнего виджета символ слева говорит это сам — «$ 78.42» читается
@@ -634,7 +661,7 @@ function FaviconTile({ host }: { host: string }) {
   );
 }
 
-export function TopSitesWidget({ box, tiles, onOpen }: WidgetProps) {
+export function TopSitesWidget({ box, tiles, onOpen, fill }: WidgetProps) {
   // ⚠️ Подпись — ДОМЕН, а не заголовок страницы. Первая версия ставила сюда title, и «Далай
   // лама: смотрите и скачивайте изображения — Яндекс Картинки» расползался на всю плитку,
   // налезая на соседние иконки. Домен короткий, узнаваемый и примерно одной длины у всех.
@@ -647,7 +674,7 @@ export function TopSitesWidget({ box, tiles, onOpen }: WidgetProps) {
   const shown = tiles.slice(0, cols * rows);
 
   return (
-    <Tile tint={TILE_SLATE}>
+    <Tile tint={TILE_SLATE} fill={fill}>
       <TileCaption>Часто открываете</TileCaption>
       {shown.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.85 }}>
@@ -709,7 +736,7 @@ function saveTasks(list: Task[]): void {
  * визуал не стоит. Формат записи выбран так, чтобы будущий источник событий добавил себе поле,
  * а не переписывал хранилище.
  */
-export function TasksWidget({ box }: WidgetProps) {
+export function TasksWidget({ box, fill }: WidgetProps) {
   const [tasks, setTasks] = useState<Task[]>(loadTasks);
   const [draft, setDraft] = useState('');
 
@@ -727,7 +754,7 @@ export function TasksWidget({ box }: WidgetProps) {
   const left = tasks.filter((t) => !t.done).length;
 
   return (
-    <Tile surface>
+    <Tile surface fill={fill}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
         <TileCaption>Дела</TileCaption>
         <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>

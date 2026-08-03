@@ -14,7 +14,7 @@ import {
 } from '../../newtab/settings';
 import { APPS, AppIconBadge } from '../aiApps';
 import SiteIcon from './SiteIcon';
-import { WIDGET_RENDERERS } from './widgets';
+import { WIDGET_FILLS, WIDGET_RENDERERS, fillCss } from './widgets';
 
 // Рабочий стол новой вкладки — springboard в духе iPad: сетка иконок и виджетов поверх обоев.
 // Раскладку считает src/newtab/desktop.ts (там же объяснено, почему элементы хранят порядок, а
@@ -314,7 +314,12 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
               const content = item.kind === 'widget' ? (() => {
                 const Render = WIDGET_RENDERERS[item.widget ?? ''];
                 return Render ? (
-                  <Render size={item.size} box={box} tiles={tiles} onOpen={onSubmit} city={settings.weather.city} />
+                  // ⚠️ Погода заливку НЕ получает намеренно: там цвет означает время суток и
+                  // саму погоду (ночью тёмная, в грозу свинцовая), и подмена его на выбранный
+                  // стёрла бы единственный виджет, где цвет — сообщение, а не оформление.
+                  <Render size={item.size} box={box} tiles={tiles} onOpen={onSubmit}
+                    city={settings.weather.city}
+                    fill={item.widget === 'weather' ? undefined : item.fill} />
                 ) : null;
               })() : item.kind === 'app' ? (() => {
                 const app = appById.get(item.appId ?? '');
@@ -381,6 +386,19 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                           boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
                         }}
                       ><X size={13} /></button>
+
+                      {/* Выбор заливки — только у виджетов и только в режиме правки: цвет это
+                          настройка вида, а не действие, и в обычном режиме кнопке над плиткой
+                          делать нечего. Погоду не трогаем — там цвет несёт смысл. */}
+                      {item.kind === 'widget' && item.widget !== 'weather' && (
+                        <FillPicker
+                          value={item.fill}
+                          onPick={(fill) => apply({
+                            ...layout,
+                            items: layout.items.map((it) => (it.id === item.id ? { ...it, fill } : it)),
+                          })}
+                        />
+                      )}
 
                       {/* Уголок растягивания — только у виджетов: иконка занимает ровно клетку,
                           и «растянутая» иконка была бы просто размытым квадратом. */}
@@ -530,6 +548,51 @@ function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoU
     <>
       <div style={style} />
       {bg.dim > 0 && <div style={{ position: 'absolute', inset: 0, zIndex: 1, background: `rgba(0,0,0,${bg.dim})` }} />}
+    </>
+  );
+}
+
+// Выбор заливки виджета — точка-палитра в углу плитки, раскрывается рядом с ней.
+// ⚠️ Хранится ID заливки, а не цвет: «как тема» обязана оставаться живой связью с темой и
+// палитрой, а записанный цвет застыл бы навсегда (см. DesktopItem.fill).
+function FillPicker({ value, onPick }: { value?: string; onPick: (fill: string | undefined) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        title="Цвет виджета"
+        style={{
+          position: 'absolute', left: -6, bottom: -6, zIndex: 6,
+          width: 20, height: 20, borderRadius: 999, border: '2px solid #fff',
+          background: fillCss(value) ?? 'var(--surface)',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.35)', cursor: 'default', padding: 0,
+        }}
+      />
+      {open && (
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute', left: -6, bottom: 20, zIndex: 8,
+            display: 'flex', gap: 5, padding: 7, borderRadius: 'var(--radius-card)',
+            background: 'var(--surface-solid)', boxShadow: 'var(--shadow-pop)',
+          }}
+        >
+          {WIDGET_FILLS.map((f) => (
+            <button
+              key={f.id}
+              onClick={(e) => { e.stopPropagation(); onPick(f.id === 'theme' ? undefined : f.id); setOpen(false); }}
+              title={f.label}
+              style={{
+                width: 20, height: 20, borderRadius: 999, cursor: 'default', padding: 0,
+                background: f.css ?? 'var(--surface)',
+                border: (value ?? 'theme') === f.id ? '2px solid var(--accent)' : '1px solid var(--divider-strong)',
+              }}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }

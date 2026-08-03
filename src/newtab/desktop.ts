@@ -27,6 +27,14 @@ export interface DesktopItem {
   appId?: string;
   /** kind==='widget': тип виджета (см. WIDGET_KINDS). */
   widget?: string;
+  /**
+   * Заливка виджета — id из WIDGET_FILLS (см. widgets.tsx). Отсутствует = 'theme', то есть
+   * плитка идёт за темой и палитрой.
+   * ⚠️ Хранится ID, а не цвет. Записанный сюда literal вроде '#3B8DF0' не потемнел бы вместе с
+   * тёмной темой и не сменился бы вместе с палитрой — ровно та ошибка, которую в проекте уже
+   * ловили на белом фоне плиток («#FFFFFF светил на весь стол», см. CLAUDE.md).
+   */
+  fill?: string;
 }
 
 export interface DesktopLayout {
