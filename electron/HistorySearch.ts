@@ -69,6 +69,9 @@ export async function searchHistorySmart(
   history: HistoryManager,
   query: string,
   limit = 8,
+  // background — поиск, которого человек не заказывал (подсказка «вы это уже читали», см.
+  // RelatedHistory.ts). Такой ждёт, пока пользовательская полоса очереди не опустеет.
+  opts?: { background?: boolean },
 ): Promise<SmartSearchResponse> {
   const q = query.trim();
   if (!q) return { results: [], degraded: false };
@@ -113,7 +116,7 @@ export async function searchHistorySmart(
       url: c.url,
       score: c.score,
       snippet: c.snippet,
-    })));
+    })), opts);
   } catch (e) {
     // degraded:true — вызывающая сторона (History.tsx) честно показывает пользователю, что это
     // лексика+FTS без участия Qwen, а не молчаливая подмена результата умного поиска.

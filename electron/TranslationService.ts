@@ -589,11 +589,22 @@ export interface RerankCandidate { id: number; title: string; url: string; score
 // связный текст, а короткий структурированный ответ.
 const RERANK_MAX_TOKENS = 512
 
+// ⚠️ Фрагмент ОБЯЗАН быть подрезан, и это не оптимизация. Снипет приходит из FTS-индекса
+// содержимого — это кусок текста страницы, и его длина ничем не ограничена. На истории с
+// реальным контентом двадцать таких кандидатов переставали влезать в контекст, node-llama-cpp
+// отвечал «Failed to compress chat history… prompt too long», реранк падал — и умный поиск ТИХО
+// деградировал до лексики+FTS. Тихо, потому что этот исход предусмотрен как штатный
+// (degraded:true), и отличить «модель сочла кандидатов нерелевантными» от «промпт не влез»
+// снаружи было нельзя. Поймано на живом прогоне подсказки «вы это уже читали».
+// Для суждения о релевантности двухсот символов хватает: там решается «про то или не про то».
+const RERANK_SNIPPET_MAX = 240
+
 function buildRerankPrompt(query: string, candidates: RerankCandidate[]): string {
   const list = candidates
     .map((c, i) => {
-      const snippet = c.snippet ? `\n   Фрагмент: ${c.snippet}` : ''
-      return `${i}. ${c.title || '(без названия)'} — ${c.url}${snippet}`
+      const short = c.snippet?.replace(/\s+/g, ' ').trim().slice(0, RERANK_SNIPPET_MAX)
+      const snippet = short ? `\n   Фрагмент: ${short}` : ''
+      return `${i}. ${(c.title || '(без названия)').slice(0, 120)} — ${c.url.slice(0, 140)}${snippet}`
     })
     .join('\n')
   return (
@@ -616,7 +627,13 @@ function buildRerankPrompt(query: string, candidates: RerankCandidate[]): string
 // массивом (не нашла релевантных). Не бросает по формату ответа — нераспознанные токены просто
 // не попадают в результат (см. регэксп ниже); полный провал модели (исключение runPrompt) уходит
 // наверх вызывающей стороне, которая уже решает про fallback (см. searchHistorySmart).
-export async function rerankHistoryCandidates(query: string, candidates: RerankCandidate[]): Promise<number[]> {
+export async function rerankHistoryCandidates(
+  query: string,
+  candidates: RerankCandidate[],
+  // background — переранжирование, которого человек не заказывал (подсказка «вы это уже читали»
+  // при клике в омнибокс). Ждёт, пока пользовательская полоса не опустеет (см. QwenQueue.ts).
+  opts?: { background?: boolean },
+): Promise<number[]> {
   if (candidates.length === 0) return []
   // runPrompt САМ модель не грузит — обычно её загружает вызывающая сторона (runSegmented для
   // перевода/AI-действий, runChatMessageQueued для чата) до первого runPrompt/session.prompt().
@@ -625,7 +642,7 @@ export async function rerankHistoryCandidates(query: string, candidates: RerankC
   // ещё null при первом заходе (если юзер до этого ни разу не переводил/не чатился в этой
   // сессии) и `new LlamaChatSession(...)` внутри runPrompt падает с "is not a constructor".
   await ensureLoaded()
-  const { out } = await runPrompt(buildRerankPrompt(query, candidates), RERANK_MAX_TOKENS)
+  const { out } = await runPrompt(buildRerankPrompt(query, candidates), RERANK_MAX_TOKENS, undefined, opts)
   const seen = new Set<number>()
   const result: number[] = []
   for (const raw of out.match(/\d+/g) ?? []) {
