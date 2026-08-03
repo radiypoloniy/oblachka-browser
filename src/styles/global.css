@@ -248,3 +248,9 @@ input[type="radio"],
 progress {
   accent-color: var(--accent);
 }
+
+/* Боковая панель настройки стола: выезжает справа. Только transform — раскладку не трогает. */
+@keyframes oblako-panel-in {
+  from { transform: translateX(100%); }
+  to   { transform: none; }
+}

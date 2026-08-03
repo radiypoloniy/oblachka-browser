@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { Search, Sparkles, Workflow, Check, Plus, X, LayoutGrid } from 'lucide-react';
+import { Search, Sparkles, Workflow, Check, Plus, X, LayoutGrid, SlidersHorizontal } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import {
   loadDesktop, saveDesktop, subscribeDesktop, computeGrid, layoutItems,
@@ -8,6 +8,7 @@ import {
   type DesktopLayout,
 } from '../../newtab/desktop';
 import AddSheet from './AddSheet';
+import SidePanel from './SidePanel';
 import {
   loadNewTabSettings, subscribeNewTabSettings, presetCss, getNewTabCustomImage,
   ensureCustomImageShrunk, isLightBackground, type NewTabSettings,
@@ -66,6 +67,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   // случайно уйти на сайт — самая обидная ошибка такого интерфейса.
   const [editing, setEditing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   // Что сейчас тащат/тянут. Держим отдельно от раскладки: пока жест идёт, на диск ничего не
   // пишем — иначе каждое движение мыши превращалось бы в запись в localStorage.
   // ⚠️ Хранит не только «куда встанет», но и смещение курсора: без него элемент оставался
@@ -458,7 +460,14 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
           </>
         ) : (
           <>
-            <CornerButton title="Настроить экран" onClick={() => setEditing(true)}>
+            {/* ⚠️ ДВЕ кнопки, и это не дубль. «Настройка» (панель) — что показывать и как оно
+                выглядит; «Правка» (режим на самом столе) — где что лежит, то есть перетаскивание
+                и размеры. Раньше и то и другое пряталось за одной кнопкой, а часть настроек жила
+                вообще в отдельном разделе — именно это и было неудобно. */}
+            <CornerButton title="Настройка экрана" onClick={() => setPanelOpen(true)}>
+              <SlidersHorizontal size={18} />
+            </CornerButton>
+            <CornerButton title="Переставить и изменить размер" onClick={() => setEditing(true)}>
               <LayoutGrid size={18} />
             </CornerButton>
             {!isLightWindow && (
@@ -470,6 +479,10 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
           </>
         )}
       </div>
+
+      {panelOpen && (
+        <SidePanel layout={layout} onLayout={apply} onClose={() => setPanelOpen(false)} />
+      )}
 
       {sheetOpen && (
         <AddSheet
