@@ -70,6 +70,43 @@ export const WIDGET_SIZES = {
 } as const;
 export type WidgetSizeName = keyof typeof WIDGET_SIZES;
 
+/**
+ * Минимальный размер виджета в клетках — по типу.
+ *
+ * ⚠️ Это не вкусовщина, а ДОГОВОР с отрисовкой. Тянуть за угол можно было любой виджет до 1×1, и
+ * на такой плитке содержимое просто налезало само на себя: у «Курса ЦБ» подпись сталкивалась с
+ * «USD · 30 дней», у «Защиты» счётчик уезжал под заголовок, а строка «заблокировано за сеанс»
+ * рвалась на три. Никакой адаптацией это не лечится: в 97 px нельзя показать число и подписать
+ * его, места нет физически. Поэтому виджет объявляет, ниже чего он не работает, а укладка это
+ * соблюдает — и в момент растягивания, и при чтении раскладки с диска (там уже могли остаться
+ * плитки, утянутые до 1×1 руками).
+ *
+ * Ключ — тот же, что у WIDGET_RENDERERS. Неизвестный тип ограничения не получает: чужой виджет
+ * лучше показать как есть, чем молча раздуть.
+ */
+export const WIDGET_MIN: Record<string, CellSize> = {
+  // Число и подпись под ним: одна строка — заголовок, вторая — значение.
+  rates:  { w: 2, h: 1 },
+  crypto: { w: 2, h: 1 },
+  shield: { w: 2, h: 1 },
+  holiday:{ w: 2, h: 1 },
+  // Картинка плюс две строки текста рядом с ней — в одну клетку не складывается никак.
+  moon:    { w: 2, h: 2 },
+  weather: { w: 2, h: 2 },
+  // Списочные: смысл появляется, когда видно хотя бы одну строку списка, а не только заголовок.
+  tasks:     { w: 2, h: 2 },
+  downloads: { w: 2, h: 2 },
+  topsites:  { w: 2, h: 2 },
+  // Часам хватает и клетки: циферблат просто становится меньше, налезать там нечему.
+  clock: { w: 1, h: 1 },
+};
+
+/** Наименьший размер, до которого можно ужать этот элемент. Иконки — всегда одна клетка. */
+export function minSizeFor(item: Pick<DesktopItem, 'kind' | 'widget'>): CellSize {
+  if (item.kind !== 'widget') return { w: 1, h: 1 };
+  return WIDGET_MIN[item.widget ?? ''] ?? { w: 1, h: 1 };
+}
+
 export function sizeName(size: CellSize): WidgetSizeName | null {
   for (const [name, s] of Object.entries(WIDGET_SIZES)) {
     if (s.w === size.w && s.h === size.h) return name as WidgetSizeName;
@@ -360,7 +397,11 @@ export function loadDesktop(): DesktopLayout {
     // роняем весь экран — раскладка это косметика, а не данные пользователя.
     const items = parsed.items.filter((i): i is DesktopItem =>
       !!i && typeof i.id === 'string' && typeof i.kind === 'string'
-      && !!i.size && typeof i.size.w === 'number' && typeof i.size.h === 'number');
+      && !!i.size && typeof i.size.w === 'number' && typeof i.size.h === 'number')
+      // ⚠️ Размер чиним ПРИ ЧТЕНИИ, а не только в момент растягивания: минимумы появились позже
+      // самой возможности тянуть за угол, и на дисках уже лежат виджеты, утянутые до 1×1 руками.
+      // Без этого починка не дошла бы до тех, у кого проблема как раз и есть.
+      .map((i) => ({ ...i, size: clampSize(i, i.size) }));
     const cols = clampCols(parsed.cols);
     if (parsed.version === 2) return { version: 2, cols, items };
 
@@ -458,9 +499,18 @@ export function resizeItem(layout: DesktopLayout, id: string, size: CellSize): D
   return normalize({
     ...layout,
     items: layout.items.map((i) => (i.id === id && i.kind === 'widget'
-      ? { ...i, size: { w: Math.max(1, Math.min(6, size.w)), h: Math.max(1, Math.min(4, size.h)) } }
+      ? { ...i, size: clampSize(i, size) }
       : i)),
   }, id);
+}
+
+/** Размер в допустимых пределах: не меньше минимума своего типа и не больше потолка сетки. */
+export function clampSize(item: Pick<DesktopItem, 'kind' | 'widget'>, size: CellSize): CellSize {
+  const min = minSizeFor(item);
+  return {
+    w: Math.max(min.w, Math.min(6, Math.round(size.w))),
+    h: Math.max(min.h, Math.min(4, Math.round(size.h))),
+  };
 }
 
 export function removeItem(layout: DesktopLayout, id: string): DesktopLayout {

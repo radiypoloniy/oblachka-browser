@@ -455,13 +455,31 @@ const TONE_WARM  = 'var(--tone-warm)';
 const FILL_GREEN = 'var(--tone-green-fill)';
 const FILL_WARM  = 'var(--tone-warm-fill)';
 
+// ── Тесная плитка ─────────────────────────────────────────────────────────────
+//
+// ⚠️ Виджет курса живёт в двух видах, а не в одном растянутом. На плитке в одну клетку высотой
+// прежняя вёрстка складывалась сама в себя: подпись «Курс ЦБ» сталкивалась с «USD · 30 дней»,
+// строки валют налезали друг на друга, а кегль считался как (высота − 60), то есть на низкой
+// плитке уходил в отрицательные числа. Уменьшать шрифт дальше бессмысленно — читать было бы
+// нечего; поэтому в тесноте виджет показывает ОДНУ строку и молчит про всё второстепенное.
+const COMPACT_H = 150;
+
+/** Кегль строки со значением: от реально доступной высоты, а не от «высота минус константа». */
+function rowFontSize(boxHeight: number, rows: number): number {
+  const avail = boxHeight - 32 /* поля Tile */ - 18 /* строка заголовка */;
+  return Math.round(Math.max(13, Math.min(avail / Math.max(1, rows) * 0.5, 26)));
+}
+
 export function RatesWidget({ size, box, fill }: WidgetProps) {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [prev, setPrev] = useState<Record<string, number>>({});
   const [history, setHistory] = useState<number[]>([]);
 
   const chosen = loadNewTabSettings().rates.codes;
-  const codes = (chosen.length ? chosen : ['USD', 'EUR']).slice(0, size.w >= 4 ? 3 : 2);
+  // В тесной плитке — только первая валюта: две строки и заголовок в одну клетку высотой не
+  // помещаются, и раньше они просто налезали друг на друга.
+  const compact = box.height < COMPACT_H;
+  const codes = (chosen.length ? chosen : ['USD', 'EUR']).slice(0, compact ? 1 : size.w >= 4 ? 3 : 2);
   const main = codes[0] ?? 'USD';
 
   useEffect(() => {
@@ -484,15 +502,17 @@ export function RatesWidget({ size, box, fill }: WidgetProps) {
     return () => { alive = false; };
   }, [main]);
 
-  const rowFs = Math.round(Math.min((box.height - 60) / codes.length * 0.46, 26));
+  const rowFs = rowFontSize(box.height, codes.length);
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
     <Tile surface fill={fill}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, flex: 'none' }}>
         <TileCaption>Курс ЦБ</TileCaption>
-        {history.length > 1 && (
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>{main} · 30 дней</span>
+        {/* Подпись графика — только когда сам график виден. Иначе она сталкивалась с заголовком
+            и обе превращались в кашу вроде «КУРС ЦБUSD · 30 дн». */}
+        {history.length > 1 && !compact && (
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{main} · 30 дней</span>
         )}
       </div>
 
@@ -505,7 +525,7 @@ export function RatesWidget({ size, box, fill }: WidgetProps) {
             ? ((now - before) / before) * 100
             : null;
           return (
-            <div key={c} style={{ display: 'flex', alignItems: 'baseline', gap: 9 }}>
+            <div key={c} style={{ display: 'flex', alignItems: 'baseline', gap: 9, whiteSpace: 'nowrap' }}>
               <span style={{ fontSize: Math.round(rowFs * 0.78), width: '1.2em', opacity: 0.9, flex: 'none' }}>
                 {RATE_SYMBOL[c] ?? c}
               </span>
@@ -558,7 +578,9 @@ export function CryptoWidget({ size, box, fill }: WidgetProps) {
   const [history, setHistory] = useState<number[]>([]);
 
   const chosen = loadNewTabSettings().crypto.codes;
-  const codes = (chosen.length ? chosen : ['BTC', 'ETH']).slice(0, size.w >= 4 ? 3 : 2);
+  // Та же теснота и то же решение, что у курса ЦБ выше: одна строка вместо каши из двух.
+  const compact = box.height < COMPACT_H;
+  const codes = (chosen.length ? chosen : ['BTC', 'ETH']).slice(0, compact ? 1 : size.w >= 4 ? 3 : 2);
   const main = codes[0] ?? 'BTC';
 
   useEffect(() => {
@@ -583,18 +605,18 @@ export function CryptoWidget({ size, box, fill }: WidgetProps) {
 
   // Тренд по первому активу — им же красим спарклайн, чтобы линия и стрелка не спорили.
   const mainUp = (change[main] ?? 0) >= 0;
-  const rowFs = Math.round(Math.min((box.height - 60) / codes.length * 0.46, 26));
+  const rowFs = rowFontSize(box.height, codes.length);
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
     <Tile surface fill={fill}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, flex: 'none' }}>
         {/* ⚠️ Валюта — в подписи, а не в каждой строке: «₿ 5.02 млн» без неё не отвечает на вопрос
             «миллиона чего» (у соседнего виджета символ слева говорит это сам — «$ 78.42» читается
             как «рублей за доллар»). В строке ₽ не помещался и переносил её на две. */}
         <TileCaption>Крипта, ₽</TileCaption>
-        {history.length > 1 && (
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>{main} · 30 дней</span>
+        {history.length > 1 && !compact && (
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{main} · 30 дней</span>
         )}
       </div>
 

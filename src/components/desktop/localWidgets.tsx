@@ -97,7 +97,38 @@ export function ShieldWidget({ box, fill }: WidgetProps) {
 
   useEffect(() => window.oblako.onVpnConnectionStateChanged((s) => setVpnOn(s.state === 'running')), []);
 
-  const big = Math.round(Math.min(box.height * 0.3, 46));
+  // ⚠️ Тесная плитка — ОТДЕЛЬНЫЙ вид, а не тот же самый ужатый. В одну клетку высотой прежняя
+  // вёрстка не складывалась вовсе: счётчик заезжал под заголовок, строка «заблокировано за
+  // сеанс» рвалась на три, а две точки состояния переносились и накладывались на неё. Здесь
+  // нет места на всё сразу, поэтому в тесноте виджет отвечает на главный вопрос («прикрыт ли
+  // я и сколько отбито»), а подпись про сеанс уходит в подсказку курсором.
+  const compact = box.height < 150;
+  const big = Math.round(Math.min(box.height * (compact ? 0.34 : 0.3), 46));
+
+  if (compact) {
+    return (
+      <Tile surface fill={fill} padding={12}>
+        {/* Заголовок остаётся и здесь: без него «0» рядом с двумя точками не отвечает, чего
+            именно ноль. А вот подпись «заблокировано за сеанс» в эту высоту уже не влезает —
+            она ушла в подсказку курсором на самом числе. */}
+        <TileCaption>Защита</TileCaption>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minHeight: 0, minWidth: 0 }}>
+          <div title="Заблокировано за сеанс" style={{
+            fontSize: big, fontWeight: 600, lineHeight: 1, fontVariantNumeric: 'tabular-nums', flex: 'none',
+          }}>
+            {ad ? ad.blocked.toLocaleString('ru') : '—'}
+          </div>
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0,
+            fontSize: 'var(--fs-xs)', overflow: 'hidden',
+          }}>
+            <StatusDot on={ad?.enabled ?? false} label="Адблок" />
+            <StatusDot on={vpnOn} label="VPN" />
+          </div>
+        </div>
+      </Tile>
+    );
+  }
 
   return (
     <Tile surface fill={fill}>
@@ -122,7 +153,11 @@ export function ShieldWidget({ box, fill }: WidgetProps) {
 // (--dot-vpn), а не декоративный: он и в остальном интерфейсе означает ровно это.
 function StatusDot({ on, label }: { on: boolean; label: string }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, opacity: on ? 1 : 0.5 }}>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5, opacity: on ? 1 : 0.5,
+      // Не переносим: перенос ставил слово «выкл» на вторую строку и накладывал его на соседа.
+      whiteSpace: 'nowrap',
+    }}>
       <span style={{
         width: 7, height: 7, borderRadius: '50%', flex: 'none',
         background: on ? 'var(--dot-vpn)' : 'currentColor',

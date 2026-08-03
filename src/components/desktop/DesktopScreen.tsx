@@ -4,7 +4,7 @@ import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal } from 'l
 import type { TileSite } from '../../../shared/frecency';
 import {
   loadDesktop, saveDesktop, subscribeDesktop, computeGrid, placeItems, moveItemTo, normalize,
-  resizeItem, removeItem, addItem, DEFAULT_COLS,
+  resizeItem, removeItem, addItem, minSizeFor, DEFAULT_COLS,
   type DesktopLayout,
 } from '../../newtab/desktop';
 import AddSheet from './AddSheet';
@@ -187,6 +187,13 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   const step = grid.cell + grid.gap;
   // Запасная строка снизу в режиме правки — иначе положить плитку ниже последней некуда.
   const gridRows = rows + (editing ? 1 : 0);
+
+  // Сменилась ли геометрия сетки в этом кадре (человек тянет границу окна). Плиткам в такой
+  // кадр переходы противопоказаны — они обязаны встать по новой сетке немедленно, вместе с
+  // контейнером. Сравнение через ref, а не состояние: лишний рендер тут ни к чему.
+  const prevMetrics = useRef({ cell: grid.cell, gap: grid.gap });
+  const metricsChanged = prevMetrics.current.cell !== grid.cell || prevMetrics.current.gap !== grid.gap;
+  useEffect(() => { prevMetrics.current = { cell: grid.cell, gap: grid.gap }; });
   const appById = useMemo(() => new Map(APPS.map((a) => [a.id, a])), []);
 
   const onItemPointerDown = (e: React.PointerEvent, id: string): void => {
@@ -219,8 +226,12 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
     const item = placed.find((p) => p.item.id === resizing.id);
     if (!box || !item) return;
     // Тянем от левого-верхнего угла элемента: сколько клеток укладывается до курсора.
-    const w = Math.max(1, Math.min(grid.cols, Math.round((e.clientX - box.left - item.col * step) / step)));
-    const h = Math.max(1, Math.min(4, Math.round((e.clientY - box.top - item.row * step) / step)));
+    // ⚠️ Не меньше минимума своего типа (см. WIDGET_MIN): на плитке 1×1 у «Курса» и «Защиты»
+    // содержимое налезает само на себя, и адаптацией это не лечится — там нет места под число
+    // и подпись к нему. Ручка просто не даёт утянуть туда, где виджет заведомо сломается.
+    const min = minSizeFor(item.item);
+    const w = Math.max(min.w, Math.min(grid.cols, Math.round((e.clientX - box.left - item.col * step) / step)));
+    const h = Math.max(min.h, Math.min(4, Math.round((e.clientY - box.top - item.row * step) / step)));
     if (w !== resizing.w || h !== resizing.h) setResizing({ ...resizing, w, h });
   };
 
@@ -341,7 +352,12 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                 zIndex: dragging || resizing?.id === item.id ? 5 : 1,
                 // Пока элемент в руке — никакого перехода: он обязан быть точно под курсором,
                 // иначе тянется следом с задержкой и промахивается мимо места.
-                transition: dragging || !ready ? undefined
+                // ⚠️ И никакого перехода, пока МЕНЯЕТСЯ САМА СЕТКА (см. metricsChanged). Плавность
+                // здесь нужна ровно для правки раскладки — переставили плитку, соседи разъехались.
+                // При ресайзе окна клетка меняется на каждом кадре, и те же 220 мс превращались
+                // в отставание: контейнер уже нового размера, а плитки ещё едут к нему — со
+                // стороны это выглядит так, будто иконки не поспевают за окном.
+                transition: dragging || !ready || metricsChanged ? undefined
                   : stretching ? 'transform 220ms var(--ease-out)'
                   : 'transform 220ms var(--ease-out), width 180ms var(--ease-out), height 180ms var(--ease-out)',
                 filter: dragging ? 'drop-shadow(0 12px 24px rgba(10,12,20,0.35))' : undefined,
