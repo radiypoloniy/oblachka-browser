@@ -287,8 +287,19 @@ async function ensureLoaded(): Promise<number> {
     // Инстанс llama-бэкенда и сам модуль node-llama-cpp — через LlamaBackend.ts, не напрямую:
     // единственная точка, чтобы будущий детект железа (HardwareInfo.ts) переиспользовал ТОТ ЖЕ
     // инстанс, а не заводил второй независимый backend на том же GPU.
-    const nlc = await getNlc()
-    llama = await getLlamaBackend()
+    // ⚠️ Отказ САМОГО бэкенда (не модели) раньше улетал наружу сырым исключением: isModelError его
+    // не узнавал, и в панель приходило `String(e)` — то есть «Error: ...» с потрохами. Между тем
+    // именно здесь живёт единственная понятная человеку причина отказа — блокировка неподписанных
+    // библиотек со стороны Smart App Control (текст готовит LlamaBackend.ts). Приводим к тому же
+    // ModelError, что и остальные отказы: панель уже умеет показывать его message как есть.
+    let nlc: Awaited<ReturnType<typeof getNlc>>
+    try {
+      nlc = await getNlc()
+      llama = await getLlamaBackend()
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      throw { code: 'LOAD_FAILED', message } satisfies ModelError
+    }
     // Диагностика: 'cpu' здесь — главный подозреваемый при жалобах на скорость (9B-модель на CPU
     // на порядок медленнее, чем на GPU) — без этой строки бэкенд не виден нигде в боевом логе
     // (только в изолированном llamatest.ts).
