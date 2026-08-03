@@ -457,6 +457,10 @@ export const IPC = {
   DIGEST_GET:   'digest:get',
   DIGEST_BUILD: 'digest:build',
 
+  // «Вы это уже читали» — связанные страницы из своей истории для открытой вкладки
+  // (см. electron/RelatedHistory.ts). Пусто — нечего показать, и это нормальный ответ.
+  HISTORY_RELATED: 'history:related',
+
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
   // Заход 3: main → chrome, push при ЛЮБОМ закрытии/открытии дока (крестик и Escape ВНУТРИ
@@ -1555,6 +1559,8 @@ export interface OblakoApi {
   activateTab(id: string): Promise<void>;
   /** Вкладки, подходящие запросу по смыслу (локальная модель). Пусто — не нашлось или модели нет. */
   searchTabsSmart(query: string): Promise<string[]>;
+  /** Страницы из своей истории, связанные с открытой сейчас. Пусто — нечего показать. */
+  getRelatedPages(): Promise<SemanticSearchResult[]>;
   /** Готовые «итоги дня» (ничего не считает). */
   getDayDigest(): Promise<DayDigestState>;
   /** Собрать «итоги дня» сейчас — явное действие человека, может занять до полуминуты. */

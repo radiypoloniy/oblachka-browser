@@ -60,7 +60,7 @@ import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION, THEME_PALETTE_IDS, isDarkTheme } from '../shared/ipc';
 import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -82,6 +82,7 @@ import { captureTabScreenshot, saveCurrentScreenshot, closeScreenshot, syncScree
 import { searchTabsByMeaning } from './TabSearch';
 import { mapFormFields, type FormFieldDescriptor } from './AutofillFieldMapper';
 import { getDigest, buildDigest, shouldRefresh } from './DayDigest';
+import { findRelatedPages } from './RelatedHistory';
 import { startTabDrag, endTabDrag, syncDropZoneBounds } from './DropZoneManager';
 import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
 import { suggestTabTitle } from './TabRenamer';
@@ -271,6 +272,8 @@ let isShuttingDown = false;
 // Идёт ли прямо сейчас смысловой поиск вкладки (см. TABS_SEARCH_SMART) — один за раз на всё
 // приложение, как и сама модель.
 let smartTabSearchBusy = false;
+// То же для подсказки «вы это уже читали»: один запрос за раз на приложение.
+let relatedBusy = false;
 const adblock     = new AdBlockManager();
 const bangs       = new BangStore();
 // Выученные цели быстрого поиска (Ctrl+E) — сайты, где человек уже искал. Читается с диска
@@ -1500,6 +1503,23 @@ function registerIpc() {
       return [];
     } finally {
       smartTabSearchBusy = false;
+    }
+  });
+  // «Вы это уже читали» — связанное из своей истории для АКТИВНОЙ вкладки (см. RelatedHistory.ts).
+  // ⚠️ Адрес и заголовок берём из менеджера вкладок окна-отправителя, а не из аргументов: рендерер
+  // мог отстать от навигации, и подсказка тогда относилась бы к предыдущей странице.
+  ipcMain.handle(IPC.HISTORY_RELATED, async (e): Promise<SemanticSearchResult[]> => {
+    const tabs = tabsOf(e);
+    const active = tabs?.snapshot().find((t) => t.isActive && !t.isHub);
+    if (!active?.url || relatedBusy) return [];
+    relatedBusy = true;
+    try {
+      return await findRelatedPages(history, active.url, active.title || '');
+    } catch (err) {
+      console.warn('[related] ошибка:', err);
+      return [];
+    } finally {
+      relatedBusy = false;
     }
   });
   // «Итоги дня» (см. DayDigest.ts). GET модель не трогает вовсе — отдаёт готовое или «нет».

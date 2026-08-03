@@ -880,6 +880,34 @@ export default function Toolbar({
     }
   }, [allTabs, openDropdown, closeDropdown, searchEngineId]);
 
+  /**
+   * «Вы это уже читали» — связанные страницы из своей истории, когда человек щёлкнул в ПУСТУЮ
+   * адресную строку и ещё ничего не набрал.
+   *
+   * ⚠️ Именно это состояние выбрано неспроста: пустая строка — единственный момент, когда
+   * дропдауну нечего показать в принципе (раньше он просто не открывался), и подсказка ничего
+   * не вытесняет. Как только человек начинает печатать, обычные подсказки её сменяют.
+   * ⚠️ Ответ может прийти через секунду-другую (это генерация), поэтому проверяем, что за это
+   * время человек не начал печатать: показывать «связанное» поверх уже набранного запроса нельзя.
+   */
+  const showRelated = useCallback(async () => {
+    const seq = ++suggestSeqRef.current;
+    const related = await window.oblako.getRelatedPages().catch(() => []);
+    if (seq !== suggestSeqRef.current || related.length === 0) return;
+    const items: SuggestItem[] = related.map((r, idx) => ({
+      kind: 'history' as SuggestKind,
+      label: r.url,
+      sub: r.title,
+      url: r.url,
+      ...(idx === 0 ? { sectionHeader: 'Вы это уже читали' } : {}),
+    }));
+    setSuggestions(items);
+    setSelectedIdx(-1);
+    openDropdown();
+    void window.oblako.setSuggestDropdownItems(items);
+    void window.oblako.setSuggestDropdownHighlight(-1);
+  }, [openDropdown]);
+
   const triggerSuggest = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!q.trim()) { closeDropdown('empty-query-trigger'); return; }
@@ -1089,6 +1117,9 @@ export default function Toolbar({
                 // переоткрываем.
                 if (focusTracker.current.mouseDownOnInput && value.trim()) {
                   triggerSuggest(value);
+                } else if (focusTracker.current.mouseDownOnInput) {
+                  // Клик в ПУСТУЮ строку — показываем «вы это уже читали» (см. showRelated).
+                  void showRelated();
                 }
                 // Синхронный консюм флага после использования (как в исходной версии) — RAF-автосброс
                 // из onMouseDown сработает только к следующему кадру, а спонтанный refocus от
