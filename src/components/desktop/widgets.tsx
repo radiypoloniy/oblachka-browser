@@ -6,6 +6,7 @@ import type { CellSize } from '../../newtab/desktop';
 import { loadNewTabSettings } from '../../newtab/settings';
 import CryptoIcon from '../CryptoIcon';
 import { siteTint } from './siteTint';
+import { MoonWidget, ShieldWidget, DownloadsWidget } from './localWidgets';
 
 // Виджеты рабочего стола.
 //
@@ -57,7 +58,7 @@ export function fillCss(id: string | undefined): string | null {
   return WIDGET_FILLS.find((f) => f.id === id)?.css ?? null;
 }
 
-function Tile({ children, tint, padding = 16, surface, fill }: {
+export function Tile({ children, tint, padding = 16, surface, fill }: {
   children: React.ReactNode;
   /** Заливка цветной плитки. Игнорируется при surface. */
   tint?: string;
@@ -89,7 +90,7 @@ function Tile({ children, tint, padding = 16, surface, fill }: {
   );
 }
 
-function TileCaption({ children }: { children: React.ReactNode }) {
+export function TileCaption({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
       fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
@@ -862,4 +863,8 @@ export const WIDGET_RENDERERS: Record<string, (p: WidgetProps) => React.ReactEle
   crypto: CryptoWidget,
   topsites: TopSitesWidget,
   tasks: TasksWidget,
+  // Без сети — см. localWidgets.tsx.
+  moon: MoonWidget,
+  shield: ShieldWidget,
+  downloads: DownloadsWidget,
 };
