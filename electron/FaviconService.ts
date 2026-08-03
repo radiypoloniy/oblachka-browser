@@ -11,11 +11,18 @@ import path from 'node:path';
 // ⚠️ Каталог сменил имя вместе с правилом отбора иконки (см. #fetchForHost): в прежнем лежат
 // сохранённые 16×16, и без смены имени человек так и остался бы с лесенками — кэш отдавал бы
 // старую мелкую иконку раньше, чем дело дошло бы до новой логики.
-const CACHE_DIR = path.join(app.getPath('userData'), 'favicon-cache-hidpi');
-const LEGACY_CACHE_DIR = path.join(app.getPath('userData'), 'favicon-cache');
+const CACHE_DIR = path.join(app.getPath('userData'), 'favicon-cache-v3');
+const LEGACY_CACHE_DIRS = ['favicon-cache', 'favicon-cache-hidpi'].map((d) => path.join(app.getPath('userData'), d));
 const MAX_BYTES = 256 * 1024;       // иконка больше четверти мегабайта — почти наверняка не иконка
 const FETCH_TIMEOUT_MS = 6000;
-const MAX_HTML_BYTES = 512 * 1024;  // парсим только начало страницы ради <link rel=icon>
+// ⚠️ Это ПОТОЛОК РАЗБОРА, а не потолок загрузки. Раньше страница больше этого размера
+// отбрасывалась целиком — и на этом ломался весь поиск крупной иконки: главная YouTube весит
+// пару мегабайт, ответ выкидывался, кандидатов не находилось, и в кэш ложился тот самый
+// 16-пиксельный /favicon.ico. Проверено на живом ответе: YouTube объявляет иконки до 144×144,
+// то есть брать было что. Теперь страница читается целиком, а регулярками просматривается
+// только начало — <link rel=icon> живёт в <head>, дальше первых сотен килобайт его не бывает.
+const MAX_HTML_BYTES = 8 * 1024 * 1024;
+const HTML_SCAN_CHARS = 512 * 1024;
 
 // Ниже этого размера иконку в интерфейсе уже растягивают, и она рассыпается в пиксельные
 // лесенки: строка списка паролей рисует favicon в 16 CSS-px, а на мониторе со 125-150%
@@ -82,7 +89,9 @@ class FaviconService {
   #sweepLegacyCache(): void {
     if (this.#sweptLegacy) return;
     this.#sweptLegacy = true;
-    try { fs.rmSync(LEGACY_CACHE_DIR, { recursive: true, force: true }); } catch { /* и не надо */ }
+    for (const dir of LEGACY_CACHE_DIRS) {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* и не надо */ }
+    }
   }
 
   async get(host: string): Promise<string | null> {
@@ -138,7 +147,7 @@ class FaviconService {
   async #findIconCandidates(pageUrl: string): Promise<IconCandidate[]> {
     const buf = await this.#fetchBytes(pageUrl, MAX_HTML_BYTES);
     if (!buf) return [];
-    const html = buf.toString('utf8');
+    const html = buf.toString('utf8', 0, Math.min(buf.length, HTML_SCAN_CHARS));
     const out: IconCandidate[] = [];
     // Ищем <link ... rel="...icon..." ... href="..."> в любом порядке атрибутов.
     const linkRe = /<link\b[^>]*>/gi;
