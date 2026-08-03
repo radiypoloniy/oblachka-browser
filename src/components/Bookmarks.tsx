@@ -20,6 +20,10 @@ function domainOf(url: string): string {
 // не нужен отдельный IPC-запрос на каждое нажатие.
 export default function Bookmarks({ onClose }: BookmarksProps) {
   const [entries, setEntries] = useState<FlatBookmark[]>([]);
+  // Дерево держим рядом с плоским списком: колонка папок строится из него, а список — из
+  // плоского. Один запрос, два представления — иначе счётчики разошлись бы с содержимым.
+  const [tree, setTree] = useState<BookmarkNode[]>([]);
+  const [folderId, setFolderId] = useState<number | null>(null);
   const [query, setQuery] = useState('');
   // Импорт из других браузеров (Feature 2) — открытый дропдаун со списком РЕАЛЬНО найденных на
   // диске источников (см. electron/bookmarkImport/), тот же паттерн, что clearOpen в History.tsx.
@@ -33,6 +37,7 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
   // совсем — а она тут архив и поиск по всему, что сохранено. Сами папки строками не рисуем:
   // эта панель отвечает на вопрос «где я это сохранял», а не «как разложено».
   const load = async () => {
+    const roots = await window.oblako.listBookmarkTree();
     const flat: FlatBookmark[] = [];
     const walk = (nodes: BookmarkNode[], folder: string | null): void => {
       for (const n of nodes) {
@@ -40,7 +45,8 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
         else flat.push({ ...n, folderTitle: folder });
       }
     };
-    walk(await window.oblako.listBookmarkTree(), null);
+    walk(roots, null);
+    setTree(roots);
     setEntries(flat);
   };
 
@@ -49,11 +55,40 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
   // перечитываем список.
   useEffect(() => window.oblako.onBookmarksChanged(() => void load()), []);
 
+  const searching = query.trim().length > 0;
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return entries;
     return entries.filter((e) => e.title.toLowerCase().includes(q) || e.url.toLowerCase().includes(q));
   }, [entries, query]);
+
+  // Содержимое выбранной папки. null — «Все закладки», то есть весь сейф целиком: раздел это
+  // архив, и ответ на «где-то у меня это было» должен находиться без хождения по папкам.
+  const visible = useMemo(
+    () => (folderId === null ? entries : entries.filter((e) => e.parentId === folderId)),
+    [entries, folderId],
+  );
+
+  // Плоский перечень папок с отступами и счётчиками. Считается из того же дерева, что и список:
+  // второй источник правды здесь означал бы расхождение счётчиков с содержимым.
+  const folderNav = useMemo(() => {
+    const out: { id: number; title: string; depth: number; count: number }[] = [];
+    const walk = (nodes: BookmarkNode[], depth: number): void => {
+      for (const n of nodes) {
+        if (n.kind !== 'folder') continue;
+        // Считаем ТОЛЬКО прямые ссылки: цифра рядом с папкой должна совпадать с тем, что
+        // человек увидит, кликнув по ней, — иначе она врёт про вложенные.
+        out.push({
+          id: n.id, title: n.title, depth,
+          count: (n.children ?? []).filter((c) => c.kind === 'link').length,
+        });
+        walk(n.children ?? [], depth + 1);
+      }
+    };
+    walk(tree, 0);
+    return out;
+  }, [tree]);
 
   async function handleDelete(id: number) {
     await window.oblako.removeBookmark(id);
@@ -218,21 +253,87 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
-        <div style={{
-          textAlign: 'center', color: 'var(--text-muted)',
-          fontSize: 'var(--fs-sm)', marginTop: 48,
-        }}>
-          {query ? 'Ничего не найдено' : 'Нет закладок'}
-        </div>
+      {/* Раскладка — та же, что у Истории: узкая навигация слева, список справа. Там слева
+          даты, здесь папки; в остальном это одна и та же страница-архив, и разводить их по
+          разным формам значило бы заставить человека учить второй интерфейс ради того же
+          действия. ⚠️ При поиске колонка папок ПРЯЧЕТСЯ: искать положено по всему сейфу, а не
+          внутри выбранной папки, иначе найденное молча зависит от того, что выбрано слева. */}
+      {searching ? (
+        filtered.length === 0 ? (
+          <Empty text="Ничего не найдено" />
+        ) : (
+          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}>
+            {filtered.map((entry) => (
+              <BookmarkRow key={entry.id} entry={entry} onDelete={handleDelete} />
+            ))}
+          </div>
+        )
       ) : (
-        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}>
-          {filtered.map((entry) => (
-            <BookmarkRow key={entry.id} entry={entry} onDelete={handleDelete} />
-          ))}
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+          <nav style={{
+            width: 170, flexShrink: 0, overflowY: 'auto',
+            padding: '10px 8px 16px', borderRight: '1px solid var(--divider)',
+          }}>
+            <FolderNavItem
+              label="Все закладки" count={entries.length}
+              active={folderId === null} onClick={() => setFolderId(null)} depth={0}
+            />
+            {folderNav.map((f) => (
+              <FolderNavItem
+                key={f.id} label={f.title} count={f.count} depth={f.depth}
+                active={folderId === f.id} onClick={() => setFolderId(f.id)}
+              />
+            ))}
+          </nav>
+          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}>
+            {visible.length === 0 ? (
+              <Empty text={folderId === null ? 'Нет закладок' : 'В этой папке пусто'} />
+            ) : visible.map((entry) => (
+              <BookmarkRow key={entry.id} entry={entry} onDelete={handleDelete} />
+            ))}
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return (
+    <div style={{
+      flex: 1, textAlign: 'center', color: 'var(--text-muted)',
+      fontSize: 'var(--fs-sm)', marginTop: 48,
+    }}>{text}</div>
+  );
+}
+
+// Строка навигации по папкам — визуально та же, что строка даты в Истории. Отступ показывает
+// вложенность: дерево тут плоское списком, потому что папок у человека десятки, а не тысячи,
+// и раскрывающиеся уровни в колонке 170 px читались бы хуже, чем один сплошной перечень.
+function FolderNavItem({ label, count, active, onClick, depth }: {
+  label: string; count: number; active: boolean; onClick: () => void; depth: number;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+        padding: '6px 10px', paddingLeft: 10 + depth * 12, marginBottom: 1,
+        border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'default',
+        background: active ? 'var(--surface-hover)' : 'none',
+        fontSize: 'var(--fs-xs)', color: active ? 'var(--text-strong)' : 'var(--text-body)',
+        fontWeight: active ? 600 : 400,
+      }}
+      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface-hover)' : 'none'; }}
+    >
+      <Folder size={12} strokeWidth={2} style={{ flexShrink: 0, color: 'var(--text-faint)' }} />
+      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {label}
+      </span>
+      <span style={{ flexShrink: 0, color: 'var(--text-faint)' }}>{count || ''}</span>
+    </button>
   );
 }
 

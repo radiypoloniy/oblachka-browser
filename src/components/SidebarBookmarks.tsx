@@ -298,16 +298,34 @@ function Row({ node, depth, expanded, onToggle, onOpen, renameId, setRenameId, o
           </span>
         </button>
 
-        {/* Действия по наведению — как в строках загрузок. Постоянно висящие кнопки в полосе
-            256 px съели бы место у самих названий, ради которых список и существует. */}
-        {hover ? (
-          <>
+        {/* Действия по наведению — как в строках загрузок: постоянно висящие кнопки в полосе
+            256 px съели бы место у самих названий, ради которых список и существует.
+            ⚠️ Слот ФИКСИРОВАННОЙ ширины, а счётчик и кнопки подменяются ПРОЗРАЧНОСТЬЮ, а не
+            появлением в разметке. Иначе наведение меняет ширину строки: заголовок ужимается,
+            длинное название переобрезается по многоточию, и строка на глазах дёргается — тем
+            сильнее, чем ближе курсор к границе. Раскладка на наведение меняться не должна
+            вообще, поэтому место под кнопки занято всегда. */}
+        <span style={{
+          position: 'relative', flex: 'none', width: 40, height: 18,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
+        }}>
+          <span style={{
+            position: 'absolute', inset: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
+            fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', pointerEvents: 'none',
+            opacity: hover ? 0 : 1, transition: 'opacity var(--dur-fast) var(--ease-standard)',
+          }}>
+            {isFolder && count > 0 ? count : ''}
+          </span>
+          <span style={{
+            position: 'absolute', inset: 0, display: 'inline-flex', alignItems: 'center',
+            justifyContent: 'flex-end', gap: 2,
+            opacity: hover ? 1 : 0, transition: 'opacity var(--dur-fast) var(--ease-standard)',
+            pointerEvents: hover ? 'auto' : 'none',
+          }}>
             <RowBtn title="Переименовать" onClick={() => setRenameId(node.id)}><Pencil size={12} strokeWidth={2} /></RowBtn>
             <RowBtn title="Удалить" onClick={() => onRemove(node)}><X size={13} strokeWidth={2} /></RowBtn>
-          </>
-        ) : isFolder && count > 0 ? (
-          <span style={{ flex: 'none', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{count}</span>
-        ) : null}
+          </span>
+        </span>
       </div>
 
       {isFolder && open && node.children?.map((child) => (

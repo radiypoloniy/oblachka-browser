@@ -1837,8 +1837,11 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* ── Кнопка «Навести порядок» — только в обычном режиме, > 10 вкладок ── */}
-      {organizeState !== 'preview' && organizeTabsCount > 10 && (
+      {/* ── Кнопка «Навести порядок» — только в обычном режиме, > 10 вкладок ──
+          ⚠️ И только в режиме вкладок: она группирует ВКЛАДКИ, и висеть над списком закладок ей
+          нечего — там она обещает не то, что делает. Умная раскладка закладок живёт в своём
+          разделе и своей кнопкой (см. Bookmarks.tsx). */}
+      {mode === 'tabs' && organizeState !== 'preview' && organizeTabsCount > 10 && (
         <button
           className="no-drag"
           onClick={organizeState === 'idle' || organizeState === 'model-error' ? onOrganize : undefined}
