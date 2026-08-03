@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, Search, Star, Download, Loader2 } from 'lucide-react';
-import type { BookmarkEntry, BookmarkImportSource } from '../../shared/ipc';
+import { X, Search, Star, Download, Loader2, Folder } from 'lucide-react';
+import type { BookmarkEntry, BookmarkNode, BookmarkImportSource } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
+
+// Ссылка вместе с именем папки, в которой лежит — панель плоская, и без этого нельзя понять,
+// откуда запись. null — корень.
+type FlatBookmark = BookmarkEntry & { folderTitle: string | null };
 
 interface BookmarksProps {
   onClose: () => void;
@@ -15,7 +19,7 @@ function domainOf(url: string): string {
 // position/id), без Qwen-«умного поиска» — список маленький, фильтр на клиенте достаточен,
 // не нужен отдельный IPC-запрос на каждое нажатие.
 export default function Bookmarks({ onClose }: BookmarksProps) {
-  const [entries, setEntries] = useState<BookmarkEntry[]>([]);
+  const [entries, setEntries] = useState<FlatBookmark[]>([]);
   const [query, setQuery] = useState('');
   // Импорт из других браузеров (Feature 2) — открытый дропдаун со списком РЕАЛЬНО найденных на
   // диске источников (см. electron/bookmarkImport/), тот же паттерн, что clearOpen в History.tsx.
@@ -24,8 +28,20 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
   const [importingId, setImportingId] = useState<string | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
 
+  // ⚠️ Читаем ДЕРЕВО и раскладываем в плоский список ссылок, а не берём корень через
+  // listBookmarks(). Иначе закладка, убранная в папку из сайдбара, пропадала бы из этой панели
+  // совсем — а она тут архив и поиск по всему, что сохранено. Сами папки строками не рисуем:
+  // эта панель отвечает на вопрос «где я это сохранял», а не «как разложено».
   const load = async () => {
-    setEntries(await window.oblako.listBookmarks());
+    const flat: FlatBookmark[] = [];
+    const walk = (nodes: BookmarkNode[], folder: string | null): void => {
+      for (const n of nodes) {
+        if (n.kind === 'folder') walk(n.children ?? [], n.title);
+        else flat.push({ ...n, folderTitle: folder });
+      }
+    };
+    walk(await window.oblako.listBookmarkTree(), null);
+    setEntries(flat);
   };
 
   useEffect(() => { void load(); }, []);
@@ -220,7 +236,7 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
   );
 }
 
-function BookmarkRow({ entry, onDelete }: { entry: BookmarkEntry; onDelete: (id: number) => void }) {
+function BookmarkRow({ entry, onDelete }: { entry: FlatBookmark; onDelete: (id: number) => void }) {
   const [hovered, setHovered] = useState(false);
   const domain = domainOf(entry.url);
 
@@ -258,6 +274,18 @@ function BookmarkRow({ entry, onDelete }: { entry: BookmarkEntry; onDelete: (id:
         }}>
           {entry.title || entry.url}
         </span>
+        {/* Папка — перед доменом: список плоский, и без неё нельзя понять, откуда запись.
+            У корневых закладок метки нет вовсе, пустой значок папки только шумел бы. */}
+        {entry.folderTitle && (
+          <span style={{
+            flexShrink: 2, minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 3,
+            fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            <Folder size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
+            {entry.folderTitle}
+          </span>
+        )}
         <span style={{
           flexShrink: 3, minWidth: 0,
           fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',

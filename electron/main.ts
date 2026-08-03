@@ -2096,6 +2096,28 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.BOOKMARK_LIST, () => bookmarks.list());
   ipcMain.handle(IPC.BOOKMARK_LIST_TREE, () => bookmarks.listTree());
+  // Правки дерева. broadcastToChrome, а не ответ вызывающему: закладки — общее состояние
+  // приложения, файл на диске один, а копия дерева своя у КАЖДОГО окна (см. WindowRegistry).
+  ipcMain.handle(IPC.BOOKMARK_CREATE_FOLDER, (_e, title: string, parentId: number | null) => {
+    const entry = bookmarks.createFolder(title, parentId);
+    if (entry) broadcastToChrome(IPC.BOOKMARK_CHANGED);
+    return entry;
+  });
+  ipcMain.handle(IPC.BOOKMARK_RENAME, (_e, id: number, title: string) => {
+    const ok = bookmarks.rename(id, title);
+    if (ok) broadcastToChrome(IPC.BOOKMARK_CHANGED);
+    return ok;
+  });
+  ipcMain.handle(IPC.BOOKMARK_MOVE, (_e, id: number, parentId: number | null) => {
+    const ok = bookmarks.move(id, parentId);
+    if (ok) broadcastToChrome(IPC.BOOKMARK_CHANGED);
+    return ok;
+  });
+  ipcMain.handle(IPC.BOOKMARK_REORDER, (_e, parentId: number | null, orderedIds: number[]) => {
+    const ok = bookmarks.reorder(parentId, orderedIds);
+    if (ok) broadcastToChrome(IPC.BOOKMARK_CHANGED);
+    return ok;
+  });
   ipcMain.handle(IPC.BOOKMARK_IS_BOOKMARKED, (_e, url: string) => bookmarks.isBookmarked(url));
   // Импорт — isAvailable() зовётся заново на каждый список (профиль браузера-источника мог
   // появиться/пропасть между вызовами, не кэшируем факт наличия).

@@ -368,6 +368,10 @@ export const IPC = {
   BOOKMARK_REMOVE_BY_URL: 'bookmark:remove-by-url',  // renderer → main: снять звезду по url (омнибокс)
   BOOKMARK_LIST:          'bookmark:list',            // renderer → main: весь плоский список корня
   BOOKMARK_LIST_TREE:     'bookmark:list-tree',       // renderer → main: всё дерево с папками (сайдбар)
+  BOOKMARK_CREATE_FOLDER: 'bookmark:create-folder',   // renderer → main: (title, parentId) -> BookmarkEntry | null
+  BOOKMARK_RENAME:        'bookmark:rename',          // renderer → main: (id, title) -> boolean
+  BOOKMARK_MOVE:          'bookmark:move',            // renderer → main: (id, parentId) -> boolean, в конец уровня
+  BOOKMARK_REORDER:       'bookmark:reorder',         // renderer → main: (parentId, orderedIds) -> boolean
   BOOKMARK_IS_BOOKMARKED: 'bookmark:is-bookmarked',   // renderer → main: url -> boolean
   BOOKMARK_CHANGED:       'bookmark:changed',         // main → renderer: что-то изменилось (push, без пейлоада)
   // Импорт закладок из других браузеров (см. electron/bookmarkImport/) — пока только Chromium-
@@ -1572,6 +1576,11 @@ export interface OblakoApi {
   listBookmarks(): Promise<BookmarkEntry[]>;
   // Дерево целиком — режим «Закладки» в сайдбаре рисует его сам, поэтому уровни не догружает.
   listBookmarkTree(): Promise<BookmarkNode[]>;
+  createBookmarkFolder(title: string, parentId: number | null): Promise<BookmarkEntry | null>;
+  renameBookmark(id: number, title: string): Promise<boolean>;
+  // Перенос в другого родителя, в конец уровня. Порядок внутри уровня — отдельно, reorderBookmarks.
+  moveBookmark(id: number, parentId: number | null): Promise<boolean>;
+  reorderBookmarks(parentId: number | null, orderedIds: number[]): Promise<boolean>;
   isBookmarked(url: string): Promise<boolean>;
   onBookmarksChanged(cb: () => void): () => void;
   // Импорт из других браузеров (см. electron/bookmarkImport/) — пока только Chromium-семейство.

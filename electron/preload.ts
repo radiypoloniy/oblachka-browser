@@ -124,6 +124,14 @@ const api: OblakoApi = {
   removeBookmarkByUrl: (url: string) => ipcRenderer.invoke(IPC.BOOKMARK_REMOVE_BY_URL, url),
   listBookmarks: () => ipcRenderer.invoke(IPC.BOOKMARK_LIST) as Promise<BookmarkEntry[]>,
   listBookmarkTree: () => ipcRenderer.invoke(IPC.BOOKMARK_LIST_TREE) as Promise<BookmarkNode[]>,
+  createBookmarkFolder: (title: string, parentId: number | null) =>
+    ipcRenderer.invoke(IPC.BOOKMARK_CREATE_FOLDER, title, parentId) as Promise<BookmarkEntry | null>,
+  renameBookmark: (id: number, title: string) =>
+    ipcRenderer.invoke(IPC.BOOKMARK_RENAME, id, title) as Promise<boolean>,
+  moveBookmark: (id: number, parentId: number | null) =>
+    ipcRenderer.invoke(IPC.BOOKMARK_MOVE, id, parentId) as Promise<boolean>,
+  reorderBookmarks: (parentId: number | null, orderedIds: number[]) =>
+    ipcRenderer.invoke(IPC.BOOKMARK_REORDER, parentId, orderedIds) as Promise<boolean>,
   isBookmarked: (url: string) => ipcRenderer.invoke(IPC.BOOKMARK_IS_BOOKMARKED, url) as Promise<boolean>,
   onBookmarksChanged: (cb: () => void) => {
     const handler = () => cb();
