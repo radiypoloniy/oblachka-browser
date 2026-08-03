@@ -44,6 +44,8 @@ export default defineConfig({
         // SuggestDropdownManager.ts) — статичный список, не боевая пока.
         suggestdropdown: resolve(__dirname, 'src/suggestdropdown.html'),
         dropzones: resolve(__dirname, 'src/dropzones.html'),
+        // Карточка снимка вкладки (Ctrl+Shift+S) — та же техника (см. ScreenshotManager.ts).
+        screenshot: resolve(__dirname, 'src/screenshot.html'),
       },
     },
   },

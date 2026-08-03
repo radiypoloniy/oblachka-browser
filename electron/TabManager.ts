@@ -2541,6 +2541,19 @@ export class TabManager {
   private onReturnTabCb: ((tabId: string) => void) | null = null;
   setOnReturnTab(cb: (tabId: string) => void): void { this.onReturnTabCb = cb; }
 
+  // Снимок вкладки (см. ScreenshotManager.ts). Хоткеи ловятся здесь, а не в самой карточке
+  // снимка: та НЕ забирает фокус (человек мог снимать посреди набора текста), а без фокуса
+  // before-input-event в ней молчит. Флаг ставит и снимает менеджер карточки — пока она жива,
+  // Ctrl+S принадлежит ей, а не странице.
+  private screenshotOpen = false;
+  setScreenshotOpen(open: boolean): void { this.screenshotOpen = open; }
+  private onScreenshotCb: (() => void) | null = null;
+  private onScreenshotSaveCb: (() => void) | null = null;
+  private onScreenshotCloseCb: (() => void) | null = null;
+  setOnScreenshot(cb: () => void): void { this.onScreenshotCb = cb; }
+  setOnScreenshotSave(cb: () => void): void { this.onScreenshotSaveCb = cb; }
+  setOnScreenshotClose(cb: () => void): void { this.onScreenshotCloseCb = cb; }
+
   // source — откуда пришёл ввод. Слой хрома принадлежит окну навсегда и никуда не переезжает;
   // вкладка — может (см. detachTabForMove), и это решает всё, см. гвард ниже.
   registerHotkeyHandler(wc: WebContents, source: 'chrome' | 'tab' = 'tab'): void {
@@ -2557,9 +2570,14 @@ export class TabManager {
 
       // ── Без Ctrl ──────────────────────────────────────────────────────────
       if (!input.control) {
-        // Esc: приоритет — закрыть FindBar; иначе — остановить загрузку страницы.
+        // Esc: приоритет — убрать карточку снимка (она появилась последней и висит поверх всего),
+        // затем закрыть FindBar; иначе — остановить загрузку страницы.
         if (code === 'Escape' && !shift) {
-          if (this.findBarOpen) {
+          if (this.screenshotOpen) {
+            event.preventDefault();
+            this.screenshotOpen = false;    // немедленный сброс — как у findBarOpen ниже
+            this.onScreenshotCloseCb?.();
+          } else if (this.findBarOpen) {
             event.preventDefault();
             this.findBarOpen = false;   // немедленный сброс, чтобы второй Esc не зацикливался
             this.onFindCloseCb();
@@ -2649,6 +2667,14 @@ export class TabManager {
       } else if (code === 'KeyD' && !shift) {
         event.preventDefault();
         this.onBookmarkPageCb?.();          // Ctrl+D: сохранить страницу в закладки
+      } else if (code === 'KeyS' && shift) {
+        event.preventDefault();
+        this.onScreenshotCb?.();            // Ctrl+Shift+S: снять активную вкладку
+      } else if (code === 'KeyS' && !shift && this.screenshotOpen) {
+        // Ctrl+S — только пока висит карточка снимка. Без неё клавиша остаётся странице:
+        // перехватывать «сохранить» вообще у нас нет права, сохранения страниц в браузере нет.
+        event.preventDefault();
+        this.onScreenshotSaveCb?.();
       } else if (code === 'KeyO' && shift) {
         event.preventDefault();
         this.onBookmarksOpenCb?.();         // Ctrl+Shift+O: открыть раздел закладок

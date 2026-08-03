@@ -78,6 +78,7 @@ import { setActiveEngineId, registerEngine, setCacheManager } from './Translatio
 import { BergamotTranslationEngine } from './BergamotTranslationEngine';
 import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, syncFindBarBounds, relayoutFindBar, setTabManager as setFindBarTabManager } from './FindBarManager';
+import { captureTabScreenshot, saveCurrentScreenshot, closeScreenshot, syncScreenshotBounds, relayoutScreenshot, setScreenshotTabManager } from './ScreenshotManager';
 import { startTabDrag, endTabDrag, syncDropZoneBounds } from './DropZoneManager';
 import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
 import { suggestTabTitle } from './TabRenamer';
@@ -722,7 +723,8 @@ function createWindow(role: WindowRole = 'main') {
     // вкладке, безусловный main-side хук на КАЖДУЮ реальную смену активной, а не только
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover();
+      // Снимок привязан к той вкладке, которую сняли: над чужой страницей карточке не место.
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); closeScreenshot(win);
       // Вопрос о разрешении привязан к конкретной странице — над чужой вкладкой ему не место.
       if (win) for (const id of dropPermissionRequests(win)) permissions.cancel(id);
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
@@ -730,7 +732,7 @@ function createWindow(role: WindowRole = 'main') {
       passwordAutofill.onActiveTabChanged(win);
     },
     (wc, tabId) => {
-      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); passwordAutofill.onTabClosed(tabId);
+      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); closeScreenshot(win); passwordAutofill.onTabClosed(tabId);
       // Закрылась последняя инкогнито-вкладка → стираем in-memory данные приватной сессии (куки/
       // хранилище), Chrome-подобно. takeIncognitoClearIfDone сам знает, когда это уместно (работает
       // и для кнопки, и для хоткея Ctrl+Shift+N).
@@ -808,6 +810,13 @@ function createWindow(role: WindowRole = 'main') {
   // менеджер вкладок нужен ему, чтобы вернуть OS-фокус активной вкладке после закрытия по IPC
   // (крестик/Esc-в-поле), см. FindBarManager.ts::ensureIpcRegistered.
   setFindBarTabManager(win, tabs);
+  // Снимок вкладки (Ctrl+Shift+S) — тоже СВОЙ у каждого окна: снимают ту вкладку, в чьём окне
+  // нажали, включая лёгкие. Менеджеру карточки вкладки нужны и для самого снимка, и чтобы
+  // вернуть странице фокус, если карточка его перехватила (см. ScreenshotManager.ts).
+  setScreenshotTabManager(win, tabs);
+  tabs.setOnScreenshot(() => { if (win && tabs) void captureTabScreenshot(win, tabs); });
+  tabs.setOnScreenshotSave(() => { if (win) saveCurrentScreenshot(win); });
+  tabs.setOnScreenshotClose(() => closeScreenshot(win));
   // ⚠️ Ниже — служба, которая существует в приложении в ОДНОМ экземпляре и помнит ровно один
   // менеджер вкладок. Регистрирует её только полное окно: лёгкое, записавшись последним, увело
   // бы службу себе, и, например, Ctrl+E из главного окна открывал бы найденное в лёгком.
@@ -1458,6 +1467,7 @@ function registerIpc() {
     if (fbWin) {
       syncFindBarBounds(fbWin, b);
       syncDropZoneBounds(fbWin, b); // та же геометрия — зоны дропа рисуются ровно по контенту
+      syncScreenshotBounds(fbWin, b); // карточка снимка сидит в правом нижнем углу контента
       syncPermissionPopoverBounds(fbWin, b); // и запрос разрешения — он тоже привязан к контенту
     }
     syncSearchPopoverBounds(b); // тот же сентинел нулевых bounds — прячем поповер вместе с контентом
@@ -2335,6 +2345,7 @@ function registerIpc() {
     const open = toggleAiPanel(w);
     relayoutSearchPopover(); // та же свободная ширина, что у FindBar
     relayoutFindBar(w); // свободная ширина под FindBar изменилась (см. FindBarManager.ts::computeBounds)
+    relayoutScreenshot(w); // и под карточку снимка — она сидит у правого края, как раз под панелью
     if (open) maybeLazyWarmupOnDemand(); // явное намерение — открытие AI-панели
     return open;
   });

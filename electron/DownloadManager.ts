@@ -31,7 +31,9 @@ interface StoredDownload {
 
 // Свободное имя в папке загрузок: «отчёт.pdf» → «отчёт (1).pdf». ⚠️ Без этого второй файл с тем
 // же именем молча затирал бы первый — Electron перезаписывает по заданному savePath без вопросов.
-function uniquePath(dir: string, filename: string): string {
+// Экспортируется ради снимков вкладки (ScreenshotManager.ts): они ложатся в ту же папку тем же
+// правилом — два снимка в одну секунду не должны затирать друг друга.
+export function uniquePath(dir: string, filename: string): string {
   const ext = path.extname(filename);
   const base = path.basename(filename, ext);
   let candidate = path.join(dir, filename);
