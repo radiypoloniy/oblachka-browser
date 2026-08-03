@@ -99,12 +99,23 @@ export default function SiteIcon({ url, title, size, onOpen, labelColor, labelSh
           <img src={icon.src} alt="" width={size} height={size} style={{ width: size, height: size, objectFit: 'cover' }} />
         )}
         {icon.kind === 'favicon' && (() => {
-          // Больше собственного размера значок не растягиваем — только уменьшаем. Мелкая
-          // фавиконка останется мелкой и чёткой, крупная займёт положенные 62% плитки.
-          // Множитель на devicePixelRatio: на экране со 150% масштабом 32-пиксельный значок
-          // честно занимает 21 CSS-px без единой лесенки.
+          // ⚠️ ЛЕСТНИЦА по собственному размеру значка, а не одно правило на всех. Прошлый заход
+          // менял крайности местами: сперва любую фавиконку растягивали до 62% плитки (крупно,
+          // но в лесенках), потом жёстко запретили растягивать (чётко, но 16 px посреди плитки
+          // в 90 — это и есть «супер мелкая»). Ни то, ни другое не годится, потому что значки
+          // приходят РАЗНЫЕ: FaviconService нарочно ищет крупный (apple-touch-icon и
+          // <link sizes>), и когда он его находит, значок обязан занять плитку целиком.
+          //  • от 64 px — настоящая иконка приложения, кладём во всю плитку;
+          //  • 32…63 — приличный значок, даём 62% и чуть-чуть растягиваем, это незаметно;
+          //  • меньше 32 — только по своему размеру, растягивать нечего.
           const dpr = window.devicePixelRatio || 1;
-          const px = Math.min(Math.round(size * 0.62), Math.round(icon.natural / dpr));
+          const nat = icon.natural;
+          if (nat >= 64) {
+            return <img src={icon.src} alt="" width={size} height={size} style={{ width: size, height: size, objectFit: 'cover' }} />;
+          }
+          const px = nat >= 32
+            ? Math.round(size * 0.62)
+            : Math.min(Math.round(size * 0.62), Math.round(nat / dpr));
           return <img src={icon.src} alt="" style={{ width: px, height: px, objectFit: 'contain' }} />;
         })()}
         {(icon.kind === 'letter' || icon.kind === 'loading') && (
