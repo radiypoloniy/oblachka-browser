@@ -177,7 +177,8 @@ export default function SidebarBookmarks({ onOpen }: Props) {
             }}>
               <FolderPlus size={17} strokeWidth={2} />
             </span>
-            <span style={{ fontSize: 'var(--fs-xs)', lineHeight: 1.1 }}>Новая</span>
+            {/* Та же фиксированная высота подписи, что у ячеек папок, — иначе ряд сетки съедет. */}
+            <span style={{ fontSize: 'var(--fs-xs)', lineHeight: 1.15, height: '2.3em' }}>Новая</span>
           </button>
         </div>
         {creating && <NameInput placeholder="Название папки" onDone={(v) => void createFolder(v)} onCancel={() => setCreating(false)} />}
@@ -458,9 +459,15 @@ function FolderCell({ id, label, active, onClick, all }: {
       ) : (
         <FolderGlyph title={label} size={40} />
       )}
+      {/* ⚠️ Подпись в ДВЕ строки, как на домашнем экране, а не одна с многоточием. В колонке
+          256 px на ячейку приходится около 70 px, и в одну строку «Документы» превращались в
+          «Докумен…», а «Покупки к отпуску» — в «Покупки …»: подпись переставала отвечать на
+          вопрос, ради которого её и добавили. Высота фиксирована на две строки, чтобы ряды
+          сетки не съезжали от разной длины имён. */}
       <span style={{
-        maxWidth: '100%', fontSize: 'var(--fs-xs)', lineHeight: 1.1,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        maxWidth: '100%', fontSize: 'var(--fs-xs)', lineHeight: 1.15,
+        height: '2.3em', overflow: 'hidden', wordBreak: 'break-word',
+        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
       }}>{label}</span>
     </button>
   );
