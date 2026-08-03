@@ -119,6 +119,7 @@ import {
   setHistoryManager as setOrganizerHistoryManager,
 } from './TabOrganizer';
 import { suggestBookmarkFolders } from './BookmarkOrganizer';
+import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
@@ -1856,6 +1857,7 @@ function registerIpc() {
   // труба к панели), но за ними ОДИН модуль с общим часовым кэшем — второго сетевого похода
   // открытая панель и открытая вкладка не устроят.
   ipcMain.handle(IPC.CURRENCY_GET,        () => getCurrencyRates());
+  ipcMain.handle(IPC.HOLIDAY_GET,         (_e, country?: string) => getNextHoliday(country ?? 'RU'));
   ipcMain.handle(IPC.CRYPTO_GET,          () => getCryptoRates());
   ipcMain.handle(IPC.NOTEBOOK_EXTRACT_URL, (e, url: string) => {
     // Локальная переменная, а не два вызова подряд: при повторном вызове TypeScript теряет

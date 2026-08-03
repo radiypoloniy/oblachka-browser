@@ -271,6 +271,7 @@ export const IPC = {
   THEME_SET:     'theme:set',
   THEME_CHANGED: 'theme:changed', // main → renderer: выбор сменили в другом окне ИЛИ система переключила тему
   WEATHER_GET: 'weather:get', // renderer → main: погода по городу для виджета новой вкладки (WeatherService)
+  HOLIDAY_GET: 'holiday:get',   // renderer → main: ближайший праздник (виджет стола)
   CURRENCY_GET: 'currency:get', // renderer → main: курсы ЦБ РФ для виджета новой вкладки (CurrencyRates)
   CRYPTO_GET: 'crypto:get', // renderer → main: курсы криптовалют для виджета «Крипта» (CryptoRates)
   NEWTAB_PHOTO_GET: 'newtab:photo-get', // renderer → main: «фото дня» для фона вкладки (data-URL), кэш на день
@@ -1405,6 +1406,14 @@ export type AutofillFillFields = Partial<Record<AutofillFieldKey, string>>;
 
 // Погода для виджета новой вкладки (electron/WeatherService.ts, Open-Meteo). tempC — цельсии,
 // weatherCode — WMO. Конвертация в °F и иконка/подпись — на стороне рендера.
+export interface NextHolidayInfo {
+  ok: boolean;
+  name?: string;
+  date?: string;
+  daysUntil?: number;
+  error?: string;
+}
+
 export interface WeatherInfo {
   /** Ощущается как — Apple показывает её первой строкой под температурой. */
   feelsC?: number
@@ -1563,7 +1572,9 @@ export interface OblakoApi {
   onThemeChanged(cb: (prefs: ThemePrefs) => void): () => void;
 
   getWeather(city: string): Promise<WeatherInfo>; // погода для виджета новой вкладки
-  getCurrencyRates(): Promise<CurrencyRatesInfo>; // курсы ЦБ РФ для виджета новой вкладки
+  getCurrencyRates(): Promise<CurrencyRatesInfo>;
+  /** Ближайший госпраздник. Новый получатель данных (date.nager.at), наружу уходит только код страны. */
+  getNextHoliday(country?: string): Promise<NextHolidayInfo>; // курсы ЦБ РФ для виджета новой вкладки
   getCryptoRates(): Promise<CryptoRatesInfo>;     // курсы криптовалют для виджета «Крипта»
   getNewtabPhoto(): Promise<{ ok: boolean; dataUrl?: string }>; // «фото дня» для фона новой вкладки
   extractNotebookUrl(url: string): Promise<{ ok: boolean; title?: string; text?: string }>; // текст URL-источника блокнота

@@ -185,3 +185,64 @@ export function DownloadsWidget({ box, fill }: WidgetProps) {
     </Tile>
   );
 }
+
+// ── Праздники ─────────────────────────────────────────────────────────────────
+//
+// ⚠️ Единственный виджет в этом файле, который ХОДИТ В СЕТЬ, и живёт он здесь по соседству
+// сознательно — чтобы разница была видна прямо в коде. Получатель новый (date.nager.at), но
+// footprint крошечный: один запрос на год, и наружу уходит только код страны — ни координат,
+// ни адресов, ни чего-либо о человеке. Кэш в main держит год целиком, поэтому за сеанс запрос
+// уходит максимум один раз.
+export function HolidayWidget({ box, fill }: WidgetProps) {
+  const [data, setData] = useState<{ name: string; days: number } | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void window.oblako.getNextHoliday('RU').then((r) => {
+      if (!alive) return;
+      if (!r.ok || !r.name || r.daysUntil === undefined) { setFailed(true); return; }
+      setData({ name: r.name, days: r.daysUntil });
+    }).catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, []);
+
+  const big = Math.round(Math.min(box.height * 0.32, 52));
+
+  return (
+    <Tile surface fill={fill}>
+      <TileCaption>Ближайший праздник</TileCaption>
+      {failed || !data ? (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.6 }}>
+          {failed ? 'Не удалось узнать' : '…'}
+        </div>
+      ) : (
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ fontSize: big, fontWeight: 600, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' }}>
+            {data.days === 0 ? 'Сегодня' : data.days}
+          </div>
+          {data.days > 0 && (
+            <div style={{ fontSize: 'var(--fs-xs)', opacity: 0.7, marginTop: 2 }}>{dayWord(data.days)}</div>
+          )}
+        </div>
+      )}
+      {data && (
+        <div style={{
+          flex: 'none', fontSize: 'var(--fs-sm)', fontWeight: 600,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{data.name}</div>
+      )}
+    </Tile>
+  );
+}
+
+// «1 день», «2 дня», «5 дней» — без этого плитка писала бы «5 день». Правило русского счёта:
+// 11-14 всегда «дней», дальше по последней цифре.
+function dayWord(n: number): string {
+  const last2 = n % 100;
+  const last = n % 10;
+  if (last2 >= 11 && last2 <= 14) return 'дней';
+  if (last === 1) return 'день';
+  if (last >= 2 && last <= 4) return 'дня';
+  return 'дней';
+}

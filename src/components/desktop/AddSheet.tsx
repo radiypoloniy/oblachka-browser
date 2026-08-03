@@ -35,6 +35,7 @@ const WIDGET_CHOICES: { key: string; label: string; hint: string; size: keyof ty
   { key: 'shield',   label: 'Защита',           hint: 'Адблок и VPN · без сети',    size: 'small' },
   { key: 'moon',     label: 'Луна',             hint: 'Фаза по дате · без сети',    size: 'small' },
   { key: 'downloads', label: 'Загрузки',        hint: 'Что качается · без сети',    size: 'medium' },
+  { key: 'holiday',  label: 'Праздники',        hint: 'Сколько до ближайшего',      size: 'small' },
 ];
 
 interface Props {
@@ -100,7 +101,7 @@ export default function AddSheet({ layout, onAdd, onClose }: Props) {
                 width: 40, height: 40, borderRadius: 10, flex: 'none',
                 background: 'var(--surface-sunken)', display: 'inline-flex',
                 alignItems: 'center', justifyContent: 'center', fontSize: 18,
-              }}>{w.key === 'weather' ? '🌤' : w.key === 'clock' ? '🕒' : w.key === 'rates' ? '₽' : w.key === 'crypto' ? '₿' : w.key === 'tasks' ? '✓' : w.key === 'shield' ? '🛡' : w.key === 'moon' ? '🌙' : w.key === 'downloads' ? '⤓' : '★'}</span>}
+              }}>{w.key === 'weather' ? '🌤' : w.key === 'clock' ? '🕒' : w.key === 'rates' ? '₽' : w.key === 'crypto' ? '₿' : w.key === 'tasks' ? '✓' : w.key === 'shield' ? '🛡' : w.key === 'moon' ? '🌙' : w.key === 'downloads' ? '⤓' : w.key === 'holiday' ? '🎉' : '★'}</span>}
             />
           ))}
           {WIDGET_CHOICES.every((w) => hasItem(layout, 'widget', w.key)) && <Empty>Все виджеты уже на экране.</Empty>}

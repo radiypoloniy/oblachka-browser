@@ -6,7 +6,7 @@ import type { CellSize } from '../../newtab/desktop';
 import { loadNewTabSettings } from '../../newtab/settings';
 import CryptoIcon from '../CryptoIcon';
 import { siteTint } from './siteTint';
-import { MoonWidget, ShieldWidget, DownloadsWidget } from './localWidgets';
+import { MoonWidget, ShieldWidget, DownloadsWidget, HolidayWidget } from './localWidgets';
 
 // Виджеты рабочего стола.
 //
@@ -681,9 +681,16 @@ function FaviconTile({ host }: { host: string }) {
       src={`https://${host}/favicon.ico`}
       alt=""
       onError={() => setFailed(true)}
+      // ⚠️ Кромка и тень обязательны. Подложка под значком белая, и когда плитка перестала быть
+      // тёмной (часы и топ-сайты теперь идут за темой), белое легло на белое: у значков со
+      // светлым фоном — а это половина сайтов — пропала форма, остался висеть логотип без
+      // границ. На тёмной плитке проблемы не было видно вовсе, поэтому и всплыло только сейчас.
+      // Кромка токеном, а не литералом: в тёмной теме она обязана становиться светлой.
       style={{
         width: 44, height: 44, borderRadius: 12, objectFit: 'contain', flex: 'none',
         background: 'rgba(255,255,255,0.94)', padding: 7, boxSizing: 'border-box',
+        border: '1px solid var(--divider)',
+        boxShadow: '0 1px 2px rgba(16,20,40,0.10), 0 2px 6px rgba(16,20,40,0.08)',
       }}
     />
   );
@@ -867,4 +874,5 @@ export const WIDGET_RENDERERS: Record<string, (p: WidgetProps) => React.ReactEle
   moon: MoonWidget,
   shield: ShieldWidget,
   downloads: DownloadsWidget,
+  holiday: HolidayWidget,
 };
