@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { X, Download, FolderOpen, ExternalLink, RotateCcw, Pause, Play, XCircle, Trash2 } from 'lucide-react';
 import type { DownloadEntry } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
@@ -11,8 +11,37 @@ interface DownloadsProps {
   onClose: () => void;
 }
 
+// Ключ дня — по локальной дате, а не по UTC: «сегодня» человек считает по своим часам.
+function dayKeyOf(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function dayLabelOf(ts: number): string {
+  const d = new Date(ts);
+  const today = new Date();
+  const yest = new Date(today.getTime() - 86400000);
+  if (dayKeyOf(ts) === dayKeyOf(today.getTime())) return 'Сегодня';
+  if (dayKeyOf(ts) === dayKeyOf(yest.getTime())) return 'Вчера';
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 export default function Downloads({ downloads, onClose }: DownloadsProps) {
   const hasFinished = downloads.some((d) => d.state !== 'progressing');
+  const dayRefs = useRef(new Map<string, HTMLDivElement>());
+
+  // Группировка по дням в том порядке, в каком записи уже пришли (свежие сверху) — своей
+  // сортировки не заводим, порядок списка задаёт DownloadManager.
+  const dayGroups = useMemo(() => {
+    const groups: { key: string; label: string; items: DownloadEntry[] }[] = [];
+    for (const d of downloads) {
+      const key = dayKeyOf(d.startedAt);
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) last.items.push(d);
+      else groups.push({ key, label: dayLabelOf(d.startedAt), items: [d] });
+    }
+    return groups;
+  }, [downloads]);
 
   function clearFinished() {
     const finished = downloads.filter((d) => d.state !== 'progressing');
@@ -72,16 +101,54 @@ export default function Downloads({ downloads, onClose }: DownloadsProps) {
         </button>
       </div>
 
-      {/* Список */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 20px 16px' }}>
-        {downloads.length === 0 ? (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', marginTop: 48 }}>
-            Нет загрузок
+      {/* Список. Раскладка — та же, что у Истории и Закладок: узкая навигация слева, содержимое
+          справа. Это третий экран одного семейства («что я уже видел / взял»), и три разные
+          формы для трёх соседних разделов человек читает как три разные программы. Слева даты —
+          ровно как в Истории, потому что загрузки тоже хронология. */}
+      {downloads.length === 0 ? (
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', marginTop: 48 }}>
+          Нет загрузок
+        </div>
+      ) : (
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+          <nav style={{
+            width: 150, flexShrink: 0, overflowY: 'auto',
+            padding: '10px 8px 16px', borderRight: '1px solid var(--divider)',
+          }}>
+            {dayGroups.map((g) => (
+              <button
+                key={g.key}
+                onClick={() => dayRefs.current.get(g.key)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                  padding: '6px 10px', marginBottom: 1, border: 'none', background: 'none',
+                  borderRadius: 'var(--radius-sm)', cursor: 'default',
+                  fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+              >
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {g.label}
+                </span>
+                <span style={{ flexShrink: 0, color: 'var(--text-faint)' }}>{g.items.length}</span>
+              </button>
+            ))}
+          </nav>
+          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '8px 20px 16px' }}>
+            {dayGroups.map((g) => (
+              <div key={g.key} ref={(el) => { if (el) dayRefs.current.set(g.key, el); else dayRefs.current.delete(g.key); }}>
+                <div style={{
+                  position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface-solid)',
+                  fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
+                  padding: '10px 8px 6px',
+                }}>{g.label}</div>
+                {g.items.map((d) => <DownloadRow key={d.id} entry={d} />)}
+              </div>
+            ))}
           </div>
-        ) : (
-          downloads.map((d) => <DownloadRow key={d.id} entry={d} />)
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -129,14 +196,10 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
         </span>
       </div>
 
-      {/* URL */}
-      <div style={{
-        fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        marginBottom: 6,
-      }}>
-        {d.url}
-      </div>
+      {/* ⚠️ Полного адреса источника здесь БОЛЬШЕ НЕТ. Он занимал целую строку под каждым файлом
+          и почти всегда был нечитаемой кашей из параметров — а отвечал на вопрос, который к
+          скачанному файлу не относится: человек ищет здесь файл, а не ссылку. Домен остался
+          в подписи выше, полный адрес — в подсказке при наведении на строку. */}
 
       {/* Прогресс-бар */}
       {isActive && (
@@ -168,16 +231,9 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
         </div>
       )}
 
-      {/* Для завершённых — путь сохранения */}
-      {isDone && d.savePath && (
-        <div style={{
-          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          marginBottom: 6,
-        }}>
-          {d.savePath}
-        </div>
-      )}
+      {/* ⚠️ Путь сохранения тоже убран из строки: он одинаковый почти у всех файлов (папка
+          загрузок), то есть повторял одно и то же под каждой записью и ничего не различал.
+          Добраться до файла по-прежнему можно кнопкой «Показать в папке» ниже. */}
 
       {/* Кнопки действий */}
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

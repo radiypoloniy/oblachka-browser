@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { X, Search, Star, Download, Loader2, Folder, Sparkles } from 'lucide-react';
 import type { BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
+import SiteFavicon from './SiteFavicon';
 
 // Ссылка вместе с именем папки, в которой лежит — панель плоская, и без этого нельзя понять,
 // откуда запись. null — корень.
@@ -534,8 +535,10 @@ function BookmarkRow({ entry, onDelete }: { entry: FlatBookmark; onDelete: (id: 
   return (
     <div
       style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '6px 8px', borderRadius: 'var(--radius-sm)',
+        display: 'flex', alignItems: 'center', gap: 12,
+        // Просторнее и крупнее — тот же шаг, что в строке Истории: это главный список раздела,
+        // а он читался как плотная таблица.
+        padding: '9px 10px', borderRadius: 'var(--radius-sm)',
         background: hovered ? 'var(--surface-hover)' : 'transparent',
         cursor: 'pointer',
       }}
@@ -543,20 +546,13 @@ function BookmarkRow({ entry, onDelete }: { entry: FlatBookmark; onDelete: (id: 
       onMouseLeave={() => setHovered(false)}
       onClick={handleNavigate}
     >
-      {/* Нет хранимых favicon-урлов для закладок (BookmarkEntry их не несёт) — тот же фоллбэк,
-          что у HistoryRow: буква домена на плашке. */}
-      <span style={{
-        width: 20, height: 20, borderRadius: 'var(--radius-sm)', flexShrink: 0,
-        background: 'var(--neutral-300)', color: 'var(--text-body)',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 'var(--fs-xs)', fontWeight: 600,
-      }}>
-        {domain.charAt(0).toUpperCase() || '?'}
-      </span>
+      {/* Настоящий значок сайта — тот же компонент, что в Истории: закладку узнают по нему
+          быстрее, чем прочитывают заголовок. */}
+      <SiteFavicon url={entry.url} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6 }}>
         <span style={{
           flex: 1, minWidth: 0,
-          fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
+          fontSize: 'var(--fs-md)', color: 'var(--text-strong)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {entry.title || entry.url}

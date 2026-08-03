@@ -80,6 +80,8 @@ interface ToolbarProps {
   onSubmit: (input: string) => void;
   onSuggestToggle?: (open: boolean) => void;
   downloadsActive: boolean;   // есть хотя бы одна активная загрузка
+  downloadsProgress: number | null; // совокупный прогресс 0..1; null — размер неизвестен
+  downloadStartTick: number;  // растёт на КАЖДУЮ новую загрузку — триггер анимации прилёта
   onToggleAiPanel: () => void; // тоггл правой AI-панели (оверлей, см. AiPanelManager.ts)
   aiPanelOpen: boolean;       // панель открыта — кнопка подсвечена акцентом
   pageTranslateState: PageTranslateState; // см. PageTranslateManager.ts
@@ -100,7 +102,7 @@ export default function Toolbar({
   // менять тему.
   tab, allTabs, vpnOn, omniboxRef: externalRef,
   onBack, onForward, onReload, onSubmit, onSuggestToggle,
-  downloadsActive, onToggleAiPanel, aiPanelOpen,
+  downloadsActive, downloadsProgress, downloadStartTick, onToggleAiPanel, aiPanelOpen,
   pageTranslateState, pageTranslateProgress, onTogglePageTranslate, isLightWindow = false,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
@@ -117,6 +119,16 @@ export default function Toolbar({
   const [vpnPopoverOpen, setVpnPopoverOpen] = useState(false);
   const [downloadsPopoverOpen, setDownloadsPopoverOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
+  // Анимация прилёта файла в кнопку загрузок. Живёт ровно столько, сколько играет — держать
+  // её состоянием после окончания незачем, а CSS-анимация без размонтирования не перезапустится
+  // на вторую загрузку подряд.
+  const [flying, setFlying] = useState(false);
+  useEffect(() => {
+    if (downloadStartTick === 0) return; // стартовое значение, загрузок ещё не было
+    setFlying(true);
+    const t = setTimeout(() => setFlying(false), 460);
+    return () => clearTimeout(t);
+  }, [downloadStartTick]);
 
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = externalRef ?? internalRef;
@@ -1213,18 +1225,63 @@ export default function Toolbar({
               position: 'relative',
             }}
           >
-            <Download size={18} />
+            <Download size={18} style={flying ? { animation: 'oblako-dl-land 420ms var(--ease-out)' } : undefined} />
+
+            {/* ⚠️ Прилетающий файл — единственный момент, когда человеку СООБЩАЮТ, что загрузка
+                вообще началась: у нас нет ни системы тостов, ни полосы загрузок снизу, и раньше
+                о начале скачивания говорила только точка 5×5 в углу кнопки, которую никто не
+                замечал. Летит снизу-слева, со стороны страницы, — оттуда файл и «пришёл».
+                Только transform и opacity: они не трогают раскладку и уходят в композитор. */}
+            {flying && (
+              <span
+                aria-hidden
+                style={{
+                  position: 'absolute', inset: 0, display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--accent)', pointerEvents: 'none',
+                  animation: 'oblako-dl-fly 420ms var(--ease-out)',
+                }}
+              >
+                <Download size={18} />
+              </span>
+            )}
+
+            {/* Идёт скачивание — дуга прогресса по кругу кнопки. Прежняя статичная точка не
+                отвечала на вопрос «идёт или нет»: она выглядела одинаково и на первом проценте,
+                и на девяноста. Размер неизвестен (totalBytes = 0) — крутится бесконечная дуга,
+                это честнее замершей шкалы. */}
             {downloadsActive && !downloadsPopoverOpen && (
-              <span style={{
-                position: 'absolute', bottom: 5, right: 5,
-                width: 5, height: 5, borderRadius: '50%',
-                background: 'var(--accent)',
-              }} />
+              <ProgressRing value={downloadsProgress} />
             )}
           </button>
         </div>
       </div>
     </div>
+  );
+}
+
+// Дуга прогресса вокруг кнопки загрузок. value=null — размер файла неизвестен, крутим
+// бесконечную дугу: замершая на месте шкала врала бы, что работа встала.
+function ProgressRing({ value }: { value: number | null }) {
+  const R = 13;
+  const LEN = 2 * Math.PI * R;
+  return (
+    <svg
+      viewBox="0 0 32 32" width={30} height={30} aria-hidden
+      style={{
+        position: 'absolute', inset: 0, margin: 'auto', pointerEvents: 'none',
+        transform: 'rotate(-90deg)', // старт дуги сверху, а не справа
+        animation: value === null ? 'oblako-dl-spin 1.1s linear infinite' : undefined,
+      }}
+    >
+      <circle cx="16" cy="16" r={R} fill="none" stroke="var(--accent)" strokeOpacity={0.18} strokeWidth="2" />
+      <circle
+        cx="16" cy="16" r={R} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round"
+        strokeDasharray={LEN}
+        strokeDashoffset={LEN * (1 - (value ?? 0.25))}
+        style={{ transition: value === null ? undefined : 'stroke-dashoffset var(--dur-slow) var(--ease-standard)' }}
+      />
+    </svg>
   );
 }
 

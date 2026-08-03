@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { X, Search, Trash2, Clock, Wand2, Loader2 } from 'lucide-react';
 import type { HistoryEntry, HistoryClearPeriod } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
+import SiteFavicon from './SiteFavicon';
 
 interface HistoryProps {
   onClose: () => void;
@@ -443,8 +444,10 @@ function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: str
   return (
     <div
       style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '6px 8px', borderRadius: 'var(--radius-sm)',
+        display: 'flex', alignItems: 'center', gap: 12,
+        // Строка стала выше и просторнее: это главный список раздела, а он читался как плотная
+        // таблица — 6 px по вертикали на строку с 13-м кеглем. Пролистывать такое глазами тяжело.
+        padding: '9px 10px', borderRadius: 'var(--radius-sm)',
         background: hovered ? 'var(--surface-hover)' : 'transparent',
         cursor: 'pointer',
       }}
@@ -458,22 +461,15 @@ function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: str
       }}>
         {timeOf(entry.lastVisit)}
       </span>
-      {/* Нет хранимых favicon-урлов для истории (HistoryEntry их не несёт) — тот же фоллбэк,
-          что у вкладок без favicon в сайдбаре (Sidebar.tsx): буква домена на плашке. */}
-      <span style={{
-        width: 20, height: 20, borderRadius: 'var(--radius-sm)', flexShrink: 0,
-        background: 'var(--neutral-300)', color: 'var(--text-body)',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 'var(--fs-xs)', fontWeight: 600,
-      }}>
-        {domain.charAt(0).toUpperCase() || '?'}
-      </span>
+      {/* Настоящий значок сайта вместо буквы домена: страницу человек узнаёт по нему быстрее,
+          чем прочитывает заголовок. Буква осталась запасным путём внутри SiteFavicon. */}
+      <SiteFavicon url={entry.url} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
             <span style={{
               flex: 1, minWidth: 0,
-              fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
+              fontSize: 'var(--fs-md)', color: 'var(--text-strong)',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {entry.title || entry.url}

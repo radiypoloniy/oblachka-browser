@@ -601,6 +601,29 @@ export default function App() {
   }, []);
 
   const downloadsActive = downloads.some((d) => d.state === 'progressing');
+  // Совокупный прогресс всех идущих загрузок — по БАЙТАМ, а не как среднее процентов: иначе
+  // мелкий файл рядом с большим тянул бы шкалу вперёд, хотя работа почти не сдвинулась.
+  // null — считать нечего (нечего качать либо ни у одного файла неизвестен размер).
+  const downloadsProgress = (() => {
+    const live = downloads.filter((d) => d.state === 'progressing' && d.totalBytes > 0);
+    if (live.length === 0) return null;
+    const total = live.reduce((n, d) => n + d.totalBytes, 0);
+    const done = live.reduce((n, d) => n + d.receivedBytes, 0);
+    return total > 0 ? Math.min(1, done / total) : null;
+  })();
+  // Тик «началась новая загрузка» — сигнал для анимации прилёта в кнопку. Считаем по ПОЯВЛЕНИЮ
+  // нового id, а не по downloadsActive: тот истинен всё время скачивания, и анимация по нему
+  // играла бы один раз на пачку файлов либо повторялась на каждом кадре прогресса.
+  const seenDownloadIds = useRef<Set<string> | null>(null);
+  const [downloadStartTick, setDownloadStartTick] = useState(0);
+  useEffect(() => {
+    const ids = new Set(downloads.map((d) => d.id));
+    // Первый приход списка — это восстановление с диска, а не новые загрузки: запоминаем молча.
+    if (seenDownloadIds.current === null) { seenDownloadIds.current = ids; return; }
+    const fresh = downloads.some((d) => !seenDownloadIds.current!.has(d.id) && d.state === 'progressing');
+    seenDownloadIds.current = ids;
+    if (fresh) setDownloadStartTick((n) => n + 1);
+  }, [downloads]);
 
   const select = (id: string) => { setActiveId(id); window.oblako.activateTab(id); };
   const newTab = () => { setActiveId(HUB_ID); window.oblako.activateTab(HUB_ID); };
@@ -674,6 +697,8 @@ export default function App() {
             void window.oblako.setSuggestDropdownOpen(open);
           }}
           downloadsActive={downloadsActive}
+          downloadsProgress={downloadsProgress}
+          downloadStartTick={downloadStartTick}
           onToggleAiPanel={() => { void window.oblako.toggleAiPanel(); }}
           aiPanelOpen={aiPanelOpen}
           pageTranslateState={pageTranslateState}

@@ -24,6 +24,31 @@ body {
 /* Тот же keyframe-приём, что и src/index.html (спиннер до React) — здесь для React-точек входа,
    не грузящих index.html (aipanel.tsx и т.п.), см. заход D: индикатор фактчека. */
 @keyframes oblako-spin { to { transform: rotate(360deg); } }
+
+/* Начало загрузки: файл прилетает в кнопку загрузок со стороны страницы (снизу-слева), кнопка
+   коротко отзывается. Единственный момент, когда человеку сообщают, что скачивание пошло, —
+   тостов в чроме нет. Только transform/opacity: раскладку не трогают, идут в композитор.
+   ⚠️ Дуга прогресса крутится СВОИМ кадром, а не общим oblako-spin: у неё есть базовый поворот
+   на -90° (старт сверху), и общий кадр, задающий только `to`, этот поворот бы сбросил. */
+@keyframes oblako-dl-fly {
+  from { transform: translate(-16px, 22px) scale(1.15); opacity: 0; }
+  35%  { opacity: 1; }
+  to   { transform: translate(0, 0) scale(0.55); opacity: 0; }
+}
+@keyframes oblako-dl-land {
+  0%, 55% { transform: none; }
+  72%     { transform: scale(0.86) translateY(1px); }
+  100%    { transform: none; }
+}
+@keyframes oblako-dl-spin {
+  from { transform: rotate(-90deg); }
+  to   { transform: rotate(270deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes oblako-dl-fly  { from, to { opacity: 0; transform: none; } }
+  @keyframes oblako-dl-land { from, to { transform: none; } }
+}
 /* Режим правки рабочего стола (desktop/DesktopScreen.tsx): элементы «дрожат», как на iPad.
    ⚠️ Амплитуда меньше, чем у Apple: там жест пальцем и экран в руках, здесь курсор и большой
    монитор — на нём то же покачивание читается как дефект рендера. Только transform. */
