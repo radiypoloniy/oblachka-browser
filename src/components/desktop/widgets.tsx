@@ -54,6 +54,20 @@ export const WIDGET_FILLS: { id: string; label: string; css: string | null }[] =
   { id: 'slate',  label: 'Графит',   css: 'linear-gradient(165deg, #5A6472 0%, #3B4350 100%)' },
 ];
 
+// ⚠️ Образец цвета в пикере — ПЛОСКИЙ, а не тот же градиент, что на плитке. На кружке 22 px
+// градиент не читается как объём: он превращается в грязное пятно с невнятной серединой, и
+// набор таких кружков выглядит дёшево. Плитка при этом остаётся с градиентом — там он работает,
+// потому что поверхность большая.
+export const FILL_SWATCH: Record<string, string> = {
+  theme:  'var(--surface-sunken)',
+  blue:   '#3C81DA',
+  teal:   '#2AA0B0',
+  green:  '#3AAE6D',
+  orange: '#F5931F',
+  pink:   '#E8617F',
+  slate:  '#4C5665',
+};
+
 export function fillCss(id: string | undefined): string | null {
   return WIDGET_FILLS.find((f) => f.id === id)?.css ?? null;
 }

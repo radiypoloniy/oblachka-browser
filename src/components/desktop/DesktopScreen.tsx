@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { Search, Sparkles, Workflow, Check, Plus, X, LayoutGrid, SlidersHorizontal } from 'lucide-react';
+import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import {
   loadDesktop, saveDesktop, subscribeDesktop, computeGrid, layoutItems,
@@ -256,6 +256,10 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
             уже нельзя. Auto-поля в переполненном контейнере схлопываются в ноль, и список
             остаётся целым. */}
         <div style={{ marginTop: 'auto', flex: 'none' }} />
+        {/* ⚠️ Приветствие рисуется ЗДЕСЬ. В панели настройка на него была, а на экране его не
+            существовало — то есть тумблер ничего не переключал. Это была не пропажа дизайна,
+            а недоделка: на springboard-версии стола его просто забыли перенести. */}
+        {settings.greeting.show && <Greeting name={settings.greeting.name} />}
         {settings.search.show && <SearchBar onSubmit={onSubmit} />}
 
         {/* Область сетки: меряем её ширину, а саму сетку центрируем — на широком экране она
@@ -273,6 +277,24 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
               cursor: editing ? (drag ? 'grabbing' : 'grab') : undefined,
             }}
           >
+            {/* ⚠️ Клетки видны ТОЛЬКО в режиме правки. Раньше жест был вслепую: элемент ехал за
+                курсором, соседи расступались, но КУДА он встанет и по какой сетке — человек
+                достраивал в уме. Пунктирные клетки отвечают на это прямо, а вне правки исчезают:
+                на обычном экране решётка поверх обоев была бы шумом. */}
+            {editing && Array.from({ length: rows * grid.cols }).map((_, i) => (
+              <div
+                key={`cell-${i}`}
+                style={{
+                  position: 'absolute', left: 0, top: 0, pointerEvents: 'none',
+                  width: grid.cell, height: grid.cell, borderRadius: 'var(--radius-card)',
+                  transform: `translate3d(${(i % grid.cols) * step}px, ${Math.floor(i / grid.cols) * step}px, 0)`,
+                  border: '1.5px dashed var(--nt-plate-border)',
+                  background: 'var(--nt-plate)',
+                  opacity: 0.5,
+                }}
+              />
+            ))}
+
             {/* ⚠️ Подсветки будущего места здесь НЕТ намеренно. Она сбивала: на экране
                 одновременно оказывались элемент под курсором, контур цели и разъехавшиеся
                 соседи — три сигнала об одном и том же. Расступившиеся соседи показывают исход
@@ -464,11 +486,8 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                 выглядит; «Правка» (режим на самом столе) — где что лежит, то есть перетаскивание
                 и размеры. Раньше и то и другое пряталось за одной кнопкой, а часть настроек жила
                 вообще в отдельном разделе — именно это и было неудобно. */}
-            <CornerButton title="Настройка экрана" onClick={() => setPanelOpen(true)}>
+            <CornerButton title="Настроить экран" onClick={() => setPanelOpen(true)}>
               <SlidersHorizontal size={18} />
-            </CornerButton>
-            <CornerButton title="Переставить и изменить размер" onClick={() => setEditing(true)}>
-              <LayoutGrid size={18} />
             </CornerButton>
             {!isLightWindow && (
               <>
@@ -481,7 +500,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
       </div>
 
       {panelOpen && (
-        <SidePanel layout={layout} onLayout={apply} onClose={() => setPanelOpen(false)} />
+        <SidePanel layout={layout} onLayout={apply} editing={editing} onEditing={setEditing} onClose={() => setPanelOpen(false)} />
       )}
 
       {sheetOpen && (
@@ -518,11 +537,15 @@ function SearchBar({ onSubmit }: { onSubmit: (v: string) => void }) {
       style={{ width: '100%', maxWidth: 560, flex: 'none' }}
     >
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, height: 48, padding: '0 18px',
-        borderRadius: 999, background: 'var(--nt-field)', backdropFilter: 'blur(16px)',
-        border: '1px solid var(--nt-field-border)', boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+        // ⚠️ Поле — такой же остров, что и карточки виджетов: та же поверхность, тот же радиус,
+        // та же тень. Прежнее полупрозрачное «стекло на обоях» осталось от минималистичной
+        // вкладки, где карточек не было вовсе, и рядом с белыми плитками читалось как чужое.
+        display: 'flex', alignItems: 'center', gap: 12, height: 52, padding: '0 20px',
+        borderRadius: 'var(--radius-card)', background: 'var(--surface)',
+        border: '1px solid var(--divider)',
+        boxShadow: '0 1px 2px rgba(16,20,40,0.10), 0 10px 28px rgba(16,20,40,0.16)',
       }}>
-        <Search size={17} style={{ color: 'var(--nt-field-text)', opacity: 0.75, flex: 'none' }} />
+        <Search size={18} style={{ color: 'var(--text-faint)', flex: 'none' }} />
         <input
           className="newtab-search-input"
           value={value}
@@ -531,7 +554,7 @@ function SearchBar({ onSubmit }: { onSubmit: (v: string) => void }) {
           autoFocus
           style={{
             flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none',
-            fontSize: 'var(--fs-md)', color: 'var(--nt-field-text)',
+            fontSize: 'var(--fs-md)', color: 'var(--text-strong)', fontFamily: 'inherit',
           }}
         />
       </div>
@@ -607,5 +630,21 @@ function FillPicker({ value, onPick }: { value?: string; onPick: (fill: string |
         </div>
       )}
     </>
+  );
+}
+
+// Приветствие над поиском. Текст зависит от времени суток — это единственное, что делает его
+// живым; без него это была бы просто строка с именем.
+function Greeting({ name }: { name: string }) {
+  const h = new Date().getHours();
+  const part = h < 5 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер';
+  return (
+    <div style={{
+      flex: 'none', marginBottom: 14, textAlign: 'center',
+      fontSize: 'var(--fs-xl)', fontWeight: 600,
+      color: 'var(--nt-text)', textShadow: 'var(--nt-shadow)',
+    }}>
+      {name.trim() ? `${part}, ${name.trim()}` : part}
+    </div>
   );
 }

@@ -8,7 +8,7 @@ import {
 import {
   WIDGET_SIZES, addItem, removeItem, hasItem, type DesktopItem, type DesktopLayout,
 } from '../../newtab/desktop';
-import { WIDGET_FILLS } from './widgets';
+import { WIDGET_FILLS, FILL_SWATCH } from './widgets';
 import CryptoIcon from '../CryptoIcon';
 
 // Боковая панель настройки рабочего стола — всё, что можно поменять, в одном месте и по одному
@@ -24,26 +24,46 @@ import CryptoIcon from '../CryptoIcon';
 
 // Что вообще можно поставить на стол. Один список на панель — раньше он жил в AddSheet, и при
 // добавлении виджета приходилось помнить, что в другом месте есть ещё и переключатели.
-const WIDGETS: { key: string; label: string; size: keyof typeof WIDGET_SIZES; net?: string }[] = [
-  { key: 'clock',     label: 'Часы',             size: 'small' },
-  { key: 'shield',    label: 'Защита',           size: 'small' },
-  { key: 'moon',      label: 'Луна',             size: 'small' },
-  { key: 'tasks',     label: 'Дела',             size: 'medium' },
-  { key: 'downloads', label: 'Загрузки',         size: 'medium' },
-  { key: 'topsites',  label: 'Часто открываете', size: 'medium' },
-  { key: 'weather',   label: 'Погода',           size: 'medium', net: 'Open-Meteo' },
-  { key: 'rates',     label: 'Курс валют',       size: 'small',  net: 'ЦБ РФ' },
-  { key: 'crypto',    label: 'Крипта',           size: 'small',  net: 'CoinGecko' },
-  { key: 'holiday',   label: 'Праздники',        size: 'small',  net: 'date.nager.at' },
+// ⚠️ Виджеты разбиты на ДВЕ группы, а не свалены в один список. Граница проходит там же, где
+// проходит настоящая разница между ними: одни строятся из того, что браузер знает про себя,
+// другие спрашивают у постороннего сервиса. Сваленные в кучу «Часы, Луна, Дела, Погода…» эту
+// разницу стирали, а она — единственное, что человеку тут действительно важно знать.
+const WIDGET_GROUPS: { title: string; note?: string; items: { key: string; label: string; icon: string; size: keyof typeof WIDGET_SIZES; net?: string }[] }[] = [
+  {
+    title: 'Свои данные',
+    note: 'Работают офлайн, ничего никуда не отправляют',
+    items: [
+      { key: 'clock',     label: 'Часы',             icon: '🕒', size: 'small' },
+      { key: 'moon',      label: 'Луна',             icon: '🌙', size: 'small' },
+      { key: 'shield',    label: 'Защита',           icon: '🛡', size: 'small' },
+      { key: 'tasks',     label: 'Дела',             icon: '✓',  size: 'medium' },
+      { key: 'downloads', label: 'Загрузки',         icon: '⤓',  size: 'medium' },
+      { key: 'topsites',  label: 'Часто открываете', icon: '★',  size: 'medium' },
+    ],
+  },
+  {
+    title: 'Внешние сервисы',
+    note: 'Каждый обращается к указанному сайту',
+    items: [
+      { key: 'weather',   label: 'Погода',      icon: '🌤', size: 'medium', net: 'Open-Meteo' },
+      { key: 'rates',     label: 'Курс валют',  icon: '₽',  size: 'small',  net: 'ЦБ РФ' },
+      { key: 'crypto',    label: 'Крипта',      icon: '₿',  size: 'small',  net: 'CoinGecko' },
+      { key: 'holiday',   label: 'Праздники',   icon: '🎉', size: 'small',  net: 'date.nager.at' },
+    ],
+  },
 ];
 
 interface Props {
   layout: DesktopLayout;
+  /** Режим правки живёт в DesktopScreen — панель только переключает его, чтобы «что показывать»
+   *  и «где что лежит» настраивались в одном месте, а не двумя разными кнопками. */
+  editing: boolean;
+  onEditing: (v: boolean) => void;
   onLayout: (next: DesktopLayout) => void;
   onClose: () => void;
 }
 
-export default function SidePanel({ layout, onLayout, onClose }: Props) {
+export default function SidePanel({ layout, onLayout, onClose, editing, onEditing }: Props) {
   const [s, setS] = useState<NewTabSettings>(() => loadNewTabSettings());
   const apply = (next: NewTabSettings): void => { setS(next); saveNewTabSettings(next); };
   const patchBg = (p: Partial<NewTabSettings['background']>): void =>
@@ -77,7 +97,7 @@ export default function SidePanel({ layout, onLayout, onClose }: Props) {
       <aside
         onClick={(e) => e.stopPropagation()}
         style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0, width: 320, maxWidth: '92%',
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: 380, maxWidth: '94%',
           background: 'var(--surface-solid)', boxShadow: 'var(--shadow-island)',
           display: 'flex', flexDirection: 'column',
           animation: 'oblako-panel-in 180ms var(--ease-out)',
@@ -93,7 +113,15 @@ export default function SidePanel({ layout, onLayout, onClose }: Props) {
           <button onClick={onClose} title="Закрыть" style={iconBtn}><X size={16} /></button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px 28px', display: 'flex', flexDirection: 'column', gap: 26 }}>
+
+          <Section title="Расположение" note="Включите, чтобы перетаскивать плитки и менять их размер прямо на экране">
+            <Card>
+              <Row>
+                <Toggle icon="⠿" label="Режим правки" on={editing} onChange={onEditing} />
+              </Row>
+            </Card>
+          </Section>
 
           <Section title="Фон">
             <Segmented
@@ -132,6 +160,7 @@ export default function SidePanel({ layout, onLayout, onClose }: Props) {
           </Section>
 
           <Section title="Экран">
+            <Card>
             <Toggle label="Строка поиска" on={s.search.show}
               onChange={(v) => apply({ ...s, search: { ...s.search, show: v } })} />
             <Toggle label="Приветствие" on={s.greeting.show}
@@ -140,47 +169,51 @@ export default function SidePanel({ layout, onLayout, onClose }: Props) {
               <Field placeholder="Как к вам обращаться" value={s.greeting.name}
                 onChange={(v) => apply({ ...s, greeting: { ...s.greeting, name: v } })} />
             )}
+            </Card>
           </Section>
 
-          <Section title="Виджеты">
-            {WIDGETS.map((w) => {
-              const on = hasItem(layout, 'widget', w.key);
-              const item = layout.items.find((i) => i.kind === 'widget' && i.widget === w.key);
-              return (
-                <div key={w.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <Toggle
-                    label={w.label}
-                    // ⚠️ Куда уйдут данные, сказано ЗДЕСЬ же, у самого переключателя, и с именем
-                    // сервиса. Это единственный момент, когда человек принимает решение.
-                    hint={w.net ? `Запрашивает у ${w.net}` : undefined}
-                    warn={!!w.net}
-                    on={on}
-                    onChange={() => toggleWidget(w.key, w.size)}
-                  />
-                  {/* Цвет — прямо под своим переключателем, а не в отдельном режиме правки на
-                      столе: искать его там было ровно тем неудобством, о котором речь. Погоды
-                      здесь нет — у неё цвет означает время суток и погоду. */}
-                  {on && w.key !== 'weather' && (
-                    <div style={{ display: 'flex', gap: 5, paddingLeft: 2 }}>
-                      {WIDGET_FILLS.map((f) => (
-                        <button
-                          key={f.id}
-                          onClick={() => setFill(w.key, f.id === 'theme' ? undefined : f.id)}
-                          title={f.label}
-                          style={{
-                            width: 18, height: 18, borderRadius: 999, cursor: 'default', padding: 0,
-                            background: f.css ?? 'var(--surface-sunken)',
-                            border: (item?.fill ?? 'theme') === f.id
-                              ? '2px solid var(--accent)' : '1px solid var(--divider-strong)',
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </Section>
+          {WIDGET_GROUPS.map((g) => (
+            <Section key={g.title} title={g.title} note={g.note}>
+              <Card>
+                {g.items.map((w, i) => {
+                  const on = hasItem(layout, 'widget', w.key);
+                  const item = layout.items.find((it) => it.kind === 'widget' && it.widget === w.key);
+                  return (
+                    <Row key={w.key} divider={i > 0}>
+                      <Toggle
+                        icon={w.icon}
+                        label={w.label}
+                        // Имя сервиса — у самого переключателя: это единственный момент, когда
+                        // человек принимает решение, и уводить его отсюда некуда.
+                        hint={w.net}
+                        on={on}
+                        onChange={() => toggleWidget(w.key, w.size)}
+                      />
+                      {/* Цвет — под своим же переключателем. Погоды тут нет: у неё цвет означает
+                          время суток и саму погоду. */}
+                      {on && w.key !== 'weather' && (
+                        <div style={{ display: 'flex', gap: 7, padding: '10px 0 2px 34px' }}>
+                          {WIDGET_FILLS.map((f) => (
+                            <button
+                              key={f.id}
+                              onClick={() => setFill(w.key, f.id === 'theme' ? undefined : f.id)}
+                              title={f.label}
+                              style={{
+                                width: 22, height: 22, borderRadius: 999, cursor: 'default', padding: 0,
+                                background: FILL_SWATCH[f.id] ?? 'var(--surface-sunken)',
+                                border: (item?.fill ?? 'theme') === f.id
+                                  ? '2.5px solid var(--accent)' : '1px solid var(--divider-strong)',
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </Row>
+                  );
+                })}
+              </Card>
+            </Section>
+          ))}
 
           {hasItem(layout, 'widget', 'clock') && (
             <Section title="Часы">
@@ -268,20 +301,43 @@ export default function SidePanel({ layout, onLayout, onClose }: Props) {
 // Свои, а не из settings/kit.tsx: тот набор рассчитан на широкий раздел настроек с описаниями
 // под каждым пунктом, здесь же колонка 320 px, и подписи там просто не помещаются.
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+// ⚠️ Раскладка секций — из настроек iOS, а не из плотной формы: заголовок обычным кеглем над
+// КАРТОЧКОЙ со строками, между строками разделители, между секциями воздух. Прежний вариант был
+// сплошным столбцом мелких строк без группировки — он и читался как перегруженная панель.
+function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <span style={{
-        fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-        textTransform: 'uppercase', color: 'var(--text-faint)',
-      }}>{title}</span>
+      <span style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>{title}</span>
+      {note && (
+        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: -4 }}>{note}</span>
+      )}
       {children}
     </div>
   );
 }
 
-function Toggle({ label, hint, on, onChange, warn }: {
-  label: string; hint?: string; on: boolean; onChange: (v: boolean) => void; warn?: boolean;
+// Карточка секции — белый остров со скруглением, как группа в настройках iOS.
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      background: 'var(--surface)', borderRadius: 'var(--radius-card)',
+      border: '1px solid var(--divider)', padding: '4px 14px',
+    }}>{children}</div>
+  );
+}
+
+// Строка карточки. Разделитель — только между строками, а не рамкой вокруг каждой.
+function Row({ children, divider }: { children: React.ReactNode; divider?: boolean }) {
+  return (
+    <div style={{
+      padding: '10px 0',
+      borderTop: divider ? '1px solid var(--divider)' : undefined,
+    }}>{children}</div>
+  );
+}
+
+function Toggle({ label, hint, on, onChange, icon }: {
+  label: string; hint?: string; on: boolean; onChange: (v: boolean) => void; icon?: string;
 }) {
   return (
     <button
@@ -291,21 +347,26 @@ function Toggle({ label, hint, on, onChange, warn }: {
         border: 'none', background: 'none', cursor: 'default', padding: '2px 0',
       }}
     >
+      {icon && (
+        <span style={{
+          width: 26, height: 26, flex: 'none', borderRadius: 7, fontSize: 14,
+          background: 'var(--surface-sunken)', display: 'inline-flex',
+          alignItems: 'center', justifyContent: 'center',
+        }}>{icon}</span>
+      )}
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>{label}</span>
+        <span style={{ display: 'block', fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>{label}</span>
         {hint && (
-          <span style={{ display: 'block', fontSize: 'var(--fs-xs)', color: warn ? 'var(--warning-500)' : 'var(--text-faint)' }}>
-            {hint}
-          </span>
+          <span style={{ display: 'block', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{hint}</span>
         )}
       </span>
       <span style={{
-        width: 34, height: 20, borderRadius: 999, flex: 'none', position: 'relative',
+        width: 44, height: 26, borderRadius: 999, flex: 'none', position: 'relative',
         background: on ? 'var(--accent)' : 'var(--surface-sunken)',
         transition: 'background var(--dur-fast) var(--ease-standard)',
       }}>
         <span style={{
-          position: 'absolute', top: 2, left: on ? 16 : 2, width: 16, height: 16,
+          position: 'absolute', top: 3, left: on ? 21 : 3, width: 20, height: 20,
           borderRadius: 999, background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
           transition: 'left var(--dur-fast) var(--ease-standard)',
         }} />
