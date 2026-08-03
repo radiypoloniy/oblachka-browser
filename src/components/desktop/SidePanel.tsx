@@ -6,8 +6,8 @@ import {
   type NewTabSettings,
 } from '../../newtab/settings';
 import {
-  WIDGET_SIZES, addItem, removeItem, hasItem, setCols, COLS_CHOICES, DEFAULT_COLS,
-  type DesktopItem, type DesktopLayout,
+  WIDGET_SIZES, addItem, removeItem, hasItem, setScale, scaleOf, SCALE_PRESETS,
+  type DesktopItem, type DesktopLayout, type DesktopScale,
 } from '../../newtab/desktop';
 import { WIDGET_FILLS, FILL_SWATCH } from './widgets';
 import CryptoIcon from '../CryptoIcon';
@@ -122,14 +122,17 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
                 <Toggle icon="⠿" label="Режим правки" on={editing} onChange={onEditing} />
               </Row>
             </Card>
-            {/* Плотность живёт в РАСКЛАДКЕ, а не в настройках вкладки: размеры плиток заданы в
-                клетках, и число колонок — их система координат, а не украшение. Смена значения —
-                единственный момент, когда расклад перестраивается не по воле человека, поэтому
-                оно и вынесено отдельной ручкой, а не выводится из ширины окна, как раньше. */}
+            {/* Размер плиток живёт в РАСКЛАДКЕ, а не в настройках вкладки: он задаёт число
+                колонок, а колонки — система координат самих плиток, а не украшение. Одна ручка
+                на два числа (колонки + потолок клетки) потому, что порознь они бессмысленны:
+                шесть мелких плиток на широком окне собрались бы в островок посреди пустоты.
+                ⚠️ Смена размера — единственный момент, когда расклад перестраивается не по воле
+                человека: в сетке из пяти колонок нет клетки №7. */}
             <Segmented
-              value={String(layout.cols ?? DEFAULT_COLS)}
-              options={COLS_CHOICES.map((n) => [String(n), `${n} колонок`] as [string, string])}
-              onChange={(v) => onLayout(setCols(layout, Number(v)))}
+              value={scaleOf(layout)}
+              options={(Object.keys(SCALE_PRESETS) as DesktopScale[])
+                .map((id) => [id, SCALE_PRESETS[id].label] as [string, string])}
+              onChange={(v) => onLayout(setScale(layout, v as DesktopScale))}
             />
           </Section>
 

@@ -4,7 +4,7 @@ import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal } from 'l
 import type { TileSite } from '../../../shared/frecency';
 import {
   loadDesktop, saveDesktop, subscribeDesktop, computeGrid, placeItems, moveItemTo, normalize,
-  resizeItem, removeItem, addItem, minSizeFor, DEFAULT_COLS,
+  resizeItem, removeItem, addItem, minSizeFor, scaleOf, SCALE_PRESETS, DEFAULT_COLS,
   type DesktopLayout,
 } from '../../newtab/desktop';
 import AddSheet from './AddSheet';
@@ -151,7 +151,10 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   const light = isLightBackground(settings.background);
   // Колонки берутся из раскладки, а не из ширины окна (см. computeGrid): расклад не должен
   // перестраиваться от того, что окно потянули за край.
-  const grid = useMemo(() => computeGrid(Math.max(320, width), layout.cols ?? DEFAULT_COLS), [width, layout.cols]);
+  const grid = useMemo(
+    () => computeGrid(Math.max(320, width), layout.cols ?? DEFAULT_COLS, SCALE_PRESETS[scaleOf(layout)].cell),
+    [width, layout.cols, layout.scale],
+  );
   // ⚠️ Раскладка считается по ПРЕДПОЛАГАЕМОМУ состоянию: во время перетаскивания элемент уже
   // стоит в целевой клетке, во время растягивания — уже нового размера. Отпускание тогда ничего
   // не меняет, и «отпустил, а встало не туда» невозможно по построению.

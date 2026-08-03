@@ -57,6 +57,8 @@ export interface DesktopLayout {
    * сохранённых до появления настройки, — тогда DEFAULT_COLS.
    */
   cols?: number;
+  /** Размер плиток (см. SCALE_PRESETS). Он же задаёт число колонок при смене. */
+  scale?: DesktopScale;
 }
 
 // ── Размеры ───────────────────────────────────────────────────────────────────
@@ -134,12 +136,40 @@ export function sizeName(size: CellSize): WidgetSizeName | null {
 // появились бы коридоры. Упёрлись в оба — сетка просто центрируется.
 export const CELL_MAX = 132;
 export const GRID_GAP = 14;
-const GAP_MAX = 40;
+// ⚠️ Потолок зазора низкий намеренно. Зазор входит ВНУТРЬ многоклеточного виджета (плитка 2×2 —
+// это две клетки плюс зазор между ними), поэтому раздутый зазор раздувает и сами виджеты: при 40
+// px плитка 2×2 из клеток по 120 выходила 280 px вместо 264 и на глаз читалась как «крупная».
+// Исторически зазор был всегда 14 и не рос вовсе; 24 — компромисс, при котором сетка на широком
+// окне не выглядит тесным островком, но и виджеты не пухнут.
+const GAP_MAX = 24;
 export const COLS_MIN = 4;
 export const COLS_MAX = 10;
 export const DEFAULT_COLS = 6;
-/** Плотность на выбор (см. панель «Настройка экрана»). Больше колонок — мельче плитки. */
-export const COLS_CHOICES = [5, 6, 8] as const;
+
+/**
+ * Размер плиток — ОДНА ручка на два связанных числа: сколько колонок и до скольких пикселей
+ * растёт клетка. Порознь их выставлять нельзя: шесть мелких плиток на широком окне собрались бы
+ * в островок посреди пустоты, а восемь крупных не поместились бы вовсе.
+ *
+ * ⚠️ Значения не выдуманы, а взяты из ИСТОРИИ этого же экрана. Пока колонки считались от ширины
+ * (`CELL_TARGET = 108`), клетка выходила такой: на области 1320 px — 10 колонок по 119, на
+ * 1100 — 9 по 110, на 900 — 7 по 117, на 700 — 5 по 129. То есть жила в вилке 110…132, и ниже
+ * 110 стол не опускался никогда — туда не идём и здесь. Заморозка колонок сама по себе сделала
+ * стол крупнее (6 колонок вместо 9–10 при клетке в потолок 132), и «Средний» возвращает прежнее
+ * ощущение, а «Крупный» оставляет то, что получилось после заморозки, — кому так и понравилось.
+ */
+export type DesktopScale = 'compact' | 'medium' | 'large';
+export const SCALE_PRESETS: Record<DesktopScale, { cols: number; cell: number; label: string }> = {
+  compact: { cols: 8, cell: 110, label: 'Мелкий' },
+  medium:  { cols: 6, cell: 120, label: 'Средний' },
+  large:   { cols: 5, cell: 140, label: 'Крупный' },
+};
+export const DEFAULT_SCALE: DesktopScale = 'medium';
+
+export function scaleOf(layout: Pick<DesktopLayout, 'scale'>): DesktopScale {
+  const s = layout.scale;
+  return s && s in SCALE_PRESETS ? s : DEFAULT_SCALE;
+}
 
 export function clampCols(cols: number | undefined): number {
   if (!cols || !Number.isFinite(cols)) return DEFAULT_COLS;
@@ -154,7 +184,7 @@ export interface GridMetrics {
   width: number;
 }
 
-export function computeGrid(available: number, colsSetting: number): GridMetrics {
+export function computeGrid(available: number, colsSetting: number, cellMax = CELL_MAX): GridMetrics {
   const cols = clampCols(colsSetting);
   const fit = (available - (cols - 1) * GRID_GAP) / cols;
   // ⚠️ Нижнего порога клетки здесь НЕТ намеренно, хотя он тут был. Он делал сетку ШИРЕ
@@ -162,7 +192,7 @@ export function computeGrid(available: number, colsSetting: number): GridMetrics
   // высоту → появлялась вертикальная → та отнимала ширину → сетка пересчитывалась → полосы
   // менялись местами. Это и было дрожанием виджетов на узком окне: не рывок, а колебание
   // между двумя раскладками несколько раз в секунду. Влезть в область важнее, чем не мельчать.
-  const cell = Math.min(CELL_MAX, fit);
+  const cell = Math.min(cellMax, fit);
   // Клетка упёрлась в потолок, а место ещё осталось — отдаём его ЗАЗОРУ, а не плиткам: иначе
   // на широком окне шесть колонок собирались бы в тесный островок посреди пустоты.
   const slack = Math.max(0, available - (cols * cell + (cols - 1) * GRID_GAP));
@@ -366,7 +396,8 @@ const EVENT = 'oblako-desktop-changed';
 export function defaultLayout(): DesktopLayout {
   return {
     version: 2,
-    cols: DEFAULT_COLS,
+    scale: DEFAULT_SCALE,
+    cols: SCALE_PRESETS[DEFAULT_SCALE].cols,
     items: [
       // ⚠️ Виджетов, ходящих в СЕТЬ (погода, курсы, крипта), в стартовом наборе НЕТ намеренно.
       // Стол показывается на каждой новой вкладке, то есть по умолчанию браузер сам, без единого
@@ -402,8 +433,15 @@ export function loadDesktop(): DesktopLayout {
       // самой возможности тянуть за угол, и на дисках уже лежат виджеты, утянутые до 1×1 руками.
       // Без этого починка не дошла бы до тех, у кого проблема как раз и есть.
       .map((i) => ({ ...i, size: clampSize(i, i.size) }));
-    const cols = clampCols(parsed.cols);
-    if (parsed.version === 2) return { version: 2, cols, items };
+    const scale = scaleOf(parsed);
+    // ⚠️ Колонки идут ЗА размером плиток: они одно решение (см. SCALE_PRESETS). Если на диске
+    // осталось число из прежней ручки «плотность», раскладка один раз перекладывается под
+    // пресет — иначе координаты жили бы в одной сетке, а рисовались в другой.
+    const cols = clampCols(parsed.cols ?? SCALE_PRESETS[scale].cols);
+    if (parsed.version === 2) {
+      const layout: DesktopLayout = { version: 2, cols, scale, items };
+      return cols === SCALE_PRESETS[scale].cols ? layout : setCols(layout, SCALE_PRESETS[scale].cols);
+    }
 
     // ⚠️ ПЕРЕНОС со старого формата (хранился только порядок). Координаты берём из ТОЙ ЖЕ
     // последовательной укладки, которой этот стол и рисовался, — человек не должен заметить
@@ -488,6 +526,11 @@ export function setCols(layout: DesktopLayout, cols: number): DesktopLayout {
   if (next === clampCols(layout.cols)) return layout;
   const { placed } = layoutItems([...layout.items].sort(byRowCol), next);
   return { ...layout, cols: next, items: placed.map((p) => ({ ...p.item, col: p.col, row: p.row })) };
+}
+
+/** Сменить размер плиток. Число колонок едет вместе с ним — они одно решение, а не два. */
+export function setScale(layout: DesktopLayout, scale: DesktopScale): DesktopLayout {
+  return { ...setCols(layout, SCALE_PRESETS[scale].cols), scale };
 }
 
 /**

@@ -464,10 +464,27 @@ const FILL_WARM  = 'var(--tone-warm-fill)';
 // нечего; поэтому в тесноте виджет показывает ОДНУ строку и молчит про всё второстепенное.
 const COMPACT_H = 150;
 
-/** Кегль строки со значением: от реально доступной высоты, а не от «высота минус константа». */
-function rowFontSize(boxHeight: number, rows: number): number {
-  const avail = boxHeight - 32 /* поля Tile */ - 18 /* строка заголовка */;
-  return Math.round(Math.max(13, Math.min(avail / Math.max(1, rows) * 0.5, 26)));
+/**
+ * Кегль строки со значением — по ОБЕИМ сторонам плитки, а не по одной высоте.
+ *
+ * ⚠️ Считать только от высоты было мало: на плитке 2×2 при клетке 81 px высота позволяла кегль
+ * 26, а по ширине строка «$ 80.07 ▲ 0.76%» в него не влезала — процент выезжал за край и
+ * обрезался (nowrap не даёт ему перенестись, и правильно: перенос ломал бы столбец цифр).
+ * Поэтому ширина считается в единицах кегля: знак слева ≈1.1 em, каждый знак числа ≈0.62 em
+ * (цифры моноширинные, fontVariantNumeric: tabular-nums), плюс фиксированное место под процент
+ * — он рисуется мелким кеглем и от rowFs не зависит.
+ */
+function rowFontSize(box: { width: number; height: number }, rows: number, opts?: {
+  /** Сколько знаков в самом длинном значении («80.07» — 5, «5.12 млн» — 8). */
+  chars?: number;
+  /** Рисуется ли процент справа: под него нужно место, которое от кегля не зависит. */
+  delta?: boolean;
+}): number {
+  const chars = opts?.chars ?? 6;
+  const byHeight = (box.height - 32 /* поля Tile */ - 18 /* строка заголовка */) / Math.max(1, rows) * 0.5;
+  const forDelta = opts?.delta === false ? 0 : 52; // процент + зазор перед ним
+  const byWidth = (box.width - 32 - forDelta - 9) / (1.1 + 0.62 * chars);
+  return Math.round(Math.max(13, Math.min(byHeight, byWidth, 26)));
 }
 
 export function RatesWidget({ size, box, fill }: WidgetProps) {
@@ -502,7 +519,8 @@ export function RatesWidget({ size, box, fill }: WidgetProps) {
     return () => { alive = false; };
   }, [main]);
 
-  const rowFs = rowFontSize(box.height, codes.length);
+  // «80.07» — пять знаков, но у слабых валют бывает и «1 234.56»; берём с запасом.
+  const rowFs = rowFontSize(box, codes.length, { chars: 6 });
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
@@ -605,7 +623,8 @@ export function CryptoWidget({ size, box, fill }: WidgetProps) {
 
   // Тренд по первому активу — им же красим спарклайн, чтобы линия и стрелка не спорили.
   const mainUp = (change[main] ?? 0) >= 0;
-  const rowFs = rowFontSize(box.height, codes.length);
+  // «5.12 млн» / «150 тыс» — длиннее курса ЦБ, и кегль обязан это учитывать (см. formatRub).
+  const rowFs = rowFontSize(box, codes.length, { chars: 8 });
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
