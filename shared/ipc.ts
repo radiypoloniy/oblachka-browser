@@ -372,6 +372,10 @@ export const IPC = {
   BOOKMARK_RENAME:        'bookmark:rename',          // renderer → main: (id, title) -> boolean
   BOOKMARK_MOVE:          'bookmark:move',            // renderer → main: (id, parentId) -> boolean, в конец уровня
   BOOKMARK_REORDER:       'bookmark:reorder',         // renderer → main: (parentId, orderedIds) -> boolean
+  // Умная раскладка: SUGGEST только считает и ничего не меняет, APPLY выполняет уже одобренное.
+  // Два канала, а не один, — ровно потому, что между ними стоит согласие человека.
+  BOOKMARK_ORGANIZE_SUGGEST: 'bookmark:organize-suggest', // renderer → main: -> BookmarkFolderProposal[]
+  BOOKMARK_ORGANIZE_APPLY:   'bookmark:organize-apply',   // renderer → main: (proposals) -> number (разложено)
   BOOKMARK_IS_BOOKMARKED: 'bookmark:is-bookmarked',   // renderer → main: url -> boolean
   BOOKMARK_CHANGED:       'bookmark:changed',         // main → renderer: что-то изменилось (push, без пейлоада)
   // Импорт закладок из других браузеров (см. electron/bookmarkImport/) — пока только Chromium-
@@ -777,6 +781,15 @@ export interface BookmarkEntry {
   parentId: number | null;  // null — корень
   position: number;         // порядок внутри своего родителя
   createdAt: number;  // Unix ms
+}
+
+// Предложение умной раскладки — ОДНА папка и закладки, которые модель хочет в неё положить.
+// ⚠️ Это именно предложение: ничего не применяется, пока человек не согласится. Папка «Мусор»
+// среди них — обычная папка с обычным названием, никакой особой сущности в системе для неё нет;
+// удаляется она тем же способом, что любая другая.
+export interface BookmarkFolderProposal {
+  label: string;
+  ids: number[];
 }
 
 // Узел дерева (BookmarkManager.listTree). children есть ТОЛЬКО у папок — по нему же в UI и
@@ -1581,6 +1594,10 @@ export interface OblakoApi {
   // Перенос в другого родителя, в конец уровня. Порядок внутри уровня — отдельно, reorderBookmarks.
   moveBookmark(id: number, parentId: number | null): Promise<boolean>;
   reorderBookmarks(parentId: number | null, orderedIds: number[]): Promise<boolean>;
+  // Только считает. Пустой массив — законный исход: осмысленных папок не нашлось.
+  suggestBookmarkFolders(): Promise<BookmarkFolderProposal[]>;
+  // Выполняет уже ОДОБРЕННОЕ человеком. Возвращает, сколько закладок реально разложено.
+  applyBookmarkFolders(proposals: BookmarkFolderProposal[]): Promise<number>;
   isBookmarked(url: string): Promise<boolean>;
   onBookmarksChanged(cb: () => void): () => void;
   // Импорт из других браузеров (см. electron/bookmarkImport/) — пока только Chromium-семейство.

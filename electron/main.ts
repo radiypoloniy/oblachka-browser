@@ -118,6 +118,8 @@ import {
   setTabManager as setOrganizerTabManager,
   setHistoryManager as setOrganizerHistoryManager,
 } from './TabOrganizer';
+import { suggestBookmarkFolders } from './BookmarkOrganizer';
+import type { BookmarkFolderProposal } from '../shared/ipc';
 
 // Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
 // split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
@@ -2112,6 +2114,20 @@ function registerIpc() {
     const ok = bookmarks.move(id, parentId);
     if (ok) broadcastToChrome(IPC.BOOKMARK_CHANGED);
     return ok;
+  });
+  // Умная раскладка. ⚠️ SUGGEST ничего не меняет — только считает; APPLY выполняет уже
+  // одобренное человеком. Разделение не формальность: между вызовами стоит его согласие, и
+  // склеить их в один канал значило бы разложить чужие закладки без спроса.
+  ipcMain.handle(IPC.BOOKMARK_ORGANIZE_SUGGEST, () => suggestBookmarkFolders(bookmarks.listTree()));
+  ipcMain.handle(IPC.BOOKMARK_ORGANIZE_APPLY, (_e, proposals: BookmarkFolderProposal[]) => {
+    let moved = 0;
+    for (const p of proposals) {
+      const folder = bookmarks.createFolder(p.label, null);
+      if (!folder) continue;
+      for (const id of p.ids) if (bookmarks.move(id, folder.id)) moved++;
+    }
+    if (moved > 0) broadcastToChrome(IPC.BOOKMARK_CHANGED);
+    return moved;
   });
   ipcMain.handle(IPC.BOOKMARK_REORDER, (_e, parentId: number | null, orderedIds: number[]) => {
     const ok = bookmarks.reorder(parentId, orderedIds);

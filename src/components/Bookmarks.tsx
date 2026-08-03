@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, Search, Star, Download, Loader2, Folder } from 'lucide-react';
-import type { BookmarkEntry, BookmarkNode, BookmarkImportSource } from '../../shared/ipc';
+import { X, Search, Star, Download, Loader2, Folder, Sparkles } from 'lucide-react';
+import type { BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 
 // Ссылка вместе с именем папки, в которой лежит — панель плоская, и без этого нельзя понять,
@@ -25,6 +25,12 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
   const [tree, setTree] = useState<BookmarkNode[]>([]);
   const [folderId, setFolderId] = useState<number | null>(null);
   const [query, setQuery] = useState('');
+  // Умная раскладка. 'idle' → 'computing' → 'preview'. ⚠️ Между computing и применением стоит
+  // ЯВНОЕ согласие человека: раскладка не применяется сама ни при каком исходе.
+  const [organize, setOrganize] = useState<'idle' | 'computing' | 'preview'>('idle');
+  const [proposals, setProposals] = useState<BookmarkFolderProposal[]>([]);
+  // Папки, от которых человек отказался прямо в предложении: применяем только оставшиеся.
+  const [dropped, setDropped] = useState<Set<string>>(new Set());
   // Импорт из других браузеров (Feature 2) — открытый дропдаун со списком РЕАЛЬНО найденных на
   // диске источников (см. electron/bookmarkImport/), тот же паттерн, что clearOpen в History.tsx.
   const [importOpen, setImportOpen] = useState(false);
@@ -70,6 +76,11 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
     [entries, folderId],
   );
 
+  // Быстрый доступ по id — предложение раскладки приходит номерами, а показать надо названия.
+  const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
+  // Кнопка раскладки нужна, только когда есть что раскладывать: разбираем корень.
+  const rootLinkCount = useMemo(() => entries.filter((e) => e.parentId === null).length, [entries]);
+
   // Плоский перечень папок с отступами и счётчиками. Считается из того же дерева, что и список:
   // второй источник правды здесь означал бы расхождение счётчиков с содержимым.
   const folderNav = useMemo(() => {
@@ -92,6 +103,32 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
 
   async function handleDelete(id: number) {
     await window.oblako.removeBookmark(id);
+    void load();
+  }
+
+  // ⚠️ Удаление папки уносит ВСЁ её содержимое (CASCADE в схеме) и отменить это нечем —
+  // спрашиваем прямо, с числом закладок внутри. Молча тут не делается ничего.
+  async function handleDeleteFolder(id: number, title: string, count: number) {
+    const what = count > 0 ? ` вместе с ${count} закладками` : '';
+    if (!window.confirm(`Удалить папку «${title}»${what}? Это действие нельзя отменить.`)) return;
+    if (folderId === id) setFolderId(null);
+    await window.oblako.removeBookmark(id);
+    void load();
+  }
+
+  async function runOrganize() {
+    setOrganize('computing');
+    setDropped(new Set());
+    const result = await window.oblako.suggestBookmarkFolders().catch(() => []);
+    setProposals(result);
+    setOrganize('preview');
+  }
+
+  async function applyOrganize() {
+    const keep = proposals.filter((p) => !dropped.has(p.label));
+    setOrganize('idle');
+    if (keep.length === 0) return;
+    await window.oblako.applyBookmarkFolders(keep);
     void load();
   }
 
@@ -282,11 +319,39 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
               <FolderNavItem
                 key={f.id} label={f.title} count={f.count} depth={f.depth}
                 active={folderId === f.id} onClick={() => setFolderId(f.id)}
+                onDelete={() => void handleDeleteFolder(f.id, f.title, f.count)}
               />
             ))}
+
+            {/* Умная раскладка живёт ЗДЕСЬ, в колонке папок, а не в шапке: она про то, какие
+                папки будут, то есть про эту колонку. Кнопки нет, пока раскладывать нечего. */}
+            {rootLinkCount >= 4 && (
+              <button
+                onClick={() => void runOrganize()}
+                disabled={organize === 'computing'}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                  marginTop: 10, padding: '6px 10px', border: 'none', background: 'none',
+                  borderRadius: 'var(--radius-sm)', cursor: 'default',
+                  fontSize: 'var(--fs-xs)', color: 'var(--accent)',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+              >
+                <Sparkles size={12} strokeWidth={2} style={{ flexShrink: 0 }} />
+                {organize === 'computing' ? 'Разбираю…' : 'Разложить по папкам'}
+              </button>
+            )}
           </nav>
           <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}>
-            {visible.length === 0 ? (
+            {organize === 'preview' ? (
+              <OrganizePreview
+                proposals={proposals} dropped={dropped} setDropped={setDropped}
+                byId={byId}
+                onApply={() => void applyOrganize()}
+                onCancel={() => setOrganize('idle')}
+              />
+            ) : visible.length === 0 ? (
               <Empty text={folderId === null ? 'Нет закладок' : 'В этой папке пусто'} />
             ) : visible.map((entry) => (
               <BookmarkRow key={entry.id} entry={entry} onDelete={handleDelete} />
@@ -297,6 +362,100 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
     </div>
   );
 }
+
+// Предложение раскладки. ⚠️ Ничего ещё не применено: пока человек не нажал «Разложить», в базе
+// не изменилось ни строки. Каждую папку можно выкинуть из предложения по отдельности — иначе
+// выбор был бы «всё или ничего», и одна неудачная папка отменяла бы девять удачных.
+function OrganizePreview({ proposals, dropped, setDropped, byId, onApply, onCancel }: {
+  proposals: BookmarkFolderProposal[];
+  dropped: Set<string>;
+  setDropped: (s: Set<string>) => void;
+  byId: Map<number, FlatBookmark>;
+  onApply: () => void;
+  onCancel: () => void;
+}) {
+  const keep = proposals.filter((p) => !dropped.has(p.label));
+  const total = keep.reduce((n, p) => n + p.ids.length, 0);
+
+  if (proposals.length === 0) {
+    return (
+      <div style={{ paddingTop: 24 }}>
+        <Empty text="Осмысленных папок не нашлось — закладки слишком разные. Это нормальный исход." />
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+          <button onClick={onCancel} style={GHOST_BTN}>Закрыть</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ paddingTop: 12 }}>
+      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', marginBottom: 12 }}>
+        Предложение: {keep.length} {keep.length === 1 ? 'папка' : keep.length < 5 ? 'папки' : 'папок'},
+        {' '}{total} закладок. Ничего ещё не изменено — папки создадутся только по кнопке ниже.
+      </div>
+
+      {proposals.map((p) => {
+        const off = dropped.has(p.label);
+        return (
+          <div key={p.label} style={{
+            border: '1px solid var(--divider-strong)', borderRadius: 'var(--radius-sm)',
+            marginBottom: 8, overflow: 'hidden', opacity: off ? 0.45 : 1,
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '7px 10px', background: 'var(--surface-hover)',
+            }}>
+              <Folder size={13} strokeWidth={2} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
+              <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+                {p.label}
+              </span>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{p.ids.length}</span>
+              <button
+                onClick={() => {
+                  const next = new Set(dropped);
+                  if (off) next.delete(p.label); else next.add(p.label);
+                  setDropped(next);
+                }}
+                style={{ ...GHOST_BTN, padding: '2px 8px', fontSize: 'var(--fs-xs)' }}
+              >{off ? 'Вернуть' : 'Не надо'}</button>
+            </div>
+            <div style={{ padding: '4px 10px 8px' }}>
+              {p.ids.map((id) => (
+                <div key={id} style={{
+                  fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', padding: '2px 0',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {byId.get(id)?.title || byId.get(id)?.url || `#${id}`}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button
+          onClick={onApply}
+          disabled={keep.length === 0}
+          style={{
+            padding: '7px 14px', borderRadius: 'var(--radius-sm)', border: 'none',
+            background: keep.length ? 'var(--accent)' : 'var(--surface-hover)',
+            color: keep.length ? 'var(--on-accent)' : 'var(--text-faint)',
+            fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default',
+          }}
+        >Разложить</button>
+        <button onClick={onCancel} style={GHOST_BTN}>Отмена</button>
+      </div>
+    </div>
+  );
+}
+
+const GHOST_BTN: React.CSSProperties = {
+  padding: '7px 14px', borderRadius: 'var(--radius-sm)',
+  border: '1px solid var(--divider-strong)', background: 'transparent',
+  color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default',
+};
 
 function Empty({ text }: { text: string }) {
   return (
@@ -310,12 +469,20 @@ function Empty({ text }: { text: string }) {
 // Строка навигации по папкам — визуально та же, что строка даты в Истории. Отступ показывает
 // вложенность: дерево тут плоское списком, потому что папок у человека десятки, а не тысячи,
 // и раскрывающиеся уровни в колонке 170 px читались бы хуже, чем один сплошной перечень.
-function FolderNavItem({ label, count, active, onClick, depth }: {
+function FolderNavItem({ label, count, active, onClick, depth, onDelete }: {
   label: string; count: number; active: boolean; onClick: () => void; depth: number;
+  /** Нет у «Все закладки» — это не папка, удалять там нечего. */
+  onDelete?: () => void;
 }) {
+  const [menu, setMenu] = useState(false);
   return (
+    <div style={{ position: 'relative' }}>
     <button
       onClick={onClick}
+      // ПКМ — как у вкладок и групп в сайдбаре: удаление папки живёт в меню, а не кнопкой
+      // по наведению. Оно разрушительное, и случайно попасть по нему быть не должно.
+      onContextMenu={(e) => { if (onDelete) { e.preventDefault(); setMenu(true); } }}
+      onBlur={() => setMenu(false)}
       title={label}
       style={{
         display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
@@ -334,6 +501,25 @@ function FolderNavItem({ label, count, active, onClick, depth }: {
       </span>
       <span style={{ flexShrink: 0, color: 'var(--text-faint)' }}>{count || ''}</span>
     </button>
+    {menu && onDelete && (
+      <div style={{
+        position: 'absolute', top: '100%', left: 10, zIndex: 50,
+        ...islandPlate, borderRadius: 'var(--radius-sm)', overflow: 'hidden', minWidth: 150,
+      }}>
+        <button
+          // onMouseDown, а не onClick: onBlur кнопки-папки успевает закрыть меню раньше клика.
+          onMouseDown={() => { setMenu(false); onDelete(); }}
+          style={{
+            display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
+            border: 'none', background: 'none', cursor: 'default',
+            fontSize: 'var(--fs-sm)', color: 'var(--danger-500)',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+        >Удалить папку…</button>
+      </div>
+    )}
+    </div>
   );
 }
 
