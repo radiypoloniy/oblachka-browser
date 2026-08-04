@@ -7,15 +7,16 @@
 // боевые IPC-каналы через свой мост (window.findbar), см. preload-findbar.ts.
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { ChevronUp, ChevronDown, X } from 'lucide-react';
+import { ChevronUp, ChevronDown, X, Sparkles } from 'lucide-react';
 import './styles/global.css';
-import type { FindResult } from '../shared/ipc';
+import type { FindResult, SmartFindResult } from '../shared/ipc';
 import { installOverlayReveal } from './overlayReveal';
 
 declare global {
   interface Window {
     findbar: {
       search: (query: string, forward: boolean) => Promise<void>
+      smart: (query: string) => Promise<SmartFindResult>
       next: (forward: boolean) => Promise<void>
       stop: () => Promise<void>
       close: () => void
@@ -26,24 +27,48 @@ declare global {
   }
 }
 
-const BAR_WIDTH = 360;
+// ⚠️ Держать в синхроне с FINDBAR_WIDTH в electron/FindBarManager.ts — там ширина самой
+// WebContentsView. Стало шире прежних 360: в панели прибавилась кнопка режима, а статус
+// смыслового поиска — слово («не нашлось»), а не «3 / 12».
+const BAR_WIDTH = 420;
 const BAR_HEIGHT = 48;
 // Держать в синхроне с SHADOW_MARGIN в electron/FindBarManager.ts — тот же паддинг инсетит
 // панель обратно внутри увеличенной под тень WebContentsView (см. TranslatePopoverManager.ts).
 const SHADOW_MARGIN = 20;
 const SEARCH_DEBOUNCE = 250;
 
+// Что показываем на месте счётчика, пока идёт/провалился смысловой поиск. Отдельного окна с
+// ответом нет намеренно: найденное человек видит НА СТРАНИЦЕ подсветкой, к которой её и
+// прокрутило, — это и есть ответ, причём в контексте (см. SmartFindResult в shared/ipc.ts).
+const SMART_FAIL_TEXT: Record<NonNullable<SmartFindResult['reason']>, string> = {
+  'no-model': 'нет модели',
+  'no-text': 'пусто',
+  'not-found': 'не нашлось',
+  busy: 'ищу…',
+};
+
 function FindBar() {
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<FindResult | null>(null);
+  // Режим «по смыслу»: вопрос вместо подстроки, ответ ищет локальная модель (см. SmartFind.ts).
+  // ⚠️ Липкий — переживает закрытие панели: режим человек выбрал сам, и сбрасывать его на каждый
+  // Ctrl+F значило бы заставлять выбирать заново при каждом обращении.
+  const [smart, setSmart] = useState(false);
+  const [smartBusy, setSmartBusy] = useState(false);
+  const [smartFail, setSmartFail] = useState<NonNullable<SmartFindResult['reason']> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Последний вопрос, на который смысловой поиск уже отвечал: повторный Enter должен листать
+  // совпадения, а не гонять модель заново с тем же текстом.
+  const lastSmartRef = useRef('');
 
   useEffect(() => {
     const unsubResult = window.findbar.onResult((r) => setResult(r));
     const unsubShow = window.findbar.onShow(() => {
       setQuery('');
       setResult(null);
+      setSmartFail(null);
+      lastSmartRef.current = '';
       inputRef.current?.focus();
     });
     const unsubRefocus = window.findbar.onRefocus(() => {
@@ -62,7 +87,15 @@ function FindBar() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
     setQuery(v);
+    setSmartFail(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    // В смысловом режиме на каждую букву ничего не запускаем: это генерация, а не подстрока.
+    // Ищем по Enter — то же правило, по которому фоновые фичи не дёргают модель при наборе.
+    if (smart) {
+      // Поле опустошили — снимаем подсветку прошлого ответа: она относилась к стёртому вопросу.
+      if (!v.trim()) { void window.findbar.stop(); setResult(null); lastSmartRef.current = ''; }
+      return;
+    }
     if (!v.trim()) {
       void window.findbar.stop();
       setResult(null);
@@ -71,18 +104,61 @@ function FindBar() {
     debounceRef.current = setTimeout(() => { void window.findbar.search(v, true); }, SEARCH_DEBOUNCE);
   };
 
+  const runSmart = async () => {
+    const q = query.trim();
+    if (!q || smartBusy) return;
+    setSmartBusy(true);
+    setSmartFail(null);
+    setResult(null);
+    try {
+      const res = await window.findbar.smart(q);
+      // Успех рисовать нечем и не надо: main уже подсветил цитату на странице, а счётчик
+      // приедет обычным FIND_RESULT — тем же путём, что у подстрочного поиска.
+      if (res.ok) lastSmartRef.current = q;
+      else setSmartFail(res.reason ?? 'not-found');
+    } catch {
+      setSmartFail('no-model');
+    } finally {
+      setSmartBusy(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
       e.preventDefault();
       close();
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      void window.findbar.next(!e.shiftKey); // Enter = вниз, Shift+Enter = вверх
+      return;
     }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    // В смысловом режиме Enter — это «спросить», но только на НОВЫЙ вопрос. Если текст с прошлого
+    // раза не менялся, человек листает найденное, а не переспрашивает (переспрос стоил бы прогона
+    // модели и вернул бы тот же фрагмент).
+    if (smart && query.trim() !== lastSmartRef.current) {
+      void runSmart();
+      return;
+    }
+    void window.findbar.next(!e.shiftKey); // Enter = вниз, Shift+Enter = вверх
+  };
+
+  // Смена режима — это смена смысла введённого текста, поэтому прежняя подсветка снимается:
+  // «возврат денег» как подстрока и как вопрос дают разные места на странице.
+  const toggleSmart = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    void window.findbar.stop();
+    setResult(null);
+    setSmartFail(null);
+    lastSmartRef.current = '';
+    setSmart((v) => !v);
+    inputRef.current?.focus();
   };
 
   const hasResults = result !== null && result.count > 0;
-  const noMatch = query.trim() !== '' && result !== null && result.count === 0;
+  const noMatch = (query.trim() !== '' && result !== null && result.count === 0) || smartFail !== null;
+  const statusText = smartBusy ? 'ищу…'
+    : smartFail ? SMART_FAIL_TEXT[smartFail]
+    : (query.trim() && result) ? (result.count === 0 ? 'нет' : `${result.activeMatch} / ${result.count}`)
+    : '';
 
   return (
     // Прозрачный внешний паддинг — место для вытекания CSS box-shadow (см. SHADOW_MARGIN в
@@ -99,6 +175,18 @@ function FindBar() {
         userSelect: 'none',
         fontFamily: 'var(--font-sans)',
       }}>
+        <button
+          onClick={toggleSmart}
+          title={smart ? 'Искать по смыслу — включено' : 'Искать по смыслу: спросите словами, где это на странице'}
+          style={{
+            ...btnStyle(false),
+            // Акцент — активное состояние режима, ровно по цветовому закону дизайн-системы.
+            background: smart ? 'var(--accent-soft)' : 'none',
+            color: smart ? 'var(--accent)' : 'var(--text-muted)',
+          }}
+        >
+          <Sparkles size={14} strokeWidth={2} />
+        </button>
         <input
           ref={inputRef}
           type="text"
@@ -106,7 +194,7 @@ function FindBar() {
           value={query}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="Найти на странице…"
+          placeholder={smart ? 'Где на странице про…' : 'Найти на странице…'}
           style={{
             flex: 1, minWidth: 0,
             padding: '4px 8px',
@@ -119,15 +207,16 @@ function FindBar() {
             transition: 'background 0.15s',
           }}
         />
-        {query.trim() && result && (
+        {statusText && (
           <span style={{
             fontSize: 'var(--fs-xs)',
-            color: noMatch ? 'rgba(200,50,50,0.8)' : 'var(--text-faint)',
-            minWidth: 48,
+            color: smartBusy ? 'var(--text-faint)' : noMatch ? 'rgba(200,50,50,0.8)' : 'var(--text-faint)',
+            minWidth: 56,
             textAlign: 'center',
             flexShrink: 0,
+            whiteSpace: 'nowrap',
           }}>
-            {noMatch ? 'нет' : `${result.activeMatch} / ${result.count}`}
+            {statusText}
           </span>
         )}
         <button

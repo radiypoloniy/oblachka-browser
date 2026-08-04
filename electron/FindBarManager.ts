@@ -24,7 +24,9 @@ import type { ContentBounds, FindResult } from '../shared/ipc'
 import { getAiPanelReservedWidth } from './AiPanelManager'
 import type { TabManager } from './TabManager'
 
-const FINDBAR_WIDTH = 360
+// ⚠️ Держать в синхроне с BAR_WIDTH в src/findbar.tsx. Шире прежних 360 — из-за кнопки режима
+// «по смыслу» и словесного статуса вместо «3 / 12» (см. SmartFind.ts).
+const FINDBAR_WIDTH = 420
 const FINDBAR_HEIGHT = 48
 const TOP_GAP = 8 // отступ от верха контентной зоны (под тулбаром — контентная зона и так под ним)
 // Прозрачный запас под CSS box-shadow — WebContentsView обрезает всё, что рисуется за границей

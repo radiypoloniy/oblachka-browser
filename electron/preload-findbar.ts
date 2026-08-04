@@ -4,10 +4,13 @@
 // канал (findbar:*), не часть контракта основного хрома, как и у translate-popover/ai-panel.
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
-import type { FindResult } from '../shared/ipc'
+import type { FindResult, SmartFindResult } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('findbar', {
   search: (query: string, forward: boolean) => ipcRenderer.invoke(IPC.FIND_START, query, forward),
+  // Смысловой режим: вопрос вместо подстроки (см. electron/SmartFind.ts). Подсветку ставит main
+  // штатным findInPage — панели возвращается только статус.
+  smart: (query: string) => ipcRenderer.invoke(IPC.FIND_SMART, query) as Promise<SmartFindResult>,
   next: (forward: boolean) => ipcRenderer.invoke(IPC.FIND_NEXT, forward),
   stop: () => ipcRenderer.invoke(IPC.FIND_STOP),
   close: () => ipcRenderer.send('findbar:close'),

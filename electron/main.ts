@@ -60,7 +60,7 @@ import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION, THEME_PALETTE_IDS, isDarkTheme } from '../shared/ipc';
 import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult, SmartFindResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -83,6 +83,7 @@ import { searchTabsByMeaning } from './TabSearch';
 import { mapFormFields, type FormFieldDescriptor } from './AutofillFieldMapper';
 import { getDigest, buildDigest, shouldRefresh } from './DayDigest';
 import { findRelatedPages } from './RelatedHistory';
+import { pickFragmentByMeaning, highlightCandidates } from './SmartFind';
 import { startTabDrag, endTabDrag, syncDropZoneBounds } from './DropZoneManager';
 import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
 import { suggestTabTitle } from './TabRenamer';
@@ -274,6 +275,9 @@ let isShuttingDown = false;
 let smartTabSearchBusy = false;
 // То же для подсказки «вы это уже читали»: один запрос за раз на приложение.
 let relatedBusy = false;
+// И для смыслового Ctrl+F (см. SmartFind.ts). Второй Enter, пока идёт первый поиск, не должен
+// вставать в очередь генерации: человек получил бы ответ на позапрошлый вопрос.
+let smartFindBusy = false;
 const adblock     = new AdBlockManager();
 const bangs       = new BangStore();
 // Выученные цели быстрого поиска (Ctrl+E) — сайты, где человек уже искал. Читается с диска
@@ -1656,6 +1660,33 @@ function registerIpc() {
   ipcMain.handle(IPC.FIND_START, (e, q: string, fwd: boolean) => tabsOf(e)?.findInPage(q, fwd));
   ipcMain.handle(IPC.FIND_NEXT,  (e, fwd: boolean)            => tabsOf(e)?.findNext(fwd));
   ipcMain.handle(IPC.FIND_STOP,  (e)                            => tabsOf(e)?.stopFind());
+  // Смысловой Ctrl+F: модель выбирает НОМЕР фрагмента страницы, цитату берём из своего массива и
+  // подсвечиваем штатным findInPage (см. SmartFind.ts — там же, почему не «пусть модель процитирует»).
+  // ⚠️ Гейта isModelWarm() здесь нет намеренно: человек переключил режим и нажал Enter — это явное
+  // действие, и ждать загрузку модели оно вправе (в отличие от подсказок при наборе).
+  ipcMain.handle(IPC.FIND_SMART, async (e, query: string): Promise<SmartFindResult> => {
+    const tabs = tabsOf(e);
+    const wc = tabs?.getActiveWebContents() ?? null;
+    if (!tabs || !wc) return { ok: false, reason: 'no-text' };
+    if (smartFindBusy) return { ok: false, reason: 'busy' };
+    smartFindBusy = true;
+    try {
+      const pick = await pickFragmentByMeaning(wc, query);
+      if (!pick.ok) {
+        return { ok: false, reason: pick.reason === 'model-error' ? 'no-model' : pick.reason };
+      }
+      const matches = await tabs.findQuoteInPage(highlightCandidates(pick.quote));
+      // Цитата со страницы есть, а подсветить её не вышло — для человека это то же «не нашлось»:
+      // показывать ему текст, которого он не увидит на странице, незачем.
+      if (matches === 0) return { ok: false, reason: 'not-found' };
+      return { ok: true, quote: pick.quote, matches };
+    } catch (err) {
+      console.warn('[smart-find] ошибка:', err);
+      return { ok: false, reason: 'no-model' };
+    } finally {
+      smartFindBusy = false;
+    }
+  });
 
   ipcMain.handle(IPC.TAB_PIN_TOGGLE, (e, id: string) => tabsOf(e)?.togglePin(id));
 

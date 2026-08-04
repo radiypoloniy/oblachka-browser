@@ -36,6 +36,18 @@ export interface FindResult {
   count: number;       // всего совпадений
 }
 
+// Ответ смыслового Ctrl+F (electron/SmartFind.ts). Панель поиска рисует по нему только статус:
+// сам результат человек видит НА СТРАНИЦЕ — штатной подсветкой findInPage, к которой её и
+// прокручивает. Отдельного окна с ответом нет намеренно: цитата и так на месте, в контексте.
+export interface SmartFindResult {
+  ok: boolean;
+  quote?: string;   // цитата СО СТРАНИЦЫ (модель выбирает номер фрагмента, а не пишет текст)
+  matches?: number; // сколько совпадений подсветилось
+  // 'no-model' — модель не отвечает/не загрузилась, 'no-text' — со страницы нечего читать,
+  // 'not-found' — модель ничего не выбрала либо цитата не нашлась подсветкой, 'busy' — уже ищем.
+  reason?: 'no-model' | 'no-text' | 'not-found' | 'busy';
+}
+
 // Цель быстрого поиска (Ctrl+E, см. electron/SearchTargets.ts + SearchPopoverManager.ts).
 // Смысл фичи — не заставлять называть цель ДО запроса («!yt котики»), а предложить её самой:
 // первой идёт текущий сайт, если по его адресу удалось восстановить шаблон поиска.
@@ -255,6 +267,7 @@ export const IPC = {
   FIND_RESULT: 'find:result',       // main → renderer: результат (activeMatch, count)
   FIND_OPEN:   'find:open',         // main → renderer: открыть панель поиска (Ctrl+F)
   FIND_CLOSE:  'find:close',        // main → renderer: закрыть панель (навигация, Esc)
+  FIND_SMART:  'find:smart',        // findbar → main: найти фрагмент ПО СМЫСЛУ (см. SmartFind.ts)
 
   // Омнибокс
   OMNIBOX_FOCUS: 'omnibox:focus',   // main → renderer: сфокусировать адресную строку (Ctrl+L)
