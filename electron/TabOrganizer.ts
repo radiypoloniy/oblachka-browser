@@ -120,20 +120,32 @@ function buildPromptLines(candidates: Candidate[], snippets: Map<string, string>
 // каждую вкладку («Расчёт налогов», «Домашняя кухня», «Здоровье и питание»…), после чего группы
 // разваливались на одиночек и до человека не доезжало ничего: группа из одной вкладки — не группа.
 // Тема обязана покрывать НЕСКОЛЬКО вкладок, иначе она бесполезна.
-const MAX_TOPICS = 4;
+// ⚠️ Число тем считается ОТ ЧИСЛА ВКЛАДОК, а не фиксировано. Живой случай: на семнадцати вкладках
+// потолок в четыре темы не оставил места теме «Погода» из двух статей — и дальше доменный слой
+// разорвал эту пару: снобовская статья ушла в группу своего издания, а тассовская осталась одна.
+// Пара по смыслу разъехалась не потому, что смысл проиграл домену (домен видит только остаток),
+// а потому, что до этой пары смысл просто не дошёл.
+// Одна тема на три вкладки — при десяти это прежние четыре (значение, на котором мерился стенд),
+// при семнадцати — шесть. Потолок в семь: дальше первая фаза перестаёт быть коротким прогоном,
+// а вторая идёт по прогону НА ТЕМУ.
+const MIN_TOPICS = 2;
+const MAX_TOPICS_CAP = 7;
+function topicBudget(tabCount: number): number {
+  return Math.min(MAX_TOPICS_CAP, Math.max(MIN_TOPICS, Math.ceil(tabCount / 3)));
+}
 const TOPICS_CUE = 'TOPICS:';
 const ANSWER_CUE = 'ANSWER:';
 
 // ⚠️ Инструкция по-английски при русском содержимом — то же правило, что у остальных структурных
 // промптов проекта. Названия тем просим по-русски явно.
-function buildTopicsPrompt(lines: string[]): string {
+function buildTopicsPrompt(lines: string[], maxTopics: number): string {
   return (
     `Open browser tabs (number, title, domain, and a text snippet when available):\n\n` +
     `${lines.join('\n')}\n\n` +
     `Name the topics these tabs fall into — by shared subject, project or intent, not by ` +
     `matching words in titles.\n` +
     `Rules:\n` +
-    `- at most ${MAX_TOPICS} topics;\n` +
+    `- at most ${maxTopics} topics;\n` +
     // Ключевое правило: тема ради одной вкладки бесполезна — такая группа всё равно будет
     // отброшена ниже, а место в списке тем она займёт.
     `- every topic must cover AT LEAST TWO tabs from the list above;\n` +
@@ -149,7 +161,7 @@ function buildTopicsPrompt(lines: string[]): string {
   );
 }
 
-function parseTopics(out: string): string[] {
+function parseTopics(out: string, maxTopics: number): string[] {
   const line = new RegExp(`${TOPICS_CUE}\\s*([^\\n]*)`, 'i').exec(out)?.[1] ?? '';
   const seen = new Set<string>();
   const topics: string[] = [];
@@ -161,7 +173,7 @@ function parseTopics(out: string): string[] {
     if (seen.has(key)) continue;
     seen.add(key);
     topics.push(t);
-    if (topics.length >= MAX_TOPICS) break;
+    if (topics.length >= maxTopics) break;
   }
   return topics;
 }
@@ -244,14 +256,15 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
     // работает без неё вовсе. Модель может быть не скачана, выгружена или не влезть в занятую
     // видеопамять — и в каждом из этих случаев собрать вкладки одного сайта мы всё равно можем.
     // Ошибку возвращаем только если в итоге не набралось НИ ОДНОЙ группы (см. конец функции).
-    const topicsRes = await runTabOrganizePrompt(buildTopicsPrompt(lines));
+    const maxTopics = topicBudget(unique.length);
+    const topicsRes = await runTabOrganizePrompt(buildTopicsPrompt(lines, maxTopics));
     if (!topicsRes.ok) {
       console.warn('[organize] модель недоступна, остаётся группировка по сайту:', topicsRes.error);
       modelError = { error: topicsRes.error, errorCode: topicsRes.errorCode };
     }
     const rawTopics = topicsRes.ok ? topicsRes.out.trim() : '';
-    const topics = parseTopics(rawTopics);
-    console.log(`[organize] темы (${unique.length} вкладок, ${duplicates.length} дублей): ${JSON.stringify(topics)}, ответ модели: ${JSON.stringify(rawTopics.slice(0, 160))}`);
+    const topics = parseTopics(rawTopics, maxTopics);
+    console.log(`[organize] темы (${unique.length} вкладок, бюджет ${maxTopics}, ${duplicates.length} дублей): ${JSON.stringify(topics)}, ответ модели: ${JSON.stringify(rawTopics.slice(0, 160))}`);
 
     // ── Фаза 2: по вкладке за прогон ──
     // Тем нет — нормальный исход: модель не нашла, вокруг чего собирать. Ничего не выдумываем.
