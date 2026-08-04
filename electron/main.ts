@@ -84,6 +84,8 @@ import { mapFormFields, type FormFieldDescriptor } from './AutofillFieldMapper';
 import { getDigest, buildDigest, shouldRefresh } from './DayDigest';
 import { findRelatedPages } from './RelatedHistory';
 import { pickFragmentByMeaning, highlightCandidates } from './SmartFind';
+import { RuleStore } from './RuleStore';
+import { applyRules } from './RuleEngine';
 import { startTabDrag, endTabDrag, syncDropZoneBounds } from './DropZoneManager';
 import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
 import { suggestTabTitle } from './TabRenamer';
@@ -280,6 +282,13 @@ let relatedBusy = false;
 let smartFindBusy = false;
 const adblock     = new AdBlockManager();
 const bangs       = new BangStore();
+// Правила-автоматизации (см. shared/rules.ts + RuleEngine.ts). Хранилище читается лениво, так что
+// создавать его до whenReady() безопасно.
+const rules       = new RuleStore();
+// Включение VPN по правилу. Подставляется в registerIpc — там живёт вся VPN-обвязка (выбранный
+// сервер, состояние процесса, прокси сессии), и дублировать её здесь было бы вторым источником
+// правды. До подстановки правило про VPN просто ничего не делает.
+let ensureVpnOnForRules: () => Promise<boolean> = async () => false;
 // Выученные цели быстрого поиска (Ctrl+E) — сайты, где человек уже искал. Читается с диска
 // лениво, на первое обращение (см. SearchTargetStore).
 const searchTargets = new SearchTargetStore();
@@ -869,6 +878,19 @@ function createWindow(role: WindowRole = 'main') {
   // TabManager только вставляет готовое в своё меню.
   tabs.setGraphMenuBuilder((items, sticker) =>
     buildAddToGraphMenuItem(graphs, items, sticker, notifyGraphChanged));
+  // Правила-автоматизации: срабатывают в КАЖДОМ окне, включая лёгкие — группы, закреп и адблок
+  // там есть, и правило, работающее только в главном окне, было бы правилом «иногда».
+  tabs.setRuleHook((ev) => {
+    const active = rules.active();
+    if (active.length === 0) return; // самый частый случай — ни одного правила заведено
+    void applyRules(active, ev, {
+      groupTab: (tabId, name) => tabs?.putTabInNamedGroup(tabId, name),
+      pinTab:   (tabId)       => tabs?.pinTab(tabId),
+      adblockOff: (domain)    => adblock.addDomain(domain),
+      ensureVpnOn: ()         => ensureVpnOnForRules(),
+      reloadTab: (tabId)      => tabs?.reload(tabId),
+    });
+  });
   // Тоже служба в одном экземпляре — только полное окно (см. оговорку выше).
   if (isMain) {
     setOnSearchRun(({ query, target, sameTab }) => {
@@ -1940,6 +1962,26 @@ function registerIpc() {
     lastVpnError = undefined;
   });
   ipcMain.handle(IPC.VPN_GET_CONNECTION_STATE, () => vpnConnectionState());
+  // Правило «включай VPN» (см. RuleEngine.ts). Возвращает true, только если ВКЛЮЧИЛИ прямо
+  // сейчас — по этому признаку движок решает, перезагружать ли страницу.
+  // ⚠️ Сервер человек в фразе не называл, поэтому берём тот, к которому уже подключались в этом
+  // сеансе, а иначе первый из подписки. Молчаливый отказ при пустой подписке — правильный исход:
+  // правило не должно открывать диалоги поверх страницы, на которую человек только что зашёл.
+  ensureVpnOnForRules = async () => {
+    // 'running' — рабочее состояние Xray; 'starting' тоже не повод запускать второй раз.
+    const state = vpnProcess.getState();
+    if (state === 'running' || state === 'starting') return false;
+    const servers = vpnKeyStore.getServers();
+    const server = servers.find((s) => s.id === vpnConnectionTarget?.id) ?? servers[0];
+    if (!server) {
+      console.warn('[rules] VPN не включить — подписки нет');
+      return false;
+    }
+    vpnConnectionTarget = { id: server.id, remark: server.remark };
+    const res = await vpnProcess.start(server);
+    if (!res.ok) console.warn('[rules] VPN не включился:', res.error);
+    return !!res.ok;
+  };
   vpnProcess.onStateChange((_state, error) => {
     lastVpnError = error;
     applyVpnProxy();

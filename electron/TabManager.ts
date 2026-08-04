@@ -11,6 +11,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
 import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_HEADER_HEIGHT } from '../shared/layout';
+import { hostOfUrl } from '../shared/rules';
 
 const CLOSED_STACK_MAX = 10;
 
@@ -177,6 +178,16 @@ export class TabManager {
   #graphMenuBuilder:
     | ((items: Array<{ url: string; title: string }>, sticker?: string) => MenuItemConstructorOptions | null)
     | null = null;
+
+  // Правила-автоматизации (см. RuleEngine.ts). Тот же приём, что с меню графа: TabManager не
+  // знает ни про хранилище правил, ни про VPN с адблоком — он лишь сообщает «вкладка пришла
+  // на такой-то адрес, а до того была на таком-то сайте».
+  #ruleHook: ((ev: { tabId: string; url: string; fromHost: string; incognito: boolean }) => void) | null = null;
+  // Хост страницы, С КОТОРОЙ вкладка попала на текущий адрес. Нужен триггеру «перешёл по ссылке
+  // с сайта X»: у навигации в самой вкладке источник — её же предыдущий адрес, а у вкладки,
+  // открытой ссылкой, — адрес открывшей страницы (сеется в момент создания, см. createTab-вызовы
+  // в setWindowOpenHandler и в ПКМ-меню ссылки).
+  #navFrom = new Map<string, string>();
 
   // Распознавание полей формы моделью (AutofillFieldMapper.ts). Тот же приём, что с
   // #graphMenuBuilder: менеджер вкладок про модель и кэш не знает, ему дают готовую функцию.
@@ -508,6 +519,32 @@ export class TabManager {
         const found = this.#findTabParent(tabId, node.children);
         if (found) return found;
       }
+    }
+    return null;
+  }
+
+  // Группа, в которой лежит вкладка (или null — вкладка вне групп). Нужна правилам: правило
+  // срабатывает на КАЖДУЮ навигацию, и без этой проверки вкладку перекладывали бы снова и снова.
+  #groupContaining(tabId: string, nodes: SidebarNode[] = this.nodes): GroupNode | null {
+    for (const node of nodes) {
+      if (node.type !== 'group') continue;
+      for (const child of node.children) {
+        if (child.type === 'single' && child.tabId === tabId) return node;
+        if (child.type === 'split-pair' && (child.leftTabId === tabId || child.rightTabId === tabId)) return node;
+      }
+      const nested = this.#groupContaining(tabId, node.children);
+      if (nested) return nested;
+    }
+    return null;
+  }
+
+  // Группа по ИМЕНИ — правило говорит «в группу «Хабр»», а не «в группу с таким-то id».
+  #findGroupByLabel(label: string, nodes: SidebarNode[] = this.nodes): GroupNode | null {
+    for (const node of nodes) {
+      if (node.type !== 'group') continue;
+      if (node.label.trim().toLowerCase() === label.trim().toLowerCase()) return node;
+      const nested = this.#findGroupByLabel(label, node.children);
+      if (nested) return nested;
     }
     return null;
   }
@@ -1292,6 +1329,16 @@ export class TabManager {
       // Записываем визит: один URL = один UPSERT с инкрементом счётчика. Инкогнито НЕ пишем в
       // историю — приватная вкладка не оставляет следа (onNavigate у нас только про историю/индекс).
       if (!this.tabMap.get(id)?.incognito) this.onNavigateCb?.(wc.getURL(), wc.getTitle(), wc);
+      // Правила-автоматизации. Порядок важен: сначала отдаём наверх «откуда пришли», и только
+      // потом запоминаем текущий адрес как источник для СЛЕДУЮЩЕЙ навигации этой вкладки.
+      const currentUrl = wc.getURL();
+      this.#ruleHook?.({
+        tabId: id,
+        url: currentUrl,
+        fromHost: this.#navFrom.get(id) ?? '',
+        incognito: !!this.tabMap.get(id)?.incognito,
+      });
+      this.#navFrom.set(id, hostOfUrl(currentUrl));
       notify();
     });
     wc.on('did-navigate-in-page', notify);
@@ -1372,7 +1419,10 @@ export class TabManager {
           },
         };
       }
-      this.createTab(url, disposition === 'background-tab', disposition === 'new-window');
+      const openedId = this.createTab(url, disposition === 'background-tab', disposition === 'new-window');
+      // «Перешёл по ссылке с сайта X» — для новой вкладки источник это страница, которая её
+      // открыла: своего предыдущего адреса у неё ещё нет.
+      this.#navFrom.set(openedId, hostOfUrl(wc.getURL()));
       return { action: 'deny' };
     });
     // Настоящее окно OAuth-попапа (action:'allow' выше) Electron создаёт и закрывает сам —
@@ -1434,7 +1484,13 @@ export class TabManager {
       // ── Ссылка ──────────────────────────────────────────────────────────────
       if (p.linkURL) {
         items.push(
-          { label: 'Открыть ссылку в новой вкладке', click: () => this.createTab(p.linkURL, true) },
+          {
+            label: 'Открыть ссылку в новой вкладке',
+            // Источник новой вкладки — страница, где щёлкнули ссылку (тот же учёт, что в
+            // setWindowOpenHandler): иначе правило «ссылки с хабра — в группу» не сработало бы
+            // на самом частом способе открыть ссылку.
+            click: () => { this.#navFrom.set(this.createTab(p.linkURL, true), hostOfUrl(wc.getURL())); },
+          },
           // Окно создаёт main — TabManager про окна не знает (тот же приём, что у пункта
           // «Добавить в граф»: сюда приходит готовый колбэк).
           { label: 'Открыть ссылку в новом окне', click: () => this.onOpenInNewWindowCb?.(p.linkURL) },
@@ -1717,6 +1773,7 @@ export class TabManager {
     if (id === HUB_ID) return;
     if (this.isTabPinned(id)) return;
     this.clearOrganizeSnapshot();
+    this.#navFrom.delete(id); // карта «откуда пришли» не должна копить мёртвые вкладки
     console.log(`[shutdown] closeTab id=${id} splitPairs=${JSON.stringify(this.splitPairs)}`);
 
     // Закрытие вкладки, входящей в (возможно припаркованную) пару.
@@ -2068,6 +2125,38 @@ export class TabManager {
     this.onChange();
   }
 
+  /**
+   * Кладёт вкладку в группу с таким ИМЕНЕМ, создавая её при необходимости. Точка входа для
+   * правил-автоматизаций (см. RuleEngine.ts): правило знает имя, а не id.
+   *
+   * ⚠️ Идемпотентна: вкладка, уже лежащая в нужной группе, не трогается вовсе — иначе каждая
+   * навигация внутри сайта перекладывала бы её в конец списка прямо под рукой у человека.
+   * ⚠️ Закреплённая вкладка живёт вне дерева (`pinnedTabs`), в группу не попадает и остаётся
+   * закреплённой: закреп — это место в полосе, и молча отнимать его правило не вправе.
+   */
+  putTabInNamedGroup(tabId: string, label: string): void {
+    const name = label.trim();
+    if (!name) return;
+    if (!this.#findTabParent(tabId)) return;
+    const current = this.#groupContaining(tabId);
+    if (current && current.label.trim().toLowerCase() === name.toLowerCase()) return;
+    const target = this.#findGroupByLabel(name);
+    if (target) {
+      this.addTabToGroup(target.id, tabId);
+      return;
+    }
+    this.createGroup(tabId);
+    // createGroup id наружу не отдаёт (у неё другой вызывающий) — берём созданную группу по факту.
+    const created = this.#groupContaining(tabId);
+    if (created) this.renameGroup(created.id, name);
+  }
+
+  /** Закрепить, если ещё не закреплена. `togglePin` для правила не годится — оно бы открепляло. */
+  pinTab(tabId: string): void {
+    if (this.pinnedTabs.some((t) => t.id === tabId)) return;
+    this.togglePin(tabId);
+  }
+
   renameGroup(groupId: string, label: string): void {
     const group = this.#findGroupById(groupId);
     if (!group) return;
@@ -2117,6 +2206,13 @@ export class TabManager {
     fn: (items: Array<{ url: string; title: string }>, sticker?: string) => MenuItemConstructorOptions | null,
   ): void {
     this.#graphMenuBuilder = fn;
+  }
+
+  // Правила-автоматизации: main подписывается на «вкладка пришла на адрес» (см. RuleEngine.ts).
+  // Отдельным сеттером, а не параметром конструктора — по тому же соображению, что закладки:
+  // список параметров и без того длинный, а фича появилась позже.
+  setRuleHook(fn: (ev: { tabId: string; url: string; fromHost: string; incognito: boolean }) => void): void {
+    this.#ruleHook = fn;
   }
 
   // WebContents уже открытой вкладки с этим адресом. Нужен извлечению (NotebookExtract):
