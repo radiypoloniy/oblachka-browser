@@ -6,6 +6,7 @@ import type {
   GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure,
 } from './graph';
 import type { ImagePreset } from './imagePresets';
+import type { AutomationRule } from './rules';
 
 // ── Узлы сайдбара ─────────────────────────────────────────────────────────────
 // Дискриминированное объединение для трёх типов узлов.
@@ -35,6 +36,14 @@ export interface FindResult {
   activeMatch: number; // порядковый номер текущего совпадения (1-based)
   count: number;       // всего совпадений
 }
+
+// Разбор фразы в правило (electron/RuleParser.ts). Черновик приходит в renderer, показывается
+// карточкой и сохраняется, только если человек его утвердил, — модель ничего не заводит сама.
+export type RuleParseOutcome =
+  | { ok: true; rule: AutomationRule }
+  // 'unclear' — фраза не легла в закрытый каталог (это нормальный и частый исход),
+  // 'model-error' — модель не ответила/не загрузилась.
+  | { ok: false; reason: 'unclear' | 'model-error'; error?: string };
 
 // Ответ смыслового Ctrl+F (electron/SmartFind.ts). Панель поиска рисует по нему только статус:
 // сам результат человек видит НА СТРАНИЦЕ — штатной подсветкой findInPage, к которой её и
@@ -268,6 +277,14 @@ export const IPC = {
   FIND_OPEN:   'find:open',         // main → renderer: открыть панель поиска (Ctrl+F)
   FIND_CLOSE:  'find:close',        // main → renderer: закрыть панель (навигация, Esc)
   FIND_SMART:  'find:smart',        // findbar → main: найти фрагмент ПО СМЫСЛУ (см. SmartFind.ts)
+
+  // Правила-автоматизации (см. shared/rules.ts, RuleParser.ts, RuleEngine.ts)
+  RULES_PARSE:       'rules:parse',        // renderer → main: фраза → черновик правила (модель)
+  RULES_ADD:         'rules:add',          // renderer → main: сохранить утверждённый черновик
+  RULES_LIST:        'rules:list',         // renderer → main: список правил
+  RULES_SET_ENABLED: 'rules:set-enabled',  // renderer → main: включить/выключить правило
+  RULES_REMOVE:      'rules:remove',       // renderer → main: удалить правило
+  RULES_CHANGED:     'rules:changed',      // main → renderer: список изменился
 
   // Омнибокс
   OMNIBOX_FOCUS: 'omnibox:focus',   // main → renderer: сфокусировать адресную строку (Ctrl+L)
@@ -1773,6 +1790,15 @@ export interface OblakoApi {
   // ClusteringService.ts как источник предложений, тот же формат применения через
   // organizeApply выше). Request/response, не fire-and-forget — как searchHistorySmart.
   suggestGroups(): Promise<OrganizeProposal>;
+
+  // Правила-автоматизации. parseRule — единственный вызов с моделью (фраза → черновик),
+  // остальное обычный CRUD: правило исполняется кодом, а не моделью.
+  parseRule(phrase: string): Promise<RuleParseOutcome>;
+  addRule(draft: AutomationRule): Promise<AutomationRule | null>;
+  listRules(): Promise<AutomationRule[]>;
+  setRuleEnabled(id: string, enabled: boolean): Promise<boolean>;
+  removeRule(id: string): Promise<boolean>;
+  onRulesChanged(cb: (rules: AutomationRule[]) => void): () => void;
 
   // Правая AI-панель (заход 3 — правый split-view-подобный док, см. AiPanelManager.ts)
   toggleAiPanel(): Promise<boolean>;

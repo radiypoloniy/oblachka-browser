@@ -6,6 +6,7 @@ import type {
   GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure,
 } from '../shared/graph';
 import type { ImagePreset } from '../shared/imagePresets';
+import type { AutomationRule } from '../shared/rules';
 
 const api: OblakoApi = {
   getAllTabs: () => ipcRenderer.invoke(IPC.TABS_GET_ALL),
@@ -38,6 +39,19 @@ const api: OblakoApi = {
     const handler = (_e: unknown, tabs: TabState[]) => cb(tabs);
     ipcRenderer.on(IPC.TABS_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.TABS_CHANGED, handler);
+  },
+
+  // Правила-автоматизации (см. shared/rules.ts). parseRule ходит к модели, остальное — обычный
+  // CRUD над rules.json.
+  parseRule:      (phrase: string)            => ipcRenderer.invoke(IPC.RULES_PARSE, phrase),
+  addRule:        (draft: unknown)            => ipcRenderer.invoke(IPC.RULES_ADD, draft),
+  listRules:      ()                          => ipcRenderer.invoke(IPC.RULES_LIST),
+  setRuleEnabled: (id: string, on: boolean)   => ipcRenderer.invoke(IPC.RULES_SET_ENABLED, id, on),
+  removeRule:     (id: string)                => ipcRenderer.invoke(IPC.RULES_REMOVE, id),
+  onRulesChanged: (cb: (rules: AutomationRule[]) => void) => {
+    const handler = (_e: unknown, rules: AutomationRule[]) => cb(rules);
+    ipcRenderer.on(IPC.RULES_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.RULES_CHANGED, handler);
   },
 
   findStart: (query: string, forward: boolean) => ipcRenderer.invoke(IPC.FIND_START, query, forward),

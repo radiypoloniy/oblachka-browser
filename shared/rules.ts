@@ -77,12 +77,15 @@ export interface ActionSpec {
 export const TRIGGERS: TriggerSpec[] = [
   {
     kind: 'site',
-    hint: 'the user opens a page on a given website',
+    // ⚠️ Подсказки двух триггеров нарочно противопоставлены («страница НА сайте» против
+    // «страница НЕ на сайте»): без явного противопоставления модель отправляла «ссылки с хабра»
+    // в site — оба варианта звучали для неё одинаково подходяще (замер, см. RuleParser.ts).
+    hint: 'the page being opened is ON that website',
     describe: (d) => `когда открываю страницу на ${d}`,
   },
   {
     kind: 'link-from',
-    hint: 'a page is opened by following a link FROM a given website',
+    hint: 'the user follows a link FROM that website to another page (the opened page is NOT on that website)',
     describe: (d) => `когда перехожу по ссылке с ${d}`,
   },
 ];

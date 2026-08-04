@@ -60,7 +60,7 @@ import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION, THEME_PALETTE_IDS, isDarkTheme } from '../shared/ipc';
 import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult, SmartFindResult } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult, SmartFindResult, RuleParseOutcome } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -86,6 +86,7 @@ import { findRelatedPages } from './RelatedHistory';
 import { pickFragmentByMeaning, highlightCandidates } from './SmartFind';
 import { RuleStore } from './RuleStore';
 import { applyRules } from './RuleEngine';
+import { parsePhraseToRule } from './RuleParser';
 import { startTabDrag, endTabDrag, syncDropZoneBounds } from './DropZoneManager';
 import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
 import { suggestTabTitle } from './TabRenamer';
@@ -1708,6 +1709,42 @@ function registerIpc() {
     } finally {
       smartFindBusy = false;
     }
+  });
+
+  // ── Правила-автоматизации ──────────────────────────────────────────────────
+  // ⚠️ Разбор фразы — ЕДИНСТВЕННЫЙ вызов модели во всей фиче, и он всегда явный: человек написал
+  // фразу и нажал кнопку. Поэтому гейта isModelWarm() тут нет — ждать загрузку такое действие
+  // вправе. Сохранения он не делает: черновик возвращается в UI на утверждение.
+  let ruleParseBusy = false;
+  ipcMain.handle(IPC.RULES_PARSE, async (_e, phrase: string): Promise<RuleParseOutcome> => {
+    if (ruleParseBusy) return { ok: false, reason: 'model-error', error: 'Уже разбираю другую фразу' };
+    ruleParseBusy = true;
+    try {
+      return await parsePhraseToRule(String(phrase ?? ''));
+    } catch (err) {
+      console.warn('[rules] разбор упал:', err);
+      return { ok: false, reason: 'model-error' };
+    } finally {
+      ruleParseBusy = false;
+    }
+  });
+  // Сохранение утверждённого черновика. Валидация повторяется ВНУТРИ хранилища: сюда приходит
+  // объект из renderer, а он в общем случае — просто аргумент IPC, а не «наш» черновик.
+  ipcMain.handle(IPC.RULES_ADD, (_e, draft: unknown) => {
+    const saved = rules.add(draft);
+    if (saved) broadcastToChrome(IPC.RULES_CHANGED, rules.list());
+    return saved;
+  });
+  ipcMain.handle(IPC.RULES_LIST, () => rules.list());
+  ipcMain.handle(IPC.RULES_SET_ENABLED, (_e, id: string, enabled: boolean) => {
+    const ok = rules.setEnabled(id, enabled);
+    if (ok) broadcastToChrome(IPC.RULES_CHANGED, rules.list());
+    return ok;
+  });
+  ipcMain.handle(IPC.RULES_REMOVE, (_e, id: string) => {
+    const ok = rules.remove(id);
+    if (ok) broadcastToChrome(IPC.RULES_CHANGED, rules.list());
+    return ok;
   });
 
   ipcMain.handle(IPC.TAB_PIN_TOGGLE, (e, id: string) => tabsOf(e)?.togglePin(id));
