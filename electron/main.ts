@@ -751,7 +751,7 @@ function createWindow(role: WindowRole = 'main') {
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
       // Снимок привязан к той вкладке, которую сняли: над чужой страницей карточке не место.
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); closeScreenshot(win);
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win);
       // Вопрос о разрешении привязан к конкретной странице — над чужой вкладкой ему не место.
       if (win) for (const id of dropPermissionRequests(win)) permissions.cancel(id);
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
@@ -759,7 +759,7 @@ function createWindow(role: WindowRole = 'main') {
       passwordAutofill.onActiveTabChanged(win);
     },
     (wc, tabId) => {
-      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); closeScreenshot(win); passwordAutofill.onTabClosed(tabId);
+      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); passwordAutofill.onTabClosed(tabId);
       // Закрылась последняя инкогнито-вкладка → стираем in-memory данные приватной сессии (куки/
       // хранилище), Chrome-подобно. takeIncognitoClearIfDone сам знает, когда это уместно (работает
       // и для кнопки, и для хоткея Ctrl+Shift+N).
@@ -773,6 +773,10 @@ function createWindow(role: WindowRole = 'main') {
       closeAutofillPopover(win);
       closeVpnPopover();
       closeDownloadsPopover();
+      // ⚠️ Без этой строки поповер сайта не закрывался кликом по странице: слушатель «клика мимо»
+      // живёт в слое хрома, а клики по странице до него не доходят вовсе — страница это отдельная
+      // нативная вью. Закрывать такие поповеры умеет только main, по этому самому сигналу.
+      closeSitePopover();
     },
     // Менеджер паролей, шаг 2, коммит 2 — сигналы content-preload идут в PasswordAutofillManager,
     // который сверяется с сейфом и решает, показывать ли индикатор/поповер.
