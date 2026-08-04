@@ -6,7 +6,7 @@
 // обычным node (--experimental-strip-types, Node 22.6+).
 //
 //   npm run rules-check
-import { validateRule, describeRule, normalizeRuleDomain, hostMatchesDomain, hostOfUrl, sameRule }
+import { validateRule, describeRule, normalizeRuleDomain, hostMatchesDomain, hostOfUrl, sameRule, groupNameFromDomain }
   from '../shared/rules.ts';
 
 let failed = 0;
@@ -56,6 +56,12 @@ check('лишние поля не переезжают', Object.keys(validateRul
 
 const longName = 'ааааааааааааааааааааааааааааааааааааа';
 check('длинное имя группы обрезано', validateRule({ ...base, action: { kind: 'group', groupName: longName } }, { id: 'r1' })?.action.groupName?.length, 24);
+
+console.log('\n── имя группы по умолчанию ──');
+check('домен второго уровня', groupNameFromDomain('habr.com'), 'Habr');
+check('домен с поддоменом', groupNameFromDomain('m.habr.com'), 'M');
+check('цифры в имени', groupNameFromDomain('2gis.ru'), '2gis');
+check('пусто на пустом входе', groupNameFromDomain(''), '');
 
 console.log('\n── описание для человека ──');
 check(

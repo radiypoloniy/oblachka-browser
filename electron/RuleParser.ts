@@ -13,7 +13,7 @@
 //
 // ⚠️ Инструкция по-английски при русской фразе — то же, на чём держатся перевод, поиск вкладки
 // и смысловой Ctrl+F.
-import { TRIGGERS, ACTIONS, validateRule, normalizeRuleDomain } from '../shared/rules';
+import { TRIGGERS, ACTIONS, validateRule, normalizeRuleDomain, groupNameFromDomain } from '../shared/rules';
 import type { AutomationRule } from '../shared/rules';
 import { runTabOrganizePrompt } from './TranslationService';
 
@@ -78,7 +78,13 @@ export async function parsePhraseToRule(phrase: string): Promise<RuleParseResult
   const action = labelled(out, 'ACTION').toLowerCase();
   const groupRaw = labelled(out, 'GROUP');
   // Прочерк — то, о чём просили в промпте для «имя не нужно»; пустая строка и «none» туда же.
-  const groupName = /^([-–—]|none|нет)?$/i.test(groupRaw) ? '' : groupRaw;
+  const named = /^([-–—]|none|нет)?$/i.test(groupRaw) ? '' : groupRaw;
+  // ⚠️ Действию «группа» имя обязательно, но НЕ обязательно от модели: человек мог сказать
+  // «в отдельную группу», не назвав её. Тогда берём имя от домена — и человек правит его в
+  // карточке, поле там для этого и стоит. Раньше такой ответ отбраковывался целиком, и
+  // безупречно разобранная фраза давала «не понял» (см. groupNameFromDomain).
+  const domainForName = normalizeRuleDomain(domain);
+  const groupName = named || (action === 'group' && domainForName ? groupNameFromDomain(domainForName) : '');
 
   const rule = validateRule(
     {

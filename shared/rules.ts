@@ -139,6 +139,21 @@ export function normalizeRuleDomain(raw: string): string | null {
   return s;
 }
 
+/**
+ * Имя группы по умолчанию из домена: habr.com → «Habr».
+ *
+ * ⚠️ Нужно там, где человек попросил «класть в отдельную группу», не назвав её. Замер стенда:
+ * на фразу «ссылки с habr.com открывай в отдельной группе» модель отвечает совершенно верно
+ * (link-from / habr.com / group) и честно ставит прочерк вместо имени — а правило отбраковывалось
+ * целиком, потому что имя пустое. Отказ вместо разумного умолчания: человек видел «не понял
+ * фразу» на образцово разобранной фразе.
+ */
+export function groupNameFromDomain(domain: string): string {
+  const label = (domain || '').split('.')[0] ?? '';
+  if (!label) return '';
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 /** Совпадает ли хост с доменом правила — сам домен и любые его поддомены. */
 export function hostMatchesDomain(host: string, domain: string): boolean {
   const h = normalizeRuleDomain(host);
