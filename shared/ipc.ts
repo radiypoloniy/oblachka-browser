@@ -32,6 +32,16 @@ export interface GroupNode {
 }
 export type SidebarNode = SingleNode | SplitPairNode | GroupNode;
 
+// Вопрос о повторной загрузке (см. electron/DownloadManager.ts). Пока он не отвечен, загрузка
+// стоит на паузе и в списке не показывается — отказ не должен оставлять запись «Отменено».
+export interface DuplicateDownloadPrompt {
+  askId: string;
+  filename: string;
+  savePath: string;
+  downloadedAt: number;
+}
+export type DuplicateDownloadDecision = 'download' | 'open' | 'cancel';
+
 export interface FindResult {
   activeMatch: number; // порядковый номер текущего совпадения (1-based)
   count: number;       // всего совпадений
@@ -288,6 +298,11 @@ export const IPC = {
   SITE_POPOVER_BOUNDS: 'site-popover:bounds',        // renderer → main: где стоит замочек
   SITE_POPOVER_CLOSED: 'site-popover:closed',        // main → renderer: поповер закрылся сам
   SITE_POPOVER_ACTIVE_TAB: 'site-popover:active-tab',// поповер → main: адрес и заголовок активной вкладки
+
+  // Вопрос «этот файл уже скачан» — показывается своим поповером у значка загрузок
+  DOWNLOAD_DUPLICATE_ASK:    'download:duplicate-ask',    // main → chrome: открой поповер с вопросом
+  DOWNLOAD_DUPLICATE_PROMPT: 'download:duplicate-prompt', // main → поповер: сам вопрос
+  DOWNLOAD_DUPLICATE_DECIDE: 'download:duplicate-decide', // поповер → main: ответ человека
 
   // Правила-автоматизации (см. shared/rules.ts, RuleParser.ts, RuleEngine.ts)
   RULES_PARSE:       'rules:parse',        // renderer → main: фраза → черновик правила (модель)
@@ -2058,6 +2073,10 @@ export interface OblakoApi {
   showDownloadsPopover(): Promise<void>;
   closeDownloadsPopover(): Promise<void>;
   onDownloadsPopoverClosed(cb: () => void): () => void;
+
+  // Main просит открыть поповер загрузок с вопросом «этот файл уже скачан»: позиция значка
+  // известна только хрому, поэтому открывает он — обычным путём, как по клику.
+  onDownloadDuplicateAsk(cb: () => void): () => void;
 
   // Поповер сведений о сайте у замочка в омнибоксе (см. electron/SitePopoverManager.ts).
   // toggle возвращает новое состояние — второго канала «открыт ли» не заводим.

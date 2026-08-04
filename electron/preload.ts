@@ -566,6 +566,13 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.DOWNLOADS_POPOVER_CLOSED, handler);
   },
 
+  // Просьба main открыть поповер загрузок с вопросом о дубле: якорь знает только хром.
+  onDownloadDuplicateAsk: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.DOWNLOAD_DUPLICATE_ASK, handler);
+    return () => ipcRenderer.removeListener(IPC.DOWNLOAD_DUPLICATE_ASK, handler);
+  },
+
   // Поповер сведений о сайте у замочка (см. electron/SitePopoverManager.ts). toggle возвращает
   // новое состояние — кнопке этого достаточно, отдельного «открыт ли» не нужно.
   setSitePopoverAnchorBounds: (b: ContentBounds) => ipcRenderer.invoke(IPC.SITE_POPOVER_BOUNDS, b) as Promise<void>,

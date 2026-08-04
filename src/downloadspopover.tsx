@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { FolderOpen, ExternalLink, RotateCcw, Pause, Play, X, ChevronRight, Download } from 'lucide-react';
-import type { DownloadEntry } from '../shared/ipc';
+import type { DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision } from '../shared/ipc';
 import { islandPlate } from './styles/island';
 import { FileKindIcon, formatBytes, formatSpeed } from './components/downloadsShared';
 import './styles/global.css';
@@ -18,6 +18,9 @@ declare global {
       showDownloadFolder: (id: string) => Promise<void>;
       retryDownload: (id: string) => Promise<void>;
       onDownloadsChanged: (cb: (entries: DownloadEntry[]) => void) => () => void;
+      getDuplicatePrompt: () => Promise<DuplicateDownloadPrompt | null>;
+      onDuplicatePrompt: (cb: (p: DuplicateDownloadPrompt | null) => void) => () => void;
+      decideDuplicate: (decision: DuplicateDownloadDecision) => void;
       openAll: () => void;
       close: () => void;
       reportHeight: (px: number) => void;
@@ -35,7 +38,13 @@ const VISIBLE_LIMIT = 10;
 
 function DownloadsPopoverApp() {
   const [entries, setEntries] = useState<DownloadEntry[]>([]);
+  // Вопрос «этот файл уже скачан». Пока он есть, карточка показывает ТОЛЬКО его: это не строка
+  // в списке, а решение, которого ждёт остановленная загрузка.
+  const [prompt, setPrompt] = useState<DuplicateDownloadPrompt | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => window.downloadsPopover.onDuplicatePrompt(setPrompt), []);
+  useEffect(() => { void window.downloadsPopover.getDuplicatePrompt().then(setPrompt); }, []);
 
   // На каждый показ — свежий список: пока поповер был закрыт, загрузки шли своим чередом.
   useEffect(() => window.downloadsPopover.onShow(() => {
@@ -69,7 +78,9 @@ function DownloadsPopoverApp() {
         overflow: 'hidden',
         display: 'flex', flexDirection: 'column',
       }}>
-        {shown.length === 0 ? (
+        {prompt ? (
+          <DuplicatePrompt prompt={prompt} />
+        ) : shown.length === 0 ? (
           <div style={{
             padding: '28px 16px', textAlign: 'center',
             color: 'var(--text-faint)', fontSize: 'var(--fs-sm)',
@@ -84,7 +95,8 @@ function DownloadsPopoverApp() {
           </div>
         )}
 
-        <button
+        {/* Пока висит вопрос, «все загрузки» прячем: он про решение, а не про список. */}
+        {!prompt && <button
           onClick={() => window.downloadsPopover.openAll()}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
@@ -97,6 +109,61 @@ function DownloadsPopoverApp() {
         >
           <span style={{ flex: 1 }}>Все загрузки</span>
           <ChevronRight size={15} />
+        </button>}
+      </div>
+    </div>
+  );
+}
+
+// Карточка вопроса о повторной загрузке.
+//
+// ⚠️ Кнопки ровно две, и обе — про действие. Третьей («отмена») нет намеренно: отказ это просто
+// клик мимо, и он уже отменяет загрузку (см. closeDownloadsPopover). Лишняя кнопка «отмена» рядом
+// с «открыть» только заставляла бы выбирать между двумя способами ничего не делать.
+function DuplicatePrompt({ prompt }: { prompt: DuplicateDownloadPrompt }) {
+  const when = new Date(prompt.downloadedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  return (
+    <div style={{ padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 32, height: 32, borderRadius: 'var(--radius-sm)', flex: 'none',
+          background: 'var(--accent-soft)', color: 'var(--accent)',
+        }}>
+          <FileKindIcon filename={prompt.filename} size={16} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+            Этот файл уже загружен
+          </div>
+          <div style={{
+            fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }} title={prompt.savePath}>
+            {prompt.filename} · {when}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={() => window.downloadsPopover.decideDuplicate('open')}
+          style={{
+            flex: 1, padding: '8px 10px', borderRadius: 'var(--radius-sm)', border: 'none',
+            background: 'var(--accent)', color: '#fff',
+            fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default',
+          }}
+        >
+          Открыть загруженное
+        </button>
+        <button
+          onClick={() => window.downloadsPopover.decideDuplicate('download')}
+          style={{
+            flex: 1, padding: '8px 10px', borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--divider-strong)', background: 'transparent',
+            color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default',
+          }}
+        >
+          Всё равно загрузить
         </button>
       </div>
     </div>

@@ -104,7 +104,7 @@ import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPas
 import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
 import * as autofillOrchestrator from './AutofillOrchestrator';
 import { initVpnPopover, showVpnPopover, closeVpnPopover, syncVpnPopoverAnchorBounds, syncVpnPopoverActiveUrl, broadcastVpnState } from './VpnPopoverManager';
-import { initDownloadsPopover, showDownloadsPopover, closeDownloadsPopover, syncDownloadsPopoverAnchorBounds, broadcastDownloads } from './DownloadsPopoverManager';
+import { initDownloadsPopover, showDownloadsPopover, closeDownloadsPopover, syncDownloadsPopoverAnchorBounds, broadcastDownloads, setDuplicatePrompt, setDuplicateDecisionHandler } from './DownloadsPopoverManager';
 import { initSitePopover, showSitePopover, closeSitePopover, syncSitePopoverAnchorBounds, isSitePopoverOpen } from './SitePopoverManager';
 import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
@@ -513,6 +513,19 @@ function wireSharedSessions(): void {
   );
   // Поповер сведений о сайте — та же схема адресации по окну: замочек есть в каждом.
   initSitePopover((w) => chromeOfWin(w)?.send(IPC.SITE_POPOVER_CLOSED));
+
+  // Вопрос «этот файл уже скачан». ⚠️ Открывает поповер не main, а ХРОМ: якорь (позиция значка
+  // загрузок) известен только ему, и открытие мимо обычного пути оставило бы кнопку неподсвеченной
+  // и поповер в неверном месте. Main лишь кладёт вопрос и просит открыть — дальше обычный путь.
+  downloads.setDuplicatePrompt((wc, prompt) => {
+    setDuplicatePrompt(prompt);
+    const win = BrowserWindow.fromWebContents(wc) ?? contextFromSender(wc)?.win ?? null;
+    const chrome = win ? chromeOfWin(win) : null;
+    if (chrome) chrome.send(IPC.DOWNLOAD_DUPLICATE_ASK);
+    // Окна не нашли (загрузка из фоновой вью) — вопрос задать некому, честно отменяем.
+    else downloads.resolveDuplicate(prompt.askId, 'cancel');
+  });
+  setDuplicateDecisionHandler((askId, decision) => downloads.resolveDuplicate(askId, decision));
   // Автозаполнение форм: оркестратор (хранилище ↔ страница ↔ поповер) + поповер выбора профиля.
   // onPick поповера — подстановка выбранного адреса в ту вкладку, где было сфокусировано поле.
   autofillOrchestrator.initAutofillOrchestrator(autofill);

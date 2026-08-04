@@ -1,9 +1,9 @@
-import type { Session, DownloadItem } from 'electron';
+import type { Session, DownloadItem, WebContents } from 'electron';
 import { app, dialog, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { DownloadEntry } from '../shared/ipc';
+import type { DownloadEntry, DuplicateDownloadPrompt } from '../shared/ipc';
 import { isBackgroundWebContents } from './BackgroundWebContents';
 import { markDownloadedFile, isRiskyDownload } from './DownloadSafety';
 
@@ -45,6 +45,19 @@ export function uniquePath(dir: string, filename: string): string {
 
 export class DownloadManager {
   #entries = new Map<string, DownloadEntry>();
+  // Отменённые до ответа повторные загрузки: ждём решения человека. Ключ — id вопроса.
+  #pendingDuplicates = new Map<string, { url: string; wc: WebContents; already: DownloadEntry }>();
+  // Адреса, для которых человек уже сказал «всё равно загрузить»: ровно один пропуск вопроса,
+  // иначе повторный запуск загрузки спросил бы снова и так по кругу.
+  #approvedOnce = new Set<string>();
+  // Кто задаёт вопрос. ⚠️ Менеджер про поповеры не знает — main отдаёт ему готовый колбэк (тот же
+  // приём, что с меню графа у TabManager). wc нужен, чтобы вопрос всплыл в ТОМ окне, где качают.
+  #onDuplicate: ((wc: WebContents, prompt: DuplicateDownloadPrompt) => void) | null = null;
+
+  /** Подключает показ вопроса о повторной загрузке (см. main.ts). */
+  setDuplicatePrompt(fn: (wc: WebContents, prompt: DuplicateDownloadPrompt) => void): void {
+    this.#onDuplicate = fn;
+  }
   #items   = new Map<string, DownloadItem>(); // только активные (not 'done')
   // Загрузки из инкогнито: живут в списке до конца сеанса, но на диск не попадают. Файл человек
   // сохранил сам и он никуда не денется, а вот ССЫЛКА в постоянном файле — уже след приватной
@@ -135,24 +148,65 @@ export class DownloadManager {
 
       // ⚠️ Повтор уже скачанного. Браузеры об этом молчат, и папка «Загрузки» обрастает
       // «отчёт.pdf», «отчёт (1).pdf», «отчёт (2).pdf» — человек качает второй раз просто потому,
-      // что не помнит, качал ли. Спрашиваем ОДИН раз и даём оба выхода: открыть уже скачанное или
-      // всё-таки скачать заново (второй файл получит своё имя через uniquePath, как и раньше).
-      const already = this.#findDownloaded(item.getURL(), filename, item.getTotalBytes());
-      if (already) {
-        const choice = dialog.showMessageBoxSync({
-          type: 'question',
-          buttons: ['Отмена', 'Открыть скачанный', 'Скачать заново'],
-          defaultId: 1,
-          cancelId: 0,
-          title: 'Этот файл уже скачан',
-          message: `«${already.filename}» уже есть в загрузках`,
-          detail: `Скачан ${new Date(already.startedAt).toLocaleDateString('ru-RU')}. Файл лежит здесь:\n${already.savePath}`,
+      // что не помнит, качал ли.
+      //
+      // ⚠️ Спрашиваем СВОИМ поповером у значка загрузок, а не системным окном. Системный диалог
+      // здесь был чужеродным и, главное, синхронным — он замораживал главный процесс вместе со
+      // всеми вкладками. Поэтому загрузка ставится на паузу, а вопрос уходит наверх; пока ответа
+      // нет, записи в списке не появляется вовсе — иначе отказ оставлял бы след «Отменено» о
+      // файле, которого человек и не собирался качать второй раз.
+      const url = item.getURL();
+      const already = this.#approvedOnce.has(url)
+        ? null
+        : this.#findDownloaded(url, filename, item.getTotalBytes());
+      this.#approvedOnce.delete(url);
+      if (already && this.#onDuplicate) {
+        // ⚠️ Загрузку ОТМЕНЯЕМ, а не ставим на паузу. Пауза не спасает: маленький файл успевает
+        // дойти до диска раньше, чем пауза применится, — замерено, второй файл появлялся, хотя
+        // вопрос ещё висел на экране. Поэтому до ответа на диск не попадает ничего, а «всё равно
+        // загрузить» запускает НОВУЮ загрузку того же адреса (одноразовое разрешение в
+        // #approvedOnce не даёт спросить второй раз и уйти в цикл).
+        try { item.cancel(); } catch { /* мог успеть завершиться */ }
+        const askId = randomUUID();
+        this.#pendingDuplicates.set(askId, { url, wc, already });
+        this.#onDuplicate(wc, {
+          askId,
+          filename: already.filename,
+          savePath: already.savePath,
+          downloadedAt: already.startedAt,
         });
-        if (choice === 0) { item.cancel(); return; }
-        if (choice === 1) { item.cancel(); void shell.openPath(already.savePath); return; }
-        // choice === 2 — качаем заново, обычным путём ниже.
+        return;
       }
 
+      this.#registerItem(item, incognito);
+    });
+  }
+
+  /**
+   * Ответ на вопрос о повторной загрузке. ⚠️ Закрытие поповера мимо кнопок — это 'cancel':
+   * человек ничего не выбрал, и качать второй раз «на всякий случай» нельзя.
+   */
+  resolveDuplicate(askId: string, decision: 'download' | 'open' | 'cancel'): void {
+    const pending = this.#pendingDuplicates.get(askId);
+    if (!pending) return;
+    this.#pendingDuplicates.delete(askId);
+    const { url, wc, already } = pending;
+    if (decision === 'download') {
+      // Одноразовое разрешение: следующий will-download по этому адресу пройдёт мимо вопроса.
+      this.#approvedOnce.add(url);
+      if (!wc.isDestroyed()) wc.downloadURL(url);
+      else this.#approvedOnce.delete(url);
+      return;
+    }
+    if (decision === 'open') void shell.openPath(already.savePath);
+    // 'cancel' — делать нечего: сама загрузка уже отменена в момент вопроса.
+  }
+
+  // Всё, что происходит с принятой загрузкой: запись в список, подписки на прогресс и финал.
+  // Вынесено из обработчика will-download, потому что теперь сюда есть два входа — обычный и
+  // отложенный (после ответа на вопрос о дубле).
+  #registerItem(item: Electron.DownloadItem, incognito: boolean): void {
+    {
       const id = randomUUID();
       const entry: DownloadEntry = {
         id,
@@ -216,7 +270,7 @@ export class DownloadManager {
         this.#persist();
         this.#notify();
       });
-    });
+    }
   }
 
   getAll(): DownloadEntry[] {

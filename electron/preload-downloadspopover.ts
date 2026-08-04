@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { DownloadEntry } from '../shared/ipc';
+import type { DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision } from '../shared/ipc';
 
 // Мост поповера загрузок. Действия — те же ipcMain.handle, что у боевого window.oblako
 // (обработчик не привязан к конкретному preload'у), поэтому дублировать логику в main не нужно.
@@ -18,6 +18,16 @@ contextBridge.exposeInMainWorld('downloadsPopover', {
     ipcRenderer.on(IPC.DOWNLOADS_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.DOWNLOADS_CHANGED, handler);
   },
+  // Вопрос «этот файл уже скачан» (см. DownloadManager.ts). null — вопроса нет, карточка
+  // показывает обычный список.
+  getDuplicatePrompt: () => ipcRenderer.invoke(IPC.DOWNLOAD_DUPLICATE_PROMPT) as Promise<DuplicateDownloadPrompt | null>,
+  onDuplicatePrompt: (cb: (p: DuplicateDownloadPrompt | null) => void) => {
+    const handler = (_e: unknown, p: DuplicateDownloadPrompt | null) => cb(p);
+    ipcRenderer.on(IPC.DOWNLOAD_DUPLICATE_PROMPT, handler);
+    return () => ipcRenderer.removeListener(IPC.DOWNLOAD_DUPLICATE_PROMPT, handler);
+  },
+  decideDuplicate: (decision: DuplicateDownloadDecision) => ipcRenderer.send(IPC.DOWNLOAD_DUPLICATE_DECIDE, decision),
+
   openAll:      () => ipcRenderer.send(IPC.DOWNLOADS_POPOVER_OPEN_ALL),
   close:        () => ipcRenderer.send('downloads-popover:close'),
   reportHeight: (px: number) => ipcRenderer.send('downloads-popover:height', px),

@@ -8,7 +8,7 @@
 import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
-import type { ContentBounds, DownloadEntry } from '../shared/ipc';
+import type { ContentBounds, DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision } from '../shared/ipc';
 import { IPC } from '../shared/ipc';
 
 const POPOVER_WIDTH = 340;
@@ -86,6 +86,10 @@ function ensureIpcRegistered(): void {
     closeDownloadsPopover();
     if (win) onOpenAllCb?.(win);
   });
+  ipcMain.handle(IPC.DOWNLOAD_DUPLICATE_PROMPT, () => pendingPrompt);
+  ipcMain.on(IPC.DOWNLOAD_DUPLICATE_DECIDE, (_e, decision: DuplicateDownloadDecision) => {
+    resolveDuplicatePrompt(decision);
+  });
 }
 
 function ensurePopoverView(): WebContentsView {
@@ -102,6 +106,8 @@ function ensurePopoverView(): WebContentsView {
   popoverView.webContents.once('did-finish-load', () => {
     popoverLoaded = true;
     if (isOpen) popoverView?.webContents.send('downloads-popover:show');
+    // Вопрос мог прийти РАНЬШЕ, чем страница поповера догрузилась (первый показ) — досылаем.
+    if (pendingPrompt) popoverView?.webContents.send(IPC.DOWNLOAD_DUPLICATE_PROMPT, pendingPrompt);
   });
   popoverView.webContents.loadURL('oblako-chrome://localhost/downloadspopover.html');
   return popoverView;
@@ -129,9 +135,49 @@ export function broadcastDownloads(entries: DownloadEntry[]): void {
   popoverView.webContents.send(IPC.DOWNLOADS_CHANGED, entries);
 }
 
+// ── Вопрос «этот файл уже скачан» ───────────────────────────────────────────
+// ⚠️ Отдельного поповера под него НЕ заводим: он висит у того же значка загрузок и говорит про
+// загрузку — это то же место. Карточка просто показывает вопрос вместо списка.
+let pendingPrompt: DuplicateDownloadPrompt | null = null;
+let onDecisionCb: ((askId: string, decision: DuplicateDownloadDecision) => void) | null = null;
+
+export function setDuplicateDecisionHandler(fn: (askId: string, decision: DuplicateDownloadDecision) => void): void {
+  onDecisionCb = fn;
+}
+
+export function setDuplicatePrompt(prompt: DuplicateDownloadPrompt | null): void {
+  pendingPrompt = prompt;
+  if (!popoverView || popoverView.webContents.isDestroyed()) return;
+  if (popoverLoaded) popoverView.webContents.send(IPC.DOWNLOAD_DUPLICATE_PROMPT, prompt);
+}
+
+export function getDuplicatePrompt(): DuplicateDownloadPrompt | null {
+  return pendingPrompt;
+}
+
+/** Ответ человека (кнопка в карточке). Закрывает поповер: вопрос отвечен. */
+export function resolveDuplicatePrompt(decision: DuplicateDownloadDecision): void {
+  const prompt = pendingPrompt;
+  pendingPrompt = null;
+  if (prompt) onDecisionCb?.(prompt.askId, decision);
+  setDuplicatePrompt(null);
+  closeDownloadsPopover();
+}
+
 export function closeDownloadsPopover(): void {
   if (!isOpen) return;
   isOpen = false;
+  // ⚠️ Закрыли, не ответив (клик мимо, смена вкладки) — это ОТКАЗ от загрузки. Молча качать
+  // второй раз то, о чём человек не сказал «да», нельзя; а бросить загрузку висеть на паузе
+  // нельзя тем более — она так и осталась бы в подвешенном состоянии до конца сеанса.
+  if (pendingPrompt) {
+    const askId = pendingPrompt.askId;
+    pendingPrompt = null;
+    onDecisionCb?.(askId, 'cancel');
+    if (popoverView && !popoverView.webContents.isDestroyed() && popoverLoaded) {
+      popoverView.webContents.send(IPC.DOWNLOAD_DUPLICATE_PROMPT, null);
+    }
+  }
   const win = attachedWin;
   if (isAttached()) {
     try { attachedWin!.contentView.removeChildView(popoverView!); } catch { /* окно могло уже закрыться */ }

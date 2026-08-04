@@ -453,6 +453,14 @@ export default function Toolbar({
 
   useEffect(() => window.oblako.onDownloadsPopoverClosed(() => setDownloadsPopoverOpen(false)), []);
 
+  // Вопрос «этот файл уже скачан» — открываем поповер загрузок ровно тем же путём, что по клику
+  // (с якорем и подсветкой кнопки). Сам вопрос уже лежит в main, карточка заберёт его сама.
+  useEffect(() => window.oblako.onDownloadDuplicateAsk(() => {
+    pushDownloadsPopoverBounds();
+    setDownloadsPopoverOpen(true);
+    void window.oblako.showDownloadsPopover();
+  }), [pushDownloadsPopoverBounds]);
+
   // ── Поповер сведений о сайте (замочек слева в омнибоксе) ──────────────────────────────────
   // Раньше замок был просто картинкой. Теперь это точка входа в «что за сайт передо мной»:
   // защищено ли соединение, что ему разрешено, сколько вырезано трекеров и что похожего вы уже
