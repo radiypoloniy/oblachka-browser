@@ -77,6 +77,31 @@ export class DownloadManager {
     this.#wireWillDownload(sess, true);
   }
 
+  /**
+   * Уже скачанный тот же файл — или null.
+   *
+   * ⚠️ Совпадением считаем ЛИБО тот же адрес, ЛИБО то же имя с тем же размером: по одной ссылке
+   * человек качает повторно чаще всего, но тот же файл он мог взять и с зеркала. Размер обязателен
+   * во втором случае — «договор.pdf» бывает разным у разных отправителей.
+   * ⚠️ Файл обязан лежать на диске: если человек его удалил или перенёс, повторная загрузка —
+   * ровно то, чего он хочет, и спрашивать не о чем.
+   * ⚠️ Приватные загрузки в поиске НЕ участвуют: они и в файл не пишутся (см. #incognitoIds), и
+   * знать о них следующей сессии неоткуда — предупреждение из них сделало бы приватную вкладку
+   * заметной снаружи.
+   */
+  #findDownloaded(url: string, filename: string, totalBytes: number): DownloadEntry | null {
+    for (const e of this.#entries.values()) {
+      if (this.#incognitoIds.has(e.id)) continue;
+      if (e.state !== 'completed' || !e.savePath) continue;
+      const sameUrl = !!url && e.url === url;
+      const sameFile = e.filename === filename && totalBytes > 0 && e.totalBytes === totalBytes;
+      if (!sameUrl && !sameFile) continue;
+      try { if (!fs.existsSync(e.savePath)) continue; } catch { continue; }
+      return e;
+    }
+    return null;
+  }
+
   #wireWillDownload(sess: Session, incognito: boolean): void {
     sess.on('will-download', (_event, item, wc) => {
       // Фоновая (не пользователем открытая) вкладка — см. BackgroundWebContents.ts. Отменяем
@@ -106,6 +131,26 @@ export class DownloadManager {
         });
         if (choice !== 1) { item.cancel(); return; }
         try { item.setSavePath(uniquePath(dir, filename)); } catch { /* см. выше */ }
+      }
+
+      // ⚠️ Повтор уже скачанного. Браузеры об этом молчат, и папка «Загрузки» обрастает
+      // «отчёт.pdf», «отчёт (1).pdf», «отчёт (2).pdf» — человек качает второй раз просто потому,
+      // что не помнит, качал ли. Спрашиваем ОДИН раз и даём оба выхода: открыть уже скачанное или
+      // всё-таки скачать заново (второй файл получит своё имя через uniquePath, как и раньше).
+      const already = this.#findDownloaded(item.getURL(), filename, item.getTotalBytes());
+      if (already) {
+        const choice = dialog.showMessageBoxSync({
+          type: 'question',
+          buttons: ['Отмена', 'Открыть скачанный', 'Скачать заново'],
+          defaultId: 1,
+          cancelId: 0,
+          title: 'Этот файл уже скачан',
+          message: `«${already.filename}» уже есть в загрузках`,
+          detail: `Скачан ${new Date(already.startedAt).toLocaleDateString('ru-RU')}. Файл лежит здесь:\n${already.savePath}`,
+        });
+        if (choice === 0) { item.cancel(); return; }
+        if (choice === 1) { item.cancel(); void shell.openPath(already.savePath); return; }
+        // choice === 2 — качаем заново, обычным путём ниже.
       }
 
       const id = randomUUID();
