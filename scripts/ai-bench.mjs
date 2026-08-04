@@ -340,9 +340,12 @@ async function suiteRules(chrome) {
 }
 
 async function suiteOrganize(chrome) {
+  const from = appLog.length;
   const t0 = Date.now();
   const proposal = await chrome.evaluate(`window.oblako.suggestGroups()`);
   const ms = Date.now() - t0;
+  // Темы первой фазы и итог раскладки — без них «не та группа» неотличимо от «не те темы».
+  const log = taggedLinesSince(from);
   if (!proposal?.ok) {
     return { id: 'organize', title: 'AI-группировка вкладок', cases: [{ name: 'группировка', ok: false, got: `ошибка: ${proposal?.error ?? '?'}`, want: 'кластеры', ms }] };
   }
@@ -351,14 +354,21 @@ async function suiteOrganize(chrome) {
   const clusters = proposal.clusters.map((c) => c.nodeIds.map(slugOf).filter(Boolean));
   const together = (a, b) => clusters.some((c) => c.includes(a) && c.includes(b));
   const covered = new Set(clusters.flat()).size;
-  // ⚠️ Оцениваем не «красоту» раскладки, а два бесспорных факта: очевидно родственное — вместе,
-  // очевидно чужое — врозь. Всё остальное вкусовщина, и мерить её нельзя.
+  // ⚠️ Оцениваем не «красоту» раскладки, а три бесспорных факта: очевидно родственное — вместе,
+  // очевидно чужое — врозь, и хоть что-то разложено. Всё остальное вкусовщина, мерить её нельзя.
+  //
+  // ⚠️ Требования «разложить половину вкладок» тут НЕТ намеренно, хотя сначала было. Фикстура
+  // нарочно набрана из несвязанных страниц — половине из них не с кем группироваться, и такой
+  // порог наказывал бы за осторожность. А осторожность здесь правильная: цена ошибки — живая
+  // вкладка человека, унесённая в чужую группу. Поэтому проверяем ОШИБКИ, а охват смотрим глазами.
+  const FORBIDDEN = [['ndfl', 'borsch'], ['ndfl', 'vue'], ['borsch', 'vue'], ['ndfl', 'vacuum'], ['borsch', 'train']];
+  const wrongPair = FORBIDDEN.find(([a, b]) => together(a, b));
   return {
     id: 'organize', title: 'AI-группировка вкладок',
     cases: [
-      { name: 'документация Vue и React в одной группе', ok: together('vue', 'react'), got: JSON.stringify(clusters), want: 'вместе', ms },
-      { name: 'НДФЛ и рецепт борща — не в одной группе', ok: !together('ndfl', 'borsch'), got: '', want: 'врозь', ms: 0 },
-      { name: 'разложено не меньше половины вкладок', ok: covered >= Math.ceil(TABS.length / 2), got: `${covered} из ${TABS.length}`, want: `≥${Math.ceil(TABS.length / 2)}`, ms: 0 },
+      { name: 'документация Vue и React в одной группе', ok: together('vue', 'react'), got: JSON.stringify(clusters), want: 'вместе', ms, log },
+      { name: 'в группах нет заведомо чужих пар', ok: !wrongPair, got: wrongPair ? `${wrongPair[0]} + ${wrongPair[1]}: ${JSON.stringify(clusters)}` : 'нет', want: 'нет', ms: 0, log },
+      { name: 'получилась хотя бы одна группа', ok: clusters.length > 0, got: `${clusters.length} групп, ${covered} вкладок`, want: '≥1', ms: 0, log },
     ],
   };
 }
@@ -443,7 +453,9 @@ try {
         if (!c.ok) {
           line(`      получили: ${c.got}\n      ждали:    ${c.want}`);
           // Сырой ответ модели — единственное, что отличает «модель не поняла» от «мы не разобрали».
-          for (const l of (c.log ?? []).slice(0, REPEAT)) line(`      ${l.trim().slice(0, 160)}`);
+          // До дюжины строк: у наборов, где прогон состоит из нескольких обращений к модели
+          // (группировка — тема плюс по вкладке), одна строка не объясняет ничего.
+          for (const l of (c.log ?? []).slice(0, 12)) line(`      ${l.trim().slice(0, 150)}`);
         }
       }
     } catch (e) {

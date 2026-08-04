@@ -1,4 +1,4 @@
-// Qwen-группировка открытых вкладок — замена бывшей эмбеддинг-кластеризации (ClusteringService.ts,
+﻿// Qwen-группировка открытых вкладок — замена бывшей эмбеддинг-кластеризации (ClusteringService.ts,
 // удалена) на прямой промпт модели: список вкладок целиком, названия групп придумывает сама
 // модель по смыслу, а не частотный разбор слов заголовка.
 import type { TabManager } from './TabManager';
@@ -69,79 +69,130 @@ function extractHostname(url: string): string {
 
 const SNIPPET_MAX_CHARS = 200;
 
-// Строка N. заголовок | домен | сниппет — сниппет опускается целиком (не выдумываем), если
-// страница не проиндексирована (getFirstChunksByUrls ничего не вернул для этого URL).
-function buildPromptLines(candidates: Candidate[], snippets: Map<string, string>): string[] {
-  return candidates.map((c, i) => {
-    const snippet = snippets.get(normalizeForOmnibox(c.url));
-    const domain = extractHostname(c.url);
-    const base = `${i + 1}. ${c.title} | ${domain}`;
-    if (!snippet) return base;
-    const trimmed = snippet.length > SNIPPET_MAX_CHARS ? snippet.slice(0, SNIPPET_MAX_CHARS) + '…' : snippet;
-    return `${base} | ${trimmed}`;
-  });
+// Описание одной вкладки: заголовок | домен | сниппет. Сниппет опускается целиком (не
+// выдумываем), если страница не проиндексирована (getFirstChunksByUrls ничего не вернул).
+//
+// ⚠️ БЕЗ номера. Номер приписывает только список первой фазы (см. buildPromptLines): во второй
+// фазе нумерация означает ТЕМЫ, и лишний номер у самой вкладки её ломает — модель отвечала то
+// номером вкладки, то отказом, и не раскладывалось НИ ОДНОЙ вкладки из восьми.
+function describeCandidate(c: Candidate, snippets: Map<string, string>): string {
+  const snippet = snippets.get(normalizeForOmnibox(c.url));
+  const base = `${c.title} | ${extractHostname(c.url)}`;
+  if (!snippet) return base;
+  const trimmed = snippet.length > SNIPPET_MAX_CHARS ? `${snippet.slice(0, SNIPPET_MAX_CHARS)}…` : snippet;
+  return `${base} | ${trimmed}`;
 }
 
-// Пример вывода прямо в промпте — на живой диагностике (история/RAG-заход) формат без примера
-// периодически съезжал (копирование сырых строк корпуса вместо краткого "N: причина"), с
-// примером сработал устойчиво. Последняя строка — инструкция ДЕЙСТВИЯ, не запрет: модель эхает
-// последнее предложение промпта буквально (та же диагностика), поэтому там не может стоять
-// «не пиши лишнего» — иначе именно это она и повторит.
-function buildPrompt(lines: string[]): string {
+function buildPromptLines(candidates: Candidate[], snippets: Map<string, string>): string[] {
+  return candidates.map((c, i) => `${i + 1}. ${describeCandidate(c, snippets)}`);
+}
+
+// ⚠️ ДВЕ ФАЗЫ, а не один прогон «разложи всё». Прежний вариант просил модель за одну генерацию
+// придумать группы И расписать по ним все вкладки — то есть принять десятки решений разом. Стенд
+// (`npm run ai-bench`) показал, чем это кончается: 1 из 3 проверок, результат гуляет от прогона к
+// прогону (то две вкладки из восьми разложены, то четыре), борщ уезжает в одну группу с
+// документацией Vue. Диагноз тот же, что был у разбора правил: расходятся решения, на которых
+// модель почти не уверена, а чем их больше в одном ответе, тем больше шансов на срыв (подробный
+// разбор — в TranslationService.ts::runPromptQueued).
+//
+// Поэтому: ОДИН прогон придумывает темы (короткий выход — только названия), а дальше КАЖДАЯ
+// вкладка раскладывается своим отдельным прогоном, и это уже форма «выбери номер из списка» —
+// единственная, которая в замерах не срывалась ни разу (см. поиск вкладки и смысловой Ctrl+F).
+// ⚠️ Потолок тем НИЗКИЙ намеренно. С пятью на восьми вкладках модель придумывала тему почти на
+// каждую вкладку («Расчёт налогов», «Домашняя кухня», «Здоровье и питание»…), после чего группы
+// разваливались на одиночек и до человека не доезжало ничего: группа из одной вкладки — не группа.
+// Тема обязана покрывать НЕСКОЛЬКО вкладок, иначе она бесполезна.
+const MAX_TOPICS = 4;
+const TOPICS_CUE = 'TOPICS:';
+const ANSWER_CUE = 'ANSWER:';
+
+// ⚠️ Инструкция по-английски при русском содержимом — то же правило, что у остальных структурных
+// промптов проекта. Названия тем просим по-русски явно.
+function buildTopicsPrompt(lines: string[]): string {
   return (
-    `Вот список открытых вкладок браузера. Каждая строка пронумерована и содержит заголовок, ` +
-    `домен и, если он есть, короткий фрагмент текста страницы:\n\n` +
+    `Open browser tabs (number, title, domain, and a text snippet when available):\n\n` +
     `${lines.join('\n')}\n\n` +
-    `Сгруппируй вкладки по смыслу — по общей теме, проекту или намерению пользователя, а не по ` +
-    `формальному совпадению слов в заголовках. Группа — минимум 2 вкладки. Группировать нужно не ` +
-    `всё: то, что не относится ни к одной осмысленной группе, просто не упоминай. Название группы ` +
-    `— 2-4 слова по-русски, описывающие суть группы, а не повторяющие заголовок одной из вкладок. ` +
-    `Если осмысленных групп нет вообще — это нормальный исход, оставь ответ пустым, не выдумывай ` +
-    `группы искусственно.\n\n` +
-    `Формат ответа — строго построчно, без вступлений и заключений, по одной группе на строку:\n` +
-    `Название группы: номер,номер,номер\n\n` +
-    `Пример:\n` +
-    `Рабочие письма: 2,5,9\n` +
-    `Новости технологий: 1,3\n\n` +
-    `Верни группы в указанном формате.`
+    `Name the topics these tabs fall into — by shared subject, project or intent, not by ` +
+    `matching words in titles.\n` +
+    `Rules:\n` +
+    `- at most ${MAX_TOPICS} topics;\n` +
+    // Ключевое правило: тема ради одной вкладки бесполезна — такая группа всё равно будет
+    // отброшена ниже, а место в списке тем она займёт.
+    `- every topic must cover AT LEAST TWO tabs from the list above;\n` +
+    `- never invent a topic for a single tab — tabs that fit nowhere simply stay ungrouped, ` +
+    `and that is a fine outcome;\n` +
+    // Широкая тема («Технологии») собирает под себя что угодно — обзор пылесоса рядом с
+    // документацией фреймворка. Просим конкретную.
+    `- prefer a specific theme ("Документация фреймворков") over a vague one ("Технологии");\n` +
+    `- each topic name: 2-4 words, IN RUSSIAN, describing the theme rather than repeating ` +
+    `one tab's title.\n\n` +
+    `Reply with a single line, topics separated by semicolons:\n` +
+    `${TOPICS_CUE} тема; тема; тема`
   );
 }
 
-// Парсинг ответа модели ("Название: 1,4,7" построчно) + валидация. Модель может вернуть
-// несуществующие номера, повторить номер в двух группах или мусор — невалидное отбрасываем
-// молча, не падаем.
-function parseAndValidate(raw: string, unique: Candidate[]): OrganizeCluster[] {
-  const usedNumbers = new Set<number>(); // конфликт — первое вхождение выигрывает
-  const clusters: OrganizeCluster[] = [];
-
-  for (const line of raw.split('\n')) {
-    const match = line.match(/^([^:]{1,60}):\s*([\d,\s]+)\s*$/);
-    if (!match) continue;
-    const label = match[1]!.trim();
-    if (!label) continue;
-
-    const numbers = match[2]!
-      .split(',')
-      .map((s) => Number(s.trim()))
-      .filter((n) => Number.isInteger(n) && n >= 1 && n <= unique.length);
-
-    const members: Candidate[] = [];
-    for (const n of numbers) {
-      if (usedNumbers.has(n)) continue; // уже в другой (более ранней) группе
-      usedNumbers.add(n);
-      members.push(unique[n - 1]!);
-    }
-
-    if (members.length < 2) continue; // группа не меньше 2 после чистки
-
-    clusters.push({
-      nodeIds:   members.map((m) => m.nodeId),
-      nodeTypes: members.map((m) => m.nodeType),
-      label,
-    });
+function parseTopics(out: string): string[] {
+  const line = new RegExp(`${TOPICS_CUE}\\s*([^\\n]*)`, 'i').exec(out)?.[1] ?? '';
+  const seen = new Set<string>();
+  const topics: string[] = [];
+  for (const raw of line.split(/[;|]/)) {
+    const t = raw.trim().replace(/^["'«»]|["'«»]$/g, '').replace(/\.$/, '').trim();
+    // Отсекаем и пустое, и явный мусор: длинная «тема» — это модель начала пересказывать вкладки.
+    if (!t || t.length > 40) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    topics.push(t);
+    if (topics.length >= MAX_TOPICS) break;
   }
+  return topics;
+}
 
-  return clusters;
+// Отбор вкладок ПОД ОДНУ тему — по одному прогону на тему.
+//
+// ⚠️ Цикл именно такой, а не «по вкладке за прогон», и это выстрадано двумя замерами подряд.
+// Когда спрашивали про одну вкладку по списку тем:
+//  • с вариантом «ни одна не подходит» модель отвечала «none» практически на всё — борщ не попадал
+//    в «Рецепты и здоровье», документация Vue не попадала в «Документацию фреймворков» (0
+//    разложенных вкладок из 8 при вполне толковых темах): короткий вопрос «подходит ли?» она
+//    читает как проверку и осторожничает;
+//  • без этого варианта, когда выбор обязателен, она раскладывала что попало — борщ и пылесос
+//    уезжали в «Транспорт и погода», React Hooks в «Расчёт налогов».
+// Причина в том, ЧТО лежит списком. У нас работают ровно те промпты, где список — это богатые
+// строки (заголовки вкладок, фрагменты страницы), а запрос один; список из четырёх коротких
+// названий тем модели зацепиться не за что. Развернув цикл, получаем привычную форму: запрос —
+// тема, список — вкладки со всеми их заголовками и сниппетами.
+function buildTopicMembersPrompt(topic: string, topics: string[], lines: string[]): string {
+  // ⚠️ Остальные темы показываем, хотя спрашиваем про одну. Без них первая же тема забирала себе
+  // всё подряд: «Расчёт налогов» → рецепт борща и обзор пылесоса. Спрошенная в отрыве, модель не
+  // знает, что у этих вкладок есть свой дом, и притягивает их за уши.
+  const others = topics.filter((t) => t !== topic);
+  return (
+    `Open browser tabs:\n${lines.join('\n')}\n\n` +
+    (others.length ? `Other topics exist for the remaining tabs: ${others.join('; ')}.\n\n` : '') +
+    `Which of these tabs belong to the topic "${topic}"? Decide by MEANING — ` +
+    `the words of the topic may not appear in the tab title at all.\n` +
+    `A tab that belongs to one of the other topics must NOT be listed here.\n` +
+    `Answer with a single line: "${ANSWER_CUE} <numbers separated by commas>".`
+  );
+}
+
+// ⚠️ Разбираем только строку ПОСЛЕ метки — тот же урок, что у поиска вкладки: без этого номера
+// вытаскиваются из перечня, который модель любит переписать, и выдаются за её выбор.
+function parseMembers(out: string, tabCount: number): number[] {
+  const line = new RegExp(`${ANSWER_CUE}\\s*([^\\n]*)`, 'i').exec(out)?.[1]?.trim();
+  if (!line || /^(нет|none|no)\b/i.test(line)) return [];
+  // После метки должны идти только номера — пересказ вместо ответа не разбираем.
+  if (!/^[\d\s,;и]+$/i.test(line)) return [];
+  const seen = new Set<number>();
+  const picked: number[] = [];
+  for (const m of line.matchAll(/\d+/g)) {
+    const n = Number(m[0]);
+    if (!Number.isInteger(n) || n < 1 || n > tabCount || seen.has(n)) continue;
+    seen.add(n);
+    picked.push(n);
+  }
+  return picked;
 }
 
 export async function suggestGroups(): Promise<OrganizeProposal> {
@@ -167,31 +218,56 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
   if (unique.length >= 2) {
     const snippets = history.getFirstChunksByUrls(unique.map((c) => c.url));
     const lines = buildPromptLines(unique, snippets);
-    const prompt = buildPrompt(lines);
 
-    console.log(`[organize] промпт (${unique.length} вкладок, ${duplicates.length} дублей):\n${prompt}`);
-    const result = await runTabOrganizePrompt(prompt);
-    if (!result.ok) {
-      return { ok: false, error: result.error, errorCode: result.errorCode };
+    // ── Фаза 1: темы ──
+    const topicsRes = await runTabOrganizePrompt(buildTopicsPrompt(lines));
+    if (!topicsRes.ok) return { ok: false, error: topicsRes.error, errorCode: topicsRes.errorCode };
+    const topics = parseTopics(topicsRes.out.trim());
+    console.log(`[organize] темы (${unique.length} вкладок, ${duplicates.length} дублей): ${JSON.stringify(topics)}, ответ модели: ${JSON.stringify(topicsRes.out.trim().slice(0, 160))}`);
+
+    // ── Фаза 2: по вкладке за прогон ──
+    // Тем нет — нормальный исход: модель не нашла, вокруг чего собирать. Ничего не выдумываем.
+    if (topics.length > 0) {
+      // Сначала СОБИРАЕМ заявки всех тем, и только потом решаем. Раньше выигрывала первая тема,
+      // забравшая вкладку, — и этого достаточно, чтобы испортить всё: замер показал, что первая
+      // тема склонна «загребать» лишнее («Расчёт налогов» → рецепт борща и обзор пылесоса), а
+      // тема, которой вкладка принадлежит по-настоящему, приходила второй и оставалась ни с чем.
+      const claims = new Map<number, string[]>(); // номер вкладки → темы, которые её просят
+      for (const topic of topics) {
+        const res = await runTabOrganizePrompt(buildTopicMembersPrompt(topic, topics, lines));
+        if (!res.ok) {
+          // Одна упавшая тема не отменяет остальные.
+          console.warn(`[organize] тема «${topic}» не разобрана:`, res.error);
+          continue;
+        }
+        const nums = parseMembers(res.out.trim(), unique.length);
+        console.log(`[organize] «${topic}» → [${nums.join(',')}], ответ модели: ${JSON.stringify(res.out.trim().slice(0, 60))}`);
+        for (const n of nums) claims.set(n, [...(claims.get(n) ?? []), topic]);
+      }
+
+      // ⚠️ Спорную вкладку не кладём НИКУДА. Если на неё претендуют две темы, мы не знаем, куда
+      // она относится, — а ошибка тут не бесплатна: правило переносит живую вкладку человека.
+      // Молчание в спорном случае честнее уверенной раскладки наугад.
+      const byTopic = new Map<string, Candidate[]>();
+      for (const [num, wanted] of claims) {
+        if (wanted.length !== 1) continue;
+        const topic = wanted[0]!;
+        byTopic.set(topic, [...(byTopic.get(topic) ?? []), unique[num - 1]!]);
+      }
+
+      for (const topic of topics) {
+        const members = byTopic.get(topic) ?? [];
+        // Группа из одной вкладки — не группа: она ничего не упорядочивает, только добавляет
+        // уровень вложенности вокруг единственной строки (правило было и в прежней версии).
+        if (members.length < 2) continue;
+        clusters.push({
+          nodeIds: members.map((m) => m.nodeId),
+          nodeTypes: members.map((m) => m.nodeType),
+          label: topic,
+        });
+      }
+      console.log(`[organize] разложено ${clusters.reduce((s, c) => s + c.nodeIds.length, 0)} из ${unique.length} вкладок в ${clusters.length} групп`);
     }
-    const { out: raw, stopReason } = result;
-    console.log(`[organize] сырой ответ модели:\n${raw}`);
-
-    // Обрыв по лимиту токенов (не eogToken) — последняя строка ответа заведомо неполная (могла
-    // потерять номера или название группы целиком), а не осмысленный конец. Отбрасываем только
-    // её — остальные строки (уже сгенерированные полностью группы) остаются валидными.
-    let cleanRaw = raw;
-    if (stopReason !== 'eogToken') {
-      const respLines = raw.split('\n');
-      const droppedLine = respLines.pop();
-      cleanRaw = respLines.join('\n');
-      console.warn(
-        `[organize] ⚠️ обрыв генерации по лимиту токенов (stopReason=${stopReason}) — ` +
-        `последняя строка ответа отброшена как неполная: ${JSON.stringify(droppedLine)}`,
-      );
-    }
-
-    clusters.push(...parseAndValidate(cleanRaw, unique));
   }
 
   // Группа дублей — добавляется отдельно, после групп модели, без участия модели вообще.
@@ -205,3 +281,4 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
 
   return { ok: true, clusters, modelWasCold };
 }
+
