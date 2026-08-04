@@ -283,6 +283,12 @@ export const IPC = {
   FIND_SMART:  'find:smart',        // findbar → main: найти фрагменты ПО СМЫСЛУ (см. SmartFind.ts)
   FIND_SMART_SHOW: 'find:smart-show', // findbar → main: подсветить конкретную цитату из ответа
 
+  // Поповер сведений о сайте у замочка в омнибоксе (см. electron/SitePopoverManager.ts)
+  SITE_POPOVER_TOGGLE: 'site-popover:toggle',        // renderer → main: открыть/закрыть
+  SITE_POPOVER_BOUNDS: 'site-popover:bounds',        // renderer → main: где стоит замочек
+  SITE_POPOVER_CLOSED: 'site-popover:closed',        // main → renderer: поповер закрылся сам
+  SITE_POPOVER_ACTIVE_TAB: 'site-popover:active-tab',// поповер → main: адрес и заголовок активной вкладки
+
   // Правила-автоматизации (см. shared/rules.ts, RuleParser.ts, RuleEngine.ts)
   RULES_PARSE:       'rules:parse',        // renderer → main: фраза → черновик правила (модель)
   RULES_ADD:         'rules:add',          // renderer → main: сохранить утверждённый черновик
@@ -2052,6 +2058,12 @@ export interface OblakoApi {
   showDownloadsPopover(): Promise<void>;
   closeDownloadsPopover(): Promise<void>;
   onDownloadsPopoverClosed(cb: () => void): () => void;
+
+  // Поповер сведений о сайте у замочка в омнибоксе (см. electron/SitePopoverManager.ts).
+  // toggle возвращает новое состояние — второго канала «открыт ли» не заводим.
+  setSitePopoverAnchorBounds(bounds: ContentBounds): Promise<void>;
+  toggleSitePopover(): Promise<boolean>;
+  onSitePopoverClosed(cb: () => void): () => void;
 
   // Детект железа (см. electron/HardwareInfo.ts) — задел под подбор модели, потребителей в UI
   // пока нет. Read-only, из кэша main-процесса (или первый расчёт, если кэша ещё нет).

@@ -105,6 +105,7 @@ import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAut
 import * as autofillOrchestrator from './AutofillOrchestrator';
 import { initVpnPopover, showVpnPopover, closeVpnPopover, syncVpnPopoverAnchorBounds, syncVpnPopoverActiveUrl, broadcastVpnState } from './VpnPopoverManager';
 import { initDownloadsPopover, showDownloadsPopover, closeDownloadsPopover, syncDownloadsPopoverAnchorBounds, broadcastDownloads } from './DownloadsPopoverManager';
+import { initSitePopover, showSitePopover, closeSitePopover, syncSitePopoverAnchorBounds, isSitePopoverOpen } from './SitePopoverManager';
 import { fetchSearchSuggestions } from './SearchSuggestFetcher';
 import * as aiKeyStore from './AiKeyStore';
 import * as searxngKeyStore from './SearxngKeyStore';
@@ -510,6 +511,8 @@ function wireSharedSessions(): void {
     (w) => chromeOfWin(w)?.send(IPC.DOWNLOADS_POPOVER_CLOSED),
     (w) => chromeOfWin(w)?.send(IPC.DOWNLOADS_OPEN),
   );
+  // Поповер сведений о сайте — та же схема адресации по окну: замочек есть в каждом.
+  initSitePopover((w) => chromeOfWin(w)?.send(IPC.SITE_POPOVER_CLOSED));
   // Автозаполнение форм: оркестратор (хранилище ↔ страница ↔ поповер) + поповер выбора профиля.
   // onPick поповера — подстановка выбранного адреса в ту вкладку, где было сфокусировано поле.
   autofillOrchestrator.initAutofillOrchestrator(autofill);
@@ -1635,6 +1638,26 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.DOWNLOADS_POPOVER_CLOSE, () => {
     closeDownloadsPopover();
+  });
+  // ── Поповер сведений о сайте (замочек в омнибоксе) ──
+  ipcMain.handle(IPC.SITE_POPOVER_BOUNDS, (_e, b: ContentBounds) => {
+    syncSitePopoverAnchorBounds(b);
+  });
+  // Один канал на открыть/закрыть: кнопка-замок работает переключателем, и держать для этого два
+  // канала значит однажды разъехаться в том, кто из них считает состояние (тот же приём, что у
+  // остальных поповеров тулбара).
+  ipcMain.handle(IPC.SITE_POPOVER_TOGGLE, (e) => {
+    const w = winOf(e);
+    if (!w) return false;
+    if (isSitePopoverOpen()) { closeSitePopover(); return false; }
+    showSitePopover(w);
+    return true;
+  });
+  // Адрес активной вкладки для самого поповера. ⚠️ Берём у менеджера вкладок окна-отправителя, а
+  // не из аргумента: вью поповера живёт между показами и легко отстаёт от навигации.
+  ipcMain.handle(IPC.SITE_POPOVER_ACTIVE_TAB, (e): { url: string; title: string } | null => {
+    const active = tabsOf(e)?.snapshot().find((t) => t.isActive && !t.isHub);
+    return active ? { url: active.url, title: active.title } : null;
   });
   // Живой список подсказок (заход 3/5) — buildSuggestions в Toolbar.tsx шлёт тот же массив,
   // что кладёт в setSuggestions() для старого дропдауна; main пересылает его во вью.

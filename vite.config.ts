@@ -38,6 +38,8 @@ export default defineConfig({
         vpnpopover: resolve(__dirname, 'src/vpnpopover.html'),
         // Поповер загрузок у кнопки тулбара — та же техника (см. DownloadsPopoverManager.ts).
         downloadspopover: resolve(__dirname, 'src/downloadspopover.html'),
+        // Поповер сведений о сайте у замочка в омнибоксе (см. SitePopoverManager.ts).
+        sitepopover: resolve(__dirname, 'src/sitepopover.html'),
         // Запрос разрешения сайта (камера/гео/…) — та же техника (см. PermissionPopoverManager.ts).
         permissionpopover: resolve(__dirname, 'src/permissionpopover.html'),
         // Тестовая вью дропдауна подсказок омнибокса (заход 2/5 переезда с chrome-DOM, см.

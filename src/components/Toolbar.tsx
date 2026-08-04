@@ -118,6 +118,7 @@ export default function Toolbar({
   const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false);
   const [vpnPopoverOpen, setVpnPopoverOpen] = useState(false);
   const [downloadsPopoverOpen, setDownloadsPopoverOpen] = useState(false);
+  const [sitePopoverOpen, setSitePopoverOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   // Анимация прилёта файла в кнопку загрузок. Живёт ровно столько, сколько играет — держать
   // её состоянием после окончания незачем, а CSS-анимация без размонтирования не перезапустится
@@ -162,6 +163,7 @@ export default function Toolbar({
   const passwordControlRef = useRef<HTMLDivElement>(null);
   const vpnControlRef = useRef<HTMLDivElement>(null);
   const downloadsControlRef = useRef<HTMLDivElement>(null);
+  const siteControlRef = useRef<HTMLButtonElement>(null);
 
   // Текущий выбранный поисковик — источник истины в main (SettingsManager); здесь только
   // читаем id и строим URL по общему шаблону (shared/searchEngines.ts), не хардкодим движок.
@@ -450,6 +452,51 @@ export default function Toolbar({
   }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen, pushDownloadsPopoverBounds]);
 
   useEffect(() => window.oblako.onDownloadsPopoverClosed(() => setDownloadsPopoverOpen(false)), []);
+
+  // ── Поповер сведений о сайте (замочек слева в омнибоксе) ──────────────────────────────────
+  // Раньше замок был просто картинкой. Теперь это точка входа в «что за сайт передо мной»:
+  // защищено ли соединение, что ему разрешено, сколько вырезано трекеров и что похожего вы уже
+  // читали. Механика ровно та же, что у поповеров VPN и загрузок — своя вью, якорь, клик мимо.
+  const pushSitePopoverBounds = useCallback(() => {
+    const el = siteControlRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    void window.oblako.setSitePopoverAnchorBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+  }, []);
+
+  const toggleSitePopover = useCallback(() => {
+    closeDropdownFully('site-button');
+    if (passwordPopoverOpen) { setPasswordPopoverOpen(false); void window.oblako.closePasswordPopover(); }
+    if (vpnPopoverOpen) { setVpnPopoverOpen(false); void window.oblako.closeVpnPopover(); }
+    if (downloadsPopoverOpen) { setDownloadsPopoverOpen(false); void window.oblako.closeDownloadsPopover(); }
+    pushSitePopoverBounds();
+    // Состояние приходит ответом самого toggle — второго источника правды не заводим.
+    void window.oblako.toggleSitePopover().then(setSitePopoverOpen);
+  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen, pushSitePopoverBounds]);
+
+  useEffect(() => window.oblako.onSitePopoverClosed(() => setSitePopoverOpen(false)), []);
+
+  useEffect(() => {
+    if (!sitePopoverOpen) return;
+    pushSitePopoverBounds();
+    const el = siteControlRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(pushSitePopoverBounds);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [sitePopoverOpen, toolbarWidth, pushSitePopoverBounds]);
+
+  useEffect(() => {
+    if (!sitePopoverOpen) return;
+    const onOutsideMouseDown = (e: MouseEvent) => {
+      if (!siteControlRef.current?.contains(e.target as Node)) {
+        setSitePopoverOpen(false);
+        void window.oblako.toggleSitePopover();
+      }
+    };
+    document.addEventListener('mousedown', onOutsideMouseDown, true);
+    return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
+  }, [sitePopoverOpen]);
 
   useEffect(() => {
     if (!downloadsPopoverOpen) return;
@@ -880,34 +927,10 @@ export default function Toolbar({
     }
   }, [allTabs, openDropdown, closeDropdown, searchEngineId]);
 
-  /**
-   * «Вы это уже читали» — связанные страницы из своей истории, когда человек щёлкнул в НЕ
-   * ТРОНУТУЮ адресную строку (пусто или в ней лежит адрес самой страницы) и ещё ничего не набрал.
-   *
-   * ⚠️ Именно это состояние выбрано неспроста: нетронутая строка — единственный момент, когда
-   * дропдауну нечего сказать по существу (пустой — нечего вовсе, с адресом открытой страницы —
-   * он подсказывал бы то, что уже открыто), и подсказка ничего не вытесняет. Как только человек
-   * начинает печатать, обычные подсказки её сменяют.
-   * ⚠️ Ответ может прийти через секунду-другую (это генерация), поэтому проверяем, что за это
-   * время человек не начал печатать: показывать «связанное» поверх уже набранного запроса нельзя.
-   */
-  const showRelated = useCallback(async () => {
-    const seq = ++suggestSeqRef.current;
-    const related = await window.oblako.getRelatedPages().catch(() => []);
-    if (seq !== suggestSeqRef.current || related.length === 0) return;
-    const items: SuggestItem[] = related.map((r, idx) => ({
-      kind: 'history' as SuggestKind,
-      label: r.url,
-      sub: r.title,
-      url: r.url,
-      ...(idx === 0 ? { sectionHeader: 'Вы это уже читали' } : {}),
-    }));
-    setSuggestions(items);
-    setSelectedIdx(-1);
-    openDropdown();
-    void window.oblako.setSuggestDropdownItems(items);
-    void window.oblako.setSuggestDropdownHighlight(-1);
-  }, [openDropdown]);
+  // ⚠️ «Вы это уже читали» жило здесь и переехало в поповер замочка (SitePopoverManager.ts).
+  // Причина — в омнибоксе оказались ДВЕ фоновые AI-функции сразу, и они мешали друг другу:
+  // связанные страницы стартовали по клику в строку, поиск вкладки по смыслу — при наборе, а
+  // модель, очередь и невозможность прервать генерацию у них общие. Подробности в onFocus ниже.
 
   const triggerSuggest = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -1062,10 +1085,30 @@ export default function Toolbar({
             display: 'flex', alignItems: 'center', gap: 8, height: 38,
             padding: '0 12px', borderRadius: 'var(--radius-pill)',
           }}>
-            <span style={{ color: tab?.incognito ? 'var(--text-body)' : 'var(--text-faint)', display: 'inline-flex' }}
-              title={tab?.incognito ? 'Приватная вкладка' : undefined}>
-              {tab?.incognito ? <VenetianMask size={14} /> : isHub ? <Search size={15} /> : <Lock size={14} />}
-            </span>
+            {/* ⚠️ Замок — КНОПКА, а не украшение: по нему открывается карточка сайта (соединение,
+                разрешения, заблокированные трекеры, «вы это уже читали» — см. SitePopoverManager.ts).
+                На хабе и в приватной вкладке остаётся прежний неактивный значок: там нет сайта,
+                про который можно что-то рассказать. */}
+            {tab?.incognito || isHub || !tab?.url ? (
+              <span style={{ color: tab?.incognito ? 'var(--text-body)' : 'var(--text-faint)', display: 'inline-flex' }}
+                title={tab?.incognito ? 'Приватная вкладка' : undefined}>
+                {tab?.incognito ? <VenetianMask size={14} /> : isHub ? <Search size={15} /> : <Lock size={14} />}
+              </span>
+            ) : (
+              <button
+                ref={siteControlRef}
+                title="Сведения о сайте"
+                onClick={toggleSitePopover}
+                style={{
+                  border: 'none', background: sitePopoverOpen ? 'var(--accent-soft)' : 'transparent',
+                  cursor: 'default', padding: 3, borderRadius: 'var(--radius-sm)',
+                  display: 'inline-flex', flex: 'none',
+                  color: sitePopoverOpen ? 'var(--accent)' : 'var(--text-faint)',
+                }}
+              >
+                <Lock size={14} />
+              </button>
+            )}
             <input
               ref={inputRef}
               value={value}
@@ -1116,18 +1159,15 @@ export default function Toolbar({
                 // же инпуте синхронно предшествует onFocus). Спонтанный refocus (removeChildView
                 // возвращает OS-фокус обратно на инпут) этого сигнала не имеет — дропдаун не
                 // переоткрываем.
-                if (focusTracker.current.mouseDownOnInput) {
-                  // ⚠️ Строка НЕ ТРОНУТА — это пусто ИЛИ ровно адрес открытой страницы: на
-                  // открытой вкладке в омнибоксе всегда лежит её url, и прежнее условие «пусто»
-                  // не выполнялось почти никогда, из-за чего «вы это уже читали» не показывалось
-                  // (единственный путь, которым фича срабатывала, — руками очистить строку,
-                  // уйти на другую страницу и вернуться к сохранившемуся пустому черновику).
-                  // Клик по адресу выделяет его целиком, то есть человек всё равно собирается
-                  // набрать своё, — подсказывать ему адрес, который уже открыт, нечего.
-                  const untouched = !value.trim() || value === tab?.url;
-                  if (untouched) void showRelated();
-                  else triggerSuggest(value);
-                }
+                // ⚠️ «Вы это уже читали» отсюда УБРАНО и переехало в поповер замочка
+                // (SitePopoverManager.ts). Причина не в самой подсказке, а в том, что в омнибоксе
+                // оказались ДВЕ фоновые AI-функции сразу: связанные страницы по клику и поиск
+                // вкладки по смыслу при наборе. Модель одна, очередь на приложение одна, прервать
+                // начатую генерацию нельзя — клик в строку занимал её ровно в тот момент, когда
+                // человек начинал печатать, и второй подсказке доставались объедки. Теперь в
+                // омнибоксе одна AI-функция, а связанные страницы открываются отдельным
+                // осознанным действием, когда никто ничего не набирает.
+                if (focusTracker.current.mouseDownOnInput && value.trim()) triggerSuggest(value);
                 // Синхронный консюм флага после использования (как в исходной версии) — RAF-автосброс
                 // из onMouseDown сработает только к следующему кадру, а спонтанный refocus от
                 // removeChildView может прилететь раньше и увидеть залипший true.

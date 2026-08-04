@@ -566,6 +566,16 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.DOWNLOADS_POPOVER_CLOSED, handler);
   },
 
+  // Поповер сведений о сайте у замочка (см. electron/SitePopoverManager.ts). toggle возвращает
+  // новое состояние — кнопке этого достаточно, отдельного «открыт ли» не нужно.
+  setSitePopoverAnchorBounds: (b: ContentBounds) => ipcRenderer.invoke(IPC.SITE_POPOVER_BOUNDS, b) as Promise<void>,
+  toggleSitePopover: () => ipcRenderer.invoke(IPC.SITE_POPOVER_TOGGLE) as Promise<boolean>,
+  onSitePopoverClosed: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.SITE_POPOVER_CLOSED, handler);
+    return () => ipcRenderer.removeListener(IPC.SITE_POPOVER_CLOSED, handler);
+  },
+
   // Детект железа (см. electron/HardwareInfo.ts) — задел, потребителей пока нет.
   getHardwareSnapshot: () => ipcRenderer.invoke(IPC.HARDWARE_GET_SNAPSHOT) as Promise<HardwareSnapshot>,
   refreshHardwareSnapshot: () => ipcRenderer.invoke(IPC.HARDWARE_REFRESH_SNAPSHOT) as Promise<HardwareSnapshot>,
