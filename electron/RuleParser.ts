@@ -56,6 +56,31 @@ function buildPrompt(phrase: string): string {
   );
 }
 
+/**
+ * Триггер спрашиваем ОТДЕЛЬНЫМ коротким прогоном, а не пятым полем в общем ответе.
+ *
+ * ⚠️ Это не микрооптимизация, а вывод из замера. Выбор site ↔ link-from — единственное место
+ * разбора, где 9B «плавает»: на одной и той же фразе («на сайте vtb.ru включай VPN») ответ
+ * менялся между прогонами, хотя выборка жадная и вход побайтно одинаков. Разбираться в этом
+ * пришлось глубоко (см. комментарий в TranslationService.ts::runPromptQueued): вычисление
+ * детерминировано, а расходится оно там, где два варианта у модели идут ноздря в ноздрю. То есть
+ * плавает не машина, а решение, которое модели тяжело — и лечится это тем, что решение остаётся
+ * в прогоне ОДНО, а не конкурирует с доменом, действием и именем группы за внимание.
+ */
+function buildTriggerPrompt(phrase: string): string {
+  return (
+    `A browser user describes an automation rule, in Russian: "${phrase}"\n\n` +
+    `Question: does the rule apply to pages ON that website, or to pages opened by following ` +
+    `a link FROM that website to somewhere else?\n\n` +
+    `In Russian: "на сайте X", "на X", "вкладки X", "страницы X" mean the pages are ON the site. ` +
+    `"ссылки с X", "переходы с X" mean following a link FROM the site.\n\n` +
+    `Answer with exactly one line, nothing else:\n` +
+    `TRIGGER: site\n` +
+    `or\n` +
+    `TRIGGER: link-from`
+  );
+}
+
 /** Значение помеченной строки. Разбираем каждую метку отдельно — соседняя может быть кривой. */
 function labelled(out: string, label: string): string {
   const m = new RegExp(`^\\s*${label}\\s*:\\s*(.+)$`, 'im').exec(out);
@@ -73,7 +98,13 @@ export async function parsePhraseToRule(phrase: string): Promise<RuleParseResult
   }
 
   const out = res.out.trim();
-  const trigger = labelled(out, 'TRIGGER').toLowerCase();
+  // Триггер — отдельным коротким прогоном (см. buildTriggerPrompt). Ответ общего промпта на это
+  // поле оставляем запасным: если короткий прогон не удался, пусть лучше будет догадка, чем отказ.
+  const triggerRes = await runTabOrganizePrompt(buildTriggerPrompt(p));
+  const triggerFocused = triggerRes.ok ? labelled(triggerRes.out.trim(), 'TRIGGER').toLowerCase() : '';
+  const trigger = (triggerFocused === 'site' || triggerFocused === 'link-from')
+    ? triggerFocused
+    : labelled(out, 'TRIGGER').toLowerCase();
   const domain = labelled(out, 'DOMAIN');
   const action = labelled(out, 'ACTION').toLowerCase();
   const groupRaw = labelled(out, 'GROUP');
