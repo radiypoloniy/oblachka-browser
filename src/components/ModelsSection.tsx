@@ -18,26 +18,21 @@ function deleteErrorText(reason: string): string {
   return 'Не удалось удалить модель.';
 }
 
-// Роль (окно рекомендаций на этом железе) — как раньше. Вне окна (role===null) модель либо
-// физически не влезает (not-recommended — красным, отдельно от «помощнее», которое про умеренное
-// превышение бюджета у heavy), либо влезает, но просто слабее окна рекомендаций — нейтральное «слабее».
-function catalogBadge(entry: CatalogEntry): { text: string; color: string } {
-  if (entry.role === 'recommended') return { text: 'рекомендуем', color: 'var(--success-500)' };
-  if (entry.role === 'light') return { text: 'полегче', color: 'var(--text-muted)' };
-  if (entry.role === 'heavy') return { text: 'помощнее', color: 'var(--warning-500)' };
-  if (entry.fit.fitQuality === 'not-recommended') return { text: 'не поместится', color: 'var(--danger-500)' };
-  return { text: 'слабее', color: 'var(--text-faint)' };
+// ⚠️ Подпись роли — обычными словами и без цветного шума. Прежний набор («рекомендуем», «полегче»,
+// «помощнее», «слабее», «не поместится» — пять состояний в пяти цветах) требовал сначала выучить
+// словарь, а потом ещё догадаться, чем «полегче» отличается от «слабее». Ролей теперь две, и
+// каждая говорит, ЗАЧЕМ её брать.
+function roleTitle(entry: CatalogEntry): string {
+  return entry.role === 'recommended' ? 'Рекомендуем' : 'Помощнее';
 }
 
-function catalogSubtitle(entry: CatalogEntry): string {
-  const parts = [`${gb(entry.model.sizeBytes)} ГБ`];
-  // maxContextTokens калиброван только когда модель целиком помещается в GPU — вне этого случая
-  // число недостоверно (см. shared/ipc.ts::ModelFit), поэтому не показываем его вовсе.
-  if (entry.fit.contextEstimateReliable) {
-    parts.push(`до ${entry.fit.maxContextTokens.toLocaleString('ru-RU')} токенов контекста`);
-  }
-  if (entry.fit.note) parts.push(entry.fit.note);
-  return parts.join(' · ');
+// Строка требований: сколько качать и сколько нужно видеопамяти. Про контекст в токенах человеку
+// знать незачем — это внутренняя единица, из которой ничего не следует для его решения.
+// ⚠️ Требование берём готовым из каталога (minVramBytes), а не считаем здесь: в него входят
+// резерв под систему и запас движка, которые живут в ModelCatalog.ts. Без них выходит заниженное
+// число, и человек с картой впритык скачивает то, что у него не заработает.
+function requirementsLine(entry: CatalogEntry): string {
+  return `${gb(entry.model.sizeBytes)} ГБ загрузки · нужно ${Math.ceil(entry.minVramBytes / 1024 ** 3)} ГБ видеопамяти`;
 }
 
 const groupLabelStyle: React.CSSProperties = {
@@ -54,7 +49,6 @@ export default function ModelsSection() {
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
   const [loadedModelId, setLoadedModelId] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
-  const [showAllCatalog, setShowAllCatalog] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [unloading, setUnloading] = useState(false);
   const [hardware, setHardware] = useState<HardwareSnapshot | null>(null);
@@ -147,8 +141,11 @@ export default function ModelsSection() {
 
   const installedIds = new Set(installed.map((m) => m.id));
   const notInstalled = catalog.filter((e) => !installedIds.has(e.model.id));
-  const visibleCatalog = notInstalled.filter((e) => e.visibleByDefault).sort((a, b) => bySize(a.model, b.model));
-  const hiddenCatalog = notInstalled.filter((e) => !e.visibleByDefault).sort((a, b) => bySize(a.model, b.model));
+  // Показываем ТОЛЬКО то, что каталог посчитал пригодным для этой видеокарты. Рекомендованная
+  // идёт первой независимо от размера: это ответ на вопрос «что взять», а не сортировка по весу.
+  const visibleCatalog = notInstalled
+    .filter((e) => e.visibleByDefault)
+    .sort((a, b) => (a.role === 'recommended' ? -1 : b.role === 'recommended' ? 1 : bySize(a.model, b.model)));
 
   const loadedModel = installed.find((m) => m.id === loadedModelId) ?? null;
   const defaultModel = installed.find((m) => m.id === defaultModelId) ?? null;
@@ -264,7 +261,10 @@ export default function ModelsSection() {
             modelLoadMode). Оба варианта явно называют цену размена (память vs время первого
             ответа), пользователь выбирает осознанно, не вслепую. */}
         {loadMode !== null && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+            {/* Своя подпись группы: без неё два варианта висят вплотную к карточке состояния
+                памяти и читаются как её продолжение, а это отдельный выбор. */}
+            <div style={{ ...groupLabelStyle, marginBottom: 2 }}>Когда загружать модель</div>
             <EngineOption
               active={loadMode === 'startup'}
               onClick={() => handleSetLoadMode('startup')}
@@ -308,26 +308,33 @@ export default function ModelsSection() {
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger-500)' }}>{progress.error}</div>
         )}
 
-        {notInstalled.length === 0 && (
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Все модели каталога уже установлены.</div>
-        )}
-
+        {/* ⚠️ Ни «показать все модели», ни списка того, что не поедет. Каталог сам решает, что
+            предложить этой видеокарте (ModelCatalog.ts::assignRoles), и показывается ТОЛЬКО это.
+            Раньше здесь была кнопка «показать все» — за ней лежали модели, которые на этом железе
+            не работают, и человек имел полное право их скачать, потратив гигабайты впустую. */}
         {visibleCatalog.map((entry) => (
           <CatalogRow key={entry.model.id} entry={entry} downloadDisabled={downloadRunning} onDownload={handleDownload} />
         ))}
 
-        {hiddenCatalog.length > 0 && !showAllCatalog && (
-          <button onClick={() => setShowAllCatalog(true)} style={{ ...btnGhost, alignSelf: 'flex-start' }}>
-            Показать все модели ({hiddenCatalog.length})
-          </button>
+        {visibleCatalog.length === 0 && installed.length > 0 && (
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+            Всё, что подходит вашей видеокарте, уже установлено.
+          </div>
         )}
-        {showAllCatalog && hiddenCatalog.map((entry) => (
-          <CatalogRow key={entry.model.id} entry={entry} downloadDisabled={downloadRunning} onDownload={handleDownload} />
-        ))}
-        {hiddenCatalog.length > 0 && showAllCatalog && (
-          <button onClick={() => setShowAllCatalog(false)} style={{ ...btnGhost, alignSelf: 'flex-start' }}>
-            Скрыть остальные модели
-          </button>
+
+        {/* Честный тупик: на этом железе ни одна модель не заработает как следует. Говорим прямо
+            и не предлагаем скачать что-нибудь «хотя бы такое» — браузер без локального AI лучше
+            браузера с моделью, которая отвечает мимо. */}
+        {visibleCatalog.length === 0 && installed.length === 0 && (
+          <div style={{ ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '16px 18px' }}>
+            <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+              Локальный AI на этом устройстве не потянет
+            </div>
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4, lineHeight: 1.45 }}>
+              Нужна видеокарта минимум с 4 ГБ памяти. Всё остальное — вкладки, блокировка рекламы,
+              VPN, пароли — работает как обычно.
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -406,22 +413,49 @@ function InstalledModelRow({ model, isDefault, isLoaded, canDelete, deleteDisabl
   );
 }
 
+// Карточка модели из каталога.
+//
+// ⚠️ Порядок строк — это порядок вопросов, которые человек задаёт себе на самом деле: «что взять»
+// (роль крупно), «чем она отличается» (одна фраза из наших замеров), «во что мне это встанет»
+// (загрузка и видеопамять — мелко, справа от кнопки внимание не отнимает). Название модели —
+// самое мелкое: «Qwen3.5 4B» не помогает выбрать, оно нужно только чтобы узнать её потом в списке
+// установленных.
 function CatalogRow({ entry, downloadDisabled, onDownload }: { entry: CatalogEntry; downloadDisabled: boolean; onDownload: (m: CatalogModel) => void }) {
+  const primary = entry.role === 'recommended';
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <EngineOption
-          active={false}
-          onClick={() => {}}
-          title={entry.model.label}
-          subtitle={catalogSubtitle(entry)}
-          badge={catalogBadge(entry)}
-        />
+    <div style={{
+      ...islandPlate,
+      borderRadius: 'var(--radius-sm)',
+      padding: '16px 18px',
+      display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap',
+      // Рекомендованную выделяем контуром акцента, а не заливкой и не цветным бейджем: это тот же
+      // приём, что у выбранного варианта в остальных настройках (EngineOption).
+      boxShadow: primary ? '0 0 0 1.5px var(--accent) inset' : undefined,
+    }}>
+      <div style={{ flex: '1 1 240px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{
+            fontSize: 'var(--fs-md)', fontWeight: 700,
+            color: primary ? 'var(--accent)' : 'var(--text-strong)',
+          }}>
+            {roleTitle(entry)}
+          </span>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{entry.model.label}</span>
+        </div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', lineHeight: 1.45 }}>
+          {entry.summary}
+        </div>
+        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+          {requirementsLine(entry)}
+        </div>
       </div>
       <button
         onClick={() => onDownload(entry.model)}
         disabled={downloadDisabled}
-        style={{ ...btnPrimary, flex: 'none', alignSelf: 'center', opacity: downloadDisabled ? 0.5 : 1 }}
+        style={{
+          ...(primary ? btnPrimary : btnGhost),
+          flex: 'none', alignSelf: 'center', opacity: downloadDisabled ? 0.5 : 1,
+        }}
       >
         Скачать
       </button>

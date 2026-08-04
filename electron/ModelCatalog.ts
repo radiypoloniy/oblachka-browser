@@ -55,21 +55,13 @@ export type { CatalogModel, ModelFit, FitCategory, ModelRole, CatalogEntry }
 // не круглое число (66423.3165... байт/токен) в отличие от 2B/4B/9B — округлён до 66423,
 // contextVramBaseBytes для неё пересчитан от УЖЕ округлённого наклона (не от сырого дробного),
 // чтобы сохранённые наклон и база были взаимно согласованы.
+// ⚠️ 0.8B из каталога УБРАНА. Не «пока не добавили», а сознательно: на ней ни одна из наших
+// AI-функций не работает всерьёз, а предложить её человеку — значит попросить скачать гигабайт
+// ради посредственного результата, по которому он будет судить обо всём браузере. Лучше честно
+// сказать «на этом устройстве локальный AI не пойдёт», чем отдать заведомо слабое.
+// Вернуть можно, но только после прогона `npm run ai-bench` на ней — если вдруг окажется, что на
+// части задач (выбор номера из списка) она годится.
 export const CATALOG: CatalogModel[] = [
-  {
-    id: slugify('Qwen3.5-0.8B-Q4_K_M.gguf'),
-    fileName: 'Qwen3.5-0.8B-Q4_K_M.gguf',
-    label: 'Qwen3.5 0.8B',
-    quant: 'Q4_K_M',
-    url: 'https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf',
-    sizeBytes: 532517120,
-    totalLayers: 25,
-    vramFullOffloadBytes: 521555200,
-    contextVramPerToken: 12288,
-    contextVramBaseBytes: 532955136,
-    qualityTier: 10,
-    expectedSha256: 'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517',
-  },
   {
     id: slugify('Qwen3.5-2B-Q4_K_M.gguf'),
     fileName: 'Qwen3.5-2B-Q4_K_M.gguf',
@@ -215,114 +207,76 @@ export function evaluateFit(model: CatalogModel, hw: HardwareSnapshot): ModelFit
 // константу переиспользовать нельзя даже при случайном совпадении числа.
 const COMFORTABLE_CONTEXT_TOKENS = 16384
 
-const WEAK_HARDWARE_RECOMMENDED_NOTE = 'Видеопамяти мало для комфортного контекста ни у одной модели — показан лучший доступный вариант'
+// ⚠️ Минимальная ступень, которую вообще можно предлагать. Ниже 4B качество не измерено ни на
+// одной нашей функции, а 0.8B из каталога убрана совсем (см. шапку CATALOG). 2B остаётся как
+// единственный вариант для слабых карт — с честной подписью, а не как «почти то же самое».
+const MEASURED_TIER = 30 // 4B — на ней снят эталон стенда (npm run ai-bench)
 
-// Модель годится в heavy, только если её требования (полный вес + база контекста) превышают
-// бюджет не более чем на 30%. Выше — это не «медленнее», а практически неработоспособно: больше
-// половины слоёв уходит на CPU, единицы токенов в секунду — пользователь скачает несколько
-// гигабайт и получит нерабочее.
-// ⚠️ Значение НЕ измерено, оценочное. Калибруется замером реального tok/s у модели, превышающей
-// бюджет на ~30%, против полностью помещающейся. Цена ошибки низкая: пользователь просто не
-// увидит модель, которую и не стоило показывать.
-const HEAVY_MAX_OVERSHOOT = 1.3
-
-// "Модель хоть как-то запускается" — для роли heavy (кандидат ВЫШЕ recommended) и для аварийного
-// выбора recommended в вырожденном случае (см. assignRoles). На нынешней формуле evaluateFit это
-// тождественно true для любой модели/железа (fitsFullyOnGpu=true ⟹ maxContextTokens>0 и наоборот,
-// см. комментарий у maxContextTokens выше) — то есть каталог не умеет говорить "не запустится
-// вообще". Проверяем явно, а не считаем эту true по умолчанию: если formula когда-нибудь получит
-// сигнал полного отказа, отбор ролей отреагирует сам, без правки этой функции.
-function runsAtAll(fit: ModelFit): boolean {
-  return fit.maxContextTokens > 0 || !fit.fitsFullyOnGpu
+// Чем модели отличаются ДЛЯ ЧЕЛОВЕКА. ⚠️ Формулировки не рекламные и не выдуманные: это прямой
+// пересказ замеров (scripts/ai-bench.mjs) и живой проверки текстовых задач. 4B на задачах с
+// жёсткой формой ответа — поиск вкладки, смысловой Ctrl+F, разбор правил, группировка — оказалась
+// точнее и быстрее 9B (26 из 28 против 23 из 28), а уступает на связном тексте: пересказ у неё
+// суше. Обещать обратное нельзя, даже если «девять больше четырёх» выглядит убедительнее.
+const SUMMARY_BY_TIER: Record<number, string> = {
+  20: 'Минимальный вариант для слабых видеокарт. Качество на наших функциях не измерялось — возможны осечки.',
+  30: 'Быстрые ответы и самая точная работа с вкладками, поиском и правилами. Пересказ текста короче и суше.',
+  40: 'Лучше пересказывает и связнее пишет. Отвечает медленнее и требует заметно больше видеопамяти.',
+  50: 'Для мощных видеокарт: самый связный текст ценой скорости и памяти.',
 }
 
-// Доп. фильтр ТОЛЬКО для роли heavy — независимо от runsAtAll (которая на нынешней формуле всегда
-// true и потому не отсекает откровенно нежизнеспособные варианты). budget пересчитан по той же
-// формуле, что в evaluateFit (SYSTEM_RESERVE_BYTES/LLAMA_HEADROOM_BYTES) — evaluateFit его наружу
-// не отдаёт, а трогать её сигнатуру в этой задаче нельзя.
-function withinHeavyOvershoot(model: CatalogModel, budget: number): boolean {
-  if (budget <= 0) return false
-  return (model.vramFullOffloadBytes + model.contextVramBaseBytes) / budget <= HEAVY_MAX_OVERSHOOT
-}
-
-function findNearestByTier(
-  fits: { model: CatalogModel; fit: ModelFit }[],
-  fromTierExclusive: number,
-  direction: 1 | -1,
-  predicate: (entry: { model: CatalogModel; fit: ModelFit }) => boolean,
-): { model: CatalogModel; fit: ModelFit } | null {
-  const tiers = fits.map((f) => f.model.qualityTier).sort((a, b) => a - b)
-  const minTier = tiers[0]
-  const maxTier = tiers[tiers.length - 1]
-  for (let t = fromTierExclusive + direction; direction > 0 ? t <= maxTier : t >= minTier; t += direction) {
-    const entry = fits.find((f) => f.model.qualityTier === t)
-    if (entry && predicate(entry)) return entry
-  }
-  return null
-}
-
-// Назначает роли (light/recommended/heavy/null) моделям каталога под конкретное железо —
-// поверх объективного per-модельного evaluateFit. Роль — это ОТНОСИТЕЛЬНЫЙ выбор внутри всего
-// каталога (см. shared/ipc.ts::ModelRole), а не свойство одной модели. Ничего из каталога не
-// вырезается — модели без роли остаются в массиве с visibleByDefault=false, UI прячет их за
-// «показать все модели».
+/**
+ * Назначает роли под конкретное железо. ⚠️ Правило простое и намеренно жёсткое:
+ *  • «рекомендуем» — САМАЯ ЛЁГКАЯ модель, которая комфортно влезает и качество которой измерено.
+ *    Не самая крупная из влезающих, как было раньше: замеры показали, что крупнее ≠ лучше, а
+ *    цена крупной — гигабайты загрузки, память и время ответа.
+ *  • «помощнее» — следующая ступень, и только если она тоже влезает КОМФОРТНО (целиком в
+ *    видеопамять и с рабочим контекстом). Раньше сюда попадало то, что превышает бюджет до 30%, —
+ *    из-за этого на карте с 8 ГБ в списке маячила 27B, которой там делать нечего.
+ *  • всё прочее роли не получает и в интерфейс не попадает вовсе.
+ * Каталог при этом не режется — записи остаются в массиве, просто не показываются.
+ */
 export function assignRoles(hw: HardwareSnapshot): CatalogEntry[] {
   const sorted = [...CATALOG].sort((a, b) => a.qualityTier - b.qualityTier)
+  const withSummary = (model: CatalogModel, fit: ModelFit, role: ModelRole | null): CatalogEntry => ({
+    model, fit, role, visibleByDefault: role !== null,
+    summary: SUMMARY_BY_TIER[model.qualityTier] ?? '',
+    // Вес модели + база контекста + то, что всё равно занято системой и запасом движка.
+    minVramBytes: model.vramFullOffloadBytes + model.contextVramBaseBytes + SYSTEM_RESERVE_BYTES + LLAMA_HEADROOM_BYTES,
+  })
 
   if (hw.vramTotalBytes === null) {
-    // Детект не удался — сохраняем прежнее поведение evaluateFit один в один: recommended только
-    // у tier 20 (2B), у остальных роли нет вовсе (а не light/heavy — на отсутствии данных
-    // достраивать окно вокруг recommended не на чем).
-    return sorted.map((model) => {
-      const fit = evaluateFit(model, hw)
-      const role: ModelRole | null = model.qualityTier === 20 ? 'recommended' : null
-      return { model, fit, role, visibleByDefault: role !== null }
-    })
+    // Детект не удался — гадать нельзя. Предлагаем одну самую лёгкую измеренную ступень и
+    // ничего больше: ошибиться в меньшую сторону здесь дешевле, чем позвать скачать 5 ГБ впустую.
+    const fallback = sorted.find((m) => m.qualityTier === MEASURED_TIER) ?? sorted[0]
+    return sorted.map((model) => withSummary(model, evaluateFit(model, hw), model.id === fallback?.id ? 'recommended' : null))
   }
 
   const fits = sorted.map((model) => ({ model, fit: evaluateFit(model, hw) }))
-
   const comfortable = fits.filter((f) => f.fit.fitsFullyOnGpu && f.fit.maxContextTokens >= COMFORTABLE_CONTEXT_TOKENS)
 
-  let recommendedTier: number | null = null
-  let degenerate = false
-  if (comfortable.length > 0) {
-    recommendedTier = comfortable.reduce((max, f) => Math.max(max, f.model.qualityTier), -Infinity)
-  } else {
-    // Вырожденный случай — железо слабое, ни одна модель не набирает комфортный контекст целиком
-    // на GPU. Рекомендуем минимальную по тиру модель среди тех, что вообще запускаются (см.
-    // runsAtAll) — при текущей формуле это весь каталог, поэтому фактически tier 1, но выбор
-    // сделан через явный фильтр, а не жёстко зашит.
-    const runnable = fits.filter((f) => runsAtAll(f.fit))
-    if (runnable.length > 0) {
-      recommendedTier = runnable.reduce((min, f) => Math.min(min, f.model.qualityTier), Infinity)
-      degenerate = true
-    }
-    // else: recommendedTier остаётся null — «не запускается вообще ничего», список без recommended.
-    // При нынешней formula недостижимо (runsAtAll всегда true), но не форсируем это допущение.
-  }
+  // Рекомендуем самую лёгкую ИЗМЕРЕННУЮ ступень, которая комфортно влезает. Если не влезает ни
+  // одна такая — берём самую лёгкую комфортную вообще (это 2B, у неё честная подпись про
+  // неизмеренное качество). Если не влезает и она — не рекомендуем ничего: пусть человек лучше
+  // останется без локального AI, чем с моделью, которая всё равно не заработает.
+  const recommended =
+    comfortable.find((f) => f.model.qualityTier >= MEASURED_TIER)
+    ?? comfortable[0]
+    ?? null
 
-  // budget тот же, что внутри evaluateFit — нужен здесь только для withinHeavyOvershoot ниже.
-  const budget = hw.vramTotalBytes - SYSTEM_RESERVE_BYTES - LLAMA_HEADROOM_BYTES
-
-  const lightEntry = recommendedTier !== null ? findNearestByTier(fits, recommendedTier, -1, (e) => e.fit.fitsFullyOnGpu) : null
-  const heavyEntry =
-    recommendedTier !== null
-      ? findNearestByTier(fits, recommendedTier, 1, (e) => runsAtAll(e.fit) && withinHeavyOvershoot(e.model, budget))
-      : null
+  // «Помощнее» — САМАЯ СИЛЬНАЯ из комфортно влезающих, а не следующая по списку: второй вариант
+  // должен быть «лучшее, что эта видеокарта реально тянет». Иначе владелец карты на 24 ГБ видел
+  // бы 9B и не узнал, что ему доступна ступень выше, — а владелец карты на 8 ГБ по-прежнему
+  // видит 9B, потому что ничего сильнее у него комфортно не помещается.
+  const stronger = recommended
+    ? [...comfortable].reverse().find((f) => f.model.qualityTier > recommended.model.qualityTier) ?? null
+    : null
 
   return fits.map(({ model, fit }) => {
-    let role: ModelRole | null = null
-    if (recommendedTier !== null && model.qualityTier === recommendedTier) role = 'recommended'
-    else if (lightEntry && model.id === lightEntry.model.id) role = 'light'
-    else if (heavyEntry && model.id === heavyEntry.model.id) role = 'heavy'
-
-    // В вырожденном случае note обязана предупреждать — независимо от того, что уже выставил
-    // evaluateFit (heavy/not-recommended и так несут note, но полагаться на совпадение констант
-    // COMFORTABLE_CONTEXT_TOKENS/RECOMMENDED_MIN_CONTEXT_TOKENS для этой гарантии нельзя, см. выше).
-    const note = degenerate && role === 'recommended' ? WEAK_HARDWARE_RECOMMENDED_NOTE : fit.note
-
-    return { model, fit: note === fit.note ? fit : { ...fit, note }, role, visibleByDefault: role !== null }
+    const role: ModelRole | null =
+      recommended && model.id === recommended.model.id ? 'recommended'
+      : stronger && model.id === stronger.model.id ? 'stronger'
+      : null
+    return withSummary(model, fit, role)
   })
 }
 
