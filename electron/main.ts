@@ -1698,11 +1698,21 @@ function registerIpc() {
       if (!pick.ok) {
         return { ok: false, reason: pick.reason === 'model-error' ? 'no-model' : pick.reason };
       }
-      const matches = await tabs.findQuoteInPage(highlightCandidates(pick.quote));
-      // Цитата со страницы есть, а подсветить её не вышло — для человека это то же «не нашлось»:
-      // показывать ему текст, которого он не увидит на странице, незачем.
-      if (matches === 0) return { ok: false, reason: 'not-found' };
-      return { ok: true, quote: pick.quote, matches };
+      // ⚠️ Оставляем только те цитаты, которые реально удалось подсветить: показывать в счётчике
+      // «1 / 3», где до двух из трёх не доехать, — обман. Подсветка первой заодно и прокручивает
+      // к ней страницу, поэтому подбираем по порядку и первую же удачную оставляем показанной.
+      const shown: string[] = [];
+      let firstMatches = 0;
+      for (const quote of pick.quotes) {
+        const matches = await tabs.findQuoteInPage(highlightCandidates(quote));
+        if (matches === 0) continue;
+        shown.push(quote);
+        if (shown.length === 1) firstMatches = matches;
+      }
+      if (shown.length === 0) return { ok: false, reason: 'not-found' };
+      // Возвращаем подсветку на первую цитату: цикл выше оставил её на последней проверенной.
+      if (shown.length > 1) await tabs.findQuoteInPage(highlightCandidates(shown[0]!));
+      return { ok: true, quotes: shown, matches: firstMatches };
     } catch (err) {
       console.warn('[smart-find] ошибка:', err);
       return { ok: false, reason: 'no-model' };
@@ -1745,6 +1755,15 @@ function registerIpc() {
     const ok = rules.remove(id);
     if (ok) broadcastToChrome(IPC.RULES_CHANGED, rules.list());
     return ok;
+  });
+
+  // Показать конкретную цитату из уже полученного ответа (стрелки в панели листают найденные
+  // фрагменты). Состояния в main нет намеренно: список цитат держит панель, сюда приходит текст —
+  // так листание не может разъехаться с тем, что человек видит в счётчике.
+  ipcMain.handle(IPC.FIND_SMART_SHOW, async (e, quote: string): Promise<number> => {
+    const tabs = tabsOf(e);
+    if (!tabs || typeof quote !== 'string' || !quote.trim()) return 0;
+    return tabs.findQuoteInPage(highlightCandidates(quote));
   });
 
   ipcMain.handle(IPC.TAB_PIN_TOGGLE, (e, id: string) => tabsOf(e)?.togglePin(id));

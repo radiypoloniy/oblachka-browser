@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('findbar', {
   // Смысловой режим: вопрос вместо подстроки (см. electron/SmartFind.ts). Подсветку ставит main
   // штатным findInPage — панели возвращается только статус.
   smart: (query: string) => ipcRenderer.invoke(IPC.FIND_SMART, query) as Promise<SmartFindResult>,
+  // Подсветить конкретную найденную цитату (листание стрелками в смысловом режиме).
+  smartShow: (quote: string) => ipcRenderer.invoke(IPC.FIND_SMART_SHOW, quote) as Promise<number>,
   next: (forward: boolean) => ipcRenderer.invoke(IPC.FIND_NEXT, forward),
   stop: () => ipcRenderer.invoke(IPC.FIND_STOP),
   close: () => ipcRenderer.send('findbar:close'),

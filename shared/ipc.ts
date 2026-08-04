@@ -50,8 +50,12 @@ export type RuleParseOutcome =
 // прокручивает. Отдельного окна с ответом нет намеренно: цитата и так на месте, в контексте.
 export interface SmartFindResult {
   ok: boolean;
-  quote?: string;   // цитата СО СТРАНИЦЫ (модель выбирает номер фрагмента, а не пишет текст)
-  matches?: number; // сколько совпадений подсветилось
+  // Цитаты СО СТРАНИЦЫ (модель выбирает номера фрагментов, а не пишет текст), лучшая первой.
+  // ⚠️ Их несколько, а не одна: на подборке (например, список игр одного жанра) единственный
+  // ответ выглядит как недоработка — человек видит на странице ещё подходящие места. Панель
+  // листает их стрелками, как обычные совпадения.
+  quotes?: string[];
+  matches?: number; // сколько совпадений подсветилось у ПОКАЗАННОЙ сейчас цитаты
   // 'no-model' — модель не отвечает/не загрузилась, 'no-text' — со страницы нечего читать,
   // 'not-found' — модель ничего не выбрала либо цитата не нашлась подсветкой, 'busy' — уже ищем.
   reason?: 'no-model' | 'no-text' | 'not-found' | 'busy';
@@ -276,7 +280,8 @@ export const IPC = {
   FIND_RESULT: 'find:result',       // main → renderer: результат (activeMatch, count)
   FIND_OPEN:   'find:open',         // main → renderer: открыть панель поиска (Ctrl+F)
   FIND_CLOSE:  'find:close',        // main → renderer: закрыть панель (навигация, Esc)
-  FIND_SMART:  'find:smart',        // findbar → main: найти фрагмент ПО СМЫСЛУ (см. SmartFind.ts)
+  FIND_SMART:  'find:smart',        // findbar → main: найти фрагменты ПО СМЫСЛУ (см. SmartFind.ts)
+  FIND_SMART_SHOW: 'find:smart-show', // findbar → main: подсветить конкретную цитату из ответа
 
   // Правила-автоматизации (см. shared/rules.ts, RuleParser.ts, RuleEngine.ts)
   RULES_PARSE:       'rules:parse',        // renderer → main: фраза → черновик правила (модель)

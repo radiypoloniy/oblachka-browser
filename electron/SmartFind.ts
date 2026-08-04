@@ -39,6 +39,17 @@ const MAX_BATCHES = 3;
 // без словесной метки модель достраивает нумерованный список вместо ответа.
 const ANSWER_CUE = 'ANSWER:';
 
+// Сколько фрагментов отдаём. ⚠️ Раньше был ровно один, и это оказалось неверным по живому отзыву:
+// на странице с подборкой игр человек спросил про жанр, а получил одну игру из нескольких
+// подходящих — и решил, что поиск не дорабатывает.
+//
+// ⚠️ Но и просить «назови до трёх номеров» одним ответом НЕЛЬЗЯ — замерено: точность сразу
+// просела (случай, проходивший 3 раза из 3, стал проходить 1 из 3), потому что список номеров —
+// это снова несколько решений в одной генерации. Поэтому добавка спрашивается ОТДЕЛЬНЫМ
+// прогоном: «есть ли ЕЩЁ один фрагмент, кроме уже выбранных». Одно решение на прогон — то же
+// лекарство, что вылечило разбор правил и группировку вкладок.
+const MAX_HITS = 3;
+
 /**
  * Сбор фрагментов с ЖИВОЙ страницы.
  *
@@ -96,7 +107,7 @@ const FRAGMENTS_SCRIPT = `(function(){
 export type SmartFindFailure = 'no-text' | 'not-found' | 'model-error';
 
 export type SmartFindPick =
-  | { ok: true; quote: string; scanned: number; total: number }
+  | { ok: true; quotes: string[]; scanned: number; total: number }
   | { ok: false; reason: SmartFindFailure; error?: string };
 
 // Фрагмент страницы: сам текст (он же будущая цитата) и НАЗВАНИЕ РАЗДЕЛА, под которым он стоит.
@@ -163,13 +174,35 @@ function buildPrompt(query: string, batch: NumberedFragment[]): string {
  * списка, который модель любит переписать, и выдавали бы их за её выбор. Пустой ответ честнее
  * выдуманного — тут особенно, потому что за ним последует прыжок страницы к чужому абзацу.
  */
-function parseAnswer(out: string, allowed: Set<number>): number | null {
+// Промпт добавки: тот же материал и тот же вопрос, но уже выбранные фрагменты названы явно.
+// Отказ здесь — нормальный и частый исход: на большинстве вопросов подходящее место одно.
+function buildMorePrompt(query: string, batch: NumberedFragment[], taken: number[]): string {
+  const lines = batch.map((f) => `${f.n}. ${f.section ? `[${f.section}] ` : ''}${f.text}`).join('\n');
+  return (
+    `Fragments of a web page:\n${lines}\n\n` +
+    `The user asks where the page talks about: "${query}".\n` +
+    `Fragment ${taken.join(' and ')} already answers it.\n` +
+    `Is there ONE MORE fragment that also answers the same question? Decide by MEANING.\n\n` +
+    `If there is no other fragment, reply "${ANSWER_CUE} none".\n` +
+    `Otherwise reply "${ANSWER_CUE} <number>". Nothing else.`
+  );
+}
+
+function parseAnswer(out: string, allowed: Set<number>): number[] {
   const line = new RegExp(`${ANSWER_CUE}\\s*([^\\n]*)`, 'i').exec(out)?.[1]?.trim();
-  if (!line || /^(нет|none|no)\b/i.test(line)) return null;
-  const m = /^\d+/.exec(line);
-  if (!m) return null;
-  const n = Number(m[0]);
-  return allowed.has(n) ? n : null;
+  if (!line || /^(нет|none|no)\b/i.test(line)) return [];
+  // После метки должны идти только номера: пересказ вместо ответа не разбираем.
+  if (!/^[\d\s,;и]+$/i.test(line)) return [];
+  const seen = new Set<number>();
+  const picked: number[] = [];
+  for (const m of line.matchAll(/\d+/g)) {
+    const n = Number(m[0]);
+    if (!allowed.has(n) || seen.has(n)) continue;
+    seen.add(n);
+    picked.push(n);
+    if (picked.length >= MAX_HITS) break;
+  }
+  return picked;
 }
 
 /**
@@ -196,10 +229,23 @@ export async function pickFragmentByMeaning(wc: WebContents | null, query: strin
     const picked = parseAnswer(res.out.trim(), allowed);
     console.log(
       `[smart-find] «${q.slice(0, 40)}» фрагменты ${batch[0]!.n}–${batch[batch.length - 1]!.n}: ` +
-      `ответ модели ${JSON.stringify(res.out.trim().slice(0, 60))}`,
+      `выбрано [${picked.join(',')}], ответ модели ${JSON.stringify(res.out.trim().slice(0, 60))}`,
     );
-    // Нашлось — дальше не идём: остальные прогоны стоили бы времени человека впустую.
-    if (picked !== null) return { ok: true, quote: fragments[picked - 1]!.text, scanned, total: fragments.length };
+    // Нашлось — дальше по батчам не идём: остальные прогоны стоили бы времени человека впустую.
+    if (picked.length > 0) {
+      const chosen = [...picked];
+      // Добавка — по одному фрагменту за прогон, и только в ТОМ ЖЕ батче: раз ответ нашёлся
+      // здесь, соседние места по смыслу почти всегда рядом, а лишние прогоны человек ждёт.
+      while (chosen.length < MAX_HITS) {
+        const more = await runTabOrganizePrompt(buildMorePrompt(q, batch, chosen));
+        if (!more.ok) break;
+        const next = parseAnswer(more.out.trim(), allowed).filter((n) => !chosen.includes(n));
+        console.log(`[smart-find] добавка: ${next.length ? next[0] : 'нет'}, ответ модели ${JSON.stringify(more.out.trim().slice(0, 40))}`);
+        if (next.length === 0) break;
+        chosen.push(next[0]!);
+      }
+      return { ok: true, quotes: chosen.map((n) => fragments[n - 1]!.text), scanned, total: fragments.length };
+    }
   }
   return { ok: false, reason: 'not-found' };
 }

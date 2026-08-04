@@ -89,10 +89,32 @@ const OFERTA = `<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <p>Стороны решают разногласия переговорами. Срок ответа на письменное обращение составляет десять рабочих дней с даты его поступления.</p>
 </body></html>`;
 
+// Подборка игр — фикстура под ЖИВОЙ отзыв: «открыл топ с играми, там несколько фэнтези, а поиск
+// показал одну». Подходящих ответов тут заведомо больше одного, причём слово «фэнтези» есть не
+// в каждом — иначе мерился бы подстрочный поиск, а не понимание.
+const GAMES = `<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<title>20 лучших игр года</title></head>
+<body style="max-width:720px;margin:40px auto;font:16px/1.6 system-ui">
+<h1>Лучшие игры года</h1>
+<h2>Ночь драконов</h2>
+<p>Огромный мир мечей и магии: орден рыцарей, древние заклинания и драконы над горами. Классическое приключение в вымышленном средневековье, каким его любят с восьмидесятых.</p>
+<h2>Кремний-9</h2>
+<p>Космический шутер про колонию на спутнике Юпитера. Скафандры, пробоины в обшивке и тревожный саундтрек; из оружия — плазменные резаки и дроны.</p>
+<h2>Хроники Эльдхейма</h2>
+<p>Ролевая сага о наследнице престола эльфов, гоблинских ордах и зачарованном лесе. Вся кампания проходится за сорок часов, есть режим для двоих.</p>
+<h2>Гонки Восточного шоссе</h2>
+<p>Аркадные заезды по ночным трассам мегаполиса, тюнинг машин и подпольные турниры на деньги.</p>
+<h2>Пепел королевств</h2>
+<p>Стратегия про войну трёх домов в мире, где живут гномы, тролли и говорящие вороны; армии ведут маги, а замки осаждают требушетами.</p>
+<h2>Тихий офис</h2>
+<p>Симулятор бумажной работы: заполняйте отчёты, ходите на совещания и выживайте до пятницы.</p>
+</body></html>`;
+
 const server = http.createServer((req, res) => {
   const url = (req.url ?? '/').split('?')[0];
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   if (url === '/oferta') { res.end(OFERTA); return; }
+  if (url === '/games') { res.end(GAMES); return; }
   const tab = TABS.find((t) => url === `/${t.slug}`);
   if (tab) {
     res.end(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${tab.title}</title></head>`
@@ -305,16 +327,52 @@ async function suiteFind(chrome) {
       const t0 = Date.now();
       const res = await bar.evaluate(`window.findbar.smart(${JSON.stringify(c.q)})`);
       const ms = Date.now() - t0;
-      const quote = res?.ok ? String(res.quote ?? '') : '';
+      const quotes = res?.ok ? (res.quotes ?? []) : [];
+      // Ответ теперь список: засчитываем, если нужный фрагмент вообще попал в выдачу.
       return {
-        ok: c.expect === null ? !res?.ok : quote.includes(c.expect),
-        got: res?.ok ? `${quote.slice(0, 40)}…` : `отказ (${res?.reason ?? '?'})`,
+        ok: c.expect === null ? !res?.ok : quotes.some((q) => String(q).includes(c.expect)),
+        got: res?.ok ? `${quotes.length} шт: ${quotes.map((q) => String(q).slice(0, 30)).join(' | ')}` : `отказ (${res?.reason ?? '?'})`,
         ms,
       };
     });
     cases.push({ ...r, name: c.q, want: c.expect === null ? 'отказ' : c.expect });
   }
   bar.close(); page.close();
+
+  // ── Несколько подходящих мест на одной странице ──
+  // Смена вкладки закрывает панель поиска (TabManager), поэтому открываем её заново.
+  await chrome.evaluate(`window.oblako.createTab('${BASE}/games').then(function(){return 1;})`, 20000);
+  await wait(3000);
+  const gamesT = await findTarget((t) => t.url?.includes('/games'), 20);
+  if (gamesT) {
+    const games = connect(gamesT); await games.ready;
+    for (const type of ['rawKeyDown', 'keyUp']) {
+      await games.send('Input.dispatchKeyEvent', { type, modifiers: 2, key: 'f', code: 'KeyF', windowsVirtualKeyCode: 70, nativeVirtualKeyCode: 70 });
+    }
+    await wait(1500);
+    const bar2T = await findTarget((t) => t.url?.includes('findbar.html'), 20);
+    if (bar2T) {
+      const bar2 = connect(bar2T); await bar2.ready;
+      const r = await repeatCase(async () => {
+        const t0 = Date.now();
+        const res = await bar2.evaluate(`window.findbar.smart('какие тут игры про магию и драконов')`);
+        const ms = Date.now() - t0;
+        const quotes = (res?.ok ? (res.quotes ?? []) : []).map((q) => String(q));
+        // Верных ответов на странице три («Ночь драконов», «Хроники Эльдхейма», «Пепел
+        // королевств»); ждём хотя бы два и ни одного постороннего.
+        const good = quotes.filter((q) => /дракон|эльф|гном|магия|маги|заклинани/i.test(q)).length;
+        return {
+          ok: quotes.length >= 2 && good === quotes.length,
+          got: `${quotes.length} шт: ${quotes.map((q) => q.slice(0, 28)).join(' | ')}`,
+          ms,
+        };
+      });
+      cases.push({ ...r, name: 'на подборке находит несколько мест, не одно', want: '≥2 и все по делу' });
+      bar2.close();
+    }
+    games.close();
+  }
+
   return { id: 'find', title: 'Смысловой Ctrl+F', cases };
 }
 

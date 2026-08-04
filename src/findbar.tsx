@@ -17,6 +17,7 @@ declare global {
     findbar: {
       search: (query: string, forward: boolean) => Promise<void>
       smart: (query: string) => Promise<SmartFindResult>
+      smartShow: (quote: string) => Promise<number>
       next: (forward: boolean) => Promise<void>
       stop: () => Promise<void>
       close: () => void
@@ -56,6 +57,11 @@ function FindBar() {
   const [smart, setSmart] = useState(false);
   const [smartBusy, setSmartBusy] = useState(false);
   const [smartFail, setSmartFail] = useState<NonNullable<SmartFindResult['reason']> | null>(null);
+  // Найденные фрагменты и тот, что показан сейчас. ⚠️ В смысловом режиме стрелки листают
+  // ФРАГМЕНТЫ, а не совпадения одной строки: человек спросил «где про фэнтези» на подборке игр —
+  // ему нужны все подходящие места, а не второе вхождение одного и того же слова.
+  const [quotes, setQuotes] = useState<string[]>([]);
+  const [quoteIdx, setQuoteIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Последний вопрос, на который смысловой поиск уже отвечал: повторный Enter должен листать
@@ -68,6 +74,8 @@ function FindBar() {
       setQuery('');
       setResult(null);
       setSmartFail(null);
+      setQuotes([]);
+      setQuoteIdx(0);
       lastSmartRef.current = '';
       inputRef.current?.focus();
     });
@@ -93,7 +101,12 @@ function FindBar() {
     // Ищем по Enter — то же правило, по которому фоновые фичи не дёргают модель при наборе.
     if (smart) {
       // Поле опустошили — снимаем подсветку прошлого ответа: она относилась к стёртому вопросу.
-      if (!v.trim()) { void window.findbar.stop(); setResult(null); lastSmartRef.current = ''; }
+      if (!v.trim()) {
+        void window.findbar.stop();
+        setResult(null);
+        setQuotes([]);
+        lastSmartRef.current = '';
+      }
       return;
     }
     if (!v.trim()) {
@@ -110,17 +123,31 @@ function FindBar() {
     setSmartBusy(true);
     setSmartFail(null);
     setResult(null);
+    setQuotes([]);
     try {
       const res = await window.findbar.smart(q);
-      // Успех рисовать нечем и не надо: main уже подсветил цитату на странице, а счётчик
-      // приедет обычным FIND_RESULT — тем же путём, что у подстрочного поиска.
-      if (res.ok) lastSmartRef.current = q;
-      else setSmartFail(res.reason ?? 'not-found');
+      // Успех рисовать нечем: main уже подсветил первую цитату на странице и прокрутил к ней.
+      // Панель запоминает список, чтобы стрелки листали остальные.
+      if (res.ok) {
+        lastSmartRef.current = q;
+        setQuotes(res.quotes ?? []);
+        setQuoteIdx(0);
+      } else {
+        setSmartFail(res.reason ?? 'not-found');
+      }
     } catch {
       setSmartFail('no-model');
     } finally {
       setSmartBusy(false);
     }
+  };
+
+  // Листание найденных фрагментов. По кругу — как обычный поиск по странице.
+  const goQuote = (delta: number) => {
+    if (quotes.length === 0) return;
+    const next = (quoteIdx + delta + quotes.length) % quotes.length;
+    setQuoteIdx(next);
+    void window.findbar.smartShow(quotes[next]!);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -138,6 +165,11 @@ function FindBar() {
       void runSmart();
       return;
     }
+    // В смысловом режиме Enter листает НАЙДЕННЫЕ ФРАГМЕНТЫ, а не совпадения одной строки.
+    if (smart && quotes.length > 0) {
+      goQuote(e.shiftKey ? -1 : 1);
+      return;
+    }
     void window.findbar.next(!e.shiftKey); // Enter = вниз, Shift+Enter = вверх
   };
 
@@ -148,15 +180,19 @@ function FindBar() {
     void window.findbar.stop();
     setResult(null);
     setSmartFail(null);
+    setQuotes([]);
     lastSmartRef.current = '';
     setSmart((v) => !v);
     inputRef.current?.focus();
   };
 
-  const hasResults = result !== null && result.count > 0;
-  const noMatch = (query.trim() !== '' && result !== null && result.count === 0) || smartFail !== null;
+  const hasResults = quotes.length > 0 || (result !== null && result.count > 0);
+  const noMatch = (query.trim() !== '' && result !== null && result.count === 0 && quotes.length === 0) || smartFail !== null;
+  // ⚠️ В смысловом режиме счётчик показывает НАЙДЕННЫЕ ФРАГМЕНТЫ, а не совпадения подсвеченной
+  // строки: человек спрашивал про места на странице, их и считаем.
   const statusText = smartBusy ? 'ищу…'
     : smartFail ? SMART_FAIL_TEXT[smartFail]
+    : quotes.length > 0 ? `${quoteIdx + 1} / ${quotes.length}`
     : (query.trim() && result) ? (result.count === 0 ? 'нет' : `${result.activeMatch} / ${result.count}`)
     : '';
 
@@ -220,17 +256,17 @@ function FindBar() {
           </span>
         )}
         <button
-          onClick={() => void window.findbar.next(false)}
+          onClick={() => (quotes.length > 0 ? goQuote(-1) : void window.findbar.next(false))}
           disabled={!hasResults}
-          title="Предыдущее (Shift+Enter)"
+          title={quotes.length > 0 ? 'Предыдущий фрагмент (Shift+Enter)' : 'Предыдущее (Shift+Enter)'}
           style={btnStyle(!hasResults)}
         >
           <ChevronUp size={14} strokeWidth={2} />
         </button>
         <button
-          onClick={() => void window.findbar.next(true)}
+          onClick={() => (quotes.length > 0 ? goQuote(1) : void window.findbar.next(true))}
           disabled={!hasResults}
-          title="Следующее (Enter)"
+          title={quotes.length > 0 ? 'Следующий фрагмент (Enter)' : 'Следующее (Enter)'}
           style={btnStyle(!hasResults)}
         >
           <ChevronDown size={14} strokeWidth={2} />
