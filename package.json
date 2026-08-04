@@ -22,6 +22,7 @@
     "download-browser-logos": "node scripts/download-browser-logos.mjs",
     "download-crypto-icons": "node scripts/download-crypto-icons.mjs",
     "bookmarks-schema-check": "node scripts/bookmarks-schema-check.mjs",
+    "rules-check": "node --experimental-strip-types scripts/rules-check.mjs",
     "download-filters": "node scripts/download-filters.mjs",
     "download-xray": "node scripts/download-xray.mjs",
     "download-translation-models": "node scripts/download-translation-models.mjs",
