@@ -5,6 +5,7 @@ release/
 *.log
 .DS_Store
 scripts/shots/
+scripts/bench-results/
 resources/models/
 resources/xray/
 
