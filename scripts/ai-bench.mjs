@@ -54,15 +54,28 @@ const REPEAT = Math.max(1, Number(argVal('--repeat') ?? 1) || 1);
 // ── фикстуры ─────────────────────────────────────────────────────────────────
 // Вкладки для смыслового поиска и группировки. Заголовки подобраны так, чтобы слов запроса в них
 // НЕ было: иначе мы измеряли бы подстрочный поиск, а не понимание.
+// ⚠️ Две последние вкладки отданы с ДРУГОГО loopback-адреса (host = 127.0.0.2) и намеренно не
+// связаны ни между собой по теме, ни с остальными: их не должен собрать тематический слой, зато
+// обязан собрать доменный — «две и более вкладки одного сайта». Так проверяется, что группировка
+// не сводится к модели (живой случай: четыре статьи одного издания не попали ни в одну группу).
+// ⚠️ Каждая тематическая вкладка отдаётся со СВОЕГО loopback-адреса. Иначе доменный слой
+// («две и более вкладки одного сайта») честно соберёт весь стенд в одну группу — и замер будет
+// мерить фикстуру, а не логику. Пара same-site внизу, наоборот, живёт на одном адресе и
+// намеренно НЕ связана по теме: собрать её может только доменный слой, не модель.
+const SITE_HOST = '127.0.0.2';
 const TABS = [
-  { slug: 'ndfl',    title: 'Расчёт НДФЛ с продажи квартиры — Госуслуги' },
-  { slug: 'borsch',  title: 'Борщ по-домашнему: пошаговый рецепт' },
-  { slug: 'vacuum',  title: 'Отзывы о роботе-пылесосе Xiaomi S20' },
-  { slug: 'sochi',   title: 'Прогноз погоды в Сочи на неделю' },
-  { slug: 'vue',     title: 'Vue 3 Composition API — документация' },
-  { slug: 'react',   title: 'React Hooks — полный справочник' },
-  { slug: 'train',   title: 'Расписание поездов Москва — Казань' },
-  { slug: 'vitd',    title: 'Дефицит витамина D: признаки и анализы' },
+  { slug: 'ndfl',    title: 'Расчёт НДФЛ с продажи квартиры — Госуслуги', host: '127.0.0.3' },
+  { slug: 'borsch',  title: 'Борщ по-домашнему: пошаговый рецепт',        host: '127.0.0.4' },
+  { slug: 'vacuum',  title: 'Отзывы о роботе-пылесосе Xiaomi S20',        host: '127.0.0.5' },
+  { slug: 'sochi',   title: 'Прогноз погоды в Сочи на неделю',            host: '127.0.0.6' },
+  { slug: 'vue',     title: 'Vue 3 Composition API — документация',       host: '127.0.0.7' },
+  { slug: 'react',   title: 'React Hooks — полный справочник',            host: '127.0.0.8' },
+  { slug: 'train',   title: 'Расписание поездов Москва — Казань',         host: '127.0.0.9' },
+  { slug: 'vitd',    title: 'Дефицит витамина D: признаки и анализы',     host: '127.0.0.10' },
+  // Пара для доменного слоя: один сайт, обе страницы служебные и «никакие» — тематический слой
+  // за них не зацепится, а если вдруг зацепится, то за обе сразу (проверка от этого не сломается).
+  { slug: 'shop1',   title: 'Пользовательское соглашение',                host: SITE_HOST },
+  { slug: 'shop2',   title: 'Политика обработки персональных данных',     host: SITE_HOST },
 ];
 
 // Страница для смыслового Ctrl+F: ответы намеренно сформулированы другими словами, чем вопросы.
@@ -274,9 +287,11 @@ async function repeatCase(fn) {
   };
 }
 
+const tabUrl = (t) => `http://${t.host ?? '127.0.0.1'}:${PORT}/${t.slug}`;
+
 async function openFixtureTabs(chrome) {
   for (const t of TABS) {
-    await chrome.evaluate(`window.oblako.createTab('${BASE}/${t.slug}').then(function(){return 1;})`, 20000);
+    await chrome.evaluate(`window.oblako.createTab('${tabUrl(t)}').then(function(){return 1;})`, 20000);
   }
   // Ждём, пока заголовки реально доедут — иначе модель увидит вкладки без названий.
   for (let i = 0; i < 30; i++) {
@@ -298,7 +313,7 @@ async function suiteTabs(chrome) {
       const ids = await chrome.evaluate(`window.oblako.searchTabsSmart(${JSON.stringify(c.q)})`);
       const ms = Date.now() - t0;
       const url = ids?.[0] ? (tabs.find((t) => t.id === ids[0])?.url ?? '') : '';
-      const got = TABS.find((t) => url.endsWith(`/${t.slug}`))?.slug ?? null;
+      const got = TABS.find((t) => url.endsWith('/' + t.slug))?.slug ?? null;
       return { ok: want === null ? got === null : (got !== null && want.includes(got)), got: got ?? '—', ms };
     });
     cases.push({ ...r, name: c.q, want: c.expect === null ? 'отказ' : String(c.expect) });
@@ -425,6 +440,8 @@ async function suiteOrganize(chrome) {
     id: 'organize', title: 'AI-группировка вкладок',
     cases: [
       { name: 'документация Vue и React в одной группе', ok: together('vue', 'react'), got: JSON.stringify(clusters), want: 'вместе', ms, log },
+      // Две несвязанные по теме вкладки одного сайта: модель их не соберёт, доменный слой обязан.
+      { name: 'две вкладки одного сайта собраны без модели', ok: together('shop1', 'shop2'), got: JSON.stringify(clusters), want: 'вместе', ms: 0, log },
       { name: 'в группах нет заведомо чужих пар', ok: !wrongPair, got: wrongPair ? `${wrongPair[0]} + ${wrongPair[1]}: ${JSON.stringify(clusters)}` : 'нет', want: 'нет', ms: 0, log },
       { name: 'получилась хотя бы одна группа', ok: clusters.length > 0, got: `${clusters.length} групп, ${covered} вкладок`, want: '≥1', ms: 0, log },
     ],
@@ -458,7 +475,7 @@ async function suiteRename(chrome) {
 
   const named = [];
   for (const t of TABS) {
-    const url = `${BASE}/${t.slug}`;
+    const url = tabUrl(t);
     const wasTitle = before.find((x) => x.url === url)?.title ?? '';
     const nowTitle = after.find((x) => x.url === url)?.title ?? '';
     if (!nowTitle || nowTitle === wasTitle) continue; // не переименована — считаем ниже отдельно
@@ -491,7 +508,7 @@ const ALL_SUITES = [
 let child = null;
 try {
   prepareProfile();
-  await new Promise((ok) => server.listen(PORT, '127.0.0.1', ok));
+  await new Promise((ok) => server.listen(PORT, '0.0.0.0', ok));
 
   child = spawn(
     path.join(ROOT, 'node_modules', 'electron', 'dist', 'electron.exe'),

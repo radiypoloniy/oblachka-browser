@@ -1,10 +1,11 @@
-﻿// Qwen-группировка открытых вкладок — замена бывшей эмбеддинг-кластеризации (ClusteringService.ts,
+// Qwen-группировка открытых вкладок — замена бывшей эмбеддинг-кластеризации (ClusteringService.ts,
 // удалена) на прямой промпт модели: список вкладок целиком, названия групп придумывает сама
 // модель по смыслу, а не частотный разбор слов заголовка.
 import type { TabManager } from './TabManager';
 import type { HistoryManager } from './HistoryManager';
-import type { SidebarNode, TabState, OrganizeCluster, OrganizeProposal } from '../shared/ipc';
+import type { SidebarNode, TabState, OrganizeCluster, OrganizeProposal, ModelErrorCode } from '../shared/ipc';
 import { normalizeForOmnibox } from '../shared/frecency';
+import { groupNameFromDomain } from '../shared/rules';
 import { getLoadedModelId, runTabOrganizePrompt } from './TranslationService';
 
 let tabManagerRef: TabManager | null = null;
@@ -65,6 +66,23 @@ function splitDuplicates(candidates: Candidate[]): { unique: Candidate[]; duplic
 
 function extractHostname(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
+}
+
+// Двухуровневые доменные зоны, где «последние две метки» дали бы бессмыслицу («co.uk»).
+// Список короткий намеренно: полный public suffix list — это отдельная зависимость на мегабайт,
+// а нам нужно лишь не склеить в одну группу два разных сайта.
+const TWO_LEVEL_TLDS = new Set(['co.uk', 'org.uk', 'ac.uk', 'com.au', 'com.br', 'co.jp', 'com.tr', 'com.ua']);
+
+// Сайт, которому принадлежит вкладка: daily.afisha.ru и m.afisha.ru — это один сайт afisha.ru.
+// Группировать по ПОЛНОМУ хосту нельзя: поддомены новостных изданий разъехались бы по разным
+// группам, хотя для человека это одно место.
+function siteOf(url: string): string {
+  const host = extractHostname(url);
+  if (!host || /^[\d.:]+$/.test(host)) return host; // IP — оставляем как есть
+  const parts = host.split('.');
+  if (parts.length <= 2) return host;
+  const lastTwo = parts.slice(-2).join('.');
+  return TWO_LEVEL_TLDS.has(lastTwo) ? parts.slice(-3).join('.') : lastTwo;
 }
 
 const SNIPPET_MAX_CHARS = 200;
@@ -214,16 +232,26 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
   const { unique, duplicates } = splitDuplicates(candidates);
 
   const clusters: OrganizeCluster[] = [];
+  // Сбой модели запоминаем, но сразу наружу не отдаём: группировка по сайту от модели не зависит.
+  let modelError: { error: string; errorCode?: ModelErrorCode } | null = null;
 
   if (unique.length >= 2) {
     const snippets = history.getFirstChunksByUrls(unique.map((c) => c.url));
     const lines = buildPromptLines(unique, snippets);
 
     // ── Фаза 1: темы ──
+    // ⚠️ Сбой модели здесь НЕ отменяет группировку целиком: ниже есть доменный слой, который
+    // работает без неё вовсе. Модель может быть не скачана, выгружена или не влезть в занятую
+    // видеопамять — и в каждом из этих случаев собрать вкладки одного сайта мы всё равно можем.
+    // Ошибку возвращаем только если в итоге не набралось НИ ОДНОЙ группы (см. конец функции).
     const topicsRes = await runTabOrganizePrompt(buildTopicsPrompt(lines));
-    if (!topicsRes.ok) return { ok: false, error: topicsRes.error, errorCode: topicsRes.errorCode };
-    const topics = parseTopics(topicsRes.out.trim());
-    console.log(`[organize] темы (${unique.length} вкладок, ${duplicates.length} дублей): ${JSON.stringify(topics)}, ответ модели: ${JSON.stringify(topicsRes.out.trim().slice(0, 160))}`);
+    if (!topicsRes.ok) {
+      console.warn('[organize] модель недоступна, остаётся группировка по сайту:', topicsRes.error);
+      modelError = { error: topicsRes.error, errorCode: topicsRes.errorCode };
+    }
+    const rawTopics = topicsRes.ok ? topicsRes.out.trim() : '';
+    const topics = parseTopics(rawTopics);
+    console.log(`[organize] темы (${unique.length} вкладок, ${duplicates.length} дублей): ${JSON.stringify(topics)}, ответ модели: ${JSON.stringify(rawTopics.slice(0, 160))}`);
 
     // ── Фаза 2: по вкладке за прогон ──
     // Тем нет — нормальный исход: модель не нашла, вокруг чего собирать. Ничего не выдумываем.
@@ -245,13 +273,19 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
         for (const n of nums) claims.set(n, [...(claims.get(n) ?? []), topic]);
       }
 
-      // ⚠️ Спорную вкладку не кладём НИКУДА. Если на неё претендуют две темы, мы не знаем, куда
-      // она относится, — а ошибка тут не бесплатна: правило переносит живую вкладку человека.
-      // Молчание в спорном случае честнее уверенной раскладки наугад.
+      // ⚠️ Спорную вкладку отдаём теме, заявившей МЕНЬШЕ вкладок. Раньше такая вкладка не
+      // попадала никуда — и это оказалось слишком дорого: на живом профиле из семнадцати вкладок
+      // в группы попадали три. Причина в том, что широкая тема («Новости») гребёт под себя всё
+      // подряд и спорит с конкретной («Криптовалютное законодательство»), после чего обе теряют
+      // вкладку. Правило «выигрывает та, что заявила меньше» — это «конкретная сильнее общей»,
+      // и оно не зависит от порядка тем, в отличие от прежнего «кто первый».
+      const claimCount = new Map<string, number>();
+      for (const wanted of claims.values()) {
+        for (const t of wanted) claimCount.set(t, (claimCount.get(t) ?? 0) + 1);
+      }
       const byTopic = new Map<string, Candidate[]>();
       for (const [num, wanted] of claims) {
-        if (wanted.length !== 1) continue;
-        const topic = wanted[0]!;
+        const topic = [...wanted].sort((a, b) => (claimCount.get(a) ?? 0) - (claimCount.get(b) ?? 0))[0]!;
         byTopic.set(topic, [...(byTopic.get(topic) ?? []), unique[num - 1]!]);
       }
 
@@ -270,6 +304,36 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
     }
   }
 
+  // ── Слой 2: один сайт, без модели ──
+  //
+  // ⚠️ Заводится ПОСЛЕ тематических групп и только для тех вкладок, что остались без группы.
+  // Порядок принципиален: тематический слой умеет сшить статьи об одном с РАЗНЫХ сайтов
+  // («Криптовалютное законодательство» из snob.ru и kod.ru), и доменная раскладка, применённая
+  // первой, разорвала бы такую группу по изданиям.
+  //
+  // Зачем это вообще нужно, хотя модель у нас неплохая: на живом профиле из семнадцати вкладок
+  // четыре были статьями одного издания, и ни одна не попала в группу. Собрать их — работа на
+  // одну строку кода, и она не может ошибиться, в отличие от любой модели.
+  {
+    const grouped = new Set(clusters.flatMap((c) => c.nodeIds));
+    const bySite = new Map<string, Candidate[]>();
+    for (const c of unique) {
+      if (grouped.has(c.nodeId)) continue;
+      const site = siteOf(c.url);
+      if (!site) continue;
+      bySite.set(site, [...(bySite.get(site) ?? []), c]);
+    }
+    for (const [site, members] of bySite) {
+      if (members.length < 2) continue;
+      clusters.push({
+        nodeIds: members.map((m) => m.nodeId),
+        nodeTypes: members.map((m) => m.nodeType),
+        // Имя от домена той же функцией, что у правил: afisha.ru → «Afisha».
+        label: groupNameFromDomain(site) || site,
+      });
+    }
+  }
+
   // Группа дублей — добавляется отдельно, после групп модели, без участия модели вообще.
   if (duplicates.length >= 1) {
     clusters.push({
@@ -279,6 +343,8 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
     });
   }
 
+  // Модель не ответила И собрать по сайту тоже нечего — вот теперь это честная ошибка.
+  if (modelError && clusters.length === 0) return { ok: false, ...modelError };
   return { ok: true, clusters, modelWasCold };
 }
 
