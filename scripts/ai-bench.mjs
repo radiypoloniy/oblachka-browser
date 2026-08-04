@@ -218,7 +218,7 @@ const line = (s = '') => console.log(s);
 // Лог приложения. ⚠️ Нужен не «на всякий случай»: наши AI-модули печатают СЫРОЙ ответ модели, и
 // без него провалившийся случай неотличим — «модель ответила не то» или «мы не так разобрали».
 const appLog = [];
-const LOG_TAGS = ['[rules]', '[smart-find]', '[tab-search]', '[organize]', '[related]'];
+const LOG_TAGS = ['[rules]', '[smart-find]', '[tab-search]', '[organize]', '[related]', '[rename]'];
 const taggedLinesSince = (from) => appLog
   .slice(from)
   .join('')
@@ -373,11 +373,60 @@ async function suiteOrganize(chrome) {
   };
 }
 
+// Что должно попасть в умное имя вкладки. Проверяем не «красиво ли», а два бесспорных признака:
+// имя называет ПРЕДМЕТ страницы и не начинается со слова-носителя («видео про…»), потому что
+// формат человек и так видит по значку, а место в полосе вкладок крошечное.
+const RENAME_EXPECT = {
+  ndfl: /ндфл|налог/i,
+  borsch: /борщ/i,
+  vacuum: /пылесос/i,
+  sochi: /погод|сочи/i,
+  // Транслитерация — нормальное русское имя, а не промах: «реакт хуки» называет предмет точно.
+  vue: /vue|вью/i,
+  react: /react|реакт/i,
+  train: /поезд|казан|расписан/i,
+  vitd: /витамин/i,
+};
+const MEDIUM_START = /^(видео|ролик|стать|страниц|сайт|публикац|материал|подкаст|фильм)/i;
+
+async function suiteRename(chrome) {
+  const before = await tabsOf(chrome);
+  const from = appLog.length;
+  const t0 = Date.now();
+  await chrome.evaluate('window.oblako.renameAllTabs().then(function(){return 1;})', 600000);
+  const ms = Date.now() - t0;
+  const after = await tabsOf(chrome);
+  const log = taggedLinesSince(from);
+
+  const named = [];
+  for (const t of TABS) {
+    const url = `${BASE}/${t.slug}`;
+    const wasTitle = before.find((x) => x.url === url)?.title ?? '';
+    const nowTitle = after.find((x) => x.url === url)?.title ?? '';
+    if (!nowTitle || nowTitle === wasTitle) continue; // не переименована — считаем ниже отдельно
+    named.push({ slug: t.slug, title: nowTitle });
+  }
+
+  const missed = named.filter((n) => !RENAME_EXPECT[n.slug].test(n.title));
+  const medium = named.filter((n) => MEDIUM_START.test(n.title));
+  const preview = named.map((n) => `${n.slug}: «${n.title}»`).join(' · ');
+  return {
+    id: 'rename', title: 'Умное имя вкладки',
+    cases: [
+      { name: 'имя называет предмет страницы', ok: missed.length === 0, got: preview || 'ни одна не переименована', want: 'ключевое слово темы в имени', ms, log },
+      { name: 'имя не начинается с «видео/статья/сайт»', ok: medium.length === 0, got: medium.map((n) => n.title).join(', ') || 'нет', want: 'нет', ms: 0, log },
+      { name: 'переименована хотя бы половина вкладок', ok: named.length >= Math.ceil(TABS.length / 2), got: `${named.length} из ${TABS.length}`, want: `≥${Math.ceil(TABS.length / 2)}`, ms: 0, log },
+    ],
+  };
+}
+
 const ALL_SUITES = [
   { id: 'tabs', run: suiteTabs },
   { id: 'find', run: suiteFind },
   { id: 'rules', run: suiteRules },
   { id: 'organize', run: suiteOrganize },
+  // Переименование идёт ПОСЛЕДНИМ: оно меняет заголовки вкладок, а на них смотрят наборы выше.
+  { id: 'rename', run: suiteRename },
 ];
 
 // ── main ─────────────────────────────────────────────────────────────────────
