@@ -1,4 +1,5 @@
-import { WebContentsView, BrowserWindow, Menu, clipboard, net } from 'electron';
+import os from 'os';
+import { app, WebContentsView, BrowserWindow, Menu, clipboard, net } from 'electron';
 import type { MenuItemConstructorOptions, PostBody, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -40,6 +41,31 @@ const SPLIT_RATIO_MAX = 0.8;
 const SLEEP_TIMEOUT_NORMAL = 2 * 60 * 60 * 1000;  // 2 часа без активности
 const SLEEP_TIMEOUT_PINNED = 8 * 60 * 60 * 1000;  // 8 часов для закреплённых
 const SLEEP_CHECK_INTERVAL = 60_000;               // проверка раз в минуту
+
+// ── Второй критерий усыпления: ДАВЛЕНИЕ ПАМЯТИ ────────────────────────────────────────────────
+//
+// Замерено против Яндекс.Браузера на одинаковых 20 сайтах (10 закреплённых + 10 обычных):
+// у нас 5688 МБ Working Set против 4428 МБ, при почти равных Private Bytes (2955 против 2795).
+// Равные Private при разном Working Set означают ровно одно: своей памяти мы держим столько же,
+// но НЕ ОТДАЁМ её системе. Причина — вкладки жили по одному таймеру: два часа обычная, восемь
+// закреплённая. При сценарии «десять закреплённых висят весь день» не выгружалось вообще ничего.
+// Chrome и Яндекс вытесняют фоновые вкладки по давлению памяти, а не по часам; здесь то же самое.
+//
+// ⚠️ Бюджет — ДОЛЯ от памяти машины, а не константа: 4 ГБ это потолок на 8-гигабайтном ноутбуке
+// и капля на 64-гигабайтной станции. Границы снизу и сверху нужны обе — без нижней на слабой
+// машине бюджет выродился бы в постоянное усыпление, без верхней на мощной не сработал бы никогда.
+const MEMORY_BUDGET_SHARE = 0.2;
+const MEMORY_BUDGET_MIN = 1024 * 1024 * 1024;      // 1 ГБ
+const MEMORY_BUDGET_MAX = 4 * 1024 * 1024 * 1024;  // 4 ГБ
+// ⚠️ Даже под давлением не трогаем вкладку, которую только что оставили: вернуться через минуту
+// и увидеть перезагрузку — хуже, чем лишние сотни мегабайт. Закреплённые терпят дольше: их
+// держат открытыми весь день намеренно.
+const PRESSURE_MIN_IDLE_NORMAL = 5 * 60 * 1000;
+const PRESSURE_MIN_IDLE_PINNED = 30 * 60 * 1000;
+// ⚠️ За один проход усыпляем немного. Освобождение памяти не мгновенно, и повторный замер сразу
+// после закрытия вью показал бы, что легче не стало, — а значит, усыпили бы всё подряд. Проверка
+// раз в минуту и так вернётся: лучше медленно спускаться к бюджету, чем разом снести десяток вкладок.
+const PRESSURE_SLEEP_PER_CHECK = 3;
 
 // Кап на размер тела favicon перед base64-кэшированием в сессию (заход C) — без него один
 // «тяжёлый» сайт (нестандартный favicon.ico на сотни КБ) непредсказуемо раздувает session.json.
@@ -1176,6 +1202,50 @@ export class TabManager {
   // ровно столько, сколько окон человек успел закрыть за сеанс. Останавливаем в dispose().
   private sleepTimer: NodeJS.Timeout | null = null;
 
+  // Суммарный Working Set ВСЕХ процессов приложения — своя мерка давления памяти.
+  // app.getAppMetrics() отдаёт килобайты и уже включает и main, и все рендереры, и GPU.
+  #appWorkingSetBytes(): number {
+    let kb = 0;
+    for (const m of app.getAppMetrics()) kb += m.memory.workingSetSize;
+    return kb * 1024;
+  }
+
+  #memoryBudgetBytes(): number {
+    const share = os.totalmem() * MEMORY_BUDGET_SHARE;
+    return Math.min(MEMORY_BUDGET_MAX, Math.max(MEMORY_BUDGET_MIN, share));
+  }
+
+  // Можно ли усыпить эту вкладку прямо сейчас. ⚠️ ОДНА проверка на оба критерия (таймер и
+  // давление): разведи их по двум копиям — и защиты (звук, заполненные формы, split, инкогнито)
+  // однажды разъедутся, а узнает об этом человек, у которого выгрузило форму на полуслове.
+  async #canSleepNow(tab: ManagedTab, protectedIds: Set<string>): Promise<boolean> {
+    if (tab.sleeping || protectedIds.has(tab.id)) return false;
+    // Инкогнито не усыпляем: усыпление уничтожает WebContentsView, а с ним потерялась бы
+    // in-memory сессия приватных вкладок (куки/логины текущей приватной сессии).
+    if (tab.incognito) return false;
+    if (!this.isHttpView(tab.view)) return false;
+
+    const wc = tab.view.webContents;
+    if (wc.isCurrentlyAudible()) return false; // играет медиа
+
+    // Async: незаполненные формы — только после всех sync-фильтров, запрос не бесплатный.
+    let hasForms = false;
+    try {
+      hasForms = await wc.executeJavaScript(HAS_FILLED_FORMS_SCRIPT, true);
+    } catch {
+      return false; // WebContents недоступен
+    }
+    if (hasForms) return false;
+
+    // Перепроверяем после await: вкладка могла стать активной, пока шёл JS-запрос —
+    // показываемую пару пересчитываем заново, старая могла устареть.
+    if (protectedIds.has(tab.id) || tab.sleeping || !this.isHttpView(tab.view)) return false;
+    if (tab.id === this.activeId) return false;
+    const freshPair = this.#activePair();
+    if (freshPair && (tab.id === freshPair.leftId || tab.id === freshPair.rightId)) return false;
+    return true;
+  }
+
   private startSleepTimer(): void {
     this.sleepTimer = setInterval(async () => {
       const now = Date.now();
@@ -1189,41 +1259,42 @@ export class TabManager {
         protectedIds.add(activePair.rightId);
       }
 
+      // ── Критерий 1: вкладку давно не открывали ────────────────────────────────────────────
       for (const tab of this.tabMap.values()) {
-        // Пропускаем: уже спящие, защищённые вкладки, не-http вьюхи
-        if (tab.sleeping || protectedIds.has(tab.id)) continue;
-        // Инкогнито не усыпляем: усыпление уничтожает WebContentsView, а с ним потерялась бы
-        // in-memory сессия приватных вкладок (куки/логины текущей приватной сессии).
-        if (tab.incognito) continue;
-        if (!this.isHttpView(tab.view)) continue;
-
-        // Таймаут ещё не истёк — не трогаем (и не гоняем дорогой JS-запрос зря)
         const timeout = this.isTabPinned(tab.id) ? SLEEP_TIMEOUT_PINNED : SLEEP_TIMEOUT_NORMAL;
-        if (now - tab.lastActiveAt < timeout) continue;
+        if (now - tab.lastActiveAt < timeout) continue; // и не гоняем дорогой JS-запрос зря
+        if (await this.#canSleepNow(tab, protectedIds)) this.sleepTab(tab.id);
+      }
 
-        const wc = tab.view.webContents;
+      // ── Критерий 2: памяти стало тесно ────────────────────────────────────────────────────
+      // ⚠️ Порядок важен: сначала таймер, потом давление. Иначе давление усыпляло бы вкладки,
+      // до которых и так дошла бы очередь, и «до бюджета» пришлось бы спускаться лишний раз.
+      const budget = this.#memoryBudgetBytes();
+      if (this.#appWorkingSetBytes() <= budget) return;
 
-        // Играет медиа — пропускаем
-        if (wc.isCurrentlyAudible()) continue;
+      // Кандидаты — от самых давних к свежим, и НЕзакреплённые раньше закреплённых: закреплённую
+      // держат открытой намеренно, её выгрузка заметнее. Сортировка по lastActiveAt внутри групп.
+      const candidates = [...this.tabMap.values()]
+        .filter((t) => {
+          const idle = now - t.lastActiveAt;
+          return idle >= (this.isTabPinned(t.id) ? PRESSURE_MIN_IDLE_PINNED : PRESSURE_MIN_IDLE_NORMAL);
+        })
+        .sort((a, b) => {
+          const pa = this.isTabPinned(a.id) ? 1 : 0;
+          const pb = this.isTabPinned(b.id) ? 1 : 0;
+          if (pa !== pb) return pa - pb;
+          return a.lastActiveAt - b.lastActiveAt;
+        });
 
-        // Async: проверяем незаполненные формы — только после прохождения всех sync-фильтров
-        let hasForms = false;
-        try {
-          hasForms = await wc.executeJavaScript(HAS_FILLED_FORMS_SCRIPT, true);
-        } catch {
-          continue; // WebContents недоступен — пропускаем
+      let slept = 0;
+      for (const tab of candidates) {
+        if (slept >= PRESSURE_SLEEP_PER_CHECK) break;
+        if (this.#appWorkingSetBytes() <= budget) break;
+        if (await this.#canSleepNow(tab, protectedIds)) {
+          console.log(`[память] бюджет ${Math.round(budget / 1048576)} МБ превышен — усыпляю вкладку`);
+          this.sleepTab(tab.id);
+          slept += 1;
         }
-        if (hasForms) continue;
-
-        // Перепроверяем после await: вкладка могла стать активной пока шёл JS-запрос —
-        // пересчитываем показываемую пару заново, старый activePair мог устареть.
-        if (protectedIds.has(tab.id) || tab.sleeping || !this.isHttpView(tab.view)) continue;
-        if (tab.id === this.activeId) continue;
-        const freshActivePair = this.#activePair();
-        if (freshActivePair
-            && (tab.id === freshActivePair.leftId || tab.id === freshActivePair.rightId)) continue;
-
-        this.sleepTab(tab.id);
       }
     }, SLEEP_CHECK_INTERVAL);
   }
