@@ -222,8 +222,19 @@ body {
 }
 .oblako-tab-in { animation: oblako-tab-in 200ms var(--ease-out) both; }
 
+/* Появление режима AI-панели (чат ↔ приложения). Оба блока живут в разметке постоянно и
+   переключаются display'ем, а переход из display:none в display:flex перезапускает CSS-анимацию —
+   поэтому мягкое проявление получается без единой строки JS.
+   ⚠️ Только opacity и transform: они не трогают раскладку и считаются композитором. Сдвиг
+   маленький и ВВЕРХ-вниз, а не вбок: режимы лежат друг под другом, а не рядом. */
+@keyframes oblako-mode-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.oblako-mode-in { animation: oblako-mode-in 180ms var(--ease-out) both; }
+
 @media (prefers-reduced-motion: reduce) {
-  .oblako-section-in, .oblako-tab-in { animation: none; }
+  .oblako-section-in, .oblako-tab-in, .oblako-mode-in { animation: none; }
 }
 
 /* Результат узла графа. Блок монтируется в момент, когда выхлоп появился, — анимация играет
