@@ -2517,10 +2517,14 @@ export class TabManager {
     const leftTab = this.tabMap.get(leftId);
     if (!leftTab || (!this.isHttpView(leftTab.view) && !leftTab.sleeping) || this.isTabPinned(leftId)) return;
 
-    // Обе вкладки должны быть в одном родительском массиве (верхний уровень или одна группа).
+    // ⚠️ Раньше здесь стоял отказ, если вкладки лежат в РАЗНЫХ родителях (одна в папке, другая
+    // снаружи). Из-за него перетаскивание вкладки из папки на край страницы молча не давало
+    // ничего: пара строится с АКТИВНОЙ вкладкой, а она почти всегда в другом месте дерева.
+    // Формат от этого не меняется — SplitPairNode и так живёт и в корне, и внутри папки; меняется
+    // только то, что правую вкладку сначала вынимают из её массива.
     const leftParent  = this.#findTabParent(leftId);
     const rightParent = this.#findTabParent(rightId);
-    if (!leftParent || !rightParent || leftParent.parent !== rightParent.parent) return;
+    if (!leftParent || !rightParent) return;
 
     if (rightTab.sleeping) this.wakeTab(rightId);
 
@@ -2538,8 +2542,20 @@ export class TabManager {
       if (t.id !== leftId && t.id !== rightId) t.view.setVisible(false);
     }
 
-    // Заменяем два SingleNode одним SplitPairNode в родительском массиве.
+    // Пара встаёт на место ЛЕВОЙ (активной) вкладки — она остаётся там, где человек её видел.
     const pair: SplitPairNode = { type: 'split-pair', leftTabId: leftId, rightTabId: rightId, ratio: 0.5 };
+
+    // ⚠️ Правую вынимаем из ЕЁ массива отдельно и только если он другой: при одном родителе
+    // цикл ниже уберёт обе за один проход, а лишнее удаление вынесло бы и левую тоже.
+    if (rightParent.parent !== leftParent.parent) {
+      const rp = rightParent.parent;
+      const idx = rp.findIndex((n) => n.type === 'single' && n.tabId === rightId);
+      if (idx >= 0) rp.splice(idx, 1);
+      // Папка, из которой забрали последнюю вкладку, исчезает: пустая папка в списке — мусор,
+      // который человек не создавал и убрать может только руками.
+      this.#pruneEmptyGroups(this.nodes);
+    }
+
     const targetNodes = leftParent.parent;
     let pairInserted = false;
     const newNodes: SidebarNode[] = [];
