@@ -81,6 +81,7 @@ const api: OblakoApi = {
   },
 
   togglePinTab: (id: string) => ipcRenderer.invoke(IPC.TAB_PIN_TOGGLE, id),
+  setTabMuted: (id: string, muted: boolean) => ipcRenderer.invoke(IPC.TAB_SET_MUTED, id, muted),
   showTabMenu:  (id: string) => ipcRenderer.invoke(IPC.TAB_SHOW_MENU, id),
   showNewTabMenu: () => ipcRenderer.invoke(IPC.NEW_TAB_SHOW_MENU) as Promise<void>,
   setChromeTheme: (dark: boolean, incognito: boolean, palette: ThemePaletteId) =>

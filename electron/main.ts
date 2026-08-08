@@ -1813,6 +1813,7 @@ function registerIpc() {
   });
 
   ipcMain.handle(IPC.TAB_PIN_TOGGLE, (e, id: string) => tabsOf(e)?.togglePin(id));
+  ipcMain.handle(IPC.TAB_SET_MUTED, (e, id: string, muted: boolean) => tabsOf(e)?.setTabMuted(id, muted));
 
   // Split View
   ipcMain.handle(IPC.TAB_ENTER_SPLIT, (e, rightId: string)         => tabsOf(e)?.enterSplit(rightId));

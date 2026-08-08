@@ -178,6 +178,10 @@ export interface TabState {
   // ⚠️ Это состояние момента, а не свойство вкладки: тишина между треками и пауза его снимают.
   // У спящих и псевдо-вкладок всегда false — там нет ни звука, ни самого WebContentsView.
   audible: boolean;
+  // Звук вкладки выключен человеком. ⚠️ Отдельно от audible, а не «audible=false»: приглушённая
+  // вкладка перестаёт считаться звучащей, и без своего признака значок исчез бы вместе с
+  // единственным способом вернуть звук обратно.
+  muted: boolean;
   // Вид содержимого вкладки — 'page' обычная страница (реальный WebContentsView), 'hub' —
   // единственный синглтон-хаб (isHub уже покрывает это, kind добавлен для полноты и симметрии
   // с history/settings). 'history'/'settings' — псевдо-вкладки без WebContentsView (view: null
@@ -322,6 +326,7 @@ export const IPC = {
 
   // Закреплённые вкладки
   TAB_PIN_TOGGLE: 'tab:pin-toggle', // renderer → main: закрепить / открепить вкладку
+  TAB_SET_MUTED: 'tab:set-muted',   // renderer → main: выключить/включить звук вкладки
   TAB_SHOW_MENU:  'tab:show-menu',  // renderer → main: показать нативное ПКМ-меню вкладки
   NEW_TAB_SHOW_MENU: 'tab:new-menu', // renderer → main: ПКМ по кнопке «Новая вкладка» (обычная/инкогнито/восстановить)
   CHROME_THEME_SET: 'chrome:theme-set', // renderer → main: тема chrome (dark+incognito+палитра) для раздачи во все поповеры/вью
@@ -1679,6 +1684,7 @@ export interface OblakoApi {
 
   // Закреплённые вкладки
   togglePinTab(id: string): Promise<void>;
+  setTabMuted(id: string, muted: boolean): Promise<void>; // выключить/включить звук вкладки
   showTabMenu(id: string): Promise<void>;
   showNewTabMenu(): Promise<void>; // ПКМ по кнопке «Новая вкладка»: обычная / инкогнито / восстановить
   setChromeTheme(dark: boolean, incognito: boolean, palette: ThemePaletteId): Promise<void>; // раздать тему во все chrome-вью (поповеры)

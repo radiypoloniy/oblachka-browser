@@ -95,6 +95,9 @@ interface ManagedTab {
   // Приватная (инкогнито) вкладка: своя in-memory сессия (partition INCOGNITO_PARTITION), не пишем
   // историю, исключена из автосейва, не усыпляется (иначе in-memory сессия потерялась бы).
   incognito?: boolean;
+  // Звук выключен человеком. ⚠️ Хранится ЗДЕСЬ, а не только в webContents: при усыплении вью
+  // уничтожается вместе со своим состоянием, и проснувшаяся вкладка снова заорала бы.
+  muted?: boolean;
   // Псевдо-вкладка (История/Настройки, см. createSpecialTab) — обычная запись в tabMap/nodes
   // (не синглтон-хаб: свой id, закрываемая, можно открыть несколько), но БЕЗ WebContentsView —
   // переиспользован только сам приём хаба (view: null). #tabUrl() для такой вкладки вернёт ''
@@ -417,7 +420,7 @@ export class TabManager {
       tabError: null,
       url: '', title: 'Новая вкладка · AI-хаб',
       faviconUrl: null, isLoading: false,
-      canGoBack: false, canGoForward: false, isHub: true, isPinned: false, audible: false,
+      canGoBack: false, canGoForward: false, isHub: true, isPinned: false, audible: false, muted: false,
       splitSide: null, isSleeping: false, incognito: false, kind: 'hub',
     });
 
@@ -446,7 +449,7 @@ export class TabManager {
           : t.kind === 'bookmarks' ? 'Закладки'
           : t.kind === 'downloads' ? 'Загрузки' : 'Настройки',
         faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false,
-        isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: false, audible: false, kind: t.kind, section: t.section,
+        isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: false, audible: false, muted: false, kind: t.kind, section: t.section,
       };
     }
     if (t.sleeping) {
@@ -460,7 +463,7 @@ export class TabManager {
         isHub: false, isPinned,
         splitSide: this.#tabSplitSide(t.id),
         // Спящая вкладка звучать не может — её WebContentsView выгружен целиком.
-        isSleeping: true, incognito: !!t.incognito, audible: false, kind: 'page',
+        isSleeping: true, incognito: !!t.incognito, audible: false, muted: !!t.muted, kind: 'page',
       };
     }
     if (!this.isHttpView(t.view) || t.view.webContents.isDestroyed()) {
@@ -470,7 +473,7 @@ export class TabManager {
         id: t.id, isActive: t.id === this.activeId,
         tabError: null, url: '', title: '', faviconUrl: null,
         isLoading: false, canGoBack: false, canGoForward: false,
-        isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: !!t.incognito, audible: false, kind: 'page',
+        isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: !!t.incognito, audible: false, muted: !!t.muted, kind: 'page',
       };
     }
     const wc = t.view.webContents;
@@ -488,6 +491,7 @@ export class TabManager {
       isSleeping: false, incognito: !!t.incognito,
       // Состояние момента: Chromium сам гасит его на паузе и в тишине между треками.
       audible: wc.isCurrentlyAudible(),
+      muted: wc.isAudioMuted(),
       kind: 'page',
     };
   }
@@ -902,6 +906,16 @@ export class TabManager {
   // postBody — тело формы, отправленной с target=_blank (см. setWindowOpenHandler). Без него
   // POST вырождается в GET, и точка входа платежа, не получив данных заказа, не создаёт
   // платёжную сессию и возвращает человека в магазин — см. разбор там же.
+  // Выключить/включить звук вкладки. Флаг дублируется в записи вкладки, чтобы пережить
+  // усыпление (вью с её состоянием уничтожается, см. ManagedTab.muted).
+  setTabMuted(id: string, muted: boolean): void {
+    const t = this.tabMap.get(id);
+    if (!t) return;
+    t.muted = muted;
+    if (t.view && !t.view.webContents.isDestroyed()) t.view.webContents.setAudioMuted(muted);
+    this.onChange();
+  }
+
   createTab(
     rawUrl?: string,
     background = false,
@@ -1148,6 +1162,9 @@ export class TabManager {
     tab.lastActiveAt = Date.now();
     this.errors.delete(id);
     this.wirePageEvents(id, view);
+    // Приглушение переживает сон: вью новая, её состояние звука по умолчанию «включён», и без
+    // этой строки проснувшаяся вкладка заорала бы, хотя человек её выключал.
+    if (tab.muted) view.webContents.setAudioMuted(true);
     view.webContents.loadURL(url);
   }
 

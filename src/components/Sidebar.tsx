@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Volume2 } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Volume2, VolumeX } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import { glassPlate, islandPlate } from '../styles/island';
 import SidebarBookmarks from './SidebarBookmarks';
@@ -165,11 +165,12 @@ interface TabRowProps {
   onContextMenu: () => void;
   onSplit?: () => void;
   onExitSplit?: (tabId: string) => void;
+  onToggleMute?: () => void;
   // Во время DragOverlay-рендера кнопки не нужны (ghost — только визуал).
   ghost?: boolean;
 }
 
-function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitSplit, ghost }: TabRowProps) {
+function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitSplit, onToggleMute, ghost }: TabRowProps) {
   const [hovered, setHovered] = useState(false);
   const inSplit = tab.splitSide !== null;
   const bg = active ? 'var(--surface)'
@@ -204,12 +205,25 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
       {/* Звук. ⚠️ Показывается ВСЕГДА, а не по наведению, — в этом вся суть: человек ищет,
           откуда играет музыка, и обойти для этого все вкладки мышью значит не решить задачу.
           Цвет приглушённый: это сообщение о состоянии, а не действие, и акцент тут занят
-          активной вкладкой (см. цветовой закон в CLAUDE.md). */}
-      {tab.audible && (
-        <span title="В этой вкладке воспроизводится звук"
-          style={{ flex: 'none', display: 'inline-flex', color: 'var(--text-muted)' }}>
-          <Volume2 size={13} />
-        </span>
+          активной вкладкой (см. цветовой закон в CLAUDE.md).
+          ⚠️ Условие показа — audible ИЛИ muted, и второе несущее: приглушённая вкладка
+          перестаёт считаться звучащей, поэтому по одному audible кнопка исчезла бы сразу
+          после нажатия — вместе с единственным способом вернуть звук.
+          ⚠️ stopPropagation обязателен: клик по строке переключает вкладку, а человек,
+          выключающий звук, никуда переходить не просил. */}
+      {!ghost && (tab.audible || tab.muted) && onToggleMute && (
+        <button
+          className="no-drag"
+          onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
+          title={tab.muted ? 'Включить звук' : 'Выключить звук'}
+          style={{
+            border: 'none', background: 'transparent', cursor: 'default', padding: 2,
+            borderRadius: 4, display: 'inline-flex', flex: 'none',
+            color: tab.muted ? 'var(--text-faint)' : 'var(--text-muted)',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        >{tab.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}</button>
       )}
 
       {tab.isLoading && !tab.isSleeping && (
@@ -485,15 +499,15 @@ function IconCell({ tab, active, onClick, onContextMenu, onMiddleClick, ghost }:
             живут в этой сетке всегда, и музыка чаще всего играет именно в них. Рисуем поверх
             иконки сайта — свободного места в 56-пиксельной полосе нет вовсе. Загрузка
             приоритетнее: она короткая, а звук никуда не денется и покажется следом. */}
-        {!ghost && tab.audible && !tab.isLoading && (
-          <span title="Звук"
+        {!ghost && (tab.audible || tab.muted) && !tab.isLoading && (
+          <span title={tab.muted ? 'Звук выключен' : 'Звук'}
             style={{
               position: 'absolute', right: -3, bottom: -3,
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               width: 12, height: 12, borderRadius: '50%',
               background: 'var(--surface-island)', color: 'var(--text-muted)',
               boxShadow: '0 0 0 1.5px var(--surface-island)',
-            }}><Volume2 size={9} /></span>
+            }}>{tab.muted ? <VolumeX size={9} /> : <Volume2 size={9} />}</span>
         )}
       </span>
     </button>
@@ -990,6 +1004,7 @@ function SortableGroupBlock({
                       onContextMenu={() => onContextMenu(tab.id)}
                       onSplit={() => onSplit(tab.id)}
                       onExitSplit={onExitSplit}
+                      onToggleMute={() => void window.oblako.setTabMuted(tab.id, !tab.muted)}
                     />
                   );
                 }
@@ -1678,7 +1693,8 @@ export default function Sidebar({
                     onClose={() => onClose(tab.id)}
                     onContextMenu={() => onTabMenu(tab.id)}
                     onSplit={() => onSplit(tab.id)}
-                    onExitSplit={onExitSplit} />
+                    onExitSplit={onExitSplit}
+                    onToggleMute={() => void window.oblako.setTabMuted(tab.id, !tab.muted)} />
                 );
               }
               if (node.type === 'split-pair') {
