@@ -1186,6 +1186,16 @@ export default function Sidebar({
   // Что показывает сайдбар. Состояние взгляда, а не данных: переживать перезапуск ему незачем,
   // а по умолчанию браузер обязан открываться на вкладках.
   const [mode, setMode] = useState<'tabs' | 'bookmarks'>('tabs');
+  // ⚠️ «Новая вкладка» из режима закладок ВОЗВРАЩАЕТ к вкладкам. Кнопка и раньше была видна в
+  // обоих режимах и честно открывала вкладку — но сайдбар оставался на закладках, где не видно
+  // ни полосы вкладок, ни активной. Со стороны это читалось как «кнопка не сработала»: человек
+  // жал, что-то происходило, а показать результат было негде.
+  // Тот же приём, что у открытия самой закладки ниже (onOpen → setMode('tabs')) — одно правило
+  // на все действия, которые уводят из закладок в работу с вкладками.
+  const handleNewTab = () => {
+    onNewTab();
+    if (mode === 'bookmarks') setMode('tabs');
+  };
 
   const REORDER_CONFIRM_MS = 3000;
   const openTimeoutRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1591,7 +1601,7 @@ export default function Sidebar({
             className="no-drag"
             title="Новая вкладка (ПКМ — инкогнито / восстановить)"
             style={floatingIconBtn}
-            onClick={onNewTab}
+            onClick={handleNewTab}
             onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
@@ -1989,7 +1999,7 @@ export default function Sidebar({
             flex: 1, display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 12px', color: 'var(--text-muted)', cursor: 'default',
           }}
-          onClick={onNewTab}
+          onClick={handleNewTab}
           onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
