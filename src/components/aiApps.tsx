@@ -1108,12 +1108,36 @@ function CalcApp() {
 
   const clear = () => { setDisplay('0'); setAcc(null); setOp(null); setWaiting(false); setExpr('') }
   const negate = () => setDisplay(fmtCalc(-parseFloat(display)))
-  const percent = () => setDisplay(fmtCalc(parseFloat(display) / 100))
-  // Только для клавиатуры (кнопки такой на поле нет): стереть последний введённый символ.
+  // ⚠️ Процент считается ОТ ПЕРВОГО операнда, когда идёт сложение или вычитание: «50 + 10 %»
+  // это 55, а не 50,1. Раньше здесь было безусловное деление на 100, из-за чего единственный
+  // ходовой сценарий процента давал бессмыслицу — «проценты не работают» ровно про это.
+  // При умножении/делении и без начатого действия процент остаётся долей (10 % → 0,1): «50 × 10 %»
+  // это половина от пятидесяти, и деление на сто здесь как раз верно. Так же ведут себя
+  // калькуляторы iOS и Windows.
+  const percent = () => {
+    const cur = parseFloat(display)
+    const share = cur / 100
+    const rel = acc !== null && (op === '+' || op === '−') ? acc * share : share
+    setDisplay(fmtCalc(rel))
+    setWaiting(false) // посчитанный процент — уже введённый операнд, следующая цифра его не затрёт
+  }
+
+  // Стереть последний символ (клавиша Backspace; кнопки на поле нет — сетка занята).
   const backspace = () => {
-    if (waiting || display === 'Ошибка') return
+    if (display === 'Ошибка') return
+    // ⚠️ Только что нажали оператор — стирать в показанном числе нечего (оно уже принято как
+    // первый операнд). Осмысленное действие здесь одно: ОТМЕНИТЬ оператор, нажатый по ошибке.
+    // Прежде эта ветка просто выходила молча, и клавиша выглядела нерабочей.
+    if (waiting && op !== null) {
+      setOp(null)
+      setWaiting(false)
+      setExpr('')
+      return
+    }
+    // После «=» результат тоже можно править — это обычное число на дисплее.
     const next = display.slice(0, -1)
     setDisplay(next === '' || next === '-' ? '0' : next)
+    setWaiting(false)
   }
 
   // Ввод с клавиатуры: цифры (верхний ряд И намбар дают одинаковый e.key), операторы * / + -,
@@ -1201,7 +1225,14 @@ function CalcApp() {
               style={{
                 gridColumn: k.span ? `span ${k.span}` : undefined,
                 height: 42, border: 'none', borderRadius: 'var(--radius-pill)', padding: 0,
-                fontSize: 'var(--fs-lg)', fontWeight: 500, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                // ⚠️ Знаки действий крупнее и жирнее цифр. «÷» и «+» в одном кегле различаются
+                // одной точкой над чертой и снизу — на бегу это один и тот же значок, о чём и
+                // была жалоба. Размер тут работает лучше цвета: цвет у операторов уже занят
+                // акцентом, и вторым признаком его не сделать (см. цветовой закон в CLAUDE.md).
+                fontSize: k.kind === 'op' ? 'var(--fs-xl)' : 'var(--fs-lg)',
+                fontWeight: k.kind === 'op' ? 600 : 500,
+                lineHeight: 1,
+                fontFamily: 'var(--font-sans)', cursor: 'pointer',
                 background: activeOp ? 'var(--accent-soft)'
                   : k.kind === 'op' ? 'var(--accent)' : 'var(--surface-sunken)',
                 color: activeOp ? 'var(--accent)'
