@@ -30,6 +30,8 @@ import FolderGlyph from './FolderGlyph';
 interface Props {
   /** Открыть закладку. Что делать с режимом дальше — решает сайдбар (см. onOpened). */
   onOpen: (url: string) => void;
+  /** Цветной сайдбар: плашки берут ту же подкраску, что и в режиме вкладок. */
+  tinted: boolean;
 }
 
 // Плоский обход дерева нужен, чтобы найти узел по id, не таская ссылки на родителей.
@@ -42,7 +44,7 @@ function findNode(nodes: BookmarkNode[], id: number): BookmarkNode | null {
   return null;
 }
 
-export default function SidebarBookmarks({ onOpen }: Props) {
+export default function SidebarBookmarks({ onOpen, tinted }: Props) {
   const [tree, setTree] = useState<BookmarkNode[]>([]);
   // null — корень. Выбранная папка живёт здесь, а не в адресе/сессии: это состояние взгляда,
   // а не данных, и переживать перезапуск ему незачем.
@@ -181,7 +183,7 @@ export default function SidebarBookmarks({ onOpen }: Props) {
           ⚠️ У каждой ячейки ЕСТЬ ПОДПИСЬ. Раньше здесь стояли одинаковые контурные значки без
           имён — по такой сетке нельзя ответить даже на вопрос «что это за папки», не то что
           выбрать нужную. Раскладка — как на домашнем экране: значок и подпись под ним. */}
-      <div className="no-drag" style={{ ...PLATE, padding: 8, marginBottom: 10 }}>
+      <div className="no-drag" style={{ ...PLATE, ...(tinted ? TINTED_PLATE : null), padding: 8, marginBottom: 10 }}>
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, alignItems: 'start',
         }}>
@@ -244,7 +246,7 @@ export default function SidebarBookmarks({ onOpen }: Props) {
           <FolderGlyph title={dragNode.title} size={40} />
         ) : (
           <div style={{
-            ...PLATE, padding: '6px 10px', opacity: 0.95,
+            ...PLATE, ...(tinted ? TINTED_PLATE : null), padding: '6px 10px', opacity: 0.95,
             display: 'flex', alignItems: 'center', gap: 8, boxShadow: 'var(--shadow-card)',
           }}>
             <BookmarkIcon node={dragNode} />
@@ -535,4 +537,16 @@ function FolderCell({ nodeId, label, active, onClick, all }: {
 const PLATE: React.CSSProperties = {
   ...islandPlate,
   borderRadius: 'var(--radius-card)',
+};
+
+// ⚠️ Повторяет tintedInnerPlate из Sidebar.tsx (он там приватный, как и innerPlate выше).
+// Сетка папок в закладках и сетка закреплённых вкладок — одна и та же область экрана с разным
+// содержимым, и выглядеть при цветном сайдбаре они обязаны одинаково: разный вид читался бы как
+// разные сущности, хотя это один ряд иконок.
+const TINTED_PLATE: React.CSSProperties = {
+  background: 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)',
+  backdropFilter: 'none',
+  WebkitBackdropFilter: 'none',
+  border: '1px solid color-mix(in srgb, var(--sidebar-tint) 12%, transparent)',
+  boxShadow: 'none',
 };

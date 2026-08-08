@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Volume2, VolumeX } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import { glassPlate, islandPlate } from '../styles/island';
@@ -1474,13 +1474,20 @@ export default function Sidebar({
   // Зоны дропа для детей группы. Собраны здесь, потому что и tabDragStart, и разбор результата
   // (applyZoneDrop) уже живут в этой области видимости; компонентам групп уезжает готовый набор.
   // useMemo — чтобы объект не пересоздавался на каждый рендер и не дёргал хук внутри групп.
-  const childDragZone = useMemo<ChildDragZone>(() => ({
+  // ⚠️ БЕЗ useMemo, и это не небрежность. С пустым списком зависимостей объект замыкал
+  // applyZoneDrop ПЕРВОГО рендера, а тот, в свою очередь, — список вкладок первого рендера,
+  // то есть пустой (вкладки приезжают из main позже). Дальше всё выглядело исправным:
+  // подсветку рисует main по реальному курсору, зона возвращалась верная, а applyZoneDrop
+  // не находил вкладку по id в пустом массиве и молча не делал ничего. Ровно поэтому жест
+  // работал вне групп и не работал внутри: снаружи применяется свежий обработчик, внутри —
+  // замороженный. Пересоздание объекта на каждый рендер безвредно: он живёт только внутри
+  // обработчиков и ни в один список зависимостей не входит.
+  const childDragZone: ChildDragZone = {
     start: () => { void window.oblako.tabDragStart(); },
     finish: (e: DragEndEvent) => finishDrag().then((res) => applyZoneDrop(e, res)),
     // Отмена (Esc, потеря указателя): зоны надо погасить, но исход не применять.
     cancel: () => { void window.oblako.tabDragEnd().catch(() => {}); },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), []);
+  };
 
   const handleDragStart = (e: DragStartEvent) => {
     setDragActiveId(e.active.id as string);
@@ -1774,7 +1781,7 @@ export default function Sidebar({
             onClick={handleNewTab}
             onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = tinted ? 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)' : 'var(--surface)'; }}
           ><Plus size={17} /></button>
           <button className="icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
           <button className="icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
@@ -1815,7 +1822,7 @@ export default function Sidebar({
           title="Свернуть панель"
           style={{ ...floatingIconBtn, ...(tinted ? tintedInnerPlate : null) }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = tinted ? 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)' : 'var(--surface)'; }}
         >
           <PanelLeft size={17} />
         </button>
@@ -1827,7 +1834,7 @@ export default function Sidebar({
       <ModeSwitch mode={mode} onChange={setMode} tinted={tinted} />
 
       {mode === 'bookmarks' && (
-        <SidebarBookmarks onOpen={(url) => {
+        <SidebarBookmarks tinted={tinted} onOpen={(url) => {
           void window.oblako.createTab(url);
           // ⚠️ Возврат к вкладкам сразу после открытия — ЗДЕСЬ, одной строкой, намеренно: в
           // режиме закладок не видно ни полосы вкладок, ни того, какая активна, и без возврата
@@ -2193,7 +2200,7 @@ export default function Sidebar({
           onClick={handleNewTab}
           onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = tinted ? 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)' : 'var(--surface)'; }}
         >
           <Plus size={17} />
           <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>Новая вкладка</span>
