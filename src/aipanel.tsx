@@ -487,10 +487,16 @@ function AiPanel() {
               (react-markdown нормально переживает промежуточный незакрытый синтаксис), что и
               в поповере. */}
           {sending && (
+            // ⚠️ Ровно та же геометрия, что у ГОТОВОГО ответа выше: без подложки, во всю ширину,
+            // те же отступы. Раньше здесь был серый пузырь на 82% ширины, и в момент завершения
+            // генерации ответ прыгал — менял ширину, отступы, скругление и фон разом. Читалось
+            // так, будто подложка «спадает» с готового ответа. Правило простое: печатающийся
+            // ответ и завершённый — это один и тот же ответ, отличаться им нечем.
             <div style={{
-              alignSelf: 'flex-start', maxWidth: '82%',
-              padding: '8px 12px', borderRadius: 14,
-              background: 'var(--surface-sunken)', color: 'var(--text-strong)',
+              alignSelf: 'stretch', maxWidth: '100%',
+              padding: '2px 0', borderRadius: 0,
+              background: 'transparent', color: 'var(--text-strong)',
+              overflowWrap: 'anywhere',
             }}>
               {streamedText.length > 0 ? (
                 <ReactMarkdown components={markdownComponents}>{streamedText}</ReactMarkdown>
