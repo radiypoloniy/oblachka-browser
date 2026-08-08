@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, type Session } from 'electron';
 
 // Как браузер представляется сайтам.
 //
@@ -42,4 +42,62 @@ export function chromeUserAgent(): string {
 // продолжают работать как раньше — они ставятся на конкретный webContents.
 export function applyChromeUserAgent(): void {
   app.userAgentFallback = chromeUserAgent();
+}
+
+// ─── Клиентские подсказки (Sec-CH-UA) ───────────────────────────────────────
+//
+// ВТОРАЯ, независимая от строки UA идентификация браузера. Замерено на живой машине
+// (эхо-сервер + один и тот же localhost-адрес):
+//   Edge      → sec-ch-ua: "Not=A?Brand";v="99", "Microsoft Edge";v="151", "Chromium";v="151"
+//               sec-ch-ua-mobile: ?0 | sec-ch-ua-platform: "Windows"
+//   Electron  → НИ ОДНОГО из трёх заголовков, ни с нашей подменой UA, ни без неё.
+// То есть подсказки гасит не applyChromeUserAgent(), их не шлёт сам Electron.
+//
+// Почему это чинить обязательно: мы представляемся строкой `Chrome/144.0.0.0`, а
+// настоящий Chrome шлёт эти заголовки на КАЖДЫЙ запрос с 2022 года. «Chrome, который
+// молчит про Sec-CH-UA» — это не Chrome, и проверка на встроенный браузер ловит нас
+// раньше любого JS. Живой симптом: вход в аккаунт Google/YouTube отвечает «This browser
+// or app may not be secure» при том, что сам сайт работает нормально.
+//
+// ⚠️ Мобильность и платформа выводятся из UA САМОГО запроса, а не из process.platform:
+// веб-приложения панели и графа ставят себе мобильный UA на конкретный webContents
+// (MOBILE_UA в WebAppManager.ts), и жёсткое "Windows" в подсказках противоречило бы
+// строке UA у них — а расхождение этих двух источников само по себе признак подделки.
+function brandList(): string {
+  const major = process.versions.chrome.split('.')[0];
+  // Порядок и GREASE-бренд взяты те же, что генерирует наш собственный движок для
+  // navigator.userAgentData (замерено: `Not(A:Brand` v8, `Chromium` v144) — так заголовок
+  // и JS-сторона расходятся минимально. `Google Chrome` добавлен, чтобы подсказки
+  // соглашались со строкой UA, которая уже называет нас Chrome.
+  return `"Not(A:Brand";v="8", "Chromium";v="${major}", "Google Chrome";v="${major}"`;
+}
+
+function platformHint(): string {
+  switch (process.platform) {
+    case 'darwin':
+      return 'macOS';
+    case 'linux':
+      return 'Linux';
+    default:
+      return 'Windows';
+  }
+}
+
+// Вешается на сессию один раз. onBeforeSendHeaders свободен: адблок использует только
+// onBeforeRequest/onHeadersReceived (проверено по @ghostery/adblocker-electron), так что
+// мы ничей обработчик не вытесняем — но второго слушателя здесь заводить нельзя, Electron
+// держит на сессию ровно один.
+export function applyClientHints(sess: Session): void {
+  sess.webRequest.onBeforeSendHeaders((details, callback) => {
+    const headers = details.requestHeaders;
+    // Если Electron когда-нибудь начнёт слать подсказки сам — не дублируем и не спорим с ним.
+    if (headers['Sec-CH-UA'] === undefined && headers['sec-ch-ua'] === undefined) {
+      const ua = headers['User-Agent'] ?? headers['user-agent'] ?? '';
+      const mobile = /\bMobile\b/.test(ua);
+      headers['Sec-CH-UA'] = brandList();
+      headers['Sec-CH-UA-Mobile'] = mobile ? '?1' : '?0';
+      headers['Sec-CH-UA-Platform'] = `"${mobile ? 'Android' : platformHint()}"`;
+    }
+    callback({ requestHeaders: headers });
+  });
 }

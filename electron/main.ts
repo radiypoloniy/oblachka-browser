@@ -1,7 +1,7 @@
 import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard, webContents, nativeImage, screen, nativeTheme } from 'electron';
 import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
-import { applyChromeUserAgent } from './BrowserIdentity';
+import { applyChromeUserAgent, applyClientHints } from './BrowserIdentity';
 import { showSplash, closeSplash } from './SplashWindow';
 import { registerWindow, contextFromSender, contextForWindow, broadcastToChrome, allContexts, mainContext } from './WindowRegistry';
 import type { WindowRole } from './WindowRegistry';
@@ -444,6 +444,11 @@ function wireSharedSessions(): void {
   // Орфография (ru+en): одна сессия на все вкладки — одного вызова достаточно.
   session.defaultSession.setSpellCheckerLanguages(['ru', 'en-US']);
 
+  // Клиентские подсказки Sec-CH-UA (см. BrowserIdentity.ts): Electron их не шлёт вовсе,
+  // а без них наша строка UA «Chrome/144» противоречит поведению настоящего Chrome и вход
+  // в аккаунт Google отвечает «This browser or app may not be secure».
+  applyClientHints(session.defaultSession);
+
   // Тема, известная main'у ДО того, как хром успеет её прислать. Без этого поповер, созданный
   // раньше первого CHROME_THEME_SET, открывался бы светлым в тёмной теме — видимая вспышка.
   const startPrefs = currentThemePrefs();
@@ -493,6 +498,7 @@ function wireSharedSessions(): void {
   // дефолтной, чтобы приватный режим был НЕ хуже обычного: адблок, загрузки, разрешения. Прокси
   // VPN — в applyVpnProxy (обязательно, иначе инкогнито-трафик тёк бы мимо VPN/kill-switch).
   incognitoSession = session.fromPartition(INCOGNITO_PARTITION);
+  applyClientHints(incognitoSession); // приватная вкладка обязана выглядеть НЕ подозрительнее обычной
   adblock.attachSession(incognitoSession);
   downloads.observeSession(incognitoSession);
   permissions.attach(incognitoSession, onPermissionRequest);
