@@ -732,6 +732,30 @@ export default function Toolbar({
     if (!query.trim()) { closeDropdown('empty-query'); return; }
     const q = query.toLowerCase();
 
+    // ⚠️ Дропдаун открывается СРАЗУ, до всяких ожиданий. Раньше он ждал ОБЕ загрузки —
+    // историю и живые подсказки поисковика, — а сетевой части отведено 3 секунды таймаута
+    // (SearchSuggestFetcher.ts). На медленной сети это означало пустоту под строкой на всё
+    // это время: человек печатает, а подсказок нет вовсе. Отсюда «дропдаун появляется
+    // слишком поздно».
+    //
+    // Показываем то, что известно без единого запроса: «искать это в интернете». Строка и так
+    // будет первой в готовом списке — то есть провизорный вид не мигает чем-то посторонним, он
+    // просто беднее. Как только приедут история и подсказки, список заменится целиком ниже.
+    //
+    // ⚠️ Выделения тут нет (setSelectedIdx(-1)): Enter в этот момент обязан вести туда же, куда
+    // вёл бы без дропдауна вовсе, — на набранное. Иначе исход нажатия зависел бы от того,
+    // успела ли долететь сеть.
+    const provisional: SuggestItem[] = [{
+      kind: 'search',
+      label: `Искать: ${query}`,
+      url: getSearchEngine(searchEngineId).buildUrl(query),
+    }];
+    setSuggestions(provisional);
+    setSelectedIdx(-1);
+    openDropdown();
+    void window.oblako.setSuggestDropdownItems(provisional);
+    void window.oblako.setSuggestDropdownHighlight(-1);
+
     // Заход 10: история и живые suggest-подсказки — параллельно, каждая изолирована через
     // Promise.allSettled (не Promise.all — сбой ОДНОЙ не должен обрушить ДРУГУЮ). fetchSuggestions
     // сама по себе никогда не бросает (см. SearchSuggestFetcher.ts — любая ошибка/таймаут/отмена
