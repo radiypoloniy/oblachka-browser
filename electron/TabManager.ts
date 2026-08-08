@@ -1447,7 +1447,7 @@ export class TabManager {
         url,
         disposition === 'background-tab',
         disposition === 'new-window',
-        false, // наследование инкогнито сюда НЕ добавлено намеренно — отдельная правка, см. отчёт
+        this.tabMap.get(id)?.incognito ?? false, // приватная вкладка открывает приватную
         postBody,
       );
       // «Перешёл по ссылке с сайта X» — для новой вкладки источник это страница, которая её
@@ -1510,6 +1510,13 @@ export class TabManager {
     wc.on('context-menu', (_e, p) => {
       const items: MenuItemConstructorOptions[] = [];
       const engine = getSearchEngine(this.searchEngineId);
+      // ⚠️ Всё, что рождается ОТ ЭТОЙ страницы, наследует её приватность. Замерено на стенде
+      // (куки как признак сессии): раньше ссылка, открытая из приватной вкладки, присылала куку
+      // ОБЫЧНОГО профиля — то есть попадала в дисковую сессию, писалась в историю и в автосейв.
+      // Для поиска по выделенному это особенно скверно: наружу уходил выделенный на приватной
+      // странице текст, да ещё и с записью в историю. Пункт «Открыть ссылку в инкогнито» ниже
+      // остаётся отдельным: он поднимает приватность из ОБЫЧНОЙ вкладки, а это другое действие.
+      const priv = this.tabMap.get(id)?.incognito ?? false;
 
       // ── Ссылка ──────────────────────────────────────────────────────────────
       if (p.linkURL) {
@@ -1519,7 +1526,7 @@ export class TabManager {
             // Источник новой вкладки — страница, где щёлкнули ссылку (тот же учёт, что в
             // setWindowOpenHandler): иначе правило «ссылки с хабра — в группу» не сработало бы
             // на самом частом способе открыть ссылку.
-            click: () => { this.#navFrom.set(this.createTab(p.linkURL, true), hostOfUrl(wc.getURL())); },
+            click: () => { this.#navFrom.set(this.createTab(p.linkURL, true, false, priv), hostOfUrl(wc.getURL())); },
           },
           // Окно создаёт main — TabManager про окна не знает (тот же приём, что у пункта
           // «Добавить в граф»: сюда приходит готовый колбэк).
@@ -1538,7 +1545,7 @@ export class TabManager {
           items.push({
             label: 'Открыть ссылку в split',
             click: () => {
-              const newId = this.createTab(p.linkURL, true); // background — не перебивать фокус до enterSplit
+              const newId = this.createTab(p.linkURL, true, false, priv); // background — не перебивать фокус до enterSplit
               if (newId) this.enterSplit(newId); // activeId (текущая) → левая, newId → правая
             },
           });
@@ -1561,7 +1568,7 @@ export class TabManager {
         items.push(
           { label: 'Копировать картинку', click: () => wc.copyImageAt(p.x, p.y) },
           { label: 'Сохранить картинку как…', click: () => wc.downloadURL(p.srcURL) },
-          { label: 'Открыть картинку в новой вкладке', click: () => this.createTab(p.srcURL, true) },
+          { label: 'Открыть картинку в новой вкладке', click: () => this.createTab(p.srcURL, true, false, priv) },
         );
       }
 
@@ -1581,7 +1588,7 @@ export class TabManager {
           items.push({ type: 'separator' });
           items.push({
             label: `Поиск «${truncate(p.selectionText)}» в ${engine.name}`,
-            click: () => this.createTab(engine.buildUrl(p.selectionText)),
+            click: () => this.createTab(engine.buildUrl(p.selectionText), false, false, priv),
           });
         }
         // ── Правка своего текста локальной моделью ──────────────────────────
@@ -1623,7 +1630,7 @@ export class TabManager {
           { role: 'copy' },
           {
             label: `Поиск «${truncate(p.selectionText)}» в ${engine.name}`,
-            click: () => this.createTab(engine.buildUrl(p.selectionText)),
+            click: () => this.createTab(engine.buildUrl(p.selectionText), false, false, priv),
           },
         );
         if (this.onAiActionCb) {
