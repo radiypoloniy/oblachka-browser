@@ -5,7 +5,7 @@ import ModelsSection from '../ModelsSection';
 import SkillsSection from './SkillsSection';
 import {
   btnPrimary, btnGhost, EngineOption, SectionHeader, Subsection, CapsLabel,
-  LoadingNote, StatusCard, TextField, InputRow, fieldFlex,
+  StatusCard, StatusCardSkeleton, TextField, InputRow, fieldFlex,
 } from './kit';
 
 // ── Секция «AI» — ключ Gemini для фактчека ────────────────────────────────────
@@ -39,10 +39,11 @@ export default function AiSection() {
     await window.oblako.deleteAiKey();
   }
 
-  if (connected === null) {
-    return <LoadingNote />;
-  }
-
+  // ⚠️ Раньше здесь стоял ранний выход `return <LoadingNote />`, и это была главная причина
+  // рваной загрузки раздела: пока не ответит ОДИН запрос (статус ключа Gemini), не рисовалось
+  // НИЧЕГО — включая вложенные «Модели», SearXNG, перевод, историю и навыки. Раздел появлялся
+  // разом и тут же начинал дёргаться, потому что каждый вложенный блок догружался своим темпом.
+  // Теперь ждёт только та карточка, которой нечего показать; остальное монтируется сразу.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
       <SectionHeader title="AI — фактчек">
@@ -51,7 +52,7 @@ export default function AiSection() {
       </SectionHeader>
 
       {/* Статус */}
-      <StatusCard
+      {connected === null ? <StatusCardSkeleton /> : <StatusCard
         icon={connected
           ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
           : <KeyRound size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
@@ -64,10 +65,12 @@ export default function AiSection() {
             <Trash2 size={14} /> Удалить
           </button>
         )}
-      />
+      />}
 
-      {/* Ввод ключа — только пока не подключено; чтобы сменить ключ, сначала «Удалить». */}
-      {!connected && (
+      {/* Ввод ключа — только пока не подключено; чтобы сменить ключ, сначала «Удалить».
+          ⚠️ Сравнение строгое с false, а не `!connected`: пока статус не приехал (null), форму
+          показывать нельзя — она мелькнула бы и исчезла у того, у кого ключ уже сохранён. */}
+      {connected === false && (
         <div>
           <CapsLabel>Gemini API-ключ</CapsLabel>
           <InputRow>
@@ -132,10 +135,7 @@ function SearxngSection() {
     await window.oblako.deleteSearxngConfig();
   }
 
-  if (configured === null) {
-    return <LoadingNote />;
-  }
-
+  // Тот же приём, что у блока Gemini выше: ждёт только карточка статуса, не весь блок.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <SectionHeader title="SearXNG — веб-поиск для AI">
@@ -144,7 +144,7 @@ function SearxngSection() {
       </SectionHeader>
 
       {/* Статус */}
-      <StatusCard
+      {configured === null ? <StatusCardSkeleton /> : <StatusCard
         icon={configured
           ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
           : <Search size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
@@ -157,10 +157,10 @@ function SearxngSection() {
             <Trash2 size={14} /> Удалить
           </button>
         )}
-      />
+      />}
 
       {/* Ввод — только пока не настроено; чтобы сменить, сначала «Удалить» (тот же приём, что у Gemini). */}
-      {!configured && (
+      {configured === false && (
         <div>
           <CapsLabel>Адрес сервера и токен</CapsLabel>
           {/* Формат поля токена — «логин:пароль» (HTTP Basic), не API-ключ/Bearer: self-hosted

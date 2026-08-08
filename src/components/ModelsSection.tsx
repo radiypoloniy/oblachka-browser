@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
-import { EngineOption, btnPrimary, btnGhost } from './settings/kit';
+import { EngineOption, StatusCardSkeleton, btnPrimary, btnGhost } from './settings/kit';
 
 function gb(bytes: number): string {
   return (bytes / 1e9).toFixed(1);
@@ -132,8 +132,32 @@ export default function ModelsSection() {
     });
   }
 
+  // ⚠️ Пока список моделей и каталог едут (замерено ~600 мс), блок рисует ту же рамку, что и
+  // после загрузки: тот же отступ, та же верхняя линия, тот же заголовок с описанием. Меняется
+  // только содержимое ниже. Прежде здесь была строка «Загрузка…» высотой в текст, и раздел
+  // подпрыгивал, когда на её место разом вставал весь блок моделей, — это и был видимый рывок
+  // при открытии раздела AI (остальные блоки успевают за 150 мс и глазом не ловятся).
+  // Заголовок дублируется намеренно: вынести его наружу значило бы разнести один блок по двум
+  // местам ради экономии шести строк.
   if (installed === null || catalog === null) {
-    return <div style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 12,
+        paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
+      }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+            Локальные модели
+          </h3>
+          <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+            Модель для AI-перевода, чата и остальных функций хранится и считается на этом устройстве.
+            Без хотя бы одной установленной модели остальные AI-функции не работают.
+          </p>
+        </div>
+        <StatusCardSkeleton />
+        <StatusCardSkeleton />
+      </div>
+    );
   }
 
   const bySize = (a: { sizeBytes: number }, b: { sizeBytes: number }) => a.sizeBytes - b.sizeBytes;

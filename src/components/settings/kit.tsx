@@ -153,6 +153,31 @@ export function InlineHint({ children }: { children: React.ReactNode }) {
 // Иконка + заголовок + подпись + действия справа. flexWrap/minWidth — чтобы на узкой ширине
 // кнопки уходили на строку ниже, а не вылезали за карточку (баг, который раньше чинился
 // в каждой ручной копии отдельно).
+// Место карточки статуса, пока её содержимое ещё едет из main. ⚠️ Повторяет геометрию
+// StatusCard один в один (та же плашка, те же отступы, тот же радиус) — в этом весь смысл:
+// раздел не должен подпрыгивать, когда заглушка сменится настоящей карточкой. Раньше на её
+// месте была строка «Загрузка…» высотой в текст, и каждый ответ из main дёргал раскладку.
+// Без мерцания и бегущих полос: их пришлось бы анимировать, а стеклянная система такого не
+// прощает (см. CLAUDE.md про backdrop-filter).
+export function StatusCardSkeleton() {
+  const bar = (w: number, h: number): React.CSSProperties => ({
+    width: w, height: h, borderRadius: 4, background: 'var(--surface-sunken)',
+  });
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', flexWrap: 'wrap',
+      ...islandPlate,
+      borderRadius: 'var(--radius-sm)',
+    }} aria-busy="true">
+      <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--surface-sunken)', flex: 'none' }} />
+      <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+        <div style={bar(120, 13)} />
+        <div style={{ ...bar(230, 11), marginTop: 6 }} />
+      </div>
+    </div>
+  );
+}
+
 export function StatusCard({ icon, title, subtitle, actions }: {
   icon: React.ReactNode; title: React.ReactNode; subtitle?: React.ReactNode; actions?: React.ReactNode;
 }) {
