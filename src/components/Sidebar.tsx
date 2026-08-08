@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Volume2, VolumeX } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import { glassPlate, islandPlate } from '../styles/island';
@@ -664,18 +664,20 @@ function SortableCollapsedItem({ id, children }: { id: string; children: React.R
 // (то же состояние group.collapsed, что и в развёрнутой панели, — одна правда, и она уже
 // переживает перезапуск). Тон острова: нейтральный, если цвет папки не задан, иначе — бледная
 // заливка её цветом, чтобы принадлежность читалась без подписи.
-function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTabMenu }: {
+function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTabMenu, zone }: {
   group: GroupNode;
   tabMap: Map<string, TabState>;
   activeId: string;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onTabMenu: (id: string) => void;
+  zone: ChildDragZone;
 }) {
   const innerSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const {
-    effectiveChildIds, effectiveChildren, dragChild, setChildDragId, handleChildDragEnd,
-  } = useGroupChildOrder(group);
+    effectiveChildIds, effectiveChildren, dragChild,
+    handleChildDragStart, handleChildDragCancel, handleChildDragEnd,
+  } = useGroupChildOrder(group, zone);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `group:${group.id}`,
   });
@@ -739,10 +741,12 @@ function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTa
           <DndContext
             sensors={innerSensors}
             collisionDetection={closestCenter}
-            modifiers={[restrictToVerticalAxis]}
-            onDragStart={(e) => setChildDragId(e.active.id as string)}
+            // ⚠️ restrictToVerticalAxis снят намеренно: он запирал призрак в колонке, и утащить
+            // вкладку из папки на страницу было физически некуда — жест выглядел невозможным. Порядок
+            // внутри папки считает verticalListSortingStrategy, модификатор влиял лишь на картинку.
+            onDragStart={(e) => handleChildDragStart(e.active.id as string)}
             onDragEnd={handleChildDragEnd}
-            onDragCancel={() => setChildDragId(null)}
+            onDragCancel={handleChildDragCancel}
           >
             <SortableContext items={effectiveChildIds} strategy={verticalListSortingStrategy}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
@@ -780,7 +784,19 @@ function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTa
 // локальный порядок, его сверка с приходящим из main и отправка нового порядка туда же.
 // Вынесено в хук, когда сортировка внутри папки понадобилась и в узкой полосе: две копии
 // этой машинки разъехались бы при первой же правке.
-function useGroupChildOrder(group: GroupNode) {
+// Зоны дропа для перетаскивания ВНУТРИ группы. Раньше их не было вовсе: у детей группы свой
+// DndContext, и его onDragStart только запоминал id — отслеживание зон на стороне main никто не
+// включал. Наружу это выглядело так, будто вкладка из папки умеет только меняться местами с
+// соседкой: ни подсветки, ни выноса в окно, ни разделения экрана. Причём молча — жест
+// отрабатывал, просто ничего не происходило.
+interface ChildDragZone {
+  start: () => void;
+  /** true — дроп забрала зона (сплит/новое окно/передача), перестановку делать не нужно. */
+  finish: (e: DragEndEvent) => Promise<boolean>;
+  cancel: () => void;
+}
+
+function useGroupChildOrder(group: GroupNode, zone: ChildDragZone) {
   const [localChildOrder, setLocalChildOrder] = useState<string[] | null>(null);
   // Своя пара state+DragOverlay на каждый вложенный DndContext — верхнеуровневый DragOverlay
   // не видит drag, стартовавший в НЁМ, dnd-kit не пробрасывает состояние между независимыми
@@ -819,22 +835,41 @@ function useGroupChildOrder(group: GroupNode) {
     ? effectiveChildren.find((c) => nodeToTopId(c) === childDragId) ?? null
     : null;
 
+  const handleChildDragStart = (id: string) => {
+    setChildDragId(id);
+    zone.start();
+  };
+
+  const handleChildDragCancel = () => {
+    setChildDragId(null);
+    zone.cancel();
+  };
+
   const handleChildDragEnd = (e: DragEndEvent) => {
     // Сброс ПЕРВЫМ, до любых ранних return — иначе drop без реального перемещения
     // (over совпал с active, или вне списка) оставит childDragId висеть, а вместе с ним
     // призрак и погашенный (opacity:0) оригинал.
     setChildDragId(null);
     const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    const from = effectiveChildIds.indexOf(active.id as string);
-    const to   = effectiveChildIds.indexOf(over.id as string);
-    if (from < 0 || to < 0 || from === to) return;
-    const newOrder = arrayMove(effectiveChildIds, from, to);
-    setLocalChildOrder(newOrder);
-    void window.oblako.reorderGroupChildren(group.id, newOrder);
+    // ⚠️ Сначала спрашиваем ЗОНУ и только потом переставляем. Зону считает main по реальному
+    // курсору, ответ приходит промисом — а перестановка синхронна, и сделай мы её первой,
+    // вкладка успела бы переехать в списке, чтобы через миг уехать в другое окно.
+    void zone.finish(e).then((takenByZone) => {
+      if (takenByZone) return;
+      if (!over || active.id === over.id) return;
+      const from = effectiveChildIds.indexOf(active.id as string);
+      const to   = effectiveChildIds.indexOf(over.id as string);
+      if (from < 0 || to < 0 || from === to) return;
+      const newOrder = arrayMove(effectiveChildIds, from, to);
+      setLocalChildOrder(newOrder);
+      void window.oblako.reorderGroupChildren(group.id, newOrder);
+    });
   };
 
-  return { effectiveChildIds, effectiveChildren, dragChild, setChildDragId, handleChildDragEnd };
+  return {
+    effectiveChildIds, effectiveChildren, dragChild,
+    setChildDragId, handleChildDragStart, handleChildDragCancel, handleChildDragEnd,
+  };
 }
 
 // Блок группы: заголовок (drag handle для внешнего DndContext)
@@ -850,16 +885,18 @@ interface GroupBlockProps {
   onExitSplit: (tabId: string) => void;
   renameGroupId: string | null;
   setRenameGroupId: (id: string | null) => void;
+  zone: ChildDragZone;
 }
 
 function SortableGroupBlock({
   group, tabMap, activeId, onSelect, onClose, onContextMenu,
-  onSplit, onExitSplit, renameGroupId, setRenameGroupId,
+  onSplit, onExitSplit, renameGroupId, setRenameGroupId, zone,
 }: GroupBlockProps) {
   const innerSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const {
-    effectiveChildIds, effectiveChildren, dragChild, setChildDragId, handleChildDragEnd,
-  } = useGroupChildOrder(group);
+    effectiveChildIds, effectiveChildren, dragChild,
+    handleChildDragStart, handleChildDragCancel, handleChildDragEnd,
+  } = useGroupChildOrder(group, zone);
   const [renameValue, setRenameValue] = useState(group.label);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const isRenaming = renameGroupId === group.id;
@@ -984,10 +1021,12 @@ function SortableGroupBlock({
         <DndContext
           sensors={innerSensors}
           collisionDetection={closestCenter}
-          modifiers={[restrictToVerticalAxis]}
-          onDragStart={(e) => setChildDragId(e.active.id as string)}
+          // ⚠️ restrictToVerticalAxis снят намеренно: он запирал призрак в колонке, и утащить
+          // вкладку из папки на страницу было физически некуда — жест выглядел невозможным. Порядок
+          // внутри папки считает verticalListSortingStrategy, модификатор влиял лишь на картинку.
+          onDragStart={(e) => handleChildDragStart(e.active.id as string)}
           onDragEnd={handleChildDragEnd}
-          onDragCancel={() => setChildDragId(null)}
+          onDragCancel={handleChildDragCancel}
         >
           <SortableContext items={effectiveChildIds} strategy={verticalListSortingStrategy}>
             <div style={{ paddingLeft: 14, paddingBottom: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1390,6 +1429,17 @@ export default function Sidebar({
   const pinnedIds = pinned.map((t) => t.id);
   const openIds = (localOpenOrder ?? topLevelOpenIds).filter((id) => !effectivePinnedIds.has(id));
 
+  // Зоны дропа для детей группы. Собраны здесь, потому что и tabDragStart, и разбор результата
+  // (applyZoneDrop) уже живут в этой области видимости; компонентам групп уезжает готовый набор.
+  // useMemo — чтобы объект не пересоздавался на каждый рендер и не дёргал хук внутри групп.
+  const childDragZone = useMemo<ChildDragZone>(() => ({
+    start: () => { void window.oblako.tabDragStart(); },
+    finish: (e: DragEndEvent) => finishDrag().then((res) => applyZoneDrop(e, res)),
+    // Отмена (Esc, потеря указателя): зоны надо погасить, но исход не применять.
+    cancel: () => { void window.oblako.tabDragEnd().catch(() => {}); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), []);
+
   const handleDragStart = (e: DragStartEvent) => {
     setDragActiveId(e.active.id as string);
     // Зоны дропа поверх страницы и слежение за курсором — на стороне main: нативная вью страницы
@@ -1626,6 +1676,7 @@ export default function Sidebar({
               {effectiveNodes.map((node) => (
                 node.type === 'group' ? (
                   <CollapsedGroupIsland
+                    zone={childDragZone}
                     key={node.id}
                     group={node} tabMap={tabMap} activeId={activeId}
                     onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
@@ -1821,6 +1872,7 @@ export default function Sidebar({
                 return (
                   <SortableGroupBlock
                     key={node.id}
+                    zone={childDragZone}
                     group={node}
                     tabMap={tabMap}
                     activeId={activeId}
