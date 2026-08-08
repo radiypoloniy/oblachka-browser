@@ -1,5 +1,5 @@
 import { WebContentsView, BrowserWindow, Menu, clipboard, net } from 'electron';
-import type { MenuItemConstructorOptions, WebContents } from 'electron';
+import type { MenuItemConstructorOptions, PostBody, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
@@ -895,7 +895,16 @@ export class TabManager {
 
   // ── Создание новой вкладки с реальной страницей ──
   // background=true: вкладка создаётся в фоне, без переключения (средний клик по ссылке).
-  createTab(rawUrl?: string, background = false, ephemeral = false, incognito = false): string {
+  // postBody — тело формы, отправленной с target=_blank (см. setWindowOpenHandler). Без него
+  // POST вырождается в GET, и точка входа платежа, не получив данных заказа, не создаёт
+  // платёжную сессию и возвращает человека в магазин — см. разбор там же.
+  createTab(
+    rawUrl?: string,
+    background = false,
+    ephemeral = false,
+    incognito = false,
+    postBody?: PostBody,
+  ): string {
     const id = randomUUID();
     const view = new WebContentsView({
       webPreferences: {
@@ -919,7 +928,17 @@ export class TabManager {
     this.wirePageEvents(id, view);
 
     const target = this.resolveInput(rawUrl ?? 'about:blank');
-    if (target !== 'about:blank') view.webContents.loadURL(target);
+    if (target !== 'about:blank') {
+      // Content-Type обязателен вместе с телом: без него сервер не разберёт поля формы, и
+      // отсутствие данных будет неотличимо от прежнего GET.
+      view.webContents.loadURL(target, postBody
+        ? {
+          postData: postBody.data,
+          extraHeaders: 'Content-Type: ' + postBody.contentType
+            + (postBody.boundary ? '; boundary=' + postBody.boundary : ''),
+        }
+        : undefined);
+    }
 
     if (background) {
       this.onChange(); // показываем новую вкладку в сайдбаре без переключения
@@ -1395,7 +1414,7 @@ export class TabManager {
 
     // Политика окон: target=_blank / window.open -> НОВАЯ ВКЛАДКА, не окно — КРОМЕ настоящих
     // попапов (см. ниже). disposition='background-tab' = средний клик/Ctrl+клик → фон (стандарт браузеров).
-    wc.setWindowOpenHandler(({ url, disposition, features }) => {
+    wc.setWindowOpenHandler(({ url, disposition, features, postBody }) => {
       // OAuth-попап (Google/Firebase и т.п.) открывается ИМЕННО так: window.open(url, name,
       // 'width=…,height=…') → disposition='new-window' + width/height в features. Это единственный
       // надёжный сигнал «это попап, а не просто открытие в новой вкладке» — обычные target=_blank/
@@ -1419,7 +1438,18 @@ export class TabManager {
           },
         };
       }
-      const openedId = this.createTab(url, disposition === 'background-tab', disposition === 'new-window');
+      // ⚠️ postBody передаём ОБЯЗАТЕЛЬНО. Chromium отдаёт его только когда окно открыто формой с
+      // target=_blank — а это и есть самый частый способ уйти на оплату. Прежде мы его роняли, и
+      // POST на точку входа платежа превращался в GET без полей заказа: шлюз не создавал сессию
+      // и возвращал человека в магазин. Симптом со стороны — «открылась новая вкладка, а в ней
+      // снова магазин, а не страница банка» (воспроизведено на стенде, оплата по СБП).
+      const openedId = this.createTab(
+        url,
+        disposition === 'background-tab',
+        disposition === 'new-window',
+        false, // наследование инкогнито сюда НЕ добавлено намеренно — отдельная правка, см. отчёт
+        postBody,
+      );
       // «Перешёл по ссылке с сайта X» — для новой вкладки источник это страница, которая её
       // открыла: своего предыдущего адреса у неё ещё нет.
       this.#navFrom.set(openedId, hostOfUrl(wc.getURL()));
