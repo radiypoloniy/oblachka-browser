@@ -851,18 +851,30 @@ function useGroupChildOrder(group: GroupNode, zone: ChildDragZone) {
     // призрак и погашенный (opacity:0) оригинал.
     setChildDragId(null);
     const { active, over } = e;
-    // ⚠️ Сначала спрашиваем ЗОНУ и только потом переставляем. Зону считает main по реальному
-    // курсору, ответ приходит промисом — а перестановка синхронна, и сделай мы её первой,
-    // вкладка успела бы переехать в списке, чтобы через миг уехать в другое окно.
-    void zone.finish(e).then((takenByZone) => {
-      if (takenByZone) return;
-      if (!over || active.id === over.id) return;
+
+    // ⚠️ ПОРЯДОК В СПИСКЕ ПРИМЕНЯЕТСЯ СИНХРОННО, а команда в main — уже после ответа о зоне.
+    // Это ровно тот урок, что записан в CLAUDE.md для верхнего уровня, и я его сначала
+    // проглядел: dnd-kit запускает анимацию приземления в тот же миг, когда обработчик вернул
+    // управление, и меряет исходный ряд ТАМ, ГДЕ ОН СЕЙЧАС. Дождись мы ответа о зоне — ряд ещё
+    // на старом месте, и вкладка на глазах уезжает обратно, хотя фактически перестановка прошла.
+    let newOrder: string[] | null = null;
+    if (over && active.id !== over.id) {
       const from = effectiveChildIds.indexOf(active.id as string);
       const to   = effectiveChildIds.indexOf(over.id as string);
-      if (from < 0 || to < 0 || from === to) return;
-      const newOrder = arrayMove(effectiveChildIds, from, to);
-      setLocalChildOrder(newOrder);
-      void window.oblako.reorderGroupChildren(group.id, newOrder);
+      if (from >= 0 && to >= 0 && from !== to) {
+        newOrder = arrayMove(effectiveChildIds, from, to);
+        setLocalChildOrder(newOrder);
+      }
+    }
+
+    void zone.finish(e).then((takenByZone) => {
+      if (takenByZone) {
+        // Дроп забрала зона (сплит/новое окно/передача) — показанный порядок откатываем:
+        // вкладка уезжает из списка целиком, переставлять её здесь незачем.
+        setLocalChildOrder(null);
+        return;
+      }
+      if (newOrder) void window.oblako.reorderGroupChildren(group.id, newOrder);
     });
   };
 
@@ -1156,10 +1168,35 @@ const NOISE_SVG =
   "%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E" +
   "%3Crect width='120' height='120' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E\")";
 
+// ⚠️ Градиент идёт по АКЦЕНТУ, подмешанному к поверхности, а не между двумя нейтралями.
+// Первая версия смешивала --surface и --surface-sunken — на светлой палитре это белый и почти
+// белый, то есть «те же цвета», о чём и был отзыв. Цвет обязан быть виден, иначе вся затея
+// бессмысленна: просили мягкий оттенок, сочетающийся со схемой, а не оттенок серого.
+//
+// ⚠️ Это осознанное отступление от правила «акцент только для активных состояний»: здесь он не
+// обозначает состояние, а задаёт настроение полосы, и держится на 5–12%, где читается как
+// подкрашенная бумага, а не как выделение. Активная вкладка остаётся заметно ярче — она берёт
+// акцент в полную силу, и спутать их нельзя. Меняете акцент — оттенок едет за ним сам.
+// color-mix берёт цвета из живых токенов, поэтому и палитра, и тёмная тема поддержаны даром.
 const tintedAside: React.CSSProperties = {
-  backgroundImage: `${NOISE_SVG}, linear-gradient(180deg, var(--surface) 0%, var(--surface-sunken) 100%)`,
+  backgroundImage:
+    `${NOISE_SVG}, linear-gradient(160deg,` +
+    ' color-mix(in srgb, var(--accent) 12%, var(--surface)) 0%,' +
+    ' color-mix(in srgb, var(--accent) 6%, var(--surface)) 45%,' +
+    ' color-mix(in srgb, var(--accent) 2%, var(--surface-sunken)) 100%)',
   backgroundRepeat: 'repeat, no-repeat',
   backgroundSize: '120px 120px, 100% 100%',
+};
+
+// ⚠️ Внутренние плашки при цветном сайдбаре становятся ПРОЗРАЧНЫМИ. Со своей заливкой они
+// выглядели наклеенными поверх цвета — особенно «Новая вкладка» внизу, о чём и был отзыв.
+// Тонкая граница остаётся: без неё кнопка теряет края и перестаёт читаться как кнопка.
+const tintedInnerPlate: React.CSSProperties = {
+  background: 'color-mix(in srgb, var(--accent) 5%, transparent)',
+  backdropFilter: 'none',
+  WebkitBackdropFilter: 'none',
+  border: '1px solid color-mix(in srgb, var(--accent) 12%, transparent)',
+  boxShadow: 'none',
 };
 
 const asideBase: React.CSSProperties = {
@@ -1647,7 +1684,7 @@ export default function Sidebar({
         >
           {pinned.length > 0 && (
             <div className="no-drag" style={{
-              ...innerPlate,
+              ...innerPlate, ...(tinted ? tintedInnerPlate : null),
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
               padding: '8px 6px', marginBottom: 10,
             }}>
@@ -1812,7 +1849,7 @@ export default function Sidebar({
         {/* Закреплённые: сетка favicon, tooltip с заголовком, без крестика.
             Плашка-обёртка — СНАРУЖИ SortableContext, сам dnd-контекст и ячейки не тронуты. */}
         {pinned.length > 0 && (
-          <div className="no-drag" style={{ ...innerPlate, padding: 8, marginBottom: 10 }}>
+          <div className="no-drag" style={{ ...innerPlate, ...(tinted ? tintedInnerPlate : null), padding: 8, marginBottom: 10 }}>
             {/* rect-, а не verticalList-стратегия: пины лежат сеткой с переносом строк, и
                 вертикальная стратегия расталкивала соседей по Y — не в ту сторону, куда
                 едет курсор. rectSortingStrategy считает по реальным прямоугольникам. */}
@@ -2143,7 +2180,7 @@ export default function Sidebar({
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
         <button className="no-drag" title="Новая вкладка (ПКМ — инкогнито / восстановить)"
           style={{
-            ...innerPlate,
+            ...innerPlate, ...(tinted ? tintedInnerPlate : null),
             flex: 1, display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 12px', color: 'var(--text-muted)', cursor: 'default',
           }}
