@@ -34,6 +34,11 @@ export interface NewTabSettings {
   // списком — у виджетов разные источники, разный ритм обновления и, главное, ПРОТИВОПОЛОЖНОЕ
   // значение цвета: рост курса доллара красят красным (рубль слабеет), рост биткоина — зелёным.
   crypto: { codes: string[] };
+  // Оформление САЙДБАРА, а не новой вкладки. Живёт здесь потому, что здесь уже стоит вся
+  // машинерия раздела «Интерфейс»: хранилище, живое применение событием и синхронизация между
+  // окнами через 'storage'. Заводить ради одного флага второй такой механизм — лишняя сущность.
+  // tinted — «цветной сайдбар»: мягкий вертикальный градиент плюс еле заметный шум.
+  sidebar: { tinted: boolean };
 }
 
 export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
@@ -48,6 +53,9 @@ export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
   weather: { show: false, city: '', units: 'c' },
   rates: { show: false, codes: ['USD', 'EUR'] },
   crypto: { codes: ['BTC', 'ETH'] },
+  // ⚠️ По умолчанию выключено — по той же причине, что и белый фон новой вкладки выше:
+  // навязанное оформление убирать дороже, чем включить желаемое.
+  sidebar: { tinted: false },
 };
 
 // Валюты, предлагаемые в настройках. Не весь список ЦБ (там ~40 позиций) — те, что осмысленно
@@ -150,6 +158,7 @@ function merge(raw: unknown): NewTabSettings {
     weather: { ...d.weather, ...(r.weather ?? {}) },
     rates: { ...d.rates, ...(r.rates ?? {}) },
     crypto: { ...d.crypto, ...(r.crypto ?? {}) },
+    sidebar: { ...d.sidebar, ...(r.sidebar ?? {}) },
   };
 }
 

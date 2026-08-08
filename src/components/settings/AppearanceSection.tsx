@@ -164,6 +164,18 @@ export default function AppearanceSection() {
         </div>
       </Subsection>
 
+      {/* ── Сайдбар ──
+          ⚠️ Один тумблер, а не список вариантов: оттенок и так берётся из выбранной палитры,
+          поэтому «какой именно цветной» — вопрос, на который человеку отвечать не нужно.
+          Стоит сразу за палитрой не случайно: это её продолжение, а не отдельная тема. */}
+      <Subsection title="Сайдбар" description="Мягкий градиент и лёгкая текстура вместо ровной заливки. Оттенок берётся из выбранной палитры.">
+        <ToggleRow
+          label="Цветной сайдбар"
+          checked={s.sidebar.tinted}
+          onChange={(v) => apply({ ...s, sidebar: { tinted: v } })}
+        />
+      </Subsection>
+
       {/* ── Фон ── */}
       <Subsection title="Фон" description="Градиент, свой цвет или изображение.">
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

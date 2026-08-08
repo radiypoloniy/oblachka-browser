@@ -16,6 +16,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropResult } from '../../shared/ipc';
+import { loadNewTabSettings, subscribeNewTabSettings } from '../newtab/settings';
 
 // Стабильный id droppable-контейнера секции «Открытые вкладки».
 const SECTION_NORMAL_ID = 'drop-section-normal';
@@ -1084,10 +1085,10 @@ function SortableGroupBlock({
 // все четыре угла (--radius-island), т.к. контент больше не примыкает вплотную.
 // Ширина развёрнутого сайдбара. ⚠️ Вилка узкая намеренно: сайдбар — не панель контента, а
 // полоса вкладок, и её ширина решает ровно одно — сколько букв заголовка помещается в строку.
-// Ниже 200 подписи вырождаются в «Как приго…», выше 340 полоса начинает соперничать со
+// Ниже 200 подписи вырождаются в «Как приго…», выше 420 полоса начинает соперничать со
 // страницей за место, ради которого её и сужают. 256 — прежнее жёсткое значение, оно же дефолт.
 const SIDEBAR_W_MIN = 200;
-const SIDEBAR_W_MAX = 340;
+const SIDEBAR_W_MAX = 420;
 const SIDEBAR_W_DEFAULT = 256;
 const SIDEBAR_W_KEY = 'oblako-sidebar-width';
 
@@ -1098,6 +1099,29 @@ function loadSidebarWidth(): number {
   } catch { /* приватный режим/выключенный storage — просто дефолт */ }
   return SIDEBAR_W_DEFAULT;
 }
+
+// ── «Цветной» сайдбар: градиент + шум ────────────────────────────────────────────────────────
+//
+// ⚠️ Цвет берётся ИЗ ПАЛИТРЫ, а не задаётся своими значениями. Токены --surface/--surface-sunken
+// меняются вместе с темой и палитрой (см. palettes.css), поэтому текстура подстраивается сама —
+// ровно то, что просили: один тумблер, а не список вариантов на каждую палитру. И цветовой
+// закон не нарушен: акцент и функциональные цвета сюда не заходят, работает только «земля».
+//
+// ⚠️ Шум — инлайновый SVG, а не картинка в бандле: фоновый файл пришлось бы тянуть сетью или
+// класть в ресурсы, а он весь состоит из одного фильтра. baseFrequency крупная (0.9) — на мелкой
+// сетке зерно сливается в грязь, на крупной читается как фактура бумаги.
+// ⚠️ Непрозрачность 3.5%: на глаз это «плотность», а не «пятно». Всё, что заметно как рисунок,
+// на вертикальной полосе с текстом начинает мешать читать заголовки вкладок.
+const NOISE_SVG =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E" +
+  "%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E" +
+  "%3Crect width='120' height='120' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E\")";
+
+const tintedAside: React.CSSProperties = {
+  backgroundImage: `${NOISE_SVG}, linear-gradient(180deg, var(--surface) 0%, var(--surface-sunken) 100%)`,
+  backgroundRepeat: 'repeat, no-repeat',
+  backgroundSize: '120px 120px, 100% 100%',
+};
 
 const asideBase: React.CSSProperties = {
   flex: 'none', display: 'flex', flexDirection: 'column',
@@ -1204,6 +1228,10 @@ export default function Sidebar({
   // а по умолчанию браузер обязан открываться на вкладках.
   const [mode, setMode] = useState<'tabs' | 'bookmarks'>('tabs');
   const [width, setWidth] = useState<number>(loadSidebarWidth);
+  // Тумблер «цветной сайдбар» из раздела «Интерфейс». Подписка — тот же механизм, что у новой
+  // вкладки: своё событие для этого же окна плюс 'storage' для остальных.
+  const [tinted, setTinted] = useState<boolean>(() => loadNewTabSettings().sidebar.tinted);
+  useEffect(() => subscribeNewTabSettings(() => setTinted(loadNewTabSettings().sidebar.tinted)), []);
   // ⚠️ Ширину двигаем на pointermove по документу, а не по самой ручке: увести курсор за пределы
   // тонкой полоски проще простого, и без захвата на документе перетаскивание рвалось бы на
   // первом же быстром движении. setPointerCapture тут не годится — ручка живёт внутри области
@@ -1540,7 +1568,7 @@ export default function Sidebar({
   // ── Свёрнутый режим: узкая полоса иконок ──
   if (collapsed) {
     return (
-      <aside className="drag" style={{ ...asideBase, width: 56, alignItems: 'center', padding: '12px 0 14px' }}>
+      <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), width: 56, alignItems: 'center', padding: '12px 0 14px' }}>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: 14 }}>
           <button
@@ -1663,7 +1691,7 @@ export default function Sidebar({
 
   // ── Развёрнутый режим с drag-and-drop ──
   return (
-    <aside className="drag" style={{ ...asideBase, width, padding: '14px 12px 14px 14px', position: 'relative' }}>
+    <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), width, padding: '14px 12px 14px 14px', position: 'relative' }}>
       {/* Ручка ширины — прозрачная полоска по всему правому краю. Своей заливки нет намеренно:
           сайдбар это остров со скруглением и тенью, а видимая вертикальная черта вдоль него
           читалась бы как рамка и спорила с формой. Курсор и так объясняет, что здесь тянут. */}
