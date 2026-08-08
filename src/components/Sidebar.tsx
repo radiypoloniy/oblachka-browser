@@ -1178,6 +1178,14 @@ const NOISE_SVG =
 // подкрашенная бумага, а не как выделение. Активная вкладка остаётся заметно ярче — она берёт
 // акцент в полную силу, и спутать их нельзя. Меняете акцент — оттенок едет за ним сам.
 // color-mix берёт цвета из живых токенов, поэтому и палитра, и тёмная тема поддержаны даром.
+// ⚠️ --sidebar-plate — фон ВЫДЕЛЕННОГО элемента внутри сайдбара (активный сегмент
+// переключателя, выбранная папка). Заведён переменной, а не флагом в пропах, потому что таких
+// мест много и лежат они в разных компонентах: переменная наследуется вниз сама, а флаг
+// пришлось бы протаскивать через каждый уровень. На белом сайдбаре это по-прежнему --surface;
+// на цветном — та же подкраска, только гуще, иначе выделение читается какбелая заплатка поверх
+// цвета (ровно это и было видно на скриншоте).
+const TINTED_PLATE_VAR = 'color-mix(in srgb, var(--sidebar-tint) 14%, var(--surface))';
+
 const tintedAside: React.CSSProperties = {
   backgroundImage:
     `${NOISE_SVG}, linear-gradient(160deg,` +
@@ -1239,14 +1247,14 @@ function ModeSwitch({ mode, onChange, tinted }: { mode: 'tabs' | 'bookmarks'; on
         style={{
           flex: 1, border: 'none', cursor: 'default', padding: '4px 0',
           borderRadius: 'calc(var(--radius-sm) - 2px)',
-          background: active ? 'var(--surface)' : 'transparent',
+          background: active ? 'var(--sidebar-plate, var(--surface))' : 'transparent',
           boxShadow: active ? 'var(--shadow-card)' : 'none',
           color: active ? 'var(--text-strong)' : 'var(--text-muted)',
           fontSize: 'var(--fs-xs)', fontWeight: active ? 600 : 400,
           transition: 'background var(--dur-fast) var(--ease-standard)',
         }}
         onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--sidebar-plate, var(--surface))' : 'transparent'; }}
       >{label}</button>
     );
   };
@@ -1667,7 +1675,7 @@ export default function Sidebar({
   // ── Свёрнутый режим: узкая полоса иконок ──
   if (collapsed) {
     return (
-      <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), width: 56, alignItems: 'center', padding: '12px 0 14px' }}>
+      <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width: 56, alignItems: 'center', padding: '12px 0 14px' }}>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: 14 }}>
           <button
@@ -1792,7 +1800,7 @@ export default function Sidebar({
 
   // ── Развёрнутый режим с drag-and-drop ──
   return (
-    <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), width, padding: '14px 12px 14px 14px', position: 'relative' }}>
+    <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width, padding: '14px 12px 14px 14px', position: 'relative' }}>
       {/* Ручка ширины — прозрачная полоска по всему правому краю. Своей заливки нет намеренно:
           сайдбар это остров со скруглением и тенью, а видимая вертикальная черта вдоль него
           читалась бы как рамка и спорила с формой. Курсор и так объясняет, что здесь тянут. */}

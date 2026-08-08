@@ -202,7 +202,11 @@ export default function SidebarBookmarks({ onOpen, tinted }: Props) {
             onClick={() => setCreating(true)}
             title={folderId === null ? 'Новая папка' : 'Новая папка внутри текущей'}
             style={{
-              border: 'none', cursor: 'default', padding: '6px 2px 4px', borderRadius: 'var(--radius-sm)',
+              border: 'none', cursor: 'default', padding: '8px 4px', borderRadius: 'var(--radius-sm)',
+        // ⚠️ Отступы симметричны, и у ячейки есть общая минимальная высота: подписи бывают
+        // в одну и в две строки, и без этого выделенная папка с короткой подписью получала
+        // заметно другой прямоугольник — значок прижимался к верху, текст к низу.
+        minHeight: 74, justifyContent: 'flex-start',
               background: 'transparent', color: 'var(--text-faint)',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
             }}
@@ -489,7 +493,7 @@ function FolderCell({ nodeId, label, active, onClick, all }: {
       title={all ? 'Все закладки (перетащите сюда, чтобы вынуть из папки)' : label}
       style={{
         border: 'none', cursor: 'default', padding: '6px 2px 4px', borderRadius: 'var(--radius-sm)',
-        background: isOver ? 'var(--accent-soft)' : active ? 'var(--surface)' : 'transparent',
+        background: isOver ? 'var(--accent-soft)' : active ? 'var(--sidebar-plate, var(--surface))' : 'transparent',
         boxShadow: isOver ? 'inset 0 0 0 1.5px var(--accent)' : active ? 'var(--shadow-card)' : 'none',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 0,
         color: isOver ? 'var(--accent)' : active ? 'var(--text-strong)' : 'var(--text-muted)',
@@ -502,7 +506,7 @@ function FolderCell({ nodeId, label, active, onClick, all }: {
         }),
       }}
       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--sidebar-plate, var(--surface))' : 'transparent'; }}
     >
       {all ? (
         // «Все закладки» — не папка, и значок у неё другой намеренно: это не место, а «показать
