@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Volume2 } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import { glassPlate, islandPlate } from '../styles/island';
 import SidebarBookmarks from './SidebarBookmarks';
@@ -200,6 +200,17 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
         flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 500,
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}>{tab.title || tab.url || 'Загрузка…'}</span>
+
+      {/* Звук. ⚠️ Показывается ВСЕГДА, а не по наведению, — в этом вся суть: человек ищет,
+          откуда играет музыка, и обойти для этого все вкладки мышью значит не решить задачу.
+          Цвет приглушённый: это сообщение о состоянии, а не действие, и акцент тут занят
+          активной вкладкой (см. цветовой закон в CLAUDE.md). */}
+      {tab.audible && (
+        <span title="В этой вкладке воспроизводится звук"
+          style={{ flex: 'none', display: 'inline-flex', color: 'var(--text-muted)' }}>
+          <Volume2 size={13} />
+        </span>
+      )}
 
       {tab.isLoading && !tab.isSleeping && (
         <span style={{
@@ -469,6 +480,20 @@ function IconCell({ tab, active, onClick, onContextMenu, onMiddleClick, ghost }:
             borderRadius: '50%', background: 'var(--accent)',
             boxShadow: '0 0 0 1.5px var(--surface-island)',
           }} />
+        )}
+        {/* ⚠️ Значок звука нужен и здесь, а не только в развёрнутом списке: закреплённые вкладки
+            живут в этой сетке всегда, и музыка чаще всего играет именно в них. Рисуем поверх
+            иконки сайта — свободного места в 56-пиксельной полосе нет вовсе. Загрузка
+            приоритетнее: она короткая, а звук никуда не денется и покажется следом. */}
+        {!ghost && tab.audible && !tab.isLoading && (
+          <span title="Звук"
+            style={{
+              position: 'absolute', right: -3, bottom: -3,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 12, height: 12, borderRadius: '50%',
+              background: 'var(--surface-island)', color: 'var(--text-muted)',
+              boxShadow: '0 0 0 1.5px var(--surface-island)',
+            }}><Volume2 size={9} /></span>
         )}
       </span>
     </button>

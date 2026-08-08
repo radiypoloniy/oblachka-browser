@@ -173,6 +173,11 @@ export interface TabState {
   splitSide: 'left' | 'right' | null; // null = не в split-режиме
   isSleeping: boolean;  // WebContentsView выгружен, хранятся только url/title/favicon
   incognito: boolean;   // приватная вкладка (in-memory сессия, без истории) — для бейджа в UI
+  // Вкладка прямо СЕЙЧАС воспроизводит звук. Нужно, чтобы было видно, откуда играет музыка:
+  // с вертикальным сайдбаром и десятками вкладок иначе приходится обходить их по одной.
+  // ⚠️ Это состояние момента, а не свойство вкладки: тишина между треками и пауза его снимают.
+  // У спящих и псевдо-вкладок всегда false — там нет ни звука, ни самого WebContentsView.
+  audible: boolean;
   // Вид содержимого вкладки — 'page' обычная страница (реальный WebContentsView), 'hub' —
   // единственный синглтон-хаб (isHub уже покрывает это, kind добавлен для полноты и симметрии
   // с history/settings). 'history'/'settings' — псевдо-вкладки без WebContentsView (view: null

@@ -417,7 +417,7 @@ export class TabManager {
       tabError: null,
       url: '', title: 'Новая вкладка · AI-хаб',
       faviconUrl: null, isLoading: false,
-      canGoBack: false, canGoForward: false, isHub: true, isPinned: false,
+      canGoBack: false, canGoForward: false, isHub: true, isPinned: false, audible: false,
       splitSide: null, isSleeping: false, incognito: false, kind: 'hub',
     });
 
@@ -446,7 +446,7 @@ export class TabManager {
           : t.kind === 'bookmarks' ? 'Закладки'
           : t.kind === 'downloads' ? 'Загрузки' : 'Настройки',
         faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false,
-        isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: false, kind: t.kind, section: t.section,
+        isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: false, audible: false, kind: t.kind, section: t.section,
       };
     }
     if (t.sleeping) {
@@ -459,7 +459,8 @@ export class TabManager {
         isLoading: false, canGoBack: false, canGoForward: false,
         isHub: false, isPinned,
         splitSide: this.#tabSplitSide(t.id),
-        isSleeping: true, incognito: !!t.incognito, kind: 'page',
+        // Спящая вкладка звучать не может — её WebContentsView выгружен целиком.
+        isSleeping: true, incognito: !!t.incognito, audible: false, kind: 'page',
       };
     }
     if (!this.isHttpView(t.view) || t.view.webContents.isDestroyed()) {
@@ -469,7 +470,7 @@ export class TabManager {
         id: t.id, isActive: t.id === this.activeId,
         tabError: null, url: '', title: '', faviconUrl: null,
         isLoading: false, canGoBack: false, canGoForward: false,
-        isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: !!t.incognito, kind: 'page',
+        isHub: false, isPinned, splitSide: null, isSleeping: false, incognito: !!t.incognito, audible: false, kind: 'page',
       };
     }
     const wc = t.view.webContents;
@@ -484,7 +485,10 @@ export class TabManager {
       canGoForward: wc.canGoForward(),
       isHub: false, isPinned,
       splitSide: this.#tabSplitSide(t.id),
-      isSleeping: false, incognito: !!t.incognito, kind: 'page',
+      isSleeping: false, incognito: !!t.incognito,
+      // Состояние момента: Chromium сам гасит его на паузе и в тишине между треками.
+      audible: wc.isCurrentlyAudible(),
+      kind: 'page',
     };
   }
 
@@ -1404,6 +1408,15 @@ export class TabManager {
       (wc as unknown as { _oblakoFavicon?: string })._oblakoFavicon = url;
       notify();
       if (url) this.#cacheFaviconData(wc, url);
+    });
+
+    // Вкладка начала или перестала звучать. Отдельное событие нужно потому, что звук не связан
+    // ни с навигацией, ни с загрузкой: музыка включается через минуту после того, как страница
+    // догрузилась, и без этого сигнала сайдбар узнал бы о ней только при следующей перерисовке
+    // по какому-нибудь чужому поводу.
+    wc.on('audio-state-changed', () => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
+      notify();
     });
 
     // Результат findInPage — пробрасываем в renderer для обновления счётчика.
