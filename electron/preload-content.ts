@@ -25,7 +25,85 @@
 // и Node-совместимые встроенные. Отсюда — вручную продублированные строки, ДОЛЖНЫ совпадать
 // с shared/ipc.ts::IPC.PASSWORDS_FORM_DETECTED/PASSWORDS_CREDENTIAL_SUBMITTED/PASSWORDS_FILL/
 // PASSWORDS_FIELD_ICON_CLICK.
-import { ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
+
+// ─── Отпечаток браузера: window.chrome ──────────────────────────────────────
+//
+// Продолжение BrowserIdentity.ts — та же тема «как браузер представляется сайтам», но слой JS,
+// до которого из main не дотянуться. Замер отпечатка против Edge на одной странице:
+//   Edge   → window.chrome = { app, csi, loadTimes }
+//   Oblako → window.chrome = {} (ноль ключей)
+// Пустой `window.chrome` при строке UA, которая называет нас Chrome, — классический признак
+// встроенного браузера, по нему нас и опознают (симптом: вход в аккаунт Google отвечает
+// «Возможно, этот браузер или приложение небезопасны», справка Google прямым текстом называет
+// причиной «браузер встроен в другое приложение»).
+//
+// ⚠️ Это НЕ маскировка чужого браузера: мы и есть Chromium той же версии, эти ветки отсутствуют
+// только потому, что их не выставляет Electron. Значения берутся из настоящего Performance API
+// страницы, а не выдумываются.
+//
+// ⚠️ Живёт здесь, а не в BrowserIdentity.ts, по единственной причине: гостевые страницы идут с
+// contextIsolation+sandbox, и это ЕДИНСТВЕННАЯ точка, исполняющаяся в контексте реального сайта
+// раньше его собственных скриптов. executeInMainWorld — потому что сам preload работает в
+// изолированном мире, где правка window странице не видна.
+// ⚠️ Известная дыра: OAuth-попапы создаются вообще без preload (см. TabManager.ts,
+// setWindowOpenHandler) — туда шим не доезжает.
+try {
+  contextBridge.executeInMainWorld({
+    func: () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = window as any;
+      const chrome = w.chrome ?? (w.chrome = {});
+      const t = () => performance.timing;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const navEntry = () => performance.getEntriesByType('navigation')[0] as any;
+
+      if (!chrome.csi) {
+        chrome.csi = function csi() {
+          return {
+            onloadT: t().domContentLoadedEventEnd,
+            startE: t().navigationStart,
+            pageT: performance.now(),
+            tran: 15,
+          };
+        };
+      }
+      if (!chrome.loadTimes) {
+        chrome.loadTimes = function loadTimes() {
+          const proto = navEntry()?.nextHopProtocol || 'h2';
+          const start = t().navigationStart / 1000;
+          return {
+            commitLoadTime: t().responseStart / 1000,
+            connectionInfo: proto,
+            finishDocumentLoadTime: t().domContentLoadedEventEnd / 1000,
+            finishLoadTime: t().loadEventEnd / 1000,
+            firstPaintAfterLoadTime: 0,
+            firstPaintTime: start,
+            navigationType: 'Other',
+            npnNegotiatedProtocol: proto,
+            requestTime: start,
+            startLoadTime: start,
+            wasAlternateProtocolAvailable: false,
+            wasFetchedViaSpdy: proto !== 'http/1.1',
+            wasNpnNegotiated: proto !== 'http/1.1',
+          };
+        };
+      }
+      if (!chrome.app) {
+        chrome.app = {
+          isInstalled: false,
+          InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+          RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+          getDetails: () => null,
+          getIsInstalled: () => false,
+          runningState: () => 'cannot_run',
+        };
+      }
+    },
+  });
+} catch {
+  // Тихо: сбой шима не должен ронять загрузку страницы (тот же принцип, что у хуков ниже).
+}
 
 const CH_FORM_DETECTED = 'passwords:form-detected';
 const CH_CREDENTIAL_SUBMITTED = 'passwords:credential-submitted';
