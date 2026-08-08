@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { islandPlate } from '../../styles/island';
 
@@ -38,15 +38,38 @@ function loadFavicon(host: string): Promise<string | null> {
 // Иконка сайта с фолбэком на букву-заглушку (тот же приём, что в History/Bookmarks-строках,
 // пока/если иконки нет). data-URL приходит из main (FaviconService), тянется только с самого
 // сайта. Жил локально в PasswordsSection — переехал сюда, когда понадобился второму списку.
+// ⚠️ Иконка запрашивается, ТОЛЬКО когда строка попала в видимую область. Раньше запрос уходил
+// на монтировании, и раскрытие списка паролей выбрасывало разом по запросу на КАЖДЫЙ сохранённый
+// домен — замерено: 60 записей давали заморозку в 333 мс и 2013 узлов разметки. Это ещё и было
+// приватностной проблемой: одно открытие настроек означало обращение ко всем сайтам человека
+// сразу, включая те, до которых он не долистал. Пункт 4 бэклога безопасности паролей.
+// ⚠️ rootMargin положительный: подгружаем чуть раньше, чем строка доедет до края, иначе иконка
+// появлялась бы уже на глазах — хуже, чем её отсутствие.
 export function Favicon({ host, size = 20 }: { host: string; size?: number }) {
   const [src, setSrc] = useState<string | null>(null);
+  const [seen, setSeen] = useState(false);
+  const boxRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    if (seen) return;
+    const el = boxRef.current;
+    // IntersectionObserver может быть недоступен только в экзотике; тогда честнее показать
+    // иконки, чем не показать их никогда.
+    if (!el || typeof IntersectionObserver === 'undefined') { setSeen(true); return; }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { setSeen(true); io.disconnect(); }
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen]);
+
   useEffect(() => {
     let alive = true;
     setSrc(null);
-    if (!host) return () => { alive = false; };
+    if (!host || !seen) return () => { alive = false; };
     void loadFavicon(host).then((url) => { if (alive) setSrc(url); });
     return () => { alive = false; };
-  }, [host]);
+  }, [host, seen]);
 
   const box: React.CSSProperties = {
     width: size, height: size, borderRadius: 'var(--radius-sm)', flexShrink: 0,
@@ -54,10 +77,12 @@ export function Favicon({ host, size = 20 }: { host: string; size?: number }) {
   };
   if (src) {
     const inner = Math.round(size * 0.8);
-    return <span style={box}><img src={src} alt="" width={inner} height={inner} style={{ objectFit: 'contain' }} /></span>;
+    return <span ref={boxRef} style={box}><img src={src} alt="" width={inner} height={inner} style={{ objectFit: 'contain' }} /></span>;
   }
+  // Буква домена — не «пока грузится», а полноценный запасной вид: он же остаётся, если иконки
+  // у сайта нет вовсе. Поэтому места под иконку хватает с первого кадра и список не дёргается.
   return (
-    <span style={{ ...box, background: 'var(--neutral-300)', color: 'var(--text-body)', fontSize: Math.round(size / 2), fontWeight: 600 }}>
+    <span ref={boxRef} style={{ ...box, background: 'var(--neutral-300)', color: 'var(--text-body)', fontSize: Math.round(size / 2), fontWeight: 600 }}>
       {host.charAt(0).toUpperCase() || '?'}
     </span>
   );
