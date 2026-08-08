@@ -128,6 +128,13 @@ export default function App() {
   // из настроек, 'onboarding' — авто-предложение первого запуска (мягче тон + «Пропустить»),
   // null — закрыта. См. ImportDialog.tsx / electron/browserImport/.
   const [importDialog, setImportDialog] = useState<'manual' | null>(null);
+  // Открытый раздел настроек, по id вкладки. ⚠️ Живёт ЗДЕСЬ, а не в самом Settings: вкладка
+  // настроек — псевдо-вкладка, её компонент размонтируется при уходе на другую вкладку и уносит
+  // свой стейт, из-за чего человек каждый раз возвращался на верхний раздел. App.tsx — корень
+  // хрома, он переживает переключение вкладок. По id, а не одним значением: вкладок настроек
+  // можно открыть несколько, и у каждой своё место. В main это НЕ уезжает — контракт IPC ради
+  // такого не трогаем, а дальше перезапуска помнить и нечего: псевдо-вкладки в сессию не идут.
+  const [settingsSection, setSettingsSection] = useState<Record<string, string>>({});
   // Экран первого запуска — рассказ о браузере + перенос данных (см. Onboarding.tsx). Отдельно
   // от importDialog: тот остался ручным импортом из настроек, с другим тоном и объёмом.
   const [onboarding, setOnboarding] = useState(false);
@@ -730,7 +737,14 @@ export default function App() {
             // Загрузки теперь третья секция того же острова, а не свой экран — см. HistoryBookmarks.
             <HistoryBookmarks defaultSection={kind} downloads={downloads} onClose={() => void window.oblako.closeTab(activeId)} />
           ) : kind === 'settings' ? (
-            <Settings defaultSection={active?.section} onClose={() => void window.oblako.closeTab(activeId)} onOpenImport={() => setImportDialog('manual')} />
+            <Settings
+              // Раздел берём из своей памяти, если человек уже щёлкал по меню в ЭТОЙ вкладке;
+              // иначе — тот, с которым вкладку открыли (кнопка «+» AI-панели открывает сразу 'ai').
+              defaultSection={settingsSection[activeId] ?? active?.section}
+              onSectionChange={(s) => setSettingsSection((prev) => ({ ...prev, [activeId]: s }))}
+              onClose={() => void window.oblako.closeTab(activeId)}
+              onOpenImport={() => setImportDialog('manual')}
+            />
           ) : isSplit ? (
             <div style={{ display: 'flex', height: '100%' }}>
               {/* Левая панель — flex: splitRatio даёт долю от (ширина - ISLAND_GAP). Тот же остров,

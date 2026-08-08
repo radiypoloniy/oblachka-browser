@@ -22,6 +22,10 @@ interface SettingsProps {
   // TabState.section (shared/ipc.ts), который типизирован просто string (main-процесс не знает
   // SectionId), поэтому валидируем через isSectionId ниже, а не доверяем типу проп напрямую.
   defaultSection?: string;
+  // Человек переключил раздел. Нужно App.tsx: вкладка настроек — псевдо-вкладка, и при уходе на
+  // другую вкладку этот компонент РАЗМОНТИРУЕТСЯ, унося свой useState. Без этого колбэка человек,
+  // заглянувший в соседнюю вкладку, возвращался в настройки на самый верх — и так каждый раз.
+  onSectionChange?: (section: string) => void;
 }
 
 // Секции левого меню — «Блокировка» и «AI» рабочие, VPN/Интерфейс — placeholder для будущих
@@ -30,18 +34,26 @@ interface SettingsProps {
 type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean; tint: string };
 // Цвет значка — опознавательный знак раздела, как в настройках iOS: глаз находит нужную
 // строку по пятну раньше, чем прочитает подпись. Токены --tile-* живут в colors.css.
+// ⚠️ ПОРЯДОК ЗДЕСЬ — ЭТО РАНЖИРОВАНИЕ ПО ЧАСТОТЕ ОБРАЩЕНИЯ, а не история появления разделов.
+// Сверху то, ради чего настройки открывают регулярно, снизу — то, куда заходят однажды или по
+// случаю. Раскладка: база браузера → внешний вид (самое частое «покрутить») → защита →
+// AI → свои данные → редкое.
+// ⚠️ VPN и «Блокировка» стоят подряд намеренно: в тулбаре они уже объединены в один поповер
+// «Защита», и порядок в настройках обязан соглашаться с тем, как человек их видит там.
+// ⚠️ Первый пункт этого списка — раздел ПО УМОЛЧАНИЮ (см. FIRST_SECTION ниже). Отдельной
+// константы с именем раздела заводить нельзя: она уже расходилась с меню (см. isSectionId).
 const NAV_ITEMS: NavItem[] = [
   { id: 'general',    label: 'Браузер',        Icon: SlidersHorizontal, tint: 'var(--tile-grey)' },
-  { id: 'adblock',    label: 'Блокировка',     Icon: Shield,            tint: 'var(--tile-green)' },
+  { id: 'appearance', label: 'Интерфейс',      Icon: Palette,           tint: 'var(--tile-pink)' },
   { id: 'vpn',        label: 'VPN',            Icon: Wifi,              tint: 'var(--tile-blue)' },
+  { id: 'adblock',    label: 'Блокировка',     Icon: Shield,            tint: 'var(--tile-green)' },
   { id: 'ai',         label: 'AI',             Icon: Cpu,               tint: 'var(--tile-teal)' },
-  // Правила стоят рядом с AI не случайно: фразу разбирает модель. Но отдельным разделом, а не
-  // блоком внутри AI, — исполняются они обычным кодом и живут своей жизнью без модели.
-  { id: 'rules',      label: 'Правила',        Icon: Wand2,             tint: 'var(--tile-brown)' },
   { id: 'passwords',  label: 'Пароли',         Icon: Lock,              tint: 'var(--tile-grey)' },
   { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard,        tint: 'var(--tile-orange)' },
   { id: 'permissions', label: 'Разрешения',    Icon: ShieldCheck,       tint: 'var(--tile-slate)' },
-  { id: 'appearance', label: 'Интерфейс',      Icon: Palette,           tint: 'var(--tile-pink)' },
+  // Правила стоят последними как самое редкое, но по-прежнему отдельным разделом, а не блоком
+  // внутри AI: фразу разбирает модель, а исполняются они обычным кодом и живут без модели.
+  { id: 'rules',      label: 'Правила',        Icon: Wand2,             tint: 'var(--tile-brown)' },
 ];
 type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'rules' | 'passwords' | 'autofill' | 'permissions' | 'appearance';
 
@@ -52,11 +64,20 @@ function isSectionId(v: unknown): v is SectionId {
   return typeof v === 'string' && NAV_ITEMS.some((item) => item.id === v);
 }
 
-export default function Settings({ onClose, defaultSection, onOpenImport }: SettingsProps) {
+// Раздел по умолчанию — ПЕРВЫЙ пункт меню, а не имя, вписанное руками. Раньше здесь стояло
+// 'adblock', и настройки открывались на «Блокировке» — втором пункте сверху, при том что глаз
+// ждёт первый. Ошибка того же рода, что уже была с isSectionId: отдельно записанное имя раздела
+// расходится с меню молча, и заметить это можно только глазами.
+const FIRST_SECTION = NAV_ITEMS[0].id as SectionId;
+
+export default function Settings({ onClose, defaultSection, onOpenImport, onSectionChange }: SettingsProps) {
   // Пружинистая отдача на краях прокрутки — своя, платформа такого не даёт.
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useRubberBand(scrollRef);
-  const [section, setSection] = useState<SectionId>(isSectionId(defaultSection) ? defaultSection : 'adblock');
+  const [section, setSection] = useState<SectionId>(isSectionId(defaultSection) ? defaultSection : FIRST_SECTION);
+  // Смена раздела идёт через одну дверь: и локальный стейт (перерисовка), и наверх в App.tsx
+  // (переживает размонтирование при переключении вкладок).
+  const goToSection = (next: SectionId) => { setSection(next); onSectionChange?.(next); };
   const [state, setState] = useState<AdBlockState | null>(null);
   const [domainInput, setDomainInput] = useState('');
   const [inputError, setInputError] = useState('');
@@ -150,7 +171,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport }: Sett
                 key={id}
                 className="settings-nav-item"
                 disabled={!!soon}
-                onClick={() => { if (!soon) setSection(id as SectionId); }}
+                onClick={() => { if (!soon) goToSection(id as SectionId); }}
                 title={label}
                 aria-label={label}
                 style={{
