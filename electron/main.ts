@@ -10,6 +10,14 @@ import type { WindowRole } from './WindowRegistry';
 registerSchemesAsPrivileged();
 // Тоже до ready и до первой сессии: иначе часть запросов уйдёт со старым UA.
 applyChromeUserAgent();
+// ⚠️ ОПЫТ, а не установленный факт. Гипотеза: колесо мыши прокручивает наш интерфейс ступенями
+// по ~100 px за щелчок, тогда как Chrome на Windows анимирует это движение, — отсюда ощущение
+// «дёшево крутится». Проверить замером не удалось: ни Input.dispatchMouseEvent с колесом, ни
+// Input.synthesizeScrollGesture нашу область прокрутки не двигают вовсе (scrollTop остаётся 0),
+// то есть синтетика тут не воспроизводит настоящее колесо. Судить может только человек на ощупь.
+// Ключ безвреден: неизвестный Chromium просто игнорирует, а если режим уже включён по умолчанию,
+// повторное включение ничего не меняет. Не подтвердится ощущением — удалить эту строку.
+app.commandLine.appendSwitch('enable-smooth-scrolling');
 import type { MenuItemConstructorOptions, Session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';

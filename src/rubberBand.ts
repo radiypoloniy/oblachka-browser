@@ -109,7 +109,19 @@ export function useRubberBand(ref: RefObject<HTMLElement | null>): void {
 
     const kick = (): void => { if (!raf) raf = requestAnimationFrame(tick); };
 
+    // ⚠️ Резинка НЕ для колеса мыши, и это не настройка вкуса, а свойство ввода. На iOS и macOS
+    // она работает потому, что палец и тачпад дают непрерывный поток мелких смещений: лента
+    // тянется ровно за рукой и отпускается вместе с ней. Колесо шлёт РЫВКИ по ~100 px с паузами
+    // в сотню миллисекунд — тянуть за них нечего, и любая физика поверх этого выглядит как
+    // подёргивание: оттянулось на щелчок, постояло, отскочило. Сколько ни крути коэффициенты,
+    // непрерывности из дискретного ввода не получится.
+    //
+    // Признак непрерывного ввода: deltaMode в пикселях И небольшой шаг. Щелчок колеса на Windows
+    // приходит как ~100 px (или вовсе в строках, deltaMode=1), тачпад — десятками мелких дельт.
+    const isContinuous = (e: WheelEvent): boolean => e.deltaMode === 0 && Math.abs(e.deltaY) < 60;
+
     const onWheel = (e: WheelEvent): void => {
+      if (!isContinuous(e)) { if (target) { target = 0; kick(); } return; }
       const atTop = box.scrollTop <= 0;
       const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 1;
       const beyond = (e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom);
