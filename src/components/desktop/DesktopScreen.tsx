@@ -586,7 +586,11 @@ function SearchBar({ onSubmit }: { onSubmit: (v: string) => void }) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="Поиск или адрес"
-          autoFocus
+          // ⚠️ autoFocus снят намеренно. На новой вкладке фокусом владеет АДРЕСНАЯ СТРОКА
+          // (см. App.tsx): человек открывает вкладку, чтобы сразу печатать, и цель у него одна.
+          // Два поля на одном экране, спорящие за фокус, давали неопределённость — фокус зависел
+          // от того, успел ли смонтироваться стол раньше, чем спряталась вью страницы.
+          // Поле никуда не делось и работает по клику.
           style={{
             flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none',
             fontSize: 'var(--fs-md)', color: 'var(--text-strong)', fontFamily: 'inherit',
