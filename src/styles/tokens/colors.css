@@ -55,6 +55,10 @@
 
   /* ── Semantic aliases (use these in product code) ── */
   --accent:            var(--blue-500);
+  /* Оттенок подкраски сайдбара («цветной сайдбар», см. Sidebar.tsx). Базовый — равен
+     акценту; каждая палитра переопределяет его своим (palettes.css), иначе подкраска
+     была бы одинаковой во всех палитрах: акцент-то один на всё приложение. */
+  --sidebar-tint:  var(--accent);
   --accent-hover:      var(--blue-600);
   --accent-active:     var(--blue-700);
   --accent-soft:       var(--blue-50);

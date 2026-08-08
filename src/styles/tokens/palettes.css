@@ -38,6 +38,9 @@
    цветной подсветки фона: у окон macOS её нет, поэтому --canvas здесь
    просто заливка, а не радиальный градиент. */
 [data-palette="graphite"]:not([data-theme="dark"]) {
+  /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
+     на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
+  --sidebar-tint:    #5B6B7A;
   --app-bg:          #ECECEC;
   --canvas:          var(--app-bg);
   --surface:         #FFFFFF;
@@ -48,6 +51,9 @@
   --divider-strong:  rgba(0,0,0,0.20);
 }
 [data-palette="graphite"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
+     на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
+  --sidebar-tint:    #7C8FA3;
   --app-bg:          #1E1E1E; /* macOS controlBackground/textBackground dark */
   --canvas:          var(--app-bg);
   --surface:         #2C2C2C;
@@ -67,6 +73,9 @@
    цвет комментариев в коде, на светлом острове он читается, на тёмном
    пропадает). Эти две ступени добраны в том же семействе по контрасту. */
 [data-palette="slate"]:not([data-theme="dark"]) {
+  /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
+     на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
+  --sidebar-tint:    #5E81AC;
   --app-bg:          #E5E9F0; /* nord5 */
   --canvas:
     radial-gradient(135% 130% at 10% 4%, rgba(94,129,172,0.16), transparent 52%),
@@ -83,6 +92,9 @@
   --text-faint:      #6E7889; /* добрано: nord3 в роли faint сливался бы с muted */
 }
 [data-palette="slate"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
+     на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
+  --sidebar-tint:    #88C0D0;
   --app-bg:          #2E3440; /* nord0 */
   --canvas:
     radial-gradient(135% 130% at 10% 4%, rgba(94,129,172,0.20), transparent 52%),
@@ -110,6 +122,9 @@
    заметный синий отлив — тот же эффект, из-за которого в тёмной теме
    когда-то убрали пурпурные поверхности. */
 [data-palette="paper"]:not([data-theme="dark"]) {
+  /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
+     на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
+  --sidebar-tint:    #B08968;
   --app-bg:          #F1EDE4;
   --canvas:
     radial-gradient(135% 130% at 10% 4%, rgba(190,150,90,0.14), transparent 52%),
@@ -128,6 +143,9 @@
   --text-faint:      #8B8173;
 }
 [data-palette="paper"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
+     на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
+  --sidebar-tint:    #C9A227;
   --app-bg:          #14120F;
   --canvas:
     radial-gradient(135% 130% at 10% 4%, rgba(190,150,90,0.10), transparent 52%),

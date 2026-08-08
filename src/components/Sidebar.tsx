@@ -1181,9 +1181,9 @@ const NOISE_SVG =
 const tintedAside: React.CSSProperties = {
   backgroundImage:
     `${NOISE_SVG}, linear-gradient(160deg,` +
-    ' color-mix(in srgb, var(--accent) 12%, var(--surface)) 0%,' +
-    ' color-mix(in srgb, var(--accent) 6%, var(--surface)) 45%,' +
-    ' color-mix(in srgb, var(--accent) 2%, var(--surface-sunken)) 100%)',
+    ' color-mix(in srgb, var(--sidebar-tint) 12%, var(--surface)) 0%,' +
+    ' color-mix(in srgb, var(--sidebar-tint) 6%, var(--surface)) 45%,' +
+    ' color-mix(in srgb, var(--sidebar-tint) 2%, var(--surface-sunken)) 100%)',
   backgroundRepeat: 'repeat, no-repeat',
   backgroundSize: '120px 120px, 100% 100%',
 };
@@ -1192,10 +1192,10 @@ const tintedAside: React.CSSProperties = {
 // выглядели наклеенными поверх цвета — особенно «Новая вкладка» внизу, о чём и был отзыв.
 // Тонкая граница остаётся: без неё кнопка теряет края и перестаёт читаться как кнопка.
 const tintedInnerPlate: React.CSSProperties = {
-  background: 'color-mix(in srgb, var(--accent) 5%, transparent)',
+  background: 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)',
   backdropFilter: 'none',
   WebkitBackdropFilter: 'none',
-  border: '1px solid color-mix(in srgb, var(--accent) 12%, transparent)',
+  border: '1px solid color-mix(in srgb, var(--sidebar-tint) 12%, transparent)',
   boxShadow: 'none',
 };
 
@@ -1229,7 +1229,7 @@ const floatingIconBtn: React.CSSProperties = {
 // стоять рядом с полосой вкладок ему положено тише, чем самим вкладкам. Отсюда же подписи
 // текстом, а не иконками: две иконки рядом (страница и звезда) в 20 px читаются хуже, чем два
 // коротких слова, а места занимают столько же.
-function ModeSwitch({ mode, onChange }: { mode: 'tabs' | 'bookmarks'; onChange: (m: 'tabs' | 'bookmarks') => void }) {
+function ModeSwitch({ mode, onChange, tinted }: { mode: 'tabs' | 'bookmarks'; onChange: (m: 'tabs' | 'bookmarks') => void; tinted: boolean }) {
   const seg = (m: 'tabs' | 'bookmarks', label: string): React.ReactNode => {
     const active = mode === m;
     return (
@@ -1253,7 +1253,12 @@ function ModeSwitch({ mode, onChange }: { mode: 'tabs' | 'bookmarks'; onChange: 
   return (
     <div className="no-drag" style={{
       display: 'flex', gap: 2, padding: 2, marginBottom: 10,
-      background: 'var(--surface-sunken)', borderRadius: 'var(--radius-sm)',
+      // ⚠️ При цветном сайдбаре ровная серая подложка переключателя выглядела вырезанной из
+      // другой темы — она единственная не следовала за палитрой. Тот же приём, что у плашек.
+      background: tinted
+        ? 'color-mix(in srgb, var(--sidebar-tint) 8%, transparent)'
+        : 'var(--surface-sunken)',
+      borderRadius: 'var(--radius-sm)',
     }}>
       {seg('tabs', 'Вкладки')}
       {seg('bookmarks', 'Закладки')}
@@ -1662,9 +1667,10 @@ export default function Sidebar({
             className="no-drag"
             onClick={() => onCollapsedChange(false)}
             title="Развернуть панель"
-            style={{ ...floatingIconBtn, transform: 'scaleX(-1)' }}
+            style={{ ...floatingIconBtn, ...(tinted ? tintedInnerPlate : null), transform: 'scaleX(-1)' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
+            // ⚠️ Возврат — к ПОДКРАШЕННОМУ фону, иначе кнопка после наведения навсегда белела.
+            onMouseLeave={(e) => { e.currentTarget.style.background = tinted ? 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)' : 'var(--surface)'; }}
           >
             <PanelLeft size={17} />
           </button>
@@ -1764,7 +1770,7 @@ export default function Sidebar({
           <button
             className="no-drag"
             title="Новая вкладка (ПКМ — инкогнито / восстановить)"
-            style={floatingIconBtn}
+            style={{ ...floatingIconBtn, ...(tinted ? tintedInnerPlate : null) }}
             onClick={handleNewTab}
             onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
@@ -1807,7 +1813,7 @@ export default function Sidebar({
           className="no-drag"
           onClick={() => onCollapsedChange(true)}
           title="Свернуть панель"
-          style={floatingIconBtn}
+          style={{ ...floatingIconBtn, ...(tinted ? tintedInnerPlate : null) }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
         >
@@ -1818,7 +1824,7 @@ export default function Sidebar({
       {/* ⚠️ Переключатель «Вкладки | Закладки» — ОДНА область сайдбара на две сущности, а не два
           похожих ряда иконок рядом. Именно поэтому сетку вверху нельзя спутать: в режиме вкладок
           там закреплённые СТРАНИЦЫ, в режиме закладок — ПАПКИ, и одновременно их не бывает. */}
-      <ModeSwitch mode={mode} onChange={setMode} />
+      <ModeSwitch mode={mode} onChange={setMode} tinted={tinted} />
 
       {mode === 'bookmarks' && (
         <SidebarBookmarks onOpen={(url) => {
