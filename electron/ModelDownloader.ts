@@ -200,6 +200,13 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
   const partPath = path.join(dir, `${spec.fileName}.part`)
   const finalPath = path.join(dir, spec.fileName)
 
+  // ⚠️ Объявлен ДО try, а не там, где создаётся: при обрыве сети исключение летит из reader.read(),
+  // и поток записи оставался открытым навсегда. Замерено на стенде с рвущимся соединением: файл
+  // .part удалялся из-под живого дескриптора, а СЛЕДУЮЩАЯ попытка в том же запуске падала в
+  // конце на «Cannot call end after a stream was destroyed» — то есть после одного обрыва модель
+  // не скачивалась уже никогда, до перезапуска браузера.
+  let writeStream: fs.WriteStream | null = null
+
   try {
     // 1. Каталог может не существовать (первое скачивание вообще).
     ensureDir(dir)
@@ -331,7 +338,7 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
     // при докачке, обычный режим при первом скачивании). Проверка отмены на каждой итерации
     // чтения (= на каждом чанке). receivedBytes стартует не с нуля — прогресс учитывает то, что
     // уже физически на диске (resumeFromBytes), а не только байты этой сессии.
-    const writeStream = fs.createWriteStream(partPath, resumeFromBytes > 0 ? { flags: 'a' } : undefined)
+    writeStream = fs.createWriteStream(partPath, resumeFromBytes > 0 ? { flags: 'a' } : undefined)
     const reader = (res.body as ReadableStream<Uint8Array>).getReader()
     let receivedBytes = resumeFromBytes
     let wasCancelled = false
@@ -351,6 +358,7 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
     }
 
     await closeWriteStream(writeStream)
+    writeStream = null // закрыт штатно — catch/finally его больше не касаются
 
     if (wasCancelled) {
       // Осознанный отказ пользователя, а не обрыв — .part И sidecar удаляются вместе, докачивать
@@ -423,7 +431,23 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
     // .part: голый sidecar без .part бесполезен сам по себе (cleanupOrphanedParts() всё равно не
     // сочтёт его докачиваемым без .part). ⚠️ Жёсткое убийство процесса ЭТОТ catch не проходит
     // вовсе — вот тот путь, которым .part+sidecar реально переживают до докачки (см. cleanupOrphanedParts).
-    removePartAndSidecar(partPath)
+    // ⚠️ СНАЧАЛА закрыть поток, только потом трогать файл. Удаление .part из-под открытого
+    // дескриптора на Windows не срабатывает, а дескриптор переживает саму загрузку.
+    if (writeStream !== null) {
+      await closeWriteStream(writeStream).catch(() => { /* поток мог уже умереть — это и есть отказ */ })
+      writeStream = null
+    }
+    // ⚠️ Кусок НЕ удаляем, если есть sidecar: это ровно тот случай, ради которого докачка и
+    // написана. Прежде catch сносил пару целиком на любой обрыв, и докачка могла сработать
+    // только после жёсткого убийства процесса — то есть почти никогда. Для многогигабайтной
+    // модели это означало «оборвалось на 80% → качай всё заново», и так по кругу.
+    // Целостность при этом не страдает: докачка всё равно требует совпадения ETag, иначе
+    // сама снесёт .part и начнёт с нуля (см. ветку sidecar выше).
+    if (fs.existsSync(sidecarPathFor(partPath))) {
+      console.log(`[model-download] "${spec.fileName}": обрыв — .part сохранён для докачки`)
+    } else {
+      removePartAndSidecar(partPath)
+    }
     report({ running: false, error: (e as Error).message ?? String(e) })
   } finally {
     running = false
