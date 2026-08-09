@@ -620,6 +620,13 @@ function createWindow(role: WindowRole = 'main') {
       ipcMain.removeListener(IPC.CHROME_UI_READY, onUiReady);
       if (!thisWin.isDestroyed()) {
         thisWin.show();
+        // ⚠️ Показ окна НЕ отдаёт фокус ни одной вью внутри него, и каретка в адресной строке об
+        // этом не говорит: DOM-фокус (Toolbar.tsx честно ставит его в поле) и фокус ВЬЮ — разные
+        // вещи. Замерено настоящими клавишами ОС (SendKeys в переднее окно, а не CDP — тот
+        // доставляет ввод прямо в рендерер мимо маршрутизации): после запуска окно переднее,
+        // каретка в строке, document.hasFocus() в чроме false, набранное не доезжает никуда.
+        // focusActiveView() выбирает адресата сам — живая страница себе, хаб/спящая вкладка чрому.
+        tabs?.focusActiveView();
         console.log(`[startup] show reason=${reason} ${Date.now() - startT0}ms`);
       }
       // Заставка уходит ровно здесь: после неё человек сразу видит готовое окно, без
