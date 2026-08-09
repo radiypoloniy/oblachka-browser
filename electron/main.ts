@@ -73,6 +73,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { warmup as warmupTranslation, unloadModel, getLoadedModelId, isModelWarm, type ChatOutcome } from './TranslationService';
+import { shutdownInference } from './inference/InferenceHost';
 import { toggleAiPanel, openAiPanelApp, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView, setOnChatIntent as setOnAiPanelChatIntent } from './AiPanelManager';
 import {
   togglePageTranslate,
@@ -3047,4 +3048,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   isShuttingDown = true; // macOS Cmd+Q путь — здесь ещё раньше, чем win.on('close') выше
   if (mainTabs && mainSess) mainSess.saveNow(mainTabs.getSessionSnapshot(), mainTabs);
+  // Процесс инференса — дочерний, и Windows не убивает такие сама (та же причина, по которой
+  // явно останавливается xray.exe): без этого он остался бы висеть с моделью в видеопамяти.
+  shutdownInference();
 });

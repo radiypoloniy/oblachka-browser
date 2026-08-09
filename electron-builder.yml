@@ -50,6 +50,9 @@ files:
 
 # Нативный код обязан лежать распакованным: .node и .dll нельзя загрузить из asar-архива.
 asarUnpack:
+  # Точка входа процесса инференса: он грузит нативные библиотеки node-llama-cpp, а из архива они
+  # не загружаются — сам ребёнок обязан лежать распакованным рядом с ними (см. InferenceHost.ts).
+  - 'dist-electron/electron/inference/worker.js'
   - '**/node_modules/better-sqlite3/**'
   - '**/node_modules/node-llama-cpp/**'
   - '**/node_modules/@node-llama-cpp/**'

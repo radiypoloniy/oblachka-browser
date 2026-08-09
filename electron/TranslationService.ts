@@ -3,14 +3,17 @@
 // тесты translategemma-test.ts/qwen35-test.ts, уже удалены). Единственный источник правды для
 // перевода — используется и боевой фичей (ПКМ → «Перевести», см. TabManager.ts/main.ts), и ручным
 // тест-мостом (translateTestBridge.ts), чтобы не дублировать.
-// node-llama-cpp работает ТОЛЬКО в main-процессе. Ленивая загрузка: модель (~5.7ГБ) грузится по
-// первому вызову translate(), НЕ при старте браузера — иначе окно подвиснет на открытии. Загрузка
-// заметно дольше, чем у EuroLLM (~30с против ~5с, соло-замер на чистых 8ГБ VRAM) — see
-// translatepopover.tsx: текст плейсхолдера отражает это честно.
+// ⚠️ САМА МОДЕЛЬ ЖИВЁТ В ДРУГОМ ПРОЦЕССЕ (electron/inference/worker.ts, Electron utilityProcess).
+// Этот файл остался слоем СМЫСЛА: промпты, разбор ответов, лимиты, очередь, коды ошибок — всё, что
+// правится по итогам замеров. Через границу процессов ходят только строки.
+// Почему так: нативные вызовы llama.cpp не уступают event-loop своего процесса, и пока модель
+// грузилась здесь, замер давал 15.4 с блокировок main за 15 с наблюдения — первое обращение к AI
+// подвешивало весь браузер. После выноса — 0 мс. Подробности и спайк — в InferenceHost.ts.
+// Ленивая загрузка сохранена: модель поднимается по первому реальному вызову, не при старте.
 import fs from 'node:fs'
 import { getTargetLang } from './TranslationConfig'
 import * as ModelRegistry from './ModelRegistry'
-import { getLlamaBackend, getNlc } from './LlamaBackend'
+import * as Inference from './inference/InferenceHost'
 import { enqueueQwen, isQwenBusy } from './QwenQueue'
 import type { AiAction, AiActionOutcome, ModelErrorCode } from '../shared/ipc'
 
@@ -237,31 +240,8 @@ function segmentsForAction(text: string): string[] {
   return [text]
 }
 
-// Защита от утечки reasoning в перевод: у Qwen3.5-9B thinking по умолчанию off, и chatWrapper ниже
-// явно просит thoughts:'discourage' — но это диагностировано на живых прогонах (см. qwen35-test.ts,
-// уже удалён), не гарантия на 100% случаев. Если <think>-теги всё же просочатся — вырезаем перед
-// тем, как отдать текст в поповер, а не полагаемся молча на настройку wrapper'а.
-function stripThinking(text: string): string {
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let llama: any = null
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let model: any = null
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let context: any = null
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let sequence: any = null
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let LlamaChatSession: any = null
-// Больше не "qwenChatWrapper" — обёртка определяется по фактически загруженной модели (см.
-// resolveChatWrapper в ensureLoaded), а не жёстко под Qwen. Живёт рядом с model/context/sequence:
-// один и тот же набор переменных заполняется одним и тем же куском ensureLoaded() и относится
-// к одной и той же загруженной модели — если позже появится смена модели в рантайме, эти
-// переменные и должны сбрасываться/пересчитываться вместе, а не по отдельности.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let chatWrapper: any = null
+// Нативных объектов модели здесь больше НЕТ — они живут в процессе инференса (см. шапку файла).
+// Отсюда остаётся только знание «идёт ли загрузка» и «что загружено», нужное гейтам и реестру.
 let loadPromise: Promise<number> | null = null
 // id (ModelRegistry.InstalledModel.id) загруженной СЕЙЧАС модели — нужен вызывающей стороне
 // (ModelRegistry.ts::deleteModel), чтобы узнать, не пытается ли она удалить файл модели, которая
@@ -276,13 +256,13 @@ export function getLoadedModelId(): string | null {
   return loadedModelId
 }
 
-// Настройки QwenChatWrapper, которые ОБЯЗАТЕЛЬНО сохраняются, когда resolveChatWrapper решит, что
-// загруженная модель — Qwen. thoughts:'discourage' давит reasoning (это не опционально: без него
-// в панели полезут <think>-блоки — stripThinking() ниже подчищает, если утечка всё же случится, но
-// это подстраховка, не замена настройке). variation:'3.5' — актуальный чат-шаблон линейки.
-// customWrapperSettings передаётся резолверу заранее и применяется, ТОЛЬКО если он сам решит, что
-// это qwen-обёртка (см. ensureLoaded ниже) — на любую другую модель эти настройки не действуют.
-const QWEN_CHAT_WRAPPER_SETTINGS = { variation: '3.5' as const, thoughts: 'discourage' as const }
+// Процесс инференса умер (падение llama.cpp, нехватка видеопамяти, выход из приложения) — наша
+// память о загруженной модели протухла вместе с ним. Без этого сброса ensureLoaded() возвращала бы
+// уже разрешённый loadPromise, и следующий запрос ушёл бы в новый, пустой процесс.
+Inference.onInferenceProcessGone(() => {
+  loadPromise = null
+  loadedModelId = null
+})
 
 async function ensureLoaded(): Promise<number> {
   if (loadPromise) return loadPromise
@@ -303,99 +283,31 @@ async function ensureLoaded(): Promise<number> {
       throw { code: 'MODEL_FILE_MISSING', message: 'Файл модели не найден на диске' } satisfies ModelError
     }
 
-    // Инстанс llama-бэкенда и сам модуль node-llama-cpp — через LlamaBackend.ts, не напрямую:
-    // единственная точка, чтобы будущий детект железа (HardwareInfo.ts) переиспользовал ТОТ ЖЕ
-    // инстанс, а не заводил второй независимый backend на том же GPU.
-    // ⚠️ Отказ САМОГО бэкенда (не модели) раньше улетал наружу сырым исключением: isModelError его
-    // не узнавал, и в панель приходило `String(e)` — то есть «Error: ...» с потрохами. Между тем
-    // именно здесь живёт единственная понятная человеку причина отказа — блокировка неподписанных
-    // библиотек со стороны Smart App Control (текст готовит LlamaBackend.ts). Приводим к тому же
-    // ModelError, что и остальные отказы: панель уже умеет показывать его message как есть.
-    let nlc: Awaited<ReturnType<typeof getNlc>>
+    // ⚠️ Загрузка идёт В ДРУГОМ ПРОЦЕССЕ — здесь остаётся только решение «какую модель и с каким
+    // потолком контекста», а вся нативная работа (бэкенд, GGUF, KV-кэш, обёртка чата) живёт в
+    // electron/inference/worker.ts. Именно поэтому окно больше не замирает на эти десятки секунд.
+    //
+    // ⚠️ ПОТОЛОК КОНТЕКСТА ЗАДАЁТСЯ ЯВНО, и это не тонкая настройка, а починка. Без него
+    // createContext берёт «auto», а тот раздаёт столько, сколько влезает в свободную видеопамять,
+    // — то есть чем МЕНЬШЕ модель, тем БОЛЬШЕ ей достаётся. Замерено на живой машине (RTX 4060,
+    // 8 ГБ): Qwen3.5 4B получала n_ctx=218368 при trainContextSize=262144, а 9B на той же карте
+    // оставляла себе крохи. Отсюда и жалоба «4B работает медленнее 9B»: под такой контекст
+    // выделяется огромный KV-кэш, и платит за него каждый прогон.
+    // Сколько нужно на самом деле — видно из собственных лимитов приложения (см. [gen] limits):
+    // самый большой выход 4000 токенов (батч перевода страницы), 16384 покрывают всё с запасом.
     try {
-      nlc = await getNlc()
-      llama = await getLlamaBackend()
+      const info = await Inference.loadModel(
+        installed.filePath, installed.id, installed.label, CONTEXT_MAX_TOKENS,
+      )
+      loadedModelId = installed.id
+      console.log(`[gen] модель загружена в отдельном процессе: gpu=${info.gpu} n_ctx=${info.nCtx} за ${info.loadMs}мс`)
     } catch (e) {
+      // Отказ переезжает через границу процессов вместе с кодом (см. InferenceHost.ts): и
+      // блокировка неподписанных библиотек со стороны Smart App Control, и нехватка VRAM приходят
+      // сюда уже человекочитаемым текстом — панель показывает его как есть.
       const message = e instanceof Error ? e.message : String(e)
       throw { code: 'LOAD_FAILED', message } satisfies ModelError
     }
-    // Диагностика: 'cpu' здесь — главный подозреваемый при жалобах на скорость (9B-модель на CPU
-    // на порядок медленнее, чем на GPU) — без этой строки бэкенд не виден нигде в боевом логе
-    // (только в изолированном llamatest.ts).
-    console.log(`[gen] llama backend: gpu=${llama.gpu}`)
-    LlamaChatSession = nlc.LlamaChatSession
-    try {
-      // Flash attention + 8-битный (Q8_0) KV-кэш: примерно вдвое меньше VRAM под контекст (KV-кэш
-      // — основной потребитель памяти на длинных диалогах/источниках), заметно отзывчивее, потеря
-      // качества у Q8_0 близка к нулю. Квантованный KV в llama.cpp работает только с flash attention
-      // — включаем в паре. Опции experimental* — публичный API node-llama-cpp 3.19 (см. loadModel
-      // LlamaModelOptions). Одна точка загрузки покрывает весь AI-стек (перевод/панель/хаб/группировка).
-      model = await llama.loadModel({
-        modelPath: installed.filePath,
-        defaultContextFlashAttention: true,
-        experimentalDefaultContextKvCacheKeyType: 'Q8_0',
-        experimentalDefaultContextKvCacheValueType: 'Q8_0',
-      })
-    } catch (e) {
-      throw { code: 'LOAD_FAILED', message: `Не удалось загрузить модель: ${String(e)}` } satisfies ModelError
-    }
-    loadedModelId = installed.id
-
-    // Автоопределение обёртки чата по РЕАЛЬНО загруженной модели (GGUF-метаданные/токенизатор/BOS),
-    // а не жёсткая Qwen-обёртка на весь процесс, как раньше — эта же ensureLoaded() в будущем
-    // сможет загружать не только Qwen (см. каталог моделей, ModelCatalog.ts). Форма вызова —
-    // options-объект (а не resolveChatWrapper(model, ...)), потому что та форма ВСЕГДА возвращает
-    // непустую обёртку (падает на GeneralChatWrapper внутри себя) — нам же нужно самим отличить
-    // "определил конкретный тип" от "не определил вообще ничего", чтобы залогировать это и выбрать
-    // свой fallback (Jinja из GGUF), а не молча получить общий шаблон без предупреждения.
-    const resolved = nlc.resolveChatWrapper({
-      bosString: model.tokens.bosString,
-      filename: model.filename,
-      fileInfo: model.fileInfo,
-      tokenizer: model.tokenizer,
-      customWrapperSettings: { qwen: QWEN_CHAT_WRAPPER_SETTINGS },
-    })
-    if (resolved != null) {
-      chatWrapper = resolved
-    } else {
-      // Не подставляем молча Qwen-обёртку чужой модели и не падаем — предупреждаем и используем
-      // универсальный Jinja-шаблон из самого GGUF (честная разметка диалога вместо угадывания);
-      // если и его нет в метаданных, GeneralChatWrapper — самый нейтральный вариант из встроенных.
-      const jinjaTemplate = model.fileInfo?.metadata?.tokenizer?.chat_template
-      console.warn(
-        `[gen] resolveChatWrapper не смог определить обёртку для модели "${installed.label}" — использую ` +
-        `${jinjaTemplate ? 'JinjaTemplateChatWrapper (шаблон из GGUF)' : 'GeneralChatWrapper (нет даже Jinja-шаблона в метаданных)'}`,
-      )
-      chatWrapper = jinjaTemplate != null
-        ? new nlc.JinjaTemplateChatWrapper({ tokenizer: model.tokenizer, template: jinjaTemplate })
-        : new nlc.GeneralChatWrapper()
-    }
-    // Пригодится и дальше (см. задачу с Gemma 4/другими архитектурами) — подтверждает на живом
-    // логе, какую обёртку резолвер реально выбрал для конкретной модели.
-    console.log(`[gen] chat wrapper: ${chatWrapper.constructor.name}`)
-
-    // ⚠️ ПОТОЛОК КОНТЕКСТА ЗАДАЁТСЯ ЯВНО. Без него createContext берёт «auto», а тот раздаёт
-    // столько, сколько влезает в свободную видеопамять, — и чем МЕНЬШЕ модель, тем БОЛЬШЕ ей
-    // достаётся. Замерено на живой машине (RTX 4060, 8 ГБ): Qwen3.5 4B получала n_ctx=218368
-    // при trainContextSize=262144, тогда как 9B на той же карте оставляла себе крохи. Отсюда и
-    // жалоба «4B работает медленнее 9B»: под такой контекст выделяется огромный KV-кэш, и
-    // платит за него каждый прогон, хотя приложению столько не нужно и близко.
-    //
-    // Сколько нужно на самом деле — видно из собственных лимитов приложения (см. [gen] limits
-    // выше): самый большой выход 4000 токенов (батч перевода страницы). Даже с запасом на вход
-    // 16384 покрывают всё с многократным избытком. Это не «экономия», а снятие лишней работы:
-    // неиспользуемый контекст не ускоряет ничего, только занимает память и время на кэш.
-    //
-    // ⚠️ Форма { max } — именно потолок, а не фиксированный размер: на слабой карте «auto»
-    // по-прежнему вправе выдать меньше, и жёсткое число там привело бы к отказу загрузки.
-    context = await model.createContext({ sequences: 1, contextSize: { max: CONTEXT_MAX_TOKENS } })
-    sequence = context.getSequence()
-    // contextSize — не задаём явно (createContext сам подбирает "auto" под доступную VRAM и
-    // trainContextSize модели), поэтому фактический n_ctx известен только ПОСЛЕ загрузки —
-    // логируем сразу, чтобы не гадать, укладывается ли вход+выход в бюджет (см. [gen] limits выше).
-    console.log(`[gen] context: n_ctx=${context.contextSize} trainContextSize=${model.trainContextSize}`)
-    // Подтверждаем, что flash attention + Q8_0 KV-кэш реально применились (см. loadModel выше).
-    try { console.log(`[gen] flashAttention=${model.defaultContextFlashAttention} kvCache=Q8_0`) } catch { /* геттер мог отсутствовать в иной версии */ }
     return performance.now() - t0
   })()
   loadPromise = attempt
@@ -483,34 +395,14 @@ export async function unloadModel(): Promise<void> {
 // no-op сработает корректно. Проверка ДО постановки в очередь такой гарантии не даёт: оба вызова
 // увидели бы model !== null одновременно и оба попытались бы диспоузить уже диспоузенное.
 async function unloadModelQueued(): Promise<void> {
-  if (model === null) {
-    console.log('[gen] unloadModel: модель уже выгружена — no-op')
-    return
-  }
-
-  // ИМЕННО в этом порядке: context (владеет sequence/KV-cache) — до model. llama (бэкенд) НЕ
-  // трогаем — он закэширован в LlamaBackend.ts и им пользуется HardwareInfo.ts; уничтожение
-  // бэкенда оставило бы тот синглтон с мёртвой ссылкой.
-  await context.dispose()
-  await model.dispose()
-
-  // sequence отдельно не disposeим — у неё нет собственного нативного выделения (это ID в общем
-  // буфере context'а, см. разведку node-llama-cpp 3.19: LlamaContextSequence слушает только
-  // model.onDispose, не context.onDispose, но VRAM освобождается вместе с native _ctx выше).
-  // Отдельный sequence.dispose() освободил бы только JS-бухгалтерию (чекпоинты/пул id), которая
-  // всё равно исчезает вместе с уже уничтоженным контекстом — обнуляем ссылку и всё.
-  model = null
-  context = null
-  sequence = null
-  chatWrapper = null
+  // Проверка «уже выгружено» — ВНУТРИ очереди, а не до постановки в неё: если unloadModel()
+  // позвали несколько раз подряд, к моменту второго вызова первый уже отработал своим ходом,
+  // и тихий no-op сработает верно. Проверка до очереди такой гарантии не даёт.
+  await Inference.unloadModel()
   loadedModelId = null
-  // loadPromise = null — следующий ensureLoaded() увидит `if (loadPromise) return loadPromise` как
-  // false и выполнит тело заново: та же логика сброса при NO_MODEL_INSTALLED/MODEL_FILE_MISSING
-  // (см. setImmediate ниже в ensureLoaded) не тронута — она снова сработает, если к тому моменту
-  // реестр вдруг окажется пуст.
+  // loadPromise = null — следующая ensureLoaded() увидит `if (loadPromise)` ложным и выполнит тело
+  // заново: сброс отказа при NO_MODEL_INSTALLED/MODEL_FILE_MISSING этим не тронут.
   loadPromise = null
-
-  console.log('[gen] модель выгружена из VRAM')
 }
 
 // Диагностика скорости по этапам (см. задачу замера) — ASCII-теги [perf], кириллица в stdout
@@ -529,77 +421,19 @@ async function runPrompt(
 }
 
 async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number; stopReason: string }> {
-  const tSessionStart = performance.now()
   // ⚠️ ПОЧЕМУ ОДИН И ТОТ ЖЕ ЗАПРОС ИНОГДА ДАЁТ РАЗНЫЙ ОТВЕТ — разобрано замерами, не переоткрывать.
-  // Сэмплинг тут ни при чём: `temperature` в node-llama-cpp по умолчанию 0, то есть выборка жадная.
-  // Что проверено и ОТВЕРГНУТО как причина:
-  //  • остаточный контекст — перед каждым прогоном `nextTokenIndex`=0, `stateCellsStartIndex`=-1,
-  //    токенов в контексте 0; очистка ПЕРЕД прогоном ничего не меняет (пробовал, откачено);
-  //  • квантованный KV-кэш — с f16 картина та же;
-  //  • разный промпт — отрисованный промпт побайтно одинаков (339 токенов на всех прогонах).
-  // Что видно: прогоны 2, 3, 4 совпадают между собой ТОЧНО, а первый в процессе отличается.
-  // То есть вычисление детерминировано в установившемся режиме, а расходится оно от РАСКЛАДКИ
-  // ВЫЧИСЛЕНИЙ (порядок сложений с плавающей точкой зависит от разбиения на батчи, а оно — от
-  // того, что считалось до этого). Это известное свойство llama.cpp: логиты не гарантируются
-  // побитово одинаковыми при разном размере батча.
-  // ⚠️ Практический вывод, и он важнее механизма: разница в логитах порядка 1e-4 меняет ответ
-  // ТОЛЬКО там, где модель и так почти не уверена — где два варианта идут ноздря в ноздрю.
-  // Значит «плавает» не машина, а решение, которое модели тяжело; лечится это промптом (дробить
-  // решения по одному), а не бубном вокруг движка. Отсюда же требование к замеру — повторы после
-  // прогрева (scripts/ai-bench.mjs).
-  const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper })
-  const tSessionCreated = performance.now()
-
-  const inputTokens = model.tokenize(prompt).length
-  const tTokenized = performance.now()
-
-  // onToken — единственный способ увидеть МОМЕНТ первого сгенерированного токена, а не только
-  // итог. Время до первого токена = вся служебная работа перед реальной генерацией (prefill
-  // промпта в KV cache, чат-шаблон Qwen, что угодно скрытое внутри session.prompt()) — то самое
-  // «session/context setup», которое иначе не отделить от честной генерации.
-  let firstTokenAt: number | null = null
-  let genTokenCount = 0
-  // promptWithMeta вместо prompt() — тот же стриминг (onToken/onTextChunk), но плюс stopReason:
-  // единственный надёжный способ отличить «модель ответила и остановилась сама (eogToken/
-  // stopGenerationTrigger)» от «упёрлась в maxTokens и её оборвали» (см. лог [gen] stopped ниже) —
-  // раньше это приходилось гадать по факту обрыва текста на полуслове.
-  const { responseText, stopReason } = await session.promptWithMeta(prompt, {
-    maxTokens,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onToken: (tokens: any[]) => {
-      if (firstTokenAt === null) firstTokenAt = performance.now()
-      genTokenCount += tokens.length
-    },
-    // onTextChunk — готовый декодированный текст по мере генерации, БЕЗ thinking-сегментов
-    // (гарантия самой библиотеки, см. её .d.ts) — тот же тумблер, что и onToken выше, но текстом,
-    // а не токенами. Пробрасываем наружу как есть: печатание в поповере на уровне генерации,
-    // а не по сегментам (см. runSegmented ниже).
-    onTextChunk: onChunk,
-  })
-  const rawOut = responseText.trim()
-  const tGenDone = performance.now()
-
-  const out = stripThinking(rawOut)
-  const tokens = model.tokenize(out).length
-
-  await sequence.clearHistory()
-  const tCleared = performance.now()
-
-  const setupMs = (firstTokenAt ?? tGenDone) - tTokenized
-  const genMs = tGenDone - (firstTokenAt ?? tGenDone)
-  console.log(
-    `[perf] segment: sessionCreate=${(tSessionCreated - tSessionStart).toFixed(0)}ms ` +
-    `promptBuild+tokenize=${(tTokenized - tSessionCreated).toFixed(0)}ms (inputTokens=${inputTokens}) ` +
-    `setup/prefill(до 1-го токена)=${setupMs.toFixed(0)}ms ` +
-    `generation=${genMs.toFixed(0)}ms (genTokens=${genTokenCount}, ${(genTokenCount / (genMs / 1000)).toFixed(1)} tok/s) ` +
-    `clearHistory=${(tCleared - tGenDone).toFixed(0)}ms ` +
-    `finalOutTokens=${tokens} (после stripThinking/trim, для справки с genTokens выше)`,
-  )
-  console.log(
-    `[gen] stopped: ${stopReason === 'maxTokens' ? 'maxTokens reached' : `stop token (${stopReason})`} (limit=${maxTokens}, genTokens=${genTokenCount})`,
-  )
-
-  return { out, tokens, stopReason }
+  // Сэмплинг ни при чём: temperature в node-llama-cpp по умолчанию 0, выборка жадная. Остаточный
+  // контекст, квантованный KV-кэш и промпт проверены и отвергнуты (промпт побайтно одинаков).
+  // Расходится РАСКЛАДКА ВЫЧИСЛЕНИЙ: порядок сложений с плавающей точкой зависит от разбиения на
+  // батчи — известное свойство llama.cpp. Практический вывод важнее механизма: разница в логитах
+  // порядка 1e-4 меняет ответ только там, где модель и так почти не уверена. Значит «плавает» не
+  // машина, а трудное для модели решение, и лечится это промптом (одно решение на прогон), а не
+  // бубном вокруг движка.
+  await ensureLoaded()
+  const t0 = performance.now()
+  const res = await Inference.runPrompt(prompt, maxTokens, onChunk)
+  console.log(`[perf] segment: всего=${(performance.now() - t0).toFixed(0)}ms outTokens=${res.tokens}`)
+  return res
 }
 
 // ── Умный поиск истории (Qwen-реранк top-k кандидатов от эмбеддинга) ────────────────────────
@@ -668,10 +502,10 @@ export async function rerankHistoryCandidates(
   if (candidates.length === 0) return []
   // runPrompt САМ модель не грузит — обычно её загружает вызывающая сторона (runSegmented для
   // перевода/AI-действий, runChatMessageQueued для чата) до первого runPrompt/session.prompt().
-  // Умный поиск — единственный потребитель runPrompt(), у которого нет такого "заботливого"
-  // вызывающего кода вокруг — без явного ensureLoaded() здесь LlamaChatSession/model/sequence
-  // ещё null при первом заходе (если юзер до этого ни разу не переводил/не чатился в этой
-  // сессии) и `new LlamaChatSession(...)` внутри runPrompt падает с "is not a constructor".
+  // Умный поиск — единственный потребитель runPrompt(), у которого нет такого «заботливого»
+  // вызывающего кода вокруг. Явный ensureLoaded() обязателен: без него первый заход (человек в
+  // этой сессии ещё ни разу не переводил и не чатился) ушёл бы в процесс инференса с незагруженной
+  // моделью.
   await ensureLoaded()
   const { out } = await runPrompt(buildRerankPrompt(query, candidates), RERANK_MAX_TOKENS, undefined, opts)
   const seen = new Set<number>()
@@ -1023,45 +857,23 @@ async function runChatMessageQueued(
   onChunk?: (text: string) => void,
 ): Promise<ChatOutcome> {
   try {
-    const tTotalStart = performance.now()
     const wasLoaded = loadPromise !== null
     const loadMs = await ensureLoaded()
-
-    const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: CHAT_SYSTEM_PROMPT, chatWrapper })
-    session.setChatHistory(history) // предыдущие ходы ЭТОЙ вкладки (пусто на первом сообщении/новой странице)
-
-    const t0 = performance.now()
-    // promptWithMeta — см. комментарий в runPrompt() выше: тот же повод, stopReason нужен и здесь
-    // (чат — самый частый источник обрывов на maxTokens, включая «Перевести страницу», которая
-    // тоже идёт через этот вызов, см. AiPanelManager.ts::quick-translate).
-    const { responseText, stopReason } = await session.promptWithMeta(userText, {
-      maxTokens: CHAT_MAX_TOKENS,
-      onTextChunk: onChunk,
-    })
-    const rawOut = responseText.trim()
-    const ms = performance.now() - t0
-
-    const out = stripThinking(rawOut)
-    const tokens = model.tokenize(out).length
-
-    // getChatHistory() уже включает и этот новый user-ход, и model-ответ — вызывающая сторона
-    // сохраняет это как новую базу для следующего сообщения ЭТОЙ ЖЕ вкладки.
-    const newHistory = session.getChatHistory()
-
-    await sequence.clearHistory() // та же гигиена, что и в runPrompt — сброс физического KV-кэша
-
+    const { out, history: newHistory, ms, tokens } = await Inference.runChat(
+      userText, history, CHAT_MAX_TOKENS, CHAT_SYSTEM_PROMPT, onChunk,
+    )
     console.log(
       `[chat] "${userText.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +
-      `(${ms.toFixed(0)}ms, ${(tokens / (ms / 1000)).toFixed(1)} tok/s, всего=${(performance.now() - tTotalStart).toFixed(0)}ms)`,
+      `(${ms.toFixed(0)}ms, ${(tokens / (ms / 1000)).toFixed(1)} tok/s)`,
     )
-    console.log(
-      `[gen] stopped: ${stopReason === 'maxTokens' ? 'maxTokens reached' : `stop token (${stopReason})`} (limit=${CHAT_MAX_TOKENS}, outTokens=${tokens})`,
-    )
-
     return { ok: true, out, history: newHistory, ms, tokPerSec: tokens / (ms / 1000), loadMs: wasLoaded ? null : loadMs }
   } catch (e) {
     console.error('[chat] error:', e)
     if (isModelError(e)) return { ok: false, error: e.message, errorCode: e.code }
-    return { ok: false, error: String(e) }
+    // Отказ из процесса инференса приходит обычным Error с кодом — приводим к тому же виду, что и
+    // локальные ModelError, иначе в панель уехало бы «Error: ...» с потрохами.
+    const code = (e as { code?: ModelErrorCode } | null)?.code
+    const message = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: message, errorCode: code }
   }
 }

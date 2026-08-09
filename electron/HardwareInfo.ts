@@ -1,11 +1,13 @@
-// Детект железа — задел под будущий подбор GGUF-модели по доступной VRAM. Read-only, ленивый:
-// ничего не считает на старте (см. main.ts — вызова отсюда там нет), первый запрос инициирует
-// расчёт и кэширует результат. VRAM/GPU-бэкенд — через УЖЕ существующий llama-инстанс
-// (LlamaBackend.ts), второй getLlama()/динамический импорт node-llama-cpp здесь не заводится.
-// Модель НИКОГДА не загружается этим файлом — только getLlama() (backend/GPU-детект), loadModel
-// здесь не встречается ни разу.
+// Детект железа — подбор GGUF-модели по доступной VRAM. Read-only, ленивый: ничего не считает на
+// старте, первый запрос инициирует расчёт и кэширует результат. Модель НИКОГДА не загружается
+// этим файлом.
+//
+// ⚠️ VRAM спрашивается У ПРОЦЕССА ИНФЕРЕНСА (InferenceHost.ts), а не через собственный
+// getLlamaBackend(). Инициализация бэкенда — это тоже нативная работа (1.1 с в спайке), и сделай
+// её main, он бы замирал на секунду ровно в тот момент, когда человек открыл раздел моделей.
+// Плюс инвариант: node-llama-cpp живёт РОВНО в одном процессе, и это не main.
 import os from 'node:os'
-import { getLlamaBackend } from './LlamaBackend'
+import { getVram } from './inference/InferenceHost'
 import type { HardwareSnapshot } from '../shared/ipc'
 
 // Успешный снапшот кэшируется на процесс — vramTotal/gpuBackend/cpuCores стабильны, пересчитывать
@@ -23,12 +25,11 @@ async function detect(): Promise<HardwareSnapshot> {
   const cpuCores = os.cpus().length
 
   try {
-    const llama = await getLlamaBackend()
-    const vram = await llama.getVramState()
+    const vram = await getVram()
     return {
       vramTotalBytes: vram.total,
       vramFreeBytes: vram.free,
-      gpuBackend: llama.gpu,
+      gpuBackend: vram.gpu,
       ramTotalBytes,
       ramFreeBytes,
       cpuCores,
