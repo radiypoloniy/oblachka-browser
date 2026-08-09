@@ -292,6 +292,21 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   // состояние приложений (набранное в калькуляторе, таймер) переезжает вместе со слотом.
   const swapSlots = () => setOpenApps((prev) => (prev.length === 2 ? [prev[1], prev[0]] : prev))
 
+  // Esc закрывает СЛОТ, а не панель, пока открыто хоть одно приложение.
+  // ⚠️ Слушатель в фазе ПЕРЕХВАТА и с stopPropagation: панель закрывает себя по Esc своим
+  // обработчиком на document (см. aipanel.tsx), и без перехвата один Esc делал бы оба дела разом
+  // — закрывал приложение и захлопывал панель. Закрывается ПОСЛЕДНИЙ открытый: он верхний в
+  // стопке внимания, как последняя открытая вкладка при Ctrl+W.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || openApps.length === 0) return
+      e.stopPropagation()
+      setOpenApps((prev) => prev.slice(0, -1))
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [openApps.length])
+
   // ── Размер слотов перетаскиванием разделителя ──
   const slotsRef = useRef<HTMLDivElement>(null)
   const [splitRatio, setSplitRatio] = useState<number>(loadSplit)
@@ -778,6 +793,10 @@ export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
   )
 }
 
+// Столбцов в сетке иконок. Держится рядом с самой сеткой: по нему же ходят стрелки вверх/вниз,
+// и разъехавшись, они бы прыгали через ряд.
+const GRID_COLUMNS = 4
+
 function HomeGrid({ apps, openApps, onOpen, onReorder, widgets, weatherCity, onWallpaper }: {
   apps: AppDef[]
   openApps: AppId[]
@@ -814,10 +833,30 @@ function HomeGrid({ apps, openApps, onOpen, onReorder, widgets, weatherCity, onW
           {widgets.currency && <CurrencyWidget />}
         </div>
       )}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-        rowGap: 16, columnGap: 8, justifyItems: 'center',
-      }}>
+      {/* ⚠️ Стрелки ходят по сетке ЗДЕСЬ, а не глобальным слушателем на документе: фокусом
+          владеет сама кнопка-иконка, и пока он не на ней, стрелки должны оставаться стрелками
+          (прокрутка страницы, поле ввода чата рядом). Enter/пробел открывают сами — это кнопка. */}
+      <div
+        onKeyDown={(e) => {
+          const step = e.key === 'ArrowRight' ? 1
+            : e.key === 'ArrowLeft' ? -1
+              : e.key === 'ArrowDown' ? GRID_COLUMNS
+                : e.key === 'ArrowUp' ? -GRID_COLUMNS
+                  : 0
+          if (step === 0) return
+          const items = [...e.currentTarget.querySelectorAll('button')]
+          const from = items.indexOf(document.activeElement as HTMLButtonElement)
+          if (from < 0) return
+          const to = from + step
+          if (to < 0 || to >= items.length) return // за край не уходим: заворот сбивает с толку
+          e.preventDefault()
+          items[to].focus()
+        }}
+        style={{
+          display: 'grid', gridTemplateColumns: `repeat(${GRID_COLUMNS}, 1fr)`,
+          rowGap: 16, columnGap: 8, justifyItems: 'center',
+        }}
+      >
         {apps.map((app) => {
           const opened = openApps.includes(app.id)
           return (
