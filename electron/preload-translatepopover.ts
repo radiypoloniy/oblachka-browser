@@ -6,9 +6,9 @@ import type { AiAction, AiActionOutcome } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('translatePopover', {
   // canReplace — текст пришёл из поля ввода, результат можно вернуть туда же (см. «Заменить»).
-  onOpen: (cb: (text: string, action: AiAction, canReplace: boolean) => void) => {
-    const handler = (_e: unknown, payload: { text: string; action: AiAction; canReplace?: boolean }) =>
-      cb(payload.text, payload.action, !!payload.canReplace);
+  onOpen: (cb: (text: string, action: AiAction, canReplace: boolean, targetLang?: string) => void) => {
+    const handler = (_e: unknown, payload: { text: string; action: AiAction; canReplace?: boolean; targetLang?: string }) =>
+      cb(payload.text, payload.action, !!payload.canReplace, payload.targetLang);
     ipcRenderer.on('translate-popover:open', handler);
     return () => ipcRenderer.removeListener('translate-popover:open', handler);
   },

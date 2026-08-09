@@ -170,7 +170,7 @@ function ensureIpcRegistered(): void {
   })
 }
 
-export function showTranslatePopover(win: BrowserWindow, action: AiAction, text: string, rect: SelectionRect, tabWc: WebContents, canReplace = false): void {
+export function showTranslatePopover(win: BrowserWindow, action: AiAction, text: string, rect: SelectionRect, tabWc: WebContents, canReplace = false, targetLang?: string): void {
   ensureIpcRegistered()
   cleanup() // на случай, если предыдущий поповер ещё не закрыт (повторный клик «Перевести»)
 
@@ -204,7 +204,9 @@ export function showTranslatePopover(win: BrowserWindow, action: AiAction, text:
   // Закрытие — только явные действия: крестик/Esc (ipc), повторный клик «Перевести» (re-show выше),
   // скролл страницы (best-effort ниже).
   wc.once('did-finish-load', () => {
-    wc.send('translate-popover:open', { text, action, canReplace })
+    // targetLang доезжает до карточки, чтобы подпись была «Перевожу на английский…», а не общее
+    // «Перевожу…»: человек сам выбрал язык и ждёт подтверждения, что услышали именно его.
+    wc.send('translate-popover:open', { text, action, canReplace, targetLang })
     wc.focus()
   })
   wc.loadURL('oblako-chrome://localhost/translatepopover.html')
@@ -247,7 +249,7 @@ export function showTranslatePopover(win: BrowserWindow, action: AiAction, text:
   // действием).
   void runAiAction(action, text, (chunkText) => {
     if (popoverView && popoverView.webContents === wc) wc.send('translate-popover:chunk', chunkText)
-  }).then((outcome) => {
+  }, targetLang).then((outcome) => {
     if (popoverView && popoverView.webContents === wc) wc.send('translate-popover:result', outcome)
   })
 }

@@ -12,6 +12,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
 import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_HEADER_HEIGHT } from '../shared/layout';
+import { TRANSLATE_TARGETS } from '../shared/translateLangs';
 import { hostOfUrl } from '../shared/rules';
 import { isExternalAppUrl } from './ExternalProtocol';
 import { localPathToFileUrl } from './localFileUrl';
@@ -282,7 +283,7 @@ export class TabManager {
   // Общий колбэк для ВСЕХ AI-действий над выделением (перевод/выжимка/пересказ/объяснение) — та же
   // труба «координаты → Qwen → поповер», разные action только меняют промпт (см. TranslationService.ts).
   // canReplace — текст взят из поля ввода и его можно вернуть обратно (см. EDIT_FIELD_CAPTURE_SCRIPT).
-  private onAiActionCb?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents, canReplace?: boolean) => void;
+  private onAiActionCb?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents, canReplace?: boolean, targetLang?: string) => void;
   // Поповер перевода анкорится к конкретной вкладке/области — при смене активной вкладки его
   // позиция теряет смысл, при закрытии ИМЕННО этой вкладки — тем более. Два отдельных сигнала
   // (не переиспользуем onChange — он общий и палит на ~20 несвязанных мутаций).
@@ -344,7 +345,7 @@ export class TabManager {
     onTitleUpdate?: (url: string, title: string) => void,
     onHistoryOpen?: () => void,
     onFirstTabLoad?: () => void,
-    onAiAction?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents, canReplace?: boolean) => void,
+    onAiAction?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents, canReplace?: boolean, targetLang?: string) => void,
     onActiveTabChanged?: () => void,
     onTabClosed?: (wc: WebContents, tabId: string) => void,
     onContentFocus?: () => void,
@@ -1758,7 +1759,9 @@ export class TabManager {
         // всего хочет причесать весь черновик, а не кусок. Текст поля тянем скриптом — в
         // params контекстного меню его нет (там только selectionText).
         if (this.onAiActionCb) {
-          const dispatchEdit = (action: AiAction) => {
+          // targetLang — только для перевода своего текста на выбранный язык; для fix/shorten/polite
+          // не задаётся (они отвечают на языке оригинала).
+          const dispatchEdit = (action: AiAction, targetLang?: string) => {
             void (async () => {
               let captured: { text: string; rect: { x: number; y: number; width: number; height: number } } | null = null;
               try { captured = await wc.executeJavaScript(EDIT_FIELD_CAPTURE_SCRIPT(p.x, p.y), true); } catch { /* поле пропало */ }
@@ -1772,7 +1775,7 @@ export class TabManager {
                 width: local.width, height: local.height,
               };
               // Пятый аргумент — «результат можно вернуть в поле»: поповер покажет «Заменить».
-              this.onAiActionCb!(action, text, rect, wc, true);
+              this.onAiActionCb!(action, text, rect, wc, true, targetLang);
             })();
           };
           items.push({ type: 'separator' });
@@ -1782,6 +1785,17 @@ export class TabManager {
               { label: 'Исправить ошибки', click: () => dispatchEdit('fix') },
               { label: 'Сделать короче',   click: () => dispatchEdit('shorten') },
               { label: 'Смягчить тон',     click: () => dispatchEdit('polite') },
+              { type: 'separator' },
+              // «Перевести на …» — свой черновик на чужой язык (пишу по-русски, отправлю по-английски).
+              // Именно подменю с языками, а не свой всплывающий экран: нативное меню — это уже
+              // «всплывающее окошко», и городить ради выбора языка отдельную WebContentsView незачем.
+              {
+                label: 'Перевести на',
+                submenu: TRANSLATE_TARGETS.map((l) => ({
+                  label: l.label,
+                  click: () => dispatchEdit('translate', l.code),
+                })),
+              },
             ],
           });
         }

@@ -30,7 +30,10 @@ function isModelError(e: unknown): e is ModelError {
 
 // 'ru->en' и т.п. — для ручного теста (translateTestBridge.ts/translatetest.ts, там всегда пара
 // ru/en). 'auto' — боевой путь (ПКМ → «Перевести»): язык определяется по тексту, см. detectLang.
-export type Direction = 'ru->en' | 'en->ru' | 'auto'
+// 'auto' — определить и исходный, и целевой (по targetLang настроек). Явная пара 'src->tgt'
+// задаёт направление руками; ⚠️ src тоже может быть 'auto' («auto->fr» — переведи НА французский,
+// исходный определи сам): это ровно то, что нужно кнопке «Перевести на…» в правке своего текста.
+export type Direction = 'auto' | `${string}->${string}`
 // Реальная пара после резолва — любой язык из LANG_NAME, не только ru/en (франц + другие языки ЕС).
 export type ResolvedDirection = `${string}->${string}`
 
@@ -173,6 +176,14 @@ async function detectLang(text: string): Promise<string> {
 export async function resolveDirection(dir: Direction, text: string): Promise<{ src: string; tgt: string }> {
   if (dir !== 'auto') {
     const [src, tgt] = dir.split('->') as [string, string]
+    // ⚠️ src='auto' при явной ЦЕЛИ («auto->fr») — детектируем исходный. Иначе buildPrompt получил бы
+    // «Translate the following auto text to French» и модель гадала бы, с чего переводит. Плюс
+    // если исходный совпал с целью (пишу по-французски и прошу «на французский») — переводить
+    // нечего, отдаём как есть тем же приёмом, что и авто-режим (на FALLBACK, чтобы был хоть перевод).
+    if (src === 'auto') {
+      const detected = await detectLang(text)
+      return detected === tgt ? { src: detected, tgt: FALLBACK_LANG } : { src: detected, tgt }
+    }
     return { src, tgt }
   }
   const target = getTargetLang()
@@ -704,9 +715,13 @@ export async function runAiAction(
   action: AiAction,
   text: string,
   onChunk?: (text: string) => void,
+  // Явная цель для перевода — «Перевести на английский» из правки своего текста. Пусто → 'auto'
+  // (перевод НА язык человека, как у выделения). Осмыслен только для translate; прочие действия
+  // отвечают на языке оригинала и его игнорируют.
+  targetLang?: string,
 ): Promise<AiActionOutcome> {
   if (action === 'translate') {
-    const result = await translate(text, 'auto', onChunk)
+    const result = await translate(text, targetLang ? `auto->${targetLang}` : 'auto', onChunk)
     return result.ok ? { ...result, action } : result
   }
 

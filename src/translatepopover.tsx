@@ -11,12 +11,13 @@ import { Languages, Wand2, HelpCircle, ListChecks, SpellCheck, Scissors, Smile, 
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 import type { AiAction, AiActionOutcome } from '../shared/ipc';
+import { translateLangLabel } from '../shared/translateLangs';
 import { installOverlayReveal } from './overlayReveal';
 
 declare global {
   interface Window {
     translatePopover: {
-      onOpen: (cb: (text: string, action: AiAction, canReplace: boolean) => void) => () => void
+      onOpen: (cb: (text: string, action: AiAction, canReplace: boolean, targetLang?: string) => void) => () => void
       replace: (text: string) => void
       onChunk: (cb: (text: string) => void) => () => void
       onResult: (cb: (outcome: AiActionOutcome) => void) => () => void
@@ -56,11 +57,13 @@ function Popover() {
   const [outcome, setOutcome] = useState<AiActionOutcome | null>(null)
   // Текст пришёл из поля ввода — значит правку можно вернуть туда же (см. TabManager: «Править текст»).
   const [canReplace, setCanReplace] = useState(false)
+  // Явно выбранный язык перевода («Перевести на английский») — только для подписи процесса.
+  const [targetLang, setTargetLang] = useState<string | undefined>(undefined)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const unsubOpen = window.translatePopover.onOpen((t, a, replaceable) => {
-      setText(t); setAction(a); setCanReplace(replaceable); setOutcome(null); setStreamedText('')
+    const unsubOpen = window.translatePopover.onOpen((t, a, replaceable, tgt) => {
+      setText(t); setAction(a); setCanReplace(replaceable); setTargetLang(tgt); setOutcome(null); setStreamedText('')
     })
     const unsubChunk = window.translatePopover.onChunk((chunkText) => {
       setStreamedText((prev) => prev + chunkText)
@@ -132,7 +135,7 @@ function Popover() {
         {/* Пока не пришёл ни один сегмент и не пришёл финальный outcome — обычный плейсхолдер загрузки. */}
         {outcome === null && streamedText.length === 0 && (
           <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-            {ACTION_VERB[action]}… (при первом запуске загрузка модели — до 30–40 секунд)
+            {action === 'translate' && targetLang ? `Перевожу на ${translateLangLabel(targetLang).toLowerCase()}` : ACTION_VERB[action]}… (при первом запуске загрузка модели — до 30–40 секунд)
           </span>
         )}
 
