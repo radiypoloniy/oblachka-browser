@@ -75,6 +75,7 @@ import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslateP
 import { warmup as warmupTranslation, unloadModel, getLoadedModelId, isModelWarm, type ChatOutcome } from './TranslationService';
 import { shutdownInference } from './inference/InferenceHost';
 import { isExternalAppUrl, openExternalWithConsent } from './ExternalProtocol';
+import { installCertificateTrust } from './CertificateTrust';
 import { toggleAiPanel, openAiPanelApp, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView, setOnChatIntent as setOnAiPanelChatIntent } from './AiPanelManager';
 import {
   togglePageTranslate,
@@ -458,6 +459,12 @@ function wireSharedSessions(): void {
   // а без них наша строка UA «Chrome/144» противоречит поведению настоящего Chrome и вход
   // в аккаунт Google отвечает «This browser or app may not be secure».
   applyClientHints(session.defaultSession);
+
+  // Доверие корню Минцифры — своё, внутри браузера, и только для банков из списка (см.
+  // CertificateTrust.ts: там же разбор, почему список, а не «доверять везде»). Ставится и на
+  // приватную сессию: в инкогнито Сбер должен открываться так же, как в обычной вкладке.
+  installCertificateTrust(session.defaultSession);
+  installCertificateTrust(session.fromPartition(INCOGNITO_PARTITION));
 
   // Тема, известная main'у ДО того, как хром успеет её прислать. Без этого поповер, созданный
   // раньше первого CHROME_THEME_SET, открывался бы светлым в тёмной теме — видимая вспышка.
