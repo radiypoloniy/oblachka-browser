@@ -57,6 +57,9 @@ declare global {
   interface Window {
     aiPanel: {
       close: () => void
+      // Фокус в поле ввода чата = намерение поговорить с моделью. Именно по нему main греет
+      // Qwen — не по открытию панели (в ней ещё приложения и виджеты), см. AiPanelManager.ts.
+      chatIntent: () => void
       // Иконка приложения на рабочем столе новой вкладки открывает панель сразу на нём.
       onOpenApp: (cb: (appId: string) => void) => () => void
       // webGrounding — тоггл-глобус: true → main отвечает через SearXNG-ветку (см. AiPanelManager.ts).
@@ -809,6 +812,10 @@ function AiPanel() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              // Встали в поле — main начинает греть модель (с отсрочкой, см. WARMUP_DEFER_MS).
+              // Раньше это делало само открытие панели, и человек, зашедший за калькулятором,
+              // платил ~900 мс подвисания main ни за что.
+              onFocus={() => window.aiPanel.chatIntent()}
               placeholder="Написать сообщение…"
               rows={1}
               style={{

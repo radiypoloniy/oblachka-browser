@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('aiPanel', {
     return () => ipcRenderer.removeListener('ai-panel:open-app', handler)
   },
   close: () => ipcRenderer.send('ai-panel:close'),
+  // Человек встал в поле ввода чата — вот это и есть намерение поговорить с моделью, а не сам
+  // факт открытия панели (в ней ещё живут приложения и виджеты). См. AiPanelManager.ts.
+  chatIntent: () => ipcRenderer.send('ai-panel:chat-intent'),
 
   // webGrounding — тоггл-глобус (заход 2 задела): main решает по нему, идти ли через
   // SearXNG-ветку или обычный путь Qwen, см. AiPanelManager.ts::ai-panel:chat-send.

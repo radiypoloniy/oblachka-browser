@@ -73,7 +73,7 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { warmup as warmupTranslation, unloadModel, getLoadedModelId, isModelWarm, type ChatOutcome } from './TranslationService';
-import { toggleAiPanel, openAiPanelApp, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
+import { toggleAiPanel, openAiPanelApp, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView, setOnChatIntent as setOnAiPanelChatIntent } from './AiPanelManager';
 import {
   togglePageTranslate,
   getActiveState as getPageTranslateActiveState,
@@ -906,6 +906,10 @@ function createWindow(role: WindowRole = 'main') {
     // WebContents активной вкладки при извлечении текста страницы в чат (Заход 4), см.
     // TabManager.getActiveWebContents(). Не влияет на управление вкладками.
     setTabManager(tabs);
+    // Прогрев модели по намерению поговорить (фокус в поле ввода панели). Политика прогрева —
+    // здесь, панель о ней не знает; сам maybeLazyWarmupOnDemand по-прежнему отсрочен и уважает
+    // режим загрузки модели и пустой реестр.
+    setOnAiPanelChatIntent(() => maybeLazyWarmupOnDemand());
     // Быстрый поиск (Ctrl+E): поповеру нужен тот же возврат OS-фокуса странице, что и FindBar,
     // а решение «куда открыть найденное» остаётся здесь — вкладками владеет main.
     setSearchPopoverTabManager(tabs);
@@ -2617,7 +2621,12 @@ function registerIpc() {
     relayoutSearchPopover(); // та же свободная ширина, что у FindBar
     relayoutFindBar(w); // свободная ширина под FindBar изменилась (см. FindBarManager.ts::computeBounds)
     relayoutScreenshot(w); // и под карточку снимка — она сидит у правого края, как раз под панелью
-    if (open) maybeLazyWarmupOnDemand(); // явное намерение — открытие AI-панели
+    // ⚠️ Прогрева модели здесь БОЛЬШЕ НЕТ. Открытая панель — ещё не разговор с моделью: в ней
+    // живут приложения, конвертер, виджеты и веб-слоты. Замерено пингом main из хрома: загрузка
+    // Qwen блокирует main-процесс ~900 мс всплесками (433 + 167 + 129 + 119 + 71), и при открытии
+    // панели сразу после запуска они ложатся вплотную к стартовому блоку в 284 мс — это и есть
+    // та «секунда», на которой спотыкался переход «чат → приложения». Прогрев переехал на
+    // намерение поговорить (фокус в поле ввода, см. AiPanelManager.ts::ai-panel:chat-intent).
     return open;
   });
 

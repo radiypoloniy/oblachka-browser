@@ -93,6 +93,14 @@ export function setChromeView(view: WebContentsView): void {
   chromeViewRef = view
 }
 
+// Прогрев модели по намерению поговорить (см. ai-panel:chat-intent ниже). Политику прогрева
+// (режим загрузки, наличие модели, отсрочка) знает main — сюда приходит только готовый колбэк,
+// тем же приёмом, что setGraphMenuBuilder у TabManager: панель не должна знать про ModelRegistry.
+let onChatIntentCb: (() => void) | null = null
+export function setOnChatIntent(cb: () => void): void {
+  onChatIntentCb = cb
+}
+
 // ── Контекст чата по вкладке (Заход 3) ───────────────────────────────────────────────────────
 // Один движок (см. runChatMessage/ensureLoaded в TranslationService.ts), много контекстов: тут
 // только РАЗДЕЛЕНИЕ истории по вкладкам, а не отдельная модель на вкладку. Эфемерно, только в
@@ -485,6 +493,14 @@ function ensureIpcRegistered(): void {
   // это внутренняя механика панели, а не контракт хром-обвязки.
   ipcMain.on('ai-panel:close', () => {
     if (attachedWin) closePanel(attachedWin)
+  })
+
+  // Человек встал в поле ввода чата. ⚠️ Прогрев модели повешен ИМЕННО СЮДА, а не на открытие
+  // панели: замерено, что загрузка Qwen блокирует main ~900 мс всплесками (284–433 мс подряд),
+  // и человек, открывший панель ради приложений или конвертера, платил эту секунду ни за что —
+  // ровно на ней и спотыкался переход «чат → приложения» сразу после запуска браузера.
+  ipcMain.on('ai-panel:chat-intent', () => {
+    onChatIntentCb?.()
   })
 
   // Драг разделителя дока (chrome, App.tsx) — приложение одно-оконное (см. остальные
