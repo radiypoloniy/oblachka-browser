@@ -33,6 +33,14 @@ export function setTabManager(tm: TabManager): void {
   tabManagerRef = tm
 }
 
+// Кому сообщить, что человек работает ИМЕННО в этом веб-приложении. ⚠️ Без этого сигнала панель
+// про такой клик не узнаёт вовсе: сайт живёт в своей WebContentsView поверх панели и её событий
+// мыши не порождает. А знать надо — по этому признаку рисуется рамка активного слота.
+let onFocusCb: ((appId: string) => void) | null = null
+export function setOnWebAppFocus(cb: (appId: string) => void): void {
+  onFocusCb = cb
+}
+
 const HTTP_SCHEME = /^https?:\/\//i
 
 // Мобильный UA для веб-слотов: слот шириной с экран телефона (~300–640px), но с десктопным UA
@@ -73,6 +81,9 @@ export function openWebApp(win: BrowserWindow, appId: string, url: string): void
     if (HTTP_SCHEME.test(target)) tabManagerRef?.createTab(target)
     return { action: 'deny' }
   })
+
+  // Клик по сайту забирает фокус его вью — это и есть «человек работает здесь».
+  view.webContents.on('focus', () => onFocusCb?.(appId))
 
   view.webContents.loadURL(url).catch((e) => console.error('[webapp] loadURL упал:', e))
   apps.set(appId, { view, bounds: null, visible: false })

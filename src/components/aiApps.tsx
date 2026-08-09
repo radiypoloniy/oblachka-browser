@@ -6,6 +6,13 @@
 // Живёт в src/components (как aiMarkdown.tsx) — импортируется ТОЛЬКО из aipanel.tsx, в дерево
 // App.tsx не входит. Все цвета — токены (включая градиенты иконок/обоев — tokens/apps.css).
 import React, { useEffect, useRef, useState } from 'react'
+// Та же связка, что держит порядок вкладок и закреплённых в сайдбаре: свой HTML5 drag-and-drop
+// на этой сетке выглядел чужеродно (иконка не едет за курсором, соседи не расступаются, а цель
+// надо угадывать), а здесь ровно та же задача — порядок в одном списке.
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core'
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
+import { SortableContext, rectSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import {
   Calculator, RefreshCw, Timer, Pipette, X, SlidersHorizontal, ImagePlus, Languages, Cat, Type,
   Play, Pause, RotateCcw, ArrowDownUp, ArrowUpDown, Copy, Check, Loader2,
@@ -330,6 +337,21 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   // состояние приложений (набранное в калькуляторе, таймер) переезжает вместе со слотом.
   const swapSlots = () => setOpenApps((prev) => (prev.length === 2 ? [prev[1], prev[0]] : prev))
 
+  // ── Какой слот активен ──
+  // ⚠️ Нужно ровно тогда, когда открыты ОБА: они занимают всю площадь, и по виду не отличить, в
+  // каком сейчас идёт работа. Живой случай: набираешь в конвертере — калькулятор рядом не
+  // принимает ввод, но выглядит так же. Кольцо на иконке этого не решало: сетка иконок при двух
+  // открытых приложениях вообще не видна.
+  const [activeApp, setActiveApp] = useState<AppId | null>(null)
+  // Клик в САЙТ веб-слота панель не видит — про него сообщает main (см. WebAppManager.ts).
+  useEffect(() => window.aiPanel.onWebAppFocused((id) => setActiveApp(id)), [])
+  // Закрыли слот — активным становится оставшийся, иначе рамка осталась бы на пустом месте.
+  useEffect(() => {
+    if (openApps.length === 1) setActiveApp(openApps[0])
+    else if (openApps.length === 0) setActiveApp(null)
+    else if (activeApp === null || !openApps.includes(activeApp)) setActiveApp(openApps[0])
+  }, [openApps, activeApp])
+
   // Esc закрывает СЛОТ, а не панель, пока открыто хоть одно приложение.
   // ⚠️ Слушатель в фазе ПЕРЕХВАТА и с stopPropagation: панель закрывает себя по Esc своим
   // обработчиком на document (см. aipanel.tsx), и без перехвата один Esc делал бы оба дела разом
@@ -457,10 +479,15 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
         // Доля высоты действует только когда открыты ОБА: с одним приложением второй половиной
         // владеет сетка иконок, и её долю человек не двигал.
         const grow = both ? (slotIndex === 0 ? splitRatio : 1 - splitRatio) : 1
+        // Рамку рисуем ТОЛЬКО когда открыты оба: с одним приложением подсвечивать нечего —
+        // выбора нет, и рамка была бы украшением.
+        const active = both && activeApp === id
+        const onActivate = () => setActiveApp(id)
         const slot = app.kind === 'web'
-          ? <WebAppSlot key={id} app={app} slotIndex={slotIndex} grow={grow}
+          ? <WebAppSlot key={id} app={app} slotIndex={slotIndex} grow={grow} active={active} onActivate={onActivate}
               hidden={sheetVisible || resizing} onSwap={onSwap} onClose={() => closeApp(id)} />
-          : <AppSlot key={id} app={app} grow={grow} onSwap={onSwap} onClose={() => closeApp(id)} />
+          : <AppSlot key={id} app={app} grow={grow} active={active} onActivate={onActivate}
+              onSwap={onSwap} onClose={() => closeApp(id)} />
         // Разделитель — между слотами, поэтому рисуется перед вторым.
         return slotIndex === 1
           ? <React.Fragment key={`${id}-with-divider`}>
@@ -475,9 +502,22 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
           openApps={openApps}
           onOpen={openApp}
           onReorder={reorderApps}
+          // ⚠️ Меню прижимается к границам раздела ЗДЕСЬ, при вычислении координат, а не CSS'ом:
+          // панель узкая (от 320 px), и меню, вызванное на правой или нижней иконке, вылезало за
+          // край — часть пунктов просто не было видно. Вылезает вправо — открываем влево от
+          // курсора, вылезает вниз — вверх; в упор к краю оставляем поле в 8 px.
           onIconMenu={(app, x, y) => {
             const box = slotsRef.current?.getBoundingClientRect()
-            setIconMenu({ app, x: x - (box?.left ?? 0), y: y - (box?.top ?? 0) })
+            if (!box) return
+            const localX = x - box.left
+            const localY = y - box.top
+            const flipX = localX + ICON_MENU_WIDTH + ICON_MENU_EDGE > box.width
+            const flipY = localY + ICON_MENU_HEIGHT + ICON_MENU_EDGE > box.height
+            setIconMenu({
+              app,
+              x: Math.max(ICON_MENU_EDGE, flipX ? localX - ICON_MENU_WIDTH : localX),
+              y: Math.max(ICON_MENU_EDGE, flipY ? localY - ICON_MENU_HEIGHT : localY),
+            })
           }}
           widgets={widgets}
           weatherCity={weatherCity}
@@ -889,6 +929,86 @@ export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
 // и разъехавшись, они бы прыгали через ряд.
 const GRID_COLUMNS = 4
 
+// Иконка приложения. Вынесена отдельно намеренно: ровно ею же рисуется призрак под курсором
+// (DragOverlay), а призрак, нарисованный «похоже, но не тем же», — классический источник
+// расхождений вида «в руке одно, приземлилось другое».
+function AppIcon({ app, opened, onWallpaper, dragging, onOpen, onMenu }: {
+  app: AppDef
+  opened: boolean
+  onWallpaper: boolean
+  dragging?: boolean
+  onOpen?: () => void
+  onMenu?: (x: number, y: number) => void
+}) {
+  return (
+    <button
+      onClick={onOpen}
+      onContextMenu={(e) => { e.preventDefault(); onMenu?.(e.clientX, e.clientY) }}
+      title={app.label}
+      style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+        width: '100%', minWidth: 0, padding: 0,
+        background: 'transparent', border: 'none',
+        cursor: dragging ? 'grabbing' : 'pointer',
+        // Призрак чуть крупнее — он «в руке», поднят над экраном.
+        transform: dragging ? 'scale(1.06)' : undefined,
+      }}
+    >
+      {/* --radius-card (13px) на 54px — те же ~24% скругления, что у иконок iOS.
+          ⚠️ Открытое приложение подсвечено кольцом, а не притушено: притушивание читалось как
+          «недоступно» — ровно наперекор смыслу, приложение открыто и живёт в слоте рядом. */}
+      <span style={{
+        borderRadius: 'var(--radius-card)',
+        boxShadow: opened ? '0 0 0 2px var(--accent)' : undefined,
+        lineHeight: 0,
+      }}>
+        <AppIconBadge app={app} size={54} iconSize={32} shadow />
+      </span>
+      <span style={{
+        maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        fontSize: 'var(--fs-xs)', fontWeight: 500,
+        color: onWallpaper ? 'var(--app-label)' : 'var(--text-body)',
+        textShadow: onWallpaper ? 'var(--app-label-shadow)' : undefined,
+      }}>
+        {app.label}
+      </span>
+    </button>
+  )
+}
+
+// DnD-обёртка иконки — ровно та же, что у ячеек закреплённых вкладок в сайдбаре.
+// Исходная позиция становится прозрачной, пока идёт жест: рисует её призрак.
+function SortableAppIcon({ app, opened, onWallpaper, onOpen, onMenu }: {
+  app: AppDef
+  opened: boolean
+  onWallpaper: boolean
+  onOpen: () => void
+  onMenu: (x: number, y: number) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: app.id })
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        width: '100%', minWidth: 0,
+        transform: CSS.Transform.toString(transform), transition,
+        opacity: isDragging ? 0 : 1,
+      }}
+      {...attributes}
+      {...listeners}
+    >
+      <AppIcon app={app} opened={opened} onWallpaper={onWallpaper} onOpen={onOpen} onMenu={onMenu} />
+    </div>
+  )
+}
+
+// Размеры меню известны заранее — по ним раздел решает, в какую сторону его раскрывать (см.
+// onIconMenu). Мерить фактическую высоту после отрисовки значило бы показать меню за краем и
+// дёрнуть его на следующем кадре; два пункта плюс заголовок дают предсказуемые ~104 px.
+const ICON_MENU_WIDTH = 168
+const ICON_MENU_HEIGHT = 104
+const ICON_MENU_EDGE = 8
+
 // Меню у иконки (ПКМ). Своё, а не системное контекстное меню Electron: пункты зависят от того,
 // СВОЁ приложение или встроенное, и рисовать их надо там же, где живёт остальной интерфейс
 // панели, — своим стеклом и своими токенами, а не серым системным списком.
@@ -923,7 +1043,7 @@ function IconMenu({ app, x, y, opened, onOpen, onClose, onHide, onRemove, onDism
         style={{ position: 'absolute', inset: 0, zIndex: 3 }}
       />
       <div style={{
-        position: 'absolute', left: x, top: y, zIndex: 4, minWidth: 168, padding: 4,
+        position: 'absolute', left: x, top: y, zIndex: 4, width: ICON_MENU_WIDTH, padding: 4,
         background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
         border: '1px solid var(--glass-edge)', boxShadow: 'var(--shadow-card)',
       }}>
@@ -965,22 +1085,22 @@ function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widgets, weat
   weatherCity: string
   onWallpaper: boolean
 }) {
-  // Что тащим и над чем висим. ⚠️ Оба состояния нужны ИМЕННО в React, а не в dataTransfer:
-  // dataTransfer в dragover читать нельзя (браузер отдаёт его пустым по соображениям приватности),
-  // а подсветить цель надо как раз в dragover.
+  // Тащим — призрак под курсором (DragOverlay), соседи расступаются сами (rectSortingStrategy).
+  // ⚠️ activationConstraint.distance обязателен: без него первое же нажатие на иконку считалось бы
+  // началом перетаскивания и обычный клик перестал бы открывать приложение. 5 px — как в сайдбаре.
   const [dragId, setDragId] = useState<string | null>(null)
-  const [overId, setOverId] = useState<string | null>(null)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const dragged = apps.find((a) => a.id === dragId) ?? null
 
-  const drop = (targetId: string) => {
-    if (!dragId || dragId === targetId) { setDragId(null); setOverId(null); return }
-    const ids = apps.map((a) => a.id)
-    const from = ids.indexOf(dragId)
-    const to = ids.indexOf(targetId)
-    if (from < 0 || to < 0) { setDragId(null); setOverId(null); return }
-    ids.splice(to, 0, ...ids.splice(from, 1))
-    onReorder(ids)
+  const onDragEnd = (e: DragEndEvent) => {
     setDragId(null)
-    setOverId(null)
+    const overId = e.over?.id
+    if (!overId || overId === e.active.id) return
+    const ids = apps.map((a) => a.id)
+    const from = ids.indexOf(String(e.active.id))
+    const to = ids.indexOf(String(overId))
+    if (from < 0 || to < 0) return
+    onReorder(arrayMove(ids, from, to))
   }
 
   return (
@@ -994,77 +1114,53 @@ function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widgets, weat
       {/* ⚠️ Стрелки ходят по сетке ЗДЕСЬ, а не глобальным слушателем на документе: фокусом
           владеет сама кнопка-иконка, и пока он не на ней, стрелки должны оставаться стрелками
           (прокрутка страницы, поле ввода чата рядом). Enter/пробел открывают сами — это кнопка. */}
-      <div
-        onKeyDown={(e) => {
-          const step = e.key === 'ArrowRight' ? 1
-            : e.key === 'ArrowLeft' ? -1
-              : e.key === 'ArrowDown' ? GRID_COLUMNS
-                : e.key === 'ArrowUp' ? -GRID_COLUMNS
-                  : 0
-          if (step === 0) return
-          const items = [...e.currentTarget.querySelectorAll('button')]
-          const from = items.indexOf(document.activeElement as HTMLButtonElement)
-          if (from < 0) return
-          const to = from + step
-          if (to < 0 || to >= items.length) return // за край не уходим: заворот сбивает с толку
-          e.preventDefault()
-          items[to].focus()
-        }}
-        style={{
-          display: 'grid', gridTemplateColumns: `repeat(${GRID_COLUMNS}, 1fr)`,
-          rowGap: 16, columnGap: 8, justifyItems: 'center',
-        }}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={(e: DragStartEvent) => setDragId(String(e.active.id))}
+        onDragCancel={() => setDragId(null)}
+        onDragEnd={onDragEnd}
       >
-        {apps.map((app) => {
-          const opened = openApps.includes(app.id)
-          return (
-            <button
-              key={app.id}
-              onClick={() => onOpen(app.id)}
-              onContextMenu={(e) => { e.preventDefault(); onIconMenu(app, e.clientX, e.clientY) }}
-              title={app.label}
-              draggable
-              onDragStart={(e) => { setDragId(app.id); e.dataTransfer.effectAllowed = 'move' }}
-              onDragEnd={() => { setDragId(null); setOverId(null) }}
-              // preventDefault обязателен на ОБОИХ — без него drop не наступает вовсе.
-              onDragOver={(e) => { e.preventDefault(); if (dragId && dragId !== app.id) setOverId(app.id) }}
-              onDragLeave={() => setOverId((cur) => (cur === app.id ? null : cur))}
-              onDrop={(e) => { e.preventDefault(); drop(app.id) }}
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                width: '100%', minWidth: 0, padding: 0,
-                background: 'transparent', border: 'none',
-                cursor: 'pointer',
-                // Тащим — притушаем сам источник, чтобы было видно, что он «в руке».
-                opacity: dragId === app.id ? 0.4 : 1,
-                // Цель приземления — сдвиг, а не рамка: рамка на 54px иконке спорит со скруглением.
-                transform: overId === app.id ? 'translateX(6px)' : undefined,
-                transition: 'transform var(--dur-fast, 120ms) var(--ease-out)',
-              }}
-            >
-              {/* --radius-card (13px) на 54px — те же ~24% скругления, что у иконок iOS.
-                  ⚠️ Открытое приложение теперь ПОДСВЕЧЕНО кольцом, а не притушено. Притушивание
-                  читалось как «недоступно» — ровно наоборот смыслу: приложение открыто и живёт
-                  в слоте рядом. */}
-              <span style={{
-                borderRadius: 'var(--radius-card)',
-                boxShadow: opened ? '0 0 0 2px var(--accent)' : undefined,
-                lineHeight: 0,
-              }}>
-                <AppIconBadge app={app} size={54} iconSize={32} shadow />
-              </span>
-              <span style={{
-                maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                fontSize: 'var(--fs-xs)', fontWeight: 500,
-                color: onWallpaper ? 'var(--app-label)' : 'var(--text-body)',
-                textShadow: onWallpaper ? 'var(--app-label-shadow)' : undefined,
-              }}>
-                {app.label}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+        <SortableContext items={apps.map((a) => a.id)} strategy={rectSortingStrategy}>
+          <div
+            onKeyDown={(e) => {
+              const step = e.key === 'ArrowRight' ? 1
+                : e.key === 'ArrowLeft' ? -1
+                  : e.key === 'ArrowDown' ? GRID_COLUMNS
+                    : e.key === 'ArrowUp' ? -GRID_COLUMNS
+                      : 0
+              if (step === 0) return
+              const items = [...e.currentTarget.querySelectorAll('button')]
+              const from = items.indexOf(document.activeElement as HTMLButtonElement)
+              if (from < 0) return
+              const to = from + step
+              if (to < 0 || to >= items.length) return // за край не уходим: заворот сбивает с толку
+              e.preventDefault()
+              items[to].focus()
+            }}
+            style={{
+              display: 'grid', gridTemplateColumns: `repeat(${GRID_COLUMNS}, 1fr)`,
+              rowGap: 16, columnGap: 8, justifyItems: 'center',
+            }}
+          >
+            {apps.map((app) => (
+              <SortableAppIcon
+                key={app.id}
+                app={app}
+                opened={openApps.includes(app.id)}
+                onWallpaper={onWallpaper}
+                onOpen={() => onOpen(app.id)}
+                onMenu={(x, y) => onIconMenu(app, x, y)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+        {/* Призрак под курсором — иначе иконка «прыгает» на место лишь в конце жеста, и человек
+            не понимает, тащит он что-то или нет (ровно эта жалоба и была). */}
+        <DragOverlay dropAnimation={null}>
+          {dragged && <AppIcon app={dragged} opened={false} onWallpaper={onWallpaper} dragging />}
+        </DragOverlay>
+      </DndContext>
     </div>
   )
 }
@@ -1269,10 +1365,13 @@ function SlotDivider({ onPointerDown, active }: {
   )
 }
 
-function SlotFrame({ app, grow = 1, onSwap, onClose, onDropSwap, children }: {
+function SlotFrame({ app, grow = 1, active = false, onActivate, onSwap, onClose, onDropSwap, children }: {
   app: AppDef
   /** Доля высоты среди слотов (см. SPLIT_KEY). */
   grow?: number
+  /** Здесь сейчас работают — рисуем рамку (только когда открыты оба, см. AppsMode). */
+  active?: boolean
+  onActivate?: () => void
   onSwap?: () => void
   onClose: () => void
   /** Приложение перетащили за шапку на другой слот — поменять их местами. */
@@ -1280,12 +1379,26 @@ function SlotFrame({ app, grow = 1, onSwap, onClose, onDropSwap, children }: {
   children: React.ReactNode
 }) {
   const [dropTarget, setDropTarget] = useState(false)
+  // Рамка — тонкая линия акцента ВОКРУГ карточки. Внутренняя тень (inset), а не outline: outline
+  // рисуется поверх скруглённых углов прямоугольником и торчит по краям; inset ложится по радиусу.
+  // Цель дропа перебивает активность: пока тащат, важнее показать, куда приземлится.
+  const ring = dropTarget
+    ? '0 0 0 2px var(--accent), var(--shadow-card)'
+    : active
+      ? 'inset 0 0 0 1.5px var(--accent), var(--shadow-card)'
+      : 'var(--shadow-card)'
   return (
-    <div style={{
-      flex: grow, minHeight: 0, display: 'flex', flexDirection: 'column',
-      background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
-      boxShadow: dropTarget ? '0 0 0 2px var(--accent)' : 'var(--shadow-card)', overflow: 'hidden',
-    }}>
+    <div
+      // pointerdown в ЗАХВАТЕ: клик по кнопке внутри приложения тоже означает «работаю здесь»,
+      // а до onClick самой кнопки событие может и не дойти (она может его погасить).
+      onPointerDownCapture={onActivate}
+      onFocusCapture={onActivate}
+      style={{
+        flex: grow, minHeight: 0, display: 'flex', flexDirection: 'column',
+        background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
+        boxShadow: ring, overflow: 'hidden',
+      }}
+    >
       {/* ⚠️ Тащить можно ТОЛЬКО за шапку, и это вынужденно, а не «так удобнее»: тело веб-слота
           закрыто нативной WebContentsView, которая лежит поверх панели и не отдаёт ей события
           мыши вовсе. Шапка — часть панели, поэтому жест начинается и заканчивается на ней. */}
@@ -1344,11 +1457,13 @@ function SlotFrame({ app, grow = 1, onSwap, onClose, onDropSwap, children }: {
   )
 }
 
-function AppSlot({ app, grow, onSwap, onClose }: {
-  app: AppDef; grow?: number; onSwap?: () => void; onClose: () => void
+function AppSlot({ app, grow, active, onActivate, onSwap, onClose }: {
+  app: AppDef; grow?: number; active?: boolean; onActivate?: () => void
+  onSwap?: () => void; onClose: () => void
 }) {
   return (
-    <SlotFrame app={app} grow={grow} onSwap={onSwap} onClose={onClose} onDropSwap={onSwap}>
+    <SlotFrame app={app} grow={grow} active={active} onActivate={onActivate}
+      onSwap={onSwap} onClose={onClose} onDropSwap={onSwap}>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {app.id === 'calc' && <CalcApp />}
         {app.id === 'convert' && <ConverterApp />}
@@ -1365,10 +1480,12 @@ function AppSlot({ app, grow, onSwap, onClose }: {
 // Сам сайт рисует main (WebAppManager.ts) — эта карточка только размечает и меряет дырку.
 // hidden — шит настроек открыт поверх домашнего экрана: view надо спрятать, она лежит выше
 // панели в z-order и иначе перекрыла бы шит.
-function WebAppSlot({ app, slotIndex, grow, hidden, onSwap, onClose }: {
+function WebAppSlot({ app, slotIndex, grow, active, onActivate, hidden, onSwap, onClose }: {
   app: AppDef
   slotIndex: number
   grow?: number
+  active?: boolean
+  onActivate?: () => void
   hidden: boolean
   onSwap?: () => void
   onClose: () => void
@@ -1404,7 +1521,8 @@ function WebAppSlot({ app, slotIndex, grow, hidden, onSwap, onClose }: {
   }, [app.id, hidden, slotIndex])
 
   return (
-    <SlotFrame app={app} grow={grow} onSwap={onSwap} onClose={onClose} onDropSwap={onSwap}>
+    <SlotFrame app={app} grow={grow} active={active} onActivate={onActivate}
+      onSwap={onSwap} onClose={onClose} onDropSwap={onSwap}>
       <div style={{ flex: 1, minHeight: 0, padding: '0 8px 8px', display: 'flex' }}>
         <div
           ref={holeRef}

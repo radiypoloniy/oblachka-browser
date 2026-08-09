@@ -11,6 +11,13 @@ contextBridge.exposeInMainWorld('aiPanel', {
     return () => ipcRenderer.removeListener('ai-panel:open-app', handler)
   },
   close: () => ipcRenderer.send('ai-panel:close'),
+  // Человек кликнул в сайт веб-слота — панель узнаёт об этом только отсюда (вью сайта лежит
+  // поверх неё и её событий не порождает). По этому признаку рисуется рамка активного слота.
+  onWebAppFocused: (cb: (appId: string) => void) => {
+    const handler = (_e: unknown, appId: string) => cb(appId)
+    ipcRenderer.on('ai-panel:webapp-focused', handler)
+    return () => ipcRenderer.removeListener('ai-panel:webapp-focused', handler)
+  },
   // Человек встал в поле ввода чата — вот это и есть намерение поговорить с моделью, а не сам
   // факт открытия панели (в ней ещё живут приложения и виджеты). См. AiPanelManager.ts.
   chatIntent: () => ipcRenderer.send('ai-panel:chat-intent'),

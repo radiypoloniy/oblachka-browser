@@ -60,6 +60,9 @@ declare global {
       // Фокус в поле ввода чата = намерение поговорить с моделью. Именно по нему main греет
       // Qwen — не по открытию панели (в ней ещё приложения и виджеты), см. AiPanelManager.ts.
       chatIntent: () => void
+      // Фокус ушёл в сайт веб-слота — по этому признаку раздел «Приложения» рисует рамку
+      // активного слота (сам он такой клик не видит, см. WebAppManager.ts).
+      onWebAppFocused: (cb: (appId: string) => void) => () => void
       // Иконка приложения на рабочем столе новой вкладки открывает панель сразу на нём.
       onOpenApp: (cb: (appId: string) => void) => () => void
       // webGrounding — тоггл-глобус: true → main отвечает через SearXNG-ветку (см. AiPanelManager.ts).

@@ -79,6 +79,13 @@ export function setTabManager(tm: TabManager): void {
   // Форвард в WebAppManager (веб-приложения раздела «Приложения») — чтобы main.ts не пришлось
   // знать о ещё одном модуле: window.open из веб-слота уходит обычной вкладкой через тот же tm.
   webApps.setTabManager(tm)
+  // Фокус ушёл в сайт веб-слота — сообщаем панели, какой слот стал активным. Панель сама этого не
+  // видит: сайт лежит поверх неё отдельной вью и её событий не порождает (см. WebAppManager).
+  webApps.setOnWebAppFocus((appId) => {
+    if (panelView && !panelView.webContents.isDestroyed()) {
+      panelView.webContents.send('ai-panel:webapp-focused', appId)
+    }
+  })
 }
 
 // Заход 3: push'и состояния дока идут в chrome (React-хром), а не в win.webContents — это разные
@@ -466,6 +473,10 @@ function closePanel(win: BrowserWindow): void {
   webApps.setPanelVisible(win, false) // веб-слоты прячутся вместе с панелью (но живут в памяти)
   if (panelView) win.contentView.removeChildView(panelView)
   setOpenState(false)
+  // Панель забирала фокус при открытии (см. toggleAiPanel) — отдаём его обратно странице, иначе
+  // после закрытия им не владеет никто и клавиатура молчит уже на самой странице. Тот же возврат
+  // делает FindBar при закрытии.
+  tabManagerRef?.focusActiveView()
 }
 
 // Живой ресайз — драг разделителя в App.tsx шлёт сюда каждый тик (ad-hoc ai-panel:resize,
@@ -833,5 +844,10 @@ export function toggleAiPanel(win: BrowserWindow): boolean {
   // При повторном открытии (view уже когда-то загрузился) did-finish-load больше не сработает —
   // шлём текущий контекст явно, чтобы панель не показывала последнюю беседу «протухшей» вкладки.
   if (alreadyLoaded) { sendCurrentContext(); sendKeyStatus(); sendSearxngStatus(); sendSkillsList() }
+  // ⚠️ Явный фокус на вью панели — обязателен, и это тот же закон, что у запуска приложения и у
+  // FindBar: добавление вью в окно НЕ делает её владельцем фокуса, им продолжает владеть страница.
+  // Живой случай: открыл панель кнопкой, нажал Esc — ничего, потому что Esc уходил странице, а не
+  // панели; сначала приходилось кликнуть внутрь. Клавиатура обязана работать сразу после открытия.
+  view.webContents.focus()
   return true
 }
