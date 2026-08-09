@@ -134,7 +134,7 @@ function tinyDial(box: { width: number; height: number }, avail: number, dateH: 
   return Math.max(44, Math.min(avail, box.height - (small ? 24 : 32) - reserved));
 }
 
-export function ClockWidget({ box, fill }: WidgetProps) {
+export function ClockWidget({ box, fill, city }: WidgetProps) {
   const [now, setNow] = useState(() => new Date());
   const opts = loadNewTabSettings().clock;
   const analog = opts.face !== 'digital';
@@ -144,11 +144,21 @@ export function ClockWidget({ box, fill }: WidgetProps) {
     return () => clearInterval(t);
   }, [opts.seconds]);
 
-  const time = now.toLocaleTimeString('ru-RU', {
-    hour: '2-digit', minute: '2-digit',
-    ...(opts.seconds ? { second: '2-digit' } : {}),
-    hour12: !opts.hour24,
-  });
+  // ⚠️ Дуга дня — САМОСТОЯТЕЛЬНЫЙ широкий вид, а не альтернатива циферблату, и показывается в
+  // растянутой плитке НЕЗАВИСИМО от выбора аналог/цифры. Причина: широкий аналоговый циферблат —
+  // это круг с пустотой в половину плитки по бокам, а человек, растянувший часы, просил ровно
+  // «в растянутом виде даёт больше». Восход/закат берём из погоды (уже кэшируется, тот же город) —
+  // своей геолокации часам не заводим. Порог по пропорции, не по числу клеток: «заметно шире, чем
+  // высокая» — ровно тот случай, где появляется место под горизонтальную дугу. Нет города или
+  // данных — откат на обычный вид (аналог/цифры) ниже.
+  const wide = box.width > box.height * 1.7;
+  const sun = useSunTimes(wide ? city : '');
+  if (wide && sun) {
+    return <DayArcClock box={box} fill={fill} now={now} sunrise={sun.rise} sunset={sun.set}
+      time={fmtTime(now, opts)} weekday={now.toLocaleDateString('ru-RU', { weekday: 'long' })} />;
+  }
+
+  const time = fmtTime(now, opts);
   const weekday = now.toLocaleDateString('ru-RU', { weekday: 'long' });
   const dayMonth = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
   // Кегль считаем от ДЛИНЫ строки, а не от одной ширины плитки: «18:50» и «18:50:07» занимают
@@ -264,6 +274,145 @@ function Hand({ angle, length, width, color, tail = 0 }: {
       transform={`rotate(${angle} 50 50)`}
     />
   );
+}
+
+// Формат времени по настройкам часов — общий для цифрового вида и дуги дня, чтобы «14:30» и
+// выбор 24/12ч не разъезжались между двумя рисовками.
+function fmtTime(now: Date, opts: { seconds?: boolean; hour24?: boolean }): string {
+  return now.toLocaleTimeString('ru-RU', {
+    hour: '2-digit', minute: '2-digit',
+    ...(opts.seconds ? { second: '2-digit' } : {}),
+    hour12: !opts.hour24,
+  });
+}
+
+// «ЧЧ:ММ» → минуты от полуночи. Восход/закат приходят из погоды строкой — для позиции на дуге
+// нужно число. Кривой ввод → null, дуга тогда просто не рисуется (откат на обычные часы).
+function hhmmToMinutes(s: string | undefined): number | null {
+  if (!s) return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(s.trim());
+  if (!m) return null;
+  const h = Number(m[1]), min = Number(m[2]);
+  return h >= 0 && h < 24 && min >= 0 && min < 60 ? h * 60 + min : null;
+}
+
+// Восход/закат для дуги дня. Источник — та же погода, что у виджета погоды (кэш общий, город тот
+// же), поэтому своей геолокации и сетевого запроса у часов нет: спрашиваем getWeather и берём из
+// ответа только sunrise/sunset. Пустой город или сбой → null, и дуга не показывается.
+function useSunTimes(city: string): { rise: number; set: number } | null {
+  const [sun, setSun] = useState<{ rise: number; set: number } | null>(null);
+  useEffect(() => {
+    if (!city) { setSun(null); return; }
+    let alive = true;
+    void window.oblako.getWeather(city).then((w) => {
+      if (!alive) return;
+      const rise = hhmmToMinutes(w.sunrise), set = hhmmToMinutes(w.sunset);
+      // Оба нужны И закат должен быть позже восхода — иначе доля дня считается мусором.
+      setSun(rise !== null && set !== null && set > rise ? { rise, set } : null);
+    }).catch(() => { if (alive) setSun(null); });
+    return () => { alive = false; };
+  }, [city]);
+  return sun;
+}
+
+// Дуга дня: небо-градиент, дуга от восхода до заката, светило (солнце днём / луна ночью) на позиции
+// текущего момента. Время и день — в углу. Показывается только в широком виде (см. ClockWidget).
+function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
+  box: { width: number; height: number };
+  fill?: string;
+  now: Date;
+  sunrise: number; // минуты от полуночи
+  sunset: number;
+  time: string;
+  weekday: string;
+}) {
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const isDay = nowMin >= sunrise && nowMin <= sunset;
+  // Доля пути: днём — вдоль дуги от восхода к закату; ночью — вдоль «подземной» части от заката к
+  // восходу следующего дня. Так светило непрерывно обходит круг за сутки, а не прыгает.
+  const dayLen = sunset - sunrise;
+  const nightLen = 24 * 60 - dayLen;
+  const frac = isDay
+    ? (nowMin - sunrise) / dayLen
+    : ((nowMin < sunrise ? nowMin + 24 * 60 : nowMin) - sunset) / nightLen;
+
+  // Геометрия в координатах 200×100: дуга — полукруг радиуса 78 с центром у нижнего края, горизонт
+  // на y=88. Днём светило идёт по ВЕРХНЕЙ дуге (слева направо), ночью — символически ниже горизонта.
+  const cx = 100, cy = 88, r = 78;
+  const angle = Math.PI * (isDay ? frac : frac); // 0…π
+  const bodyX = cx - r * Math.cos(angle);
+  const bodyY = isDay ? cy - r * Math.sin(angle) : cy + 8 + 6 * Math.sin(angle);
+  const riseX = cx - r, setX = cx + r;
+
+  const skyDay = 'linear-gradient(160deg, #4A90D9 0%, #7EB6E8 55%, #F5C777 100%)';
+  const skyNight = 'linear-gradient(165deg, #1B2A4A 0%, #2C3E63 60%, #4A5578 100%)';
+
+  const remain = isDay ? sunset - nowMin : sunrise - (nowMin < sunrise ? nowMin : nowMin - 24 * 60);
+  const remainH = Math.floor(Math.abs(remain) / 60), remainM = Math.abs(remain) % 60;
+  const remainLabel = isDay
+    ? `светло ещё ${remainH ? remainH + ' ч' : ''}${remainM ? ' ' + remainM + ' мин' : ''}`.trim()
+    : `рассвет через ${remainH ? remainH + ' ч' : ''}${remainM ? ' ' + remainM + ' мин' : ''}`.trim();
+
+  const pad = 16;
+  const svgH = box.height - pad * 2 - 28; // минус строка времени сверху
+
+  return (
+    // Заливку человека уважаем (fill перебивает небо) — тот же приём, что у остальных плиток; иначе
+    // рисуем живое небо. Само небо — не токен темы: это носитель настроения, как цвет у погоды.
+    <Tile tint={fill ?? (isDay ? skyDay : skyNight)} fill={fill} padding={pad}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flex: 'none' }}>
+        <span style={{ fontSize: Math.min(box.height * 0.24, 34), fontWeight: 300, lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>{time}</span>
+        <span style={{ fontSize: 'var(--fs-sm)', opacity: 0.85, textTransform: 'capitalize' }}>{weekday}</span>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'flex-end' }}>
+        <svg width="100%" height={Math.max(60, svgH)} viewBox="0 0 200 100" preserveAspectRatio="xMidYMax meet" style={{ display: 'block', overflow: 'visible' }}>
+          <defs>
+            <linearGradient id="arcTrack" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="#fff" stopOpacity="0.25" />
+              <stop offset="0.5" stopColor="#fff" stopOpacity="0.6" />
+              <stop offset="1" stopColor="#fff" stopOpacity="0.25" />
+            </linearGradient>
+          </defs>
+          {/* Линия горизонта */}
+          <line x1="8" y1={cy} x2="192" y2={cy} stroke="#fff" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="2 3" />
+          {/* Дуга дневного пути */}
+          <path d={`M ${riseX} ${cy} A ${r} ${r} 0 0 1 ${setX} ${cy}`} fill="none" stroke="url(#arcTrack)" strokeWidth="2" strokeLinecap="round" />
+          {/* Пройденная часть дуги — до текущего светила, ярче (только днём) */}
+          {isDay && (
+            <path d={`M ${riseX} ${cy} A ${r} ${r} 0 0 1 ${bodyX} ${bodyY}`} fill="none" stroke="#FFE9A8" strokeWidth="2.6" strokeLinecap="round" />
+          )}
+          {/* Метки восхода/заката */}
+          <circle cx={riseX} cy={cy} r="2.4" fill="#fff" fillOpacity="0.75" />
+          <circle cx={setX} cy={cy} r="2.4" fill="#fff" fillOpacity="0.75" />
+          {/* Светило */}
+          {isDay ? (
+            <g>
+              <circle cx={bodyX} cy={bodyY} r="9" fill="#FFD65C" />
+              <circle cx={bodyX} cy={bodyY} r="14" fill="#FFD65C" fillOpacity="0.25" />
+            </g>
+          ) : (
+            // Луна — круг с «откушенным» краем через маску, читается лунным серпом даже мелко.
+            <g>
+              <defs>
+                <mask id="moon"><rect x="0" y="0" width="200" height="100" fill="#fff" /><circle cx={bodyX + 4} cy={bodyY - 3} r="8" fill="#000" /></mask>
+              </defs>
+              <circle cx={bodyX} cy={bodyY} r="7.5" fill="#E8ECF5" mask="url(#moon)" />
+            </g>
+          )}
+        </svg>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--fs-xs)', opacity: 0.85, flex: 'none', marginTop: 2 }}>
+        <span>🌅 {minutesToHHMM(sunrise)}</span>
+        <span style={{ opacity: 0.9 }}>{remainLabel}</span>
+        <span>{minutesToHHMM(sunset)} 🌇</span>
+      </div>
+    </Tile>
+  );
+}
+
+function minutesToHHMM(m: number): string {
+  const h = Math.floor(m / 60), min = m % 60;
+  return `${h}:${String(min).padStart(2, '0')}`;
 }
 
 // ── Погода ────────────────────────────────────────────────────────────────────
