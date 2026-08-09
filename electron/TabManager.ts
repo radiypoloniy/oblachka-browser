@@ -708,6 +708,16 @@ export class TabManager {
     return this.splitPairs.find((p) => p.leftId === id || p.rightId === id);
   }
 
+  // Какие вкладки ВИДНЫ, когда активна эта. Для одиночной — она сама, для панели split — обе
+  // панели пары. Нужно там, где важна именно видимость, а не активность: кадр «следует за вами»
+  // обязан уезжать со всего, что скрылось, и возвращаться во всё, что показалось.
+  // Хаб вкладкой не является и в множество не попадает — sendPip его и так не знает.
+  #visibleTabIds(id: string): Set<string> {
+    const pair = this.#pairContaining(id);
+    if (pair) return new Set([pair.leftId, pair.rightId]);
+    return id && id !== HUB_ID ? new Set([id]) : new Set();
+  }
+
   // Активная вкладка сейчас — одна из двух панелей ПОКАЗЫВАЕМОЙ пары. Паттерн был
   // текстуально продублирован в нескольких местах — один источник правды.
   #currentlyInSplit(): boolean {
@@ -1875,6 +1885,18 @@ export class TabManager {
       this.findBarOpen = false; // FindBar уйдёт при смене activeId в renderer'е
     }
 
+    // ⚠️ ПЕРЕДАЧА КАДРА СЧИТАЕТСЯ ДО ВЕТВЛЕНИЯ НА SPLIT, и это не косметика. Раньше эти строки
+    // стояли НИЖЕ ветки split, а та кончается своим return, — то есть при переходе НА разделённую
+    // вкладку кадр не уезжал вообще. Со стороны выглядело загадочно: «через обычную вкладку в
+    // сплит — работает, сразу в сплит — нет», хотя разница ровно в этом return.
+    // ⚠️ Считаем МНОЖЕСТВАМИ видимых вкладок, а не «прежняя → новая»: у пары видимы ОБЕ панели,
+    // поэтому уход со сплита обязан увести кадр и с той панели, что не была активной, а приход на
+    // сплит — вернуть кадр в обе. С одиночным id множество из одного элемента, прежнее поведение.
+    const wasVisible = this.#visibleTabIds(this.activeId);
+    const willBeVisible = this.#visibleTabIds(id);
+    for (const gone of wasVisible) if (!willBeVisible.has(gone)) this.sendPip(gone, PIP_ENTER_SCRIPT);
+    for (const shown of willBeVisible) this.sendPip(shown, PIP_EXIT_SCRIPT);
+
     const pair = this.#pairContaining(id);
     if (pair) {
       // Возврат к split-вкладке: восстанавливаем обе панели ЭТОЙ пары, скрываем постороннее
@@ -1907,12 +1929,6 @@ export class TabManager {
         if (splitTab && this.isHttpView(splitTab.view)) splitTab.view.setVisible(false);
       }
     }
-
-    // Уходим с вкладки, где играет видео, — кадр уезжает в окошко поверх окон и следует за
-    // человеком. Возвращаемся — кадр возвращается в страницу (иначе ролик виден дважды).
-    const leaving = this.activeId;
-    if (leaving && leaving !== id) this.sendPip(leaving, PIP_ENTER_SCRIPT);
-    this.sendPip(id, PIP_EXIT_SCRIPT);
 
     this.activeId = id;
     tab.lastActiveAt = Date.now();
