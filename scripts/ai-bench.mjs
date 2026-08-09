@@ -489,7 +489,11 @@ async function suiteRename(chrome) {
     named.push({ slug: t.slug, title: nowTitle });
   }
 
-  const missed = named.filter((n) => !RENAME_EXPECT[n.slug].test(n.title));
+  // ⚠️ Ожидание есть НЕ у каждой вкладки фикстуры: часть страниц добавлена ради группировки
+  // (два магазина, обогреватель) и осмысленного «ключевого слова темы» у них нет. Без этой
+  // проверки набор падал целиком на первой же такой вкладке (`RENAME_EXPECT[slug]` undefined),
+  // и стенд не показывал по переименованию вообще ничего — ни успехов, ни промахов.
+  const missed = named.filter((n) => RENAME_EXPECT[n.slug] && !RENAME_EXPECT[n.slug].test(n.title));
   const medium = named.filter((n) => MEDIUM_START.test(n.title));
   const preview = named.map((n) => `${n.slug}: «${n.title}»`).join(' · ');
   return {
