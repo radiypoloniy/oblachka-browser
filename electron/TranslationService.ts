@@ -97,7 +97,15 @@ async function ensureFranc(): Promise<void> {
 //    из FRANC_TO_CODE в этой форме (апостроф ПОСЛЕ слова, не перед, как в французских l'/c'/qu').
 //    Эта эвристика короткой строкой пока не была замечена ложной за пределами SHORT_TEXT_THRESHOLD,
 //    оставлена ограниченной короткими фразами, чтобы не разрастаться сверх подтверждённой проблемы.
-const RU_CONFUSABLE = new Set(['bg', 'uk', 'be'])
+// ⚠️ Правило одно, а не два: ЗАМЕТНАЯ ДОЛЯ КИРИЛЛИЦЫ — ЗНАЧИТ РУССКИЙ.
+// Раньше оно ловило только близкую кириллицу (bg/uk/be), и мимо проходил случай похуже: франк
+// отдавал ЛАТИНОПИСЬМЕННЫЙ язык на русском тексте, где много латинских имён собственных. Живой
+// случай: «Adobe запустила единый плагин для ChatGPT… Photoshop, Firefly, Premiere, Acrobat,
+// Lightroom, Illustrator, InDesign и Adobe Stock» — десять брендов сбивают частотную статистику,
+// и текст уезжал «переводиться» на русский с русского. Письменность — сигнал куда твёрже догадки
+// франка: кириллический текст не может быть английским или французским.
+// Выбор «русский, а не украинский/болгарский» тут прежний и осознанный: для этого пользователя
+// русский на порядок вероятнее, а различать близкие славянские франк всё равно не умеет.
 const ENGLISH_CONTRACTION_RE = /\b\w+'(s|t|re|ll|ve|d|m)\b/i
 const SHORT_TEXT_THRESHOLD = 80
 
@@ -113,11 +121,23 @@ const SHORT_TEXT_THRESHOLD = 80
 const FRENCH_FUNCTION_WORD_RE = /\b(le|la|les|des|une|est|dans|avec|pour|qui|que|vous|nous|être|cette|ces|mais|sont|comme|leur|leurs|entre|sans)\b/gi
 const FRENCH_FUNCTION_WORD_MIN_HITS = 2
 
-function isMostlyCyrillic(text: string): boolean {
+// ⚠️ Порог НЕ «больше половины», и это выяснилось замером на той самой жалобе. В фразе
+// «Adobe запустила единый плагин для ChatGPT… Photoshop, Firefly, Premiere, Acrobat, Lightroom,
+// Illustrator, InDesign и Adobe Stock» латинских букв 93, а кириллических 87 — то есть по
+// правилу «преимущественно кириллический» она русской НЕ считалась, хотя написана по-русски.
+//
+// Признак несимметричен, и в этом всё дело: латинские слова внутри русского текста — обычное
+// дело (бренды, модели, термины), а кириллические слова внутри английского практически не
+// встречаются, кроме коротких цитат. Поэтому достаточно ЗАМЕТНОЙ доли кириллицы, а не
+// перевеса: четверть букв — это уже связный русский текст, а не вкрапление. Английская фраза с
+// одним русским словом в кавычках (~0.2) под правило не попадает.
+const CYRILLIC_SHARE_MIN = 0.25
+
+function hasSubstantialCyrillic(text: string): boolean {
   const letters = text.match(/[a-zA-Zа-яёА-ЯЁ]/g)
   if (!letters || letters.length === 0) return false
   const cyrillic = text.match(/[а-яёА-ЯЁ]/g)?.length ?? 0
-  return cyrillic / letters.length > 0.5
+  return cyrillic / letters.length >= CYRILLIC_SHARE_MIN
 }
 
 // Лёгкое оффлайн n-граммное определение языка (без сети, без LLM) — НЕ спрашиваем саму модель
@@ -130,8 +150,8 @@ async function detectLang(text: string): Promise<string> {
   let iso3 = candidates[0]?.[0] ?? 'und'
   let code = FRANC_TO_CODE[iso3] ?? FALLBACK_LANG
 
-  if (RU_CONFUSABLE.has(code) && isMostlyCyrillic(text)) {
-    console.log(`[translate] detected=${code} (iso3=${iso3}), текст преим. кириллический — считаем русским (RU_CONFUSABLE)`)
+  if (code !== 'ru' && hasSubstantialCyrillic(text)) {
+    console.log(`[translate] detected=${code} (iso3=${iso3}), текст преим. кириллический — считаем русским`)
     iso3 = 'rus'; code = 'ru'
   } else if (text.length < SHORT_TEXT_THRESHOLD && code !== 'en' && ENGLISH_CONTRACTION_RE.test(text) && candidates.some(([c]) => c === 'eng')) {
     console.log(`[translate] detected=${code} (iso3=${iso3}), но есть англ. сокращение (that's/let's/...) — считаем английским`)
