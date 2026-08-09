@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, Search, ChevronRight } from 'lucide-react';
 import type { PasswordMeta, PasswordCopyField } from '../../../shared/ipc';
 import { islandPlate } from '../../styles/island';
@@ -7,6 +7,14 @@ import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote,
   InlineError, InlineHint, TextField, TextArea, InputRow, fieldFlex, Favicon,
 } from './kit';
+
+// Геометрия списка. LIST_VIEWPORT держит потолок высоты (см. комментарий у самого списка),
+// ROW_OVERSCAN — сколько строк рисуем сверх видимых, чтобы при быстрой прокрутке не мелькала
+// пустота. ROW_PITCH_GUESS — только до первого замера живой строки.
+const LIST_VIEWPORT = 420;
+const ROW_GAP = 4;
+const ROW_OVERSCAN = 4;
+const ROW_PITCH_GUESS = 60;
 
 // ── Секция «Пароли» — сейф на этом устройстве (менеджер паролей, шаг 1) ───────
 // Только хранилище/CRUD/генератор/экспорт-импорт на этом шаге — автозаполнение в веб-формы
@@ -173,6 +181,30 @@ export default function PasswordsSection() {
       e.username.toLowerCase().includes(q));
   }, [entries, query]);
 
+  // ── Оконный список ──
+  // Шаг строки меряется по ЖИВОЙ первой строке, а не задан числом: высота зависит от кегля и
+  // масштаба Windows, а ошибка в шаге — это разъезжающаяся прокрутка. До первого замера работает
+  // оценка, и она же остаётся, если строк нет вовсе.
+  const listRef = useRef<HTMLDivElement>(null);
+  const rowProbeRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [rowPitch, setRowPitch] = useState(ROW_PITCH_GUESS);
+  useEffect(() => {
+    const h = rowProbeRef.current?.getBoundingClientRect().height;
+    if (h && Math.abs(h + ROW_GAP - rowPitch) > 1) setRowPitch(h + ROW_GAP);
+  });
+  // Поиск меняет набор — прокрутку возвращаем в начало, иначе окно указывало бы в пустоту.
+  useEffect(() => { setScrollTop(0); if (listRef.current) listRef.current.scrollTop = 0; }, [query]);
+
+  const firstVisible = Math.max(0, Math.floor(scrollTop / rowPitch) - ROW_OVERSCAN);
+  const lastVisible = Math.min(
+    filtered.length,
+    Math.ceil((scrollTop + LIST_VIEWPORT) / rowPitch) + ROW_OVERSCAN,
+  );
+  const visibleRows = filtered.slice(firstVisible, lastVisible);
+  const topSpacer = firstVisible * rowPitch;
+  const bottomSpacer = Math.max(0, (filtered.length - lastVisible) * rowPitch);
+
   // ⚠️ Раньше вся секция отдавала <LoadingNote/>, пока грузился список, — из-за одного запроса к
   // сейфу не рисовались ни тумблер Windows-подтверждения, ни экспорт. Теперь ожидание локально
   // внутри списка, остальное видно сразу.
@@ -302,23 +334,32 @@ export default function PasswordsSection() {
         )}
 
         {/* Своя прокрутка с потолком высоты: даже раскрытый сейф на сотню записей не должен
-            отодвигать экспорт и подключение внешнего менеджера за край страницы. */}
-        <div style={{
-          display: 'flex', flexDirection: 'column', gap: 4,
-          maxHeight: 420, overflowY: 'auto',
-        }}>
-          {filtered.map((entry) => (
-            <PasswordRow
-              key={entry.id}
-              entry={entry}
-              revealedValue={revealed[entry.id]}
-              copiedKey={copiedKey}
-              onToggleReveal={() => void handleReveal(entry.id)}
-              onCopy={(field) => void handleCopy(entry.id, field)}
-              onEdit={() => openEditForm(entry)}
-              onDelete={() => void handleDelete(entry.id)}
-            />
+            отодвигать экспорт и подключение внешнего менеджера за край страницы.
+            ⚠️ РИСУЮТСЯ ТОЛЬКО ВИДИМЫЕ СТРОКИ. Замер на фикстуре из 300 записей: раскрытие списка
+            занимало кадр в 263 мс (плюс серия длинных задач 123/93/123/93) — то есть заметную
+            заморозку интерфейса ровно в момент, когда человек нажал «показать». Видно из них
+            от силы семь: остальное — работа в никуда. Место несуществующих строк держат распорки
+            сверху и снизу, поэтому полоса прокрутки и её положение остаются честными. */}
+        <div
+          ref={listRef}
+          onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+          style={{ maxHeight: LIST_VIEWPORT, overflowY: 'auto' }}
+        >
+          {topSpacer > 0 && <div style={{ height: topSpacer }} />}
+          {visibleRows.map((entry) => (
+            <div key={entry.id} ref={rowProbeRef} style={{ marginBottom: ROW_GAP }}>
+              <PasswordRow
+                entry={entry}
+                revealedValue={revealed[entry.id]}
+                copiedKey={copiedKey}
+                onToggleReveal={() => void handleReveal(entry.id)}
+                onCopy={(field) => void handleCopy(entry.id, field)}
+                onEdit={() => openEditForm(entry)}
+                onDelete={() => void handleDelete(entry.id)}
+              />
+            </div>
           ))}
+          {bottomSpacer > 0 && <div style={{ height: bottomSpacer }} />}
           {entries.length > 0 && filtered.length === 0 && (
             <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '8px 4px' }}>
               Ничего не найдено.
