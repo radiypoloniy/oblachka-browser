@@ -1241,6 +1241,39 @@ export default function Toolbar({
               ref={inputRef}
               value={value}
               placeholder={placeholderVisible ? 'Введите запрос или адрес' : ''}
+              // ⚠️ Файл или ссылка, бро́шенные в строку, ВСТАВЛЯЮТСЯ ТЕКСТОМ, а переходит человек
+              // сам по Enter — как в Edge и Chrome. Без своего обработчика тут работало поведение
+              // Chromium по умолчанию, и дроп уводил браузер в отдельное голое окно без вкладок и
+              // адресной строки: интерфейс — такая же веб-страница, и роняя на неё файл, человек
+              // просил её никуда не годным способом «открыть». Вставка текстом оставляет решение
+              // за ним и не трогает рабочее пространство.
+              onDragOver={(e) => {
+                // preventDefault обязателен ИМЕННО на dragover: без него drop не придёт вовсе,
+                // а сработает навигация по умолчанию.
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = 'copy';
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const file = e.dataTransfer.files[0];
+                // Файл → путь (его знает только preload, см. droppedFilePath). Ссылка или текст,
+                // притащенные с другой страницы, — своими типами; text/uri-list может содержать
+                // несколько строк и комментарии с '#', берём первую годную.
+                const uriList = e.dataTransfer.getData('text/uri-list')
+                  .split(/\r?\n/).find((l) => l && !l.startsWith('#'));
+                const dropped = (file && window.oblako.droppedFilePath(file))
+                  || uriList
+                  || e.dataTransfer.getData('text/plain');
+                if (!dropped) return;
+                setValue(dropped);
+                if (tab) draftsRef.current.set(tab.id, dropped);
+                setEditing(true);
+                // Выделяем целиком: брошенное чаще заменяют целиком, чем дописывают, — и это
+                // ровно то состояние, из которого Enter уводит по адресу.
+                requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.select(); });
+              }}
               onChange={(e) => {
                 const v = e.target.value;
                 setValue(v);

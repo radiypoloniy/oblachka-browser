@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRequest, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, DayDigestState, SemanticSearchResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
@@ -498,6 +498,14 @@ const api: OblakoApi = {
   getFavicon:        (host: string)                             => ipcRenderer.invoke(IPC.FAVICON_GET, host) as Promise<string | null>,
   getPasswordAuthEnabled: ()                                     => ipcRenderer.invoke(IPC.PASSWORDS_AUTH_GET) as Promise<boolean>,
   setPasswordAuthEnabled: (enabled: boolean)                     => ipcRenderer.invoke(IPC.PASSWORDS_AUTH_SET, enabled) as Promise<boolean>,
+
+  // Путь файла, брошенного в интерфейс. ⚠️ НЕ IPC-канал, а единственный доступный способ вообще
+  // узнать путь: `File.path` из Electron убран, и остался `webUtils.getPathForFile`, который
+  // обязан зваться там, где живёт сам объект File, — то есть здесь. Через мост едет функция, а не
+  // File: перенести его в изолированный мир нечем.
+  droppedFilePath: (file: File) => {
+    try { return webUtils.getPathForFile(file) || null; } catch { return null; }
+  },
 
   // Доверие корню Минцифры для конкретных сайтов — то, что человек разрешил сам. Только показ и
   // отзыв: выдаётся оно ответом на вопрос браузера, а не из интерфейса (см. CertificateTrust.ts).

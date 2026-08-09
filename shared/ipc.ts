@@ -1770,6 +1770,10 @@ export interface OblakoApi {
   listPermissions(): Promise<PermissionRecord[]>;
   setPermission(origin: string, key: PermKey, decision: 'granted' | 'denied'): Promise<void>;
   revokePermission(origin: string, key?: PermKey): Promise<void>;
+  // Путь файла, брошенного в интерфейс браузера. ⚠️ Не канал в main, а функция самого preload:
+  // `File.path` из Electron убран, а `webUtils.getPathForFile` обязан зваться там, где живёт File.
+  // Синхронная — единственная такая во всём API, поэтому и оговорка.
+  droppedFilePath(file: File): string | null;
   // Сайты, которым человек сам разрешил корень Минцифры (см. electron/CertTrustStore.ts) — соседи
   // разрешений по разделу настроек и по смыслу. Вшитый список банков сюда не входит: он не
   // отзывается и в интерфейсе не показывается. Добавления снаружи нет — только отзыв, см. IPC.
