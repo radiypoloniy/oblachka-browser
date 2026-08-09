@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import { Shield, Sparkles, Check, Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
-import type { ImportSource, ImportDataType, ImportRunResult, ImportTypeResult } from '../../shared/ipc';
+import type {
+  ImportSource, ImportDataType, ImportRunResult, ImportTypeResult,
+  CatalogEntry, InstalledModel, DownloadProgress, BackfillProgress,
+} from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
 import BrowserLogo from './BrowserLogo';
@@ -185,9 +188,15 @@ function resultLine(type: ImportDataType, res: ImportTypeResult | null): string 
   return `${label}: ${parts.join(', ')}`;
 }
 
+// Шаги мастера. ⚠️ Список СОБИРАЕТСЯ, а не пронумерован константами: два последних шага
+// условные — модель не предлагаем, если она уже стоит или не поедет на этом железе, а индексацию
+// не предлагаем, если человек не переносил историю. Оба добавляются ПОСЛЕ текущей позиции
+// (появиться они могут только на шаге переноса или раньше), поэтому пересборка списка никогда не
+// сдвигает шаг под ногами.
+type StepKind = 'slide' | 'import' | 'model' | 'index';
+
 export default function Onboarding({ onFinish }: Props) {
   useScrim(); // затемняем и нативную зону системных кнопок, см. src/scrimState.ts
-  // step: 0..SLIDES.length-1 — рассказ, SLIDES.length — перенос данных.
   const [step, setStep] = useState(0);
   const [sources, setSources] = useState<ImportSource[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -195,7 +204,48 @@ export default function Onboarding({ onFinish }: Props) {
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<ImportRunResult | null>(null);
 
-  const importStep = step === SLIDES.length;
+  // Модель: каталог и уже установленное. Оба грузим заранее, на слайдах, — как и источники
+  // импорта: к своему шагу список обязан быть готов, а не появляться с задержкой.
+  const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
+  const [installed, setInstalled] = useState<InstalledModel[] | null>(null);
+  const [dl, setDl] = useState<DownloadProgress | null>(null);
+  const [backfill, setBackfill] = useState<BackfillProgress | null>(null);
+  const [indexAsked, setIndexAsked] = useState(false);
+
+  // Что предлагаем скачать. ⚠️ Роль назначает КАТАЛОГ (см. shared/ipc.ts::ModelRole), а не этот
+  // экран: там же живут замеры и резервы видеопамяти. Наше дело — показать 'recommended', то есть
+  // самую лёгкую модель с измеренным качеством, и ничего не придумывать сверх.
+  const modelOffer = useMemo(
+    () => catalog?.find((e) => e.role === 'recommended') ?? catalog?.find((e) => e.role !== null) ?? null,
+    [catalog],
+  );
+  // Шаг модели не показываем вовсе, если модель уже стоит: человек её не просил, и повторное
+  // предложение выглядело бы навязчивым. Каталог ещё не приехал — шага тоже нет, дорисовывать его
+  // задним числом посреди мастера незачем.
+  // ⚠️ СЧИТАЕМ ТОЛЬКО СКАЧАННЫЕ ('downloaded'). Реестр моделей отдаёт ещё и бандловую из
+  // resources/models/gguf с пометкой 'legacy' — она лежит на диске у КАЖДОГО, и по наивной проверке
+  // «список непуст» этот шаг не показался бы никогда, то есть ровно на чистой машине, ради которой
+  // он и сделан. Бандл — аварийный фолбэк на EuroLLM-1.7B, а не «у человека есть модель».
+  const modelStepShown = installed !== null && catalog !== null
+    && installed.every((m) => m.source !== 'downloaded');
+  // Индексация — ТОЛЬКО если историю действительно перенесли и она непустая: без импорта
+  // индексировать нечего, а предлагать работу над пустотой значит просить о бессмысленном.
+  const historyImported = (report?.history?.inserted ?? 0) > 0;
+
+  const steps = useMemo<StepKind[]>(() => {
+    const out: StepKind[] = SLIDES.map(() => 'slide' as const);
+    out.push('import');
+    if (modelStepShown) out.push('model');
+    if (historyImported) out.push('index');
+    return out;
+  }, [modelStepShown, historyImported]);
+
+  const kind = steps[step] ?? 'slide';
+  const importStep = kind === 'import';
+  const isLastStep = step >= steps.length - 1;
+  // Загрузка ЗАВЕРШИЛАСЬ успешно. Отдельным именем, а не тройным условием в трёх местах: от него
+  // зависят и текст в теле шага, и обе кнопки, и разъехаться им нельзя.
+  const modelDone = !!dl && !dl.running && !dl.cancelled && !dl.error && dl.receivedBytes > 0;
 
   // Источники ищем заранее, ещё на слайдах: разбор профилей на диске занимает время, и к
   // последнему шагу список должен быть уже готов, а не появляться с задержкой.
@@ -208,6 +258,24 @@ export default function Onboarding({ onFinish }: Props) {
     });
     return () => { alive = false; };
   }, []);
+
+  // Каталог и установленные модели — тем же приёмом «готовим заранее», что и источники импорта.
+  useEffect(() => {
+    let alive = true;
+    void window.oblako.getModelCatalog()
+      .then((c) => { if (alive) setCatalog(c); })
+      .catch(() => { if (alive) setCatalog([]); }); // не смогли посчитать железо — просто не предлагаем
+    void window.oblako.getInstalledModels()
+      .then((m) => { if (alive) setInstalled(m); })
+      .catch(() => { if (alive) setInstalled([]); });
+    return () => { alive = false; };
+  }, []);
+
+  // ⚠️ Обе долгие работы идут в MAIN и переживают закрытие этого экрана — в том и смысл. Здесь
+  // только подписка на их прогресс, никакой отмены при размонтировании: человек нажал «скачать» и
+  // ушёл пользоваться браузером, загрузка обязана продолжиться.
+  useEffect(() => window.oblako.onModelDownloadProgress(setDl), []);
+  useEffect(() => window.oblako.onHistoryContentBackfillProgress(setBackfill), []);
 
   const selected = useMemo(() => sources?.find((s) => s.id === selectedId) ?? null, [sources, selectedId]);
 
@@ -248,7 +316,46 @@ export default function Onboarding({ onFinish }: Props) {
     }
   }
 
+  function handleDownload() {
+    if (!modelOffer) return;
+    const m = modelOffer.model;
+    // fire-and-forget: startModelDownload — send, не invoke, ошибки приходят через progress.error
+    // (тот же вызов, что в ModelsSection.tsx — второй способ скачать модель заводить незачем).
+    window.oblako.startModelDownload({
+      url: m.url, fileName: m.fileName, label: m.label, expectedSha256: m.expectedSha256,
+    });
+  }
+
+  function handleIndex() {
+    setIndexAsked(true);
+    window.oblako.startHistoryContentBackfill();
+  }
+
   const slide = SLIDES[step];
+
+  // Шапка шага: картинка, заголовок, подпись. ⚠️ Ровно одна точка на все виды шагов — раньше
+  // здесь стоял тернарник «слайд или импорт», и любой третий вид шага уронил бы экран на
+  // SLIDES[step].art, которого у него нет.
+  const head: { art: React.ReactNode; title: string; text: string } =
+    kind === 'import' ? {
+      art: <ArtImport />,
+      title: '📦 Перенесём ваши данные?',
+      text: 'Закладки, история и пароли переедут из привычного браузера. В нём ничего не изменится — данные только копируются.',
+    } : kind === 'model' ? {
+      art: <ArtModel />,
+      title: modelOffer ? '🧠 Скачать локальную модель?' : '🧠 Про локальную модель',
+      text: modelOffer
+        ? 'Перевод, пересказ и поиск по смыслу работают прямо на вашем компьютере — для этого нужен один файл модели. Качается в фоне, пользоваться браузером можно сразу.'
+        // ⚠️ «Не тянет» — честный ответ, а не повод предложить что-нибудь полегче: человек скачает
+        // гигабайты и будет судить о браузере по результату, которого железо не вытянет.
+        : 'На этом устройстве локальная модель не пойдёт — видеопамяти не хватит даже самой лёгкой. Всё остальное работает как обычно, без неё.',
+    } : kind === 'index' ? {
+      art: <ArtIndex />,
+      title: '🔎 Подготовить историю к поиску?',
+      text: 'Из другого браузера переехали адреса и заголовки. Чтобы искать по смыслу — «та статья про ипотеку», — страницы нужно один раз прочитать.',
+    } : {
+      art: slide.art, title: `${slide.emoji} ${slide.title}`, text: slide.text,
+    };
 
   return (
     <div style={{
@@ -289,7 +396,7 @@ export default function Onboarding({ onFinish }: Props) {
           flex: 'none', animation: 'oblako-onb-rise var(--dur-slow) var(--ease-out)',
         }}>
           <div style={{ height: 260, padding: '28px 32px 0' }}>
-            {importStep ? <ArtImport /> : slide.art}
+            {head.art}
           </div>
 
           <div style={{ padding: '26px 56px 0', textAlign: 'center' }}>
@@ -299,12 +406,10 @@ export default function Onboarding({ onFinish }: Props) {
               fontSize: 'calc(var(--fs-xl) * 1.2)', fontWeight: 700,
               color: 'var(--text-strong)', lineHeight: 1.25,
             }}>
-              {importStep ? '📦 Перенесём ваши данные?' : `${slide.emoji} ${slide.title}`}
+              {head.title}
             </div>
             <div style={{ marginTop: 12, fontSize: 'var(--fs-md)', color: 'var(--text-muted)', lineHeight: 1.55 }}>
-              {importStep
-                ? 'Закладки, история и пароли переедут из привычного браузера. В нём ничего не изменится — данные только копируются.'
-                : slide.text}
+              {head.text}
             </div>
           </div>
         </div>
@@ -394,6 +499,65 @@ export default function Onboarding({ onFinish }: Props) {
           </div>
         )}
 
+        {/* Тело шага модели. */}
+        {kind === 'model' && modelOffer && (
+          <div style={{ padding: '18px 28px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{
+              ...islandPlate, borderRadius: 'var(--radius-card)', padding: '14px 16px',
+              display: 'flex', flexDirection: 'column', gap: 6,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-strong)' }}>
+                  {modelOffer.model.label}
+                </span>
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+                  {gb(modelOffer.model.sizeBytes)} · нужно {gb(modelOffer.minVramBytes)} видеопамяти
+                </span>
+              </div>
+              {/* Строка «чем отличается» приходит ИЗ КАТАЛОГА: это пересказ наших замеров, и
+                  расходиться описанию с числами нельзя (см. CatalogEntry.summary). */}
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                {modelOffer.summary}
+              </div>
+            </div>
+
+            {dl?.error ? (
+              <Muted>Загрузка не удалась: {dl.error}. Можно повторить позже в «Настройки → ИИ».</Muted>
+            ) : dl?.running ? (
+              <Progress
+                done={dl.receivedBytes} total={dl.totalBytes}
+                label={dl.totalBytes ? `Качаем — ${gb(dl.receivedBytes)} из ${gb(dl.totalBytes)}` : 'Качаем…'}
+                hint="Можно идти дальше: загрузка продолжится в фоне."
+              />
+            ) : modelDone ? (
+              <Muted>✅ Модель скачана — локальный ИИ готов.</Muted>
+            ) : null}
+          </div>
+        )}
+
+        {/* Тело шага индексации. */}
+        {kind === 'index' && (
+          <div style={{ padding: '18px 28px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {backfill?.running ? (
+              <Progress
+                done={backfill.processed} total={backfill.total}
+                label={`Читаем страницы — ${backfill.processed} из ${backfill.total}`}
+                hint="Можно идти дальше: это продолжится в фоне."
+              />
+            ) : indexAsked ? (
+              <Muted>✅ Запустили — дальше браузер сделает это сам.</Muted>
+            ) : (
+              // ⚠️ Говорим ПРЯМО, что для этого страницы будут открыты заново. Это сеть и это следы
+              // в чужих логах — умолчать о таком в приватном браузере нельзя, а решение всё равно
+              // остаётся за человеком.
+              <Muted>
+                Браузер по одной откроет перенесённые адреса, чтобы прочитать текст. Это займёт время
+                и потребует сети; всё остальное в это время работает как обычно.
+              </Muted>
+            )}
+          </div>
+        )}
+
         {/* Подвал. ⚠️ Всё по ЦЕНТРУ, в колонку: точки слева и кнопка справа тянули взгляд к
             краям, хотя весь экран выстроен по центральной оси, — от этого он и читался
             перекошенным. Здесь одна ось, и она совпадает с осью текста. */}
@@ -402,7 +566,7 @@ export default function Onboarding({ onFinish }: Props) {
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18,
         }}>
           <div style={{ display: 'flex', gap: 7 }}>
-            {[...SLIDES, null].map((_, i) => (
+            {steps.map((_, i) => (
               <span key={i} style={{
                 width: i === step ? 20 : 7, height: 7, borderRadius: 'var(--radius-pill)',
                 background: i === step ? 'var(--accent)' : 'var(--divider-strong)',
@@ -423,22 +587,31 @@ export default function Onboarding({ onFinish }: Props) {
                 <ArrowLeft size={16} /> Назад
               </button>
             )}
-            {importStep && !report && sources && sources.length > 0 && (
-              <button style={bigGhost} onClick={onFinish}>Не сейчас</button>
+            {/* Тихий отказ от предложения этого шага. ⚠️ Ведёт ДАЛЬШЕ по мастеру, а не наружу:
+                отказаться от переноса — не то же самое, что закончить разговор, а следом может
+                идти предложение модели, которого человек ещё не видел. */}
+            {((importStep && !report && sources && sources.length > 0)
+              || (kind === 'model' && modelOffer && !dl?.running && !modelDone)
+              || (kind === 'index' && !backfill?.running && !indexAsked)) && (
+              <button style={bigGhost} onClick={() => (isLastStep ? onFinish() : setStep((s) => s + 1))}>
+                Не сейчас
+              </button>
             )}
 
-            {importStep ? (
-              report || !sources || sources.length === 0 ? (
-                <button style={bigPrimary} onClick={onFinish}>Начать пользоваться</button>
-              ) : (
-                <button
-                  style={{ ...bigPrimary, opacity: (checked.size === 0 || running) ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', gap: 8 }}
-                  onClick={() => void handleRun()}
-                >
-                  {running && <Loader2 size={15} style={{ animation: 'oblako-spin 1s linear infinite' }} />}
-                  {running ? 'Переносим…' : 'Перенести'}
-                </button>
-              )
+            {importStep && sources && sources.length > 0 && !report ? (
+              <button
+                style={{ ...bigPrimary, opacity: (checked.size === 0 || running) ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+                onClick={() => void handleRun()}
+              >
+                {running && <Loader2 size={15} style={{ animation: 'oblako-spin 1s linear infinite' }} />}
+                {running ? 'Переносим…' : 'Перенести'}
+              </button>
+            ) : kind === 'model' && modelOffer && !dl?.running && !modelDone ? (
+              <button style={bigPrimary} onClick={() => handleDownload()}>Скачать модель</button>
+            ) : kind === 'index' && !backfill?.running && !indexAsked ? (
+              <button style={bigPrimary} onClick={() => handleIndex()}>Проиндексировать</button>
+            ) : isLastStep ? (
+              <button style={bigPrimary} onClick={onFinish}>Начать пользоваться</button>
             ) : (
               <button
                 style={{ ...bigPrimary, display: 'inline-flex', alignItems: 'center', gap: 8 }}
@@ -471,6 +644,72 @@ const bigGhost: React.CSSProperties = {
 
 function Muted({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', textAlign: 'center' }}>{children}</div>;
+}
+
+function gb(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(1).replace('.', ',')} ГБ`;
+}
+
+// Полоса хода работы — общая для загрузки модели и чтения истории: обе долгие, обе продолжаются
+// в фоне, и подпись про фон здесь не украшение, а единственное место, где человек узнаёт, что
+// уходить со страницы можно.
+function Progress({ done, total, label, hint }: { done: number; total: number | null; label: string; hint: string }) {
+  const pct = total && total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      <div style={{ height: 6, borderRadius: 'var(--radius-pill)', background: 'var(--surface-sunken)', overflow: 'hidden' }}>
+        <div style={{
+          height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--accent)',
+          // Неизвестная длина — не повод врать полосой: показываем узкую «живую» вместо доли.
+          width: pct === null ? '25%' : `${pct}%`,
+          transition: 'width var(--dur-base) var(--ease-out)',
+        }} />
+      </div>
+      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', textAlign: 'center' }}>{label}</div>
+      <Muted>{hint}</Muted>
+    </div>
+  );
+}
+
+// Иллюстрация шага модели: файл приезжает на сам компьютер, а не в облако.
+function ArtModel() {
+  return (
+    <ArtStack>
+      <div style={{
+        width: 120, height: 88, borderRadius: 'var(--radius-card)',
+        background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 38,
+      }}>🧠</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Pill text="перевод" delay={120} />
+        <Pill text="пересказ" delay={200} />
+        <Pill text="поиск по смыслу" dot="var(--dot-local)" delay={280} />
+      </div>
+    </ArtStack>
+  );
+}
+
+// Иллюстрация шага индексации: список адресов превращается в то, по чему можно искать словами.
+function ArtIndex() {
+  return (
+    <ArtStack>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+        <div style={{
+          width: 88, height: 88, borderRadius: 'var(--radius-card)', background: 'var(--surface-sunken)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34,
+        }}>🔗</div>
+        <ArrowRight size={30} style={{ color: 'var(--accent)', animation: 'oblako-onb-nudge 1.6s var(--ease-standard) infinite' }} />
+        <div style={{
+          width: 88, height: 88, borderRadius: 'var(--radius-card)',
+          background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34,
+        }}>🔎</div>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Pill text="«та статья про ипотеку»" delay={160} />
+      </div>
+    </ArtStack>
+  );
 }
 
 // Иллюстрация шага переноса: данные перетекают из чужого браузера в наш.
