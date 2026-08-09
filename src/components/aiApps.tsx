@@ -116,6 +116,26 @@ function loadAppsOrder(): string[] {
 function saveAppsOrder(order: string[]): void {
   try { localStorage.setItem(APPS_ORDER_KEY, JSON.stringify(order)) } catch { /* см. loadWallpaper */ }
 }
+// ── Спрятанные с экрана приложения ───────────────────────────────────────────────────────────
+// Встроенное приложение удалить нельзя (оно часть браузера), но и держать на глазах то, чем не
+// пользуешься, незачем — поэтому «скрыть», с возвратом из «Настроить». Своё веб-приложение
+// удаляется по-настоящему: его добавил человек, ему и решать.
+const HIDDEN_APPS_KEY = 'aipanel-apps-hidden'
+
+function loadHiddenApps(): string[] {
+  try {
+    const raw = localStorage.getItem(HIDDEN_APPS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown
+      if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === 'string')
+    }
+  } catch { /* см. loadWallpaper */ }
+  return []
+}
+function saveHiddenApps(ids: string[]): void {
+  try { localStorage.setItem(HIDDEN_APPS_KEY, JSON.stringify(ids)) } catch { /* см. loadWallpaper */ }
+}
+
 // ── Размер слотов ────────────────────────────────────────────────────────────────────────────
 // Доля высоты, которую занимает ВЕРХНИЙ слот, когда открыты оба. Границы 0.2…0.8 — не вкусовщина:
 // у слота есть шапка с названием и кнопками (~36 px), и за пределами этой вилки от приложения
@@ -265,7 +285,25 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   const [newAppUrl, setNewAppUrl] = useState('')
 
   const [appsOrder, setAppsOrder] = useState<string[]>(loadAppsOrder)
-  const allApps: AppDef[] = orderApps([...APPS, ...customApps.map(customToDef)], appsOrder)
+  const [hiddenApps, setHiddenApps] = useState<string[]>(loadHiddenApps)
+  // Меню у иконки (ПКМ): что за приложение и где рисовать. Координаты — относительно раздела.
+  const [iconMenu, setIconMenu] = useState<{ app: AppDef; x: number; y: number } | null>(null)
+  const everyApp: AppDef[] = orderApps([...APPS, ...customApps.map(customToDef)], appsOrder)
+  // ⚠️ Спрятанное убирается только с ЭКРАНА: открытый слот с ним продолжает работать, пока его не
+  // закроют. Иначе «скрыть» на глазах убивало бы наполовину введённое в приложении.
+  const allApps: AppDef[] = everyApp.filter((a) => !hiddenApps.includes(a.id))
+  const hiddenDefs: AppDef[] = everyApp.filter((a) => hiddenApps.includes(a.id))
+
+  const hideApp = (id: string) => {
+    const next = [...hiddenApps, id]
+    setHiddenApps(next)
+    saveHiddenApps(next)
+  }
+  const unhideApp = (id: string) => {
+    const next = hiddenApps.filter((x) => x !== id)
+    setHiddenApps(next)
+    saveHiddenApps(next)
+  }
   const reorderApps = (ids: string[]) => {
     setAppsOrder(ids)
     saveAppsOrder(ids)
@@ -299,13 +337,16 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   // стопке внимания, как последняя открытая вкладка при Ctrl+W.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || openApps.length === 0) return
+      if (e.key !== 'Escape') return
+      // Открытое меню у иконки забирает Esc себе — оно «поверх» и по смыслу, и на экране.
+      if (iconMenu) { e.stopPropagation(); setIconMenu(null); return }
+      if (openApps.length === 0) return
       e.stopPropagation()
       setOpenApps((prev) => prev.slice(0, -1))
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [openApps.length])
+  }, [openApps.length, iconMenu])
 
   // ── Размер слотов перетаскиванием разделителя ──
   const slotsRef = useRef<HTMLDivElement>(null)
@@ -434,9 +475,27 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
           openApps={openApps}
           onOpen={openApp}
           onReorder={reorderApps}
+          onIconMenu={(app, x, y) => {
+            const box = slotsRef.current?.getBoundingClientRect()
+            setIconMenu({ app, x: x - (box?.left ?? 0), y: y - (box?.top ?? 0) })
+          }}
           widgets={widgets}
           weatherCity={weatherCity}
           onWallpaper={wallpaper !== 'none'}
+        />
+      )}
+
+      {iconMenu && (
+        <IconMenu
+          app={iconMenu.app}
+          x={iconMenu.x}
+          y={iconMenu.y}
+          opened={openApps.includes(iconMenu.app.id)}
+          onOpen={() => { openApp(iconMenu.app.id); setIconMenu(null) }}
+          onClose={() => { closeApp(iconMenu.app.id); setIconMenu(null) }}
+          onHide={() => { hideApp(iconMenu.app.id); setIconMenu(null) }}
+          onRemove={() => { removeCustomApp(iconMenu.app.id); setIconMenu(null) }}
+          onDismiss={() => setIconMenu(null)}
         />
       )}
 
@@ -655,6 +714,39 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
                   Добавить
                 </button>
               </div>
+
+              {/* Спрятанные — здесь же, а не отдельным экраном: это единственное место, откуда их
+                  можно вернуть, и оно обязано быть рядом с самим списком приложений. Пусто —
+                  блока нет вовсе, чтобы не занимать место обещанием. */}
+              {hiddenDefs.length > 0 && (
+                <>
+                  <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+                    Скрытые с экрана
+                  </span>
+                  {hiddenDefs.map((h) => (
+                    <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <AppIconBadge app={h} size={20} radius={6} iconSize={12} />
+                      <span style={{
+                        flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
+                      }}>
+                        {h.label}
+                      </span>
+                      <button
+                        onClick={() => unhideApp(h.id)}
+                        style={{
+                          padding: '0 10px', height: 24, flexShrink: 0,
+                          borderRadius: 'var(--radius-pill)', border: '1px solid var(--glass-edge)',
+                          background: 'transparent', color: 'var(--text-body)',
+                          fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer',
+                        }}
+                      >
+                        Вернуть
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
           <button
@@ -797,12 +889,78 @@ export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
 // и разъехавшись, они бы прыгали через ряд.
 const GRID_COLUMNS = 4
 
-function HomeGrid({ apps, openApps, onOpen, onReorder, widgets, weatherCity, onWallpaper }: {
+// Меню у иконки (ПКМ). Своё, а не системное контекстное меню Electron: пункты зависят от того,
+// СВОЁ приложение или встроенное, и рисовать их надо там же, где живёт остальной интерфейс
+// панели, — своим стеклом и своими токенами, а не серым системным списком.
+function IconMenu({ app, x, y, opened, onOpen, onClose, onHide, onRemove, onDismiss }: {
+  app: AppDef
+  x: number
+  y: number
+  opened: boolean
+  onOpen: () => void
+  onClose: () => void
+  onHide: () => void
+  onRemove: () => void
+  onDismiss: () => void
+}) {
+  // Своё приложение человек добавил сам — его можно удалить насовсем. Встроенное только прячется.
+  const isCustom = app.id.startsWith('web:custom-')
+  const items: { label: string; act: () => void; danger?: boolean }[] = [
+    opened
+      ? { label: 'Закрыть', act: onClose }
+      : { label: 'Открыть', act: onOpen },
+    isCustom
+      ? { label: 'Удалить', act: onRemove, danger: true }
+      : { label: 'Скрыть с экрана', act: onHide },
+  ]
+  return (
+    <>
+      {/* Подложка на весь раздел: клик мимо закрывает меню. Отдельным слоем, а не слушателем на
+          document, — так не надо гадать, чей клик «мимо», и меню не переживает перерисовку. */}
+      <div
+        onClick={onDismiss}
+        onContextMenu={(e) => { e.preventDefault(); onDismiss() }}
+        style={{ position: 'absolute', inset: 0, zIndex: 3 }}
+      />
+      <div style={{
+        position: 'absolute', left: x, top: y, zIndex: 4, minWidth: 168, padding: 4,
+        background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
+        border: '1px solid var(--glass-edge)', boxShadow: 'var(--shadow-card)',
+      }}>
+        <div style={{
+          padding: '4px 8px 6px', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {app.label}
+        </div>
+        {items.map((it) => (
+          <button
+            key={it.label}
+            onClick={it.act}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left',
+              padding: '7px 8px', border: 'none', borderRadius: 'var(--radius-sm)',
+              background: 'transparent', cursor: 'pointer',
+              fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
+              color: it.danger ? 'var(--danger-500)' : 'var(--text-body)',
+            }}
+          >
+            {it.label}
+          </button>
+        ))}
+      </div>
+    </>
+  )
+}
+
+function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widgets, weatherCity, onWallpaper }: {
   apps: AppDef[]
   openApps: AppId[]
   onOpen: (id: AppId) => void
   /** Новый порядок иконок целиком — перетаскивание завершилось. */
   onReorder: (ids: string[]) => void
+  /** ПКМ по иконке — координаты окна, меню рисует раздел (ему известны его границы). */
+  onIconMenu: (app: AppDef, x: number, y: number) => void
   widgets: WidgetsConfig
   weatherCity: string
   onWallpaper: boolean
@@ -863,6 +1021,7 @@ function HomeGrid({ apps, openApps, onOpen, onReorder, widgets, weatherCity, onW
             <button
               key={app.id}
               onClick={() => onOpen(app.id)}
+              onContextMenu={(e) => { e.preventDefault(); onIconMenu(app, e.clientX, e.clientY) }}
               title={app.label}
               draggable
               onDragStart={(e) => { setDragId(app.id); e.dataTransfer.effectAllowed = 'move' }}
