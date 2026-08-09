@@ -21,8 +21,9 @@
 // Просроченный сертификат, чужое имя в сертификате, отозванный промежуточный, слабая подпись —
 // всё это по-прежнему решает Chromium, и его отказ остаётся отказом.
 import { X509Certificate } from 'node:crypto'
-import type { Session } from 'electron'
+import { dialog, type Session } from 'electron'
 import { RUSSIAN_TRUSTED_ROOT_PEM } from './certs/russianTrustedRoot'
+import { isUserTrusted, addUserTrusted } from './CertTrustStore'
 
 // Отпечаток дублирует вшитый PEM намеренно: PEM можно поправить одной строкой в диффе и не
 // заметить, а расхождение с этой константой валит доверие целиком (см. проверку при загрузке).
@@ -69,9 +70,33 @@ function ensureRoot(): boolean {
   return rootOk
 }
 
+// Человек ответил «доверять», но снял галочку «запомнить» — доверие живёт до перезапуска и на
+// диск не пишется. Без этого множества снятая галочка означала бы вопрос на КАЖДЫЙ подзапрос
+// того же сайта: разрешение не сохранено, значит следующая картинка спросит заново.
+const sessionAllowed = new Set<string>()
+
 function isAllowedHost(hostname: string): boolean {
   const h = hostname.toLowerCase()
+  // Вшитый список плюс то, что человек разрешил сам (см. CertTrustStore.ts). Вшитый неизбежно
+  // отстаёт от жизни: сайты переезжают на Минцифры по мере того, как кончаются западные
+  // сертификаты, и без второй половины человек упирался бы в тупик до следующей версии браузера.
   return ALLOWED_DOMAINS.some((d) => h === d || h.endsWith(`.${d}`))
+    || isUserTrusted(h)
+    || sessionAllowed.has(h)
+}
+
+// Хосты, у которых цепочка ЧЕСТНО сходится к корню Минцифры, но разрешения нет. Ровно им странице
+// ошибки есть что объяснить — а не всякому сайту со сломанным сертификатом. Живёт в памяти: это
+// подсказка интерфейсу, а не состояние.
+const russianCaCandidates = new Set<string>()
+
+/**
+ * Объяснять ли на странице ошибки, что дело в корне Минцифры (см. TabError.tsx). Разрешённый хост
+ * сюда не попадает: если сайт открывается, а ошибка другая, рассказ про сертификат только соврёт.
+ */
+export function isRussianCaCandidate(hostname: string): boolean {
+  const h = hostname.toLowerCase()
+  return russianCaCandidates.has(h) && !isAllowedHost(h)
 }
 
 // Цепочка от Electron приходит связанным списком: certificate.issuerCert → … Разворачиваем в
@@ -134,18 +159,101 @@ function verifyAgainstRussianRoot(hostname: string, leaf: Electron.Certificate):
   }
 }
 
+// Хосты, по которым вопрос уже задан (несколько запросов к одному сайту не должны поднимать
+// несколько окон) и по которым человек отказал в этом запуске — переспрашивать на каждой
+// картинке с того же домена невыносимо.
+const asking = new Map<string, Array<(v: number) => void>>()
+const deniedThisSession = new Set<string>()
+
+async function askAboutHost(hostname: string, callback: (v: number) => void): Promise<void> {
+  const host = hostname.toLowerCase()
+  if (deniedThisSession.has(host)) { callback(-3); return }
+  const queued = asking.get(host)
+  if (queued) { queued.push(callback); return } // вопрос уже висит — ждём общий ответ
+  asking.set(host, [callback])
+
+  let allow = false
+  try {
+    const { response, checkboxChecked } = await dialog.showMessageBox({
+      type: 'warning',
+      buttons: ['Доверять этому сайту', 'Не открывать'],
+      defaultId: 1,
+      cancelId: 1,
+      title: 'Сертификат от УЦ Минцифры',
+      message: `${host} подтверждает себя сертификатом Минцифры`,
+      detail: 'Этому удостоверяющему центру браузер доверяет только для сайтов, которым вы это '
+        + 'разрешили (по умолчанию — банки, у которых другого сертификата не бывает).\n\n'
+        + 'Разрешайте, если узнаёте адрес и пришли сюда сами. Доверие получит ТОЛЬКО этот сайт; '
+        + 'отозвать можно в Настройках → Разрешения.',
+      checkboxLabel: 'Запомнить для этого сайта',
+      checkboxChecked: true,
+      noLink: true,
+    })
+    allow = response === 0
+    // Галочка решает только ДОЛГОВЕЧНОСТЬ разрешения, а не его наличие: без неё доверие живёт до
+    // перезапуска (см. sessionAllowed), с ней ложится на диск и попадает в экран отзыва.
+    if (allow) { if (checkboxChecked) addUserTrusted(host); else sessionAllowed.add(host) }
+    else deniedThisSession.add(host)
+  } catch (e) {
+    console.warn('[certs] вопрос о доверии не показался:', e)
+  }
+  const waiting = asking.get(host) ?? []
+  asking.delete(host)
+  for (const cb of waiting) cb(allow ? 0 : -3)
+}
+
+// Сессии, на которые слой уже поставлен — чтобы переустановить проверку после изменения списка
+// доверия (см. refreshCertificateTrust).
+const installedSessions: Session[] = []
+
 /**
- * Ставится на сессию (боевую и инкогнито) один раз при старте.
+ * Зовётся после ОТЗЫВА доверия: запрет обязан действовать сразу, а не после перезапуска.
+ * ⚠️ Гарантии тут нет, и это надо знать. Вердикт по сертификату кэширует сетевая служба, и
+ * замерено, что разубедить её нечем: ни переустановка процедуры проверки, ни сброс кэша, ни
+ * закрытие живых соединений вердикт не отменяют — на уже открытой странице он доживает до
+ * перезапуска. Делаем всё, что можно сделать; на этом же ограничении держится решение спрашивать
+ * человека ДО ответа Chromium, а не после (см. applyProc).
+ */
+export function refreshCertificateTrust(): void {
+  for (const s of installedSessions) {
+    applyProc(s)
+    void s.clearCache()
+    void s.clearHostResolverCache()
+    void s.closeAllConnections()
+  }
+}
+
+/**
  * ⚠️ callback(-3) означает «оставить вердикт Chromium» — это ответ по умолчанию во ВСЕХ ветках,
  * кроме одной. Ошибка здесь стоит дорого: callback(0) без разбора принял бы любой сертификат.
  */
-export function installCertificateTrust(session: Session): void {
+function applyProc(session: Session): void {
   session.setCertificateVerifyProc((request, callback) => {
     // Chromium доволен — вмешиваться незачем.
     if (request.errorCode === 0) { callback(-3); return }
     // Перекрываем ТОЛЬКО «неизвестный корень» и ТОЛЬКО для перечисленных доменов.
     if (request.verificationResult !== 'net::ERR_CERT_AUTHORITY_INVALID') { callback(-3); return }
-    if (!isAllowedHost(request.hostname)) { callback(-3); return }
+    if (!isAllowedHost(request.hostname)) {
+      // ⚠️ СПРАШИВАЕМ ЗДЕСЬ, А НЕ ПОСЛЕ ОТКАЗА. Первая версия отказывала и предлагала кнопку
+      // «разрешить» на странице ошибки — и это не работало: Chromium кэширует вердикт по
+      // сертификату, поэтому разрешённый сайт продолжал получать -202, а проверка при повторной
+      // попытке даже не вызывалась (замерено; ни сброс кэша, ни переустановка процедуры, ни
+      // закрытие соединений вердикт не отменяли). Ответ на этот вызов можно дать и позже — чем
+      // мы и пользуемся: держим запрос, пока человек отвечает. Так делают все браузеры со своими
+      // предупреждениями о сертификате, и никакой отказ в кэш не попадает.
+      // ⚠️ Известная грубость: проверка не различает переход человека и подзапрос страницы, то
+      // есть вопрос теоретически может всплыть из-за чужой врезки на постороннем сайте. Отсюда
+      // «Разрешайте, если узнаёте адрес и пришли сюда сами» в самом вопросе и «Не открывать»
+      // ответом по умолчанию. Развести это можно только сверкой с адресом вкладки, а он к моменту
+      // проверки сертификата ещё не закреплён за вкладкой — пока не разменивали.
+      if (verifyAgainstRussianRoot(request.hostname, request.certificate)) {
+        russianCaCandidates.add(request.hostname.toLowerCase())
+        void askAboutHost(request.hostname, callback)
+        return
+      }
+      callback(-3)
+      return
+    }
 
     if (verifyAgainstRussianRoot(request.hostname, request.certificate)) {
       console.log(`[certs] ${request.hostname}: цепочка сошлась к корню Минцифры — принято`)
@@ -154,4 +262,10 @@ export function installCertificateTrust(session: Session): void {
     }
     callback(-3)
   })
+}
+
+/** Ставится на сессию (боевую и инкогнито) один раз при старте. */
+export function installCertificateTrust(session: Session): void {
+  installedSessions.push(session)
+  applyProc(session)
 }

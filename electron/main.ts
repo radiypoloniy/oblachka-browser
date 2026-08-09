@@ -75,7 +75,8 @@ import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslateP
 import { warmup as warmupTranslation, unloadModel, getLoadedModelId, isModelWarm, type ChatOutcome } from './TranslationService';
 import { shutdownInference } from './inference/InferenceHost';
 import { isExternalAppUrl, openExternalWithConsent } from './ExternalProtocol';
-import { installCertificateTrust } from './CertificateTrust';
+import { installCertificateTrust, refreshCertificateTrust } from './CertificateTrust';
+import { listUserTrusted, removeUserTrusted } from './CertTrustStore';
 import { toggleAiPanel, openAiPanelApp, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView, setOnChatIntent as setOnAiPanelChatIntent } from './AiPanelManager';
 import {
   togglePageTranslate,
@@ -2629,6 +2630,18 @@ function registerIpc() {
       }
       progress(i + 1);
     }
+  });
+
+  // Доверие корню Минцифры, выданное человеком поверх вшитого списка банков (CertTrustStore.ts).
+  // ⚠️ Выдаётся оно НЕ отсюда: вопрос задаётся в момент проверки сертификата (CertificateTrust.ts),
+  // потому что разрешение задним числом Chromium уже не примет — вердикт закэширован. Наружу
+  // отдаём только показ и отзыв.
+  ipcMain.handle(IPC.CERT_TRUST_LIST, () => listUserTrusted());
+  ipcMain.handle(IPC.CERT_TRUST_REMOVE, (_e, domain: unknown) => {
+    if (typeof domain !== 'string') return false;
+    const ok = removeUserTrusted(domain);
+    if (ok) refreshCertificateTrust(); // отзыв обязан действовать сразу, а не после перезапуска
+    return ok;
   });
 
   // Правая AI-панель (см. AiPanelManager.ts)

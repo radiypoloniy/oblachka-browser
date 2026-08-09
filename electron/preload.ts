@@ -499,6 +499,11 @@ const api: OblakoApi = {
   getPasswordAuthEnabled: ()                                     => ipcRenderer.invoke(IPC.PASSWORDS_AUTH_GET) as Promise<boolean>,
   setPasswordAuthEnabled: (enabled: boolean)                     => ipcRenderer.invoke(IPC.PASSWORDS_AUTH_SET, enabled) as Promise<boolean>,
 
+  // Доверие корню Минцифры для конкретных сайтов — то, что человек разрешил сам. Только показ и
+  // отзыв: выдаётся оно ответом на вопрос браузера, а не из интерфейса (см. CertificateTrust.ts).
+  listCertTrust:    ()                        => ipcRenderer.invoke(IPC.CERT_TRUST_LIST) as Promise<Array<{ domain: string; addedAt: number }>>,
+  removeCertTrust:  (domain: string)          => ipcRenderer.invoke(IPC.CERT_TRUST_REMOVE, domain) as Promise<boolean>,
+
   // Автозаполнение — адреса и карты. Полный номер карты — только revealCardNumber (под Hello).
   listAddresses:    ()                        => ipcRenderer.invoke(IPC.AUTOFILL_ADDRESS_LIST) as Promise<AddressProfile[]>,
   addAddress:       (input: AddressInput)     => ipcRenderer.invoke(IPC.AUTOFILL_ADDRESS_ADD, input) as Promise<boolean>,

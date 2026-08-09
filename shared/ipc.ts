@@ -150,6 +150,10 @@ export interface TabErrorState {
   // Была ли сеть жива в момент ошибки (net.isOnline() в main). Один и тот же код приходит и
   // когда лежит сайт, и когда отвалился Wi-Fi, — а советовать в этих случаях надо разное.
   offline: boolean;
+  // Сертификат сайта честно выписан УЦ Минцифры, просто этому домену мы его не доверяем (см.
+  // CertificateTrust.ts). Отличается от любой другой ошибки сертификата тем, что у человека есть
+  // осмысленный выход — разрешить конкретный сайт; всем остальным предлагать нечего.
+  russianCa?: boolean;
 }
 
 // Партиция инкогнито-вкладок: БЕЗ префикса 'persist:' → сессия in-memory (куки/кэш/хранилище не
@@ -669,6 +673,13 @@ export const IPC = {
   // карточка не убиралась ВООБЩЕ — ни клавишей, ни кликом мимо, и оставалась висеть над формой.
   AUTOFILL_DISMISS:        'autofill:dismiss',        // гостевая страница → main: закрыть поповер
   AUTOFILL_CHANGED:        'autofill:changed',        // main → renderer: push после любой мутации
+
+  // Доверие корню Минцифры, выданное человеком поверх вшитого списка банков (CertTrustStore.ts).
+  // ⚠️ Канала «добавить» тут НЕТ намеренно: разрешение выдаётся только ответом на вопрос в момент
+  // проверки сертификата (CertificateTrust.ts), а не кнопкой в интерфейсе. Дать его позже нельзя
+  // технически — Chromium кэширует вердикт, и разрешение задним числом не срабатывает.
+  CERT_TRUST_LIST:         'cert-trust:list',         // renderer → main: список доменов
+  CERT_TRUST_REMOVE:       'cert-trust:remove',       // renderer → main: домен → boolean
 
   // Менеджер паролей, шаг 2 (см. electron/preload-content.ts, electron/TabManager.ts) — канал
   // ГОСТЕВАЯ СТРАНИЦА ↔ TabManager, через per-view webContents.ipc (не общий ipcMain — main точно
@@ -1759,6 +1770,11 @@ export interface OblakoApi {
   listPermissions(): Promise<PermissionRecord[]>;
   setPermission(origin: string, key: PermKey, decision: 'granted' | 'denied'): Promise<void>;
   revokePermission(origin: string, key?: PermKey): Promise<void>;
+  // Сайты, которым человек сам разрешил корень Минцифры (см. electron/CertTrustStore.ts) — соседи
+  // разрешений по разделу настроек и по смыслу. Вшитый список банков сюда не входит: он не
+  // отзывается и в интерфейсе не показывается. Добавления снаружи нет — только отзыв, см. IPC.
+  listCertTrust(): Promise<Array<{ domain: string; addedAt: number }>>;
+  removeCertTrust(domain: string): Promise<boolean>;
 
   listBookmarks(): Promise<BookmarkEntry[]>;
   // Дерево целиком — режим «Закладки» в сайдбаре рисует его сам, поэтому уровни не догружает.

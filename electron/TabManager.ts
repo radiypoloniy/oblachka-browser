@@ -14,6 +14,7 @@ import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 import { hostOfUrl } from '../shared/rules';
 import { isExternalAppUrl } from './ExternalProtocol';
+import { isRussianCaCandidate } from './CertificateTrust';
 
 const CLOSED_STACK_MAX = 10;
 
@@ -1610,7 +1611,16 @@ export class TabManager {
       const url = wc.getURL() || validatedURL;
       // Снимаем состояние сети ЗДЕСЬ, а не в renderer: к моменту показа плашки сеть может уже
       // вернуться, и совет «проверьте подключение» окажется враньём задним числом.
-      this.errors.set(id, { type: 'load', code: errorCode, url, offline: !net.isOnline() });
+      // Отдельный признак для случая «сертификат от УЦ Минцифры, но домена нет в списке» — только
+      // в нём странице ошибки есть что объяснить (см. CertificateTrust.ts и TabError.tsx).
+      // ⚠️ Признак кандидата живёт до перезапуска, поэтому одного его мало: без сверки с кодом
+      // любая позднейшая ошибка на том же хосте (сеть отвалилась, сайт лёг) рассказывала бы
+      // человеку про сертификаты. -202 — ERR_CERT_AUTHORITY_INVALID, ровно наш случай.
+      let russianCa = false;
+      try {
+        russianCa = errorCode === -202 && isRussianCaCandidate(new URL(url).hostname);
+      } catch { /* адрес не разбирается */ }
+      this.errors.set(id, { type: 'load', code: errorCode, url, offline: !net.isOnline(), russianCa });
       const isInSplit = !!this.#pairContaining(id);
       if (this.activeId === id || isInSplit) this.hideView(id);
       notify();
