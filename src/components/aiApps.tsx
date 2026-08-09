@@ -116,6 +116,25 @@ function loadAppsOrder(): string[] {
 function saveAppsOrder(order: string[]): void {
   try { localStorage.setItem(APPS_ORDER_KEY, JSON.stringify(order)) } catch { /* см. loadWallpaper */ }
 }
+// ── Размер слотов ────────────────────────────────────────────────────────────────────────────
+// Доля высоты, которую занимает ВЕРХНИЙ слот, когда открыты оба. Границы 0.2…0.8 — не вкусовщина:
+// у слота есть шапка с названием и кнопками (~36 px), и за пределами этой вилки от приложения
+// остаётся одна шапка, то есть «схлопнул и не понял, куда делось».
+const SPLIT_KEY = 'aipanel-apps-split'
+const SPLIT_MIN = 0.2
+const SPLIT_MAX = 0.8
+
+function loadSplit(): number {
+  try {
+    const raw = Number(localStorage.getItem(SPLIT_KEY))
+    if (Number.isFinite(raw) && raw >= SPLIT_MIN && raw <= SPLIT_MAX) return raw
+  } catch { /* см. loadWallpaper */ }
+  return 0.5
+}
+function saveSplit(v: number): void {
+  try { localStorage.setItem(SPLIT_KEY, String(v)) } catch { /* см. loadWallpaper */ }
+}
+
 function orderApps(all: AppDef[], order: string[]): AppDef[] {
   const rank = new Map(order.map((id, i) => [id, i]))
   const known = all.filter((a) => rank.has(a.id)).sort((a, b) => rank.get(a.id)! - rank.get(b.id)!)
@@ -273,6 +292,36 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   // состояние приложений (набранное в калькуляторе, таймер) переезжает вместе со слотом.
   const swapSlots = () => setOpenApps((prev) => (prev.length === 2 ? [prev[1], prev[0]] : prev))
 
+  // ── Размер слотов перетаскиванием разделителя ──
+  const slotsRef = useRef<HTMLDivElement>(null)
+  const [splitRatio, setSplitRatio] = useState<number>(loadSplit)
+  const ratioRef = useRef(splitRatio)
+  // ⚠️ Пока тянут разделитель, веб-слоты ПРЯЧУТСЯ. Не косметика: их WebContentsView лежит ПОВЕРХ
+  // панели, и как только указатель заходит на сайт, панель перестаёт получать pointermove — тот
+  // же закон, из-за которого зоны дропа вкладок считает main, а не рендерер. Спрятанная вью
+  // отдаёт указатель панели, и разделитель доезжает до конца; сайт возвращается на отпускании.
+  const [resizing, setResizing] = useState(false)
+
+  const startResize = (e: React.PointerEvent) => {
+    const box = slotsRef.current?.getBoundingClientRect()
+    if (!box || box.height <= 0) return
+    e.preventDefault()
+    setResizing(true)
+    const move = (ev: PointerEvent) => {
+      const r = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, (ev.clientY - box.top) / box.height))
+      ratioRef.current = r
+      setSplitRatio(r)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      setResizing(false)
+      saveSplit(ratioRef.current)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   const addCustomApp = () => {
     const rawUrl = newAppUrl.trim()
     if (!rawUrl) return
@@ -340,17 +389,29 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   // сетка снизу (выбрать второе); 2 — оба слота заняты, сетка скрыта до закрытия одного (крестик
   // в шапке слота). Обои — фон всего острова (см. aipanel.tsx), слоты «парят» над ними карточками.
   return (
-    <div style={{
+    <div ref={slotsRef} style={{
       flex: 1, minHeight: 0, marginTop: 10, position: 'relative',
       display: 'flex', flexDirection: 'column', gap: 10, padding: 12,
     }}>
       {openApps.map((id, slotIndex) => {
         const app = allApps.find((a) => a.id === id)
         if (!app) return null
-        const onSwap = openApps.length === 2 ? swapSlots : undefined
-        return app.kind === 'web'
-          ? <WebAppSlot key={id} app={app} slotIndex={slotIndex} hidden={sheetVisible} onSwap={onSwap} onClose={() => closeApp(id)} />
-          : <AppSlot key={id} app={app} onSwap={onSwap} onClose={() => closeApp(id)} />
+        const both = openApps.length === 2
+        const onSwap = both ? swapSlots : undefined
+        // Доля высоты действует только когда открыты ОБА: с одним приложением второй половиной
+        // владеет сетка иконок, и её долю человек не двигал.
+        const grow = both ? (slotIndex === 0 ? splitRatio : 1 - splitRatio) : 1
+        const slot = app.kind === 'web'
+          ? <WebAppSlot key={id} app={app} slotIndex={slotIndex} grow={grow}
+              hidden={sheetVisible || resizing} onSwap={onSwap} onClose={() => closeApp(id)} />
+          : <AppSlot key={id} app={app} grow={grow} onSwap={onSwap} onClose={() => closeApp(id)} />
+        // Разделитель — между слотами, поэтому рисуется перед вторым.
+        return slotIndex === 1
+          ? <React.Fragment key={`${id}-with-divider`}>
+              <SlotDivider onPointerDown={startResize} active={resizing} />
+              {slot}
+            </React.Fragment>
+          : slot
       })}
       {openApps.length < 2 && (
         <HomeGrid
@@ -985,22 +1046,67 @@ function CurrencyWidget() {
 
 // ── Слот открытого приложения ────────────────────────────────────────────────────────────────
 // Общая карточка слота: шапка (иконка + название + свап при двух слотах + крестик) и содержимое.
-function SlotFrame({ app, onSwap, onClose, children }: {
-  app: AppDef
-  onSwap?: () => void
-  onClose: () => void
-  children: React.ReactNode
+// Разделитель между двумя слотами: тянут за него, меняется доля высоты. Ручка нарисована
+// полоской по центру — без неё зона в 10 px читается как пустой зазор, а не как ручка.
+function SlotDivider({ onPointerDown, active }: {
+  onPointerDown: (e: React.PointerEvent) => void
+  active: boolean
 }) {
   return (
-    <div style={{
-      flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
-      background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
-      boxShadow: 'var(--shadow-card)', overflow: 'hidden',
-    }}>
+    <div
+      onPointerDown={onPointerDown}
+      title="Потяните, чтобы изменить размер"
+      style={{
+        flexShrink: 0, height: 10, margin: '-6px 0', // съедает часть gap, не раздвигая слоты
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'row-resize', touchAction: 'none',
+      }}
+    >
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-        flexShrink: 0, borderBottom: '1px solid var(--divider)',
-      }}>
+        width: 40, height: 4, borderRadius: 2,
+        background: active ? 'var(--accent)' : 'var(--text-faint)',
+        opacity: active ? 1 : 0.4,
+      }} />
+    </div>
+  )
+}
+
+function SlotFrame({ app, grow = 1, onSwap, onClose, onDropSwap, children }: {
+  app: AppDef
+  /** Доля высоты среди слотов (см. SPLIT_KEY). */
+  grow?: number
+  onSwap?: () => void
+  onClose: () => void
+  /** Приложение перетащили за шапку на другой слот — поменять их местами. */
+  onDropSwap?: () => void
+  children: React.ReactNode
+}) {
+  const [dropTarget, setDropTarget] = useState(false)
+  return (
+    <div style={{
+      flex: grow, minHeight: 0, display: 'flex', flexDirection: 'column',
+      background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
+      boxShadow: dropTarget ? '0 0 0 2px var(--accent)' : 'var(--shadow-card)', overflow: 'hidden',
+    }}>
+      {/* ⚠️ Тащить можно ТОЛЬКО за шапку, и это вынужденно, а не «так удобнее»: тело веб-слота
+          закрыто нативной WebContentsView, которая лежит поверх панели и не отдаёт ей события
+          мыши вовсе. Шапка — часть панели, поэтому жест начинается и заканчивается на ней. */}
+      <div
+        draggable={onDropSwap !== undefined}
+        onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', app.id) }}
+        onDragOver={(e) => { e.preventDefault(); setDropTarget(true) }}
+        onDragLeave={() => setDropTarget(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDropTarget(false)
+          if (e.dataTransfer.getData('text/plain') !== app.id) onDropSwap?.()
+        }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+          flexShrink: 0, borderBottom: '1px solid var(--divider)',
+          cursor: onDropSwap !== undefined ? 'grab' : 'default',
+        }}
+      >
         <AppIconBadge app={app} size={20} radius={6} iconSize={12} />
         <span style={{
           flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -1040,9 +1146,11 @@ function SlotFrame({ app, onSwap, onClose, children }: {
   )
 }
 
-function AppSlot({ app, onSwap, onClose }: { app: AppDef; onSwap?: () => void; onClose: () => void }) {
+function AppSlot({ app, grow, onSwap, onClose }: {
+  app: AppDef; grow?: number; onSwap?: () => void; onClose: () => void
+}) {
   return (
-    <SlotFrame app={app} onSwap={onSwap} onClose={onClose}>
+    <SlotFrame app={app} grow={grow} onSwap={onSwap} onClose={onClose} onDropSwap={onSwap}>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {app.id === 'calc' && <CalcApp />}
         {app.id === 'convert' && <ConverterApp />}
@@ -1059,9 +1167,10 @@ function AppSlot({ app, onSwap, onClose }: { app: AppDef; onSwap?: () => void; o
 // Сам сайт рисует main (WebAppManager.ts) — эта карточка только размечает и меряет дырку.
 // hidden — шит настроек открыт поверх домашнего экрана: view надо спрятать, она лежит выше
 // панели в z-order и иначе перекрыла бы шит.
-function WebAppSlot({ app, slotIndex, hidden, onSwap, onClose }: {
+function WebAppSlot({ app, slotIndex, grow, hidden, onSwap, onClose }: {
   app: AppDef
   slotIndex: number
+  grow?: number
   hidden: boolean
   onSwap?: () => void
   onClose: () => void
@@ -1097,7 +1206,7 @@ function WebAppSlot({ app, slotIndex, hidden, onSwap, onClose }: {
   }, [app.id, hidden, slotIndex])
 
   return (
-    <SlotFrame app={app} onSwap={onSwap} onClose={onClose}>
+    <SlotFrame app={app} grow={grow} onSwap={onSwap} onClose={onClose} onDropSwap={onSwap}>
       <div style={{ flex: 1, minHeight: 0, padding: '0 8px 8px', display: 'flex' }}>
         <div
           ref={holeRef}
