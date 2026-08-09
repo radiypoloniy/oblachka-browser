@@ -505,9 +505,14 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
         }}
       >
         <SortableContext items={openApps} strategy={verticalListSortingStrategy}>
-          {openApps.map((id, slotIndex) => {
+          {/* ⚠️ ПЛОСКИЙ список, а не «второй слот, обёрнутый вместе с разделителем». Обёртка
+              стоила бага: при перестановке слот менял МЕСТО В ДЕРЕВЕ (был внутри Fragment — стал
+              снаружи), React считал это другим элементом и пересоздавал приложение — конвертер
+              терял выбранную пару валют и набранные числа, калькулятор — свой счёт. В плоском
+              списке ключи совпадают, и React переставляет узлы, а не рождает их заново. */}
+          {openApps.flatMap((id, slotIndex) => {
             const app = allApps.find((a) => a.id === id)
-            if (!app) return null
+            if (!app) return []
             const both = openApps.length === 2
             const onSwap = both ? swapSlots : undefined
             // Доля высоты действует только когда открыты ОБА: с одним приложением второй
@@ -525,13 +530,10 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
               : <AppSlot key={id} app={app} grow={grow}
                   active={active} showRing={both && active} onActivate={onActivate}
                   onSwap={onSwap} onClose={() => closeApp(id)} />
-            // Разделитель — между слотами, поэтому рисуется перед вторым.
+            // Разделитель — отдельный элемент того же списка, со своим постоянным ключом.
             return slotIndex === 1
-              ? <React.Fragment key={`${id}-with-divider`}>
-                  <SlotDivider onPointerDown={startResize} active={resizing} />
-                  {slot}
-                </React.Fragment>
-              : slot
+              ? [<SlotDivider key="slot-divider" onPointerDown={startResize} active={resizing} />, slot]
+              : [slot]
           })}
         </SortableContext>
       </DndContext>
