@@ -138,6 +138,7 @@ import type { PermissionRequest } from '../shared/ipc';
 import { searchHistorySmart } from './HistorySearch';
 import {
   suggestGroups,
+  suggestGroupName,
   setTabManager as setOrganizerTabManager,
   setHistoryManager as setOrganizerHistoryManager,
 } from './TabOrganizer';
@@ -2732,7 +2733,7 @@ function registerIpc() {
       } else {
         items.push({
           label: 'Создать группу',
-          click: () => t.createGroup(id),
+          click: () => createGroupSuggesting(t, chromeOf(e), id),
         });
       }
 
@@ -2744,7 +2745,7 @@ function registerIpc() {
           label: 'Добавить в группу',
           submenu: otherGroups.map((g) => ({
             label: g.label || 'Группа',
-            click: () => t.addTabToGroup(g.id, id),
+            click: () => addToGroupSuggesting(t, chromeOf(e), g.id, id),
           })),
         });
       }
@@ -2844,10 +2845,46 @@ function registerIpc() {
     Menu.buildFromTemplate(items).popup({ window: w });
   });
 
+  // Имя-заготовка для группы, СОБРАННОЙ РУКАМИ (AI-IDEAS.md №5). Группы строятся двумя шагами
+  // нативного меню: «Создать группу» (одна вкладка) → «Добавить в группу» (вторая, третья…).
+  // Осмысленное имя возможно только когда вкладок ДВЕ и БОЛЬШЕ, поэтому зовём это после каждого
+  // изменения состава, а не при создании.
+  // ⚠️ Гейты, каждый несущий:
+  //  • label всё ещё дефолтный «Новая группа» — не перебиваем ни имя человека, ни имя от «Навести
+  //    порядок»/правил (те создают группы уже с меткой), и не дёргаем модель на каждый 3-й/4-й add;
+  //  • вкладок ≥2 — одну называть нечего;
+  //  • модель тёплая — холодную 9B ради подписи не будим (~30 с), тогда остаётся ручной ввод;
+  //  • не «в полёте» уже — быстрые два add подряд не должны запускать две генерации.
+  // Асинхронно и не блокирует: группа уже на экране, имя приезжает через ~секунду и открывает
+  // inline-правку с выделенным текстом — принять Enter'ом или переписать (цена ошибки — Backspace).
+  const namingInFlight = new Set<string>();
+  const maybeSuggestGroupName = (t: TabManager, chrome: Electron.WebContents | null, groupId: string): void => {
+    if (!isModelWarm() || namingInFlight.has(groupId)) return;
+    if (t.groupLabel(groupId) !== 'Новая группа') return;
+    const tabs = t.groupTabInfos(groupId);
+    if (tabs.length < 2) return;
+    namingInFlight.add(groupId);
+    void suggestGroupName(tabs).then((name) => {
+      namingInFlight.delete(groupId);
+      // За время генерации человек мог сам назвать группу или её расформировать — тогда не трогаем.
+      if (!name || t.groupLabel(groupId) !== 'Новая группа') return;
+      t.renameGroup(groupId, name);
+      sendTo(chrome, IPC.GROUP_RENAME_PROMPT, groupId); // inline-правка в том же окне
+    }).catch(() => { namingInFlight.delete(groupId); });
+  };
+  const createGroupSuggesting = (t: TabManager, chrome: Electron.WebContents | null, tabId: string): void => {
+    const groupId = t.createGroup(tabId);
+    if (groupId) maybeSuggestGroupName(t, chrome, groupId); // при 1 вкладке пропустится по гейту
+  };
+  const addToGroupSuggesting = (t: TabManager, chrome: Electron.WebContents | null, groupId: string, tabId: string): void => {
+    t.addTabToGroup(groupId, tabId);
+    maybeSuggestGroupName(t, chrome, groupId);
+  };
+
   // Группо-операции.
   ipcMain.handle(IPC.SIDEBAR_NODES_GET,      (e)                                => tabsOf(e)?.sidebarNodesSnapshot() ?? []);
-  ipcMain.handle(IPC.GROUP_CREATE,           (e, tabId: string)               => tabsOf(e)?.createGroup(tabId));
-  ipcMain.handle(IPC.GROUP_ADD_TAB,          (e, gId: string, tabId: string)  => tabsOf(e)?.addTabToGroup(gId, tabId));
+  ipcMain.handle(IPC.GROUP_CREATE,           (e, tabId: string)               => { const t = tabsOf(e); if (t) createGroupSuggesting(t, chromeOf(e), tabId); });
+  ipcMain.handle(IPC.GROUP_ADD_TAB,          (e, gId: string, tabId: string)  => { const t = tabsOf(e); if (t) addToGroupSuggesting(t, chromeOf(e), gId, tabId); });
   ipcMain.handle(IPC.GROUP_REMOVE_TAB,       (e, gId: string, tabId: string)  => tabsOf(e)?.removeTabFromGroup(gId, tabId));
   ipcMain.handle(IPC.GROUP_RENAME,           (e, gId: string, label: string)  => tabsOf(e)?.renameGroup(gId, label));
   ipcMain.handle(IPC.GROUP_COLOR,            (e, gId: string, color: string | null) => tabsOf(e)?.setGroupColor(gId, color));

@@ -2290,18 +2290,38 @@ export class TabManager {
   // SplitPairNode (пара переезжает ОБЕИМИ вкладками разом, ratio не трогаем, не разбираем
   // её на две — #findTabParent уже матчит tabId по leftTabId/rightTabId, так что клик по
   // любой из двух панелей резолвит один и тот же узел-пару).
-  createGroup(tabId: string): void {
+  // Возвращает id созданной группы (или null), чтобы вызывающий мог, например, предложить ей имя
+  // моделью (AI-IDEAS.md №5). Прежние void-вызовы значение просто игнорируют.
+  createGroup(tabId: string): string | null {
     const found = this.#findTabParent(tabId);
-    if (!found) return;
+    if (!found) return null;
     this.clearOrganizeSnapshot();
     const node = found.parent[found.idx];
-    if (node.type === 'group') return; // группы не вложены (Phase 3) — сюда не попадаем
+    if (node.type === 'group') return null; // группы не вложены (Phase 3) — сюда не попадаем
     const group: GroupNode = {
       type: 'group', id: randomUUID(),
       label: 'Новая группа', color: null, collapsed: false, children: [node],
     };
     found.parent.splice(found.idx, 1, group);
     this.onChange();
+    return group.id;
+  }
+
+  // Заголовок+url каждой вкладки группы — материал для предложения имени (см. TabOrganizer
+  // suggestGroupName). Спящие тоже годятся: url/title у них есть в записи, будить не нужно.
+  groupTabInfos(groupId: string): { title: string; url: string }[] {
+    const group = this.#findGroupById(groupId);
+    if (!group) return [];
+    const out: { title: string; url: string }[] = [];
+    for (const child of group.children) {
+      const ids = child.type === 'single' ? [child.tabId]
+        : child.type === 'split-pair' ? [child.leftTabId, child.rightTabId] : [];
+      for (const id of ids) {
+        const tab = this.tabMap.get(id);
+        if (tab) out.push({ title: this.#tabTitle(tab) ?? '', url: this.#tabUrl(tab) });
+      }
+    }
+    return out;
   }
 
   // Перемещает узел (SingleNode или SplitPairNode целиком) в конец children указанной
@@ -2374,6 +2394,12 @@ export class TabManager {
   pinTab(tabId: string): void {
     if (this.pinnedTabs.some((t) => t.id === tabId)) return;
     this.togglePin(tabId);
+  }
+
+  // Текущая метка группы (или null, если группы нет) — вызывающему в main нужно отличить
+  // ещё не названную «Новую группу» от уже названной, чтобы не перебивать имя предложением.
+  groupLabel(groupId: string): string | null {
+    return this.#findGroupById(groupId)?.label ?? null;
   }
 
   renameGroup(groupId: string, label: string): void {

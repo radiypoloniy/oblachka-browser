@@ -161,6 +161,35 @@ function buildTopicsPrompt(lines: string[], maxTopics: number): string {
   );
 }
 
+// ── Имя для группы, собранной РУКАМИ (AI-IDEAS.md №5) ───────────────────────────
+/**
+ * Имя-заготовка для группы, собранной руками. Фоновой полосой, гейт «модель тёплая» — на стороне
+ * вызывающего (main): холодную модель ради подписи не будим, тогда остаётся ручной ввод, как раньше.
+ *
+ * ⚠️ ПЕРЕИСПОЛЬЗУЕМ ПРОВЕРЕННЫЙ ПРОМПТ ТЕМ (buildTopicsPrompt), прося РОВНО ОДНУ тему: она и есть
+ * имя группы. Свой промпт «назови эти вкладки» 4B не осилила — вместо имени рассуждала по-английски
+ * («I'm not sure if this is the best approach…»), а с русским словом-плейсхолдером возвращала его
+ * эхом (та же ловушка, что в RuleParser). Промпт тем на этой же модели даёт 3/3 на стенде и уже
+ * умеет ровно то, что нужно: короткая русская тема на 2-4 слова по СМЫСЛУ вкладок, не по словам
+ * заголовка. Одна вкладка имени не получает — это ещё не «группа по смыслу» (гейт и здесь, и у
+ * вызывающего).
+ */
+export async function suggestGroupName(tabs: { title: string; url: string }[]): Promise<string | null> {
+  const named = tabs.filter((t) => (t.title && t.title.trim()) || t.url);
+  if (named.length < 2) return null;
+  const lines = named.map((t, i) => `${i + 1}. ${t.title || '(без названия)'} | ${extractHostname(t.url)}`);
+  const res = await runTabOrganizePrompt(buildTopicsPrompt(lines, 1), { background: true });
+  if (!res.ok) return null;
+  const first = parseTopics(res.out, 1)[0] ?? null;
+  // Модель иногда возвращает слово-плейсхолдер из шаблона («тема») вместо ответа — это НЕ имя
+  // (та же ловушка эха, что разобрана в RuleParser). Оставляем тогда «Новую группу».
+  const name = first && !/^(тема|topic|название|name)$/i.test(first) ? first : null;
+  // Сырой ответ в лог — тот же принцип, что у остального AI (см. CLAUDE.md): без него «не назвалось»
+  // неотличимо от «мы не так разобрали».
+  console.log(`[group-name] ${named.length} вкладок → ${JSON.stringify(name)}, ответ модели: ${JSON.stringify(res.out.slice(0, 160))}`);
+  return name;
+}
+
 function parseTopics(out: string, maxTopics: number): string[] {
   const line = new RegExp(`${TOPICS_CUE}\\s*([^\\n]*)`, 'i').exec(out)?.[1] ?? '';
   const seen = new Set<string>();
