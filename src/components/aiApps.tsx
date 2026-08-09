@@ -95,6 +95,34 @@ function customToDef(c: CustomWebApp): AppDef {
   return { id: c.id, label: c.name, kind: 'web', icon: null, gradient: 'var(--appicon-webcustom)', url: c.url }
 }
 
+// ── Порядок иконок на домашнем экране ────────────────────────────────────────────────────────
+// Хранится СПИСКОМ id, а не индексами: набор приложений меняется (встроенные добавляются с
+// обновлениями, свои — руками), и любой индекс от этого протух бы молча.
+// ⚠️ Неизвестные id дописываются В КОНЕЦ в их естественном порядке, а сохранённые, которых больше
+// нет, просто игнорируются. Поэтому новое приложение появляется на экране, а удалённое не
+// оставляет дырки — без всякой миграции хранилища.
+const APPS_ORDER_KEY = 'aipanel-apps-order'
+
+function loadAppsOrder(): string[] {
+  try {
+    const raw = localStorage.getItem(APPS_ORDER_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown
+      if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === 'string')
+    }
+  } catch { /* см. loadWallpaper */ }
+  return []
+}
+function saveAppsOrder(order: string[]): void {
+  try { localStorage.setItem(APPS_ORDER_KEY, JSON.stringify(order)) } catch { /* см. loadWallpaper */ }
+}
+function orderApps(all: AppDef[], order: string[]): AppDef[] {
+  const rank = new Map(order.map((id, i) => [id, i]))
+  const known = all.filter((a) => rank.has(a.id)).sort((a, b) => rank.get(a.id)! - rank.get(b.id)!)
+  const rest = all.filter((a) => !rank.has(a.id))
+  return [...known, ...rest]
+}
+
 // ── Обои ─────────────────────────────────────────────────────────────────────────────────────
 // Персистентность — localStorage самой панели (origin oblako-chrome://localhost переживает
 // рестарт), НЕ SettingsManager: чисто косметическая настройка одного renderer'а, тащить её
@@ -217,7 +245,12 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   const [newAppName, setNewAppName] = useState('')
   const [newAppUrl, setNewAppUrl] = useState('')
 
-  const allApps: AppDef[] = [...APPS, ...customApps.map(customToDef)]
+  const [appsOrder, setAppsOrder] = useState<string[]>(loadAppsOrder)
+  const allApps: AppDef[] = orderApps([...APPS, ...customApps.map(customToDef)], appsOrder)
+  const reorderApps = (ids: string[]) => {
+    setAppsOrder(ids)
+    saveAppsOrder(ids)
+  }
   // Шит рисуется только пока виден домашний экран; отдельный флаг нужен и веб-слотам —
   // WebContentsView лежит ПОВЕРХ панели, открытый шит иначе оказался бы под сайтом.
   const sheetVisible = sheetOpen && openApps.length < 2
@@ -324,6 +357,7 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
           apps={allApps}
           openApps={openApps}
           onOpen={openApp}
+          onReorder={reorderApps}
           widgets={widgets}
           weatherCity={weatherCity}
           onWallpaper={wallpaper !== 'none'}
@@ -683,14 +717,34 @@ export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
   )
 }
 
-function HomeGrid({ apps, openApps, onOpen, widgets, weatherCity, onWallpaper }: {
+function HomeGrid({ apps, openApps, onOpen, onReorder, widgets, weatherCity, onWallpaper }: {
   apps: AppDef[]
   openApps: AppId[]
   onOpen: (id: AppId) => void
+  /** Новый порядок иконок целиком — перетаскивание завершилось. */
+  onReorder: (ids: string[]) => void
   widgets: WidgetsConfig
   weatherCity: string
   onWallpaper: boolean
 }) {
+  // Что тащим и над чем висим. ⚠️ Оба состояния нужны ИМЕННО в React, а не в dataTransfer:
+  // dataTransfer в dragover читать нельзя (браузер отдаёт его пустым по соображениям приватности),
+  // а подсветить цель надо как раз в dragover.
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [overId, setOverId] = useState<string | null>(null)
+
+  const drop = (targetId: string) => {
+    if (!dragId || dragId === targetId) { setDragId(null); setOverId(null); return }
+    const ids = apps.map((a) => a.id)
+    const from = ids.indexOf(dragId)
+    const to = ids.indexOf(targetId)
+    if (from < 0 || to < 0) { setDragId(null); setOverId(null); return }
+    ids.splice(to, 0, ...ids.splice(from, 1))
+    onReorder(ids)
+    setDragId(null)
+    setOverId(null)
+  }
+
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 2px' }}>
       {(widgets.weather || widgets.currency) && (
@@ -710,17 +764,36 @@ function HomeGrid({ apps, openApps, onOpen, widgets, weatherCity, onWallpaper }:
               key={app.id}
               onClick={() => onOpen(app.id)}
               title={app.label}
+              draggable
+              onDragStart={(e) => { setDragId(app.id); e.dataTransfer.effectAllowed = 'move' }}
+              onDragEnd={() => { setDragId(null); setOverId(null) }}
+              // preventDefault обязателен на ОБОИХ — без него drop не наступает вовсе.
+              onDragOver={(e) => { e.preventDefault(); if (dragId && dragId !== app.id) setOverId(app.id) }}
+              onDragLeave={() => setOverId((cur) => (cur === app.id ? null : cur))}
+              onDrop={(e) => { e.preventDefault(); drop(app.id) }}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
                 width: '100%', minWidth: 0, padding: 0,
                 background: 'transparent', border: 'none',
-                cursor: opened ? 'default' : 'pointer',
-                // Уже открытое — притушено вместо второй копии (слот на приложение один).
-                opacity: opened ? 0.45 : 1,
+                cursor: 'pointer',
+                // Тащим — притушаем сам источник, чтобы было видно, что он «в руке».
+                opacity: dragId === app.id ? 0.4 : 1,
+                // Цель приземления — сдвиг, а не рамка: рамка на 54px иконке спорит со скруглением.
+                transform: overId === app.id ? 'translateX(6px)' : undefined,
+                transition: 'transform var(--dur-fast, 120ms) var(--ease-out)',
               }}
             >
-              {/* --radius-card (13px) на 54px — те же ~24% скругления, что у иконок iOS. */}
-              <AppIconBadge app={app} size={54} iconSize={32} shadow />
+              {/* --radius-card (13px) на 54px — те же ~24% скругления, что у иконок iOS.
+                  ⚠️ Открытое приложение теперь ПОДСВЕЧЕНО кольцом, а не притушено. Притушивание
+                  читалось как «недоступно» — ровно наоборот смыслу: приложение открыто и живёт
+                  в слоте рядом. */}
+              <span style={{
+                borderRadius: 'var(--radius-card)',
+                boxShadow: opened ? '0 0 0 2px var(--accent)' : undefined,
+                lineHeight: 0,
+              }}>
+                <AppIconBadge app={app} size={54} iconSize={32} shadow />
+              </span>
               <span style={{
                 maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 fontSize: 'var(--fs-xs)', fontWeight: 500,
