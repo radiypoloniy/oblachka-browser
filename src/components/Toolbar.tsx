@@ -418,6 +418,9 @@ export default function Toolbar({
   // нативную вью (setSuggestDropdownOpen) и состояние редактирования в одном месте.
   const closeDropdown = useCallback((_reason = 'unknown') => {
     suggestSeqRef.current++;
+    // Гасим и сам отложенный пересчёт: поднятого seq достаточно, чтобы его результат не долетел,
+    // но незачем будить историю и сеть ради заведомо выброшенного ответа.
+    if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
     setDropdownOpen(false);
     setSuggestions([]);
     setSelectedIdx(-1);
@@ -730,6 +733,15 @@ export default function Toolbar({
 
   const buildSuggestions = useCallback(async (query: string, seq: number) => {
     if (!query.trim()) { closeDropdown('empty-query'); return; }
+    // ⚠️ ГВАРД ОБЯЗАН СТОЯТЬ ЗДЕСЬ, А НЕ ТОЛЬКО ПОСЛЕ ЗАПРОСОВ. Он есть ниже трижды, но всюду
+    // после первого await — а показ дропдауна происходит РАНЬШЕ них, синхронно. Запуск же сюда
+    // приходит отложенно, через дебаунс: закрой омнибокс в те 150 мс (Esc, клик по ссылке, смена
+    // вкладки) — closeDropdown поднимал seq, но таймер оставался жив, и провизорный показ ниже
+    // открывал вью ЗАНОВО. Закрыть её после этого было уже нечем: editing к тому моменту false,
+    // слушатель «клика мимо» снят, сигнал фокуса в контент отработал, — дропдаун висел до
+    // следующего переключения вкладки. Ровно тот редкий залипающий дропдаун, который ловился
+    // «раз в сколько-то» и не имел закономерности: нужно попасть закрытием в окно дебаунса.
+    if (seq !== suggestSeqRef.current) return;
     const q = query.toLowerCase();
 
     // ⚠️ Дропдаун открывается СРАЗУ, до всяких ожиданий. Раньше он ждал ОБЕ загрузки —
