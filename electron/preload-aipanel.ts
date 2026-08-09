@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('aiPanel', {
     return () => ipcRenderer.removeListener('ai-panel:open-app', handler)
   },
   close: () => ipcRenderer.send('ai-panel:close'),
+  // Слот с сайтом стал активным (Ctrl+Tab) — фокус его вью отдаёт main: панель до чужой
+  // WebContentsView не дотягивается, а без фокуса набирать в сайте некуда.
+  webappFocus: (appId: string) => ipcRenderer.send('ai-panel:webapp-focus', appId),
   // Человек кликнул в сайт веб-слота — панель узнаёт об этом только отсюда (вью сайта лежит
   // поверх неё и её событий не порождает). По этому признаку рисуется рамка активного слота.
   onWebAppFocused: (cb: (appId: string) => void) => {

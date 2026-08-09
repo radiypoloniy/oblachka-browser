@@ -1430,6 +1430,32 @@ function SlotFrame({ app, grow = 1, active = false, showRing = false, onActivate
 }) {
   // Перетаскивание слота: ручка — шапка (listeners), цель дропа — ВЕСЬ слот (setNodeRef).
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: app.id })
+
+  // ⚠️ Стать активным — значит ПРИНЯТЬ КЛАВИАТУРУ, а не только получить рамку. У калькулятора
+  // обработчик глобальный, ему хватает флага активности; а конвертер — обычное поле ввода, и без
+  // фокуса в нём Ctrl+Tab переключал рамку, но набирать было по-прежнему некуда (живая жалоба).
+  // Поэтому при активации переводим фокус в первое поле слота — если человек уже не поставил его
+  // сам куда-то внутрь (клик по конкретному полю не должен перебрасываться на первое).
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const setRefs = (el: HTMLDivElement | null): void => {
+    rootRef.current = el
+    setNodeRef(el)
+  }
+  useEffect(() => {
+    if (!active) return
+    const root = rootRef.current
+    if (!root || root.contains(document.activeElement)) return
+    // Веб-слот: поле живёт в чужой вью, фокус ей отдаёт main (панель до неё не дотянется).
+    if (app.kind === 'web') { window.aiPanel.webappFocus(app.id); return }
+    const field = root.querySelector<HTMLElement>('input, textarea')
+    if (field) { field.focus(); return }
+    // ⚠️ Полей нет (калькулятор) — тогда надо СНЯТЬ фокус с чужого поля, а не оставить как есть:
+    // глобальный обработчик калькулятора пропускает нажатия, сделанные в INPUT (иначе он воровал бы
+    // цифры у любого поля панели), и без этого снятия цифры продолжали бы уходить в конвертер,
+    // хотя активен уже калькулятор.
+    const focused = document.activeElement
+    if (focused instanceof HTMLElement && focused !== document.body) focused.blur()
+  }, [active, app.id, app.kind])
   // Рамка — тонкая линия акцента ВОКРУГ карточки. Внутренняя тень (inset), а не outline: outline
   // рисуется поверх скруглённых углов прямоугольником и торчит по краям; inset ложится по радиусу.
   const ring = showRing
@@ -1437,7 +1463,7 @@ function SlotFrame({ app, grow = 1, active = false, showRing = false, onActivate
     : 'var(--shadow-card)'
   return (
     <div
-      ref={setNodeRef}
+      ref={setRefs}
       // pointerdown в ЗАХВАТЕ: клик по кнопке внутри приложения тоже означает «работаю здесь»,
       // а до onClick самой кнопки событие может и не дойти (она может его погасить).
       onPointerDownCapture={onActivate}

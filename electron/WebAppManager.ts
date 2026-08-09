@@ -115,6 +115,13 @@ export function setWebAppBounds(win: BrowserWindow, appId: string, rect: Rectang
   entry.view.setBounds(rect)
 }
 
+// Отдать фокус сайту слота — панель зовёт это, когда слот стал активным с клавиатуры.
+// Молча ничего не делает, если вью не показана: фокусировать спрятанное нельзя.
+export function focusWebApp(appId: string): void {
+  const entry = apps.get(appId)
+  if (entry?.visible && !entry.view.webContents.isDestroyed()) entry.view.webContents.focus()
+}
+
 export function closeWebApp(win: BrowserWindow, appId: string): void {
   const entry = apps.get(appId)
   if (!entry) return

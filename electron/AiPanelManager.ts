@@ -733,6 +733,10 @@ function ensureIpcRegistered(): void {
       height: Math.round(r.height),
     })
   })
+  ipcMain.on('ai-panel:webapp-focus', (_event: IpcMainEvent, appId: unknown) => {
+    if (typeof appId === 'string') webApps.focusWebApp(appId)
+  })
+
   ipcMain.on('ai-panel:webapp-close', (_event: IpcMainEvent, appId: unknown) => {
     if (attachedWin && typeof appId === 'string') webApps.closeWebApp(attachedWin, appId)
   })
