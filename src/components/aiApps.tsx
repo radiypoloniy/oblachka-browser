@@ -11,7 +11,7 @@ import React, { useEffect, useRef, useState } from 'react'
 // надо угадывать), а здесь ровно та же задача — порядок в одном списке.
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core'
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
-import { SortableContext, rectSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
   Calculator, RefreshCw, Timer, Pipette, X, SlidersHorizontal, ImagePlus, Languages, Cat, Type,
@@ -359,16 +359,33 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   // стопке внимания, как последняя открытая вкладка при Ctrl+W.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Ctrl+Tab — переключить активное приложение с клавиатуры. Обычные стрелки для этого не
+      // годятся: они уже ходят по сетке иконок, а внутри приложений живут поля ввода.
+      if (e.key === 'Tab' && e.ctrlKey && openApps.length === 2) {
+        e.preventDefault()
+        e.stopPropagation()
+        setActiveApp((cur) => (cur === openApps[0] ? openApps[1] : openApps[0]))
+        return
+      }
       if (e.key !== 'Escape') return
       // Открытое меню у иконки забирает Esc себе — оно «поверх» и по смыслу, и на экране.
       if (iconMenu) { e.stopPropagation(); setIconMenu(null); return }
       if (openApps.length === 0) return
       e.stopPropagation()
-      setOpenApps((prev) => prev.slice(0, -1))
+      // ⚠️ Закрывается АКТИВНОЕ приложение, а не последнее в списке. Прежнее «последнее» было
+      // прямым багом: подсвечен конвертер, жмёшь Esc — закрывается калькулятор, потому что он
+      // оказался нижним. Esc обязан относиться к тому же, к чему относится рамка.
+      const target = activeApp && openApps.includes(activeApp) ? activeApp : openApps[openApps.length - 1]
+      setOpenApps((prev) => prev.filter((x) => x !== target))
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [openApps.length, iconMenu])
+  }, [openApps, iconMenu, activeApp])
+
+  // Перетаскивание слотов: тот же порог в 5 px, что у иконок, — иначе нажатие на шапку (кнопки
+  // свопа и закрытия живут там же) считалось бы началом жеста.
+  const slotSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const [draggingSlot, setDraggingSlot] = useState(false)
 
   // ── Размер слотов перетаскиванием разделителя ──
   const slotsRef = useRef<HTMLDivElement>(null)
@@ -471,31 +488,54 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
       flex: 1, minHeight: 0, marginTop: 10, position: 'relative',
       display: 'flex', flexDirection: 'column', gap: 10, padding: 12,
     }}>
-      {openApps.map((id, slotIndex) => {
-        const app = allApps.find((a) => a.id === id)
-        if (!app) return null
-        const both = openApps.length === 2
-        const onSwap = both ? swapSlots : undefined
-        // Доля высоты действует только когда открыты ОБА: с одним приложением второй половиной
-        // владеет сетка иконок, и её долю человек не двигал.
-        const grow = both ? (slotIndex === 0 ? splitRatio : 1 - splitRatio) : 1
-        // Рамку рисуем ТОЛЬКО когда открыты оба: с одним приложением подсвечивать нечего —
-        // выбора нет, и рамка была бы украшением.
-        const active = both && activeApp === id
-        const onActivate = () => setActiveApp(id)
-        const slot = app.kind === 'web'
-          ? <WebAppSlot key={id} app={app} slotIndex={slotIndex} grow={grow} active={active} onActivate={onActivate}
-              hidden={sheetVisible || resizing} onSwap={onSwap} onClose={() => closeApp(id)} />
-          : <AppSlot key={id} app={app} grow={grow} active={active} onActivate={onActivate}
-              onSwap={onSwap} onClose={() => closeApp(id)} />
-        // Разделитель — между слотами, поэтому рисуется перед вторым.
-        return slotIndex === 1
-          ? <React.Fragment key={`${id}-with-divider`}>
-              <SlotDivider onPointerDown={startResize} active={resizing} />
-              {slot}
-            </React.Fragment>
-          : slot
-      })}
+      {/* Перетаскивание слотов — та же dnd-kit, что у иконок и у вкладок сайдбара.
+          ⚠️ Тянут за шапку (там listeners), а ПРИНИМАЕТ дроп ВЕСЬ слот целиком: раньше цель
+          была только шапкой, и приложение приходилось тащить «до самого верха» соседа — жест,
+          который надо угадывать.
+          ⚠️ На время жеста веб-слоты прячутся: их WebContentsView лежит поверх панели и не
+          отдаёт ей событий указателя — ровно та же причина, что у разделителя размера. */}
+      <DndContext
+        sensors={slotSensors}
+        collisionDetection={closestCenter}
+        onDragStart={() => setDraggingSlot(true)}
+        onDragCancel={() => setDraggingSlot(false)}
+        onDragEnd={(e) => {
+          setDraggingSlot(false)
+          if (e.over && e.over.id !== e.active.id) swapSlots()
+        }}
+      >
+        <SortableContext items={openApps} strategy={verticalListSortingStrategy}>
+          {openApps.map((id, slotIndex) => {
+            const app = allApps.find((a) => a.id === id)
+            if (!app) return null
+            const both = openApps.length === 2
+            const onSwap = both ? swapSlots : undefined
+            // Доля высоты действует только когда открыты ОБА: с одним приложением второй
+            // половиной владеет сетка иконок, и её долю человек не двигал.
+            const grow = both ? (slotIndex === 0 ? splitRatio : 1 - splitRatio) : 1
+            // ⚠️ «Активен» и «нарисовать рамку» — РАЗНЫЕ вещи. Единственное открытое приложение
+            // активно всегда (клавиши обязаны идти в него), но подсвечивать нечего: выбора нет.
+            const active = both ? activeApp === id : true
+            const onActivate = () => setActiveApp(id)
+            const slot = app.kind === 'web'
+              ? <WebAppSlot key={id} app={app} slotIndex={slotIndex} grow={grow}
+                  active={active} showRing={both && active} onActivate={onActivate}
+                  hidden={sheetVisible || resizing || draggingSlot}
+                  onSwap={onSwap} onClose={() => closeApp(id)} />
+              : <AppSlot key={id} app={app} grow={grow}
+                  active={active} showRing={both && active} onActivate={onActivate}
+                  onSwap={onSwap} onClose={() => closeApp(id)} />
+            // Разделитель — между слотами, поэтому рисуется перед вторым.
+            return slotIndex === 1
+              ? <React.Fragment key={`${id}-with-divider`}>
+                  <SlotDivider onPointerDown={startResize} active={resizing} />
+                  {slot}
+                </React.Fragment>
+              : slot
+          })}
+        </SortableContext>
+      </DndContext>
+
       {openApps.length < 2 && (
         <HomeGrid
           apps={allApps}
@@ -923,6 +963,16 @@ export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
       </span>
     </span>
   )
+}
+
+// ⚠️ «Активен ли слот, в котором я нарисован» — контекстом, а не пропсом через каждое приложение.
+// Повод не в удобстве: приложения слушают клавиши ГЛОБАЛЬНО на window (иначе клавиатура работала бы
+// только при фокусе внутри самой кнопки), и при двух открытых приложениях цифры доставались
+// обоим — набираешь в конвертере, а считает калькулятор. Живая жалоба, и рамка активного слота
+// без этой проверки была чистым украшением.
+const SlotActiveContext = React.createContext(true)
+export function useSlotActive(): boolean {
+  return React.useContext(SlotActiveContext)
 }
 
 // Столбцов в сетке иконок. Держится рядом с самой сеткой: по нему же ходят стрелки вверх/вниз,
@@ -1365,30 +1415,29 @@ function SlotDivider({ onPointerDown, active }: {
   )
 }
 
-function SlotFrame({ app, grow = 1, active = false, onActivate, onSwap, onClose, onDropSwap, children }: {
+function SlotFrame({ app, grow = 1, active = false, showRing = false, onActivate, onSwap, onClose, children }: {
   app: AppDef
   /** Доля высоты среди слотов (см. SPLIT_KEY). */
   grow?: number
-  /** Здесь сейчас работают — рисуем рамку (только когда открыты оба, см. AppsMode). */
+  /** Клавиши идут сюда (единственное открытое приложение активно всегда). */
   active?: boolean
+  /** Нарисовать рамку — только когда открыты оба и есть из чего выбирать. */
+  showRing?: boolean
   onActivate?: () => void
   onSwap?: () => void
   onClose: () => void
-  /** Приложение перетащили за шапку на другой слот — поменять их местами. */
-  onDropSwap?: () => void
   children: React.ReactNode
 }) {
-  const [dropTarget, setDropTarget] = useState(false)
+  // Перетаскивание слота: ручка — шапка (listeners), цель дропа — ВЕСЬ слот (setNodeRef).
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: app.id })
   // Рамка — тонкая линия акцента ВОКРУГ карточки. Внутренняя тень (inset), а не outline: outline
   // рисуется поверх скруглённых углов прямоугольником и торчит по краям; inset ложится по радиусу.
-  // Цель дропа перебивает активность: пока тащат, важнее показать, куда приземлится.
-  const ring = dropTarget
-    ? '0 0 0 2px var(--accent), var(--shadow-card)'
-    : active
-      ? 'inset 0 0 0 1.5px var(--accent), var(--shadow-card)'
-      : 'var(--shadow-card)'
+  const ring = showRing
+    ? 'inset 0 0 0 1.5px var(--accent), var(--shadow-card)'
+    : 'var(--shadow-card)'
   return (
     <div
+      ref={setNodeRef}
       // pointerdown в ЗАХВАТЕ: клик по кнопке внутри приложения тоже означает «работаю здесь»,
       // а до onClick самой кнопки событие может и не дойти (она может его погасить).
       onPointerDownCapture={onActivate}
@@ -1397,25 +1446,23 @@ function SlotFrame({ app, grow = 1, active = false, onActivate, onSwap, onClose,
         flex: grow, minHeight: 0, display: 'flex', flexDirection: 'column',
         background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
         boxShadow: ring, overflow: 'hidden',
+        transform: CSS.Transform.toString(transform), transition,
+        // Тащим — карточка приподнята, а не исчезает: слотов всего два, и пропавший из них
+        // оставил бы половину экрана пустой.
+        opacity: isDragging ? 0.75 : 1,
+        zIndex: isDragging ? 2 : undefined,
       }}
+      {...attributes}
     >
-      {/* ⚠️ Тащить можно ТОЛЬКО за шапку, и это вынужденно, а не «так удобнее»: тело веб-слота
-          закрыто нативной WebContentsView, которая лежит поверх панели и не отдаёт ей события
-          мыши вовсе. Шапка — часть панели, поэтому жест начинается и заканчивается на ней. */}
+      {/* ⚠️ Жест НАЧИНАЕТСЯ на шапке (здесь listeners), но ПРИНИМАЕТ дроп весь слот целиком —
+          цель задана на карточке выше. Шапка как ручка — потому что тело занято самим
+          приложением: кнопки калькулятора нельзя нажать, если каждое нажатие начинает перенос. */}
       <div
-        draggable={onDropSwap !== undefined}
-        onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', app.id) }}
-        onDragOver={(e) => { e.preventDefault(); setDropTarget(true) }}
-        onDragLeave={() => setDropTarget(false)}
-        onDrop={(e) => {
-          e.preventDefault()
-          setDropTarget(false)
-          if (e.dataTransfer.getData('text/plain') !== app.id) onDropSwap?.()
-        }}
+        {...listeners}
         style={{
           display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
           flexShrink: 0, borderBottom: '1px solid var(--divider)',
-          cursor: onDropSwap !== undefined ? 'grab' : 'default',
+          cursor: 'grab', touchAction: 'none',
         }}
       >
         <AppIconBadge app={app} size={20} radius={6} iconSize={12} />
@@ -1452,18 +1499,20 @@ function SlotFrame({ app, grow = 1, active = false, onActivate, onSwap, onClose,
           <X size={13} strokeWidth={2} />
         </button>
       </div>
-      {children}
+      <SlotActiveContext.Provider value={active}>
+        {children}
+      </SlotActiveContext.Provider>
     </div>
   )
 }
 
-function AppSlot({ app, grow, active, onActivate, onSwap, onClose }: {
-  app: AppDef; grow?: number; active?: boolean; onActivate?: () => void
+function AppSlot({ app, grow, active, showRing, onActivate, onSwap, onClose }: {
+  app: AppDef; grow?: number; active?: boolean; showRing?: boolean; onActivate?: () => void
   onSwap?: () => void; onClose: () => void
 }) {
   return (
-    <SlotFrame app={app} grow={grow} active={active} onActivate={onActivate}
-      onSwap={onSwap} onClose={onClose} onDropSwap={onSwap}>
+    <SlotFrame app={app} grow={grow} active={active} showRing={showRing} onActivate={onActivate}
+      onSwap={onSwap} onClose={onClose}>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {app.id === 'calc' && <CalcApp />}
         {app.id === 'convert' && <ConverterApp />}
@@ -1480,11 +1529,12 @@ function AppSlot({ app, grow, active, onActivate, onSwap, onClose }: {
 // Сам сайт рисует main (WebAppManager.ts) — эта карточка только размечает и меряет дырку.
 // hidden — шит настроек открыт поверх домашнего экрана: view надо спрятать, она лежит выше
 // панели в z-order и иначе перекрыла бы шит.
-function WebAppSlot({ app, slotIndex, grow, active, onActivate, hidden, onSwap, onClose }: {
+function WebAppSlot({ app, slotIndex, grow, active, showRing, onActivate, hidden, onSwap, onClose }: {
   app: AppDef
   slotIndex: number
   grow?: number
   active?: boolean
+  showRing?: boolean
   onActivate?: () => void
   hidden: boolean
   onSwap?: () => void
@@ -1521,8 +1571,8 @@ function WebAppSlot({ app, slotIndex, grow, active, onActivate, hidden, onSwap, 
   }, [app.id, hidden, slotIndex])
 
   return (
-    <SlotFrame app={app} grow={grow} active={active} onActivate={onActivate}
-      onSwap={onSwap} onClose={onClose} onDropSwap={onSwap}>
+    <SlotFrame app={app} grow={grow} active={active} showRing={showRing} onActivate={onActivate}
+      onSwap={onSwap} onClose={onClose}>
       <div style={{ flex: 1, minHeight: 0, padding: '0 8px 8px', display: 'flex' }}>
         <div
           ref={holeRef}
@@ -1643,6 +1693,7 @@ function CalcApp() {
   // закрывает панель (см. aipanel.tsx). Без deps-массива: подписка пересоздаётся на каждый
   // рендер — обработчик всегда видит свежие display/acc/op без ручного списка зависимостей.
   const calcRootRef = useRef<HTMLDivElement>(null)
+  const slotActive = useSlotActive()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Не перехватываем набор в полях (чат-textarea, инпуты конвертера/настроек)...
@@ -1651,6 +1702,9 @@ function CalcApp() {
       // ...и не реагируем, пока раздел скрыт (режим чата держит приложения смонтированными
       // под display:none — offsetParent тогда null, невидимый калькулятор молчит).
       if (!calcRootRef.current || calcRootRef.current.offsetParent === null) return
+      // ...и пока работают в СОСЕДНЕМ слоте. Подписка глобальная (на window), поэтому без этой
+      // проверки открытый рядом калькулятор перехватывал цифры, набираемые в конвертере.
+      if (!slotActive) return
 
       const k = e.key
       if (/^[0-9]$/.test(k)) { inputDigit(k); e.preventDefault(); return }
