@@ -13,6 +13,7 @@ import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/ba
 import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 import { hostOfUrl } from '../shared/rules';
+import { isExternalAppUrl } from './ExternalProtocol';
 
 const CLOSED_STACK_MAX = 10;
 
@@ -220,6 +221,14 @@ export class TabManager {
 
   // Распознавание полей формы моделью (AutofillFieldMapper.ts). Тот же приём, что с
   // #graphMenuBuilder: менеджер вкладок про модель и кэш не знает, ему дают готовую функцию.
+  // Ссылка в стороннее приложение (sbolpay:, tg:, …). Спрашивать человека и звать ОС — работа
+  // main (см. ExternalProtocol.ts): менеджеру вкладок про shell.openExternal знать незачем, тот же
+  // приём, что с #graphMenuBuilder и #autofillMapper.
+  #externalOpenCb: ((url: string, fromHost: string) => void) | null = null;
+  setOnExternalOpen(cb: (url: string, fromHost: string) => void): void {
+    this.#externalOpenCb = cb;
+  }
+
   #autofillMapper: ((origin: string, fields: unknown) => Promise<Record<number, string>>) | null = null;
   setAutofillFieldMapper(fn: (origin: string, fields: unknown) => Promise<Record<number, string>>): void {
     this.#autofillMapper = fn;
@@ -1526,7 +1535,14 @@ export class TabManager {
 
     // Политика окон: target=_blank / window.open -> НОВАЯ ВКЛАДКА, не окно — КРОМЕ настоящих
     // попапов (см. ниже). disposition='background-tab' = средний клик/Ctrl+клик → фон (стандарт браузеров).
-    wc.setWindowOpenHandler(({ url, disposition, features, postBody }) => {
+    wc.setWindowOpenHandler(({ url, frameName, disposition, features, postBody }) => {
+      // Ссылка в чужое приложение (sbolpay:, tg:, …) может прийти и сюда — платёжные страницы
+      // часто открывают её новым окном, а не переходом. Вкладку по такой схеме заводить нельзя:
+      // Chromium её не откроет, останется пустая вкладка с ошибкой.
+      if (isExternalAppUrl(url)) {
+        this.#externalOpenCb?.(url, hostOfUrl(wc.getURL()));
+        return { action: 'deny' };
+      }
       // OAuth-попап (Google/Firebase и т.п.) открывается ИМЕННО так: window.open(url, name,
       // 'width=…,height=…') → disposition='new-window' + width/height в features. Это единственный
       // надёжный сигнал «это попап, а не просто открытие в новой вкладке» — обычные target=_blank/
@@ -1537,8 +1553,16 @@ export class TabManager {
       // (как раньше), opener окажется пустым и логин молча не долетит до родителя (см. диагностику
       // прошлого шага). Поэтому здесь action:'allow' — Chromium сам создаёт связанное окно;
       // details.features уже содержит width/height, Electron распарсит их сам.
-      const isOAuthPopup = disposition === 'new-window' && /(?:^|,)\s*(width|height)\s*=/.test(features);
-      if (isOAuthPopup) {
+      // ⚠️ ИМЕНОВАННОЕ окно — тоже настоящее окно, а не наша вкладка. Имя в window.open(url, 'pay')
+      // сайт даёт не для красоты: по нему он потом ищет своё окно и разговаривает с ним через
+      // window.opener/postMessage. Нашей вкладке opener взять неоткуда, и разговор обрывается —
+      // ровно так ломаются возвраты со страниц оплаты («деньги списались, магазин не узнал»).
+      // Служебные имена (_blank и товарищи) именами не считаются: там handle никому не нужен.
+      const RESERVED = new Set(['', '_blank', '_self', '_top', '_parent']);
+      const named = !RESERVED.has((frameName || '').toLowerCase());
+      const sized = /(?:^|,)\s*(width|height)\s*=/.test(features);
+      const wantsRealWindow = named || (disposition === 'new-window' && sized);
+      if (wantsRealWindow) {
         return {
           action: 'allow',
           overrideBrowserWindowOptions: {

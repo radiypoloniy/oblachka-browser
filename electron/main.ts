@@ -74,6 +74,7 @@ import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { warmup as warmupTranslation, unloadModel, getLoadedModelId, isModelWarm, type ChatOutcome } from './TranslationService';
 import { shutdownInference } from './inference/InferenceHost';
+import { isExternalAppUrl, openExternalWithConsent } from './ExternalProtocol';
 import { toggleAiPanel, openAiPanelApp, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView, setOnChatIntent as setOnAiPanelChatIntent } from './AiPanelManager';
 import {
   togglePageTranslate,
@@ -866,6 +867,9 @@ function createWindow(role: WindowRole = 'main') {
   // смене вкладки, её закрытии или навигации. На форме входа, где он всплывал по ошибке, это
   // означало карточку, висящую над полем до самого ухода со страницы.
   tabs.setOnAutofillDismiss(() => closeAutofillPopover(win));
+
+  // Ссылка в стороннее приложение, открытая новым окном (частый способ уйти на оплату).
+  tabs.setOnExternalOpen((url, fromHost) => { void openExternalWithConsent(win, url, fromHost); });
 
   // Регистрируем окно в реестре — с этого момента его находят по отправителю IPC. Владелец
   // сессии ставится тут же: дерево вкладок принадлежит полному окну, и только его снимок имеет
@@ -2877,13 +2881,22 @@ function collectGroups(nodes: SidebarNode[]): GroupNode[] {
   return groups;
 }
 
-// Внешние протоколы (mailto:, tel:) -> отдаём ОС, не показываем ошибку навигации.
+// Имя сайта для вопроса «кто хочет открыть приложение». Пустая строка, если адрес не разбирается
+// (about:blank и подобное) — вопрос тогда задаётся без имени, но задаётся.
+function originOfUrl(url: string): string {
+  try { return new URL(url).host; } catch { return ''; }
+}
+
+// Ссылки в чужие приложения (mailto:, tel:, sbolpay:, tg: …) — отдаём ОС, спросив человека.
+// ⚠️ Раньше здесь знали ровно две схемы, mailto и tel. Всё остальное — включая переход в
+// банковское приложение при оплате по СБП — не приводило НИ К ЧЕМУ: Chromium схему не знает,
+// страница остаётся на месте, и со стороны это выглядит как «кнопка оплаты не работает».
 app.on('web-contents-created', (_e, contents) => {
   contents.on('will-navigate', (e, url) => {
-    if (/^(mailto|tel):/i.test(url)) {
-      e.preventDefault();
-      shell.openExternal(url).catch(() => { /* тихо игнорируем */ });
-    }
+    if (!isExternalAppUrl(url)) return;
+    e.preventDefault();
+    const win = BrowserWindow.fromWebContents(contents) ?? contextFromSender(contents)?.win ?? mainWin;
+    void openExternalWithConsent(win, url, originOfUrl(contents.getURL()));
   });
   // Любая наша chrome-страница (главный рендерер + все поповеры), догрузившись, получает текущую
   // тему — так лениво создаваемые поповеры сразу открываются в нужном (в т.ч. инкогнито) виде.
