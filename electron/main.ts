@@ -75,6 +75,7 @@ import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslateP
 import { warmup as warmupTranslation, unloadModel, getLoadedModelId, isModelWarm, type ChatOutcome } from './TranslationService';
 import { shutdownInference } from './inference/InferenceHost';
 import { isExternalAppUrl, openExternalWithConsent } from './ExternalProtocol';
+import { localPathToFileUrl } from './localFileUrl';
 import { installCertificateTrust, refreshCertificateTrust } from './CertificateTrust';
 import { listUserTrusted, removeUserTrusted } from './CertTrustStore';
 import { toggleAiPanel, openAiPanelApp, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView, setOnChatIntent as setOnAiPanelChatIntent } from './AiPanelManager';
@@ -216,7 +217,15 @@ let pendingStartUrl: string | null = null;
 // строку как адрес — значит открывать что попало по чужой команде.
 function firstUrlFromArgv(argv: string[]): string | null {
   for (const arg of argv.slice(1)) {
+    if (arg.startsWith('-')) continue; // ключи Chromium (--user-data-dir и прочие) адресами не бывают
     if (/^https?:\/\//i.test(arg)) return arg;
+    if (/^file:\/\//i.test(arg)) return arg;
+    // ⚠️ И ПУТЬ К ФАЙЛУ ТОЖЕ. Установщик регистрирует за нами .htm/.html, то есть система
+    // запускает `Oblako.exe "C:\...\page.html"` — без этой ветки такой запуск не открывал ничего
+    // вовсе. Существование файла проверяется внутри, каталоги отсекаются там же: в dev-режиме
+    // аргументом идёт папка приложения.
+    const file = localPathToFileUrl(arg);
+    if (file) return file;
   }
   return null;
 }

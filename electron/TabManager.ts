@@ -14,6 +14,7 @@ import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 import { hostOfUrl } from '../shared/rules';
 import { isExternalAppUrl } from './ExternalProtocol';
+import { localPathToFileUrl } from './localFileUrl';
 import { isRussianCaCandidate } from './CertificateTrust';
 
 const CLOSED_STACK_MAX = 10;
@@ -407,6 +408,11 @@ export class TabManager {
     if (bangUrl) return bangUrl;
     // Уже есть схема
     if (/^(https?|file|about):/i.test(s)) return s;
+    // ⚠️ Путь к файлу — ДО эвристики «похоже на хост», иначе она его и съедала: строка
+    // `C:\...\page.html` кончается на `.html`, попадала под «есть точка и нет пробела» и уезжала
+    // на `https://C:/...`. Несуществующий путь сюда не проходит и честно уходит в поиск.
+    const fileUrl = localPathToFileUrl(s);
+    if (fileUrl) return fileUrl;
     // localhost / IP / есть точка и нет пробела -> трактуем как хост
     const looksLikeHost =
       /^localhost(:\d+)?(\/.*)?$/i.test(s) ||
