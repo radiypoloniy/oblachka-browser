@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { MapPin, CreditCard } from 'lucide-react';
+import { MapPin, CreditCard, X } from 'lucide-react';
 import type { AddressProfile, CardMeta } from '../shared/ipc';
 import { islandPlate } from './styles/island';
 import './styles/global.css';
@@ -28,8 +28,12 @@ declare global {
 // Держать в синхроне с SHADOW_MARGIN в electron/AutofillPopoverManager.ts.
 const SHADOW_MARGIN = 16;
 
+// ⚠️ Тень — --shadow-overlay, а НЕ --shadow-island. Это прямо описано в шапке shadows.css:
+// многослойная островная тень с inset-рантом поверх ПРОЗРАЧНОЙ WebContentsView рисуется на
+// Windows/Chromium жёсткими краями вместо мягкого растворения — именно это и выглядело грязным
+// прямоугольником под карточкой. Тот же токен уже используют остальные вью-оверлеи.
 const cardShell: React.CSSProperties = {
-  ...islandPlate, borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-island)',
+  ...islandPlate, borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-overlay)',
   background: 'var(--surface-solid)', overflow: 'hidden',
 };
 const btnPrimary: React.CSSProperties = {
@@ -99,12 +103,30 @@ function AutofillPopoverApp() {
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
       <div ref={cardRef} style={cardShell}>
+        {/* ⚠️ Крестик обязателен, а не «на всякий случай»: у списка не было НИ ОДНОГО способа
+            закрыться мышью — только выбрать профиль. Esc и уход фокуса чинятся на стороне
+            страницы (см. preload-content.ts), но человек, который тянется мышью, ищет крестик. */}
         <div style={{
-          padding: '8px 12px', fontSize: 'var(--fs-xs)', fontWeight: 600,
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '8px 8px 8px 12px', fontSize: 'var(--fs-xs)', fontWeight: 600,
           color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 'var(--ls-caps)',
           borderBottom: '1px solid var(--divider)',
         }}>
-          {state.kind === 'address' ? 'Заполнить адрес' : 'Заполнить карту'}
+          <span style={{ flex: 1, minWidth: 0 }}>
+            {state.kind === 'address' ? 'Заполнить адрес' : 'Заполнить карту'}
+          </span>
+          <button
+            onClick={() => window.autofillPopover.close()}
+            title="Закрыть"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 20, height: 20, flexShrink: 0, padding: 0,
+              background: 'transparent', border: 'none', borderRadius: '50%',
+              color: 'var(--text-faint)', cursor: 'default',
+            }}
+          >
+            <X size={13} strokeWidth={2} />
+          </button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', padding: 4 }}>
           {state.kind === 'address'

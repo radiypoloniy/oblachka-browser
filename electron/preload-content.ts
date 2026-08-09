@@ -112,6 +112,7 @@ const CH_FIELD_ICON_CLICK = 'passwords:field-icon-click';
 // Автозаполнение форм (адреса/карты) — ДОЛЖНЫ совпадать с shared/ipc.ts::IPC.AUTOFILL_FIELD_FOCUS/
 // AUTOFILL_FILL_FIELDS (см. выше про невозможность импорта shared в sandboxed preload).
 const CH_AUTOFILL_FIELD_FOCUS = 'autofill:field-focus';
+const CH_AUTOFILL_DISMISS = 'autofill:dismiss';
 const CH_AUTOFILL_FILL = 'autofill:fill-fields';
 const CH_AUTOFILL_SUBMIT = 'autofill:submit';
 const CH_AUTOFILL_MAP_FIELDS = 'autofill:map-fields';
@@ -677,15 +678,59 @@ async function askAiFieldMap(): Promise<boolean> {
   }
 }
 
+// ⚠️ Форма ВХОДА — не форма с адресом, даже если поле выглядит как email. Живой случай: страница
+// «Sign In» с единственным полем «username or email address» получала поповер «Заполнить адрес» с
+// домашним адресом человека. Признака два, и оба нужны: подпись самого поля (двухшаговый вход
+// показывает логин без пароля вовсе) и наличие поля пароля в той же форме.
+function looksLikeCredentials(el: FillField): boolean {
+  const hay = [el.getAttribute('name'), el.id, el.getAttribute('placeholder'),
+    el.getAttribute('aria-label'), el.getAttribute('autocomplete'), labelTextFor(el)]
+    .filter(Boolean).join(' ').toLowerCase();
+  if (/username|user name|login|sign.?in|log.?in|логин|войти|вход(?![а-яё])/.test(hay)) return true;
+  const scope: ParentNode = el.form ?? document;
+  return !!scope.querySelector('input[type="password"]');
+}
+
 function reportAutofillFocus(el: FillField): void {
   const key = detectFieldKey(el);
   if (!key) return;
+  // Адрес на форме входа не предлагаем вовсе; карту — тем более (её поля там взяться не могут).
+  if (looksLikeCredentials(el)) return;
   const kind = AF_ADDRESS_KEYS.has(key) ? 'address' : 'card';
   const r = el.getBoundingClientRect();
+  lastAutofillFocusAt = performance.now();
   ipcRenderer.send(CH_AUTOFILL_FIELD_FOCUS, {
     rect: { x: r.x, y: r.y, width: r.width, height: r.height }, kind,
   });
 }
+
+// Убрать поповер автозаполнения. Три повода, и все три — обычные способы «отменить» в интерфейсе:
+// Esc, уход фокуса с поля, прокрутка страницы (карточка заякорена на поле и уехала бы от него).
+let lastAutofillFocusAt = 0;
+
+function dismissAutofill(): void {
+  try { if (isTopFrame()) ipcRenderer.send(CH_AUTOFILL_DISMISS); } catch { /* фрейм умер */ }
+}
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') dismissAutofill(); }, true);
+// ⚠️ relatedTarget === null означает «фокус ушёл ИЗ документа», и это ровно то, что делает сам
+// поповер: он живёт отдельной WebContentsView и, появившись, забирает фокус у поля. Без этой
+// проверки карточка гасила сама себя в момент показа — то есть не появлялась вообще.
+// Закрываем только когда фокус перешёл к ДРУГОМУ элементу той же страницы.
+window.addEventListener('focusout', (e) => {
+  const t = e.target;
+  if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement)) return;
+  if ((e as FocusEvent).relatedTarget === null) return;
+  dismissAutofill();
+}, true);
+// ⚠️ Прокрутка закрывает поповер, НО не сразу после показа. Замер поймал: фокус на поле сам
+// прокручивает страницу (scroll-into-view браузера), событие приходит уже ПОСЛЕ показа — и
+// карточка гасла в тот же миг, то есть не появлялась вовсе. Короткая пауза отделяет прокрутку
+// браузера от прокрутки человека, ради которой правило и заведено (карточка заякорена на поле).
+const SCROLL_GRACE_MS = 500;
+window.addEventListener('scroll', () => {
+  if (performance.now() - lastAutofillFocusAt < SCROLL_GRACE_MS) return;
+  dismissAutofill();
+}, { capture: true, passive: true });
 
 // Фокус на поле автозаполнения (top-frame) → сообщаем main позицию поля и вид формы, чтобы он
 // показал поповер выбора. Тот же top-frame-гвард, что у паролей: из кросс-origin iframe не шлём.

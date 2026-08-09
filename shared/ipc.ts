@@ -665,6 +665,9 @@ export const IPC = {
   AUTOFILL_CARD_UPDATE:    'autofill:card-update',    // renderer → main: CardUpdate → boolean
   AUTOFILL_CARD_DELETE:    'autofill:card-delete',    // renderer → main: id → boolean
   AUTOFILL_CARD_REVEAL:    'autofill:card-reveal',    // renderer → main: id → полный номер | null (под Hello)
+  // Страница просит убрать поповер: Esc, уход фокуса с поля, прокрутка. ⚠️ Без этого канала
+  // карточка не убиралась ВООБЩЕ — ни клавишей, ни кликом мимо, и оставалась висеть над формой.
+  AUTOFILL_DISMISS:        'autofill:dismiss',        // гостевая страница → main: закрыть поповер
   AUTOFILL_CHANGED:        'autofill:changed',        // main → renderer: push после любой мутации
 
   // Менеджер паролей, шаг 2 (см. electron/preload-content.ts, electron/TabManager.ts) — канал

@@ -294,6 +294,8 @@ export class TabManager {
   private onPasswordFieldIconClickCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void;
   // Автозаполнение форм — фокус на поле адреса/карты (см. wirePageEvents). url — из wc.getURL().
   private onAutofillFieldFocusCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void;
+  // Автозаполнение — страница просит убрать поповер (Esc, уход фокуса, прокрутка).
+  private onAutofillDismissCb?: () => void;
   // Автозаполнение — отправка формы с данными адреса/карты (offer-save). url — из wc.getURL().
   private onAutofillSubmitCb?: (tabId: string, kind: 'address' | 'card', fields: Record<string, string>, url: string) => void;
   // Взводится при создании инкогнито-вкладки; см. takeIncognitoClearIfDone (чистка сессии инкогнито).
@@ -1352,6 +1354,15 @@ export class TabManager {
         this.onAutofillFieldFocusCb?.(id, payload.rect, payload.kind, wc.getURL());
       } catch (e) {
         console.warn('[TabMgr] onAutofillFieldFocusCb error:', (e as Error).message);
+      }
+    });
+    // Страница просит убрать поповер (Esc, уход фокуса, прокрутка) — см. AUTOFILL_DISMISS.
+    wc.ipc.on(IPC.AUTOFILL_DISMISS, () => {
+      if (!mine()) return;
+      try {
+        this.onAutofillDismissCb?.();
+      } catch (e) {
+        console.warn('[TabMgr] onAutofillDismissCb error:', (e as Error).message);
       }
     });
     // «Что это за поля?» — страница спрашивает про те, что не осилила её эвристика (см.
@@ -2960,6 +2971,11 @@ export class TabManager {
   setOnScreenshot(cb: () => void): void { this.onScreenshotCb = cb; }
   setOnScreenshotSave(cb: () => void): void { this.onScreenshotSaveCb = cb; }
   setOnScreenshotClose(cb: () => void): void { this.onScreenshotCloseCb = cb; }
+
+  // Страница просит убрать поповер автозаполнения (Esc, уход фокуса с поля, прокрутка).
+  // Сеттером, а не параметром конструктора: список параметров там уже неприлично длинный, а эта
+  // подписка ставится тем же куском main.ts, что и остальные «поздние» колбэки окна.
+  setOnAutofillDismiss(cb: () => void): void { this.onAutofillDismissCb = cb; }
 
   // source — откуда пришёл ввод. Слой хрома принадлежит окну навсегда и никуда не переезжает;
   // вкладка — может (см. detachTabForMove), и это решает всё, см. гвард ниже.
