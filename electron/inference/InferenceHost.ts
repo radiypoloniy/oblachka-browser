@@ -6,8 +6,7 @@
 // главный процесс снова начнёт замирать вместе с генерацией — замер до выноса давал 15.4 с
 // блокировок за 15 с наблюдения, после выноса 0 мс. Поэтому и замер видеопамяти (HardwareInfo.ts)
 // ходит сюда же, а не заводит свой бэкенд.
-import { app, utilityProcess } from 'electron'
-import fs from 'node:fs'
+import { utilityProcess } from 'electron'
 import path from 'node:path'
 import type { UtilityProcess } from 'electron'
 import type { InferRequest, InferResponse, LoadedInfo, PromptResult, ChatResult, VramInfo } from './protocol'
@@ -62,19 +61,14 @@ function teardown(reason: string): void {
   for (const cb of goneListeners) cb()
 }
 
-// worker.js лежит рядом, в dist-electron/electron/inference/. В упакованной сборке этот путь
-// указывает ВНУТРЬ app.asar, а ребёнок оттуда тянет нативные библиотеки node-llama-cpp, которые
-// внутри архива не грузятся в принципе (потому они и в asarUnpack). Поэтому в упакованном виде
-// берём распакованную копию — она кладётся туда же тем же asarUnpack (см. electron-builder.yml).
-// Проверка существования обязательна: без неё ошибка в конфиге сборки проявилась бы только у
-// пользователя и выглядела бы как «AI молча не работает».
+// ⚠️ Точку входа НЕ НАДО распаковывать из asar, и это проверено на упакованной сборке: сначала
+// worker.js был вынесен в app.asar.unpacked «поближе к нативным библиотекам», и процесс инференса
+// стал падать с кодом 1 сразу при запуске. Причина простая и общая: распакованный файл ищет своих
+// соседей (`../LlamaBackend`) РЯДОМ С СОБОЙ, а они остались в архиве — то есть распаковка одного
+// файла рвёт ему все относительные импорты. Нативные библиотеки node-llama-cpp тут ни при чём:
+// их находит сам пакет, и он в asarUnpack целиком (см. electron-builder.yml).
 function workerEntryPath(): string {
-  const inAsar = path.join(__dirname, 'worker.js')
-  if (!app.isPackaged) return inAsar
-  const unpacked = inAsar.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)
-  if (fs.existsSync(unpacked)) return unpacked
-  console.warn('[gen] распакованной копии worker.js нет — пробую путь внутрь asar:', inAsar)
-  return inAsar
+  return path.join(__dirname, 'worker.js')
 }
 
 function spawn(): Promise<void> {
