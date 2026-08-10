@@ -14,6 +14,11 @@ const TOOLBAR_HEIGHT = 56;
 const SUGGEST_DEBOUNCE = 150;
 // Максимум строк в дропдауне.
 const SUGGEST_MAX = 8;
+// Сколько записей истории просматриваем ради списка «часто посещаемые» и сколько сайтов
+// показываем. Глубина взята с запасом: у частого сайта в истории десятки страниц, и после
+// схлопывания по сайту из трёхсот записей остаются единицы доменов.
+const TOP_SITES_SCAN = 300;
+const TOP_SITES_SHOWN = 8;
 
 // ── VPN-пилюля: ступенчатое схлопывание ─────────────────────────────────────
 
@@ -1151,6 +1156,52 @@ export default function Toolbar({
     debounceRef.current = setTimeout(() => { void buildSuggestions(q, seq); }, SUGGEST_DEBOUNCE);
   }, [buildSuggestions, closeDropdown]);
 
+  // ── Часто посещаемые: что показать по клику в НЕТРОНУТУЮ строку ──────────────────────────────
+  //
+  // ⚠️ Раньше здесь запрашивались обычные подсказки по тексту строки, а в строке лежит адрес
+  // открытой страницы — поиск по истории находил её же, и дропдаун получался ЗЕРКАЛОМ: одна
+  // строка, повторяющая то, что написано выше. Так же поступает Chrome: по клику он показывает
+  // не отражение адреса, а то, куда человек ходит.
+  //
+  // ⚠️ Дедуп по САЙТУ, а не по странице: у частого сайта в истории десятки страниц, и без этого
+  // весь список занял бы один домен. Внутри сайта берём страницу с лучшим frecency — та же
+  // функция scoreEntry, что ранжирует обычные подсказки, второй копии правил не заводим.
+  //
+  // ⚠️ Открытую страницу из списка выбрасываем: предлагать переход туда, где человек и так стоит,
+  // — это тот же зеркальный дропдаун, только длиннее.
+  const showTopSites = useCallback(async () => {
+    const seq = ++suggestSeqRef.current;
+    let entries: HistoryEntry[] = [];
+    try { entries = await window.oblako.getHistory(TOP_SITES_SCAN); } catch { return; }
+    if (seq !== suggestSeqRef.current) return;
+
+    const now = Date.now();
+    const currentKey = normalizeForOmnibox(tab?.url ?? '');
+    const siteOf = (u: string): string => { try { return new URL(u).origin; } catch { return u; } };
+    const best = new Map<string, HistoryEntry>();
+    for (const e of entries) {
+      if (normalizeForOmnibox(e.url) === currentKey) continue;
+      const key = siteOf(e.url);
+      const cur = best.get(key);
+      if (!cur || scoreEntry(e, now) > scoreEntry(cur, now)) best.set(key, e);
+    }
+    const items: SuggestItem[] = [...best.values()]
+      .sort((a, b) => scoreEntry(b, now) - scoreEntry(a, now))
+      .slice(0, TOP_SITES_SHOWN)
+      .map((e) => ({ kind: 'history' as SuggestKind, label: e.title || e.url, sub: e.url, url: e.url }));
+    // Пустая история — честно ничего не показываем, а не пустую карточку.
+    if (!items.length) { closeDropdown('no-top-sites'); return; }
+    items[0] = { ...items[0]!, sectionHeader: 'Часто посещаемые' };
+
+    setSuggestions(items);
+    // ⚠️ Ничего не предвыбираем: человек НИЧЕГО не набирал, и Enter обязан вести по адресу в
+    // строке — туда же, куда вёл бы без дропдауна вовсе.
+    setSelectedIdx(-1);
+    openDropdown();
+    void window.oblako.setSuggestDropdownItems(items);
+    void window.oblako.setSuggestDropdownHighlight(-1);
+  }, [tab?.url, openDropdown, closeDropdown]);
+
   const submit = (input: string) => {
     const v = input.trim();
     if (!v) return;
@@ -1441,17 +1492,18 @@ export default function Toolbar({
                 // человек начинал печатать, и второй подсказке доставались объедки. Теперь в
                 // омнибоксе одна AI-функция, а связанные страницы открываются отдельным
                 // осознанным действием, когда никто ничего не набирает.
-                // ⚠️ По клику в НЕТРОНУТУЮ строку (в ней лежит адрес открытой страницы) подсказки
-                // НЕ запрашиваем. Показать там нечего: поиск по истории на собственный адрес
-                // находит его же, и дропдаун получался зеркалом — одна строка, повторяющая то, что
-                // и так написано выше. Живая жалоба: «смысла в таком дропдауне нет, выглядит
-                // уродливо». Пустой экран честнее зеркала; как только человек начинает печатать,
-                // подсказки приходят обычным путём через onChange.
+                // ⚠️ По клику в НЕТРОНУТУЮ строку (в ней лежит адрес открытой страницы) показываем
+                // ЧАСТО ПОСЕЩАЕМЫЕ, а не подсказки по её же тексту. Поиск по истории на собственный
+                // адрес находит его же, и дропдаун получался зеркалом — одна строка, повторяющая
+                // написанное выше («смысла в таком дропдауне нет, выглядит уродливо»). Chrome по
+                // клику тоже показывает не отражение адреса, а куда человек ходит.
                 // ⚠️ «Нетронута» — это «пусто ИЛИ равно адресу вкладки», а не «пусто»: на открытой
                 // странице в строке всегда лежит её url. Тот же разбор, что у «вы это уже читали»
                 // (см. RelatedHistory.ts) — там проверка на пустоту не срабатывала почти никогда.
                 const untouched = !value.trim() || value.trim() === (tab?.url ?? '').trim();
-                if (focusTracker.current.mouseDownOnInput && !untouched) triggerSuggest(value);
+                if (!focusTracker.current.mouseDownOnInput) { /* спонтанный refocus — не наш случай */ }
+                else if (untouched) void showTopSites();
+                else triggerSuggest(value);
                 // Синхронный консюм флага после использования (как в исходной версии) — RAF-автосброс
                 // из onMouseDown сработает только к следующему кадру, а спонтанный refocus от
                 // removeChildView может прилететь раньше и увидеть залипший true.
