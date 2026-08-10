@@ -47,6 +47,9 @@ interface WindowFindBar {
   // contentRef, который физически начинается ПОСЛЕ сайдбара) — этого main из win.getContentBounds()
   // сам по себе не знает.
   contentBounds: ContentBounds
+  // Запрос, с которым панель открыли ДО того, как её вью успела загрузиться (см. showFindBar с
+  // initialQuery): послать его раньше did-finish-load некуда, а потерять нельзя.
+  pendingQuery?: string
 }
 
 const bars = new Map<number, WindowFindBar>()
@@ -169,7 +172,10 @@ function ensureFindBarView(st: WindowFindBar): WebContentsView {
   // уход фокуса пользователем), поэтому blur НИКОГДА не используется как триггер закрытия — только
   // явные сигналы (Esc/крестик через IPC, см. ensureIpcRegistered, и findBarOpen в TabManager).
   view.webContents.once('did-finish-load', () => {
-    view.webContents.send('findbar:show')
+    // Запрос, с которым панель открыли ещё до загрузки вью, — иначе первое же открытие «с готовым
+    // запросом» (переход к источнику скопированного) показало бы пустое поле.
+    view.webContents.send('findbar:show', st.pendingQuery ?? '')
+    st.pendingQuery = ''
     view.webContents.focus()
   })
   view.webContents.loadURL('oblako-chrome://localhost/findbar.html')
@@ -179,7 +185,11 @@ function ensureFindBarView(st: WindowFindBar): WebContentsView {
 // Ctrl+F: открыть (первый раз) / показать заново (после close) / просто перефокусировать+выделить
 // текущий запрос, если уже открыт (тот же UX, что был в App.tsx: повторный Ctrl+F выделяет текст
 // в поле, а не открывает второй раз).
-export function showFindBar(win: BrowserWindow): void {
+// ⚠️ `initialQuery` — для случая, когда панель открывает КОД, а не Ctrl+F: переход к источнику
+// скопированного уже поставил подсветку и обязан показать, чем именно она поставлена (иначе поле
+// пустое, а страница подсвечена — и снять подсветку нечем, кроме перезагрузки). Поиск при этом
+// НЕ перезапускается: повторный findInPage с тем же запросом означает «следующее совпадение».
+export function showFindBar(win: BrowserWindow, initialQuery = ''): void {
   ensureIpcRegistered()
   const st = stateFor(win)
   if (!st.resizeBound) {
@@ -190,19 +200,23 @@ export function showFindBar(win: BrowserWindow): void {
   // Решение «уже открыта → перефокусировать» или «нужно открыть» — по факту прикрепления
   // вью (isAttached()), не по флагу: тем самым эта проверка не может разойтись с реальностью.
   if (isAttached(st)) {
-    st.view?.webContents.send('findbar:refocus')
+    // С готовым запросом это не «перефокусируй», а «покажи другой поиск» — иначе в поле осталось бы
+    // прежнее слово, не имеющее отношения к тому, что сейчас подсвечено на странице.
+    if (initialQuery) st.view?.webContents.send('findbar:show', initialQuery)
+    else st.view?.webContents.send('findbar:refocus')
     st.view?.webContents.focus()
     return
   }
 
   const firstTime = st.view === null
+  st.pendingQuery = initialQuery
   const view = ensureFindBarView(st)
   view.setBounds(computeBounds(st))
   win.contentView.addChildView(view) // последней → нативный z-order поверх уже добавленной вкладки
   if (!firstTime) {
     // View уже когда-то загружался — did-finish-load повторно не сработает, шлём explicit сигнал
     // (аналог sendCurrentContext-при-повторном-открытии в AiPanelManager.toggleAiPanel).
-    view.webContents.send('findbar:show')
+    view.webContents.send('findbar:show', initialQuery)
     view.webContents.focus()
   }
 }

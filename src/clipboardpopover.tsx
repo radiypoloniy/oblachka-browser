@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Clipboard, Copy, Check, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react';
-import type { ClipboardEntry } from '../shared/ipc';
+import { Clipboard, Copy, Check, Trash2, X, ChevronDown, ChevronRight, CornerUpRight } from 'lucide-react';
+import type { ClipboardEntry, ClipboardRevealResult } from '../shared/ipc';
 import { islandPlate } from './styles/island';
+import SiteFavicon from './components/SiteFavicon';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
 
@@ -14,12 +15,18 @@ import { installOverlayReveal } from './overlayReveal';
 // ⚠️ Показываем ОБРЕЗАННЫЙ текст: скопированное бывает длинным (абзац, таблица), и сплошная
 // простыня превращает список в нечитаемое полотно. Раскрыть можно, но это отдельное действие —
 // как и скопировать, для которого раскрывать не требуется вовсе.
+//
+// ⚠️ Сайт в заголовке группы — ЗНАЧОК И КРУПНОЕ ИМЯ, а не серая подпись мелким кеглем. Группировка
+// по сайтам и есть главная зацепка списка («я это копировал на Хабре»), а оформленная как служебная
+// пометка, она читалась последней — глаз шёл по одинаковым абзацам текста, ничем не разделённым.
 
 declare global {
   interface Window {
     clipboardPopover: {
       list: () => Promise<ClipboardEntry[]>;
       put: (id: number) => Promise<void>;
+      openSource: (id: number) => Promise<ClipboardRevealResult>;
+      favicon: (host: string) => Promise<string | null>;
       remove: (id: number) => Promise<void>;
       clear: () => Promise<void>;
       getEnabled: () => Promise<boolean>;
@@ -65,13 +72,14 @@ function ClipboardPopoverApp() {
   }, [entries.length]);
 
   // Группировка по сайту с сохранением порядка «свежие сверху»: первая встреча сайта задаёт его
-  // место в списке.
-  const groups: { host: string; items: ClipboardEntry[] }[] = [];
+  // место в списке. Адрес первой записи держим ради значка: FaviconService берёт иконку по хосту,
+  // а хост у группы один на все записи.
+  const groups: { host: string; url: string; items: ClipboardEntry[] }[] = [];
   for (const e of entries) {
     const host = e.host || 'без адреса';
     const g = groups.find((x) => x.host === host);
     if (g) g.items.push(e);
-    else groups.push({ host, items: [e] });
+    else groups.push({ host, url: e.url, items: [e] });
   }
 
   return (
@@ -107,11 +115,16 @@ function ClipboardPopoverApp() {
             </div>
           )}
           {groups.map((g) => (
-            <div key={g.host} style={{ marginBottom: 4 }}>
+            <div key={g.host} style={{ marginBottom: 6 }}>
               <div style={{
-                padding: '6px 8px 4px', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{g.host}</div>
+                display: 'flex', alignItems: 'center', gap: 7, padding: '8px 8px 5px',
+              }}>
+                <SiteFavicon url={g.url} size={18} loadIcon={window.clipboardPopover.favicon} />
+                <span style={{
+                  fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-body)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{g.host}</span>
+              </div>
               {g.items.map((e) => <Row key={e.id} entry={e} onChanged={reload} />)}
             </div>
           ))}
@@ -187,6 +200,13 @@ function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => voi
       </div>
 
       <div style={{ display: 'flex', gap: 2, flex: 'none', visibility: hovered || copied ? 'visible' : 'hidden' }}>
+        {/* ⚠️ Переход к источнику — ОТДЕЛЬНАЯ кнопка, а не клик по строке: клик уже занят
+            копированием, и это правильный порядок. За копией сюда приходят каждый раз, за
+            «покажи, откуда это» — изредка, и подменять частое действие редким нельзя. */}
+        {/^https?:\/\//i.test(entry.url) && (
+          <button title="Открыть страницу и подсветить" onClick={() => { void window.clipboardPopover.openSource(entry.id); }}
+            style={iconBtn}><CornerUpRight size={13} /></button>
+        )}
         <button title="Скопировать" onClick={take} style={{ ...iconBtn, color: copied ? 'var(--dot-local)' : 'var(--text-faint)' }}>
           {copied ? <Check size={13} /> : <Copy size={13} />}
         </button>

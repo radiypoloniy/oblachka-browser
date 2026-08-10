@@ -81,7 +81,7 @@ import { isExternalAppUrl, openExternalWithConsent } from './ExternalProtocol';
 import { localPathToFileUrl } from './localFileUrl';
 import { installCertificateTrust, refreshCertificateTrust } from './CertificateTrust';
 import { listUserTrusted, removeUserTrusted } from './CertTrustStore';
-import { toggleAiPanel, openAiPanelApp, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView, setOnChatIntent as setOnAiPanelChatIntent } from './AiPanelManager';
+import { toggleAiPanel, openAiPanelApp, prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView, setOnChatIntent as setOnAiPanelChatIntent, setOnPanelFocus as setOnAiPanelFocus } from './AiPanelManager';
 import {
   togglePageTranslate,
   getActiveState as getPageTranslateActiveState,
@@ -159,9 +159,9 @@ import { findMatchFor } from './ProductMatcher';
 import * as clipboardBuffer from './ClipboardBuffer';
 import {
   initClipboardPopover, toggleClipboardPopover, closeClipboardPopover,
-  syncClipboardPopoverAnchor,
+  syncClipboardPopoverAnchor, windowOfClipboardPopover,
 } from './ClipboardPopoverManager';
-import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart, PageChangesResult, ProductState, TrackedProduct } from '../shared/ipc';
+import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart, PageChangesResult, ProductState, TrackedProduct, ClipboardRevealResult } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
 
@@ -1009,6 +1009,7 @@ function createWindow(role: WindowRole = 'main') {
       // живёт в слое хрома, а клики по странице до него не доходят вовсе — страница это отдельная
       // нативная вью. Закрывать такие поповеры умеет только main, по этому самому сигналу.
       closeSitePopover();
+      closeClipboardPopover(win);
     },
     // Менеджер паролей, шаг 2, коммит 2 — сигналы content-preload идут в PasswordAutofillManager,
     // который сверяется с сейфом и решает, показывать ли индикатор/поповер.
@@ -1147,6 +1148,18 @@ function createWindow(role: WindowRole = 'main') {
     // здесь, панель о ней не знает; сам maybeLazyWarmupOnDemand по-прежнему отсрочен и уважает
     // режим загрузки модели и пустой реестр.
     setOnAiPanelChatIntent(() => maybeLazyWarmupOnDemand());
+    // Клик в AI-панель — это «мимо поповера тулбара». Слушатель клика мимо живёт в слое хрома, а
+    // панель отдельная нативная вью, и её клики до хрома не доходят вовсе: без этой строки поповер
+    // висел над панелью, и привычное «щёлкнуть мимо» там просто не работало. Тот же набор, что при
+    // клике по странице (см. onContentFocus выше) — панель принадлежит полному окну.
+    setOnAiPanelFocus(() => {
+      closePasswordPopover(win);
+      closeAutofillPopover(win);
+      closeVpnPopover();
+      closeDownloadsPopover();
+      closeSitePopover();
+      closeClipboardPopover(win);
+    });
     // Быстрый поиск (Ctrl+E): поповеру нужен тот же возврат OS-фокуса странице, что и FindBar,
     // а решение «куда открыть найденное» остаётся здесь — вкладками владеет main.
     setSearchPopoverTabManager(tabs);
@@ -1913,6 +1926,38 @@ function registerIpc() {
   ipcMain.handle(IPC.CLIPBOARD_PUT, (_e, id: number) => {
     const text = clipboardBuffer.copyById(id);
     if (text !== null) clipboard.writeText(text);
+  });
+  // Переход к источнику: открыть страницу, где текст скопировали, и подсветить его.
+  // ⚠️ Своей подсветки не изобретаем — те же highlightCandidates + findQuoteInPage, что у
+  // смыслового Ctrl+F: лесенка кандидатов от длинного к короткому уже умеет то, обо что здесь
+  // споткнулись бы первым делом (текст на странице разорван вёрсткой, в копии пробелы схлопнуты).
+  // ⚠️ Поповер закрываем ДО перехода: он висит поверх контента, и подсвеченное место оказалось бы
+  // ровно под ним.
+  ipcMain.handle(IPC.CLIPBOARD_OPEN_SOURCE, async (e, id: number): Promise<ClipboardRevealResult> => {
+    const entry = clipboardBuffer.entryById(id);
+    if (!entry || !/^https?:\/\//i.test(entry.url)) return 'no-source';
+    const win = windowOfClipboardPopover(e.sender);
+    const tabs = win ? contextForWindow(win)?.tabs : null;
+    if (!win || !tabs) return 'no-source';
+    closeClipboardPopover(win);
+    const found = await tabs.revealCopiedText(entry.url, clipboardBuffer.highlightSteps(entry.text, highlightCandidates));
+    // ⚠️ Открываем панель поиска с этим запросом — и это не украшение, а ЕДИНСТВЕННЫЙ способ снять
+    // подсветку. Chromium держит её до stopFindInPage, а у человека без панели нет ни Esc, ни
+    // крестика: живая жалоба — «подсветку можно убрать только перезагрузкой страницы». Заодно
+    // появляются счётчик и стрелки по совпадениям — ровно то, чего от «как Ctrl+F» и ждут.
+    // ⚠️ Счётчик шлём САМИ, а не повторным поиском: повторный findInPage с тем же запросом — это
+    // «продолжить», то есть прыжок на СЛЕДУЮЩЕЕ совпадение, и человек уехал бы с найденного места.
+    if (found.matches > 0) {
+      showFindBar(win, found.query);
+      // Флаг «панель открыта» ставил только Ctrl+F — без него Esc НА СТРАНИЦЕ её не закрывает,
+      // а значит и подсветку не снимает.
+      tabs.markFindBarOpen();
+      sendFindResult(win, { activeMatch: 1, count: found.matches });
+    }
+    // Без лога «страница открылась, но ничего не подсветилось» неотличимо от «переход не сработал»,
+    // а это два разных дефекта: первый — страница с тех пор изменилась, второй — наш код.
+    console.log(`[clipboard] переход к источнику ${entry.host} → ${found.matches} совпад.`);
+    return found.matches > 0 ? 'highlighted' : 'opened';
   });
   ipcMain.handle(IPC.CLIPBOARD_REMOVE, (_e, id: number) => {
     clipboardBuffer.removeCopy(id);

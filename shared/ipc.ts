@@ -566,6 +566,7 @@ export const IPC = {
   CLIPBOARD_COPIED:   'clipboard:copied',      // гостевая страница → TabManager: { text, title }
   CLIPBOARD_LIST:     'clipboard:list',        // поповер → main: записи буфера
   CLIPBOARD_PUT:      'clipboard:put',         // поповер → main: положить запись в буфер обмена ОС
+  CLIPBOARD_OPEN_SOURCE: 'clipboard:open-source', // поповер → main: открыть страницу-источник и подсветить фрагмент
   CLIPBOARD_REMOVE:   'clipboard:remove',      // поповер → main: убрать одну запись
   CLIPBOARD_CLEAR:    'clipboard:clear',       // поповер → main: очистить всё
   CLIPBOARD_ENABLED_GET: 'clipboard:enabled-get',
@@ -1267,6 +1268,11 @@ export interface ProductState {
 }
 
 // Одна запись буфера: что скопировано, откуда и когда.
+// Чем кончился переход к источнику скопированного (см. TabManager.revealCopiedText):
+// 'highlighted' — страница открыта и фрагмент подсвечен, 'opened' — открыта, но фрагмента там уже
+// нет (страницу переписали), 'no-source' — адрес записи не годится для перехода.
+export type ClipboardRevealResult = 'highlighted' | 'opened' | 'no-source';
+
 export interface ClipboardEntry {
   id: number;
   text: string;

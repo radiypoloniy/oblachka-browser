@@ -497,6 +497,7 @@ export default function Toolbar({
       setPasswordPopoverOpen(false);
       void window.oblako.closePasswordPopover();
     }
+    if (clipboardPopoverOpen) { setClipboardPopoverOpen(false); void window.oblako.toggleClipboardPopover(); }
     if (vpnPopoverOpen) {
       setVpnPopoverOpen(false);
       void window.oblako.closeVpnPopover();
@@ -508,7 +509,7 @@ export default function Toolbar({
     // увидеть актуальный URL уже к моменту первого показа (см. VpnPopoverManager.ts::lastActiveUrl).
     void window.oblako.setVpnPopoverActiveUrl(tab?.url ?? '');
     void window.oblako.showVpnPopover();
-  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, pushVpnPopoverBounds, tab?.url]);
+  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, clipboardPopoverOpen, pushVpnPopoverBounds, tab?.url]);
 
   const pushDownloadsPopoverBounds = useCallback(() => {
     const el = downloadsControlRef.current;
@@ -522,6 +523,7 @@ export default function Toolbar({
     // Двум поповерам в тулбаре одновременно места нет — открывая один, гасим соседей.
     if (passwordPopoverOpen) { setPasswordPopoverOpen(false); void window.oblako.closePasswordPopover(); }
     if (vpnPopoverOpen) { setVpnPopoverOpen(false); void window.oblako.closeVpnPopover(); }
+    if (clipboardPopoverOpen) { setClipboardPopoverOpen(false); void window.oblako.toggleClipboardPopover(); }
     if (downloadsPopoverOpen) {
       setDownloadsPopoverOpen(false);
       void window.oblako.closeDownloadsPopover();
@@ -530,7 +532,7 @@ export default function Toolbar({
     pushDownloadsPopoverBounds();
     setDownloadsPopoverOpen(true);
     void window.oblako.showDownloadsPopover();
-  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen, pushDownloadsPopoverBounds]);
+  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen, clipboardPopoverOpen, pushDownloadsPopoverBounds]);
 
   useEffect(() => window.oblako.onDownloadsPopoverClosed(() => setDownloadsPopoverOpen(false)), []);
 
@@ -575,10 +577,11 @@ export default function Toolbar({
     if (passwordPopoverOpen) { setPasswordPopoverOpen(false); void window.oblako.closePasswordPopover(); }
     if (vpnPopoverOpen) { setVpnPopoverOpen(false); void window.oblako.closeVpnPopover(); }
     if (downloadsPopoverOpen) { setDownloadsPopoverOpen(false); void window.oblako.closeDownloadsPopover(); }
+    if (clipboardPopoverOpen) { setClipboardPopoverOpen(false); void window.oblako.toggleClipboardPopover(); }
     pushSitePopoverBounds();
     // Состояние приходит ответом самого toggle — второго источника правды не заводим.
     void window.oblako.toggleSitePopover().then(setSitePopoverOpen);
-  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen, pushSitePopoverBounds]);
+  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen, clipboardPopoverOpen, pushSitePopoverBounds]);
 
   useEffect(() => window.oblako.onSitePopoverClosed(() => setSitePopoverOpen(false)), []);
 
@@ -626,6 +629,35 @@ export default function Toolbar({
     document.addEventListener('mousedown', onOutsideMouseDown, true);
     return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
   }, [downloadsPopoverOpen]);
+
+  // Буфер: якорь и клик мимо — ровно та же механика, что у загрузок выше. Кнопка появляется и
+  // исчезает по мере наполнения буфера, поэтому её прямоугольник живёт своей жизнью, и без
+  // наблюдателя поповер остался бы висеть у прежнего места.
+  useEffect(() => {
+    if (!clipboardPopoverOpen) return;
+    const el = clipboardControlRef.current;
+    if (!el) return;
+    const push = () => {
+      const r = el.getBoundingClientRect();
+      window.oblako.syncClipboardPopoverBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+    };
+    push();
+    const ro = new ResizeObserver(push);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [clipboardPopoverOpen, toolbarWidth]);
+
+  useEffect(() => {
+    if (!clipboardPopoverOpen) return;
+    const onOutsideMouseDown = (e: MouseEvent) => {
+      if (!clipboardControlRef.current?.contains(e.target as Node)) {
+        setClipboardPopoverOpen(false);
+        void window.oblako.toggleClipboardPopover();
+      }
+    };
+    document.addEventListener('mousedown', onOutsideMouseDown, true);
+    return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
+  }, [clipboardPopoverOpen]);
 
   // Навигация в ТОЙ ЖЕ вкладке, пока поповер уже открыт (смена самой вкладки поповер закрывает
   // целиком, см. эффект по tab?.id ниже) — адблок-секция должна обновиться на новый домен, а не

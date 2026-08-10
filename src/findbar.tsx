@@ -22,7 +22,7 @@ declare global {
       stop: () => Promise<void>
       close: () => void
       onResult: (cb: (r: FindResult) => void) => () => void
-      onShow: (cb: () => void) => () => void
+      onShow: (cb: (query: string) => void) => () => void
       onRefocus: (cb: () => void) => () => void
     }
   }
@@ -70,14 +70,20 @@ function FindBar() {
 
   useEffect(() => {
     const unsubResult = window.findbar.onResult((r) => setResult(r));
-    const unsubShow = window.findbar.onShow(() => {
-      setQuery('');
+    // ⚠️ query непустой, когда панель открыл код с уже поставленной подсветкой (переход к
+    // источнику скопированного). Поиск по нему НЕ запускаем: он уже выполнен, а повторный вызов с
+    // тем же запросом означает «следующее совпадение» — человека увезло бы с найденного места.
+    // Счётчик в этом случае присылает main отдельным FIND_RESULT.
+    const unsubShow = window.findbar.onShow((query) => {
+      setQuery(query);
       setResult(null);
       setSmartFail(null);
       setQuotes([]);
       setQuoteIdx(0);
       lastSmartRef.current = '';
       inputRef.current?.focus();
+      // Выделяем готовый запрос целиком: следующая же буква заменит его, как при повторном Ctrl+F.
+      if (query) inputRef.current?.select();
     });
     const unsubRefocus = window.findbar.onRefocus(() => {
       inputRef.current?.focus();

@@ -30,6 +30,9 @@ const CONTENT_PRELOAD_PATH = path.join(__dirname, 'preload-content.js');
 // Обход документа занимает миллисекунды; секунда — с запасом на тяжёлую страницу.
 const FIND_QUOTE_TIMEOUT_MS = 1000;
 
+// Сколько ждём загрузку страницы при переходе к источнику скопированного (см. revealCopiedText).
+const REVEAL_LOAD_TIMEOUT_MS = 8000;
+
 const ZOOM_MIN  = 0.5;
 const ZOOM_MAX  = 2.5;
 const ZOOM_STEP = 0.1; // 10% за шаг, как в Chrome
@@ -2986,6 +2989,72 @@ export class TabManager {
     return 0;
   }
 
+  /**
+   * Переход к источнику записи буфера: открыть страницу, где текст был скопирован, и подсветить
+   * его штатным findInPage (см. ClipboardBuffer.ts).
+   *
+   * ⚠️ УЖЕ ОТКРЫТУЮ вкладку переиспользуем, а не открываем вторую копию, — по той же причине, что
+   * и извлечение текста в NotebookExtract: страница у человека уже прошла антибот, капчу и логин,
+   * а второй заход начинает всё это заново. Плюс дубль вкладки в списке — сам по себе сюрприз.
+   * Спящую при этом БУДИМ (в отличие от getWebContentsForUrl, которому вью нужна прямо сейчас):
+   * человек попросил показать место явным кликом, и разбудить одну вкладку — ровно то, чего он ждёт.
+   *
+   * Возвращает число совпадений и СРАБОТАВШУЮ строку: её показывает панель поиска, и она же
+   * единственный способ снять подсветку (см. обработчик CLIPBOARD_OPEN_SOURCE в main.ts).
+   * Ноль совпадений — честный исход: страница могла с тех пор измениться.
+   */
+  async revealCopiedText(url: string, candidates: string[]): Promise<{ matches: number; query: string }> {
+    const existing = this.#tabIdForUrl(url);
+    const id = existing ?? this.createTab(url);
+    if (existing) this.activate(id);
+
+    // Ждём загрузку: у новой вкладки содержимого ещё нет вовсе, у разбуженной — идёт перезагрузка,
+    // и findInPage по пустому документу вернул бы ноль совпадений вместо подсветки.
+    const wc = this.tabMap.get(id)?.view?.webContents ?? null;
+    if (wc && !wc.isDestroyed() && wc.isLoading()) await this.#waitForLoad(wc);
+
+    // Вкладку могли переключить, пока страница грузилась. Подсвечивать в этом случае нечего:
+    // findQuoteInPage работает по АКТИВНОЙ вкладке и попал бы в чужую страницу.
+    if (this.activeId !== id) return { matches: 0, query: '' };
+    const matches = candidates.length > 0 ? await this.findQuoteInPage(candidates) : 0;
+    // lastQuery выставляет сама findQuoteInPage — это та ступень лесенки, которая нашлась.
+    return { matches, query: this.lastQuery };
+  }
+
+  // Вкладка с этим адресом, включая спящую. От getWebContentsForUrl отличается именно этим: там
+  // нужна живая вью для чтения, здесь — сама вкладка, которую мы всё равно активируем (и разбудим).
+  #tabIdForUrl(url: string): string | null {
+    const norm = (u: string): string => {
+      try { const p = new URL(u); return p.origin + p.pathname.replace(/\/+$/, ''); } catch { return u; }
+    };
+    const wanted = norm(url);
+    let fallback: string | null = null;
+    for (const tab of this.tabMap.values()) {
+      const current = this.#tabUrl(tab);
+      if (!/^https?:\/\//i.test(current)) continue;
+      if (current === url) return tab.id;
+      if (!fallback && norm(current) === wanted) fallback = tab.id;
+    }
+    return fallback;
+  }
+
+  // ⚠️ Таймаут обязателен: страница может грузиться сколько угодно (стрим, висящий запрос), а
+  // подсветку человек ждёт здесь и сейчас. По таймауту просто пробуем подсветить то, что уже есть.
+  #waitForLoad(wc: WebContents): Promise<void> {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        wc.removeListener('did-stop-loading', finish);
+        resolve();
+      };
+      const timer = setTimeout(finish, REVEAL_LOAD_TIMEOUT_MS);
+      wc.once('did-stop-loading', finish);
+    });
+  }
+
   // Один заход findInPage с ожиданием ответа. ⚠️ Ждём именно finalUpdate и сверяем requestId:
   // Chromium шлёт found-in-page несколько раз по ходу обхода документа, и промежуточные значения
   // счётчика ещё не окончательны. Таймаут — страховка от страницы, которая ответ не пришлёт
@@ -3024,6 +3093,16 @@ export class TabManager {
       }
     });
   }
+
+  /**
+   * Пометить панель поиска открытой, когда её открыл не Ctrl+F, а код (переход к источнику
+   * скопированного, см. revealCopiedText).
+   *
+   * ⚠️ Без этого Esc НА СТРАНИЦЕ панель не закрывает и подсветку не снимает: обработчик Esc в
+   * registerHotkeyHandler смотрит ровно на этот флаг, а ставил его только Ctrl+F. Панель, открытая
+   * иначе, оказывалась неснимаемой ничем, кроме перезагрузки страницы.
+   */
+  markFindBarOpen(): void { this.findBarOpen = true; }
 
   stopFind(): void {
     const wc = this.getActiveWebContents();
@@ -3242,6 +3321,7 @@ export class TabManager {
       } else if (code === 'KeyB' && shift) {
         // Буфер скопированного. ⚠️ Ctrl+Shift+B в Chrome переключает полосу закладок, но у нас её
         // нет намеренно (см. CLAUDE.md про закладки в сайдбаре), так что чужой привычки мы не ломаем.
+        event.preventDefault();
         this.onClipboardToggleCb?.();
       } else if (code === 'KeyI' && shift) {
         event.preventDefault();

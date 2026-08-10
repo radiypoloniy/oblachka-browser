@@ -12,13 +12,20 @@ import { useEffect, useState } from 'react';
 // него это были бы десятки одинаковых IPC-запросов (main тоже кэширует, но спамить незачем).
 const cache = new Map<string, Promise<string | null>>();
 
-function load(host: string): Promise<string | null> {
+function load(host: string, fetcher: (h: string) => Promise<string | null>): Promise<string | null> {
   let p = cache.get(host);
-  if (!p) { p = window.oblako.getFavicon(host); cache.set(host, p); }
+  if (!p) { p = fetcher(host); cache.set(host, p); }
   return p;
 }
 
-export default function SiteFavicon({ url, size = 20 }: { url: string; size?: number }) {
+// ⚠️ `loadIcon` существует ради изолированных вью (поповер буфера): у них свой preload и боевого
+// window.oblako там нет вовсе, а канал FAVICON_GET — тот же самый. Без этого параметра пришлось бы
+// держать вторую копию компонента, которая разъедется с этой на первой же правке.
+export default function SiteFavicon({ url, size = 20, loadIcon }: {
+  url: string;
+  size?: number;
+  loadIcon?: (host: string) => Promise<string | null>;
+}) {
   const [src, setSrc] = useState<string | null>(null);
   const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
 
@@ -26,9 +33,10 @@ export default function SiteFavicon({ url, size = 20 }: { url: string; size?: nu
     if (!host) return;
     let alive = true;
     setSrc(null);
-    void load(host).then((d) => { if (alive) setSrc(d); }).catch(() => { /* останется буква */ });
+    const fetcher = loadIcon ?? ((h: string) => window.oblako.getFavicon(h));
+    void load(host, fetcher).then((d) => { if (alive) setSrc(d); }).catch(() => { /* останется буква */ });
     return () => { alive = false; };
-  }, [host]);
+  }, [host, loadIcon]);
 
   const box: React.CSSProperties = {
     width: size, height: size, flexShrink: 0, borderRadius: 'var(--radius-sm)',

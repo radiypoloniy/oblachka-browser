@@ -146,6 +146,18 @@ export function toggleClipboardPopover(win: BrowserWindow): void {
   else showClipboardPopover(win);
 }
 
+/**
+ * Окно, которому принадлежит эта вью поповера.
+ *
+ * ⚠️ Нужно потому, что contextFromSender в main про вью поповера ничего не знает — реестр окон
+ * держит только слой хрома и вкладки. А переход к источнику обязан открыть страницу В ТОМ ЖЕ окне,
+ * где человек нажал: в лёгком окне кнопка буфера тоже есть, и уводить его вкладку в главное окно
+ * значило бы отвечать не туда, куда смотрят.
+ */
+export function windowOfClipboardPopover(sender: Electron.WebContents): BrowserWindow | null {
+  return stateBySender(sender)?.win ?? null;
+}
+
 /** Открыт ли поповер в этом окне — нужно хоткею, чтобы работать переключателем. */
 export function isClipboardPopoverOpen(win: BrowserWindow): boolean {
   return popovers.get(win.id)?.open ?? false;

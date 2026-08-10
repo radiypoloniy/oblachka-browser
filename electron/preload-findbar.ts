@@ -23,8 +23,10 @@ contextBridge.exposeInMainWorld('findbar', {
     return () => ipcRenderer.removeListener(IPC.FIND_RESULT, handler)
   },
   // Панель заново показана (первый показ или после close) — сбросить поле и сфокусировать пустым.
-  onShow: (cb: () => void) => {
-    const handler = () => cb()
+  // ⚠️ Аргумент непустой, когда панель открыл КОД с готовым запросом (переход к источнику
+  // скопированного): подсветка на странице уже стоит, и поле обязано показывать, чем именно.
+  onShow: (cb: (query: string) => void) => {
+    const handler = (_e: unknown, query?: string) => cb(query ?? '')
     ipcRenderer.on('findbar:show', handler)
     return () => ipcRenderer.removeListener('findbar:show', handler)
   },

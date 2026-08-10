@@ -108,6 +108,21 @@ export function setOnChatIntent(cb: () => void): void {
   onChatIntentCb = cb
 }
 
+// Человек кликнул В САМУ ПАНЕЛЬ — поповеры тулбара пора закрыть.
+//
+// ⚠️ Нужен отдельный сигнал, потому что «клик мимо» слушает слой хрома, а панель — отдельная
+// нативная вью: её клики до хрома не доходят ВООБЩЕ. Ровно та же причина, по которой клик по
+// странице закрывает поповеры не сам, а через onContentFocus в TabManager (см. main.ts). Без
+// этого поповер оставался висеть над панелью, и привычное «щёлкнуть мимо» просто не работало.
+//
+// ⚠️ Слушаем `focus` вью, а не blur кого-то другого: focus ДРУГОГО webContents — это настоящий
+// OS-фокус от клика, а blur в этом проекте запрещён как механика закрытия (Electron шлёт
+// focus→blur парой после addChildView, см. FindBarManager).
+let onPanelFocusCb: (() => void) | null = null
+export function setOnPanelFocus(cb: () => void): void {
+  onPanelFocusCb = cb
+}
+
 // ── Контекст чата по вкладке (Заход 3) ───────────────────────────────────────────────────────
 // Один движок (см. runChatMessage/ensureLoaded в TranslationService.ts), много контекстов: тут
 // только РАЗДЕЛЕНИЕ истории по вкладкам, а не отдельная модель на вкладку. Эфемерно, только в
@@ -761,6 +776,9 @@ function ensurePanelView(): WebContentsView {
   // Первый показ беседы активной вкладки — только после did-finish-load: раньше renderer ещё не
   // навесил обработчик onContext, сообщение потерялось бы. Статус ключа — тем же приёмом.
   panelView.webContents.once('did-finish-load', () => { sendCurrentContext(); sendKeyStatus(); sendSearxngStatus(); sendSkillsList() })
+
+  // Клик в панель = «мимо поповера тулбара», см. setOnPanelFocus выше.
+  panelView.webContents.on('focus', () => { onPanelFocusCb?.() })
 
   // Ссылки из ответа модели — обычные <a href> (react-markdown их не оборачивает, см. задачу):
   // без перехвата клик навигирует ЭТУ ЖЕ webContents на внешний сайт, затирая aipanel.html —
