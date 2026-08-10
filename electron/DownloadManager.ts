@@ -33,6 +33,20 @@ interface StoredDownload {
 // же именем молча затирал бы первый — Electron перезаписывает по заданному savePath без вопросов.
 // Экспортируется ради снимков вкладки (ScreenshotManager.ts): они ложатся в ту же папку тем же
 // правилом — два снимка в одну секунду не должны затирать друг друга.
+/**
+ * Адрес без запроса и якоря — «тот же файл» для подписанных ссылок (см. #findDownloaded).
+ *
+ * ⚠️ Пустую строку возвращаем для всего, что не http(s): у `blob:` и `data:` идентификатор
+ * уникален для каждого создания, и совпадение по «пути» означало бы там ровно ничего.
+ */
+function stripQuery(u: string): string {
+  try {
+    const p = new URL(u);
+    if (p.protocol !== 'http:' && p.protocol !== 'https:') return '';
+    return p.origin + p.pathname;
+  } catch { return ''; }
+}
+
 export function uniquePath(dir: string, filename: string): string {
   const ext = path.extname(filename);
   const base = path.basename(filename, ext);
@@ -121,10 +135,16 @@ export class DownloadManager {
    * заметной снаружи.
    */
   #findDownloaded(url: string, filename: string, totalBytes: number): DownloadEntry | null {
+    const wantedPath = stripQuery(url);
     for (const e of this.#entries.values()) {
       if (this.#incognitoIds.has(e.id)) continue;
       if (e.state !== 'completed' || !e.savePath) continue;
-      const sameUrl = !!url && e.url === url;
+      // ⚠️ Адрес сравниваем И БЕЗ ЗАПРОСА тоже. Ссылки на файлы у крупных сервисов ПОДПИСАНЫ:
+      // хост и путь постоянны (в пути лежит идентификатор файла), а подпись и срок годности живут
+      // в query и меняются при каждом нажатии. Из-за точного сравнения такая повторная загрузка
+      // выглядела совершенно новой, и предупреждение молчало — живой случай с картинками ChatGPT,
+      // где на других сайтах всё отрабатывало штатно.
+      const sameUrl = !!url && (e.url === url || (!!wantedPath && stripQuery(e.url) === wantedPath));
       const sameFile = e.filename === filename && totalBytes > 0 && e.totalBytes === totalBytes;
       if (!sameUrl && !sameFile) continue;
       try { if (!fs.existsSync(e.savePath)) continue; } catch { continue; }

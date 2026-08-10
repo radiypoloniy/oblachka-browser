@@ -1925,6 +1925,22 @@ function registerIpc() {
   ipcMain.handle(IPC.TRACKING_SUGGESTIONS, () => tracking.listSuggestions());
 
   // ── Буфер скопированного со страниц ─────────────────────────────────────────
+  // Копия, сделанная в самом интерфейсе (адресная строка, история, закладки). Источником считаем
+  // АКТИВНУЮ ВКЛАДКУ: скопированный из строки адрес принадлежит именно ей, и в списке запись должна
+  // встать в группу того сайта, а не «без адреса».
+  // ⚠️ Инкогнито отсекаем ровно так же, как для копий со страниц: приватная вкладка не оставляет
+  // следов нигде, и адрес приватной страницы — такой же след, как история.
+  ipcMain.on(IPC.CLIPBOARD_COPIED_UI, (e, payload: { text: string }) => {
+    const ctx = contextFromSender(e.sender);
+    if (!ctx) return;
+    const activeId = ctx.tabs.getActiveId();
+    if (ctx.tabs.isIncognito(activeId)) return;
+    const wc = ctx.tabs.getActiveWebContents();
+    const url = wc && !wc.isDestroyed() ? wc.getURL() : '';
+    const title = wc && !wc.isDestroyed() ? wc.getTitle() : '';
+    clipboardBuffer.recordCopy(payload?.text ?? '', url, title);
+    broadcastToChrome(IPC.CLIPBOARD_CHANGED, clipboardBuffer.listCopies().length);
+  });
   ipcMain.handle(IPC.CLIPBOARD_LIST, () => clipboardBuffer.listCopies());
   ipcMain.handle(IPC.CLIPBOARD_PUT, (_e, id: number) => {
     const text = clipboardBuffer.copyById(id);

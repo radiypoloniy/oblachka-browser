@@ -700,3 +700,58 @@ const api: OblakoApi = {
 };
 
 contextBridge.exposeInMainWorld('oblako', api);
+
+// ── Копирование В САМОМ ИНТЕРФЕЙСЕ браузера → буфер (см. electron/ClipboardBuffer.ts) ──────────
+//
+// ⚠️ Раньше буфер собирал копии ТОЛЬКО с гостевых страниц, и адрес, скопированный из адресной
+// строки (кнопкой «Копировать адрес» или Ctrl+C по выделенному), в него не попадал вовсе — самая
+// частая копия в браузере проходила мимо. Жалоба: «буфер какой-то обрезанный».
+//
+// ⚠️ Пароли сюда не попадают ПО УСТРОЙСТВУ, а не по фильтру: копирование пароля идёт через main
+// (PasswordManager.copyField пишет в буфер сам), то есть мимо этого слоя целиком. Отдельного
+// исключения не нужно — и это лучше исключения, потому что его нельзя забыть обновить.
+//
+// ⚠️ Техника та же, что у страниц (preload-content.ts): событие `copy` ловит выделение, а шим
+// navigator.clipboard — программные копии (наши же кнопки «копировать» в истории, графе,
+// приложениях панели). Шим ставится в ГЛАВНОМ мире через executeInMainWorld: сам preload живёт в
+// изолированном, где правка navigator интерфейсу не видна.
+const reportUiCopy = (text: string): void => {
+  try {
+    if (!text) return;
+    ipcRenderer.send(IPC.CLIPBOARD_COPIED_UI, { text: text.slice(0, 20000) });
+  } catch { /* копирование не имеет права ломаться из-за нас */ }
+};
+
+try {
+  document.addEventListener('copy', () => {
+    try {
+      // Выделение ВНУТРИ поля ввода `window.getSelection()` не отдаёт — у input/textarea Chromium
+      // держит его отдельно. Адресная строка это именно input, то есть без второй ветки главный
+      // случай и не работал бы.
+      const el = document.activeElement;
+      const inField = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
+        ? (el.value ?? '').slice(el.selectionStart ?? 0, el.selectionEnd ?? 0)
+        : '';
+      reportUiCopy(inField || String(window.getSelection() || ''));
+    } catch { /* см. выше */ }
+  }, true);
+} catch { /* IPC недоступен */ }
+
+try {
+  contextBridge.executeInMainWorld({
+    func: (report: (text: string) => void) => {
+      try {
+        const clip = navigator.clipboard as unknown as {
+          writeText?: (t: string) => Promise<void>;
+        } | undefined;
+        const orig = clip?.writeText;
+        if (!clip || typeof orig !== 'function') return;
+        clip.writeText = function writeText(text: string) {
+          try { report(String(text ?? '')); } catch { /* интерфейс не должен пострадать */ }
+          return orig.call(this, text);
+        };
+      } catch { /* без шима просто нет этой ветки источника */ }
+    },
+    args: [(text: string) => reportUiCopy(text)],
+  });
+} catch { /* executeInMainWorld недоступен */ }
