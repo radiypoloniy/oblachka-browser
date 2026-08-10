@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { FolderOpen, ExternalLink, RotateCcw, Pause, Play, X, ChevronRight, Download } from 'lucide-react';
-import type { DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision } from '../shared/ipc';
+import { FolderOpen, ExternalLink, RotateCcw, Pause, Play, X, ChevronRight, Download, Sparkles, Check } from 'lucide-react';
+import { isDocumentFile } from '../shared/documentFormats';
+import type { DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision, DownloadNameSuggestion, DownloadRenameResult } from '../shared/ipc';
 import { islandPlate } from './styles/island';
 import { FileKindIcon, formatBytes, formatSpeed } from './components/downloadsShared';
 import './styles/global.css';
@@ -17,6 +18,8 @@ declare global {
       openDownloadFile: (id: string) => Promise<void>;
       showDownloadFolder: (id: string) => Promise<void>;
       retryDownload: (id: string) => Promise<void>;
+      suggestDownloadName: (id: string) => Promise<DownloadNameSuggestion>;
+      renameDownload: (id: string, name: string) => Promise<DownloadRenameResult>;
       onDownloadsChanged: (cb: (entries: DownloadEntry[]) => void) => () => void;
       getDuplicatePrompt: () => Promise<DuplicateDownloadPrompt | null>;
       onDuplicatePrompt: (cb: (p: DuplicateDownloadPrompt | null) => void) => () => void;
@@ -172,6 +175,32 @@ function DuplicatePrompt({ prompt }: { prompt: DuplicateDownloadPrompt }) {
 
 function Row({ entry: d }: { entry: DownloadEntry }) {
   const [hovered, setHovered] = useState(false);
+  // Имя по содержимому (AI-IDEAS.md №3). ⚠️ Состояний четыре, и 'proposed' среди них несущее:
+  // между «модель придумала» и «файл переименован» обязан стоять человек — переименование на
+  // диске необратимо, если его не заметили.
+  const [naming, setNaming] = useState<'idle' | 'working' | 'proposed' | 'error'>('idle');
+  const [draft, setDraft] = useState('');
+  const [problem, setProblem] = useState('');
+
+  const askName = useCallback(() => {
+    setNaming('working');
+    setProblem('');
+    void window.downloadsPopover.suggestDownloadName(d.id).then((res) => {
+      if (res.ok && res.name) { setDraft(res.name); setNaming('proposed'); }
+      else { setProblem(res.error ?? 'Не получилось'); setNaming('error'); }
+    });
+  }, [d.id]);
+
+  const applyName = useCallback(() => {
+    const name = draft.trim();
+    if (!name) return;
+    setNaming('working');
+    void window.downloadsPopover.renameDownload(d.id, name).then((res) => {
+      // Успех виден сам собой: список приезжает заново с новым именем.
+      if (res.ok) { setNaming('idle'); setDraft(''); }
+      else { setProblem(res.error ?? 'Не получилось'); setNaming('error'); }
+    });
+  }, [d.id, draft]);
 
   const isActive = d.state === 'progressing';
   const isGone   = d.state === 'completed' && !!d.fileMissing;
@@ -190,7 +219,17 @@ function Row({ entry: d }: { entry: DownloadEntry }) {
 
   // Открыть файл двойным путём (по строке и по кнопке) не даём: клик по всей строке — самое
   // ожидаемое действие, кнопки при наведении остаются для остального.
-  const openable = isDone && !!d.savePath;
+  // ⚠️ Пока правится имя, строка НЕ открывает файл: клик в поле ввода дотянулся бы до неё.
+  const openable = isDone && !!d.savePath && naming !== 'proposed';
+  // Предлагать имя есть смысл только для документа, из которого мы умеем достать текст.
+  const nameable = isDone && !!d.savePath && isDocumentFile(d.filename);
+
+  // Вторая строка на время работы с именем говорит о ней: обычный размер файла в этот момент
+  // человеку не нужен, а происходящее — нужно (своей системы тостов в чроме нет).
+  const namingLine = naming === 'working' ? 'Читаю файл…'
+    : naming === 'proposed' ? 'Enter — переименовать, Esc — отменить'
+    : naming === 'error' ? problem
+    : null;
 
   return (
     <div
@@ -207,13 +246,36 @@ function Row({ entry: d }: { entry: DownloadEntry }) {
       <FileKindIcon filename={d.filename} muted={isFailed} />
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 'var(--fs-sm)', fontWeight: 600,
-          color: isFailed ? 'var(--text-muted)' : 'var(--text-strong)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {d.filename}
-        </div>
+        {naming === 'proposed' ? (
+          // ⚠️ Имя ПРАВИТСЯ прямо здесь, а не применяется как есть: модель ошибается, и цена
+          // ошибки — файл на диске. Тот же приём, что у имени группы вкладок (inline-правка).
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') applyName();
+              if (e.key === 'Escape') { setNaming('idle'); setDraft(''); }
+            }}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: '2px 6px', borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--accent)', background: 'var(--surface)',
+              color: 'var(--text-strong)', fontSize: 'var(--fs-sm)', fontWeight: 600,
+              fontFamily: 'inherit', outline: 'none',
+            }}
+          />
+        ) : (
+          <div style={{
+            fontSize: 'var(--fs-sm)', fontWeight: 600,
+            color: isFailed ? 'var(--text-muted)' : 'var(--text-strong)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {d.filename}
+          </div>
+        )}
         {isActive && (
           <div style={{
             height: 3, borderRadius: 99, background: 'var(--divider)',
@@ -234,18 +296,31 @@ function Row({ entry: d }: { entry: DownloadEntry }) {
           </div>
         )}
         <div style={{
-          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: isActive ? 0 : 2,
+          fontSize: 'var(--fs-xs)',
+          color: naming === 'error' ? 'var(--tone-warm)' : 'var(--text-faint)',
+          marginTop: isActive ? 0 : 2,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
-          {subtitle}
+          {namingLine ?? subtitle}
         </div>
       </div>
 
       {/* Действия — только при наведении: в спокойном виде строка должна читаться, а не пестреть. */}
       <div style={{
         display: 'flex', gap: 2, flex: 'none',
-        visibility: hovered ? 'visible' : 'hidden',
+        // Пока правится имя, кнопки видны всегда: человек увёл курсор в поле ввода, а согласиться
+        // и отказаться ему нужно именно сейчас.
+        visibility: hovered || naming === 'proposed' ? 'visible' : 'hidden',
       }}>
+        {naming === 'proposed' ? (
+          <>
+            <IconBtn title="Переименовать" icon={<Check size={14} />} onClick={applyName} />
+            <IconBtn title="Отменить" icon={<X size={14} />}
+              onClick={() => { setNaming('idle'); setDraft(''); }} />
+          </>
+        ) : nameable && naming !== 'working' && (
+          <IconBtn title="Назвать по содержимому" icon={<Sparkles size={14} />} onClick={askName} />
+        )}
         {isActive && (
           <IconBtn
             title={d.isPaused ? 'Продолжить' : 'Пауза'}
@@ -259,7 +334,7 @@ function Row({ entry: d }: { entry: DownloadEntry }) {
           <IconBtn title="Отменить" icon={<X size={14} />}
             onClick={() => void window.downloadsPopover.cancelDownload(d.id)} />
         )}
-        {isDone && d.savePath && (
+        {isDone && d.savePath && naming !== 'proposed' && (
           <>
             <IconBtn title="Открыть" icon={<ExternalLink size={14} />}
               onClick={() => void window.downloadsPopover.openDownloadFile(d.id)} />

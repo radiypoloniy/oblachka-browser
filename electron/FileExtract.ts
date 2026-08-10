@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { DOCUMENT_EXTENSIONS } from '../shared/documentFormats';
 
 // Извлечение текста из локальных документов для узла-файла граф-воркспейса.
 // Живёт в main: чтение диска и разбор форматов renderer'у не положены.
@@ -10,7 +11,10 @@ const MAX_TEXT_CHARS = 200_000;
 // Отдельная страховка на размер самого файла: разбор 500-мегабайтного PDF повесит main.
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
 
-export const SUPPORTED_FILE_EXTENSIONS = ['txt', 'md', 'markdown', 'csv', 'json', 'log', 'docx', 'pdf'];
+// Сам перечень живёт в shared/documentFormats.ts: его спрашивает и поповер загрузок (кнопка
+// «Назвать по содержимому»), а renderer'у в electron/ ходить нельзя. Имя экспорта оставлено
+// прежним — на него завязан диалог выбора файла в main.
+export { DOCUMENT_EXTENSIONS as SUPPORTED_FILE_EXTENSIONS } from '../shared/documentFormats';
 
 export interface FileExtractResult {
   ok: boolean;
@@ -92,7 +96,7 @@ export async function extractFileText(filePath: string): Promise<FileExtractResu
       text = await extractPdf(await fs.readFile(filePath));
     } else if (ext === 'docx') {
       text = await extractDocx(filePath);
-    } else if (SUPPORTED_FILE_EXTENSIONS.includes(ext)) {
+    } else if (DOCUMENT_EXTENSIONS.includes(ext)) {
       text = await fs.readFile(filePath, 'utf8');
     } else {
       // Читаем как текст и проверяем на бинарь: расширений на свете больше, чем в списке,

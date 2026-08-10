@@ -144,6 +144,8 @@ import {
 } from './TabOrganizer';
 import { suggestBookmarkFolders } from './BookmarkOrganizer';
 import { suggestFolderForBookmark } from './BookmarkFolderPick';
+import { suggestFileName, renameDownloadedFile } from './DownloadNamer';
+import type { DownloadNameSuggestion, DownloadRenameResult } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
 
@@ -2632,6 +2634,23 @@ function registerIpc() {
   ipcMain.handle(IPC.DOWNLOAD_OPEN_FILE,   (_e, id: string) => downloads.openFile(id));
   ipcMain.handle(IPC.DOWNLOAD_SHOW_FOLDER, (_e, id: string) => downloads.showFolder(id));
   ipcMain.handle(IPC.DOWNLOAD_RETRY,       (_e, id: string) => downloads.retry(id));
+
+  // Имя по содержимому (AI-IDEAS.md №3). ⚠️ Ровно два шага, и между ними стоит человек:
+  // «предложить» только читает файл и считает, «переименовать» трогает диск.
+  ipcMain.handle(IPC.DOWNLOAD_SUGGEST_NAME, async (_e, id: string): Promise<DownloadNameSuggestion> => {
+    const savePath = downloads.pathForRead(id);
+    if (!savePath) return { ok: false, error: 'Файла на месте нет' };
+    const res = await suggestFileName(savePath);
+    return res.ok ? { ok: true, name: res.name } : { ok: false, error: res.error };
+  });
+  ipcMain.handle(IPC.DOWNLOAD_RENAME, async (_e, id: string, name: string): Promise<DownloadRenameResult> => {
+    const savePath = downloads.pathForRead(id);
+    if (!savePath) return { ok: false, error: 'Файла на месте нет' };
+    const res = await renameDownloadedFile(savePath, name);
+    if (!res.ok) return { ok: false, error: res.error };
+    downloads.applyRename(id, res.filename, res.savePath);
+    return { ok: true, filename: res.filename };
+  });
 
   // AI-группировка вкладок (Phase 4)
   ipcMain.handle(IPC.TABS_ORGANIZE_APPLY,    (e, clusters: OrganizeCluster[]) => tabsOf(e)?.applyOrganize(clusters));

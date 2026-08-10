@@ -296,6 +296,30 @@ export class DownloadManager {
     if (e?.savePath) void shell.openPath(e.savePath);
   }
 
+  /**
+   * Путь завершённого файла, лежащего на диске, — для чтения содержимого (см. DownloadNamer.ts).
+   * Незавершённую и пропавшую загрузку не отдаём: читать там нечего.
+   */
+  pathForRead(id: string): string | null {
+    const e = this.#entries.get(id);
+    if (!e || e.state !== 'completed' || !e.savePath) return null;
+    return this.#stillOnDisk(id) ? e.savePath : null;
+  }
+
+  /**
+   * Файл на диске уже переименован (DownloadNamer.renameDownloadedFile) — подтягиваем запись.
+   * ⚠️ Список хранится на диске, и без #persist() имя разъехалось бы с файлом при перезапуске.
+   */
+  applyRename(id: string, filename: string, savePath: string): void {
+    const e = this.#entries.get(id);
+    if (!e) return;
+    e.filename = filename;
+    e.savePath = savePath;
+    e.fileMissing = false;
+    this.#persist();
+    this.#notify();
+  }
+
   showFolder(id: string): void {
     if (!this.#stillOnDisk(id)) return;
     const e = this.#entries.get(id);

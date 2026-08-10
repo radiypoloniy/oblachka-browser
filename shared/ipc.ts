@@ -506,6 +506,11 @@ export const IPC = {
   DOWNLOAD_OPEN_FILE:   'download:open-file',   // renderer → main: открыть файл (id)
   DOWNLOAD_SHOW_FOLDER: 'download:show-folder', // renderer → main: показать в папке (id)
   DOWNLOAD_RETRY:       'download:retry',       // renderer → main: повторить загрузку (id)
+  // Имя по содержимому (см. electron/DownloadNamer.ts). ⚠️ Каналов ДВА, и разделены они
+  // намеренно: «предложить» ничего не трогает на диске, «переименовать» необратимо. Между ними
+  // стоит человек, увидевший предложенное имя.
+  DOWNLOAD_SUGGEST_NAME: 'download:suggest-name', // renderer → main: id → DownloadNameSuggestion
+  DOWNLOAD_RENAME:       'download:rename',       // renderer → main: (id, имя) → DownloadRenameResult
 
   // AI-группировка вкладок (Phase 4)
   TABS_ORGANIZE_APPLY:    'tabs:organize-apply',    // renderer → main: OrganizeCluster[] → сгруппировать
@@ -1141,6 +1146,21 @@ export interface DownloadEntry {
   // Появилось вместе с хранением списка на диске: без этого «Открыть» на записи месячной
   // давности молча ничего не делало бы. Проверяется при чтении файла со списком, не на каждый кадр.
   fileMissing?: boolean;
+}
+
+// Имя файла по содержимому (см. electron/DownloadNamer.ts). Ошибка приезжает СТРОКОЙ для показа
+// человеку: причин отказа много (скан без текста, файл занят, модели нет), и «просто не сработало»
+// на действии, которое он нажал сам, было бы враньём.
+export interface DownloadNameSuggestion {
+  ok: boolean;
+  name?: string;   // предложенное имя ЦЕЛИКОМ, с исходным расширением
+  error?: string;
+}
+
+export interface DownloadRenameResult {
+  ok: boolean;
+  filename?: string; // имя, которое реально легло на диск (могло развестись из-за дубля)
+  error?: string;
 }
 
 // ── AdBlock ─────────────────────────────────────────────────────────────────
