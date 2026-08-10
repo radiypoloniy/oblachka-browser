@@ -1,0 +1,145 @@
+// Хранилище отслеживаемых товаров и их цен (отслеживание товаров, срез 1).
+//
+// Свой файл `tracking.sqlite`, а не таблица в истории — тот же приём «один менеджер, один файл»,
+// что у закладок, паролей, графов и автозаполнения: разный жизненный цикл и разный профиль риска
+// (очистка истории не должна задевать то, что человек поставил на отслеживание).
+import { app } from 'electron';
+import path from 'node:path';
+import type { TrackedProduct, TrackedPricePoint } from '../shared/ipc';
+
+type Database = import('better-sqlite3').Database;
+type BetterSqlite3 = typeof import('better-sqlite3');
+
+// Сколько точек истории отдаём наружу на график. Больше на спарклайне всё равно не различить.
+const MAX_POINTS = 180;
+
+export class TrackingStore {
+  #db: Database | null = null;
+  #dbPath: string;
+
+  constructor(dbPath?: string) {
+    this.#dbPath = dbPath ?? path.join(app.getPath('userData'), 'tracking.sqlite');
+  }
+
+  initialize(): void {
+    let SqliteConstructor: BetterSqlite3 | null = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      SqliteConstructor = require('better-sqlite3') as BetterSqlite3;
+    } catch (e) {
+      console.warn('[Tracking] better-sqlite3 не загружен — отслеживание отключено:', (e as Error).message);
+      return;
+    }
+    try {
+      this.#db = new SqliteConstructor(this.#dbPath);
+      this.#db.pragma('journal_mode = WAL');
+      this.#db.exec(`
+        CREATE TABLE IF NOT EXISTS tracked (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          url        TEXT    NOT NULL UNIQUE,
+          host       TEXT    NOT NULL DEFAULT '',
+          title      TEXT    NOT NULL DEFAULT '',
+          brand      TEXT    NOT NULL DEFAULT '',
+          sku        TEXT    NOT NULL DEFAULT '',
+          gtin       TEXT    NOT NULL DEFAULT '',
+          currency   TEXT    NOT NULL DEFAULT 'RUB',
+          created_at INTEGER NOT NULL
+        );
+        -- ⚠️ Точка цены — отдельная строка на КАЖДОЕ наблюдение, а не поле «текущая цена»: вся
+        -- ценность фичи в динамике, и переписывать одно поле значило бы стирать историю.
+        CREATE TABLE IF NOT EXISTS price_point (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          tracked_id   INTEGER NOT NULL REFERENCES tracked(id) ON DELETE CASCADE,
+          price        REAL    NOT NULL,
+          availability TEXT    NOT NULL DEFAULT '',
+          seen_at      INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_price_point_tracked ON price_point(tracked_id, seen_at);
+      `);
+      this.#db.pragma('foreign_keys = ON');
+      console.log('[Tracking] база инициализирована:', this.#dbPath);
+    } catch (e) {
+      console.warn('[Tracking] база недоступна:', (e as Error).message);
+      this.#db = null;
+    }
+  }
+
+  get available(): boolean { return this.#db !== null; }
+
+  /** Отслеживается ли этот адрес. */
+  idForUrl(url: string): number | null {
+    if (!this.#db) return null;
+    try {
+      const row = this.#db.prepare(`SELECT id FROM tracked WHERE url = ?`).get(url) as { id: number } | undefined;
+      return row?.id ?? null;
+    } catch { return null; }
+  }
+
+  /**
+   * Поставить на отслеживание и сразу записать первую цену.
+   * ⚠️ Идемпотентно по адресу: повторное «отслеживать» на той же странице не заводит второй записи.
+   */
+  track(p: { url: string; host: string; title: string; brand: string; sku: string; gtin: string; currency: string; price: number; availability: string }): number | null {
+    if (!this.#db) return null;
+    try {
+      const existing = this.idForUrl(p.url);
+      if (existing !== null) { this.addPoint(existing, p.price, p.availability); return existing; }
+      const info = this.#db.prepare(`
+        INSERT INTO tracked (url, host, title, brand, sku, gtin, currency, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(p.url, p.host, p.title, p.brand, p.sku, p.gtin, p.currency || 'RUB', Date.now());
+      const id = Number(info.lastInsertRowid);
+      this.addPoint(id, p.price, p.availability);
+      return id;
+    } catch (e) {
+      console.warn('[Tracking] не удалось поставить на отслеживание:', (e as Error).message);
+      return null;
+    }
+  }
+
+  untrack(id: number): void {
+    if (!this.#db) return;
+    try { this.#db.prepare(`DELETE FROM tracked WHERE id = ?`).run(id); } catch { /* нечего удалять */ }
+  }
+
+  /**
+   * Записать наблюдение.
+   *
+   * ⚠️ Одинаковое подряд НЕ пишем: человек открывает карточку по десять раз за вечер, и без этого
+   * график превратился бы в частокол из одинаковых точек, а «цена изменилась» пришлось бы искать
+   * глазами. Меняется цена или наличие — пишем.
+   */
+  addPoint(trackedId: number, price: number, availability: string): void {
+    if (!this.#db || !(price > 0)) return;
+    try {
+      const last = this.#db.prepare(`
+        SELECT price, availability FROM price_point WHERE tracked_id = ? ORDER BY seen_at DESC LIMIT 1
+      `).get(trackedId) as { price: number; availability: string } | undefined;
+      if (last && last.price === price && last.availability === availability) return;
+      this.#db.prepare(`
+        INSERT INTO price_point (tracked_id, price, availability, seen_at) VALUES (?, ?, ?, ?)
+      `).run(trackedId, price, availability, Date.now());
+    } catch (e) {
+      console.warn('[Tracking] точка цены не записалась:', (e as Error).message);
+    }
+  }
+
+  /** Список отслеживаемого вместе с историей — экран рисует по нему и список, и график. */
+  list(): TrackedProduct[] {
+    if (!this.#db) return [];
+    try {
+      const rows = this.#db.prepare(`
+        SELECT id, url, host, title, brand, currency, created_at AS createdAt
+        FROM tracked ORDER BY created_at DESC
+      `).all() as Array<Omit<TrackedProduct, 'points'>>;
+      const stmt = this.#db.prepare(`
+        SELECT price, availability, seen_at AS seenAt FROM price_point
+        WHERE tracked_id = ? ORDER BY seen_at ASC LIMIT ${MAX_POINTS}
+      `);
+      return rows.map((r) => ({ ...r, points: stmt.all(r.id) as TrackedPricePoint[] }));
+    } catch (e) {
+      console.warn('[Tracking] список не прочитался:', (e as Error).message);
+      return [];
+    }
+  }
+}

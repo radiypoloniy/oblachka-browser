@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRequest, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRequest, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type {
   GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure,
@@ -19,6 +19,19 @@ const api: OblakoApi = {
   activateTabInWindow: (windowId: number, tabId: string) => ipcRenderer.invoke(IPC.TAB_ACTIVATE_IN_WINDOW, windowId, tabId) as Promise<void>,
   parseAddressText: (text: string) => ipcRenderer.invoke(IPC.AUTOFILL_PARSE_ADDRESS, text) as Promise<ParsedAddressPart[]>,
   searchStuff: (query: string) => ipcRenderer.invoke(IPC.STUFF_SEARCH, query) as Promise<{ hits: StuffHit[]; degraded: boolean }>,
+  onProductState: (cb: (state: ProductState | null) => void) => {
+    const handler = (_e: unknown, state: ProductState | null) => cb(state);
+    ipcRenderer.on(IPC.PRODUCT_STATE, handler);
+    return () => ipcRenderer.removeListener(IPC.PRODUCT_STATE, handler);
+  },
+  showProductMenu: () => ipcRenderer.invoke(IPC.PRODUCT_MENU) as Promise<void>,
+  listTracked: () => ipcRenderer.invoke(IPC.TRACKING_LIST) as Promise<TrackedProduct[]>,
+  untrackProduct: (id: number) => ipcRenderer.invoke(IPC.TRACKING_UNTRACK, id) as Promise<void>,
+  onTrackingChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.TRACKING_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.TRACKING_CHANGED, handler);
+  },
   searchSettingsSmart: (query: string) => ipcRenderer.invoke(IPC.SETTINGS_SEARCH_SMART, query) as Promise<number[]>,
   getRelatedPages: () => ipcRenderer.invoke(IPC.HISTORY_RELATED) as Promise<SemanticSearchResult[]>,
   // «Итоги дня»: get — только читает готовое, build — явное действие человека (см. DayDigest.ts).

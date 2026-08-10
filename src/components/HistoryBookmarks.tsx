@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Clock, Star, Download, Search } from 'lucide-react';
+import { Clock, Star, Download, Search, TrendingDown } from 'lucide-react';
 import { ModeButton } from './Hub';
 import History from './History';
 import Bookmarks from './Bookmarks';
 import Downloads from './Downloads';
 import StuffSearchView from './StuffSearchView';
+import Tracking from './Tracking';
 import type { DownloadEntry } from '../../shared/ipc';
 
-type Section = 'history' | 'bookmarks' | 'downloads' | 'search';
+type Section = 'history' | 'bookmarks' | 'downloads' | 'search' | 'tracking';
 
 interface Props {
   defaultSection: Section;
@@ -57,12 +58,16 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
               архивов лежит ответ. Разводить его с ними по разным местам значило бы требовать
               знать ответ заранее — ровно то, от чего фича и избавляет. */}
           <ModeButton active={section === 'search'} onClick={() => setSection('search')} icon={<Search size={14} />} label="Везде" />
+          {/* Отслеживание — сюда же (PRICE-TRACKING.md): это тот же архив «мои данные», и свой
+              вид вкладки ради него не заводится, чтобы не менять формат session.json. */}
+          <ModeButton active={section === 'tracking'} onClick={() => setSection('tracking')} icon={<TrendingDown size={14} />} label="Отслеживание" />
         </div>
       </div>
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
         {section === 'history' ? <History onClose={onClose} />
           : section === 'bookmarks' ? <Bookmarks onClose={onClose} />
           : section === 'search' ? <StuffSearchView onClose={onClose} />
+          : section === 'tracking' ? <Tracking />
           : <Downloads downloads={downloads} onClose={onClose} />}
       </div>
     </div>

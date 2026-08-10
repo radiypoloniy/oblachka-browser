@@ -149,7 +149,9 @@ import { suggestFileName, renameDownloadedFile } from './DownloadNamer';
 import { searchSettingsByMeaning } from './SettingsSearch';
 import { getPageChanges } from './PageChanges';
 import { searchStuff } from './StuffSearch';
-import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart, PageChangesResult } from '../shared/ipc';
+import { detectProduct } from './ProductDetector';
+import { TrackingStore } from './TrackingStore';
+import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart, PageChangesResult, ProductState, TrackedProduct } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
 
@@ -311,6 +313,115 @@ let isShuttingDown = false;
 let smartTabSearchBusy = false;
 // То же самое для поиска по настройкам фразой (см. SETTINGS_SEARCH_SMART).
 let settingsSearchBusy = false;
+
+// ── Отслеживание товаров (PRICE-TRACKING.md, срез 1) ────────────────────────
+const tracking = new TrackingStore();
+// Распознанный товар по вкладке. ⚠️ Кэш нужен, чтобы при переключении вкладок не лезть в
+// страницу заново: индикатор обязан отвечать мгновенно, а распознавание асинхронно.
+const productByTab = new Map<string, { url: string; signal: import('../shared/productSignal').ProductSignal }>();
+// ⚠️ Пауза перед распознаванием: JSON-LD у части магазинов дорисовывается скриптом уже после
+// did-navigate (замерено на Ozon — см. PRICE-TRACKING.md).
+const PRODUCT_DETECT_DELAY_MS = 1800;
+
+/** Товар на активной вкладке окна — для индикатора. null: страница не товарная. */
+function productStateFor(win: BrowserWindow): ProductState | null {
+  const ctx = contextForWindow(win);
+  const active = ctx?.tabs.snapshot().find((t) => t.isActive && !t.isHub);
+  if (!active) return null;
+  const found = productByTab.get(active.id);
+  // ⚠️ Сверяем адрес: вкладка могла уйти на другую страницу, а запись в кэше остаться — тогда
+  // индикатор предлагал бы отслеживать товар, которого на экране уже нет.
+  if (!found || found.url !== active.url) return null;
+  return {
+    title: found.signal.name,
+    price: found.signal.price,
+    currency: found.signal.currency,
+    availability: found.signal.availability,
+    tracked: tracking.idForUrl(active.url) !== null,
+  };
+}
+
+function pushProductState(win: BrowserWindow): void {
+  if (win.isDestroyed()) return;
+  contextForWindow(win)?.chromeView.webContents.send(IPC.PRODUCT_STATE, productStateFor(win));
+}
+
+/** Распознать товар на странице и обновить индикатор того окна, которому она принадлежит. */
+async function refreshProductForWebContents(wc: Electron.WebContents): Promise<void> {
+  if (wc.isDestroyed()) return;
+  const ctx = allContexts().find((c) => c.tabs.ownsWebContents(wc.id));
+  if (!ctx) return;
+  const tabId = ctx.tabs.tabIdForWebContents(wc.id);
+  if (!tabId) return;
+  const url = wc.getURL();
+  const signal = await detectProduct(wc);
+  if (signal) {
+    productByTab.set(tabId, { url, signal });
+    // ⚠️ Уже отслеживаемому товару цена записывается САМА, без спроса: человек уже сказал «следи»,
+    // и открытая им страница — самый достоверный и самый дешёвый источник наблюдения.
+    const id = tracking.idForUrl(url);
+    if (id !== null) tracking.addPoint(id, signal.price, signal.availability);
+  } else {
+    productByTab.delete(tabId);
+  }
+  pushProductState(ctx.win);
+}
+
+/**
+ * Меню у индикатора товара. Нативное, как у звезды закладки: поповер здесь не нужен, а нативное
+ * меню рисуется поверх нативной вью страницы без всяких ухищрений.
+ */
+function showProductMenu(win: BrowserWindow): void {
+  const ctx = contextForWindow(win);
+  const active = ctx?.tabs.snapshot().find((t) => t.isActive && !t.isHub);
+  const state = productStateFor(win);
+  if (!active || !state) return;
+  const found = productByTab.get(active.id);
+  if (!found) return;
+
+  const price = `${state.price.toLocaleString('ru-RU')} ${state.currency === 'RUB' ? '₽' : state.currency}`;
+  const template: MenuItemConstructorOptions[] = [
+    { label: state.title.slice(0, 60), enabled: false },
+    { label: `Сейчас ${price}`, enabled: false },
+    { type: 'separator' },
+  ];
+  if (state.tracked) {
+    template.push({
+      label: 'Не отслеживать',
+      click: () => {
+        const id = tracking.idForUrl(active.url);
+        if (id !== null) tracking.untrack(id);
+        pushProductState(win);
+        broadcastToChrome(IPC.TRACKING_CHANGED);
+      },
+    });
+  } else {
+    template.push({
+      label: 'Отслеживать цену',
+      click: () => {
+        tracking.track({
+          url: active.url,
+          host: (() => { try { return new URL(active.url).hostname.replace(/^www\./, ''); } catch { return ''; } })(),
+          title: found.signal.name,
+          brand: found.signal.brand,
+          sku: found.signal.sku,
+          gtin: found.signal.gtin,
+          currency: found.signal.currency,
+          price: found.signal.price,
+          availability: found.signal.availability,
+        });
+        pushProductState(win);
+        broadcastToChrome(IPC.TRACKING_CHANGED);
+      },
+    });
+  }
+  template.push({ type: 'separator' });
+  // ⚠️ Открываем СУЩЕСТВУЮЩИЙ вид вкладки с секцией, а не заводим новый: `kind` попадает в
+  // session.json, и ради одного экрана менять формат сессии с реальными вкладками человека
+  // несоразмерно риску (см. «Безопасность данных» в CLAUDE.md). Секция там уже поддержана.
+  template.push({ label: 'Что я отслеживаю', click: () => { ctx?.tabs.createSpecialTab('history', 'tracking'); } });
+  Menu.buildFromTemplate(template).popup({ window: win });
+}
 // То же для подсказки «вы это уже читали»: один запрос за раз на приложение.
 let relatedBusy = false;
 // И для смыслового Ctrl+F (см. SmartFind.ts). Второй Enter, пока идёт первый поиск, не должен
@@ -805,6 +916,10 @@ function createWindow(role: WindowRole = 'main') {
       void indexVisit(history, url, title, wc).catch((e: unknown) =>
         console.warn('[HistoryIndexer] неожиданная ошибка:', e),
       );
+      // Товар на странице (PRICE-TRACKING.md). ⚠️ С задержкой: JSON-LD у части магазинов
+      // дорисовывается скриптом уже после did-navigate. Ничего не показываем и не пишем — только
+      // запоминаем, чтобы индикатор в тулбаре знал, есть ли тут что отслеживать.
+      setTimeout(() => { void refreshProductForWebContents(wc); }, PRODUCT_DETECT_DELAY_MS);
     },
     (url, title)    => history.updateTitle(url, title),
     ()              => chromeView?.webContents.send(IPC.HISTORY_OPEN),
@@ -828,6 +943,8 @@ function createWindow(role: WindowRole = 'main') {
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
       // её текущее состояние (или null) при каждом реальном переключении.
       passwordAutofill.onActiveTabChanged(win);
+      // Индикатор товара — тоже всегда про АКТИВНУЮ вкладку.
+      pushProductState(win);
     },
     (wc, tabId) => {
       closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); passwordAutofill.onTabClosed(tabId);
@@ -1727,6 +1844,19 @@ function registerIpc() {
   // «Куда я это дел» (AI-IDEAS.md №4) — один поиск по истории, закладкам и загрузкам.
   // Явное действие человека (Enter), поэтому без гейта тёплой модели и пользовательской полосой.
   ipcMain.handle(IPC.STUFF_SEARCH, (_e, query: string) => searchStuff(history, bookmarks, downloads, query));
+
+  // Отслеживание товаров (PRICE-TRACKING.md, срез 1).
+  ipcMain.handle(IPC.PRODUCT_MENU, (e) => {
+    const ctx = contextFromSender(e.sender);
+    if (ctx) showProductMenu(ctx.win);
+  });
+  ipcMain.handle(IPC.TRACKING_LIST, (): TrackedProduct[] => tracking.list());
+  ipcMain.handle(IPC.TRACKING_UNTRACK, (e, id: number) => {
+    tracking.untrack(id);
+    broadcastToChrome(IPC.TRACKING_CHANGED);
+    const ctx = contextFromSender(e.sender);
+    if (ctx) pushProductState(ctx.win);
+  });
 
   // «Итоги дня» (см. DayDigest.ts). GET модель не трогает вовсе — отдаёт готовое или «нет».
   ipcMain.handle(IPC.DIGEST_GET, (): DayDigestState => {
@@ -3184,6 +3314,7 @@ app.whenReady().then(async () => {
   // safeStorage требует app.isReady() — грузим сохранённый (зашифрованный) ключ Gemini здесь,
   // не на верхнем уровне модуля (см. AiKeyStore.ts, заход D шаг 3).
   aiKeyStore.loadFromDisk();
+  tracking.initialize();
   searxngKeyStore.loadFromDisk();
   vpnKeyStore.loadFromDisk();
   skillsStore.loadFromDisk();

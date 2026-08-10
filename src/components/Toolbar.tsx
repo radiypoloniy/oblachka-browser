@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star, VenetianMask } from 'lucide-react';
-import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit } from '../../shared/ipc';
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star, VenetianMask, TrendingDown } from 'lucide-react';
+import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, ProductState } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
@@ -387,6 +387,13 @@ export default function Toolbar({
   // удалил») не давало положить страницу в папку вовсе: единственным местом закладки был корень,
   // и разгребать его приходилось потом руками. Теперь клик сохраняет и сразу предлагает папку —
   // тем же меню, что и Ctrl+D. Удаление никуда не делось, оно последним пунктом того же меню.
+  // ── Индикатор товара (PRICE-TRACKING.md, срез 1) ───────────────────────────
+  // ⚠️ Индикатор, а не всплывающий поповер, и это прямой урок автозаполнения: незаказанная
+  // карточка на каждой странице магазина раздражает быстрее, чем приносит пользу. Значок просто
+  // появляется рядом со звездой, а меню открывается по клику.
+  const [product, setProduct] = useState<ProductState | null>(null);
+  useEffect(() => window.oblako.onProductState(setProduct), []);
+
   const toggleBookmark = () => {
     if (!tab?.url) return;
     setBookmarked(true); // оптимистично — BOOKMARK_CHANGED подтвердит или поправит
@@ -1386,6 +1393,18 @@ export default function Toolbar({
                 style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
                          display: 'inline-flex', color: bookmarked ? 'var(--accent)' : 'var(--text-muted)' }}>
                 <Star size={14} fill={bookmarked ? 'var(--accent)' : 'none'} />
+              </button>
+            )}
+            {/* Индикатор товара: загорается ТОЛЬКО там, где цена реально прочитана из разметки
+                (см. PRICE-TRACKING.md). На магазине без schema.org его просто не будет — обещать
+                отслеживание там, где оно не сработает, нельзя. */}
+            {!isHub && product && (
+              <button
+                title={product.tracked ? 'Отслеживается — показать меню' : 'Отслеживать цену'}
+                onClick={() => { void window.oblako.showProductMenu(); }}
+                style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
+                         display: 'inline-flex', color: product.tracked ? 'var(--accent)' : 'var(--text-muted)' }}>
+                <TrendingDown size={14} />
               </button>
             )}
             {/* Капсула выбора поисковика — только на хабе, в контентных вкладках не рендерится вовсе.

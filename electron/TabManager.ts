@@ -2507,6 +2507,19 @@ export class TabManager {
     return false;
   }
 
+  /**
+   * id вкладки по её webContents. Нужен тем, кто получил в колбэке только `wc` и должен связать
+   * результат со вкладкой (распознавание товара, см. PRICE-TRACKING.md). Сравнение по id — по той
+   * же причине, что в ownsWebContents выше.
+   */
+  tabIdForWebContents(wcId: number): string | null {
+    for (const [id, tab] of this.tabMap) {
+      const wc = tab.view?.webContents;
+      if (wc && !wc.isDestroyed() && wc.id === wcId) return id;
+    }
+    return null;
+  }
+
   // ── Умное имя вкладки (см. electron/TabRenamer.ts) ─────────────────────────
   // Сам текст придумывает модель в main; сюда приезжает готовый результат. Менеджер вкладок про
   // модель не знает — тот же приём, что с пунктом графа в меню (setGraphMenuBuilder).

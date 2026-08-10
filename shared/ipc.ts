@@ -547,6 +547,12 @@ export const IPC = {
   PAGE_CHANGES_GET: 'page:changes-get',
   // «Куда я это дел» — один поиск по истории, закладкам и загрузкам (см. electron/StuffSearch.ts).
   STUFF_SEARCH: 'stuff:search',
+  // Отслеживание товаров (см. electron/TrackingStore.ts, PRICE-TRACKING.md).
+  PRODUCT_STATE:  'product:state',   // main → chrome: что за товар на активной вкладке (или null)
+  PRODUCT_MENU:   'product:menu',    // chrome → main: показать меню у индикатора в тулбаре
+  TRACKING_LIST:  'tracking:list',   // renderer → main: список отслеживаемого с историей цен
+  TRACKING_UNTRACK: 'tracking:untrack', // renderer → main: снять с отслеживания (id)
+  TRACKING_CHANGED: 'tracking:changed', // main → chrome: список изменился
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
@@ -1229,6 +1235,33 @@ export interface StuffHit {
   downloadId?: string;
 }
 
+// Товар на активной вкладке — для индикатора в тулбаре. null означает «страница не товарная»,
+// и это самое частое состояние.
+export interface ProductState {
+  title: string;
+  price: number;
+  currency: string;
+  availability: string;
+  tracked: boolean;
+}
+
+export interface TrackedPricePoint {
+  price: number;
+  availability: string;
+  seenAt: number;
+}
+
+export interface TrackedProduct {
+  id: number;
+  url: string;
+  host: string;
+  title: string;
+  brand: string;
+  currency: string;
+  createdAt: number;
+  points: TrackedPricePoint[];
+}
+
 // ── AdBlock ─────────────────────────────────────────────────────────────────
 export interface AdBlockState {
   enabled: boolean;
@@ -1746,6 +1779,13 @@ export interface OblakoApi {
   parseAddressText(text: string): Promise<ParsedAddressPart[]>;
   /** Поиск по истории, закладкам и загрузкам сразу. degraded — модель не участвовала. */
   searchStuff(query: string): Promise<{ hits: StuffHit[]; degraded: boolean }>;
+  /** Товар на активной вкладке (индикатор в тулбаре) — null, если страница не товарная. */
+  onProductState(cb: (state: ProductState | null) => void): () => void;
+  /** Меню у индикатора товара — нативное, как у звезды закладки. */
+  showProductMenu(): Promise<void>;
+  listTracked(): Promise<TrackedProduct[]>;
+  untrackProduct(id: number): Promise<void>;
+  onTrackingChanged(cb: () => void): () => void;
   /** Поиск по настройкам фразой — второй эшелон, отдаёт индексы SETTINGS_INDEX (settingsIndex.ts). */
   searchSettingsSmart(query: string): Promise<number[]>;
   /** Страницы из своей истории, связанные с открытой сейчас. Пусто — нечего показать. */
