@@ -56,6 +56,15 @@ export class TrackingStore {
         );
         CREATE INDEX IF NOT EXISTS idx_price_point_tracked ON price_point(tracked_id, seen_at);
       `);
+      // ⚠️ Миграция ТОЛЬКО добавлением колонок и по одной, каждая в своём try: база уже лежит у
+      // людей с их данными (срез 1), и перестраивать таблицу ради двух полей незачем. Повторный
+      // запуск ловит «duplicate column name» и идёт дальше — это и есть признак «уже применено».
+      for (const alter of [
+        `ALTER TABLE tracked ADD COLUMN last_checked_at INTEGER NOT NULL DEFAULT 0`,
+        `ALTER TABLE tracked ADD COLUMN last_check_ok INTEGER NOT NULL DEFAULT 1`,
+      ]) {
+        try { this.#db.exec(alter); } catch { /* колонка уже есть */ }
+      }
       this.#db.pragma('foreign_keys = ON');
       console.log('[Tracking] база инициализирована:', this.#dbPath);
     } catch (e) {
@@ -124,12 +133,48 @@ export class TrackingStore {
     }
   }
 
+  /**
+   * Отметить, чем кончилась фоновая проверка.
+   *
+   * ⚠️ Неудачу записываем ТОЖЕ, и это несущее: без неё экран показывал бы последнюю известную цену
+   * как свежую, а человек принимал бы решение о покупке по данным месячной давности, не зная об
+   * этом. «Не смогли проверить» — честный и обязательный исход.
+   */
+  markChecked(id: number, ok: boolean): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare(`UPDATE tracked SET last_checked_at = ?, last_check_ok = ? WHERE id = ?`)
+        .run(Date.now(), ok ? 1 : 0, id);
+    } catch { /* запись отметки не критична */ }
+  }
+
+  /** Что пора проверить: не проверялось дольше указанного срока. Самое давнее — первым. */
+  dueForCheck(olderThanMs: number, limit: number): Array<{ id: number; url: string }> {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT id, url FROM tracked WHERE last_checked_at < ?
+        ORDER BY last_checked_at ASC LIMIT ?
+      `).all(Date.now() - olderThanMs, limit) as Array<{ id: number; url: string }>;
+    } catch { return []; }
+  }
+
+  /** Все отслеживаемые адреса — для проверки по кнопке «проверить сейчас». */
+  allForCheck(): Array<{ id: number; url: string }> {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`SELECT id, url FROM tracked ORDER BY created_at DESC`)
+        .all() as Array<{ id: number; url: string }>;
+    } catch { return []; }
+  }
+
   /** Список отслеживаемого вместе с историей — экран рисует по нему и список, и график. */
   list(): TrackedProduct[] {
     if (!this.#db) return [];
     try {
       const rows = this.#db.prepare(`
-        SELECT id, url, host, title, brand, currency, created_at AS createdAt
+        SELECT id, url, host, title, brand, currency, created_at AS createdAt,
+               last_checked_at AS lastCheckedAt, last_check_ok AS lastCheckOk
         FROM tracked ORDER BY created_at DESC
       `).all() as Array<Omit<TrackedProduct, 'points'>>;
       const stmt = this.#db.prepare(`

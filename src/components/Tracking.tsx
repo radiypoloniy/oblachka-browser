@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { TrendingDown, Trash2, ExternalLink } from 'lucide-react';
+import { TrendingDown, Trash2, ExternalLink, RefreshCw, AlertTriangle } from 'lucide-react';
 import type { TrackedProduct } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 
@@ -35,12 +35,36 @@ function PriceLine({ values, width = 160, height = 34 }: { values: number[]; wid
   );
 }
 
+// «Проверено» человеческими словами. ⚠️ Показываем ИМЕННО давность проверки, а не только цену:
+// цена без даты выглядит свежей всегда, а браузер проверяет только пока открыт.
+function checkedAgo(ts: number): string {
+  if (!ts) return 'ещё не проверялось';
+  const mins = Math.round((Date.now() - ts) / 60000);
+  if (mins < 2) return 'проверено только что';
+  if (mins < 60) return `проверено ${mins} мин назад`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `проверено ${hours} ч назад`;
+  return `проверено ${Math.round(hours / 24)} дн назад`;
+}
+
 export default function Tracking() {
   const [items, setItems] = useState<TrackedProduct[] | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkNote, setCheckNote] = useState('');
 
   const reload = () => { void window.oblako.listTracked().then(setItems); };
   useEffect(() => { reload(); }, []);
   useEffect(() => window.oblako.onTrackingChanged(reload), []);
+
+  async function checkNow() {
+    setChecking(true); setCheckNote('');
+    const res = await window.oblako.checkTrackedNow().catch(() => ({ ok: 0, total: 0 }));
+    setChecking(false);
+    // Честный итог: сколько магазинов ответили. Часть не отвечает никогда (см. PRICE-TRACKING.md),
+    // и делать вид, что проверено всё, нельзя.
+    setCheckNote(res.total === 0 ? '' : `Ответили ${res.ok} из ${res.total}`);
+    reload();
+  }
 
   if (items === null) {
     return <div style={{ padding: 24, color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
@@ -54,9 +78,28 @@ export default function Tracking() {
     }}>
       <div style={{ padding: '18px 24px 12px', borderBottom: '1px solid var(--divider-strong)', flex: 'none' }}>
         <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text-strong)' }}>Отслеживание</div>
-        <div style={{ marginTop: 4, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          Цена записывается, когда вы открываете страницу товара. Значок отслеживания появляется
-          в адресной строке там, где магазин публикует цену в стандартной разметке.
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+          <div style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+            Браузер сам перепроверяет цены раз в сутки, пока открыт. Часть магазинов не отдаёт цену
+            роботу — у таких товаров это будет видно по дате проверки.
+          </div>
+          {checkNote && (
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>{checkNote}</span>
+          )}
+          <button
+            onClick={() => void checkNow()}
+            disabled={checking}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none',
+              padding: '6px 10px', borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--divider-strong)', background: 'transparent',
+              color: 'var(--text-body)', fontSize: 'var(--fs-xs)', cursor: 'default',
+              opacity: checking ? 0.6 : 1,
+            }}
+          >
+            <RefreshCw size={13} />
+            {checking ? 'Проверяю…' : 'Проверить сейчас'}
+          </button>
         </div>
       </div>
 
@@ -104,8 +147,18 @@ export default function Tracking() {
                 <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
                   {[it.host, it.brand].filter(Boolean).join(' · ')}
                   {notes.length > 0 && ` · ${notes.join(', ')}`}
+                  {` · ${checkedAgo(it.lastCheckedAt)}`}
                 </div>
               </div>
+
+              {/* ⚠️ Значок «не удалось проверить» обязателен: без него последняя известная цена
+                  выглядит свежей, и человек решает о покупке по устаревшим данным, не зная этого. */}
+              {it.lastCheckedAt > 0 && !it.lastCheckOk && (
+                <span title="Магазин не ответил на последнюю проверку — цена может быть устаревшей"
+                      style={{ color: 'var(--tone-warm)', display: 'inline-flex', flex: 'none' }}>
+                  <AlertTriangle size={15} />
+                </span>
+              )}
 
               <PriceLine values={prices} />
 

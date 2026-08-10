@@ -151,6 +151,7 @@ import { getPageChanges } from './PageChanges';
 import { searchStuff } from './StuffSearch';
 import { detectProduct } from './ProductDetector';
 import { TrackingStore } from './TrackingStore';
+import { initTrackingChecker, checkAllNow } from './TrackingChecker';
 import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart, PageChangesResult, ProductState, TrackedProduct } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
@@ -1851,6 +1852,13 @@ function registerIpc() {
     if (ctx) showProductMenu(ctx.win);
   });
   ipcMain.handle(IPC.TRACKING_LIST, (): TrackedProduct[] => tracking.list());
+  // ⚠️ Проверка по кнопке идёт БЕЗ пауз и без гейта «давно не проверяли»: человек нажал и ждёт.
+  // Фоновая, наоборот, редкая и с паузами — см. TrackingChecker.
+  ipcMain.handle(IPC.TRACKING_CHECK_NOW, async () => {
+    const res = await checkAllNow();
+    broadcastToChrome(IPC.TRACKING_CHANGED);
+    return res;
+  });
   ipcMain.handle(IPC.TRACKING_UNTRACK, (e, id: number) => {
     tracking.untrack(id);
     broadcastToChrome(IPC.TRACKING_CHANGED);
@@ -3315,6 +3323,7 @@ app.whenReady().then(async () => {
   // не на верхнем уровне модуля (см. AiKeyStore.ts, заход D шаг 3).
   aiKeyStore.loadFromDisk();
   tracking.initialize();
+  initTrackingChecker(tracking);
   searxngKeyStore.loadFromDisk();
   vpnKeyStore.loadFromDisk();
   skillsStore.loadFromDisk();

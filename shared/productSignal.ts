@@ -96,6 +96,26 @@ function priceFromOffers(offers: unknown): { price: number; currency: string; av
  * в магазине без разметки его быть и не должно. Ложное «нашёлся» дороже пропуска: индикатор
  * загорится там, где отслеживать нечего.
  */
+/**
+ * Блоки JSON-LD из СЫРОГО HTML — для самого дешёвого пути проверки: обычный запрос без запуска
+ * страницы. По замеру (PRICE-TRACKING.md) так читается Яндекс.Маркет; остальным нужна вью.
+ *
+ * ⚠️ Регуляркой, а не разбором HTML: нам нужен ровно один тип тега, а тащить парсер разметки в
+ * общий модуль без зависимостей нельзя. Ошибка тут дёшева — блок просто не разберётся как JSON.
+ */
+export function jsonLdBlocksFromHtml(html: string): string[] {
+  const out: string[] = [];
+  if (!html) return out;
+  const re = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const body = (m[1] ?? '').trim();
+    if (body && body.length <= MAX_BLOCK_CHARS) out.push(body);
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
 export function productFromJsonLd(blocks: string[]): ProductSignal | null {
   for (const block of blocks) {
     if (!block || block.length > MAX_BLOCK_CHARS) continue;

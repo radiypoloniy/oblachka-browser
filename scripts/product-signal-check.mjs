@@ -5,7 +5,7 @@
 // только набором случаев.
 //
 // Запуск: npm run product-signal-check
-import { productFromJsonLd, parsePrice, parseAvailability } from '../shared/productSignal.ts';
+import { productFromJsonLd, parsePrice, parseAvailability, jsonLdBlocksFromHtml } from '../shared/productSignal.ts';
 
 let passed = 0;
 let failed = 0;
@@ -94,6 +94,20 @@ check('Product без названия',
   productFromJsonLd(ld({ '@type': 'Product', offers: { price: 100, priceCurrency: 'RUB' } })), null);
 check('битый JSON не роняет разбор', productFromJsonLd(['{ это не json ']), null);
 check('пустая строка', productFromJsonLd(['']), null);
+
+console.log('\n— блоки из сырого HTML (самый дешёвый путь фоновой проверки) —');
+{
+  const html = '<html><head>'
+    + '<script type="application/ld+json">{"@type":"Product","name":"Товар","offers":{"price":"777","priceCurrency":"RUB"}}</script>'
+    + '<script>var x = 1;</script>'
+    + '</head><body>текст</body></html>';
+  check('вытаскивается только ld+json, обычный script не трогается', jsonLdBlocksFromHtml(html).length, 1);
+  check('и он разбирается в товар', brief(productFromJsonLd(jsonLdBlocksFromHtml(html))), 'Товар | 777 RUB | ');
+}
+check('атрибуты в другом порядке и одинарные кавычки',
+  jsonLdBlocksFromHtml(`<script id="a" type='application/ld+json'>{"a":1}</script>`).length, 1);
+check('страница без разметки', jsonLdBlocksFromHtml('<html><body>ничего</body></html>'), []);
+check('пустой ответ сервера', jsonLdBlocksFromHtml(''), []);
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

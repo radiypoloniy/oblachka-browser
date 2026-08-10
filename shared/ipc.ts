@@ -553,6 +553,7 @@ export const IPC = {
   TRACKING_LIST:  'tracking:list',   // renderer → main: список отслеживаемого с историей цен
   TRACKING_UNTRACK: 'tracking:untrack', // renderer → main: снять с отслеживания (id)
   TRACKING_CHANGED: 'tracking:changed', // main → chrome: список изменился
+  TRACKING_CHECK_NOW: 'tracking:check-now', // renderer → main: проверить всё сейчас (кнопка)
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
@@ -1259,6 +1260,11 @@ export interface TrackedProduct {
   brand: string;
   currency: string;
   createdAt: number;
+  // Когда в последний раз ходили проверять и вышло ли. ⚠️ Неудача хранится и показывается: иначе
+  // последняя известная цена выглядела бы свежей, а решение о покупке принималось бы по данным
+  // непонятной давности.
+  lastCheckedAt: number;
+  lastCheckOk: number;
   points: TrackedPricePoint[];
 }
 
@@ -1785,6 +1791,8 @@ export interface OblakoApi {
   showProductMenu(): Promise<void>;
   listTracked(): Promise<TrackedProduct[]>;
   untrackProduct(id: number): Promise<void>;
+  /** Проверить все отслеживаемые товары сейчас (кнопка). Возвращает, сколько удалось. */
+  checkTrackedNow(): Promise<{ ok: number; total: number }>;
   onTrackingChanged(cb: () => void): () => void;
   /** Поиск по настройкам фразой — второй эшелон, отдаёт индексы SETTINGS_INDEX (settingsIndex.ts). */
   searchSettingsSmart(query: string): Promise<number[]>;
