@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard, webContents, nativeImage, screen, nativeTheme } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell, session, dialog, clipboard, webContents, nativeImage, screen, nativeTheme, Notification } from 'electron';
 import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent, applyClientHints } from './BrowserIdentity';
@@ -10,6 +10,9 @@ import type { WindowRole } from './WindowRegistry';
 registerSchemesAsPrivileged();
 // Тоже до ready и до первой сессии: иначе часть запросов уйдёт со старым UA.
 applyChromeUserAgent();
+// ⚠️ Без AppUserModelID Windows не связывает тост с приложением: уведомление приходит безымянным
+// (а на части систем не приходит вовсе). Значение обязано совпадать с appId из electron-builder.yml.
+app.setAppUserModelId('com.oblako.browser');
 // ⚠️ ОПЫТ, а не установленный факт. Гипотеза: колесо мыши прокручивает наш интерфейс ступенями
 // по ~100 px за щелчок, тогда как Chrome на Windows анимирует это движение, — отсюда ощущение
 // «дёшево крутится». Проверить замером не удалось: ни Input.dispatchMouseEvent с колесом, ни
@@ -151,7 +154,7 @@ import { getPageChanges } from './PageChanges';
 import { searchStuff } from './StuffSearch';
 import { detectProduct } from './ProductDetector';
 import { TrackingStore } from './TrackingStore';
-import { initTrackingChecker, checkAllNow } from './TrackingChecker';
+import { initTrackingChecker, checkAllNow, setTrackingEventHandler } from './TrackingChecker';
 import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart, PageChangesResult, ProductState, TrackedProduct } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
@@ -1852,6 +1855,9 @@ function registerIpc() {
     if (ctx) showProductMenu(ctx.win);
   });
   ipcMain.handle(IPC.TRACKING_LIST, (): TrackedProduct[] => tracking.list());
+  ipcMain.handle(IPC.TRACKING_EVENTS, () => tracking.listEvents());
+  ipcMain.handle(IPC.TRACKING_NOTIFY_GET, () => tracking.notificationsEnabled());
+  ipcMain.handle(IPC.TRACKING_NOTIFY_SET, (_e, on: boolean) => { tracking.setNotificationsEnabled(on); });
   // ⚠️ Проверка по кнопке идёт БЕЗ пауз и без гейта «давно не проверяли»: человек нажал и ждёт.
   // Фоновая, наоборот, редкая и с паузами — см. TrackingChecker.
   ipcMain.handle(IPC.TRACKING_CHECK_NOW, async () => {
@@ -3324,6 +3330,21 @@ app.whenReady().then(async () => {
   aiKeyStore.loadFromDisk();
   tracking.initialize();
   initTrackingChecker(tracking);
+  // ⚠️ Тост Windows — нативный (Notification), свой центр уведомлений не нужен: система даёт и
+  // очередь, и «не беспокоить», и историю. Клик по тосту открывает страницу товара — иначе он
+  // сообщает новость, с которой ничего нельзя сделать.
+  setTrackingEventHandler(({ title, url, text }) => {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({ title: title.slice(0, 80), body: text });
+    n.on('click', () => {
+      const ctx = mainContext() ?? allContexts()[0];
+      if (!ctx || ctx.win.isDestroyed()) return;
+      if (ctx.win.isMinimized()) ctx.win.restore();
+      ctx.win.focus();
+      ctx.tabs.createTab(url);
+    });
+    n.show();
+  });
   searxngKeyStore.loadFromDisk();
   vpnKeyStore.loadFromDisk();
   skillsStore.loadFromDisk();

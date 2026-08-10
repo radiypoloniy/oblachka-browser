@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { TrendingDown, Trash2, ExternalLink, RefreshCw, AlertTriangle } from 'lucide-react';
-import type { TrackedProduct } from '../../shared/ipc';
+import { TrendingDown, Trash2, ExternalLink, RefreshCw, AlertTriangle, Bell, BellOff } from 'lucide-react';
+import type { TrackedProduct, TrackingEvent } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 
 // Экран «что я отслеживаю» (PRICE-TRACKING.md, срез 1). Компонент только рисует: список и историю
@@ -61,9 +61,14 @@ export default function Tracking() {
   const [items, setItems] = useState<TrackedProduct[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkNote, setCheckNote] = useState('');
+  const [events, setEvents] = useState<TrackingEvent[]>([]);
+  const [notify, setNotify] = useState(true);
 
-  const reload = () => { void window.oblako.listTracked().then(setItems); };
-  useEffect(() => { reload(); }, []);
+  const reload = () => {
+    void window.oblako.listTracked().then(setItems);
+    void window.oblako.listTrackingEvents().then(setEvents);
+  };
+  useEffect(() => { reload(); void window.oblako.getTrackingNotify().then(setNotify); }, []);
   useEffect(() => window.oblako.onTrackingChanged(reload), []);
 
   async function checkNow() {
@@ -96,6 +101,22 @@ export default function Tracking() {
           {checkNote && (
             <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>{checkNote}</span>
           )}
+          {/* ⚠️ Тумблер обязателен: уведомления, которые нельзя выключить, — это не забота, а
+              навязчивость. Журнал при этом пишется всегда: «не дёргай меня» ≠ «мне неинтересно». */}
+          <button
+            title={notify ? 'Уведомления включены' : 'Уведомления выключены'}
+            onClick={() => { const next = !notify; setNotify(next); void window.oblako.setTrackingNotify(next); }}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none',
+              padding: '6px 10px', borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--divider-strong)', background: 'transparent',
+              color: notify ? 'var(--text-body)' : 'var(--text-faint)',
+              fontSize: 'var(--fs-xs)', cursor: 'default',
+            }}
+          >
+            {notify ? <Bell size={13} /> : <BellOff size={13} />}
+            {notify ? 'Уведомлять' : 'Молча'}
+          </button>
           <button
             onClick={() => void checkNow()}
             disabled={checking}
@@ -114,6 +135,41 @@ export default function Tracking() {
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px 16px' }}>
+        {/* Журнал событий: тост живёт секунды и его легко пропустить, а «что случилось, пока меня
+            не было» — главный вопрос к отслеживанию. */}
+        {events.length > 0 && (
+          <div style={{ margin: '4px 0 14px' }}>
+            <div style={{
+              padding: '0 12px 6px', fontSize: 'var(--fs-xs)', fontWeight: 600,
+              color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 'var(--ls-caps)',
+            }}>Что произошло</div>
+            {events.slice(0, 8).map((ev) => (
+              <button
+                key={ev.id}
+                onClick={() => { void window.oblako.createTab(ev.url); }}
+                style={{
+                  display: 'flex', alignItems: 'baseline', gap: 8, width: '100%',
+                  padding: '6px 12px', border: 'none', background: 'transparent',
+                  cursor: 'default', textAlign: 'left',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{
+                  flex: 'none', width: 8, height: 8, borderRadius: 999,
+                  background: ev.kind === 'drop' || ev.kind === 'back' ? 'var(--tone-green)' : 'var(--tone-warm)',
+                }} />
+                <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ color: 'var(--text-strong)' }}>{ev.title}</span>{' — '}{ev.text}
+                </span>
+                <span style={{ flex: 'none', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+                  {new Date(ev.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {items.length === 0 && (
           <div style={{
             padding: '28px 12px', display: 'flex', alignItems: 'center', gap: 8,

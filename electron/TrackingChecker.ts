@@ -12,6 +12,7 @@ import type { TrackingStore } from './TrackingStore';
 import { detectProduct } from './ProductDetector';
 import { jsonLdBlocksFromHtml, productFromJsonLd, type ProductSignal } from '../shared/productSignal';
 import { allContexts } from './WindowRegistry';
+import { detectEvent, describeEvent } from '../shared/priceEvents';
 
 // Как часто просыпаемся посмотреть, не пора ли кого проверить.
 const TICK_MS = 60 * 60 * 1000;          // час
@@ -82,6 +83,11 @@ async function checkView(url: string): Promise<ProductSignal | null> {
   }
 }
 
+// Кому сообщать о событиях. Вынесено наружу, чтобы модуль не знал ни про Notification, ни про
+// окна: его дело — проверить и заметить изменение.
+let onEvent: ((p: { id: number; title: string; url: string; text: string }) => void) | null = null;
+export function setTrackingEventHandler(fn: typeof onEvent): void { onEvent = fn; }
+
 async function checkOne(item: { id: number; url: string }): Promise<boolean> {
   // ⚠️ Запоминаем, КАКИМ путём удалось: от этого зависит, как часто мы будем сюда возвращаться.
   const raw = await checkRaw(item.url);
@@ -90,8 +96,21 @@ async function checkOne(item: { id: number; url: string }): Promise<boolean> {
     store?.markChecked(item.id, false);
     return false;
   }
+  // ⚠️ Сравниваем ДО записи новой точки: после записи «предыдущим» стало бы само наблюдение.
+  const prev = store?.lastPoint(item.id) ?? null;
   store?.addPoint(item.id, signal.price, signal.availability);
   store?.markChecked(item.id, true, raw ? 0 : 1);
+
+  const event = detectEvent(prev, { price: signal.price, availability: signal.availability });
+  if (event && store) {
+    const text = describeEvent(event, signal.currency);
+    store.addEvent(item.id, event.kind, text);
+    // Тост — только если человек его не выключал. Журнал пишется в любом случае: выключенные
+    // уведомления не означают «мне неинтересно», они означают «не дёргай меня сейчас».
+    if (store.notificationsEnabled()) {
+      onEvent?.({ id: item.id, title: signal.name, url: item.url, text });
+    }
+  }
   return true;
 }
 

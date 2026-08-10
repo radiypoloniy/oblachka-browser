@@ -554,6 +554,9 @@ export const IPC = {
   TRACKING_UNTRACK: 'tracking:untrack', // renderer → main: снять с отслеживания (id)
   TRACKING_CHANGED: 'tracking:changed', // main → chrome: список изменился
   TRACKING_CHECK_NOW: 'tracking:check-now', // renderer → main: проверить всё сейчас (кнопка)
+  TRACKING_EVENTS: 'tracking:events',       // renderer → main: журнал событий
+  TRACKING_NOTIFY_GET: 'tracking:notify-get', // renderer → main: включены ли уведомления
+  TRACKING_NOTIFY_SET: 'tracking:notify-set', // renderer → main: включить/выключить
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
@@ -1246,6 +1249,16 @@ export interface ProductState {
   tracked: boolean;
 }
 
+// Событие отслеживания: подешевело, подорожало, кончилось, вернулось, заканчивается.
+export interface TrackingEvent {
+  id: number;
+  kind: string;
+  text: string;
+  at: number;
+  title: string;
+  url: string;
+}
+
 export interface TrackedPricePoint {
   price: number;
   availability: string;
@@ -1793,6 +1806,9 @@ export interface OblakoApi {
   untrackProduct(id: number): Promise<void>;
   /** Проверить все отслеживаемые товары сейчас (кнопка). Возвращает, сколько удалось. */
   checkTrackedNow(): Promise<{ ok: number; total: number }>;
+  listTrackingEvents(): Promise<TrackingEvent[]>;
+  getTrackingNotify(): Promise<boolean>;
+  setTrackingNotify(on: boolean): Promise<void>;
   onTrackingChanged(cb: () => void): () => void;
   /** Поиск по настройкам фразой — второй эшелон, отдаёт индексы SETTINGS_INDEX (settingsIndex.ts). */
   searchSettingsSmart(query: string): Promise<number[]>;

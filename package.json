@@ -28,6 +28,7 @@
     "text-diff-check": "node --experimental-strip-types scripts/text-diff-check.mjs",
     "word-match-check": "node --experimental-strip-types scripts/word-match-check.mjs",
     "product-signal-check": "node --experimental-strip-types scripts/product-signal-check.mjs",
+    "price-events-check": "node --experimental-strip-types scripts/price-events-check.mjs",
     "address-parse-check": "node --experimental-strip-types scripts/address-parse-check.mjs",
     "ai-bench": "node scripts/ai-bench.mjs",
     "price-probe": "node scripts/price-probe.mjs",

@@ -5,7 +5,7 @@
 // (очистка истории не должна задевать то, что человек поставил на отслеживание).
 import { app } from 'electron';
 import path from 'node:path';
-import type { TrackedProduct, TrackedPricePoint } from '../shared/ipc';
+import type { TrackedProduct, TrackedPricePoint, TrackingEvent } from '../shared/ipc';
 
 type Database = import('better-sqlite3').Database;
 type BetterSqlite3 = typeof import('better-sqlite3');
@@ -55,6 +55,19 @@ export class TrackingStore {
           seen_at      INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_price_point_tracked ON price_point(tracked_id, seen_at);
+        -- ⚠️ Журнал событий нужен, даже если человек увидит тост: тост живёт секунды и его легко
+        -- пропустить, а «что случилось, пока меня не было» — главный вопрос к отслеживанию.
+        CREATE TABLE IF NOT EXISTS event (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          tracked_id INTEGER NOT NULL REFERENCES tracked(id) ON DELETE CASCADE,
+          kind       TEXT    NOT NULL,
+          text       TEXT    NOT NULL,
+          at         INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_event_at ON event(at DESC);
+        -- Мелкие настройки самого отслеживания (тумблер уведомлений). Свой ключ-значение, чтобы
+        -- не тянуть общий SettingsManager ради одного флага.
+        CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       `);
       // ⚠️ Миграция ТОЛЬКО добавлением колонок и по одной, каждая в своём try: база уже лежит у
       // людей с их данными (срез 1), и перестраивать таблицу ради двух полей незачем. Повторный
@@ -182,6 +195,55 @@ export class TrackingStore {
       return this.#db.prepare(`SELECT id, url FROM tracked ORDER BY created_at DESC`)
         .all() as Array<{ id: number; url: string }>;
     } catch { return []; }
+  }
+
+  /** Последнее наблюдение — с ним сравнивается новое, чтобы понять, случилось ли событие. */
+  lastPoint(trackedId: number): { price: number; availability: string } | null {
+    if (!this.#db) return null;
+    try {
+      const row = this.#db.prepare(`
+        SELECT price, availability FROM price_point WHERE tracked_id = ? ORDER BY seen_at DESC LIMIT 1
+      `).get(trackedId) as { price: number; availability: string } | undefined;
+      return row ?? null;
+    } catch { return null; }
+  }
+
+  addEvent(trackedId: number, kind: string, text: string): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare(`INSERT INTO event (tracked_id, kind, text, at) VALUES (?, ?, ?, ?)`)
+        .run(trackedId, kind, text, Date.now());
+    } catch (e) {
+      console.warn('[Tracking] событие не записалось:', (e as Error).message);
+    }
+  }
+
+  listEvents(limit = 40): TrackingEvent[] {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT e.id, e.kind, e.text, e.at, t.title, t.url
+        FROM event e JOIN tracked t ON t.id = e.tracked_id
+        ORDER BY e.at DESC LIMIT ?
+      `).all(limit) as TrackingEvent[];
+    } catch { return []; }
+  }
+
+  /** Тумблер уведомлений. По умолчанию ВКЛЮЧЕНО: человек сам поставил товар на слежение. */
+  notificationsEnabled(): boolean {
+    if (!this.#db) return false;
+    try {
+      const row = this.#db.prepare(`SELECT value FROM meta WHERE key = 'notify'`).get() as { value: string } | undefined;
+      return row?.value !== '0';
+    } catch { return true; }
+  }
+
+  setNotificationsEnabled(on: boolean): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare(`INSERT INTO meta (key, value) VALUES ('notify', ?)
+                        ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(on ? '1' : '0');
+    } catch { /* не критично */ }
   }
 
   /** Список отслеживаемого вместе с историей — экран рисует по нему и список, и график. */
