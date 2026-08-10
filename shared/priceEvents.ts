@@ -28,6 +28,11 @@ export interface PriceEvent {
 // считалось бы новостью. Событие должно быть заметно И относительно, И по деньгам.
 const MIN_PERCENT = 3;
 const MIN_ABS = 50;
+// ⚠️ …но у двойного порога есть дыра, и её нашёл живой прогон: биты за 239 ₽ подешевели до 202 —
+// это −15%, то есть именно та новость, ради которой дешёвый товар и ставят на слежение, — а
+// рублёвый порог её проглотил (37 < 50). Крупное ОТНОСИТЕЛЬНОЕ движение говорит само за себя
+// независимо от суммы: человек следит за этим товаром, а не за абстрактными рублями.
+const BIG_PERCENT = 10;
 
 /** Наличие, при котором товар можно купить. Пустая строка — магазин не сказал, считаем что есть. */
 function inStock(a: string): boolean {
@@ -56,7 +61,11 @@ export function detectEvent(prev: PriceObservation | null, next: PriceObservatio
   const diff = next.price - prev.price;
   if (diff === 0) return null;
   const percent = (diff / prev.price) * 100;
-  if (Math.abs(percent) < MIN_PERCENT || Math.abs(diff) < MIN_ABS) return null;
+  const big = Math.abs(percent) >= BIG_PERCENT;
+  if (!big && (Math.abs(percent) < MIN_PERCENT || Math.abs(diff) < MIN_ABS)) return null;
+  // Совсем копеечное движение отсекаем всегда, каким бы крупным ни был процент: на товаре за
+  // 30 ₽ «−15%» это 4 рубля, и дёргать человека нечем.
+  if (Math.abs(diff) < 10) return null;
   return { ...base, kind: diff < 0 ? 'drop' : 'rise', percent: Math.round(percent) };
 }
 
