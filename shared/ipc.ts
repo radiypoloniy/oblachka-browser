@@ -714,6 +714,10 @@ export const IPC = {
   // Гостевая страница → main: «что это за поля?» для тех, что не осилила эвристика. Ответ —
   // карта «индекс → категория» из кэша или от локальной модели (см. AutofillFieldMapper.ts).
   AUTOFILL_MAP_FIELDS: 'autofill:map-fields',
+  // Вставленная в поле строка, похожая на адрес целиком (см. electron/AddressParser.ts).
+  // ⚠️ Текст читает ТОЛЬКО локальная модель в main; фильтр «похоже ли это на адрес» стоит на
+  // стороне страницы (preload-content), чтобы случайный текст из буфера сюда не приезжал вовсе.
+  AUTOFILL_PASTE_BLOB: 'autofill:paste-blob', // гостевая страница → TabManager: { text, rect }
   AUTOFILL_SUBMIT:      'autofill:submit',      // гостевая страница → TabManager: { kind, fields } при отправке формы (offer-save)
 
   // Менеджер паролей, шаг 2 — индикатор-«ключ» в omnibox + поповер (см. PasswordIndicatorPopover.tsx,

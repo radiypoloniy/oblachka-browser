@@ -24,7 +24,11 @@ export type AutofillPopoverState =
   | { kind: 'address'; addresses: AddressProfile[] }
   | { kind: 'card'; cards: CardMeta[] }
   | { kind: 'save-address'; title: string; sub: string }
-  | { kind: 'save-card'; title: string; sub: string };
+  | { kind: 'save-card'; title: string; sub: string }
+  // Разбор вставленной строки (AI-IDEAS.md №1): предпросмотр того, что ляжет в поля.
+  // ⚠️ Показываем ЧАСТИ, а не «разложить?» одной кнопкой: цена ошибки разбора — чужой индекс
+  // в форме доставки, и увидеть его человек обязан ДО подстановки, а не после отправки заказа.
+  | { kind: 'parse-address'; parts: { label: string; value: string }[] };
 
 interface WindowPopover {
   win: BrowserWindow;
@@ -40,15 +44,20 @@ let ipcRegistered = false;
 let onClosedCb: ((win: BrowserWindow) => void) | null = null;
 let onPickCb: ((win: BrowserWindow, id: number) => void) | null = null;
 let onSaveCb: ((win: BrowserWindow) => void) | null = null;
+let onApplyCb: ((win: BrowserWindow) => void) | null = null;
 
 export function initAutofillPopover(
   onClosed: (win: BrowserWindow) => void,
   onPick: (win: BrowserWindow, id: number) => void,
   onSave: (win: BrowserWindow) => void,
+  // ⚠️ Отдельный колбэк от onSave, а не тот же: «сохранить в сейф» и «разложить по полям» —
+  // разные действия с разной ценой ошибки, и путать их в одном канале нельзя.
+  onApply: (win: BrowserWindow) => void,
 ): void {
   onClosedCb = onClosed;
   onPickCb = onPick;
   onSaveCb = onSave;
+  onApplyCb = onApply;
 }
 
 function stateFor(win: BrowserWindow): WindowPopover {
@@ -125,6 +134,12 @@ function ensureIpcRegistered(): void {
     const st = stateBySender(e.sender);
     if (!st) return;
     onSaveCb?.(st.win);
+    closeAutofillPopover(st.win);
+  });
+  ipcMain.on('autofill-popover:apply', (e) => {
+    const st = stateBySender(e.sender);
+    if (!st) return;
+    onApplyCb?.(st.win);
     closeAutofillPopover(st.win);
   });
 }

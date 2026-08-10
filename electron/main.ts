@@ -116,6 +116,7 @@ import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSugges
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
 import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
 import * as autofillOrchestrator from './AutofillOrchestrator';
+import { parseAddressBlob } from './AddressParser';
 import { initVpnPopover, showVpnPopover, closeVpnPopover, syncVpnPopoverAnchorBounds, syncVpnPopoverActiveUrl, broadcastVpnState } from './VpnPopoverManager';
 import { initDownloadsPopover, showDownloadsPopover, closeDownloadsPopover, syncDownloadsPopoverAnchorBounds, broadcastDownloads, setDuplicatePrompt, setDuplicateDecisionHandler } from './DownloadsPopoverManager';
 import { initSitePopover, showSitePopover, closeSitePopover, syncSitePopoverAnchorBounds, isSitePopoverOpen } from './SitePopoverManager';
@@ -572,7 +573,9 @@ function wireSharedSessions(): void {
   // Выбор в поповере: адрес подставляем сразу; карту — только после подтверждения Windows Hello
   // (полный номер — чувствительный, тот же гейт, что показ пароля/номера в настройках).
   initAutofillPopover(
-    () => {},
+    // Поповер закрылся (крестик, клик мимо, Esc) — незавершённый разбор вставки забываем:
+    // молчаливое согласие тут недопустимо, значения не должны пережить отказ.
+    (w) => { autofillOrchestrator.forgetParsedPaste(w); },
     (w, id) => {
       if (autofillOrchestrator.getLastKind(w) === 'card') {
         void ensurePasswordAuth('Заполнить данные карты').then((ok) => {
@@ -584,6 +587,8 @@ function wireSharedSessions(): void {
     },
     // «Сохранить» из предложения offer-save — кладём в хранилище и обновляем список в настройках.
     (w) => { if (autofillOrchestrator.saveSubmitted(w)) broadcastToChrome(IPC.AUTOFILL_CHANGED); },
+    // «Разложить» из предложения разбора вставки — подставляем в ту вкладку, где вставляли.
+    (w) => { autofillOrchestrator.handleApplyParsedPaste(w); },
   );
   // Менеджер паролей, шаг 2: индикатор push идёт в chrome (не в конкретную вкладку) —
   // PASSWORDS_CHANGED переиспользует существующий канал шага 1 (список в Settings→Пароли).
@@ -892,6 +897,28 @@ function createWindow(role: WindowRole = 'main') {
   // смене вкладки, её закрытии или навигации. На форме входа, где он всплывал по ошибке, это
   // означало карточку, висящую над полем до самого ухода со страницы.
   tabs.setOnAutofillDismiss(() => closeAutofillPopover(win));
+
+  // Вставленная в поле строка с адресом целиком (AI-IDEAS.md №1) → разбираем локальной моделью и
+  // ПРЕДЛАГАЕМ разложить. Ничего не подставляем до явного «Разложить».
+  // ⚠️ В инкогнито не лезем: приватная вкладка не оставляет следов, а разбор адреса — работа с
+  // самыми личными данными, которую человек в этом режиме точно не заказывал (то же решение, что
+  // у offer-save выше и у списка загрузок).
+  tabs.setOnAutofillPasteBlob((tabId, text, rect) => {
+    if (!tabs || tabs.isIncognito(tabId)) return;
+    void parseAddressBlob(text).then((parts) => {
+      if (parts.length === 0 || win.isDestroyed()) return;
+      // За время разбора человек мог уйти со страницы или закрыть вкладку — тогда предлагать нечего.
+      if (!tabs || tabs.snapshot().every((t) => t.id !== tabId)) return;
+      const state = autofillOrchestrator.handleParsedPaste(win, tabId, parts);
+      if (!state) return;
+      const viewBounds = tabs.getTabViewBounds(tabId);
+      syncAutofillPopoverAnchorBounds(win, {
+        x: viewBounds.x + rect.x, y: viewBounds.y + rect.y,
+        width: rect.width, height: rect.height,
+      });
+      showAutofillPopover(win, state);
+    }).catch((e) => console.warn('[address-parse] ошибка:', e));
+  });
 
   // Ссылка в стороннее приложение, открытая новым окном (частый способ уйти на оплату).
   tabs.setOnExternalOpen((url, fromHost) => { void openExternalWithConsent(win, url, fromHost); });

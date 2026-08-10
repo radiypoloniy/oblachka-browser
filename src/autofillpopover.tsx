@@ -11,13 +11,15 @@ type AutofillPopoverState =
   | { kind: 'address'; addresses: AddressProfile[] }
   | { kind: 'card'; cards: CardMeta[] }
   | { kind: 'save-address'; title: string; sub: string }
-  | { kind: 'save-card'; title: string; sub: string };
+  | { kind: 'save-card'; title: string; sub: string }
+  | { kind: 'parse-address'; parts: { label: string; value: string }[] };
 
 declare global {
   interface Window {
     autofillPopover: {
       pick: (id: number) => void;
       save: () => void;
+      apply: () => void;
       close: () => void;
       reportHeight: (px: number) => void;
       onShow: (cb: (state: AutofillPopoverState) => void) => () => void;
@@ -91,6 +93,38 @@ function AutofillPopoverApp() {
           <div style={{ display: 'flex', gap: 8, padding: '4px 14px 12px', justifyContent: 'flex-end' }}>
             <button onClick={() => window.autofillPopover.close()} style={btnGhost}>Не сохранять</button>
             <button onClick={() => window.autofillPopover.save()} style={btnPrimary}>Сохранить</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Разбор вставленной строки (AI-IDEAS.md №1). ⚠️ Части показываем ЦЕЛИКОМ и построчно, а не
+  // одной сводкой: человек должен глазами проверить индекс и телефон до подстановки — увидеть
+  // чужой индекс в уже отправленном заказе поздно.
+  if (state.kind === 'parse-address') {
+    return (
+      <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
+        <div ref={cardRef} style={cardShell}>
+          <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <MapPin size={18} style={{ color: 'var(--text-muted)', flex: 'none' }} />
+            <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+              Разложить по полям?
+            </div>
+          </div>
+          <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {state.parts.map((p) => (
+              <div key={p.label} style={{ display: 'flex', gap: 8, fontSize: 'var(--fs-xs)' }}>
+                <span style={{ width: 62, flex: 'none', color: 'var(--text-faint)' }}>{p.label}</span>
+                <span style={{ flex: 1, minWidth: 0, color: 'var(--text-body)', wordBreak: 'break-word' }}>
+                  {p.value}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, padding: '10px 14px 12px', justifyContent: 'flex-end' }}>
+            <button onClick={() => window.autofillPopover.close()} style={btnGhost}>Не надо</button>
+            <button onClick={() => window.autofillPopover.apply()} style={btnPrimary}>Разложить</button>
           </div>
         </div>
       </div>

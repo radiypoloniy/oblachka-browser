@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('autofillPopover', {
   save:         () => ipcRenderer.send('autofill-popover:save'),
   close:        () => ipcRenderer.send('autofill-popover:close'),
   reportHeight: (px: number) => ipcRenderer.send('autofill-popover:height', px),
+  // Разложить вставленную строку по полям (см. AutofillPopoverManager: отдельный канал от save).
+  apply: () => ipcRenderer.send('autofill-popover:apply'),
   onShow: (cb: (state: AutofillPopoverState) => void) => {
     const handler = (_e: unknown, state: AutofillPopoverState) => cb(state);
     ipcRenderer.on('autofill-popover:show', handler);

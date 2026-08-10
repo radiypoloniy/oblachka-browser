@@ -306,6 +306,7 @@ export class TabManager {
   private onPasswordFieldIconClickCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void;
   // Автозаполнение форм — фокус на поле адреса/карты (см. wirePageEvents). url — из wc.getURL().
   private onAutofillFieldFocusCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void;
+  private onAutofillPasteBlobCb?: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void;
   // Автозаполнение — страница просит убрать поповер (Esc, уход фокуса, прокрутка).
   private onAutofillDismissCb?: () => void;
   // Автозаполнение — отправка формы с данными адреса/карты (offer-save). url — из wc.getURL().
@@ -1381,6 +1382,16 @@ export class TabManager {
         this.onAutofillFieldFocusCb?.(id, payload.rect, payload.kind, wc.getURL());
       } catch (e) {
         console.warn('[TabMgr] onAutofillFieldFocusCb error:', (e as Error).message);
+      }
+    });
+    // Вставленная в поле строка, похожая на адрес одной строкой (AI-IDEAS.md №1). Текст пришёл от
+    // страницы, но наружу он не идёт: его читает локальная модель в main.
+    wc.ipc.on(IPC.AUTOFILL_PASTE_BLOB, (_e, payload: { text: string; rect: { x: number; y: number; width: number; height: number } }) => {
+      if (!mine()) return;
+      try {
+        this.onAutofillPasteBlobCb?.(id, payload.text, payload.rect);
+      } catch (e) {
+        console.warn('[TabMgr] onAutofillPasteBlobCb error:', (e as Error).message);
       }
     });
     // Страница просит убрать поповер (Esc, уход фокуса, прокрутка) — см. AUTOFILL_DISMISS.
@@ -3072,6 +3083,9 @@ export class TabManager {
   // Сеттером, а не параметром конструктора: список параметров там уже неприлично длинный, а эта
   // подписка ставится тем же куском main.ts, что и остальные «поздние» колбэки окна.
   setOnAutofillDismiss(cb: () => void): void { this.onAutofillDismissCb = cb; }
+  setOnAutofillPasteBlob(cb: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void): void {
+    this.onAutofillPasteBlobCb = cb;
+  }
 
   // source — откуда пришёл ввод. Слой хрома принадлежит окну навсегда и никуда не переезжает;
   // вкладка — может (см. detachTabForMove), и это решает всё, см. гвард ниже.

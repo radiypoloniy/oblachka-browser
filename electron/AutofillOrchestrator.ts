@@ -21,6 +21,10 @@ interface WindowAutofill {
   // Данные из отправленной формы, ожидающие подтверждения «Сохранить» (offer-save). Полный номер
   // карты живёт здесь в main до явного согласия пользователя; в поповер уходит только маска.
   pendingSave: { kind: 'address'; input: AddressInput } | { kind: 'card'; input: CardInput } | null;
+  // Разобранная вставленная строка, ждущая подтверждения «Разложить» (AI-IDEAS.md №1).
+  // ⚠️ Держим ЗДЕСЬ, в main, а не в поповере: наружу уходит только предпросмотр, а сами значения
+  // до согласия человека никуда не подставляются.
+  pendingParse: { tabId: string; fields: AutofillFillFields } | null;
 }
 
 const perWindow = new Map<number, WindowAutofill>();
@@ -28,7 +32,7 @@ const perWindow = new Map<number, WindowAutofill>();
 function stateFor(win: BrowserWindow): WindowAutofill {
   const existing = perWindow.get(win.id);
   if (existing) return existing;
-  const created: WindowAutofill = { focusTabId: null, kind: null, pendingSave: null };
+  const created: WindowAutofill = { focusTabId: null, kind: null, pendingSave: null, pendingParse: null };
   perWindow.set(win.id, created);
   win.once('closed', () => { perWindow.delete(win.id); });
   return created;
@@ -89,6 +93,41 @@ export function handleFillCard(win: BrowserWindow, id: number): boolean {
     ccExp: card.expMonth && card.expYear ? `${String(card.expMonth).padStart(2, '0')}/${String(card.expYear).slice(-2)}` : '',
   };
   return tm.sendAutofillFill(st.focusTabId, fields);
+}
+
+// ── Разбор вставленной строки (AI-IDEAS.md №1) ──────────────────────────────────────────────
+//
+// ⚠️ Два шага и человек между ними, как у имени файла по содержимому: «разобрать» ничего не
+// трогает на странице, «разложить» подставляет. Промежуточное состояние живёт в main.
+
+/** Запомнить разбор до ответа человека. Возвращает состояние поповера с предпросмотром. */
+export function handleParsedPaste(
+  win: BrowserWindow,
+  tabId: string,
+  parts: { key: keyof AutofillFillFields; label: string; value: string }[],
+): AutofillPopoverState | null {
+  if (parts.length === 0) return null;
+  const st = stateFor(win);
+  const fields: AutofillFillFields = {};
+  for (const p of parts) fields[p.key] = p.value;
+  st.pendingParse = { tabId, fields };
+  return { kind: 'parse-address', parts: parts.map((p) => ({ label: p.label, value: p.value })) };
+}
+
+/** Человек нажал «Разложить» — подставляем в ту же вкладку, где он вставлял строку. */
+export function handleApplyParsedPaste(win: BrowserWindow): boolean {
+  const st = perWindow.get(win.id);
+  const tm = contextForWindow(win)?.tabs;
+  const pending = st?.pendingParse ?? null;
+  if (st) st.pendingParse = null; // одноразовое: второй раз подставлять нечего
+  if (!tm || !pending) return false;
+  return tm.sendAutofillFill(pending.tabId, pending.fields);
+}
+
+/** Отказ или закрытие поповера — разбор забываем, ничего не подставив. */
+export function forgetParsedPaste(win: BrowserWindow): void {
+  const st = perWindow.get(win.id);
+  if (st) st.pendingParse = null;
 }
 
 // ── Offer-save после отправки формы ─────────────────────────────────────────────────────────

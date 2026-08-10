@@ -116,6 +116,7 @@ const CH_AUTOFILL_DISMISS = 'autofill:dismiss';
 const CH_AUTOFILL_FILL = 'autofill:fill-fields';
 const CH_AUTOFILL_SUBMIT = 'autofill:submit';
 const CH_AUTOFILL_MAP_FIELDS = 'autofill:map-fields';
+const CH_AUTOFILL_PASTE_BLOB = 'autofill:paste-blob';
 
 function isTopFrame(): boolean {
   try {
@@ -443,7 +444,10 @@ try {
 }
 
 // ── Исполнитель заполнения — только по адресной команде от main, без submit ──────────────────
-function setNativeValue(input: HTMLInputElement, value: string): void {
+// ⚠️ Принимает и textarea: вставить адрес одной строкой человек может и в неё (поле «Комментарий
+// к заказу» на многих формах доставки — обычная textarea), а нативный сеттер прототипа работает
+// для обоих одинаково.
+function setNativeValue(input: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   const proto = Object.getPrototypeOf(input) as HTMLInputElement;
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   if (setter) setter.call(input, value);
@@ -799,16 +803,94 @@ try {
   // сайт мог заморозить history — offer-save на SPA просто не сработает
 }
 
+// ── Вставленная строка с адресом (AI-IDEAS.md №1) ───────────────────────────
+//
+// Человек вставляет в поле формы всю строку целиком («Иванов Иван, 123456, Москва, …»), а
+// разложить её по полям предлагаем мы.
+//
+// ⚠️ Вставку НЕ отменяем (никакого preventDefault): если разбор не сложится или человек откажется,
+// его текст обязан оказаться в поле ровно там, куда он его вставлял. Убираем строку только когда
+// он согласился разложить — тогда она уже лишняя (см. пометку ниже).
+const PASTED_MARK = 'data-oblako-pasted';
+
+/**
+ * Похоже ли вставленное на адрес одной строкой.
+ *
+ * ⚠️ Это ГЛАВНЫЙ фильтр приватности, а не оптимизация: всё, что пройдёт проверку, уедет в main
+ * к локальной модели. Поэтому условия узкие — длина в разумных пределах, несколько частей через
+ * разделители и хотя бы одно число (индекс или телефон есть в любом адресе доставки). Случайно
+ * скопированный пароль, ссылка или абзац текста сюда не попадают.
+ */
+function looksLikeAddressBlob(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 20 || t.length > 300) return false;
+  if (/\n.*\n.*\n/.test(t)) return false;          // многострочное — это уже не «одна строка»
+  if (/^\w+:\/\//.test(t) || /\s{4,}/.test(t)) return false; // ссылка, кусок таблицы
+  const separators = (t.match(/[,;]|\s—\s/g) ?? []).length;
+  if (separators < 2) return false;
+  if (!/\d/.test(t)) return false;
+  return t.split(/\s+/).length >= 4;
+}
+
+// Сколько полей формы должно быть на странице, чтобы предложение имело смысл: раскладывать
+// строку на два поля незачем, человек сделает это быстрее сам.
+const MIN_FIELDS_FOR_PARSE = 3;
+
+try {
+  document.addEventListener('paste', (e) => {
+    try {
+      if (!isTopFrame()) return;
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement)) return;
+      if (t.type && /password|hidden|file|checkbox|radio/i.test(t.type)) return;
+      // На форме входа не предлагаем ничего и никогда — то же правило, что у поповера адреса.
+      if (t instanceof HTMLInputElement && looksLikeCredentials(t)) return;
+
+      const text = (e as ClipboardEvent).clipboardData?.getData('text/plain') ?? '';
+      if (!looksLikeAddressBlob(text)) return;
+      if (collectAutofillFields().length < MIN_FIELDS_FOR_PARSE) return;
+
+      // Помечаем поле АТРИБУТОМ: ссылку на узел через мост не передать, а путь по индексам
+      // протухает от первой же перерисовки формы (тот же приём, что в pageFacts.ts и правке текста).
+      document.querySelectorAll(`[${PASTED_MARK}]`).forEach((el) => el.removeAttribute(PASTED_MARK));
+      t.setAttribute(PASTED_MARK, '1');
+
+      const r = t.getBoundingClientRect();
+      lastAutofillFocusAt = performance.now();
+      ipcRenderer.send(CH_AUTOFILL_PASTE_BLOB, {
+        text: text.trim(),
+        rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+      });
+    } catch {
+      // разбор вставки не имеет права ронять страницу
+    }
+  }, true);
+} catch {
+  // IPC недоступен
+}
+
 // Подстановка выбранного профиля/карты: main шлёт карту «категория → значение», заполняем поля.
 try {
   ipcRenderer.on(CH_AUTOFILL_FILL, (_e, fields: Partial<Record<AfKey, string>>) => {
     try {
       if (!isTopFrame() || !fields || typeof fields !== 'object') return;
+      const filled = new Set<Element>();
       for (const { key, el } of collectAutofillFields()) {
         const value = fields[key];
         if (typeof value !== 'string' || value === '') continue;
         if (el instanceof HTMLSelectElement) setSelectValue(el, value);
         else setNativeValue(el, value);
+        filled.add(el);
+      }
+      // ⚠️ Строку, которую человек вставил целиком, убираем — но ТОЛЬКО если она осталась лежать
+      // в поле, куда её никто не разложил. Иначе адрес оказался бы на форме дважды: разобранный
+      // по полям и он же одной строкой в поле «Имя». Поле, получившее своё значение, не трогаем.
+      const pasted = document.querySelector(`[${PASTED_MARK}]`);
+      if (pasted) {
+        pasted.removeAttribute(PASTED_MARK);
+        if (!filled.has(pasted) && (pasted instanceof HTMLInputElement || pasted instanceof HTMLTextAreaElement)) {
+          setNativeValue(pasted, '');
+        }
       }
     } catch {
       // исполнитель не должен ронять страницу
