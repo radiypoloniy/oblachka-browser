@@ -155,6 +155,7 @@ import { searchStuff } from './StuffSearch';
 import { detectProduct } from './ProductDetector';
 import { TrackingStore } from './TrackingStore';
 import { initTrackingChecker, checkAllNow, setTrackingEventHandler } from './TrackingChecker';
+import { findMatchFor } from './ProductMatcher';
 import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart, PageChangesResult, ProductState, TrackedProduct } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
@@ -403,19 +404,27 @@ function showProductMenu(win: BrowserWindow): void {
     template.push({
       label: 'Отслеживать цену',
       click: () => {
-        tracking.track({
+        const newId = tracking.track({
           url: active.url,
           host: (() => { try { return new URL(active.url).hostname.replace(/^www\./, ''); } catch { return ''; } })(),
           title: found.signal.name,
           brand: found.signal.brand,
           sku: found.signal.sku,
           gtin: found.signal.gtin,
+          mpn: found.signal.mpn,
           currency: found.signal.currency,
           price: found.signal.price,
           availability: found.signal.availability,
         });
         pushProductState(win);
         broadcastToChrome(IPC.TRACKING_CHANGED);
+        // Поискать, нет ли того же товара в другом магазине. Коды склеят сами, модель — только
+        // предложит (см. ProductMatcher). Фоном: человек нажал «отслеживать», а не «найди пару».
+        if (newId !== null) {
+          void findMatchFor(tracking, newId)
+            .then(() => broadcastToChrome(IPC.TRACKING_CHANGED))
+            .catch(() => { /* сопоставление не обязано получаться */ });
+        }
       },
     });
   }
@@ -1858,6 +1867,19 @@ function registerIpc() {
   ipcMain.handle(IPC.TRACKING_EVENTS, () => tracking.listEvents());
   ipcMain.handle(IPC.TRACKING_NOTIFY_GET, () => tracking.notificationsEnabled());
   ipcMain.handle(IPC.TRACKING_NOTIFY_SET, (_e, on: boolean) => { tracking.setNotificationsEnabled(on); });
+  ipcMain.handle(IPC.TRACKING_SUGGESTIONS, () => tracking.listSuggestions());
+  ipcMain.handle(IPC.TRACKING_MERGE, (_e, aId: number, bId: number) => {
+    tracking.joinGroup(aId, bId);
+    broadcastToChrome(IPC.TRACKING_CHANGED);
+  });
+  ipcMain.handle(IPC.TRACKING_MERGE_DISMISS, (_e, aId: number, bId: number) => {
+    tracking.dismissSuggestion(aId, bId);
+    broadcastToChrome(IPC.TRACKING_CHANGED);
+  });
+  ipcMain.handle(IPC.TRACKING_UNGROUP, (_e, id: number) => {
+    tracking.leaveGroup(id);
+    broadcastToChrome(IPC.TRACKING_CHANGED);
+  });
   // ⚠️ Проверка по кнопке идёт БЕЗ пауз и без гейта «давно не проверяли»: человек нажал и ждёт.
   // Фоновая, наоборот, редкая и с паузами — см. TrackingChecker.
   ipcMain.handle(IPC.TRACKING_CHECK_NOW, async () => {

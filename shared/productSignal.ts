@@ -15,9 +15,11 @@ export interface ProductSignal {
   currency: string;
   /** Из schema.org, без префикса: InStock / OutOfStock / PreOrder / LimitedAvailability / ''. */
   availability: string;
-  /** Опознавательные знаки товара — по ним потом склеиваются предложения с разных сайтов. */
+  /** Опознавательные знаки товара — по ним склеиваются предложения с разных сайтов. */
   sku: string;
   gtin: string;
+  /** Артикул ПРОИЗВОДИТЕЛЯ. ⚠️ Не путать с sku: тот у каждого магазина свой и для склейки не годится. */
+  mpn: string;
   brand: string;
 }
 
@@ -90,13 +92,6 @@ function priceFromOffers(offers: unknown): { price: number; currency: string; av
 }
 
 /**
- * Достаёт товар из блоков JSON-LD (строки как есть со страницы).
- *
- * null — товара нет. Это НОРМАЛЬНЫЙ и самый частый ответ: на обычной странице, на выдаче поиска и
- * в магазине без разметки его быть и не должно. Ложное «нашёлся» дороже пропуска: индикатор
- * загорится там, где отслеживать нечего.
- */
-/**
  * Блоки JSON-LD из СЫРОГО HTML — для самого дешёвого пути проверки: обычный запрос без запуска
  * страницы. По замеру (PRICE-TRACKING.md) так читается Яндекс.Маркет; остальным нужна вью.
  *
@@ -116,6 +111,13 @@ export function jsonLdBlocksFromHtml(html: string): string[] {
   return out;
 }
 
+/**
+ * Достаёт товар из блоков JSON-LD (строки как есть со страницы).
+ *
+ * null — товара нет. Это НОРМАЛЬНЫЙ и самый частый ответ: на обычной странице, на выдаче поиска и
+ * в магазине без разметки его быть и не должно. Ложное «нашёлся» дороже пропуска: индикатор
+ * загорится там, где отслеживать нечего.
+ */
 export function productFromJsonLd(blocks: string[]): ProductSignal | null {
   for (const block of blocks) {
     if (!block || block.length > MAX_BLOCK_CHARS) continue;
@@ -144,6 +146,7 @@ export function productFromJsonLd(blocks: string[]): ProductSignal | null {
         currency,
         availability,
         sku: str(obj.sku).slice(0, 64),
+        mpn: (str(obj.mpn) || str(obj.productID)).slice(0, 64),
         gtin: (str(obj.gtin13) || str(obj.gtin) || str(obj.gtin12) || str(obj.ean)).slice(0, 64),
         brand: str(obj.brand).slice(0, 80),
       };

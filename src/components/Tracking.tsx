@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { TrendingDown, Trash2, ExternalLink, RefreshCw, AlertTriangle, Bell, BellOff } from 'lucide-react';
-import type { TrackedProduct, TrackingEvent } from '../../shared/ipc';
+import { TrendingDown, Trash2, ExternalLink, RefreshCw, AlertTriangle, Bell, BellOff, Link2, Unlink } from 'lucide-react';
+import type { TrackedProduct, TrackingEvent, MatchSuggestion } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 
 // Экран «что я отслеживаю» (PRICE-TRACKING.md, срез 1). Компонент только рисует: список и историю
@@ -63,10 +63,12 @@ export default function Tracking() {
   const [checkNote, setCheckNote] = useState('');
   const [events, setEvents] = useState<TrackingEvent[]>([]);
   const [notify, setNotify] = useState(true);
+  const [suggestions, setSuggestions] = useState<MatchSuggestion[]>([]);
 
   const reload = () => {
     void window.oblako.listTracked().then(setItems);
     void window.oblako.listTrackingEvents().then(setEvents);
+    void window.oblako.listTrackingSuggestions().then(setSuggestions);
   };
   useEffect(() => { reload(); void window.oblako.getTrackingNotify().then(setNotify); }, []);
   useEffect(() => window.oblako.onTrackingChanged(reload), []);
@@ -79,6 +81,13 @@ export default function Tracking() {
     // и делать вид, что проверено всё, нельзя.
     setCheckNote(res.total === 0 ? '' : `Ответили ${res.ok} из ${res.total}`);
     reload();
+  }
+
+  // Размер каждой группы считаем один раз на отрисовку: подпись «в N магазинах» нужна каждой
+  // строке группы, а пересчитывать её в цикле — лишняя работа на ровном месте.
+  const groupSize = new Map<number, number>();
+  for (const it of items ?? []) {
+    if (it.groupId > 0) groupSize.set(it.groupId, (groupSize.get(it.groupId) ?? 0) + 1);
   }
 
   if (items === null) {
@@ -135,6 +144,42 @@ export default function Tracking() {
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px 16px' }}>
+        {/* Предложения склеить один товар из разных магазинов. ⚠️ Именно ПРЕДЛОЖЕНИЯ: пока человек
+            не подтвердил, ничего не объединено. Ошибка здесь — два разных товара в одной карточке
+            с общим графиком цен, то есть враньё в самой сути фичи. */}
+        {suggestions.map((sg) => (
+          <div key={`${sg.aId}-${sg.bId}`} style={{
+            margin: '4px 12px 10px', padding: '10px 12px',
+            border: '1px solid var(--divider-strong)', borderRadius: 'var(--radius-sm)',
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <Link2 size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
+                Похоже, это один товар в двух магазинах
+              </div>
+              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+                {sg.aHost}: {sg.aTitle.slice(0, 60)} · {sg.bHost}: {sg.bTitle.slice(0, 60)}
+              </div>
+            </div>
+            <button
+              onClick={() => { void window.oblako.mergeTracked(sg.aId, sg.bId).then(reload); }}
+              style={{
+                flex: 'none', padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
+                background: 'var(--accent)', color: '#fff', fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'default',
+              }}
+            >Объединить</button>
+            <button
+              onClick={() => { void window.oblako.dismissTrackedMerge(sg.aId, sg.bId).then(reload); }}
+              style={{
+                flex: 'none', padding: '6px 12px', borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--divider-strong)', background: 'transparent',
+                color: 'var(--text-body)', fontSize: 'var(--fs-xs)', cursor: 'default',
+              }}
+            >Разные</button>
+          </div>
+        ))}
+
         {/* Журнал событий: тост живёт секунды и его легко пропустить, а «что случилось, пока меня
             не было» — главный вопрос к отслеживанию. */}
         {events.length > 0 && (
@@ -181,6 +226,7 @@ export default function Tracking() {
         )}
 
         {items.map((it) => {
+          // Сколько предложений в этой группе — чтобы подписать «в N магазинах».
           const prices = it.points.map((p) => p.price);
           const last = prices[prices.length - 1] ?? 0;
           const first = prices[0] ?? 0;
@@ -211,6 +257,11 @@ export default function Tracking() {
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>{it.title}</div>
                 <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+                  {it.groupId > 0 && groupSize.get(it.groupId)! > 1 && (
+                    <span style={{ color: 'var(--accent)' }}>
+                      {`один товар в ${groupSize.get(it.groupId)} магазинах`}{' · '}
+                    </span>
+                  )}
                   {[it.host, it.brand].filter(Boolean).join(' · ')}
                   {notes.length > 0 && ` · ${notes.join(', ')}`}
                   {` · ${checkedAgo(it.lastCheckedAt)}`}
@@ -245,6 +296,13 @@ export default function Tracking() {
                 )}
               </div>
 
+              {it.groupId > 0 && (
+                <button
+                  title="Вынуть из группы"
+                  onClick={() => { void window.oblako.ungroupTracked(it.id).then(reload); }}
+                  style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 5, display: 'inline-flex', color: 'var(--text-muted)' }}
+                ><Unlink size={15} /></button>
+              )}
               <button
                 title="Открыть страницу товара"
                 onClick={() => { void window.oblako.createTab(it.url); }}

@@ -557,6 +557,10 @@ export const IPC = {
   TRACKING_EVENTS: 'tracking:events',       // renderer → main: журнал событий
   TRACKING_NOTIFY_GET: 'tracking:notify-get', // renderer → main: включены ли уведомления
   TRACKING_NOTIFY_SET: 'tracking:notify-set', // renderer → main: включить/выключить
+  TRACKING_SUGGESTIONS: 'tracking:suggestions',   // renderer → main: предложения склейки
+  TRACKING_MERGE: 'tracking:merge',               // renderer → main: объединить (aId, bId)
+  TRACKING_MERGE_DISMISS: 'tracking:merge-dismiss', // renderer → main: не объединять
+  TRACKING_UNGROUP: 'tracking:ungroup',           // renderer → main: вынуть из группы (id)
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
@@ -1249,6 +1253,17 @@ export interface ProductState {
   tracked: boolean;
 }
 
+// Предложение склеить два предложения одного товара. ⚠️ Только предложение: пока человек не
+// подтвердил, ничего не объединено (см. shared/productMatch.ts).
+export interface MatchSuggestion {
+  aId: number;
+  bId: number;
+  aTitle: string;
+  bTitle: string;
+  aHost: string;
+  bHost: string;
+}
+
 // Событие отслеживания: подешевело, подорожало, кончилось, вернулось, заканчивается.
 export interface TrackingEvent {
   id: number;
@@ -1278,6 +1293,8 @@ export interface TrackedProduct {
   // непонятной давности.
   lastCheckedAt: number;
   lastCheckOk: number;
+  /** Одна группа = один товар в разных магазинах. 0 — сам по себе. */
+  groupId: number;
   points: TrackedPricePoint[];
 }
 
@@ -1809,6 +1826,10 @@ export interface OblakoApi {
   listTrackingEvents(): Promise<TrackingEvent[]>;
   getTrackingNotify(): Promise<boolean>;
   setTrackingNotify(on: boolean): Promise<void>;
+  listTrackingSuggestions(): Promise<MatchSuggestion[]>;
+  mergeTracked(aId: number, bId: number): Promise<void>;
+  dismissTrackedMerge(aId: number, bId: number): Promise<void>;
+  ungroupTracked(id: number): Promise<void>;
   onTrackingChanged(cb: () => void): () => void;
   /** Поиск по настройкам фразой — второй эшелон, отдаёт индексы SETTINGS_INDEX (settingsIndex.ts). */
   searchSettingsSmart(query: string): Promise<number[]>;

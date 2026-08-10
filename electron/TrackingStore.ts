@@ -5,7 +5,7 @@
 // (очистка истории не должна задевать то, что человек поставил на отслеживание).
 import { app } from 'electron';
 import path from 'node:path';
-import type { TrackedProduct, TrackedPricePoint, TrackingEvent } from '../shared/ipc';
+import type { TrackedProduct, TrackedPricePoint, TrackingEvent, MatchSuggestion } from '../shared/ipc';
 
 type Database = import('better-sqlite3').Database;
 type BetterSqlite3 = typeof import('better-sqlite3');
@@ -68,6 +68,15 @@ export class TrackingStore {
         -- Мелкие настройки самого отслеживания (тумблер уведомлений). Свой ключ-значение, чтобы
         -- не тянуть общий SettingsManager ради одного флага.
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        -- Предложение склеить два товара. ⚠️ Отдельная таблица, а не сразу group_id: предложение
+        -- модели должен подтвердить человек, и до подтверждения оно ничего не меняет.
+        CREATE TABLE IF NOT EXISTS match_suggestion (
+          id     INTEGER PRIMARY KEY AUTOINCREMENT,
+          a_id   INTEGER NOT NULL REFERENCES tracked(id) ON DELETE CASCADE,
+          b_id   INTEGER NOT NULL REFERENCES tracked(id) ON DELETE CASCADE,
+          at     INTEGER NOT NULL,
+          UNIQUE(a_id, b_id)
+        );
       `);
       // ⚠️ Миграция ТОЛЬКО добавлением колонок и по одной, каждая в своём try: база уже лежит у
       // людей с их данными (срез 1), и перестраивать таблицу ради двух полей незачем. Повторный
@@ -78,6 +87,9 @@ export class TrackingStore {
         // 0 — товар читается обычным запросом (дёшево), 1 — нужна загрузка страницы (дорого).
         // От этого зависит, как часто мы к нему ходим (см. TrackingChecker).
         `ALTER TABLE tracked ADD COLUMN check_cost INTEGER NOT NULL DEFAULT 1`,
+        `ALTER TABLE tracked ADD COLUMN mpn TEXT NOT NULL DEFAULT ''`,
+        // Группа — это «один товар в разных магазинах». NULL/0 — сам по себе.
+        `ALTER TABLE tracked ADD COLUMN group_id INTEGER NOT NULL DEFAULT 0`,
       ]) {
         try { this.#db.exec(alter); } catch { /* колонка уже есть */ }
       }
@@ -104,15 +116,15 @@ export class TrackingStore {
    * Поставить на отслеживание и сразу записать первую цену.
    * ⚠️ Идемпотентно по адресу: повторное «отслеживать» на той же странице не заводит второй записи.
    */
-  track(p: { url: string; host: string; title: string; brand: string; sku: string; gtin: string; currency: string; price: number; availability: string }): number | null {
+  track(p: { url: string; host: string; title: string; brand: string; sku: string; gtin: string; mpn: string; currency: string; price: number; availability: string }): number | null {
     if (!this.#db) return null;
     try {
       const existing = this.idForUrl(p.url);
       if (existing !== null) { this.addPoint(existing, p.price, p.availability); return existing; }
       const info = this.#db.prepare(`
-        INSERT INTO tracked (url, host, title, brand, sku, gtin, currency, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(p.url, p.host, p.title, p.brand, p.sku, p.gtin, p.currency || 'RUB', Date.now());
+        INSERT INTO tracked (url, host, title, brand, sku, gtin, mpn, currency, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(p.url, p.host, p.title, p.brand, p.sku, p.gtin, p.mpn, p.currency || 'RUB', Date.now());
       const id = Number(info.lastInsertRowid);
       this.addPoint(id, p.price, p.availability);
       return id;
@@ -197,6 +209,89 @@ export class TrackingStore {
     } catch { return []; }
   }
 
+  // ── Склейка одного товара с разных сайтов (срез 4) ────────────────────────
+
+  /** Товары, с которыми можно сравнить новый: все прочие, ещё не в одной с ним группе. */
+  othersFor(id: number): Array<{ id: number; title: string; gtin: string; mpn: string; brand: string; groupId: number }> {
+    if (!this.#db) return [];
+    try {
+      const self = this.#db.prepare(`SELECT group_id AS groupId FROM tracked WHERE id = ?`).get(id) as { groupId: number } | undefined;
+      const g = self?.groupId ?? 0;
+      return this.#db.prepare(`
+        SELECT id, title, gtin, mpn, brand, group_id AS groupId FROM tracked
+        WHERE id != ? AND (group_id = 0 OR group_id != ?)
+      `).all(id, g || -1) as Array<{ id: number; title: string; gtin: string; mpn: string; brand: string; groupId: number }>;
+    } catch { return []; }
+  }
+
+  codesFor(id: number): { id: number; title: string; gtin: string; mpn: string; brand: string } | null {
+    if (!this.#db) return null;
+    try {
+      return (this.#db.prepare(`SELECT id, title, gtin, mpn, brand FROM tracked WHERE id = ?`).get(id) ?? null) as
+        { id: number; title: string; gtin: string; mpn: string; brand: string } | null;
+    } catch { return null; }
+  }
+
+  /**
+   * Свести два товара в одну группу.
+   * ⚠️ Если у одного группа уже есть — забираем в неё, а не заводим третью: иначе склейка «А+Б»,
+   * потом «Б+В» оставила бы А и В в разных группах, хотя это один товар.
+   */
+  joinGroup(aId: number, bId: number): void {
+    if (!this.#db) return;
+    try {
+      const rows = this.#db.prepare(`SELECT id, group_id AS g FROM tracked WHERE id IN (?, ?)`)
+        .all(aId, bId) as Array<{ id: number; g: number }>;
+      const existing = rows.map((r) => r.g).filter((g) => g > 0);
+      const gid = existing.length ? Math.min(...existing) : aId; // id первого — простой и стабильный ключ
+      this.#db.prepare(`UPDATE tracked SET group_id = ? WHERE id IN (?, ?)`).run(gid, aId, bId);
+      // Если у второго была своя группа — переносим её участников целиком.
+      for (const g of existing) {
+        if (g !== gid) this.#db.prepare(`UPDATE tracked SET group_id = ? WHERE group_id = ?`).run(gid, g);
+      }
+      this.#db.prepare(`DELETE FROM match_suggestion WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)`)
+        .run(aId, bId, bId, aId);
+    } catch (e) {
+      console.warn('[Tracking] не удалось объединить:', (e as Error).message);
+    }
+  }
+
+  /** Вынуть товар из группы — человек передумал. */
+  leaveGroup(id: number): void {
+    if (!this.#db) return;
+    try { this.#db.prepare(`UPDATE tracked SET group_id = 0 WHERE id = ?`).run(id); } catch { /* нечего */ }
+  }
+
+  addSuggestion(aId: number, bId: number): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare(`INSERT OR IGNORE INTO match_suggestion (a_id, b_id, at) VALUES (?, ?, ?)`)
+        .run(Math.min(aId, bId), Math.max(aId, bId), Date.now());
+    } catch { /* не критично */ }
+  }
+
+  dismissSuggestion(aId: number, bId: number): void {
+    if (!this.#db) return;
+    try {
+      this.#db.prepare(`DELETE FROM match_suggestion WHERE a_id = ? AND b_id = ?`)
+        .run(Math.min(aId, bId), Math.max(aId, bId));
+    } catch { /* не критично */ }
+  }
+
+  listSuggestions(): MatchSuggestion[] {
+    if (!this.#db) return [];
+    try {
+      return this.#db.prepare(`
+        SELECT s.a_id AS aId, s.b_id AS bId, a.title AS aTitle, b.title AS bTitle,
+               a.host AS aHost, b.host AS bHost
+        FROM match_suggestion s
+        JOIN tracked a ON a.id = s.a_id
+        JOIN tracked b ON b.id = s.b_id
+        ORDER BY s.at DESC LIMIT 10
+      `).all() as MatchSuggestion[];
+    } catch { return []; }
+  }
+
   /** Последнее наблюдение — с ним сравнивается новое, чтобы понять, случилось ли событие. */
   lastPoint(trackedId: number): { price: number; availability: string } | null {
     if (!this.#db) return null;
@@ -252,8 +347,9 @@ export class TrackingStore {
     try {
       const rows = this.#db.prepare(`
         SELECT id, url, host, title, brand, currency, created_at AS createdAt,
-               last_checked_at AS lastCheckedAt, last_check_ok AS lastCheckOk
-        FROM tracked ORDER BY created_at DESC
+               last_checked_at AS lastCheckedAt, last_check_ok AS lastCheckOk,
+               group_id AS groupId
+        FROM tracked ORDER BY group_id DESC, created_at DESC
       `).all() as Array<Omit<TrackedProduct, 'points'>>;
       const stmt = this.#db.prepare(`
         SELECT price, availability, seen_at AS seenAt FROM price_point
