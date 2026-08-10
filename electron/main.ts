@@ -191,6 +191,9 @@ const AI_PANEL_PREWARM_DELAY_MS = 1500;
 // только тестовое, боевой чром (TabManager/SessionManager/adblock/history) не инициализируется.
 const LLAMA_TEST = process.env.OBLAKO_LLAMA_TEST === '1';
 const TRANSLATE_TEST = process.env.OBLAKO_TRANSLATE_TEST === '1';
+// Замер «читается ли цена товара» перед фичей отслеживания (см. PriceProbe.ts). Адреса приходят
+// JSON-массивом в OBLAKO_PRICE_PROBE_URLS. Боевое окно не поднимается.
+const PRICE_PROBE = process.env.OBLAKO_PRICE_PROBE === '1';
 
 // Тест-мост перевода: нужен свой preload (contextBridge → window.translateTest) и IPC-хендлер
 // в main (node-llama-cpp работает только там) — в отличие от runIsolatedTestWindow это не просто
@@ -3147,7 +3150,7 @@ app.whenReady().then(async () => {
   startT0 = Date.now();
   // Заставка — САМОЕ первое, что делаем: она закрывает паузу между кликом по ярлыку и
   // появлением окна, а эта пауза и ощущается зависанием. Всё тяжёлое идёт после.
-  if (!LLAMA_TEST && !TRANSLATE_TEST) showSplash();
+  if (!LLAMA_TEST && !TRANSLATE_TEST && !PRICE_PROBE) showSplash();
   Menu.setApplicationMenu(null); // прячем дефолтное меню — у нас свой хром
   registerModelProtocol();
   registerChromeProtocol();
@@ -3161,6 +3164,18 @@ app.whenReady().then(async () => {
   }
   if (TRANSLATE_TEST) {
     await runTranslateTestWindow();
+    return;
+  }
+  if (PRICE_PROBE) {
+    // ⚠️ Боевой чром не поднимаем: стенд только читает страницы. История, сессия и индекс не
+    // трогаются — писать их некому, вкладок через TabManager он не создаёт.
+    const { runPriceProbe } = await import('./PriceProbe');
+    // Адреса приходят JSON-массивом: в них есть и запятые, и амперсанды, и любой самодельный
+    // разделитель пришлось бы экранировать.
+    let urls: string[] = [];
+    try { urls = JSON.parse(process.env.OBLAKO_PRICE_PROBE_URLS ?? '[]') as string[]; } catch { urls = []; }
+    await runPriceProbe(urls).catch((e: unknown) => console.error('[price-probe] FATAL', e));
+    app.quit();
     return;
   }
 
