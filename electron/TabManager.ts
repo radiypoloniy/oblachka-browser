@@ -224,6 +224,14 @@ export class TabManager {
   // открытой ссылкой, — адрес открывшей страницы (сеется в момент создания, см. createTab-вызовы
   // в setWindowOpenHandler и в ПКМ-меню ссылки).
   #navFrom = new Map<string, string>();
+  // Кто открыл эту вкладку (дочерняя → родительская). Нужно ТОЛЬКО закрытию, см. closeTab.
+  //
+  // ⚠️ Связь живёт до первого переключения вкладок и стирается ЦЕЛИКОМ — это `ForgetAllOpeners`
+  // из Chrome (TabStripModel). Без забывания «вернуться к родителю» срабатывало бы и через час
+  // работы в открытой ссылке, когда человек давно про неё забыл, а прыжок в другой конец полосы
+  // выглядит как сбой. Забываем на любом переключении, а не только на пользовательском: у нас
+  // activate() зовётся и из кода, и лишний раз забыть безопаснее, чем лишний раз прыгнуть.
+  #openerOf = new Map<string, string>();
 
   // Распознавание полей формы моделью (AutofillFieldMapper.ts). Тот же приём, что с
   // #graphMenuBuilder: менеджер вкладок про модель и кэш не знает, ему дают готовую функцию.
@@ -1637,6 +1645,10 @@ export class TabManager {
       // «Перешёл по ссылке с сайта X» — для новой вкладки источник это страница, которая её
       // открыла: своего предыдущего адреса у неё ещё нет.
       this.#navFrom.set(openedId, hostOfUrl(wc.getURL()));
+      // Кто её открыл — нужно закрытию: закрыв вкладку, открытую из этой, человек возвращается
+      // к ней, а не к случайному соседу (см. closeTab). Ставится ПОСЛЕ createTab: активация
+      // внутри него забывает все связи, как ForgetAllOpeners в Chrome.
+      this.#openerOf.set(openedId, id);
       return { action: 'deny' };
     });
     // Настоящее окно OAuth-попапа (action:'allow' выше) Electron создаёт и закрывает сам —
@@ -1719,7 +1731,11 @@ export class TabManager {
             // Источник новой вкладки — страница, где щёлкнули ссылку (тот же учёт, что в
             // setWindowOpenHandler): иначе правило «ссылки с хабра — в группу» не сработало бы
             // на самом частом способе открыть ссылку.
-            click: () => { this.#navFrom.set(this.createTab(p.linkURL, true, false, priv), hostOfUrl(wc.getURL())); },
+            click: () => {
+              const openedId = this.createTab(p.linkURL, true, false, priv);
+              this.#navFrom.set(openedId, hostOfUrl(wc.getURL()));
+              this.#openerOf.set(openedId, id); // см. closeTab: закрытие вернёт сюда же
+            },
           },
           // Окно создаёт main — TabManager про окна не знает (тот же приём, что у пункта
           // «Добавить в граф»: сюда приходит готовый колбэк).
@@ -1923,7 +1939,14 @@ export class TabManager {
     // Поповер перевода анкорится к прежней активной вкладке — при реальной смене (не при
     // повторном activate() того же id, напр. клик по уже активной вкладке в сайдбаре) его пора
     // закрыть. Раньше остального в функции — событие должно уйти сразу, а не в конце разбора.
-    if (this.activeId !== id) this.onActiveTabChangedCb?.();
+    if (this.activeId !== id) {
+      this.onActiveTabChangedCb?.();
+      // ⚠️ Переключились — забываем ВСЕ связи «кто кого открыл» (см. #openerOf и closeTab). Это
+      // ForgetAllOpeners из Chrome: без него «закрыл — вернулся к родителю» срабатывало бы и
+      // через час, когда человек про ту ссылку давно забыл, а прыжок в другой конец полосы
+      // выглядит уже не заботой, а сбоем. Правило живёт ровно по горячим следам.
+      this.#openerOf.clear();
+    }
 
     // Пробуждаем вкладку, если она спит (до любой логики с view).
     if (tab.sleeping) this.wakeTab(id);
@@ -2032,6 +2055,18 @@ export class TabManager {
     if (this.isTabPinned(id)) return;
     this.clearOrganizeSnapshot();
     this.#navFrom.delete(id); // карта «откуда пришли» не должна копить мёртвые вкладки
+
+    // ⚠️ Соседей считаем ЗДЕСЬ, до всякой уборки. Ниже вкладка исчезает и из tabMap, и из дерева
+    // узлов, после чего findIndex по визуальному порядку возвращает -1 — а прежний код брал
+    // `ordered[idx + 1]`, то есть `ordered[0]`, и человека увозило в начало полосы, на хаб. Ровно
+    // это и была жалоба «при закрытии перебрасывает на главную»: не выбор соседа, а промах по
+    // индексу в уже вычищенном списке.
+    const orderBefore = this.tabsInVisualOrder(true);
+    const closingIdx = orderBefore.findIndex((t) => t.id === id);
+    const openerId = this.#openerOf.get(id);
+    this.#openerOf.delete(id);
+    // Вкладки, открытые ЗАКРЫВАЕМОЙ, теряют родителя — иначе они возвращали бы к мёртвому id.
+    for (const [child, parent] of this.#openerOf) if (parent === id) this.#openerOf.delete(child);
     console.log(`[shutdown] closeTab id=${id} splitPairs=${JSON.stringify(this.splitPairs)}`);
 
     // Закрытие вкладки, входящей в (возможно припаркованную) пару.
@@ -2104,12 +2139,26 @@ export class TabManager {
       }
     }
 
-    // Если закрыли активную — переключаемся на соседнюю по визуальному порядку или хаб.
+    // Закрыли активную — куда переходить. Порядок правил взят у Chrome (TabStripModel) и
+    // совпадает с Firefox и Safari: СОСЕД СПРАВА, а не «предыдущая по времени» и тем более не
+    // начало полосы. Справа — потому что вкладки читают слева направо, и закрытие прочитанной
+    // естественно продвигает к следующей; «предыдущая по времени» в этих браузерах не поведение
+    // по умолчанию нигде.
+    //
+    // ⚠️ Перед соседом идёт РОДИТЕЛЬ — вкладка, из которой эту открыли (см. #openerOf). Так же
+    // делают и Chrome, и Firefox (там это browser.tabs.selectOwnerOnClose, включён по умолчанию):
+    // открыл ссылку из статьи, посмотрел, закрыл — вернулся в статью, а не к случайному соседу.
+    // Связь живёт до первого переключения вкладок, поэтому сработает только по горячим следам.
     if (this.activeId === id) {
-      const ordered = this.tabsInVisualOrder(true);
-      const idx = ordered.findIndex((t) => t.id === id);
-      const next = ordered[idx + 1] ?? ordered[idx - 1] ?? this.hubTab;
-      this.activate(next.id);
+      // closingIdx === -1 быть уже не должно, но проверка стоит: именно промах по индексу и был
+      // тем багом, а `orderBefore[-1 + 1]` — это снова начало полосы, то есть тот же симптом.
+      const neighbour = closingIdx < 0
+        ? undefined
+        : (orderBefore[closingIdx + 1] ?? orderBefore[closingIdx - 1]);
+      const nextId = openerId && this.tabMap.has(openerId)
+        ? openerId
+        : (neighbour && this.tabMap.has(neighbour.id) ? neighbour.id : this.hubTab.id);
+      this.activate(nextId);
     } else {
       this.onChange();
     }
