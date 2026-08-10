@@ -99,7 +99,11 @@ export async function searchStuff(
     for (const d of downloads.getAll()) {
       if (d.state !== 'completed' || !d.savePath || d.fileMissing) continue;
       if (!matches(d.filename, tokens)) continue;
-      hits.push({ kind: 'download', title: d.filename, url: d.savePath, subtitle: hostOf(d.url), downloadId: d.id });
+      // ⚠️ Подпись загрузки — ДАТА, а не домен источника. Домен у файлов почти всегда бессмысленная
+      // раздача («doc-0g-6k-docstext.googleusercontent.com» вместо Google Docs) — он не помогает
+      // узнать файл, а место в строке занимает. «Когда я это скачал» человек помнит, «с какой CDN» — нет.
+      const when = new Date(d.startedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+      hits.push({ kind: 'download', title: d.filename, url: d.savePath, subtitle: when, downloadId: d.id });
       if (++taken >= MAX_PER_SOURCE) break;
     }
   } catch (e) {
@@ -120,7 +124,10 @@ export async function searchStuff(
       score: 1,
       snippet: c.snippet,
     })));
-    if (order.length === 0) return { hits: candidates.slice(0, limit), degraded: false };
+    // ⚠️ Модель ответила, но не выбрала НИЧЕГО — это тоже «выдача не отобрана моделью», и метка
+    // обязана быть той же, что при её отказе. Иначе экран молчит про модель, показывая при этом
+    // сырое совпадение по словам, — то есть выдаёт список кода за её выбор.
+    if (order.length === 0) return { hits: candidates.slice(0, limit), degraded: true };
     console.log(`[stuff-search] «${q}»: кандидатов ${candidates.length}, оставлено ${order.length}`);
     return { hits: order.slice(0, limit).map((i) => candidates[i]!).filter(Boolean), degraded: false };
   } catch (e) {
