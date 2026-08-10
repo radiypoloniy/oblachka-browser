@@ -156,6 +156,11 @@ import { detectProduct } from './ProductDetector';
 import { TrackingStore } from './TrackingStore';
 import { initTrackingChecker, checkAllNow, setTrackingEventHandler } from './TrackingChecker';
 import { findMatchFor } from './ProductMatcher';
+import * as clipboardBuffer from './ClipboardBuffer';
+import {
+  initClipboardPopover, toggleClipboardPopover, closeClipboardPopover,
+  syncClipboardPopoverAnchor,
+} from './ClipboardPopoverManager';
 import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart, PageChangesResult, ProductState, TrackedProduct } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
@@ -726,6 +731,7 @@ function wireSharedSessions(): void {
   autofillOrchestrator.initAutofillOrchestrator(autofill);
   // Выбор в поповере: адрес подставляем сразу; карту — только после подтверждения Windows Hello
   // (полный номер — чувствительный, тот же гейт, что показ пароля/номера в настройках).
+  initClipboardPopover((w) => chromeOfWin(w)?.send(IPC.CLIPBOARD_POPOVER_CLOSED));
   initAutofillPopover(
     // Поповер закрылся (крестик, клик мимо, Esc) — незавершённый разбор вставки забываем:
     // молчаливое согласие тут недопустимо, значения не должны пережить отказ.
@@ -975,7 +981,7 @@ function createWindow(role: WindowRole = 'main') {
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
       // Снимок привязан к той вкладке, которую сняли: над чужой страницей карточке не место.
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win);
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); closeClipboardPopover(win);
       // Вопрос о разрешении привязан к конкретной странице — над чужой вкладкой ему не место.
       if (win) for (const id of dropPermissionRequests(win)) permissions.cancel(id);
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
@@ -1057,6 +1063,14 @@ function createWindow(role: WindowRole = 'main') {
   // смене вкладки, её закрытии или навигации. На форме входа, где он всплывал по ошибке, это
   // означало карточку, висящую над полем до самого ухода со страницы.
   tabs.setOnAutofillDismiss(() => closeAutofillPopover(win));
+
+  // Буфер скопированного со страниц. ⚠️ Инкогнито отсекает сам TabManager — приватная вкладка не
+  // оставляет следов нигде, и список скопированного такой же след, как история.
+  tabs.setOnPageCopy((text, url, title) => {
+    clipboardBuffer.recordCopy(text, url, title);
+    broadcastToChrome(IPC.CLIPBOARD_CHANGED, clipboardBuffer.listCopies().length);
+  });
+  tabs.setOnClipboardToggle(() => toggleClipboardPopover(win));
 
   // Вставленная в поле строка с адресом целиком (AI-IDEAS.md №1) → разбираем локальной моделью и
   // ПРЕДЛАГАЕМ разложить. Ничего не подставляем до явного «Разложить».
@@ -1893,6 +1907,34 @@ function registerIpc() {
   ipcMain.handle(IPC.TRACKING_NOTIFY_GET, () => tracking.notificationsEnabled());
   ipcMain.handle(IPC.TRACKING_NOTIFY_SET, (_e, on: boolean) => { tracking.setNotificationsEnabled(on); });
   ipcMain.handle(IPC.TRACKING_SUGGESTIONS, () => tracking.listSuggestions());
+
+  // ── Буфер скопированного со страниц ─────────────────────────────────────────
+  ipcMain.handle(IPC.CLIPBOARD_LIST, () => clipboardBuffer.listCopies());
+  ipcMain.handle(IPC.CLIPBOARD_PUT, (_e, id: number) => {
+    const text = clipboardBuffer.copyById(id);
+    if (text !== null) clipboard.writeText(text);
+  });
+  ipcMain.handle(IPC.CLIPBOARD_REMOVE, (_e, id: number) => {
+    clipboardBuffer.removeCopy(id);
+    broadcastToChrome(IPC.CLIPBOARD_CHANGED, clipboardBuffer.listCopies().length);
+  });
+  ipcMain.handle(IPC.CLIPBOARD_CLEAR, () => {
+    clipboardBuffer.clearCopies();
+    broadcastToChrome(IPC.CLIPBOARD_CHANGED, 0);
+  });
+  ipcMain.handle(IPC.CLIPBOARD_ENABLED_GET, () => clipboardBuffer.isClipboardBufferEnabled());
+  ipcMain.handle(IPC.CLIPBOARD_ENABLED_SET, (_e, on: boolean) => {
+    clipboardBuffer.setClipboardBufferEnabled(on);
+    broadcastToChrome(IPC.CLIPBOARD_CHANGED, clipboardBuffer.listCopies().length);
+  });
+  ipcMain.handle(IPC.CLIPBOARD_POPOVER_TOGGLE, (e) => {
+    const ctx = contextFromSender(e.sender);
+    if (ctx) toggleClipboardPopover(ctx.win);
+  });
+  ipcMain.on(IPC.CLIPBOARD_POPOVER_BOUNDS, (e, b: ContentBounds) => {
+    const ctx = contextFromSender(e.sender);
+    if (ctx) syncClipboardPopoverAnchor(ctx.win, b);
+  });
   ipcMain.handle(IPC.TRACKING_MERGE, (_e, aId: number, bId: number) => {
     tracking.joinGroup(aId, bId);
     broadcastToChrome(IPC.TRACKING_CHANGED);

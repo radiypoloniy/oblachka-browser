@@ -561,6 +561,19 @@ export const IPC = {
   TRACKING_MERGE: 'tracking:merge',               // renderer → main: объединить (aId, bId)
   TRACKING_MERGE_DISMISS: 'tracking:merge-dismiss', // renderer → main: не объединять
   TRACKING_UNGROUP: 'tracking:ungroup',           // renderer → main: вынуть из группы (id)
+  // Буфер скопированного со страниц (см. electron/ClipboardBuffer.ts). ⚠️ Только в памяти и
+  // только на сеанс: источник — событие copy на странице, системный буфер мы не опрашиваем.
+  CLIPBOARD_COPIED:   'clipboard:copied',      // гостевая страница → TabManager: { text, title }
+  CLIPBOARD_LIST:     'clipboard:list',        // поповер → main: записи буфера
+  CLIPBOARD_PUT:      'clipboard:put',         // поповер → main: положить запись в буфер обмена ОС
+  CLIPBOARD_REMOVE:   'clipboard:remove',      // поповер → main: убрать одну запись
+  CLIPBOARD_CLEAR:    'clipboard:clear',       // поповер → main: очистить всё
+  CLIPBOARD_ENABLED_GET: 'clipboard:enabled-get',
+  CLIPBOARD_ENABLED_SET: 'clipboard:enabled-set',
+  CLIPBOARD_CHANGED:  'clipboard:changed',     // main → chrome: список изменился (для индикатора)
+  CLIPBOARD_POPOVER_TOGGLE: 'clipboard-popover:toggle', // chrome → main: открыть/закрыть
+  CLIPBOARD_POPOVER_BOUNDS: 'clipboard-popover:bounds', // chrome → main: где стоит кнопка
+  CLIPBOARD_POPOVER_CLOSED: 'clipboard-popover:closed', // main → chrome: закрылся сам
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
@@ -1253,6 +1266,16 @@ export interface ProductState {
   tracked: boolean;
 }
 
+// Одна запись буфера: что скопировано, откуда и когда.
+export interface ClipboardEntry {
+  id: number;
+  text: string;
+  url: string;
+  host: string;
+  title: string;
+  at: number;
+}
+
 // Предложение склеить два предложения одного товара. ⚠️ Только предложение: пока человек не
 // подтвердил, ничего не объединено (см. shared/productMatch.ts).
 export interface MatchSuggestion {
@@ -1830,6 +1853,11 @@ export interface OblakoApi {
   mergeTracked(aId: number, bId: number): Promise<void>;
   dismissTrackedMerge(aId: number, bId: number): Promise<void>;
   ungroupTracked(id: number): Promise<void>;
+  /** Сколько записей в буфере — для индикатора в тулбаре (0 означает «кнопки нет»). */
+  onClipboardChanged(cb: (count: number) => void): () => void;
+  toggleClipboardPopover(): Promise<void>;
+  syncClipboardPopoverBounds(b: ContentBounds): void;
+  onClipboardPopoverClosed(cb: () => void): () => void;
   onTrackingChanged(cb: () => void): () => void;
   /** Поиск по настройкам фразой — второй эшелон, отдаёт индексы SETTINGS_INDEX (settingsIndex.ts). */
   searchSettingsSmart(query: string): Promise<number[]>;

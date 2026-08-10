@@ -307,6 +307,8 @@ export class TabManager {
   // Автозаполнение форм — фокус на поле адреса/карты (см. wirePageEvents). url — из wc.getURL().
   private onAutofillFieldFocusCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void;
   private onAutofillPasteBlobCb?: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void;
+  private onPageCopyCb?: (text: string, url: string, title: string) => void;
+  private onClipboardToggleCb?: () => void;
   // Автозаполнение — страница просит убрать поповер (Esc, уход фокуса, прокрутка).
   private onAutofillDismissCb?: () => void;
   // Автозаполнение — отправка формы с данными адреса/карты (offer-save). url — из wc.getURL().
@@ -1392,6 +1394,17 @@ export class TabManager {
         this.onAutofillPasteBlobCb?.(id, payload.text, payload.rect);
       } catch (e) {
         console.warn('[TabMgr] onAutofillPasteBlobCb error:', (e as Error).message);
+      }
+    });
+    // Скопировали текст на странице — в буфер браузера (см. ClipboardBuffer.ts).
+    // ⚠️ Инкогнито исключаем ЗДЕСЬ, а не в буфере: приватная вкладка не оставляет следов нигде,
+    // и список скопированного — ровно такой же след, как история или загрузки.
+    wc.ipc.on(IPC.CLIPBOARD_COPIED, (_e, payload: { text: string; title: string }) => {
+      if (!mine() || this.tabMap.get(id)?.incognito) return;
+      try {
+        this.onPageCopyCb?.(payload.text, wc.getURL(), payload.title);
+      } catch (e) {
+        console.warn('[TabMgr] onPageCopyCb error:', (e as Error).message);
       }
     });
     // Страница просит убрать поповер (Esc, уход фокуса, прокрутка) — см. AUTOFILL_DISMISS.
@@ -3099,6 +3112,8 @@ export class TabManager {
   setOnAutofillPasteBlob(cb: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void): void {
     this.onAutofillPasteBlobCb = cb;
   }
+  setOnPageCopy(cb: (text: string, url: string, title: string) => void): void { this.onPageCopyCb = cb; }
+  setOnClipboardToggle(cb: () => void): void { this.onClipboardToggleCb = cb; }
 
   // source — откуда пришёл ввод. Слой хрома принадлежит окну навсегда и никуда не переезжает;
   // вкладка — может (см. detachTabForMove), и это решает всё, см. гвард ниже.
@@ -3224,6 +3239,10 @@ export class TabManager {
       } else if (code === 'KeyO' && shift) {
         event.preventDefault();
         this.onBookmarksOpenCb?.();         // Ctrl+Shift+O: открыть раздел закладок
+      } else if (code === 'KeyB' && shift) {
+        // Буфер скопированного. ⚠️ Ctrl+Shift+B в Chrome переключает полосу закладок, но у нас её
+        // нет намеренно (см. CLAUDE.md про закладки в сайдбаре), так что чужой привычки мы не ломаем.
+        this.onClipboardToggleCb?.();
       } else if (code === 'KeyI' && shift) {
         event.preventDefault();
         this.toggleActiveDevTools();        // Ctrl+Shift+I: DevTools (альтернатива F12)

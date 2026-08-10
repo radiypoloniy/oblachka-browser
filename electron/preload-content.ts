@@ -117,6 +117,8 @@ const CH_AUTOFILL_FILL = 'autofill:fill-fields';
 const CH_AUTOFILL_SUBMIT = 'autofill:submit';
 const CH_AUTOFILL_MAP_FIELDS = 'autofill:map-fields';
 const CH_AUTOFILL_PASTE_BLOB = 'autofill:paste-blob';
+// Буфер скопированного со страниц (см. electron/ClipboardBuffer.ts).
+const CH_CLIPBOARD_COPY = 'clipboard:copied';
 
 function isTopFrame(): boolean {
   try {
@@ -901,6 +903,33 @@ try {
       });
     } catch {
       // разбор вставки не имеет права ронять страницу
+    }
+  }, true);
+} catch {
+  // IPC недоступен
+}
+
+// ── Копирование со страницы (буфер браузера) ────────────────────────────────
+//
+// ⚠️ Это ЕДИНСТВЕННЫЙ источник буфера: системный буфер обмена мы не опрашиваем никогда, иначе
+// в историю попадало бы всё, что человек копирует в других приложениях (см. ClipboardBuffer.ts).
+//
+// ⚠️ Копию ИЗ ПОЛЯ ПАРОЛЯ не отправляем, и это не формальность: человек мог показать пароль
+// глазом-иконкой и скопировать его прямо со страницы, а наш буфер живёт в памяти main и
+// показывается списком — там ему не место ни секунды.
+try {
+  document.addEventListener('copy', () => {
+    try {
+      if (!isTopFrame()) return;
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement && /password/i.test(el.type || '')) return;
+      // Форма входа целиком: логин оттуда тоже не нужен в общем списке.
+      if (el instanceof HTMLInputElement && looksLikeCredentials(el)) return;
+      const text = String(window.getSelection() || '');
+      if (!text) return;
+      ipcRenderer.send(CH_CLIPBOARD_COPY, { text: text.slice(0, 20000), title: document.title || '' });
+    } catch {
+      // копирование не имеет права ломаться из-за нас
     }
   }, true);
 } catch {

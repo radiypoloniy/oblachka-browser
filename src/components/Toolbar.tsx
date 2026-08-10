@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star, VenetianMask, TrendingDown } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star, VenetianMask, TrendingDown, Clipboard } from 'lucide-react';
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, ProductState } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
@@ -118,6 +118,10 @@ export default function Toolbar({
   const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false);
   const [vpnPopoverOpen, setVpnPopoverOpen] = useState(false);
   const [downloadsPopoverOpen, setDownloadsPopoverOpen] = useState(false);
+  // Буфер скопированного со страниц. ⚠️ Кнопки НЕТ, пока буфер пуст: на чистом сеансе она была бы
+  // мёртвым значком, а тулбар и так тесный (тот же приём, что у индикатора товара).
+  const [clipboardCount, setClipboardCount] = useState(0);
+  const [clipboardPopoverOpen, setClipboardPopoverOpen] = useState(false);
   const [sitePopoverOpen, setSitePopoverOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   // Анимация прилёта файла в кнопку загрузок. Живёт ровно столько, сколько играет — держать
@@ -170,6 +174,7 @@ export default function Toolbar({
   const passwordControlRef = useRef<HTMLDivElement>(null);
   const vpnControlRef = useRef<HTMLDivElement>(null);
   const downloadsControlRef = useRef<HTMLDivElement>(null);
+  const clipboardControlRef = useRef<HTMLDivElement>(null);
   const siteControlRef = useRef<HTMLButtonElement>(null);
 
   // Текущий выбранный поисковик — источник истины в main (SettingsManager); здесь только
@@ -528,6 +533,23 @@ export default function Toolbar({
   }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen, pushDownloadsPopoverBounds]);
 
   useEffect(() => window.oblako.onDownloadsPopoverClosed(() => setDownloadsPopoverOpen(false)), []);
+
+  useEffect(() => window.oblako.onClipboardChanged(setClipboardCount), []);
+  useEffect(() => window.oblako.onClipboardPopoverClosed(() => setClipboardPopoverOpen(false)), []);
+
+  const toggleClipboardPopover = useCallback(() => {
+    closeDropdownFully('clipboard-button');
+    if (passwordPopoverOpen) { setPasswordPopoverOpen(false); void window.oblako.closePasswordPopover(); }
+    if (vpnPopoverOpen) { setVpnPopoverOpen(false); void window.oblako.closeVpnPopover(); }
+    if (downloadsPopoverOpen) { setDownloadsPopoverOpen(false); void window.oblako.closeDownloadsPopover(); }
+    const el = clipboardControlRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      window.oblako.syncClipboardPopoverBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+    }
+    setClipboardPopoverOpen((v) => !v);
+    void window.oblako.toggleClipboardPopover();
+  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen]);
 
   // Вопрос «этот файл уже скачан» — открываем поповер загрузок ровно тем же путём, что по клику
   // (с якорем и подсветкой кнопки). Сам вопрос уже лежит в main, карточка заберёт его сама.
@@ -1521,6 +1543,20 @@ export default function Toolbar({
               : islandBtn()}>
             <Sparkles size={18} />
           </button>
+        )}
+        {/* Буфер скопированного — рядом с загрузками намеренно: это одна группа «что я забрал со
+            страниц». Кнопка появляется, только когда в буфере что-то есть, и исчезает после
+            очистки: постоянный значок ради изредка нужного инструмента — лишний шум в тулбаре. */}
+        {clipboardCount > 0 && (
+          <div ref={clipboardControlRef} style={{ display: 'inline-flex' }}>
+            <button
+              title="Скопированное со страниц (Ctrl+Shift+B)"
+              onClick={toggleClipboardPopover}
+              style={clipboardPopoverOpen ? islandBtn('var(--accent)', 'var(--accent-soft)') : islandBtn()}
+            >
+              <Clipboard size={18} />
+            </button>
+          </div>
         )}
         {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки. Иконка нейтральная
             всегда (заход 3) — акцент не для постоянных/переключаемых состояний, только точка

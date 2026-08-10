@@ -35,6 +35,18 @@ const api: OblakoApi = {
   mergeTracked: (aId: number, bId: number) => ipcRenderer.invoke(IPC.TRACKING_MERGE, aId, bId) as Promise<void>,
   dismissTrackedMerge: (aId: number, bId: number) => ipcRenderer.invoke(IPC.TRACKING_MERGE_DISMISS, aId, bId) as Promise<void>,
   ungroupTracked: (id: number) => ipcRenderer.invoke(IPC.TRACKING_UNGROUP, id) as Promise<void>,
+  onClipboardChanged: (cb: (count: number) => void) => {
+    const handler = (_e: unknown, count: number) => cb(count);
+    ipcRenderer.on(IPC.CLIPBOARD_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.CLIPBOARD_CHANGED, handler);
+  },
+  toggleClipboardPopover: () => ipcRenderer.invoke(IPC.CLIPBOARD_POPOVER_TOGGLE) as Promise<void>,
+  syncClipboardPopoverBounds: (b: ContentBounds) => ipcRenderer.send(IPC.CLIPBOARD_POPOVER_BOUNDS, b),
+  onClipboardPopoverClosed: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.CLIPBOARD_POPOVER_CLOSED, handler);
+    return () => ipcRenderer.removeListener(IPC.CLIPBOARD_POPOVER_CLOSED, handler);
+  },
   onTrackingChanged: (cb: () => void) => {
     const handler = () => cb();
     ipcRenderer.on(IPC.TRACKING_CHANGED, handler);

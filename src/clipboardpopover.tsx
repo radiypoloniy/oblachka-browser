@@ -1,0 +1,206 @@
+import React, { useEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom/client';
+import { Clipboard, Copy, Check, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react';
+import type { ClipboardEntry } from '../shared/ipc';
+import { islandPlate } from './styles/island';
+import './styles/global.css';
+import { installOverlayReveal } from './overlayReveal';
+
+// Поповер буфера скопированного со страниц.
+//
+// ⚠️ Список сгруппирован ПО САЙТАМ, а не идёт сплошняком по времени. Человек помнит не «третье
+// сверху», а «я это копировал на Хабре» — сайт и есть та зацепка, по которой запись находят.
+//
+// ⚠️ Показываем ОБРЕЗАННЫЙ текст: скопированное бывает длинным (абзац, таблица), и сплошная
+// простыня превращает список в нечитаемое полотно. Раскрыть можно, но это отдельное действие —
+// как и скопировать, для которого раскрывать не требуется вовсе.
+
+declare global {
+  interface Window {
+    clipboardPopover: {
+      list: () => Promise<ClipboardEntry[]>;
+      put: (id: number) => Promise<void>;
+      remove: (id: number) => Promise<void>;
+      clear: () => Promise<void>;
+      getEnabled: () => Promise<boolean>;
+      setEnabled: (on: boolean) => Promise<void>;
+      close: () => void;
+      reportHeight: (px: number) => void;
+      onShow: (cb: () => void) => () => void;
+    };
+  }
+}
+
+// Держать в синхроне с SHADOW_MARGIN в electron/ClipboardPopoverManager.ts.
+const SHADOW_MARGIN = 16;
+const CARD_WIDTH = 380;
+// Сколько строк текста видно в свёрнутом виде.
+const PREVIEW_LINES = 2;
+
+function timeAgo(ts: number): string {
+  const mins = Math.round((Date.now() - ts) / 60000);
+  if (mins < 1) return 'только что';
+  if (mins < 60) return `${mins} мин`;
+  const hours = Math.round(mins / 60);
+  return `${hours} ч`;
+}
+
+function ClipboardPopoverApp() {
+  const [entries, setEntries] = useState<ClipboardEntry[]>([]);
+  const [enabled, setEnabled] = useState(true);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const reload = () => { void window.clipboardPopover.list().then(setEntries); };
+  useEffect(() => window.clipboardPopover.onShow(reload), []);
+  useEffect(() => { reload(); void window.clipboardPopover.getEnabled().then(setEnabled); }, []);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const report = () => window.clipboardPopover.reportHeight(el.offsetHeight);
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [entries.length]);
+
+  // Группировка по сайту с сохранением порядка «свежие сверху»: первая встреча сайта задаёт его
+  // место в списке.
+  const groups: { host: string; items: ClipboardEntry[] }[] = [];
+  for (const e of entries) {
+    const host = e.host || 'без адреса';
+    const g = groups.find((x) => x.host === host);
+    if (g) g.items.push(e);
+    else groups.push({ host, items: [e] });
+  }
+
+  return (
+    <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
+      <div ref={cardRef} style={{
+        width: CARD_WIDTH, ...islandPlate,
+        borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-overlay)',
+        background: 'var(--surface-solid)', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 10px 10px 14px', borderBottom: '1px solid var(--divider)',
+        }}>
+          <Clipboard size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} />
+          <span style={{
+            flex: 1, fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)',
+            textTransform: 'uppercase', letterSpacing: 'var(--ls-caps)',
+          }}>Скопировано со страниц</span>
+          {entries.length > 0 && (
+            <button title="Очистить всё" onClick={() => { void window.clipboardPopover.clear().then(reload); }}
+              style={iconBtn}><Trash2 size={13} /></button>
+          )}
+          <button title="Закрыть" onClick={() => window.clipboardPopover.close()} style={iconBtn}><X size={13} /></button>
+        </div>
+
+        <div style={{ maxHeight: 420, overflow: 'auto', padding: 6 }}>
+          {entries.length === 0 && (
+            <div style={{ padding: '22px 12px', textAlign: 'center', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
+              {enabled
+                ? 'Скопируйте что-нибудь на странице — попадёт сюда'
+                : 'История копирования выключена'}
+            </div>
+          )}
+          {groups.map((g) => (
+            <div key={g.host} style={{ marginBottom: 4 }}>
+              <div style={{
+                padding: '6px 8px 4px', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{g.host}</div>
+              {g.items.map((e) => <Row key={e.id} entry={e} onChanged={reload} />)}
+            </div>
+          ))}
+        </div>
+
+        {/* ⚠️ Выключатель прямо здесь, а не в настройках: человек вспоминает о слежке за
+            копированием ровно в тот момент, когда видит список. Выключение стирает собранное. */}
+        <button
+          onClick={() => {
+            const next = !enabled;
+            setEnabled(next);
+            void window.clipboardPopover.setEnabled(next).then(reload);
+          }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', border: 'none',
+            borderTop: '1px solid var(--divider)', background: 'transparent', cursor: 'default',
+            fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', textAlign: 'left',
+          }}
+        >
+          <span style={{ flex: 1 }}>{enabled ? 'Не вести историю копирования' : 'Вести историю копирования'}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const iconBtn: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 24, height: 24, padding: 0, border: 'none', flex: 'none',
+  borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-faint)', cursor: 'default',
+};
+
+function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  // ⚠️ Копирование НЕ требует раскрытия: чаще всего человек и так знает, что копировал, и лишний
+  // шаг «раскрой, чтобы взять» превратил бы список в препятствие.
+  const take = () => {
+    void window.clipboardPopover.put(entry.id).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    });
+  };
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: 8,
+        padding: '7px 8px', borderRadius: 'var(--radius-sm)',
+        background: hovered ? 'var(--surface-hover)' : 'transparent',
+      }}
+    >
+      <button title={open ? 'Свернуть' : 'Показать целиком'} onClick={() => setOpen((v) => !v)}
+        style={{ ...iconBtn, width: 18, height: 18, marginTop: 1 }}>
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+      </button>
+
+      <div onClick={take} style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 'var(--fs-sm)', color: 'var(--text-body)', lineHeight: 1.35,
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          ...(open ? {} : {
+            display: '-webkit-box', WebkitLineClamp: PREVIEW_LINES, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          }),
+        }}>{entry.text}</div>
+        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+          {timeAgo(entry.at)}{entry.title ? ` · ${entry.title.slice(0, 40)}` : ''}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 2, flex: 'none', visibility: hovered || copied ? 'visible' : 'hidden' }}>
+        <button title="Скопировать" onClick={take} style={{ ...iconBtn, color: copied ? 'var(--dot-local)' : 'var(--text-faint)' }}>
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+        </button>
+        <button title="Убрать из списка" onClick={() => { void window.clipboardPopover.remove(entry.id).then(onChanged); }}
+          style={iconBtn}><Trash2 size={13} /></button>
+      </div>
+    </div>
+  );
+}
+
+installOverlayReveal();
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <ClipboardPopoverApp />
+  </React.StrictMode>,
+);
