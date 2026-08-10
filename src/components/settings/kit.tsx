@@ -130,7 +130,11 @@ export function Subsection({ title, description, danger, children }: {
   title: string; description?: React.ReactNode; danger?: boolean; children: React.ReactNode;
 }) {
   return (
-    <div style={{
+    // ⚠️ data-setting-block — якорь для поиска по настройкам (см. shared/settingsIndex.ts): по
+    // нему находка прокручивает к блоку и подсвечивает его. Атрибут стоит ЗДЕСЬ, а не в каждой
+    // секции: так его получают все блоки разом и новый блок не нужно не забыть пометить.
+    // Расхождение имени с реестром ничего не ломает — раздел откроется, просто без подсветки.
+    <div data-setting-block={title} style={{
       display: 'flex', flexDirection: 'column', gap: 12,
       paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
     }}>

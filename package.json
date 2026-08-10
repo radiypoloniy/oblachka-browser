@@ -24,6 +24,7 @@
     "bookmarks-schema-check": "node scripts/bookmarks-schema-check.mjs",
     "rules-check": "node --experimental-strip-types scripts/rules-check.mjs",
     "filename-check": "node --experimental-strip-types scripts/filename-check.mjs",
+    "settings-search-check": "node --experimental-strip-types scripts/settings-search-check.mjs",
     "ai-bench": "node scripts/ai-bench.mjs",
     "download-filters": "node scripts/download-filters.mjs",
     "download-xray": "node scripts/download-xray.mjs",

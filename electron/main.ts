@@ -145,6 +145,7 @@ import {
 import { suggestBookmarkFolders } from './BookmarkOrganizer';
 import { suggestFolderForBookmark } from './BookmarkFolderPick';
 import { suggestFileName, renameDownloadedFile } from './DownloadNamer';
+import { searchSettingsByMeaning } from './SettingsSearch';
 import type { DownloadNameSuggestion, DownloadRenameResult } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
@@ -302,6 +303,8 @@ let isShuttingDown = false;
 // Идёт ли прямо сейчас смысловой поиск вкладки (см. TABS_SEARCH_SMART) — один за раз на всё
 // приложение, как и сама модель.
 let smartTabSearchBusy = false;
+// То же самое для поиска по настройкам фразой (см. SETTINGS_SEARCH_SMART).
+let settingsSearchBusy = false;
 // То же для подсказки «вы это уже читали»: один запрос за раз на приложение.
 let relatedBusy = false;
 // И для смыслового Ctrl+F (см. SmartFind.ts). Второй Enter, пока идёт первый поиск, не должен
@@ -2634,6 +2637,22 @@ function registerIpc() {
   ipcMain.handle(IPC.DOWNLOAD_OPEN_FILE,   (_e, id: string) => downloads.openFile(id));
   ipcMain.handle(IPC.DOWNLOAD_SHOW_FOLDER, (_e, id: string) => downloads.showFolder(id));
   ipcMain.handle(IPC.DOWNLOAD_RETRY,       (_e, id: string) => downloads.retry(id));
+
+  // Поиск по настройкам фразой (AI-IDEAS.md №6) — второй эшелон, зовётся только на промахе
+  // ключевых слов. ⚠️ Гвард «один запрос за раз» тот же, что у поиска вкладок: человек печатает
+  // быстрее, чем модель отвечает, а очередь генерации общая и прерывать начатую нельзя.
+  ipcMain.handle(IPC.SETTINGS_SEARCH_SMART, async (_e, query: string): Promise<number[]> => {
+    if (settingsSearchBusy) return [];
+    settingsSearchBusy = true;
+    try {
+      return await searchSettingsByMeaning(query);
+    } catch (err) {
+      console.warn('[settings-search] ошибка:', err);
+      return [];
+    } finally {
+      settingsSearchBusy = false;
+    }
+  });
 
   // Имя по содержимому (AI-IDEAS.md №3). ⚠️ Ровно два шага, и между ними стоит человек:
   // «предложить» только читает файл и считает, «переименовать» трогает диск.

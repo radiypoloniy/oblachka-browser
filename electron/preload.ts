@@ -16,6 +16,7 @@ const api: OblakoApi = {
   closeTab: (id: string) => ipcRenderer.invoke(IPC.TAB_CLOSE, id),
   activateTab: (id: string) => ipcRenderer.invoke(IPC.TAB_ACTIVATE, id),
   searchTabsSmart: (query: string) => ipcRenderer.invoke(IPC.TABS_SEARCH_SMART, query) as Promise<string[]>,
+  searchSettingsSmart: (query: string) => ipcRenderer.invoke(IPC.SETTINGS_SEARCH_SMART, query) as Promise<number[]>,
   getRelatedPages: () => ipcRenderer.invoke(IPC.HISTORY_RELATED) as Promise<SemanticSearchResult[]>,
   // «Итоги дня»: get — только читает готовое, build — явное действие человека (см. DayDigest.ts).
   getDayDigest:   () => ipcRenderer.invoke(IPC.DIGEST_GET) as Promise<DayDigestState>,

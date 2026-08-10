@@ -1,0 +1,76 @@
+// Прогон поиска по настройкам (shared/settingsIndex.ts) — без electron, обычным node.
+//
+// Зачем: это ОСНОВНОЙ путь фичи, работающий без модели, и качество тут определяется реестром
+// ключевых слов, а не кодом. Реестр растёт вместе с настройками, и проверить его можно только
+// вопросами, которые задаёт человек, — глазами эта работа не делается.
+//
+// Запуск: npm run settings-search-check
+import { searchSettings, SETTINGS_INDEX } from '../shared/settingsIndex.ts';
+
+let passed = 0;
+let failed = 0;
+
+// Ждём, что нужная запись окажется в выдаче (и, для однозначных запросов, ПЕРВОЙ).
+function want(query, expectedLabel, { first = true } = {}) {
+  const hits = searchSettings(query);
+  const idx = hits.findIndex((h) => h.label === expectedLabel);
+  const ok = first ? idx === 0 : idx >= 0;
+  if (ok) passed++; else failed++;
+  const got = hits.length ? hits.map((h) => h.label).join(' | ') : '(пусто)';
+  console.log(`${ok ? '  ok  ' : ' FAIL '} «${query}» → ${expectedLabel}${first ? ' (первым)' : ''}\n         выдача: ${got}`);
+}
+
+// Ждём пустую выдачу: такие запросы обязаны уходить второму эшелону, к модели.
+function wantNothing(query) {
+  const hits = searchSettings(query);
+  const ok = hits.length === 0;
+  if (ok) passed++; else failed++;
+  console.log(`${ok ? '  ok  ' : ' FAIL '} «${query}» → ничего (уйдёт к модели)\n         выдача: ${hits.map((h) => h.label).join(' | ') || '(пусто)'}`);
+}
+
+console.log('\n— прямое попадание по названию —');
+want('тема', 'Тема');
+want('пароли', 'Пароли');
+want('обновления', 'Обновления');
+want('крипта', 'Крипта');
+
+console.log('\n— склонения: человек не пишет в именительном падеже —');
+want('паролей', 'Пароли');
+want('загрузку', 'Загрузки');
+want('обновление', 'Обновления');
+want('разрешения сайтам', 'Разрешения сайтов');
+
+console.log('\n— спрашивают не тем словом, которым мы назвали —');
+want('тёмная', 'Тема');
+want('темная', 'Тема');       // без ё — то же самое
+want('обои', 'Фон новой вкладки');
+want('камера', 'Разрешения сайтов');
+want('биткоин', 'Крипта');
+want('гугл', 'Поиск по умолчанию');
+want('реклама', 'Блокировка рекламы');
+want('сбербанк не открывается', 'Сертификаты Минцифры', { first: false });
+want('перенести закладки из chrome', 'Импорт данных из другого браузера', { first: false });
+
+console.log('\n— промахи: тут работает второй эшелон —');
+wantNothing('сделать шрифт крупнее');
+wantNothing('почему тормозит');
+wantNothing('ab');
+
+console.log('\n— целостность реестра —');
+{
+  // ⚠️ Проверяем ПОДПИСИ, а не адреса: два раздела без блока (в «AI» это «Локальная модель» и
+  // «Фактчек и веб-поиск») законно ведут в одно место — человеку они видятся разными ответами
+  // на разные вопросы. А вот две одинаковые подписи в выдаче означали бы выбор без разницы.
+  const seen = new Set();
+  const dupes = SETTINGS_INDEX.filter((e) => {
+    if (seen.has(e.label)) return true;
+    seen.add(e.label);
+    return false;
+  });
+  const ok = dupes.length === 0;
+  if (ok) passed++; else failed++;
+  console.log(`${ok ? '  ok  ' : ' FAIL '} нет двух записей с одной подписью (${SETTINGS_INDEX.length} записей)${ok ? '' : `: ${dupes.map((d) => d.label).join(', ')}`}`);
+}
+
+console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
+process.exit(failed === 0 ? 0 : 1);

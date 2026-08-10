@@ -509,6 +509,9 @@ export const IPC = {
   // Имя по содержимому (см. electron/DownloadNamer.ts). ⚠️ Каналов ДВА, и разделены они
   // намеренно: «предложить» ничего не трогает на диске, «переименовать» необратимо. Между ними
   // стоит человек, увидевший предложенное имя.
+  // Поиск по настройкам фразой — ВТОРОЙ эшелон (см. electron/SettingsSearch.ts). Основной путь,
+  // поиск по ключевым словам, живёт целиком в renderer и в main не ходит вовсе.
+  SETTINGS_SEARCH_SMART: 'settings:search-smart', // renderer → main: фраза → индексы SETTINGS_INDEX
   DOWNLOAD_SUGGEST_NAME: 'download:suggest-name', // renderer → main: id → DownloadNameSuggestion
   DOWNLOAD_RENAME:       'download:rename',       // renderer → main: (id, имя) → DownloadRenameResult
 
@@ -1674,6 +1677,8 @@ export interface OblakoApi {
   activateTab(id: string): Promise<void>;
   /** Вкладки, подходящие запросу по смыслу (локальная модель). Пусто — не нашлось или модели нет. */
   searchTabsSmart(query: string): Promise<string[]>;
+  /** Поиск по настройкам фразой — второй эшелон, отдаёт индексы SETTINGS_INDEX (settingsIndex.ts). */
+  searchSettingsSmart(query: string): Promise<number[]>;
   /** Страницы из своей истории, связанные с открытой сейчас. Пусто — нечего показать. */
   getRelatedPages(): Promise<SemanticSearchResult[]>;
   /** Готовые «итоги дня» (ничего не считает). */

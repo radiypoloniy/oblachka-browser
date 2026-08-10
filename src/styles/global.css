@@ -213,6 +213,24 @@ body {
    чего свойство возвращается под управление inline-стиля. */
 .oblako-section-in { animation: oblako-section-in 160ms var(--ease-out) backwards; }
 
+/* Блок настроек, к которому привёл поиск (см. shared/settingsIndex.ts). Раздел мог открыться
+   на середине длинной колонки, и без метки человек не понимает, что именно ему показали.
+   ⚠️ Красим box-shadow, а не background: у блоков внутри свои поверхности и карточки, и заливка
+   спорила бы с ними. Гаснет само за 1.6 с — подсветка отвечает на вопрос «куда смотреть»
+   один раз, а не остаётся жить на экране. */
+@keyframes oblako-setting-flash {
+  0%   { box-shadow: 0 0 0 0 var(--accent-soft); }
+  15%  { box-shadow: 0 0 0 6px var(--accent-soft); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.oblako-setting-flash {
+  border-radius: var(--radius-sm);
+  animation: oblako-setting-flash 1600ms var(--ease-out) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .oblako-setting-flash { animation: none; }
+}
+
 /* Вкладка, появившаяся в сайдбаре. Список — самый живой элемент интерфейса, и новая строка
    не должна впрыгивать. Только opacity и transform: анимировать высоту нельзя, это дёргало
    бы весь список ниже. */
