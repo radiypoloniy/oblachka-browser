@@ -131,9 +131,32 @@ async function probeView(url: string): Promise<{ text: string; note: string }> {
     const facts = await win.webContents.executeJavaScript(
       `(function(){ ${PAGE_FACTS_SCRIPT}\n try { return __oblakoCollectFacts(); } catch (e) { return null; } })()`,
     ) as PageFacts | null;
+
+    // ⚠️ Различаем ДВА разных «нет»: страница не открылась (антибот) и страница открылась, но
+    // структурных данных в ней нет. От этого зависит, возможен ли для магазина свой адаптер:
+    // если цена ВИДНА человеку в тексте, взять её можно, просто не через JSON-LD.
+    const probe = await win.webContents.executeJavaScript(`(function(){
+      var t = (document.body && document.body.innerText) || '';
+      return {
+        len: t.length,
+        // Цена рядом с рублём — признак, что страница отрисовалась и товар на ней есть.
+        priceInText: /\\d[\\d\\s\\u00a0]{2,}\\s*(₽|руб)/i.test(t),
+        ld: document.querySelectorAll('script[type="application/ld+json"]').length,
+      };
+    })()`) as { len: number; priceInText: boolean; ld: number };
+
     const title = win.webContents.getTitle();
-    const captcha = /captcha|robot|проверк/i.test(title);
-    return { text: summarize(facts), note: captcha ? `капча: ${title.slice(0, 40)}` : '' };
+    const captcha = /captcha|robot|проверк|доступ ограничен/i.test(title);
+    const facts_ = summarize(facts);
+    let note = '';
+    if (captcha) note = `капча: ${title.slice(0, 40)}`;
+    else if (facts_ === 'нет') {
+      // Самая ценная строка отчёта: она и решает судьбу адаптера для магазина.
+      note = probe.len < 500
+        ? `страница пустая (${probe.len} симв.) — не открылась`
+        : `страница открылась (${probe.len} симв., JSON-LD блоков: ${probe.ld}), цена в тексте: ${probe.priceInText ? 'ЕСТЬ' : 'нет'}`;
+    }
+    return { text: facts_, note };
   } catch (e) {
     return { text: 'нет', note: (e as Error).message.slice(0, 60) };
   }
