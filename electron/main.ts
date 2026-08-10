@@ -201,6 +201,10 @@ const TRANSLATE_TEST = process.env.OBLAKO_TRANSLATE_TEST === '1';
 // Замер «читается ли цена товара» перед фичей отслеживания (см. PriceProbe.ts). Адреса приходят
 // JSON-массивом в OBLAKO_PRICE_PROBE_URLS. Боевое окно не поднимается.
 const PRICE_PROBE = process.env.OBLAKO_PRICE_PROBE === '1';
+// Показ примеров уведомлений об отслеживании (npm run notify-preview). ⚠️ Браузер при этом
+// запускается ОБЫЧНЫЙ: как выглядит тост, видно только в настоящем окружении приложения —
+// с его AppUserModelID, иконкой и системными настройками уведомлений.
+const NOTIFY_PREVIEW = process.env.OBLAKO_NOTIFY_PREVIEW === '1';
 
 // Тест-мост перевода: нужен свой preload (contextBridge → window.translateTest) и IPC-хендлер
 // в main (node-llama-cpp работает только там) — в отличие от runIsolatedTestWindow это не просто
@@ -376,6 +380,27 @@ async function refreshProductForWebContents(wc: Electron.WebContents): Promise<v
  * Меню у индикатора товара. Нативное, как у звезды закладки: поповер здесь не нужен, а нативное
  * меню рисуется поверх нативной вью страницы без всяких ухищрений.
  */
+/**
+ * Тост об изменении цены. Вынесен функцией, потому что его зовёт и показ примеров
+ * (OBLAKO_NOTIFY_PREVIEW): примерка обязана идти тем же путём, что настоящее уведомление, иначе
+ * она показывала бы не то, что человек получит.
+ *
+ * ⚠️ Клик открывает страницу товара: уведомление, сообщающее новость, с которой ничего нельзя
+ * сделать, — это просто помеха.
+ */
+function showTrackingToast(title: string, url: string, text: string): void {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title: title.slice(0, 80), body: text });
+  n.on('click', () => {
+    const ctx = mainContext() ?? allContexts()[0];
+    if (!ctx || ctx.win.isDestroyed()) return;
+    if (ctx.win.isMinimized()) ctx.win.restore();
+    ctx.win.focus();
+    ctx.tabs.createTab(url);
+  });
+  n.show();
+}
+
 function showProductMenu(win: BrowserWindow): void {
   const ctx = contextForWindow(win);
   const active = ctx?.tabs.snapshot().find((t) => t.isActive && !t.isHub);
@@ -3355,18 +3380,20 @@ app.whenReady().then(async () => {
   // ⚠️ Тост Windows — нативный (Notification), свой центр уведомлений не нужен: система даёт и
   // очередь, и «не беспокоить», и историю. Клик по тосту открывает страницу товара — иначе он
   // сообщает новость, с которой ничего нельзя сделать.
-  setTrackingEventHandler(({ title, url, text }) => {
-    if (!Notification.isSupported()) return;
-    const n = new Notification({ title: title.slice(0, 80), body: text });
-    n.on('click', () => {
-      const ctx = mainContext() ?? allContexts()[0];
-      if (!ctx || ctx.win.isDestroyed()) return;
-      if (ctx.win.isMinimized()) ctx.win.restore();
-      ctx.win.focus();
-      ctx.tabs.createTab(url);
-    });
-    n.show();
-  });
+  // Примеры уведомлений — чтобы человек увидел, как они выглядят, не дожидаясь реальной скидки.
+  // Идут через ТОТ ЖЕ обработчик, что и настоящие: иначе примерка показывала бы не то, что придёт.
+  if (NOTIFY_PREVIEW) {
+    setTimeout(() => {
+      const samples = [
+        { title: 'Ноутбук CHUWI Corebook Air 14"', text: 'Подешевело на 1 500 ₽ (-3%), сейчас 47 490 ₽' },
+        { title: 'Биты для шуруповёрта IMPACT PH2', text: 'Больше нет в наличии' },
+        { title: 'Умный выключатель Aqara H2', text: 'Снова в наличии — 4 592 ₽' },
+      ];
+      samples.forEach((s, i) => setTimeout(() => showTrackingToast(s.title, 'https://example.com', s.text), i * 4000));
+    }, 4000);
+  }
+
+  setTrackingEventHandler(({ title, url, text }) => showTrackingToast(title, url, text));
   searxngKeyStore.loadFromDisk();
   vpnKeyStore.loadFromDisk();
   skillsStore.loadFromDisk();

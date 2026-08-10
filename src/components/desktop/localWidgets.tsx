@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Tile, TileCaption, type WidgetProps } from './widgets';
+import type { TrackedProduct } from '../../../shared/ipc';
 import type { DayDigestState } from '../../../shared/ipc';
 
 // Виджеты, которым НЕ НУЖНА СЕТЬ. Отдельным файлом не только ради объёма widgets.tsx: это
@@ -298,6 +299,77 @@ export function DownloadsWidget({ box, fill }: WidgetProps) {
       )}
       <div style={{ flex: 'none', fontSize: 'var(--fs-xs)', opacity: 0.7 }}>
         {active > 0 ? `${active} идёт` : items.length > 0 ? 'всё завершено' : ''}
+      </div>
+    </Tile>
+  );
+}
+
+// ── Отслеживание товаров ──────────────────────────────────────────────────────
+//
+// Показывает то, ради чего отслеживание и заводят: сколько товаров под наблюдением и что с ними
+// происходит. ⚠️ Плитка ТЕМЫ (surface), а не цветная: цвет тут значил бы направление цены, а на
+// плитке товаров сразу несколько и разнонаправленных — красить её целиком было бы враньём.
+export function TrackingWidget({ box, fill }: WidgetProps) {
+  const [items, setItems] = useState<TrackedProduct[]>([]);
+
+  const load = () => { void window.oblako.listTracked().then(setItems); };
+  useEffect(() => { load(); }, []);
+  useEffect(() => window.oblako.onTrackingChanged(load), []);
+
+  // ⚠️ Считаем по ГРУППАМ, а не по записям: один товар в трёх магазинах — это один товар, и
+  // «отслеживается 3» было бы неправдой (та же единица счёта, что на экране отслеживания).
+  const groups = new Map<string, TrackedProduct[]>();
+  for (const it of items) {
+    const key = it.groupId > 0 ? `g${it.groupId}` : `i${it.id}`;
+    groups.set(key, [...(groups.get(key) ?? []), it]);
+  }
+
+  // Самое интересное — то, что подешевело сильнее всех с момента добавления. Это факт из наших
+  // наблюдений, а не совет: виджет ничего не советует покупать.
+  let bestTitle = '';
+  let bestDrop = 0;
+  let bestNow = 0;
+  let currency = 'RUB';
+  for (const offers of groups.values()) {
+    for (const o of offers) {
+      const first = o.points[0]?.price ?? 0;
+      const last = o.points[o.points.length - 1]?.price ?? 0;
+      if (!first || !last) continue;
+      const drop = first - last;
+      if (drop > bestDrop) { bestDrop = drop; bestTitle = o.title; bestNow = last; currency = o.currency; }
+    }
+  }
+
+  const money = (v: number) => `${Math.round(v).toLocaleString('ru-RU')} ${currency === 'RUB' ? '₽' : currency}`;
+  const tight = box.height < 120;
+
+  return (
+    <Tile surface fill={fill}>
+      <TileCaption>Отслеживание</TileCaption>
+      {groups.size === 0 ? (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.6 }}>
+          Ничего не отслеживается
+        </div>
+      ) : (
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
+          <div style={{ fontSize: tight ? 'var(--fs-lg)' : 'var(--fs-xl)', fontWeight: 700, lineHeight: 1.1 }}>
+            {groups.size}
+          </div>
+          {!tight && bestDrop > 0 && (
+            <div style={{ minWidth: 0 }}>
+              <div style={{
+                fontSize: 'var(--fs-xs)', overflow: 'hidden',
+                textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.8,
+              }}>{bestTitle}</div>
+              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--tone-green)' }}>
+                −{money(bestDrop)} · сейчас {money(bestNow)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      <div style={{ flex: 'none', fontSize: 'var(--fs-xs)', opacity: 0.7 }}>
+        {groups.size === 0 ? '' : bestDrop > 0 ? 'подешевело с добавления' : 'товаров под наблюдением'}
       </div>
     </Tile>
   );

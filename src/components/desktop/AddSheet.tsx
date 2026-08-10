@@ -36,6 +36,9 @@ const WIDGET_CHOICES: { key: string; label: string; hint: string; size: keyof ty
   { key: 'moon',     label: 'Луна',             hint: 'Фаза по дате · без сети',    size: 'small' },
   { key: 'downloads', label: 'Загрузки',        hint: 'Что качается · без сети',    size: 'medium' },
   { key: 'holiday',  label: 'Праздники',        hint: 'Сколько до ближайшего',      size: 'small' },
+  // ⚠️ «Без сети» тут значит «сам никуда не ходит»: цены перепроверяет фоновый обходчик
+  // (electron/TrackingChecker.ts), а виджет только показывает уже собранное.
+  { key: 'tracking', label: 'Отслеживание',     hint: 'Цены товаров · без сети',    size: 'medium' },
 ];
 
 interface Props {
@@ -101,7 +104,7 @@ export default function AddSheet({ layout, onAdd, onClose }: Props) {
                 width: 40, height: 40, borderRadius: 10, flex: 'none',
                 background: 'var(--surface-sunken)', display: 'inline-flex',
                 alignItems: 'center', justifyContent: 'center', fontSize: 18,
-              }}>{w.key === 'weather' ? '🌤' : w.key === 'clock' ? '🕒' : w.key === 'rates' ? '₽' : w.key === 'crypto' ? '₿' : w.key === 'tasks' ? '✓' : w.key === 'shield' ? '🛡' : w.key === 'moon' ? '🌙' : w.key === 'downloads' ? '⤓' : w.key === 'holiday' ? '🎉' : '★'}</span>}
+              }}>{w.key === 'weather' ? '🌤' : w.key === 'clock' ? '🕒' : w.key === 'rates' ? '₽' : w.key === 'crypto' ? '₿' : w.key === 'tasks' ? '✓' : w.key === 'shield' ? '🛡' : w.key === 'moon' ? '🌙' : w.key === 'downloads' ? '⤓' : w.key === 'holiday' ? '🎉' : w.key === 'tracking' ? '⤓' : '★'}</span>}
             />
           ))}
           {WIDGET_CHOICES.every((w) => hasItem(layout, 'widget', w.key)) && <Empty>Все виджеты уже на экране.</Empty>}
