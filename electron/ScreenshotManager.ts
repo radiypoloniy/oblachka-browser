@@ -41,6 +41,14 @@ interface WindowShot {
   // Снимок, сделанный до того, как страница карточки успела навесить слушателей: loadURL
   // асинхронен, а первый Ctrl+Shift+S приходит раньше (тот же приём, что у поповера загрузок).
   pending: string | null;
+  // Снимок УЖЕ делается. ⚠️ Между нажатием и показом карточки лежит await capturePage(), и на
+  // загруженной машине он занимает заметное время — а хоткей в это время нажимают ПОВТОРНО, как
+  // раз потому, что «не сработало». Без этого флага два захода идут параллельно, и поздний
+  // прикрепляет карточку ЗАНОВО уже после того, как ранний её закрыл: на экране ничего нет, а вью
+  // висит прикреплённой и screenshotOpen остаётся true — то есть Ctrl+S и Esc навсегда уходят
+  // мёртвой карточке, а не странице. Ровно тот класс залипания, который лечится только
+  // перезапуском.
+  capturing: boolean;
 }
 
 const shots = new Map<number, WindowShot>();
@@ -52,7 +60,7 @@ function stateFor(win: BrowserWindow): WindowShot {
   const created: WindowShot = {
     win, view: null, tabs: null,
     content: { x: 0, y: 0, width: 0, height: 0 },
-    height: INITIAL_HEIGHT, open: false, loaded: false, pending: null,
+    height: INITIAL_HEIGHT, open: false, loaded: false, pending: null, capturing: false,
   };
   shots.set(win.id, created);
   win.once('closed', () => { shots.delete(win.id); });
@@ -205,30 +213,45 @@ export async function captureTabScreenshot(win: BrowserWindow, tabs: TabManager)
   if (!wc || wc.isDestroyed()) return; // хаб/настройки — снимать нечего
   const st = stateFor(win);
   st.tabs = tabs;
+  // ⚠️ Второй заход, пока первый не дошёл до карточки, просто игнорируем — см. поле capturing.
+  if (st.capturing) return;
+  st.capturing = true;
 
-  let dataUrl: string;
+  // ⚠️ finally обязателен: выходов из функции ниже несколько (пустой кадр, умершая вкладка,
+  // закрытое окно), и застрявший capturing=true означал бы, что снимок больше не сделать вовсе
+  // до перезапуска — лекарство хуже болезни.
   try {
-    const img = await wc.capturePage();
-    if (img.isEmpty()) return;
-    // Без scaleFactor: у снимка одна-единственная растровая копия — та, что сняли, и отдаётся
-    // она целиком. Просить «1x» на мониторе со 125–150% значило бы уменьшить кадр и получить
-    // мыло ровно там, где снимок и нужен покрупнее.
-    dataUrl = img.toDataURL();
-  } catch {
-    return; // вкладка умерла между проверкой и снимком
-  }
-  if (win.isDestroyed()) return;
+    let dataUrl: string;
+    try {
+      const img = await wc.capturePage();
+      if (img.isEmpty()) return;
+      // Без scaleFactor: у снимка одна-единственная растровая копия — та, что сняли, и отдаётся
+      // она целиком. Просить «1x» на мониторе со 125–150% значило бы уменьшить кадр и получить
+      // мыло ровно там, где снимок и нужен покрупнее.
+      dataUrl = img.toDataURL();
+    } catch {
+      return; // вкладка умерла между проверкой и снимком
+    }
+    if (win.isDestroyed()) return;
 
-  const view = ensureView(st);
-  st.open = true;
-  view.setBounds(computeBounds(st));
-  // Поднимаем поверх остальных детей на каждый показ: порядок наложения у нативных вью — это
-  // порядок детей contentView (тот же приём, что у выпадашки подсказок).
-  win.contentView.addChildView(view);
-  if (st.loaded) view.webContents.send('screenshot:shot', dataUrl);
-  else st.pending = dataUrl;
-  // Пока карточка жива, Ctrl+S принадлежит ей (см. TabManager.registerHotkeyHandler).
-  tabs.setScreenshotOpen(true);
+    const view = ensureView(st);
+    st.open = true;
+    view.setBounds(computeBounds(st));
+    // Порядок наложения у нативных вью — это порядок детей contentView, поэтому карточку надо
+    // держать последней. ⚠️ НО поднимаем, ТОЛЬКО если она уже не наверху: страж возвращает фокус
+    // ПОСЛЕ перехвата, то есть каждый addChildView — это круг «фокус ушёл во вью → вернулся на
+    // страницу». Хоткеи слушает before-input-event самой страницы, и нажатие, попавшее в этот
+    // круг, теряется — отсюда «приходилось нажимать по нескольку раз». Тот же разбор, что у
+    // выпадашки подсказок (см. SuggestDropdownManager.ts).
+    const children = win.contentView.children;
+    if (children[children.length - 1] !== view) win.contentView.addChildView(view);
+    if (st.loaded) view.webContents.send('screenshot:shot', dataUrl);
+    else st.pending = dataUrl;
+    // Пока карточка жива, Ctrl+S принадлежит ей (см. TabManager.registerHotkeyHandler).
+    tabs.setScreenshotOpen(true);
+  } finally {
+    st.capturing = false;
+  }
 }
 
 /** Ctrl+S при живой карточке — сохранить. Сам файл пишет рендерер: у него оформленный кадр. */

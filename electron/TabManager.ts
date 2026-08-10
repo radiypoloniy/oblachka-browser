@@ -3566,7 +3566,22 @@ export class TabManager {
     if (!tab || !this.isHttpView(tab.view)) return;
     const wc = tab.view.webContents;
     if (wc.isDestroyed()) return;
-    wc.executeJavaScript(script, true).catch(() => { /* нет видео — обычное дело */ });
+    const entering = script === PIP_ENTER_SCRIPT;
+    // ⚠️ Ответ скрипта РАЗБИРАЕМ, а не выбрасываем. Раньше здесь стоял голый .catch(() => {}), и
+    // «окошко перестало появляться» было неотличимо от «на странице нет играющего видео»: скрипт
+    // возвращает разные причины ('уже'/'нечего'/'отказ'), и все они молча пропадали. Живая жалоба
+    // про пропавший PiP посреди работы разбиралась вслепую именно поэтому.
+    // ⚠️ Логируем ХОСТ, а не адрес: в прод-логах не должно быть полных URL страниц.
+    wc.executeJavaScript(script, true)
+      .then((res: unknown) => {
+        // 'нечего' — самый обычный исход (на странице просто нет видео), про него молчим.
+        if (!entering || res === 'ок' || res === 'нечего') return;
+        console.log(`[pip] ${hostOfUrl(wc.getURL())} → ${String(res)}`);
+      })
+      .catch((e: unknown) => {
+        if (!entering) return;
+        console.log(`[pip] ${hostOfUrl(wc.getURL())} → скрипт не выполнился: ${(e as Error)?.message ?? e}`);
+      });
   }
 
   // Вью, которая сейчас въезжает, — repositionViews её не трогает, иначе первый же
