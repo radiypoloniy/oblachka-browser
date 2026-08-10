@@ -16,7 +16,9 @@
 // ⚠️ Стенд ничего не пишет: ни истории, ни сессии, ни индекса. Он поднимается ВМЕСТО боевого
 // окна (как OBLAKO_LLAMA_TEST) и работает на боевом профиле только ради кук — это осознанно,
 // иначе замер соврёт: без кук магазины ведут себя иначе.
-import { BrowserWindow, session } from 'electron';
+import { BrowserWindow, session, app } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
 import { PAGE_FACTS_SCRIPT, type PageFacts } from './pageFacts';
 import { applyClientHints } from './BrowserIdentity';
 
@@ -94,11 +96,23 @@ async function probeRaw(url: string): Promise<{ text: string; note: string }> {
   }
 }
 
-async function probeView(url: string): Promise<{ text: string; note: string }> {
-  const win = new BrowserWindow({
+// ⚠️ ОДНО скрытое окно на весь прогон, а не своё на каждый адрес. Причина не в экономии: как
+// только последнее окно приложения закрывается, срабатывает window-all-closed → app.quit(), и
+// замер обрывался после первого же адреса (поймано на живом прогоне). Заодно так быстрее.
+let probeWin: BrowserWindow | null = null;
+
+function ensureProbeWindow(): BrowserWindow {
+  if (probeWin && !probeWin.isDestroyed()) return probeWin;
+  probeWin = new BrowserWindow({
     show: false,
-    webPreferences: { sandbox: true, contextIsolation: true, offscreen: false },
+    webPreferences: { sandbox: true, contextIsolation: true },
   });
+  return probeWin;
+}
+
+async function probeView(url: string): Promise<{ text: string; note: string }> {
+  // Страница может уронить свой рендерер — тогда окно пересоздаётся следующим вызовом.
+  const win = ensureProbeWindow();
   try {
     const loaded = new Promise<string>((resolve) => {
       const timer = setTimeout(() => resolve('не дождались загрузки'), LOAD_TIMEOUT_MS);
@@ -122,9 +136,13 @@ async function probeView(url: string): Promise<{ text: string; note: string }> {
     return { text: summarize(facts), note: captcha ? `капча: ${title.slice(0, 40)}` : '' };
   } catch (e) {
     return { text: 'нет', note: (e as Error).message.slice(0, 60) };
-  } finally {
-    if (!win.isDestroyed()) win.destroy();
   }
+}
+
+/** Закрыть окно замера. Зовётся ОДИН раз в самом конце — см. комментарий у ensureProbeWindow. */
+function closeProbeWindow(): void {
+  if (probeWin && !probeWin.isDestroyed()) probeWin.destroy();
+  probeWin = null;
 }
 
 function pad(s: string, n: number): string {
@@ -133,31 +151,46 @@ function pad(s: string, n: number): string {
 
 export async function runPriceProbe(urls: string[]): Promise<void> {
   applyClientHints(session.defaultSession);
-  console.log(`\n[price-probe] адресов: ${urls.length}. Это замер: страницы только читаются, ничего не сохраняется.\n`);
+  const out: string[] = [];
+  // ⚠️ Отчёт пишется ФАЙЛОМ в UTF-8, а не только в консоль: консоль Windows показывает кириллицу
+  // кракозябрами (cp866), и прочитать результат замера было невозможно (поймано на живом прогоне).
+  const log = (line: string): void => { out.push(line); console.log(line); };
+
+  log(`[price-probe] адресов: ${urls.length}. Замер: страницы только читаются, ничего не сохраняется.`);
 
   const rows: ProbeRow[] = [];
   for (const url of urls) {
     const host = hostOf(url);
-    process.stdout.write(`  ${pad(host, 22)} … `);
     const raw = await probeRaw(url);
     const view = await probeView(url);
     const note = [raw.note && `сырой: ${raw.note}`, view.note && `вью: ${view.note}`].filter(Boolean).join('; ');
     rows.push({ url, host, raw: raw.text, view: view.text, note });
-    console.log(`сырой: ${pad(raw.text, 26)} вью: ${view.text}`);
+    log(`  ${pad(host, 22)} сырой: ${pad(raw.text, 26)} вью: ${view.text}`);
   }
+  closeProbeWindow();
 
-  console.log('\n─── ИТОГ ────────────────────────────────────────────────────────────');
-  console.log(`${pad('сайт', 22)}${pad('сырой HTTP', 28)}фоновая вью`);
+  log('');
+  log('─── ИТОГ ────────────────────────────────────────────────────────────');
+  log(`${pad('сайт', 22)}${pad('сырой HTTP', 28)}фоновая вью`);
   for (const r of rows) {
-    console.log(`${pad(r.host, 22)}${pad(r.raw, 28)}${r.view}`);
-    if (r.note) console.log(`${' '.repeat(22)}↳ ${r.note}`);
+    log(`${pad(r.host, 22)}${pad(r.raw, 28)}${r.view}`);
+    if (r.note) log(`${' '.repeat(22)}↳ ${r.note}`);
   }
 
   const rawOk = rows.filter((r) => r.raw !== 'нет').length;
   const viewOk = rows.filter((r) => r.view !== 'нет').length;
-  console.log('\n─── ЧТО ЭТО ЗНАЧИТ ──────────────────────────────────────────────────');
-  console.log(`Сырым запросом цена читается на ${rawOk} из ${rows.length} — это самый дешёвый путь.`);
-  console.log(`Фоновой вью — на ${viewOk} из ${rows.length}. Столько магазинов сможет отслеживать фича.`);
-  console.log('Там, где «нет» в обоих столбцах, отслеживание невозможно в принципе:');
-  console.log('цену придётся брать только когда человек сам открыл страницу.\n');
+  log('');
+  log('─── ЧТО ЭТО ЗНАЧИТ ──────────────────────────────────────────────────');
+  log(`Сырым запросом цена читается на ${rawOk} из ${rows.length} — это самый дешёвый путь.`);
+  log(`Фоновой вью — на ${viewOk} из ${rows.length}. Столько магазинов сможет отслеживать фича.`);
+  log('Там, где «нет» в обоих столбцах, отслеживание невозможно в принципе:');
+  log('цену придётся брать только когда человек сам открыл страницу.');
+
+  const reportPath = path.join(app.getAppPath(), 'scripts', 'price-probe-report.txt');
+  try {
+    fs.writeFileSync(reportPath, out.join('\r\n'), 'utf8');
+    console.log(`\n[price-probe] отчёт: ${reportPath}`);
+  } catch (e) {
+    console.warn('[price-probe] отчёт не записался:', (e as Error).message);
+  }
 }
