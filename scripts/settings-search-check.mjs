@@ -7,12 +7,16 @@
 // Запуск: npm run settings-search-check
 import { searchSettings, SETTINGS_INDEX } from '../shared/settingsIndex.ts';
 
+// У кого условные блоки нарисованы (см. SettingsEntry.requires). По умолчанию проверяем случай
+// «ничего не доверено» — именно он и вскрыл ложное обещание в выдаче.
+const ALL_AVAILABLE = { certTrust: true };
+
 let passed = 0;
 let failed = 0;
 
 // Ждём, что нужная запись окажется в выдаче (и, для однозначных запросов, ПЕРВОЙ).
-function want(query, expectedLabel, { first = true } = {}) {
-  const hits = searchSettings(query);
+function want(query, expectedLabel, { first = true, avail = ALL_AVAILABLE } = {}) {
+  const hits = searchSettings(query, 5, avail);
   const idx = hits.findIndex((h) => h.label === expectedLabel);
   const ok = first ? idx === 0 : idx >= 0;
   if (ok) passed++; else failed++;
@@ -21,8 +25,8 @@ function want(query, expectedLabel, { first = true } = {}) {
 }
 
 // Ждём пустую выдачу: такие запросы обязаны уходить второму эшелону, к модели.
-function wantNothing(query) {
-  const hits = searchSettings(query);
+function wantNothing(query, avail = ALL_AVAILABLE) {
+  const hits = searchSettings(query, 5, avail);
   const ok = hits.length === 0;
   if (ok) passed++; else failed++;
   console.log(`${ok ? '  ok  ' : ' FAIL '} «${query}» → ничего (уйдёт к модели)\n         выдача: ${hits.map((h) => h.label).join(' | ') || '(пусто)'}`);
@@ -55,6 +59,23 @@ console.log('\n— промахи: тут работает второй эшел
 wantNothing('сделать шрифт крупнее');
 wantNothing('почему тормозит');
 wantNothing('ab');
+
+console.log('\n— короткое слово не цепляется за длинное чужое —');
+// Живой случай: «вид» оказывался началом «видеопамяти», и запрос про внешний вид открывал
+// «Локальную модель». Слова короче четырёх букв ищутся только целиком.
+want('раздел чтобы настроить внешний вид', 'Тема');
+// «код» нет ни в одном названии и ни в одном ключевом слове — короткое слово не имеет права
+// найтись по началу чужого («кодировка», «код страницы» и т.п.).
+wantNothing('код');
+// Обратная сторона того же правила: настоящие склонения обязаны продолжать работать.
+want('настройки темы', 'Тема');
+
+console.log('\n— условные блоки: не обещаем того, чего человек не увидит —');
+// Блок сертификатов рисуется, только когда список непустой (PermissionsSection.tsx).
+wantNothing('минцифры', { certTrust: false });
+want('минцифры', 'Сертификаты Минцифры', { avail: { certTrust: true } });
+// Запрос про сам раздел разрешений при этом обязан работать в любом случае.
+want('разрешения', 'Разрешения сайтов', { avail: { certTrust: false } });
 
 console.log('\n— целостность реестра —');
 {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Shield, ShieldCheck, Wifi, Cpu, Palette, Lock, SlidersHorizontal, CreditCard, Wand2, Search, Sparkles, type LucideIcon } from 'lucide-react';
-import { searchSettings, SETTINGS_INDEX, type SettingsEntry } from '../../shared/settingsIndex';
+import { searchSettings, isEntryAvailable, SETTINGS_INDEX, type SettingsEntry, type SettingsAvailability } from '../../shared/settingsIndex';
 import type { AdBlockState } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import AdBlockSection from './settings/AdBlockSection';
@@ -88,9 +88,23 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
   const [smartHits, setSmartHits] = useState<SettingsEntry[]>([]);
   const [smartWorking, setSmartWorking] = useState(false);
 
+  // ⚠️ Часть блоков рисуется, только когда им есть что показать, и предлагать их в поиске нельзя:
+  // человек кликнет и не найдёт обещанного (живой случай — «Сертификаты Минцифры» у того, кто
+  // никому не доверялся). Спрашиваем один раз при открытии настроек: список короткий и локальный.
+  const [avail, setAvail] = useState<SettingsAvailability>({ certTrust: false });
+  useEffect(() => {
+    let mounted = true;
+    void window.oblako.listCertTrust()
+      .then((list) => { if (mounted) setAvail({ certTrust: list.length > 0 }); })
+      .catch(() => { /* не узнали — значит условной настройки в выдаче не будет, это безопасный исход */ });
+    return () => { mounted = false; };
+  }, []);
+
   // Основной путь — мгновенный, без модели и без похода в main.
-  const keywordHits = searchSettings(query);
-  const hits = keywordHits.length ? keywordHits : smartHits;
+  const keywordHits = searchSettings(query, 5, avail);
+  // ⚠️ Находки МОДЕЛИ фильтруем тем же условием: main про нарисованное на экране не знает и
+  // предлагает ей весь реестр.
+  const hits = keywordHits.length ? keywordHits : smartHits.filter((e) => isEntryAvailable(e, avail));
 
   // ⚠️ К модели идём ТОЛЬКО на промахе ключевых слов и с задержкой: человек печатает быстрее,
   // чем модель отвечает, а очередь генерации одна на приложение. На холодной модели main

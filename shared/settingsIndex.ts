@@ -24,6 +24,16 @@ export interface SettingsEntry {
   sectionLabel: string;
   /** Слова, которыми человек СПРАШИВАЕТ, а не которыми мы назвали настройку. */
   keywords: string[];
+  /**
+   * Условие показа блока в самой секции. Пусто — блок есть всегда.
+   *
+   * ⚠️ Зачем: часть блоков рисуется только когда им есть что показать (список доверенных
+   * сертификатов появляется, лишь когда человек кому-то доверился). Предлагать такую настройку
+   * в поиске, когда её на экране нет, — это обещание, которого раздел не выполнит: человек
+   * кликает, попадает в «Разрешения» и не находит там ничего похожего. Живой случай, из-за
+   * которого условие и появилось.
+   */
+  requires?: 'certTrust';
 }
 
 export const SETTINGS_INDEX: SettingsEntry[] = [
@@ -45,7 +55,7 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
 
   // ── Интерфейс ─────────────────────────────────────────────────────────────
   { section: 'appearance', block: 'Тема', label: 'Тема', sectionLabel: 'Интерфейс',
-    keywords: ['тёмная', 'темная', 'светлая', 'dark', 'ночной режим', 'оформление', 'как в системе'] },
+    keywords: ['тёмная', 'темная', 'светлая', 'dark', 'ночной режим', 'оформление', 'как в системе', 'внешний вид'] },
   { section: 'appearance', block: 'Палитра', label: 'Палитра', sectionLabel: 'Интерфейс',
     keywords: ['оттенок', 'уголь', 'графит', 'сланец', 'бумага', 'цвета интерфейса', 'нейтраль'] },
   { section: 'appearance', block: 'Сайдбар', label: 'Сайдбар', sectionLabel: 'Интерфейс',
@@ -91,7 +101,8 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { section: 'permissions', block: 'Сайты', label: 'Разрешения сайтов', sectionLabel: 'Разрешения',
     keywords: ['камера', 'микрофон', 'геолокация', 'уведомления', 'доступ сайтов', 'запретить сайту'] },
   { section: 'permissions', block: 'Сертификаты Минцифры', label: 'Сертификаты Минцифры', sectionLabel: 'Разрешения',
-    keywords: ['сертификат', 'минцифры', 'банк не открывается', 'сбербанк', 'санкции', 'корневой'] },
+    keywords: ['сертификат', 'минцифры', 'банк не открывается', 'сбербанк', 'санкции', 'корневой'],
+    requires: 'certTrust' },
   { section: 'rules', label: 'Правила-автоматизации', sectionLabel: 'Правила',
     keywords: ['автоматизация', 'автоматически', 'правило', 'группа для ссылок', 'включать vpn на сайте'] },
 ];
@@ -118,14 +129,31 @@ const W_NAME_PREFIX = 4;
 const W_KEYWORD_EXACT = 3;
 const W_KEYWORD_PREFIX = 2;
 
+// ⚠️ Совпадение по началу слова — это про СКЛОНЕНИЕ («загрузку» → «Загрузки»), а не про «слово
+// начинается так же». Без обоих условий ниже короткое слово цеплялось за длинное чужое: запрос
+// «раздел чтобы настроить внешний вид» открывал «Локальную модель», потому что «вид» оказался
+// началом «видеопамяти» (поймано на живом профиле).
+//  • слово короче четырёх букв ищется ТОЛЬКО целиком: у «вид», «код», «час» слишком много чужих
+//    продолжений, чтобы считать их корнем;
+//  • найденное слово не должно быть заметно длиннее запрошенного — окончание добавляет букву-две,
+//    а не шесть.
+const MIN_PREFIX_TOKEN = 4;
+const MAX_TAIL_GROWTH = 3;
+
+function prefixHit(token: string, words: string[]): boolean {
+  if (token.length < MIN_PREFIX_TOKEN) return false;
+  // Корень — слово без двух последних букв: ровно столько меняет русское окончание («сайтам» →
+  // «сайтов», «темы» → «тема»). Фиксированные четыре буквы тут не годились: у короткого «темы»
+  // корнем оказывалось всё слово целиком, и «Тема» не находилась вовсе (поймано прогоном).
+  const stem = token.slice(0, Math.max(3, token.length - 2));
+  return words.some((w) => w.startsWith(stem) && w.length - token.length <= MAX_TAIL_GROWTH);
+}
+
 function scoreToken(token: string, nameWords: string[], keyWords: string[]): number {
-  // Длинное слово ищем по корню: русский склоняется, и «загрузку» обязано находить «Загрузки».
-  // Четыре буквы, а не пять: на пятой позиции окончание уже отличается («сайтам» / «сайтов»).
-  const stem = token.length >= 5 ? token.slice(0, 4) : token;
   if (nameWords.includes(token)) return W_NAME_EXACT;
-  if (nameWords.some((w) => w.startsWith(stem))) return W_NAME_PREFIX;
+  if (prefixHit(token, nameWords)) return W_NAME_PREFIX;
   if (keyWords.includes(token)) return W_KEYWORD_EXACT;
-  if (keyWords.some((w) => w.startsWith(stem))) return W_KEYWORD_PREFIX;
+  if (prefixHit(token, keyWords)) return W_KEYWORD_PREFIX;
   return 0;
 }
 
@@ -137,7 +165,18 @@ function scoreToken(token: string, nameWords: string[], keyWords: string[]): num
  * он в проекте есть (textStemming.ts), но живёт в main ради FTS5, а этот путь обязан работать
  * в renderer мгновенно и без обращений наружу.
  */
-export function searchSettings(query: string, limit = 5): SettingsEntry[] {
+/** Что из условных блоков сейчас реально нарисовано (см. `requires`). */
+export interface SettingsAvailability {
+  certTrust: boolean;
+}
+
+/** Есть ли эта настройка на экране прямо сейчас. Без сведений считаем, что условной нет. */
+export function isEntryAvailable(entry: SettingsEntry, avail?: SettingsAvailability): boolean {
+  if (!entry.requires) return true;
+  return !!avail?.[entry.requires];
+}
+
+export function searchSettings(query: string, limit = 5, avail?: SettingsAvailability): SettingsEntry[] {
   const q = normalize(query);
   if (q.length < 2) return [];
   // Слова короче трёх букв («на», «в», «до») ищут что угодно и только шумят.
@@ -146,6 +185,7 @@ export function searchSettings(query: string, limit = 5): SettingsEntry[] {
 
   const scored: { entry: SettingsEntry; score: number }[] = [];
   for (const entry of SETTINGS_INDEX) {
+    if (!isEntryAvailable(entry, avail)) continue;
     const nameWords = words(`${entry.label} ${entry.block ?? ''}`);
     const keyWords = words(`${entry.sectionLabel} ${entry.keywords.join(' ')}`);
     let score = 0;
