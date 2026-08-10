@@ -147,7 +147,8 @@ import { suggestBookmarkFolders } from './BookmarkOrganizer';
 import { suggestFolderForBookmark } from './BookmarkFolderPick';
 import { suggestFileName, renameDownloadedFile } from './DownloadNamer';
 import { searchSettingsByMeaning } from './SettingsSearch';
-import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart } from '../shared/ipc';
+import { getPageChanges } from './PageChanges';
+import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart, PageChangesResult } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
 
@@ -1707,6 +1708,17 @@ function registerIpc() {
     } finally {
       relatedBusy = false;
     }
+  });
+  // «Что изменилось с прошлого раза» (AI-IDEAS.md №7, см. PageChanges.ts) — для АКТИВНОЙ вкладки.
+  // ⚠️ Адрес и живая вью берутся из менеджера вкладок окна-отправителя, а не из аргументов: то же
+  // правило, что у «вы это уже читали» — рендерер мог отстать от навигации.
+  // ⚠️ Приватную вкладку не трогаем: её визитов нет в истории, сравнивать не с чем по построению,
+  // а лезть в неё за текстом страницы тем более незачем.
+  ipcMain.handle(IPC.PAGE_CHANGES_GET, async (e): Promise<PageChangesResult> => {
+    const tabs = tabsOf(e);
+    const active = tabs?.snapshot().find((t) => t.isActive && !t.isHub);
+    if (!tabs || !active?.url || tabs.isIncognito(active.id)) return { changed: false };
+    return getPageChanges(history, active.url, tabs.getActiveWebContents());
   });
   // «Итоги дня» (см. DayDigest.ts). GET модель не трогает вовсе — отдаёт готовое или «нет».
   ipcMain.handle(IPC.DIGEST_GET, (): DayDigestState => {

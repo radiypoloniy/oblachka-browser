@@ -160,6 +160,27 @@ export class HistoryManager {
     }
   }
 
+  /**
+   * Сохранённый текст страницы одной строкой — снимок прошлого визита (см. electron/PageChanges.ts).
+   * Пусто — эту страницу не индексировали (индексируются не все, см. HistoryNoiseFilter).
+   * ⚠️ Чанки склеиваются В ПОРЯДКЕ chunk_index: разбивка на чанки не несёт смысла для сравнения,
+   * а перепутанный порядок сделал бы «изменением» простую перестановку абзацев.
+   */
+  getContentText(historyId: number, modelVersion: string): string {
+    if (!this.#db) return '';
+    try {
+      const rows = this.#db.prepare(`
+        SELECT text FROM history_content_chunks
+        WHERE history_id = ? AND model_version = ?
+        ORDER BY chunk_index ASC
+      `).all(historyId, modelVersion) as Array<{ text: string }>;
+      return rows.map((r) => r.text).join('\n');
+    } catch (e) {
+      console.warn('[History] getContentText error:', (e as Error).message);
+      return '';
+    }
+  }
+
   saveContentChunks(historyId: number, chunks: ContentChunkInput[], modelVersion: string): void {
     if (!this.#db || chunks.length === 0) return;
     const db = this.#db;

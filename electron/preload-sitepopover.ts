@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { PermissionRecord, PermKey, SemanticSearchResult } from '../shared/ipc';
+import type { PermissionRecord, PermKey, SemanticSearchResult, PageChangesResult } from '../shared/ipc';
 
 // Мост поповера сведений о сайте. ⚠️ Ни одного нового обработчика в main: всё, что здесь нужно,
 // уже посчитано другими частями браузера и открыто теми же боевыми каналами — разрешения из
@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('sitePopover', {
 
   // «Вы это уже читали» — тот же канал, что раньше звал омнибокс (см. RelatedHistory.ts).
   getRelatedPages: () => ipcRenderer.invoke(IPC.HISTORY_RELATED) as Promise<SemanticSearchResult[]>,
+  getPageChanges: () => ipcRenderer.invoke(IPC.PAGE_CHANGES_GET) as Promise<PageChangesResult>,
   openUrl: (url: string) => ipcRenderer.invoke(IPC.TAB_CREATE, url) as Promise<string>,
 
   close: () => ipcRenderer.send('site-popover:close'),

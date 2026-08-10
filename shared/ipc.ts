@@ -542,6 +542,9 @@ export const IPC = {
   // «Вы это уже читали» — связанные страницы из своей истории для открытой вкладки
   // (см. electron/RelatedHistory.ts). Пусто — нечего показать, и это нормальный ответ.
   HISTORY_RELATED: 'history:related',
+  // «Что изменилось с прошлого раза» (см. electron/PageChanges.ts) — поповер замочка спрашивает
+  // про АКТИВНУЮ вкладку, адрес main берёт у себя (рендерер мог отстать от навигации).
+  PAGE_CHANGES_GET: 'page:changes-get',
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
@@ -1201,6 +1204,14 @@ export interface ParsedAddressPart {
   key: string;
   label: string;
   value: string;
+}
+
+// Что изменилось на странице с прошлого визита (см. electron/PageChanges.ts).
+export interface PageChangePiece { before: string; after: string }
+export interface PageChangesResult {
+  changed: boolean;
+  summary?: string;                 // фраза от модели; пусто — показываем сам факт и куски
+  pieces?: PageChangePiece[];
 }
 
 // ── AdBlock ─────────────────────────────────────────────────────────────────

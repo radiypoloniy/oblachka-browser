@@ -25,6 +25,7 @@
     "rules-check": "node --experimental-strip-types scripts/rules-check.mjs",
     "filename-check": "node --experimental-strip-types scripts/filename-check.mjs",
     "settings-search-check": "node --experimental-strip-types scripts/settings-search-check.mjs",
+    "text-diff-check": "node --experimental-strip-types scripts/text-diff-check.mjs",
     "address-parse-check": "node --experimental-strip-types scripts/address-parse-check.mjs",
     "ai-bench": "node scripts/ai-bench.mjs",
     "download-filters": "node scripts/download-filters.mjs",

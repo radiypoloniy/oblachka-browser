@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Lock, ShieldOff, ShieldCheck, Camera, Mic, MapPin, Bell, Maximize, Clipboard, BookOpen, RotateCcw } from 'lucide-react';
-import type { PermissionRecord, PermKey, SemanticSearchResult } from '../shared/ipc';
+import { Lock, ShieldOff, ShieldCheck, Camera, Mic, MapPin, Bell, Maximize, Clipboard, BookOpen, RotateCcw, History } from 'lucide-react';
+import type { PermissionRecord, PermKey, SemanticSearchResult, PageChangesResult } from '../shared/ipc';
 import { islandPlate } from './styles/island';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
@@ -15,6 +15,7 @@ declare global {
       getBlockedCount: (domain: string) => Promise<number>;
       isAdblockAllowed: (domain: string) => Promise<boolean>;
       getRelatedPages: () => Promise<SemanticSearchResult[]>;
+      getPageChanges: () => Promise<PageChangesResult>;
       openUrl: (url: string) => Promise<string>;
       close: () => void;
       reportHeight: (px: number) => void;
@@ -63,6 +64,8 @@ function SitePopoverApp() {
   const [blocked, setBlocked] = useState<number | null>(null);
   const [adblockOff, setAdblockOff] = useState(false);
   const [related, setRelated] = useState<SemanticSearchResult[] | null>(null);
+  // «Что изменилось с прошлого раза» (AI-IDEAS.md №7). null — ещё считаем.
+  const [changes, setChanges] = useState<PageChangesResult | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // ⚠️ Всё перечитывается НА КАЖДЫЙ ПОКАЗ: вью между открытиями живёт, а сведения относятся к
@@ -80,6 +83,7 @@ function SitePopoverApp() {
     // Связанное из своей истории — единственное здесь, что считает модель. Приезжает отдельно и
     // позже остального: ждать её, не показывая карточку, нельзя (см. RelatedHistory.ts).
     void window.sitePopover.getRelatedPages().then(setRelated).catch(() => setRelated([]));
+    void window.sitePopover.getPageChanges().then(setChanges).catch(() => setChanges({ changed: false }));
   }, []);
 
   useEffect(() => window.sitePopover.onShow(() => { void reload(); }), [reload]);
@@ -173,6 +177,30 @@ function SitePopoverApp() {
                 </div>
               );
             })}
+          </Section>
+        )}
+
+        {/* ── Что изменилось с прошлого раза ──
+            ⚠️ Показываем ТОЛЬКО когда изменение действительно нашлось: молчание здесь — обычное
+            состояние, и «ничего не изменилось» отдельной строкой было бы шумом на каждой странице.
+            Фраза от модели необязательна: на холодной модели остаются сам факт и первый кусок,
+            и они уже полезны. */}
+        {changes?.changed && (
+          <Section title="Изменилось с прошлого раза">
+            <div style={{ padding: '4px 16px 8px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <History size={15} style={{ color: 'var(--text-muted)', flex: 'none', marginTop: 2 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
+                  {changes.summary ?? 'Страница изменилась'}
+                </div>
+                {/* Без фразы показываем первый кусок дословно — он со страницы, значит не выдуман. */}
+                {!changes.summary && changes.pieces?.[0] && (
+                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+                    {changes.pieces[0].after || changes.pieces[0].before}
+                  </div>
+                )}
+              </div>
+            </div>
           </Section>
         )}
 
