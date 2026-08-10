@@ -143,6 +143,7 @@ import {
   setHistoryManager as setOrganizerHistoryManager,
 } from './TabOrganizer';
 import { suggestBookmarkFolders } from './BookmarkOrganizer';
+import { suggestFolderForBookmark } from './BookmarkFolderPick';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
 
@@ -1076,7 +1077,7 @@ function createWindow(role: WindowRole = 'main') {
   tabs.setOnNewWindow(() => { createWindow('light'); });
   // Ctrl+D — то же меню, что у звезды в омнибоксе; Ctrl+Shift+O — раздел закладок. Оба хоткея
   // работают и на странице, и в хроме, поэтому висят на TabManager, а не на слое чрома.
-  tabs.setOnBookmarkPage(() => { if (tabs) showBookmarkMenu(win, tabs); });
+  tabs.setOnBookmarkPage(() => { if (tabs) void showBookmarkMenu(win, tabs); });
   tabs.setOnBookmarksOpen(() => { tabs?.createSpecialTab('bookmarks'); });
   // ПКМ по ссылке → «Открыть ссылку в новом окне». Сразу заводим вкладку в НОВОМ окне, а не
   // «создать здесь и перенести»: промежуточная вкладка мелькнула бы в этом окне и успела бы
@@ -1422,7 +1423,10 @@ function buildMoveToWindowItems(
  * ради того, чтобы выпасть ПОВЕРХ страницы — нативное меню это умеет само, силами ОС, и не
  * заводит ни четвёртого entry в vite.config, ни своего preload ради выбора из списка папок.
  */
-function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): void {
+// ⚠️ Асинхронна из-за подсказки папки: нативное меню после popup() изменить нечем, поэтому ответ
+// модели нужен ДО показа. Задержка возникает только на тёплой модели (иначе гейт возвращает null
+// сразу), и сама закладка сохраняется ДО ожидания — звезда загорается мгновенно, ждёт только меню.
+async function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): Promise<void> {
   const wc = tabs.getActiveWebContents();
   if (!wc) return;
   const url = wc.getURL();
@@ -1450,15 +1454,28 @@ function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): void {
   const currentParent = entry.parentId;
 
   // Плоский перечень папок с отступами — вложенность в нативном меню показать больше нечем.
-  const folders: { id: number; title: string; depth: number }[] = [];
-  const walk = (nodes: BookmarkNode[], depth: number): void => {
+  // Путь от корня собираем тем же обходом: он нужен модели, чтобы различить две папки «Разное»
+  // в разных родителях (в самом меню вложенность видна отступом).
+  const folders: { id: number; title: string; depth: number; path: string }[] = [];
+  const walk = (nodes: BookmarkNode[], depth: number, prefix: string): void => {
     for (const n of nodes) {
       if (n.kind !== 'folder') continue;
-      folders.push({ id: n.id, title: n.title, depth });
-      walk(n.children ?? [], depth + 1);
+      const path = prefix ? `${prefix} / ${n.title}` : n.title;
+      folders.push({ id: n.id, title: n.title, depth, path });
+      walk(n.children ?? [], depth + 1, path);
     }
   };
-  walk(bookmarks.listTree(), 0);
+  walk(bookmarks.listTree(), 0, '');
+
+  // Подсказка папки (AI-IDEAS.md №2) — только для закладки, лежащей В КОРНЕ. То, что человек уже
+  // разложил руками, модель не трогает: это его решение, и мы его не понимаем (тот же принцип,
+  // что в BookmarkOrganizer.ts). На холодной модели вернётся null мгновенно, без задержки меню.
+  const suggestedId = currentParent === null
+    ? await suggestFolderForBookmark(title, url, folders.map((f) => ({ id: f.id, path: f.path })))
+    : null;
+  const suggested = folders.find((f) => f.id === suggestedId) ?? null;
+  // За время генерации окно могли закрыть — всплывать тогда некуда.
+  if (win.isDestroyed()) return;
 
   const pick = (parentId: number | null): void => {
     if (bookmarks.move(bookmarkId, parentId)) broadcastToChrome(IPC.BOOKMARK_CHANGED);
@@ -1466,6 +1483,15 @@ function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): void {
 
   const template: MenuItemConstructorOptions[] = [
     { label: 'Сохранено в закладки', enabled: false },
+    // ⚠️ Подсказка — ОТДЕЛЬНЫЙ пункт-действие, а не предвыбранный radio в списке ниже. Отметка
+    // означает «закладка лежит здесь», и поставить её на непроизошедший перенос значило бы
+    // соврать: человек закрыл бы меню, не нажав ничего, а закладка осталась бы в корне.
+    ...(suggested
+      ? [
+          { type: 'separator' } as MenuItemConstructorOptions,
+          { label: `Положить в «${suggested.title}»`, click: () => pick(suggested.id) },
+        ]
+      : []),
     { type: 'separator' },
     { label: 'Все закладки', type: 'radio', checked: currentParent === null, click: () => pick(null) },
     ...folders.map((f): MenuItemConstructorOptions => ({
@@ -2493,7 +2519,7 @@ function registerIpc() {
   ipcMain.handle(IPC.BOOKMARK_LIST_TREE, () => bookmarks.listTree());
   ipcMain.handle(IPC.BOOKMARK_SHOW_MENU, (e) => {
     const ctx = contextFromSender(e.sender);
-    if (ctx) showBookmarkMenu(ctx.win, ctx.tabs);
+    if (ctx) void showBookmarkMenu(ctx.win, ctx.tabs);
   });
   // Правки дерева. broadcastToChrome, а не ответ вызывающему: закладки — общее состояние
   // приложения, файл на диске один, а копия дерева своя у КАЖДОГО окна (см. WindowRegistry).
