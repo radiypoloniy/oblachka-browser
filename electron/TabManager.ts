@@ -311,6 +311,9 @@ export class TabManager {
   private onAutofillFieldFocusCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void;
   private onAutofillPasteBlobCb?: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void;
   private onPageCopyCb?: (text: string, url: string, title: string) => void;
+  // «Сохранить как…»: пометить СЛЕДУЮЩУЮ загрузку этого адреса как требующую диалога. Менеджер
+  // загрузок тут не хранится — умение приходит колбэком из main (тот же приём, что setGraphMenuBuilder).
+  private onSaveAsCb?: (url: string) => void;
   private onClipboardToggleCb?: () => void;
   // Автозаполнение — страница просит убрать поповер (Esc, уход фокуса, прокрутка).
   private onAutofillDismissCb?: () => void;
@@ -1757,7 +1760,16 @@ export class TabManager {
         if (items.length) items.push({ type: 'separator' });
         items.push(
           { label: 'Копировать картинку', click: () => wc.copyImageAt(p.x, p.y) },
-          { label: 'Сохранить картинку как…', click: () => wc.downloadURL(p.srcURL) },
+          // ⚠️ Пунктов ДВА, и это прямое следствие того, что диалог «куда сохранить» у нас выключен
+          // по умолчанию (см. DownloadManager: раньше система спрашивала про КАЖДЫЙ файл, включая
+          // картинку с фотостока, и это выпилили). «Сохранить» кладёт в Загрузки молча — то, чего
+          // хотят почти всегда; «как…» обязано спросить, иначе слово «как» в пункте — обман, и
+          // выбрать место было нельзя вообще ничем (живая жалоба).
+          { label: 'Сохранить картинку', click: () => wc.downloadURL(p.srcURL) },
+          {
+            label: 'Сохранить картинку как…',
+            click: () => { this.onSaveAsCb?.(p.srcURL); wc.downloadURL(p.srcURL); },
+          },
           { label: 'Открыть картинку в новой вкладке', click: () => this.createTab(p.srcURL, true, false, priv) },
         );
       }
@@ -3192,6 +3204,7 @@ export class TabManager {
     this.onAutofillPasteBlobCb = cb;
   }
   setOnPageCopy(cb: (text: string, url: string, title: string) => void): void { this.onPageCopyCb = cb; }
+  setOnSaveAs(cb: (url: string) => void): void { this.onSaveAsCb = cb; }
   setOnClipboardToggle(cb: () => void): void { this.onClipboardToggleCb = cb; }
 
   // source — откуда пришёл ввод. Слой хрома принадлежит окну навсегда и никуда не переезжает;

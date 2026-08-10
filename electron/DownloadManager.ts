@@ -76,6 +76,24 @@ export class DownloadManager {
     this.#askLocation = value;
   }
 
+  /**
+   * Спросить место ОДИН РАЗ, для следующей загрузки этого адреса — пункт ПКМ «Сохранить как…».
+   *
+   * ⚠️ Нужен обход общего тумблера, а не его включение: тумблер выключен по умолчанию (диалог на
+   * каждую картинку с фотостока и был тем раздражением, ради которого его выключили), но пункт со
+   * словом «как» обязан спрашивать всегда — иначе слово в названии обманывает, и выбрать место
+   * стало нельзя вообще ничем. Рядом появился пункт «Сохранить картинку» без диалога.
+   *
+   * ⚠️ Разрешение ОДНОРАЗОВОЕ и снимается при срабатывании: адрес мог не дойти до загрузки вовсе
+   * (сеть, отмена), и вечная пометка означала бы диалог когда-нибудь потом, без всякой связи с
+   * действием человека.
+   */
+  askLocationOnce(url: string): void {
+    if (url) this.#askOnceUrls.add(url);
+  }
+
+  #askOnceUrls = new Set<string>();
+
   attach(sess: Session, onChange: (entries: DownloadEntry[]) => void): void {
     this.#session = sess;
     this.#onChange = onChange;
@@ -127,7 +145,9 @@ export class DownloadManager {
       const dir = app.getPath('downloads');
       const filename = item.getFilename();
       const risky = isRiskyDownload(filename);
-      if (!this.#askLocation && !risky) {
+      // «Сохранить как…» из ПКМ — путь не задаём вовсе, и Electron показывает системный диалог.
+      const askOnce = this.#askOnceUrls.delete(item.getURL());
+      if (!this.#askLocation && !askOnce && !risky) {
         try { item.setSavePath(uniquePath(dir, filename)); }
         catch { /* путь недоступен — пусть Electron спросит сам, это лучше отмены */ }
       } else if (risky) {
@@ -143,7 +163,9 @@ export class DownloadManager {
           detail: 'Такие файлы могут навредить компьютеру. Сохраняйте их, только если доверяете источнику.',
         });
         if (choice !== 1) { item.cancel(); return; }
-        try { item.setSavePath(uniquePath(dir, filename)); } catch { /* см. выше */ }
+        // При «Сохранить как…» путь по-прежнему выбирает человек — предупреждение о риске его
+        // выбора не отменяет, оно про другое.
+        if (!askOnce) { try { item.setSavePath(uniquePath(dir, filename)); } catch { /* см. выше */ } }
       }
 
       // ⚠️ Повтор уже скачанного. Браузеры об этом молчат, и папка «Загрузки» обрастает

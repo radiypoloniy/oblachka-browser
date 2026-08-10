@@ -1072,6 +1072,9 @@ function createWindow(role: WindowRole = 'main') {
     broadcastToChrome(IPC.CLIPBOARD_CHANGED, clipboardBuffer.listCopies().length);
   });
   tabs.setOnClipboardToggle(() => toggleClipboardPopover(win));
+  // «Сохранить картинку как…» — разовый обход тумблера «спрашивать, куда сохранять» (он выключен
+  // по умолчанию). Менеджер вкладок про загрузки не знает, умение приходит сюда колбэком.
+  tabs.setOnSaveAs((url) => downloads.askLocationOnce(url));
 
   // Вставленная в поле строка с адресом целиком (AI-IDEAS.md №1) → разбираем локальной моделью и
   // ПРЕДЛАГАЕМ разложить. Ничего не подставляем до явного «Разложить».
