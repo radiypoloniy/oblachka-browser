@@ -695,12 +695,50 @@ function looksLikeCredentials(el: FillField): boolean {
   return !!scope.querySelector('input[type="password"]');
 }
 
+// ⚠️ Сколько РАЗНЫХ категорий полей должно быть в форме, чтобы она считалась формой адреса/карты.
+//
+// Живая жалоба: поповер «Заполнить адрес» всплывал буквально на любой форме — достаточно было
+// одного распознанного поля, а «email», «телефон» и «город» есть в подписке на рассылку, в
+// фильтре каталога, в форме отзыва и в поиске по сайту. Предложение подставить домашний адрес там
+// не просто бесполезно, оно навязчиво, а незаказанное действие, лезущее на каждой странице, —
+// ровно тот класс ошибки, из-за которого в проекте уже выпилили системный диалог «Сохранить как».
+// Считаем именно РАЗНЫЕ категории, а не поля: три поля «имя» подряд формой адреса не делают.
+const MIN_ADDRESS_CATEGORIES = 3;
+// Карте хватает двух: её поля (номер, держатель, срок) больше нигде не встречаются, и спутать
+// такую форму не с чем.
+const MIN_CARD_CATEGORIES = 2;
+
+function countFieldCategories(el: FillField, kind: 'address' | 'card'): number {
+  // Область — САМА форма, если поле в ней: на странице каталога может жить и форма подписки, и
+  // форма заказа, и складывать их поля в одну кучу значит снова считать форму адресом.
+  const scope: ParentNode = el.form ?? document;
+  const seen = new Set<AfKey>();
+  try {
+    for (const f of Array.from(scope.querySelectorAll('input, select')) as FillField[]) {
+      if (!isVisible(f)) continue;
+      const k = detectFieldKey(f);
+      if (!k) continue;
+      if ((AF_ADDRESS_KEYS.has(k) ? 'address' : 'card') !== kind) continue;
+      seen.add(k);
+    }
+  } catch { /* обход DOM не критичен */ }
+  return seen.size;
+}
+
 function reportAutofillFocus(el: FillField): void {
   const key = detectFieldKey(el);
   if (!key) return;
   // Адрес на форме входа не предлагаем вовсе; карту — тем более (её поля там взяться не могут).
   if (looksLikeCredentials(el)) return;
+  // ⚠️ В УЖЕ ЗАПОЛНЕННОЕ поле предлагать нечего. Живой случай: сайт со своей системой подсказок
+  // адреса подставил нормализованное значение, человек его подтвердил, потом кликнул в это поле
+  // снова — и наше предложение перезаписало подтверждённое своим. Пустое поле — это просьба о
+  // помощи, заполненное — уже принятое решение, и трогать его мы не вправе.
+  // Список (select) не проверяем: у него «значение» есть всегда, в том числе placeholder.
+  if (el instanceof HTMLInputElement && el.value.trim() !== '') return;
   const kind = AF_ADDRESS_KEYS.has(key) ? 'address' : 'card';
+  const need = kind === 'address' ? MIN_ADDRESS_CATEGORIES : MIN_CARD_CATEGORIES;
+  if (countFieldCategories(el, kind) < need) return;
   const r = el.getBoundingClientRect();
   lastAutofillFocusAt = performance.now();
   ipcRenderer.send(CH_AUTOFILL_FIELD_FOCUS, {
