@@ -599,10 +599,10 @@ const RATE_SYMBOL: Record<string, string> = {
 // вроде TONE_UP склеило бы два противоположных правила в одно и рано или поздно их перепутало.
 // Значения — в токенах (colors.css + theme-dark.css): на тёмной плитке прежние тёмные литералы
 // не читались вовсе.
-const TONE_GREEN = 'var(--tone-green)';
-const TONE_WARM  = 'var(--tone-warm)';
-const FILL_GREEN = 'var(--tone-green-fill)';
-const FILL_WARM  = 'var(--tone-warm-fill)';
+export const TONE_GREEN = 'var(--tone-green)';
+export const TONE_WARM  = 'var(--tone-warm)';
+export const FILL_GREEN = 'var(--tone-green-fill)';
+export const FILL_WARM  = 'var(--tone-warm-fill)';
 
 // ── Тесная плитка ─────────────────────────────────────────────────────────────
 //
@@ -837,7 +837,7 @@ export function CryptoWidget({ size, box, fill }: WidgetProps) {
  * осей и подписей — это десяток строк, а любая charting-библиотека тянет за собой сотни
  * килобайт ради того же результата.
  */
-function Sparkline({ values, height, color = TONE_GREEN, fill = FILL_GREEN }: {
+export function Sparkline({ values, height, color = TONE_GREEN, fill = FILL_GREEN }: {
   values: number[];
   height: number;
   // Цвет задаётся снаружи ради виджета «Крипта»: там линия должна краснеть на падающем активе,

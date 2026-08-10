@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Tile, TileCaption, type WidgetProps } from './widgets';
+import { Tile, TileCaption, Sparkline, TONE_GREEN, TONE_WARM, FILL_GREEN, FILL_WARM, type WidgetProps } from './widgets';
 import type { TrackedProduct } from '../../../shared/ipc';
 import type { DayDigestState } from '../../../shared/ipc';
 
@@ -306,9 +306,13 @@ export function DownloadsWidget({ box, fill }: WidgetProps) {
 
 // ── Отслеживание товаров ──────────────────────────────────────────────────────
 //
-// Показывает то, ради чего отслеживание и заводят: сколько товаров под наблюдением и что с ними
-// происходит. ⚠️ Плитка ТЕМЫ (surface), а не цветная: цвет тут значил бы направление цены, а на
-// плитке товаров сразу несколько и разнонаправленных — красить её целиком было бы враньём.
+// ⚠️ Герой плитки — ТОВАР, а не счётчик. Первая версия показывала крупную цифру «2» и подпись
+// «товаров под наблюдением»: на столе, где рядом стоит плотный виджет погоды, это выглядело
+// пусто и не сообщало ничего — число само по себе не ответ ни на один вопрос. Человека
+// интересует «что там с моими товарами», то есть конкретная цена и куда она двинулась.
+//
+// ⚠️ Плитка ТЕМЫ (surface), а не цветная: товаров несколько и цены разнонаправленные, красить
+// её целиком было бы враньём. Цвет несёт только строка изменения — там направление одно и известно.
 export function TrackingWidget({ box, fill }: WidgetProps) {
   const [items, setItems] = useState<TrackedProduct[]>([]);
 
@@ -324,52 +328,84 @@ export function TrackingWidget({ box, fill }: WidgetProps) {
     groups.set(key, [...(groups.get(key) ?? []), it]);
   }
 
-  // Самое интересное — то, что подешевело сильнее всех с момента добавления. Это факт из наших
-  // наблюдений, а не совет: виджет ничего не советует покупать.
-  let bestTitle = '';
-  let bestDrop = 0;
-  let bestNow = 0;
-  let currency = 'RUB';
+  // Герой — тот, чья цена сильнее всего сдвинулась с добавления (в любую сторону: подорожание
+  // человеку тоже новость). Если не двигалась ни одна — самый дешёвый из отслеживаемых: показать
+  // хоть что-то живое лучше, чем пустую плитку.
+  let hero: TrackedProduct | null = null;
+  let heroMove = -1;
   for (const offers of groups.values()) {
-    for (const o of offers) {
-      const first = o.points[0]?.price ?? 0;
-      const last = o.points[o.points.length - 1]?.price ?? 0;
-      if (!first || !last) continue;
-      const drop = first - last;
-      if (drop > bestDrop) { bestDrop = drop; bestTitle = o.title; bestNow = last; currency = o.currency; }
-    }
+    // Внутри группы берём предложение с лучшей ценой — к нему человек и пойдёт.
+    const best = [...offers].sort((a, b) => (a.points[a.points.length - 1]?.price ?? Infinity)
+                                          - (b.points[b.points.length - 1]?.price ?? Infinity))[0];
+    if (!best) continue;
+    const first = best.points[0]?.price ?? 0;
+    const last = best.points[best.points.length - 1]?.price ?? 0;
+    if (!last) continue;
+    const move = first ? Math.abs(last - first) : 0;
+    if (move > heroMove) { heroMove = move; hero = best; }
   }
 
-  const money = (v: number) => `${Math.round(v).toLocaleString('ru-RU')} ${currency === 'RUB' ? '₽' : currency}`;
+  const money = (v: number, cur: string) => `${Math.round(v).toLocaleString('ru-RU')} ${cur === 'RUB' || !cur ? '₽' : cur}`;
+
+  if (groups.size === 0 || !hero) {
+    return (
+      <Tile surface fill={fill}>
+        <TileCaption>Отслеживание</TileCaption>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.6 }}>
+          Ничего не отслеживается
+        </div>
+        <div style={{ flex: 'none', fontSize: 'var(--fs-xs)', opacity: 0.7 }}>
+          Значок в адресной строке на карточке товара
+        </div>
+      </Tile>
+    );
+  }
+
+  const prices = hero.points.map((p) => p.price);
+  const first = prices[0] ?? 0;
+  const last = prices[prices.length - 1] ?? 0;
+  const diff = first ? last - first : 0;
+  const down = diff < 0;
+  // Тесная плитка (2×1): график и название не помещаются, остаётся цена с изменением.
   const tight = box.height < 120;
+  const others = groups.size - 1;
 
   return (
     <Tile surface fill={fill}>
       <TileCaption>Отслеживание</TileCaption>
-      {groups.size === 0 ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.6 }}>
-          Ничего не отслеживается
-        </div>
-      ) : (
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
-          <div style={{ fontSize: tight ? 'var(--fs-lg)' : 'var(--fs-xl)', fontWeight: 700, lineHeight: 1.1 }}>
-            {groups.size}
-          </div>
-          {!tight && bestDrop > 0 && (
-            <div style={{ minWidth: 0 }}>
-              <div style={{
-                fontSize: 'var(--fs-xs)', overflow: 'hidden',
-                textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.8,
-              }}>{bestTitle}</div>
-              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--tone-green)' }}>
-                −{money(bestDrop)} · сейчас {money(bestNow)}
-              </div>
-            </div>
-          )}
-        </div>
+
+      <div style={{ flex: 'none', display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <span style={{ fontSize: tight ? 'var(--fs-lg)' : 'var(--fs-xl)', fontWeight: 700, lineHeight: 1.05 }}>
+          {money(last, hero.currency)}
+        </span>
+        {diff !== 0 && (
+          <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: down ? 'var(--tone-green)' : 'var(--tone-warm)' }}>
+            {down ? '−' : '+'}{money(Math.abs(diff), hero.currency)}
+          </span>
+        )}
+      </div>
+
+      {!tight && (
+        <div style={{
+          flex: 'none', marginTop: 2, fontSize: 'var(--fs-xs)', opacity: 0.8, lineHeight: 1.25,
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+        }}>{hero.title}</div>
       )}
+
+      {/* График — тот же Sparkline, что у курса и крипты: у отслеживания нет причин рисовать
+          свою кривую. Направление задаёт цвет, как у крипты (рост цены товара — плохо). */}
+      {!tight && prices.length >= 2 && (
+        <Sparkline
+          values={prices}
+          height={Math.max(24, Math.min(46, box.height - 128))}
+          color={down ? TONE_GREEN : TONE_WARM}
+          fill={down ? FILL_GREEN : FILL_WARM}
+        />
+      )}
+
+      <div style={{ flex: 1 }} />
       <div style={{ flex: 'none', fontSize: 'var(--fs-xs)', opacity: 0.7 }}>
-        {groups.size === 0 ? '' : bestDrop > 0 ? 'подешевело с добавления' : 'товаров под наблюдением'}
+        {hero.host}{others > 0 ? ` · ещё ${others} ${others === 1 ? 'товар' : 'товара'}` : ''}
       </div>
     </Tile>
   );
