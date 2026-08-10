@@ -16,6 +16,7 @@ import type { BookmarkManager } from './BookmarkManager';
 import type { DownloadManager } from './DownloadManager';
 import type { BookmarkNode, StuffHit } from '../shared/ipc';
 import { collectHistoryCandidates } from './HistorySearch';
+import { queryTokens, countMatches } from '../shared/wordMatch';
 import { rerankHistoryCandidates } from './TranslationService';
 
 // Сколько кандидатов даём модели. Больше — промпт перестаёт быть коротким, и качество отбора падает
@@ -27,16 +28,10 @@ function hostOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
 }
 
-// ⚠️ «ё» к «е» — иначе «ипотёка» и «ипотека» разные слова; та же нормализация, что в поиске по
-// настройкам. Слова короче трёх букв не ищем: они совпадают со всем подряд.
-function tokensOf(query: string): string[] {
-  return query.toLowerCase().replace(/ё/g, 'е').split(/[^a-zа-я0-9]+/).filter((t) => t.length >= 3);
-}
-
-function matches(haystack: string, tokens: string[]): boolean {
-  const hay = haystack.toLowerCase().replace(/ё/g, 'е');
-  return tokens.some((t) => hay.includes(t));
-}
+// ⚠️ Сопоставление — в shared/wordMatch.ts, и это не украшение архитектуры, а починка. Здесь была
+// обычная подстрока, и она не знает русских склонений: файл «отчет по исследованию.docx» не
+// находился ни по «исследования», ни по «исследование» (поймано на живом профиле). История это
+// переживала сама — у FTS5 свой стеммер, — а закладки и загрузки оставались слепыми.
 
 /** Плоский список закладок из дерева — папки сами по себе ответом быть не могут. */
 function flattenBookmarks(nodes: BookmarkNode[], out: BookmarkNode[] = []): BookmarkNode[] {
@@ -65,7 +60,7 @@ export async function searchStuff(
   limit = 12,
 ): Promise<{ hits: StuffHit[]; degraded: boolean }> {
   const q = query.trim();
-  const tokens = tokensOf(q);
+  const tokens = queryTokens(q);
   if (!q || tokens.length === 0) return { hits: [], degraded: false };
 
   const hits: StuffHit[] = [];
@@ -81,12 +76,18 @@ export async function searchStuff(
     });
   }
 
-  // Закладки — простое совпадение по заголовку и адресу: их немного, и они уже отобраны человеком.
+  // Закладки — совпадение по заголовку и адресу: их немного, и они уже отобраны человеком.
+  // ⚠️ Берём ЛУЧШИЕ по числу совпавших слов, а не первые попавшиеся: место в квоте источника
+  // ограничено, и раньше его занимал кто успел — на живом профиле закладка, совпавшая одним
+  // частым словом («документ»), вытесняла то, что человек искал.
   try {
-    for (const b of flattenBookmarks(bookmarks.listTree())) {
-      if (!matches(`${b.title} ${b.url}`, tokens)) continue;
+    const scored = flattenBookmarks(bookmarks.listTree())
+      .map((b) => ({ b, score: countMatches(`${b.title} ${b.url}`, tokens) }))
+      .filter((x) => x.score > 0)
+      .sort((a, z) => z.score - a.score)
+      .slice(0, MAX_PER_SOURCE);
+    for (const { b } of scored) {
       hits.push({ kind: 'bookmark', title: b.title || b.url, url: b.url, subtitle: hostOf(b.url) });
-      if (hits.filter((h) => h.kind === 'bookmark').length >= MAX_PER_SOURCE) break;
     }
   } catch (e) {
     console.warn('[stuff-search] закладки не прочитались:', (e as Error).message);
@@ -95,16 +96,18 @@ export async function searchStuff(
   // Загрузки — по имени файла. ⚠️ Пропавшие с диска не предлагаем: «нашлось» без возможности
   // открыть хуже, чем не нашлось вовсе.
   try {
-    let taken = 0;
-    for (const d of downloads.getAll()) {
-      if (d.state !== 'completed' || !d.savePath || d.fileMissing) continue;
-      if (!matches(d.filename, tokens)) continue;
+    const scored = downloads.getAll()
+      .filter((d) => d.state === 'completed' && d.savePath && !d.fileMissing)
+      .map((d) => ({ d, score: countMatches(d.filename, tokens) }))
+      .filter((x) => x.score > 0)
+      .sort((a, z) => z.score - a.score)
+      .slice(0, MAX_PER_SOURCE);
+    for (const { d } of scored) {
       // ⚠️ Подпись загрузки — ДАТА, а не домен источника. Домен у файлов почти всегда бессмысленная
       // раздача («doc-0g-6k-docstext.googleusercontent.com» вместо Google Docs) — он не помогает
       // узнать файл, а место в строке занимает. «Когда я это скачал» человек помнит, «с какой CDN» — нет.
       const when = new Date(d.startedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
       hits.push({ kind: 'download', title: d.filename, url: d.savePath, subtitle: when, downloadId: d.id });
-      if (++taken >= MAX_PER_SOURCE) break;
     }
   } catch (e) {
     console.warn('[stuff-search] загрузки не прочитались:', (e as Error).message);
