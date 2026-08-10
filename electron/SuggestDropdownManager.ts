@@ -1,74 +1,74 @@
-// Дропдаун подсказок омнибокса — отдельная WebContentsView-оверлей поверх страницы, под самим
-// омнибоксом (не под всей контентной зоной, как FindBar). Единственная система дропдауна (заход 5:
-// старый React-портал в Toolbar.tsx и резерв места под него — OMNIBOX_SUGGEST_RESERVE в App.tsx —
-// удалены; контент вкладки больше никогда не двигается ради дропдауна, эта вью плавает поверх).
+// Дропдаун подсказок омнибокса — отдельное ДОЧЕРНЕЕ ОКНО поверх главного, под самим омнибоксом.
 // Живые подсказки + мышиный выбор + клавиатурная подсветка (setHighlight ниже) — омнибокс остаётся
-// ЕДИНСТВЕННЫМ владельцем selectedIdx, вью только рисует по номеру, Enter выполняется локально
-// в омнибоксе без обращения к этой вью.
+// ЕДИНСТВЕННЫМ владельцем selectedIdx, окно только рисует по номеру, Enter выполняется локально
+// в омнибоксе без обращения сюда.
 //
-// ⚠️ ФОКУС. Эта вью НИКОГДА не вызывает webContents.focus() сама — фокус обязан жить в омнибоксе
-// (другой webContents, chromeView). Но одного бездействия НЕДОСТАТОЧНО, и прежний комментарий
-// здесь утверждал обратное («addChildView сам по себе OS-фокус не крадёт») — это неверно и
-// противоречило main.ts, который тот же фокус вынужденно возвращал. Замер подтвердил: при показе
-// дропдауна document.hasFocus() в чроме становится false.
+// ⚠️ ПОЧЕМУ ОКНО, А НЕ WebContentsView — это главное решение модуля, и оно оплачено долгой серией
+// заплаток, каждая из которых лечила симптом.
 //
-// Первопричина — незакрытое ограничение самого Electron: electron/electron#42922 («Implement
-// focusable in WebContentsView») открыт, реализации нет, и в его же постановке сказано, что
-// способа держать две WebContentsView в одном окне без взаимного перехвата фокуса не существует.
-// Отсюда единственная рабочая защита — СТРАЖ: подписка на событие 'focus' у этой вью, которая
-// немедленно возвращает фокус чрому (приём из обсуждения того же issue). Он покрывает ВСЕ пути
-// перехвата, а не только момент открытия, — прежняя точечная компенсация в main.ts не спасала,
-// например, от клика по омнибоксу при уже открытом дропдауне.
+// Пока список жил в своей `WebContentsView`, адресная строка и подсказки оказывались в ДВУХ разных
+// фокус-доменах, а Electron не даёт сделать вью, которая фокус не забирает: electron/electron#42922
+// открыт, реализации нет, и в его постановке прямо сказано, что способа держать две вью в одном
+// окне без взаимного перехвата не существует. Единственной защитой был СТРАЖ — вернуть фокус
+// чрому на каждый перехват. Он работал, но именно он и был источником следующей беды: возврат не
+// отменяет перехват, а идёт ПОСЛЕ него, то есть каждый показ списка — это круг «фокус ушёл →
+// вернулся». А показ зовётся на КАЖДУЮ букву.
 //
-// ⚠️ ПРИКРЕПЛЕНИЕ. Вью прикрепляется к окну ОДИН раз и больше не открепляется: показ/скрытие —
-// это setVisible(), а не addChildView/removeChildView. Так убран и сам триггер перехвата фокуса,
-// и путь с известными багами Electron (electron/electron#44652 — после removeChildView
-// последующие add/remove начинают работать неправильно, вью залипают на экране).
+// Чем это оборачивалось для человека: круг посреди протяжки мышью обрывает саму протяжку —
+// Chromium снимает захват мыши, когда вью теряет фокус, — и выделение в строке не рисуется вовсе,
+// потому что документ в этот момент неактивен. Живая жалоба звучала так: «набрал пару символов,
+// хочу выделить набранное мышью, а выделяется рекомендация». Выделение при этом было, его просто
+// не было видно, и единственной видимой подсветкой на экране оставалась строка выдачи.
 //
-// isAttached()-проверка по факту прикрепления вместо отдельного флага — тот же урок, что и в
-// FindBarManager.ts (флаг мог разойтись с реальностью и ломать повторный показ).
+// Так же устроен и настоящий Chrome: его омнибокс — нативное поле, а попап подсказок живёт
+// ОТДЕЛЬНЫМ `views::Widget` (chrome/browser/ui/views/omnibox), который активацию не забирает.
+// Здесь повторено то же самое доступными средствами: дочернее окно с `focusable: false`. На
+// Windows это `WS_EX_NOACTIVATE` — окно принимает мышь, но активным не становится НИКОГДА, то
+// есть перехватить фокус физически не может.
 //
-// ⚠️ ДРОПДАУН — СВОЙ У КАЖДОГО ОКНА. Омнибокс есть в любом окне, и подсказки к нему принадлежат
-// тому окну, где набирают: одна вью на приложение означала бы, что прямоугольник омнибокса из
-// окна B двигает список, висящий над окном A, а выбранная строка уходит не в тот омнибокс.
-// Состояние лежит в карте по id окна и умирает вместе с ним; вью создаётся лениво — на первый
-// список подсказок, а не на открытие окна.
-import { WebContentsView, ipcMain } from 'electron'
-import type { BrowserWindow } from 'electron'
+// Что из этого следует и чего теперь в модуле НЕТ: стража фокуса, возврата фокуса из main,
+// подъёма z-order через addChildView и проверок «а не наверху ли мы». Порядок наложения решает
+// сама природа дочернего окна — оно всегда над родителем, вью вкладки его не накрывает.
+//
+// ⚠️ Цена конструкции — окно надо ВОДИТЬ ЗА ГЛАВНЫМ: координаты у него экранные, поэтому переезд,
+// изменение размера, сворачивание и уход в другое приложение обязаны обрабатываться руками (см.
+// bindWindow ниже). Вью такого не требовала — за это и платим.
+//
+// ⚠️ ДРОПДАУН — СВОЙ У КАЖДОГО ОКНА. Омнибокс есть в любом окне, и подсказки принадлежат тому
+// окну, где набирают: одно окно на приложение означало бы, что прямоугольник омнибокса из окна B
+// двигает список над окном A, а выбранная строка уходит не в тот омнибокс. Состояние лежит в
+// карте по id окна и умирает вместе с ним; окно создаётся лениво — на первый список подсказок.
+import { BrowserWindow, ipcMain } from 'electron'
 import path from 'node:path'
 import type { ContentBounds, SuggestDropdownItem } from '../shared/ipc'
 
 const GAP = 4 // зазор между низом омнибокса и верхом дропдауна
-// Заход 5 (кардинальный фикс): высота вью больше НЕ фиксирована. Стартовая высота — до первого
-// реального замера от suggestdropdown.tsx (ResizeObserver → 'suggest-dropdown:height', тот же
-// приём, что INITIAL_HEIGHT/translate-popover:height у TranslatePopoverManager.ts) — держим её
-// маленькой (высота ~1 строки), а не старым потолком в 280: цель этого захода — не накрывать
-// вью лишней площадью (мёртвая хит-тест-зона перехватывала клики по кнопкам/контенту под собой —
-// pointer-events между разными WebContentsView не работает, см. прецедент AI-панели). Реальная
-// высота прилетает почти сразу после показа (did-finish-load уже отрендерил список), поэтому
-// стартовый флеш короткий и безвредный — тот же компромисс, что и у поповера.
+// Стартовая высота — до первого реального замера от suggestdropdown.tsx (ResizeObserver →
+// 'suggest-dropdown:height'). Держим маленькой (высота ~1 строки): реальная высота прилетает почти
+// сразу после показа, поэтому стартовый флеш короткий и безвредный.
 const INITIAL_HEIGHT = 48
-// Живой баг: тень выглядела «угловатой» и обрезанной — margin=16 был меньше реального охвата
-// тени карточки (offset+blur = 10+28 = 38px, см. suggestdropdown.tsx). WebContentsView обрезает
-// всё, что рисуется за границей своего прямоугольника — хвост тени срезался ровно по краю вью,
-// что и давало жёсткий «прямоугольник-подложку» вместо мягкого растворения. TranslatePopoverManager.ts
-// уже проходил через это же самое с той же тенью (см. его SHADOW_MARGIN=40) — берём то же значение.
-// Держать в синхроне с SHADOW_MARGIN в src/suggestdropdown.tsx.
+// Тень карточки рисуется ВНУТРИ окна, а окно всё, что за своей границей, обрезает — поэтому вокруг
+// карточки нужен прозрачный запас не меньше реального охвата тени (offset+blur = 10+28, см.
+// suggestdropdown.tsx). Держать в синхроне с SHADOW_MARGIN там же.
 const SHADOW_MARGIN = 40
 
 interface WindowDropdown {
   win: BrowserWindow
-  view: WebContentsView | null
-  resizeBound: boolean
-  // Последний присланный прямоугольник омнибокса (см. IPC.OMNIBOX_SET_BOUNDS, main.ts).
+  popup: BrowserWindow | null
+  bound: boolean
+  // Последний присланный прямоугольник омнибокса (см. IPC.OMNIBOX_SET_BOUNDS, main.ts) — в
+  // координатах КОНТЕНТА главного окна, экранные считаются в computeBounds.
   omniboxBounds: ContentBounds
-  // Последняя реально измеренная высота карточки (см. 'suggest-dropdown:height' ниже) — вью
-  // персистентна между показами (в отличие от поповера), поэтому переиспользуем последнее известное
-  // значение при повторном открытии вместо того, чтобы каждый раз падать обратно на INITIAL_HEIGHT.
+  // Последняя измеренная высота карточки: окно персистентно между показами, поэтому повторное
+  // открытие переиспользует известное значение вместо возврата к INITIAL_HEIGHT.
   height: number
-  // Последний присланный список подсказок — переотправляется на did-finish-load, если вью ещё
-  // не успела загрузиться к моменту первого sendSuggestItems() (см. ensureDropdownView).
+  // Последний список — переотправляется на did-finish-load, если окно ещё не успело загрузиться
+  // к моменту первого sendSuggestItems().
   items: SuggestDropdownItem[]
+  // Показан ли список СЕЙЧАС с точки зрения омнибокса. Нужен отдельно от popup.isVisible():
+  // окно прячется и по внешним причинам (главное свернули, ушли в другое приложение), и при
+  // возврате его надо показать снова — но только если омнибокс всё ещё его просит.
+  wanted: boolean
 }
 
 const dropdowns = new Map<number, WindowDropdown>()
@@ -78,71 +78,55 @@ function stateFor(win: BrowserWindow): WindowDropdown {
   const existing = dropdowns.get(win.id)
   if (existing) return existing
   const created: WindowDropdown = {
-    win, view: null, resizeBound: false,
+    win, popup: null, bound: false,
     omniboxBounds: { x: 0, y: 0, width: 0, height: 0 },
-    height: INITIAL_HEIGHT, items: [],
+    height: INITIAL_HEIGHT, items: [], wanted: false,
   }
   dropdowns.set(win.id, created)
-  win.once('closed', () => { dropdowns.delete(win.id) })
+  win.once('closed', () => {
+    const st = dropdowns.get(win.id)
+    if (st?.popup && !st.popup.isDestroyed()) st.popup.destroy()
+    dropdowns.delete(win.id)
+  })
   return created
 }
 
-// Окно по вью-отправителю: каналы дропдауна общие на все окна, а BrowserWindow.fromWebContents
-// для дочерней вью возвращает null (тот же случай, что в WindowRegistry.contextFromSender).
+// Окно по отправителю: каналы дропдауна общие на все окна.
 function stateBySender(sender: Electron.WebContents): WindowDropdown | null {
-  for (const st of dropdowns.values()) if (st.view?.webContents === sender) return st
+  for (const st of dropdowns.values()) if (st.popup?.webContents === sender) return st
   return null
 }
 
-// Колбэк на клик по строке (см. ensureIpcRegistered) — main.ts подписывается один раз при
-// старте и пересылает выбор в слой хрома ТОГО окна, где кликнули (та же связка, что
-// setTabManager у AiPanelManager).
+// Колбэк на клик по строке — main.ts подписывается один раз при старте и пересылает выбор в слой
+// хрома ТОГО окна, где кликнули.
 let onPickCb: ((win: BrowserWindow, item: SuggestDropdownItem) => void) | null = null
 
 export function onPick(cb: (win: BrowserWindow, item: SuggestDropdownItem) => void): void {
   onPickCb = cb
 }
 
-// Страж фокуса (см. блок «ФОКУС» в шапке). main.ts передаёт сюда возврат фокуса чрому; вызывается
-// на КАЖДЫЙ перехват, кем бы он ни был спровоцирован — загрузкой вью, показом, кликом мимо.
-// Заменяет собой прежний onFirstLoad-костыль, который лечил лишь один частный случай (самый
-// первый показ за жизнь окна).
-let restoreChromeFocusCb: ((win: BrowserWindow) => void) | null = null
-
-export function onFocusStolen(cb: (win: BrowserWindow) => void): void {
-  restoreChromeFocusCb = cb
-}
-
-// Прикреплена ли вью к окну. С переходом на setVisible() это состояние стало почти вечным
-// (прикрепили один раз — и до закрытия окна), но проверка по ФАКТУ, а не по флагу, остаётся:
-// флаг уже однажды расходился с реальностью и ломал повторный показ (тот же урок, что в
-// FindBarManager.ts).
-function isAttached(st: WindowDropdown): boolean {
-  return !!st.view && !st.win.isDestroyed() && st.win.contentView.children.includes(st.view)
-}
-
-function computeBounds(st: WindowDropdown, height: number): { x: number; y: number; width: number; height: number } {
+// ⚠️ Координаты ЭКРАННЫЕ: у дочернего окна нет системы координат родителя. getContentBounds() даёт
+// экранное положение контентной области главного окна, а omniboxBounds приходит от рендерера в
+// координатах этой же области — то есть складываются они напрямую, без поправок на рамку и
+// заголовок. Это и есть причина, по которой брать getBounds() здесь нельзя.
+function computeBounds(st: WindowDropdown): { x: number; y: number; width: number; height: number } {
   const ob = st.omniboxBounds
-  const x = ob.x
-  const y = ob.y + ob.height + GAP
-  // Лог отсюда убран: функция зовётся на каждый OMNIBOX_SET_BOUNDS (ResizeObserver омнибокса) и
-  // на каждый замер высоты — в проде это поток строк с содержимым адресной строки, см. CLAUDE.md
-  // («уровни логирования; в prod — без URL/текстов»).
+  const base = st.win.isDestroyed() ? { x: 0, y: 0 } : st.win.getContentBounds()
   return {
-    x: x - SHADOW_MARGIN,
-    y: y - SHADOW_MARGIN,
-    width: ob.width + SHADOW_MARGIN * 2,
-    height: height + SHADOW_MARGIN * 2,
+    x: Math.round(base.x + ob.x - SHADOW_MARGIN),
+    y: Math.round(base.y + ob.y + ob.height + GAP - SHADOW_MARGIN),
+    width: Math.round(ob.width + SHADOW_MARGIN * 2),
+    height: Math.round(st.height + SHADOW_MARGIN * 2),
   }
 }
 
 function layoutDropdown(st: WindowDropdown): void {
-  if (!isAttached(st)) return
-  st.view!.setBounds(computeBounds(st, st.height))
+  const popup = st.popup
+  if (!popup || popup.isDestroyed() || st.win.isDestroyed()) return
+  popup.setBounds(computeBounds(st))
 }
 
-// Вызывается из main.ts на каждый OMNIBOX_SET_BOUNDS (см. Toolbar.tsx::omniboxPillRef) —
-// та же геометрия, что двигает и старый chrome-DOM дропдаун (позиционирование от toolbarRef).
+// Вызывается из main.ts на каждый OMNIBOX_SET_BOUNDS (см. Toolbar.tsx::omniboxPillRef).
 export function syncOmniboxBounds(win: BrowserWindow, b: ContentBounds): void {
   const st = stateFor(win)
   st.omniboxBounds = b
@@ -152,17 +136,15 @@ export function syncOmniboxBounds(win: BrowserWindow, b: ContentBounds): void {
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return
   ipcRegistered = true
-  // Клик по строке во вью — просто пересылаем колбэку (main.ts форвардит в chromeView).
-  // Не боевой канал (не в shared/ipc.ts) — это внутренняя механика ЭТОЙ вью, как и у
-  // translate-popover:close/ai-panel:close (см. соответствующие *Manager.ts).
+  // Клик по строке — просто пересылаем колбэку (main.ts форвардит в chromeView). Не боевой канал
+  // (не в shared/ipc.ts): это внутренняя механика ЭТОГО окна, как translate-popover:close.
   ipcMain.on('suggest-dropdown:pick', (e, item: SuggestDropdownItem) => {
     const st = stateBySender(e.sender)
     if (st) onPickCb?.(st.win, item)
   })
 
-  // Заход 5 — реальная высота карточки (ResizeObserver в suggestdropdown.tsx). Math.max(1, px) —
-  // защита от абсурдных 0/отрицательных значений (карточка ещё не отрендерилась/офскрин), тот же
-  // приём, что Math.max(INITIAL_HEIGHT, px) у translate-popover:height.
+  // Реальная высота карточки (ResizeObserver в suggestdropdown.tsx). Math.max(1, px) — защита от
+  // абсурдных 0/отрицательных значений (карточка ещё не отрендерилась).
   ipcMain.on('suggest-dropdown:height', (e, px: number) => {
     const st = stateBySender(e.sender)
     if (!st) return
@@ -171,112 +153,112 @@ function ensureIpcRegistered(): void {
   })
 }
 
-function ensureDropdownView(st: WindowDropdown): WebContentsView {
-  if (st.view) return st.view
+// ⚠️ Подписки на главное окно — ровно та цена, о которой сказано в шапке. Экранные координаты
+// означают, что окно-список само по себе не поедет ни за переездом, ни за ресайзом, а при
+// сворачивании родителя останется висеть поверх чужих приложений.
+function bindWindow(st: WindowDropdown): void {
+  if (st.bound) return
+  st.bound = true
+  const follow = () => layoutDropdown(st)
+  st.win.on('move', follow)
+  st.win.on('resize', follow)
+  // Ушли в другое приложение или свернули главное — списку на экране не место. ⚠️ Клик по самому
+  // списку сюда НЕ приводит: окно неактивируемое, главное окно фокус при этом не теряет, — ровно
+  // ради этого свойства конструкция и выбрана.
+  const vanish = () => hideSuggestDropdown(st.win)
+  st.win.on('blur', vanish)
+  st.win.on('minimize', vanish)
+  st.win.on('hide', vanish)
+  // Вернулись — показываем снова, но только если омнибокс всё ещё этого хочет.
+  st.win.on('restore', () => { if (st.wanted) showSuggestDropdown(st.win) })
+}
+
+function ensurePopup(st: WindowDropdown): BrowserWindow {
+  if (st.popup && !st.popup.isDestroyed()) return st.popup
   ensureIpcRegistered()
-  const view = new WebContentsView({
+  const popup = new BrowserWindow({
+    // parent — чтобы окно всегда лежало НАД главным и уезжало вместе с ним при сворачивании.
+    parent: st.win,
+    // ⚠️ Вся суть конструкции: неактивируемое окно. На Windows это WS_EX_NOACTIVATE — мышь
+    // принимает, фокус не забирает никогда. Без этого мы возвращаемся ровно к тому, от чего ушли.
+    focusable: false,
+    frame: false,
+    transparent: true,
+    // Тень рисует сама карточка (см. SHADOW_MARGIN): системная легла бы по прямоугольнику окна,
+    // то есть по прозрачному запасу вокруг карточки.
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload-suggestdropdown.js'),
       contextIsolation: true,
       sandbox: false, // preload использует ipcRenderer
     },
   })
-  st.view = view
-  // Обязателен на самой view (не только CSS background:transparent) — иначе виден непрозрачный
-  // прямоугольник-подложка вокруг списка (тот же инвариант, что у FindBar/AI-панели/поповера).
-  view.setBackgroundColor('#00000000')
-  // Создаём скрытой: sendSuggestItems() может создать вью задолго до первого показа (список
-  // подсказок приходит раньше решения показать дропдаун), а прикрепление теперь навсегда —
-  // без этого вью мелькнула бы на экране до showSuggestDropdown().
-  view.setVisible(false)
-  // СТРАЖ ФОКУСА (см. шапку). Любой перехват фокуса этой вью — Electron не даёт его запретить
-  // (#42922) — немедленно откатываем. setImmediate, а не синхронно: вернуть фокус нужно ПОСЛЕ
-  // того, как Chromium доведёт до конца текущую передачу, иначе он перетрёт наш вызов своим же.
-  // Фокус возвращаем в СВОЁ окно: перехват в одном окне не должен дёргать чром другого.
-  view.webContents.on('focus', () => {
-    setImmediate(() => restoreChromeFocusCb?.(st.win))
+  st.popup = popup
+  popup.setMenuBarVisibility(false)
+  // Список не навигирует никуда сам — но если что-то попробует, окно UI не должно превратиться в
+  // страницу сайта (тот же гвард, что у AI-панели).
+  popup.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('oblako-chrome://')) e.preventDefault()
   })
-  // Если sendSuggestItems() пришёл ДО того, как страница успела загрузиться, .send() тогда
-  // ушёл бы в никуда (preload ещё не навесил ipcRenderer.on) — did-finish-load переотправляет
-  // последний известный список явно, тем же приёмом, что 'findbar:show' в FindBarManager.ts.
-  // ⚠️ Здесь НЕТ wc.focus() — единственное отличие от аналогичного момента в FindBarManager.ts.
-  view.webContents.once('did-finish-load', () => {
-    view.webContents.send('suggest-dropdown:items', st.items)
-    // Живой баг: на тяжёлом старте (восстановление сессии из многих вкладок, индексация истории
-    // и т.п. одновременно) дропдаун иногда вообще не был виден при первом же показе. Позиционируем
-    // вью ЕЩЁ РАЗ по актуальным lastOmniboxBounds ровно в момент, когда страница реально
-    // догрузилась — на случай, если самое первое showSuggestDropdown() успело отработать раньше,
-    // чем сюда пришли верные данные (bounds ещё не долетели / высота ещё не измерена). Дёшево и
-    // безопасно перевызвать даже если всё и так было правильно — тот же принцип, что у onFirstLoadCb
-    // ниже (фокус) для того же самого класса гонки «первый показ отличается от всех следующих».
+  popup.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  popup.webContents.once('did-finish-load', () => {
+    // Список мог прийти ДО загрузки страницы — тогда send ушёл бы в никуда (preload ещё не навесил
+    // обработчик). Переотправляем последний известный явно.
+    popup.webContents.send('suggest-dropdown:items', st.items)
     layoutDropdown(st)
-    // Загрузка вью — известный момент перехвата фокуса (electron/electron#42578). Страж на
-    // событии 'focus' его и так поймает; этот вызов оставлен как дешёвая страховка ровно на
-    // первый показ, где раньше была отдельная onFirstLoad-заплатка.
-    restoreChromeFocusCb?.(st.win)
   })
-  view.webContents.loadURL('oblako-chrome://localhost/suggestdropdown.html')
-  return view
+  popup.loadURL('oblako-chrome://localhost/suggestdropdown.html')
+  return popup
 }
 
 export function showSuggestDropdown(win: BrowserWindow): void {
   const st = stateFor(win)
-  if (!st.resizeBound) {
-    win.on('resize', () => layoutDropdown(st)) // подписка один раз на окно, как layoutPanel в AiPanelManager
-    st.resizeBound = true
-  }
-
-  const view = ensureDropdownView(st)
-  view.setBounds(computeBounds(st, st.height))
-  // ⚠️ Порядок наложения приходится ПОДНИМАТЬ на каждый показ, а не только при первом.
-  //
-  // Вью прикрепляется один раз (это по-прежнему верно: removeChildView крадёт фокус и лежит на
-  // пути багов Electron #44652), но нативный z-order определяется порядком детей contentView, а
-  // вкладки добавляются туда ПОЗЖЕ дропдауна — при каждой активации. В результате на вкладке с
-  // сайтом выпадашка оказывалась ПОД страницей: её не было видно, и адресной строкой нельзя
-  // было пользоваться. На хабе проблема не проявлялась вовсе — там нативной вью страницы нет,
-  // потому баг и жил незамеченным.
-  //
-  // Повторный addChildView для УЖЕ прикреплённой вью не пересоздаёт её, а перемещает в конец
-  // списка детей — тот же приём подъёма, что у плавающих окон веб-приложений графа
-  // (см. raiseGraphWebApp). Фокус при этом остаётся в чроме: на вью висит страж, возвращающий
-  // его обратно, а сами мы focus() здесь не зовём.
-  //
-  // ⚠️ НО ПОДНИМАЕМ, ТОЛЬКО ЕСЛИ ВЬЮ НЕ НАВЕРХУ. Страж возвращает фокус, а не отменяет его
-  // перехват: каждый addChildView — это круг «фокус ушёл во вью → страж вернул его чрому».
-  // А showSuggestDropdown зовётся на КАЖДЫЙ пересчёт подсказок, то есть на каждую букву, — и
-  // такой круг посреди протяжки мышью обрывает саму протяжку: Chromium снимает захват мыши,
-  // когда вью теряет фокус. Отсюда и была жалоба «при наборе не выделить текст в строке».
-  // Порядок наложения при этом не страдает: подниматься нужно, только когда поверх дропдауна
-  // успела лечь вью вкладки, а это происходит при активации вкладки, а не при наборе.
-  const children = win.contentView.children
-  if (children[children.length - 1] !== view) {
-    try { win.contentView.addChildView(view) } catch { /* окно могло закрыться */ }
-  }
-  view.setVisible(true)
-  // ⚠️ НИКАКОГО view.webContents.focus() здесь — критичный инвариант этого модуля.
+  st.wanted = true
+  if (win.isDestroyed() || win.isMinimized()) return
+  bindWindow(st)
+  const popup = ensurePopup(st)
+  popup.setBounds(computeBounds(st))
+  // ⚠️ showInactive(), а не show(): show() просит у системы активацию. Окно и так неактивируемое,
+  // но просить активацию и не получать её — лишний повод системе дёрнуть фокус главного окна.
+  if (!popup.isVisible()) popup.showInactive()
 }
 
-// Живой список подсказок (заход 3/5) — buildSuggestions в Toolbar.tsx шлёт его на каждый
-// пересчёт (дебаунс 150мс). Лениво создаёт вью-приёмник, даже если она ещё не показана —
-// показ/скрытие остаются исключительно делом showSuggestDropdown()/hideSuggestDropdown().
+// Живой список подсказок — buildSuggestions в Toolbar.tsx шлёт его на каждый пересчёт. Лениво
+// создаёт окно-приёмник, даже если оно ещё не показано: показ остаётся делом showSuggestDropdown.
 export function sendSuggestItems(win: BrowserWindow, items: SuggestDropdownItem[]): void {
   const st = stateFor(win)
   st.items = items
-  ensureDropdownView(st).webContents.send('suggest-dropdown:items', items)
+  ensurePopup(st).webContents.send('suggest-dropdown:items', items)
 }
 
-// Скрытие — setVisible(false), а НЕ removeChildView: вью остаётся прикреплённой (см. шапку).
-// Скрытая вью не рисуется и не участвует в хит-тесте, так что прежняя проблема «мёртвая зона
-// перехватывает клики под собой» этим не возвращается.
 export function hideSuggestDropdown(win: BrowserWindow | null): void {
   if (!win) return
-  dropdowns.get(win.id)?.view?.setVisible(false)
+  const st = dropdowns.get(win.id)
+  if (!st) return
+  // ⚠️ wanted снимаем ТОЛЬКО когда прячет сам омнибокс. Внешние причины (свернули окно, ушли в
+  // другое приложение) намерения человека не отменяют — иначе после возврата список бы не вернулся.
+  if (st.popup && !st.popup.isDestroyed()) st.popup.hide()
 }
 
-// Клавиатурная подсветка (заход 4/5) — омнибокс держит selectedIdx, эта функция просто
-// пересылает номер строки во вью (-1 снимает подсветку). Вью ничего не решает сама — источник
-// истины остаётся в Toolbar.tsx. Если вью ещё не создана — подсвечивать нечего, no-op.
+// Скрытие по команде омнибокса — в отличие от внешних причин выше, снимает и намерение.
+export function closeSuggestDropdown(win: BrowserWindow | null): void {
+  if (!win) return
+  const st = dropdowns.get(win.id)
+  if (!st) return
+  st.wanted = false
+  if (st.popup && !st.popup.isDestroyed()) st.popup.hide()
+}
+
+// Клавиатурная подсветка — омнибокс держит selectedIdx, эта функция пересылает номер строки
+// (-1 снимает подсветку). Окно ничего не решает само — источник истины в Toolbar.tsx.
 export function setHighlight(win: BrowserWindow, idx: number): void {
-  dropdowns.get(win.id)?.view?.webContents.send('suggest-dropdown:highlight', idx)
+  const popup = dropdowns.get(win.id)?.popup
+  if (popup && !popup.isDestroyed()) popup.webContents.send('suggest-dropdown:highlight', idx)
 }

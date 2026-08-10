@@ -115,7 +115,7 @@ import { buildSearchTargets, searchChipCandidates, resolveChipCandidates } from 
 import { readPageSelection } from './PageSelection';
 import { SearchTargetStore } from './SearchTargetStore';
 import { applyBangTemplate, isValidBangTemplate, parseBangCandidate, bangHomeUrl } from '../shared/bangs';
-import { showSuggestDropdown, hideSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, onFocusStolen as onSuggestDropdownFocusStolen, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
+import { showSuggestDropdown, hideSuggestDropdown, closeSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
 import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
 import * as autofillOrchestrator from './AutofillOrchestrator';
@@ -2052,14 +2052,15 @@ function registerIpc() {
   // (Toolbar.tsx::openDropdown/closeDropdown), который пока не заменяет (работают параллельно).
   ipcMain.handle(IPC.SUGGEST_DROPDOWN_TOGGLE, (e, open: boolean) => {
     const w = winOf(e);
+    // ⚠️ Возврата фокуса чрому здесь больше НЕТ и быть не должно. Он компенсировал перехват
+    // фокуса вью-дропдауном, а дропдаун теперь неактивируемое дочернее окно и перехватить фокус
+    // не может в принципе (см. шапку SuggestDropdownManager.ts). Прежний вызов был не безобидным:
+    // канал дёргается на КАЖДУЮ букву, а focus() доходит до нативного SetFocus и сбрасывает захват
+    // мыши — то есть обрывал протяжку выделения в адресной строке прямо посреди неё.
     if (open) {
       if (w) showSuggestDropdown(w);
-      // Показ дропдауна — момент, когда фокус уходит чаще всего. Страж (onSuggestDropdownFocusStolen
-      // выше) поймает это и сам, но возвращаем фокус ещё и здесь, синхронно: так между показом и
-      // откатом не остаётся кадра, в котором клавиатура «не там».
-      chromeOf(e)?.focus();
     } else {
-      hideSuggestDropdown(w);
+      closeSuggestDropdown(w);
     }
   });
   ipcMain.handle(IPC.PASSWORD_POPOVER_SET_BOUNDS, (e, b: ContentBounds) => {
@@ -2132,7 +2133,6 @@ function registerIpc() {
   // запретить вью забирать фокус (electron/electron#42922 открыт), поэтому единственная надёжная
   // защита — откатывать КАЖДЫЙ перехват, а не компенсировать отдельные известные моменты. Заменяет
   // прежние точечные заплатки (onFirstLoad + разовый focus() при открытии).
-  onSuggestDropdownFocusStolen((w) => { contextForWindow(w)?.chromeView.webContents.focus(); });
   // Клавиатурная подсветка (заход 4/5) — омнибокс шлёт номер строки (-1 снимает), main просто
   // пересылает во вью; выбор (Enter) остаётся локальным в омнибоксе, эта вью в нём не участвует.
   ipcMain.handle(IPC.SUGGEST_DROPDOWN_HIGHLIGHT, (e, idx: number) => {
@@ -2314,7 +2314,13 @@ function registerIpc() {
 
   // Возврат OS-фокуса чрому по требованию renderer'а. Тот же приём, что уже применяется на
   // Ctrl+L и при открытии дропдауна подсказок, — просто доступный ещё и из омнибокса.
-  ipcMain.on(IPC.CHROME_FOCUS, (e) => chromeOf(e)?.focus());
+  // ⚠️ Та же проверка, что у SUGGEST_DROPDOWN_TOGGLE: focus() на УЖЕ сфокусированной вью сбрасывает
+  // захват мыши, а этот канал зовётся в том числе на mousedown по адресной строке — то есть ровно
+  // в начале протяжки выделения.
+  ipcMain.on(IPC.CHROME_FOCUS, (e) => {
+    const chrome = chromeOf(e);
+    if (chrome && !chrome.isFocused()) chrome.focus();
+  });
 
   // Автообновление. Команды — on, а не handle: ответ не нужен, результат приходит пушем
   // UPDATE_CHANGED (см. UpdateManager.initialize ниже).
