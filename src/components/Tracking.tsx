@@ -18,7 +18,17 @@ function formatPrice(v: number, currency: string): string {
 // Свой маленький спарклайн: у виджетов рабочего стола он внутренний, а тащить сюда весь модуль
 // виджетов ради одной кривой несоразмерно. Форма та же — только opacity/линия, без анимаций.
 function PriceLine({ values, width = 160, height = 34 }: { values: number[]; width?: number; height?: number }) {
-  if (values.length < 2) return null;
+  // ⚠️ Пока наблюдение одно, рисуем ПУНКТИР, а не пустоту. Живой случай: человек добавил товары,
+  // увидел на их месте ничего и спросил «а о каком графике речь». Кривой ещё нет по существу
+  // (точка одна), но место под неё должно читаться, иначе выглядит как поломка.
+  if (values.length < 2) {
+    return (
+      <svg width={width} height={height} style={{ display: 'block', flex: 'none' }}>
+        <line x1={0} y1={height / 2} x2={width} y2={height / 2}
+              stroke="var(--divider-strong)" strokeWidth={1.5} strokeDasharray="3 4" />
+      </svg>
+    );
+  }
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
@@ -80,8 +90,8 @@ export default function Tracking() {
         <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text-strong)' }}>Отслеживание</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
           <div style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-            Браузер сам перепроверяет цены раз в сутки, пока открыт. Часть магазинов не отдаёт цену
-            роботу — у таких товаров это будет видно по дате проверки.
+            Браузер сам перепроверяет цены несколько раз в день, пока открыт. График появится, когда
+            цена изменится хотя бы раз. Часть магазинов не отдаёт цену роботу — это видно по дате проверки.
           </div>
           {checkNote && (
             <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>{checkNote}</span>

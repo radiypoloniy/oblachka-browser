@@ -15,10 +15,22 @@ import { allContexts } from './WindowRegistry';
 
 // Как часто просыпаемся посмотреть, не пора ли кого проверить.
 const TICK_MS = 60 * 60 * 1000;          // час
-// Насколько устаревшей должна быть отметка, чтобы товар пошёл на проверку.
-const STALE_MS = 20 * 60 * 60 * 1000;    // ~сутки
+//
+// ⚠️ Частота СВОЯ у каждого товара и зависит от того, во что нам обходится проверка. Это вывод из
+// двух фактов, а не вкус:
+//  • цены на маркетплейсах меняются ПО НЕСКОЛЬКУ РАЗ В ДЕНЬ (продавцы правят их репрайсерами по
+//    часовым интервалам), а Keepa — эталон в этой нише — обновляет данные ежечасно. Раз в сутки
+//    гарантированно пропускает короткие акции, ради которых отслеживание и заводят;
+//  • но ежечасно ходить мы не можем: у нас нет ни API магазина, ни сервера, и часть товаров
+//    читается только настоящей загрузкой страницы (замер в PRICE-TRACKING.md).
+// Отсюда развилка по ЦЕНЕ проверки: обычный запрос стоит доли секунды — такие товары навещаем
+// часто; загрузка страницы стоит секунды и память — реже. Не ответивший магазин получает отступ,
+// чтобы не долбиться в него каждый час.
+const RAW_INTERVAL_MS  = 3 * 60 * 60 * 1000;   // дешёвый путь — 8 раз в сутки
+const VIEW_INTERVAL_MS = 8 * 60 * 60 * 1000;   // дорогой путь — 3 раза в сутки
+const FAIL_INTERVAL_MS = 12 * 60 * 60 * 1000;  // не ответил — не наседаем
 // Сколько товаров проверяем за один заход. ⚠️ Немного намеренно: это чужие сайты, и ходить к ним
-// пачкой раз в час — поведение робота, а не браузера.
+// пачкой — поведение робота, а не браузера.
 const BATCH = 4;
 // Пауза между товарами в заходе — та же причина плюс не занимать процессор.
 const GAP_MS = 8000;
@@ -71,13 +83,15 @@ async function checkView(url: string): Promise<ProductSignal | null> {
 }
 
 async function checkOne(item: { id: number; url: string }): Promise<boolean> {
-  const signal = (await checkRaw(item.url)) ?? (await checkView(item.url));
+  // ⚠️ Запоминаем, КАКИМ путём удалось: от этого зависит, как часто мы будем сюда возвращаться.
+  const raw = await checkRaw(item.url);
+  const signal = raw ?? (await checkView(item.url));
   if (!signal) {
     store?.markChecked(item.id, false);
     return false;
   }
   store?.addPoint(item.id, signal.price, signal.availability);
-  store?.markChecked(item.id, true);
+  store?.markChecked(item.id, true, raw ? 0 : 1);
   return true;
 }
 
@@ -101,7 +115,7 @@ async function runBatch(items: Array<{ id: number; url: string }>, gapMs: number
 
 async function tick(): Promise<void> {
   if (running || stopped || !store) return;
-  const due = store.dueForCheck(STALE_MS, BATCH);
+  const due = store.dueForCheck(RAW_INTERVAL_MS, VIEW_INTERVAL_MS, FAIL_INTERVAL_MS, BATCH);
   if (due.length === 0) return;
   running = true;
   try {

@@ -62,6 +62,9 @@ export class TrackingStore {
       for (const alter of [
         `ALTER TABLE tracked ADD COLUMN last_checked_at INTEGER NOT NULL DEFAULT 0`,
         `ALTER TABLE tracked ADD COLUMN last_check_ok INTEGER NOT NULL DEFAULT 1`,
+        // 0 — товар читается обычным запросом (дёшево), 1 — нужна загрузка страницы (дорого).
+        // От этого зависит, как часто мы к нему ходим (см. TrackingChecker).
+        `ALTER TABLE tracked ADD COLUMN check_cost INTEGER NOT NULL DEFAULT 1`,
       ]) {
         try { this.#db.exec(alter); } catch { /* колонка уже есть */ }
       }
@@ -140,22 +143,35 @@ export class TrackingStore {
    * как свежую, а человек принимал бы решение о покупке по данным месячной давности, не зная об
    * этом. «Не смогли проверить» — честный и обязательный исход.
    */
-  markChecked(id: number, ok: boolean): void {
+  markChecked(id: number, ok: boolean, cost?: 0 | 1): void {
     if (!this.#db) return;
     try {
-      this.#db.prepare(`UPDATE tracked SET last_checked_at = ?, last_check_ok = ? WHERE id = ?`)
-        .run(Date.now(), ok ? 1 : 0, id);
+      if (cost === undefined) {
+        this.#db.prepare(`UPDATE tracked SET last_checked_at = ?, last_check_ok = ? WHERE id = ?`)
+          .run(Date.now(), ok ? 1 : 0, id);
+      } else {
+        this.#db.prepare(`UPDATE tracked SET last_checked_at = ?, last_check_ok = ?, check_cost = ? WHERE id = ?`)
+          .run(Date.now(), ok ? 1 : 0, cost, id);
+      }
     } catch { /* запись отметки не критична */ }
   }
 
-  /** Что пора проверить: не проверялось дольше указанного срока. Самое давнее — первым. */
-  dueForCheck(olderThanMs: number, limit: number): Array<{ id: number; url: string }> {
+  /**
+   * Что пора проверить. Срок СВОЙ у каждого товара и зависит от того, во что нам обходится
+   * проверка (см. TrackingChecker): дешёвые ходят чаще, дорогие реже, неудачные — с отступом.
+   * Самое давнее — первым.
+   */
+  dueForCheck(rawMs: number, viewMs: number, failMs: number, limit: number): Array<{ id: number; url: string }> {
     if (!this.#db) return [];
     try {
       return this.#db.prepare(`
-        SELECT id, url FROM tracked WHERE last_checked_at < ?
+        SELECT id, url FROM tracked
+        WHERE last_checked_at < (? - CASE
+          WHEN last_check_ok = 0 THEN ?
+          WHEN check_cost = 0   THEN ?
+          ELSE ? END)
         ORDER BY last_checked_at ASC LIMIT ?
-      `).all(Date.now() - olderThanMs, limit) as Array<{ id: number; url: string }>;
+      `).all(Date.now(), failMs, rawMs, viewMs, limit) as Array<{ id: number; url: string }>;
     } catch { return []; }
   }
 
