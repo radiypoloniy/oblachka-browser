@@ -261,6 +261,10 @@ export const IPC = {
   TAB_CREATE_SPECIAL: 'tab:create-special',
   TAB_CLOSE: 'tab:close',
   TAB_ACTIVATE: 'tab:activate',
+  // Активировать вкладку в ДРУГОМ окне (находка смыслового поиска по всем окнам). Отдельный
+  // канал, а не параметр к TAB_ACTIVATE: тот адресуется окну-отправителю, и подмешивать к нему
+  // чужое окно значило бы менять смысл вызова, которым пользуется весь сайдбар.
+  TAB_ACTIVATE_IN_WINDOW: 'tab:activate-in-window',
   TAB_NAVIGATE: 'tab:navigate',     // omnibox: URL или поисковый запрос
   TAB_GO_BACK: 'tab:go-back',
   TAB_GO_FORWARD: 'tab:go-forward',
@@ -1124,6 +1128,9 @@ export interface SuggestDropdownItem {
   sub?: string;
   url: string;
   tabId?: string;
+  // Окно, в котором живёт вкладка, — ТОЛЬКО когда это НЕ окно-отправитель (смысловой поиск ищет
+  // по всем окнам, см. SmartTabHit). Пусто — вкладка своя, переключаемся обычным TAB_ACTIVATE.
+  windowId?: number;
   // Подпись секции (по образцу Safari — «Предложения Google» / «Закладки и история») — ставится
   // ТОЛЬКО на первый элемент новой секции (Toolbar.tsx::buildSuggestions). Вью дропдауна ничего
   // не решает сама, просто рисует подпись, если она есть — источник группировки остаётся в
@@ -1164,6 +1171,20 @@ export interface DownloadRenameResult {
   ok: boolean;
   filename?: string; // имя, которое реально легло на диск (могло развестись из-за дубля)
   error?: string;
+}
+
+// Находка смыслового поиска вкладки (см. electron/TabSearch.ts).
+//
+// ⚠️ Отдаём НЕ голый id, как раньше, а описание вкладки вместе с окном. Причина: поиск теперь
+// идёт по вкладкам ВСЕХ окон, а у окна-спрашивающего нет ни заголовка, ни адреса чужой вкладки —
+// показать находку ему было бы нечем. Плюс `otherWindow` считает MAIN относительно отправителя:
+// «в другом окне» — это факт про спрашивающего, а не про вкладку, и renderer его знать не обязан.
+export interface SmartTabHit {
+  tabId: string;
+  windowId: number;
+  title: string;
+  url: string;
+  otherWindow: boolean;
 }
 
 // ── AdBlock ─────────────────────────────────────────────────────────────────
@@ -1676,7 +1697,9 @@ export interface OblakoApi {
   closeTab(id: string): Promise<void>;
   activateTab(id: string): Promise<void>;
   /** Вкладки, подходящие запросу по смыслу (локальная модель). Пусто — не нашлось или модели нет. */
-  searchTabsSmart(query: string): Promise<string[]>;
+  searchTabsSmart(query: string): Promise<SmartTabHit[]>;
+  /** Перейти к вкладке в ДРУГОМ окне: поднять то окно и сделать вкладку активной в нём. */
+  activateTabInWindow(windowId: number, tabId: string): Promise<void>;
   /** Поиск по настройкам фразой — второй эшелон, отдаёт индексы SETTINGS_INDEX (settingsIndex.ts). */
   searchSettingsSmart(query: string): Promise<number[]>;
   /** Страницы из своей истории, связанные с открытой сейчас. Пусто — нечего показать. */

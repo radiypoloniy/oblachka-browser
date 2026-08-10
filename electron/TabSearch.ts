@@ -13,12 +13,28 @@
 // (перевод, панель, правка текста) начинает работать сама.
 //
 // ⚠️ Формат ответа — одна строка «ANSWER: N», не JSON и не голое число (см. buildPrompt).
+//
+// ⚠️ Ищем по вкладкам ВСЕХ окон, а не только окна-спрашивающего (AI-IDEAS.md №8). С многооконностью
+// «где-то у меня была вкладка про налоги» чаще всего и означает «в другом окне» — там, где глазами
+// её точно не видно, то есть ровно там, где поиск нужнее всего. Окна собирает вызывающий (main),
+// сюда они приходят готовым списком: модуль о реестре окон не знает.
 import type { TabState } from '../shared/ipc';
 import { runTabOrganizePrompt } from './TranslationService';
+
+/** Вкладка-кандидат вместе с окном, в котором она живёт. */
+export interface TabCandidate {
+  tab: TabState;
+  windowId: number;
+}
 
 // Выше этого числа промпт перестаёт быть коротким, а качество отбора падает: модель начинает
 // «терять» середину списка. У кого открыто больше — тому и обычный поиск по заголовку поможет.
 const MAX_TABS = 60;
+// Ниже этого числа вкладки видны глазами, и звать ради них модель незачем.
+// ⚠️ Порог живёт ЗДЕСЬ, а не в омнибоксе, с тех пор как ищем по всем окнам: у окна-спрашивающего
+// вкладок может быть две, а всего открыто двадцать — считать «достаточно ли их» по своему окну
+// значит молчать ровно в том случае, ради которого поиск по всем окнам и заводился.
+const MIN_TABS = 5;
 // Сколько вкладок предлагаем. Это подсказка в омнибоксе, а не выдача поисковика: три строки
 // человек прочитает, десять — пролистает мимо.
 const MAX_HITS = 3;
@@ -82,21 +98,23 @@ function parseAnswer(out: string, count: number): number[] {
 }
 
 /**
- * Ищет вкладки по смыслу запроса. Возвращает id вкладок в порядке уверенности модели.
+ * Ищет вкладки по смыслу запроса среди ВСЕХ переданных кандидатов (окна собирает вызывающий).
+ * Возвращает их в порядке уверенности модели.
+ *
  * Пустой массив — «не нашлось» и «модели нет» одновременно: для омнибокса это одно и то же,
  * подсказок просто не появится (страница ошибки ради ненайденной вкладки была бы нелепа).
  */
-export async function searchTabsByMeaning(query: string, tabs: TabState[]): Promise<string[]> {
+export async function searchTabsByMeaning(query: string, tabs: TabCandidate[]): Promise<TabCandidate[]> {
   const q = query.trim();
   if (q.length < 3) return [];
   // Хаб и пустые вкладки исключаем: искать «новую вкладку» бессмысленно, а модель, увидев их,
   // охотно предлагает именно их — им нечем не подойти.
   const candidates = tabs
-    .filter((t) => !t.isHub && (t.title.trim() || t.url.trim()))
+    .filter((c) => !c.tab.isHub && (c.tab.title.trim() || c.tab.url.trim()))
     .slice(0, MAX_TABS);
-  if (candidates.length < 2) return [];
+  if (candidates.length < MIN_TABS) return [];
 
-  const lines = candidates.map((t, i) => `${i + 1}. ${t.title.trim() || t.url} — ${hostOf(t.url)}`);
+  const lines = candidates.map((c, i) => `${i + 1}. ${c.tab.title.trim() || c.tab.url} — ${hostOf(c.tab.url)}`);
   // ⚠️ Фоновая полоса: человек печатает в омнибоксе, а не заказывал генерацию. Если он в этот
   // же момент нажмёт «перевести», перевод пойдёт первым (см. QwenQueue.ts).
   const res = await runTabOrganizePrompt(buildPrompt(q, lines), { background: true });
@@ -106,9 +124,9 @@ export async function searchTabsByMeaning(query: string, tabs: TabState[]): Prom
   }
 
   const out = res.out.trim();
-  const ids = parseAnswer(out, candidates.length).map((n) => candidates[n - 1]!.id);
+  const picked = parseAnswer(out, candidates.length).map((n) => candidates[n - 1]!);
   // Сырой ответ в логе — это номера, не тексты страниц (см. правило логирования в CLAUDE.md), а
   // без него отличить «модель выбрала не то» от «мы не так разобрали» невозможно.
-  console.log(`[tab-search] «${q}» → ${ids.length} из ${candidates.length}, ответ модели: ${JSON.stringify(out.slice(0, 120))}`);
-  return ids;
+  console.log(`[tab-search] «${q}» → ${picked.length} из ${candidates.length}, ответ модели: ${JSON.stringify(out.slice(0, 120))}`);
+  return picked;
 }

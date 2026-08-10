@@ -146,7 +146,7 @@ import { suggestBookmarkFolders } from './BookmarkOrganizer';
 import { suggestFolderForBookmark } from './BookmarkFolderPick';
 import { suggestFileName, renameDownloadedFile } from './DownloadNamer';
 import { searchSettingsByMeaning } from './SettingsSearch';
-import type { DownloadNameSuggestion, DownloadRenameResult } from '../shared/ipc';
+import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
 
@@ -1621,22 +1621,48 @@ function registerIpc() {
   // проекте общая и FIFO (withQwenQueue), а человек в омнибоксе печатает быстрее, чем модель
   // отвечает. Без этого гварда каждая буква превращалась бы в отдельный прогон, и они выстроились
   // бы в хвост, заняв модель на десятки секунд ради подсказки, которая давно устарела.
-  ipcMain.handle(IPC.TABS_SEARCH_SMART, async (e, query: string): Promise<string[]> => {
-    const tabs = tabsOf(e);
+  ipcMain.handle(IPC.TABS_SEARCH_SMART, async (e, query: string): Promise<SmartTabHit[]> => {
+    const from = contextFromSender(e.sender);
     // ⚠️ Только на ТЁПЛОЙ модели. Замерено: холодная загрузка 9B — 31 секунда и ~6 ГБ VRAM.
     // Человек, печатающий фразу в омнибоксе, этого не заказывал; подсказка не стоит того, чтобы
     // поднимать модель. Пока она холодная, фича просто молчит — а после первого явного обращения
     // к AI (перевод, панель, правка текста) начинает работать сама собой.
-    if (!tabs || smartTabSearchBusy || !isModelWarm()) return [];
+    if (!from || smartTabSearchBusy || !isModelWarm()) return [];
     smartTabSearchBusy = true;
     try {
-      return await searchTabsByMeaning(query, tabs.snapshot());
+      // ⚠️ Кандидаты — со ВСЕХ окон (AI-IDEAS.md №8). Своё окно идёт первым: при равной
+      // уверенности модели человеку ближе то, что у него перед глазами, а порядок списка —
+      // единственное, чем мы можем это выразить.
+      const own = allContexts().filter((c) => c.win.id === from.win.id);
+      const others = allContexts().filter((c) => c.win.id !== from.win.id);
+      const candidates = [...own, ...others].flatMap((ctx) =>
+        ctx.tabs.snapshot().map((tab) => ({ tab, windowId: ctx.win.id })),
+      );
+      const picked = await searchTabsByMeaning(query, candidates);
+      return picked.map((c) => ({
+        tabId: c.tab.id,
+        windowId: c.windowId,
+        title: c.tab.title,
+        url: c.tab.url,
+        // Считаем ЗДЕСЬ: «в другом окне» — факт про спрашивающего, и renderer своего id не знает.
+        otherWindow: c.windowId !== from.win.id,
+      }));
     } catch (err) {
       console.warn('[tab-search] ошибка:', err);
       return [];
     } finally {
       smartTabSearchBusy = false;
     }
+  });
+  // Переход к вкладке в ДРУГОМ окне: поднимаем то окно и делаем вкладку активной в нём.
+  // ⚠️ Окно ищем в реестре по id, а не доверяем присланному числу как индексу: окно могли
+  // закрыть, пока человек читал подсказку.
+  ipcMain.handle(IPC.TAB_ACTIVATE_IN_WINDOW, (_e, windowId: number, tabId: string) => {
+    const ctx = allContexts().find((c) => c.win.id === windowId);
+    if (!ctx || ctx.win.isDestroyed()) return;
+    ctx.tabs.activate(tabId);
+    if (ctx.win.isMinimized()) ctx.win.restore();
+    ctx.win.focus();
   });
   // «Вы это уже читали» — связанное из своей истории для АКТИВНОЙ вкладки (см. RelatedHistory.ts).
   // ⚠️ Адрес и заголовок берём из менеджера вкладок окна-отправителя, а не из аргументов: рендерер

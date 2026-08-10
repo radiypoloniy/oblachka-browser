@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star, VenetianMask } from 'lucide-react';
-import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress } from '../../shared/ipc';
+import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
@@ -1027,26 +1027,29 @@ export default function Toolbar({
     // букву нельзя: она заняла бы себя устаревшими запросами, а человек ждал бы перевод.
     //  • ничего не нашлось обычным способом — иначе модель решает уже решённое;
     //  • запрос похож на ОПИСАНИЕ (есть пробел, от 6 символов), а не на начало адреса;
-    //  • вкладок достаточно, чтобы их не было видно глазами.
+    // ⚠️ Условие «вкладок достаточно» переехало в main (TabSearch.MIN_TABS): поиск идёт по ВСЕМ
+    // окнам, а здесь видно только своё — в лёгком окне с двумя вкладками мы молчали бы ровно
+    // тогда, когда искать по другим окнам и нужно.
     // Результат приезжает отдельным обновлением списка: ждать модель, ничего не показывая, нельзя.
     const hasTabHit = deduped.some((i) => i.kind === 'tab');
-    if (!hasTabHit && q.includes(' ') && q.length >= 6 && allTabs.length >= 5) {
-      const smartIds = await window.oblako.searchTabsSmart(query).catch(() => [] as string[]);
-      if (seq !== suggestSeqRef.current || smartIds.length === 0) return;
-      const byId = new Map(allTabs.map((t) => [t.id, t]));
-      const smartItems: SuggestItem[] = smartIds
-        .map((id) => byId.get(id))
-        .filter((t): t is NonNullable<typeof t> => !!t)
-        .map((t, idx) => ({
-          kind: 'tab' as SuggestKind,
-          label: t.url,
-          sub: t.title,
-          url: t.url,
-          tabId: t.id,
-          // Подпись честная: человек должен понимать, что эти строки нашлись НЕ по совпадению
-          // слов, а моделью, — иначе они выглядят как случайные (слов запроса в них нет).
-          ...(idx === 0 ? { sectionHeader: 'Вкладки по смыслу' } : {}),
-        }));
+    if (!hasTabHit && q.includes(' ') && q.length >= 6) {
+      const smartHits = await window.oblako.searchTabsSmart(query).catch(() => [] as SmartTabHit[]);
+      if (seq !== suggestSeqRef.current || smartHits.length === 0) return;
+      // ⚠️ Заголовок и адрес берём ИЗ ОТВЕТА, а не из своего списка вкладок: находка может жить в
+      // другом окне, и здесь о ней нет ничего (AI-IDEAS.md №8).
+      const smartItems: SuggestItem[] = smartHits.map((h, idx) => ({
+        kind: 'tab' as SuggestKind,
+        label: h.url,
+        // Про чужое окно говорим прямо: иначе переход выглядит как телепорт — окно сменилось, а
+        // почему, человек не понял.
+        sub: h.otherWindow ? `${h.title} — в другом окне` : h.title,
+        url: h.url,
+        tabId: h.tabId,
+        windowId: h.otherWindow ? h.windowId : undefined,
+        // Подпись честная: человек должен понимать, что эти строки нашлись НЕ по совпадению
+        // слов, а моделью, — иначе они выглядят как случайные (слов запроса в них нет).
+        ...(idx === 0 ? { sectionHeader: 'Вкладки по смыслу' } : {}),
+      }));
       if (smartItems.length === 0) return;
       const withSmart = [...deduped, ...smartItems];
       setSuggestions(withSmart);
@@ -1091,7 +1094,10 @@ export default function Toolbar({
 
   const pickSuggestion = (item: SuggestItem) => {
     if (item.kind === 'tab' && item.tabId) {
-      void window.oblako.activateTab(item.tabId);
+      // Вкладка чужого окна переключается своим каналом: TAB_ACTIVATE адресуется окну-отправителю
+      // и такой вкладки у себя не найдёт (см. AI-IDEAS.md №8).
+      if (item.windowId !== undefined) void window.oblako.activateTabInWindow(item.windowId, item.tabId);
+      else void window.oblako.activateTab(item.tabId);
       closeDropdownFully('pick-tab');
     } else {
       submit(item.url);
