@@ -911,29 +911,115 @@ try {
 
 // ── Копирование со страницы (буфер браузера) ────────────────────────────────
 //
-// ⚠️ Это ЕДИНСТВЕННЫЙ источник буфера: системный буфер обмена мы не опрашиваем никогда, иначе
-// в историю попадало бы всё, что человек копирует в других приложениях (см. ClipboardBuffer.ts).
+// ⚠️ Источник буфера — только САМА СТРАНИЦА: системный буфер обмена мы не опрашиваем никогда,
+// иначе в историю попадало бы всё, что человек копирует в других приложениях (см.
+// ClipboardBuffer.ts). Но способов скопировать со страницы ДВА, и один сначала проглядели —
+// см. шим navigator.clipboard ниже.
 //
 // ⚠️ Копию ИЗ ПОЛЯ ПАРОЛЯ не отправляем, и это не формальность: человек мог показать пароль
 // глазом-иконкой и скопировать его прямо со страницы, а наш буфер живёт в памяти main и
 // показывается списком — там ему не место ни секунды.
+const forbiddenSource = (): boolean => {
+  const el = document.activeElement;
+  if (el instanceof HTMLInputElement && /password/i.test(el.type || '')) return true;
+  // Форма входа целиком: логин оттуда тоже не нужен в общем списке.
+  if (el instanceof HTMLInputElement && looksLikeCredentials(el)) return true;
+  return false;
+};
+
+const reportCopy = (text: string): void => {
+  try {
+    if (!isTopFrame() || !text || forbiddenSource()) return;
+    ipcRenderer.send(CH_CLIPBOARD_COPY, { text: text.slice(0, 20000), title: document.title || '' });
+  } catch {
+    // копирование не имеет права ломаться из-за нас
+  }
+};
+
 try {
   document.addEventListener('copy', () => {
     try {
-      if (!isTopFrame()) return;
+      // ⚠️ Выделение ВНУТРИ поля ввода `window.getSelection()` не отдаёт — для input/textarea
+      // Chromium держит его отдельно (selectionStart/End). Сайты, копирующие через скрытую
+      // textarea + execCommand('copy'), идут ровно этим путём, и без второй ветки такая копия
+      // выглядела бы как «скопировали пустоту».
       const el = document.activeElement;
-      if (el instanceof HTMLInputElement && /password/i.test(el.type || '')) return;
-      // Форма входа целиком: логин оттуда тоже не нужен в общем списке.
-      if (el instanceof HTMLInputElement && looksLikeCredentials(el)) return;
-      const text = String(window.getSelection() || '');
-      if (!text) return;
-      ipcRenderer.send(CH_CLIPBOARD_COPY, { text: text.slice(0, 20000), title: document.title || '' });
+      const inField = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
+        ? (el.value ?? '').slice(el.selectionStart ?? 0, el.selectionEnd ?? 0)
+        : '';
+      reportCopy(inField || String(window.getSelection() || ''));
     } catch {
       // копирование не имеет права ломаться из-за нас
     }
   }, true);
 } catch {
   // IPC недоступен
+}
+
+// ⚠️ ВТОРОЙ способ скопировать со страницы: `navigator.clipboard`, которым пользуются кнопки
+// «Копировать» — в AI-чатах, у блоков кода, у промокодов. События `copy` при этом НЕ ВОЗНИКАЕТ
+// ВООБЩЕ и выделения тоже нет, поэтому обработчик выше про такие копии не узнавал никогда: в
+// буфер попадал обычный текст, выделенный мышью, и не попадало ровно то, что человек копировал
+// осознанным нажатием кнопки (живая жалоба).
+//
+// ⚠️ Шим ставится в ГЛАВНОМ мире через executeInMainWorld — тот же приём и та же причина, что у
+// шима `window.chrome` в начале файла: сам preload живёт в изолированном мире, где правка
+// `navigator` странице не видна. Функция-докладчик приезжает аргументом (contextBridge проксирует
+// функции между мирами), поэтому ipcRenderer в главный мир не протекает.
+//
+// ⚠️ Поверхность захвата этим расширяется, и это осознанно: под неё попадают и коды из
+// двухфакторной аутентификации, и сгенерированный на сайте пароль. Держит риск та же конструкция,
+// что и раньше, — только память, только сеанс, инкогнито исключено целиком, выключатель в поповере
+// стирает собранное. На диск не попадает ничего.
+//
+// ⚠️ Оборачиваем И `write` (ClipboardItem), а не только `writeText`: чаты, копирующие ответ с
+// разметкой, кладут в буфер сразу text/html и text/plain, и на `writeText` такой сайт не заходит.
+// Читаем ТОЛЬКО text/plain — картинку из буфера мы всё равно не показываем.
+try {
+  contextBridge.executeInMainWorld({
+    func: (report: (text: string) => void) => {
+      try {
+        const clip = navigator.clipboard as unknown as {
+          writeText?: (t: string) => Promise<void>;
+          write?: (items: unknown[]) => Promise<void>;
+        } | undefined;
+        if (!clip) return;
+
+        const origText = clip.writeText;
+        if (typeof origText === 'function') {
+          clip.writeText = function writeText(text: string) {
+            try { report(String(text ?? '')); } catch { /* сайт не должен пострадать */ }
+            return origText.call(this, text);
+          };
+        }
+
+        const origWrite = clip.write;
+        if (typeof origWrite === 'function') {
+          clip.write = function write(items: unknown[]) {
+            try {
+              for (const item of items ?? []) {
+                const it = item as { types?: string[]; getType?: (t: string) => Promise<Blob> };
+                if (!it?.types?.includes('text/plain') || typeof it.getType !== 'function') continue;
+                // Промис не ждём и в возврат не вмешиваемся: наша слежка не имеет права ни
+                // задержать копирование, ни уронить его своей ошибкой.
+                void it.getType('text/plain')
+                  .then((b) => b.text())
+                  .then((t) => { try { report(String(t ?? '')); } catch { /* … */ } })
+                  .catch(() => { /* сайт мог отдать пустой blob */ });
+                break;
+              }
+            } catch { /* сайт не должен пострадать */ }
+            return origWrite.call(this, items);
+          };
+        }
+      } catch {
+        // страница обязана продолжить работать даже если шим не встал
+      }
+    },
+    args: [(text: string) => reportCopy(text)],
+  });
+} catch {
+  // executeInMainWorld недоступен (нет contextIsolation) — тогда просто нет этой ветки источника
 }
 
 // Подстановка выбранного профиля/карты: main шлёт карту «категория → значение», заполняем поля.
