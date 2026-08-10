@@ -313,7 +313,7 @@ export function DownloadsWidget({ box, fill }: WidgetProps) {
 //
 // ⚠️ Плитка ТЕМЫ (surface), а не цветная: товаров несколько и цены разнонаправленные, красить
 // её целиком было бы враньём. Цвет несёт только строка изменения — там направление одно и известно.
-export function TrackingWidget({ box, fill }: WidgetProps) {
+export function TrackingWidget({ box, fill, onActivate }: WidgetProps) {
   const [items, setItems] = useState<TrackedProduct[]>([]);
 
   const load = () => { void window.oblako.listTracked().then(setItems); };
@@ -349,7 +349,7 @@ export function TrackingWidget({ box, fill }: WidgetProps) {
 
   if (groups.size === 0 || !hero) {
     return (
-      <Tile surface fill={fill}>
+      <Tile surface fill={fill} onActivate={onActivate}>
         <TileCaption>Отслеживание</TileCaption>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.6 }}>
           Ничего не отслеживается
@@ -371,7 +371,7 @@ export function TrackingWidget({ box, fill }: WidgetProps) {
   const others = groups.size - 1;
 
   return (
-    <Tile surface fill={fill}>
+    <Tile surface fill={fill} onActivate={onActivate}>
       <TileCaption>Отслеживание</TileCaption>
 
       <div style={{ flex: 'none', display: 'flex', alignItems: 'baseline', gap: 8 }}>

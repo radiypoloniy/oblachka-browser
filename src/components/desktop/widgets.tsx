@@ -21,6 +21,12 @@ import { MoonWidget, ShieldWidget, DownloadsWidget, HolidayWidget, DigestWidget,
 
 export interface WidgetProps {
   size: CellSize;
+  /**
+   * Виджет попросили открыть — клик по плитке. Пусто означает «сейчас нельзя»: в режиме правки
+   * плитку таскают, а не открывают. Открывает виджет то, что показывает: у отслеживания это
+   * экран отслеживания.
+   */
+  onActivate?: () => void;
   /** Пиксельные размеры плитки — от них считаются кегли и число колонок внутри. */
   box: { width: number; height: number };
   tiles: TileSite[];
@@ -72,7 +78,7 @@ export function fillCss(id: string | undefined): string | null {
   return WIDGET_FILLS.find((f) => f.id === id)?.css ?? null;
 }
 
-export function Tile({ children, tint, padding = 16, surface, fill }: {
+export function Tile({ children, tint, padding = 16, surface, fill, onActivate }: {
   children: React.ReactNode;
   /** Заливка цветной плитки. Игнорируется при surface. */
   tint?: string;
@@ -81,11 +87,16 @@ export function Tile({ children, tint, padding = 16, surface, fill }: {
   surface?: boolean;
   /** Выбранная человеком заливка (id из WIDGET_FILLS). Перебивает surface. */
   fill?: string;
+  /**
+   * Клик по плитке. ⚠️ Приходит уже с учётом режима правки: в нём плитку таскают, а не открывают,
+   * и DesktopScreen не передаёт обработчик вовсе (см. там же).
+   */
+  onActivate?: () => void;
 }) {
   const custom = fillCss(fill);
   const onSurface = surface && !custom;
   return (
-    <div style={{
+    <div onClick={onActivate} style={{
       width: '100%', height: '100%', overflow: 'hidden',
       borderRadius: 'var(--radius-card)',
       background: custom ?? (surface ? 'var(--surface)' : tint),

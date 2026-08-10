@@ -67,6 +67,12 @@ const LIGHT_PALETTE: Record<string, string> = {
   '--nt-plate-border': 'rgba(0,0,0,0.07)',
 };
 
+// Что делает клик по плитке. Пусто — виджет не открывается никуда (у большинства открывать и
+// нечего: часы, луна, погода сами по себе полный ответ).
+const WIDGET_ACTIVATE: Record<string, (() => void) | undefined> = {
+  tracking: () => { void window.oblako.createSpecialTab('history', 'tracking'); },
+};
+
 export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, isLightWindow = false, onOpenApp }: Props) {
   const [settings, setSettings] = useState<NewTabSettings>(() => loadNewTabSettings());
   const [layout, setLayout] = useState<DesktopLayout>(() => loadDesktop());
@@ -378,6 +384,9 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                   // стёрла бы единственный виджет, где цвет — сообщение, а не оформление.
                   <Render size={item.size} box={box} tiles={tiles} onOpen={onSubmit}
                     city={settings.weather.city}
+                    // ⚠️ В режиме правки обработчик НЕ передаём вовсе: там плитку таскают, и клик
+                    // по ней означает «взял», а не «открой».
+                    onActivate={editing ? undefined : WIDGET_ACTIVATE[item.widget ?? '']}
                     fill={item.widget === 'weather' ? undefined : item.fill} />
                 ) : null;
               })() : item.kind === 'app' ? (() => {
