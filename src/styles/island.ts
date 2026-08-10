@@ -34,14 +34,36 @@ export interface GlassPlateOptions {
   border?: boolean;
 }
 
+// ⚠️ Каждая часть рецепта читается через ПЕРЕМЕННУЮ с текущим значением в запасном варианте.
+// Это точка, куда цветной хром (тумблер «цветной сайдбар») подменяет плашки на прозрачные с
+// подкраской: слой хрома ставит --plate-* на своём корне, и рецепт наследуется вниз сам.
+//
+// Почему переменными, а не флагом в аргументах: плашки собираются в дочерних компонентах, которые
+// про тумблер не знают вовсе (пара в сплите, заголовок группы, кнопки тулбара), и флаг пришлось бы
+// протаскивать через каждый уровень. Ровно на этом и погорел первый заход цветного сайдбара:
+// подкраску получили только те места, где флаг был под рукой, а активная вкладка и пара в сплите
+// остались белыми заплатками поверх цвета.
+//
+// Без --plate-* значения ровно прежние, поэтому все остальные потребители (поповеры, TabError,
+// Hub) ничего не замечают: у них свои документы, где этих переменных нет.
 export function glassPlate({ surface = 'surface', shadow = 'shadow-card', border = true }: GlassPlateOptions = {}): React.CSSProperties {
   return {
-    background: `var(--${surface})`,
-    backdropFilter: 'var(--glass-filter)', WebkitBackdropFilter: 'var(--glass-filter)',
-    ...(shadow ? { boxShadow: `var(--${shadow})` } : {}),
-    ...(border ? { border: '1px solid var(--glass-edge)' } : {}),
+    background: `var(--plate-bg, var(--${surface}))`,
+    backdropFilter: 'var(--plate-filter, var(--glass-filter))',
+    WebkitBackdropFilter: 'var(--plate-filter, var(--glass-filter))',
+    ...(shadow ? { boxShadow: `var(--plate-shadow, var(--${shadow}))` } : {}),
+    ...(border ? { border: '1px solid var(--plate-edge, var(--glass-edge))' } : {}),
   };
 }
+
+// Значения --plate-* при включённом цветном хроме. Плашка становится ПРОЗРАЧНОЙ: со своей заливкой
+// она выглядит наклеенной поверх цвета. Тонкая граница остаётся — без неё элемент теряет края.
+export const TINTED_PLATE_VARS: React.CSSProperties = {
+  ['--plate-bg' as string]: 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)',
+  ['--plate-filter' as string]: 'none',
+  ['--plate-edge' as string]: 'color-mix(in srgb, var(--sidebar-tint) 12%, transparent)',
+  ['--plate-shadow' as string]: 'none',
+};
 
 // Изначально жили только в Toolbar.tsx — вынесены сюда для переиспользования в других панелях
 // (История/Настройки/поповеры). Совпадает с glassPlate() по умолчанию — оставлен константой,
@@ -54,7 +76,9 @@ export function islandBtn(color?: string, bg?: string): React.CSSProperties {
     ...navBtn(false),
     ...islandPlate,
     color: color ?? 'var(--text-muted)',
-    background: bg ?? 'var(--surface)',
+    // bg передают для АКТИВНОГО состояния (акцентная заливка) — оно цветному хрому не подчиняется:
+    // акцент по цветовому закону один и палитрой не переопределяется.
+    background: bg ?? 'var(--plate-bg, var(--surface))',
     borderRadius: 'var(--radius-card)',
   };
 }

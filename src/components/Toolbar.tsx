@@ -5,7 +5,8 @@ import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorStat
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
-import { islandPlate, islandBtn, navBtn } from '../styles/island';
+import { islandPlate, islandBtn, navBtn, TINTED_PLATE_VARS } from '../styles/island';
+import { loadNewTabSettings, subscribeNewTabSettings } from '../newtab/settings';
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
 
 // Высота тулбара — должна совпадать с CSS-значением (56px).
@@ -120,6 +121,11 @@ export default function Toolbar({
   const [downloadsPopoverOpen, setDownloadsPopoverOpen] = useState(false);
   // Буфер скопированного со страниц. ⚠️ Кнопки НЕТ, пока буфер пуст: на чистом сеансе она была бы
   // мёртвым значком, а тулбар и так тесный (тот же приём, что у индикатора товара).
+  // ⚠️ Тумблер называется «цветной сайдбар», но красит весь слой хрома, и это осознанно: сайдбар и
+  // тулбар — ОДНА оболочка вокруг страницы, и цветной сайдбар рядом с белым тулбаром читался не
+  // как выбор, а как недоделка. Подписка — тот же механизм, что в Sidebar.tsx.
+  const [tinted, setTinted] = useState<boolean>(() => loadNewTabSettings().sidebar.tinted);
+  useEffect(() => subscribeNewTabSettings(() => setTinted(loadNewTabSettings().sidebar.tinted)), []);
   const [clipboardCount, setClipboardCount] = useState(0);
   const [clipboardPopoverOpen, setClipboardPopoverOpen] = useState(false);
   const [sitePopoverOpen, setSitePopoverOpen] = useState(false);
@@ -1243,6 +1249,10 @@ export default function Toolbar({
         display: 'flex', alignItems: 'flex-start', gap: 10, height: TOOLBAR_HEIGHT, flex: 'none',
         paddingLeft: 16, paddingRight: 138, paddingTop: 'var(--gutter-shell)',
         position: 'relative',
+        // Переменные наследуются вниз на все острова тулбара — навигацию, омнибокс и правый блок
+        // (см. glassPlate в styles/island.ts). Ставятся на корне, а не в каждой плашке: плашки
+        // собираются в разных местах файла, и любой пропущенный остался бы белой заплаткой.
+        ...(tinted ? TINTED_PLATE_VARS : null),
       }}
     >
       {/* Кнопки навигации — парящая плашка-остров (glass/тень/скругление из поповера/AI-панели).

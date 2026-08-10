@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Volume2, VolumeX } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
-import { glassPlate, islandPlate } from '../styles/island';
+import { glassPlate, islandPlate, TINTED_PLATE_VARS } from '../styles/island';
 import SidebarBookmarks from './SidebarBookmarks';
 import {
   DndContext, DragOverlay,
@@ -174,7 +174,10 @@ interface TabRowProps {
 function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitSplit, onToggleMute, ghost }: TabRowProps) {
   const [hovered, setHovered] = useState(false);
   const inSplit = tab.splitSide !== null;
-  const bg = active ? 'var(--surface)'
+  // ⚠️ Фон АКТИВНОЙ вкладки идёт через --sidebar-plate, а не литералом --surface: на цветном
+  // сайдбаре белая плашка выглядела вырезанной из другой темы — ровно то, ради чего переменная и
+  // заводилась (см. её описание ниже). Литерал тут пережил введение цветного сайдбара молча.
+  const bg = active ? 'var(--sidebar-plate, var(--surface))'
     : inSplit ? 'var(--surface-hover)'
     : hovered  ? 'var(--surface-hover)'
     : 'transparent';
@@ -343,7 +346,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
         style={{
           flex: 1, display: 'flex', alignItems: 'center', gap: 4,
           padding: '0 8px', minWidth: 0, cursor: 'default',
-          background: leftActive ? 'var(--surface)' : 'transparent',
+          background: leftActive ? 'var(--sidebar-plate, var(--surface))' : 'transparent',
           boxShadow: leftActive ? 'var(--shadow-card)' : 'none',
         }}
       >
@@ -389,7 +392,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
         style={{
           flex: 1, display: 'flex', alignItems: 'center', gap: 4,
           padding: '0 8px', minWidth: 0, cursor: 'default',
-          background: rightActive ? 'var(--surface)' : 'transparent',
+          background: rightActive ? 'var(--sidebar-plate, var(--surface))' : 'transparent',
           boxShadow: rightActive ? 'var(--shadow-card)' : 'none',
         }}
       >
@@ -478,12 +481,12 @@ function IconCell({ tab, active, onClick, onContextMenu, onMiddleClick, ghost }:
       title={ghost ? undefined : (tab.title || tab.url || '')}
       style={{
         border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
-        background: active ? 'var(--surface)' : 'transparent',
+        background: active ? 'var(--sidebar-plate, var(--surface))' : 'transparent',
         boxShadow: active ? 'var(--shadow-card)' : 'none',
         display: 'inline-flex',
       }}
       onMouseEnter={ghost ? undefined : (e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-      onMouseLeave={ghost ? undefined : (e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
+      onMouseLeave={ghost ? undefined : (e) => { e.currentTarget.style.background = active ? 'var(--sidebar-plate, var(--surface))' : 'transparent'; }}
     >
       {/* Точка загрузки вместо спиннера с текстом: в 56-пиксельной полосе о состоянии вкладки
           больше нечем сказать, а «крутится/не крутится» — единственное, что тут вообще читается. */}
@@ -1196,17 +1199,6 @@ const tintedAside: React.CSSProperties = {
   backgroundSize: '120px 120px, 100% 100%',
 };
 
-// ⚠️ Внутренние плашки при цветном сайдбаре становятся ПРОЗРАЧНЫМИ. Со своей заливкой они
-// выглядели наклеенными поверх цвета — особенно «Новая вкладка» внизу, о чём и был отзыв.
-// Тонкая граница остаётся: без неё кнопка теряет края и перестаёт читаться как кнопка.
-const tintedInnerPlate: React.CSSProperties = {
-  background: 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)',
-  backdropFilter: 'none',
-  WebkitBackdropFilter: 'none',
-  border: '1px solid color-mix(in srgb, var(--sidebar-tint) 12%, transparent)',
-  boxShadow: 'none',
-};
-
 const asideBase: React.CSSProperties = {
   flex: 'none', display: 'flex', flexDirection: 'column',
   margin: 'var(--gutter-shell) 0 var(--gutter-shell) var(--gutter-shell)',
@@ -1218,6 +1210,14 @@ const asideBase: React.CSSProperties = {
 // Внутренние «плашки» сайдбара (пины / нижние утилиты) — парят уже ВНУТРИ острова
 // сайдбара, поэтому по вложенности это card-уровень, не island-уровень (см. radii.css).
 // Совпадает с islandPlate + radius-card — те же параметры, что уже отлажены в FindBar/Hub/TabError.
+// ⚠️ Внутренняя плашка читается из ПЕРЕМЕННЫХ сайдбара, а не из флага в пропах, ровно по той же
+// причине, что и --sidebar-plate ниже: плашки лежат в дочерних компонентах (PairTile, заголовок
+// группы), которые про тумблер «цветной сайдбар» не знают вовсе, и протаскивать флаг пришлось бы
+// через каждый уровень. Переменная наследуется вниз сама.
+//
+// Именно поэтому белая плашка пережила введение цветного сайдбара незамеченной: подкраску получали
+// только те три места, где `tinted` был под рукой, а пара в сплите и группа оставались белыми
+// поверх цвета.
 const innerPlate: React.CSSProperties = {
   ...islandPlate,
   borderRadius: 'var(--radius-card)',
@@ -1675,14 +1675,14 @@ export default function Sidebar({
   // ── Свёрнутый режим: узкая полоса иконок ──
   if (collapsed) {
     return (
-      <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width: 56, alignItems: 'center', padding: '12px 0 14px' }}>
+      <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), boxShadow: 'var(--shadow-island)', ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width: 56, alignItems: 'center', padding: '12px 0 14px' }}>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: 14 }}>
           <button
             className="no-drag"
             onClick={() => onCollapsedChange(false)}
             title="Развернуть панель"
-            style={{ ...floatingIconBtn, ...(tinted ? tintedInnerPlate : null), transform: 'scaleX(-1)' }}
+            style={{ ...floatingIconBtn, transform: 'scaleX(-1)' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
             // ⚠️ Возврат — к ПОДКРАШЕННОМУ фону, иначе кнопка после наведения навсегда белела.
             onMouseLeave={(e) => { e.currentTarget.style.background = tinted ? 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)' : 'var(--surface)'; }}
@@ -1705,7 +1705,7 @@ export default function Sidebar({
         >
           {pinned.length > 0 && (
             <div className="no-drag" style={{
-              ...innerPlate, ...(tinted ? tintedInnerPlate : null),
+              ...innerPlate,
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
               padding: '8px 6px', marginBottom: 10,
             }}>
@@ -1785,7 +1785,7 @@ export default function Sidebar({
           <button
             className="no-drag"
             title="Новая вкладка (ПКМ — инкогнито / восстановить)"
-            style={{ ...floatingIconBtn, ...(tinted ? tintedInnerPlate : null) }}
+            style={{ ...floatingIconBtn }}
             onClick={handleNewTab}
             onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
@@ -1800,7 +1800,7 @@ export default function Sidebar({
 
   // ── Развёрнутый режим с drag-and-drop ──
   return (
-    <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width, padding: '14px 12px 14px 14px', position: 'relative' }}>
+    <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), boxShadow: 'var(--shadow-island)', ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width, padding: '14px 12px 14px 14px', position: 'relative' }}>
       {/* Ручка ширины — прозрачная полоска по всему правому краю. Своей заливки нет намеренно:
           сайдбар это остров со скруглением и тенью, а видимая вертикальная черта вдоль него
           читалась бы как рамка и спорила с формой. Курсор и так объясняет, что здесь тянут. */}
@@ -1828,7 +1828,7 @@ export default function Sidebar({
           className="no-drag"
           onClick={() => onCollapsedChange(true)}
           title="Свернуть панель"
-          style={{ ...floatingIconBtn, ...(tinted ? tintedInnerPlate : null) }}
+          style={{ ...floatingIconBtn }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = tinted ? 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)' : 'var(--surface)'; }}
         >
@@ -1842,7 +1842,7 @@ export default function Sidebar({
       <ModeSwitch mode={mode} onChange={setMode} tinted={tinted} />
 
       {mode === 'bookmarks' && (
-        <SidebarBookmarks tinted={tinted} onOpen={(url) => {
+        <SidebarBookmarks onOpen={(url) => {
           void window.oblako.createTab(url);
           // ⚠️ Возврат к вкладкам сразу после открытия — ЗДЕСЬ, одной строкой, намеренно: в
           // режиме закладок не видно ни полосы вкладок, ни того, какая активна, и без возврата
@@ -1870,7 +1870,7 @@ export default function Sidebar({
         {/* Закреплённые: сетка favicon, tooltip с заголовком, без крестика.
             Плашка-обёртка — СНАРУЖИ SortableContext, сам dnd-контекст и ячейки не тронуты. */}
         {pinned.length > 0 && (
-          <div className="no-drag" style={{ ...innerPlate, ...(tinted ? tintedInnerPlate : null), padding: 8, marginBottom: 10 }}>
+          <div className="no-drag" style={{ ...innerPlate, padding: 8, marginBottom: 10 }}>
             {/* rect-, а не verticalList-стратегия: пины лежат сеткой с переносом строк, и
                 вертикальная стратегия расталкивала соседей по Y — не в ту сторону, куда
                 едет курсор. rectSortingStrategy считает по реальным прямоугольникам. */}
@@ -2201,7 +2201,7 @@ export default function Sidebar({
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
         <button className="no-drag" title="Новая вкладка (ПКМ — инкогнито / восстановить)"
           style={{
-            ...innerPlate, ...(tinted ? tintedInnerPlate : null),
+            ...innerPlate,
             flex: 1, display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 12px', color: 'var(--text-muted)', cursor: 'default',
           }}
