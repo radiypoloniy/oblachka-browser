@@ -65,16 +65,16 @@ function historyEntryToSemanticResult(entry: HistoryEntry, score: number): Seman
   };
 }
 
-export async function searchHistorySmart(
-  history: HistoryManager,
-  query: string,
-  limit = 8,
-  // background — поиск, которого человек не заказывал (подсказка «вы это уже читали», см.
-  // RelatedHistory.ts). Такой ждёт, пока пользовательская полоса очереди не опустеет.
-  opts?: { background?: boolean },
-): Promise<SmartSearchResponse> {
+/**
+ * Кандидаты из истории: лексика + FTS, дедуп по странице.
+ *
+ * ⚠️ Вынесено из searchHistorySmart БЕЗ изменения поведения — чтобы поиск «куда я это дел»
+ * (StuffSearch.ts) брал те же самые кандидаты, а не заводил свою вторую копию этой логики.
+ * Реранк сюда не входит намеренно: у объединённого поиска он один на все три источника.
+ */
+export function collectHistoryCandidates(history: HistoryManager, query: string): SemanticSearchResult[] {
   const q = query.trim();
-  if (!q) return { results: [], degraded: false };
+  if (!q) return [];
 
   let ftsCandidates: SemanticSearchResult[] = [];
   try {
@@ -93,7 +93,6 @@ export async function searchHistorySmart(
     .slice(0, SMART_LEXICAL_CANDIDATE_LIMIT)
     .map((entry) => historyEntryToSemanticResult(entry, 1));
 
-  const lexicalKeys = new Set(lexicalCandidates.map((c) => normalizeForOmnibox(c.url)));
   // Лексика → FTS: точное совпадение по заголовку/URL (лексика) весомее текстового FTS-совпадения
   // внутри чанка, поэтому идёт первым — при коллизии URL ниже побеждает бОльший score, а не порядок
   // сам по себе, но порядок определяет, чья версия («первая встреченная» при равном score) войдёт
@@ -105,8 +104,26 @@ export async function searchHistorySmart(
     const existing = byUrl.get(key);
     if (!existing || c.score > existing.score) byUrl.set(key, c);
   }
-  const candidates = [...byUrl.values()].slice(0, SMART_CANDIDATE_LIMIT);
+  return [...byUrl.values()].slice(0, SMART_CANDIDATE_LIMIT);
+}
+
+export async function searchHistorySmart(
+  history: HistoryManager,
+  query: string,
+  limit = 8,
+  // background — поиск, которого человек не заказывал (подсказка «вы это уже читали», см.
+  // RelatedHistory.ts). Такой ждёт, пока пользовательская полоса очереди не опустеет.
+  opts?: { background?: boolean },
+): Promise<SmartSearchResponse> {
+  const q = query.trim();
+  if (!q) return { results: [], degraded: false };
+
+  const candidates = collectHistoryCandidates(history, q);
   if (candidates.length === 0) return { results: [], degraded: false };
+  // Ключи лексики нужны для запасного пути ниже — считаем их по тем же кандидатам.
+  const lexicalKeys = new Set(
+    history.search(q).slice(0, SMART_LEXICAL_CANDIDATE_LIMIT).map((e) => normalizeForOmnibox(e.url)),
+  );
 
   let order: number[];
   try {

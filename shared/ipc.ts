@@ -545,6 +545,8 @@ export const IPC = {
   // «Что изменилось с прошлого раза» (см. electron/PageChanges.ts) — поповер замочка спрашивает
   // про АКТИВНУЮ вкладку, адрес main берёт у себя (рендерер мог отстать от навигации).
   PAGE_CHANGES_GET: 'page:changes-get',
+  // «Куда я это дел» — один поиск по истории, закладкам и загрузкам (см. electron/StuffSearch.ts).
+  STUFF_SEARCH: 'stuff:search',
 
   // Правая AI-панель (Заход 1: пустой каркас-оверлей, см. AiPanelManager.ts)
   AI_PANEL_TOGGLE: 'ai-panel:toggle', // renderer → main: тоггл по клику кнопки AI в тулбаре, вернёт новое состояние (open)
@@ -1214,6 +1216,19 @@ export interface PageChangesResult {
   pieces?: PageChangePiece[];
 }
 
+// Находка объединённого поиска по своим данным (см. electron/StuffSearch.ts).
+// ⚠️ У загрузки в url лежит ПУТЬ НА ДИСКЕ, а не адрес: открывается она файлом, а не навигацией.
+export interface StuffHit {
+  kind: 'history' | 'bookmark' | 'download';
+  title: string;
+  url: string;
+  subtitle: string;
+  snippet?: string;
+  // Только у загрузки: открываем её штатным DOWNLOAD_OPEN_FILE, а не своим путём — там уже есть
+  // перепроверка «файл ещё на месте» в момент клика (см. DownloadManager.#stillOnDisk).
+  downloadId?: string;
+}
+
 // ── AdBlock ─────────────────────────────────────────────────────────────────
 export interface AdBlockState {
   enabled: boolean;
@@ -1729,6 +1744,8 @@ export interface OblakoApi {
   activateTabInWindow(windowId: number, tabId: string): Promise<void>;
   /** Разобрать адрес, вставленный строкой в настройках. Пусто — не разобралось (см. AddressParser). */
   parseAddressText(text: string): Promise<ParsedAddressPart[]>;
+  /** Поиск по истории, закладкам и загрузкам сразу. degraded — модель не участвовала. */
+  searchStuff(query: string): Promise<{ hits: StuffHit[]; degraded: boolean }>;
   /** Поиск по настройкам фразой — второй эшелон, отдаёт индексы SETTINGS_INDEX (settingsIndex.ts). */
   searchSettingsSmart(query: string): Promise<number[]>;
   /** Страницы из своей истории, связанные с открытой сейчас. Пусто — нечего показать. */

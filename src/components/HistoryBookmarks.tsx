@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Clock, Star, Download } from 'lucide-react';
+import { Clock, Star, Download, Search } from 'lucide-react';
 import { ModeButton } from './Hub';
 import History from './History';
 import Bookmarks from './Bookmarks';
 import Downloads from './Downloads';
+import StuffSearchView from './StuffSearchView';
 import type { DownloadEntry } from '../../shared/ipc';
 
-type Section = 'history' | 'bookmarks' | 'downloads';
+type Section = 'history' | 'bookmarks' | 'downloads' | 'search';
 
 interface Props {
   defaultSection: Section;
@@ -51,11 +52,17 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
               видел/взял», и держать его в стороне от истории значило бы разводить по разным
               экранам вещи, за которыми человек приходит с одним и тем же вопросом. */}
           <ModeButton active={section === 'downloads'} onClick={() => setSection('downloads')} icon={<Download size={14} />} label="Загрузки" />
+          {/* «Куда я это дел» (AI-IDEAS.md №4) — четвёртым режимом здесь, а не отдельным экраном:
+              вопрос «где я это видел» тот же самый, просто человек не помнит, в каком из трёх
+              архивов лежит ответ. Разводить его с ними по разным местам значило бы требовать
+              знать ответ заранее — ровно то, от чего фича и избавляет. */}
+          <ModeButton active={section === 'search'} onClick={() => setSection('search')} icon={<Search size={14} />} label="Везде" />
         </div>
       </div>
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
         {section === 'history' ? <History onClose={onClose} />
           : section === 'bookmarks' ? <Bookmarks onClose={onClose} />
+          : section === 'search' ? <StuffSearchView onClose={onClose} />
           : <Downloads downloads={downloads} onClose={onClose} />}
       </div>
     </div>

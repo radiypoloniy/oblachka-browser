@@ -148,6 +148,7 @@ import { suggestFolderForBookmark } from './BookmarkFolderPick';
 import { suggestFileName, renameDownloadedFile } from './DownloadNamer';
 import { searchSettingsByMeaning } from './SettingsSearch';
 import { getPageChanges } from './PageChanges';
+import { searchStuff } from './StuffSearch';
 import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart, PageChangesResult } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
@@ -1720,6 +1721,10 @@ function registerIpc() {
     if (!tabs || !active?.url || tabs.isIncognito(active.id)) return { changed: false };
     return getPageChanges(history, active.url, tabs.getActiveWebContents());
   });
+  // «Куда я это дел» (AI-IDEAS.md №4) — один поиск по истории, закладкам и загрузкам.
+  // Явное действие человека (Enter), поэтому без гейта тёплой модели и пользовательской полосой.
+  ipcMain.handle(IPC.STUFF_SEARCH, (_e, query: string) => searchStuff(history, bookmarks, downloads, query));
+
   // «Итоги дня» (см. DayDigest.ts). GET модель не трогает вовсе — отдаёт готовое или «нет».
   ipcMain.handle(IPC.DIGEST_GET, (): DayDigestState => {
     // Заодно решаем, не пора ли обновить фоном: условие внутри (прошёл час И прибавилось
