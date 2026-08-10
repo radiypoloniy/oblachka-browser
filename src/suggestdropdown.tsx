@@ -69,6 +69,10 @@ declare global {
 // реальный охват тени карточки ниже (offset+blur = 10+28 = 38px), иначе WebContentsView обрезает
 // хвост тени по своей границе (тот самый «угловатый прямоугольник» вместо мягкой тени).
 const SHADOW_MARGIN = 40;
+// ⚠️ Сверху запас ДРУГОЙ и обязан совпадать с GAP/SHADOW_TOP в SuggestDropdownManager.ts. Прозрачные
+// поля вокруг карточки ловят мышь всем прямоугольником, поэтому запас в 40 сверху накрывал адресную
+// строку целиком — и текст в ней нельзя было выделить мышью вовсе. Подробный разбор — там же.
+const SHADOW_TOP = 8;
 
 function SuggestDropdown() {
   const [items, setItems] = useState<SuggestDropdownItem[]>([]);
@@ -123,7 +127,7 @@ function SuggestDropdown() {
   };
 
   return (
-    <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
+    <div style={{ padding: `${SHADOW_TOP}px ${SHADOW_MARGIN}px ${SHADOW_MARGIN}px`, boxSizing: 'border-box' }}>
       <div ref={cardRef} style={{
         boxSizing: 'border-box',
         background: 'var(--surface-solid)',

@@ -42,7 +42,7 @@ import { BrowserWindow, ipcMain } from 'electron'
 import path from 'node:path'
 import type { ContentBounds, SuggestDropdownItem } from '../shared/ipc'
 
-const GAP = 4 // зазор между низом омнибокса и верхом дропдауна
+const GAP = 8 // зазор между низом омнибокса и верхом карточки
 // Стартовая высота — до первого реального замера от suggestdropdown.tsx (ResizeObserver →
 // 'suggest-dropdown:height'). Держим маленькой (высота ~1 строки): реальная высота прилетает почти
 // сразу после показа, поэтому стартовый флеш короткий и безвредный.
@@ -51,6 +51,18 @@ const INITIAL_HEIGHT = 48
 // карточки нужен прозрачный запас не меньше реального охвата тени (offset+blur = 10+28, см.
 // suggestdropdown.tsx). Держать в синхроне с SHADOW_MARGIN там же.
 const SHADOW_MARGIN = 40
+// ⚠️ СВЕРХУ ЗАПАС ДРУГОЙ, И ЭТО САМАЯ ДОРОГАЯ СТРОКА В ФАЙЛЕ. Прозрачные поля вокруг карточки
+// ХИТ-ТЕСТЯТСЯ: и у вью, и у окна мышь ловит весь прямоугольник, а не только видимую карточку.
+// Пока запас был одинаковым со всех сторон (40) при зазоре 4, верхний край дропдауна оказывался на
+// 36 px ВЫШЕ низа адресной строки, то есть накрывал почти всю её высоту (38 px). Следствия, которые
+// месяц объясняли фокусом: текст в строке нельзя было выделить мышью вообще (курсор физически не
+// доходил до поля, работала только клавиатура), клик по строке то открывал дропдаун, то нет — как
+// повезёт попасть в оставшиеся пиксели, — а протяжка уходила в список и водила его подсветку,
+// отчего казалось, что «выделяется рекомендация».
+// Поэтому сверху запас РОВНО такой же, как зазор: край окна ложится точно на низ строки и не
+// перекрывает её ни на пиксель. Платим верхушкой тени — она обрезается; это видно куда меньше, чем
+// неработающая адресная строка, а тень у нас всё равно смещена вниз (offset +10).
+const SHADOW_TOP = GAP
 
 interface WindowDropdown {
   win: BrowserWindow
@@ -114,9 +126,10 @@ function computeBounds(st: WindowDropdown): { x: number; y: number; width: numbe
   const base = st.win.isDestroyed() ? { x: 0, y: 0 } : st.win.getContentBounds()
   return {
     x: Math.round(base.x + ob.x - SHADOW_MARGIN),
-    y: Math.round(base.y + ob.y + ob.height + GAP - SHADOW_MARGIN),
+    // GAP - SHADOW_TOP === 0: верх окна ровно на низе адресной строки, ни пикселя выше.
+    y: Math.round(base.y + ob.y + ob.height + GAP - SHADOW_TOP),
     width: Math.round(ob.width + SHADOW_MARGIN * 2),
-    height: Math.round(st.height + SHADOW_MARGIN * 2),
+    height: Math.round(st.height + SHADOW_TOP + SHADOW_MARGIN),
   }
 }
 
