@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Pencil, MapPin, CreditCard, Eye, EyeOff } from 'lucide-react';
-import type { AddressProfile, AddressInput, CardMeta } from '../../../shared/ipc';
+import type { AddressProfile, AddressInput, CardMeta, ParsedAddressPart } from '../../../shared/ipc';
 import { islandPlate } from '../../styles/island';
 import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, Subsection, LoadingNote,
@@ -175,6 +175,20 @@ function AddressForm({ initial, onCancel, onSaved }: { initial: AddressProfile |
 
   return (
     <div style={formStyle}>
+      {/* Заполнить карточку одной строкой (AI-IDEAS.md №1). Тот же разбор, что у вставки на
+          странице; здесь он вход в форму, а не предложение — поля видны рядом и правятся сразу,
+          поэтому отдельного предпросмотра не нужно. Показываем только при СОЗДАНИИ: при правке
+          человек пришёл поменять одно поле, а не заменить карточку целиком. */}
+      {!initial && <AddressPasteBox onParsed={(parts) => {
+        setF((p) => {
+          const next = { ...p };
+          for (const part of parts) {
+            // Ключи разбора — подмножество полей карточки; чужие игнорируем молча.
+            if (part.key in next) next[part.key as keyof AddressInput] = part.value;
+          }
+          return next;
+        });
+      }} />}
       <TextField value={f.fullName} placeholder="Имя и фамилия" onChange={set('fullName')} />
       <InputRow>
         <TextField value={f.email} placeholder="E-mail" onChange={set('email')} style={fieldFlex} />
@@ -197,6 +211,55 @@ function AddressForm({ initial, onCancel, onSaved }: { initial: AddressProfile |
         </button>
         <button onClick={onCancel} style={btnGhost}>Отмена</button>
       </div>
+    </div>
+  );
+}
+
+// Поле «вставьте адрес одной строкой» над формой адреса.
+//
+// ⚠️ Модель здесь ВТОРАЯ дорожка, а не единственная: форма ниже работает как работала, и у
+// человека без скачанной модели раздел не ломается. То же правило, из-за которого разбор фразы
+// в правилах стал второй дорожкой к обычной форме (см. «Программа» в CLAUDE.md).
+function AddressPasteBox({ onParsed }: { onParsed: (parts: ParsedAddressPart[]) => void }) {
+  const [text, setText] = useState('');
+  const [working, setWorking] = useState(false);
+  const [note, setNote] = useState('');
+
+  async function run() {
+    const raw = text.trim();
+    if (!raw) return;
+    setWorking(true); setNote('');
+    const parts = await window.oblako.parseAddressText(raw).catch(() => [] as ParsedAddressPart[]);
+    setWorking(false);
+    if (parts.length === 0) {
+      // Честный отказ. Причин две — модели нет либо строка не разобралась, — и человеку они
+      // одинаковы: он просто заполняет поля руками, как раньше.
+      setNote('Не разобралось — заполните поля вручную');
+      return;
+    }
+    onParsed(parts);
+    setText('');
+    setNote(`Заполнено полей: ${parts.length}. Проверьте перед сохранением.`);
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <InputRow>
+        <TextField
+          value={text}
+          placeholder="Вставьте адрес одной строкой — разложим по полям"
+          onChange={setText}
+          style={fieldFlex}
+        />
+        <button
+          onClick={() => void run()}
+          disabled={working || !text.trim()}
+          style={{ ...btnGhost, opacity: working || !text.trim() ? 0.6 : 1 }}
+        >
+          {working ? 'Разбираю…' : 'Разобрать'}
+        </button>
+      </InputRow>
+      {note && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{note}</div>}
     </div>
   );
 }

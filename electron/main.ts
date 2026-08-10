@@ -147,7 +147,7 @@ import { suggestBookmarkFolders } from './BookmarkOrganizer';
 import { suggestFolderForBookmark } from './BookmarkFolderPick';
 import { suggestFileName, renameDownloadedFile } from './DownloadNamer';
 import { searchSettingsByMeaning } from './SettingsSearch';
-import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit } from '../shared/ipc';
+import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedAddressPart } from '../shared/ipc';
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
 
@@ -2705,6 +2705,13 @@ function registerIpc() {
     } finally {
       settingsSearchBusy = false;
     }
+  });
+
+  // Разбор адреса строкой по кнопке в настройках (AI-IDEAS.md №1, вторая половина). Тот же
+  // разбор, что у вставки на странице, но по явной просьбе — поэтому ждать модель он вправе.
+  ipcMain.handle(IPC.AUTOFILL_PARSE_ADDRESS, async (_e, text: string): Promise<ParsedAddressPart[]> => {
+    const parts = await parseAddressBlob(text, { explicit: true });
+    return parts.map((p) => ({ key: p.key, label: p.label, value: p.value }));
   });
 
   // Имя по содержимому (AI-IDEAS.md №3). ⚠️ Ровно два шага, и между ними стоит человек:

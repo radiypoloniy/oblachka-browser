@@ -718,6 +718,10 @@ export const IPC = {
   // ⚠️ Текст читает ТОЛЬКО локальная модель в main; фильтр «похоже ли это на адрес» стоит на
   // стороне страницы (preload-content), чтобы случайный текст из буфера сюда не приезжал вовсе.
   AUTOFILL_PASTE_BLOB: 'autofill:paste-blob', // гостевая страница → TabManager: { text, rect }
+  // Тот же разбор, но по ЯВНОЙ просьбе из настроек: вставил строку — получил заполненную карточку
+  // адреса вместо десяти полей руками. ⚠️ Гейта isModelWarm здесь нет (в отличие от вставки на
+  // странице): человек нажал кнопку, и такое действие вправе ждать загрузку модели.
+  AUTOFILL_PARSE_ADDRESS: 'autofill:parse-address', // renderer → main: строка → ParsedAddressPart[]
   AUTOFILL_SUBMIT:      'autofill:submit',      // гостевая страница → TabManager: { kind, fields } при отправке формы (offer-save)
 
   // Менеджер паролей, шаг 2 — индикатор-«ключ» в omnibox + поповер (см. PasswordIndicatorPopover.tsx,
@@ -1189,6 +1193,14 @@ export interface SmartTabHit {
   title: string;
   url: string;
   otherWindow: boolean;
+}
+
+// Одна разобранная часть адреса (см. shared/addressParts.ts). Наружу отдаём и ключ поля, и
+// подпись: ключ нужен форме настроек, чтобы разложить части по своим полям.
+export interface ParsedAddressPart {
+  key: string;
+  label: string;
+  value: string;
 }
 
 // ── AdBlock ─────────────────────────────────────────────────────────────────
@@ -1704,6 +1716,8 @@ export interface OblakoApi {
   searchTabsSmart(query: string): Promise<SmartTabHit[]>;
   /** Перейти к вкладке в ДРУГОМ окне: поднять то окно и сделать вкладку активной в нём. */
   activateTabInWindow(windowId: number, tabId: string): Promise<void>;
+  /** Разобрать адрес, вставленный строкой в настройках. Пусто — не разобралось (см. AddressParser). */
+  parseAddressText(text: string): Promise<ParsedAddressPart[]>;
   /** Поиск по настройкам фразой — второй эшелон, отдаёт индексы SETTINGS_INDEX (settingsIndex.ts). */
   searchSettingsSmart(query: string): Promise<number[]>;
   /** Страницы из своей истории, связанные с открытой сейчас. Пусто — нечего показать. */

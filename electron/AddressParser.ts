@@ -54,20 +54,25 @@ function buildPrompt(text: string): string {
  *
  * ⚠️ Ничего не подставляет. Подстановку делает человек, увидев предпросмотр.
  */
-export async function parseAddressBlob(text: string): Promise<AddressPart[]> {
+export async function parseAddressBlob(
+  text: string,
+  opts: { explicit?: boolean } = {},
+): Promise<AddressPart[]> {
   const input = text.trim().slice(0, MAX_INPUT_CHARS);
   if (input.length < 12) return [];
-  // ⚠️ Только на ТЁПЛОЙ модели и по одному разбору за раз. Человек ВСТАВИЛ строку, а не заказывал
-  // разбор: будить ради этого 9B на полминуты нельзя (правило «никаких неявных загрузок модели»).
-  // Пока модель холодная, вставка ведёт себя ровно как раньше — текст просто ложится в поле.
-  if (busy || !isModelWarm()) return [];
+  // ⚠️ Два разных повода — два разных правила, и разница не косметическая.
+  //  • вставка в поле НА СТРАНИЦЕ (explicit=false): человек вставил строку, а разбор не заказывал,
+  //    поэтому только тёплая модель и фоновая полоса. Будить ради этого 9B на полминуты нельзя
+  //    (правило «никаких неявных загрузок модели»); на холодной вставка ведёт себя как раньше.
+  //  • кнопка В НАСТРОЙКАХ (explicit=true): это явное действие, и оно вправе ждать загрузку
+  //    модели — то же решение, что у смыслового Ctrl+F.
+  if (busy) return [];
+  if (!opts.explicit && !isModelWarm()) return [];
 
   busy = true;
   let res;
   try {
-    // Фоновая полоса: мы сами это затеяли. Если человек в тот же момент нажмёт «перевести»,
-    // перевод пойдёт первым (см. QwenQueue.ts).
-    res = await runTabOrganizePrompt(buildPrompt(input), { background: true });
+    res = await runTabOrganizePrompt(buildPrompt(input), { background: !opts.explicit });
   } finally {
     busy = false;
   }
