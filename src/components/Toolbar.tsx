@@ -166,6 +166,13 @@ export default function Toolbar({
     isRealFocus: false,
     mouseDownOnInput: false,
   });
+  // ⚠️ «Выделить всё» ЖДЁТ ОТПУСКАНИЯ КНОПКИ, а не решается на нажатии, — так работает адресная
+  // строка Chrome, и разница принципиальная. Клик по несфокусированной строке выделяет всё; но
+  // если человек нажал и ПОТЯНУЛ, он выделяет ровно то, что протянул. Отличить одно от другого в
+  // момент нажатия физически нельзя — протяжки ещё не было.
+  const selectAllPendingRef = useRef(false);
+  // Кнопка мыши зажата внутри строки — на это время цикл автофокуса хаба обязан молчать (см. ниже).
+  const pointerInInputRef = useRef(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
   // «Таблетка» омнибокса (иконка+инпут+капсула/copy) — прямоугольник, под которым должен
   // вставать дропдаун подсказок. Пушится в main отдельным каналом (OMNIBOX_SET_BOUNDS) —
@@ -345,6 +352,11 @@ export default function Toolbar({
         // не получил бы фокуса вовсе, потому что подавление пережило бы весь цикл. Дольше
         // держать и не нужно — после отправки хаб перестаёт быть активным, и цикл гаснет сам.
         if (performance.now() - submittedAtRef.current < 300) return;
+        // ⚠️ Пока кнопка мыши зажата в строке, цикл обязан молчать: он делает focus()+select()
+        // каждый кадр, то есть попал бы ровно в середину протяжки и выделил всё вместо
+        // протянутого. На хабе это окно активно первые 400 мс (и до 3 с на старте) — как раз
+        // тогда, когда человек первым делом и лезет в адресную строку.
+        if (pointerInInputRef.current) return;
         const input = inputRef.current;
         const active = document.activeElement;
         if (input && active !== input && isTypingTarget(active)) return; // выбор человека — не спорим
@@ -458,6 +470,15 @@ export default function Toolbar({
     setEditing(false);
     focusTracker.current.isRealFocus = false;
   }, [closeDropdown]);
+
+  // ⚠️ Отпустить кнопку можно и ЗА пределами строки — протяжка через край обычное дело. Тогда
+  // onMouseUp самой строки не придёт вовсе, и флаг «кнопка зажата» остался бы висеть, навсегда
+  // заглушив цикл автофокуса хаба. Слушаем документ, не строку.
+  useEffect(() => {
+    const clear = () => { pointerInInputRef.current = false; };
+    document.addEventListener('mouseup', clear, true);
+    return () => document.removeEventListener('mouseup', clear, true);
+  }, []);
 
   // Ref для closeDropdownFully — чтобы слушатель mousedown не пересоздавался при каждом изменении
   // колбэка, но всегда вызывал актуальную версию. Тот же приём, что pickSuggestionRef ниже.
@@ -1347,8 +1368,9 @@ export default function Toolbar({
                 if (tab) draftsRef.current.set(tab.id, v);
                 triggerSuggest(v);
               }}
-              onMouseDown={(e) => {
+              onMouseDown={() => {
                 focusTracker.current.mouseDownOnInput = true;
+                pointerInInputRef.current = true;
                 // Самосброс через RAF — если фокус НЕ сменился (клик в уже сфокусированное
                 // поле, просто переставить курсор), onFocus не вызовется вообще и не консьюмит
                 // флаг сам; без этого он завис бы «true» до следующего, уже НЕ обязательно
@@ -1356,23 +1378,22 @@ export default function Toolbar({
                 requestAnimationFrame(() => {
                   focusTracker.current.mouseDownOnInput = false;
                 });
-                // Выделение всего текста по клику — как в любом адресном поле. Только на ПЕРВОМ
-                // клике, переводящем фокус в поле — иначе повторный клик по уже сфокусированному
-                // полю не смог бы просто переставить курсор. preventDefault обязателен: браузер
-                // иначе сам расставит курсор по месту клика на mouseup ПОСЛЕ нашего select() и
-                // сотрёт выделение.
-                if (!focusTracker.current.isRealFocus) {
-                  e.preventDefault();
-                  inputRef.current?.focus();
-                  inputRef.current?.select();
-                } else if (document.activeElement !== inputRef.current) {
-                  // Повторный клик, но DOM-фокус фактически потерян. Ветка выше сюда не заходит
-                  // (isRealFocus уже true), а полагаться на нативную фокусировку нельзя: пока
-                  // открыт дропдаун, чром может не иметь OS-фокуса — тогда браузер выставит
-                  // activeElement, но клавиши всё равно уйдут в другую вью. Возвращаем фокус явно
-                  // и БЕЗ select(): повторный клик обязан просто ставить курсор, не выделять всё.
-                  inputRef.current?.focus();
-                }
+
+                // ⚠️ preventDefault ЗДЕСЬ БОЛЬШЕ НЕТ, и это суть починки. Он отменял нативное
+                // действие мыши целиком, а вместе с ним — ВСЁ, что строка умеет мышью: протяжку
+                // (получалось «выделить всё» вместо протянутого куска), установку курсора по месту
+                // клика и выделение слова двойным щелчком (браузер делает его на втором нажатии,
+                // а отменённое нажатие до него не доходит). Живая жалоба была именно про это.
+                //
+                // Chrome решает то же самое на ОТПУСКАНИИ (см. onMouseUp): нажатие лишь запоминает,
+                // что строка была не в фокусе, — отличить клик от протяжки в этот момент нечем.
+                const el = inputRef.current;
+                const unfocused = !focusTracker.current.isRealFocus || document.activeElement !== el;
+                selectAllPendingRef.current = unfocused;
+                // Фокус возвращаем явно: пока открыт дропдаун, чром может не иметь OS-фокуса —
+                // браузер выставит activeElement, но клавиши уйдут в другую вью. Без select(),
+                // выделение решается на отпускании.
+                if (unfocused) el?.focus();
                 // Дропдаун подсказок — отдельная WebContentsView; её addChildView уводит OS-фокус
                 // с чрома, а компенсация в main срабатывает только в МОМЕНТ открытия (см.
                 // main.ts::SUGGEST_DROPDOWN_TOGGLE). Клик по инпуту при уже открытом дропдауне
@@ -1381,6 +1402,20 @@ export default function Toolbar({
                 if (dropdownOpen) void window.oblako.focusChrome();
                 focusTracker.current.isRealFocus = true;
               }}
+              onMouseUp={() => {
+                pointerInInputRef.current = false;
+                if (!selectAllPendingRef.current) return;
+                selectAllPendingRef.current = false;
+                const el = inputRef.current;
+                if (!el) return;
+                // Курсор схлопнут — значит была не протяжка, а клик: выделяем адрес целиком, как
+                // делает любая адресная строка. Протянутое выделение не трогаем ни в коем случае —
+                // человек уже выбрал то, что хотел.
+                if (el.selectionStart === el.selectionEnd) el.select();
+              }}
+              // ⚠️ Двойной и тройной щелчок обрабатывает САМ браузер (слово / вся строка) — своих
+              // обработчиков тут нет и не нужно. Единственное, что им мешало, — отменённое
+              // нажатие; см. onMouseDown.
               onFocus={() => {
                 setEditing(true);
                 // Реальный клик — mouseDownOnInput успел взвестись только что (onMouseDown на ЭТОМ
