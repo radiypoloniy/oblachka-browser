@@ -41,7 +41,8 @@
     "measure-model": "node scripts/measure-model-requirements.mjs",
     "postinstall:sqlite": "electron-rebuild -f -w better-sqlite3 || echo [postinstall] better-sqlite3 rebuild skipped — history unavailable without C++ tools",
     "postinstall:bergamot": "node scripts/patch-bergamot.mjs",
-    "postinstall": "npm run postinstall:sqlite && npm run postinstall:bergamot"
+    "postinstall": "npm run postinstall:sqlite && npm run postinstall:bergamot",
+    "make-installer-art": "node scripts/make-installer-art.mjs"
   },
   "dependencies": {
     "@browsermt/bergamot-translator": "^0.4.9",
