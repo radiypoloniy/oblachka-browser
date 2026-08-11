@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropResult } from '../../shared/ipc';
+import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropResult, DragCard } from '../../shared/ipc';
 import { loadNewTabSettings, subscribeNewTabSettings } from '../newtab/settings';
 
 // Стабильный id droppable-контейнера секции «Открытые вкладки».
@@ -41,6 +41,19 @@ const findNodeByTopId = (nodes: SidebarNode[], topId: string): SidebarNode | nul
   }
   return null;
 };
+
+// Курсор ушёл с чрома на страницу (или на другое окно) — там карточку в руке ведёт оверлей, и
+// СВОЙ призрак чром обязан спрятать: две вещи под курсором разом читаются как сбой. Зону считает
+// main, он один видит курсор над страницей (см. DropZoneManager.ts).
+//
+// Хук, а не проп: призраков в этом файле четыре (развёрнутая панель, свёрнутая полоса и по одному
+// на каждый вид папки), и лежат они в разных компонентах — протаскивать флаг через все уровни
+// пришлось бы ради одного логического значения.
+function useTabDragOverPage(): boolean {
+  const [over, setOver] = useState(false);
+  useEffect(() => window.oblako.onTabDragZone((zone) => setOver(zone !== null)), []);
+  return over;
+}
 
 const GROUP_COLORS: Record<string, string> = {
   red: '#ef4444', orange: '#f97316', yellow: '#eab308',
@@ -681,6 +694,7 @@ function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTa
   zone: ChildDragZone;
 }) {
   const innerSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const dragOverPage = useTabDragOverPage();
   const {
     effectiveChildIds, effectiveChildren, dragChild,
     handleChildDragStart, handleChildDragCancel, handleChildDragEnd,
@@ -769,7 +783,7 @@ function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTa
             </SortableContext>
 
             {/* Портал призрака живёт в своём DndContext — верхний сюда не дотягивается. */}
-            <DragOverlay>
+            {!dragOverPage && <DragOverlay>
               {dragChild && (
                 <div style={collapsedGhostPlate}>
                   <CollapsedNodeCells
@@ -779,7 +793,7 @@ function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTa
                   />
                 </div>
               )}
-            </DragOverlay>
+            </DragOverlay>}
           </DndContext>
         )}
       </div>
@@ -797,7 +811,8 @@ function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTa
 // соседкой: ни подсветки, ни выноса в окно, ни разделения экрана. Причём молча — жест
 // отрабатывал, просто ничего не происходило.
 interface ChildDragZone {
-  start: () => void;
+  // id перетаскиваемого элемента: по нему Sidebar собирает карточку в руку (см. dragCardFor).
+  start: (id: string) => void;
   /** true — дроп забрала зона (сплит/новое окно/передача), перестановку делать не нужно. */
   finish: (e: DragEndEvent) => Promise<boolean>;
   cancel: () => void;
@@ -844,7 +859,7 @@ function useGroupChildOrder(group: GroupNode, zone: ChildDragZone) {
 
   const handleChildDragStart = (id: string) => {
     setChildDragId(id);
-    zone.start();
+    zone.start(id);
   };
 
   const handleChildDragCancel = () => {
@@ -912,6 +927,7 @@ function SortableGroupBlock({
   onSplit, onExitSplit, renameGroupId, setRenameGroupId, zone,
 }: GroupBlockProps) {
   const innerSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const dragOverPage = useTabDragOverPage();
   const {
     effectiveChildIds, effectiveChildren, dragChild,
     handleChildDragStart, handleChildDragCancel, handleChildDragEnd,
@@ -1090,7 +1106,7 @@ function SortableGroupBlock({
               (Sidebar) сюда не дотягивается. Та же разметка/стиль ghost-контейнера,
               что в top-level DragOverlay (коммит 1) — только источник типа проще
               (child уже под рукой в effectiveChildren, дерево обходить не нужно). */}
-          <DragOverlay>
+          {!dragOverPage && <DragOverlay>
             {dragChildTab && (
               <div style={{
                 boxShadow: 'var(--shadow-card)',
@@ -1127,7 +1143,7 @@ function SortableGroupBlock({
                 />
               </div>
             )}
-          </DragOverlay>
+          </DragOverlay>}
         </DndContext>
       )}
     </div>
@@ -1312,6 +1328,7 @@ export default function Sidebar({
   onRenameRollback, onRollbackAll, onDismissUndo,
 }: SidebarProps) {
 
+  const dragOverPage = useTabDragOverPage();
   // Оптимистичный порядок: применяется сразу при drop, до ответа main.
   const [localPinnedOrder, setLocalPinnedOrder] = useState<string[] | null>(null);
   const [localOpenOrder,   setLocalOpenOrder]   = useState<string[] | null>(null);
@@ -1495,17 +1512,31 @@ export default function Sidebar({
   // замороженный. Пересоздание объекта на каждый рендер безвредно: он живёт только внутри
   // обработчиков и ни в один список зависимостей не входит.
   const childDragZone: ChildDragZone = {
-    start: () => { void window.oblako.tabDragStart(); },
+    start: (id: string) => { void window.oblako.tabDragStart(dragCardFor(id)); },
     finish: (e: DragEndEvent) => finishDrag().then((res) => applyZoneDrop(e, res)),
     // Отмена (Esc, потеря указателя): зоны надо погасить, но исход не применять.
     cancel: () => { void window.oblako.tabDragEnd().catch(() => {}); },
   };
 
+  // Что нести в руке над страницей: имя и значок. Карточку рисует оверлей (чром над областью
+  // контента не виден), поэтому данные для неё уходят в main сразу на старте. У папки одной
+  // страницы нет — ей достаётся имя без значка.
+  const dragCardFor = (id: string): DragCard | null => {
+    if (id.startsWith('group:')) {
+      const g = findNodeByTopId(sidebarNodes, id);
+      return g?.type === 'group' ? { title: g.label, favicon: null } : null;
+    }
+    const tab = tabMap.get(id);
+    if (!tab) return null;
+    return { title: tab.title || tab.url || 'Вкладка', favicon: tab.faviconUrl };
+  };
+
   const handleDragStart = (e: DragStartEvent) => {
-    setDragActiveId(e.active.id as string);
+    const id = e.active.id as string;
+    setDragActiveId(id);
     // Зоны дропа поверх страницы и слежение за курсором — на стороне main: нативная вью страницы
     // и рисовать поверх себя не даёт, и указатель у чрома забирает (см. DropZoneManager.ts).
-    void window.oblako.tabDragStart();
+    void window.oblako.tabDragStart(dragCardFor(id));
   };
 
   // Хвост любого драга — снять слушатель, погасить подсветку контент-зоны, сбросить id.
@@ -1774,7 +1805,7 @@ export default function Sidebar({
 
           {/* Призраки — по тому же резолву типа узла, что и в развёрнутой панели
               (dragPinnedTab / dragNode), только в «иконочной» подаче. */}
-          <DragOverlay>
+          {!dragOverPage && <DragOverlay>
             {dragPinnedTab && (
               <div style={collapsedGhostPlate}>
                 <IconCell tab={dragPinnedTab} active={activeId === dragPinnedTab.id} ghost />
@@ -1797,7 +1828,7 @@ export default function Sidebar({
                 />
               </div>
             )}
-          </DragOverlay>
+          </DragOverlay>}
         </DndContext>
 
         <div className="no-drag" style={{
@@ -1971,7 +2002,7 @@ export default function Sidebar({
         {/* DragOverlay: ghost-копия перетаскиваемого элемента, по РЕАЛЬНОМУ типу узла
             (dragNode/findNodeByTopId выше) — не по виду id. Одиночная — TabRow;
             пара — PairTile (две ячейки); группа — минимальный заголовок. */}
-        <DragOverlay>
+        {!dragOverPage && <DragOverlay>
           {dragPinnedTab && (
             <div style={{
               boxShadow: 'var(--shadow-card)',
@@ -2036,7 +2067,7 @@ export default function Sidebar({
               </span>
             </div>
           )}
-        </DragOverlay>
+        </DragOverlay>}
       </DndContext>
       )}
 

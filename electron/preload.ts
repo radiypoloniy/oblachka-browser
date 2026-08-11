@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRequest, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRequest, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type {
   GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure,
@@ -69,8 +69,13 @@ const api: OblakoApi = {
   moveTabToNewWindow: (tabId: string) => ipcRenderer.invoke(IPC.WINDOW_MOVE_TAB, tabId) as Promise<boolean>,
   moveTabToWindow: (tabId: string, windowId: number) =>
     ipcRenderer.invoke(IPC.WINDOW_MOVE_TAB_TO, tabId, windowId) as Promise<boolean>,
-  tabDragStart: () => ipcRenderer.invoke(IPC.TAB_DRAG_START) as Promise<void>,
+  tabDragStart: (card: DragCard | null) => ipcRenderer.invoke(IPC.TAB_DRAG_START, card) as Promise<void>,
   tabDragEnd: () => ipcRenderer.invoke(IPC.TAB_DRAG_END) as Promise<TabDropResult>,
+  onTabDragZone: (cb: (zone: TabDropZone | null) => void) => {
+    const h = (_e: unknown, zone: TabDropZone | null) => cb(zone);
+    ipcRenderer.on(IPC.TAB_DRAG_ZONE, h);
+    return () => ipcRenderer.removeListener(IPC.TAB_DRAG_ZONE, h);
+  },
   chromeUiReady: () => ipcRenderer.send(IPC.CHROME_UI_READY),
   onTabsChanged: (cb: (tabs: TabState[]) => void) => {
     const handler = (_e: unknown, tabs: TabState[]) => cb(tabs);

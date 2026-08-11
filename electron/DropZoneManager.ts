@@ -13,7 +13,8 @@
 import { WebContentsView, screen } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
-import type { ContentBounds, SplitSwapHint, TabDropResult, TabDropZone } from '../shared/ipc';
+import { IPC } from '../shared/ipc';
+import type { ContentBounds, DragCard, SplitSwapHint, TabDropResult, TabDropZone } from '../shared/ipc';
 import { contextForWindow, allContexts } from './WindowRegistry';
 
 // Что подсвечивать во вью. Стороны разделены только ради картинки: подсвечивать оба края разом
@@ -49,6 +50,10 @@ interface ActiveDrag {
   // а решение об исходе принимается в момент отпускания.
   target: WindowDropZones | null;
   timer: NodeJS.Timeout | null;
+  // Что человек несёт в руке: оверлей рисует этим карточку под курсором (над областью контента
+  // чром не виден, см. setSwapHint — жест половины сплита устроен так же). null — тащат папку,
+  // у неё одной страницы нет.
+  card: DragCard | null;
 }
 
 let drag: ActiveDrag | null = null;
@@ -208,11 +213,26 @@ export function setSwapHint(win: BrowserWindow, hint: SplitSwapHint | null): voi
   sendSwapHint(st, hint);
 }
 
-// Курсор для призрака, который едет ПОВЕРХ страницы (чром там не виден). Поток на каждый кадр
+// Курсор для карточки, которая едет ПОВЕРХ страницы (чром там не виден). Поток на каждый кадр
 // драга — поэтому ничего, кроме пересылки: решения принимает renderer, вью только рисует.
 export function setSwapCursor(win: BrowserWindow, pos: { x: number; y: number } | null): void {
-  const wc = perWindow.get(win.id)?.view?.webContents;
+  sendCursor(perWindow.get(win.id) ?? null, pos);
+}
+
+function sendCursor(st: WindowDropZones | null, pos: { x: number; y: number } | null): void {
+  const wc = st?.view?.webContents;
   if (wc && !wc.isDestroyed()) wc.send('dropzones:cursor', pos);
+}
+
+// Перетаскивание ВКЛАДКИ: размер области контента (он же размер оверлея — зоны рисуются в нём) и
+// что нести в руке. Размер уходит явно, потому что по нему оверлей считает доли зон, а курсор
+// приходит уже пересчитанным в ту же систему координат.
+function sendTabDrag(
+  st: WindowDropZones | null,
+  payload: { width: number; height: number; card: DragCard | null } | null,
+): void {
+  const wc = st?.view?.webContents;
+  if (wc && !wc.isDestroyed()) wc.send('dropzones:tab', payload);
 }
 
 // Снимок несомой панели — та же карточка, что чром рисует над собой. Приходит позже подсветки
@@ -241,13 +261,36 @@ function updateDrag(): void {
     // Гасим подсветку на прежнем окне ПЕРЕД снятием: вью переживает драг и в следующий раз
     // показалась бы с чужой подсветкой ещё до первого тика.
     sendZone(drag.shown, null);
+    sendTabDrag(drag.shown, null);
     hideOverlayIn(drag.shown);
+    // ⚠️ Оверлей этого жеста накрывает ТОЛЬКО область контента, в отличие от жеста половины сплита
+    // (см. setSwapHint). И это не мелочь: перетаскивание вкладки живёт на dnd-kit, а тот держится
+    // на pointermove в чроме — нативная вью поверх их забирает. Растяни оверлей на всё окно, и
+    // сортировка внутри сайдбара замёрзнет: чром перестанет видеть курсор даже над собой. Жест
+    // половины сплита это себе позволяет только потому, что держит указатель через
+    // setPointerCapture. Отсюда и разделение труда: над страницей карточку ведёт оверлей, над
+    // сайдбаром — сам чром своим призраком.
     showOverlayIn(shouldShowIn);
+    sendTabDrag(shouldShowIn, {
+      width: shouldShowIn.content.width, height: shouldShowIn.content.height, card: drag.card,
+    });
     drag.shown = shouldShowIn;
     drag.zone = null; // новое окно ещё ничего не знает — заставляем послать зону ниже
   }
+  // Курсор — карточке в руке, в координатах ОВЕРЛЕЯ (то есть области контента). Считаем по тому
+  // окну, где он сейчас показан: при переносе в соседнее окно карточка обязана ехать в НЁМ, туда
+  // же, куда смотрит человек.
+  const shownCursor = drag.shown ? cursorInWindow(drag.shown) : null;
+  sendCursor(drag.shown, shownCursor && drag.shown
+    ? { x: shownCursor.x - drag.shown.content.x, y: shownCursor.y - drag.shown.content.y }
+    : null);
   if (zone !== drag.zone) {
     drag.zone = zone;
+    // Чрому — чтобы он спрятал свой призрак, пока карточку ведёт оверлей (см. onTabDragZone).
+    const chrome = contextForWindow(drag.source.win)?.chromeView;
+    if (chrome && !chrome.webContents.isDestroyed()) {
+      chrome.webContents.send(IPC.TAB_DRAG_ZONE, toAction(zone));
+    }
     sendZone(drag.shown, zone);
   }
 }
@@ -256,17 +299,23 @@ function stopDrag(): void {
   if (!drag) return;
   if (drag.timer) clearInterval(drag.timer);
   sendZone(drag.shown, null);
+  sendTabDrag(drag.shown, null);
+  sendCursor(drag.shown, null);
+  const chrome = contextForWindow(drag.source.win)?.chromeView;
+  if (chrome && !chrome.webContents.isDestroyed()) chrome.webContents.send(IPC.TAB_DRAG_ZONE, null);
   hideOverlayIn(drag.shown);
   drag = null;
 }
 
 // Начало перетаскивания вкладки: показываем зоны и начинаем следить за курсором.
-export function startTabDrag(win: BrowserWindow): void {
+export function startTabDrag(win: BrowserWindow, card: DragCard | null = null): void {
   stopDrag(); // предыдущий жест мог не закрыться штатно (окно закрылось, дроп отменили)
   const st = stateFor(win);
   if (st.content.width === 0 || st.content.height === 0) return; // контента нет (настройки/история)
-  drag = { source: st, shown: null, zone: null, target: null, timer: null };
-  sendSwapHint(st, null); // см. setSwapHint: вью общая, подсветка прошлого жеста могла остаться
+  drag = { source: st, shown: null, zone: null, target: null, timer: null, card };
+  // См. setSwapHint: вью общая на все жесты, и остатки прошлого надо обнулить до первого тика.
+  sendSwapHint(st, null);
+  setSwapThumb(win, null);
   updateDrag();
   drag.timer = setInterval(updateDrag, POLL_MS);
 }

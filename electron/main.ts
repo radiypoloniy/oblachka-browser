@@ -71,7 +71,7 @@ import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION, THEME_PALETTE_IDS, isDarkTheme } from '../shared/ipc';
 import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult, SmartFindResult, RuleParseOutcome, SplitSwapHint } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult, SmartFindResult, RuleParseOutcome, SplitSwapHint, DragCard } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -2176,7 +2176,7 @@ function registerIpc() {
   // потом создаём новое. Наоборот — и при отказе снять (спящая, split, закреплённая) на экране
   // оставалось бы пустое окно, которого никто не просил.
   // Перетаскивание вкладки: зоны поверх страницы + слежение за курсором (см. DropZoneManager.ts).
-  ipcMain.handle(IPC.TAB_DRAG_START, (e) => { const w = winOf(e); if (w) startTabDrag(w); });
+  ipcMain.handle(IPC.TAB_DRAG_START, (e, card: DragCard | null) => { const w = winOf(e); if (w) startTabDrag(w, card); });
   ipcMain.handle(IPC.TAB_DRAG_END, (e) => { const w = winOf(e); return w ? endTabDrag(w) : { zone: null }; });
   ipcMain.handle(IPC.WINDOW_MOVE_TAB, (e, tabId: string) => {
     const from = tabsOf(e);

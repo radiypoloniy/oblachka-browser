@@ -1,7 +1,7 @@
 // Минимальный preload оверлея зон дропа (src/dropzones.tsx). Вью только рисует подсветку по
 // присланному — своих решений не принимает и наружу ничего не шлёт.
 import { contextBridge, ipcRenderer } from 'electron'
-import type { SplitSwapHint } from '../shared/ipc'
+import type { ContentBounds, DragCard, SplitSwapHint } from '../shared/ipc'
 
 // Что подсвечивать (см. ZoneVisual в DropZoneManager.ts) — картинка, а не действие.
 type ZoneVisual = 'split-left' | 'split-right' | 'window'
@@ -30,5 +30,12 @@ contextBridge.exposeInMainWorld('dropzones', {
     const handler = (_e: unknown, thumb: string | null) => cb(thumb)
     ipcRenderer.on('dropzones:thumb', handler)
     return () => ipcRenderer.removeListener('dropzones:thumb', handler)
+  },
+  // Третий жест на той же вью: вкладку тащат из сайдбара. Приходит область контента (зоны живут
+  // только в ней, а оверлей теперь во всё окно) и что нести в руке.
+  onTabDrag: (cb: (t: { content: ContentBounds; card: DragCard | null } | null) => void) => {
+    const handler = (_e: unknown, t: { content: ContentBounds; card: DragCard | null } | null) => cb(t)
+    ipcRenderer.on('dropzones:tab', handler)
+    return () => ipcRenderer.removeListener('dropzones:tab', handler)
   },
 })

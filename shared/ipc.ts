@@ -291,6 +291,7 @@ export const IPC = {
   // в которой отпустили, — по ней сайдбар и решает, что сделать (см. TabDropZone).
   TAB_DRAG_START: 'tab:drag-start',
   TAB_DRAG_END: 'tab:drag-end',
+  TAB_DRAG_ZONE: 'tab:drag-zone',   // main → чром: зона под курсором, пока тащат вкладку
 
   // Атомарный push: заменяет раздельные TABS_CHANGED + SIDEBAR_NODES_CHANGED.
   // Один IPC-пакет = один рендер = нет рассинхрона между вкладками и деревом узлов.
@@ -1828,6 +1829,13 @@ export type DefaultBrowserRequest = 'already' | 'settings-opened' | 'unsupported
 // указатель, как только тот уходит на страницу.
 export type TabDropZone = 'split' | 'window' | 'adopt';
 
+// Имя и значок того, что несут в руке. Одна форма на оба жеста (вкладка из сайдбара и половина
+// сплита за шапку) — карточку они рисуют одну и ту же, src/components/SplitDragCard.tsx.
+export interface DragCard {
+  title: string;
+  favicon: string | null;
+}
+
 // Результат отпускания. windowId нужен только для 'adopt' — какое именно окно принимает вкладку;
 // одной зоны мало, окон может быть сколько угодно.
 export interface TabDropResult {
@@ -1931,8 +1939,14 @@ export interface OblakoApi {
   // Вернуть вкладку в уже открытое окно — обратный жест к moveTabToNewWindow.
   moveTabToWindow(tabId: string, windowId: number): Promise<boolean>;
   // Перетаскивание вкладки в сайдбаре — см. IPC.TAB_DRAG_START/TAB_DRAG_END.
-  tabDragStart(): Promise<void>;
+  // card — что нести в руке над страницей: имя и значок. Рисует карточку оверлей (чром над
+  // областью контента не виден), поэтому и данные для неё уходят в main сразу на старте.
+  tabDragStart(card: DragCard | null): Promise<void>;
   tabDragEnd(): Promise<TabDropResult>;
+  // Зона под курсором, пока тащат вкладку. Чрому нужна ровно затем, чтобы спрятать СВОЙ призрак,
+  // когда курсор ушёл на страницу: там карточку ведёт оверлей, и две вещи разом читались бы как
+  // сбой. null — курсор над чромом (сайдбар/тулбар), призрак рисует чром.
+  onTabDragZone(cb: (zone: TabDropZone | null) => void): () => void;
   // Сигнал «оболочка отрисована» — main показывает скрытое до этого окно (см. IPC.CHROME_UI_READY).
   chromeUiReady(): void;
   onTabsChanged(cb: (tabs: TabState[]) => void): () => void; // вернёт unsubscribe

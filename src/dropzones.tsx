@@ -15,7 +15,7 @@ import './styles/global.css';
 // смотрит человек. Зона у него одна на всю страницу — делить её на края незачем, исход всего один.
 type ZoneVisual = 'split-left' | 'split-right' | 'window' | 'adopt';
 
-import type { SplitSwapHint } from '../shared/ipc';
+import type { DragCard, SplitSwapHint } from '../shared/ipc';
 import { SplitDragCard, SPLIT_DRAG_CARD_WIDTH } from './components/SplitDragCard';
 
 declare global {
@@ -25,6 +25,7 @@ declare global {
       onSwapHint: (cb: (hint: SplitSwapHint | null) => void) => () => void;
       onCursor: (cb: (pos: { x: number; y: number } | null) => void) => () => void;
       onThumb: (cb: (thumb: string | null) => void) => () => void;
+      onTabDrag: (cb: (t: { width: number; height: number; card: DragCard | null } | null) => void) => () => void;
     };
   }
 }
@@ -33,11 +34,16 @@ declare global {
 // а вью по ней же рисует. Разъедутся — подсветка будет обещать не то, что произойдёт.
 const SPLIT_EDGE_RATIO = 0.35;
 
-function Zone({ label, active, style }: { label: string; active: boolean; style: React.CSSProperties }) {
+// ⚠️ Прямоугольник задаёт вызывающий целиком, а не «во всю высоту оверлея»: у зон в режиме сплита
+// он будет считаться по реальным панелям, а не по долям всей области (см. заход про замену панели).
+function Zone({ label, active, rect }: {
+  label: string; active: boolean;
+  rect: { left: number; top: number; width: number; height: number };
+}) {
   return (
     <div style={{
-      ...style,
-      position: 'absolute', top: 0, bottom: 0,
+      position: 'absolute',
+      left: rect.left, top: rect.top, width: rect.width, height: rect.height,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       // Неактивная зона — едва заметная подсказка, что тут вообще что-то есть; активная
       // заливается акцентом. Анимируем только цвет и прозрачность (см. правило про анимации).
@@ -86,7 +92,9 @@ function DropZones() {
   const [swap, setSwap] = useState<SplitSwapHint | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [thumb, setThumb] = useState<string | null>(null);
+  const [tab, setTab] = useState<{ width: number; height: number; card: DragCard | null } | null>(null);
   useEffect(() => window.dropzones.onZone(setZone), []);
+  useEffect(() => window.dropzones.onTabDrag(setTab), []);
   useEffect(() => window.dropzones.onCursor(setCursor), []);
   useEffect(() => window.dropzones.onThumb(setThumb), []);
   // ⚠️ Снимок сбрасываем вместе с концом жеста, а не с каждой новой подсветкой: hint приезжает
@@ -97,8 +105,6 @@ function DropZones() {
     if (!h) setThumb(null);
   }), []);
 
-  const edge = `${SPLIT_EDGE_RATIO * 100}%`;
-  const middle = `${(1 - SPLIT_EDGE_RATIO * 2) * 100}%`;
 
   // Половину сплита тащат за шапку. Тут своя, тихая манера: пунктир и подпись во всю панель —
   // язык ДРУГОГО жеста (вкладку из сайдбара кладут в первый раз и надо объяснять словами), а
@@ -139,23 +145,42 @@ function DropZones() {
     );
   }
 
-  // Приём вкладки из другого окна — одна зона во всю страницу, без деления на края: разделять
-  // экран чужой вкладкой на лету мы не умеем, и обещать этого нельзя.
-  if (zone === 'adopt') {
+  // Перетаскивание ВКЛАДКИ из сайдбара. Карточку в руке ведёт этот же оверлей — но только над
+  // областью контента: над сайдбаром её рисует сам чром (там он виден, и в списке из узких строк
+  // уместнее его собственный узкий призрак).
+  if (tab) {
+    const edgeW = Math.round(tab.width * SPLIT_EDGE_RATIO);
+    const rect = (x: number, w: number) => ({ left: x, top: 0, width: w, height: tab.height });
+    // Курсор приходит в координатах оверлея, то есть области контента. Отрицательный или за краем —
+    // человек над сайдбаром/тулбаром, и карточку там ведёт сам чром своим призраком.
+    const overContent = !!cursor
+      && cursor.x >= 0 && cursor.x <= tab.width
+      && cursor.y >= 0 && cursor.y <= tab.height;
     return (
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-        <Zone label="Перенести вкладку сюда" active style={{ left: 0, right: 0 }} />
+        {/* Приём вкладки из другого окна — одна зона во всю страницу, без деления на края:
+            разделять экран чужой вкладкой на лету мы не умеем, и обещать этого нельзя. */}
+        {zone === 'adopt' ? (
+          <Zone label="Перенести вкладку сюда" active rect={rect(0, tab.width)} />
+        ) : (
+          <>
+            <Zone label="Разделить экран" active={zone === 'split-left'} rect={rect(0, edgeW)} />
+            <Zone label="Открыть в новом окне" active={zone === 'window'} rect={rect(edgeW, tab.width - edgeW * 2)} />
+            <Zone label="Разделить экран" active={zone === 'split-right'} rect={rect(tab.width - edgeW, edgeW)} />
+          </>
+        )}
+        {cursor && overContent && tab.card && (
+          <DragGhost
+            x={cursor.x} y={cursor.y}
+            thumb={null} favicon={tab.card.favicon} title={tab.card.title}
+            label={null}
+          />
+        )}
       </div>
     );
   }
 
-  return (
-    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-      <Zone label="Разделить экран" active={zone === 'split-left'} style={{ left: 0, width: edge }} />
-      <Zone label="Открыть в новом окне" active={zone === 'window'} style={{ left: edge, width: middle }} />
-      <Zone label="Разделить экран" active={zone === 'split-right'} style={{ right: 0, width: edge }} />
-    </div>
-  );
+  return null;
 }
 
 createRoot(document.getElementById('root')!).render(<DropZones />);
