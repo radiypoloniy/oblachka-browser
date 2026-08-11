@@ -2811,6 +2811,12 @@ export class TabManager {
   exitSplit(tabId: string, keepId?: string): void {
     const pair = this.#pairContaining(tabId);
     if (!pair) return;
+    // Пары, о которой шёл жест перетаскивания, больше нет — значит и раскладка жеста ни при чём:
+    // дальше видимость и bounds расставляет сам exitSplit. Проверяем именно ЭТУ пару, иначе
+    // распад чужой пары (при мультисплите) обрывал бы чужой жест на полпути.
+    if (this.panelDrag && (pair.leftId === this.panelDrag.tabId || pair.rightId === this.panelDrag.tabId)) {
+      this.panelDrag = null;
+    }
     this.clearOrganizeSnapshot();
     const { leftId, rightId, activePanel } = pair;
 
@@ -2934,6 +2940,82 @@ export class TabManager {
     this.focusActiveView();
   }
 
+  // ── Раскладка на время перетаскивания панели за шапку (жест — в src/App.tsx) ───────────────
+  //
+  // Панель, которую несут, ВЫХОДИТ из раскладки: её вьюха скрывается, слот пустеет. Это не
+  // украшение, а буквальный смысл жеста — страница сейчас в руке, и показывает её карточка-снимок
+  // (src/components/SplitDragCard.tsx), а не остров. Пустой остров с подкрашенной шапкой и есть
+  // «отсюда взяли».
+  //
+  // preview — курсор над второй панелью: та переезжает в опустевший слот, и её собственный слот
+  // освобождается под то, что в руке. То есть раскладка ПОКАЗЫВАЕТ исход заранее, и отпускание
+  // уже ничего не двигает.
+  //
+  // ⚠️ Переезд — только по x, размер конечный сразу (см. slideViews): менять размер на каждом
+  // кадре нельзя, страница пересчитывала бы вёрстку. Именно поэтому раскладку удаётся показывать
+  // ЖИВЫМИ страницами, без снимков и подмен.
+  private panelDrag: { tabId: string; preview: boolean } | null = null;
+
+  // Единственная точка входа: renderer шлёт то же самое сообщение, что рисует подсветку (см.
+  // SPLIT_SWAP_HINT). Оно приходит на старте, на каждой смене зоны и ровно один раз в конце —
+  // с null, каким бы ни был исход, включая отмену. Поэтому и восстановление здесь надёжное:
+  // отдельного «конца жеста», который можно не позвать, у этой машинки нет.
+  applyPanelDragLayout(hint: { tabId: string; zone: 'swap' | 'sidebar' | null } | null): void {
+    if (!hint) { this.#endPanelDragLayout(); return; }
+
+    const pair = this.#pairContaining(hint.tabId);
+    // Припаркованную пару не трогаем: её вьюхи и так скрыты, двигать нечего.
+    if (!pair || pair !== this.#activePair()) return;
+
+    if (!this.panelDrag) {
+      this.panelDrag = { tabId: hint.tabId, preview: false };
+      const carried = this.tabMap.get(hint.tabId);
+      if (carried && this.isLiveHttpView(carried.view)) carried.view.setVisible(false);
+      // ⚠️ onChange тут НЕ зовём: модель не изменилась (вкладки и дерево те же), поменялась только
+      // видимость вьюхи. Лишний прогон синхронизации перерисовал бы весь чром посреди жеста.
+    }
+    if (this.panelDrag.tabId !== hint.tabId) return;
+
+    const wantPreview = hint.zone === 'swap';
+    if (this.panelDrag.preview === wantPreview) return;
+    this.panelDrag.preview = wantPreview;
+
+    const otherId = pair.leftId === hint.tabId ? pair.rightId : pair.leftId;
+    const otherSide: 'left' | 'right' = pair.leftId === otherId ? 'left' : 'right';
+    const carriedSide: 'left' | 'right' = otherSide === 'left' ? 'right' : 'left';
+    this.slideViews([{
+      tabId: otherId,
+      to:    this.#splitPaneBounds(wantPreview ? carriedSide : otherSide, pair.splitRatio),
+      fromX: this.#splitPaneBounds(wantPreview ? otherSide : carriedSide, pair.splitRatio).x,
+    }], 200);
+  }
+
+  // Конец жеста без исхода (отмена, отпускание в пустоту) — либо страховка после исхода, который
+  // состояние уже сбросил сам. Возвращает несомую панель в раскладку.
+  #endPanelDragLayout(): void {
+    const d = this.panelDrag;
+    if (!d) return;
+    this.panelDrag = null;
+
+    const pair = this.#pairContaining(d.tabId);
+    if (pair && pair === this.#activePair() && d.preview) {
+      // Вторая панель возвращается в свой слот проездом, а не прыжком.
+      const otherId = pair.leftId === d.tabId ? pair.rightId : pair.leftId;
+      const otherSide: 'left' | 'right' = pair.leftId === otherId ? 'left' : 'right';
+      const carriedSide: 'left' | 'right' = otherSide === 'left' ? 'right' : 'left';
+      this.slideViews([{
+        tabId: otherId,
+        to:    this.#splitPaneBounds(otherSide, pair.splitRatio),
+        fromX: this.#splitPaneBounds(carriedSide, pair.splitRatio).x,
+      }], 200);
+    }
+    // Видимость и bounds несомой панели вернёт repositionViews (applySplitBounds делает и то, и
+    // другое), а уехавшую он не сбьёт — она под защитой slideGen. Если пара к этому моменту
+    // ПРИПАРКОВАНА (человек успел уйти на другую вкладку), вьюхи обеих половин обязаны остаться
+    // скрытыми — repositionViews это и сделает, поэтому отдельного показа тут нет намеренно.
+    this.repositionViews();
+  }
+
   // Поменять половины пары местами (жест: половину тащат на её сестру в сайдбаре). Пара
   // остаётся парой, меняется только то, кто из двух слева. Работает и для ПРИПАРКОВАННОЙ
   // пары — правка чисто структурная, а repositionViews сам двигает только показываемую.
@@ -2955,6 +3037,11 @@ export class TabManager {
     const shown = pair === this.#activePair();
     const fromLeftX  = shown ? this.#splitPaneBounds('left',  pair.splitRatio).x : 0;
     const fromRightX = shown ? this.#splitPaneBounds('right', pair.splitRatio).x : 0;
+    // Жест уже показал исход раскладкой (см. applyPanelDragLayout): вторая панель стоит в чужом
+    // слоте, несомая скрыта. Тогда коммит НИЧЕГО не двигает — только возвращает несомую в
+    // освободившийся слот. Забираем состояние до сброса, дальше эта машинка не нужна.
+    const drag = this.panelDrag;
+    this.panelDrag = null;
 
     const found = this.#findTabParent(leftId);
     const node = found ? found.parent[found.idx] : null;
@@ -2968,12 +3055,20 @@ export class TabManager {
     pair.activePanel = pair.activePanel === 'left' ? 'right' : 'left';
 
     if (!shown) { this.onChange(); return; }
-    // Половины ПРОЕЗЖАЮТ в чужие слоты, а не телепортируются: жест «поменять местами» должен
-    // читаться как движение, иначе результат выглядит случившимся сам собой.
-    this.slideViews([
-      { tabId: rightId, to: this.#splitPaneBounds('left',  pair.splitRatio), fromX: fromRightX },
-      { tabId: leftId,  to: this.#splitPaneBounds('right', pair.splitRatio), fromX: fromLeftX  },
-    ], 220);
+
+    if (drag?.tabId === tabId && drag.preview) {
+      // Превью уже развезло панели: вторая на новом месте, несомая скрыта. Осталось вернуть её —
+      // ровно туда, где под курсором висела карточка. Никакого проезда: движение здесь читалось бы
+      // как «что-то поехало ещё раз», хотя раскладка уже была правильной до отпускания.
+      this.repositionViews();
+    } else {
+      // Путь без превью (например, пара была припаркована в момент старта): половины ПРОЕЗЖАЮТ в
+      // чужие слоты, а не телепортируются — иначе результат выглядит случившимся сам собой.
+      this.slideViews([
+        { tabId: rightId, to: this.#splitPaneBounds('left',  pair.splitRatio), fromX: fromRightX },
+        { tabId: leftId,  to: this.#splitPaneBounds('right', pair.splitRatio), fromX: fromLeftX  },
+      ], 220);
+    }
     this.onChange();
   }
 
@@ -3760,6 +3855,21 @@ export class TabManager {
     // Split: страницы двух панелей — по #splitPaneBounds (половина области контента минус шапка
     // и минус кант карточки).
     const { leftId, rightId, splitRatio } = pair;
+
+    // ⚠️ Пока панель несут (applyPanelDragLayout), раскладка другая, и она обязана переживать
+    // ресайз окна: без этой ветки первый же ResizeObserver рендерера вернул бы несомую страницу
+    // на место и показал её — прямо в руке у человека.
+    const drag = this.panelDrag;
+    if (drag && (drag.tabId === leftId || drag.tabId === rightId)) {
+      const otherId = drag.tabId === leftId ? rightId : leftId;
+      const otherSide: 'left' | 'right' = otherId === leftId ? 'left' : 'right';
+      const carriedSide: 'left' | 'right' = otherSide === 'left' ? 'right' : 'left';
+      this.applySplitBounds(otherId, this.#splitPaneBounds(drag.preview ? carriedSide : otherSide, splitRatio));
+      const carried = this.tabMap.get(drag.tabId);
+      if (carried && this.isLiveHttpView(carried.view)) carried.view.setVisible(false);
+      return;
+    }
+
     this.applySplitBounds(leftId,  this.#splitPaneBounds('left',  splitRatio));
     this.applySplitBounds(rightId, this.#splitPaneBounds('right', splitRatio));
   }

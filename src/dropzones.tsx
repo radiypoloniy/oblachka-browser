@@ -111,12 +111,9 @@ function DropZones() {
     });
     return (
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-        {/* Несомая панель: выцветает под цвет фона — «эта уехала». */}
-        <div style={{
-          ...panel(swap.source),
-          background: 'color-mix(in srgb, var(--app-bg) 55%, transparent)',
-          transition: 'background 140ms var(--ease-standard)',
-        }} />
+        {/* ⚠️ Приглушать несомую панель больше не нужно и нечем: она вышла из раскладки, её вьюха
+            скрыта, слот пустует (TabManager.applyPanelDragLayout). Пустой остров с подкрашенной
+            шапкой говорит «отсюда взяли» честнее, чем любая заливка поверх живой страницы. */}
         {/* Цель: пока курсор не над ней — едва заметный кант, как подсказка, что тут вообще
             что-то есть; над ней — заливка и уверенный кант. Анимируем только цвет. */}
         <div style={{

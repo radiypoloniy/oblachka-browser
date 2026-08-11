@@ -556,17 +556,32 @@ export default function App() {
     { tabId: string; zone: 'swap' | 'sidebar' | null } | null
   >(null);
 
+  // ⚠️ Пока превью показывает обмен, местами меняются и ЗАГОЛОВКИ. Страницы переезжает main
+  // (нативные вьюхи), а шапки рисует React — не поменяй мы их, под шапкой одной страницы стояла бы
+  // другая, и предпросмотр врал бы именами. Слоты при этом остаются на месте: превью — это картина
+  // будущего, а не досрочная правка модели.
+  const previewSwap = panelDrag?.zone === 'swap';
+  const headerLeft  = previewSwap ? splitRight : splitLeft;
+  const headerRight = previewSwap ? splitLeft  : splitRight;
+
   const endPanelDrag = useCallback((apply: boolean) => {
     const d = panelDragRef.current;
     panelDragRef.current = null;
     if (!d?.started) return;
     if (d.cursorFrame !== null) cancelAnimationFrame(d.cursorFrame);
     setPanelDrag(null);
-    void window.oblako.setSplitSwapHint(null);
     window.oblako.sendSplitDragCursor(null);
-    if (!apply) return;
-    if (d.zone === 'swap')         void window.oblako.swapSplitPanels(d.tabId);
-    else if (d.zone === 'sidebar') void window.oblako.exitSplit(d.tabId, d.siblingId);
+
+    // ⚠️ ИСХОД — ПЕРВЫМ, снятие подсветки — вторым, и порядок тут не косметический. Раскладку
+    // жеста в main держит то же сообщение, что и подсветку (см. SPLIT_SWAP_HINT): сними мы её
+    // раньше, панели сначала прыгнули бы в исходное положение, и только потом применился бы
+    // обмен — то есть на глазах уехало бы туда и обратно. А исход, наоборот, забирает раскладку
+    // себе: он уже знает, что вторая панель стоит на новом месте.
+    if (apply) {
+      if (d.zone === 'swap')         void window.oblako.swapSplitPanels(d.tabId);
+      else if (d.zone === 'sidebar') void window.oblako.exitSplit(d.tabId, d.siblingId);
+    }
+    void window.oblako.setSplitSwapHint(null);
   }, []);
 
   const handlePanelDragPointerDown = useCallback((
@@ -613,16 +628,14 @@ export default function App() {
       // становиться перетаскиванием.
       if (Math.abs(e.clientX - d.startX) < 5 && Math.abs(e.clientY - d.startY) < 5) return;
       d.started = true;
-      const own   = (d.side === 'left' ? leftPanelRef  : rightPanelRef).current;
       const other = (d.side === 'left' ? rightPanelRef : leftPanelRef).current;
-      const ownRect = own?.getBoundingClientRect() ?? null;
       d.otherRect   = other?.getBoundingClientRect() ?? null;
       d.contentLeft = contentRef.current?.getBoundingClientRect().left ?? 0;
       // Координаты окна как есть: оверлей на время жеста растянут на всё окно (см. SplitSwapHint).
       const toRect = (r: DOMRect): ContentBounds =>
         ({ x: r.left, y: r.top, width: r.width, height: r.height });
-      d.hint = d.otherRect && ownRect
-        ? { target: toRect(d.otherRect), source: toRect(ownRect), title: d.title, zone: null }
+      d.hint = d.otherRect
+        ? { tabId: d.tabId, target: toRect(d.otherRect), title: d.title, zone: null }
         : null;
       if (d.hint) void window.oblako.setSplitSwapHint(d.hint);
       // Снимок мог прийти ДО начала жеста — тогда оверлея ещё не существовало и сообщение о нём
@@ -1009,13 +1022,13 @@ export default function App() {
                 }}
               >
                 <SplitPanelHeader
-                  tab={splitLeft!} onClose={() => close(splitLeft!.id)}
-                  active={activeId === splitLeft!.id}
-                  dragging={panelDrag?.tabId === splitLeft!.id}
+                  tab={headerLeft!} onClose={() => close(headerLeft!.id)}
+                  active={activeId === headerLeft!.id}
+                  dragging={panelDrag?.tabId === headerLeft!.id}
                   dragHandlers={{
                     onPointerDown: handlePanelDragPointerDown(
-                      splitLeft!.id, splitRight!.id, 'left',
-                      splitLeft!.title || splitLeft!.url || 'Вкладка',
+                      headerLeft!.id, headerRight!.id, 'left',
+                      headerLeft!.title || headerLeft!.url || 'Вкладка',
                     ),
                     onPointerMove: handlePanelDragPointerMove,
                     onPointerUp: handlePanelDragPointerUp,
@@ -1062,13 +1075,13 @@ export default function App() {
                 }}
               >
                 <SplitPanelHeader
-                  tab={splitRight!} onClose={() => close(splitRight!.id)}
-                  active={activeId === splitRight!.id}
-                  dragging={panelDrag?.tabId === splitRight!.id}
+                  tab={headerRight!} onClose={() => close(headerRight!.id)}
+                  active={activeId === headerRight!.id}
+                  dragging={panelDrag?.tabId === headerRight!.id}
                   dragHandlers={{
                     onPointerDown: handlePanelDragPointerDown(
-                      splitRight!.id, splitLeft!.id, 'right',
-                      splitRight!.title || splitRight!.url || 'Вкладка',
+                      headerRight!.id, headerLeft!.id, 'right',
+                      headerRight!.title || headerRight!.url || 'Вкладка',
                     ),
                     onPointerMove: handlePanelDragPointerMove,
                     onPointerUp: handlePanelDragPointerUp,

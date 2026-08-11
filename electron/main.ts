@@ -2283,7 +2283,16 @@ function registerIpc() {
   ipcMain.handle(IPC.TAB_SPLIT_SWAP,  (e, tabId: string)           => tabsOf(e)?.swapSplitPanels(tabId));
   // Подсветка панели-цели при перетаскивании половины за шапку. Зону считает сам чром (жест держит
   // указатель через setPointerCapture, см. App.tsx) — от main нужна только картинка поверх страницы.
-  ipcMain.handle(IPC.SPLIT_SWAP_HINT, (e, hint: SplitSwapHint | null) => { const w = winOf(e); if (w) setSwapHint(w, hint); });
+  // Одно сообщение на две работы: оверлей рисует подсветку и карточку, TabManager перестраивает
+  // раскладку панелей (несомая уходит из неё, вторая показывает исход). Специально одно, а не два:
+  // renderer гарантированно шлёт его в конце жеста с null, каким бы исход ни был, — значит и
+  // возврат раскладки не может «не позваться».
+  ipcMain.handle(IPC.SPLIT_SWAP_HINT, (e, hint: SplitSwapHint | null) => {
+    const w = winOf(e);
+    if (!w) return;
+    setSwapHint(w, hint);
+    tabsOf(e)?.applyPanelDragLayout(hint);
+  });
   ipcMain.on(IPC.SPLIT_DRAG_CURSOR, (e, pos: { x: number; y: number } | null) => { const w = winOf(e); if (w) setSwapCursor(w, pos); });
   ipcMain.handle(IPC.SPLIT_CAPTURE_PANE, (e, tabId: string, width: number, maxHeight: number) => tabsOf(e)?.capturePaneThumb(tabId, width, maxHeight) ?? null);
   ipcMain.on(IPC.SPLIT_DRAG_THUMB, (e, thumb: string | null) => { const w = winOf(e); if (w) setSwapThumb(w, thumb); });
