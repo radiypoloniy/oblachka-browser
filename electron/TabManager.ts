@@ -11,7 +11,7 @@ import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngin
 import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
 import type { BangStore } from './BangStore';
-import { ISLAND_GAP, SPLIT_HEADER_HEIGHT } from '../shared/layout';
+import { ISLAND_GAP, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
 import { TRANSLATE_TARGETS } from '../shared/translateLangs';
 import { hostOfUrl } from '../shared/rules';
 import { isExternalAppUrl } from './ExternalProtocol';
@@ -2790,7 +2790,7 @@ export class TabManager {
     // правого края — так появление сплита читается как действие, а не как щелчок.
     this.repositionViews();
     const right = this.getTabViewBounds(rightId);
-    this.slideIn(rightId, right, this.bounds.x + this.bounds.width);
+    this.slideViews([{ tabId: rightId, to: right, fromX: this.bounds.x + this.bounds.width }]);
     this.onChange();
     this.focusActiveView();
   }
@@ -2917,6 +2917,11 @@ export class TabManager {
     const pair = this.#pairContaining(tabId);
     if (!pair) return;
     const { leftId, rightId } = pair;
+    // Показываемая пара разъезжается по новым слотам на глазах (ниже) — значит откуда уезжать,
+    // надо запомнить ДО правки модели. Припаркованную двигать нечем, у неё вьюхи скрыты.
+    const shown = pair === this.#activePair();
+    const fromLeftX  = shown ? this.#splitPaneBounds('left',  pair.splitRatio).x : 0;
+    const fromRightX = shown ? this.#splitPaneBounds('right', pair.splitRatio).x : 0;
 
     const found = this.#findTabParent(leftId);
     const node = found ? found.parent[found.idx] : null;
@@ -2929,7 +2934,13 @@ export class TabManager {
     pair.rightId = leftId;
     pair.activePanel = pair.activePanel === 'left' ? 'right' : 'left';
 
-    this.repositionViews();
+    if (!shown) { this.onChange(); return; }
+    // Половины ПРОЕЗЖАЮТ в чужие слоты, а не телепортируются: жест «поменять местами» должен
+    // читаться как движение, иначе результат выглядит случившимся сам собой.
+    this.slideViews([
+      { tabId: rightId, to: this.#splitPaneBounds('left',  pair.splitRatio), fromX: fromRightX },
+      { tabId: leftId,  to: this.#splitPaneBounds('right', pair.splitRatio), fromX: fromLeftX  },
+    ], 220);
     this.onChange();
   }
 
@@ -3616,34 +3627,51 @@ export class TabManager {
       });
   }
 
-  // Вью, которая сейчас въезжает, — repositionViews её не трогает, иначе первый же
-  // ResizeObserver рендерера поставил бы её на место посреди движения.
-  private slidingId: string | null = null;
+  // Вьюхи, которые сейчас едут: repositionViews их не трогает, иначе первый же ResizeObserver
+  // рендерера поставил бы их на место посреди движения. Не одна, а набор — обмен половин сплита
+  // двигает ДВЕ вьюхи разом. Значение — номер поколения: новый жест поверх незакончившегося
+  // обязан отменить прошлый, иначе два таймера тянули бы одну вьюху в разные стороны.
+  private slideGen = new Map<string, number>();
 
-  // Въезд панели сплита справа. ⚠️ Двигаем ТОЛЬКО x, размер задан сразу конечный: смена
-  // размера заставляет страницу пересчитывать вёрстку на каждом кадре (два тяжёлых сайта
-  // разом — гарантированные рывки), а сдвиг по горизонтали для страницы бесплатен, она о
-  // нём вовсе не знает. Поэтому панель не «разворачивается», а именно приезжает.
-  private slideIn(tabId: string, to: ContentBounds, fromX: number): void {
-    const tab = this.tabMap.get(tabId);
-    if (!tab || !this.isHttpView(tab.view)) return;
-    const view = tab.view;
-    const DUR = 240;
+  // Проезд вьюх по X к новым слотам. Используется въездом панели сплита (enterSplit) и обменом
+  // половин местами (swapSplitPanels).
+  //
+  // ⚠️ Двигаем ТОЛЬКО x, размер задан сразу конечный: смена размера заставляет страницу
+  // пересчитывать вёрстку на каждом кадре (два тяжёлых сайта разом — гарантированные рывки), а
+  // сдвиг по горизонтали для страницы бесплатен, она о нём вовсе не знает. Поэтому панель не
+  // «разворачивается», а именно приезжает.
+  private slideViews(moves: Array<{ tabId: string; to: ContentBounds; fromX: number }>, durMs = 240): void {
+    const live = moves
+      .map((m) => ({ ...m, tab: this.tabMap.get(m.tabId) }))
+      .filter((m) => !!m.tab && this.isHttpView(m.tab.view))
+      .map((m) => ({ ...m, view: m.tab!.view as WebContentsView }));
+    if (!live.length) return;
+
+    const gens = new Map<string, number>();
+    for (const m of live) {
+      const gen = (this.slideGen.get(m.tabId) ?? 0) + 1;
+      this.slideGen.set(m.tabId, gen);
+      gens.set(m.tabId, gen);
+      m.view.setBounds({ x: Math.round(m.fromX), y: Math.round(m.to.y), width: Math.round(m.to.width), height: Math.round(m.to.height) });
+      m.view.setBorderRadius(SPLIT_PANE_RADIUS); // едут только панели сплита
+    }
+
     const start = Date.now();
-    this.slidingId = tabId;
-
     const step = (): void => {
-      if (this.slidingId !== tabId || view.webContents.isDestroyed()) return;
-      const t = Math.min(1, (Date.now() - start) / DUR);
+      const t = Math.min(1, (Date.now() - start) / durMs);
       // Та же кривая, что у --ease-out в токенах: быстрый старт, мягкая остановка.
       const e = 1 - Math.pow(1 - t, 3);
-      const x = Math.round(fromX + (to.x - fromX) * e);
-      view.setBounds({ x, y: Math.round(to.y), width: Math.round(to.width), height: Math.round(to.height) });
-      if (t < 1) setTimeout(step, 16);
-      else this.slidingId = null;
+      let alive = false;
+      for (const m of live) {
+        if (this.slideGen.get(m.tabId) !== gens.get(m.tabId)) continue; // жест перебит новым
+        if (m.view.webContents.isDestroyed()) { this.slideGen.delete(m.tabId); continue; }
+        const x = Math.round(m.fromX + (m.to.x - m.fromX) * e);
+        m.view.setBounds({ x, y: Math.round(m.to.y), width: Math.round(m.to.width), height: Math.round(m.to.height) });
+        if (t < 1) alive = true;
+        else this.slideGen.delete(m.tabId);
+      }
+      if (alive) setTimeout(step, 16);
     };
-    view.setBounds({ x: Math.round(fromX), y: Math.round(to.y), width: Math.round(to.width), height: Math.round(to.height) });
-    view.setBorderRadius(CONTENT_CORNER_RADIUS);
     setTimeout(step, 16);
   }
 
@@ -3663,19 +3691,22 @@ export class TabManager {
     // полный this.bounds, как для обычной невидимой вкладки.
     const pair = this.#pairContaining(tabId);
     if (!pair || pair !== this.#activePair()) return this.bounds;
-    const { leftId, splitRatio } = pair;
+    return this.#splitPaneBounds(tabId === pair.leftId ? 'left' : 'right', pair.splitRatio);
+  }
+
+  // Прямоугольник СТРАНИЦЫ одной панели сплита: половина области контента минус полоса заголовка
+  // сверху (её рисует React, см. shared/layout.ts) и минус кант карточки со всех сторон —
+  // разбор канта там же, в SPLIT_PANE_INSET. Одна формула на getTabViewBounds и repositionViews:
+  // раньше она стояла в обоих местах двумя копиями и при любой правке разъезжалась.
+  #splitPaneBounds(side: 'left' | 'right', splitRatio: number): ContentBounds {
     const leftWidth = Math.floor((this.bounds.width - ISLAND_GAP) * splitRatio);
-    // +/-SPLIT_HEADER_HEIGHT: над каждой split-панелью — полоса заголовка (favicon/title/×),
-    // рисуется React в App.tsx в освободившейся сверху зоне (см. shared/layout.ts).
-    if (tabId === leftId) {
-      return {
-        x: this.bounds.x, y: this.bounds.y + SPLIT_HEADER_HEIGHT,
-        width: leftWidth, height: this.bounds.height - SPLIT_HEADER_HEIGHT,
-      };
-    }
+    const panelX = side === 'left' ? this.bounds.x : this.bounds.x + leftWidth + ISLAND_GAP;
+    const panelW = side === 'left' ? leftWidth : this.bounds.width - leftWidth - ISLAND_GAP;
     return {
-      x: this.bounds.x + leftWidth + ISLAND_GAP, y: this.bounds.y + SPLIT_HEADER_HEIGHT,
-      width: this.bounds.width - leftWidth - ISLAND_GAP, height: this.bounds.height - SPLIT_HEADER_HEIGHT,
+      x: panelX + SPLIT_PANE_INSET,
+      y: this.bounds.y + SPLIT_HEADER_HEIGHT + SPLIT_PANE_INSET,
+      width:  Math.max(0, panelW - SPLIT_PANE_INSET * 2),
+      height: Math.max(0, this.bounds.height - SPLIT_HEADER_HEIGHT - SPLIT_PANE_INSET * 2),
     };
   }
 
@@ -3693,25 +3724,16 @@ export class TabManager {
       }
       return;
     }
-    // Split: разделяем bounds по текущему splitRatio с ISLAND_GAP-зазором. y/height дополнительно
-    // урезаны на SPLIT_HEADER_HEIGHT сверху — та же полоса заголовка, что и в getTabViewBounds.
+    // Split: страницы двух панелей — по #splitPaneBounds (половина области контента минус шапка
+    // и минус кант карточки).
     const { leftId, rightId, splitRatio } = pair;
-    const leftWidth = Math.floor((this.bounds.width - ISLAND_GAP) * splitRatio);
-    const leftB:  ContentBounds = {
-      x: this.bounds.x, y: this.bounds.y + SPLIT_HEADER_HEIGHT,
-      width: leftWidth, height: this.bounds.height - SPLIT_HEADER_HEIGHT,
-    };
-    const rightB: ContentBounds = {
-      x: this.bounds.x + leftWidth + ISLAND_GAP, y: this.bounds.y + SPLIT_HEADER_HEIGHT,
-      width: this.bounds.width - leftWidth - ISLAND_GAP, height: this.bounds.height - SPLIT_HEADER_HEIGHT,
-    };
-    this.applySplitBounds(leftId, leftB);
-    this.applySplitBounds(rightId, rightB);
+    this.applySplitBounds(leftId,  this.#splitPaneBounds('left',  splitRatio));
+    this.applySplitBounds(rightId, this.#splitPaneBounds('right', splitRatio));
   }
 
   // Позиционирует одну split-панель; при ошибке скрывает вьюху (React рисует TabError).
   private applySplitBounds(id: string, b: ContentBounds): void {
-    if (this.slidingId === id) return;   // панель ещё въезжает — не сбивать её на месте
+    if (this.slideGen.has(id)) return;   // панель ещё едет — не сбивать её на месте
     const tab = this.tabMap.get(id);
     if (!tab || !this.isHttpView(tab.view)) return;
     if (this.errors.has(id)) { tab.view.setVisible(false); return; }
@@ -3723,7 +3745,7 @@ export class TabManager {
       width: Math.max(0, Math.round(b.width)),
       height: Math.max(0, Math.round(b.height)),
     });
-    tab.view.setBorderRadius(CONTENT_CORNER_RADIUS);
+    tab.view.setBorderRadius(SPLIT_PANE_RADIUS);
   }
 
   private applyBounds(view: WebContentsView) {

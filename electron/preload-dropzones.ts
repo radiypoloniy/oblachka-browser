@@ -18,4 +18,11 @@ contextBridge.exposeInMainWorld('dropzones', {
     ipcRenderer.on('dropzones:swap', handler)
     return () => ipcRenderer.removeListener('dropzones:swap', handler)
   },
+  // Курсор того же жеста: призрак обязан ехать и над страницей, а нарисовать его там может
+  // только эта вью.
+  onCursor: (cb: (pos: { x: number; y: number } | null) => void) => {
+    const handler = (_e: unknown, pos: { x: number; y: number } | null) => cb(pos)
+    ipcRenderer.on('dropzones:cursor', handler)
+    return () => ipcRenderer.removeListener('dropzones:cursor', handler)
+  },
 })

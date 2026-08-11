@@ -22,6 +22,7 @@ declare global {
     dropzones: {
       onZone: (cb: (zone: ZoneVisual | null) => void) => () => void;
       onSwapHint: (cb: (hint: SplitSwapHint | null) => void) => () => void;
+      onCursor: (cb: (pos: { x: number; y: number } | null) => void) => () => void;
     };
   }
 }
@@ -30,13 +31,11 @@ declare global {
 // а вью по ней же рисует. Разъедутся — подсветка будет обещать не то, что произойдёт.
 const SPLIT_EDGE_RATIO = 0.35;
 
-// top/bottom по умолчанию растягивают зону на всю высоту (так у зон дропа вкладки); подсветка
-// панели-цели задаёт свой прямоугольник целиком и эти два значения перебивает через style.
 function Zone({ label, active, style }: { label: string; active: boolean; style: React.CSSProperties }) {
   return (
     <div style={{
-      position: 'absolute', top: 0, bottom: 0,
       ...style,
+      position: 'absolute', top: 0, bottom: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       // Неактивная зона — едва заметная подсказка, что тут вообще что-то есть; активная
       // заливается акцентом. Анимируем только цвет и прозрачность (см. правило про анимации).
@@ -59,30 +58,71 @@ function Zone({ label, active, style }: { label: string; active: boolean; style:
   );
 }
 
+// Призрак несомой панели — та же пилюля, что чром рисует над собой (src/App.tsx): жест один, и на
+// границе области контента он обязан перетекать незаметно, а не подменяться другой картинкой.
+//
+// ⚠️ transition на transform — не украшение. Координаты приезжают из чрома через IPC, то есть с
+// опозданием на кадр-другой; без сглаживания призрак дёргался бы рывками. С ним отставание
+// читается как инерция карточки в руке.
+function DragGhost({ x, y, label }: { x: number; y: number; label: string }) {
+  return (
+    <div style={{
+      position: 'absolute', left: 0, top: 0,
+      transform: `translate(${x + 12}px, ${y + 12}px)`,
+      transition: 'transform 70ms linear',
+      display: 'flex', alignItems: 'center', gap: 6,
+      maxWidth: 280, padding: '6px 12px',
+      borderRadius: 'var(--radius-pill)',
+      background: 'var(--surface-solid)',
+      border: '1px solid var(--divider)',
+      boxShadow: 'var(--shadow-pop)',
+      fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
+      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+    }}>{label}</div>
+  );
+}
+
 function DropZones() {
   const [zone, setZone] = useState<ZoneVisual | null>(null);
   const [swap, setSwap] = useState<SplitSwapHint | null>(null);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => window.dropzones.onZone(setZone), []);
   useEffect(() => window.dropzones.onSwapHint(setSwap), []);
+  useEffect(() => window.dropzones.onCursor(setCursor), []);
 
   const edge = `${SPLIT_EDGE_RATIO * 100}%`;
   const middle = `${(1 - SPLIT_EDGE_RATIO * 2) * 100}%`;
 
-  // Половину сплита тащат за шапку: подсвечена ровно вторая панель, и подпись обещает
-  // единственный исход этого жеста над ней. Прямоугольник приходит в координатах области
-  // контента, а вью накрыта ровно ею — пересчитывать нечего (см. SplitSwapHint).
+  // Половину сплита тащат за шапку. Тут своя, тихая манера: пунктир и подпись во всю панель —
+  // язык ДРУГОГО жеста (вкладку из сайдбара кладут в первый раз и надо объяснять словами), а
+  // здесь человек уже держит панель в руке и ведёт её к цели. Значит: несомую панель приглушаем,
+  // цель заливаем акцентом, слова уносим на призрака под курсором — он и без того перед глазами.
   if (swap) {
+    const panel = (r: typeof swap.target): React.CSSProperties => ({
+      position: 'absolute', left: r.x, top: r.y, width: r.width, height: r.height,
+      borderRadius: 'var(--radius-island)',
+    });
     return (
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-        <Zone
-          label="Поменять местами"
-          active={swap.active}
-          style={{
-            left: swap.rect.x, top: swap.rect.y,
-            width: swap.rect.width, height: swap.rect.height,
-            bottom: 'auto',
-          }}
-        />
+        {/* Несомая панель: выцветает под цвет фона — «эта уехала». */}
+        <div style={{
+          ...panel(swap.source),
+          background: 'color-mix(in srgb, var(--app-bg) 55%, transparent)',
+          transition: 'background 140ms var(--ease-standard)',
+        }} />
+        {/* Цель: пока курсор не над ней — едва заметный кант, как подсказка, что тут вообще
+            что-то есть; над ней — заливка и уверенный кант. Анимируем только цвет. */}
+        <div style={{
+          ...panel(swap.target),
+          background: swap.active
+            ? 'color-mix(in srgb, var(--accent) 12%, transparent)'
+            : 'color-mix(in srgb, var(--accent) 3%, transparent)',
+          boxShadow: swap.active
+            ? 'inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 50%, transparent)'
+            : 'inset 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent)',
+          transition: 'background 140ms var(--ease-standard), box-shadow 140ms var(--ease-standard)',
+        }} />
+        {cursor && <DragGhost x={cursor.x} y={cursor.y} label={swap.active ? 'Поменять местами' : swap.title} />}
       </div>
     );
   }

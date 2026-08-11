@@ -189,12 +189,23 @@ export function setSwapHint(win: BrowserWindow, hint: SplitSwapHint | null): voi
     // Гасим ПЕРЕД снятием вью: она переживает жест и в следующий раз показалась бы с прошлой
     // подсветкой ещё до первого сообщения (тот же порядок, что в updateDrag).
     sendSwapHint(st, null);
+    setSwapCursor(win, null);
     hideOverlayIn(st);
     return;
   }
   showOverlayIn(st);
-  sendZone(st, null); // вью переживает жесты: чужая подсветка могла остаться с прошлого раза
+  // Вью переживает жесты, поэтому обнуляем ВСЁ, что могло остаться с прошлого раза: и чужую
+  // подсветку, и позицию призрака (иначе он на один кадр мелькнёт там, где его отпустили).
+  sendZone(st, null);
+  setSwapCursor(win, null);
   sendSwapHint(st, hint);
+}
+
+// Курсор для призрака, который едет ПОВЕРХ страницы (чром там не виден). Поток на каждый кадр
+// драга — поэтому ничего, кроме пересылки: решения принимает renderer, вью только рисует.
+export function setSwapCursor(win: BrowserWindow, pos: { x: number; y: number } | null): void {
+  const wc = perWindow.get(win.id)?.view?.webContents;
+  if (wc && !wc.isDestroyed()) wc.send('dropzones:cursor', pos);
 }
 
 // Один тик слежения: где курсор, что из этого следует и в каком окне это рисовать.

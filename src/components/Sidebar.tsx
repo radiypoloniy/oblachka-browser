@@ -1676,11 +1676,22 @@ export default function Sidebar({
     return () => onReorder('normal', newOrder);
   };
 
-  // Возврат половины сплита: пунктир акцентом ВНУТРЬ (outline с отрицательным offset, не border —
-  // рамка не должна двигать раскладку острова). Один стиль на оба режима панели.
-  const returnHintStyle: React.CSSProperties | null = returnHint
-    ? { outline: '2px dashed var(--accent)', outlineOffset: -3 }
-    : null;
+  // Возврат половины сплита: остров отзывается мягкой заливкой акцентом и волосяным кантом внутрь
+  // (box-shadow, не border — рамка сдвинула бы раскладку). Тот же тихий язык, что у панели-цели в
+  // рабочей области (src/dropzones.tsx): человек уже держит панель в руке, кричать не нужно.
+  // Пунктир тут был и читался как ошибка валидации, а не как «сюда можно».
+  //
+  // ⚠️ Стиль отдаётся ВСЕГДА, а не только под подсветку: без базового значения box-shadow
+  // переход не с чего начинать, и подсветка появлялась бы рывком.
+  // ⚠️ Заливку акцентом НЕ трогаем: фон острова — стеклянный градиент из glassPlate/tintedAside,
+  // и подмена background его бы стёрла. Кант и без неё говорит достаточно, а слова несёт призрак
+  // под курсором («Вернуть в панель», см. App.tsx).
+  const returnHintStyle: React.CSSProperties = {
+    boxShadow: returnHint
+      ? 'var(--shadow-island), inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent)'
+      : 'var(--shadow-island)',
+    transition: 'box-shadow 140ms var(--ease-standard)',
+  };
 
   // ── Свёрнутый режим: узкая полоса иконок ──
   if (collapsed) {

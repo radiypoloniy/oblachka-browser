@@ -396,6 +396,10 @@ export const IPC = {
   TAB_SPLIT_RATIO:  'tab:split-ratio',  // renderer → main: новое соотношение панелей при drag
   TAB_SPLIT_SWAP:   'tab:split-swap',   // renderer → main: поменять половины пары местами (ширины слотов остаются)
   SPLIT_SWAP_HINT:  'split:swap-hint',  // renderer → main: подсветить панель-цель, пока половину тащат за шапку
+  // renderer → main (поток, send): курсор в координатах области контента, null — ушёл с неё.
+  // Нужен, чтобы призрак ехал за курсором и НАД страницей: там его рисует оверлей, потому что
+  // чром в области контента не виден. Один раз на кадр, только пока идёт перетаскивание.
+  SPLIT_DRAG_CURSOR: 'split:drag-cursor',
 
   // Переупорядочивание вкладок drag-and-drop
   TAB_REORDER: 'tab:reorder',           // renderer → main: { section, orderedIds } после drop
@@ -1837,12 +1841,13 @@ export interface TabDropResult {
 // перетаскивание за шапку держит указатель через setPointerCapture, и pointermove приходит в чром
 // даже над нативными вьюхами (см. разделитель сплита в App.tsx) — опрашивать курсор в main незачем.
 // Наружу, в main, уходит только то, что чром нарисовать физически не может: подсветка.
+// Все прямоугольники — в координатах ОБЛАСТИ КОНТЕНТА (её же меряет setContentBounds): оверлей
+// накрыт ровно ею, поэтому пересчёт не нужен ни на той стороне, ни на этой.
 export interface SplitSwapHint {
-  // Прямоугольник панели-цели в координатах ОБЛАСТИ КОНТЕНТА (её же меряет setContentBounds) —
-  // оверлей накрыт ровно ею, поэтому пересчёт не нужен ни на той, ни на этой стороне.
-  rect: ContentBounds;
-  // Курсор над этой панелью: исход «поменять местами» состоится, если отпустить сейчас.
-  active: boolean;
+  target: ContentBounds;  // панель-цель: мягкая заливка акцентом и волосяной кант
+  source: ContentBounds;  // панель, которую несут: приглушается, чтобы читалось «эта уехала»
+  title: string;          // подпись на призраке — он же рисуется оверлеем, см. SPLIT_DRAG_CURSOR
+  active: boolean;        // курсор над целью: отпустишь сейчас — половины поменяются местами
 }
 
 export interface OblakoApi {
@@ -1965,6 +1970,8 @@ export interface OblakoApi {
   swapSplitPanels(tabId: string): Promise<void>;    // половины пары меняются местами; ширины слотов не меняются
   // Подсветка панели-цели во время перетаскивания половины за шапку; null — убрать оверлей.
   setSplitSwapHint(hint: SplitSwapHint | null): Promise<void>;
+  // Курсор для призрака, который едет поверх страницы; null — курсор ушёл с области контента.
+  sendSplitDragCursor(pos: { x: number; y: number } | null): void;
 
   // Переупорядочивание drag-and-drop
   reorderTabs(section: 'normal' | 'pinned', orderedIds: string[]): Promise<void>;

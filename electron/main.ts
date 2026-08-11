@@ -103,7 +103,7 @@ import { pickFragmentByMeaning, highlightCandidates } from './SmartFind';
 import { RuleStore } from './RuleStore';
 import { applyRules } from './RuleEngine';
 import { parsePhraseToRule } from './RuleParser';
-import { startTabDrag, endTabDrag, syncDropZoneBounds, setSwapHint } from './DropZoneManager';
+import { startTabDrag, endTabDrag, syncDropZoneBounds, setSwapHint, setSwapCursor } from './DropZoneManager';
 import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
 import { suggestTabTitle } from './TabRenamer';
 import {
@@ -2284,6 +2284,7 @@ function registerIpc() {
   // Подсветка панели-цели при перетаскивании половины за шапку. Зону считает сам чром (жест держит
   // указатель через setPointerCapture, см. App.tsx) — от main нужна только картинка поверх страницы.
   ipcMain.handle(IPC.SPLIT_SWAP_HINT, (e, hint: SplitSwapHint | null) => { const w = winOf(e); if (w) setSwapHint(w, hint); });
+  ipcMain.on(IPC.SPLIT_DRAG_CURSOR, (e, pos: { x: number; y: number } | null) => { const w = winOf(e); if (w) setSwapCursor(w, pos); });
 
   ipcMain.handle(IPC.TAB_REORDER,
     (e, section: 'normal' | 'pinned', orderedIds: string[]) =>
