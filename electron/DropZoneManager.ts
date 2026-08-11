@@ -13,7 +13,7 @@
 import { WebContentsView, screen } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
-import type { ContentBounds, TabDropResult, TabDropZone } from '../shared/ipc';
+import type { ContentBounds, SplitSwapHint, TabDropResult, TabDropZone } from '../shared/ipc';
 import { contextForWindow, allContexts } from './WindowRegistry';
 
 // Что подсвечивать во вью. Стороны разделены только ради картинки: подсвечивать оба края разом
@@ -170,6 +170,33 @@ function sendZone(st: WindowDropZones | null, zone: ZoneVisual | null): void {
   if (wc && !wc.isDestroyed()) wc.send('dropzones:zone', zone);
 }
 
+function sendSwapHint(st: WindowDropZones | null, hint: SplitSwapHint | null): void {
+  const wc = st?.view?.webContents;
+  if (wc && !wc.isDestroyed()) wc.send('dropzones:swap', hint);
+}
+
+// Подсветка панели-ЦЕЛИ, пока половину сплита тащат за её шапку. Второй жест на том же оверлее —
+// но БЕЗ опроса курсора: этот драг держит указатель через setPointerCapture, и зону считает сам
+// чром (см. shared/ipc.ts::SplitSwapHint). Отсюда наружу нужна ровно одна услуга — «нарисуй вот
+// этот прямоугольник поверх страницы», потому что чром над областью контента не виден.
+//
+// ⚠️ Пока идёт перетаскивание вкладки (startTabDrag), подсветку не трогаем: мышь одна, два жеста
+// одновременно невозможны, а вот перебить чужой оверлей на полпути — вполне.
+export function setSwapHint(win: BrowserWindow, hint: SplitSwapHint | null): void {
+  if (drag) return;
+  const st = stateFor(win);
+  if (!hint) {
+    // Гасим ПЕРЕД снятием вью: она переживает жест и в следующий раз показалась бы с прошлой
+    // подсветкой ещё до первого сообщения (тот же порядок, что в updateDrag).
+    sendSwapHint(st, null);
+    hideOverlayIn(st);
+    return;
+  }
+  showOverlayIn(st);
+  sendZone(st, null); // вью переживает жесты: чужая подсветка могла остаться с прошлого раза
+  sendSwapHint(st, hint);
+}
+
 // Один тик слежения: где курсор, что из этого следует и в каком окне это рисовать.
 function updateDrag(): void {
   if (!drag) return;
@@ -213,6 +240,7 @@ export function startTabDrag(win: BrowserWindow): void {
   const st = stateFor(win);
   if (st.content.width === 0 || st.content.height === 0) return; // контента нет (настройки/история)
   drag = { source: st, shown: null, zone: null, target: null, timer: null };
+  sendSwapHint(st, null); // см. setSwapHint: вью общая, подсветка прошлого жеста могла остаться
   updateDrag();
   drag.timer = setInterval(updateDrag, POLL_MS);
 }

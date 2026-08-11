@@ -2901,6 +2901,38 @@ export class TabManager {
     this.focusActiveView();
   }
 
+  // Поменять половины пары местами (жест: половину тащат на её сестру в сайдбаре). Пара
+  // остаётся парой, меняется только то, кто из двух слева. Работает и для ПРИПАРКОВАННОЙ
+  // пары — правка чисто структурная, а repositionViews сам двигает только показываемую.
+  //
+  // ⚠️ Меняются ТРИ вещи, а не одна: leftId/rightId в splitPairs (по ним считаются bounds),
+  // leftTabId/rightTabId в SplitPairNode (по нему сайдбар рисует ячейки, а сессия сохраняет
+  // порядок) и activePanel — он обязан указывать на сторону, где стоит activeId, иначе
+  // exitSplit без keepId и Ctrl-переключение панелей начнут врать.
+  //
+  // ⚠️ splitRatio НЕ трогаем: слоты сохраняют свою ширину, переезжает только содержимое (так
+  // же в Edge). «Унести ширину с собой» было бы ratio = 1 − ratio — сознательно не делаем,
+  // иначе жест «поменять местами» заодно молча перекраивает раскладку.
+  swapSplitPanels(tabId: string): void {
+    const pair = this.#pairContaining(tabId);
+    if (!pair) return;
+    const { leftId, rightId } = pair;
+
+    const found = this.#findTabParent(leftId);
+    const node = found ? found.parent[found.idx] : null;
+    if (node && node.type === 'split-pair' && node.leftTabId === leftId && node.rightTabId === rightId) {
+      node.leftTabId  = rightId;
+      node.rightTabId = leftId;
+    }
+
+    pair.leftId  = rightId;
+    pair.rightId = leftId;
+    pair.activePanel = pair.activePanel === 'left' ? 'right' : 'left';
+
+    this.repositionViews();
+    this.onChange();
+  }
+
   // Визуальный порядок вкладок: хаб → закреплённые → узлы (flat).
   // Используется Ctrl+1–9 и Ctrl+Tab; совпадает с порядком сайдбара.
   private tabsInVisualOrder(withHub: boolean): ManagedTab[] {

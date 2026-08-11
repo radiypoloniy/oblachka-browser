@@ -69,6 +69,10 @@ interface SidebarProps {
   // Разделить экран этой вкладкой (дроп у края страницы). Куда именно попадёт вкладка, решает
   // main: чром теряет указатель, как только тот уходит на страницу (см. DropZoneManager.ts).
   onDropOnContent: (tabId: string) => void;
+  // Половину сплита тащат за шапку и курсор сейчас над сайдбаром: отпустишь — сплит разорвётся,
+  // обе вкладки останутся (см. App.tsx, handlePanelDrag*). Подсветку рисует React, а не оверлей
+  // поверх страницы: остров сайдбара — чром, он виден.
+  returnHint?: boolean;
   // AI-группировка
   organizeTabsCount: number;
   organizeState: 'idle' | 'computing' | 'preview' | 'model-error';
@@ -1301,7 +1305,7 @@ export default function Sidebar({
   tabs, sidebarNodes, activeId, collapsed, onCollapsedChange,
   onSelect, onClose, onNewTab, onNewTabMenu, onTabMenu, onSplit, onExitSplit,
   onSettings, onHistory, onReorder, onMoveSection,
-  onDropOnContent,
+  onDropOnContent, returnHint,
   organizeTabsCount, organizeState, organizeLongWait, organizeProposal,
   hasOrganizeSnapshot, hasRenameSnapshot, renameProgress, undoDismissed,
   onOrganize, onOrganizeApply, onOrganizeCancel, onOrganizeRollback,
@@ -1672,10 +1676,16 @@ export default function Sidebar({
     return () => onReorder('normal', newOrder);
   };
 
+  // Возврат половины сплита: пунктир акцентом ВНУТРЬ (outline с отрицательным offset, не border —
+  // рамка не должна двигать раскладку острова). Один стиль на оба режима панели.
+  const returnHintStyle: React.CSSProperties | null = returnHint
+    ? { outline: '2px dashed var(--accent)', outlineOffset: -3 }
+    : null;
+
   // ── Свёрнутый режим: узкая полоса иконок ──
   if (collapsed) {
     return (
-      <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), boxShadow: 'var(--shadow-island)', ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width: 56, alignItems: 'center', padding: '12px 0 14px' }}>
+      <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), boxShadow: 'var(--shadow-island)', ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width: 56, alignItems: 'center', padding: '12px 0 14px', ...returnHintStyle }}>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: 14 }}>
           <button
@@ -1800,7 +1810,7 @@ export default function Sidebar({
 
   // ── Развёрнутый режим с drag-and-drop ──
   return (
-    <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), boxShadow: 'var(--shadow-island)', ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width, padding: '14px 12px 14px 14px', position: 'relative' }}>
+    <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), boxShadow: 'var(--shadow-island)', ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width, padding: '14px 12px 14px 14px', position: 'relative', ...returnHintStyle }}>
       {/* Ручка ширины — прозрачная полоска по всему правому краю. Своей заливки нет намеренно:
           сайдбар это остров со скруглением и тенью, а видимая вертикальная черта вдоль него
           читалась бы как рамка и спорила с формой. Курсор и так объясняет, что здесь тянут. */}

@@ -15,9 +15,14 @@ import './styles/global.css';
 // смотрит человек. Зона у него одна на всю страницу — делить её на края незачем, исход всего один.
 type ZoneVisual = 'split-left' | 'split-right' | 'window' | 'adopt';
 
+import type { SplitSwapHint } from '../shared/ipc';
+
 declare global {
   interface Window {
-    dropzones: { onZone: (cb: (zone: ZoneVisual | null) => void) => () => void };
+    dropzones: {
+      onZone: (cb: (zone: ZoneVisual | null) => void) => () => void;
+      onSwapHint: (cb: (hint: SplitSwapHint | null) => void) => () => void;
+    };
   }
 }
 
@@ -25,11 +30,13 @@ declare global {
 // а вью по ней же рисует. Разъедутся — подсветка будет обещать не то, что произойдёт.
 const SPLIT_EDGE_RATIO = 0.35;
 
+// top/bottom по умолчанию растягивают зону на всю высоту (так у зон дропа вкладки); подсветка
+// панели-цели задаёт свой прямоугольник целиком и эти два значения перебивает через style.
 function Zone({ label, active, style }: { label: string; active: boolean; style: React.CSSProperties }) {
   return (
     <div style={{
-      ...style,
       position: 'absolute', top: 0, bottom: 0,
+      ...style,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       // Неактивная зона — едва заметная подсказка, что тут вообще что-то есть; активная
       // заливается акцентом. Анимируем только цвет и прозрачность (см. правило про анимации).
@@ -54,10 +61,31 @@ function Zone({ label, active, style }: { label: string; active: boolean; style:
 
 function DropZones() {
   const [zone, setZone] = useState<ZoneVisual | null>(null);
+  const [swap, setSwap] = useState<SplitSwapHint | null>(null);
   useEffect(() => window.dropzones.onZone(setZone), []);
+  useEffect(() => window.dropzones.onSwapHint(setSwap), []);
 
   const edge = `${SPLIT_EDGE_RATIO * 100}%`;
   const middle = `${(1 - SPLIT_EDGE_RATIO * 2) * 100}%`;
+
+  // Половину сплита тащат за шапку: подсвечена ровно вторая панель, и подпись обещает
+  // единственный исход этого жеста над ней. Прямоугольник приходит в координатах области
+  // контента, а вью накрыта ровно ею — пересчитывать нечего (см. SplitSwapHint).
+  if (swap) {
+    return (
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+        <Zone
+          label="Поменять местами"
+          active={swap.active}
+          style={{
+            left: swap.rect.x, top: swap.rect.y,
+            width: swap.rect.width, height: swap.rect.height,
+            bottom: 'auto',
+          }}
+        />
+      </div>
+    );
+  }
 
   // Приём вкладки из другого окна — одна зона во всю страницу, без деления на края: разделять
   // экран чужой вкладкой на лету мы не умеем, и обещать этого нельзя.

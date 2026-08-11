@@ -394,6 +394,8 @@ export const IPC = {
   TAB_EXIT_SPLIT:   'tab:exit-split',   // renderer → main: выйти из split, обе вкладки остаются
   TAB_SPLIT_FOCUS:  'tab:split-focus',  // renderer → main: переключить фокус на панель
   TAB_SPLIT_RATIO:  'tab:split-ratio',  // renderer → main: новое соотношение панелей при drag
+  TAB_SPLIT_SWAP:   'tab:split-swap',   // renderer → main: поменять половины пары местами (ширины слотов остаются)
+  SPLIT_SWAP_HINT:  'split:swap-hint',  // renderer → main: подсветить панель-цель, пока половину тащат за шапку
 
   // Переупорядочивание вкладок drag-and-drop
   TAB_REORDER: 'tab:reorder',           // renderer → main: { section, orderedIds } после drop
@@ -1827,6 +1829,22 @@ export interface TabDropResult {
   windowId?: number;
 }
 
+// Подсветка панели-ЦЕЛИ, пока половину сплита тащат за её шапку (жест живёт в рабочей области,
+// см. src/App.tsx). Рисует её вью-оверлей поверх страницы (electron/DropZoneManager.ts): чром над
+// областью контента не виден в принципе — нативная вью страницы лежит поверх React-слоя.
+//
+// ⚠️ Зону тут, в отличие от TabDropZone, считает RENDERER, а не main. Разница не в прихоти:
+// перетаскивание за шапку держит указатель через setPointerCapture, и pointermove приходит в чром
+// даже над нативными вьюхами (см. разделитель сплита в App.tsx) — опрашивать курсор в main незачем.
+// Наружу, в main, уходит только то, что чром нарисовать физически не может: подсветка.
+export interface SplitSwapHint {
+  // Прямоугольник панели-цели в координатах ОБЛАСТИ КОНТЕНТА (её же меряет setContentBounds) —
+  // оверлей накрыт ровно ею, поэтому пересчёт не нужен ни на той, ни на этой стороне.
+  rect: ContentBounds;
+  // Курсор над этой панелью: исход «поменять местами» состоится, если отпустить сейчас.
+  active: boolean;
+}
+
 export interface OblakoApi {
   // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).
   getSyncState(): Promise<SyncState>;
@@ -1939,9 +1957,14 @@ export interface OblakoApi {
 
   // Split View
   enterSplit(rightId: string): Promise<void>;       // текущая активная → левая, rightId → правая
-  exitSplit(tabId: string): Promise<void>;           // схлопнуть пару, содержащую tabId; обе вкладки остаются
+  // keepId — какая панель НАЙДЕННОЙ пары остаётся активной (по умолчанию текущая активная).
+  // Нужен жесту «вытащить половину в список»: активной обязана остаться та, которую НЕ тащили.
+  exitSplit(tabId: string, keepId?: string): Promise<void>; // схлопнуть пару, содержащую tabId; обе вкладки остаются
   focusSplitPanel(side: 'left' | 'right'): Promise<void>; // переключить активную панель
   setSplitRatio(ratio: number): Promise<void>;      // drag разделителя: 0.2..0.8
+  swapSplitPanels(tabId: string): Promise<void>;    // половины пары меняются местами; ширины слотов не меняются
+  // Подсветка панели-цели во время перетаскивания половины за шапку; null — убрать оверлей.
+  setSplitSwapHint(hint: SplitSwapHint | null): Promise<void>;
 
   // Переупорядочивание drag-and-drop
   reorderTabs(section: 'normal' | 'pinned', orderedIds: string[]): Promise<void>;

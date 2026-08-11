@@ -71,7 +71,7 @@ import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION, THEME_PALETTE_IDS, isDarkTheme } from '../shared/ipc';
 import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult, SmartFindResult, RuleParseOutcome } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult, SmartFindResult, RuleParseOutcome, SplitSwapHint } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -103,7 +103,7 @@ import { pickFragmentByMeaning, highlightCandidates } from './SmartFind';
 import { RuleStore } from './RuleStore';
 import { applyRules } from './RuleEngine';
 import { parsePhraseToRule } from './RuleParser';
-import { startTabDrag, endTabDrag, syncDropZoneBounds } from './DropZoneManager';
+import { startTabDrag, endTabDrag, syncDropZoneBounds, setSwapHint } from './DropZoneManager';
 import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
 import { suggestTabTitle } from './TabRenamer';
 import {
@@ -2277,9 +2277,13 @@ function registerIpc() {
 
   // Split View
   ipcMain.handle(IPC.TAB_ENTER_SPLIT, (e, rightId: string)         => tabsOf(e)?.enterSplit(rightId));
-  ipcMain.handle(IPC.TAB_EXIT_SPLIT,  (e, tabId: string)           => tabsOf(e)?.exitSplit(tabId));
+  ipcMain.handle(IPC.TAB_EXIT_SPLIT,  (e, tabId: string, keepId?: string) => tabsOf(e)?.exitSplit(tabId, keepId));
   ipcMain.handle(IPC.TAB_SPLIT_FOCUS, (e, side: 'left' | 'right') => tabsOf(e)?.focusSplitPanel(side));
   ipcMain.handle(IPC.TAB_SPLIT_RATIO, (e, ratio: number)           => tabsOf(e)?.setSplitRatio(ratio));
+  ipcMain.handle(IPC.TAB_SPLIT_SWAP,  (e, tabId: string)           => tabsOf(e)?.swapSplitPanels(tabId));
+  // Подсветка панели-цели при перетаскивании половины за шапку. Зону считает сам чром (жест держит
+  // указатель через setPointerCapture, см. App.tsx) — от main нужна только картинка поверх страницы.
+  ipcMain.handle(IPC.SPLIT_SWAP_HINT, (e, hint: SplitSwapHint | null) => { const w = winOf(e); if (w) setSwapHint(w, hint); });
 
   ipcMain.handle(IPC.TAB_REORDER,
     (e, section: 'normal' | 'pinned', orderedIds: string[]) =>

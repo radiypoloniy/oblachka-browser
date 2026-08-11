@@ -11,7 +11,7 @@ import Onboarding from './components/Onboarding';
 import { islandPlate } from './styles/island';
 import { subscribeScrim, dimColor } from './scrimState';
 import { isDarkTheme } from '../shared/ipc';
-import type { SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal, ThemePrefs } from '../shared/ipc';
+import type { ContentBounds, SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal, ThemePrefs } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT } from '../shared/layout';
 
 const HUB_ID = 'hub';
@@ -48,13 +48,36 @@ const TAB_FRAME_STYLE: CSSProperties = {
 // прямая линия-разделитель. Клик по пустому месту всплывает к onClick панели (фокус), крестик
 // сам себя останавливает и зовёт closeTab — тот же путь, что и обычное закрытие вкладки
 // (TabManager.closeTab уже схлопывает сплит через exitSplit, отдельного пути не заводим).
-function SplitPanelHeader({ tab, onClose }: { tab: TabState; onClose: () => void }) {
+//
+// Шапка — она же РУЧКА панели: за неё половину сплита перетаскивают на вторую панель (поменять
+// местами) или в сайдбар (разорвать сплит). Логика жеста — в App (handlePanelDrag*), тут только
+// сами обработчики и вид «поднято».
+function SplitPanelHeader({ tab, onClose, dragging, dragHandlers }: {
+  tab: TabState;
+  onClose: () => void;
+  dragging: boolean;
+  dragHandlers: {
+    onPointerDown: (e: React.PointerEvent) => void;
+    onPointerMove: (e: React.PointerEvent) => void;
+    onPointerUp: (e: React.PointerEvent) => void;
+    onPointerCancel: (e: React.PointerEvent) => void;
+  };
+}) {
   return (
-    <div style={{
-      position: 'absolute', top: 0, left: 0, right: 0, height: SPLIT_HEADER_HEIGHT,
-      display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px',
-      borderBottom: '1px solid var(--divider)',
-    }}>
+    <div
+      {...dragHandlers}
+      style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: SPLIT_HEADER_HEIGHT,
+        display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px',
+        borderBottom: '1px solid var(--divider)',
+        cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none',
+        // «Поднято»: полоса подкрашивается акцентом ровно у той панели, которую тащат — она
+        // единственная обратная связь, которая видна ВСЕГДА (призрак над страницей скрыт
+        // нативной вью, а подсветку цели рисует оверлей).
+        background: dragging ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
+        transition: 'background 120ms var(--ease-standard)',
+      }}
+    >
       <FaviconTile tab={tab} size={12} />
       <span style={{
         flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)', fontWeight: 500,
@@ -447,6 +470,137 @@ export default function App() {
     setIsDragging(false);
   }, []);
 
+  // ── Перетаскивание половины сплита за её шапку ────────────────────────────────────────────
+  // Жест живёт в рабочей области, а не в сайдбаре: тянешь панель за шапку и либо кладёшь на
+  // вторую панель (половины меняются местами), либо уводишь в сайдбар (сплит разрывается, обе
+  // вкладки остаются, активной становится ТА, которую не тащили). Всё прочее — отмена.
+  //
+  // ⚠️ Почему setPointerCapture, а не dnd-kit и не опрос курсора в main. Капчур удерживает
+  // pointermove в чроме даже когда курсор ушёл над нативные вьюхи страниц (в Electron/Aura все
+  // вьюхи в одном HWND) — на этом уже держится разделитель сплита выше. Значит зону считает сам
+  // renderer, по clientX/clientY, и вся правда о геометрии остаётся там, где её и меряют. В main
+  // уходит ровно одна услуга: подсветить панель-цель, потому что над областью контента чром
+  // нарисовать не может ничего (нативная вью лежит поверх React-слоя, см. DropZoneManager.ts).
+  const leftPanelRef  = useRef<HTMLDivElement>(null);
+  const rightPanelRef = useRef<HTMLDivElement>(null);
+  // Живое состояние жеста — в ref: обработчик зовётся десятки раз в секунду, и решение о зоне не
+  // должно зависеть от того, успел ли перерисоваться React. Прямоугольники снимаются ОДИН раз, на
+  // старте: за время жеста раскладка не меняется, а getBoundingClientRect на каждое движение
+  // заставлял бы браузер считать layout заново.
+  const panelDragRef = useRef<{
+    tabId: string;
+    siblingId: string;
+    side: 'left' | 'right';      // какую половину тащат — цель это ВТОРАЯ
+    otherRect: DOMRect | null;   // панель-цель, координаты окна
+    hintRect: ContentBounds | null; // она же для оверлея, координаты области контента
+    contentLeft: number;
+    startX: number; startY: number;
+    x: number; y: number;        // последняя позиция курсора — для стартовой посадки призрака
+    started: boolean;
+    zone: 'swap' | 'sidebar' | null;
+  } | null>(null);
+  // Для отрисовки: что тащим и куда попадём. Меняется на старте, на смене зоны и на отпускании —
+  // не на каждое движение (позицию призрака двигаем напрямую по ref, ниже).
+  const [panelDrag, setPanelDrag] = useState<{ tabId: string; zone: 'swap' | 'sidebar' | null } | null>(null);
+  const panelGhostRef = useRef<HTMLDivElement>(null);
+  const panelDragTab = panelDrag ? tabs.find((t) => t.id === panelDrag.tabId) ?? null : null;
+
+  const endPanelDrag = useCallback((apply: boolean) => {
+    const d = panelDragRef.current;
+    panelDragRef.current = null;
+    if (!d?.started) return;
+    setPanelDrag(null);
+    void window.oblako.setSplitSwapHint(null);
+    if (!apply) return;
+    if (d.zone === 'swap')         void window.oblako.swapSplitPanels(d.tabId);
+    else if (d.zone === 'sidebar') void window.oblako.exitSplit(d.tabId, d.siblingId);
+  }, []);
+
+  const handlePanelDragPointerDown = useCallback((tabId: string, siblingId: string, side: 'left' | 'right') => (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    // Крестик в шапке — своя кнопка, драг с неё не начинаем.
+    if ((e.target as HTMLElement).closest('button')) return;
+    // ⚠️ Без preventDefault: он гасит совместимостные mouse-события, а вместе с ними рискует унести
+    // и click — а клик по шапке обязан по-прежнему фокусировать панель (onClick рамки). Выделение
+    // текста при протяжке снимает userSelect:'none' на самой шапке, отдельный preventDefault не нужен.
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    panelDragRef.current = {
+      tabId, siblingId, side,
+      otherRect: null, hintRect: null, contentLeft: 0,
+      startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY,
+      started: false, zone: null,
+    };
+  }, []);
+
+  const handlePanelDragPointerMove = useCallback((e: React.PointerEvent) => {
+    const d = panelDragRef.current;
+    if (!d) return;
+    d.x = e.clientX;
+    d.y = e.clientY;
+
+    if (!d.started) {
+      // Порог, как у остальных драгов в проекте: клик по шапке (фокус панели) не должен
+      // становиться перетаскиванием.
+      if (Math.abs(e.clientX - d.startX) < 5 && Math.abs(e.clientY - d.startY) < 5) return;
+      d.started = true;
+      const other   = (d.side === 'left' ? rightPanelRef : leftPanelRef).current;
+      const content = contentRef.current;
+      d.otherRect   = other?.getBoundingClientRect() ?? null;
+      const cr      = content?.getBoundingClientRect() ?? null;
+      d.contentLeft = cr?.left ?? 0;
+      d.hintRect = d.otherRect && cr
+        ? { x: d.otherRect.left - cr.left, y: d.otherRect.top - cr.top, width: d.otherRect.width, height: d.otherRect.height }
+        : null;
+      if (d.hintRect) void window.oblako.setSplitSwapHint({ rect: d.hintRect, active: false });
+      setPanelDrag({ tabId: d.tabId, zone: null });
+    }
+
+    // Призрак двигаем напрямую, минуя state: App — самый большой компонент в чроме, и
+    // перерисовывать его на каждое движение мыши значило бы устроить рывки ради одной пилюли.
+    // Над страницей призрака всё равно не видно (нативная вью поверх), там говорит оверлей.
+    const ghost = panelGhostRef.current;
+    if (ghost) ghost.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 12}px)`;
+
+    // ⚠️ Курсор вне окна — исхода нет. Капчур продолжает слать нам события и за краем окна, и без
+    // этой проверки «утащил половину влево за пределы окна» попадало бы в ветку сайдбара
+    // (clientX < 0) и рвало сплит. Вынести половину в новое окно этот жест не умеет — значит
+    // снаружи он не делает ничего.
+    const inWindow = e.clientX >= 0 && e.clientY >= 0
+      && e.clientX <= window.innerWidth && e.clientY <= window.innerHeight;
+    const r = d.otherRect;
+    const zone: 'swap' | 'sidebar' | null = !inWindow ? null
+      : r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
+        ? 'swap'
+        // Левее области контента в окне нет ничего, кроме острова сайдбара.
+        : e.clientX < d.contentLeft ? 'sidebar'
+        : null;
+
+    if (zone !== d.zone) {
+      d.zone = zone;
+      if (d.hintRect) void window.oblako.setSplitSwapHint({ rect: d.hintRect, active: zone === 'swap' });
+      setPanelDrag({ tabId: d.tabId, zone });
+    }
+  }, []);
+
+  const handlePanelDragPointerUp     = useCallback(() => endPanelDrag(true),  [endPanelDrag]);
+  const handlePanelDragPointerCancel = useCallback(() => endPanelDrag(false), [endPanelDrag]);
+
+  // Призрак только что появился — сажаем его под курсор, не дожидаясь следующего движения мыши
+  // (иначе первый кадр он показался бы в левом верхнем углу окна).
+  useLayoutEffect(() => {
+    const d = panelDragRef.current;
+    const g = panelGhostRef.current;
+    if (d && g) g.style.transform = `translate(${d.x + 12}px, ${d.y + 12}px)`;
+  }, [panelDrag]);
+
+  // Пара исчезла посреди жеста (страница закрыла себя, вкладку убили из другого окна) — обрываем
+  // драг вместе с ней: иначе на отпускании исход применился бы к паре, которой уже нет, а оверлей
+  // остался бы висеть поверх страницы и глотать клики.
+  useEffect(() => {
+    if (!panelDrag || isSplit) return;
+    endPanelDrag(false);
+  }, [panelDrag, isSplit, endPanelDrag]);
+
   // ── Drag разделителя AI-дока (заход 3) — та же схема pointer capture, что у split-
   // разделителя выше, только ширина считается от ПРАВОГО края контейнера (тянем левый край
   // дока влево/вправо), а не ratio от левого. Контейнер — тот же самый div, что содержит и
@@ -693,6 +847,7 @@ export default function App() {
         onMoveSection={(tabId, section, idx) => { void window.oblako.moveTabSection(tabId, section, idx); }}
         sidebarNodes={sidebarNodes}
         onDropOnContent={handleDropOnContent}
+        returnHint={panelDrag?.zone === 'sidebar'}
         organizeTabsCount={isLightWindow ? 0 : organizeTabsCount}
         organizeState={organizeState}
         organizeLongWait={organizeLongWait}
@@ -771,12 +926,22 @@ export default function App() {
                   что у одиночной вкладки (TAB_FRAME_STYLE) — каждая split-половина сама себе
                   «вкладка», bounds считает TabManager.applySplitBounds по этому же прямоугольнику. */}
               <div
+                ref={leftPanelRef}
                 style={{ ...TAB_FRAME_VISUAL, position: 'relative', flex: splitRatio, minWidth: 0 }}
                 onClick={() => {
                   if (activeId !== splitLeft!.id) void window.oblako.focusSplitPanel('left');
                 }}
               >
-                <SplitPanelHeader tab={splitLeft!} onClose={() => close(splitLeft!.id)} />
+                <SplitPanelHeader
+                  tab={splitLeft!} onClose={() => close(splitLeft!.id)}
+                  dragging={panelDrag?.tabId === splitLeft!.id}
+                  dragHandlers={{
+                    onPointerDown: handlePanelDragPointerDown(splitLeft!.id, splitRight!.id, 'left'),
+                    onPointerMove: handlePanelDragPointerMove,
+                    onPointerUp: handlePanelDragPointerUp,
+                    onPointerCancel: handlePanelDragPointerCancel,
+                  }}
+                />
                 {splitLeft!.tabError && (
                   <div style={{ position: 'absolute', top: SPLIT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0 }}>
                     <TabError error={splitLeft!.tabError} url={splitLeft!.url}
@@ -809,12 +974,22 @@ export default function App() {
 
               {/* Правая панель — тот же остров, что у левой (TAB_FRAME_VISUAL). */}
               <div
+                ref={rightPanelRef}
                 style={{ ...TAB_FRAME_VISUAL, position: 'relative', flex: 1 - splitRatio, minWidth: 0 }}
                 onClick={() => {
                   if (activeId !== splitRight!.id) void window.oblako.focusSplitPanel('right');
                 }}
               >
-                <SplitPanelHeader tab={splitRight!} onClose={() => close(splitRight!.id)} />
+                <SplitPanelHeader
+                  tab={splitRight!} onClose={() => close(splitRight!.id)}
+                  dragging={panelDrag?.tabId === splitRight!.id}
+                  dragHandlers={{
+                    onPointerDown: handlePanelDragPointerDown(splitRight!.id, splitLeft!.id, 'right'),
+                    onPointerMove: handlePanelDragPointerMove,
+                    onPointerUp: handlePanelDragPointerUp,
+                    onPointerCancel: handlePanelDragPointerCancel,
+                  }}
+                />
                 {splitRight!.tabError && (
                   <div style={{ position: 'absolute', top: SPLIT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0 }}>
                     <TabError error={splitRight!.tabError} url={splitRight!.url}
@@ -892,6 +1067,32 @@ export default function App() {
       {/* Диалог импорта из другого браузера — модалка поверх всего chrome (fixed). Открывается
           только из раздела настроек «Браузер»: первый запуск теперь ведёт Onboarding ниже. */}
       {importDialog && <ImportDialog onClose={() => setImportDialog(null)} />}
+
+      {/* Призрак половины сплита, которую тащат за шапку. Виден только над чромом: над областью
+          контента его закрывает нативная вью страницы, и там об исходе говорит оверлей
+          (DropZoneManager). Позиция ставится напрямую по ref, без state — см. handlePanelDrag*. */}
+      {panelDrag && panelDragTab && (
+        <div
+          ref={panelGhostRef}
+          style={{
+            position: 'fixed', top: 0, left: 0, zIndex: 900, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', gap: 6,
+            maxWidth: 260, padding: '6px 10px',
+            borderRadius: 'var(--radius-pill)',
+            background: 'var(--surface-solid)', boxShadow: 'var(--shadow-pop)',
+            border: '1px solid var(--divider)',
+            fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
+            opacity: 0.95,
+          }}
+        >
+          <FaviconTile tab={panelDragTab} size={12} />
+          <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {panelDrag.zone === 'sidebar' ? 'Вернуть в панель'
+              : panelDrag.zone === 'swap' ? 'Поменять местами'
+              : (panelDragTab.title || panelDragTab.url || 'Вкладка')}
+          </span>
+        </div>
+      )}
 
       {/* Экран первого запуска. Поверх всего и без закрытия кликом мимо — см. Onboarding.tsx. */}
       {onboarding && <Onboarding onFinish={() => setOnboarding(false)} />}
