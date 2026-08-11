@@ -31,19 +31,25 @@ type VpnMode = 'full' | 'short' | 'icon';
 const VPN_THRESHOLD_FULL  = 1150;
 const VPN_THRESHOLD_SHORT =  900;
 
-// Сколько пикселей от центра уходит правая группа кнопок (paddingRight 138 +
-// кнопки + отступы) в каждом режиме. Используется для вычисления ширины омнибокса
-// так, чтобы он не наезжал на правую группу (оба — вправо от центра на это значение).
-// +40 к каждому режиму относительно версии без кнопки Download (32px тело + 8px gap).
-const RIGHT_RESERVE: Record<VpnMode, number> = {
-  full:  440, // 138 sys + ~160 VPN + 32×3 AI/Moon/DL + 32 gap ≈ 396 + запас
-  short: 355, // 138 sys +  ~85 VPN + 32×3 AI/Moon/DL + 32 gap ≈ 351
-  icon:  305, // 138 sys +  ~35 VPN + 32×3 AI/Moon/DL + 32 gap ≈ 301
-};
+// ⚠️ Здесь стояла таблица RIGHT_RESERVE: сколько пикселей от ЦЕНТРА занимает правая группа
+// кнопок в каждом режиме VPN. Омнибокс был абсолютно спозиционирован по центру окна
+// (left:50%), и его ширина считалась как `toolbarWidth − 2×RIGHT_RESERVE − 2×GAP` — резерв
+// вычитался СИММЕТРИЧНО, иначе центрированная таблетка наехала бы на правую группу.
+//
+// Отсюда и брался провал в полосе. Слева от центра стоит только плашка навигации (~130px), а
+// резервировалось под неё столько же, сколько нужно правой группе (до 440px) — просто потому,
+// что элемент центрирован. Триста пикселей пустоты были не недосмотром вёрстки, а прямым
+// следствием центрирования: убрать их, сохранив центр, было невозможно в принципе.
+//
+// Теперь омнибокс живёт во flex-потоке между навигацией и правой группой. Flex не умеет
+// накладывать элементы друг на друга — то есть гарантия «не наезжает» стала конструктивной, а
+// не арифметической, и ручная таблица резервов больше не нужна ни в каком виде.
 
-// Гарантированный зазор (px) между краем омнибокса и каждым боковым блоком.
-// Вычитается с обеих сторон, поэтому отнимает 2×GAP от суммарной ширины.
-const OMNIBOX_SIDE_GAP = 12;
+// ⚠️ Предела ширины у омнибокса намеренно НЕТ. Прежние 620px подбирались под центрированную
+// таблетку, и в потоке любой предел просто переносит провал вправо: остаток ширины уходит в
+// marginLeft:auto правой группы, то есть пустота переезжает из-под навигации под «Защиту».
+// Замерено на 2560px — дыра выходила больше тысячи пикселей. Поэтому строка занимает всё
+// свободное место, как в Chrome, Edge и Safari.
 
 // Ниже PLACEHOLDER_HIDE плейсхолдер скрывается — текст не помещается, иконка остаётся.
 // Выше PLACEHOLDER_SHOW — возвращается. Зазор 20px = гистерезис против мигания.
@@ -118,6 +124,14 @@ export default function Toolbar({
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [toolbarWidth, setToolbarWidth] = useState(1280);
+  // ⚠️ Ширина омнибокса теперь ИЗМЕРЯЕТСЯ, а не вычисляется. Её задаёт flex, и оценивать её
+  // формулой значило бы держать вторую, неизбежно расходящуюся правду: от неё зависят пороги
+  // схлопывания капсулы поисковика и плейсхолдера, и разъедься оценка с реальностью — капсула
+  // складывалась бы не тогда, когда ей тесно.
+  // Обратной связи на раскладку нет: ширину диктует родитель (flex + maxWidth), содержимое
+  // таблетки на неё не влияет (minWidth:0), поэтому запись измерения в состояние не может
+  // запустить цикл «измерил → перерисовал → измерил другое».
+  const [omniboxWidth, setOmniboxWidth] = useState(0);
   const [placeholderVisible, setPlaceholderVisible] = useState(true);
   const [passwordIndicator, setPasswordIndicator] = useState<PasswordIndicatorState | null>(null);
   const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false);
@@ -223,14 +237,10 @@ export default function Toolbar({
     return () => ro.disconnect();
   }, []);
 
-  // Режим VPN-пилюли и ширина омнибокса вычисляются из ширины тулбара.
-  // Омнибокс растёт по мере схлопывания VPN — центр не двигается (left:50%).
+  // Режим VPN-пилюли считается из ширины тулбара (пороги выше).
   const vpnMode: VpnMode = toolbarWidth >= VPN_THRESHOLD_FULL ? 'full'
     : toolbarWidth >= VPN_THRESHOLD_SHORT ? 'short'
     : 'icon';
-  // Math.max(0, ...) — намеренно без нижнего предела: на совсем узком окне
-  // омнибокс становится узким (до 0), но никогда не налезает на боковые блоки.
-  const omniboxWidth = Math.min(620, Math.max(0, toolbarWidth - 2 * RIGHT_RESERVE[vpnMode] - 2 * OMNIBOX_SIDE_GAP));
 
   // Режим капсулы поисковика — см. константы выше. Приоритет у поля ввода:
   // капсула схлопывается первой, а не наоборот.
@@ -257,6 +267,8 @@ export default function Toolbar({
     const el = omniboxPillRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
+    // Тот же замер обслуживает и пороги схлопывания внутри таблетки (см. omniboxWidth).
+    setOmniboxWidth(r.width);
     const b = { x: r.left, y: r.top, width: r.width, height: r.height };
     const key = `${b.x},${b.y},${b.width},${b.height}`;
     if (key === lastOmniboxBoundsRef.current) return;
@@ -1328,24 +1340,21 @@ export default function Toolbar({
           style={navBtn(isHub)}><RefreshCw size={17} /></button>
       </div>
 
-      {/* Омнибокс: абсолютно по центру колонки (left:50%).
-          Ширина растёт при схлопывании VPN — центральная ось неподвижна.
-          pointer-events:none на внешней обёртке — боковые кнопки кликабельны насквозь. */}
+      {/* Омнибокс — главный объект полосы, и теперь он занимает всё свободное место между
+          навигацией и правой группой (см. разбор у OMNIBOX_MAX_WIDTH: прежнее центрирование
+          по окну и порождало провал слева).
+          pointer-events:none на обёртке больше не нужен: в потоке она ни на что не налезает,
+          а значит и «пропускать клики насквозь» не через что. */}
       <div style={{
-        position: 'absolute',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        // top сдвинут на --gutter-shell + flex-start — та же верхняя кромка, что и у
-        // остальных плашек тулбара (омнибокс абсолютно спозиционирован и не участвует
-        // в общем flex-потоке, поэтому выравнивается отдельно тем же токеном).
-        top: 'var(--gutter-shell)', bottom: 0,
+        // Обычный участник flex-потока: занимает всё, что осталось между навигацией и правой
+        // группой, но не больше предела. Верхняя кромка приходит от родителя
+        // (alignItems:'flex-start' + paddingTop) — отдельное выравнивание больше не нужно.
+        flex: 1, minWidth: 0,
         display: 'flex', alignItems: 'flex-start',
-        width: omniboxWidth,
-        pointerEvents: 'none',
       }}>
         <div
           className="no-drag"
-          style={{ width: '100%', position: 'relative', pointerEvents: 'auto' }}
+          style={{ width: '100%', position: 'relative' }}
         >
           <div ref={omniboxPillRef} style={{
             ...islandPlate,
