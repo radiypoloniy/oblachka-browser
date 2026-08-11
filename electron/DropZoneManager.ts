@@ -377,10 +377,14 @@ export function endTabDrag(win: BrowserWindow): TabDropResult {
   // Пересчитываем на месте: последний тик мог быть до 30 мс назад, а решает именно точка отпускания.
   updateDrag();
   const zone = toAction(drag.zone);
+  // Сторона теряется в toAction (наружу уходит действие, а не картинка) — достаём её из той же
+  // ZoneVisual, пока она ещё под рукой: сплит обязан открыться там, куда тянули.
+  const side: 'left' | 'right' | undefined =
+    drag.zone === 'split-left' ? 'left' : drag.zone === 'split-right' ? 'right' : undefined;
   const windowId = drag.target?.win.id;
   stopDrag();
   // 'adopt' без живого приёмника — не исход, а полпути: лучше ничего не делать, чем унести
   // вкладку неизвестно куда.
   if (zone === 'adopt' && windowId === undefined) return { zone: null };
-  return windowId === undefined ? { zone } : { zone, windowId };
+  return { zone, ...(windowId === undefined ? {} : { windowId }), ...(side ? { side } : {}) };
 }

@@ -517,9 +517,10 @@ export default function App() {
   // setPointerCapture удерживает pointermove на разделителе даже когда курсор
   // уходит над нативными WebContentsViews (в Electron/Aura все вьюхи в одном HWND).
   // Вкладка сброшена в область контента → split (dragged = right, activeId = left).
-  const handleDropOnContent = useCallback((tabId: string) => {
+  // side — край, за который тянули: вкладка встаёт именно туда, куда её вели (см. TabDropResult).
+  const handleDropOnContent = useCallback((tabId: string, side?: 'left' | 'right') => {
     setSplitRatioState(0.5);
-    void window.oblako.enterSplit(tabId);
+    void window.oblako.enterSplit(tabId, side);
   }, []);
 
   const handleDividerPointerDown = useCallback((e: React.PointerEvent) => {

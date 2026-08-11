@@ -81,7 +81,7 @@ interface SidebarProps {
   onMoveSection: (tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number) => void;
   // Разделить экран этой вкладкой (дроп у края страницы). Куда именно попадёт вкладка, решает
   // main: чром теряет указатель, как только тот уходит на страницу (см. DropZoneManager.ts).
-  onDropOnContent: (tabId: string) => void;
+  onDropOnContent: (tabId: string, side?: 'left' | 'right') => void;
   // Половину сплита тащат за шапку и курсор сейчас над сайдбаром: отпустишь — сплит разорвётся,
   // обе вкладки останутся (см. App.tsx, handlePanelDrag*). Подсветку рисует React, а не оверлей
   // поверх страницы: остров сайдбара — чром, он виден.
@@ -1585,7 +1585,7 @@ export default function Sidebar({
    * Исходы, которые перестановкой в сайдбаре не являются: split, вынос в новое окно, передача
    * в соседнее. Возвращает true, если дроп забрала зона, — тогда локальный порядок откатывается.
    */
-  const applyZoneDrop = (e: DragEndEvent, { zone, windowId }: TabDropResult): boolean => {
+  const applyZoneDrop = (e: DragEndEvent, { zone, windowId, side }: TabDropResult): boolean => {
     const draggedId = e.active.id as string;
     const draggedTab = draggedId.startsWith('group:') ? undefined : tabs.find((t) => t.id === draggedId);
     // Группу и участника split не выносим: у первой нет одной страницы, второй увёл бы за собой
@@ -1604,11 +1604,12 @@ export default function Sidebar({
       void window.oblako.moveTabToWindow(draggedId, windowId);
       return true;
     }
-    // Дроп в контент-зону → split вместо reorder.
+    // Дроп в контент-зону → split вместо reorder. Сторону считает main по реальному курсору
+    // (см. TabDropResult.side) — вкладка встаёт туда, куда её вели, а не всегда справа.
     // Группы в split не входят — проверяем только обычные вкладки.
     if (zone === 'split') {
       if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
-        onDropOnContent(draggedId);
+        onDropOnContent(draggedId, side);
       }
       return true;
     }

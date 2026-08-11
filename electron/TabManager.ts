@@ -2701,34 +2701,48 @@ export class TabManager {
 
   // ── Split View ────────────────────────────────────────────────────────────
 
-  // Войти в split: текущая активная вкладка → левая панель, rightId → правая.
+  // Войти в split: текущая активная вкладка и ПРИВОДИМАЯ (movedId) встают парой.
+  //
+  // side — какую половину займёт приводимая; активная забирает вторую. По умолчанию правую: так
+  // входят в сплит из контекстного меню ссылки, где стороне взяться неоткуда. Перетаскивание же
+  // передаёт край, за который тянули (см. shared/ipc.ts::TabDropResult.side) — раньше пара
+  // собиралась одинаково, куда бы человек ни вёл, и жест обещал одно, а делал другое.
+  //
+  // ⚠️ Роли «где встать» и «кто едет» разведены нарочно. Пара занимает место АКТИВНОЙ вкладки в
+  // дереве и на экране — человек смотрел туда, и оттуда ничего не должно прыгать. Приводимую
+  // вынимают из её места и вводят анимацией. Раньше это совпадало со сторонами (активная всегда
+  // левая), поэтому и жило под именами leftId/rightId; со свободной стороной совпадение
+  // кончилось, и путать их больше нельзя.
   // Только обычные (не закреплённые, не хаб) вкладки могут участвовать.
-  enterSplit(rightId: string): void {
-    // Коммит 4: лимит на ОБЩЕЕ число пар снят — блокируем только если конкретно левая
-    // (текущая активная) или правая вкладка УЖЕ состоит в какой-то паре (нельзя одну и
-    // ту же вкладку впихнуть сразу в две). Разные вкладки без пары — новая пара разрешена,
+  enterSplit(movedId: string, side: 'left' | 'right' = 'right'): void {
+    // Коммит 4: лимит на ОБЩЕЕ число пар снят — блокируем только если конкретно активная
+    // или приводимая вкладка УЖЕ состоит в какой-то паре (нельзя одну и ту же вкладку
+    // впихнуть сразу в две). Разные вкладки без пары — новая пара разрешена,
     // существующие пары это не блокирует (мульти-сплит).
-    if (this.#pairContaining(this.activeId) || this.#pairContaining(rightId)) return;
+    if (this.#pairContaining(this.activeId) || this.#pairContaining(movedId)) return;
     this.clearOrganizeSnapshot();
-    const rightTab = this.tabMap.get(rightId);
-    if (!rightTab || (!this.isHttpView(rightTab.view) && !rightTab.sleeping) || this.isTabPinned(rightId)) return;
+    const movedTab = this.tabMap.get(movedId);
+    if (!movedTab || (!this.isHttpView(movedTab.view) && !movedTab.sleeping) || this.isTabPinned(movedId)) return;
 
-    const leftId = this.activeId;
-    if (leftId === rightId) return;
+    const anchorId = this.activeId;
+    if (anchorId === movedId) return;
 
-    const leftTab = this.tabMap.get(leftId);
-    if (!leftTab || (!this.isHttpView(leftTab.view) && !leftTab.sleeping) || this.isTabPinned(leftId)) return;
+    const anchorTab = this.tabMap.get(anchorId);
+    if (!anchorTab || (!this.isHttpView(anchorTab.view) && !anchorTab.sleeping) || this.isTabPinned(anchorId)) return;
+
+    const leftId  = side === 'left' ? movedId : anchorId;
+    const rightId = side === 'left' ? anchorId : movedId;
 
     // ⚠️ Раньше здесь стоял отказ, если вкладки лежат в РАЗНЫХ родителях (одна в папке, другая
     // снаружи). Из-за него перетаскивание вкладки из папки на край страницы молча не давало
     // ничего: пара строится с АКТИВНОЙ вкладкой, а она почти всегда в другом месте дерева.
     // Формат от этого не меняется — SplitPairNode и так живёт и в корне, и внутри папки; меняется
-    // только то, что правую вкладку сначала вынимают из её массива.
-    const leftParent  = this.#findTabParent(leftId);
-    const rightParent = this.#findTabParent(rightId);
-    if (!leftParent || !rightParent) return;
+    // только то, что приводимую вкладку сначала вынимают из её массива.
+    const anchorParent = this.#findTabParent(anchorId);
+    const movedParent  = this.#findTabParent(movedId);
+    if (!anchorParent || !movedParent) return;
 
-    if (rightTab.sleeping) this.wakeTab(rightId);
+    if (movedTab.sleeping) this.wakeTab(movedId);
 
     const activeWc = this.getActiveWebContents();
     if (activeWc) { activeWc.stopFindInPage('clearSelection'); this.lastQuery = ''; }
@@ -2736,29 +2750,30 @@ export class TabManager {
     this.onFindCloseCb();
 
     // Прячем ВСЁ постороннее — не только одиночные вкладки, но и панели ДРУГИХ пар, если
-    // такие уже есть. Корректно и под мульти-сплит: activeId уже равен leftId (см. выше),
-    // поэтому новая пара становится #activePair() автоматически — все остальные, включая
-    // прежде показываемую пару (если была), уходят в парковку (их узлы остаются в дереве).
+    // такие уже есть. Корректно и под мульти-сплит: activeId равен anchorId, то есть одной
+    // из двух панелей новой пары, поэтому она становится #activePair() автоматически — все
+    // остальные, включая прежде показываемую пару (если была), уходят в парковку (их узлы
+    // остаются в дереве).
     for (const t of this.tabMap.values()) {
       if (!this.isHttpView(t.view)) continue;
       if (t.id !== leftId && t.id !== rightId) t.view.setVisible(false);
     }
 
-    // Пара встаёт на место ЛЕВОЙ (активной) вкладки — она остаётся там, где человек её видел.
+    // Пара встаёт на место АКТИВНОЙ вкладки — она остаётся там, где человек её видел.
     const pair: SplitPairNode = { type: 'split-pair', leftTabId: leftId, rightTabId: rightId, ratio: 0.5 };
 
-    // ⚠️ Правую вынимаем из ЕЁ массива отдельно и только если он другой: при одном родителе
-    // цикл ниже уберёт обе за один проход, а лишнее удаление вынесло бы и левую тоже.
-    if (rightParent.parent !== leftParent.parent) {
-      const rp = rightParent.parent;
-      const idx = rp.findIndex((n) => n.type === 'single' && n.tabId === rightId);
-      if (idx >= 0) rp.splice(idx, 1);
+    // ⚠️ Приводимую вынимаем из ЕЁ массива отдельно и только если он другой: при одном родителе
+    // цикл ниже уберёт обе за один проход, а лишнее удаление вынесло бы и активную тоже.
+    if (movedParent.parent !== anchorParent.parent) {
+      const mp = movedParent.parent;
+      const idx = mp.findIndex((n) => n.type === 'single' && n.tabId === movedId);
+      if (idx >= 0) mp.splice(idx, 1);
       // Папка, из которой забрали последнюю вкладку, исчезает: пустая папка в списке — мусор,
       // который человек не создавал и убрать может только руками.
       this.#pruneEmptyGroups(this.nodes);
     }
 
-    const targetNodes = leftParent.parent;
+    const targetNodes = anchorParent.parent;
     let pairInserted = false;
     const newNodes: SidebarNode[] = [];
     for (const node of targetNodes) {
@@ -2771,7 +2786,13 @@ export class TabManager {
     if (!pairInserted) newNodes.push(pair);
     targetNodes.splice(0, targetNodes.length, ...newNodes);
 
-    this.splitPairs.push({ leftId, rightId, activePanel: 'left', splitRatio: 0.5 });
+    // ⚠️ activePanel обязан указывать на сторону АКТИВНОЙ вкладки, а не всегда на левую:
+    // activeId остаётся anchorId, и разъедься эти двое — Ctrl-переключение панелей и выход из
+    // сплита без keepId начнут врать (тот же инвариант, что сторожит комментарий у #activePair).
+    this.splitPairs.push({
+      leftId, rightId, splitRatio: 0.5,
+      activePanel: anchorId === leftId ? 'left' : 'right',
+    });
 
     for (const splitId of [leftId, rightId]) {
       const splitTab = this.tabMap.get(splitId);
@@ -2780,11 +2801,13 @@ export class TabManager {
       if (!children.includes(splitTab.view)) this.win.contentView.addChildView(splitTab.view);
     }
 
-    // Левая панель встаёт на место сразу (одна смена размера), правая приезжает из-за
-    // правого края — так появление сплита читается как действие, а не как щелчок.
+    // Активная панель встаёт на место сразу (одна смена размера — она уже была на экране, и
+    // приезжать ей неоткуда), приводимая въезжает из-за ТОГО края, к которому её вели: так
+    // появление сплита читается как продолжение жеста, а не как щелчок.
     this.repositionViews();
-    const right = this.getTabViewBounds(rightId);
-    this.slideViews([{ tabId: rightId, to: right, fromX: this.bounds.x + this.bounds.width }]);
+    const to = this.getTabViewBounds(movedId);
+    const fromX = side === 'left' ? this.bounds.x - to.width : this.bounds.x + this.bounds.width;
+    this.slideViews([{ tabId: movedId, to, fromX }]);
     this.onChange();
     this.focusActiveView();
   }

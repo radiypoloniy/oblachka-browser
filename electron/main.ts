@@ -2286,7 +2286,7 @@ function registerIpc() {
   ipcMain.handle(IPC.TAB_SET_MUTED, (e, id: string, muted: boolean) => tabsOf(e)?.setTabMuted(id, muted));
 
   // Split View
-  ipcMain.handle(IPC.TAB_ENTER_SPLIT, (e, rightId: string)         => tabsOf(e)?.enterSplit(rightId));
+  ipcMain.handle(IPC.TAB_ENTER_SPLIT, (e, tabId: string, side?: 'left' | 'right') => tabsOf(e)?.enterSplit(tabId, side));
   ipcMain.handle(IPC.TAB_EXIT_SPLIT,  (e, tabId: string, keepId?: string) => tabsOf(e)?.exitSplit(tabId, keepId));
   ipcMain.handle(IPC.TAB_SPLIT_FOCUS, (e, side: 'left' | 'right') => tabsOf(e)?.focusSplitPanel(side));
   ipcMain.handle(IPC.TAB_SPLIT_RATIO, (e, ratio: number)           => tabsOf(e)?.setSplitRatio(ratio));

@@ -1841,6 +1841,9 @@ export interface DragCard {
 export interface TabDropResult {
   zone: TabDropZone | null;
   windowId?: number;
+  // Только для 'split': за какой край тянули, ту половину вкладка и займёт. Без этого сплит
+  // всегда открывался справа, куда бы человек ни вёл, — жест обещал одно, а делал другое.
+  side?: 'left' | 'right';
 }
 
 // Подсветка панели-ЦЕЛИ, пока половину сплита тащат за её шапку (жест живёт в рабочей области,
@@ -1985,7 +1988,10 @@ export interface OblakoApi {
   generateStudio(kind: string, context: string): Promise<{ ok: boolean; text?: string; error?: string }>; // материал Студии блокнота
 
   // Split View
-  enterSplit(rightId: string): Promise<void>;       // текущая активная → левая, rightId → правая
+  // side — какую половину займёт ПРИВОДИМАЯ вкладка (по умолчанию правую: так входят в сплит
+  // из контекстного меню ссылки, где стороне взяться неоткуда). Перетаскивание же передаёт
+  // сторону, за которую человек тянул, — иначе жест обещает одно, а делает другое.
+  enterSplit(tabId: string, side?: 'left' | 'right'): Promise<void>;
   // keepId — какая панель НАЙДЕННОЙ пары остаётся активной (по умолчанию текущая активная).
   // Нужен жесту «вытащить половину в список»: активной обязана остаться та, которую НЕ тащили.
   exitSplit(tabId: string, keepId?: string): Promise<void>; // схлопнуть пару, содержащую tabId; обе вкладки остаются
