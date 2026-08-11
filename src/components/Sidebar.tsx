@@ -1585,7 +1585,7 @@ export default function Sidebar({
    * Исходы, которые перестановкой в сайдбаре не являются: split, вынос в новое окно, передача
    * в соседнее. Возвращает true, если дроп забрала зона, — тогда локальный порядок откатывается.
    */
-  const applyZoneDrop = (e: DragEndEvent, { zone, windowId, side }: TabDropResult): boolean => {
+  const applyZoneDrop = (e: DragEndEvent, { zone, windowId, side, replaceId }: TabDropResult): boolean => {
     const draggedId = e.active.id as string;
     const draggedTab = draggedId.startsWith('group:') ? undefined : tabs.find((t) => t.id === draggedId);
     // Группу и участника split не выносим: у первой нет одной страницы, второй увёл бы за собой
@@ -1602,6 +1602,15 @@ export default function Sidebar({
     // выносу: вытащенное по ошибке окно возвращается перетаскиванием, а не только закрытием.
     if (zone === 'adopt' && windowId !== undefined && canDetach) {
       void window.oblako.moveTabToWindow(draggedId, windowId);
+      return true;
+    }
+    // Отпустили над панелью уже открытого сплита — вкладка занимает её место, выселенная
+    // возвращается в список. Ту же проверку, что и у split ниже: группу и половину чужой пары
+    // на панель не кладём.
+    if (zone === 'replace' && replaceId) {
+      if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
+        void window.oblako.replaceSplitPanel(replaceId, draggedId);
+      }
       return true;
     }
     // Дроп в контент-зону → split вместо reorder. Сторону считает main по реальному курсору

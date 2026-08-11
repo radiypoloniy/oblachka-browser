@@ -22,7 +22,10 @@ import { contextForWindow, allContexts } from './WindowRegistry';
 //
 // 'adopt' — курсор ушёл на ДРУГОЕ окно Oblako, и вкладка переедет в него. Подсветка при этом
 // рисуется в окне-приёмнике, а не в окне-источнике: человек смотрит туда, куда тащит.
-type ZoneVisual = 'split-left' | 'split-right' | 'window' | 'adopt';
+//
+// 'replace-*' появляются ТОЛЬКО когда сплит уже на экране: делить пополам то, что и так поделено,
+// нечего, и единственный осмысленный исход над панелью — занять её место.
+type ZoneVisual = 'split-left' | 'split-right' | 'window' | 'adopt' | 'replace-left' | 'replace-right';
 
 // Доля ширины контента с каждого края, отданная разделению экрана. Остаток посередине — новое
 // окно. Так же разводят эти два жеста браузеры с вертикальными вкладками и сплитом.
@@ -178,24 +181,78 @@ function windowUnderCursor(source: WindowDropZones): WindowDropZones | null {
   return null;
 }
 
-// Зона внутри СВОЕГО окна: край контента — разделить экран, середина — новое окно, шапка и
-// сайдбар — обычное переупорядочивание.
+// Раскладка зон окна — один источник и для попадания курсора, и для картинки в оверлее.
+// Прямоугольники в ОКОННЫХ координатах (как st.content); в координаты оверлея их переводит
+// zonesForOverlay ниже.
+//
+// ⚠️ Две разные раскладки, а не одна с поправкой. Пока сплита нет, делить нечего: края области
+// контента отданы разделению экрана по фиксированной доле, середина — новому окну. Как только
+// панели на экране, доли теряют смысл — человек целится в КОНКРЕТНУЮ панель, а её ширину он сам
+// же и задал разделителем. Отсюда прямоугольники берутся у TabManager, а не считаются здесь.
+interface ZoneRect { zone: ZoneVisual; rect: ContentBounds }
+
+// Доля ширины контента вокруг шва между панелями, оставленная «новому окну». Без неё исход
+// «вынести в окно» в режиме сплита пропал бы вовсе: панели покрывают область контента целиком,
+// и середины, за которую его брали, просто нет. Шов — единственное место, куда человек и так не
+// целится панелью, и он же визуально читается как «между».
+const SEAM_BAND_RATIO = 0.14;
+
+function zoneLayout(st: WindowDropZones): ZoneRect[] {
+  const c = st.content;
+  const panels = contextForWindow(st.win)?.tabs.splitPanelRects() ?? null;
+  if (panels) {
+    const seamCenter = (panels.left.x + panels.left.width + panels.right.x) / 2;
+    const half = (c.width * SEAM_BAND_RATIO) / 2;
+    // Полосу шва вычитаем из панелей, а не рисуем поверх: зоны не должны накладываться, иначе
+    // подсветка и попадание разойдутся ровно на ширину перекрытия.
+    const leftW = Math.max(0, seamCenter - half - panels.left.x);
+    const rightX = seamCenter + half;
+    return [
+      { zone: 'replace-left', rect: { x: panels.left.x, y: c.y, width: leftW, height: c.height } },
+      { zone: 'window', rect: { x: seamCenter - half, y: c.y, width: half * 2, height: c.height } },
+      { zone: 'replace-right', rect: { x: rightX, y: c.y, width: Math.max(0, panels.right.x + panels.right.width - rightX), height: c.height } },
+    ];
+  }
+  const edge = c.width * SPLIT_EDGE_RATIO;
+  return [
+    { zone: 'split-left', rect: { x: c.x, y: c.y, width: edge, height: c.height } },
+    { zone: 'window', rect: { x: c.x + edge, y: c.y, width: c.width - edge * 2, height: c.height } },
+    { zone: 'split-right', rect: { x: c.x + c.width - edge, y: c.y, width: edge, height: c.height } },
+  ];
+}
+
+// Зоны в координатах ОВЕРЛЕЯ (он накрывает область контента, см. showOverlayIn). Окно-приёмник
+// чужой вкладки — особый случай: там исход ровно один, и делить его не на что.
+function zonesForOverlay(st: WindowDropZones, adopt: boolean): ZoneRect[] {
+  const c = st.content;
+  if (adopt) return [{ zone: 'adopt', rect: { x: 0, y: 0, width: c.width, height: c.height } }];
+  return zoneLayout(st).map(({ zone, rect }) => ({
+    zone, rect: { x: rect.x - c.x, y: rect.y - c.y, width: rect.width, height: rect.height },
+  }));
+}
+
+// Зона внутри СВОЕГО окна. Вне области контента (шапка, сайдбар) — обычное переупорядочивание;
+// вне окна вовсе — новое окно.
 function zoneInSource(st: WindowDropZones): ZoneVisual | null {
   const p = cursorInWindow(st);
   if (!p) return 'window';
   const c = st.content;
   if (p.x < c.x || p.x > c.x + c.width || p.y < c.y || p.y > c.y + c.height) return null; // сайдбар/тулбар
-  const edge = c.width * SPLIT_EDGE_RATIO;
-  if (p.x < c.x + edge) return 'split-left';
-  if (p.x > c.x + c.width - edge) return 'split-right';
-  return 'window';
+  const layout = zoneLayout(st);
+  for (const { zone, rect } of layout) {
+    if (p.x >= rect.x && p.x < rect.x + rect.width) return zone;
+  }
+  // Ровно на правой кромке контента ни один полуинтервал не срабатывает — отдаём последнюю зону
+  // (она и есть правая), иначе крайний столбец пикселей вёл бы себя не как соседний с ним.
+  return layout[layout.length - 1]?.zone ?? 'window';
 }
 
 // Наружу отдаём ДЕЙСТВИЕ, а не картинку: сайдбару всё равно, за какой край тянули.
 function toAction(z: ZoneVisual | null): TabDropZone | null {
   if (z === null) return null;
   if (z === 'adopt') return 'adopt';
-  return z === 'window' ? 'window' : 'split';
+  if (z === 'window') return 'window';
+  return z === 'replace-left' || z === 'replace-right' ? 'replace' : 'split';
 }
 
 // Показать оверлей в окне (своём или принимающем) и погасить его там, где он был до этого.
@@ -281,7 +338,7 @@ function sendCursor(st: WindowDropZones | null, pos: { x: number; y: number } | 
 // приходит уже пересчитанным в ту же систему координат.
 function sendTabDrag(
   st: WindowDropZones | null,
-  payload: { width: number; height: number; card: DragCard | null } | null,
+  payload: { width: number; height: number; card: DragCard | null; zones: ZoneRect[] } | null,
 ): void {
   post(st, 'dropzones:tab', payload);
 }
@@ -323,6 +380,9 @@ function updateDrag(): void {
     showOverlayIn(shouldShowIn);
     sendTabDrag(shouldShowIn, {
       width: shouldShowIn.content.width, height: shouldShowIn.content.height, card: drag.card,
+      // Прямоугольники считает main — он один знает, есть ли сплит и какой ширины его панели.
+      // Оверлей рисует ровно то, что произойдёт, а не свою догадку о долях.
+      zones: zonesForOverlay(shouldShowIn, !overSource),
     });
     drag.shown = shouldShowIn;
     drag.zone = null; // новое окно ещё ничего не знает — заставляем послать зону ниже
@@ -380,11 +440,25 @@ export function endTabDrag(win: BrowserWindow): TabDropResult {
   // Сторона теряется в toAction (наружу уходит действие, а не картинка) — достаём её из той же
   // ZoneVisual, пока она ещё под рукой: сплит обязан открыться там, куда тянули.
   const side: 'left' | 'right' | undefined =
-    drag.zone === 'split-left' ? 'left' : drag.zone === 'split-right' ? 'right' : undefined;
+    drag.zone === 'split-left' || drag.zone === 'replace-left' ? 'left'
+    : drag.zone === 'split-right' || drag.zone === 'replace-right' ? 'right'
+    : undefined;
+  // Какую именно панель заменяем. Резолвим ЗДЕСЬ, пока пара ещё та же: отдай мы наружу одну
+  // сторону, сайдбару пришлось бы заново выяснять состав пары — а он к этому моменту уже мог
+  // измениться (панель могли закрыть, пока вкладку несли).
+  const panels = zone === 'replace' ? contextForWindow(drag.source.win)?.tabs.splitPanelRects() : null;
+  const replaceId = panels ? (side === 'left' ? panels.leftId : panels.rightId) : undefined;
   const windowId = drag.target?.win.id;
   stopDrag();
   // 'adopt' без живого приёмника — не исход, а полпути: лучше ничего не делать, чем унести
   // вкладку неизвестно куда.
   if (zone === 'adopt' && windowId === undefined) return { zone: null };
-  return { zone, ...(windowId === undefined ? {} : { windowId }), ...(side ? { side } : {}) };
+  // То же и для замены: сплит успел развалиться, пока вкладку несли, — целиться больше не во что.
+  if (zone === 'replace' && replaceId === undefined) return { zone: null };
+  return {
+    zone,
+    ...(windowId === undefined ? {} : { windowId }),
+    ...(side ? { side } : {}),
+    ...(replaceId ? { replaceId } : {}),
+  };
 }

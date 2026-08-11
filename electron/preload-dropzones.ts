@@ -4,7 +4,15 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { ContentBounds, DragCard, SplitSwapHint } from '../shared/ipc'
 
 // Что подсвечивать (см. ZoneVisual в DropZoneManager.ts) — картинка, а не действие.
-type ZoneVisual = 'split-left' | 'split-right' | 'window'
+type ZoneVisual = 'split-left' | 'split-right' | 'window' | 'adopt' | 'replace-left' | 'replace-right'
+
+// Зоны приезжают готовыми прямоугольниками в координатах оверлея (см. DropZoneManager.zonesForOverlay).
+interface TabDragPayload {
+  width: number
+  height: number
+  card: DragCard | null
+  zones: Array<{ zone: ZoneVisual; rect: ContentBounds }>
+}
 
 contextBridge.exposeInMainWorld('dropzones', {
   onZone: (cb: (zone: ZoneVisual | null) => void) => {
@@ -31,10 +39,11 @@ contextBridge.exposeInMainWorld('dropzones', {
     ipcRenderer.on('dropzones:thumb', handler)
     return () => ipcRenderer.removeListener('dropzones:thumb', handler)
   },
-  // Третий жест на той же вью: вкладку тащат из сайдбара. Приходит область контента (зоны живут
-  // только в ней, а оверлей теперь во всё окно) и что нести в руке.
-  onTabDrag: (cb: (t: { content: ContentBounds; card: DragCard | null } | null) => void) => {
-    const handler = (_e: unknown, t: { content: ContentBounds; card: DragCard | null } | null) => cb(t)
+  // Третий жест на той же вью: вкладку тащат из сайдбара. Приходит размер оверлея, что нести в
+  // руке и ГОТОВЫЕ прямоугольники зон — их считает main (он один знает, открыт ли сплит и какой
+  // ширины его панели), вью только рисует.
+  onTabDrag: (cb: (t: TabDragPayload | null) => void) => {
+    const handler = (_e: unknown, t: TabDragPayload | null) => cb(t)
     ipcRenderer.on('dropzones:tab', handler)
     return () => ipcRenderer.removeListener('dropzones:tab', handler)
   },

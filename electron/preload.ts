@@ -145,6 +145,7 @@ const api: OblakoApi = {
   generateStudio: (kind: string, context: string) => ipcRenderer.invoke(IPC.NOTEBOOK_STUDIO_GEN, kind, context) as Promise<{ ok: boolean; text?: string; error?: string }>,
 
   enterSplit:      (tabId: string, side?: 'left' | 'right') => ipcRenderer.invoke(IPC.TAB_ENTER_SPLIT, tabId, side),
+  replaceSplitPanel: (panelId: string, newId: string) => ipcRenderer.invoke(IPC.TAB_REPLACE_PANEL, panelId, newId),
   exitSplit:       (tabId: string, keepId?: string) => ipcRenderer.invoke(IPC.TAB_EXIT_SPLIT, tabId, keepId),
   focusSplitPanel: (side: 'left' | 'right')    => ipcRenderer.invoke(IPC.TAB_SPLIT_FOCUS, side),
   setSplitRatio:   (ratio: number)             => ipcRenderer.invoke(IPC.TAB_SPLIT_RATIO, ratio),

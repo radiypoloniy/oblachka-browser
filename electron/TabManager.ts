@@ -2878,6 +2878,101 @@ export class TabManager {
     this.focusActiveView();
   }
 
+  // Прямоугольники ОСТРОВОВ показываемой пары, в оконных координатах. Нужны зонам перетаскивания
+  // (electron/DropZoneManager.ts): пока сплита нет, края области контента можно делить по
+  // фиксированной доле, но как только панели на экране, человек целится в КОНКРЕТНУЮ панель — а
+  // она может занимать и треть ширины, и две трети (разделитель таскают).
+  //
+  // ⚠️ Остров, а не рамка страницы (#splitPaneBounds): в него входит и полоса заголовка панели,
+  // и кант карточки. Целятся именно в остров целиком, и подсветка обязана совпасть с тем, что
+  // человек видит как «панель».
+  splitPanelRects(): { leftId: string; rightId: string; left: ContentBounds; right: ContentBounds } | null {
+    const pair = this.#activePair();
+    if (!pair) return null;
+    const leftWidth = Math.floor((this.bounds.width - ISLAND_GAP) * pair.splitRatio);
+    return {
+      leftId: pair.leftId,
+      rightId: pair.rightId,
+      left: { x: this.bounds.x, y: this.bounds.y, width: leftWidth, height: this.bounds.height },
+      right: {
+        x: this.bounds.x + leftWidth + ISLAND_GAP,
+        y: this.bounds.y,
+        width: this.bounds.width - leftWidth - ISLAND_GAP,
+        height: this.bounds.height,
+      },
+    };
+  }
+
+  // Заменить одну панель показываемой пары вкладкой из списка — жест «принести вкладку на
+  // половину сплита». До этого сплит был тупиком: enterSplit отказывает, когда активная уже в
+  // паре, и перетаскивание вкладки на страницу в режиме сплита не делало ровно ничего.
+  //
+  // ⚠️ Выселенная панель НЕ закрывается. Она возвращается в список обычной вкладкой и встаёт
+  // сразу за парой, из которой вышла, — там, где человек будет её искать. Закрыть чужую страницу
+  // по жесту, который человек считает перестановкой, — потеря его работы без спроса.
+  replaceSplitPanel(panelId: string, newId: string): void {
+    const pair = this.#pairContaining(panelId);
+    // Только ПОКАЗЫВАЕМАЯ пара: припаркованная не на экране, целиться в её панель нечем.
+    if (!pair || pair !== this.#activePair()) return;
+    if (panelId === newId || newId === HUB_ID) return;
+    if (this.#pairContaining(newId)) return;           // уже половина какой-то пары
+    if (this.isTabPinned(newId)) return;
+    const newTab = this.tabMap.get(newId);
+    if (!newTab || (!this.isHttpView(newTab.view) && !newTab.sleeping)) return;
+    this.clearOrganizeSnapshot();
+
+    const side: 'left' | 'right' = panelId === pair.leftId ? 'left' : 'right';
+    if (newTab.sleeping) this.wakeTab(newId);
+
+    // Дерево: приводимую вынимаем из её места (пустая папка после этого исчезает — тот же
+    // приём, что в enterSplit), выселенную кладём сразу за узлом пары.
+    const movedParent = this.#findTabParent(newId);
+    if (movedParent && movedParent.parent[movedParent.idx]?.type === 'single') {
+      movedParent.parent.splice(movedParent.idx, 1);
+      this.#pruneEmptyGroups(this.nodes);
+    }
+    const pairNode = this.#findTabParent(panelId);
+    const node = pairNode ? pairNode.parent[pairNode.idx] : undefined;
+    if (pairNode && node?.type === 'split-pair') {
+      if (side === 'left') node.leftTabId = newId; else node.rightTabId = newId;
+      pairNode.parent.splice(pairNode.idx + 1, 0, { type: 'single', tabId: panelId });
+    } else {
+      // Узел пары не нашёлся — быть такого не должно, но выселенная вкладка не имеет права
+      // пропасть из списка: она жива, и без узла до неё нельзя было бы добраться вовсе.
+      this.nodes.push({ type: 'single', tabId: panelId });
+    }
+
+    if (side === 'left') pair.leftId = newId; else pair.rightId = newId;
+    // ⚠️ activeId переставляем ДО repositionViews: #activePair() ищет пару по activeId, и с
+    // прежним (уже выселенным) id пара перестала бы находиться — раскладка на кадр схлопнулась
+    // бы в одиночную вкладку.
+    if (this.activeId === panelId) {
+      this.activeId = newId;
+      pair.activePanel = side;
+    }
+
+    const evicted = this.tabMap.get(panelId);
+    if (evicted && this.isLiveHttpView(evicted.view)) {
+      evicted.view.webContents.stopFindInPage('clearSelection');
+      evicted.view.setVisible(false);
+    }
+    const incoming = this.tabMap.get(newId);
+    if (incoming && this.isHttpView(incoming.view)) {
+      const children = this.win.contentView.children;
+      if (!children.includes(incoming.view)) this.win.contentView.addChildView(incoming.view);
+      incoming.view.setVisible(true);
+    }
+
+    // Новая панель въезжает с того же края, к которому её вели, — тем же движением, что и при
+    // входе в сплит (slideViews двигает только x, см. её разбор).
+    this.repositionViews();
+    const to = this.getTabViewBounds(newId);
+    const fromX = side === 'left' ? this.bounds.x - to.width : this.bounds.x + this.bounds.width;
+    this.slideViews([{ tabId: newId, to, fromX }]);
+    this.onChange();
+    this.focusActiveView();
+  }
+
   // Миниатюра страницы для карточки, которую человек несёт в руке, перетаскивая половину сплита
   // за шапку (src/components/SplitDragCard.tsx). Один снимок на жест.
   //

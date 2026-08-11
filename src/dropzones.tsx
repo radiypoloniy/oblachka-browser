@@ -13,7 +13,31 @@ import './styles/global.css';
 //
 // 'adopt' рисуется в окне-ПРИЁМНИКЕ: вкладку тащат из другого окна, и подсказка нужна там, куда
 // смотрит человек. Зона у него одна на всю страницу — делить её на края незачем, исход всего один.
-type ZoneVisual = 'split-left' | 'split-right' | 'window' | 'adopt';
+// 'replace-*' приходят только когда сплит уже на экране: над панелью единственный осмысленный
+// исход — занять её место, и рисуется он по РЕАЛЬНОМУ прямоугольнику панели (её ширину человек
+// сам задал разделителем), а не по доле области контента.
+type ZoneVisual = 'split-left' | 'split-right' | 'window' | 'adopt' | 'replace-left' | 'replace-right';
+
+// Готовые прямоугольники зон — их считает main (см. DropZoneManager.zonesForOverlay). Вью не
+// вычисляет раскладку сама: раньше она делила ширину на фиксированные доли и в режиме сплита
+// обещала не то, что произойдёт.
+interface TabDragPayload {
+  width: number;
+  height: number;
+  card: DragCard | null;
+  zones: Array<{ zone: ZoneVisual; rect: { x: number; y: number; width: number; height: number } }>;
+}
+
+// Подпись зоны — единственное, что остаётся на стороне вью: слова человеку показывает интерфейс,
+// а не main.
+const ZONE_LABEL: Record<ZoneVisual, string> = {
+  'split-left': 'Разделить экран',
+  'split-right': 'Разделить экран',
+  'window': 'Открыть в новом окне',
+  'adopt': 'Перенести вкладку сюда',
+  'replace-left': 'Заменить панель',
+  'replace-right': 'Заменить панель',
+};
 
 import type { DragCard, SplitSwapHint } from '../shared/ipc';
 import { SplitDragCard, SPLIT_DRAG_CARD_WIDTH } from './components/SplitDragCard';
@@ -25,14 +49,15 @@ declare global {
       onSwapHint: (cb: (hint: SplitSwapHint | null) => void) => () => void;
       onCursor: (cb: (pos: { x: number; y: number } | null) => void) => () => void;
       onThumb: (cb: (thumb: string | null) => void) => () => void;
-      onTabDrag: (cb: (t: { width: number; height: number; card: DragCard | null } | null) => void) => () => void;
+      onTabDrag: (cb: (t: TabDragPayload | null) => void) => () => void;
     };
   }
 }
 
-// Держать в синхроне со SPLIT_EDGE_RATIO в electron/DropZoneManager.ts: main по этой доле решает,
-// а вью по ней же рисует. Разъедутся — подсветка будет обещать не то, что произойдёт.
-const SPLIT_EDGE_RATIO = 0.35;
+// ⚠️ Здесь стояла копия SPLIT_EDGE_RATIO из electron/DropZoneManager.ts — доля, по которой main
+// решал, а вью рисовала. Копию приходилось держать в синхроне руками, и разъехаться ей значило
+// обещать человеку не то, что произойдёт. Теперь раскладку целиком считает main и присылает
+// готовыми прямоугольниками (см. TabDragPayload.zones): синхронизировать больше нечего.
 
 // ⚠️ Прямоугольник задаёт вызывающий целиком, а не «во всю высоту оверлея»: у зон в режиме сплита
 // он будет считаться по реальным панелям, а не по долям всей области (см. заход про замену панели).
@@ -92,7 +117,7 @@ function DropZones() {
   const [swap, setSwap] = useState<SplitSwapHint | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [thumb, setThumb] = useState<string | null>(null);
-  const [tab, setTab] = useState<{ width: number; height: number; card: DragCard | null } | null>(null);
+  const [tab, setTab] = useState<TabDragPayload | null>(null);
   useEffect(() => window.dropzones.onZone(setZone), []);
   useEffect(() => window.dropzones.onTabDrag(setTab), []);
   useEffect(() => window.dropzones.onCursor(setCursor), []);
@@ -149,8 +174,6 @@ function DropZones() {
   // областью контента: над сайдбаром её рисует сам чром (там он виден, и в списке из узких строк
   // уместнее его собственный узкий призрак).
   if (tab) {
-    const edgeW = Math.round(tab.width * SPLIT_EDGE_RATIO);
-    const rect = (x: number, w: number) => ({ left: x, top: 0, width: w, height: tab.height });
     // Курсор приходит в координатах оверлея, то есть области контента. Отрицательный или за краем —
     // человек над сайдбаром/тулбаром, и карточку там ведёт сам чром своим призраком.
     const overContent = !!cursor
@@ -158,17 +181,17 @@ function DropZones() {
       && cursor.y >= 0 && cursor.y <= tab.height;
     return (
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-        {/* Приём вкладки из другого окна — одна зона во всю страницу, без деления на края:
-            разделять экран чужой вкладкой на лету мы не умеем, и обещать этого нельзя. */}
-        {zone === 'adopt' ? (
-          <Zone label="Перенести вкладку сюда" active rect={rect(0, tab.width)} />
-        ) : (
-          <>
-            <Zone label="Разделить экран" active={zone === 'split-left'} rect={rect(0, edgeW)} />
-            <Zone label="Открыть в новом окне" active={zone === 'window'} rect={rect(edgeW, tab.width - edgeW * 2)} />
-            <Zone label="Разделить экран" active={zone === 'split-right'} rect={rect(tab.width - edgeW, edgeW)} />
-          </>
-        )}
+        {/* Раскладку прислал main вместе с жестом: и три зоны обычного окна, и две панели уже
+            открытого сплита, и одна зона на всю страницу у окна-приёмника — это один и тот же
+            список прямоугольников, рисовать его тут нечем, кроме цикла. */}
+        {tab.zones.map(({ zone: z, rect }) => (
+          <Zone
+            key={z}
+            label={ZONE_LABEL[z]}
+            active={zone === z}
+            rect={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
+          />
+        ))}
         {cursor && overContent && tab.card && (
           <DragGhost
             x={cursor.x} y={cursor.y}

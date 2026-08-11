@@ -391,7 +391,8 @@ export const IPC = {
   GRAPH_WEBAPP_CAPTURE_IMAGE: 'graph:webapp-capture-image', // renderer → main: забрать картинку из чата на диск
 
   // Split View
-  TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (правая вкладка)
+  TAB_ENTER_SPLIT:  'tab:enter-split',  // renderer → main: войти в split (вкладка + сторона)
+  TAB_REPLACE_PANEL: 'tab:replace-panel', // renderer → main: занять половину сплита, выселенная уходит в список
   TAB_EXIT_SPLIT:   'tab:exit-split',   // renderer → main: выйти из split, обе вкладки остаются
   TAB_SPLIT_FOCUS:  'tab:split-focus',  // renderer → main: переключить фокус на панель
   TAB_SPLIT_RATIO:  'tab:split-ratio',  // renderer → main: новое соотношение панелей при drag
@@ -1827,7 +1828,9 @@ export type DefaultBrowserRequest = 'already' | 'settings-opened' | 'unsupported
 // новое окно, 'adopt' — курсор над ДРУГИМ окном Oblako, вкладка переедет туда, null — обычное
 // переупорядочивание в сайдбаре. Считает MAIN (см. electron/DropZoneManager.ts): чром теряет
 // указатель, как только тот уходит на страницу.
-export type TabDropZone = 'split' | 'window' | 'adopt';
+// 'replace' появляется только когда сплит уже на экране: делить пополам поделённое нечего, и
+// единственный осмысленный исход над панелью — занять её место (выселенная возвращается в список).
+export type TabDropZone = 'split' | 'window' | 'adopt' | 'replace';
 
 // Имя и значок того, что несут в руке. Одна форма на оба жеста (вкладка из сайдбара и половина
 // сплита за шапку) — карточку они рисуют одну и ту же, src/components/SplitDragCard.tsx.
@@ -1844,6 +1847,9 @@ export interface TabDropResult {
   // Только для 'split': за какой край тянули, ту половину вкладка и займёт. Без этого сплит
   // всегда открывался справа, куда бы человек ни вёл, — жест обещал одно, а делал другое.
   side?: 'left' | 'right';
+  // Только для 'replace': какую панель занять. Резолвит main, пока пара под курсором ещё та
+  // же самая — сайдбару к моменту разбора она могла бы уже не принадлежать.
+  replaceId?: string;
 }
 
 // Подсветка панели-ЦЕЛИ, пока половину сплита тащат за её шапку (жест живёт в рабочей области,
@@ -1992,6 +1998,9 @@ export interface OblakoApi {
   // из контекстного меню ссылки, где стороне взяться неоткуда). Перетаскивание же передаёт
   // сторону, за которую человек тянул, — иначе жест обещает одно, а делает другое.
   enterSplit(tabId: string, side?: 'left' | 'right'): Promise<void>;
+  // Занять половину показываемой пары вкладкой из списка. Выселенная панель не закрывается —
+  // возвращается в список обычной вкладкой сразу за парой, из которой вышла.
+  replaceSplitPanel(panelId: string, newId: string): Promise<void>;
   // keepId — какая панель НАЙДЕННОЙ пары остаётся активной (по умолчанию текущая активная).
   // Нужен жесту «вытащить половину в список»: активной обязана остаться та, которую НЕ тащили.
   exitSplit(tabId: string, keepId?: string): Promise<void>; // схлопнуть пару, содержащую tabId; обе вкладки остаются
