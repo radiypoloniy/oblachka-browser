@@ -40,7 +40,7 @@
 // карте по id окна и умирает вместе с ним; окно создаётся лениво — на первый список подсказок.
 import { BrowserWindow, ipcMain } from 'electron'
 import path from 'node:path'
-import type { ContentBounds, SuggestDropdownItem } from '../shared/ipc'
+import type { ContentBounds, OmniboxPanel, OmniboxRecommendEdit, SuggestDropdownItem } from '../shared/ipc'
 
 const GAP = 8 // зазор между низом омнибокса и верхом карточки
 // Стартовая высота — до первого реального замера от suggestdropdown.tsx (ResizeObserver →
@@ -63,6 +63,16 @@ const SHADOW_MARGIN = 40
 // перекрывает её ни на пиксель. Платим верхушкой тени — она обрезается; это видно куда меньше, чем
 // неработающая адресная строка, а тень у нас всё равно смещена вниз (offset +10).
 const SHADOW_TOP = GAP
+// ⚠️ ПОТОЛОК ШИРИНЫ КАРТОЧКИ. Раньше её ширина была ровно шириной омнибокса, а омнибокс с недавних
+// пор занимает всю свободную полосу тулбара — на 2560-мониторе это под две тысячи пикселей. Выдача
+// в такой карточке не «широкая», она РАЗМАЗАННАЯ: восемь значков расползаются по всей строке, одна
+// карточка подсказки растягивается в полосу во весь экран, а глазу негде зацепиться. Так не делает
+// никто: Spotlight в macOS фиксированной ширины независимо от монитора.
+// Карточка прижата к ЛЕВОМУ краю строки (там же, где начинается текст адреса), поэтому лишнюю
+// ширину режем справа.
+// ⚠️ Режем именно ОКНО, а не только вёрстку внутри: прозрачный остаток окна хит-тестился бы и
+// глотал клики по странице справа от карточки — ровно та беда, которой посвящён SHADOW_TOP выше.
+const MAX_CARD_WIDTH = 1040
 
 interface WindowDropdown {
   win: BrowserWindow
@@ -77,6 +87,11 @@ interface WindowDropdown {
   // Последний список — переотправляется на did-finish-load, если окно ещё не успело загрузиться
   // к моменту первого sendSuggestItems().
   items: SuggestDropdownItem[]
+  // Последняя панель (режим «нетронутая строка», заход 11) — переотправляется по тому же поводу.
+  panel: OmniboxPanel | null
+  // Что показано СЕЙЧАС. Нужно ровно для переотправки на did-finish-load: слать оба сообщения
+  // подряд нельзя — какое пришло вторым, то бы и нарисовалось, независимо от намерения омнибокса.
+  mode: 'items' | 'panel'
   // Показан ли список СЕЙЧАС с точки зрения омнибокса. Нужен отдельно от popup.isVisible():
   // окно прячется и по внешним причинам (главное свернули, ушли в другое приложение), и при
   // возврате его надо показать снова — но только если омнибокс всё ещё его просит.
@@ -92,7 +107,7 @@ function stateFor(win: BrowserWindow): WindowDropdown {
   const created: WindowDropdown = {
     win, popup: null, bound: false,
     omniboxBounds: { x: 0, y: 0, width: 0, height: 0 },
-    height: INITIAL_HEIGHT, items: [], wanted: false,
+    height: INITIAL_HEIGHT, items: [], panel: null, mode: 'items', wanted: false,
   }
   dropdowns.set(win.id, created)
   win.once('closed', () => {
@@ -117,6 +132,22 @@ export function onPick(cb: (win: BrowserWindow, item: SuggestDropdownItem) => vo
   onPickCb = cb
 }
 
+// То же для клика по полоске сайта в панели — main.ts пересылает его в чром, где открывается
+// поповер замочка (панель показывает сводку и управлением не занимается).
+let onSiteInfoCb: ((win: BrowserWindow) => void) | null = null
+
+export function onSiteInfo(cb: (win: BrowserWindow) => void): void {
+  onSiteInfoCb = cb
+}
+
+// Правка набора «Рекомендуемые» карандашом в панели — тоже уходит в чром: список хранит
+// SettingsManager, но что показано в панели, решает по-прежнему один Toolbar.tsx.
+let onRecommendCb: ((win: BrowserWindow, edit: OmniboxRecommendEdit) => void) | null = null
+
+export function onRecommend(cb: (win: BrowserWindow, edit: OmniboxRecommendEdit) => void): void {
+  onRecommendCb = cb
+}
+
 // ⚠️ Координаты ЭКРАННЫЕ: у дочернего окна нет системы координат родителя. getContentBounds() даёт
 // экранное положение контентной области главного окна, а omniboxBounds приходит от рендерера в
 // координатах этой же области — то есть складываются они напрямую, без поправок на рамку и
@@ -128,7 +159,7 @@ function computeBounds(st: WindowDropdown): { x: number; y: number; width: numbe
     x: Math.round(base.x + ob.x - SHADOW_MARGIN),
     // GAP - SHADOW_TOP === 0: верх окна ровно на низе адресной строки, ни пикселя выше.
     y: Math.round(base.y + ob.y + ob.height + GAP - SHADOW_TOP),
-    width: Math.round(ob.width + SHADOW_MARGIN * 2),
+    width: Math.round(Math.min(ob.width, MAX_CARD_WIDTH) + SHADOW_MARGIN * 2),
     height: Math.round(st.height + SHADOW_TOP + SHADOW_MARGIN),
   }
 }
@@ -154,6 +185,16 @@ function ensureIpcRegistered(): void {
   ipcMain.on('suggest-dropdown:pick', (e, item: SuggestDropdownItem) => {
     const st = stateBySender(e.sender)
     if (st) onPickCb?.(st.win, item)
+  })
+
+  ipcMain.on('suggest-dropdown:site-info', (e) => {
+    const st = stateBySender(e.sender)
+    if (st) onSiteInfoCb?.(st.win)
+  })
+
+  ipcMain.on('suggest-dropdown:recommend', (e, edit: OmniboxRecommendEdit) => {
+    const st = stateBySender(e.sender)
+    if (st) onRecommendCb?.(st.win, edit)
   })
 
   // Реальная высота карточки (ResizeObserver в suggestdropdown.tsx). Math.max(1, px) — защита от
@@ -223,8 +264,10 @@ function ensurePopup(st: WindowDropdown): BrowserWindow {
   popup.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   popup.webContents.once('did-finish-load', () => {
     // Список мог прийти ДО загрузки страницы — тогда send ушёл бы в никуда (preload ещё не навесил
-    // обработчик). Переотправляем последний известный явно.
-    popup.webContents.send('suggest-dropdown:items', st.items)
+    // обработчик). Переотправляем последнее известное явно — и ровно ОДНО, то, что просил омнибокс:
+    // послать оба сообщения подряд значит нарисовать не режим, а порядок отправки.
+    if (st.mode === 'panel' && st.panel) popup.webContents.send('suggest-dropdown:panel', st.panel)
+    else popup.webContents.send('suggest-dropdown:items', st.items)
     layoutDropdown(st)
   })
   popup.loadURL('oblako-chrome://localhost/suggestdropdown.html')
@@ -248,7 +291,17 @@ export function showSuggestDropdown(win: BrowserWindow): void {
 export function sendSuggestItems(win: BrowserWindow, items: SuggestDropdownItem[]): void {
   const st = stateFor(win)
   st.items = items
+  st.mode = 'items'
   ensurePopup(st).webContents.send('suggest-dropdown:items', items)
+}
+
+// Панель по нетронутой строке (заход 11) — второй режим той же вью. Приходит и повторно, когда
+// подъезжает «вы это уже читали»: вью просто перерисовывает пришедшее целиком.
+export function sendSuggestPanel(win: BrowserWindow, panel: OmniboxPanel): void {
+  const st = stateFor(win)
+  st.panel = panel
+  st.mode = 'panel'
+  ensurePopup(st).webContents.send('suggest-dropdown:panel', panel)
 }
 
 export function hideSuggestDropdown(win: BrowserWindow | null): void {

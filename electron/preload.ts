@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRequest, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone } from '../shared/ipc';
+import type { OblakoApi, SyncState, TabState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRequest, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, PageChangesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type {
   GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure,
@@ -54,6 +54,9 @@ const api: OblakoApi = {
   },
   searchSettingsSmart: (query: string) => ipcRenderer.invoke(IPC.SETTINGS_SEARCH_SMART, query) as Promise<number[]>,
   getRelatedPages: () => ipcRenderer.invoke(IPC.HISTORY_RELATED) as Promise<SemanticSearchResult[]>,
+  // ⚠️ Дорогой вызов (текст живой страницы + сравнение со снимком) — Toolbar.tsx спрашивает раз
+  // на адрес, а не на каждое открытие панели.
+  getPageChanges: () => ipcRenderer.invoke(IPC.PAGE_CHANGES_GET) as Promise<PageChangesResult>,
   // «Итоги дня»: get — только читает готовое, build — явное действие человека (см. DayDigest.ts).
   getDayDigest:   () => ipcRenderer.invoke(IPC.DIGEST_GET) as Promise<DayDigestState>,
   buildDayDigest: () => ipcRenderer.invoke(IPC.DIGEST_BUILD) as Promise<DayDigestState>,
@@ -173,6 +176,10 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.ADBLOCK_STATE_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.ADBLOCK_STATE_CHANGED, handler);
   },
+  // Посайтовые сведения для полоски сайта в панели омнибокса — ТЕ ЖЕ каналы, что у поповера
+  // замочка (preload-sitepopover.ts), новых обработчиков в main не заводим.
+  getSiteBlockedCount: (d: string) => ipcRenderer.invoke(IPC.ADBLOCK_GET_SITE_BLOCK_COUNT, d) as Promise<number>,
+  isAdblockAllowed:    (d: string) => ipcRenderer.invoke(IPC.ADBLOCK_IS_WHITELISTED, d) as Promise<boolean>,
 
   // История посещений
   getHistory:         (limit?: number)              => ipcRenderer.invoke(IPC.HISTORY_GET, limit) as Promise<HistoryEntry[]>,
@@ -367,6 +374,19 @@ const api: OblakoApi = {
   // Дропдаун подсказок омнибокса (нативная вью)
   setSuggestDropdownOpen: (open: boolean) => ipcRenderer.invoke(IPC.SUGGEST_DROPDOWN_TOGGLE, open) as Promise<void>,
   setSuggestDropdownItems: (items: SuggestDropdownItem[]) => ipcRenderer.invoke(IPC.SUGGEST_DROPDOWN_SET_ITEMS, items) as Promise<void>,
+  setSuggestDropdownPanel: (panel: OmniboxPanel) => ipcRenderer.invoke(IPC.SUGGEST_DROPDOWN_SET_PANEL, panel) as Promise<void>,
+  onSuggestDropdownSiteInfo: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.SUGGEST_DROPDOWN_SITE_INFO, handler);
+    return () => ipcRenderer.removeListener(IPC.SUGGEST_DROPDOWN_SITE_INFO, handler);
+  },
+  onSuggestDropdownRecommend: (cb: (edit: OmniboxRecommendEdit) => void) => {
+    const handler = (_e: unknown, edit: OmniboxRecommendEdit) => cb(edit);
+    ipcRenderer.on(IPC.SUGGEST_DROPDOWN_RECOMMEND, handler);
+    return () => ipcRenderer.removeListener(IPC.SUGGEST_DROPDOWN_RECOMMEND, handler);
+  },
+  getRecommendedSites: () => ipcRenderer.invoke(IPC.SETTINGS_GET_RECOMMENDED) as Promise<RecommendedSite[]>,
+  setRecommendedSites: (list: RecommendedSite[]) => ipcRenderer.invoke(IPC.SETTINGS_SET_RECOMMENDED, list) as Promise<void>,
   onSuggestDropdownPicked: (cb: (item: SuggestDropdownItem) => void) => {
     const handler = (_e: unknown, item: SuggestDropdownItem) => cb(item);
     ipcRenderer.on(IPC.SUGGEST_DROPDOWN_PICKED, handler);

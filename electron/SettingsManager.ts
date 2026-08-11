@@ -4,7 +4,7 @@ import path from 'node:path';
 import { DEFAULT_SEARCH_ENGINE_ID, isSearchEngineId } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
 import { THEME_PALETTE_IDS } from '../shared/ipc';
-import type { HubMode, ModelLoadMode, SearchChipsConfig, ThemeMode, ThemePaletteId } from '../shared/ipc';
+import type { HubMode, ModelLoadMode, RecommendedSite, SearchChipsConfig, ThemeMode, ThemePaletteId } from '../shared/ipc';
 import type { EngineId } from './TranslationEngine';
 
 const DEFAULT_HUB_MODE: HubMode = 'tiles';
@@ -25,6 +25,24 @@ const DEFAULT_TRANSLATION_ENGINE: EngineId = 'bergamot';
 // ModelLoadMode в shared/ipc.ts.
 const DEFAULT_MODEL_LOAD_MODE: ModelLoadMode = 'on-demand';
 
+// Набор «Рекомендуемые» в панели омнибокса — то, с чем начинается рабочий день у большинства.
+// ⚠️ Это ДЕФОЛТ, а не рекомендация от нас: человек правит набор карандашом прямо в панели, и его
+// правка хранится отдельно (см. #recommendedSites — null значит «не трогал»). Ничего в этот список
+// не попадает само: ни рекламы, ни партнёров, ни «умного» подбора по истории.
+const DEFAULT_RECOMMENDED: RecommendedSite[] = [
+  { url: 'https://mail.google.com/',    title: 'Почта' },
+  { url: 'https://calendar.google.com/', title: 'Календарь' },
+  { url: 'https://drive.google.com/',   title: 'Диск' },
+  { url: 'https://github.com/',         title: 'GitHub' },
+  { url: 'https://www.notion.so/',      title: 'Notion' },
+  { url: 'https://www.figma.com/',      title: 'Figma' },
+  { url: 'https://chatgpt.com/',        title: 'ChatGPT' },
+  { url: 'https://www.youtube.com/',    title: 'YouTube' },
+];
+// Потолок набора: панель рисует его в две строки по четыре, и всё сверх этого просто не поместится
+// без скролла внутри папки.
+const RECOMMENDED_MAX = 8;
+
 interface PersistedSettings {
   searchEngine: SearchEngineId;
   hubMode: HubMode;
@@ -44,6 +62,25 @@ interface PersistedSettings {
   // Оформление: светло/темно/как в системе + нейтральная палитра (см. ThemePrefs в shared/ipc.ts).
   themeMode: ThemeMode;
   themePalette: ThemePaletteId;
+  // ⚠️ null, а не пустой массив, когда человек набор не трогал. Разница принципиальна: пустой
+  // массив — это осознанно опустошённая папка, и подсовывать в неё дефолт обратно нельзя.
+  recommendedSites: RecommendedSite[] | null;
+}
+
+// Приходит из renderer и читается с диска — оба источника недоверенные, нормализатор один на обе
+// двери (тот же приём, что у полосы целей выше).
+function normalizeRecommended(v: unknown): RecommendedSite[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: RecommendedSite[] = [];
+  for (const raw of v) {
+    if (typeof raw !== 'object' || raw === null) continue;
+    const { url, title } = raw as Partial<RecommendedSite>;
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) continue;
+    if (out.some((s) => s.url === url)) continue;
+    out.push({ url, title: typeof title === 'string' && title ? title.slice(0, 60) : url });
+    if (out.length >= RECOMMENDED_MAX) break;
+  }
+  return out;
 }
 
 const DEFAULT_SEARCH_CHIPS: SearchChipsConfig = { mode: 'auto', pinned: [], defaultId: null };
@@ -106,6 +143,8 @@ export class SettingsManager {
   // приложения без единого действия человека. Выбор «как в системе» стоит рядом в настройках.
   #themeMode: ThemeMode = 'light';
   #themePalette: ThemePaletteId = 'charcoal';
+  // null — набор не трогали, отдаём дефолтный (см. DEFAULT_RECOMMENDED).
+  #recommendedSites: RecommendedSite[] | null = null;
   readonly #settingsPath: string;
 
   constructor() {
@@ -212,6 +251,15 @@ export class SettingsManager {
 
   // Одной дверью: тема и палитра меняются из одного места в UI, и раздельная запись означала бы
   // два сообщения и два перерисованных окна на одно действие человека.
+  getRecommendedSites(): RecommendedSite[] {
+    return this.#recommendedSites ?? DEFAULT_RECOMMENDED;
+  }
+
+  setRecommendedSites(list: RecommendedSite[]): void {
+    this.#recommendedSites = normalizeRecommended(list) ?? [];
+    this.#write();
+  }
+
   setTheme(mode: ThemeMode, palette: ThemePaletteId): void {
     if (isThemeMode(mode)) this.#themeMode = mode;
     if (isThemePalette(palette)) this.#themePalette = palette;
@@ -248,6 +296,9 @@ export class SettingsManager {
         if (isThemeMode(tm)) this.#themeMode = tm;
         const tp = (data as Record<string, unknown>)['themePalette'];
         if (isThemePalette(tp)) this.#themePalette = tp;
+        // Ключа нет у старых профилей — остаёмся на null, то есть на дефолтном наборе.
+        const rs = (data as Record<string, unknown>)['recommendedSites'];
+        if (rs !== undefined && rs !== null) this.#recommendedSites = normalizeRecommended(rs) ?? [];
       }
     } catch { /* файла нет или битый JSON — остаёмся на дефолте */ }
   }
@@ -265,6 +316,7 @@ export class SettingsManager {
       searchChips: this.#searchChips,
       themeMode: this.#themeMode,
       themePalette: this.#themePalette,
+      recommendedSites: this.#recommendedSites,
     };
     const tmpPath = this.#settingsPath + '.tmp';
     try {

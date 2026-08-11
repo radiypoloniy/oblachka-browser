@@ -83,7 +83,7 @@ import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION, THEME_PALETTE_IDS, isDarkTheme } from '../shared/ipc';
 import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../shared/ipc';
-import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult, SmartFindResult, RuleParseOutcome, SplitSwapHint, DragCard } from '../shared/ipc';
+import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult, SmartFindResult, RuleParseOutcome, SplitSwapHint, DragCard } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
@@ -127,7 +127,7 @@ import { buildSearchTargets, searchChipCandidates, resolveChipCandidates } from 
 import { readPageSelection } from './PageSelection';
 import { SearchTargetStore } from './SearchTargetStore';
 import { applyBangTemplate, isValidBangTemplate, parseBangCandidate, bangHomeUrl } from '../shared/bangs';
-import { showSuggestDropdown, hideSuggestDropdown, closeSuggestDropdown, syncOmniboxBounds, sendSuggestItems, onPick as onSuggestDropdownPick, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
+import { showSuggestDropdown, hideSuggestDropdown, closeSuggestDropdown, syncOmniboxBounds, sendSuggestItems, sendSuggestPanel, onPick as onSuggestDropdownPick, onSiteInfo as onSuggestDropdownSiteInfo, onRecommend as onSuggestDropdownRecommend, setHighlight as setSuggestDropdownHighlight } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
 import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
 import * as autofillOrchestrator from './AutofillOrchestrator';
@@ -2171,6 +2171,21 @@ function registerIpc() {
     const w = winOf(e);
     if (w) sendSuggestItems(w, items);
   });
+  // Панель по нетронутой строке (заход 11) — второй режим той же вью, см. OmniboxPanel.
+  ipcMain.handle(IPC.SUGGEST_DROPDOWN_SET_PANEL, (e, panel: OmniboxPanel) => {
+    const w = winOf(e);
+    if (w) sendSuggestPanel(w, panel);
+  });
+  // Клик по полоске сайта в панели — в чром того же окна, где кликнули: там Toolbar.tsx откроет
+  // поповер замочка своим обычным путём (панель управлением не занимается).
+  onSuggestDropdownSiteInfo((w) => {
+    contextForWindow(w)?.chromeView.webContents.send(IPC.SUGGEST_DROPDOWN_SITE_INFO);
+  });
+  // Правка «Рекомендуемых» карандашом — намерение уходит в чром, там Toolbar.tsx его применяет,
+  // сохраняет набор и пересобирает панель (владелец содержимого панели один, см. OmniboxPanel).
+  onSuggestDropdownRecommend((w, edit) => {
+    contextForWindow(w)?.chromeView.webContents.send(IPC.SUGGEST_DROPDOWN_RECOMMEND, edit);
+  });
   // Клик по строке ВО вью дропдауна (другой webContents) — пересылаем в chrome, где Toolbar.tsx
   // вызывает свой существующий pickSuggestion(), не дублируя его поведение (activateTab/навигация).
   // Выбор возвращается в омнибокс ТОГО окна, где кликнули, — дропдаун теперь свой у каждого.
@@ -2417,6 +2432,9 @@ function registerIpc() {
     settings.setHubMode(mode);
     if (mode === 'ai') maybeLazyWarmupOnDemand();
   });
+  // Набор «Рекомендуемые» для панели омнибокса (правится карандашом прямо в панели).
+  ipcMain.handle(IPC.SETTINGS_GET_RECOMMENDED, () => settings.getRecommendedSites());
+  ipcMain.handle(IPC.SETTINGS_SET_RECOMMENDED, (_e, list: RecommendedSite[]) => settings.setRecommendedSites(list));
   ipcMain.handle(IPC.SETTINGS_GET_AI_PANEL_WIDTH, () => settings.getAiPanelWidth());
   ipcMain.handle(IPC.SETTINGS_GET_MODEL_LOAD_MODE, () => settings.getModelLoadMode());
   ipcMain.handle(IPC.SETTINGS_SET_MODEL_LOAD_MODE, (_e, mode: ModelLoadMode) => settings.setModelLoadMode(mode));

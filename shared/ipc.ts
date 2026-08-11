@@ -626,6 +626,17 @@ export const IPC = {
   // Живой список подсказок (заход 3/5): chrome → main, тот же массив, что buildSuggestions
   // кладёт в setSuggestions() для старого дропдауна. Main пересылает его во вью дропдауна.
   SUGGEST_DROPDOWN_SET_ITEMS: 'suggest-dropdown:set-items',
+  // Заход 11: панель по НЕТРОНУТОЙ строке (плитки + полоска сайта + «вы это уже читали»).
+  // Отдельный канал, а не флаг внутри items: у панели своя форма (OmniboxPanel), и мешать её
+  // с массивом подсказок значит однажды прислать одно, а нарисовать другое.
+  SUGGEST_DROPDOWN_SET_PANEL: 'suggest-dropdown:set-panel',
+  // Клик по полоске сайта В ПАНЕЛИ — вью → main → chrome, где Toolbar.tsx открывает полный поповер
+  // замочка. Панель показывает сводку и НЕ дублирует управление разрешениями: одно место правды.
+  SUGGEST_DROPDOWN_SITE_INFO: 'suggest-dropdown:site-info',
+  // Правка набора «Рекомендуемые» карандашом в панели — вью → main → chrome. Список хранит
+  // SettingsManager, но владельцем содержимого панели остаётся Toolbar.tsx: он принимает намерение,
+  // сохраняет набор и пересобирает панель. Второго места, решающего «что показано», не появляется.
+  SUGGEST_DROPDOWN_RECOMMEND: 'suggest-dropdown:recommend',
   // Пользователь кликнул строку ВО вью дропдауна (другой webContents) — main пересылает выбор
   // обратно в chrome, где Toolbar.tsx вызывает свой существующий pickSuggestion(), не дублируя
   // его поведение (activateTab/навигация) во второй раз.
@@ -648,6 +659,8 @@ export const IPC = {
   SETTINGS_SET_SEARCH_ENGINE: 'settings:set-search-engine', // renderer → main: сменить движок поиска
   SETTINGS_GET_HUB_MODE:      'settings:get-hub-mode',      // renderer → main: текущий HubMode
   SETTINGS_SET_HUB_MODE:      'settings:set-hub-mode',      // renderer → main: сменить режим Hub (плитки/AI)
+  SETTINGS_GET_RECOMMENDED:   'settings:get-recommended',   // renderer → main: набор «Рекомендуемые» для панели омнибокса
+  SETTINGS_SET_RECOMMENDED:   'settings:set-recommended',   // renderer → main: сохранить набор целиком
   SETTINGS_GET_MODEL_LOAD_MODE: 'settings:get-model-load-mode', // renderer → main: текущий ModelLoadMode
   SETTINGS_SET_MODEL_LOAD_MODE: 'settings:set-model-load-mode', // renderer → main: сменить режим загрузки модели
   // Ширина AI-дока (заход 3 — поповер → правый split-view-подобный док, см. AiPanelManager.ts).
@@ -1193,6 +1206,60 @@ export interface SuggestDropdownItem {
   // не решает сама, просто рисует подпись, если она есть — источник группировки остаётся в
   // Toolbar.tsx, не размазывается по двум местам.
   sectionHeader?: string;
+}
+
+// ── Панель омнибокса (заход 11) ────────────────────────────────────────────────────────────────
+// ВТОРОЙ РЕЖИМ той же вью дропдауна — то, что видно по клику в НЕТРОНУТУЮ строку, пока человек
+// ничего не набрал. Раньше здесь был плоский список часто посещаемых, и после переезда омнибокса
+// во flex-поток (строка занимает всю свободную полосу) список в 8 строк оставлял пустой всю правую
+// половину карточки. Панель забирает ширину плитками и карточками.
+//
+// ⚠️ Порядок ВЫБОРА остаётся ПЛОСКИМ и принадлежит по-прежнему омнибоксу: sites, следом related —
+// ровно тот же массив, что Toolbar.tsx держит в suggestions. Вью считает номер строки из длины
+// sites и сама ничего не решает, как и в режиме списка (Enter выполняется в омнибоксе).
+export interface OmniboxPanelSite {
+  /** Хост открытой страницы без www — заголовок полоски. */
+  host: string;
+  /** https ли соединение — тот же замочек, что в самой строке. */
+  secure: boolean;
+  /** Вырезано трекеров/рекламы на этом сайте за сеанс (AdBlockManager). */
+  blocked: number;
+  /** Сайт в исключениях адблока — тогда счётчик показывать нечестно. */
+  adblockOff: boolean;
+  /** Что сайту уже разрешено — только значки, УПРАВЛЕНИЕ остаётся в поповере замочка. */
+  perms: PermKey[];
+  /** Фраза «изменилось с прошлого раза» (PageChanges). Пусто — показывать нечего. */
+  changed?: string;
+}
+/** Сайт из набора «Рекомендуемые» — то, что человек собрал себе сам (см. SettingsManager). */
+export interface RecommendedSite {
+  url: string;
+  title: string;
+}
+/**
+ * Правка набора «Рекомендуемые» из режима карандаша В ПАНЕЛИ.
+ * ⚠️ Только «добавить/убрать уже известный сайт» — и это не упрощение, а следствие конструкции:
+ * окно дропдауна неактивируемое (`focusable: false`, на этом держится работа адресной строки),
+ * то есть НАБРАТЬ текст внутри него физически нельзя. Произвольный адрес пришлось бы вводить в
+ * другом окне; вместо этого сайт переносится кликом из «часто посещаемых».
+ */
+export interface OmniboxRecommendEdit {
+  action: 'add' | 'remove';
+  url: string;
+  title: string;
+}
+
+export interface OmniboxPanel {
+  /** Плитки «часто посещаемые» — они же первые элементы плоского массива выбора. */
+  sites: SuggestDropdownItem[];
+  /** Плитки «рекомендуемые» — набор человека; идут в плоском массиве СРАЗУ за sites. */
+  recommended?: SuggestDropdownItem[];
+  /** Шапка с текущим сайтом. Нет на новой вкладке — там про сайт сказать нечего. */
+  site?: OmniboxPanelSite;
+  /** Адрес открытой страницы — вью достаёт по нему значок сайта для шапки. */
+  siteUrl?: string;
+  /** «Вы это уже читали» — приезжает ПОЗЖЕ плиток, дорисовывается снизу (см. Toolbar.tsx). */
+  related?: SuggestDropdownItem[];
 }
 
 export type DownloadState = 'progressing' | 'completed' | 'cancelled' | 'interrupted';
@@ -1925,6 +1992,12 @@ export interface OblakoApi {
   searchSettingsSmart(query: string): Promise<number[]>;
   /** Страницы из своей истории, связанные с открытой сейчас. Пусто — нечего показать. */
   getRelatedPages(): Promise<SemanticSearchResult[]>;
+  /**
+   * «Изменилось с прошлого раза» для открытой страницы (см. PageChanges.ts). ⚠️ Не бесплатно:
+   * достаёт текст живой страницы и сравнивает со снимком, поэтому вызывающая сторона обязана
+   * спрашивать РАЗ на адрес, а не на каждое открытие панели (Toolbar.tsx кэширует по url).
+   */
+  getPageChanges(): Promise<PageChangesResult>;
   /** Готовые «итоги дня» (ничего не считает). */
   getDayDigest(): Promise<DayDigestState>;
   /** Собрать «итоги дня» сейчас — явное действие человека, может занять до полуминуты. */
@@ -2043,6 +2116,10 @@ export interface OblakoApi {
   adBlockRemoveDomain(domain: string): Promise<void>;
   adBlockReloadTabs(domain?: string): Promise<void>;
   onAdBlockStateChanged(cb: (state: AdBlockState) => void): () => void;
+  // Посайтовые сведения для полоски сайта в панели омнибокса — те же каналы, которыми уже
+  // пользуется поповер замочка (preload-sitepopover.ts). Новых обработчиков в main не появилось.
+  getSiteBlockedCount(domain: string): Promise<number>;
+  isAdblockAllowed(domain: string): Promise<boolean>;
 
   // История посещений
   getHistory(limit?: number): Promise<HistoryEntry[]>;
@@ -2206,6 +2283,15 @@ export interface OblakoApi {
   // Живой список подсказок (заход 3/5) — тот же массив, что buildSuggestions строит для
   // старого дропдауна, пересылается во вью нативного дропдауна.
   setSuggestDropdownItems(items: SuggestDropdownItem[]): Promise<void>;
+  // Заход 11 — панель по нетронутой строке (см. OmniboxPanel). Второй режим ТОЙ ЖЕ вью: что
+  // прислали последним, то и нарисовано.
+  setSuggestDropdownPanel(panel: OmniboxPanel): Promise<void>;
+  // Человек кликнул полоску сайта в панели — Toolbar.tsx открывает поповер замочка.
+  onSuggestDropdownSiteInfo(cb: () => void): () => void;
+  // Правка «Рекомендуемых» карандашом в панели (см. OmniboxRecommendEdit).
+  onSuggestDropdownRecommend(cb: (edit: OmniboxRecommendEdit) => void): () => void;
+  getRecommendedSites(): Promise<RecommendedSite[]>;
+  setRecommendedSites(list: RecommendedSite[]): Promise<void>;
   // Пользователь кликнул строку во вью дропдауна — Toolbar.tsx вызывает свой pickSuggestion().
   onSuggestDropdownPicked(cb: (item: SuggestDropdownItem) => void): () => void;
   // Клавиатурная подсветка (заход 4/5) — номер строки, -1 снимает подсветку. Омнибокс держит
