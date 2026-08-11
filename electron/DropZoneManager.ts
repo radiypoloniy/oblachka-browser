@@ -30,10 +30,18 @@ const SPLIT_EDGE_RATIO = 0.35;
 // Шаг опроса курсора. 30 мс — незаметно для глаза и дёшево: интервал живёт только во время драга.
 const POLL_MS = 30;
 
+// Каналы во вью-оверлей. Перечислены явно, потому что по ним же идёт повтор после загрузки
+// (см. post): в Map должен попадать ровно этот набор, а не произвольная строка.
+type OverlayChannel = 'dropzones:zone' | 'dropzones:swap' | 'dropzones:cursor' | 'dropzones:thumb' | 'dropzones:tab';
+
 interface WindowDropZones {
   win: BrowserWindow;
   view: WebContentsView | null;
   content: ContentBounds;
+  // Страница оверлея закончила грузиться и слушатели в ней есть (см. post).
+  ready: boolean;
+  // Последнее посланное по каждому каналу — чтобы повторить его после загрузки.
+  last: Map<OverlayChannel, unknown>;
 }
 
 const perWindow = new Map<number, WindowDropZones>();
@@ -63,12 +71,22 @@ function stateFor(win: BrowserWindow): WindowDropZones {
   if (existing) return existing;
   const created: WindowDropZones = {
     win, view: null, content: { x: 0, y: 0, width: 0, height: 0 },
+    ready: false, last: new Map(),
   };
   perWindow.set(win.id, created);
   win.once('closed', () => {
     // Окно закрылось посреди жеста — драг обрывается вместе с ним, иначе таймер продолжил бы
     // опрашивать курсор и слать сообщения в уничтоженную вью.
     if (drag && (drag.source.win.id === win.id || drag.shown?.win.id === win.id)) stopDrag();
+    // ⚠️ Вью закрываем руками. Окно уносит с собой только то, что реально лежит в его
+    // contentView, а прогретая (prewarmDropZones) вью до первого жеста туда не добавлена — и
+    // пережила бы своё окно осиротевшим процессом рендерера. Пока вью создавалась лениво, на
+    // первый жест, это было почти незаметно; с прогревом такой процесс был бы у КАЖДОГО
+    // закрытого окна.
+    const view = perWindow.get(win.id)?.view;
+    if (view && !view.webContents.isDestroyed()) {
+      (view.webContents as unknown as { close?: () => void }).close?.();
+    }
     perWindow.delete(win.id);
   });
   return created;
@@ -93,8 +111,45 @@ function ensureView(st: WindowDropZones): WebContentsView {
   // Прозрачность обязательна на самой вью, не только в CSS — иначе поверх страницы висел бы
   // непрозрачный прямоугольник (тот же инвариант, что у FindBar и поповеров).
   view.setBackgroundColor('#00000000');
+  // .on, а не .once: после падения рендерера вью перезагружается, и повторить состояние надо
+  // на КАЖДУЮ загрузку, иначе оверлей оживёт пустым.
+  view.webContents.on('did-finish-load', () => {
+    st.ready = true;
+    for (const [channel, payload] of st.last) view.webContents.send(channel, payload);
+  });
   view.webContents.loadURL('oblako-chrome://localhost/dropzones.html');
   return view;
+}
+
+// ⚠️ Все пуши в оверлей идут через эту дверь, а не через wc.send напрямую. Причина: вью может
+// быть ещё не загружена (её создаёт первый же жест — см. ensureView), а send в незагруженный
+// документ пропадает молча, слушателей в нём просто нет. Для потоковых сообщений это незаметно
+// (следующий тик курсора всё поправит), но dropzones:tab уходит РОВНО ОДИН РАЗ за жест — и
+// пропав, оставлял человека без карточки в руке до конца жеста. Отсюда запоминание последнего
+// значения по каналу и повтор его на did-finish-load: к моменту, когда страница готова, она
+// получает не историю, а текущее состояние.
+function post(st: WindowDropZones | null, channel: OverlayChannel, payload: unknown): void {
+  if (!st) return;
+  st.last.set(channel, payload);
+  const wc = st.view?.webContents;
+  if (!st.ready || !wc || wc.isDestroyed()) return;
+  wc.send(channel, payload);
+}
+
+// Прогрев оверлея — вызывается из main.ts после показа окна, с задержкой (тем же приёмом, что
+// AiPanelManager.prewarmPanel). Только спавн WebContentsView и запуск загрузки её бандла: на
+// экран ничего не кладём, addChildView остаётся делом самого жеста.
+//
+// Зачем: без прогрева первый за сессию жест платил полной холодной ценой — новый процесс
+// рендерера, React, вся global.css со шрифтами. Это и была та «почти секунда», после которой
+// все следующие жесты работают мгновенно (вью переживает жест и остаётся загруженной).
+// Прогрев на КАЖДОЕ окно, а не один на приложение: вью здесь своя у каждого окна.
+export function prewarmDropZones(win: BrowserWindow): void {
+  try {
+    ensureView(stateFor(win));
+  } catch (e) {
+    console.error('[dropzones] прогрев упал:', e); // не роняем старт — жест просто останется ленивым
+  }
 }
 
 // Курсор в координатах окна — или null, если он вне его.
@@ -178,13 +233,11 @@ function hideOverlayIn(st: WindowDropZones | null): void {
 }
 
 function sendZone(st: WindowDropZones | null, zone: ZoneVisual | null): void {
-  const wc = st?.view?.webContents;
-  if (wc && !wc.isDestroyed()) wc.send('dropzones:zone', zone);
+  post(st, 'dropzones:zone', zone);
 }
 
 function sendSwapHint(st: WindowDropZones | null, hint: SplitSwapHint | null): void {
-  const wc = st?.view?.webContents;
-  if (wc && !wc.isDestroyed()) wc.send('dropzones:swap', hint);
+  post(st, 'dropzones:swap', hint);
 }
 
 // Подсветка панели-ЦЕЛИ, пока половину сплита тащат за её шапку. Второй жест на том же оверлее —
@@ -220,8 +273,7 @@ export function setSwapCursor(win: BrowserWindow, pos: { x: number; y: number } 
 }
 
 function sendCursor(st: WindowDropZones | null, pos: { x: number; y: number } | null): void {
-  const wc = st?.view?.webContents;
-  if (wc && !wc.isDestroyed()) wc.send('dropzones:cursor', pos);
+  post(st, 'dropzones:cursor', pos);
 }
 
 // Перетаскивание ВКЛАДКИ: размер области контента (он же размер оверлея — зоны рисуются в нём) и
@@ -231,16 +283,14 @@ function sendTabDrag(
   st: WindowDropZones | null,
   payload: { width: number; height: number; card: DragCard | null } | null,
 ): void {
-  const wc = st?.view?.webContents;
-  if (wc && !wc.isDestroyed()) wc.send('dropzones:tab', payload);
+  post(st, 'dropzones:tab', payload);
 }
 
 // Снимок несомой панели — та же карточка, что чром рисует над собой. Приходит позже подсветки
 // (capturePage ждёт кадр), поэтому отдельным сообщением, а не полем в hint: иначе снимок в
 // сто килобайт улетал бы заново на каждую смену зоны.
 export function setSwapThumb(win: BrowserWindow, thumb: string | null): void {
-  const wc = perWindow.get(win.id)?.view?.webContents;
-  if (wc && !wc.isDestroyed()) wc.send('dropzones:thumb', thumb);
+  post(perWindow.get(win.id) ?? null, 'dropzones:thumb', thumb);
 }
 
 // Один тик слежения: где курсор, что из этого следует и в каком окне это рисовать.

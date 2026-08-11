@@ -103,7 +103,7 @@ import { pickFragmentByMeaning, highlightCandidates } from './SmartFind';
 import { RuleStore } from './RuleStore';
 import { applyRules } from './RuleEngine';
 import { parsePhraseToRule } from './RuleParser';
-import { startTabDrag, endTabDrag, syncDropZoneBounds, setSwapHint, setSwapCursor, setSwapThumb } from './DropZoneManager';
+import { startTabDrag, endTabDrag, syncDropZoneBounds, setSwapHint, setSwapCursor, setSwapThumb, prewarmDropZones } from './DropZoneManager';
 import { isDefaultBrowser, requestDefaultBrowser } from './DefaultBrowser';
 import { suggestTabTitle } from './TabRenamer';
 import {
@@ -195,6 +195,13 @@ const TRANSLATION_WARMUP_DELAY_MS = 3000;
 // оба прогрева в одну точку старта; панель раньше, т.к. дешевле и пользователь может кликнуть
 // по AI раньше, чем понадобится перевод.
 const AI_PANEL_PREWARM_DELAY_MS = 1500;
+
+// Прогрев оверлея перетаскивания (DropZoneManager.ts::prewarmDropZones) — та же природа, что у
+// панели: спавн WebContentsView + её бандл, никакой модели. Свой тик, ещё позже панели: жест
+// перетаскивания вкладки в первые две секунды после запуска человек физически не начинает, а
+// бить три прогрева в одну точку старта незачем. Без него первый за сессию жест платил холодную
+// цену целиком — ту самую заметную задержку перед появлением карточки в руке.
+const DROPZONES_PREWARM_DELAY_MS = 2200;
 
 // Изолированные стенды AI-инфраструктурных тестов (node-llama-cpp).
 // OBLAKO_LLAMA_TEST=1 / OBLAKO_TRANSLATE_TEST=1 npm start → вместо боевого окна открывается
@@ -831,6 +838,11 @@ function createWindow(role: WindowRole = 'main') {
       // Заставка уходит ровно здесь: после неё человек сразу видит готовое окно, без
       // промежуточного кадра с пустотой.
       closeSplash();
+      // Прогрев оверлея перетаскивания — ДО отсечки isMain ниже: вью зон своя у КАЖДОГО окна
+      // (см. DropZoneManager.ts, perWindow), и вкладку тащат в лёгком окне ровно так же.
+      setTimeout(() => {
+        if (!thisWin.isDestroyed()) prewarmDropZones(thisWin);
+      }, DROPZONES_PREWARM_DELAY_MS);
       // Фоновый прогрев локальной LLM (перевод/AI-действия/чат) — только теперь, когда окно уже
       // реально показано, и с задержкой (см. TRANSLATION_WARMUP_DELAY_MS): не соревнуется за
       // диск/GPU с первой отрисовкой чрома и пробуждением активной вкладки. warmupTranslation()
