@@ -101,6 +101,7 @@ npx tsc -p electron/tsconfig.json          # main-процесс (electron/)
 | [docs/local-ai-program.md](docs/local-ai-program.md) | Новая AI-идея, стенд `npm run ai-bench`, промпты и почему ответ «плавает» |
 | [docs/roadmap.md](docs/roadmap.md) | Что сделано, что осталось, что отложено и почему |
 | [docs/passwords-backlog.md](docs/passwords-backlog.md) | Усиление хранения паролей (аудит 2026-07-25) |
+| [docs/security-audit-2026-08-11.md](docs/security-audit-2026-08-11.md) | Аудит безопасности и качества (2026-08-11): что проверено и цело, 4 находки, границы проверки |
 
 Правило: React рисует рамку, main-процесс кладёт WebContentsView в область контента. Renderer
 измеряет область (ResizeObserver) и шлёт bounds в main.
