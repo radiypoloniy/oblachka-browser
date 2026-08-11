@@ -1694,12 +1694,16 @@ export class TabManager {
     // так что к моменту этого события они уже не совпадут и повторной уборки не случится.
     wc.on('destroyed', () => {
       if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
+      // ⚠️ Выход из браузера приходит СЮДА ЖЕ. Electron сносит окно, а затем валит webContents
+      // вкладок по одному — каждый зовёт этот обработчик, и closeTab начинает разбирать
+      // структуру (пары split, дерево узлов, выбор следующей активной) в окне, которого уже
+      // нет: первое же обращение к this.win.contentView бросает "Object has been destroyed"
+      // и роняет main-процесс. Ловилось именно на split: closeTab → exitSplit → раскладка
+      // «выжившей» панели. Уборка тут и бессмысленна — сессия сохранена синхронно раньше,
+      // в win.on('close') (см. main.ts), а показывать результат уже некому и негде.
+      if (this.win.isDestroyed()) return;
       const tab = this.tabMap.get(id);
       if (!tab || tab.view !== view) return;
-      // [диагностика краша exitSplit/closeTab на shutdown] — какая вкладка, участник ли split,
-      // на каком этапе относительно win.on('close')/('closed') это случилось (см. main.ts).
-      const inSplit = !!this.#pairContaining(id);
-      console.log(`[shutdown] tab destroyed id=${id} inSplit=${inSplit} splitPairs=${JSON.stringify(this.splitPairs)} tabMapSize=${this.tabMap.size}`);
       this.closeTab(id);
     });
 
@@ -2037,13 +2041,11 @@ export class TabManager {
   // повторно (before-input-event молчит без явного focus() на нужный webContents).
   focusActiveView(): void {
     const tab = this.tabMap.get(this.activeId);
-    // [диагностика] — кандидат №2 на краш "Object has been destroyed" при закрытии окна со split:
-    // тут isHttpView (только не-null), а НЕ isLiveHttpView — если exitSplit зовёт этот метод в
-    // хвосте, а «выживший» stayId тоже успел получить destroyed webContents при teardown окна
-    // (не только закрываемая вкладка — см. exitSplit), .focus() ниже упадёт именно отсюда.
-    const destroyed = tab && this.isHttpView(tab.view) ? tab.view.webContents.isDestroyed() : 'no-view';
-    console.log(`[shutdown] focusActiveView activeId=${this.activeId} tabExists=${!!tab} destroyed=${destroyed}`);
-    if (tab && this.isHttpView(tab.view) && !this.errors.has(this.activeId)) {
+    // ⚠️ isLiveHttpView, а не isHttpView: exitSplit зовёт этот метод в хвосте, и «выживший»
+    // stayId тоже может оказаться с уже уничтоженным webContents (window.close() из контента
+    // у соседней панели) — .focus() на нём бросил бы "Object has been destroyed". Мёртвая
+    // вкладка честно уводит фокус в чром, а не роняет main.
+    if (tab && this.isLiveHttpView(tab.view) && !this.errors.has(this.activeId)) {
       tab.view.webContents.focus();
     } else {
       this.onFocusChromeCb();
@@ -2067,20 +2069,12 @@ export class TabManager {
     this.#openerOf.delete(id);
     // Вкладки, открытые ЗАКРЫВАЕМОЙ, теряют родителя — иначе они возвращали бы к мёртвому id.
     for (const [child, parent] of this.#openerOf) if (parent === id) this.#openerOf.delete(child);
-    console.log(`[shutdown] closeTab id=${id} splitPairs=${JSON.stringify(this.splitPairs)}`);
-
     // Закрытие вкладки, входящей в (возможно припаркованную) пару.
     const closingPair = this.#pairContaining(id);
     if (closingPair) {
       const { leftId, rightId } = closingPair;
       const otherId = id === leftId ? rightId : leftId;
       const currentlyShown = closingPair === this.#activePair();
-      // [диагностика] — есть ли ВТОРОЙ участник (otherId) в tabMap, и жив ли его webContents,
-      // В МОМЕНТ, когда closeTab только начал разбирать split. Если otherTab тоже уже destroyed
-      // (teardown всего окна валит обоих почти одновременно) — это отдельный путь от self-close.
-      const otherTab = this.tabMap.get(otherId);
-      const otherDestroyed = otherTab && this.isHttpView(otherTab.view) ? otherTab.view.webContents.isDestroyed() : 'no-view';
-      console.log(`[shutdown] closeTab: split branch, otherId=${otherId} currentlyInSplit=${currentlyShown} otherTabExists=${!!otherTab} otherDestroyed=${otherDestroyed}`);
       if (currentlyShown) {
         // ВНИМАНИЕ: id (сама закрываемая вкладка) в этот момент ещё в tabMap и ещё числится
         // участником пары — exitSplit(otherId, otherId) резолвит её как hideId и трогает её view/webContents.
@@ -2838,14 +2832,11 @@ export class TabManager {
     const stayId = keepId ?? (activePanel === 'left' ? leftId : rightId);
     const hideId = stayId === leftId ? rightId : leftId;
 
-    console.log(`[shutdown] exitSplit: stayId=${stayId} hideId=${hideId} winDestroyed=${this.win.isDestroyed()}`);
-
     // isLiveHttpView (не isHttpView) — hideId часто ИМЕННО та вкладка, что сейчас закрывается
     // через closeTab → exitSplit(otherId, otherId) (см. closeTab ниже): её webContents уже может быть
     // destroyed (window.close() из контента, напр. OAuth-логина, либо снос окна при выходе
     // браузера), а из tabMap она пока не удалена — exitSplit вызывается раньше этой уборки.
     const hideTab = this.tabMap.get(hideId);
-    console.log(`[shutdown] exitSplit: hideTab exists=${!!hideTab} destroyed=${hideTab && this.isHttpView(hideTab.view) ? hideTab.view.webContents.isDestroyed() : 'no-view'}`);
     if (hideTab && this.isLiveHttpView(hideTab.view)) {
       hideTab.view.webContents.stopFindInPage('clearSelection');
       hideTab.view.setVisible(false);
@@ -2853,7 +2844,6 @@ export class TabManager {
 
     this.activeId = stayId;
     const stayTab = this.tabMap.get(stayId);
-    console.log(`[shutdown] exitSplit: stayTab exists=${!!stayTab} destroyed=${stayTab && this.isHttpView(stayTab.view) ? stayTab.view.webContents.isDestroyed() : 'no-view'}`);
     if (stayTab && this.isLiveHttpView(stayTab.view) && !this.errors.has(stayId)) {
       const children = this.win.contentView.children;
       if (!children.includes(stayTab.view)) this.win.contentView.addChildView(stayTab.view);

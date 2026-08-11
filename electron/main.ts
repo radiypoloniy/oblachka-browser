@@ -165,14 +165,12 @@ import type { DownloadNameSuggestion, DownloadRenameResult, SmartTabHit, ParsedA
 import { getNextHoliday } from './HolidaysService';
 import type { BookmarkFolderProposal, BookmarkNode, PermKey } from '../shared/ipc';
 
-// Диагностика краша "Object has been destroyed" (exitSplit ← closeTab) на закрытии браузера со
-// split — прошлый гард (isLiveHttpView в exitSplit, покрывающий self-close вкладки) НЕ закрыл
-// проблему, значит падает ДРУГОЙ путь: массовый teardown при закрытии всего окна, не self-close
-// одной вкладки. Полный стек + порядок destroyed-событий — см. также логи в TabManager.ts
-// (wc.on('destroyed', ...), exitSplit, closeTab). Убрать после диагностики можно, но по духу
-// проекта (сравни [perf]/[popover]-логи) — не обязательно, шума немного, срабатывает только
-// на закрытии/split-событиях.
-Error.stackTraceLimit = Infinity;
+// Последняя сеть под main-процессом. Заведена под охоту на "Object has been destroyed"
+// (closeTab → exitSplit на закрытии окна со split) и своё отработала — стек указал точную
+// строку; оставлена насовсем, потому что молча умерший main выглядит для человека как
+// «браузер просто исчез», и разбираться потом не по чему. Точечные [shutdown]-логи убраны,
+// а Error.stackTraceLimit вернулся к штатному: бесконечный стек нужен был только на охоте
+// и стоит времени на КАЖДОМ создании Error, включая рядовые перехваченные.
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] uncaughtException:', err && err.stack ? err.stack : err);
 });
