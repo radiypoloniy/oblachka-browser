@@ -139,7 +139,11 @@ function toAction(z: ZoneVisual | null): TabDropZone | null {
 }
 
 // Показать оверлей в окне (своём или принимающем) и погасить его там, где он был до этого.
-function showOverlayIn(st: WindowDropZones): void {
+// full — накрыть ВСЁ окно, а не только область контента. Нужно перетаскиванию половины сплита:
+// карточку в руке носят и над сайдбаром, и над тулбаром, а нарисовать её там мог бы только чром —
+// который лежит ПОД нативными вьюхами страниц, и низ карточки уходил бы под страницу. Вью-оверлей
+// лежит поверх всего, поэтому на время жеста он и растягивается на окно.
+function showOverlayIn(st: WindowDropZones, full = false): void {
   if (st.content.width === 0 || st.content.height === 0) return; // контента нет (настройки/история)
   const view = ensureView(st);
   // ⚠️ Страж фокуса, как у выпадашки подсказок: новая вью на экране норовит забрать фокус
@@ -151,7 +155,10 @@ function showOverlayIn(st: WindowDropZones): void {
       setImmediate(() => { if (!chrome.webContents.isDestroyed()) chrome.webContents.focus(); });
     });
   }
-  view.setBounds({ x: st.content.x, y: st.content.y, width: st.content.width, height: st.content.height });
+  const wb = st.win.getContentBounds();
+  view.setBounds(full
+    ? { x: 0, y: 0, width: wb.width, height: wb.height }
+    : { x: st.content.x, y: st.content.y, width: st.content.width, height: st.content.height });
   if (!st.win.contentView.children.includes(view)) {
     st.win.contentView.addChildView(view); // последней → поверх нативной вью страницы
   }
@@ -193,7 +200,7 @@ export function setSwapHint(win: BrowserWindow, hint: SplitSwapHint | null): voi
     hideOverlayIn(st);
     return;
   }
-  showOverlayIn(st);
+  showOverlayIn(st, true); // на всё окно: карточку носят и над сайдбаром, и над тулбаром
   // Вью переживает жесты, поэтому обнуляем ВСЁ, что могло остаться с прошлого раза: и чужую
   // подсветку, и позицию призрака (иначе он на один кадр мелькнёт там, где его отпустили).
   sendZone(st, null);
@@ -206,6 +213,14 @@ export function setSwapHint(win: BrowserWindow, hint: SplitSwapHint | null): voi
 export function setSwapCursor(win: BrowserWindow, pos: { x: number; y: number } | null): void {
   const wc = perWindow.get(win.id)?.view?.webContents;
   if (wc && !wc.isDestroyed()) wc.send('dropzones:cursor', pos);
+}
+
+// Снимок несомой панели — та же карточка, что чром рисует над собой. Приходит позже подсветки
+// (capturePage ждёт кадр), поэтому отдельным сообщением, а не полем в hint: иначе снимок в
+// сто килобайт улетал бы заново на каждую смену зоны.
+export function setSwapThumb(win: BrowserWindow, thumb: string | null): void {
+  const wc = perWindow.get(win.id)?.view?.webContents;
+  if (wc && !wc.isDestroyed()) wc.send('dropzones:thumb', thumb);
 }
 
 // Один тик слежения: где курсор, что из этого следует и в каком окне это рисовать.

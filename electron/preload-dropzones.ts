@@ -25,4 +25,10 @@ contextBridge.exposeInMainWorld('dropzones', {
     ipcRenderer.on('dropzones:cursor', handler)
     return () => ipcRenderer.removeListener('dropzones:cursor', handler)
   },
+  // Снимок несомой панели: приезжает позже подсветки, карточка подменяет им подпись на ходу.
+  onThumb: (cb: (thumb: string | null) => void) => {
+    const handler = (_e: unknown, thumb: string | null) => cb(thumb)
+    ipcRenderer.on('dropzones:thumb', handler)
+    return () => ipcRenderer.removeListener('dropzones:thumb', handler)
+  },
 })

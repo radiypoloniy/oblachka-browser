@@ -147,6 +147,8 @@ const api: OblakoApi = {
   setSplitSwapHint: (hint: SplitSwapHint | null) => ipcRenderer.invoke(IPC.SPLIT_SWAP_HINT, hint),
   // send, а не invoke: поток на каждый кадр драга, ответ не нужен (как resizeAiPanel у разделителя).
   sendSplitDragCursor: (pos: { x: number; y: number } | null) => ipcRenderer.send(IPC.SPLIT_DRAG_CURSOR, pos),
+  captureSplitPane: (tabId: string, width: number, maxHeight: number) => ipcRenderer.invoke(IPC.SPLIT_CAPTURE_PANE, tabId, width, maxHeight) as Promise<string | null>,
+  sendSplitDragThumb: (thumb: string | null) => ipcRenderer.send(IPC.SPLIT_DRAG_THUMB, thumb),
 
   reorderTabs: (section: 'normal' | 'pinned', orderedIds: string[]) =>
     ipcRenderer.invoke(IPC.TAB_REORDER, section, orderedIds),

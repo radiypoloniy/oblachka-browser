@@ -8,6 +8,7 @@ import Settings from './components/Settings';
 import HistoryBookmarks from './components/HistoryBookmarks';
 import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
+import { SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT } from './components/SplitDragCard';
 import { islandPlate } from './styles/island';
 import { subscribeScrim, dimColor } from './scrimState';
 import { isDarkTheme } from '../shared/ipc';
@@ -522,9 +523,12 @@ export default function App() {
   // ⚠️ Почему setPointerCapture, а не dnd-kit и не опрос курсора в main. Капчур удерживает
   // pointermove в чроме даже когда курсор ушёл над нативные вьюхи страниц (в Electron/Aura все
   // вьюхи в одном HWND) — на этом уже держится разделитель сплита выше. Значит зону считает сам
-  // renderer, по clientX/clientY, и вся правда о геометрии остаётся там, где её и меряют. В main
-  // уходит ровно одна услуга: подсветить панель-цель, потому что над областью контента чром
-  // нарисовать не может ничего (нативная вью лежит поверх React-слоя, см. DropZoneManager.ts).
+  // renderer, по clientX/clientY, и вся правда о геометрии остаётся там, где её и меряют.
+  //
+  // ⚠️ А вот РИСУЕТ всё оверлей, растянутый на время жеста на всё окно (DropZoneManager): и
+  // подсветку панелей, и карточку в руке. Своей карточки у чрома нет намеренно — он лежит ПОД
+  // нативными вьюхами страниц, и стоило курсору уехать вверх, к тулбару, как низ карточки уходил
+  // под страницу, будто она в неё провалилась.
   const leftPanelRef  = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   // Живое состояние жеста — в ref: обработчик зовётся десятки раз в секунду, и решение о зоне не
@@ -537,23 +541,20 @@ export default function App() {
     side: 'left' | 'right';       // какую половину тащат — цель это ВТОРАЯ
     title: string;                // подпись призрака; берётся на старте, дальше не меняется
     otherRect: DOMRect | null;    // панель-цель, координаты окна
-    contentRect: DOMRect | null;  // область контента: и перевод координат для оверлея, и «где сайдбар»
-    hint: SplitSwapHint | null;   // готовый payload подсветки, пересылается при смене active
+    contentLeft: number;          // левый край области контента — левее него только остров сайдбара
+    hint: SplitSwapHint | null;   // готовый payload подсветки, пересылается при смене зоны
     startX: number; startY: number;
-    x: number; y: number;         // последняя позиция курсора — для стартовой посадки призрака
+    x: number; y: number;
     started: boolean;
     zone: 'swap' | 'sidebar' | null;
-    overContent: boolean;         // курсор над областью контента — призрака там рисует оверлей
     cursorFrame: number | null;   // rAF: курсор уходит в main не чаще кадра
+    thumb: string | null;         // снимок панели; приходит позже начала жеста, см. ниже
   } | null>(null);
-  // Для отрисовки: что тащим, куда попадём и рисовать ли призрака здесь. Меняется на старте, на
-  // смене зоны/стороны и на отпускании — не на каждое движение (позицию призрака двигаем напрямую
-  // по ref, ниже).
+  // Чрому от жеста нужно немногое: подкрасить шапку несомой панели и обвести сайдбар, когда
+  // отпускание вернёт половину туда. Карточку и подсветку панелей рисует оверлей.
   const [panelDrag, setPanelDrag] = useState<
-    { tabId: string; zone: 'swap' | 'sidebar' | null; overContent: boolean } | null
+    { tabId: string; zone: 'swap' | 'sidebar' | null } | null
   >(null);
-  const panelGhostRef = useRef<HTMLDivElement>(null);
-  const panelDragTab = panelDrag ? tabs.find((t) => t.id === panelDrag.tabId) ?? null : null;
 
   const endPanelDrag = useCallback((apply: boolean) => {
     const d = panelDragRef.current;
@@ -580,10 +581,25 @@ export default function App() {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     panelDragRef.current = {
       tabId, siblingId, side, title,
-      otherRect: null, contentRect: null, hint: null,
+      otherRect: null, contentLeft: 0, hint: null,
       startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY,
-      started: false, zone: null, overContent: false, cursorFrame: null,
+      started: false, zone: null, cursorFrame: null, thumb: null,
     };
+
+    // ⚠️ Снимок панели заказываем УЖЕ на нажатии, до порога начала драга. capturePage ждёт
+    // следующего скомпонованного кадра (в ScreenshotManager.ts это записано замером: на
+    // загруженной машине заметно), и закажи мы его в момент старта — карточка появлялась бы с
+    // опозданием ровно тогда, когда человек ждёт отклика. Цена — один лишний снимок на клик по
+    // шапке (клик фокусирует панель): он ничего не блокирует и никуда не уходит, кроме мусора.
+    void window.oblako.captureSplitPane(
+      tabId, SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT,
+    ).then((thumb) => {
+      const d = panelDragRef.current;
+      if (!d || d.tabId !== tabId || !thumb) return;
+      d.thumb = thumb;
+      // Драг мог начаться раньше, чем пришёл снимок — тогда карточка подменяет подпись на ходу.
+      if (d.started) window.oblako.sendSplitDragThumb(thumb);
+    });
   }, []);
 
   const handlePanelDragPointerMove = useCallback((e: React.PointerEvent) => {
@@ -599,24 +615,21 @@ export default function App() {
       d.started = true;
       const own   = (d.side === 'left' ? leftPanelRef  : rightPanelRef).current;
       const other = (d.side === 'left' ? rightPanelRef : leftPanelRef).current;
-      d.otherRect   = other?.getBoundingClientRect() ?? null;
-      d.contentRect = contentRef.current?.getBoundingClientRect() ?? null;
       const ownRect = own?.getBoundingClientRect() ?? null;
-      const cr = d.contentRect;
-      // Оверлей накрыт областью контента, поэтому прямоугольники переводим в её координаты.
-      const toContent = (r: DOMRect): ContentBounds =>
-        ({ x: r.left - cr!.left, y: r.top - cr!.top, width: r.width, height: r.height });
-      d.hint = cr && d.otherRect && ownRect
-        ? { target: toContent(d.otherRect), source: toContent(ownRect), title: d.title, active: false }
+      d.otherRect   = other?.getBoundingClientRect() ?? null;
+      d.contentLeft = contentRef.current?.getBoundingClientRect().left ?? 0;
+      // Координаты окна как есть: оверлей на время жеста растянут на всё окно (см. SplitSwapHint).
+      const toRect = (r: DOMRect): ContentBounds =>
+        ({ x: r.left, y: r.top, width: r.width, height: r.height });
+      d.hint = d.otherRect && ownRect
+        ? { target: toRect(d.otherRect), source: toRect(ownRect), title: d.title, zone: null }
         : null;
       if (d.hint) void window.oblako.setSplitSwapHint(d.hint);
-      setPanelDrag({ tabId: d.tabId, zone: null, overContent: false });
+      // Снимок мог прийти ДО начала жеста — тогда оверлея ещё не существовало и сообщение о нём
+      // было бы выброшено. Отправляем сразу после подсветки, которая эту вью и поднимает.
+      if (d.thumb) window.oblako.sendSplitDragThumb(d.thumb);
+      setPanelDrag({ tabId: d.tabId, zone: null });
     }
-
-    // Призрак двигаем напрямую, минуя state: App — самый большой компонент в чроме, и
-    // перерисовывать его на каждое движение мыши значило бы устроить рывки ради одной пилюли.
-    const ghost = panelGhostRef.current;
-    if (ghost) ghost.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 12}px)`;
 
     // ⚠️ Курсор вне окна — исхода нет. Капчур продолжает слать нам события и за краем окна, и без
     // этой проверки «утащил половину влево за пределы окна» попадало бы в ветку сайдбара
@@ -629,51 +642,32 @@ export default function App() {
       : r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
         ? 'swap'
         // Левее области контента в окне нет ничего, кроме острова сайдбара.
-        : d.contentRect && e.clientX < d.contentRect.left ? 'sidebar'
+        : e.clientX < d.contentLeft ? 'sidebar'
         : null;
 
-    // Над областью контента призрака рисует оверлей, здесь — сам чром. Один жест, две руки:
-    // граница ровно там, где чром перестаёт быть виден.
-    const cr = d.contentRect;
-    const over = !!cr && inWindow
-      && e.clientX >= cr.left && e.clientX <= cr.right
-      && e.clientY >= cr.top  && e.clientY <= cr.bottom;
-
-    if (zone !== d.zone || over !== d.overContent) {
+    if (zone !== d.zone) {
       d.zone = zone;
-      d.overContent = over;
       if (d.hint) {
-        d.hint = { ...d.hint, active: zone === 'swap' };
+        d.hint = { ...d.hint, zone };
         void window.oblako.setSplitSwapHint(d.hint);
       }
-      setPanelDrag({ tabId: d.tabId, zone, overContent: over });
+      setPanelDrag({ tabId: d.tabId, zone });
     }
 
-    // Курсор — в main не чаще кадра: он идёт потоком, а нужен ровно для того, чтобы призрак ехал
-    // над страницей. Один send на кадр драга дешевле, чем рывки вместо анимации.
+    // Курсор — в main не чаще кадра: он идёт потоком, а нужен ровно для того, чтобы карточка ехала
+    // за рукой. Один send на кадр драга дешевле, чем рывки вместо анимации.
     if (d.cursorFrame === null) {
       d.cursorFrame = requestAnimationFrame(() => {
         const cur = panelDragRef.current;
         if (!cur) return;
         cur.cursorFrame = null;
-        const c = cur.contentRect;
-        window.oblako.sendSplitDragCursor(
-          cur.overContent && c ? { x: cur.x - c.left, y: cur.y - c.top } : null,
-        );
+        window.oblako.sendSplitDragCursor({ x: cur.x, y: cur.y });
       });
     }
   }, []);
 
   const handlePanelDragPointerUp     = useCallback(() => endPanelDrag(true),  [endPanelDrag]);
   const handlePanelDragPointerCancel = useCallback(() => endPanelDrag(false), [endPanelDrag]);
-
-  // Призрак только что появился — сажаем его под курсор, не дожидаясь следующего движения мыши
-  // (иначе первый кадр он показался бы в левом верхнем углу окна).
-  useLayoutEffect(() => {
-    const d = panelDragRef.current;
-    const g = panelGhostRef.current;
-    if (d && g) g.style.transform = `translate(${d.x + 12}px, ${d.y + 12}px)`;
-  }, [panelDrag]);
 
   // Пара исчезла посреди жеста (страница закрыла себя, вкладку убили из другого окна) — обрываем
   // драг вместе с ней: иначе на отпускании исход применился бы к паре, которой уже нет, а оверлей
@@ -1160,31 +1154,10 @@ export default function App() {
           только из раздела настроек «Браузер»: первый запуск теперь ведёт Onboarding ниже. */}
       {importDialog && <ImportDialog onClose={() => setImportDialog(null)} />}
 
-      {/* Призрак половины сплита, которую тащат за шапку — та же пилюля, что рисует оверлей
-          (src/dropzones.tsx::DragGhost). Здесь она нужна ровно там, где чром виден: над областью
-          контента лежит нативная вью страницы, и призрака там ведёт оверлей. Отсюда overContent:
-          две руки, один жест, граница по краю области контента.
-          Позиция ставится напрямую по ref, без state — см. handlePanelDrag*. */}
-      {panelDrag && panelDragTab && !panelDrag.overContent && (
-        <div
-          ref={panelGhostRef}
-          style={{
-            position: 'fixed', top: 0, left: 0, zIndex: 900, pointerEvents: 'none',
-            transition: 'transform 70ms linear',
-            display: 'flex', alignItems: 'center', gap: 6,
-            maxWidth: 280, padding: '6px 12px',
-            borderRadius: 'var(--radius-pill)',
-            background: 'var(--surface-solid)', boxShadow: 'var(--shadow-pop)',
-            border: '1px solid var(--divider)',
-            fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}
-        >
-          {panelDrag.zone === 'sidebar' ? 'Вернуть в панель'
-            : panelDrag.zone === 'swap' ? 'Поменять местами'
-            : (panelDragTab.title || panelDragTab.url || 'Вкладка')}
-        </div>
-      )}
+      {/* ⚠️ Карточки перетаскиваемой панели здесь НЕТ намеренно: чром лежит под нативными вьюхами
+          страниц, и стоило курсору уехать вверх, к тулбару, как низ карточки скрывался под
+          страницей — она будто проваливалась внутрь. Всю картинку жеста рисует оверлей, который на
+          это время растянут на всё окно (src/dropzones.tsx, electron/DropZoneManager.ts). */}
 
       {/* Экран первого запуска. Поверх всего и без закрытия кликом мимо — см. Onboarding.tsx. */}
       {onboarding && <Onboarding onFinish={() => setOnboarding(false)} />}

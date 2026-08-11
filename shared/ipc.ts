@@ -396,9 +396,11 @@ export const IPC = {
   TAB_SPLIT_RATIO:  'tab:split-ratio',  // renderer → main: новое соотношение панелей при drag
   TAB_SPLIT_SWAP:   'tab:split-swap',   // renderer → main: поменять половины пары местами (ширины слотов остаются)
   SPLIT_SWAP_HINT:  'split:swap-hint',  // renderer → main: подсветить панель-цель, пока половину тащат за шапку
-  // renderer → main (поток, send): курсор в координатах области контента, null — ушёл с неё.
-  // Нужен, чтобы призрак ехал за курсором и НАД страницей: там его рисует оверлей, потому что
-  // чром в области контента не виден. Один раз на кадр, только пока идёт перетаскивание.
+  SPLIT_CAPTURE_PANE: 'split:capture-pane', // renderer → main: снимок панели для карточки в руке
+  SPLIT_DRAG_THUMB:   'split:drag-thumb',   // renderer → main → оверлей: тот же снимок, чтобы карточка была одна
+  // renderer → main (поток, send): курсор в координатах ОКНА, null — курсор ушёл из окна.
+  // Нужен, чтобы карточка ехала за курсором: рисует её оверлей — единственный слой поверх
+  // нативных вьюх страниц. Один раз на кадр, только пока идёт перетаскивание.
   SPLIT_DRAG_CURSOR: 'split:drag-cursor',
 
   // Переупорядочивание вкладок drag-and-drop
@@ -1841,13 +1843,16 @@ export interface TabDropResult {
 // перетаскивание за шапку держит указатель через setPointerCapture, и pointermove приходит в чром
 // даже над нативными вьюхами (см. разделитель сплита в App.tsx) — опрашивать курсор в main незачем.
 // Наружу, в main, уходит только то, что чром нарисовать физически не может: подсветка.
-// Все прямоугольники — в координатах ОБЛАСТИ КОНТЕНТА (её же меряет setContentBounds): оверлей
-// накрыт ровно ею, поэтому пересчёт не нужен ни на той стороне, ни на этой.
+// Все прямоугольники и координаты этого жеста — в координатах ОКНА: на время перетаскивания
+// оверлей растянут на всё окно (см. DropZoneManager.showOverlayIn), потому что карточку в руке
+// носят и над сайдбаром, и над тулбаром. Пересчитывать поэтому нечего ни на той стороне, ни на этой.
 export interface SplitSwapHint {
   target: ContentBounds;  // панель-цель: мягкая заливка акцентом и волосяной кант
   source: ContentBounds;  // панель, которую несут: приглушается, чтобы читалось «эта уехала»
-  title: string;          // подпись на призраке — он же рисуется оверлеем, см. SPLIT_DRAG_CURSOR
-  active: boolean;        // курсор над целью: отпустишь сейчас — половины поменяются местами
+  title: string;          // подпись на карточке, пока не пришёл снимок (см. SPLIT_CAPTURE_PANE)
+  // Что случится, если отпустить сейчас: 'swap' — половины поменяются местами, 'sidebar' — сплит
+  // разорвётся, null — ничего. Оверлей по нему и подсвечивает цель, и подписывает карточку.
+  zone: 'swap' | 'sidebar' | null;
 }
 
 export interface OblakoApi {
@@ -1972,6 +1977,10 @@ export interface OblakoApi {
   setSplitSwapHint(hint: SplitSwapHint | null): Promise<void>;
   // Курсор для призрака, который едет поверх страницы; null — курсор ушёл с области контента.
   sendSplitDragCursor(pos: { x: number; y: number } | null): void;
+  // Снимок панели (data-URL) для карточки в руке; width/maxHeight — в пикселях самой картинки.
+  captureSplitPane(tabId: string, width: number, maxHeight: number): Promise<string | null>;
+  // Тот же снимок — оверлею, чтобы над страницей он вёл ту же карточку, а не другую.
+  sendSplitDragThumb(thumb: string | null): void;
 
   // Переупорядочивание drag-and-drop
   reorderTabs(section: 'normal' | 'pinned', orderedIds: string[]): Promise<void>;

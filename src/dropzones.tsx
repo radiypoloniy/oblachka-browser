@@ -16,6 +16,7 @@ import './styles/global.css';
 type ZoneVisual = 'split-left' | 'split-right' | 'window' | 'adopt';
 
 import type { SplitSwapHint } from '../shared/ipc';
+import { SplitDragCard, SPLIT_DRAG_CARD_WIDTH } from './components/SplitDragCard';
 
 declare global {
   interface Window {
@@ -23,6 +24,7 @@ declare global {
       onZone: (cb: (zone: ZoneVisual | null) => void) => () => void;
       onSwapHint: (cb: (hint: SplitSwapHint | null) => void) => () => void;
       onCursor: (cb: (pos: { x: number; y: number } | null) => void) => () => void;
+      onThumb: (cb: (thumb: string | null) => void) => () => void;
     };
   }
 }
@@ -58,27 +60,24 @@ function Zone({ label, active, style }: { label: string; active: boolean; style:
   );
 }
 
-// Призрак несомой панели — та же пилюля, что чром рисует над собой (src/App.tsx): жест один, и на
-// границе области контента он обязан перетекать незаметно, а не подменяться другой картинкой.
+// Карточка несомой панели — ровно та же, что чром рисует над собой (src/App.tsx): жест один, и на
+// границе области контента карточка обязана перетекать незаметно, а не подменяться другой.
 //
-// ⚠️ transition на transform — не украшение. Координаты приезжают из чрома через IPC, то есть с
-// опозданием на кадр-другой; без сглаживания призрак дёргался бы рывками. С ним отставание
-// читается как инерция карточки в руке.
-function DragGhost({ x, y, label }: { x: number; y: number; label: string }) {
+// ⚠️ transition на transform внешнего узла — не украшение. Координаты приезжают из чрома через
+// IPC, то есть с опозданием на кадр-другой; без сглаживания карточка дёргалась бы рывками. С ним
+// отставание читается как инерция вещи в руке.
+function DragGhost({ x, y, thumb, title, label }: {
+  x: number; y: number; thumb: string | null; title: string; label: string | null;
+}) {
   return (
     <div style={{
       position: 'absolute', left: 0, top: 0,
-      transform: `translate(${x + 12}px, ${y + 12}px)`,
+      // Держим за верхний край по центру — так же, как схватили панель за её шапку.
+      transform: `translate(${x - SPLIT_DRAG_CARD_WIDTH / 2}px, ${y + 14}px)`,
       transition: 'transform 70ms linear',
-      display: 'flex', alignItems: 'center', gap: 6,
-      maxWidth: 280, padding: '6px 12px',
-      borderRadius: 'var(--radius-pill)',
-      background: 'var(--surface-solid)',
-      border: '1px solid var(--divider)',
-      boxShadow: 'var(--shadow-pop)',
-      fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
-      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-    }}>{label}</div>
+    }}>
+      <SplitDragCard thumb={thumb} title={title} label={label} intro />
+    </div>
   );
 }
 
@@ -86,9 +85,17 @@ function DropZones() {
   const [zone, setZone] = useState<ZoneVisual | null>(null);
   const [swap, setSwap] = useState<SplitSwapHint | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const [thumb, setThumb] = useState<string | null>(null);
   useEffect(() => window.dropzones.onZone(setZone), []);
-  useEffect(() => window.dropzones.onSwapHint(setSwap), []);
   useEffect(() => window.dropzones.onCursor(setCursor), []);
+  useEffect(() => window.dropzones.onThumb(setThumb), []);
+  // ⚠️ Снимок сбрасываем вместе с концом жеста, а не с каждой новой подсветкой: hint приезжает
+  // заново на каждую смену зоны, и обнуляй мы снимок по нему — карточка мигала бы подписью.
+  // Вью переживает жесты, поэтому без этого сброса следующий драг начинался бы с чужой картинки.
+  useEffect(() => window.dropzones.onSwapHint((h) => {
+    setSwap(h);
+    if (!h) setThumb(null);
+  }), []);
 
   const edge = `${SPLIT_EDGE_RATIO * 100}%`;
   const middle = `${(1 - SPLIT_EDGE_RATIO * 2) * 100}%`;
@@ -114,15 +121,23 @@ function DropZones() {
             что-то есть; над ней — заливка и уверенный кант. Анимируем только цвет. */}
         <div style={{
           ...panel(swap.target),
-          background: swap.active
+          background: swap.zone === 'swap'
             ? 'color-mix(in srgb, var(--accent) 12%, transparent)'
             : 'color-mix(in srgb, var(--accent) 3%, transparent)',
-          boxShadow: swap.active
+          boxShadow: swap.zone === 'swap'
             ? 'inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 50%, transparent)'
             : 'inset 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent)',
           transition: 'background 140ms var(--ease-standard), box-shadow 140ms var(--ease-standard)',
         }} />
-        {cursor && <DragGhost x={cursor.x} y={cursor.y} label={swap.active ? 'Поменять местами' : swap.title} />}
+        {cursor && (
+          <DragGhost
+            x={cursor.x} y={cursor.y}
+            thumb={thumb} title={swap.title}
+            label={swap.zone === 'swap' ? 'Поменять местами'
+              : swap.zone === 'sidebar' ? 'Вернуть в панель'
+              : null}
+          />
+        )}
       </div>
     );
   }

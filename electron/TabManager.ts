@@ -2859,6 +2859,39 @@ export class TabManager {
     this.focusActiveView();
   }
 
+  // Миниатюра страницы для карточки, которую человек несёт в руке, перетаскивая половину сплита
+  // за шапку (src/components/SplitDragCard.tsx). Один снимок на жест.
+  //
+  // ⚠️ Почему снимок, а не живая вьюха. Уменьшить нативную вьюху на лету нельзя: смена размера
+  // заставляет страницу пересчитывать вёрстку на каждом кадре (см. slideViews — там же и причина,
+  // почему двигаем только x). Картинку же рендерер крутит, наклоняет и масштабирует бесплатно.
+  //
+  // ⚠️ capturePage ждёт следующего скомпонованного кадра и на загруженной машине занимает
+  // заметное время — этот урок уже оплачен в ScreenshotManager.ts. Поэтому его зовут на
+  // pointerdown, ДО порога начала драга (см. App.tsx), а не в момент старта: иначе карточка
+  // появлялась бы с опозданием ровно тогда, когда человек ждёт отклика.
+  async capturePaneThumb(tabId: string, width: number, maxHeight: number): Promise<string | null> {
+    const tab = this.tabMap.get(tabId);
+    if (!tab || !this.isLiveHttpView(tab.view)) return null;
+    try {
+      const shot = await tab.view.webContents.capturePage();
+      if (shot.isEmpty()) return null;
+      // Только ширина — высоту NativeImage считает сам, по пропорции кадра.
+      const scaled = shot.resize({ width });
+      const { width: w, height: h } = scaled.getSize();
+      // Панель сплита узкая и высокая: отдавать её целиком незачем, карточка всё равно покажет
+      // верх (objectFit: cover в SplitDragCard). Режем здесь, а не в CSS, чтобы не гонять через
+      // IPC то, чего никто не увидит.
+      const cropped = h > maxHeight ? scaled.crop({ x: 0, y: 0, width: w, height: maxHeight }) : scaled;
+      // ⚠️ JPEG, а не toDataURL(): тот отдаёт PNG, и снимок фотографической страницы весит
+      // сотни килобайт — а он уходит через IPC дважды (сюда и в оверлей). Для миниатюры 240px
+      // разница в качестве не видна, разница в размере — на порядок.
+      return `data:image/jpeg;base64,${cropped.toJPEG(72).toString('base64')}`;
+    } catch {
+      return null; // вкладка могла закрыться посреди снимка — жест обойдётся подписью
+    }
+  }
+
   // Установить соотношение панелей split (вызывается при drag разделителя) — относится
   // к ПОКАЗЫВАЕМОЙ паре (renderer-контракт без id пары, drag-разделитель виден только
   // у той, что сейчас на экране). Нет показываемой пары — no-op.

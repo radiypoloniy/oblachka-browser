@@ -57,6 +57,29 @@ body {
   @keyframes oblako-dl-fly  { from, to { opacity: 0; transform: none; } }
   @keyframes oblako-dl-land { from, to { transform: none; } }
 }
+/* Карточка-миниатюра, которую несут в руке при перетаскивании половины сплита
+   (components/SplitDragCard.tsx): подъём из-под курсора и лёгкий наклон — «взял в руку». Кадр
+   лежит здесь, в общих стилях, потому что карточку рисуют ДВА рендерера (чром и оверлей поверх
+   страницы). Только transform/opacity.
+   ⚠️ Наклон живёт в том же transform, что и появление, поэтому повторён в обоих кадрах: иначе
+   конечное состояние анимации сбросило бы его в none. Позиционирование — на ВНЕШНЕМ узле, его
+   transform эта анимация не трогает. */
+@keyframes oblako-drag-card-in {
+  from { opacity: 0; transform: rotate(-2deg) scale(0.96); }
+  to   { opacity: 1; transform: rotate(-2deg) scale(1); }
+}
+.oblako-drag-card { transform: rotate(-2deg); }
+/* ⚠️ Подъём — отдельным классом, и его получает ТОЛЬКО та карточка, что появляется в начале
+   жеста (оверлей). Вторая, чромовая, вступает молча: она возникает уже посреди движения, когда
+   курсор уходит с области контента, и повтор подъёма там читался бы как подпрыгивание на границе,
+   а не как «взял в руку». */
+.oblako-drag-card-in { animation: oblako-drag-card-in 140ms var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) {
+  @keyframes oblako-drag-card-in { from, to { opacity: 1; transform: none; } }
+  .oblako-drag-card { transform: none; }
+  .oblako-drag-card-in { animation: none; }
+}
+
 /* Режим правки рабочего стола (desktop/DesktopScreen.tsx): элементы «дрожат», как на iPad.
    ⚠️ Амплитуда меньше, чем у Apple: там жест пальцем и экран в руках, здесь курсор и большой
    монитор — на нём то же покачивание читается как дефект рендера. Только transform. */
