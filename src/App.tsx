@@ -54,8 +54,10 @@ const TAB_FRAME_STYLE: CSSProperties = {
 // Прямая линия над кантом дублировала бы её и упиралась в скругление.
 //
 // Шапка — она же РУЧКА панели: за неё половину сплита перетаскивают на вторую панель (поменять
-// местами) или в сайдбар (разорвать сплит). Логика жеста — в App (handlePanelDrag*), тут только
-// сами обработчики и вид «поднято».
+// местами) или в сайдбар (разорвать сплит). Логика жеста — в App (handlePanelDrag*).
+//
+// dragging — страницу этого острова несут в руке. Тогда шапка пустеет: см. ниже, почему это
+// правильно и почему при этом сама полоса обязана остаться.
 function SplitPanelHeader({ tab, active, onClose, dragging, dragHandlers }: {
   tab: TabState;
   active: boolean;
@@ -75,31 +77,36 @@ function SplitPanelHeader({ tab, active, onClose, dragging, dragHandlers }: {
         position: 'absolute', top: 0, left: 0, right: 0, height: SPLIT_HEADER_HEIGHT,
         display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px',
         cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none',
-        // «Поднято»: полоса подкрашивается акцентом ровно у той панели, которую тащат — она
-        // единственная обратная связь, которая видна ВСЕГДА (призрак над страницей скрыт
-        // нативной вью, а подсветку цели рисует оверлей).
-        background: dragging ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
-        transition: 'background 120ms var(--ease-standard)',
       }}
     >
-      <FaviconTile tab={tab} size={12} />
+      {/* ⚠️ Пока страницу несут, на её острове НЕ ОСТАЁТСЯ НИЧЕГО от неё: ни значка, ни имени, ни
+          крестика. Иначе пустой слот выглядит полноценной панелью, у которой почему-то пропало
+          содержимое, — а на самом деле вся эта страница сейчас в руке, на карточке под курсором.
+          ⚠️ Сама полоса при этом остаётся в DOM всегда, и это не формальность: на ней держится
+          setPointerCapture. Убери мы её вместе с содержимым — жест оборвался бы на полуслове, а
+          вместе с ним и возврат скрытой вьюхи (страница осталась бы невидимой). */}
+      {!dragging && <FaviconTile tab={tab} size={12} />}
       {/* Активная панель заявляет о себе и текстом, не только кантом: цвет и насыщенность — тот
           же приём, что у активной вкладки в сайдбаре, одно правило на оба места. */}
-      <span style={{
-        flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)',
-        fontWeight: active ? 600 : 500,
-        color: active ? 'var(--text-strong)' : 'var(--text-body)',
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        transition: 'color 120ms var(--ease-standard)',
-      }}>{tab.title || tab.url || 'Загрузка…'}</span>
-      <button
-        onClick={(e) => { e.stopPropagation(); onClose(); }}
-        title="Закрыть"
-        style={{
-          border: 'none', background: 'transparent', cursor: 'default', padding: 2,
-          borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)',
-        }}
-      ><X size={12} /></button>
+      {!dragging && (
+        <span style={{
+          flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)',
+          fontWeight: active ? 600 : 500,
+          color: active ? 'var(--text-strong)' : 'var(--text-body)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          transition: 'color 120ms var(--ease-standard)',
+        }}>{tab.title || tab.url || 'Загрузка…'}</span>
+      )}
+      {!dragging && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
+          title="Закрыть"
+          style={{
+            border: 'none', background: 'transparent', cursor: 'default', padding: 2,
+            borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)',
+          }}
+        ><X size={12} /></button>
+      )}
     </div>
   );
 }
@@ -120,7 +127,11 @@ const SPLIT_PANE_RECT: CSSProperties = {
 //
 // ⚠️ Рисуется box-shadow'ом СНАРУЖИ прямоугольника карточки. Внутрь рисовать бесполезно: там
 // лежит нативная вью страницы, она поверх React-слоя и закрыла бы любую рамку.
-function SplitPaneEdge() {
+//
+// empty — страницу несут в руке, обводить нечего: форму пустого слота держит кант самого острова
+// (splitPanelStyle), а вторая линия внутри пустоты читалась бы как разметка неизвестно чего.
+function SplitPaneEdge({ empty }: { empty: boolean }) {
+  if (empty) return null;
   return (
     <div style={{ ...SPLIT_PANE_RECT, pointerEvents: 'none', boxShadow: '0 0 0 1px var(--divider)' }} />
   );
@@ -131,13 +142,30 @@ function SplitPaneEdge() {
 //
 // ⚠️ Кант — снаружи прямоугольника (box-shadow без inset): внутри его закрыла бы нативная вью
 // страницы, а снаружи он ложится в межостровный зазор (ISLAND_GAP = 10px, места хватает).
-const splitPanelStyle = (active: boolean, flex: number): CSSProperties => ({
+//
+// empty — страницу этого острова сейчас несут в руке (см. panelDrag). Тогда остров обязан выглядеть
+// ПУСТЫМ, а не полноценной панелью, у которой почему-то пропало содержимое: заливка становится
+// прозрачной (сквозь неё работает стекло islandPlate — backdrop-filter никуда не делся), тень
+// уходит (то, что не floats, не должно и отбрасывать), активная обводка тоже — она про «сюда идёт
+// ввод», а в пустой слот ввод не идёт.
+//
+// ⚠️ Гасить остров целиком через opacity было бы проще, но неправильно: вместе с заливкой погас бы
+// и кант, и на светлой теме слот стал бы неотличим от фона окна — пустая рамка превратилась бы в
+// «поехавшую раскладку». Поэтому кант, наоборот, остаётся в полную силу и держит форму слота.
+const splitPanelStyle = (active: boolean, flex: number, empty: boolean): CSSProperties => ({
   ...TAB_FRAME_VISUAL,
   position: 'relative', flex, minWidth: 0,
-  boxShadow: active
-    ? 'var(--shadow-island), 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent)'
-    : 'var(--shadow-island)',
-  transition: 'box-shadow 140ms var(--ease-standard)',
+  ...(empty
+    ? {
+      background: 'color-mix(in srgb, var(--surface-solid) 32%, transparent)',
+      boxShadow: 'inset 0 0 0 1px var(--divider)',
+    }
+    : {
+      boxShadow: active
+        ? 'var(--shadow-island), 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent)'
+        : 'var(--shadow-island)',
+    }),
+  transition: 'box-shadow 140ms var(--ease-standard), background 140ms var(--ease-standard)',
 });
 
 // Ниже COLLAPSE_THRESHOLD сайдбар схлопывается принудительно.
@@ -1016,7 +1044,10 @@ export default function App() {
                   «вкладка», bounds считает TabManager.applySplitBounds по этому же прямоугольнику. */}
               <div
                 ref={leftPanelRef}
-                style={splitPanelStyle(activeId === splitLeft!.id, splitRatio)}
+                style={splitPanelStyle(
+                  activeId === headerLeft!.id, splitRatio,
+                  panelDrag?.tabId === headerLeft!.id,
+                )}
                 onClick={() => {
                   if (activeId !== splitLeft!.id) void window.oblako.focusSplitPanel('left');
                 }}
@@ -1035,13 +1066,16 @@ export default function App() {
                     onPointerCancel: handlePanelDragPointerCancel,
                   }}
                 />
-                <SplitPaneEdge />
-                {splitLeft!.tabError && (
+                <SplitPaneEdge empty={panelDrag?.tabId === headerLeft!.id} />
+                {/* Страница ошибки — тоже содержимое этой вкладки, поэтому и она следует за
+                    заголовком (headerLeft, не splitLeft: на время превью они меняются местами) и
+                    исчезает, пока страницу несут. */}
+                {panelDrag?.tabId !== headerLeft!.id && headerLeft!.tabError && (
                   <div style={{ ...SPLIT_PANE_RECT, overflow: 'hidden' }}>
-                    <TabError error={splitLeft!.tabError} url={splitLeft!.url}
-                      onRetry={() => void window.oblako.reload(splitLeft!.id)}
-                      canGoBack={splitLeft!.canGoBack}
-                      onBack={() => void window.oblako.goBack(splitLeft!.id)} />
+                    <TabError error={headerLeft!.tabError} url={headerLeft!.url}
+                      onRetry={() => void window.oblako.reload(headerLeft!.id)}
+                      canGoBack={headerLeft!.canGoBack}
+                      onBack={() => void window.oblako.goBack(headerLeft!.id)} />
                   </div>
                 )}
               </div>
@@ -1069,7 +1103,10 @@ export default function App() {
               {/* Правая панель — тот же остров, что у левой (TAB_FRAME_VISUAL). */}
               <div
                 ref={rightPanelRef}
-                style={splitPanelStyle(activeId === splitRight!.id, 1 - splitRatio)}
+                style={splitPanelStyle(
+                  activeId === headerRight!.id, 1 - splitRatio,
+                  panelDrag?.tabId === headerRight!.id,
+                )}
                 onClick={() => {
                   if (activeId !== splitRight!.id) void window.oblako.focusSplitPanel('right');
                 }}
@@ -1088,13 +1125,13 @@ export default function App() {
                     onPointerCancel: handlePanelDragPointerCancel,
                   }}
                 />
-                <SplitPaneEdge />
-                {splitRight!.tabError && (
+                <SplitPaneEdge empty={panelDrag?.tabId === headerRight!.id} />
+                {panelDrag?.tabId !== headerRight!.id && headerRight!.tabError && (
                   <div style={{ ...SPLIT_PANE_RECT, overflow: 'hidden' }}>
-                    <TabError error={splitRight!.tabError} url={splitRight!.url}
-                      onRetry={() => void window.oblako.reload(splitRight!.id)}
-                      canGoBack={splitRight!.canGoBack}
-                      onBack={() => void window.oblako.goBack(splitRight!.id)} />
+                    <TabError error={headerRight!.tabError} url={headerRight!.url}
+                      onRetry={() => void window.oblako.reload(headerRight!.id)}
+                      canGoBack={headerRight!.canGoBack}
+                      onBack={() => void window.oblako.goBack(headerRight!.id)} />
                   </div>
                 )}
               </div>
