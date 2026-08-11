@@ -6,7 +6,9 @@
 // заметная память, значит проверяем редко, по одному и только пока браузер и так открыт.
 //
 // ⚠️ Сервер здесь не при чём: браузер закрыт — проверок нет. Это цена приватного браузера без
-// облака, и обещать человеку иное нельзя.
+// облака, и обещать человеку иное нельзя. Прямое следствие — заход ПРИ ЗАПУСКЕ (см. STARTUP_* и
+// tick(true) ниже): раз проверять мы можем только пока браузер открыт, момент открытия обязан
+// быть рабочим, а не пропущенным.
 import { BrowserWindow, session, app } from 'electron';
 import type { TrackingStore } from './TrackingStore';
 import { detectProduct } from './ProductDetector';
@@ -15,7 +17,7 @@ import { allContexts } from './WindowRegistry';
 import { detectEvent, describeEvent } from '../shared/priceEvents';
 
 // Как часто просыпаемся посмотреть, не пора ли кого проверить.
-const TICK_MS = 60 * 60 * 1000;          // час
+const TICK_MS = 30 * 60 * 1000;          // полчаса
 //
 // ⚠️ Частота СВОЯ у каждого товара и зависит от того, во что нам обходится проверка. Это вывод из
 // двух фактов, а не вкус:
@@ -27,17 +29,31 @@ const TICK_MS = 60 * 60 * 1000;          // час
 // Отсюда развилка по ЦЕНЕ проверки: обычный запрос стоит доли секунды — такие товары навещаем
 // часто; загрузка страницы стоит секунды и память — реже. Не ответивший магазин получает отступ,
 // чтобы не долбиться в него каждый час.
-const RAW_INTERVAL_MS  = 3 * 60 * 60 * 1000;   // дешёвый путь — 8 раз в сутки
-const VIEW_INTERVAL_MS = 8 * 60 * 60 * 1000;   // дорогой путь — 3 раза в сутки
-const FAIL_INTERVAL_MS = 12 * 60 * 60 * 1000;  // не ответил — не наседаем
+const RAW_INTERVAL_MS  = 90 * 60 * 1000;       // дешёвый путь — 16 раз в сутки
+const VIEW_INTERVAL_MS = 4 * 60 * 60 * 1000;   // дорогой путь — 6 раз в сутки
+const FAIL_INTERVAL_MS = 6 * 60 * 60 * 1000;   // не ответил — не наседаем
+//
+// ⚠️ ПРИ ЗАПУСКЕ БРАУЗЕРА пороги СВОИ, и это не прихоть. Обычный тик берёт только то, что уже
+// просрочено, а браузер закрыт куда чаще, чем открыт: закрыли на сорок минут, открыли — по
+// обычным интервалам не просрочено ничего, и человек справедливо видит «само оно не проверяется».
+// Момент запуска — единственный, когда точно известно, что данные лежали без движения; здесь и
+// надо догонять.
+// ⚠️ Сам порог служит защитой от долбёжки при частых перезапусках: перезагрузили браузер пять раз
+// за десять минут — товары, проверенные на первом запуске, во второй заход просто не попадут.
+// Отдельного «когда был последний стартовый заход» хранить не нужно.
+const STARTUP_RAW_MS  = 45 * 60 * 1000;
+const STARTUP_VIEW_MS = 2 * 60 * 60 * 1000;
+const STARTUP_FAIL_MS = 4 * 60 * 60 * 1000;
 // Сколько товаров проверяем за один заход. ⚠️ Немного намеренно: это чужие сайты, и ходить к ним
-// пачкой — поведение робота, а не браузера.
-const BATCH = 4;
+// пачкой — поведение робота, а не браузера. При запуске берём больше: догоняем накопившееся за
+// время, пока браузера не было, и второго такого случая до следующего запуска не представится.
+const BATCH = 6;
+const STARTUP_BATCH = 12;
 // Пауза между товарами в заходе — та же причина плюс не занимать процессор.
 const GAP_MS = 8000;
 // Первый заход после запуска: старт браузера и так тяжёлый (сессия, индексация), лезть в сеть
-// сразу нельзя.
-const FIRST_DELAY_MS = 3 * 60 * 1000;
+// сразу нельзя. Полторы минуты — восстановление сессии к этому моменту уже позади.
+const FIRST_DELAY_MS = 90 * 1000;
 
 const LOAD_TIMEOUT_MS = 25_000;
 const SETTLE_MS = 2500;
@@ -132,14 +148,16 @@ async function runBatch(items: Array<{ id: number; url: string }>, gapMs: number
   return ok;
 }
 
-async function tick(): Promise<void> {
+async function tick(startup = false): Promise<void> {
   if (running || stopped || !store) return;
-  const due = store.dueForCheck(RAW_INTERVAL_MS, VIEW_INTERVAL_MS, FAIL_INTERVAL_MS, BATCH);
+  const due = startup
+    ? store.dueForCheck(STARTUP_RAW_MS, STARTUP_VIEW_MS, STARTUP_FAIL_MS, STARTUP_BATCH)
+    : store.dueForCheck(RAW_INTERVAL_MS, VIEW_INTERVAL_MS, FAIL_INTERVAL_MS, BATCH);
   if (due.length === 0) return;
   running = true;
   try {
     const ok = await runBatch(due, GAP_MS);
-    console.log(`[tracking] фоновая проверка: ${ok} из ${due.length}`);
+    console.log(`[tracking] ${startup ? 'проверка при запуске' : 'фоновая проверка'}: ${ok} из ${due.length}`);
   } finally {
     running = false;
   }
@@ -168,7 +186,7 @@ export async function checkAllNow(): Promise<{ ok: number; total: number }> {
 export function initTrackingChecker(s: TrackingStore): void {
   store = s;
   if (!s.available) return;
-  setTimeout(() => { void tick(); }, FIRST_DELAY_MS);
+  setTimeout(() => { void tick(true); }, FIRST_DELAY_MS);
   timer = setInterval(() => { void tick(); }, TICK_MS);
   // Выход из приложения не должен ждать нашу пачку.
   app.on('before-quit', () => {
