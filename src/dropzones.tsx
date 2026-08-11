@@ -25,7 +25,9 @@ interface TabDragPayload {
   width: number;
   height: number;
   card: DragCard | null;
-  zones: Array<{ zone: ZoneVisual; rect: { x: number; y: number; width: number; height: number } }>;
+  // Как область контента выглядит СЕЙЧАС: один остров или два (сплит). Исходное положение
+  // превью — острова переезжают из него в будущую раскладку, а не возникают на пустом месте.
+  islands: Array<{ x: number; y: number; width: number; height: number }>;
 }
 
 // Подпись зоны — единственное, что остаётся на стороне вью: слова человеку показывает интерфейс,
@@ -40,6 +42,9 @@ const ZONE_LABEL: Record<ZoneVisual, string> = {
 };
 
 import type { DragCard, SplitSwapHint } from '../shared/ipc';
+// Тот же зазор между островами, что и в раскладке окна: превью обязано совпасть с тем, что
+// человек получит, вплоть до щели между панелями.
+import { ISLAND_GAP } from '../shared/layout';
 import { SplitDragCard, SPLIT_DRAG_CARD_WIDTH } from './components/SplitDragCard';
 
 declare global {
@@ -59,36 +64,106 @@ declare global {
 // обещать человеку не то, что произойдёт. Теперь раскладку целиком считает main и присылает
 // готовыми прямоугольниками (см. TabDragPayload.zones): синхронизировать больше нечего.
 
-// ⚠️ Прямоугольник задаёт вызывающий целиком, а не «во всю высоту оверлея»: у зон в режиме сплита
-// он будет считаться по реальным панелям, а не по долям всей области (см. заход про замену панели).
-function Zone({ label, active, rect }: {
-  label: string; active: boolean;
-  rect: { left: number; top: number; width: number; height: number };
-}) {
+type Rect = { x: number; y: number; width: number; height: number };
+
+// Подпись исхода. Живёт внутри острова-получателя, а не отдельным пунктирным прямоугольником:
+// показывать надо ОДИН ответ на вопрос «что будет», а не три одновременно.
+function Label({ text }: { text: string }) {
+  return (
+    <div style={{
+      padding: '8px 14px', borderRadius: 'var(--radius-pill)',
+      background: 'var(--accent)', color: 'var(--on-accent)',
+      fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)',
+      boxShadow: 'var(--shadow-pop)',
+      whiteSpace: 'nowrap',
+    }}>
+      {text}
+    </div>
+  );
+}
+
+// Остров превью. 'page' — страница, которая уже на экране (её место может измениться —
+// например, при разделении она ужимается в половину); 'target' — место, куда попадёт несомая
+// вкладка.
+//
+// ⚠️ Переходы висят на left/top/width/height нарочно, и это не противоречит правилу «анимируем
+// только цвет и прозрачность». Правило про НАТИВНЫЕ вьюхи страниц: там смена размера гонит
+// пересчёт вёрстки живого сайта на каждом кадре (см. TabManager.slideViews). Здесь же это пустые
+// div-ы поверх, и именно их переезд показывает человеку, что раскладка перестроится.
+function Island({ rect, tone, label }: { rect: Rect; tone: 'page' | 'target'; label?: string }) {
+  const target = tone === 'target';
   return (
     <div style={{
       position: 'absolute',
-      left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+      left: rect.x, top: rect.y, width: rect.width, height: rect.height,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      // Неактивная зона — едва заметная подсказка, что тут вообще что-то есть; активная
-      // заливается акцентом. Анимируем только цвет и прозрачность (см. правило про анимации).
-      background: active ? 'color-mix(in srgb, var(--accent) 18%, transparent)' : 'transparent',
-      border: active ? '2px dashed var(--accent)' : '2px dashed transparent',
-      borderRadius: 'var(--radius-card)',
-      transition: 'background 120ms var(--ease-standard), border-color 120ms var(--ease-standard)',
+      borderRadius: 'var(--radius-island)',
+      background: target ? 'color-mix(in srgb, var(--accent) 16%, transparent)' : 'transparent',
+      boxShadow: target
+        ? 'inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent)'
+        : 'inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent)',
+      transition: 'left 180ms var(--ease-standard), top 180ms var(--ease-standard),'
+        + ' width 180ms var(--ease-standard), height 180ms var(--ease-standard),'
+        + ' background 140ms var(--ease-standard), box-shadow 140ms var(--ease-standard)',
     }}>
-      <div style={{
-        padding: '8px 14px', borderRadius: 'var(--radius-pill)',
-        background: 'var(--accent)', color: 'var(--on-accent)',
-        fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)',
-        boxShadow: 'var(--shadow-pop)',
-        opacity: active ? 1 : 0,
-        transition: 'opacity 120ms var(--ease-standard)',
-      }}>
-        {label}
-      </div>
+      {label && <Label text={label} />}
     </div>
   );
+}
+
+// Отдельное окно — не зона среди зон, а вещь другого рода: она уедет из этой раскладки вовсе.
+// Поэтому и рисуется иначе — наклонённой карточкой, парящей над содержимым, а не вписанной в
+// сетку островов. Наклон и парение здесь несут смысл: «этот прямоугольник не отсюда».
+function FloatingWindow({ width, height }: { width: number; height: number }) {
+  const w = Math.round(Math.min(width * 0.42, 380));
+  const h = Math.round(Math.min(height * 0.52, w * 0.64));
+  return (
+    <div style={{
+      position: 'absolute',
+      left: width / 2, top: height / 2, width: w, height: h,
+      marginLeft: -w / 2, marginTop: -h / 2,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      borderRadius: 'var(--radius-island)',
+      background: 'color-mix(in srgb, var(--accent) 16%, transparent)',
+      boxShadow: 'inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent), var(--shadow-pop)',
+      // Появление и парение — двумя анимациями подряд (вторая с задержкой на длину первой):
+      // обе крутят transform, и одновременно они бы спорили за одно свойство.
+      animation: 'dz-pop 180ms var(--ease-standard) both, dz-float 2.8s ease-in-out 180ms infinite',
+    }}>
+      <Label text={ZONE_LABEL.window} />
+    </div>
+  );
+}
+
+// Раскладка, которая получится, если отпустить прямо сейчас.
+//
+// ⚠️ Ключи узлов стабильные ('page-0'), и это вся суть картинки. React анимирует ОДИН И ТОТ ЖЕ
+// узел из старого прямоугольника в новый — поэтому при наведении на край страница на глазах
+// ужимается в половину, освобождая место, а не подменяется другим прямоугольником. Раздай мы
+// ключи по зоне, каждый переезд был бы мгновенной подменой, то есть тем же щелчком, что и раньше.
+function previewSlots(p: TabDragPayload, zone: ZoneVisual | null): {
+  pages: Array<{ key: string; rect: Rect }>;
+  target: Rect | null;
+} {
+  const full: Rect = { x: 0, y: 0, width: p.width, height: p.height };
+  const halfW = (p.width - ISLAND_GAP) / 2;
+  const leftHalf: Rect = { x: 0, y: 0, width: halfW, height: p.height };
+  const rightHalf: Rect = { x: halfW + ISLAND_GAP, y: 0, width: halfW, height: p.height };
+  const pages = p.islands.map((rect, i) => ({ key: `page-${i}`, rect }));
+
+  switch (zone) {
+    // Сплита ещё нет: единственная страница ужимается в противоположную половину, а несомая
+    // занимает ту, к которой её ведут.
+    case 'split-left':  return { pages: [{ key: 'page-0', rect: rightHalf }], target: leftHalf };
+    case 'split-right': return { pages: [{ key: 'page-0', rect: leftHalf }],  target: rightHalf };
+    // Сплит уже на экране: раскладка не меняется, меняется содержимое одной панели.
+    case 'replace-left':  return { pages, target: p.islands[0] ?? null };
+    case 'replace-right': return { pages, target: p.islands[1] ?? null };
+    // Приём чужой вкладки: делить нечего, исход один на всю область.
+    case 'adopt': return { pages, target: full };
+    // 'window' и «ничего»: раскладка остаётся как есть. У окна свой знак — FloatingWindow.
+    default: return { pages, target: null };
+  }
 }
 
 // Карточка несомой панели — ровно та же, что чром рисует над собой (src/App.tsx): жест один, и на
@@ -179,19 +254,17 @@ function DropZones() {
     const overContent = !!cursor
       && cursor.x >= 0 && cursor.x <= tab.width
       && cursor.y >= 0 && cursor.y <= tab.height;
+    const { pages, target } = previewSlots(tab, zone);
     return (
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-        {/* Раскладку прислал main вместе с жестом: и три зоны обычного окна, и две панели уже
-            открытого сплита, и одна зона на всю страницу у окна-приёмника — это один и тот же
-            список прямоугольников, рисовать его тут нечем, кроме цикла. */}
-        {tab.zones.map(({ zone: z, rect }) => (
-          <Zone
-            key={z}
-            label={ZONE_LABEL[z]}
-            active={zone === z}
-            rect={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
-          />
-        ))}
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', animation: 'dz-fade 160ms var(--ease-standard) both' }}>
+        {/* Страницы, которые уже на экране. Их прямоугольники приезжают в те места, которые они
+            займут после дропа, — это и есть превью: раскладка перестраивается на глазах, до
+            того как человек отпустил. */}
+        {pages.map(({ key, rect }) => <Island key={key} rect={rect} tone="page" />)}
+        {/* Место несомой вкладки. Ключ постоянный, поэтому при переводе курсора с края на край
+            остров переезжает, а не мигает подменой. */}
+        {target && zone && <Island key="target" rect={target} tone="target" label={ZONE_LABEL[zone]} />}
+        {zone === 'window' && <FloatingWindow width={tab.width} height={tab.height} />}
         {cursor && overContent && tab.card && (
           <DragGhost
             x={cursor.x} y={cursor.y}

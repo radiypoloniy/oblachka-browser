@@ -44,6 +44,10 @@ const ZOOM_STEP = 0.1; // 10% за шаг, как в Chrome
 const CONTENT_CORNER_RADIUS = 20;
 const SPLIT_RATIO_MIN = 0.2;
 const SPLIT_RATIO_MAX = 0.8;
+// Проезд панели в свой слот (см. slideViews). Вынесено из умолчания параметра, потому что по
+// этой же длительности гаснет выселенная панель при замене — она обязана дожить ровно до конца
+// проезда, и разъедься эти два числа, в слоте мелькнула бы пустота.
+const PANEL_SLIDE_MS = 240;
 
 const SLEEP_TIMEOUT_NORMAL = 2 * 60 * 60 * 1000;  // 2 часа без активности
 const SLEEP_TIMEOUT_PINNED = 8 * 60 * 60 * 1000;  // 8 часов для закреплённых
@@ -2806,8 +2810,7 @@ export class TabManager {
     // появление сплита читается как продолжение жеста, а не как щелчок.
     this.repositionViews();
     const to = this.getTabViewBounds(movedId);
-    const fromX = side === 'left' ? this.bounds.x - to.width : this.bounds.x + this.bounds.width;
-    this.slideViews([{ tabId: movedId, to, fromX }]);
+    this.slideViews([{ tabId: movedId, to, ...this.#panelEntryFrom(side, to) }]);
     this.onChange();
     this.focusActiveView();
   }
@@ -2876,6 +2879,21 @@ export class TabManager {
 
     this.onChange();
     this.focusActiveView();
+  }
+
+  // Откуда панель въезжает в свой слот. Правило одно на оба жеста (вход в сплит и замена
+  // панели): с ближайшего СВОБОДНОГО края слота.
+  //
+  // ⚠️ Свободные края несимметричны, и это не придирка. Справа от области контента — край окна,
+  // оттуда панель приезжает по горизонтали и по дороге ничего не закрывает. Слева стоит сайдбар,
+  // а нативная вью страницы лежит ПОВЕРХ React-слоя — панель, выезжающая из-за левого края,
+  // на всё время проезда накрывает собой список вкладок. Ровно это и читалось как «резко и
+  // дёргано, особенно если менять на вкладку ближе к сайдбару». Поэтому левая панель поднимается
+  // снизу: нижний край окна свободен у обеих сторон.
+  #panelEntryFrom(side: 'left' | 'right', to: ContentBounds): { fromX: number; fromY: number } {
+    return side === 'right'
+      ? { fromX: this.bounds.x + this.bounds.width, fromY: to.y }
+      : { fromX: to.x, fromY: this.bounds.y + this.bounds.height };
   }
 
   // Прямоугольники ОСТРОВОВ показываемой пары, в оконных координатах. Нужны зонам перетаскивания
@@ -2952,23 +2970,38 @@ export class TabManager {
     }
 
     const evicted = this.tabMap.get(panelId);
-    if (evicted && this.isLiveHttpView(evicted.view)) {
-      evicted.view.webContents.stopFindInPage('clearSelection');
-      evicted.view.setVisible(false);
-    }
+    if (evicted && this.isLiveHttpView(evicted.view)) evicted.view.webContents.stopFindInPage('clearSelection');
+
     const incoming = this.tabMap.get(newId);
     if (incoming && this.isHttpView(incoming.view)) {
-      const children = this.win.contentView.children;
-      if (!children.includes(incoming.view)) this.win.contentView.addChildView(incoming.view);
+      // ⚠️ Порядок детей = порядок слоёв, и приезжающую надо поднять НАД выселенной: та остаётся
+      // видимой на время проезда (см. ниже), и без явного подъёма новая страница ехала бы под
+      // ней — то есть невидимо. Переклад безопасен: до этого момента она скрыта, мелькнуть нечему.
+      if (this.win.contentView.children.includes(incoming.view)) {
+        this.win.contentView.removeChildView(incoming.view);
+      }
+      this.win.contentView.addChildView(incoming.view);
       incoming.view.setVisible(true);
     }
 
-    // Новая панель въезжает с того же края, к которому её вели, — тем же движением, что и при
-    // входе в сплит (slideViews двигает только x, см. её разбор).
+    // Новая панель въезжает с ближайшего свободного края своего слота — тем же движением, что и
+    // при входе в сплит (см. #panelEntryFrom).
     this.repositionViews();
     const to = this.getTabViewBounds(newId);
-    const fromX = side === 'left' ? this.bounds.x - to.width : this.bounds.x + this.bounds.width;
-    this.slideViews([{ tabId: newId, to, fromX }]);
+    this.slideViews([{ tabId: newId, to, ...this.#panelEntryFrom(side, to) }]);
+
+    // ⚠️ Выселенная панель гаснет не сейчас, а когда новая уже доехала. Мгновенное скрытие и было
+    // половиной рывка: слот на четверть секунды становился пустым, и человек видел дырку вместо
+    // замены. Теперь новая страница просто наезжает на старую и занимает её место.
+    setTimeout(() => {
+      if (this.win.isDestroyed()) return;
+      // За эти кадры человек мог успеть что угодно — вернуть выселенную в сплит, переключиться
+      // на неё, открыть её в другой паре. Гасим, только если её по-прежнему никто не показывает.
+      if (this.activeId === panelId || this.#pairContaining(panelId)) return;
+      const tab = this.tabMap.get(panelId);
+      if (tab && this.isLiveHttpView(tab.view)) tab.view.setVisible(false);
+    }, PANEL_SLIDE_MS);
+
     this.onChange();
     this.focusActiveView();
   }
@@ -3872,11 +3905,11 @@ export class TabManager {
   // Проезд вьюх по X к новым слотам. Используется въездом панели сплита (enterSplit) и обменом
   // половин местами (swapSplitPanels).
   //
-  // ⚠️ Двигаем ТОЛЬКО x, размер задан сразу конечный: смена размера заставляет страницу
+  // ⚠️ Двигаем только ПОЛОЖЕНИЕ, размер задан сразу конечный: смена размера заставляет страницу
   // пересчитывать вёрстку на каждом кадре (два тяжёлых сайта разом — гарантированные рывки), а
-  // сдвиг по горизонтали для страницы бесплатен, она о нём вовсе не знает. Поэтому панель не
-  // «разворачивается», а именно приезжает.
-  private slideViews(moves: Array<{ tabId: string; to: ContentBounds; fromX: number }>, durMs = 240): void {
+  // сдвиг для страницы бесплатен, она о нём вовсе не знает. Поэтому панель не «разворачивается»,
+  // а именно приезжает. По какой оси — безразлично: дорога только смена размера.
+  private slideViews(moves: Array<{ tabId: string; to: ContentBounds; fromX: number; fromY?: number }>, durMs = PANEL_SLIDE_MS): void {
     const live = moves
       .map((m) => ({ ...m, tab: this.tabMap.get(m.tabId) }))
       .filter((m) => !!m.tab && this.isHttpView(m.tab.view))
@@ -3888,7 +3921,7 @@ export class TabManager {
       const gen = (this.slideGen.get(m.tabId) ?? 0) + 1;
       this.slideGen.set(m.tabId, gen);
       gens.set(m.tabId, gen);
-      m.view.setBounds({ x: Math.round(m.fromX), y: Math.round(m.to.y), width: Math.round(m.to.width), height: Math.round(m.to.height) });
+      m.view.setBounds({ x: Math.round(m.fromX), y: Math.round(m.fromY ?? m.to.y), width: Math.round(m.to.width), height: Math.round(m.to.height) });
       m.view.setBorderRadius(SPLIT_PANE_RADIUS); // едут только панели сплита
     }
 
@@ -3902,7 +3935,9 @@ export class TabManager {
         if (this.slideGen.get(m.tabId) !== gens.get(m.tabId)) continue; // жест перебит новым
         if (m.view.webContents.isDestroyed()) { this.slideGen.delete(m.tabId); continue; }
         const x = Math.round(m.fromX + (m.to.x - m.fromX) * e);
-        m.view.setBounds({ x, y: Math.round(m.to.y), width: Math.round(m.to.width), height: Math.round(m.to.height) });
+        const fromY = m.fromY ?? m.to.y;
+        const y = Math.round(fromY + (m.to.y - fromY) * e);
+        m.view.setBounds({ x, y, width: Math.round(m.to.width), height: Math.round(m.to.height) });
         if (t < 1) alive = true;
         else this.slideGen.delete(m.tabId);
       }

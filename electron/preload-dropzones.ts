@@ -11,7 +11,7 @@ interface TabDragPayload {
   width: number
   height: number
   card: DragCard | null
-  zones: Array<{ zone: ZoneVisual; rect: ContentBounds }>
+  islands: ContentBounds[]  // как область контента выглядит сейчас: один остров или два
 }
 
 contextBridge.exposeInMainWorld('dropzones', {

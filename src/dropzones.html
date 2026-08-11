@@ -8,6 +8,23 @@
        непрозрачный прямоугольник поверх страницы (тот же приём, что у findbar.html). */
     html, body, #root { margin: 0; padding: 0; background: transparent !important; overflow: hidden; }
     html, body, #root { width: 100%; height: 100%; }
+
+    /* Ключевые кадры превью раскладки (src/dropzones.tsx). Здесь, а не инлайном в стилях узла:
+       @keyframes в style-атрибут не объявишь, а тянуть ради трёх правил CSS-модуль незачем. */
+
+    /* Появление всей картинки: жест начался — раскладка проступает, а не возникает щелчком. */
+    @keyframes dz-fade { from { opacity: 0 } to { opacity: 1 } }
+
+    /* Отдельное окно: наклонённая карточка сначала подаётся вперёд... */
+    @keyframes dz-pop {
+      from { opacity: 0; transform: rotate(-5deg) scale(0.94) }
+      to   { opacity: 1; transform: rotate(-5deg) scale(1) }
+    }
+    /* ...а потом тихо парит. Парение и есть знак «этот прямоугольник не из этой раскладки». */
+    @keyframes dz-float {
+      0%, 100% { transform: rotate(-5deg) translateY(0) }
+      50%      { transform: rotate(-5deg) translateY(-7px) }
+    }
   </style>
 </head>
 <body>

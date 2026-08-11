@@ -221,14 +221,23 @@ function zoneLayout(st: WindowDropZones): ZoneRect[] {
   ];
 }
 
-// Зоны в координатах ОВЕРЛЕЯ (он накрывает область контента, см. showOverlayIn). Окно-приёмник
-// чужой вкладки — особый случай: там исход ровно один, и делить его не на что.
-function zonesForOverlay(st: WindowDropZones, adopt: boolean): ZoneRect[] {
+// ⚠️ Сами прямоугольники ЗОН оверлею не уходят, и это не забывчивость. Он рисует не зоны, а
+// превью раскладки: острова там, где они окажутся после дропа (см. src/dropzones.tsx). Какая
+// зона под курсором — приходит отдельным сообщением ('dropzones:zone'), а её границы человеку
+// показывать незачем: он видит исход, а не разметку, по которой тот вычислен.
+function toOverlay(c: ContentBounds, r: ContentBounds): ContentBounds {
+  return { x: r.x - c.x, y: r.y - c.y, width: r.width, height: r.height };
+}
+
+// Как область контента выглядит СЕЙЧАС: один остров или два (сплит). Оверлею это нужно, чтобы
+// рисовать превью раскладки — что человек получит, если отпустит, — а не абстрактный пунктир
+// поверх страницы. Он же исходное положение анимации: острова из текущей раскладки переезжают
+// в будущую, а не появляются на пустом месте.
+function islandsForOverlay(st: WindowDropZones): ContentBounds[] {
   const c = st.content;
-  if (adopt) return [{ zone: 'adopt', rect: { x: 0, y: 0, width: c.width, height: c.height } }];
-  return zoneLayout(st).map(({ zone, rect }) => ({
-    zone, rect: { x: rect.x - c.x, y: rect.y - c.y, width: rect.width, height: rect.height },
-  }));
+  const panels = contextForWindow(st.win)?.tabs.splitPanelRects() ?? null;
+  if (!panels) return [{ x: 0, y: 0, width: c.width, height: c.height }];
+  return [toOverlay(c, panels.left), toOverlay(c, panels.right)];
 }
 
 // Зона внутри СВОЕГО окна. Вне области контента (шапка, сайдбар) — обычное переупорядочивание;
@@ -338,7 +347,7 @@ function sendCursor(st: WindowDropZones | null, pos: { x: number; y: number } | 
 // приходит уже пересчитанным в ту же систему координат.
 function sendTabDrag(
   st: WindowDropZones | null,
-  payload: { width: number; height: number; card: DragCard | null; zones: ZoneRect[] } | null,
+  payload: { width: number; height: number; card: DragCard | null; islands: ContentBounds[] } | null,
 ): void {
   post(st, 'dropzones:tab', payload);
 }
@@ -380,9 +389,9 @@ function updateDrag(): void {
     showOverlayIn(shouldShowIn);
     sendTabDrag(shouldShowIn, {
       width: shouldShowIn.content.width, height: shouldShowIn.content.height, card: drag.card,
-      // Прямоугольники считает main — он один знает, есть ли сплит и какой ширины его панели.
+      // Раскладку считает main — он один знает, есть ли сплит и какой ширины его панели.
       // Оверлей рисует ровно то, что произойдёт, а не свою догадку о долях.
-      zones: zonesForOverlay(shouldShowIn, !overSource),
+      islands: islandsForOverlay(shouldShowIn),
     });
     drag.shown = shouldShowIn;
     drag.zone = null; // новое окно ещё ничего не знает — заставляем послать зону ниже
