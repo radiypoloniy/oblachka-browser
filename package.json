@@ -39,7 +39,7 @@
     "download-translation-models": "node scripts/download-translation-models.mjs",
     "bergamot-smoke": "node scripts/bergamot-smoke.mjs",
     "measure-model": "node scripts/measure-model-requirements.mjs",
-    "postinstall:sqlite": "electron-rebuild -f -w better-sqlite3 || echo [postinstall] better-sqlite3 rebuild skipped — history unavailable without C++ tools",
+    "postinstall:sqlite": "node scripts/rebuild-sqlite.mjs",
     "postinstall:bergamot": "node scripts/patch-bergamot.mjs",
     "postinstall": "npm run postinstall:sqlite && npm run postinstall:bergamot",
     "make-installer-art": "node scripts/make-installer-art.mjs"
@@ -78,7 +78,7 @@
     "@vitejs/plugin-react": "4.3.1",
     "concurrently": "8.2.2",
     "cross-env": "7.0.3",
-    "electron": "40.10.4",
+    "electron": "42.8.1",
     "electron-builder": "^26.15.3",
     "playwright-core": "^1.61.0",
     "typescript": "5.4.5",
