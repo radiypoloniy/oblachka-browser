@@ -66,8 +66,8 @@ function Zone({ label, active, style }: { label: string; active: boolean; style:
 // ⚠️ transition на transform внешнего узла — не украшение. Координаты приезжают из чрома через
 // IPC, то есть с опозданием на кадр-другой; без сглаживания карточка дёргалась бы рывками. С ним
 // отставание читается как инерция вещи в руке.
-function DragGhost({ x, y, thumb, title, label }: {
-  x: number; y: number; thumb: string | null; title: string; label: string | null;
+function DragGhost({ x, y, thumb, favicon, title, label }: {
+  x: number; y: number; thumb: string | null; favicon: string | null; title: string; label: string | null;
 }) {
   return (
     <div style={{
@@ -76,7 +76,7 @@ function DragGhost({ x, y, thumb, title, label }: {
       transform: `translate(${x - SPLIT_DRAG_CARD_WIDTH / 2}px, ${y + 14}px)`,
       transition: 'transform 70ms linear',
     }}>
-      <SplitDragCard thumb={thumb} title={title} label={label} intro />
+      <SplitDragCard thumb={thumb} favicon={favicon} title={title} label={label} intro />
     </div>
   );
 }
@@ -129,7 +129,7 @@ function DropZones() {
         {cursor && (
           <DragGhost
             x={cursor.x} y={cursor.y}
-            thumb={thumb} title={swap.title}
+            thumb={thumb} favicon={swap.favicon} title={swap.title}
             label={swap.zone === 'swap' ? 'Поменять местами'
               : swap.zone === 'sidebar' ? 'Вернуть в панель'
               : null}

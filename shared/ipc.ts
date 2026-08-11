@@ -1851,7 +1851,10 @@ export interface SplitSwapHint {
   // раскладки и показывает исход второй панелью — см. TabManager.applyPanelDragLayout.
   tabId: string;
   target: ContentBounds;  // панель-цель: мягкая заливка акцентом и волосяной кант
-  title: string;          // подпись на карточке, пока не пришёл снимок (см. SPLIT_CAPTURE_PANE)
+  // Имя и значок несомой страницы — бланк карточки, поверх которого потом проявляется снимок
+  // (он приходит позже, см. SPLIT_CAPTURE_PANE).
+  title: string;
+  favicon: string | null;
   // Что случится, если отпустить сейчас: 'swap' — половины поменяются местами, 'sidebar' — сплит
   // разорвётся, null — ничего. Оверлей по нему и подсвечивает цель, и подписывает карточку.
   zone: 'swap' | 'sidebar' | null;

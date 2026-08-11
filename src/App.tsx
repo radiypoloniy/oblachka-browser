@@ -567,7 +567,8 @@ export default function App() {
     tabId: string;
     siblingId: string;
     side: 'left' | 'right';       // какую половину тащат — цель это ВТОРАЯ
-    title: string;                // подпись призрака; берётся на старте, дальше не меняется
+    title: string;                // бланк карточки; берётся на старте, дальше не меняется
+    favicon: string | null;
     otherRect: DOMRect | null;    // панель-цель, координаты окна
     contentLeft: number;          // левый край области контента — левее него только остров сайдбара
     hint: SplitSwapHint | null;   // готовый payload подсветки, пересылается при смене зоны
@@ -613,7 +614,7 @@ export default function App() {
   }, []);
 
   const handlePanelDragPointerDown = useCallback((
-    tabId: string, siblingId: string, side: 'left' | 'right', title: string,
+    tabId: string, siblingId: string, side: 'left' | 'right', title: string, favicon: string | null,
   ) => (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     // Крестик в шапке — своя кнопка, драг с неё не начинаем.
@@ -623,7 +624,7 @@ export default function App() {
     // текста при протяжке снимает userSelect:'none' на самой шапке, отдельный preventDefault не нужен.
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     panelDragRef.current = {
-      tabId, siblingId, side, title,
+      tabId, siblingId, side, title, favicon,
       otherRect: null, contentLeft: 0, hint: null,
       startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY,
       started: false, zone: null, cursorFrame: null, thumb: null,
@@ -663,7 +664,7 @@ export default function App() {
       const toRect = (r: DOMRect): ContentBounds =>
         ({ x: r.left, y: r.top, width: r.width, height: r.height });
       d.hint = d.otherRect
-        ? { tabId: d.tabId, target: toRect(d.otherRect), title: d.title, zone: null }
+        ? { tabId: d.tabId, target: toRect(d.otherRect), title: d.title, favicon: d.favicon, zone: null }
         : null;
       if (d.hint) void window.oblako.setSplitSwapHint(d.hint);
       // Снимок мог прийти ДО начала жеста — тогда оверлея ещё не существовало и сообщение о нём
@@ -1059,7 +1060,7 @@ export default function App() {
                   dragHandlers={{
                     onPointerDown: handlePanelDragPointerDown(
                       headerLeft!.id, headerRight!.id, 'left',
-                      headerLeft!.title || headerLeft!.url || 'Вкладка',
+                      headerLeft!.title || headerLeft!.url || 'Вкладка', headerLeft!.faviconUrl,
                     ),
                     onPointerMove: handlePanelDragPointerMove,
                     onPointerUp: handlePanelDragPointerUp,
@@ -1118,7 +1119,7 @@ export default function App() {
                   dragHandlers={{
                     onPointerDown: handlePanelDragPointerDown(
                       headerRight!.id, headerLeft!.id, 'right',
-                      headerRight!.title || headerRight!.url || 'Вкладка',
+                      headerRight!.title || headerRight!.url || 'Вкладка', headerRight!.faviconUrl,
                     ),
                     onPointerMove: handlePanelDragPointerMove,
                     onPointerUp: handlePanelDragPointerUp,
