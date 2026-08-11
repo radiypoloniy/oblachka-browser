@@ -65,7 +65,28 @@ interface PersistedSettings {
   // ⚠️ null, а не пустой массив, когда человек набор не трогал. Разница принципиальна: пустой
   // массив — это осознанно опустошённая папка, и подсовывать в неё дефолт обратно нельзя.
   recommendedSites: RecommendedSite[] | null;
+  // Сайты, которые человек запретил выгружать из памяти (ПКМ по вкладке). Решение ПРО САЙТ, а не
+  // про вкладку: закрыл вкладку — правило остаётся, открыл ту же почту завтра — она снова под
+  // защитой. Плюс формат сессии не приходится трогать вовсе, а его поломка = потеря вкладок.
+  neverSleepSites: string[];
 }
+
+// Хосты приходят и из меню, и с диска — нормализатор один. Пустые и мусорные строки выбрасываем
+// молча: в списке им делать нечего, а падать из-за битого файла настроек тем более незачем.
+function normalizeHosts(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const raw of v) {
+    if (typeof raw !== 'string') continue;
+    const host = raw.trim().toLowerCase().replace(/^www\./, '');
+    if (!host || host.length > 253 || out.includes(host)) continue;
+    out.push(host);
+    if (out.length >= NEVER_SLEEP_MAX) break;
+  }
+  return out;
+}
+// Потолок списка — защита от бесконечного роста файла настроек, не продуктовое ограничение.
+const NEVER_SLEEP_MAX = 200;
 
 // Приходит из renderer и читается с диска — оба источника недоверенные, нормализатор один на обе
 // двери (тот же приём, что у полосы целей выше).
@@ -145,6 +166,7 @@ export class SettingsManager {
   #themePalette: ThemePaletteId = 'charcoal';
   // null — набор не трогали, отдаём дефолтный (см. DEFAULT_RECOMMENDED).
   #recommendedSites: RecommendedSite[] | null = null;
+  #neverSleepSites: string[] = [];
   readonly #settingsPath: string;
 
   constructor() {
@@ -251,6 +273,33 @@ export class SettingsManager {
 
   // Одной дверью: тема и палитра меняются из одного места в UI, и раздельная запись означала бы
   // два сообщения и два перерисованных окна на одно действие человека.
+  /** Сайты, которые нельзя выгружать из памяти (см. neverSleepSites). Копия — список не наш. */
+  getNeverSleepSites(): string[] {
+    return [...this.#neverSleepSites];
+  }
+
+  isNeverSleepHost(host: string): boolean {
+    const h = host.trim().toLowerCase().replace(/^www\./, '');
+    return !!h && this.#neverSleepSites.includes(h);
+  }
+
+  /** Переключатель для пункта меню: возвращает НОВОЕ состояние («защищён ли теперь»). */
+  toggleNeverSleepHost(host: string): boolean {
+    const h = host.trim().toLowerCase().replace(/^www\./, '');
+    if (!h) return false;
+    const on = !this.#neverSleepSites.includes(h);
+    this.#neverSleepSites = on
+      ? [...this.#neverSleepSites, h].slice(0, NEVER_SLEEP_MAX)
+      : this.#neverSleepSites.filter((x) => x !== h);
+    this.#write();
+    return on;
+  }
+
+  setNeverSleepSites(list: string[]): void {
+    this.#neverSleepSites = normalizeHosts(list);
+    this.#write();
+  }
+
   getRecommendedSites(): RecommendedSite[] {
     return this.#recommendedSites ?? DEFAULT_RECOMMENDED;
   }
@@ -299,6 +348,7 @@ export class SettingsManager {
         // Ключа нет у старых профилей — остаёмся на null, то есть на дефолтном наборе.
         const rs = (data as Record<string, unknown>)['recommendedSites'];
         if (rs !== undefined && rs !== null) this.#recommendedSites = normalizeRecommended(rs) ?? [];
+        this.#neverSleepSites = normalizeHosts((data as Record<string, unknown>)['neverSleepSites']);
       }
     } catch { /* файла нет или битый JSON — остаёмся на дефолте */ }
   }
@@ -317,6 +367,7 @@ export class SettingsManager {
       themeMode: this.#themeMode,
       themePalette: this.#themePalette,
       recommendedSites: this.#recommendedSites,
+      neverSleepSites: this.#neverSleepSites,
     };
     const tmpPath = this.#settingsPath + '.tmp';
     try {

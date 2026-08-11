@@ -325,6 +325,11 @@ export class TabManager {
   // Хранилище бэнгов — подключается извне сразу после конструктора (main.ts), как и поисковик.
   // Не обязательно: изолированные стенды за флагами OBLAKO_*_TEST поднимают TabManager без него.
   private bangs: BangStore | null = null;
+  // «Этот сайт нельзя выгружать из памяти» (ПКМ по вкладке → настройки). Подключается извне сразу
+  // после конструктора, как и bangs выше: конструктор и без того на два десятка аргументов, а
+  // изолированные стенды за флагами OBLAKO_*_TEST поднимают TabManager без настроек вовсе.
+  // Не подключён — считаем, что защищённых сайтов нет: усыпление работает как раньше.
+  private isNeverSleepHost: (host: string) => boolean = () => false;
   private onChange: () => void;
   private onFindResultCb: (r: FindResult) => void;
   private onFindOpenCb: () => void;
@@ -463,6 +468,17 @@ export class TabManager {
 
   setBangStore(store: BangStore): void {
     this.bangs = store;
+  }
+
+  /** Подключить проверку «сайт защищён от выгрузки» (см. isNeverSleepHost выше). */
+  setNeverSleepCheck(fn: (host: string) => boolean): void {
+    this.isNeverSleepHost = fn;
+  }
+
+  /** Хост вкладки — для пункта меню «не выгружать этот сайт». Пусто = вкладка не про сайт. */
+  getTabHost(id: string): string {
+    const tab = this.tabMap.get(id);
+    return tab ? hostOfUrl(this.#tabUrl(tab)) : '';
   }
 
   // ── Парсинг omnibox: это URL или поисковый запрос ──
@@ -1350,6 +1366,11 @@ export class TabManager {
     // in-memory сессия приватных вкладок (куки/логины текущей приватной сессии).
     if (tab.incognito) return false;
     if (!this.isHttpView(tab.view)) return false;
+
+    // Человек явно сказал «этот сайт не выгружать» (ПКМ по вкладке). Стоит РАНЬШЕ всех дорогих
+    // проверок: раз решение уже принято, спрашивать страницу про медиа и формы незачем.
+    const host = hostOfUrl(this.#tabUrl(tab));
+    if (host && this.isNeverSleepHost(host)) return false;
 
     const wc = tab.view.webContents;
 

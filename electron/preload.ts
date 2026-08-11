@@ -385,6 +385,14 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.SUGGEST_DROPDOWN_RECOMMEND, handler);
     return () => ipcRenderer.removeListener(IPC.SUGGEST_DROPDOWN_RECOMMEND, handler);
   },
+  // Сайты, защищённые от выгрузки из памяти (ПКМ по вкладке + раздел настроек).
+  listNeverSleepSites: () => ipcRenderer.invoke(IPC.NEVER_SLEEP_LIST) as Promise<string[]>,
+  removeNeverSleepSite: (host: string) => ipcRenderer.invoke(IPC.NEVER_SLEEP_REMOVE, host) as Promise<void>,
+  onNeverSleepChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.NEVER_SLEEP_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.NEVER_SLEEP_CHANGED, handler);
+  },
   getRecommendedSites: () => ipcRenderer.invoke(IPC.SETTINGS_GET_RECOMMENDED) as Promise<RecommendedSite[]>,
   setRecommendedSites: (list: RecommendedSite[]) => ipcRenderer.invoke(IPC.SETTINGS_SET_RECOMMENDED, list) as Promise<void>,
   onSuggestDropdownPicked: (cb: (item: SuggestDropdownItem) => void) => {

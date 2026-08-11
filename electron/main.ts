@@ -1144,6 +1144,10 @@ function createWindow(role: WindowRole = 'main') {
   // Применяем сохранённый выбор поисковика (дефолт duckduckgo, если настройки ещё нет).
   tabs.setSearchEngine(settings.getSearchEngine());
   tabs.setBangStore(bangs); // бэнги омнибокса — см. TabManager.resolveInput/resolveBang
+  // «Этот сайт не выгружать» — читается ПРИ КАЖДОЙ проверке сна, а не копируется сюда списком:
+  // правку делают из меню любого окна, и снимок списка в каждом менеджере пришлось бы
+  // синхронизировать руками. Функция всегда спрашивает у настроек актуальное.
+  tabs.setNeverSleepCheck((host) => settings.isNeverSleepHost(host));
   // Поиск по странице — СВОЙ у каждого окна (FindBarManager.ts), поэтому регистрируется всегда:
   // менеджер вкладок нужен ему, чтобы вернуть OS-фокус активной вкладке после закрытия по IPC
   // (крестик/Esc-в-поле), см. FindBarManager.ts::ensureIpcRegistered.
@@ -2433,6 +2437,13 @@ function registerIpc() {
     if (mode === 'ai') maybeLazyWarmupOnDemand();
   });
   // Набор «Рекомендуемые» для панели омнибокса (правится карандашом прямо в панели).
+  // Сайты, защищённые от выгрузки из памяти (раздел настроек; ставится галочка в ПКМ-меню вкладки).
+  ipcMain.handle(IPC.NEVER_SLEEP_LIST, () => settings.getNeverSleepSites());
+  ipcMain.handle(IPC.NEVER_SLEEP_REMOVE, (_e, host: string) => {
+    if (!settings.isNeverSleepHost(host)) return;
+    settings.toggleNeverSleepHost(host); // единственная точка правки — второго пути к списку нет
+    broadcastToChrome(IPC.NEVER_SLEEP_CHANGED);
+  });
   ipcMain.handle(IPC.SETTINGS_GET_RECOMMENDED, () => settings.getRecommendedSites());
   ipcMain.handle(IPC.SETTINGS_SET_RECOMMENDED, (_e, list: RecommendedSite[]) => settings.setRecommendedSites(list));
   ipcMain.handle(IPC.SETTINGS_GET_AI_PANEL_WIDTH, () => settings.getAiPanelWidth());
@@ -3203,6 +3214,9 @@ function registerIpc() {
     const isPinned = t.isTabPinned(id);
     const groupId  = t.getTabGroupId(id);
     const state = t.snapshot().find((tab) => tab.id === id);
+    // Пусто у хаба и псевдо-вкладок (История/Настройки) — им правило «не выгружать сайт» приписать
+    // не к чему, поэтому пункт меню для них не появляется вовсе.
+    const host = t.getTabHost(id);
     const toGraph = state
       ? buildAddToGraphMenuItem(graphs, [{ url: state.url, title: state.title || state.url }], undefined, notifyGraphChanged)
       : null;
@@ -3235,6 +3249,20 @@ function registerIpc() {
         click: () => t.setAiTitle(id, null),
       }] : []),
       ...(toGraph ? [toGraph] : []),
+      // «Не выгружать из памяти» — решение ПРО САЙТ, а не про эту вкладку: закрыл вкладку —
+      // правило осталось, открыл ту же почту завтра — она снова под защитой. Отменяется тем же
+      // пунктом или в настройках («Браузер» → «Выгрузка вкладок из памяти»). Пункта нет у
+      // псевдо-вкладок и хаба: у них нет сайта, которому это правило можно приписать.
+      ...(host ? [{
+        label: 'Не выгружать из памяти',
+        type: 'checkbox' as const,
+        checked: settings.isNeverSleepHost(host),
+        click: () => {
+          settings.toggleNeverSleepHost(host);
+          // Раздел настроек мог быть открыт соседней вкладкой — пусть перечитает список.
+          broadcastToChrome(IPC.NEVER_SLEEP_CHANGED);
+        },
+      }] : []),
       { type: 'separator' },
     ];
 

@@ -6,6 +6,7 @@ import SearchChipsBlock from './SearchChipsBlock';
 import DefaultSearchBlock from './DefaultSearchBlock';
 import DefaultBrowserBlock from './DefaultBrowserBlock';
 import DownloadsBlock from './DownloadsBlock';
+import NeverSleepBlock from './NeverSleepBlock';
 
 interface GeneralSectionProps {
   // Открыть диалог импорта — состояние живёт в App.tsx (модалка поверх всего chrome), сюда
@@ -42,6 +43,13 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
         description="Куда попадают скачанные файлы и о чём браузер спрашивает заранее."
       >
         <DownloadsBlock />
+      </Subsection>
+
+      <Subsection
+        title="Выгрузка вкладок из памяти"
+        description="Вкладки, которые давно не открывали, освобождают память и загружаются заново при возврате. Играющее видео, заполненные формы и закреплённые вкладки не трогаются. Сайты ниже не выгружаются никогда."
+      >
+        <NeverSleepBlock />
       </Subsection>
 
       <Subsection

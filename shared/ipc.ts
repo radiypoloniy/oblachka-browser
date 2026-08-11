@@ -661,6 +661,12 @@ export const IPC = {
   SETTINGS_SET_HUB_MODE:      'settings:set-hub-mode',      // renderer → main: сменить режим Hub (плитки/AI)
   SETTINGS_GET_RECOMMENDED:   'settings:get-recommended',   // renderer → main: набор «Рекомендуемые» для панели омнибокса
   SETTINGS_SET_RECOMMENDED:   'settings:set-recommended',   // renderer → main: сохранить набор целиком
+  // Сайты, которые нельзя выгружать из памяти (ПКМ по вкладке + раздел настроек).
+  NEVER_SLEEP_LIST:   'never-sleep:list',    // renderer → main: -> string[] хостов
+  NEVER_SLEEP_REMOVE: 'never-sleep:remove',  // renderer → main: снять защиту с хоста
+  // main → renderer: список изменился (правку сделали ИЗ МЕНЮ, а раздел настроек мог быть открыт
+  // соседней вкладкой). Без этого открытый список молча показывал бы устаревшее.
+  NEVER_SLEEP_CHANGED: 'never-sleep:changed',
   SETTINGS_GET_MODEL_LOAD_MODE: 'settings:get-model-load-mode', // renderer → main: текущий ModelLoadMode
   SETTINGS_SET_MODEL_LOAD_MODE: 'settings:set-model-load-mode', // renderer → main: сменить режим загрузки модели
   // Ширина AI-дока (заход 3 — поповер → правый split-view-подобный док, см. AiPanelManager.ts).
@@ -2292,6 +2298,12 @@ export interface OblakoApi {
   onSuggestDropdownRecommend(cb: (edit: OmniboxRecommendEdit) => void): () => void;
   getRecommendedSites(): Promise<RecommendedSite[]>;
   setRecommendedSites(list: RecommendedSite[]): Promise<void>;
+
+  // Сайты, защищённые от выгрузки из памяти. Ставится галочкой в ПКМ-меню вкладки, снимается там
+  // же или здесь; правило про САЙТ, а не про вкладку — закрытая вкладка его не уносит.
+  listNeverSleepSites(): Promise<string[]>;
+  removeNeverSleepSite(host: string): Promise<void>;
+  onNeverSleepChanged(cb: () => void): () => void;
   // Пользователь кликнул строку во вью дропдауна — Toolbar.tsx вызывает свой pickSuggestion().
   onSuggestDropdownPicked(cb: (item: SuggestDropdownItem) => void): () => void;
   // Клавиатурная подсветка (заход 4/5) — номер строки, -1 снимает подсветку. Омнибокс держит
