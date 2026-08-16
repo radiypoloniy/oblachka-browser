@@ -33,11 +33,11 @@ contextBridge.exposeInMainWorld('downloadsPopover', {
   decideDuplicate: (decision: DuplicateDownloadDecision) => ipcRenderer.send(IPC.DOWNLOAD_DUPLICATE_DECIDE, decision),
 
   openAll:      () => ipcRenderer.send(IPC.DOWNLOADS_POPOVER_OPEN_ALL),
-  close:        () => ipcRenderer.send('downloads-popover:close'),
+  close:        () => ipcRenderer.send(IPC.DOWNLOADS_POPOVER_CLOSE),
   reportHeight: (px: number) => ipcRenderer.send('downloads-popover:height', px),
   onShow: (cb: () => void) => {
     const handler = () => cb();
-    ipcRenderer.on('downloads-popover:show', handler);
-    return () => ipcRenderer.removeListener('downloads-popover:show', handler);
+    ipcRenderer.on(IPC.DOWNLOADS_POPOVER_SHOW, handler);
+    return () => ipcRenderer.removeListener(IPC.DOWNLOADS_POPOVER_SHOW, handler);
   },
 });

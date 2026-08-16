@@ -83,7 +83,7 @@ export function syncDownloadsPopoverAnchorBounds(b: ContentBounds): void {
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return;
   ipcRegistered = true;
-  ipcMain.on('downloads-popover:close', () => closeDownloadsPopover());
+  ipcMain.on(IPC.DOWNLOADS_POPOVER_CLOSE, () => closeDownloadsPopover());
   ipcMain.on('downloads-popover:height', (_e, px: number) => {
     currentHeight = Math.max(1, px);
     layoutPopover();
@@ -112,7 +112,7 @@ function ensurePopoverView(): WebContentsView {
   popoverView.setBackgroundColor('#00000000');
   popoverView.webContents.once('did-finish-load', () => {
     popoverLoaded = true;
-    if (isOpen) popoverView?.webContents.send('downloads-popover:show');
+    if (isOpen) popoverView?.webContents.send(IPC.DOWNLOADS_POPOVER_SHOW);
     // Вопрос мог прийти РАНЬШЕ, чем страница поповера догрузилась (первый показ) — досылаем.
     if (pendingPrompt) popoverView?.webContents.send(IPC.DOWNLOAD_DUPLICATE_PROMPT, pendingPrompt);
   });
@@ -130,7 +130,7 @@ export function showDownloadsPopover(win: BrowserWindow): void {
   const view = ensurePopoverView();
   view.setBounds(computeBounds());
   if (!isAttached()) win.contentView.addChildView(view);
-  if (popoverLoaded) view.webContents.send('downloads-popover:show');
+  if (popoverLoaded) view.webContents.send(IPC.DOWNLOADS_POPOVER_SHOW);
 }
 
 // Живой список в открытую вью. Инкапсуляция та же, что у broadcastVpnState: main зовёт функцию,

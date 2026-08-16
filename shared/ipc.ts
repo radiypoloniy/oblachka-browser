@@ -201,7 +201,7 @@ export interface TabState {
 }
 
 // Атомарный снимок: вкладки + структура сайдбара в одном сообщении.
-// Заменяет два раздельных push-канала TABS_CHANGED + SIDEBAR_NODES_CHANGED, чтобы
+// Заменяет два раздельных push-канала (вкладки и дерево узлов по отдельности), чтобы
 // renderer никогда не рендерил половинчатое состояние (узел пары есть, вкладка ещё нет).
 export interface SyncState {
   tabs: TabState[];
@@ -293,21 +293,17 @@ export const IPC = {
   TAB_DRAG_END: 'tab:drag-end',
   TAB_DRAG_ZONE: 'tab:drag-zone',   // main → чром: зона под курсором, пока тащат вкладку
 
-  // Атомарный push: заменяет раздельные TABS_CHANGED + SIDEBAR_NODES_CHANGED.
+  // Атомарный push: заменяет раздельные каналы вкладок и дерева узлов, которые были тут раньше.
   // Один IPC-пакет = один рендер = нет рассинхрона между вкладками и деревом узлов.
   SYNC_CHANGED: 'sync:changed',     // main → renderer: SyncState { tabs, nodes }
   SYNC_GET:     'sync:get',         // renderer → main: начальный атомарный запрос
 
-  // События (main -> renderer, односторонние)
-  TABS_CHANGED: 'tabs:changed',     // @deprecated → используй SYNC_CHANGED
-
-  // Поиск по странице
+  // Поиск по странице. Панель findbar живёт своей WebContentsView (см. FindBarManager) — открывает
+  // и закрывает её main напрямую, поэтому каналов «открой/закрой панель» тут нет.
   FIND_START:  'find:start',        // renderer → main: начать/обновить поиск
   FIND_NEXT:   'find:next',         // renderer → main: следующее/предыдущее совпадение
   FIND_STOP:   'find:stop',         // renderer → main: остановить поиск
   FIND_RESULT: 'find:result',       // main → renderer: результат (activeMatch, count)
-  FIND_OPEN:   'find:open',         // main → renderer: открыть панель поиска (Ctrl+F)
-  FIND_CLOSE:  'find:close',        // main → renderer: закрыть панель (навигация, Esc)
   FIND_SMART:  'find:smart',        // findbar → main: найти фрагменты ПО СМЫСЛУ (см. SmartFind.ts)
   FIND_SMART_SHOW: 'find:smart-show', // findbar → main: подсветить конкретную цитату из ответа
 
@@ -411,7 +407,6 @@ export const IPC = {
 
   // Группы вкладок (Phase 3)
   SIDEBAR_NODES_GET:          'sidebar:nodes-get',          // renderer → main: запрос текущего SidebarNode[]
-  SIDEBAR_NODES_CHANGED:      'sidebar:nodes-changed',      // main → renderer: push SidebarNode[] при любом изменении
   GROUP_CREATE:               'group:create',               // renderer → main: tabId → создать группу вокруг вкладки
   GROUP_ADD_TAB:              'group:add-tab',              // renderer → main: groupId, tabId → переместить в группу
   GROUP_REMOVE_TAB:           'group:remove-tab',           // renderer → main: groupId, tabId → вынуть из группы
@@ -2037,15 +2032,12 @@ export interface OblakoApi {
   onTabDragZone(cb: (zone: TabDropZone | null) => void): () => void;
   // Сигнал «оболочка отрисована» — main показывает скрытое до этого окно (см. IPC.CHROME_UI_READY).
   chromeUiReady(): void;
-  onTabsChanged(cb: (tabs: TabState[]) => void): () => void; // вернёт unsubscribe
 
   // Поиск по странице
   findStart(query: string, forward: boolean): Promise<void>;
   findNext(forward: boolean): Promise<void>;
   findStop(): Promise<void>;
   onFindResult(cb: (r: FindResult) => void): () => void;
-  onFindOpen(cb: () => void): () => void;
-  onFindClose(cb: () => void): () => void;
 
   // Омнибокс
   onOmniboxFocus(cb: () => void): () => void;
@@ -2101,7 +2093,6 @@ export interface OblakoApi {
 
   // Структура сайдбара (дерево узлов)
   getSidebarNodes(): Promise<SidebarNode[]>;
-  onSidebarNodesChanged(cb: (nodes: SidebarNode[]) => void): () => void;
 
   // Группы вкладок
   createGroup(tabId: string): Promise<void>;

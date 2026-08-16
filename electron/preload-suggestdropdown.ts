@@ -2,6 +2,7 @@
 // точка входа, не боевой preload.ts (тот же принцип, что у preload-findbar.ts/preload-aipanel.ts).
 // Заход 4/5: + клавиатурная подсветка (onHighlight) — вью только отрисовывает номер, ничего не решает.
 import { contextBridge, ipcRenderer } from 'electron'
+import { IPC } from '../shared/ipc'
 import type { SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('suggestDropdown', {
@@ -19,18 +20,18 @@ contextBridge.exposeInMainWorld('suggestDropdown', {
   },
   // Клик по полоске сайта в панели — main пересылает в chrome, Toolbar.tsx открывает поповер
   // замочка. Панель НЕ дублирует его содержимое: управление разрешениями живёт в одном месте.
-  openSiteInfo: () => ipcRenderer.send('suggest-dropdown:site-info'),
+  openSiteInfo: () => ipcRenderer.send(IPC.SUGGEST_DROPDOWN_SITE_INFO),
   // Правка набора «Рекомендуемые» из режима карандаша. ⚠️ Только add/remove уже известного сайта:
   // окно неактивируемое, набрать в нём адрес руками физически нельзя (см. OmniboxRecommendEdit).
-  editRecommended: (edit: OmniboxRecommendEdit) => ipcRenderer.send('suggest-dropdown:recommend', edit),
+  editRecommended: (edit: OmniboxRecommendEdit) => ipcRenderer.send(IPC.SUGGEST_DROPDOWN_RECOMMEND, edit),
   // Клик по строке — уходит в main как есть, main пересылает в chrome (IPC.SUGGEST_DROPDOWN_PICKED),
   // где Toolbar.tsx вызывает свой существующий pickSuggestion() (см. SuggestDropdownManager.ts::onPick).
   pick: (item: SuggestDropdownItem) => ipcRenderer.send('suggest-dropdown:pick', item),
   // Клавиатурная подсветка — номер строки от омнибокса (-1 = снять). Только отрисовка.
   onHighlight: (cb: (idx: number) => void) => {
     const handler = (_e: unknown, idx: number) => cb(idx)
-    ipcRenderer.on('suggest-dropdown:highlight', handler)
-    return () => ipcRenderer.removeListener('suggest-dropdown:highlight', handler)
+    ipcRenderer.on(IPC.SUGGEST_DROPDOWN_HIGHLIGHT, handler)
+    return () => ipcRenderer.removeListener(IPC.SUGGEST_DROPDOWN_HIGHLIGHT, handler)
   },
   // Заход 5 (кардинальный фикс): реальная высота карточки (ResizeObserver в suggestdropdown.tsx) —
   // main пересчитывает bounds самой вью под неё, вместо фиксированных 280px (см.

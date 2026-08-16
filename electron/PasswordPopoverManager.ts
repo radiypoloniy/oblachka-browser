@@ -8,6 +8,7 @@
 import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
+import { IPC } from '../shared/ipc';
 import type { ContentBounds, PasswordIndicatorState } from '../shared/ipc';
 
 const POPOVER_WIDTH = 280;
@@ -96,7 +97,7 @@ export function syncPasswordPopoverAnchorBounds(win: BrowserWindow, b: ContentBo
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return;
   ipcRegistered = true;
-  ipcMain.on('password-popover:close', (e) => {
+  ipcMain.on(IPC.PASSWORD_POPOVER_CLOSE, (e) => {
     const st = stateBySender(e.sender);
     if (st) closePasswordPopover(st.win);
   });
@@ -121,7 +122,7 @@ function ensurePopoverView(st: WindowPopover): WebContentsView {
   st.view = view;
   view.setBackgroundColor('#00000000');
   view.webContents.once('did-finish-load', () => {
-    if (st.state) view.webContents.send('password-popover:show', st.state);
+    if (st.state) view.webContents.send(IPC.PASSWORD_POPOVER_SHOW, st.state);
   });
   view.webContents.loadURL('oblako-chrome://localhost/passwordpopover.html');
   return view;
@@ -137,7 +138,7 @@ export function showPasswordPopover(win: BrowserWindow, state: PasswordIndicator
   const view = ensurePopoverView(st);
   view.setBounds(computeBounds(st));
   if (!isAttached(st)) win.contentView.addChildView(view);
-  view.webContents.send('password-popover:show', state);
+  view.webContents.send(IPC.PASSWORD_POPOVER_SHOW, state);
 }
 
 export function closePasswordPopover(win: BrowserWindow | null): void {

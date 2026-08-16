@@ -80,11 +80,6 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.TAB_DRAG_ZONE, h);
   },
   chromeUiReady: () => ipcRenderer.send(IPC.CHROME_UI_READY),
-  onTabsChanged: (cb: (tabs: TabState[]) => void) => {
-    const handler = (_e: unknown, tabs: TabState[]) => cb(tabs);
-    ipcRenderer.on(IPC.TABS_CHANGED, handler);
-    return () => ipcRenderer.removeListener(IPC.TABS_CHANGED, handler);
-  },
 
   // Правила-автоматизации (см. shared/rules.ts). parseRule ходит к модели, остальное — обычный
   // CRUD над rules.json.
@@ -107,16 +102,6 @@ const api: OblakoApi = {
     const handler = (_e: unknown, r: FindResult) => cb(r);
     ipcRenderer.on(IPC.FIND_RESULT, handler);
     return () => ipcRenderer.removeListener(IPC.FIND_RESULT, handler);
-  },
-  onFindOpen: (cb: () => void) => {
-    const handler = () => cb();
-    ipcRenderer.on(IPC.FIND_OPEN, handler);
-    return () => ipcRenderer.removeListener(IPC.FIND_OPEN, handler);
-  },
-  onFindClose: (cb: () => void) => {
-    const handler = () => cb();
-    ipcRenderer.on(IPC.FIND_CLOSE, handler);
-    return () => ipcRenderer.removeListener(IPC.FIND_CLOSE, handler);
   },
 
   onOmniboxFocus: (cb: () => void) => {
@@ -308,11 +293,6 @@ const api: OblakoApi = {
 
   // Структура сайдбара (дерево узлов)
   getSidebarNodes: () => ipcRenderer.invoke(IPC.SIDEBAR_NODES_GET) as Promise<SidebarNode[]>,
-  onSidebarNodesChanged: (cb: (nodes: SidebarNode[]) => void) => {
-    const handler = (_e: unknown, nodes: SidebarNode[]) => cb(nodes);
-    ipcRenderer.on(IPC.SIDEBAR_NODES_CHANGED, handler);
-    return () => ipcRenderer.removeListener(IPC.SIDEBAR_NODES_CHANGED, handler);
-  },
 
   // Группы вкладок
   createGroup:          (tabId: string)                       => ipcRenderer.invoke(IPC.GROUP_CREATE,           tabId),

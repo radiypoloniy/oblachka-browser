@@ -81,7 +81,7 @@ export function syncVpnPopoverAnchorBounds(b: ContentBounds): void {
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return;
   ipcRegistered = true;
-  ipcMain.on('vpn-popover:close', () => closeVpnPopover());
+  ipcMain.on(IPC.VPN_POPOVER_CLOSE, () => closeVpnPopover());
   ipcMain.on('vpn-popover:height', (_e, px: number) => {
     currentHeight = Math.max(1, px);
     layoutPopover();
@@ -102,7 +102,7 @@ function ensurePopoverView(): WebContentsView {
   popoverView.webContents.once('did-finish-load', () => {
     popoverLoaded = true;
     if (isOpen) {
-      popoverView?.webContents.send('vpn-popover:show');
+      popoverView?.webContents.send(IPC.VPN_POPOVER_SHOW);
       popoverView?.webContents.send('vpn-popover:active-url', lastActiveUrl);
     }
   });
@@ -124,7 +124,7 @@ export function showVpnPopover(win: BrowserWindow): void {
   // не нуждается в payload с сервера, в отличие от паролей (там main решает has-saved/offer-*).
   // На первом открытии страница ещё грузится — did-finish-load выше пошлёт сам, когда догрузится.
   if (popoverLoaded) {
-    view.webContents.send('vpn-popover:show');
+    view.webContents.send(IPC.VPN_POPOVER_SHOW);
     view.webContents.send('vpn-popover:active-url', lastActiveUrl);
   }
 }

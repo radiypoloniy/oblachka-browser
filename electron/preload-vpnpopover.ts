@@ -24,12 +24,12 @@ contextBridge.exposeInMainWorld('vpnPopover', {
   adBlockReloadTabs:   (domain?: string) => ipcRenderer.invoke(IPC.ADBLOCK_RELOAD_TABS, domain) as Promise<void>,
   isDomainWhitelisted: (domain: string) => ipcRenderer.invoke(IPC.ADBLOCK_IS_WHITELISTED, domain) as Promise<boolean>,
   getSiteBlockCount:   (domain: string) => ipcRenderer.invoke(IPC.ADBLOCK_GET_SITE_BLOCK_COUNT, domain) as Promise<number>,
-  close:        () => ipcRenderer.send('vpn-popover:close'),
+  close:        () => ipcRenderer.send(IPC.VPN_POPOVER_CLOSE),
   reportHeight: (px: number) => ipcRenderer.send('vpn-popover:height', px),
   onShow: (cb: () => void) => {
     const handler = () => cb();
-    ipcRenderer.on('vpn-popover:show', handler);
-    return () => ipcRenderer.removeListener('vpn-popover:show', handler);
+    ipcRenderer.on(IPC.VPN_POPOVER_SHOW, handler);
+    return () => ipcRenderer.removeListener(IPC.VPN_POPOVER_SHOW, handler);
   },
   // Домен активной вкладки — приходит и при открытии (Toolbar шлёт его непосредственно перед
   // showVpnPopover), и при навигации в ТОЙ ЖЕ вкладке, пока поповер остаётся открытым (смена

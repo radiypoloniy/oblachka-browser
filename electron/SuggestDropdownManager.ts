@@ -40,6 +40,7 @@
 // карте по id окна и умирает вместе с ним; окно создаётся лениво — на первый список подсказок.
 import { BrowserWindow, ipcMain } from 'electron'
 import path from 'node:path'
+import { IPC } from '../shared/ipc'
 import type { ContentBounds, OmniboxPanel, OmniboxRecommendEdit, SuggestDropdownItem } from '../shared/ipc'
 
 const GAP = 8 // зазор между низом омнибокса и верхом карточки
@@ -187,12 +188,12 @@ function ensureIpcRegistered(): void {
     if (st) onPickCb?.(st.win, item)
   })
 
-  ipcMain.on('suggest-dropdown:site-info', (e) => {
+  ipcMain.on(IPC.SUGGEST_DROPDOWN_SITE_INFO, (e) => {
     const st = stateBySender(e.sender)
     if (st) onSiteInfoCb?.(st.win)
   })
 
-  ipcMain.on('suggest-dropdown:recommend', (e, edit: OmniboxRecommendEdit) => {
+  ipcMain.on(IPC.SUGGEST_DROPDOWN_RECOMMEND, (e, edit: OmniboxRecommendEdit) => {
     const st = stateBySender(e.sender)
     if (st) onRecommendCb?.(st.win, edit)
   })
@@ -326,5 +327,5 @@ export function closeSuggestDropdown(win: BrowserWindow | null): void {
 // (-1 снимает подсветку). Окно ничего не решает само — источник истины в Toolbar.tsx.
 export function setHighlight(win: BrowserWindow, idx: number): void {
   const popup = dropdowns.get(win.id)?.popup
-  if (popup && !popup.isDestroyed()) popup.webContents.send('suggest-dropdown:highlight', idx)
+  if (popup && !popup.isDestroyed()) popup.webContents.send(IPC.SUGGEST_DROPDOWN_HIGHLIGHT, idx)
 }
