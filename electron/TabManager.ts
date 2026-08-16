@@ -1283,6 +1283,23 @@ export class TabManager {
     const mine = () => this.tabMap.has(id);
     const notify = () => { if (mine()) this.onChange(); };
 
+
+    // Дальше — только проводка событий, разнесённая по темам. Тела обработчиков не менялись:
+    // каждый из них по-прежнему первым делом спрашивает mine() — вкладку могли передать другому
+    // окну, а снять слушатели выборочно нечем (см. разбор выше).
+    this.#wireGuestSignals(id, view, mine, notify);
+    this.#wirePageLifecycle(id, view, mine, notify);
+    this.#wireWindowOpenPolicy(id, view, mine, notify);
+    this.#wireCrashAndZoom(id, view, mine, notify);
+    this.#wireContextMenu(id, view, mine, notify);
+
+
+    this.registerHotkeyHandler(wc);
+  }
+
+  // Сигналы ОТ гостевой страницы (content-preload): пароли, автозаполнение, буфер обмена.
+  #wireGuestSignals(id: string, view: WebContentsView, mine: () => boolean, notify: () => void): void {
+    const wc = view.webContents;
     // Менеджер паролей, шаг 2 — per-view IPC (webContents.ipc, не общий ipcMain): main точно
     // знает, какая вкладка прислала сообщение, без реверс-маппинга webContents.id → tabId.
     // Origin НЕ берём из payload content-preload (недоверенный источник) — только из wc.getURL()
@@ -1374,6 +1391,11 @@ export class TabManager {
         console.warn('[TabMgr] onAutofillSubmitCb error:', (e as Error).message);
       }
     });
+  }
+
+  // Жизненный цикл страницы: фокус, загрузка, навигация, полный экран, заголовок, значок, звук, поиск.
+  #wirePageLifecycle(id: string, view: WebContentsView, mine: () => boolean, notify: () => void): void {
+    const wc = view.webContents;
 
     // Когда WebContentsView получает OS-фокус от клика мышью — проверяем, не нужно ли
     // активировать панель split. DOM-дивы в renderer не получают клик, перекрытый вьюхой.
@@ -1511,6 +1533,11 @@ export class TabManager {
       if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       this.onFindResultCb({ activeMatch: result.activeMatchOrdinal, count: result.matches });
     });
+  }
+
+  // Политика window.open / target=_blank: новая вкладка вместо окна, кроме настоящих попапов.
+  #wireWindowOpenPolicy(id: string, view: WebContentsView, mine: () => boolean, notify: () => void): void {
+    const wc = view.webContents;
 
     // Политика окон: target=_blank / window.open -> НОВАЯ ВКЛАДКА, не окно — КРОМЕ настоящих
     // попапов (см. ниже). disposition='background-tab' = средний клик/Ctrl+клик → фон (стандарт браузеров).
@@ -1576,6 +1603,11 @@ export class TabManager {
     });
     // Настоящее окно OAuth-попапа (action:'allow' выше) Electron создаёт и закрывает сам —
     // оно НЕ регистрируется в tabMap/nodes, никак не завязано на автосейв/дерево вкладок Oblako.
+  }
+
+  // Зум по Ctrl+колесу, ошибки загрузки, смерть вью и падение процесса рендеринга.
+  #wireCrashAndZoom(id: string, view: WebContentsView, mine: () => boolean, notify: () => void): void {
+    const wc = view.webContents;
 
     // Ctrl+колесо → наш зум (preventDefault гасит нативный зум Chromium).
     // Chromium перехватывает Ctrl+scroll как gesture, поэтому страница не скроллится.
@@ -1638,6 +1670,11 @@ export class TabManager {
       if (this.activeId === id || isInSplit) this.hideView(id);
       notify();
     });
+  }
+
+  // Нативное контекстное меню страницы (ПКМ).
+  #wireContextMenu(id: string, view: WebContentsView, mine: () => boolean, notify: () => void): void {
+    const wc = view.webContents;
 
     wc.on('context-menu', (_e, p) => {
       const items: MenuItemConstructorOptions[] = [];
@@ -1853,8 +1890,6 @@ export class TabManager {
 
       Menu.buildFromTemplate(items).popup({ window: this.win });
     });
-
-    this.registerHotkeyHandler(wc);
   }
 
   // ── Активация: показываем нужную вьюху, прячем остальные ──
