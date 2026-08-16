@@ -12,6 +12,11 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
 import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
+import {
+  serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs,
+  SPLIT_RATIO_MIN, SPLIT_RATIO_MAX,
+} from '../shared/sessionTree';
+import type { TabView } from '../shared/sessionTree';
 import { TRANSLATE_TARGETS } from '../shared/translateLangs';
 import { hostOfUrl } from '../shared/rules';
 import { isExternalAppUrl } from './ExternalProtocol';
@@ -42,8 +47,6 @@ const ZOOM_STEP = 0.1; // 10% за шаг, как в Chrome
 // setBorderRadius — чисто визуальный вырез; хит-тест углов остаётся прямоугольным
 // (штатное поведение Electron View.setBorderRadius, не дефект — см. заход).
 const CONTENT_CORNER_RADIUS = 20;
-const SPLIT_RATIO_MIN = 0.2;
-const SPLIT_RATIO_MAX = 0.8;
 // Проезд панели в свой слот (см. slideViews). Вынесено из умолчания параметра, потому что по
 // этой же длительности гаснет выселенная панель при замене — она обязана дожить ровно до конца
 // проезда, и разъедься эти два числа, в слоте мелькнула бы пустота.
@@ -164,7 +167,7 @@ interface ManagedTab {
   // переиспользован только сам приём хаба (view: null). #tabUrl() для такой вкладки вернёт ''
   // (см. ниже) → savable()===false и isHttpView(null)===false уже естественно исключают её из
   // сессии/сна без отдельных правок в SessionManager/sleep-таймере (см. диагностику, подтверждено
-  // чтением кода: #serializeNodes фильтрует по savable(), sleep-таймер — по isHttpView).
+  // чтением кода: serializeNodes фильтрует по savable(), sleep-таймер — по isHttpView).
   kind?: 'history' | 'settings' | 'bookmarks' | 'downloads';
   // Начальный раздел для kind==='settings' (см. createSpecialTab ниже) — необязателен, задаётся
   // только когда вызывающая сторона просит конкретный раздел (напр. кнопка "+" в AI-панели).
@@ -746,15 +749,18 @@ export class TabManager {
     return undefined;
   }
 
-  // Строит SavedSingleNode с опциональными title/faviconData, если уже известны — используется и
-  // для обычного single-узла, и для деградации split-pair (см. #serializeNodes).
-  #toSavedSingle(tab: ManagedTab): SavedSingleNode {
-    const node: SavedSingleNode = { type: 'single', url: this.#tabUrl(tab) };
-    const title = this.#tabTitle(tab);
-    if (title) node.title = title;
-    const faviconData = this.#tabFaviconData(tab);
-    if (faviconData) node.faviconData = faviconData;
-    return node;
+  // Всё, что о вкладке нужно знать сохранению сессии, одним объектом — граница между владельцем
+  // состояния (здесь) и чистой раскладкой дерева (shared/sessionTree.ts).
+  #tabView(tab: ManagedTab): TabView {
+    const url = this.#tabUrl(tab);
+    return {
+      url,
+      title: this.#tabTitle(tab),
+      faviconData: this.#tabFaviconData(tab),
+      // Короткоживущие вкладки (OAuth-попапы, см. wirePageEvents/setWindowOpenHandler) в сейв не
+      // идут — при рестарте нет смысла «воскрешать» страницу логина. Инкогнито — тем более.
+      savable: !tab.ephemeral && !tab.incognito && /^https?:\/\//i.test(url),
+    };
   }
 
   // Заменяет SplitPairNode двумя SingleNode — рекурсивный поиск (пара может быть в группе).
@@ -859,11 +865,19 @@ export class TabManager {
       pinnedTabs.push(pin);
     }
 
-    const nodes = this.#serializeNodes(this.nodes, savable);
+    // Сама раскладка дерева — в shared/sessionTree.ts (чистая логика под тестом). Отсюда туда
+    // уходит только доступ к вкладкам: владелец состояния по-прежнему TabManager.
+    const nodes = serializeNodes(this.nodes, {
+      view: (tabId) => {
+        const t = this.tabMap.get(tabId);
+        return t ? this.#tabView(t) : null;
+      },
+      liveRatio: (leftTabId) => this.#pairContaining(leftTabId)?.splitRatio ?? null,
+    });
 
     // Инвариант: число сериализованных вкладок == число сохраняемых вкладок tabMap.
     const expectedCount = [...this.tabMap.values()].filter(savable).length;
-    const actualCount = pinnedTabs.length + this.#countSavedTabs(nodes);
+    const actualCount = pinnedTabs.length + countSavedTabs(nodes);
 
     if (actualCount !== expectedCount) {
       console.error(
@@ -875,96 +889,15 @@ export class TabManager {
     return { pinnedTabs, nodes, activeRef: this.#computeActiveRef() };
   }
 
-  // Рекурсивная сериализация узлов с деградацией split-pair при отсутствии сохраняемых вкладок.
-  #serializeNodes(nodes: SidebarNode[], savable: (t: ManagedTab) => boolean): SavedNode[] {
-    const result: SavedNode[] = [];
-    for (const node of nodes) {
-      if (node.type === 'single') {
-        const tab = this.tabMap.get(node.tabId);
-        if (!tab) continue;
-        if (savable(tab)) result.push(this.#toSavedSingle(tab));
-      } else if (node.type === 'split-pair') {
-        const leftTab  = this.tabMap.get(node.leftTabId);
-        const rightTab = this.tabMap.get(node.rightTabId);
-        const leftOk  = !!leftTab  && savable(leftTab);
-        const rightOk = !!rightTab && savable(rightTab);
-        if (leftOk && rightOk) {
-          // "Живой" ratio — если эта пара сейчас в splitPairs (может быть показываемой или
-          // припаркованной, неважно — ratio актуален в обоих случаях), иначе берём из узла.
-          const livePair = this.#pairContaining(node.leftTabId);
-          const ratio = livePair ? livePair.splitRatio : node.ratio;
-          const pairNode: SavedSplitPairNode = {
-            type: 'split-pair', leftUrl: this.#tabUrl(leftTab!), rightUrl: this.#tabUrl(rightTab!), ratio,
-          };
-          const leftTitle = this.#tabTitle(leftTab!); if (leftTitle) pairNode.leftTitle = leftTitle;
-          const rightTitle = this.#tabTitle(rightTab!); if (rightTitle) pairNode.rightTitle = rightTitle;
-          const leftFav = this.#tabFaviconData(leftTab!); if (leftFav) pairNode.leftFaviconData = leftFav;
-          const rightFav = this.#tabFaviconData(rightTab!); if (rightFav) pairNode.rightFaviconData = rightFav;
-          result.push(pairNode);
-        } else if (leftOk) {
-          result.push(this.#toSavedSingle(leftTab!));
-        } else if (rightOk) {
-          result.push(this.#toSavedSingle(rightTab!));
-        }
-      } else if (node.type === 'group') {
-        const children = this.#serializeNodes(node.children, savable);
-        if (children.length > 0) {
-          result.push({
-            type: 'group', id: node.id, label: node.label,
-            color: node.color, collapsed: node.collapsed, children,
-          });
-        }
-      }
-    }
-    return result;
-  }
-
-  // Рекурсивный подсчёт вкладок в сериализованном дереве.
-  #countSavedTabs(nodes: SavedNode[]): number {
-    let count = 0;
-    for (const n of nodes) {
-      if (n.type === 'single')     count++;
-      else if (n.type === 'split-pair') count += 2;
-      else if (n.type === 'group') count += this.#countSavedTabs(n.children);
-    }
-    return count;
-  }
-
   // Восстанавливает дерево узлов из сохранённой сессии.
   // urlToIds: URL → очередь tabId (поддерживает дубликаты URL).
   // Вызывается после создания всех вкладок через createTab, ДО activate().
   rebuildNodeTree(savedNodes: SavedNode[], urlToIds: Map<string, string[]>): void {
-    this.nodes = [];
-    this.splitPairs = [];
-    this.#buildNodesFromSaved(savedNodes, urlToIds, this.nodes);
-    this.#detectSplitState(this.nodes);
-  }
-
-  #buildNodesFromSaved(
-    savedNodes: SavedNode[],
-    urlToIds: Map<string, string[]>,
-    target: SidebarNode[],
-  ): void {
-    for (const saved of savedNodes) {
-      if (saved.type === 'single') {
-        const id = urlToIds.get(saved.url)?.shift();
-        if (id) target.push({ type: 'single', tabId: id });
-      } else if (saved.type === 'split-pair') {
-        const leftId  = urlToIds.get(saved.leftUrl)?.shift();
-        const rightId = urlToIds.get(saved.rightUrl)?.shift();
-        if (leftId && rightId) {
-          const ratio = Math.max(SPLIT_RATIO_MIN, Math.min(SPLIT_RATIO_MAX, saved.ratio));
-          target.push({ type: 'split-pair', leftTabId: leftId, rightTabId: rightId, ratio });
-        }
-      } else if (saved.type === 'group') {
-        const children: SidebarNode[] = [];
-        this.#buildNodesFromSaved(saved.children, urlToIds, children);
-        target.push({
-          type: 'group', id: saved.id, label: saved.label,
-          color: saved.color, collapsed: saved.collapsed, children,
-        });
-      }
-    }
+    this.nodes = buildNodesFromSaved(savedNodes, urlToIds);
+    // Регистрируем КАЖДУЮ найденную пару, не только первую: какая окажется показываемой,
+    // решает activate(targetId) через #pairContaining, а не порядок здесь.
+    this.splitPairs = collectSplitPairs(this.nodes)
+      .map((p) => ({ leftId: p.leftId, rightId: p.rightId, activePanel: 'left' as const, splitRatio: p.ratio }));
   }
 
   // DBG: проверяет, что каждый SplitPairNode в дереве ссылается на существующие tabMap-записи.
@@ -995,22 +928,6 @@ export class TabManager {
       if (node.type === 'group') {
         this.#pruneEmptyGroups(node.children);
         if (node.children.length === 0) nodes.splice(i, 1);
-      }
-    }
-  }
-
-  // Проходит по nodes и регистрирует В splitPairs КАЖДУЮ найденную split-pair (рекурсивно,
-  // включая группы) — не только первую. Какая из них окажется "показываемой" после restore
-  // решает activate(targetId) через #pairContaining (см. activate ниже), не порядок здесь.
-  #detectSplitState(nodes: SidebarNode[]): void {
-    for (const node of nodes) {
-      if (node.type === 'split-pair') {
-        this.splitPairs.push({
-          leftId: node.leftTabId, rightId: node.rightTabId,
-          activePanel: 'left', splitRatio: node.ratio,
-        });
-      } else if (node.type === 'group') {
-        this.#detectSplitState(node.children);
       }
     }
   }

@@ -2,67 +2,19 @@ import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// Версия 5: + title?/faviconData? (опционально) в SavedTab/SavedSingleNode/SavedSplitPairNode —
-//           кэш для мгновенного показа названия/иконки спящей вкладки без пробуждения (заход C).
-// Версия 4: nodes[] рекурсивно поддерживает group; activeRef использует type:'url'.
-// Версия 3: nodes[] с split-pair; activeRef type:'normal'|'split'.
-// Версия 2: nodes[] только single; activeTabType+activeTabIndex.
-// Версия 1: tabs[] (плоский список).
+// Форма сохранённого — в shared/session.ts (там же история версий). Здесь реэкспорт, чтобы
+// существующие импорты `from './SessionManager'` продолжали работать: сами типы переехали в
+// shared/ ради проверок, которые гоняются голым node и не могут тянуть `electron`.
+import type {
+  SavedTab, SavedSingleNode, SavedSplitPairNode, SavedNode, SavedActiveRef, SessionSnapshot,
+} from '../shared/session';
+export type {
+  SavedTab, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedNode, SavedActiveRef,
+  SessionSnapshot,
+} from '../shared/session';
+
 const SESSION_VERSION = 5;
 const DEBOUNCE_MS = 1500;
-
-export interface SavedTab {
-  url: string;
-  // Кэш названия/иконки (base64 data:) — опционально, для мгновенной отрисовки без пробуждения/
-  // загрузки. Отсутствуют в файлах v4 и старше — читающий код обязан фоллбэчить сам.
-  title?: string;
-  faviconData?: string;
-}
-
-export interface SavedSingleNode {
-  type: 'single';
-  url: string;
-  title?: string;
-  faviconData?: string;
-}
-
-export interface SavedSplitPairNode {
-  type: 'split-pair';
-  leftUrl: string;
-  rightUrl: string;
-  ratio: number;
-  leftTitle?: string;
-  rightTitle?: string;
-  leftFaviconData?: string;
-  rightFaviconData?: string;
-}
-
-export interface SavedGroupNode {
-  type: 'group';
-  id: string;
-  label: string;
-  color: string | null;
-  collapsed: boolean;
-  children: SavedNode[];
-}
-
-export type SavedNode = SavedSingleNode | SavedSplitPairNode | SavedGroupNode;
-
-// activeRef v4: 'url' вместо 'normal'/'split' (проще с вложенными группами).
-// 'normal'/'split' оставлены в типе для чтения старых v3-сессий в main.ts.
-export type SavedActiveRef =
-  | { type: 'hub' }
-  | { type: 'pinned'; index: number }
-  | { type: 'url'; url: string }
-  // v3-формат — только для чтения при миграции, TabManager больше не пишет их:
-  | { type: 'normal'; nodeIndex: number }
-  | { type: 'split';  nodeIndex: number; side: 'left' | 'right' };
-
-export interface SessionSnapshot {
-  pinnedTabs: SavedTab[];
-  nodes: SavedNode[];
-  activeRef: SavedActiveRef;
-}
 
 type UnknownNode = { type: string; [k: string]: unknown };
 
