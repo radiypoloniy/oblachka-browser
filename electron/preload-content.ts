@@ -1,4 +1,4 @@
-/// <reference lib="dom" />
+﻿/// <reference lib="dom" />
 // electron/tsconfig.json::lib не включает DOM (main-процесс без DOM) — этот файл единственный
 // среди electron/*.ts реально работающий в контексте страницы (document/window/MutationObserver),
 // поэтому DOM lib подключается точечно только сюда, а не глобально в tsconfig (иначе main.ts/
@@ -129,13 +129,26 @@ function isTopFrame(): boolean {
 }
 
 // ── Видимость поля — против фантомных/скрытых форм (clickjacking-смежный риск, см. бриф) ──
-function isVisible(el: Element): boolean {
+//
+// ⚠️ Проверки ДВЕ, и путать их нельзя. «Отрисовано» — поле реально существует на странице и не
+// спрятано стилями. «В окне» — вдобавок попадает в текущий вьюпорт.
+// Раньше проверка была одна, с вьюпортом внутри, и ею же решался вопрос «есть ли на странице
+// форма входа». Из-за этого форма НИЖЕ СГИБА не считалась формой вовсе: ключ в омнибоксе не
+// загорался, автоподстановка единственного сохранённого входа не срабатывала — до тех пор, пока
+// что-нибудь случайно не вызывало пересканирование. Для существования формы вьюпорт не важен;
+// он важен только для размещения значка, который физически некуда рисовать за краем окна.
+function isRendered(el: Element): boolean {
   const r = (el as HTMLElement).getBoundingClientRect();
   if (r.width === 0 || r.height === 0) return false;
   const style = getComputedStyle(el as HTMLElement);
   if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) return false;
-  if (r.bottom < 0 || r.right < 0 || r.top > window.innerHeight || r.left > window.innerWidth) return false;
   return true;
+}
+
+function isVisible(el: Element): boolean {
+  if (!isRendered(el)) return false;
+  const r = (el as HTMLElement).getBoundingClientRect();
+  return !(r.bottom < 0 || r.right < 0 || r.top > window.innerHeight || r.left > window.innerWidth);
 }
 
 // Ищет ближайшее текстовое/email/tel поле той же формы — сначала назад по DOM-порядку от поля
@@ -168,10 +181,12 @@ function collectPasswordInputs(root: ParentNode, out: HTMLInputElement[]): void 
   }
 }
 
-function visiblePasswordFields(): HTMLInputElement[] {
+// Поля пароля, которые реально есть на странице. Намеренно БЕЗ проверки вьюпорта: форма внизу
+// длинной страницы — такая же форма входа, её просто не видно без прокрутки.
+function renderedPasswordFields(): HTMLInputElement[] {
   const all: HTMLInputElement[] = [];
   collectPasswordInputs(document, all);
-  return all.filter(isVisible);
+  return all.filter(isRendered);
 }
 
 function scanForms(pwFields: HTMLInputElement[]): { hasLoginForm: boolean; hasUsernameField: boolean } {
@@ -297,8 +312,12 @@ function positionIcon(field: HTMLInputElement, btn: HTMLButtonElement): boolean 
 function repositionAllIcons() {
   try {
     for (const [field, { host, btn }] of fieldIcons) {
-      if (!field.isConnected || !isVisible(field)) { host.remove(); fieldIcons.delete(field); continue; }
-      const fits = positionIcon(field, btn);
+      // Поле исчезло из DOM — значок больше не к чему привязывать, убираем совсем.
+      if (!field.isConnected) { host.remove(); fieldIcons.delete(field); continue; }
+      // ⚠️ Поле уехало за край окна — ПРЯЧЕМ, но из карты НЕ убираем. Раньше убирали, а вернуть
+      // значок могло только пересканирование, которого на прокрутку не вешается вовсе: прокрутил
+      // мимо формы и обратно — значка нет, хотя поле на месте.
+      const fits = isVisible(field) && positionIcon(field, btn);
       host.style.display = fits ? '' : 'none';
     }
   } catch {
@@ -336,7 +355,7 @@ try {
 let lastScanKey = '';
 function reportScan() {
   try {
-    const pwFields = visiblePasswordFields();
+    const pwFields = renderedPasswordFields();
     const result = scanForms(pwFields);
     if (isTopFrame()) syncIcons(pwFields);
     const key = `${result.hasLoginForm}:${result.hasUsernameField}`;
@@ -466,7 +485,7 @@ function setNativeValue(input: HTMLInputElement | HTMLTextAreaElement, value: st
 function fillCredential(username: string | undefined, password: string, onlyIfEmpty?: boolean): boolean {
   try {
     if (!isTopFrame()) return false;
-    const passwordField = visiblePasswordFields()[0];
+    const passwordField = renderedPasswordFields()[0];
     if (!passwordField) return false;
     if (onlyIfEmpty && passwordField.value) return false;
     if (typeof username === 'string') {
@@ -478,7 +497,7 @@ function fillCredential(username: string | undefined, password: string, onlyIfEm
       // ввёл. Хуже того, это замыкало круг: на submit логин уходил пустым, запись его так и не
       // получала — отсюда жалоба «пароль сохраняется, а логин нет».
       const wipesFilledField = username === '' && usernameField?.value !== '';
-      if (usernameField && isVisible(usernameField)
+      if (usernameField && isRendered(usernameField)
         && !(onlyIfEmpty && usernameField.value) && !wipesFilledField) {
         setNativeValue(usernameField, username);
       }
@@ -625,11 +644,15 @@ function detectFieldKeyStrict(el: FillField): AfKey | null {
   return null;
 }
 
+// ⚠️ isRendered, НЕ isVisible: этим списком и заполняют форму, и собирают из неё значения при
+// отправке. С проверкой вьюпорта на длинной форме заказа заполнялись только те поля, что попали
+// в окно, — остальные оставались пустыми, и человек видел это как «автозаполнение работает
+// через раз». Где поле находится относительно прокрутки, для его заполнения не значит ничего.
 function collectAutofillFields(): Array<{ key: AfKey; el: FillField }> {
   const out: Array<{ key: AfKey; el: FillField }> = [];
   try {
     for (const el of Array.from(document.querySelectorAll('input, select')) as FillField[]) {
-      if (!isVisible(el)) continue;
+      if (!isRendered(el)) continue;
       const key = detectFieldKey(el);
       if (key) out.push({ key, el });
     }
@@ -656,7 +679,7 @@ function isAskableField(el: FillField): boolean {
   const type = (el.getAttribute('type') || 'text').toLowerCase();
   if (!['text', 'tel', 'email', 'number', 'search', ''].includes(type) && el.tagName !== 'SELECT') return false;
   if (detectFieldKeyStrict(el)) return false;
-  return isVisible(el);
+  return isRendered(el);
 }
 
 /**
@@ -725,7 +748,9 @@ function countFieldCategories(el: FillField, kind: 'address' | 'card'): number {
   const seen = new Set<AfKey>();
   try {
     for (const f of Array.from(scope.querySelectorAll('input, select')) as FillField[]) {
-      if (!isVisible(f)) continue;
+      // isRendered: порог «три разные категории» считается по ВСЕЙ форме. С проверкой вьюпорта
+      // длинная форма заказа порога не набирала — предложение автозаполнения не всплывало вовсе.
+      if (!isRendered(f)) continue;
       const k = detectFieldKey(f);
       if (!k) continue;
       if ((AF_ADDRESS_KEYS.has(k) ? 'address' : 'card') !== kind) continue;
