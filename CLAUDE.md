@@ -38,6 +38,7 @@ Electron ABI, см. `postinstall`). Артефакты «Студии» блок
 ```bash
 npm run dev                          # Vite (5173) + Electron dev-режим одновременно
 npm run build                        # vite build + tsc -p electron/tsconfig.json (прод-сборка)
+                                     # перед tsc чистит осиротевшие .js в dist-electron, см. ниже
 npm start                            # запуск собранного прод-приложения (dist-electron)
 npm run dist                         # NSIS-установщик в release/ (без публикации)
 npm run release                      # то же + выкладка релиза на GitHub (нужен GH_TOKEN)
@@ -68,6 +69,14 @@ npm run ai-bench -- --model 4b --repeat 3   # то же на другой мод
 `electron/ModelDownloader.ts` + `electron/ModelCatalog.ts` + `electron/ModelRegistry.ts` +
 `electron/HardwareInfo.ts` (замер VRAM/RAM) + `src/components/ModelsSection.tsx`), отдельного
 npm-скрипта для загрузки самой модели нет.
+
+⚠️ **`tsc` только добавляет файлы и никогда не убирает.** Переименовал или удалил `.ts` — его `.js`
+остаётся в `dist-electron` навсегда. Обычно это мусор, но один случай ядовитый и уже случился:
+`shared/ipc.ts` стал папкой `shared/ipc/`, и рядом с новым `shared/ipc/index.js` лежал старый
+`shared/ipc.js` — а CommonJS резолвит ФАЙЛ раньше ПАПКИ, то есть приложение молча продолжало бы
+работать по контракту полугодовой давности, без единой ошибки. Поэтому `build:electron` и
+`dev:electron` начинаются с `scripts/prune-stale-build.mjs`: убирает только `.js`/`.js.map`/`.d.ts`,
+у которых больше нет исходника. Проверить, ничего не трогая: `node scripts/prune-stale-build.mjs --dry`.
 
 Проверка типов ОБОИХ таргетов (обязательна после изменений, см. «Ритм работы»):
 
