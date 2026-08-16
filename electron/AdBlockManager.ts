@@ -60,9 +60,6 @@ interface PersistedSettings {
 export class AdBlockManager {
   #blocker: ElectronBlocker | null = null;
   #enabled = true;
-  // webContents.id → адрес, для которого скриптлеты уже отданы синхронно (см. #bootScriptlets).
-  // Нужна ровно для того, чтобы асинхронный первичный вызов не выполнил их вторым заходом.
-  #bootedScripts = new Map<number, string>();
   #whitelist = new Set<string>();
   #sessionBlockCount = 0;
   // Доп. сессии, на которые тоже распространяется блокировка (сейчас — инкогнито-сессия, см.
@@ -364,15 +361,11 @@ export class AdBlockManager {
   registerBootChannel(): void {
     ipcMain.removeAllListeners(IPC.ADBLOCK_BOOT_SCRIPTLETS);
     ipcMain.on(IPC.ADBLOCK_BOOT_SCRIPTLETS, (event, url: string) => {
-      const wc = event.sender;
-      // Пометка живёт до асинхронного первичного вызова, но в инкогнито его не будет вовсе
-      // (косметика там не подключается) — без уборки карта копила бы по записи на вкладку.
-      if (!this.#bootedScripts.has(wc.id)) wc.once('destroyed', () => this.#bootedScripts.delete(wc.id));
-      event.returnValue = this.#bootScriptlets(wc.id, event.frameId, event.processId, url);
+      event.returnValue = this.#bootScriptlets(event.frameId, event.processId, url);
     });
   }
 
-  #bootScriptlets(senderId: number, frameId: number, processId: number, url: string): string | null {
+  #bootScriptlets(frameId: number, processId: number, url: string): string | null {
     try {
       const blocker = this.#blocker;
       if (!blocker || !this.#enabled) return null;
@@ -393,10 +386,11 @@ export class AdBlockManager {
         callerContext: { frameId, processId },
       });
       if (active === false || scripts.length === 0) return null;
-      // Помечаем, что скриптлеты для этого адреса уже отданы: асинхронный первичный вызов придёт
-      // следом и повторил бы их. Дважды выполнить обвязку uBO — тот самый случай, из-за которого
-      // здесь вообще появилась склейка в один скрипт (см. #injectCosmetics).
-      this.#bootedScripts.set(senderId, url);
+      // Диагностика по требованию: OBLAKO_ADBLOCK_DEBUG=1 npm start. Постоянно не логируем —
+      // это путь загрузки КАЖДОЙ страницы, и в проде такой лог был бы потоком строк с адресами.
+      if (process.env.OBLAKO_ADBLOCK_DEBUG) {
+        console.log(`[AdBlock] скриптлетов синхронно: ${scripts.length} → ${parsed.hostname ?? '?'}`);
+      }
       return scripts.join('\n;\n');
     } catch (e) {
       // Молча: сбой адблока не повод ломать загрузку страницы, а рендерер ЖДЁТ этого ответа.
@@ -484,18 +478,22 @@ export class AdBlockManager {
     if (styles.length > 0) {
       event.sender.insertCSS(styles, { cssOrigin: 'user' });
     }
-    // Скриптлеты этого адреса уже выполнены синхронно, ДО скриптов страницы (#bootScriptlets) —
-    // повторять их нечего. Пометка одноразовая: следующая навигация в этой же вкладке снова
-    // пройдёт через синхронный путь и поставит её заново.
-    const bootedFor = this.#bootedScripts.get(event.sender.id);
-    if (isFirstRun && bootedFor === url) {
-      this.#bootedScripts.delete(event.sender.id);
-      return;
-    }
-    if (scripts.length > 0) {
-      event.sender.executeJavaScript(scripts.join('\n;\n'), true)
-        .catch((e) => console.error('[AdBlock] скриптлеты упали:', e));
-    }
+    // ⚠️ Скриптлеты отсюда НЕ инжектятся вовсе — их выполняет синхронный путь (#bootScriptlets),
+    // до скриптов страницы. Здесь остаются только стили.
+    //
+    // Раньше стояла пометка «этот адрес уже отдан синхронно, пропусти» — и она проигрывала гонку:
+    // preload Ghostery успевает отправить свой асинхронный invoke РАНЬШЕ, чем наш sendSync
+    // поставит пометку, поэтому скриптлеты уходили на страницу ДВАЖДЫ. Живое последствие
+    // (chatgpt.com): два prevent-fetch на window.fetch из РАЗНЫХ копий обвязки uBO зацикливаются
+    // друг в друге, «Maximum call stack size exceeded», SPA не открывается — ровно тот случай,
+    // ради которого скриптлеты и склеиваются в один скрипт (см. шапку метода). Лечилось
+    // перезагрузкой, потому что при ней порядок мог сложиться иначе, — подпись гонки.
+    // Проверкой порядка её не починить: гарантий, кто из двух preload'ов отработает первым, нет.
+    // Поэтому владелец у скриптлетов ровно один.
+    //
+    // Цена: вью без нашего content-preload (OAuth-попапы, см. TabManager::setWindowOpenHandler)
+    // скриптлетов не получат. Косметика там и не нужна — это окна входа, живущие секунды.
+    void scripts;
   }
 
   // pageUrl резолвится из webContents.getURL() (надёжнее referrer — тот пуст при строгой
