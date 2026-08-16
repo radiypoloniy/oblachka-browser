@@ -82,7 +82,7 @@ import * as ModelCatalog from './ModelCatalog';
 import { HubChatManager } from './HubChatManager';
 import { searxngSearch, buildGroundingPrompt } from './SearxngSearch';
 import { IPC, INCOGNITO_PARTITION, THEME_PALETTE_IDS, isDarkTheme } from '../shared/ipc';
-import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../shared/ipc';
+import type { ThemeMode, ThemePaletteId, ThemePrefs, SpecialTabKind } from '../shared/ipc';
 import type { ContentBounds, TitleBarOpts, FindResult, HistoryClearPeriod, SidebarNode, GroupNode, OrganizeCluster, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, HubMode, ModelLoadMode, TranslationEngineId, BergamotStatus, ModelDownloadSpec, BangDefWire, DerivedBangCandidate, QuickHit, SearchTarget, SearchChipsConfig, SearchChipCandidate, DayDigestState, SemanticSearchResult, SmartFindResult, RuleParseOutcome, SplitSwapHint, DragCard } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { SavedNode } from './SessionManager';
@@ -1863,7 +1863,7 @@ function registerIpc() {
   });
   ipcMain.handle(IPC.TAB_CREATE, (e, url?: string) => tabsOf(e)?.createTab(url));
   ipcMain.handle(IPC.TAB_CREATE_INCOGNITO, (e, url?: string) => tabsOf(e)?.createTab(url, false, false, true));
-  ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (e, kind: 'history' | 'settings' | 'bookmarks', section?: string) => tabsOf(e)?.createSpecialTab(kind, section));
+  ipcMain.handle(IPC.TAB_CREATE_SPECIAL, (e, kind: SpecialTabKind, section?: string) => tabsOf(e)?.createSpecialTab(kind, section));
   ipcMain.handle(IPC.TAB_CLOSE, (e, id: string) => tabsOf(e)?.closeTab(id));
   ipcMain.handle(IPC.TAB_ACTIVATE, (e, id: string) => tabsOf(e)?.activate(id));
   ipcMain.handle(IPC.TAB_NAVIGATE, (e, id: string, input: string) => tabsOf(e)?.navigate(id, input));

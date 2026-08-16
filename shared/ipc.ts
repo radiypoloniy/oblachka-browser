@@ -162,6 +162,12 @@ export interface TabErrorState {
 // (webPreferences.partition новой вьюхи). Данные чистятся при закрытии последней инкогнито-вкладки.
 export const INCOGNITO_PARTITION = 'oblako-incognito';
 
+// Псевдо-вкладки без WebContentsView (см. TabManager.createSpecialTab). Именованный тип, а не
+// union по месту: копий было четыре (контракт, preload, обработчик в main, TabManager), и они
+// уже разъехались — 'downloads' знали только две из них, хотя вкладка загрузок открывается из
+// App.tsx. Рантайму это не вредило (типы стираются), но читающий main видел неправду.
+export type SpecialTabKind = 'history' | 'settings' | 'bookmarks' | 'downloads';
+
 export interface TabState {
   id: string;
   isActive: boolean;    // true = эта вкладка сейчас активна в main-процессе
@@ -193,7 +199,7 @@ export interface TabState {
   // экземплярах, не участвуют в сессии/истории/усыплении (см. TabManager.createSpecialTab —
   // тот же путь #tabUrl()==='' → savable()===false / isHttpView(null)===false, что уже
   // естественно исключает их из session snapshot и sleep-таймера, без отдельных правок там).
-  kind: 'page' | 'hub' | 'history' | 'settings' | 'bookmarks' | 'downloads';
+  kind: 'page' | 'hub' | SpecialTabKind;
   // Начальный раздел для kind==='settings' (напр. 'ai') — необязателен, задаётся только когда
   // createSpecialTab('settings', section) вызван с разделом (см. AiPanelManager.ts кнопка "+" в
   // AI-панели). Для всех остальных kind не используется.
@@ -1957,7 +1963,7 @@ export interface OblakoApi {
   // просто без WebContentsView. См. shared/ipc.ts::TabState.kind, TabManager.createSpecialTab.
   // section — необязательный начальный раздел Settings (см. TabState.section выше), для
   // history/bookmarks игнорируется.
-  createSpecialTab(kind: 'history' | 'settings' | 'bookmarks' | 'downloads', section?: string): Promise<string>;
+  createSpecialTab(kind: SpecialTabKind, section?: string): Promise<string>;
   closeTab(id: string): Promise<void>;
   activateTab(id: string): Promise<void>;
   /** Вкладки, подходящие запросу по смыслу (локальная модель). Пусто — не нашлось или модели нет. */

@@ -4,7 +4,7 @@ import type { MenuItemConstructorOptions, PostBody, WebContents, WebFrameMain } 
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
-import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction } from '../shared/ipc';
+import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind } from '../shared/ipc';
 import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef, SavedTab } from './SessionManager';
 import { PIP_ENTER_SCRIPT, PIP_EXIT_SCRIPT } from './videoPip';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
@@ -1112,7 +1112,7 @@ export class TabManager {
   // на несколько экземпляров, а эта вкладка — обычная запись со своим id, закрываемая, можно
   // открыть несколько сразу). #tabUrl()==='' для неё уже естественно исключает её из
   // savable()/session-снимка и isHttpView()/sleep-таймера — без отдельных правок там.
-  createSpecialTab(kind: 'history' | 'settings' | 'bookmarks' | 'downloads', section?: string): string {
+  createSpecialTab(kind: SpecialTabKind, section?: string): string {
     const id = randomUUID();
     const tab: ManagedTab = { id, view: null, sleeping: null, lastActiveAt: Date.now(), kind, section };
     this.tabMap.set(id, tab);

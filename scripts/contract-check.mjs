@@ -107,6 +107,14 @@ const roles = new Map(); // KEY -> Set<'handler'|'caller'|'listener'|'sender'|'o
 const handlerSites = new Map(); // KEY -> [{ kind: 'handle'|'on', where }]
 const mainSideRef = new Set(); // канал упомянут где-то в electron/ вне preload
 const literalSites = []; // строка канала, зашитая мимо IPC.*
+// Арность: сколько аргументов реально уходит из preload и сколько принимает обработчик.
+// ⚠️ Сравнивать здесь ТИПЫ нельзя, и это проверено разбором: preload сплошь и рядом законно
+// перепаковывает аргументы (три параметра API уезжают в invoke одним объектом), а main местами
+// намеренно объявляет `unknown` — данные из renderer недоверенные. Синтаксический сторож на
+// типах начал бы врать на шести живых местах из 285; типовое соответствие — работа tsc, и делать
+// её надо типизированной обёрткой над handle, а не разбором текста.
+const callerArity = new Map();  // KEY -> максимум переданных аргументов (без канала)
+const handlerArity = new Map(); // KEY -> { n, where }
 for (const k of channels.keys()) roles.set(k, new Set());
 
 const keyOfValue = new Map([...channels].map(([k, v]) => [v, k]));
@@ -161,9 +169,16 @@ for (const file of files) {
             if (method === 'handle' || method === 'handleOnce') addRole(key, 'handler', where, 'handle');
             else if (method === 'on' || method === 'once') addRole(key, 'handler', where, 'on');
             else addRole(key, 'other', where);
+            // Параметры обработчика без первого (event) — с ними и сверяем число посланных.
+            const fn = args[1];
+            if (fn && (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) {
+              handlerArity.set(key, { n: Math.max(0, fn.parameters.length - 1), where });
+            }
           } else if (obj === 'ipcRenderer' && idx === 0) {
-            if (method === 'invoke' || method === 'send' || method === 'sendSync') addRole(key, 'caller', where);
-            else if (method === 'on' || method === 'once') addRole(key, 'listener', where);
+            if (method === 'invoke' || method === 'send' || method === 'sendSync') {
+              addRole(key, 'caller', where);
+              callerArity.set(key, Math.max(callerArity.get(key) ?? 0, args.length - 1));
+            } else if (method === 'on' || method === 'once') addRole(key, 'listener', where);
             else addRole(key, 'other', where); // removeListener и прочее — не роль
           } else if (method === 'send' || method === 'sendToFrame') {
             addRole(key, 'sender', where);
@@ -239,6 +254,18 @@ checkEmpty(
     .filter(([k, r]) => r.has('listener') && !r.has('sender') && !mainSideRef.has(k))
     .map(([k]) => `${k} — ipcRenderer.on есть, из main никто не шлёт`),
   'подписка висит мёртвой: событие не придёт никогда',
+);
+
+console.log('\n— арность —');
+checkEmpty(
+  'обработчик принимает столько же аргументов, сколько шлёт preload',
+  [...callerArity]
+    .filter(([k, sent]) => handlerArity.has(k) && handlerArity.get(k).n !== sent)
+    .map(([k, sent]) => {
+      const h = handlerArity.get(k);
+      return `${k}: шлём ${sent}, принимает ${h.n}  (${h.where})`;
+    }),
+  'лишний аргумент теряется, недостающий приходит как undefined',
 );
 
 console.log('\n— канал пишется через IPC.*, а не строкой —');
