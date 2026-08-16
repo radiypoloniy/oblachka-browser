@@ -16,6 +16,10 @@ import {
   serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs,
   SPLIT_RATIO_MIN, SPLIT_RATIO_MAX,
 } from '../shared/sessionTree';
+import {
+  findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
+  pruneEmptyGroups, dissolveSplitPair, disbandGroup,
+} from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { TRANSLATE_TARGETS } from '../shared/translateLangs';
 import { hostOfUrl } from '../shared/rules';
@@ -648,70 +652,28 @@ export class TabManager {
     return result;
   }
 
-  // Ищет родительский массив и индекс узла, содержащего tabId (рекурсивно).
+  // ── Навигация по дереву узлов ───────────────────────────────────────────────
+  // Сами обходы — в shared/nodeTree.ts (чистая логика под scripts/node-tree-check.mjs).
+  // Здесь тонкие обёртки: они держат умолчание `= this.nodes`, ради которого десятки мест
+  // вызова остались как были.
   #findTabParent(tabId: string, nodes: SidebarNode[] = this.nodes): { parent: SidebarNode[]; idx: number } | null {
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
-      if (node.type === 'single' && node.tabId === tabId)
-        return { parent: nodes, idx: i };
-      if (node.type === 'split-pair' && (node.leftTabId === tabId || node.rightTabId === tabId))
-        return { parent: nodes, idx: i };
-      if (node.type === 'group') {
-        const found = this.#findTabParent(tabId, node.children);
-        if (found) return found;
-      }
-    }
-    return null;
+    return findTabParent(tabId, nodes);
   }
 
-  // Группа, в которой лежит вкладка (или null — вкладка вне групп). Нужна правилам: правило
-  // срабатывает на КАЖДУЮ навигацию, и без этой проверки вкладку перекладывали бы снова и снова.
   #groupContaining(tabId: string, nodes: SidebarNode[] = this.nodes): GroupNode | null {
-    for (const node of nodes) {
-      if (node.type !== 'group') continue;
-      for (const child of node.children) {
-        if (child.type === 'single' && child.tabId === tabId) return node;
-        if (child.type === 'split-pair' && (child.leftTabId === tabId || child.rightTabId === tabId)) return node;
-      }
-      const nested = this.#groupContaining(tabId, node.children);
-      if (nested) return nested;
-    }
-    return null;
+    return groupContaining(tabId, nodes);
   }
 
-  // Группа по ИМЕНИ — правило говорит «в группу «Хабр»», а не «в группу с таким-то id».
   #findGroupByLabel(label: string, nodes: SidebarNode[] = this.nodes): GroupNode | null {
-    for (const node of nodes) {
-      if (node.type !== 'group') continue;
-      if (node.label.trim().toLowerCase() === label.trim().toLowerCase()) return node;
-      const nested = this.#findGroupByLabel(label, node.children);
-      if (nested) return nested;
-    }
-    return null;
+    return findGroupByLabel(label, nodes);
   }
 
-  // Ищет GroupNode по id (рекурсивно).
   #findGroupById(groupId: string, nodes: SidebarNode[] = this.nodes): GroupNode | null {
-    for (const node of nodes) {
-      if (node.type === 'group') {
-        if (node.id === groupId) return node;
-        const found = this.#findGroupById(groupId, node.children);
-        if (found) return found;
-      }
-    }
-    return null;
+    return findGroupById(groupId, nodes);
   }
 
-  // Возвращает родительский массив для группы (или null если группа на верхнем уровне).
   #findGroupParent(groupId: string, nodes: SidebarNode[] = this.nodes): SidebarNode[] | null {
-    for (const node of nodes) {
-      if (node.type === 'group') {
-        if (node.id === groupId) return nodes;
-        const found = this.#findGroupParent(groupId, node.children);
-        if (found) return found;
-      }
-    }
-    return null;
+    return findGroupParent(groupId, nodes);
   }
 
   // URL вкладки: из sleeping-метаданных или из живого WebContents.
@@ -765,26 +727,7 @@ export class TabManager {
 
   // Заменяет SplitPairNode двумя SingleNode — рекурсивный поиск (пара может быть в группе).
   #dissolveSplitPair(leftId: string, rightId: string): void {
-    this.#dissolveSplitPairIn(leftId, rightId, this.nodes);
-  }
-
-  #dissolveSplitPairIn(leftId: string, rightId: string, nodes: SidebarNode[]): boolean {
-    const idx = nodes.findIndex(
-      (n) => n.type === 'split-pair' && n.leftTabId === leftId && n.rightTabId === rightId,
-    );
-    if (idx !== -1) {
-      nodes.splice(idx, 1,
-        { type: 'single', tabId: leftId },
-        { type: 'single', tabId: rightId },
-      );
-      return true;
-    }
-    for (const node of nodes) {
-      if (node.type === 'group') {
-        if (this.#dissolveSplitPairIn(leftId, rightId, node.children)) return true;
-      }
-    }
-    return false;
+    dissolveSplitPair(leftId, rightId, this.nodes);
   }
 
   // Пара, которая ПОКАЗЫВАЕТСЯ сейчас — не отдельный указатель, а та единственная запись
@@ -923,13 +866,7 @@ export class TabManager {
 
   // Удаляет пустые GroupNode из дерева (рекурсивно).
   #pruneEmptyGroups(nodes: SidebarNode[]): void {
-    for (let i = nodes.length - 1; i >= 0; i--) {
-      const node = nodes[i];
-      if (node.type === 'group') {
-        this.#pruneEmptyGroups(node.children);
-        if (node.children.length === 0) nodes.splice(i, 1);
-      }
-    }
+    pruneEmptyGroups(nodes);
   }
 
   getActiveId() { return this.activeId; }
@@ -2549,17 +2486,7 @@ export class TabManager {
   }
 
   #disbandGroupIn(groupId: string, nodes: SidebarNode[]): boolean {
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
-      if (node.type === 'group') {
-        if (node.id === groupId) {
-          nodes.splice(i, 1, ...node.children);
-          return true;
-        }
-        if (this.#disbandGroupIn(groupId, node.children)) return true;
-      }
-    }
-    return false;
+    return disbandGroup(groupId, nodes);
   }
 
   // {url,title} каждой листовой вкладки группы (рекурсивно, split-pair — обе половины) — для
