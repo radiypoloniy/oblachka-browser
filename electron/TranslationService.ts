@@ -1,4 +1,4 @@
-// Продовый переводчик: Qwen3.5-9B (GGUF Q4_K_M) через node-llama-cpp — единый генеративный слой
+﻿// Продовый переводчик: Qwen3.5-9B (GGUF Q4_K_M) через node-llama-cpp — единый генеративный слой
 // вместо специализированного EuroLLM-1.7B (заменён после сравнения качества/скорости, см. изолированные
 // тесты translategemma-test.ts/qwen35-test.ts, уже удалены). Единственный источник правды для
 // перевода — используется и боевой фичей (ПКМ → «Перевести», см. TabManager.ts/main.ts), и ручным
@@ -16,6 +16,7 @@ import * as ModelRegistry from './ModelRegistry'
 import * as Inference from './inference/InferenceHost'
 import { enqueueQwen, isQwenBusy } from './QwenQueue'
 import type { AiAction, AiActionOutcome, ModelErrorCode } from '../shared/ipc'
+import { pickLanguage, FRANC_TO_CODE, FALLBACK_LANG } from '../shared/langDetect'
 
 // Дискриминируемая ошибка загрузки модели — ensureLoaded() бросает объекты этой формы вместо
 // сырого исключения node-llama-cpp, чтобы вызывающая сторона могла показать пользователю
@@ -51,20 +52,7 @@ const LANG_NAME: Record<string, string> = {
   zh: 'Chinese', ja: 'Japanese', ko: 'Korean', tr: 'Turkish', ar: 'Arabic',
 }
 
-// franc-min отдаёт ISO 639-3 — переводим в короткие коды из LANG_NAME выше. Список ключей заодно
-// передаётся франку как `only` (см. detectLang) — не даём ему распознавать языки, для которых
-// у нас всё равно нет промпт-имени. bel (белорусский) добавлен наравне с bul/ukr — тоже кириллица,
-// тоже близок к русскому графически, без явного маппинга ушёл бы в FALLBACK_LANG молча.
-const FRANC_TO_CODE: Record<string, string> = {
-  rus: 'ru', eng: 'en', fra: 'fr', deu: 'de', spa: 'es', ita: 'it', por: 'pt',
-  nld: 'nl', pol: 'pl', ukr: 'uk', ces: 'cs', swe: 'sv', ell: 'el', ron: 'ro',
-  hun: 'hu', bul: 'bg', hrv: 'hr', bel: 'be', cmn: 'zh', jpn: 'ja', kor: 'ko', tur: 'tr', arb: 'ar',
-}
 
-// Если не совпал ни с одним targetLang — считаем текст «не на целевом», переводим НА targetLang
-// (см. resolveDirection). Для этого случая (и как src, когда сам детектор не смог определить язык)
-// нужен нейтральный дефолт-язык — английский, самый частый вариант «непонятного» текста.
-const FALLBACK_LANG = 'en'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let francAllFn: ((text: string, options?: any) => Array<[string, number]>) | null = null
@@ -84,64 +72,7 @@ async function ensureFranc(): Promise<void> {
   return francLoadPromise
 }
 
-// franc путает языки — подтверждено на живых прогонах, и НЕ только на коротких строках:
-// «да блин, опять сроки горят...» (52 симв.) → 'bg', «спасибо огромное...» (47 симв.) → 'uk',
-// "honestly that's a game changer, let's ship it" (47 симв.) → 'fr' — и целая русскоязычная
-// новостная статья (200+ симв., много имён собственных и кавычек) тоже ушла в 'bg'. Длина не
-// спасает. Общий порог по score тоже не работает (проверено численно: score правильного языка у
-// разных пар пересекается со score ложного срабатывания на других парах) — вместо этого две
-// точечные эвристики, каждая на своём независимом сигнале (не на score franc):
-// 1) кириллица: bg/uk/be при преимущественно кириллическом тексте — общая графика, франк путает
-//    между близкими славянскими языками systematically → считаем русским БЕЗУСЛОВНО, без разбора
-//    длины строки (длина не помогает, см. выше). Для этого пользователя русский на порядок
-//    вероятнее болгарского/украинского/белорусского.
-// 2) латиница/английский: нет script-сигнала, зато есть надёжный лексический маркер — английские
-//    сокращения (that's, let's, don't, we're...) практически не встречаются в других языках
-//    из FRANC_TO_CODE в этой форме (апостроф ПОСЛЕ слова, не перед, как в французских l'/c'/qu').
-//    Эта эвристика короткой строкой пока не была замечена ложной за пределами SHORT_TEXT_THRESHOLD,
-//    оставлена ограниченной короткими фразами, чтобы не разрастаться сверх подтверждённой проблемы.
-// ⚠️ Правило одно, а не два: ЗАМЕТНАЯ ДОЛЯ КИРИЛЛИЦЫ — ЗНАЧИТ РУССКИЙ.
-// Раньше оно ловило только близкую кириллицу (bg/uk/be), и мимо проходил случай похуже: франк
-// отдавал ЛАТИНОПИСЬМЕННЫЙ язык на русском тексте, где много латинских имён собственных. Живой
-// случай: «Adobe запустила единый плагин для ChatGPT… Photoshop, Firefly, Premiere, Acrobat,
-// Lightroom, Illustrator, InDesign и Adobe Stock» — десять брендов сбивают частотную статистику,
-// и текст уезжал «переводиться» на русский с русского. Письменность — сигнал куда твёрже догадки
-// франка: кириллический текст не может быть английским или французским.
-// Выбор «русский, а не украинский/болгарский» тут прежний и осознанный: для этого пользователя
-// русский на порядок вероятнее, а различать близкие славянские франк всё равно не умеет.
-const ENGLISH_CONTRACTION_RE = /\b\w+'(s|t|re|ll|ve|d|m)\b/i
-const SHORT_TEXT_THRESHOLD = 80
 
-// Живой баг: страница на французском, franc отдал 'en' топ-кандидатом (сбит с толку англицизмами/
-// брендами, которых во французских текстах — тем более в тех. и поп-культурных статьях — хватает).
-// Направление 'auto' резолвилось в "translate FROM English", и Qwen честно переводил только
-// реально английские вкрапления (бренды/названия), оставляя весь остальной французский текст как
-// есть — не «отказ переводить», а буквальное следование ошибочной инструкции про исходный язык.
-// Не диакритика (à/é/ç... — тоже бывают в англ. заимствованиях типа café/résumé/naïve, ложные
-// срабатывания), а именно служебные слова — практически не встречаются в связном английском тексте
-// иначе как во французских цитатах. Гейт candidates.some(fra) — French должен быть хотя бы СРЕДИ
-// кандидатов franc (не обязательно первым), не подставляем язык, который franc вообще не рассматривал.
-const FRENCH_FUNCTION_WORD_RE = /\b(le|la|les|des|une|est|dans|avec|pour|qui|que|vous|nous|être|cette|ces|mais|sont|comme|leur|leurs|entre|sans)\b/gi
-const FRENCH_FUNCTION_WORD_MIN_HITS = 2
-
-// ⚠️ Порог НЕ «больше половины», и это выяснилось замером на той самой жалобе. В фразе
-// «Adobe запустила единый плагин для ChatGPT… Photoshop, Firefly, Premiere, Acrobat, Lightroom,
-// Illustrator, InDesign и Adobe Stock» латинских букв 93, а кириллических 87 — то есть по
-// правилу «преимущественно кириллический» она русской НЕ считалась, хотя написана по-русски.
-//
-// Признак несимметричен, и в этом всё дело: латинские слова внутри русского текста — обычное
-// дело (бренды, модели, термины), а кириллические слова внутри английского практически не
-// встречаются, кроме коротких цитат. Поэтому достаточно ЗАМЕТНОЙ доли кириллицы, а не
-// перевеса: четверть букв — это уже связный русский текст, а не вкрапление. Английская фраза с
-// одним русским словом в кавычках (~0.2) под правило не попадает.
-const CYRILLIC_SHARE_MIN = 0.25
-
-function hasSubstantialCyrillic(text: string): boolean {
-  const letters = text.match(/[a-zA-Zа-яёА-ЯЁ]/g)
-  if (!letters || letters.length === 0) return false
-  const cyrillic = text.match(/[а-яёА-ЯЁ]/g)?.length ?? 0
-  return cyrillic / letters.length >= CYRILLIC_SHARE_MIN
-}
 
 // Лёгкое оффлайн n-граммное определение языка (без сети, без LLM) — НЕ спрашиваем саму модель
 // перевода, это был бы лишний медленный вызов. minLength занижен с дефолтных 10 до 3: выделения
@@ -150,20 +81,18 @@ function hasSubstantialCyrillic(text: string): boolean {
 async function detectLang(text: string): Promise<string> {
   await ensureFranc()
   const candidates = francAllFn!(text, { only: Object.keys(FRANC_TO_CODE), minLength: 3 })
-  let iso3 = candidates[0]?.[0] ?? 'und'
-  let code = FRANC_TO_CODE[iso3] ?? FALLBACK_LANG
+  // Само решение — в shared/langDetect.ts (чистая логика под scripts/lang-detect-check.mjs):
+  // там же разобрано, почему эвристики точечные и почему кириллица перебивает ответ franc.
+  const { code, overrode } = pickLanguage(candidates, text)
 
-  if (code !== 'ru' && hasSubstantialCyrillic(text)) {
-    console.log(`[translate] detected=${code} (iso3=${iso3}), текст преим. кириллический — считаем русским`)
-    iso3 = 'rus'; code = 'ru'
-  } else if (text.length < SHORT_TEXT_THRESHOLD && code !== 'en' && ENGLISH_CONTRACTION_RE.test(text) && candidates.some(([c]) => c === 'eng')) {
-    console.log(`[translate] detected=${code} (iso3=${iso3}), но есть англ. сокращение (that's/let's/...) — считаем английским`)
-    iso3 = 'eng'; code = 'en'
-  } else if (code === 'en' && (text.match(FRENCH_FUNCTION_WORD_RE)?.length ?? 0) >= FRENCH_FUNCTION_WORD_MIN_HITS && candidates.some(([c]) => c === 'fra')) {
-    console.log(`[translate] detected=en (iso3=${iso3}), но найдены франц. служебные слова (le/la/des/dans/...) — считаем французским (FRENCH_FUNCTION_WORD)`)
-    iso3 = 'fra'; code = 'fr'
+  if (overrode) {
+    const why = {
+      'cyrillic': 'текст заметно кириллический — считаем русским',
+      'english-contraction': "есть англ. сокращение (that's/let's/...) — считаем английским",
+      'french-function-word': 'найдены франц. служебные слова (le/la/des/dans/...) — считаем французским',
+    }[overrode]
+    console.log(`[translate] franc сказал ${candidates[0]?.[0] ?? 'und'}, но ${why}`)
   }
-
   console.log(`[translate] detectLang: franc raw=${candidates[0]?.[0] ?? 'und'} -> mapped=${code} text="${text.slice(0, 60)}"`)
   return code
 }
