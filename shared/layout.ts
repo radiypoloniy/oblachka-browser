@@ -32,3 +32,45 @@ export const SPLIT_PANE_INSET = 6;
 // потому что скругление задают ОБЕ стороны: main — самой вьюхе (setBorderRadius), renderer —
 // канту вокруг неё (box-shadow в App.tsx). Разъедутся числа — кант поедет по кривой мимо страницы.
 export const SPLIT_PANE_RADIUS = 20 - SPLIT_PANE_INSET;
+
+// Пределы доли левой панели. Живут здесь, потому что тем же зажимом пользуется и восстановление
+// сессии: ratio приходит ИЗ ФАЙЛА, то есть это недоверенное число (см. shared/sessionTree.ts,
+// там свои копии — их менять нельзя без правки здесь).
+export const SPLIT_RATIO_MIN = 0.2;
+export const SPLIT_RATIO_MAX = 0.8;
+
+/** Прямоугольник в координатах окна — та же форма, что ContentBounds в контракте. */
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Прямоугольник СТРАНИЦЫ одной панели сплита: половина области контента минус полоса заголовка
+ * сверху и минус кант карточки со всех сторон (разбор канта — у SPLIT_PANE_INSET выше).
+ *
+ * ⚠️ Формула ОДНА на всех потребителей (getTabViewBounds, repositionViews, замер поповеров):
+ * раньше она стояла двумя копиями и при любой правке разъезжалась — панель уезжала на несколько
+ * пикселей мимо своего канта, и это видно глазом.
+ *
+ * ⚠️ Ширина и высота зажаты нулём снизу. При узком окне или неожиданно большом отступе разность
+ * уходит в минус, а отрицательные размеры вьюхи — это не «маленькая панель», а мусор в раскладке.
+ */
+export function splitPaneBounds(content: Rect, side: 'left' | 'right', splitRatio: number): Rect {
+  const leftWidth = Math.floor((content.width - ISLAND_GAP) * splitRatio);
+  const panelX = side === 'left' ? content.x : content.x + leftWidth + ISLAND_GAP;
+  const panelW = side === 'left' ? leftWidth : content.width - leftWidth - ISLAND_GAP;
+  return {
+    x: panelX + SPLIT_PANE_INSET,
+    y: content.y + SPLIT_HEADER_HEIGHT + SPLIT_PANE_INSET,
+    width: Math.max(0, panelW - SPLIT_PANE_INSET * 2),
+    height: Math.max(0, content.height - SPLIT_HEADER_HEIGHT - SPLIT_PANE_INSET * 2),
+  };
+}
+
+/** Зажим доли левой панели — и для жеста мышью, и для числа, пришедшего из session.json. */
+export function clampSplitRatio(ratio: number): number {
+  return Math.max(SPLIT_RATIO_MIN, Math.min(SPLIT_RATIO_MAX, ratio));
+}

@@ -11,7 +11,10 @@ import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngin
 import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
 import type { BangStore } from './BangStore';
-import { ISLAND_GAP, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
+import {
+  ISLAND_GAP, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS,
+  splitPaneBounds, clampSplitRatio,
+} from '../shared/layout';
 import {
   memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTimer, pressureCandidates,
   SLEEP_CHECK_INTERVAL, PRESSURE_SLEEP_PER_CHECK, MEDIA_GRACE,
@@ -2951,7 +2954,7 @@ export class TabManager {
   setSplitRatio(ratio: number): void {
     const pair = this.#activePair();
     if (!pair) return;
-    const clamped = Math.max(SPLIT_RATIO_MIN, Math.min(SPLIT_RATIO_MAX, ratio));
+    const clamped = clampSplitRatio(ratio);
     pair.splitRatio = clamped;
     // Синхронизируем с SplitPairNode, чтобы следующий сейв взял актуальный ratio.
     const { leftId, rightId } = pair;
@@ -3876,15 +3879,7 @@ export class TabManager {
   // разбор канта там же, в SPLIT_PANE_INSET. Одна формула на getTabViewBounds и repositionViews:
   // раньше она стояла в обоих местах двумя копиями и при любой правке разъезжалась.
   #splitPaneBounds(side: 'left' | 'right', splitRatio: number): ContentBounds {
-    const leftWidth = Math.floor((this.bounds.width - ISLAND_GAP) * splitRatio);
-    const panelX = side === 'left' ? this.bounds.x : this.bounds.x + leftWidth + ISLAND_GAP;
-    const panelW = side === 'left' ? leftWidth : this.bounds.width - leftWidth - ISLAND_GAP;
-    return {
-      x: panelX + SPLIT_PANE_INSET,
-      y: this.bounds.y + SPLIT_HEADER_HEIGHT + SPLIT_PANE_INSET,
-      width:  Math.max(0, panelW - SPLIT_PANE_INSET * 2),
-      height: Math.max(0, this.bounds.height - SPLIT_HEADER_HEIGHT - SPLIT_PANE_INSET * 2),
-    };
+    return splitPaneBounds(this.bounds, side, splitRatio);
   }
 
   // Позиционирует видимые вьюхи согласно текущему режиму (single / split).
