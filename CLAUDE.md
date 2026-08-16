@@ -129,7 +129,7 @@ sandboxed preload (`sandbox: true` для гостевых страниц) не 
 
 | Файл | Когда читать |
 | --- | --- |
-| [docs/architecture-core.md](docs/architecture-core.md) | Окно, вкладки, сессия, многооконность, адблок, омнибокс, оверлеи, `shared/ipc.ts` |
+| [docs/architecture-core.md](docs/architecture-core.md) | Окно, вкладки, сессия, многооконность, адблок, омнибокс, оверлеи, `shared/ipc/` |
 | [docs/architecture-data.md](docs/architecture-data.md) | История, закладки, импорт, VPN, пароли, автозаполнение, загрузки, разрешения, сертификаты |
 | [docs/architecture-ai.md](docs/architecture-ai.md) | AI-панель, перевод, хаб, блокнот, граф, модели, очередь к Qwen |
 | [docs/architecture-ui.md](docs/architecture-ui.md) | Новая вкладка и рабочий стол, тема и палитры, настройки, онбординг, виджеты, токены |

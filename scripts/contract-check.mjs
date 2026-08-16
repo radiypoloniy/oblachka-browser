@@ -52,8 +52,11 @@ function parse(file) {
   return ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
 }
 
+// Список каналов живёт в shared/ipc/channels.ts (см. shared/ipc/index.ts — почему нарезано так).
+const CHANNELS_FILE = path.join('shared', 'ipc', 'channels.ts');
+
 function readChannels() {
-  const sf = parse(path.join(ROOT, 'shared', 'ipc.ts'));
+  const sf = parse(path.join(ROOT, CHANNELS_FILE));
   const out = new Map(); // KEY -> 'строковое:значение'
   const visit = (node) => {
     if (ts.isVariableDeclaration(node) && node.name.getText(sf) === 'IPC' && node.initializer) {
@@ -201,7 +204,7 @@ for (const file of files) {
     // Строка, дословно равная объявленному каналу, — обход контракта: переименование значения в
     // shared/ipc.ts такое место не заденет, и сторона молча отвалится.
     if (ts.isStringLiteral(node) && keyOfValue.has(node.text)
-        && !SANDBOXED_PRELOADS.has(rel) && rel !== 'shared/ipc.ts') {
+        && !SANDBOXED_PRELOADS.has(rel) && rel !== CHANNELS_FILE.replace(/\\/g, '/')) {
       const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
       literalSites.push(`${rel}:${line}  '${node.text}' → IPC.${keyOfValue.get(node.text)}`);
     }
@@ -212,7 +215,7 @@ for (const file of files) {
 
 // ── Правила ─────────────────────────────────────────────────────────────────
 console.log(`\n— инвентарь —`);
-check('каналы разобраны из shared/ipc.ts', channels.size > 0, true);
+check('каналы разобраны из shared/ipc/channels.ts', channels.size > 0, true);
 console.log(`         каналов: ${channels.size}, с обработчиком: ${[...roles].filter(([, r]) => r.has('handler')).length}`);
 
 console.log('\n— уникальность —');
