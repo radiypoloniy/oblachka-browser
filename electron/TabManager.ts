@@ -5,28 +5,16 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind } from '../shared/ipc';
-import type { SessionSnapshot, SavedNode, SavedSingleNode, SavedSplitPairNode, SavedGroupNode, SavedActiveRef, SavedTab } from './SessionManager';
+import type { SessionSnapshot, SavedNode, SavedActiveRef, SavedTab } from './SessionManager';
 import { PIP_ENTER_SCRIPT, PIP_EXIT_SCRIPT } from './videoPip';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
 import type { BangStore } from './BangStore';
-import {
-  ISLAND_GAP, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS,
-  splitPaneBounds, clampSplitRatio,
-} from '../shared/layout';
-import {
-  memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTimer, pressureCandidates,
-  SLEEP_CHECK_INTERVAL, PRESSURE_SLEEP_PER_CHECK, MEDIA_GRACE,
-} from '../shared/sleepPolicy';
-import {
-  serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs,
-  SPLIT_RATIO_MIN, SPLIT_RATIO_MAX,
-} from '../shared/sessionTree';
-import {
-  findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
-  pruneEmptyGroups, dissolveSplitPair, disbandGroup,
-} from '../shared/nodeTree';
+import { ISLAND_GAP, SPLIT_PANE_RADIUS, splitPaneBounds, clampSplitRatio } from '../shared/layout';
+import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTimer, pressureCandidates, SLEEP_CHECK_INTERVAL, PRESSURE_SLEEP_PER_CHECK, MEDIA_GRACE } from '../shared/sleepPolicy';
+import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
+import { findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
 import { TRANSLATE_TARGETS } from '../shared/translateLangs';
 import { hostOfUrl } from '../shared/rules';
@@ -712,12 +700,6 @@ export class TabManager {
     return id && id !== HUB_ID ? new Set([id]) : new Set();
   }
 
-  // Активная вкладка сейчас — одна из двух панелей ПОКАЗЫВАЕМОЙ пары. Паттерн был
-  // текстуально продублирован в нескольких местах — один источник правды.
-  #currentlyInSplit(): boolean {
-    return !!this.#activePair();
-  }
-
   // Сторона вкладки в СВОЕЙ паре (не в показываемой — TabState.splitSide отражает
   // "я вообще в сплите", парковка на это не влияет, см. Sidebar.tsx).
   #tabSplitSide(id: string): 'left' | 'right' | null {
@@ -1287,18 +1269,18 @@ export class TabManager {
     // Дальше — только проводка событий, разнесённая по темам. Тела обработчиков не менялись:
     // каждый из них по-прежнему первым делом спрашивает mine() — вкладку могли передать другому
     // окну, а снять слушатели выборочно нечем (см. разбор выше).
-    this.#wireGuestSignals(id, view, mine, notify);
+    this.#wireGuestSignals(id, view, mine);
     this.#wirePageLifecycle(id, view, mine, notify);
-    this.#wireWindowOpenPolicy(id, view, mine, notify);
+    this.#wireWindowOpenPolicy(id, view);
     this.#wireCrashAndZoom(id, view, mine, notify);
-    this.#wireContextMenu(id, view, mine, notify);
+    this.#wireContextMenu(id, view);
 
 
     this.registerHotkeyHandler(wc);
   }
 
   // Сигналы ОТ гостевой страницы (content-preload): пароли, автозаполнение, буфер обмена.
-  #wireGuestSignals(id: string, view: WebContentsView, mine: () => boolean, notify: () => void): void {
+  #wireGuestSignals(id: string, view: WebContentsView, mine: () => boolean): void {
     const wc = view.webContents;
     // Менеджер паролей, шаг 2 — per-view IPC (webContents.ipc, не общий ipcMain): main точно
     // знает, какая вкладка прислала сообщение, без реверс-маппинга webContents.id → tabId.
@@ -1536,7 +1518,7 @@ export class TabManager {
   }
 
   // Политика window.open / target=_blank: новая вкладка вместо окна, кроме настоящих попапов.
-  #wireWindowOpenPolicy(id: string, view: WebContentsView, mine: () => boolean, notify: () => void): void {
+  #wireWindowOpenPolicy(id: string, view: WebContentsView): void {
     const wc = view.webContents;
 
     // Политика окон: target=_blank / window.open -> НОВАЯ ВКЛАДКА, не окно — КРОМЕ настоящих
@@ -1673,7 +1655,7 @@ export class TabManager {
   }
 
   // Нативное контекстное меню страницы (ПКМ).
-  #wireContextMenu(id: string, view: WebContentsView, mine: () => boolean, notify: () => void): void {
+  #wireContextMenu(id: string, view: WebContentsView): void {
     const wc = view.webContents;
 
     wc.on('context-menu', (_e, p) => {

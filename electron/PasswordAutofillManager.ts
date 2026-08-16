@@ -134,7 +134,10 @@ export async function handleGenerateAndFill(win: BrowserWindow): Promise<boolean
   }
 }
 
-export function handleFormDetected(win: BrowserWindow, tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string): void {
+// _hasUsernameField приходит от детектора формы и здесь не нужен: решение принимается по наличию
+// формы и по сохранённым для origin входам. Подчёркивание — метка «знаем, что не используем»;
+// убрать параметр нельзя, это форма колбэка TabManager (см. onPasswordFormCb).
+export function handleFormDetected(win: BrowserWindow, tabId: string, hasLoginForm: boolean, _hasUsernameField: boolean, url: string): void {
   try {
     const pm = passwordManagerRef;
     if (!pm) return;

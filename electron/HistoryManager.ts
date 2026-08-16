@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import type { HistoryEntry, HistoryClearPeriod } from '../shared/ipc';
 import { isSearchResultUrl } from '../shared/searchEngines';
 import { normalizeForOmnibox } from '../shared/frecency';
-import { stemText, stemQuery, STEM_VERSION } from './textStemming';
+import { stemText, stemQuery } from './textStemming';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
 // Грузим динамически, чтобы браузер запускался даже без C++ инструментов.

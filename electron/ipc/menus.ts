@@ -22,7 +22,7 @@ import { suggestTabTitle } from '../TabRenamer';
 import { getLoadedModelId, isModelWarm, unloadModel } from '../TranslationService';
 import { broadcastToChrome, contextFromSender } from '../WindowRegistry';
 import { Menu, clipboard, ipcMain } from 'electron';
-import type { MenuItemConstructorOptions, WebContents } from 'electron';
+import type { MenuItemConstructorOptions } from 'electron';
 import type { IpcDeps } from './deps';
 
 export function registerMenusIpc(d: IpcDeps): void {

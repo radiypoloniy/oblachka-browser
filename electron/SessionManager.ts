@@ -16,7 +16,6 @@ export type {
 const SESSION_VERSION = 5;
 const DEBOUNCE_MS = 1500;
 
-type UnknownNode = { type: string; [k: string]: unknown };
 
 interface SessionDataV5 {
   version: 5;
@@ -26,21 +25,10 @@ interface SessionDataV5 {
   nodes: SavedNode[];
 }
 
-interface SessionDataV4 {
-  version: 4;
-  savedAt: string;
-  activeRef: SavedActiveRef;
-  pinnedTabs: SavedTab[];
-  nodes: SavedNode[];
-}
-
-interface SessionDataV3 {
-  version: 3;
-  savedAt: string;
-  activeRef: SavedActiveRef;
-  pinnedTabs: SavedTab[];
-  nodes: (SavedSingleNode | SavedSplitPairNode | UnknownNode)[];
-}
+// Отдельных типов для v4 и v3 здесь больше нет: ими не пользовалась ни одна строка кода.
+// Старые файлы читают #loadV4/#loadV3, и оба принимают Record<string, unknown> и проверяют форму
+// в рантайме — иначе и нельзя, файл на диске мог быть любым. Чем версии отличались друг от друга,
+// записано в истории форматов (shared/session.ts).
 
 interface SessionDataV2 {
   version: 2;

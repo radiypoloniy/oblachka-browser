@@ -136,7 +136,7 @@ function ensureIpcRegistered(): void {
   if (ipcRegistered) return;
   ipcRegistered = true;
 
-  ipcMain.handle('screenshot:save', (e, dataUrl: string): string | null => {
+  ipcMain.handle('screenshot:save', (_e, dataUrl: string): string | null => {
     const png = pngFromDataUrl(dataUrl);
     if (!png) return null;
     const file = uniquePath(app.getPath('downloads'), defaultFileName());

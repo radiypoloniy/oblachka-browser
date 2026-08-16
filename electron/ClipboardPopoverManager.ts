@@ -8,7 +8,6 @@ import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
 import type { ContentBounds } from '../shared/ipc';
-import { IPC } from '../shared/ipc';
 
 const POPOVER_WIDTH = 380;
 const INITIAL_HEIGHT = 200;
