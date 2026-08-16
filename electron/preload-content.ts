@@ -471,7 +471,15 @@ function fillCredential(username: string | undefined, password: string, onlyIfEm
     if (onlyIfEmpty && passwordField.value) return false;
     if (typeof username === 'string') {
       const usernameField = findUsernameField(passwordField);
-      if (usernameField && isVisible(usernameField) && !(onlyIfEmpty && usernameField.value)) {
+      // ⚠️ ПУСТОЙ логин НИКОГДА не пишется поверх заполненного поля. Живой случай: сгенерировали
+      // пароль из поля — он сохраняется в сейф сразу, но с пустым username (логина мы ещё не
+      // знаем, см. handleGenerateAndFill). Дальше эта же запись предлагается «подставить
+      // сохранённый вход», и подстановка затирала пустой строкой почту, которую человек уже
+      // ввёл. Хуже того, это замыкало круг: на submit логин уходил пустым, запись его так и не
+      // получала — отсюда жалоба «пароль сохраняется, а логин нет».
+      const wipesFilledField = username === '' && usernameField?.value !== '';
+      if (usernameField && isVisible(usernameField)
+        && !(onlyIfEmpty && usernameField.value) && !wipesFilledField) {
         setNativeValue(usernameField, username);
       }
     }

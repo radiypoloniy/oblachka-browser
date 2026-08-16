@@ -104,7 +104,11 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
               disabled={busy}
               onClick={() => void fill(m.id)}
               style={{ ...btnGhost, textAlign: 'left', display: 'flex', gap: 8, alignItems: 'center' }}
-            ><Check size={14} style={{ color: 'var(--text-muted)', flex: 'none' }} />{m.username}</button>
+            ><Check size={14} style={{ color: 'var(--text-muted)', flex: 'none' }} />
+              {/* Логин пуст у записи, рождённой генератором пароля: он сохраняет пароль сразу, а
+                  логин узнаёт при первом входе. До этого момента строка была ПУСТОЙ кнопкой —
+                  человек не понимал, что выбирает. */}
+              {m.username || <span style={{ color: 'var(--text-faint)' }}>без логина</span>}</button>
           ))}
         </>
       )}

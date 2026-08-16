@@ -8,6 +8,7 @@ import type { TabManager } from './TabManager';
 import type { PasswordManager } from './PasswordManager';
 import { originOf } from './PasswordManager';
 import type { PasswordIndicatorState } from '../shared/ipc';
+import { nextIndicatorState, shouldAutofill } from '../shared/passwordIndicator';
 import { contextForWindow } from './WindowRegistry';
 
 // ⚠️ Менеджер вкладок здесь НЕ хранится: каждая точка входа получает окно, а вкладки берутся из
@@ -137,28 +138,29 @@ export function handleFormDetected(win: BrowserWindow, tabId: string, hasLoginFo
   try {
     const pm = passwordManagerRef;
     if (!pm) return;
-    if (!hasLoginForm) {
-      // Форма ушла (логин успешен / страница сменилась) — следующее её появление на этом
-      // origin (например, после logout) снова получит автозаполнение.
-      autofilledTabs.delete(tabId);
-      tabStates.delete(tabId);
-      pushIfActive(win, tabId, null);
+    const origin = originOf(url);
+
+    // Само правило перехода — в shared/passwordIndicator.ts (чистая логика под тестом): там же
+    // разобрано, почему незакрытое предложение обязано пережить пересчёт формы.
+    const saved = pm.list().filter((e) => e.origin === origin).map((e) => ({ id: e.id, username: e.username }));
+    const decision = nextIndicatorState(tabStates.get(tabId) ?? null, hasLoginForm, origin, saved);
+    if (decision.keep) {
+      if (!hasLoginForm) autofilledTabs.delete(tabId);
       return;
     }
-    const origin = originOf(url);
-    const state = computeHasSavedState(pm, origin);
-    tabStates.set(tabId, state);
+    if (!hasLoginForm) {
+      // Форма ушла — следующее её появление на этом origin (например, после logout) снова
+      // получит автозаполнение.
+      autofilledTabs.delete(tabId);
+    }
+    const state = decision.state;
+    if (state === null) tabStates.delete(tabId); else tabStates.set(tabId, state);
     pushIfActive(win, tabId, state);
 
-    // Автозаполнение без кликов (как у Яндекса): для origin сохранён РОВНО один логин —
-    // подставляем сразу при обнаружении формы. Несколько сохранённых — неоднозначно, ждём
-    // выбора через иконку в поле/поповер. onlyIfEmpty — не затирать уже введённое руками
-    // (preload-content пропустит непустые поля). Повторно не заполняем, пока форма не
-    // исчезала (см. autofilledTabs) — иначе на SPA, где форма живёт в DOM постоянно,
-    // перезаполняли бы на каждый пересчёт.
-    if (state !== null && state.kind === 'has-saved' && state.matches.length === 1
-      && autofilledTabs.get(tabId) !== origin) {
-      const match = state.matches[0]!;
+    // Автозаполнение без кликов (как у Яндекса). onlyIfEmpty — не затирать уже введённое руками
+    // (preload-content пропустит непустые поля).
+    const match = shouldAutofill(state, origin, autofilledTabs.get(tabId));
+    if (match) {
       const password = pm.reveal(match.id);
       if (password !== null
         && tabsOf(win)?.sendPasswordFill(tabId, { username: match.username, password, onlyIfEmpty: true })) {
@@ -188,6 +190,25 @@ export function handleCredentialSubmitted(win: BrowserWindow, tabId: string, use
       tabStates.delete(tabId);
       pushIfActive(win, tabId, null);
       return;
+    }
+
+    // ⚠️ Запись с ПУСТЫМ логином — это след генератора (handleGenerateAndFill кладёт пароль в сейф
+    // сразу, логина он ещё не знает). Дописать его должен был путь pendingGenerated выше, но он
+    // держится в памяти и только для этой вкладки: перезапуск приложения, регистрация в соседней
+    // вкладке или потерянный submit — и логин не узнаётся уже никогда. А checkCredential ищет по
+    // паре origin+username, поэтому такую запись он не найдёт по определению и ответит 'new' —
+    // человек получал предложение сохранить ВТОРУЮ запись, а первая навсегда оставалась без
+    // логина. Отсюда жалоба «пароль сохраняется, а логин нет». Дописываем молча: пароль тот же,
+    // origin тот же — это та же учётка, а не новая.
+    if (username !== '') {
+      const blank = pm.list().find((e) => e.origin === origin && e.username === '' && pm.reveal(e.id) === password);
+      if (blank && pm.update({ id: blank.id, username })) {
+        onListChangedCb?.();
+        pendingGenerated.delete(tabId);
+        tabStates.delete(tabId);
+        pushIfActive(win, tabId, null);
+        return;
+      }
     }
 
     const result = pm.checkCredential(origin, username, password);
