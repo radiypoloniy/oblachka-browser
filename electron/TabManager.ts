@@ -1,4 +1,4 @@
-import os from 'os';
+﻿import os from 'os';
 import { app, WebContentsView, BrowserWindow, Menu, clipboard, net } from 'electron';
 import type { MenuItemConstructorOptions, PostBody, WebContents, WebFrameMain } from 'electron';
 import { randomUUID } from 'node:crypto';
@@ -12,6 +12,10 @@ import type { SearchEngineId } from '../shared/searchEngines';
 import { parseBangCandidate, applyBangTemplate, bangHomeUrl } from '../shared/bangs';
 import type { BangStore } from './BangStore';
 import { ISLAND_GAP, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
+import {
+  memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTimer, pressureCandidates,
+  SLEEP_CHECK_INTERVAL, PRESSURE_SLEEP_PER_CHECK, MEDIA_GRACE,
+} from '../shared/sleepPolicy';
 import {
   serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs,
   SPLIT_RATIO_MIN, SPLIT_RATIO_MAX,
@@ -56,54 +60,6 @@ const CONTENT_CORNER_RADIUS = 20;
 // проезда, и разъедься эти два числа, в слоте мелькнула бы пустота.
 const PANEL_SLIDE_MS = 240;
 
-const SLEEP_TIMEOUT_NORMAL = 2 * 60 * 60 * 1000;  // 2 часа без активности
-const SLEEP_TIMEOUT_PINNED = 8 * 60 * 60 * 1000;  // 8 часов для закреплённых
-const SLEEP_CHECK_INTERVAL = 60_000;               // проверка раз в минуту
-
-// ── Второй критерий усыпления: ДАВЛЕНИЕ ПАМЯТИ ────────────────────────────────────────────────
-//
-// Замерено против Яндекс.Браузера на одинаковых 20 сайтах (10 закреплённых + 10 обычных):
-// у нас 5688 МБ Working Set против 4428 МБ, при почти равных Private Bytes (2955 против 2795).
-// Равные Private при разном Working Set означают ровно одно: своей памяти мы держим столько же,
-// но НЕ ОТДАЁМ её системе. Причина — вкладки жили по одному таймеру: два часа обычная, восемь
-// закреплённая. При сценарии «десять закреплённых висят весь день» не выгружалось вообще ничего.
-// Chrome и Яндекс вытесняют фоновые вкладки по давлению памяти, а не по часам; здесь то же самое.
-//
-// ⚠️ Бюджет — ДОЛЯ от памяти машины, а не константа: 4 ГБ это потолок на 8-гигабайтном ноутбуке
-// и капля на 64-гигабайтной станции. Границы снизу и сверху нужны обе — без нижней на слабой
-// машине бюджет выродился бы в постоянное усыпление, без верхней на мощной не сработал бы никогда.
-const MEMORY_BUDGET_SHARE = 0.2;
-const MEMORY_BUDGET_MIN = 1024 * 1024 * 1024;      // 1 ГБ
-const MEMORY_BUDGET_MAX = 8 * 1024 * 1024 * 1024;  // 8 ГБ
-// ⚠️ ВТОРОЕ УСЛОВИЕ ДАВЛЕНИЯ: машине должно быть ТЕСНО НА САМОМ ДЕЛЕ.
-//
-// Живая жалоба: «слишком сильно перекрутили выгрузку». Причина была ровно здесь. Бюджет считался
-// только от НАС САМИХ и упирался в потолок (тогда 4 ГБ), а два десятка вкладок берут его на любой
-// современной машине. Дальше браузер оказывался над бюджетом ПОСТОЯННО и выгружал по три вкладки
-// в минуту — при том, что в системе свободны десятки гигабайт и выгружать было незачем.
-//
-// Теперь давление — это КОНЪЮНКЦИЯ: мы над своим бюджетом И системе действительно не хватает
-// памяти. На машине со свободной памятью выгрузка по давлению не срабатывает вовсе; критерий
-// остаётся ровно для того случая, ради которого его и заводили (замер против Яндекс.Браузера:
-// 5688 МБ против 4428 при равных Private Bytes — «мы не отдаём память системе»).
-//
-// ⚠️ os.freemem() на Windows — это GlobalMemoryStatusEx().ullAvailPhys, то есть ДОСТУПНАЯ память
-// вместе со standby-кэшем, а не «нетронутая». Именно её и надо смотреть: «свободной» в узком
-// смысле Windows не держит никогда by design, и порог по ней сработал бы всегда.
-const SYSTEM_FREE_MIN_SHARE = 0.2;
-// ⚠️ Даже под давлением не трогаем вкладку, которую недавно оставили: вернуться и увидеть
-// перезагрузку — хуже, чем лишние сотни мегабайт. Пороги подняты вшестеро против первой версии
-// (было 5 мин / 30 мин): пять минут — это «отошёл за кофе», а не «забыл про вкладку».
-const PRESSURE_MIN_IDLE_NORMAL = 30 * 60 * 1000;
-const PRESSURE_MIN_IDLE_PINNED = 2 * 60 * 60 * 1000;
-// ⚠️ Сколько ещё держать вкладку после того, как в ней в последний раз видели играющее медиа.
-// Без этой отсрочки хватает одной паузы на буферизацию или тишины между треками ровно в момент
-// минутной проверки — и вкладку выгружает посреди просмотра.
-const MEDIA_GRACE = 5 * 60 * 1000;
-// ⚠️ За один проход усыпляем немного. Освобождение памяти не мгновенно, и повторный замер сразу
-// после закрытия вью показал бы, что легче не стало, — а значит, усыпили бы всё подряд. Проверка
-// раз в минуту и так вернётся: лучше медленно спускаться к бюджету, чем разом снести десяток вкладок.
-const PRESSURE_SLEEP_PER_CHECK = 3;
 
 // Кап на размер тела favicon перед base64-кэшированием в сессию (заход C) — без него один
 // «тяжёлый» сайт (нестандартный favicon.ico на сотни КБ) непредсказуемо раздувает session.json.
@@ -1178,15 +1134,13 @@ export class TabManager {
     return kb * 1024;
   }
 
+  // Сами правила — в shared/sleepPolicy.ts (чистая арифметика под тестом), здесь только замеры ОС.
   #memoryBudgetBytes(): number {
-    const share = os.totalmem() * MEMORY_BUDGET_SHARE;
-    return Math.min(MEMORY_BUDGET_MAX, Math.max(MEMORY_BUDGET_MIN, share));
+    return memoryBudgetBytes(os.totalmem());
   }
 
-  /** Доля доступной памяти системы. Меньше SYSTEM_FREE_MIN_SHARE — машине тесно по-настоящему. */
   #systemFreeShare(): number {
-    const total = os.totalmem();
-    return total > 0 ? os.freemem() / total : 1;
+    return systemFreeShare(os.freemem(), os.totalmem());
   }
 
   /**
@@ -1273,8 +1227,8 @@ export class TabManager {
 
       // ── Критерий 1: вкладку давно не открывали ────────────────────────────────────────────
       for (const tab of this.tabMap.values()) {
-        const timeout = this.isTabPinned(tab.id) ? SLEEP_TIMEOUT_PINNED : SLEEP_TIMEOUT_NORMAL;
-        if (now - tab.lastActiveAt < timeout) continue; // и не гоняем дорогой JS-запрос зря
+        // Не гоняем дорогой JS-запрос зря — сперва дешёвая проверка по часам.
+        if (!isIdleForTimer(now - tab.lastActiveAt, this.isTabPinned(tab.id))) continue;
         if (await this.#canSleepNow(tab, protectedIds)) this.sleepTab(tab.id);
       }
 
@@ -1285,30 +1239,23 @@ export class TabManager {
       // действительно тесно. Одного первого не хватало — на любой современной машине браузер
       // висел над бюджетом всегда и выгружал вкладки без всякой на то нужды.
       const budget = this.#memoryBudgetBytes();
-      if (this.#appWorkingSetBytes() <= budget) return;
-      if (this.#systemFreeShare() >= SYSTEM_FREE_MIN_SHARE) return;
+      if (!isUnderMemoryPressure(this.#appWorkingSetBytes(), budget, this.#systemFreeShare())) return;
 
-      // Кандидаты — от самых давних к свежим, и НЕзакреплённые раньше закреплённых: закреплённую
-      // держат открытой намеренно, её выгрузка заметнее. Сортировка по lastActiveAt внутри групп.
-      const candidates = [...this.tabMap.values()]
-        .filter((t) => {
-          const idle = now - t.lastActiveAt;
-          return idle >= (this.isTabPinned(t.id) ? PRESSURE_MIN_IDLE_PINNED : PRESSURE_MIN_IDLE_NORMAL);
-        })
-        .sort((a, b) => {
-          const pa = this.isTabPinned(a.id) ? 1 : 0;
-          const pb = this.isTabPinned(b.id) ? 1 : 0;
-          if (pa !== pb) return pa - pb;
-          return a.lastActiveAt - b.lastActiveAt;
-        });
+      // Кого и в каком порядке — см. pressureCandidates (незакреплённые раньше закреплённых,
+      // внутри групп от самых давних к свежим).
+      const order = pressureCandidates(
+        [...this.tabMap.values()].map((t) => ({ id: t.id, lastActiveAt: t.lastActiveAt, pinned: this.isTabPinned(t.id) })),
+        now,
+      );
 
       let slept = 0;
-      for (const tab of candidates) {
+      for (const { id } of order) {
         if (slept >= PRESSURE_SLEEP_PER_CHECK) break;
         if (this.#appWorkingSetBytes() <= budget) break;
-        if (await this.#canSleepNow(tab, protectedIds)) {
+        const tab = this.tabMap.get(id);
+        if (tab && await this.#canSleepNow(tab, protectedIds)) {
           console.log(`[память] бюджет ${Math.round(budget / 1048576)} МБ превышен — усыпляю вкладку`);
-          this.sleepTab(tab.id);
+          this.sleepTab(id);
           slept += 1;
         }
       }
