@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { IPC } from '../shared/ipc';
 import type { AdBlockState } from '../shared/ipc';
+import { joinScriptlets } from '../shared/scriptletBundle';
 import { normalizeDomain } from '../shared/domain';
 
 type Database = import('better-sqlite3').Database;
@@ -391,7 +392,7 @@ export class AdBlockManager {
       if (process.env.OBLAKO_ADBLOCK_DEBUG) {
         console.log(`[AdBlock] скриптлетов синхронно: ${scripts.length} → ${parsed.hostname ?? '?'}`);
       }
-      return scripts.join('\n;\n');
+      return joinScriptlets(scripts);
     } catch (e) {
       // Молча: сбой адблока не повод ломать загрузку страницы, а рендерер ЖДЁТ этого ответа.
       console.warn('[AdBlock] синхронная выдача скриптлетов не удалась:', (e as Error).message);
