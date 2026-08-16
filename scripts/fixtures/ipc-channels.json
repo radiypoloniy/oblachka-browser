@@ -1,5 +1,6 @@
 [
   "ADBLOCK_ADD_DOMAIN=adblock:add-domain",
+  "ADBLOCK_BOOT_SCRIPTLETS=adblock:boot-scriptlets",
   "ADBLOCK_GET_SITE_BLOCK_COUNT=adblock:get-site-block-count",
   "ADBLOCK_GET_STATE=adblock:get-state",
   "ADBLOCK_IS_WHITELISTED=adblock:is-whitelisted",

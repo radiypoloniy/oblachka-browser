@@ -180,6 +180,14 @@ export const IPC = {
   ADBLOCK_IS_WHITELISTED: 'adblock:is-whitelisted', // renderer → main: домен (или URL) → boolean
   // Заход «Защита» (шаг 3) — per-site счётчик из AdBlockManager.getBlockedCountForDomain (шаг 1).
   ADBLOCK_GET_SITE_BLOCK_COUNT: 'adblock:get-site-block-count', // renderer → main: домен (или URL) → number
+  // ⚠️ СИНХРОННЫЙ канал (ipcRenderer.sendSync), единственный в проекте, и это не небрежность.
+  // Скриптлеты обязаны выполниться РАНЬШЕ инлайн-скриптов страницы, а штатный путь Ghostery —
+  // асинхронный invoke из preload плюс executeJavaScript обратно — всегда опаздывает на два
+  // перехода. Для YouTube это решает всё: ytInitialPlayerResponse с adPlacements ставится ранним
+  // инлайн-скриптом, и set-constant/json-prune обязаны успеть до него. Замер цены блокировки
+  // рендерера: 0,69 мс на YouTube (30 скриптлетов), 0,06–0,09 мс на обычных сайтах.
+  // Зовётся ТОЛЬКО из top-frame гостевой страницы — см. preload-content.ts.
+  ADBLOCK_BOOT_SCRIPTLETS: 'adblock:boot-scriptlets', // гостевая страница → main (sync): код скриптлетов или null
 
   // История посещений
   HISTORY_GET:    'history:get',     // renderer → main: последние N записей

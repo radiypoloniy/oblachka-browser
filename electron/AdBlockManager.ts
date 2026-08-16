@@ -12,6 +12,7 @@ import type { Request as AdblockRequest } from '@ghostery/adblocker-electron';
 import { parse as parseTld } from 'tldts-experimental';
 import fs from 'node:fs';
 import path from 'node:path';
+import { IPC } from '../shared/ipc';
 import type { AdBlockState } from '../shared/ipc';
 import { normalizeDomain } from '../shared/domain';
 
@@ -59,6 +60,9 @@ interface PersistedSettings {
 export class AdBlockManager {
   #blocker: ElectronBlocker | null = null;
   #enabled = true;
+  // webContents.id → адрес, для которого скриптлеты уже отданы синхронно (см. #bootScriptlets).
+  // Нужна ровно для того, чтобы асинхронный первичный вызов не выполнил их вторым заходом.
+  #bootedScripts = new Map<number, string>();
   #whitelist = new Set<string>();
   #sessionBlockCount = 0;
   // Доп. сессии, на которые тоже распространяется блокировка (сейчас — инкогнито-сессия, см.
@@ -87,6 +91,11 @@ export class AdBlockManager {
     // Prebuilt-бинарник с косметикой. Имя отличается от старого ghostery-engine.bin
     // (тот был без косметики) — при первом запуске скачается свежая версия с CDN.
     this.#enginePath = path.join(userData, 'ghostery-engine-prebuilt.bin');
+    // ⚠️ Регистрируем СРАЗУ, не после загрузки движка: канал синхронный, и гостевая страница на
+    // него ЖДЁТ. Пока движок не готов (или выключен) — отвечаем null мгновенно, и страница идёт
+    // дальше без задержки. Слушатель, появившийся позже первой навигации, означал бы ожидание
+    // рендерера на пустом месте.
+    this.registerBootChannel();
   }
 
   // Лежит ли уже готовый движок на диске. Нужно main-процессу, чтобы решить, ЖДАТЬ ли
@@ -340,6 +349,62 @@ export class AdBlockManager {
     });
   }
 
+  // ── Скриптлеты ДО скриптов страницы (см. IPC.ADBLOCK_BOOT_SCRIPTLETS) ────────────────────────
+  //
+  // ⚠️ Зачем понадобился синхронный путь. Штатная схема Ghostery: preload на document_start
+  // асинхронно зовёт main, main отвечает executeJavaScript обратно. Два асинхронных перехода —
+  // и скриптлеты доезжают ПОЗЖЕ инлайн-скриптов страницы, всегда. Баннеры при этом режутся
+  // (сетевой фильтр webRequest синхронный), отсюда обманчивое «списки стоят, а реклама в видео
+  // играет»: на YouTube ytInitialPlayerResponse с adPlacements ставится ранним инлайн-скриптом,
+  // а set-constant/json-prune обязаны успеть ДО него. Замерено стендом: scriptletWasFirst=false.
+  //
+  // Здесь отдаётся ТОЛЬКО код скриптлетов. Стили и DOM-обновления косметики остаются на
+  // асинхронном пути (#injectCosmetics): им document_start не нужен, и синхронить их — чистый
+  // вред, MutationObserver дёргается на каждое изменение страницы.
+  registerBootChannel(): void {
+    ipcMain.removeAllListeners(IPC.ADBLOCK_BOOT_SCRIPTLETS);
+    ipcMain.on(IPC.ADBLOCK_BOOT_SCRIPTLETS, (event, url: string) => {
+      const wc = event.sender;
+      // Пометка живёт до асинхронного первичного вызова, но в инкогнито его не будет вовсе
+      // (косметика там не подключается) — без уборки карта копила бы по записи на вкладку.
+      if (!this.#bootedScripts.has(wc.id)) wc.once('destroyed', () => this.#bootedScripts.delete(wc.id));
+      event.returnValue = this.#bootScriptlets(wc.id, event.frameId, event.processId, url);
+    });
+  }
+
+  #bootScriptlets(senderId: number, frameId: number, processId: number, url: string): string | null {
+    try {
+      const blocker = this.#blocker;
+      if (!blocker || !this.#enabled) return null;
+      if (typeof url !== 'string' || !/^https?:/i.test(url)) return null;
+      if (this.#isWhitelistedDomain(undefined, url)) return null;
+      const parsed = parseTld(url);
+      // Параметры — те же, что у первичного вызова в #injectCosmetics: это и есть первичный вызов,
+      // просто пришедший раньше и синхронно.
+      const { active, scripts } = blocker.getCosmeticsFilters({
+        domain: parsed.domain ?? '',
+        hostname: parsed.hostname ?? '',
+        url,
+        getBaseRules: true,
+        getInjectionRules: true,
+        getExtendedRules: false,
+        getRulesFromHostname: true,
+        getRulesFromDOM: false,
+        callerContext: { frameId, processId },
+      });
+      if (active === false || scripts.length === 0) return null;
+      // Помечаем, что скриптлеты для этого адреса уже отданы: асинхронный первичный вызов придёт
+      // следом и повторил бы их. Дважды выполнить обвязку uBO — тот самый случай, из-за которого
+      // здесь вообще появилась склейка в один скрипт (см. #injectCosmetics).
+      this.#bootedScripts.set(senderId, url);
+      return scripts.join('\n;\n');
+    } catch (e) {
+      // Молча: сбой адблока не повод ломать загрузку страницы, а рендерер ЖДЁТ этого ответа.
+      console.warn('[AdBlock] синхронная выдача скриптлетов не удалась:', (e as Error).message);
+      return null;
+    }
+  }
+
   // Только сетевая блокировка на сессии (для инкогнито) — без enableBlockingInSession и его
   // глобальных хендлеров. blocker.onBeforeRequest/onHeadersReceived решают блок по тем же листам.
   #enableNetworkBlocking(session: Session): void {
@@ -418,6 +483,14 @@ export class AdBlockManager {
     if (active === false) return;
     if (styles.length > 0) {
       event.sender.insertCSS(styles, { cssOrigin: 'user' });
+    }
+    // Скриптлеты этого адреса уже выполнены синхронно, ДО скриптов страницы (#bootScriptlets) —
+    // повторять их нечего. Пометка одноразовая: следующая навигация в этой же вкладке снова
+    // пройдёт через синхронный путь и поставит её заново.
+    const bootedFor = this.#bootedScripts.get(event.sender.id);
+    if (isFirstRun && bootedFor === url) {
+      this.#bootedScripts.delete(event.sender.id);
+      return;
     }
     if (scripts.length > 0) {
       event.sender.executeJavaScript(scripts.join('\n;\n'), true)

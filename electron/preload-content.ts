@@ -25,7 +25,7 @@
 // и Node-совместимые встроенные. Отсюда — вручную продублированные строки, ДОЛЖНЫ совпадать
 // с shared/ipc.ts::IPC.PASSWORDS_FORM_DETECTED/PASSWORDS_CREDENTIAL_SUBMITTED/PASSWORDS_FILL/
 // PASSWORDS_FIELD_ICON_CLICK.
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webFrame } from 'electron';
 
 // ─── Отпечаток браузера: window.chrome ──────────────────────────────────────
 //
@@ -119,6 +119,8 @@ const CH_AUTOFILL_MAP_FIELDS = 'autofill:map-fields';
 const CH_AUTOFILL_PASTE_BLOB = 'autofill:paste-blob';
 // Буфер скопированного со страниц (см. electron/ClipboardBuffer.ts).
 const CH_CLIPBOARD_COPY = 'clipboard:copied';
+// Скриптлеты адблока до скриптов страницы — ДОЛЖЕН совпадать с shared/ipc.ts::IPC.ADBLOCK_BOOT_SCRIPTLETS.
+const CH_ADBLOCK_BOOT = 'adblock:boot-scriptlets';
 
 function isTopFrame(): boolean {
   try {
@@ -126,6 +128,35 @@ function isTopFrame(): boolean {
   } catch {
     return false;
   }
+}
+
+// ─── Скриптлеты адблока — ДО скриптов страницы ──────────────────────────────
+//
+// ⚠️ Единственный синхронный IPC в проекте, и он такой не по недосмотру. Штатный путь Ghostery
+// (асинхронный invoke из preload → executeJavaScript обратно) доезжает до страницы ПОЗЖЕ её
+// инлайн-скриптов — всегда, это два асинхронных перехода. Для YouTube это решает всё: сетевые
+// баннеры режутся (webRequest синхронный), а реклама в самом видео играет, потому что
+// ytInitialPlayerResponse с adPlacements ставится ранним инлайн-скриптом, и set-constant/
+// json-prune обязаны успеть ДО него. sendSync блокирует рендерер, но ровно на время расчёта в
+// main: замерено 0,69 мс на YouTube (30 скриптлетов) и 0,06–0,09 мс на обычных сайтах.
+//
+// ⚠️ ТОЛЬКО top-frame. Страница с десятками iframe иначе получила бы десятки блокировок
+// рендерера подряд; Ghostery по той же причине инжектит косметику тоже только в главный кадр.
+//
+// ⚠️ webFrame.executeJavaScript, а не eval в главном мире: код исполняется на уровне Electron и
+// не упирается в CSP страницы, а eval на том же YouTube был бы ею запрещён.
+//
+// Асинхронный путь при этом НЕ отменяется: на нём остаются стили и DOM-обновления косметики
+// (MutationObserver), которым document_start не нужен вовсе.
+try {
+  if (isTopFrame()) {
+    const code = ipcRenderer.sendSync(CH_ADBLOCK_BOOT, location.href) as string | null;
+    if (typeof code === 'string' && code.length > 0) {
+      void webFrame.executeJavaScript(code, true);
+    }
+  }
+} catch {
+  // Адблок не должен ронять загрузку страницы — как и любой другой хук в этом файле.
 }
 
 // ── Видимость поля — против фантомных/скрытых форм (clickjacking-смежный риск, см. бриф) ──
