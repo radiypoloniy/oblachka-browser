@@ -3984,6 +3984,14 @@ export class TabManager {
     this.repositionViews();
   }
 
+  // Текущий прямоугольник области контента (последний, присланный renderer). Нужен, чтобы засеять
+  // им НОВОЕ окно при выносе вкладки: у свежего окна bounds ещё {0,0,0,0}, и принятая вкладка
+  // висела бы 0×0 (невидимой), пока React нового окна не смонтируется и не пришлёт свой первый
+  // bounds. См. main.ts::moveTabToNewWindow.
+  get contentBounds(): ContentBounds {
+    return this.bounds;
+  }
+
   // Актуальные оконные bounds вьюхи КОНКРЕТНОЙ вкладки — то же вычисление, что repositionViews
   // использует для split. Нужно PasswordAutofillManager.ts: координаты поля пароля, которые
   // приходит из preload-content.ts (getBoundingClientRect гостя), заданы относительно вьюпорта

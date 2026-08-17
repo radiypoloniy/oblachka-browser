@@ -1534,6 +1534,14 @@ function moveTabToNewWindow(from: TabManager, tabId: string): boolean {
   const detached = from.detachTabForMove(tabId);
   if (!detached) return false;
   const target = createWindow('light');
+  // ⚠️ Засеваем область контента от окна-источника ДО приёма вкладки. Иначе у свежего окна bounds
+  // ещё {0,0,0,0}, и принятая вкладка активируется невидимой (0×0), пока не смонтируется его
+  // renderer и его ResizeObserver не пришлёт настоящие размеры — на экране всё это время пустой
+  // контент, будто открылась новая вкладка (живая жалоба, заметнее на медленной машине). Оценка
+  // приблизительная (окна могут быть разного размера) и уточняется первым же bounds нового окна,
+  // но вкладка видна СРАЗУ.
+  const seed = from.contentBounds;
+  if (seed.width > 0 && seed.height > 0) target.tabs.setContentBounds(seed);
   if (target.tabs.adoptTab(detached)) return true;
   // Новое окно вкладку не приняло (страница успела умереть) — не бросаем вью в никуда.
   if (detached.kind === 'live' && !detached.view.webContents.isDestroyed()) {
