@@ -77,9 +77,9 @@
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #5E81AC;
   --app-bg:          #E5E9F0; /* nord5 */
-  --canvas:
-    radial-gradient(135% 130% at 10% 4%, rgba(94,129,172,0.16), transparent 52%),
-    var(--app-bg);
+  /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
+     ровно под сайдбар и читался боковой плашкой. */
+  --canvas:          var(--app-bg);
   --surface:         #FFFFFF;
   --surface-island:  #FFFFFF;
   --surface-solid:   #FFFFFF;
@@ -96,9 +96,9 @@
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #88C0D0;
   --app-bg:          #2E3440; /* nord0 */
-  --canvas:
-    radial-gradient(135% 130% at 10% 4%, rgba(94,129,172,0.20), transparent 52%),
-    var(--app-bg);
+  /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
+     ровно под сайдбар и читался боковой плашкой. */
+  --canvas:          var(--app-bg);
   --surface:         #3B4252; /* nord1 */
   --surface-island:  rgba(59,66,82,0.74);
   --surface-solid:   #3B4252;
@@ -126,9 +126,9 @@
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #B08968;
   --app-bg:          #F1EDE4;
-  --canvas:
-    radial-gradient(135% 130% at 10% 4%, rgba(190,150,90,0.14), transparent 52%),
-    var(--app-bg);
+  /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
+     ровно под сайдбар и читался боковой плашкой. */
+  --canvas:          var(--app-bg);
   --surface:         #FDFBF6;
   --surface-island:  #FDFBF6;
   --surface-solid:   #FDFBF6;
@@ -147,9 +147,9 @@
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #C9A227;
   --app-bg:          #14120F;
-  --canvas:
-    radial-gradient(135% 130% at 10% 4%, rgba(190,150,90,0.10), transparent 52%),
-    var(--app-bg);
+  /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
+     ровно под сайдбар и читался боковой плашкой. */
+  --canvas:          var(--app-bg);
   --surface:         #1C1917; /* Stone 900 */
   --surface-island:  rgba(28,25,23,0.76);
   --surface-solid:   #1C1917;
