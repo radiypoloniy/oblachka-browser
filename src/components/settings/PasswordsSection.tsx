@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, Search, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, Search, ChevronRight, FileUp, Loader2 } from 'lucide-react';
 import type { PasswordMeta, PasswordCopyField } from '../../../shared/ipc';
 import { islandPlate } from '../../styles/island';
 import Toggle from '../Toggle';
@@ -59,6 +59,11 @@ export default function PasswordsSection() {
   const [importPassphrase, setImportPassphrase] = useState('');
   const [importBusy, setImportBusy] = useState(false);
   const [importMsg, setImportMsg] = useState('');
+  // Импорт из другого браузера через CSV — отдельно от зашифрованного бэкапа выше. Это то место,
+  // куда человек идёт за «перенести пароли из Chrome» (см. разбор находимости в истории задач:
+  // сначала попадали в passphrase-импорт нашей копии и получали «повреждён»).
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvMsg, setCsvMsg] = useState('');
 
   function refresh() {
     window.oblako.listPasswords().then(setEntries);
@@ -168,6 +173,25 @@ export default function PasswordsSection() {
       ? `Импортировано записей: ${count}.`
       : 'Не удалось импортировать — неверная фраза, файл не выбран или повреждён.');
     if (count > 0) { setImportPassphrase(''); refresh(); }
+  }
+
+  // Импорт паролей из CSV-экспорта другого браузера (Chrome/Edge/Firefox). Никакой парольной
+  // фразы — это не наш зашифрованный бэкап, а открытый CSV, который человек выгрузил из браузера.
+  async function handleCsvImport() {
+    if (csvBusy) return;
+    setCsvBusy(true); setCsvMsg('');
+    const res = await window.oblako.importPasswordsCsv();
+    setCsvBusy(false);
+    switch (res.status) {
+      case 'canceled':          break; // диалог закрыт — молчим
+      case 'ok':                setCsvMsg(res.inserted > 0
+        ? `Добавлено паролей: ${res.inserted}${res.skipped > 0 ? `, пропущено (уже были) ${res.skipped}` : ''}. Удалите CSV-файл — пароли в нём открытым текстом.`
+        : `Ничего не добавлено — все ${res.skipped} записей уже были в сейфе.`); break;
+      case 'empty':             setCsvMsg('В файле не нашлось паролей — это точно CSV-экспорт паролей из браузера?'); break;
+      case 'read-error':        setCsvMsg('Не удалось прочитать файл.'); break;
+      case 'vault-unavailable': setCsvMsg('Хранилище паролей на этом компьютере недоступно.'); break;
+    }
+    if (res.status === 'ok' && res.inserted > 0) refresh();
   }
 
   // Клиентский фильтр по сайту/логину — список может быть на десятки записей, без поиска нужную
@@ -370,9 +394,35 @@ export default function PasswordsSection() {
         )}
       </div>
 
-      {/* Экспорт / импорт */}
+      {/* Импорт из другого браузера (CSV). Отдельно и ВЫШЕ зашифрованной копии: это то, за чем
+          человек сюда обычно и приходит («перенести пароли из Chrome»). Пароли современного Chrome
+          с диска не читаются (App-Bound), поэтому путь — экспорт CSV из самого браузера. */}
       <div style={{ paddingTop: 20, borderTop: '1px solid var(--divider)' }}>
-        <CapsLabel>Экспорт и импорт</CapsLabel>
+        <CapsLabel>Перенести из другого браузера</CapsLabel>
+        <p style={{ margin: '0 0 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
+          Пароли современного Chrome зашифрованы и напрямую не переносятся. Экспортируйте их в самом
+          браузере: <b>Настройки → Пароли → ⋮ → Экспорт паролей</b> — и выберите полученный
+          CSV-файл здесь.
+        </p>
+        <button
+          onClick={() => void handleCsvImport()}
+          disabled={csvBusy}
+          style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center', opacity: csvBusy ? 0.5 : 1 }}
+        >
+          {csvBusy
+            ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+            : <FileUp size={14} />}
+          Выбрать CSV-файл
+        </button>
+        {csvMsg && (
+          <p style={{ margin: '8px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>{csvMsg}</p>
+        )}
+      </div>
+
+      {/* Экспорт / импорт зашифрованной КОПИИ нашего сейфа (не путать с импортом из браузера выше:
+          здесь наш формат под парольной фразой, туда — открытый CSV чужого браузера). */}
+      <div style={{ paddingTop: 20, borderTop: '1px solid var(--divider)' }}>
+        <CapsLabel>Зашифрованная копия сейфа</CapsLabel>
         <p style={{ margin: '0 0 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
           Ключ сейфа привязан к этому Windows-профилю и не переживёт переустановку — сохраните
           зашифрованную копию отдельной парольной фразой, чтобы не потерять пароли.
