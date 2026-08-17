@@ -1039,14 +1039,28 @@ const selectionRich = (): { html: string; links: CopyLink[] } => {
 
   for (let i = 0; i < sel.rangeCount; i++) {
     const range = sel.getRangeAt(i);
-    box.appendChild(range.cloneContents());
+    const frag = range.cloneContents();
     // ⚠️ Выделение ЦЕЛИКОМ ВНУТРИ ссылки (человек протащил мышью по её подписи) не содержит самого
-    // <a>: клонируется только текст внутри него. Это самый частый случай «скопировал ссылку»,
-    // поэтому охватывающий элемент ищем отдельно, подъёмом от общего предка диапазона.
+    // <a>: cloneContents() поднимает предка, только если тот охвачен ЧАСТИЧНО, а полностью
+    // охваченный не поднимает — клонируется один текст. Это самый частый случай «скопировал
+    // ссылку», поэтому охватывающий элемент ищем сами, подъёмом от общего предка диапазона.
     const node = range.commonAncestorContainer;
     const el = node instanceof Element ? node : node.parentElement;
     const wrapping = el?.closest('a[href]');
+    const wrappingUrl = wrapping ? absoluteUrl(wrapping.getAttribute('href') || '') : '';
     if (wrapping) addLink(wrapping);
+
+    // ⚠️ И ВОЗВРАЩАЕМ ЕГО В РАЗМЕТКУ, а не только в список ссылок. Без этого шага получалось
+    // ровно то, на что жаловались: в поповере ссылка видна и верна (её нашёл addLink выше), а
+    // вставляется голый текст — потому что в html никакого <a> не было.
+    if (wrappingUrl) {
+      const anchor = document.createElement('a');
+      anchor.setAttribute('href', wrappingUrl);
+      anchor.appendChild(frag);
+      box.appendChild(anchor);
+    } else {
+      box.appendChild(frag);
+    }
   }
 
   box.querySelectorAll(STRIP_TAGS).forEach((n) => n.remove());
@@ -1065,6 +1079,9 @@ const selectionRich = (): { html: string; links: CopyLink[] } => {
   });
 
   const html = box.innerHTML;
+  // Разметки в куске нет вовсе (выделили обычный текст) — хранить и класть в буфер ОС нечего:
+  // html-версия голого текста ничего не добавляет, а место вставки от неё может повести себя иначе.
+  if (!html.includes('<')) return { html: '', links };
   return { html: html.length > MAX_COPY_HTML ? '' : html, links };
 };
 
