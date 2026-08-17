@@ -106,9 +106,16 @@ function ClipboardPopoverApp() {
             flex: 1, fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)',
             textTransform: 'uppercase', letterSpacing: 'var(--ls-caps)',
           }}>Скопировано со страниц</span>
-          {entries.length > 0 && (
-            <button title="Очистить всё" onClick={() => { void window.clipboardPopover.clear().then(reload); }}
-              style={iconBtn}><Trash2 size={13} /></button>
+          {/* ⚠️ Кнопка называет то, что делает: закреплённое она НЕ трогает (см. clearCopies).
+              И появляется только когда есть что убирать — при списке из одних закреплённых она
+              была бы кнопкой без действия. Стереть вообще всё, включая закреплённое, умеет
+              выключатель ниже: там обещание другое — «не веди историю». */}
+          {entries.some((e) => !e.pinned) && (
+            <button
+              title={entries.some((e) => e.pinned) ? 'Очистить незакреплённое' : 'Очистить всё'}
+              onClick={() => { void window.clipboardPopover.clear().then(reload); }}
+              style={iconBtn}
+            ><Trash2 size={13} /></button>
           )}
           <button title="Закрыть" onClick={() => window.clipboardPopover.close()} style={iconBtn}><X size={13} /></button>
         </div>
