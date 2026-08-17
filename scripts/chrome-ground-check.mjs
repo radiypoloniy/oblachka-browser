@@ -10,7 +10,7 @@
 //
 // Запуск: npm run chrome-ground-check
 import {
-  buildChromeGround, deepestGround, groundTint, islandColor, withLightness,
+  buildChromeGround, deepestGround, groundTint, withLightness, ISLAND_LIFT,
   relLuminance, contrast, blend, rotateHue, hexToRgb, rgbToHex,
 } from '../shared/chromeGround.ts';
 
@@ -52,16 +52,14 @@ check('светлота задаётся, оттенок держится',
   Math.abs(saturation(withLightness('#007AFF', 0.24)) - saturation('#007AFF')) < 0.01, true);
 
 console.log('\n— светлая тема: тон берётся как есть —');
-check('в светлой теме тон не притемняется',
-  groundTint('#007AFF', false, relLuminance(islandColor('#007AFF', LIGHT.surface))), '#007AFF');
+check('в светлой теме тон не притемняется', groundTint('#007AFF', false), '#007AFF');
 
 console.log('\n— тёмная тема: тон темнеет, но НЕ обесцвечивается —');
 // ⚠️ Прежняя версия умножала каналы на долю — тон терял и светлоту, и цвет, тёмная земля выходила
 // почти чёрной. Теперь светлота задаётся в HSL, а насыщенность сохраняется целиком.
 for (const t of TINTS_DARK) {
-  const island = islandColor(t, DARK.surface);
-  const g = groundTint(t, true, relLuminance(island));
-  check(`тон ${t} темнее острова`, relLuminance(g) < relLuminance(island), true);
+  const g = groundTint(t, true);
+  check(`тон ${t} стал темнее исходного`, relLuminance(g) < relLuminance(t), true);
   check(`тон ${t} сохранил насыщенность`, Math.abs(saturation(g) - saturation(t)) < 0.02, true);
 }
 check('«Сепия» без поправки была бы ярче земли', relLuminance('#C9A227') > relLuminance(DARK.appBg), true);
@@ -75,19 +73,23 @@ for (const dark of [false, true]) {
   const tints = dark ? TINTS_DARK : TINTS_LIGHT;
   for (const tint of tints) {
     for (const amount of AMOUNTS) {
-      const island = islandColor(tint, th.surface);
-      const input = { tint, appBg: th.appBg, amount, islandLum: relLuminance(island), dark };
+      const input = { tint, appBg: th.appBg, surface: th.surface, amount, dark };
       const deepest = deepestGround(input);
-      check(`${dark ? 'тёмная' : 'светлая'} ${tint} ${amount}% — земля НЕ светлее острова`,
-        relLuminance(deepest) > relLuminance(island), false);
+      const island = buildChromeGround(input).island;
+      // Универсальный инвариант: остров ВСЕГДА светлее самого насыщенного места земли.
+      check(`${dark ? 'тёмная' : 'светлая'} ${tint} ${amount}% — остров светлее земли`,
+        relLuminance(island) > relLuminance(deepest), true);
+      // ⚠️ В тёмной теме этого мало: там всё сжато у нуля, и «просто светлее» на глаз не читается.
+      // Подъём строится явно (см. islandOver), поэтому и проверяем его числом.
+      if (dark) check(`  и поднят не меньше чем в ${ISLAND_LIFT} раза`,
+        contrast(island, deepest) >= ISLAND_LIFT * 0.98, true);
     }
   }
 }
 
 console.log('\n— верхняя кромка: она же уходит в полосу системных кнопок —');
 {
-  const island = islandColor('#007AFF', LIGHT.surface);
-  const g = buildChromeGround({ tint: '#007AFF', appBg: LIGHT.appBg, amount: 30, islandLum: relLuminance(island), dark: false });
+  const g = buildChromeGround({ tint: '#007AFF', appBg: LIGHT.appBg, surface: LIGHT.surface, amount: 30, dark: false });
   // ⚠️ top обязан РЕАЛЬНО встречаться в разметке градиента на позиции 0%: если он разъедется с
   // нарисованным, полоса кнопок снова станет чужой заплаткой поверх окна.
   check('цвет кромки стоит в градиенте на 0%', g.backgroundImage.includes(`${g.top} 0%`), true);
@@ -98,8 +100,7 @@ console.log('\n— верхняя кромка: она же уходит в по
 
 console.log('\n— рисунок —');
 {
-  const island = islandColor('#5E81AC', LIGHT.surface);
-  const g = buildChromeGround({ tint: '#5E81AC', appBg: LIGHT.appBg, amount: 18, islandLum: relLuminance(island), dark: false });
+  const g = buildChromeGround({ tint: '#5E81AC', appBg: LIGHT.appBg, surface: LIGHT.surface, amount: 18, dark: false });
   check('нет анимаций и переменных', !/animation|var\(|calc\(/.test(g.backgroundImage), true);
   // ⚠️ transparent — это прозрачный ЧЁРНЫЙ: градиент к нему идёт через серое и даёт грязную кайму.
   check('нет гашения в transparent', g.backgroundImage.includes('transparent'), false);

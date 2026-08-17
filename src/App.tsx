@@ -10,7 +10,7 @@ import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT } from './components/SplitDragCard';
 import { islandPlate, chromeTintStyle, tintedPlateVars } from './styles/island';
-import { buildChromeGround, islandColor, relLuminance } from '../shared/chromeGround';
+import { buildChromeGround } from '../shared/chromeGround';
 import type { Ground } from '../shared/chromeGround';
 import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
 import { subscribeScrim, dimColor } from './scrimState';
@@ -424,19 +424,16 @@ export default function App() {
   // тёмная фон оставался прежним, пока человек не трогал что-нибудь ещё (живая жалоба: «приходится
   // менять тему на другую, чтобы всё пришло в норму»). Эффект стоит ПОСЛЕ того, который применяет
   // тему: порядок объявления = порядок выполнения, тот же приём, что у полосы системных кнопок ниже.
-  const [ground, setGround] = useState<(Ground & { island: string }) | null>(null);
+  const [ground, setGround] = useState<Ground | null>(null);
   useEffect(() => {
     if (!chromeTinted) { setGround(null); return; }
     const tint = resolveColor('var(--sidebar-tint)');
     const appBg = resolveColor('var(--app-bg)');
     const surface = resolveColor('var(--surface)');
     if (!tint || !appBg || !surface) { setGround(null); return; }
-    const island = islandColor(tint, surface);
-    const built = buildChromeGround({
-      tint, appBg, amount: groundPrefs.amount,
-      islandLum: relLuminance(island), dark: dark || activeIncognito,
-    });
-    setGround({ ...built, island });
+    setGround(buildChromeGround({
+      tint, appBg, surface, amount: groundPrefs.amount, dark: dark || activeIncognito,
+    }));
     // themePrefs.palette — ради ПЕРЕЧИТЫВАНИЯ токенов: палитра меняет их, не меняя dark.
   }, [chromeTinted, groundPrefs.amount, dark, activeIncognito, themePrefs.palette]);
 

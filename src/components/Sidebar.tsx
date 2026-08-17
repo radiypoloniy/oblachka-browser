@@ -152,10 +152,23 @@ export function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }
   }
   let inner: React.ReactNode;
   if (tab.faviconUrl) {
+    // ⚠️ Под значком ПОДЛОЖКА, и в тёмной теме она несущая. Логотипы сплошь и рядом рисуют тёмными
+    // штрихами на прозрачном фоне (GitHub, Arc, десятки других), и на тёмном сайдбаре такой значок
+    // пропадает целиком. Для закреплённых это фатально: там кроме значка ничего нет, и вкладка
+    // становится пустым местом.
+    // ⚠️ Подложка ОДНА НА ВСЕ значки, а не «только под тёмными»: определять светлоту favicon
+    // пришлось бы разбором пикселей на каждый значок и каждую загрузку. У непрозрачных логотипов
+    // она всё равно не видна — картинка её закрывает, — поэтому цена ошибки нулевая. Так же
+    // поступают Chrome и Arc.
     inner = (
-      <img src={tab.faviconUrl} width={tileSize} height={tileSize}
-        style={{ borderRadius: 'var(--radius-sm)', objectFit: 'cover' }}
-        alt="" />
+      <span style={{
+        width: tileSize, height: tileSize, borderRadius: 'var(--radius-sm)', flex: 'none',
+        background: 'var(--favicon-plate)', display: 'inline-flex',
+      }}>
+        <img src={tab.faviconUrl} width={tileSize} height={tileSize}
+          style={{ borderRadius: 'var(--radius-sm)', objectFit: 'cover' }}
+          alt="" />
+      </span>
     );
   } else {
     let host = '?';

@@ -113,6 +113,10 @@
   --surface-active:    rgba(0,0,0,0.09);
   --surface-solid:     #FFFFFF;                 /* escape hatch when opacity is required */
 
+  /* Подложка под значком сайта. В светлой теме её нет: тёмный логотип на светлом и так читается.
+     См. FaviconTile в Sidebar.tsx — там же разбор, почему подложка одна на все значки. */
+  --favicon-plate:     transparent;
+
   --divider:           rgba(60,60,67,0.12);
   --divider-strong:    rgba(60,60,67,0.20);
 
