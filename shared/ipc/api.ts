@@ -51,6 +51,9 @@ export interface OblakoApi {
   dismissTrackedMerge(aId: number, bId: number): Promise<void>;
   ungroupTracked(id: number): Promise<void>;
   /** Сколько записей в буфере — для индикатора в тулбаре (0 означает «кнопки нет»). */
+  // Начальный счётчик буфера: подписка ниже приходит только на ИЗМЕНЕНИЯ, а закреплённое
+  // поднимается с диска ещё до неё.
+  getClipboardCount(): Promise<number>;
   onClipboardChanged(cb: (count: number) => void): () => void;
   toggleClipboardPopover(): Promise<void>;
   syncClipboardPopoverBounds(b: ContentBounds): void;

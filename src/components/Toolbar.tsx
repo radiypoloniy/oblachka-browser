@@ -5,7 +5,7 @@ import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorStat
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
-import { islandPlate, clusterBtn, navBtn } from '../styles/island';
+import { islandPlate, islandGroup, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
 
 // Высота тулбара — должна совпадать с CSS-значением (56px).
@@ -547,6 +547,10 @@ export default function Toolbar({
   useEffect(() => window.oblako.onDownloadsPopoverClosed(() => setDownloadsPopoverOpen(false)), []);
 
   useEffect(() => window.oblako.onClipboardChanged(setClipboardCount), []);
+  // ⚠️ И СРАЗУ спрашиваем текущее число, не дожидаясь первого изменения: закреплённое поднимается
+  // с диска при старте, и без этого запроса кнопка буфера оставалась серой до первого копирования
+  // — то есть достать закреплённое, ничего не скопировав, было нельзя.
+  useEffect(() => { void window.oblako.getClipboardCount().then(setClipboardCount); }, []);
   useEffect(() => window.oblako.onClipboardPopoverClosed(() => setClipboardPopoverOpen(false)), []);
 
   const toggleClipboardPopover = useCallback(() => {
@@ -1389,13 +1393,15 @@ export default function Toolbar({
     >
       {/* Кнопки навигации — парящая плашка-остров (glass/тень/скругление из поповера/AI-панели).
           Вписана в текущую высоту тулбара: паддинг плашки не увеличивает высоту кнопок. */}
-      <div className="no-drag" style={{ ...islandPlate, display: 'flex', gap: 2, padding: 3, borderRadius: 'var(--radius-card)' }}>
+      <div className="no-drag" style={islandGroup()}>
         <button title="Назад" disabled={!tab?.canGoBack} onClick={onBack}
-          style={navBtn(!tab?.canGoBack)}><ArrowLeft size={18} /></button>
+          style={clusterBtn({ disabled: !tab?.canGoBack })}><ArrowLeft size={18} /></button>
         <button title="Вперёд" disabled={!tab?.canGoForward} onClick={onForward}
-          style={navBtn(!tab?.canGoForward)}><ArrowRight size={18} /></button>
+          style={clusterBtn({ disabled: !tab?.canGoForward })}><ArrowRight size={18} /></button>
+        {/* ⚠️ 18, а не 17: соседние стрелки восемнадцатые, и на глаз «Обновить» выглядела мельче
+            остальных. Высоту группы это не двигает — та задана явно (ISLAND_HEIGHT). */}
         <button title="Обновить" disabled={isHub} onClick={onReload}
-          style={navBtn(isHub)}><RefreshCw size={17} /></button>
+          style={clusterBtn({ disabled: isHub })}><RefreshCw size={18} /></button>
       </div>
 
       {/* Омнибокс — главный объект полосы, и теперь он занимает всё свободное место между
@@ -1414,9 +1420,11 @@ export default function Toolbar({
           className="no-drag"
           style={{ width: '100%', position: 'relative' }}
         >
+          {/* Высота — из общего ISLAND_HEIGHT, не своим числом: раньше здесь стояло 38, а плашки
+              рядом вырастали из содержимого в 40, и полоса выглядела собранной кое-как. */}
           <div ref={omniboxPillRef} style={{
             ...islandPlate,
-            display: 'flex', alignItems: 'center', gap: 8, height: 38,
+            display: 'flex', alignItems: 'center', gap: 8, height: ISLAND_HEIGHT,
             padding: '0 12px', borderRadius: 'var(--radius-pill)',
           }}>
             {/* ⚠️ Замок — КНОПКА, а не украшение: по нему открывается карточка сайта (соединение,
@@ -1736,7 +1744,7 @@ export default function Toolbar({
           окно не получит AI-панель никогда, и место под неё резервировать незачем), условие про
           СТРАНИЦУ гасит. Тот же приём, что у «Обновить» на хабе. */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginLeft: 'auto' }}>
-        <div style={{ ...islandPlate, display: 'flex', gap: 2, padding: 3, borderRadius: 'var(--radius-card)' }}>
+        <div style={islandGroup()}>
         {/* Полностраничный перевод (см. PageTranslateManager.ts) — только на реальной странице,
             на хабе/истории/настройках переводить нечего. idle: приглушённая иконка, как адблок
             выкл. translating: спиннер, клик игнорируется (та же неактивность по смыслу, что

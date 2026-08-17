@@ -63,6 +63,7 @@
   "CLIPBOARD_CLEAR=clipboard:clear",
   "CLIPBOARD_COPIED=clipboard:copied",
   "CLIPBOARD_COPIED_UI=clipboard:copied-ui",
+  "CLIPBOARD_COUNT=clipboard:count",
   "CLIPBOARD_ENABLED_GET=clipboard:enabled-get",
   "CLIPBOARD_ENABLED_SET=clipboard:enabled-set",
   "CLIPBOARD_LIST=clipboard:list",

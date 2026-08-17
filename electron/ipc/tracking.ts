@@ -45,6 +45,12 @@ export function registerTrackingIpc(d: IpcDeps): void {
     broadcastToChrome(IPC.CLIPBOARD_CHANGED, clipboardBuffer.listCopies().length);
   });
   ipcMain.handle(IPC.CLIPBOARD_LIST, () => clipboardBuffer.listCopies());
+  // ⚠️ Начальный счётчик для кнопки в тулбаре. Без него кнопка оставалась неактивной до первого
+  // копирования — даже когда с диска поднялось ЗАКРЕПЛЁННОЕ: renderer только подписан на
+  // CLIPBOARD_CHANGED, а тот шлётся после изменений, а не при старте. То есть человек не мог
+  // достать закреплённое, ничего предварительно не скопировав, — ровно наоборот тому, ради чего
+  // закрепление и делалось.
+  ipcMain.handle(IPC.CLIPBOARD_COUNT, () => clipboardBuffer.listCopies().length);
   // ⚠️ Кладём в буфер ОС и РАЗМЕТКУ, если она есть. Раньше здесь был только writeText, и повторная
   // копия из списка приезжала голым текстом — «скопировал ссылку, вставил, а ссылки нет». При
   // обычном копировании со страницы text/html кладёт сам Chromium, так что расхождение видел
