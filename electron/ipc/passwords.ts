@@ -3,7 +3,8 @@
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
 import { IPC } from '../../shared/ipc';
-import type { AddressInput, AddressUpdate, CardInput, CardUpdate, PasswordAddInput, PasswordGenerateOptions, PasswordUpdateInput } from '../../shared/ipc';
+import type { AddressInput, AddressUpdate, CardInput, CardUpdate, CsvPasswordImport, PasswordAddInput, PasswordGenerateOptions, PasswordUpdateInput } from '../../shared/ipc';
+import { parseCsvPasswords } from '../../shared/csvPasswords';
 import * as passwordAutofill from '../PasswordAutofillManager';
 import { broadcastToChrome } from '../WindowRegistry';
 import { dialog, ipcMain } from 'electron';
@@ -79,6 +80,34 @@ export function registerPasswordsIpc(d: IpcDeps): void {
     const count = passwords.importVault(passphrase, payload);
     if (count > 0) broadcastToChrome(IPC.PASSWORDS_CHANGED);
     return count;
+  });
+  // Импорт паролей из CSV-экспорта другого браузера (см. shared/csvPasswords.ts — почему CSV, а не
+  // чтение с диска). Диалог выбора файла и разбор целиком здесь; в сейф уходит через тот же
+  // неразрушающий bulkImport, что и импорт с диска (только вставка новых, дедуп по origin+username,
+  // существующий пароль не перезаписывается).
+  ipcMain.handle(IPC.IMPORT_PASSWORDS_CSV, async (e): Promise<CsvPasswordImport> => {
+    const w = winOf(e);
+    if (!w) return { status: 'canceled' };
+    // Сейф мог не подняться (нет safeStorage/нативного модуля) — переносить некуда, честно скажем.
+    if (!passwords.available) return { status: 'vault-unavailable' };
+    const { canceled, filePaths } = await dialog.showOpenDialog(w, {
+      title: 'Импорт паролей из CSV',
+      filters: [{ name: 'CSV-экспорт паролей', extensions: ['csv'] }],
+      properties: ['openFile'],
+    });
+    if (canceled || !filePaths[0]) return { status: 'canceled' };
+    let text: string;
+    try {
+      text = fs.readFileSync(filePaths[0], 'utf8');
+    } catch (err) {
+      console.error('[Passwords] CSV-импорт: не удалось прочитать файл:', (err as Error).message);
+      return { status: 'read-error' };
+    }
+    const rows = parseCsvPasswords(text);
+    if (rows.length === 0) return { status: 'empty' };
+    const { inserted, skipped } = passwords.bulkImport(rows);
+    if (inserted > 0) broadcastToChrome(IPC.PASSWORDS_CHANGED);
+    return { status: 'ok', inserted, skipped };
   });
 
   // Менеджер паролей, шаг 2 — действия из поповера индикатора (всегда про активную вкладку,

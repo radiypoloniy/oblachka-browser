@@ -226,6 +226,11 @@ export const IPC = {
   // выбором пользователя, что переносить (диалог импорта + онбординг первого запуска).
   IMPORT_LIST_SOURCES: 'import:list-sources', // renderer → main: ImportSource[] (браузер+профиль + доступные типы)
   IMPORT_RUN:          'import:run',          // renderer → main: (sourceId, dataTypes[]) -> ImportRunResult
+  // Пароли из CSV-экспорта другого браузера. Отдельный путь от IMPORT_RUN: пароли Chrome 127+
+  // (App-Bound v20) с диска физически не читаются без прав SYSTEM, а лезть туда — техника
+  // инфостилера; санкционированный путь — экспорт CSV из самого браузера. Диалог выбора файла —
+  // целиком в main. См. shared/csvPasswords.ts.
+  IMPORT_PASSWORDS_CSV: 'import:passwords-csv', // renderer → main: () -> CsvPasswordImport
   // Браузер по умолчанию (см. electron/DefaultBrowser.ts). ⚠️ Назначить себя программно нельзя —
   // REQUEST только открывает системный выбор, решение принимает человек.
   // Спрашивать ли папку для каждой загрузки (по умолчанию нет, см. electron/DownloadManager.ts).

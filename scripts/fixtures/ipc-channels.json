@@ -177,6 +177,7 @@
   "HUB_CHAT_RESUME_SESSION=hub-chat:resume-session",
   "HUB_CHAT_SEND=hub-chat:send",
   "IMPORT_LIST_SOURCES=import:list-sources",
+  "IMPORT_PASSWORDS_CSV=import:passwords-csv",
   "IMPORT_RUN=import:run",
   "MODEL_CATALOG_GET=model-catalog:get",
   "MODEL_DEFAULT_GET=model:default-get",

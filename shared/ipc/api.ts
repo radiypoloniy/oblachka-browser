@@ -3,7 +3,7 @@ import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProg
 import type { ImagePreset } from '../imagePresets';
 import type { AutomationRule } from '../rules';
 import type { ContentBounds, FindResult, OrganizeCluster, OrganizeProposal, RuleParseOutcome, SearchChipCandidate, SearchChipsConfig, SidebarNode, SpecialTabKind, SyncState, TabState } from './core';
-import type { BackfillProgress, BookmarkEntry, BookmarkFolderProposal, BookmarkImportResult, BookmarkImportSource, BookmarkNode, DayDigestState, HistoryClearPeriod, HistoryContentCoverage, HistoryEntry, ImportDataType, ImportRunResult, ImportSource, SemanticSearchResult, SmartSearchResponse, TitleBarOpts } from './history';
+import type { BackfillProgress, BookmarkEntry, BookmarkFolderProposal, BookmarkImportResult, BookmarkImportSource, BookmarkNode, DayDigestState, HistoryClearPeriod, HistoryContentCoverage, HistoryEntry, CsvPasswordImport, ImportDataType, ImportRunResult, ImportSource, SemanticSearchResult, SmartSearchResponse, TitleBarOpts } from './history';
 import type { PasswordAddInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, PasswordMeta, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
 import type { AdBlockState, DownloadEntry, MatchSuggestion, OmniboxPanel, OmniboxRecommendEdit, PageChangesResult, ParsedAddressPart, ProductState, RecommendedSite, SmartTabHit, StuffHit, SuggestDropdownItem, TrackedProduct, TrackingEvent } from './omnibox';
 import type { BangDefWire, BangsSnapshot, BergamotStatus, CatalogEntry, DeleteModelResult, DerivedBangCandidate, DownloadProgress, HardwareSnapshot, HubChatMessage, HubChatOutcome, HubChatSessionMeta, HubMode, ImportBangsResult, InstalledModel, ModelDownloadSpec, ModelLoadMode, PageTranslateProgress, PageTranslateState, PermKey, PermissionRecord, SetDefaultModelResult, Skill, TranslationEngineId, UpdateStatus } from './ai';
@@ -242,6 +242,9 @@ export interface OblakoApi {
   // запуска (см. electron/browserImport/). Отдельно от bookmark-only каналов выше.
   listImportSources(): Promise<ImportSource[]>;
   runImport(sourceId: string, dataTypes: ImportDataType[]): Promise<ImportRunResult>;
+  // Пароли из CSV-экспорта другого браузера — единственный путь для Chrome 127+ (App-Bound v20),
+  // чьи пароли с диска не читаются без прав SYSTEM. Диалог выбора файла открывает main.
+  importPasswordsCsv(): Promise<CsvPasswordImport>;
   // «Навести порядок», вторая половина: имена вкладок по содержимому. Прогресс приходит
   // отдельным push'ем, сами имена — обычным SYNC_CHANGED по мере готовности.
   renameAllTabs(): Promise<void>;

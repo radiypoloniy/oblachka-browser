@@ -115,6 +115,17 @@ export interface ImportTypeResult {
 // импортёр этого типа упал целиком (в отличие от {inserted:0} — отработал, но нечего было переносить).
 export type ImportRunResult = Partial<Record<ImportDataType, ImportTypeResult | null>>;
 
+// Результат импорта паролей из CSV-файла (см. shared/csvPasswords.ts, IPC.IMPORT_PASSWORDS_CSV).
+// Отдельный от ImportTypeResult размеченный союз: у CSV-пути есть исходы, которых нет у чтения с
+// диска, — человек мог закрыть диалог выбора файла, сейф может быть недоступен, файл может
+// оказаться не тем CSV. Каждый исход обязан быть обработан в UI явно.
+export type CsvPasswordImport =
+  | { status: 'canceled' }          // диалог выбора файла закрыт — отчёта не показываем вовсе
+  | { status: 'vault-unavailable' } // сейф недоступен (нет safeStorage) — переносить некуда
+  | { status: 'read-error' }        // файл не прочитался
+  | { status: 'empty' }             // прочитан, но ни одной пары url+password (не тот CSV/пустой)
+  | { status: 'ok'; inserted: number; skipped: number };
+
 // Заход G, блок 6/7 — результат векторного поиска. id/lastVisit/visitCount присутствуют
 // намеренно (не только url/title/score) — так результат напрямую совместим с HistoryEntry
 // и сливается в тот же byUrl-конвейер Toolbar.tsx::buildSuggestions, что и обычный поиск

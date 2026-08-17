@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, Download, Loader2, Check } from 'lucide-react';
-import type { ImportSource, ImportDataType, ImportRunResult, ImportTypeResult } from '../../shared/ipc';
+import { X, Download, Loader2, Check, KeyRound, FileUp } from 'lucide-react';
+import type { ImportSource, ImportDataType, ImportRunResult, ImportTypeResult, CsvPasswordImport } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
 import { useScrim } from '../scrimState';
@@ -31,6 +31,21 @@ function resultLine(type: ImportDataType, res: ImportTypeResult | null): string 
   return `${label}: ${parts.join(', ')}`;
 }
 
+// Человекочитаемый итог импорта паролей из CSV. status 'canceled' сюда не доходит — его гасит
+// handleCsv (отмена диалога не результат).
+function csvResultLine(res: Exclude<CsvPasswordImport, { status: 'canceled' }>): string {
+  switch (res.status) {
+    case 'ok': {
+      const parts = [`добавлено ${res.inserted}`];
+      if (res.skipped > 0) parts.push(`пропущено (уже были) ${res.skipped}`);
+      return `Пароли из CSV: ${parts.join(', ')}`;
+    }
+    case 'empty':             return 'В файле не нашлось паролей — это точно CSV-экспорт паролей из браузера?';
+    case 'read-error':        return 'Не удалось прочитать файл.';
+    case 'vault-unavailable': return 'Хранилище паролей на этом компьютере недоступно.';
+  }
+}
+
 export default function ImportDialog({ onClose }: ImportDialogProps) {
   useScrim(); // затемняем и нативную зону системных кнопок, см. src/scrimState.ts
   const [sources, setSources] = useState<ImportSource[] | null>(null); // null — ещё грузим
@@ -40,6 +55,9 @@ export default function ImportDialog({ onClose }: ImportDialogProps) {
   const [checked, setChecked] = useState<Set<ImportDataType>>(new Set());
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<ImportRunResult | null>(null);
+  // Импорт паролей из CSV — свой путь, свой прогресс и свой результат (см. handleCsv).
+  const [csvRunning, setCsvRunning] = useState(false);
+  const [csvResult, setCsvResult] = useState<CsvPasswordImport | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -80,6 +98,18 @@ export default function ImportDialog({ onClose }: ImportDialogProps) {
       setReport(result);
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function handleCsv() {
+    if (csvRunning) return;
+    setCsvRunning(true);
+    try {
+      const res = await window.oblako.importPasswordsCsv();
+      // Отмена диалога выбора файла — не результат, ничего не показываем.
+      setCsvResult(res.status === 'canceled' ? null : res);
+    } finally {
+      setCsvRunning(false);
     }
   }
 
@@ -225,6 +255,47 @@ export default function ImportDialog({ onClose }: ImportDialogProps) {
               )}
             </>
           )}
+
+          {/* Пароли из CSV — отдельный путь, всегда доступен. Chrome 127+ шифрует пароли схемой,
+              которую с диска не прочитать (см. shared/csvPasswords.ts), поэтому единственный
+              честный способ перенести их — экспорт CSV из самого браузера. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, borderTop: '1px solid var(--divider)' }}>
+            <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 'var(--ls-caps)' }}>
+              Пароли из файла
+            </span>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <KeyRound size={16} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }} />
+              <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', lineHeight: 1.5 }}>
+                Пароли современного Chrome зашифрованы и с диска не переносятся. Экспортируйте их в
+                самом браузере: <b>Настройки → Пароли → ⋮ → Экспорт паролей</b> — и выберите
+                полученный CSV-файл здесь.
+              </span>
+            </div>
+            <button
+              onClick={() => void handleCsv()}
+              style={{
+                ...btnGhost, alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 8,
+                opacity: csvRunning ? 0.5 : 1,
+              }}
+            >
+              {csvRunning
+                ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+                : <FileUp size={14} />}
+              Выбрать CSV-файл
+            </button>
+            {csvResult && csvResult.status !== 'canceled' && (
+              <div style={{ ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '10px 14px' }}>
+                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
+                  {csvResultLine(csvResult)}
+                </div>
+                {csvResult.status === 'ok' && csvResult.inserted > 0 && (
+                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4 }}>
+                    Удалите CSV-файл после импорта — пароли в нём лежат открытым текстом.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Подвал */}
