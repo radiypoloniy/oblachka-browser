@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
-import { Shield, Sparkles, Check, Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Shield, Sparkles, Check, Loader2, ArrowRight, ArrowLeft, FileUp } from 'lucide-react';
 import type {
   ImportSource, ImportDataType, ImportRunResult, ImportTypeResult,
   CatalogEntry, InstalledModel, DownloadProgress, BackfillProgress,
@@ -203,6 +203,10 @@ export default function Onboarding({ onFinish }: Props) {
   const [checked, setChecked] = useState<Set<ImportDataType>>(new Set());
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<ImportRunResult | null>(null);
+  // CSV-путь для паролей прямо в мастере: пароли современного Chrome с диска не переносятся
+  // (App-Bound v20), поэтому после отчёта с нулём паролей предлагаем выбрать CSV, не выходя отсюда.
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvMsg, setCsvMsg] = useState('');
 
   // Модель: каталог и уже установленное. Оба грузим заранее, на слайдах, — как и источники
   // импорта: к своему шагу список обязан быть готов, а не появляться с задержкой.
@@ -311,8 +315,26 @@ export default function Onboarding({ onFinish }: Props) {
     try {
       const types = selected.dataTypes.filter((t) => checked.has(t));
       setReport(await window.oblako.runImport(selected.id, types));
+      setCsvMsg('');
     } finally {
       setRunning(false);
+    }
+  }
+
+  // Импорт паролей из CSV-экспорта браузера — тот же путь, что в разделе Пароли. Без парольной фразы.
+  async function handleCsvImport() {
+    if (csvBusy) return;
+    setCsvBusy(true); setCsvMsg('');
+    const res = await window.oblako.importPasswordsCsv();
+    setCsvBusy(false);
+    switch (res.status) {
+      case 'canceled':          break;
+      case 'ok':                setCsvMsg(res.inserted > 0
+        ? `Перенесено паролей: ${res.inserted}. Удалите CSV-файл — пароли в нём открытым текстом.`
+        : `Ничего не добавлено — все ${res.skipped} записей уже были.`); break;
+      case 'empty':             setCsvMsg('В файле не нашлось паролей — это точно CSV-экспорт паролей?'); break;
+      case 'read-error':        setCsvMsg('Не удалось прочитать файл.'); break;
+      case 'vault-unavailable': setCsvMsg('Хранилище паролей недоступно.'); break;
     }
   }
 
@@ -414,9 +436,14 @@ export default function Onboarding({ onFinish }: Props) {
           </div>
         </div>
 
-        {/* Тело шага переноса. На слайдах пусто — рассказ не должен прокручиваться. */}
+        {/* Тело шага переноса. На слайдах пусто — рассказ не должен прокручиваться.
+            ⚠️ flex+minHeight:0 обязательны: карточка с overflow:hidden и фиксированной maxHeight
+            обрезала бы длинный отчёт (у Chrome-аккаунта это отчёт + блок CSV), а голый overflowY:auto
+            без ограниченной высоты не прокручивается — тело просто вылезало за обрез, и кнопка
+            «Выбрать CSV-файл» уходила под край. Теперь тело занимает место между шапкой и подвалом
+            и прокручивается внутри себя. */}
         {importStep && (
-          <div style={{ padding: '18px 28px 0', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ flex: 1, minHeight: 0, padding: '18px 28px 6px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {sources === null ? (
               <Muted>Ищем браузеры на компьютере…</Muted>
             ) : sources.length === 0 ? (
@@ -492,6 +519,36 @@ export default function Onboarding({ onFinish }: Props) {
                         ✅ {resultLine(type, report[type] ?? null)}
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* Пароли просили, но перенеслось ноль — почти всегда это v20 (App-Bound) свежего
+                    Chrome, диском их не взять. Не бросаем человека с необъяснённым нулём, а прямо
+                    здесь даём рабочий путь через CSV — иначе он уйдёт из мастера без паролей и не
+                    поймёт почему. */}
+                {report && 'passwords' in report && (report.passwords?.inserted ?? 0) === 0 && (
+                  <div style={{
+                    ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '12px 14px',
+                    display: 'flex', flexDirection: 'column', gap: 8,
+                  }}>
+                    <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', lineHeight: 1.5 }}>
+                      Пароли современного Chrome зашифрованы и напрямую не переносятся. Экспортируйте
+                      их в браузере (<b>Настройки → Пароли → ⋮ → Экспорт паролей</b>) и выберите
+                      CSV-файл здесь.
+                    </span>
+                    <button
+                      onClick={() => void handleCsvImport()}
+                      disabled={csvBusy}
+                      style={{ ...bigGhost, alignSelf: 'flex-start', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 7, opacity: csvBusy ? 0.5 : 1 }}
+                    >
+                      {csvBusy
+                        ? <Loader2 size={15} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+                        : <FileUp size={15} />}
+                      Выбрать CSV-файл
+                    </button>
+                    {csvMsg && (
+                      <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>{csvMsg}</span>
+                    )}
                   </div>
                 )}
               </>
