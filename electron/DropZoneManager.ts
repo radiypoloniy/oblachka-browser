@@ -166,21 +166,6 @@ function cursorInWindow(st: WindowDropZones): { x: number; y: number } | null {
   return { x: cursor.x - wb.x, y: cursor.y - wb.y };
 }
 
-// Какое окно Oblako сейчас под курсором. Своё проверяем первым: при перекрытии окон человек,
-// не уводивший мышь со своего окна, ожидает обычного исхода, а не переноса.
-// ⚠️ Настоящего порядка окон по глубине Electron не отдаёт, поэтому среди ЧУЖИХ берём первое
-// подходящее. Ошибка возможна только когда два окна лежат друг на друге и курсор попал в
-// пересечение — там же, где и человеку не очевидно, куда он целится.
-function windowUnderCursor(source: WindowDropZones): WindowDropZones | null {
-  if (cursorInWindow(source)) return source;
-  for (const ctx of allContexts()) {
-    if (ctx.win.id === source.win.id) continue;
-    const st = stateFor(ctx.win);
-    if (cursorInWindow(st)) return st;
-  }
-  return null;
-}
-
 // Раскладка зон окна — один источник и для попадания курсора, и для картинки в оверлее.
 // Прямоугольники в ОКОННЫХ координатах (как st.content); в координаты оверлея их переводит
 // zonesForOverlay ниже.
@@ -359,19 +344,41 @@ export function setSwapThumb(win: BrowserWindow, thumb: string | null): void {
   post(perWindow.get(win.id) ?? null, 'dropzones:thumb', thumb);
 }
 
+// Другое окно Oblako под курсором — НЕЗАВИСИМО от того, лежит ли под ним же источник. Нужно, чтобы
+// вернуть вкладку в родное окно, ПЕРЕКРЫТОЕ оторванным (см. adoptOther в updateDrag): решение
+// «источник или чужое окно» принимает сам updateDrag по зоне, а не эта функция.
+// ⚠️ Настоящего порядка окон по глубине Electron не отдаёт, поэтому среди чужих берём первое
+// подходящее. Ошибка возможна только когда два ЧУЖИХ окна лежат друг на друге и курсор попал в их
+// пересечение — там же, где и человеку не очевидно, куда он целится.
+function otherWindowUnderCursor(source: WindowDropZones): WindowDropZones | null {
+  for (const ctx of allContexts()) {
+    if (ctx.win.id === source.win.id) continue;
+    const st = stateFor(ctx.win);
+    if (cursorInWindow(st)) return st;
+  }
+  return null;
+}
+
 // Один тик слежения: где курсор, что из этого следует и в каком окне это рисовать.
 function updateDrag(): void {
   if (!drag) return;
-  const under = windowUnderCursor(drag.source);
-  // Курсор вне любого окна Oblako — по-прежнему «вынести в новое окно»: привычный жест на
-  // нескольких мониторах, и он не должен исчезнуть из-за появления зон.
-  const overSource = under === null || under === drag.source;
-  const shouldShowIn = overSource ? drag.source : under;
-  const zone: ZoneVisual | null = overSource
-    ? (under === null ? 'window' : zoneInSource(drag.source))
-    : 'adopt';
+  const inSource = !!cursorInWindow(drag.source);
+  const other = otherWindowUnderCursor(drag.source);
+  // Зона внутри источника (если курсор в нём). 'window' здесь = «вынести в новое окно», null —
+  // курсор над сайдбаром/тулбаром источника (обычное переупорядочивание).
+  const srcZone = inSource ? zoneInSource(drag.source) : null;
+  // ⚠️ Курсор в источнике, его зона — «новое окно», а под курсором ЛЕЖИТ другое окно Oblako:
+  // предпочитаем перенос в него. Иначе вернуть вкладку в родное окно, перекрытое оторванным, можно
+  // было только уведя курсор в НЕперекрытую его часть — узкая мишень, отсюда живая жалоба «вкладка
+  // очень неохотно возвращается». Зоны split/reorder внутри источника при этом НЕ трогаем: там
+  // перенос не подразумевается, и красть вкладку у человека, просто двигающего её по своему окну,
+  // нельзя (ровно то, ради чего источник и проверялся первым).
+  // Курсор вне любого окна — по-прежнему «новое окно»: привычный жест на нескольких мониторах.
+  const adoptOther = other !== null && (!inSource || srcZone === 'window');
+  const shouldShowIn = adoptOther ? other : drag.source;
+  const zone: ZoneVisual | null = adoptOther ? 'adopt' : (inSource ? srcZone : 'window');
 
-  drag.target = overSource ? null : under;
+  drag.target = adoptOther ? other : null;
 
   if (drag.shown !== shouldShowIn) {
     // Гасим подсветку на прежнем окне ПЕРЕД снятием: вью переживает драг и в следующий раз
