@@ -7,10 +7,10 @@
 // приходит через onContext при переключении/навигации/(пере)открытии панели. Свой собственный
 // messages-стейт здесь — витрина: пополняется оптимистично при отправке и полностью ЗАМЕНЯЕТСЯ
 // целиком при каждом onContext (переключили вкладку → другая лента, не дописывание к старой).
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Plus } from 'lucide-react';
+import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Plus, ChevronDown } from 'lucide-react';
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 import { AppsMode, loadWallpaper, saveWallpaper, wallpaperBackground } from './components/aiApps';
@@ -32,6 +32,11 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
 }
+
+// Запас высоты у схлопнутого ряда подсказок: обрезка идёт по нижнему краю первой строки, и без
+// запаса она срезала бы --shadow-chip у самих чипов. Меньше зазора между строками (6) — иначе в
+// щель заглядывала бы вторая строка.
+const COLLAPSED_SLACK = 4
 
 // Форма Skill из electron/SkillsStore.ts — зеркалим локально, тот же приём, что у ChatOutcome
 // выше (ad-hoc канал, не через shared/ipc.ts).
@@ -338,6 +343,104 @@ function AiPanel() {
     }
   }
 
+  // ── Ряд кнопок-подсказок ──────────────────────────────────────────────────────────────────
+  // Беседа началась — ряд схлопывается до ОДНОЙ строки, чтобы не отъедать высоту у ленты. Но
+  // схлопывается именно ВИЗУАЛЬНО: перенос по строкам остаётся, лишние строки просто обрезаны, и
+  // кнопка-шеврон разворачивает их все разом.
+  // ⚠️ Прокрутки вбок здесь БЫТЬ НЕ ДОЛЖНО, хотя напрашивается. Скиллов у человека может быть и
+  // десять: горизонтальная полоса тогда даёт доступ к трём, а остальные прячет за жестом, которого
+  // в узкой панели не видно. Плюс `overflow-x: auto` в одиночку не работает как задумано — по CSS
+  // вторая ось перестаёт быть `visible` и тоже становится `auto`, ряд превращается в скроллер по
+  // ДВУМ осям, а вертикальное колесо Chromium переводит в горизонтальную прокрутку только для
+  // строго горизонтальных. Живой симптом: «кнопки не прокручиваются вообще».
+  const chipsCompact = messages.length > 0
+  // Пока идёт генерация, подсказка не должна запускать второй запрос поверх первого; вне вкладки
+  // действовать не над чем. Оба случая гасят кнопку одинаково — она видна, но не нажимается.
+  const chipsBusy = !tabId || sending
+
+  // Высота ОДНОЙ строки чипов и признак «строк больше одной». И то и другое меряется, а не
+  // задаётся числом: высота чипа зависит от --fs-xs и от наличия иконки, а сколько их влезает в
+  // строку — от ширины панели, которую человек тянет мышью.
+  const chipsElRef = useRef<HTMLDivElement | null>(null)
+  const chipsRoRef = useRef<ResizeObserver | null>(null)
+  const [chipRowH, setChipRowH] = useState(0)
+  const [chipsFullH, setChipsFullH] = useState(0)
+  const [chipsOverflow, setChipsOverflow] = useState(false)
+  const [chipsExpanded, setChipsExpanded] = useState(false)
+
+  const measureChips = useCallback(() => {
+    const el = chipsElRef.current
+    if (!el) return
+    const first = el.firstElementChild as HTMLElement | null
+    const last = el.lastElementChild as HTMLElement | null
+    if (!first || !last) return
+    // ⚠️ «Строк больше одной» считается по РАСКЛАДКЕ ДЕТЕЙ, а не по scrollHeight ряда. Схлопнутый
+    // ряд зажат max-height и обрезан overflow:hidden, и что при этом считать высотой его
+    // содержимого — вопрос тонкий; offsetTop детей от обрезки не зависит вовсе, чипы стоят там же,
+    // просто не видны. Перенос заполняет строки по порядку, поэтому последний чип всегда в
+    // последней строке — сравнения первого с последним достаточно.
+    const rowH = first.offsetHeight
+    const fullH = last.offsetTop - first.offsetTop + last.offsetHeight
+    const multiRow = last.offsetTop > first.offsetTop
+    if (rowH) setChipRowH((prev) => (prev === rowH ? prev : rowH))
+    setChipsFullH((prev) => (prev === fullH ? prev : fullH))
+    setChipsOverflow((prev) => (prev === multiRow ? prev : multiRow))
+  }, [])
+
+  // ⚠️ Ref-КОЛБЭК, а не useRef, и наблюдатель живёт в нём же — иначе фактчек ломает весь ряд.
+  // Плашка подтверждения фактчека стоит в ТОЙ ЖЕ позиции тернарника, что и ряд подсказок, а React
+  // при совпадении типа узла переиспользует его, а не создаёт новый. Прежняя версия захватывала
+  // элемент в замыкание эффекта, и ResizeObserver оставался висеть на этом общем узле: смена
+  // размера «ряд → плашка» будила его, и он мерил ПЛАШКУ — за высоту строки принималась высота
+  // абзаца про приватность. Мусорные числа жили дальше, потому что после возврата ряда ни одна
+  // зависимость эффекта не менялась (беседа уже начата — chipsCompact и так true). Живой симптом:
+  // после фактчека шеврон пропадал и возвращался только при переходе на другую страницу, где
+  // onContext сбрасывает ленту и тем самым дёргает пересчёт.
+  const attachChips = useCallback((el: HTMLDivElement | null) => {
+    chipsRoRef.current?.disconnect()
+    chipsRoRef.current = null
+    chipsElRef.current = el
+    if (!el) return // ряд сейчас не показан (его место занято плашкой) — мерить нечего
+    // Ширину панели тянут мышью, и от неё зависит, сколько чипов влезло в строку.
+    const ro = new ResizeObserver(measureChips)
+    ro.observe(el)
+    chipsRoRef.current = ro
+    measureChips()
+  }, [measureChips])
+
+  // Содержимое ряда меняется и без ресайза: пришли скиллы, подключили ключ Gemini, развернули
+  // список, началась беседа. setState внутри срабатывает только на изменение — цикла нет.
+  useLayoutEffect(measureChips, [measureChips, skills, factCheckAvailable, chipsCompact, chipsExpanded])
+
+  // "+" — вход в Settings сразу на разделе AI (редактор скиллов появится там отдельным коммитом).
+  // Не зависит от tabId (настройки — не действие над страницей), поэтому всегда активна.
+  // ⚠️ Рисуется в ДВУХ разных местах разметки, поэтому собран здесь: в схлопнутом ряду — в
+  // несдвигаемом правом хвосте (иначе уехал бы за обрез), в развёрнутом — последним элементом
+  // общего потока (иначе висел бы в конце ПЕРВОЙ строки, хотя относится ко всему списку).
+  // Синяя заливка (не outline-чип, как соседи) — та же пара, что у Send/«Продолжить» ниже (filled
+  // accent), но другим токеном фона: попросили точный #007AFF, такого токена нет НИГДЕ в теме
+  // (проверено src/styles/tokens/colors.css и весь src/styles — есть только --blue-500=#2280C5=
+  // --accent, другой хекс, дизайн-система из другого синего). TODO(цвет): имя-заглушка --system с
+  // фоллбэком на --accent — подставить реальный токен синей заливки под #007AFF, когда он появится.
+  const settingsChip = (
+    <button
+      onClick={() => window.aiPanel.openSettings('ai')}
+      title="Настроить AI"
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0,
+        padding: '6px 10px',
+        borderRadius: 'var(--radius-chip)',
+        border: 'none',
+        background: 'var(--system, var(--accent))',
+        color: 'var(--text-on-accent)',
+        cursor: 'pointer',
+      }}
+    >
+      <Plus size={13} />
+    </button>
+  )
+
   return (
     <div className="ai-panel-root" style={{
       // Верх/низ = SHELL_MARGIN — совпадает с верхом/низом split-острова (см. комментарий выше).
@@ -569,11 +672,13 @@ function AiPanel() {
           })()}
         </div>
 
-        {/* Кнопки-подсказки — только пока беседа пуста (как у Яндекса, над полем ввода). Как только
-            пришло первое сообщение, ряд исчезает — тот же messages.length, что гасит плейсхолдер
-            в ленте выше. Плашка приватности фактчека занимает то же место — взаимоисключающе с
-            рядом кнопок (см. showFactCheckConfirm). */}
-        {messages.length === 0 && !sending && (
+        {/* Кнопки-подсказки над полем ввода.
+            ⚠️ Раньше ряд жил под условием `messages.length === 0 && !sending` — то есть скилл был
+            буквально ОДНОРАЗОВЫЙ: попросил саммари, и попросить второй раз уже нечем, кнопки
+            исчезли вместе с первым же ответом. Теперь ряд не исчезает никогда, а в начатой беседе
+            переходит в компактный вид (chipsCompact выше). Плашка приватности фактчека занимает
+            то же место — она по-прежнему взаимоисключающа с рядом (см. showFactCheckConfirm). */}
+        {(
           showFactCheckConfirm ? (
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 8,
@@ -613,18 +718,41 @@ function AiPanel() {
               </div>
             </div>
           ) : (
+            // Внешняя строка: слева переносящаяся область чипов, справа НЕСДВИГАЕМЫЙ хвост
+            // (шеврон + настройки). Хвост вынесен из потока чипов намеренно — попав в перенос, он
+            // уезжал бы во вторую строку и в схлопнутом виде становился недоступен, а это
+            // единственные две кнопки, которые обязаны быть под рукой всегда.
             <div style={{
-              display: 'flex', flexWrap: 'wrap', gap: 6,
+              display: 'flex', alignItems: 'flex-start', gap: 6,
               padding: `0 var(--pad-island)`,
               marginBottom: 8,
               flexShrink: 0,
             }}>
+            <div
+              ref={attachChips}
+              style={{
+                flex: '1 1 auto', minWidth: 0,
+                display: 'flex', flexWrap: 'wrap', gap: 6,
+                // Схлопнуто — ровно одна строка; развёрнуто — измеренная полная высота (не
+                // `undefined`: к нему max-height не анимируется, ряд бы прыгал); пустая беседа —
+                // без ограничения вовсе. Пока высота не измерена, ограничения тоже нет: лучше
+                // кадр полной высоты, чем кадр со срезанными наполовину кнопками.
+                maxHeight: !chipsCompact ? undefined
+                  : chipsExpanded ? (chipsFullH ? chipsFullH + COLLAPSED_SLACK : undefined)
+                    : (chipRowH ? chipRowH + COLLAPSED_SLACK : undefined),
+                overflow: chipsCompact ? 'hidden' : 'visible',
+                transition: 'max-height var(--dur-base) var(--ease-standard)',
+              }}
+            >
               {/* Перевести — спец-кнопка вне реестра скиллов (см. комментарий выше), всегда первая. */}
               <button
                 onClick={sendQuickTranslate}
-                disabled={!tabId}
+                disabled={chipsBusy}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
+                  // Без этого flex ужимал бы чипы по ширине вместо переноса на новую строку, а
+                  // длинная подпись скилла ломалась бы посреди слова.
+                  flexShrink: 0, whiteSpace: 'nowrap',
                   padding: '6px 12px',
                   borderRadius: 'var(--radius-chip)',
                   // Белая парящая кнопка — тот же принцип, что у поля ввода ниже (surface-solid +
@@ -636,14 +764,45 @@ function AiPanel() {
                   boxShadow: 'var(--shadow-chip)',
                   color: 'var(--text-body)',
                   fontSize: 'var(--fs-xs)', fontWeight: 500,
-                  cursor: tabId ? 'pointer' : 'default',
-                  opacity: tabId ? 1 : 0.5,
+                  cursor: chipsBusy ? 'default' : 'pointer',
+                  opacity: chipsBusy ? 0.5 : 1,
                 }}
-                onMouseEnter={(e) => { if (tabId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                onMouseEnter={(e) => { if (!chipsBusy) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
               >
                 <span>🌐</span> Перевести
               </button>
+              {/* Заход D — видна ТОЛЬКО когда ключ Gemini подключён (см. onKeyStatus выше), не
+                  disabled-серая: без ключа кнопки нет вообще. Тот же нейтральный стиль, что у
+                  остальных подсказок — она такое же одно из равных действий, не отдельная
+                  система/облако-роль (заход 3, новая дизайн-система убрала эту роль у violet).
+                  ⚠️ Стоит СРАЗУ за «Перевести», до пользовательских скиллов, и это не косметика:
+                  обе спец-кнопки заданы нами, а список скиллов человек наполняет сам и он может
+                  быть длинным. В хвосте фактчек уезжал за обрез первой строки и выглядел как
+                  пропавший — живая жалоба «а что с фактчеком, почему он исчезает». */}
+              {factCheckAvailable && (
+                <button
+                  onClick={() => setShowFactCheckConfirm(true)}
+                  disabled={chipsBusy}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    flexShrink: 0, whiteSpace: 'nowrap',
+                    padding: '6px 12px',
+                    borderRadius: 'var(--radius-chip)',
+                    border: '1px solid var(--glass-edge)',
+                    background: 'var(--surface-solid)',
+                    boxShadow: 'var(--shadow-chip)',
+                    color: 'var(--text-body)',
+                    fontSize: 'var(--fs-xs)', fontWeight: 500,
+                    cursor: chipsBusy ? 'default' : 'pointer',
+                    opacity: chipsBusy ? 0.5 : 1,
+                  }}
+                  onMouseEnter={(e) => { if (!chipsBusy) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
+                >
+                  <span>🔍</span> Фактчек
+                </button>
+              )}
               {/* Коммит 1 (реестр скиллов) — Объяснить/Саммари и позже пользовательские, из
                   onSkillsList (SkillsStore.ts), тот же стиль кнопки, что и Перевести выше.
                   Заход «видимость»: панель получает ПОЛНЫЙ список (включая скрытые) — фильтр
@@ -652,9 +811,10 @@ function AiPanel() {
                 <button
                   key={skill.id}
                   onClick={() => sendText(skill.prompt)}
-                  disabled={!tabId}
+                  disabled={chipsBusy}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5,
+                    flexShrink: 0, whiteSpace: 'nowrap',
                     padding: '6px 12px',
                     borderRadius: 'var(--radius-chip)',
                     border: '1px solid var(--glass-edge)',
@@ -662,67 +822,55 @@ function AiPanel() {
                     boxShadow: 'var(--shadow-chip)',
                     color: 'var(--text-body)',
                     fontSize: 'var(--fs-xs)', fontWeight: 500,
-                    cursor: tabId ? 'pointer' : 'default',
-                    opacity: tabId ? 1 : 0.5,
+                    cursor: chipsBusy ? 'default' : 'pointer',
+                    opacity: chipsBusy ? 0.5 : 1,
                   }}
-                  onMouseEnter={(e) => { if (tabId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                  onMouseEnter={(e) => { if (!chipsBusy) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
                 >
                   {skill.icon && <span>{skill.icon}</span>}
                   {skill.label}
                 </button>
               ))}
-              {/* Заход D — видна ТОЛЬКО когда ключ Gemini подключён (см. onKeyStatus выше), не
-                  disabled-серая: без ключа кнопки нет вообще. Тот же нейтральный стиль, что у
-                  остальных подсказок — она такое же одно из равных действий, не отдельная
-                  система/облако-роль (заход 3, новая дизайн-система убрала эту роль у violet). */}
-              {factCheckAvailable && (
-                <button
-                  onClick={() => setShowFactCheckConfirm(true)}
-                  disabled={!tabId}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    padding: '6px 12px',
-                    borderRadius: 'var(--radius-chip)',
-                    border: '1px solid var(--glass-edge)',
-                    background: 'var(--surface-solid)',
-                    boxShadow: 'var(--shadow-chip)',
-                    color: 'var(--text-body)',
-                    fontSize: 'var(--fs-xs)', fontWeight: 500,
-                    cursor: tabId ? 'pointer' : 'default',
-                    opacity: tabId ? 1 : 0.5,
-                  }}
-                  onMouseEnter={(e) => { if (tabId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
-                >
-                  <span>🔍</span> Фактчек
-                </button>
-              )}
-              {/* "+" — ведёт в Settings сразу на разделе AI (редактор скиллов появится там
-                  отдельным коммитом). Не зависит от tabId (настройки — не действие над
-                  страницей), поэтому всегда активна. Последняя в ряду — не одна из
-                  подсказок/действий над страницей, а вход в настройки, стоит особняком.
-                  Синяя заливка (не outline-чип, как соседи) — та же пара, что у Send/«Продолжить»
-                  ниже (filled accent), но другим токеном фона: попросили точный #007AFF, такого
-                  токена нет НИГДЕ в теме (проверено src/styles/tokens/colors.css и весь src/styles —
-                  есть только --blue-500=#2280C5=--accent, другой хекс, дизайн-система из другого
-                  синего). TODO(цвет): имя-заглушка --system с фоллбэком на --accent — подставить
-                  реальный токен синей заливки под #007AFF, когда он появится в теме. */}
+              {/* Пока ряд не схлопывается, «+» идёт в общем потоке — то есть встаёт ПОСЛЕ
+                  последнего скилла, а не в конце первой строки. В хвосте (справа сверху) он
+                  выглядел бы приклеенным к верхней строке, хотя относится ко всему списку. */}
+              {!chipsCompact && settingsChip}
+            </div>
+            {/* Шеврон «показать все» — только когда строк действительно больше одной (chipsOverflow
+                меряется, а не угадывается) и только в схлопывающемся режиме. Разворачивает ВСЕ
+                подсказки разом: со скиллами человек работает списком, а не выискивает нужную. */}
+            {chipsCompact && chipsOverflow && (
               <button
-                onClick={() => window.aiPanel.openSettings('ai')}
-                title="Настроить AI"
+                onClick={() => setChipsExpanded((v) => !v)}
+                title={chipsExpanded ? 'Свернуть подсказки' : 'Показать все подсказки'}
+                aria-expanded={chipsExpanded}
                 style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '6px 10px',
+                  flexShrink: 0,
+                  padding: '6px 8px',
                   borderRadius: 'var(--radius-chip)',
-                  border: 'none',
-                  background: 'var(--system, var(--accent))',
-                  color: 'var(--text-on-accent)',
+                  border: '1px solid var(--glass-edge)',
+                  background: 'var(--surface-solid)',
+                  boxShadow: 'var(--shadow-chip)',
+                  color: 'var(--text-muted)',
                   cursor: 'pointer',
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
               >
-                <Plus size={13} />
+                <ChevronDown
+                  size={13}
+                  style={{
+                    transform: chipsExpanded ? 'rotate(180deg)' : 'none',
+                    transition: 'transform var(--dur-fast) var(--ease-standard)',
+                  }}
+                />
               </button>
+            )}
+            {/* В схлопнутом ряду «+» живёт здесь, в несдвигаемом хвосте, — иначе он уехал бы за
+                обрез вместе с лишними строками. См. парную ветку внутри области чипов. */}
+            {chipsCompact && settingsChip}
             </div>
           )
         )}
