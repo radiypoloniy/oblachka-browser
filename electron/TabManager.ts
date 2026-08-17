@@ -901,6 +901,77 @@ export class TabManager {
     return id;
   }
 
+  // ── Дубликат вкладки (ПКМ «Дублировать») ──────────────────────────────────────────────────
+  // Три вещи, без которых это не дубликат, а «ещё одна вкладка с тем же адресом»:
+  //  • ⚠️ Приватность НАСЛЕДУЕТСЯ. У createTab incognito — четвёртый аргумент с умолчанием false,
+  //    и забыть его тут значит вынести приватную страницу в обычную сессию, то есть на диск.
+  //  • Место в дереве: сразу ПОСЛЕ исходной, а не в конце списка. Уехавший в хвост дубликат на
+  //    десятке вкладок человек просто не находит и жмёт «дублировать» ещё раз.
+  //  • История навигации: «назад» в дубликате обязан работать так же, как в оригинале.
+  // Возвращает null, когда дублировать нечего: псевдо-вкладки (История/Настройки) и хаб сайта
+  // за собой не держат, #tabUrl() у них пуст.
+  duplicateTab(sourceId: string): string | null {
+    const src = this.tabMap.get(sourceId);
+    if (!src) return null;
+    const url = this.#tabUrl(src);
+    if (!url) return null;
+
+    // Закреплённая дублируется закреплённой: иначе копия молча меняет род и уезжает из ленты
+    // закреплённых вниз, к обычным вкладкам, — выглядит как «кнопка сработала не туда».
+    if (this.isTabPinned(sourceId)) {
+      const newId = this.createPinnedTab(url);
+      this.#adoptHistory(sourceId, newId);
+      const from = this.pinnedTabs.findIndex((t) => t.id === newId);
+      const at   = this.pinnedTabs.findIndex((t) => t.id === sourceId);
+      if (from >= 0 && at >= 0) this.pinnedTabs.splice(at + (from > at ? 1 : 0), 0, ...this.pinnedTabs.splice(from, 1));
+      this.activate(newId);
+      return newId;
+    }
+
+    // background: активируем в самом конце, уже после перестановки узла, — иначе сайдбар успеет
+    // подсветить вкладку в хвосте и тут же перерисовать её на новом месте.
+    // ephemeral намеренно НЕ наследуется: этим флагом помечены попапы из window.open (их не
+    // воскрешают при рестарте), а дубликат — осознанный жест человека, обычная вкладка.
+    const newId = this.createTab(url, true, false, src.incognito === true);
+    this.#adoptHistory(sourceId, newId);
+
+    // createTab кладёт узел в КОНЕЦ this.nodes — переносим его вплотную к исходному. Исходная
+    // может лежать в группе или быть половиной split-пары: findTabParent рекурсивен и отдаёт узел
+    // ПАРЫ целиком, поэтому дубликат встаёт рядом с парой, а не внутрь неё (третьей панели в
+    // split не бывает). Порядок важен: сперва вынимаем свой узел, потом ищем место, — иначе
+    // найденный индекс сдвинулся бы у нас под руками.
+    const from = this.nodes.findIndex((n) => n.type === 'single' && n.tabId === newId);
+    if (from >= 0) {
+      const [node] = this.nodes.splice(from, 1);
+      const at = findTabParent(sourceId, this.nodes);
+      if (at) at.parent.splice(at.idx + 1, 0, node);
+      else this.nodes.push(node); // исходную закрыли, пока мы дублировали — просто вернём в конец
+    }
+    this.activate(newId);
+    return newId;
+  }
+
+  // Переносит историю навигации из одной вкладки в другую (для duplicateTab выше).
+  // ⚠️ У СПЯЩЕГО оригинала истории нет вовсе — session.json её не хранит, там только адрес. Тогда
+  // дубликат остаётся с одной записью, и это ожидаемое поведение, а не сбой.
+  #adoptHistory(sourceId: string, newId: string): void {
+    const from = this.tabMap.get(sourceId)?.view?.webContents;
+    const to   = this.tabMap.get(newId)?.view?.webContents;
+    if (!from || !to || from.isDestroyed() || to.isDestroyed()) return;
+    try {
+      const entries = from.navigationHistory.getAllEntries();
+      // Одна запись — переносить нечего: loadURL в createTab уже сделал ровно то же самое.
+      if (entries.length < 2) return;
+      // restore() сам навигирует на выбранный индекс и тем самым отменяет незавершённый loadURL
+      // из createTab (адрес там тот же). Промис отклоняется, если страница не загрузилась, —
+      // для нас это не ошибка: дубликат уже создан и виден.
+      void to.navigationHistory.restore({ entries, index: from.navigationHistory.getActiveIndex() })
+        .catch(() => { /* страница не догрузилась — вкладка всё равно рабочая */ });
+    } catch {
+      // Дубликат без истории полезнее, чем упавшее меню.
+    }
+  }
+
   // Псевдо-вкладка (История/Настройки) — тот же tabMap/nodes-путь, что у createTab выше, но
   // без WebContentsView/wirePageEvents (переиспользован только приём "view: null" от хаба, не
   // сам синглтон-механизм хаба — см. диагностику: HUB_ID жёстко захардкожен и не масштабируется
@@ -1857,6 +1928,9 @@ export class TabManager {
           { label: 'Назад',    enabled: wc.canGoBack(),     click: () => wc.goBack() },
           { label: 'Вперёд',   enabled: wc.canGoForward(),  click: () => wc.goForward() },
           { label: 'Обновить',                               click: () => wc.reload() },
+          // Пара к «Обновить»: тот же жест, но мимо кэша — когда сайт отдал протухшие стили
+          // или скрипт и обычное обновление ничего не меняет.
+          { label: 'Обновить без кэша', accelerator: 'Ctrl+F5', click: () => wc.reloadIgnoringCache() },
         );
       }
 
@@ -3200,6 +3274,25 @@ export class TabManager {
       t!.view!.webContents.reload();
     }
   }
+  // Жёсткая перезагрузка (Ctrl+F5 / Ctrl+Shift+R, как в Chrome): та же страница, но мимо кэша —
+  // нужна, когда сайт отдал протухшие стили или скрипт и обычное «обновить» ничего не меняет.
+  //
+  // ⚠️ У СПЯЩЕЙ вкладки живого WebContents нет, и здесь, как и в reload() выше, метод молча
+  // выходит. Это осознанно, а не унаследовано: будить вкладку ради сброса кэша бессмысленно —
+  // пробуждение и так грузит страницу заново. Чтобы «молча» не выглядело поломкой, пункт меню
+  // для такой вкладки неактивен (см. electron/ipc/menus.ts).
+  reloadHard(id: string) {
+    const t = this.tabMap.get(id);
+    if (!this.isHttpView(t?.view ?? null)) return;
+    const err = this.errors.get(id);
+    // После краша renderer-процесса мёртв сам процесс, а не кэш: пересоздать его может только
+    // loadURL — ровно как в reload().
+    if (err?.type === 'crash' && err.url) {
+      t!.view!.webContents.loadURL(err.url);
+    } else {
+      t!.view!.webContents.reloadIgnoringCache();
+    }
+  }
 
   // ── Поиск по странице ────────────────────────────────────────────────────
   // Публичный (не private) — единственная точка, где AiPanelManager.ts достаёт WebContents
@@ -3527,7 +3620,8 @@ export class TabManager {
           }
           return;
         }
-        // F5: обновить активную вкладку.
+        // F5: обновить активную вкладку. Ctrl+F5 (мимо кэша) сюда не попадает — он разбирается
+        // ниже, в Ctrl-ветке, вместе с Ctrl+Shift+R.
         if (code === 'F5' && !shift) {
           event.preventDefault();
           this.reload(this.activeId);
@@ -3598,6 +3692,9 @@ export class TabManager {
       } else if (code === 'KeyR' && !shift) {
         event.preventDefault();
         this.reload(this.activeId);         // Ctrl+R: обновить страницу
+      } else if ((code === 'KeyR' && shift) || code === 'F5') {
+        event.preventDefault();
+        this.reloadHard(this.activeId);     // Ctrl+Shift+R / Ctrl+F5: обновить мимо кэша
       } else if (code === 'KeyL' && !shift) {
         event.preventDefault();
         this.onOmniboxFocusCb();            // Ctrl+L: фокус в омнибокс
