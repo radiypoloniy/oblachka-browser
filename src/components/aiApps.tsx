@@ -13,9 +13,11 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, closestC
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-// Разбор вставленного в калькулятор числа — чистая логика, живёт в shared под проверкой
-// (scripts/calc-check.mjs): ломается она на реальных строках вроде «1 234,56 ₽», а не на глаз.
-import { parsePastedNumber } from '../../shared/calc'
+// Арифметика калькулятора, формат числа, правило процента и разбор вставленного числа — чистая
+// логика, живёт в shared под проверкой (scripts/calc-check.mjs): ломается она на реальных случаях
+// («50 + 10 %», «1 234,56 ₽»), а не на глаз.
+import { computeCalc, fmtCalc, calcDisp, resolvePercent, parsePastedNumber } from '../../shared/calc'
+import type { CalcOp } from '../../shared/calc'
 import {
   Calculator, RefreshCw, Timer, Pipette, X, SlidersHorizontal, ImagePlus, Languages, Cat, Type,
   Play, Pause, RotateCcw, ArrowDownUp, ArrowUpDown, Copy, Check, Loader2,
@@ -1622,17 +1624,8 @@ function WebAppSlot({ app, slotIndex, grow, active, showRing, onActivate, hidden
 }
 
 // ── Калькулятор ──────────────────────────────────────────────────────────────────────────────
-type CalcOp = '÷' | '×' | '−' | '+'
-
-const computeCalc = (a: number, b: number, op: CalcOp): number =>
-  op === '+' ? a + b : op === '−' ? a - b : op === '×' ? a * b : a / b
-
-// toPrecision(12) вместо сырого результата — гасит хвосты двоичной арифметики (0.1+0.2),
-// parseFloat срезает завершающие нули записи.
-const fmtCalc = (n: number): string => (isFinite(n) ? parseFloat(n.toPrecision(12)).toString() : 'Ошибка')
-
-// Число для строки выражения/дисплея — с русской запятой, как и основной дисплей.
-const calcDisp = (n: number): string => fmtCalc(n).replace('.', ',')
+// Арифметика, формат и правило процента — в shared/calc.ts под scripts/calc-check.mjs. Здесь
+// остаётся автомат состояний и отрисовка.
 
 function CalcApp() {
   const [display, setDisplay] = useState('0')
@@ -1644,12 +1637,31 @@ function CalcApp() {
   // Строка текущего действия над дисплеем («12 −», после «=» — «12 − 4 =»): без неё нажатый
   // оператор никак не виден и легко забыть, что уже ввёл — просили как на iOS.
   const [expr, setExpr] = useState('')
+  // ⚠️ Набранное число ПОМЕЧЕНО процентом, но ещё не превращено в число. Раньше «%» считал сразу и
+  // клал результат на дисплей: набрал «50 + 10 %» — видишь «5», и кажется, что ввёл не то. Само
+  // правило счёта при этом было верным, ошибка была в моменте — человек не успевал увидеть, что
+  // он вообще ввёл. Теперь процент разрешается в число только при «=» или следующем операторе
+  // (см. takeOperand), а до тех пор дисплей показывает «10%».
+  const [percentPending, setPercentPending] = useState(false)
+
+  // Текущий операнд числом, с уже применённым процентом. Единственная точка, где процент
+  // превращается в значение, — иначе правило разъедется между «=» и цепочкой операторов.
+  const takeOperand = (): number => {
+    const cur = parseFloat(display)
+    return percentPending ? resolvePercent(cur, acc, op) : cur
+  }
+  // Как этот операнд выглядит в строке выражения: «50 + 10% =» объясняет результат, а «50 + 5 =»
+  // выглядит так, будто человек ввёл пятёрку.
+  const operandLabel = (): string =>
+    percentPending ? `${display.replace('.', ',')}%` : calcDisp(parseFloat(display))
 
   const inputDigit = (d: string) => {
-    if (waiting || display === 'Ошибка') {
+    // Процент уже поставлен — цифра начинает НОВОЕ число, а не дописывается к помеченному.
+    if (waiting || percentPending || display === 'Ошибка') {
       if (op === null) setExpr('') // новый расчёт после «=» — прошлое выражение уже не контекст
       setDisplay(d === '.' ? '0.' : d)
       setWaiting(false)
+      setPercentPending(false)
       return
     }
     if (d === '.' && display.includes('.')) return
@@ -1657,53 +1669,60 @@ function CalcApp() {
   }
 
   const applyOp = (nextOp: CalcOp) => {
-    const cur = parseFloat(display)
+    const cur = takeOperand()
     let base: number
     if (acc === null) {
       base = cur
-    } else if (waiting || op === null) {
-      base = acc // оператор сменили ДО ввода второго операнда — просто перезаписываем знак
+    } else if ((waiting && !percentPending) || op === null) {
+      // Оператор сменили ДО ввода второго операнда — просто перезаписываем знак. Исключение —
+      // помеченный процент: «50 + %» это уже введённый операнд, его надо досчитать, а не выкинуть.
+      base = acc
     } else {
       // Цепочка 2+3+4: очередной оператор довычисляет предыдущий (immediate execution, как iOS).
       base = computeCalc(acc, cur, op)
-      setDisplay(fmtCalc(base))
     }
+    setDisplay(fmtCalc(base))
     setAcc(isFinite(base) ? base : null)
     setOp(nextOp)
     setWaiting(true)
+    setPercentPending(false)
     setExpr(`${calcDisp(base)} ${nextOp}`)
   }
 
   const equals = () => {
     if (op === null || acc === null) return
-    const b = parseFloat(display)
+    const b = takeOperand()
     const r = computeCalc(acc, b, op)
-    setExpr(`${calcDisp(acc)} ${op} ${calcDisp(b)} =`)
+    setExpr(`${calcDisp(acc)} ${op} ${operandLabel()} =`)
     setDisplay(fmtCalc(r))
     setAcc(null)
     setOp(null)
     setWaiting(true)
+    setPercentPending(false)
   }
 
-  const clear = () => { setDisplay('0'); setAcc(null); setOp(null); setWaiting(false); setExpr('') }
+  const clear = () => {
+    setDisplay('0'); setAcc(null); setOp(null); setWaiting(false); setExpr('')
+    setPercentPending(false)
+  }
   const negate = () => setDisplay(fmtCalc(-parseFloat(display)))
-  // ⚠️ Процент считается ОТ ПЕРВОГО операнда, когда идёт сложение или вычитание: «50 + 10 %»
-  // это 55, а не 50,1. Раньше здесь было безусловное деление на 100, из-за чего единственный
-  // ходовой сценарий процента давал бессмыслицу — «проценты не работают» ровно про это.
-  // При умножении/делении и без начатого действия процент остаётся долей (10 % → 0,1): «50 × 10 %»
-  // это половина от пятидесяти, и деление на сто здесь как раз верно. Так же ведут себя
-  // калькуляторы iOS и Windows.
+  // «%» больше не считает — он только помечает набранное процентом (см. percentPending выше).
+  // Повторное нажатие ничего не меняет: процент уже стоит, а «процент от процента» — не жест,
+  // за которым кто-то приходит в калькулятор панели.
   const percent = () => {
-    const cur = parseFloat(display)
-    const share = cur / 100
-    const rel = acc !== null && (op === '+' || op === '−') ? acc * share : share
-    setDisplay(fmtCalc(rel))
-    setWaiting(false) // посчитанный процент — уже введённый операнд, следующая цифра его не затрёт
+    if (display === 'Ошибка') return
+    setPercentPending(true)
   }
 
   // Стереть последний символ (клавиша Backspace; кнопки на поле нет — сетка занята).
   const backspace = () => {
     if (display === 'Ошибка') return
+    // Стоит процент — стираем СНАЧАЛА его, а не цифру: это единственная отмена ошибочного «%»,
+    // и она же самая ожидаемая («видел 10%, нажал стереть — вижу 10»).
+    if (percentPending) {
+      setPercentPending(false)
+      return
+    }
     // ⚠️ Только что нажали оператор — стирать в показанном числе нечего (оно уже принято как
     // первый операнд). Осмысленное действие здесь одно: ОТМЕНИТЬ оператор, нажатый по ошибке.
     // Прежде эта ветка просто выходила молча, и клавиша выглядела нерабочей.
@@ -1770,8 +1789,9 @@ function CalcApp() {
       e.preventDefault()
       setDisplay(fmtCalc(n))
       // Вставленное — полноценный операнд: после «50 +» оно становится вторым слагаемым, а не
-      // затирается следующей цифрой (тот же смысл, что у setWaiting(false) в percent()).
+      // затирается следующей цифрой. И это уже НЕ процент, даже если помеченное число было им.
       setWaiting(false)
+      setPercentPending(false)
       // Действие не начато — значит это новый расчёт, прошлое выражение над дисплеем уже не контекст.
       if (op === null) setExpr('')
     }
@@ -1801,6 +1821,8 @@ function CalcApp() {
     { label: '=', kind: 'op', onPress: equals },
   ]
 
+  const shownValue = display.replace('.', ',') + (percentPending ? '%' : '')
+
   return (
     <div ref={calcRootRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
       {/* Строка действия — резервирует высоту и пустой (minHeight), чтобы дисплей не прыгал. */}
@@ -1812,13 +1834,16 @@ function CalcApp() {
       }}>
         {expr}
       </div>
+      {/* Знак процента — часть ПОКАЗАННОГО числа, а не отдельный значок: он и есть тот ответ на
+          «а что я вообще ввёл», ради которого «%» перестал считать сразу. Кегль выбирается по
+          длине показанного, вместе с этим знаком, иначе «10%» на границе прыгал бы в размере. */}
       <div style={{
         padding: '0 16px 4px', textAlign: 'right', flexShrink: 0,
-        fontSize: display.length > 9 ? 22 : 30, fontWeight: 300,
+        fontSize: shownValue.length > 9 ? 22 : 30, fontWeight: 300,
         color: 'var(--text-strong)', fontVariantNumeric: 'tabular-nums',
         overflowWrap: 'anywhere',
       }}>
-        {display.replace('.', ',')}
+        {shownValue}
       </div>
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7,
@@ -1826,7 +1851,10 @@ function CalcApp() {
       }}>
         {keys.map((k) => {
           // Активный оператор подсвечен инверсией (как «залипшая» кнопка iOS), пока ждём операнд.
-          const activeOp = k.kind === 'op' && k.label === op && waiting
+          // «%» подсвечивается по тому же правилу, пока процент поставлен, но ещё не разрешён в
+          // число: состояние видно и на дисплее, и на самой кнопке, которой его сняли.
+          const activeOp = (k.kind === 'op' && k.label === op && waiting)
+            || (k.label === '%' && percentPending)
           return (
             <button
               key={k.label}
