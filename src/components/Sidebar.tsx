@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Volume2, VolumeX } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
-import { islandPlate, TINTED_PLATE_VARS } from '../styles/island';
+import { TINTED_PLATE_VARS } from '../styles/island';
 import SidebarBookmarks from './SidebarBookmarks';
 import {
   DndContext, DragOverlay,
@@ -348,7 +348,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
 
   return (
     <div style={{
-      ...innerPlate,
+      border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)',
       display: 'flex', alignItems: 'stretch',
       overflow: 'hidden',
       minHeight: 36,
@@ -720,9 +720,11 @@ function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTa
       <div
         className="no-drag"
         style={{
-          ...innerPlate,
+          borderRadius: 'var(--radius-sm)',
           // Бледная заливка = цвет папки, приглушённый до фона: сам цвет остаётся узнаваем,
-          // но остров не начинает конкурировать с активной вкладкой за внимание.
+          // но папка не начинает конкурировать с активной вкладкой за внимание.
+          // ⚠️ Белой плашки под БЕСЦВЕТНОЙ папкой больше нет: в сайдбаре без поверхностей она
+          // была единственным белым прямоугольником ни о чём.
           ...(color ? {
             background: `color-mix(in srgb, ${color} 14%, var(--surface))`,
             border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
@@ -1212,15 +1214,12 @@ const NOISE_SVG =
 // цвета (ровно это и было видно на скриншоте).
 const TINTED_PLATE_VAR = 'color-mix(in srgb, var(--sidebar-tint) 14%, var(--surface))';
 
-// ⚠️ Подкраска мешается с --chrome-ground, а НЕ с --surface, как раньше. Сайдбар больше не остров:
-// смешивая тон с белой поверхностью, он оказывался светлее окружающей его земли — то есть снова
-// читался как отдельная панель, ровно то, от чего уходили. Теперь это цветной участок той же земли.
 const tintedAside: React.CSSProperties = {
   backgroundImage:
     `${NOISE_SVG}, linear-gradient(160deg,` +
-    ' color-mix(in srgb, var(--sidebar-tint) 14%, var(--chrome-ground)) 0%,' +
-    ' color-mix(in srgb, var(--sidebar-tint) 8%, var(--chrome-ground)) 45%,' +
-    ' color-mix(in srgb, var(--sidebar-tint) 3%, var(--chrome-ground)) 100%)',
+    ' color-mix(in srgb, var(--sidebar-tint) 12%, var(--surface)) 0%,' +
+    ' color-mix(in srgb, var(--sidebar-tint) 6%, var(--surface)) 45%,' +
+    ' color-mix(in srgb, var(--sidebar-tint) 2%, var(--surface-sunken)) 100%)',
   backgroundRepeat: 'repeat, no-repeat',
   backgroundSize: '120px 120px, 100% 100%',
 };
@@ -1243,41 +1242,30 @@ const asideBase: React.CSSProperties = {
   overflow: 'hidden',
 };
 
-// Внутренние «плашки» сайдбара (пины / нижние утилиты) — парят уже ВНУТРИ острова
-// сайдбара, поэтому по вложенности это card-уровень, не island-уровень (см. radii.css).
-// Совпадает с islandPlate + radius-card — те же параметры, что уже отлажены в FindBar/Hub/TabError.
-// ⚠️ Внутренняя плашка читается из ПЕРЕМЕННЫХ сайдбара, а не из флага в пропах, ровно по той же
-// причине, что и --sidebar-plate ниже: плашки лежат в дочерних компонентах (PairTile, заголовок
-// группы), которые про тумблер «цветной сайдбар» не знают вовсе, и протаскивать флаг пришлось бы
-// через каждый уровень. Переменная наследуется вниз сама.
+// ⚠️ Здесь был `innerPlate` — общая «внутренняя плашка» сайдбара (обойма закреплённых, пара в
+// сплите, заголовок папки, «Новая вкладка»). Его больше НЕТ, и ни одного потребителя не осталось:
+// поверхностей внутри сайдбара нет вовсе.
 //
-// Именно поэтому белая плашка пережила введение цветного сайдбара незамеченной: подкраску получали
-// только те три места, где `tinted` был под рукой, а пара в сплите и группа оставались белыми
-// поверх цвета.
-const innerPlate: React.CSSProperties = {
-  ...islandPlate,
-  borderRadius: 'var(--radius-card)',
-};
+// Смысл правки не в том, что плашки были некрасивые, а в том, что панелью сайдбар делали именно
+// они. Снятия внешнего острова не хватило: стопка белых карточек на белом читается как панель
+// сама по себе — что с островом, что без. Ровно это и было видно в первой попытке, где «просто
+// вернулась боковая панель».
+//
+// Что осталось из выделений и почему: АКТИВНАЯ вкладка (единственное состояние, которое обязано
+// быть видно всегда), волосок вокруг пары в сплите (иначе две ячейки перестают читаться парой) и
+// цветная заливка папки (это опознание, а не украшение). Всё остальное — прозрачное, отзыв только
+// по наведению.
 
-// Служебная кнопка сайдбара — свернуть/развернуть панель. БЕЗ плашки.
+// Кнопка сайдбара — свернуть/развернуть панель, «Новая вкладка» в свёрнутом виде. БЕЗ плашки.
 //
-// ⚠️ Раньше это была такая же белая плашка (floatingIconBtn), как «Новая вкладка», то есть равная
-// ей по весу. На белом острове разницы не видно, а на подложке белое означает «главное» — и
-// служебная кнопка кричала бы наравне с главным действием панели. Подложка эту ошибку иерархии не
-// создала, а вскрыла: «свернуть» и «новая вкладка» никогда не были равнозначны.
+// ⚠️ Все они были белыми карточками (прежний floatingIconBtn, удалён). Вместе с обоймой
+// закреплённых, дорожкой переключателя и «Новой вкладкой» во всю ширину именно из этих карточек
+// сайдбар и складывался в «боковую панель» — независимо от того, есть у него внешний остров или
+// нет. Поверхностей внутри сайдбара больше нет вовсе: всё лежит прямо на фоне окна, отзыв —
+// только по наведению.
 const utilIconBtn: React.CSSProperties = {
   border: 'none', background: 'transparent', cursor: 'default', padding: 7,
   borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', display: 'inline-flex',
-};
-
-// Маленький квадратный «остров» под одну иконку: «Новая вкладка» в свёрнутом виде.
-// Тот же innerPlate, компактный padding — главное действие панели остаётся карточкой.
-const floatingIconBtn: React.CSSProperties = {
-  ...innerPlate,
-  padding: 7,
-  color: 'var(--text-muted)',
-  cursor: 'default',
-  display: 'inline-flex',
 };
 
 // Переключатель режима сайдбара. Намеренно КРОШЕЧНЫЙ: он не команда, а указатель «где я», и
@@ -1794,9 +1782,8 @@ export default function Sidebar({
         >
           {pinned.length > 0 && (
             <div className="no-drag" style={{
-              ...innerPlate,
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-              padding: '8px 6px', marginBottom: 10,
+              padding: '2px 0 6px', marginBottom: 6,
             }}>
               <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
                 {pinned.map((t) => (
@@ -1874,11 +1861,11 @@ export default function Sidebar({
           <button
             className="no-drag"
             title="Новая вкладка (ПКМ — инкогнито / восстановить)"
-            style={{ ...floatingIconBtn }}
+            style={{ ...utilIconBtn }}
             onClick={handleNewTab}
             onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = tinted ? 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)' : 'var(--surface)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           ><Plus size={17} /></button>
           <button className="icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
           <button className="icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
@@ -1962,7 +1949,7 @@ export default function Sidebar({
         {/* Закреплённые: сетка favicon, tooltip с заголовком, без крестика.
             Плашка-обёртка — СНАРУЖИ SortableContext, сам dnd-контекст и ячейки не тронуты. */}
         {pinned.length > 0 && (
-          <div className="no-drag" style={{ ...innerPlate, padding: 8, marginBottom: 10 }}>
+          <div className="no-drag" style={{ padding: '2px 0 6px', marginBottom: 6 }}>
             {/* rect-, а не verticalList-стратегия: пины лежат сеткой с переносом строк, и
                 вертикальная стратегия расталкивала соседей по Y — не в ту сторону, куда
                 едет курсор. rectSortingStrategy считает по реальным прямоугольникам. */}
@@ -2292,15 +2279,19 @@ export default function Sidebar({
           НЕ часть плашки (не сливаются в общую пластину). */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
         <button className="no-drag" title="Новая вкладка (ПКМ — инкогнито / восстановить)"
+          // ⚠️ Без плашки. Была innerPlate — белая карточка во всю ширину, и именно из таких
+          // карточек (обойма пинов, дорожка переключателя, эта кнопка) сайдбар и складывался в
+          // «боковую панель». Поверхностей внутри него больше нет: всё лежит прямо на окне,
+          // подсветка только по наведению.
           style={{
-            ...innerPlate,
+            border: 'none', background: 'transparent', borderRadius: 'var(--radius-sm)',
             flex: 1, display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 12px', color: 'var(--text-muted)', cursor: 'default',
           }}
           onClick={handleNewTab}
           onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = tinted ? 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)' : 'var(--surface)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
         >
           <Plus size={17} />
           <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>Новая вкладка</span>

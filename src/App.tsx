@@ -198,25 +198,6 @@ function findActiveSplitPairNode(nodes: SidebarNode[], activeId: string): SplitP
   return null;
 }
 
-// Разрешённое значение CSS-переменной как #rrggbb. Нужен, потому что часть токенов земли
-// объявлена через color-mix() (чтобы следовать палитрам): getPropertyValue вернул бы формулу,
-// а нативному API титлбара нужен готовый цвет. Пробный элемент — единственный способ заставить
-// браузер её посчитать; он живёт один кадр и за экраном.
-function readResolvedColor(token: string): string {
-  try {
-    const probe = document.createElement('div');
-    probe.style.cssText = `position:fixed;left:-9999px;top:0;width:1px;height:1px;background:var(${token})`;
-    document.body.appendChild(probe);
-    const rgb = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(rgb);
-    if (!m) return '';
-    return '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('');
-  } catch {
-    return '';
-  }
-}
-
 export default function App() {
   console.log('[renderer-alive] App смонтирован')
 
@@ -407,12 +388,8 @@ export default function App() {
     // кнопок чужого цвета в большинстве палитр. Эффект стоит ПОСЛЕ того, который проставляет
     // data-theme/data-palette (порядок объявления = порядок выполнения), поэтому читается уже
     // применённая палитра. Фолбэк — прежний литерал светлой темы, если строка вдруг не хекс.
-    // ⚠️ Берём --chrome-ground, а не --app-bg: землю под хромом сделали ТЕМНЕЕ (см. colors.css),
-    // и полоса системных кнопок цвета --app-bg осталась бы светлым прямоугольником поверх неё.
-    // ⚠️ Читаем через ПРОБНЫЙ элемент, а не getPropertyValue: токен объявлен через color-mix()
-    // (чтобы следовать палитрам), и getPropertyValue вернул бы саму формулу, а не цвет.
-    const raw = readResolvedColor('--chrome-ground');
-    const base = /^#[0-9a-f]{6}$/i.test(raw) ? raw : '#D7D7DC';
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--app-bg').trim();
+    const base = /^#[0-9a-f]{6}$/i.test(raw) ? raw : '#F2F2F7';
     void window.oblako.setTitleBarOverlay({
       // Под модалкой титлбар темнеет ровно на ту же долю, что и фон под scrim'ом, — иначе
       // светлый прямоугольник с кнопками остаётся единственным незатемнённым местом экрана.
@@ -962,12 +939,7 @@ export default function App() {
   };
 
   return (
-    // ⚠️ ЗЕМЛЯ ПОД ХРОМОМ рисуется здесь, а не на body: сайдбар перестал быть островом и лёг
-    // прямо на неё (см. asideBase в Sidebar.tsx), поэтому землёй должен быть один сплошной слой
-    // от края до края — и под сайдбаром, и в зазорах вокруг карточки страницы. На body лежит
-    // --canvas со своим декоративным бликом; он остаётся для точек входа, которые этот слой не
-    // накрывает (новая вкладка, настройки), а сам хром стоит на --chrome-ground.
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', overflow: 'hidden', background: 'var(--chrome-ground)' }}>
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', overflow: 'hidden' }}>
       {/* Оверлей во время drag разделителя: держит col-resize курсор по всей ширине
           и служит страховкой на случай если setPointerCapture не перехватит события
           над нативными WebContentsViews. */}
