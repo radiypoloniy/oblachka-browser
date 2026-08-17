@@ -156,13 +156,23 @@ export function withLightness(hex: string, lightness: number): string {
 
 // ── Земля ведёт, остров поднимается над ней ────────────────────────────────────
 
-/** Светлота тона земли в тёмной теме: тёмный, но НЕ обесцвеченный и НЕ невидимый. */
-const DARK_TINT_LIGHTNESS = 0.20;
+/** Светлота тона земли в тёмной теме при полностью выкрученном ползунке. */
+const DARK_TINT_LIGHTNESS = 0.22;
+/**
+ * Во сколько раз ползунок насыщенности весит больше в тёмной теме.
+ *
+ * ⚠️ Не подгонка «покрасивее». В светлой теме земля строится подмешиванием тона в `#F2F2F7`, и
+ * доли в 27% там хватает с запасом: примесь и фон далеко друг от друга. В тёмной те же 27% тонут —
+ * 73% результата остаются почти чёрным `#121214`, и замер давал контраст кромки к фону 1,09–1,14
+ * при ползунке НА МАКСИМУМЕ, то есть ниже порога различимости и крутить уже некуда. Множитель
+ * доводит край ползунка до почти чистого тона; ниже по шкале ослабление остаётся.
+ */
+const DARK_AMOUNT_GAIN = 3;
 /** Насколько остров обязан быть светлее самого насыщенного места земли. */
 export const ISLAND_LIFT = 1.35;
 
 /**
- * Тон, которым красится земля ЭТОЙ темы.
+ * Тон, которым красится земля ЭТОЙ темы на полной насыщенности.
  *
  * ⚠️ В тёмной теме тон палитры ЯРЧЕ земли (`#0A84FF` против `#121214`), и брать его как есть
  * нельзя. Но и притемнять умножением каналов нельзя — так теряется цвет, земля выходит почти
@@ -173,6 +183,25 @@ export const ISLAND_LIFT = 1.35;
  */
 export function groundTint(tint: string, dark: boolean): string {
   return dark ? withLightness(tint, DARK_TINT_LIGHTNESS) : tint;
+}
+
+/**
+ * Одна ступень земли: тон, повёрнутый на `deg`, ослабленный долей `weight` от ползунка.
+ *
+ * ⚠️ Темы считаются РАЗНЫМИ способами, и это следствие того, где лежит фон. В светлой ослабление —
+ * это подмешивание в светлый `--app-bg`: оно уводит и светлоту, и насыщенность, и обе в нужную
+ * сторону. В тёмной подмешивание в почти чёрный съедает цвет раньше, чем становится видно ступень,
+ * поэтому светлота задаётся ОТДЕЛЬНО (лестницей от фона к `groundTint`), а подмешивание оставлено
+ * только ради насыщенности — на малых значениях ползунка земля обязана оставаться почти серой.
+ */
+function groundStop(input: GroundInput, deg: number, weight: number): string {
+  const { tint, appBg, amount, dark } = input;
+  const hue = rotateHue(tint, deg);
+  if (!dark) return blend(hue, appBg, amount * weight);
+  const full = Math.min(100, amount * DARK_AMOUNT_GAIN);
+  const floor = lightnessOf(appBg);
+  const deepest = floor + (DARK_TINT_LIGHTNESS - floor) * (full / 100);
+  return withLightness(blend(hue, appBg, full), floor + (deepest - floor) * weight);
 }
 
 /**
@@ -199,10 +228,9 @@ export function islandOver(deepest: string, tint: string, surface: string, dark:
 
 // ── Сборка ─────────────────────────────────────────────────────────────────────
 
-/** Самое насыщенное место земли — по нему и считается островной подъём. */
+/** Самое насыщенное место земли — по нему и считается островной подъём. Это верхняя ступень. */
 export function deepestGround(input: GroundInput): string {
-  const t = groundTint(input.tint, input.dark);
-  return blend(rotateHue(t, -16), input.appBg, input.amount * 0.9);
+  return groundStop(input, -16, 0.9);
 }
 
 /**
@@ -217,14 +245,11 @@ export function deepestGround(input: GroundInput): string {
  * определима точно — её отдаём в полосу системных кнопок Windows (см. Ground.top).
  */
 export function buildChromeGround(input: GroundInput): Ground {
-  const { appBg, amount, dark, surface } = input;
-  const t = groundTint(input.tint, dark);
-  const mix = (hex: string, pct: number): string => blend(hex, appBg, pct);
-  const top = mix(rotateHue(t, -16), amount * 0.9);
+  const top = groundStop(input, -16, 0.9);
   return {
     top,
-    island: islandOver(deepestGround(input), input.tint, surface, dark),
+    island: islandOver(top, input.tint, input.surface, input.dark),
     backgroundImage:
-      `linear-gradient(180deg, ${top} 0%, ${mix(t, amount * 0.55)} 42%, ${mix(rotateHue(t, 30), amount * 0.85)} 100%)`,
+      `linear-gradient(180deg, ${top} 0%, ${groundStop(input, 0, 0.55)} 42%, ${groundStop(input, 30, 0.85)} 100%)`,
   };
 }

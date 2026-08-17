@@ -30,6 +30,17 @@ const TINTS_LIGHT = ['#007AFF', '#5B6B7A', '#5E81AC', '#B08968'];
 const TINTS_DARK  = ['#0A84FF', '#7C8FA3', '#88C0D0', '#C9A227'];
 const AMOUNTS = [6, 18, 30];
 
+/** Оттенок HSL в градусах. Нужен запрету сиреневого: сектор задаётся именно углом. */
+function hueOf(hex) {
+  const [r, g, b] = hexToRgb(hex).map((v) => v / 255);
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  if (mx === mn) return 0;
+  const d = mx - mn;
+  const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return Math.round((h / 6) * 360);
+}
+
 // Насыщенность HSL — ею и меряем «не обесцветился ли тон».
 function saturation(hex) {
   const [r, g, b] = hexToRgb(hex).map((v) => v / 255);
@@ -65,6 +76,38 @@ for (const t of TINTS_DARK) {
 check('«Сепия» без поправки была бы ярче земли', relLuminance('#C9A227') > relLuminance(DARK.appBg), true);
 check('фиксированных 45% ей не хватило бы',
   relLuminance(rgbToHex(hexToRgb('#C9A227').map((v) => v * 0.45))) > relLuminance(DARK.appBg), true);
+
+console.log('\n— ВИДИМОСТЬ: в тёмной теме земля обязана читаться —');
+// ⚠️ Самый живучий дефект этого фона: он «есть» по коду и невидим глазом. Дважды правился и дважды
+// оставался невидимым — 1,038 в первый раз и 1,09–1,14 во второй, причём НА МАКСИМУМЕ ползунка.
+// Поэтому видимость здесь — число, а не мнение: порог 1,35 к фону на верхнем краю ползунка.
+for (const tint of TINTS_DARK) {
+  const at = (amount) => buildChromeGround({ tint, appBg: DARK.appBg, surface: DARK.surface, amount, dark: true });
+  const full = at(30);
+  const low = at(6);
+  check(`${tint} на максимуме отличим от фона (≥1.35)`, contrast(full.top, DARK.appBg) >= 1.35, true);
+  // Обратный край: ползунок обязан что-то значить, иначе «6%» и «30%» одинаковы.
+  check(`${tint} на минимуме остаётся сдержанным (≤1.25)`, contrast(low.top, DARK.appBg) <= 1.25, true);
+  check(`${tint} — ползунок двигает землю монотонно`,
+    contrast(low.top, DARK.appBg) < contrast(at(18).top, DARK.appBg)
+      && contrast(at(18).top, DARK.appBg) < contrast(full.top, DARK.appBg), true);
+  // Ход по оттенку тоже должен быть виден: без него «градиент» — просто заливка.
+  const stops = full.backgroundImage.match(/#[0-9a-f]{6}/g);
+  check(`${tint} — верх и низ градиента различимы (≥1.1)`, contrast(stops[0], stops[2]) >= 1.1, true);
+}
+
+console.log('\n— ЦВЕТОВОЙ ЗАКОН: сгенерированная земля не заходит в сиреневый —');
+// ⚠️ Земля — СГЕНЕРИРОВАННЫЙ цвет, а запрет фиолетового распространяется и на такие (см. CLAUDE.md
+// и разбор siteTint.ts). Поворот ступеней доходит до +30°, и у синих тонов (210°) низ градиента
+// садится на 240° — это ещё синий, но соседний сектор рядом. Теперь это проверено, а не на глаз.
+for (const [dark, tints, th] of [[false, TINTS_LIGHT, LIGHT], [true, TINTS_DARK, DARK]]) {
+  for (const tint of tints) {
+    const stops = buildChromeGround({ tint, appBg: th.appBg, surface: th.surface, amount: 30, dark })
+      .backgroundImage.match(/#[0-9a-f]{6}/g);
+    const worst = stops.map(hueOf).filter((h) => h >= 250 && h <= 310);
+    check(`${dark ? 'тёмная' : 'светлая'} ${tint} — сиреневых ступеней нет`, worst, []);
+  }
+}
 
 console.log('\n— ГЛАВНЫЙ ИНВАРИАНТ: остров светлее земли —');
 // Перебираем всё, что человек может выставить: обе темы, оба края ползунка, тона всех палитр.
