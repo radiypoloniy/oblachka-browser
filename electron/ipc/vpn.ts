@@ -6,7 +6,7 @@ import { IPC } from '../../shared/ipc';
 import type { VpnConnectionState } from '../../shared/ipc';
 import * as vpnKeyStore from '../VpnKeyStore';
 import { toServerMeta } from '../VpnParser';
-import { broadcastVpnState } from '../VpnPopoverManager';
+import { broadcastVpnState } from '../SitePopoverManager';
 import * as vpnProcess from '../VpnProcess';
 import * as vpnSubscription from '../VpnSubscription';
 import { broadcastToChrome } from '../WindowRegistry';

@@ -570,21 +570,12 @@ export const IPC = {
   PASSWORD_POPOVER_CLOSE:      'password-popover:close',
   PASSWORD_POPOVER_CLOSED:     'password-popover:closed',
 
-  // Поповер VPN-пилюли — тот же приём, что PASSWORD_POPOVER_* (см. electron/VpnPopoverManager.ts).
-  // Отличие: SHOW не несёт payload — сам поповер запрашивает список серверов/статус подключения
-  // через свой preload (см. preload-vpnpopover.ts), main здесь ничего не решает.
-  VPN_POPOVER_SET_BOUNDS: 'vpn-popover:set-bounds',
-  VPN_POPOVER_SHOW:       'vpn-popover:show',
-  VPN_POPOVER_CLOSE:      'vpn-popover:close',
-  VPN_POPOVER_CLOSED:     'vpn-popover:closed',
-  // Заход «Защита» (шаг 3) — домен активной вкладки для адблок-секции поповера. Toolbar шлёт его
-  // и при открытии, и при навигации в ТОЙ ЖЕ вкладке, пока поповер открыт (смена вкладки поповер
-  // и так закрывает, см. Toolbar.tsx::useEffect по tab?.id). main форвардит в саму вью поповера
-  // отдельным push'ем 'vpn-popover:active-url' (см. VpnPopoverManager.ts) — этот канал в IPC-словаре
-  // только на renderer→main половину пути, ответной пары ADBLOCK_STATE_CHANGED-стиля у него нет.
-  VPN_POPOVER_SET_ACTIVE_URL: 'vpn-popover:set-active-url',
+  // ⚠️ Здесь стояли VPN_POPOVER_* — поповер пилюли «Защита». Пилюли и её поповера больше нет:
+  // VPN и адблок переехали в карточку под щитом адресной строки (SITE_POPOVER_*), потому что щит
+  // и замок отвечали на один и тот же вопрос. Канал «домен активной вкладки» тоже не понадобился:
+  // карточка сайта и так знает, какая вкладка активна (SITE_POPOVER_ACTIVE_TAB).
 
-  // Поповер загрузок у одноимённой кнопки тулбара — та же техника, что VPN_POPOVER_* выше
+  // Поповер загрузок у одноимённой кнопки тулбара — та же техника, что PASSWORD_POPOVER_* выше
   // (см. electron/DownloadsPopoverManager.ts). Список поповер запрашивает сам через свой preload,
   // а живой прогресс main толкает в саму вью (иначе полоска замерла бы до переоткрытия).
   DOWNLOADS_POPOVER_SET_BOUNDS: 'downloads-popover:set-bounds',

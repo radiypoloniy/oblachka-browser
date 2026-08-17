@@ -14,7 +14,6 @@ import { syncScreenshotBounds } from '../ScreenshotManager';
 import { syncSearchPopoverBounds } from '../SearchPopoverManager';
 import { closeSitePopover, isSitePopoverOpen, showSitePopover, syncSitePopoverAnchorBounds } from '../SitePopoverManager';
 import { closeSuggestDropdown, sendSuggestItems, sendSuggestPanel, showSuggestDropdown, syncOmniboxBounds, onPick as onSuggestDropdownPick, onSiteInfo as onSuggestDropdownSiteInfo, onRecommend as onSuggestDropdownRecommend, setHighlight as setSuggestDropdownHighlight } from '../SuggestDropdownManager';
-import { closeVpnPopover, showVpnPopover, syncVpnPopoverActiveUrl, syncVpnPopoverAnchorBounds } from '../VpnPopoverManager';
 import { contextForWindow } from '../WindowRegistry';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
@@ -87,19 +86,6 @@ export function registerOverlaysIpc(d: IpcDeps): void {
   });
   ipcMain.handle(IPC.PASSWORD_POPOVER_CLOSE, (e) => {
     closePasswordPopover(winOf(e));
-  });
-  ipcMain.handle(IPC.VPN_POPOVER_SET_BOUNDS, (_e, b: ContentBounds) => {
-    syncVpnPopoverAnchorBounds(b);
-  });
-  ipcMain.handle(IPC.VPN_POPOVER_SHOW, (e) => {
-    const w = winOf(e);
-    if (w) showVpnPopover(w);
-  });
-  ipcMain.handle(IPC.VPN_POPOVER_CLOSE, () => {
-    closeVpnPopover();
-  });
-  ipcMain.handle(IPC.VPN_POPOVER_SET_ACTIVE_URL, (_e, url: string) => {
-    syncVpnPopoverActiveUrl(url);
   });
   ipcMain.handle(IPC.DOWNLOADS_POPOVER_SET_BOUNDS, (_e, b: ContentBounds) => {
     syncDownloadsPopoverAnchorBounds(b);

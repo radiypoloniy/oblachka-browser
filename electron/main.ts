@@ -92,7 +92,6 @@ import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPas
 import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
 import * as autofillOrchestrator from './AutofillOrchestrator';
 import { parseAddressBlob } from './AddressParser';
-import { initVpnPopover, closeVpnPopover } from './VpnPopoverManager';
 import { initDownloadsPopover, closeDownloadsPopover, broadcastDownloads, setDuplicatePrompt, setDuplicateDecisionHandler } from './DownloadsPopoverManager';
 import { initSitePopover, closeSitePopover } from './SitePopoverManager';
 import * as aiKeyStore from './AiKeyStore';
@@ -950,7 +949,7 @@ function createWindow(role: WindowRole = 'main') {
     // renderer-side реакция на смену tab.id — та могла разойтись с фактом прикрепления вью).
     () => {
       // Снимок привязан к той вкладке, которую сняли: над чужой страницей карточке не место.
-      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); closeClipboardPopover(win);
+      closeTranslatePopoverOnTabSwitch(); closeFindBar(win); closeSearchPopover(); hideSuggestDropdown(win); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); closeClipboardPopover(win);
       // Вопрос о разрешении привязан к конкретной странице — над чужой вкладкой ему не место.
       if (win) for (const id of dropPermissionRequests(win)) permissions.cancel(id);
       // Менеджер паролей, шаг 2: индикатор в omnibox всегда про АКТИВНУЮ вкладку — пересылаем
@@ -960,7 +959,7 @@ function createWindow(role: WindowRole = 'main') {
       pushProductState(win);
     },
     (wc, tabId) => {
-      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeVpnPopover(); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); passwordAutofill.onTabClosed(tabId);
+      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); passwordAutofill.onTabClosed(tabId);
       // Закрылась последняя инкогнито-вкладка → стираем in-memory данные приватной сессии (куки/
       // хранилище), Chrome-подобно. takeIncognitoClearIfDone сам знает, когда это уместно (работает
       // и для кнопки, и для хоткея Ctrl+Shift+N).
@@ -972,7 +971,6 @@ function createWindow(role: WindowRole = 'main') {
       chromeView?.webContents.send(IPC.SUGGEST_DROPDOWN_CONTENT_FOCUS);
       closePasswordPopover(win);
       closeAutofillPopover(win);
-      closeVpnPopover();
       closeDownloadsPopover();
       // ⚠️ Без этой строки поповер сайта не закрывался кликом по странице: слушатель «клика мимо»
       // живёт в слое хрома, а клики по странице до него не доходят вовсе — страница это отдельная
@@ -1131,7 +1129,6 @@ function createWindow(role: WindowRole = 'main') {
     setOnAiPanelFocus(() => {
       closePasswordPopover(win);
       closeAutofillPopover(win);
-      closeVpnPopover();
       closeDownloadsPopover();
       closeSitePopover();
       closeClipboardPopover(win);
@@ -1353,7 +1350,6 @@ function createWindow(role: WindowRole = 'main') {
     onPageTranslateProgressChanged((progress) => {
       chromeView?.webContents.send(IPC.PAGE_TRANSLATE_PROGRESS_CHANGED, progress);
     });
-    initVpnPopover(() => chromeView?.webContents.send(IPC.VPN_POPOVER_CLOSED));
   }
 
   // Восстанавливаем вкладки из session.json (v4: nodes[] с группами; v1/v2/v3 мигрированы).

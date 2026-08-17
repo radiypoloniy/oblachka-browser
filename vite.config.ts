@@ -34,8 +34,6 @@ export default defineConfig({
         passwordpopover: resolve(__dirname, 'src/passwordpopover.html'),
         // Поповер автозаполнения адресов/карт — та же техника (см. AutofillPopoverManager.ts).
         autofillpopover: resolve(__dirname, 'src/autofillpopover.html'),
-        // Поповер VPN-пилюли — та же техника (см. VpnPopoverManager.ts).
-        vpnpopover: resolve(__dirname, 'src/vpnpopover.html'),
         // Поповер загрузок у кнопки тулбара — та же техника (см. DownloadsPopoverManager.ts).
         downloadspopover: resolve(__dirname, 'src/downloadspopover.html'),
         clipboardpopover: resolve(__dirname, 'src/clipboardpopover.html'),

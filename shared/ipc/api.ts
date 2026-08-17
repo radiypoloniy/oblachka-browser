@@ -535,16 +535,6 @@ export interface OblakoApi {
   closePasswordPopover(): Promise<void>;
   onPasswordPopoverClosed(cb: () => void): () => void;
 
-  // Поповер VPN-пилюли (см. shared/ipc.ts::IPC.VPN_POPOVER_*, electron/VpnPopoverManager.ts) —
-  // сама карточка сама запрашивает список серверов/статус через preload-vpnpopover.ts, здесь
-  // только геометрия анкора и открытие/закрытие.
-  setVpnPopoverAnchorBounds(bounds: ContentBounds): Promise<void>;
-  showVpnPopover(): Promise<void>;
-  closeVpnPopover(): Promise<void>;
-  onVpnPopoverClosed(cb: () => void): () => void;
-  // Домен активной вкладки для адблок-секции поповера (см. IPC.VPN_POPOVER_SET_ACTIVE_URL) —
-  // Toolbar шлёт при открытии и при навигации в той же вкладке, пока поповер открыт.
-  setVpnPopoverActiveUrl(url: string): Promise<void>;
 
   // Поповер загрузок (см. IPC.DOWNLOADS_POPOVER_*, electron/DownloadsPopoverManager.ts) —
   // как и у VPN, здесь только геометрия анкора и открытие/закрытие: список карточка берёт сама.

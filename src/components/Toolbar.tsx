@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Search, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star, VenetianMask, TrendingDown, Clipboard } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RefreshCw, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star, TrendingDown, Clipboard } from 'lucide-react';
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, ProductState, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
-import { islandPlate, islandBtn, clusterBtn, navBtn } from '../styles/island';
+import { islandPlate, clusterBtn, navBtn } from '../styles/island';
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
 
 // Высота тулбара — должна совпадать с CSS-значением (56px).
@@ -26,16 +26,10 @@ const PANEL_RELATED_MAX = 4;
 // SettingsManager (RECOMMENDED_MAX): диск не обязан верить рендереру.
 const RECOMMENDED_MAX = 8;
 
-// ── VPN-пилюля: ступенчатое схлопывание ─────────────────────────────────────
-
-type VpnMode = 'full' | 'short' | 'icon';
-
-// Ширина тулбара (= ширина колонки), при которой переключаем режим.
-// full  : полный лейбл «VPN · Финляндия» / «VPN выкл.»
-// short : только «VPN» + цветной индикатор
-// icon  : только иконка-щит + индикатор
-const VPN_THRESHOLD_FULL  = 1150;
-const VPN_THRESHOLD_SHORT =  900;
+// ⚠️ Здесь стояла ПИЛЮЛЯ «Защита» со ступенчатым схлопыванием (full → short → icon по двум
+// порогам ширины). Пилюли больше нет: VPN и адблок переехали под щит в адресной строке, потому
+// что щит и замок отвечали на один и тот же вопрос — «что защищает меня прямо сейчас». Вместе с
+// пилюлёй ушли и пороги: схлопывать нечего, у щита один размер.
 
 // ⚠️ Здесь стояла таблица RIGHT_RESERVE: сколько пикселей от ЦЕНТРА занимает правая группа
 // кнопок в каждом режиме VPN. Омнибокс был абсолютно спозиционирован по центру окна
@@ -141,7 +135,6 @@ export default function Toolbar({
   const [placeholderVisible, setPlaceholderVisible] = useState(true);
   const [passwordIndicator, setPasswordIndicator] = useState<PasswordIndicatorState | null>(null);
   const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false);
-  const [vpnPopoverOpen, setVpnPopoverOpen] = useState(false);
   const [downloadsPopoverOpen, setDownloadsPopoverOpen] = useState(false);
   // Буфер скопированного со страниц. ⚠️ Кнопки НЕТ, пока буфер пуст: на чистом сеансе она была бы
   // мёртвым значком, а тулбар и так тесный (тот же приём, что у индикатора товара).
@@ -215,7 +208,6 @@ export default function Toolbar({
   // фундамент под будущую нативную вью дропдауна, сам дропдаун этот заход не трогает.
   const omniboxPillRef = useRef<HTMLDivElement>(null);
   const passwordControlRef = useRef<HTMLDivElement>(null);
-  const vpnControlRef = useRef<HTMLDivElement>(null);
   const downloadsControlRef = useRef<HTMLDivElement>(null);
   const clipboardControlRef = useRef<HTMLDivElement>(null);
   const siteControlRef = useRef<HTMLButtonElement>(null);
@@ -253,11 +245,6 @@ export default function Toolbar({
     update();
     return () => ro.disconnect();
   }, []);
-
-  // Режим VPN-пилюли считается из ширины тулбара (пороги выше).
-  const vpnMode: VpnMode = toolbarWidth >= VPN_THRESHOLD_FULL ? 'full'
-    : toolbarWidth >= VPN_THRESHOLD_SHORT ? 'short'
-    : 'icon';
 
   // Есть ли что переводить. Условие ПРО СТРАНИЦУ, поэтому кнопка не исчезает, а гаснет (см.
   // разбор «гасить или прятать» у правого кластера ниже).
@@ -543,33 +530,6 @@ export default function Toolbar({
     void window.oblako.showPasswordPopover(passwordIndicator);
   }, [closeDropdownFully, passwordIndicator, passwordPopoverOpen, pushPasswordPopoverBounds]);
 
-  const pushVpnPopoverBounds = useCallback(() => {
-    const el = vpnControlRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    void window.oblako.setVpnPopoverAnchorBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
-  }, []);
-
-  const toggleVpnPopover = useCallback(() => {
-    closeDropdownFully('vpn-indicator');
-    if (passwordPopoverOpen) {
-      setPasswordPopoverOpen(false);
-      void window.oblako.closePasswordPopover();
-    }
-    if (clipboardPopoverOpen) { setClipboardPopoverOpen(false); void window.oblako.toggleClipboardPopover(); }
-    if (vpnPopoverOpen) {
-      setVpnPopoverOpen(false);
-      void window.oblako.closeVpnPopover();
-      return;
-    }
-    pushVpnPopoverBounds();
-    setVpnPopoverOpen(true);
-    // Домен активной вкладки — ДО showVpnPopover(), не после: адблок-секция поповера должна
-    // увидеть актуальный URL уже к моменту первого показа (см. VpnPopoverManager.ts::lastActiveUrl).
-    void window.oblako.setVpnPopoverActiveUrl(tab?.url ?? '');
-    void window.oblako.showVpnPopover();
-  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, clipboardPopoverOpen, pushVpnPopoverBounds, tab?.url]);
-
   const pushDownloadsPopoverBounds = useCallback(() => {
     const el = downloadsControlRef.current;
     if (!el) return;
@@ -581,7 +541,7 @@ export default function Toolbar({
     closeDropdownFully('downloads-button');
     // Двум поповерам в тулбаре одновременно места нет — открывая один, гасим соседей.
     if (passwordPopoverOpen) { setPasswordPopoverOpen(false); void window.oblako.closePasswordPopover(); }
-    if (vpnPopoverOpen) { setVpnPopoverOpen(false); void window.oblako.closeVpnPopover(); }
+    if (sitePopoverOpen) { setSitePopoverOpen(false); void window.oblako.toggleSitePopover(); }
     if (clipboardPopoverOpen) { setClipboardPopoverOpen(false); void window.oblako.toggleClipboardPopover(); }
     if (downloadsPopoverOpen) {
       setDownloadsPopoverOpen(false);
@@ -591,7 +551,7 @@ export default function Toolbar({
     pushDownloadsPopoverBounds();
     setDownloadsPopoverOpen(true);
     void window.oblako.showDownloadsPopover();
-  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen, clipboardPopoverOpen, pushDownloadsPopoverBounds]);
+  }, [closeDropdownFully, passwordPopoverOpen, sitePopoverOpen, downloadsPopoverOpen, clipboardPopoverOpen, pushDownloadsPopoverBounds]);
 
   useEffect(() => window.oblako.onDownloadsPopoverClosed(() => setDownloadsPopoverOpen(false)), []);
 
@@ -601,7 +561,7 @@ export default function Toolbar({
   const toggleClipboardPopover = useCallback(() => {
     closeDropdownFully('clipboard-button');
     if (passwordPopoverOpen) { setPasswordPopoverOpen(false); void window.oblako.closePasswordPopover(); }
-    if (vpnPopoverOpen) { setVpnPopoverOpen(false); void window.oblako.closeVpnPopover(); }
+    if (sitePopoverOpen) { setSitePopoverOpen(false); void window.oblako.toggleSitePopover(); }
     if (downloadsPopoverOpen) { setDownloadsPopoverOpen(false); void window.oblako.closeDownloadsPopover(); }
     const el = clipboardControlRef.current;
     if (el) {
@@ -610,7 +570,7 @@ export default function Toolbar({
     }
     setClipboardPopoverOpen((v) => !v);
     void window.oblako.toggleClipboardPopover();
-  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen]);
+  }, [closeDropdownFully, passwordPopoverOpen, sitePopoverOpen, downloadsPopoverOpen]);
 
   // Вопрос «этот файл уже скачан» — открываем поповер загрузок ровно тем же путём, что по клику
   // (с якорем и подсветкой кнопки). Сам вопрос уже лежит в main, карточка заберёт его сама.
@@ -634,13 +594,13 @@ export default function Toolbar({
   const toggleSitePopover = useCallback(() => {
     closeDropdownFully('site-button');
     if (passwordPopoverOpen) { setPasswordPopoverOpen(false); void window.oblako.closePasswordPopover(); }
-    if (vpnPopoverOpen) { setVpnPopoverOpen(false); void window.oblako.closeVpnPopover(); }
+    if (sitePopoverOpen) { setSitePopoverOpen(false); void window.oblako.toggleSitePopover(); }
     if (downloadsPopoverOpen) { setDownloadsPopoverOpen(false); void window.oblako.closeDownloadsPopover(); }
     if (clipboardPopoverOpen) { setClipboardPopoverOpen(false); void window.oblako.toggleClipboardPopover(); }
     pushSitePopoverBounds();
     // Состояние приходит ответом самого toggle — второго источника правды не заводим.
     void window.oblako.toggleSitePopover().then(setSitePopoverOpen);
-  }, [closeDropdownFully, passwordPopoverOpen, vpnPopoverOpen, downloadsPopoverOpen, clipboardPopoverOpen, pushSitePopoverBounds]);
+  }, [closeDropdownFully, passwordPopoverOpen, sitePopoverOpen, downloadsPopoverOpen, clipboardPopoverOpen, pushSitePopoverBounds]);
 
   useEffect(() => window.oblako.onSitePopoverClosed(() => setSitePopoverOpen(false)), []);
 
@@ -725,14 +685,6 @@ export default function Toolbar({
     return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
   }, [clipboardPopoverOpen]);
 
-  // Навигация в ТОЙ ЖЕ вкладке, пока поповер уже открыт (смена самой вкладки поповер закрывает
-  // целиком, см. эффект по tab?.id ниже) — адблок-секция должна обновиться на новый домен, а не
-  // показывать whitelist-статус/счётчик страницы, с которой уже ушли.
-  useEffect(() => {
-    if (!vpnPopoverOpen) return;
-    void window.oblako.setVpnPopoverActiveUrl(tab?.url ?? '');
-  }, [vpnPopoverOpen, tab?.url]);
-
   // ── Заход 5 (кардинальный фикс): закрытие БЕЗ blur ──────────────────────────────────────────
   // blur омнибокса — НЕ триггер закрытия (по образцу FindBar/поповера/AI-панели, см. BACKLOG.md:
   // «blur НИКОГДА не использовать как механику закрытия» — addChildView новой вью дропдауна шлёт
@@ -776,7 +728,6 @@ export default function Toolbar({
   }, []);
 
   useEffect(() => window.oblako.onPasswordPopoverClosed(() => setPasswordPopoverOpen(false)), []);
-  useEffect(() => window.oblako.onVpnPopoverClosed(() => setVpnPopoverOpen(false)), []);
 
   useEffect(() => {
     if (!passwordPopoverOpen) return;
@@ -802,29 +753,6 @@ export default function Toolbar({
     return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
   }, [passwordPopoverOpen]);
 
-  useEffect(() => {
-    if (!vpnPopoverOpen) return;
-    pushVpnPopoverBounds();
-    const el = vpnControlRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(pushVpnPopoverBounds);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [vpnPopoverOpen, toolbarWidth, pushVpnPopoverBounds]);
-
-  useEffect(() => {
-    if (!vpnPopoverOpen) return;
-    const onOutsideMouseDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!vpnControlRef.current?.contains(target)) {
-        setVpnPopoverOpen(false);
-        void window.oblako.closeVpnPopover();
-      }
-    };
-    document.addEventListener('mousedown', onOutsideMouseDown, true);
-    return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
-  }, [vpnPopoverOpen]);
-
   // (2) Реальный OS-фокус ушёл на контент активной вкладки (ДРУГОЙ webContents — клик мышью по
   // странице) — main шлёт это из TabManager.wirePageEvents::wc.on('focus'), см. shared/ipc.ts::
   // SUGGEST_DROPDOWN_CONTENT_FOCUS.
@@ -848,9 +776,9 @@ export default function Toolbar({
       setPasswordPopoverOpen(false);
       void window.oblako.closePasswordPopover();
     }
-    if (vpnPopoverOpen) {
-      setVpnPopoverOpen(false);
-      void window.oblako.closeVpnPopover();
+    if (sitePopoverOpen) {
+      setSitePopoverOpen(false);
+      void window.oblako.toggleSitePopover();
     }
     if (downloadsPopoverOpen) {
       setDownloadsPopoverOpen(false);
@@ -1504,26 +1432,28 @@ export default function Toolbar({
                 разрешения, заблокированные трекеры, «вы это уже читали» — см. SitePopoverManager.ts).
                 На хабе и в приватной вкладке остаётся прежний неактивный значок: там нет сайта,
                 про который можно что-то рассказать. */}
-            {tab?.incognito || isHub || !tab?.url ? (
-              <span style={{ color: tab?.incognito ? 'var(--text-body)' : 'var(--text-faint)', display: 'inline-flex' }}
-                title={tab?.incognito ? 'Приватная вкладка' : undefined}>
-                {tab?.incognito ? <VenetianMask size={14} /> : isHub ? <Search size={15} /> : <Lock size={14} />}
-              </span>
-            ) : (
-              <button
-                ref={siteControlRef}
-                title="Сведения о сайте"
-                onClick={toggleSitePopover}
-                style={{
-                  border: 'none', background: sitePopoverOpen ? 'var(--accent-soft)' : 'transparent',
-                  cursor: 'default', padding: 3, borderRadius: 'var(--radius-sm)',
-                  display: 'inline-flex', flex: 'none',
-                  color: sitePopoverOpen ? 'var(--accent)' : 'var(--text-faint)',
-                }}
-              >
-                <Lock size={14} />
-              </button>
-            )}
+            <button
+              ref={siteControlRef}
+              title={vpnOn ? 'Защита: VPN включён' : 'Защита: VPN, блокировка рекламы, сведения о сайте'}
+              onClick={toggleSitePopover}
+              style={{
+                border: 'none', background: sitePopoverOpen ? 'var(--accent-soft)' : 'transparent',
+                cursor: 'default', padding: 3, borderRadius: 'var(--radius-sm)',
+                display: 'inline-flex', flex: 'none',
+                // ⚠️ Зелёная ЗАЛИВКА щита = VPN поднят. Функциональный зелёный по цветовому закону
+                // (--dot-vpn), и ровно тот же приём, что был у пилюли «Защита», — просьба была
+                // именно про заливку, а не про точку рядом. Открытый поповер перебивает акцентом:
+                // это состояние интерфейса, а не состояние защиты.
+                color: sitePopoverOpen ? 'var(--accent)' : vpnOn ? 'var(--dot-vpn)' : 'var(--text-faint)',
+              }}
+            >
+              {/* ⚠️ Щит вместо замка, и это не косметика. Кнопка отвечает на вопрос «что защищает
+                  меня прямо сейчас» — соединение, вырезанные трекеры, VPN, — а замок обещает
+                  только первое. Раньше на хабе и в инкогнито здесь стояла НЕКЛИКАБЕЛЬНАЯ картинка;
+                  теперь кнопка живая всегда, иначе до VPN нельзя было бы добраться с новой
+                  вкладки — а включают его чаще всего именно оттуда. */}
+              <Shield size={14} fill={vpnOn && !sitePopoverOpen ? 'var(--dot-vpn)' : 'none'} />
+            </button>
             <input
               ref={inputRef}
               value={value}
@@ -1801,9 +1731,6 @@ export default function Toolbar({
           окно не получит AI-панель никогда, и место под неё резервировать незачем), условие про
           СТРАНИЦУ гасит. Тот же приём, что у «Обновить» на хабе. */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginLeft: 'auto' }}>
-        <div ref={vpnControlRef} style={{ display: 'inline-flex' }}>
-          <VpnPill vpnOn={vpnOn} mode={vpnMode} onClick={toggleVpnPopover} active={vpnPopoverOpen} />
-        </div>
         <div style={{ ...islandPlate, display: 'flex', gap: 2, padding: 3, borderRadius: 'var(--radius-card)' }}>
         {/* Полностраничный перевод (см. PageTranslateManager.ts) — только на реальной странице,
             на хабе/истории/настройках переводить нечего. idle: приглушённая иконка, как адблок
@@ -1947,61 +1874,6 @@ function ProgressRing({ value }: { value: number | null }) {
 }
 
 // ── Пилюля «Защита» (VPN + адблок) ────────────────────────────────────────────
-
-// Открывает объединённый поповер «Защита» (VPN + адблок, см. vpnpopover.tsx) — раньше это была
-// VPN-специфичная пилюля с именем подключённого сервера в подписи; заход «Защита» (шаг 4) убрал
-// эту деталь из самой кнопки (осталась внутри поповера, VpnIndicatorPopover.tsx уже её показывает),
-// т.к. кнопка теперь не только про VPN. Заливка щита по-прежнему = статус VPN (единственный
-// сигнал, для которого у кнопки есть надёжный источник правды без похода в поповер).
-function VpnPill({ vpnOn, mode, onClick, active }: { vpnOn: boolean; mode: VpnMode; onClick: () => void; active: boolean }) {
-  const shieldColor = vpnOn ? 'var(--dot-vpn)' : 'var(--text-faint)';
-  // Заливка самого щита зелёным при включённом VPN — вместо отдельной точки-индикатора рядом
-  // (пользователь: «мне не нравится зеленая точка... почему бы просто не делать заливку щита»).
-  const shieldIcon = <Shield size={15} style={{ color: shieldColor }} fill={vpnOn ? shieldColor : 'none'} />;
-  // active — открыт поповер по клику на эту пилюлю: та же подсветка, что у кнопки паролей
-  // (accent-soft), поверх обычного surface/surface-sunken тона вкл/выкл.
-  const activeBg = active ? 'var(--accent-soft)' : undefined;
-
-  if (mode === 'icon') {
-    // Только щит (заливка = статус). Плашка-остров всегда, вкл/выкл различает тон фона.
-    return (
-      <button
-        onClick={onClick}
-        title="Защита"
-        style={{
-          // Остров на месте; акцентом отмечен только реально поднятый VPN.
-          ...(vpnOn ? islandBtn('var(--accent)', 'var(--accent-soft)') : islandBtn()),
-          position: 'relative',
-          ...(activeBg ? { background: activeBg } : null),
-        }}
-      >
-        {shieldIcon}
-      </button>
-    );
-  }
-
-  // short/full — раньше отличались длиной подписи (VPN vs VPN · Страна), сейчас подпись
-  // фиксированная («Защита»), поэтому оба режима рендерят один и тот же widget; деление на
-  // два порога (VPN_THRESHOLD_SHORT/FULL) осталось только в RIGHT_RESERVE-расчёте омнибокса.
-  return (
-    <button
-      onClick={onClick}
-      title="Защита"
-      style={{
-        ...islandPlate,
-        display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 10px',
-        borderRadius: 'var(--radius-pill)', cursor: 'default',
-        // Плашка та же, что была; акцентом отмечен только поднятый VPN либо открытый поповер.
-        background: activeBg ?? (vpnOn ? 'var(--accent-soft)' : 'var(--surface)'),
-        fontSize: 'var(--fs-sm)', fontWeight: 500,
-        color: vpnOn ? 'var(--accent)' : 'var(--text-muted)',
-      }}
-    >
-      {shieldIcon}
-      Защита
-    </button>
-  );
-}
 
 // islandPlate/islandBtn/navBtn — вынесены в src/styles/island.ts для переиспользования
 // в других панелях (История/Настройки), см. импорт наверху файла. Вписаны в текущую высоту

@@ -17,6 +17,7 @@
 import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
+import { IPC } from '../shared/ipc';
 import type { ContentBounds } from '../shared/ipc';
 
 const POPOVER_WIDTH = 340;
@@ -138,4 +139,16 @@ export function closeSitePopover(): void {
 
 export function isSitePopoverOpen(): boolean {
   return isOpen;
+}
+
+/**
+ * Живое состояние VPN в открытую карточку (раздел «Защита» переехал сюда из поповера пилюли).
+ *
+ * ⚠️ Решение «слать ли» принимает САМ менеджер, а не вызывающий: подключение к серверу идёт
+ * секунду-две, за это время карточку успевают закрыть, а вью — пересоздать. Второй получатель
+ * того же снапшота, не замена рассылки по окнам (см. broadcastToChrome рядом с вызовом).
+ */
+export function broadcastVpnState(state: unknown): void {
+  if (!isOpen || !popoverView || popoverView.webContents.isDestroyed()) return;
+  popoverView.webContents.send(IPC.VPN_CONNECTION_STATE_CHANGED, state);
 }

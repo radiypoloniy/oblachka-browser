@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Lock, ShieldOff, ShieldCheck, Camera, Mic, MapPin, Bell, Maximize, Clipboard, BookOpen, RotateCcw, History } from 'lucide-react';
-import type { PermissionRecord, PermKey, SemanticSearchResult, PageChangesResult } from '../shared/ipc';
+import { Lock, ShieldOff, Camera, Mic, MapPin, Bell, Maximize, Clipboard, RotateCcw, History } from 'lucide-react';
+import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnConnectionState, AdBlockState } from '../shared/ipc';
 import { islandPlate } from './styles/island';
+import { normalizeDomain } from '../shared/domain';
+import VpnIndicatorPopover from './components/VpnIndicatorPopover';
+import AdBlockSitePanel from './components/AdBlockSitePanel';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
 
@@ -14,7 +17,16 @@ declare global {
       revokePermission: (origin: string, key: PermKey) => Promise<void>;
       getBlockedCount: (domain: string) => Promise<number>;
       isAdblockAllowed: (domain: string) => Promise<boolean>;
-      getRelatedPages: () => Promise<SemanticSearchResult[]>;
+      listVpnServers: () => Promise<VpnServerMeta[]>;
+      getVpnConnectionState: () => Promise<VpnConnectionState>;
+      vpnConnect: (serverId: string) => Promise<{ ok: boolean; error?: string }>;
+      vpnDisconnect: () => Promise<void>;
+      onVpnConnectionStateChanged: (cb: (state: VpnConnectionState) => void) => () => void;
+      getAdBlockState: () => Promise<AdBlockState>;
+      adBlockSetEnabled: (v: boolean) => Promise<void>;
+      adBlockAddDomain: (domain: string) => Promise<void>;
+      adBlockRemoveDomain: (domain: string) => Promise<void>;
+      adBlockReloadTabs: (domain?: string) => Promise<void>;
       getPageChanges: () => Promise<PageChangesResult>;
       openUrl: (url: string) => Promise<string>;
       close: () => void;
@@ -63,28 +75,37 @@ function SitePopoverApp() {
   const [perms, setPerms] = useState<PermissionRecord[]>([]);
   const [blocked, setBlocked] = useState<number | null>(null);
   const [adblockOff, setAdblockOff] = useState(false);
-  const [related, setRelated] = useState<SemanticSearchResult[] | null>(null);
   // «Что изменилось с прошлого раза» (AI-IDEAS.md №7). null — ещё считаем.
   const [changes, setChanges] = useState<PageChangesResult | null>(null);
+  // ── Защита: VPN и адблок. Переехали сюда из поповера пилюли «Защита» (удалён). ──
+  const [servers, setServers] = useState<VpnServerMeta[]>([]);
+  const [connState, setConnState] = useState<VpnConnectionState | null>(null);
+  const [adBlockState, setAdBlockState] = useState<AdBlockState | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // ⚠️ Всё перечитывается НА КАЖДЫЙ ПОКАЗ: вью между открытиями живёт, а сведения относятся к
-  // конкретной странице — за это время человек десять раз сменил вкладку.
+  // конкретной странице — за это время человек десять раз сменил вкладку. Список серверов тоже:
+  // подписку и сервер могли сменить в настройках, пока поповер был закрыт.
   const reload = useCallback(async () => {
-    setRelated(null);
+    void window.sitePopover.listVpnServers().then(setServers);
+    void window.sitePopover.getVpnConnectionState().then(setConnState);
+    void window.sitePopover.getAdBlockState().then(setAdBlockState);
     const tab = await window.sitePopover.getActiveTab();
     const tabUrl = tab?.url ?? '';
     setUrl(tabUrl);
     const host = hostOf(tabUrl);
-    if (!host) { setPerms([]); setBlocked(null); return; }
+    // ⚠️ Нет сайта (новая вкладка, инкогнито, настройки) — это НЕ повод не открываться: раздел
+    // «Защита» глобальный и нужен как раз оттуда, VPN чаще всего включают на новой вкладке.
+    // Гасим только то, что про сайт.
+    if (!host) { setPerms([]); setBlocked(null); setAdblockOff(false); setChanges(null); return; }
     void window.sitePopover.getPermissions().then(setPerms);
     void window.sitePopover.getBlockedCount(host).then(setBlocked);
     void window.sitePopover.isAdblockAllowed(host).then(setAdblockOff);
-    // Связанное из своей истории — единственное здесь, что считает модель. Приезжает отдельно и
-    // позже остального: ждать её, не показывая карточку, нельзя (см. RelatedHistory.ts).
-    void window.sitePopover.getRelatedPages().then(setRelated).catch(() => setRelated([]));
     void window.sitePopover.getPageChanges().then(setChanges).catch(() => setChanges({ changed: false }));
   }, []);
+
+  // Живое состояние VPN, пока карточка открыта: подключение идёт 1-2 секунды.
+  useEffect(() => window.sitePopover.onVpnConnectionStateChanged(setConnState), []);
 
   useEffect(() => window.sitePopover.onShow(() => { void reload(); }), [reload]);
   useEffect(() => { void reload(); }, [reload]);
@@ -103,6 +124,25 @@ function SitePopoverApp() {
   const origin = originOf(url);
   const secure = url.startsWith('https://');
   const sitePerms = perms.filter((p) => p.origin === origin);
+  const domain = normalizeDomain(url);
+
+  // Адблок общий выключатель. Push'а ADBLOCK_STATE_CHANGED в эту вью нет (main шлёт его только в
+  // слой хрома), поэтому после своей же мутации состояние перезапрашиваем явно.
+  async function toggleAdBlockEnabled() {
+    if (!adBlockState) return;
+    await window.sitePopover.adBlockSetEnabled(!adBlockState.enabled);
+    void window.sitePopover.getAdBlockState().then(setAdBlockState);
+  }
+
+  // Исключение для домена. ⚠️ Белый список действует на БУДУЩИЕ запросы, а не задним числом —
+  // без перезагрузки человек не увидит эффекта тумблера на уже открытой странице.
+  async function toggleAdBlockSite() {
+    if (!domain) return;
+    if (adblockOff) await window.sitePopover.adBlockRemoveDomain(domain);
+    else await window.sitePopover.adBlockAddDomain(domain);
+    setAdblockOff(!adblockOff);
+    void window.sitePopover.adBlockReloadTabs(domain);
+  }
 
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
@@ -135,18 +175,34 @@ function SitePopoverApp() {
           </div>
         </div>
 
-        {/* ── Блокировка ── */}
-        {host && (
-          <Section>
-            <Row
-              icon={<ShieldCheck size={15} style={{ color: adblockOff ? 'var(--text-faint)' : 'var(--dot-local)' }} />}
-              title={adblockOff ? 'Реклама здесь не блокируется' : 'Заблокировано на этом сайте'}
-              // ⚠️ Счётчик — за текущий сеанс браузера, так его и считает AdBlockManager.
-              // Подписываем честно, иначе «0» после перезапуска читается как «не работает».
-              subtitle={adblockOff ? 'Сайт добавлен в исключения' : `${blocked ?? 0} запросов за сеанс`}
+        {/* ── Защита: VPN и адблок ──
+            ⚠️ Раздел ГЛОБАЛЬНЫЙ и показывается всегда, в том числе на новой вкладке и в
+            инкогнито, где сайта нет вовсе. Иначе до VPN оттуда было бы не добраться — а включают
+            его чаще всего именно с новой вкладки, перед тем как куда-то пойти.
+            Разделы намеренно подписаны по-разному («Защита» / «Этот сайт» ниже): VPN и общий
+            выключатель адблока действуют на весь браузер, а разрешения и исключение — на один
+            домен. Без явной границы это читалось бы как «я меняю настройку для этого сайта». */}
+        <Section title="Защита">
+          <div style={{ padding: '2px 12px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <VpnIndicatorPopover
+              servers={servers}
+              connState={connState}
+              onConnect={async (id) => { await window.sitePopover.vpnConnect(id); }}
+              onDisconnect={async () => { await window.sitePopover.vpnDisconnect(); }}
             />
-          </Section>
-        )}
+            {adBlockState && (
+              <AdBlockSitePanel
+                enabled={adBlockState.enabled}
+                domain={domain}
+                whitelisted={adblockOff}
+                // ⚠️ Счётчик — за текущий сеанс браузера, так его и считает AdBlockManager.
+                blockedCount={blocked ?? 0}
+                onToggleEnabled={() => { void toggleAdBlockEnabled(); }}
+                onToggleSite={() => { void toggleAdBlockSite(); }}
+              />
+            )}
+          </div>
+        </Section>
 
         {/* ── Разрешения ── */}
         {host && sitePerms.length > 0 && (
@@ -204,33 +260,11 @@ function SitePopoverApp() {
           </Section>
         )}
 
-        {/* ── Вы это уже читали ── */}
-        {related !== null && related.length > 0 && (
-          <Section title="Вы это уже читали">
-            {related.map((r) => (
-              <button
-                key={r.url}
-                onClick={() => { void window.sitePopover.openUrl(r.url); window.sitePopover.close(); }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px',
-                  border: 'none', background: 'transparent', cursor: 'default', textAlign: 'left', width: '100%',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <BookOpen size={15} style={{ color: 'var(--text-muted)', flex: 'none' }} />
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 'var(--fs-sm)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {r.title || r.url}
-                  </span>
-                  <span style={{ display: 'block', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {hostOf(r.url)}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </Section>
-        )}
+        {/* ⚠️ «Вы это уже читали» отсюда УБРАНО: та же подсказка есть в панели омнибокса, и держать
+            её в двух местах незачем. Но в шапке SitePopoverManager.ts записано, ЗАЧЕМ её сюда
+            когда-то переносили: в выпадашке она конкурировала за очередь к модели со смысловым
+            поиском вкладок ровно в момент, когда человек начинал печатать. Конфликт этим удалением
+            не решён — просто копия осталась там, где он и был. */}
       </div>
     </div>
   );
@@ -249,18 +283,6 @@ function Section({ title, children }: { title?: string; children: React.ReactNod
         </div>
       )}
       {children}
-    </div>
-  );
-}
-
-function Row({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 16px' }}>
-      <span style={{ display: 'inline-flex', flex: 'none' }}>{icon}</span>
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>{title}</span>
-        <span style={{ display: 'block', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{subtitle}</span>
-      </span>
     </div>
   );
 }
