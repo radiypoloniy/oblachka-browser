@@ -71,6 +71,12 @@ function SplitPanelHeader({ tab, active, onClose, dragging, dragHandlers }: {
     onPointerMove: (e: React.PointerEvent) => void;
     onPointerUp: (e: React.PointerEvent) => void;
     onPointerCancel: (e: React.PointerEvent) => void;
+    // ⚠️ Страховка от залипшей подсветки: если капчур теряется НЕ через pointerup (alt-tab,
+    // контекстное меню, прерывание системой), ни up, ни cancel на шапку не приходят — а подсветку
+    // сплита гасит только endPanelDrag. Тогда её снимает этот обработчик. На обычном pointerup он
+    // тоже сработает (капчур освобождается следом), но endPanelDrag идемпотентен — второй вызов
+    // выходит сразу (ref уже обнулён).
+    onLostPointerCapture: (e: React.PointerEvent) => void;
   };
 }) {
   return (
@@ -1144,6 +1150,7 @@ export default function App() {
                     onPointerMove: handlePanelDragPointerMove,
                     onPointerUp: handlePanelDragPointerUp,
                     onPointerCancel: handlePanelDragPointerCancel,
+                    onLostPointerCapture: handlePanelDragPointerCancel,
                   }}
                 />
                 <SplitPaneEdge empty={panelDrag?.tabId === headerLeft!.id} />
@@ -1203,6 +1210,7 @@ export default function App() {
                     onPointerMove: handlePanelDragPointerMove,
                     onPointerUp: handlePanelDragPointerUp,
                     onPointerCancel: handlePanelDragPointerCancel,
+                    onLostPointerCapture: handlePanelDragPointerCancel,
                   }}
                 />
                 <SplitPaneEdge empty={panelDrag?.tabId === headerRight!.id} />
