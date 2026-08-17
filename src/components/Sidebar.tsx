@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Volume2, VolumeX } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
-import { glassPlate, islandPlate, TINTED_PLATE_VARS } from '../styles/island';
+import { islandPlate, TINTED_PLATE_VARS } from '../styles/island';
 import SidebarBookmarks from './SidebarBookmarks';
 import {
   DndContext, DragOverlay,
@@ -242,7 +242,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
             borderRadius: 4, display: 'inline-flex', flex: 'none',
             color: tab.muted ? 'var(--text-faint)' : 'var(--text-muted)',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >{tab.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}</button>
       )}
@@ -261,7 +261,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           onClick={(e) => { e.stopPropagation(); onExitSplit(tab.id); }}
           title="Выйти из split (обе вкладки останутся)"
           style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-muted)', flex: 'none' }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         ><Columns2 size={12} /></button>
       )}
@@ -272,7 +272,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           onClick={(e) => { e.stopPropagation(); onSplit(); }}
           title="Открыть рядом"
           style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         ><Columns2 size={14} /></button>
       )}
@@ -283,7 +283,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           onClick={(e) => { e.stopPropagation(); onClose(); }}
           title="Закрыть вкладку"
           style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         ><X size={14} /></button>
       )}
@@ -380,7 +380,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             onClick={(e) => { e.stopPropagation(); onExitSplit(left.id); }}
             title="Выйти из split (обе вкладки останутся)"
             style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><Columns2 size={12} /></button>
         )}
@@ -390,7 +390,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             onClick={(e) => { e.stopPropagation(); onClose(left.id); }}
             title="Закрыть левую панель"
             style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><X size={12} /></button>
         )}
@@ -426,7 +426,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             onClick={(e) => { e.stopPropagation(); onExitSplit(right.id); }}
             title="Выйти из split (обе вкладки останутся)"
             style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><Columns2 size={12} /></button>
         )}
@@ -436,7 +436,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             onClick={(e) => { e.stopPropagation(); onClose(right.id); }}
             title="Закрыть правую панель"
             style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><X size={12} /></button>
         )}
@@ -620,9 +620,12 @@ function CollapsedPairTile({ left, right, activeId, onSelect, onClose, onTabMenu
       onMiddleClick={() => onClose(tab.id)}
     />
   );
+  // Обойма split-пары в свёрнутой полосе. ⚠️ Была залита --surface-sunken — на подложке это
+  // контраст 1,13:1, то есть обойма просто исчезала бы, и две ячейки пары перестали бы читаться
+  // как пара. Ограничиваем волоском: он виден и на сером холсте, и на подкрашенном.
   return (
     <div style={{
-      background: 'var(--surface-sunken)', borderRadius: 'var(--radius-sm)',
+      border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)',
       padding: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
     }}>
       {cell(left)}
@@ -1044,7 +1047,7 @@ function SortableGroupBlock({
             padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none',
             color: 'var(--text-faint)',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >
           {group.collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
@@ -1219,11 +1222,21 @@ const tintedAside: React.CSSProperties = {
   backgroundSize: '120px 120px, 100% 100%',
 };
 
+// ⚠️ Сайдбар — ПОДЛОЖКА, а не остров: ни внешнего отступа, ни скругления, ни заливки, ни тени.
+// Фон под ним даёт холст окна (--canvas на body), сайдбар прозрачен и лежит заподлицо с краем.
+//
+// Причина не в моде на Arc. В теме `--surface-island` и `--surface` — оба #FFFFFF, то есть остров
+// сайдбара и страница были сделаны ИЗ ОДНОГО МАТЕРИАЛА, и различал их только 12-пиксельный зазор
+// с тенью. Фигуры и фона не было — два одинаковых белых прямоугольника на сером. Теперь серым
+// стал весь хром, а белой осталась только страница, ради которой браузер и открывают.
+//
+// ⚠️ Отсюда общее правило для всего, что рисуется внутри: НА ПОДЛОЖКЕ НЕЛЬЗЯ УХОДИТЬ ВГЛУБЬ СЕРЫМ.
+// `--surface-sunken` (#E5E5EA) против `--app-bg` (#F2F2F7) — это контраст 1,13:1, то есть один и
+// тот же цвет. Пассивное здесь прозрачно, активное поднимается белой карточкой. Значков это не
+// касается: `--text-muted` даёт 4,7:1 на подложке против 5,2:1 на белом — просадка в десятую часть.
 const asideBase: React.CSSProperties = {
   flex: 'none', display: 'flex', flexDirection: 'column',
-  margin: 'var(--gutter-shell) 0 var(--gutter-shell) var(--gutter-shell)',
-  borderRadius: 'var(--radius-island)',
-  ...glassPlate({ surface: 'surface-island', shadow: 'shadow-island', border: false }),
+  background: 'transparent',
   overflow: 'hidden',
 };
 
@@ -1243,8 +1256,19 @@ const innerPlate: React.CSSProperties = {
   borderRadius: 'var(--radius-card)',
 };
 
-// Маленький квадратный «остров» под одну иконку: кнопка сворачивания сайдбара
-// и «Новая вкладка» в свёрнутом виде. Тот же innerPlate, компактный padding.
+// Служебная кнопка сайдбара — свернуть/развернуть панель. БЕЗ плашки.
+//
+// ⚠️ Раньше это была такая же белая плашка (floatingIconBtn), как «Новая вкладка», то есть равная
+// ей по весу. На белом острове разницы не видно, а на подложке белое означает «главное» — и
+// служебная кнопка кричала бы наравне с главным действием панели. Подложка эту ошибку иерархии не
+// создала, а вскрыла: «свернуть» и «новая вкладка» никогда не были равнозначны.
+const utilIconBtn: React.CSSProperties = {
+  border: 'none', background: 'transparent', cursor: 'default', padding: 7,
+  borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', display: 'inline-flex',
+};
+
+// Маленький квадратный «остров» под одну иконку: «Новая вкладка» в свёрнутом виде.
+// Тот же innerPlate, компактный padding — главное действие панели остаётся карточкой.
 const floatingIconBtn: React.CSSProperties = {
   ...innerPlate,
   padding: 7,
@@ -1257,7 +1281,7 @@ const floatingIconBtn: React.CSSProperties = {
 // стоять рядом с полосой вкладок ему положено тише, чем самим вкладкам. Отсюда же подписи
 // текстом, а не иконками: две иконки рядом (страница и звезда) в 20 px читаются хуже, чем два
 // коротких слова, а места занимают столько же.
-function ModeSwitch({ mode, onChange, tinted }: { mode: 'tabs' | 'bookmarks'; onChange: (m: 'tabs' | 'bookmarks') => void; tinted: boolean }) {
+function ModeSwitch({ mode, onChange }: { mode: 'tabs' | 'bookmarks'; onChange: (m: 'tabs' | 'bookmarks') => void }) {
   const seg = (m: 'tabs' | 'bookmarks', label: string): React.ReactNode => {
     const active = mode === m;
     return (
@@ -1281,11 +1305,11 @@ function ModeSwitch({ mode, onChange, tinted }: { mode: 'tabs' | 'bookmarks'; on
   return (
     <div className="no-drag" style={{
       display: 'flex', gap: 2, padding: 2, marginBottom: 10,
-      // ⚠️ При цветном сайдбаре ровная серая подложка переключателя выглядела вырезанной из
-      // другой темы — она единственная не следовала за палитрой. Тот же приём, что у плашек.
-      background: tinted
-        ? 'color-mix(in srgb, var(--sidebar-tint) 8%, transparent)'
-        : 'var(--surface-sunken)',
+      // ⚠️ Дорожки БОЛЬШЕ НЕТ. Была --surface-sunken, а против подложки --app-bg это 1,13:1 —
+      // она бы просто исчезла (при цветном сайдбаре её и так приходилось подкрашивать отдельно,
+      // потому что серая полоса выглядела вырезанной из другой темы). Активный сегмент и без неё
+      // читается: он поднимается белой карточкой с тенью — ровно тем же приёмом, что активная
+      // вкладка ниже. Одна система вместо двух разных решений.
       borderRadius: 'var(--radius-sm)',
     }}>
       {seg('tabs', 'Вкладки')}
@@ -1309,7 +1333,7 @@ function UndoChip({ label, onClick }: { label: string; onClick: () => void }) {
         color: 'var(--text-body)', fontSize: 'var(--fs-xs)',
       }}
       onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-active)')}
-      onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
     >
       <RotateCcw size={10} />
       {label}
@@ -1737,17 +1761,17 @@ export default function Sidebar({
   // ── Свёрнутый режим: узкая полоса иконок ──
   if (collapsed) {
     return (
-      <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), boxShadow: 'var(--shadow-island)', ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width: 56, alignItems: 'center', padding: '12px 0 14px', ...returnHintStyle }}>
+      <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width: 56, alignItems: 'center', padding: '16px 0 14px', ...returnHintStyle }}>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: 14 }}>
           <button
             className="no-drag"
             onClick={() => onCollapsedChange(false)}
             title="Развернуть панель"
-            style={{ ...floatingIconBtn, transform: 'scaleX(-1)' }}
+            style={{ ...utilIconBtn, transform: 'scaleX(-1)' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
             // ⚠️ Возврат — к ПОДКРАШЕННОМУ фону, иначе кнопка после наведения навсегда белела.
-            onMouseLeave={(e) => { e.currentTarget.style.background = tinted ? 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)' : 'var(--surface)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
             <PanelLeft size={17} />
           </button>
@@ -1862,7 +1886,7 @@ export default function Sidebar({
 
   // ── Развёрнутый режим с drag-and-drop ──
   return (
-    <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), boxShadow: 'var(--shadow-island)', ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width, padding: '14px 12px 14px 14px', position: 'relative', ...returnHintStyle }}>
+    <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width, padding: '12px 12px 14px 16px', position: 'relative', ...returnHintStyle }}>
       {/* Ручка ширины — прозрачная полоска по всему правому краю. Своей заливки нет намеренно:
           сайдбар это остров со скруглением и тенью, а видимая вертикальная черта вдоль него
           читалась бы как рамка и спорила с формой. Курсор и так объясняет, что здесь тянут. */}
@@ -1878,8 +1902,11 @@ export default function Sidebar({
           try { localStorage.setItem(SIDEBAR_W_KEY, String(SIDEBAR_W_DEFAULT)); } catch { /* см. loadSidebarWidth */ }
         }}
         title="Потяните, чтобы изменить ширину (двойной щелчок — вернуть)"
+        // ⚠️ 8, а не 6: раньше между сайдбаром-островом и карточкой контента был зазор, и
+        // промахнуться мимо ручки было почти нельзя — рядом всё равно пустота. Теперь подложка
+        // упирается в саму карточку, и узкая полоса захвата стала бы игрой в попадание.
         style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0, width: 6,
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: 8,
           cursor: 'col-resize', zIndex: 5,
         }}
       />
@@ -1890,9 +1917,9 @@ export default function Sidebar({
           className="no-drag"
           onClick={() => onCollapsedChange(true)}
           title="Свернуть панель"
-          style={{ ...floatingIconBtn }}
+          style={{ ...utilIconBtn }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = tinted ? 'color-mix(in srgb, var(--sidebar-tint) 5%, transparent)' : 'var(--surface)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
         >
           <PanelLeft size={17} />
         </button>
@@ -1901,7 +1928,7 @@ export default function Sidebar({
       {/* ⚠️ Переключатель «Вкладки | Закладки» — ОДНА область сайдбара на две сущности, а не два
           похожих ряда иконок рядом. Именно поэтому сетку вверху нельзя спутать: в режиме вкладок
           там закреплённые СТРАНИЦЫ, в режиме закладок — ПАПКИ, и одновременно их не бывает. */}
-      <ModeSwitch mode={mode} onChange={setMode} tinted={tinted} />
+      <ModeSwitch mode={mode} onChange={setMode} />
 
       {mode === 'bookmarks' && (
         <SidebarBookmarks onOpen={(url) => {
