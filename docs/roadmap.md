@@ -154,8 +154,16 @@ AI-экране (NotebookLM-подобный: источники с извлеч
 2. Импорт данных из браузеров — СДЕЛАНО для Chromium-семейства
    (закладки/история/пароли v10/v11, `electron/browserImport/`). Осталось:
    Firefox (`places.sqlite` + `logins.json`/NSS) и Safari (macOS, plist) тем же
-   контрактом `ImportSource`/`IMPORT_RUN`; пароли v20 (App-Bound, Chrome 127+)
-   требуют SYSTEM-DPAPI — сейчас помечаются unsupported.
+   контрактом `ImportSource`/`IMPORT_RUN`.
+   ⚠️ **Пароли v20 (App-Bound, Chrome 127+) с диска не читаются и читаться не будут.** Ключ
+   завёрнут вторым слоем в SYSTEM-DPAPI; снять его можно только эскалацией до SYSTEM или инъекцией
+   в процесс Chrome (обходя проверку пути у COM-сервиса `IElevator`). И то, и другое — техника
+   инфостилера, её метит AV, а это ломает пункт 0 (репутация издателя). Свежий Chrome отдаёт
+   именно v20. Вместо гонки вооружений — **CSV-путь** (санкционированный Google): экспорт из
+   `chrome://password-manager` → `IMPORT_PASSWORDS_CSV` → разбор `shared/csvPasswords.ts` (RFC 4180
+   руками) → неразрушающий `bulkImport`. Диалог выбора файла целиком в main, кнопка «Пароли из
+   файла» в `ImportDialog`. На диске v20-пароли по-прежнему помечаются unsupported — но у человека
+   теперь есть рабочий обход, не требующий от нас лезть в чужой сейф.
 3. Автозаполнение форм (адреса, банковские карты) — СДЕЛАНО
    (`electron/AutofillManager.ts`/`AutofillOrchestrator.ts`/`AutofillPopoverManager.ts`,
    детект в `preload-content.ts`, раздел настроек `AutofillSection.tsx`): хранилище
