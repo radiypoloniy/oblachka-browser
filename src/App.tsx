@@ -199,6 +199,25 @@ function findActiveSplitPairNode(nodes: SidebarNode[], activeId: string): SplitP
   return null;
 }
 
+// Разрешает CSS-цвет (в том числе color-mix, который getComputedStyle отдаёт формулой) в #rrggbb.
+// Нужен нативному API титлбара: полоса системных кнопок рисуется ОС и принимает только готовый
+// цвет. Пробный элемент — единственный способ заставить браузер посчитать формулу; живёт он один
+// кадр и за пределами экрана.
+function resolveColor(css: string): string {
+  try {
+    const probe = document.createElement('div');
+    probe.style.cssText = `position:fixed;left:-9999px;top:0;width:1px;height:1px;background:${css}`;
+    document.body.appendChild(probe);
+    const rgb = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(rgb);
+    if (!m) return '';
+    return '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('');
+  } catch {
+    return '';
+  }
+}
+
 export default function App() {
   console.log('[renderer-alive] App смонтирован')
 
@@ -394,7 +413,16 @@ export default function App() {
     // кнопок чужого цвета в большинстве палитр. Эффект стоит ПОСЛЕ того, который проставляет
     // data-theme/data-palette (порядок объявления = порядок выполнения), поэтому читается уже
     // применённая палитра. Фолбэк — прежний литерал светлой темы, если строка вдруг не хекс.
-    const raw = getComputedStyle(document.documentElement).getPropertyValue('--app-bg').trim();
+    // ⚠️ При включённом ЦВЕТНОМ ФОНЕ берём не --app-bg, а первую ступень подкраски: полоса
+    // системных кнопок Windows не участвует в web-раскладке вовсе (её рисует ОС по цвету из
+    // setTitleBarOverlay), поэтому градиент до неё не доезжает и она оставалась серым
+    // прямоугольником поверх цветного окна. Верхний правый угол — как раз начало градиента
+    // (160deg), там его первая ступень, 12%.
+    // ⚠️ Значение приходится РАЗРЕШАТЬ пробным элементом: это color-mix(), а getComputedStyle
+    // вернул бы формулу, а не цвет.
+    const raw = chromeTinted
+      ? resolveColor('color-mix(in srgb, var(--sidebar-tint) 12%, var(--app-bg))')
+      : getComputedStyle(document.documentElement).getPropertyValue('--app-bg').trim();
     const base = /^#[0-9a-f]{6}$/i.test(raw) ? raw : '#F2F2F7';
     void window.oblako.setTitleBarOverlay({
       // Под модалкой титлбар темнеет ровно на ту же долю, что и фон под scrim'ом, — иначе
@@ -404,8 +432,9 @@ export default function App() {
       symbolColor: scrimActive ? '#FFFFFF' : (dark || activeIncognito) ? '#EBEBF5' : '#3C3C43',
     });
     // themePrefs.palette в зависимостях не ради самого значения, а ради ПЕРЕЧИТЫВАНИЯ --app-bg:
-    // палитра меняет его, не меняя ни dark, ни incognito.
-  }, [dark, activeIncognito, scrimActive, themePrefs.palette]);
+    // палитра меняет его, не меняя ни dark, ни incognito. chromeTinted — по той же причине:
+    // включение цветного фона меняет цвет полосы кнопок, не трогая ни тему, ни палитру.
+  }, [dark, activeIncognito, scrimActive, themePrefs.palette, chromeTinted]);
 
   // Атомарная подписка: tabs + nodes в одном IPC-сообщении → один рендер, нет рассинхрона.
   useEffect(() => {
