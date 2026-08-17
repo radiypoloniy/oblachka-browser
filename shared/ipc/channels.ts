@@ -334,6 +334,10 @@ export const IPC = {
 
   CLIPBOARD_LIST:     'clipboard:list',        // поповер → main: записи буфера
   CLIPBOARD_PUT:      'clipboard:put',         // поповер → main: положить запись в буфер обмена ОС
+  // Поповер → main: положить в буфер ОС ОДИН адрес из записи (когда нужна сама ссылка, а не текст).
+  // ⚠️ Принимает id записи и url, а НЕ произвольную строку: main проверяет, что такой адрес в этой
+  // записи действительно есть. Писать в системный буфер что угодно по слову рендерера мы не даём.
+  CLIPBOARD_PUT_LINK: 'clipboard:put-link',
   CLIPBOARD_OPEN_SOURCE: 'clipboard:open-source', // поповер → main: открыть страницу-источник и подсветить фрагмент
   CLIPBOARD_REMOVE:   'clipboard:remove',      // поповер → main: убрать одну запись
   CLIPBOARD_CLEAR:    'clipboard:clear',       // поповер → main: очистить всё

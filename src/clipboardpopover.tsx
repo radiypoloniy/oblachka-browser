@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Clipboard, Copy, Check, Trash2, X, ChevronDown, ChevronRight, CornerUpRight } from 'lucide-react';
+import { Clipboard, Copy, Check, Trash2, X, ChevronDown, ChevronRight, CornerUpRight, Link2 } from 'lucide-react';
 import type { ClipboardEntry, ClipboardRevealResult } from '../shared/ipc';
 import { islandPlate } from './styles/island';
 import SiteFavicon from './components/SiteFavicon';
@@ -25,6 +25,7 @@ declare global {
     clipboardPopover: {
       list: () => Promise<ClipboardEntry[]>;
       put: (id: number) => Promise<void>;
+      putLink: (id: number, url: string) => Promise<void>;
       openSource: (id: number) => Promise<ClipboardRevealResult>;
       favicon: (host: string) => Promise<string | null>;
       remove: (id: number) => Promise<void>;
@@ -157,10 +158,17 @@ const iconBtn: React.CSSProperties = {
   borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-faint)', cursor: 'default',
 };
 
+// Домен для подписи ссылки — то же «без www», что у заголовков групп выше.
+const hostOf = (url: string): string => {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+};
+
 function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
+  const links = entry.links ?? [];
 
   // ⚠️ Копирование НЕ требует раскрытия: чаще всего человек и так знает, что копировал, и лишний
   // шаг «раскрой, чтобы взять» превратил бы список в препятствие.
@@ -194,9 +202,57 @@ function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => voi
             display: '-webkit-box', WebkitLineClamp: PREVIEW_LINES, WebkitBoxOrient: 'vertical', overflow: 'hidden',
           }),
         }}>{entry.text}</div>
+        {/* ⚠️ Ссылки внутри копии — ОТДЕЛЬНАЯ строка, а не значок в подписи. Смысл записи меняется:
+            «абзац текста» и «абзац текста, который ведёт вот сюда» — разные вещи, и вторую человек
+            берёт из списка именно ради адреса. Свёрнуто показываем счётчик, раскрыто — сами
+            адреса: в свёрнутом виде строка обязана оставаться в две строки текста. */}
+        {links.length > 0 && !open && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 3,
+            fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
+          }}>
+            <Link2 size={11} />
+            {links.length === 1 ? hostOf(links[0]!.url) : `ссылок: ${links.length}`}
+          </div>
+        )}
         <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
           {timeAgo(entry.at)}{entry.title ? ` · ${entry.title.slice(0, 40)}` : ''}
         </div>
+        {links.length > 0 && open && (
+          <div
+            onClick={(e) => e.stopPropagation()} // клик по строке копирует запись целиком — здесь это не то
+            style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}
+          >
+            {links.map((l) => (
+              <button
+                key={l.url}
+                title="Скопировать адрес"
+                onClick={() => {
+                  void window.clipboardPopover.putLink(entry.id, l.url).then(() => {
+                    setCopiedLink(l.url);
+                    setTimeout(() => setCopiedLink(null), 1200);
+                  });
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, width: '100%',
+                  padding: '3px 5px', border: 'none', borderRadius: 'var(--radius-sm)',
+                  background: 'var(--surface-sunken)', cursor: 'pointer', textAlign: 'left',
+                  fontSize: 'var(--fs-xs)', fontFamily: 'var(--font-sans)',
+                  color: copiedLink === l.url ? 'var(--dot-local)' : 'var(--text-muted)',
+                }}
+              >
+                {copiedLink === l.url ? <Check size={11} /> : <Link2 size={11} />}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {l.text || l.url}
+                </span>
+                <span style={{
+                  marginLeft: 'auto', flex: 'none', color: 'var(--text-faint)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '45%',
+                }}>{hostOf(l.url)}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 2, flex: 'none', visibility: hovered || copied ? 'visible' : 'hidden' }}>

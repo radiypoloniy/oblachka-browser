@@ -71,6 +71,7 @@
   "CLIPBOARD_POPOVER_CLOSED=clipboard-popover:closed",
   "CLIPBOARD_POPOVER_TOGGLE=clipboard-popover:toggle",
   "CLIPBOARD_PUT=clipboard:put",
+  "CLIPBOARD_PUT_LINK=clipboard:put-link",
   "CLIPBOARD_REMOVE=clipboard:remove",
   "CONTENT_SET_BOUNDS=content:set-bounds",
   "CRYPTO_GET=crypto:get",

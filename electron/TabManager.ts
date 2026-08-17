@@ -4,7 +4,14 @@ import type { MenuItemConstructorOptions, PostBody, WebContents, WebFrameMain } 
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
-import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind } from '../shared/ipc';
+import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink } from '../shared/ipc';
+
+// Разметка и ссылки скопированного куска — то, что страница присылает вместе с текстом, чтобы
+// повторная копия из буфера не теряла ссылки (см. ClipboardBuffer.ts и preload-content.ts).
+export interface PageCopyRich {
+  html: string;
+  links: ClipboardLink[];
+}
 import type { SessionSnapshot, SavedNode, SavedActiveRef, SavedTab } from './SessionManager';
 import { PIP_ENTER_SCRIPT, PIP_EXIT_SCRIPT } from './videoPip';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../shared/searchEngines';
@@ -329,7 +336,7 @@ export class TabManager {
   // Автозаполнение форм — фокус на поле адреса/карты (см. wirePageEvents). url — из wc.getURL().
   private onAutofillFieldFocusCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void;
   private onAutofillPasteBlobCb?: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void;
-  private onPageCopyCb?: (text: string, url: string, title: string) => void;
+  private onPageCopyCb?: (text: string, url: string, title: string, rich?: PageCopyRich) => void;
   // «Сохранить как…»: пометить СЛЕДУЮЩУЮ загрузку этого адреса как требующую диалога. Менеджер
   // загрузок тут не хранится — умение приходит колбэком из main (тот же приём, что setGraphMenuBuilder).
   private onSaveAsCb?: (url: string) => void;
@@ -1403,10 +1410,13 @@ export class TabManager {
     // Скопировали текст на странице — в буфер браузера (см. ClipboardBuffer.ts).
     // ⚠️ Инкогнито исключаем ЗДЕСЬ, а не в буфере: приватная вкладка не оставляет следов нигде,
     // и список скопированного — ровно такой же след, как история или загрузки.
-    wc.ipc.on(IPC.CLIPBOARD_COPIED, (_e, payload: { text: string; title: string }) => {
+    wc.ipc.on(IPC.CLIPBOARD_COPIED, (_e, payload: { text: string; title: string; html?: string; links?: ClipboardLink[] }) => {
       if (!mine() || this.tabMap.get(id)?.incognito) return;
       try {
-        this.onPageCopyCb?.(payload.text, wc.getURL(), payload.title);
+        this.onPageCopyCb?.(payload.text, wc.getURL(), payload.title, {
+          html: payload.html ?? '',
+          links: payload.links ?? [],
+        });
       } catch (e) {
         console.warn('[TabMgr] onPageCopyCb error:', (e as Error).message);
       }
@@ -3583,7 +3593,7 @@ export class TabManager {
   setOnAutofillPasteBlob(cb: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void): void {
     this.onAutofillPasteBlobCb = cb;
   }
-  setOnPageCopy(cb: (text: string, url: string, title: string) => void): void { this.onPageCopyCb = cb; }
+  setOnPageCopy(cb: (text: string, url: string, title: string, rich?: PageCopyRich) => void): void { this.onPageCopyCb = cb; }
   setOnSaveAs(cb: (url: string) => void): void { this.onSaveAsCb = cb; }
   setOnClipboardToggle(cb: () => void): void { this.onClipboardToggleCb = cb; }
 

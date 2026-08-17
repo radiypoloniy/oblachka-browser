@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('clipboardPopover', {
   list:    () => ipcRenderer.invoke(IPC.CLIPBOARD_LIST) as Promise<ClipboardEntry[]>,
   // Положить запись в системный буфер обмена — это и есть «взять из истории».
   put:     (id: number) => ipcRenderer.invoke(IPC.CLIPBOARD_PUT, id) as Promise<void>,
+  // Взять из записи один адрес, а не текст: скопировали абзац со ссылкой, а нужна ссылка.
+  putLink: (id: number, url: string) => ipcRenderer.invoke(IPC.CLIPBOARD_PUT_LINK, id, url) as Promise<void>,
   // Перейти к источнику: открыть страницу, где текст скопировали, и подсветить его на ней.
   openSource: (id: number) => ipcRenderer.invoke(IPC.CLIPBOARD_OPEN_SOURCE, id) as Promise<ClipboardRevealResult>,
   // Иконка сайта для заголовка группы. ⚠️ Своего канала не заводим — тот же FAVICON_GET, что у

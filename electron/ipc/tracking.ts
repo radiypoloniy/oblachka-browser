@@ -45,9 +45,24 @@ export function registerTrackingIpc(d: IpcDeps): void {
     broadcastToChrome(IPC.CLIPBOARD_CHANGED, clipboardBuffer.listCopies().length);
   });
   ipcMain.handle(IPC.CLIPBOARD_LIST, () => clipboardBuffer.listCopies());
+  // ⚠️ Кладём в буфер ОС и РАЗМЕТКУ, если она есть. Раньше здесь был только writeText, и повторная
+  // копия из списка приезжала голым текстом — «скопировал ссылку, вставил, а ссылки нет». При
+  // обычном копировании со страницы text/html кладёт сам Chromium, так что расхождение видел
+  // только тот, кто пользовался нашим списком.
+  // text остаётся ОБЯЗАТЕЛЬНЫМ: место вставки может не понимать html (поле ввода, терминал), и без
+  // текстовой части там не появилось бы вообще ничего.
   ipcMain.handle(IPC.CLIPBOARD_PUT, (_e, id: number) => {
-    const text = clipboardBuffer.copyById(id);
-    if (text !== null) clipboard.writeText(text);
+    const entry = clipboardBuffer.entryById(id);
+    if (!entry) return;
+    if (entry.html) clipboard.write({ text: entry.text, html: entry.html });
+    else clipboard.writeText(entry.text);
+  });
+  // Один адрес из записи. ⚠️ Пришедший url СВЕРЯЕТСЯ со списком ссылок этой записи и только потом
+  // попадает в системный буфер: канал не должен превращаться в «запиши в буфер ОС что скажу» —
+  // поповер хоть и наш, но это отдельная вью, и доверять её строке на слово незачем.
+  ipcMain.handle(IPC.CLIPBOARD_PUT_LINK, (_e, id: number, url: string) => {
+    const entry = clipboardBuffer.entryById(id);
+    if (entry?.links?.some((l) => l.url === url)) clipboard.writeText(url);
   });
   // Переход к источнику: открыть страницу, где текст скопировали, и подсветить его.
   // ⚠️ Своей подсветки не изобретаем — те же highlightCandidates + findQuoteInPage, что у

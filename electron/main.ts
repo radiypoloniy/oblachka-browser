@@ -1036,8 +1036,8 @@ function createWindow(role: WindowRole = 'main') {
 
   // Буфер скопированного со страниц. ⚠️ Инкогнито отсекает сам TabManager — приватная вкладка не
   // оставляет следов нигде, и список скопированного такой же след, как история.
-  tabs.setOnPageCopy((text, url, title) => {
-    clipboardBuffer.recordCopy(text, url, title);
+  tabs.setOnPageCopy((text, url, title, rich) => {
+    clipboardBuffer.recordCopy(text, url, title, rich);
     broadcastToChrome(IPC.CLIPBOARD_CHANGED, clipboardBuffer.listCopies().length);
   });
   tabs.setOnClipboardToggle(() => toggleClipboardPopover(win));

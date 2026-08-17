@@ -991,10 +991,92 @@ const forbiddenSource = (): boolean => {
   return false;
 };
 
-const reportCopy = (text: string): void => {
+// Больше разметки не берём: запись буфера должна оставаться записью, а не копией страницы.
+// Не влезло — отдаём один текст, ссылки при этом всё равно разобраны отдельно.
+const MAX_COPY_HTML = 50_000;
+// Ссылок в одном куске столько, сколько имеет смысл показать. Выделили полстраницы — там их сотни,
+// и это уже не «я скопировал ссылку», а «я скопировал текст, в котором они попадаются».
+const MAX_COPY_LINKS = 12;
+// Разметка, которой в буфере делать нечего ни при каких условиях. Скрипты и стили мы бы всё равно
+// не вставили осмысленно, а класть их в буфер ОС своими руками — лишний риск на пустом месте.
+const STRIP_TAGS = 'script,style,noscript,iframe,object,embed,link,meta';
+
+type CopyLink = { text: string; url: string };
+
+const absoluteUrl = (href: string): string => {
+  try {
+    const abs = new URL(href, document.baseURI).href;
+    // ⚠️ Только http(s). javascript:, data: и blob: в буфере — это либо бесполезно после ухода со
+    // страницы, либо прямо опасно вставлять куда-то ещё.
+    return /^https?:/i.test(abs) ? abs : '';
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * Разметка и ссылки выделенного куска.
+ *
+ * ⚠️ Ради этого всё и делается: «скопировал ссылку — вставился один текст». Chromium при обычном
+ * копировании кладёт в буфер ОС и text/html, а наш буфер хранил только текст, поэтому повторная
+ * копия из списка ссылку теряла.
+ */
+const selectionRich = (): { html: string; links: CopyLink[] } => {
+  const empty = { html: '', links: [] as CopyLink[] };
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return empty;
+
+  const box = document.createElement('div');
+  const links: CopyLink[] = [];
+  const seen = new Set<string>();
+  const addLink = (a: Element): void => {
+    if (links.length >= MAX_COPY_LINKS) return;
+    const url = absoluteUrl(a.getAttribute('href') || '');
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    links.push({ text: (a.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200), url });
+  };
+
+  for (let i = 0; i < sel.rangeCount; i++) {
+    const range = sel.getRangeAt(i);
+    box.appendChild(range.cloneContents());
+    // ⚠️ Выделение ЦЕЛИКОМ ВНУТРИ ссылки (человек протащил мышью по её подписи) не содержит самого
+    // <a>: клонируется только текст внутри него. Это самый частый случай «скопировал ссылку»,
+    // поэтому охватывающий элемент ищем отдельно, подъёмом от общего предка диапазона.
+    const node = range.commonAncestorContainer;
+    const el = node instanceof Element ? node : node.parentElement;
+    const wrapping = el?.closest('a[href]');
+    if (wrapping) addLink(wrapping);
+  }
+
+  box.querySelectorAll(STRIP_TAGS).forEach((n) => n.remove());
+  box.querySelectorAll('a[href]').forEach((a) => {
+    const url = absoluteUrl(a.getAttribute('href') || '');
+    // Ссылка, которую мы не готовы отдать (javascript:, mailto: и прочее), перестаёт быть ссылкой,
+    // но текст свой сохраняет — иначе из копии молча пропал бы кусок.
+    if (url) a.setAttribute('href', url); else a.removeAttribute('href');
+    addLink(a);
+  });
+  // Атрибуты-обработчики: своими руками переносить чужой onclick в буфер ОС незачем.
+  box.querySelectorAll('*').forEach((n) => {
+    for (const attr of Array.from(n.attributes)) {
+      if (/^on/i.test(attr.name)) n.removeAttribute(attr.name);
+    }
+  });
+
+  const html = box.innerHTML;
+  return { html: html.length > MAX_COPY_HTML ? '' : html, links };
+};
+
+const reportCopy = (text: string, rich?: { html: string; links: CopyLink[] }): void => {
   try {
     if (!isTopFrame() || !text || forbiddenSource()) return;
-    ipcRenderer.send(CH_CLIPBOARD_COPY, { text: text.slice(0, 20000), title: document.title || '' });
+    ipcRenderer.send(CH_CLIPBOARD_COPY, {
+      text: text.slice(0, 20000),
+      title: document.title || '',
+      html: rich?.html || '',
+      links: rich?.links ?? [],
+    });
   } catch {
     // копирование не имеет права ломаться из-за нас
   }
@@ -1011,7 +1093,9 @@ try {
       const inField = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
         ? (el.value ?? '').slice(el.selectionStart ?? 0, el.selectionEnd ?? 0)
         : '';
-      reportCopy(inField || String(window.getSelection() || ''));
+      // Из поля ввода разметки нет по определению — там только значение.
+      if (inField) { reportCopy(inField); return; }
+      reportCopy(String(window.getSelection() || ''), selectionRich());
     } catch {
       // копирование не имеет права ломаться из-за нас
     }

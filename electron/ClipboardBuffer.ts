@@ -16,7 +16,7 @@
 // ⚠️ ТОЛЬКО В ПАМЯТИ и только на сеанс. Скопированное со страниц бывает чувствительным (адреса,
 // номера заказов, куски переписки в веб-мессенджерах), и класть это на диск ради удобства нельзя.
 // Закрыли браузер — буфера нет.
-import type { ClipboardEntry } from '../shared/ipc';
+import type { ClipboardEntry, ClipboardLink } from '../shared/ipc';
 
 // Сколько записей помним. Больше — уже не «последнее скопированное», а архив, которого мы не
 // обещали и который тем опаснее, чем длиннее.
@@ -26,6 +26,12 @@ const MIN_CHARS = 2;
 // Обрезаем гигантские копии: целая статья в памяти ни к чему, а показать мы всё равно показываем
 // первые строки.
 const MAX_CHARS = 20_000;
+
+// Разметка и ссылки того же куска — см. ClipboardEntry.html/links в shared/ipc.
+export interface RichCopy {
+  html: string;
+  links: ClipboardLink[];
+}
 
 let entries: ClipboardEntry[] = [];
 let enabled = true;
@@ -46,7 +52,7 @@ export function setClipboardBufferEnabled(on: boolean): void {
  * ⚠️ Одинаковый текст подряд не дублируем, а поднимаем наверх: человек копирует одно и то же по
  * два-три раза (не сработала вставка, промахнулся), и список из повторов бесполезен.
  */
-export function recordCopy(text: string, url: string, title: string): void {
+export function recordCopy(text: string, url: string, title: string, rich?: RichCopy): void {
   if (!enabled) return;
   // ⚠️ NUL ниже записан ESCAPE-последовательностью, а не сырым байтом. Сырой байт делал весь файл
   // бинарным для git: в статистике коммита стояло «Bin 0 -> 4867 bytes» вместо диффа — то есть
@@ -57,14 +63,22 @@ export function recordCopy(text: string, url: string, title: string): void {
   const clipped = value.length > MAX_CHARS ? value.slice(0, MAX_CHARS) : value;
   const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
 
+  // Пустые поля не пишем вовсе: у копии из поля ввода разметки нет, и `html: ''` в записи только
+  // сбивал бы с толку того, кто её читает.
+  const html = rich?.html || undefined;
+  const links = rich?.links?.length ? rich.links : undefined;
+
   const same = entries.findIndex((e) => e.text === clipped);
   if (same !== -1) {
+    // ⚠️ Повтор поднимается наверх ВМЕСТЕ со свежей разметкой: тот же текст можно скопировать во
+    // второй раз уже со ссылкой (или наоборот, из голого поля), и запись должна описывать
+    // последнее копирование, а не первое.
     const [existing] = entries.splice(same, 1);
-    entries.unshift({ ...existing!, at: Date.now(), url, host, title });
+    entries.unshift({ ...existing!, at: Date.now(), url, host, title, html, links });
     return;
   }
 
-  entries.unshift({ id: seq++, text: clipped, url, host, title, at: Date.now() });
+  entries.unshift({ id: seq++, text: clipped, url, host, title, at: Date.now(), html, links });
   if (entries.length > MAX_ENTRIES) entries.length = MAX_ENTRIES;
 }
 
@@ -80,11 +94,11 @@ export function removeCopy(id: number): void {
   entries = entries.filter((e) => e.id !== id);
 }
 
-export function copyById(id: number): string | null {
-  return entries.find((e) => e.id === id)?.text ?? null;
-}
-
-/** Запись целиком — переходу к источнику нужен ещё и адрес, а не только текст. */
+/**
+ * Запись целиком — она нужна всем оставшимся сценариям: переходу к источнику нужен адрес, а
+ * повторному копированию — разметка со ссылками (см. обработчик CLIPBOARD_PUT). Прежний
+ * `copyById`, отдававший один текст, после этого оказался не нужен и убран.
+ */
 export function entryById(id: number): ClipboardEntry | null {
   return entries.find((e) => e.id === id) ?? null;
 }
