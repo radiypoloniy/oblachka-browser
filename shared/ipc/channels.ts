@@ -312,6 +312,10 @@ export const IPC = {
   // Отслеживание товаров (см. electron/TrackingStore.ts, PRICE-TRACKING.md).
   PRODUCT_STATE:  'product:state',   // main → chrome: что за товар на активной вкладке (или null)
   PRODUCT_MENU:   'product:menu',    // chrome → main: показать меню у индикатора в тулбаре
+  // chrome → main: меню «⋯» в адресной строке — действия над ЭТОЙ страницей, которым не нужна
+  // постоянная кнопка (перевод, отслеживание цены). Состояние меню main берёт у себя, renderer
+  // ничего не передаёт: иначе оно разъезжалось бы с настоящим.
+  OMNIBOX_MORE_MENU: 'omnibox:more-menu',
   TRACKING_LIST:  'tracking:list',   // renderer → main: список отслеживаемого с историей цен
   TRACKING_UNTRACK: 'tracking:untrack', // renderer → main: снять с отслеживания (id)
   TRACKING_CHANGED: 'tracking:changed', // main → chrome: список изменился

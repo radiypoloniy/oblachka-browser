@@ -36,6 +36,9 @@ export interface OblakoApi {
   onProductState(cb: (state: ProductState | null) => void): () => void;
   /** Меню у индикатора товара — нативное, как у звезды закладки. */
   showProductMenu(): Promise<void>;
+  // Меню «⋯» в адресной строке. Состояние (что переводится, есть ли цена) main берёт у себя —
+  // renderer только просит показать.
+  showOmniboxMoreMenu(): Promise<void>;
   listTracked(): Promise<TrackedProduct[]>;
   untrackProduct(id: number): Promise<void>;
   /** Проверить все отслеживаемые товары сейчас (кнопка). Возвращает, сколько удалось. */

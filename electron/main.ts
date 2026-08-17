@@ -367,13 +367,17 @@ function showTrackingToast(title: string, url: string, text: string): void {
   n.show();
 }
 
-function showProductMenu(win: BrowserWindow): void {
+// Пункты меню отслеживания цены. ⚠️ Вынесены из showProductMenu отдельной функцией, потому что
+// у них теперь ДВА места показа: своя кнопка-индикатор и подменю «⋯» в адресной строке. Собирать
+// один и тот же список дважды — гарантированный способ однажды поправить только одну копию.
+// null = на этой странице цены нет, значит и пунктов быть не должно.
+function productMenuTemplate(win: BrowserWindow): MenuItemConstructorOptions[] | null {
   const ctx = contextForWindow(win);
   const active = ctx?.tabs.snapshot().find((t) => t.isActive && !t.isHub);
   const state = productStateFor(win);
-  if (!active || !state) return;
+  if (!active || !state) return null;
   const found = productByTab.get(active.id);
-  if (!found) return;
+  if (!found) return null;
 
   const price = `${state.price.toLocaleString('ru-RU')} ${state.currency === 'RUB' ? '₽' : state.currency}`;
   const template: MenuItemConstructorOptions[] = [
@@ -424,8 +428,14 @@ function showProductMenu(win: BrowserWindow): void {
   // session.json, и ради одного экрана менять формат сессии с реальными вкладками человека
   // несоразмерно риску (см. «Безопасность данных» в CLAUDE.md). Секция там уже поддержана.
   template.push({ label: 'Что я отслеживаю', click: () => { ctx?.tabs.createSpecialTab('history', 'tracking'); } });
-  Menu.buildFromTemplate(template).popup({ window: win });
+  return template;
 }
+
+function showProductMenu(win: BrowserWindow): void {
+  const template = productMenuTemplate(win);
+  if (template) Menu.buildFromTemplate(template).popup({ window: win });
+}
+
 const adblock     = new AdBlockManager();
 const bangs       = new BangStore();
 // Правила-автоматизации (см. shared/rules.ts + RuleEngine.ts). Хранилище читается лениво, так что
@@ -1785,6 +1795,9 @@ export function makeIpcDeps() {
     currentThemePrefs, ensurePasswordAuth, escapeHtml, escapeHtmlAttr, maybeLazyWarmupOnDemand,
     moveTabToExistingWindow, moveTabToNewWindow, notifyGraphChanged, pushProductState,
     renameTabSmart, showBookmarkMenu, showProductMenu,
+    // Пункты отслеживания цены отдельно от их показа: меню «⋯» в адресной строке вкладывает их
+    // подменю, а не строит второй такой же список (см. productMenuTemplate).
+    productMenuTemplate,
     // ⚠️ Изменяемое состояние main — только доступом. Положить его в объект по значению значило бы
     // раздать обработчикам копию: запись ушла бы в никуда, а чтение отдавало бы значение на момент
     // сборки контекста.

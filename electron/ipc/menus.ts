@@ -26,7 +26,7 @@ import type { MenuItemConstructorOptions } from 'electron';
 import type { IpcDeps } from './deps';
 
 export function registerMenusIpc(d: IpcDeps): void {
-  const { buildMoveToWindowItems, chromeOf, collectGroups, escapeHtml, escapeHtmlAttr, graphs, moveTabToNewWindow, notifyGraphChanged, renameTabSmart, sendTo, settings, tabsOf, winOf } = d;
+  const { buildMoveToWindowItems, chromeOf, collectGroups, escapeHtml, escapeHtmlAttr, graphs, moveTabToNewWindow, notifyGraphChanged, productMenuTemplate, renameTabSmart, sendTo, settings, tabsOf, winOf } = d;
 
   // AI-группировка вкладок (Phase 4)
   ipcMain.handle(IPC.TABS_ORGANIZE_APPLY,    (e, clusters: OrganizeCluster[]) => tabsOf(e)?.applyOrganize(clusters));
@@ -97,6 +97,35 @@ export function registerMenusIpc(d: IpcDeps): void {
   // состояние приходит push'ем через onPageTranslateStateChanged (см. выше).
   ipcMain.on(IPC.PAGE_TRANSLATE_TOGGLE, () => { void togglePageTranslate(); });
   ipcMain.handle(IPC.PAGE_TRANSLATE_GET_STATE, () => getPageTranslateActiveState());
+
+  // Меню «⋯» в адресной строке — действия НАД ЭТОЙ СТРАНИЦЕЙ, которым не нужна постоянная кнопка.
+  //
+  // ⚠️ Перевод переехал сюда из правого кластера, и у него есть СОСТОЯНИЕ («перевожу»,
+  // «переведено»), которого из закрытого меню не видно. Поэтому само «⋯» подсвечивается акцентом,
+  // пока перевод активен (см. Toolbar.tsx): состояние остаётся на виду, а ширина полосы не пляшет.
+  // Плата честная и осознанная — «показать оригинал» стало в два клика вместо одного.
+  ipcMain.handle(IPC.OMNIBOX_MORE_MENU, (e) => {
+    const w = winOf(e);
+    if (!w) return;
+    const state = getPageTranslateActiveState();
+    const items: MenuItemConstructorOptions[] = [{
+      label: state === 'translating' ? 'Перевожу страницу…'
+        : state === 'translated' ? 'Показать оригинал'
+        : 'Перевести страницу',
+      // Пока идёт перевод, жать нечего — но пункт ВИДЕН: пустое меню ровно в тот момент, когда
+      // человек пришёл проверить, что происходит, читалось бы как поломка.
+      enabled: state !== 'translating',
+      click: () => { void togglePageTranslate(); },
+    }];
+    // Цены на странице нет — и пунктов про неё нет. Обещать отслеживание там, где оно не
+    // сработает, нельзя (тот же принцип, что у самого индикатора товара, см. PRICE-TRACKING.md).
+    const product = productMenuTemplate(w);
+    if (product) {
+      items.push({ type: 'separator' });
+      items.push({ label: 'Отслеживание цены', submenu: product });
+    }
+    Menu.buildFromTemplate(items).popup({ window: w });
+  });
 
   // Нативное ПКМ-меню вкладки в сайдбаре.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (e, id: string) => {

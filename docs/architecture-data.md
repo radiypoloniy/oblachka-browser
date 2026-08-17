@@ -96,8 +96,13 @@
   vless/trojan) → `VpnKeyStore.ts` (зашифрованное хранение) →
   `VpnConfigBuilder.ts` (генерация конфига Xray) → `VpnProcess.ts` (дочерний
   процесс Xray-core, `session.setProxy`, fail-closed kill switch) →
-  `VpnPopoverManager.ts` + `preload-vpnpopover.ts` (поповер «Защита» —
-  список серверов, статус подключения, объединён с адблоком).
+  `SitePopoverManager.ts` (раздел «Защита» карточки под ЩИТОМ адресной строки —
+  список серверов, статус подключения, адблок). ⚠️ Своего поповера у VPN больше
+  нет: пилюля «Защита» и замок отвечали на один и тот же вопрос — «что защищает
+  меня прямо сейчас», — и разводить его по двум кнопкам одной полосы было нечем
+  оправдать. `VpnPopoverManager`/`preload-vpnpopover`/`src/vpnpopover.*` и пять
+  каналов `VPN_POPOVER_*` удалены; живое состояние в открытую карточку толкает
+  `SitePopoverManager.broadcastVpnState`.
 - Пароли/vault: `electron/VaultCrypto.ts` (конверт DEK/KEK, DEK завёрнут через
   `safeStorage` — уже кроссплатформенно, отдельного `SecretStore`-интерфейса
   не потребовалось) → `PasswordManager.ts` (сейф на своём `passwords.sqlite`)
@@ -207,9 +212,9 @@
   `fileMissing` в `DownloadEntry` — файла по savePath уже нет; считается при чтении файла и
   перепроверяется в момент клика, иначе «Открыть» на записи месячной давности молча не работало бы.
 - Поповер загрузок у кнопки тулбара — `electron/DownloadsPopoverManager.ts` +
-  `preload-downloadspopover.ts` + `src/downloadspopover.tsx`, техника VpnPopoverManager (своя
+  `preload-downloadspopover.ts` + `src/downloadspopover.tsx`, техника SitePopoverManager (своя
   прозрачная `WebContentsView`). Последние 10 записей, значок по типу файла, действия при наведении,
-  внизу «Все загрузки». ⚠️ Отличие от VPN-поповера: содержимое ЖИВОЕ, поэтому main отдельно толкает
+  внизу «Все загрузки». ⚠️ Отличие от карточки сайта: содержимое ЖИВОЕ, поэтому main отдельно толкает
   список в саму вью (`broadcastDownloads`) — `broadcastToChrome` доходит только до слоёв хрома, и
   полоска прогресса иначе замирала бы до переоткрытия. Оба колбэка (`закрылся`, `все загрузки`)
   получают ОКНО: кнопка есть в каждом, включая лёгкие. «Все загрузки» переиспользует канал Ctrl+J

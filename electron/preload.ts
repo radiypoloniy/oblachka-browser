@@ -23,6 +23,7 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.PRODUCT_STATE, handler);
   },
   showProductMenu: () => ipcRenderer.invoke(IPC.PRODUCT_MENU) as Promise<void>,
+  showOmniboxMoreMenu: () => ipcRenderer.invoke(IPC.OMNIBOX_MORE_MENU) as Promise<void>,
   listTracked: () => ipcRenderer.invoke(IPC.TRACKING_LIST) as Promise<TrackedProduct[]>,
   untrackProduct: (id: number) => ipcRenderer.invoke(IPC.TRACKING_UNTRACK, id) as Promise<void>,
   checkTrackedNow: () => ipcRenderer.invoke(IPC.TRACKING_CHECK_NOW) as Promise<{ ok: number; total: number }>,

@@ -1004,7 +1004,6 @@ export default function App() {
           aiPanelOpen={aiPanelOpen}
           pageTranslateState={pageTranslateState}
           pageTranslateProgress={pageTranslateProgress}
-          onTogglePageTranslate={() => { window.oblako.togglePageTranslate(); }}
         />
         {/* Строка контент+док: contentRef (в неё же меряет pushBounds) + разделитель + spacer
             AI-дока (заход 3). Spacer ничего не рисует — реальный контент дока рисует main

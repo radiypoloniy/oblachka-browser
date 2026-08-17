@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Languages, Loader2, Star, TrendingDown, Clipboard } from 'lucide-react';
-import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, ProductState, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
+import { ArrowLeft, ArrowRight, RefreshCw, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Loader2, Star, Clipboard, MoreHorizontal } from 'lucide-react';
+import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
@@ -97,7 +97,6 @@ interface ToolbarProps {
   aiPanelOpen: boolean;       // панель открыта — кнопка подсвечена акцентом
   pageTranslateState: PageTranslateState; // см. PageTranslateManager.ts
   pageTranslateProgress: PageTranslateProgress | null; // батч N/M + живой счётчик символов, только пока translating
-  onTogglePageTranslate: () => void;
   // Роль окна: в лёгком окне AI-панели и перевода страниц нет — обе службы живут в приложении
   // в одном экземпляре и принадлежат полному окну (см. WindowRegistry.ts). Показывать кнопку,
   // которая полезет в чужие вкладки, хуже, чем не показывать её вовсе.
@@ -114,7 +113,7 @@ export default function Toolbar({
   tab, allTabs, vpnOn, omniboxRef: externalRef,
   onBack, onForward, onReload, onSubmit, onSuggestToggle,
   downloadsActive, downloadsProgress, downloadStartTick, onToggleAiPanel, aiPanelOpen,
-  pageTranslateState, pageTranslateProgress, onTogglePageTranslate, isLightWindow = false,
+  pageTranslateState, pageTranslateProgress, isLightWindow = false,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
   const [value, setValue] = useState('');
@@ -245,10 +244,6 @@ export default function Toolbar({
     update();
     return () => ro.disconnect();
   }, []);
-
-  // Есть ли что переводить. Условие ПРО СТРАНИЦУ, поэтому кнопка не исчезает, а гаснет (см.
-  // разбор «гасить или прятать» у правого кластера ниже).
-  const translateAvailable = !isHub && !!tab?.url;
 
   // Режим капсулы поисковика — см. константы выше. Приоритет у поля ввода:
   // капсула схлопывается первой, а не наоборот.
@@ -429,12 +424,8 @@ export default function Toolbar({
   // удалил») не давало положить страницу в папку вовсе: единственным местом закладки был корень,
   // и разгребать его приходилось потом руками. Теперь клик сохраняет и сразу предлагает папку —
   // тем же меню, что и Ctrl+D. Удаление никуда не делось, оно последним пунктом того же меню.
-  // ── Индикатор товара (PRICE-TRACKING.md, срез 1) ───────────────────────────
-  // ⚠️ Индикатор, а не всплывающий поповер, и это прямой урок автозаполнения: незаказанная
-  // карточка на каждой странице магазина раздражает быстрее, чем приносит пользу. Значок просто
-  // появляется рядом со звездой, а меню открывается по клику.
-  const [product, setProduct] = useState<ProductState | null>(null);
-  useEffect(() => window.oblako.onProductState(setProduct), []);
+  // ⚠️ Индикатор товара отсюда убран: отслеживание цены переехало в меню «⋯» адресной строки,
+  // и состояние для него main держит у себя — renderer его больше не запрашивает вовсе.
 
   const toggleBookmark = () => {
     if (!tab?.url) return;
@@ -1638,16 +1629,30 @@ export default function Toolbar({
                 <Star size={14} fill={bookmarked ? 'var(--accent)' : 'none'} />
               </button>
             )}
-            {/* Индикатор товара: загорается ТОЛЬКО там, где цена реально прочитана из разметки
-                (см. PRICE-TRACKING.md). На магазине без schema.org его просто не будет — обещать
-                отслеживание там, где оно не сработает, нельзя. */}
-            {!isHub && product && (
+            {/* «⋯» — действия над ЭТОЙ страницей, которым не нужна постоянная кнопка: перевод и
+                отслеживание цены (само меню собирает main, см. IPC.OMNIBOX_MORE_MENU).
+                ⚠️ Подсвечивается акцентом, пока перевод активен. Спрятанное в меню состояние
+                иначе не видно вовсе — человек не понял бы, почему страница вдруг по-русски.
+                Отслеживание цены отдельного сигнала здесь не получает: акцент в полосе один, и
+                отдавать его надо тому состоянию, которое меняет саму страницу. */}
+            {!isHub && tab?.url && (
               <button
-                title={product.tracked ? 'Отслеживается — показать меню' : 'Отслеживать цену'}
-                onClick={() => { void window.oblako.showProductMenu(); }}
-                style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
-                         display: 'inline-flex', color: product.tracked ? 'var(--accent)' : 'var(--text-muted)' }}>
-                <TrendingDown size={14} />
+                title={pageTranslateState === 'translating'
+                  ? (pageTranslateProgress
+                      ? `Перевожу страницу… ${Math.min(pageTranslateProgress.batchIndex + 1, pageTranslateProgress.batchCount)}/${pageTranslateProgress.batchCount} · ${pageTranslateProgress.charsStreamed} симв.`
+                      : 'Перевожу страницу…')
+                  : pageTranslateState === 'translated' ? 'Страница переведена — ещё действия'
+                  : 'Ещё действия со страницей'}
+                onClick={() => { void window.oblako.showOmniboxMoreMenu(); }}
+                style={{
+                  border: 'none', background: 'transparent', cursor: 'default', padding: 3,
+                  borderRadius: 'var(--radius-sm)', display: 'inline-flex', flex: 'none',
+                  color: pageTranslateState === 'idle' ? 'var(--text-muted)' : 'var(--accent)',
+                }}
+              >
+                {pageTranslateState === 'translating'
+                  ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+                  : <MoreHorizontal size={14} />}
               </button>
             )}
             {/* Капсула выбора поисковика — только на хабе, в контентных вкладках не рендерится вовсе.
@@ -1738,32 +1743,9 @@ export default function Toolbar({
             disabled у кнопки «Обновить» на хабе — просто без атрибута disabled, там же логика
             игнора живёт в PageTranslateManager.ts::togglePageTranslate). translated: подсветка
             accent-soft — тот же тон, что у открытого поповера. */}
-        {/* Перевод страницы. Гаснет на хабе и псевдо-вкладках — переводить там нечего, но слот
-            остаётся. В лёгком окне переводчика нет вовсе, поэтому там кнопка не рендерится. */}
-        {!isLightWindow && (
-          <button
-            disabled={!translateAvailable}
-            title={
-              !translateAvailable ? 'Переводить нечего — откройте страницу'
-                : pageTranslateState === 'translating'
-                ? (pageTranslateProgress
-                    ? `Перевожу страницу… ${Math.min(pageTranslateProgress.batchIndex + 1, pageTranslateProgress.batchCount)}/${pageTranslateProgress.batchCount} · ${pageTranslateProgress.charsStreamed} симв.`
-                    : 'Перевожу страницу…')
-                : pageTranslateState === 'translated' ? 'Показать оригинал'
-                : 'Перевести страницу'
-            }
-            onClick={onTogglePageTranslate}
-            style={clusterBtn({
-              disabled: !translateAvailable,
-              active: pageTranslateState === 'translated',
-              color: pageTranslateState === 'translating' ? 'var(--accent)' : undefined,
-            })}
-          >
-            {pageTranslateState === 'translating'
-              ? <Loader2 size={18} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-              : <Languages size={18} />}
-          </button>
-        )}
+        {/* ⚠️ Перевод страницы отсюда УЕХАЛ под «⋯» в адресной строке. Правый кластер — про
+            браузер, а перевод относится к конкретной открытой странице; после переезда деление
+            стало объяснимым, а слотов здесь осталось ровно три. */}
         {/* Плашка-остров остаётся — как у всех кнопок тулбара. Меняется только ТОН: в покое
             нейтральный значок на обычной плашке, ровно как «назад/вперёд/обновить»; акцент
             загорается, когда панель открыта, то есть означает состояние, а не важность. */}
