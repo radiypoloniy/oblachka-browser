@@ -1038,9 +1038,20 @@ export default function Toolbar({
     if (suggestItems[0]) {
       suggestItems[0] = { ...suggestItems[0], sectionHeader: `Предложения ${getSearchEngine(searchEngineId).name}` };
     }
-    const deduped = topItem
+    // ⚠️ Набран АДРЕС, совпавший с открытой вкладкой → первой подсказкой был «перейти на вкладку»
+    // (kind:'tab' → TAB_ACTIVATE): человек ввёл адрес, чтобы ОТКРЫТЬ страницу, а его перекидывало на
+    // старую вкладку (живая жалоба: «неудобно, хочу дубль»). У нас дубли есть, поэтому для АДРЕСНЫХ
+    // запросов переход-на-вкладку превращаем в обычную навигацию (kind:'history', без tabId) — и
+    // Enter, и клик открывают адрес дублем. Для запросов-ИМЁН/описаний (без точки и схемы)
+    // переключение на уже открытую вкладку остаётся — там оно как раз удобно.
+    const looksLikeAddress = /[.:]/.test(query.trim());
+    const asNav = (i: SuggestItem): SuggestItem =>
+      looksLikeAddress && i.kind === 'tab'
+        ? { ...i, kind: 'history' as SuggestKind, tabId: undefined, windowId: undefined }
+        : i;
+    const deduped = (topItem
       ? [topItem, searchItem, ...restItems, ...suggestItems]
-      : [searchItem, ...suggestItems];
+      : [searchItem, ...suggestItems]).map(asNav);
     if (seq !== suggestSeqRef.current) return;
     setSuggestions(deduped);
     // ⚠️ Enter должен вести на ПЕРВУЮ строку, а не на набранные 2-4 символа — но только когда
@@ -1056,7 +1067,6 @@ export default function Toolbar({
     // грубый и в спорную сторону — есть точка или схема, значит считаем адресом и оставляем
     // прежнее поведение. Дублировать здесь разбор resolveInput нельзя: две копии правил разъедутся
     // молча (в этом файле такое уже было с перечнем разделов настроек).
-    const looksLikeAddress = /[.:]/.test(query.trim());
     const preselect = topItem && !looksLikeAddress ? 0 : -1;
     setSelectedIdx(preselect);
     openDropdown();
