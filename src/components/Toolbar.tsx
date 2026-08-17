@@ -5,7 +5,7 @@ import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorStat
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
-import { islandPlate, islandBtn, navBtn } from '../styles/island';
+import { islandPlate, islandBtn, clusterBtn, navBtn } from '../styles/island';
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
 
 // Высота тулбара — должна совпадать с CSS-значением (56px).
@@ -258,6 +258,10 @@ export default function Toolbar({
   const vpnMode: VpnMode = toolbarWidth >= VPN_THRESHOLD_FULL ? 'full'
     : toolbarWidth >= VPN_THRESHOLD_SHORT ? 'short'
     : 'icon';
+
+  // Есть ли что переводить. Условие ПРО СТРАНИЦУ, поэтому кнопка не исчезает, а гаснет (см.
+  // разбор «гасить или прятать» у правого кластера ниже).
+  const translateAvailable = !isHub && !!tab?.url;
 
   // Режим капсулы поисковика — см. константы выше. Приоритет у поля ввода:
   // капсула схлопывается первой, а не наоборот.
@@ -692,9 +696,9 @@ export default function Toolbar({
     return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
   }, [downloadsPopoverOpen]);
 
-  // Буфер: якорь и клик мимо — ровно та же механика, что у загрузок выше. Кнопка появляется и
-  // исчезает по мере наполнения буфера, поэтому её прямоугольник живёт своей жизнью, и без
-  // наблюдателя поповер остался бы висеть у прежнего места.
+  // Буфер: якорь и клик мимо — ровно та же механика, что у загрузок выше. Наблюдатель нужен и
+  // теперь, когда кнопка перестала появляться-исчезать: её прямоугольник всё равно ездит от
+  // ресайза окна и сворачивания сайдбара.
   useEffect(() => {
     if (!clipboardPopoverOpen) return;
     const el = clipboardControlRef.current;
@@ -1787,22 +1791,34 @@ export default function Toolbar({
         })()}
       </div>
 
-      {/* Правая группа: пилюля «Защита» (VPN + адблок, схлопывается) + AI.
-          marginLeft:auto прижимает к правому краю flex-контейнера. */}
-      <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+      {/* Правая группа. marginLeft:auto прижимает к правому краю flex-контейнера.
+          ⚠️ Кнопки браузера собраны в ОДНУ плашку-остров с ПОСТОЯННЫМ набором, и это главная
+          правка раскладки. Раньше здесь стояла россыпь отдельных островов, половина из которых
+          появлялась и исчезала по состоянию страницы (перевод — только на реальной, буфер —
+          только после первой копии). Кластер от этого менял ширину, а вместе с ним ездил
+          омнибокс — прямо под курсором. Теперь недоступное ГАСНЕТ, оставаясь на месте.
+          Правило, по которому решается «гасить или прятать»: условие про ОКНО прячет (лёгкое
+          окно не получит AI-панель никогда, и место под неё резервировать незачем), условие про
+          СТРАНИЦУ гасит. Тот же приём, что у «Обновить» на хабе. */}
+      <div className="no-drag" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginLeft: 'auto' }}>
         <div ref={vpnControlRef} style={{ display: 'inline-flex' }}>
           <VpnPill vpnOn={vpnOn} mode={vpnMode} onClick={toggleVpnPopover} active={vpnPopoverOpen} />
         </div>
+        <div style={{ ...islandPlate, display: 'flex', gap: 2, padding: 3, borderRadius: 'var(--radius-card)' }}>
         {/* Полностраничный перевод (см. PageTranslateManager.ts) — только на реальной странице,
             на хабе/истории/настройках переводить нечего. idle: приглушённая иконка, как адблок
             выкл. translating: спиннер, клик игнорируется (та же неактивность по смыслу, что
             disabled у кнопки «Обновить» на хабе — просто без атрибута disabled, там же логика
             игнора живёт в PageTranslateManager.ts::togglePageTranslate). translated: подсветка
             accent-soft — тот же тон, что у открытого поповера. */}
-        {!isHub && tab?.url && !isLightWindow && (
+        {/* Перевод страницы. Гаснет на хабе и псевдо-вкладках — переводить там нечего, но слот
+            остаётся. В лёгком окне переводчика нет вовсе, поэтому там кнопка не рендерится. */}
+        {!isLightWindow && (
           <button
+            disabled={!translateAvailable}
             title={
-              pageTranslateState === 'translating'
+              !translateAvailable ? 'Переводить нечего — откройте страницу'
+                : pageTranslateState === 'translating'
                 ? (pageTranslateProgress
                     ? `Перевожу страницу… ${Math.min(pageTranslateProgress.batchIndex + 1, pageTranslateProgress.batchCount)}/${pageTranslateProgress.batchCount} · ${pageTranslateProgress.charsStreamed} симв.`
                     : 'Перевожу страницу…')
@@ -1810,10 +1826,11 @@ export default function Toolbar({
                 : 'Перевести страницу'
             }
             onClick={onTogglePageTranslate}
-            style={islandBtn(
-              pageTranslateState === 'idle' ? 'var(--text-faint)' : 'var(--accent)',
-              pageTranslateState === 'translated' ? 'var(--accent-soft)' : undefined,
-            )}
+            style={clusterBtn({
+              disabled: !translateAvailable,
+              active: pageTranslateState === 'translated',
+              color: pageTranslateState === 'translating' ? 'var(--accent)' : undefined,
+            })}
           >
             {pageTranslateState === 'translating'
               ? <Loader2 size={18} style={{ animation: 'oblako-spin 1s linear infinite' }} />
@@ -1824,27 +1841,28 @@ export default function Toolbar({
             нейтральный значок на обычной плашке, ровно как «назад/вперёд/обновить»; акцент
             загорается, когда панель открыта, то есть означает состояние, а не важность. */}
         {!isLightWindow && (
-          <button title="AI-панель" onClick={onToggleAiPanel}
-            style={aiPanelOpen
-              ? islandBtn('var(--accent)', 'var(--accent-soft)')
-              : islandBtn()}>
+          <button title="AI-панель" onClick={onToggleAiPanel} style={clusterBtn({ active: aiPanelOpen })}>
             <Sparkles size={18} />
           </button>
         )}
         {/* Буфер скопированного — рядом с загрузками намеренно: это одна группа «что я забрал со
-            страниц». Кнопка появляется, только когда в буфере что-то есть, и исчезает после
-            очистки: постоянный значок ради изредка нужного инструмента — лишний шум в тулбаре. */}
-        {clipboardCount > 0 && (
-          <div ref={clipboardControlRef} style={{ display: 'inline-flex' }}>
-            <button
-              title="Скопированное со страниц (Ctrl+Shift+B)"
-              onClick={toggleClipboardPopover}
-              style={clipboardPopoverOpen ? islandBtn('var(--accent)', 'var(--accent-soft)') : islandBtn()}
-            >
-              <Clipboard size={18} />
-            </button>
-          </div>
-        )}
+            страниц».
+            ⚠️ Прежде кнопки не было вовсе, пока буфер пуст («постоянный значок ради изредка
+            нужного инструмента — лишний шум»). Решение перевёрнуто осознанно: шумом оказался как
+            раз значок, ВОЗНИКАЮЩИЙ после первой копии, — он сдвигал весь кластер и омнибокс в
+            произвольный момент работы. Пустой буфер теперь просто гасит кнопку. */}
+        <div ref={clipboardControlRef} style={{ display: 'inline-flex' }}>
+          <button
+            disabled={clipboardCount === 0}
+            title={clipboardCount === 0
+              ? 'Скопированное со страниц — пока пусто'
+              : 'Скопированное со страниц (Ctrl+Shift+B)'}
+            onClick={toggleClipboardPopover}
+            style={clusterBtn({ active: clipboardPopoverOpen, disabled: clipboardCount === 0 })}
+          >
+            <Clipboard size={18} />
+          </button>
+        </div>
         {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки. Иконка нейтральная
             всегда (заход 3) — акцент не для постоянных/переключаемых состояний, только точка
             новой активности остаётся акцентной (единичное уведомление, не постоянный статус).
@@ -1855,10 +1873,7 @@ export default function Toolbar({
           <button
             title="Загрузки"
             onClick={toggleDownloadsPopover}
-            style={{
-              ...(downloadsPopoverOpen ? islandBtn('var(--accent)', 'var(--accent-soft)') : islandBtn()),
-              position: 'relative',
-            }}
+            style={{ ...clusterBtn({ active: downloadsPopoverOpen }), position: 'relative' }}
           >
             <Download size={18} style={flying ? { animation: 'oblako-dl-land 520ms var(--ease-out)' } : undefined} />
 
@@ -1899,6 +1914,7 @@ export default function Toolbar({
               <ProgressRing value={downloadsProgress} />
             )}
           </button>
+        </div>
         </div>
       </div>
     </div>

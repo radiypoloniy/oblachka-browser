@@ -70,6 +70,26 @@ export const TINTED_PLATE_VARS: React.CSSProperties = {
 // чтобы существующие потребители (`...islandPlate`) не трогать вообще.
 export const islandPlate: React.CSSProperties = glassPlate();
 
+// ── Кнопка ВНУТРИ плашки-кластера ──────────────────────────────────────────────
+// Та же геометрия, что у navBtn, но со стеклянной плашкой НЕ на себе: её несёт группа. Нужна
+// правому кластеру тулбара, который собран в один остров вместо россыпи отдельных.
+//
+// ⚠️ `disabled` здесь означает «недоступно на ЭТОЙ странице», и кнопка при этом остаётся на
+// месте, а не исчезает. Это несущее свойство раскладки, а не косметика: набор кнопок справа
+// раньше менялся от страницы к странице, из-за чего кластер «дышал», а вместе с ним ездил
+// омнибокс. Приём не новый — «Обновить» на хабе ровно так же гасится, а не прячется.
+export function clusterBtn({ active = false, disabled = false, color }: {
+  active?: boolean; disabled?: boolean; color?: string;
+} = {}): React.CSSProperties {
+  return {
+    ...navBtn(disabled),
+    ...(color && !disabled ? { color } : {}),
+    // Активное состояние (открыт свой поповер) — тот же accent-soft, что был у одиночных островов.
+    ...(active && !disabled ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : {}),
+    borderRadius: 'var(--radius-sm)',
+  };
+}
+
 // Одиночная кнопка-остров (AI, адблок) — тот же islandPlate, компактный размер как у navBtn.
 export function islandBtn(color?: string, bg?: string): React.CSSProperties {
   return {
