@@ -9,7 +9,7 @@ import HistoryBookmarks from './components/HistoryBookmarks';
 import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT } from './components/SplitDragCard';
-import { islandPlate, chromeTint, TINTED_PLATE_VAR, TINTED_PLATE_VARS } from './styles/island';
+import { islandPlate, chromeTint, CHROME_TINT_TOP, TINTED_PLATE_VAR, TINTED_PLATE_VARS } from './styles/island';
 import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
 import { subscribeScrim, dimColor } from './scrimState';
 import { isDarkTheme } from '../shared/ipc';
@@ -208,11 +208,19 @@ function resolveColor(css: string): string {
     const probe = document.createElement('div');
     probe.style.cssText = `position:fixed;left:-9999px;top:0;width:1px;height:1px;background:${css}`;
     document.body.appendChild(probe);
-    const rgb = getComputedStyle(probe).backgroundColor;
+    const value = getComputedStyle(probe).backgroundColor;
     probe.remove();
-    const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(rgb);
-    if (!m) return '';
-    return '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('');
+    const hex = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+
+    // ⚠️ У color-mix() Chromium отдаёт НЕ rgb(), а `color(srgb 0.83 0.89 0.97)` — доли, не байты.
+    // Разбор, ждавший только rgb(), возвращал пустую строку, вызывающий уходил на фолбэк, и полоса
+    // системных кнопок оставалась цвета --app-bg поверх цветного окна. Проверено замером.
+    const srgb = /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/.exec(value);
+    if (srgb) return '#' + srgb.slice(1, 4).map((v) => hex(Number(v) * 255)).join('');
+
+    const rgb = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(value);
+    if (rgb) return '#' + rgb.slice(1, 4).map((v) => hex(Number(v))).join('');
+    return '';
   } catch {
     return '';
   }
@@ -413,15 +421,15 @@ export default function App() {
     // кнопок чужого цвета в большинстве палитр. Эффект стоит ПОСЛЕ того, который проставляет
     // data-theme/data-palette (порядок объявления = порядок выполнения), поэтому читается уже
     // применённая палитра. Фолбэк — прежний литерал светлой темы, если строка вдруг не хекс.
-    // ⚠️ При включённом ЦВЕТНОМ ФОНЕ берём не --app-bg, а первую ступень подкраски: полоса
+    // ⚠️ При включённом ЦВЕТНОМ ФОНЕ берём ВЕРХНЮЮ СТУПЕНЬ подкраски, а не --app-bg: полоса
     // системных кнопок Windows не участвует в web-раскладке вовсе (её рисует ОС по цвету из
     // setTitleBarOverlay), поэтому градиент до неё не доезжает и она оставалась серым
-    // прямоугольником поверх цветного окна. Верхний правый угол — как раз начало градиента
-    // (160deg), там его первая ступень, 12%.
+    // прямоугольником поверх цветного окна. Ось градиента специально вертикальная — тогда цвет
+    // верхней кромки в точности равен этой ступени (см. CHROME_TINT_TOP в styles/island.ts).
     // ⚠️ Значение приходится РАЗРЕШАТЬ пробным элементом: это color-mix(), а getComputedStyle
     // вернул бы формулу, а не цвет.
     const raw = chromeTinted
-      ? resolveColor('color-mix(in srgb, var(--sidebar-tint) 12%, var(--app-bg))')
+      ? resolveColor(CHROME_TINT_TOP)
       : getComputedStyle(document.documentElement).getPropertyValue('--app-bg').trim();
     const base = /^#[0-9a-f]{6}$/i.test(raw) ? raw : '#F2F2F7';
     void window.oblako.setTitleBarOverlay({
