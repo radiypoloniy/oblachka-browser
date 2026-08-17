@@ -13,6 +13,9 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, closestC
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+// Разбор вставленного в калькулятор числа — чистая логика, живёт в shared под проверкой
+// (scripts/calc-check.mjs): ломается она на реальных строках вроде «1 234,56 ₽», а не на глаз.
+import { parsePastedNumber } from '../../shared/calc'
 import {
   Calculator, RefreshCw, Timer, Pipette, X, SlidersHorizontal, ImagePlus, Languages, Cat, Type,
   Play, Pause, RotateCcw, ArrowDownUp, ArrowUpDown, Copy, Check, Loader2,
@@ -1748,6 +1751,32 @@ function CalcApp() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  })
+
+  // Вставка числа (Ctrl+V): скопировали цену/сумму со страницы — кладём её на дисплей вместо
+  // того, чтобы перебивать по цифре. Событие paste прилетает и на невставляемый элемент (фокус
+  // на body), поэтому ловим его на window — как и keydown выше.
+  // ⚠️ Три гварда повторены ДОСЛОВНО из обработчика клавиш: без них калькулятор воровал бы
+  // вставку у чата и у конвертера в соседнем слоте — это уже была живая жалоба про цифры.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return
+      if (!calcRootRef.current || calcRootRef.current.offsetParent === null) return
+      if (!slotActive) return
+
+      const n = parsePastedNumber(e.clipboardData?.getData('text') ?? '')
+      if (n === null) return // в буфере не число — молча пропускаем, чужую вставку не ломаем
+      e.preventDefault()
+      setDisplay(fmtCalc(n))
+      // Вставленное — полноценный операнд: после «50 +» оно становится вторым слагаемым, а не
+      // затирается следующей цифрой (тот же смысл, что у setWaiting(false) в percent()).
+      setWaiting(false)
+      // Действие не начато — значит это новый расчёт, прошлое выражение над дисплеем уже не контекст.
+      if (op === null) setExpr('')
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
   })
 
   const keys: { label: string; kind: 'fn' | 'op' | 'digit'; span?: number; onPress: () => void }[] = [
