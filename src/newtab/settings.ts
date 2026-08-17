@@ -47,7 +47,7 @@ export interface NewTabSettings {
   // тон палитры бывает ярче тёмной земли (у «Сепии» — в одиннадцать раз даже после притемнения
   // на 45%), и подмешивание такого тона делает землю СВЕТЛЕЕ островов, то есть выворачивает
   // иерархию. Поэтому притемнение считается по светимости, см. groundTint в styles/island.ts.
-  sidebar: { tinted: boolean; pattern: 'blobs' | 'dawn'; amount: number };
+  sidebar: { tinted: boolean; amount: number };
 }
 
 export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
@@ -64,7 +64,7 @@ export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
   crypto: { codes: ['BTC', 'ETH'] },
   // ⚠️ По умолчанию выключено — по той же причине, что и белый фон новой вкладки выше:
   // навязанное оформление убирать дороже, чем включить желаемое.
-  sidebar: { tinted: false, pattern: 'blobs', amount: 30 },
+  sidebar: { tinted: false, amount: 30 },
 };
 
 // Пределы насыщенности цветного фона. ⚠️ Верхний — НЕ «сколько влезет»: выше него земля догоняет

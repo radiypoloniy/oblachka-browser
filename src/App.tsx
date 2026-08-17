@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { X } from 'lucide-react';
 import Sidebar, { FaviconTile } from './components/Sidebar';
 import Toolbar from './components/Toolbar';
@@ -10,7 +10,8 @@ import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT } from './components/SplitDragCard';
 import { islandPlate, chromeTintStyle, tintedPlateVars } from './styles/island';
-import { buildChromeGround, islandColor } from '../shared/chromeGround';
+import { buildChromeGround, islandColor, relLuminance } from '../shared/chromeGround';
+import type { Ground } from '../shared/chromeGround';
 import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
 import { subscribeScrim, dimColor } from './scrimState';
 import { isDarkTheme } from '../shared/ipc';
@@ -417,19 +418,27 @@ export default function App() {
   // ⚠️ Земля считается в JS, а не формулами CSS: нужны поворот тона и притемнение ПО СВЕТИМОСТИ
   // (см. shared/chromeGround.ts). Ни того, ни другого color-mix не умеет, а без них цветной фон
   // в тёмной теме становится СВЕТЛЕЕ островов и выворачивает иерархию.
-  // Пересчитывается при смене темы, палитры и самих настроек — только тогда токены и меняются.
-  const ground = useMemo(() => {
-    if (!chromeTinted) return null;
+  // ⚠️ Считается в ЭФФЕКТЕ, а не в useMemo, и это несущее различие. Токены темы проставляет
+  // ДРУГОЙ эффект (data-theme/data-palette на корне), а useMemo выполняется во время рендера —
+  // то есть ДО него. Земля успевала посчитаться по СТАРЫМ токенам, и после переключения светлая ↔
+  // тёмная фон оставался прежним, пока человек не трогал что-нибудь ещё (живая жалоба: «приходится
+  // менять тему на другую, чтобы всё пришло в норму»). Эффект стоит ПОСЛЕ того, который применяет
+  // тему: порядок объявления = порядок выполнения, тот же приём, что у полосы системных кнопок ниже.
+  const [ground, setGround] = useState<(Ground & { island: string }) | null>(null);
+  useEffect(() => {
+    if (!chromeTinted) { setGround(null); return; }
     const tint = resolveColor('var(--sidebar-tint)');
     const appBg = resolveColor('var(--app-bg)');
     const surface = resolveColor('var(--surface)');
-    if (!tint || !appBg || !surface) return null;
+    if (!tint || !appBg || !surface) { setGround(null); return; }
+    const island = islandColor(tint, surface);
     const built = buildChromeGround({
-      tint, appBg, amount: groundPrefs.amount, pattern: groundPrefs.pattern, dark: dark || activeIncognito,
+      tint, appBg, amount: groundPrefs.amount,
+      islandLum: relLuminance(island), dark: dark || activeIncognito,
     });
-    return { ...built, island: islandColor(tint, surface) };
+    setGround({ ...built, island });
     // themePrefs.palette — ради ПЕРЕЧИТЫВАНИЯ токенов: палитра меняет их, не меняя dark.
-  }, [chromeTinted, groundPrefs.amount, groundPrefs.pattern, dark, activeIncognito, themePrefs.palette]);
+  }, [chromeTinted, groundPrefs.amount, dark, activeIncognito, themePrefs.palette]);
 
   const [scrimActive, setScrimActive] = useState(false);
   useEffect(() => subscribeScrim(setScrimActive), []);
@@ -461,7 +470,7 @@ export default function App() {
     // themePrefs.palette в зависимостях не ради самого значения, а ради ПЕРЕЧИТЫВАНИЯ --app-bg:
     // палитра меняет его, не меняя ни dark, ни incognito. chromeTinted — по той же причине:
     // включение цветного фона меняет цвет полосы кнопок, не трогая ни тему, ни палитру.
-  }, [dark, activeIncognito, scrimActive, themePrefs.palette, chromeTinted]);
+  }, [dark, activeIncognito, scrimActive, themePrefs.palette, chromeTinted, ground]);
 
   // Атомарная подписка: tabs + nodes в одном IPC-сообщении → один рендер, нет рассинхрона.
   useEffect(() => {
