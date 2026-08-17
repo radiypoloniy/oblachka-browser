@@ -96,6 +96,13 @@ export function registerTrackingIpc(d: IpcDeps): void {
     console.log(`[clipboard] переход к источнику ${entry.host} → ${found.matches} совпад.`);
     return found.matches > 0 ? 'highlighted' : 'opened';
   });
+  // Возвращаем результат: полка закреплённого не резиновая, и «нажал — ничего не произошло» тут
+  // самый вредный исход (человек уверен, что запись переживёт перезапуск, а она нет).
+  ipcMain.handle(IPC.CLIPBOARD_PIN, (_e, id: number, on: boolean) => {
+    const ok = clipboardBuffer.setPinned(id, on);
+    broadcastToChrome(IPC.CLIPBOARD_CHANGED, clipboardBuffer.listCopies().length);
+    return ok;
+  });
   ipcMain.handle(IPC.CLIPBOARD_REMOVE, (_e, id: number) => {
     clipboardBuffer.removeCopy(id);
     broadcastToChrome(IPC.CLIPBOARD_CHANGED, clipboardBuffer.listCopies().length);

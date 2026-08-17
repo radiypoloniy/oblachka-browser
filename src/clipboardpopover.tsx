@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Clipboard, Copy, Check, Trash2, X, ChevronDown, ChevronRight, CornerUpRight, Link2 } from 'lucide-react';
+import { Clipboard, Copy, Check, Trash2, X, ChevronDown, ChevronRight, CornerUpRight, Link2, Pin, PinOff } from 'lucide-react';
 import type { ClipboardEntry, ClipboardRevealResult } from '../shared/ipc';
 import { islandPlate } from './styles/island';
 import SiteFavicon from './components/SiteFavicon';
@@ -28,6 +28,7 @@ declare global {
       putLink: (id: number, url: string) => Promise<void>;
       openSource: (id: number) => Promise<ClipboardRevealResult>;
       favicon: (host: string) => Promise<string | null>;
+      pin: (id: number, on: boolean) => Promise<boolean>;
       remove: (id: number) => Promise<void>;
       clear: () => Promise<void>;
       getEnabled: () => Promise<boolean>;
@@ -75,8 +76,13 @@ function ClipboardPopoverApp() {
   // Группировка по сайту с сохранением порядка «свежие сверху»: первая встреча сайта задаёт его
   // место в списке. Адрес первой записи держим ради значка: FaviconService берёт иконку по хосту,
   // а хост у группы один на все записи.
+  // ⚠️ Закреплённое идёт СВОЕЙ секцией сверху, а не первым внутри группы своего сайта. Смысл
+  // закрепления — «эта запись всегда на виду», а группировка по сайту его бы размыла: закреплённое
+  // осталось бы перемешанным со свежими копиями того же сайта.
+  const pinned = entries.filter((e) => e.pinned);
   const groups: { host: string; url: string; items: ClipboardEntry[] }[] = [];
   for (const e of entries) {
+    if (e.pinned) continue;
     const host = e.host || 'без адреса';
     const g = groups.find((x) => x.host === host);
     if (g) g.items.push(e);
@@ -113,6 +119,25 @@ function ClipboardPopoverApp() {
               {enabled
                 ? 'Скопируйте что-нибудь на странице — попадёт сюда'
                 : 'История копирования выключена'}
+            </div>
+          )}
+          {pinned.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              {/* Подпись говорит про перезапуск прямым текстом: это единственное место, где буфер
+                  отступает от обещания «только на сеанс», и человек должен знать об этом там же,
+                  где закрепляет, а не в настройках. */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 7, padding: '8px 8px 5px',
+              }}>
+                <Pin size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} />
+                <span style={{
+                  fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-body)',
+                }}>Закреплённое</span>
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+                  переживает перезапуск
+                </span>
+              </div>
+              {pinned.map((e) => <Row key={e.id} entry={e} onChanged={reload} />)}
             </div>
           )}
           {groups.map((g) => (
@@ -168,6 +193,8 @@ function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => voi
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
+  // Полка закреплённого полна — показываем прямо в строке, где нажимали.
+  const [pinFull, setPinFull] = useState(false);
   const links = entry.links ?? [];
 
   // ⚠️ Копирование НЕ требует раскрытия: чаще всего человек и так знает, что копировал, и лишний
@@ -218,6 +245,11 @@ function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => voi
         <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
           {timeAgo(entry.at)}{entry.title ? ` · ${entry.title.slice(0, 40)}` : ''}
         </div>
+        {pinFull && (
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
+            Закреплённых уже максимум — открепите что-нибудь
+          </div>
+        )}
         {links.length > 0 && open && (
           <div
             onClick={(e) => e.stopPropagation()} // клик по строке копирует запись целиком — здесь это не то
@@ -255,7 +287,27 @@ function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => voi
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 2, flex: 'none', visibility: hovered || copied ? 'visible' : 'hidden' }}>
+      {/* ⚠️ Закрепление видно ВСЕГДА у закреплённой записи, а не только под курсором, в отличие от
+          соседних кнопок: это состояние записи, а не действие над ней. Погаснув вместе с остальными,
+          оно оставило бы человека без единственного признака «эта переживёт перезапуск». */}
+      <div style={{
+        display: 'flex', gap: 2, flex: 'none',
+        visibility: hovered || copied || entry.pinned ? 'visible' : 'hidden',
+      }}>
+        <button
+          title={entry.pinned ? 'Открепить' : 'Закрепить — переживёт перезапуск'}
+          onClick={() => {
+            void window.clipboardPopover.pin(entry.id, !entry.pinned).then((ok) => {
+              // false = полка полна. Молчать тут нельзя: человек уверен, что запись сохранена.
+              if (!ok && !entry.pinned) setPinFull(true);
+              setTimeout(() => setPinFull(false), 2000);
+              onChanged();
+            });
+          }}
+          style={{ ...iconBtn, color: entry.pinned ? 'var(--accent)' : 'var(--text-faint)' }}
+        >
+          {entry.pinned ? <PinOff size={13} /> : <Pin size={13} />}
+        </button>
         {/* ⚠️ Переход к источнику — ОТДЕЛЬНАЯ кнопка, а не клик по строке: клик уже занят
             копированием, и это правильный порядок. За копией сюда приходят каждый раз, за
             «покажи, откуда это» — изредка, и подменять частое действие редким нельзя. */}

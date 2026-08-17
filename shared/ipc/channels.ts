@@ -340,6 +340,9 @@ export const IPC = {
   CLIPBOARD_PUT_LINK: 'clipboard:put-link',
   CLIPBOARD_OPEN_SOURCE: 'clipboard:open-source', // поповер → main: открыть страницу-источник и подсветить фрагмент
   CLIPBOARD_REMOVE:   'clipboard:remove',      // поповер → main: убрать одну запись
+  // Поповер → main: закрепить/открепить. Закреплённое идёт первым, не вытесняется пределом и
+  // ПЕРЕЖИВАЕТ перезапуск — единственное, что вообще попадает из буфера на диск.
+  CLIPBOARD_PIN:      'clipboard:pin',
   CLIPBOARD_CLEAR:    'clipboard:clear',       // поповер → main: очистить всё
   CLIPBOARD_ENABLED_GET: 'clipboard:enabled-get',
   CLIPBOARD_ENABLED_SET: 'clipboard:enabled-set',

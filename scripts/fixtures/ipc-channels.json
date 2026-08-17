@@ -67,6 +67,7 @@
   "CLIPBOARD_ENABLED_SET=clipboard:enabled-set",
   "CLIPBOARD_LIST=clipboard:list",
   "CLIPBOARD_OPEN_SOURCE=clipboard:open-source",
+  "CLIPBOARD_PIN=clipboard:pin",
   "CLIPBOARD_POPOVER_BOUNDS=clipboard-popover:bounds",
   "CLIPBOARD_POPOVER_CLOSED=clipboard-popover:closed",
   "CLIPBOARD_POPOVER_TOGGLE=clipboard-popover:toggle",

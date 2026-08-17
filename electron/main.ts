@@ -1938,6 +1938,10 @@ app.whenReady().then(async () => {
   searxngKeyStore.loadFromDisk();
   vpnKeyStore.loadFromDisk();
   skillsStore.loadFromDisk();
+  // Закреплённое в буфере — единственное, что буфер вообще держит на диске (см. ClipboardPins.ts).
+  // Поднимаем ДО первых копий: загрузка сдвигает счётчик id, иначе новая копия получила бы id уже
+  // лежащей на полке записи.
+  clipboardBuffer.loadPinnedFromDisk();
 
   // История: нативный модуль может отсутствовать — падение не блокирует запуск.
   await history.initialize().catch((e) =>

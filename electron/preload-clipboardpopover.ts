@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('clipboardPopover', {
   // Иконка сайта для заголовка группы. ⚠️ Своего канала не заводим — тот же FAVICON_GET, что у
   // списка паролей: он уже умеет кэш и берёт иконку ТОЛЬКО с самого домена (см. FaviconService.ts).
   favicon: (host: string) => ipcRenderer.invoke(IPC.FAVICON_GET, host) as Promise<string | null>,
+  // Закрепить/открепить. false в ответе = полка закреплённого полна, запись НЕ закреплена.
+  pin:     (id: number, on: boolean) => ipcRenderer.invoke(IPC.CLIPBOARD_PIN, id, on) as Promise<boolean>,
   remove:  (id: number) => ipcRenderer.invoke(IPC.CLIPBOARD_REMOVE, id) as Promise<void>,
   clear:   () => ipcRenderer.invoke(IPC.CLIPBOARD_CLEAR) as Promise<void>,
   getEnabled: () => ipcRenderer.invoke(IPC.CLIPBOARD_ENABLED_GET) as Promise<boolean>,

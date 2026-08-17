@@ -16,7 +16,16 @@
 // ⚠️ ТОЛЬКО В ПАМЯТИ и только на сеанс. Скопированное со страниц бывает чувствительным (адреса,
 // номера заказов, куски переписки в веб-мессенджерах), и класть это на диск ради удобства нельзя.
 // Закрыли браузер — буфера нет.
+//
+// ⚠️ ЕДИНСТВЕННОЕ исключение — ЗАКРЕПЛЁННОЕ (`pinned`), и оно не отменяет правила выше, а очерчивает
+// его границу. «Браузер сам решил сохранить всё, что вы копировали» и «вы попросили сохранить вот
+// это» — разные обещания, и на диск уходит только второе, зашифрованным (см. ClipboardPins.ts).
+// Само закрепление — явный жест человека, а не наша догадка об удобстве.
 import type { ClipboardEntry, ClipboardLink } from '../shared/ipc';
+import { loadPinned, savePinned, dropPinned, MAX_PINNED } from './ClipboardPins';
+// Порядок показа и вытеснение — чистые правила про закреплённое, живут в shared под
+// scripts/clipboard-order-check.mjs: ломаются они молча, список при этом продолжает работать.
+import { orderCopies, trimCopies } from '../shared/clipboardOrder';
 
 // Сколько записей помним. Больше — уже не «последнее скопированное», а архив, которого мы не
 // обещали и который тем опаснее, чем длиннее.
@@ -41,9 +50,44 @@ export function isClipboardBufferEnabled(): boolean { return enabled; }
 
 export function setClipboardBufferEnabled(on: boolean): void {
   enabled = on;
-  // ⚠️ Выключение СТИРАЕТ уже собранное. «Не веди историю» с сохранением прежней — это половина
-  // обещания, и человек, нажавший выключатель, ожидает не этого.
-  if (!on) entries = [];
+  // ⚠️ Выключение СТИРАЕТ уже собранное — И ЗАКРЕПЛЁННОЕ ТОЖЕ, вместе с файлом на диске. «Не веди
+  // историю» с сохранением прежней — это половина обещания, и человек, нажавший выключатель,
+  // ожидает не этого. Оставить закреплённое на диске после выключения буфера было бы ровно таким
+  // же половинчатым обещанием, только хуже: оно пережило бы ещё и перезапуск.
+  if (!on) { entries = []; dropPinned(); }
+}
+
+/**
+ * Поднимает закреплённое с диска. Вызывать один раз при старте, ПОСЛЕ app.whenReady() (safeStorage
+ * требует готовое приложение) и ДО первых копий.
+ *
+ * ⚠️ Счётчик id сдвигается за самый большой загруженный: он живёт только в памяти и после
+ * перезапуска начинался бы с единицы, то есть новая копия получила бы id уже лежащей на полке
+ * закреплённой записи. Дальше «скопировать» и «убрать» ходили бы не по той записи.
+ */
+export function loadPinnedFromDisk(): void {
+  const loaded = loadPinned();
+  if (loaded.length === 0) return;
+  entries = [...loaded, ...entries];
+  seq = Math.max(seq, ...loaded.map((e) => e.id)) + 1;
+}
+
+const persistPinned = (): void => savePinned(entries.filter((e) => e.pinned));
+
+/**
+ * Закрепить/открепить запись.
+ *
+ * ⚠️ Закрепление — единственное, что делает запись переживающей перезапуск, поэтому оно же
+ * единственное, что пишет на диск. Возвращает false, когда полка полна: молча не закрепить хуже,
+ * чем сказать об этом, — человек уверен, что запись сохранена, а её нет.
+ */
+export function setPinned(id: number, on: boolean): boolean {
+  const entry = entries.find((e) => e.id === id);
+  if (!entry) return false;
+  if (on && !entry.pinned && entries.filter((e) => e.pinned).length >= MAX_PINNED) return false;
+  if (on) entry.pinned = true; else delete entry.pinned;
+  persistPinned();
+  return true;
 }
 
 /**
@@ -75,23 +119,32 @@ export function recordCopy(text: string, url: string, title: string, rich?: Rich
     // последнее копирование, а не первое.
     const [existing] = entries.splice(same, 1);
     entries.unshift({ ...existing!, at: Date.now(), url, host, title, html, links });
+    // Повтор мог оказаться закреплённым — тогда на диске лежит его прежняя версия, а мы только что
+    // обновили источник и разметку. Спред выше сохранил сам флаг, файл дописываем здесь.
+    if (existing!.pinned) persistPinned();
     return;
   }
 
   entries.unshift({ id: seq++, text: clipped, url, host, title, at: Date.now(), html, links });
-  if (entries.length > MAX_ENTRIES) entries.length = MAX_ENTRIES;
+  entries = trimCopies(entries, MAX_ENTRIES);
 }
 
+/** Список для поповера: закреплённое первым (правило — в shared/clipboardOrder.ts). */
 export function listCopies(): ClipboardEntry[] {
-  return entries;
+  return orderCopies(entries);
 }
 
+// ⚠️ «Очистить всё» стирает и закреплённое, и его файл. Кнопка обещает пустой список, а не «пустой,
+// кроме того, что вы забыли открепить».
 export function clearCopies(): void {
   entries = [];
+  dropPinned();
 }
 
 export function removeCopy(id: number): void {
+  const wasPinned = entries.find((e) => e.id === id)?.pinned;
   entries = entries.filter((e) => e.id !== id);
+  if (wasPinned) persistPinned();
 }
 
 /**
