@@ -1212,12 +1212,15 @@ const NOISE_SVG =
 // цвета (ровно это и было видно на скриншоте).
 const TINTED_PLATE_VAR = 'color-mix(in srgb, var(--sidebar-tint) 14%, var(--surface))';
 
+// ⚠️ Подкраска мешается с --chrome-ground, а НЕ с --surface, как раньше. Сайдбар больше не остров:
+// смешивая тон с белой поверхностью, он оказывался светлее окружающей его земли — то есть снова
+// читался как отдельная панель, ровно то, от чего уходили. Теперь это цветной участок той же земли.
 const tintedAside: React.CSSProperties = {
   backgroundImage:
     `${NOISE_SVG}, linear-gradient(160deg,` +
-    ' color-mix(in srgb, var(--sidebar-tint) 12%, var(--surface)) 0%,' +
-    ' color-mix(in srgb, var(--sidebar-tint) 6%, var(--surface)) 45%,' +
-    ' color-mix(in srgb, var(--sidebar-tint) 2%, var(--surface-sunken)) 100%)',
+    ' color-mix(in srgb, var(--sidebar-tint) 14%, var(--chrome-ground)) 0%,' +
+    ' color-mix(in srgb, var(--sidebar-tint) 8%, var(--chrome-ground)) 45%,' +
+    ' color-mix(in srgb, var(--sidebar-tint) 3%, var(--chrome-ground)) 100%)',
   backgroundRepeat: 'repeat, no-repeat',
   backgroundSize: '120px 120px, 100% 100%',
 };
