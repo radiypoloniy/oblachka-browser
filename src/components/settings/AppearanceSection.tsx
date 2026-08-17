@@ -7,8 +7,17 @@ import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../../../shared/ipc'
 import {
   loadNewTabSettings, saveNewTabSettings, setNewTabCustomImage, getNewTabCustomImage,
   shrinkBackgroundImage,
-  WALLPAPER_PRESETS, RATE_CHOICES, CRYPTO_CHOICES, type NewTabSettings, type BackgroundKind,
+  WALLPAPER_PRESETS, RATE_CHOICES, CRYPTO_CHOICES, TINT_AMOUNT_MIN, TINT_AMOUNT_MAX,
+  type NewTabSettings, type BackgroundKind,
 } from '../../newtab/settings';
+import type { GroundPattern } from '../../../shared/chromeGround';
+
+// Рисунки земли. Оба проверены на читаемость в обеих темах (scripts/chrome-ground-check.mjs),
+// поэтому выбор безопасен и его можно отдать человеку.
+const GROUND_PATTERNS: { id: GroundPattern; label: string }[] = [
+  { id: 'blobs', label: 'Пятна' },
+  { id: 'dawn', label: 'Рассвет' },
+];
 import CryptoIcon from '../CryptoIcon';
 
 // Раздел «Интерфейс» — оформление самого браузера (тема и палитра) и новой вкладки.
@@ -175,8 +184,44 @@ export default function AppearanceSection() {
         <ToggleRow
           label="Цветной фон"
           checked={s.sidebar.tinted}
-          onChange={(v) => apply({ ...s, sidebar: { tinted: v } })}
+          onChange={(v) => apply({ ...s, sidebar: { ...s.sidebar, tinted: v } })}
         />
+        {/* ⚠️ Отдаём ДВА выбора, и оба безопасны: рисунок (оба проверены на читаемость) и
+            насыщенность (пределы TINT_AMOUNT_* подобраны так, что оба края остаются читаемыми).
+            ⚠️ Поправки для тёмной темы здесь НЕТ и быть не должно: это не предпочтение, а
+            ограничение. Тон палитры бывает ярче тёмной земли — у «Сепии» в одиннадцать раз даже
+            после притемнения на 45%, — и подмешивание такого тона делает землю СВЕТЛЕЕ островов.
+            Поэтому притемнение считается по светимости, см. groundTint в shared/chromeGround.ts. */}
+        {s.sidebar.tinted && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ flex: '0 0 130px', fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>Рисунок</span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {GROUND_PATTERNS.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => apply({ ...s, sidebar: { ...s.sidebar, pattern: p.id } })}
+                    style={{
+                      padding: '5px 12px', borderRadius: 'var(--radius-sm)', cursor: 'default',
+                      border: '1px solid var(--glass-edge)',
+                      background: s.sidebar.pattern === p.id ? 'var(--accent-soft)' : 'var(--surface)',
+                      color: s.sidebar.pattern === p.id ? 'var(--accent)' : 'var(--text-body)',
+                      fontSize: 'var(--fs-sm)', fontWeight: s.sidebar.pattern === p.id ? 600 : 400,
+                      fontFamily: 'var(--font-sans)',
+                    }}
+                  >{p.label}</button>
+                ))}
+              </div>
+            </div>
+            <SliderRow
+              label="Насыщенность"
+              value={s.sidebar.amount}
+              min={TINT_AMOUNT_MIN} max={TINT_AMOUNT_MAX} step={1}
+              onChange={(v) => apply({ ...s, sidebar: { ...s.sidebar, amount: v } })}
+              format={(v) => `${v}%`}
+            />
+          </>
+        )}
       </Subsection>
 
       {/* ── Фон ── */}

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { X } from 'lucide-react';
 import Sidebar, { FaviconTile } from './components/Sidebar';
 import Toolbar from './components/Toolbar';
@@ -9,7 +9,8 @@ import HistoryBookmarks from './components/HistoryBookmarks';
 import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT } from './components/SplitDragCard';
-import { islandPlate, chromeTint, CHROME_TINT_TOP, TINTED_PLATE_VAR, TINTED_PLATE_VARS } from './styles/island';
+import { islandPlate, chromeTintStyle, tintedPlateVars } from './styles/island';
+import { buildChromeGround, islandColor } from '../shared/chromeGround';
 import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
 import { subscribeScrim, dimColor } from './scrimState';
 import { isDarkTheme } from '../shared/ipc';
@@ -408,9 +409,27 @@ export default function App() {
   // Затемнён ли чром модалкой (см. src/scrimState.ts) — от этого зависит цвет зоны системных
   // кнопок: она нативная, и CSS-затемнение до неё не достаёт.
   // Цветной фон окна — та же настройка, что раньше называлась «цветной сайдбар» (ключ в хранилище
-  // не менялся, чтобы не терять уже сделанный выбор). Красит теперь всё окно, см. chromeTint.
-  const [chromeTinted, setChromeTinted] = useState<boolean>(() => loadNewTabSettings().sidebar.tinted);
-  useEffect(() => subscribeNewTabSettings(() => setChromeTinted(loadNewTabSettings().sidebar.tinted)), []);
+  // не менялся, чтобы не терять уже сделанный выбор). Красит теперь всё окно.
+  const [groundPrefs, setGroundPrefs] = useState(() => loadNewTabSettings().sidebar);
+  useEffect(() => subscribeNewTabSettings(() => setGroundPrefs(loadNewTabSettings().sidebar)), []);
+  const chromeTinted = groundPrefs.tinted;
+
+  // ⚠️ Земля считается в JS, а не формулами CSS: нужны поворот тона и притемнение ПО СВЕТИМОСТИ
+  // (см. shared/chromeGround.ts). Ни того, ни другого color-mix не умеет, а без них цветной фон
+  // в тёмной теме становится СВЕТЛЕЕ островов и выворачивает иерархию.
+  // Пересчитывается при смене темы, палитры и самих настроек — только тогда токены и меняются.
+  const ground = useMemo(() => {
+    if (!chromeTinted) return null;
+    const tint = resolveColor('var(--sidebar-tint)');
+    const appBg = resolveColor('var(--app-bg)');
+    const surface = resolveColor('var(--surface)');
+    if (!tint || !appBg || !surface) return null;
+    const built = buildChromeGround({
+      tint, appBg, amount: groundPrefs.amount, pattern: groundPrefs.pattern, dark: dark || activeIncognito,
+    });
+    return { ...built, island: islandColor(tint, surface) };
+    // themePrefs.palette — ради ПЕРЕЧИТЫВАНИЯ токенов: палитра меняет их, не меняя dark.
+  }, [chromeTinted, groundPrefs.amount, groundPrefs.pattern, dark, activeIncognito, themePrefs.palette]);
 
   const [scrimActive, setScrimActive] = useState(false);
   useEffect(() => subscribeScrim(setScrimActive), []);
@@ -429,7 +448,7 @@ export default function App() {
     // ⚠️ Значение приходится РАЗРЕШАТЬ пробным элементом: это color-mix(), а getComputedStyle
     // вернул бы формулу, а не цвет.
     const raw = chromeTinted
-      ? resolveColor(CHROME_TINT_TOP)
+      ? (ground?.top ?? '')
       : getComputedStyle(document.documentElement).getPropertyValue('--app-bg').trim();
     const base = /^#[0-9a-f]{6}$/i.test(raw) ? raw : '#F2F2F7';
     void window.oblako.setTitleBarOverlay({
@@ -990,9 +1009,9 @@ export default function App() {
     // наследуются вниз сами, и протаскивать флаг через каждый уровень не нужно.
     <div style={{
       position: 'fixed', inset: 0, display: 'flex', overflow: 'hidden',
-      ...(chromeTinted ? chromeTint : null),
-      ...(chromeTinted ? TINTED_PLATE_VARS : null),
-      ['--sidebar-plate' as string]: chromeTinted ? TINTED_PLATE_VAR : 'var(--surface)',
+      ...(ground ? chromeTintStyle(ground.backgroundImage) : null),
+      ...(ground ? tintedPlateVars(ground.island) : null),
+      ['--sidebar-plate' as string]: ground ? ground.island : 'var(--surface)',
     }}>
       {/* Оверлей во время drag разделителя: держит col-resize курсор по всей ширине
           и служит страховкой на случай если setPointerCapture не перехватит события
