@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Volume2, VolumeX } from 'lucide-react';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
-import { TINTED_PLATE_VARS } from '../styles/island';
+import { islandPlate } from '../styles/island';
 import SidebarBookmarks from './SidebarBookmarks';
 import {
   DndContext, DragOverlay,
@@ -16,7 +16,6 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropResult, DragCard } from '../../shared/ipc';
-import { loadNewTabSettings, subscribeNewTabSettings } from '../newtab/settings';
 
 // Стабильный id droppable-контейнера секции «Открытые вкладки».
 const SECTION_NORMAL_ID = 'drop-section-normal';
@@ -1191,39 +1190,6 @@ function loadSidebarWidth(): number {
 // сетке зерно сливается в грязь, на крупной читается как фактура бумаги.
 // ⚠️ Непрозрачность 3.5%: на глаз это «плотность», а не «пятно». Всё, что заметно как рисунок,
 // на вертикальной полосе с текстом начинает мешать читать заголовки вкладок.
-const NOISE_SVG =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E" +
-  "%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E" +
-  "%3Crect width='120' height='120' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E\")";
-
-// ⚠️ Градиент идёт по АКЦЕНТУ, подмешанному к поверхности, а не между двумя нейтралями.
-// Первая версия смешивала --surface и --surface-sunken — на светлой палитре это белый и почти
-// белый, то есть «те же цвета», о чём и был отзыв. Цвет обязан быть виден, иначе вся затея
-// бессмысленна: просили мягкий оттенок, сочетающийся со схемой, а не оттенок серого.
-//
-// ⚠️ Это осознанное отступление от правила «акцент только для активных состояний»: здесь он не
-// обозначает состояние, а задаёт настроение полосы, и держится на 5–12%, где читается как
-// подкрашенная бумага, а не как выделение. Активная вкладка остаётся заметно ярче — она берёт
-// акцент в полную силу, и спутать их нельзя. Меняете акцент — оттенок едет за ним сам.
-// color-mix берёт цвета из живых токенов, поэтому и палитра, и тёмная тема поддержаны даром.
-// ⚠️ --sidebar-plate — фон ВЫДЕЛЕННОГО элемента внутри сайдбара (активный сегмент
-// переключателя, выбранная папка). Заведён переменной, а не флагом в пропах, потому что таких
-// мест много и лежат они в разных компонентах: переменная наследуется вниз сама, а флаг
-// пришлось бы протаскивать через каждый уровень. На белом сайдбаре это по-прежнему --surface;
-// на цветном — та же подкраска, только гуще, иначе выделение читается какбелая заплатка поверх
-// цвета (ровно это и было видно на скриншоте).
-const TINTED_PLATE_VAR = 'color-mix(in srgb, var(--sidebar-tint) 14%, var(--surface))';
-
-const tintedAside: React.CSSProperties = {
-  backgroundImage:
-    `${NOISE_SVG}, linear-gradient(160deg,` +
-    ' color-mix(in srgb, var(--sidebar-tint) 12%, var(--surface)) 0%,' +
-    ' color-mix(in srgb, var(--sidebar-tint) 6%, var(--surface)) 45%,' +
-    ' color-mix(in srgb, var(--sidebar-tint) 2%, var(--surface-sunken)) 100%)',
-  backgroundRepeat: 'repeat, no-repeat',
-  backgroundSize: '120px 120px, 100% 100%',
-};
-
 // ⚠️ Сайдбар — ПОДЛОЖКА, а не остров: ни внешнего отступа, ни скругления, ни заливки, ни тени.
 // Фон под ним даёт холст окна (--canvas на body), сайдбар прозрачен и лежит заподлицо с краем.
 //
@@ -1355,8 +1321,6 @@ export default function Sidebar({
   const [width, setWidth] = useState<number>(loadSidebarWidth);
   // Тумблер «цветной сайдбар» из раздела «Интерфейс». Подписка — тот же механизм, что у новой
   // вкладки: своё событие для этого же окна плюс 'storage' для остальных.
-  const [tinted, setTinted] = useState<boolean>(() => loadNewTabSettings().sidebar.tinted);
-  useEffect(() => subscribeNewTabSettings(() => setTinted(loadNewTabSettings().sidebar.tinted)), []);
   // ⚠️ Ширину двигаем на pointermove по документу, а не по самой ручке: увести курсор за пределы
   // тонкой полоски проще простого, и без захвата на документе перетаскивание рвалось бы на
   // первом же быстром движении. setPointerCapture тут не годится — ручка живёт внутри области
@@ -1739,7 +1703,7 @@ export default function Sidebar({
   //
   // ⚠️ Стиль отдаётся ВСЕГДА, а не только под подсветку: без базового значения box-shadow
   // переход не с чего начинать, и подсветка появлялась бы рывком.
-  // ⚠️ Заливку акцентом НЕ трогаем: фон острова — стеклянный градиент из glassPlate/tintedAside,
+  // ⚠️ Заливку акцентом НЕ трогаем: фон острова — подкраска окна (см. chromeTint в styles/island.ts),
   // и подмена background его бы стёрла. Кант и без неё говорит достаточно, а слова несёт призрак
   // под курсором («Вернуть в панель», см. App.tsx).
   const returnHintStyle: React.CSSProperties = {
@@ -1752,7 +1716,7 @@ export default function Sidebar({
   // ── Свёрнутый режим: узкая полоса иконок ──
   if (collapsed) {
     return (
-      <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width: 56, alignItems: 'center', padding: '16px 0 14px', ...returnHintStyle }}>
+      <aside className="drag" style={{ ...asideBase, width: 56, alignItems: 'center', padding: '16px 0 14px', ...returnHintStyle }}>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: 14 }}>
           <button
@@ -1861,11 +1825,12 @@ export default function Sidebar({
           <button
             className="no-drag"
             title="Новая вкладка (ПКМ — инкогнито / восстановить)"
-            style={{ ...utilIconBtn }}
+            // Тот же остров, что у развёрнутой «Новой вкладки»: главное действие панели.
+            style={{ ...utilIconBtn, ...islandPlate, borderRadius: 'var(--radius-card)' }}
             onClick={handleNewTab}
             onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--plate-bg, var(--surface))'; }}
           ><Plus size={17} /></button>
           <button className="icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
           <button className="icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
@@ -1876,7 +1841,7 @@ export default function Sidebar({
 
   // ── Развёрнутый режим с drag-and-drop ──
   return (
-    <aside className="drag" style={{ ...asideBase, ...(tinted ? tintedAside : null), ...(tinted ? TINTED_PLATE_VARS : null), ['--sidebar-plate' as string]: tinted ? TINTED_PLATE_VAR : 'var(--surface)', width, padding: '12px 12px 14px 16px', position: 'relative', ...returnHintStyle }}>
+    <aside className="drag" style={{ ...asideBase, width, padding: '12px 12px 14px 16px', position: 'relative', ...returnHintStyle }}>
       {/* Ручка ширины — прозрачная полоска по всему правому краю. Своей заливки нет намеренно:
           сайдбар это остров со скруглением и тенью, а видимая вертикальная черта вдоль него
           читалась бы как рамка и спорила с формой. Курсор и так объясняет, что здесь тянут. */}
@@ -2279,19 +2244,19 @@ export default function Sidebar({
           НЕ часть плашки (не сливаются в общую пластину). */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
         <button className="no-drag" title="Новая вкладка (ПКМ — инкогнито / восстановить)"
-          // ⚠️ Без плашки. Была innerPlate — белая карточка во всю ширину, и именно из таких
-          // карточек (обойма пинов, дорожка переключателя, эта кнопка) сайдбар и складывался в
-          // «боковую панель». Поверхностей внутри него больше нет: всё лежит прямо на окне,
-          // подсветка только по наведению.
+          // ⚠️ ОСТРОВ здесь уместен и остаётся. Единая земля — это про ФОН, а не про запрет
+          // поверхностей вообще: главное действие панели имеет право быть выпуклой кнопкой.
+          // Убирать надо было обоймы-контейнеры (пины, папки, подкраску сайдбара), которые
+          // складывались в боковую плашку, — а не отдельные органы управления.
           style={{
-            border: 'none', background: 'transparent', borderRadius: 'var(--radius-sm)',
+            ...islandPlate, borderRadius: 'var(--radius-card)',
             flex: 1, display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 12px', color: 'var(--text-muted)', cursor: 'default',
           }}
           onClick={handleNewTab}
           onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--plate-bg, var(--surface))'; }}
         >
           <Plus size={17} />
           <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>Новая вкладка</span>

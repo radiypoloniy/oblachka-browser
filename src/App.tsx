@@ -9,7 +9,8 @@ import HistoryBookmarks from './components/HistoryBookmarks';
 import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT } from './components/SplitDragCard';
-import { islandPlate } from './styles/island';
+import { islandPlate, chromeTint, TINTED_PLATE_VAR, TINTED_PLATE_VARS } from './styles/island';
+import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
 import { subscribeScrim, dimColor } from './scrimState';
 import { isDarkTheme } from '../shared/ipc';
 import type { ContentBounds, SplitSwapHint, SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal, ThemePrefs } from '../shared/ipc';
@@ -379,6 +380,11 @@ export default function App() {
   // не совпадал с реальным --text-body dark, исправлено заодно; значения = --app-bg темы.
   // Затемнён ли чром модалкой (см. src/scrimState.ts) — от этого зависит цвет зоны системных
   // кнопок: она нативная, и CSS-затемнение до неё не достаёт.
+  // Цветной фон окна — та же настройка, что раньше называлась «цветной сайдбар» (ключ в хранилище
+  // не менялся, чтобы не терять уже сделанный выбор). Красит теперь всё окно, см. chromeTint.
+  const [chromeTinted, setChromeTinted] = useState<boolean>(() => loadNewTabSettings().sidebar.tinted);
+  useEffect(() => subscribeNewTabSettings(() => setChromeTinted(loadNewTabSettings().sidebar.tinted)), []);
+
   const [scrimActive, setScrimActive] = useState(false);
   useEffect(() => subscribeScrim(setScrimActive), []);
 
@@ -939,7 +945,18 @@ export default function App() {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', overflow: 'hidden' }}>
+    // ⚠️ Цветной фон рисуется ЗДЕСЬ, одним слоем на всё окно. Раньше он жил в Sidebar.tsx и
+    // красил только сайдбар — из-за чего тот и выглядел боковой плашкой: цветной прямоугольник
+    // слева, серое окно справа. Подкраска это свойство ОКНА, а не панели: одна земля от края до
+    // края, под сайдбаром и в зазорах вокруг страницы, а острова лежат на ней сверху.
+    // --sidebar-plate (фон выделенных элементов) и --plate-* ставятся тем же слоем: они
+    // наследуются вниз сами, и протаскивать флаг через каждый уровень не нужно.
+    <div style={{
+      position: 'fixed', inset: 0, display: 'flex', overflow: 'hidden',
+      ...(chromeTinted ? chromeTint : null),
+      ...(chromeTinted ? TINTED_PLATE_VARS : null),
+      ['--sidebar-plate' as string]: chromeTinted ? TINTED_PLATE_VAR : 'var(--surface)',
+    }}>
       {/* Оверлей во время drag разделителя: держит col-resize курсор по всей ширине
           и служит страховкой на случай если setPointerCapture не перехватит события
           над нативными WebContentsViews. */}
