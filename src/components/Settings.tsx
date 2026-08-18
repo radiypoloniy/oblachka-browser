@@ -208,7 +208,10 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
       // в App.tsx.
       ...islandPlate,
       borderRadius: 'var(--radius-island)',
-      boxShadow: 'var(--shadow-island)',
+      // ⚠️ Высота 2 из системы «Высота»: тень ПЛЮС внутренний свет по верхней кромке. Свет —
+      // то, чего в прежней системе не было совсем: он рисует физический край панели, и остров
+      // перестаёт быть просто светлым прямоугольником на светлом (см. altitude в system.ts).
+      boxShadow: 'var(--shadow-lvl3), var(--inner-light)',
       ...untintedPlateVars,
       background: 'var(--surface-solid)',
     }}>

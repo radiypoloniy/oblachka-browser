@@ -918,6 +918,7 @@ export function CryptoWidget({ size, box, fill, overImage, hero }: WidgetProps) 
  * осей и подписей — это десяток строк, а любая charting-библиотека тянет за собой сотни
  * килобайт ради того же результата.
  */
+let sparkSeq = 0;
 export function Sparkline({ values, height, color = TONE_GREEN, fill = FILL_GREEN }: {
   values: number[];
   height: number;
@@ -926,6 +927,9 @@ export function Sparkline({ values, height, color = TONE_GREEN, fill = FILL_GREE
   color?: string;
   fill?: string;
 }) {
+  // ⚠️ Свой id у каждого графика: два спарклайна на одном экране с общим id получили бы одну
+  // и ту же заливку — градиент в SVG адресуется по идентификатору документа, а не по элементу.
+  const [gradId] = useState(() => `spark-${++sparkSeq}`);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
@@ -942,10 +946,20 @@ export function Sparkline({ values, height, color = TONE_GREEN, fill = FILL_GREE
       preserveAspectRatio="none"
       style={{ width: '100%', height, marginTop: 8, flex: 'none', overflow: 'visible' }}
     >
-      {/* Заливка под линией — она и придаёт графику «вес», без неё это просто царапина. */}
+      {/* Заливка под линией — она и придаёт графику «вес», без неё это просто царапина.
+          ⚠️ Заливка — ГРАДИЕНТ от линии к прозрачности, а не ровный цвет: ровная плашка под
+          кривой читается вырезанной фигурой, градиент — воздухом под ней. Второй цвет берётся у
+          СПУТНИКА акцента (см. --companion): пара цветов и есть то место системы «Высота», где
+          цвету разрешено звучать. */}
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={fill} />
+          <stop offset="100%" stopColor="transparent" />
+        </linearGradient>
+      </defs>
       <polygon
         points={`0,${height} ${pts.join(' ')} ${w},${height}`}
-        fill={fill}
+        fill={`url(#${gradId})`}
       />
       <polyline
         points={pts.join(' ')}

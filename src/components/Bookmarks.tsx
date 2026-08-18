@@ -166,7 +166,7 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
       // с CONTENT_CORNER_RADIUS обычной вкладки.
       ...islandPlate,
       borderRadius: 'var(--radius-island)',
-      boxShadow: 'var(--shadow-island)',
+      boxShadow: 'var(--shadow-lvl3), var(--inner-light)',
       ...untintedPlateVars,
       background: 'var(--surface-solid)',
     }}>

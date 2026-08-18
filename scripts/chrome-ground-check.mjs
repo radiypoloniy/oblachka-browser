@@ -24,19 +24,19 @@ function check(what, actual, expected) {
 }
 
 // Тона из palettes.css и базовой темы — ровно те, что человек может выбрать.
-const LIGHT = { appBg: '#F2F2F7', surface: '#FFFFFF' };
+const LIGHT = { appBg: '#E9EAEF', surface: '#FFFFFF' };
 const DARK  = { appBg: '#121214', surface: '#1C1C1E' };
 // ⚠️ Тон берётся ВМЕСТЕ СО СВОЕЙ ЗЕМЛЁЙ, а не с землёй базовой темы. Палитра переопределяет
 // --app-bg и --surface, и считать её тон по чужому фону — значит проверять сочетание, которого у
 // человека не бывает. Поймано на «Мяте»: по базовому #F2F2F7 её ступени расходились по тону
 // сильнее порога, по собственному #E9F2EC — укладываются с запасом.
 const PALETTES_LIGHT = [
-  { tint: '#007AFF', appBg: '#F2F2F7', surface: '#FFFFFF' }, // Уголь
-  { tint: '#5B6B7A', appBg: '#ECECEC', surface: '#FFFFFF' }, // Графит
-  { tint: '#5E81AC', appBg: '#E5E9F0', surface: '#FFFFFF' }, // Сланец
-  { tint: '#B08968', appBg: '#F1EDE4', surface: '#FDFBF6' }, // Бумага
-  { tint: '#34A853', appBg: '#E9F2EC', surface: '#FFFFFF' }, // Мята
-  { tint: '#4285F4', appBg: '#E8EEFA', surface: '#FFFFFF' }, // Небо
+  { tint: '#007AFF', appBg: '#E9EAEF', surface: '#FFFFFF' }, // Уголь
+  { tint: '#5B6B7A', appBg: '#E4E5E7', surface: '#FFFFFF' }, // Графит
+  { tint: '#5E81AC', appBg: '#DBE1EB', surface: '#FFFFFF' }, // Сланец
+  { tint: '#B08968', appBg: '#E8E2D5', surface: '#FDFBF6' }, // Бумага
+  { tint: '#34A853', appBg: '#DEEAE2', surface: '#FFFFFF' }, // Мята
+  { tint: '#4285F4', appBg: '#DCE5F6', surface: '#FFFFFF' }, // Небо
 ];
 const PALETTES_DARK = [
   { tint: '#0A84FF', appBg: '#121214', surface: '#1C1C1E' },

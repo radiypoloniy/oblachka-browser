@@ -208,7 +208,7 @@ export default function History({ onClose }: HistoryProps) {
       // один раз на весь контент (Hub тоже им пользуется, без своего собственного margin).
       ...islandPlate,
       borderRadius: 'var(--radius-island)',
-      boxShadow: 'var(--shadow-island)',
+      boxShadow: 'var(--shadow-lvl3), var(--inner-light)',
       ...untintedPlateVars,
       background: 'var(--surface-solid)',
     }}>

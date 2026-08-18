@@ -60,7 +60,7 @@ export default function Downloads({ downloads, onClose }: DownloadsProps) {
       overflow: 'hidden',
       ...islandPlate,
       borderRadius: 'var(--radius-island)',
-      boxShadow: 'var(--shadow-island)',
+      boxShadow: 'var(--shadow-lvl3), var(--inner-light)',
       ...untintedPlateVars,
       background: 'var(--surface-solid)',
     }}>

@@ -140,7 +140,7 @@ export default function Tracking() {
       height: '100%', display: 'flex', flexDirection: 'column',
       ...islandPlate, borderRadius: 'var(--radius-island)',
       ...untintedPlateVars,
-      boxShadow: 'var(--shadow-island)', background: 'var(--surface-solid)', overflow: 'hidden',
+      boxShadow: 'var(--shadow-lvl3), var(--inner-light)', background: 'var(--surface-solid)', overflow: 'hidden',
     }}>
       <div style={{ padding: '18px 24px 12px', borderBottom: '1px solid var(--divider-strong)', flex: 'none' }}>
         <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text-strong)' }}>Отслеживание</div>
