@@ -238,7 +238,7 @@ export default function AppearanceSection() {
             <input type="color" value={s.background.color}
               onChange={(e) => patchBg({ color: e.target.value })}
               style={{ width: 44, height: 32, border: 'none', background: 'none', cursor: 'default' }} />
-            <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', fontFamily: 'monospace' }}>{s.background.color}</span>
+            <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', fontFamily: 'var(--font-mono)' }}>{s.background.color}</span>
           </div>
         )}
 

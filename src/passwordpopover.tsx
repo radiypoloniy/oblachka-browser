@@ -4,6 +4,7 @@ import type { PasswordIndicatorState } from '../shared/ipc';
 import PasswordIndicatorPopover from './components/PasswordIndicatorPopover';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
+import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
 declare global {
   interface Window {
@@ -20,8 +21,7 @@ declare global {
   }
 }
 
-// Держать в синхроне с SHADOW_MARGIN в electron/PasswordPopoverManager.ts.
-const SHADOW_MARGIN = 16;
+
 
 function PasswordPopoverApp() {
   const [state, setState] = useState<PasswordIndicatorState | null>(null);

@@ -83,7 +83,7 @@ export default function AdBlockSection({
                 display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px',
               }}>
                 <span style={{
-                  flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-body)', fontFamily: 'monospace',
+                  flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-body)', fontFamily: 'var(--font-mono)',
                   minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {domain}

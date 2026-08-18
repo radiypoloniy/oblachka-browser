@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, RefreshCw, Shield, Sparkles, Copy, Check, Download, ChevronDown, KeyRound, Loader2, Star, Clipboard, MoreHorizontal } from 'lucide-react';
+import { Copy, Check, ChevronDown, KeyRound, Loader2, Clipboard, MoreHorizontal } from 'lucide-react';
+// ⚠️ Значки, которые человек видит каждую минуту, — свои (штрих плюс тело, см. glyphs.tsx).
+// Остальное остаётся на lucide: в глубине интерфейса характер набора никто не заметит, а
+// перерисовка всего означала бы правку импортов в шести десятках файлов ради того же результата.
+import { BackGlyph, ForwardGlyph, RefreshGlyph, ShieldGlyph, StarGlyph, SparkGlyph, DownloadGlyph } from './glyphs';
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
@@ -1423,13 +1427,13 @@ export default function Toolbar({
           Вписана в текущую высоту тулбара: паддинг плашки не увеличивает высоту кнопок. */}
       <div className="no-drag" style={islandGroup()}>
         <button title="Назад" disabled={!tab?.canGoBack} onClick={onBack}
-          style={clusterBtn({ disabled: !tab?.canGoBack })}><ArrowLeft {...glyph(18)} /></button>
+          style={clusterBtn({ disabled: !tab?.canGoBack })}><BackGlyph size={18} /></button>
         <button title="Вперёд" disabled={!tab?.canGoForward} onClick={onForward}
-          style={clusterBtn({ disabled: !tab?.canGoForward })}><ArrowRight {...glyph(18)} /></button>
+          style={clusterBtn({ disabled: !tab?.canGoForward })}><ForwardGlyph size={18} /></button>
         {/* ⚠️ 18, а не 17: соседние стрелки восемнадцатые, и на глаз «Обновить» выглядела мельче
             остальных. Высоту группы это не двигает — та задана явно (ISLAND_HEIGHT). */}
         <button title="Обновить" disabled={isHub} onClick={onReload}
-          style={clusterBtn({ disabled: isHub })}><RefreshCw {...glyph(18)} /></button>
+          style={clusterBtn({ disabled: isHub })}><RefreshGlyph size={18} /></button>
       </div>
 
       {/* Омнибокс — главный объект полосы, и теперь он занимает всё свободное место между
@@ -1479,7 +1483,7 @@ export default function Toolbar({
                   только первое. Раньше на хабе и в инкогнито здесь стояла НЕКЛИКАБЕЛЬНАЯ картинка;
                   теперь кнопка живая всегда, иначе до VPN нельзя было бы добраться с новой
                   вкладки — а включают его чаще всего именно оттуда. */}
-              <Shield {...glyph(14)} fill={vpnOn && !sitePopoverOpen ? 'var(--dot-vpn)' : 'none'} />
+              <ShieldGlyph size={14} filled={vpnOn && !sitePopoverOpen} />
             </button>
             <input
               ref={inputRef}
@@ -1662,7 +1666,7 @@ export default function Toolbar({
                 onClick={toggleBookmark}
                 style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
                          display: 'inline-flex', color: bookmarked ? 'var(--accent)' : 'var(--text-muted)' }}>
-                <Star {...glyph(14)} fill={bookmarked ? 'var(--accent)' : 'none'} />
+                <StarGlyph size={14} filled={bookmarked} />
               </button>
             )}
             {/* «⋯» — действия над ЭТОЙ страницей, которым не нужна постоянная кнопка: перевод и
@@ -1787,7 +1791,7 @@ export default function Toolbar({
             загорается, когда панель открыта, то есть означает состояние, а не важность. */}
         {!isLightWindow && (
           <button title="AI-панель" onClick={onToggleAiPanel} style={clusterBtn({ active: aiPanelOpen })}>
-            <Sparkles {...glyph(18)} />
+            <SparkGlyph size={18} />
           </button>
         )}
         {/* Буфер скопированного — рядом с загрузками намеренно: это одна группа «что я забрал со
@@ -1820,7 +1824,7 @@ export default function Toolbar({
             onClick={toggleDownloadsPopover}
             style={{ ...clusterBtn({ active: downloadsPopoverOpen }), position: 'relative' }}
           >
-            <Download {...glyph(18)} style={flying ? { animation: 'oblako-dl-land 520ms var(--ease-out)' } : undefined} />
+            <DownloadGlyph size={18} style={flying ? { animation: 'oblako-dl-land 520ms var(--ease-out)' } : undefined} />
 
             {/* ⚠️ Прилетающий файл — единственный момент, когда человеку СООБЩАЮТ, что загрузка
                 вообще началась: у нас нет ни системы тостов, ни полосы загрузок снизу, и раньше
@@ -1838,7 +1842,7 @@ export default function Toolbar({
                     animation: 'oblako-dl-fly 520ms var(--ease-out)',
                   }}
                 >
-                  <Download {...glyph(18)} />
+                  <DownloadGlyph size={18} />
                 </span>
                 <span
                   aria-hidden

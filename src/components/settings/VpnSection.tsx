@@ -177,7 +177,7 @@ export default function VpnSection() {
                   title={stripEmoji(s.remark) || s.address}
                   subtitle={
                     <>
-                      <span style={{ fontFamily: 'monospace' }}>{s.address}:{s.port}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)' }}>{s.address}:{s.port}</span>
                       {/* ⚠️ Протокол показываем ТОЛЬКО когда он в списке не один: у одной
                           подписки все серверы обычно vless, и слово повторялось в каждой строке
                           ровно ничего не различая — прежде оно вообще стояло отдельной колонкой. */}

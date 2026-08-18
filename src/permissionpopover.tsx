@@ -7,6 +7,7 @@ import type { PermissionRequest } from '../shared/ipc';
 import PermissionPrompt from './components/PermissionPrompt';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
+import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
 declare global {
   interface Window {
@@ -18,9 +19,6 @@ declare global {
   }
 }
 
-// Держать в синхроне с SHADOW_MARGIN и CARD_WIDTH в electron/PermissionPopoverManager.ts:
-// вью растянута на запас под тень, а карточка инсетится обратно паддингом.
-const SHADOW_MARGIN = 20;
 const CARD_WIDTH = 380;
 
 function PermissionPopoverApp() {

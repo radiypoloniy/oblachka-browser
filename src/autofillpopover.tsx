@@ -5,6 +5,7 @@ import type { AddressProfile, CardMeta } from '../shared/ipc';
 import { islandPlate } from './styles/island';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
+import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
 // Состояние поповера (совпадает с electron/AutofillPopoverManager.ts::AutofillPopoverState).
 type AutofillPopoverState =
@@ -27,8 +28,7 @@ declare global {
   }
 }
 
-// Держать в синхроне с SHADOW_MARGIN в electron/AutofillPopoverManager.ts.
-const SHADOW_MARGIN = 16;
+
 
 // ⚠️ Тень — --shadow-overlay, а НЕ --shadow-island. Это прямо описано в шапке shadows.css:
 // многослойная островная тень с inset-рантом поверх ПРОЗРАЧНОЙ WebContentsView рисуется на

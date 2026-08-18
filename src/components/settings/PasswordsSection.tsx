@@ -513,7 +513,7 @@ function PasswordRow({ entry, revealedValue, copiedKey, onToggleReveal, onCopy, 
         </div>
         <div style={{
           fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)',
         }}>
           {entry.username || '—'}{revealed ? `  ·  ${revealedValue}` : ''}
         </div>
@@ -623,7 +623,7 @@ function GenToggle({ label, checked, onChange }: { label: string; checked: boole
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default' }}>
       <Toggle checked={checked} onChange={onChange} />
-      <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', fontFamily: 'monospace' }}>{label}</span>
+      <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', fontFamily: 'var(--font-mono)' }}>{label}</span>
     </label>
   );
 }

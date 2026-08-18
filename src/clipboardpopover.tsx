@@ -6,6 +6,7 @@ import { islandPlate } from './styles/island';
 import SiteFavicon from './components/SiteFavicon';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
+import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
 // Поповер буфера скопированного со страниц.
 //
@@ -40,8 +41,7 @@ declare global {
   }
 }
 
-// Держать в синхроне с SHADOW_MARGIN в electron/ClipboardPopoverManager.ts.
-const SHADOW_MARGIN = 16;
+
 const CARD_WIDTH = 380;
 // Сколько строк текста видно в свёрнутом виде.
 const PREVIEW_LINES = 2;

@@ -18,6 +18,7 @@ import { Search, CornerDownLeft, Clock, Star, PanelTop, Globe, ChevronDown, Chev
 import './styles/global.css';
 import type { SearchTarget, QuickHit, QuickQueryResult } from '../shared/ipc';
 import { installOverlayReveal } from './overlayReveal';
+import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
 interface ShowPayload { targets: SearchTarget[]; prefill: string }
 
@@ -36,7 +37,6 @@ declare global {
 
 // Держать в синхроне с SearchPopoverManager.ts — ширина и базовая высота задают размер вью.
 const WIDTH = 620;
-const SHADOW_MARGIN = 20;
 // Больше пяти строк в поповере — уже панель истории, а не быстрый выбор.
 const MAX_HITS = 5;
 const QUERY_DEBOUNCE = 120;

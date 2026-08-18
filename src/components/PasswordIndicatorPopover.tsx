@@ -56,7 +56,7 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
           <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
             Сохранить пароль для <b>{state.origin}</b>?
           </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontFamily: 'monospace' }}>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
             {state.username}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -77,7 +77,7 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
           <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
             Обновить пароль для <b>{state.origin}</b>?
           </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontFamily: 'monospace' }}>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
             {state.username}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>

@@ -19,6 +19,7 @@ import type { BrowserWindow } from 'electron'
 import path from 'node:path'
 import type { ContentBounds, PermissionRequest } from '../shared/ipc'
 import { closeWindowView } from './viewTeardown';
+import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
 const CARD_WIDTH = 380
 // Стартовая высота до первого отчёта из вью. Оверлей появляется мгновенно, а высоту содержимого
@@ -26,9 +27,6 @@ const CARD_WIDTH = 380
 // чем показать обрезанную карточку.
 const INITIAL_HEIGHT = 150
 const EDGE_GAP = 12
-// Прозрачный запас под тень: WebContentsView обрезает всё за границей своего прямоугольника
-// (тот же приём, что SHADOW_MARGIN в FindBarManager/TranslatePopoverManager).
-const SHADOW_MARGIN = 20
 
 interface WindowPermPopover {
   win: BrowserWindow

@@ -1,5 +1,5 @@
 import { Children, Fragment, useEffect, useRef, useState } from 'react';
-import { sp, pad, RADIUS, TEXT, ROW_TITLE, CAPS, MEASURE, motion } from '../../styles/system';
+import { sp, pad, RADIUS, TEXT, ROW_TITLE, CAPS, MEASURE, motion, well } from '../../styles/system';
 import { Check } from 'lucide-react';
 
 // ── Набор презентационных примитивов раздела настроек ─────────────────────────
@@ -285,7 +285,7 @@ export function TextField({
         style={{
           ...inputBase,
           border: borderFor(!!error),
-          ...(mono ? { fontFamily: 'monospace' } : {}),
+          ...(mono ? { fontFamily: 'var(--font-mono)' } : {}),
           ...inputStyle,
         }}
       />
@@ -527,7 +527,10 @@ export function SegTrack({ children }: { children: React.ReactNode }) {
     // колонку, КОНТРОЛ — никогда.
     <div style={{
       display: 'inline-flex', alignSelf: 'flex-start', gap: sp(1) - 2, padding: sp(1) - 1,
-      borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
+      // Общий рецепт углубления — тот же, что под переключателем сайдбара (см. well в system.ts).
+      // Раньше здесь стояла своя заливка --surface-sunken: на белой панели настроек она видна, на
+      // земле — нет, и два одинаковых с виду контрола держались разными способами.
+      ...well(RADIUS.control),
       maxWidth: '100%', flexWrap: 'wrap',
     }}>
       {children}

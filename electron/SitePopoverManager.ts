@@ -19,20 +19,14 @@ import type { BrowserWindow } from 'electron';
 import path from 'node:path';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds } from '../shared/ipc';
+import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
 const POPOVER_WIDTH = 340;
 const INITIAL_HEIGHT = 220;
-// ⚠️ ЗАЗОР ОБЯЗАН БЫТЬ НЕ МЕНЬШЕ SHADOW_MARGIN, и это не про воздух, а про мышь. Прозрачный
-// запас под тень ХИТ-ТЕСТИТСЯ: вью ловит клики всем своим прямоугольником, а не видимой
-// карточкой. При зазоре 6 и запасе 16 верхний край вью вставал на 10 px ВЫШЕ низа кнопки-якоря,
-// то есть её нижняя треть переставала нажиматься, пока поповер открыт (закрыть поповер повторным
-// кликом по кнопке получалось не всегда — как повезёт попасть выше кромки). Ровно этот же просчёт
-// на дропдауне омнибокса накрывал адресную строку целиком и месяц выглядел как проблема фокуса —
-// см. разбор в docs/architecture-core.md.
-const GAP = 16;
+// Зазор от якоря и запас под тень — общие для всех якорных поповеров, см. shared/overlayMetrics.ts
+// (там же разбор, почему зазор не может быть меньше запаса: прозрачное поле хит-теститься).
 const WINDOW_MARGIN = 8;
-// Держать в синхроне с SHADOW_MARGIN в src/sitepopover.tsx.
-const SHADOW_MARGIN = 16;
+
 
 let popoverView: WebContentsView | null = null;
 let attachedWin: BrowserWindow | null = null;

@@ -2634,7 +2634,7 @@ function CopyChip({ label, copied, onCopy }: { label: string; copied: boolean; o
         flex: 1, minWidth: 0, padding: '7px 10px',
         borderRadius: 'var(--radius-sm)', border: 'none',
         background: 'var(--surface-sunken)', color: 'var(--text-body)',
-        fontSize: 'var(--fs-xs)', fontFamily: 'var(--font-mono, monospace)', cursor: 'pointer',
+        fontSize: 'var(--fs-xs)', fontFamily: 'var(--font-mono)', cursor: 'pointer',
       }}
     >
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>

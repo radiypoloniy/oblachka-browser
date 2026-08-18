@@ -21,6 +21,14 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 * { box-sizing: border-box; }
+/* ⚠️ КОНТРОЛЫ НЕ НАСЛЕДУЮТ ШРИФТ. У <button>, <input>, <textarea> и <select> гарнитура своя, от
+   UA — на Windows это системный Segoe UI, — и никакой font-family на body до них не доходит.
+   Без этой строки часть хрома набрана системным шрифтом, а не Golos Text, и разница видна ровно
+   там, где её труднее всего объяснить: на кнопках тулбара и в полях. Россыпь точечных
+   fontFamily: 'inherit' по компонентам — следы этой же дыры, залатанной поштучно.
+   ⚠️ Наследуется ТОЛЬКО гарнитура, не сокращённое `font`: `font: inherit` утащило бы и размер
+   (16px с body вместо 13,33px UA) и раздуло бы каждую кнопку, у которой размер не проставлен. */
+button, input, textarea, select { font-family: inherit; }
 /* Тот же keyframe-приём, что и src/index.html (спиннер до React) — здесь для React-точек входа,
    не грузящих index.html (aipanel.tsx и т.п.), см. заход D: индикатор фактчека. */
 @keyframes oblako-spin { to { transform: rotate(360deg); } }

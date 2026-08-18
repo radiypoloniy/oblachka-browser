@@ -1,42 +1,69 @@
 /* ── Oblako elevation ────────────────────────────────────────────────
-   Soft, layered drop shadows + a specular rim. On glass surfaces the rim
-   (inset highlights) reads as light catching the edge — that's what sells
-   Liquid Glass. Plain plates use the rim-less chip/card steps. */
+   Тени лежат на ЗЕМЛЕ, значит цвет им даёт земля — а не абстрактный «тёмный».
+
+   ⚠️ ЦВЕТ ТЕНИ БЫЛ ЧУЖИМ, И ЭТО И ЕСТЬ «ГРЯЗЬ». Здесь стояли два разных тонированных
+   чёрных, оба мимо палитры:
+     • rgba(30,25,60) и rgba(40,30,80) — у них синий канал ВДВОЕ выше красного, а зелёный ниже
+       обоих, то есть это сиреневая тень. Правило проекта «фиолетового в системе нет вообще»
+       обходили значки дважды (см. шапку colors.css); тени были третьим путём, и самым незаметным,
+       потому что в тени цвет не называют — его видят как «серую грязь».
+     • rgba(12,30,22) в лестнице --shadow-lvl* — наоборот, зелёный с уклоном в циан.
+   Один и тот же чужой оттенок лежал под островами во ВСЕХ шести палитрах. На тёплой «Бумаге» он
+   оказывался прямо напротив земли по кругу оттенков — глаз видит не тень, а налёт.
+
+   ⚠️ Теперь тон один и ВЫВОДИТСЯ: --shadow-tint равен чернилам палитры, а чернила уже построены
+   от земли (оттенок земли, зажатая насыщенность — см. --text-* в colors.css). Поэтому на тёплой
+   земле тень тёплая, на холодной холодная, и шесть палитр остаются шестью строками, а не
+   двенадцатью наборами чисел. В тёмной теме тинт переопределён чёрным (theme-dark.css): там
+   чернила СВЕТЛЫЕ, и тень из них была бы белой.
+
+   ⚠️ Плотность тоже упала. Ступеней стало четыре вместо шести, суммарная альфа панели — 0,29
+   против 0,58: земля под панелью темнела вдвое сильнее, чем нужно для глубины. Лестницу когда-то
+   растягивали, чтобы уйти от «тень угловатая и торчит», но растянули вместе с плотностью — каждая
+   новая ступень ДОБАВЛЯЛА альфу, а не перераспределяла её. */
 :root {
+  /* Тон всех теней. Единственное место, где он задаётся. */
+  --shadow-tint: var(--text-strong);
+
   --shadow-chip:
-    0 1px 2px rgba(30,25,60,0.07);
+    0 1px 2px color-mix(in srgb, var(--shadow-tint) 7%, transparent);
 
   --shadow-card:
-    0 1px 2px rgba(30,25,60,0.06),
-    0 4px 14px rgba(30,25,60,0.07);
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 5%, transparent),
+    0 1px 2px color-mix(in srgb, var(--shadow-tint) 5%, transparent),
+    0 6px 14px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
 
-  /* Glass elevations — specular rim baked in. Use for islands / menus.
-     Тень многослойная с нарастающим blur и убывающей opacity — чтобы
-     растворялась плавно без видимой нижней границы. */
+  /* Острова и меню. Внутренний свет по кромке подмешивает вызывающий (--inner-light) — в самой
+     тени его нет: inset-рант вместе с многослойным blur плохо ложится на прозрачные вью. */
   --shadow-island:
-    inset 0 1px 0.5px var(--glass-hi),
-    inset 0 0 0 1px var(--glass-edge),
-    0 2px 4px   rgba(40,30,80,0.04),
-    0 6px 12px  rgba(40,30,80,0.06),
-    0 14px 28px rgba(40,30,80,0.06),
-    0 28px 60px rgba(40,30,80,0.04),
-    0 60px 90px rgba(40,30,80,0.02);
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 2px 4px color-mix(in srgb, var(--shadow-tint) 4%, transparent),
+    0 10px 20px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 28px 44px color-mix(in srgb, var(--shadow-tint) 6%, transparent);
 
   --shadow-pop:
-    inset 0 1px 0.5px var(--glass-hi),
-    inset 0 0 0 1px var(--glass-edge),
-    0 6px 18px rgba(40,30,80,0.16),
-    0 20px 48px rgba(40,30,80,0.22);
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 9%, transparent),
+    0 2px 6px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 12px 26px color-mix(in srgb, var(--shadow-tint) 8%, transparent),
+    0 32px 52px color-mix(in srgb, var(--shadow-tint) 9%, transparent);
 
-  /* Тень для изолированных прозрачных WebContentsView-оверлеев (AI-панель,
-     поповер перевода, дропдаун подсказок) — НЕ shadow-island/-pop: многослойный
-     blur + inset-рант поверх per-pixel-alpha прозрачной вью на Windows/Chromium
-     рендерится с жёсткими краями вместо мягкого растворения (см. SHADOW_MARGIN
-     в electron/*Manager.ts — та же особенность: вью обрезает всё за своей
-     границей, а тяжёлая тень вдобавок теряет мягкость на самой прозрачности).
-     Единственная простая однослойная тень, проверенная руками во всех трёх. */
-  --shadow-overlay: 0 10px 28px rgba(40,30,80,0.16);
+  /* ── Тень оверлеев (прозрачные WebContentsView: поповеры, дропдаун, AI-панель) ──
+     ⚠️ Не --shadow-island/-pop: многослойный blur ВМЕСТЕ С inset-рантом поверх per-pixel-alpha
+     прозрачной вью на Windows/Chromium рендерится с жёсткими краями вместо мягкого растворения.
+     Inset-ранта здесь поэтому нет — кромку держит КОЛЬЦО (0 0 0 1px), обычная тень, а не inset.
 
-  /* Focus ring — синий (accent), единственный акцент проекта (заход 3). */
-  --ring-accent: 0 0 0 3px rgba(34,128,197,0.24);
+     ⚠️ ВЫЛЕТ ТЕНИ ОБЯЗАН УКЛАДЫВАТЬСЯ В ЗАПАС ВЬЮ (OVERLAY_SHADOW_MARGIN = 24 px, см.
+     shared/overlayMetrics.ts): вью обрезает всё за своей границей. Прежняя однослойная
+     `0 10px 28px` уходила на 38 px вниз при запасе 16 — нижняя половина тени просто срезалась
+     рамкой, и мягкий скат превращался в резкий обрыв. Именно это читалось как «грубая тень»,
+     а не сила или цвет самой тени. Считает scripts/overlay-shadow-check.mjs. */
+  --shadow-overlay:
+    0 0 0 1px color-mix(in srgb, var(--shadow-tint) 8%, transparent),
+    0 1px 2px color-mix(in srgb, var(--shadow-tint) 6%, transparent),
+    0 4px 8px color-mix(in srgb, var(--shadow-tint) 7%, transparent),
+    0 8px 16px color-mix(in srgb, var(--shadow-tint) 10%, transparent);
+
+  /* Фокусное кольцо. ⚠️ Держало литерал rgba(34,128,197) — акцент двухлетней давности, который
+     не менялся ни с палитрой, ни с темой: на «Мяте» фокус оставался синим. Выводим из акцента. */
+  --ring-accent: 0 0 0 3px var(--accent-ring);
 }

@@ -53,20 +53,25 @@
   --divider-strong:  rgba(0,0,0,0.20);
 }
 [data-palette="graphite"][data-theme="dark"]:not([data-incognito="true"]) {
-  /* Акцент палитры, тёмная: к земле 4,79. Текст на нём тёмный — см. --on-accent. */
-  --accent:          #5582C4;
+  /* Акцент палитры, тёмная: текст на нём 4,85 · к острову 4,07. Текст тёмный — см. --on-accent.
+     ⚠️ Поднят с #5582C4: тот давал 4,27 при пороге 4,5, то есть тёмный текст на кнопке не
+     дотягивал — а в комментарии стояло 4,79, посчитанное не по той паре. Меряет contrast-check. */
+  --accent:          #628CC9;
   /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #7C8FA3;
   --app-bg:          #1E1E1E; /* macOS controlBackground/textBackground dark */
   --canvas:          var(--app-bg);
-  --surface:         #2C2C2C;
-  --surface-island:  rgba(44,44,44,0.74); /* альфа как у базовой тёмной — под островами живой блюр */
-  --surface-solid:   #2C2C2C;
-  --surface-sunken:  #3A3A3A; /* в тёмной теме колодец СВЕТЛЕЕ острова, как заливки полей у Apple */
-  /* Земля здесь светлее базовой тёмной (#1E1E1E против #121214), поэтому приглушённый текст
-     поднят на ступень: на #2C2C2C базовый #7C7C84 давал ~3.3:1 вместо ~4:1. */
-  --text-faint:      #8A8A92;
+  /* Остров поднят под порог различимости плоскостей (см. разбор у --surface в theme-dark.css). */
+  --surface:         #303030; /* к земле 1,263 */
+  --surface-island:  rgba(48,48,48,0.78);
+  --surface-solid:   #303030;
+  --surface-sunken:  #3D3D3D; /* в тёмной теме колодец СВЕТЛЕЕ острова, как заливки полей у Apple */
+  /* Земля здесь светлее базовой тёмной (#1E1E1E против #121214), поэтому обе приглушённые
+     ступени подняты: базовые давали на «карточке+» 4,41 (muted) при пороге 4,5.
+     ⚠️ Тон плоский, без синевы базовых чернил, — у настольной темы Apple нейтраль без уклона. */
+  --text-muted:      #B6B6B6;
+  --text-faint:      #969696;
 }
 
 /* ── Сланец (Nord) ────────────────────────────────────────────────────
@@ -94,12 +99,17 @@
   --divider-strong:  rgba(46,52,64,0.22);
   --text-strong:     #2E3440; /* nord0 */
   --text-body:       #3B4252; /* nord1 */
-  --text-muted:      #4C566A; /* nord3 */
-  --text-faint:      #6E7889; /* добрано: nord3 в роли faint сливался бы с muted */
+  /* Приглушённые ступени — по общему правилу чернил (см. colors.css): тон земли, зажатая
+     насыщенность, светлота под контраст на колодце. nord3 (#4C566A) в роли muted работал на
+     белом острове, но на земле Nord проваливался — у Nord просто нет ступеней под наши роли. */
+  --text-muted:      #525D71;
+  --text-faint:      #69778F;
 }
 [data-palette="slate"][data-theme="dark"]:not([data-incognito="true"]) {
-  /* Акцент палитры, тёмная: к земле 5,11. Текст на нём тёмный — см. --on-accent. */
-  --accent:          #6888B0;
+  /* Акцент палитры, тёмная: текст на нём 4,87 · к острову 3,92. Текст тёмный — см. --on-accent.
+     ⚠️ Поднят с #6888B0 — самая грубая дыра из найденных прогоном: к острову Nord (#3B4252) тот
+     давал 2,75, то есть кнопка почти не отделялась от панели, а текст на ней — 3,41. */
+  --accent:          #8BA4C2;
   /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #88C0D0;
@@ -107,16 +117,19 @@
   /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
      ровно под сайдбар и читался боковой плашкой. */
   --canvas:          var(--app-bg);
-  --surface:         #3B4252; /* nord1 */
-  --surface-island:  rgba(59,66,82,0.74);
-  --surface-solid:   #3B4252;
-  --surface-sunken:  #434C5E; /* nord2 — светлее острова */
-  --divider:         rgba(216,222,233,0.12);
-  --divider-strong:  rgba(216,222,233,0.20);
+  /* nord1 поднят на волос под порог различимости плоскостей (см. --surface в theme-dark.css). */
+  --surface:         #3C4353; /* к земле 1,261 */
+  --surface-island:  rgba(60,67,83,0.78);
+  --surface-solid:   #3C4353;
+  --surface-sunken:  #474F63; /* nord2, поднят вместе с островом — колодец обязан быть светлее */
+  --divider:         rgba(216,222,233,0.16);
+  --divider-strong:  rgba(216,222,233,0.26);
   --text-strong:     #ECEFF4; /* nord6 */
   --text-body:       #E5E9F0; /* nord5 */
-  --text-muted:      #B4BECE; /* добрано: земля Nord светлее нашей базовой тёмной, */
-  --text-faint:      #98A3B8; /* поэтому обе приглушённые ступени тоже светлее базовых */
+  /* Земля Nord светлее базовой тёмной, поэтому обе приглушённые ступени тоже светлее базовых.
+     ⚠️ muted поднят: на «карточке+» (остров + доля акцента) прежний #B4BECE давал 4,47 при пороге 4,5. */
+  --text-muted:      #D0D5DD;
+  --text-faint:      #A9B1BF;
 }
 
 /* ── Бумага (тёплая) ──────────────────────────────────────────────────
@@ -149,8 +162,8 @@
   --divider-strong:  rgba(60,50,35,0.22);
   --text-strong:     #1F1B15;
   --text-body:       #3A332A;
-  --text-muted:      #6B6153;
-  --text-faint:      #8B8173;
+  --text-muted:      #665D4A;
+  --text-faint:      #827760; /* прежний #8B8173 давал 2,91 в колодце при пороге 3,0 */
 }
 [data-palette="paper"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Акцент палитры, тёмная: к земле 5,75. Текст на нём тёмный — см. --on-accent. */
@@ -162,18 +175,19 @@
   /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
      ровно под сайдбар и читался боковой плашкой. */
   --canvas:          var(--app-bg);
-  --surface:         #1C1917; /* Stone 900 */
-  --surface-island:  rgba(28,25,23,0.76);
-  --surface-solid:   #1C1917;
-  --surface-sunken:  #292524; /* Stone 800 — светлее острова */
-  --surface-hover:   rgba(255,246,230,0.07);
-  --surface-active:  rgba(255,246,230,0.12);
-  --divider:         rgba(245,240,230,0.10);
-  --divider-strong:  rgba(245,240,230,0.17);
+  /* Stone 900 был самой сливающейся парой из всех шести: 1,069 к земле (см. theme-dark.css). */
+  --surface:         #2B2623; /* к земле 1,250 */
+  --surface-island:  rgba(43,38,35,0.78);
+  --surface-solid:   #2B2623;
+  --surface-sunken:  #37312D; /* светлее острова */
+  --surface-hover:   rgba(255,246,230,0.10);
+  --surface-active:  rgba(255,246,230,0.16);
+  --divider:         rgba(245,240,230,0.14);
+  --divider-strong:  rgba(245,240,230,0.22);
   --text-strong:     #FAF7F2;
   --text-body:       #E9E3D9;
-  --text-muted:      #A9A093;
-  --text-faint:      #857C70;
+  --text-muted:      #B6AD9E;
+  --text-faint:      #9A8D78;
 }
 
 /* ── Мята и Небо ──────────────────────────────────────────────────────
@@ -210,8 +224,8 @@
   --divider-strong:  rgba(20,60,35,0.21);
   --text-strong:     #16261C;
   --text-body:       #2C3A31;
-  --text-muted:      #5C6B62;
-  --text-faint:      #7D8B82;
+  --text-muted:      #4B6754;
+  --text-faint:      #60826C; /* прежний #7D8B82 давал 2,80 в колодце при пороге 3,0 */
 }
 [data-palette="mint"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Акцент палитры, тёмная: к земле 10,56. Текст на нём тёмный — см. --on-accent. */
@@ -219,18 +233,18 @@
   --sidebar-tint:    #81C995;
   --app-bg:          #101613;
   --canvas:          var(--app-bg);
-  --surface:         #18201B;
-  --surface-island:  rgba(24,32,27,0.76);
-  --surface-solid:   #18201B;
-  --surface-sunken:  #25302A; /* в тёмной теме колодец СВЕТЛЕЕ острова */
-  --surface-hover:   rgba(230,255,240,0.07);
-  --surface-active:  rgba(230,255,240,0.12);
-  --divider:         rgba(225,245,233,0.10);
-  --divider-strong:  rgba(225,245,233,0.17);
+  --surface:         #212C25; /* к земле 1,266 — см. разбор у --surface в theme-dark.css */
+  --surface-island:  rgba(33,44,37,0.78);
+  --surface-solid:   #212C25;
+  --surface-sunken:  #2C3A31; /* в тёмной теме колодец СВЕТЛЕЕ острова */
+  --surface-hover:   rgba(230,255,240,0.10);
+  --surface-active:  rgba(230,255,240,0.16);
+  --divider:         rgba(225,245,233,0.14);
+  --divider-strong:  rgba(225,245,233,0.22);
   --text-strong:     #F2FAF5;
   --text-body:       #DDE9E1;
-  --text-muted:      #9AA9A0;
-  --text-faint:      #7C8A82;
+  --text-muted:      #AFC4B9;
+  --text-faint:      #85A595;
 }
 
 [data-palette="sky"]:not([data-theme="dark"]) {
@@ -249,8 +263,8 @@
   --divider-strong:  rgba(20,40,80,0.21);
   --text-strong:     #16203A;
   --text-body:       #2C3550;
-  --text-muted:      #5C6580;
-  --text-faint:      #7D869C;
+  --text-muted:      #535F73;
+  --text-faint:      #6B7991; /* прежний #7D869C давал 2,77 в колодце при пороге 3,0 */
 }
 [data-palette="sky"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Акцент палитры, тёмная: к земле 4,85. Текст на нём тёмный — см. --on-accent. */
@@ -258,16 +272,16 @@
   --sidebar-tint:    #8AB4F8;
   --app-bg:          #0F1319;
   --canvas:          var(--app-bg);
-  --surface:         #171C24;
-  --surface-island:  rgba(23,28,36,0.76);
-  --surface-solid:   #171C24;
-  --surface-sunken:  #232A34;
-  --surface-hover:   rgba(232,240,255,0.07);
-  --surface-active:  rgba(232,240,255,0.12);
-  --divider:         rgba(226,236,252,0.10);
-  --divider-strong:  rgba(226,236,252,0.17);
+  --surface:         #212833; /* к земле 1,256 — см. разбор у --surface в theme-dark.css */
+  --surface-island:  rgba(33,40,51,0.78);
+  --surface-solid:   #212833;
+  --surface-sunken:  #2C3441;
+  --surface-hover:   rgba(232,240,255,0.10);
+  --surface-active:  rgba(232,240,255,0.16);
+  --divider:         rgba(226,236,252,0.14);
+  --divider-strong:  rgba(226,236,252,0.22);
   --text-strong:     #F3F7FE;
   --text-body:       #DEE5F0;
-  --text-muted:      #9AA3B4;
-  --text-faint:      #7C8494;
+  --text-muted:      #A1ABBB;
+  --text-faint:      #7F8DA1;
 }

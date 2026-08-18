@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { PanelLeft, Plus, Settings, X, Cloud, Columns2, Clock, ChevronRight, ChevronDown, Sparkles, RotateCcw, VenetianMask, Volume2, VolumeX } from 'lucide-react';
+import { Cloud, Columns2, ChevronRight, ChevronDown, RotateCcw, VenetianMask, Volume2, VolumeX } from 'lucide-react';
+// Свои значки — см. разбор в glyphs.tsx.
+import { PanelGlyph, PlusGlyph, SlidersGlyph, CloseGlyph, ClockGlyph, SparkGlyph } from './glyphs';
 import { TAB_KIND_TILE } from '../styles/tabKindTile';
 import { islandPlate } from '../styles/island';
 import SidebarBookmarks from './SidebarBookmarks';
@@ -16,6 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropResult, DragCard } from '../../shared/ipc';
+import { well, RADIUS, glyph } from '../styles/system';
 
 // Стабильный id droppable-контейнера секции «Открытые вкладки».
 const SECTION_NORMAL_ID = 'drop-section-normal';
@@ -203,10 +206,12 @@ interface TabRowProps {
 function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitSplit, onToggleMute, ghost }: TabRowProps) {
   const [hovered, setHovered] = useState(false);
   const inSplit = tab.splitSide !== null;
-  // ⚠️ Фон АКТИВНОЙ вкладки идёт через --sidebar-plate, а не литералом --surface: на цветном
-  // сайдбаре белая плашка выглядела вырезанной из другой темы — ровно то, ради чего переменная и
-  // заводилась (см. её описание ниже). Литерал тут пережил введение цветного сайдбара молча.
-  const bg = active ? 'var(--sidebar-plate, var(--surface))'
+  // ⚠️ Фон АКТИВНОЙ вкладки идёт через --tab-active, а не литералом --surface: на цветном
+  // сайдбаре белая плашка выглядела вырезанной из другой темы, а в тёмной теме плашка почти
+  // совпадала с землёй (1,256 при пороге различимости 1,20 — «надо глаза сломать, чтобы
+  // разглядеть открытую вкладку»). Токен решает обе задачи и делает это ПО-РАЗНОМУ в двух темах,
+  // потому что арифметика там разная — разбор у --tab-active в colors.css.
+  const bg = active ? 'var(--tab-active)'
     : inSplit ? 'var(--surface-hover)'
     : hovered  ? 'var(--surface-hover)'
     : 'transparent';
@@ -224,7 +229,18 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
         display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px',
         borderRadius: 'var(--radius-sm)', cursor: 'default',
         background: bg,
-        boxShadow: active ? 'var(--shadow-card)' : 'none',
+        // ⚠️ Рельс, а не заливка: в развёрнутом списке у строки есть ширина, текст и соседи —
+        // активность подсказывает форма, а сплошной акцент на всю строку был бы криком (в сжатой
+        // полосе наоборот: формы нет, и там заливка — единственное, что читается, см. IconCell).
+        // inset-полоска вместо ::before — псевдоэлемента у inline-стиля не бывает.
+        // ⚠️ ТРИ ПРИЗНАКА СРАЗУ, и каждый нужен: рельс акцента слева (сплошной цвет — единственное,
+        // что контрастно к ЛЮБОЙ земле, 4,5+ в светлой и 4,8 в тёмной), кольцо по периметру
+        // (очерчивает строку там, где плашка почти совпала с фоном) и сама плашка. Поодиночке
+        // ни один не справлялся: в тёмной теме плашку было «не разглядеть без слёз», а рельс
+        // в три пикселя терялся на фоне значков и текста.
+        boxShadow: active
+          ? 'inset 4px 0 0 var(--accent), inset 0 0 0 1px var(--accent-soft-border), var(--shadow-card)'
+          : 'none',
         color: active ? 'var(--text-strong)' : 'var(--text-body)',
         transition: ghost ? undefined : 'background var(--dur-fast) var(--ease-standard)',
       }}
@@ -256,7 +272,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-        >{tab.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}</button>
+        >{tab.muted ? <VolumeX {...glyph(13)} /> : <Volume2 {...glyph(13)} />}</button>
       )}
 
       {tab.isLoading && !tab.isSleeping && (
@@ -275,7 +291,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-muted)', flex: 'none' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-        ><Columns2 size={12} /></button>
+        ><Columns2 {...glyph(12)} /></button>
       )}
 
       {!ghost && hovered && !tab.isHub && !tab.isPinned && !inSplit && !active && onSplit && (
@@ -286,7 +302,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-        ><Columns2 size={14} /></button>
+        ><Columns2 {...glyph(14)} /></button>
       )}
 
       {!ghost && !tab.isHub && !tab.isPinned && (
@@ -297,7 +313,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-        ><X size={14} /></button>
+        ><CloseGlyph size={14} /></button>
       )}
     </div>
   );
@@ -375,7 +391,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
         style={{
           flex: 1, display: 'flex', alignItems: 'center', gap: 4,
           padding: '0 8px', minWidth: 0, cursor: 'default',
-          background: leftActive ? 'var(--sidebar-plate, var(--surface))' : 'transparent',
+          background: leftActive ? 'var(--tab-active)' : 'transparent',
           boxShadow: leftActive ? 'var(--shadow-card)' : 'none',
         }}
       >
@@ -394,7 +410,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          ><Columns2 size={12} /></button>
+          ><Columns2 {...glyph(12)} /></button>
         )}
         {!ghost && hoveredSide === 'left' && (
           <button
@@ -404,7 +420,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          ><X size={12} /></button>
+          ><CloseGlyph size={12} /></button>
         )}
       </div>
 
@@ -421,7 +437,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
         style={{
           flex: 1, display: 'flex', alignItems: 'center', gap: 4,
           padding: '0 8px', minWidth: 0, cursor: 'default',
-          background: rightActive ? 'var(--sidebar-plate, var(--surface))' : 'transparent',
+          background: rightActive ? 'var(--tab-active)' : 'transparent',
           boxShadow: rightActive ? 'var(--shadow-card)' : 'none',
         }}
       >
@@ -440,7 +456,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          ><Columns2 size={12} /></button>
+          ><Columns2 {...glyph(12)} /></button>
         )}
         {!ghost && hoveredSide === 'right' && (
           <button
@@ -450,7 +466,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          ><X size={12} /></button>
+          ><CloseGlyph size={12} /></button>
         )}
       </div>
     </div>
@@ -508,24 +524,44 @@ function IconCell({ tab, active, onClick, onContextMenu, onMiddleClick, ghost }:
         if (e.button === 1) { e.preventDefault(); onMiddleClick(); }
       }}
       title={ghost ? undefined : (tab.title || tab.url || '')}
+      // ⚠️ В СЖАТОЙ ПОЛОСЕ АКТИВНАЯ КЛЕТКА ЗАЛИВАЕТСЯ АКЦЕНТОМ В ПОЛНУЮ СИЛУ, и это не про вкус.
+      // Раньше здесь была та же светлая плашка, что в развёрнутом списке, но она лежит на ЗЕМЛЕ:
+      // белая плашка к --app-bg даёт 1,20:1 в светлой теме и 1,34 в тёмной при пороге различимости
+      // 3,0 — то есть активную вкладку было физически не видно. В развёрнутом виде плашку спасает
+      // текст рядом, здесь спасать нечем: кроме 34 пикселей клетки не остаётся ничего.
+      // ⚠️ Мягкая заливка акцентом (--accent-soft, 10 %) тут НЕ РАБОТАЕТ ВООБЩЕ: на земле её
+      // контраст 1,00 — она неотличима от фона. Работает только сплошной цвет: 4,52 к земле.
       style={{
-        border: 'none', cursor: 'default', padding: 5, borderRadius: 'var(--radius-sm)',
-        background: active ? 'var(--sidebar-plate, var(--surface))' : 'transparent',
+        border: 'none', cursor: 'default', borderRadius: 'var(--radius-sm)',
+        // ⚠️ Поле у активной клетки меньше ровно на толщину подложки под значком (2 + 2), поэтому
+        // клетка остаётся 28 px в обоих состояниях и ряд не дёргается при переключении вкладки.
+        padding: active ? 3 : 5,
+        background: active ? 'var(--accent)' : 'transparent',
         boxShadow: active ? 'var(--shadow-card)' : 'none',
         display: 'inline-flex',
       }}
       onMouseEnter={ghost ? undefined : (e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-      onMouseLeave={ghost ? undefined : (e) => { e.currentTarget.style.background = active ? 'var(--sidebar-plate, var(--surface))' : 'transparent'; }}
+      onMouseLeave={ghost ? undefined : (e) => { e.currentTarget.style.background = active ? 'var(--accent)' : 'transparent'; }}
     >
       {/* Точка загрузки вместо спиннера с текстом: в 56-пиксельной полосе о состоянии вкладки
           больше нечем сказать, а «крутится/не крутится» — единственное, что тут вообще читается. */}
-      <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <span style={{
+        position: 'relative', display: 'inline-flex',
+        // ⚠️ Логотипы сайтов нарисованы под светлый фон и на залитой акцентом клетке тонут —
+        // особенно синие. Подложка нужна ровно та же, которой в тёмной теме уже спасают
+        // прозрачные фавиконы (--favicon-plate), просто здесь она нужна в ОБЕИХ темах.
+        ...(active ? {
+          background: 'var(--white)', borderRadius: 'calc(var(--radius-sm) - 3px)', padding: 2,
+        } : null),
+      }}>
         <FaviconTile tab={tab} size={18} />
         {!ghost && tab.isLoading && !tab.isSleeping && (
           <span style={{
             position: 'absolute', right: -2, bottom: -2, width: 7, height: 7,
-            borderRadius: '50%', background: 'var(--accent)',
-            boxShadow: '0 0 0 1.5px var(--surface-island)',
+            borderRadius: '50%',
+            // На залитой акцентом клетке синяя точка сливается с фоном — берём цвет текста-на-акценте.
+            background: active ? 'var(--on-accent)' : 'var(--accent)',
+            boxShadow: active ? 'none' : '0 0 0 1.5px var(--surface-island)',
           }} />
         )}
         {/* ⚠️ Значок звука нужен и здесь, а не только в развёрнутом списке: закреплённые вкладки
@@ -540,7 +576,7 @@ function IconCell({ tab, active, onClick, onContextMenu, onMiddleClick, ghost }:
               width: 12, height: 12, borderRadius: '50%',
               background: 'var(--surface-island)', color: 'var(--text-muted)',
               boxShadow: '0 0 0 1.5px var(--surface-island)',
-            }}>{tab.muted ? <VolumeX size={9} /> : <Volume2 size={9} />}</span>
+            }}>{tab.muted ? <VolumeX {...glyph(9)} /> : <Volume2 {...glyph(9)} />}</span>
         )}
       </span>
     </button>
@@ -1064,7 +1100,7 @@ function SortableGroupBlock({
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >
-          {group.collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+          {group.collapsed ? <ChevronRight {...glyph(14)} /> : <ChevronDown {...glyph(14)} />}
         </button>
       </div>
 
@@ -1268,26 +1304,26 @@ function ModeSwitch({ mode, onChange }: { mode: 'tabs' | 'bookmarks'; onChange: 
         style={{
           flex: 1, border: 'none', cursor: 'default', padding: '4px 0',
           borderRadius: 'calc(var(--radius-sm) - 2px)',
-          background: active ? 'var(--sidebar-plate, var(--surface))' : 'transparent',
+          background: active ? 'var(--tab-active)' : 'transparent',
           boxShadow: active ? 'var(--shadow-card)' : 'none',
           color: active ? 'var(--text-strong)' : 'var(--text-muted)',
           fontSize: 'var(--fs-xs)', fontWeight: active ? 600 : 400,
           transition: 'background var(--dur-fast) var(--ease-standard)',
         }}
         onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--sidebar-plate, var(--surface))' : 'transparent'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--tab-active)' : 'transparent'; }}
       >{label}</button>
     );
   };
   return (
     <div className="no-drag" style={{
       display: 'flex', gap: 2, padding: 2, marginBottom: 10,
-      // ⚠️ Дорожки БОЛЬШЕ НЕТ. Была --surface-sunken, а против подложки --app-bg это 1,13:1 —
-      // она бы просто исчезла (при цветном сайдбаре её и так приходилось подкрашивать отдельно,
-      // потому что серая полоса выглядела вырезанной из другой темы). Активный сегмент и без неё
-      // читается: он поднимается белой карточкой с тенью — ровно тем же приёмом, что активная
-      // вкладка ниже. Одна система вместо двух разных решений.
-      borderRadius: 'var(--radius-sm)',
+      // ⚠️ Дорожка вернулась, но НЕ заливкой. Прежняя была --surface-sunken и против --app-bg
+      // давала 1,13:1 — она просто исчезала, а на цветном сайдбаре читалась серой полосой из
+      // другой темы; поэтому её и убрали совсем. Общий рецепт углубления держится СВЕТОМ (тень
+      // внутрь + светлая кромка снизу) и выводит свою заливку из чернил палитры, поэтому виден
+      // на любой земле. Тот же well() стоит под сегментами настроек — один элемент, не два.
+      ...well(RADIUS.control),
     }}>
       {seg('tabs', 'Вкладки')}
       {seg('bookmarks', 'Закладки')}
@@ -1312,7 +1348,7 @@ function UndoChip({ label, onClick }: { label: string; onClick: () => void }) {
       onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-active)')}
       onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
     >
-      <RotateCcw size={10} />
+      <RotateCcw {...glyph(10)} />
       {label}
     </button>
   );
@@ -1757,7 +1793,7 @@ export default function Sidebar({
             // ⚠️ Возврат — к ПОДКРАШЕННОМУ фону, иначе кнопка после наведения навсегда белела.
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
-            <PanelLeft size={17} />
+            <PanelGlyph size={17} />
           </button>
         </div>
 
@@ -1860,9 +1896,9 @@ export default function Sidebar({
             onContextMenu={(e) => { e.preventDefault(); onNewTabMenu(); }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--plate-bg, var(--surface))'; }}
-          ><Plus size={17} /></button>
-          <button className="icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
-          <button className="icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
+          ><PlusGlyph size={17} /></button>
+          <button className="icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><ClockGlyph size={17} /></button>
+          <button className="icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><SlidersGlyph size={17} /></button>
         </div>
       </aside>
     );
@@ -1910,7 +1946,7 @@ export default function Sidebar({
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
         >
-          <PanelLeft size={17} />
+          <PanelGlyph size={17} />
         </button>
       </div>
 
@@ -2206,7 +2242,7 @@ export default function Sidebar({
             </>
           ) : (
             <>
-              <Sparkles size={16} />
+              <SparkGlyph size={16} />
               Навести порядок
             </>
           )}
@@ -2258,7 +2294,7 @@ export default function Sidebar({
                 border: 'none', background: 'transparent', cursor: 'default',
                 padding: 2, borderRadius: 4, color: 'var(--text-faint)', display: 'inline-flex', flex: 'none',
               }}
-            ><X size={11} /></button>
+            ><CloseGlyph size={11} /></button>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {hasRenameSnapshot && (
@@ -2292,11 +2328,11 @@ export default function Sidebar({
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--plate-bg, var(--surface))'; }}
         >
-          <Plus size={17} />
+          <PlusGlyph size={17} />
           <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 500 }}>Новая вкладка</span>
         </button>
-        <button className="no-drag icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><Clock size={17} /></button>
-        <button className="no-drag icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><Settings size={17} /></button>
+        <button className="no-drag icon-btn" title="История и закладки" style={iconBtn} onClick={onHistory}><ClockGlyph size={17} /></button>
+        <button className="no-drag icon-btn" title="Настройки" style={iconBtn} onClick={onSettings}><SlidersGlyph size={17} /></button>
       </div>
     </aside>
   );

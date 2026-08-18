@@ -7,6 +7,7 @@ import { islandPlate } from './styles/island';
 import { FileKindIcon, formatBytes, formatSpeed } from './components/downloadsShared';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
+import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
 declare global {
   interface Window {
@@ -32,8 +33,7 @@ declare global {
   }
 }
 
-// Держать в синхроне с SHADOW_MARGIN в electron/DownloadsPopoverManager.ts.
-const SHADOW_MARGIN = 16;
+
 const CARD_WIDTH = 340;
 // Сколько строк показывает поповер. Это быстрый доступ к последнему скачанному, а не архив —
 // за полным списком есть кнопка внизу.

@@ -265,7 +265,8 @@ const PANEL_CSS = `
 }
 .omni-folder-head {
   display: flex; align-items: center; gap: 8px; padding: 0 8px 6px;
-  font-size: var(--fs-xs); font-weight: 600; color: var(--text-faint);
+  /* muted, а не faint: заголовок уже ослаблен кеглем, весом и капителью — см. CAPS в system.ts. */
+  font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted);
   text-transform: uppercase; letter-spacing: 0.04em;
 }
 .omni-pencil {

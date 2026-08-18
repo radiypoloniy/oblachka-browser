@@ -30,6 +30,8 @@
     "word-match-check": "node --experimental-strip-types scripts/word-match-check.mjs",
     "calc-check": "node --experimental-strip-types scripts/calc-check.mjs",
     "chrome-ground-check": "node --experimental-strip-types scripts/chrome-ground-check.mjs",
+    "contrast-check": "node --experimental-strip-types scripts/contrast-check.mjs",
+    "overlay-shadow-check": "node --experimental-strip-types scripts/overlay-shadow-check.mjs",
     "clipboard-order-check": "node --experimental-strip-types scripts/clipboard-order-check.mjs",
     "product-signal-check": "node --experimental-strip-types scripts/product-signal-check.mjs",
     "price-events-check": "node --experimental-strip-types scripts/price-events-check.mjs",

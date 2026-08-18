@@ -15,15 +15,13 @@ import path from 'node:path'
 import type { ContentBounds, SearchTarget, QuickHit, QuickQueryResult } from '../shared/ipc'
 import { getAiPanelReservedWidth } from './AiPanelManager'
 import type { TabManager } from './TabManager'
+import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
 const POPOVER_WIDTH = 620
 // Высота БЕЗ списка находок — с ним карточка растёт, и её сообщает сам поповер (см.
 // 'searchpopover:resize'): сколько строк поместилось, знает только он.
 const POPOVER_BASE_HEIGHT = 124
 const TOP_GAP = 8
-// Прозрачный запас под CSS box-shadow — WebContentsView обрезает всё за своим прямоугольником
-// (тот же приём и то же значение, что в FindBarManager.ts).
-const SHADOW_MARGIN = 20
 
 export interface SearchPopoverContext {
   targets: SearchTarget[]

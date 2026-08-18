@@ -102,7 +102,7 @@ export default function AutofillSection() {
                   <CreditCard size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={rowTitle}>{[c.brand, `•••• ${c.last4}`].filter(Boolean).join(' ')}</div>
-                    <div style={{ ...rowSub, fontFamily: revealedCards[c.id] ? 'monospace' : undefined }}>
+                    <div style={{ ...rowSub, fontFamily: revealedCards[c.id] ? 'var(--font-mono)' : undefined }}>
                       {revealedCards[c.id]
                         ? formatCardNumber(revealedCards[c.id]!)
                         : `${c.cardholder || '—'}  ·  ${fmtExp(c.expMonth, c.expYear)}`}
