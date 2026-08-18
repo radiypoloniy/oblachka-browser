@@ -166,6 +166,10 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
       // с CONTENT_CORNER_RADIUS обычной вкладки.
       ...islandPlate,
       borderRadius: 'var(--radius-island)',
+      // ⚠️ border: none — кромку рисует КОЛЬЦО первой ступени лестницы теней. Рамка элемента
+      // поверх него давала вторую жёсткую линию того же периметра: именно это читалось как
+      // «тень угловатая и торчит».
+      border: 'none',
       boxShadow: 'var(--shadow-lvl3), var(--inner-light)',
       ...untintedPlateVars,
       background: 'var(--surface-solid)',

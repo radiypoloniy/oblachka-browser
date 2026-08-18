@@ -140,6 +140,10 @@ export default function Tracking() {
       height: '100%', display: 'flex', flexDirection: 'column',
       ...islandPlate, borderRadius: 'var(--radius-island)',
       ...untintedPlateVars,
+      // ⚠️ border: none — кромку рисует КОЛЬЦО первой ступени лестницы теней. Рамка элемента
+      // поверх него давала вторую жёсткую линию того же периметра: именно это читалось как
+      // «тень угловатая и торчит».
+      border: 'none',
       boxShadow: 'var(--shadow-lvl3), var(--inner-light)', background: 'var(--surface-solid)', overflow: 'hidden',
     }}>
       <div style={{ padding: '18px 24px 12px', borderBottom: '1px solid var(--divider-strong)', flex: 'none' }}>
