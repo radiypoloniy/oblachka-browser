@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Clock, Star, Download, Search, TrendingDown } from 'lucide-react';
 import { ModeButton } from './Hub';
-import { sp } from '../styles/system';
+import { sp, panelRoom } from '../styles/system';
 import History from './History';
 import Bookmarks from './Bookmarks';
 import Downloads from './Downloads';
@@ -76,7 +76,13 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
           <ModeButton active={section === 'search'} onClick={() => setSection('search')} icon={<Search size={14} />} label="Везде" />
         </div>
       </div>
-      <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+      {/* ⚠️ ПОЛЕ ПОД ТЕНЬ. Родитель выше режет по горизонтали (overflow-x: hidden — защита от
+          длинных URL, см. комментарий там же), и панель, занимавшая всю его ширину, теряла тень
+          по бокам: оставался только скруглённый угол. У настроек этой беды не было просто потому,
+          что там панель лежит в родителе с полем 12 px и overflow: visible — рецепт был один, а
+          окружение разное. Поле берём из системы (panelRoom), чтобы «дать тени место» было
+          решением системы, а не находкой в каждом экране. */}
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, ...panelRoom, paddingTop: 0 }}>
         {section === 'history' ? <History onClose={onClose} />
           : section === 'bookmarks' ? <Bookmarks onClose={onClose} />
           : section === 'search' ? <StuffSearchView onClose={onClose} />

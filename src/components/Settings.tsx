@@ -3,7 +3,7 @@ import { X, Shield, ShieldCheck, Wifi, Cpu, Palette, Lock, SlidersHorizontal, Cr
 import { searchSettings, isEntryAvailable, SETTINGS_INDEX, type SettingsEntry, type SettingsAvailability } from '../../shared/settingsIndex';
 import type { AdBlockState } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
-import { sp, pad, RADIUS, motion, selected } from '../styles/system';
+import { sp, pad, RADIUS, motion, selected, panelIsland } from '../styles/system';
 import AdBlockSection from './settings/AdBlockSection';
 import VpnSection from './settings/VpnSection';
 import AiSection from './settings/AiSection';
@@ -211,13 +211,8 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
       // ⚠️ Высота 2 из системы «Высота»: тень ПЛЮС внутренний свет по верхней кромке. Свет —
       // то, чего в прежней системе не было совсем: он рисует физический край панели, и остров
       // перестаёт быть просто светлым прямоугольником на светлом (см. altitude в system.ts).
-      // ⚠️ border: none — кромку рисует КОЛЬЦО первой ступени лестницы теней. Рамка элемента
-      // поверх него давала вторую жёсткую линию того же периметра: именно это читалось как
-      // «тень угловатая и торчит».
-      border: 'none',
-      boxShadow: 'var(--shadow-lvl3), var(--inner-light)',
+      ...panelIsland(),
       ...untintedPlateVars,
-      background: 'var(--surface-solid)',
     }}>
       {/* Шапка */}
       <div style={{

@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { X, Download, FolderOpen, ExternalLink, RotateCcw, Pause, Play, XCircle, Trash2 } from 'lucide-react';
 import type { DownloadEntry } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
+import { panelIsland } from '../styles/system';
 // Форматирование, подписи состояний и значок по типу файла — общие с поповером у кнопки тулбара
 // (см. downloadsShared.tsx): один и тот же файл в двух местах должен выглядеть одинаково.
 import { FileKindIcon, formatBytes, formatSpeed, STATE_LABEL, STATE_COLOR } from './downloadsShared';
@@ -59,14 +60,8 @@ export default function Downloads({ downloads, onClose }: DownloadsProps) {
       display: 'flex', flexDirection: 'column', height: '100%',
       overflow: 'hidden',
       ...islandPlate,
-      borderRadius: 'var(--radius-island)',
-      // ⚠️ border: none — кромку рисует КОЛЬЦО первой ступени лестницы теней. Рамка элемента
-      // поверх него давала вторую жёсткую линию того же периметра: именно это читалось как
-      // «тень угловатая и торчит».
-      border: 'none',
-      boxShadow: 'var(--shadow-lvl3), var(--inner-light)',
+      ...panelIsland(),
       ...untintedPlateVars,
-      background: 'var(--surface-solid)',
     }}>
       {/* Заголовок */}
       <div style={{

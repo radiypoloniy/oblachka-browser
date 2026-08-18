@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { TrendingDown, Trash2, ExternalLink, RefreshCw, AlertTriangle, Bell, BellOff, Link2, Unlink, Store } from 'lucide-react';
 import type { TrackedProduct, TrackingEvent, MatchSuggestion } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
+import { panelIsland } from '../styles/system';
 
 // Экран «что я отслеживаю» (PRICE-TRACKING.md). Компонент только рисует: список, историю цен и
 // группы считает main (electron/TrackingStore.ts).
@@ -140,11 +141,7 @@ export default function Tracking() {
       height: '100%', display: 'flex', flexDirection: 'column',
       ...islandPlate, borderRadius: 'var(--radius-island)',
       ...untintedPlateVars,
-      // ⚠️ border: none — кромку рисует КОЛЬЦО первой ступени лестницы теней. Рамка элемента
-      // поверх него давала вторую жёсткую линию того же периметра: именно это читалось как
-      // «тень угловатая и торчит».
-      border: 'none',
-      boxShadow: 'var(--shadow-lvl3), var(--inner-light)', background: 'var(--surface-solid)', overflow: 'hidden',
+      ...panelIsland(), background: 'var(--surface-solid)', overflow: 'hidden',
     }}>
       <div style={{ padding: '18px 24px 12px', borderBottom: '1px solid var(--divider-strong)', flex: 'none' }}>
         <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text-strong)' }}>Отслеживание</div>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { X, Search, Star, Download, Loader2, Folder, Sparkles } from 'lucide-react';
 import type { BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
+import { panelIsland } from '../styles/system';
 import SiteFavicon from './SiteFavicon';
 
 // Ссылка вместе с именем папки, в которой лежит — панель плоская, и без этого нельзя понять,
@@ -165,14 +166,8 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
       // Тот же «остров», что у История/Настройки (Sidebar.tsx::asideBase) — совпадает
       // с CONTENT_CORNER_RADIUS обычной вкладки.
       ...islandPlate,
-      borderRadius: 'var(--radius-island)',
-      // ⚠️ border: none — кромку рисует КОЛЬЦО первой ступени лестницы теней. Рамка элемента
-      // поверх него давала вторую жёсткую линию того же периметра: именно это читалось как
-      // «тень угловатая и торчит».
-      border: 'none',
-      boxShadow: 'var(--shadow-lvl3), var(--inner-light)',
+      ...panelIsland(),
       ...untintedPlateVars,
-      background: 'var(--surface-solid)',
     }}>
       {/* Заголовок */}
       <div style={{

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { X, Search, Trash2, Clock, Wand2, Loader2 } from 'lucide-react';
 import type { HistoryEntry, HistoryClearPeriod } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
-import { TEXT, CAPS } from '../styles/system';
+import { TEXT, CAPS, panelIsland } from '../styles/system';
 import SiteFavicon from './SiteFavicon';
 
 interface HistoryProps {
@@ -208,14 +208,8 @@ export default function History({ onClose }: HistoryProps) {
       // Отступ по периметру — НЕ здесь: contentRef в App.tsx уже даёт margin:var(--gutter-shell)
       // один раз на весь контент (Hub тоже им пользуется, без своего собственного margin).
       ...islandPlate,
-      borderRadius: 'var(--radius-island)',
-      // ⚠️ border: none — кромку рисует КОЛЬЦО первой ступени лестницы теней. Рамка элемента
-      // поверх него давала вторую жёсткую линию того же периметра: именно это читалось как
-      // «тень угловатая и торчит».
-      border: 'none',
-      boxShadow: 'var(--shadow-lvl3), var(--inner-light)',
+      ...panelIsland(),
       ...untintedPlateVars,
-      background: 'var(--surface-solid)',
     }}>
       {/* Заголовок */}
       <div style={{
