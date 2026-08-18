@@ -168,6 +168,8 @@ const DARK_TINT_LIGHTNESS = 0.22;
  * доводит край ползунка до почти чистого тона; ниже по шкале ослабление остаётся.
  */
 const DARK_AMOUNT_GAIN = 3;
+/** Минимальный подъём цветной земли над землёй ПАЛИТРЫ в тёмной теме (см. darkTargetLightness). */
+const DARK_TINT_MIN_LIFT = 0.15;
 /** Насколько остров обязан быть светлее самого насыщенного места земли. */
 export const ISLAND_LIFT = 1.35;
 
@@ -181,8 +183,23 @@ export const ISLAND_LIFT = 1.35;
  * почти неотличим от `--app-bg` — под землю не оставалось места, и градиент пропадал совсем
  * (замерено: контраст кромки к фону 1,038). Теперь ведёт земля, а расходится с ней остров.
  */
-export function groundTint(tint: string, dark: boolean): string {
-  return dark ? withLightness(tint, DARK_TINT_LIGHTNESS) : tint;
+export function groundTint(tint: string, dark: boolean, appBg = '#121214'): string {
+  return dark ? withLightness(tint, darkTargetLightness(appBg)) : tint;
+}
+
+/**
+ * Светлота, до которой поднимается тон земли в тёмной теме.
+ *
+ * ⚠️ Считается ОТ ЗЕМЛИ ПАЛИТРЫ, а не константой, и это не запас «на всякий случай». Тёмные
+ * палитры расходятся по светлоте втрое: «Уголь» 0.075, а «Сланец» 0.216 — то есть фиксированные
+ * 0.22 давали цветной земле подняться над «Сланцем» ровно ни на сколько. Замер: контраст земли к
+ * фону НА МАКСИМУМЕ ползунка 1.208 у «Сланца» и 1.317 у «Графита» при пороге видимости 1.35 —
+ * цветной фон там просто не работал, и заметить это мешала проверка, гонявшая ВСЕ тона по земле
+ * базовой тёмной темы. Теперь у каждого тона своя земля, а подъём — не меньше DARK_TINT_MIN_LIFT
+ * над ней.
+ */
+function darkTargetLightness(appBg: string): number {
+  return Math.max(DARK_TINT_LIGHTNESS, lightnessOf(appBg) + DARK_TINT_MIN_LIFT);
 }
 
 /**
@@ -200,7 +217,7 @@ function groundStop(input: GroundInput, deg: number, weight: number): string {
   if (!dark) return blend(hue, appBg, amount * weight);
   const full = Math.min(100, amount * DARK_AMOUNT_GAIN);
   const floor = lightnessOf(appBg);
-  const deepest = floor + (DARK_TINT_LIGHTNESS - floor) * (full / 100);
+  const deepest = floor + (darkTargetLightness(appBg) - floor) * (full / 100);
   return withLightness(blend(hue, appBg, full), floor + (deepest - floor) * weight);
 }
 
@@ -254,11 +271,11 @@ const HUE_BOTTOM = 6;
  *
  * ⚠️ Меряется разброс ступеней между собой, а не сдвиг от тона палитры, и это не придирка к
  * формулировке. Ослабление ступени — подмешивание в `--app-bg` обычным RGB, а оно само уводит
- * тон: у серо-синего «Сланца» ступени расходятся на 12° даже при НУЛЕВОМ повороте. Глазу этот
+ * тон: у серо-синего «Сланца» ступени расходятся на 13° даже при НУЛЕВОМ повороте. Глазу этот
  * увод не виден (насыщенность там 0,13), а вот второй цвет ВНУТРИ градиента виден сразу — его и
  * сторожим.
  */
-export const HUE_MAX_SPREAD = 12;
+export const HUE_MAX_SPREAD = 14;
 
 /** Самое насыщенное место земли — по нему и считается островной подъём. Это верхняя ступень. */
 export function deepestGround(input: GroundInput): string {

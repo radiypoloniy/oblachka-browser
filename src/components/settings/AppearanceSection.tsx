@@ -33,6 +33,11 @@ const PALETTES: { id: ThemePaletteId; label: string; hint: string; light: Swatch
   { id: 'graphite', label: 'Графит', hint: 'Как в macOS', light: ['#ECECEC', '#FFFFFF', '#3C3C43'], dark: ['#1E1E1E', '#2C2C2C', '#EBEBF5'] },
   { id: 'slate',    label: 'Сланец', hint: 'Холодный',    light: ['#E5E9F0', '#FFFFFF', '#3B4252'], dark: ['#2E3440', '#3B4252', '#E5E9F0'] },
   { id: 'paper',    label: 'Бумага', hint: 'Тёплый',      light: ['#F1EDE4', '#FDFBF6', '#3A332A'], dark: ['#14120F', '#1C1917', '#E9E3D9'] },
+  // ⚠️ Две палитры с ЦВЕТНОЙ землёй. Зелёная земля не означает «VPN включён», а голубая —
+  // «облако»: функциональные цвета живут в акценте и значках, палитра их не трогает (см. разбор
+  // в palettes.css).
+  { id: 'mint',     label: 'Мята',   hint: 'Зелёная земля', light: ['#E9F2EC', '#FFFFFF', '#2C3A31'], dark: ['#101613', '#18201B', '#DDE9E1'] },
+  { id: 'sky',      label: 'Небо',   hint: 'Голубая земля', light: ['#E8EEFA', '#FFFFFF', '#2C3550'], dark: ['#0F1319', '#171C24', '#DEE5F0'] },
 ];
 
 export default function AppearanceSection() {

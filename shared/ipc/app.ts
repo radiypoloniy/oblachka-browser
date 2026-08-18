@@ -121,7 +121,7 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 // перекраска акцента: цветовой закон не меняется, акцент по-прежнему один, зелёный по-прежнему
 // значит «локально/VPN жив». У каждой палитры есть и светлый, и тёмный вариант — палитра
 // отвечает на вопрос «какой оттенок нейтрали», тема на вопрос «светло или темно».
-export const THEME_PALETTE_IDS = ['charcoal', 'graphite', 'slate', 'paper'] as const;
+export const THEME_PALETTE_IDS = ['charcoal', 'graphite', 'slate', 'paper', 'mint', 'sky'] as const;
 export type ThemePaletteId = typeof THEME_PALETTE_IDS[number];
 
 export interface ThemePrefs {

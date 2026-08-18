@@ -26,8 +26,28 @@ function check(what, actual, expected) {
 // Тона из palettes.css и базовой темы — ровно те, что человек может выбрать.
 const LIGHT = { appBg: '#F2F2F7', surface: '#FFFFFF' };
 const DARK  = { appBg: '#121214', surface: '#1C1C1E' };
-const TINTS_LIGHT = ['#007AFF', '#5B6B7A', '#5E81AC', '#B08968'];
-const TINTS_DARK  = ['#0A84FF', '#7C8FA3', '#88C0D0', '#C9A227'];
+// ⚠️ Тон берётся ВМЕСТЕ СО СВОЕЙ ЗЕМЛЁЙ, а не с землёй базовой темы. Палитра переопределяет
+// --app-bg и --surface, и считать её тон по чужому фону — значит проверять сочетание, которого у
+// человека не бывает. Поймано на «Мяте»: по базовому #F2F2F7 её ступени расходились по тону
+// сильнее порога, по собственному #E9F2EC — укладываются с запасом.
+const PALETTES_LIGHT = [
+  { tint: '#007AFF', appBg: '#F2F2F7', surface: '#FFFFFF' }, // Уголь
+  { tint: '#5B6B7A', appBg: '#ECECEC', surface: '#FFFFFF' }, // Графит
+  { tint: '#5E81AC', appBg: '#E5E9F0', surface: '#FFFFFF' }, // Сланец
+  { tint: '#B08968', appBg: '#F1EDE4', surface: '#FDFBF6' }, // Бумага
+  { tint: '#34A853', appBg: '#E9F2EC', surface: '#FFFFFF' }, // Мята
+  { tint: '#4285F4', appBg: '#E8EEFA', surface: '#FFFFFF' }, // Небо
+];
+const PALETTES_DARK = [
+  { tint: '#0A84FF', appBg: '#121214', surface: '#1C1C1E' },
+  { tint: '#7C8FA3', appBg: '#1E1E1E', surface: '#2C2C2C' },
+  { tint: '#88C0D0', appBg: '#2E3440', surface: '#3B4252' },
+  { tint: '#C9A227', appBg: '#14120F', surface: '#1C1917' },
+  { tint: '#81C995', appBg: '#101613', surface: '#18201B' },
+  { tint: '#8AB4F8', appBg: '#0F1319', surface: '#171C24' },
+];
+const TINTS_LIGHT = PALETTES_LIGHT.map((p) => p.tint);
+const TINTS_DARK = PALETTES_DARK.map((p) => p.tint);
 const AMOUNTS = [6, 18, 30];
 
 /** Оттенок HSL в градусах. Нужен запрету сиреневого: сектор задаётся именно углом. */
@@ -81,16 +101,16 @@ console.log('\n— ВИДИМОСТЬ: в тёмной теме земля об�
 // ⚠️ Самый живучий дефект этого фона: он «есть» по коду и невидим глазом. Дважды правился и дважды
 // оставался невидимым — 1,038 в первый раз и 1,09–1,14 во второй, причём НА МАКСИМУМЕ ползунка.
 // Поэтому видимость здесь — число, а не мнение: порог 1,35 к фону на верхнем краю ползунка.
-for (const tint of TINTS_DARK) {
-  const at = (amount) => buildChromeGround({ tint, appBg: DARK.appBg, surface: DARK.surface, amount, dark: true });
+for (const { tint, appBg, surface } of PALETTES_DARK) {
+  const at = (amount) => buildChromeGround({ tint, appBg, surface, amount, dark: true });
   const full = at(30);
   const low = at(6);
-  check(`${tint} на максимуме отличим от фона (≥1.35)`, contrast(full.top, DARK.appBg) >= 1.35, true);
+  check(`${tint} на максимуме отличим от фона (≥1.35)`, contrast(full.top, appBg) >= 1.35, true);
   // Обратный край: ползунок обязан что-то значить, иначе «6%» и «30%» одинаковы.
-  check(`${tint} на минимуме остаётся сдержанным (≤1.25)`, contrast(low.top, DARK.appBg) <= 1.25, true);
+  check(`${tint} на минимуме остаётся сдержанным (≤1.25)`, contrast(low.top, appBg) <= 1.25, true);
   check(`${tint} — ползунок двигает землю монотонно`,
-    contrast(low.top, DARK.appBg) < contrast(at(18).top, DARK.appBg)
-      && contrast(at(18).top, DARK.appBg) < contrast(full.top, DARK.appBg), true);
+    contrast(low.top, appBg) < contrast(at(18).top, appBg)
+      && contrast(at(18).top, appBg) < contrast(full.top, appBg), true);
   // Ход по оттенку тоже должен быть виден: без него «градиент» — просто заливка.
   const stops = full.backgroundImage.match(/#[0-9a-f]{6}/g);
   check(`${tint} — верх и низ градиента различимы (≥1.1)`, contrast(stops[0], stops[2]) >= 1.1, true);
@@ -106,9 +126,9 @@ console.log('\n— ЦВЕТОВОЙ ЗАКОН: земля держится то
 // зелень. Поэтому меряем САМ СДВИГ от тона палитры: чужой цвет в градиенте не появляется вовсе,
 // в какой бы сектор он ни метил.
 const hueGap = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
-for (const [dark, tints, th] of [[false, TINTS_LIGHT, LIGHT], [true, TINTS_DARK, DARK]]) {
-  for (const tint of tints) {
-    const stops = buildChromeGround({ tint, appBg: th.appBg, surface: th.surface, amount: 30, dark })
+for (const [dark, palettes] of [[false, PALETTES_LIGHT], [true, PALETTES_DARK]]) {
+  for (const { tint, appBg, surface } of palettes) {
+    const stops = buildChromeGround({ tint, appBg, surface, amount: 30, dark })
       .backgroundImage.match(/#[0-9a-f]{6}/g);
     const label = `${dark ? 'тёмная' : 'светлая'} ${tint}`;
     check(`${label} — сиреневых ступеней нет`, stops.map(hueOf).filter((h) => h >= 250 && h <= 310), []);
@@ -121,11 +141,10 @@ for (const [dark, tints, th] of [[false, TINTS_LIGHT, LIGHT], [true, TINTS_DARK,
 console.log('\n— ГЛАВНЫЙ ИНВАРИАНТ: остров светлее земли —');
 // Перебираем всё, что человек может выставить: обе темы, оба края ползунка, тона всех палитр.
 for (const dark of [false, true]) {
-  const th = dark ? DARK : LIGHT;
-  const tints = dark ? TINTS_DARK : TINTS_LIGHT;
-  for (const tint of tints) {
+  const palettes = dark ? PALETTES_DARK : PALETTES_LIGHT;
+  for (const { tint, appBg, surface } of palettes) {
     for (const amount of AMOUNTS) {
-      const input = { tint, appBg: th.appBg, surface: th.surface, amount, dark };
+      const input = { tint, appBg, surface, amount, dark };
       const deepest = deepestGround(input);
       const island = buildChromeGround(input).island;
       // Универсальный инвариант: остров ВСЕГДА светлее самого насыщенного места земли.

@@ -37,8 +37,10 @@ type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean; ti
 // строку по пятну раньше, чем прочитает подпись. Токены --tile-* живут в colors.css.
 // ⚠️ ПОРЯДОК ЗДЕСЬ — ЭТО РАНЖИРОВАНИЕ ПО ЧАСТОТЕ ОБРАЩЕНИЯ, а не история появления разделов.
 // Сверху то, ради чего настройки открывают регулярно, снизу — то, куда заходят однажды или по
-// случаю. Раскладка: база браузера → внешний вид (самое частое «покрутить») → защита →
-// AI → свои данные → редкое.
+// случаю. Раскладка: база браузера → внешний вид (самое частое «покрутить») → AI → защита →
+// свои данные → редкое.
+// ⚠️ AI стоит ВЫШЕ защиты по решению 18.08: это и самый большой раздел, и то, ради чего браузер
+// вообще существует, — а защита работает сама и настраивается один раз.
 // ⚠️ VPN и «Блокировка» стоят подряд намеренно: в тулбаре они уже объединены в один поповер
 // «Защита», и порядок в настройках обязан соглашаться с тем, как человек их видит там.
 // ⚠️ Первый пункт этого списка — раздел ПО УМОЛЧАНИЮ (см. FIRST_SECTION ниже). Отдельной
@@ -46,9 +48,9 @@ type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean; ti
 const NAV_ITEMS: NavItem[] = [
   { id: 'general',    label: 'Браузер',        Icon: SlidersHorizontal, tint: 'var(--tile-grey)' },
   { id: 'appearance', label: 'Интерфейс',      Icon: Palette,           tint: 'var(--tile-pink)' },
+  { id: 'ai',         label: 'AI',             Icon: Cpu,               tint: 'var(--tile-teal)' },
   { id: 'vpn',        label: 'VPN',            Icon: Wifi,              tint: 'var(--tile-blue)' },
   { id: 'adblock',    label: 'Блокировка',     Icon: Shield,            tint: 'var(--tile-green)' },
-  { id: 'ai',         label: 'AI',             Icon: Cpu,               tint: 'var(--tile-teal)' },
   { id: 'passwords',  label: 'Пароли',         Icon: Lock,              tint: 'var(--tile-grey)' },
   { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard,        tint: 'var(--tile-orange)' },
   { id: 'permissions', label: 'Разрешения',    Icon: ShieldCheck,       tint: 'var(--tile-slate)' },

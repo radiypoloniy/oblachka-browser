@@ -163,3 +163,91 @@
   --text-muted:      #A9A093;
   --text-faint:      #857C70;
 }
+
+/* ── Мята и Небо ──────────────────────────────────────────────────────
+   Две палитры с ЦВЕТНОЙ землёй, а не с нейтралью в цветной оправе. Повод —
+   страница загрузки Chrome: мягкие зелёные и голубые заливки, из-за которых
+   она выглядит собранной, а не «серым приложением». Оттуда взяты и опорные
+   цвета Material (Google Green #34A853 / #E6F4EA, Google Blue #4285F4 /
+   #E8F0FE, ночные #81C995 и #8AB4F8).
+   ⚠️ Цветовой закон соблюдён по букве: палитра меняет ТОЛЬКО землю —
+   фон, поверхности, разделители, текст. Акцент (--accent) и функциональные
+   цвета (зелёный «локально/VPN», синий «облако/система») остаются прежними,
+   поэтому зелёная земля НЕ означает «VPN включён», а голубая — «облако».
+   ⚠️ Насыщенность земли держим низкой (S≈0.10–0.25): цветной остаётся ФОН,
+   а не интерфейс, иначе цветные плашки поверх неё начинают спорить с ней —
+   ровно то, из-за чего пришлось разбирать подкраску плашек в сплошных
+   панелях (см. untintedPlateVars в src/styles/island.ts). */
+[data-palette="mint"]:not([data-theme="dark"]) {
+  /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
+     на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
+  --sidebar-tint:    #34A853;
+  --app-bg:          #E9F2EC;
+  /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
+     ровно под сайдбар и читался боковой плашкой. */
+  --canvas:          var(--app-bg);
+  --surface:         #FFFFFF;
+  --surface-island:  #FFFFFF;
+  --surface-solid:   #FFFFFF;
+  --surface-sunken:  #D8E8DD;
+  --surface-hover:   rgba(20,60,35,0.05);
+  --surface-active:  rgba(20,60,35,0.09);
+  --divider:         rgba(20,60,35,0.13);
+  --divider-strong:  rgba(20,60,35,0.21);
+  --text-strong:     #16261C;
+  --text-body:       #2C3A31;
+  --text-muted:      #5C6B62;
+  --text-faint:      #7D8B82;
+}
+[data-palette="mint"][data-theme="dark"]:not([data-incognito="true"]) {
+  --sidebar-tint:    #81C995;
+  --app-bg:          #101613;
+  --canvas:          var(--app-bg);
+  --surface:         #18201B;
+  --surface-island:  rgba(24,32,27,0.76);
+  --surface-solid:   #18201B;
+  --surface-sunken:  #25302A; /* в тёмной теме колодец СВЕТЛЕЕ острова */
+  --surface-hover:   rgba(230,255,240,0.07);
+  --surface-active:  rgba(230,255,240,0.12);
+  --divider:         rgba(225,245,233,0.10);
+  --divider-strong:  rgba(225,245,233,0.17);
+  --text-strong:     #F2FAF5;
+  --text-body:       #DDE9E1;
+  --text-muted:      #9AA9A0;
+  --text-faint:      #7C8A82;
+}
+
+[data-palette="sky"]:not([data-theme="dark"]) {
+  --sidebar-tint:    #4285F4;
+  --app-bg:          #E8EEFA;
+  --canvas:          var(--app-bg);
+  --surface:         #FFFFFF;
+  --surface-island:  #FFFFFF;
+  --surface-solid:   #FFFFFF;
+  --surface-sunken:  #D7E1F5;
+  --surface-hover:   rgba(20,40,80,0.05);
+  --surface-active:  rgba(20,40,80,0.09);
+  --divider:         rgba(20,40,80,0.13);
+  --divider-strong:  rgba(20,40,80,0.21);
+  --text-strong:     #16203A;
+  --text-body:       #2C3550;
+  --text-muted:      #5C6580;
+  --text-faint:      #7D869C;
+}
+[data-palette="sky"][data-theme="dark"]:not([data-incognito="true"]) {
+  --sidebar-tint:    #8AB4F8;
+  --app-bg:          #0F1319;
+  --canvas:          var(--app-bg);
+  --surface:         #171C24;
+  --surface-island:  rgba(23,28,36,0.76);
+  --surface-solid:   #171C24;
+  --surface-sunken:  #232A34;
+  --surface-hover:   rgba(232,240,255,0.07);
+  --surface-active:  rgba(232,240,255,0.12);
+  --divider:         rgba(226,236,252,0.10);
+  --divider-strong:  rgba(226,236,252,0.17);
+  --text-strong:     #F3F7FE;
+  --text-body:       #DEE5F0;
+  --text-muted:      #9AA3B4;
+  --text-faint:      #7C8494;
+}
