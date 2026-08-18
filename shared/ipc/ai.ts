@@ -66,7 +66,12 @@ export type HubChatOutcome =
 export type PermKey =
   | 'camera' | 'microphone' | 'camera+microphone'
   | 'geolocation' | 'notifications' | 'fullscreen'
-  | 'clipboard-read' | 'clipboard-sanitized-write';
+  | 'clipboard-read' | 'clipboard-sanitized-write'
+  // ⚠️ Единственный вид, который просит НЕ Chromium, а мы сами (см. PermissionManager.askOwn):
+  // открытие ссылки в чужом приложении — tg://, sbolpay://, itms-apps://. Живёт в общей таблице
+  // не ради экономии, а ради отзыва: разрешение, которое человек не может найти и отменить,
+  // выдавать нельзя, а раздел «Разрешения» — ровно то место, где он его ищет.
+  | 'external-app';
 
 export interface PermissionRequest {
   requestId: string;

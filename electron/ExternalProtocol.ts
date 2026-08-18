@@ -7,8 +7,9 @@
 // ЧУЖУЮ ПРОГРАММУ с аргументами, которые выбрал сайт. Поэтому: явный вопрос человеку (как в
 // Chrome), список заведомо опасных схем, которые не открываются никогда, и согласие, действующее
 // только на пару «сайт + схема».
-import { dialog, shell } from 'electron'
+import { shell } from 'electron'
 import type { BrowserWindow } from 'electron'
+import { hostOfUrl } from '../shared/rules'
 
 // Схемы, которые обслуживает сам браузер или которые нельзя отдавать наружу ни при каких условиях.
 // file/javascript/data — классические способы превратить «открыть ссылку» в исполнение чужого кода;
@@ -23,10 +24,16 @@ const NEVER_EXTERNAL = new Set([
 // системный и предсказуемый, а лишний вопрос на каждый mailto раздражал бы без всякой пользы.
 const SILENT = new Set(['mailto', 'tel'])
 
-// Согласия живут ДО перезапуска браузера и только в памяти. Постоянный список «разрешено
-// навсегда» — это отдельная сущность с экраном управления и правом на отзыв; заводить её,
-// не имея такого экрана, значит выдать разрешение, которое человек потом не найдёт и не отменит.
-const allowedThisSession = new Set<string>()
+// Кто задаёт вопрос и помнит ответ. Ставится из main при инициализации разрешений — модуль не
+// знает ни про базу, ни про поповер, его дело — политика схем.
+//
+// ⚠️ Согласие ХРАНИТСЯ ПОСТОЯННО и лежит в общей таблице разрешений сайта, рядом с камерой и
+// геопозицией. Раньше оно жило в памяти до перезапуска, потому что не было экрана, где его
+// отозвать; экран есть (раздел «Разрешения»), и памяти процесса тут не место: человек ставит
+// галочку «больше не спрашивать» и читает её как «навсегда», а получал «до следующего запуска».
+type ConsentAsk = (origin: string, requesterWcId: number | null) => Promise<boolean>
+let askConsent: ConsentAsk | null = null
+export function setExternalConsentAsk(fn: ConsentAsk): void { askConsent = fn }
 
 export function schemeOf(url: string): string {
   const m = /^([a-z][a-z0-9+.-]*):/i.exec(url)
@@ -41,12 +48,19 @@ export function isExternalAppUrl(url: string): boolean {
 
 /**
  * Спросить человека и, если он согласен, отдать ссылку операционной системе.
- * fromOrigin — откуда пришли: в вопросе обязателен, иначе «разрешить приложение?» — это вопрос
- * без предмета. Возвращает true, если ссылка ушла наружу.
+ *
+ * fromPageUrl — АДРЕС СТРАНИЦЫ, откуда пришли, целиком, а не готовый хост.
+ *
+ * ⚠️ Раньше сюда передавали уже вычисленный хост, и вычисляли его В ДВУХ МЕСТАХ ПО-РАЗНОМУ:
+ * переход по ссылке считал `new URL(u).host` (с «www.» и портом), а window.open — hostOfUrl()
+ * (без «www.», в нижнем регистре). Ключ согласия писался одним, а искался другим — и галочка
+ * «больше не спрашивать» не работала вообще, though выглядела рабочей. Теперь источник один и
+ * нормализация одна, по построению.
  */
 export async function openExternalWithConsent(
-  win: BrowserWindow | null, url: string, fromOrigin: string,
+  win: BrowserWindow | null, url: string, fromPageUrl: string, requesterWcId: number | null = null,
 ): Promise<boolean> {
+  void win // окно больше не нужно: вопрос задаёт свой поповер, а не системный диалог
   const scheme = schemeOf(url)
   if (!isExternalAppUrl(url)) return false
 
@@ -55,27 +69,15 @@ export async function openExternalWithConsent(
     return true
   }
 
-  const key = `${fromOrigin}|${scheme}`
-  if (allowedThisSession.has(key)) {
-    await shell.openExternal(url).catch((e: unknown) => console.warn('[external] не открылось:', e))
-    return true
-  }
+  // Origin в том же виде, в каком его пишут остальные разрешения: раздел настроек группирует
+  // записи по сайту, и «tg для sberbank.ru» обязан лежать рядом с «камера для sberbank.ru».
+  const host = hostOfUrl(fromPageUrl)
+  const origin = host ? `https://${host}` : 'about:blank'
 
-  const site = fromOrigin || 'Эта страница'
-  const { response, checkboxChecked } = await dialog.showMessageBox(win ?? undefined as never, {
-    type: 'question',
-    buttons: ['Открыть приложение', 'Отмена'],
-    defaultId: 0,
-    cancelId: 1,
-    title: 'Открыть в другом приложении',
-    message: `${site} хочет открыть приложение на вашем компьютере`,
-    // Полный адрес показываем: именно в нём живёт то, что сайт передаёт чужой программе.
-    detail: `Ссылка: ${url.slice(0, 300)}`,
-    checkboxLabel: 'Больше не спрашивать для этого сайта',
-    noLink: true,
-  })
-  if (response !== 0) return false
-  if (checkboxChecked) allowedThisSession.add(key)
+  if (!askConsent) return false
+  const granted = await askConsent(origin, requesterWcId)
+  if (!granted) return false
+
   await shell.openExternal(url).catch((e: unknown) => console.warn('[external] не открылось:', e))
   return true
 }

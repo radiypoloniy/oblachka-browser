@@ -252,8 +252,11 @@ export class TabManager {
   // Ссылка в стороннее приложение (sbolpay:, tg:, …). Спрашивать человека и звать ОС — работа
   // main (см. ExternalProtocol.ts): менеджеру вкладок про shell.openExternal знать незачем, тот же
   // приём, что с #graphMenuBuilder и #autofillMapper.
-  #externalOpenCb: ((url: string, fromHost: string) => void) | null = null;
-  setOnExternalOpen(cb: (url: string, fromHost: string) => void): void {
+  // ⚠️ Второй аргумент — АДРЕС СТРАНИЦЫ целиком, а не хост: хост из него считает сам
+  // ExternalProtocol. Пока считали здесь, а второй путь (переход по ссылке в main.ts) — у себя,
+  // два места нормализовали по-разному, и согласие «больше не спрашивать» не находилось.
+  #externalOpenCb: ((url: string, fromPageUrl: string, wcId: number) => void) | null = null;
+  setOnExternalOpen(cb: (url: string, fromPageUrl: string, wcId: number) => void): void {
     this.#externalOpenCb = cb;
   }
 
@@ -1632,7 +1635,7 @@ export class TabManager {
       // часто открывают её новым окном, а не переходом. Вкладку по такой схеме заводить нельзя:
       // Chromium её не откроет, останется пустая вкладка с ошибкой.
       if (isExternalAppUrl(url)) {
-        this.#externalOpenCb?.(url, hostOfUrl(wc.getURL()));
+        this.#externalOpenCb?.(url, wc.getURL(), wc.id);
         return { action: 'deny' };
       }
       // OAuth-попап (Google/Firebase и т.п.) открывается ИМЕННО так: window.open(url, name,

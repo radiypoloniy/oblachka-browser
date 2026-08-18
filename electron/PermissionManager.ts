@@ -196,6 +196,27 @@ export class PermissionManager {
     );
   }
 
+  /**
+   * Спросить человека о том, чего Chromium не спрашивает.
+   *
+   * ⚠️ Заведено под открытие ссылок в чужих приложениях. Раньше там стоял НАТИВНЫЙ
+   * dialog.showMessageBox, и у него было два изъяна сразу: он выглядит системным окном Windows
+   * посреди нашего интерфейса, а его галочка «больше не спрашивать» жила в памяти процесса —
+   * то есть «запомнить» означало «до перезапуска», хотя человек читает это как «навсегда».
+   * Здесь вопрос идёт тем же путём, что вопросы о камере и геопозиции: свой поповер, своё
+   * оформление, решение в общей таблице и отзыв в разделе «Разрешения».
+   */
+  askOwn(origin: string, key: PermKey, requesterWcId: number | null): Promise<boolean> {
+    const saved = this.#lookup(origin, key);
+    if (saved !== null) return Promise.resolve(saved === 'granted');
+    if (!this.#sendRequest) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const requestId = randomUUID();
+      this.#pending.set(requestId, { origin, keysToStore: [key], callback: resolve });
+      this.#sendRequest?.({ requestId, origin, permission: key }, requesterWcId);
+    });
+  }
+
   // Вызывается из IPC-хендлера когда пользователь ответил на prompt.
   respond(requestId: string, granted: boolean, remember: boolean): void {
     const entry = this.#pending.get(requestId);

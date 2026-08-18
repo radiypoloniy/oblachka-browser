@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Camera, Clipboard, MapPin, Maximize, Mic, Bell, RotateCcw } from 'lucide-react';
+import { Camera, Clipboard, MapPin, Maximize, Mic, Bell, RotateCcw, ExternalLink } from 'lucide-react';
 import type { PermissionRecord, PermKey } from '../../../shared/ipc';
 import { Favicon, SectionHeader, Subsection, segBtnStyle,
 } from './kit';
@@ -19,6 +19,7 @@ const LABEL: Record<PermKey, string> = {
   'camera': 'Камера',
   'microphone': 'Микрофон',
   'camera+microphone': 'Камера и микрофон',
+  'external-app': 'Открытие приложений',
   'geolocation': 'Местоположение',
   'notifications': 'Уведомления',
   'fullscreen': 'Полный экран',
@@ -30,6 +31,7 @@ const ICON: Record<PermKey, typeof Camera> = {
   'camera': Camera,
   'microphone': Mic,
   'camera+microphone': Camera,
+  'external-app': ExternalLink,
   'geolocation': MapPin,
   'notifications': Bell,
   'fullscreen': Maximize,

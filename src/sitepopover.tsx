@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Lock, ShieldOff, Camera, Mic, MapPin, Bell, Maximize, Clipboard, RotateCcw, History } from 'lucide-react';
+import { Lock, ShieldOff, Camera, Mic, MapPin, Bell, Maximize, Clipboard, RotateCcw, History, ExternalLink } from 'lucide-react';
 import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnConnectionState, AdBlockState } from '../shared/ipc';
 import { islandPlate } from './styles/island';
 import { normalizeDomain } from '../shared/domain';
@@ -8,6 +8,7 @@ import VpnIndicatorPopover from './components/VpnIndicatorPopover';
 import AdBlockSitePanel from './components/AdBlockSitePanel';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
+import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
 declare global {
   interface Window {
@@ -36,8 +37,7 @@ declare global {
   }
 }
 
-// Держать в синхроне с SHADOW_MARGIN в electron/SitePopoverManager.ts.
-const SHADOW_MARGIN = 16;
+
 const CARD_WIDTH = 340;
 
 // Те же подписи и значки, что в разделе настроек «Разрешения» — словарь один на два места,
@@ -46,6 +46,7 @@ const PERM_LABEL: Record<PermKey, string> = {
   'camera': 'Камера',
   'microphone': 'Микрофон',
   'camera+microphone': 'Камера и микрофон',
+  'external-app': 'Открытие приложений',
   'geolocation': 'Местоположение',
   'notifications': 'Уведомления',
   'fullscreen': 'Полный экран',
@@ -56,6 +57,7 @@ const PERM_ICON: Record<PermKey, typeof Camera> = {
   'camera': Camera,
   'microphone': Mic,
   'camera+microphone': Camera,
+  'external-app': ExternalLink,
   'geolocation': MapPin,
   'notifications': Bell,
   'fullscreen': Maximize,

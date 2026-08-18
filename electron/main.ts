@@ -67,7 +67,7 @@ import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
 import { warmup as warmupTranslation } from './TranslationService';
 import { shutdownInference } from './inference/InferenceHost';
-import { isExternalAppUrl, openExternalWithConsent } from './ExternalProtocol';
+import { isExternalAppUrl, openExternalWithConsent, setExternalConsentAsk } from './ExternalProtocol';
 import { localPathToFileUrl } from './localFileUrl';
 import { installCertificateTrust } from './CertificateTrust';
 import { prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView, setOnChatIntent as setOnAiPanelChatIntent, setOnPanelFocus as setOnAiPanelFocus } from './AiPanelManager';
@@ -1077,7 +1077,9 @@ function createWindow(role: WindowRole = 'main') {
   });
 
   // Ссылка в стороннее приложение, открытая новым окном (частый способ уйти на оплату).
-  tabs.setOnExternalOpen((url, fromHost) => { void openExternalWithConsent(win, url, fromHost); });
+  tabs.setOnExternalOpen((url, fromPageUrl, wcId) => {
+    void openExternalWithConsent(win, url, fromPageUrl, wcId);
+  });
 
   // Регистрируем окно в реестре — с этого момента его находят по отправителю IPC. Владелец
   // сессии ставится тут же: дерево вкладок принадлежит полному окну, и только его снимок имеет
@@ -1871,12 +1873,6 @@ function collectGroups(nodes: SidebarNode[]): GroupNode[] {
   return groups;
 }
 
-// Имя сайта для вопроса «кто хочет открыть приложение». Пустая строка, если адрес не разбирается
-// (about:blank и подобное) — вопрос тогда задаётся без имени, но задаётся.
-function originOfUrl(url: string): string {
-  try { return new URL(url).host; } catch { return ''; }
-}
-
 // Ссылки в чужие приложения (mailto:, tel:, sbolpay:, tg: …) — отдаём ОС, спросив человека.
 // ⚠️ Раньше здесь знали ровно две схемы, mailto и tel. Всё остальное — включая переход в
 // банковское приложение при оплате по СБП — не приводило НИ К ЧЕМУ: Chromium схему не знает,
@@ -1886,7 +1882,7 @@ app.on('web-contents-created', (_e, contents) => {
     if (!isExternalAppUrl(url)) return;
     e.preventDefault();
     const win = BrowserWindow.fromWebContents(contents) ?? contextFromSender(contents)?.win ?? mainWin;
-    void openExternalWithConsent(win, url, originOfUrl(contents.getURL()));
+    void openExternalWithConsent(win, url, contents.getURL(), contents.id);
   });
   // Любая наша chrome-страница (главный рендерер + все поповеры), догрузившись, получает текущую
   // тему — так лениво создаваемые поповеры сразу открываются в нужном (в т.ч. инкогнито) виде.
@@ -2057,6 +2053,9 @@ app.whenReady().then(async () => {
   );
 
   // Разрешения: та же гарантия — падение не блокирует старт, браузер работает без персистенции.
+  // Вопрос «открыть ссылку в приложении?» идёт тем же путём, что камера и геопозиция: свой
+  // поповер, общая таблица, отзыв в разделе «Разрешения» (разбор — в ExternalProtocol.ts).
+  setExternalConsentAsk((origin, wcId) => permissions.askOwn(origin, 'external-app', wcId));
   await permissions.initialize().catch((e) =>
     console.error('[Permissions] инициализация упала:', e),
   );

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type React from 'react';
-import { Camera, Mic, MapPin, Bell, Maximize2, Clipboard, ShieldAlert } from 'lucide-react';
+import { Camera, Mic, MapPin, Bell, Maximize2, Clipboard, ShieldAlert, ExternalLink } from 'lucide-react';
 import type { PermissionRequest, PermKey } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 
@@ -18,6 +18,9 @@ const PERM_TITLE: Record<PermKey, string> = {
   'fullscreen':                'Полноэкранный режим',
   'clipboard-read':            'Чтение буфера обмена',
   'clipboard-sanitized-write': 'Запись в буфер обмена',
+  // ⚠️ Формулировка отличается от остальных намеренно: здесь речь не о доступе сайта к чему-то
+  // внутри браузера, а о ЗАПУСКЕ ЧУЖОЙ ПРОГРАММЫ на машине с аргументами, которые выбрал сайт.
+  'external-app':              'Открыть в другом приложении',
 };
 
 // Вторая строка — что это значит на деле. Формулировка бытовая: человек решает не про
@@ -31,6 +34,7 @@ const PERM_HINT: Record<PermKey, string> = {
   'fullscreen':                'Страница развернётся на весь экран',
   'clipboard-read':            'Сайт прочитает то, что вы скопировали',
   'clipboard-sanitized-write': 'Сайт сможет положить текст в буфер обмена',
+  'external-app':              'Сайт запустит установленное у вас приложение',
 };
 
 function PermIcon({ perm }: { perm: PermKey }) {
@@ -42,6 +46,7 @@ function PermIcon({ perm }: { perm: PermKey }) {
     case 'geolocation':       return <MapPin {...props} />;
     case 'notifications':     return <Bell {...props} />;
     case 'fullscreen':        return <Maximize2 {...props} />;
+    case 'external-app':      return <ExternalLink {...props} />;
     default:                  return perm.startsWith('clipboard')
       ? <Clipboard {...props} />
       : <ShieldAlert {...props} />;
