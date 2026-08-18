@@ -4,7 +4,7 @@ import { islandPlate } from '../../styles/island';
 import Toggle from '../Toggle';
 import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote,
-  StatusCard, TextField, InputRow, fieldFlex,
+  StatusCard, TextField, InputRow, fieldFlex, OptionList,
 } from './kit';
 
 // ── Секция «Блокировка рекламы» ───────────────────────────────────────────────
@@ -76,11 +76,12 @@ export default function AdBlockSection({
 
         {/* Список исключений */}
         {state.whitelist.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          <div style={{ marginBottom: 12 }}>
+            <OptionList>
             {state.whitelist.map((domain) => (
+              // Заливки у строки нет: группу держит рамка списка (разбор — в kit.tsx).
               <div key={domain} style={{
                 display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-                borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
               }}>
                 <span style={{
                   flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-body)', fontFamily: 'monospace',
@@ -93,6 +94,7 @@ export default function AdBlockSection({
                 </IconBtn>
               </div>
             ))}
+            </OptionList>
           </div>
         )}
 

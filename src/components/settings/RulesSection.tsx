@@ -9,7 +9,7 @@ import {
 import type { AutomationRule, RuleTriggerKind, RuleActionKind } from '../../../shared/rules';
 import {
   SectionHeader, Subsection, CapsLabel, TextField, InputRow, fieldFlex,
-  btnPrimary, btnGhost, InlineError, InlineHint, Favicon,
+  btnPrimary, btnGhost, InlineError, InlineHint, Favicon, OptionList,
 } from './kit';
 
 // Раздел «Правила» — правила-автоматизации (см. shared/rules.ts, RuleEngine.ts, RuleParser.ts).
@@ -294,9 +294,11 @@ export default function RulesSection() {
       >
         {rules === null && <InlineHint>Загрузка…</InlineHint>}
         {rules?.length === 0 && <InlineHint>Пока ни одного.</InlineHint>}
+        <OptionList>
         {rules?.map((rule) => (
+          // Строка без своей заливки: рамку и разделители рисует OptionList (разбор — kit.tsx).
           <div key={rule.id} style={{
-            ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '12px 16px',
+            padding: '12px 16px',
             display: 'flex', alignItems: 'center', gap: 12,
             opacity: rule.enabled ? 1 : 0.55,
           }}>
@@ -324,6 +326,7 @@ export default function RulesSection() {
             </button>
           </div>
         ))}
+        </OptionList>
       </Subsection>
     </div>
   );
