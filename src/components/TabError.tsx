@@ -269,7 +269,7 @@ export default function TabError({ error, url, onRetry, canGoBack, onBack }: Pro
           )}
           <button
             onClick={onRetry}
-            style={{ ...buttonBase(), background: 'var(--accent)', color: '#fff' }}
+            style={{ ...buttonBase(), background: 'var(--accent)', color: 'var(--on-accent)' }}
           >
             Обновить
           </button>

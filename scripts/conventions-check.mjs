@@ -219,5 +219,67 @@ function hueSat(hex) {
     'взять Panel/OptionList/OptionRow/Segmented из settings/kit.tsx; фон бывает только у выбранного');
 }
 
+// ── Цветовой закон: акцент принадлежит палитре, статус не красит фон ─────────
+//
+// ⚠️ Три правила из документа «Цветовой закон Oblako» (утверждён 18.08.2026). Каждое проверяется
+// машиной, потому что нарушение видно только глазами и только в той палитре, где вылезло:
+//   1. каждая палитра задаёт свой --accent в ОБЕИХ темах. Пропущенная палитра молча наследует
+//      чужой акцент — ровно та жалоба, с которой всё началось («часть синим, часть зелёным»);
+//   2. функциональные цвета (успех/предупреждение/ошибка/точки состояния) не появляются в
+//      background: заливка — язык АКЦЕНТА, у неё одно значение «выбрано». В палитре с зелёным
+//      акцентом две заливки неразличимы (контраст 1,8–2,3);
+//   3. акцент берётся токеном, а не литералом: иначе палитра его не переопределит.
+{
+  const pal = fs.readFileSync(path.join(ROOT, 'src', 'styles', 'tokens', 'palettes.css'), 'utf8');
+  const hits = [];
+
+  // (1) Блоки палитр: у каждого свой акцент. «Уголь» — база (colors.css/theme-dark.css),
+  // своего блока у него нет и быть не должно.
+  for (const m of pal.matchAll(/\[data-palette="([a-z]+)"\]([^{]*)\{([^}]*)\}/g)) {
+    const [, name, mods, body] = m;
+    if (!/--accent:/.test(body)) {
+      hits.push(`palettes.css  ${name}${/dark/.test(mods) ? ' (тёмная)' : ' (светлая)'} — нет --accent`);
+    }
+  }
+
+  // (2) Функциональный цвет в заливке — в области, где закон уже выверен глазами (настройки).
+  // ⚠️ По остальному рендереру правило пока НЕ гоняется, и это честная граница, а не забывчивость:
+  // прогон нашёл там 21 место (History, поповер сайта, виджеты стола), каждое надо смотреть
+  // глазами в шести палитрах. Разом переписывать вслепую — ровно тот способ «всё разъедется»,
+  // от которого мы и уходим. Расширять сюда по мере проверки экранов.
+  const lawFiles = walk(path.join(ROOT, 'src', 'components', 'settings'), ['.tsx'])
+    .concat([path.join(ROOT, 'src', 'components', 'ModelsSection.tsx')]);
+  const FUNC = /var\(--(success-\d+|warning-\d+|danger-\d+|dot-[a-z]+)\)/;
+  for (const f of lawFiles) {
+    if (!fs.existsSync(f)) continue;
+    fs.readFileSync(f, 'utf8').split('\n').forEach((raw, i) => {
+      const line = raw.trim();
+      if (line.startsWith('//') || line.startsWith('*')) return;
+      if (/background(-color)?:/.test(line) && FUNC.test(line)) {
+        hits.push(`${rel(f)}:${i + 1}  функциональный цвет в заливке`);
+      }
+      if (/(color|background|borderColor|fill|stroke)[^:]*:\s*'#[0-9a-fA-F]{3,8}'/.test(line)) {
+        hits.push(`${rel(f)}:${i + 1}  цвет литералом вместо токена`);
+      }
+    });
+  }
+
+  // (3) Белый текст на акценте — по ВСЕМУ рендереру. ⚠️ Это не стилистика, а замер: в тёмной
+  // теме акцент палитры поднят по светлоте, и белый на нём даёт от 1,77 («Мята») до 3,91
+  // («Графит») при пороге 4,5. Токен --on-accent считается по теме и проходит везде (4,79–10,56).
+  for (const f of walk(path.join(ROOT, 'src'), ['.tsx'])) {
+    fs.readFileSync(f, 'utf8').split('\n').forEach((raw, i) => {
+      const line = raw.trim();
+      if (line.startsWith('//') || line.startsWith('*')) return;
+      if (/background[^;]*var\(--accent\)/.test(line) && /color:\s*'#(fff|FFF|ffffff|FFFFFF)'/.test(line)) {
+        hits.push(`${rel(f)}:${i + 1}  белый литерал на акценте — нужен var(--on-accent)`);
+      }
+    });
+  }
+
+  checkEmpty('цветовой закон: акцент от палитры, статус без заливок, цвета токенами', hits,
+    'акцент задаётся в palettes.css; состояние показывать значком и словом; брать var(--…)');
+}
+
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

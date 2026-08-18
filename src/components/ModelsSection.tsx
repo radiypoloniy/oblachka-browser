@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, AlertTriangle } from 'lucide-react';
 import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
 import { OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox,
 } from './settings/kit';
@@ -205,12 +205,14 @@ export default function ModelsSection() {
         <div style={groupLabelStyle}>Установленные модели</div>
 
         {diverged && (
+          // ⚠️ Без цветной подложки: статус говорит значком и словом, фон он не красит (закон
+          // цвета, разбор — в colors.css у --accent).
           <div style={{
+            ...settingsBox,
             display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'color-mix(in srgb, var(--warning-500) 12%, transparent)',
-            color: 'var(--warning-500)', fontSize: 'var(--fs-xs)',
+            fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
           }}>
+            <AlertTriangle size={15} style={{ color: 'var(--warning-500)', flex: 'none' }} />
             <span style={{ flex: 1 }}>
               Сейчас в памяти «{loadedModel?.label ?? loadedModelId}», а активна по умолчанию «{defaultModel?.label ?? defaultModelId}»
               — сменится при следующей загрузке.

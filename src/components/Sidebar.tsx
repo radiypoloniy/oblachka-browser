@@ -2153,7 +2153,7 @@ export default function Sidebar({
               onClick={onOrganizeApply}
               style={{
                 flex: 1, padding: '8px 0', border: 'none', cursor: 'default',
-                borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: '#fff',
+                borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: 'var(--on-accent)',
                 fontSize: 'var(--fs-sm)', fontWeight: 600,
               }}
             >Применить</button>

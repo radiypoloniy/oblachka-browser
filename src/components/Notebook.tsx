@@ -323,7 +323,7 @@ function Empty({ children }: { children: ReactNode }) {
 
 const btnPrimary: React.CSSProperties = {
   padding: '7px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
-  background: 'var(--accent)', color: '#fff', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default',
+  background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default',
 };
 const xBtn: React.CSSProperties = {
   border: 'none', background: 'transparent', cursor: 'default', padding: 5,

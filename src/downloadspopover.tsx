@@ -152,7 +152,7 @@ function DuplicatePrompt({ prompt }: { prompt: DuplicateDownloadPrompt }) {
           onClick={() => window.downloadsPopover.decideDuplicate('open')}
           style={{
             flex: 1, padding: '8px 10px', borderRadius: 'var(--radius-sm)', border: 'none',
-            background: 'var(--accent)', color: '#fff',
+            background: 'var(--accent)', color: 'var(--on-accent)',
             fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default',
           }}
         >

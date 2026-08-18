@@ -209,7 +209,7 @@ export default function Tracking() {
               onClick={() => { void window.oblako.mergeTracked(sg.aId, sg.bId).then(reload); }}
               style={{
                 flex: 'none', padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
-                background: 'var(--accent)', color: '#fff', fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'default',
+                background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'default',
               }}
             >Объединить</button>
             <button

@@ -14,7 +14,7 @@ export const errorColor = 'var(--danger-500)';
 
 export const btnPrimary: React.CSSProperties = {
   padding: '7px 14px', borderRadius: 'var(--radius-sm)', border: 'none',
-  background: 'var(--accent)', color: '#fff',
+  background: 'var(--accent)', color: 'var(--on-accent)',
   fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default', flex: 'none',
   whiteSpace: 'nowrap',
 };
@@ -415,24 +415,26 @@ interface OptionRowProps {
   /** Иконка слева ВМЕСТО галочки (флаг страны у серверов VPN, значок типа записи). */
   icon?: React.ReactNode;
   /**
-   * Цвет отметки и заливки выбранного. По умолчанию акцент.
+   * Цвет ГАЛОЧКИ выбранной строки. Фон он не красит никогда.
    *
-   * ⚠️ Существует ради цветового закона, а не ради разнообразия: у списка серверов VPN
-   * «выбран» означает «туннель поднят», а это функциональный ЗЕЛЁНЫЙ, и красить его акцентом
-   * значило бы стереть разницу между «я выбрал» и «оно работает».
+   * ⚠️ Раньше этот проп красил и заливку — так у подключённого сервера VPN появлялся зелёный
+   * фон. Отменено вместе с законом «статус не красит фон»: заливка это язык АКЦЕНТА, у неё одно
+   * значение — «выбрано». Функциональный зелёный отличается от акцента только оттенком
+   * (контраст 1,8–2,3), и в палитрах с зелёным акцентом две заливки стали бы неразличимы.
+   * Состояние говорит значком и словом — этого достаточно.
    */
-  activeColor?: string;
+  markerColor?: string;
 }
 
 export function OptionRow({
   title, subtitle, active = false, disabled, onClick, badge, badge2, actions, selectable,
-  icon, activeColor = 'var(--accent)',
+  icon, markerColor = 'var(--accent)',
 }: OptionRowProps) {
   const canSelect = selectable ?? onClick !== undefined;
-  // ⚠️ Заливка ТОЛЬКО у выбранного, и она из акцента (или функционального цвета, см. activeColor),
-  // а не из палитры: у выбора ровно одно значение — «вот этот», и читаться он обязан одинаково во
-  // всех палитрах и обеих темах.
-  const activeFill = active ? `color-mix(in srgb, ${activeColor} 10%, transparent)` : 'transparent';
+  // ⚠️ Заливка ТОЛЬКО у выбранного и ТОЛЬКО акцентная (готовый токен, посчитанный от акцента
+  // палитры): у выбора ровно одно значение — «вот этот», и читаться он обязан одинаково во всех
+  // палитрах и обеих темах.
+  const activeFill = active ? 'var(--accent-soft)' : 'transparent';
 
   const body = (
     <>
@@ -441,7 +443,7 @@ export function OptionRow({
       {icon !== undefined
         ? <span style={{ width: 18, flex: 'none', display: 'flex', justifyContent: 'center' }}>{icon}</span>
         : canSelect && (active
-          ? <Check size={18} style={{ color: activeColor, flex: 'none' }} />
+          ? <Check size={18} style={{ color: markerColor, flex: 'none' }} />
           : <span style={{ width: 18, flex: 'none' }} />)}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
@@ -517,9 +519,15 @@ export function segBtnStyle(active: boolean, color?: string): React.CSSPropertie
 // Дорожка сегментов — сама коробка выбора. Отдельно от Segmented по той же причине, что segBtnStyle.
 export function SegTrack({ children }: { children: React.ReactNode }) {
   return (
+    // ⚠️ alignSelf обязателен: дорожка объявлена inline-flex, но лежит в колонке с
+    // align-items: stretch — и колонка растягивала её на всю ширину независимо от содержимого.
+    // Три сегмента жались влево, справа оставалась пустая заливка («почему плашка такая
+    // большая, если внутри всего 3 переключателя»). Правило системы: контейнер тянется на
+    // колонку, КОНТРОЛ — никогда.
     <div style={{
-      display: 'inline-flex', gap: 2, padding: 3, borderRadius: 'var(--radius-sm)',
-      background: 'var(--surface-sunken)', maxWidth: '100%', flexWrap: 'wrap',
+      display: 'inline-flex', alignSelf: 'flex-start', gap: 2, padding: 3,
+      borderRadius: 'var(--radius-sm)', background: 'var(--surface-sunken)',
+      maxWidth: '100%', flexWrap: 'wrap',
     }}>
       {children}
     </div>

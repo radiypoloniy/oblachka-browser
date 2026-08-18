@@ -172,9 +172,6 @@ export default function VpnSection() {
                 <OptionRow
                   key={s.id}
                   active={isRunning}
-                  // Зелёный, а не акцент: «выбран» здесь значит «туннель поднят» — функциональный
-                  // цвет по цветовому закону (см. activeColor в kit.tsx).
-                  activeColor="var(--success-500)"
                   icon={country ? <CountryFlag code={country.code} title={country.name} /> : null}
                   onClick={isRunning || isStarting ? undefined : () => void handleConnect(s.id)}
                   title={stripEmoji(s.remark) || s.address}

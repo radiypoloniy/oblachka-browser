@@ -40,7 +40,7 @@ const cardShell: React.CSSProperties = {
 };
 const btnPrimary: React.CSSProperties = {
   padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
-  background: 'var(--accent)', color: '#fff', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default',
+  background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default',
 };
 const btnGhost: React.CSSProperties = {
   padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--divider-strong)',
