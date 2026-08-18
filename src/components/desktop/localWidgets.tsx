@@ -201,7 +201,8 @@ export function DigestWidget({ box, fill, overImage, hero: isHero }: WidgetProps
   };
 
   const lines = state?.state === 'ready' ? state.digest.lines : [];
-  const capacity = Math.max(1, Math.floor((box.height - 64) / 24));
+  // Высота строки стала меньше (13px/1.35 + поля), поэтому и ёмкость считается по ней.
+  const capacity = Math.max(1, Math.floor((box.height - 96) / 26));
   const builtAt = state?.state === 'ready' ? new Date(state.digest.builtAt) : null;
 
   return (
@@ -215,12 +216,29 @@ export function DigestWidget({ box, fill, overImage, hero: isHero }: WidgetProps
         )}
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* ⚠️ Список без маркеров и с волосяными разделителями, а не буллиты. Точки перед строками
+          читались как черновик заметки и выбивали виджет из общего языка: у всех соседей число
+          и подпись, а тут абзац текста (живая жалоба «чем занимался не очень вписывается»).
+          Сверху добавлено ключевое число — сколько тем набралось: так плитка отвечает на вопрос
+          одним взглядом, как и остальные, а список остаётся расшифровкой. */}
+      {lines.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flex: 'none', marginTop: 2 }}>
+          <span style={{ ...DISPLAY, fontSize: isHero ? 34 : 26, fontWeight: isHero ? 700 : 600 }}>
+            {lines.length}
+          </span>
+          <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.7 }}>
+            {lines.length === 1 ? 'тема за день' : lines.length < 5 ? 'темы за день' : 'тем за день'}
+          </span>
+        </div>
+      )}
+
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', marginTop: 8, display: 'flex', flexDirection: 'column' }}>
         {lines.slice(0, capacity).map((line, i) => (
-          <div key={i} style={{ display: 'flex', gap: 7, fontSize: 'var(--fs-sm)', lineHeight: 1.25 }}>
-            <span style={{ opacity: 0.45, flex: 'none' }}>•</span>
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{line}</span>
-          </div>
+          <div key={i} style={{
+            fontSize: 'var(--fs-xs)', lineHeight: 1.35, padding: '5px 0',
+            borderTop: i === 0 ? 'none' : '1px solid color-mix(in srgb, currentColor 12%, transparent)',
+            minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{line}</div>
         ))}
 
         {lines.length === 0 && (
