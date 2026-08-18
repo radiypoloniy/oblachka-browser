@@ -1542,7 +1542,13 @@ function moveTabToNewWindow(from: TabManager, tabId: string): boolean {
   // но вкладка видна СРАЗУ.
   const seed = from.contentBounds;
   if (seed.width > 0 && seed.height > 0) target.tabs.setContentBounds(seed);
-  if (target.tabs.adoptTab(detached)) return true;
+  if (target.tabs.adoptTab(detached)) {
+    // Источник мог опустеть: вынести единственную вкладку лёгкого окна в новое — значит оставить
+    // за собой пустое окно, которого никто не просил. Та же уборка, что и при возврате вкладки
+    // (closeIfEmptyLight сам проверит роль: главное окно не закрывается никогда).
+    closeIfEmptyLight(from);
+    return true;
+  }
   // Новое окно вкладку не приняло (страница успела умереть) — не бросаем вью в никуда.
   if (detached.kind === 'live' && !detached.view.webContents.isDestroyed()) {
     (detached.view.webContents as unknown as { close?: () => void }).close?.();
