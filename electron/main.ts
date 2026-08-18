@@ -1527,6 +1527,25 @@ function createWindow(role: WindowRole = 'main') {
     // Запасные ссылки на главное окно снимаем только вместе с ним самим — иначе закрытие
     // лёгкого окна оставило бы приложение без адресата для отправителей вне реестра.
     if (isMain) { mainWin = null; mainChromeView = null; mainTabs = null; mainSess = null; }
+
+    // ⚠️ ВЫХОД НЕ ЖДЁТ window-all-closed. Это событие приходит, только когда закрыто КАЖДОЕ окно
+    // Electron, а у приложения есть СЛУЖЕБНЫЕ невидимые окна: фоновая проверка отслеживаемых
+    // товаров грузит страницу в скрытом BrowserWindow (TrackingChecker.checkView). Пока такое окно
+    // живо, window-all-closed не наступает, app.quit() не зовётся — и закрытый человеком браузер
+    // продолжает висеть в процессах, удерживая single-instance lock. Дальше ссылка из мессенджера
+    // не открывает ничего (второй запуск умирает о замок), и запуск по ярлыку тоже молчит.
+    // Здесь мы смотрим на окна БРАУЗЕРА, а не на все подряд: не осталось ни одного — приложению
+    // незачем жить, чем бы ни было занято служебное окно.
+    if (process.platform !== 'darwin') {
+      const browserWindowsLeft = allContexts().filter((c) => c.win !== win && !c.win.isDestroyed());
+      if (browserWindowsLeft.length === 0) {
+        const service = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w !== win);
+        if (service.length > 0) {
+          console.log(`[shutdown] окон браузера не осталось, служебных живо ${service.length} — выходим сами`);
+        }
+        app.quit();
+      }
+    }
   });
 
   return ctx; // вызывающей стороне (перенос вкладки) нужен менеджер вкладок нового окна

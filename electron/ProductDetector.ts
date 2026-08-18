@@ -22,6 +22,22 @@ const COLLECT_SCRIPT = `(function(){
   } catch (e) { return []; }
 })()`;
 
+/** Сколько ждём ответа страницы. Больше — не полезнее: живая страница отвечает за миллисекунды. */
+const COLLECT_TIMEOUT_MS = 10_000;
+
+/** Ответ рендерера или null по таймауту. Таймер снимается в обоих исходах — он бы держал петлю. */
+async function withTimeout<T>(work: Promise<T>): Promise<T | null> {
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), COLLECT_TIMEOUT_MS); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * Есть ли на этой странице товар с ценой.
  *
@@ -34,7 +50,14 @@ export async function detectProduct(wc: WebContents | null): Promise<ProductSign
   // Служебные страницы, хаб и файлы с диска товарами быть не могут.
   if (!/^https?:/i.test(url)) return null;
   try {
-    const blocks = await wc.executeJavaScript(COLLECT_SCRIPT) as string[];
+    // ⚠️ ТАЙМАУТ ОБЯЗАТЕЛЕН. executeJavaScript ждёт ответа рендерера бесконечно, а зовут нас в том
+    // числе из фоновой проверки товаров, которая держит ради этого СКРЫТОЕ ОКНО (TrackingChecker,
+    // checkView). Пока живо хоть одно окно — любое, включая невидимое — приложение не выходит по
+    // window-all-closed. То есть один зависший ответ от антибот-страницы Маркета или Озона
+    // означал: человек закрыл браузер, а процесс остался жить навсегда, удерживая
+    // single-instance lock. Симптом со стороны — «браузер не запускается и ссылки не
+    // открываются», причём ни ошибки, ни окна: второй запуск молча умирает о занятый замок.
+    const blocks = await withTimeout(wc.executeJavaScript(COLLECT_SCRIPT) as Promise<string[]>);
     if (!Array.isArray(blocks) || blocks.length === 0) return null;
     return productFromJsonLd(blocks);
   } catch {
