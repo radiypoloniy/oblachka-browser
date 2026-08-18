@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, Download, Loader2, Check, KeyRound, FileUp } from 'lucide-react';
 import type { ImportSource, ImportDataType, ImportRunResult, ImportTypeResult, CsvPasswordImport } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
+import { islandPlate, untintedPlateVars } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
 import { useScrim } from '../scrimState';
 
@@ -130,6 +130,7 @@ export default function ImportDialog({ onClose }: ImportDialogProps) {
           ...islandPlate,
           borderRadius: 'var(--radius-island)',
           boxShadow: 'var(--shadow-island)',
+          ...untintedPlateVars,
           background: 'var(--surface-solid)',
         }}
       >

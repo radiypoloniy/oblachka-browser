@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X, Shield, ShieldCheck, Wifi, Cpu, Palette, Lock, SlidersHorizontal, CreditCard, Wand2, Search, Sparkles, type LucideIcon } from 'lucide-react';
 import { searchSettings, isEntryAvailable, SETTINGS_INDEX, type SettingsEntry, type SettingsAvailability } from '../../shared/settingsIndex';
 import type { AdBlockState } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
+import { islandPlate, untintedPlateVars } from '../styles/island';
 import AdBlockSection from './settings/AdBlockSection';
 import VpnSection from './settings/VpnSection';
 import AiSection from './settings/AiSection';
@@ -206,6 +206,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
       ...islandPlate,
       borderRadius: 'var(--radius-island)',
       boxShadow: 'var(--shadow-island)',
+      ...untintedPlateVars,
       background: 'var(--surface-solid)',
     }}>
       {/* Шапка */}

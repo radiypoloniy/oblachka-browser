@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { X, Search, Trash2, Clock, Wand2, Loader2 } from 'lucide-react';
 import type { HistoryEntry, HistoryClearPeriod } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
+import { islandPlate, untintedPlateVars } from '../styles/island';
 import SiteFavicon from './SiteFavicon';
 
 interface HistoryProps {
@@ -209,6 +209,7 @@ export default function History({ onClose }: HistoryProps) {
       ...islandPlate,
       borderRadius: 'var(--radius-island)',
       boxShadow: 'var(--shadow-island)',
+      ...untintedPlateVars,
       background: 'var(--surface-solid)',
     }}>
       {/* Заголовок */}

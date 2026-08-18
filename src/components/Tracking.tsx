@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { TrendingDown, Trash2, ExternalLink, RefreshCw, AlertTriangle, Bell, BellOff, Link2, Unlink, Store } from 'lucide-react';
 import type { TrackedProduct, TrackingEvent, MatchSuggestion } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
+import { islandPlate, untintedPlateVars } from '../styles/island';
 
 // Экран «что я отслеживаю» (PRICE-TRACKING.md). Компонент только рисует: список, историю цен и
 // группы считает main (electron/TrackingStore.ts).
@@ -139,6 +139,7 @@ export default function Tracking() {
     <div style={{
       height: '100%', display: 'flex', flexDirection: 'column',
       ...islandPlate, borderRadius: 'var(--radius-island)',
+      ...untintedPlateVars,
       boxShadow: 'var(--shadow-island)', background: 'var(--surface-solid)', overflow: 'hidden',
     }}>
       <div style={{ padding: '18px 24px 12px', borderBottom: '1px solid var(--divider-strong)', flex: 'none' }}>

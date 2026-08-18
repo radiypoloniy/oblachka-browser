@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, Search, Star, Download, Loader2, Folder, Sparkles } from 'lucide-react';
 import type { BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
+import { islandPlate, untintedPlateVars } from '../styles/island';
 import SiteFavicon from './SiteFavicon';
 
 // Ссылка вместе с именем папки, в которой лежит — панель плоская, и без этого нельзя понять,
@@ -167,6 +167,7 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
       ...islandPlate,
       borderRadius: 'var(--radius-island)',
       boxShadow: 'var(--shadow-island)',
+      ...untintedPlateVars,
       background: 'var(--surface-solid)',
     }}>
       {/* Заголовок */}

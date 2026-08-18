@@ -11,7 +11,7 @@
 // Запуск: npm run chrome-ground-check
 import {
   buildChromeGround, deepestGround, groundTint, withLightness, ISLAND_LIFT,
-  relLuminance, contrast, blend, rotateHue, hexToRgb, rgbToHex,
+  relLuminance, contrast, blend, rotateHue, hexToRgb, rgbToHex, HUE_MAX_SPREAD,
 } from '../shared/chromeGround.ts';
 
 let passed = 0;
@@ -96,16 +96,25 @@ for (const tint of TINTS_DARK) {
   check(`${tint} — верх и низ градиента различимы (≥1.1)`, contrast(stops[0], stops[2]) >= 1.1, true);
 }
 
-console.log('\n— ЦВЕТОВОЙ ЗАКОН: сгенерированная земля не заходит в сиреневый —');
+console.log('\n— ЦВЕТОВОЙ ЗАКОН: земля держится тона палитры —');
 // ⚠️ Земля — СГЕНЕРИРОВАННЫЙ цвет, а запрет фиолетового распространяется и на такие (см. CLAUDE.md
-// и разбор siteTint.ts). Поворот ступеней доходит до +30°, и у синих тонов (210°) низ градиента
-// садится на 240° — это ещё синий, но соседний сектор рядом. Теперь это проверено, а не на глаз.
+// и разбор siteTint.ts).
+//
+// ⚠️ Одного запрета сектора 250–310° оказалось МАЛО, и это стоило живой жалобы «палитра в
+// настройках выглядит уродливо». Поворот ступеней доходил до +30°: синий 211° садился на 242° —
+// формально не сиреневый, а глазом ровно он; «Сепия» 46° уезжала на 76°, то есть в болотную
+// зелень. Поэтому меряем САМ СДВИГ от тона палитры: чужой цвет в градиенте не появляется вовсе,
+// в какой бы сектор он ни метил.
+const hueGap = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
 for (const [dark, tints, th] of [[false, TINTS_LIGHT, LIGHT], [true, TINTS_DARK, DARK]]) {
   for (const tint of tints) {
     const stops = buildChromeGround({ tint, appBg: th.appBg, surface: th.surface, amount: 30, dark })
       .backgroundImage.match(/#[0-9a-f]{6}/g);
-    const worst = stops.map(hueOf).filter((h) => h >= 250 && h <= 310);
-    check(`${dark ? 'тёмная' : 'светлая'} ${tint} — сиреневых ступеней нет`, worst, []);
+    const label = `${dark ? 'тёмная' : 'светлая'} ${tint}`;
+    check(`${label} — сиреневых ступеней нет`, stops.map(hueOf).filter((h) => h >= 250 && h <= 310), []);
+    const hues = stops.map(hueOf);
+    const spread = Math.max(...hues.map((a) => Math.max(...hues.map((b) => hueGap(a, b)))));
+    check(`${label} — разброс тона по ступеням ≤ ${HUE_MAX_SPREAD}°`, spread <= HUE_MAX_SPREAD, true);
   }
 }
 

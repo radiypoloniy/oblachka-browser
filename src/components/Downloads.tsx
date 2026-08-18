@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { X, Download, FolderOpen, ExternalLink, RotateCcw, Pause, Play, XCircle, Trash2 } from 'lucide-react';
 import type { DownloadEntry } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
+import { islandPlate, untintedPlateVars } from '../styles/island';
 // Форматирование, подписи состояний и значок по типу файла — общие с поповером у кнопки тулбара
 // (см. downloadsShared.tsx): один и тот же файл в двух местах должен выглядеть одинаково.
 import { FileKindIcon, formatBytes, formatSpeed, STATE_LABEL, STATE_COLOR } from './downloadsShared';
@@ -61,6 +61,7 @@ export default function Downloads({ downloads, onClose }: DownloadsProps) {
       ...islandPlate,
       borderRadius: 'var(--radius-island)',
       boxShadow: 'var(--shadow-island)',
+      ...untintedPlateVars,
       background: 'var(--surface-solid)',
     }}>
       {/* Заголовок */}

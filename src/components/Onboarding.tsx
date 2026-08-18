@@ -5,7 +5,7 @@ import type {
   ImportSource, ImportDataType, ImportRunResult, ImportTypeResult,
   CatalogEntry, InstalledModel, DownloadProgress, BackfillProgress,
 } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
+import { islandPlate, untintedPlateVars } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
 import BrowserLogo from './BrowserLogo';
 import { useScrim } from '../scrimState';
@@ -394,6 +394,7 @@ export default function Onboarding({ onFinish }: Props) {
         ...islandPlate,
         borderRadius: 'var(--radius-island)',
         boxShadow: 'var(--shadow-island)',
+        ...untintedPlateVars,
         background: 'var(--surface-solid)',
       }}>
         {/* «Пропустить» — в углу, а не в ряду кнопок: это выход из разговора, а не шаг в нём.
