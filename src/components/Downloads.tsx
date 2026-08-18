@@ -6,6 +6,8 @@ import { panelIsland, RADIUS } from '../styles/system';
 // Форматирование, подписи состояний и значок по типу файла — общие с поповером у кнопки тулбара
 // (см. downloadsShared.tsx): один и тот же файл в двух местах должен выглядеть одинаково.
 import { FileKindIcon, formatBytes, formatSpeed, STATE_LABEL, STATE_COLOR } from './downloadsShared';
+import { EmptyState } from './EmptyState';
+import { DownloadGlyph } from './glyphs';
 
 interface DownloadsProps {
   downloads: DownloadEntry[];
@@ -106,9 +108,11 @@ export default function Downloads({ downloads, onClose }: DownloadsProps) {
           формы для трёх соседних разделов человек читает как три разные программы. Слева даты —
           ровно как в Истории, потому что загрузки тоже хронология. */}
       {downloads.length === 0 ? (
-        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', marginTop: 48 }}>
-          Нет загрузок
-        </div>
+        <EmptyState
+          icon={<DownloadGlyph size={22} />}
+          title="Загрузок пока нет"
+          hint="Файлы, которые вы скачаете, останутся здесь — вместе с адресом страницы, откуда они пришли."
+        />
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
           <nav style={{

@@ -4,6 +4,8 @@ import type { HistoryEntry, HistoryClearPeriod } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
 import { TEXT, CAPS, panelIsland } from '../styles/system';
 import SiteFavicon from './SiteFavicon';
+import { EmptyState } from './EmptyState';
+import { ClockGlyph, SearchGlyph } from './glyphs';
 
 interface HistoryProps {
   onClose: () => void;
@@ -364,12 +366,13 @@ export default function History({ onClose }: HistoryProps) {
       )}
 
       {entries.length === 0 ? (
-        <div style={{
-          textAlign: 'center', color: 'var(--text-muted)',
-          fontSize: 'var(--fs-sm)', marginTop: 48,
-        }}>
-          {query ? 'Ничего не найдено' : 'История пуста'}
-        </div>
+        <EmptyState
+          icon={query ? <SearchGlyph size={22} /> : <ClockGlyph size={22} />}
+          title={query ? 'Ничего не нашлось' : 'История пуста'}
+          hint={query
+            ? 'Попробуйте другое слово — поиск смотрит и по заголовкам страниц, и по адресам.'
+            : 'Страницы, которые вы откроете, появятся здесь по дням — и их можно будет найти словом из текста.'}
+        />
       ) : smartResultsShown ? (
         // Умный поиск — плоский список в порядке релевантности (см. комментарий у smartResultsShown).
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}

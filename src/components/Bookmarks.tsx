@@ -4,6 +4,8 @@ import type { BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImpor
 import { islandPlate, untintedPlateVars } from '../styles/island';
 import { panelIsland } from '../styles/system';
 import SiteFavicon from './SiteFavicon';
+import { EmptyState } from './EmptyState';
+import { StarGlyph, SearchGlyph } from './glyphs';
 
 // Ссылка вместе с именем папки, в которой лежит — панель плоская, и без этого нельзя понять,
 // откуда запись. null — корень.
@@ -458,12 +460,21 @@ const GHOST_BTN: React.CSSProperties = {
   color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default',
 };
 
+// Пустое состояние закладок. ⚠️ Подсказка зависит от того, ПОЧЕМУ пусто: не найдено по запросу,
+// пусто в папке или закладок нет вовсе — это три разные ситуации и три разных следующих шага.
 function Empty({ text }: { text: string }) {
+  const searching = text === 'Ничего не найдено';
+  const inFolder = text === 'В этой папке пусто';
   return (
-    <div style={{
-      flex: 1, textAlign: 'center', color: 'var(--text-muted)',
-      fontSize: 'var(--fs-sm)', marginTop: 48,
-    }}>{text}</div>
+    <EmptyState
+      icon={searching ? <SearchGlyph size={22} /> : <StarGlyph size={22} />}
+      title={searching ? 'Ничего не нашлось' : inFolder ? 'В этой папке пусто' : 'Закладок пока нет'}
+      hint={searching
+        ? 'Поиск идёт по названию и адресу — попробуйте другое слово.'
+        : inFolder
+          ? 'Перетащите сюда закладку из другой папки или добавьте новую звёздочкой в адресной строке.'
+          : 'Звёздочка в адресной строке сохранит страницу сюда, а папку под неё браузер предложит сам.'}
+    />
   );
 }
 
