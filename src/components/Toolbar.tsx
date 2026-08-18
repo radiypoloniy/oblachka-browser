@@ -7,6 +7,7 @@ import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../..
 import type { SearchEngineId } from '../../shared/searchEngines';
 import { islandPlate, islandGroup, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
+import { glyph } from '../styles/system';
 
 // Высота тулбара — должна совпадать с CSS-значением (56px).
 const TOOLBAR_HEIGHT = 56;
@@ -988,6 +989,23 @@ export default function Toolbar({
           : { kind: 'history' as SuggestKind, label: e.url, sub: e.title, url: e.url }
       ));
 
+    // ⚠️ ОТКРЫТАЯ ВКЛАДКА НЕ ЗАНИМАЕТ ПЕРВУЮ СТРОКУ, пока есть любой другой кандидат.
+    //
+    // Ранжирование считает вкладки наравне с историей, и это правильно, но у открытой страницы
+    // почти всегда лучшая частота — её же только что смотрели. В итоге стоило начать набирать
+    // адрес похожей страницы, как первой строкой вставало «перейти на вкладку». А человек,
+    // набирающий адрес РУКАМИ, чаще всего хочет открыть страницу, а не прыгнуть на уже открытую:
+    // прыжок он сделал бы через список вкладок или поиск по вкладкам, где это одно движение.
+    //
+    // Строку не убираем и не понижаем в самый низ — переключение остаётся под рукой, просто оно
+    // больше не перехватывает место самого вероятного намерения. Тот же принцип, что у Chrome:
+    // «Switch to tab» существует, но не подменяет собой открытие адреса.
+    const firstOther = items.findIndex((it) => it.kind !== 'tab');
+    if (firstOther > 0 && items[0]?.kind === 'tab') {
+      const [tabItem] = items.splice(0, 1);
+      if (tabItem) items.splice(firstOther, 0, tabItem);
+    }
+
     // Живые веб-подсказки — ОТДЕЛЬНОЙ группой НИЖЕ истории/вкладок (точных совпадений), как в
     // Chrome: сначала твоё, потом веб-автодополнение. Не участвуют в frecency-ранжировании items
     // (это не посещённые страницы) — порядок такой, какой вернул сам suggest-API движка.
@@ -1405,13 +1423,13 @@ export default function Toolbar({
           Вписана в текущую высоту тулбара: паддинг плашки не увеличивает высоту кнопок. */}
       <div className="no-drag" style={islandGroup()}>
         <button title="Назад" disabled={!tab?.canGoBack} onClick={onBack}
-          style={clusterBtn({ disabled: !tab?.canGoBack })}><ArrowLeft size={18} /></button>
+          style={clusterBtn({ disabled: !tab?.canGoBack })}><ArrowLeft {...glyph(18)} /></button>
         <button title="Вперёд" disabled={!tab?.canGoForward} onClick={onForward}
-          style={clusterBtn({ disabled: !tab?.canGoForward })}><ArrowRight size={18} /></button>
+          style={clusterBtn({ disabled: !tab?.canGoForward })}><ArrowRight {...glyph(18)} /></button>
         {/* ⚠️ 18, а не 17: соседние стрелки восемнадцатые, и на глаз «Обновить» выглядела мельче
             остальных. Высоту группы это не двигает — та задана явно (ISLAND_HEIGHT). */}
         <button title="Обновить" disabled={isHub} onClick={onReload}
-          style={clusterBtn({ disabled: isHub })}><RefreshCw size={18} /></button>
+          style={clusterBtn({ disabled: isHub })}><RefreshCw {...glyph(18)} /></button>
       </div>
 
       {/* Омнибокс — главный объект полосы, и теперь он занимает всё свободное место между
@@ -1461,7 +1479,7 @@ export default function Toolbar({
                   только первое. Раньше на хабе и в инкогнито здесь стояла НЕКЛИКАБЕЛЬНАЯ картинка;
                   теперь кнопка живая всегда, иначе до VPN нельзя было бы добраться с новой
                   вкладки — а включают его чаще всего именно оттуда. */}
-              <Shield size={14} fill={vpnOn && !sitePopoverOpen ? 'var(--dot-vpn)' : 'none'} />
+              <Shield {...glyph(14)} fill={vpnOn && !sitePopoverOpen ? 'var(--dot-vpn)' : 'none'} />
             </button>
             <input
               ref={inputRef}
@@ -1627,7 +1645,7 @@ export default function Toolbar({
                       position: 'relative',
                     }}
                   >
-                    <KeyRound size={14} />
+                    <KeyRound {...glyph(14)} />
                   </button>
                 </div>
               )
@@ -1636,7 +1654,7 @@ export default function Toolbar({
               <button title="Копировать адрес" onClick={copyUrl}
                 style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
                          display: 'inline-flex', color: copied ? 'var(--dot-local)' : 'var(--text-faint)' }}>
-                {copied ? <Check size={14} /> : <Copy size={14} />}
+                {copied ? <Check {...glyph(14)} /> : <Copy {...glyph(14)} />}
               </button>
             )}
             {!isHub && tab?.url && (
@@ -1644,7 +1662,7 @@ export default function Toolbar({
                 onClick={toggleBookmark}
                 style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
                          display: 'inline-flex', color: bookmarked ? 'var(--accent)' : 'var(--text-muted)' }}>
-                <Star size={14} fill={bookmarked ? 'var(--accent)' : 'none'} />
+                <Star {...glyph(14)} fill={bookmarked ? 'var(--accent)' : 'none'} />
               </button>
             )}
             {/* «⋯» — действия над ЭТОЙ страницей, которым не нужна постоянная кнопка: перевод и
@@ -1669,8 +1687,8 @@ export default function Toolbar({
                 }}
               >
                 {pageTranslateState === 'translating'
-                  ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-                  : <MoreHorizontal size={14} />}
+                  ? <Loader2 {...glyph(14)} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+                  : <MoreHorizontal {...glyph(14)} />}
               </button>
             )}
             {/* Капсула выбора поисковика — только на хабе, в контентных вкладках не рендерится вовсе.
@@ -1694,7 +1712,7 @@ export default function Toolbar({
                 {capsuleMode === 'full'
                   ? getSearchEngine(searchEngineId).name
                   : getSearchEngine(searchEngineId).name.charAt(0)}
-                <ChevronDown size={12} />
+                <ChevronDown {...glyph(12)} />
               </button>
             )}
           </div>
@@ -1769,7 +1787,7 @@ export default function Toolbar({
             загорается, когда панель открыта, то есть означает состояние, а не важность. */}
         {!isLightWindow && (
           <button title="AI-панель" onClick={onToggleAiPanel} style={clusterBtn({ active: aiPanelOpen })}>
-            <Sparkles size={18} />
+            <Sparkles {...glyph(18)} />
           </button>
         )}
         {/* Буфер скопированного — рядом с загрузками намеренно: это одна группа «что я забрал со
@@ -1787,7 +1805,7 @@ export default function Toolbar({
             onClick={toggleClipboardPopover}
             style={clusterBtn({ active: clipboardPopoverOpen, disabled: clipboardCount === 0 })}
           >
-            <Clipboard size={18} />
+            <Clipboard {...glyph(18)} />
           </button>
         </div>
         {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки. Иконка нейтральная
@@ -1802,7 +1820,7 @@ export default function Toolbar({
             onClick={toggleDownloadsPopover}
             style={{ ...clusterBtn({ active: downloadsPopoverOpen }), position: 'relative' }}
           >
-            <Download size={18} style={flying ? { animation: 'oblako-dl-land 520ms var(--ease-out)' } : undefined} />
+            <Download {...glyph(18)} style={flying ? { animation: 'oblako-dl-land 520ms var(--ease-out)' } : undefined} />
 
             {/* ⚠️ Прилетающий файл — единственный момент, когда человеку СООБЩАЮТ, что загрузка
                 вообще началась: у нас нет ни системы тостов, ни полосы загрузок снизу, и раньше
@@ -1820,7 +1838,7 @@ export default function Toolbar({
                     animation: 'oblako-dl-fly 520ms var(--ease-out)',
                   }}
                 >
-                  <Download size={18} />
+                  <Download {...glyph(18)} />
                 </span>
                 <span
                   aria-hidden

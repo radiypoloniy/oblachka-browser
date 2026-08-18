@@ -21,7 +21,7 @@
 // скроллиться внутри), а не фиксированный размер вью.
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Search, Globe, Lock, ShieldCheck, ShieldOff, Sparkles, ChevronRight, Camera, Mic, MapPin, Bell, Maximize, Clipboard, History, Pencil, Check, X, Plus } from 'lucide-react';
+import { Search, Globe, Lock, ShieldCheck, ShieldOff, Sparkles, ChevronRight, Camera, Mic, MapPin, Bell, Maximize, Clipboard, History, Pencil, Check, X, Plus, ExternalLink } from 'lucide-react';
 import './styles/global.css';
 import type { SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, PermKey } from '../shared/ipc';
 import { siteHue } from './components/desktop/siteTint';
@@ -61,8 +61,6 @@ function plural(n: number, one: string, few: string, many: string): string {
 // белой подложке с тенью — ровно как закреплённые вкладки в сайдбаре (см. IconCell в Sidebar.tsx:
 // var(--surface) + var(--shadow-card) + var(--radius-sm)), — а покрашен фон ПАПКИ, которая их
 // объединяет. Цвет так работает на группировку, а не против неё.
-const FOLDER_TINT_FREQUENT = 'color-mix(in srgb, var(--tile-slate) 9%, var(--surface-sunken))';
-const FOLDER_TINT_PICKED   = 'color-mix(in srgb, var(--tile-teal) 9%, var(--surface-sunken))';
 
 // Фавикон строки СПИСКА — тот же приём, что TileCard в Hub.tsx (`${origin}/favicon.ico` + onError-
 // фолбэк на генерик-иконку): никакой новой инфраструктуры/IPC, страница просто пробует
@@ -207,10 +205,22 @@ const PANEL_CSS = `
 }
 
 /* Папки рядом, когда есть место, и стопкой, когда нет. Внутри папки — всегда четыре колонки:
-   восемь сайтов ложатся ровным блоком 4×2, как в Табло. */
-.omni-folders { display: grid; grid-template-columns: 1fr; gap: 10px; }
-@media (min-width: 820px) { .omni-folders { grid-template-columns: 1fr 1fr; } }
-.omni-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
+   восемь сайтов ложатся ровным блоком 4×2, как в Табло.
+
+   ⚠️ У ПАПКИ ЕСТЬ ПОТОЛОК ШИРИНЫ, и это не вкусовщина. Дропдаун повторяет ширину омнибокса и
+   доходит до 1040 px; папка, растянутая на всю эту ширину, растягивала вместе с собой и четыре
+   колонки — клетка раздувалась до полутора сотен пикселей при значке в 40, и блок читался как
+   восемь иконок, раскиданных по цветному прямоугольнику («расстояние между иконками слишком
+   большое»). Потолок держит клетку около 80 px, а лишняя ширина уходит в поля: контейнер тянется
+   на всю колонку, содержимое — никогда. */
+.omni-folders { display: grid; grid-template-columns: 1fr; gap: 0; }
+/* ⚠️ ПОЛКА, А НЕ РАСТЯГИВАЕМАЯ СЕТКА. Клетка фиксированной ширины и значки идут слева — тогда
+   расстояние между ними ОДНО И ТО ЖЕ при любой ширине окна. Прежняя сетка repeat(4, 1fr)
+   растягивалась вместе с дропдауном (тот повторяет ширину омнибокса и доходит до 1040 px), клетка
+   раздувалась до полутора сотен пикселей при значке в 44, и восемь иконок читались как раскиданные
+   по цветному прямоугольнику. */
+.omni-tiles { display: flex; flex-wrap: wrap; gap: 2px; }
+.omni-tiles > * { width: 76px; }
 
 .omni-cards { display: grid; grid-template-columns: 1fr; gap: 8px; }
 @media (min-width: 560px)  { .omni-cards { grid-template-columns: repeat(2, 1fr); } }
@@ -222,8 +232,8 @@ const PANEL_CSS = `
    ПОКРАШЕННОМ фоне папки — это подмешанная белизна, а не отдельный серый: серый на тонированном
    фоне читается как грязь. */
 .omni-tile {
-  display: flex; flex-direction: column; align-items: center; gap: 7px;
-  padding: 9px 4px 8px; border-radius: 10px; cursor: default; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 8px 2px 7px; border-radius: 10px; cursor: default; min-width: 0;
   background: transparent; position: relative;
   transition: background 140ms ease;
 }
@@ -246,7 +256,13 @@ const PANEL_CSS = `
 }
 .omni-badge:hover { color: var(--text-strong); }
 
-.omni-folder { border-radius: 14px; border: 1px solid var(--glass-edge); padding: 10px 8px 8px; }
+/* ⚠️ ЗАЛИВКИ У НАБОРА БОЛЬШЕ НЕТ. Заливка в системе — язык акцента, и значит она ровно одно:
+   «выбрано». Набор не выбран, он просто существует, поэтому разделять наборы — работа линии и
+   заголовка, а два покрашенных прямоугольника были решением задачи, которой нет. */
+.omni-folder { padding: 4px 2px 2px; }
+.omni-folder + .omni-folder {
+  margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--divider);
+}
 .omni-folder-head {
   display: flex; align-items: center; gap: 8px; padding: 0 8px 6px;
   font-size: var(--fs-xs); font-weight: 600; color: var(--text-faint);
@@ -287,6 +303,7 @@ const PERM_ICON: Record<PermKey, typeof Camera> = {
   'camera': Camera,
   'microphone': Mic,
   'camera+microphone': Camera,
+  'external-app': ExternalLink,
   'geolocation': MapPin,
   'notifications': Bell,
   'fullscreen': Maximize,
@@ -409,7 +426,9 @@ function SiteTile({ item, idx, active, editing, badge, onBadge, onHover, onLeave
       onMouseLeave={() => onLeave(idx)}
       title={editing ? undefined : item.label}
     >
-      <SitePlate url={item.url} size={40} radius={10} />
+      {/* Значок крупнее прежних 40: в клетке с потолком ширины он держит блок плотным, а не
+          плавает в её середине. */}
+      <SitePlate url={item.url} size={44} radius={12} />
       <span className="omni-label" style={{
         maxWidth: '100%', fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -429,14 +448,15 @@ function SiteTile({ item, idx, active, editing, badge, onBadge, onHover, onLeave
   );
 }
 
-// ── Папка ─────────────────────────────────────────────────────────────────────────────────────
-// Покрашенный контейнер с блоком значков внутри. Именно папка, а не свободный ряд плиток: цвет
-// на фоне группы объясняет, ЧТО это за набор, тогда как цвет на самих значках только рябил.
-function Folder({ title, tint, action, children }: {
-  title: string; tint: string; action?: React.ReactNode; children: React.ReactNode;
+// ── Полка набора ──────────────────────────────────────────────────────────────────────────────
+// Заголовок и ряд значков. Раньше это был ПОКРАШЕННЫЙ контейнер — цвет на фоне группы объяснял,
+// что за набор. От цвета отказались: он говорил «выбрано» там, где ничего не выбрано (разбор — у
+// .omni-folder в стилях выше), а набор различает заголовок.
+function Folder({ title, action, children }: {
+  title: string; action?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
-    <section className="omni-folder omni-rise" style={{ background: tint }}>
+    <section className="omni-folder omni-rise">
       <div className="omni-folder-head">
         {title}
         {action}
@@ -499,7 +519,7 @@ function PanelView({ panel, activeIdx, editing, setEditing, onHover, onLeave }: 
       {(panel.sites.length > 0 || picked.length > 0) && (
         <div className="omni-folders" style={{ padding: '12px 14px 14px' }}>
           {panel.sites.length > 0 && (
-            <Folder title="Часто посещаемые" tint={FOLDER_TINT_FREQUENT}>
+            <Folder title="Часто посещаемые">
               {panel.sites.map((item, i) => (
                 <SiteTile
                   key={item.url} item={item} idx={i}
@@ -515,7 +535,6 @@ function PanelView({ panel, activeIdx, editing, setEditing, onHover, onLeave }: 
           )}
           <Folder
             title="Рекомендуемые"
-            tint={FOLDER_TINT_PICKED}
             action={
               <button
                 className="omni-pencil" data-on={editing ? '1' : '0'}
@@ -539,7 +558,7 @@ function PanelView({ panel, activeIdx, editing, setEditing, onHover, onLeave }: 
             {/* Опустошённый набор — не пустая дыра, а подсказка, как его наполнить обратно. */}
             {picked.length === 0 && (
               <div style={{
-                gridColumn: '1 / -1', padding: '10px 8px 12px',
+                width: '100%', padding: '10px 8px 12px',
                 fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', lineHeight: 1.4,
               }}>
                 {editing
