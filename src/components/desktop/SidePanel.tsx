@@ -103,7 +103,7 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
           position: 'absolute', top: 0, right: 0, bottom: 0, width: 380, maxWidth: '94%',
           background: 'var(--surface-solid)', boxShadow: 'var(--shadow-island)',
           display: 'flex', flexDirection: 'column',
-          animation: 'oblako-panel-in 180ms var(--ease-out)',
+          animation: 'oblako-panel-in var(--dur-base) var(--ease-out)',
         }}
       >
         <div style={{

@@ -1849,7 +1849,7 @@ export default function Toolbar({
                   style={{
                     position: 'absolute', inset: 0, borderRadius: '50%',
                     pointerEvents: 'none',
-                    animation: 'oblako-dl-halo 520ms var(--ease-out) 260ms',
+                    animation: 'oblako-dl-halo 520ms var(--ease-out) var(--dur-slow)',
                   }}
                 />
               </>

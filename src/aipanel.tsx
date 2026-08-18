@@ -1099,7 +1099,7 @@ function ModeToggle({ mode, onChange }: { mode: 'chat' | 'apps'; onChange: (m: '
           transform: drag === null ? 'none' : `translateX(${drag}px)`,
           // Пока тянут — никакого перехода, плашка обязана идти ровно за курсором.
           transition: drag === null
-            ? 'left 260ms cubic-bezier(0.34, 1.3, 0.64, 1), width 260ms var(--ease-out)'
+            ? 'left 260ms var(--ease-out), width 260ms var(--ease-out)'
             : 'none',
         }}
       />
@@ -1132,7 +1132,7 @@ function ModeButton({ active, onClick, icon, label, refCb }: {
         fontSize: 'var(--fs-xs)', fontWeight: 600,
         background: 'transparent', boxShadow: 'none',
         color: active ? 'var(--accent)' : 'var(--text-muted)',
-        transition: 'color 200ms var(--ease-standard)',
+        transition: 'color var(--dur-base) var(--ease-standard)',
         touchAction: 'none',
       }}
     >

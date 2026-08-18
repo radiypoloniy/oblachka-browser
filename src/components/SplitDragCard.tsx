@@ -94,7 +94,7 @@ export function SplitDragCard({ thumb, favicon, title, label, intro }: {
             position: 'absolute', inset: 0, width: '100%', height: '100%',
             objectFit: 'cover', objectPosition: 'top',
             opacity: shotShown ? 1 : 0,
-            transition: 'opacity 140ms var(--ease-out)',
+            transition: 'opacity var(--dur-fast) var(--ease-out)',
           }}
         />
       )}

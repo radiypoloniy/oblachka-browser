@@ -43,7 +43,7 @@ function rubberBand(raw: number, limit: number): number {
   return sign * (1 - 1 / ((x * STIFFNESS) / limit + 1)) * limit;
 }
 
-// Форма --ease-out (cubic-bezier(0.16,1,0.3,1)): резкий старт, тихий хвост. Точную безье в
+// Форма --ease-out (var(--ease-out)): резкий старт, тихий хвост. Точную безье в
 // JS считать незачем — четвёртая степень повторяет её с точностью до пикселя (в середине
 // пути расхождение меньше сотой доли хода).
 function easeOut(t: number): number {

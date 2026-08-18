@@ -28,7 +28,7 @@ const CSS = `
   to   { opacity: 1; transform: none; }
 }
 body.${CLASS} > * {
-  animation: ${CLASS}-in 220ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  animation: ${CLASS}-in var(--dur-base) var(--ease-out, var(--ease-out)) both;
   transform-origin: top center;
 }
 @media (prefers-reduced-motion: reduce) {

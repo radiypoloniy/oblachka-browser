@@ -332,7 +332,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                 borderRadius: 'var(--radius-card)',
                 border: '2px solid var(--accent)',
                 background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
-                transition: 'transform 120ms var(--ease-out)',
+                transition: 'transform var(--dur-fast) var(--ease-out)',
               }} />
             )}
 
@@ -510,7 +510,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                             boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             transform: stretching ? 'scale(1.15)' : undefined,
-                            transition: 'transform 120ms var(--ease-out), background 120ms var(--ease-standard)',
+                            transition: 'transform var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-standard)',
                           }}
                         >
                           <span style={{

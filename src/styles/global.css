@@ -81,7 +81,7 @@ button, input, textarea, select { font-family: inherit; }
    жеста (оверлей). Вторая, чромовая, вступает молча: она возникает уже посреди движения, когда
    курсор уходит с области контента, и повтор подъёма там читался бы как подпрыгивание на границе,
    а не как «взял в руку». */
-.oblako-drag-card-in { animation: oblako-drag-card-in 140ms var(--ease-out) both; }
+.oblako-drag-card-in { animation: oblako-drag-card-in var(--dur-fast) var(--ease-out) both; }
 @media (prefers-reduced-motion: reduce) {
   @keyframes oblako-drag-card-in { from, to { opacity: 1; transform: none; } }
   .oblako-drag-card { transform: none; }
@@ -226,8 +226,8 @@ button, input, textarea, select { font-family: inherit; }
 .oblako-newtab-in > *:nth-child(2) { animation-delay: 60ms; }
 .oblako-newtab-in > *:nth-child(3) { animation-delay: 120ms; }
 .oblako-newtab-in > *:nth-child(4) { animation-delay: 150ms; }
-.oblako-newtab-in > *:nth-child(5) { animation-delay: 180ms; }
-.oblako-newtab-in > *:nth-child(6) { animation-delay: 260ms; }
+.oblako-newtab-in > *:nth-child(5) { animation-delay: var(--dur-base); }
+.oblako-newtab-in > *:nth-child(6) { animation-delay: var(--dur-slow); }
 @media (prefers-reduced-motion: reduce) {
   .oblako-newtab-in > * { animation: none; }
 }
@@ -242,7 +242,7 @@ button, input, textarea, select { font-family: inherit; }
    держится вечно и перебивает inline-стиль, а этим же элементом двигает резинка прокрутки —
    она работала, но её сдвиг молча затирался анимацией. `backwards` красит только вход, после
    чего свойство возвращается под управление inline-стиля. */
-.oblako-section-in { animation: oblako-section-in 160ms var(--ease-out) backwards; }
+.oblako-section-in { animation: oblako-section-in var(--dur-fast) var(--ease-out) backwards; }
 
 /* Блок настроек, к которому привёл поиск (см. shared/settingsIndex.ts). Раздел мог открыться
    на середине длинной колонки, и без метки человек не понимает, что именно ему показали.
@@ -280,7 +280,7 @@ button, input, textarea, select { font-family: inherit; }
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: none; }
 }
-.oblako-mode-in { animation: oblako-mode-in 180ms var(--ease-out) both; }
+.oblako-mode-in { animation: oblako-mode-in var(--dur-base) var(--ease-out) both; }
 
 @media (prefers-reduced-motion: reduce) {
   .oblako-section-in, .oblako-tab-in, .oblako-mode-in { animation: none; }

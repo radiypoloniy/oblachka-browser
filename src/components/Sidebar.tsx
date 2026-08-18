@@ -1770,7 +1770,7 @@ export default function Sidebar({
     boxShadow: returnHint
       ? 'inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent)'
       : 'inset 0 0 0 1.5px transparent',
-    transition: 'box-shadow 140ms var(--ease-standard)',
+    transition: 'box-shadow var(--dur-fast) var(--ease-standard)',
   };
 
   // ── Свёрнутый режим: узкая полоса иконок ──

@@ -102,7 +102,7 @@ function Island({ rect, tone, label }: { rect: Rect; tone: 'page' | 'target'; la
       boxShadow: target
         ? 'inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent)'
         : 'inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent)',
-      transition: 'left 180ms var(--ease-standard), top 180ms var(--ease-standard),'
+      transition: 'left var(--dur-base) var(--ease-standard), top var(--dur-base) var(--ease-standard),'
         + ' width 180ms var(--ease-standard), height 180ms var(--ease-standard),'
         + ' background 140ms var(--ease-standard), box-shadow 140ms var(--ease-standard)',
     }}>
@@ -128,7 +128,7 @@ function FloatingWindow({ width, height }: { width: number; height: number }) {
       boxShadow: 'inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent), var(--shadow-pop)',
       // Появление и парение — двумя анимациями подряд (вторая с задержкой на длину первой):
       // обе крутят transform, и одновременно они бы спорили за одно свойство.
-      animation: 'dz-pop 180ms var(--ease-standard) both, dz-float 2.8s ease-in-out 180ms infinite',
+      animation: 'dz-pop var(--dur-base) var(--ease-standard) both, dz-float 2.8s ease-in-out var(--dur-base) infinite',
     }}>
       <Label text={ZONE_LABEL.window} />
     </div>
@@ -180,7 +180,7 @@ function DragGhost({ x, y, thumb, favicon, title, label }: {
       position: 'absolute', left: 0, top: 0,
       // Держим за верхний край по центру — так же, как схватили панель за её шапку.
       transform: `translate(${x - SPLIT_DRAG_CARD_WIDTH / 2}px, ${y + 14}px)`,
-      transition: 'transform 70ms linear',
+      transition: 'transform var(--dur-fast) linear',
     }}>
       <SplitDragCard thumb={thumb} favicon={favicon} title={title} label={label} intro />
     </div>
@@ -230,7 +230,7 @@ function DropZones() {
           boxShadow: swap.zone === 'swap'
             ? 'inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 50%, transparent)'
             : 'inset 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent)',
-          transition: 'background 140ms var(--ease-standard), box-shadow 140ms var(--ease-standard)',
+          transition: 'background var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard)',
         }} />
         {cursor && (
           <DragGhost
@@ -256,7 +256,7 @@ function DropZones() {
       && cursor.y >= 0 && cursor.y <= tab.height;
     const { pages, target } = previewSlots(tab, zone);
     return (
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', animation: 'dz-fade 160ms var(--ease-standard) both' }}>
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', animation: 'dz-fade var(--dur-fast) var(--ease-standard) both' }}>
         {/* Страницы, которые уже на экране. Их прямоугольники приезжают в те места, которые они
             займут после дропа, — это и есть превью: раскладка перестраивается на глазах, до
             того как человек отпустил. */}

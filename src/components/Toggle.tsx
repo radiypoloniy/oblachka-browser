@@ -16,7 +16,7 @@ export default function Toggle({ checked, onChange }: { checked: boolean; onChan
         // Трек в покое — recessed well (тот же токен, что и «chip track», см. colors.css::
         // --surface-sunken), не сырой --neutral-300.
         background: checked ? 'var(--accent)' : 'var(--surface-sunken)',
-        transition: 'background 220ms var(--ease-standard)',
+        transition: 'background var(--dur-base) var(--ease-standard)',
       }}
     >
       <span style={{
@@ -30,7 +30,7 @@ export default function Toggle({ checked, onChange }: { checked: boolean; onChan
         // читается как физическое действие, а не как смена картинки. Это сознательное
         // отступление от «no bounces» в токенах движения: там правило про интерфейс в целом,
         // а тумблер — единственный элемент, который человек буквально «дёргает».
-        transition: 'transform 220ms cubic-bezier(0.34, 1.4, 0.64, 1)',
+        transition: 'transform var(--dur-base) var(--ease-out)',
         // Литерал намеренно: ближайший токен --shadow-chip (0 1px 2px rgba(30,25,60,.07)) заметно
         // слабее/светлее — бегунку нужна более контрастная тень, чтобы читаться поверх заливки
         // трека (--accent/--surface-sunken), готового токена под это в системе нет.

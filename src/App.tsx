@@ -103,7 +103,7 @@ function SplitPanelHeader({ tab, active, onClose, dragging, dragHandlers }: {
           fontWeight: active ? 600 : 500,
           color: active ? 'var(--text-strong)' : 'var(--text-body)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          transition: 'color 120ms var(--ease-standard)',
+          transition: 'color var(--dur-fast) var(--ease-standard)',
         }}>{tab.title || tab.url || 'Загрузка…'}</span>
       )}
       {!dragging && (
@@ -174,7 +174,7 @@ const splitPanelStyle = (active: boolean, flex: number, empty: boolean): CSSProp
         ? 'var(--shadow-island), 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent)'
         : 'var(--shadow-island)',
     }),
-  transition: 'box-shadow 140ms var(--ease-standard), background 140ms var(--ease-standard)',
+  transition: 'box-shadow var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard)',
 });
 
 // Ниже COLLAPSE_THRESHOLD сайдбар схлопывается принудительно.

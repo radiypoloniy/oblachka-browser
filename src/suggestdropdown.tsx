@@ -200,7 +200,7 @@ const PANEL_CSS = `
    держит НАЧАЛЬНЫЙ кадр всё время задержки, чтобы плитка не мигала до своей очереди, — и
    отпускает элемент, как только волна прошла. */
 .omni-rise {
-  animation: omni-rise 240ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+  animation: omni-rise var(--dur-base) var(--ease-out, var(--ease-out)) backwards;
   animation-delay: calc(var(--i, 0) * 18ms);
 }
 
@@ -235,9 +235,9 @@ const PANEL_CSS = `
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 8px 2px 7px; border-radius: 10px; cursor: default; min-width: 0;
   background: transparent; position: relative;
-  transition: background 140ms ease;
+  transition: background var(--dur-fast) ease;
 }
-.omni-plate { transition: transform 160ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)), box-shadow 160ms ease; }
+.omni-plate { transition: transform var(--dur-fast) var(--ease-out, var(--ease-out)), box-shadow var(--dur-fast) ease; }
 .omni-tile:hover { background: color-mix(in srgb, var(--surface) 60%, transparent); }
 .omni-tile:hover .omni-plate { transform: translateY(-2px) scale(1.05); box-shadow: 0 6px 14px rgba(0,0,0,0.14); }
 .omni-tile[data-active="1"] { background: var(--accent-soft); }
@@ -252,7 +252,7 @@ const PANEL_CSS = `
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--surface); box-shadow: var(--shadow-card); color: var(--text-muted);
   border: none; padding: 0; cursor: default;
-  animation: omni-rise 160ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+  animation: omni-rise var(--dur-fast) var(--ease-out, var(--ease-out)) backwards;
 }
 .omni-badge:hover { color: var(--text-strong); }
 
@@ -274,7 +274,7 @@ const PANEL_CSS = `
   border: none; background: transparent; color: var(--text-faint);
   border-radius: 999px; padding: 3px 7px; cursor: default;
   font: inherit; font-size: var(--fs-xs); text-transform: none; letter-spacing: 0;
-  transition: background 140ms ease, color 140ms ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .omni-pencil:hover { background: color-mix(in srgb, var(--surface) 70%, transparent); color: var(--text-body); }
 .omni-pencil[data-on="1"] { background: var(--accent-soft); color: var(--accent); }
@@ -283,15 +283,15 @@ const PANEL_CSS = `
   display: flex; flex-direction: column; gap: 6px; min-width: 0;
   padding: 10px 12px; border-radius: 12px; cursor: default;
   border: 1px solid var(--glass-edge); background: var(--surface-sunken);
-  transition: background 140ms ease, transform 160ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)), box-shadow 160ms ease;
+  transition: background var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out, var(--ease-out)), box-shadow var(--dur-fast) ease;
 }
 .omni-card:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,0.10); }
 .omni-card[data-active="1"] { background: var(--accent-soft); border-color: var(--accent); }
 
-.omni-head { transition: background 140ms ease; }
+.omni-head { transition: background var(--dur-fast) ease; }
 .omni-head:hover { background: var(--surface-sunken); }
 .omni-head:hover .omni-chev { transform: translateX(2px); }
-.omni-chev { transition: transform 160ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)); }
+.omni-chev { transition: transform var(--dur-fast) var(--ease-out, var(--ease-out)); }
 
 @media (prefers-reduced-motion: reduce) {
   .omni-rise { animation: none; }
