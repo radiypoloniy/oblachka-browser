@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { DISPLAY } from '../../styles/system';
 import { Tile, TileCaption, Sparkline, TONE_GREEN, TONE_WARM, FILL_GREEN, FILL_WARM, type WidgetProps } from './widgets';
 import type { TrackedProduct } from '../../../shared/ipc';
 import type { DayDigestState } from '../../../shared/ipc';
@@ -27,7 +28,7 @@ function moonAge(now: Date): number {
   return ((days % SYNODIC_DAYS) + SYNODIC_DAYS) % SYNODIC_DAYS;
 }
 
-export function MoonWidget({ box, fill, overImage, hero }: WidgetProps) {
+export function MoonWidget({ box, fill, overImage, hero: isHero }: WidgetProps) {
   const [now, setNow] = useState(() => new Date());
   // Раз в час: фаза за минуту не меняется, а таймер на секундах жёг бы кадры впустую.
   useEffect(() => {
@@ -42,7 +43,7 @@ export function MoonWidget({ box, fill, overImage, hero }: WidgetProps) {
   const disc = Math.max(48, Math.min(box.width - 44, box.height - 84));
 
   return (
-    <Tile surface toned overImage={overImage} hero={hero} fill={fill}>
+    <Tile surface toned overImage={overImage} hero={isHero} fill={fill}>
       <TileCaption>Луна</TileCaption>
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <MoonDisc frac={frac} size={disc} />
@@ -86,7 +87,7 @@ function MoonDisc({ frac, size }: { frac: number; size: number }) {
 // и двумя плитками этот ответ пришлось бы собирать глазами. По той же причине в тулбаре они уже
 // объединены в поповер «Защита» (см. Toolbar.tsx): разводить их на столе значило бы спорить с
 // решением, принятым в самом браузере.
-export function ShieldWidget({ box, fill, overImage, hero }: WidgetProps) {
+export function ShieldWidget({ box, fill, overImage, hero: isHero }: WidgetProps) {
   const [ad, setAd] = useState<{ enabled: boolean; blocked: number } | null>(null);
   const [vpnOn, setVpnOn] = useState(false);
 
@@ -109,14 +110,15 @@ export function ShieldWidget({ box, fill, overImage, hero }: WidgetProps) {
 
   if (compact) {
     return (
-      <Tile surface toned overImage={overImage} hero={hero} fill={fill} padding={12}>
+      <Tile surface toned overImage={overImage} hero={isHero} fill={fill} padding={12}>
         {/* Заголовок остаётся и здесь: без него «0» рядом с двумя точками не отвечает, чего
             именно ноль. А вот подпись «заблокировано за сеанс» в эту высоту уже не влезает —
             она ушла в подсказку курсором на самом числе. */}
         <TileCaption>Защита</TileCaption>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minHeight: 0, minWidth: 0 }}>
           <div title="Заблокировано за сеанс" style={{
-            fontSize: big, fontWeight: 600, lineHeight: 1, fontVariantNumeric: 'tabular-nums', flex: 'none',
+            ...DISPLAY, fontSize: Math.round(big * (isHero ? 1.28 : 1)), fontWeight: isHero ? 700 : 600,
+            lineHeight: 1, flex: 'none',
           }}>
             {ad ? ad.blocked.toLocaleString('ru') : '—'}
           </div>
@@ -133,10 +135,10 @@ export function ShieldWidget({ box, fill, overImage, hero }: WidgetProps) {
   }
 
   return (
-    <Tile surface toned overImage={overImage} hero={hero} fill={fill}>
+    <Tile surface toned overImage={overImage} hero={isHero} fill={fill}>
       <TileCaption>Защита</TileCaption>
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <div style={{ fontSize: big, fontWeight: 600, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ ...DISPLAY, fontSize: Math.round(big * (isHero ? 1.28 : 1)), fontWeight: isHero ? 700 : 600, lineHeight: 1.05 }}>
           {ad ? ad.blocked.toLocaleString('ru') : '—'}
         </div>
         {/* «за сеанс» — не мелочь: счётчик обнуляется при перезапуске (см. AdBlockState), и без
@@ -180,7 +182,7 @@ function StatusDot({ on, label }: { on: boolean; label: string }) {
 // ⚠️ Виджет НЕ показывает список посещённых страниц. Он для того, чтобы вспомнить, чем был занят
 // день, а не чтобы выставить историю на всеобщее обозрение поверх обоев: экран новой вкладки
 // видят и через плечо, и на демонстрации экрана.
-export function DigestWidget({ box, fill, overImage, hero }: WidgetProps) {
+export function DigestWidget({ box, fill, overImage, hero: isHero }: WidgetProps) {
   const [state, setState] = useState<DayDigestState | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -203,7 +205,7 @@ export function DigestWidget({ box, fill, overImage, hero }: WidgetProps) {
   const builtAt = state?.state === 'ready' ? new Date(state.digest.builtAt) : null;
 
   return (
-    <Tile surface toned overImage={overImage} hero={hero} fill={fill}>
+    <Tile surface toned overImage={overImage} hero={isHero} fill={fill}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, flex: 'none' }}>
         <TileCaption>Чем занимался</TileCaption>
         {builtAt && (
@@ -255,7 +257,7 @@ export function DigestWidget({ box, fill, overImage, hero }: WidgetProps) {
 // ⚠️ Виджет только ПОКАЗЫВАЕТ. Управление (пауза, отмена, открыть) осталось в поповере у кнопки
 // тулбара и в разделе: третья копия той логики разошлась бы с двумя первыми при первой же
 // правке. А «идёт ли что-то прямо сейчас» — вопрос, на который стол отвечает уместно.
-export function DownloadsWidget({ box, fill, overImage, hero }: WidgetProps) {
+export function DownloadsWidget({ box, fill, overImage, hero: isHero }: WidgetProps) {
   const [items, setItems] = useState<{ id: string; name: string; done: boolean; pct: number }[]>([]);
 
   useEffect(() => window.oblako.onDownloadsChanged((list) => {
@@ -271,7 +273,7 @@ export function DownloadsWidget({ box, fill, overImage, hero }: WidgetProps) {
   const shown = items.slice(0, box.height > 150 ? 4 : 2);
 
   return (
-    <Tile surface toned overImage={overImage} hero={hero} fill={fill}>
+    <Tile surface toned overImage={overImage} hero={isHero} fill={fill}>
       <TileCaption>Загрузки</TileCaption>
       {items.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.6 }}>
@@ -378,7 +380,7 @@ export function TrackingWidget({ box, fill, onActivate, overImage, hero: isHero 
       <TileCaption>Отслеживание</TileCaption>
 
       <div style={{ flex: 'none', display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ fontSize: tight ? 'var(--fs-lg)' : 'var(--fs-xl)', fontWeight: 700, lineHeight: 1.05 }}>
+        <span style={{ ...DISPLAY, fontSize: tight ? 18 : 22, fontWeight: isHero ? 700 : 600, lineHeight: 1.05 }}>
           {money(last, hero.currency)}
         </span>
         {diff !== 0 && (
@@ -421,7 +423,7 @@ export function TrackingWidget({ box, fill, onActivate, overImage, hero: isHero 
 // footprint крошечный: один запрос на год, и наружу уходит только код страны — ни координат,
 // ни адресов, ни чего-либо о человеке. Кэш в main держит год целиком, поэтому за сеанс запрос
 // уходит максимум один раз.
-export function HolidayWidget({ box, fill, overImage, hero }: WidgetProps) {
+export function HolidayWidget({ box, fill, overImage, hero: isHero }: WidgetProps) {
   const [data, setData] = useState<{ name: string; days: number } | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -438,7 +440,7 @@ export function HolidayWidget({ box, fill, overImage, hero }: WidgetProps) {
   const big = Math.round(Math.min(box.height * 0.32, 52));
 
   return (
-    <Tile surface toned overImage={overImage} hero={hero} fill={fill}>
+    <Tile surface toned overImage={overImage} hero={isHero} fill={fill}>
       <TileCaption>Ближайший праздник</TileCaption>
       {failed || !data ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.6 }}>
@@ -446,7 +448,7 @@ export function HolidayWidget({ box, fill, overImage, hero }: WidgetProps) {
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <div style={{ fontSize: big, fontWeight: 600, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' }}>
+          <div style={{ ...DISPLAY, fontSize: Math.round(big * (isHero ? 1.28 : 1)), fontWeight: isHero ? 700 : 600, lineHeight: 1.05 }}>
             {data.days === 0 ? 'Сегодня' : data.days}
           </div>
           {data.days > 0 && (

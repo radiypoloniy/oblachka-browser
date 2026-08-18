@@ -3,7 +3,7 @@ import type React from 'react';
 import { Check, Plus, X } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import type { CellSize } from '../../newtab/desktop';
-import { card, cardGlass, grain, RADIUS, DISPLAY, CARD_COLOR_ENABLED, CARD_INK, altitude, ALTITUDE, HERO_ENABLED } from '../../styles/system';
+import { card, cardGlass, grain, RADIUS, DISPLAY, CAPS, CARD_COLOR_ENABLED, CARD_INK, altitude, ALTITUDE, HERO_ENABLED } from '../../styles/system';
 import { loadNewTabSettings } from '../../newtab/settings';
 import CryptoIcon from '../CryptoIcon';
 import { siteTint } from './siteTint';
@@ -161,11 +161,30 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, overI
   );
 }
 
+// ⚠️ Подпись плитки — МОНОШИРИННАЯ капса, тот же приём, что в настройках (CAPS). Это половина
+// «нового шрифта»: пока подписи были обычным гротеском, плитки визуально жили в старой системе,
+// сколько бы материал ни меняли (живая жалоба: «прозрачность сделал, а типографику не тронул»).
 export function TileCaption({ children }: { children: React.ReactNode }) {
+  return <div style={{ ...CAPS, color: 'inherit', opacity: 0.62, flex: 'none' }}>{children}</div>;
+}
+
+/**
+ * Ключевое число плитки — вторая половина «нового шрифта».
+ *
+ * ⚠️ Дисплейная гарнитура + табличные цифры, а размер приходит снаружи: у каждой плитки он
+ * считается от её геометрии, и общего кегля тут быть не может. У ГЕРОЯ число крупнее в
+ * HERO_SCALE раз — именно это и делает геройство видимым на любом виджете, а не только на погоде.
+ */
+const HERO_SCALE = 1.28;
+export function TileValue({ children, size, hero, style }: {
+  children: React.ReactNode; size: number; hero?: boolean; style?: React.CSSProperties;
+}) {
   return (
     <div style={{
-      fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-      textTransform: 'uppercase', opacity: 0.75, flex: 'none',
+      ...DISPLAY,
+      fontSize: Math.round(size * (hero ? HERO_SCALE : 1)),
+      fontWeight: hero ? 700 : 600,
+      ...style,
     }}>{children}</div>
   );
 }
@@ -260,10 +279,7 @@ export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
           alignItems: box.width > box.height * 1.6 ? 'center' : 'flex-start',
           textAlign: box.width > box.height * 1.6 ? 'center' : 'left',
         }}>
-          <div style={{
-            fontSize: fs, fontWeight: 250, lineHeight: 1,
-            fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em',
-          }}>{time}</div>
+          <TileValue size={fs} hero={hero}>{time}</TileValue>
           {opts.date && !tiny && (
             <div style={{ marginTop: 10, fontSize: Math.max(13, Math.round(fs * 0.2)), opacity: 0.8 }}>
               {dayMonth}
@@ -601,11 +617,7 @@ export function WeatherWidget({ size, box, city, hero }: WidgetProps) {
         {/* ⚠️ У ГЕРОЯ число набирается дисплейной гарнитурой и плотнее: он на экране один, и
             смотрят на него издалека. У обычной плитки остаётся тонкое начертание — иначе стол
             превращается в набор кричащих цифр. */}
-        <span style={hero
-          ? { ...DISPLAY, fontSize: Math.round(tempSize * 1.1), fontWeight: 600 }
-          : { fontSize: tempSize, fontWeight: 250, lineHeight: 1, letterSpacing: '-0.03em' }}>
-          {data ? `${data.t}°` : '—'}
-        </span>
+        <TileValue size={tempSize} hero={hero}>{data ? `${data.t}°` : '—'}</TileValue>
         <WeatherIcon code={data?.code ?? 0} day={data?.isDay ?? true} size={Math.round(tempSize * 1.05)} />
       </div>
 
@@ -761,9 +773,9 @@ export function RatesWidget({ size, box, fill, overImage, hero }: WidgetProps) {
               {/* ⚠️ Дисплейной гарнитурой — это ЧИСЛО, ради которого виджет и существует: на него
                   смотрят издалека, а не читают. В интерфейс эта гарнитура не заходит (см. DISPLAY
                   в styles/system.ts). */}
-              <span style={{ ...DISPLAY, fontSize: rowFs, lineHeight: 1.15, color: CARD_INK }}>
+              <TileValue size={rowFs} hero={hero} style={{ color: CARD_INK, lineHeight: 1.15 }}>
                 {now !== undefined ? now.toFixed(2) : '—'}
-              </span>
+              </TileValue>
               {delta !== null && (
                 <span style={{
                   fontSize: 'var(--fs-xs)', fontWeight: 600,
@@ -866,9 +878,9 @@ export function CryptoWidget({ size, box, fill, overImage, hero }: WidgetProps) 
                   в Unicode нет вовсе и там оставался голый тикер. Выравнивание строки при
                   этом сменилось с baseline на center: у картинки базовой линии нет. */}
               <CryptoIcon code={c} size={Math.round(rowFs * 0.86)} />
-              <span style={{ ...DISPLAY, fontSize: rowFs, lineHeight: 1.15, color: CARD_INK }}>
+              <TileValue size={rowFs} hero={hero} style={{ color: CARD_INK, lineHeight: 1.15 }}>
                 {now !== undefined ? formatRub(now) : '—'}
-              </span>
+              </TileValue>
               {delta !== undefined && (
                 <span style={{
                   fontSize: 'var(--fs-xs)', fontWeight: 600,
