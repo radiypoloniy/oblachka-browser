@@ -38,21 +38,49 @@
    цветной подсветки фона: у окон macOS её нет, поэтому --canvas здесь
    просто заливка, а не радиальный градиент. */
 [data-palette="graphite"]:not([data-theme="dark"]) {
+  /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
+  --n1: #FEFEFF;
+  --n2: #F8F8F8;
+  --n3: #EFEFF0;
+  --n4: #E4E5E6;
+  --n5: #DDDEE0;
+  --n6: #D4D5D9;
+  --n7: #C1C3C8;
+  --n8: #A1A4AB;
+  --n9: #747981;
+  --n10: #5C5F65;
+  --n11: #414348;
+  --n12: #282A2C;
+
   /* Акцент палитры: белый текст 5,06 · к земле 4,53 (см. разбор у --accent в colors.css). */
   --accent:          #3F6FB5;
   /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #5B6B7A;
-  --app-bg:          #E4E5E7;
+  --app-bg:          var(--n4);
   --canvas:          var(--app-bg);
-  --surface:         #FFFFFF;
-  --surface-island:  #FFFFFF;
-  --surface-solid:   #FFFFFF;
-  --surface-sunken:  #DFDFDF; /* колодец темнее фона окна — правило светлой темы, см. colors.css */
+  --surface:         var(--n1);
+  --surface-island:  var(--n1);
+  --surface-solid:   var(--n1);
+  --surface-sunken:  var(--n5); /* колодец темнее фона окна — правило светлой темы, см. colors.css */
   --divider:         rgba(0,0,0,0.12);
   --divider-strong:  rgba(0,0,0,0.20);
 }
 [data-palette="graphite"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
+  --n1: #121212;
+  --n2: #1A1A1A;
+  --n3: #222222;
+  --n4: #2B2B2B;
+  --n5: #373737;
+  --n6: #464646;
+  --n7: #595959;
+  --n8: #787878;
+  --n9: #919191;
+  --n10: #B0B0B0;
+  --n11: #D9D9D9;
+  --n12: #FFFFFF;
+
   /* Акцент палитры, тёмная: текст на нём 4,85 · к острову 4,07. Текст тёмный — см. --on-accent.
      ⚠️ Поднят с #5582C4: тот давал 4,27 при пороге 4,5, то есть тёмный текст на кнопке не
      дотягивал — а в комментарии стояло 4,79, посчитанное не по той паре. Меряет contrast-check. */
@@ -60,18 +88,18 @@
   /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #7C8FA3;
-  --app-bg:          #1E1E1E; /* macOS controlBackground/textBackground dark */
+  --app-bg:          var(--n1); /* macOS controlBackground/textBackground dark */
   --canvas:          var(--app-bg);
   /* Остров поднят под порог различимости плоскостей (см. разбор у --surface в theme-dark.css). */
-  --surface:         #303030; /* к земле 1,263 */
+  --surface:         var(--n4); /* к земле 1,263 */
   --surface-island:  rgba(48,48,48,0.78);
-  --surface-solid:   #303030;
-  --surface-sunken:  #3D3D3D; /* в тёмной теме колодец СВЕТЛЕЕ острова, как заливки полей у Apple */
+  --surface-solid:   var(--n4);
+  --surface-sunken:  var(--n5); /* в тёмной теме колодец СВЕТЛЕЕ острова, как заливки полей у Apple */
   /* Земля здесь светлее базовой тёмной (#1E1E1E против #121214), поэтому обе приглушённые
      ступени подняты: базовые давали на «карточке+» 4,41 (muted) при пороге 4,5.
      ⚠️ Тон плоский, без синевы базовых чернил, — у настольной темы Apple нейтраль без уклона. */
-  --text-muted:      #B6B6B6;
-  --text-faint:      #969696;
+  --text-muted:      var(--n10);
+  --text-faint:      var(--n9);
 }
 
 /* ── Сланец (Nord) ────────────────────────────────────────────────────
@@ -82,30 +110,58 @@
    цвет комментариев в коде, на светлом острове он читается, на тёмном
    пропадает). Эти две ступени добраны в том же семействе по контрасту. */
 [data-palette="slate"]:not([data-theme="dark"]) {
+  /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
+  --n1: #FEFEFF;
+  --n2: #F7F8F8;
+  --n3: #EEEFF1;
+  --n4: #E2E4E8;
+  --n5: #DADEE4;
+  --n6: #CFD4DD;
+  --n7: #BAC2CE;
+  --n8: #97A2B4;
+  --n9: #6A7991;
+  --n10: #545F71;
+  --n11: #3C434F;
+  --n12: #252930;
+
   /* Акцент палитры: белый текст 5,49 · к земле 4,92 (см. разбор у --accent в colors.css). */
   --accent:          #4C6B92;
   /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #5E81AC;
-  --app-bg:          #DBE1EB; /* nord5 */
+  --app-bg:          var(--n4); /* nord5 */
   /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
      ровно под сайдбар и читался боковой плашкой. */
   --canvas:          var(--app-bg);
-  --surface:         #FFFFFF;
-  --surface-island:  #FFFFFF;
-  --surface-solid:   #FFFFFF;
-  --surface-sunken:  #D8DEE9; /* nord4 */
+  --surface:         var(--n1);
+  --surface-island:  var(--n1);
+  --surface-solid:   var(--n1);
+  --surface-sunken:  var(--n5); /* nord4 */
   --divider:         rgba(46,52,64,0.14);
   --divider-strong:  rgba(46,52,64,0.22);
-  --text-strong:     #2E3440; /* nord0 */
-  --text-body:       #3B4252; /* nord1 */
+  --text-strong:     var(--n12); /* nord0 */
+  --text-body:       var(--n11); /* nord1 */
   /* Приглушённые ступени — по общему правилу чернил (см. colors.css): тон земли, зажатая
      насыщенность, светлота под контраст на колодце. nord3 (#4C566A) в роли muted работал на
      белом острове, но на земле Nord проваливался — у Nord просто нет ступеней под наши роли. */
-  --text-muted:      #525D71;
-  --text-faint:      #69778F;
+  --text-muted:      var(--n10);
+  --text-faint:      var(--n9);
 }
 [data-palette="slate"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
+  --n1: #111213;
+  --n2: #18191C;
+  --n3: #1E2125;
+  --n4: #262930;
+  --n5: #2F343E;
+  --n6: #3B4252;
+  --n7: #4B5468;
+  --n8: #65728A;
+  --n9: #8B95A8;
+  --n10: #AEB5C2;
+  --n11: #DBDEE3;
+  --n12: #FFFFFF;
+
   /* Акцент палитры, тёмная: текст на нём 4,87 · к острову 3,92. Текст тёмный — см. --on-accent.
      ⚠️ Поднят с #6888B0 — самая грубая дыра из найденных прогоном: к острову Nord (#3B4252) тот
      давал 2,75, то есть кнопка почти не отделялась от панели, а текст на ней — 3,41. */
@@ -113,23 +169,23 @@
   /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #88C0D0;
-  --app-bg:          #2E3440; /* nord0 */
+  --app-bg:          var(--n1); /* nord0 */
   /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
      ровно под сайдбар и читался боковой плашкой. */
   --canvas:          var(--app-bg);
   /* nord1 поднят на волос под порог различимости плоскостей (см. --surface в theme-dark.css). */
-  --surface:         #3C4353; /* к земле 1,261 */
+  --surface:         var(--n4); /* к земле 1,261 */
   --surface-island:  rgba(60,67,83,0.78);
-  --surface-solid:   #3C4353;
-  --surface-sunken:  #474F63; /* nord2, поднят вместе с островом — колодец обязан быть светлее */
+  --surface-solid:   var(--n4);
+  --surface-sunken:  var(--n5); /* nord2, поднят вместе с островом — колодец обязан быть светлее */
   --divider:         rgba(216,222,233,0.16);
   --divider-strong:  rgba(216,222,233,0.26);
-  --text-strong:     #ECEFF4; /* nord6 */
-  --text-body:       #E5E9F0; /* nord5 */
+  --text-strong:     var(--n12); /* nord6 */
+  --text-body:       var(--n11); /* nord5 */
   /* Земля Nord светлее базовой тёмной, поэтому обе приглушённые ступени тоже светлее базовых.
      ⚠️ muted поднят: на «карточке+» (остров + доля акцента) прежний #B4BECE давал 4,47 при пороге 4,5. */
-  --text-muted:      #D0D5DD;
-  --text-faint:      #A9B1BF;
+  --text-muted:      var(--n10);
+  --text-faint:      var(--n9);
 }
 
 /* ── Бумага (тёплая) ──────────────────────────────────────────────────
@@ -143,51 +199,79 @@
    заметный синий отлив — тот же эффект, из-за которого в тёмной теме
    когда-то убрали пурпурные поверхности. */
 [data-palette="paper"]:not([data-theme="dark"]) {
+  /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
+  --n1: #FFFFFE;
+  --n2: #F8F8F7;
+  --n3: #F1F0EE;
+  --n4: #E8E6E2;
+  --n5: #E4E1DA;
+  --n6: #DDD9CF;
+  --n7: #CEC8BA;
+  --n8: #B4AB97;
+  --n9: #80765E;
+  --n10: #655C4B;
+  --n11: #474136;
+  --n12: #2B2721;
+
   /* Акцент палитры: белый текст 6,10 · к земле 5,47 (см. разбор у --accent в colors.css). */
   --accent:          #94502A;
   /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #B08968;
-  --app-bg:          #E8E2D5;
+  --app-bg:          var(--n4);
   /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
      ровно под сайдбар и читался боковой плашкой. */
   --canvas:          var(--app-bg);
-  --surface:         #FDFBF6;
-  --surface-island:  #FDFBF6;
-  --surface-solid:   #FDFBF6;
-  --surface-sunken:  #E6E0D3;
+  --surface:         var(--n1);
+  --surface-island:  var(--n1);
+  --surface-solid:   var(--n1);
+  --surface-sunken:  var(--n5);
   --surface-hover:   rgba(60,45,20,0.05);
   --surface-active:  rgba(60,45,20,0.09);
   --divider:         rgba(60,50,35,0.14);
   --divider-strong:  rgba(60,50,35,0.22);
-  --text-strong:     #1F1B15;
-  --text-body:       #3A332A;
-  --text-muted:      #665D4A;
-  --text-faint:      #827760; /* прежний #8B8173 давал 2,91 в колодце при пороге 3,0 */
+  --text-strong:     var(--n12);
+  --text-body:       var(--n11);
+  --text-muted:      var(--n10);
+  --text-faint:      var(--n9); /* прежний #8B8173 давал 2,91 в колодце при пороге 3,0 */
 }
 [data-palette="paper"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
+  --n1: #131311;
+  --n2: #1C1A18;
+  --n3: #25221F;
+  --n4: #2F2C26;
+  --n5: #3D3830;
+  --n6: #50483C;
+  --n7: #665C4D;
+  --n8: #887B68;
+  --n9: #9D917F;
+  --n10: #B9B2A6;
+  --n11: #DEDBD6;
+  --n12: #FFFFFF;
+
   /* Акцент палитры, тёмная: к земле 5,75. Текст на нём тёмный — см. --on-accent. */
   --accent:          #CC7A4C;
   /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #C9A227;
-  --app-bg:          #14120F;
+  --app-bg:          var(--n1);
   /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
      ровно под сайдбар и читался боковой плашкой. */
   --canvas:          var(--app-bg);
   /* Stone 900 был самой сливающейся парой из всех шести: 1,069 к земле (см. theme-dark.css). */
-  --surface:         #2B2623; /* к земле 1,250 */
+  --surface:         var(--n4); /* к земле 1,250 */
   --surface-island:  rgba(43,38,35,0.78);
-  --surface-solid:   #2B2623;
-  --surface-sunken:  #37312D; /* светлее острова */
+  --surface-solid:   var(--n4);
+  --surface-sunken:  var(--n5); /* светлее острова */
   --surface-hover:   rgba(255,246,230,0.10);
   --surface-active:  rgba(255,246,230,0.16);
   --divider:         rgba(245,240,230,0.14);
   --divider-strong:  rgba(245,240,230,0.22);
-  --text-strong:     #FAF7F2;
-  --text-body:       #E9E3D9;
-  --text-muted:      #B6AD9E;
-  --text-faint:      #9A8D78;
+  --text-strong:     var(--n12);
+  --text-body:       var(--n11);
+  --text-muted:      var(--n10);
+  --text-faint:      var(--n9);
 }
 
 /* ── Мята и Небо ──────────────────────────────────────────────────────
@@ -205,83 +289,139 @@
    ровно то, из-за чего пришлось разбирать подкраску плашек в сплошных
    панелях (см. untintedPlateVars в src/styles/island.ts). */
 [data-palette="mint"]:not([data-theme="dark"]) {
+  /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
+  --n1: #FEFFFE;
+  --n2: #F7F8F8;
+  --n3: #EEF1EF;
+  --n4: #E2E8E4;
+  --n5: #DAE4DD;
+  --n6: #CFDDD4;
+  --n7: #BACEC1;
+  --n8: #97B4A1;
+  --n9: #5E7F69;
+  --n10: #4A6353;
+  --n11: #36463B;
+  --n12: #212B25;
+
   /* Акцент палитры: белый текст 5,43 · к земле 4,86 (см. разбор у --accent в colors.css). */
   --accent:          #16794B;
   /* Подкраска сайдбара (см. Sidebar.tsx). Свой оттенок у каждой палитры: акцент один
      на всё приложение, и построенная на нём подкраска не менялась бы между палитрами. */
   --sidebar-tint:    #34A853;
-  --app-bg:          #DEEAE2;
+  --app-bg:          var(--n4);
   /* Земля плоская — см. разбор у --canvas в colors.css: блик в левом верхнем углу ложился
      ровно под сайдбар и читался боковой плашкой. */
   --canvas:          var(--app-bg);
-  --surface:         #FFFFFF;
-  --surface-island:  #FFFFFF;
-  --surface-solid:   #FFFFFF;
-  --surface-sunken:  #D8E8DD;
+  --surface:         var(--n1);
+  --surface-island:  var(--n1);
+  --surface-solid:   var(--n1);
+  --surface-sunken:  var(--n5);
   --surface-hover:   rgba(20,60,35,0.05);
   --surface-active:  rgba(20,60,35,0.09);
   --divider:         rgba(20,60,35,0.13);
   --divider-strong:  rgba(20,60,35,0.21);
-  --text-strong:     #16261C;
-  --text-body:       #2C3A31;
-  --text-muted:      #4B6754;
-  --text-faint:      #60826C; /* прежний #7D8B82 давал 2,80 в колодце при пороге 3,0 */
+  --text-strong:     var(--n12);
+  --text-body:       var(--n11);
+  --text-muted:      var(--n10);
+  --text-faint:      var(--n9); /* прежний #7D8B82 давал 2,80 в колодце при пороге 3,0 */
 }
 [data-palette="mint"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
+  --n1: #111312;
+  --n2: #181C1A;
+  --n3: #1E2522;
+  --n4: #26302B;
+  --n5: #2F3E37;
+  --n6: #3B5146;
+  --n7: #4B6759;
+  --n8: #668A78;
+  --n9: #8BA799;
+  --n10: #B5C7BE;
+  --n11: #EBEFED;
+  --n12: #FFFFFF;
+
   /* Акцент палитры, тёмная: к земле 10,56. Текст на нём тёмный — см. --on-accent. */
   --accent:          #3DDC92;
   --sidebar-tint:    #81C995;
-  --app-bg:          #101613;
+  --app-bg:          var(--n1);
   --canvas:          var(--app-bg);
-  --surface:         #212C25; /* к земле 1,266 — см. разбор у --surface в theme-dark.css */
+  --surface:         var(--n4); /* к земле 1,266 — см. разбор у --surface в theme-dark.css */
   --surface-island:  rgba(33,44,37,0.78);
-  --surface-solid:   #212C25;
-  --surface-sunken:  #2C3A31; /* в тёмной теме колодец СВЕТЛЕЕ острова */
+  --surface-solid:   var(--n4);
+  --surface-sunken:  var(--n5); /* в тёмной теме колодец СВЕТЛЕЕ острова */
   --surface-hover:   rgba(230,255,240,0.10);
   --surface-active:  rgba(230,255,240,0.16);
   --divider:         rgba(225,245,233,0.14);
   --divider-strong:  rgba(225,245,233,0.22);
-  --text-strong:     #F2FAF5;
-  --text-body:       #DDE9E1;
-  --text-muted:      #AFC4B9;
-  --text-faint:      #85A595;
+  --text-strong:     var(--n12);
+  --text-body:       var(--n11);
+  --text-muted:      var(--n10);
+  --text-faint:      var(--n9);
 }
 
 [data-palette="sky"]:not([data-theme="dark"]) {
+  /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
+  --n1: #FEFEFF;
+  --n2: #F7F8F8;
+  --n3: #EEEFF1;
+  --n4: #E2E4E8;
+  --n5: #DADDE4;
+  --n6: #CFD4DD;
+  --n7: #BAC1CE;
+  --n8: #97A1B4;
+  --n9: #6A7891;
+  --n10: #545E71;
+  --n11: #3C424F;
+  --n12: #252830;
+
   /* Акцент палитры: белый текст 5,43 · к земле 4,87 (см. разбор у --accent в colors.css). */
   --accent:          #1667CE;
   --sidebar-tint:    #4285F4;
-  --app-bg:          #DCE5F6;
+  --app-bg:          var(--n4);
   --canvas:          var(--app-bg);
-  --surface:         #FFFFFF;
-  --surface-island:  #FFFFFF;
-  --surface-solid:   #FFFFFF;
-  --surface-sunken:  #D7E1F5;
+  --surface:         var(--n1);
+  --surface-island:  var(--n1);
+  --surface-solid:   var(--n1);
+  --surface-sunken:  var(--n5);
   --surface-hover:   rgba(20,40,80,0.05);
   --surface-active:  rgba(20,40,80,0.09);
   --divider:         rgba(20,40,80,0.13);
   --divider-strong:  rgba(20,40,80,0.21);
-  --text-strong:     #16203A;
-  --text-body:       #2C3550;
-  --text-muted:      #535F73;
-  --text-faint:      #6B7991; /* прежний #7D869C давал 2,77 в колодце при пороге 3,0 */
+  --text-strong:     var(--n12);
+  --text-body:       var(--n11);
+  --text-muted:      var(--n10);
+  --text-faint:      var(--n9); /* прежний #7D869C давал 2,77 в колодце при пороге 3,0 */
 }
 [data-palette="sky"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
+  --n1: #111213;
+  --n2: #181A1C;
+  --n3: #1E2125;
+  --n4: #252A30;
+  --n5: #2F353F;
+  --n6: #3A4452;
+  --n7: #4A5668;
+  --n8: #64748B;
+  --n9: #7F8DA1;
+  --n10: #A2ABB9;
+  --n11: #CED2DA;
+  --n12: #FBFCFC;
+
   /* Акцент палитры, тёмная: к земле 4,85. Текст на нём тёмный — см. --on-accent. */
   --accent:          #3081E9;
   --sidebar-tint:    #8AB4F8;
-  --app-bg:          #0F1319;
+  --app-bg:          var(--n1);
   --canvas:          var(--app-bg);
-  --surface:         #212833; /* к земле 1,256 — см. разбор у --surface в theme-dark.css */
+  --surface:         var(--n4); /* к земле 1,256 — см. разбор у --surface в theme-dark.css */
   --surface-island:  rgba(33,40,51,0.78);
-  --surface-solid:   #212833;
-  --surface-sunken:  #2C3441;
+  --surface-solid:   var(--n4);
+  --surface-sunken:  var(--n5);
   --surface-hover:   rgba(232,240,255,0.10);
   --surface-active:  rgba(232,240,255,0.16);
   --divider:         rgba(226,236,252,0.14);
   --divider-strong:  rgba(226,236,252,0.22);
-  --text-strong:     #F3F7FE;
-  --text-body:       #DEE5F0;
-  --text-muted:      #A1ABBB;
-  --text-faint:      #7F8DA1;
+  --text-strong:     var(--n12);
+  --text-body:       var(--n11);
+  --text-muted:      var(--n10);
+  --text-faint:      var(--n9);
 }
