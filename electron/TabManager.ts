@@ -1434,6 +1434,16 @@ export class TabManager {
     // AutofillFieldMapper.ts). ⚠️ Origin берём из wc.getURL(), а НЕ из payload: адрес, присланный
     // самой страницей, — это то, что она захотела сообщить, а не то, где она открыта, и по нему
     // страница могла бы прочитать чужой кэш полей.
+    //
+    // ⚠️ removeHandler ПЕРЕД handle — единственный handle во всей проводке, и потому единственное
+    // место, которое ломалось при передаче вкладки другому окну. Слушатели (.on) терпят второй
+    // экземпляр и разбираются через mine(), а вот второй handle того же канала на том же
+    // webContents Electron ЗАПРЕЩАЕТ и БРОСАЕТ. Бросок прилетал в середину adoptTab: вкладка уже
+    // лежала в дереве приёмника, но activate() до неё не доходил (вкладка видна в сайдбаре,
+    // страница не показана — «нужен клик по сайдбару»), а исключение уносило и хвост
+    // moveTabToExistingWindow, где закрывается опустевшее окно-источник (пустое лёгкое окно
+    // оставалось на экране). Обработчик всегда один и принадлежит НЫНЕШНЕМУ владельцу вкладки.
+    wc.ipc.removeHandler(IPC.AUTOFILL_MAP_FIELDS);
     wc.ipc.handle(IPC.AUTOFILL_MAP_FIELDS, async (_e, payload: { fields?: unknown }) => {
       if (!mine()) return {};
       try {
@@ -2258,7 +2268,16 @@ export class TabManager {
     if (d.incognito) this.#pendingIncognitoClear = true;
     this.tabMap.set(id, tab);
     this.nodes.push({ type: 'single', tabId: id });
-    this.wirePageEvents(id, d.view);
+    // ⚠️ Проводка — под catch, и это не глушение ошибки, а порядок восстановления: вкладка УЖЕ в
+    // дереве этого окна, и не активировать её после этого — худший из исходов (человек видит её
+    // в сайдбаре, а на экране пусто, см. разбор у removeHandler в wirePageEvents). Сбой проводки
+    // стоит части возможностей одной вкладки и громко пишется в лог; пропущенный activate стоит
+    // видимости страницы и уносит с собой хвост вызывающей стороны.
+    try {
+      this.wirePageEvents(id, d.view);
+    } catch (e) {
+      console.error('[TabMgr] проводка принятой вкладки не удалась:', (e as Error).message);
+    }
     this.activate(id); // activate сам добавит вью в окно и выставит bounds
     return id;
   }
