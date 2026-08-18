@@ -387,7 +387,9 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                     // ⚠️ В режиме правки обработчик НЕ передаём вовсе: там плитку таскают, и клик
                     // по ней означает «взял», а не «открой».
                     onActivate={editing ? undefined : WIDGET_ACTIVATE[item.widget ?? '']}
-                    fill={item.widget === 'weather' ? undefined : item.fill} />
+                    fill={item.widget === 'weather' ? undefined : item.fill}
+                    // Над фотографией плитки идут стеклом, над ровным фоном — сплошной картой.
+                    overImage={settings.background.kind === 'photo' || settings.background.kind === 'custom'} />
                 ) : null;
               })() : item.kind === 'app' ? (() => {
                 const app = appById.get(item.appId ?? '');
@@ -613,20 +615,27 @@ function SearchBar({ onSubmit }: { onSubmit: (v: string) => void }) {
 function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoUrl: string | null }) {
   const base: React.CSSProperties = {
     position: 'absolute', inset: 0, zIndex: 0,
-    backgroundSize: 'cover', backgroundPosition: 'center',
+    backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
     filter: bg.blur > 0 ? `blur(${bg.blur}px)` : undefined,
     transform: bg.blur > 0 ? 'scale(1.06)' : undefined, // прячем размытые края
   };
+  // ⚠️ ТОЛЬКО ДЛИННЫЕ СВОЙСТВА, никакого шортката `background`. Это не стиль ради стиля, а
+  // починенный баг: пресеты ставились шорткатом, а фото — через backgroundImage. При переключении
+  // на фото React сначала обнуляет пропавший шорткат (`style.background = ''`), а он сбрасывает
+  // ВСЮ группу, включая backgroundSize; сам же backgroundSize в новом объекте не изменился
+  // ('cover' → 'cover'), и React его не переустанавливал. Итог: фото рисовалось в натуральную
+  // величину с repeat — на широком окне картинка размножалась плитками (живая жалоба «картинка
+  // сломана»). Замер через CDP: computed background-size: auto, background-repeat: repeat.
   const style: React.CSSProperties =
-    bg.kind === 'color' ? { ...base, background: bg.color }
+    bg.kind === 'color' ? { ...base, backgroundColor: bg.color, backgroundImage: 'none' }
     : bg.kind === 'custom' ? (() => {
         const url = getNewTabCustomImage();
-        return url ? { ...base, backgroundImage: `url("${url}")` } : { ...base, background: presetCss('aurora') };
+        return url ? { ...base, backgroundImage: `url("${url}")` } : { ...base, backgroundImage: presetCss('aurora') };
       })()
     : bg.kind === 'photo' ? (photoUrl
         ? { ...base, backgroundImage: `url("${photoUrl}")` }
-        : { ...base, background: presetCss(bg.preset) })
-    : { ...base, background: presetCss(bg.preset) };
+        : { ...base, backgroundImage: presetCss(bg.preset) })
+    : { ...base, backgroundImage: presetCss(bg.preset) };
 
   return (
     <>
