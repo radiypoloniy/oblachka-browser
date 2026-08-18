@@ -272,7 +272,7 @@ export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
         }}>
           <AnalogFace size={dial} now={now} seconds={opts.seconds} />
           {opts.date && !tiny && (
-            <div style={{ fontSize: 13, opacity: 0.8, textAlign: 'center' }}>{dayMonth}</div>
+            <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.8, textAlign: 'center' }}>{dayMonth}</div>
           )}
         </div>
       ) : (

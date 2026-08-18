@@ -365,7 +365,7 @@ function Toggle({ label, hint, on, onChange, icon }: {
     >
       {icon && (
         <span style={{
-          width: 26, height: 26, flex: 'none', borderRadius: RADIUS.control, fontSize: 14,
+          width: 26, height: 26, flex: 'none', borderRadius: RADIUS.control, fontSize: 'var(--fs-sm)',
           background: 'var(--surface-sunken)', display: 'inline-flex',
           alignItems: 'center', justifyContent: 'center',
         }}>{icon}</span>

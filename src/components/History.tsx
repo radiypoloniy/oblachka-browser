@@ -459,7 +459,7 @@ function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: str
     >
       {/* Время — МОНОШИРИННОЕ: это данные, а не текст, и в столбце они обязаны стоять ровно. */}
       <span style={{
-        fontFamily: 'var(--font-mono)', fontSize: 11.5, letterSpacing: '0.02em',
+        fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xs)', letterSpacing: '0.02em',
         color: 'var(--text-faint)', width: 44, flexShrink: 0, fontVariantNumeric: 'tabular-nums',
       }}>
         {timeOf(entry.lastVisit)}
