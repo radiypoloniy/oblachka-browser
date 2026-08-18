@@ -4,6 +4,7 @@ import type { MenuItemConstructorOptions, PostBody, WebContents, WebFrameMain } 
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
+import { closeWindowView } from './viewTeardown';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink } from '../shared/ipc';
 
 // Разметка и ссылки скопированного куска — то, что страница присылает вместе с текстом, чтобы
@@ -1326,10 +1327,22 @@ export class TabManager {
   }
 
   // Окно закрылось — менеджер больше никому не нужен. Снимаем всё, что переживает окно само по
-  // себе: сейчас это таймер сна (слушатели на webContents уходят вместе со своими вью, а те
-  // уничтожает Electron вместе с contentView).
+  // себе: таймер сна и ВЬЮ ВСЕХ ВКЛАДОК.
+  //
+  // ⚠️ Вью закрываем руками: Electron не уничтожает их вместе с окном (замер и разбор — в
+  // `viewTeardown.ts`). До этого закрытие окна с пятью вкладками оставляло пять живых процессов
+  // рендерера без единого способа до них добраться. Особенно заметно стало с автозакрытием
+  // опустевшего лёгкого окна: оно закрывается САМО и, значит, часто.
+  //
+  // ⚠️ Переданные другому окну вкладки сюда не попадают by design: `detachTabForMove` убирает их
+  // из `tabMap` в момент передачи, поэтому «закрыть всё своё» не означает «закрыть чужое».
   dispose(): void {
     if (this.sleepTimer) { clearInterval(this.sleepTimer); this.sleepTimer = null; }
+    // tabMap хватает: закреплённые лежат в нём тем же объектом (createPinnedTab кладёт в оба),
+    // и обход обоих списков закрывал бы их дважды.
+    for (const tab of this.tabMap.values()) closeWindowView(tab.view);
+    this.tabMap.clear();
+    this.pinnedTabs = [];
   }
 
   private wirePageEvents(id: string, view: WebContentsView) {

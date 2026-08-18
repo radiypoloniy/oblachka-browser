@@ -36,6 +36,7 @@ app.commandLine.appendSwitch('enable-smooth-scrolling');
 import type { MenuItemConstructorOptions, Session } from 'electron';
 import path from 'node:path';
 import { TabManager } from './TabManager';
+import { closeWindowView } from './viewTeardown';
 import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
 import { UpdateManager } from './UpdateManager';
@@ -1517,8 +1518,12 @@ function createWindow(role: WindowRole = 'main') {
   // Возврат стоит ДО подписок на закрытие ниже только ради читаемости — они уже навешены выше.
   win.on('closed', () => {
     console.log(`[shutdown] win closed (${role}): обнуляю вкладки окна`);
-    tabs?.dispose(); // снять таймер сна — он переживает окно и ходил бы по мёртвому менеджеру
+    tabs?.dispose(); // таймер сна + вью всех вкладок окна (см. TabManager.dispose)
     tabs = null;
+    // Слой хрома закрываем сами по той же причине, что и вкладки: окно не уносит с собой дочерние
+    // вью, и его сайдбар с тулбаром остался бы жить отдельным процессом рендерера (разбор и
+    // замер — в viewTeardown.ts).
+    closeWindowView(chromeView);
     // Запасные ссылки на главное окно снимаем только вместе с ним самим — иначе закрытие
     // лёгкого окна оставило бы приложение без адресата для отправителей вне реестра.
     if (isMain) { mainWin = null; mainChromeView = null; mainTabs = null; mainSess = null; }

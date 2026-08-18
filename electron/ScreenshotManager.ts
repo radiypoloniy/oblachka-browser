@@ -22,6 +22,7 @@ import type { ContentBounds } from '../shared/ipc';
 import { uniquePath } from './DownloadManager';
 import { getAiPanelReservedWidth } from './AiPanelManager';
 import type { TabManager } from './TabManager';
+import { closeWindowView } from './viewTeardown';
 
 const CARD_WIDTH = 320;
 const INITIAL_HEIGHT = 220;
@@ -63,7 +64,9 @@ function stateFor(win: BrowserWindow): WindowShot {
     height: INITIAL_HEIGHT, open: false, loaded: false, pending: null, capturing: false,
   };
   shots.set(win.id, created);
-  win.once('closed', () => { shots.delete(win.id); });
+  // ⚠️ Вью закрываем сами: окно не уносит с собой дочерние WebContentsView, и поповер
+  // закрытого окна остался бы жить отдельным процессом (замер и разбор — viewTeardown.ts).
+  win.once('closed', () => { closeWindowView(shots.get(win.id)?.view); shots.delete(win.id); });
   return created;
 }
 

@@ -23,6 +23,7 @@ import { IPC } from '../shared/ipc'
 import type { ContentBounds, FindResult } from '../shared/ipc'
 import { getAiPanelReservedWidth } from './AiPanelManager'
 import type { TabManager } from './TabManager'
+import { closeWindowView } from './viewTeardown';
 
 // ⚠️ Держать в синхроне с BAR_WIDTH в src/findbar.tsx. Шире прежних 360 — из-за кнопки режима
 // «по смыслу» и словесного статуса вместо «3 / 12» (см. SmartFind.ts).
@@ -63,9 +64,10 @@ function stateFor(win: BrowserWindow): WindowFindBar {
     contentBounds: { x: 0, y: 0, width: 0, height: 0 },
   }
   bars.set(win.id, created)
-  // Вместе с окном уходит и его панель: карта не должна копить записи мёртвых окон, а вью
-  // Electron уничтожает сам вместе с contentView.
-  win.once('closed', () => { bars.delete(win.id) })
+  // Вместе с окном уходит и его панель: карта не должна копить записи мёртвых окон.
+  // ⚠️ Вью закрываем САМИ — вопреки тому, что здесь было написано раньше, Electron не
+  // уничтожает её вместе с contentView (замер и разбор — viewTeardown.ts).
+  win.once('closed', () => { closeWindowView(bars.get(win.id)?.view); bars.delete(win.id) })
   return created
 }
 

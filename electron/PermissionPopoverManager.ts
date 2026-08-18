@@ -18,6 +18,7 @@ import { WebContentsView } from 'electron'
 import type { BrowserWindow } from 'electron'
 import path from 'node:path'
 import type { ContentBounds, PermissionRequest } from '../shared/ipc'
+import { closeWindowView } from './viewTeardown';
 
 const CARD_WIDTH = 380
 // Стартовая высота до первого отчёта из вью. Оверлей появляется мгновенно, а высоту содержимого
@@ -50,7 +51,9 @@ function stateFor(win: BrowserWindow): WindowPermPopover {
     height: INITIAL_HEIGHT, queue: [],
   }
   popovers.set(win.id, created)
-  win.once('closed', () => { popovers.delete(win.id) })
+  // ⚠️ Вью закрываем сами: окно не уносит с собой дочерние WebContentsView, и поповер
+  // закрытого окна остался бы жить отдельным процессом (замер и разбор — viewTeardown.ts).
+  win.once('closed', () => { closeWindowView(popovers.get(win.id)?.view); popovers.delete(win.id) })
   return created
 }
 

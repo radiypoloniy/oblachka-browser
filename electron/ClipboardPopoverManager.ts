@@ -8,6 +8,7 @@ import { WebContentsView, ipcMain } from 'electron';
 import type { BrowserWindow } from 'electron';
 import path from 'node:path';
 import type { ContentBounds } from '../shared/ipc';
+import { closeWindowView } from './viewTeardown';
 
 const POPOVER_WIDTH = 380;
 const INITIAL_HEIGHT = 200;
@@ -49,7 +50,9 @@ function stateFor(win: BrowserWindow): WindowPopover {
     height: INITIAL_HEIGHT, open: false, loaded: false, resizeBound: false,
   };
   popovers.set(win.id, created);
-  win.once('closed', () => { popovers.delete(win.id); });
+  // ⚠️ Вью закрываем сами: окно не уносит с собой дочерние WebContentsView, и поповер
+  // закрытого окна остался бы жить отдельным процессом (замер и разбор — viewTeardown.ts).
+  win.once('closed', () => { closeWindowView(popovers.get(win.id)?.view); popovers.delete(win.id); });
   return created;
 }
 

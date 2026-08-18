@@ -16,6 +16,7 @@ import path from 'node:path';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds, DragCard, SplitSwapHint, TabDropResult, TabDropZone } from '../shared/ipc';
 import { contextForWindow, allContexts } from './WindowRegistry';
+import { closeWindowView } from './viewTeardown';
 
 // Что подсвечивать во вью. Стороны разделены только ради картинки: подсвечивать оба края разом
 // и писать подпись дважды — врать про то, куда именно попадёт вкладка.
@@ -81,15 +82,11 @@ function stateFor(win: BrowserWindow): WindowDropZones {
     // Окно закрылось посреди жеста — драг обрывается вместе с ним, иначе таймер продолжил бы
     // опрашивать курсор и слать сообщения в уничтоженную вью.
     if (drag && (drag.source.win.id === win.id || drag.shown?.win.id === win.id)) stopDrag();
-    // ⚠️ Вью закрываем руками. Окно уносит с собой только то, что реально лежит в его
-    // contentView, а прогретая (prewarmDropZones) вью до первого жеста туда не добавлена — и
-    // пережила бы своё окно осиротевшим процессом рендерера. Пока вью создавалась лениво, на
-    // первый жест, это было почти незаметно; с прогревом такой процесс был бы у КАЖДОГО
-    // закрытого окна.
-    const view = perWindow.get(win.id)?.view;
-    if (view && !view.webContents.isDestroyed()) {
-      (view.webContents as unknown as { close?: () => void }).close?.();
-    }
+    // ⚠️ Вью закрываем руками — окно не уносит с собой дочерние вью ВООБЩЕ, ни прогретую
+    // (prewarmDropZones до первого жеста даже не добавлена в contentView), ни лежащую в нём.
+    // Здесь это заметили первым, когда прогрев сделал осиротевший процесс рендерера гарантией
+    // для КАЖДОГО закрытого окна; общий замер и разбор — в viewTeardown.ts.
+    closeWindowView(perWindow.get(win.id)?.view);
     perWindow.delete(win.id);
   });
   return created;
