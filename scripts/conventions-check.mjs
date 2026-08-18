@@ -277,6 +277,18 @@ function hueSat(hex) {
     });
   }
 
+  // (4) Тона СОДЕРЖИМОГО не появляются в системном хроме. ⚠️ Это половина смелого редизайна:
+  // цвет разрешён на карточках стола и плитках хаба, но в настройках, тулбаре и списках он значит
+  // «выбрано» — два языка в одном месте снова дадут пестроту, от которой уходили.
+  for (const f of walk(path.join(ROOT, 'src', 'components', 'settings'), ['.tsx']).concat([path.join(ROOT, 'src', 'components', 'Settings.tsx')])) {
+    if (!fs.existsSync(f)) continue;
+    codeLines(fs.readFileSync(f, 'utf8')).forEach((line, i) => {
+      if (line.includes('var(--tone-') || line.includes('tone(')) {
+        hits.push(rel(f) + ':' + (i + 1) + '  тон содержимого в системном хроме');
+      }
+    });
+  }
+
   checkEmpty('цветовой закон: акцент от палитры, статус без заливок, цвета токенами', hits,
     'акцент задаётся в palettes.css; состояние показывать значком и словом; брать var(--…)');
 }

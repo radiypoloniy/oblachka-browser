@@ -9,6 +9,9 @@
    Оба семейства вшиты локально, см. tokens/fonts.css. */
 :root {
   --font-sans: "Golos Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  /* ⚠️ Дисплейная — третья гарнитура, только для крупных чисел и заголовков-«лиц»
+     (см. DISPLAY в src/styles/system.ts). В интерфейсе её быть не должно. */
+  --font-display: "Unbounded", "Golos Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
 
   /* Type scale (px). Display = the personal greeting on the hub. */

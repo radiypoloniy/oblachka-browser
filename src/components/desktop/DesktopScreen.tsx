@@ -703,9 +703,13 @@ function Greeting({ name }: { name: string }) {
     <div style={{
       flex: 'none', marginBottom: 22, textAlign: 'center',
       fontSize: 'clamp(30px, 4.6vw, 60px)',
-      fontWeight: 700,
-      letterSpacing: 'var(--ls-tight)',
-      lineHeight: 1.05,
+      // ⚠️ ДИСПЛЕЙНАЯ гарнитура: приветствие — «лицо» продукта, а не элемент интерфейса. Это
+      // ровно то место, ради которого третья гарнитура и заводилась (см. DISPLAY в
+      // styles/system.ts); в настройки и списки она не заходит никогда.
+      fontFamily: 'var(--font-display)',
+      fontWeight: 800,
+      letterSpacing: '-0.035em',
+      lineHeight: 1.02,
       color: 'var(--nt-text-display)',
       textShadow: 'var(--nt-shadow-display)',
     }}>
