@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Clock, Star, Download, Search, TrendingDown } from 'lucide-react';
 import { ModeButton } from './Hub';
-import { sp, panelRoom } from '../styles/system';
+import { sp } from '../styles/system';
 import History from './History';
 import Bookmarks from './Bookmarks';
 import Downloads from './Downloads';
@@ -30,13 +30,22 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
   const [section, setSection] = useState<Section>(defaultSection);
 
   return (
-    // width/maxWidth/overflowX здесь — не декоративно: без них длинный необёрнутый контент
-    // внутри История/Закладки (заголовки, URL — свои overflow:hidden+ellipsis есть, но без
-    // min-width:0 в цепочке flex-предков не срабатывают, см. фикс в History.tsx/Bookmarks.tsx)
-    // раздувает ЭТОТ контейнер шире окна — переключатель ниже, центрируемый через свою
-    // 100%-широкую строку, тогда уезжает вместе с ним.
+    // width/maxWidth/minWidth здесь — не декоративно: без них длинный необёрнутый контент внутри
+    // История/Закладки (заголовки, URL — свои overflow:hidden+ellipsis есть, но без min-width:0 в
+    // цепочке flex-предков не срабатывают, см. фикс в History.tsx/Bookmarks.tsx) раздувает ЭТОТ
+    // контейнер шире окна — переключатель ниже, центрируемый через свою 100%-широкую строку,
+    // тогда уезжает вместе с ним.
+    //
+    // ⚠️ ЗДЕСЬ БОЛЬШЕ НЕТ overflowX: 'hidden', и это ключ ко всей истории с «тенью, которой нет».
+    // По спецификации CSS, если одна ось получает значение отличное от visible, ВТОРАЯ ось тоже
+    // перестаёт быть visible и вычисляется как auto. То есть один `overflowX: hidden` молча
+    // превращал контейнер в ПРОКРУТКУ по обеим осям — а прокрутка режет всё, что выходит за её
+    // рамку, включая тень острова. Настройки живут без такого родителя, поэтому у них тень была,
+    // а у истории оставался голый угол: рецепт совпадал, обрезка — нет.
+    // Ширину теперь держит minWidth: 0 в цепочке (то же лекарство, что и от расползания текста),
+    // а внутреннее переполнение по-прежнему режет сама панель своим overflow: hidden.
     <div style={{
-      height: '100%', width: '100%', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'hidden',
+      height: '100%', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box',
       display: 'flex', flexDirection: 'column', gap: 8,
     }}>
       {/* Отдельная строка над скроллом (не sticky — контент ниже скроллится сам, внутри своих
@@ -76,13 +85,9 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
           <ModeButton active={section === 'search'} onClick={() => setSection('search')} icon={<Search size={14} />} label="Везде" />
         </div>
       </div>
-      {/* ⚠️ ПОЛЕ ПОД ТЕНЬ. Родитель выше режет по горизонтали (overflow-x: hidden — защита от
-          длинных URL, см. комментарий там же), и панель, занимавшая всю его ширину, теряла тень
-          по бокам: оставался только скруглённый угол. У настроек этой беды не было просто потому,
-          что там панель лежит в родителе с полем 12 px и overflow: visible — рецепт был один, а
-          окружение разное. Поле берём из системы (panelRoom), чтобы «дать тени место» было
-          решением системы, а не находкой в каждом экране. */}
-      <div style={{ flex: 1, minWidth: 0, minHeight: 0, ...panelRoom, paddingTop: 0 }}>
+      {/* Поля под тень здесь больше не нужно: обрезки нет, и остров живёт в том же 12-пиксельном
+          гуттере, что и настройки (contentRef в App.tsx). */}
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
         {section === 'history' ? <History onClose={onClose} />
           : section === 'bookmarks' ? <Bookmarks onClose={onClose} />
           : section === 'search' ? <StuffSearchView onClose={onClose} />
