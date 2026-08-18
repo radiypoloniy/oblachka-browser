@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal } from 'lucide-react';
+import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal, Star } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import {
   loadDesktop, saveDesktop, subscribeDesktop, computeGrid, placeItems, moveItemTo, normalize,
-  resizeItem, removeItem, addItem, minSizeFor, scaleOf, SCALE_PRESETS, DEFAULT_COLS,
+  resizeItem, removeItem, addItem, minSizeFor, scaleOf, SCALE_PRESETS, DEFAULT_COLS, setHero,
   type DesktopLayout,
 } from '../../newtab/desktop';
 import AddSheet from './AddSheet';
@@ -389,7 +389,8 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                     onActivate={editing ? undefined : WIDGET_ACTIVATE[item.widget ?? '']}
                     fill={item.widget === 'weather' ? undefined : item.fill}
                     // Над фотографией плитки идут стеклом, над ровным фоном — сплошной картой.
-                    overImage={settings.background.kind === 'photo' || settings.background.kind === 'custom'} />
+                    overImage={settings.background.kind === 'photo' || settings.background.kind === 'custom'}
+                    hero={item.hero === true} />
                 ) : null;
               })() : item.kind === 'app' ? (() => {
                 const app = appById.get(item.appId ?? '');
@@ -456,6 +457,26 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                           boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
                         }}
                       ><X size={13} /></button>
+
+                      {/* ⚠️ ГЕРОЯ ВЫБИРАЕТ ЧЕЛОВЕК. Набор виджетов у каждого свой: на одном столе
+                          главной будет погода, на другом — курс или защита, и решать это за него
+                          в коде нельзя. Кнопка — переключатель: повторное нажатие снимает
+                          геройство, а назначение нового снимает флаг с прежнего (см. setHero). */}
+                      {item.kind === 'widget' && (
+                        <button
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={() => apply(setHero(layout, item.id))}
+                          title={item.hero ? 'Больше не главный' : 'Сделать главным'}
+                          style={{
+                            position: 'absolute', top: -8, right: -8, zIndex: 6,
+                            width: 22, height: 22, borderRadius: 999, border: 'none', cursor: 'default',
+                            background: item.hero ? 'var(--accent)' : 'rgba(30,30,34,0.92)',
+                            color: item.hero ? 'var(--on-accent)' : '#fff',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+                          }}
+                        ><Star size={12} fill={item.hero ? 'currentColor' : 'none'} /></button>
+                      )}
 
                       {/* Выбор заливки — только у виджетов и только в режиме правки: цвет это
                           настройка вида, а не действие, и в обычном режиме кнопке над плиткой

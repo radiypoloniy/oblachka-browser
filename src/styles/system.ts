@@ -245,3 +245,57 @@ export const grain: CSSProperties = {
   position: 'absolute',
   inset: 0,
 };
+
+// ── 7. Высоты ─────────────────────────────────────────────────────────────────
+//
+// Дизайн-система «Высота» (утверждена 18.08.2026). Элемент не выбирает оформление — он выбирает
+// ВЫСОТУ, а материал, тень и радиус выводятся из неё. Это и лечит главную беду прежней системы:
+// панель, карточка, строка и кнопка отличались только рамкой, всё лежало на одной плоскости, и
+// поэтому интерфейс читался плоским листом.
+//
+//   0 · ЗЕМЛЯ   — фон окна. Теней нет вовсе.
+//   1 · ТУМАН   — стекло: только там, где под слоем есть что размывать (виджет над фото).
+//   2 · ОСТРОВ  — плотная поверхность: тень + внутренний свет по верхней кромке.
+//   3 · ГЕРОЙ   — цвет в полную силу: градиент акцента со спутником. ОДИН НА ЭКРАН.
+//
+// ⚠️ «Один герой» — не пожелание, а условие, при котором ему разрешено быть ярким. Кого делать
+// героем, решает ЧЕЛОВЕК (набор виджетов у каждого свой), поэтому флаг живёт в раскладке стола, а
+// не в коде; переключение снимает флаг с прежнего героя — см. setHero в newtab/desktop.ts.
+export const ALTITUDE = { ground: 0, mist: 1, island: 2, hero: 3 } as const;
+export type Altitude = typeof ALTITUDE[keyof typeof ALTITUDE];
+
+/** Выключатели уровней: каждый гасится отдельно, интерфейс при этом остаётся рабочим. */
+export const GLASS_ENABLED = true;
+export const HERO_ENABLED = true;
+
+/**
+ * Материал по высоте. Всё, что отличает уровни, собрано здесь — правится в одном месте.
+ *
+ * ⚠️ Радиус тоже приходит отсюда: у содержимого он крупнее, чем у хрома, и это читается раньше
+ * цвета (см. RADIUS.content).
+ */
+export function altitude(level: Altitude, opts: { content?: boolean } = {}): CSSProperties {
+  const radius = opts.content ? RADIUS.content : RADIUS.box;
+  switch (level) {
+    case ALTITUDE.ground:
+      return { background: 'var(--app-bg)', borderRadius: radius };
+    case ALTITUDE.mist:
+      return GLASS_ENABLED ? { ...cardGlass(), borderRadius: radius, boxShadow: 'var(--shadow-lvl1)' }
+        : { ...card(), borderRadius: radius, boxShadow: 'var(--shadow-lvl2)' };
+    case ALTITUDE.island:
+      return {
+        background: 'var(--surface)', borderRadius: radius,
+        boxShadow: 'var(--shadow-lvl2), var(--inner-light)',
+        border: '1px solid var(--divider)',
+      };
+    case ALTITUDE.hero:
+      return HERO_ENABLED ? {
+        // ⚠️ Единственное место, где цвет звучит в полную силу. Спутник выводится из акцента
+        // палитры формулой, поэтому шесть палитр остаются шестью.
+        background: 'linear-gradient(150deg, color-mix(in srgb, var(--accent) 92%, #000) 0%, var(--companion) 100%)',
+        color: 'var(--on-accent)',
+        borderRadius: radius,
+        boxShadow: 'var(--shadow-lvl3)',
+      } : { background: 'var(--surface)', borderRadius: radius, boxShadow: 'var(--shadow-lvl2), var(--inner-light)' };
+  }
+}

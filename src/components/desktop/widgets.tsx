@@ -3,7 +3,7 @@ import type React from 'react';
 import { Check, Plus, X } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import type { CellSize } from '../../newtab/desktop';
-import { card, cardGlass, grain, RADIUS, DISPLAY, CARD_COLOR_ENABLED, CARD_INK } from '../../styles/system';
+import { card, cardGlass, grain, RADIUS, DISPLAY, CARD_COLOR_ENABLED, CARD_INK, altitude, ALTITUDE, HERO_ENABLED } from '../../styles/system';
 import { loadNewTabSettings } from '../../newtab/settings';
 import CryptoIcon from '../CryptoIcon';
 import { siteTint } from './siteTint';
@@ -41,6 +41,11 @@ export interface WidgetProps {
    * заливка поверх фотографии закрывает то, ради чего фото и поставили (см. cardGlass).
    */
   overImage?: boolean;
+  /**
+   * Этот виджет — ГЕРОЙ стола: высота 3, цвет в полную силу (см. altitude в styles/system.ts).
+   * ⚠️ Ровно один на стол, и выбирает его человек — инвариант держит setHero в newtab/desktop.ts.
+   */
+  hero?: boolean;
 }
 
 // ── Плитка ────────────────────────────────────────────────────────────────────
@@ -84,7 +89,7 @@ export function fillCss(id: string | undefined): string | null {
   return WIDGET_FILLS.find((f) => f.id === id)?.css ?? null;
 }
 
-export function Tile({ children, tint, padding = 16, surface, fill, toned, overImage, onActivate }: {
+export function Tile({ children, tint, padding = 16, surface, fill, toned, overImage, hero, onActivate }: {
   children: React.ReactNode;
   /** Заливка цветной плитки. Игнорируется при surface. */
   tint?: string;
@@ -101,6 +106,8 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, overI
    * Весь цвет содержимого гасится одной константой CARD_COLOR_ENABLED.
    */
   toned?: boolean | 'high';
+  /** Высота 3: цвет в полную силу. Ровно один герой на стол — см. setHero. */
+  hero?: boolean;
   /**
    * Фон новой вкладки — КАРТИНКА (фото дня или своё фото). Тогда карточка становится стеклом:
    * непрозрачная плитка поверх фотографии закрывает то, ради чего фото и поставили.
@@ -114,10 +121,13 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, overI
 }) {
   const custom = fillCss(fill);
   // Цвет карточки — только когда человек не выбрал свою заливку и плитка вообще идёт за темой.
-  const useGlass = !custom && surface && !!overImage;
-  const useCard = !custom && surface && !!toned && !useGlass && CARD_COLOR_ENABLED;
-  const toneStyle = useGlass ? cardGlass() : useCard ? card(toned === 'high') : null;
-  const onSurface = surface && !custom && !useCard && !useGlass;
+  // ⚠️ Порядок разбора и есть иерархия высот: выбор человека → герой → стекло над фото → карта.
+  const useHero = !custom && !!hero && HERO_ENABLED;
+  const useGlass = !custom && !useHero && surface && !!overImage;
+  const useCard = !custom && !useHero && surface && !!toned && !useGlass && CARD_COLOR_ENABLED;
+  const heroStyle = useHero ? altitude(ALTITUDE.hero, { content: true }) : null;
+  const toneStyle = heroStyle ?? (useGlass ? cardGlass() : useCard ? card(toned === 'high') : null);
+  const onSurface = surface && !custom && !useCard && !useGlass && !useHero;
   return (
     <div onClick={onActivate} style={{
       width: '100%', height: '100%', overflow: 'hidden', position: 'relative',
@@ -126,9 +136,9 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, overI
       background: custom ?? toneStyle?.background ?? (surface ? 'var(--surface)' : tint),
       // ⚠️ У плитки темы тень мягче, а по краю идёт кромка: и белая на светлых обоях, и тёмная на
       // тёмных иначе сливается с фоном и перестаёт читаться как отдельный остров.
-      boxShadow: onSurface
-        ? '0 1px 2px rgba(16,20,40,0.10), 0 10px 28px rgba(16,20,40,0.16)'
-        : '0 6px 20px rgba(16,20,40,0.22)',
+      boxShadow: heroStyle?.boxShadow ?? (onSurface
+        ? 'var(--shadow-lvl2), var(--inner-light)'
+        : '0 6px 20px rgba(16,20,40,0.22)'),
       border: toneStyle?.border ?? (onSurface ? '1px solid var(--divider)' : undefined),
       backdropFilter: toneStyle?.backdropFilter,
       WebkitBackdropFilter: toneStyle?.WebkitBackdropFilter,
@@ -177,7 +187,7 @@ function tinyDial(box: { width: number; height: number }, avail: number, dateH: 
   return Math.max(44, Math.min(avail, box.height - (small ? 24 : 32) - reserved));
 }
 
-export function ClockWidget({ box, fill, city, overImage }: WidgetProps) {
+export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
   const [now, setNow] = useState(() => new Date());
   const opts = loadNewTabSettings().clock;
   const analog = opts.face !== 'digital';
@@ -224,7 +234,7 @@ export function ClockWidget({ box, fill, city, overImage }: WidgetProps) {
   // «плывёт разметка». Размер меняет СОДЕРЖАНИЕ, а не масштаб — то же правило, что у погоды.
   const tiny = box.height < 150;
   return (
-    <Tile surface toned overImage={overImage} fill={fill} padding={tiny ? 12 : 16}>
+    <Tile surface toned overImage={overImage} hero={hero} fill={fill} padding={tiny ? 12 : 16}>
       {!tiny && <TileCaption>{weekday}</TileCaption>}
       {analog ? (
         <div style={{
@@ -531,7 +541,7 @@ function weatherTint(code: number, isDay: boolean): string {
   return 'linear-gradient(160deg, #4FA3E3 0%, #2E7BC4 55%, #2463A8 100%)';
 }
 
-export function WeatherWidget({ size, box, city }: WidgetProps) {
+export function WeatherWidget({ size, box, city, hero }: WidgetProps) {
   const [data, setData] = useState<WeatherState | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -556,7 +566,7 @@ export function WeatherWidget({ size, box, city }: WidgetProps) {
 
   if (!city || failed) {
     return (
-      <Tile tint="linear-gradient(160deg, #7C93B4 0%, #566A8C 100%)">
+      <Tile tint="linear-gradient(160deg, #7C93B4 0%, #566A8C 100%)" hero={hero}>
         <TileCaption>Погода</TileCaption>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.9, lineHeight: 1.4 }}>
           {city ? 'Не удалось загрузить' : 'Укажите город в настройках интерфейса'}
@@ -570,7 +580,7 @@ export function WeatherWidget({ size, box, city }: WidgetProps) {
   const hours = data?.hours.slice(0, wide ? 6 : 3) ?? [];
 
   return (
-    <Tile tint={weatherTint(data?.code ?? 0, data?.isDay ?? true)}>
+    <Tile tint={weatherTint(data?.code ?? 0, data?.isDay ?? true)} hero={hero}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flex: 'none' }}>
         <span style={{
           fontSize: 'var(--fs-sm)', fontWeight: 600,
@@ -584,7 +594,12 @@ export function WeatherWidget({ size, box, city }: WidgetProps) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, flex: 'none' }}>
-        <span style={{ fontSize: tempSize, fontWeight: 250, lineHeight: 1, letterSpacing: '-0.03em' }}>
+        {/* ⚠️ У ГЕРОЯ число набирается дисплейной гарнитурой и плотнее: он на экране один, и
+            смотрят на него издалека. У обычной плитки остаётся тонкое начертание — иначе стол
+            превращается в набор кричащих цифр. */}
+        <span style={hero
+          ? { ...DISPLAY, fontSize: Math.round(tempSize * 1.1), fontWeight: 600 }
+          : { fontSize: tempSize, fontWeight: 250, lineHeight: 1, letterSpacing: '-0.03em' }}>
           {data ? `${data.t}°` : '—'}
         </span>
         <WeatherIcon code={data?.code ?? 0} day={data?.isDay ?? true} size={Math.round(tempSize * 1.05)} />
@@ -679,7 +694,7 @@ function rowFontSize(box: { width: number; height: number }, rows: number, opts?
   return Math.round(Math.max(13, Math.min(byHeight, byWidth, 26)));
 }
 
-export function RatesWidget({ size, box, fill, overImage }: WidgetProps) {
+export function RatesWidget({ size, box, fill, overImage, hero }: WidgetProps) {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [prev, setPrev] = useState<Record<string, number>>({});
   const [history, setHistory] = useState<number[]>([]);
@@ -716,7 +731,7 @@ export function RatesWidget({ size, box, fill, overImage }: WidgetProps) {
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
-    <Tile surface toned overImage={overImage} fill={fill}>
+    <Tile surface toned overImage={overImage} hero={hero} fill={fill}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, flex: 'none' }}>
         <TileCaption>Курс ЦБ</TileCaption>
         {/* Подпись графика — только когда сам график виден. Иначе она сталкивалась с заголовком
@@ -785,7 +800,7 @@ function formatRub(v: number): string {
   return v.toFixed(4); // мелочь вроде DOGE — иначе на экране был бы честный, но бесполезный «0.00»
 }
 
-export function CryptoWidget({ size, box, fill, overImage }: WidgetProps) {
+export function CryptoWidget({ size, box, fill, overImage, hero }: WidgetProps) {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [change, setChange] = useState<Record<string, number>>({});
   const [history, setHistory] = useState<number[]>([]);
@@ -823,7 +838,7 @@ export function CryptoWidget({ size, box, fill, overImage }: WidgetProps) {
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
-    <Tile surface toned overImage={overImage} fill={fill}>
+    <Tile surface toned overImage={overImage} hero={hero} fill={fill}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, flex: 'none' }}>
         {/* ⚠️ Валюта — в подписи, а не в каждой строке: «₿ 5.02 млн» без неё не отвечает на вопрос
             «миллиона чего» (у соседнего виджета символ слева говорит это сам — «$ 78.42» читается
@@ -969,7 +984,7 @@ function FaviconTile({ host }: { host: string }) {
   );
 }
 
-export function TopSitesWidget({ box, tiles, onOpen, fill, overImage }: WidgetProps) {
+export function TopSitesWidget({ box, tiles, onOpen, fill, overImage, hero }: WidgetProps) {
   // ⚠️ Подпись — ДОМЕН, а не заголовок страницы. Первая версия ставила сюда title, и «Далай
   // лама: смотрите и скачивайте изображения — Яндекс Картинки» расползался на всю плитку,
   // налезая на соседние иконки. Домен короткий, узнаваемый и примерно одной длины у всех.
@@ -982,7 +997,7 @@ export function TopSitesWidget({ box, tiles, onOpen, fill, overImage }: WidgetPr
   const shown = tiles.slice(0, cols * rows);
 
   return (
-    <Tile surface toned overImage={overImage} fill={fill}>
+    <Tile surface toned overImage={overImage} hero={hero} fill={fill}>
       <TileCaption>Часто открываете</TileCaption>
       {shown.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.85 }}>
@@ -1044,7 +1059,7 @@ function saveTasks(list: Task[]): void {
  * визуал не стоит. Формат записи выбран так, чтобы будущий источник событий добавил себе поле,
  * а не переписывал хранилище.
  */
-export function TasksWidget({ box, fill, overImage }: WidgetProps) {
+export function TasksWidget({ box, fill, overImage, hero }: WidgetProps) {
   const [tasks, setTasks] = useState<Task[]>(loadTasks);
   const [draft, setDraft] = useState('');
 
@@ -1062,7 +1077,7 @@ export function TasksWidget({ box, fill, overImage }: WidgetProps) {
   const left = tasks.filter((t) => !t.done).length;
 
   return (
-    <Tile surface toned overImage={overImage} fill={fill}>
+    <Tile surface toned overImage={overImage} hero={hero} fill={fill}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
         <TileCaption>Дела</TileCaption>
         <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>

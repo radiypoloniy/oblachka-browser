@@ -17,6 +17,7 @@ import { CSS } from '@dnd-kit/utilities'
 // логика, живёт в shared под проверкой (scripts/calc-check.mjs): ломается она на реальных случаях
 // («50 + 10 %», «1 234,56 ₽»), а не на глаз.
 import { computeCalc, fmtCalc, calcDisp, resolvePercent, parsePastedNumber } from '../../shared/calc'
+import { altitude, ALTITUDE, DISPLAY } from '../styles/system'
 import type { CalcOp } from '../../shared/calc'
 import {
   Calculator, RefreshCw, Timer, Pipette, X, SlidersHorizontal, ImagePlus, Languages, Cat, Type,
@@ -1223,9 +1224,12 @@ function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widgets, weat
 }
 
 // ── Виджеты домашнего экрана ─────────────────────────────────────────────────────────────────
+// ⚠️ Высота 1 («туман»): карточки панели ВСЕГДА лежат поверх обоев хаба, а сплошная заливка
+// поверх картинки читается заплаткой — тот же разбор, что у виджетов стола (см. altitude в
+// src/styles/system.ts). До этой правки панель жила по старым правилам и в редизайн не входила
+// вовсе — живая жалоба «панель с хабом наш редизайн как будто не трогает».
 const widgetCardStyle: React.CSSProperties = {
-  background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
-  border: '1px solid var(--glass-edge)', boxShadow: 'var(--shadow-card)',
+  ...altitude(ALTITUDE.mist, { content: true }),
   padding: '10px 12px', flexShrink: 0,
 }
 
@@ -1308,7 +1312,8 @@ function WeatherWidget({ city }: { city: string }) {
               {data.windKmh !== undefined ? ` · ветер ${Math.round(data.windKmh)} км/ч` : ''}
             </div>
           </div>
-          <span style={{ fontSize: 22, fontWeight: 300, color: 'var(--text-strong)', flexShrink: 0 }}>
+          {/* Тот же язык, что на столе: ключевое число — дисплейной гарнитурой (см. DISPLAY). */}
+          <span style={{ ...DISPLAY, fontSize: 24, color: 'var(--text-strong)', flexShrink: 0 }}>
             {data.tempC !== undefined ? fmtTemp(data.tempC) : ''}
           </span>
         </div>
