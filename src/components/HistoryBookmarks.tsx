@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Clock, Star, Download, Search, TrendingDown } from 'lucide-react';
 import { ModeButton } from './Hub';
+import { sp } from '../styles/system';
 import History from './History';
 import Bookmarks from './Bookmarks';
 import Downloads from './Downloads';
@@ -41,7 +42,11 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
       {/* Отдельная строка над скроллом (не sticky — контент ниже скроллится сам, внутри своих
           островов, не эта строка). width:100% + justifyContent:center — центр ОКНА, не центр
           потенциально раздутого родителя (alignSelf:center на самой капсуле так не гарантирует). */}
-      <div style={{ flex: 'none', width: '100%', display: 'flex', justifyContent: 'center' }}>
+      {/* ⚠️ ДВЕ капсулы, а не одна. «Везде» — это не пятый архив, а поиск ПО ВСЕМ трём сразу, и
+          стоять в одном ряду с ними он не должен: человек читает ряд как «выбери один из
+          пяти», хотя выбор здесь другого рода. Тот же приём, что в iOS 26, где поиск вынесен
+          отдельной капсулой рядом с сегментами. */}
+      <div style={{ flex: 'none', width: '100%', display: 'flex', justifyContent: 'center', gap: sp(2) }}>
         <div style={{
           display: 'inline-flex', padding: 3, gap: 2,
           background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
@@ -57,10 +62,18 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
               вопрос «где я это видел» тот же самый, просто человек не помнит, в каком из трёх
               архивов лежит ответ. Разводить его с ними по разным местам значило бы требовать
               знать ответ заранее — ровно то, от чего фича и избавляет. */}
-          <ModeButton active={section === 'search'} onClick={() => setSection('search')} icon={<Search size={14} />} label="Везде" />
           {/* Отслеживание — сюда же (PRICE-TRACKING.md): это тот же архив «мои данные», и свой
               вид вкладки ради него не заводится, чтобы не менять формат session.json. */}
           <ModeButton active={section === 'tracking'} onClick={() => setSection('tracking')} icon={<TrendingDown size={14} />} label="Отслеживание" />
+        </div>
+
+        {/* Поиск по всем архивам — своя капсула. */}
+        <div style={{
+          display: 'inline-flex', padding: 3,
+          background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
+          border: '1px solid var(--glass-edge)',
+        }}>
+          <ModeButton active={section === 'search'} onClick={() => setSection('search')} icon={<Search size={14} />} label="Везде" />
         </div>
       </div>
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>

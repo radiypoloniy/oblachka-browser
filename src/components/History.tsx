@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { X, Search, Trash2, Clock, Wand2, Loader2 } from 'lucide-react';
 import type { HistoryEntry, HistoryClearPeriod } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
+import { TEXT, CAPS } from '../styles/system';
 import SiteFavicon from './SiteFavicon';
 
 interface HistoryProps {
@@ -220,9 +221,9 @@ export default function History({ onClose }: HistoryProps) {
         flexShrink: 0,
       }}>
         <Clock size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        <span style={{ fontWeight: 600, fontSize: 'var(--fs-md)', color: 'var(--text-strong)', flex: 1 }}>
-          История посещений
-        </span>
+        {/* Роль «заголовок раздела» из системы: 22/700 с плотным трекингом. Раньше здесь стоял
+            fs-md (16) обычным весом — заголовок панели читался как строка списка. */}
+        <span style={{ ...TEXT.title, flex: 1 }}>История посещений</span>
         <button
           onClick={() => setClearOpen((v) => !v)}
           title="Очистить историю"
@@ -414,10 +415,12 @@ export default function History({ onClose }: HistoryProps) {
                 key={group.key}
                 ref={(el) => { if (el) dayRefs.current.set(group.key, el); else dayRefs.current.delete(group.key); }}
               >
+                {/* Подпись группы — тот же приём, что в настройках и на плитках: моноширинная
+                    капса. Именно она делает список «своим», а не набором строк. */}
                 <div style={{
                   position: 'sticky', top: 0, zIndex: 1,
                   background: 'var(--surface-solid)',
-                  fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
+                  ...CAPS,
                   padding: '12px 8px 6px',
                 }}>
                   {group.label}
@@ -456,9 +459,10 @@ function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: str
       onMouseLeave={() => setHovered(false)}
       onClick={handleNavigate}
     >
+      {/* Время — МОНОШИРИННОЕ: это данные, а не текст, и в столбце они обязаны стоять ровно. */}
       <span style={{
-        fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', width: 40, flexShrink: 0,
-        fontVariantNumeric: 'tabular-nums',
+        fontFamily: 'var(--font-mono)', fontSize: 11.5, letterSpacing: '0.02em',
+        color: 'var(--text-faint)', width: 44, flexShrink: 0, fontVariantNumeric: 'tabular-nums',
       }}>
         {timeOf(entry.lastVisit)}
       </span>
@@ -470,7 +474,7 @@ function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: str
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
             <span style={{
               flex: 1, minWidth: 0,
-              fontSize: 'var(--fs-md)', color: 'var(--text-strong)',
+              ...TEXT.body, color: 'var(--text-strong)',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {entry.title || entry.url}
