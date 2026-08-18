@@ -380,21 +380,37 @@ interface OptionRowProps {
   actions?: React.ReactNode;
   /** Оставлять ли слева место под галочку. По умолчанию — только у выбираемых строк. */
   selectable?: boolean;
+  /** Иконка слева ВМЕСТО галочки (флаг страны у серверов VPN, значок типа записи). */
+  icon?: React.ReactNode;
+  /**
+   * Цвет отметки и заливки выбранного. По умолчанию акцент.
+   *
+   * ⚠️ Существует ради цветового закона, а не ради разнообразия: у списка серверов VPN
+   * «выбран» означает «туннель поднят», а это функциональный ЗЕЛЁНЫЙ, и красить его акцентом
+   * значило бы стереть разницу между «я выбрал» и «оно работает».
+   */
+  activeColor?: string;
 }
 
 export function OptionRow({
   title, subtitle, active = false, disabled, onClick, badge, badge2, actions, selectable,
+  icon, activeColor = 'var(--accent)',
 }: OptionRowProps) {
   const canSelect = selectable ?? onClick !== undefined;
-  // ⚠️ Заливка ТОЛЬКО у выбранного, и она из акцента, а не из палитры: у выбора ровно одно
-  // значение — «вот этот», и читаться он обязан одинаково во всех палитрах и обеих темах.
-  const activeFill = active ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'transparent';
+  // ⚠️ Заливка ТОЛЬКО у выбранного, и она из акцента (или функционального цвета, см. activeColor),
+  // а не из палитры: у выбора ровно одно значение — «вот этот», и читаться он обязан одинаково во
+  // всех палитрах и обеих темах.
+  const activeFill = active ? `color-mix(in srgb, ${activeColor} 10%, transparent)` : 'transparent';
 
   const body = (
     <>
-      {canSelect && (active
-        ? <Check size={18} style={{ color: 'var(--accent)', flex: 'none' }} />
-        : <span style={{ width: 18, flex: 'none' }} />)}
+      {/* Иконка занимает то же место, что галочка: колонка текста обязана начинаться на одной
+          вертикали во всех строках списка, иначе список «дышит» от строки к строке. */}
+      {icon !== undefined
+        ? <span style={{ width: 18, flex: 'none', display: 'flex', justifyContent: 'center' }}>{icon}</span>
+        : canSelect && (active
+          ? <Check size={18} style={{ color: activeColor, flex: 'none' }} />
+          : <span style={{ width: 18, flex: 'none' }} />)}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
           {title}

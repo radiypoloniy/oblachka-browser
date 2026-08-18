@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Check, Wifi, RefreshCw, Trash2 } from 'lucide-react';
 import type { VpnStatus, VpnServerMeta, VpnConnectionState } from '../../../shared/ipc';
-import { islandPlate } from '../../styles/island';
 import { stripEmoji } from '../../../shared/text';
 import { detectCountry } from '../../../shared/countries';
 import CountryFlag from '../CountryFlag';
 import {
-  btnPrimary, btnGhost, SectionHeader, CapsLabel, LoadingNote, InlineError,
-  StatusCard, TextField, InputRow, fieldFlex,
+  btnPrimary, btnGhost, SectionHeader, CapsLabel, LoadingNote,
+  StatusCard, TextField, InputRow, fieldFlex, OptionList, OptionRow,
 } from './kit';
 
 // VPN, шаг 2 — подписка/список серверов (шаг 1) + подключение процесса Xray (шаг 2). Ссылка
@@ -83,6 +82,9 @@ export default function VpnSection() {
     return <LoadingNote />;
   }
 
+  // Один протокол на всю подписку — обычное дело, и тогда его слово в каждой строке лишнее.
+  const mixedProtocols = new Set(servers.map((x) => x.protocol)).size > 1;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
       <SectionHeader title="VPN">
@@ -97,8 +99,13 @@ export default function VpnSection() {
         icon={status.hasSubscription
           ? <Check size={22} style={{ color: 'var(--success-500)', flex: 'none' }} />
           : <Wifi size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
-        title={status.hasSubscription ? `Подписка сохранена — серверов: ${status.serverCount}` : 'Подписка не добавлена'}
-        subtitle={status.fetchedAt ? `Обновлено: ${new Date(status.fetchedAt).toLocaleString('ru-RU')}` : undefined}
+        title={status.hasSubscription ? 'Подписка сохранена' : 'Подписка не добавлена'}
+        // Счётчик и дата — одной подписью: в заголовке «серверов: 10» ломалось переносом ровно
+        // между словом и числом, и карточка выглядела сломанной.
+        subtitle={status.hasSubscription
+          ? [`серверов: ${status.serverCount}`, status.fetchedAt ? `обновлено ${new Date(status.fetchedAt).toLocaleString('ru-RU')}` : null]
+            .filter(Boolean).join(' · ')
+          : undefined}
         actions={status.hasSubscription && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
@@ -140,11 +147,21 @@ export default function VpnSection() {
         </InputRow>
       </div>
 
-      {/* Список серверов — только чтение, без credential (см. VpnServerMeta). */}
+      {/* Список серверов — только чтение, без credential (см. VpnServerMeta).
+          ⚠️ Форма — общий список настроек (OptionList/OptionRow, разбор в kit.tsx). Раньше каждый
+          сервер был отдельной залитой плашкой с колонкой «VLESS» и кнопкой «Подключить» — на
+          десяти серверах это десять плит, десять одинаковых слов и десять одинаковых кнопок.
+          Живая жалоба: «выглядит очень перегруженно». Теперь протокол ушёл в подпись (он у всех
+          один и различает строки не он), а подключение — клик по самой строке, как выбор в любом
+          другом списке настроек; кнопки остались только там, где действие НЕ равно «выбрать»:
+          отключиться и повторить после ошибки. */}
       {servers.length > 0 && (
         <div>
           <CapsLabel>Серверы ({servers.length})</CapsLabel>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', margin: '0 0 8px' }}>
+            Нажмите на сервер, чтобы подключиться.
+          </div>
+          <OptionList>
             {servers.map((s) => {
               const isTarget = conn?.serverId === s.id;
               const isRunning = isTarget && conn?.state === 'running';
@@ -152,53 +169,39 @@ export default function VpnSection() {
               const isError = isTarget && conn?.state === 'error';
               const country = detectCountry(s.remark);
               return (
-                <div key={s.id}>
-                  <div
-                    style={{
-                      ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '9px 14px',
-                      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-                      boxShadow: isRunning ? '0 0 0 1.5px var(--success-500) inset' : undefined,
-                    }}
-                  >
-                    {/* Флаг — крайний левый якорь ряда. Место держим и для нераспознанных,
-                        иначе колонка протоколов ходила бы туда-сюда от строки к строке. */}
-                    <span style={{ width: 20, flex: 'none', display: 'flex', justifyContent: 'center' }}>
-                      {country && <CountryFlag code={country.code} title={country.name} />}
-                    </span>
-                    <span style={{
-                      fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
-                      color: 'var(--text-faint)', flex: 'none', width: 44,
-                    }}>
-                      {s.protocol}
-                    </span>
-                    {/* Название и «адрес · транспорт» — одна сжимаемая колонка (как у StatusCard):
-                        кнопки во всех рядах стоят в одном месте на любой ширине, длинный текст
-                        обрезается многоточием, а не растаскивает ряд по строкам вразнобой. */}
-                    <div style={{ flex: '1 1 140px', minWidth: 0 }}>
-                      <div style={{
-                        fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      }}>
-                        {stripEmoji(s.remark) || s.address}
-                      </div>
-                      <div style={{
-                        fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2,
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      }}>
-                        <span style={{ fontFamily: 'monospace' }}>{s.address}:{s.port}</span>
-                        {' · '}{s.transport}/{s.security}
-                      </div>
-                    </div>
-                    {isRunning ? (
-                      <button onClick={() => void handleDisconnect()} style={{ ...btnGhost, flex: 'none', padding: '5px 10px' }}>
-                        Отключить
-                      </button>
-                    ) : isError ? (
-                      // ⚠️ «Отключить» видна и здесь, не только при isRunning — иначе после
-                      // неудачной попытки нет способа выйти из состояния error через UI вообще
-                      // (см. живой аудит: kill switch блокирует ВЕСЬ трафик до переподключения,
-                      // а без этой кнопки переподключиться — единственный доступный выход).
-                      <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+                <OptionRow
+                  key={s.id}
+                  active={isRunning}
+                  // Зелёный, а не акцент: «выбран» здесь значит «туннель поднят» — функциональный
+                  // цвет по цветовому закону (см. activeColor в kit.tsx).
+                  activeColor="var(--success-500)"
+                  icon={country ? <CountryFlag code={country.code} title={country.name} /> : null}
+                  onClick={isRunning || isStarting ? undefined : () => void handleConnect(s.id)}
+                  title={stripEmoji(s.remark) || s.address}
+                  subtitle={
+                    <>
+                      <span style={{ fontFamily: 'monospace' }}>{s.address}:{s.port}</span>
+                      {/* ⚠️ Протокол показываем ТОЛЬКО когда он в списке не один: у одной
+                          подписки все серверы обычно vless, и слово повторялось в каждой строке
+                          ровно ничего не различая — прежде оно вообще стояло отдельной колонкой. */}
+                      {`${mixedProtocols ? ` · ${s.protocol.toLowerCase()}` : ''} · ${s.transport}/${s.security}`}
+                      {isError && conn?.error && (
+                        <span style={{ color: 'var(--danger-500)' }}> · {conn.error}</span>
+                      )}
+                    </>
+                  }
+                  badge={
+                    isRunning ? { text: 'подключён', color: 'var(--success-500)' }
+                      : isStarting ? { text: 'подключаюсь…', color: 'var(--text-muted)' }
+                        : isError ? { text: 'ошибка', color: 'var(--danger-500)' }
+                          : undefined
+                  }
+                  actions={(isRunning || isError) && (
+                    <>
+                      {/* ⚠️ «Отключить» доступна и в ошибке, не только при isRunning: kill switch
+                          блокирует ВЕСЬ трафик до переподключения, и без этой кнопки выхода из
+                          состояния error через интерфейс не остаётся вовсе (живой аудит). */}
+                      {isError && (
                         <button
                           onClick={() => void handleConnect(s.id)}
                           disabled={isStarting}
@@ -206,29 +209,16 @@ export default function VpnSection() {
                         >
                           {isStarting ? 'Подключение…' : 'Повторить'}
                         </button>
-                        <button onClick={() => void handleDisconnect()} style={{ ...btnGhost, padding: '5px 10px' }}>
-                          Отключить
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => void handleConnect(s.id)}
-                        disabled={isStarting}
-                        style={{ ...btnGhost, flex: 'none', padding: '5px 10px', opacity: isStarting ? 0.6 : 1 }}
-                      >
-                        {isStarting ? 'Подключение…' : 'Подключить'}
+                      )}
+                      <button onClick={() => void handleDisconnect()} style={{ ...btnGhost, padding: '5px 10px' }}>
+                        Отключить
                       </button>
-                    )}
-                  </div>
-                  {isError && conn?.error && (
-                    <div style={{ padding: '3px 14px 0' }}>
-                      <InlineError>{conn.error}</InlineError>
-                    </div>
+                    </>
                   )}
-                </div>
+                />
               );
             })}
-          </div>
+          </OptionList>
         </div>
       )}
     </div>
