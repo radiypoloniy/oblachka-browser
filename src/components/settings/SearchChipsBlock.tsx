@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Search, X, Globe, Compass } from 'lucide-react';
-import { EngineOption, CapsLabel, InlineHint, TextField, Favicon } from './kit';
+import { OptionList, OptionRow, CapsLabel, InlineHint, TextField, Favicon } from './kit';
 import type { SearchChipsConfig, SearchChipCandidate } from '../../../shared/ipc';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../../shared/searchEngines';
 import type { SearchEngineId } from '../../../shared/searchEngines';
@@ -231,18 +231,20 @@ export default function SearchChipsBlock() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <CapsLabel>Что ещё показывать в полосе</CapsLabel>
-        <EngineOption
+        <OptionList>
+        <OptionRow
           active={cfg.mode === 'auto'}
           onClick={() => save({ ...cfg, mode: 'auto' })}
           title="По ходу работы"
           subtitle="Сайты, где вы уже искали, и ваши бэнги — частые впереди. Список меняется сам."
         />
-        <EngineOption
+        <OptionRow
           active={cfg.mode === 'pinned'}
           onClick={() => save({ ...cfg, mode: 'pinned' })}
           title="Только закреплённые"
           subtitle="Ровно тот набор и в том порядке, что вы отметите ниже."
         />
+        </OptionList>
         <InlineHint>
           Текущий сайт и поисковик по умолчанию показываются всегда — в обоих режимах.
         </InlineHint>

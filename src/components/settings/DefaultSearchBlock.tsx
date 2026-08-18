@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { EngineOption, InlineHint } from './kit';
+import { OptionList, OptionRow, InlineHint } from './kit';
 import { SEARCH_ENGINES, DEFAULT_SEARCH_ENGINE_ID } from '../../../shared/searchEngines';
 import type { SearchEngineId } from '../../../shared/searchEngines';
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../../searchEngineSetting';
@@ -34,9 +34,9 @@ export default function DefaultSearchBlock() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <OptionList>
         {SEARCH_ENGINES.map((engine) => (
-          <EngineOption
+          <OptionRow
             key={engine.id}
             active={engine.id === engineId}
             onClick={() => pick(engine.id)}
@@ -44,7 +44,7 @@ export default function DefaultSearchBlock() {
             subtitle={ENGINE_NOTE[engine.id]}
           />
         ))}
-      </div>
+      </OptionList>
 
       <InlineHint>
         Сюда уходит всё, что не похоже на адрес: ввод в адресной строке, «Искать…» из

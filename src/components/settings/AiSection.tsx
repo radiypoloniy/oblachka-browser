@@ -4,7 +4,7 @@ import type { BackfillProgress, HistoryContentCoverage, TranslationEngineId, Ber
 import ModelsSection from '../ModelsSection';
 import SkillsSection from './SkillsSection';
 import {
-  btnPrimary, btnGhost, EngineOption, SectionHeader, Subsection, CapsLabel,
+  btnPrimary, btnGhost, OptionList, OptionRow, SectionHeader, Subsection, CapsLabel,
   StatusCard, StatusCardSkeleton, TextField, InputRow, fieldFlex,
 } from './kit';
 
@@ -248,8 +248,8 @@ function TranslationEngineSection() {
       description="Кнопка «Перевести страницу» в тулбаре может работать на одном из двух локальных
         движков. Оба считают полностью на устройстве, ничего не уходит в сеть."
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <EngineOption
+      <OptionList>
+        <OptionRow
           active={engine === 'qwen'}
           onClick={() => select('qwen')}
           title="AI-перевод (медленно, выше качество)"
@@ -262,7 +262,7 @@ function TranslationEngineSection() {
                 : { text: 'нет модели', color: 'var(--warning-500)' }
           }
         />
-        <EngineOption
+        <OptionRow
           active={engine === 'bergamot'}
           disabled={bergamotDisabled}
           onClick={() => { if (!bergamotDisabled) select('bergamot'); }}
@@ -282,7 +282,7 @@ function TranslationEngineSection() {
                 : undefined
           }
         />
-      </div>
+      </OptionList>
     </Subsection>
   );
 }

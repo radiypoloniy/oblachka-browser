@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Children, Fragment, useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { islandPlate } from '../../styles/island';
 
@@ -322,65 +322,170 @@ export function InputRow({ children }: { children: React.ReactNode }) {
 // Стандартные флекс-параметры поля внутри InputRow.
 export const fieldFlex: React.CSSProperties = { flex: '1 1 200px' };
 
-// ── Вариант выбора (движок перевода, модели) ──────────────────────────────────
-// Переехал из Settings.tsx — общий для TranslationEngineSection и ModelsSection.
-
-interface EngineOptionProps {
-  active: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  title: string;
-  subtitle: string;
-  badge?: { text: string; color: string };
-  // Второй независимый бейдж (напр. «в памяти» рядом с «активна» у моделей, ModelsSection.tsx) —
-  // не форкаем компонент ради второй метки, см. CLAUDE.md про переиспользование готовых компонентов.
-  badge2?: { text: string; color: string };
+// ── Список вариантов ──────────────────────────────────────────────────────────
+//
+// ⚠️ Форма поменялась по живой жалобе: «гигантские блоки с прямоугольными пятнами, ощущение
+// грязи». Раньше КАЖДЫЙ вариант был отдельной залитой плашкой, и раздел AI превращался в стопку
+// из восьми прямоугольников подряд (две модели, полоса памяти, два режима загрузки, карточка
+// каталога, два движка перевода). На цветных палитрах заливка ещё и тонирована — стопка читалась
+// грязью, и подбор цвета тут не помогает: лишней была сама заливка.
+//
+// Правило теперь такое: группу держат рамка и волосяные разделители, а заливка остаётся ровно у
+// ВЫБРАННОГО варианта. Один залитый прямоугольник на список вместо N — это и есть разница между
+// «выделено» и «пёстро».
+//
+// ⚠️ Разделители рисуются ЗДЕСЬ, между детьми, а не кромкой каждой строки: соседние кромки дают
+// двойную линию, а у нижней строки — лишнюю над скруглением контейнера.
+export function OptionList({ children }: { children: React.ReactNode }) {
+  const items = Children.toArray(children).filter(Boolean);
+  if (items.length === 0) return null;
+  return (
+    <div style={{
+      border: '1px solid var(--divider-strong)',
+      borderRadius: 'var(--radius-sm)',
+      overflow: 'hidden',
+    }}>
+      {items.map((child, i) => (
+        <Fragment key={i}>
+          {i > 0 && <div style={{ height: 1, background: 'var(--divider)' }} />}
+          {child}
+        </Fragment>
+      ))}
+    </div>
+  );
 }
 
-export function EngineOption({ active, disabled, onClick, title, subtitle, badge, badge2 }: EngineOptionProps) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-        ...islandPlate, borderRadius: 'var(--radius-sm)', textAlign: 'left',
-        border: 'none', cursor: disabled ? 'default' : 'default',
-        boxShadow: active ? '0 0 0 1.5px var(--accent) inset' : undefined,
-        opacity: disabled ? 0.55 : 1,
-      }}
-    >
-      {active
+// ── Строка списка ─────────────────────────────────────────────────────────────
+// Бывший EngineOption. Переименован вместе со сменой формы: это уже не «карточка движка», а
+// строка любого списка — модели, движки, поисковики.
+//
+// ⚠️ width: '100%' обязателен. Строка — это <button>, а кнопка сжимается по содержимому; пока она
+// была прямым ребёнком колонки, её растягивал align-items: stretch, но стоило завернуть её в
+// обёртку рядом с корзиной (список моделей), как она села по тексту. На экране это выглядело как
+// «плитки разной ширины» — вторая половина той же жалобы.
+
+interface OptionRowProps {
+  title: string;
+  /** Узел, а не строка: строке моделей нужно дописать в подпись ошибку удаления. */
+  subtitle?: React.ReactNode;
+  active?: boolean;
+  disabled?: boolean;
+  /** Есть onClick — строка выбирается кликом; нет — это просто строка с действием справа. */
+  onClick?: () => void;
+  badge?: { text: string; color: string };
+  // Второй независимый бейдж (напр. «в памяти» рядом с «активна» у моделей, ModelsSection.tsx) —
+  // не форкаем компонент ради второй метки, см. CLAUDE.md про переиспользование компонентов.
+  badge2?: { text: string; color: string };
+  /** Кнопки справа (скачать, удалить, выгрузить). Живут ВНУТРИ строки, а не рядом с ней. */
+  actions?: React.ReactNode;
+  /** Оставлять ли слева место под галочку. По умолчанию — только у выбираемых строк. */
+  selectable?: boolean;
+}
+
+export function OptionRow({
+  title, subtitle, active = false, disabled, onClick, badge, badge2, actions, selectable,
+}: OptionRowProps) {
+  const canSelect = selectable ?? onClick !== undefined;
+  // ⚠️ Заливка ТОЛЬКО у выбранного, и она из акцента, а не из палитры: у выбора ровно одно
+  // значение — «вот этот», и читаться он обязан одинаково во всех палитрах и обеих темах.
+  const activeFill = active ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'transparent';
+
+  const body = (
+    <>
+      {canSelect && (active
         ? <Check size={18} style={{ color: 'var(--accent)', flex: 'none' }} />
-        : <span style={{ width: 18, flex: 'none' }} />}
+        : <span style={{ width: 18, flex: 'none' }} />)}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
           {title}
         </div>
-        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-          {subtitle}
-        </div>
+        {subtitle && (
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2, lineHeight: 1.45 }}>
+            {subtitle}
+          </div>
+        )}
       </div>
       {(badge || badge2) && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flex: 'none' }}>
-          {badge && (
-            <span style={{
+          {[badge, badge2].map((b, i) => b && (
+            <span key={i} style={{
               fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
-              color: badge.color,
+              color: b.color,
             }}>
-              {badge.text}
+              {b.text}
             </span>
-          )}
-          {badge2 && (
-            <span style={{
-              fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
-              color: badge2.color,
-            }}>
-              {badge2.text}
-            </span>
-          )}
+          ))}
         </div>
       )}
-    </button>
+    </>
+  );
+
+  const shared: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', width: '100%',
+    textAlign: 'left', border: 'none', boxSizing: 'border-box', flex: 1, minWidth: 0,
+    background: actions ? 'transparent' : activeFill,
+    opacity: disabled ? 0.55 : 1,
+  };
+
+  // Действия справа — узлом ВНЕ кнопки: кнопка внутри кнопки недопустима, поэтому при наличии
+  // действий заливку выбранного несёт обёртка, а сама строка становится прозрачной.
+  const row = onClick
+    ? <button onClick={onClick} disabled={disabled} style={{ ...shared, cursor: 'default' }}>{body}</button>
+    : <div style={shared}>{body}</div>;
+
+  if (!actions) return row;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8, paddingRight: 12, background: activeFill,
+    }}>
+      {row}
+      <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>{actions}</div>
+    </div>
+  );
+}
+
+// ── Сегментированный переключатель ────────────────────────────────────────────
+// ⚠️ Для выбора ИЗ ДВУХ-ТРЁХ коротких вариантов — вместо списка строк. Две строки-карточки под
+// вопрос «когда загружать модель» занимали полэкрана, хотя выбор здесь бинарный; в пилюле он
+// занимает одну строку и читается как один вопрос, а не как два предложения.
+// Подпись выбранного варианта показываем ПОД пилюлей: сам сегмент обязан оставаться коротким, а
+// пояснение («первый ответ займёт около 30 секунд») терять нельзя.
+export function Segmented<T extends string>({ value, options, onChange }: {
+  value: T;
+  options: { id: T; label: string; hint?: string }[];
+  onChange: (id: T) => void;
+}) {
+  const current = options.find((o) => o.id === value);
+  return (
+    <div>
+      <div style={{
+        display: 'inline-flex', gap: 2, padding: 3, borderRadius: 'var(--radius-sm)',
+        background: 'var(--surface-sunken)', maxWidth: '100%', flexWrap: 'wrap',
+      }}>
+        {options.map((o) => {
+          const active = o.id === value;
+          return (
+            <button
+              key={o.id}
+              onClick={() => onChange(o.id)}
+              style={{
+                padding: '7px 14px', borderRadius: 'calc(var(--radius-sm) - 2px)', border: 'none',
+                cursor: 'default', fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 400,
+                background: active ? 'var(--surface)' : 'transparent',
+                boxShadow: active ? 'var(--shadow-card)' : 'none',
+                color: active ? 'var(--text-strong)' : 'var(--text-muted)',
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      {current?.hint && (
+        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 8 }}>
+          {current.hint}
+        </div>
+      )}
+    </div>
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
-import { EngineOption, StatusCardSkeleton, btnPrimary, btnGhost } from './settings/kit';
+import { OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost } from './settings/kit';
 
 function gb(bytes: number): string {
   return (bytes / 1e9).toFixed(1);
@@ -229,77 +229,53 @@ export default function ModelsSection() {
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Нет установленных моделей.</div>
         )}
 
-        {sortedInstalled.map((m) => (
-          <InstalledModelRow
-            key={m.id}
-            model={m}
-            isDefault={m.id === defaultModelId}
-            isLoaded={m.id === loadedModelId}
-            canDelete={m.source !== 'legacy' && installed.length > 1}
-            deleteDisabledReason={
-              m.source === 'legacy' ? 'файл вне папки приложения' : installed.length <= 1 ? 'последняя оставшаяся модель' : null
-            }
-            onSetDefault={() => void handleSetDefault(m.id)}
-            onChanged={reloadInstalled}
-          />
-        ))}
+        {/* ⚠️ Состояние памяти живёт ПОДПИСЬЮ активной строки, а не отдельной плашкой под списком.
+            Прежняя плашка была третьим прямоугольником подряд и повторяла то, что и так сказано
+            строкой («в памяти»), — а из-за неё же список читался стопкой плит. */}
+        <OptionList>
+          {sortedInstalled.map((m) => (
+            <InstalledModelRow
+              key={m.id}
+              model={m}
+              isDefault={m.id === defaultModelId}
+              isLoaded={m.id === loadedModelId}
+              memoryNote={m.id === loadedModelId && vramUsedText ? `видеопамять: ${vramUsedText}` : null}
+              unloading={unloading}
+              onUnload={() => void handleUnloadNow()}
+              canDelete={m.source !== 'legacy' && installed.length > 1}
+              deleteDisabledReason={
+                m.source === 'legacy' ? 'файл вне папки приложения' : installed.length <= 1 ? 'последняя оставшаяся модель' : null
+              }
+              onSetDefault={() => void handleSetDefault(m.id)}
+              onChanged={reloadInstalled}
+            />
+          ))}
+        </OptionList>
 
-        {/* Постоянная строка состояния памяти — видна всегда, не только при расхождении дефолт/загружено. */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-          ...islandPlate, borderRadius: 'var(--radius-sm)',
-        }}>
-          {loadedModelId ? (
-            <>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-                  В памяти: {loadedModel?.label ?? loadedModelId}
-                </div>
-                {vramUsedText && (
-                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-                    занято видеопамяти: {vramUsedText}
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => void handleUnloadNow()}
-                disabled={unloading}
-                style={{ ...btnGhost, opacity: unloading ? 0.6 : 1, flex: 'none' }}
-              >
-                {unloading ? 'Выгружаю…' : 'Выгрузить'}
-              </button>
-            </>
-          ) : (
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-                Модель не загружена в память
-              </div>
-              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-                Первый запрос (чат, перевод) займёт около 30 секунд — модель нужно поднять с диска.
-              </div>
-            </div>
-          )}
-        </div>
+        {loadedModelId === null && installed.length > 0 && (
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+            Модель не загружена в память — первый запрос (чат, перевод) займёт около 30 секунд.
+          </div>
+        )}
 
         {/* Режим загрузки — когда именно модель поднимается в память (SettingsManager.ts,
             modelLoadMode). Оба варианта явно называют цену размена (память vs время первого
             ответа), пользователь выбирает осознанно, не вслепую. */}
         {loadMode !== null && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-            {/* Своя подпись группы: без неё два варианта висят вплотную к карточке состояния
-                памяти и читаются как её продолжение, а это отдельный выбор. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+            {/* Своя подпись группы: без неё выбор висит вплотную к списку моделей и читается как
+                его продолжение, а это отдельный вопрос. */}
             <div style={{ ...groupLabelStyle, marginBottom: 2 }}>Когда загружать модель</div>
-            <EngineOption
-              active={loadMode === 'startup'}
-              onClick={() => handleSetLoadMode('startup')}
-              title="При старте браузера"
-              subtitle="Модель готова сразу, занимает ~6 ГБ оперативной памяти постоянно."
-            />
-            <EngineOption
-              active={loadMode === 'on-demand'}
-              onClick={() => handleSetLoadMode('on-demand')}
-              title="При первом обращении к AI"
-              subtitle="Экономит память, первый ответ займёт около 30 секунд."
+            {/* ⚠️ Сегменты, а не две строки-карточки: выбор бинарный и короткий, а цена размена
+                (память против времени первого ответа) не теряется — она уходит подписью под
+                пилюлей, см. Segmented в kit.tsx. */}
+            <Segmented
+              value={loadMode}
+              onChange={(id) => handleSetLoadMode(id)}
+              options={[
+                { id: 'startup', label: 'При старте браузера', hint: 'Модель готова сразу, занимает ~6 ГБ оперативной памяти постоянно.' },
+                { id: 'on-demand', label: 'При первом обращении', hint: 'Экономит память, первый ответ займёт около 30 секунд.' },
+              ]}
             />
           </div>
         )}
@@ -336,9 +312,11 @@ export default function ModelsSection() {
             предложить этой видеокарте (ModelCatalog.ts::assignRoles), и показывается ТОЛЬКО это.
             Раньше здесь была кнопка «показать все» — за ней лежали модели, которые на этом железе
             не работают, и человек имел полное право их скачать, потратив гигабайты впустую. */}
-        {visibleCatalog.map((entry) => (
-          <CatalogRow key={entry.model.id} entry={entry} downloadDisabled={downloadRunning} onDownload={handleDownload} />
-        ))}
+        <OptionList>
+          {visibleCatalog.map((entry) => (
+            <CatalogRow key={entry.model.id} entry={entry} downloadDisabled={downloadRunning} onDownload={handleDownload} />
+          ))}
+        </OptionList>
 
         {visibleCatalog.length === 0 && installed.length > 0 && (
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
@@ -369,13 +347,20 @@ interface InstalledModelRowProps {
   model: InstalledModel;
   isDefault: boolean;
   isLoaded: boolean;
+  /** Что занято видеопамятью — показываем только у той модели, что реально в памяти. */
+  memoryNote: string | null;
+  unloading: boolean;
+  onUnload: () => void;
   canDelete: boolean;
   deleteDisabledReason: string | null;
   onSetDefault: () => void;
   onChanged: () => void;
 }
 
-function InstalledModelRow({ model, isDefault, isLoaded, canDelete, deleteDisabledReason, onSetDefault, onChanged }: InstalledModelRowProps) {
+function InstalledModelRow({
+  model, isDefault, isLoaded, memoryNote, unloading, onUnload,
+  canDelete, deleteDisabledReason, onSetDefault, onChanged,
+}: InstalledModelRowProps) {
   // Подтверждение — тот же локальный булев паттерн, что SkillForm (Settings.tsx) — модалок в
   // проекте нет. deleting — отдельный флаг, чтобы двойной клик на «Да» не дал гонку в deleteModel().
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -392,48 +377,61 @@ function InstalledModelRow({ model, isDefault, isLoaded, canDelete, deleteDisabl
     onChanged(); // перечитать списки в любом случае, даже при отказе — реестр мог измениться
   }
 
-  const subtitle = model.source === 'legacy'
-    ? `${gb(model.sizeBytes)} ГБ · вне папки приложения`
-    : `${gb(model.sizeBytes)} ГБ`;
+  // Подпись собирается из того, что человек спросит по порядку: сколько весит, где лежит (если
+  // не у нас), сколько ест видеопамяти прямо сейчас.
+  const parts = [`${gb(model.sizeBytes)} ГБ`];
+  if (model.source === 'legacy') parts.push('вне папки приложения');
+  if (memoryNote) parts.push(memoryNote);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <EngineOption
-            active={isDefault}
-            onClick={onSetDefault}
-            title={model.label}
-            subtitle={subtitle}
-            badge={isDefault ? { text: 'активна', color: 'var(--accent)' } : undefined}
-            badge2={isLoaded ? { text: 'в памяти', color: 'var(--dot-local)' } : undefined}
-          />
-        </div>
-
-        {confirmDelete ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
-            <button onClick={() => void handleDelete()} disabled={deleting} style={{ ...btnGhost, color: 'var(--danger-500)', opacity: deleting ? 0.6 : 1 }}>
-              {deleting ? 'Удаляю…' : 'Да'}
+    <OptionRow
+      active={isDefault}
+      onClick={onSetDefault}
+      title={model.label}
+      subtitle={
+        <>
+          {parts.join(' · ')}
+          {deleteError && <span style={{ color: 'var(--danger-500)' }}> · {deleteError}</span>}
+        </>
+      }
+      badge={isDefault ? { text: 'активна', color: 'var(--accent)' } : undefined}
+      badge2={isLoaded ? { text: 'в памяти', color: 'var(--dot-local)' } : undefined}
+      actions={
+        <>
+          {/* «Выгрузить» стоит у той строки, к которой относится, а не отдельной плашкой снизу. */}
+          {isLoaded && (
+            <button
+              onClick={onUnload}
+              disabled={unloading}
+              style={{ ...btnGhost, opacity: unloading ? 0.6 : 1 }}
+            >
+              {unloading ? 'Выгружаю…' : 'Выгрузить'}
             </button>
-            <button onClick={() => setConfirmDelete(false)} disabled={deleting} style={btnGhost}>Нет</button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            disabled={!canDelete}
-            title={deleteDisabledReason ?? 'Удалить модель'}
-            style={{
-              ...btnGhost, flex: 'none', color: 'var(--danger-500)',
-              opacity: canDelete ? 1 : 0.4,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}
-          >
-            <Trash2 size={14} />
-          </button>
-        )}
-      </div>
-      {deleteError && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger-500)' }}>{deleteError}</span>}
-    </div>
+          )}
+          {confirmDelete ? (
+            <>
+              <button onClick={() => void handleDelete()} disabled={deleting} style={{ ...btnGhost, color: 'var(--danger-500)', opacity: deleting ? 0.6 : 1 }}>
+                {deleting ? 'Удаляю…' : 'Да'}
+              </button>
+              <button onClick={() => setConfirmDelete(false)} disabled={deleting} style={btnGhost}>Нет</button>
+            </>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={!canDelete}
+              title={deleteDisabledReason ?? 'Удалить модель'}
+              style={{
+                ...btnGhost, color: 'var(--danger-500)',
+                opacity: canDelete ? 1 : 0.4,
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </>
+      }
+    />
   );
 }
 
@@ -447,42 +445,31 @@ function InstalledModelRow({ model, isDefault, isLoaded, canDelete, deleteDisabl
 function CatalogRow({ entry, downloadDisabled, onDownload }: { entry: CatalogEntry; downloadDisabled: boolean; onDownload: (m: CatalogModel) => void }) {
   const primary = entry.role === 'recommended';
   return (
-    <div style={{
-      ...islandPlate,
-      borderRadius: 'var(--radius-sm)',
-      padding: '16px 18px',
-      display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap',
-      // Рекомендованную выделяем контуром акцента, а не заливкой и не цветным бейджем: это тот же
-      // приём, что у выбранного варианта в остальных настройках (EngineOption).
-      boxShadow: primary ? '0 0 0 1.5px var(--accent) inset' : undefined,
-    }}>
-      <div style={{ flex: '1 1 240px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{
-            fontSize: 'var(--fs-md)', fontWeight: 700,
-            color: primary ? 'var(--accent)' : 'var(--text-strong)',
-          }}>
-            {roleTitle(entry)}
-          </span>
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{entry.model.label}</span>
-        </div>
-        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', lineHeight: 1.45 }}>
+    <OptionRow
+      selectable={false}
+      title={`${roleTitle(entry)} · ${entry.model.label}`}
+      // ⚠️ Требования — ОТДЕЛЬНОЙ строкой, а не хвостом описания: это ответ на другой вопрос
+      // («во что мне это встанет»), и слитый в одну строку он тонул в конце абзаца.
+      subtitle={
+        <>
           {entry.summary}
-        </div>
-        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          {requirementsLine(entry)}
-        </div>
-      </div>
-      <button
-        onClick={() => onDownload(entry.model)}
-        disabled={downloadDisabled}
-        style={{
-          ...(primary ? btnPrimary : btnGhost),
-          flex: 'none', alignSelf: 'center', opacity: downloadDisabled ? 0.5 : 1,
-        }}
-      >
-        Скачать
-      </button>
-    </div>
+          <div style={{ marginTop: 4 }}>{requirementsLine(entry)}</div>
+        </>
+      }
+      // ⚠️ Бейджа «рекомендуем» здесь НЕТ намеренно: роль уже стоит первым словом заголовка
+      // (roleTitle), и бейдж повторял её же — на снимке это читалось как заикание.
+      actions={
+        <button
+          onClick={() => onDownload(entry.model)}
+          disabled={downloadDisabled}
+          style={{
+            ...(primary ? btnPrimary : btnGhost),
+            opacity: downloadDisabled ? 0.5 : 1,
+          }}
+        >
+          Скачать
+        </button>
+      }
+    />
   );
 }

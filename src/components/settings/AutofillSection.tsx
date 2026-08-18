@@ -4,7 +4,7 @@ import type { AddressProfile, AddressInput, CardMeta, ParsedAddressPart } from '
 import { islandPlate } from '../../styles/island';
 import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, Subsection, LoadingNote,
-  InlineError, TextField, InputRow, fieldFlex,
+  InlineError, TextField, InputRow, fieldFlex, OptionList,
 } from './kit';
 
 // Секция «Автозаполнение» — адреса и банковские карты (electron/AutofillManager.ts). Только
@@ -64,7 +64,7 @@ export default function AutofillSection() {
             {addresses.length === 0 && (
               <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '4px 2px' }}>Адресов пока нет.</div>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <OptionList>
               {addresses.map((a) => (
                 <div key={a.id} style={rowStyle}>
                   <MapPin size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />
@@ -76,7 +76,7 @@ export default function AutofillSection() {
                   <IconBtn title="Удалить" onClick={() => void window.oblako.deleteAddress(a.id)}><Trash2 size={14} /></IconBtn>
                 </div>
               ))}
-            </div>
+            </OptionList>
             <button onClick={() => { setEditingAddr(null); setAddrFormOpen(true); }} style={{ ...btnPrimary, display: 'flex', gap: 6, alignItems: 'center', alignSelf: 'flex-start' }}>
               <Plus size={14} /> Добавить адрес
             </button>
@@ -97,7 +97,7 @@ export default function AutofillSection() {
             {cards.length === 0 && (
               <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '4px 2px' }}>Карт пока нет.</div>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <OptionList>
               {cards.map((c) => (
                 <div key={c.id} style={rowStyle}>
                   <CreditCard size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />
@@ -116,7 +116,7 @@ export default function AutofillSection() {
                   <IconBtn title="Удалить" onClick={() => void window.oblako.deleteCard(c.id)}><Trash2 size={14} /></IconBtn>
                 </div>
               ))}
-            </div>
+            </OptionList>
             <button onClick={() => { setEditingCard(null); setCardFormOpen(true); }} style={{ ...btnPrimary, display: 'flex', gap: 6, alignItems: 'center', alignSelf: 'flex-start' }}>
               <Plus size={14} /> Добавить карту
             </button>
@@ -127,9 +127,11 @@ export default function AutofillSection() {
   );
 }
 
+// ⚠️ Заливки у строки нет: группу держит рамка OptionList и волосяные разделители между
+// строками (см. разбор в kit.tsx). Прежний `background: var(--surface)` совпадал с цветом самой
+// панели, то есть не делал ничего — кроме как мешал, когда панель была подкрашена.
 const rowStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-  borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
 };
 const rowTitle: React.CSSProperties = {
   fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
