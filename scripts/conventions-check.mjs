@@ -277,14 +277,14 @@ function hueSat(hex) {
     });
   }
 
-  // (4) Тона СОДЕРЖИМОГО не появляются в системном хроме. ⚠️ Это половина смелого редизайна:
+  // (4) Цвет СОДЕРЖИМОГО не появляется в системном хроме. ⚠️ Это половина смелого редизайна:
   // цвет разрешён на карточках стола и плитках хаба, но в настройках, тулбаре и списках он значит
   // «выбрано» — два языка в одном месте снова дадут пестроту, от которой уходили.
   for (const f of walk(path.join(ROOT, 'src', 'components', 'settings'), ['.tsx']).concat([path.join(ROOT, 'src', 'components', 'Settings.tsx')])) {
     if (!fs.existsSync(f)) continue;
     codeLines(fs.readFileSync(f, 'utf8')).forEach((line, i) => {
-      if (line.includes('var(--tone-') || line.includes('tone(')) {
-        hits.push(rel(f) + ':' + (i + 1) + '  тон содержимого в системном хроме');
+      if (line.includes('var(--card') || line.includes('card(') || line.includes('chip(')) {
+        hits.push(rel(f) + ':' + (i + 1) + '  цвет содержимого в системном хроме');
       }
     });
   }

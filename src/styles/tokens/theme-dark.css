@@ -6,14 +6,11 @@
    тем же приёмом, каким раньше осветлялся бирюзовый (заход 2).
    Фиолетовый убран вместе с ролью cloud/system — спека её не содержит. */
 [data-theme="dark"] {
-  /* Тона содержимого, тёмная тема: те же шесть, но перевёрнутые — тёмная заливка, светлый
-     текст. Разбор ролей — у --tone-* в colors.css. */
-  --tone-sky:    #16273B;  --on-tone-sky:   #BBD4F2;
-  --tone-mint:   #16301F;  --on-tone-mint:  #A8DDBE;
-  --tone-sand:   #302617;  --on-tone-sand:  #E6CDA4;
-  --tone-clay:   #32211D;  --on-tone-clay:  #EDBCB2;
-  --tone-slate:  #1E262E;  --on-tone-slate: #C3D0DC;
-  --tone-lime:   #262C15;  --on-tone-lime:  #CBDD97;
+  /* Поверхности содержимого, тёмная тема: доли выше, чем в светлой — на почти чёрном фоне
+     семь процентов тона не видно вовсе. Разбор ролей — у --card в colors.css. */
+  --card:       color-mix(in srgb, var(--accent) 11%, var(--surface));
+  --card-high:  color-mix(in srgb, var(--accent) 17%, var(--surface));
+  --card-chip:  color-mix(in srgb, var(--accent) 30%, var(--surface));
   --accent:        #1A87FF; /* «Уголь», тёмная: к земле 5,30 */
   --accent-shade:  #FFFFFF; /* в тёмной теме hover/нажатие СВЕТЛЕЕ, а не темнее */
   /* ⚠️ Текст на акценте в тёмной теме — ТЁМНЫЙ, и это не вкус, а замер: белый на поднятом

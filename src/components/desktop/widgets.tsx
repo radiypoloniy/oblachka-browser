@@ -3,7 +3,7 @@ import type React from 'react';
 import { Check, Plus, X } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import type { CellSize } from '../../newtab/desktop';
-import { tone, grain, RADIUS, DISPLAY, TONES_ENABLED } from '../../styles/system';
+import { card, grain, RADIUS, DISPLAY, CARD_COLOR_ENABLED, CARD_INK } from '../../styles/system';
 import { loadNewTabSettings } from '../../newtab/settings';
 import CryptoIcon from '../CryptoIcon';
 import { siteTint } from './siteTint';
@@ -79,7 +79,7 @@ export function fillCss(id: string | undefined): string | null {
   return WIDGET_FILLS.find((f) => f.id === id)?.css ?? null;
 }
 
-export function Tile({ children, tint, padding = 16, surface, fill, topic, onActivate }: {
+export function Tile({ children, tint, padding = 16, surface, fill, toned, onActivate }: {
   children: React.ReactNode;
   /** Заливка цветной плитки. Игнорируется при surface. */
   tint?: string;
@@ -89,13 +89,13 @@ export function Tile({ children, tint, padding = 16, surface, fill, topic, onAct
   /** Выбранная человеком заливка (id из WIDGET_FILLS). Перебивает surface. */
   fill?: string;
   /**
-   * Тема карточки: 'weather', 'rates', 'tasks'… По ней выбирается ТОН содержимого
-   * (см. TONES в src/styles/system.ts).
+   * Карточка идёт по цвету содержимого: нейтраль с намёком тона палитры (см. card() в
+   * src/styles/system.ts). `high` — та единственная, что должна выделяться.
    *
-   * ⚠️ Выбор человека всегда сильнее: если он задал свою заливку (fill), тон не применяется.
-   * И весь цвет содержимого гасится одной константой TONES_ENABLED — компоненты править не надо.
+   * ⚠️ Выбор человека всегда сильнее: задал свою заливку (fill) — цвет карточки не применяется.
+   * Весь цвет содержимого гасится одной константой CARD_COLOR_ENABLED.
    */
-  topic?: string;
+  toned?: boolean | 'high';
   /**
    * Клик по плитке. ⚠️ Приходит уже с учётом режима правки: в нём плитку таскают, а не открывают,
    * и DesktopScreen не передаёт обработчик вовсе (см. там же).
@@ -103,10 +103,10 @@ export function Tile({ children, tint, padding = 16, surface, fill, topic, onAct
   onActivate?: () => void;
 }) {
   const custom = fillCss(fill);
-  // Тон применяется, только когда человек не выбрал свою заливку и плитка вообще идёт за темой.
-  const toned = !custom && surface && topic !== undefined && TONES_ENABLED;
-  const toneStyle = toned ? tone(topic!) : null;
-  const onSurface = surface && !custom && !toned;
+  // Цвет карточки — только когда человек не выбрал свою заливку и плитка вообще идёт за темой.
+  const useCard = !custom && surface && !!toned && CARD_COLOR_ENABLED;
+  const toneStyle = useCard ? card(toned === 'high') : null;
+  const onSurface = surface && !custom && !useCard;
   return (
     <div onClick={onActivate} style={{
       width: '100%', height: '100%', overflow: 'hidden', position: 'relative',
@@ -128,7 +128,7 @@ export function Tile({ children, tint, padding = 16, surface, fill, topic, onAct
       {/* Зерно: тонкая текстура поверх заливки — она и отличает материал от плоской заливки из
           макета. Только на тонированных плитках: на своей картинке человека и на фото дня зерно
           было бы грязью. */}
-      {toned && <div style={grain} />}
+      {useCard && <div style={grain} />}
       {children}
     </div>
   );
@@ -211,7 +211,7 @@ export function ClockWidget({ box, fill, city }: WidgetProps) {
   // «плывёт разметка». Размер меняет СОДЕРЖАНИЕ, а не масштаб — то же правило, что у погоды.
   const tiny = box.height < 150;
   return (
-    <Tile surface topic="clock" fill={fill} padding={tiny ? 12 : 16}>
+    <Tile surface toned fill={fill} padding={tiny ? 12 : 16}>
       {!tiny && <TileCaption>{weekday}</TileCaption>}
       {analog ? (
         <div style={{
@@ -703,7 +703,7 @@ export function RatesWidget({ size, box, fill }: WidgetProps) {
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
-    <Tile surface topic="rates" fill={fill}>
+    <Tile surface toned fill={fill}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, flex: 'none' }}>
         <TileCaption>Курс ЦБ</TileCaption>
         {/* Подпись графика — только когда сам график виден. Иначе она сталкивалась с заголовком
@@ -729,7 +729,7 @@ export function RatesWidget({ size, box, fill }: WidgetProps) {
               {/* ⚠️ Дисплейной гарнитурой — это ЧИСЛО, ради которого виджет и существует: на него
                   смотрят издалека, а не читают. В интерфейс эта гарнитура не заходит (см. DISPLAY
                   в styles/system.ts). */}
-              <span style={{ ...DISPLAY, fontSize: rowFs, lineHeight: 1.15 }}>
+              <span style={{ ...DISPLAY, fontSize: rowFs, lineHeight: 1.15, color: CARD_INK }}>
                 {now !== undefined ? now.toFixed(2) : '—'}
               </span>
               {delta !== null && (
@@ -810,7 +810,7 @@ export function CryptoWidget({ size, box, fill }: WidgetProps) {
   const chartH = Math.max(30, Math.round(box.height * 0.26));
 
   return (
-    <Tile surface topic="crypto" fill={fill}>
+    <Tile surface toned fill={fill}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, flex: 'none' }}>
         {/* ⚠️ Валюта — в подписи, а не в каждой строке: «₿ 5.02 млн» без неё не отвечает на вопрос
             «миллиона чего» (у соседнего виджета символ слева говорит это сам — «$ 78.42» читается
@@ -834,7 +834,7 @@ export function CryptoWidget({ size, box, fill }: WidgetProps) {
                   в Unicode нет вовсе и там оставался голый тикер. Выравнивание строки при
                   этом сменилось с baseline на center: у картинки базовой линии нет. */}
               <CryptoIcon code={c} size={Math.round(rowFs * 0.86)} />
-              <span style={{ ...DISPLAY, fontSize: rowFs, lineHeight: 1.15 }}>
+              <span style={{ ...DISPLAY, fontSize: rowFs, lineHeight: 1.15, color: CARD_INK }}>
                 {now !== undefined ? formatRub(now) : '—'}
               </span>
               {delta !== undefined && (
@@ -969,7 +969,7 @@ export function TopSitesWidget({ box, tiles, onOpen, fill }: WidgetProps) {
   const shown = tiles.slice(0, cols * rows);
 
   return (
-    <Tile surface topic="sites" fill={fill}>
+    <Tile surface toned fill={fill}>
       <TileCaption>Часто открываете</TileCaption>
       {shown.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.85 }}>
@@ -1049,7 +1049,7 @@ export function TasksWidget({ box, fill }: WidgetProps) {
   const left = tasks.filter((t) => !t.done).length;
 
   return (
-    <Tile surface topic="tasks" fill={fill}>
+    <Tile surface toned fill={fill}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flex: 'none' }}>
         <TileCaption>Дела</TileCaption>
         <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
