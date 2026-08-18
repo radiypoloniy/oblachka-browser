@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, KeyRound, Search, RefreshCw, Trash2 } from 'lucide-react';
+import { Check, KeyRound, Search, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import type { BackfillProgress, HistoryContentCoverage, TranslationEngineId, BergamotStatus } from '../../../shared/ipc';
 import ModelsSection from '../ModelsSection';
 import SkillsSection from './SkillsSection';
@@ -7,6 +7,7 @@ import {
   btnPrimary, btnGhost, OptionList, OptionRow, SectionHeader, Subsection, CapsLabel,
   StatusCard, StatusCardSkeleton, TextField, InputRow, fieldFlex,
 } from './kit';
+import { TEXT } from '../../styles/system';
 
 // ── Секция «AI» ───────────────────────────────────────────────────────────────
 //
@@ -361,13 +362,21 @@ function HistoryContentBackfillSection({ onDone }: { onDone: () => void }) {
 
   return (
     <Subsection
-      title="Полная индексация истории (эксперимент)"
-      danger
+      title="Полная индексация истории"
       description="Тихо переоткрывает старые страницы из истории в фоне (невидимо для вас), чтобы забрать
-        их текст для умного поиска. Это значит реальные сетевые запросы к этим сайтам — часть
-        страниц может показать капчу, разлогинить или уже не существовать (такие просто
-        пропускаются). Может занять долго на большой истории. Можно остановить в любой момент."
+        их текст для умного поиска. Может занять долго на большой истории, остановить можно в любой
+        момент."
     >
+      {/* ⚠️ Предупреждение — СТРОКОЙ со значком, а не красным абзацем описания. Красный текст был
+          единственным во всём интерфейсе и противоречил закону цвета: статус говорит значком и
+          словом. Само предупреждение важное и остаётся: это реальные сетевые запросы. */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, ...TEXT.caption }}>
+        <AlertTriangle size={14} style={{ color: 'var(--warning-500)', flex: 'none', marginTop: 4 }} />
+        <span>
+          Идут настоящие сетевые запросы к этим сайтам: часть страниц может показать капчу,
+          разлогинить или уже не существовать — такие просто пропускаются.
+        </span>
+      </div>
       {running ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>

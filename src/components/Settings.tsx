@@ -3,7 +3,7 @@ import { X, Shield, ShieldCheck, Wifi, Cpu, Palette, Lock, SlidersHorizontal, Cr
 import { searchSettings, isEntryAvailable, SETTINGS_INDEX, type SettingsEntry, type SettingsAvailability } from '../../shared/settingsIndex';
 import type { AdBlockState } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
-import { sp, pad, RADIUS, motion, halo } from '../styles/system';
+import { sp, pad, RADIUS, motion, selected } from '../styles/system';
 import AdBlockSection from './settings/AdBlockSection';
 import VpnSection from './settings/VpnSection';
 import AiSection from './settings/AiSection';
@@ -323,11 +323,10 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
                 style={{
                   display: 'flex', alignItems: 'center', gap: sp(3),
                   padding: pad(3), borderRadius: RADIUS.control, border: 'none',
-                  background: active ? 'var(--accent-soft)' : 'transparent',
+                  background: 'transparent',
                   transition: motion.hover('background', 'color'),
-                  // Фирменный жест: облако света за тем пунктом, на который человек смотрит.
-                  // Выключается одной строкой в styles/system.ts (HALO_ENABLED).
-                  ...halo(active),
+                  // Заливка + полоса у края: одной заливки не хватало, активный пункт терялся.
+                  ...selected(active),
                   color: soon ? 'var(--text-faint)' : active ? 'var(--text-strong)' : 'var(--text-body)',
                   cursor: soon ? 'default' : 'default',
                   fontWeight: active ? 600 : 400,

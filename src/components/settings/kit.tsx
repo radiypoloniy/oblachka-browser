@@ -1,5 +1,5 @@
 import { Children, Fragment, useEffect, useRef, useState } from 'react';
-import { sp, pad, RADIUS, TEXT, ROW_TITLE, CAPS, motion } from '../../styles/system';
+import { sp, pad, RADIUS, TEXT, ROW_TITLE, CAPS, MEASURE, motion } from '../../styles/system';
 import { Check } from 'lucide-react';
 
 // ── Набор презентационных примитивов раздела настроек ─────────────────────────
@@ -121,7 +121,7 @@ export function SectionHeader({ title, children }: { title: string; children?: R
           экран читался серой массой (см. TEXT в styles/system.ts). */}
       <h2 style={{ margin: 0, ...TEXT.title }}>{title}</h2>
       {children && (
-        <p style={{ margin: `${sp(2)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)' }}>
+        <p style={{ margin: `${sp(2)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)', maxWidth: MEASURE }}>
           {children}
         </p>
       )}
@@ -129,10 +129,14 @@ export function SectionHeader({ title, children }: { title: string; children?: R
   );
 }
 
-// Подсекция с разделителем сверху (h3 + описание + контент). danger красит описание
-// в предупреждающий цвет (рискованные операции вроде полной индексации истории).
-export function Subsection({ title, description, danger, children }: {
-  title: string; description?: React.ReactNode; danger?: boolean; children: React.ReactNode;
+// Подсекция с разделителем сверху (h3 + описание + контент).
+//
+// ⚠️ Пропа `danger` здесь БОЛЬШЕ НЕТ. Он красил ВЕСЬ абзац описания в красный — единственное такое
+// место во всём интерфейсе, и человек это сразу заметил («красный шрифт, которого нет больше
+// нигде»). Красный абзац к тому же противоречит закону цвета: статус говорит значком и словом, а
+// не окраской текста. Кому нужно предупреждение — ставит строку с треугольником внутри блока.
+export function Subsection({ title, description, children }: {
+  title: string; description?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
     // ⚠️ data-setting-block — якорь для поиска по настройкам (см. shared/settingsIndex.ts): по
@@ -146,7 +150,7 @@ export function Subsection({ title, description, danger, children }: {
       <div>
         <h3 style={{ margin: 0, ...TEXT.section }}>{title}</h3>
         {description && (
-          <p style={{ margin: `${sp(1)}px 0 0`, ...TEXT.body, color: danger ? 'var(--danger-500)' : 'var(--text-faint)' }}>
+          <p style={{ margin: `${sp(1)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)', maxWidth: MEASURE }}>
             {description}
           </p>
         )}
@@ -430,6 +434,9 @@ export function OptionRow({
   // палитры): у выбора ровно одно значение — «вот этот», и читаться он обязан одинаково во всех
   // палитрах и обеих темах.
   const activeFill = active ? 'var(--accent-soft)' : 'transparent';
+  // Полоса у левого края — тот же приём, что у пункта меню (selected в system.ts): на цветной
+  // земле одна заливка в 10% почти сливается с фоном.
+  const activeEdge = active ? 'inset 3px 0 0 var(--accent)' : undefined;
 
   const body = (
     <>
@@ -463,6 +470,7 @@ export function OptionRow({
     display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(3, 4), width: '100%',
     textAlign: 'left', border: 'none', boxSizing: 'border-box', flex: 1, minWidth: 0,
     background: actions ? 'transparent' : activeFill,
+    boxShadow: actions ? undefined : activeEdge,
     opacity: disabled ? 0.55 : 1,
     transition: motion.hover('background'),
   };
@@ -477,6 +485,7 @@ export function OptionRow({
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: sp(2), paddingRight: sp(3), background: activeFill,
+      boxShadow: activeEdge,
       transition: motion.hover('background'),
     }}>
       {row}
