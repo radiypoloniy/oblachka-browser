@@ -213,6 +213,17 @@ export function cardGlass(): CSSProperties {
     WebkitBackdropFilter: 'blur(24px) saturate(140%)',
     border: '1px solid color-mix(in srgb, var(--surface) 55%, transparent)',
     color: 'var(--text-body)',
+    // ⚠️ Три строки против артефактов композитинга, а не ради красоты. Живая жалоба: «багуется
+    // стекло в виджетах AI-панели, какая-то полоса, которая исчезает по клику» — это классика
+    // backdrop-filter в Chromium: элемент без собственного слоя берёт подложку из устаревшего
+    // кадра, и полоса живёт до следующей перерисовки (клик её и вызывает).
+    //   • translateZ(0) — поднимаем стекло на свой слой;
+    //   • willChange — говорим компоситору, что фильтр будет меняться;
+    //   • isolation — свой контекст наложения, чтобы фон брался из-под элемента, а не из-под
+    //     соседей по общему слою.
+    transform: 'translateZ(0)',
+    willChange: 'backdrop-filter',
+    isolation: 'isolate',
   };
 }
 

@@ -142,6 +142,10 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, overI
       border: toneStyle?.border ?? (onSurface ? '1px solid var(--divider)' : undefined),
       backdropFilter: toneStyle?.backdropFilter,
       WebkitBackdropFilter: toneStyle?.WebkitBackdropFilter,
+      // Свойства против артефактов стекла едут вместе с ним — см. cardGlass.
+      transform: toneStyle?.transform,
+      willChange: toneStyle?.willChange,
+      isolation: toneStyle?.isolation,
       // На выбранной заливке текст всегда белый: все заливки набора тёмные настолько, что
       // --text-body на них не читался бы.
       color: toneStyle?.color ?? (onSurface ? 'var(--text-body)' : '#fff'),
