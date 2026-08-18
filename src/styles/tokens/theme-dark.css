@@ -83,7 +83,7 @@
      фоне и без неё пропадают целиком. Для закреплённых это фатально — там кроме значка ничего нет. */
   /* Выбранная строка сайдбара — с примесью акцента: в тёмной теме это ПОДНИМАЕТ её над землёй
      (1,256 → 1,57), в отличие от светлой, где та же примесь опускала бы (разбор — в colors.css). */
-  --tab-active: color-mix(in srgb, var(--accent) 16%, var(--sidebar-plate, var(--surface)));
+  --tab-active: color-mix(in srgb, var(--accent) 28%, var(--sidebar-plate, var(--surface)));
 
   --favicon-plate:  rgba(255,255,255,0.12);
 
