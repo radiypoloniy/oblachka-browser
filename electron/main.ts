@@ -1907,13 +1907,46 @@ if (!singleInstance) {
   app.quit();
 } else {
 
+/**
+ * Вывести окно на передний план по требованию извне.
+ *
+ * ⚠️ ОДНОГО focus() НА WINDOWS НЕДОСТАТОЧНО, и это не наша ошибка, а защита системы: SetForegroundWindow
+ * работает только у процесса, который СЕЙЧАС активен. Наш экземпляр в этот момент фоновый —
+ * активен тот, из которого кликнули ссылку, — поэтому focus() в лучшем случае мигает кнопкой в
+ * панели задач, а окно остаётся там же, где было. Со стороны это неотличимо от «браузер не
+ * запускается»: человек кликает ссылку, ничего не происходит, он идёт в диспетчер задач, видит
+ * процессы Oblako и снимает их. Живой случай, разобранный по HWND: окно было развёрнуто на весь
+ * экран и помечено видимым, а на переднем плане не оказалось.
+ *
+ * Короткое включение alwaysOnTop — общепринятый обход: оно поднимает окно в Z-порядке без участия
+ * SetForegroundWindow, после чего флаг сразу снимается, иначе окно осталось бы поверх всех чужих.
+ * app.focus({ steal: true }) добирает активацию там, где система её всё-таки отдаёт.
+ */
+function bringToFront(win: BrowserWindow): void {
+  if (win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  if (!win.isVisible()) win.show();
+  win.setAlwaysOnTop(true);
+  win.moveTop();
+  win.setAlwaysOnTop(false);
+  win.focus();
+  app.focus({ steal: true });
+}
+
 // Ссылка из другого приложения при УЖЕ запущенном браузере: открываем вкладку и поднимаем окно.
 app.on('second-instance', (_e, argv) => {
   const url = firstUrlFromArgv(argv);
   const ctx = mainContext() ?? allContexts()[0];
-  if (!ctx) return;
-  if (ctx.win.isMinimized()) ctx.win.restore();
-  ctx.win.focus();
+  // ⚠️ Окон может не быть вовсе (все закрыты, а процесс ещё жив — например, доигрывает выход).
+  // Молча терять ссылку нельзя: для человека это «браузер не открыл страницу». Поднимаем окно
+  // заново и отдаём адрес ему.
+  if (!ctx) {
+    const revived = createWindow();
+    if (url) revived.tabs.createTab(url);
+    bringToFront(revived.win);
+    return;
+  }
+  bringToFront(ctx.win);
   if (url) ctx.tabs.createTab(url);
 });
 
@@ -1921,7 +1954,7 @@ app.on('second-instance', (_e, argv) => {
 app.on('open-url', (e, url) => {
   e.preventDefault();
   const ctx = mainContext() ?? allContexts()[0];
-  if (ctx) ctx.tabs.createTab(url);
+  if (ctx) { bringToFront(ctx.win); ctx.tabs.createTab(url); }
   else pendingStartUrl = url;
 });
 
