@@ -13,6 +13,7 @@ import {
 } from '../../newtab/settings';
 
 import CryptoIcon from '../CryptoIcon';
+import { RADIUS } from '../../styles/system';
 
 // Раздел «Интерфейс» — оформление самого браузера (тема и палитра) и новой вкладки.
 // Настройки вкладки пишутся в localStorage-стор (saveNewTabSettings шлёт событие → открытая
@@ -154,11 +155,11 @@ export default function AppearanceSection() {
                   boxShadow: 'inset 0 0 0 1px var(--divider)',
                 }}>
                   <span style={{
-                    width: 44, height: 22, borderRadius: 6, background: surface,
+                    width: 44, height: 22, borderRadius: RADIUS.control, background: surface,
                     display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, padding: '0 6px',
                   }}>
-                    <span style={{ height: 3, borderRadius: 2, background: text, opacity: 0.85 }} />
-                    <span style={{ height: 3, borderRadius: 2, background: text, opacity: 0.45, width: '65%' }} />
+                    <span style={{ height: 3, borderRadius: RADIUS.tight, background: text, opacity: 0.85 }} />
+                    <span style={{ height: 3, borderRadius: RADIUS.tight, background: text, opacity: 0.45, width: '65%' }} />
                   </span>
                 </span>
                 <span style={{

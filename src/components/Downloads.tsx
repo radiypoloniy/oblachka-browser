@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { X, Download, FolderOpen, ExternalLink, RotateCcw, Pause, Play, XCircle, Trash2 } from 'lucide-react';
 import type { DownloadEntry } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
-import { panelIsland } from '../styles/system';
+import { panelIsland, RADIUS } from '../styles/system';
 // Форматирование, подписи состояний и значок по типу файла — общие с поповером у кнопки тулбара
 // (см. downloadsShared.tsx): один и тот же файл в двух местах должен выглядеть одинаково.
 import { FileKindIcon, formatBytes, formatSpeed, STATE_LABEL, STATE_COLOR } from './downloadsShared';
@@ -70,7 +70,7 @@ export default function Downloads({ downloads, onClose }: DownloadsProps) {
       }}>
         {/* Тот же квадратный значок, что у раздела в сайдбаре и в настройках — язык один. */}
         <span style={{
-          width: 22, height: 22, flex: 'none', borderRadius: 6,
+          width: 22, height: 22, flex: 'none', borderRadius: RADIUS.control,
           background: 'var(--tile-teal)', color: '#fff',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         }}>
@@ -205,21 +205,21 @@ function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
       {isActive && (
         <div style={{ marginBottom: 6 }}>
           <div style={{
-            height: 3, borderRadius: 99, background: 'var(--divider)',
+            height: 3, borderRadius: RADIUS.pill, background: 'var(--divider)',
             overflow: 'hidden', position: 'relative',
           }}>
             {d.totalBytes > 0 ? (
               <div style={{
                 position: 'absolute', top: 0, left: 0, bottom: 0,
                 width: `${pct}%`,
-                background: 'var(--accent)', borderRadius: 99,
+                background: 'var(--accent)', borderRadius: RADIUS.pill,
                 transition: 'width 0.2s linear',
               }} />
             ) : (
               // Индетерминированная анимация — Content-Length неизвестен
               <div style={{
                 position: 'absolute', top: 0, bottom: 0,
-                width: '25%', background: 'var(--accent)', borderRadius: 99,
+                width: '25%', background: 'var(--accent)', borderRadius: RADIUS.pill,
                 animation: 'oblako-progress 1.4s ease-in-out infinite',
               }} />
             )}

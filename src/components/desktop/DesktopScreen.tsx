@@ -16,6 +16,7 @@ import {
 import { APPS, AppIconBadge } from '../aiApps';
 import SiteIcon from './SiteIcon';
 import { WIDGET_FILLS, WIDGET_RENDERERS, fillCss } from './widgets';
+import { RADIUS } from '../../styles/system';
 
 // Рабочий стол новой вкладки — springboard в духе iPad: сетка иконок и виджетов поверх обоев.
 // Раскладку считает src/newtab/desktop.ts (там же объяснено, почему элементы хранят порядок, а
@@ -451,7 +452,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                         title="Убрать с экрана"
                         style={{
                           position: 'absolute', top: -8, left: -8, zIndex: 6,
-                          width: 22, height: 22, borderRadius: 999, border: 'none', cursor: 'default',
+                          width: 22, height: 22, borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
                           background: 'rgba(30,30,34,0.92)', color: '#fff',
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                           boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
@@ -469,7 +470,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                           title={item.hero ? 'Больше не главный' : 'Сделать главным'}
                           style={{
                             position: 'absolute', top: -8, right: -8, zIndex: 6,
-                            width: 22, height: 22, borderRadius: 999, border: 'none', cursor: 'default',
+                            width: 22, height: 22, borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
                             background: item.hero ? 'var(--accent)' : 'rgba(30,30,34,0.92)',
                             color: item.hero ? 'var(--on-accent)' : '#fff',
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -504,7 +505,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                           title="Потяните, чтобы изменить размер"
                           style={{
                             position: 'absolute', right: -6, bottom: -6, zIndex: 6,
-                            width: 20, height: 20, borderRadius: 999,
+                            width: 20, height: 20, borderRadius: RADIUS.pill,
                             background: stretching ? 'var(--accent)' : 'rgba(30,30,34,0.92)',
                             cursor: 'nwse-resize',
                             boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
@@ -541,7 +542,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
               onClick={() => { setEditing(false); setSheetOpen(false); }}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, height: 40, padding: '0 16px',
-                borderRadius: 999, border: 'none', cursor: 'default',
+                borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
                 background: 'var(--accent)', color: 'var(--on-accent)',
                 fontSize: 'var(--fs-sm)', fontWeight: 600, boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
               }}
@@ -587,7 +588,7 @@ function CornerButton({ title, onClick, children }: { title: string; onClick: ()
       onClick={onClick}
       title={title}
       style={{
-        width: 40, height: 40, borderRadius: 999, border: 'none', cursor: 'default',
+        width: 40, height: 40, borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         background: 'var(--nt-plate)', backdropFilter: 'blur(12px)',
         color: 'var(--nt-text)', boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
@@ -679,7 +680,7 @@ function FillPicker({ value, onPick }: { value?: string; onPick: (fill: string |
         title="Цвет виджета"
         style={{
           position: 'absolute', left: -6, bottom: -6, zIndex: 6,
-          width: 20, height: 20, borderRadius: 999, border: '2px solid #fff',
+          width: 20, height: 20, borderRadius: RADIUS.pill, border: '2px solid #fff',
           background: fillCss(value) ?? 'var(--surface)',
           boxShadow: '0 1px 4px rgba(0,0,0,0.35)', cursor: 'default', padding: 0,
         }}
@@ -699,7 +700,7 @@ function FillPicker({ value, onPick }: { value?: string; onPick: (fill: string |
               onClick={(e) => { e.stopPropagation(); onPick(f.id === 'theme' ? undefined : f.id); setOpen(false); }}
               title={f.label}
               style={{
-                width: 20, height: 20, borderRadius: 999, cursor: 'default', padding: 0,
+                width: 20, height: 20, borderRadius: RADIUS.pill, cursor: 'default', padding: 0,
                 background: f.css ?? 'var(--surface)',
                 border: (value ?? 'theme') === f.id ? '2px solid var(--accent)' : '1px solid var(--divider-strong)',
               }}

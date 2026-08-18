@@ -3,6 +3,7 @@ import type React from 'react';
 import { X, Plus, Globe } from 'lucide-react';
 import { APPS, AppIconBadge } from '../aiApps';
 import { WIDGET_SIZES, type DesktopItem, type DesktopLayout, hasItem } from '../../newtab/desktop';
+import { RADIUS } from '../../styles/system';
 
 // Палитра добавления: виджеты, приложения и свои сайты.
 //
@@ -101,7 +102,7 @@ export default function AddSheet({ layout, onAdd, onClose }: Props) {
               warn={!!NETWORK_WIDGETS[w.key]}
               onAdd={() => onAdd({ kind: 'widget', widget: w.key, size: WIDGET_SIZES[w.size] })}
               badge={<span style={{
-                width: 40, height: 40, borderRadius: 10, flex: 'none',
+                width: 40, height: 40, borderRadius: RADIUS.box, flex: 'none',
                 background: 'var(--surface-sunken)', display: 'inline-flex',
                 alignItems: 'center', justifyContent: 'center', fontSize: 18,
               }}>{w.key === 'weather' ? '🌤' : w.key === 'clock' ? '🕒' : w.key === 'rates' ? '₽' : w.key === 'crypto' ? '₿' : w.key === 'tasks' ? '✓' : w.key === 'shield' ? '🛡' : w.key === 'moon' ? '🌙' : w.key === 'downloads' ? '⤓' : w.key === 'holiday' ? '🎉' : w.key === 'tracking' ? '⤓' : '★'}</span>}

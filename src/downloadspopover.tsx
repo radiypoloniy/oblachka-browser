@@ -8,6 +8,7 @@ import { FileKindIcon, formatBytes, formatSpeed } from './components/downloadsSh
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
+import { RADIUS } from './styles/system';
 
 declare global {
   interface Window {
@@ -278,18 +279,18 @@ function Row({ entry: d }: { entry: DownloadEntry }) {
         )}
         {isActive && (
           <div style={{
-            height: 3, borderRadius: 99, background: 'var(--divider)',
+            height: 3, borderRadius: RADIUS.pill, background: 'var(--divider)',
             overflow: 'hidden', position: 'relative', margin: '4px 0 3px',
           }}>
             {d.totalBytes > 0 ? (
               <div style={{
                 position: 'absolute', inset: '0 auto 0 0', width: `${pct}%`,
-                background: 'var(--accent)', borderRadius: 99, transition: 'width 0.2s linear',
+                background: 'var(--accent)', borderRadius: RADIUS.pill, transition: 'width 0.2s linear',
               }} />
             ) : (
               <div style={{
                 position: 'absolute', top: 0, bottom: 0, width: '25%',
-                background: 'var(--accent)', borderRadius: 99,
+                background: 'var(--accent)', borderRadius: RADIUS.pill,
                 animation: 'oblako-progress 1.4s ease-in-out infinite',
               }} />
             )}

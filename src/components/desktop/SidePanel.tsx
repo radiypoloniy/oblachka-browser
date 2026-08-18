@@ -11,6 +11,7 @@ import {
 } from '../../newtab/desktop';
 import { WIDGET_FILLS, FILL_SWATCH } from './widgets';
 import CryptoIcon from '../CryptoIcon';
+import { RADIUS } from '../../styles/system';
 
 // Боковая панель настройки рабочего стола — всё, что можно поменять, в одном месте и по одному
 // клику. Референс — Bonjourr.
@@ -152,7 +153,7 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
                     onClick={() => patchBg({ preset: p.id })}
                     title={p.label}
                     style={{
-                      height: 34, borderRadius: 8, cursor: 'default', background: p.css,
+                      height: 34, borderRadius: RADIUS.control, cursor: 'default', background: p.css,
                       border: s.background.preset === p.id ? '2px solid var(--accent)' : '1px solid var(--divider)',
                     }}
                   />
@@ -214,7 +215,7 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
                               onClick={() => setFill(w.key, f.id === 'theme' ? undefined : f.id)}
                               title={f.label}
                               style={{
-                                width: 22, height: 22, borderRadius: 999, cursor: 'default', padding: 0,
+                                width: 22, height: 22, borderRadius: RADIUS.pill, cursor: 'default', padding: 0,
                                 background: FILL_SWATCH[f.id] ?? 'var(--surface-sunken)',
                                 border: (item?.fill ?? 'theme') === f.id
                                   ? '2.5px solid var(--accent)' : '1px solid var(--divider-strong)',
@@ -364,7 +365,7 @@ function Toggle({ label, hint, on, onChange, icon }: {
     >
       {icon && (
         <span style={{
-          width: 26, height: 26, flex: 'none', borderRadius: 7, fontSize: 14,
+          width: 26, height: 26, flex: 'none', borderRadius: RADIUS.control, fontSize: 14,
           background: 'var(--surface-sunken)', display: 'inline-flex',
           alignItems: 'center', justifyContent: 'center',
         }}>{icon}</span>
@@ -376,13 +377,13 @@ function Toggle({ label, hint, on, onChange, icon }: {
         )}
       </span>
       <span style={{
-        width: 44, height: 26, borderRadius: 999, flex: 'none', position: 'relative',
+        width: 44, height: 26, borderRadius: RADIUS.pill, flex: 'none', position: 'relative',
         background: on ? 'var(--accent)' : 'var(--surface-sunken)',
         transition: 'background var(--dur-fast) var(--ease-standard)',
       }}>
         <span style={{
           position: 'absolute', top: 3, left: on ? 21 : 3, width: 20, height: 20,
-          borderRadius: 999, background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
+          borderRadius: RADIUS.pill, background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
           transition: 'left var(--dur-fast) var(--ease-standard)',
         }} />
       </span>
@@ -509,5 +510,5 @@ function SiteAdder({ onAdd }: { onAdd: (item: Omit<DesktopItem, 'id'>) => void }
 
 const iconBtn: React.CSSProperties = {
   border: 'none', background: 'transparent', cursor: 'default', padding: 5,
-  borderRadius: 6, color: 'var(--text-faint)', display: 'inline-flex',
+  borderRadius: RADIUS.control, color: 'var(--text-faint)', display: 'inline-flex',
 };

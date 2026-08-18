@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { knownCountryCode } from '../../shared/countries';
+import { RADIUS } from '../styles/system';
 
 // Флаг страны картинкой. ⚠️ Не эмодзи: Windows не рисует regional indicator'ы как флаг
 // (см. shared/countries.ts и shared/text.ts). SVG лежат в src/public/flags и приезжают
@@ -35,7 +36,7 @@ export default function CountryFlag({ code, title, width = 20 }: Props) {
       style={{
         flex: 'none',
         width, height,
-        borderRadius: 3,
+        borderRadius: RADIUS.tight,
         objectFit: 'cover',
         border: '1px solid var(--divider)',
         boxSizing: 'border-box',

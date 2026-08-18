@@ -12,6 +12,7 @@
 // рендерер наклоняет и масштабирует бесплатно.
 import { useEffect, useState } from 'react';
 import { SPLIT_PANE_RADIUS } from '../../shared/layout';
+import { RADIUS } from '../styles/system';
 
 // Ширина карточки в CSS-пикселях. Нужна обеим сторонам: карточку держат за верхний край по центру,
 // то есть смещение под курсором считается от ширины.
@@ -30,11 +31,11 @@ export const SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT = CARD_BODY_HEIGHT * 2;
 function CardIcon({ favicon, title }: { favicon: string | null; title: string }) {
   const size = 30;
   if (favicon) {
-    return <img src={favicon} alt="" width={size} height={size} style={{ display: 'block', borderRadius: 6 }} />;
+    return <img src={favicon} alt="" width={size} height={size} style={{ display: 'block', borderRadius: RADIUS.control }} />;
   }
   return (
     <span style={{
-      width: size, height: size, borderRadius: 6, flex: 'none',
+      width: size, height: size, borderRadius: RADIUS.control, flex: 'none',
       background: 'var(--surface-sunken)', color: 'var(--text-muted)',
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)',

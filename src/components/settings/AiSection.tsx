@@ -7,7 +7,7 @@ import {
   btnPrimary, btnGhost, OptionList, OptionRow, SectionHeader, Subsection, CapsLabel,
   StatusCard, StatusCardSkeleton, TextField, InputRow, fieldFlex,
 } from './kit';
-import { TEXT } from '../../styles/system';
+import { TEXT, RADIUS } from '../../styles/system';
 
 // ── Секция «AI» ───────────────────────────────────────────────────────────────
 //
@@ -382,7 +382,7 @@ function HistoryContentBackfillSection({ onDone }: { onDone: () => void }) {
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
             Обработано {processed} из {total}…
           </div>
-          <div style={{ height: 6, borderRadius: 3, background: 'var(--surface-hover)', overflow: 'hidden' }}>
+          <div style={{ height: 6, borderRadius: RADIUS.tight, background: 'var(--surface-hover)', overflow: 'hidden' }}>
             <div style={{
               height: '100%', width: `${pct}%`, background: 'var(--accent)',
               transition: 'width 0.2s ease-out',

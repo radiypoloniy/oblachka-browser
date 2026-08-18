@@ -9,6 +9,7 @@ import { islandPlate, untintedPlateVars } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
 import BrowserLogo from './BrowserLogo';
 import { useScrim } from '../scrimState';
+import { RADIUS } from '../styles/system';
 
 // Экран первого запуска: короткий рассказ о том, чем этот браузер отличается, и перенос данных
 // из привычного браузера последним шагом.
@@ -498,7 +499,7 @@ export default function Onboarding({ onFinish }: Props) {
                           }}
                         >
                           <span style={{
-                            width: 16, height: 16, borderRadius: 5, flex: 'none',
+                            width: 16, height: 16, borderRadius: RADIUS.tight, flex: 'none',
                             background: on ? 'var(--accent)' : 'transparent',
                             border: on ? 'none' : '1.5px solid var(--divider-strong)',
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

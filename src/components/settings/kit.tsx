@@ -101,7 +101,7 @@ export function IconBtn({ title, active, onClick, children }: {
       onClick={onClick}
       style={{
         border: 'none', background: 'transparent', cursor: 'default', padding: 4,
-        borderRadius: 6, display: 'inline-flex', flex: 'none',
+        borderRadius: RADIUS.control, display: 'inline-flex', flex: 'none',
         color: active ? 'var(--success-500)' : 'var(--text-faint)',
       }}
       onMouseEnter={(e) => { if (!active) { e.currentTarget.style.color = 'var(--text-body)'; e.currentTarget.style.background = 'var(--surface-hover)'; } }}
@@ -194,7 +194,7 @@ export function InlineHint({ children }: { children: React.ReactNode }) {
 // прощает (см. CLAUDE.md про backdrop-filter).
 export function StatusCardSkeleton() {
   const bar = (w: number, h: number): React.CSSProperties => ({
-    width: w, height: h, borderRadius: 4, background: 'var(--surface-sunken)',
+    width: w, height: h, borderRadius: RADIUS.tight, background: 'var(--surface-sunken)',
   });
   return (
     <div style={{

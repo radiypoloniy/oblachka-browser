@@ -17,6 +17,7 @@ import { subscribeScrim, dimColor } from './scrimState';
 import { isDarkTheme } from '../shared/ipc';
 import type { ContentBounds, SplitSwapHint, SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal, ThemePrefs } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
+import { RADIUS } from './styles/system';
 
 const HUB_ID = 'hub';
 
@@ -112,7 +113,7 @@ function SplitPanelHeader({ tab, active, onClose, dragging, dragHandlers }: {
           title="Закрыть"
           style={{
             border: 'none', background: 'transparent', cursor: 'default', padding: 2,
-            borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)',
+            borderRadius: RADIUS.tight, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)',
           }}
         ><X size={12} /></button>
       )}
@@ -1185,7 +1186,7 @@ export default function App() {
                 <div style={{
                   position: 'absolute', top: '50%', left: '50%',
                   width: 4, height: 32, transform: 'translate(-50%, -50%)',
-                  borderRadius: 999, background: 'var(--divider-strong)', pointerEvents: 'none',
+                  borderRadius: RADIUS.pill, background: 'var(--divider-strong)', pointerEvents: 'none',
                 }} />
               </div>
 
@@ -1281,7 +1282,7 @@ export default function App() {
               <div style={{
                 position: 'absolute', top: '50%', left: '50%',
                 width: 4, height: 32, transform: 'translate(-50%, -50%)',
-                borderRadius: 999, background: 'var(--divider-strong)', pointerEvents: 'none',
+                borderRadius: RADIUS.pill, background: 'var(--divider-strong)', pointerEvents: 'none',
               }} />
             </div>
             <div style={{ flex: 'none', width: aiPanelWidth }} />

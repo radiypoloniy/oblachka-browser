@@ -1,4 +1,5 @@
 // Раздел «Приложения» AI-панели — «домашний экран» в стиле iOS: обои, сетка иконок-сквирклов,
+import { RADIUS } from '../styles/system';
 // до ДВУХ одновременно открытых приложений в вертикальных слотах (верхний/нижний). Заход 1 —
 // только локальные приложения (калькулятор/конвертер/таймер/пипетка), целиком в renderer'е
 // панели: ни IPC, ни main этот файл не трогает. Веб-приложения (чужие сайты в WebContentsView)
@@ -1419,7 +1420,7 @@ function SlotDivider({ onPointerDown, active }: {
       }}
     >
       <div style={{
-        width: 40, height: 4, borderRadius: 2,
+        width: 40, height: 4, borderRadius: RADIUS.tight,
         background: active ? 'var(--accent)' : 'var(--text-faint)',
         opacity: active ? 1 : 0.4,
       }} />

@@ -3,7 +3,7 @@ import { Trash2, AlertTriangle } from 'lucide-react';
 import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
 import { OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox,
 } from './settings/kit';
-import { sp, TEXT, CAPS } from '../styles/system';
+import { sp, TEXT, CAPS, RADIUS } from '../styles/system';
 
 function gb(bytes: number): string {
   return (bytes / 1e9).toFixed(1);
@@ -290,7 +290,7 @@ export default function ModelsSection() {
             <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
               Скачиваю {progress?.modelId ?? ''}: {gb(progress?.receivedBytes ?? 0)} из {progress?.totalBytes ? gb(progress.totalBytes) : '?'} ГБ ({pct}%)
             </div>
-            <div style={{ height: 6, borderRadius: 3, background: 'var(--surface-hover)', overflow: 'hidden' }}>
+            <div style={{ height: 6, borderRadius: RADIUS.tight, background: 'var(--surface-hover)', overflow: 'hidden' }}>
               <div style={{
                 height: '100%', width: `${pct}%`, background: 'var(--accent)',
                 transition: 'width 0.2s ease-out',

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { TrendingDown, Trash2, ExternalLink, RefreshCw, AlertTriangle, Bell, BellOff, Link2, Unlink, Store } from 'lucide-react';
 import type { TrackedProduct, TrackingEvent, MatchSuggestion } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
-import { panelIsland } from '../styles/system';
+import { panelIsland, RADIUS } from '../styles/system';
 
 // Экран «что я отслеживаю» (PRICE-TRACKING.md). Компонент только рисует: список, историю цен и
 // группы считает main (electron/TrackingStore.ts).
@@ -245,7 +245,7 @@ export default function Tracking() {
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
                 <span style={{
-                  flex: 'none', width: 8, height: 8, borderRadius: 999,
+                  flex: 'none', width: 8, height: 8, borderRadius: RADIUS.pill,
                   background: ev.kind === 'drop' || ev.kind === 'back' ? 'var(--tone-green)' : 'var(--tone-warm)',
                 }} />
                 <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -359,7 +359,7 @@ function OfferRow({ offer, currency, cheapest, onChanged }: {
           {cheapest && (
             <span style={{
               fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--tone-green)',
-              padding: '1px 6px', borderRadius: 999, background: 'var(--tone-green-fill)',
+              padding: '1px 6px', borderRadius: RADIUS.pill, background: 'var(--tone-green-fill)',
             }}>дешевле всего</span>
           )}
         </div>

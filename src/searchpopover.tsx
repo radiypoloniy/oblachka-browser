@@ -19,6 +19,7 @@ import './styles/global.css';
 import type { SearchTarget, QuickHit, QuickQueryResult } from '../shared/ipc';
 import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
+import { RADIUS } from './styles/system';
 
 interface ShowPayload { targets: SearchTarget[]; prefill: string }
 
@@ -100,14 +101,14 @@ function Chip({ target, selected, showKey, onClick }: {
         borderColor: selected ? 'transparent' : 'var(--glass-edge)',
         background: selected ? 'var(--accent)' : 'var(--surface-sunken)',
         color: selected ? '#fff' : 'var(--text-body)',
-        borderRadius: 999,
+        borderRadius: RADIUS.pill,
         fontSize: 'var(--fs-sm)', fontWeight: selected ? 600 : 500,
         cursor: 'default', fontFamily: 'inherit',
         whiteSpace: 'nowrap', overflow: 'hidden',
       }}
     >
       {target.faviconUrl
-        ? <img src={target.faviconUrl} width={18} height={18} alt="" style={{ borderRadius: 4, flex: 'none' }} />
+        ? <img src={target.faviconUrl} width={18} height={18} alt="" style={{ borderRadius: RADIUS.tight, flex: 'none' }} />
         : <Globe size={17} style={{ flex: 'none', opacity: selected ? 0.9 : 0.55 }} />}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{target.name}</span>
       {showKey && target.bangKey && (
@@ -310,7 +311,7 @@ function SearchPopover() {
           />
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 5, flex: 'none',
-            padding: '4px 9px', borderRadius: 999,
+            padding: '4px 9px', borderRadius: RADIUS.pill,
             background: 'var(--surface-sunken)', border: '1px solid var(--glass-edge)',
             fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
           }}>
@@ -366,7 +367,7 @@ function SearchPopover() {
                     title={chipsExpanded ? 'Свернуть список целей' : 'Показать все цели'}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none',
-                      height: 40, padding: '0 14px', borderRadius: 999,
+                      height: 40, padding: '0 14px', borderRadius: RADIUS.pill,
                       border: '1px dashed var(--divider-strong)', background: 'transparent',
                       color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', fontWeight: 500,
                       cursor: 'default', fontFamily: 'inherit',
@@ -415,7 +416,7 @@ function SearchPopover() {
                   {/* Пометка «вкладка» — единственная, что меняет исход: по ней переключаются,
                       а не открывают копию. Остальные две держим ради одинаковой строки. */}
                   <span style={{
-                    flex: 'none', padding: '3px 8px', borderRadius: 999,
+                    flex: 'none', padding: '3px 8px', borderRadius: RADIUS.pill,
                     background: 'var(--surface-sunken)', border: '1px solid var(--glass-edge)',
                     fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
                   }}>{HIT_LABEL[h.kind]}</span>

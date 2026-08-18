@@ -37,6 +37,8 @@
     "price-events-check": "node --experimental-strip-types scripts/price-events-check.mjs",
     "product-match-check": "node --experimental-strip-types scripts/product-match-check.mjs",
     "address-parse-check": "node --experimental-strip-types scripts/address-parse-check.mjs",
+    "motion-check": "node --experimental-strip-types scripts/motion-check.mjs",
+    "radius-check": "node --experimental-strip-types scripts/radius-check.mjs",
     "ai-bench": "node scripts/ai-bench.mjs",
     "price-probe": "node scripts/price-probe.mjs",
     "notify-preview": "node scripts/notify-preview.mjs",

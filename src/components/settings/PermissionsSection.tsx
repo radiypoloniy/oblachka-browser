@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { RADIUS } from '../../styles/system';
 import { Camera, Clipboard, MapPin, Maximize, Mic, Bell, RotateCcw, ExternalLink } from 'lucide-react';
 import type { PermissionRecord, PermKey } from '../../../shared/ipc';
 import { Favicon, SectionHeader, Subsection, segBtnStyle,
@@ -113,7 +114,7 @@ export default function PermissionsSection() {
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none',
                       background: 'none', cursor: 'default', padding: '4px 8px',
-                      borderRadius: 6, fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
+                      borderRadius: RADIUS.control, fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
@@ -179,7 +180,7 @@ export default function PermissionsSection() {
                   title="Отозвать доверие"
                   style={{
                     border: 'none', background: 'none', cursor: 'default', padding: '4px 8px',
-                    borderRadius: 6, fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', flexShrink: 0,
+                    borderRadius: RADIUS.control, fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', flexShrink: 0,
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}

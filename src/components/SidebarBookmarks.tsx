@@ -11,6 +11,7 @@ import { Check, ChevronRight, Folder, FolderPlus, Pencil, Star, X } from 'lucide
 import type { BookmarkNode } from '../../shared/ipc';
 import { islandPlate } from '../styles/island';
 import FolderGlyph from './FolderGlyph';
+import { RADIUS } from '../styles/system';
 
 // Режим «Закладки» в сайдбаре — содержимое, которое встаёт на место полосы вкладок.
 //
@@ -217,7 +218,7 @@ export default function SidebarBookmarks({ onOpen }: Props) {
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
             <span style={{
-              width: 40, height: 40, borderRadius: 11, display: 'inline-flex',
+              width: 40, height: 40, borderRadius: RADIUS.box, display: 'inline-flex',
               alignItems: 'center', justifyContent: 'center',
               border: '1.5px dashed var(--divider-strong)',
             }}>
@@ -411,7 +412,7 @@ function RowBtn({ title, onClick, children }: { title: string; onClick: () => vo
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       style={{
         flex: 'none', border: 'none', background: 'transparent', cursor: 'default',
-        padding: 3, borderRadius: 4, color: 'var(--text-faint)', display: 'inline-flex',
+        padding: 3, borderRadius: RADIUS.tight, color: 'var(--text-faint)', display: 'inline-flex',
       }}
       onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; }}
@@ -463,7 +464,7 @@ function BookmarkIcon({ node }: { node: BookmarkNode }) {
   }, [host, node.kind]);
 
   if (node.kind === 'folder') return <Folder size={14} strokeWidth={2} style={{ flex: 'none', color: 'var(--text-muted)' }} />;
-  if (src) return <img src={src} alt="" width={14} height={14} style={{ flex: 'none', borderRadius: 3, objectFit: 'contain' }} />;
+  if (src) return <img src={src} alt="" width={14} height={14} style={{ flex: 'none', borderRadius: RADIUS.tight, objectFit: 'contain' }} />;
   return <Star size={14} strokeWidth={2} style={{ flex: 'none', color: 'var(--text-faint)' }} />;
 }
 
@@ -515,7 +516,7 @@ function FolderCell({ nodeId, label, active, onClick, all }: {
         // «Все закладки» — не папка, и значок у неё другой намеренно: это не место, а «показать
         // всё». Тот же приём, что у пункта «Все закладки» в колонке раздела.
         <span style={{
-          width: 40, height: 40, borderRadius: 11, display: 'inline-flex',
+          width: 40, height: 40, borderRadius: RADIUS.box, display: 'inline-flex',
           alignItems: 'center', justifyContent: 'center',
           background: 'linear-gradient(180deg, hsl(42 92% 62%), hsl(36 88% 50%))',
           color: '#fff', boxShadow: 'var(--appicon-shadow)',

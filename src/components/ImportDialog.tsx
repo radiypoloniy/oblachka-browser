@@ -4,6 +4,7 @@ import type { ImportSource, ImportDataType, ImportRunResult, ImportTypeResult, C
 import { islandPlate, untintedPlateVars } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
 import { useScrim } from '../scrimState';
+import { RADIUS } from '../styles/system';
 
 // Диалог импорта данных из другого браузера. Открывается ТОЛЬКО из раздела настроек «Браузер»:
 // первый запуск ведёт свой экран (см. src/components/Onboarding.tsx), с другим тоном и объёмом. Вся вендор-специфика — в main;
@@ -226,7 +227,7 @@ export default function ImportDialog({ onClose }: ImportDialogProps) {
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <span style={{
-                            width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                            width: 18, height: 18, borderRadius: RADIUS.tight, flexShrink: 0,
                             border: on ? 'none' : '1.5px solid var(--divider-strong)',
                             background: on ? 'var(--accent)' : 'transparent',
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

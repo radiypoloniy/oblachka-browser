@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { RADIUS } from '../../styles/system';
 import { Wand2, Trash2, Info } from 'lucide-react';
 import Toggle from '../Toggle';
 import {
@@ -319,7 +320,7 @@ export default function RulesSection() {
               title="Удалить правило"
               onClick={() => void window.oblako.removeRule(rule.id)}
               style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 8,
-                       borderRadius: 6, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
+                       borderRadius: RADIUS.control, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
             >
               <Trash2 size={14} />
             </button>

@@ -17,6 +17,7 @@ import { AppsMode, loadWallpaper, saveWallpaper, wallpaperBackground } from './c
 import type { CurrencyRatesResult, WeatherResult } from './components/aiApps';
 import { SHELL_MARGIN } from '../shared/layout';
 import { installOverlayReveal } from './overlayReveal';
+import { RADIUS } from './styles/system';
 
 // Код причины отказа (см. electron/TranslationService.ts::ModelError, shared/ipc.ts::ModelErrorCode)
 // — зеркалим локально, тот же приём, что и у ChatOutcome ниже.
@@ -528,7 +529,7 @@ function AiPanel() {
               width={16}
               height={16}
               onError={() => setFaviconError(true)}
-              style={{ flexShrink: 0, borderRadius: 3, objectFit: 'contain' }}
+              style={{ flexShrink: 0, borderRadius: RADIUS.tight, objectFit: 'contain' }}
             />
           ) : (
             <Globe size={16} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />

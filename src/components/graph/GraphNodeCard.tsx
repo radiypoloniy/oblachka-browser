@@ -10,6 +10,7 @@ import { NODE_KINDS } from '../../../shared/graph';
 import type { ImagePreset } from '../../../shared/imagePresets';
 import { markdownComponents } from '../aiMarkdown';
 import { InfographicView, MindmapView, QuizView } from '../studioViews';
+import { RADIUS } from '../../styles/system';
 
 // Карточка узла на холсте. Только рисует и зовёт колбэки — планирование и прогон живут
 // в main (electron/GraphEngine.ts).
@@ -166,7 +167,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         <NodeResizer
           minWidth={160} minHeight={56} isVisible={!!selected}
           lineStyle={{ borderColor: 'var(--accent)' }}
-          handleStyle={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent)', border: 0 }}
+          handleStyle={{ width: 8, height: 8, borderRadius: RADIUS.tight, background: 'var(--accent)', border: 0 }}
         />
         <textarea
           className="nodrag nowheel"
@@ -223,7 +224,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         minHeight={180}
         isVisible={!!selected}
         lineStyle={{ borderColor: 'var(--accent)' }}
-        handleStyle={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent)', border: 0 }}
+        handleStyle={{ width: 8, height: 8, borderRadius: RADIUS.tight, background: 'var(--accent)', border: 0 }}
       />
 
       {spec.inputs.map((port, i) => (

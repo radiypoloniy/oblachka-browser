@@ -992,7 +992,7 @@ function FaviconTile({ host }: { host: string }) {
   if (failed) {
     return (
       <span style={{
-        width: 44, height: 44, borderRadius: 12, flex: 'none',
+        width: 44, height: 44, borderRadius: RADIUS.box, flex: 'none',
         background: siteTint(host),
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 19, fontWeight: 600, color: '#fff',
@@ -1011,7 +1011,7 @@ function FaviconTile({ host }: { host: string }) {
       // границ. На тёмной плитке проблемы не было видно вовсе, поэтому и всплыло только сейчас.
       // Кромка токеном, а не литералом: в тёмной теме она обязана становиться светлой.
       style={{
-        width: 44, height: 44, borderRadius: 12, objectFit: 'contain', flex: 'none',
+        width: 44, height: 44, borderRadius: RADIUS.box, objectFit: 'contain', flex: 'none',
         background: 'rgba(255,255,255,0.94)', padding: 7, boxSizing: 'border-box',
         border: '1px solid var(--divider)',
         boxShadow: '0 1px 2px rgba(16,20,40,0.10), 0 2px 6px rgba(16,20,40,0.08)',
@@ -1128,7 +1128,7 @@ export function TasksWidget({ box, fill, overImage, hero }: WidgetProps) {
               onClick={() => toggle(t.id)}
               title={t.done ? 'Вернуть в дела' : 'Сделано'}
               style={{
-                width: 18, height: 18, flex: 'none', borderRadius: 6, cursor: 'default',
+                width: 18, height: 18, flex: 'none', borderRadius: RADIUS.control, cursor: 'default',
                 border: t.done ? 'none' : `1.5px solid ${TASKS_ACCENT}`,
                 background: t.done ? TASKS_ACCENT : 'transparent',
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0,
@@ -1168,7 +1168,7 @@ export function TasksWidget({ box, fill, overImage, hero }: WidgetProps) {
           // не видно вовсе. Теперь поле берёт колодец и текст из темы, как все поля в браузере.
           style={{
             flex: 1, minWidth: 0, height: 30, padding: '0 10px',
-            borderRadius: 999, border: '1px solid var(--divider)',
+            borderRadius: RADIUS.pill, border: '1px solid var(--divider)',
             background: 'var(--surface-sunken)', color: 'var(--text-body)',
             fontSize: 'var(--fs-sm)', outline: 'none',
           }}
@@ -1177,7 +1177,7 @@ export function TasksWidget({ box, fill, overImage, hero }: WidgetProps) {
           type="submit"
           title="Добавить"
           style={{
-            width: 30, height: 30, flex: 'none', borderRadius: 999, border: 'none', cursor: 'default',
+            width: 30, height: 30, flex: 'none', borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
             background: TASKS_ACCENT, color: '#fff',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}

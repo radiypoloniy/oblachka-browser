@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DISPLAY } from '../../styles/system';
+import { DISPLAY, RADIUS } from '../../styles/system';
 import { Tile, TileCaption, Sparkline, TONE_GREEN, TONE_WARM, FILL_GREEN, FILL_WARM, type WidgetProps } from './widgets';
 import type { TrackedProduct } from '../../../shared/ipc';
 import type { DayDigestState } from '../../../shared/ipc';
@@ -306,9 +306,9 @@ export function DownloadsWidget({ box, fill, overImage, hero: isHero }: WidgetPr
                 textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: it.done ? 0.6 : 1,
               }}>{it.name}</div>
               {!it.done && (
-                <div style={{ height: 3, borderRadius: 99, background: 'rgba(128,128,128,0.25)', marginTop: 3 }}>
+                <div style={{ height: 3, borderRadius: RADIUS.pill, background: 'rgba(128,128,128,0.25)', marginTop: 3 }}>
                   <div style={{
-                    width: `${it.pct}%`, height: '100%', borderRadius: 99,
+                    width: `${it.pct}%`, height: '100%', borderRadius: RADIUS.pill,
                     background: 'var(--accent)', transition: 'width var(--dur-slow) linear',
                   }} />
                 </div>

@@ -26,6 +26,7 @@ import './styles/global.css';
 import type { SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, PermKey } from '../shared/ipc';
 import { siteHue } from './components/desktop/siteTint';
 import { installOverlayReveal } from './overlayReveal';
+import { RADIUS } from './styles/system';
 
 function originOf(url: string): string | null {
   try { return new URL(url).origin; } catch { return null; }
@@ -87,7 +88,7 @@ function RowIcon({ item, size }: { item: SuggestDropdownItem; size: number }) {
       src={`${origin}/favicon.ico`}
       alt=""
       width={size} height={size}
-      style={{ borderRadius: 4, display: 'block', flex: 'none' }}
+      style={{ borderRadius: RADIUS.tight, display: 'block', flex: 'none' }}
       onError={() => setOk(false)}
     />
   );
@@ -337,7 +338,7 @@ function Pill({ children, tone }: { children: React.ReactNode; tone?: 'muted' | 
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 5, flex: 'none',
-      height: 24, padding: '0 9px', borderRadius: 999,
+      height: 24, padding: '0 9px', borderRadius: RADIUS.pill,
       background: tone === 'accent' ? 'var(--accent-soft)' : 'var(--surface-sunken)',
       color: tone === 'accent' ? 'var(--accent)' : 'var(--text-muted)',
       fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap',

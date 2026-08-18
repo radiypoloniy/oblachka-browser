@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { RefreshCw, Download, RotateCcw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { StatusCard, btnPrimary, btnGhost, InlineHint } from './kit';
 import type { UpdateStatus } from '../../../shared/ipc';
+import { RADIUS } from '../../styles/system';
 
 // Блок «Обновления» раздела «Браузер». Только рисует то, что прислал main (см. CLAUDE.md —
 // компоненты без бизнес-логики): вся механика в electron/UpdateManager.ts, сюда приходит
@@ -101,7 +102,7 @@ export default function UpdatesBlock() {
         // Полоса прогресса отдельным элементом, а не внутри карточки: StatusCard — общий
         // примитив набора, расширять его ради одного потребителя не стоит.
         <div style={{
-          height: 4, borderRadius: 2, background: 'var(--surface-sunken)', overflow: 'hidden', marginTop: 8,
+          height: 4, borderRadius: RADIUS.tight, background: 'var(--surface-sunken)', overflow: 'hidden', marginTop: 8,
         }}>
           <div style={{ height: '100%', width: `${st.percent}%`, background: 'var(--accent)', transition: 'width .2s' }} />
         </div>

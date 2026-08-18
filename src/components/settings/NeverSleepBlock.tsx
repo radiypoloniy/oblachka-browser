@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { X, MemoryStick } from 'lucide-react';
 import { Favicon, InlineHint } from './kit';
+import { RADIUS } from '../../styles/system';
 
 // Сайты, которым запрещено выгружаться из памяти (ПКМ по вкладке → «Не выгружать из памяти»).
 //
@@ -59,7 +60,7 @@ export default function NeverSleepBlock() {
             title="Разрешить выгружать этот сайт"
             style={{
               border: 'none', background: 'none', cursor: 'default', padding: '4px 8px',
-              borderRadius: 6, color: 'var(--text-muted)', flexShrink: 0,
+              borderRadius: RADIUS.control, color: 'var(--text-muted)', flexShrink: 0,
               display: 'inline-flex', alignItems: 'center',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}

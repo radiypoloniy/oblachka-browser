@@ -262,7 +262,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           title={tab.muted ? 'Включить звук' : 'Выключить звук'}
           style={{
             border: 'none', background: 'transparent', cursor: 'default', padding: 2,
-            borderRadius: 4, display: 'inline-flex', flex: 'none',
+            borderRadius: RADIUS.tight, display: 'inline-flex', flex: 'none',
             color: tab.muted ? 'var(--text-faint)' : 'var(--text-muted)',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
@@ -283,7 +283,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           className="no-drag"
           onClick={(e) => { e.stopPropagation(); onExitSplit(tab.id); }}
           title="Выйти из split (обе вкладки останутся)"
-          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-muted)', flex: 'none' }}
+          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: RADIUS.tight, display: 'inline-flex', color: 'var(--text-muted)', flex: 'none' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         ><Columns2 {...glyph(12)} /></button>
@@ -294,7 +294,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           className="no-drag"
           onClick={(e) => { e.stopPropagation(); onSplit(); }}
           title="Открыть рядом"
-          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
+          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: RADIUS.tight, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         ><Columns2 {...glyph(14)} /></button>
@@ -305,7 +305,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
           className="no-drag"
           onClick={(e) => { e.stopPropagation(); onClose(); }}
           title="Закрыть вкладку"
-          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
+          style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: RADIUS.tight, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         ><CloseGlyph size={14} /></button>
@@ -402,7 +402,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             className="no-drag"
             onClick={(e) => { e.stopPropagation(); onExitSplit(left.id); }}
             title="Выйти из split (обе вкладки останутся)"
-            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
+            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: RADIUS.tight, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><Columns2 {...glyph(12)} /></button>
@@ -412,7 +412,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             className="no-drag"
             onClick={(e) => { e.stopPropagation(); onClose(left.id); }}
             title="Закрыть левую панель"
-            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)' }}
+            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: RADIUS.tight, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><CloseGlyph size={12} /></button>
@@ -448,7 +448,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             className="no-drag"
             onClick={(e) => { e.stopPropagation(); onExitSplit(right.id); }}
             title="Выйти из split (обе вкладки останутся)"
-            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
+            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: RADIUS.tight, display: 'inline-flex', flex: 'none', color: 'var(--text-muted)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><Columns2 {...glyph(12)} /></button>
@@ -458,7 +458,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
             className="no-drag"
             onClick={(e) => { e.stopPropagation(); onClose(right.id); }}
             title="Закрыть правую панель"
-            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)' }}
+            style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 2, borderRadius: RADIUS.tight, display: 'inline-flex', flex: 'none', color: 'var(--text-faint)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           ><CloseGlyph size={12} /></button>
@@ -1070,7 +1070,7 @@ function SortableGroupBlock({
             style={{
               flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: 600,
               background: 'var(--surface)', border: '1px solid var(--accent)',
-              borderRadius: 4, padding: '1px 6px', color: 'var(--text-strong)',
+              borderRadius: RADIUS.tight, padding: '1px 6px', color: 'var(--text-strong)',
               outline: 'none',
             }}
           />
@@ -1089,7 +1089,7 @@ function SortableGroupBlock({
           title={group.collapsed ? 'Развернуть группу' : 'Свернуть группу'}
           style={{
             border: 'none', background: 'transparent', cursor: 'default',
-            padding: 2, borderRadius: 4, display: 'inline-flex', flex: 'none',
+            padding: 2, borderRadius: RADIUS.tight, display: 'inline-flex', flex: 'none',
             color: 'var(--text-faint)',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
@@ -2287,7 +2287,7 @@ export default function Sidebar({
               title="Скрыть"
               style={{
                 border: 'none', background: 'transparent', cursor: 'default',
-                padding: 2, borderRadius: 4, color: 'var(--text-faint)', display: 'inline-flex', flex: 'none',
+                padding: 2, borderRadius: RADIUS.tight, color: 'var(--text-faint)', display: 'inline-flex', flex: 'none',
               }}
             ><CloseGlyph size={11} /></button>
           </div>

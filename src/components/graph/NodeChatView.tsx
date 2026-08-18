@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { Send, Trash2 } from 'lucide-react';
 import type { GraphChatMessage } from '../../../shared/graph';
 import { markdownComponents } from '../aiMarkdown';
+import { RADIUS } from '../../styles/system';
 
 // Диалог узла в раскрытом виде. Переписка живёт в main (electron/GraphChat.ts), сюда
 // приезжает списком и стримом — компонент только рисует и отправляет.
@@ -84,7 +85,7 @@ export default function NodeChatView({ graphId, nodeId }: { graphId: number; nod
               <div key={i} style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <div
                   style={{
-                    maxWidth: '82%', padding: '8px 12px', borderRadius: 14,
+                    maxWidth: '82%', padding: '8px 12px', borderRadius: RADIUS.box,
                     background: 'var(--accent)', color: 'var(--text-on-accent)',
                     fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)',
                     whiteSpace: 'pre-wrap', wordBreak: 'break-word',
