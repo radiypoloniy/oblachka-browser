@@ -81,45 +81,6 @@ export default function PermissionsSection() {
         с галочкой «запомнить», — здесь его можно посмотреть и изменить.
       </SectionHeader>
 
-      {/* Блок появляется, только когда что-то разрешено: пустой раздел про сертификаты пугал бы
-          человека вопросом, которого у него нет. */}
-      {certTrust.length > 0 && (
-        <Subsection
-          title="Сертификаты Минцифры"
-          description="Сайты, которым вы разрешили сертификаты удостоверяющего центра Минцифры — ответив «доверять» на вопрос браузера. Банки, у которых другого сертификата не бывает, работают и без этого списка."
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {certTrust.map((t) => (
-              <div key={t.domain} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 12px', border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)',
-              }}>
-                <Favicon host={t.domain} size={18} />
-                <span style={{
-                  flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{t.domain}</span>
-                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>
-                  {new Date(t.addedAt).toLocaleDateString('ru-RU')}
-                </span>
-                <button
-                  onClick={() => { void window.oblako.removeCertTrust(t.domain).then(loadCertTrust); }}
-                  title="Отозвать доверие"
-                  style={{
-                    border: 'none', background: 'none', cursor: 'default', padding: '3px 6px',
-                    borderRadius: 6, fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', flexShrink: 0,
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-                >
-                  Отозвать
-                </button>
-              </div>
-            ))}
-          </div>
-        </Subsection>
-      )}
-
       <Subsection
         title="Сайты"
         description="«Забыть» вернёт вопрос: сайт спросит снова при следующей попытке. «Запретить» закрывает вопрос насовсем."
@@ -188,6 +149,45 @@ export default function PermissionsSection() {
           </div>
         )}
       </Subsection>
+      {/* ⚠️ Сертификаты — ПОД списком сайтов: раздел про разрешения, и главное в нём — сайты.
+          Блок появляется, только когда что-то разрешено: пустой раздел про сертификаты пугал бы
+          человека вопросом, которого у него нет. */}
+      {certTrust.length > 0 && (
+        <Subsection
+          title="Сертификаты Минцифры"
+          description="Сайты, которым вы разрешили сертификаты удостоверяющего центра Минцифры — ответив «доверять» на вопрос браузера. Банки, у которых другого сертификата не бывает, работают и без этого списка."
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {certTrust.map((t) => (
+              <div key={t.domain} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 12px', border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)',
+              }}>
+                <Favicon host={t.domain} size={18} />
+                <span style={{
+                  flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{t.domain}</span>
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>
+                  {new Date(t.addedAt).toLocaleDateString('ru-RU')}
+                </span>
+                <button
+                  onClick={() => { void window.oblako.removeCertTrust(t.domain).then(loadCertTrust); }}
+                  title="Отозвать доверие"
+                  style={{
+                    border: 'none', background: 'none', cursor: 'default', padding: '3px 6px',
+                    borderRadius: 6, fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', flexShrink: 0,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+                >
+                  Отозвать
+                </button>
+              </div>
+            ))}
+          </div>
+        </Subsection>
+      )}
     </div>
   );
 }

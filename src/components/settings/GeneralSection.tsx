@@ -38,6 +38,23 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
         <DefaultBrowserBlock />
       </Subsection>
 
+      {/* ⚠️ Импорт стоит третьим, а не последним, как раньше. Это разовое дело, но самое раннее:
+          человек, только поставивший браузер, идёт в настройки прежде всего за своими закладками
+          и паролями. Ниже — то, что настраивают позже и реже. */}
+      <Subsection
+        title="Импорт данных"
+        description="Перенос закладок, истории и сохранённых паролей из другого браузера на этом компьютере."
+      >
+        <StatusCard
+          icon={<Download size={20} style={{ color: 'var(--text-muted)' }} />}
+          title="Импорт из другого браузера"
+          subtitle="Chrome, Edge, Brave, Яндекс.Браузер, Opera, Vivaldi"
+          actions={
+            <button style={btnPrimary} onClick={onOpenImport}>Импортировать…</button>
+          }
+        />
+      </Subsection>
+
       <Subsection
         title="Загрузки"
         description="Куда попадают скачанные файлы и о чём браузер спрашивает заранее."
@@ -73,19 +90,6 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
         <SearchChipsBlock />
       </Subsection>
 
-      <Subsection
-        title="Импорт данных"
-        description="Перенос закладок, истории и сохранённых паролей из другого браузера на этом компьютере."
-      >
-        <StatusCard
-          icon={<Download size={20} style={{ color: 'var(--text-muted)' }} />}
-          title="Импорт из другого браузера"
-          subtitle="Chrome, Edge, Brave, Яндекс.Браузер, Opera, Vivaldi"
-          actions={
-            <button style={btnPrimary} onClick={onOpenImport}>Импортировать…</button>
-          }
-        />
-      </Subsection>
     </div>
   );
 }
