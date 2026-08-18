@@ -9,7 +9,7 @@ import HistoryBookmarks from './components/HistoryBookmarks';
 import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT } from './components/SplitDragCard';
-import { islandPlate, chromeTintStyle, tintedPlateVars } from './styles/island';
+import { islandPlate, chromeTintStyle, tintedPlateVars, chromeGrainStyle } from './styles/island';
 import { buildChromeGround } from '../shared/chromeGround';
 import type { Ground } from '../shared/chromeGround';
 import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
@@ -1021,7 +1021,9 @@ export default function App() {
     // наследуются вниз сами, и протаскивать флаг через каждый уровень не нужно.
     <div style={{
       position: 'fixed', inset: 0, display: 'flex', overflow: 'hidden',
-      ...(ground ? chromeTintStyle(ground.backgroundImage) : null),
+      // Цветная земля несёт зерно сама; обычная получает его здесь — иначе фактура доставалась
+      // бы только тем, кто включил подкраску (разбор — chromeGrainStyle в styles/island.ts).
+      ...(ground ? chromeTintStyle(ground.backgroundImage) : chromeGrainStyle()),
       ...(ground ? tintedPlateVars(ground.island) : null),
       ['--sidebar-plate' as string]: ground ? ground.island : 'var(--surface)',
     }}>
