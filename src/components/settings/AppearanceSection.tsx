@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Upload, Trash2 } from 'lucide-react';
-import { SectionHeader, Subsection, InlineError, TextField, btnGhost } from './kit';
+import { SectionHeader, Subsection, InlineError, TextField, btnGhost, segBtnStyle, SegTrack,
+} from './kit';
 import Toggle from '../Toggle';
 import { isDarkTheme } from '../../../shared/ipc';
 import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../../../shared/ipc';
@@ -117,13 +118,13 @@ export default function AppearanceSection() {
 
       {/* ── Тема ── */}
       <Subsection title="Тема" description="Светлая, тёмная или вслед за системой.">
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <SegTrack>
           {THEME_MODES.map(([mode, label]) => (
             <SegBtn key={mode} active={theme.mode === mode} onClick={() => applyTheme(mode, theme.palette)}>
               {label}
             </SegBtn>
           ))}
-        </div>
+        </SegTrack>
         {/* Приватные вкладки всегда тёмные и всегда одного вида — иначе режим перестаёт читаться
             как режим. Сказать об этом здесь дешевле, чем оставить человека гадать, почему выбор
             не подействовал на окно инкогнито. */}
@@ -205,12 +206,12 @@ export default function AppearanceSection() {
 
       {/* ── Фон ── */}
       <Subsection title="Фон" description="Градиент, свой цвет или изображение.">
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <SegTrack>
           {([['preset', 'Градиент'], ['color', 'Цвет'], ['custom', 'Своё фото'], ['photo', 'Фото дня']] as [BackgroundKind, string][]).map(([kind, label]) => (
             <SegBtn key={kind} active={s.background.kind === kind}
               onClick={() => patchBg({ kind })}>{label}</SegBtn>
           ))}
-        </div>
+        </SegTrack>
 
         {s.background.kind === 'photo' && (
           <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
@@ -332,16 +333,11 @@ export default function AppearanceSection() {
 }
 
 // ── Мелкие презентационные хелперы секции ────────────────────────────────────
+// ⚠️ Своего SegBtn здесь больше нет: рецепт сегмента живёт в kit.tsx (segBtnStyle) и одинаков
+// для темы, фона, часов, единиц и трёхпозиционного выбора разрешений. Три копии этой кнопки уже
+// разъехались по отступам и тени — это ровно тот случай, когда «мелкая правка» ломает систему.
 function SegBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button onClick={onClick} style={{
-      padding: '7px 12px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'default',
-      fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 400,
-      background: active ? 'var(--surface)' : 'var(--surface-sunken)',
-      boxShadow: active ? 'var(--shadow-card)' : 'none',
-      color: active ? 'var(--text-strong)' : 'var(--text-body)',
-    }}>{children}</button>
-  );
+  return <button onClick={onClick} style={segBtnStyle(active)}>{children}</button>;
 }
 
 // Редактор своих быстрых ссылок: строки «название + адрес», добавление/удаление. Пустые строки

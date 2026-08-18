@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Plus, Pencil } from 'lucide-react';
 import type { Skill } from '../../../shared/ipc';
-import { islandPlate } from '../../styles/island';
 import Toggle from '../Toggle';
 import {
   btnPrimary, btnGhost, IconBtn, Subsection, InlineError, InlineHint,
-  TextField, TextArea, InputRow, fieldFlex, errorColor,
+  TextField, TextArea, InputRow, fieldFlex, errorColor, settingsBox, OptionList,
 } from './kit';
 
 // ── Секция «Скиллы» — CRUD-редактор prompt-кнопок AI-панели (см. electron/SkillsStore.ts,
@@ -93,6 +92,7 @@ export default function SkillsSection() {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <OptionList>
         {skills.map((skill) => (
           <SkillRow
             key={skill.id}
@@ -101,6 +101,7 @@ export default function SkillsSection() {
             onEdit={() => openEditForm(skill)}
           />
         ))}
+        </OptionList>
       </div>
     </Subsection>
   );
@@ -115,10 +116,7 @@ interface SkillRowProps {
 function SkillRow({ skill, onToggleVisible, onEdit }: SkillRowProps) {
   const preview = skill.prompt.length > 80 ? `${skill.prompt.slice(0, 80)}…` : skill.prompt;
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-      borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
-    }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px' }}>
       {skill.icon && (
         <div style={{ flex: 'none', fontSize: 'var(--fs-md)', lineHeight: 1 }}>{skill.icon}</div>
       )}
@@ -168,7 +166,7 @@ function SkillForm({
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', marginBottom: 10,
-      ...islandPlate, borderRadius: 'var(--radius-sm)',
+      ...settingsBox,
     }}>
       <InputRow>
         {/* Без maxLength=1 — составной эмодзи (семья, флаг, ZWJ-последовательность) занимает

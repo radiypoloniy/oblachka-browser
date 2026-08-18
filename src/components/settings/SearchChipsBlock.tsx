@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Search, X, Globe, Compass } from 'lucide-react';
-import { OptionList, OptionRow, CapsLabel, InlineHint, TextField, Favicon } from './kit';
+import { OptionList, OptionRow, CapsLabel, InlineHint, TextField, Favicon, Panel,
+} from './kit';
 import type { SearchChipsConfig, SearchChipCandidate } from '../../../shared/ipc';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../../shared/searchEngines';
 import type { SearchEngineId } from '../../../shared/searchEngines';
@@ -43,10 +44,9 @@ function TargetRow({ candidate, selected, action, title, onClick }: {
       onClick={onClick}
       title={title}
       style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
-        borderRadius: 'var(--radius-sm)', cursor: 'default',
-        background: selected ? 'var(--accent-soft)' : 'var(--surface)',
-        boxShadow: selected ? '0 0 0 1.5px var(--accent) inset' : undefined,
+        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', cursor: 'default',
+        // Заливка только у выбранного и только акцентом — общее правило раздела (kit.tsx).
+        background: selected ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'transparent',
       }}
     >
       <Favicon host={candidate.host} />
@@ -187,16 +187,13 @@ export default function SearchChipsBlock() {
       return <InlineHint>Выбранная цель больше не существует — поповер откроется как обычно.{' '}{reset}</InlineHint>;
     }
     return (
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
-        borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
-      }}>
+      <Panel style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px' }}>
         <Compass size={18} style={{ flex: 'none', color: 'var(--text-muted)' }} />
         <span style={{ flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
           Сайт, на котором вы сейчас — а если поиска по нему нет, то {engineName}
         </span>
         <span style={{ flex: 'none', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>как было</span>
-      </div>
+      </Panel>
     );
   };
 

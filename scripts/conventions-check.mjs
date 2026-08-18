@@ -180,5 +180,44 @@ function hueSat(hex) {
     'значимый импорт сломает прогон на голом node; вынеси константу в тот же модуль');
 }
 
+// ── Дизайн-система раздела настроек ──────────────────────────────────────────
+//
+// ⚠️ Это правило существует, потому что система разъезжается ТИХО. К моменту, когда её собрали в
+// четыре сущности (Panel/OptionList/OptionRow/Segmented, разбор — в src/components/settings/kit.tsx),
+// в секциях уже жило шестнадцать самодельных карточек: у каждой свой фон из палитры, своя тень и
+// свой радиус. Человеку это видно только скриншотом и только в той палитре, где вылезло, — жалоба
+// пришла на «часть синим, часть блевотно-зелёным, со странной размытостью по краям».
+//
+// Что запрещено В СЕКЦИЯХ (сам kit.tsx — источник рецептов, ему можно):
+//   • islandPlate — рецепт ПАРЯЩЕГО острова над цветной землёй окна; внутри сплошной панели
+//     он даёт тень по краю коробки и заливку из палитры;
+//   • внешняя тень (var(--shadow-…)) — внутри панели парить не над чем; inset-кольца можно,
+//     это рамка, а не тень;
+//   • сырая заливка var(--surface…) у контейнера — фон в настройках бывает только у выбранной
+//     строки (акцент/функциональный цвет) и внутри контролов.
+{
+  const settingsDir = path.join(ROOT, 'src', 'components', 'settings');
+  const files = walk(settingsDir, ['.tsx']).filter((f) => !f.endsWith('kit.tsx'));
+  files.push(path.join(ROOT, 'src', 'components', 'ModelsSection.tsx'));
+  const hits = [];
+  for (const f of files) {
+    if (!fs.existsSync(f)) continue;
+    fs.readFileSync(f, 'utf8').split('\n').forEach((raw, i) => {
+      const line = raw.trim();
+      if (line.startsWith('//') || line.startsWith('*')) return; // разборы в комментариях не в счёт
+      if (/\bislandPlate\b/.test(line)) hits.push(`${rel(f)}:${i + 1}  islandPlate`);
+      if (/boxShadow:[^,]*var\(--shadow-/.test(line) && !/inset/.test(line)) {
+        hits.push(`${rel(f)}:${i + 1}  внешняя тень`);
+      }
+      if (/background:\s*'var\(--surface(-solid|-island)?\)'/.test(line)) {
+        hits.push(`${rel(f)}:${i + 1}  сырая заливка поверхности`);
+      }
+    });
+  }
+  console.log(`         (файлов настроек под правилом: ${files.length})`);
+  checkEmpty('настройки: только рецепты из kit (без islandPlate, теней и сырых заливок)', hits,
+    'взять Panel/OptionList/OptionRow/Segmented из settings/kit.tsx; фон бывает только у выбранного');
+}
+
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

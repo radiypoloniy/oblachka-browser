@@ -1,6 +1,5 @@
 import { Children, Fragment, useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
-import { islandPlate } from '../../styles/island';
 
 // ── Набор презентационных примитивов раздела настроек ─────────────────────────
 // Здесь ТОЛЬКО рендер и стили — никакого состояния, IPC и бизнес-логики. Каждый примитив
@@ -194,9 +193,8 @@ export function StatusCardSkeleton() {
   });
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', flexWrap: 'wrap',
-      ...islandPlate,
-      borderRadius: 'var(--radius-sm)',
+      ...settingsBox,
+      display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', flexWrap: 'wrap',
     }} aria-busy="true">
       <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--surface-sunken)', flex: 'none' }} />
       <div style={{ flex: '1 1 180px', minWidth: 0 }}>
@@ -207,14 +205,19 @@ export function StatusCardSkeleton() {
   );
 }
 
+// Строка состояния: «подписка сохранена», «ключ подключён», «ссылки открывает другой браузер».
+//
+// ⚠️ Ни заливки, ни тени — см. правила 1–3 у settingsBox. Цвет состояния приходит СО ЗНАЧКОМ,
+// который передаёт вызывающий (зелёная галочка, серый замок, оранжевый треугольник). Раньше это
+// была плашка с фоном из палитры: на «Мяте» она выходила болотно-зелёной и спорила с синими
+// тумблерами на том же экране, хотя ничего функционального этот фон не означал.
 export function StatusCard({ icon, title, subtitle, actions }: {
   icon: React.ReactNode; title: React.ReactNode; subtitle?: React.ReactNode; actions?: React.ReactNode;
 }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', flexWrap: 'wrap',
-      ...islandPlate,
-      borderRadius: 'var(--radius-sm)',
+      ...settingsBox,
+      display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', flexWrap: 'wrap',
     }}>
       {icon}
       <div style={{ flex: '1 1 180px', minWidth: 0 }}>
@@ -322,6 +325,35 @@ export function InputRow({ children }: { children: React.ReactNode }) {
 // Стандартные флекс-параметры поля внутри InputRow.
 export const fieldFlex: React.CSSProperties = { flex: '1 1 200px' };
 
+// ── ДИЗАЙН-СИСТЕМА РАЗДЕЛА НАСТРОЕК ───────────────────────────────────────────
+//
+// ⚠️ Здесь ровно ЧЕТЫРЕ сущности, и других быть не должно: Panel (коробка), OptionList (коробка
+// со строками), OptionRow (строка), Segmented (выбор из двух-трёх). Всё остальное — контролы
+// (кнопки, поля, тумблер) и текст.
+//
+// Правила, которые эти сущности воплощают, — не вкусовые, каждое оплачено жалобой:
+//
+//  1. ⚠️ **Внутри настроек НЕТ теней и НЕТ блюра.** `islandPlate` — рецепт ПАРЯЩЕГО острова над
+//     цветной землёй окна; внутри сплошной панели парить не над чем, а тень по краю коробки
+//     читается как грязная размытость («странная размытость по краям»).
+//  2. ⚠️ **Заливка бывает только двух видов:** выбранная строка (акцент 10%) и функциональное
+//     состояние (зелёный «работает», красный «ошибка» — те же 10%). Всё остальное — БЕЗ фона.
+//     Пока фон был у каждой коробки, он брался из палитры (`--surface-sunken`), и один и тот же
+//     экран выходил то бирюзовым, то коричневым, то болотно-зелёным — «часть синим, часть
+//     зелёным, причём в блевотном зелёном».
+//  3. ⚠️ **Статус несёт ЗНАЧОК И СЛОВО, а не залитый прямоугольник.** Зелёная галочка рядом с
+//     «Подключено» говорит ровно то же, что зелёная плита во всю ширину, и не спорит с синими
+//     тумблерами рядом.
+//  4. Группу держат рамка и волосяные разделители, а не фон.
+//
+// Проверка `scripts/conventions-check.mjs` следит, чтобы в файлах настроек не появлялись
+// islandPlate, boxShadow и сырые заливки: система разъезжается тихо, по одной «мелкой правке».
+export const settingsBox: React.CSSProperties = {
+  border: '1px solid var(--divider-strong)',
+  borderRadius: 'var(--radius-sm)',
+  overflow: 'hidden',
+};
+
 // ── Список вариантов ──────────────────────────────────────────────────────────
 //
 // ⚠️ Форма поменялась по живой жалобе: «гигантские блоки с прямоугольными пятнами, ощущение
@@ -336,22 +368,22 @@ export const fieldFlex: React.CSSProperties = { flex: '1 1 200px' };
 //
 // ⚠️ Разделители рисуются ЗДЕСЬ, между детьми, а не кромкой каждой строки: соседние кромки дают
 // двойную линию, а у нижней строки — лишнюю над скруглением контейнера.
+export function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <div style={{ ...settingsBox, ...style }}>{children}</div>;
+}
+
 export function OptionList({ children }: { children: React.ReactNode }) {
   const items = Children.toArray(children).filter(Boolean);
   if (items.length === 0) return null;
   return (
-    <div style={{
-      border: '1px solid var(--divider-strong)',
-      borderRadius: 'var(--radius-sm)',
-      overflow: 'hidden',
-    }}>
+    <Panel>
       {items.map((child, i) => (
         <Fragment key={i}>
           {i > 0 && <div style={{ height: 1, background: 'var(--divider)' }} />}
           {child}
         </Fragment>
       ))}
-    </div>
+    </Panel>
   );
 }
 
@@ -466,6 +498,34 @@ export function OptionRow({
 // занимает одну строку и читается как один вопрос, а не как два предложения.
 // Подпись выбранного варианта показываем ПОД пилюлей: сам сегмент обязан оставаться коротким, а
 // пояснение («первый ответ займёт около 30 секунд») терять нельзя.
+// Один сегмент. ⚠️ Вынесен наружу и экспортируется, потому что тот же рецепт нужен секциям,
+// где выбор не сводится к `value/options`: тема и фон новой вкладки (несколько групп подряд),
+// трёхпозиционный выбор разрешения у сайта (свой цвет у каждого положения). Три копии этой
+// кнопки уже жили в разных файлах и разъезжались по отступам и тени — теперь одна.
+// Тень тут ЕСТЬ и это исключение из правила «внутри настроек теней нет»: она рисует не коробку,
+// а приподнятую фишку внутри дорожки — без неё выбранный сегмент неотличим от фона дорожки.
+export function segBtnStyle(active: boolean, color?: string): React.CSSProperties {
+  return {
+    flex: 'none', padding: '7px 14px', borderRadius: 'calc(var(--radius-sm) - 2px)', border: 'none',
+    cursor: 'default', fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 400,
+    background: active ? 'var(--surface)' : 'transparent',
+    boxShadow: active ? 'var(--shadow-card)' : 'none',
+    color: color ?? (active ? 'var(--text-strong)' : 'var(--text-muted)'),
+  };
+}
+
+// Дорожка сегментов — сама коробка выбора. Отдельно от Segmented по той же причине, что segBtnStyle.
+export function SegTrack({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'inline-flex', gap: 2, padding: 3, borderRadius: 'var(--radius-sm)',
+      background: 'var(--surface-sunken)', maxWidth: '100%', flexWrap: 'wrap',
+    }}>
+      {children}
+    </div>
+  );
+}
+
 export function Segmented<T extends string>({ value, options, onChange }: {
   value: T;
   options: { id: T; label: string; hint?: string }[];
@@ -474,29 +534,13 @@ export function Segmented<T extends string>({ value, options, onChange }: {
   const current = options.find((o) => o.id === value);
   return (
     <div>
-      <div style={{
-        display: 'inline-flex', gap: 2, padding: 3, borderRadius: 'var(--radius-sm)',
-        background: 'var(--surface-sunken)', maxWidth: '100%', flexWrap: 'wrap',
-      }}>
-        {options.map((o) => {
-          const active = o.id === value;
-          return (
-            <button
-              key={o.id}
-              onClick={() => onChange(o.id)}
-              style={{
-                padding: '7px 14px', borderRadius: 'calc(var(--radius-sm) - 2px)', border: 'none',
-                cursor: 'default', fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 400,
-                background: active ? 'var(--surface)' : 'transparent',
-                boxShadow: active ? 'var(--shadow-card)' : 'none',
-                color: active ? 'var(--text-strong)' : 'var(--text-muted)',
-              }}
-            >
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
+      <SegTrack>
+        {options.map((o) => (
+          <button key={o.id} onClick={() => onChange(o.id)} style={segBtnStyle(o.id === value)}>
+            {o.label}
+          </button>
+        ))}
+      </SegTrack>
       {current?.hint && (
         <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 8 }}>
           {current.hint}

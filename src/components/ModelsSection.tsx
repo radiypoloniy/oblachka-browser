@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
-import { OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost } from './settings/kit';
+import { OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox,
+} from './settings/kit';
 
 function gb(bytes: number): string {
   return (bytes / 1e9).toFixed(1);
@@ -328,7 +328,7 @@ export default function ModelsSection() {
             и не предлагаем скачать что-нибудь «хотя бы такое» — браузер без локального AI лучше
             браузера с моделью, которая отвечает мимо. */}
         {visibleCatalog.length === 0 && installed.length === 0 && (
-          <div style={{ ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '16px 18px' }}>
+          <div style={{ ...settingsBox, padding: '16px 18px' }}>
             <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
               Локальный AI на этом устройстве не потянет
             </div>

@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Pencil, MapPin, CreditCard, Eye, EyeOff } from 'lucide-react';
 import type { AddressProfile, AddressInput, CardMeta, ParsedAddressPart } from '../../../shared/ipc';
-import { islandPlate } from '../../styles/island';
 import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, Subsection, LoadingNote,
-  InlineError, TextField, InputRow, fieldFlex, OptionList,
+  InlineError, TextField, InputRow, fieldFlex, OptionList, settingsBox,
 } from './kit';
 
 // Секция «Автозаполнение» — адреса и банковские карты (electron/AutofillManager.ts). Только
@@ -314,7 +313,7 @@ function CardForm({ initial, onCancel, onSaved }: { initial: CardMeta | null; on
 
 const formStyle: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px',
-  ...islandPlate, borderRadius: 'var(--radius-sm)',
+  ...settingsBox,
 };
 
 // «29» → 2029, «2029» → 2029. 0/пусто → 0 (main отбросит как невалидный).

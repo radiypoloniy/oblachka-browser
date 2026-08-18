@@ -1,10 +1,9 @@
 import { Shield, ShieldOff, Plus, Trash2, RotateCcw } from 'lucide-react';
 import type { AdBlockState } from '../../../shared/ipc';
-import { islandPlate } from '../../styles/island';
 import Toggle from '../Toggle';
 import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote,
-  StatusCard, TextField, InputRow, fieldFlex, OptionList,
+  StatusCard, TextField, InputRow, fieldFlex, OptionList, settingsBox,
 } from './kit';
 
 // ── Секция «Блокировка рекламы» ───────────────────────────────────────────────
@@ -42,7 +41,7 @@ export default function AdBlockSection({
       {pendingReload !== null && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', flexWrap: 'wrap',
-          ...islandPlate,
+          ...settingsBox,
           borderRadius: 'var(--radius-sm)', fontSize: 'var(--fs-sm)',
         }}>
           <RotateCcw size={15} style={{ color: 'var(--warning-500)', flex: 'none' }} />

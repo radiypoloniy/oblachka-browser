@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, Search, ChevronRight, FileUp, Loader2 } from 'lucide-react';
 import type { PasswordMeta, PasswordCopyField } from '../../../shared/ipc';
-import { islandPlate } from '../../styles/island';
 import Toggle from '../Toggle';
 import {
   btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote,
-  InlineError, InlineHint, TextField, TextArea, InputRow, fieldFlex, Favicon,
+  InlineError, InlineHint, TextField, TextArea, InputRow, fieldFlex, Favicon, settingsBox,
 } from './kit';
 
 // Геометрия списка. LIST_VIEWPORT держит потолок высоты (см. комментарий у самого списка),
@@ -244,7 +243,7 @@ export default function PasswordsSection() {
       {/* Доп. защита: подтверждение Windows перед показом/копированием пароля (electron/osAuth.ts) */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-        ...islandPlate, borderRadius: 'var(--radius-sm)',
+        ...settingsBox,
       }}>
         <Lock size={18} style={{ color: 'var(--text-faint)', flex: 'none' }} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -335,7 +334,7 @@ export default function PasswordsSection() {
         {entries.length > 1 && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
-            ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '6px 10px',
+            ...settingsBox, padding: '6px 10px',
           }}>
             <Search size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
             <input
@@ -465,7 +464,7 @@ export default function PasswordsSection() {
         <CapsLabel>Подключить внешний менеджер</CapsLabel>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-          ...islandPlate, borderRadius: 'var(--radius-sm)',
+          ...settingsBox,
         }}>
           <Lock size={18} style={{ color: 'var(--text-faint)', flex: 'none' }} />
           <span style={{ flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
@@ -497,9 +496,12 @@ function hostOf(origin: string): string {
 function PasswordRow({ entry, revealedValue, copiedKey, onToggleReveal, onCopy, onEdit, onDelete }: PasswordRowProps) {
   const revealed = revealedValue !== undefined;
   return (
+    // ⚠️ Список ОКОННЫЙ: высоту строки он измеряет и считает сам, поэтому обычную рамку
+    // (OptionList) сюда не поставить, а разделитель — только inset-тенью, которая высоту не
+    // меняет. Заливки нет: прежний var(--surface) совпадал с цветом самой панели.
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-      borderRadius: 'var(--radius-sm)', background: 'var(--surface)',
+      boxShadow: 'inset 0 -1px 0 var(--divider)',
     }}>
       <Favicon host={hostOf(entry.origin)} />
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -560,7 +562,7 @@ function PasswordForm({
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', marginBottom: 10,
-      ...islandPlate, borderRadius: 'var(--radius-sm)',
+      ...settingsBox,
     }}>
       <TextField value={urlInput} placeholder="example.com" onChange={onUrlChange} />
       <TextField value={usernameInput} placeholder="Логин / e-mail" onChange={onUsernameChange} />
@@ -637,7 +639,7 @@ function PassphrasePrompt({
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', marginBottom: 8,
-      ...islandPlate, borderRadius: 'var(--radius-sm)',
+      ...settingsBox,
     }}>
       <InlineHint>{label}</InlineHint>
       <InputRow>

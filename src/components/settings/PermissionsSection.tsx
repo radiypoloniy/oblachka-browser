@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Camera, Clipboard, MapPin, Maximize, Mic, Bell, RotateCcw } from 'lucide-react';
 import type { PermissionRecord, PermKey } from '../../../shared/ipc';
-import { Favicon, SectionHeader, Subsection } from './kit';
+import { Favicon, SectionHeader, Subsection, segBtnStyle,
+} from './kit';
 
 // Раздел «Разрешения сайтов» — что каким сайтам разрешено и как это поменять.
 //
@@ -199,13 +200,9 @@ function Seg({ active, danger, onClick, children }: {
   return (
     <button
       onClick={onClick}
-      style={{
-        flex: 'none', padding: '4px 9px', borderRadius: 'var(--radius-sm)', border: 'none',
-        cursor: 'default', fontSize: 'var(--fs-xs)', fontWeight: active ? 600 : 400,
-        background: active ? 'var(--surface)' : 'transparent',
-        boxShadow: active ? 'var(--shadow-card)' : 'none',
-        color,
-      }}
+      // Общий рецепт сегмента (kit.tsx): здесь он трёхпозиционный и со своим цветом у каждого
+      // положения, но кнопка та же самая — своей копии стиля тут больше нет.
+      style={{ ...segBtnStyle(active, color), padding: '4px 9px', fontSize: 'var(--fs-xs)' }}
       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
     >{children}</button>

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Wand2, Trash2, Info } from 'lucide-react';
 import Toggle from '../Toggle';
-import { islandPlate } from '../../styles/island';
 import {
   describeRule, actionSpec, triggerSpec, normalizeRuleDomain, hostOfUrl,
   TRIGGERS, ACTIONS, RULES_MAX, GROUP_NAME_MAX,
@@ -9,7 +8,7 @@ import {
 import type { AutomationRule, RuleTriggerKind, RuleActionKind } from '../../../shared/rules';
 import {
   SectionHeader, Subsection, CapsLabel, TextField, InputRow, fieldFlex,
-  btnPrimary, btnGhost, InlineError, InlineHint, Favicon, OptionList,
+  btnPrimary, btnGhost, InlineError, InlineHint, Favicon, OptionList, settingsBox,
 } from './kit';
 
 // Раздел «Правила» — правила-автоматизации (см. shared/rules.ts, RuleEngine.ts, RuleParser.ts).
@@ -251,7 +250,7 @@ export default function RulesSection() {
         </InputRow>
 
         {draft && draftPreview && (
-          <div style={{ ...islandPlate, borderRadius: 'var(--radius-sm)', padding: 16,
+          <div style={{ ...settingsBox, padding: 16,
                         display: 'flex', flexDirection: 'column', gap: 12,
                         boxShadow: '0 0 0 1.5px var(--accent) inset' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
