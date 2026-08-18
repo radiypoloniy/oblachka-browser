@@ -82,7 +82,7 @@ function GeminiSection() {
           ? 'Ключ Gemini сохранён — кнопка фактчека доступна в AI-панели.'
           : 'Добавьте ключ, чтобы включить фактчек в AI-панели.'}
         actions={connected && (
-          <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }}>
             <Trash2 size={14} /> Удалить
           </button>
         )}
@@ -168,7 +168,7 @@ function SearxngSection() {
           ? 'SearXNG подключён — веб-поиск доступен в AI-панели.'
           : 'Добавьте адрес сервера, чтобы включить веб-поиск в AI-панели.'}
         actions={configured && (
-          <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }}>
             <Trash2 size={14} /> Удалить
           </button>
         )}
@@ -319,7 +319,7 @@ function HistoryBackfillSection() {
           onClick={loadCoverage}
           title="Обновить счётчик"
           style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+            background: 'none', border: 'none', cursor: 'pointer', padding: 4,
             color: 'var(--text-muted)', display: 'flex', borderRadius: 'var(--radius-sm)',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; }}
@@ -369,7 +369,7 @@ function HistoryContentBackfillSection({ onDone }: { onDone: () => void }) {
         пропускаются). Может занять долго на большой истории. Можно остановить в любой момент."
     >
       {running ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
             Обработано {processed} из {total}…
           </div>

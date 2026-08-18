@@ -135,27 +135,27 @@ export default function AppearanceSection() {
 
       {/* ── Палитра ── */}
       <Subsection title="Палитра" description="Оттенок нейтрали: фон, поверхности и текст. Акцентный цвет не меняется.">
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {PALETTES.map((p) => {
             const [ground, surface, text] = themeIsDark ? p.dark : p.light;
             const active = theme.palette === p.id;
             return (
               <button key={p.id} title={p.hint} onClick={() => applyTheme(theme.mode, p.id)}
                 style={{
-                  display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
+                  display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center',
                   padding: 0, border: 'none', background: 'none', cursor: 'default',
                 }}>
                 {/* Образец рисуется той же лестницей, что и сам интерфейс: земля, на ней
                     приподнятый остров, на острове строка текста. */}
                 <span style={{
                   width: 64, height: 44, borderRadius: 'var(--radius-sm)', background: ground,
-                  display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 6,
+                  display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 8,
                   outline: active ? '2px solid var(--accent)' : '2px solid transparent', outlineOffset: 2,
                   boxShadow: 'inset 0 0 0 1px var(--divider)',
                 }}>
                   <span style={{
                     width: 44, height: 22, borderRadius: 6, background: surface,
-                    display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3, padding: '0 6px',
+                    display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, padding: '0 6px',
                   }}>
                     <span style={{ height: 3, borderRadius: 2, background: text, opacity: 0.85 }} />
                     <span style={{ height: 3, borderRadius: 2, background: text, opacity: 0.45, width: '65%' }} />
@@ -220,7 +220,7 @@ export default function AppearanceSection() {
         )}
 
         {s.background.kind === 'preset' && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
             {WALLPAPER_PRESETS.map((p) => (
               <button key={p.id} title={p.label} onClick={() => patchBg({ preset: p.id })}
                 style={{
@@ -234,7 +234,7 @@ export default function AppearanceSection() {
         )}
 
         {s.background.kind === 'color' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <input type="color" value={s.background.color}
               onChange={(e) => patchBg({ color: e.target.value })}
               style={{ width: 44, height: 32, border: 'none', background: 'none', cursor: 'default' }} />
@@ -247,11 +247,11 @@ export default function AppearanceSection() {
             <input ref={fileRef} type="file" accept="image/*" hidden
               onChange={(e) => onPickFile(e.target.files?.[0])} />
             <div style={{ display: 'flex', gap: 8 }}>
-              <button style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }} onClick={() => fileRef.current?.click()}>
+              <button style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }} onClick={() => fileRef.current?.click()}>
                 <Upload size={14} /> {hasCustom ? 'Заменить фото' : 'Выбрать фото'}
               </button>
               {hasCustom && (
-                <button style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }} onClick={removeCustom}>
+                <button style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }} onClick={removeCustom}>
                   <Trash2 size={14} /> Убрать
                 </button>
               )}
@@ -273,7 +273,7 @@ export default function AppearanceSection() {
           два разных способа убрать одно и то же неизбежно разошлись бы. Здесь остались только
           настройки САМИХ виджетов — формат времени, город, валюты. */}
       <Subsection title="Часы" description="Вид и формат виджета часов на новой вкладке.">
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
           <SegBtn active={s.clock.face !== 'digital'} onClick={() => patchClock({ face: 'analog' })}>Циферблат</SegBtn>
           <SegBtn active={s.clock.face === 'digital'} onClick={() => patchClock({ face: 'digital' })}>Цифры</SegBtn>
         </div>
@@ -297,7 +297,7 @@ export default function AppearanceSection() {
         <>
           <TextField value={s.weather.city} placeholder="Город (например, Москва)"
             onChange={(v) => patchWeather({ city: v })} />
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
             <SegBtn active={s.weather.units === 'c'} onClick={() => patchWeather({ units: 'c' })}>°C</SegBtn>
             <SegBtn active={s.weather.units === 'f'} onClick={() => patchWeather({ units: 'f' })}>°F</SegBtn>
           </div>
@@ -306,7 +306,7 @@ export default function AppearanceSection() {
 
       {/* ── Курс валют ── */}
       <Subsection title="Курс валют" description="Какие валюты показывает виджет курса (данные ЦБ РФ).">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {RATE_CHOICES.map((c) => (
             <SegBtn key={c.code} active={s.rates.codes.includes(c.code)} onClick={() => toggleRateCode(c.code)}>
               {c.symbol} {c.label}
@@ -317,11 +317,11 @@ export default function AppearanceSection() {
 
       {/* ── Крипта ── */}
       <Subsection title="Крипта" description="Какие активы показывает виджет «Крипта» (цены в рублях, источник — CoinGecko).">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {CRYPTO_CHOICES.map((c) => (
             <SegBtn key={c.code} active={s.crypto.codes.includes(c.code)} onClick={() => toggleCryptoCode(c.code)}>
               {/* Тот же значок, что в самом виджете, — выбирают по нему, а не по названию. */}
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <CryptoIcon code={c.code} size={16} /> {c.label}
               </span>
             </SegBtn>

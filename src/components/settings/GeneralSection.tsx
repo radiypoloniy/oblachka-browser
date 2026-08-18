@@ -19,7 +19,7 @@ interface GeneralSectionProps {
 // electron/browserImport/). Дальше сюда же — поведение при старте и т.п.
 export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <SectionHeader title="Браузер">
         Общие настройки браузера.
       </SectionHeader>

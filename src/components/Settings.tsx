@@ -3,6 +3,7 @@ import { X, Shield, ShieldCheck, Wifi, Cpu, Palette, Lock, SlidersHorizontal, Cr
 import { searchSettings, isEntryAvailable, SETTINGS_INDEX, type SettingsEntry, type SettingsAvailability } from '../../shared/settingsIndex';
 import type { AdBlockState } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
+import { sp, pad, RADIUS, motion, halo } from '../styles/system';
 import AdBlockSection from './settings/AdBlockSection';
 import VpnSection from './settings/VpnSection';
 import AiSection from './settings/AiSection';
@@ -32,7 +33,7 @@ interface SettingsProps {
 // Секции левого меню — «Блокировка» и «AI» рабочие, VPN/Интерфейс — placeholder для будущих
 // этапов. soon — единственный флаг, гоняющий и активность, и клик, и стиль (см. рендер-цикл
 // ниже) — точечно снят только у 'ai', остальные пункты и их поведение не тронуты.
-type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean; tint: string };
+type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean };
 // Цвет значка — опознавательный знак раздела, как в настройках iOS: глаз находит нужную
 // строку по пятну раньше, чем прочитает подпись. Токены --tile-* живут в colors.css.
 // ⚠️ ПОРЯДОК ЗДЕСЬ — ЭТО РАНЖИРОВАНИЕ ПО ЧАСТОТЕ ОБРАЩЕНИЯ, а не история появления разделов.
@@ -46,17 +47,17 @@ type NavItem = { id: string; label: string; Icon: LucideIcon; soon?: boolean; ti
 // ⚠️ Первый пункт этого списка — раздел ПО УМОЛЧАНИЮ (см. FIRST_SECTION ниже). Отдельной
 // константы с именем раздела заводить нельзя: она уже расходилась с меню (см. isSectionId).
 const NAV_ITEMS: NavItem[] = [
-  { id: 'general',    label: 'Браузер',        Icon: SlidersHorizontal, tint: 'var(--tile-grey)' },
-  { id: 'appearance', label: 'Интерфейс',      Icon: Palette,           tint: 'var(--tile-pink)' },
-  { id: 'ai',         label: 'AI',             Icon: Cpu,               tint: 'var(--tile-teal)' },
-  { id: 'vpn',        label: 'VPN',            Icon: Wifi,              tint: 'var(--tile-blue)' },
-  { id: 'adblock',    label: 'Блокировка',     Icon: Shield,            tint: 'var(--tile-green)' },
-  { id: 'passwords',  label: 'Пароли',         Icon: Lock,              tint: 'var(--tile-grey)' },
-  { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard,        tint: 'var(--tile-orange)' },
-  { id: 'permissions', label: 'Разрешения',    Icon: ShieldCheck,       tint: 'var(--tile-slate)' },
+  { id: 'general',    label: 'Браузер',        Icon: SlidersHorizontal },
+  { id: 'appearance', label: 'Интерфейс',      Icon: Palette },
+  { id: 'ai',         label: 'AI',             Icon: Cpu },
+  { id: 'vpn',        label: 'VPN',            Icon: Wifi },
+  { id: 'adblock',    label: 'Блокировка',     Icon: Shield },
+  { id: 'passwords',  label: 'Пароли',         Icon: Lock },
+  { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard },
+  { id: 'permissions', label: 'Разрешения',    Icon: ShieldCheck },
   // Правила стоят последними как самое редкое, но по-прежнему отдельным разделом, а не блоком
   // внутри AI: фразу разбирает модель, а исполняются они обычным кодом и живут без модели.
-  { id: 'rules',      label: 'Правила',        Icon: Wand2,             tint: 'var(--tile-brown)' },
+  { id: 'rules',      label: 'Правила',        Icon: Wand2 },
 ];
 type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'rules' | 'passwords' | 'autofill' | 'permissions' | 'appearance';
 
@@ -307,9 +308,9 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
         {/* Левая навигация */}
         <nav className="settings-nav" style={{
           width: 200, flex: 'none', borderRight: '1px solid var(--divider-strong)',
-          padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: 2,
+          padding: pad(3, 2), display: 'flex', flexDirection: 'column', gap: sp(1) - 2,
         }}>
-          {NAV_ITEMS.map(({ id, label, Icon, soon, tint }) => {
+          {NAV_ITEMS.map(({ id, label, Icon, soon }) => {
             const active = section === id && !soon;
             return (
               <button
@@ -320,10 +321,13 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
                 title={label}
                 aria-label={label}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
-                  background: active ? 'var(--surface)' : 'transparent',
-                  boxShadow: active ? 'var(--shadow-card)' : 'none',
+                  display: 'flex', alignItems: 'center', gap: sp(3),
+                  padding: pad(3), borderRadius: RADIUS.control, border: 'none',
+                  background: active ? 'var(--accent-soft)' : 'transparent',
+                  transition: motion.hover('background', 'color'),
+                  // Фирменный жест: облако света за тем пунктом, на который человек смотрит.
+                  // Выключается одной строкой в styles/system.ts (HALO_ENABLED).
+                  ...halo(active),
                   color: soon ? 'var(--text-faint)' : active ? 'var(--text-strong)' : 'var(--text-body)',
                   cursor: soon ? 'default' : 'default',
                   fontWeight: active ? 600 : 400,
@@ -334,8 +338,11 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
                 onMouseEnter={(e) => { if (!active && !soon) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                 onMouseLeave={(e) => { if (!active && !soon) e.currentTarget.style.background = 'transparent'; }}
               >
-                {/* Квадратик со скруглением и белым глифом — та же плитка, что у псевдо-вкладок
-                    в сайдбаре (src/styles/tabKindTile.ts), чтобы язык значков был один.
+                {/* ⚠️ Значок МОНОХРОМНЫЙ. Девять цветных плиток подряд были самым «недорогим»
+                    элементом экрана: они соревновались и с акцентом, и с цветной землёй окна.
+                    Правило системы: цветным бывает то, что принадлежит МИРУ (логотипы валют,
+                    крипты, сайтов), а не нам. Цвет остался ровно у активного пункта.
+                    Прежняя плитка — та же, что у псевдо-вкладок в сайдбаре (src/styles/tabKindTile.ts).
                     ⚠️ Плитка 28, а не 22, и глиф 18, а не 13. Прежние 13 px — это 0.54 сетки
                     lucide (все иконки набора нарисованы на 24), то есть каждая линия рисунка
                     попадала между пикселями, а обводка 2.4 давала на экране 1.3 px и
@@ -343,11 +350,12 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
                     палитры — на таком размере просто не выживали. 18 = ровно три четверти сетки
                     при штатной толщине 2. */}
                 <span style={{
-                  width: 28, height: 28, flex: 'none', borderRadius: 8,
-                  background: tint ?? 'var(--tile-grey)', color: '#fff',
+                  width: 28, height: 28, flex: 'none',
+                  color: active ? 'var(--accent)' : 'var(--text-muted)',
+                  transition: motion.hover('color'),
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Icon size={18} strokeWidth={2} />
+                  <Icon size={18} strokeWidth={active ? 2.2 : 1.9} />
                 </span>
                 <span className="settings-nav-label">{label}</span>
                 {soon && (
@@ -367,7 +375,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
             пережить смену раздела, иначе слушатель колеса остаётся на выброшенном узле и
             резинка работает ровно один раз. Обёртка же нужна самой отдаче — двигать надо
             содержимое, а не контейнер, иначе уедут его края и полоса прокрутки. */}
-        <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}>
+        <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: pad(6, 8) }}>
           <div key={section} className="oblako-section-in">
           {section === 'general' && <GeneralSection onOpenImport={onOpenImport} />}
           {section === 'adblock' && (

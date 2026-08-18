@@ -134,18 +134,18 @@ export default function RulesSection() {
   const formSpec = actionSpec(action);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <SectionHeader title="Правила">
         Браузер сам делает мелкую работу: раскладывает вкладки по группам, закрепляет нужные,
         включает VPN на выбранных сайтах. Правило выполняется обычным кодом — модель для этого
         не нужна и не запускается.
       </SectionHeader>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <CapsLabel>Новое правило</CapsLabel>
 
         <div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 6 }}>Когда</div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 8 }}>Когда</div>
           <ChipRow>
             {TRIGGERS.map((t) => (
               <Chip key={t.kind} active={trigger === t.kind} onClick={() => setTrigger(t.kind)}>
@@ -156,7 +156,7 @@ export default function RulesSection() {
         </div>
 
         <div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 6 }}>Сайт</div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 8 }}>Сайт</div>
           <TextField
             value={site}
             onChange={(v) => { setSite(v); setError(''); }}
@@ -166,11 +166,11 @@ export default function RulesSection() {
             info="Домен покрывает и поддомены: habr.com — это и m.habr.com."
           />
           {hostHints.length > 0 && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
               {hostHints.map((h) => (
                 <button key={h} onClick={() => setSite(h)} style={{
-                  ...btnGhost, padding: '4px 10px', fontSize: 'var(--fs-xs)',
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  ...btnGhost, padding: '4px 12px', fontSize: 'var(--fs-xs)',
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
                 }}>
                   <Favicon host={h} size={14} />{h}
                 </button>
@@ -180,7 +180,7 @@ export default function RulesSection() {
         </div>
 
         <div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 6 }}>Тогда</div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 8 }}>Тогда</div>
           <ChipRow>
             {ACTIONS.map((a) => (
               <Chip key={a.kind} active={action === a.kind} onClick={() => setAction(a.kind)}>
@@ -195,7 +195,7 @@ export default function RulesSection() {
 
         {action === 'group' && (
           <div>
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 6 }}>Имя группы</div>
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 8 }}>Имя группы</div>
             <TextField
               value={groupName}
               onChange={setGroupName}
@@ -209,7 +209,7 @@ export default function RulesSection() {
         {/* Честная оговорка действия — у vpn-on про то, что первый запрос уже ушёл. */}
         {formSpec?.caveat && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <Info size={13} style={{ color: 'var(--text-faint)', flex: 'none', marginTop: 2 }} />
+            <Info size={13} style={{ color: 'var(--text-faint)', flex: 'none', marginTop: 4 }} />
             <InlineHint>{formSpec.caveat}</InlineHint>
           </div>
         )}
@@ -253,7 +253,7 @@ export default function RulesSection() {
           <div style={{ ...settingsBox, padding: 16,
                         display: 'flex', flexDirection: 'column', gap: 12,
                         boxShadow: '0 0 0 1.5px var(--accent) inset' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <Wand2 size={16} style={{ color: 'var(--accent)', flex: 'none' }} />
               <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
                 Так понял браузер
@@ -273,7 +273,7 @@ export default function RulesSection() {
             )}
             {draftSpec?.caveat && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                <Info size={13} style={{ color: 'var(--text-faint)', flex: 'none', marginTop: 2 }} />
+                <Info size={13} style={{ color: 'var(--text-faint)', flex: 'none', marginTop: 4 }} />
                 <InlineHint>{draftSpec.caveat}</InlineHint>
               </div>
             )}
@@ -308,7 +308,7 @@ export default function RulesSection() {
               </div>
               {/* Исходная фраза есть только у правил, созданных словами, — она объясняет замысел. */}
               {rule.phrase && (
-                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2,
+                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4,
                               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   «{rule.phrase}»
                 </div>
@@ -318,7 +318,7 @@ export default function RulesSection() {
             <button
               title="Удалить правило"
               onClick={() => void window.oblako.removeRule(rule.id)}
-              style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 6,
+              style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 8,
                        borderRadius: 6, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
             >
               <Trash2 size={14} />
@@ -341,7 +341,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   return (
     <button onClick={onClick} style={{
       ...(active ? btnPrimary : btnGhost),
-      padding: '6px 12px', fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 400,
+      padding: '8px 12px', fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 400,
       whiteSpace: 'normal', textAlign: 'left',
     }}>
       {children}

@@ -11,7 +11,10 @@
    нужен разбор по использованию, не слепая подмена значения. */
 :root {
   --radius-island: 20px; /* floating shell plates, the big input island — spec xl */
-  --radius-card: 13px;   /* chat cards, dropdown panels, site tiles      */
+  /* ⚠️ Было 13px — значение «чтобы помягче», не согласованное ни с 8, ни с 20. Система
+     радиусов теперь три ступени с правилом вложенности (внешний = внутренний + отступ),
+     см. RADIUS в src/styles/system.ts. */
+  --radius-card: 12px;   /* коробка: список, панель, форма — spec md */
   --radius-chip: 999px;  /* model chip, segmented options, small chips — spec: чипы это пилюли */
   --radius-sm: 8px;      /* tiny controls, favicon tiles — spec sm */
   --radius-pill: 999px;  /* VPN pill, status pills, round icon buttons   */

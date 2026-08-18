@@ -250,7 +250,7 @@ export default function PasswordsSection() {
           <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
             Подтверждение Windows для показа пароля
           </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4 }}>
             Спрашивать пароль/PIN Windows перед тем, как показать или скопировать сохранённый пароль.
           </div>
         </div>
@@ -263,7 +263,7 @@ export default function PasswordsSection() {
           <button
             onClick={() => setListOpen((v) => !v)}
             style={{
-              flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
+              flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8,
               background: 'none', border: 'none', padding: 0, cursor: 'default', textAlign: 'left',
             }}
           >
@@ -293,7 +293,7 @@ export default function PasswordsSection() {
             )}
           </button>
           {!formOpen && (
-            <button onClick={openAddForm} style={{ ...btnPrimary, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button onClick={openAddForm} style={{ ...btnPrimary, display: 'flex', gap: 8, alignItems: 'center' }}>
               <Plus size={14} /> Добавить
             </button>
           )}
@@ -334,7 +334,7 @@ export default function PasswordsSection() {
         {entries.length > 1 && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
-            ...settingsBox, padding: '6px 10px',
+            ...settingsBox, padding: '8px 12px',
           }}>
             <Search size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
             <input
@@ -350,7 +350,7 @@ export default function PasswordsSection() {
               <button
                 onClick={() => setQuery('')}
                 title="Очистить"
-                style={{ background: 'none', border: 'none', cursor: 'default', padding: 2, color: 'var(--text-faint)', display: 'flex', fontSize: 'var(--fs-md)', lineHeight: 1 }}
+                style={{ background: 'none', border: 'none', cursor: 'default', padding: 4, color: 'var(--text-faint)', display: 'flex', fontSize: 'var(--fs-md)', lineHeight: 1 }}
               >×</button>
             )}
           </div>
@@ -396,7 +396,7 @@ export default function PasswordsSection() {
       {/* Импорт из другого браузера (CSV). Отдельно и ВЫШЕ зашифрованной копии: это то, за чем
           человек сюда обычно и приходит («перенести пароли из Chrome»). Пароли современного Chrome
           с диска не читаются (App-Bound), поэтому путь — экспорт CSV из самого браузера. */}
-      <div style={{ paddingTop: 20, borderTop: '1px solid var(--divider)' }}>
+      <div style={{ paddingTop: 24, borderTop: '1px solid var(--divider)' }}>
         <CapsLabel>Перенести из другого браузера</CapsLabel>
         <p style={{ margin: '0 0 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
           Пароли современного Chrome зашифрованы и напрямую не переносятся. Экспортируйте их в самом
@@ -406,7 +406,7 @@ export default function PasswordsSection() {
         <button
           onClick={() => void handleCsvImport()}
           disabled={csvBusy}
-          style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center', opacity: csvBusy ? 0.5 : 1 }}
+          style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center', opacity: csvBusy ? 0.5 : 1 }}
         >
           {csvBusy
             ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
@@ -420,7 +420,7 @@ export default function PasswordsSection() {
 
       {/* Экспорт / импорт зашифрованной КОПИИ нашего сейфа (не путать с импортом из браузера выше:
           здесь наш формат под парольной фразой, туда — открытый CSV чужого браузера). */}
-      <div style={{ paddingTop: 20, borderTop: '1px solid var(--divider)' }}>
+      <div style={{ paddingTop: 24, borderTop: '1px solid var(--divider)' }}>
         <CapsLabel>Зашифрованная копия сейфа</CapsLabel>
         <p style={{ margin: '0 0 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
           Ключ сейфа привязан к этому Windows-профилю и не переживёт переустановку — сохраните
@@ -429,11 +429,11 @@ export default function PasswordsSection() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
           <button
             onClick={() => { setExportOpen((v) => !v); setImportOpen(false); setExportMsg(''); }}
-            style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}
+            style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }}
           ><Download size={14} /> Экспорт</button>
           <button
             onClick={() => { setImportOpen((v) => !v); setExportOpen(false); setImportMsg(''); }}
-            style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}
+            style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }}
           ><Upload size={14} /> Импорт</button>
         </div>
 
@@ -459,7 +459,7 @@ export default function PasswordsSection() {
 
       {/* Внешние коннекторы — плейсхолдер, коннекторов пока нет */}
       <div style={{
-        paddingTop: 20, borderTop: '1px solid var(--divider)', opacity: 0.45,
+        paddingTop: 24, borderTop: '1px solid var(--divider)', opacity: 0.45,
       }}>
         <CapsLabel>Подключить внешний менеджер</CapsLabel>
         <div style={{
@@ -500,7 +500,7 @@ function PasswordRow({ entry, revealedValue, copiedKey, onToggleReveal, onCopy, 
     // (OptionList) сюда не поставить, а разделитель — только inset-тенью, которая высоту не
     // меняет. Заливки нет: прежний var(--surface) совпадал с цветом самой панели.
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 12px',
       boxShadow: 'inset 0 -1px 0 var(--divider)',
     }}>
       <Favicon host={hostOf(entry.origin)} />
@@ -512,7 +512,7 @@ function PasswordRow({ entry, revealedValue, copiedKey, onToggleReveal, onCopy, 
           {entry.title || entry.origin}
         </div>
         <div style={{
-          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2,
+          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace',
         }}>
           {entry.username || '—'}{revealed ? `  ·  ${revealedValue}` : ''}
@@ -561,7 +561,7 @@ function PasswordForm({
 }: PasswordFormProps) {
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', marginBottom: 10,
+      display: 'flex', flexDirection: 'column', gap: 12, padding: '16px 16px', marginBottom: 12,
       ...settingsBox,
     }}>
       <TextField value={urlInput} placeholder="example.com" onChange={onUrlChange} />
@@ -582,10 +582,10 @@ function PasswordForm({
 
       {generatorOpen && (
         <div style={{
-          display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 14px',
+          display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 16px',
           borderRadius: 'var(--radius-sm)', background: 'var(--surface-hover)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>Длина: {genLength}</span>
             <input
               type="range" min={8} max={64} value={genLength}
@@ -621,7 +621,7 @@ function PasswordForm({
 
 function GenToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'default' }}>
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default' }}>
       <Toggle checked={checked} onChange={onChange} />
       <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', fontFamily: 'monospace' }}>{label}</span>
     </label>
@@ -638,7 +638,7 @@ function PassphrasePrompt({
 }) {
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', marginBottom: 8,
+      display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 16px', marginBottom: 8,
       ...settingsBox,
     }}>
       <InlineHint>{label}</InlineHint>

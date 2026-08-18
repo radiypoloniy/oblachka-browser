@@ -76,7 +76,7 @@ export default function PermissionsSection() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <SectionHeader title="Разрешения сайтов">
         Что сайты могут запрашивать у браузера. Решение запоминается, когда вы отвечаете на вопрос
         с галочкой «запомнить», — здесь его можно посмотреть и изменить.
@@ -91,7 +91,7 @@ export default function PermissionsSection() {
             Пока ни одно решение не сохранено. Сайты будут спрашивать при первой попытке.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {sites.map(([origin, list]) => (
               <div key={origin} style={{
                 border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)', overflow: 'hidden',
@@ -109,8 +109,8 @@ export default function PermissionsSection() {
                     onClick={() => void forget(origin)}
                     title="Забыть все решения по этому сайту"
                     style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 5, border: 'none',
-                      background: 'none', cursor: 'default', padding: '3px 6px',
+                      display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none',
+                      background: 'none', cursor: 'default', padding: '4px 8px',
                       borderRadius: 6, fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
@@ -124,7 +124,7 @@ export default function PermissionsSection() {
                   const Icon = ICON[r.permission];
                   return (
                     <div key={r.permission} style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                      display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px',
                       borderTop: '1px solid var(--divider)',
                     }}>
                       <Icon size={14} strokeWidth={2} style={{ flexShrink: 0, color: 'var(--text-faint)' }} />
@@ -176,7 +176,7 @@ export default function PermissionsSection() {
                   onClick={() => { void window.oblako.removeCertTrust(t.domain).then(loadCertTrust); }}
                   title="Отозвать доверие"
                   style={{
-                    border: 'none', background: 'none', cursor: 'default', padding: '3px 6px',
+                    border: 'none', background: 'none', cursor: 'default', padding: '4px 8px',
                     borderRadius: 6, fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', flexShrink: 0,
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
@@ -202,7 +202,7 @@ function Seg({ active, danger, onClick, children }: {
       onClick={onClick}
       // Общий рецепт сегмента (kit.tsx): здесь он трёхпозиционный и со своим цветом у каждого
       // положения, но кнопка та же самая — своей копии стиля тут больше нет.
-      style={{ ...segBtnStyle(active, color), padding: '4px 9px', fontSize: 'var(--fs-xs)' }}
+      style={{ ...segBtnStyle(active, color), padding: '4px 8px', fontSize: 'var(--fs-xs)' }}
       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
     >{children}</button>

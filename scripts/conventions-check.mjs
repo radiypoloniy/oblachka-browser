@@ -281,5 +281,45 @@ function hueSat(hex) {
     'акцент задаётся в palettes.css; состояние показывать значком и словом; брать var(--…)');
 }
 
+// ── Сетка: отступы только по шкале ───────────────────────────────────────────
+//
+// ⚠️ Шесть ступеней (4 · 8 · 12 · 16 · 24 · 32) живут в src/styles/system.ts. Правило нужно
+// потому, что нарушение неощутимо поодиночке: одно «сделаю тут 10, так лучше смотрится» ничего
+// не портит, а двадцать таких — уже «выглядит небрежно, но непонятно почему». Замер перед
+// наведением порядка: 20 разных значений padding и 18 разных gap только в компонентах.
+//
+// Радиусы проверяются тем же правилом: три ступени (8 контрол · 12 коробка · 20 остров) плюс
+// пилюля. Прежний набор включал 13 — значение «чтобы помягче», не согласованное ни с чем.
+{
+  const SCALE = new Set([0, 4, 8, 12, 16, 24, 32]);
+  const RADII = new Set([0, 8, 12, 20, 999]);
+  const files = walk(path.join(ROOT, 'src', 'components', 'settings'), ['.tsx'])
+    .concat([path.join(ROOT, 'src', 'components', 'ModelsSection.tsx')]);
+  const hits = [];
+  for (const f of files) {
+    if (!fs.existsSync(f)) continue;
+    fs.readFileSync(f, 'utf8').split('\n').forEach((raw, i) => {
+      const line = raw.trim();
+      if (line.startsWith('//') || line.startsWith('*')) return;
+      for (const m of line.matchAll(/\b(gap|padding|paddingTop|paddingBottom|paddingLeft|paddingRight|marginTop|marginBottom): (\d+)\b/g)) {
+        if (!SCALE.has(Number(m[2]))) hits.push(`${rel(f)}:${i + 1}  ${m[1]}: ${m[2]} — мимо шкалы`);
+      }
+      for (const m of line.matchAll(/padding: '(\d+)px(?: (\d+)px)?'/g)) {
+        for (const v of [m[1], m[2]]) {
+          if (v !== undefined && !SCALE.has(Number(v))) hits.push(`${rel(f)}:${i + 1}  padding ${v} — мимо шкалы`);
+        }
+      }
+      for (const m of line.matchAll(/borderRadius: (\d+)\b/g)) {
+        // ⚠️ Меньше 8 не проверяем: это не форма коробки, а деталь — полоса прогресса, полоска
+        // скелета, квадратик образца цвета. Округлять их до ступени системы бессмысленно.
+        if (Number(m[1]) >= 8 && !RADII.has(Number(m[1]))) hits.push(`${rel(f)}:${i + 1}  radius ${m[1]} — мимо трёх ступеней`);
+      }
+    });
+  }
+  console.log(`         (шкала: 4·8·12·16·24·32, радиусы: 8·12·20)`);
+  checkEmpty('сетка: отступы и радиусы по шкале системы', hits,
+    'брать sp()/pad()/RADIUS из src/styles/system.ts — там же меняется плотность всего интерфейса');
+}
+
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

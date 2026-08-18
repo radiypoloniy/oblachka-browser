@@ -71,7 +71,7 @@ export default function SkillsSection() {
         каждая отправляет свой промпт про текущую страницу."
     >
       {!formOpen && (
-        <button onClick={openAddForm} style={{ ...btnPrimary, alignSelf: 'flex-start', display: 'flex', gap: 6, alignItems: 'center' }}>
+        <button onClick={openAddForm} style={{ ...btnPrimary, alignSelf: 'flex-start', display: 'flex', gap: 8, alignItems: 'center' }}>
           <Plus size={14} /> Новый скилл
         </button>
       )}
@@ -116,7 +116,7 @@ interface SkillRowProps {
 function SkillRow({ skill, onToggleVisible, onEdit }: SkillRowProps) {
   const preview = skill.prompt.length > 80 ? `${skill.prompt.slice(0, 80)}…` : skill.prompt;
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 12px' }}>
       {skill.icon && (
         <div style={{ flex: 'none', fontSize: 'var(--fs-md)', lineHeight: 1 }}>{skill.icon}</div>
       )}
@@ -128,7 +128,7 @@ function SkillRow({ skill, onToggleVisible, onEdit }: SkillRowProps) {
           {skill.label}
         </div>
         <div style={{
-          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2,
+          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {preview}
@@ -165,7 +165,7 @@ function SkillForm({
 
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', marginBottom: 10,
+      display: 'flex', flexDirection: 'column', gap: 12, padding: '16px 16px', marginBottom: 12,
       ...settingsBox,
     }}>
       <InputRow>

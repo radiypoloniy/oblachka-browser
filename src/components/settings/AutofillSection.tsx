@@ -61,7 +61,7 @@ export default function AutofillSection() {
         ) : (
           <>
             {addresses.length === 0 && (
-              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '4px 2px' }}>Адресов пока нет.</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '4px' }}>Адресов пока нет.</div>
             )}
             <OptionList>
               {addresses.map((a) => (
@@ -76,7 +76,7 @@ export default function AutofillSection() {
                 </div>
               ))}
             </OptionList>
-            <button onClick={() => { setEditingAddr(null); setAddrFormOpen(true); }} style={{ ...btnPrimary, display: 'flex', gap: 6, alignItems: 'center', alignSelf: 'flex-start' }}>
+            <button onClick={() => { setEditingAddr(null); setAddrFormOpen(true); }} style={{ ...btnPrimary, display: 'flex', gap: 8, alignItems: 'center', alignSelf: 'flex-start' }}>
               <Plus size={14} /> Добавить адрес
             </button>
           </>
@@ -94,7 +94,7 @@ export default function AutofillSection() {
         ) : (
           <>
             {cards.length === 0 && (
-              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '4px 2px' }}>Карт пока нет.</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '4px' }}>Карт пока нет.</div>
             )}
             <OptionList>
               {cards.map((c) => (
@@ -116,7 +116,7 @@ export default function AutofillSection() {
                 </div>
               ))}
             </OptionList>
-            <button onClick={() => { setEditingCard(null); setCardFormOpen(true); }} style={{ ...btnPrimary, display: 'flex', gap: 6, alignItems: 'center', alignSelf: 'flex-start' }}>
+            <button onClick={() => { setEditingCard(null); setCardFormOpen(true); }} style={{ ...btnPrimary, display: 'flex', gap: 8, alignItems: 'center', alignSelf: 'flex-start' }}>
               <Plus size={14} /> Добавить карту
             </button>
           </>
@@ -130,14 +130,14 @@ export default function AutofillSection() {
 // строками (см. разбор в kit.tsx). Прежний `background: var(--surface)` совпадал с цветом самой
 // панели, то есть не делал ничего — кроме как мешал, когда панель была подкрашена.
 const rowStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 12px',
 };
 const rowTitle: React.CSSProperties = {
   fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 };
 const rowSub: React.CSSProperties = {
-  fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2,
+  fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4,
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 };
 
@@ -244,7 +244,7 @@ function AddressPasteBox({ onParsed }: { onParsed: (parts: ParsedAddressPart[]) 
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <InputRow>
         <TextField
           value={text}
@@ -312,7 +312,7 @@ function CardForm({ initial, onCancel, onSaved }: { initial: CardMeta | null; on
 }
 
 const formStyle: React.CSSProperties = {
-  display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px',
+  display: 'flex', flexDirection: 'column', gap: 12, padding: '16px 16px',
   ...settingsBox,
 };
 

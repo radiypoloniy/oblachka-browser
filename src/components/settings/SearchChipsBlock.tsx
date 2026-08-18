@@ -44,7 +44,7 @@ function TargetRow({ candidate, selected, action, title, onClick }: {
       onClick={onClick}
       title={title}
       style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', cursor: 'default',
+        display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', cursor: 'default',
         // Заливка только у выбранного и только акцентом — общее правило раздела (kit.tsx).
         background: selected ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'transparent',
       }}
@@ -94,7 +94,7 @@ function TargetSearch({ placeholder, isPicked, onPick }: {
   }, [query]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Search size={15} style={{ flex: 'none', color: 'var(--text-faint)' }} />
         <TextField value={query} onChange={setQuery} placeholder={placeholder} style={{ flex: 1 }} />
@@ -166,7 +166,7 @@ export default function SearchChipsBlock() {
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 4, flex: 'none',
           border: 'none', background: 'transparent', color: 'var(--text-muted)',
-          fontSize: 'var(--fs-xs)', cursor: 'default', padding: '2px 4px',
+          fontSize: 'var(--fs-xs)', cursor: 'default', padding: '4px',
         }}
       >
         <X size={13} />сбросить
@@ -187,7 +187,7 @@ export default function SearchChipsBlock() {
       return <InlineHint>Выбранная цель больше не существует — поповер откроется как обычно.{' '}{reset}</InlineHint>;
     }
     return (
-      <Panel style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px' }}>
+      <Panel style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px' }}>
         <Compass size={18} style={{ flex: 'none', color: 'var(--text-muted)' }} />
         <span style={{ flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
           Сайт, на котором вы сейчас — а если поиска по нему нет, то {engineName}
@@ -211,7 +211,7 @@ export default function SearchChipsBlock() {
             onClick={() => save({ ...cfg, defaultId: 'engine' })}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start',
-              padding: '6px 10px', borderRadius: 'var(--radius-sm)', cursor: 'default',
+              padding: '8px 12px', borderRadius: 'var(--radius-sm)', cursor: 'default',
               border: '1px solid var(--divider-strong)', background: 'transparent',
               color: 'var(--text-body)', fontSize: 'var(--fs-xs)',
             }}
@@ -248,7 +248,7 @@ export default function SearchChipsBlock() {
       </div>
 
       {cfg.mode === 'pinned' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <CapsLabel>Закреплённые ({cfg.pinned.length})</CapsLabel>
           {cfg.pinned.length === 0 && <InlineHint>Пока ничего не закреплено — найдите цель ниже и нажмите на неё.</InlineHint>}
           {cfg.pinned.map((id) => {

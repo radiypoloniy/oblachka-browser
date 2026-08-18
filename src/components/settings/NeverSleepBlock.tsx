@@ -58,7 +58,7 @@ export default function NeverSleepBlock() {
             onClick={() => { void window.oblako.removeNeverSleepSite(host).then(load); }}
             title="Разрешить выгружать этот сайт"
             style={{
-              border: 'none', background: 'none', cursor: 'default', padding: '3px 6px',
+              border: 'none', background: 'none', cursor: 'default', padding: '4px 8px',
               borderRadius: 6, color: 'var(--text-muted)', flexShrink: 0,
               display: 'inline-flex', alignItems: 'center',
             }}

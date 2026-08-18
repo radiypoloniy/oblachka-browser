@@ -1,4 +1,5 @@
 import { Children, Fragment, useEffect, useRef, useState } from 'react';
+import { sp, pad, RADIUS, TEXT, ROW_TITLE, CAPS, motion } from '../../styles/system';
 import { Check } from 'lucide-react';
 
 // ── Набор презентационных примитивов раздела настроек ─────────────────────────
@@ -12,16 +13,20 @@ export const errorColor = 'var(--danger-500)';
 
 // ── Кнопки (переехали из Settings.tsx, чтобы примитивы не жили внутри потребителя) ────────────
 
+// ⚠️ Отклик на наведение стоит ЗДЕСЬ, в самом рецепте кнопки, а не у каждого потребителя:
+// иначе анимированными окажутся те кнопки, до которых дошли руки (см. motion в styles/system.ts).
 export const btnPrimary: React.CSSProperties = {
-  padding: '7px 14px', borderRadius: 'var(--radius-sm)', border: 'none',
+  padding: pad(2, 4), borderRadius: RADIUS.control, border: 'none',
   background: 'var(--accent)', color: 'var(--on-accent)',
-  fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default', flex: 'none',
+  fontSize: TEXT.body.fontSize, fontWeight: 600, cursor: 'default', flex: 'none',
   whiteSpace: 'nowrap',
+  transition: motion.hover('background', 'transform', 'box-shadow'),
 };
 export const btnGhost: React.CSSProperties = {
-  padding: '7px 14px', borderRadius: 'var(--radius-sm)',
+  padding: pad(2, 4), borderRadius: RADIUS.control,
   border: '1px solid var(--divider-strong)', background: 'transparent',
-  color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default', flex: 'none',
+  color: 'var(--text-body)', fontSize: TEXT.body.fontSize, cursor: 'default', flex: 'none',
+  transition: motion.hover('background', 'border-color', 'transform'),
 };
 
 // ── Favicon сайта ─────────────────────────────────────────────────────────────
@@ -95,7 +100,7 @@ export function IconBtn({ title, active, onClick, children }: {
       title={title}
       onClick={onClick}
       style={{
-        border: 'none', background: 'transparent', cursor: 'default', padding: 6,
+        border: 'none', background: 'transparent', cursor: 'default', padding: 4,
         borderRadius: 6, display: 'inline-flex', flex: 'none',
         color: active ? 'var(--success-500)' : 'var(--text-faint)',
       }}
@@ -111,11 +116,12 @@ export function IconBtn({ title, active, onClick, children }: {
 export function SectionHeader({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
     <div>
-      <h2 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>
-        {title}
-      </h2>
+      {/* ⚠️ Заголовок раздела — 22, а не 16: разница с описанием обязана быть ЗАМЕТНОЙ. Раньше
+          заголовок (16/700) и описание (14) отличались на два пункта, иерархии не возникало и
+          экран читался серой массой (см. TEXT в styles/system.ts). */}
+      <h2 style={{ margin: 0, ...TEXT.title }}>{title}</h2>
       {children && (
-        <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
+        <p style={{ margin: `${sp(2)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)' }}>
           {children}
         </p>
       )}
@@ -134,15 +140,13 @@ export function Subsection({ title, description, danger, children }: {
     // секции: так его получают все блоки разом и новый блок не нужно не забыть пометить.
     // Расхождение имени с реестром ничего не ломает — раздел откроется, просто без подсветки.
     <div data-setting-block={title} style={{
-      display: 'flex', flexDirection: 'column', gap: 12,
-      paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
+      display: 'flex', flexDirection: 'column', gap: sp(3),
+      paddingTop: sp(6), marginTop: sp(1), borderTop: '1px solid var(--divider)',
     }}>
       <div>
-        <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-          {title}
-        </h3>
+        <h3 style={{ margin: 0, ...TEXT.section }}>{title}</h3>
         {description && (
-          <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: danger ? 'var(--danger-500)' : 'var(--text-faint)' }}>
+          <p style={{ margin: `${sp(1)}px 0 0`, ...TEXT.body, color: danger ? 'var(--danger-500)' : 'var(--text-faint)' }}>
             {description}
           </p>
         )}
@@ -156,10 +160,7 @@ export function Subsection({ title, description, danger, children }: {
 // (напр. flex:1 + ellipsis в шапке списка паролей).
 export function CapsLabel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{
-      fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-      textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 8, ...style,
-    }}>
+    <div style={{ ...CAPS, marginBottom: sp(2), ...style }}>
       {children}
     </div>
   );
@@ -194,12 +195,12 @@ export function StatusCardSkeleton() {
   return (
     <div style={{
       ...settingsBox,
-      display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', flexWrap: 'wrap',
+      display: 'flex', alignItems: 'center', gap: sp(4), padding: pad(4), flexWrap: 'wrap',
     }} aria-busy="true">
       <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--surface-sunken)', flex: 'none' }} />
       <div style={{ flex: '1 1 180px', minWidth: 0 }}>
         <div style={bar(120, 13)} />
-        <div style={{ ...bar(230, 11), marginTop: 6 }} />
+        <div style={{ ...bar(230, 11), marginTop: sp(2) }} />
       </div>
     </div>
   );
@@ -217,18 +218,12 @@ export function StatusCard({ icon, title, subtitle, actions }: {
   return (
     <div style={{
       ...settingsBox,
-      display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', flexWrap: 'wrap',
+      display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(4), flexWrap: 'wrap',
     }}>
       {icon}
       <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-        <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-          {title}
-        </div>
-        {subtitle && (
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-            {subtitle}
-          </div>
-        )}
+        <div style={ROW_TITLE}>{title}</div>
+        {subtitle && <div style={{ ...TEXT.caption, marginTop: sp(1) }}>{subtitle}</div>}
       </div>
       {actions}
     </div>
@@ -350,7 +345,7 @@ export const fieldFlex: React.CSSProperties = { flex: '1 1 200px' };
 // islandPlate, boxShadow и сырые заливки: система разъезжается тихо, по одной «мелкой правке».
 export const settingsBox: React.CSSProperties = {
   border: '1px solid var(--divider-strong)',
-  borderRadius: 'var(--radius-sm)',
+  borderRadius: RADIUS.box,
   overflow: 'hidden',
 };
 
@@ -446,17 +441,11 @@ export function OptionRow({
           ? <Check size={18} style={{ color: markerColor, flex: 'none' }} />
           : <span style={{ width: 18, flex: 'none' }} />)}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-          {title}
-        </div>
-        {subtitle && (
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2, lineHeight: 1.45 }}>
-            {subtitle}
-          </div>
-        )}
+        <div style={ROW_TITLE}>{title}</div>
+        {subtitle && <div style={{ ...TEXT.caption, marginTop: sp(1) }}>{subtitle}</div>}
       </div>
       {(badge || badge2) && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flex: 'none' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: sp(1), flex: 'none' }}>
           {[badge, badge2].map((b, i) => b && (
             <span key={i} style={{
               fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
@@ -471,10 +460,11 @@ export function OptionRow({
   );
 
   const shared: React.CSSProperties = {
-    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', width: '100%',
+    display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(3, 4), width: '100%',
     textAlign: 'left', border: 'none', boxSizing: 'border-box', flex: 1, minWidth: 0,
     background: actions ? 'transparent' : activeFill,
     opacity: disabled ? 0.55 : 1,
+    transition: motion.hover('background'),
   };
 
   // Действия справа — узлом ВНЕ кнопки: кнопка внутри кнопки недопустима, поэтому при наличии
@@ -486,10 +476,11 @@ export function OptionRow({
   if (!actions) return row;
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 8, paddingRight: 12, background: activeFill,
+      display: 'flex', alignItems: 'center', gap: sp(2), paddingRight: sp(3), background: activeFill,
+      transition: motion.hover('background'),
     }}>
       {row}
-      <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>{actions}</div>
+      <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: sp(2) }}>{actions}</div>
     </div>
   );
 }
@@ -508,11 +499,12 @@ export function OptionRow({
 // а приподнятую фишку внутри дорожки — без неё выбранный сегмент неотличим от фона дорожки.
 export function segBtnStyle(active: boolean, color?: string): React.CSSProperties {
   return {
-    flex: 'none', padding: '7px 14px', borderRadius: 'calc(var(--radius-sm) - 2px)', border: 'none',
-    cursor: 'default', fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 400,
+    flex: 'none', padding: pad(2, 4), borderRadius: RADIUS.control - 2, border: 'none',
+    cursor: 'default', fontSize: TEXT.body.fontSize, fontWeight: active ? 600 : 400,
     background: active ? 'var(--surface)' : 'transparent',
     boxShadow: active ? 'var(--shadow-card)' : 'none',
     color: color ?? (active ? 'var(--text-strong)' : 'var(--text-muted)'),
+    transition: motion.state('background', 'color'),
   };
 }
 
@@ -525,8 +517,8 @@ export function SegTrack({ children }: { children: React.ReactNode }) {
     // большая, если внутри всего 3 переключателя»). Правило системы: контейнер тянется на
     // колонку, КОНТРОЛ — никогда.
     <div style={{
-      display: 'inline-flex', alignSelf: 'flex-start', gap: 2, padding: 3,
-      borderRadius: 'var(--radius-sm)', background: 'var(--surface-sunken)',
+      display: 'inline-flex', alignSelf: 'flex-start', gap: sp(1) - 2, padding: sp(1) - 1,
+      borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
       maxWidth: '100%', flexWrap: 'wrap',
     }}>
       {children}

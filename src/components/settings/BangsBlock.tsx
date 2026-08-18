@@ -55,7 +55,7 @@ export default function BangsBlock() {
   if (!snap) return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <InlineHint>
         Введите в адресной строке «!yt котики» — запрос уйдёт сразу на YouTube, минуя поисковик.
         Бэнг можно ставить и в конце: «котики !yt». Один «!ключ» без запроса открывает главную сайта.
@@ -170,16 +170,16 @@ export default function BangsBlock() {
       </div>
 
       {/* Встроенные — только для справки, менять их нельзя */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <CapsLabel>Встроенные</CapsLabel>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {snap.builtin.map((b) => (
             <span
               key={b.key}
               title={`${b.name} — ${b.template}`}
               style={{
                 fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
-                padding: '3px 8px', borderRadius: 'var(--radius-sm)',
+                padding: '4px 8px', borderRadius: 'var(--radius-sm)',
                 background: 'var(--surface-sunken)', fontFamily: 'var(--font-mono)',
               }}
             >

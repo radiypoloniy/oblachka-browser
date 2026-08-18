@@ -19,12 +19,12 @@ export default function DownloadsBlock() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <label style={{
         display: 'flex', alignItems: 'center', gap: 12, cursor: 'default',
       }}>
         <Toggle checked={ask} onChange={() => toggle(!ask)} />
-        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
             Спрашивать, куда сохранять каждый файл
           </span>

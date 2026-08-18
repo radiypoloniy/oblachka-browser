@@ -3,6 +3,7 @@ import { Trash2, AlertTriangle } from 'lucide-react';
 import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
 import { OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox,
 } from './settings/kit';
+import { sp, TEXT, CAPS } from '../styles/system';
 
 function gb(bytes: number): string {
   return (bytes / 1e9).toFixed(1);
@@ -35,10 +36,7 @@ function requirementsLine(entry: CatalogEntry): string {
   return `${gb(entry.model.sizeBytes)} ГБ загрузки · нужно ${Math.ceil(entry.minVramBytes / 1024 ** 3)} ГБ видеопамяти`;
 }
 
-const groupLabelStyle: React.CSSProperties = {
-  fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-  textTransform: 'uppercase', color: 'var(--text-faint)',
-};
+const groupLabelStyle: React.CSSProperties = { ...CAPS };
 
 // ── Модели: установленные (выбор дефолта, удаление) + каталог для скачивания ──────────────────
 // Первая подсекция AI — без хотя бы одной установленной модели остальной AI (перевод/чат/группировка)
@@ -143,13 +141,13 @@ export default function ModelsSection() {
     return (
       <div style={{
         display: 'flex', flexDirection: 'column', gap: 12,
-        paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
+        paddingTop: 24, marginTop: 4, borderTop: '1px solid var(--divider)',
       }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+          <h3 style={{ margin: 0, ...TEXT.section }}>
             Локальные модели
           </h3>
-          <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+          <p style={{ margin: `${sp(1)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)' }}>
             Модель для AI-перевода, чата и остальных функций хранится и считается на этом устройстве.
             Без хотя бы одной установленной модели остальные AI-функции не работают.
           </p>
@@ -188,13 +186,13 @@ export default function ModelsSection() {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 12,
-      paddingTop: 20, marginTop: 4, borderTop: '1px solid var(--divider)',
+      paddingTop: 24, marginTop: 4, borderTop: '1px solid var(--divider)',
     }}>
       <div>
-        <h3 style={{ margin: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+        <h3 style={{ margin: 0, ...TEXT.section }}>
           Локальные модели
         </h3>
-        <p style={{ margin: '4px 0 0', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+        <p style={{ margin: `${sp(1)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)' }}>
           Модель для AI-перевода, чата и остальных функций хранится и считается на этом устройстве.
           Без хотя бы одной установленной модели остальные AI-функции не работают.
         </p>
@@ -209,7 +207,7 @@ export default function ModelsSection() {
           // цвета, разбор — в colors.css у --accent).
           <div style={{
             ...settingsBox,
-            display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+            display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
             fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
           }}>
             <AlertTriangle size={15} style={{ color: 'var(--warning-500)', flex: 'none' }} />
@@ -264,10 +262,10 @@ export default function ModelsSection() {
             modelLoadMode). Оба варианта явно называют цену размена (память vs время первого
             ответа), пользователь выбирает осознанно, не вслепую. */}
         {loadMode !== null && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
             {/* Своя подпись группы: без неё выбор висит вплотную к списку моделей и читается как
                 его продолжение, а это отдельный вопрос. */}
-            <div style={{ ...groupLabelStyle, marginBottom: 2 }}>Когда загружать модель</div>
+            <div style={{ ...groupLabelStyle, marginBottom: 4 }}>Когда загружать модель</div>
             {/* ⚠️ Сегменты, а не две строки-карточки: выбор бинарный и короткий, а цена размена
                 (память против времени первого ответа) не теряется — она уходит подписью под
                 пилюлей, см. Segmented в kit.tsx. */}
@@ -288,7 +286,7 @@ export default function ModelsSection() {
         <div style={groupLabelStyle}>Доступные для загрузки</div>
 
         {downloadRunning && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)' }}>
               Скачиваю {progress?.modelId ?? ''}: {gb(progress?.receivedBytes ?? 0)} из {progress?.totalBytes ? gb(progress.totalBytes) : '?'} ГБ ({pct}%)
             </div>
@@ -330,7 +328,7 @@ export default function ModelsSection() {
             и не предлагаем скачать что-нибудь «хотя бы такое» — браузер без локального AI лучше
             браузера с моделью, которая отвечает мимо. */}
         {visibleCatalog.length === 0 && installed.length === 0 && (
-          <div style={{ ...settingsBox, padding: '16px 18px' }}>
+          <div style={{ ...settingsBox, padding: '16px' }}>
             <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
               Локальный AI на этом устройстве не потянет
             </div>
@@ -425,7 +423,7 @@ function InstalledModelRow({
               style={{
                 ...btnGhost, color: 'var(--danger-500)',
                 opacity: canDelete ? 1 : 0.4,
-                display: 'flex', alignItems: 'center', gap: 6,
+                display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
               <Trash2 size={14} />

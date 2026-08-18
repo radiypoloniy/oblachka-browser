@@ -80,7 +80,7 @@ export default function AdBlockSection({
             {state.whitelist.map((domain) => (
               // Заливки у строки нет: группу держит рамка списка (разбор — в kit.tsx).
               <div key={domain} style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px',
               }}>
                 <span style={{
                   flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-body)', fontFamily: 'monospace',
@@ -108,7 +108,7 @@ export default function AdBlockSection({
             error={inputError || undefined}
             style={fieldFlex}
           />
-          <button onClick={onAddDomain} style={{ ...btnPrimary, alignSelf: 'flex-start', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button onClick={onAddDomain} style={{ ...btnPrimary, alignSelf: 'flex-start', display: 'flex', gap: 8, alignItems: 'center' }}>
             <Plus size={14} /> Добавить
           </button>
         </InputRow>

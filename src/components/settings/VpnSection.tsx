@@ -111,11 +111,11 @@ export default function VpnSection() {
             <button
               onClick={() => void handleRefresh()}
               disabled={refreshing}
-              style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}
+              style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }}
             >
               <RefreshCw size={14} /> {refreshing ? 'Обновление…' : 'Обновить'}
             </button>
-            <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button onClick={() => void handleDelete()} style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }}>
               <Trash2 size={14} /> Удалить
             </button>
           </div>
@@ -202,12 +202,12 @@ export default function VpnSection() {
                         <button
                           onClick={() => void handleConnect(s.id)}
                           disabled={isStarting}
-                          style={{ ...btnGhost, padding: '5px 10px', opacity: isStarting ? 0.6 : 1 }}
+                          style={{ ...btnGhost, padding: '4px 12px', opacity: isStarting ? 0.6 : 1 }}
                         >
                           {isStarting ? 'Подключение…' : 'Повторить'}
                         </button>
                       )}
-                      <button onClick={() => void handleDisconnect()} style={{ ...btnGhost, padding: '5px 10px' }}>
+                      <button onClick={() => void handleDisconnect()} style={{ ...btnGhost, padding: '4px 12px' }}>
                         Отключить
                       </button>
                     </>

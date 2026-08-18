@@ -33,7 +33,7 @@ export default function DefaultBrowserBlock() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <StatusCard
         icon={<Globe size={20} style={{ color: isDefault ? 'var(--success-500)' : 'var(--text-faint)' }} />}
         title={isDefault === null ? 'Проверяем…' : isDefault ? 'Oblako — браузер по умолчанию' : 'Ссылки открывает другой браузер'}
@@ -42,9 +42,9 @@ export default function DefaultBrowserBlock() {
           : 'Windows не разрешает программам назначать себя самим — выбрать нас нужно в системном окне.'}
       />
       {!isDefault && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <button
-            style={{ ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: 7 }}
+            style={{ ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: 8 }}
             onClick={() => void handleRequest()}
           >
             <ExternalLink size={15} /> Открыть настройки Windows
@@ -57,7 +57,7 @@ export default function DefaultBrowserBlock() {
         </div>
       )}
       {isDefault && hint === null && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
           <Check size={13} style={{ color: 'var(--success-500)' }} /> Ничего делать не нужно.
         </span>
       )}
