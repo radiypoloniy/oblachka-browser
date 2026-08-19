@@ -97,12 +97,11 @@ function ClipboardPopoverApp() {
       <div ref={cardRef} style={{
         width: CARD_WIDTH, ...overlayPlate,
         borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-overlay)',
-        // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
-        // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
-        // другой программы — разбор общий, см. glassPlate в styles/island.ts.
-        background: 'var(--material)',
-        backdropFilter: 'var(--material-blur)',
-        WebkitBackdropFilter: 'var(--material-blur)', overflow: 'hidden',
+        // ⚠️ Своего фона тут БЫТЬ НЕ ДОЛЖНО: он перебивал overlayPlate выше и возвращал
+        // полупрозрачный материал, из-за чего буфер остался единственным просвечивающим поповером
+        // после общей правки. Причём shorthand `background` сбрасывал заодно и зерно
+        // (оно приходит через backgroundImage) — то есть карточка теряла и плотность, и фактуру.
+        overflow: 'hidden',
         display: 'flex', flexDirection: 'column',
       }}>
         <div style={{
