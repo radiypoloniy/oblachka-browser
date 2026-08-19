@@ -150,6 +150,18 @@ button, input, textarea, select { font-family: inherit; }
 .icon-btn { transition: background var(--dur-fast) var(--ease-standard); }
 .icon-btn:hover { background: var(--surface-hover); }
 
+/* ⚠️ ФОРМА ПОЯВЛЯЕТСЯ ПОД КУРСОРОМ, А НЕ ЖИВЁТ ПОСТОЯННО. После растворения верхней полосы
+   кнопки перестали выглядеть нажимаемыми — не из-за контраста (он был вдвое выше порога), а
+   потому что исчезло сообщение «это орган управления». Возвращать плашку значило бы вернуть
+   плоскость над землёй; вместо этого форму даёт состояние. Материал, а не сплошная заливка:
+   кнопка лежит на земле, и её подсветка обязана брать цвет у того, что под ней. */
+.chrome-btn:hover:not(:disabled) {
+  background: var(--material);
+  backdrop-filter: var(--material-blur);
+  -webkit-backdrop-filter: var(--material-blur);
+}
+.chrome-btn:active:not(:disabled) { background: var(--surface-active); }
+
 /* AI-панель (aipanel.tsx): плейсхолдер пустого состояния прячется по реальной ширине
    панели, а не по ResizeObserver-стейту — панель живёт в отдельной WebContentsView,
    которую main ресайзит через bounds напрямую (drag снаружи, в App.tsx), JS-обсёрвер на

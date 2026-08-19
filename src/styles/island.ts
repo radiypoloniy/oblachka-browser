@@ -3,11 +3,22 @@ import type React from 'react';
 // ── Стиль кнопки навигации ────────────────────────────────────────────────────
 // Живёт здесь (не в Toolbar.tsx), потому что islandBtn ниже строится поверх неё —
 // вынесены вместе, чтобы не создавать циклический импорт между Toolbar.tsx и этим модулем.
+/**
+ * Кнопка хрома: ЗНАК В ПОКОЕ, ФОРМА В СОСТОЯНИИ.
+ *
+ * ⚠️ Цвет знака — основной текст, а не приглушённый, и это не «сделать потемнее». После того как
+ * верхняя полоса растворилась в земле, кнопки перестали выглядеть нажимаемыми — при том что
+ * контраст у них был вдвое выше порога (5,37 при 4,5). Пропала не читаемость, а ОБНАРУЖИМОСТЬ:
+ * плашка сообщала «это орган управления», и вместе с ней ушло сообщение. Вернуть плашку значило
+ * бы вернуть плоскость над землёй; вместо этого знак набран в полную силу (8,23), а форма
+ * появляется под курсором и в активном состоянии — тем же приёмом живут Arc, macOS и Windows 11.
+ */
 export function navBtn(disabled: boolean): React.CSSProperties {
   return {
     border: 'none', background: 'transparent', padding: 7, borderRadius: 'var(--radius-sm)',
-    color: disabled ? 'var(--text-faint)' : 'var(--text-muted)',
+    color: disabled ? 'var(--text-faint)' : 'var(--text-body)',
     cursor: 'default', display: 'inline-flex', opacity: disabled ? 0.45 : 1,
+    transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
   };
 }
 

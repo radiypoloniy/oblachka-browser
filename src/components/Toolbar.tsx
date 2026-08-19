@@ -1426,13 +1426,13 @@ export default function Toolbar({
       {/* Кнопки навигации — парящая плашка-остров (glass/тень/скругление из поповера/AI-панели).
           Вписана в текущую высоту тулбара: паддинг плашки не увеличивает высоту кнопок. */}
       <div className="no-drag" style={chromeCluster()}>
-        <button title="Назад" disabled={!tab?.canGoBack} onClick={onBack}
+        <button className="chrome-btn" title="Назад" disabled={!tab?.canGoBack} onClick={onBack}
           style={clusterBtn({ disabled: !tab?.canGoBack })}><BackGlyph size={18} /></button>
-        <button title="Вперёд" disabled={!tab?.canGoForward} onClick={onForward}
+        <button className="chrome-btn" title="Вперёд" disabled={!tab?.canGoForward} onClick={onForward}
           style={clusterBtn({ disabled: !tab?.canGoForward })}><ForwardGlyph size={18} /></button>
         {/* ⚠️ 18, а не 17: соседние стрелки восемнадцатые, и на глаз «Обновить» выглядела мельче
             остальных. Высоту группы это не двигает — та задана явно (ISLAND_HEIGHT). */}
-        <button title="Обновить" disabled={isHub} onClick={onReload}
+        <button className="chrome-btn" title="Обновить" disabled={isHub} onClick={onReload}
           style={clusterBtn({ disabled: isHub })}><RefreshGlyph size={18} /></button>
       </div>
 
@@ -1790,7 +1790,7 @@ export default function Toolbar({
             нейтральный значок на обычной плашке, ровно как «назад/вперёд/обновить»; акцент
             загорается, когда панель открыта, то есть означает состояние, а не важность. */}
         {!isLightWindow && (
-          <button title="AI-панель" onClick={onToggleAiPanel} style={clusterBtn({ active: aiPanelOpen })}>
+          <button className="chrome-btn" title="AI-панель" onClick={onToggleAiPanel} style={clusterBtn({ active: aiPanelOpen })}>
             <SparkGlyph size={18} />
           </button>
         )}
@@ -1801,7 +1801,7 @@ export default function Toolbar({
             раз значок, ВОЗНИКАЮЩИЙ после первой копии, — он сдвигал весь кластер и омнибокс в
             произвольный момент работы. Пустой буфер теперь просто гасит кнопку. */}
         <div ref={clipboardControlRef} style={{ display: 'inline-flex' }}>
-          <button
+          <button className="chrome-btn"
             disabled={clipboardCount === 0}
             title={clipboardCount === 0
               ? 'Скопированное со страниц — пока пусто'
