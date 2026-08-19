@@ -38,6 +38,11 @@
    цветной подсветки фона: у окон macOS её нет, поэтому --canvas здесь
    просто заливка, а не радиальный градиент. */
 [data-palette="graphite"]:not([data-theme="dark"]) {
+  /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
+  --space-1: #E9EBEC;
+  --space-2: #E4E5E7;
+  --space-3: #DEDEE3;
+
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFEFF;
   --n2: #F8F8F8;
@@ -67,6 +72,11 @@
   --divider-strong:  rgba(0,0,0,0.20);
 }
 [data-palette="graphite"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
+  --space-1: #1A2227;
+  --space-2: #191C23;
+  --space-3: #161621;
+
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #121212;
   --n2: #1A1A1A;
@@ -110,6 +120,11 @@
    цвет комментариев в коде, на светлом острове он читается, на тёмном
    пропадает). Эти две ступени добраны в том же семействе по контрасту. */
 [data-palette="slate"]:not([data-theme="dark"]) {
+  /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
+  --space-1: #E6E9EA;
+  --space-2: #E1E3E5;
+  --space-3: #DBDCE0;
+
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFEFF;
   --n2: #F7F8F8;
@@ -148,6 +163,11 @@
   --text-faint:      var(--n9);
 }
 [data-palette="slate"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
+  --space-1: #2E3D45;
+  --space-2: #2E3440;
+  --space-3: #2A2B3F;
+
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #111213;
   --n2: #18191C;
@@ -199,6 +219,11 @@
    заметный синий отлив — тот же эффект, из-за которого в тёмной теме
    когда-то убрали пурпурные поверхности. */
 [data-palette="paper"]:not([data-theme="dark"]) {
+  /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
+  --space-1: #E6E3E2;
+  --space-2: #E1DFDC;
+  --space-3: #DCDCD7;
+
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FFFFFE;
   --n2: #F8F8F7;
@@ -236,6 +261,11 @@
   --text-faint:      var(--n9); /* прежний #8B8173 давал 2,91 в колодце при пороге 3,0 */
 }
 [data-palette="paper"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
+  --space-1: #181210;
+  --space-2: #14120F;
+  --space-3: #12110C;
+
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #131311;
   --n2: #1C1A18;
@@ -289,6 +319,11 @@
    ровно то, из-за чего пришлось разбирать подкраску плашек в сплошных
    панелях (см. untintedPlateVars в src/styles/island.ts). */
 [data-palette="mint"]:not([data-theme="dark"]) {
+  /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
+  --space-1: #E7EBE8;
+  --space-2: #E2E6E3;
+  --space-3: #DCE1E0;
+
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFFFE;
   --n2: #F7F8F8;
@@ -326,6 +361,11 @@
   --text-faint:      var(--n9); /* прежний #7D8B82 давал 2,80 в колодце при пороге 3,0 */
 }
 [data-palette="mint"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
+  --space-1: #111A13;
+  --space-2: #101613;
+  --space-3: #0D1412;
+
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #111312;
   --n2: #181C1A;
@@ -360,6 +400,11 @@
 }
 
 [data-palette="sky"]:not([data-theme="dark"]) {
+  /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
+  --space-1: #EDEEEF;
+  --space-2: #E8E9EA;
+  --space-3: #E2E2E6;
+
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFEFF;
   --n2: #F7F8F8;
@@ -393,6 +438,11 @@
   --text-faint:      var(--n9); /* прежний #7D869C давал 2,77 в колодце при пороге 3,0 */
 }
 [data-palette="sky"][data-theme="dark"]:not([data-incognito="true"]) {
+  /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
+  --space-1: #12181B;
+  --space-2: #111317;
+  --space-3: #0E0F15;
+
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #111213;
   --n2: #181A1C;

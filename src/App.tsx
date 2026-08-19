@@ -9,7 +9,7 @@ import HistoryBookmarks from './components/HistoryBookmarks';
 import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT } from './components/SplitDragCard';
-import { islandPlate, chromeTintStyle, tintedPlateVars, chromeGrainStyle } from './styles/island';
+import { islandPlate, chromeTintStyle, tintedPlateVars, chromeSpaceStyle } from './styles/island';
 import { buildChromeGround } from '../shared/chromeGround';
 import type { Ground } from '../shared/chromeGround';
 import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
@@ -1028,7 +1028,8 @@ export default function App() {
       position: 'fixed', inset: 0, display: 'flex', overflow: 'hidden',
       // Цветная земля несёт зерно сама; обычная получает его здесь — иначе фактура доставалась
       // бы только тем, кто включил подкраску (разбор — chromeGrainStyle в styles/island.ts).
-      ...(ground ? chromeTintStyle(ground.backgroundImage) : chromeGrainStyle()),
+      // Пространство рисуется ВСЕГДА; цветная подкраска — усиленный вариант того же маршрута.
+      ...(ground ? chromeTintStyle(ground.backgroundImage) : chromeSpaceStyle()),
       ...(ground ? tintedPlateVars(ground.island) : null),
       ['--sidebar-plate' as string]: ground ? ground.island : 'var(--surface)',
     }}>
