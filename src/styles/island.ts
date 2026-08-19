@@ -72,10 +72,26 @@ export function glassPlate({ surface = 'surface', shadow = 'shadow-card', border
 //  • stitchTiles='stitch' — без него turbulence не сшивает края плиток, и повторение видно
 //    швами через каждые 120px. Именно эта решётка и читалась «графическими артефактами».
 //  • размер плитки 180, а не 120 — повторение реже, а с несшитыми швами уже и не заметно.
-const NOISE_SVG =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E" +
-  "%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E" +
-  "%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E\")";
+/**
+ * Полотно зерна заданной силы.
+ *
+ * ⚠️ СИЛА РАЗНАЯ ПО ТЕМАМ, и это не вкус. Зерно работает разницей яркости соседних пикселей, а на
+ * тёмном фоне та же разница видна хуже: глаз у тёмного конца шкалы менее чувствителен к малым
+ * приращениям (та же причина, по которой градиент в тёмной теме дороже). Одинаковая величина
+ * означала бы «в светлой заметно, в тёмной нет».
+ *
+ * ⚠️ Вторая причина держать зерно живым именно в тёмной: там маршрут пространства идёт по узкому
+ * коридору светлоты, и без дизеринга слабый переход ложится полосами — 8-битный sRGB просто не
+ * имеет промежуточных значений.
+ */
+function noise(opacity: number): string {
+  return "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E" +
+    "%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E" +
+    `%3Crect width='180' height='180' filter='url(%23n)' opacity='${opacity}'/%3E%3C/svg%3E\")`;
+}
+
+/** Сила зерна: светлая тема / тёмная / поверх насыщенной подкраски. */
+export const GRAIN = { light: 0.05, dark: 0.075, tinted: 0.065 } as const;
 
 // ⚠️ Градиент идёт по АКЦЕНТУ, подмешанному к ЗЕМЛЕ (--app-bg), а не к поверхности. Смешанный с
 // белым, он оказывался светлее окружения и снова читался отдельной панелью — ровно то, от чего
@@ -88,7 +104,8 @@ const NOISE_SVG =
 // Здесь остаётся только обёртка — положить готовую картинку и накрыть её зерном.
 export function chromeTintStyle(backgroundImage: string): React.CSSProperties {
   return {
-    backgroundImage: `${NOISE_SVG}, ${backgroundImage}`,
+    // На насыщенной подкраске зерно приходится держать сильнее: цвет «съедает» мелкий шум.
+    backgroundImage: `${noise(GRAIN.tinted)}, ${backgroundImage}`,
     backgroundRepeat: 'repeat, no-repeat',
     backgroundSize: '180px 180px, 100% 100%',
   };
@@ -114,14 +131,14 @@ export function chromeTintStyle(backgroundImage: string): React.CSSProperties {
  * полосами, зерно их разбивает. Это условие, при котором градиент вообще может быть слабым.
  */
 export const GRAIN_ENABLED = true;
-export function chromeSpaceStyle(): React.CSSProperties {
+export function chromeSpaceStyle(dark = false): React.CSSProperties {
   const gradient =
     'linear-gradient(180deg, var(--space-1) 0%, var(--space-2) 52%, var(--space-3) 100%)';
   if (!GRAIN_ENABLED) {
     return { backgroundImage: gradient, backgroundRepeat: 'no-repeat', backgroundSize: '100% 100%' };
   }
   return {
-    backgroundImage: `${NOISE_SVG}, ${gradient}`,
+    backgroundImage: `${noise(dark ? GRAIN.dark : GRAIN.light)}, ${gradient}`,
     backgroundRepeat: 'repeat, no-repeat',
     backgroundSize: '180px 180px, 100% 100%',
   };
