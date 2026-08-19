@@ -72,15 +72,19 @@ function plural(n: number, one: string, few: string, many: string): string {
 // принципе не существует, там остаётся иконка-лупа, как и раньше.
 function RowIcon({ item, size }: { item: SuggestDropdownItem; size: number }) {
   const isSearchLike = item.kind === 'search' || item.kind === 'suggest';
+  // ⚠️ У команды нет сайта и не может быть фавикона: она не ведёт никуда, она делает. Свой значок
+  // здесь не украшение — по нему строка «сделать» отличается от «открыть» до того, как человек
+  // дочитает её текст.
+  const isCommand = item.kind === 'command';
   const [ok, setOk] = useState(true);
-  const origin = isSearchLike ? null : originOf(item.url);
-  if (isSearchLike || !origin || !ok) {
-    const Icon = isSearchLike ? Search : Globe;
+  const origin = isSearchLike || isCommand ? null : originOf(item.url);
+  if (isSearchLike || isCommand || !origin || !ok) {
+    const Icon = isCommand ? Sparkles : isSearchLike ? Search : Globe;
     return (
       <span style={{
         width: size, height: size, flex: 'none',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        color: 'var(--text-faint)',
+        color: isCommand ? 'var(--accent)' : 'var(--text-faint)',
       }}>
         <Icon size={Math.round(size * 0.62)} />
       </span>

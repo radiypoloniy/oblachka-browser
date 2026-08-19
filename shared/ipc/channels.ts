@@ -470,6 +470,16 @@ export const IPC = {
   // Settings (чром). AI-панель продолжает получать список отдельным ad-hoc каналом
   // (ai-panel:skills-list, preload-aipanel.ts) — не через этот typed-контракт, тот же source of
   // truth (skillsStore), просто два независимых слушателя одного onSkillsChanged.
+  // Слой команд (см. docs/commands-architecture.md). ⚠️ COMMAND_RUN не ждёт ответа модели:
+  // ответ приходит в ИИ-панель, а окно обязано остаться живым.
+  COMMANDS_LIST:    'commands:list',    // renderer → main: { door, items }
+  COMMANDS_ADD:     'commands:add',     // renderer → main: CommandDef → boolean
+  COMMANDS_UPDATE:  'commands:update',  // renderer → main: (id, patch) → boolean
+  COMMANDS_REMOVE:  'commands:remove',  // renderer → main: id → boolean
+  COMMANDS_SET_DOOR: 'commands:set-door', // renderer → main: OmniboxDoorMode → boolean
+  COMMANDS_CHANGED: 'commands:changed', // main → renderer: push после любой мутации
+  COMMAND_RUN:      'commands:run',     // renderer → main: id → { ok, error? }
+
   SKILLS_LIST:    'skills:list',     // renderer → main: Skill[]
   SKILLS_ADD:     'skills:add',      // renderer → main: ({label, prompt, icon?}) → boolean (id генерит main)
   SKILLS_UPDATE:  'skills:update',   // renderer → main: (id, {label?, prompt?, icon?, visible?}) → boolean

@@ -5,7 +5,10 @@ import type { PermKey } from './ai';
 // пересекает IPC-границу chrome ↔ main ↔ вью дропдауна, поэтому здесь, а не ad-hoc в одном файле.
 // 'suggest' — заход 10, живая веб-подсказка от suggest-API поисковика (не посещённая страница
 // и не открытая вкладка — просто фраза-автодополнение, ведёт на её результаты поиска).
-export type SuggestKind = 'history' | 'tab' | 'search' | 'suggest';
+// 'command' — слой команд (см. docs/commands-architecture.md): строка «сделать», а не «открыть».
+// ⚠️ У неё нет url: команда никуда не ведёт, она выполняется — поэтому и выбор её обрабатывается
+// отдельной веткой в pickSuggestion, а не общим submit(url).
+export type SuggestKind = 'history' | 'tab' | 'search' | 'suggest' | 'command';
 export interface SuggestDropdownItem {
   kind: SuggestKind;
   label: string;
@@ -20,6 +23,8 @@ export interface SuggestDropdownItem {
   // не решает сама, просто рисует подпись, если она есть — источник группировки остаётся в
   // Toolbar.tsx, не размазывается по двум местам.
   sectionHeader?: string;
+  /** Только у kind 'command' — что запускать. */
+  commandId?: string;
 }
 
 // ── Панель омнибокса (заход 11) ────────────────────────────────────────────────────────────────
