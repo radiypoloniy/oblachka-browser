@@ -9,7 +9,7 @@ import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorStat
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
-import { chromeCluster, omniWell, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
+import { chromeCluster, omniField, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
 import { glyph } from '../styles/system';
 
@@ -1455,7 +1455,7 @@ export default function Toolbar({
           {/* Высота — из общего ISLAND_HEIGHT, не своим числом: раньше здесь стояло 38, а плашки
               рядом вырастали из содержимого в 40, и полоса выглядела собранной кое-как. */}
           <div ref={omniboxPillRef} style={{
-            ...omniWell(),
+            ...omniField(),
             display: 'flex', alignItems: 'center', gap: 8, height: ISLAND_HEIGHT,
             padding: '0 12px', borderRadius: 'var(--radius-pill)',
           }}>
