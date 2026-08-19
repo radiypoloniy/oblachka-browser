@@ -19,6 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropResult, DragCard } from '../../shared/ipc';
 import { well, RADIUS, glyph } from '../styles/system';
+import { FaviconImg } from './SiteFavicon';
 
 // Стабильный id droppable-контейнера секции «Открытые вкладки».
 const SECTION_NORMAL_ID = 'drop-section-normal';
@@ -109,6 +110,26 @@ interface SidebarProps {
   onDismissUndo: () => void;
 }
 
+/**
+ * Плитка с первой буквой домена — то, что рисуется вместо значка.
+ *
+ * ⚠️ Вынесено из ветки «значка нет», потому что теперь этим же пользуется ОТКАТ по ошибке
+ * загрузки: раньше протухшая ссылка приводила к значку «сломанное изображение», а не к букве.
+ */
+function LetterTile({ url, size }: { url: string; size: number }) {
+  let letter = '?';
+  try { letter = new URL(url).hostname.replace('www.', '')[0]?.toUpperCase() ?? '?'; }
+  catch { /* about:blank и подобное — буквы нет */ }
+  return (
+    <span style={{
+      width: size, height: size, borderRadius: 'var(--radius-sm)',
+      background: 'var(--neutral-300)', color: 'var(--text-body)', flex: 'none',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 'var(--fs-xs)', fontWeight: 600,
+    }}>{letter}</span>
+  );
+}
+
 export function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }) {
   if (tab.isHub) {
     return (
@@ -168,23 +189,17 @@ export function FaviconTile({ tab, size = 16 }: { tab: TabState; size?: number }
         width: tileSize, height: tileSize, borderRadius: 'var(--radius-sm)', flex: 'none',
         background: 'var(--favicon-plate)', display: 'inline-flex',
       }}>
-        <img src={tab.faviconUrl} width={tileSize} height={tileSize}
-          style={{ borderRadius: 'var(--radius-sm)', objectFit: 'cover' }}
-          alt="" />
+        {/* ⚠️ С ОТКАТОМ: протухшая ссылка рисовала значок «сломанное изображение» — см. SiteFavicon. */}
+        <FaviconImg
+          src={tab.faviconUrl}
+          size={tileSize}
+          radius="var(--radius-sm)"
+          fallback={<LetterTile url={tab.url} size={tileSize} />}
+        />
       </span>
     );
   } else {
-    let host = '?';
-    try { host = new URL(tab.url).hostname.replace('www.', '')[0]?.toUpperCase() ?? '?'; }
-    catch { /* about:blank и т.п. */ }
-    inner = (
-      <span style={{
-        width: tileSize, height: tileSize, borderRadius: 'var(--radius-sm)',
-        background: 'var(--neutral-300)', color: 'var(--text-body)', flex: 'none',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 'var(--fs-xs)', fontWeight: 600,
-      }}>{host}</span>
-    );
+    inner = <LetterTile url={tab.url} size={tileSize} />;
   }
 
   return <>{inner}</>;

@@ -20,6 +20,7 @@ import type { SearchTarget, QuickHit, QuickQueryResult } from '../shared/ipc';
 import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 import { RADIUS } from './styles/system';
+import { FaviconImg } from './components/SiteFavicon';
 
 interface ShowPayload { targets: SearchTarget[]; prefill: string }
 
@@ -114,9 +115,13 @@ function Chip({ target, selected, showKey, onClick }: {
         whiteSpace: 'nowrap', overflow: 'hidden',
       }}
     >
-      {target.faviconUrl
-        ? <img src={target.faviconUrl} width={18} height={18} alt="" style={{ borderRadius: RADIUS.tight, flex: 'none' }} />
-        : <Globe size={17} style={{ flex: 'none', opacity: selected ? 0.9 : 0.55 }} />}
+      <FaviconImg
+        src={target.faviconUrl}
+        size={18}
+        radius={RADIUS.tight}
+        style={{ flex: 'none' }}
+        fallback={<Globe size={17} style={{ flex: 'none', opacity: selected ? 0.9 : 0.55 }} />}
+      />
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{target.name}</span>
       {showKey && target.bangKey && (
         <span style={{ flex: 'none', opacity: 0.6, fontSize: 'var(--fs-xs)' }}>!{target.bangKey}</span>

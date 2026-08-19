@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type React from 'react';
 
 // Значок сайта для строк архива (История, Закладки). Тянется через FaviconService в main — то
 // есть ТОЛЬКО с самого домена, без сторонних favicon-сервисов: приватный браузер не должен
@@ -57,5 +58,42 @@ export default function SiteFavicon({ url, size = 20, loadIcon }: {
     }}>
       {(host.replace(/^www\./, '').charAt(0) || '?').toUpperCase()}
     </span>
+  );
+}
+
+/**
+ * Готовая ссылка на значок — с честным откатом.
+ *
+ * ⚠️ Отличается от SiteFavicon выше тем, ОТКУДА берётся картинка. Тот сам спрашивает иконку у
+ * main по хосту (архив, сотни строк, общий кэш); здесь ссылка уже есть — её отдал Chromium вместе
+ * с состоянием вкладки.
+ *
+ * ⚠️ И ровно в этих местах не было обработки ошибки: сайдбар, цели быстрого поиска, карточка
+ * перетаскиваемой вкладки. Стоит ссылке протухнуть — сайт сменил иконку, ресурс не отдаётся через
+ * VPN, кэш подрезан — и Chromium рисует СВОЙ значок «сломанное изображение». Человек знает, что
+ * иконка у сайта есть, поэтому читается это как поломка браузера.
+ *
+ * ⚠️ Состояние ошибки СБРАСЫВАЕТСЯ при смене ссылки: без этого первая же неудача навсегда скрыла
+ * бы значки всех следующих вкладок в переиспользованном узле списка.
+ */
+export function FaviconImg({ src, size = 16, radius, fallback, style }: {
+  src: string | null | undefined;
+  size?: number;
+  radius?: number | string;
+  fallback: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [src]);
+  if (!src || failed) return <>{fallback}</>;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      onError={() => setFailed(true)}
+      style={{ display: 'block', borderRadius: radius, objectFit: 'cover', ...style }}
+    />
   );
 }

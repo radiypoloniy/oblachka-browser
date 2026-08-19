@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { SPLIT_PANE_RADIUS } from '../../shared/layout';
 import { RADIUS } from '../styles/system';
+import { FaviconImg } from './SiteFavicon';
 
 // Ширина карточки в CSS-пикселях. Нужна обеим сторонам: карточку держат за верхний край по центру,
 // то есть смещение под курсором считается от ширины.
@@ -30,10 +31,7 @@ export const SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT = CARD_BODY_HEIGHT * 2;
 // его нет и быть не должно, ему через IPC уходит ровно то, что нужно нарисовать.
 function CardIcon({ favicon, title }: { favicon: string | null; title: string }) {
   const size = 30;
-  if (favicon) {
-    return <img src={favicon} alt="" width={size} height={size} style={{ display: 'block', borderRadius: RADIUS.control }} />;
-  }
-  return (
+  const letter = (
     <span style={{
       width: size, height: size, borderRadius: RADIUS.control, flex: 'none',
       background: 'var(--surface-sunken)', color: 'var(--text-muted)',
@@ -41,6 +39,8 @@ function CardIcon({ favicon, title }: { favicon: string | null; title: string })
       fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)',
     }}>{(title.trim()[0] ?? '?').toUpperCase()}</span>
   );
+  // ⚠️ С откатом: протухшая ссылка на значок рисовала «сломанное изображение» — см. FaviconImg.
+  return <FaviconImg src={favicon} size={size} radius={RADIUS.control} fallback={letter} />;
 }
 
 export function SplitDragCard({ thumb, favicon, title, label, intro }: {
