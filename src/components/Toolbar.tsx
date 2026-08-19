@@ -1,12 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-// Разбор фразы в строки команд — чистая логика из shared (см. docs/commands-architecture.md).
-import { resolveCommands, looksLikeQuestion, MATCH_FIRST } from '../../shared/commands';
-import type { CommandsSnapshot } from '../../shared/ipc';
-
-// Псевдо-id строки свободного вопроса: в реестре команд его нет и не должно быть — у вопроса нет
-// ни имени, ни прав, ни счётчика (см. askAboutPage в electron/CommandEngine.ts).
-const ASK_COMMAND_ID = '__ask__';
 import { Copy, Check, ChevronDown, KeyRound, Loader2, Clipboard, MoreHorizontal } from 'lucide-react';
 // ⚠️ Значки, которые человек видит каждую минуту, — свои (штрих плюс тело, см. glyphs.tsx).
 // Остальное остаётся на lucide: в глубине интерфейса характер набора никто не заметит, а
@@ -133,9 +126,6 @@ export default function Toolbar({
   const [copied, setCopied] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestItem[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(-1);
-  // Реестр команд и состояние двери (см. docs/commands-architecture.md §6). Держим в тулбаре, а
-  // не спрашиваем main на каждый символ: разбор фразы локальный и обязан быть мгновенным.
-  const [commands, setCommands] = useState<CommandsSnapshot>({ door: 'always', items: [] });
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [toolbarWidth, setToolbarWidth] = useState(1280);
   // ⚠️ Ширина омнибокса теперь ИЗМЕРЯЕТСЯ, а не вычисляется. Её задаёт flex, и оценивать её
@@ -796,42 +786,6 @@ export default function Toolbar({
     }
   }, [tab?.id]);
 
-  /**
-   * Дописать строки команд к списку подсказок.
-   *
-   * ⚠️ Уверенное совпадение встаёт ПЕРВЫМ и забирает Enter; слабое — идёт следом за «искать»,
-   * чтобы не встать между человеком и его запросом. Порог живёт в shared/commands.ts, здесь
-   * только раскладка.
-   */
-  const withCommands = useCallback((list: SuggestItem[], query: string): SuggestItem[] => {
-    if (commands.door === 'off') return list;
-    const matches = resolveCommands(query, commands.items, commands.door);
-    const rows: SuggestItem[] = matches.map((m) => ({
-      kind: 'command' as SuggestKind,
-      label: m.name,
-      sub: m.sub,
-      url: '',
-      commandId: m.id,
-    }));
-
-    // ⚠️ СВОБОДНЫЙ ВОПРОС — главная строка слоя, а не дополнение к списку команд. Чаще всего
-    // человеку нужна не сохранённая команда, а вопрос о том, что открыто, и заводить ради этого
-    // команду он не станет. Так же устроен омнибокс Dia: адрес ведёт, запрос ищет, вопрос
-    // отвечает. Текст вопроса едет в sub — он же и показывается человеку под заголовком строки.
-    const ask: SuggestItem[] = looksLikeQuestion(query) && commands.door === 'always'
-      ? [{ kind: 'command' as SuggestKind, label: 'Спросить о странице', sub: query, url: '', commandId: ASK_COMMAND_ID }]
-      : [];
-
-    const head = [...ask, ...rows];
-    if (head.length === 0) return list;
-    head[0] = { ...head[0], sectionHeader: 'Спросить' };
-
-    // Уверенная команда и вопрос забирают первую строку; слабое совпадение уходит под «искать»,
-    // чтобы не встать между человеком и его запросом.
-    const confident = ask.length > 0 || (matches[0]?.score ?? 0) >= MATCH_FIRST;
-    return confident ? [...head, ...list] : [list[0], ...head, ...list.slice(1)].filter(Boolean);
-  }, [commands]);
-
   const buildSuggestions = useCallback(async (query: string, seq: number) => {
     if (!query.trim()) { closeDropdown('empty-query'); return; }
     // ⚠️ ГВАРД ОБЯЗАН СТОЯТЬ ЗДЕСЬ, А НЕ ТОЛЬКО ПОСЛЕ ЗАПРОСОВ. Он есть ниже трижды, но всюду
@@ -863,7 +817,7 @@ export default function Toolbar({
       label: `Искать: ${query}`,
       url: getSearchEngine(searchEngineId).buildUrl(query),
     }];
-    setSuggestions(withCommands(provisional, query));
+    setSuggestions(provisional);
     setSelectedIdx(-1);
     openDropdown();
     void window.oblako.setSuggestDropdownItems(provisional);
@@ -1121,7 +1075,7 @@ export default function Toolbar({
       ? [topItem, searchItem, ...restItems, ...suggestItems]
       : [searchItem, ...suggestItems]).map(asNav);
     if (seq !== suggestSeqRef.current) return;
-    setSuggestions(withCommands(deduped, query));
+    setSuggestions(deduped);
     // ⚠️ Enter должен вести на ПЕРВУЮ строку, а не на набранные 2-4 символа — но только когда
     // первая строка это «герой» (лучшее совпадение из истории/вкладок). Жалоба была именно про
     // это: подсказка та самая, а Enter уходит на огрызок текста.
@@ -1180,7 +1134,7 @@ export default function Toolbar({
       }));
       if (smartItems.length === 0) return;
       const withSmart = [...deduped, ...smartItems];
-      setSuggestions(withCommands(withSmart, query));
+      setSuggestions(withSmart);
       void window.oblako.setSuggestDropdownItems(withSmart);
     }
   }, [allTabs, openDropdown, closeDropdown, searchEngineId]);
@@ -1378,15 +1332,6 @@ export default function Toolbar({
   };
 
   const pickSuggestion = (item: SuggestItem) => {
-    // ⚠️ Команда не ведёт никуда — она выполняется, поэтому и ветка своя, а не submit(url).
-    // Ответ появится в ИИ-панели (см. CommandEngine.ts), поэтому дропдаун закрываем полностью.
-    if (item.kind === 'command' && item.commandId) {
-      // Свободный вопрос несёт свой текст в sub — своего id у него нет и быть не может.
-      if (item.commandId === ASK_COMMAND_ID) void window.oblako.askAboutPage(item.sub ?? '');
-      else void window.oblako.runCommand(item.commandId);
-      closeDropdownFully('pick-command');
-      return;
-    }
     if (item.kind === 'tab' && item.tabId) {
       // Вкладка чужого окна переключается своим каналом: TAB_ACTIVATE адресуется окну-отправителю
       // и такой вкладки у себя не найдёт (см. AI-IDEAS.md №8).
@@ -1402,11 +1347,6 @@ export default function Toolbar({
   // выбор сюда, вызываем тот же pickSuggestion(), что и старый chrome-DOM дропдаун (не дублируем
   // его поведение). Ref — чтобы не пересобирать подписку на каждый рендер (pickSuggestion не
   // мемоизирована), тот же приём, что isHubRef/findOpenRef в App.tsx.
-  useEffect(() => {
-    void window.oblako.listCommands().then(setCommands).catch(() => { /* реестр не приехал — команд просто нет */ });
-    return window.oblako.onCommandsChanged(setCommands);
-  }, []);
-
   const pickSuggestionRef = useRef(pickSuggestion);
   pickSuggestionRef.current = pickSuggestion;
   useEffect(() => {

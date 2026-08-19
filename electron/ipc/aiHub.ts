@@ -7,9 +7,6 @@ import * as aiKeyStore from '../AiKeyStore';
 import * as searxngKeyStore from '../SearxngKeyStore';
 import { buildGroundingPrompt, searxngSearch } from '../SearxngSearch';
 import * as skillsStore from '../SkillsStore';
-import * as commandStore from '../CommandStore';
-import { runCommand, askAboutPage } from '../CommandEngine';
-import type { OmniboxDoorMode } from '../../shared/commands';
 import type { ChatOutcome } from '../TranslationService';
 import { broadcastToChrome } from '../WindowRegistry';
 import { ipcMain } from 'electron';
@@ -17,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import type { IpcDeps } from './deps';
 
 export function registerAiHubIpc(d: IpcDeps): void {
-  const { chromeOf, hubChat, sendTo, winOf } = d;
+  const { chromeOf, hubChat, sendTo } = d;
 
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
   // send — fire-and-forget (не invoke): ответ идёт стримом чанков + финальным результатом,
@@ -110,30 +107,6 @@ export function registerAiHubIpc(d: IpcDeps): void {
   // слушателей в SkillsStore поддерживает несколько подписчиков, тот пуш не трогаем/не дублируем.
   skillsStore.onSkillsChanged((skills) => {
     broadcastToChrome(IPC.SKILLS_CHANGED, skills);
-  });
-
-  // Слой команд (см. docs/commands-architecture.md). Соседствует со скиллами не случайно: это
-  // тот же вид сущности, только с объявленными правами и своей дверью в адресной строке.
-  ipcMain.handle(IPC.COMMANDS_LIST, () => ({ door: commandStore.getDoor(), items: commandStore.list() }));
-  ipcMain.handle(IPC.COMMANDS_ADD, (_e, input: unknown) =>
-    commandStore.add({ ...(input as object), id: randomUUID(), builtin: false, tools: [] }));
-  ipcMain.handle(IPC.COMMANDS_UPDATE, (_e, id: string, patch: Record<string, unknown>) =>
-    commandStore.update(id, patch));
-  ipcMain.handle(IPC.COMMANDS_REMOVE, (_e, id: string) => commandStore.remove(id));
-  ipcMain.handle(IPC.COMMANDS_SET_DOOR, (_e, mode: OmniboxDoorMode) => commandStore.setDoor(mode));
-  // ⚠️ Запуск идёт в окно ОТПРАВИТЕЛЯ: команда вызвана из его адресной строки, и ответ обязан
-  // появиться в его же панели, а не в «активном» окне вообще.
-  ipcMain.handle(IPC.COMMAND_RUN, (e, id: string) => {
-    const w = winOf(e);
-    return w ? runCommand(w, id) : { ok: false, error: 'Окно не найдено' };
-  });
-  // ⚠️ Свободный вопрос — та же дверь, что и команды, поэтому и обработчик рядом.
-  ipcMain.handle(IPC.COMMAND_ASK, (e, text: string) => {
-    const w = winOf(e);
-    return w ? askAboutPage(w, typeof text === 'string' ? text : '') : { ok: false, error: 'Окно не найдено' };
-  });
-  commandStore.subscribe(() => {
-    broadcastToChrome(IPC.COMMANDS_CHANGED, { door: commandStore.getDoor(), items: commandStore.list() });
   });
 
   // VPN, шаг 1 — подписка + список серверов. Ссылка и credential серверов остаются в main

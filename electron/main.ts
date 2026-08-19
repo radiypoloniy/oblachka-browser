@@ -99,7 +99,6 @@ import * as aiKeyStore from './AiKeyStore';
 import * as searxngKeyStore from './SearxngKeyStore';
 import * as vpnKeyStore from './VpnKeyStore';
 import * as skillsStore from './SkillsStore';
-import * as commandStore from './CommandStore';
 import * as vpnProcess from './VpnProcess';
 import * as passwordAutofill from './PasswordAutofillManager';
 import { initMediaSession, handleMediaReport, forgetMediaTab } from './MediaSessionManager';
@@ -2024,7 +2023,6 @@ app.whenReady().then(async () => {
   searxngKeyStore.loadFromDisk();
   vpnKeyStore.loadFromDisk();
   skillsStore.loadFromDisk();
-  commandStore.loadFromDisk();
   // Закреплённое в буфере — единственное, что буфер вообще держит на диске (см. ClipboardPins.ts).
   // Поднимаем ДО первых копий: загрузка сдвигает счётчик id, иначе новая копия получила бы id уже
   // лежащей на полке записи.

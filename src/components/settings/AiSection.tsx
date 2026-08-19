@@ -3,7 +3,6 @@ import { Check, KeyRound, Search, RefreshCw, Trash2, AlertTriangle } from 'lucid
 import type { BackfillProgress, HistoryContentCoverage, TranslationEngineId, BergamotStatus } from '../../../shared/ipc';
 import ModelsSection from '../ModelsSection';
 import SkillsSection from './SkillsSection';
-import CommandsSection from './CommandsSection';
 import {
   btnPrimary, btnGhost, OptionList, OptionRow, SectionHeader, Subsection, CapsLabel,
   StatusCard, StatusCardSkeleton, TextField, InputRow, fieldFlex,
@@ -30,7 +29,6 @@ export default function AiSection() {
       <ModelsSection />
       <TranslationEngineSection />
       <HistoryBackfillSection />
-      <CommandsSection />
       <SkillsSection />
       <GeminiSection />
       <SearxngSection />

@@ -64,20 +64,6 @@ contextBridge.exposeInMainWorld('aiPanel', {
   // Коммит 1 (реестр скиллов) — prompt-кнопки панели (Объяснить/Саммари, позже пользовательские)
   // теперь пушатся из main (SkillsStore.ts), а не хардкожены в aipanel.tsx. Тот же приём, что
   // onKeyStatus выше: пуш при (пере)открытии панели + на каждое изменение реестра.
-  // Сообщение браузера (не модели): почему ответа не будет. См. showPanelNotice.
-  onNotice: (cb: (text: string) => void) => {
-    const handler = (_e: unknown, text: string) => cb(text);
-    ipcRenderer.on('ai-panel:notice', handler);
-    return () => ipcRenderer.removeListener('ai-panel:notice', handler);
-  },
-
-  // Команда, вызванная из омнибокса, приходит готовым промптом (см. CommandEngine.ts).
-  onRunPrompt: (cb: (prompt: string) => void) => {
-    const handler = (_e: unknown, prompt: string) => cb(prompt);
-    ipcRenderer.on('ai-panel:run-prompt', handler);
-    return () => ipcRenderer.removeListener('ai-panel:run-prompt', handler);
-  },
-
   onSkillsList: (cb: (skills: unknown) => void) => {
     const handler = (_e: unknown, skills: unknown) => cb(skills);
     ipcRenderer.on('ai-panel:skills-list', handler);

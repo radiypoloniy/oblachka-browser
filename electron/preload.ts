@@ -1,8 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { OblakoApi, SpecialTabKind, SyncState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, PageChangesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand, CommandsSnapshot } from '../shared/ipc';
+import type { OblakoApi, SpecialTabKind, SyncState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, PageChangesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
-import type { ContextKey, DoorKind, OmniboxDoorMode } from '../shared/commands';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../shared/graph';
 import type { ImagePreset } from '../shared/imagePresets';
 import type { AutomationRule } from '../shared/rules';
@@ -656,22 +655,6 @@ const api: OblakoApi = {
   startModelDownload: (spec: ModelDownloadSpec) => ipcRenderer.send(IPC.MODEL_DOWNLOAD_START, spec),
   cancelModelDownload: () => ipcRenderer.send(IPC.MODEL_DOWNLOAD_CANCEL),
   getModelDownloadProgress: () => ipcRenderer.invoke(IPC.MODEL_DOWNLOAD_STATUS) as Promise<DownloadProgress>,
-  // Слой команд (см. docs/commands-architecture.md).
-  listCommands: () => ipcRenderer.invoke(IPC.COMMANDS_LIST) as Promise<CommandsSnapshot>,
-  addCommand: (input: { name: string; phrase: string; prompt: string; needs: ContextKey[]; doors: DoorKind[] }) =>
-    ipcRenderer.invoke(IPC.COMMANDS_ADD, input) as Promise<boolean>,
-  updateCommand: (id: string, patch: { name?: string; phrase?: string; prompt?: string; doors?: DoorKind[] }) =>
-    ipcRenderer.invoke(IPC.COMMANDS_UPDATE, id, patch) as Promise<boolean>,
-  removeCommand: (id: string) => ipcRenderer.invoke(IPC.COMMANDS_REMOVE, id) as Promise<boolean>,
-  setCommandsDoor: (mode: OmniboxDoorMode) => ipcRenderer.invoke(IPC.COMMANDS_SET_DOOR, mode) as Promise<boolean>,
-  runCommand: (id: string) => ipcRenderer.invoke(IPC.COMMAND_RUN, id) as Promise<{ ok: boolean; error?: string }>,
-  askAboutPage: (text: string) => ipcRenderer.invoke(IPC.COMMAND_ASK, text) as Promise<{ ok: boolean; error?: string }>,
-  onCommandsChanged: (cb: (snapshot: CommandsSnapshot) => void) => {
-    const handler = (_e: unknown, snapshot: CommandsSnapshot) => cb(snapshot);
-    ipcRenderer.on(IPC.COMMANDS_CHANGED, handler);
-    return () => ipcRenderer.removeListener(IPC.COMMANDS_CHANGED, handler);
-  },
-
   getMediaState: () => ipcRenderer.invoke(IPC.MEDIA_STATE) as Promise<MediaNowPlaying | null>,
   sendMediaCommand: (action: MediaCommand) => ipcRenderer.invoke(IPC.MEDIA_COMMAND, action) as Promise<boolean>,
   onMediaState: (cb: (state: MediaNowPlaying | null) => void) => {

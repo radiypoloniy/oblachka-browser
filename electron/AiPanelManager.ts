@@ -844,47 +844,6 @@ export function openAiPanelApp(win: BrowserWindow, appId: string): void {
   else send()
 }
 
-/**
- * Выполнить готовый промпт в панели — точка входа для слоя команд (см. CommandEngine.ts).
- *
- * ⚠️ Панель ОТКРЫВАЕТСЯ, если была закрыта: команда вызвана человеком осознанно, и ответ, который
- * никуда не показался, — это не ответ. Промпт уходит тем же путём, что нажатие prompt-кнопки в
- * самой панели (sendText в aipanel.tsx), поэтому второго способа «спросить модель» не заводится.
- *
- * ⚠️ Отправка отложена на did-finish-load, если вью поднимается впервые: до загрузки слушателя в
- * renderer нет, и сообщение ушло бы в никуда.
- */
-export function runPromptInPanel(win: BrowserWindow, prompt: string): boolean {
-  if (!prompt.trim()) return false
-  if (!isOpen) toggleAiPanel(win)
-  const view = panelView
-  if (!view || view.webContents.isDestroyed()) return false
-  if (view.webContents.isLoading()) {
-    view.webContents.once('did-finish-load', () => {
-      if (!view.webContents.isDestroyed()) view.webContents.send('ai-panel:run-prompt', prompt)
-    })
-  } else {
-    view.webContents.send('ai-panel:run-prompt', prompt)
-  }
-  return true
-}
-
-/**
- * Сообщение от браузера в панели — не ответ модели, а объяснение, почему ответа не будет.
- *
- * ⚠️ Заведено по живой жалобе: команда, которой нечего читать (открыта новая вкладка), молча не
- * делала НИЧЕГО. Молчание в ответ на нажатие — худший из возможных исходов: человек не понимает,
- * сломалось это или так задумано, и больше не нажимает.
- */
-export function showPanelNotice(win: BrowserWindow, text: string): void {
-  if (!isOpen) toggleAiPanel(win)
-  const view = panelView
-  if (!view || view.webContents.isDestroyed()) return
-  const send = () => { if (!view.webContents.isDestroyed()) view.webContents.send('ai-panel:notice', text) }
-  if (view.webContents.isLoading()) view.webContents.once('did-finish-load', send)
-  else send()
-}
-
 export function toggleAiPanel(win: BrowserWindow): boolean {
   attachedWin = win
   if (resizeBoundWin !== win) {

@@ -85,10 +85,6 @@ declare global {
       // Коммит 1 (реестр скиллов) — prompt-кнопки панели (Объяснить/Саммари, позже пользовательские)
       // приходят из main (SkillsStore.ts), а не хардкожены здесь.
       onSkillsList: (cb: (skills: SkillItem[]) => void) => () => void
-      // Команда из адресной строки приходит готовым промптом (см. electron/CommandEngine.ts).
-      onRunPrompt: (cb: (prompt: string) => void) => () => void
-      // Сообщение самого браузера — почему ответа не будет.
-      onNotice: (cb: (text: string) => void) => () => void
       // Задел под web-grounding (SearXNG) — тоггл-глобус в поле ввода.
       onSearxngStatus: (cb: (configured: boolean) => void) => () => void
       // section — необязательный начальный раздел Settings (напр. 'ai' у кнопки "+" в ряду
@@ -283,17 +279,6 @@ function AiPanel() {
 
   // Общая точка отправки — и текстовое поле, и кнопки-подсказки шлют через неё «как будто
   // пользователь сам написал»: один и тот же путь (оптимистичное сообщение в ленте → sendChat).
-  // ⚠️ Отдельным эффектом, а не в общей подписке выше: sendText замыкает tabId и sending, и в
-  // подписке, поставленной один раз, он бы навсегда остался с их первыми значениями — команда
-  // уходила бы «в никуда» на второй же вкладке.
-  const sendTextRef = useRef<(t: string) => void>(() => {})
-  useEffect(() => window.aiPanel.onRunPrompt((prompt) => sendTextRef.current(prompt)), [])
-  // ⚠️ Сообщение браузера кладём в ленту как обычный ответ: место, куда человек уже смотрит.
-  // Отдельный вид плашки завёл бы вторую систему уведомлений ради двух фраз.
-  useEffect(() => window.aiPanel.onNotice((text) => {
-    setMessages((prev) => [...prev, { role: 'assistant', text }])
-  }), [])
-
   const sendText = (text: string) => {
     if (!text || sending || !tabId) return
     setMessages((prev) => [...prev, { role: 'user', text }])
@@ -304,7 +289,6 @@ function AiPanel() {
     setWebSearching(webGroundingActive)
     window.aiPanel.sendChat(text, webGroundingActive)
   }
-  sendTextRef.current = sendText
 
   const handleSend = () => sendText(input.trim())
 

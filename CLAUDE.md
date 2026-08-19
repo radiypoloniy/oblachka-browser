@@ -185,7 +185,6 @@ sandboxed preload (`sandbox: true` для гостевых страниц) не 
 | [docs/architecture-ai.md](docs/architecture-ai.md) | AI-панель, перевод, хаб, блокнот, граф, модели, очередь к Qwen |
 | [docs/architecture-ui.md](docs/architecture-ui.md) | Новая вкладка и рабочий стол, тема и палитры, настройки, онбординг, виджеты, токены |
 | [docs/local-ai-program.md](docs/local-ai-program.md) | Новая AI-идея, стенд `npm run ai-bench`, промпты и почему ответ «плавает» |
-| [docs/commands-architecture.md](docs/commands-architecture.md) | Слой команд: реестр, конвейер, права, предпросмотр, откат, двери вызова |
 | [docs/roadmap.md](docs/roadmap.md) | Что сделано, что осталось, что отложено и почему |
 | [docs/passwords-backlog.md](docs/passwords-backlog.md) | Усиление хранения паролей (аудит 2026-07-25) |
 | [docs/security-audit-2026-08-11.md](docs/security-audit-2026-08-11.md) | Аудит безопасности и качества (2026-08-11): что проверено и цело, 4 находки, границы проверки |

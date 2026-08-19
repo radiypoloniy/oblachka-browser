@@ -7,9 +7,6 @@ import type { BackfillProgress, BookmarkEntry, BookmarkFolderProposal, BookmarkI
 import type { PasswordAddInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, PasswordMeta, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
 import type { AdBlockState, DownloadEntry, MatchSuggestion, OmniboxPanel, OmniboxRecommendEdit, PageChangesResult, ParsedAddressPart, ProductState, RecommendedSite, SmartTabHit, StuffHit, SuggestDropdownItem, TrackedProduct, TrackingEvent } from './omnibox';
 import type { BangDefWire, BangsSnapshot, BergamotStatus, CatalogEntry, DeleteModelResult, DerivedBangCandidate, DownloadProgress, HardwareSnapshot, HubChatMessage, HubChatOutcome, HubChatSessionMeta, HubMode, ImportBangsResult, InstalledModel, ModelDownloadSpec, ModelLoadMode, PageTranslateProgress, PageTranslateState, PermKey, PermissionRecord, SetDefaultModelResult, Skill, TranslationEngineId, UpdateStatus } from './ai';
-import type { CommandDef, ContextKey, DoorKind, OmniboxDoorMode } from '../commands';
-/** Снимок реестра команд: сами команды и состояние двери в адресной строке. */
-export interface CommandsSnapshot { door: OmniboxDoorMode; items: CommandDef[] }
 import type { AddressInput, AddressProfile, AddressUpdate, CardInput, CardMeta, CardUpdate, CryptoRatesInfo, CurrencyRatesInfo, DefaultBrowserRequest, DragCard, MediaCommand, MediaNowPlaying, NextHolidayInfo, SplitSwapHint, TabDropResult, TabDropZone, ThemeMode, ThemePaletteId, ThemePrefs, WeatherInfo, WindowRole } from './app';
 
 export interface OblakoApi {
@@ -580,16 +577,6 @@ export interface OblakoApi {
   onModelDownloadProgress(cb: (p: DownloadProgress) => void): () => void;
 
   // Медиасессия: что играет прямо сейчас и управление этим (см. electron/MediaSessionManager.ts).
-  // Слой команд (см. docs/commands-architecture.md).
-  listCommands(): Promise<CommandsSnapshot>;
-  addCommand(input: { name: string; phrase: string; prompt: string; needs: ContextKey[]; doors: DoorKind[] }): Promise<boolean>;
-  updateCommand(id: string, patch: { name?: string; phrase?: string; prompt?: string; doors?: DoorKind[] }): Promise<boolean>;
-  removeCommand(id: string): Promise<boolean>;
-  setCommandsDoor(mode: OmniboxDoorMode): Promise<boolean>;
-  runCommand(id: string): Promise<{ ok: boolean; error?: string }>;
-  askAboutPage(text: string): Promise<{ ok: boolean; error?: string }>;
-  onCommandsChanged(cb: (snapshot: CommandsSnapshot) => void): () => void;
-
   getMediaState(): Promise<MediaNowPlaying | null>;
   sendMediaCommand(action: MediaCommand): Promise<boolean>;
   onMediaState(cb: (state: MediaNowPlaying | null) => void): () => void;
