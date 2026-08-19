@@ -206,7 +206,7 @@ function FindBar() {
     // Прозрачный внешний паддинг — место для вытекания CSS box-shadow (см. SHADOW_MARGIN в
     // electron/FindBarManager.ts — сама WebContentsView увеличена на столько же).
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
-      <div style={{
+      <div className="popover-card" style={{
         width: BAR_WIDTH, height: BAR_HEIGHT, boxSizing: 'border-box',
         display: 'flex', alignItems: 'center', gap: 4,
         padding: '5px 6px',

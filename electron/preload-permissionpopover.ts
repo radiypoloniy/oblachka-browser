@@ -5,6 +5,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
 import type { PermissionRequest } from '../shared/ipc'
+import { installOverlayBackdrop } from './overlayBackdropPreload';
+
+// Размытая подложка под карточкой — снимок страницы под ней (см. electron/overlayBackdrop.ts).
+installOverlayBackdrop();
 
 contextBridge.exposeInMainWorld('permissionPopover', {
   respond: (requestId: string, granted: boolean, remember: boolean) =>

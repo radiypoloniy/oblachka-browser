@@ -24,6 +24,7 @@ import type { ContentBounds, FindResult } from '../shared/ipc'
 import { getAiPanelReservedWidth } from './AiPanelManager'
 import type { TabManager } from './TabManager'
 import { closeWindowView } from './viewTeardown';
+import { pushOverlayBackdrop } from './overlayBackdrop';
 
 // ⚠️ Держать в синхроне с BAR_WIDTH в src/findbar.tsx. Шире прежних 360 — из-за кнопки режима
 // «по смыслу» и словесного статуса вместо «3 / 12» (см. SmartFind.ts).
@@ -114,7 +115,13 @@ function isAttached(st: WindowFindBar): boolean {
 
 function layoutFindBar(st: WindowFindBar): void {
   if (!isAttached(st)) return
-  st.view!.setBounds(computeBounds(st))
+  const b = computeBounds(st)
+  st.view!.setBounds(b)
+  // Размытая подложка — снимком страницы (см. electron/overlayBackdrop.ts), по самой панели.
+  pushOverlayBackdrop(st.win, st.view?.webContents, {
+    x: b.x + SHADOW_MARGIN, y: b.y + SHADOW_MARGIN,
+    width: b.width - SHADOW_MARGIN * 2, height: b.height - SHADOW_MARGIN * 2,
+  })
 }
 
 // Вызывается из main.ts на каждый CONTENT_SET_BOUNDS (ресайз окна, сворачивание/разворот

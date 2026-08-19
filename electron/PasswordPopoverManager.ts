@@ -96,7 +96,7 @@ function layoutPopover(st: WindowPopover): void {
   st.view!.setBounds(b);
   // Подложка снимается по КАРТОЧКЕ, а не по вью: вокруг карточки лежит прозрачный запас под тень,
   // и размытый прямоугольник в нём читался бы ореолом вокруг поповера.
-  pushOverlayBackdrop(st.win, st.view, {
+  pushOverlayBackdrop(st.win, st.view?.webContents, {
     x: b.x + SHADOW_MARGIN, y: b.y + SHADOW_MARGIN,
     width: b.width - SHADOW_MARGIN * 2, height: b.height - SHADOW_MARGIN * 2,
   });

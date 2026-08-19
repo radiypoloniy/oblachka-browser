@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnConnectionState, AdBlockState } from '../shared/ipc';
+import { installOverlayBackdrop } from './overlayBackdropPreload';
+
+// Размытая подложка под карточкой — снимок страницы под ней (см. electron/overlayBackdrop.ts).
+installOverlayBackdrop();
 
 // Мост поповера «Защита» — того, что открывается по щиту в адресной строке. ⚠️ Ни одного нового
 // обработчика в main: всё, что здесь нужно, уже посчитано другими частями браузера и открыто теми

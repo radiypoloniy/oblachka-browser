@@ -42,6 +42,7 @@ import { BrowserWindow, ipcMain } from 'electron'
 import path from 'node:path'
 import { IPC } from '../shared/ipc'
 import type { ContentBounds, OmniboxPanel, OmniboxRecommendEdit, SuggestDropdownItem } from '../shared/ipc'
+import { pushOverlayBackdrop } from './overlayBackdrop'
 
 const GAP = 8 // зазор между низом омнибокса и верхом карточки
 // Стартовая высота — до первого реального замера от suggestdropdown.tsx (ResizeObserver →
@@ -168,7 +169,20 @@ function computeBounds(st: WindowDropdown): { x: number; y: number; width: numbe
 function layoutDropdown(st: WindowDropdown): void {
   const popup = st.popup
   if (!popup || popup.isDestroyed() || st.win.isDestroyed()) return
-  popup.setBounds(computeBounds(st))
+  const b = computeBounds(st)
+  popup.setBounds(b)
+  // Размытая подложка — снимком страницы (см. electron/overlayBackdrop.ts).
+  // ⚠️ ЕДИНСТВЕННОЕ место, где bounds ЭКРАННЫЕ: дропдаун — отдельное окно, а не дочерняя вью.
+  // Помощник ждёт координаты окна, поэтому вычитаем позицию главного окна здесь.
+  // ⚠️ Запас под тень сверху и снизу РАЗНЫЙ (SHADOW_TOP против SHADOW_MARGIN) — прямоугольник
+  // карточки считается по обоим, иначе подложка съедет на разницу.
+  const base = st.win.getContentBounds()
+  pushOverlayBackdrop(st.win, popup.webContents, {
+    x: b.x + SHADOW_MARGIN - base.x,
+    y: b.y + SHADOW_TOP - base.y,
+    width: b.width - SHADOW_MARGIN * 2,
+    height: b.height - SHADOW_TOP - SHADOW_MARGIN,
+  })
 }
 
 // Вызывается из main.ts на каждый OMNIBOX_SET_BOUNDS (см. Toolbar.tsx::omniboxPillRef).

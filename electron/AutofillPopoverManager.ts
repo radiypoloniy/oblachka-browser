@@ -118,7 +118,7 @@ function layoutPopover(st: WindowPopover): void {
   const b = computeBounds(st);
   st.view!.setBounds(b);
   // По КАРТОЧКЕ, а не по вью — см. тот же разбор в PasswordPopoverManager.ts.
-  pushOverlayBackdrop(st.win, st.view, {
+  pushOverlayBackdrop(st.win, st.view?.webContents, {
     x: b.x + SHADOW_MARGIN, y: b.y + SHADOW_MARGIN,
     width: b.width - SHADOW_MARGIN * 2, height: b.height - SHADOW_MARGIN * 2,
   });

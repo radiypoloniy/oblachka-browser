@@ -5,6 +5,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
 import type { FindResult, SmartFindResult } from '../shared/ipc'
+import { installOverlayBackdrop } from './overlayBackdropPreload';
+
+// Размытая подложка под карточкой — снимок страницы под ней (см. electron/overlayBackdrop.ts).
+installOverlayBackdrop();
 
 contextBridge.exposeInMainWorld('findbar', {
   search: (query: string, forward: boolean) => ipcRenderer.invoke(IPC.FIND_START, query, forward),

@@ -10,6 +10,7 @@ import path from 'node:path';
 import type { ContentBounds } from '../shared/ipc';
 import { closeWindowView } from './viewTeardown';
 import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
+import { pushOverlayBackdrop } from './overlayBackdrop';
 
 const POPOVER_WIDTH = 380;
 const INITIAL_HEIGHT = 200;
@@ -77,7 +78,15 @@ function computeBounds(st: WindowPopover) {
 }
 
 function layout(st: WindowPopover): void {
-  if (isAttached(st)) st.view!.setBounds(computeBounds(st));
+  if (!isAttached(st)) return;
+  const b = computeBounds(st);
+  st.view!.setBounds(b);
+  // Размытая подложка — снимком страницы (см. electron/overlayBackdrop.ts). Прямоугольник берём по
+  // КАРТОЧКЕ: вокруг неё прозрачный запас под тень, и размытие в нём читалось бы ореолом.
+  pushOverlayBackdrop(st.win, st.view?.webContents, {
+    x: b.x + SHADOW_MARGIN, y: b.y + SHADOW_MARGIN,
+    width: b.width - SHADOW_MARGIN * 2, height: b.height - SHADOW_MARGIN * 2,
+  });
 }
 
 export function syncClipboardPopoverAnchor(win: BrowserWindow, b: ContentBounds): void {

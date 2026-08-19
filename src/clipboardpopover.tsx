@@ -91,7 +91,7 @@ function ClipboardPopoverApp() {
 
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
-      <div ref={cardRef} style={{
+      <div ref={cardRef} className="popover-card" style={{
         width: CARD_WIDTH, ...islandPlate,
         borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-overlay)',
         // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет

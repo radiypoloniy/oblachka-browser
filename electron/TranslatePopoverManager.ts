@@ -14,6 +14,7 @@ import type { BrowserWindow, WebContents } from 'electron'
 import path from 'node:path'
 import type { SelectionRect } from './TabManager'
 import { runAiAction } from './TranslationService'
+import { pushOverlayBackdrop } from './overlayBackdrop'
 import type { AiAction } from '../shared/ipc'
 
 const POPOVER_WIDTH = 340
@@ -142,6 +143,19 @@ export function closeTranslatePopoverForClosedTab(wc: WebContents): void {
   if (scrollWc === wc) cleanup()
 }
 
+/**
+ * Размытая подложка под карточкой — снимком страницы (см. electron/overlayBackdrop.ts).
+ *
+ * ⚠️ Прямоугольник — по КАРТОЧКЕ, а не по вью: здесь запас под тень целых 40 px, и размытый
+ * прямоугольник в нём читался бы ореолом вокруг поповера.
+ */
+function pushBackdrop(win: BrowserWindow, b: { x: number; y: number; width: number; height: number }): void {
+  pushOverlayBackdrop(win, popoverView?.webContents, {
+    x: b.x + SHADOW_MARGIN, y: b.y + SHADOW_MARGIN,
+    width: b.width - SHADOW_MARGIN * 2, height: b.height - SHADOW_MARGIN * 2,
+  })
+}
+
 // Регистрируется один раз, лениво — на первый показ поповера, не на старте.
 function ensureIpcRegistered(): void {
   if (ipcRegistered) return
@@ -150,7 +164,9 @@ function ensureIpcRegistered(): void {
   // Рост под контент (репорт из preload поповера) — пересчитываем bounds с тем же якорем.
   ipcMain.on('translate-popover:height', (_e, px: number) => {
     if (!popoverView || !attachedWin || !currentRect) return
-    popoverView.setBounds(computeBounds(attachedWin, currentRect, Math.max(INITIAL_HEIGHT, px)))
+    const grown = computeBounds(attachedWin, currentRect, Math.max(INITIAL_HEIGHT, px))
+    popoverView.setBounds(grown)
+    pushBackdrop(attachedWin, grown)
   })
 
   // Крестик / Esc внутри поповера — надёжные пути закрытия.
@@ -188,7 +204,9 @@ export function showTranslatePopover(win: BrowserWindow, action: AiAction, text:
   attachedWin = win
   currentRect = rect
 
-  popoverView.setBounds(computeBounds(win, rect, INITIAL_HEIGHT))
+  const initialBounds = computeBounds(win, rect, INITIAL_HEIGHT)
+  popoverView.setBounds(initialBounds)
+  pushBackdrop(win, initialBounds)
   // Добавляется ПОСЛЕДНИМ → Electron стекует детей в порядке добавления, этот — на самом верху,
   // поверх уже добавленной вкладки. Native z-order, не CSS z-index.
   win.contentView.addChildView(popoverView)

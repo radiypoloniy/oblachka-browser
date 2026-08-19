@@ -20,7 +20,7 @@
 // осознанно и почти не видно — размытая в кашу картинка и так неузнаваема, а поповеры,
 // заякоренные на поле, прокрутка вообще закрывает. Ради живого блюра пришлось бы снимать кадр
 // по таймеру, то есть жечь GPU ради эффекта, которого никто не разглядывает.
-import type { BrowserWindow, WebContentsView } from 'electron';
+import type { BrowserWindow, WebContents } from 'electron';
 import { IPC } from '../shared/ipc';
 import { contextForWindow } from './WindowRegistry';
 
@@ -43,32 +43,38 @@ const SCALE = 8;
  */
 const DEBOUNCE_MS = 60;
 
-const timers = new WeakMap<WebContentsView, ReturnType<typeof setTimeout>>();
+const timers = new WeakMap<WebContents, ReturnType<typeof setTimeout>>();
 
 export interface CardRect { x: number; y: number; width: number; height: number }
 
-/** Снять и отправить подложку под карточку. Прямоугольник — в координатах ОКНА. */
-export function pushOverlayBackdrop(win: BrowserWindow, view: WebContentsView | null, card: CardRect): void {
-  if (!view) return;
-  const prev = timers.get(view);
+/**
+ * Снять и отправить подложку под карточку. Прямоугольник — в координатах ОКНА.
+ *
+ * ⚠️ Принимает WebContents, а не WebContentsView: дропдаун омнибокса — это отдельное неактивируемое
+ * ОКНО (см. SuggestDropdownManager), и по типу вью он бы сюда не прошёл. Он же единственный, кто
+ * обязан пересчитать координаты сам: его bounds экранные, а не оконные.
+ */
+export function pushOverlayBackdrop(win: BrowserWindow, target: WebContents | null | undefined, card: CardRect): void {
+  if (!target) return;
+  const prev = timers.get(target);
   if (prev) clearTimeout(prev);
-  timers.set(view, setTimeout(() => { void capture(win, view, card); }, DEBOUNCE_MS));
+  timers.set(target, setTimeout(() => { void capture(win, target, card); }, DEBOUNCE_MS));
 }
 
-function send(view: WebContentsView, dataUrl: string | null): void {
+function send(target: WebContents, dataUrl: string | null): void {
   try {
-    if (!view.webContents.isDestroyed()) view.webContents.send(IPC.OVERLAY_BACKDROP, dataUrl);
+    if (!target.isDestroyed()) target.send(IPC.OVERLAY_BACKDROP, dataUrl);
   } catch { /* вью закрылась между таймером и отправкой */ }
 }
 
-async function capture(win: BrowserWindow, view: WebContentsView, card: CardRect): Promise<void> {
+async function capture(win: BrowserWindow, view: WebContents, card: CardRect): Promise<void> {
   try {
-    if (win.isDestroyed() || view.webContents.isDestroyed()) return;
+    if (win.isDestroyed() || view.isDestroyed()) return;
     const tabs = contextForWindow(win)?.tabs ?? null;
     const wc = tabs?.getActiveWebContents() ?? null;
     // Спящая вкладка, служебная страница, хаб — снимать нечего. Карточка останется как была
     // (плотный материал), то есть деградация тихая и без поломки.
-    if (!tabs || !wc || wc.isDestroyed()) { send(view, null); return; }
+    if (!tabs || !wc || wc.isDestroyed() || wc === view) { send(view, null); return; }
 
     const vb = tabs.getTabViewBounds(tabs.getActiveId());
     if (vb.width < 8 || vb.height < 8) { send(view, null); return; }

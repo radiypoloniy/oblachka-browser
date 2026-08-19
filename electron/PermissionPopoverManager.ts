@@ -20,6 +20,7 @@ import path from 'node:path'
 import type { ContentBounds, PermissionRequest } from '../shared/ipc'
 import { closeWindowView } from './viewTeardown';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
+import { pushOverlayBackdrop } from './overlayBackdrop';
 
 const CARD_WIDTH = 380
 // Стартовая высота до первого отчёта из вью. Оверлей появляется мгновенно, а высоту содержимого
@@ -73,7 +74,13 @@ function isAttached(st: WindowPermPopover): boolean {
 
 function layout(st: WindowPermPopover): void {
   if (!isAttached(st)) return
-  st.view!.setBounds(computeBounds(st))
+  const b = computeBounds(st)
+  st.view!.setBounds(b)
+  // Размытая подложка — снимком страницы (см. electron/overlayBackdrop.ts), по карточке, не по вью.
+  pushOverlayBackdrop(st.win, st.view?.webContents, {
+    x: b.x + SHADOW_MARGIN, y: b.y + SHADOW_MARGIN,
+    width: b.width - SHADOW_MARGIN * 2, height: b.height - SHADOW_MARGIN * 2,
+  })
 }
 
 // Тот же CONTENT_SET_BOUNDS, что двигает вкладку и FindBar. width/height === 0 — сентинел
