@@ -232,6 +232,37 @@ for (const [label, palette] of PALETTES) {
   }
 }
 
+// ── коридор земли ────────────────────────────────────────────────────
+// ⚠️ ЗЕМЛЯ БОЛЬШЕ НЕ ПЛОСКАЯ, и мерить её одним токеном нельзя. Она рисуется маршрутом
+// пространства (--space-1..3), а проверка брала --app-bg, то есть значение, которого на экране
+// нет. Ровно так и вышло: прогон был зелёным, а верх окна ушёл ниже порога различимости.
+//
+// ⚠️ Меряем ОБЕ крайние точки маршрута: всё, что лежит на земле, обязано держаться и наверху, и
+// внизу. Плюс сам коридор — перепад светлоты между верхом и низом: это и есть цена, которую
+// градиент берёт с бюджета читаемости.
+const CORRIDOR_MAX = { light: 1.07, dark: 1.06 };
+// ⚠️ Порог отрыва сцены РАЗНЫЙ по темам, и это физика, а не поблажка: в светлой теме сцена уже
+// на самой светлой ступени шкалы, выше некуда, и максимум пары «земля → сцена» там 1,23. В
+// тёмной сцену подняли на ступень, и там честно требуем 1,40.
+const corridor = [];
+for (const [label, palette] of PALETTES) {
+  for (const dark of [false, true]) {
+    const t = tokensFor({ palette, dark, incognito: false });
+    const mid = resolve('var(--space-2)', t);
+    const top = over(resolve('var(--space-1)', t), mid);
+    const bottom = over(resolve('var(--space-3)', t), mid);
+    const scene = over(resolve('var(--surface-solid)', t), top);
+    corridor.push({
+      label, dark,
+      spread: contrast(toHex(top), toHex(bottom)),
+      sceneTop: contrast(toHex(scene), toHex(top)),
+      sceneBottom: contrast(toHex(scene), toHex(bottom)),
+      textTop: contrast(toHex(over(resolve('var(--text-faint)', t), top)), toHex(top)),
+      textBottom: contrast(toHex(over(resolve('var(--text-faint)', t), bottom)), toHex(bottom)),
+    });
+  }
+}
+
 // ── отчёт ────────────────────────────────────────────────────────────
 if (process.argv.includes('--report')) {
   for (const [label] of PALETTES) {
@@ -311,6 +342,23 @@ for (const [label] of PALETTES) {
       true,
     );
   }
+}
+
+console.log('\n— земля: обе крайние точки маршрута —');
+for (const r of corridor) {
+  const theme = r.dark ? 'тёмная' : 'светлая';
+  const max = CORRIDOR_MAX[r.dark ? 'dark' : 'light'];
+  const bad = [];
+  // Коридор: сколько светлоты тратит градиент. Всё сверх этого отнимается у пары «земля → сцена».
+  if (r.spread > max) bad.push(`коридор ${r.spread.toFixed(3)} > ${max}`);
+  // Сцена обязана отделяться в ОБЕИХ точках, а не в среднем по окну.
+  const sceneMin = r.dark ? 1.40 : 1.19;
+  if (r.sceneTop < sceneMin) bad.push(`сцена наверху ${r.sceneTop.toFixed(3)} < ${sceneMin}`);
+  if (r.sceneBottom < sceneMin) bad.push(`сцена внизу ${r.sceneBottom.toFixed(3)} < ${sceneMin}`);
+  // Подпись хрома лежит прямо на земле — самый слабый текст в самой слабой точке.
+  if (r.textTop < 3.0) bad.push(`подпись наверху ${r.textTop.toFixed(2)} < 3.0`);
+  if (r.textBottom < 3.0) bad.push(`подпись внизу ${r.textBottom.toFixed(2)} < 3.0`);
+  check(`${r.label}, ${theme}: земля держит маршрут`, bad, []);
 }
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);

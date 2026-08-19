@@ -39,9 +39,9 @@
    просто заливка, а не радиальный градиент. */
 [data-palette="graphite"]:not([data-theme="dark"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #E9EBEC;
-  --space-2: #E4E5E7;
-  --space-3: #DEDEE3;
+  --space-1: #E3E6E7;
+  --space-2: #E2E3E5;
+  --space-3: #E0E0E4;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFEFF;
@@ -73,9 +73,9 @@
 }
 [data-palette="graphite"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #1A2227;
-  --space-2: #191C23;
-  --space-3: #161621;
+  --space-1: #0F1316;
+  --space-2: #0E1014;
+  --space-3: #0D0D13;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #121212;
@@ -103,7 +103,7 @@
   /* Остров поднят под порог различимости плоскостей (см. разбор у --surface в theme-dark.css). */
   --surface:         var(--n4); /* к земле 1,263 */
   --surface-island:  rgba(48,48,48,0.78);
-  --surface-solid:   var(--n4);
+  --surface-solid:   var(--n5); /* сцена на ступень выше — см. theme-dark.css */
   --surface-sunken:  var(--n5); /* в тёмной теме колодец СВЕТЛЕЕ острова, как заливки полей у Apple */
   /* Земля здесь светлее базовой тёмной (#1E1E1E против #121214), поэтому обе приглушённые
      ступени подняты: базовые давали на «карточке+» 4,41 (muted) при пороге 4,5.
@@ -121,9 +121,9 @@
    пропадает). Эти две ступени добраны в том же семействе по контрасту. */
 [data-palette="slate"]:not([data-theme="dark"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #E6E9EA;
-  --space-2: #E1E3E5;
-  --space-3: #DBDCE0;
+  --space-1: #E3E6E7;
+  --space-2: #E2E3E5;
+  --space-3: #E0E0E4;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFEFF;
@@ -164,9 +164,9 @@
 }
 [data-palette="slate"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #2E3D45;
-  --space-2: #2E3440;
-  --space-3: #2A2B3F;
+  --space-1: #0F1316;
+  --space-2: #0E1014;
+  --space-3: #0C0D12;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #111213;
@@ -196,7 +196,7 @@
   /* nord1 поднят на волос под порог различимости плоскостей (см. --surface в theme-dark.css). */
   --surface:         var(--n4); /* к земле 1,261 */
   --surface-island:  rgba(60,67,83,0.78);
-  --surface-solid:   var(--n4);
+  --surface-solid:   var(--n5); /* сцена на ступень выше — см. theme-dark.css */
   --surface-sunken:  var(--n5); /* nord2, поднят вместе с островом — колодец обязан быть светлее */
   --divider:         rgba(216,222,233,0.16);
   --divider-strong:  rgba(216,222,233,0.26);
@@ -220,9 +220,9 @@
    когда-то убрали пурпурные поверхности. */
 [data-palette="paper"]:not([data-theme="dark"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #E6E3E2;
-  --space-2: #E1DFDC;
-  --space-3: #DCDCD7;
+  --space-1: #E7E5E3;
+  --space-2: #E3E2E0;
+  --space-3: #E1E1DC;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FFFFFE;
@@ -262,9 +262,9 @@
 }
 [data-palette="paper"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #181210;
-  --space-2: #14120F;
-  --space-3: #12110C;
+  --space-1: #16110F;
+  --space-2: #110F0C;
+  --space-3: #0D0D09;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #131311;
@@ -292,7 +292,7 @@
   /* Stone 900 был самой сливающейся парой из всех шести: 1,069 к земле (см. theme-dark.css). */
   --surface:         var(--n4); /* к земле 1,250 */
   --surface-island:  rgba(43,38,35,0.78);
-  --surface-solid:   var(--n4);
+  --surface-solid:   var(--n5); /* сцена на ступень выше — см. theme-dark.css */
   --surface-sunken:  var(--n5); /* светлее острова */
   --surface-hover:   rgba(255,246,230,0.10);
   --surface-active:  rgba(255,246,230,0.16);
@@ -320,9 +320,9 @@
    панелях (см. untintedPlateVars в src/styles/island.ts). */
 [data-palette="mint"]:not([data-theme="dark"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #E7EBE8;
-  --space-2: #E2E6E3;
-  --space-3: #DCE1E0;
+  --space-1: #E3E7E3;
+  --space-2: #E0E4E1;
+  --space-3: #DDE2E0;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFFFE;
@@ -362,9 +362,9 @@
 }
 [data-palette="mint"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #111A13;
-  --space-2: #101613;
-  --space-3: #0D1412;
+  --space-1: #0F1610;
+  --space-2: #0D1310;
+  --space-3: #0B110F;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #111312;
@@ -387,7 +387,7 @@
   --canvas:          var(--app-bg);
   --surface:         var(--n4); /* к земле 1,266 — см. разбор у --surface в theme-dark.css */
   --surface-island:  rgba(33,44,37,0.78);
-  --surface-solid:   var(--n4);
+  --surface-solid:   var(--n5); /* сцена на ступень выше — см. theme-dark.css */
   --surface-sunken:  var(--n5); /* в тёмной теме колодец СВЕТЛЕЕ острова */
   --surface-hover:   rgba(230,255,240,0.10);
   --surface-active:  rgba(230,255,240,0.16);
@@ -401,9 +401,9 @@
 
 [data-palette="sky"]:not([data-theme="dark"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #EDEEEF;
-  --space-2: #E8E9EA;
-  --space-3: #E2E2E6;
+  --space-1: #E3E6E7;
+  --space-2: #E2E3E5;
+  --space-3: #E0E0E4;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFEFF;
@@ -439,9 +439,9 @@
 }
 [data-palette="sky"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #12181B;
-  --space-2: #111317;
-  --space-3: #0E0F15;
+  --space-1: #0F1416;
+  --space-2: #0E1114;
+  --space-3: #0D0E13;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #111213;
@@ -464,7 +464,7 @@
   --canvas:          var(--app-bg);
   --surface:         var(--n4); /* к земле 1,256 — см. разбор у --surface в theme-dark.css */
   --surface-island:  rgba(33,40,51,0.78);
-  --surface-solid:   var(--n4);
+  --surface-solid:   var(--n5); /* сцена на ступень выше — см. theme-dark.css */
   --surface-sunken:  var(--n5);
   --surface-hover:   rgba(232,240,255,0.10);
   --surface-active:  rgba(232,240,255,0.16);

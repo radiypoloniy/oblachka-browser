@@ -34,7 +34,10 @@ const GROUND = {
 // в цветную бумагу. В тёмной наоборот — ниже 18 % цвета не видно вовсе.
 const SAT = { light: 0.075, dark: 0.20 };
 const HUE_SWING = 18 / 360;
-const CORRIDOR = { light: 0.020, dark: 0.010 };
+// ⚠️ Коридор задан КОНТРАСТОМ, а не абсолютной светлотой. Одна и та же дельта светлоты стоит
+// по-разному в разных палитрах: у «Сланца» земля светлее втрое, чем у «Угля», и те же 0,01
+// давали там перепад 1,182 против 1,05. Величина, которую мы хотим держать, — именно отношение.
+const CORRIDOR_TARGET = { light: 1.05, dark: 1.04 };
 
 const hex2rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const rgb2hex = (c) => '#' + c.map((x) => Math.round(Math.max(0, Math.min(255, x))).toString(16).padStart(2, '0')).join('');
@@ -47,6 +50,18 @@ function hsl(hex) {
   let h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
   return { h: h / 6, s, l };
 }
+const lum = (hex) => {
+  const [r, g, b] = hex2rgb(hex).map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const contrast = (a, b) => {
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+};
+
 function toHex({ h, s, l }) {
   if (s === 0) return rgb2hex([l * 255, l * 255, l * 255]);
   const q = l < 0.5 ? l * (1 + s) : l + s - l * s; const p = 2 * l - q;
@@ -56,15 +71,37 @@ function toHex({ h, s, l }) {
   return rgb2hex([ch(h + 1 / 3) * 255, ch(h) * 255, ch(h - 1 / 3) * 255]);
 }
 
+// ⚠️ СВЕТЛОТА БЕРЁТСЯ ИЗ ШКАЛЫ, а не из исходного цвета земли палитры. Земля давно живёт на
+// ступени (n4 в светлой, n1 в тёмной), и старые константы вроде nord0 #2E3440 описывают то,
+// чего на экране нет: у «Сланца» расхождение было втрое по светлоте, маршрут строился вокруг
+// 0,216, а земля стояла на 0,072 — сцена и земля сходились в одну плоскость.
+// От исходного цвета берётся только ОТТЕНОК: он и есть характер палитры.
+const GROUND_L = { light: 0.898, dark: 0.072 };
+
 /** Три остановки маршрута: верх — холоднее, низ — теплее, светлота в коридоре. */
 function space(ground, dark) {
-  const base = hsl(ground);
+  const base = { ...hsl(ground), l: dark ? GROUND_L.dark : GROUND_L.light };
   const s = dark ? SAT.dark : SAT.light;
-  const dL = dark ? CORRIDOR.dark : CORRIDOR.light;
   const wrap = (h) => ((h % 1) + 1) % 1;
+  // Подбираем глубину коридора под целевой контраст верх/низ.
+  const target = dark ? CORRIDOR_TARGET.dark : CORRIDOR_TARGET.light;
+  // ⚠️ Мерим ФАКТИЧЕСКИЕ остановки, вместе с поворотом оттенка: поворот сам двигает светлоту
+  // (у синего и жёлтого при равном L разная воспринимаемая яркость), и подбор по одному тону
+  // ошибался — у «Сланца» коридор выходил 1,195 вместо 1,04.
+  let dL = 0;
+  for (let step = 0.04; step > 0.0002; step /= 2) {
+    const probe = dL + step;
+    const top = toHex({ h: wrap(base.h - HUE_SWING), s, l: base.l });
+    const bottom = toHex({ h: wrap(base.h + HUE_SWING), s, l: Math.max(0.02, base.l - probe) });
+    if (contrast(top, bottom) <= target) dL = probe;
+  }
+  // ⚠️ МАРШРУТ ИДЁТ ТОЛЬКО ВНИЗ ОТ БАЗОВОЙ ЗЕМЛИ, никогда выше. Первая версия поднимала верх на
+  // +ΔL — и в светлой теме земля наверху подходила вплотную к сцене (замер: 1,153 при пороге 1,3,
+  // то есть панель истории тонула в фоне ровно там, где начинается её заголовок). Земля не имеет
+  // права светлеть: сцена — самая светлая плоскость окна, и приближаться к ней некому.
   return [
-    toHex({ h: wrap(base.h - HUE_SWING), s, l: base.l + dL }).toUpperCase(),
-    toHex({ h: base.h, s: s * 0.85, l: base.l }).toUpperCase(),
+    toHex({ h: wrap(base.h - HUE_SWING), s, l: base.l }).toUpperCase(),
+    toHex({ h: base.h, s: s * 0.85, l: base.l - dL * 0.5 }).toUpperCase(),
     toHex({ h: wrap(base.h + HUE_SWING), s, l: base.l - dL }).toUpperCase(),
   ];
 }
