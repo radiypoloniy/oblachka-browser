@@ -479,6 +479,9 @@ export const IPC = {
   COMMANDS_SET_DOOR: 'commands:set-door', // renderer → main: OmniboxDoorMode → boolean
   COMMANDS_CHANGED: 'commands:changed', // main → renderer: push после любой мутации
   COMMAND_RUN:      'commands:run',     // renderer → main: id → { ok, error? }
+  // ⚠️ Свободный вопрос из адресной строки — ГЛАВНАЯ дверь слоя, а не дополнение к командам:
+  // чаще всего человеку нужна не сохранённая команда, а вопрос о том, что открыто.
+  COMMAND_ASK:      'commands:ask',     // renderer → main: текст вопроса → { ok, error? }
 
   SKILLS_LIST:    'skills:list',     // renderer → main: Skill[]
   SKILLS_ADD:     'skills:add',      // renderer → main: ({label, prompt, icon?}) → boolean (id генерит main)

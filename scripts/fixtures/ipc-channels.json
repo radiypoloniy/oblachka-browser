@@ -82,6 +82,7 @@
   "COMMANDS_REMOVE=commands:remove",
   "COMMANDS_SET_DOOR=commands:set-door",
   "COMMANDS_UPDATE=commands:update",
+  "COMMAND_ASK=commands:ask",
   "COMMAND_RUN=commands:run",
   "CONTENT_SET_BOUNDS=content:set-bounds",
   "CRYPTO_GET=crypto:get",

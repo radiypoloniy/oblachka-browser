@@ -869,6 +869,22 @@ export function runPromptInPanel(win: BrowserWindow, prompt: string): boolean {
   return true
 }
 
+/**
+ * Сообщение от браузера в панели — не ответ модели, а объяснение, почему ответа не будет.
+ *
+ * ⚠️ Заведено по живой жалобе: команда, которой нечего читать (открыта новая вкладка), молча не
+ * делала НИЧЕГО. Молчание в ответ на нажатие — худший из возможных исходов: человек не понимает,
+ * сломалось это или так задумано, и больше не нажимает.
+ */
+export function showPanelNotice(win: BrowserWindow, text: string): void {
+  if (!isOpen) toggleAiPanel(win)
+  const view = panelView
+  if (!view || view.webContents.isDestroyed()) return
+  const send = () => { if (!view.webContents.isDestroyed()) view.webContents.send('ai-panel:notice', text) }
+  if (view.webContents.isLoading()) view.webContents.once('did-finish-load', send)
+  else send()
+}
+
 export function toggleAiPanel(win: BrowserWindow): boolean {
   attachedWin = win
   if (resizeBoundWin !== win) {

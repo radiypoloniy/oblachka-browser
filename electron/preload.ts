@@ -665,6 +665,7 @@ const api: OblakoApi = {
   removeCommand: (id: string) => ipcRenderer.invoke(IPC.COMMANDS_REMOVE, id) as Promise<boolean>,
   setCommandsDoor: (mode: OmniboxDoorMode) => ipcRenderer.invoke(IPC.COMMANDS_SET_DOOR, mode) as Promise<boolean>,
   runCommand: (id: string) => ipcRenderer.invoke(IPC.COMMAND_RUN, id) as Promise<{ ok: boolean; error?: string }>,
+  askAboutPage: (text: string) => ipcRenderer.invoke(IPC.COMMAND_ASK, text) as Promise<{ ok: boolean; error?: string }>,
   onCommandsChanged: (cb: (snapshot: CommandsSnapshot) => void) => {
     const handler = (_e: unknown, snapshot: CommandsSnapshot) => cb(snapshot);
     ipcRenderer.on(IPC.COMMANDS_CHANGED, handler);

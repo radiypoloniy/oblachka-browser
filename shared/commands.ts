@@ -199,14 +199,26 @@ export function resolveCommands(
 ): CommandMatch[] {
   if (mode === 'off') return [];
 
+  // ⚠️ «/» — ЭТО СПИСОК, а не фильтр. Без него команды невозможно найти: человек должен угадать
+  // фразу, которой их вызывают, а угадывать он не будет — просто не станет ими пользоваться.
+  // Так же устроены навыки в Dia: слэш показывает, что вообще есть. Пустой «/» — весь список,
+  // «/да» — то, что начинается на «да».
+  const slash = query.startsWith('/');
   let q = query;
-  if (mode === 'slash') {
-    // ⚠️ В режиме префикса обычный ввод не трогаем вовсе — в этом и весь смысл режима.
-    if (!q.startsWith('/')) return [];
+  if (slash) {
     q = q.slice(1);
+    if (!q.trim()) {
+      return commands
+        .filter((c) => c.doors.includes('omnibox'))
+        .slice(0, 6)
+        .map((c) => ({ id: c.id, name: c.name, sub: describeNeeds(c), score: 1 }));
+    }
+  } else if (mode === 'slash') {
+    // ⚠️ В режиме префикса обычный ввод не трогаем вовсе — в этом и весь смысл режима.
+    return [];
   }
   if (!q.trim()) return [];
-  if (mode === 'always' && looksLikeAddress(q)) return [];
+  if (!slash && looksLikeAddress(q)) return [];
 
   const qw = words(q);
   if (qw.length === 0) return [];
@@ -227,10 +239,39 @@ export function resolveCommands(
       if (score < 1) score *= 0.8;                 // частичное совпадение первой строкой не встаёт
     }
     if (score < MATCH_MIN) continue;
-    out.push({ id: c.id, name: c.name, sub: describeNeeds(c), score });
+    // Явный «/» — человек уже сказал, что зовёт команду; сомневаться и уходить под «искать»
+    // после этого нечестно.
+    out.push({ id: c.id, name: c.name, sub: describeNeeds(c), score: slash ? Math.max(score, MATCH_FIRST) : score });
   }
 
   return out.sort((a, b) => b.score - a.score).slice(0, 3);
+}
+
+/**
+ * Похоже ли набранное на ВОПРОС, а не на адрес и не на поисковый запрос.
+ *
+ * ⚠️ Ради этого весь слой и затевался: чаще всего человеку нужна не сохранённая команда, а
+ * простой вопрос о том, что открыто, — и он не должен для этого ни заводить команду, ни открывать
+ * панель руками. Так же устроен омнибокс Dia: адрес ведёт, запрос ищет, вопрос отвечает.
+ *
+ * ⚠️ Признак ЯВНЫЙ, а не «длинная фраза»: вопросительный знак или вопросительное слово в начале.
+ * Иначе строка «купить билеты москва сочи» превратилась бы в вопрос к модели вместо поиска —
+ * ровно та ошибка, из-за которой у людей и портится впечатление от таких браузеров.
+ */
+const QUESTION_WORDS = [
+  'что', 'кто', 'как', 'почему', 'зачем', 'когда', 'где', 'куда', 'сколько', 'какой', 'какая',
+  'какие', 'чем', 'стоит', 'можно', 'нужно', 'объясни', 'расскажи', 'сравни', 'переведи',
+  'what', 'who', 'how', 'why', 'when', 'where', 'explain', 'summarize', 'compare',
+];
+
+export function looksLikeQuestion(query: string): boolean {
+  const q = query.trim();
+  if (q.length < 3) return false;
+  if (looksLikeAddress(q)) return false;
+  if (q.endsWith('?')) return true;
+  const first = words(q)[0] ?? '';
+  // Одно слово вопросом не считаем: «что» это скорее начало запроса, чем вопрос.
+  return words(q).length >= 2 && QUESTION_WORDS.includes(first);
 }
 
 /** «увидит: эта страница» — человеку важно знать это ДО нажатия, а не после. */

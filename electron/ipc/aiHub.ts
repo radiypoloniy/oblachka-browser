@@ -8,7 +8,7 @@ import * as searxngKeyStore from '../SearxngKeyStore';
 import { buildGroundingPrompt, searxngSearch } from '../SearxngSearch';
 import * as skillsStore from '../SkillsStore';
 import * as commandStore from '../CommandStore';
-import { runCommand } from '../CommandEngine';
+import { runCommand, askAboutPage } from '../CommandEngine';
 import type { OmniboxDoorMode } from '../../shared/commands';
 import type { ChatOutcome } from '../TranslationService';
 import { broadcastToChrome } from '../WindowRegistry';
@@ -126,6 +126,11 @@ export function registerAiHubIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.COMMAND_RUN, (e, id: string) => {
     const w = winOf(e);
     return w ? runCommand(w, id) : { ok: false, error: 'Окно не найдено' };
+  });
+  // ⚠️ Свободный вопрос — та же дверь, что и команды, поэтому и обработчик рядом.
+  ipcMain.handle(IPC.COMMAND_ASK, (e, text: string) => {
+    const w = winOf(e);
+    return w ? askAboutPage(w, typeof text === 'string' ? text : '') : { ok: false, error: 'Окно не найдено' };
   });
   commandStore.subscribe(() => {
     broadcastToChrome(IPC.COMMANDS_CHANGED, { door: commandStore.getDoor(), items: commandStore.list() });

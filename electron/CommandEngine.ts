@@ -10,7 +10,7 @@
 import type { BrowserWindow } from 'electron';
 import type { CommandDef, ContextKey } from '../shared/commands';
 import * as store from './CommandStore';
-import { runPromptInPanel } from './AiPanelManager';
+import { runPromptInPanel, showPanelNotice } from './AiPanelManager';
 import { contextForWindow } from './WindowRegistry';
 
 /** Сколько вкладок уходит в промпт. Больше — это уже не дайджест, а простыня. */
@@ -22,9 +22,45 @@ export interface CommandRunResult {
   error?: string;
 }
 
+/**
+ * Свободный вопрос о странице — то, ради чего слой и нужен чаще всего.
+ *
+ * ⚠️ Отдельная точка входа, а не «команда на лету»: у вопроса нет имени, прав и счётчика, он не
+ * попадает в реестр и не засоряет список. Захочет человек повторять его — сохранит командой.
+ */
+export function askAboutPage(win: BrowserWindow, text: string): CommandRunResult {
+  const question = text.trim();
+  if (!question) return { ok: false, error: 'Пустой вопрос' };
+  if (!hasReadablePage(win)) {
+    showPanelNotice(win, 'Вопрос задаётся об ОТКРЫТОЙ странице, а её сейчас нет. Откройте сайт и спросите ещё раз.');
+    return { ok: false, error: 'Нет открытой страницы' };
+  }
+  return runPromptInPanel(win, question)
+    ? { ok: true }
+    : { ok: false, error: 'Не удалось открыть ИИ-панель' };
+}
+
+/**
+ * Есть ли страница, которую вообще можно прочитать.
+ *
+ * ⚠️ Хаб и новая вкладка — НЕ страница: у них нет ни текста, ни webContents, и команда «что тут
+ * по делу» на них раньше уходила в никуда МОЛЧА. Живая жалоба ровно об этом.
+ */
+function hasReadablePage(win: BrowserWindow): boolean {
+  const tabs = contextForWindow(win)?.tabs;
+  return !!tabs?.getActiveWebContents();
+}
+
 export function runCommand(win: BrowserWindow, id: string): CommandRunResult {
   const cmd = store.byId(id);
   if (!cmd) return { ok: false, error: 'Команда не найдена' };
+
+  // ⚠️ Отказ ГРОМКИЙ. Команде про страницу нечего читать на новой вкладке, и промолчать здесь
+  // значит оставить человека с ощущением, что кнопка сломана.
+  if (cmd.needs.includes('page') && !hasReadablePage(win)) {
+    showPanelNotice(win, `«${cmd.name}» — команда про открытую страницу, а её сейчас нет. Откройте сайт и повторите.`);
+    return { ok: false, error: 'Нет открытой страницы' };
+  }
 
   // ⚠️ Физический запрет, а не договорённость: команда с инструментами не может быть выполнена,
   // пока в конвейере нет шага подтверждения. Появится карточка — снимется и эта проверка.

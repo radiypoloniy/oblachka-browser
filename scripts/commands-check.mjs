@@ -9,7 +9,7 @@
 //
 // Запуск: npm run commands-check (или npm test -- command)
 import {
-  validateCommand, resolveCommands, describeNeeds, MATCH_FIRST,
+  validateCommand, resolveCommands, describeNeeds, looksLikeQuestion, MATCH_FIRST,
   BUILTIN_COMMANDS, CONTEXT_KEYS, TOOL_IDS,
 } from '../shared/commands.ts';
 
@@ -84,6 +84,25 @@ check('slash без префикса молчит', resolveCommands('дайдж�
 check('slash с префиксом работает', top('/дайджест открытого', 'slash'), 'tabs.digest');
 // ⚠️ В режиме префикса адресоподобное после / — это осознанный ввод команды, а не адрес.
 check('slash не считает ввод адресом', resolveCommands('/что', list, 'slash').length > 0, true);
+
+console.log('\n— слэш показывает список —');
+// ⚠️ Без этого команды невозможно НАЙТИ: человеку пришлось бы угадывать фразу вызова, а он не
+// станет — просто не будет ими пользоваться. Так же устроены навыки в Dia: слэш показывает, что
+// вообще есть.
+check('пустой «/» показывает список', resolveCommands('/', list, 'always').length > 0, true);
+check('«/» с началом имени фильтрует', top('/дайджест'), 'tabs.digest');
+check('«/» работает и в режиме always', top('/что тут'), 'page.gist');
+check('по «/» команда всегда первая', first('/что тут'), true);
+check('«/» выключенную дверь не открывает', resolveCommands('/', list, 'off'), []);
+
+console.log('\n— свободный вопрос —');
+check('вопросительный знак — вопрос', looksLikeQuestion('это вообще безопасно?'), true);
+check('вопросительное слово — вопрос', looksLikeQuestion('почему это так дорого'), true);
+// ⚠️ Главный отрицательный случай: обычный поисковый запрос вопросом НЕ становится, иначе строка
+// «купить билеты москва сочи» уходила бы к модели вместо поиска.
+check('запрос остаётся запросом', looksLikeQuestion('купить билеты москва сочи'), false);
+check('адрес вопросом не становится', looksLikeQuestion('music.yandex.ru'), false);
+check('одно слово — не вопрос', looksLikeQuestion('что'), false);
 
 console.log('\n— подписи прав —');
 check('подпись перечисляет то, что команда увидит',

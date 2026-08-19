@@ -1,8 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 // Разбор фразы в строки команд — чистая логика из shared (см. docs/commands-architecture.md).
-import { resolveCommands, MATCH_FIRST } from '../../shared/commands';
+import { resolveCommands, looksLikeQuestion, MATCH_FIRST } from '../../shared/commands';
 import type { CommandsSnapshot } from '../../shared/ipc';
+
+// Псевдо-id строки свободного вопроса: в реестре команд его нет и не должно быть — у вопроса нет
+// ни имени, ни прав, ни счётчика (см. askAboutPage в electron/CommandEngine.ts).
+const ASK_COMMAND_ID = '__ask__';
 import { Copy, Check, ChevronDown, KeyRound, Loader2, Clipboard, MoreHorizontal } from 'lucide-react';
 // ⚠️ Значки, которые человек видит каждую минуту, — свои (штрих плюс тело, см. glyphs.tsx).
 // Остальное остаётся на lucide: в глубине интерфейса характер набора никто не заметит, а
@@ -800,18 +804,32 @@ export default function Toolbar({
    * только раскладка.
    */
   const withCommands = useCallback((list: SuggestItem[], query: string): SuggestItem[] => {
+    if (commands.door === 'off') return list;
     const matches = resolveCommands(query, commands.items, commands.door);
-    if (matches.length === 0) return list;
-    const rows: SuggestItem[] = matches.map((m, i) => ({
+    const rows: SuggestItem[] = matches.map((m) => ({
       kind: 'command' as SuggestKind,
       label: m.name,
       sub: m.sub,
       url: '',
       commandId: m.id,
-      sectionHeader: i === 0 ? 'Сделать' : undefined,
     }));
-    const confident = matches[0].score >= MATCH_FIRST;
-    return confident ? [...rows, ...list] : [list[0], ...rows, ...list.slice(1)].filter(Boolean);
+
+    // ⚠️ СВОБОДНЫЙ ВОПРОС — главная строка слоя, а не дополнение к списку команд. Чаще всего
+    // человеку нужна не сохранённая команда, а вопрос о том, что открыто, и заводить ради этого
+    // команду он не станет. Так же устроен омнибокс Dia: адрес ведёт, запрос ищет, вопрос
+    // отвечает. Текст вопроса едет в sub — он же и показывается человеку под заголовком строки.
+    const ask: SuggestItem[] = looksLikeQuestion(query) && commands.door === 'always'
+      ? [{ kind: 'command' as SuggestKind, label: 'Спросить о странице', sub: query, url: '', commandId: ASK_COMMAND_ID }]
+      : [];
+
+    const head = [...ask, ...rows];
+    if (head.length === 0) return list;
+    head[0] = { ...head[0], sectionHeader: 'Спросить' };
+
+    // Уверенная команда и вопрос забирают первую строку; слабое совпадение уходит под «искать»,
+    // чтобы не встать между человеком и его запросом.
+    const confident = ask.length > 0 || (matches[0]?.score ?? 0) >= MATCH_FIRST;
+    return confident ? [...head, ...list] : [list[0], ...head, ...list.slice(1)].filter(Boolean);
   }, [commands]);
 
   const buildSuggestions = useCallback(async (query: string, seq: number) => {
@@ -1363,7 +1381,9 @@ export default function Toolbar({
     // ⚠️ Команда не ведёт никуда — она выполняется, поэтому и ветка своя, а не submit(url).
     // Ответ появится в ИИ-панели (см. CommandEngine.ts), поэтому дропдаун закрываем полностью.
     if (item.kind === 'command' && item.commandId) {
-      void window.oblako.runCommand(item.commandId);
+      // Свободный вопрос несёт свой текст в sub — своего id у него нет и быть не может.
+      if (item.commandId === ASK_COMMAND_ID) void window.oblako.askAboutPage(item.sub ?? '');
+      else void window.oblako.runCommand(item.commandId);
       closeDropdownFully('pick-command');
       return;
     }

@@ -587,6 +587,7 @@ export interface OblakoApi {
   removeCommand(id: string): Promise<boolean>;
   setCommandsDoor(mode: OmniboxDoorMode): Promise<boolean>;
   runCommand(id: string): Promise<{ ok: boolean; error?: string }>;
+  askAboutPage(text: string): Promise<{ ok: boolean; error?: string }>;
   onCommandsChanged(cb: (snapshot: CommandsSnapshot) => void): () => void;
 
   getMediaState(): Promise<MediaNowPlaying | null>;
