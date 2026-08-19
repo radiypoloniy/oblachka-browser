@@ -75,7 +75,11 @@ export interface GlassPlateOptions {
  */
 export function glassPlate({ surface = 'material', shadow = 'shadow-card', border = true }: GlassPlateOptions = {}): React.CSSProperties {
   return {
-    background: `var(--plate-bg, var(--${surface}))`,
+    // ⚠️ ЗЕРНО И НА МАТЕРИАЛЕ, а не только на земле. Ровная полупрозрачная заливка на площади
+    // карточки читается плёнкой; зерно возвращает ощущение поверхности. Слабее, чем на земле
+    // (6 % против 9 %): площадь меньше, и на ней тот же шум был бы уже мусором.
+    backgroundImage: noise(GRAIN.material),
+    backgroundColor: `var(--plate-bg, var(--${surface}))`,
     backdropFilter: 'var(--plate-filter, var(--material-blur))',
     WebkitBackdropFilter: 'var(--plate-filter, var(--material-blur))',
     ...(shadow ? { boxShadow: `var(--plate-shadow, var(--${shadow}))` } : {}),
@@ -126,7 +130,7 @@ function noise(opacity: number): string {
  * теряется. Девять процентов дают фактуру, которую видно, и не дают «грязи»: это по-прежнему
  * доли процента яркости на пиксель.
  */
-export const GRAIN = { light: 0.09, dark: 0.09, tinted: 0.075 } as const;
+export const GRAIN = { light: 0.09, dark: 0.09, tinted: 0.075, material: 0.06 } as const;
 
 // ⚠️ Градиент идёт по АКЦЕНТУ, подмешанному к ЗЕМЛЕ (--app-bg), а не к поверхности. Смешанный с
 // белым, он оказывался светлее окружения и снова читался отдельной панелью — ровно то, от чего
@@ -275,7 +279,8 @@ export function chromeCluster(): React.CSSProperties {
  */
 export function omniField(): React.CSSProperties {
   return {
-    background: 'var(--material)',
+    backgroundImage: noise(GRAIN.material),
+    backgroundColor: 'var(--field)',
     backdropFilter: 'var(--material-blur)',
     WebkitBackdropFilter: 'var(--material-blur)',
     boxShadow: 'inset 0 1px 0 var(--material-edge), 0 0 0 1px var(--divider)',
