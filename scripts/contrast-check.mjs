@@ -135,9 +135,18 @@ function resolve(value, tokens, depth = 0) {
     const pa = a.pct ?? (b.pct != null ? 1 - b.pct : 0.5);
     const ca = resolve(a.color, tokens, depth + 1);
     const cb = resolve(b.color, tokens, depth + 1);
-    // Прозрачная составляющая уменьшает альфу результата — это нужно для --accent-soft.
+    // ⚠️ Смешивание идёт в ПРЕДУМНОЖЕННОМ пространстве, как требует спецификация color-mix, и
+    // делить на итоговую альфу обязательно. Без деления `color-mix(surface 88%, transparent)`
+    // возвращал цвет, УЖЕ умноженный на 0,88, — то есть заметно темнее настоящего, и проверка
+    // занижала контраст текста на материале: показывала 3,93 там, где в браузере 5,14.
     const alpha = ca[3] * pa + cb[3] * (1 - pa);
-    return [ca[0] * pa + cb[0] * (1 - pa), ca[1] * pa + cb[1] * (1 - pa), ca[2] * pa + cb[2] * (1 - pa), alpha];
+    if (alpha === 0) return [0, 0, 0, 0];
+    return [
+      (ca[0] * ca[3] * pa + cb[0] * cb[3] * (1 - pa)) / alpha,
+      (ca[1] * ca[3] * pa + cb[1] * cb[3] * (1 - pa)) / alpha,
+      (ca[2] * ca[3] * pa + cb[2] * cb[3] * (1 - pa)) / alpha,
+      alpha,
+    ];
   }
 
   const direct = parseColor(s);
@@ -359,6 +368,31 @@ for (const r of corridor) {
   if (r.textTop < 3.0) bad.push(`подпись наверху ${r.textTop.toFixed(2)} < 3.0`);
   if (r.textBottom < 3.0) bad.push(`подпись внизу ${r.textBottom.toFixed(2)} < 3.0`);
   check(`${r.label}, ${theme}: земля держит маршрут`, bad, []);
+}
+
+console.log('\n— текст на материале —');
+// ⚠️ Материал ПОЛУПРОЗРАЧЕН, поэтому его читаемость зависит от того, что под ним, а под ним может
+// оказаться что угодно: пространство, цветная подкраска или фотография обоев. Проверять «цвет
+// материала» бессмысленно — надо проверять ХУДШИЙ случай, а он лежит на краях: чёрный кадр и
+// белый кадр. Всё, что между ними, заведомо лучше.
+//
+// ⚠️ Отсюда и высокая непрозрачность (88 % в светлой, 90 % в тёмной): на 82 % подпись над тёмным
+// кадром давала 4,4 при пороге 4,5. Стекло должно быть видно, но текст на нём — читаться.
+const WORST_BACKDROP = { 'чёрный кадр': [0, 0, 0, 1], 'белый кадр': [255, 255, 255, 1] };
+for (const [label, palette] of PALETTES) {
+  for (const dark of [false, true]) {
+    const t = tokensFor({ palette, dark, incognito: false });
+    const bad = [];
+    for (const [backdropName, backdrop] of Object.entries(WORST_BACKDROP)) {
+      const material = over(resolve('var(--material)', t), backdrop);
+      for (const [role, min] of [['--text-strong', 4.5], ['--text-body', 4.5], ['--text-muted', 4.5]]) {
+        const ink = over(resolve(`var(${role})`, t), material);
+        const ratio = contrast(toHex(ink), toHex(material));
+        if (ratio < min) bad.push(`${role} на материале поверх «${backdropName}» ${ratio.toFixed(2)} < ${min}`);
+      }
+    }
+    check(`${label}, ${dark ? 'тёмная' : 'светлая'}: текст на материале держится`, bad, []);
+  }
 }
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
