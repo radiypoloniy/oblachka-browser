@@ -433,10 +433,10 @@ export function OptionRow({
   // ⚠️ Заливка ТОЛЬКО у выбранного и ТОЛЬКО акцентная (готовый токен, посчитанный от акцента
   // палитры): у выбора ровно одно значение — «вот этот», и читаться он обязан одинаково во всех
   // палитрах и обеих темах.
-  const activeFill = active ? 'var(--accent-soft)' : 'transparent';
-  // Полоса у левого края — тот же приём, что у пункта меню (selected в system.ts): на цветной
-  // земле одна заливка в 10% почти сливается с фоном.
-  const activeEdge = active ? 'inset 3px 0 0 var(--accent)' : undefined;
+  const activeFill = active ? 'var(--selected)' : 'transparent';
+  // ⚠️ Полосы у левого края больше нет: она компенсировала невидимую заливку в 10 % акцента.
+  // Заливка теперь одна на всё приложение и посчитана по контрасту (--selected), см. system.selected().
+  const activeEdge = undefined;
 
   const body = (
     <>

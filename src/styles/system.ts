@@ -174,10 +174,11 @@ const HALO_SPREAD = 22;       // радиус растекания, px
  */
 export function selected(active: boolean): CSSProperties {
   if (!active) return {};
-  return {
-    background: 'var(--accent-soft)',
-    boxShadow: 'inset 3px 0 0 var(--accent)',
-  };
+  // ⚠️ ЗАЛИВКА И БОЛЬШЕ НИЧЕГО. Здесь стояла пара «--accent-soft плюс полоса слева», и полоса была
+  // не украшением, а протезом: мягкая заливка даёт к панели 1,17, а к земле 1,15 — её почти не
+  // видно, и полосу добавили, чтобы выбор вообще читался. Лечили следствие. Токен --selected
+  // посчитан по контрасту (1,4+ в светлой, 1,8+ в тёмной), поэтому подпорка не нужна.
+  return { background: 'var(--selected)' };
 }
 
 /**

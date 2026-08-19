@@ -211,7 +211,7 @@ function TabRow({ tab, active, onClick, onClose, onContextMenu, onSplit, onExitS
   // совпадала с землёй (1,256 при пороге различимости 1,20 — «надо глаза сломать, чтобы
   // разглядеть открытую вкладку»). Токен решает обе задачи и делает это ПО-РАЗНОМУ в двух темах,
   // потому что арифметика там разная — разбор у --tab-active в colors.css.
-  const bg = active ? 'var(--tab-active)'
+  const bg = active ? 'var(--selected)'
     : inSplit ? 'var(--surface-hover)'
     : hovered  ? 'var(--surface-hover)'
     : 'transparent';
@@ -386,7 +386,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
         style={{
           flex: 1, display: 'flex', alignItems: 'center', gap: 4,
           padding: '0 8px', minWidth: 0, cursor: 'default',
-          background: leftActive ? 'var(--tab-active)' : 'transparent',
+          background: leftActive ? 'var(--selected)' : 'transparent',
           boxShadow: leftActive ? 'var(--shadow-card)' : 'none',
         }}
       >
@@ -432,7 +432,7 @@ function PairTile({ left, right, activeId, onSelect, onClose, onContextMenu, onE
         style={{
           flex: 1, display: 'flex', alignItems: 'center', gap: 4,
           padding: '0 8px', minWidth: 0, cursor: 'default',
-          background: rightActive ? 'var(--tab-active)' : 'transparent',
+          background: rightActive ? 'var(--selected)' : 'transparent',
           boxShadow: rightActive ? 'var(--shadow-card)' : 'none',
         }}
       >
@@ -1299,14 +1299,14 @@ function ModeSwitch({ mode, onChange }: { mode: 'tabs' | 'bookmarks'; onChange: 
         style={{
           flex: 1, border: 'none', cursor: 'default', padding: '4px 0',
           borderRadius: 'calc(var(--radius-sm) - 2px)',
-          background: active ? 'var(--tab-active)' : 'transparent',
+          background: active ? 'var(--selected)' : 'transparent',
           boxShadow: active ? 'var(--shadow-card)' : 'none',
           color: active ? 'var(--text-strong)' : 'var(--text-muted)',
           fontSize: 'var(--fs-xs)', fontWeight: active ? 600 : 400,
           transition: 'background var(--dur-fast) var(--ease-standard)',
         }}
         onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--tab-active)' : 'transparent'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--selected)' : 'transparent'; }}
       >{label}</button>
     );
   };
