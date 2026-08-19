@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { RADIUS } from '../../styles/system';
+import { sp, pad } from '../../styles/system';
 import { Wand2, Trash2, Info } from 'lucide-react';
 import Toggle from '../Toggle';
 import {
@@ -9,7 +9,8 @@ import {
 import type { AutomationRule, RuleTriggerKind, RuleActionKind } from '../../../shared/rules';
 import {
   SectionHeader, Subsection, CapsLabel, TextField, InputRow, fieldFlex,
-  btnPrimary, btnGhost, InlineError, InlineHint, Favicon, OptionList, settingsBox,
+  btnPrimary, btnGhost, InlineError, InlineHint, Favicon, OptionList, OptionRow,
+  Panel, IconBtn, settingsBox,
 } from './kit';
 
 // Раздел «Правила» — правила-автоматизации (см. shared/rules.ts, RuleEngine.ts, RuleParser.ts).
@@ -135,101 +136,121 @@ export default function RulesSection() {
   const formSpec = actionSpec(action);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
       <SectionHeader title="Правила">
         Браузер сам делает мелкую работу: раскладывает вкладки по группам, закрепляет нужные,
         включает VPN на выбранных сайтах. Правило выполняется обычным кодом — модель для этого
         не нужна и не запускается.
       </SectionHeader>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <CapsLabel>Новое правило</CapsLabel>
-
-        <div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 8 }}>Когда</div>
-          <ChipRow>
-            {TRIGGERS.map((t) => (
-              <Chip key={t.kind} active={trigger === t.kind} onClick={() => setTrigger(t.kind)}>
-                {t.kind === 'site' ? 'Открываю страницу на сайте' : 'Перехожу по ссылке с сайта'}
-              </Chip>
-            ))}
-          </ChipRow>
-        </div>
-
-        <div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 8 }}>Сайт</div>
-          <TextField
-            value={site}
-            onChange={(v) => { setSite(v); setError(''); }}
-            placeholder="habr.com"
-            maxLength={253}
-            error={site.trim() && !domain ? 'Не похоже на адрес сайта' : undefined}
-            info="Домен покрывает и поддомены: habr.com — это и m.habr.com."
-          />
-          {hostHints.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-              {hostHints.map((h) => (
-                <button key={h} onClick={() => setSite(h)} style={{
-                  ...btnGhost, padding: '4px 12px', fontSize: 'var(--fs-xs)',
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                }}>
-                  <Favicon host={h} size={14} />{h}
-                </button>
+      {/* ── Конструктор ─────────────────────────────────────────────────────────────────────
+          ⚠️ Правило — это ГРАММАТИКА «когда → где → тогда», и форма обязана её показывать. Раньше
+          здесь была россыпь блоков в колонку: подписи, набранные вручную мелким серым, ряды чипов
+          разной ширины с переносом и превью отдельной серой строкой внизу. Читалось это не как
+          конструктор, а как список несвязанных полей — отсюда «некрасиво и непонятно».
+          Теперь три слота в одной карточке, разделённые волосяными линиями, и подвал с тем самым
+          предложением, которое встанет в список. */}
+      <Subsection title="Новое правило">
+        <Panel>
+          <Slot label="Когда">
+            <OptionList>
+              {TRIGGERS.map((t) => (
+                <OptionRow
+                  key={t.kind}
+                  title={t.kind === 'site' ? 'Открываю страницу на сайте' : 'Перехожу по ссылке с сайта'}
+                  subtitle={t.kind === 'site'
+                    ? 'Сработает на самом сайте и его поддоменах'
+                    : 'Сработает на странице, куда увела ссылка с этого сайта'}
+                  active={trigger === t.kind}
+                  selectable
+                  onClick={() => setTrigger(t.kind)}
+                />
               ))}
-            </div>
-          )}
-        </div>
+            </OptionList>
+          </Slot>
 
-        <div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 8 }}>Тогда</div>
-          <ChipRow>
-            {ACTIONS.map((a) => (
-              <Chip key={a.kind} active={action === a.kind} onClick={() => setAction(a.kind)}>
-                {a.kind === 'group' ? 'Класть в группу'
-                  : a.kind === 'pin' ? 'Закреплять вкладку'
-                  : a.kind === 'adblock-off' ? 'Не блокировать рекламу'
-                  : 'Включать VPN'}
-              </Chip>
-            ))}
-          </ChipRow>
-        </div>
-
-        {action === 'group' && (
-          <div>
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 8 }}>Имя группы</div>
+          <Slot label="На каком сайте">
             <TextField
-              value={groupName}
-              onChange={setGroupName}
-              placeholder="Чтение"
-              maxLength={GROUP_NAME_MAX}
-              onEnter={() => void createFromForm()}
+              value={site}
+              onChange={(v) => { setSite(v); setError(''); }}
+              placeholder="habr.com"
+              maxLength={253}
+              error={site.trim() && !domain ? 'Не похоже на адрес сайта' : undefined}
+              info="Домен покрывает и поддомены: habr.com — это и m.habr.com."
             />
+            {/* Подсказки из СВОЕЙ истории: она знает домен точно, в отличие от догадки по названию. */}
+            {hostHints.length > 0 && (
+              <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap', marginTop: sp(2) }}>
+                {hostHints.map((h) => (
+                  <button key={h} onClick={() => setSite(h)} style={{
+                    ...btnGhost, padding: pad(1, 3), fontSize: 'var(--fs-xs)',
+                    display: 'inline-flex', alignItems: 'center', gap: sp(2),
+                  }}>
+                    <Favicon host={h} size={14} />{h}
+                  </button>
+                ))}
+              </div>
+            )}
+          </Slot>
+
+          <Slot label="Тогда">
+            <OptionList>
+              {ACTIONS.map((a) => (
+                <OptionRow
+                  key={a.kind}
+                  title={a.kind === 'group' ? 'Класть вкладку в группу'
+                    : a.kind === 'pin' ? 'Закреплять вкладку'
+                    : a.kind === 'adblock-off' ? 'Не блокировать рекламу на этом сайте'
+                    : 'Включать VPN и перезагружать страницу'}
+                  active={action === a.kind}
+                  selectable
+                  onClick={() => setAction(a.kind)}
+                />
+              ))}
+            </OptionList>
+            {action === 'group' && (
+              <div style={{ marginTop: sp(3) }}>
+                <TextField
+                  value={groupName}
+                  onChange={setGroupName}
+                  placeholder="Имя группы, например «Чтение»"
+                  maxLength={GROUP_NAME_MAX}
+                  onEnter={() => void createFromForm()}
+                />
+              </div>
+            )}
+            {/* Честная оговорка действия — у vpn-on про то, что первый запрос уже ушёл. */}
+            {formSpec?.caveat && (
+              <div style={{ display: 'flex', gap: sp(2), alignItems: 'flex-start', marginTop: sp(2) }}>
+                <Info size={13} style={{ color: 'var(--text-faint)', flex: 'none', marginTop: 4 }} />
+                <InlineHint>{formSpec.caveat}</InlineHint>
+              </div>
+            )}
+          </Slot>
+
+          {/* Подвал: та же строка, что встанет в список, — и кнопка рядом с ней, а не под ворохом
+              полей. ⚠️ Слова берутся из describeRule, как в карточке разбора и в самом списке:
+              разные формулировки в трёх местах означали бы «подтвердил одно, работает другое». */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: sp(3), flexWrap: 'wrap',
+            padding: pad(3, 4), background: 'var(--surface-sunken)',
+            borderTop: '1px solid var(--divider)',
+          }}>
+            <span style={{
+              fontSize: 'var(--fs-sm)',
+              color: preview ? 'var(--text-strong)' : 'var(--text-faint)',
+            }}>
+              {preview ? describeRule(preview) : `${triggerSpec(trigger)?.describe('…')} — …`}
+            </span>
+            <button onClick={() => void createFromForm()} disabled={!formValid}
+              style={{ ...btnPrimary, opacity: formValid ? 1 : 0.5, flex: 'none' }}>
+              Создать правило
+            </button>
           </div>
-        )}
-
-        {/* Честная оговорка действия — у vpn-on про то, что первый запрос уже ушёл. */}
-        {formSpec?.caveat && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <Info size={13} style={{ color: 'var(--text-faint)', flex: 'none', marginTop: 4 }} />
-            <InlineHint>{formSpec.caveat}</InlineHint>
-          </div>
-        )}
-
-        {/* Превью теми же словами, что потом встанут в списке. */}
-        <div style={{ fontSize: 'var(--fs-sm)', color: preview ? 'var(--text-body)' : 'var(--text-faint)' }}>
-          {preview
-            ? describeRule(preview)
-            : `${triggerSpec(trigger)?.describe('…')} — …`}
-        </div>
-
-        <div>
-          <button onClick={() => void createFromForm()} disabled={!formValid}
-            style={{ ...btnPrimary, opacity: formValid ? 1 : 0.5 }}>
-            Создать правило
-          </button>
-        </div>
+        </Panel>
         {error && <InlineError>{error}</InlineError>}
-      </div>
+      </Subsection>
 
       <Subsection
         title="Или скажите словами"
@@ -251,14 +272,16 @@ export default function RulesSection() {
         </InputRow>
 
         {draft && draftPreview && (
-          <div style={{ ...settingsBox, padding: 16,
-                        display: 'flex', flexDirection: 'column', gap: 12,
-                        boxShadow: '0 0 0 1.5px var(--accent) inset' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            ...settingsBox, padding: sp(4),
+            display: 'flex', flexDirection: 'column', gap: sp(3),
+            borderColor: 'var(--accent)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
               <Wand2 size={16} style={{ color: 'var(--accent)', flex: 'none' }} />
-              <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+              <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
                 Так понял браузер
-              </div>
+              </span>
             </div>
             <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
               {describeRule(draftPreview)}
@@ -273,12 +296,12 @@ export default function RulesSection() {
               />
             )}
             {draftSpec?.caveat && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', gap: sp(2), alignItems: 'flex-start' }}>
                 <Info size={13} style={{ color: 'var(--text-faint)', flex: 'none', marginTop: 4 }} />
                 <InlineHint>{draftSpec.caveat}</InlineHint>
               </div>
             )}
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: sp(2) }}>
               <button onClick={() => void confirmDraft()} style={btnPrimary}>Создать правило</button>
               <button onClick={() => setDraft(null)} style={btnGhost}>Отмена</button>
             </div>
@@ -294,58 +317,58 @@ export default function RulesSection() {
       >
         {rules === null && <InlineHint>Загрузка…</InlineHint>}
         {rules?.length === 0 && <InlineHint>Пока ни одного.</InlineHint>}
-        <OptionList>
-        {rules?.map((rule) => (
-          // Строка без своей заливки: рамку и разделители рисует OptionList (разбор — kit.tsx).
-          <div key={rule.id} style={{
-            padding: '12px 16px',
-            display: 'flex', alignItems: 'center', gap: 12,
-            opacity: rule.enabled ? 1 : 0.55,
-          }}>
-            <Favicon host={rule.trigger.domain} size={20} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
-                {describeRule(rule)}
-              </div>
-              {/* Исходная фраза есть только у правил, созданных словами, — она объясняет замысел. */}
-              {rule.phrase && (
-                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4,
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  «{rule.phrase}»
+        {rules && rules.length > 0 && (
+          <OptionList>
+            {rules.map((rule) => (
+              // Строка без своей заливки: рамку и разделители рисует OptionList (разбор — kit.tsx).
+              <div key={rule.id} style={{
+                padding: pad(3, 4),
+                display: 'flex', alignItems: 'center', gap: sp(3),
+                opacity: rule.enabled ? 1 : 0.55,
+              }}>
+                <Favicon host={rule.trigger.domain} size={20} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
+                    {describeRule(rule)}
+                  </div>
+                  {/* Исходная фраза есть только у правил, созданных словами, — она объясняет замысел. */}
+                  {rule.phrase && (
+                    <div style={{
+                      fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      «{rule.phrase}»
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <Toggle checked={rule.enabled} onChange={() => void window.oblako.setRuleEnabled(rule.id, !rule.enabled)} />
-            <button
-              title="Удалить правило"
-              onClick={() => void window.oblako.removeRule(rule.id)}
-              style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 8,
-                       borderRadius: RADIUS.control, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
-        </OptionList>
+                <Toggle checked={rule.enabled} onChange={() => void window.oblako.setRuleEnabled(rule.id, !rule.enabled)} />
+                <IconBtn title="Удалить правило" onClick={() => void window.oblako.removeRule(rule.id)}>
+                  <Trash2 size={14} />
+                </IconBtn>
+              </div>
+            ))}
+          </OptionList>
+        )}
       </Subsection>
     </div>
   );
 }
 
-// Ряд взаимоисключающих вариантов. Собран из кнопок набора настроек (btnPrimary/btnGhost), а не
-// нарисован заново: выбранный вариант — это акцент, ровно как у остальных активных состояний.
-function ChipRow({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{children}</div>;
-}
-
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+/**
+ * Слот конструктора: подпись плюс содержимое, отделённое от соседей волосяной линией.
+ *
+ * ⚠️ Именно СЛОТ, а не просто отступ между блоками. Правило состоит из трёх решений, и человек
+ * должен видеть их как три шага одной фразы, а не как четыре независимых поля подряд.
+ */
+function Slot({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} style={{
-      ...(active ? btnPrimary : btnGhost),
-      padding: '8px 12px', fontSize: 'var(--fs-sm)', fontWeight: active ? 600 : 400,
-      whiteSpace: 'normal', textAlign: 'left',
+    <div style={{
+      padding: pad(4, 4),
+      display: 'flex', flexDirection: 'column', gap: sp(2),
+      borderTop: '1px solid var(--divider)',
     }}>
+      <CapsLabel>{label}</CapsLabel>
       {children}
-    </button>
+    </div>
   );
 }
