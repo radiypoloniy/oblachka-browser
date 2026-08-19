@@ -3,7 +3,10 @@ import ReactDOM from 'react-dom/client';
 import { FolderOpen, ExternalLink, RotateCcw, Pause, Play, X, ChevronRight, Download, Sparkles, Check } from 'lucide-react';
 import { isDocumentFile } from '../shared/documentFormats';
 import type { DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision, DownloadNameSuggestion, DownloadRenameResult } from '../shared/ipc';
-import { islandPlate } from './styles/island';
+// ⚠️ Поверхность оверлея (непрозрачная), а не островная плита: карточка живёт в своей вью над
+// страницей, где backdrop-filter не работает вовсе, и полупрозрачность означала бы
+// просвечивающий текст сайта. Разбор — у --overlay-plate в styles/tokens/colors.css.
+import { overlayPlate } from './styles/island';
 import { FileKindIcon, formatBytes, formatSpeed } from './components/downloadsShared';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
@@ -79,7 +82,7 @@ function DownloadsPopoverApp() {
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
       <div ref={cardRef} style={{
-        width: CARD_WIDTH, ...islandPlate,
+        width: CARD_WIDTH, ...overlayPlate,
         borderRadius: 'var(--radius-card)',
         overflow: 'hidden',
         display: 'flex', flexDirection: 'column',

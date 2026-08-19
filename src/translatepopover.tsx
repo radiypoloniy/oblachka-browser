@@ -13,6 +13,9 @@ import { markdownComponents } from './components/aiMarkdown';
 import type { AiAction, AiActionOutcome } from '../shared/ipc';
 import { translateLangLabel } from '../shared/translateLangs';
 import { installOverlayReveal } from './overlayReveal';
+// ⚠️ Поверхность оверлея — непрозрачная: карточка живёт в своей вью над страницей, где
+// backdrop-filter не работает (разбор — --overlay-plate в styles/tokens/colors.css).
+import { overlayPlate } from './styles/island';
 
 declare global {
   interface Window {
@@ -102,12 +105,9 @@ function Popover() {
           maxHeight: MAX_CONTENT_HEIGHT,
           overflowY: 'auto',
           boxSizing: 'border-box',
-          // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
-          // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
-          // другой программы — разбор общий, см. glassPlate в styles/island.ts.
-          background: 'var(--material)',
-          backdropFilter: 'var(--material-blur)',
-          WebkitBackdropFilter: 'var(--material-blur)',
+          // ⚠️ Поверхность оверлея (непрозрачная), а не материал: карточка живёт в своей вью над
+          // страницей, где backdrop-filter не работает вовсе. Разбор — --overlay-plate в colors.css.
+          ...overlayPlate,
           borderRadius: 'var(--radius-card)',
           boxShadow: 'var(--shadow-overlay)',
           padding: 'var(--pad-card)',

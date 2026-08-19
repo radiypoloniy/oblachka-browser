@@ -21,6 +21,9 @@ import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 import { RADIUS } from './styles/system';
 import { FaviconImg } from './components/SiteFavicon';
+// ⚠️ Поверхность оверлея — непрозрачная: карточка живёт в своей вью над страницей, где
+// backdrop-filter не работает (разбор — --overlay-plate в styles/tokens/colors.css).
+import { overlayPlate } from './styles/island';
 
 interface ShowPayload { targets: SearchTarget[]; prefill: string }
 
@@ -54,13 +57,10 @@ const HIT_LABEL = { tab: 'вкладка', history: 'история', bookmark: 
 // здесь: поповер живёт в своей WebContentsView и до src/styles/island.ts не дотягивается
 // без лишней связности ради четырёх строк.
 const islandCard: React.CSSProperties = {
-  // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
-  // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
-  // другой программы — разбор общий, см. glassPlate в styles/island.ts.
-  background: 'var(--material)',
-  backdropFilter: 'var(--material-blur)',
-  WebkitBackdropFilter: 'var(--material-blur)',
-  border: '1px solid var(--glass-edge)',
+  // ⚠️ Поверхность оверлея (непрозрачная) из общего набора, а не своя копия материала: поповер
+  // живёт в своей вью над страницей, где backdrop-filter не работает вовсе, и полупрозрачность
+  // означала бы просвечивающий текст сайта. Разбор — у --overlay-plate в tokens/colors.css.
+  ...overlayPlate,
   borderRadius: 'var(--radius-card)',
   boxShadow: 'var(--shadow-card)',
   boxSizing: 'border-box',

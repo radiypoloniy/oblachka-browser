@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Lock, ShieldOff, Camera, Mic, MapPin, Bell, Maximize, Clipboard, RotateCcw, History, ExternalLink } from 'lucide-react';
 import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnConnectionState, AdBlockState } from '../shared/ipc';
-import { islandPlate } from './styles/island';
+// ⚠️ Поверхность оверлея (непрозрачная), а не островная плита: карточка живёт в своей вью над
+// страницей, где backdrop-filter не работает вовсе, и полупрозрачность означала бы
+// просвечивающий текст сайта. Разбор — у --overlay-plate в styles/tokens/colors.css.
+import { overlayPlate } from './styles/island';
 import { normalizeDomain } from '../shared/domain';
 import VpnIndicatorPopover from './components/VpnIndicatorPopover';
 import AdBlockSitePanel from './components/AdBlockSitePanel';
@@ -149,7 +152,7 @@ function SitePopoverApp() {
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
       <div ref={cardRef} style={{
-        width: CARD_WIDTH, ...islandPlate,
+        width: CARD_WIDTH, ...overlayPlate,
         borderRadius: 'var(--radius-card)',
         overflow: 'hidden',
         display: 'flex', flexDirection: 'column',

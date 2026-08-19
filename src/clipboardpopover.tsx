@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Clipboard, Copy, Check, Trash2, X, ChevronDown, ChevronRight, CornerUpRight, Link2, Pin, PinOff } from 'lucide-react';
 import type { ClipboardEntry, ClipboardRevealResult } from '../shared/ipc';
-import { islandPlate } from './styles/island';
+// ⚠️ Поверхность оверлея (непрозрачная), а не островная плита: карточка живёт в своей вью над
+// страницей, где backdrop-filter не работает вовсе, и полупрозрачность означала бы
+// просвечивающий текст сайта. Разбор — у --overlay-plate в styles/tokens/colors.css.
+import { overlayPlate } from './styles/island';
 import SiteFavicon from './components/SiteFavicon';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
@@ -92,7 +95,7 @@ function ClipboardPopoverApp() {
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
       <div ref={cardRef} style={{
-        width: CARD_WIDTH, ...islandPlate,
+        width: CARD_WIDTH, ...overlayPlate,
         borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-overlay)',
         // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
         // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из

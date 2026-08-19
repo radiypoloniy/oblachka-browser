@@ -395,5 +395,26 @@ for (const [label, palette] of PALETTES) {
   }
 }
 
+console.log('\n— текст на поверхности оверлея —');
+// ⚠️ Отдельно от материала, потому что это ДРУГАЯ поверхность: карточки, живущие в своей
+// WebContentsView над страницей, непрозрачны — backdrop-filter сквозь границу вью не работает, и
+// полупрозрачность там означала бы просвечивающий текст сайта (см. --overlay-plate в colors.css).
+// Раз она непрозрачна, худшего случая с подложкой у неё нет: проверяется сама пара «текст на
+// поверхности». Сторож держит подкраску акцентом — её подняли ради выразительности (7 % в светлой,
+// 12 % в тёмной), и следующий шаг вверх обязан упереться сюда, а не в глаза человека.
+for (const [label, palette] of PALETTES) {
+  for (const dark of [false, true]) {
+    const t = tokensFor({ palette, dark, incognito: false });
+    const plate = resolve('var(--overlay-plate)', t);
+    const bad = [];
+    for (const [role, min] of [['--text-strong', 4.5], ['--text-body', 4.5], ['--text-muted', 4.5]]) {
+      const ink = over(resolve(`var(${role})`, t), plate);
+      const ratio = contrast(toHex(ink), toHex(plate));
+      if (ratio < min) bad.push(`${role} на поверхности оверлея ${ratio.toFixed(2)} < ${min}`);
+    }
+    check(`${label}, ${dark ? 'тёмная' : 'светлая'}: текст на поверхности оверлея держится`, bad, []);
+  }
+}
+
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

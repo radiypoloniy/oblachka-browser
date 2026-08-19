@@ -11,6 +11,9 @@ import { ChevronUp, ChevronDown, X, Sparkles } from 'lucide-react';
 import './styles/global.css';
 import type { FindResult, SmartFindResult } from '../shared/ipc';
 import { installOverlayReveal } from './overlayReveal';
+// ⚠️ Поверхность оверлея — непрозрачная: карточка живёт в своей вью над страницей, где
+// backdrop-filter не работает (разбор — --overlay-plate в styles/tokens/colors.css).
+import { overlayPlate } from './styles/island';
 
 declare global {
   interface Window {
@@ -210,12 +213,9 @@ function FindBar() {
         width: BAR_WIDTH, height: BAR_HEIGHT, boxSizing: 'border-box',
         display: 'flex', alignItems: 'center', gap: 4,
         padding: '5px 6px',
-        // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
-        // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
-        // другой программы — разбор общий, см. glassPlate в styles/island.ts.
-        background: 'var(--material)',
-        backdropFilter: 'var(--material-blur)',
-        WebkitBackdropFilter: 'var(--material-blur)',
+        // ⚠️ Поверхность оверлея (непрозрачная), а не материал: карточка живёт в своей вью над
+        // страницей, где backdrop-filter не работает вовсе. Разбор — --overlay-plate в colors.css.
+        ...overlayPlate,
         boxShadow: 'var(--shadow-card)',
         borderRadius: 'var(--radius-card)',
         border: '1px solid var(--glass-edge)',

@@ -1,6 +1,6 @@
 import type React from 'react';
 import { RADIUS, TEXT, sp, pad, motion } from '../styles/system';
-import { glassPlate } from '../styles/island';
+import { overlayPlate } from '../styles/island';
 
 // ── Набор для поповеров ───────────────────────────────────────────────────────────────────────
 //
@@ -24,7 +24,11 @@ export function PopoverCard({ width = 280, children }: { width?: number; childre
   return (
     <div style={{
       width,
-      ...glassPlate(),
+      // ⚠️ Поверхность оверлея (непрозрачная), а не стекло: все карточки набора живут в отдельных
+      // вью над страницей, где backdrop-filter не работает вовсе, и полупрозрачность означала бы
+      // просвечивающий текст сайта. Разбор — у --overlay-plate в styles/tokens/colors.css.
+      ...overlayPlate,
+      boxShadow: 'var(--shadow-overlay)',
       borderRadius: RADIUS.box,
       padding: sp(3),
       display: 'flex', flexDirection: 'column', gap: sp(2),

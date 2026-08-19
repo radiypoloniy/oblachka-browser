@@ -27,6 +27,9 @@ import type { SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, PermKey }
 import { siteHue } from './components/desktop/siteTint';
 import { installOverlayReveal } from './overlayReveal';
 import { RADIUS } from './styles/system';
+// ⚠️ Поверхность оверлея — непрозрачная: карточка живёт в своей вью над страницей, где
+// backdrop-filter не работает (разбор — --overlay-plate в styles/tokens/colors.css).
+import { overlayPlate } from './styles/island';
 
 function originOf(url: string): string | null {
   try { return new URL(url).origin; } catch { return null; }
@@ -762,12 +765,9 @@ function SuggestDropdown() {
       <style>{PANEL_CSS}</style>
       <div ref={cardRef} style={{
         boxSizing: 'border-box',
-        // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
-        // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
-        // другой программы — разбор общий, см. glassPlate в styles/island.ts.
-        background: 'var(--material)',
-        backdropFilter: 'var(--material-blur)',
-        WebkitBackdropFilter: 'var(--material-blur)',
+        // ⚠️ Поверхность оверлея (непрозрачная), а не материал: карточка живёт в своей вью над
+        // страницей, где backdrop-filter не работает вовсе. Разбор — --overlay-plate в colors.css.
+        ...overlayPlate,
         borderRadius: 'var(--radius-card)',
         // --shadow-overlay (не --shadow-island/-pop) — см. рационал в tokens/shadows.css:
         // тяжёлая многослойная тень поверх прозрачной WebContentsView рендерится с жёсткими

@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { MapPin, CreditCard, X } from 'lucide-react';
 import type { AddressProfile, CardMeta } from '../shared/ipc';
-import { islandPlate } from './styles/island';
+// ⚠️ Поверхность оверлея (непрозрачная), а не островная плита: карточка живёт в своей вью над
+// страницей, где backdrop-filter не работает вовсе, и полупрозрачность означала бы
+// просвечивающий текст сайта. Разбор — у --overlay-plate в styles/tokens/colors.css.
+import { overlayPlate } from './styles/island';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
@@ -36,13 +39,11 @@ declare global {
 // Windows/Chromium жёсткими краями вместо мягкого растворения — именно это и выглядело грязным
 // прямоугольником под карточкой. Тот же токен уже используют остальные вью-оверлеи.
 const cardShell: React.CSSProperties = {
-  ...islandPlate, borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-overlay)',
-  // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
-  // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
-  // другой программы — разбор общий, см. glassPlate в styles/island.ts.
-  background: 'var(--material)',
-  backdropFilter: 'var(--material-blur)',
-  WebkitBackdropFilter: 'var(--material-blur)', overflow: 'hidden',
+  // ⚠️ overlayPlate, а не islandPlate: карточка живёт в своей вью над страницей, где
+  // backdrop-filter не работает вовсе, и полупрозрачность означала бы просвечивающий текст сайта.
+  // Разбор — у --overlay-plate в styles/tokens/colors.css.
+  ...overlayPlate, borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-overlay)',
+  overflow: 'hidden',
 };
 // ⚠️ Своих кнопок здесь больше НЕТ. Пара была объявлена заново — с полем 6×12 против 7×14 у
 // паролей, — и разница в пиксель читается как «кнопки в разных местах чуть разные». Теперь общая
