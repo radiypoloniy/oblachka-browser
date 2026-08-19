@@ -591,6 +591,12 @@ export const IPC = {
   // Генерирует + сразу пишет в ТО ЖЕ поле (только пароль, логин не трогается), не в буфер обмена.
   PASSWORDS_INDICATOR_GENERATE: 'passwords:indicator-generate', // renderer → main: сгенерировать и заполнить активное поле → boolean
 
+  // Размытая подложка под карточку поповера: main → вью поповера, data-URL уменьшенного снимка
+  // области страницы под ней (или null, если снимать нечего). ⚠️ Не «эффект»: backdrop-filter
+  // сквозь границу WebContentsView не работает в принципе, и без снимка текст страницы за
+  // карточкой остаётся резким — см. electron/overlayBackdrop.ts.
+  OVERLAY_BACKDROP: 'overlay:backdrop',
+
   // Нативная WebContentsView-вью поповера паролей (как FindBar/SuggestDropdown): chrome только
   // сообщает anchor-bounds и состояние, сама карточка рисуется поверх страницы отдельным слоем.
   PASSWORD_POPOVER_SET_BOUNDS: 'password-popover:set-bounds',

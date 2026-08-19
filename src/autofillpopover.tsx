@@ -44,6 +44,9 @@ const cardShell: React.CSSProperties = {
   backdropFilter: 'var(--material-blur)',
   WebkitBackdropFilter: 'var(--material-blur)', overflow: 'hidden',
 };
+// ⚠️ Класс popover-card к этому стилю ОБЯЗАТЕЛЕН (см. global.css): backdrop-filter выше сквозь
+// границу WebContentsView не работает вовсе, и матовость даёт только снимок страницы под карточкой.
+// Стиль оставлен как есть — он же используется, когда карточка живёт внутри слоя хрома.
 // ⚠️ Своих кнопок здесь больше НЕТ. Пара была объявлена заново — с полем 6×12 против 7×14 у
 // паролей, — и разница в пиксель читается как «кнопки в разных местах чуть разные». Теперь общая
 // пара из набора (popoverKit): она же в паролях, VPN и остальных карточках.
@@ -77,7 +80,7 @@ function AutofillPopoverApp() {
   if (state.kind === 'save-address' || state.kind === 'save-card') {
     return (
       <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
-        <div ref={cardRef} style={cardShell}>
+        <div ref={cardRef} className="popover-card" style={cardShell}>
           <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', gap: 10 }}>
             {state.kind === 'save-card'
               ? <CreditCard size={18} style={{ color: 'var(--text-muted)', flex: 'none' }} />
@@ -106,7 +109,7 @@ function AutofillPopoverApp() {
   if (state.kind === 'parse-address') {
     return (
       <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
-        <div ref={cardRef} style={cardShell}>
+        <div ref={cardRef} className="popover-card" style={cardShell}>
           <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', gap: 10 }}>
             <MapPin size={18} style={{ color: 'var(--text-muted)', flex: 'none' }} />
             <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
@@ -137,7 +140,7 @@ function AutofillPopoverApp() {
 
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
-      <div ref={cardRef} style={cardShell}>
+      <div ref={cardRef} className="popover-card" style={cardShell}>
         {/* ⚠️ Крестик обязателен, а не «на всякий случай»: у списка не было НИ ОДНОГО способа
             закрыться мышью — только выбрать профиль. Esc и уход фокуса чинятся на стороне
             страницы (см. preload-content.ts), но человек, который тянется мышью, ищет крестик. */}

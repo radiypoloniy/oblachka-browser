@@ -1,4 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { installOverlayBackdrop } from './overlayBackdropPreload';
+
+// Размытая подложка под карточкой — снимок страницы под ней (см. electron/overlayBackdrop.ts).
+installOverlayBackdrop();
 import type { AutofillPopoverState } from './AutofillPopoverManager';
 
 contextBridge.exposeInMainWorld('autofillPopover', {

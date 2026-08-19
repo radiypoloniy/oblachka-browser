@@ -11,6 +11,7 @@ import path from 'node:path';
 import type { ContentBounds, AddressProfile, CardMeta } from '../shared/ipc';
 import { closeWindowView } from './viewTeardown';
 import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN, anchoredCardX } from '../shared/overlayMetrics';
+import { pushOverlayBackdrop } from './overlayBackdrop';
 
 const POPOVER_WIDTH = 300;
 const INITIAL_HEIGHT = 120;
@@ -114,7 +115,13 @@ function computeBounds(st: WindowPopover): { x: number; y: number; width: number
 
 function layoutPopover(st: WindowPopover): void {
   if (!isAttached(st)) return;
-  st.view!.setBounds(computeBounds(st));
+  const b = computeBounds(st);
+  st.view!.setBounds(b);
+  // По КАРТОЧКЕ, а не по вью — см. тот же разбор в PasswordPopoverManager.ts.
+  pushOverlayBackdrop(st.win, st.view, {
+    x: b.x + SHADOW_MARGIN, y: b.y + SHADOW_MARGIN,
+    width: b.width - SHADOW_MARGIN * 2, height: b.height - SHADOW_MARGIN * 2,
+  });
 }
 
 export function syncAutofillPopoverAnchorBounds(win: BrowserWindow, b: ContentBounds, align: 'button' | 'field' = 'button'): void {
@@ -190,6 +197,8 @@ export function showAutofillPopover(win: BrowserWindow, state: AutofillPopoverSt
   const view = ensurePopoverView(st);
   view.setBounds(computeBounds(st));
   if (!isAttached(st)) win.contentView.addChildView(view);
+  // ⚠️ Ещё раз раскладываем УЖЕ подключённой — см. тот же разбор в PasswordPopoverManager.ts.
+  layoutPopover(st);
   view.webContents.send('autofill-popover:show', state);
 }
 
