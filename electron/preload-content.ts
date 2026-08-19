@@ -684,6 +684,7 @@ function collectAutofillFields(): Array<{ key: AfKey; el: FillField }> {
   try {
     for (const el of Array.from(document.querySelectorAll('input, select')) as FillField[]) {
       if (!isRendered(el)) continue;
+      if (looksLikeSearchField(el)) continue; // город в строку поиска по каталогу — не заполнение
       const key = detectFieldKey(el);
       if (key) out.push({ key, el });
     }
@@ -705,11 +706,57 @@ function setSelectValue(sel: HTMLSelectElement, value: string): void {
   }
 }
 
+/**
+ * Поле ПОИСКА — строка, чья работа искать, а не принимать данные человека.
+ *
+ * ⚠️ Живой случай (админка, 19.08.2026): человек открыл выпадающий список «Звёзды», виджет сам
+ * поставил фокус в свою строку поиска с плейсхолдером «Напишите ваш … для поиска» — и над чужим
+ * списком всплыло предложение подставить домашний адрес. Слово в подписи тут не значит НИЧЕГО: по
+ * городу ищут ровно так же часто, как его вводят. Chrome и Firefox держат `type=search` вне
+ * автозаполнения по той же причине — у такого поля нет получателя, заполнять его нечем.
+ *
+ * Такое поле выключено ВЕЗДЕ: не поднимает поповер, не идёт к модели, не считается в порог формы
+ * и не заполняется — иначе выбор профиля высыпал бы город в строку поиска по каталогу.
+ */
+const SEARCHY_RE = /поиск|искать|найти|фильтр|search|filter|lookup/;
+
+function looksLikeSearchField(el: FillField): boolean {
+  try {
+    if ((el.getAttribute('type') || '').toLowerCase() === 'search') return true;
+    if ((el.getAttribute('role') || '').toLowerCase() === 'searchbox') return true;
+    if (el.closest('[role="search"]')) return true;
+    const hay = [el.getAttribute('name'), el.id, el.getAttribute('placeholder'),
+      el.getAttribute('aria-label'), labelTextFor(el)].filter(Boolean).join(' ').toLowerCase();
+    return SEARCHY_RE.test(hay);
+  } catch {
+    return false; // обход DOM не критичен — считаем поле обычным
+  }
+}
+
+/**
+ * Поле с ПОДСКАЗКАМИ САМОГО САЙТА (комбобокс, aria-autocomplete, строка внутри списка).
+ *
+ * ⚠️ Слабее предыдущего и НАРОЧНО: за такой строкой часто стоит настоящая подсказка адреса
+ * (Google Places, DaData) — то есть это может быть честное поле улицы. Поэтому мы не поднимаем над
+ * ним свой поповер (он дрался бы за место с выпадающим списком сайта и всплывал бы при каждом его
+ * открытии) и не тратим на него модель, но заполнять по явному выбору человека — заполняем.
+ */
+function looksLikeSuggestWidget(el: FillField): boolean {
+  try {
+    if ((el.getAttribute('role') || '').toLowerCase() === 'combobox') return true;
+    if (el.hasAttribute('aria-autocomplete')) return true;
+    return !!el.closest('[role="listbox"], [role="combobox"], [aria-haspopup="listbox"]');
+  } catch {
+    return false;
+  }
+}
+
 /** Поле, про которое имеет смысл спрашивать: видимое, текстовое и ещё не распознанное. */
 function isAskableField(el: FillField): boolean {
   const type = (el.getAttribute('type') || 'text').toLowerCase();
   if (!['text', 'tel', 'email', 'number', 'search', ''].includes(type) && el.tagName !== 'SELECT') return false;
   if (detectFieldKeyStrict(el)) return false;
+  if (looksLikeSearchField(el) || looksLikeSuggestWidget(el)) return false;
   return isRendered(el);
 }
 
@@ -772,23 +819,37 @@ const MIN_ADDRESS_CATEGORIES = 3;
 // такую форму не с чем.
 const MIN_CARD_CATEGORIES = 2;
 
-function countFieldCategories(el: FillField, kind: 'address' | 'card'): number {
+/**
+ * Сколько разных категорий видно в форме: `total` — всего, `strong` — только те, что узнала
+ * ЭВРИСТИКА (autocomplete-токен или явная подпись), без догадок модели.
+ *
+ * ⚠️ Разделение не косметическое. Догадка модели (AutofillFieldMapper.ts) — это ответ про одно
+ * поле, выданный на лету и ничем не подтверждённый; у Chrome аналог этого слоя — краудсорсинговые
+ * предсказания, накопленные по всему вебу голосами миллионов форм, и цена ошибки там несопоставимо
+ * ниже. Поэтому у нас модель имеет право РАСШИРИТЬ уже узнанную форму, но не право придумать её с
+ * нуля: без хотя бы одной надёжной категории поповер не поднимается.
+ */
+function countFieldCategories(el: FillField, kind: 'address' | 'card'): { total: number; strong: number } {
   // Область — САМА форма, если поле в ней: на странице каталога может жить и форма подписки, и
   // форма заказа, и складывать их поля в одну кучу значит снова считать форму адресом.
   const scope: ParentNode = el.form ?? document;
   const seen = new Set<AfKey>();
+  const sureSeen = new Set<AfKey>();
   try {
     for (const f of Array.from(scope.querySelectorAll('input, select')) as FillField[]) {
       // isRendered: порог «три разные категории» считается по ВСЕЙ форме. С проверкой вьюпорта
       // длинная форма заказа порога не набирала — предложение автозаполнения не всплывало вовсе.
       if (!isRendered(f)) continue;
-      const k = detectFieldKey(f);
+      if (looksLikeSearchField(f)) continue; // строка поиска формой заказа не делает
+      const sure = detectFieldKeyStrict(f);
+      const k = sure ?? aiKeyByEl.get(f) ?? null;
       if (!k) continue;
       if ((AF_ADDRESS_KEYS.has(k) ? 'address' : 'card') !== kind) continue;
       seen.add(k);
+      if (sure) sureSeen.add(k);
     }
   } catch { /* обход DOM не критичен */ }
-  return seen.size;
+  return { total: seen.size, strong: sureSeen.size };
 }
 
 function reportAutofillFocus(el: FillField): void {
@@ -802,9 +863,14 @@ function reportAutofillFocus(el: FillField): void {
   // помощи, заполненное — уже принятое решение, и трогать его мы не вправе.
   // Список (select) не проверяем: у него «значение» есть всегда, в том числе placeholder.
   if (el instanceof HTMLInputElement && el.value.trim() !== '') return;
+  // Строка поиска и поле с подсказками сайта — не наше место (см. looksLikeSearchField).
+  if (looksLikeSearchField(el) || looksLikeSuggestWidget(el)) return;
   const kind = AF_ADDRESS_KEYS.has(key) ? 'address' : 'card';
   const need = kind === 'address' ? MIN_ADDRESS_CATEGORIES : MIN_CARD_CATEGORIES;
-  if (countFieldCategories(el, kind) < need) return;
+  const cats = countFieldCategories(el, kind);
+  if (cats.total < need) return;
+  // Хотя бы одна категория должна быть узнана надёжно — догадка модели формы не создаёт.
+  if (cats.strong < 1) return;
   const r = el.getBoundingClientRect();
   lastAutofillFocusAt = performance.now();
   ipcRenderer.send(CH_AUTOFILL_FIELD_FOCUS, {
@@ -840,6 +906,50 @@ window.addEventListener('scroll', () => {
   dismissAutofill();
 }, { capture: true, passive: true });
 
+// ── Жест человека: поповер поднимает КЛИК ИЛИ TAB по самому полю, а не любой focusin ──────────
+//
+// ⚠️ Так же устроен Chrome: подсказки показываются, только если фокус пришёл от клика человека по
+// этому полю (AutofillAgent::HandleFocusChangeComplete(focused_node_was_last_clicked)) — своим
+// .focus() скрипт страницы попап автозаполнения не открывает. Живой случай, ради которого правило
+// и заведено: виджет выпадающего списка сам фокусирует свою строку поиска при открытии, и для нас
+// это было неотличимо от «человек пришёл в поле».
+const GESTURE_WINDOW_MS = 700;
+let lastPointerDownEl: Element | null = null;
+let lastPointerDownAt = 0;
+let lastTabKeyAt = 0;
+try {
+  window.addEventListener('pointerdown', (e) => {
+    lastPointerDownEl = e.target instanceof Element ? e.target : null;
+    lastPointerDownAt = performance.now();
+  }, true);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') lastTabKeyAt = performance.now();
+  }, true);
+} catch {
+  // noop
+}
+
+function focusFromUserGesture(el: FillField): boolean {
+  const now = performance.now();
+  // Обход формы с клавиатуры — такой же осознанный приход в поле, как клик.
+  if (now - lastTabKeyAt < GESTURE_WINDOW_MS) return true;
+  if (now - lastPointerDownAt > GESTURE_WINDOW_MS) return false;
+  const t = lastPointerDownEl;
+  if (!t) return false;
+  if (t === el) return true;
+  try {
+    // Клик по <label> переводит фокус в его поле — это тот же жест по тому же полю.
+    const lab = t.closest('label') as HTMLLabelElement | null;
+    if (lab?.control === el) return true;
+    // Обёртка поля (частая вёрстка «кликнули по рамке — фокус в input»): жестом считаем, только
+    // если поле лежит ВНУТРИ кликнутого узла. Виджет со своим списком сюда не попадает — его
+    // строка поиска живёт в отдельной панели, а не внутри кликнутой кнопки.
+    return t.contains(el);
+  } catch {
+    return false;
+  }
+}
+
 // Фокус на поле автозаполнения (top-frame) → сообщаем main позицию поля и вид формы, чтобы он
 // показал поповер выбора. Тот же top-frame-гвард, что у паролей: из кросс-origin iframe не шлём.
 window.addEventListener('focusin', (e) => {
@@ -847,16 +957,16 @@ window.addEventListener('focusin', (e) => {
     if (!isTopFrame()) return;
     const t = e.target;
     if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement)) return;
+    if (!focusFromUserGesture(t)) return;
     if (detectFieldKey(t)) { reportAutofillFocus(t); return; }
-    // Поле не узнали — это и есть повод спросить модель. ⚠️ Ответ приходит асинхронно, и к этому
-    // моменту человек мог уйти в другое поле: поповер показываем не «тому полю, про которое
-    // спрашивали», а тому, где фокус СЕЙЧАС, — иначе карточка всплывёт над полем, которое человек
-    // уже покинул.
+    // Поле не узнали — это и есть повод спросить модель.
     if (!isAskableField(t)) return;
     void askAiFieldMap().then((gotSomething) => {
       if (!gotSomething) return;
-      const active = document.activeElement;
-      if (active instanceof HTMLInputElement || active instanceof HTMLSelectElement) reportAutofillFocus(active);
+      // ⚠️ Ответ приходит асинхронно, и жест к этому моменту давно протух. Поэтому проверяем не
+      // «был ли жест сейчас», а «фокус всё ещё в том поле, куда его поставил человек»: ушёл он в
+      // другое поле — то поле получило свой focusin со своей проверкой жеста.
+      if (document.activeElement === t) reportAutofillFocus(t);
     });
   } catch {
     // noop
