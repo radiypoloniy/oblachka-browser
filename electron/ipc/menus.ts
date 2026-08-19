@@ -24,6 +24,7 @@ import { broadcastToChrome, contextFromSender } from '../WindowRegistry';
 import { Menu, clipboard, ipcMain } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import type { IpcDeps } from './deps';
+import { showAppMenu, fromTemplate } from '../AppMenuManager';
 
 export function registerMenusIpc(d: IpcDeps): void {
   const { buildMoveToWindowItems, chromeOf, collectGroups, escapeHtml, escapeHtmlAttr, graphs, moveTabToNewWindow, notifyGraphChanged, productMenuTemplate, renameTabSmart, sendTo, settings, tabsOf, winOf } = d;
@@ -124,10 +125,12 @@ export function registerMenusIpc(d: IpcDeps): void {
       items.push({ type: 'separator' });
       items.push({ label: 'Отслеживание цены', submenu: product });
     }
-    Menu.buildFromTemplate(items).popup({ window: w });
+    // ⚠️ СВОЁ меню, а не нативное: нативное рисует Windows, и туда не доходит ни материал, ни
+    // палитра, ни шрифт — посреди окна оказывалась карточка из другой программы.
+    showAppMenu(w, fromTemplate(items));
   });
 
-  // Нативное ПКМ-меню вкладки в сайдбаре.
+  // ПКМ-меню вкладки в сайдбаре.
   ipcMain.handle(IPC.TAB_SHOW_MENU, (e, id: string) => {
     const w = winOf(e);
     // ⚠️ Меню ЧИТАЕТСЯ и КЛИКАЕТСЯ из одного менеджера — того, чьё окно прислало вызов. Раньше
