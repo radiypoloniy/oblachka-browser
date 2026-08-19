@@ -92,6 +92,8 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
     keywords: ['перевод', 'переводчик', 'bergamot', 'язык страницы'] },
   { section: 'ai', block: 'Индексация истории для поиска', label: 'Индексация истории для поиска', sectionLabel: 'AI',
     keywords: ['умный поиск', 'поиск по истории', 'индекс'] },
+  { section: 'ai', block: 'Команды', label: 'Команды', sectionLabel: 'AI',
+    keywords: ['команда', 'команды', 'палитра команд', 'выключить команды', 'команды в адресной строке'] },
   { section: 'ai', label: 'Фактчек и веб-поиск', sectionLabel: 'AI',
     keywords: ['gemini', 'фактчек', 'проверка фактов', 'searxng', 'веб-поиск', 'ключ api'] },
 
