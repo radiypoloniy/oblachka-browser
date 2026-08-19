@@ -160,13 +160,15 @@ const buttonBase: React.CSSProperties = {
 };
 
 /** Основное действие. */
-export function PrimaryButton({ children, onClick, disabled }: {
+export function PrimaryButton({ children, onClick, disabled, stretch }: {
   children: React.ReactNode; onClick?: () => void; disabled?: boolean;
+  /** Делить ширину поровну со второй кнопкой — когда выбор равноправный (разрешить/запретить). */
+  stretch?: boolean;
 }) {
   return (
     <button onClick={onClick} disabled={disabled} style={{
       ...buttonBase, background: 'var(--accent)', color: 'var(--on-accent)',
-      opacity: disabled ? 0.5 : 1,
+      opacity: disabled ? 0.5 : 1, ...(stretch ? { flex: 1 } : null),
     }}>{children}</button>
   );
 }
@@ -178,13 +180,13 @@ export function PrimaryButton({ children, onClick, disabled }: {
  * уже есть кромка материала и разделители), а тихая заливка отделяет кнопку от фона ровно
  * настолько, насколько нужно второму по важности действию.
  */
-export function QuietButton({ children, onClick, disabled }: {
-  children: React.ReactNode; onClick?: () => void; disabled?: boolean;
+export function QuietButton({ children, onClick, disabled, stretch }: {
+  children: React.ReactNode; onClick?: () => void; disabled?: boolean; stretch?: boolean;
 }) {
   return (
     <button onClick={onClick} disabled={disabled} style={{
       ...buttonBase, background: 'var(--surface-sunken)', color: 'var(--text-body)', fontWeight: 500,
-      opacity: disabled ? 0.5 : 1,
+      opacity: disabled ? 0.5 : 1, ...(stretch ? { flex: 1 } : null),
     }}>{children}</button>
   );
 }

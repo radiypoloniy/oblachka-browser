@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import type React from 'react';
 import { Camera, Mic, MapPin, Bell, Maximize2, Clipboard, ShieldAlert, ExternalLink } from 'lucide-react';
 import type { PermissionRequest, PermKey } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
+import {
+  PopoverCard, PopoverIcon, PopoverTitle, PopoverHint, PopoverActions,
+  PrimaryButton, QuietButton,
+} from './popoverKit';
 
 // Карточка «сайт просит доступ». Живёт в собственной WebContentsView поверх страницы
 // (см. electron/PermissionPopoverManager.ts) — раньше была полосой в чроме, ради которой
@@ -69,30 +71,15 @@ export default function PermissionPrompt({ request, onRespond }: Props) {
   if (!host || host === 'null') host = 'Эта страница';
 
   return (
-    <div style={{
-      ...islandPlate,
-      borderRadius: 'var(--radius-card)',
-      padding: 16,
-      display: 'flex', flexDirection: 'column', gap: 12,
-    }}>
+    <PopoverCard width={300}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-        {/* Иконка в кружке-подложке — тот же приём, что у карточек настроек: она читается как
-            предмет разговора, а не как декор строки. */}
-        <div style={{
-          width: 34, height: 34, borderRadius: 'var(--radius-pill)', flex: 'none',
-          background: 'var(--accent-soft)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <PermIcon perm={request.permission} />
-        </div>
+        <PopoverIcon><PermIcon perm={request.permission} /></PopoverIcon>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-            {PERM_TITLE[request.permission]}
-          </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', marginTop: 3, wordBreak: 'break-word' }}>
+          <PopoverTitle>{PERM_TITLE[request.permission]}</PopoverTitle>
+          <PopoverHint>
             <b style={{ color: 'var(--text-body)' }}>{host}</b>
             {' — '}{PERM_HINT[request.permission]}
-          </div>
+          </PopoverHint>
         </div>
       </div>
 
@@ -110,34 +97,13 @@ export default function PermissionPrompt({ request, onRespond }: Props) {
         Запомнить выбор для этого сайта
       </label>
 
-      {/* Разрешить — акцентная, Запретить — тихая. Порядок именно такой: разрушительного
-          действия здесь нет, а по умолчанию человек чаще всего и пришёл разрешить. */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={() => onRespond(true, remember)}
-          style={{ ...actionBtn, background: 'var(--accent)', color: 'var(--on-accent)', flex: 1 }}
-          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.88'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
-        >
-          Разрешить
-        </button>
-        <button
-          onClick={() => onRespond(false, remember)}
-          style={{ ...actionBtn, background: 'var(--surface-sunken)', color: 'var(--text-body)', flex: 1 }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-sunken)'; }}
-        >
-          Запретить
-        </button>
-      </div>
-    </div>
+      {/* Разрешить — акцентная, Запретить — тихая. Порядок именно такой: разрушительного действия
+          здесь нет, а пришёл человек чаще всего разрешить. Обе делят ширину: выбор равноправный. */}
+      <PopoverActions>
+        <PrimaryButton stretch onClick={() => onRespond(true, remember)}>Разрешить</PrimaryButton>
+        <QuietButton stretch onClick={() => onRespond(false, remember)}>Запретить</QuietButton>
+      </PopoverActions>
+    </PopoverCard>
   );
 }
 
-const actionBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  padding: '8px 14px', border: 'none', cursor: 'default',
-  borderRadius: 'var(--radius-pill)',
-  fontSize: 'var(--fs-sm)', fontWeight: 500,
-  transition: 'opacity var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard)',
-};
