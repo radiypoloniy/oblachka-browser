@@ -336,9 +336,10 @@ export class TabManager {
   private onPasswordSubmitCb?: (tabId: string, username: string, password: string, url: string) => void;
   // Поповер паролей, заякоренный на поле (не на тулбар) — rect в координатах вьюпорта СТРАНИЦЫ,
   // main сам транслирует в оконные через getTabViewBounds() (см. PasswordAutofillManager.ts).
-  // ⚠️ Поводов два и они не равны: 'icon' — человек нажал значок-ключ (можно предложить и
-  // сгенерировать пароль), 'field' — просто кликнул в пустое поле (только подставить сохранённое).
-  private onPasswordFieldAnchorCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string, source: 'icon' | 'field') => void;
+  // ⚠️ Поводов два — значок-ключ и клик в само пустое поле, — но права у них ОДИНАКОВЫЕ:
+  // подставить сохранённое либо придумать новый пароль. Разными каналами они приезжают потому,
+  // что у клика в поле свои гейты на стороне страницы (жест, пустое поле, isTrusted).
+  private onPasswordFieldAnchorCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void;
   // Автозаполнение форм — фокус на поле адреса/карты (см. wirePageEvents). url — из wc.getURL().
   private onAutofillFieldFocusCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void;
   private onAutofillPasteBlobCb?: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void;
@@ -394,7 +395,7 @@ export class TabManager {
     onContentFocus?: () => void,
     onPasswordForm?: (tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string) => void,
     onPasswordSubmit?: (tabId: string, username: string, password: string, url: string) => void,
-    onPasswordFieldAnchor?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string, source: 'icon' | 'field') => void,
+    onPasswordFieldAnchor?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void,
     onAutofillFieldFocus?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void,
     onAutofillSubmit?: (tabId: string, kind: 'address' | 'card', fields: Record<string, string>, url: string) => void,
   ) {
@@ -1403,7 +1404,7 @@ export class TabManager {
     wc.ipc.on(IPC.PASSWORDS_FIELD_ICON_CLICK, (_e, payload: { rect: { x: number; y: number; width: number; height: number } }) => {
       if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       try {
-        this.onPasswordFieldAnchorCb?.(id, payload.rect, wc.getURL(), 'icon');
+        this.onPasswordFieldAnchorCb?.(id, payload.rect, wc.getURL());
       } catch (e) {
         console.warn('[TabMgr] onPasswordFieldAnchorCb error:', (e as Error).message);
       }
@@ -1417,11 +1418,11 @@ export class TabManager {
         console.warn('[TabMgr] onPasswordDismissCb error:', (e as Error).message);
       }
     });
-    // Клик в само поле пароля — тот же якорь, но без права предлагать генерацию (см. выше).
+    // Клик в само пустое поле пароля — тот же якорь и те же права (см. выше).
     wc.ipc.on(IPC.PASSWORDS_FIELD_FOCUS, (_e, payload: { rect: { x: number; y: number; width: number; height: number } }) => {
       if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       try {
-        this.onPasswordFieldAnchorCb?.(id, payload.rect, wc.getURL(), 'field');
+        this.onPasswordFieldAnchorCb?.(id, payload.rect, wc.getURL());
       } catch (e) {
         console.warn('[TabMgr] onPasswordFieldAnchorCb error (field):', (e as Error).message);
       }

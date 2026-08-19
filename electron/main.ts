@@ -1000,8 +1000,8 @@ function createWindow(role: WindowRole = 'main') {
     // Иконка в поле пароля — та же карточка, что у тулбарной иконки-ключа (PasswordPopoverManager),
     // просто заякорена на позицию поля. rect приходит в координатах вьюпорта СТРАНИЦЫ —
     // прибавляем bounds именно ЭТОЙ вкладки (не активной вообще — split может показывать другую).
-    (tabId, rect, url, source) => {
-      const state = passwordAutofill.handleFieldIconClick(win, tabId, url, source);
+    (tabId, rect, url) => {
+      const state = passwordAutofill.handleFieldIconClick(win, tabId, url);
       if (!state || !tabs) return;
       const viewBounds = tabs.getTabViewBounds(tabId);
       syncPasswordPopoverAnchorBounds(win, {

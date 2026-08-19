@@ -68,13 +68,7 @@ function computeHasSavedState(pm: PasswordManager, origin: string): PasswordIndi
 // ничего не сохранено, offer-generate (похоже на регистрацию — предложить сгенерировать).
 // Позиция поповера (заякорен на поле, не на тулбар) считается вызывающей стороной (main.ts) —
 // этот модуль ничего не знает про геометрию окна.
-export function handleFieldIconClick(
-  _win: BrowserWindow,
-  tabId: string,
-  url: string,
-  // 'field' — человек просто кликнул в пустое поле пароля, а не нажал значок (см. TabManager).
-  source: 'icon' | 'field' = 'icon',
-): PasswordIndicatorState | null {
+export function handleFieldIconClick(_win: BrowserWindow, tabId: string, url: string): PasswordIndicatorState | null {
   try {
     const pm = passwordManagerRef;
     if (!pm) return null;
@@ -84,10 +78,11 @@ export function handleFieldIconClick(
       tabStates.set(tabId, saved);
       return saved;
     }
-    // ⚠️ Предложение СГЕНЕРИРОВАТЬ пароль поднимает только значок-ключ. Клик в поле — обычное
-    // начало ввода, и карточка «давайте придумаю пароль» на каждом таком клике была бы ровно тем
-    // навязчивым предложением, от которого мы только что избавили формы адреса.
-    if (source === 'field') return null;
+    // ⚠️ Предложение придумать пароль поднимают ОБА повода — и значок, и клик в поле. Сначала
+    // клику в поле его не давали (боялись навязчивости), но на форме регистрации это ровно то,
+    // что человеку нужно в этот момент, а тянуться за ним к значку в углу поля — лишнее движение.
+    // От навязчивости здесь держат другие гейты: только пустое поле, только жест человека, и
+    // карточка убирается кликом мимо.
     const state: PasswordIndicatorState = { kind: 'offer-generate', origin };
     tabStates.set(tabId, state);
     return state;
