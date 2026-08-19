@@ -148,7 +148,7 @@ function SitePopoverApp() {
 
   return (
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
-      <div ref={cardRef} className="popover-card" style={{
+      <div ref={cardRef} style={{
         width: CARD_WIDTH, ...islandPlate,
         borderRadius: 'var(--radius-card)',
         overflow: 'hidden',

@@ -1,10 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { ClipboardEntry, ClipboardRevealResult } from '../shared/ipc';
-import { installOverlayBackdrop } from './overlayBackdropPreload';
-
-// Размытая подложка под карточкой — снимок страницы под ней (см. electron/overlayBackdrop.ts).
-installOverlayBackdrop();
 
 // Мост поповера буфера. Как и у остальных оверлеев — свой preload, боевой window.oblako сюда не
 // пробрасывается: вью изолированная и ей нужно ровно пять вызовов.

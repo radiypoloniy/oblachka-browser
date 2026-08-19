@@ -1,10 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { PasswordIndicatorState } from '../shared/ipc';
-import { installOverlayBackdrop } from './overlayBackdropPreload';
-
-// Размытая подложка под карточкой — снимок страницы под ней (см. electron/overlayBackdrop.ts).
-installOverlayBackdrop();
 
 contextBridge.exposeInMainWorld('passwordPopover', {
   savePendingPassword:    () => ipcRenderer.invoke(IPC.PASSWORDS_INDICATOR_SAVE) as Promise<boolean>,

@@ -16,7 +16,6 @@ import type { ContentBounds, SearchTarget, QuickHit, QuickQueryResult } from '..
 import { getAiPanelReservedWidth } from './AiPanelManager'
 import type { TabManager } from './TabManager'
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
-import { pushOverlayBackdrop } from './overlayBackdrop';
 
 const POPOVER_WIDTH = 620
 // Высота БЕЗ списка находок — с ним карточка растёт, и её сообщает сам поповер (см.
@@ -100,18 +99,7 @@ function isAttached(): boolean {
 
 function layout(): void {
   if (!isAttached()) return
-  const b = computeBounds()
-  popoverView!.setBounds(b)
-  // ⚠️ Быстрый поиск собран не из одной карточки, а из НЕСКОЛЬКИХ островов с прозрачными зазорами.
-  // Снимок один на всю область, и каждый остров показывает его целиком у себя — то есть подложка
-  // под островами не совпадает пиксель в пиксель. На размытии в кашу это неразличимо, а
-  // читаемость (ради которой всё и делается) не страдает нигде.
-  if (attachedWin) {
-    pushOverlayBackdrop(attachedWin, popoverView?.webContents, {
-      x: b.x + SHADOW_MARGIN, y: b.y + SHADOW_MARGIN,
-      width: b.width - SHADOW_MARGIN * 2, height: b.height - SHADOW_MARGIN * 2,
-    })
-  }
+  popoverView!.setBounds(computeBounds())
 }
 
 // Зовётся из main.ts на каждый CONTENT_SET_BOUNDS. Нулевые bounds — сентинел «контент скрыт»

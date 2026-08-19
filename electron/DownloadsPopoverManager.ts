@@ -11,7 +11,6 @@ import path from 'node:path';
 import type { ContentBounds, DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision } from '../shared/ipc';
 import { IPC } from '../shared/ipc';
 import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
-import { pushOverlayBackdrop } from './overlayBackdrop';
 
 const POPOVER_WIDTH = 340;
 const INITIAL_HEIGHT = 180;
@@ -67,15 +66,7 @@ function computeBounds(): { x: number; y: number; width: number; height: number 
 
 function layoutPopover(): void {
   if (!isAttached()) return;
-  const b = computeBounds();
-  popoverView!.setBounds(b);
-  // Размытая подложка — снимком страницы (см. electron/overlayBackdrop.ts), по карточке, не по вью.
-  if (attachedWin) {
-    pushOverlayBackdrop(attachedWin, popoverView?.webContents, {
-      x: b.x + SHADOW_MARGIN, y: b.y + SHADOW_MARGIN,
-      width: b.width - SHADOW_MARGIN * 2, height: b.height - SHADOW_MARGIN * 2,
-    });
-  }
+  popoverView!.setBounds(computeBounds());
 }
 
 export function syncDownloadsPopoverAnchorBounds(b: ContentBounds): void {

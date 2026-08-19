@@ -4,10 +4,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
 import type { SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit } from '../shared/ipc'
-import { installOverlayBackdrop } from './overlayBackdropPreload';
-
-// Размытая подложка под карточкой — снимок страницы под ней (см. electron/overlayBackdrop.ts).
-installOverlayBackdrop();
 
 contextBridge.exposeInMainWorld('suggestDropdown', {
   onItems: (cb: (items: SuggestDropdownItem[]) => void) => {

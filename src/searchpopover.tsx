@@ -301,7 +301,7 @@ function SearchPopover() {
       }}>
 
         {/* ── Остров 1: строка запроса ── */}
-        <div className="popover-card" style={{
+        <div style={{
           ...islandCard,
           display: 'flex', alignItems: 'center', gap: 10,
           height: 58, padding: '0 14px',
@@ -337,7 +337,7 @@ function SearchPopover() {
             выборе — цель уже названа словами, и два одновременно «выбранных» ответа на
             вопрос «куда искать» только путали бы. */}
         {(targets.length > 0 || bangTarget) && (
-          <div className="popover-card" style={{ ...islandCard, padding: 8 }}>
+          <div style={{ ...islandCard, padding: 8 }}>
             {bangTarget ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 4px' }}>
                 <Chip target={bangTarget} selected onClick={() => inputRef.current?.focus()} />
@@ -397,7 +397,7 @@ function SearchPopover() {
 
         {/* ── Остров 3: находки в своих данных ── */}
         {hits.length > 0 && (
-          <div className="popover-card" style={{ ...islandCard, padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ ...islandCard, padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
             {hits.map((h, i) => {
               const Icon = HIT_ICON[h.kind];
               const isSelected = i === hitIndex;

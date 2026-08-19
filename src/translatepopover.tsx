@@ -97,7 +97,6 @@ function Popover() {
     <div style={{ padding: SHADOW_MARGIN, boxSizing: 'border-box' }}>
       <div
         ref={wrapperRef}
-        className="popover-card"
         style={{
           width: 340,
           maxHeight: MAX_CONTENT_HEIGHT,

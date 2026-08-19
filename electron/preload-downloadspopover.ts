@@ -1,10 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { DownloadEntry, DuplicateDownloadPrompt, DuplicateDownloadDecision, DownloadNameSuggestion, DownloadRenameResult } from '../shared/ipc';
-import { installOverlayBackdrop } from './overlayBackdropPreload';
-
-// Размытая подложка под карточкой — снимок страницы под ней (см. electron/overlayBackdrop.ts).
-installOverlayBackdrop();
 
 // Мост поповера загрузок. Действия — те же ipcMain.handle, что у боевого window.oblako
 // (обработчик не привязан к конкретному preload'у), поэтому дублировать логику в main не нужно.

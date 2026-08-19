@@ -22,9 +22,7 @@ import { glassPlate } from '../styles/island';
 /** Карточка поповера. Ширину задаёт вызывающий: у разных экранов разное содержимое. */
 export function PopoverCard({ width = 280, children }: { width?: number; children: React.ReactNode }) {
   return (
-    // ⚠️ Класс несёт размытую подложку (см. .popover-card в global.css) — без него карточка над
-    // текстовой страницей читается сквозь материал.
-    <div className="popover-card" style={{
+    <div style={{
       width,
       ...glassPlate(),
       borderRadius: RADIUS.box,

@@ -3,10 +3,6 @@
 // поповер живёт в изолированной WebContentsView и боевой preload.ts ему не положен.
 import { contextBridge, ipcRenderer } from 'electron'
 import type { SearchTarget, QuickQueryResult } from '../shared/ipc'
-import { installOverlayBackdrop } from './overlayBackdropPreload';
-
-// Размытая подложка под карточкой — снимок страницы под ней (см. electron/overlayBackdrop.ts).
-installOverlayBackdrop();
 
 export interface SearchPopoverShowPayload {
   targets: SearchTarget[]

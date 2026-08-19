@@ -760,7 +760,7 @@ function SuggestDropdown() {
   return (
     <div style={{ padding: `${SHADOW_TOP}px ${SHADOW_MARGIN}px ${SHADOW_MARGIN}px`, boxSizing: 'border-box' }}>
       <style>{PANEL_CSS}</style>
-      <div ref={cardRef} className="popover-card" style={{
+      <div ref={cardRef} style={{
         boxSizing: 'border-box',
         // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
         // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из

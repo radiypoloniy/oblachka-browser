@@ -12,7 +12,6 @@ import { IPC } from '../shared/ipc';
 import type { ContentBounds, PasswordIndicatorState } from '../shared/ipc';
 import { closeWindowView } from './viewTeardown';
 import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN, anchoredCardX } from '../shared/overlayMetrics';
-import { pushOverlayBackdrop } from './overlayBackdrop';
 
 const POPOVER_WIDTH = 280;
 const INITIAL_HEIGHT = 150;
@@ -92,14 +91,7 @@ function computeBounds(st: WindowPopover): { x: number; y: number; width: number
 
 function layoutPopover(st: WindowPopover): void {
   if (!isAttached(st)) return;
-  const b = computeBounds(st);
-  st.view!.setBounds(b);
-  // Подложка снимается по КАРТОЧКЕ, а не по вью: вокруг карточки лежит прозрачный запас под тень,
-  // и размытый прямоугольник в нём читался бы ореолом вокруг поповера.
-  pushOverlayBackdrop(st.win, st.view?.webContents, {
-    x: b.x + SHADOW_MARGIN, y: b.y + SHADOW_MARGIN,
-    width: b.width - SHADOW_MARGIN * 2, height: b.height - SHADOW_MARGIN * 2,
-  });
+  st.view!.setBounds(computeBounds(st));
 }
 
 export function syncPasswordPopoverAnchorBounds(win: BrowserWindow, b: ContentBounds, align: 'button' | 'field' = 'button'): void {
@@ -153,9 +145,6 @@ export function showPasswordPopover(win: BrowserWindow, state: PasswordIndicator
   const view = ensurePopoverView(st);
   view.setBounds(computeBounds(st));
   if (!isAttached(st)) win.contentView.addChildView(view);
-  // ⚠️ Ещё раз раскладываем УЖЕ подключённой: layoutPopover заодно заказывает снимок подложки, а
-  // он имеет смысл только для вью, которая реально висит над страницей.
-  layoutPopover(st);
   view.webContents.send(IPC.PASSWORD_POPOVER_SHOW, state);
 }
 
