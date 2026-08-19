@@ -264,7 +264,10 @@ export default function AppearanceSection() {
 
         <SliderRow label="Затемнение" value={s.background.dim} min={0} max={0.8} step={0.02}
           onChange={(v) => patchBg({ dim: v })} format={(v) => `${Math.round(v * 100)}%`} />
-        <SliderRow label="Размытие" value={s.background.blur} min={0} max={40} step={1}
+        {/* ⚠️ Потолок снижен с 40: размытие держали ради читаемости виджетов, а эту работу теперь
+            делает материал — карточка размывает фон ПОД СОБОЙ, обои остаются резкими. Сорок
+            пикселей превращали фотографию в цветное пятно; шестнадцати хватает как эффекту. */}
+        <SliderRow label="Размытие" value={s.background.blur} min={0} max={16} step={1}
           onChange={(v) => patchBg({ blur: v })} format={(v) => `${v}px`} />
       </Subsection>
 

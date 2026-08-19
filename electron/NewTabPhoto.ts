@@ -21,7 +21,23 @@ function photoSize(): { width: number; height: number } {
   return { width: round(size.width), height: round(size.height) };
 }
 
-let memCache: { date: string; dataUrl: string } | null = null;
+let memCache: { key: string; dataUrl: string } | null = null;
+
+/**
+ * Ключ снимка: дата И РАЗМЕР ЭКРАНА.
+ *
+ * ⚠️ Размер в ключе обязателен. Кэш лежал под именем `2026-08-19.jpg`, то есть только по дате —
+ * и снимок, скачанный когда-то в 1920×1080, продолжал раздаваться на мониторе 2560 даже после
+ * того, как загрузка научилась запрашивать правильный размер. Правка «качать под экран» не
+ * давала никакого эффекта ровно поэтому: до сети дело не доходило.
+ *
+ * ⚠️ Ключ меняется и при переезде окна на другой монитор — это и есть «адаптивно наверняка»:
+ * пересчёт происходит не по флагу, а потому что имя файла другое.
+ */
+function photoKey(): string {
+  const { width, height } = photoSize();
+  return `${todayKey()}-${width}x${height}`;
+}
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10); // YYYY-MM-DD (локальная дата достаточно точна для «фото дня»)
@@ -29,14 +45,15 @@ function todayKey(): string {
 
 export async function getPhotoOfDay(): Promise<{ ok: boolean; dataUrl?: string }> {
   const date = todayKey();
-  if (memCache?.date === date) return { ok: true, dataUrl: memCache.dataUrl };
+  const key = photoKey();
+  if (memCache?.key === key) return { ok: true, dataUrl: memCache.dataUrl };
 
-  const file = path.join(DIR, `${date}.jpg`);
+  const file = path.join(DIR, `${key}.jpg`);
   // 1) кэш на диске (сегодняшний)
   try {
     const buf = fs.readFileSync(file);
     const dataUrl = `data:image/jpeg;base64,${buf.toString('base64')}`;
-    memCache = { date, dataUrl };
+    memCache = { key, dataUrl };
     return { ok: true, dataUrl };
   } catch { /* нет кэша — качаем */ }
 
@@ -48,6 +65,11 @@ export async function getPhotoOfDay(): Promise<{ ok: boolean; dataUrl?: string }
     if (buf.length < 1024) return { ok: false }; // подозрительно мало для фото — не кэшируем мусор
     try {
       fs.mkdirSync(DIR, { recursive: true });
+      // ⚠️ Чистим чужие снимки: ключ теперь включает размер, и без уборки папка копила бы по файлу
+      // на каждое разрешение, которое человек когда-либо видел (док-станция, проектор, ноутбук).
+      for (const name of fs.readdirSync(DIR)) {
+        if (name !== `${key}.jpg`) { try { fs.unlinkSync(path.join(DIR, name)); } catch { /* занят — переживём */ } }
+      }
       fs.writeFileSync(file, buf);
       // чистим прошлые дни — на диске держим только сегодняшнее фото
       for (const f of fs.readdirSync(DIR)) {
@@ -55,7 +77,7 @@ export async function getPhotoOfDay(): Promise<{ ok: boolean; dataUrl?: string }
       }
     } catch { /* нет доступа к диску — отдадим из памяти, просто без диск-кэша */ }
     const dataUrl = `data:image/jpeg;base64,${buf.toString('base64')}`;
-    memCache = { date, dataUrl };
+    memCache = { key, dataUrl };
     return { ok: true, dataUrl };
   } catch {
     return { ok: false }; // офлайн/сеть недоступна — вкладка сама откатится на пресет
