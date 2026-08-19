@@ -709,7 +709,10 @@ function wireSharedSessions(): void {
   initAutofillPopover(
     // Поповер закрылся (крестик, клик мимо, Esc) — незавершённый разбор вставки забываем:
     // молчаливое согласие тут недопустимо, значения не должны пережить отказ.
-    (w) => { autofillOrchestrator.forgetParsedPaste(w); },
+    (w, declined) => {
+      autofillOrchestrator.forgetParsedPaste(w);
+      if (declined) autofillOrchestrator.notifyDeclined(w);
+    },
     (w, id) => {
       if (autofillOrchestrator.getLastKind(w) === 'card') {
         void ensurePasswordAuth('Заполнить данные карты').then((ok) => {

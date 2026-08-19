@@ -3374,6 +3374,14 @@ export class TabManager {
     return true;
   }
 
+  // Отказ человека («крестик» в поповере) — той же вкладке, чтобы она не поднимала предложение
+  // для того же поля снова.
+  sendAutofillDeclined(tabId: string): void {
+    const wc = this.tabMap.get(tabId)?.view?.webContents;
+    if (!wc || wc.isDestroyed()) return;
+    wc.send(IPC.AUTOFILL_DECLINED);
+  }
+
   findInPage(query: string, forward: boolean): void {
     const wc = this.getActiveWebContents();
     if (!wc) return;

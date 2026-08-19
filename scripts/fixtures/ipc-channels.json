@@ -25,6 +25,7 @@
   "AUTOFILL_CARD_REVEAL=autofill:card-reveal",
   "AUTOFILL_CARD_UPDATE=autofill:card-update",
   "AUTOFILL_CHANGED=autofill:changed",
+  "AUTOFILL_DECLINED=autofill:declined",
   "AUTOFILL_DISMISS=autofill:dismiss",
   "AUTOFILL_FIELD_FOCUS=autofill:field-focus",
   "AUTOFILL_FILL_FIELDS=autofill:fill-fields",

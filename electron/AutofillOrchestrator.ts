@@ -64,6 +64,14 @@ export function handleCardFieldFocus(win: BrowserWindow, tabId: string): CardMet
   return list.length > 0 ? list : null;
 }
 
+// Человек закрыл предложение крестиком → говорим странице запомнить отказ по этому полю.
+export function notifyDeclined(win: BrowserWindow): void {
+  const st = perWindow.get(win.id);
+  const tm = contextForWindow(win)?.tabs;
+  if (!tm || !st?.focusTabId) return;
+  tm.sendAutofillDeclined(st.focusTabId);
+}
+
 // Выбор профиля в поповере → подставляем в ту вкладку, где было сфокусировано поле.
 export function handleFillAddress(win: BrowserWindow, id: number): boolean {
   const st = perWindow.get(win.id);

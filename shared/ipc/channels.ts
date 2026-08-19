@@ -554,6 +554,10 @@ export const IPC = {
   // origin (в отличие от паролей), url нужен лишь чтобы отсечь служебные схемы.
   AUTOFILL_FIELD_FOCUS: 'autofill:field-focus', // гостевая страница → TabManager: { rect, kind: 'address'|'card' }
   AUTOFILL_FILL_FIELDS: 'autofill:fill-fields', // TabManager → гостевая вкладка: карта значений полей для подстановки
+  // Человек закрыл предложение крестиком — страница запоминает отказ и больше не поднимает поповер
+  // для ТОГО ЖЕ поля. Без этого канала отказ знал бы только main, а решение «не лезть сюда» должно
+  // жить рядом с полем, к которому оно относится.
+  AUTOFILL_DECLINED: 'autofill:declined',   // TabManager → гостевая вкладка: без полезной нагрузки
   // Гостевая страница → main: «что это за поля?» для тех, что не осилила эвристика. Ответ —
   // карта «индекс → категория» из кэша или от локальной модели (см. AutofillFieldMapper.ts).
   AUTOFILL_MAP_FIELDS: 'autofill:map-fields',

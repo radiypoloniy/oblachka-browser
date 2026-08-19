@@ -117,6 +117,7 @@ const CH_AUTOFILL_FILL = 'autofill:fill-fields';
 const CH_AUTOFILL_SUBMIT = 'autofill:submit';
 const CH_AUTOFILL_MAP_FIELDS = 'autofill:map-fields';
 const CH_AUTOFILL_PASTE_BLOB = 'autofill:paste-blob';
+const CH_AUTOFILL_DECLINED = 'autofill:declined';
 // Буфер скопированного со страниц (см. electron/ClipboardBuffer.ts).
 const CH_CLIPBOARD_COPY = 'clipboard:copied';
 // Скриптлеты адблока до скриптов страницы — ДОЛЖЕН совпадать с shared/ipc.ts::IPC.ADBLOCK_BOOT_SCRIPTLETS.
@@ -852,9 +853,21 @@ function countFieldCategories(el: FillField, kind: 'address' | 'card'): { total:
   return { total: seen.size, strong: sureSeen.size };
 }
 
+/**
+ * Поля, на которых человек уже сказал «нет» (крестик в поповере или Esc).
+ *
+ * ⚠️ WeakSet по ЭЛЕМЕНТУ, а не по адресу страницы: отказ относится к конкретному полю, а не ко
+ * всему сайту — на форме заказа можно не хотеть подстановку в «Получателя» и хотеть в «Адрес».
+ * Запись умирает вместе с полем, то есть перезагрузка и уход со страницы обнуляют её сами.
+ */
+const declinedFields = new WeakSet<FillField>();
+// Поле, которому мы предложили заполнение последним, — к нему и относится ответ «нет».
+let lastOfferedEl: FillField | null = null;
+
 function reportAutofillFocus(el: FillField): void {
   const key = detectFieldKey(el);
   if (!key) return;
+  if (declinedFields.has(el)) return; // здесь уже отказались — навязываться нельзя
   // Адрес на форме входа не предлагаем вовсе; карту — тем более (её поля там взяться не могут).
   if (looksLikeCredentials(el)) return;
   // ⚠️ В УЖЕ ЗАПОЛНЕННОЕ поле предлагать нечего. Живой случай: сайт со своей системой подсказок
@@ -873,6 +886,7 @@ function reportAutofillFocus(el: FillField): void {
   if (cats.strong < 1) return;
   const r = el.getBoundingClientRect();
   lastAutofillFocusAt = performance.now();
+  lastOfferedEl = el;
   ipcRenderer.send(CH_AUTOFILL_FIELD_FOCUS, {
     rect: { x: r.x, y: r.y, width: r.width, height: r.height }, kind,
   });
@@ -885,7 +899,17 @@ let lastAutofillFocusAt = 0;
 function dismissAutofill(): void {
   try { if (isTopFrame()) ipcRenderer.send(CH_AUTOFILL_DISMISS); } catch { /* фрейм умер */ }
 }
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') dismissAutofill(); }, true);
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  // Esc при фокусе в том самом поле — такой же отказ, как крестик: помним его и не предлагаем
+  // снова. Если фокус уже в другом месте, Esc относится к чему-то своему (список сайта, модалка),
+  // и трактовать его как ответ нам мы не вправе.
+  if (lastOfferedEl && document.activeElement === lastOfferedEl) {
+    declinedFields.add(lastOfferedEl);
+    lastOfferedEl = null;
+  }
+  dismissAutofill();
+}, true);
 // ⚠️ relatedTarget === null означает «фокус ушёл ИЗ документа», и это ровно то, что делает сам
 // поповер: он живёт отдельной WebContentsView и, появившись, забирает фокус у поля. Без этой
 // проверки карточка гасила сама себя в момент показа — то есть не появлялась вообще.
@@ -1299,6 +1323,13 @@ try {
 
 // Подстановка выбранного профиля/карты: main шлёт карту «категория → значение», заполняем поля.
 try {
+  // Человек закрыл предложение крестиком — запоминаем отказ по тому полю, которому предлагали.
+  ipcRenderer.on(CH_AUTOFILL_DECLINED, () => {
+    if (!lastOfferedEl) return;
+    declinedFields.add(lastOfferedEl);
+    lastOfferedEl = null;
+  });
+
   ipcRenderer.on(CH_AUTOFILL_FILL, (_e, fields: Partial<Record<AfKey, string>>) => {
     try {
       if (!isTopFrame() || !fields || typeof fields !== 'object') return;

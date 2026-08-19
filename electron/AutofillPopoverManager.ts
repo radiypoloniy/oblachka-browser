@@ -43,13 +43,16 @@ interface WindowPopover {
 
 const popovers = new Map<number, WindowPopover>();
 let ipcRegistered = false;
-let onClosedCb: ((win: BrowserWindow) => void) | null = null;
+// ⚠️ Второй аргумент — «человек ОТКАЗАЛСЯ от предложения подставить», а не «поповер закрылся».
+// Закрытий много (выбор профиля, уход фокуса, прокрутка, новая страница), и все они означают
+// «больше не нужно»; отказ означает «не лезь сюда», и он один достоин запоминания.
+let onClosedCb: ((win: BrowserWindow, declined: boolean) => void) | null = null;
 let onPickCb: ((win: BrowserWindow, id: number) => void) | null = null;
 let onSaveCb: ((win: BrowserWindow) => void) | null = null;
 let onApplyCb: ((win: BrowserWindow) => void) | null = null;
 
 export function initAutofillPopover(
-  onClosed: (win: BrowserWindow) => void,
+  onClosed: (win: BrowserWindow, declined: boolean) => void,
   onPick: (win: BrowserWindow, id: number) => void,
   onSave: (win: BrowserWindow) => void,
   // ⚠️ Отдельный колбэк от onSave, а не тот же: «сохранить в сейф» и «разложить по полям» —
@@ -120,7 +123,11 @@ function ensureIpcRegistered(): void {
   ipcRegistered = true;
   ipcMain.on('autofill-popover:close', (e) => {
     const st = stateBySender(e.sender);
-    if (st) closeAutofillPopover(st.win);
+    if (!st) return;
+    // Отказом считаем только закрытие СПИСКА для подстановки: «не сохранять» в offer-save — это
+    // отказ от сохранения, а не просьба не предлагать заполнение на этом поле.
+    const declined = st.state?.kind === 'address' || st.state?.kind === 'card';
+    closeAutofillPopover(st.win, declined);
   });
   ipcMain.on('autofill-popover:height', (e, px: number) => {
     const st = stateBySender(e.sender);
@@ -180,7 +187,7 @@ export function showAutofillPopover(win: BrowserWindow, state: AutofillPopoverSt
   view.webContents.send('autofill-popover:show', state);
 }
 
-export function closeAutofillPopover(win: BrowserWindow | null): void {
+export function closeAutofillPopover(win: BrowserWindow | null, declined = false): void {
   if (!win) return;
   const st = popovers.get(win.id);
   if (!st) return;
@@ -188,5 +195,5 @@ export function closeAutofillPopover(win: BrowserWindow | null): void {
   if (isAttached(st)) {
     try { st.win.contentView.removeChildView(st.view!); } catch { /* окно могло уже закрыться */ }
   }
-  onClosedCb?.(st.win);
+  onClosedCb?.(st.win, declined);
 }
