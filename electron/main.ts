@@ -1045,6 +1045,7 @@ function createWindow(role: WindowRole = 'main') {
   // смене вкладки, её закрытии или навигации. На форме входа, где он всплывал по ошибке, это
   // означало карточку, висящую над полем до самого ухода со страницы.
   tabs.setOnAutofillDismiss(() => closeAutofillPopover(win));
+  tabs.setOnPasswordDismiss(() => closePasswordPopover(win));
 
   // Буфер скопированного со страниц. ⚠️ Инкогнито отсекает сам TabManager — приватная вкладка не
   // оставляет следов нигде, и список скопированного такой же след, как история.

@@ -349,6 +349,8 @@ export class TabManager {
   private onClipboardToggleCb?: () => void;
   // Автозаполнение — страница просит убрать поповер (Esc, уход фокуса, прокрутка).
   private onAutofillDismissCb?: () => void;
+  // Пароли — то же самое: клик мимо поля, Esc, прокрутка (см. PASSWORDS_DISMISS).
+  private onPasswordDismissCb?: () => void;
   // Автозаполнение — отправка формы с данными адреса/карты (offer-save). url — из wc.getURL().
   private onAutofillSubmitCb?: (tabId: string, kind: 'address' | 'card', fields: Record<string, string>, url: string) => void;
   // Взводится при создании инкогнито-вкладки; см. takeIncognitoClearIfDone (чистка сессии инкогнито).
@@ -1404,6 +1406,15 @@ export class TabManager {
         this.onPasswordFieldAnchorCb?.(id, payload.rect, wc.getURL(), 'icon');
       } catch (e) {
         console.warn('[TabMgr] onPasswordFieldAnchorCb error:', (e as Error).message);
+      }
+    });
+    // Страница просит убрать карточку паролей: клик мимо, Esc, прокрутка.
+    wc.ipc.on(IPC.PASSWORDS_DISMISS, () => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
+      try {
+        this.onPasswordDismissCb?.();
+      } catch (e) {
+        console.warn('[TabMgr] onPasswordDismissCb error:', (e as Error).message);
       }
     });
     // Клик в само поле пароля — тот же якорь, но без права предлагать генерацию (см. выше).
@@ -3644,6 +3655,7 @@ export class TabManager {
   // Сеттером, а не параметром конструктора: список параметров там уже неприлично длинный, а эта
   // подписка ставится тем же куском main.ts, что и остальные «поздние» колбэки окна.
   setOnAutofillDismiss(cb: () => void): void { this.onAutofillDismissCb = cb; }
+  setOnPasswordDismiss(cb: () => void): void { this.onPasswordDismissCb = cb; }
   setOnAutofillPasteBlob(cb: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void): void {
     this.onAutofillPasteBlobCb = cb;
   }

@@ -110,6 +110,7 @@ const CH_CREDENTIAL_SUBMITTED = 'passwords:credential-submitted';
 const CH_FILL = 'passwords:fill';
 const CH_FIELD_ICON_CLICK = 'passwords:field-icon-click';
 const CH_FIELD_FOCUS = 'passwords:field-focus';
+const CH_PASSWORDS_DISMISS = 'passwords:dismiss';
 // Автозаполнение форм (адреса/карты) — ДОЛЖНЫ совпадать с shared/ipc.ts::IPC.AUTOFILL_FIELD_FOCUS/
 // AUTOFILL_FILL_FIELDS (см. выше про невозможность импорта shared в sandboxed preload).
 const CH_AUTOFILL_FIELD_FOCUS = 'autofill:field-focus';
@@ -444,6 +445,18 @@ scheduleScan(); // на случай, если preload выполнился уж
 // ⚠️ Только ПУСТОЕ поле: заполненное — это либо наша же подстановка, либо набранный пароль, и
 // карточка поверх него означала бы «ты ошибся» там, где человек ничего не просил. Сменить аккаунт
 // после подстановки можно значком — он никуда не делся.
+// Поле, над которым сейчас висит карточка паролей, и когда её подняли. Держим ЗДЕСЬ, потому что
+// «клик мимо» — событие страницы: main его не видит вовсе (страница это отдельная нативная вью, и
+// фокус из неё никуда не уходит, когда человек кликает по ней же).
+let pwAnchorEl: HTMLInputElement | null = null;
+let pwShownAt = 0;
+
+function dismissPasswordPopover(): void {
+  if (!pwAnchorEl) return;
+  pwAnchorEl = null;
+  try { if (isTopFrame()) ipcRenderer.send(CH_PASSWORDS_DISMISS); } catch { /* фрейм умер */ }
+}
+
 window.addEventListener('focusin', (e) => {
   try {
     if (!isTopFrame() || !e.isTrusted) return;
@@ -453,11 +466,36 @@ window.addEventListener('focusin', (e) => {
     if (t.value !== '') return;
     if (!focusFromUserGesture(t)) return;
     const r = t.getBoundingClientRect();
+    pwAnchorEl = t;
+    pwShownAt = performance.now();
     ipcRenderer.send(CH_FIELD_FOCUS, { rect: { x: r.left, y: r.top, width: r.width, height: r.height } });
   } catch {
     // noop
   }
 }, true);
+
+// ⚠️ Клик мимо обязан УБИРАТЬ карточку, иначе у человека нет способа отказаться — ровно эта
+// жалоба и завела правило («нет опции отказаться, надо терпеть поповер»). Ловим на pointerdown,
+// а не на click: сайт может отменить click своим обработчиком, а нажатие мыши — уже отказ.
+// Клик по САМОМУ полю не считается: человек вернулся к нему, карточка про него же.
+window.addEventListener('pointerdown', (e) => {
+  try {
+    if (!pwAnchorEl) return;
+    const t = e.target;
+    if (t instanceof Node && pwAnchorEl.contains(t)) return;
+    dismissPasswordPopover();
+  } catch {
+    // noop
+  }
+}, true);
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') dismissPasswordPopover(); }, true);
+// Прокрутка уносит поле из-под карточки — та же пауза после показа и по той же причине, что у
+// автозаполнения: фокус на поле сам прокручивает страницу, и без паузы карточка гасла бы в тот же
+// миг, то есть не появлялась вовсе.
+window.addEventListener('scroll', () => {
+  if (performance.now() - pwShownAt < SCROLL_GRACE_MS) return;
+  dismissPasswordPopover();
+}, { capture: true, passive: true });
 
 // ── Детект сохранения — submit с непустым паролем + SPA-эвристика ──────────────────────────────
 // «Грязное» поле — пароль реально заполнен пользователем, submit ещё не пойман. captureDirty
@@ -922,6 +960,9 @@ function reportAutofillFocus(el: FillField): void {
 // Убрать поповер автозаполнения. Три повода, и все три — обычные способы «отменить» в интерфейсе:
 // Esc, уход фокуса с поля, прокрутка страницы (карточка заякорена на поле и уехала бы от него).
 let lastAutofillFocusAt = 0;
+// Пауза между показом карточки и прокруткой, которая её убирает (см. разбор ниже). Общая для
+// паролей и автозаполнения: причина одна — браузер сам доводит поле до вида после фокуса.
+const SCROLL_GRACE_MS = 500;
 
 function dismissAutofill(): void {
   try { if (isTopFrame()) ipcRenderer.send(CH_AUTOFILL_DISMISS); } catch { /* фрейм умер */ }
@@ -951,7 +992,6 @@ window.addEventListener('focusout', (e) => {
 // прокручивает страницу (scroll-into-view браузера), событие приходит уже ПОСЛЕ показа — и
 // карточка гасла в тот же миг, то есть не появлялась вовсе. Короткая пауза отделяет прокрутку
 // браузера от прокрутки человека, ради которой правило и заведено (карточка заякорена на поле).
-const SCROLL_GRACE_MS = 500;
 window.addEventListener('scroll', () => {
   if (performance.now() - lastAutofillFocusAt < SCROLL_GRACE_MS) return;
   dismissAutofill();

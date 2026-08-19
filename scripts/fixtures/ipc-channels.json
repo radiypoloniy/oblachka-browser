@@ -216,6 +216,7 @@
   "PASSWORDS_COPY=passwords:copy",
   "PASSWORDS_CREDENTIAL_SUBMITTED=passwords:credential-submitted",
   "PASSWORDS_DELETE=passwords:delete",
+  "PASSWORDS_DISMISS=passwords:dismiss",
   "PASSWORDS_EXPORT=passwords:export",
   "PASSWORDS_FIELD_FOCUS=passwords:field-focus",
   "PASSWORDS_FIELD_ICON_CLICK=passwords:field-icon-click",
