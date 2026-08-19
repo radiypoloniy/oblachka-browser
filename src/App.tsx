@@ -460,9 +460,13 @@ export default function App() {
     // верхней кромки в точности равен этой ступени (см. CHROME_TINT_TOP в styles/island.ts).
     // ⚠️ Значение приходится РАЗРЕШАТЬ пробным элементом: это color-mix(), а getComputedStyle
     // вернул бы формулу, а не цвет.
-    const raw = chromeTinted
-      ? (ground?.top ?? '')
-      : getComputedStyle(document.documentElement).getPropertyValue('--app-bg').trim();
+    // ⚠️ ЗНАЧЕНИЕ РАЗРЕШАЕМ ПРОБНЫМ ЭЛЕМЕНТОМ, а не читаем переменную. getPropertyValue отдаёт
+    // ТЕКСТ объявления, а --app-bg с переходом на шкалу нейтрали стал ссылкой (`var(--n4)`) —
+    // регулярка на hex перестала совпадать, и полоса системных кнопок молча уходила в фолбэк
+    // светлой темы. В тёмной теме это выглядело как «кнопки Windows не совпадают с браузером»,
+    // причём только при выключенном цветном фоне: с включённым цвет приходит из ground.top.
+    // Пробный элемент даёт итоговый цвет при любой форме значения — hex, var() или color-mix().
+    const raw = chromeTinted ? (ground?.top ?? '') : resolveColor('var(--app-bg)');
     const base = /^#[0-9a-f]{6}$/i.test(raw) ? raw : '#F2F2F7';
     void window.oblako.setTitleBarOverlay({
       // Под модалкой титлбар темнеет ровно на ту же долю, что и фон под scrim'ом, — иначе
