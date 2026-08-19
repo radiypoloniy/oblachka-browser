@@ -164,6 +164,16 @@ button, input, textarea, select { font-family: inherit; }
 
 /* Строка списка в поповере (см. popoverKit.tsx). Наведение общим правилом: инлайновые
    обработчики мыши в каждой карточке — это тот же разнобой, что и копии кнопок. */
+/* Ступенчатое появление строк списка в поповерах (см. popoverKit::PopoverRow, prop index).
+   Сама карточка проявляется целиком (overlayReveal), а строки доезжают следом — так перечень
+   читается перечнем, а не одномоментной пачкой. */
+@keyframes popover-row-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .popover-row { animation: none !important; }
+}
 .popover-row:hover:not(:disabled) { background: var(--surface-hover); }
 .popover-row:active:not(:disabled) { background: var(--surface-active); }
 

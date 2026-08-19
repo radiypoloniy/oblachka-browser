@@ -70,7 +70,7 @@ export function PopoverHint({ children }: { children: React.ReactNode }) {
  * интерфейсе больше нигде нет; три таких прямоугольника подряд читаются формой из веб-двухтысячных.
  * Выбранное отмечается общим токеном --selected, тем же, что вкладка в сайдбаре и раздел настроек.
  */
-export function PopoverRow({ icon, title, hint, trailing, selected, onClick, disabled }: {
+export function PopoverRow({ icon, title, hint, trailing, selected, onClick, disabled, index }: {
   icon?: React.ReactNode;
   title: React.ReactNode;
   hint?: React.ReactNode;
@@ -79,6 +79,14 @@ export function PopoverRow({ icon, title, hint, trailing, selected, onClick, dis
   selected?: boolean;
   onClick?: () => void;
   disabled?: boolean;
+  /**
+   * Номер в списке — строка доезжает со ступенькой (см. keyframes popover-row-in в global.css).
+   *
+   * ⚠️ Опционально и по номеру, а не автоматически для всех: карточка с ОДНОЙ строкой не список,
+   * и оживлять её нечем — движение там читается как дёрганье. Ступенька имеет смысл ровно там,
+   * где строк несколько и глазу нужно понять, что это перечень.
+   */
+  index?: number;
 }) {
   return (
     <button
@@ -92,6 +100,11 @@ export function PopoverRow({ icon, title, hint, trailing, selected, onClick, dis
         color: 'var(--text-body)', textAlign: 'left', cursor: 'default', width: '100%',
         transition: motion.hover('background'),
         opacity: disabled ? 0.5 : 1,
+        ...(index === undefined ? null : {
+          animation: 'popover-row-in var(--dur-base) var(--ease-out) both',
+          // Ступень маленькая и с потолком: список из десяти аккаунтов не должен собираться полсекунды.
+          animationDelay: `${Math.min(index, 5) * 40}ms`,
+        }),
       }}
     >
       {icon !== undefined && (
@@ -129,11 +142,16 @@ export function PopoverRow({ icon, title, hint, trailing, selected, onClick, dis
  * значку, а не по знаку вопроса.
  */
 export function SiteIcon({ host }: { host: string }) {
-  const letter = (host.replace(/^www\./, '')[0] ?? '?').toUpperCase();
+  // ⚠️ Сюда приезжает и голый хост, и ПОЛНЫЙ origin: состояние паролей несёт `new URL().origin`
+  // («https://site.ru»), и без нормализации адрес значка складывался в «https://https://site.ru/
+  // favicon.ico» — то есть картинка не грузилась НИКОГДА, а под ней вместо первой буквы сайта
+  // всегда стояла «H» от «https». Заметить это глазами трудно: буква выглядит как буква.
+  const clean = host.replace(/^[a-z]+:\/\//i, '').replace(/^www\./, '').replace(/[/:].*$/, '');
+  const letter = (clean[0] ?? '?').toUpperCase();
   return (
     <>
       <img
-        src={`https://${host}/favicon.ico`}
+        src={`https://${clean}/favicon.ico`}
         alt=""
         width={18}
         height={18}
@@ -146,6 +164,11 @@ export function SiteIcon({ host }: { host: string }) {
       <span style={{ position: 'absolute', fontSize: 'var(--fs-xs)', fontWeight: 600, zIndex: -1 }}>{letter}</span>
     </>
   );
+}
+
+/** Человекочитаемое имя сайта: без схемы и www. Состояние поповеров несёт полный origin. */
+export function hostLabel(origin: string): string {
+  return origin.replace(/^[a-z]+:\/\//i, '').replace(/^www\./, '').replace(/\/$/, '');
 }
 
 /** Ряд кнопок. Основное действие ПЕРВЫМ — как во всём интерфейсе. */

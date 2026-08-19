@@ -106,7 +106,10 @@ export async function handleGenerateAndFill(win: BrowserWindow): Promise<boolean
     if (!pm || !tm || !tabId) return false;
 
     const state = tabStates.get(tabId);
-    if (!state || state.kind !== 'offer-generate') return false;
+    // ⚠️ Не только 'offer-generate': на форме СМЕНЫ пароля сохранённый вход для сайта есть, то
+    // есть карточка показывает список аккаунтов, — а нужен как раз новый пароль. Оба состояния
+    // несут origin, и он ниже сверяется с адресом активной вкладки, так что прав не прибавляется.
+    if (!state || (state.kind !== 'offer-generate' && state.kind !== 'has-saved')) return false;
 
     const activeUrl = tm.getActiveWebContents()?.getURL() ?? '';
     if (originOf(activeUrl) !== state.origin) return false;
