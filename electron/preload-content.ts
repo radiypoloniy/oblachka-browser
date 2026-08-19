@@ -120,6 +120,9 @@ const CH_AUTOFILL_SUBMIT = 'autofill:submit';
 const CH_AUTOFILL_MAP_FIELDS = 'autofill:map-fields';
 const CH_AUTOFILL_PASTE_BLOB = 'autofill:paste-blob';
 const CH_AUTOFILL_DECLINED = 'autofill:declined';
+// Медиасессия страницы: что играет и чем этим управлять (см. electron/MediaSessionManager.ts).
+const CH_MEDIA_REPORT = 'media:session-report';
+const CH_MEDIA_COMMAND = 'media:session-command';
 // Буфер скопированного со страниц (см. electron/ClipboardBuffer.ts).
 const CH_CLIPBOARD_COPY = 'clipboard:copied';
 // Скриптлеты адблока до скриптов страницы — ДОЛЖЕН совпадать с shared/ipc.ts::IPC.ADBLOCK_BOOT_SCRIPTLETS.
@@ -1428,4 +1431,136 @@ try {
   });
 } catch {
   // IPC недоступен
+}
+
+// ── Медиасессия страницы ──────────────────────────────────────────────────────────────────────
+//
+// ⚠️ ЧИТАЕМ СТАНДАРТ, А НЕ ВЁРСТКУ. Каждый музыкальный сервис объявляет трек через
+// `navigator.mediaSession`: название, исполнителя, обложку и обработчики «играть/пауза/вперёд/
+// назад». Этим живут медиаклавиши клавиатуры и панель глобальных медиа в Chrome. Подключаемся к
+// тому же источнику — и виджет плеера работает с ЛЮБЫМ сервисом, а не с тремя, под которые кто-то
+// написал парсер разметки. Парсер ломается в день редизайна, медиасессия стандартна.
+//
+// ⚠️ ХУК СТАВИТСЯ В ГЛАВНОМ МИРЕ через executeInMainWorld — тот же приём и та же причина, что у
+// шима `window.chrome` и перехвата `navigator.clipboard` выше: preload живёт в изолированном мире,
+// где у него СВОЙ navigator, и правка в нём странице не видна. Функция-докладчик приезжает
+// аргументом (contextBridge проксирует функции между мирами), поэтому ipcRenderer в главный мир
+// не протекает. Обратный вызов — возвращённая из главного мира функция: ею мы жмём кнопки.
+//
+// ⚠️ Мы ПЕРВЫЕ: preload выполняется до скриптов страницы, поэтому перехватываем и самое первое
+// присвоение metadata — то есть трек, который начал играть сразу после загрузки.
+try {
+  let lastJson = '';
+  const report = (json: string): void => {
+    try {
+      // Только верхний кадр: рекламный iframe со своим видео не должен подменять собой музыку,
+      // ради которой человек поставил виджет.
+      if (!isTopFrame() || json === lastJson) return;
+      lastJson = json;
+      ipcRenderer.send(CH_MEDIA_REPORT, JSON.parse(json));
+    } catch {
+      // отчёт не критичен — молчим
+    }
+  };
+
+  const invoke = contextBridge.executeInMainWorld({
+    func: (send: (json: string) => void) => {
+      try {
+        const nav = navigator as Navigator & { mediaSession?: MediaSession };
+        const ms = nav.mediaSession;
+        if (!ms) return null;
+
+        const KNOWN = ['play', 'pause', 'nexttrack', 'previoustrack'];
+        const handlers = new Map<string, MediaSessionActionHandler>();
+        let meta: MediaMetadata | null = ms.metadata ?? null;
+
+        const mediaEls = (): HTMLMediaElement[] =>
+          Array.from(document.querySelectorAll('audio, video')) as HTMLMediaElement[];
+
+        const snapshot = (): string => {
+          // Самая крупная обложка: сервисы отдают набор от 96×96 до 1000×1000, а плитке нужна
+          // та, что не рассыплется на ретине.
+          let art = '';
+          let best = 0;
+          for (const a of (meta?.artwork ?? [])) {
+            const px = Number(String(a.sizes ?? '').split(/[x×]/)[0]) || 0;
+            if (!art || px >= best) { art = a.src ?? ''; best = px; }
+          }
+          // ⚠️ playbackState берём у сессии, но НЕ верим ему слепо: часть сайтов его не трогает
+          // вовсе, и тогда «играет» видно только по самому медиаэлементу.
+          const declared = ms.playbackState ?? 'none';
+          const playing = mediaEls().some((m) => !m.paused && !m.ended);
+          const state = declared !== 'none' ? declared : (playing ? 'playing' : (meta ? 'paused' : 'none'));
+          return JSON.stringify({
+            title: meta?.title ?? '',
+            artist: meta?.artist ?? '',
+            album: meta?.album ?? '',
+            artwork: art,
+            playbackState: state,
+            actions: KNOWN.filter((a) => handlers.has(a)),
+          });
+        };
+        const push = (): void => { try { send(snapshot()); } catch { /* мост закрылся */ } };
+
+        // Перехват свойств сессии: определяем их НА ЭКЗЕМПЛЯРЕ поверх прототипных аксессоров,
+        // сохраняя оригинальное поведение — страница не должна заметить подмену.
+        const proto = Object.getPrototypeOf(ms) as object;
+        for (const prop of ['metadata', 'playbackState']) {
+          const d = Object.getOwnPropertyDescriptor(proto, prop);
+          if (!d?.get || !d?.set) continue;
+          Object.defineProperty(ms, prop, {
+            configurable: true,
+            get() { return d.get!.call(this); },
+            set(v: unknown) {
+              d.set!.call(this, v);
+              if (prop === 'metadata') meta = v as MediaMetadata | null;
+              push();
+            },
+          });
+        }
+
+        const origSet = ms.setActionHandler.bind(ms);
+        ms.setActionHandler = function setActionHandler(action: MediaSessionAction, fn: MediaSessionActionHandler | null) {
+          if (fn) handlers.set(action, fn); else handlers.delete(action);
+          push();
+          return origSet(action, fn);
+        };
+
+        // Само воспроизведение: сайт мог не трогать playbackState вовсе.
+        for (const ev of ['play', 'pause', 'ended', 'loadedmetadata']) {
+          document.addEventListener(ev, () => push(), true);
+        }
+        push();
+
+        // Обратный вызов: этим виджет жмёт кнопки.
+        return (action: string): void => {
+          const h = handlers.get(action);
+          if (h) {
+            // Обработчику сайта положено получать детали действия; для наших четырёх команд
+            // хватает пустых — их спецификация допускает.
+            try { h({ action: action as MediaSessionAction }); } catch { /* обработчик сайта упал — не наша забота */ }
+          } else {
+            // ⚠️ Фолбэк на сам медиаэлемент. Обработчики регистрируют не все, а «пауза» нужна
+            // человеку одинаково — что на Яндекс Музыке, что на случайной странице с плеером.
+            const el = mediaEls().find((m) => m.duration > 0) ?? mediaEls()[0];
+            if (el) {
+              if (action === 'pause') el.pause();
+              else if (action === 'play') void el.play();
+            }
+          }
+          // Состояние меняется не мгновенно — досылаем снимок чуть позже.
+          setTimeout(push, 150);
+        };
+      } catch {
+        return null; // страница обязана работать, даже если хук не встал
+      }
+    },
+    args: [(json: string) => report(json)],
+  }) as ((action: string) => void) | null;
+
+  ipcRenderer.on(CH_MEDIA_COMMAND, (_e, action: string) => {
+    try { invoke?.(action); } catch { /* мир страницы уже уничтожен */ }
+  });
+} catch {
+  // executeInMainWorld недоступен — тогда просто нет управления медиа с этой страницы
 }

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type React from 'react';
-import { Check, Plus, X } from 'lucide-react';
+import { Check, Plus, X, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
+import type { MediaCommand, MediaNowPlaying } from '../../../shared/ipc';
 import type { CellSize } from '../../newtab/desktop';
 import { card, cardGlass, grain, RADIUS, DISPLAY, CAPS, CARD_COLOR_ENABLED, CARD_INK, altitude, ALTITUDE, HERO_ENABLED } from '../../styles/system';
 import { loadNewTabSettings } from '../../newtab/settings';
@@ -1187,6 +1188,159 @@ export function TasksWidget({ box, fill, overImage, hero }: WidgetProps) {
   );
 }
 
+// ── Музыка ────────────────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ ВИДЖЕТ НЕ ЗНАЕТ НИ ОДНОГО СЕРВИСА ПОИМЁННО, и это главное решение. Он показывает то, что
+// играет в браузере ПРЯМО СЕЙЧАС, читая стандартную медиасессию страницы (см.
+// electron/MediaSessionManager.ts): Яндекс Музыка, Spotify, YouTube, VK, радио на случайном сайте
+// — всё одинаково. Альтернатива была бы «поддержать три сервиса парсерами вёрстки» и чинить их
+// после каждого редизайна.
+//
+// ⚠️ ОФОРМЛЕНИЕ ТОЖЕ ПРИХОДИТ ОТ СЕРВИСА: фон плитки — обложка альбома, поверх неё затемнение
+// ради читаемости. Своей раскраски у виджета нет вовсе, поэтому он выглядит так, как выглядит
+// то, что человек слушает, — и меняется вместе с треком.
+const MUSIC_SERVICES: { label: string; url: string }[] = [
+  { label: 'Яндекс Музыка', url: 'https://music.yandex.ru/' },
+  { label: 'Spotify', url: 'https://open.spotify.com/' },
+];
+// Последний открытый отсюда сервис — чтобы во второй раз не выбирать заново.
+const MUSIC_LAST_KEY = 'oblako-music-last';
+
+export function MusicWidget({ box, fill, overImage, hero: isHero, onOpen }: WidgetProps) {
+  const [state, setState] = useState<MediaNowPlaying | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void window.oblako.getMediaState().then(setState).catch(() => { /* плитка только показывает */ });
+    return window.oblako.onMediaState(setState);
+  }, []);
+
+  const playing = state?.playbackState === 'playing';
+  const compact = box.height < 150;
+
+  async function cmd(action: MediaCommand) {
+    setBusy(true);
+    try { await window.oblako.sendMediaCommand(action); } finally { setBusy(false); }
+  }
+
+  function open(url: string) {
+    try { localStorage.setItem(MUSIC_LAST_KEY, url); } catch { /* см. loadWallpaper */ }
+    onOpen(url);
+  }
+
+  // ── Ничего не играет: предлагаем открыть сервис ──────────────────────────────────────────
+  if (!state || !state.title) {
+    let last = '';
+    try { last = localStorage.getItem(MUSIC_LAST_KEY) ?? ''; } catch { /* см. loadWallpaper */ }
+    const lastLabel = last ? (MUSIC_SERVICES.find((x) => x.url === last)?.label ?? hostLabel(last)) : '';
+    return (
+      <Tile surface toned overImage={overImage} hero={isHero} fill={fill} padding={compact ? 12 : 16}>
+        <TileCaption>Музыка</TileCaption>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--nt-text-muted, var(--text-muted))' }}>
+            Ничего не играет
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {/* ⚠️ Кнопки открывают сервис ОБЫЧНОЙ ВКЛАДКОЙ, а не встроенным плеером: свой плеер
+                означал бы чужой логин, чужую подписку и чужой DRM — то есть работу, которую уже
+                сделал сам сервис. Наше дело — управлять тем, что он играет. */}
+            {(lastLabel ? [{ label: lastLabel, url: last }] : MUSIC_SERVICES).map((svc) => (
+              <button
+                key={svc.url}
+                onClick={() => open(svc.url)}
+                style={{
+                  padding: '6px 10px', borderRadius: RADIUS.control, border: 'none',
+                  background: 'var(--accent)', color: 'var(--on-accent)',
+                  fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'default',
+                }}
+              >{svc.label}</button>
+            ))}
+          </div>
+          {!compact && (
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--nt-text-muted, var(--text-muted))' }}>
+              Подхватит любой сервис — виджет читает то, что играет во вкладке.
+            </div>
+          )}
+        </div>
+      </Tile>
+    );
+  }
+
+  // ── Играет: обложка фоном, поверх — трек и кнопки ────────────────────────────────────────
+  const btn = (icon: React.ReactNode, action: MediaCommand, primary = false, enabled = true) => (
+    <button
+      onClick={() => { if (enabled && !busy) void cmd(action); }}
+      title={action === 'play' ? 'Играть' : action === 'pause' ? 'Пауза' : action === 'nexttrack' ? 'Следующий' : 'Предыдущий'}
+      style={{
+        width: primary ? 38 : 30, height: primary ? 38 : 30, flex: 'none',
+        borderRadius: '50%', border: 'none', cursor: 'default',
+        display: 'grid', placeItems: 'center',
+        background: primary ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.18)',
+        color: primary ? '#111114' : '#FFFFFF',
+        opacity: enabled ? 1 : 0.35,
+        transition: 'background var(--dur-fast) var(--ease-standard)',
+      }}
+    >{icon}</button>
+  );
+
+  const can = (a: MediaCommand) => state.actions.includes(a);
+
+  return (
+    <Tile overImage={overImage} hero={isHero} padding={0}>
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 'inherit' }}>
+        {state.artwork ? (
+          <img
+            src={state.artwork}
+            alt=""
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(165deg, #3B4350 0%, #23272F 100%)' }} />
+        )}
+        {/* ⚠️ Затемнение снизу, а не по всей площади: обложка должна остаться узнаваемой, а текст
+            и кнопки живут в нижней трети — там и нужен контраст. */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'linear-gradient(180deg, rgba(8,10,16,0.10) 0%, rgba(8,10,16,0.42) 46%, rgba(8,10,16,0.86) 100%)',
+        }} />
+      </div>
+
+      <div style={{
+        position: 'relative', height: '100%', display: 'flex', flexDirection: 'column',
+        justifyContent: 'flex-end', gap: 8, padding: compact ? 12 : 16, color: '#FFFFFF',
+      }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            fontSize: 'var(--fs-xs)', opacity: 0.72, overflow: 'hidden',
+            textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{state.host}</div>
+          <div style={{
+            fontWeight: 600, fontSize: compact ? 'var(--fs-sm)' : 'var(--fs-md)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{state.title}</div>
+          {!compact && state.artist && (
+            <div style={{
+              fontSize: 'var(--fs-sm)', opacity: 0.82, overflow: 'hidden',
+              textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{state.artist}</div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {btn(<SkipBack size={14} fill="currentColor" />, 'previoustrack', false, can('previoustrack'))}
+          {/* ⚠️ Пауза и «играть» доступны ВСЕГДА: обработчик может быть не зарегистрирован, но
+              нажать на сам медиаэлемент страницы мы умеем (фолбэк в preload-content.ts). */}
+          {playing
+            ? btn(<Pause size={16} fill="currentColor" />, 'pause', true)
+            : btn(<Play size={16} fill="currentColor" style={{ marginLeft: 2 }} />, 'play', true)}
+          {btn(<SkipForward size={14} fill="currentColor" />, 'nexttrack', false, can('nexttrack'))}
+        </div>
+      </div>
+    </Tile>
+  );
+}
+
+
 export const WIDGET_RENDERERS: Record<string, (p: WidgetProps) => React.ReactElement> = {
   clock: ClockWidget,
   weather: WeatherWidget,
@@ -1194,6 +1348,7 @@ export const WIDGET_RENDERERS: Record<string, (p: WidgetProps) => React.ReactEle
   crypto: CryptoWidget,
   topsites: TopSitesWidget,
   tasks: TasksWidget,
+  music: MusicWidget,
   // Без сети — см. localWidgets.tsx.
   moon: MoonWidget,
   shield: ShieldWidget,

@@ -560,6 +560,15 @@ export const IPC = {
   // Автозаполнение форм — сигналы между гостевой страницей и TabManager (per-view webContents.ipc,
   // как у паролей). url НИКОГДА не из payload — main берёт wc.getURL(). Адреса/карты не привязаны к
   // origin (в отличие от паролей), url нужен лишь чтобы отсечь служебные схемы.
+  // Медиасессия страницы: что играет и как этим управлять (см. electron/MediaSessionManager.ts).
+  // ⚠️ Источник — стандартный navigator.mediaSession самой страницы, а не разбор её вёрстки:
+  // так виджет работает с любым сервисом и не ломается от редизайна.
+  MEDIA_SESSION_REPORT: 'media:session-report', // гостевая страница → TabManager: MediaSessionReport
+  MEDIA_SESSION_COMMAND: 'media:session-command', // TabManager → гостевая вкладка: MediaCommand
+  MEDIA_STATE_CHANGED: 'media:state-changed',   // main → chrome: MediaNowPlaying | null
+  MEDIA_STATE: 'media:state',                   // chrome → main: текущее состояние (первый кадр)
+  MEDIA_COMMAND: 'media:command',               // chrome → main: MediaCommand → boolean
+
   AUTOFILL_FIELD_FOCUS: 'autofill:field-focus', // гостевая страница → TabManager: { rect, kind: 'address'|'card' }
   AUTOFILL_FILL_FIELDS: 'autofill:fill-fields', // TabManager → гостевая вкладка: карта значений полей для подстановки
   // Человек закрыл предложение крестиком — страница запоминает отказ и больше не поднимает поповер

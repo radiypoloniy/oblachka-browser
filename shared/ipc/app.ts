@@ -53,6 +53,33 @@ export type AutofillFieldKey =
   | 'street' | 'addressLine2' | 'city' | 'region' | 'postalCode' | 'country' | 'organization'
   | 'ccName' | 'ccNumber' | 'ccExpMonth' | 'ccExpYear' | 'ccExp';
 
+// ── Медиасессия ───────────────────────────────────────────────────────────────────────────
+// Что страница рассказала о себе через navigator.mediaSession (см. MediaSessionManager.ts).
+export type MediaCommand = 'play' | 'pause' | 'nexttrack' | 'previoustrack';
+
+export interface MediaSessionReport {
+  title?: string;
+  artist?: string;
+  album?: string;
+  /** Ссылка на самую крупную обложку из metadata.artwork — картинку тянет уже renderer. */
+  artwork?: string;
+  playbackState?: 'playing' | 'paused' | 'none';
+  /** Какие команды страница реально умеет: кнопку без обработчика рисовать нечестно. */
+  actions?: MediaCommand[];
+}
+
+export interface MediaNowPlaying extends MediaSessionReport {
+  tabId: string;
+  title: string;
+  artist: string;
+  album: string;
+  artwork: string;
+  playbackState: 'playing' | 'paused' | 'none';
+  actions: MediaCommand[];
+  /** Домен источника — им подписан виджет: «music.yandex.ru», «open.spotify.com». */
+  host: string;
+}
+
 // Плоская карта «категория поля → значение» для подстановки (AUTOFILL_FILL_FIELDS). preload-content
 // заполняет те поля, для которых нашёл категорию на странице; лишние ключи игнорируются.
 export type AutofillFillFields = Partial<Record<AutofillFieldKey, string>>;

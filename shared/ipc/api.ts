@@ -7,7 +7,7 @@ import type { BackfillProgress, BookmarkEntry, BookmarkFolderProposal, BookmarkI
 import type { PasswordAddInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, PasswordMeta, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
 import type { AdBlockState, DownloadEntry, MatchSuggestion, OmniboxPanel, OmniboxRecommendEdit, PageChangesResult, ParsedAddressPart, ProductState, RecommendedSite, SmartTabHit, StuffHit, SuggestDropdownItem, TrackedProduct, TrackingEvent } from './omnibox';
 import type { BangDefWire, BangsSnapshot, BergamotStatus, CatalogEntry, DeleteModelResult, DerivedBangCandidate, DownloadProgress, HardwareSnapshot, HubChatMessage, HubChatOutcome, HubChatSessionMeta, HubMode, ImportBangsResult, InstalledModel, ModelDownloadSpec, ModelLoadMode, PageTranslateProgress, PageTranslateState, PermKey, PermissionRecord, SetDefaultModelResult, Skill, TranslationEngineId, UpdateStatus } from './ai';
-import type { AddressInput, AddressProfile, AddressUpdate, CardInput, CardMeta, CardUpdate, CryptoRatesInfo, CurrencyRatesInfo, DefaultBrowserRequest, DragCard, NextHolidayInfo, SplitSwapHint, TabDropResult, TabDropZone, ThemeMode, ThemePaletteId, ThemePrefs, WeatherInfo, WindowRole } from './app';
+import type { AddressInput, AddressProfile, AddressUpdate, CardInput, CardMeta, CardUpdate, CryptoRatesInfo, CurrencyRatesInfo, DefaultBrowserRequest, DragCard, MediaCommand, MediaNowPlaying, NextHolidayInfo, SplitSwapHint, TabDropResult, TabDropZone, ThemeMode, ThemePaletteId, ThemePrefs, WeatherInfo, WindowRole } from './app';
 
 export interface OblakoApi {
   // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).
@@ -575,6 +575,11 @@ export interface OblakoApi {
   cancelModelDownload(): void;
   getModelDownloadProgress(): Promise<DownloadProgress>;
   onModelDownloadProgress(cb: (p: DownloadProgress) => void): () => void;
+
+  // Медиасессия: что играет прямо сейчас и управление этим (см. electron/MediaSessionManager.ts).
+  getMediaState(): Promise<MediaNowPlaying | null>;
+  sendMediaCommand(action: MediaCommand): Promise<boolean>;
+  onMediaState(cb: (state: MediaNowPlaying | null) => void): () => void;
 
   // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей в UI пока нет.
   getModelCatalog(): Promise<CatalogEntry[]>;

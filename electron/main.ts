@@ -101,6 +101,7 @@ import * as vpnKeyStore from './VpnKeyStore';
 import * as skillsStore from './SkillsStore';
 import * as vpnProcess from './VpnProcess';
 import * as passwordAutofill from './PasswordAutofillManager';
+import { initMediaSession, handleMediaReport, forgetMediaTab } from './MediaSessionManager';
 import { indexVisit } from './HistoryIndexer';
 import type { PermissionRequest } from '../shared/ipc';
 import { setTabManager as setOrganizerTabManager, setHistoryManager as setOrganizerHistoryManager } from './TabOrganizer';
@@ -706,6 +707,8 @@ function wireSharedSessions(): void {
   // Выбор в поповере: адрес подставляем сразу; карту — только после подтверждения Windows Hello
   // (полный номер — чувствительный, тот же гейт, что показ пароля/номера в настройках).
   initClipboardPopover((w) => chromeOfWin(w)?.send(IPC.CLIPBOARD_POPOVER_CLOSED));
+  // Реестр медиасессий: рассылка «что играет» во все окна (см. MediaSessionManager.ts).
+  initMediaSession((state) => broadcastToChrome(IPC.MEDIA_STATE_CHANGED, state));
   initAutofillPopover(
     // Поповер закрылся (крестик, клик мимо, Esc) — незавершённый разбор вставки забываем:
     // молчаливое согласие тут недопустимо, значения не должны пережить отказ.
@@ -973,7 +976,7 @@ function createWindow(role: WindowRole = 'main') {
       pushProductState(win);
     },
     (wc, tabId) => {
-      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); passwordAutofill.onTabClosed(tabId);
+      closeTranslatePopoverForClosedTab(wc); closePasswordPopover(win); closeAutofillPopover(win); closeDownloadsPopover(); closeSitePopover(); closeScreenshot(win); passwordAutofill.onTabClosed(tabId); forgetMediaTab(tabId);
       // Закрылась последняя инкогнито-вкладка → стираем in-memory данные приватной сессии (куки/
       // хранилище), Chrome-подобно. takeIncognitoClearIfDone сам знает, когда это уместно (работает
       // и для кнопки, и для хоткея Ctrl+Shift+N).
@@ -1045,6 +1048,8 @@ function createWindow(role: WindowRole = 'main') {
   // смене вкладки, её закрытии или навигации. На форме входа, где он всплывал по ошибке, это
   // означало карточку, висящую над полем до самого ухода со страницы.
   tabs.setOnAutofillDismiss(() => closeAutofillPopover(win));
+  // Что играет в этой вкладке — в общий реестр медиасессий (см. MediaSessionManager.ts).
+  tabs.setOnMediaReport((tabId, report, url) => handleMediaReport(win, tabId, report, url));
   tabs.setOnPasswordDismiss(() => closePasswordPopover(win));
 
   // Буфер скопированного со страниц. ⚠️ Инкогнито отсекает сам TabManager — приватная вкладка не

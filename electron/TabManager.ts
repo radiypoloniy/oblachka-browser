@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
 import { closeWindowView } from './viewTeardown';
-import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink } from '../shared/ipc';
+import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
 
 // Разметка и ссылки скопированного куска — то, что страница присылает вместе с текстом, чтобы
 // повторная копия из буфера не теряла ссылки (см. ClipboardBuffer.ts и preload-content.ts).
@@ -352,6 +352,8 @@ export class TabManager {
   private onAutofillDismissCb?: () => void;
   // Пароли — то же самое: клик мимо поля, Esc, прокрутка (см. PASSWORDS_DISMISS).
   private onPasswordDismissCb?: () => void;
+  // Медиасессия страницы (см. MediaSessionManager.ts). url — из wc.getURL(), не из payload.
+  private onMediaReportCb?: (tabId: string, report: MediaSessionReport, url: string) => void;
   // Автозаполнение — отправка формы с данными адреса/карты (offer-save). url — из wc.getURL().
   private onAutofillSubmitCb?: (tabId: string, kind: 'address' | 'card', fields: Record<string, string>, url: string) => void;
   // Взводится при создании инкогнито-вкладки; см. takeIncognitoClearIfDone (чистка сессии инкогнито).
@@ -1407,6 +1409,15 @@ export class TabManager {
         this.onPasswordFieldAnchorCb?.(id, payload.rect, wc.getURL());
       } catch (e) {
         console.warn('[TabMgr] onPasswordFieldAnchorCb error:', (e as Error).message);
+      }
+    });
+    // Что играет на этой странице — отчёт её медиасессии (см. MediaSessionManager.ts).
+    wc.ipc.on(IPC.MEDIA_SESSION_REPORT, (_e, report: MediaSessionReport) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
+      try {
+        this.onMediaReportCb?.(id, report, wc.getURL());
+      } catch (e) {
+        console.warn('[TabMgr] onMediaReportCb error:', (e as Error).message);
       }
     });
     // Страница просит убрать карточку паролей: клик мимо, Esc, прокрутка.
@@ -3657,6 +3668,17 @@ export class TabManager {
   // подписка ставится тем же куском main.ts, что и остальные «поздние» колбэки окна.
   setOnAutofillDismiss(cb: () => void): void { this.onAutofillDismissCb = cb; }
   setOnPasswordDismiss(cb: () => void): void { this.onPasswordDismissCb = cb; }
+  setOnMediaReport(cb: (tabId: string, report: MediaSessionReport, url: string) => void): void { this.onMediaReportCb = cb; }
+
+  // Команда медиасессии — в ту вкладку, что сейчас играет. ⚠️ Спящая вкладка команду не получает
+  // и получить не может: живого webContents у неё нет, а будить её ради «паузы» бессмысленно —
+  // она и так молчит.
+  sendMediaCommand(tabId: string, action: MediaCommand): boolean {
+    const wc = this.tabMap.get(tabId)?.view?.webContents;
+    if (!wc || wc.isDestroyed()) return false;
+    wc.send(IPC.MEDIA_SESSION_COMMAND, action);
+    return true;
+  }
   setOnAutofillPasteBlob(cb: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void): void {
     this.onAutofillPasteBlobCb = cb;
   }
