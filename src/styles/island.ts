@@ -29,7 +29,9 @@ export function navBtn(disabled: boolean): React.CSSProperties {
 // radius сюда намеренно не входит — он всегда разный по контексту (card/pill/island), каждый
 // вызывающий добавляет свой поверх (тот же паттерн, что уже был у islandPlate).
 export interface GlassPlateOptions {
-  surface?: 'surface' | 'surface-island';
+  // 'material' — по умолчанию: полупрозрачный слой, берущий цвет у того, что под ним.
+  // 'surface'/'surface-island' остаются для мест, которым нужна именно плита.
+  surface?: 'material' | 'surface' | 'surface-island';
   shadow?: 'shadow-card' | 'shadow-island' | null;
   border?: boolean;
 }
@@ -46,11 +48,25 @@ export interface GlassPlateOptions {
 //
 // Без --plate-* значения ровно прежние, поэтому все остальные потребители (поповеры, TabError,
 // Hub) ничего не замечают: у них свои документы, где этих переменных нет.
-export function glassPlate({ surface = 'surface', shadow = 'shadow-card', border = true }: GlassPlateOptions = {}): React.CSSProperties {
+/**
+ * МАТЕРИАЛ — один рецепт на всё, что лежит над землёй временно.
+ *
+ * ⚠️ Это ТА ЖЕ функция, что раньше возвращала белую плиту, и менять её тело важнее, чем
+ * переписывать вызовы: имя используется в 62 местах, и все они получают материал разом, без
+ * единой правки в компонентах. Свести определения дешевле, чем пройти по местам, — иначе каждый
+ * следующий разговор о цвете снова начинается с обхода всего интерфейса.
+ *
+ * ⚠️ Непрозрачность держит --material (88 % в светлой, 90 % в тёмной) — это нижняя граница
+ * читаемости, посчитанная поверх крайних подложек, а не выбранная за вид. Разбор — в colors.css.
+ *
+ * ⚠️ Переопределения --plate-* сохранены: подкрашенный сайдбар и цветная земля подставляют туда
+ * свои значения, и материал следует за ними.
+ */
+export function glassPlate({ surface = 'material', shadow = 'shadow-card', border = true }: GlassPlateOptions = {}): React.CSSProperties {
   return {
     background: `var(--plate-bg, var(--${surface}))`,
-    backdropFilter: 'var(--plate-filter, var(--glass-filter))',
-    WebkitBackdropFilter: 'var(--plate-filter, var(--glass-filter))',
+    backdropFilter: 'var(--plate-filter, var(--material-blur))',
+    WebkitBackdropFilter: 'var(--plate-filter, var(--material-blur))',
     ...(shadow ? { boxShadow: `var(--plate-shadow, var(--${shadow}))` } : {}),
     ...(border ? { border: '1px solid var(--plate-edge, var(--glass-edge))' } : {}),
   };
