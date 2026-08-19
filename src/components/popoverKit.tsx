@@ -132,7 +132,7 @@ export function SiteIcon({ host }: { host: string }) {
         alt=""
         width={18}
         height={18}
-        style={{ display: 'block', borderRadius: 4 }}
+        style={{ display: 'block', borderRadius: RADIUS.tight }}
         onError={(e) => {
           // Значка нет — прячем картинку, под ней остаётся буква.
           (e.currentTarget as HTMLImageElement).style.display = 'none';
