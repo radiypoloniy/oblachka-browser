@@ -9,6 +9,8 @@ import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 import { RADIUS } from './styles/system';
+import { PopoverActions, PrimaryButton, QuietButton } from './components/popoverKit';
+import { EmptyState } from './components/EmptyState';
 
 declare global {
   interface Window {
@@ -85,14 +87,11 @@ function DownloadsPopoverApp() {
         {prompt ? (
           <DuplicatePrompt prompt={prompt} />
         ) : shown.length === 0 ? (
-          <div style={{
-            padding: '28px 16px', textAlign: 'center',
-            color: 'var(--text-faint)', fontSize: 'var(--fs-sm)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-          }}>
-            <Download size={20} />
-            Загрузок пока нет
-          </div>
+          <EmptyState
+            icon={<Download size={22} />}
+            title="Загрузок пока нет"
+            hint="Файлы, которые вы скачаете, появятся здесь вместе с адресом страницы."
+          />
         ) : (
           <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 1 }}>
             {shown.map((d) => <Row key={d.id} entry={d} />)}
@@ -148,28 +147,14 @@ function DuplicatePrompt({ prompt }: { prompt: DuplicateDownloadPrompt }) {
           </div>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={() => window.downloadsPopover.decideDuplicate('open')}
-          style={{
-            flex: 1, padding: '8px 10px', borderRadius: 'var(--radius-sm)', border: 'none',
-            background: 'var(--accent)', color: 'var(--on-accent)',
-            fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default',
-          }}
-        >
+      <PopoverActions>
+        <PrimaryButton stretch onClick={() => window.downloadsPopover.decideDuplicate('open')}>
           Открыть загруженное
-        </button>
-        <button
-          onClick={() => window.downloadsPopover.decideDuplicate('download')}
-          style={{
-            flex: 1, padding: '8px 10px', borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--divider-strong)', background: 'transparent',
-            color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default',
-          }}
-        >
+        </PrimaryButton>
+        <QuietButton stretch onClick={() => window.downloadsPopover.decideDuplicate('download')}>
           Всё равно загрузить
-        </button>
-      </div>
+        </QuietButton>
+      </PopoverActions>
     </div>
   );
 }

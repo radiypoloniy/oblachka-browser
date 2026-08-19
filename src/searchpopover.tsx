@@ -105,7 +105,9 @@ function Chip({ target, selected, showKey, onClick }: {
         border: '1px solid',
         borderColor: selected ? 'transparent' : 'var(--glass-edge)',
         background: selected ? 'var(--accent)' : 'var(--surface-sunken)',
-        color: selected ? '#fff' : 'var(--text-body)',
+        // ⚠️ --on-accent, а не литерал '#fff': в тёмной теме белый на поднятом акценте даёт от
+        // 1,77 до 3,91 при пороге 4,5 — там текст на акценте обязан быть ТЁМНЫМ (см. colors.css).
+        color: selected ? 'var(--on-accent)' : 'var(--text-body)',
         borderRadius: RADIUS.pill,
         fontSize: 'var(--fs-sm)', fontWeight: selected ? 600 : 500,
         cursor: 'default', fontFamily: 'inherit',
