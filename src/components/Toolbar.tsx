@@ -9,7 +9,7 @@ import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorStat
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
-import { islandPlate, islandGroup, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
+import { chromeCluster, omniWell, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
 import { glyph } from '../styles/system';
 
@@ -1425,7 +1425,7 @@ export default function Toolbar({
     >
       {/* Кнопки навигации — парящая плашка-остров (glass/тень/скругление из поповера/AI-панели).
           Вписана в текущую высоту тулбара: паддинг плашки не увеличивает высоту кнопок. */}
-      <div className="no-drag" style={islandGroup()}>
+      <div className="no-drag" style={chromeCluster()}>
         <button title="Назад" disabled={!tab?.canGoBack} onClick={onBack}
           style={clusterBtn({ disabled: !tab?.canGoBack })}><BackGlyph size={18} /></button>
         <button title="Вперёд" disabled={!tab?.canGoForward} onClick={onForward}
@@ -1455,7 +1455,7 @@ export default function Toolbar({
           {/* Высота — из общего ISLAND_HEIGHT, не своим числом: раньше здесь стояло 38, а плашки
               рядом вырастали из содержимого в 40, и полоса выглядела собранной кое-как. */}
           <div ref={omniboxPillRef} style={{
-            ...islandPlate,
+            ...omniWell(),
             display: 'flex', alignItems: 'center', gap: 8, height: ISLAND_HEIGHT,
             padding: '0 12px', borderRadius: 'var(--radius-pill)',
           }}>
@@ -1776,7 +1776,7 @@ export default function Toolbar({
           окно не получит AI-панель никогда, и место под неё резервировать незачем), условие про
           СТРАНИЦУ гасит. Тот же приём, что у «Обновить» на хабе. */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginLeft: 'auto' }}>
-        <div style={islandGroup()}>
+        <div style={chromeCluster()}>
         {/* Полностраничный перевод (см. PageTranslateManager.ts) — только на реальной странице,
             на хабе/истории/настройках переводить нечего. idle: приглушённая иконка, как адблок
             выкл. translating: спиннер, клик игнорируется (та же неактивность по смыслу, что
