@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { OVERLAY_SHADOW_MARGIN, OVERLAY_GAP } from '../shared/overlayMetrics.ts';
+import { OVERLAY_SHADOW_MARGIN, OVERLAY_GAP, OVERLAY_FIELD_MAX_SHIFT, anchoredCardX } from '../shared/overlayMetrics.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -127,6 +127,28 @@ for (const file of ['src/styles/tokens/shadows.css', 'src/styles/tokens/colors.c
   }
   check(`${file}: цветных литералов в тенях нет`, tinted, []);
 }
+
+console.log('\n— карточка над полем формы —');
+// ⚠️ Правило Chrome, принятое по измеренной причине: карточка ЦЕНТРИРУЕТСЯ на поле, а не жмётся к
+// его краю, иначе она накрывает подписи полей (они прижаты влево) и человек не видит, что за поле
+// идёт следующим. У нас до этого карточка паролей жалась к ПРАВОМУ краю поля — над широким полем
+// она появлялась где угодно, только не там, куда кликнули (живая жалоба).
+const W = 280;   // ширина карточки паролей
+const M = 8;     // поле окна
+check('узкое поле: карточка центрируется по нему',
+  anchoredCardX(100, 200, W, 1200, M) + W / 2, 100 + 200 / 2);
+check('поле шириной с карточку: край в край', anchoredCardX(100, W, W, 1200, M), 100);
+// ⚠️ Широкое поле — единственное место, где мы от Chrome сознательно отступаем: честный центр
+// поля во всю колонку уводит карточку на сотни пикселей от клика.
+check(`широкое поле: сдвиг не больше ${OVERLAY_FIELD_MAX_SHIFT}`,
+  anchoredCardX(100, 900, W, 1600, M) - 100, OVERLAY_FIELD_MAX_SHIFT);
+check('поле у правого края: карточка не вылезает за окно',
+  anchoredCardX(1000, 150, W, 1200, M) + W <= 1200 - M, true);
+check('поле у левого края: карточка не левее поля окна',
+  anchoredCardX(4, 100, W, 1200, M), M);
+// Окно уже карточки (узкое лёгкое окно) — деление на отрицательный остаток не должно давать
+// отрицательный x: карточка просто прижимается к левому полю.
+check('окно уже карточки: x не отрицательный', anchoredCardX(10, 100, W, 200, M), M);
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

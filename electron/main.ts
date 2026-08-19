@@ -1007,7 +1007,7 @@ function createWindow(role: WindowRole = 'main') {
       syncPasswordPopoverAnchorBounds(win, {
         x: viewBounds.x + rect.x, y: viewBounds.y + rect.y,
         width: rect.width, height: rect.height,
-      });
+      }, 'field');
       showPasswordPopover(win, state);
     },
     // Автозаполнение — фокус на поле адреса/карты показывает поповер выбора, заякоренный на поле
@@ -1024,7 +1024,7 @@ function createWindow(role: WindowRole = 'main') {
       syncAutofillPopoverAnchorBounds(win, {
         x: viewBounds.x + rect.x, y: viewBounds.y + rect.y,
         width: rect.width, height: rect.height,
-      });
+      }, 'field');
       showAutofillPopover(win, state);
     },
     // Отправка формы с адресом/картой → предложение сохранить. Поповер якорим к верху окна
@@ -1074,7 +1074,7 @@ function createWindow(role: WindowRole = 'main') {
       syncAutofillPopoverAnchorBounds(win, {
         x: viewBounds.x + rect.x, y: viewBounds.y + rect.y,
         width: rect.width, height: rect.height,
-      });
+      }, 'field');
       showAutofillPopover(win, state);
     }).catch((e) => console.warn('[address-parse] ошибка:', e));
   });

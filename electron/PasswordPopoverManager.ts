@@ -11,7 +11,7 @@ import path from 'node:path';
 import { IPC } from '../shared/ipc';
 import type { ContentBounds, PasswordIndicatorState } from '../shared/ipc';
 import { closeWindowView } from './viewTeardown';
-import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
+import { OVERLAY_GAP as GAP, OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN, anchoredCardX } from '../shared/overlayMetrics';
 
 const POPOVER_WIDTH = 280;
 const INITIAL_HEIGHT = 150;
@@ -25,6 +25,12 @@ interface WindowPopover {
   view: WebContentsView | null;
   resizeBound: boolean;
   anchor: ContentBounds;
+  // ⚠️ Якорь бывает ДВУХ ВИДОВ, и раскладка у них разная. 'button' — значок-ключ в тулбаре: он
+  // сидит у правого края, и карточка прижимается к нему справа. 'field' — поле на странице:
+  // карточка центрируется на поле (см. anchoredCardX). Раньше вид был один, и карточка над
+  // широким полем уезжала к его ПРАВОМУ краю — то есть появлялась где угодно, только не там,
+  // куда человек кликнул.
+  align: 'button' | 'field';
   height: number;
   state: PasswordIndicatorState | null;
 }
@@ -43,6 +49,7 @@ function stateFor(win: BrowserWindow): WindowPopover {
   const created: WindowPopover = {
     win, view: null, resizeBound: false,
     anchor: { x: 0, y: 0, width: 0, height: 0 },
+    align: 'button',
     height: INITIAL_HEIGHT, state: null,
   };
   popovers.set(win.id, created);
@@ -66,7 +73,9 @@ function isAttached(st: WindowPopover): boolean {
 function computeBounds(st: WindowPopover): { x: number; y: number; width: number; height: number } {
   const winBounds = st.win.isDestroyed() ? { width: 1200, height: 800 } : st.win.getContentBounds();
   const maxX = Math.max(WINDOW_MARGIN, winBounds.width - POPOVER_WIDTH - WINDOW_MARGIN);
-  const cardX = Math.min(Math.max(WINDOW_MARGIN, st.anchor.x + st.anchor.width - POPOVER_WIDTH), maxX);
+  const cardX = st.align === 'field'
+    ? anchoredCardX(st.anchor.x, st.anchor.width, POPOVER_WIDTH, winBounds.width, WINDOW_MARGIN)
+    : Math.min(Math.max(WINDOW_MARGIN, st.anchor.x + st.anchor.width - POPOVER_WIDTH), maxX);
   const belowY = st.anchor.y + st.anchor.height + GAP;
   const aboveY = st.anchor.y - st.height - GAP;
   const cardY = belowY + st.height + WINDOW_MARGIN <= winBounds.height
@@ -85,9 +94,10 @@ function layoutPopover(st: WindowPopover): void {
   st.view!.setBounds(computeBounds(st));
 }
 
-export function syncPasswordPopoverAnchorBounds(win: BrowserWindow, b: ContentBounds): void {
+export function syncPasswordPopoverAnchorBounds(win: BrowserWindow, b: ContentBounds, align: 'button' | 'field' = 'button'): void {
   const st = stateFor(win);
   st.anchor = b;
+  st.align = align;
   layoutPopover(st);
 }
 
