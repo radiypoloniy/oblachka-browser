@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Upload, Trash2 } from 'lucide-react';
+import { Upload, Trash2, RotateCcw } from 'lucide-react';
 import { SectionHeader, Subsection, InlineError, TextField, btnGhost, segBtnStyle, SegTrack,
 } from './kit';
 import Toggle from '../Toggle';
@@ -13,7 +13,7 @@ import {
 } from '../../newtab/settings';
 
 import CryptoIcon from '../CryptoIcon';
-import { RADIUS } from '../../styles/system';
+import { RADIUS, sp } from '../../styles/system';
 
 // Раздел «Интерфейс» — оформление самого браузера (тема и палитра) и новой вкладки.
 // Настройки вкладки пишутся в localStorage-стор (saveNewTabSettings шлёт событие → открытая
@@ -215,9 +215,24 @@ export default function AppearanceSection() {
         </SegTrack>
 
         {s.background.kind === 'photo' && (
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-            Новое фото каждый день (загружается из интернета через ваше соединение/VPN, кэшируется на день).
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 1, minWidth: '24ch' }}>
+              Картинка дня Wikimedia — отбирают редакторы Commons. Загружается через ваше
+              соединение или VPN и кэшируется на день.
+            </span>
+            {/* ⚠️ «Другое фото» — шаг НАЗАД ПО КАЛЕНДАРЮ, а не случайный снимок: у Wikimedia на
+                каждый день ровно одна отобранная картинка, поэтому вчерашняя тоже хорошая.
+                Случайный выбор вернул бы ровно то, ради чего мы ушли от прежнего источника, —
+                непредсказуемое качество. */}
+            <button
+              onClick={() => { void window.oblako.shuffleNewtabPhoto(); }}
+              style={{
+                ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(1),
+              }}
+            >
+              <RotateCcw size={14} /> Другое фото
+            </button>
+          </div>
         )}
 
         {s.background.kind === 'preset' && (

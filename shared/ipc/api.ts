@@ -131,6 +131,8 @@ export interface OblakoApi {
   getNextHoliday(country?: string): Promise<NextHolidayInfo>; // курсы ЦБ РФ для виджета новой вкладки
   getCryptoRates(): Promise<CryptoRatesInfo>;     // курсы криптовалют для виджета «Крипта»
   getNewtabPhoto(): Promise<{ ok: boolean; dataUrl?: string }>; // «фото дня» для фона новой вкладки
+  /** «Другое фото» — шаг назад по календарю Wikimedia, ответ приходит уже новым снимком. */
+  shuffleNewtabPhoto(): Promise<{ ok: boolean; dataUrl?: string }>;
   extractNotebookUrl(url: string): Promise<{ ok: boolean; title?: string; text?: string }>; // текст URL-источника блокнота
   generateStudio(kind: string, context: string): Promise<{ ok: boolean; text?: string; error?: string }>; // материал Студии блокнота
 

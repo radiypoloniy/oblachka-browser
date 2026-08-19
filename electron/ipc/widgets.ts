@@ -8,7 +8,7 @@ import { getCryptoRates } from '../CryptoRates';
 import { getCurrencyRates } from '../CurrencyRates';
 import { faviconService } from '../FaviconService';
 import { getNextHoliday } from '../HolidaysService';
-import { getPhotoOfDay } from '../NewTabPhoto';
+import { getPhotoOfDay, shufflePhoto } from '../NewTabPhoto';
 import { extractUrlText } from '../NotebookExtract';
 import { generateStudio } from '../NotebookStudio';
 import type { StudioKind } from '../NotebookStudio';
@@ -41,6 +41,7 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   // для главного рендерера — preload-aipanel до него не относится).
   ipcMain.handle(IPC.WEATHER_GET,        (_e, city: string) => getWeather(typeof city === 'string' ? city : ''));
   ipcMain.handle(IPC.NEWTAB_PHOTO_GET,   () => getPhotoOfDay());
+  ipcMain.handle(IPC.NEWTAB_PHOTO_SHUFFLE, () => { shufflePhoto(); return getPhotoOfDay(); });
   // Курсы для виджета новой вкладки. Отдельный канал от 'ai-panel:currency-rates' (там своя
   // труба к панели), но за ними ОДИН модуль с общим часовым кэшем — второго сетевого похода
   // открытая панель и открытая вкладка не устроят.

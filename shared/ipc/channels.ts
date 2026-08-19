@@ -95,6 +95,9 @@ export const IPC = {
   CURRENCY_GET: 'currency:get', // renderer → main: курсы ЦБ РФ для виджета новой вкладки (CurrencyRates)
   CRYPTO_GET: 'crypto:get', // renderer → main: курсы криптовалют для виджета «Крипта» (CryptoRates)
   NEWTAB_PHOTO_GET: 'newtab:photo-get', // renderer → main: «фото дня» для фона вкладки (data-URL), кэш на день
+  // renderer → main: «другое фото» — шаг назад по календарю Wikimedia. Не случайный сид: там на
+  // каждый день ровно одна картинка, отобранная людьми, поэтому вчерашняя тоже хорошая.
+  NEWTAB_PHOTO_SHUFFLE: 'newtab:photo-shuffle',
   NOTEBOOK_EXTRACT_URL: 'notebook:extract-url', // renderer → main: извлечь читаемый текст URL-источника блокнота
   NOTEBOOK_STUDIO_GEN:  'notebook:studio-gen',  // renderer → main: (kind, context) → материал Студии (текст/спек)
 

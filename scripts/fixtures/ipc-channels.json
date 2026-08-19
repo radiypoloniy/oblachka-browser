@@ -194,6 +194,7 @@
   "NEVER_SLEEP_LIST=never-sleep:list",
   "NEVER_SLEEP_REMOVE=never-sleep:remove",
   "NEWTAB_PHOTO_GET=newtab:photo-get",
+  "NEWTAB_PHOTO_SHUFFLE=newtab:photo-shuffle",
   "NEW_TAB_SHOW_MENU=tab:new-menu",
   "NOTEBOOK_EXTRACT_URL=notebook:extract-url",
   "NOTEBOOK_STUDIO_GEN=notebook:studio-gen",

@@ -129,6 +129,7 @@ const api: OblakoApi = {
   getNextHoliday: (country?: string) => ipcRenderer.invoke(IPC.HOLIDAY_GET, country) as Promise<NextHolidayInfo>,
   getCryptoRates: () => ipcRenderer.invoke(IPC.CRYPTO_GET) as Promise<CryptoRatesInfo>,
   getNewtabPhoto: () => ipcRenderer.invoke(IPC.NEWTAB_PHOTO_GET) as Promise<{ ok: boolean; dataUrl?: string }>,
+  shuffleNewtabPhoto: () => ipcRenderer.invoke(IPC.NEWTAB_PHOTO_SHUFFLE) as Promise<{ ok: boolean; dataUrl?: string }>,
   extractNotebookUrl: (url: string) => ipcRenderer.invoke(IPC.NOTEBOOK_EXTRACT_URL, url) as Promise<{ ok: boolean; title?: string; text?: string }>,
   generateStudio: (kind: string, context: string) => ipcRenderer.invoke(IPC.NOTEBOOK_STUDIO_GEN, kind, context) as Promise<{ ok: boolean; text?: string; error?: string }>,
 
