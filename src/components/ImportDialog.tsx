@@ -3,7 +3,6 @@ import { X, Download, Loader2, Check, KeyRound, FileUp } from 'lucide-react';
 import type { ImportSource, ImportDataType, ImportRunResult, ImportTypeResult, CsvPasswordImport } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
-import { useScrim } from '../scrimState';
 import { RADIUS } from '../styles/system';
 
 // Диалог импорта данных из другого браузера. Открывается ТОЛЬКО из раздела настроек «Браузер»:
@@ -48,7 +47,6 @@ function csvResultLine(res: Exclude<CsvPasswordImport, { status: 'canceled' }>):
 }
 
 export default function ImportDialog({ onClose }: ImportDialogProps) {
-  useScrim(); // затемняем и нативную зону системных кнопок, см. src/scrimState.ts
   const [sources, setSources] = useState<ImportSource[] | null>(null); // null — ещё грузим
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Выбранные типы для текущего источника. Ключ — sourceId, чтобы смена источника не тащила

@@ -11,7 +11,6 @@ import type {
 import { islandPlate, untintedPlateVars } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
 import BrowserLogo from './BrowserLogo';
-import { useScrim } from '../scrimState';
 import { RADIUS, TEXT, DISPLAY, sp } from '../styles/system';
 
 // Экран первого запуска: короткий рассказ о том, чем этот браузер отличается, и перенос данных
@@ -42,45 +41,70 @@ interface Slide {
 // теми же токенами он совпадает с тем, что человек увидит через минуту.
 
 /**
- * Облако — «лицо» продукта на первом экране.
+ * Логотип Oblako вектором.
  *
- * ⚠️ Раньше здесь стоял СИСТЕМНЫЙ ЭМОДЗИ ☁️ кеглем 112, и это была единственная картинка в
- * браузере, нарисованная не нами: глиф Segoe UI Emoji со своей палитрой, своей перспективой и
- * плоской синей заливкой. В любой теме он читался чужим — ни к логотипу, ни к палитре отношения
- * не имел, а на первом экране это первое, что видит человек.
+ * ⚠️ Это ПЕРЕРИСОВКА настоящего знака (build/logo-source.png), а не «облако с нуля»: рисовать
+ * своё облако рядом с существующим логотипом — значит завести второй знак у одного продукта.
+ * Первая попытка так и вышла: три круга и скруглённая плита читались диваном, а не облаком.
  *
- * Рисуем сами и ТОКЕНАМИ: форма собрана из перекрывающихся кругов с одной заливкой (так контур
- * получается мягким без ручного пути), градиент идёт от осветлённого акцента к самому акценту,
- * блик сверху-слева задаёт объём. Меняется палитра — меняется облако, само собой.
+ * Почему вектор, а не сам PNG: знак должен жить на любом кегле (210 px на первом экране, 62 px в
+ * шаге переноса, дальше — где понадобится) и не мылиться на HiDPI, а растр под это пришлось бы
+ * держать в трёх размерах.
+ *
+ * ⚠️ Цвета ФИРМЕННЫЕ и НЕ следуют палитре — в отличие от всего остального в интерфейсе. Логотип
+ * узнают по цвету; перекрашенный под «Мяту» знак — это уже другой знак. Сиреневая ступень взята
+ * из оригинала и держится на 252° — вне сектора, который стережёт conventions-check, и это не
+ * обход правила: закон запрещает фиолетовый в СИСТЕМНЫХ ролях, а тут фирменный знак.
  */
-function CloudMark({ size = 200 }: { size?: number }) {
-  const id = `oblako-cloud-${size}`;
+function OblakoLogo({ size = 200 }: { size?: number }) {
+  // id градиентов уникальны по размеру: два знака на одном экране (первый слайд и шаг переноса)
+  // с одинаковыми id подхватили бы чужие defs.
+  const uid = `oblako-logo-${size}`;
   return (
     <svg
-      width={size} height={size * 0.62} viewBox="0 0 240 150" aria-hidden
-      style={{
-        display: 'block', position: 'relative',
-        // Тень тонирована акцентом, а не чёрным: облако должно казаться подсвеченным изнутри, а
-        // не лежащим на столе. Тот же приём, что у --shadow-tint в системе.
-        filter: 'drop-shadow(0 16px 28px color-mix(in srgb, var(--accent) 38%, transparent))',
-      }}
+      width={size} height={size} viewBox="0 0 200 200" aria-hidden
+      style={{ display: 'block', filter: 'drop-shadow(0 14px 26px rgba(79, 111, 245, 0.28))' }}
     >
       <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0.25" y2="1">
-          <stop offset="0%" stopColor="color-mix(in srgb, var(--accent) 42%, white)" />
-          <stop offset="55%" stopColor="color-mix(in srgb, var(--accent) 88%, white)" />
-          <stop offset="100%" stopColor="var(--accent)" />
+        {/* Небо: насыщенный синий сверху-слева, сиреневая ступень справа, светлая синь снизу. */}
+        <linearGradient id={`${uid}-sky`} x1="0.08" y1="0.04" x2="0.92" y2="0.9">
+          <stop offset="0%" stopColor="#4F6FF5" />
+          <stop offset="40%" stopColor="#7C99FC" />
+          <stop offset="70%" stopColor="#B7A8F0" />
+          <stop offset="100%" stopColor="#9FC0FF" />
         </linearGradient>
+        {/* Дальний ряд облаков — холоднее и темнее переднего, иначе слои сливаются в пятно. */}
+        <linearGradient id={`${uid}-back`} x1="0.5" y1="0" x2="0.5" y2="1">
+          <stop offset="0%" stopColor="#F1F4FE" />
+          <stop offset="100%" stopColor="#D6E0F9" />
+        </linearGradient>
+        <linearGradient id={`${uid}-front`} x1="0.3" y1="0" x2="0.65" y2="1">
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="65%" stopColor="#F6F9FF" />
+          <stop offset="100%" stopColor="#E4EBFC" />
+        </linearGradient>
+        {/* Облака обрезаны кругом — как в оригинале: знак читается «окном в небо». */}
+        <clipPath id={`${uid}-clip`}><circle cx="100" cy="100" r="94" /></clipPath>
       </defs>
-      <g fill={`url(#${id})`}>
-        <circle cx="92" cy="62" r="42" />
-        <circle cx="146" cy="56" r="32" />
-        <circle cx="178" cy="84" r="26" />
-        <circle cx="64" cy="90" r="30" />
-        <rect x="58" y="80" width="124" height="34" rx="17" />
+
+      <circle cx="100" cy="100" r="94" fill={`url(#${uid}-sky)`} />
+
+      <g clipPath={`url(#${uid}-clip)`}>
+        <g fill={`url(#${uid}-back)`}>
+          <circle cx="137" cy="96" r="31" />
+          <circle cx="171" cy="127" r="23" />
+          <circle cx="53" cy="107" r="27" />
+          <rect x="42" y="106" width="150" height="58" rx="29" />
+        </g>
+        {/* Верхний купол — главный объём знака. */}
+        <circle cx="98" cy="88" r="47" fill={`url(#${uid}-front)`} />
+        {/* Передняя гряда: два кома и общая плита-основание. */}
+        <g fill={`url(#${uid}-front)`}>
+          <circle cx="119" cy="141" r="47" />
+          <circle cx="52" cy="147" r="31" />
+          <rect x="28" y="141" width="162" height="72" rx="36" />
+        </g>
       </g>
-      {/* Блик — не белая клякса, а мягкое пятно на верхней кромке: даёт объём и не спорит с тоном. */}
-      <ellipse cx="86" cy="42" rx="30" ry="16" fill="rgba(255,255,255,0.30)" />
     </svg>
   );
 }
@@ -94,7 +118,7 @@ function ArtWelcome() {
         background: 'radial-gradient(circle, color-mix(in srgb, var(--accent) 26%, transparent) 0%, transparent 70%)',
       }} />
       <div style={{ position: 'relative', animation: 'oblako-onb-float 6s var(--ease-standard) infinite' }}>
-        <CloudMark size={210} />
+        <OblakoLogo size={200} />
       </div>
     </div>
   );
@@ -274,7 +298,6 @@ const GUIDE: { icon: React.ReactNode; title: string; text: string }[] = [
 ];
 
 export default function Onboarding({ onFinish }: Props) {
-  useScrim(); // затемняем и нативную зону системных кнопок, см. src/scrimState.ts
   const [step, setStep] = useState(0);
   const [sources, setSources] = useState<ImportSource[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -898,69 +921,114 @@ function ArtIndex() {
 }
 
 /**
- * Иллюстрация гайда — схема окна с подсвеченными местами, о которых идёт речь: щит в адресной
- * строке, полоса вкладок слева, плитки рабочего стола, боковая ИИ-панель справа.
+ * Схема окна для гайда.
  *
- * ⚠️ Схема, а не значки в ряд: значки уже стоят в карточках под ней, и повторить их сверху значило
- * бы сказать то же самое дважды. Здесь работа другая — показать, ГДЕ это находится в окне.
+ * ⚠️ Схема обязана СОВПАДАТЬ С РЕАЛЬНЫМ ОКНОМ, иначе она вредна: человек ищет глазами то, что
+ * увидел здесь, и не находит. Первая версия была абстрактным набором прямоугольников (полоса
+ * вкладок слева во всю высоту, плитки по центру, значки где придётся) — «нагромождение», которое
+ * ни на что не показывало. Здесь повторена настоящая раскладка Oblako:
+ *   • верхняя полоса ВО ВСЮ ШИРИНУ: кнопка сайдбара, стрелки навигации, широкая пилюля адреса со
+ *     ЩИТОМ внутри слева, справа кластер значков (последний — ИИ);
+ *   • ниже слева сайдбар: пара «Вкладки | Закладки» сверху, список, кнопка «Новая вкладка» внизу;
+ *   • справа сцена с плитками рабочего стола;
+ *   • у правого края — полоса ИИ-панели.
+ * Подсвечены ровно те три места, на которые показывают карточки под схемой; четвёртая карточка
+ * (цвет) ведёт в настройки, и подсвечивать в окне ей нечего — врать точкой на схеме не будем.
  */
 function ArtGuide() {
-  const cell: React.CSSProperties = {
-    borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
-  };
+  const cell: React.CSSProperties = { borderRadius: RADIUS.tight, background: 'var(--surface-sunken)' };
+  const chip: React.CSSProperties = { height: 10, borderRadius: RADIUS.tight, background: 'var(--surface-sunken)' };
   return (
     <ArtStack>
       <div style={{
-        ...islandPlate, borderRadius: 'var(--radius-card)', padding: sp(2), width: 400, height: 190,
-        display: 'flex', flexDirection: 'column', gap: sp(2),
+        ...islandPlate, borderRadius: 'var(--radius-card)', padding: sp(1) + 2, width: 404, height: 178,
+        display: 'flex', flexDirection: 'column', gap: sp(1) + 2, boxSizing: 'border-box',
       }}>
-        {/* Верхняя полоса: щит слева от адреса — то самое место из первой карточки. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: sp(1) }}>
-          <span style={{
-            width: 26, height: 26, borderRadius: RADIUS.control, flex: 'none',
-            display: 'grid', placeItems: 'center',
-            background: 'color-mix(in srgb, var(--dot-vpn) 18%, transparent)',
-            animation: 'oblako-onb-rise var(--dur-slow) var(--ease-out) 80ms backwards',
+        {/* ── Верхняя полоса ─────────────────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
+          <div style={{ ...cell, width: 14, height: 14 }} />
+          <div style={{ display: 'flex', gap: 3 }}>
+            {[0, 1, 2].map((i) => <div key={i} style={{ ...cell, width: 9, height: 9, borderRadius: '50%' }} />)}
+          </div>
+          {/* Пилюля адреса со щитом внутри — то самое место из первой карточки. */}
+          <div style={{
+            flex: 1, height: 18, borderRadius: 'var(--radius-pill)', background: 'var(--surface-sunken)',
+            display: 'flex', alignItems: 'center', gap: 5, padding: '0 5px', minWidth: 0,
           }}>
-            <Shield size={15} style={{ color: 'var(--dot-vpn)' }} />
-          </span>
-          <div style={{ ...cell, flex: 1, height: 26 }} />
-          <span style={{
-            width: 26, height: 26, borderRadius: RADIUS.control, flex: 'none',
-            display: 'grid', placeItems: 'center', background: 'var(--accent-soft)',
-            animation: 'oblako-onb-rise var(--dur-slow) var(--ease-out) 300ms backwards',
-          }}>
-            <Sparkles size={15} style={{ color: 'var(--accent)' }} />
-          </span>
+            <span style={{
+              width: 13, height: 13, borderRadius: '50%', flex: 'none', display: 'grid', placeItems: 'center',
+              background: 'color-mix(in srgb, var(--dot-vpn) 22%, transparent)',
+              animation: 'oblako-onb-rise var(--dur-slow) var(--ease-out) 80ms backwards',
+            }}>
+              <Shield size={9} style={{ color: 'var(--dot-vpn)' }} />
+            </span>
+            <span style={{ flex: 1, height: 5, borderRadius: RADIUS.tight, background: 'var(--divider)' }} />
+            <span style={{ width: 26, height: 9, borderRadius: 'var(--radius-pill)', background: 'var(--divider)', flex: 'none' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <div style={{ ...cell, width: 13, height: 13 }} />
+            <div style={{ ...cell, width: 13, height: 13 }} />
+            {/* Значок ИИ — им же открывается панель справа. */}
+            <span style={{
+              width: 13, height: 13, borderRadius: RADIUS.tight, display: 'grid', placeItems: 'center',
+              background: 'var(--accent-soft)',
+              animation: 'oblako-onb-rise var(--dur-slow) var(--ease-out) 380ms backwards',
+            }}>
+              <Sparkles size={9} style={{ color: 'var(--accent)' }} />
+            </span>
+          </div>
         </div>
 
-        <div style={{ flex: 1, display: 'flex', gap: sp(2), minHeight: 0 }}>
-          {/* Полоса вкладок слева — она же место, где живут группы и закрепление. */}
-          <div style={{ width: 64, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {[0, 1, 2].map((i) => (
-              <div key={i} style={{
-                ...cell, height: 16,
-                background: i === 0 ? 'var(--accent)' : 'var(--surface-sunken)',
-              }} />
-            ))}
+        {/* ── Сайдбар · сцена · панель ───────────────────────────────────────────────── */}
+        <div style={{ flex: 1, display: 'flex', gap: sp(1) + 2, minHeight: 0 }}>
+          <div style={{ width: 74, display: 'flex', flexDirection: 'column', gap: 5, flex: 'none' }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <div style={{ ...chip, flex: 1, background: 'var(--accent-soft)' }} />
+              <div style={{ ...chip, flex: 1 }} />
+            </div>
+            <div style={{ flex: 1 }} />
+            <div style={{ ...chip, height: 14, borderRadius: 'var(--radius-pill)' }} />
           </div>
-          {/* Рабочий стол новой вкладки: плитки приложений и виджетов. */}
-          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+
+          <div style={{
+            flex: 1, minWidth: 0, borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
+            padding: 8, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+          }}>
+            {/* Плитки рабочего стола — вторая карточка. */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5 }}>
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
+                <div key={i} style={{
+                  paddingTop: '100%', borderRadius: RADIUS.tight,
+                  background: [2, 5, 8].includes(i)
+                    ? 'color-mix(in srgb, var(--accent) 26%, transparent)'
+                    : 'var(--surface)',
+                  animation: `oblako-onb-rise var(--dur-slow) var(--ease-out) ${140 + i * 35}ms backwards`,
+                }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Полоса ИИ-панели у правого края — четвёртая карточка. */}
+          <div style={{
+            width: 40, flex: 'none', borderRadius: RADIUS.control,
+            background: 'var(--accent-soft)', padding: 5,
+            display: 'flex', flexDirection: 'column', gap: 4,
+            animation: 'oblako-onb-rise var(--dur-slow) var(--ease-out) 420ms backwards',
+          }}>
+            {[14, 9, 12].map((w, i) => (
               <div key={i} style={{
-                ...cell,
-                background: i === 1 || i === 4 ? 'color-mix(in srgb, var(--accent) 22%, transparent)' : 'var(--surface-sunken)',
-                animation: `oblako-onb-rise var(--dur-slow) var(--ease-out) ${140 + i * 45}ms backwards`,
+                height: 5, width: `${w * 6}%`, borderRadius: RADIUS.tight,
+                background: 'color-mix(in srgb, var(--accent) 32%, transparent)',
               }} />
             ))}
           </div>
         </div>
       </div>
+
       <div style={{ display: 'flex', gap: sp(1) }}>
         <Pill text="щит" dot="var(--dot-vpn)" delay={140} />
-        <Pill text="приложения" delay={220} />
-        <Pill text="цвет" dot="var(--accent)" delay={300} />
-        <Pill text="ИИ-панель" delay={380} />
+        <Pill text="приложения" dot="var(--accent)" delay={240} />
+        <Pill text="ИИ-панель" dot="var(--accent)" delay={340} />
       </div>
     </ArtStack>
   );
@@ -983,7 +1051,7 @@ function ArtImport() {
           width: 88, height: 88, borderRadius: 'var(--radius-card)',
           background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}><CloudMark size={62} /></div>
+        }}><OblakoLogo size={62} /></div>
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <Pill text="закладки" delay={120} />

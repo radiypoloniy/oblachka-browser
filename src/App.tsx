@@ -13,7 +13,6 @@ import { islandPlate, chromeTintStyle, tintedPlateVars, chromeSpaceStyle } from 
 import { buildChromeGround } from '../shared/chromeGround';
 import type { Ground } from '../shared/chromeGround';
 import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
-import { subscribeScrim, dimColor } from './scrimState';
 import { isDarkTheme } from '../shared/ipc';
 import type { ContentBounds, SplitSwapHint, SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal, ThemePrefs } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
@@ -444,9 +443,6 @@ export default function App() {
     // themePrefs.palette — ради ПЕРЕЧИТЫВАНИЯ токенов: палитра меняет их, не меняя dark.
   }, [chromeTinted, groundPrefs.amount, dark, activeIncognito, themePrefs.palette]);
 
-  const [scrimActive, setScrimActive] = useState(false);
-  useEffect(() => subscribeScrim(setScrimActive), []);
-
   useEffect(() => {
     // ⚠️ Фон берём из ЖИВОГО значения --app-bg, а не из литерала: с палитрами (см. palettes.css)
     // теней у этого токена стало восемь, и любой захардкоженный хекс означал бы полосу системных
@@ -471,19 +467,36 @@ export default function App() {
     // которой на экране больше нет. Источник цвета для полосы теперь ровно один — верх земли,
     // и при включённой подкраске его даёт ground.top, посчитанный той же функцией, что рисует
     // градиент. Исключений не осталось.
-    const raw = chromeTinted ? (ground?.top ?? '') : resolveColor('var(--space-1)');
-    const base = /^#[0-9a-f]{6}$/i.test(raw) ? raw : '#F2F2F7';
-    void window.oblako.setTitleBarOverlay({
-      // Под модалкой титлбар темнеет ровно на ту же долю, что и фон под scrim'ом, — иначе
-      // светлый прямоугольник с кнопками остаётся единственным незатемнённым местом экрана.
-      color: scrimActive ? dimColor(base) : base,
-      // На затемнённом фоне символы всегда светлые: тёмные на сером читались бы хуже в обеих темах.
-      symbolColor: scrimActive ? '#FFFFFF' : (dark || activeIncognito) ? '#EBEBF5' : '#3C3C43',
+    // ⚠️ ЧИТАЕМ В СЛЕДУЮЩЕМ КАДРЕ. Значение берётся пробным элементом из ЖИВЫХ стилей, а эффект
+    // может выполниться раньше, чем браузер применит только что выставленные data-theme/
+    // data-palette: тогда в полосу уезжает цвет ПРЕДЫДУЩЕЙ темы и остаётся там навсегда — пока
+    // не изменится одна из зависимостей. Именно так на чистом профиле получался тёмный
+    // прямоугольник поверх светлого окна.
+    const id = requestAnimationFrame(() => {
+      const raw = chromeTinted ? (ground?.top ?? '') : resolveColor('var(--space-1)');
+      // ⚠️ Фолбэк ЗАВИСИТ ОТ ТЕМЫ. Прежний литерал светлой темы означал, что при любой осечке
+      // разрешения цвета в тёмной теме полоса кнопок становилась светлой — то есть ошибка
+      // выглядела как «кнопки Windows не от этого окна».
+      const fallback = (dark || activeIncognito) ? '#121213' : '#F2F2F7';
+      const base = /^#[0-9a-f]{6}$/i.test(raw) ? raw : fallback;
+      void window.oblako.setTitleBarOverlay({
+        // ⚠️ Затемнения под модалкой здесь БОЛЬШЕ НЕТ, и это возврат к тому, как ведут себя
+        // настоящие приложения Windows. Ни WinUI-диалог, ни Chrome, ни VS Code не перекрашивают
+        // зону системных кнопок, когда открывают модальное окно: кнопки принадлежат РАМКЕ окна,
+        // а не содержимому, они остаются живыми и нажимаемыми — свернуть и закрыть окно можно и
+        // при открытом диалоге. Затемнять их значит говорить неправду об их состоянии. Прежняя
+        // механика (счётчик слоёв + умножение цвета на непрозрачность scrim'а) заводилась ради
+        // «чтобы не осталось незатемнённого места», а давала на чистом профиле почти чёрный
+        // прямоугольник в углу светлого окна — см. scrimState.ts, удалён вместе с ней.
+        color: base,
+        symbolColor: (dark || activeIncognito) ? '#EBEBF5' : '#3C3C43',
+      });
     });
+    return () => cancelAnimationFrame(id);
     // themePrefs.palette в зависимостях не ради самого значения, а ради ПЕРЕЧИТЫВАНИЯ --app-bg:
     // палитра меняет его, не меняя ни dark, ни incognito. chromeTinted — по той же причине:
     // включение цветного фона меняет цвет полосы кнопок, не трогая ни тему, ни палитру.
-  }, [dark, activeIncognito, scrimActive, themePrefs.palette, chromeTinted, ground]);
+  }, [dark, activeIncognito, themePrefs.palette, chromeTinted, ground]);
 
   // Атомарная подписка: tabs + nodes в одном IPC-сообщении → один рендер, нет рассинхрона.
   useEffect(() => {
