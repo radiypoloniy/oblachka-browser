@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
-import { Shield, Sparkles, Check, Loader2, ArrowRight, ArrowLeft, FileUp } from 'lucide-react';
+import {
+  Shield, Sparkles, Check, Loader2, ArrowRight, ArrowLeft, FileUp,
+  Globe, BrainCircuit, Link2, Search, Palette, LayoutGrid,
+} from 'lucide-react';
 import type {
   ImportSource, ImportDataType, ImportRunResult, ImportTypeResult,
   CatalogEntry, InstalledModel, DownloadProgress, BackfillProgress,
@@ -9,7 +12,7 @@ import { islandPlate, untintedPlateVars } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
 import BrowserLogo from './BrowserLogo';
 import { useScrim } from '../scrimState';
-import { RADIUS } from '../styles/system';
+import { RADIUS, TEXT, DISPLAY, sp } from '../styles/system';
 
 // Экран первого запуска: короткий рассказ о том, чем этот браузер отличается, и перенос данных
 // из привычного браузера последним шагом.
@@ -25,8 +28,10 @@ interface Props {
   onFinish: () => void;
 }
 
+// ⚠️ Эмодзи в заголовках больше нет. Они были единственной типографикой экрана, которую рисуем
+// не мы: системный глиф со своей палитрой рядом с нашим набором читается наклейкой, а на первом
+// экране это первое впечатление. Роль «о чём слайд» теперь целиком на иллюстрации.
 interface Slide {
-  emoji: string;
   title: string;
   text: string;
   art: React.ReactNode;
@@ -36,15 +41,61 @@ interface Slide {
 // Рисуем разметкой, а не картинками: интерфейс здесь и есть предмет разговора, а нарисованный
 // теми же токенами он совпадает с тем, что человек увидит через минуту.
 
+/**
+ * Облако — «лицо» продукта на первом экране.
+ *
+ * ⚠️ Раньше здесь стоял СИСТЕМНЫЙ ЭМОДЗИ ☁️ кеглем 112, и это была единственная картинка в
+ * браузере, нарисованная не нами: глиф Segoe UI Emoji со своей палитрой, своей перспективой и
+ * плоской синей заливкой. В любой теме он читался чужим — ни к логотипу, ни к палитре отношения
+ * не имел, а на первом экране это первое, что видит человек.
+ *
+ * Рисуем сами и ТОКЕНАМИ: форма собрана из перекрывающихся кругов с одной заливкой (так контур
+ * получается мягким без ручного пути), градиент идёт от осветлённого акцента к самому акценту,
+ * блик сверху-слева задаёт объём. Меняется палитра — меняется облако, само собой.
+ */
+function CloudMark({ size = 200 }: { size?: number }) {
+  const id = `oblako-cloud-${size}`;
+  return (
+    <svg
+      width={size} height={size * 0.62} viewBox="0 0 240 150" aria-hidden
+      style={{
+        display: 'block', position: 'relative',
+        // Тень тонирована акцентом, а не чёрным: облако должно казаться подсвеченным изнутри, а
+        // не лежащим на столе. Тот же приём, что у --shadow-tint в системе.
+        filter: 'drop-shadow(0 16px 28px color-mix(in srgb, var(--accent) 38%, transparent))',
+      }}
+    >
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0.25" y2="1">
+          <stop offset="0%" stopColor="color-mix(in srgb, var(--accent) 42%, white)" />
+          <stop offset="55%" stopColor="color-mix(in srgb, var(--accent) 88%, white)" />
+          <stop offset="100%" stopColor="var(--accent)" />
+        </linearGradient>
+      </defs>
+      <g fill={`url(#${id})`}>
+        <circle cx="92" cy="62" r="42" />
+        <circle cx="146" cy="56" r="32" />
+        <circle cx="178" cy="84" r="26" />
+        <circle cx="64" cy="90" r="30" />
+        <rect x="58" y="80" width="124" height="34" rx="17" />
+      </g>
+      {/* Блик — не белая клякса, а мягкое пятно на верхней кромке: даёт объём и не спорит с тоном. */}
+      <ellipse cx="86" cy="42" rx="30" ry="16" fill="rgba(255,255,255,0.30)" />
+    </svg>
+  );
+}
+
 function ArtWelcome() {
   return (
     <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
       {/* Мягкое свечение за облаком — единственный декоративный элемент во всём экране. */}
       <div style={{
-        position: 'absolute', width: 230, height: 230, borderRadius: '50%',
+        position: 'absolute', width: 260, height: 260, borderRadius: '50%',
         background: 'radial-gradient(circle, color-mix(in srgb, var(--accent) 26%, transparent) 0%, transparent 70%)',
       }} />
-      <div style={{ fontSize: 112, lineHeight: 1, position: 'relative' }}>☁️</div>
+      <div style={{ position: 'relative', animation: 'oblako-onb-float 6s var(--ease-standard) infinite' }}>
+        <CloudMark size={210} />
+      </div>
     </div>
   );
 }
@@ -149,25 +200,21 @@ function Pill({ text, dot, delay = 0 }: { text: string; dot?: string; delay?: nu
 
 const SLIDES: Slide[] = [
   {
-    emoji: '👋',
     title: 'Привет! Это Oblako',
     text: 'Браузер, в котором защита и ИИ уже внутри — ставить и настраивать ничего не нужно.',
     art: <ArtWelcome />,
   },
   {
-    emoji: '🛡️',
     title: 'Реклама и слежка — мимо',
     text: 'Блокировщик работает с первой секунды, а VPN включается одной кнопкой «Защита» в верхней панели.',
     art: <ArtProtection />,
   },
   {
-    emoji: '✨',
     title: 'ИИ под рукой, а не в облаке',
     text: 'Выделите текст — переведём, пересчитаем в пересказ или объясним. Модель работает прямо на вашем компьютере.',
     art: <ArtAi />,
   },
   {
-    emoji: '🗂️',
     title: 'Вкладки сбоку, порядок в голове',
     text: 'Список вкладок слева и целиком виден. Складывайте их в группы, закрепляйте нужные, делите экран пополам.',
     art: <ArtTabs />,
@@ -194,7 +241,37 @@ function resultLine(type: ImportDataType, res: ImportTypeResult | null): string 
 // не предлагаем, если человек не переносил историю. Оба добавляются ПОСЛЕ текущей позиции
 // (появиться они могут только на шаге переноса или раньше), поэтому пересборка списка никогда не
 // сдвигает шаг под ногами.
-type StepKind = 'slide' | 'import' | 'model' | 'index';
+type StepKind = 'slide' | 'import' | 'model' | 'index' | 'guide';
+
+/**
+ * Что показать в конце разговора — четыре места, ради которых стоит заглянуть в интерфейс.
+ *
+ * ⚠️ Ровно четыре и ни одним больше. Это не справка, а «куда смотреть в первую минуту»: список из
+ * десяти пунктов на первом запуске не читают вовсе, а прочитанные четыре человек действительно
+ * находит потом глазами. Всё остальное живёт в настройках и находится по ходу.
+ */
+const GUIDE: { icon: React.ReactNode; title: string; text: string }[] = [
+  {
+    icon: <Shield size={20} />,
+    title: 'Щит в адресной строке',
+    text: 'VPN и блокировщик живут под ним — там же счётчик заблокированного и переключатель для текущего сайта.',
+  },
+  {
+    icon: <LayoutGrid size={20} />,
+    title: 'Приложения на новой вкладке',
+    text: 'Встроенные приложения, виджеты и любые сайты — плитками на рабочем столе. Добавляются кнопкой там же.',
+  },
+  {
+    icon: <Palette size={20} />,
+    title: 'Цвет браузера',
+    text: 'Настройки → «Интерфейс»: шесть палитр, светлая и тёмная тема, обои новой вкладки.',
+  },
+  {
+    icon: <Sparkles size={20} />,
+    title: 'ИИ в боковой панели',
+    text: 'Спросить о странице, перевести её целиком или разобрать выделенный текст — всё оттуда.',
+  },
+];
 
 export default function Onboarding({ onFinish }: Props) {
   useScrim(); // затемняем и нативную зону системных кнопок, см. src/scrimState.ts
@@ -242,6 +319,11 @@ export default function Onboarding({ onFinish }: Props) {
     out.push('import');
     if (modelStepShown) out.push('model');
     if (historyImported) out.push('index');
+    // ⚠️ Гайд — БЕЗУСЛОВНЫЙ и последний. Соблазн привязать его к загрузке модели («расскажем, пока
+    // качается») есть, но привязка означала бы, что человек, отказавшийся от модели, гайда не
+    // увидит вовсе — а отказ от модели не должен ничего отнимать. Меняется только рамка разговора:
+    // идёт загрузка — «пока качается», не идёт — просто «напоследок».
+    out.push('guide');
     return out;
   }, [modelStepShown, historyImported]);
 
@@ -362,22 +444,28 @@ export default function Onboarding({ onFinish }: Props) {
   const head: { art: React.ReactNode; title: string; text: string } =
     kind === 'import' ? {
       art: <ArtImport />,
-      title: '📦 Перенесём ваши данные?',
+      title: 'Перенесём ваши данные?',
       text: 'Закладки, история и пароли переедут из привычного браузера. В нём ничего не изменится — данные только копируются.',
     } : kind === 'model' ? {
       art: <ArtModel />,
-      title: modelOffer ? '🧠 Скачать локальную модель?' : '🧠 Про локальную модель',
+      title: modelOffer ? 'Скачать локальную модель?' : 'Про локальную модель',
       text: modelOffer
         ? 'Перевод, пересказ и поиск по смыслу работают прямо на вашем компьютере — для этого нужен один файл модели. Качается в фоне, пользоваться браузером можно сразу.'
         // ⚠️ «Не тянет» — честный ответ, а не повод предложить что-нибудь полегче: человек скачает
         // гигабайты и будет судить о браузере по результату, которого железо не вытянет.
         : 'На этом устройстве локальная модель не пойдёт — видеопамяти не хватит даже самой лёгкой. Всё остальное работает как обычно, без неё.',
+    } : kind === 'guide' ? {
+      art: <ArtGuide />,
+      title: dl?.running ? 'Пока скачивается модель' : 'Напоследок — четыре места',
+      text: dl?.running
+        ? 'Загрузка идёт в фоне и переживёт этот экран — браузером можно пользоваться прямо сейчас. А пока покажем, где что лежит.'
+        : 'Ничего настраивать не нужно, но эти четыре вещи стоит знать заранее — потом найдёте их глазами.',
     } : kind === 'index' ? {
       art: <ArtIndex />,
-      title: '🔎 Подготовить историю к поиску?',
+      title: 'Подготовить историю к поиску?',
       text: 'Из другого браузера переехали адреса и заголовки. Чтобы искать по смыслу — «та статья про ипотеку», — страницы нужно один раз прочитать.',
     } : {
-      art: slide.art, title: `${slide.emoji} ${slide.title}`, text: slide.text,
+      art: slide.art, title: slide.title, text: slide.text,
     };
 
   return (
@@ -426,13 +514,13 @@ export default function Onboarding({ onFinish }: Props) {
           <div style={{ padding: '26px 56px 0', textAlign: 'center' }}>
             {/* Крупно: это первый экран, который человек видит, и читать его он будет с
                 расстояния вытянутой руки, а не вчитываясь. */}
-            <div style={{
-              fontSize: 'calc(var(--fs-xl) * 1.2)', fontWeight: 700,
-              color: 'var(--text-strong)', lineHeight: 1.25,
-            }}>
+            {/* ⚠️ Дисплейная гарнитура — онбординг один из трёх экранов, где она разрешена (см.
+                CLAUDE.md): это «лицо» продукта, а не интерфейс. lineHeight поднят против её
+                фирменного 1: на двух строках заголовка плотный интерлиньяж слипается. */}
+            <div style={{ ...DISPLAY, fontSize: 30, lineHeight: 1.2, color: 'var(--text-strong)' }}>
               {head.title}
             </div>
-            <div style={{ marginTop: 12, fontSize: 'var(--fs-md)', color: 'var(--text-muted)', lineHeight: 1.55 }}>
+            <div style={{ marginTop: sp(2), fontSize: 'var(--fs-md)', color: 'var(--text-muted)', lineHeight: 1.55 }}>
               {head.text}
             </div>
           </div>
@@ -617,6 +705,44 @@ export default function Onboarding({ onFinish }: Props) {
           </div>
         )}
 
+        {kind === 'guide' && (
+          <div style={{ flex: 1, minHeight: 0, padding: `${sp(3)}px ${sp(4)}px 0`, overflowY: 'auto' }}>
+            {/* ⚠️ Сетка 2×2, а не колонка на четыре строки: колонка не помещалась в экран вместе с
+                шапкой и подвалом и заставляла прокручивать первый же разговор с браузером. */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: sp(2) }}>
+              {GUIDE.map((g, i) => (
+                <div key={g.title} style={{
+                  display: 'flex', gap: sp(2), padding: sp(2),
+                  borderRadius: RADIUS.box, background: 'var(--surface-sunken)',
+                  animation: `oblako-onb-rise var(--dur-slow) var(--ease-out) ${80 + i * 70}ms backwards`,
+                }}>
+                  <span style={{
+                    width: 34, height: 34, flex: 'none', borderRadius: RADIUS.control,
+                    display: 'grid', placeItems: 'center',
+                    background: 'var(--accent-soft)', color: 'var(--accent)',
+                  }}>{g.icon}</span>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ ...TEXT.section, display: 'block' }}>{g.title}</span>
+                    <span style={{ ...TEXT.caption, display: 'block', marginTop: 2 }}>{g.text}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Ход загрузки — здесь же, а не на шаге модели: человек уже ушёл с него, а знать,
+                что процесс идёт и переживёт закрытие экрана, ему по-прежнему нужно. */}
+            {dl?.running && (
+              <div style={{ marginTop: sp(3) }}>
+                <Progress
+                  done={dl.receivedBytes} total={dl.totalBytes}
+                  label={`Модель качается — ${gb(dl.receivedBytes)}${dl.totalBytes ? ` из ${gb(dl.totalBytes)}` : ''}`}
+                  hint="Можно закрывать этот экран: загрузка продолжится в фоне."
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Подвал. ⚠️ Всё по ЦЕНТРУ, в колонку: точки слева и кнопка справа тянули взгляд к
             краям, хотя весь экран выстроен по центральной оси, — от этого он и читался
             перекошенным. Здесь одна ось, и она совпадает с осью текста. */}
@@ -737,8 +863,8 @@ function ArtModel() {
       <div style={{
         width: 120, height: 88, borderRadius: 'var(--radius-card)',
         background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 38,
-      }}>🧠</div>
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}><BrainCircuit size={38} style={{ color: 'var(--accent)' }} /></div>
       <div style={{ display: 'flex', gap: 8 }}>
         <Pill text="перевод" delay={120} />
         <Pill text="пересказ" delay={200} />
@@ -755,17 +881,86 @@ function ArtIndex() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
         <div style={{
           width: 88, height: 88, borderRadius: 'var(--radius-card)', background: 'var(--surface-sunken)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34,
-        }}>🔗</div>
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}><Link2 size={34} style={{ color: 'var(--text-muted)' }} /></div>
         <ArrowRight size={30} style={{ color: 'var(--accent)', animation: 'oblako-onb-nudge 1.6s var(--ease-standard) infinite' }} />
         <div style={{
           width: 88, height: 88, borderRadius: 'var(--radius-card)',
           background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34,
-        }}>🔎</div>
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}><Search size={34} style={{ color: 'var(--accent)' }} /></div>
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <Pill text="«та статья про ипотеку»" delay={160} />
+      </div>
+    </ArtStack>
+  );
+}
+
+/**
+ * Иллюстрация гайда — схема окна с подсвеченными местами, о которых идёт речь: щит в адресной
+ * строке, полоса вкладок слева, плитки рабочего стола, боковая ИИ-панель справа.
+ *
+ * ⚠️ Схема, а не значки в ряд: значки уже стоят в карточках под ней, и повторить их сверху значило
+ * бы сказать то же самое дважды. Здесь работа другая — показать, ГДЕ это находится в окне.
+ */
+function ArtGuide() {
+  const cell: React.CSSProperties = {
+    borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
+  };
+  return (
+    <ArtStack>
+      <div style={{
+        ...islandPlate, borderRadius: 'var(--radius-card)', padding: sp(2), width: 400, height: 190,
+        display: 'flex', flexDirection: 'column', gap: sp(2),
+      }}>
+        {/* Верхняя полоса: щит слева от адреса — то самое место из первой карточки. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(1) }}>
+          <span style={{
+            width: 26, height: 26, borderRadius: RADIUS.control, flex: 'none',
+            display: 'grid', placeItems: 'center',
+            background: 'color-mix(in srgb, var(--dot-vpn) 18%, transparent)',
+            animation: 'oblako-onb-rise var(--dur-slow) var(--ease-out) 80ms backwards',
+          }}>
+            <Shield size={15} style={{ color: 'var(--dot-vpn)' }} />
+          </span>
+          <div style={{ ...cell, flex: 1, height: 26 }} />
+          <span style={{
+            width: 26, height: 26, borderRadius: RADIUS.control, flex: 'none',
+            display: 'grid', placeItems: 'center', background: 'var(--accent-soft)',
+            animation: 'oblako-onb-rise var(--dur-slow) var(--ease-out) 300ms backwards',
+          }}>
+            <Sparkles size={15} style={{ color: 'var(--accent)' }} />
+          </span>
+        </div>
+
+        <div style={{ flex: 1, display: 'flex', gap: sp(2), minHeight: 0 }}>
+          {/* Полоса вкладок слева — она же место, где живут группы и закрепление. */}
+          <div style={{ width: 64, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} style={{
+                ...cell, height: 16,
+                background: i === 0 ? 'var(--accent)' : 'var(--surface-sunken)',
+              }} />
+            ))}
+          </div>
+          {/* Рабочий стол новой вкладки: плитки приложений и виджетов. */}
+          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <div key={i} style={{
+                ...cell,
+                background: i === 1 || i === 4 ? 'color-mix(in srgb, var(--accent) 22%, transparent)' : 'var(--surface-sunken)',
+                animation: `oblako-onb-rise var(--dur-slow) var(--ease-out) ${140 + i * 45}ms backwards`,
+              }} />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: sp(1) }}>
+        <Pill text="щит" dot="var(--dot-vpn)" delay={140} />
+        <Pill text="приложения" delay={220} />
+        <Pill text="цвет" dot="var(--accent)" delay={300} />
+        <Pill text="ИИ-панель" delay={380} />
       </div>
     </ArtStack>
   );
@@ -778,8 +973,8 @@ function ArtImport() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
         <div style={{
           width: 88, height: 88, borderRadius: 'var(--radius-card)', background: 'var(--surface-sunken)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36,
-        }}>🌐</div>
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}><Globe size={36} style={{ color: 'var(--text-muted)' }} /></div>
         <ArrowRight size={30} style={{
           color: 'var(--accent)',
           animation: 'oblako-onb-nudge 1.6s var(--ease-standard) infinite',
@@ -787,8 +982,8 @@ function ArtImport() {
         <div style={{
           width: 88, height: 88, borderRadius: 'var(--radius-card)',
           background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36,
-        }}>☁️</div>
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}><CloudMark size={62} /></div>
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <Pill text="закладки" delay={120} />
