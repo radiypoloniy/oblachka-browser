@@ -172,7 +172,7 @@ export function chromeTintStyle(backgroundImage: string): React.CSSProperties {
 export const GRAIN_ENABLED = true;
 export function chromeSpaceStyle(dark = false): React.CSSProperties {
   const gradient =
-    'linear-gradient(180deg, var(--space-1) 0%, var(--space-2) 52%, var(--space-3) 100%)';
+    'linear-gradient(180deg, var(--ground-1) 0%, var(--ground-2) 52%, var(--ground-3) 100%)';
   if (!GRAIN_ENABLED) {
     return { backgroundImage: gradient, backgroundRepeat: 'no-repeat', backgroundSize: '100% 100%' };
   }

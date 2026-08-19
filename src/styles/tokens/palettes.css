@@ -39,9 +39,9 @@
    просто заливка, а не радиальный градиент. */
 [data-palette="graphite"]:not([data-theme="dark"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #E3E6E7;
-  --space-2: #E2E3E5;
-  --space-3: #E0E0E4;
+  --ground-1: #E3E6E7;
+  --ground-2: #E2E3E5;
+  --ground-3: #E0E0E4;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFEFF;
@@ -73,9 +73,9 @@
 }
 [data-palette="graphite"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #0F1316;
-  --space-2: #0E1014;
-  --space-3: #0D0D13;
+  --ground-1: #0F1316;
+  --ground-2: #0E1014;
+  --ground-3: #0D0D13;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #121212;
@@ -121,9 +121,9 @@
    пропадает). Эти две ступени добраны в том же семействе по контрасту. */
 [data-palette="slate"]:not([data-theme="dark"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #E3E6E7;
-  --space-2: #E2E3E5;
-  --space-3: #E0E0E4;
+  --ground-1: #E3E6E7;
+  --ground-2: #E2E3E5;
+  --ground-3: #E0E0E4;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFEFF;
@@ -164,9 +164,9 @@
 }
 [data-palette="slate"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #0F1316;
-  --space-2: #0E1014;
-  --space-3: #0C0D12;
+  --ground-1: #0F1316;
+  --ground-2: #0E1014;
+  --ground-3: #0C0D12;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #111213;
@@ -220,9 +220,9 @@
    когда-то убрали пурпурные поверхности. */
 [data-palette="paper"]:not([data-theme="dark"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #E7E5E3;
-  --space-2: #E3E2E0;
-  --space-3: #E1E1DC;
+  --ground-1: #E7E5E3;
+  --ground-2: #E3E2E0;
+  --ground-3: #E1E1DC;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FFFFFE;
@@ -262,9 +262,9 @@
 }
 [data-palette="paper"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #16110F;
-  --space-2: #110F0C;
-  --space-3: #0D0D09;
+  --ground-1: #16110F;
+  --ground-2: #110F0C;
+  --ground-3: #0D0D09;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #131311;
@@ -320,9 +320,9 @@
    панелях (см. untintedPlateVars в src/styles/island.ts). */
 [data-palette="mint"]:not([data-theme="dark"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #E3E7E3;
-  --space-2: #E0E4E1;
-  --space-3: #DDE2E0;
+  --ground-1: #E3E7E3;
+  --ground-2: #E0E4E1;
+  --ground-3: #DDE2E0;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFFFE;
@@ -362,9 +362,9 @@
 }
 [data-palette="mint"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #0F1610;
-  --space-2: #0D1310;
-  --space-3: #0B110F;
+  --ground-1: #0F1610;
+  --ground-2: #0D1310;
+  --ground-3: #0B110F;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #111312;
@@ -401,9 +401,9 @@
 
 [data-palette="sky"]:not([data-theme="dark"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #E3E6E7;
-  --space-2: #E2E3E5;
-  --space-3: #E0E0E4;
+  --ground-1: #E3E6E7;
+  --ground-2: #E2E3E5;
+  --ground-3: #E0E0E4;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #FEFEFF;
@@ -439,9 +439,9 @@
 }
 [data-palette="sky"][data-theme="dark"]:not([data-incognito="true"]) {
   /* Пространство палитры — маршрут градиента земли (см. scripts/palette-space.mjs). */
-  --space-1: #0F1416;
-  --space-2: #0E1114;
-  --space-3: #0D0E13;
+  --ground-1: #0F1416;
+  --ground-2: #0E1114;
+  --ground-3: #0D0E13;
 
   /* Шкала нейтрали палитры — построена от её земли (разбор общий, см. colors.css). */
   --n1: #111213;

@@ -1,6 +1,6 @@
 // Генератор ПРОСТРАНСТВА палитры: маршрут градиента земли из трёх остановок.
 //
-// Запуск руками: node scripts/palette-space.mjs — пересчитывает --space-1..3 во всех палитрах.
+// Запуск руками: node scripts/palette-space.mjs — пересчитывает --ground-1..3 во всех палитрах.
 //
 // ⚠️ ГРАДИЕНТ ИДЁТ ПО ОТТЕНКУ, А НЕ ПО СВЕТЛОТЕ, и это главное правило. Контраст считается из
 // светлот, поэтому любой перепад светлоты тратит бюджет читаемости — в тёмной теме втрое дороже,
@@ -112,7 +112,7 @@ function declare(stops, indent = 2) {
 }
 
 function patch(text, stops) {
-  if (/--space-1:/.test(text)) {
+  if (/--ground-1:/.test(text)) {
     return text.replace(/--space-(\d): #[0-9A-Fa-f]{6};/g, (m, n) => `--space-${n}: ${stops[Number(n) - 1]};`);
   }
   return null;

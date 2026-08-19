@@ -226,6 +226,17 @@ function resolveColor(css: string): string {
     const srgb = /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/.exec(value);
     if (srgb) return '#' + srgb.slice(1, 4).map((v) => hex(Number(v) * 255)).join('');
 
+    // ⚠️ ПРОЗРАЧНОЕ ЗНАЧЕНИЕ — ЭТО ОШИБКА РАЗБОРА, А НЕ ЦВЕТ, и именно на этом ломалась полоса
+    // системных кнопок. Chromium отдаёт `rgba(0, 0, 0, 0)`, когда переменная не разрешилась
+    // (стили ещё не применены, опечатка в имени, значение не цвет), а регулярка ниже совпадала с
+    // такой строкой и возвращала #000000 — то есть ЧЁРНЫЙ выдавался за честно посчитанный цвет.
+    // Фолбэк при этом не срабатывал никогда: у вызывающего на руках был «валидный» хекс.
+    // Замер на чистом профиле (лог в обработчике WINDOW_SET_OVERLAY): в main приезжало
+    // {"color":"#000000","symbolColor":"#3C3C43"} — светлые символы Windows на чёрном фоне поверх
+    // светлого окна, ровно то, что было видно глазом.
+    const alpha = /^rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/.exec(value);
+    if (alpha && Number(alpha[1]) < 0.99) return '';
+
     const rgb = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(value);
     if (rgb) return '#' + rgb.slice(1, 4).map((v) => hex(Number(v))).join('');
     return '';
@@ -472,13 +483,22 @@ export default function App() {
     // data-palette: тогда в полосу уезжает цвет ПРЕДЫДУЩЕЙ темы и остаётся там навсегда — пока
     // не изменится одна из зависимостей. Именно так на чистом профиле получался тёмный
     // прямоугольник поверх светлого окна.
-    const id = requestAnimationFrame(() => {
-      const raw = chromeTinted ? (ground?.top ?? '') : resolveColor('var(--space-1)');
+    // ⚠️ НЕ ОДИН КАДР, А НЕСКОЛЬКО ПОПЫТОК. Цвет берётся из ЖИВЫХ стилей пробным элементом, а
+    // первый кадр после монтирования может прийти раньше, чем применены и токены темы, и
+    // выставленные тут же data-theme/data-palette. Одна попытка означала бы «не разрешилось —
+    // живи с фолбэком до следующей смены темы»; пять кадров закрывают запуск на холодную, а если
+    // не разрешилось и за них, уходим на фолбэк осознанно.
+    let tries = 0;
+    let id = 0;
+    const apply = () => {
+      const raw = chromeTinted ? (ground?.top ?? '') : resolveColor('var(--ground-1)');
+      const ok = /^#[0-9a-f]{6}$/i.test(raw);
+      if (!ok && tries < 5) { tries += 1; id = requestAnimationFrame(apply); return; }
       // ⚠️ Фолбэк ЗАВИСИТ ОТ ТЕМЫ. Прежний литерал светлой темы означал, что при любой осечке
       // разрешения цвета в тёмной теме полоса кнопок становилась светлой — то есть ошибка
       // выглядела как «кнопки Windows не от этого окна».
       const fallback = (dark || activeIncognito) ? '#121213' : '#F2F2F7';
-      const base = /^#[0-9a-f]{6}$/i.test(raw) ? raw : fallback;
+      const base = ok ? raw : fallback;
       void window.oblako.setTitleBarOverlay({
         // ⚠️ Затемнения под модалкой здесь БОЛЬШЕ НЕТ, и это возврат к тому, как ведут себя
         // настоящие приложения Windows. Ни WinUI-диалог, ни Chrome, ни VS Code не перекрашивают
@@ -491,7 +511,8 @@ export default function App() {
         color: base,
         symbolColor: (dark || activeIncognito) ? '#EBEBF5' : '#3C3C43',
       });
-    });
+    };
+    id = requestAnimationFrame(apply);
     return () => cancelAnimationFrame(id);
     // themePrefs.palette в зависимостях не ради самого значения, а ради ПЕРЕЧИТЫВАНИЯ --app-bg:
     // палитра меняет его, не меняя ни dark, ни incognito. chromeTinted — по той же причине:

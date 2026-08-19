@@ -65,6 +65,50 @@ function codeLines(text) {
   return out;
 }
 
+// ── 0. Одно имя токена — один смысл ─────────────────────────────────────────
+//
+// ⚠️ Правило оплачено разбором 19.08.2026. `--space-1..3` были объявлены ДВАЖДЫ и в разных
+// смыслах: в colors.css/palettes.css как цвета маршрута земли, а в spacing.css как шкала отступов
+// (4px, 8px, 12px). spacing.css импортируется ПОЗЖЕ, поэтому на `:root` побеждали пиксели — и
+// `linear-gradient(180deg, var(--space-1) …)` превращался в `linear-gradient(180deg, 4px …)`,
+// то есть в невалидное значение. Последствия видно было не там, где причина:
+//   • градиент земли на палитре по умолчанию не рисовался вовсе;
+//   • полоса системных кнопок Windows становилась ЧЁРНОЙ — цвет для неё считается пробным
+//     элементом, тот получал прозрачный фон, а разбор читал `rgba(0, 0, 0, 0)` как #000000.
+// Обе проверки, которые могли бы это поймать, молчали: contrast-check разбирает только
+// colors.css и palettes.css, а spacing.css в его поле зрения не попадает вовсе.
+//
+// Проверяем по СМЫСЛУ значения (цвет / длина / прочее), а не по факту повторного объявления:
+// переопределять токен в палитре и в тёмной теме — норма, а менять его тип — нет.
+{
+  const kindOf = (v) => {
+    const t = v.trim();
+    if (/^#[0-9a-fA-F]{3,8}$|^rgb|^hsl|^color-mix|^color\(|^oklch/i.test(t)) return 'цвет';
+    if (/^-?[\d.]+(px|rem|em|%)$|^0$/.test(t)) return 'длина';
+    return null; // тени, градиенты, фильтры, ссылки на другие токены — не типизируем
+  };
+  const kinds = new Map(); // имя → Map<смысл, Set<файл>>
+  for (const f of walk(path.join(ROOT, 'src/styles'), ['.css'])) {
+    const css = fs.readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const [, name, value] of css.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
+      const kind = kindOf(value);
+      if (!kind) continue;
+      if (!kinds.has(name)) kinds.set(name, new Map());
+      const byKind = kinds.get(name);
+      if (!byKind.has(kind)) byKind.set(kind, new Set());
+      byKind.get(kind).add(rel(f));
+    }
+  }
+  const hits = [];
+  for (const [name, byKind] of kinds) {
+    if (byKind.size < 2) continue;
+    const parts = [...byKind].map(([k, files]) => `${k} (${[...files].join(', ')})`);
+    hits.push(`${name}: ${parts.join(' и ')}`);
+  }
+  checkEmpty('одно имя токена — один смысл', hits,
+    'переименуйте одну из ролей: разные смыслы под одним именем побеждают по порядку импорта');
+}
+
 // ── 1. Фиолетового в СИСТЕМНЫХ цветах нет ───────────────────────────────────
 //
 // Правило из CLAUDE.md: «Фиолетового в системе нет вообще — ни токена, ни литерала». Оно уже

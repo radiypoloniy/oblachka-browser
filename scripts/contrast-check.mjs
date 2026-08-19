@@ -243,7 +243,7 @@ for (const [label, palette] of PALETTES) {
 
 // ── коридор земли ────────────────────────────────────────────────────
 // ⚠️ ЗЕМЛЯ БОЛЬШЕ НЕ ПЛОСКАЯ, и мерить её одним токеном нельзя. Она рисуется маршрутом
-// пространства (--space-1..3), а проверка брала --app-bg, то есть значение, которого на экране
+// пространства (--ground-1..3), а проверка брала --app-bg, то есть значение, которого на экране
 // нет. Ровно так и вышло: прогон был зелёным, а верх окна ушёл ниже порога различимости.
 //
 // ⚠️ Меряем ОБЕ крайние точки маршрута: всё, что лежит на земле, обязано держаться и наверху, и
@@ -257,9 +257,9 @@ const corridor = [];
 for (const [label, palette] of PALETTES) {
   for (const dark of [false, true]) {
     const t = tokensFor({ palette, dark, incognito: false });
-    const mid = resolve('var(--space-2)', t);
-    const top = over(resolve('var(--space-1)', t), mid);
-    const bottom = over(resolve('var(--space-3)', t), mid);
+    const mid = resolve('var(--ground-2)', t);
+    const top = over(resolve('var(--ground-1)', t), mid);
+    const bottom = over(resolve('var(--ground-3)', t), mid);
     const scene = over(resolve('var(--surface-solid)', t), top);
     corridor.push({
       label, dark,
