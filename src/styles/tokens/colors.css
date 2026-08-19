@@ -196,14 +196,9 @@
      src/styles/island.ts. */
   --canvas: var(--app-bg);
 
-  /* ── Liquid glass fills ──────────────────────────────────────────
-     Translucent white plates that frost the canvas behind them. Pair
-     with --glass-blur + --shadow-glass (specular edge lives in shadow).
-     Этап B: --surface/--surface-island больше НЕ читают эти токены (см. ниже, отдельные
-     непрозрачные значения) — --glass-fill* остаются как есть, но потребителей у них
-     теперь нет (Этап C добьёт --glass-filter, тогда эта секция станет полностью мёртвой). */
-  --glass-fill:        rgba(255,255,255,0.52);  /* shell islands, input plate, menus */
-  --glass-fill-strong: rgba(255,255,255,0.66);  /* dropdowns / scrims needing more body */
+  /* ⚠️ Здесь были --glass-fill и --glass-fill-strong — полупрозрачные белила времён «жидкого
+     стекла». Потребителей у них не осталось ни одного: поверхности давно живут на непрозрачном
+     каскаде светлоты, а хром вообще перестал быть поверхностью (см. chromeCluster в island.ts).
 
   /* Этап B: непрозрачный каскад светлоты вместо полупрозрачных белил-на-блюре — тот же
      принцип, что в dark (app-bg темнее всего → sunken → surface, лестница ступеней видна
