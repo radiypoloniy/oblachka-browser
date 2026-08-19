@@ -70,10 +70,12 @@ export function PopoverHint({ children }: { children: React.ReactNode }) {
  * интерфейсе больше нигде нет; три таких прямоугольника подряд читаются формой из веб-двухтысячных.
  * Выбранное отмечается общим токеном --selected, тем же, что вкладка в сайдбаре и раздел настроек.
  */
-export function PopoverRow({ icon, title, hint, selected, onClick, disabled }: {
+export function PopoverRow({ icon, title, hint, trailing, selected, onClick, disabled }: {
   icon?: React.ReactNode;
   title: React.ReactNode;
   hint?: React.ReactNode;
+  /** Состояние справа: галочка подключения, спиннер, счётчик. Место держится всегда — см. ниже. */
+  trailing?: React.ReactNode;
   selected?: boolean;
   onClick?: () => void;
   disabled?: boolean;
@@ -111,6 +113,9 @@ export function PopoverRow({ icon, title, hint, selected, onClick, disabled }: {
           <span style={{ ...TEXT.caption, display: 'block' }}>{hint}</span>
         )}
       </span>
+      {/* ⚠️ Место под состояние держим ВСЕГДА, даже пустым: иначе строки без галочки выбиваются из
+          общей вертикали и список «прыгает» при подключении. */}
+      <span style={{ width: 16, flex: 'none', display: 'grid', placeItems: 'center' }}>{trailing}</span>
     </button>
   );
 }

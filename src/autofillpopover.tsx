@@ -6,6 +6,7 @@ import { islandPlate } from './styles/island';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
+import { PrimaryButton, QuietButton } from './components/popoverKit';
 
 // Состояние поповера (совпадает с electron/AutofillPopoverManager.ts::AutofillPopoverState).
 type AutofillPopoverState =
@@ -43,14 +44,9 @@ const cardShell: React.CSSProperties = {
   backdropFilter: 'var(--material-blur)',
   WebkitBackdropFilter: 'var(--material-blur)', overflow: 'hidden',
 };
-const btnPrimary: React.CSSProperties = {
-  padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
-  background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default',
-};
-const btnGhost: React.CSSProperties = {
-  padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--divider-strong)',
-  background: 'transparent', color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default',
-};
+// ⚠️ Своих кнопок здесь больше НЕТ. Пара была объявлена заново — с полем 6×12 против 7×14 у
+// паролей, — и разница в пиксель читается как «кнопки в разных местах чуть разные». Теперь общая
+// пара из набора (popoverKit): она же в паролях, VPN и остальных карточках.
 
 function summary(a: AddressProfile): string {
   return [a.street, a.city, a.country].filter(Boolean).join(', ');
@@ -96,8 +92,8 @@ function AutofillPopoverApp() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, padding: '4px 14px 12px', justifyContent: 'flex-end' }}>
-            <button onClick={() => window.autofillPopover.close()} style={btnGhost}>Не сохранять</button>
-            <button onClick={() => window.autofillPopover.save()} style={btnPrimary}>Сохранить</button>
+            <QuietButton onClick={() => window.autofillPopover.close()}>Не сохранять</QuietButton>
+            <PrimaryButton onClick={() => window.autofillPopover.save()}>Сохранить</PrimaryButton>
           </div>
         </div>
       </div>
@@ -128,8 +124,8 @@ function AutofillPopoverApp() {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 8, padding: '10px 14px 12px', justifyContent: 'flex-end' }}>
-            <button onClick={() => window.autofillPopover.close()} style={btnGhost}>Не надо</button>
-            <button onClick={() => window.autofillPopover.apply()} style={btnPrimary}>Разложить</button>
+            <QuietButton onClick={() => window.autofillPopover.close()}>Не надо</QuietButton>
+            <PrimaryButton onClick={() => window.autofillPopover.apply()}>Разложить</PrimaryButton>
           </div>
         </div>
       </div>
