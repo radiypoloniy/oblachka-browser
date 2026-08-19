@@ -1,122 +1,158 @@
-import { WebContentsView, ipcMain, screen } from 'electron';
-import type { BrowserWindow } from 'electron';
+import { BrowserWindow, ipcMain, screen } from 'electron';
 import path from 'node:path';
 import type { AppMenuItem } from '../shared/ipc';
-import { closeWindowView } from './viewTeardown';
 
 // ── Меню приложения ───────────────────────────────────────────────────────────
 //
-// ⚠️ ЗАЧЕМ СВОЁ МЕНЮ ВМЕСТО НАТИВНОГО. Контекстные меню и меню «⋯» рисовались через
-// Menu.buildFromTemplate().popup() — то есть их рисует Windows. Ни один наш токен туда не
-// доходит: ни материал, ни радиусы, ни шрифт, ни палитра. На цветной земле и в тёмной теме это
-// выглядит как чужая программа посреди окна, и «поповеры не подчиняются общим законам» — ровно
-// про них. Electron стилизовать нативное меню не даёт вовсе, поэтому единственный путь — рисовать
-// своё, как это делают Chrome, Arc и все остальные.
+// ⚠️ ЗАЧЕМ СВОЁ МЕНЮ. Контекстные меню и меню «⋯» рисовались через Menu.buildFromTemplate().popup(),
+// то есть их рисует Windows. Ни один наш токен туда не доходит — ни материал, ни радиусы, ни
+// шрифт, ни палитра, — и посреди окна оказывалась карточка из другой программы. Electron
+// стилизовать нативное меню не позволяет вовсе, поэтому своё рисуют все: Chrome, Arc, VS Code.
 //
-// ⚠️ Меню живёт в СВОЕЙ WebContentsView, а не в слое хрома: оно обязано ложиться поверх страницы,
-// а слой хрома лежит под вью вкладки в области контента — там меню обрезалось бы по её краю.
+// ⚠️ ЭТО ОТДЕЛЬНОЕ ОКНО, А НЕ WebContentsView, и первая версия на вью была ошибкой сразу по трём
+// причинам:
+//  • вью живёт ВНУТРИ окна — меню у нижнего или правого края обрезалось бы по его границе, а
+//    системное меню в этом месте просто выходит за окно;
+//  • вью не знает о кликах МИМО себя: клик по странице приходит в другой процесс, и меню
+//    оставалось висеть, пока в него не ткнут;
+//  • размер вью задаётся до того, как содержимое измерено, — на первом кадре карточка резалась по
+//    прямоугольнику вью (ровно то, что было видно на скриншоте: обрезанный пункт и серое поле).
 //
-// ⚠️ Позиция — от курсора, как у нативного: меню открывается там, где человек нажал, а не там,
-// где нам удобно. Экранные координаты переводим в оконные сами, потому что вью живёт в системе
-// координат окна.
+// Конструкция повторяет дропдаун омнибокса (SuggestDropdownManager) — она в проекте уже проверена:
+// дочернее окно без рамы, прозрачное, без системной тени (её рисует сама карточка).
+//
+// ⚠️ В отличие от дропдауна, меню ЗАБИРАЕТ ФОКУС (focusable: true) — и это осознанно. Меню
+// модально по смыслу: Esc и стрелки обязаны работать, а закрытие по blur — единственный надёжный
+// способ поймать «кликнул куда-то ещё», включая клики по странице и по другому приложению.
 
 const SHADOW_MARGIN = 24; // прозрачный запас под тень — см. shared/overlayMetrics.ts
-const MIN_WIDTH = 220;
+const MIN_WIDTH = 200;
 
 interface MenuState {
-  win: BrowserWindow;
-  view: WebContentsView | null;
+  owner: BrowserWindow;
+  popup: BrowserWindow | null;
   loaded: boolean;
-  open: boolean;
-  /** Куда вернуть выбор: id пункта → действие. Живёт только пока меню открыто. */
+  /** Идентификатор пункта → действие. Живёт только пока меню открыто. */
   actions: Map<string, () => void>;
+  /** Экранные координаты точки, в которой человек нажал. */
   anchor: { x: number; y: number };
-  size: { width: number; height: number };
 }
 
 const menus = new Map<number, MenuState>();
 let ipcRegistered = false;
 
-function stateFor(win: BrowserWindow): MenuState {
-  const found = menus.get(win.id);
+function stateFor(owner: BrowserWindow): MenuState {
+  const found = menus.get(owner.id);
   if (found) return found;
-  const created: MenuState = {
-    win, view: null, loaded: false, open: false,
-    actions: new Map(), anchor: { x: 0, y: 0 }, size: { width: MIN_WIDTH, height: 40 },
-  };
-  menus.set(win.id, created);
-  // Окно не уносит с собой дочерние вью — закрываем сами (разбор в viewTeardown.ts).
-  win.once('closed', () => { closeWindowView(menus.get(win.id)?.view); menus.delete(win.id); });
+  const created: MenuState = { owner, popup: null, loaded: false, actions: new Map(), anchor: { x: 0, y: 0 } };
+  menus.set(owner.id, created);
+  owner.once('closed', () => {
+    const st = menus.get(owner.id);
+    if (st?.popup && !st.popup.isDestroyed()) st.popup.destroy();
+    menus.delete(owner.id);
+  });
   return created;
 }
 
 function stateBySender(sender: Electron.WebContents): MenuState | null {
-  for (const st of menus.values()) if (st.view?.webContents === sender) return st;
+  for (const st of menus.values()) if (st.popup?.webContents === sender) return st;
   return null;
-}
-
-/** Раскладка: меню не должно вылезать за окно — при нехватке места отражаем от курсора. */
-function layout(st: MenuState): void {
-  if (!st.view) return;
-  const bounds = st.win.getContentBounds();
-  const w = st.size.width + SHADOW_MARGIN * 2;
-  const h = st.size.height + SHADOW_MARGIN * 2;
-  // ⚠️ Отражаем, а не прижимаем: прижатое меню накрывает точку клика, и человек теряет место,
-  // по которому нажимал. Так же ведут себя системные меню.
-  const x = st.anchor.x + st.size.width > bounds.width ? st.anchor.x - st.size.width : st.anchor.x;
-  const y = st.anchor.y + st.size.height > bounds.height ? st.anchor.y - st.size.height : st.anchor.y;
-  st.view.setBounds({
-    x: Math.max(0, Math.round(x - SHADOW_MARGIN)),
-    y: Math.max(0, Math.round(y - SHADOW_MARGIN)),
-    width: Math.round(w),
-    height: Math.round(h),
-  });
 }
 
 function ensureIpc(): void {
   if (ipcRegistered) return;
   ipcRegistered = true;
 
+  // Размер приходит ПОСЛЕ отрисовки: main не знает, сколько места займут подписи.
   ipcMain.on('app-menu:size', (e, size: { width: number; height: number }) => {
     const st = stateBySender(e.sender);
-    if (!st) return;
-    st.size = { width: Math.max(MIN_WIDTH, Math.round(size.width)), height: Math.max(1, Math.round(size.height)) };
-    layout(st);
+    if (!st?.popup || st.popup.isDestroyed()) return;
+    place(st, size);
+    if (!st.popup.isVisible()) {
+      // ⚠️ Показываем ТОЛЬКО здесь — когда размер уже известен и окно поставлено на место.
+      // Показ до измерения давал кадр с обрезанной карточкой и серым полем вокруг неё.
+      st.popup.showInactive();
+      st.popup.focus();
+    }
   });
 
   ipcMain.on('app-menu:pick', (e, id: string) => {
     const st = stateBySender(e.sender);
     if (!st) return;
     const action = st.actions.get(id);
-    closeAppMenu(st.win);
-    // ⚠️ Сначала закрываем, потом выполняем: действие может открыть другое окно или диалог, и
-    // меню поверх него выглядело бы зависшим.
+    closeAppMenu(st.owner);
+    // Сначала закрываем, потом выполняем: действие может открыть окно или диалог, и меню поверх
+    // него выглядело бы зависшим.
     action?.();
   });
 
   ipcMain.on('app-menu:close', (e) => {
     const st = stateBySender(e.sender);
-    if (st) closeAppMenu(st.win);
+    if (st) closeAppMenu(st.owner);
   });
 }
 
-function ensureView(st: MenuState): WebContentsView {
-  if (st.view) return st.view;
+/** Поставить окно так, чтобы меню целиком помещалось на экране. */
+function place(st: MenuState, size: { width: number; height: number }): void {
+  if (!st.popup || st.popup.isDestroyed()) return;
+  const width = Math.round(Math.max(MIN_WIDTH, size.width)) + SHADOW_MARGIN * 2;
+  const height = Math.round(Math.max(1, size.height)) + SHADOW_MARGIN * 2;
+  const area = screen.getDisplayNearestPoint(st.anchor).workArea;
+
+  // ⚠️ Отражаем от точки клика, а не прижимаем к краю: прижатое меню накрывает место, по которому
+  // человек нажал. Так же ведут себя системные меню.
+  let x = st.anchor.x - SHADOW_MARGIN;
+  let y = st.anchor.y - SHADOW_MARGIN;
+  if (x + width > area.x + area.width) x = st.anchor.x - width + SHADOW_MARGIN;
+  if (y + height > area.y + area.height) y = st.anchor.y - height + SHADOW_MARGIN;
+
+  st.popup.setBounds({
+    x: Math.round(Math.max(area.x, x)),
+    y: Math.round(Math.max(area.y, y)),
+    width,
+    height,
+  });
+}
+
+function ensurePopup(st: MenuState): BrowserWindow {
+  if (st.popup && !st.popup.isDestroyed()) return st.popup;
   ensureIpc();
-  st.view = new WebContentsView({
+  const popup = new BrowserWindow({
+    parent: st.owner,
+    frame: false,
+    transparent: true,
+    // Тень рисует сама карточка: системная легла бы по прямоугольнику окна, то есть по прозрачному
+    // запасу вокруг неё.
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload-appmenu.js'),
       contextIsolation: true,
       sandbox: false,
     },
   });
-  st.view.setBackgroundColor('#00000000');
-  st.view.webContents.loadURL('oblako-chrome://localhost/appmenu.html');
-  st.view.webContents.once('did-finish-load', () => { st.loaded = true; });
-  return st.view;
+  st.popup = popup;
+  popup.setMenuBarVisibility(false);
+  // Меню никуда не навигирует само; если что-то попробует — окно UI не должно стать страницей.
+  popup.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('oblako-chrome://')) e.preventDefault();
+  });
+  popup.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // ⚠️ Закрытие по потере фокуса — единственный надёжный способ поймать «кликнул куда-то ещё»:
+  // клик по странице или по другому приложению до рендерера меню не доходит вовсе.
+  popup.on('blur', () => closeAppMenu(st.owner));
+  popup.webContents.once('did-finish-load', () => { st.loaded = true; });
+  void popup.loadURL('oblako-chrome://localhost/appmenu.html');
+  return popup;
 }
 
-/** Пункты в том виде, в каком их рисует вью: без функций, только данные. */
+/** Пункты в том виде, в каком их рисует окно меню: без функций, только данные. */
 function toSpec(items: AppMenuItem[], actions: Map<string, () => void>, prefix = 'i'): AppMenuItem[] {
   return items.map((item, i) => {
     const id = `${prefix}${i}`;
@@ -133,47 +169,38 @@ function toSpec(items: AppMenuItem[], actions: Map<string, () => void>, prefix =
 /**
  * Показать меню в точке курсора.
  *
- * ⚠️ Действия НЕ пересекают IPC: наружу уходят только подписи и идентификаторы, а функции
- * остаются здесь, в main. Иначе меню превратилось бы в канал исполнения произвольных замыканий по
- * идентификатору из рендерера.
+ * ⚠️ Действия НЕ пересекают IPC: наружу уходят только подписи и идентификаторы, функции остаются
+ * здесь. Иначе меню стало бы каналом исполнения произвольных замыканий по строке из рендерера.
  */
-export function showAppMenu(win: BrowserWindow, items: AppMenuItem[]): void {
-  const st = stateFor(win);
+export function showAppMenu(owner: BrowserWindow, items: AppMenuItem[]): void {
+  const st = stateFor(owner);
   st.actions.clear();
   const spec = toSpec(items, st.actions);
+  st.anchor = screen.getCursorScreenPoint();
 
-  const cursor = screen.getCursorScreenPoint();
-  const content = win.getContentBounds();
-  st.anchor = { x: cursor.x - content.x, y: cursor.y - content.y };
-  st.open = true;
-
-  const view = ensureView(st);
-  layout(st);
-  if (!win.contentView.children.includes(view)) win.contentView.addChildView(view);
-  const send = () => view.webContents.send('app-menu:show', spec);
+  const popup = ensurePopup(st);
+  const send = () => popup.webContents.send('app-menu:show', spec);
   if (st.loaded) send();
-  else view.webContents.once('did-finish-load', send);
+  else popup.webContents.once('did-finish-load', send);
 }
 
-export function closeAppMenu(win: BrowserWindow): void {
-  const st = menus.get(win.id);
-  if (!st?.view || !st.open) return;
-  st.open = false;
+export function closeAppMenu(owner: BrowserWindow): void {
+  const st = menus.get(owner.id);
+  if (!st?.popup || st.popup.isDestroyed() || !st.popup.isVisible()) return;
   st.actions.clear();
-  // Вью не уничтожаем — меню открывают часто, а создание вью стоит кадра. Просто убираем со сцены.
-  if (win.contentView.children.includes(st.view)) win.contentView.removeChildView(st.view);
+  st.popup.hide();
 }
 
 /**
  * Перевод шаблона Electron в наши пункты.
  *
- * ⚠️ Существует ради того, чтобы НЕ ПЕРЕПИСЫВАТЬ четыре готовых меню: их содержимое собрано с
- * логикой (подменю папок, состояния перевода, отслеживание цены), и переносить эту логику вручную
- * значило бы завести пятое место, где она может разойтись. Адаптер меняет только оболочку.
+ * ⚠️ Существует ради того, чтобы НЕ ПЕРЕПИСЫВАТЬ готовые меню: их содержимое собрано с логикой
+ * (подменю папок, состояния перевода, отслеживание цены), и переносить её вручную значило бы
+ * завести второе место, где она может разойтись. Адаптер меняет только оболочку.
  *
- * ⚠️ Роли (role: 'copy' и подобные) сюда НЕ проходят: их исполняет сам Chromium в нативном меню, и
- * у нашего меню такого канала нет. Места с ролями переводятся отдельно, с явными действиями через
- * webContents — иначе пункт молча ничего не делал бы.
+ * ⚠️ Роли (role: 'copy' и подобные) сюда не проходят: их исполняет сам Chromium в нативном меню.
+ * Места с ролями переводятся отдельно, с явными действиями через webContents, иначе пункт молча
+ * ничего не сделает.
  */
 export function fromTemplate(items: Electron.MenuItemConstructorOptions[]): AppMenuItem[] {
   return items.map((item) => ({

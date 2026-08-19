@@ -97,19 +97,13 @@ function AppMenu() {
     return () => ro.disconnect();
   }, [items]);
 
-  // ⚠️ Закрытие по Esc и по клику мимо карточки: у нативного меню это делала система, теперь
-  // делаем мы. Без этого меню остаётся висеть, и человек не может от него избавиться.
+  // ⚠️ Здесь только Esc. Клик МИМО меню ловит main по потере фокуса окном: клик по странице или
+  // по другому приложению до этого рендерера не доходит вовсе — на этом и сломалась первая версия
+  // меню, жившая внутри вью.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') window.appMenu.close(); };
-    const onDown = (e: MouseEvent) => {
-      if (!cardRef.current?.contains(e.target as Node)) window.appMenu.close();
-    };
     window.addEventListener('keydown', onKey);
-    window.addEventListener('mousedown', onDown);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('mousedown', onDown);
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   if (!items?.length) return null;
