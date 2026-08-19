@@ -1,4 +1,4 @@
-import { app, net } from 'electron';
+import { app, net, screen } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -7,8 +7,19 @@ import path from 'node:path';
 // userData и держим в памяти. Источник — Lorem Picsum с дневным сидом (без API-ключа, реальные
 // фото, стабильны в пределах суток). Опция включается пользователем в разделе «Интерфейс».
 const DIR = path.join(app.getPath('userData'), 'newtab-photo');
-const WIDTH = 1920;
-const HEIGHT = 1080;
+/**
+ * Размер снимка под ФАКТИЧЕСКИЙ экран, а не константой.
+ *
+ * ⚠️ Здесь стояло 1920×1080. На мониторе 2560 такой снимок растягивается на 133 %, и картинка
+ * мылится ещё до всякого размытия — это первая из трёх причин, по которым обои выглядели дёшево.
+ * Округляем вверх до сотни: у picsum каждый размер — отдельный кадр, и точное совпадение с
+ * пикселями экрана только мешало бы кэшу.
+ */
+function photoSize(): { width: number; height: number } {
+  const { size, scaleFactor } = screen.getPrimaryDisplay();
+  const round = (v: number) => Math.min(3840, Math.ceil((v * scaleFactor) / 100) * 100);
+  return { width: round(size.width), height: round(size.height) };
+}
 
 let memCache: { date: string; dataUrl: string } | null = null;
 
@@ -31,7 +42,7 @@ export async function getPhotoOfDay(): Promise<{ ok: boolean; dataUrl?: string }
 
   // 2) сеть
   try {
-    const res = await net.fetch(`https://picsum.photos/seed/${date}/${WIDTH}/${HEIGHT}`, { redirect: 'follow' });
+    const res = await net.fetch(`https://picsum.photos/seed/${date}/${photoSize().width}/${photoSize().height}`, { redirect: 'follow' });
     if (!res.ok) return { ok: false };
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 1024) return { ok: false }; // подозрительно мало для фото — не кэшируем мусор

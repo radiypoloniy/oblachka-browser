@@ -637,7 +637,12 @@ function SearchBar({ onSubmit }: { onSubmit: (v: string) => void }) {
 function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoUrl: string | null }) {
   const base: React.CSSProperties = {
     position: 'absolute', inset: 0, zIndex: 0,
-    backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+    backgroundSize: 'cover',
+    // ⚠️ Не 'center': на широком окне вертикальный сюжет режется ровно посередине, и в кадр
+    // попадает случайная середина фотографии — на живом снимке это оказалось лицо крупным планом.
+    // В пейзаже, городе и почти любом снимке значимое лежит ВЫШЕ середины, а низ — передний план.
+    backgroundPosition: 'center 35%',
+    backgroundRepeat: 'no-repeat',
     filter: bg.blur > 0 ? `blur(${bg.blur}px)` : undefined,
     transform: bg.blur > 0 ? 'scale(1.06)' : undefined, // прячем размытые края
   };
