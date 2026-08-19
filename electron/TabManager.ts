@@ -334,9 +334,11 @@ export class TabManager {
   // wc.ipc.on выше). url — уже вычисленный main'ом wc.getURL(), не из payload preload'а.
   private onPasswordFormCb?: (tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string) => void;
   private onPasswordSubmitCb?: (tabId: string, username: string, password: string, url: string) => void;
-  // Иконка в поле пароля (не в тулбаре) — rect в координатах вьюпорта СТРАНИЦЫ, main сам
-  // транслирует в оконные через getTabViewBounds() (см. PasswordAutofillManager.ts).
-  private onPasswordFieldIconClickCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void;
+  // Поповер паролей, заякоренный на поле (не на тулбар) — rect в координатах вьюпорта СТРАНИЦЫ,
+  // main сам транслирует в оконные через getTabViewBounds() (см. PasswordAutofillManager.ts).
+  // ⚠️ Поводов два и они не равны: 'icon' — человек нажал значок-ключ (можно предложить и
+  // сгенерировать пароль), 'field' — просто кликнул в пустое поле (только подставить сохранённое).
+  private onPasswordFieldAnchorCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string, source: 'icon' | 'field') => void;
   // Автозаполнение форм — фокус на поле адреса/карты (см. wirePageEvents). url — из wc.getURL().
   private onAutofillFieldFocusCb?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void;
   private onAutofillPasteBlobCb?: (tabId: string, text: string, rect: { x: number; y: number; width: number; height: number }) => void;
@@ -390,7 +392,7 @@ export class TabManager {
     onContentFocus?: () => void,
     onPasswordForm?: (tabId: string, hasLoginForm: boolean, hasUsernameField: boolean, url: string) => void,
     onPasswordSubmit?: (tabId: string, username: string, password: string, url: string) => void,
-    onPasswordFieldIconClick?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string) => void,
+    onPasswordFieldAnchor?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, url: string, source: 'icon' | 'field') => void,
     onAutofillFieldFocus?: (tabId: string, rect: { x: number; y: number; width: number; height: number }, kind: 'address' | 'card', url: string) => void,
     onAutofillSubmit?: (tabId: string, kind: 'address' | 'card', fields: Record<string, string>, url: string) => void,
   ) {
@@ -411,7 +413,7 @@ export class TabManager {
     this.onContentFocusCb = onContentFocus;
     this.onPasswordFormCb = onPasswordForm;
     this.onPasswordSubmitCb = onPasswordSubmit;
-    this.onPasswordFieldIconClickCb = onPasswordFieldIconClick;
+    this.onPasswordFieldAnchorCb = onPasswordFieldAnchor;
     this.onAutofillFieldFocusCb = onAutofillFieldFocus;
     this.onAutofillSubmitCb = onAutofillSubmit;
     // Хаб существует всегда; не входит в tabMap, pinnedTabs или nodes.
@@ -1399,9 +1401,18 @@ export class TabManager {
     wc.ipc.on(IPC.PASSWORDS_FIELD_ICON_CLICK, (_e, payload: { rect: { x: number; y: number; width: number; height: number } }) => {
       if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       try {
-        this.onPasswordFieldIconClickCb?.(id, payload.rect, wc.getURL());
+        this.onPasswordFieldAnchorCb?.(id, payload.rect, wc.getURL(), 'icon');
       } catch (e) {
-        console.warn('[TabMgr] onPasswordFieldIconClickCb error:', (e as Error).message);
+        console.warn('[TabMgr] onPasswordFieldAnchorCb error:', (e as Error).message);
+      }
+    });
+    // Клик в само поле пароля — тот же якорь, но без права предлагать генерацию (см. выше).
+    wc.ipc.on(IPC.PASSWORDS_FIELD_FOCUS, (_e, payload: { rect: { x: number; y: number; width: number; height: number } }) => {
+      if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
+      try {
+        this.onPasswordFieldAnchorCb?.(id, payload.rect, wc.getURL(), 'field');
+      } catch (e) {
+        console.warn('[TabMgr] onPasswordFieldAnchorCb error (field):', (e as Error).message);
       }
     });
     // Автозаполнение — фокус на поле адреса/карты. Origin/url — из wc.getURL() (не из payload).

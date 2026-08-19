@@ -109,6 +109,7 @@ const CH_FORM_DETECTED = 'passwords:form-detected';
 const CH_CREDENTIAL_SUBMITTED = 'passwords:credential-submitted';
 const CH_FILL = 'passwords:fill';
 const CH_FIELD_ICON_CLICK = 'passwords:field-icon-click';
+const CH_FIELD_FOCUS = 'passwords:field-focus';
 // Автозаполнение форм (адреса/карты) — ДОЛЖНЫ совпадать с shared/ipc.ts::IPC.AUTOFILL_FIELD_FOCUS/
 // AUTOFILL_FILL_FIELDS (см. выше про невозможность импорта shared в sandboxed preload).
 const CH_AUTOFILL_FIELD_FOCUS = 'autofill:field-focus';
@@ -431,6 +432,32 @@ try {
   // noop
 }
 scheduleScan(); // на случай, если preload выполнился уже после DOMContentLoaded
+
+// Клик в само поле пароля — тот же поповер выбора аккаунта, что по значку-ключу: тянуться к
+// значку в углу поля, чтобы подставить пароль, человек не должен.
+//
+// ⚠️ Гейты те же, что у поповера адреса (см. focusFromUserGesture ниже), и по той же причине:
+// сайты сами фокусируют поле пароля при открытии формы, и без проверки жеста карточка всплывала бы
+// сама собой. Плюс `isTrusted` — иначе скрипт страницы сможет спровоцировать показ поповера
+// синтетическим событием (та же проверка стоит на клике по значку).
+//
+// ⚠️ Только ПУСТОЕ поле: заполненное — это либо наша же подстановка, либо набранный пароль, и
+// карточка поверх него означала бы «ты ошибся» там, где человек ничего не просил. Сменить аккаунт
+// после подстановки можно значком — он никуда не делся.
+window.addEventListener('focusin', (e) => {
+  try {
+    if (!isTopFrame() || !e.isTrusted) return;
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement)) return;
+    if ((t.getAttribute('type') || '').toLowerCase() !== 'password') return;
+    if (t.value !== '') return;
+    if (!focusFromUserGesture(t)) return;
+    const r = t.getBoundingClientRect();
+    ipcRenderer.send(CH_FIELD_FOCUS, { rect: { x: r.left, y: r.top, width: r.width, height: r.height } });
+  } catch {
+    // noop
+  }
+}, true);
 
 // ── Детект сохранения — submit с непустым паролем + SPA-эвристика ──────────────────────────────
 // «Грязное» поле — пароль реально заполнен пользователем, submit ещё не пойман. captureDirty
@@ -942,12 +969,16 @@ let lastPointerDownEl: Element | null = null;
 let lastPointerDownAt = 0;
 let lastTabKeyAt = 0;
 try {
+  // ⚠️ isTrusted обязателен: синтетическим pointerdown + .focus() скрипт страницы иначе подделает
+  // «жест человека» и выманит карточку с адресом или паролем. Та же проверка стоит на клике по
+  // значку-ключу в поле пароля.
   window.addEventListener('pointerdown', (e) => {
+    if (!e.isTrusted) return;
     lastPointerDownEl = e.target instanceof Element ? e.target : null;
     lastPointerDownAt = performance.now();
   }, true);
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab') lastTabKeyAt = performance.now();
+    if (e.isTrusted && e.key === 'Tab') lastTabKeyAt = performance.now();
   }, true);
 } catch {
   // noop
