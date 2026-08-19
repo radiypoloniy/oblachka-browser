@@ -251,19 +251,3 @@ export interface AdBlockState {
   whitelist: string[];        // нормализованные домены (без www., без схемы)
   sessionBlockCount: number;  // счётчик за текущую сессию (сбрасывается при перезапуске)
 }
-
-// ── Меню приложения ────────────────────────────────────────────────────────────────────────────
-// ⚠️ Своё меню вместо нативного: Menu.buildFromTemplate рисует Windows, и туда не доходит ни один
-// наш токен — ни материал, ни радиусы, ни шрифт, ни палитра (разбор — electron/AppMenuManager.ts).
-//
-// ⚠️ Действия здесь НЕ ПЕРЕСЕКАЮТ IPC: наружу уходят подписи и идентификаторы, функции остаются в
-// main. Поле click существует только на стороне main, до вью оно не доезжает.
-export interface AppMenuItem {
-  id?: string;
-  type?: 'item' | 'separator';
-  label?: string;
-  enabled?: boolean;
-  checked?: boolean;
-  submenu?: AppMenuItem[];
-  click?: () => void;
-}
