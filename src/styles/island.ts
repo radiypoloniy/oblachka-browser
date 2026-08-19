@@ -278,7 +278,7 @@ export function omniField(): React.CSSProperties {
     background: 'var(--material)',
     backdropFilter: 'var(--material-blur)',
     WebkitBackdropFilter: 'var(--material-blur)',
-    boxShadow: 'inset 0 1px 0 var(--glass-hi, rgba(255,255,255,0.5)), 0 0 0 1px var(--divider)',
+    boxShadow: 'inset 0 1px 0 var(--material-edge), 0 0 0 1px var(--divider)',
     borderRadius: 'var(--radius-pill)',
   };
 }
@@ -310,8 +310,11 @@ export function clusterBtn({ active = false, disabled = false, color }: {
   return {
     ...navBtn(disabled),
     ...(color && !disabled ? { color } : {}),
-    // Активное состояние (открыт свой поповер) — тот же accent-soft, что был у одиночных островов.
-    ...(active && !disabled ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : {}),
+    // ⚠️ Активное состояние — ТОТ ЖЕ ТОКЕН, что у выбранной вкладки и раздела настроек. Здесь
+    // стоял --accent-soft, и он давал 1,17 к фону — то есть «кнопка нажата» читалось втрое слабее,
+    // чем «вкладка выбрана», хотя это одно и то же по смыслу: вот этот элемент сейчас активен.
+    // Один токен на все три места — правило системы, а не совпадение.
+    ...(active && !disabled ? { background: 'var(--selected)', color: 'var(--text-strong)' } : {}),
     // Круглая, а не со скруглением 8: кнопка стоит в капсуле высотой 38 с полем 2, и квадратные
     // углы у крайних кнопок вылезали бы за её дугу светлыми серпами при наведении.
     borderRadius: 'var(--radius-pill)',

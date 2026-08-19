@@ -762,7 +762,12 @@ function SuggestDropdown() {
       <style>{PANEL_CSS}</style>
       <div ref={cardRef} style={{
         boxSizing: 'border-box',
-        background: 'var(--surface-solid)',
+        // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
+        // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
+        // другой программы — разбор общий, см. glassPlate в styles/island.ts.
+        background: 'var(--material)',
+        backdropFilter: 'var(--material-blur)',
+        WebkitBackdropFilter: 'var(--material-blur)',
         borderRadius: 'var(--radius-card)',
         // --shadow-overlay (не --shadow-island/-pop) — см. рационал в tokens/shadows.css:
         // тяжёлая многослойная тень поверх прозрачной WebContentsView рендерится с жёсткими

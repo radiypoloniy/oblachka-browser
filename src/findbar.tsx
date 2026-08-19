@@ -210,7 +210,12 @@ function FindBar() {
         width: BAR_WIDTH, height: BAR_HEIGHT, boxSizing: 'border-box',
         display: 'flex', alignItems: 'center', gap: 4,
         padding: '5px 6px',
-        background: 'var(--surface-solid)',
+        // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
+        // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
+        // другой программы — разбор общий, см. glassPlate в styles/island.ts.
+        background: 'var(--material)',
+        backdropFilter: 'var(--material-blur)',
+        WebkitBackdropFilter: 'var(--material-blur)',
         boxShadow: 'var(--shadow-card)',
         borderRadius: 'var(--radius-card)',
         border: '1px solid var(--glass-edge)',

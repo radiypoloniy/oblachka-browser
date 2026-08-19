@@ -94,7 +94,12 @@ function ClipboardPopoverApp() {
       <div ref={cardRef} style={{
         width: CARD_WIDTH, ...islandPlate,
         borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-overlay)',
-        background: 'var(--surface-solid)', overflow: 'hidden',
+        // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
+        // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
+        // другой программы — разбор общий, см. glassPlate в styles/island.ts.
+        background: 'var(--material)',
+        backdropFilter: 'var(--material-blur)',
+        WebkitBackdropFilter: 'var(--material-blur)', overflow: 'hidden',
         display: 'flex', flexDirection: 'column',
       }}>
         <div style={{

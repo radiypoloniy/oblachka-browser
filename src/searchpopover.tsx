@@ -53,7 +53,12 @@ const HIT_LABEL = { tab: 'вкладка', history: 'история', bookmark: 
 // здесь: поповер живёт в своей WebContentsView и до src/styles/island.ts не дотягивается
 // без лишней связности ради четырёх строк.
 const islandCard: React.CSSProperties = {
-  background: 'var(--surface-solid)',
+  // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
+  // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
+  // другой программы — разбор общий, см. glassPlate в styles/island.ts.
+  background: 'var(--material)',
+  backdropFilter: 'var(--material-blur)',
+  WebkitBackdropFilter: 'var(--material-blur)',
   border: '1px solid var(--glass-edge)',
   borderRadius: 'var(--radius-card)',
   boxShadow: 'var(--shadow-card)',

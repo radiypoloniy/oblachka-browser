@@ -102,7 +102,12 @@ function Popover() {
           maxHeight: MAX_CONTENT_HEIGHT,
           overflowY: 'auto',
           boxSizing: 'border-box',
-          background: 'var(--surface-solid)',
+          // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
+          // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
+          // другой программы — разбор общий, см. glassPlate в styles/island.ts.
+          background: 'var(--material)',
+          backdropFilter: 'var(--material-blur)',
+          WebkitBackdropFilter: 'var(--material-blur)',
           borderRadius: 'var(--radius-card)',
           boxShadow: 'var(--shadow-overlay)',
           padding: 'var(--pad-card)',

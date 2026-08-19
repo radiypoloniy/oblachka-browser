@@ -36,7 +36,12 @@ declare global {
 // прямоугольником под карточкой. Тот же токен уже используют остальные вью-оверлеи.
 const cardShell: React.CSSProperties = {
   ...islandPlate, borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-overlay)',
-  background: 'var(--surface-solid)', overflow: 'hidden',
+  // ⚠️ МАТЕРИАЛ, а не плита: поповер — временный слой над землёй, и он обязан брать цвет
+  // у того, что под ним. Белая непрозрачная карточка в цветном окне читается вырезанной из
+  // другой программы — разбор общий, см. glassPlate в styles/island.ts.
+  background: 'var(--material)',
+  backdropFilter: 'var(--material-blur)',
+  WebkitBackdropFilter: 'var(--material-blur)', overflow: 'hidden',
 };
 const btnPrimary: React.CSSProperties = {
   padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
