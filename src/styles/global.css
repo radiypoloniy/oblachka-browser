@@ -162,6 +162,11 @@ button, input, textarea, select { font-family: inherit; }
 }
 .chrome-btn:active:not(:disabled) { background: var(--surface-active); }
 
+/* Строка списка в поповере (см. popoverKit.tsx). Наведение общим правилом: инлайновые
+   обработчики мыши в каждой карточке — это тот же разнобой, что и копии кнопок. */
+.popover-row:hover:not(:disabled) { background: var(--surface-hover); }
+.popover-row:active:not(:disabled) { background: var(--surface-active); }
+
 /* AI-панель (aipanel.tsx): плейсхолдер пустого состояния прячется по реальной ширине
    панели, а не по ResizeObserver-стейту — панель живёт в отдельной WebContentsView,
    которую main ресайзит через bounds напрямую (drag снаружи, в App.tsx), JS-обсёрвер на

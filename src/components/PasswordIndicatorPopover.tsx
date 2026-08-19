@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import type React from 'react';
-import { Check } from 'lucide-react';
+import { KeyRound } from 'lucide-react';
 import type { PasswordIndicatorState } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
+import {
+  PopoverCard, PopoverIcon, PopoverTitle, PopoverHint, PopoverRow,
+  PopoverActions, PrimaryButton, QuietButton, SiteIcon,
+} from './popoverKit';
 
 // Менеджер паролей, шаг 2 — карточка поповера. Рисуется в отдельной WebContentsView поверх
 // страницы (см. PasswordPopoverManager.ts), по тому же слою, что FindBar/SuggestDropdown.
@@ -45,102 +47,79 @@ export default function PasswordIndicatorPopover({ state, onClose, actions }: Pr
   }
 
   return (
-    <div style={{
-      width: 280,
-      ...islandPlate,
-      borderRadius: 'var(--radius-card)', padding: 16,
-      display: 'flex', flexDirection: 'column', gap: 10,
-    }}>
+    <PopoverCard>
       {state.kind === 'offer-save' && (
         <>
-          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
-            Сохранить пароль для <b>{state.origin}</b>?
-          </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
-            {state.username}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => void act(() => api.savePendingPassword())} disabled={busy} style={btnPrimary}>
+          <PopoverIcon><KeyRound size={18} /></PopoverIcon>
+          <PopoverTitle>Сохранить пароль?</PopoverTitle>
+          <PopoverHint>{state.origin} — вход будет подставляться сам при следующем визите.</PopoverHint>
+          <PopoverRow icon={<SiteIcon host={state.origin} />} title={state.username || 'Без логина'} />
+          <PopoverActions>
+            <PrimaryButton onClick={() => void act(() => api.savePendingPassword())} disabled={busy}>
               Сохранить
-            </button>
-            <button
+            </PrimaryButton>
+            <QuietButton
               onClick={() => void act(async () => { await api.dismissPendingPassword(); return true; })}
               disabled={busy}
-              style={btnGhost}
-            >Не сейчас</button>
-          </div>
+            >Не сейчас</QuietButton>
+          </PopoverActions>
         </>
       )}
 
       {state.kind === 'offer-update' && (
         <>
-          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
-            Обновить пароль для <b>{state.origin}</b>?
-          </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
-            {state.username}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => void act(() => api.updatePendingPassword())} disabled={busy} style={btnPrimary}>
+          <PopoverIcon><KeyRound size={18} /></PopoverIcon>
+          <PopoverTitle>Обновить пароль?</PopoverTitle>
+          <PopoverHint>Для {state.origin} сохранён другой пароль.</PopoverHint>
+          <PopoverRow icon={<SiteIcon host={state.origin} />} title={state.username || 'Без логина'} />
+          <PopoverActions>
+            <PrimaryButton onClick={() => void act(() => api.updatePendingPassword())} disabled={busy}>
               Обновить
-            </button>
-            <button
+            </PrimaryButton>
+            <QuietButton
               onClick={() => void act(async () => { await api.dismissPendingPassword(); return true; })}
               disabled={busy}
-              style={btnGhost}
-            >Не сейчас</button>
-          </div>
+            >Не сейчас</QuietButton>
+          </PopoverActions>
         </>
       )}
 
       {state.kind === 'has-saved' && (
         <>
-          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
-            Подставить сохранённый вход
-          </div>
+          {/* ⚠️ Заголовок про результат, а не про механику: человек выбирает, КЕМ войти, а не
+              «подставляет сохранённый вход». Строки — обычный список набора, с значком сайта и
+              замаскированным паролем: две записи с похожими логинами иначе неразличимы. */}
+          <PopoverTitle>Войти как</PopoverTitle>
           {state.matches.map((m) => (
-            <button
+            <PopoverRow
               key={m.id}
-              disabled={busy}
+              icon={<SiteIcon host={state.origin} />}
+              title={m.username || 'Без логина'}
+              // ⚠️ Маска фиксированной длины, а не настоящая длина пароля: длина — это подсказка
+              // тому, кто заглянул через плечо, и ради неё расширять контракт незачем.
+              hint="••••••••••" 
               onClick={() => void fill(m.id)}
-              style={{ ...btnGhost, textAlign: 'left', display: 'flex', gap: 8, alignItems: 'center' }}
-            ><Check size={14} style={{ color: 'var(--text-muted)', flex: 'none' }} />
-              {/* Логин пуст у записи, рождённой генератором пароля: он сохраняет пароль сразу, а
-                  логин узнаёт при первом входе. До этого момента строка была ПУСТОЙ кнопкой —
-                  человек не понимал, что выбирает. */}
-              {m.username || <span style={{ color: 'var(--text-faint)' }}>без логина</span>}</button>
+              disabled={busy}
+            />
           ))}
         </>
       )}
 
       {state.kind === 'offer-generate' && (
         <>
-          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
-            Нет сохранённого входа для <b>{state.origin}</b>
-          </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-            Похоже на регистрацию — сгенерировать надёжный пароль в это поле?
-          </div>
-          <button
-            onClick={() => void act(() => api.generatePendingPassword())}
-            disabled={busy}
-            style={btnPrimary}
-          >
-            Сгенерировать пароль
-          </button>
+          <PopoverIcon><KeyRound size={18} /></PopoverIcon>
+          <PopoverTitle>Придумать пароль?</PopoverTitle>
+          <PopoverHint>
+            Для {state.origin} сохранённого входа нет, а поле похоже на регистрацию — сгенерируем
+            надёжный и сразу сохраним.
+          </PopoverHint>
+          <PopoverActions>
+            <PrimaryButton onClick={() => void act(() => api.generatePendingPassword())} disabled={busy}>
+              Сгенерировать
+            </PrimaryButton>
+          </PopoverActions>
         </>
       )}
-    </div>
+    </PopoverCard>
   );
 }
-
-const btnPrimary: React.CSSProperties = {
-  padding: '7px 14px', borderRadius: 'var(--radius-sm)', border: 'none',
-  background: 'var(--accent)', color: 'var(--on-accent)',
-  fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default', flex: 'none',
-};
-const btnGhost: React.CSSProperties = {
-  padding: '7px 14px', borderRadius: 'var(--radius-sm)',
-  border: '1px solid var(--divider-strong)', background: 'transparent',
-  color: 'var(--text-body)', fontSize: 'var(--fs-sm)', cursor: 'default', flex: 'none',
-};
