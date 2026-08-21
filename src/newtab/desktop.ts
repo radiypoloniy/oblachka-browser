@@ -11,6 +11,8 @@
 // Хранится в localStorage рядом с остальными настройками вкладки (см. src/newtab/settings.ts):
 // и вкладка, и раздел «Интерфейс» живут в одном рендерере, IPC между ними не нужен.
 
+import { deleteGenRecord } from './genStore';
+
 export type DesktopItemKind = 'site' | 'app' | 'widget';
 
 /** Размер в клетках сетки. Ширина подрезается до числа колонок при отрисовке. */
@@ -52,6 +54,11 @@ export interface DesktopItem {
    * setHero ниже: он снимает флаг со всех остальных.
    */
   hero?: boolean;
+  /**
+   * kind==='widget' && widget==='gen': ключ тела одностраничника (oblako-desktop-gen-<id>).
+   * Несколько своих виджетов на столе — разные genId. Само тело не лежит в раскладке.
+   */
+  genId?: string;
 }
 
 /**
@@ -123,6 +130,8 @@ export const WIDGET_MIN: Record<string, CellSize> = {
   topsites:  { w: 2, h: 2 },
   tracking:  { w: 2, h: 2 },  // число плюс строка о подешевевшем — в одну клетку не складывается
   digest:    { w: 4, h: 2 },  // строки итога — фразы, в две клетки ширины они не читаются
+  // Свой одностраничник: меньше 2×2 iframe некуда, там же кнопки таймера.
+  gen:     { w: 2, h: 2 },
   // Часам хватает и клетки: циферблат просто становится меньше, налезать там нечему.
   clock: { w: 1, h: 1 },
 };
@@ -581,6 +590,8 @@ export function clampSize(item: Pick<DesktopItem, 'kind' | 'widget'>, size: Cell
 }
 
 export function removeItem(layout: DesktopLayout, id: string): DesktopLayout {
+  const gone = layout.items.find((i) => i.id === id);
+  if (gone?.widget === 'gen' && gone.genId) deleteGenRecord(gone.genId);
   return { ...layout, items: layout.items.filter((i) => i.id !== id) };
 }
 
@@ -591,5 +602,7 @@ export function addItem(layout: DesktopLayout, item: Omit<DesktopItem, 'id'>): D
 
 /** Уже стоит ли на столе это приложение/виджет — чтобы палитра не предлагала дубль. */
 export function hasItem(layout: DesktopLayout, kind: DesktopItemKind, key: string): boolean {
+  // Свои одностраничники все с ключом gen — дубль здесь как раз норма (фоторамка и таймер).
+  if (kind === 'widget' && key === 'gen') return false;
   return layout.items.some((i) => i.kind === kind && (i.appId === key || i.widget === key));
 }

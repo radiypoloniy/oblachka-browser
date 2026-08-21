@@ -18,6 +18,7 @@ import { compileMeshBackground } from '../../../shared/chromeGround';
 import { APPS, AppIconBadge } from '../aiApps';
 import SiteIcon from './SiteIcon';
 import { WIDGET_FILLS, WIDGET_RENDERERS, fillCss } from './widgets';
+import { GenWidget } from './GenWidget';
 import { RADIUS } from '../../styles/system';
 
 // Рабочий стол новой вкладки — springboard в духе iPad: сетка иконок и виджетов поверх обоев.
@@ -380,7 +381,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
               };
 
               const content = item.kind === 'widget' ? (() => {
-                const Render = WIDGET_RENDERERS[item.widget ?? ''];
+                const Render = item.widget === 'gen' ? GenWidget : WIDGET_RENDERERS[item.widget ?? ''];
                 return Render ? (
                   // ⚠️ Погода заливку НЕ получает намеренно: там цвет означает время суток и
                   // саму погоду (ночью тёмная, в грозу свинцовая), и подмена его на выбранный
@@ -393,7 +394,8 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                     fill={item.widget === 'weather' ? undefined : item.fill}
                     // Над фотографией плитки идут стеклом, над ровным фоном — сплошной картой.
                     overImage={settings.background.kind === 'photo' || settings.background.kind === 'custom' || settings.background.kind === 'mesh'}
-                    hero={item.hero === true} />
+                    hero={item.hero === true}
+                    genId={item.genId} />
                 ) : null;
               })() : item.kind === 'app' ? (() => {
                 const app = appById.get(item.appId ?? '');
