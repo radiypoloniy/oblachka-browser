@@ -13,6 +13,8 @@ import {
   loadNewTabSettings, subscribeNewTabSettings, presetCss, getNewTabCustomImage,
   ensureCustomImageShrunk, isLightBackground, type NewTabSettings,
 } from '../../newtab/settings';
+import { findMesh } from '../../newtab/gradients';
+import { compileMeshBackground } from '../../../shared/chromeGround';
 import { APPS, AppIconBadge } from '../aiApps';
 import SiteIcon from './SiteIcon';
 import { WIDGET_FILLS, WIDGET_RENDERERS, fillCss } from './widgets';
@@ -390,7 +392,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                     onActivate={editing ? undefined : WIDGET_ACTIVATE[item.widget ?? '']}
                     fill={item.widget === 'weather' ? undefined : item.fill}
                     // Над фотографией плитки идут стеклом, над ровным фоном — сплошной картой.
-                    overImage={settings.background.kind === 'photo' || settings.background.kind === 'custom'}
+                    overImage={settings.background.kind === 'photo' || settings.background.kind === 'custom' || settings.background.kind === 'mesh'}
                     hero={item.hero === true} />
                 ) : null;
               })() : item.kind === 'app' ? (() => {
@@ -662,6 +664,12 @@ function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoU
     : bg.kind === 'photo' ? (photoUrl
         ? { ...base, backgroundImage: `url("${photoUrl}")` }
         : { ...base, backgroundImage: presetCss(bg.preset) })
+    : bg.kind === 'mesh' ? (() => {
+        const mesh = findMesh(bg.meshId);
+        return mesh
+          ? { ...base, backgroundImage: compileMeshBackground(mesh), backgroundSize: '100% 100%' }
+          : { ...base, backgroundImage: presetCss('aurora') };
+      })()
     : { ...base, backgroundImage: presetCss(bg.preset) };
 
   return (

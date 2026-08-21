@@ -19,6 +19,9 @@ import { CSS } from '@dnd-kit/utilities'
 // («50 + 10 %», «1 234,56 ₽»), а не на глаз.
 import { computeCalc, fmtCalc, calcDisp, resolvePercent, parsePastedNumber } from '../../shared/calc'
 import { altitude, ALTITUDE, DISPLAY } from '../styles/system'
+import { WALLPAPER_PRESETS } from '../newtab/settings'
+import { allMeshes, findMesh, subscribeMeshes } from '../newtab/gradients'
+import { compileMeshBackground } from '../../shared/chromeGround'
 import type { CalcOp } from '../../shared/calc'
 import {
   Calculator, RefreshCw, Timer, Pipette, X, SlidersHorizontal, ImagePlus, Languages, Cat, Type,
@@ -182,14 +185,6 @@ function orderApps(all: AppDef[], order: string[]): AppDef[] {
 // через IPC/main ради ключа-строки незачем.
 // css: '' — «Без обоев»: остров остаётся нейтральным белым (surface-solid), подписи иконок
 // переходят на цвета темы вместо белого с тенью (см. HomeGrid).
-const WALLPAPERS: { id: string; label: string; css: string }[] = [
-  { id: 'none', label: 'Без обоев', css: '' },
-  { id: 'ocean', label: 'Океан', css: 'var(--wallpaper-ocean)' },
-  { id: 'sunset', label: 'Закат', css: 'var(--wallpaper-sunset)' },
-  { id: 'aurora', label: 'Аврора', css: 'var(--wallpaper-aurora)' },
-  { id: 'lavender', label: 'Лаванда', css: 'var(--wallpaper-lavender)' },
-  { id: 'graphite', label: 'Графит', css: 'var(--wallpaper-graphite)' },
-]
 const WALLPAPER_STORAGE_KEY = 'aipanel-apps-wallpaper'
 // Своя картинка пользователя — отдельный ключ: data-URL (jpeg, ужат канвасом при загрузке,
 // см. handleWallpaperFile) может весить сотни КБ, не мешаем его строке-идентификатору выбора.
@@ -213,8 +208,9 @@ function saveCustomWallpaper(dataUrl: string): void {
 export function loadWallpaper(): string {
   try {
     const saved = localStorage.getItem(WALLPAPER_STORAGE_KEY)
+    if (saved === 'none') return 'none'
     if (saved === 'custom' && getCustomWallpaper() !== null) return 'custom'
-    if (saved && WALLPAPERS.some((w) => w.id === saved)) return saved
+    if (saved && (saved === 'none' || findMesh(saved) || WALLPAPER_PRESETS.some((p) => p.id === saved))) return saved
   } catch { /* приватный режим/выключенный storage — просто дефолт */ }
   return 'ocean'
 }
@@ -229,6 +225,7 @@ export function saveWallpaper(id: string): void {
 // центру, а не растягивается/сжимается (как обои телефона). Высота — от бокса: по вертикали
 // панель меняется только с окном, это не живой драг.
 export function wallpaperBackground(id: string): React.CSSProperties {
+  if (id === 'none' || id === '') return {}
   if (id === 'custom') {
     const img = getCustomWallpaper()
     if (img === null) return {}
@@ -243,8 +240,17 @@ export function wallpaperBackground(id: string): React.CSSProperties {
       backgroundRepeat: 'no-repeat',
     }
   }
-  const w = WALLPAPERS.find((x) => x.id === id)
-  if (!w || w.css === '') return {} // «Без обоев» / неизвестный id — остров остаётся белым
+  const mesh = findMesh(id)
+  if (mesh) {
+    return {
+      backgroundImage: compileMeshBackground(mesh),
+      backgroundSize: '100% 100%',
+      backgroundPosition: 'center top',
+      backgroundRepeat: 'no-repeat',
+    }
+  }
+  const w = WALLPAPER_PRESETS.find((x) => x.id === id)
+  if (!w) return {}
   return {
     backgroundImage: w.css,
     backgroundSize: '640px 100%',
@@ -297,6 +303,8 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   const [customApps, setCustomApps] = useState<CustomWebApp[]>(loadCustomApps)
   const [newAppName, setNewAppName] = useState('')
   const [newAppUrl, setNewAppUrl] = useState('')
+  const [meshes, setMeshes] = useState(() => allMeshes())
+  useEffect(() => subscribeMeshes(() => setMeshes(allMeshes())), [])
 
   const [appsOrder, setAppsOrder] = useState<string[]>(loadAppsOrder)
   const [hiddenApps, setHiddenApps] = useState<string[]>(loadHiddenApps)
@@ -626,24 +634,39 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
                 Обои
               </span>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-                {WALLPAPERS.map((w) => {
-                  const selected = w.id === wallpaper
-                  const isNone = w.css === ''
-                  return (
-                    <button
-                      key={w.id}
-                      onClick={() => onSelectWallpaper(w.id)}
-                      title={w.label}
-                      style={{
-                        width: 28, height: 28, borderRadius: '50%', padding: 0, cursor: 'pointer',
-                        background: isNone ? 'var(--surface-solid)' : w.css,
-                        border: selected
-                          ? '2px solid var(--accent)'
-                          : isNone ? '2px solid var(--divider-strong)' : '2px solid transparent',
-                      }}
-                    />
-                  )
-                })}
+                <button
+                  onClick={() => onSelectWallpaper('none')}
+                  title="Без обоев"
+                  style={{
+                    width: 28, height: 28, borderRadius: '50%', padding: 0, cursor: 'pointer',
+                    background: 'var(--surface-solid)',
+                    border: wallpaper === 'none' ? '2px solid var(--accent)' : '2px solid var(--divider-strong)',
+                  }}
+                />
+                {WALLPAPER_PRESETS.map((w) => (
+                  <button
+                    key={w.id}
+                    onClick={() => onSelectWallpaper(w.id)}
+                    title={w.label}
+                    style={{
+                      width: 28, height: 28, borderRadius: '50%', padding: 0, cursor: 'pointer',
+                      background: w.css,
+                      border: w.id === wallpaper ? '2px solid var(--accent)' : '2px solid transparent',
+                    }}
+                  />
+                ))}
+                {meshes.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => onSelectWallpaper(m.id)}
+                    title={m.name}
+                    style={{
+                      width: 28, height: 28, borderRadius: '50%', padding: 0, cursor: 'pointer',
+                      backgroundImage: compileMeshBackground(m), backgroundSize: 'cover',
+                      border: m.id === wallpaper ? '2px solid var(--accent)' : '2px solid transparent',
+                    }}
+                  />
+                ))}
                 {customWallpaper !== null && (
                   <button
                     onClick={() => onSelectWallpaper('custom')}

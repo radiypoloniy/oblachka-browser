@@ -5,6 +5,8 @@ import {
   loadNewTabSettings, saveNewTabSettings, WALLPAPER_PRESETS, CRYPTO_CHOICES, RATE_CHOICES,
   type NewTabSettings,
 } from '../../newtab/settings';
+import { allMeshes, subscribeMeshes } from '../../newtab/gradients';
+import { compileMeshBackground } from '../../../shared/chromeGround';
 import {
   WIDGET_SIZES, addItem, removeItem, hasItem, setScale, scaleOf, SCALE_PRESETS,
   type DesktopItem, type DesktopLayout, type DesktopScale,
@@ -69,6 +71,8 @@ interface Props {
 
 export default function SidePanel({ layout, onLayout, onClose, editing, onEditing }: Props) {
   const [s, setS] = useState<NewTabSettings>(() => loadNewTabSettings());
+  const [meshes, setMeshes] = useState(() => allMeshes());
+  useEffect(() => subscribeMeshes(() => setMeshes(allMeshes())), []);
   const apply = (next: NewTabSettings): void => { setS(next); saveNewTabSettings(next); };
   const patchBg = (p: Partial<NewTabSettings['background']>): void =>
     apply({ ...s, background: { ...s.background, ...p } });
@@ -141,20 +145,35 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
 
           <Section title="Фон">
             <Segmented
-              value={s.background.kind}
+              value={s.background.kind === 'mesh' ? 'preset' : s.background.kind}
               options={[['preset', 'Градиент'], ['photo', 'Фото дня'], ['color', 'Цвет']]}
-              onChange={(v) => patchBg({ kind: v as NewTabSettings['background']['kind'] })}
+              onChange={(v) => {
+                const kind = v as NewTabSettings['background']['kind'];
+                patchBg({ kind: kind === 'preset' && s.background.meshId ? 'mesh' : kind });
+              }}
             />
-            {s.background.kind === 'preset' && (
+            {(s.background.kind === 'preset' || s.background.kind === 'mesh') && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
                 {WALLPAPER_PRESETS.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => patchBg({ preset: p.id })}
+                    onClick={() => patchBg({ kind: 'preset', preset: p.id })}
                     title={p.label}
                     style={{
                       height: 34, borderRadius: RADIUS.control, cursor: 'default', background: p.css,
-                      border: s.background.preset === p.id ? '2px solid var(--accent)' : '1px solid var(--divider)',
+                      border: s.background.kind === 'preset' && s.background.preset === p.id ? '2px solid var(--accent)' : '1px solid var(--divider)',
+                    }}
+                  />
+                ))}
+                {meshes.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => patchBg({ kind: 'mesh', meshId: m.id })}
+                    title={m.name}
+                    style={{
+                      height: 34, borderRadius: RADIUS.control, cursor: 'default',
+                      backgroundImage: compileMeshBackground(m), backgroundSize: 'cover',
+                      border: s.background.kind === 'mesh' && s.background.meshId === m.id ? '2px solid var(--accent)' : '1px solid var(--divider)',
                     }}
                   />
                 ))}

@@ -10,9 +10,10 @@ import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT } from './components/SplitDragCard';
 import { islandPlate, chromeTintStyle, tintedPlateVars, chromeSpaceStyle } from './styles/island';
-import { buildChromeGround } from '../shared/chromeGround';
+import { buildChromeGround, buildChromeGroundFromMesh } from '../shared/chromeGround';
 import type { Ground } from '../shared/chromeGround';
 import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
+import { findMesh, subscribeMeshes } from './newtab/gradients';
 import { isDarkTheme } from '../shared/ipc';
 import type { ContentBounds, SplitSwapHint, SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal, ThemePrefs } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
@@ -429,7 +430,9 @@ export default function App() {
   // Цветной фон окна — та же настройка, что раньше называлась «цветной сайдбар» (ключ в хранилище
   // не менялся, чтобы не терять уже сделанный выбор). Красит теперь всё окно.
   const [groundPrefs, setGroundPrefs] = useState(() => loadNewTabSettings().sidebar);
+  const [meshRev, setMeshRev] = useState(0);
   useEffect(() => subscribeNewTabSettings(() => setGroundPrefs(loadNewTabSettings().sidebar)), []);
+  useEffect(() => subscribeMeshes(() => setMeshRev((n) => n + 1)), []);
   const chromeTinted = groundPrefs.tinted;
 
   // ⚠️ Земля считается в JS, а не формулами CSS: нужны поворот тона и притемнение ПО СВЕТИМОСТИ
@@ -448,11 +451,15 @@ export default function App() {
     const appBg = resolveColor('var(--app-bg)');
     const surface = resolveColor('var(--surface)');
     if (!tint || !appBg || !surface) { setGround(null); return; }
-    setGround(buildChromeGround({
-      tint, appBg, surface, amount: groundPrefs.amount, dark: dark || activeIncognito,
-    }));
+    const input = { tint, appBg, surface, amount: groundPrefs.amount, dark: dark || activeIncognito };
+    if (groundPrefs.source === 'mesh') {
+      const mesh = findMesh(groundPrefs.meshId);
+      if (mesh) { setGround(buildChromeGroundFromMesh(mesh, input)); return; }
+    }
+    setGround(buildChromeGround(input));
     // themePrefs.palette — ради ПЕРЕЧИТЫВАНИЯ токенов: палитра меняет их, не меняя dark.
-  }, [chromeTinted, groundPrefs.amount, dark, activeIncognito, themePrefs.palette]);
+    // meshRev — сетку правили в каталоге, не трогая sidebar.meshId.
+  }, [chromeTinted, groundPrefs.amount, groundPrefs.source, groundPrefs.meshId, meshRev, dark, activeIncognito, themePrefs.palette]);
 
   useEffect(() => {
     // ⚠️ Фон берём из ЖИВОГО значения --app-bg, а не из литерала: с палитрами (см. palettes.css)
@@ -1068,7 +1075,7 @@ export default function App() {
       // Цветная земля несёт зерно сама; обычная получает его здесь — иначе фактура доставалась
       // бы только тем, кто включил подкраску (разбор — chromeGrainStyle в styles/island.ts).
       // Пространство рисуется ВСЕГДА; цветная подкраска — усиленный вариант того же маршрута.
-      ...(ground ? chromeTintStyle(ground.backgroundImage) : chromeSpaceStyle(dark || activeIncognito)),
+      ...(ground ? chromeTintStyle(ground.backgroundImage, ground.paintLayers) : chromeSpaceStyle(dark || activeIncognito)),
       ...(ground ? tintedPlateVars(ground.island) : null),
       ['--sidebar-plate' as string]: ground ? ground.island : 'var(--surface)',
     }}>

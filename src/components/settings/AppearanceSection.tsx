@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Upload, Trash2, RotateCcw } from 'lucide-react';
+import { Upload, Trash2, RotateCcw, Plus } from 'lucide-react';
 import { SectionHeader, Subsection, InlineError, TextField, btnGhost, segBtnStyle, SegTrack,
 } from './kit';
 import Toggle from '../Toggle';
@@ -11,6 +11,13 @@ import {
   WALLPAPER_PRESETS, RATE_CHOICES, CRYPTO_CHOICES, TINT_AMOUNT_MIN, TINT_AMOUNT_MAX,
   type NewTabSettings, type BackgroundKind,
 } from '../../newtab/settings';
+import {
+  allMeshes, deleteUserMesh, isUserMesh, saveUserMesh, subscribeMeshes,
+} from '../../newtab/gradients';
+import {
+  compileMeshBackground, createMeshDraft, type MeshGradient,
+} from '../../../shared/chromeGround';
+import GradientEditor from './GradientEditor';
 
 import CryptoIcon from '../CryptoIcon';
 import { RADIUS, sp } from '../../styles/system';
@@ -60,12 +67,46 @@ export default function AppearanceSection() {
   const [hasCustom, setHasCustom] = useState(() => getNewTabCustomImage() !== null);
   const [imgError, setImgError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const [meshes, setMeshes] = useState(() => allMeshes());
+  useEffect(() => subscribeMeshes(() => setMeshes(allMeshes())), []);
+  const [draft, setDraft] = useState<MeshGradient | null>(null);
+  const [draftTarget, setDraftTarget] = useState<'chrome' | 'newtab'>('newtab');
 
   function apply(next: NewTabSettings) { setS(next); saveNewTabSettings(next); }
   const patchBg = (p: Partial<NewTabSettings['background']>) => apply({ ...s, background: { ...s.background, ...p } });
   const patchClock = (p: Partial<NewTabSettings['clock']>) => apply({ ...s, clock: { ...s.clock, ...p } });
   const patchWeather = (p: Partial<NewTabSettings['weather']>) => apply({ ...s, weather: { ...s.weather, ...p } });
   const patchRates = (p: Partial<NewTabSettings['rates']>) => apply({ ...s, rates: { ...s.rates, ...p } });
+  const patchSidebar = (p: Partial<NewTabSettings['sidebar']>) => apply({ ...s, sidebar: { ...s.sidebar, ...p } });
+
+  function openDraft(from: 'chrome' | 'newtab', existing?: MeshGradient) {
+    setDraftTarget(from);
+    setDraft(existing ? { ...existing } : createMeshDraft(['#81b29a', '#e07a5f', '#1d3557'], 'Градиент'));
+  }
+
+  function saveDraft() {
+    if (!draft) return;
+    const saved = saveUserMesh(draft);
+    if (!saved) return;
+    if (draftTarget === 'chrome') {
+      apply({ ...s, sidebar: { ...s.sidebar, tinted: true, source: 'mesh', meshId: saved.id } });
+    } else {
+      apply({ ...s, background: { ...s.background, kind: 'mesh', meshId: saved.id } });
+    }
+    setDraft(null);
+  }
+
+  function removeMesh(id: string) {
+    deleteUserMesh(id);
+    apply({
+      ...s,
+      sidebar: s.sidebar.meshId === id ? { ...s.sidebar, source: 'palette', meshId: '' } : s.sidebar,
+      background: s.background.meshId === id
+        ? { ...s.background, kind: s.background.kind === 'mesh' ? 'preset' : s.background.kind, meshId: '' }
+        : s.background,
+    });
+  }
+
   // Порядок валют в строке — порядок RATE_CHOICES, а не порядок кликов: иначе набор из тех же
   // валют выглядит по-разному в зависимости от того, как его собирали.
   const toggleRateCode = (code: string) => {
@@ -112,7 +153,8 @@ export default function AppearanceSection() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 32, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24, flex: '1 1 360px', maxWidth: 560, minWidth: 0 }}>
       <SectionHeader title="Интерфейс">
         Тема и палитра браузера, оформление новой вкладки — фон, часы, приветствие и быстрые ссылки.
       </SectionHeader>
@@ -180,38 +222,66 @@ export default function AppearanceSection() {
           ⚠️ Назывался «цветной сайдбар» и красил только его — из-за чего сайдбар и выглядел
           боковой плашкой на сером окне. Подкраска это свойство ОКНА; ключ в хранилище оставлен
           прежним (`sidebar.tinted`), чтобы не терять уже сделанный человеком выбор. */}
-      <Subsection title="Фон интерфейса" description="Мягкий градиент и лёгкая текстура на всём окне вместо ровной заливки. Оттенок берётся из выбранной палитры.">
+      <Subsection title="Фон интерфейса" description="Мягкий градиент и лёгкая текстура на всём окне вместо ровной заливки. Можно взять тон палитры или свой градиент из общего каталога.">
         <ToggleRow
           label="Цветной фон"
           checked={s.sidebar.tinted}
           onChange={(v) => apply({ ...s, sidebar: { ...s.sidebar, tinted: v } })}
         />
-        {/* ⚠️ Отдаём ДВА выбора, и оба безопасны: рисунок (оба проверены на читаемость) и
-            насыщенность (пределы TINT_AMOUNT_* подобраны так, что оба края остаются читаемыми).
-            ⚠️ Поправки для тёмной темы здесь НЕТ и быть не должно: это не предпочтение, а
-            ограничение. Тон палитры бывает ярче тёмной земли — у «Сепии» в одиннадцать раз даже
-            после притемнения на 45%, — и подмешивание такого тона делает землю СВЕТЛЕЕ островов.
-            Поэтому притемнение считается по светимости, см. groundTint в shared/chromeGround.ts. */}
         {s.sidebar.tinted && (
           <>
-            <SliderRow
-              label="Насыщенность"
-              value={s.sidebar.amount}
-              min={TINT_AMOUNT_MIN} max={TINT_AMOUNT_MAX} step={1}
-              onChange={(v) => apply({ ...s, sidebar: { ...s.sidebar, amount: v } })}
-              format={(v) => `${v}%`}
-            />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              <button
+                title="Палитра"
+                onClick={() => patchSidebar({ source: 'palette' })}
+                style={{
+                  width: 64, height: 44, borderRadius: 'var(--radius-sm)', cursor: 'default', border: 'none',
+                  background: 'linear-gradient(180deg, color-mix(in srgb, var(--sidebar-tint) 45%, var(--app-bg)), var(--app-bg))',
+                  outline: s.sidebar.source !== 'mesh' ? '2px solid var(--accent)' : '2px solid transparent',
+                  outlineOffset: 2,
+                }}
+              />
+              {meshes.map((m) => (
+                <MeshThumb
+                  key={m.id}
+                  mesh={m}
+                  selected={s.sidebar.source === 'mesh' && s.sidebar.meshId === m.id}
+                  onSelect={() => patchSidebar({ source: 'mesh', meshId: m.id })}
+                  onEdit={() => openDraft('chrome', m)}
+                  onDelete={isUserMesh(m.id) ? () => removeMesh(m.id) : undefined}
+                />
+              ))}
+            </div>
+            <button
+              onClick={() => openDraft('chrome')}
+              style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            >
+              <Plus size={14} /> Создать градиент
+            </button>
+            {s.sidebar.source !== 'mesh' && (
+              <SliderRow
+                label="Насыщенность"
+                value={s.sidebar.amount}
+                min={TINT_AMOUNT_MIN} max={TINT_AMOUNT_MAX} step={1}
+                onChange={(v) => patchSidebar({ amount: v })}
+                format={(v) => `${v}%`}
+              />
+            )}
           </>
         )}
       </Subsection>
 
       {/* ── Фон ── */}
-      <Subsection title="Фон" description="Градиент, свой цвет или изображение.">
+      <Subsection title="Фон" description="Градиент, свой цвет или изображение. Свои градиенты те же, что у фона интерфейса.">
         <SegTrack>
-          {([['preset', 'Градиент'], ['color', 'Цвет'], ['custom', 'Своё фото'], ['photo', 'Фото дня']] as [BackgroundKind, string][]).map(([kind, label]) => (
-            <SegBtn key={kind} active={s.background.kind === kind}
-              onClick={() => patchBg({ kind })}>{label}</SegBtn>
-          ))}
+          {([['preset', 'Градиент'], ['color', 'Цвет'], ['custom', 'Своё фото'], ['photo', 'Фото дня']] as [BackgroundKind, string][]).map(([kind, label]) => {
+            const gradientOn = s.background.kind === 'preset' || s.background.kind === 'mesh';
+            const active = kind === 'preset' ? gradientOn : s.background.kind === kind;
+            return (
+            <SegBtn key={kind} active={active}
+              onClick={() => patchBg({ kind: kind === 'preset' && s.background.meshId ? 'mesh' : kind })}>{label}</SegBtn>
+            );
+          })}
         </SegTrack>
 
         {s.background.kind === 'photo' && (
@@ -235,18 +305,36 @@ export default function AppearanceSection() {
           </div>
         )}
 
-        {s.background.kind === 'preset' && (
+        {(s.background.kind === 'preset' || s.background.kind === 'mesh') && (
+          <>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
             {WALLPAPER_PRESETS.map((p) => (
-              <button key={p.id} title={p.label} onClick={() => patchBg({ preset: p.id })}
+              <button key={p.id} title={p.label} onClick={() => patchBg({ kind: 'preset', preset: p.id })}
                 style={{
                   width: 64, height: 44, borderRadius: 'var(--radius-sm)', cursor: 'default',
                   background: p.css, border: 'none',
-                  outline: s.background.preset === p.id ? '2px solid var(--accent)' : '2px solid transparent',
+                  outline: s.background.kind === 'preset' && s.background.preset === p.id ? '2px solid var(--accent)' : '2px solid transparent',
                   outlineOffset: 2,
                 }} />
             ))}
+            {meshes.map((m) => (
+              <MeshThumb
+                key={m.id}
+                mesh={m}
+                selected={s.background.kind === 'mesh' && s.background.meshId === m.id}
+                onSelect={() => patchBg({ kind: 'mesh', meshId: m.id })}
+                onEdit={() => openDraft('newtab', m)}
+                onDelete={isUserMesh(m.id) ? () => removeMesh(m.id) : undefined}
+              />
+            ))}
           </div>
+          <button
+            onClick={() => openDraft('newtab')}
+            style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+          >
+            <Plus size={14} /> Создать градиент
+          </button>
+          </>
         )}
 
         {s.background.kind === 'color' && (
@@ -347,6 +435,19 @@ export default function AppearanceSection() {
           ))}
         </div>
       </Subsection>
+      </div>
+
+      {draft && (
+        <div style={{ flex: '1 1 280px', minWidth: 0, maxWidth: 480, position: 'sticky', top: 0, alignSelf: 'flex-start' }}>
+          <GradientEditor
+            mesh={draft}
+            onChange={setDraft}
+            onSave={saveDraft}
+            onCancel={() => setDraft(null)}
+            heading={draftTarget === 'chrome' ? 'Градиент фона интерфейса' : 'Градиент новой вкладки'}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -357,6 +458,41 @@ export default function AppearanceSection() {
 // разъехались по отступам и тени — это ровно тот случай, когда «мелкая правка» ломает систему.
 function SegBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return <button onClick={onClick} style={segBtnStyle(active)}>{children}</button>;
+}
+
+function MeshThumb({ mesh, selected, onSelect, onEdit, onDelete }: {
+  mesh: MeshGradient; selected: boolean; onSelect: () => void; onEdit: () => void; onDelete?: () => void;
+}) {
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        title={mesh.name}
+        onClick={onSelect}
+        onDoubleClick={onEdit}
+        style={{
+          width: 64, height: 44, borderRadius: 'var(--radius-sm)', cursor: 'default', border: 'none',
+          backgroundImage: compileMeshBackground(mesh), backgroundSize: 'cover',
+          outline: selected ? '2px solid var(--accent)' : '2px solid transparent',
+          outlineOffset: 2,
+        }}
+      />
+      {onDelete && (
+        <button
+          title="Удалить"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          style={{
+            position: 'absolute', top: -6, right: -6, width: 16, height: 16, padding: 0,
+            borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
+            background: 'transparent', color: 'var(--text-muted)',
+            boxShadow: 'inset 0 0 0 1px var(--divider)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <Trash2 size={10} />
+        </button>
+      )}
+    </span>
+  );
 }
 
 // Редактор своих быстрых ссылок: строки «название + адрес», добавление/удаление. Пустые строки

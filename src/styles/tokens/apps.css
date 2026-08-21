@@ -46,7 +46,7 @@
   --app-label-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 
   /* Обои домашнего экрана — все средне-тёмные, чтобы белые подписи читались
-     на любых. Порядок тот же, что в WALLPAPERS (aiApps.tsx). */
+     на любых. Порядок тот же, что в WALLPAPER_PRESETS (src/newtab/settings.ts). */
   --wallpaper-ocean:    linear-gradient(165deg, #6EA8E8 0%, #3B6BC4 55%, #27418F 100%);
   --wallpaper-sunset:   linear-gradient(165deg, #FFB88C 0%, #E8746B 50%, #9F4A8E 100%);
   --wallpaper-aurora:   linear-gradient(165deg, #43CEA2 0%, #2C7FA8 60%, #185A9D 100%);

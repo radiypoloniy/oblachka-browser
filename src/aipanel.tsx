@@ -14,6 +14,7 @@ import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Plus, ChevronDown } from
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 import { AppsMode, loadWallpaper, saveWallpaper, wallpaperBackground } from './components/aiApps';
+import { subscribeMeshes } from './newtab/gradients';
 import type { CurrencyRatesResult, WeatherResult } from './components/aiApps';
 import { SHELL_MARGIN } from '../shared/layout';
 import { installOverlayReveal } from './overlayReveal';
@@ -212,6 +213,7 @@ function AiPanel() {
     setWallpaperRev((r) => r + 1)
     saveWallpaper(id)
   }
+  useEffect(() => subscribeMeshes(() => setWallpaperRev((r) => r + 1)), [])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') window.aiPanel.close(); };

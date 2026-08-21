@@ -1,3 +1,6 @@
+import { meshIsLight } from '../../shared/chromeGround';
+import { findMesh } from './gradients';
+
 // Настройки минималистичной новой вкладки (в духе Bonjourr). Живут в localStorage: и сама вкладка
 // (Hub → NewTab), и раздел настроек «Интерфейс» — в ОДНОМ рендерере (index.html, origin
 // oblako-chrome://localhost), поэтому общий localStorage без IPC. Тот же приём персистентности
@@ -6,12 +9,13 @@
 // Живое применение: saveNewTabSettings шлёт window-событие, на которое подписана открытая вкладка
 // (subscribeNewTabSettings) — правки в настройках видны сразу, без перезагрузки.
 
-export type BackgroundKind = 'preset' | 'color' | 'custom' | 'photo';
+export type BackgroundKind = 'preset' | 'color' | 'custom' | 'photo' | 'mesh';
 
 export interface NewTabSettings {
   background: {
     kind: BackgroundKind;
     preset: string;   // id из WALLPAPER_PRESETS (см. NewTab.tsx) — для kind==='preset'
+    meshId: string;   // id сетки (готовая или своя) — для kind==='mesh'
     color: string;    // hex — для kind==='color'
     dim: number;      // 0..0.8 — затемняющий оверлей поверх фона (читаемость текста)
     blur: number;     // 0..40 px — размытие фона
@@ -47,14 +51,16 @@ export interface NewTabSettings {
   // тон палитры бывает ярче тёмной земли (у «Сепии» — в одиннадцать раз даже после притемнения
   // на 45%), и подмешивание такого тона делает землю СВЕТЛЕЕ островов, то есть выворачивает
   // иерархию. Поэтому притемнение считается по светимости, см. groundTint в styles/island.ts.
-  sidebar: { tinted: boolean; amount: number };
+  // source: 'palette' — прежняя земля из тона палитры; 'mesh' — сетка из общего каталога.
+  // ⚠️ Поля добавлены с дефолтом в merge: старый JSON без них продолжает работать.
+  sidebar: { tinted: boolean; amount: number; source: 'palette' | 'mesh'; meshId: string };
 }
 
 export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
   // ⚠️ По умолчанию — чистый белый, а не градиент. Пёстрый фон при первом запуске спорит и с
   // приветственным экраном, и с самим содержимым вкладки; выбрать себе градиент человек может
   // в «Интерфейсе» одним кликом, а вот убрать навязанный — заметно дороже.
-  background: { kind: 'color', preset: 'aurora', color: '#FFFFFF', dim: 0, blur: 0 },
+  background: { kind: 'color', preset: 'aurora', meshId: '', color: '#FFFFFF', dim: 0, blur: 0 },
   clock: { show: true, seconds: false, hour24: true, date: true, face: 'analog' },
   greeting: { show: true, name: '' },
   search: { show: true },
@@ -64,7 +70,7 @@ export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
   crypto: { codes: ['BTC', 'ETH'] },
   // ⚠️ По умолчанию выключено — по той же причине, что и белый фон новой вкладки выше:
   // навязанное оформление убирать дороже, чем включить желаемое.
-  sidebar: { tinted: false, amount: 30 },
+  sidebar: { tinted: false, amount: 30, source: 'palette', meshId: '' },
 };
 
 // Пределы насыщенности цветного фона. ⚠️ Верхний — НЕ «сколько влезет»: выше него земля догоняет
@@ -146,6 +152,10 @@ export function isLightBackground(bg: NewTabSettings['background']): boolean {
   }
   if (bg.kind === 'preset') {
     return !!WALLPAPER_PRESETS.find((p) => p.id === bg.preset)?.light && bg.dim < 0.2;
+  }
+  if (bg.kind === 'mesh') {
+    const mesh = findMesh(bg.meshId);
+    return !!mesh && meshIsLight(mesh) && bg.dim < 0.2;
   }
   return false;
 }
