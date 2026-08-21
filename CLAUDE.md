@@ -54,6 +54,7 @@ npm run download-translation-models  # пары en<->X для Bergamot из ре
 npm run bergamot-smoke               # ручная проверка перевода страниц без UI (см. README)
 npm test                             # ВСЕ проверки scripts/*-check.mjs разом (см. ниже)
 npm test -- word                     # только проверки, чьё имя содержит «word»
+npm run stand                        # живой Electron на временном профиле + эхо + CDP (не npm test)
 npm test -- contract                 # только сторож проводки IPC (см. ниже)
 npm run bookmarks-schema-check       # прогон миграции базы закладок и API папок на временной базе
 npm run filename-check               # прогон санитайзера имени файла (shared/fileNameSafety.ts)
@@ -159,13 +160,14 @@ sandboxed preload (`sandbox: true` для гостевых страниц) не 
 приватными методами `TabManager`, а он поднимается только вместе с приложением и боевым профилем.
 
 Ручные диагностические скрипты в `scripts/` (в `npm test` НЕ входят, потому что
-поднимают приложение): `smoke-test.mjs` — запускает прод-сборку через CDP и делает
-скриншот в `scripts/shots/`; `check-dom.mjs`, `diag-hub-shadow.mjs` — точечная
-диагностика вёрстки. ⚠️ Профиль они НЕ изолируют — открывается боевой `userData`
-(см. «Безопасность данных и стоп-условия»). Изолированные AI-стенды запускаются
-флагами окружения поверх `npm start`: `OBLAKO_GPU_TEST=1`, `OBLAKO_LLAMA_TEST=1`,
-`OBLAKO_TRANSLATE_TEST=1` — открывают отдельное тестовое окно ВМЕСТО боевого
-браузера (см. `electron/main.ts`).
+поднимают приложение). ⚠️ `smoke-test.mjs`, `check-dom.mjs`, `diag-hub-shadow.mjs`
+профиль НЕ изолируют — открывается боевой `userData`. Живые проверки утечек — только
+через `npm run stand` (`scripts/isolated-stand.mjs`): свой `--user-data-dir` во
+временной папке, эхо-сервер, CDP, снятие дерева `taskkill /T`. Изолированные AI-стенды
+запускаются флагами окружения поверх `npm start`: `OBLAKO_GPU_TEST=1`,
+`OBLAKO_LLAMA_TEST=1`, `OBLAKO_TRANSLATE_TEST=1` — открывают отдельное тестовое окно
+ВМЕСТО боевого браузера (см. `electron/main.ts`). `npm run ai-bench` тоже на своём
+профиле, но процесс пока снимает `child.kill()` — для новых прогонов брать `withStand`.
 
 ## Карта документации
 
