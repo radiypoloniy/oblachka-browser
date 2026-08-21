@@ -12,6 +12,7 @@ import { getPhotoOfDay, shufflePhoto } from '../NewTabPhoto';
 import { extractUrlText } from '../NotebookExtract';
 import { generateStudio } from '../NotebookStudio';
 import type { StudioKind } from '../NotebookStudio';
+import { parsePhraseToGenWidget } from '../GenWidgetParser';
 import { getWeather } from '../WeatherService';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
@@ -56,5 +57,18 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   });
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (_e, kind: StudioKind, context: string) =>
     generateStudio(kind, typeof context === 'string' ? context : ''));
+  let genParseBusy = false;
+  ipcMain.handle(IPC.DESKTOP_GEN_PARSE, async (_e, phrase: string) => {
+    if (genParseBusy) return { ok: false, reason: 'model-error', error: 'Уже собираю другой виджет' };
+    genParseBusy = true;
+    try {
+      return await parsePhraseToGenWidget(String(phrase ?? ''));
+    } catch (err) {
+      console.warn('[gen-widget] разбор упал:', err);
+      return { ok: false, reason: 'model-error' };
+    } finally {
+      genParseBusy = false;
+    }
+  });
 
 }

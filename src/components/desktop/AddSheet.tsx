@@ -4,6 +4,7 @@ import { X, Plus, Globe } from 'lucide-react';
 import { APPS, AppIconBadge } from '../aiApps';
 import { WIDGET_SIZES, type DesktopItem, type DesktopLayout, hasItem } from '../../newtab/desktop';
 import { RADIUS } from '../../styles/system';
+import GenCompose from './GenCompose';
 
 // Палитра добавления: виджеты, приложения и свои сайты.
 //
@@ -93,6 +94,13 @@ export default function AddSheet({ layout, onAdd, onClose }: Props) {
           </span>
           <button onClick={onClose} title="Закрыть" style={iconBtn}><X size={16} /></button>
         </div>
+
+        <Group title="Свой виджет">
+          <GenCompose
+            already={(key) => hasItem(layout, 'widget', key)}
+            onPlace={(item) => { onAdd(item); onClose(); }}
+          />
+        </Group>
 
         <Group title="Виджеты">
           {WIDGET_CHOICES.filter((w) => !hasItem(layout, 'widget', w.key)).map((w) => (

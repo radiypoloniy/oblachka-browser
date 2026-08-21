@@ -75,6 +75,8 @@ export const IPC = {
   RULES_REMOVE:      'rules:remove',       // renderer → main: удалить правило
   RULES_CHANGED:     'rules:changed',      // main → renderer: список изменился
 
+  DESKTOP_GEN_PARSE: 'desktop:gen-parse',  // renderer → main: фраза → черновик своего виджета (модель)
+
   // Омнибокс
   OMNIBOX_FOCUS: 'omnibox:focus',   // main → renderer: сфокусировать адресную строку (Ctrl+L)
 

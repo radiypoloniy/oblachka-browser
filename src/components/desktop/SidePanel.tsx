@@ -14,6 +14,7 @@ import {
 import { WIDGET_FILLS, FILL_SWATCH } from './widgets';
 import CryptoIcon from '../CryptoIcon';
 import { RADIUS } from '../../styles/system';
+import GenCompose from './GenCompose';
 
 // Боковая панель настройки рабочего стола — всё, что можно поменять, в одном месте и по одному
 // клику. Референс — Bonjourr.
@@ -141,6 +142,15 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
                 .map((id) => [id, SCALE_PRESETS[id].label] as [string, string])}
               onChange={(v) => onLayout(setScale(layout, v as DesktopScale))}
             />
+          </Section>
+
+          <Section title="Свой виджет" note="Локальная модель соберёт одностраничник. В хром он не попадает — только песочница">
+            <Card>
+              <GenCompose
+                already={(key) => hasItem(layout, 'widget', key)}
+                onPlace={(item) => onLayout(addItem(layout, item))}
+              />
+            </Card>
           </Section>
 
           <Section title="Фон">

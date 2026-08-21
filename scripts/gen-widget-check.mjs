@@ -4,7 +4,7 @@
 //   npm test -- gen-widget
 import {
   sanitizeGenHtml, extractGenHtml, wrapGenSrcdoc, pickGenFacts, clampGenStorage,
-  GEN_FACT_IDS, GEN_STORAGE_MAX_CHARS,
+  parseGenMeta, GEN_FACT_IDS, GEN_STORAGE_MAX_CHARS,
 } from '../shared/genWidget.ts';
 
 let passed = 0;
@@ -63,6 +63,20 @@ console.log('\n── обвязка ──');
   checkTrue('токен прокинут', doc.includes('--accent:#2C4BD8'));
   checkTrue('мост api', doc.includes('window.api'));
   checkTrue('нет allow-same-origin в документе', !doc.includes('allow-same-origin'));
+}
+
+console.log('\n── метки ──');
+{
+  const m = parseGenMeta('WIDGET: weather\nFACTS: -\nSIZE: small\nASSET: none\nTITLE: Погода');
+  check('готовая погода', m.widget, 'weather');
+  const g = parseGenMeta('WIDGET: gen\nFACTS: openTabs, sessionBlocks\nSIZE: medium\nASSET: photo\nTITLE: Фоторамка');
+  check('свой', g.widget, 'gen');
+  check('факты', g.facts, ['openTabs', 'sessionBlocks']);
+  check('размер', g.size, { w: 4, h: 2 });
+  check('фото', g.assetPhoto, true);
+  const n = parseGenMeta('WIDGET: bitcoin\nFACTS:\nSIZE: huge');
+  check('сеть — none', n.widget, 'none');
+  check('размер по умолчанию', n.size, { w: 2, h: 2 });
 }
 
 console.log('\n── storage ──');

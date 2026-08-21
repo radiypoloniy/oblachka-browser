@@ -1,0 +1,147 @@
+import { useEffect, useState } from 'react';
+import type { CellSize, DesktopItem } from '../../newtab/desktop';
+import { pickGenFacts } from '../../../shared/genWidget';
+import { saveGenRecord, deleteGenRecord } from '../../newtab/genStore';
+import { GenWidget } from './GenWidget';
+import { RADIUS } from '../../styles/system';
+import type { GenParseOutcome } from '../../../shared/ipc';
+
+const DRAFT_ID = 'gen-draft';
+
+export default function GenCompose({
+  onPlace,
+  already,
+}: {
+  onPlace: (item: Omit<DesktopItem, 'id'>) => void;
+  already?: (widget: string) => boolean;
+}) {
+  const [phrase, setPhrase] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [draft, setDraft] = useState<Extract<GenParseOutcome, { ok: true }> | null>(null);
+
+  useEffect(() => () => { deleteGenRecord(DRAFT_ID); }, []);
+
+  async function assemble() {
+    const p = phrase.trim();
+    if (p.length < 3 || busy) return;
+    setBusy(true);
+    setError('');
+    setDraft(null);
+    try {
+      const res = await window.oblako.parseGenWidget(p);
+      if (!res.ok) {
+        setError(res.reason === 'model-error'
+          ? (res.error || 'Модель не ответила. Нужна скачанная локальная модель.')
+          : 'Не собрал. Попробуйте другими словами или поставьте готовый виджет.');
+        return;
+      }
+      if (res.kind === 'gen') {
+        saveGenRecord(DRAFT_ID, {
+          html: res.html,
+          facts: pickGenFacts(res.facts),
+          photo: res.assetPhoto,
+        });
+      }
+      setDraft(res);
+    } catch {
+      setError('Не удалось обратиться к модели');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function confirm() {
+    if (!draft) return;
+    if (draft.kind === 'builtin') {
+      if (already?.(draft.widget)) {
+        setError('Этот виджет уже на столе');
+        return;
+      }
+      onPlace({ kind: 'widget', widget: draft.widget, size: draft.size });
+      setDraft(null);
+      setPhrase('');
+      return;
+    }
+    const genId = `g${Date.now().toString(36)}`;
+    saveGenRecord(genId, {
+      html: draft.html,
+      facts: pickGenFacts(draft.facts),
+      photo: draft.assetPhoto,
+    });
+    deleteGenRecord(DRAFT_ID);
+    onPlace({
+      kind: 'widget', widget: 'gen', genId, size: draft.size as CellSize, title: draft.title,
+    });
+    setDraft(null);
+    setPhrase('');
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+        Опишите виджет своими словами. Модель соберёт одностраничник, поставите вы.
+      </div>
+      <textarea
+        value={phrase}
+        onChange={(e) => setPhrase(e.target.value)}
+        rows={2}
+        placeholder="Помодоро, фоторамка, сколько вкладок открыто…"
+        style={{
+          width: '100%', resize: 'vertical', minHeight: 52,
+          padding: '8px 10px', borderRadius: RADIUS.control,
+          border: '1px solid var(--divider-strong)', background: 'var(--surface)',
+          color: 'var(--text-body)', font: 'inherit', boxSizing: 'border-box',
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => void assemble()}
+        disabled={busy || phrase.trim().length < 3}
+        style={{
+          alignSelf: 'flex-start', padding: '6px 12px', border: 'none', cursor: 'default',
+          borderRadius: RADIUS.pill, background: 'var(--accent)', color: 'var(--on-accent)',
+          fontSize: 'var(--fs-sm)', fontWeight: 600, opacity: busy ? 0.6 : 1,
+        }}
+      >
+        {busy ? 'Собираю…' : 'Собрать'}
+      </button>
+      {error && <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--danger-500)' }}>{error}</div>}
+      {draft && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 8,
+          padding: 10, borderRadius: RADIUS.box, border: '1px solid var(--divider)',
+        }}>
+          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+            {draft.kind === 'builtin' ? `Готовый виджет: ${draft.widget}` : draft.title}
+          </div>
+          {draft.kind === 'gen' && (
+            <div style={{ height: 140, borderRadius: RADIUS.control, overflow: 'hidden' }}>
+              <GenWidget
+                size={draft.size} box={{ width: 240, height: 140 }} tiles={[]}
+                onOpen={() => { /* превью */ }} city="" genId={DRAFT_ID}
+              />
+            </div>
+          )}
+          {draft.kind === 'gen' && draft.assetPhoto && (
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+              Фоторамка берёт своё фото фона новой вкладки, если оно уже задано.
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={confirm} style={{
+              padding: '6px 12px', border: 'none', cursor: 'default',
+              borderRadius: RADIUS.pill, background: 'var(--accent)', color: 'var(--on-accent)',
+              fontSize: 'var(--fs-sm)', fontWeight: 600,
+            }}>Поставить</button>
+            <button type="button" onClick={() => { setDraft(null); deleteGenRecord(DRAFT_ID); }} style={{
+              padding: '6px 12px', border: '1px solid var(--divider-strong)', cursor: 'default',
+              borderRadius: RADIUS.pill, background: 'transparent', color: 'var(--text-body)',
+              fontSize: 'var(--fs-sm)',
+            }}>Отмена</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

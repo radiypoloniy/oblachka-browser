@@ -10,6 +10,7 @@ const EVENT = 'oblako-desktop-gen-changed';
 export interface GenRecord {
   html: string;
   facts: GenFactId[];
+  photo?: boolean;
 }
 
 export function genStorageKey(id: string): string {
@@ -26,7 +27,7 @@ export function loadGenRecord(id: string): GenRecord | null {
     const o = parsed as Record<string, unknown>;
     const html = typeof o.html === 'string' ? sanitizeGenHtml(o.html) : '';
     if (!html) return null;
-    return { html, facts: pickGenFacts(o.facts) };
+    return { html, facts: pickGenFacts(o.facts), photo: o.photo === true };
   } catch {
     return null;
   }
@@ -38,6 +39,7 @@ export function saveGenRecord(id: string, rec: GenRecord): void {
     localStorage.setItem(PREFIX + id, JSON.stringify({
       html: sanitizeGenHtml(rec.html),
       facts: pickGenFacts(rec.facts),
+      photo: rec.photo === true,
     }));
     window.dispatchEvent(new CustomEvent(EVENT));
   } catch { /* квота — плитка останется пустой до следующего сохранения */ }

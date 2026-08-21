@@ -4,6 +4,7 @@ import {
   GEN_TOKEN_VARS, wrapGenSrcdoc, clampGenStorage, type GenFactId,
 } from '../../../shared/genWidget';
 import { loadGenRecord, loadGenState, saveGenState, subscribeGenStore } from '../../newtab/genStore';
+import { getNewTabCustomImage } from '../../newtab/settings';
 
 // Свой виджет: рамка стола наша, внутренности — одностраничник в песочнице.
 // sandbox без allow-same-origin: скрипт не видит window.oblako родителя.
@@ -16,10 +17,15 @@ export function GenWidget({
   useEffect(() => subscribeGenStore(() => setRev((n) => n + 1)), []);
   const rec = useMemo(() => (genId ? loadGenRecord(genId) : null), [genId, rev]);
   const [facts, setFacts] = useState<Record<string, number | string>>({});
+  const [assets, setAssets] = useState<{ photo?: string }>({});
 
   useEffect(() => {
     let alive = true;
     void collectFacts(rec?.facts ?? []).then((f) => { if (alive) setFacts(f); });
+    if (rec?.photo) {
+      const url = getNewTabCustomImage();
+      setAssets(url ? { photo: url } : {});
+    } else setAssets({});
     return () => { alive = false; };
   }, [rec]);
 
@@ -33,7 +39,7 @@ export function GenWidget({
     const frame = frameRef.current;
     if (!frame || !genId) return;
     const sendFacts = () => {
-      frame.contentWindow?.postMessage({ type: 'oblako-gen-facts', facts, assets: {} }, '*');
+      frame.contentWindow?.postMessage({ type: 'oblako-gen-facts', facts, assets }, '*');
     };
     const onMsg = (e: MessageEvent) => {
       if (e.source !== frame.contentWindow) return;
@@ -56,7 +62,7 @@ export function GenWidget({
     window.addEventListener('message', onMsg);
     sendFacts();
     return () => window.removeEventListener('message', onMsg);
-  }, [genId, facts]);
+  }, [genId, facts, assets]);
 
   return (
     <Tile surface toned fill={fill} overImage={overImage} hero={hero} padding={0}>

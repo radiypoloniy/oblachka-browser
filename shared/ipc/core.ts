@@ -42,6 +42,19 @@ export interface FindResult {
 
 // Разбор фразы в правило (electron/RuleParser.ts). Черновик приходит в renderer, показывается
 // карточкой и сохраняется, только если человек его утвердил, — модель ничего не заводит сама.
+export type GenParseOutcome =
+  | { ok: true; kind: 'builtin'; widget: string; size: { w: number; h: number } }
+  | {
+    ok: true;
+    kind: 'gen';
+    html: string;
+    facts: string[];
+    size: { w: number; h: number };
+    assetPhoto: boolean;
+    title: string;
+  }
+  | { ok: false; reason: 'unclear' | 'model-error'; error?: string };
+
 export type RuleParseOutcome =
   | { ok: true; rule: AutomationRule }
   // 'unclear' — фраза не легла в закрытый каталог (это нормальный и частый исход),

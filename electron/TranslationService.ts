@@ -502,11 +502,11 @@ export async function runTabOrganizePrompt(
   prompt: string,
   // background — задача, которой человек не заказывал (разбор полей формы, поиск вкладки при
   // наборе, будущие итоги дня). Такая ждёт, пока пользовательская полоса не опустеет.
-  opts?: { background?: boolean; signal?: { aborted: boolean } },
+  opts?: { background?: boolean; signal?: { aborted: boolean }; maxTokens?: number },
 ): Promise<{ ok: true; out: string; stopReason: string } | { ok: false; error: string; errorCode?: ModelErrorCode }> {
   try {
     await ensureLoaded()
-    const { out, stopReason } = await runPrompt(prompt, ORGANIZE_MAX_TOKENS, undefined, opts)
+    const { out, stopReason } = await runPrompt(prompt, opts?.maxTokens ?? ORGANIZE_MAX_TOKENS, undefined, opts)
     return { ok: true, out, stopReason }
   } catch (e) {
     console.error('[organize] error:', e)

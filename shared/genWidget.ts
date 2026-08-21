@@ -181,6 +181,44 @@ export function wrapGenSrcdoc(
     + `<script>${bootstrapScript(id)}</script></head><body>${html}</body></html>`;
 }
 
+export const GEN_SIZES = {
+  small:  { w: 2, h: 2 },
+  medium: { w: 4, h: 2 },
+  large:  { w: 4, h: 4 },
+} as const;
+export type GenSizeName = keyof typeof GEN_SIZES;
+
+export const GEN_BUILTIN_WIDGETS = [
+  'weather', 'clock', 'rates', 'crypto', 'tasks', 'topsites', 'music',
+  'shield', 'moon', 'downloads', 'holiday', 'tracking', 'digest',
+] as const;
+
+export function labelledLine(out: string, label: string): string {
+  const m = new RegExp(`^\\s*${label}\\s*:\\s*(.+)$`, 'im').exec(out);
+  return (m?.[1] ?? '').trim().replace(/^["'«»]|["'«»]$/g, '').trim();
+}
+
+export function parseGenMeta(out: string): {
+  widget: string;
+  facts: GenFactId[];
+  size: { w: number; h: number };
+  assetPhoto: boolean;
+  title: string;
+} {
+  const widgetRaw = labelledLine(out, 'WIDGET').toLowerCase();
+  const widget = widgetRaw === 'gen' || (GEN_BUILTIN_WIDGETS as readonly string[]).includes(widgetRaw)
+    ? widgetRaw
+    : 'none';
+  const factRaw = labelledLine(out, 'FACTS');
+  const facts = pickGenFacts(factRaw.split(/[,;\s]+/).filter(Boolean));
+  const sizeRaw = labelledLine(out, 'SIZE').toLowerCase();
+  const size = GEN_SIZES[sizeRaw as GenSizeName] ?? GEN_SIZES.small;
+  const asset = labelledLine(out, 'ASSET').toLowerCase();
+  let title = labelledLine(out, 'TITLE').slice(0, 28);
+  if (title.length < 2) title = widget === 'gen' ? 'Свой виджет' : '';
+  return { widget, facts, size, assetPhoto: asset === 'photo', title };
+}
+
 export function clampGenStorage(raw: unknown): string {
   if (typeof raw !== 'string') {
     try { return JSON.stringify(raw).slice(0, GEN_STORAGE_MAX_CHARS); } catch { return ''; }
