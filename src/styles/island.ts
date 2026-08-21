@@ -141,12 +141,16 @@ export const GRAIN = { light: 0.09, dark: 0.09, tinted: 0.075, material: 0.06, o
 // Сам рисунок земли считает shared/chromeGround.ts (там же и проверка): CSS не умеет ни поворот
 // тона, ни притемнение по светимости, а без них цветной фон ломает читаемость в тёмной теме.
 // Здесь остаётся только обёртка — положить готовую картинку и накрыть её зерном.
-export function chromeTintStyle(backgroundImage: string): React.CSSProperties {
+export function chromeTintStyle(backgroundImage: string, paintLayers = 1): React.CSSProperties {
+  // ⚠️ Размер и повтор — на КАЖДЫЙ слой краски, не «зерно + одно 100%». У сетки слоёв несколько,
+  // и недостающие размеры CSS берёт С НАЧАЛА списка: пятно получало бы плитку зерна 180 px.
+  const paintSize = Array.from({ length: paintLayers }, () => '100% 100%').join(', ');
+  const paintRepeat = Array.from({ length: paintLayers }, () => 'no-repeat').join(', ');
   return {
     // На насыщенной подкраске зерно приходится держать сильнее: цвет «съедает» мелкий шум.
     backgroundImage: `${noise(GRAIN.tinted)}, ${backgroundImage}`,
-    backgroundRepeat: 'repeat, no-repeat',
-    backgroundSize: '180px 180px, 100% 100%',
+    backgroundRepeat: `repeat, ${paintRepeat}`,
+    backgroundSize: `180px 180px, ${paintSize}`,
   };
 }
 

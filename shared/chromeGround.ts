@@ -26,6 +26,11 @@ export interface Ground {
   /** Готовое значение background-image (без слоя шума — его добавляет вызывающий). */
   backgroundImage: string;
   /**
+   * Сколько слоёв в backgroundImage. Нужно зерну: `backgroundSize` иначе циклится и кроит
+   * пятна сетки под плитку 180 px (см. chromeTintStyle).
+   */
+  paintLayers: number;
+  /**
    * Цвет ВЕРХНЕЙ КРОМКИ окна.
    *
    * ⚠️ Он же уходит в полосу системных кнопок Windows (setTitleBarOverlay): её рисует ОС, а не
@@ -298,7 +303,277 @@ export function buildChromeGround(input: GroundInput): Ground {
   return {
     top,
     island: islandOver(top, input.tint, input.surface, input.dark),
+    paintLayers: 1,
     backgroundImage:
       `linear-gradient(180deg, ${top} 0%, ${groundStop(input, 0, 0.7)} 42%, ${groundStop(input, HUE_BOTTOM, 0.5)} 100%)`,
   };
+}
+
+// ── Сетчатый градиент (обои и земля окна) ─────────────────────────────────────
+//
+// ⚠️ Это ТО ЖЕ ядро, что и земля палитры выше, а не второй движок. Цвет, светимость, островной
+// подъём — те же функции. Разница только в рисунке: палитра даёт вертикальную растяжку одного
+// тона (иначе полоса кнопок Windows расходится с кромкой), а сетка — крупные эллипсы из цветов,
+// которые выбрал человек. Обои — содержимое и выбор человека: сиреневый здесь законен, это не
+// системный хром (см. docs/design-system-color.md).
+//
+// Модель как у Arc Spaces / Stripe Mesh: сплошная тёплая база и 2–5 мягких пятен. Линейная
+// «растяжка из трёх hex» выглядит дешёвой именно потому, что границу между цветами видно.
+
+export interface MeshBlob {
+  color: string;
+  /** Центр, 0…100 по ширине. */
+  x: number;
+  /** Центр, 0…100 по высоте. */
+  y: number;
+  /** Горизонтальный радиус эллипса в % ширины. Вертикальный = 0.78 от него. */
+  size: number;
+}
+
+export interface MeshGradient {
+  id: string;
+  name: string;
+  /** Цвета, которые выбрал человек. Пятна и база считаются из них. */
+  seeds: string[];
+  base: string;
+  blobs: MeshBlob[];
+  /** 0…100: насколько пятно держит свой цвет, а не растворяется в базе. */
+  intensity: number;
+  /** 40…90: где пятно становится прозрачным, в % радиуса. */
+  softness: number;
+}
+
+export const MESH_SEEDS_MIN = 2;
+export const MESH_SEEDS_MAX = 5;
+export const MESH_SOFTNESS_MIN = 40;
+export const MESH_SOFTNESS_MAX = 90;
+export const MESH_INTENSITY_DEFAULT = 78;
+export const MESH_SOFTNESS_DEFAULT = 72;
+
+/** Тёплая бумага и чернила — не холодный серый iOS. Разбор: docs/roadmap-2026-08-20.md §6. */
+const MESH_PAPER = '#efe8dc';
+const MESH_INK = '#141216';
+
+export function parseHex(input: string): string | null {
+  const s = input.trim().replace(/^#/, '');
+  if (/^[0-9a-fA-F]{3}$/.test(s)) {
+    return '#' + [...s].map((c) => (c + c).toLowerCase()).join('');
+  }
+  if (/^[0-9a-fA-F]{6}$/.test(s)) return '#' + s.toLowerCase();
+  return null;
+}
+
+function clamp01(n: number): number {
+  return Math.max(0, Math.min(100, n));
+}
+
+function clampSize(n: number): number {
+  return Math.max(28, Math.min(120, n));
+}
+
+/** Раскладка пятен: треугольник / углы, крупные радиусы — иначе это конфетти, а не «пространство». */
+const BLOB_LAYOUT: Record<number, { x: number; y: number; size: number }[]> = {
+  2: [
+    { x: 18, y: 22, size: 86 },
+    { x: 84, y: 78, size: 82 },
+  ],
+  3: [
+    { x: 16, y: 18, size: 80 },
+    { x: 88, y: 26, size: 74 },
+    { x: 46, y: 88, size: 84 },
+  ],
+  4: [
+    { x: 14, y: 16, size: 74 },
+    { x: 88, y: 18, size: 70 },
+    { x: 16, y: 86, size: 76 },
+    { x: 86, y: 84, size: 72 },
+  ],
+  5: [
+    { x: 14, y: 16, size: 68 },
+    { x: 88, y: 16, size: 66 },
+    { x: 12, y: 86, size: 70 },
+    { x: 88, y: 86, size: 68 },
+    { x: 50, y: 48, size: 58 },
+  ],
+};
+
+function mixBase(seeds: string[]): string {
+  let acc = seeds[0] ?? MESH_PAPER;
+  for (let i = 1; i < seeds.length; i++) acc = blend(seeds[i]!, acc, 50);
+  return relLuminance(acc) > 0.36 ? blend(acc, MESH_PAPER, 30) : blend(acc, MESH_INK, 40);
+}
+
+function layoutBlobs(colors: string[]): MeshBlob[] {
+  const slots = BLOB_LAYOUT[Math.max(MESH_SEEDS_MIN, Math.min(MESH_SEEDS_MAX, colors.length))]
+    ?? BLOB_LAYOUT[3]!;
+  return colors.map((color, i) => {
+    const slot = slots[i] ?? { x: 50, y: 50, size: 64 };
+    return { color, x: slot.x, y: slot.y, size: slot.size };
+  });
+}
+
+export function mixFromSeeds(
+  seeds: string[],
+  opts: { intensity?: number; softness?: number; blobs?: MeshBlob[] } = {},
+): Pick<MeshGradient, 'base' | 'blobs' | 'intensity' | 'softness' | 'seeds'> {
+  const parsed = seeds.map(parseHex).filter((x): x is string => x !== null)
+    .slice(0, MESH_SEEDS_MAX);
+  const ready = parsed.length >= MESH_SEEDS_MIN ? parsed : [...parsed, MESH_PAPER, MESH_INK].slice(0, MESH_SEEDS_MIN);
+  const intensity = Math.max(0, Math.min(100, opts.intensity ?? MESH_INTENSITY_DEFAULT));
+  const softness = Math.max(MESH_SOFTNESS_MIN, Math.min(MESH_SOFTNESS_MAX, opts.softness ?? MESH_SOFTNESS_DEFAULT));
+  const base = mixBase(ready);
+  const colors = ready.map((s) => blend(s, base, intensity));
+  const keep = opts.blobs && opts.blobs.length === colors.length;
+  const blobs = keep
+    ? opts.blobs!.map((b, i) => ({
+      color: colors[i]!,
+      x: clamp01(b.x),
+      y: clamp01(b.y),
+      size: clampSize(b.size),
+    }))
+    : layoutBlobs(colors);
+  return { seeds: ready, base, blobs, intensity, softness };
+}
+
+export function createMeshDraft(seeds: string[], name = 'Градиент'): MeshGradient {
+  return { id: '', name, ...mixFromSeeds(seeds) };
+}
+
+function blobAlpha(blob: MeshBlob, x: number, y: number, softness: number): number {
+  const rx = Math.max(1, blob.size);
+  const ry = Math.max(1, blob.size * 0.78);
+  const d = Math.hypot((x - blob.x) / rx, (y - blob.y) / ry);
+  const end = (52 + softness * 0.38) / 100;
+  const mid = end * 0.42;
+  if (d >= end) return 0;
+  if (d <= 0) return 1;
+  if (d <= mid) return 1 - (d / mid) * 0.48;
+  return 0.52 * (1 - (d - mid) / (end - mid));
+}
+
+/** Цвет сетки в точке 0…100. Нужен кромке окна и решению «стекло или заливка». */
+export function sampleMesh(mesh: MeshGradient, x: number, y: number): string {
+  let color = mesh.base;
+  for (let i = mesh.blobs.length - 1; i >= 0; i--) {
+    const blob = mesh.blobs[i]!;
+    const a = blobAlpha(blob, x, y, mesh.softness);
+    if (a > 0) color = blend(blob.color, color, a * 100);
+  }
+  return color;
+}
+
+export function meshIsLight(mesh: MeshGradient): boolean {
+  const samples = [sampleMesh(mesh, 50, 40), sampleMesh(mesh, 20, 20), sampleMesh(mesh, 80, 70), mesh.base];
+  const avg = samples.reduce((s, c) => s + relLuminance(c), 0) / samples.length;
+  return avg > 0.45;
+}
+
+export function meshPaintLayers(mesh: MeshGradient): string[] {
+  const end = 52 + mesh.softness * 0.38;
+  const mid = end * 0.42;
+  const blobs = mesh.blobs.map((b) =>
+    `radial-gradient(ellipse ${b.size}% ${(b.size * 0.78).toFixed(1)}% at ${b.x}% ${b.y}%, ${b.color} 0%, ${rgba(b.color, 0.52)} ${mid.toFixed(1)}%, transparent ${end.toFixed(1)}%)`,
+  );
+  return [...blobs, `linear-gradient(180deg, ${mesh.base} 0%, ${mesh.base} 100%)`];
+}
+
+export function compileMeshBackground(mesh: MeshGradient): string {
+  return meshPaintLayers(mesh).join(', ');
+}
+
+/**
+ * Земля окна из сетки. ⚠️ Сверху тонкая растяжка в цвет кромки: пятна сами по себе разного
+ * цвета слева и справа, а полосу кнопок Windows рисует ОС одним hex. Без этой ступени углы
+ * окна читались бы чужой заплаткой — та же причина, по которой палитра вертикальна.
+ */
+export function buildChromeGroundFromMesh(mesh: MeshGradient, input: GroundInput): Ground {
+  const fitted = mixFromSeeds(mesh.seeds, {
+    intensity: mesh.intensity,
+    softness: mesh.softness,
+    blobs: mesh.blobs,
+  });
+  const live: MeshGradient = { ...mesh, ...fitted };
+  const top = sampleMesh(live, 50, 0);
+  const deep = sampleMesh(live, 50, 18);
+  const fade = `linear-gradient(180deg, ${top} 0%, ${rgba(top, 0)} 14%)`;
+  const layers = [fade, ...meshPaintLayers(live)];
+  return {
+    top,
+    island: islandOver(deep, live.seeds[0] ?? input.tint, input.surface, input.dark),
+    paintLayers: layers.length,
+    backgroundImage: layers.join(', '),
+  };
+}
+
+export function validateMesh(raw: unknown): MeshGradient | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || r.id.length === 0 || r.id.length > 64) return null;
+  if (typeof r.name !== 'string') return null;
+  const name = r.name.slice(0, 48);
+  const seeds = Array.isArray(r.seeds)
+    ? r.seeds.map((s) => typeof s === 'string' ? parseHex(s) : null).filter((s): s is string => s !== null)
+    : [];
+  if (seeds.length < MESH_SEEDS_MIN || seeds.length > MESH_SEEDS_MAX) return null;
+  const blobsRaw = Array.isArray(r.blobs) ? r.blobs : [];
+  const blobs: MeshBlob[] = [];
+  for (const b of blobsRaw) {
+    if (typeof b !== 'object' || b === null) continue;
+    const o = b as Record<string, unknown>;
+    const color = typeof o.color === 'string' ? parseHex(o.color) : null;
+    if (!color || typeof o.x !== 'number' || typeof o.y !== 'number' || typeof o.size !== 'number') continue;
+    if (!Number.isFinite(o.x) || !Number.isFinite(o.y) || !Number.isFinite(o.size)) continue;
+    blobs.push({ color, x: clamp01(o.x), y: clamp01(o.y), size: clampSize(o.size) });
+  }
+  const mixed = mixFromSeeds(seeds, {
+    intensity: typeof r.intensity === 'number' && Number.isFinite(r.intensity) ? r.intensity : MESH_INTENSITY_DEFAULT,
+    softness: typeof r.softness === 'number' && Number.isFinite(r.softness) ? r.softness : MESH_SOFTNESS_DEFAULT,
+    blobs: blobs.length === seeds.length ? blobs : undefined,
+  });
+  return { id: r.id, name: name.trim() || 'Градиент', ...mixed };
+}
+
+function builtin(id: string, name: string, seeds: string[], blobs: MeshBlob[]): MeshGradient {
+  return { id, name, ...mixFromSeeds(seeds, { blobs, intensity: 82, softness: 74 }) };
+}
+
+/**
+ * Готовые сетки. Не замена линейных `--wallpaper-*`: те уже выбраны у людей, id трогать нельзя.
+ * Здесь — более «дорогой» рисунок, тот же каталог, что и у пользовательских.
+ */
+export const BUILTIN_MESHES: MeshGradient[] = [
+  builtin('mesh-lagoon', 'Лагуна', ['#7ec8c8', '#2f6f8f', '#e7d5b8'], [
+    { color: '#7ec8c8', x: 18, y: 20, size: 82 },
+    { color: '#2f6f8f', x: 86, y: 30, size: 76 },
+    { color: '#e7d5b8', x: 48, y: 88, size: 80 },
+  ]),
+  builtin('mesh-ember', 'Угольки', ['#e07a5f', '#f2cc8f', '#3d405b'], [
+    { color: '#e07a5f', x: 22, y: 24, size: 84 },
+    { color: '#f2cc8f', x: 78, y: 18, size: 70 },
+    { color: '#3d405b', x: 70, y: 86, size: 88 },
+  ]),
+  builtin('mesh-meadow', 'Луг', ['#81b29a', '#f4f1de', '#3d5a45'], [
+    { color: '#81b29a', x: 20, y: 28, size: 86 },
+    { color: '#f4f1de', x: 82, y: 22, size: 68 },
+    { color: '#3d5a45', x: 55, y: 90, size: 78 },
+  ]),
+  builtin('mesh-dusk', 'Сумерки', ['#c97b63', '#1d3557', '#f1e3d3'], [
+    { color: '#c97b63', x: 16, y: 22, size: 78 },
+    { color: '#1d3557', x: 88, y: 40, size: 90 },
+    { color: '#f1e3d3', x: 40, y: 86, size: 72 },
+  ]),
+  builtin('mesh-fog', 'Туман', ['#cdd6dd', '#8aa2b4', '#f6f3ee'], [
+    { color: '#cdd6dd', x: 24, y: 18, size: 88 },
+    { color: '#8aa2b4', x: 80, y: 70, size: 80 },
+    { color: '#f6f3ee', x: 48, y: 48, size: 64 },
+  ]),
+  builtin('mesh-citrus', 'Цитрус', ['#f4a261', '#e9c46a', '#2a9d8f'], [
+    { color: '#f4a261', x: 18, y: 16, size: 80 },
+    { color: '#e9c46a', x: 86, y: 24, size: 74 },
+    { color: '#2a9d8f', x: 52, y: 88, size: 82 },
+  ]),
+];
+
+export function findBuiltinMesh(id: string): MeshGradient | null {
+  return BUILTIN_MESHES.find((m) => m.id === id) ?? null;
 }
