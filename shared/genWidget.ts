@@ -21,10 +21,11 @@ export const GEN_FACT_IDS: readonly GenFactId[] = GEN_FACTS.map((f) => f.id);
 
 export const GEN_TOKEN_VARS = [
   '--accent', '--on-accent', '--accent-soft',
-  '--surface', '--app-bg', '--divider',
+  '--surface', '--app-bg', '--divider', '--card',
   '--text-body', '--text-strong', '--text-faint',
   '--font-sans', '--font-display',
-  '--radius-box', '--radius-control',
+  '--radius-box', '--radius-control', '--radius-pill',
+  '--fs-xs', '--fs-sm', '--fs-md', '--fs-lg',
 ] as const;
 
 const FORBIDDEN_TAGS = 'iframe|object|embed|link|meta|base|form|input|textarea|select|frame|frameset|applet|html|head|body|noscript|template|video|audio|source|track';
@@ -46,7 +47,11 @@ export function pickGenFacts(ids: unknown): GenFactId[] {
 function stripAttrValue(attr: string, value: string): string | null {
   const v = value.trim();
   const name = attr.toLowerCase();
-  if (name.startsWith('on')) return null;
+  if (name.startsWith('on')) {
+    // В песочнице без allow-same-origin обработчик не достаёт до window.oblako родителя,
+    // а сеть режет CSP. Резать onclick — значит ломать кнопки, которые 4B пишет чаще addEventListener.
+    return value;
+  }
   if (name === 'srcdoc' || name === 'srcset' || name === 'action' || name === 'formaction') return null;
   if (name === 'href' || name === 'xlink:href' || name === 'poster') {
     if (!v || /^(https?:|\/\/|javascript:|data:text\/html|vbscript:)/i.test(v)) return null;
@@ -106,7 +111,8 @@ export function sanitizeGenHtml(raw: string): string {
     const clean = String(css)
       .replace(/@import[^;]+;?/gi, '')
       .replace(/url\s*\(\s*['"]?\s*(https?:|\/\/)/gi, 'url(')
-      .replace(/expression\s*\(/gi, '(');
+      .replace(/expression\s*\(/gi, '(')
+      .replace(/(html|body)\s*\{[^}]*\}/gi, (block) => block.replace(/background(?:-color)?\s*:[^;]+;?/gi, ''));
     return `<style>${clean}</style>`;
   });
   s = s.replace(/<[^>]+>/g, (tag) => sanitizeTag(tag));
@@ -136,7 +142,7 @@ function bootstrapScript(widgetId: string): string {
   const id = JSON.stringify(widgetId);
   return `(function(){
 var WIDGET_ID=${id};
-var api={facts:{},assets:{},storage:{
+var api={facts:{},assets:{},now:Date.now(),storage:{
   get:function(){return new Promise(function(res){
     var req=Math.random().toString(36).slice(2);
     function on(e){
@@ -156,11 +162,29 @@ window.addEventListener('message',function(e){
   if(!e.data||e.data.type!=='oblako-gen-facts')return;
   api.facts=e.data.facts||{};
   api.assets=e.data.assets||{};
+  api.now=Date.now();
   window.dispatchEvent(new Event('oblako-facts'));
 });
+setInterval(function(){
+  api.now=Date.now();
+  window.dispatchEvent(new Event('oblako-tick'));
+},250);
 parent.postMessage({type:'oblako-gen-ready',widgetId:WIDGET_ID},'*');
 })();`;
 }
+
+export const GEN_HOST_CSS = [
+  '*,*:before,*:after{box-sizing:border-box}',
+  'html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;',
+  'background:transparent!important;color:var(--text-body);font-family:var(--font-sans);',
+  'display:flex;flex-direction:column}',
+  'body{padding:12px;gap:8px}',
+  'button{font:inherit;font-size:var(--fs-sm);font-weight:600;border:none;cursor:default;',
+  'background:var(--accent);color:var(--on-accent);border-radius:var(--radius-pill);',
+  'padding:6px 12px}',
+  'h1,h2,h3,.title{margin:0;font-size:var(--fs-xs);font-weight:600;color:var(--text-faint);letter-spacing:.02em}',
+  'img{max-width:100%;max-height:100%;object-fit:cover;border-radius:var(--radius-control)}',
+].join('');
 
 /**
  * Собирает srcdoc: CSP + токены темы + мост api + тело после санитайзера.
@@ -176,8 +200,7 @@ export function wrapGenSrcdoc(
   const csp = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:; font-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'";
   return '<!doctype html><html><head><meta charset="utf-8">'
     + `<meta http-equiv="Content-Security-Policy" content="${csp}">`
-    + `<style>${cssVarsBlock(tokens)}html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;`
-    + 'background:transparent;color:var(--text-body);font-family:var(--font-sans);}</style>'
+    + `<style>${cssVarsBlock(tokens)}${GEN_HOST_CSS}</style>`
     + `<script>${bootstrapScript(id)}</script></head><body>${html}</body></html>`;
 }
 

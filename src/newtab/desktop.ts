@@ -11,8 +11,6 @@
 // Хранится в localStorage рядом с остальными настройками вкладки (см. src/newtab/settings.ts):
 // и вкладка, и раздел «Интерфейс» живут в одном рендерере, IPC между ними не нужен.
 
-import { deleteGenRecord } from './genStore';
-
 export type DesktopItemKind = 'site' | 'app' | 'widget';
 
 /** Размер в клетках сетки. Ширина подрезается до числа колонок при отрисовке. */
@@ -590,8 +588,8 @@ export function clampSize(item: Pick<DesktopItem, 'kind' | 'widget'>, size: Cell
 }
 
 export function removeItem(layout: DesktopLayout, id: string): DesktopLayout {
-  const gone = layout.items.find((i) => i.id === id);
-  if (gone?.widget === 'gen' && gone.genId) deleteGenRecord(gone.genId);
+  // Свой виджет с стола уходит, одностраничник остаётся в библиотеке — иначе после удаления
+  // пришлось бы снова ждать модель.
   return { ...layout, items: layout.items.filter((i) => i.id !== id) };
 }
 

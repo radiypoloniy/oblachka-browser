@@ -3,8 +3,8 @@ import { Tile, type WidgetProps } from './widgets';
 import {
   GEN_TOKEN_VARS, wrapGenSrcdoc, clampGenStorage, type GenFactId,
 } from '../../../shared/genWidget';
-import { loadGenRecord, loadGenState, saveGenState, subscribeGenStore } from '../../newtab/genStore';
-import { getNewTabCustomImage } from '../../newtab/settings';
+import { loadGenRecord, loadGenState, saveGenRecord, saveGenState, subscribeGenStore } from '../../newtab/genStore';
+import { shrinkBackgroundImage } from '../../newtab/settings';
 
 // Свой виджет: рамка стола наша, внутренности — одностраничник в песочнице.
 // sandbox без allow-same-origin: скрипт не видит window.oblako родителя.
@@ -13,19 +13,15 @@ export function GenWidget({
   fill, overImage, hero, genId,
 }: WidgetProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [rev, setRev] = useState(0);
   useEffect(() => subscribeGenStore(() => setRev((n) => n + 1)), []);
   const rec = useMemo(() => (genId ? loadGenRecord(genId) : null), [genId, rev]);
   const [facts, setFacts] = useState<Record<string, number | string>>({});
-  const [assets, setAssets] = useState<{ photo?: string }>({});
 
   useEffect(() => {
     let alive = true;
     void collectFacts(rec?.facts ?? []).then((f) => { if (alive) setFacts(f); });
-    if (rec?.photo) {
-      const url = getNewTabCustomImage();
-      setAssets(url ? { photo: url } : {});
-    } else setAssets({});
     return () => { alive = false; };
   }, [rec]);
 
@@ -34,6 +30,12 @@ export function GenWidget({
     if (!rec || !genId) return '';
     return wrapGenSrcdoc(rec.html, tokens, genId);
   }, [rec, tokens, genId]);
+
+  const assets = useMemo(
+    () => (rec?.photoData ? { photo: rec.photoData } : {}),
+    [rec],
+  );
+  const needPhoto = !!(rec?.photo && !rec.photoData);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -64,9 +66,30 @@ export function GenWidget({
     return () => window.removeEventListener('message', onMsg);
   }, [genId, facts, assets]);
 
+  async function onPick(file: File | undefined) {
+    if (!file || !genId || !rec) return;
+    const raw = await readFileDataUrl(file);
+    const small = await shrinkBackgroundImage(raw).catch(() => raw);
+    saveGenRecord(genId, { ...rec, photoData: small });
+  }
+
   return (
     <Tile surface toned fill={fill} overImage={overImage} hero={hero} padding={0}>
-      {srcDoc ? (
+      {needPhoto ? (
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          style={{
+            width: '100%', height: '100%', border: 'none', cursor: 'default',
+            background: 'transparent', color: 'var(--text-body)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+            font: 'inherit',
+          }}
+        >
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Фоторамка</span>
+          <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600 }}>Выберите фото</span>
+        </button>
+      ) : srcDoc ? (
         <iframe
           ref={frameRef}
           title="Свой виджет"
@@ -75,12 +98,17 @@ export function GenWidget({
           style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'transparent' }}
         />
       ) : (
-        <div style={{
-          padding: 16, fontSize: 'var(--fs-sm)', color: 'var(--text-faint)',
-        }}>
+        <div style={{ padding: 16, fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
           Виджет ещё не собран
         </div>
       )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => { void onPick(e.target.files?.[0]); e.target.value = ''; }}
+      />
     </Tile>
   );
 }
@@ -95,8 +123,17 @@ function readTokens(): Record<string, string> {
   return out;
 }
 
+function readFileDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ''));
+    r.onerror = () => reject(new Error('read'));
+    r.readAsDataURL(file);
+  });
+}
+
 async function collectFacts(wanted: GenFactId[]): Promise<Record<string, number | string>> {
-  const need = new Set(wanted.length ? wanted : ['openTabs', 'sessionBlocks', 'taskCount'] as GenFactId[]);
+  const need = new Set(wanted);
   const out: Record<string, number | string> = {};
   try {
     if (need.has('openTabs')) {

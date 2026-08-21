@@ -38,23 +38,28 @@ function buildMetaPrompt(phrase: string): string {
 }
 
 function buildHtmlPrompt(phrase: string, facts: GenFactId[], title: string, assetPhoto: boolean): string {
-  const factLines = (facts.length ? facts : GEN_FACTS.map((f) => f.id))
-    .map((id) => `api.facts.${id}`)
-    .join(', ');
+  const factLines = facts.length
+    ? facts.map((id) => `api.facts.${id}`).join(', ')
+    : '(none — do not wait for facts)';
   const photo = assetPhoto
-    ? 'You may show the user photo with <img id="photo"> and in script: document.getElementById("photo").src = api.assets.photo || "";'
-    : 'Do not load images from the internet.';
+    ? 'The host shows a photo picker. When a photo is chosen it arrives as api.assets.photo (data URL). Show the image with <img> and set src on oblako-facts. If photo is empty, show a short Russian caption «Выберите фото», not a loading spinner.'
+    : 'Do not use images.';
   return (
-    `Build a tiny single-file widget for a ${title || 'desktop'} tile. ` +
+    `Build a tiny single-file widget for a desktop tile titled "${title || 'widget'}". ` +
     `The user's request, in Russian: "${phrase}"\n\n` +
-    `Rules:\n` +
+    `Visual rules (Oblako):\n` +
+    `- Do NOT set background on html/body. The tile already has a surface.\n` +
+    `- Only CSS variables: var(--accent), var(--on-accent), var(--text-body), var(--text-strong), var(--text-faint), var(--font-sans), var(--font-display), var(--radius-pill).\n` +
+    `- No hex colors, no purple, no orange literals, no white/black cards.\n` +
+    `- Big numbers use font-family: var(--font-display); color: var(--text-strong).\n` +
+    `- Caption uses font-size: var(--fs-xs); color: var(--text-faint).\n\n` +
+    `Behavior:\n` +
     `- Output HTML after the line HTML:\n` +
-    `- Use only CSS variables: var(--accent), var(--surface), var(--text-body), var(--text-strong), var(--font-sans), var(--font-display), var(--radius-box).\n` +
     `- No http URLs, no iframes, no external scripts.\n` +
-    `- Read numbers from ${factLines}. They arrive on window event "oblako-facts". Until then show a dash.\n` +
-    `- Persist timer/counter state with api.storage.get() / api.storage.set(string).\n` +
+    `- Timer/pomodoro: start at 25:00 (or the requested duration), NOT dashes. Use setInterval or the oblako-tick event. api.now is Date.now(). Persist endAt with api.storage.get()/set(string).\n` +
+    `- Do not wait for oblako-facts unless you display these host numbers: ${factLines}.\n` +
     `- ${photo}\n` +
-    `- Keep it under 80 lines. Buttons may use background: var(--accent); color: var(--on-accent).\n\n` +
+    `- Keep under 80 lines.\n\n` +
     `HTML:\n`
   );
 }

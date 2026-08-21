@@ -23,12 +23,12 @@ check('три известных', GEN_FACT_IDS.includes('sessionBlocks'), true)
 
 console.log('\n── санитайзер ──');
 {
-  const dirty = '<iframe src="https://evil"></iframe><p onclick="alert(1)">ok</p>'
+  const dirty = '<iframe src="https://evil"></iframe><p onclick="go()">ok</p>'
     + '<script src="https://evil/x.js"></script><img src="https://x/a.png">'
     + '<a href="javascript:alert(1)">x</a>';
   const clean = sanitizeGenHtml(dirty);
   checkTrue('iframe вырезан', !clean.includes('iframe'));
-  checkTrue('onclick вырезан', !/onclick/i.test(clean));
+  checkTrue('onclick ЖИВ в песочнице', /onclick/i.test(clean));
   checkTrue('script src вырезан', !/script src/i.test(clean) && !clean.includes('evil/x.js'));
   checkTrue('http img вырезан', !clean.includes('https://x/a.png'));
   checkTrue('javascript: href вырезан', !/javascript:/i.test(clean));
@@ -62,6 +62,9 @@ console.log('\n── обвязка ──');
   checkTrue('connect-src none', doc.includes("connect-src 'none'"));
   checkTrue('токен прокинут', doc.includes('--accent:#2C4BD8'));
   checkTrue('мост api', doc.includes('window.api'));
+  checkTrue('тик таймера', doc.includes('oblako-tick'));
+  checkTrue('хост без своего фона', doc.includes('background:transparent!important'));
+  checkTrue('кнопка акцентом', doc.includes('background:var(--accent)'));
   checkTrue('нет allow-same-origin в документе', !doc.includes('allow-same-origin'));
 }
 

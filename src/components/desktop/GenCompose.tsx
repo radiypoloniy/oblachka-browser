@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import type { CellSize, DesktopItem } from '../../newtab/desktop';
+import type { CSSProperties } from 'react';
+import type { CellSize, DesktopItem, DesktopLayout } from '../../newtab/desktop';
 import { pickGenFacts } from '../../../shared/genWidget';
-import { saveGenRecord, deleteGenRecord } from '../../newtab/genStore';
+import { saveGenRecord, deleteGenRecord, listGenLibrary, loadGenRecord, subscribeGenStore } from '../../newtab/genStore';
 import { GenWidget } from './GenWidget';
 import { RADIUS } from '../../styles/system';
 import type { GenParseOutcome } from '../../../shared/ipc';
@@ -41,6 +42,9 @@ export default function GenCompose({
           html: res.html,
           facts: pickGenFacts(res.facts),
           photo: res.assetPhoto,
+          phrase: p,
+          title: res.title,
+          size: res.size,
         });
       }
       setDraft(res);
@@ -68,6 +72,9 @@ export default function GenCompose({
       html: draft.html,
       facts: pickGenFacts(draft.facts),
       photo: draft.assetPhoto,
+      phrase,
+      title: draft.title,
+      size: draft.size,
     });
     deleteGenRecord(DRAFT_ID);
     onPlace({
@@ -125,7 +132,7 @@ export default function GenCompose({
           )}
           {draft.kind === 'gen' && draft.assetPhoto && (
             <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-              Фоторамка берёт своё фото фона новой вкладки, если оно уже задано.
+              После постановки нажмите на плитку и выберите фото.
             </div>
           )}
           <div style={{ display: 'flex', gap: 8 }}>
@@ -145,3 +152,79 @@ export default function GenCompose({
     </div>
   );
 }
+
+export function GenShelf({
+  layout,
+  onPlace,
+  onForget,
+}: {
+  layout: DesktopLayout;
+  onPlace: (item: Omit<DesktopItem, 'id'>) => void;
+  onForget: (genId: string) => void;
+}) {
+  const [lib, setLib] = useState(listGenLibrary);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  useEffect(() => subscribeGenStore(() => setLib(listGenLibrary())), []);
+  if (lib.length === 0) return null;
+  const onDesk = new Set(layout.items.map((i) => i.genId).filter((x): x is string => !!x));
+
+  async function rebuild(id: string) {
+    const rec = loadGenRecord(id);
+    const p = rec?.phrase?.trim();
+    if (!p || busyId) return;
+    setBusyId(id);
+    try {
+      const res = await window.oblako.parseGenWidget(p);
+      if (res.ok && res.kind === 'gen') {
+        saveGenRecord(id, {
+          html: res.html,
+          facts: pickGenFacts(res.facts),
+          photo: res.assetPhoto,
+          phrase: p,
+          title: res.title,
+          size: res.size,
+        });
+      }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
+      {lib.map((it) => {
+        const placed = onDesk.has(it.id);
+        return (
+          <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{
+              flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{it.title}</span>
+            {placed ? (
+              <button type="button" disabled={busyId === it.id} onClick={() => void rebuild(it.id)} style={ghostBtn}>
+                {busyId === it.id ? '…' : 'Пересобрать'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onPlace({
+                  kind: 'widget', widget: 'gen', genId: it.id, size: it.size, title: it.title,
+                })}
+                style={ghostBtn}
+              >
+                На стол
+              </button>
+            )}
+            <button type="button" onClick={() => onForget(it.id)} title="Забыть" style={ghostBtn}>×</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const ghostBtn: CSSProperties = {
+  flex: 'none', padding: '4px 8px', border: '1px solid var(--divider-strong)', cursor: 'default',
+  borderRadius: RADIUS.pill, background: 'transparent', color: 'var(--text-body)',
+  fontSize: 'var(--fs-xs)',
+};

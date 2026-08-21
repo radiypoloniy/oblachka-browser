@@ -14,7 +14,8 @@ import {
 import { WIDGET_FILLS, FILL_SWATCH } from './widgets';
 import CryptoIcon from '../CryptoIcon';
 import { RADIUS } from '../../styles/system';
-import GenCompose from './GenCompose';
+import GenCompose, { GenShelf } from './GenCompose';
+import { deleteGenRecord } from '../../newtab/genStore';
 
 // Боковая панель настройки рабочего стола — всё, что можно поменять, в одном месте и по одному
 // клику. Референс — Bonjourr.
@@ -149,6 +150,15 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
               <GenCompose
                 already={(key) => hasItem(layout, 'widget', key)}
                 onPlace={(item) => onLayout(addItem(layout, item))}
+              />
+              <GenShelf
+                layout={layout}
+                onPlace={(item) => onLayout(addItem(layout, item))}
+                onForget={(genId) => {
+                  deleteGenRecord(genId);
+                  const gone = layout.items.find((i) => i.genId === genId);
+                  if (gone) onLayout(removeItem(layout, gone.id));
+                }}
               />
             </Card>
           </Section>
