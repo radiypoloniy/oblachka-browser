@@ -95,8 +95,9 @@
 - VPN: `electron/VpnSubscription.ts`/`VpnParser.ts` (импорт подписки,
   vless/trojan) → `VpnKeyStore.ts` (зашифрованное хранение) →
   `VpnConfigBuilder.ts` (генерация конфига Xray) → `VpnProcess.ts` (дочерний
-  процесс Xray-core, `session.setProxy` — `applyVpnProxy` в `main.ts` ждёт оба
-  вызова и ставит их в очередь, чтобы crash→disconnect не переставились, fail-closed kill switch) →
+  процесс Xray-core; `applyVpnProxy` в `main.ts` ждёт `setProxy` на обеих сессиях,
+  ставит вызовы в очередь и в `starting`/`error` держит fail-closed kill switch —
+  `direct://` только после явного «Отключить») →
   `SitePopoverManager.ts` (раздел «Защита» карточки под ЩИТОМ адресной строки —
   список серверов, статус подключения, адблок). ⚠️ Своего поповера у VPN больше
   нет: пилюля «Защита» и замок отвечали на один и тот же вопрос — «что защищает
