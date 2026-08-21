@@ -23,9 +23,10 @@ export const GEN_TOKEN_VARS = [
   '--accent', '--on-accent', '--accent-soft',
   '--surface', '--app-bg', '--divider', '--card',
   '--text-body', '--text-strong', '--text-faint',
-  '--font-sans', '--font-display',
+  '--font-sans', '--font-display', '--font-mono',
   '--radius-box', '--radius-control', '--radius-pill',
   '--fs-xs', '--fs-sm', '--fs-md', '--fs-lg',
+  '--gen-num',
 ] as const;
 
 const FORBIDDEN_TAGS = 'iframe|object|embed|link|meta|base|form|input|textarea|select|frame|frameset|applet|html|head|body|noscript|template|video|audio|source|track';
@@ -156,6 +157,9 @@ var api={facts:{},assets:{},now:Date.now(),storage:{
   set:function(value){
     parent.postMessage({type:'oblako-gen-storage-set',widgetId:WIDGET_ID,value:value},'*');
   }
+},
+pickPhoto:function(){
+  parent.postMessage({type:'oblako-gen-pick-photo',widgetId:WIDGET_ID},'*');
 }};
 window.api=api;
 window.addEventListener('message',function(e){
@@ -176,14 +180,19 @@ parent.postMessage({type:'oblako-gen-ready',widgetId:WIDGET_ID},'*');
 export const GEN_HOST_CSS = [
   '*,*:before,*:after{box-sizing:border-box}',
   'html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;',
-  'background:transparent!important;color:var(--text-body);font-family:var(--font-sans);',
+  'background:transparent!important;color:var(--text-strong);font-family:var(--font-sans),system-ui,sans-serif;',
   'display:flex;flex-direction:column}',
-  'body{padding:12px;gap:8px}',
-  'button{font:inherit;font-size:var(--fs-sm);font-weight:600;border:none;cursor:default;',
-  'background:var(--accent);color:var(--on-accent);border-radius:var(--radius-pill);',
-  'padding:6px 12px}',
-  'h1,h2,h3,.title{margin:0;font-size:var(--fs-xs);font-weight:600;color:var(--text-faint);letter-spacing:.02em}',
-  'img{max-width:100%;max-height:100%;object-fit:cover;border-radius:var(--radius-control)}',
+  'body{padding:16px;gap:10px;justify-content:space-between}',
+  '[data-caption],h1,.caption{margin:0;flex:none;font-family:var(--font-mono),ui-monospace,monospace!important;',
+  'font-size:11px!important;font-weight:500!important;letter-spacing:.12em!important;',
+  'text-transform:uppercase;opacity:.62;color:inherit}',
+  '[data-display],.time,.num,.value{margin:0;font-family:var(--font-display),Unbounded,sans-serif!important;',
+  'font-size:var(--gen-num,42px)!important;font-weight:600!important;letter-spacing:-.03em!important;',
+  'line-height:1!important;font-variant-numeric:tabular-nums;color:var(--text-strong)!important;flex:1;',
+  'display:flex;align-items:center}',
+  'button{font-family:var(--font-sans),system-ui,sans-serif;font-size:13px;font-weight:600;border:none;cursor:default;',
+  'background:var(--accent);color:var(--on-accent);border-radius:var(--radius-pill);padding:7px 14px}',
+  'img{display:none!important}',
 ].join('');
 
 /**
@@ -194,14 +203,47 @@ export function wrapGenSrcdoc(
   body: string,
   tokens: Record<string, string>,
   widgetId: string,
+  fontCss = '',
 ): string {
   const html = sanitizeGenHtml(body);
   const id = widgetId.replace(/[^\w-]/g, '').slice(0, 64) || 'gen';
-  const csp = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:; font-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'";
+  const csp = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'";
   return '<!doctype html><html><head><meta charset="utf-8">'
     + `<meta http-equiv="Content-Security-Policy" content="${csp}">`
-    + `<style>${cssVarsBlock(tokens)}${GEN_HOST_CSS}</style>`
+    + `<style>${cssVarsBlock(tokens)}${fontCss}${GEN_HOST_CSS}</style>`
     + `<script>${bootstrapScript(id)}</script></head><body>${html}</body></html>`;
+}
+
+/** Фото рамки рисует хост на всю плитку — модель часто забывает ASSET: photo. */
+export function wantsGenPhoto(phrase: string, html: string, flagged: boolean): boolean {
+  if (flagged) return true;
+  if (/фото|рамк|picture|photo|снимок|кадр|выберите фото|выбрать фото/i.test(phrase + ' ' + html)) return true;
+  return /<img\b/i.test(html);
+}
+
+/** Готовый виджет — только если фраза про него, а не «погода и помодоро». */
+export function phraseClearlyAsksBuiltin(phrase: string, widget: string): boolean {
+  const p = phrase.trim().toLowerCase();
+  if (p.length > 36) return false;
+  const map: Record<string, RegExp> = {
+    weather: /погод[аеуы]?|weather/,
+    clock: /часы|часов|clock|время/,
+    rates: /курс|dollar|доллар|цб/,
+    crypto: /крипт|bitcoin|биткоин/,
+    tasks: /дела|задач|todo/,
+    shield: /защит|адблок|vpn/,
+    moon: /луна|moon/,
+    downloads: /загрузк/,
+    holiday: /праздник/,
+    tracking: /отслеж/,
+    digest: /итог|чем занима/,
+    topsites: /часто открыв|топ.?сайт/,
+    music: /музык|spotify|яндекс.?музык/,
+  };
+  const re = map[widget];
+  if (!re || !re.test(p)) return false;
+  const leftover = p.replace(re, '').replace(/[\s.,!?«»-]/g, '');
+  return leftover.length === 0;
 }
 
 export const GEN_SIZES = {

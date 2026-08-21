@@ -5,9 +5,11 @@ import { sanitizeGenHtml, pickGenFacts, type GenFactId } from '../../shared/genW
 
 const PREFIX = 'oblako-desktop-gen-';
 const STATE_PREFIX = 'oblako-desktop-gen-state-';
+const PHOTO_PREFIX = 'oblako-desktop-gen-photo-';
 const INDEX_KEY = 'oblako-desktop-gen-index';
 const EVENT = 'oblako-desktop-gen-changed';
 const DRAFT_ID = 'gen-draft';
+const PHOTO_SIDE = 720;
 
 export interface GenRecord {
   html: string;
@@ -61,7 +63,7 @@ export function loadGenRecord(id: string): GenRecord | null {
       html,
       facts: pickGenFacts(o.facts),
       photo: o.photo === true,
-      photoData: typeof o.photoData === 'string' && o.photoData.startsWith('data:image/') ? o.photoData : undefined,
+      photoData: loadPhoto(id) ?? (typeof o.photoData === 'string' && o.photoData.startsWith('data:image/') ? o.photoData : undefined),
       phrase: typeof o.phrase === 'string' ? o.phrase.slice(0, 200) : undefined,
       title: typeof o.title === 'string' ? o.title.slice(0, 28) : undefined,
       size: size && typeof size.w === 'number' && typeof size.h === 'number'
@@ -81,7 +83,6 @@ export function saveGenRecord(id: string, rec: GenRecord): void {
       html: sanitizeGenHtml(rec.html),
       facts: pickGenFacts(rec.facts),
       photo: rec.photo === true,
-      photoData: rec.photoData ?? prev?.photoData,
       phrase: rec.phrase ?? prev?.phrase,
       title: rec.title ?? prev?.title,
       size: rec.size ?? prev?.size,
@@ -99,6 +100,7 @@ export function deleteGenRecord(id: string): void {
   try {
     localStorage.removeItem(PREFIX + id);
     localStorage.removeItem(STATE_PREFIX + id);
+    localStorage.removeItem(PHOTO_PREFIX + id);
     writeIndex(readIndex().filter((x) => x !== id));
     window.dispatchEvent(new CustomEvent(EVENT));
   } catch { /* нет */ }
@@ -135,4 +137,60 @@ export function subscribeGenStore(cb: () => void): () => void {
     window.removeEventListener(EVENT, handler);
     window.removeEventListener('storage', handler);
   };
+}
+
+function loadPhoto(id: string): string | undefined {
+  try {
+    const raw = localStorage.getItem(PHOTO_PREFIX + id);
+    return raw && raw.startsWith('data:image/') ? raw : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function bump(): void {
+  window.dispatchEvent(new CustomEvent(EVENT));
+}
+
+/** Ужимает и кладёт фото отдельно от HTML — иначе localStorage молча отказывается. */
+export async function storeGenPhoto(id: string, dataUrl: string): Promise<boolean> {
+  if (!id || !dataUrl.startsWith('data:image/')) return false;
+  try {
+    const small = await shrinkWidgetPhoto(dataUrl);
+    localStorage.setItem(PHOTO_PREFIX + id, small);
+    bump();
+    return true;
+  } catch {
+    try {
+      const smaller = await shrinkWidgetPhoto(dataUrl, 480, 0.7);
+      localStorage.setItem(PHOTO_PREFIX + id, smaller);
+      bump();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+async function shrinkWidgetPhoto(dataUrl: string, side = PHOTO_SIDE, quality = 0.82): Promise<string> {
+  const blob = await (await fetch(dataUrl)).blob();
+  const bmp = await createImageBitmap(blob);
+  const { width, height } = bmp;
+  const scale = Math.min(1, side / Math.max(width, height));
+  if (scale === 1 && blob.size < 180_000) {
+    bmp.close();
+    return dataUrl;
+  }
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
+  const resized = await createImageBitmap(blob, { resizeWidth: w, resizeHeight: h, resizeQuality: 'high' });
+  bmp.close();
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) { resized.close(); return dataUrl; }
+  ctx.drawImage(resized, 0, 0);
+  resized.close();
+  return canvas.toDataURL('image/jpeg', quality);
 }

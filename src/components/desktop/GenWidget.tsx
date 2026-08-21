@@ -1,21 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Tile, type WidgetProps } from './widgets';
+import { Tile, TileCaption, type WidgetProps } from './widgets';
+import { DISPLAY } from '../../styles/system';
 import {
-  GEN_TOKEN_VARS, wrapGenSrcdoc, clampGenStorage, type GenFactId,
+  GEN_TOKEN_VARS, wrapGenSrcdoc, clampGenStorage, wantsGenPhoto, type GenFactId,
 } from '../../../shared/genWidget';
-import { loadGenRecord, loadGenState, saveGenRecord, saveGenState, subscribeGenStore } from '../../newtab/genStore';
-import { shrinkBackgroundImage } from '../../newtab/settings';
+import { loadGenRecord, loadGenState, saveGenState, storeGenPhoto, subscribeGenStore } from '../../newtab/genStore';
+import { genFontCss } from '../../newtab/genFonts';
 
 // Свой виджет: рамка стола наша, внутренности — одностраничник в песочнице.
 // sandbox без allow-same-origin: скрипт не видит window.oblako родителя.
+// Фото рисует хост на всю плитку: в iframe нет шрифтов и нет <input type=file>.
 
 export function GenWidget({
-  fill, overImage, hero, genId,
+  fill, overImage, hero, genId, box,
 }: WidgetProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [rev, setRev] = useState(0);
+  const [fonts, setFonts] = useState('');
   useEffect(() => subscribeGenStore(() => setRev((n) => n + 1)), []);
+  useEffect(() => { void genFontCss().then(setFonts); }, []);
   const rec = useMemo(() => (genId ? loadGenRecord(genId) : null), [genId, rev]);
   const [facts, setFacts] = useState<Record<string, number | string>>({});
 
@@ -25,17 +29,24 @@ export function GenWidget({
     return () => { alive = false; };
   }, [rec]);
 
-  const tokens = useMemo(() => readTokens(), [rev, fill, hero, overImage]);
+  const photo = !!(rec && wantsGenPhoto(rec.phrase ?? '', rec.html, rec.photo === true));
+  const photoData = rec?.photoData;
+  const tokens = useMemo(() => {
+    const t = readTokens();
+    const num = Math.round(Math.min((box.width - 32) * 0.22, box.height * 0.34, 56));
+    t['--gen-num'] = `${Math.max(28, num)}px`;
+    return t;
+  }, [rev, fill, hero, overImage, box.width, box.height]);
+
   const srcDoc = useMemo(() => {
-    if (!rec || !genId) return '';
-    return wrapGenSrcdoc(rec.html, tokens, genId);
-  }, [rec, tokens, genId]);
+    if (!rec || !genId || photo) return '';
+    return wrapGenSrcdoc(rec.html, tokens, genId, fonts);
+  }, [rec, tokens, genId, fonts, photo]);
 
   const assets = useMemo(
-    () => (rec?.photoData ? { photo: rec.photoData } : {}),
-    [rec],
+    () => (photoData ? { photo: photoData } : {}),
+    [photoData],
   );
-  const needPhoto = !!(rec?.photo && !rec.photoData);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -49,6 +60,10 @@ export function GenWidget({
       if (!data || data.widgetId !== genId) return;
       if (data.type === 'oblako-gen-ready') {
         sendFacts();
+        return;
+      }
+      if (data.type === 'oblako-gen-pick-photo') {
+        fileRef.current?.click();
         return;
       }
       if (data.type === 'oblako-gen-storage-get' && data.req) {
@@ -67,29 +82,43 @@ export function GenWidget({
   }, [genId, facts, assets]);
 
   async function onPick(file: File | undefined) {
-    if (!file || !genId || !rec) return;
+    if (!file || !genId) return;
     const raw = await readFileDataUrl(file);
-    const small = await shrinkBackgroundImage(raw).catch(() => raw);
-    saveGenRecord(genId, { ...rec, photoData: small });
+    const ok = await storeGenPhoto(genId, raw);
+    if (!ok) console.warn('[gen-widget] фото не влезло в хранилище');
   }
+
+  const pick = (): void => { fileRef.current?.click(); };
 
   return (
     <Tile surface toned fill={fill} overImage={overImage} hero={hero} padding={0}>
-      {needPhoto ? (
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
+      {photo && photoData && (
+        <img
+          src={photoData}
+          alt=""
+          onClick={pick}
           style={{
-            width: '100%', height: '100%', border: 'none', cursor: 'default',
-            background: 'transparent', color: 'var(--text-body)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
-            font: 'inherit',
+            position: 'absolute', inset: 0, width: '100%', height: '100%',
+            objectFit: 'cover', display: 'block',
           }}
-        >
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Фоторамка</span>
-          <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600 }}>Выберите фото</span>
+        />
+      )}
+      {photo && !photoData && (
+        <button type="button" onClick={pick} style={{
+          position: 'absolute', inset: 0, border: 'none', cursor: 'default',
+          background: 'transparent', color: 'inherit',
+          display: 'flex', flexDirection: 'column', padding: 16, gap: 8, textAlign: 'left',
+        }}>
+          <TileCaption>Фото</TileCaption>
+          <div style={{
+            ...DISPLAY, fontSize: Math.round(Math.min(box.width * 0.14, 28)),
+            fontWeight: 600, color: 'var(--text-strong)',
+          }}>
+            Выберите фото
+          </div>
         </button>
-      ) : srcDoc ? (
+      )}
+      {!photo && srcDoc && (
         <iframe
           ref={frameRef}
           title="Свой виджет"
@@ -97,7 +126,8 @@ export function GenWidget({
           srcDoc={srcDoc}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'transparent' }}
         />
-      ) : (
+      )}
+      {!photo && !srcDoc && (
         <div style={{ padding: 16, fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
           Виджет ещё не собран
         </div>
@@ -117,6 +147,7 @@ function readTokens(): Record<string, string> {
   const cs = getComputedStyle(document.documentElement);
   const out: Record<string, string> = {};
   for (const k of GEN_TOKEN_VARS) {
+    if (k === '--gen-num') continue;
     const v = cs.getPropertyValue(k).trim();
     if (v) out[k] = v;
   }

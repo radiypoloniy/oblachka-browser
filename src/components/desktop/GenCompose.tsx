@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { CellSize, DesktopItem, DesktopLayout } from '../../newtab/desktop';
-import { pickGenFacts } from '../../../shared/genWidget';
+import { pickGenFacts, wantsGenPhoto } from '../../../shared/genWidget';
 import { saveGenRecord, deleteGenRecord, listGenLibrary, loadGenRecord, subscribeGenStore } from '../../newtab/genStore';
 import { GenWidget } from './GenWidget';
 import { RADIUS } from '../../styles/system';
@@ -41,7 +41,7 @@ export default function GenCompose({
         saveGenRecord(DRAFT_ID, {
           html: res.html,
           facts: pickGenFacts(res.facts),
-          photo: res.assetPhoto,
+          photo: res.assetPhoto || wantsGenPhoto(p, res.html, false),
           phrase: p,
           title: res.title,
           size: res.size,
@@ -71,7 +71,7 @@ export default function GenCompose({
     saveGenRecord(genId, {
       html: draft.html,
       facts: pickGenFacts(draft.facts),
-      photo: draft.assetPhoto,
+      photo: draft.assetPhoto || wantsGenPhoto(phrase, draft.html, false),
       phrase,
       title: draft.title,
       size: draft.size,
@@ -179,7 +179,7 @@ export function GenShelf({
         saveGenRecord(id, {
           html: res.html,
           facts: pickGenFacts(res.facts),
-          photo: res.assetPhoto,
+          photo: res.assetPhoto || wantsGenPhoto(p, res.html, false),
           phrase: p,
           title: res.title,
           size: res.size,

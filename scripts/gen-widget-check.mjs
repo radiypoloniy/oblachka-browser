@@ -4,7 +4,7 @@
 //   npm test -- gen-widget
 import {
   sanitizeGenHtml, extractGenHtml, wrapGenSrcdoc, pickGenFacts, clampGenStorage,
-  parseGenMeta, GEN_FACT_IDS, GEN_STORAGE_MAX_CHARS,
+  parseGenMeta, wantsGenPhoto, phraseClearlyAsksBuiltin, GEN_FACT_IDS, GEN_STORAGE_MAX_CHARS,
 } from '../shared/genWidget.ts';
 
 let passed = 0;
@@ -65,7 +65,9 @@ console.log('\n── обвязка ──');
   checkTrue('тик таймера', doc.includes('oblako-tick'));
   checkTrue('хост без своего фона', doc.includes('background:transparent!important'));
   checkTrue('кнопка акцентом', doc.includes('background:var(--accent)'));
-  checkTrue('нет allow-same-origin в документе', !doc.includes('allow-same-origin'));
+  checkTrue('font-src data', doc.includes("font-src data:"));
+  checkTrue('выбор фото с хоста', doc.includes('oblako-gen-pick-photo'));
+  checkTrue('подпись как у часов', doc.includes('data-caption'));
 }
 
 console.log('\n── метки ──');
@@ -81,6 +83,13 @@ console.log('\n── метки ──');
   check('сеть — none', n.widget, 'none');
   check('размер по умолчанию', n.size, { w: 2, h: 2 });
 }
+
+console.log('\n── фото и готовые ──');
+check('фраза фоторамка', wantsGenPhoto('фоторамка на стол', '', false), true);
+check('img в html', wantsGenPhoto('виджет', '<img src="data:image/png;base64,xx">', false), true);
+check('просто таймер', wantsGenPhoto('помодоро', '<div>25:00</div>', false), false);
+check('только погода', phraseClearlyAsksBuiltin('погода', 'weather'), true);
+check('погода и кот — свой', phraseClearlyAsksBuiltin('погода с котом на фото', 'weather'), false);
 
 console.log('\n── storage ──');
 check('длинное режется', clampGenStorage('a'.repeat(GEN_STORAGE_MAX_CHARS + 50)).length, GEN_STORAGE_MAX_CHARS);
