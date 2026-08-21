@@ -79,6 +79,15 @@ extraResources:
 # рабочий модуль на машине без C++ tools — а результат тот же самый.
 npmRebuild: false
 
+# Fuses — только упакованный exe (`npm run dist` / `release`). `npm start` и `npm run dev`
+# их не видят: это правка бинарника Electron в extraResources/win-unpacked, не рантайма из
+# node_modules. Три выключателя из аудита 20.08: иначе локальный процесс запускает наш
+# (потом подписанный) бинарник как Node и исполняет свой код от нашего имени.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+
 win:
   icon: build/icon.png
   target:

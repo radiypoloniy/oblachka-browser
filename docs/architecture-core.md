@@ -262,6 +262,8 @@
   ⚠️ Известные границы: сборка не подписана, поэтому на Windows 11 со Smart App
   Control установка скачанного обновления блокируется системой; пока
   GitHub-репозиторий закрыт, проверка отдаёт 404 (трактуется как «релизов нет»).
+  ⚠️ **Fuses** (`electronFuses` в `electron-builder.yml`): в упакованном exe выключены
+  `RunAsNode`, `NODE_OPTIONS` и `--inspect`. На `npm start` не действуют.
 - `electron/FindBarManager.ts` + `preload-findbar.ts` — поиск по странице
   (Ctrl+F), свой `WebContentsView`-оверлей, как AI-панель/поповеры.
   ⚠️ **Electron 40 НЕ шлёт `found-in-page` на НАЧАЛО поиска** (`findNext:false`) — никогда, ни

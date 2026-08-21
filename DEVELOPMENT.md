@@ -216,6 +216,11 @@ npm run bergamot-smoke -- --from en --to ru --text "<p>Hello <b>world</b></p>"
 сертификат. Оговорка: подпись необходима, но не мгновенно достаточна — Smart App
 Control учитывает ещё и репутацию издателя, которая нарабатывается со временем.
 
+**Fuses упакованного exe** (блок `electronFuses` в `electron-builder.yml`):
+`RunAsNode`, `NODE_OPTIONS` и CLI `--inspect` выключены. Это не действует на
+`npm start` / `npm run dev` — только на артефакт `npm run dist`. Откат: удалить
+блок и пересобрать установщик.
+
 **Установщик крупный** (~290 МБ): около 310 МБ занимают бэкенды `node-llama-cpp`
 для CPU, CUDA и Vulkan. Сборки под чужое железо (`win-arm64`) и аварийный
 CUDA-фолбэк (`win-x64-cuda-ext`, 361 МБ) исключены осознанно.
