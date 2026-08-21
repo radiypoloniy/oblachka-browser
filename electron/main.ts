@@ -239,6 +239,17 @@ let mainChromeView: WebContentsView | null = null; // слой нашего Reac
 // storage чистится, когда закрыта последняя инкогнито-вкладка (TabManager.takeIncognitoClearIfDone).
 let incognitoSession: Session | null = null;
 
+// Electron 42: политика WebRTC живёт на WebContents, не на Session. Иначе STUN обходит SOCKS.
+// 'default' только при прямом выходе — звонки без VPN не ломаем.
+let currentWebrtcPolicy: 'default' | 'disable_non_proxied_udp' = 'default';
+
+function applyWebrtcPolicy(wc: WebContents): void {
+  if (wc.isDestroyed()) return;
+  wc.setWebRTCIPHandlingPolicy(currentWebrtcPolicy);
+}
+
+app.on('web-contents-created', (_e, wc) => applyWebrtcPolicy(wc));
+
 // Тема chrome-страниц. Главный рендерер (App.tsx) сам ставит data-theme/data-incognito на свой
 // documentElement, но КАЖДЫЙ поповер/дропдаун (AI-панель, перевод, findbar, пароли, VPN,
 // автозаполнение, дропдаун подсказок) — отдельная WebContentsView со своим document, который
@@ -1802,6 +1813,10 @@ function applyVpnProxy(): Promise<void> {
     // Инкогнито-сессия ОБЯЗАНА следовать тем же прокси/kill-switch, иначе приватный трафик тёк бы
     // мимо VPN (утечка). Держим её в синхроне при каждой смене состояния VPN.
     if (incognitoSession) await incognitoSession.setProxy(cfg);
+    // WebRTC STUN иначе обходит SOCKS и отдаёт реальный IP при «VPN включён».
+    // На прямом выходе политику возвращаем: звонки без VPN не ломаем.
+    currentWebrtcPolicy = proxyRules === 'direct://' ? 'default' : 'disable_non_proxied_udp';
+    for (const wc of webContents.getAllWebContents()) applyWebrtcPolicy(wc);
   };
   vpnProxyChain = vpnProxyChain.then(run, run);
   return vpnProxyChain;

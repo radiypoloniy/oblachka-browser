@@ -97,7 +97,10 @@
   `VpnConfigBuilder.ts` (генерация конфига Xray) → `VpnProcess.ts` (дочерний
   процесс Xray-core; `applyVpnProxy` в `main.ts` ждёт `setProxy` на обеих сессиях,
   ставит вызовы в очередь и в `starting`/`error` держит fail-closed kill switch —
-  `direct://` только после явного «Отключить») →
+  `direct://` только после явного «Отключить». Пока прокси не прямой, на КАЖДОМ
+  `WebContents` (Electron 42 снял это с Session) `disable_non_proxied_udp` —
+  иначе STUN обходит SOCKS и отдаёт реальный IP; новые вьюхи ловит
+  `web-contents-created`) →
   `SitePopoverManager.ts` (раздел «Защита» карточки под ЩИТОМ адресной строки —
   список серверов, статус подключения, адблок). ⚠️ Своего поповера у VPN больше
   нет: пилюля «Защита» и замок отвечали на один и тот же вопрос — «что защищает
