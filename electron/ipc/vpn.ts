@@ -30,11 +30,9 @@ export function registerVpnIpc(d: IpcDeps): void {
     broadcastToChrome(IPC.VPN_STATUS_CHANGED, vpnStatus());
   });
 
-  // VPN, шаг 2 — только процесс Xray + локальный SOCKS-порт (electron/VpnProcess.ts).
-  // ⚠️ session.setProxy ЕЩЁ НЕ подключён (шаг 3) — "connect" здесь не переключает трафик
-  // вкладок, только поднимает процесс и проверяет, что порт отвечает.
-  // vpnConnectionTarget не сбрасывается при неудачном connect — иначе состояние 'error'
-  // потеряло бы "какой именно сервер не подключился", см. VpnConnectionState в shared/ipc.ts.
+  // Трафик вкладок переключает applyVpnProxy в main (session.setProxy). Здесь — процесс
+  // Xray и снимок для UI. vpnConnectionTarget не сбрасывается при неудачном connect —
+  // иначе состояние 'error' потеряло бы "какой именно сервер не подключился".
   let vpnConnectionTarget: { id: string; remark: string } | null = null;
   // Захватывается из onStateChange(state, error) ниже — VpnProcess.getState() отдаёт только
   // строку состояния, само сообщение раньше нигде не сохранялось (баг, пойман живым тестом:
@@ -50,7 +48,9 @@ export function registerVpnIpc(d: IpcDeps): void {
     const server = vpnKeyStore.getServers().find((s) => s.id === serverId);
     if (!server) return { ok: false, error: 'Сервер не найден — обновите подписку' };
     vpnConnectionTarget = { id: server.id, remark: server.remark };
-    return vpnProcess.start(server);
+    const res = await vpnProcess.start(server);
+    await applyVpnProxy();
+    return res;
   });
   ipcMain.handle(IPC.VPN_DISCONNECT, async () => {
     // ⚠️ ВСЕГДА сбрасывает target/error — см. VpnProcess.ts::stop() про живой баг, который эта
@@ -59,6 +59,7 @@ export function registerVpnIpc(d: IpcDeps): void {
     await vpnProcess.stop();
     vpnConnectionTarget = null;
     lastVpnError = undefined;
+    await applyVpnProxy();
   });
   ipcMain.handle(IPC.VPN_GET_CONNECTION_STATE, () => vpnConnectionState());
   // Правило «включай VPN» (см. RuleEngine.ts). Возвращает true, только если ВКЛЮЧИЛИ прямо
@@ -78,19 +79,29 @@ export function registerVpnIpc(d: IpcDeps): void {
     }
     vpnConnectionTarget = { id: server.id, remark: server.remark };
     const res = await vpnProcess.start(server);
+    await applyVpnProxy();
     if (!res.ok) console.warn('[rules] VPN не включился:', res.error);
     return !!res.ok;
   });
   vpnProcess.onStateChange((_state, error) => {
     lastVpnError = error;
-    applyVpnProxy();
-    // Второй получатель того же снапшота, не замена рассылки по окнам — поповер сам решает
-    // (broadcastVpnState), слать ли ему дальше, в зависимости от того, жив он/открыт ли сейчас.
-    const connState = vpnConnectionState();
-    broadcastToChrome(IPC.VPN_CONNECTION_STATE_CHANGED, connState);
-    broadcastVpnState(connState);
+    // UI «защита включена / kill switch» только после фактического setProxy — иначе карточка
+    // соврала бы на то самое окно, ради которого kill switch и написан (аудит 11.08, находка 2).
+    void applyVpnProxy().then(
+      () => {
+        const connState = vpnConnectionState();
+        broadcastToChrome(IPC.VPN_CONNECTION_STATE_CHANGED, connState);
+        broadcastVpnState(connState);
+      },
+      (err: unknown) => {
+        console.error('[vpn] applyVpnProxy не применил правила:', err);
+        const connState = vpnConnectionState();
+        broadcastToChrome(IPC.VPN_CONNECTION_STATE_CHANGED, connState);
+        broadcastVpnState(connState);
+      },
+    );
   });
-  applyVpnProxy(); // детерминированная база на старте — 'stopped' → direct, а не implicit-дефолт Electron
+  void applyVpnProxy(); // детерминированная база на старте — 'stopped' → direct, а не implicit-дефолт Electron
 
   // Менеджер паролей, шаг 1 (см. electron/PasswordManager.ts). Пароль пересекает IPC только
 }

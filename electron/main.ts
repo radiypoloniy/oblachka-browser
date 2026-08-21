@@ -661,7 +661,7 @@ function wireSharedSessions(): void {
   adblock.attachSession(incognitoSession);
   downloads.observeSession(incognitoSession);
   permissions.attach(incognitoSession, onPermissionRequest);
-  applyVpnProxy(); // синхронизируем прокси инкогнито-сессии с текущим состоянием VPN сразу
+  void applyVpnProxy(); // синхронизируем прокси инкогнито-сессии с текущим состоянием VPN сразу
 
   // Пароли и автозаполнение форм. Ставится один раз на приложение, хотя работает в каждом окне:
   // и поповеры, и оркестраторы теперь получают окно на каждом вызове, а вкладки берут из реестра
@@ -1782,18 +1782,27 @@ function closeIfEmptyLight(from: TabManager): void {
 // любой запрос через такой "прокси" гарантированно проваливается, а не тихо идёт мимо него.
 const VPN_KILL_SWITCH_PROXY_RULES = 'socks5://127.0.0.1:1';
 
-function applyVpnProxy(): void {
-  const state = vpnProcess.getState();
-  const port = vpnProcess.getLocalSocksPort();
-  const proxyRules = state === 'running' && port
-    ? `socks5://127.0.0.1:${port}`
-    : state === 'error'
-      ? VPN_KILL_SWITCH_PROXY_RULES
-      : 'direct://'; // 'stopped'/'starting' — обычный режим, VPN не задействован
-  void session.defaultSession.setProxy({ proxyRules });
-  // Инкогнито-сессия ОБЯЗАНА следовать тем же прокси/kill-switch, иначе приватный трафик тёк бы
-  // мимо VPN (утечка). Держим её в синхроне при каждой смене состояния VPN.
-  void incognitoSession?.setProxy({ proxyRules });
+// Очередь: два быстрых перехода (error → stopped) не должны обогнать друг друга.
+// Каждый прогон читает состояние НА СТАРТЕ своего await, не в момент постановки в очередь.
+let vpnProxyChain: Promise<void> = Promise.resolve();
+
+function applyVpnProxy(): Promise<void> {
+  const run = async (): Promise<void> => {
+    const state = vpnProcess.getState();
+    const port = vpnProcess.getLocalSocksPort();
+    const proxyRules = state === 'running' && port
+      ? `socks5://127.0.0.1:${port}`
+      : state === 'error'
+        ? VPN_KILL_SWITCH_PROXY_RULES
+        : 'direct://'; // 'stopped'/'starting' — обычный режим, VPN не задействован
+    const cfg = { proxyRules };
+    await session.defaultSession.setProxy(cfg);
+    // Инкогнито-сессия ОБЯЗАНА следовать тем же прокси/kill-switch, иначе приватный трафик тёк бы
+    // мимо VPN (утечка). Держим её в синхроне при каждой смене состояния VPN.
+    if (incognitoSession) await incognitoSession.setProxy(cfg);
+  };
+  vpnProxyChain = vpnProxyChain.then(run, run);
+  return vpnProxyChain;
 }
 
 // Для «Скопировать содержимое» группы (GROUP_SHOW_MENU) — title/url там из чужих страниц,

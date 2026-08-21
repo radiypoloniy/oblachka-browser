@@ -9,11 +9,9 @@ import {
   StatusCard, TextField, InputRow, fieldFlex, OptionList, OptionRow,
 } from './kit';
 
-// VPN, шаг 2 — подписка/список серверов (шаг 1) + подключение процесса Xray (шаг 2). Ссылка
-// подписки и credential каждого сервера никогда не покидают main — сюда приходит только
-// редактированный список (VpnServerMeta) и статусы (VpnStatus/VpnConnectionState), тот же
-// приём, что у PasswordMeta/AiKeyStore. ⚠️ "Подключиться" пока НЕ переключает трафик вкладок
-// (session.setProxy — шаг 3, ещё не реализован) — только поднимает локальный процесс Xray.
+// Подписка и список серверов. Ссылка подписки и credential никогда не покидают main —
+// сюда приходит только редактированный список (VpnServerMeta) и статусы. «Подключиться»
+// поднимает Xray; трафик вкладок переключает applyVpnProxy в main (session.setProxy).
 export default function VpnSection() {
   const [status, setStatus] = useState<VpnStatus | null>(null);
   const [servers, setServers] = useState<VpnServerMeta[]>([]);
