@@ -23,6 +23,7 @@
   /* Насыщенные — белый глиф. */
   --appicon-calc:      linear-gradient(180deg, #FF9F2E 0%, #F58A0B 100%); /* тёплый оранжевый */
   --appicon-convert:   linear-gradient(180deg, #3FBF74 0%, #2FA863 100%); /* спокойный зелёный */
+  --appicon-zones:     linear-gradient(180deg, #4FC3D9 0%, #2F9BB8 100%); /* морской — глобус */
   --appicon-kitten:    linear-gradient(180deg, #F2708F 0%, #E15A7C 100%); /* мягкий розовый */
   --appicon-web:       linear-gradient(180deg, #3B8DF0 0%, #2A78DB 100%);
   --appicon-webcustom: linear-gradient(180deg, #98A0AC 0%, #848C99 100%);

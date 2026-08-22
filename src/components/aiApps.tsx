@@ -25,9 +25,11 @@ import type { CalcOp } from '../../shared/calc'
 import {
   Calculator, RefreshCw, Timer, Pipette, X, SlidersHorizontal, ImagePlus, Languages, Cat, Type,
   Play, Pause, RotateCcw, ArrowDownUp, ArrowUpDown, Copy, Check, Loader2,
+  Globe,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { AppGlyph, hasGlyph } from './appGlyphs'
+import ZonesApp from './ZonesApp'
 
 // Форма ответа ai-panel:currency-rates (electron/CurrencyRates.ts) — зеркалим локально,
 // тот же приём, что у ChatOutcome в aipanel.tsx (ad-hoc канал, не через shared/ipc.ts).
@@ -74,6 +76,9 @@ export interface AppDef {
 export const APPS: AppDef[] = [
   { id: 'calc', label: 'Калькулятор', kind: 'local', icon: Calculator, gradient: 'var(--appicon-calc)' },
   { id: 'convert', label: 'Конвертер', kind: 'local', icon: RefreshCw, gradient: 'var(--appicon-convert)' },
+  // Пояса — конвертер времени со сдвигом. ⚠️ Без сети: перевод времени это вычисление, и вся
+  // база поясов лежит в ICU. Сайты-конвертеры выглядят источником данных, но данных там нет.
+  { id: 'zones', label: 'Пояса', kind: 'local', icon: Globe, gradient: 'var(--appicon-zones)' },
   { id: 'timer', label: 'Таймер', kind: 'local', icon: Timer, gradient: 'var(--appicon-timer)' },
   { id: 'color', label: 'Пипетка', kind: 'local', icon: Pipette, gradient: 'var(--appicon-color)' },
   // Котёнок-тамагочи — основа будущего маскота (см. KittenApp).
@@ -1577,6 +1582,7 @@ function AppSlot({ app, grow, active, showRing, onActivate, onSwap, onClose }: {
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {app.id === 'calc' && <CalcApp />}
         {app.id === 'convert' && <ConverterApp />}
+        {app.id === 'zones' && <ZonesApp />}
         {app.id === 'timer' && <TimerApp />}
         {app.id === 'color' && <ColorApp />}
         {app.id === 'kitten' && <KittenApp />}
