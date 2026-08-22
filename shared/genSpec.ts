@@ -146,12 +146,17 @@ export function genDataSchema(kind: GenKind): Record<string, unknown> {
     case 'list':
       return { type: 'object', properties: { items: { type: 'array', items: item, minItems: 6, maxItems: 16 } } };
     case 'dice':
-      // ⚠️ Две формы жребия, и это не избыточность. «Кубик, показывающий случайное число» модель
-      // заполняла словами («Карты», «Шашки», «Бросай!») — потому что в схеме были только строки,
-      // и ей оставалось выдумывать. Числовой диапазон отдельным полем убирает саму возможность.
+      // ⚠️ Две формы жребия и ЯВНЫЙ переключатель между ними.
+      //
+      // Сначала форм не было вовсе: «кубик со случайным числом» модель заполняла словами
+      // («Карты», «Шашки», «Бросай!»), потому что в схеме были только строки. Появился числовой
+      // диапазон — и сломалась монетка: заполнив и числа, и грани, модель получала числа,
+      // потому что приоритет был зашит в код. Оба раза причина одна — РЕШЕНИЕ ПРИНИМАЛ НЕ ТОТ:
+      // выбор между «числом» и «словами» знает только тот, кто прочитал фразу.
       return {
         type: 'object',
         properties: {
+          mode: { enum: ['numbers', 'faces'] },
           items: { type: 'array', items: item, maxItems: 12 },
           from: { type: 'integer' },
           to: { type: 'integer' },
@@ -269,18 +274,29 @@ export function validateGenSpec(raw: unknown, now = Date.now()): GenSpec | null 
   const spec: GenSpec = { v: GEN_SPEC_VERSION, kind, title: title || defaultTitle(kind) };
 
   if (kind === 'dice') {
-    // Числовой бросок сильнее списка: человек просил число — значит число.
     const from = typeof o.from === 'number' ? Math.round(o.from) : Number.NaN;
     const to = typeof o.to === 'number' ? Math.round(o.to) : Number.NaN;
-    if (Number.isFinite(from) && Number.isFinite(to) && to > from && to - from <= 10_000) {
+    const numeric = Number.isFinite(from) && Number.isFinite(to) && to > from && to - from <= 10_000;
+    const items = cleanItems(o.items);
+    // ⚠️ Слушаемся ЯВНОГО выбора модели, а не зашитого приоритета. Запасной путь есть у обеих
+    // веток: выбрала числа, но диапазона нет — берём грани, и наоборот. Иначе одна пропущенная
+    // мелочь превращала бы весь виджет в отказ.
+    const wantsNumbers = o.mode === 'numbers' ? true : o.mode === 'faces' ? false : items.length < 2;
+    if (wantsNumbers && numeric) {
       spec.from = from;
       spec.to = to;
       return spec;
     }
-    const items = cleanItems(o.items);
-    if (items.length < 2) return null;
-    spec.items = items;
-    return spec;
+    if (items.length >= 2) {
+      spec.items = items;
+      return spec;
+    }
+    if (numeric) {
+      spec.from = from;
+      spec.to = to;
+      return spec;
+    }
+    return null;
   }
   if (kind === 'list' || kind === 'checklist') {
     const items = cleanItems(o.items);

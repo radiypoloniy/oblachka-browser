@@ -40,7 +40,8 @@ function buildKindPrompt(phrase: string): string {
     `Pick the ONE tile type that fits from this closed catalog:\n${catalogLines()}\n\n` +
     `Rules:\n` +
     `- A random word, quote, fact or advice is "list".\n` +
-    `- Anything rolled or drawn ("what to cook", "who does the dishes", a die, a coin) is "dice".\n` +
+    `- Anything rolled or drawn is "dice": a die, a coin ("орёл и решка"), "what to cook",\n` +
+    `  "who does the dishes", a yes/no draw.\n` +
     `- Push-ups, glasses of water, cigarettes, anything tallied by tapping is "counter".\n` +
     `- Habits, packing, morning routine is "checklist".\n` +
     `- Pomodoro and any countdown of minutes is "timer".\n` +
@@ -69,13 +70,17 @@ function buildDataPrompt(phrase: string, kind: GenKind, title: string): string {
         + 'Match the request. Never turn a quote request into single words.\n'
         + 'Answer as JSON.';
     case 'dice':
-      // ⚠️ Числовой бросок называется ПЕРВЫМ: «кубик, показывающий случайное число» модель
-      // заполняла словами («Карты», «Шашки»), потому что про числа её никто не спрашивал.
+      // ⚠️ Сначала ОДИН явный выбор — числа или слова, — и только потом заполнение. Без него
+      // модель заполняла обе формы сразу, а какая победит, решал код: так «кубик со случайным
+      // числом» выходил словами, а «орёл и решка» — числами 1 и 2.
       return head
-        + 'If the user wants a random NUMBER (a die, "случайное число", a range), set "from" and "to" '
-        + 'and leave "items" empty. A usual die is from 1 to 6.\n'
-        + 'Otherwise write the faces to draw from: 2-8 items, "main" is the face itself in Russian '
-        + '(a dish, a name, "Да"/"Нет"), "sub" is a short note or empty.\nAnswer as JSON.';
+        + 'First choose "mode":\n'
+        + '- "numbers" if the tile must show a random NUMBER (a die, "случайное число", a range). '
+        + 'Then set "from" and "to" (a usual die is 1 to 6) and leave "items" empty.\n'
+        + '- "faces" if the tile must show WORDS (орёл и решка, what to cook, who does the dishes, '
+        + 'да/нет). Then write 2-8 items and leave "from"/"to" out.\n'
+        + 'A coin is "faces" with "Орёл" and "Решка". A six-sided die is "numbers" from 1 to 6.\n'
+        + '"main" is the face itself in Russian, "sub" is a short note or empty.\nAnswer as JSON.';
     case 'checklist':
       return head + 'Write 3-6 checklist rows in Russian. "main" is the row, "sub" is empty.\nAnswer as JSON.';
     case 'counter':

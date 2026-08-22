@@ -85,10 +85,32 @@ console.log('\n── жребий числом ──');
   const d6 = validateGenSpec({ kind: 'dice', title: 'Кубик', from: 1, to: 6 }, NOW);
   check('диапазон сохранён', [d6?.from, d6?.to], [1, 6]);
   check('строк при этом нет', d6?.items, undefined);
-  // Диапазон сильнее списка: человек просил число — значит число.
+  // ⚠️ Без явного mode приоритет у СЛОВ, и это осознанная смена правила. Раньше побеждали
+  // числа — и «орёл и решка» превращались в 1 и 2. Числа теперь выигрывают только тогда, когда
+  // модель прямо сказала «numbers» (случай ниже) или когда слов просто нет.
   const both = validateGenSpec({ kind: 'dice', title: 'x', from: 1, to: 6, items: [{ main: 'Карты' }, { main: 'Шашки' }] }, NOW);
-  check('число сильнее выдуманных слов', [both?.from, both?.to, both?.items], [1, 6, undefined]);
+  check('без явного выбора слова сильнее', both?.items?.length, 2);
+  check('и диапазон при этом не хранится', [both?.from, both?.to], [undefined, undefined]);
   check('перевёрнутый диапазон не диапазон', validateGenSpec({ kind: 'dice', title: 'x', from: 6, to: 1 }, NOW), null);
+
+  // ⚠️ Живой случай 22.08: «орёл и решка» выходили числами 1 и 2. Модель заполняла ОБЕ формы,
+  // а какая победит, решал код — то есть выбор делал не тот, кто читал фразу. Теперь выбор
+  // явный, а запасной путь есть у обеих веток.
+  const coin = validateGenSpec({
+    kind: 'dice', title: 'Монетка', mode: 'faces',
+    items: [{ main: 'Орёл' }, { main: 'Решка' }], from: 1, to: 2,
+  }, NOW);
+  check('монетка остаётся словами', coin?.items?.map((x) => x.main), ['Орёл', 'Решка']);
+  check('и чисел у неё нет', [coin?.from, coin?.to], [undefined, undefined]);
+  const die = validateGenSpec({
+    kind: 'dice', title: 'Кубик', mode: 'numbers', from: 1, to: 6,
+    items: [{ main: 'Карты' }, { main: 'Шашки' }],
+  }, NOW);
+  check('кубик остаётся числами', [die?.from, die?.to, die?.items], [1, 6, undefined]);
+  check('выбрала числа, а диапазона нет — берём грани',
+    validateGenSpec({ kind: 'dice', title: 'x', mode: 'numbers', items: [{ main: 'Да' }, { main: 'Нет' }] }, NOW)?.items?.length, 2);
+  check('выбрала грани, а списка нет — берём числа',
+    validateGenSpec({ kind: 'dice', title: 'x', mode: 'faces', from: 1, to: 6 }, NOW)?.to, 6);
   check('диапазон в миллион отвергнут', validateGenSpec({ kind: 'dice', title: 'x', from: 1, to: 999999 }, NOW), null);
 }
 
