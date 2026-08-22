@@ -12,11 +12,14 @@ import AdBlockSitePanel from './components/AdBlockSitePanel';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
+import type { ProfilesState } from '../shared/profiles';
 
 declare global {
   interface Window {
     sitePopover: {
       getActiveTab: () => Promise<{ url: string; title: string } | null>;
+      getProfiles: () => Promise<ProfilesState>;
+      openProfileSettings: () => Promise<string>;
       getPermissions: () => Promise<PermissionRecord[]>;
       revokePermission: (origin: string, key: PermKey) => Promise<void>;
       getBlockedCount: (domain: string) => Promise<number>;
@@ -109,6 +112,19 @@ function SitePopoverApp() {
     void window.sitePopover.getPageChanges().then(setChanges).catch(() => setChanges({ changed: false }));
   }, []);
 
+  // Активный профиль — строкой в разделе «Защита» (см. ниже).
+  const [profile, setProfile] = useState<{ name: string; color: string; isDefault: boolean; strict: boolean } | null>(null);
+  useEffect(() => {
+    void window.sitePopover.getProfiles().then((p) => {
+      const cur = p.profiles.find((x) => x.id === p.activeId);
+      setProfile(cur ? {
+        name: cur.name, color: cur.color,
+        isDefault: cur.id === 'default',
+        strict: cur.settings.vpn === 'on',
+      } : null);
+    });
+  }, []);
+
   // Живое состояние VPN, пока карточка открыта: подключение идёт 1-2 секунды.
   useEffect(() => window.sitePopover.onVpnConnectionStateChanged(setConnState), []);
 
@@ -189,6 +205,36 @@ function SitePopoverApp() {
             домен. Без явной границы это читалось бы как «я меняю настройку для этого сайта». */}
         <Section title="Защита">
           <div style={{ padding: '2px 12px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* ⚠️ Профиль — первой строкой раздела, а не полосой во всю ширину окна: полоса была
+                уродлива и занимала строку ради одного факта. Показывается только когда профиль НЕ
+                основной; в основном это вечная метка ни о чём. */}
+            {profile && !profile.isDefault && (
+              <button
+                onClick={() => { void window.sitePopover.openProfileSettings(); }}
+                title="Открыть настройки профилей"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                  padding: '6px 8px', borderRadius: 'var(--radius-sm)', cursor: 'default',
+                  border: '1px solid var(--divider)', background: 'transparent',
+                  color: 'inherit', textAlign: 'left', font: 'inherit',
+                }}
+              >
+                <span style={{
+                  width: 16, height: 16, flex: 'none', borderRadius: 'var(--radius-pill)',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: `var(--tile-${profile.color})`, color: 'var(--white)',
+                  fontSize: 'var(--fs-xs)', fontWeight: 700, lineHeight: 1,
+                }}>{profile.name.trim().slice(0, 1).toUpperCase()}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
+                  Профиль «{profile.name}»
+                </span>
+                <span style={{ fontSize: 'var(--fs-xs)', color: profile.strict && connState?.state !== 'running' ? 'var(--warning-500)' : 'var(--text-faint)' }}>
+                  {profile.strict
+                    ? (connState?.state === 'running' ? 'через VPN' : 'ждёт VPN')
+                    : 'сменить'}
+                </span>
+              </button>
+            )}
             <VpnIndicatorPopover
               servers={servers}
               connState={connState}

@@ -481,11 +481,15 @@ export function defaultLayout(): DesktopLayout {
  */
 export function profileDefaultLayout(): DesktopLayout {
   const base = defaultLayout();
-  const fromHistory = new Set(['topsites', 'digest', 'tracking']);
-  return {
-    ...base,
-    items: base.items.filter((i) => !(i.kind === 'widget' && fromHistory.has(i.widget ?? ''))),
-  };
+  // ⚠️ Убираем ВСЁ, что построено на данных человека: «часто открываете» и «чем занимался» —
+  // из истории (она пока общая на профили), «дела» — это его личный список, и подсовывать
+  // рабочие задачи в профиль «Отдых» так же неуместно, как рабочие сайты.
+  const personal = new Set(['topsites', 'digest', 'tracking', 'tasks']);
+  const items = base.items.filter((i) => !(i.kind === 'widget' && personal.has(i.widget ?? '')));
+  // Взамен — нейтральный счётчик защиты: он считает вырезанные трекеры ЭТОГО сеанса, ничего не
+  // помнит между запусками и в сеть не ходит. Пустой стол выглядел бы поломкой, а не чистотой.
+  items.unshift({ id: 'w-shield', kind: 'widget', widget: 'shield', size: WIDGET_SIZES.small });
+  return { ...base, items };
 }
 
 export function loadDesktop(): DesktopLayout {

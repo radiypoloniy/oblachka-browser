@@ -12,6 +12,7 @@ import type { SearchEngineId } from '../../shared/searchEngines';
 import { chromeCluster, omniField, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
 import { CHROME_OVERLAY_PX } from '../../shared/chromeGround';
+import { DEFAULT_PROFILE_ID, type ProfilesState } from '../../shared/profiles';
 import { glyph } from '../styles/system';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
@@ -591,6 +592,22 @@ export default function Toolbar({
     if (!el) return;
     const r = el.getBoundingClientRect();
     void window.oblako.setSitePopoverAnchorBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+  }, []);
+
+  // Активный профиль — ради точки у щита. ⚠️ Здесь, а не в App: точка живёт в тулбаре, и
+  // прокидывать ради неё ещё один проп через десяток уровней незачем.
+  const [profile, setProfile] = useState<ProfileBadge | null>(null);
+  useEffect(() => {
+    const read = (p: ProfilesState): void => {
+      const cur = p.profiles.find((x) => x.id === p.activeId);
+      setProfile(cur ? {
+        name: cur.name, color: cur.color,
+        isDefault: cur.id === DEFAULT_PROFILE_ID,
+        strict: cur.settings.vpn === 'on',
+      } : null);
+    };
+    void window.oblako.getProfiles().then(read);
+    return window.oblako.onProfilesChanged(read);
   }, []);
 
   const toggleSitePopover = useCallback(() => {
@@ -1467,12 +1484,12 @@ export default function Toolbar({
                 про который можно что-то рассказать. */}
             <button
               ref={siteControlRef}
-              title={vpnOn ? 'Защита: VPN включён' : 'Защита: VPN, блокировка рекламы, сведения о сайте'}
+              title={profileHint(profile, vpnOn)}
               onClick={toggleSitePopover}
               style={{
                 border: 'none', background: sitePopoverOpen ? 'var(--accent-soft)' : 'transparent',
                 cursor: 'default', padding: 3, borderRadius: 'var(--radius-sm)',
-                display: 'inline-flex', flex: 'none',
+                display: 'inline-flex', flex: 'none', position: 'relative',
                 // ⚠️ Зелёная ЗАЛИВКА щита = VPN поднят. Функциональный зелёный по цветовому закону
                 // (--dot-vpn), и ровно тот же приём, что был у пилюли «Защита», — просьба была
                 // именно про заливку, а не про точку рядом. Открытый поповер перебивает акцентом:
@@ -1486,6 +1503,22 @@ export default function Toolbar({
                   теперь кнопка живая всегда, иначе до VPN нельзя было бы добраться с новой
                   вкладки — а включают его чаще всего именно оттуда. */}
               <ShieldGlyph size={14} filled={vpnOn && !sitePopoverOpen} />
+              {/* ⚠️ Точка профиля — вместо полосы во всю ширину окна, которая была уродлива и
+                  занимала строку ради одного факта. Индикация нужна, но её место здесь: у щита,
+                  где и так собрано «что защищает меня прямо сейчас». Показывается только когда
+                  профиль НЕ основной — иначе это вечная метка ни о чём.
+                  ⚠️ Профиль ждёт VPN — точка становится предупреждающей: цвет несёт статус
+                  (по цветовому закону), а не украшение. */}
+              {profile && !profile.isDefault && (
+                <span
+                  style={{
+                    position: 'absolute', right: 0, bottom: 0,
+                    width: 7, height: 7, borderRadius: 'var(--radius-pill)',
+                    background: profile.strict && !vpnOn ? 'var(--warning-500)' : `var(--tile-${profile.color})`,
+                    boxShadow: '0 0 0 1.5px var(--surface)',
+                  }}
+                />
+              )}
             </button>
             <input
               ref={inputRef}
@@ -1903,3 +1936,19 @@ function ProgressRing({ value }: { value: number | null }) {
 // в других панелях (История/Настройки), см. импорт наверху файла. Вписаны в текущую высоту
 // тулбара (TOOLBAR_HEIGHT не меняется) — сами токены стекла/тени/скругления не подбирались
 // заново, те же, что уже отлажены в поповере/AI-панели.
+
+interface ProfileBadge {
+  name: string;
+  color: string;
+  isDefault: boolean;
+  strict: boolean;
+}
+
+/** Подсказка щита: сначала то, что сломано, потом обычное состояние. */
+function profileHint(profile: ProfileBadge | null, vpnOn: boolean): string {
+  if (profile && !profile.isDefault && profile.strict && !vpnOn) {
+    return `Профиль «${profile.name}» открывает сайты только через VPN, а туннель выключен`;
+  }
+  const base = vpnOn ? 'Защита: VPN включён' : 'Защита: VPN, блокировка рекламы, сведения о сайте';
+  return profile && !profile.isDefault ? `${base} · профиль «${profile.name}»` : base;
+}

@@ -16,7 +16,7 @@ import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
 import { findMesh, subscribeMeshes } from './newtab/gradients';
 import { watchGenClocks } from './newtab/genClocks';
 import { setDesktopProfile } from './newtab/desktop';
-import type { ProfilesState } from '../shared/profiles';
+import ProfilePicker from './components/ProfilePicker';
 import { isDarkTheme } from '../shared/ipc';
 import type { ContentBounds, SplitSwapHint, SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal, ThemePrefs } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
@@ -253,6 +253,9 @@ export default function App() {
   console.log('[renderer-alive] App смонтирован')
 
   useEffect(() => watchGenClocks(), []);
+  // ⚠️ Спрашиваем только в главном окне и только один раз за запуск: карточка выбора в каждом
+  // новом окне была бы уже не помощью, а препятствием.
+  const [pickerDone, setPickerDone] = useState(false);
 
   // ⚠️ Стол принадлежит профилю (см. setDesktopProfile). Слушаем здесь, а не в DesktopScreen:
   // тот монтируется только на новой вкладке, а знать активный профиль надо с самого старта —
@@ -274,16 +277,6 @@ export default function App() {
   // сейчас блокируется/маршрутизируется трафик, — прямая противоположность тому, что должен
   // давать fail-closed (см. electron/main.ts::applyVpnProxy). null — статус ещё не загружен.
   const [vpnConn, setVpnConn] = useState<VpnConnectionState | null>(null);
-  // Активный профиль — ради полосы «ждёт VPN» ниже.
-  const [activeProfile, setActiveProfile] = useState<{ name: string; strict: boolean } | null>(null);
-  useEffect(() => {
-    const read = (p: ProfilesState): void => {
-      const cur = p.profiles.find((x) => x.id === p.activeId);
-      setActiveProfile(cur ? { name: cur.name, strict: cur.settings.vpn === 'on' } : null);
-    };
-    void window.oblako.getProfiles().then(read);
-    return window.oblako.onProfilesChanged(read);
-  }, []);
   const [pageTranslateState, setPageTranslateState] = useState<PageTranslateState>('idle');
   const [pageTranslateProgress, setPageTranslateProgress] = useState<PageTranslateProgress | null>(null);
   // Оформление (см. ThemePrefs в shared/ipc.ts). Владеет значением main — оно на диске и одно на
@@ -1161,34 +1154,8 @@ export default function App() {
         onOrganizeCancel={handleOrganizeCancel}
         onOrganizeRollback={handleOrganizeRollback}
       />
+      {!pickerDone && !isLightWindow && <ProfilePicker onDone={() => setPickerDone(true)} />}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {/* ⚠️ Полоса в ХРОМЕ, а не страница ошибки. Страница ошибки появляется только когда
-            запрос провалился, а сайт с service worker (YouTube) рисует СВОЙ офлайн-экран из
-            кэша и не падает вовсе — человек видел «Нет подключения к Интернету» и не понимал,
-            что это его же профиль ждёт туннель. Полоса не зависит от того, упала страница
-            или нет, и потому честна во всех случаях. */}
-        {activeProfile?.strict && vpnConn?.state !== 'running' && (
-          <div style={{
-            flex: 'none', display: 'flex', alignItems: 'center', gap: 8,
-            padding: '6px 14px', background: 'var(--warning-500)', color: '#fff',
-            fontSize: 'var(--fs-sm)',
-          }}>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              Профиль «{activeProfile.name}» открывает сайты только через VPN, а туннель выключен —
-              страницы не грузятся.
-            </span>
-            <button
-              // ⚠️ VPN живёт в карточке под ЩИТОМ в адресной строке (см. CLAUDE.md про
-              // SitePopoverManager): открываем ровно её, а не заводим второй путь к тому же.
-              onClick={() => { void window.oblako.toggleSitePopover(); }}
-              style={{
-                flex: 'none', border: '1px solid rgba(255,255,255,0.6)', background: 'transparent',
-                color: '#fff', borderRadius: RADIUS.pill, padding: '2px 10px', cursor: 'default',
-                fontSize: 'var(--fs-xs)',
-              }}
-            >Включить VPN</button>
-          </div>
-        )}
         <Toolbar
           tab={active} allTabs={tabs} vpnOn={vpnConn?.state === 'running'}
           isLightWindow={isLightWindow}

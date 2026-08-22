@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnConnectionState, AdBlockState } from '../shared/ipc';
+import type { ProfilesState } from '../shared/profiles';
 
 // Мост поповера «Защита» — того, что открывается по щиту в адресной строке. ⚠️ Ни одного нового
 // обработчика в main: всё, что здесь нужно, уже посчитано другими частями браузера и открыто теми
@@ -15,6 +16,12 @@ contextBridge.exposeInMainWorld('sitePopover', {
   // Какая страница открыта сейчас — берём у менеджера вкладок окна-отправителя, а не из аргумента:
   // renderer поповера мог открыться раньше, чем доехала навигация.
   getActiveTab: () => ipcRenderer.invoke(IPC.SITE_POPOVER_ACTIVE_TAB) as Promise<{ url: string; title: string } | null>,
+
+  // ── Профиль ──────────────────────────────────────────────────────────────────
+  // ⚠️ Ни одного нового обработчика — те же боевые каналы, что у настроек (см. шапку).
+  // Профиль показывается здесь, потому что щит и отвечает на вопрос «в каком я окружении».
+  getProfiles: () => ipcRenderer.invoke(IPC.PROFILES_GET) as Promise<ProfilesState>,
+  openProfileSettings: () => ipcRenderer.invoke(IPC.TAB_CREATE_SPECIAL, 'settings', 'profiles') as Promise<string>,
 
   getPermissions: () => ipcRenderer.invoke(IPC.PERMISSION_LIST) as Promise<PermissionRecord[]>,
   revokePermission: (origin: string, key: PermKey) => ipcRenderer.invoke(IPC.PERMISSION_REVOKE, origin, key) as Promise<void>,
