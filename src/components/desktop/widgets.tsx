@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type React from 'react';
 import { Check, Plus, X, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import type { MediaCommand, MediaNowPlaying } from '../../../shared/ipc';
 import type { CellSize } from '../../newtab/desktop';
+import { dayPhase, arcPosition, minutesUntilNextEvent, skyStops, isWarmPhase, starField } from '../../../shared/dayPhase';
 import { card, cardGlass, grain, RADIUS, DISPLAY, CAPS, CARD_COLOR_ENABLED, CARD_INK, altitude, ALTITUDE, HERO_ENABLED, sp } from '../../styles/system';
 import { loadNewTabSettings } from '../../newtab/settings';
 import CryptoIcon from '../CryptoIcon';
@@ -265,10 +266,28 @@ export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
   // дата снизу) они физически не влезают в ~124 px: содержимое вылезало за края — это и было
   // «плывёт разметка». Размер меняет СОДЕРЖАНИЕ, а не масштаб — то же правило, что у погоды.
   const tiny = box.height < 150;
+  // Заметно шире, чем высокая — тот же порог, по которому включается дуга дня.
+  const wideRow = box.width > box.height * 1.5 && box.height >= 150;
   return (
     <Tile surface toned overImage={overImage} hero={hero} fill={fill} padding={tiny ? 12 : 16}>
       {!tiny && <TileCaption>{weekday}</TileCaption>}
       {analog ? (
+        // ⚠️ В ШИРОКОЙ плитке циферблат встаёт РЯДОМ с временем, а не один посреди пустоты.
+        // Круг держится меньшей стороной, поэтому на растянутой плитке он оставлял по половине
+        // ширины пустоты с боков и «терялся» — живая жалоба. Композиция меняется от формы, как
+        // у погоды и у самих часов в растянутом виде; сам циферблат при этом тот же.
+        wideRow ? (
+          <div style={{
+            flex: 1, minHeight: 0, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', gap: sp(6),
+          }}>
+            <AnalogFace size={Math.min(box.height - 56, 128)} now={now} seconds={opts.seconds} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(1), minWidth: 0 }}>
+              <TileValue size={Math.round(Math.min(box.height * 0.3, 52))} hero={hero}>{time}</TileValue>
+              {opts.date && <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.8 }}>{dayMonth}</div>}
+            </div>
+          </div>
+        ) : (
         <div style={{
           flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -278,6 +297,7 @@ export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
             <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.8, textAlign: 'center' }}>{dayMonth}</div>
           )}
         </div>
+        )
       ) : (
         // ⚠️ На широкой плитке содержимое ЦЕНТРИРУЕТСЯ. Прижатое влево время оставляло справа
         // пустоту в половину виджета — на 4 клетки это выглядело как незаполненная заготовка.
@@ -400,8 +420,20 @@ function useSunTimes(city: string): { rise: number; set: number } | null {
   return sun;
 }
 
-// Дуга дня: небо-градиент, дуга от восхода до заката, светило (солнце днём / луна ночью) на позиции
-// текущего момента. Время и день — в углу. Показывается только в широком виде (см. ClockWidget).
+// Дуга дня — «лицо» растянутых часов: небо текущей фазы, дуга от восхода до заката и светило
+// на позиции текущего момента.
+//
+// ⚠️ НОЧЬЮ ПО ДУГЕ ИДЁТ ЛУНА, а не «солнце ниже горизонта». Прежняя версия прятала светило под
+// линию горизонта, и луна лежала в углу плитки — со стороны это читалось как баг, а не замысел
+// (живая жалоба «луна хрен знает где»). У настоящих приложений этого жанра (Sundial, Sloww) у
+// луны СВОЯ дуга по ночному небу; расчёт — в shared/dayPhase.ts под npm test.
+//
+// ⚠️ Небо — ШЕСТЬ фаз, а не «день/ночь». Двоичное небо переключалось скачком: в 21:15 рисовалось
+// то же, что в 3 часа ночи, и картинка выглядела бедной. Сумерки — отдельное состояние, и
+// именно они дают настроение.
+//
+// ⚠️ Небо здесь НЕ ТОКЕНЫ ТЕМЫ, и это осознанно: как и цвет у погоды, оно носитель настроения.
+// Цветовой закон говорит про хром, а плитка часов — содержимое.
 function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
   box: { width: number; height: number };
   fill?: string;
@@ -412,133 +444,135 @@ function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
   weekday: string;
 }) {
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  const isDay = nowMin >= sunrise && nowMin <= sunset;
-  // Доля пути: днём — вдоль дуги от восхода к закату; ночью — вдоль «подземной» части от заката к
-  // восходу следующего дня. Так светило непрерывно обходит круг за сутки, а не прыгает.
-  const dayLen = sunset - sunrise;
-  const nightLen = 24 * 60 - dayLen;
-  const frac = isDay
-    ? (nowMin - sunrise) / dayLen
-    : ((nowMin < sunrise ? nowMin + 24 * 60 : nowMin) - sunset) / nightLen;
+  const phase = dayPhase(nowMin, sunrise, sunset);
+  const { frac, body } = arcPosition(nowMin, sunrise, sunset);
+  const left = minutesUntilNextEvent(nowMin, sunrise, sunset);
+  const [top, mid, low] = skyStops(phase);
+  const warm = isWarmPhase(phase);
+  const isDay = body === 'sun';
 
-  // Геометрия в координатах 200×100: дуга — полукруг радиуса 78 с центром у нижнего края, горизонт
-  // на y=88. Днём светило идёт по ВЕРХНЕЙ дуге (слева направо), ночью — символически ниже горизонта.
-  const cx = 100, cy = 88, r = 78;
-  const angle = Math.PI * (isDay ? frac : frac); // 0…π
+  // Геометрия 200×100: полукруг радиуса r с центром у горизонта. Светило идёт слева направо.
+  const cx = 100, cy = 86, r = 74;
+  const angle = Math.PI * frac;
   const bodyX = cx - r * Math.cos(angle);
-  const bodyY = isDay ? cy - r * Math.sin(angle) : cy + 8 + 6 * Math.sin(angle);
+  const bodyY = cy - r * Math.sin(angle);
   const riseX = cx - r, setX = cx + r;
+  const arc = (toX: number, toY: number) => `M ${riseX} ${cy} A ${r} ${r} 0 0 1 ${toX} ${toY}`;
 
-  const skyDay = 'linear-gradient(160deg, #4A90D9 0%, #7EB6E8 55%, #F5C777 100%)';
-  const skyNight = 'linear-gradient(165deg, #1B2A4A 0%, #2C3E63 60%, #4A5578 100%)';
+  const leftH = Math.floor(left / 60);
+  const leftM = left % 60;
+  const leftText = `${leftH ? `${leftH} ч ` : ''}${leftM} мин`.trim();
+  const label = isDay ? `светло ещё ${leftText}` : `рассвет через ${leftText}`;
 
-  const remain = isDay ? sunset - nowMin : sunrise - (nowMin < sunrise ? nowMin : nowMin - 24 * 60);
-  const remainH = Math.floor(Math.abs(remain) / 60), remainM = Math.abs(remain) % 60;
-  const remainLabel = isDay
-    ? `светло ещё ${remainH ? remainH + ' ч' : ''}${remainM ? ' ' + remainM + ' мин' : ''}`.trim()
-    : `рассвет через ${remainH ? remainH + ' ч' : ''}${remainM ? ' ' + remainM + ' мин' : ''}`.trim();
-
-  const pad = 16;
-  const svgH = box.height - pad * 2 - 28; // минус строка времени сверху
+  const stars = useMemo(() => (isDay ? [] : starField()), [isDay]);
+  const tilePad = 16;
+  const svgH = Math.max(66, box.height - tilePad * 2 - 64);
 
   return (
-    // Заливку человека уважаем (fill перебивает небо) — тот же приём, что у остальных плиток; иначе
-    // рисуем живое небо. Само небо — не токен темы: это носитель настроения, как цвет у погоды.
-    <Tile tint={fill ?? (isDay ? skyDay : skyNight)} fill={fill} padding={pad}>
+    // Заливку человека уважаем (fill перебивает небо) — тот же приём, что у остальных плиток.
+    <Tile tint={fill ?? `linear-gradient(180deg, ${top} 0%, ${mid} 58%, ${low} 100%)`} fill={fill} padding={tilePad}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flex: 'none' }}>
-        {/* ⚠️ Дисплейная гарнитура, как у остальных крупных чисел стола (роль DISPLAY).
-            Прежний lightweight-шрифт в 300 весе был чужим здесь: на столе всё крупное набрано
-            Unbounded, и часы выпадали из общего вида ровно тем, что «просто текст». */}
         <span style={{ ...DISPLAY, fontSize: Math.min(box.height * 0.26, 40) }}>{time}</span>
-        <span style={{ ...CAPS, opacity: 0.8 }}>{weekday}</span>
+        <span style={{ ...CAPS, opacity: 0.75 }}>{weekday}</span>
       </div>
+
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'flex-end' }}>
-        <svg width="100%" height={Math.max(60, svgH)} viewBox="0 0 200 100" preserveAspectRatio="xMidYMax meet" style={{ display: 'block', overflow: 'visible' }}>
+        <svg width="100%" height={svgH} viewBox="0 0 200 100" preserveAspectRatio="none"
+          style={{ display: 'block', overflow: 'visible' }}>
           <defs>
-            <linearGradient id="arcTrack" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#fff" stopOpacity="0.25" />
-              <stop offset="0.5" stopColor="#fff" stopOpacity="0.6" />
-              <stop offset="1" stopColor="#fff" stopOpacity="0.25" />
+            {/* Пройденный путь: тёплый днём, холодный ночью — иначе ночная дуга выглядит
+                чужой золотой полосой на синем. */}
+            <linearGradient id="arcDone" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor={warm ? '#FFD98A' : '#9FB6E8'} stopOpacity="0.35" />
+              <stop offset="1" stopColor={warm ? '#FFE9B8' : '#DCE6FF'} stopOpacity="0.95" />
             </linearGradient>
-            {/* Ядро солнца: светлее в верхнем левом углу — там, откуда «падает» свет. */}
-            <radialGradient id="sunCore" cx="0.35" cy="0.3" r="0.75">
-              <stop offset="0" stopColor="#FFFBEA" />
-              <stop offset="0.55" stopColor="#FFD65C" />
-              <stop offset="1" stopColor="#F7A93B" />
+            {/* Заливка под дугой — то, чего не хватало больше всего: пустое небо читалось
+                незаполненной заготовкой. */}
+            <linearGradient id="arcFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor={warm ? '#FFE0A0' : '#A8BCEA'} stopOpacity="0.28" />
+              <stop offset="1" stopColor={warm ? '#FFE0A0' : '#A8BCEA'} stopOpacity="0" />
+            </linearGradient>
+            {/* Зарево у горизонта в той стороне, где светило всходит или садится. */}
+            <radialGradient id="horizonGlow" cx="0.5" cy="1" r="0.85">
+              <stop offset="0" stopColor={warm ? '#FFC978' : '#6E86C8'} stopOpacity="0.55" />
+              <stop offset="1" stopColor={warm ? '#FFC978' : '#6E86C8'} stopOpacity="0" />
             </radialGradient>
-            <radialGradient id="sunGlow" cx="0.5" cy="0.5" r="0.5">
-              <stop offset="0.4" stopColor="#FFD65C" stopOpacity="0.45" />
-              <stop offset="1" stopColor="#FFD65C" stopOpacity="0" />
+            <radialGradient id="sunCore" cx="0.35" cy="0.3" r="0.8">
+              <stop offset="0" stopColor="#FFFDF2" />
+              <stop offset="0.5" stopColor="#FFD65C" />
+              <stop offset="1" stopColor="#F79B2E" />
             </radialGradient>
-            <radialGradient id="moonCore" cx="0.35" cy="0.3" r="0.8">
+            <radialGradient id="bodyGlow" cx="0.5" cy="0.5" r="0.5">
+              <stop offset="0.35" stopColor={isDay ? '#FFD65C' : '#CFE0FF'} stopOpacity="0.5" />
+              <stop offset="1" stopColor={isDay ? '#FFD65C' : '#CFE0FF'} stopOpacity="0" />
+            </radialGradient>
+            <radialGradient id="moonCore" cx="0.34" cy="0.28" r="0.85">
               <stop offset="0" stopColor="#FFFFFF" />
-              <stop offset="0.6" stopColor="#E4E9F4" />
-              <stop offset="1" stopColor="#C3CBDD" />
+              <stop offset="0.6" stopColor="#E6ECFA" />
+              <stop offset="1" stopColor="#BFC9E0" />
             </radialGradient>
-            <radialGradient id="moonGlow" cx="0.5" cy="0.5" r="0.5">
-              <stop offset="0.45" stopColor="#DCE4F5" stopOpacity="0.35" />
-              <stop offset="1" stopColor="#DCE4F5" stopOpacity="0" />
-            </radialGradient>
-            {/* ⚠️ Маска серпа объявлена ЗДЕСЬ, а не внутри ветки ночи: defs с одинаковым id,
-                объявленный дважды, в svg ведёт себя непредсказуемо. */}
+            {/* ⚠️ Маска серпа объявлена ЗДЕСЬ, в общем defs: два defs с одним id внутри одного
+                svg ведут себя непредсказуемо. */}
             <mask id="moonMask">
               <rect x="0" y="0" width="200" height="100" fill="#fff" />
-              <circle cx={bodyX + 4.2} cy={bodyY - 3.2} r="8" fill="#000" />
+              <circle cx={bodyX + 4.4} cy={bodyY - 3.4} r="8.4" fill="#000" />
             </mask>
           </defs>
-          {/* Линия горизонта */}
-          <line x1="8" y1={cy} x2="192" y2={cy} stroke="#fff" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="2 3" />
-          {/* Дуга дневного пути */}
-          <path d={`M ${riseX} ${cy} A ${r} ${r} 0 0 1 ${setX} ${cy}`} fill="none" stroke="url(#arcTrack)" strokeWidth="2" strokeLinecap="round" />
-          {/* Пройденная часть дуги — до текущего светила, ярче (только днём) */}
-          {isDay && (
-            <path d={`M ${riseX} ${cy} A ${r} ${r} 0 0 1 ${bodyX} ${bodyY}`} fill="none" stroke="#FFE9A8" strokeWidth="2.6" strokeLinecap="round" />
-          )}
-          {/* Метки восхода/заката */}
-          <circle cx={riseX} cy={cy} r="2.4" fill="#fff" fillOpacity="0.75" />
-          <circle cx={setX} cy={cy} r="2.4" fill="#fff" fillOpacity="0.75" />
+
+          {/* Звёзды — только ночью и в сумерках, и они не мигают: позиции детерминированы. */}
+          {stars.map((s, i) => (
+            <circle key={i} cx={s.x * 200} cy={s.y * 100} r={s.r * 0.7}
+              fill="#fff" fillOpacity={0.25 + s.r * 0.35} />
+          ))}
+
+          {/* Зарево там, где светило сейчас пересекает горизонт. */}
+          <ellipse cx={frac < 0.5 ? riseX : setX} cy={cy} rx="60" ry="26" fill="url(#horizonGlow)" />
+
+          {/* Небо под дугой */}
+          <path d={`${arc(setX, cy)} L ${riseX} ${cy} Z`} fill="url(#arcFill)" />
+          {/* Сама дуга и пройденная часть */}
+          <path d={arc(setX, cy)} fill="none" stroke="#fff" strokeOpacity="0.28" strokeWidth="1.6" strokeLinecap="round" />
+          <path d={arc(bodyX, bodyY)} fill="none" stroke="url(#arcDone)" strokeWidth="2.4" strokeLinecap="round" />
+
+          <line x1="4" y1={cy} x2="196" y2={cy} stroke="#fff" strokeOpacity="0.32" strokeWidth="1" strokeDasharray="2 4" />
+          <circle cx={riseX} cy={cy} r="2.6" fill="#fff" fillOpacity="0.8" />
+          <circle cx={setX} cy={cy} r="2.6" fill="#fff" fillOpacity="0.8" />
+
           {/* Светило */}
-          {/* ⚠️ Светило — не «шарик» и не «полумесяц». У солнца тёплое ядро, ореол и мягкое
-              свечение вокруг; у луны — холодный градиент и настоящие моря, а серп задаётся
-              смещённой маской, а не вырезанным полукругом. Это единственная картинка на плитке,
-              и она несёт всё настроение. */}
+          <circle cx={bodyX} cy={bodyY} r="19" fill="url(#bodyGlow)" />
           {isDay ? (
-            <g>
-              <circle cx={bodyX} cy={bodyY} r="20" fill="url(#sunGlow)" />
-              <circle cx={bodyX} cy={bodyY} r="10.5" fill="#FFF3C4" fillOpacity="0.55" />
-              <circle cx={bodyX} cy={bodyY} r="8" fill="url(#sunCore)" />
-            </g>
+            <>
+              <circle cx={bodyX} cy={bodyY} r="10.5" fill="#FFF3C4" fillOpacity="0.5" />
+              <circle cx={bodyX} cy={bodyY} r="7.6" fill="url(#sunCore)" />
+            </>
           ) : (
             <g>
-              <circle cx={bodyX} cy={bodyY} r="16" fill="url(#moonGlow)" />
-              <circle cx={bodyX} cy={bodyY} r="8" fill="url(#moonCore)" mask="url(#moonMask)" />
+              <circle cx={bodyX} cy={bodyY} r="7.6" fill="url(#moonCore)" mask="url(#moonMask)" />
               {/* Моря — то, что отличает луну от белого кружка. */}
-              <g mask="url(#moonMask)" fill="#B9C3D6" fillOpacity="0.55">
-                <circle cx={bodyX - 2.4} cy={bodyY - 2} r="1.9" />
-                <circle cx={bodyX + 0.6} cy={bodyY + 2.4} r="1.3" />
-                <circle cx={bodyX - 3} cy={bodyY + 2.6} r="0.9" />
+              <g mask="url(#moonMask)" fill="#AFBBD4" fillOpacity="0.5">
+                <circle cx={bodyX - 2.3} cy={bodyY - 1.8} r="1.8" />
+                <circle cx={bodyX + 0.4} cy={bodyY + 2.3} r="1.2" />
+                <circle cx={bodyX - 2.9} cy={bodyY + 2.5} r="0.85" />
               </g>
             </g>
           )}
         </svg>
       </div>
-      {/* ⚠️ Стеклянная полоса вместо голых эмодзи в строку. Эмодзи рисует система, они разного
-          стиля и размера в разных шрифтах — на фирменном небе это выглядело наклейками. Время
-          восхода и заката говорят сами за себя, а положение (слева/справа) уже сказано дугой. */}
+
+      {/* Стеклянная полоса вместо эмодзи в строку: их рисует система, каждый своим стилем, и на
+          фирменном небе они читались наклейками. */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: sp(2),
-        // ⚠️ Не pad() из системы: в этой функции есть СВОЯ переменная pad (отступ плитки),
-        // и она затеняет рецепт. Берём ступени шкалы напрямую — значения те же.
-        flex: 'none', marginTop: sp(1), padding: `${sp(1)}px ${sp(3)}px`,
+        flex: 'none', marginTop: sp(2), padding: `${sp(1)}px ${sp(3)}px`,
         borderRadius: RADIUS.pill,
         background: 'rgba(255,255,255,0.16)',
-        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+        backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
         border: '1px solid rgba(255,255,255,0.22)',
         fontSize: 'var(--fs-xs)',
       }}>
         <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.95 }}>{minutesToHHMM(sunrise)}</span>
         <span style={{ opacity: 0.95, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {remainLabel}
+          {label}
         </span>
         <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.95 }}>{minutesToHHMM(sunset)}</span>
       </div>
