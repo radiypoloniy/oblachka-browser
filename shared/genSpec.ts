@@ -30,9 +30,45 @@ export const GEN_KINDS = [
   'goal',      // цель и прогресс: «120 из 300 страниц»
   'countdown', // сколько дней до даты
   'note',      // крупный текст-памятка
+  'feed',      // список ИЗ БРАУЗЕРА: последние сайты, частые, вкладки, загрузки
+  'stat',      // одно большое число ИЗ БРАУЗЕРА: вкладок открыто, трекеров срезано
 ] as const;
 
 export type GenKind = (typeof GEN_KINDS)[number];
+
+/**
+ * Откуда плитка берёт настоящие данные.
+ *
+ * ⚠️ Это ответ на главную претензию 22.08: модель не знает про браузер НИЧЕГО и на просьбу
+ * «список последних посещённых сайтов» честно выдумывала («Счастье — внутри вас»). Выдумать
+ * историю нельзя — её можно только взять. Поэтому модель здесь выбирает ИСТОЧНИК из закрытого
+ * списка, а данные подставляет хост в момент показа. Заодно они всегда свежие.
+ */
+export const GEN_SOURCES = ['history', 'topsites', 'tabs', 'downloads', 'blocked'] as const;
+export type GenSource = (typeof GEN_SOURCES)[number];
+
+export function isGenSource(v: unknown): v is GenSource {
+  return typeof v === 'string' && (GEN_SOURCES as readonly string[]).includes(v);
+}
+
+/** Что источник умеет отдавать: ленту, число или и то и другое. */
+const SOURCE_SHAPE: Record<GenSource, { feed: boolean; stat: boolean }> = {
+  history:   { feed: true,  stat: false },
+  topsites:  { feed: true,  stat: false },
+  tabs:      { feed: true,  stat: true },
+  downloads: { feed: true,  stat: true },
+  blocked:   { feed: false, stat: true },
+};
+
+export function genSourceLabel(src: GenSource): string {
+  switch (src) {
+    case 'history': return 'Последние сайты';
+    case 'topsites': return 'Частые сайты';
+    case 'tabs': return 'Открытые вкладки';
+    case 'downloads': return 'Загрузки';
+    case 'blocked': return 'Срезано трекеров';
+  }
+}
 
 export interface GenItem {
   /** Что показывается крупно. */
@@ -62,6 +98,13 @@ export interface GenSpec {
   date?: string;
   /** note: сам текст. */
   text?: string;
+  /** feed · stat: откуда берутся настоящие данные. */
+  source?: GenSource;
+  /** feed: сколько строк показывать. */
+  rows?: number;
+  /** dice: бросок ЧИСЛА, а не строки. from < to. */
+  from?: number;
+  to?: number;
 }
 
 export const GEN_TITLE_MAX = 24;
@@ -103,7 +146,17 @@ export function genDataSchema(kind: GenKind): Record<string, unknown> {
     case 'list':
       return { type: 'object', properties: { items: { type: 'array', items: item, minItems: 6, maxItems: 16 } } };
     case 'dice':
-      return { type: 'object', properties: { items: { type: 'array', items: item, minItems: 2, maxItems: 12 } } };
+      // ⚠️ Две формы жребия, и это не избыточность. «Кубик, показывающий случайное число» модель
+      // заполняла словами («Карты», «Шашки», «Бросай!») — потому что в схеме были только строки,
+      // и ей оставалось выдумывать. Числовой диапазон отдельным полем убирает саму возможность.
+      return {
+        type: 'object',
+        properties: {
+          items: { type: 'array', items: item, maxItems: 12 },
+          from: { type: 'integer' },
+          to: { type: 'integer' },
+        },
+      };
     case 'checklist':
       return { type: 'object', properties: { items: { type: 'array', items: item, minItems: 3, maxItems: 8 } } };
     case 'counter':
@@ -130,6 +183,19 @@ export function genDataSchema(kind: GenKind): Record<string, unknown> {
       return { type: 'object', properties: { date: { type: 'string', format: 'date' } } };
     case 'note':
       return { type: 'object', properties: { text: { type: 'string', maxLength: GEN_TEXT_MAX } } };
+    case 'feed':
+      return {
+        type: 'object',
+        properties: {
+          source: { enum: GEN_SOURCES.filter((x) => SOURCE_SHAPE[x].feed) },
+          rows: { type: 'integer' },
+        },
+      };
+    case 'stat':
+      return {
+        type: 'object',
+        properties: { source: { enum: GEN_SOURCES.filter((x) => SOURCE_SHAPE[x].stat) } },
+      };
   }
 }
 
@@ -202,10 +268,32 @@ export function validateGenSpec(raw: unknown, now = Date.now()): GenSpec | null 
   const title = cleanText(o.title, GEN_TITLE_MAX);
   const spec: GenSpec = { v: GEN_SPEC_VERSION, kind, title: title || defaultTitle(kind) };
 
-  if (kind === 'list' || kind === 'dice' || kind === 'checklist') {
+  if (kind === 'dice') {
+    // Числовой бросок сильнее списка: человек просил число — значит число.
+    const from = typeof o.from === 'number' ? Math.round(o.from) : Number.NaN;
+    const to = typeof o.to === 'number' ? Math.round(o.to) : Number.NaN;
+    if (Number.isFinite(from) && Number.isFinite(to) && to > from && to - from <= 10_000) {
+      spec.from = from;
+      spec.to = to;
+      return spec;
+    }
+    const items = cleanItems(o.items);
+    if (items.length < 2) return null;
+    spec.items = items;
+    return spec;
+  }
+  if (kind === 'list' || kind === 'checklist') {
     const items = cleanItems(o.items);
     if (items.length < (GEN_ITEMS_MIN[kind] ?? 2)) return null;
     spec.items = items;
+    return spec;
+  }
+  if (kind === 'feed' || kind === 'stat') {
+    if (!isGenSource(o.source)) return null;
+    // ⚠️ Источник обязан УМЕТЬ нужную форму: «срезано трекеров» — это число, лентой оно не бывает.
+    if (!SOURCE_SHAPE[o.source][kind === 'feed' ? 'feed' : 'stat']) return null;
+    spec.source = o.source;
+    if (kind === 'feed') spec.rows = clampInt(o.rows, 3, 12, 5);
     return spec;
   }
   if (kind === 'counter') {
@@ -255,6 +343,8 @@ export function defaultTitle(kind: GenKind): string {
     case 'goal': return 'Цель';
     case 'countdown': return 'Отсчёт';
     case 'note': return 'Заметка';
+    case 'feed': return 'Из браузера';
+    case 'stat': return 'Счёт браузера';
   }
 }
 
@@ -269,6 +359,8 @@ export function genKindLabel(kind: GenKind): string {
     case 'goal': return 'Цель';
     case 'countdown': return 'Отсчёт до даты';
     case 'note': return 'Заметка';
+    case 'feed': return 'Лента из браузера';
+    case 'stat': return 'Число из браузера';
   }
 }
 
@@ -283,6 +375,8 @@ export function genKindHint(kind: GenKind): string {
     case 'goal': return 'Кольцо прогресса до цели';
     case 'countdown': return 'Сколько дней осталось';
     case 'note': return 'Крупный текст на виду';
+    case 'feed': return 'Настоящие данные браузера, всегда свежие';
+    case 'stat': return 'Настоящее число браузера, всегда свежее';
   }
 }
 
@@ -296,6 +390,7 @@ export function genKindSize(kind: GenKind): { w: number; h: number } {
     case 'list': return { w: 4, h: 2 };
     case 'note': return { w: 4, h: 2 };
     case 'checklist': return { w: 4, h: 4 };
+    case 'feed': return { w: 4, h: 4 };
     default: return { w: 2, h: 2 };
   }
 }

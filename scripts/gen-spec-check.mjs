@@ -6,6 +6,7 @@
 import {
   validateGenSpec, isGenKind, genDataSchema, genKindSize, daysUntil, isFutureDate,
   parseGenRuntime, GEN_KINDS, GEN_TITLE_MAX, GEN_SPEC_VERSION, GEN_KIND_SCHEMA,
+  GEN_SOURCES, isGenSource, genSourceLabel,
 } from '../shared/genSpec.ts';
 
 let passed = 0;
@@ -20,7 +21,7 @@ const checkTrue = (name, got) => check(name, !!got, true);
 const NOW = Date.parse('2026-08-22T09:00:00');
 
 console.log('\n── каталог типов ──');
-check('восемь типов', GEN_KINDS.length, 8);
+check('десять типов', GEN_KINDS.length, 10);
 checkTrue('list в каталоге', isGenKind('list'));
 checkTrue('выдуманный тип отвергнут', !isGenKind('snake'));
 
@@ -57,6 +58,38 @@ console.log('\n── жребий ──');
   }, NOW);
   check('три грани — жребий', dice?.items?.length, 3);
   check('одной грани мало', validateGenSpec({ kind: 'dice', title: 'x', items: [{ main: 'Да' }] }, NOW), null);
+}
+
+console.log('\n── данные браузера, а не выдумка ──');
+{
+  // ⚠️ Живой случай 22.08: «список из истории последних посещённых сайтов» модель наполнила
+  // выдумкой — «Счастье — внутри вас». И не могла иначе: про браузер она не знает ничего.
+  // Теперь она выбирает ИСТОЧНИК, а данные подставляет хост в момент показа.
+  const feed = validateGenSpec({ kind: 'feed', title: 'История', source: 'history', rows: 6 }, NOW);
+  check('источник сохранён', feed?.source, 'history');
+  check('число строк зажато в разумное', validateGenSpec({ kind: 'feed', title: 'x', source: 'history', rows: 99 }, NOW)?.rows, 12);
+  check('без источника ленты не бывает', validateGenSpec({ kind: 'feed', title: 'x' }, NOW), null);
+  check('выдуманный источник отвергнут', validateGenSpec({ kind: 'feed', title: 'x', source: 'weather' }, NOW), null);
+  // ⚠️ Источник обязан УМЕТЬ нужную форму: срезанные трекеры — число, лентой они не бывают.
+  check('трекеры лентой не показать', validateGenSpec({ kind: 'feed', title: 'x', source: 'blocked' }, NOW), null);
+  check('а числом — да', validateGenSpec({ kind: 'stat', title: 'x', source: 'blocked' }, NOW)?.source, 'blocked');
+  check('история числом не показывается', validateGenSpec({ kind: 'stat', title: 'x', source: 'history' }, NOW), null);
+  checkTrue('источники перечислены', GEN_SOURCES.length === 5 && isGenSource('tabs'));
+  check('у источника есть человеческое имя', genSourceLabel('topsites'), 'Частые сайты');
+}
+
+console.log('\n── жребий числом ──');
+{
+  // ⚠️ Живой случай 22.08: «игральный кубик, показывать случайное число при клике» дал грани
+  // «Карты», «Шашки», «Бросай!» — в схеме были только строки, и модели оставалось выдумывать.
+  const d6 = validateGenSpec({ kind: 'dice', title: 'Кубик', from: 1, to: 6 }, NOW);
+  check('диапазон сохранён', [d6?.from, d6?.to], [1, 6]);
+  check('строк при этом нет', d6?.items, undefined);
+  // Диапазон сильнее списка: человек просил число — значит число.
+  const both = validateGenSpec({ kind: 'dice', title: 'x', from: 1, to: 6, items: [{ main: 'Карты' }, { main: 'Шашки' }] }, NOW);
+  check('число сильнее выдуманных слов', [both?.from, both?.to, both?.items], [1, 6, undefined]);
+  check('перевёрнутый диапазон не диапазон', validateGenSpec({ kind: 'dice', title: 'x', from: 6, to: 1 }, NOW), null);
+  check('диапазон в миллион отвергнут', validateGenSpec({ kind: 'dice', title: 'x', from: 1, to: 999999 }, NOW), null);
 }
 
 console.log('\n── счётчик ──');

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, RotateCcw } from 'lucide-react';
 import { TileCaption, TileValue } from './widgets';
 import { RADIUS, TEXT, motion, pad, sp } from '../../styles/system';
-import { daysUntil, type GenSpec, type GenRuntime } from '../../../shared/genSpec';
+import { daysUntil, genSourceLabel, type GenSpec, type GenRuntime, type GenSource, type GenItem } from '../../../shared/genSpec';
 import { genClockLeftMs } from '../../../shared/genWidget';
 
 // Восемь плиток каталога — нарисованы РУКАМИ, как «Погода» и «Часы».
@@ -27,7 +27,7 @@ export interface KindProps {
 function fitText(text: string, box: { width: number; height: number }, max: number): number {
   const len = Math.max(text.length, 1);
   const byWidth = (box.width - sp(8)) / (len * 0.52);
-  const byHeight = box.height * (len > 40 ? 0.16 : len > 18 ? 0.24 : 0.34);
+  const byHeight = box.height * (len > 40 ? 0.16 : len > 18 ? 0.24 : 0.3);
   return Math.round(Math.max(14, Math.min(max, byWidth, byHeight)));
 }
 
@@ -73,7 +73,17 @@ export function GenList({ spec, box, hero }: KindProps) {
 
 // ── Жребий: бросок с анимацией ───────────────────────────────────────────────
 export function GenDice({ spec, box, hero }: KindProps) {
-  const items = spec.items ?? [];
+  // ⚠️ Две формы: диапазон чисел и список строк. Диапазон разворачивается в те же «грани»,
+  // чтобы перебор при броске выглядел одинаково — это одна механика, а не две.
+  const items: GenItem[] = useMemo(() => {
+    if (typeof spec.from === 'number' && typeof spec.to === 'number') {
+      const span = spec.to - spec.from + 1;
+      // Перебирать тысячу чисел незачем: для показа хватает первых, итог всё равно случайный.
+      const shown = Math.min(span, 60);
+      return Array.from({ length: shown }, (_, i) => ({ main: String(spec.from! + i) }));
+    }
+    return spec.items ?? [];
+  }, [spec]);
   const [idx, setIdx] = useState(0);
   const [rolling, setRolling] = useState(false);
   // ⚠️ Бросок ПОКАЗЫВАЕТСЯ, а не просто меняет строку: без перебора граней нажатие выглядит
@@ -262,6 +272,135 @@ export function GenNote({ spec, box, hero }: KindProps) {
   );
 }
 
+// ── Из браузера: лента ───────────────────────────────────────────────────────
+// ⚠️ Данные берёт ХОСТ и в момент показа. Модель знает про браузер ровно ничего: на просьбу
+// «список последних посещённых сайтов» она честно выдумывала («Счастье — внутри вас»).
+// Выдумать историю нельзя, её можно только взять — поэтому модель выбирает источник, а не
+// содержимое. Побочный выигрыш: плитка всегда свежая, а не застывшая на момент сборки.
+
+interface FeedRow { main: string; sub?: string; url?: string }
+
+async function readFeed(source: GenSource, rows: number): Promise<FeedRow[]> {
+  const host = (u: string): string => {
+    try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; }
+  };
+  try {
+    if (source === 'history') {
+      const raw = await window.oblako.getHistory(rows * 4);
+      const seen = new Set<string>();
+      const out: FeedRow[] = [];
+      for (const e of raw) {
+        // Один сайт — одна строка: без склейки лента превращается в двадцать заходов на почту.
+        const h = host(e.url);
+        if (seen.has(h)) continue;
+        seen.add(h);
+        out.push({ main: e.title || h, sub: h, url: e.url });
+        if (out.length >= rows) break;
+      }
+      return out;
+    }
+    if (source === 'topsites') {
+      const raw = await window.oblako.getRecommendedSites();
+      return raw.slice(0, rows).map((r) => ({ main: r.title || host(r.url), sub: host(r.url), url: r.url }));
+    }
+    if (source === 'tabs') {
+      const raw = await window.oblako.getAllTabs();
+      return raw
+        .filter((t) => t.kind === 'page')
+        .slice(0, rows)
+        .map((t) => ({ main: t.title || host(t.url), sub: host(t.url), url: t.url }));
+    }
+    const raw = await window.oblako.getDownloads();
+    return raw.slice(0, rows).map((d) => ({ main: d.filename, sub: host(d.url) }));
+  } catch {
+    return [];
+  }
+}
+
+export function GenFeed({ spec, onOpen }: KindProps & { onOpen?: (url: string) => void }) {
+  const source = spec.source ?? 'history';
+  const rows = spec.rows ?? 5;
+  const [data, setData] = useState<FeedRow[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void readFeed(source, rows).then((d) => { if (alive) setData(d); });
+    return () => { alive = false; };
+  }, [source, rows]);
+  return (
+    <div style={shell()}>
+      <TileCaption>{spec.title || genSourceLabel(source)}</TileCaption>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+        {data === null && <span style={{ ...TEXT.caption }}>Смотрю…</span>}
+        {data?.length === 0 && <span style={{ ...TEXT.caption }}>Пока пусто</span>}
+        {data?.map((r, i) => (
+          <button
+            key={`${r.main}-${i}`}
+            type="button"
+            onClick={() => { if (r.url && onOpen) onOpen(r.url); }}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+              border: 'none', background: 'transparent', cursor: 'default', padding: `${sp(1)}px 0`,
+              color: 'inherit', font: 'inherit', textAlign: 'left', width: '100%', minWidth: 0,
+            }}
+          >
+            <span style={{
+              ...TEXT.body, width: '100%', overflow: 'hidden',
+              textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{r.main}</span>
+            {!!r.sub && (
+              <span style={{
+                ...TEXT.caption, width: '100%', overflow: 'hidden',
+                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{r.sub}</span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Из браузера: число ───────────────────────────────────────────────────────
+async function readStat(source: GenSource): Promise<{ value: number; unit: string }> {
+  try {
+    if (source === 'tabs') {
+      const tabs = await window.oblako.getAllTabs();
+      return { value: tabs.filter((t) => t.kind === 'page').length, unit: 'вкладок' };
+    }
+    if (source === 'blocked') {
+      const st = await window.oblako.getAdBlockState();
+      return { value: st.sessionBlockCount, unit: 'за сеанс' };
+    }
+    const dl = await window.oblako.getDownloads();
+    return { value: dl.length, unit: 'файлов' };
+  } catch {
+    return { value: 0, unit: '' };
+  }
+}
+
+export function GenStat({ spec, box, hero }: KindProps) {
+  const source = spec.source ?? 'tabs';
+  const [stat, setStat] = useState<{ value: number; unit: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const read = () => { void readStat(source).then((v) => { if (alive) setStat(v); }); };
+    read();
+    // Число из браузера обязано быть живым: вкладки открывают и закрывают, пока плитка на виду.
+    const t = window.setInterval(read, 5000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [source]);
+  const shown = stat ? String(stat.value) : '—';
+  return (
+    <div style={shell()}>
+      <TileCaption>{spec.title || genSourceLabel(source)}</TileCaption>
+      <div style={centre}>
+        <TileValue size={fitText(shown, box, 64)} hero={hero}>{shown}</TileValue>
+        {!!stat?.unit && <div style={subLine}>{stat.unit}</div>}
+      </div>
+    </div>
+  );
+}
+
 // ── Таймер ───────────────────────────────────────────────────────────────────
 // ⚠️ Ход таймера считает НЕ этот компонент: стол снимается при уходе на сайт, и setInterval
 // вместе с ним умирает. На диске лежит endAt, а сигнал даёт genClocks в хроме окна.
@@ -283,7 +422,9 @@ export function GenTimerTile({ spec, box, hero, clock, onStart, onPause, onReset
     <div style={shell()}>
       <TileCaption>{spec.title}</TileCaption>
       <div style={centre}>
-        <TileValue size={fitText(shown, box, 72)} hero={hero}>{shown}</TileValue>
+        {/* ⚠️ Потолок ниже, чем у остальных чисел, и это не вкусовщина: под таймером ЕЩЁ ДВЕ
+            КНОПКИ, и на маленькой плитке цифры при общем потолке вылезали за края. */}
+        <TileValue size={fitText(shown, box, 44)} hero={hero}>{shown}</TileValue>
         <div style={subLine}>{clock?.beeped ? 'Готово' : running ? 'Идёт' : 'Пауза'}</div>
       </div>
       <div style={{ display: 'flex', gap: sp(2) }}>
@@ -340,4 +481,6 @@ export const GEN_KIND_RENDERERS = {
   goal: GenGoal,
   countdown: GenCountdown,
   note: GenNote,
+  feed: GenFeed,
+  stat: GenStat,
 } as const;

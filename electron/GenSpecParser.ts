@@ -46,7 +46,12 @@ function buildKindPrompt(phrase: string): string {
     `- Pomodoro and any countdown of minutes is "timer".\n` +
     `- Pages read, kilometres run, anything with a finish line is "goal".\n` +
     `- Days until a date (holiday, birthday) is "countdown".\n` +
-    `- A reminder to keep in sight is "note".\n\n` +
+    `- A reminder to keep in sight is "note".\n` +
+    // ⚠️ Всё, что про САМ БРАУЗЕР, обязано уходить в feed/stat: выдумать историю модель не может,
+    // и на «список последних посещённых сайтов» она честно сочиняла афоризмы (живой случай 22.08).
+    `- Anything about the BROWSER ITSELF — visited sites, history, open tabs, downloads, blocked\n` +
+    `  trackers — is "feed" (a list) or "stat" (one number). Never "list": you do not know these data,\n` +
+    `  the browser does.\n\n` +
     `Also write a Russian title for the tile: 1-3 words, no quotes.\n` +
     `Answer as JSON.`
   );
@@ -64,9 +69,13 @@ function buildDataPrompt(phrase: string, kind: GenKind, title: string): string {
         + 'Match the request. Never turn a quote request into single words.\n'
         + 'Answer as JSON.';
     case 'dice':
+      // ⚠️ Числовой бросок называется ПЕРВЫМ: «кубик, показывающий случайное число» модель
+      // заполняла словами («Карты», «Шашки»), потому что про числа её никто не спрашивал.
       return head
-        + 'Write the faces to draw from: 2-8 items. "main" is the face itself in Russian (a dish, a name, "Да"/"Нет"), '
-        + '"sub" is a short note or empty.\nAnswer as JSON.';
+        + 'If the user wants a random NUMBER (a die, "случайное число", a range), set "from" and "to" '
+        + 'and leave "items" empty. A usual die is from 1 to 6.\n'
+        + 'Otherwise write the faces to draw from: 2-8 items, "main" is the face itself in Russian '
+        + '(a dish, a name, "Да"/"Нет"), "sub" is a short note or empty.\nAnswer as JSON.';
     case 'checklist':
       return head + 'Write 3-6 checklist rows in Russian. "main" is the row, "sub" is empty.\nAnswer as JSON.';
     case 'counter':
@@ -86,6 +95,15 @@ function buildDataPrompt(phrase: string, kind: GenKind, title: string): string {
         + 'The date must be in the future.\nAnswer as JSON.';
     case 'note':
       return head + 'Write the note text in Russian, up to 200 characters.\nAnswer as JSON.';
+    case 'feed':
+      return head
+        + 'Pick the browser source: "history" (recently visited sites), "topsites" (most visited), '
+        + '"tabs" (tabs open now), "downloads" (downloaded files). Also give how many rows to show (3-12).\n'
+        + 'Answer as JSON.';
+    case 'stat':
+      return head
+        + 'Pick the browser source for one big number: "tabs" (tabs open now), "blocked" '
+        + '(trackers blocked this session), "downloads" (files downloaded).\nAnswer as JSON.';
   }
 }
 

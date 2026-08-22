@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal, Star } from 'lucide-react';
+import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal, Star, Pencil } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import {
   loadDesktop, saveDesktop, subscribeDesktop, computeGrid, placeItems, moveItemTo, normalize,
@@ -93,6 +93,8 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   // Сборка своего виджета — отдельный режим стола (см. GenStudio): панель на это время уходит,
   // потому что настраивать экран и собирать виджет одновременно не выйдет — оба хотят правый край.
   const [studioOpen, setStudioOpen] = useState(false);
+  // Правка виджета, который уже стоит: id записи вместо новой сборки (см. GenStudio).
+  const [studioEditId, setStudioEditId] = useState<string | null>(null);
   // Как выглядит болванка прямо сейчас. Живёт здесь, потому что рисует её сетка стола, а не
   // окно сборки: болванка обязана быть такой же плиткой, как соседние, и стоять среди них.
   const [ghost, setGhost] = useState<GenGhost | null>(null);
@@ -189,10 +191,10 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   // свободную клетку, как любой новый виджет, а на диск она не попадает никогда — сохраняется
   // `layout`, а не `preview`.
   const preview = useMemo(() => (
-    studioOpen && ghost
+    studioOpen && ghost && !studioEditId
       ? { ...moved, items: [...moved.items, { id: GEN_GHOST_ID, kind: 'widget' as const, widget: 'gen', size: ghost.size, fill: ghost.fill }] }
       : moved
-  ), [moved, studioOpen, ghost]);
+  ), [moved, studioOpen, ghost, studioEditId]);
 
   const { placed, rows } = useMemo(
     () => placeItems(preview.items, grid.cols, drag?.id ?? resizing?.id),
@@ -504,6 +506,24 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                         ><Star size={12} fill={item.hero ? 'currentColor' : 'none'} /></button>
                       )}
 
+                      {/* ⚠️ Правка СВОЕГО виджета на месте. Без неё поменять таймеру время можно
+                          было только пересборкой нового и удалением старого — а данные правятся
+                          точечно, ради другого числа гонять модель незачем. */}
+                      {item.kind === 'widget' && item.widget === 'gen' && item.genId && (
+                        <button
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={() => { setStudioEditId(item.genId ?? null); setStudioOpen(true); }}
+                          title="Изменить виджет"
+                          style={{
+                            position: 'absolute', bottom: -8, left: -8, zIndex: 6,
+                            width: 22, height: 22, borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
+                            background: 'rgba(30,30,34,0.92)', color: '#fff',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+                          }}
+                        ><Pencil size={12} /></button>
+                      )}
+
                       {/* Выбор заливки — только у виджетов и только в режиме правки: цвет это
                           настройка вида, а не действие, и в обычном режиме кнопке над плиткой
                           делать нечего. Погоду не трогаем — там цвет несёт смысл. */}
@@ -605,9 +625,10 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
 
       {studioOpen && (
         <GenStudio
+          editId={studioEditId ?? undefined}
           onGhost={setGhost}
           onPlace={(item) => apply(addItem(layout, item))}
-          onClose={() => { setStudioOpen(false); setGhost(null); }}
+          onClose={() => { setStudioOpen(false); setGhost(null); setStudioEditId(null); }}
         />
       )}
 

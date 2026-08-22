@@ -8,7 +8,7 @@ import {
   genKindLabel, genKindHint, genKindSize, validateGenSpec,
   type GenSpec, type GenItem,
 } from '../../../shared/genSpec';
-import { saveGenRecord, deleteGenRecord } from '../../newtab/genStore';
+import { saveGenRecord, deleteGenRecord, loadGenRecord } from '../../newtab/genStore';
 import { GenWidget } from './GenWidget';
 import { Tile, WIDGET_FILLS, FILL_SWATCH } from './widgets';
 import { RADIUS, TEXT, motion, pad, sp } from '../../styles/system';
@@ -68,11 +68,19 @@ interface Turn {
 }
 
 export default function GenStudio({
-  onGhost, onPlace, onClose,
+  onGhost, onPlace, onClose, editId,
 }: {
   onGhost: (g: GenGhost) => void;
   onPlace: (item: Omit<DesktopItem, 'id'>) => void;
   onClose: () => void;
+  /**
+   * Правка виджета, который УЖЕ стоит на столе.
+   *
+   * ⚠️ Без неё поменять таймеру время можно было только одним способом: собрать новый виджет и
+   * удалить старый. Данные правятся точечно — значит и править их надо на месте, а не заново
+   * прогонять модель ради другого числа.
+   */
+  editId?: string;
 }) {
   const [phrase, setPhrase] = useState('');
   const [sizeName, setSizeName] = useState<GenSizeName>('small');
@@ -83,6 +91,9 @@ export default function GenStudio({
   const [progress, setProgress] = useState<GenProgress | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const busyRef = useRef(false);
+  // Спека на момент открытия. ⚠️ Правки уходят в настоящую запись СРАЗУ — только так плитка на
+  // столе меняется на глазах. Значит «Отмена» обязана вернуть то, что было, а не просто закрыть.
+  const original = useRef<GenSpec | null>(null);
   // ⚠️ Тронул ли человек размер сам. Подсказка типа слабее выбора: выбрать «Широкий», дождаться
   // сборки и увидеть квадрат — значит зря выбирать вообще.
   const sizeTouched = useRef(false);
@@ -90,32 +101,46 @@ export default function GenStudio({
   const size: CellSize = GEN_SIZES[sizeName];
 
   useEffect(() => () => { deleteGenRecord(DRAFT_ID); }, []);
+
+  useEffect(() => {
+    if (!editId) return;
+    const rec = loadGenRecord(editId);
+    if (!rec?.spec) return;
+    original.current = rec.spec;
+    setSpec(rec.spec);
+    setPhrase(rec.phrase ?? '');
+    if (rec.size) setSizeName(nameForSize(rec.size));
+    sizeTouched.current = true;
+  }, [editId]);
   useEffect(() => window.oblako.onGenWidgetProgress((p) => setProgress(p)), []);
 
   // Черновик лежит в хранилище под своим id — болванку рисует та же плитка, что и стол.
+  // При правке пишем сразу в настоящую запись: человек должен видеть изменения на своей плитке.
   useEffect(() => {
     if (!spec) return;
-    saveGenRecord(DRAFT_ID, { spec, html: '', facts: [], phrase, title: spec.title, size });
-  }, [spec, phrase, size.w, size.h]);
+    saveGenRecord(editId ?? DRAFT_ID, { spec, html: '', facts: [], phrase, title: spec.title, size });
+  }, [spec, phrase, size.w, size.h, editId]);
 
   useEffect(() => {
+    // При правке болванки нет: правится плитка, которая уже стоит на своём месте.
+    if (editId) return;
     onGhost({
       size, fill, busy, hasDraft: !!spec,
       stage: progress?.stage ?? 'kind',
       chars: progress?.chars ?? 0,
     });
-  }, [size.w, size.h, fill, busy, spec, progress, onGhost]);
+  }, [size.w, size.h, fill, busy, spec, progress, onGhost, editId]);
 
   // Esc закрывает только пустую студию: пока идёт сборка или есть черновик, за ним потеря работы.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
       if (busyRef.current || spec) return;
-      onClose();
+      cancel();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [spec, onClose]);
+  }, [spec, onClose, editId]);
 
   async function assemble() {
     const p = phrase.trim();
@@ -158,8 +183,21 @@ export default function GenStudio({
     if (merged) setSpec(merged);
   }
 
+  /** Закрыть, вернув запись к состоянию на момент открытия. */
+  function cancel() {
+    if (editId && original.current) {
+      saveGenRecord(editId, {
+        spec: original.current, html: '', facts: [],
+        phrase, title: original.current.title, size,
+      });
+    }
+    onClose();
+  }
+
   function place() {
     if (!spec) return;
+    // Правка: запись уже обновлена по ходу дела, остаётся закрыть окно.
+    if (editId) { onClose(); return; }
     const genId = `g${Date.now().toString(36)}`;
     saveGenRecord(genId, { spec, html: '', facts: [], phrase, title: spec.title, size });
     deleteGenRecord(DRAFT_ID);
@@ -178,8 +216,8 @@ export default function GenStudio({
         display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(4, 6),
         borderBottom: '1px solid var(--divider)', flex: 'none',
       }}>
-        <span style={{ flex: 1, ...TEXT.title }}>Свой виджет</span>
-        <button onClick={onClose} title="Закрыть" style={iconBtn}><X size={16} /></button>
+        <span style={{ flex: 1, ...TEXT.title }}>{editId ? 'Правка виджета' : 'Свой виджет'}</span>
+        <button onClick={cancel} title="Закрыть" style={iconBtn}><X size={16} /></button>
       </div>
 
       <div style={{
@@ -282,11 +320,11 @@ export default function GenStudio({
             type="button"
             onClick={place}
             style={{ ...btnBase, background: 'var(--accent)', color: 'var(--on-accent)', fontWeight: 600 }}
-          >Поставить</button>
+          >{editId ? 'Готово' : 'Поставить'}</button>
         )}
         <button
           type="button"
-          onClick={onClose}
+          onClick={cancel}
           style={{
             ...btnBase, background: 'transparent', color: 'var(--text-body)',
             border: '1px solid var(--divider-strong)',

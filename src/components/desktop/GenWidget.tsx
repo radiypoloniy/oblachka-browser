@@ -41,7 +41,7 @@ export function GenWidget(props: WidgetProps) {
  * ⚠️ Состояние (счётчик, галочки) лежит ОТДЕЛЬНО от спеки: пересборка виджета не имеет права
  * обнулить посчитанное человеком.
  */
-function GenSpecTile({ spec, genId, box, fill, overImage, hero, rev }: WidgetProps & {
+function GenSpecTile({ spec, genId, box, fill, overImage, hero, rev, onOpen }: WidgetProps & {
   genId: string; spec: GenSpec; rev: number;
 }) {
   const runtime = useMemo(() => loadGenRuntime(genId), [genId, rev]);
@@ -51,6 +51,8 @@ function GenSpecTile({ spec, genId, box, fill, overImage, hero, rev }: WidgetPro
     spec, box, hero,
     runtime,
     onRuntime: (next: typeof runtime) => saveGenRuntime(genId, next),
+    // Лента из браузера — единственная плитка со ссылками наружу: строка открывает сайт.
+    onOpen,
   };
   return (
     <Tile surface toned fill={fill} overImage={overImage} hero={hero} padding={0}>
