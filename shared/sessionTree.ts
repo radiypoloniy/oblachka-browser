@@ -26,6 +26,8 @@ export interface TabView {
   url: string;
   title?: string;
   faviconData?: string;
+  /** Профиль вкладки. Пусто — вкладка из файла, записанного до появления профилей. */
+  profileId?: string;
   // Короткоживущие (OAuth-попапы) и приватные вкладки в сессию не идут: воскрешать страницу
   // логина незачем, а приватная не «воскресает» по определению.
   savable: boolean;
@@ -42,6 +44,7 @@ function toSavedSingle(v: TabView): SavedSingleNode {
   const node: SavedSingleNode = { type: 'single', url: v.url };
   if (v.title) node.title = v.title;
   if (v.faviconData) node.faviconData = v.faviconData;
+  if (v.profileId) node.profileId = v.profileId;
   return node;
 }
 

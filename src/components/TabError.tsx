@@ -204,6 +204,28 @@ export default function TabError({ error, url, onRetry, canGoBack, onBack }: Pro
   // совета — человек идёт чинить то, что не сломано.
   const block = useProfileVpnBlock(error);
   const { emoji, title, detail, hint } = block ?? base;
+  // ⚠️ Включение туннеля предлагается КНОПКОЙ, а не делается само. Автозапуск по факту перехода
+  // означал бы, что любая открытая ссылка молча поднимает VPN — решение за человека там, где он
+  // его не просил. Кнопка закрывает то же неудобство, ничего за него не решая.
+  const [vpnBusy, setVpnBusy] = useState(false);
+  const [vpnError, setVpnError] = useState('');
+  const enableVpn = async (): Promise<void> => {
+    if (vpnBusy) return;
+    setVpnBusy(true);
+    setVpnError('');
+    try {
+      const servers = await window.oblako.listVpnServers();
+      const first = servers[0];
+      if (!first) { setVpnError('Сначала добавьте подписку в настройках VPN'); return; }
+      const res = await window.oblako.vpnConnect(first.id);
+      if (!res.ok) { setVpnError(res.error || 'Не удалось подключиться'); return; }
+      onRetry();
+    } catch {
+      setVpnError('Не удалось подключиться');
+    } finally {
+      setVpnBusy(false);
+    }
+  };
   const displayUrl = url.length > 72 ? url.slice(0, 69) + '…' : url;
 
   return (
@@ -274,13 +296,33 @@ export default function TabError({ error, url, onRetry, canGoBack, onBack }: Pro
               Назад
             </button>
           )}
-          <button
-            onClick={onRetry}
-            style={{ ...buttonBase(), background: 'var(--accent)', color: 'var(--on-accent)' }}
-          >
-            Обновить
-          </button>
+          {/* ⚠️ На отказе профиля главное действие — включить туннель, а не «Обновить»:
+              обновление без VPN упрётся ровно в тот же отказ. */}
+          {block ? (
+            <button
+              onClick={() => { void enableVpn(); }}
+              disabled={vpnBusy}
+              style={{
+                ...buttonBase(), background: 'var(--accent)', color: 'var(--on-accent)',
+                opacity: vpnBusy ? 0.6 : 1,
+              }}
+            >
+              {vpnBusy ? 'Подключаю…' : 'Включить VPN'}
+            </button>
+          ) : (
+            <button
+              onClick={onRetry}
+              style={{ ...buttonBase(), background: 'var(--accent)', color: 'var(--on-accent)' }}
+            >
+              Обновить
+            </button>
+          )}
         </div>
+        {!!vpnError && (
+          <div style={{ marginTop: 12, fontSize: 'var(--fs-sm)', color: 'var(--danger-500)' }}>
+            {vpnError}
+          </div>
+        )}
       </div>
     </div>
   );

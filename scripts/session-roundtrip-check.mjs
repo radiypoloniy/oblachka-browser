@@ -249,6 +249,28 @@ console.log('\n— пары для split-состояния —');
   check('ratio каждой пары свой', pairs.map((p) => p.ratio), [0.3, 0.7]);
 }
 
+console.log('\n— профиль вкладки —');
+{
+  // ⚠️ Поле НЕОБЯЗАТЕЛЬНОЕ и добавлено БЕЗ смены версии формата — как title/faviconData до него.
+  // Цена ошибки здесь — вкладки людей, поэтому проверяются обе стороны: и что профиль доезжает,
+  // и что файл БЕЗ профиля читается по-прежнему.
+  const world = makeWorld({
+    a: tab('https://work.ru', { profileId: 'pwork' }),
+    b: tab('https://home.ru'),
+  });
+  const saved = serializeNodes([{ type: 'single', tabId: 'a' }, { type: 'single', tabId: 'b' }], world);
+  check('профиль сохранён у той вкладки, у которой он есть', saved[0].profileId, 'pwork');
+  // ⚠️ У основного профиля поля НЕТ вовсе: это умолчание при чтении, и писать его в каждую
+  // строку значило бы раздувать сессию ради нулевой информации.
+  check('у вкладки без профиля поля нет', 'profileId' in saved[1], false);
+  check('дерево от этого не изменилось', restoreWithUrls(saved), savedShape(saved));
+  check('счётчик сходится', countSavedTabs(saved), 2);
+
+  // Файл, записанный ДО появления профилей, обязан читаться как раньше.
+  const old = [{ type: 'single', url: 'https://old.ru', title: 'Старая' }];
+  check('старый файл читается', restore(old).length, 1);
+}
+
 console.log('\n— пустая сессия —');
 {
   check('пустое дерево сохраняется пустым', serializeNodes([], makeWorld({})), []);

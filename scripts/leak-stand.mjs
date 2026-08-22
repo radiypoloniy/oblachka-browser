@@ -366,6 +366,47 @@ try {
       fail('страница WebRTC не открылась', e.message);
     }
 
+    // ── Kill switch профиля: замирает ли он ПОЛНОСТЬЮ ────────────────────────
+    // ⚠️ Живая находка 22.08: Chromium ПО УМОЛЧАНИЮ НЕ ПРОКСИРУЕТ LOOPBACK, поэтому kill switch,
+    // поставленный одними proxyRules, оставлял локальные адреса открытыми. Чтением кода это не
+    // ловится — правила стоят верные, а применяются не ко всему. Лечится '<-loopback>'.
+    // Проверка живёт здесь, а не отдельным скриптом, ровно потому что место оказалось дырявым.
+    try {
+      const strictMark = `strict-${token}`;
+      const made = await chrome.evaluate("window.oblako.createProfile('Строгий','orange')", 20000);
+      const strictId = (made?.profiles ?? []).map((x) => x.id).filter((x) => x !== 'default').pop() ?? '';
+      if (!strictId) {
+        fail('профиль для проверки kill switch не завёлся');
+      } else {
+        await chrome.evaluate(`window.oblako.setProfileSettings(${JSON.stringify(strictId)}, { vpn: 'on' })`);
+        await chrome.evaluate(`window.oblako.switchProfile(${JSON.stringify(strictId)})`);
+        const before = ctx.echo.hits.length;
+        await chrome.evaluate(
+          `window.oblako.createTab(${JSON.stringify(ctx.echoUrl(`/${strictMark}`))}).then(function(){return 1;})`,
+        );
+        await wait(3500);
+        const leaked = ctx.echo.hits.filter((h) => String(h.url).includes(strictMark));
+        if (leaked.length === 0 && ctx.echo.hits.length === before) {
+          ok('профиль «только через VPN» без туннеля не выпустил НИ ОДНОГО запроса');
+        } else {
+          fail('профиль «только через VPN» пропустил запрос мимо kill switch',
+            JSON.stringify(leaked.map((h) => h.url)).slice(0, 200));
+        }
+        // Соседний профиль обязан продолжать работать: приватность у нас опция, а не рамка.
+        await chrome.evaluate("window.oblako.switchProfile('default')");
+        const freeMark = `free-${token}`;
+        await chrome.evaluate(
+          `window.oblako.createTab(${JSON.stringify(ctx.echoUrl(`/${freeMark}`))}).then(function(){return 1;})`,
+        );
+        const back = await waitHit(ctx, freeMark);
+        if (back) ok('соседний профиль в тот же момент работает');
+        else fail('соседний профиль тоже замер — kill switch стал общим');
+        await chrome.evaluate(`window.oblako.removeProfile(${JSON.stringify(strictId)})`);
+      }
+    } catch (e) {
+      fail('проверка kill switch профиля', e.message);
+    }
+
     const ipv6Hits = ctx.echo.hits.filter((h) => h.ip === '::1' || (h.ip.includes(':') && !h.ip.startsWith('::ffff:')));
     if (ipv6Hits.length) {
       warn('гость ходил на эхо по IPv6', ipv6Hits[0].ip);

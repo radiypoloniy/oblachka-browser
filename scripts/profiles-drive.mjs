@@ -77,6 +77,34 @@ await withStand(async (ctx) => {
   check('своя кука в основном на месте', backCookie.includes(`main_${token}`), backCookie.slice(0, 60));
   check('кука рабочего профиля в основной НЕ протекла', !backCookie.includes(`work_${token}`));
 
+  // ⚠️ Свой набор вкладок: вкладки чужого профиля не должны быть видны.
+  {
+    await chrome.evaluate(`window.oblako.switchProfile(${JSON.stringify(workId)})`);
+    await chrome.evaluate(
+      `window.oblako.createTab(${JSON.stringify(ctx.echoUrl('/work-tab'))}).then(function(){return 1;})`,
+    );
+    await wait(900);
+    const inWork = await chrome.evaluate('window.oblako.getAllTabs()');
+    const workUrls = (inWork ?? []).map((t) => String(t.url));
+    check('вкладка рабочего профиля видна в нём', workUrls.some((u) => u.includes('work-tab')));
+
+    await chrome.evaluate("window.oblako.switchProfile('default')");
+    await wait(600);
+    const inMain = await chrome.evaluate('window.oblako.getAllTabs()');
+    const mainUrls = (inMain ?? []).map((t) => String(t.url));
+    check('и НЕ видна в основном', !mainUrls.some((u) => u.includes('work-tab')),
+      mainUrls.filter(Boolean).slice(0, 3).join(' | '));
+    check('вкладки основного при этом на месте', mainUrls.some((u) => u.includes('show-cookie')));
+
+    await chrome.evaluate(`window.oblako.switchProfile(${JSON.stringify(workId)})`);
+    await wait(600);
+    const back = await chrome.evaluate('window.oblako.getAllTabs()');
+    // ⚠️ Вкладки чужого профиля НЕ уничтожаются — они возвращаются при обратном переключении.
+    check('вернулись — вкладка на месте, а не закрыта',
+      (back ?? []).some((t) => String(t.url).includes('work-tab')));
+    await chrome.evaluate("window.oblako.switchProfile('default')");
+  }
+
   // Настройки профиля переживают запись и читаются обратно.
   await chrome.evaluate(`window.oblako.setProfileSettings(${JSON.stringify(workId)}, { vpn: 'off' })`);
   const withVpn = await chrome.evaluate('window.oblako.getProfiles()');

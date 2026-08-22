@@ -5,7 +5,7 @@ import {
   getProfiles, createProfile, deleteProfile, updateProfileName,
   updateProfileSettings, setActiveProfile, pinStartupProfile,
 } from '../ProfileStore';
-import { broadcastToChrome } from '../WindowRegistry';
+import { allContexts, broadcastToChrome } from '../WindowRegistry';
 import type { IpcDeps } from './deps';
 
 // Профили: свои куки и свои сетевые настройки (см. shared/profiles.ts).
@@ -71,8 +71,12 @@ export function registerProfilesIpc(d: IpcDeps): void {
 
   ipcMain.handle(IPC.PROFILES_SWITCH, (_e, id: string) => {
     const state = setActiveProfile(String(id));
-    // ⚠️ Прокси НЕ трогаем: он персональный и уже стоит у каждой сессии. Переключение профиля
-    // меняет только то, куда пойдут НОВЫЕ вкладки, — открытые остаются в своих сессиях.
+    // ⚠️ Прокси НЕ трогаем: он персональный и уже стоит у каждой сессии.
+    // ⚠️ А вот полосу вкладок трогаем обязательно и ВО ВСЕХ окнах: у профиля свой набор вкладок,
+    // и чужие обязаны уйти с глаз (не закрыться — просто перестать показываться, см.
+    // TabManager.onProfileSwitched). Без этого человек переключался и видел те же вкладки, что
+    // и всегда, — ровно та жалоба, с которой началась эта правка.
+    for (const ctx of allContexts()) ctx.tabs.onProfileSwitched();
     broadcast();
     return state;
   });

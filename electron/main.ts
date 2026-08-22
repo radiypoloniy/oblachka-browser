@@ -1454,8 +1454,8 @@ function createWindow(role: WindowRole = 'main') {
     // общий индекс).
     const pinnedIds: string[] = [];
     const pinnedUrlToId = new Map<string, string>();
-    for (const { url, title, faviconData } of restored.pinnedTabs) {
-      const id = tabs.createSleepingPinnedTab(url, title, faviconData);
+    for (const { url, title, faviconData, profileId } of restored.pinnedTabs) {
+      const id = tabs.createSleepingPinnedTab(url, title, faviconData, profileId);
       pinnedIds.push(id);
       pinnedUrlToId.set(url, id);
     }
@@ -1472,7 +1472,7 @@ function createWindow(role: WindowRole = 'main') {
           // Seed title/faviconData из файла (v5) — если файл ещё v4/пуст, оба undefined и
           // createSleepingTab сам фоллбэкнет на домен/null. НЕ путать с доменом: если поле
           // есть в файле — это настоящие данные, накопленные в прошлых сеансах.
-          const id = tabs!.createSleepingTab(node.url, node.title, node.faviconData);
+          const id = tabs!.createSleepingTab(node.url, node.title, node.faviconData, node.profileId);
           const list = urlToIds.get(node.url) ?? [];
           list.push(id); urlToIds.set(node.url, list);
         } else if (node.type === 'split-pair') {

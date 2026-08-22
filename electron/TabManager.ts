@@ -524,6 +524,47 @@ export class TabManager {
   // ── Снимок состояния для UI ──
   // Порядок: хаб → закреплённые → узлы (flat, Phase 0: всё SingleNode).
   // Совпадает с визуальным порядком сайдбара и порядком Ctrl+1–9 / Ctrl+Tab.
+  /**
+   * Принадлежит ли вкладка профилю, в котором человек сейчас находится.
+   *
+   * ⚠️ Вкладки чужих профилей НЕ УНИЧТОЖАЮТСЯ — они просто не попадают в снимок, то есть
+   * исчезают из полосы вкладок и возвращаются при обратном переключении. Уничтожать их было бы
+   * потерей работы человека: он переключился посмотреть почту, а не закрыть двадцать вкладок.
+   * Видимость самих вью и так держится активной вкладкой (см. #applyLayout), поэтому фильтра
+   * снимка достаточно.
+   *
+   * ⚠️ Вкладки БЕЗ profileId — это записи, созданные до появления профилей (и восстановленные из
+   * сессии старого формата). Они принадлежат основному профилю: там их данные и лежат.
+   */
+  #inActiveProfile(t: ManagedTab): boolean {
+    if (t.incognito) return true; // приватная вкладка видна всегда — она вне профилей
+    const active = getActiveProfile().id;
+    return (t.profileId ?? DEFAULT_PROFILE_ID) === active;
+  }
+
+  /** Есть ли у профиля хоть одна своя вкладка — нужно при переключении. */
+  #firstTabOfActiveProfile(): string | null {
+    for (const t of this.pinnedTabs) if (this.#inActiveProfile(t)) return t.id;
+    for (const t of this.#flattenNodes()) if (this.#inActiveProfile(t)) return t.id;
+    return null;
+  }
+
+  /**
+   * Человек переключил профиль. Полоса вкладок обязана показать ЕГО вкладки, а активной не может
+   * остаться чужая: её вью принадлежит другой сессии и в новом профиле ей делать нечего.
+   */
+  onProfileSwitched(): void {
+    const current = this.tabMap.get(this.activeId);
+    const stay = !current || this.#inActiveProfile(current);
+    if (!stay) {
+      const next = this.#firstTabOfActiveProfile();
+      // Своих вкладок в профиле нет — открываем хаб, а не пустоту.
+      this.activate(next ?? HUB_ID);
+      return;
+    }
+    this.onChange();
+  }
+
   snapshot(): TabState[] {
     const result: TabState[] = [];
 
@@ -538,10 +579,14 @@ export class TabManager {
     });
 
     // Закреплённые
-    for (const t of this.pinnedTabs) result.push(this.#tabToState(t, true));
+    for (const t of this.pinnedTabs) {
+      if (this.#inActiveProfile(t)) result.push(this.#tabToState(t, true));
+    }
 
     // Обычные (через узлы)
-    for (const t of this.#flattenNodes()) result.push(this.#tabToState(t, false));
+    for (const t of this.#flattenNodes()) {
+      if (this.#inActiveProfile(t)) result.push(this.#tabToState(t, false));
+    }
 
     // DBG: инвариант — каждый split-pair в nodes должен иметь оба таба в tabMap.
     this.#debugCheckSplitInvariant('snapshot');
@@ -778,6 +823,9 @@ export class TabManager {
       const pin: SavedTab = { url: this.#tabUrl(t) };
       const title = this.#tabTitle(t); if (title) pin.title = title;
       const faviconData = this.#tabFaviconData(t); if (faviconData) pin.faviconData = faviconData;
+      // Основной профиль не пишем: это умолчание при чтении, и лишнее поле в каждой строке
+      // сессии ничего не сообщает.
+      if (t.profileId && t.profileId !== DEFAULT_PROFILE_ID) pin.profileId = t.profileId;
       pinnedTabs.push(pin);
     }
 
@@ -1061,11 +1109,13 @@ export class TabManager {
   // параллельных загрузок страниц на старте (см. живой замер CPU-пика). isTabPinned()/#tabUrl()/
   // #tabTitle() уже одинаково работают что с живым view, что со sleeping (см. их тела) — ничего
   // в остальном коде эту вкладку от «настоящей» закреплённой не отличит, пока её не разбудят.
-  createSleepingPinnedTab(rawUrl: string, seedTitle?: string, seedFaviconData?: string): string {
+  createSleepingPinnedTab(rawUrl: string, seedTitle?: string, seedFaviconData?: string, profileId?: string): string {
     const id = randomUUID();
     const url = this.resolveInput(rawUrl);
     const tab: ManagedTab = {
       id, view: null, lastActiveAt: Date.now(),
+      // ⚠️ Пусто в файле = основной профиль: там лежат данные вкладок, записанных до профилей.
+      profileId: profileId ?? DEFAULT_PROFILE_ID,
       sleeping: {
         url,
         title: seedTitle || domainFromUrl(url),
@@ -1089,11 +1139,12 @@ export class TabManager {
   // ⚠️ Важно не путать с доменом-заглушкой: если seed передан — он ВСЕГДА реальные данные, а не
   // фоллбэк, поэтому подменять его доменом нельзя, иначе настоящий title тихо деградирует при
   // каждом цикле «уснула → сохранили → перезапуск без пробуждения» (см. диагностику захода B).
-  createSleepingTab(rawUrl: string, seedTitle?: string, seedFaviconData?: string): string {
+  createSleepingTab(rawUrl: string, seedTitle?: string, seedFaviconData?: string, profileId?: string): string {
     const id = randomUUID();
     const url = this.resolveInput(rawUrl);
     const tab: ManagedTab = {
       id, view: null, lastActiveAt: Date.now(),
+      profileId: profileId ?? DEFAULT_PROFILE_ID,
       sleeping: {
         url,
         title: seedTitle || domainFromUrl(url),
