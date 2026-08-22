@@ -4,6 +4,8 @@ import type { MenuItemConstructorOptions, PostBody, WebContents, WebFrameMain } 
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
+import { profilePartition, DEFAULT_PROFILE_ID } from '../shared/profiles';
+import { getActiveProfile } from './ProfileStore';
 import { closeWindowView } from './viewTeardown';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
 
@@ -115,6 +117,14 @@ interface ManagedTab {
   // Приватная (инкогнито) вкладка: своя in-memory сессия (partition INCOGNITO_PARTITION), не пишем
   // историю, исключена из автосейва, не усыпляется (иначе in-memory сессия потерялась бы).
   incognito?: boolean;
+  /**
+   * К какому профилю принадлежит вкладка (см. shared/profiles.ts).
+   *
+   * ⚠️ Хранится НА ВКЛАДКЕ, а не берётся из «активного профиля» в момент обращения. Вкладка
+   * живёт долго, активный профиль меняется — и вкладка обязана остаться в своей сессии, иначе
+   * человек, переключившийся в другой профиль, увидит чужие куки в уже открытой вкладке.
+   */
+  profileId?: string;
   // Звук выключен человеком. ⚠️ Хранится ЗДЕСЬ, а не только в webContents: при усыплении вью
   // уничтожается вместе со своим состоянием, и проснувшаяся вкладка снова заорала бы.
   muted?: boolean;
@@ -879,8 +889,15 @@ export class TabManager {
     ephemeral = false,
     incognito = false,
     postBody?: PostBody,
+    profileId?: string,
   ): string {
     const id = randomUUID();
+    // ⚠️ Профиль фиксируется В МОМЕНТ СОЗДАНИЯ и дальше не меняется: партиция задаётся при
+    // создании WebContentsView и переставить её у живой вьюхи нельзя.
+    // ⚠️ Инкогнито сильнее профиля: приватная вкладка идёт в свою in-memory сессию, что бы
+    // ни было выбрано. Иначе «приватная вкладка в профиле работа» писала бы куки на диск.
+    const profile = incognito ? DEFAULT_PROFILE_ID : (profileId ?? getActiveProfile().id);
+    const partition = incognito ? INCOGNITO_PARTITION : profilePartition(profile);
     const view = new WebContentsView({
       webPreferences: {
         // Жёсткая изоляция: страница не имеет доступа к Node.
@@ -892,11 +909,15 @@ export class TabManager {
         // (структурный гвард против чтения/заполнения чужого origin, см. PasswordAutofillManager.ts).
         preload: CONTENT_PRELOAD_PATH,
         // Инкогнито: in-memory сессия (общая для всех приватных вкладок, не пишется на диск).
-        // Обычные вкладки partition не задают → defaultSession.
-        ...(incognito ? { partition: INCOGNITO_PARTITION } : {}),
+        // Профили: своя persist-партиция у каждого, КРОМЕ основного — у него partition не
+        // задаётся вовсе, потому что его данные уже лежат в defaultSession (см. profilePartition).
+        ...(partition ? { partition } : {}),
       },
     });
-    const tab: ManagedTab = { id, view, sleeping: null, lastActiveAt: Date.now(), ephemeral, incognito };
+    const tab: ManagedTab = {
+      id, view, sleeping: null, lastActiveAt: Date.now(), ephemeral, incognito,
+      profileId: incognito ? undefined : profile,
+    };
     if (incognito) this.#pendingIncognitoClear = true; // при закрытии последней приватной — чистим сессию
     this.tabMap.set(id, tab);
     this.nodes.push({ type: 'single', tabId: id });

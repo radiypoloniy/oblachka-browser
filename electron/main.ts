@@ -78,7 +78,9 @@ import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { captureTabScreenshot, saveCurrentScreenshot, closeScreenshot, setScreenshotTabManager } from './ScreenshotManager';
 import { mapFormFields, type FormFieldDescriptor } from './AutofillFieldMapper';
-import { profileSession, incognitoSession as incognitoBrowsingSession, allBrowsingSessions } from './ProfileSession';
+import { profileSession, incognitoSession as incognitoBrowsingSession, sessionForProfile } from './ProfileSession';
+import { getProfiles } from './ProfileStore';
+import { profileWantsVpn, DEFAULT_PROFILE_ID } from '../shared/profiles';
 import { RuleStore } from './RuleStore';
 import { applyRules } from './RuleEngine';
 import { prewarmDropZones } from './DropZoneManager';
@@ -117,6 +119,7 @@ import { initClipboardPopover, toggleClipboardPopover, closeClipboardPopover } f
 import type { ProductState } from '../shared/ipc';
 import type { BookmarkNode } from '../shared/ipc';
 import { registerTabsIpc } from './ipc/tabs';
+import { registerProfilesIpc } from './ipc/profiles';
 import { registerTrackingIpc } from './ipc/tracking';
 import { registerOverlaysIpc } from './ipc/overlays';
 import { registerWindowsIpc } from './ipc/windows';
@@ -616,6 +619,42 @@ function notifyGraphChanged(graphId: number): void {
 // macOS путь app.on('activate') уже мог позвать её повторно — второй downloads.attach навесил бы
 // второй will-download, и каждая загрузка считалась бы дважды (см. AUDIT.md, п.9). Со вторым окном
 // это перестаёт быть теорией.
+/**
+ * Обвязка сессии профиля: адблок, загрузки, разрешения, клиентские подсказки, доверие корню.
+ *
+ * ⚠️ Профиль без этого набора — это профиль БЕЗ АДБЛОКА И БЕЗ ДИАЛОГА РАЗРЕШЕНИЙ. Человек
+ * заводит второй профиль ради второго аккаунта и не ждёт, что там внезапно поедет реклама и
+ * микрофон начнут просить молча. Поэтому набор одинаковый у всех — разное только то, что
+ * человек сам переключил в настройках профиля.
+ *
+ * ⚠️ Идемпотентна: `fromPartition` возвращает ту же сессию, а повторная привязка гейтов
+ * webRequest затирала бы предыдущую. Держим множество уже настроенных.
+ */
+const wiredProfiles = new Set<string>();
+// ⚠️ Обработчик запроса разрешений заводится внутри wireSharedSessions (ему нужны окна и
+// поповер), а нужен и здесь — профиль может появиться позже. Держим ссылку: до первого
+// wireSharedSessions профилей всё равно не существует.
+let permissionHandler: Parameters<typeof permissions.attach>[1] | null = null;
+function wireProfileSession(profileId: string): void {
+  if (wiredProfiles.has(profileId) || !permissionHandler) return;
+  wiredProfiles.add(profileId);
+  const s = sessionForProfile(profileId);
+  applyClientHints(s);
+  installCertificateTrust(s);
+  downloads.observeSession(s);
+  permissions.attach(s, permissionHandler);
+  // ⚠️ Косметический адблок (прятать блоки) — только у сессии по умолчанию: его
+  // enableBlockingInSession регистрирует ГЛОБАЛЬНЫЕ ipcMain-обработчики и второй раз падает
+  // с «second handler» (см. AdBlockManager.#enableFullBlocking). Остальным профилям достаётся
+  // сетевая блокировка — та самая, что режет запросы к трекерам. Так же живёт инкогнито.
+  if (profileId !== DEFAULT_PROFILE_ID) adblock.attachSession(s);
+}
+
+/** Профили, заведённые человеком, тоже должны получить обвязку — не только активный. */
+function wireAllProfileSessions(): void {
+  for (const prof of getProfiles().profiles) wireProfileSession(prof.id);
+}
+
 let sharedSessionsWired = false;
 function wireSharedSessions(): void {
   if (sharedSessionsWired) return;
@@ -678,6 +717,7 @@ function wireSharedSessions(): void {
     closeFindBar(win);
     showPermissionRequest(win, req);
   };
+  permissionHandler = onPermissionRequest;
   permissions.attach(profileSession(), onPermissionRequest);
 
   // Инкогнито-сессия (in-memory, см. INCOGNITO_PARTITION). Привязываем к ней тот же набор, что к
@@ -688,7 +728,9 @@ function wireSharedSessions(): void {
   adblock.attachSession(incognitoSession);
   downloads.observeSession(incognitoSession);
   permissions.attach(incognitoSession, onPermissionRequest);
-  void applyVpnProxy(); // синхронизируем прокси инкогнито-сессии с текущим состоянием VPN сразу
+  // Сессии профилей человека: тот же набор, что у основной (см. wireProfileSession).
+  wireAllProfileSessions();
+  void applyVpnProxy(); // прокси всех сессий — под текущее состояние VPN сразу
 
   // Пароли и автозаполнение форм. Ставится один раз на приложение, хотя работает в каждом окне:
   // и поповеры, и оркестраторы теперь получают окно на каждом вызове, а вкладки берут из реестра
@@ -1824,12 +1866,24 @@ function applyVpnProxy(): Promise<void> {
       : state === 'stopped'
         ? 'direct://' // человек сам отключил — прямой выход честен
         : VPN_KILL_SWITCH_PROXY_RULES; // 'starting' и 'error': ждёт защиты или туннель упал
-    const cfg = { proxyRules };
-    // ⚠️ Прокси ставится ВСЕМ сессиям, по которым идёт пользовательский трафик, и список берётся
-    // из одного места (allBrowsingSessions). Раньше здесь были перечислены две сессии руками, и
-    // забыть третью значило бы утечку ровно того вида, который закрывали в августе: приватный
-    // трафик мимо туннеля. С профилями сессий станет больше — правка будет одна и не здесь.
-    for (const s of allBrowsingSessions()) await s.setProxy(cfg);
+    // ⚠️ ПРОКСИ ПЕРСОНАЛЬНЫЙ, А НЕ ОБЩИЙ НА ПРИЛОЖЕНИЕ. Здесь и живёт обещание «этот профиль
+    // только через VPN»: профиль с 'on' уходит в отказ, когда туннель упал, а профиль с 'off'
+    // в тот же момент продолжает работать. Общий kill switch сломал бы оба — и это была бы не
+    // приватность, а её навязывание: приватность у нас опция, а не рамка.
+    const appOn = state === 'running' && !!port;
+    for (const prof of getProfiles().profiles) {
+      const wants = profileWantsVpn(prof, appOn);
+      const rules = !wants
+        ? 'direct://'            // профилю туннель не нужен — прямой выход честен
+        : appOn
+          ? `socks5://127.0.0.1:${port}`
+          : VPN_KILL_SWITCH_PROXY_RULES; // просил туннель, туннеля нет — ждём, а не течём мимо
+      await sessionForProfile(prof.id).setProxy({ proxyRules: rules });
+    }
+    // Инкогнито следует ОБЩЕМУ переключателю приложения: своей настройки у него нет, а
+    // молча привязать его к активному профилю значило бы менять защиту приватной вкладки
+    // от того, в каком профиле человек сейчас стоит.
+    await incognitoBrowsingSession().setProxy({ proxyRules });
     // WebRTC STUN иначе обходит SOCKS и отдаёт реальный IP при «VPN включён».
     // На прямом выходе политику возвращаем: звонки без VPN не ломаем.
     currentWebrtcPolicy = proxyRules === 'direct://' ? 'default' : 'disable_non_proxied_udp';
@@ -1883,7 +1937,7 @@ export function makeIpcDeps() {
     adblock, autofill, bangs, bookmarkImporters, bookmarks, downloads, graphs, history, hubChat,
     importManager, passwords, permissions, rules, searchTargets, settings, tracking, updates,
     // Функции main
-    applyVpnProxy, broadcastChromeTheme, buildMoveToWindowItems, collectGroups, createWindow,
+    applyVpnProxy, wireProfileSession, broadcastChromeTheme, buildMoveToWindowItems, collectGroups, createWindow,
     currentThemePrefs, ensurePasswordAuth, escapeHtml, escapeHtmlAttr, maybeLazyWarmupOnDemand,
     moveTabToExistingWindow, moveTabToNewWindow, notifyGraphChanged, pushProductState,
     renameTabSmart, showBookmarkMenu, showProductMenu,
@@ -1914,6 +1968,7 @@ function registerIpc() {
   registerHistoryIpc(d);
   registerSystemIpc(d);
   registerMenusIpc(d);
+  registerProfilesIpc(d);
 }
 
 // Собирает GroupNode[] плоским списком из верхнего уровня дерева.

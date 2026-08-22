@@ -1,5 +1,7 @@
 import { session, type Session } from 'electron';
 import { INCOGNITO_PARTITION } from '../shared/ipc';
+import { profilePartition, DEFAULT_PROFILE_ID } from '../shared/profiles';
+import { getActiveProfile, getProfiles } from './ProfileStore';
 
 // ЕДИНСТВЕННОЕ место, где приложение решает, «какой сессией ходить в сеть».
 //
@@ -26,9 +28,32 @@ import { INCOGNITO_PARTITION } from '../shared/ipc';
 // изменилось ни на байт. Смысл в том, что появление второго профиля станет правкой здесь,
 // а не ревизией всего main.
 
-/** Сессия текущего профиля: обычные вкладки и все служебные запросы приложения. */
+/**
+ * Сессия конкретного профиля.
+ *
+ * ⚠️ У профиля по умолчанию партиции НЕТ — это `defaultSession`, где уже лежат куки и логины
+ * человека (см. шапку shared/profiles.ts). Выдать ему собственную партицию значит разлогинить
+ * его везде при первом же запуске.
+ *
+ * ⚠️ `session.fromPartition` идемпотентна: повторный вызов с тем же именем возвращает ТУ ЖЕ
+ * сессию, а не новую. Поэтому кэшировать её здесь незачем, и незачем бояться лишних вызовов.
+ */
+export function sessionForProfile(profileId: string): Session {
+  const partition = profilePartition(profileId);
+  return partition === null ? session.defaultSession : session.fromPartition(partition);
+}
+
+/**
+ * Сессия текущего профиля: обычные вкладки и служебные запросы приложения.
+ *
+ * ⚠️ Служебные запросы (погода, курсы, списки адблока) идут АКТИВНЫМ профилем — значит его
+ * прокси и его VPN. Это осознанный выбор: человек, переключившийся в профиль «через VPN»,
+ * не ждёт, что виджет погоды сходит мимо туннеля.
+ * ⚠️ То, что вызвано конкретной вкладкой (её favicon), обязано идти сессией ЭТОЙ вкладки —
+ * `wc.session.fetch`, а не отсюда: вкладка может принадлежать другому профилю, чем активный.
+ */
 export function profileSession(): Session {
-  return session.defaultSession;
+  return sessionForProfile(getActiveProfile().id);
 }
 
 /**
@@ -49,7 +74,12 @@ export function incognitoSession(): Session {
  * закрывали в августе: приватный трафик мимо туннеля.
  */
 export function allBrowsingSessions(): Session[] {
-  return [profileSession(), incognitoSession()];
+  // ⚠️ ВСЕ профили, а не только активный: вкладки неактивных профилей продолжают жить и
+  // грузиться. Прокси и kill switch обязаны накрывать их тоже — иначе фоновая вкладка
+  // соседнего профиля утечёт мимо туннеля, а это ровно та дыра, что закрывали в августе.
+  const ids = getProfiles().profiles.map((p) => p.id);
+  if (!ids.includes(DEFAULT_PROFILE_ID)) ids.push(DEFAULT_PROFILE_ID);
+  return [...ids.map(sessionForProfile), incognitoSession()];
 }
 
 /**

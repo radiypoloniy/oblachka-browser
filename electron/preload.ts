@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { ProfilesState, ProfileSettings } from '../shared/profiles';
 import { IPC } from '../shared/ipc';
 import type { OblakoApi, SpecialTabKind, SyncState, ContentBounds, TitleBarOpts, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, PageChangesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand, GenSpecOutcome, GenProgress, GenWebResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
@@ -86,6 +87,18 @@ const api: OblakoApi = {
   parseRule:      (phrase: string)            => ipcRenderer.invoke(IPC.RULES_PARSE, phrase),
   buildGenWidget: (phrase: string, url?: string) => ipcRenderer.invoke(IPC.DESKTOP_GEN_SPEC, phrase, url ?? '') as Promise<GenSpecOutcome>,
   fetchGenWeb: (url: string, force?: boolean)  => ipcRenderer.invoke(IPC.DESKTOP_GEN_WEB, url, !!force) as Promise<GenWebResult>,
+
+  getProfiles: () => ipcRenderer.invoke(IPC.PROFILES_GET) as Promise<ProfilesState>,
+  createProfile: (name: string, color: string) => ipcRenderer.invoke(IPC.PROFILES_CREATE, name, color) as Promise<ProfilesState>,
+  removeProfile: (id: string) => ipcRenderer.invoke(IPC.PROFILES_REMOVE, id) as Promise<ProfilesState>,
+  renameProfile: (id: string, name: string) => ipcRenderer.invoke(IPC.PROFILES_RENAME, id, name) as Promise<ProfilesState>,
+  setProfileSettings: (id: string, patch: Partial<ProfileSettings>) => ipcRenderer.invoke(IPC.PROFILES_SETTINGS, id, patch) as Promise<ProfilesState>,
+  switchProfile: (id: string) => ipcRenderer.invoke(IPC.PROFILES_SWITCH, id) as Promise<ProfilesState>,
+  onProfilesChanged: (cb: (s: ProfilesState) => void) => {
+    const handler = (_e: unknown, s: ProfilesState) => cb(s);
+    ipcRenderer.on(IPC.PROFILES_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.PROFILES_CHANGED, handler);
+  },
   onGenWidgetProgress: (cb: (p: GenProgress) => void) => {
     const handler = (_e: unknown, p: GenProgress) => cb(p);
     ipcRenderer.on(IPC.DESKTOP_GEN_PROGRESS, handler);

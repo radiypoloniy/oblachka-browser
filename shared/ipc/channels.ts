@@ -77,6 +77,15 @@ export const IPC = {
 
   DESKTOP_GEN_SPEC: 'desktop:gen-spec',    // renderer → main: фраза → спека своего виджета (тип + данные, по грамматике)
   DESKTOP_GEN_WEB: 'desktop:gen-web',      // renderer → main: сходить по ссылке человека (фид или JSON) через сессию Electron
+
+  // Профили (см. shared/profiles.ts): свои куки и свои сетевые настройки на профиль.
+  PROFILES_GET: 'profiles:get',            // renderer → main: список профилей и активный
+  PROFILES_CREATE: 'profiles:create',      // renderer → main: завести профиль
+  PROFILES_REMOVE: 'profiles:remove',      // renderer → main: удалить (основной — нельзя)
+  PROFILES_RENAME: 'profiles:rename',      // renderer → main: переименовать
+  PROFILES_SETTINGS: 'profiles:settings',  // renderer → main: VPN/адблок профиля
+  PROFILES_SWITCH: 'profiles:switch',      // renderer → main: сделать активным
+  PROFILES_CHANGED: 'profiles:changed',    // main → renderer: список изменился
   DESKTOP_GEN_PROGRESS: 'desktop:gen-progress', // main → renderer: ход сборки (стадия + объём)
 
   // Омнибокс

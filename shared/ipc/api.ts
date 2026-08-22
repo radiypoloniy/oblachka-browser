@@ -2,6 +2,7 @@ import type { SearchEngineId } from '../searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../graph';
 import type { ImagePreset } from '../imagePresets';
 import type { AutomationRule } from '../rules';
+import type { ProfilesState, ProfileSettings } from '../profiles';
 import type { ContentBounds, FindResult, GenProgress, GenWebResult, OrganizeCluster, OrganizeProposal, RuleParseOutcome, GenSpecOutcome, SearchChipCandidate, SearchChipsConfig, SidebarNode, SpecialTabKind, SyncState, TabState } from './core';
 import type { BackfillProgress, BookmarkEntry, BookmarkFolderProposal, BookmarkImportResult, BookmarkImportSource, BookmarkNode, DayDigestState, HistoryClearPeriod, HistoryContentCoverage, HistoryEntry, CsvPasswordImport, ImportDataType, ImportRunResult, ImportSource, SemanticSearchResult, SmartSearchResponse, TitleBarOpts } from './history';
 import type { PasswordAddInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, PasswordMeta, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
@@ -317,6 +318,17 @@ export interface OblakoApi {
   buildGenWidget(phrase: string, url?: string): Promise<GenSpecOutcome>;
   /** Сходить по ссылке человека. Запрос идёт из main сессией Electron, значит через VPN. */
   fetchGenWeb(url: string, force?: boolean): Promise<GenWebResult>;
+
+  // ── Профили (shared/profiles.ts) ──────────────────────────────────────────
+  // Свои куки и логины, свой VPN и адблок. Профиль по умолчанию сидит на сессии по умолчанию —
+  // там уже лежат данные человека, и трогать их нельзя.
+  getProfiles(): Promise<ProfilesState>;
+  createProfile(name: string, color: string): Promise<ProfilesState>;
+  removeProfile(id: string): Promise<ProfilesState>;
+  renameProfile(id: string, name: string): Promise<ProfilesState>;
+  setProfileSettings(id: string, patch: Partial<ProfileSettings>): Promise<ProfilesState>;
+  switchProfile(id: string): Promise<ProfilesState>;
+  onProfilesChanged(cb: (s: ProfilesState) => void): () => void;
   /** Ход сборки — приходит только тому окну, которое её и запросило. */
   onGenWidgetProgress(cb: (p: GenProgress) => void): () => void;
   addRule(draft: AutomationRule): Promise<AutomationRule | null>;
