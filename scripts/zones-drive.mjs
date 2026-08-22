@@ -55,6 +55,27 @@ await withStand(async (ctx) => {
   check('есть смещение относительно своего пояса', has('как у вас') || /[+−]\d+ ч/.test(text));
   check('кнопка добавления на месте', has('Добавить пояс'));
 
+  // ⚠️ Живой случай: поиск по «edt» не находил ничего — такой строки в списке ICU нет вовсе.
+  await panel.evaluate(`(function(){
+    var b = Array.prototype.slice.call(document.querySelectorAll('button'))
+      .filter(function(x){ return (x.textContent||'').indexOf('Добавить пояс') >= 0; })[0];
+    if (b) b.click();
+    return 1;
+  })()`);
+  await wait(500);
+  await panel.evaluate(`(function(){
+    var i = document.querySelector('input[placeholder]');
+    if (!i) return 'нет поля';
+    var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(i, 'edt');
+    i.dispatchEvent(new Event('input', { bubbles: true }));
+    return 'ввёл';
+  })()`);
+  await wait(600);
+  const search = String(await panel.evaluate('document.body.innerText || ""'));
+  check('поиск по «edt» находит Нью-Йорк', search.includes('New York'),
+    search.split(String.fromCharCode(10)).filter(Boolean).slice(-4).join(' | '));
+
   // Ползунок: двигаем и смотрим, изменилось ли показанное время.
   const before = (text.match(/\d{2}:\d{2}/g) || [])[0] ?? '';
   const moved = await panel.evaluate(`(function(){

@@ -911,11 +911,17 @@ const PHOSPHOR_APPS = new Set(['calc', 'convert', 'timer', 'color', 'kitten', 'c
 const GLYPH_TINT: Record<string, string> = {
   counter: '#007AFF', // systemBlue
   color: '#FF2D55',   // systemPink — фиолетового в системе нет, см. --tile-* в colors.css
+  // ⚠️ «Пояса» — плитка ТЁМНАЯ, а не светлая, но глиф на ней всё равно цветной: янтарное
+  // солнце на ночном небе. Это единственная такая пара в наборе, и ради неё LIGHT_TILES ниже
+  // перечисляется руками, а не выводится из ключей этой таблицы.
+  zones: '#F5B544',   // тёплый янтарь
 }
 
 // Светлым плиткам нужна собственная кромка: на белом фоне светлые блики не работают, а без
 // границы иконка сливается со светлыми обоями.
-const LIGHT_TILES = new Set(Object.keys(GLYPH_TINT))
+// ⚠️ Список ЯВНЫЙ, а не производный от GLYPH_TINT: цветной глиф бывает и на тёмной плитке
+// («Пояса»), и рисовать ей светлую кромку значит испортить ровно то, ради чего она тёмная.
+const LIGHT_TILES = new Set(['counter', 'color'])
 
 export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
   app: AppDef

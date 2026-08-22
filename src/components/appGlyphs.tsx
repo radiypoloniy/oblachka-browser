@@ -160,6 +160,29 @@ function WebGlyph({ size, color }: GlyphProps) {
   );
 }
 
+/**
+ * Пояса: циферблат, рассечённый на день и ночь.
+ *
+ * ⚠️ Намеренно НЕ глобус. Глобус занят веб-приложениями (см. WebGlyph), и на соседних плитках
+ * они читались как одно и то же — живая жалоба «иконка сливается». Здесь нарисован сам предмет
+ * разговора: не «планета», а сутки, у которых половина светлая, половина тёмная.
+ */
+function ZonesGlyph({ size, color }: GlyphProps) {
+  return (
+    <svg {...box(size)}>
+      {/* Ночная половина — заливка пожиже, дневная почти белая: терминатор виден сразу. */}
+      <path d="M12 2.6a9.4 9.4 0 0 0 0 18.8z" fill={color} opacity="0.28" />
+      <path d="M12 2.6a9.4 9.4 0 0 1 0 18.8z" fill={color} opacity="0.9" />
+      <circle cx="12" cy="12" r="9.4" stroke={color} strokeWidth="1.6" />
+      {/* Деления на четвертях — как на циферблате, а не как меридианы. */}
+      <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      {/* Стрелки: час на 10, минута на 2 — время читается как «разное в разных местах». */}
+      <path d="M12 12V7.6M12 12l3.4 2.1" stroke={color} strokeWidth="1.7" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="1.25" fill={color} />
+    </svg>
+  );
+}
+
 const GLYPHS: Record<string, (p: GlyphProps) => React.ReactElement> = {
   calc: CalcGlyph,
   timer: TimerGlyph,
@@ -168,6 +191,7 @@ const GLYPHS: Record<string, (p: GlyphProps) => React.ReactElement> = {
   color: ColorGlyph,
   kitten: KittenGlyph,
   web: WebGlyph,
+  zones: ZonesGlyph,
 };
 
 export function hasGlyph(id: string): boolean {

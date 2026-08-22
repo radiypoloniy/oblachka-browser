@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, X, Search } from 'lucide-react'
 import { DISPLAY, RADIUS, TEXT, motion, pad, sp } from '../styles/system'
+import { searchTimeZones, zoneAbbrev, zoneCity } from '../../shared/timeZones'
 
 // Приложение «Пояса»: сколько времени у собеседника и когда ему удобно.
 //
@@ -41,10 +42,6 @@ function allZones(): string[] {
 
 function localZone(): string {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } catch { return 'UTC' }
-}
-
-function zoneCity(id: string): string {
-  return (id.split('/').pop() ?? id).replace(/_/g, ' ')
 }
 
 /** Части времени в поясе. ⚠️ Через formatToParts, а не парсингом строки: формат зависит от локали. */
@@ -151,12 +148,12 @@ export default function ZonesApp() {
 
   const at = useMemo(() => new Date(now + shift * 60_000), [now, shift])
   const zones = useMemo(() => allZones(), [])
-  const found = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const pool = zones.filter((z) => !rows.some((r) => r.id === z))
-    if (!q) return pool.slice(0, 40)
-    return pool.filter((z) => z.toLowerCase().replace(/_/g, ' ').includes(q)).slice(0, 40)
-  }, [zones, rows, query])
+  // ⚠️ Поиск идёт через shared/timeZones: люди пишут EDT, МСК, «Нью-Йорк», а таких строк
+  // в списке ICU нет вовсе — живой случай, с которого началась эта правка.
+  const found = useMemo(
+    () => searchTimeZones(query, zones, rows.map((r) => r.id)),
+    [zones, rows, query],
+  )
 
   const homeParts = partsIn(home, at)
 
@@ -238,7 +235,7 @@ export default function ZonesApp() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Escape') setAdding(false) }}
-                placeholder="Город или пояс: tokyo, berlin, moscow"
+                placeholder="EDT, МСК, Нью-Йорк, tokyo…"
                 style={{
                   ...TEXT.body, flex: 1, minWidth: 0, border: 'none', outline: 'none',
                   background: 'transparent', color: 'var(--text-strong)', fontFamily: 'inherit',
@@ -266,7 +263,7 @@ export default function ZonesApp() {
                     border: '1px solid var(--divider)', background: 'var(--surface-sunken)',
                     color: 'var(--text-body)', transition: motion.hover('background', 'color'),
                   }}
-                >{zoneCity(z)}</button>
+                >{zoneCity(z)}{zoneAbbrev(z) ? ` · ${zoneAbbrev(z)}` : ''}</button>
               ))}
             </div>
           </div>
@@ -292,6 +289,9 @@ function ZoneCard({ row, at, home, onRemove }: {
   const hereDay = dateLabel(home, at)
   const thereDay = dateLabel(row.id, at)
   const night = p.h < 7 || p.h >= 22
+  // ⚠️ Ярлык живой: зимой EST, летом EDT. Он есть не у всех поясов — у Москвы Intl отдаёт
+  // «GMT+3», а это то же самое, что уже посчитанное смещение рядом.
+  const abbr = zoneAbbrev(row.id, at)
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: sp(2), padding: pad(3),
@@ -303,7 +303,9 @@ function ZoneCard({ row, at, home, onRemove }: {
           ...TEXT.body, fontWeight: 600, color: 'var(--text-strong)',
           minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{row.label || zoneCity(row.id)}</span>
-        <span style={{ ...TEXT.caption, flex: 1 }}>{fmtOffset(off)}</span>
+        <span style={{ ...TEXT.caption, flex: 1 }}>
+          {abbr ? `${abbr} · ` : ''}{fmtOffset(off)}
+        </span>
         {/* ⚠️ Другой день — самое частое, на чём ошибаются вручную: показываем словом, а не
             предлагаем человеку заметить это самому. */}
         {thereDay !== hereDay && <span style={{ ...TEXT.caption }}>{thereDay}</span>}
