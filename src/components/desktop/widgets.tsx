@@ -276,16 +276,17 @@ export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
         // Круг держится меньшей стороной, поэтому на растянутой плитке он оставлял по половине
         // ширины пустоты с боков и «терялся» — живая жалоба. Композиция меняется от формы, как
         // у погоды и у самих часов в растянутом виде; сам циферблат при этом тот же.
+        // ⚠️ ЦИФР РЯДОМ С ЦИФЕРБЛАТОМ НЕТ. Первая попытка ставила их бок о бок, и это оказалось
+        // хуже пустоты: одно и то же время, сказанное дважды двумя способами, — «слепленные
+        // часы». Человек, выбравший стрелки, выбрал стрелки. В широкой плитке циферблат просто
+        // становится КРУПНЫМ и центрируется: пустота по бокам — это воздух, а не брак.
         wideRow ? (
           <div style={{
-            flex: 1, minHeight: 0, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', gap: sp(6),
+            flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: sp(2),
           }}>
-            <AnalogFace size={Math.min(box.height - 56, 128)} now={now} seconds={opts.seconds} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(1), minWidth: 0 }}>
-              <TileValue size={Math.round(Math.min(box.height * 0.3, 52))} hero={hero}>{time}</TileValue>
-              {opts.date && <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.8 }}>{dayMonth}</div>}
-            </div>
+            <AnalogFace size={Math.min(box.height - 64, 150)} now={now} seconds={opts.seconds} />
+            {opts.date && <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.8 }}>{dayMonth}</div>}
           </div>
         ) : (
         <div style={{
@@ -344,6 +345,11 @@ function AnalogFace({ size, now, seconds }: { size: number; now: Date; seconds: 
       {/* ⚠️ Обода НЕТ. Нарисованный круг с рамкой и двенадцатью рисками — это часы из набора
           иконок 2010-х; современный циферблат держится ПУСТОТОЙ и точками, а границу задаёт сама
           плитка. Осталось ровно то, что читает глаз: четыре точки-ориентира и стрелки. */}
+      {/* ⚠️ Тонкое кольцо вернулось — но именно ТОНКОЕ и еле заметное. Без него циферблат без
+          обода «терялся»: четыре точки и стрелки не давали глазу границы, и на большой плитке
+          это читалось как россыпь мусора. Старомодным его делали ТОЛСТЫЙ обод, заливка и
+          двенадцать рисок — их и убрали. */}
+      <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeOpacity="0.14" strokeWidth="1" />
       {/* Четыре ориентира вместо двенадцати рисок: 12/3/6/9 — единственные, по которым время
           читают на самом деле, а остальные восемь только зашумляют мелкую плитку. */}
       {[0, 3, 6, 9].map((i) => (
@@ -451,13 +457,26 @@ function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
   const warm = isWarmPhase(phase);
   const isDay = body === 'sun';
 
-  // Геометрия 200×100: полукруг радиуса r с центром у горизонта. Светило идёт слева направо.
-  const cx = 100, cy = 86, r = 74;
+  // ⚠️ ГЕОМЕТРИЯ В РЕАЛЬНЫХ ПИКСЕЛЯХ, а не в условных 200×100 с растяжением. Прошлая версия
+  // рисовала в фиксированном viewBox и тянула его на ширину плитки через
+  // preserveAspectRatio="none" — а это НЕРАВНОМЕРНОЕ масштабирование: круги превращались в
+  // горизонтальные прямоугольники, и звёзды выглядели пиксельным мусором (живая жалоба).
+  // Совпадение viewBox с настоящим размером убирает масштабирование целиком: круг остаётся кругом.
+  const tilePad = 16;
+  const vw = Math.max(120, Math.round(box.width - tilePad * 2));
+  const vh = Math.max(70, Math.round(box.height - tilePad * 2 - 68));
+  // Дуга — ЭЛЛИПС по ширине плитки: полукруг радиусом в полширины не поместился бы по высоте,
+  // а поднимать его выше нечем. Светило при этом остаётся круглым — растягивается путь, не тело.
+  const cx = vw / 2;
+  const cy = vh - 12;
+  const rx = vw / 2 - 14;
+  const ry = Math.min(rx, cy - 10);
   const angle = Math.PI * frac;
-  const bodyX = cx - r * Math.cos(angle);
-  const bodyY = cy - r * Math.sin(angle);
-  const riseX = cx - r, setX = cx + r;
-  const arc = (toX: number, toY: number) => `M ${riseX} ${cy} A ${r} ${r} 0 0 1 ${toX} ${toY}`;
+  const bodyX = cx - rx * Math.cos(angle);
+  const bodyY = cy - ry * Math.sin(angle);
+  const riseX = cx - rx, setX = cx + rx;
+  const arc = (toX: number, toY: number) => `M ${riseX} ${cy} A ${rx} ${ry} 0 0 1 ${toX} ${toY}`;
+  const bodyR = Math.max(7, Math.min(vh * 0.13, 16));
 
   const leftH = Math.floor(left / 60);
   const leftM = left % 60;
@@ -465,8 +484,6 @@ function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
   const label = isDay ? `светло ещё ${leftText}` : `рассвет через ${leftText}`;
 
   const stars = useMemo(() => (isDay ? [] : starField()), [isDay]);
-  const tilePad = 16;
-  const svgH = Math.max(66, box.height - tilePad * 2 - 64);
 
   return (
     // Заливку человека уважаем (fill перебивает небо) — тот же приём, что у остальных плиток.
@@ -477,7 +494,7 @@ function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'flex-end' }}>
-        <svg width="100%" height={svgH} viewBox="0 0 200 100" preserveAspectRatio="none"
+        <svg width="100%" height={vh} viewBox={`0 0 ${vw} ${vh}`}
           style={{ display: 'block', overflow: 'visible' }}>
           <defs>
             {/* Пройденный путь: тёплый днём, холодный ночью — иначе ночная дуга выглядит
@@ -514,19 +531,20 @@ function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
             {/* ⚠️ Маска серпа объявлена ЗДЕСЬ, в общем defs: два defs с одним id внутри одного
                 svg ведут себя непредсказуемо. */}
             <mask id="moonMask">
-              <rect x="0" y="0" width="200" height="100" fill="#fff" />
-              <circle cx={bodyX + 4.4} cy={bodyY - 3.4} r="8.4" fill="#000" />
+              <rect x="0" y="0" width={vw} height={vh} fill="#fff" />
+              <circle cx={bodyX + 5.4} cy={bodyY - 4.2} r="10.5" fill="#000" />
             </mask>
           </defs>
 
           {/* Звёзды — только ночью и в сумерках, и они не мигают: позиции детерминированы. */}
-          {stars.map((s, i) => (
-            <circle key={i} cx={s.x * 200} cy={s.y * 100} r={s.r * 0.7}
-              fill="#fff" fillOpacity={0.25 + s.r * 0.35} />
+          {/* ⚠️ Радиус в ПИКСЕЛЯХ и одинаковый по обеим осям — теперь это точки, а не чёрточки. */}
+          {stars.map((st, i) => (
+            <circle key={i} cx={st.x * vw} cy={st.y * vh} r={0.7 + st.r * 0.8}
+              fill="#fff" fillOpacity={0.2 + st.r * 0.4} />
           ))}
 
           {/* Зарево там, где светило сейчас пересекает горизонт. */}
-          <ellipse cx={frac < 0.5 ? riseX : setX} cy={cy} rx="60" ry="26" fill="url(#horizonGlow)" />
+          <ellipse cx={frac < 0.5 ? riseX : setX} cy={cy} rx={vw * 0.3} ry={vh * 0.32} fill="url(#horizonGlow)" />
 
           {/* Небо под дугой */}
           <path d={`${arc(setX, cy)} L ${riseX} ${cy} Z`} fill="url(#arcFill)" />
@@ -534,25 +552,25 @@ function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
           <path d={arc(setX, cy)} fill="none" stroke="#fff" strokeOpacity="0.28" strokeWidth="1.6" strokeLinecap="round" />
           <path d={arc(bodyX, bodyY)} fill="none" stroke="url(#arcDone)" strokeWidth="2.4" strokeLinecap="round" />
 
-          <line x1="4" y1={cy} x2="196" y2={cy} stroke="#fff" strokeOpacity="0.32" strokeWidth="1" strokeDasharray="2 4" />
+          <line x1="6" y1={cy} x2={vw - 6} y2={cy} stroke="#fff" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="2 5" />
           <circle cx={riseX} cy={cy} r="2.6" fill="#fff" fillOpacity="0.8" />
           <circle cx={setX} cy={cy} r="2.6" fill="#fff" fillOpacity="0.8" />
 
-          {/* Светило */}
-          <circle cx={bodyX} cy={bodyY} r="19" fill="url(#bodyGlow)" />
+          {/* Светило. Размер от высоты плитки: на большой плитке крошечное солнце теряется. */}
+          <circle cx={bodyX} cy={bodyY} r={bodyR * 2.6} fill="url(#bodyGlow)" />
           {isDay ? (
             <>
-              <circle cx={bodyX} cy={bodyY} r="10.5" fill="#FFF3C4" fillOpacity="0.5" />
-              <circle cx={bodyX} cy={bodyY} r="7.6" fill="url(#sunCore)" />
+              <circle cx={bodyX} cy={bodyY} r={bodyR * 1.4} fill="#FFF3C4" fillOpacity="0.5" />
+              <circle cx={bodyX} cy={bodyY} r={bodyR} fill="url(#sunCore)" />
             </>
           ) : (
             <g>
-              <circle cx={bodyX} cy={bodyY} r="7.6" fill="url(#moonCore)" mask="url(#moonMask)" />
+              <circle cx={bodyX} cy={bodyY} r={bodyR} fill="url(#moonCore)" mask="url(#moonMask)" />
               {/* Моря — то, что отличает луну от белого кружка. */}
-              <g mask="url(#moonMask)" fill="#AFBBD4" fillOpacity="0.5">
-                <circle cx={bodyX - 2.3} cy={bodyY - 1.8} r="1.8" />
-                <circle cx={bodyX + 0.4} cy={bodyY + 2.3} r="1.2" />
-                <circle cx={bodyX - 2.9} cy={bodyY + 2.5} r="0.85" />
+              <g mask="url(#moonMask)" fill="#AFBBD4" fillOpacity="0.45">
+                <circle cx={bodyX - bodyR * 0.3} cy={bodyY - bodyR * 0.24} r={bodyR * 0.24} />
+                <circle cx={bodyX + bodyR * 0.05} cy={bodyY + bodyR * 0.3} r={bodyR * 0.16} />
+                <circle cx={bodyX - bodyR * 0.38} cy={bodyY + bodyR * 0.33} r={bodyR * 0.11} />
               </g>
             </g>
           )}
