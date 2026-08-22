@@ -420,6 +420,27 @@ export function layoutItems(items: DesktopItem[], colsSetting: number): { placed
 const KEY = 'oblako-desktop-layout';
 const EVENT = 'oblako-desktop-changed';
 
+// ⚠️ У КАЖДОГО ПРОФИЛЯ СВОЙ СТОЛ. Иначе новый профиль открывался с чужими плитками: «часто
+// открываете» и «чем занимался» строятся из истории, а она общая на приложение. Человек заводит
+// «Отдых», открывает новую вкладку — и видит там рабочие сайты. Живая жалоба 22.08, и она про
+// то же, что пустые папки: содержимое рассказывает о человеке, даже когда он этого не просил.
+//
+// ⚠️ Ключ основного профиля НЕ МЕНЯЕТСЯ. Там уже лежит разложенный человеком стол, и переезд на
+// новый ключ означал бы, что он однажды открыл браузер и увидел набор по умолчанию вместо своего.
+let activeProfileId = 'default';
+
+function layoutKey(): string {
+  return activeProfileId === 'default' ? KEY : `${KEY}-${activeProfileId}`;
+}
+
+/** Сменился активный профиль — стол обязан перечитаться под него. */
+export function setDesktopProfile(id: string): void {
+  const next = id || 'default';
+  if (next === activeProfileId) return;
+  activeProfileId = next;
+  window.dispatchEvent(new CustomEvent(EVENT));
+}
+
 // Стартовый набор. Виджеты сверху, приложения следом — тот же порядок, что на реф-скриншотах
 // iPad: сначала то, что показывает данные, потом то, что запускают.
 // ⚠️ Координат у стартовых элементов нет намеренно: их расставит placeItems в первые свободные
@@ -449,10 +470,29 @@ export function defaultLayout(): DesktopLayout {
   };
 }
 
+/**
+ * Стартовый набор НОВОГО профиля.
+ *
+ * ⚠️ Беднее общего ровно на то, что построено из ИСТОРИИ: «часто открываете» и «чем занимался».
+ * История у профилей пока общая, поэтому в свежем профиле эти плитки показывали бы сайты из
+ * другого — того самого, от которого человек и отделялся. Часы, дела и приложения ничего о нём
+ * не рассказывают и в сеть не ходят; всё остальное он добавит сам через «+», и его выбор
+ * сохранится в этом профиле.
+ */
+export function profileDefaultLayout(): DesktopLayout {
+  const base = defaultLayout();
+  const fromHistory = new Set(['topsites', 'digest', 'tracking']);
+  return {
+    ...base,
+    items: base.items.filter((i) => !(i.kind === 'widget' && fromHistory.has(i.widget ?? ''))),
+  };
+}
+
 export function loadDesktop(): DesktopLayout {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return defaultLayout();
+    const raw = localStorage.getItem(layoutKey());
+    // ⚠️ У НОВОГО профиля свой стартовый набор — беднее общего (см. profileDefaultLayout).
+    if (!raw) return activeProfileId === 'default' ? defaultLayout() : profileDefaultLayout();
     const parsed = JSON.parse(raw) as Partial<DesktopLayout>;
     if (!Array.isArray(parsed.items)) return defaultLayout();
     // Терпимо к чужому/старому JSON: элементы без обязательных полей просто выкидываем, а не
@@ -489,7 +529,7 @@ export function loadDesktop(): DesktopLayout {
 
 export function saveDesktop(layout: DesktopLayout): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(layout));
+    localStorage.setItem(layoutKey(), JSON.stringify(layout));
     window.dispatchEvent(new CustomEvent(EVENT));
   } catch { /* квота переполнена — раскладка не критична, молчим */ }
 }

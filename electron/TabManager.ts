@@ -538,6 +538,11 @@ export class TabManager {
    */
   #inActiveProfile(t: ManagedTab): boolean {
     if (t.incognito) return true; // приватная вкладка видна всегда — она вне профилей
+    // ⚠️ Настройки, История, Закладки, Загрузки — это ИНТЕРФЕЙС БРАУЗЕРА, а не содержимое сайта.
+    // Профиля у них нет и быть не может, а спрятать их значит запереть человека: живой случай
+    // 22.08 — в чужом профиле кнопка «Настройки» переставала открываться, и выйти из профиля
+    // было нечем. Данные у этих экранов и так общие на всё приложение.
+    if (t.kind) return true;
     const active = getActiveProfile().id;
     return (t.profileId ?? DEFAULT_PROFILE_ID) === active;
   }
@@ -805,7 +810,40 @@ export class TabManager {
   sidebarNodesSnapshot(): SidebarNode[] {
     // DBG: проверяем инвариант split-pair в момент сборки nodes-снимка.
     this.#debugCheckSplitInvariant('sidebarNodesSnapshot');
-    return this.nodes;
+    return this.#nodesOfActiveProfile(this.nodes);
+  }
+
+  /**
+   * Дерево, очищенное от вкладок чужих профилей.
+   *
+   * ⚠️ Пустые группы ВЫБРАСЫВАЮТСЯ, а не показываются пустыми. Живая жалоба 22.08: в новом
+   * профиле вкладок нет, а папки остались — «да, пустые, но это палево». И это верно по сути:
+   * имя папки («Работа», «Ипотека») само по себе рассказывает о человеке, даже когда внутри
+   * ничего не видно.
+   *
+   * ⚠️ Режется КОПИЯ для показа, а не this.nodes: настоящее дерево хранит вкладки всех профилей
+   * и обязано остаться целым, иначе переключение обратно вернуло бы пустоту.
+   */
+  #nodesOfActiveProfile(nodes: SidebarNode[]): SidebarNode[] {
+    const out: SidebarNode[] = [];
+    for (const node of nodes) {
+      if (node.type === 'single') {
+        const t = this.tabMap.get(node.tabId);
+        if (t && this.#inActiveProfile(t)) out.push(node);
+        continue;
+      }
+      if (node.type === 'split-pair') {
+        const l = this.tabMap.get(node.leftTabId);
+        const r = this.tabMap.get(node.rightTabId);
+        // Половина пары в чужом профиле — показывать половину сплита нечестно: пара
+        // существует только целиком. Обе наши — берём, иначе пропускаем.
+        if (l && r && this.#inActiveProfile(l) && this.#inActiveProfile(r)) out.push(node);
+        continue;
+      }
+      const children = this.#nodesOfActiveProfile(node.children);
+      if (children.length > 0) out.push({ ...node, children });
+    }
+    return out;
   }
 
   // Структурированный снимок для сериализации (рекурсивный — поддерживает группы).
