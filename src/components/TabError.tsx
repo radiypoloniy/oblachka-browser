@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { TabErrorState } from '../../shared/ipc';
 import { glassPlate } from '../styles/island';
 
@@ -196,7 +197,13 @@ function buttonBase(): React.CSSProperties {
 }
 
 export default function TabError({ error, url, onRetry, canGoBack, onBack }: Props) {
-  const { emoji, title, detail, hint } = errorInfo(error);
+  const base = errorInfo(error);
+  // ⚠️ Отказ ПРОФИЛЯ выглядит для Chromium так же, как упавший прокси (ERR_PROXY_CONNECTION_FAILED),
+  // но человеку это совсем другая история: он сам просил «этот профиль только через VPN», а мы
+  // отвечали «сервер мог отвалиться, загляните в Защиту». Совет мимо причины хуже отсутствия
+  // совета — человек идёт чинить то, что не сломано.
+  const block = useProfileVpnBlock(error);
+  const { emoji, title, detail, hint } = block ?? base;
   const displayUrl = url.length > 72 ? url.slice(0, 69) + '…' : url;
 
   return (
@@ -277,4 +284,38 @@ export default function TabError({ error, url, onRetry, canGoBack, onBack }: Pro
       </div>
     </div>
   );
+}
+
+/**
+ * Не заблокирован ли запрос НАШИМ ЖЕ правилом профиля.
+ *
+ * ⚠️ Спрашиваем только на прокси-ошибках: лишний поход в main на каждой странице с опечаткой в
+ * адресе никому не нужен. И только для активного профиля — вкладка чужого профиля покажет
+ * обычный текст, но она и не та, куда человек сейчас смотрит.
+ */
+function useProfileVpnBlock(error: TabErrorState):
+  { emoji: string; title: string; detail: string; hint: string } | null {
+  const [blocked, setBlocked] = useState<string | null>(null);
+  const code = error?.code ?? 0;
+  useEffect(() => {
+    if (code !== -130 && code !== -337) { setBlocked(null); return; }
+    let alive = true;
+    void Promise.all([window.oblako.getProfiles(), window.oblako.getVpnConnectionState()])
+      .then(([profiles, vpn]) => {
+        if (!alive) return;
+        const active = profiles.profiles.find((x) => x.id === profiles.activeId);
+        const strict = active?.settings.vpn === 'on';
+        setBlocked(strict && vpn?.state !== 'running' ? (active?.name ?? '') : null);
+      })
+      .catch(() => { /* не смогли спросить — покажем обычный текст */ });
+    return () => { alive = false; };
+  }, [code]);
+
+  if (blocked === null) return null;
+  return {
+    emoji: '🛡️',
+    title: 'Профиль ждёт VPN',
+    detail: `Профиль «${blocked}» настроен открывать сайты только через VPN, а туннель сейчас выключен.`,
+    hint: 'Включите VPN в поповере «Защита» — или смените выход в сеть у профиля в настройках.',
+  };
 }

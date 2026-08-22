@@ -1853,6 +1853,19 @@ function closeIfEmptyLight(from: TabManager): void {
 // проваливается, а не тихо идёт мимо него.
 const VPN_KILL_SWITCH_PROXY_RULES = 'socks5://127.0.0.1:1';
 
+/**
+ * ⚠️ Chromium ПО УМОЛЧАНИЮ НЕ ПРОКСИРУЕТ LOOPBACK — localhost и 127.0.0.0/8 идут в обход любых
+ * proxyRules. Значит kill switch, поставленный одними правилами, оставлял дыру: страница в
+ * «замершем» профиле по-прежнему достукивалась до локальных адресов. Поймано живым прогоном
+ * 22.08 (scripts/profile-killswitch-drive.mjs): профиль «только через VPN» без туннеля, а
+ * запрос на локальный эхо-сервер дошёл.
+ *
+ * `<-loopback>` — правило Chromium, ОТМЕНЯЮЩЕЕ этот неявный обход. Ставим его только там, где
+ * мы намеренно перекрываем всё: у работающего туннеля обход loopback наоборот нужен, иначе
+ * человек не откроет свой localhost:3000, а SOCKS-прокси такой запрос и не обслужит.
+ */
+const KILL_SWITCH_BYPASS = '<-loopback>';
+
 // Очередь: два быстрых перехода (error → stopped) не должны обогнать друг друга.
 // Каждый прогон читает состояние НА СТАРТЕ своего await, не в момент постановки в очередь.
 let vpnProxyChain: Promise<void> = Promise.resolve();
@@ -1878,12 +1891,20 @@ function applyVpnProxy(): Promise<void> {
         : appOn
           ? `socks5://127.0.0.1:${port}`
           : VPN_KILL_SWITCH_PROXY_RULES; // просил туннель, туннеля нет — ждём, а не течём мимо
-      await sessionForProfile(prof.id).setProxy({ proxyRules: rules });
+      // ⚠️ Обход loopback снимается ТОЛЬКО в отказе: см. KILL_SWITCH_BYPASS.
+      const killing = rules === VPN_KILL_SWITCH_PROXY_RULES;
+      await sessionForProfile(prof.id).setProxy(
+        killing ? { proxyRules: rules, proxyBypassRules: KILL_SWITCH_BYPASS } : { proxyRules: rules },
+      );
     }
     // Инкогнито следует ОБЩЕМУ переключателю приложения: своей настройки у него нет, а
     // молча привязать его к активному профилю значило бы менять защиту приватной вкладки
     // от того, в каком профиле человек сейчас стоит.
-    await incognitoBrowsingSession().setProxy({ proxyRules });
+    await incognitoBrowsingSession().setProxy(
+      proxyRules === VPN_KILL_SWITCH_PROXY_RULES
+        ? { proxyRules, proxyBypassRules: KILL_SWITCH_BYPASS }
+        : { proxyRules },
+    );
     // WebRTC STUN иначе обходит SOCKS и отдаёт реальный IP при «VPN включён».
     // На прямом выходе политику возвращаем: звонки без VPN не ломаем.
     currentWebrtcPolicy = proxyRules === 'direct://' ? 'default' : 'disable_non_proxied_udp';
