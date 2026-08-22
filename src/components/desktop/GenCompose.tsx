@@ -112,8 +112,9 @@ export default function GenCompose({
         disabled={busy || phrase.trim().length < 3}
         style={{
           alignSelf: 'flex-start', padding: pad(2, 4), border: 'none', cursor: 'default',
-          borderRadius: RADIUS.pill, background: 'var(--accent)', color: 'var(--on-accent)',
-          ...TEXT.body, fontWeight: 600, opacity: busy ? 0.6 : 1,
+          ...TEXT.body, borderRadius: RADIUS.pill,
+          background: 'var(--accent)', color: 'var(--on-accent)',
+          fontWeight: 600, opacity: busy ? 0.6 : 1,
           transition: motion.hover('opacity', 'background'),
         }}
       >
@@ -146,13 +147,15 @@ export default function GenCompose({
           <div style={{ display: 'flex', gap: sp(2) }}>
             <button type="button" onClick={confirm} style={{
               padding: pad(2, 4), border: 'none', cursor: 'default',
-              borderRadius: RADIUS.pill, background: 'var(--accent)', color: 'var(--on-accent)',
-              ...TEXT.body, fontWeight: 600, transition: motion.hover('background'),
+              ...TEXT.body, borderRadius: RADIUS.pill,
+              background: 'var(--accent)', color: 'var(--on-accent)',
+              fontWeight: 600, transition: motion.hover('background'),
             }}>Поставить</button>
             <button type="button" onClick={() => { setDraft(null); deleteGenRecord(DRAFT_ID); }} style={{
               padding: pad(2, 4), border: '1px solid var(--divider-strong)', cursor: 'default',
-              borderRadius: RADIUS.pill, background: 'transparent', color: 'var(--text-body)',
-              ...TEXT.body, transition: motion.hover('background', 'color'),
+              ...TEXT.body, borderRadius: RADIUS.pill,
+              background: 'transparent', color: 'var(--text-body)',
+              transition: motion.hover('background', 'color'),
             }}>Отмена</button>
           </div>
         </div>
@@ -234,6 +237,7 @@ export function GenShelf({
 
 const ghostBtn: CSSProperties = {
   flex: 'none', padding: pad(1, 2), border: '1px solid var(--divider-strong)', cursor: 'default',
-  borderRadius: RADIUS.pill, background: 'transparent', color: 'var(--text-body)',
-  ...TEXT.caption, transition: motion.hover('background', 'color'),
+  ...TEXT.caption, borderRadius: RADIUS.pill,
+  background: 'transparent', color: 'var(--text-body)',
+  transition: motion.hover('background', 'color'),
 };

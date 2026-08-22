@@ -150,6 +150,35 @@ export function extractGenHtml(raw: string): string | null {
 }
 
 /**
+ * Ответ, который формально разметка, а по сути мусор.
+ *
+ * ⚠️ Живой случай 22.08: на «виджет с игрой змейка» 4B выдала 250 штук
+ * `<div class="cell empty"></div>` — и НИ ОДНОГО <script>, НИ ОДНОГО <style>. То есть поле,
+ * которое некому оживить и нечем покрасить. Формально разметка есть, длина огромная, разбор
+ * проходит — а человек получает пустой квадрат. Такой ответ обязан быть ПРОВАЛОМ.
+ *
+ * ⚠️ Заголовок за содержимое НЕ считается: `data-caption` есть почти в каждом ответе, и если
+ * мерить текст вместе с ним, мусор всегда выглядит «непустым».
+ */
+export function genAnswerIsUseless(html: string): boolean {
+  const body = html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ');
+  const text = body
+    .replace(/<[a-z]+[^>]*\bdata-caption\b[^>]*>[\s\S]*?<\/[a-z]+>/gi, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, '');
+  if (text.length > 0) return false;            // есть что показать словами
+  if (/<script\b/i.test(html)) return false;    // скрипт дорисует сам — судить рано
+  // Вёрстка без текста имеет смысл, только если она сама себя рисует: заливками, рамками, SVG.
+  const styleBlocks = html.match(/<style\b[\s\S]*?<\/style>/gi)?.join(' ') ?? '';
+  if (/background|border|fill|stroke|gradient/i.test(styleBlocks)) return false;
+  if (/<(?:svg|canvas)\b/i.test(html)) return false;
+  const elements = (body.match(/<[a-zA-Z]/g) ?? []).length;
+  return elements >= 8;
+}
+
+/**
  * Виджет пустой по существу: ни элемента, ни текста, ни скрипта — только оформление.
  * ⚠️ Наличие скрипта сразу означает «не пусто»: наш бегунок словаря рисует себя сам.
  */
@@ -217,6 +246,51 @@ export const GEN_LEXICON_MARK = '/*oblako-lexicon*/';
 /** Это наш собственный бегунок словаря, а не совпадение пар в чужом массиве. */
 export function isGenLexiconRunner(html: string): boolean {
   return html.includes(GEN_LEXICON_MARK);
+}
+
+/**
+ * Плитка «один элемент из списка»: слово с переводом, цитата с автором, факт, грань кубика.
+ *
+ * ⚠️ Её собирает ХОСТ, а не модель. Просить 4B написать рабочий DOM-код ради показа одной
+ * строки из массива — самый надёжный способ получить пустую плитку: код падает, а падение
+ * не видно (живой случай 22.08, три запроса подряд — слово, цитата, мотивация). От модели
+ * здесь нужны только ДАННЫЕ. Это то же правило, по которому сделана «Студия» блокнота.
+ */
+export function buildGenLexiconHtml(pairs: Array<[string, string]>): string {
+  return lexiconRunner(pairs);
+}
+
+/**
+ * Разбор списка, который модель написала по НАШЕМУ формату «главное — второстепенное».
+ *
+ * ⚠️ Отдельно от parseLexiconPairs: тот угадывает пары в свободном тексте и потому строг к
+ * алфавитам (латиница слева, кириллица справа). Русская цитата с русским автором через него
+ * не проходила вовсе. Здесь формат задаём мы сами, значит и разбирать можно по разделителю.
+ */
+export function parseGenListLines(text: string): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  const seen = new Set<string>();
+  for (const raw of String(text ?? '').split(/\r?\n/)) {
+    const line = raw
+      .replace(/^[\s*`#•\-–—]+/, '')      // маркеры списка
+      .replace(/^\d+[.)]\s*/, '')         // нумерация
+      .replace(/[`*]+$/g, '')
+      .trim();
+    if (!line || /^(html|kind|list|title)\s*:/i.test(line)) continue;
+    const m = /^(.{1,120}?)\s*[—–|]\s*(.{0,120})$/.exec(line)
+      ?? /^(.{1,120}?)\s+-\s+(.{0,120})$/.exec(line)
+      ?? /^(.{1,120}?)\s*:\s*(.{0,120})$/.exec(line);
+    if (!m) continue;
+    const main = m[1]!.replace(/^["'«»]|["'«»]$/g, '').trim();
+    const sub = m[2]!.replace(/^["'«»]|["'«»]$/g, '').trim();
+    if (main.length < 2 || main.length > 120) continue;
+    const key = main.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push([main, sub]);
+    if (out.length >= 24) break;
+  }
+  return out;
 }
 
 function lexiconRunner(pairs: Array<[string, string]>): string {
@@ -313,6 +387,33 @@ setInterval(function(){
   window.dispatchEvent(new Event('oblako-tick'));
 },250);
 parent.postMessage({type:'oblako-gen-ready',widgetId:WIDGET_ID},'*');
+// ⚠️ Доклад «я отрисовался». Без него ошибка в коде модели НЕ ВИДНА НИКАК: [data-display]:empty
+// прячется по нашей же вёрстке, и человек получает пустой квадрат, про который система считает,
+// что всё удалось. Живой случай: виджет «случайное слово с переводом» вышел пустым целиком.
+function paintReport(){
+  if(!document.body)return;
+  // ⚠️ Заголовок плитки за содержимое не считаем: он есть почти всегда, и с ним «пусто»
+  // не наступает никогда — ровно на этом заглушка и промолчала на змейке.
+  var caption=document.body.querySelector('[data-caption]');
+  var capText=caption?(caption.textContent||''):'';
+  var text=((document.body.innerText||'').replace(capText,'')).replace(/\s+/g,'');
+  var els=document.body.querySelectorAll('*');
+  var painted=0;
+  for(var i=0;i<els.length;i++){
+    var cs=window.getComputedStyle(els[i]);
+    if(cs.backgroundImage!=='none'
+      ||(cs.backgroundColor&&cs.backgroundColor!=='rgba(0, 0, 0, 0)'&&cs.backgroundColor!=='transparent')
+      ||parseFloat(cs.borderTopWidth||'0')>0){painted++;}
+  }
+  parent.postMessage({type:'oblako-gen-painted',widgetId:WIDGET_ID,chars:text.length,painted:painted},'*');
+}
+window.addEventListener('error',function(ev){
+  parent.postMessage({type:'oblako-gen-script-error',widgetId:WIDGET_ID,message:String(ev.message||'')},'*');
+});
+if(document.readyState==='loading')window.addEventListener('DOMContentLoaded',function(){setTimeout(paintReport,0);});
+else setTimeout(paintReport,0);
+// Второй замер: код модели нередко дорисовывает содержимое с задержкой.
+setTimeout(paintReport,700);
 })();`;
 }
 
@@ -453,6 +554,8 @@ export function parseGenMeta(out: string): {
   size: { w: number; h: number };
   assetPhoto: boolean;
   title: string;
+  /** 'list' — плитка показывает один элемент из списка; такую собирает хост (см. buildGenLexiconHtml). */
+  kind: 'list' | 'custom';
 } {
   const widgetRaw = labelledLine(out, 'WIDGET').toLowerCase();
   const widget = widgetRaw === 'gen' || (GEN_BUILTIN_WIDGETS as readonly string[]).includes(widgetRaw)
@@ -465,7 +568,8 @@ export function parseGenMeta(out: string): {
   const asset = labelledLine(out, 'ASSET').toLowerCase();
   let title = labelledLine(out, 'TITLE').slice(0, 28);
   if (title.length < 2) title = widget === 'gen' ? 'Свой виджет' : '';
-  return { widget, facts, size, assetPhoto: asset === 'photo', title };
+  const kind = labelledLine(out, 'KIND').toLowerCase() === 'list' ? 'list' : 'custom';
+  return { widget, facts, size, assetPhoto: asset === 'photo', title, kind };
 }
 
 export function clampGenStorage(raw: unknown): string {

@@ -354,3 +354,24 @@ progress {
   from { transform: translateX(100%); }
   to   { transform: none; }
 }
+
+/* Сборка своего виджета (components/desktop/GenStudio.tsx): блоки падают в болванку в ритме
+   токенов модели. ⚠️ Движение здесь не украшение: локальный прогон 4B идёт десятки секунд, и
+   без него сборка неотличима от зависшего окна — это была прямая жалоба на прошлый вариант.
+   Кадр лежит в общих стилях, потому что inline-стилям React ключевые кадры недоступны. */
+@keyframes oblako-gen-drop {
+  from { transform: translateY(-220%); opacity: 0; }
+  60%  { transform: translateY(0); opacity: 1; }
+  75%  { transform: translateY(-12%); }
+  to   { transform: translateY(0); opacity: 1; }
+}
+/* Пустая клетка, в которую упадёт следующий блок. Нужна ровно на те секунды, пока модель
+   думает и НИ ОДНОГО токена ещё не пришло: без неё окно снова выглядит замершим. */
+@keyframes oblako-gen-wait {
+  0%, 100% { opacity: 0.18; transform: scale(0.94); }
+  50%      { opacity: 0.5;  transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes oblako-gen-drop { from, to { transform: none; opacity: 1; } }
+  @keyframes oblako-gen-wait { from, to { opacity: 0.3; transform: none; } }
+}

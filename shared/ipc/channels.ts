@@ -76,6 +76,7 @@ export const IPC = {
   RULES_CHANGED:     'rules:changed',      // main → renderer: список изменился
 
   DESKTOP_GEN_PARSE: 'desktop:gen-parse',  // renderer → main: фраза → черновик своего виджета (модель)
+  DESKTOP_GEN_PROGRESS: 'desktop:gen-progress', // main → renderer: ход сборки (стадия + объём)
 
   // Омнибокс
   OMNIBOX_FOCUS: 'omnibox:focus',   // main → renderer: сфокусировать адресную строку (Ctrl+L)

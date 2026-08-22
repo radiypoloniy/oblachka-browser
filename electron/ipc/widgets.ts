@@ -58,11 +58,16 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (_e, kind: StudioKind, context: string) =>
     generateStudio(kind, typeof context === 'string' ? context : ''));
   let genParseBusy = false;
-  ipcMain.handle(IPC.DESKTOP_GEN_PARSE, async (_e, phrase: string) => {
+  ipcMain.handle(IPC.DESKTOP_GEN_PARSE, async (e, phrase: string) => {
     if (genParseBusy) return { ok: false, reason: 'model-error', error: 'Уже собираю другой виджет' };
     genParseBusy = true;
+    // ⚠️ Отвечаем ТОМУ, кто спросил, а не всем окнам: сборка идёт на одном столе, и чужая
+    // анимация в соседнем окне — это неверная картина, а не приятная мелочь.
+    const sender = e.sender;
     try {
-      return await parsePhraseToGenWidget(String(phrase ?? ''));
+      return await parsePhraseToGenWidget(String(phrase ?? ''), (p) => {
+        if (!sender.isDestroyed()) sender.send(IPC.DESKTOP_GEN_PROGRESS, p);
+      });
     } catch (err) {
       console.warn('[gen-widget] разбор упал:', err);
       return { ok: false, reason: 'model-error' };

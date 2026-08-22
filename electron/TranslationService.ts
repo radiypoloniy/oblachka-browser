@@ -502,11 +502,13 @@ export async function runTabOrganizePrompt(
   prompt: string,
   // background — задача, которой человек не заказывал (разбор полей формы, поиск вкладки при
   // наборе, будущие итоги дня). Такая ждёт, пока пользовательская полоса не опустеет.
-  opts?: { background?: boolean; signal?: { aborted: boolean }; maxTokens?: number },
+  // onChunk — токены по мере генерации. Нужен там, где человек СМОТРИТ на сборку и обязан
+  // видеть, что она идёт: без него любой долгий прогон выглядит зависшим (см. GenStudio).
+  opts?: { background?: boolean; signal?: { aborted: boolean }; maxTokens?: number; onChunk?: (text: string) => void },
 ): Promise<{ ok: true; out: string; stopReason: string } | { ok: false; error: string; errorCode?: ModelErrorCode }> {
   try {
     await ensureLoaded()
-    const { out, stopReason } = await runPrompt(prompt, opts?.maxTokens ?? ORGANIZE_MAX_TOKENS, undefined, opts)
+    const { out, stopReason } = await runPrompt(prompt, opts?.maxTokens ?? ORGANIZE_MAX_TOKENS, opts?.onChunk, opts)
     return { ok: true, out, stopReason }
   } catch (e) {
     console.error('[organize] error:', e)

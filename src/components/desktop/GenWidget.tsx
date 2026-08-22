@@ -32,6 +32,8 @@ export function GenWidget({
   }, [clock]);
   const [lexIdx, setLexIdx] = useState(0);
   const [facts, setFacts] = useState<Record<string, number | string>>({});
+  // Доклад песочницы: отрисовалось ли хоть что-нибудь. null — ещё не докладывала.
+  const [paint, setPaint] = useState<{ chars: number; painted: number } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -45,7 +47,15 @@ export function GenWidget({
   const mode = rec ? rec.mode ?? pickGenMode(rec.phrase ?? '', rec.html, rec.photo === true) : 'html';
   const photo = mode === 'photo';
   const timer = mode === 'timer';
-  const lexicon = mode === 'lexicon' && rec ? extractGenLexicon(rec.html) : [];
+  // ⚠️ Пусто = песочница доложила и не нарисовала НИЧЕГО: ни текста, ни заливки, ни рамки.
+  // Это не придирка к вёрстке, а единственный способ отличить «модель написала рабочий код»
+  // от «модель написала код с ошибкой»: во втором случае плитка молча оставалась пустой.
+  const blank = !!rec && paint !== null && paint.chars === 0 && paint.painted === 0;
+  // Спасение ровно того случая, ради которого словарь и заводился: код модели упал, но пары
+  // слов в нём есть — рисуем их сами. ⚠️ Это ФОЛБЭК, а не перехват: рабочий виджет с массивом
+  // пар внутри мы больше не трогаем (см. pickGenMode).
+  const lexicon = rec && (mode === 'lexicon' || blank) ? extractGenLexicon(rec.html) : [];
+  useEffect(() => { setPaint(null); }, [genId, rec?.html]);
   useEffect(() => {
     if (lexicon.length >= 4) setLexIdx(Math.floor(Math.random() * lexicon.length));
   }, [genId, rec?.html, lexicon.length]);
@@ -88,10 +98,21 @@ export function GenWidget({
     };
     const onMsg = (e: MessageEvent) => {
       if (e.source !== frame.contentWindow) return;
-      const data = e.data as { type?: string; widgetId?: string; req?: string; value?: unknown; seconds?: unknown };
+      const data = e.data as {
+        type?: string; widgetId?: string; req?: string; value?: unknown; seconds?: unknown;
+        chars?: unknown; painted?: unknown; message?: unknown;
+      };
       if (!data || data.widgetId !== genId) return;
       if (data.type === 'oblako-gen-ready') {
         sendFacts();
+        return;
+      }
+      if (data.type === 'oblako-gen-painted') {
+        setPaint({ chars: Number(data.chars) || 0, painted: Number(data.painted) || 0 });
+        return;
+      }
+      if (data.type === 'oblako-gen-script-error') {
+        console.warn('[gen-widget] код виджета упал:', data.message);
         return;
       }
       if (data.type === 'oblako-gen-timer-start') {
@@ -263,6 +284,21 @@ export function GenWidget({
       {!photo && !timer && lexicon.length < 4 && !srcDoc && (
         <div style={{ padding: pad(4), fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
           Виджет ещё не собран
+        </div>
+      )}
+      {/* ⚠️ Пустая плитка обязана объяснить себя. Молчаливый пустой квадрат человек читает как
+          поломку всей функции — и правильно делает: отличить его от «ещё грузится» нельзя. */}
+      {blank && lexicon.length < 4 && !photo && !timer && (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          justifyContent: 'center', gap: sp(1), padding: pad(4),
+          background: 'var(--card)', borderRadius: 'inherit',
+        }}>
+          <TileCaption>{rec?.title || 'Свой виджет'}</TileCaption>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>Не отрисовался</div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+            Модель написала код с ошибкой. Пересоберите виджет.
+          </div>
         </div>
       )}
       <input

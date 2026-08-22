@@ -57,7 +57,19 @@ export type GenParseOutcome =
     // принимается ОДИН раз здесь, потому что хост-рендерер выбрасывает разметку целиком.
     mode: 'html' | 'photo' | 'timer' | 'lexicon';
   }
-  | { ok: false; reason: 'unclear' | 'model-error'; error?: string };
+  // 'too-hard' — модель ответила, но ответ заведомо нерабочий (пустые коробки без кода).
+  // Отдельно от 'unclear' ради честной формулировки: дело не в словах человека.
+  | { ok: false; reason: 'unclear' | 'model-error' | 'too-hard'; error?: string };
+
+/**
+ * Ход сборки своего виджета. `chars` — сколько символов модель уже написала на этой стадии.
+ * ⚠️ Это НЕ доля выполнения: сколько будет всего, неизвестно ни модели, ни нам. Годится для
+ * живости (движение в ритме модели), но не для процентов — проценты пришлось бы выдумать.
+ */
+export interface GenProgress {
+  stage: 'meta' | 'html' | 'done';
+  chars: number;
+}
 
 export type RuleParseOutcome =
   | { ok: true; rule: AutomationRule }

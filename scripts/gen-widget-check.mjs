@@ -7,6 +7,7 @@ import {
   parseGenMeta, wantsGenPhoto, wantsGenTimer, parseGenDurationMs, parseGenClockWrite,
   genClockLeftMs, formatGenClock, extractGenLexicon, phraseClearlyAsksBuiltin, GEN_FACT_IDS, GEN_STORAGE_MAX_CHARS,
   pickGenMode, timerIsWholeWidget, genHtmlIsBlank, isGenLexiconRunner,
+  parseGenListLines, buildGenLexiconHtml, genAnswerIsUseless,
 } from '../shared/genWidget.ts';
 
 let passed = 0;
@@ -169,6 +170,76 @@ checkTrue('«помодоро на 25 минут» — таймер целико
 checkTrue('«таймер» — таймер целиком', timerIsWholeWidget('таймер'));
 checkTrue('«трекер привычек с таймером» — НЕ голый таймер', !timerIsWholeWidget('трекер привычек с таймером'));
 check('и режим у него обычный', pickGenMode('трекер привычек с таймером', '<div>x</div>', false), 'html');
+
+console.log('\n── мусорный ответ — провал разбора (живой случай «змейка») ──');
+{
+  // ⚠️ Дословно то, что 4B выдала на «виджет с игрой змейка»: 250 пустых коробок, ни одного
+  // <script>, ни одного <style>. Разбор это проходил, длина огромная — и человек получал
+  // молчаливый пустой квадрат на столе.
+  const snake = '<div data-caption>Игровая змейка</div><div data-display><div class="grid">'
+    + '<div class="cell snake"></div>'
+    + '<div class="cell empty"></div>'.repeat(240)
+    + '</div></div>';
+  checkTrue('250 пустых коробок без кода — мусор', genAnswerIsUseless(snake));
+  // ⚠️ Заголовок за содержимое не считается: он есть почти в каждом ответе, и вместе с ним
+  // «пусто» не наступало бы никогда.
+  checkTrue('и заголовок его не спасает', genAnswerIsUseless('<div data-caption>Что-то</div>'
+    + '<div class="cell"></div>'.repeat(20)));
+
+  checkTrue('виджет с текстом — не мусор',
+    !genAnswerIsUseless('<div data-caption>Дни</div><div data-display>7</div>'));
+  checkTrue('вёрстка со скриптом — не мусор (дорисует сам)',
+    !genAnswerIsUseless('<div id="x"></div>'.repeat(12) + '<script>go()</script>'));
+  checkTrue('CSS-арт с заливками — не мусор',
+    !genAnswerIsUseless('<style>.a{background:var(--accent)}</style>' + '<div class="a"></div>'.repeat(12)));
+  checkTrue('svg — не мусор',
+    !genAnswerIsUseless('<svg><circle r="4"/></svg>' + '<div></div>'.repeat(10)));
+  checkTrue('пара пустых коробок — ещё не приговор',
+    !genAnswerIsUseless('<div></div><div></div>'));
+}
+
+console.log('\n── список от модели собирает ХОСТ (живой случай 22.08) ──');
+{
+  // ⚠️ Три запроса подряд — слово, цитата, мотивация — дали пустые плитки: модель писала
+  // разметку и скрипт к ней, скрипт падал, а увидеть падение было нечем. Теперь от модели
+  // нужны только строки, а плитку собираем мы.
+  const out = 'Sun — Солнце\nBridge — Мост\n3. Freedom — Свобода\n- Courage — Смелость\nRiver — Река';
+  const pairs = parseGenListLines(out);
+  check('нумерация и маркеры сняты', pairs.length, 5);
+  check('первая пара', pairs[0], ['Sun', 'Солнце']);
+  check('пункт из нумерованной строки', pairs[2], ['Freedom', 'Свобода']);
+
+  // ⚠️ Русская цитата с русским автором: старый parseLexiconPairs требовал латиницу слева
+  // или справа и такие строки не брал ВОВСЕ — а это половина запросов («мотивационная цитата»).
+  const ru = parseGenListLines('Делай что должно — Марк Аврелий\n«Путь в тысячу ли» — Лао-цзы\n'
+    + 'Лучше поздно — народная мудрость\nПросто начни — Найк');
+  check('русская цитата с русским автором разбирается', ru.length, 4);
+  check('кавычки сняты', ru[1][0], 'Путь в тысячу ли');
+
+  const html = buildGenLexiconHtml(pairs);
+  checkTrue('это наш бегунок', isGenLexiconRunner(html));
+  check('и рисует его хост', pickGenMode('рандомное слово с переводом', html, false), 'lexicon');
+  check('пары достаются обратно', extractGenLexicon(html).length, 5);
+  checkTrue('санитайзер не съедает данные', sanitizeGenHtml(html).includes('Солнце'));
+  checkTrue('и не считает такой виджет пустым', !genHtmlIsBlank(html));
+
+  check('мусор без разделителя не пара', parseGenListLines('просто строка\nещё одна'), []);
+}
+
+console.log('\n── вид виджета из меты ──');
+check('KIND: list', parseGenMeta('WIDGET: gen\nKIND: list\nTITLE: Слово дня').kind, 'list');
+check('KIND: custom по умолчанию', parseGenMeta('WIDGET: gen\nTITLE: Счётчик').kind, 'custom');
+
+console.log('\n── песочница докладывает, что отрисовалась ──');
+{
+  // ⚠️ Без этого доклада ошибка в коде модели не видна НИКАК: [data-display]:empty прячется
+  // нашей же вёрсткой, и человек получает пустой квадрат, который система считает удачей.
+  const doc = wrapGenSrcdoc('<div data-display>7</div>', {}, 'w1');
+  checkTrue('в мост вшит замер отрисовки', doc.includes('oblako-gen-painted'));
+  checkTrue('и перехват ошибки скрипта', doc.includes('oblako-gen-script-error'));
+  checkTrue('замер повторяется с задержкой', /setTimeout\(paintReport,\s*700\)/.test(doc));
+  checkTrue('сеть по-прежнему закрыта', doc.includes("connect-src 'none'"));
+}
 
 console.log('\n── фоторамка не крадёт рабочий виджет ──');
 checkTrue('<img> в статичном ответе — рамка', wantsGenPhoto('карточка дня', '<img src="data:image/png;base64,x">', false));

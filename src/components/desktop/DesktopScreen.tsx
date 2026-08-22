@@ -4,11 +4,12 @@ import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal, Star } f
 import type { TileSite } from '../../../shared/frecency';
 import {
   loadDesktop, saveDesktop, subscribeDesktop, computeGrid, placeItems, moveItemTo, normalize,
-  resizeItem, removeItem, addItem, minSizeFor, scaleOf, SCALE_PRESETS, DEFAULT_COLS, setHero,
+  resizeItem, removeItem, addItem, hasItem, minSizeFor, scaleOf, SCALE_PRESETS, DEFAULT_COLS, setHero,
   type DesktopLayout,
 } from '../../newtab/desktop';
 import AddSheet from './AddSheet';
 import SidePanel from './SidePanel';
+import GenStudio, { GEN_GHOST_ID, GenDraftTile, type GenGhost } from './GenStudio';
 import {
   loadNewTabSettings, subscribeNewTabSettings, presetCss, getNewTabCustomImage,
   ensureCustomImageShrunk, isLightBackground, type NewTabSettings,
@@ -89,6 +90,12 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   const [editing, setEditing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  // Сборка своего виджета — отдельный режим стола (см. GenStudio): панель на это время уходит,
+  // потому что настраивать экран и собирать виджет одновременно не выйдет — оба хотят правый край.
+  const [studioOpen, setStudioOpen] = useState(false);
+  // Как выглядит болванка прямо сейчас. Живёт здесь, потому что рисует её сетка стола, а не
+  // окно сборки: болванка обязана быть такой же плиткой, как соседние, и стоять среди них.
+  const [ghost, setGhost] = useState<GenGhost | null>(null);
   // Что сейчас тащат/тянут. Держим отдельно от раскладки: пока жест идёт, на диск ничего не
   // пишем — иначе каждое движение мыши превращалось бы в запись в localStorage.
   // ⚠️ Хранит не только «куда встанет», но и смещение курсора: без него элемент оставался
@@ -172,11 +179,20 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   // отчего в конце жеста начиналась дрожь) здесь больше нет вовсе: на координатах перенос одного
   // элемента не двигает соседей, поэтому и колебаться нечему. Гистерезис, база «без элемента» и
   // порог в треть клетки уехали вместе с укладкой по порядку.
-  const preview = useMemo(() => {
+  const moved = useMemo(() => {
     if (drag) return moveItemTo(layout, drag.id, drag.col, drag.row);
     if (resizing) return resizeItem(layout, resizing.id, { w: resizing.w, h: resizing.h });
     return layout;
   }, [layout, drag, resizing]);
+
+  // Болванка сборки подмешивается в раскладку ТОЛЬКО для показа: укладчик ставит её в первую
+  // свободную клетку, как любой новый виджет, а на диск она не попадает никогда — сохраняется
+  // `layout`, а не `preview`.
+  const preview = useMemo(() => (
+    studioOpen && ghost
+      ? { ...moved, items: [...moved.items, { id: GEN_GHOST_ID, kind: 'widget' as const, widget: 'gen', size: ghost.size, fill: ghost.fill }] }
+      : moved
+  ), [moved, studioOpen, ghost]);
 
   const { placed, rows } = useMemo(
     () => placeItems(preview.items, grid.cols, drag?.id ?? resizing?.id),
@@ -185,7 +201,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
 
   // Встанет ли плитка туда, куда её тянут. Отказ (занято чем-то другого размера) виден сразу:
   // подсветки целевой клетки нет, и плитка вернётся на место — гадать после отпускания не нужно.
-  const dropOk = drag ? preview !== layout : false;
+  const dropOk = drag ? moved !== layout : false;
   // Где рисовать контур цели. Берём МЕСТО ИЗ РАСЧЁТА, а не желаемую клетку: укладчик мог
   // подвинуть плитку (например, край сетки), и контур обязан показывать правду.
   const dropCell = useMemo(() => {
@@ -379,7 +395,13 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                 willChange: dragging || editing ? 'transform' : undefined,
               };
 
-              const content = item.kind === 'widget' ? (() => {
+              const content = item.id === GEN_GHOST_ID && ghost ? (
+                <GenDraftTile
+                  ghost={ghost}
+                  box={box}
+                  overImage={settings.background.kind === 'photo' || settings.background.kind === 'custom' || settings.background.kind === 'mesh'}
+                />
+              ) : item.kind === 'widget' ? (() => {
                 const Render = item.widget === 'gen' ? GenWidget : WIDGET_RENDERERS[item.widget ?? ''];
                 return Render ? (
                   // ⚠️ Погода заливку НЕ получает намеренно: там цвет означает время суток и
@@ -571,7 +593,23 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
       </div>
 
       {panelOpen && (
-        <SidePanel layout={layout} onLayout={apply} editing={editing} onEditing={setEditing} onClose={() => setPanelOpen(false)} />
+        <SidePanel
+          layout={layout}
+          onLayout={apply}
+          editing={editing}
+          onEditing={setEditing}
+          onClose={() => setPanelOpen(false)}
+          onStudio={() => { setPanelOpen(false); setStudioOpen(true); }}
+        />
+      )}
+
+      {studioOpen && (
+        <GenStudio
+          onGhost={setGhost}
+          already={(key) => hasItem(layout, 'widget', key)}
+          onPlace={(item) => apply(addItem(layout, item))}
+          onClose={() => { setStudioOpen(false); setGhost(null); }}
+        />
       )}
 
       {sheetOpen && (

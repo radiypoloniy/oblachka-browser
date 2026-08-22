@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type React from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
+import { X, Plus, Trash2, Sparkles } from 'lucide-react';
 import {
   loadNewTabSettings, saveNewTabSettings, WALLPAPER_PRESETS, CRYPTO_CHOICES, RATE_CHOICES,
   type NewTabSettings,
@@ -13,7 +13,7 @@ import {
 import { WIDGET_FILLS, FILL_SWATCH } from './widgets';
 import CryptoIcon from '../CryptoIcon';
 import { RADIUS, ROW_TITLE, TEXT, motion, pad, sp } from '../../styles/system';
-import GenCompose, { GenShelf } from './GenCompose';
+import { GenShelf } from './GenCompose';
 import { deleteGenRecord } from '../../newtab/genStore';
 
 // Боковая панель настройки рабочего стола — всё, что можно поменять, в одном месте и по одному
@@ -88,9 +88,11 @@ interface Props {
   onEditing: (v: boolean) => void;
   onLayout: (next: DesktopLayout) => void;
   onClose: () => void;
+  /** Уйти в режим сборки своего виджета (см. GenStudio). Панель при этом закрывается. */
+  onStudio: () => void;
 }
 
-export default function SidePanel({ layout, onLayout, onClose, editing, onEditing }: Props) {
+export default function SidePanel({ layout, onLayout, onClose, editing, onEditing, onStudio }: Props) {
   const [s, setS] = useState<NewTabSettings>(() => loadNewTabSettings());
   const [meshes, setMeshes] = useState(() => allMeshes());
   useEffect(() => subscribeMeshes(() => setMeshes(allMeshes())), []);
@@ -168,11 +170,13 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
           </Section>
 
           <Section title="Свой виджет" note="Локальная модель соберёт одностраничник. В хром он не попадает — только песочница">
+            {/* ⚠️ Сборка ушла из панели на сам стол (GenStudio): здесь виджет собирался вслепую —
+                превью 240×140 в узкой колонке не показывало ни настоящего размера, ни того, как
+                плитка сядет рядом с остальными. Тут осталась только дверь и полка собранного. */}
+            <button onClick={onStudio} style={studioBtn}>
+              <Sparkles size={16} /> Собрать виджет
+            </button>
             <Card>
-              <GenCompose
-                already={(key) => hasItem(layout, 'widget', key)}
-                onPlace={(item) => onLayout(addItem(layout, item))}
-              />
               <GenShelf
                 layout={layout}
                 onPlace={(item) => onLayout(addItem(layout, item))}
@@ -497,8 +501,9 @@ function Segmented({ value, options, onChange }: {
             borderRadius: RADIUS.tight,
             background: value === id ? 'var(--surface)' : 'transparent',
             boxShadow: value === id ? 'var(--shadow-card)' : 'none',
+            ...TEXT.body,
             color: value === id ? 'var(--text-strong)' : 'var(--text-muted)',
-            ...TEXT.body, fontWeight: value === id ? 600 : 400,
+            fontWeight: value === id ? 600 : 400,
             transition: motion.hover('background', 'color'),
           }}
         >{label}</button>
@@ -524,8 +529,9 @@ function Chips({ items, active, onToggle }: {
               padding: pad(2, 3), borderRadius: RADIUS.control, border: 'none', cursor: 'default',
               background: on ? 'var(--surface)' : 'var(--surface-sunken)',
               boxShadow: on ? 'var(--shadow-card)' : 'none',
+              ...TEXT.body,
               color: on ? 'var(--text-strong)' : 'var(--text-muted)',
-              ...TEXT.body, fontWeight: on ? 600 : 400,
+              fontWeight: on ? 600 : 400,
               transition: motion.hover('background', 'color'),
             }}
           >{it.icon}{it.label}</button>
@@ -546,8 +552,8 @@ function Field({ value, placeholder, onChange }: {
       style={{
         width: '100%', boxSizing: 'border-box', padding: pad(2, 3),
         borderRadius: RADIUS.control, border: '1px solid var(--divider-strong)',
-        background: 'var(--surface)', color: 'var(--text-strong)',
-        ...TEXT.body, fontFamily: 'inherit', outline: 'none',
+        ...TEXT.body, background: 'var(--surface)', color: 'var(--text-strong)',
+        fontFamily: 'inherit', outline: 'none',
       }}
     />
   );
@@ -574,14 +580,22 @@ function SiteAdder({ onAdd }: { onAdd: (item: Omit<DesktopItem, 'id'>) => void }
         style={{
           flex: 1, minWidth: 0, boxSizing: 'border-box', padding: pad(2, 3),
           borderRadius: RADIUS.control, border: '1px solid var(--divider-strong)',
-          background: 'var(--surface)', color: 'var(--text-strong)',
-          ...TEXT.body, fontFamily: 'inherit', outline: 'none',
+          ...TEXT.body, background: 'var(--surface)', color: 'var(--text-strong)',
+          fontFamily: 'inherit', outline: 'none',
         }}
       />
       <button onClick={add} title="Добавить" style={{ ...iconBtn, flex: 'none' }}><Plus size={15} /></button>
     </div>
   );
 }
+
+const studioBtn: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: sp(2),
+  width: '100%', padding: pad(3, 4), border: 'none', cursor: 'default',
+  ...TEXT.body, borderRadius: RADIUS.control,
+  background: 'var(--accent)', color: 'var(--on-accent)',
+  fontWeight: 600, transition: motion.hover('background'),
+};
 
 const iconBtn: React.CSSProperties = {
   border: 'none', background: 'transparent', cursor: 'default', padding: sp(2),
