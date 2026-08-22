@@ -52,6 +52,10 @@ export type GenParseOutcome =
     size: { w: number; h: number };
     assetPhoto: boolean;
     title: string;
+    // Кто рисует плитку: сама разметка модели или один из трёх хост-рендереров
+    // (фото / таймер / словарь). См. shared/genWidget.ts::pickGenMode — решение
+    // принимается ОДИН раз здесь, потому что хост-рендерер выбрасывает разметку целиком.
+    mode: 'html' | 'photo' | 'timer' | 'lexicon';
   }
   | { ok: false; reason: 'unclear' | 'model-error'; error?: string };
 

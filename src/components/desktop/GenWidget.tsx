@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Tile, TileCaption, type WidgetProps } from './widgets';
-import { DISPLAY } from '../../styles/system';
+import { Tile, TileCaption, TileValue, type WidgetProps } from './widgets';
+import { DISPLAY, pad, RADIUS, sp } from '../../styles/system';
 import {
-  GEN_TOKEN_VARS, wrapGenSrcdoc, clampGenStorage, wantsGenPhoto, type GenFactId,
+  GEN_TOKEN_VARS, wrapGenSrcdoc, clampGenStorage, pickGenMode,
+  parseGenDurationMs, genClockLeftMs, formatGenClock, extractGenLexicon, type GenFactId,
 } from '../../../shared/genWidget';
-import { loadGenRecord, loadGenState, saveGenState, storeGenPhoto, subscribeGenStore } from '../../newtab/genStore';
+import { loadGenRecord, loadGenState, loadGenClock, saveGenState, storeGenPhoto, subscribeGenStore } from '../../newtab/genStore';
+import { startGenClock, pauseGenClock, resetGenClock } from '../../newtab/genClocks';
 import { genFontCss } from '../../newtab/genFonts';
 
 // Свой виджет: рамка стола наша, внутренности — одностраничник в песочнице.
@@ -21,6 +23,14 @@ export function GenWidget({
   useEffect(() => subscribeGenStore(() => setRev((n) => n + 1)), []);
   useEffect(() => { void genFontCss().then(setFonts); }, []);
   const rec = useMemo(() => (genId ? loadGenRecord(genId) : null), [genId, rev]);
+  const clock = useMemo(() => (genId ? loadGenClock(genId) : null), [genId, rev]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!clock || clock.endAt <= 0) return;
+    const t = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(t);
+  }, [clock]);
+  const [lexIdx, setLexIdx] = useState(0);
   const [facts, setFacts] = useState<Record<string, number | string>>({});
 
   useEffect(() => {
@@ -29,7 +39,17 @@ export function GenWidget({
     return () => { alive = false; };
   }, [rec]);
 
-  const photo = !!(rec && wantsGenPhoto(rec.phrase ?? '', rec.html, rec.photo === true));
+  // ⚠️ Режим берём из ЗАПИСИ, а не переугадываем по HTML на каждом рендере: хост-рендерер
+  // выбрасывает разметку модели целиком, и «угадал не то» здесь означает молча подменённый
+  // виджет. У старых записей поля нет — считаем теми же правилами, что и при сборке.
+  const mode = rec ? rec.mode ?? pickGenMode(rec.phrase ?? '', rec.html, rec.photo === true) : 'html';
+  const photo = mode === 'photo';
+  const timer = mode === 'timer';
+  const lexicon = mode === 'lexicon' && rec ? extractGenLexicon(rec.html) : [];
+  useEffect(() => {
+    if (lexicon.length >= 4) setLexIdx(Math.floor(Math.random() * lexicon.length));
+  }, [genId, rec?.html, lexicon.length]);
+  const durationMs = rec ? parseGenDurationMs(rec.phrase ?? '') : 25 * 60_000;
   const photoData = rec?.photoData;
   const tokens = useMemo(() => {
     const t = readTokens();
@@ -39,9 +59,9 @@ export function GenWidget({
   }, [rev, fill, hero, overImage, box.width, box.height]);
 
   const srcDoc = useMemo(() => {
-    if (!rec || !genId || photo) return '';
+    if (!rec || !genId || photo || timer || lexicon.length >= 4) return '';
     return wrapGenSrcdoc(rec.html, tokens, genId, fonts);
-  }, [rec, tokens, genId, fonts, photo]);
+  }, [rec, tokens, genId, fonts, photo, timer, lexicon.length]);
 
   const assets = useMemo(
     () => (photoData ? { photo: photoData } : {}),
@@ -52,14 +72,36 @@ export function GenWidget({
     const frame = frameRef.current;
     if (!frame || !genId) return;
     const sendFacts = () => {
-      frame.contentWindow?.postMessage({ type: 'oblako-gen-facts', facts, assets }, '*');
+      const curClock = loadGenClock(genId);
+      frame.contentWindow?.postMessage({
+        type: 'oblako-gen-facts',
+        facts: {
+          ...facts,
+          ...(curClock ? {
+            remainingMs: genClockLeftMs(curClock),
+            endAt: curClock.endAt,
+            running: curClock.endAt > 0 ? 1 : 0,
+          } : {}),
+        },
+        assets,
+      }, '*');
     };
     const onMsg = (e: MessageEvent) => {
       if (e.source !== frame.contentWindow) return;
-      const data = e.data as { type?: string; widgetId?: string; req?: string; value?: unknown };
+      const data = e.data as { type?: string; widgetId?: string; req?: string; value?: unknown; seconds?: unknown };
       if (!data || data.widgetId !== genId) return;
       if (data.type === 'oblako-gen-ready') {
         sendFacts();
+        return;
+      }
+      if (data.type === 'oblako-gen-timer-start') {
+        const sec = typeof data.seconds === 'number' ? data.seconds : durationMs / 1000;
+        startGenClock(genId, Math.max(1000, sec * 1000), loadGenClock(genId));
+        return;
+      }
+      if (data.type === 'oblako-gen-timer-stop') {
+        const cur = loadGenClock(genId);
+        if (cur) pauseGenClock(genId, cur);
         return;
       }
       if (data.type === 'oblako-gen-pick-photo') {
@@ -79,7 +121,7 @@ export function GenWidget({
     window.addEventListener('message', onMsg);
     sendFacts();
     return () => window.removeEventListener('message', onMsg);
-  }, [genId, facts, assets]);
+  }, [genId, facts, assets, durationMs, rev]);
 
   async function onPick(file: File | undefined) {
     if (!file || !genId) return;
@@ -90,8 +132,99 @@ export function GenWidget({
 
   const pick = (): void => { fileRef.current?.click(); };
 
+  const leftMs = clock ? genClockLeftMs(clock, now) : durationMs;
+  const timeStr = formatGenClock(leftMs);
+  const fs = Math.round(Math.min(
+    box.height * 0.42,
+    (box.width - 32) / (timeStr.length * 0.78),
+    92,
+  ));
+  const pair = lexicon[Math.min(lexIdx, Math.max(0, lexicon.length - 1))];
+  const heroText = pair?.[0] ?? '';
+  const subText = pair?.[1] ?? '';
+  const long = heroText.length > 22;
+  const wordFs = Math.round(Math.min(
+    long ? box.height * 0.16 : box.height * 0.32,
+    long
+      ? (box.width - 32) / (Math.min(heroText.length, 18) * 0.42)
+      : (box.width - 32) / (Math.max(heroText.length, 1) * 0.62),
+    long ? 28 : 56,
+  ));
+
   return (
     <Tile surface toned fill={fill} overImage={overImage} hero={hero} padding={0}>
+      {timer && rec && genId && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', height: '100%', padding: pad(4), gap: sp(2),
+        }}>
+          <TileCaption>{rec.title || 'Таймер'}</TileCaption>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <TileValue size={fs} hero={hero}>{timeStr}</TileValue>
+            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', marginTop: sp(2) }}>
+              {clock?.beeped ? 'Готово' : clock && clock.endAt > 0 ? 'Идёт' : 'Пауза'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: sp(2) }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (clock && clock.endAt > 0) pauseGenClock(genId, clock);
+                else startGenClock(genId, durationMs, clock);
+              }}
+              style={{
+                flex: 1, border: 'none', cursor: 'default', padding: pad(2, 3),
+                borderRadius: RADIUS.control, background: 'var(--accent)', color: 'var(--on-accent)',
+                font: 'inherit',
+              }}
+            >
+              {clock && clock.endAt > 0 ? 'Пауза' : clock?.beeped ? 'Ещё раз' : 'Старт'}
+            </button>
+            <button
+              type="button"
+              onClick={() => resetGenClock(genId, durationMs)}
+              style={{
+                flex: 1, border: 'none', cursor: 'default', padding: pad(2, 3),
+                borderRadius: RADIUS.control, background: 'var(--card-chip)', color: 'inherit',
+                font: 'inherit',
+              }}
+            >
+              Сброс
+            </button>
+          </div>
+        </div>
+      )}
+      {lexicon.length >= 4 && rec && !timer && !photo && (
+        <button
+          type="button"
+          onClick={() => {
+            if (lexicon.length < 2) return;
+            let n = Math.floor(Math.random() * lexicon.length);
+            if (n === lexIdx) n = (n + 1) % lexicon.length;
+            setLexIdx(n);
+          }}
+          style={{
+            display: 'flex', flexDirection: 'column', height: '100%', width: '100%',
+            padding: pad(4), gap: sp(2), border: 'none', background: 'transparent',
+            color: 'inherit', textAlign: 'left', cursor: 'default', font: 'inherit',
+          }}
+        >
+          <TileCaption>{rec.title || 'Слово'}</TileCaption>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 0 }}>
+            <TileValue size={wordFs} hero={hero} style={{
+              whiteSpace: long ? 'normal' : 'nowrap',
+              lineHeight: long ? 1.15 : 1,
+              overflowWrap: 'break-word',
+            }}>
+              {heroText}
+            </TileValue>
+            {!!subText && (
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', marginTop: sp(2) }}>
+                {subText}
+              </div>
+            )}
+          </div>
+        </button>
+      )}
       {photo && photoData && (
         <img
           src={photoData}
@@ -118,7 +251,7 @@ export function GenWidget({
           </div>
         </button>
       )}
-      {!photo && srcDoc && (
+      {!photo && !timer && lexicon.length < 4 && srcDoc && (
         <iframe
           ref={frameRef}
           title="Свой виджет"
@@ -127,8 +260,8 @@ export function GenWidget({
           style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'transparent' }}
         />
       )}
-      {!photo && !srcDoc && (
-        <div style={{ padding: 16, fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
+      {!photo && !timer && lexicon.length < 4 && !srcDoc && (
+        <div style={{ padding: pad(4), fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
           Виджет ещё не собран
         </div>
       )}
