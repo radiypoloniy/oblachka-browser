@@ -1,6 +1,7 @@
 import type { AutomationRule } from '../rules';
 import type { ModelErrorCode } from './ai';
 import type { GenSpec, GenKind } from '../genSpec';
+import type { GenFeedItem } from '../genWeb';
 
 // ── Узлы сайдбара ─────────────────────────────────────────────────────────────
 // Дискриминированное объединение для трёх типов узлов.
@@ -52,7 +53,18 @@ export interface FindResult {
  */
 export type GenSpecOutcome =
   | { ok: true; spec: GenSpec; size: { w: number; h: number } }
-  | { ok: false; reason: 'unclear' | 'model-error'; error?: string; kind?: GenKind };
+  // 'link' — не сложилось со ссылкой, а не с моделью: по адресу не фид и не JSON, сайт не
+  // ответил, ответ слишком большой. Отдельно от 'model-error' ради честной формулировки.
+  | { ok: false; reason: 'unclear' | 'model-error' | 'link'; error?: string; kind?: GenKind };
+
+/**
+ * Что лежит по ссылке, которую дал человек. Ходит МAIN через сессию Electron — то есть запрос
+ * уважает VPN, kill switch и адблок (см. electron/GenWebSource.ts).
+ */
+export type GenWebResult =
+  | { ok: true; kind: 'feed'; items: GenFeedItem[]; title: string }
+  | { ok: true; kind: 'json'; json: unknown }
+  | { ok: false; error: string };
 
 /**
  * Ход сборки своего виджета. `chars` — сколько символов модель уже написала на этой стадии.

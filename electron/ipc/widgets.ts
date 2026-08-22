@@ -13,6 +13,7 @@ import { extractUrlText } from '../NotebookExtract';
 import { generateStudio } from '../NotebookStudio';
 import type { StudioKind } from '../NotebookStudio';
 import { parsePhraseToGenSpec } from '../GenSpecParser';
+import { fetchGenWeb } from '../GenWebSource';
 import { getWeather } from '../WeatherService';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
@@ -58,7 +59,9 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (_e, kind: StudioKind, context: string) =>
     generateStudio(kind, typeof context === 'string' ? context : ''));
   let genParseBusy = false;
-  ipcMain.handle(IPC.DESKTOP_GEN_SPEC, async (e, phrase: string) => {
+  ipcMain.handle(IPC.DESKTOP_GEN_WEB, (_e, url: string, force: boolean) =>
+    fetchGenWeb(String(url ?? ''), !!force));
+  ipcMain.handle(IPC.DESKTOP_GEN_SPEC, async (e, phrase: string, url: string) => {
     if (genParseBusy) return { ok: false, reason: 'model-error', error: 'Уже собираю другой виджет' };
     genParseBusy = true;
     // ⚠️ Отвечаем ТОМУ, кто спросил, а не всем окнам: сборка идёт на одном столе, и чужая
@@ -67,7 +70,7 @@ export function registerWidgetsIpc(d: IpcDeps): void {
     try {
       return await parsePhraseToGenSpec(String(phrase ?? ''), (p) => {
         if (!sender.isDestroyed()) sender.send(IPC.DESKTOP_GEN_PROGRESS, p);
-      });
+      }, String(url ?? ''));
     } catch (err) {
       console.warn('[gen-widget] разбор упал:', err);
       return { ok: false, reason: 'model-error' };

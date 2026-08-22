@@ -21,7 +21,7 @@ const checkTrue = (name, got) => check(name, !!got, true);
 const NOW = Date.parse('2026-08-22T09:00:00');
 
 console.log('\n── каталог типов ──');
-check('десять типов', GEN_KINDS.length, 10);
+check('одиннадцать типов', GEN_KINDS.length, 11);
 checkTrue('list в каталоге', isGenKind('list'));
 checkTrue('выдуманный тип отвергнут', !isGenKind('snake'));
 
@@ -74,8 +74,49 @@ console.log('\n── данные браузера, а не выдумка ─�
   check('трекеры лентой не показать', validateGenSpec({ kind: 'feed', title: 'x', source: 'blocked' }, NOW), null);
   check('а числом — да', validateGenSpec({ kind: 'stat', title: 'x', source: 'blocked' }, NOW)?.source, 'blocked');
   check('история числом не показывается', validateGenSpec({ kind: 'stat', title: 'x', source: 'history' }, NOW), null);
-  checkTrue('источники перечислены', GEN_SOURCES.length === 5 && isGenSource('tabs'));
+  checkTrue('источники перечислены', GEN_SOURCES.length === 6 && isGenSource('tabs') && isGenSource('web'));
   check('у источника есть человеческое имя', genSourceLabel('topsites'), 'Частые сайты');
+}
+
+console.log('\n── по ссылке человека ──');
+{
+  // ⚠️ Ссылку даёт ЧЕЛОВЕК. Модель адресов не знает и, если её попросить, выдумает
+  // правдоподобный — ровно как выдумывала историю посещений.
+  const feed = validateGenSpec({ kind: 'feed', title: 'Новости', source: 'web', url: 'https://example.com/rss', rows: 6 }, NOW);
+  check('лента по ссылке собирается', [feed?.source, feed?.url], ['web', 'https://example.com/rss']);
+  check('без ссылки не собирается', validateGenSpec({ kind: 'feed', title: 'x', source: 'web' }, NOW), null);
+  // ⚠️ Адрес судится ЗДЕСЬ, а не только в момент запроса: спека уходит на диск, и виджета
+  // с адресом роутера не должно существовать вовсе.
+  check('адрес роутера не спека', validateGenSpec({ kind: 'feed', title: 'x', source: 'web', url: 'https://192.168.1.1/rss' }, NOW), null);
+  check('http не спека', validateGenSpec({ kind: 'feed', title: 'x', source: 'web', url: 'http://example.com/rss' }, NOW), null);
+
+  const stat = validateGenSpec({ kind: 'stat', title: 'Курс', source: 'web', url: 'https://api.example/v1', path: 'rates.USD.value', unit: '₽' }, NOW);
+  check('число по ссылке собирается', [stat?.path, stat?.unit], ['rates.USD.value', '₽']);
+  // Число без пути в ответе взять неоткуда — это провал, а не «плитка с прочерком».
+  check('число без пути не собирается', validateGenSpec({ kind: 'stat', title: 'x', source: 'web', url: 'https://api.example/v1' }, NOW), null);
+  // ⚠️ 'web' не предлагается модели в схеме: иначе она начнёт выдумывать адреса.
+  checkTrue('в схеме модели источника web нет',
+    !JSON.stringify(genDataSchema('feed')).includes('"web"') && !JSON.stringify(genDataSchema('stat')).includes('"web"'));
+}
+
+console.log('\n── часовые пояса ──');
+{
+  // ⚠️ Живой вопрос 22.08: «выйдет ли виджет из сайта-конвертера поясов». Из сайта не выйдет —
+  // там нет ни фида, ни JSON. А виджет выйдет: перевод времени это не чужие данные, а
+  // вычисление, и все 400+ поясов лежат в ICU прямо в браузере.
+  const z = validateGenSpec({
+    kind: 'zones', title: 'Время',
+    items: [{ main: 'America/New_York', sub: 'Нью-Йорк' }, { main: 'Europe/Moscow', sub: 'Москва' }],
+  }, NOW);
+  check('два пояса', z?.items?.length, 2);
+  check('выдуманный пояс выкинут',
+    validateGenSpec({ kind: 'zones', title: 'x', items: [{ main: 'Europe/Moscow' }, { main: 'Mars/Olympus' }] }, NOW)?.items?.length, 1);
+  check('ни одного настоящего — не виджет',
+    validateGenSpec({ kind: 'zones', title: 'x', items: [{ main: 'EDT' }, { main: 'МСК' }] }, NOW), null);
+  check('больше четырёх не показываем', validateGenSpec({
+    kind: 'zones', title: 'x',
+    items: ['Europe/Moscow', 'Asia/Tokyo', 'America/New_York', 'Europe/Berlin', 'Asia/Dubai'].map((m) => ({ main: m })),
+  }, NOW)?.items?.length, 4);
 }
 
 console.log('\n── жребий числом ──');

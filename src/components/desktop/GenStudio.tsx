@@ -5,7 +5,7 @@ import {
   GEN_SIZES, type GenSizeName,
 } from '../../../shared/genWidget';
 import {
-  genKindLabel, genKindHint, genKindSize, validateGenSpec,
+  genKindLabel, genKindHint, genKindSize, validateGenSpec, genSourceLabel,
   type GenSpec, type GenItem,
 } from '../../../shared/genSpec';
 import { saveGenRecord, deleteGenRecord, loadGenRecord } from '../../newtab/genStore';
@@ -83,6 +83,7 @@ export default function GenStudio({
   editId?: string;
 }) {
   const [phrase, setPhrase] = useState('');
+  const [link, setLink] = useState('');
   const [sizeName, setSizeName] = useState<GenSizeName>('small');
   const [fill, setFill] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -109,6 +110,7 @@ export default function GenStudio({
     original.current = rec.spec;
     setSpec(rec.spec);
     setPhrase(rec.phrase ?? '');
+    setLink(rec.spec.url ?? '');
     if (rec.size) setSizeName(nameForSize(rec.size));
     sizeTouched.current = true;
   }, [editId]);
@@ -144,19 +146,24 @@ export default function GenStudio({
 
   async function assemble() {
     const p = phrase.trim();
-    if (p.length < 3 || busy) return;
+    // Со ссылкой фраза не обязательна: что показывать, решает то, что по ней лежит.
+    if ((p.length < 3 && !link.trim()) || busy) return;
     setBusy(true);
     busyRef.current = true;
     setError('');
     setSpec(null);
     setProgress({ stage: 'kind', chars: 0 });
     try {
-      const res: GenSpecOutcome = await window.oblako.buildGenWidget(p);
+      const res: GenSpecOutcome = await window.oblako.buildGenWidget(p, link.trim() || undefined);
       if (!res.ok) {
         // ⚠️ Если тип назван, а данные под него не собрались — говорим это прямо и называем тип.
         // Человеку это подсказка, что переформулировать, а не глухое «не получилось».
         const msg = res.reason === 'model-error'
           ? (res.error || 'Модель не ответила. Нужна скачанная локальная модель.')
+          : res.reason === 'link'
+          // ⚠️ Отказ по ссылке говорит ПРО ССЫЛКУ, а не про модель: чаще всего человек дал
+          // адрес обычной страницы, и ему нужно знать, что искать вместо неё.
+          ? (res.error || 'По этой ссылке виджет не собрать')
           : res.kind
             ? `Понял как «${genKindLabel(res.kind)}», но не собрал данные. Скажите конкретнее — например, сколько и чего.`
             : 'Не понял, какая это плитка. Попробуйте описать проще: список, счётчик, жребий, таймер, цель, отсчёт до даты, заметка.';
@@ -257,6 +264,22 @@ export default function GenStudio({
           {error && <div style={{ ...TEXT.body, color: 'var(--danger-500)' }}>{error}</div>}
         </Group>
 
+        {/* ⚠️ Ссылку даёт ЧЕЛОВЕК, и это не мелочь интерфейса. Модель адресов не знает и,
+            если её попросить, выдумает правдоподобный — ровно как выдумывала историю
+            посещений. Здесь она вступает уже после того, как хост сходил по ссылке. */}
+        <Group
+          title="Ссылка (не обязательно)"
+          note="Адрес RSS-ленты или JSON-ответа. Запрос идёт из браузера — значит через VPN, без ваших кук. Обычную страницу разобрать нельзя: она меняется от любой перевёрстки"
+        >
+          <input
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            disabled={busy}
+            placeholder="https://example.com/rss"
+            style={{ ...inputStyle, opacity: busy ? 0.6 : 1 }}
+          />
+        </Group>
+
         {spec && (
           <Group title="Вид плитки">
             <div style={{
@@ -309,10 +332,10 @@ export default function GenStudio({
         <button
           type="button"
           onClick={() => void assemble()}
-          disabled={busy || phrase.trim().length < 3}
+          disabled={busy || (phrase.trim().length < 3 && !link.trim())}
           style={{
             ...btnBase, background: 'var(--accent)', color: 'var(--on-accent)', fontWeight: 600,
-            opacity: busy || phrase.trim().length < 3 ? 0.5 : 1,
+            opacity: busy || (phrase.trim().length < 3 && !link.trim()) ? 0.5 : 1,
           }}
         >{busy ? 'Собираю…' : spec ? 'Пересобрать' : 'Собрать'}</button>
         {spec && (
@@ -344,14 +367,23 @@ export default function GenStudio({
  */
 function SpecEditor({ spec, onPatch }: { spec: GenSpec; onPatch: (p: Partial<GenSpec>) => void }) {
   const items = spec.items ?? [];
-  const listy = spec.kind === 'list' || spec.kind === 'dice' || spec.kind === 'checklist';
-  const subLabel = spec.kind === 'list' ? 'перевод, автор, пояснение' : 'пояснение';
+  const listy = spec.kind === 'list' || spec.kind === 'dice' || spec.kind === 'checklist'
+    || spec.kind === 'zones';
+  const subLabel = spec.kind === 'list' ? 'перевод, автор, пояснение'
+    : spec.kind === 'zones' ? 'название города' : 'пояснение';
 
   return (
     <Group title="Что внутри" note="Правится руками — модель для этого больше не нужна">
       <Field label="Заголовок" value={spec.title} onChange={(v) => onPatch({ title: v })} />
 
-      {listy && (
+      {spec.kind === 'dice' && typeof spec.from === 'number' && (
+        <>
+          <NumField label="От" value={spec.from} onChange={(v) => onPatch({ from: v })} />
+          <NumField label="До" value={spec.to ?? spec.from + 1} onChange={(v) => onPatch({ to: v })} />
+        </>
+      )}
+
+      {listy && !(spec.kind === 'dice' && typeof spec.from === 'number') && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
           {items.map((it, i) => (
             <div key={i} style={{ display: 'flex', gap: sp(2), alignItems: 'flex-start' }}>
@@ -380,7 +412,9 @@ function SpecEditor({ spec, onPatch }: { spec: GenSpec; onPatch: (p: Partial<Gen
           ))}
           <button
             type="button"
-            onClick={() => onPatch({ items: [...items, { main: 'Новый пункт' }] })}
+            onClick={() => onPatch({
+              items: [...items, { main: spec.kind === 'zones' ? 'Europe/Moscow' : 'Новый пункт' }],
+            })}
             style={{
               ...TEXT.body, alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center',
               gap: sp(2), padding: pad(1, 3), cursor: 'default', borderRadius: RADIUS.pill,
@@ -423,6 +457,25 @@ function SpecEditor({ spec, onPatch }: { spec: GenSpec; onPatch: (p: Partial<Gen
             style={inputStyle}
           />
         </label>
+      )}
+
+      {(spec.kind === 'feed' || spec.kind === 'stat') && spec.source === 'web' && (
+        <>
+          <Field label="Ссылка" value={spec.url ?? ''} onChange={(v) => onPatch({ url: v })} />
+          {spec.kind === 'stat' && (
+            <>
+              <Field label="Путь в ответе" value={spec.path ?? ''} onChange={(v) => onPatch({ path: v })} />
+              <Field label="Единица" value={spec.unit ?? ''} onChange={(v) => onPatch({ unit: v })} />
+            </>
+          )}
+          {spec.kind === 'feed' && (
+            <NumField label="Строк" value={spec.rows ?? 5} onChange={(v) => onPatch({ rows: v })} />
+          )}
+        </>
+      )}
+
+      {(spec.kind === 'feed' || spec.kind === 'stat') && spec.source !== 'web' && (
+        <div style={{ ...TEXT.caption }}>Источник: {genSourceLabel(spec.source ?? 'history')}</div>
       )}
 
       {spec.kind === 'note' && (

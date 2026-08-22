@@ -85,6 +85,7 @@
   "DEFAULT_BROWSER_REQUEST=default-browser:request",
   "DESKTOP_GEN_PROGRESS=desktop:gen-progress",
   "DESKTOP_GEN_SPEC=desktop:gen-spec",
+  "DESKTOP_GEN_WEB=desktop:gen-web",
   "DIGEST_BUILD=digest:build",
   "DIGEST_GET=digest:get",
   "DOWNLOADS_CHANGED=downloads:changed",

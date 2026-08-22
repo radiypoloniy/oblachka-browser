@@ -30,8 +30,9 @@ export const GEN_KINDS = [
   'goal',      // цель и прогресс: «120 из 300 страниц»
   'countdown', // сколько дней до даты
   'note',      // крупный текст-памятка
-  'feed',      // список ИЗ БРАУЗЕРА: последние сайты, частые, вкладки, загрузки
-  'stat',      // одно большое число ИЗ БРАУЗЕРА: вкладок открыто, трекеров срезано
+  'feed',      // список: из браузера или по ссылке человека (RSS/Atom)
+  'stat',      // одно большое число: из браузера или по ссылке человека (JSON)
+  'zones',     // часы в других поясах — считается локально, без сети
 ] as const;
 
 export type GenKind = (typeof GEN_KINDS)[number];
@@ -44,7 +45,7 @@ export type GenKind = (typeof GEN_KINDS)[number];
  * историю нельзя — её можно только взять. Поэтому модель здесь выбирает ИСТОЧНИК из закрытого
  * списка, а данные подставляет хост в момент показа. Заодно они всегда свежие.
  */
-export const GEN_SOURCES = ['history', 'topsites', 'tabs', 'downloads', 'blocked'] as const;
+export const GEN_SOURCES = ['history', 'topsites', 'tabs', 'downloads', 'blocked', 'web'] as const;
 export type GenSource = (typeof GEN_SOURCES)[number];
 
 export function isGenSource(v: unknown): v is GenSource {
@@ -58,6 +59,8 @@ const SOURCE_SHAPE: Record<GenSource, { feed: boolean; stat: boolean }> = {
   tabs:      { feed: true,  stat: true },
   downloads: { feed: true,  stat: true },
   blocked:   { feed: false, stat: true },
+  // Ссылку даёт человек, поэтому 'web' умеет обе формы: лента из фида и число из JSON.
+  web:       { feed: true,  stat: true },
 };
 
 export function genSourceLabel(src: GenSource): string {
@@ -67,6 +70,7 @@ export function genSourceLabel(src: GenSource): string {
     case 'tabs': return 'Открытые вкладки';
     case 'downloads': return 'Загрузки';
     case 'blocked': return 'Срезано трекеров';
+    case 'web': return 'По вашей ссылке';
   }
 }
 
@@ -102,6 +106,10 @@ export interface GenSpec {
   source?: GenSource;
   /** feed: сколько строк показывать. */
   rows?: number;
+  /** feed · stat при source==='web': адрес, который дал ЧЕЛОВЕК. Модель адресов не выдумывает. */
+  url?: string;
+  /** stat при source==='web': путь к значению в JSON, выбранный по настоящему образцу ответа. */
+  path?: string;
   /** dice: бросок ЧИСЛА, а не строки. from < to. */
   from?: number;
   to?: number;
@@ -129,6 +137,19 @@ export const GEN_KIND_SCHEMA = {
   type: 'object',
   properties: {
     kind: { enum: [...GEN_KINDS] },
+    title: { type: 'string', maxLength: GEN_TITLE_MAX },
+  },
+} as const;
+
+/**
+ * Что вытащить из JSON по ссылке человека. Отдельная схема, не привязанная к типу: этот прогон
+ * случается только когда ссылка уже скачана и модель видит НАСТОЯЩИЙ образец ответа.
+ */
+export const GEN_WEB_VALUE_SCHEMA = {
+  type: 'object',
+  properties: {
+    path: { type: 'string', maxLength: 120 },
+    unit: { type: 'string', maxLength: 16 },
     title: { type: 'string', maxLength: GEN_TITLE_MAX },
   },
 } as const;
@@ -189,17 +210,24 @@ export function genDataSchema(kind: GenKind): Record<string, unknown> {
     case 'note':
       return { type: 'object', properties: { text: { type: 'string', maxLength: GEN_TEXT_MAX } } };
     case 'feed':
+      // ⚠️ 'web' из перечисления УБРАН намеренно: этот источник выбирает не модель, а человек —
+      // тем, что дал ссылку. Предложи мы его модели, она начала бы выдумывать адреса.
       return {
         type: 'object',
         properties: {
-          source: { enum: GEN_SOURCES.filter((x) => SOURCE_SHAPE[x].feed) },
+          source: { enum: GEN_SOURCES.filter((x) => SOURCE_SHAPE[x].feed && x !== 'web') },
           rows: { type: 'integer' },
         },
       };
     case 'stat':
       return {
         type: 'object',
-        properties: { source: { enum: GEN_SOURCES.filter((x) => SOURCE_SHAPE[x].stat) } },
+        properties: { source: { enum: GEN_SOURCES.filter((x) => SOURCE_SHAPE[x].stat && x !== 'web') } },
+      };
+    case 'zones':
+      return {
+        type: 'object',
+        properties: { items: { type: 'array', items: item, minItems: 1, maxItems: 4 } },
       };
   }
 }
@@ -309,7 +337,32 @@ export function validateGenSpec(raw: unknown, now = Date.now()): GenSpec | null 
     // ⚠️ Источник обязан УМЕТЬ нужную форму: «срезано трекеров» — это число, лентой оно не бывает.
     if (!SOURCE_SHAPE[o.source][kind === 'feed' ? 'feed' : 'stat']) return null;
     spec.source = o.source;
+    if (o.source === 'web') {
+      // ⚠️ Адрес обязан быть годным ЗДЕСЬ, а не только в момент запроса: спека уходит на диск,
+      // и виджет с http-ссылкой или адресом роутера не должен вообще существовать.
+      const url = typeof o.url === 'string' ? o.url.trim() : '';
+      if (!isAllowedGenUrl(url)) return null;
+      spec.url = url;
+      if (kind === 'stat') {
+        const path = typeof o.path === 'string' ? o.path.trim().slice(0, 120) : '';
+        if (!path) return null; // число без пути в ответе взять неоткуда
+        spec.path = path;
+      }
+    }
     if (kind === 'feed') spec.rows = clampInt(o.rows, 3, 12, 5);
+    if (typeof o.unit === 'string') {
+      const unit = cleanText(o.unit, 16);
+      if (unit) spec.unit = unit;
+    }
+    return spec;
+  }
+  if (kind === 'zones') {
+    // ⚠️ Пояса СЧИТАЮТСЯ ЛОКАЛЬНО. Живой вопрос 22.08 — «выйдет ли виджет из сайта-конвертера
+    // часовых поясов»: из сайта не выйдет (там нет ни фида, ни JSON), а виджет — выйдет, потому
+    // что перевод времени это не чужие данные, а вычисление. В ICU лежат все 400+ поясов.
+    const items = cleanItems(o.items).filter((it) => isKnownTimeZone(it.main));
+    if (items.length < 1) return null;
+    spec.items = items.slice(0, 4);
     return spec;
   }
   if (kind === 'counter') {
@@ -349,6 +402,40 @@ export function validateGenSpec(raw: unknown, now = Date.now()): GenSpec | null 
   return spec;
 }
 
+/** Знает ли ICU такой пояс. ⚠️ Проверка обязательна: неизвестный id роняет Intl исключением. */
+export function isKnownTimeZone(id: string): boolean {
+  if (typeof id !== 'string' || !id.includes('/')) return false;
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: id });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Годится ли адрес.
+ *
+ * ⚠️ Только https и только публичный хост. http означает открытый канал, а loopback и локальная
+ * сеть — доступ к тому, что человек не публиковал: роутеру, принтеру, локальным админкам.
+ * Виджет, ходящий на 192.168.1.1, — это не виджет, это сканер.
+ */
+export function isAllowedGenUrl(raw: string): boolean {
+  let u: URL;
+  try { u = new URL(String(raw ?? '').trim()); } catch { return false; }
+  if (u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return false;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    const [a, b] = host.split('.').map(Number) as [number, number];
+    if (a === 127 || a === 10 || a === 0 || a === 169) return false;
+    if (a === 192 && b === 168) return false;
+    if (a === 172 && b >= 16 && b <= 31) return false;
+  }
+  if (host.includes(':')) return false; // голый IPv6 — тот же случай, что и приватный IPv4
+  return true;
+}
+
 export function defaultTitle(kind: GenKind): string {
   switch (kind) {
     case 'list': return 'Случайное';
@@ -359,8 +446,9 @@ export function defaultTitle(kind: GenKind): string {
     case 'goal': return 'Цель';
     case 'countdown': return 'Отсчёт';
     case 'note': return 'Заметка';
-    case 'feed': return 'Из браузера';
-    case 'stat': return 'Счёт браузера';
+    case 'feed': return 'Лента';
+    case 'stat': return 'Число';
+    case 'zones': return 'Пояса';
   }
 }
 
@@ -375,8 +463,9 @@ export function genKindLabel(kind: GenKind): string {
     case 'goal': return 'Цель';
     case 'countdown': return 'Отсчёт до даты';
     case 'note': return 'Заметка';
-    case 'feed': return 'Лента из браузера';
-    case 'stat': return 'Число из браузера';
+    case 'feed': return 'Лента из браузера или по вашей ссылке';
+    case 'stat': return 'Число из браузера или по вашей ссылке';
+    case 'zones': return 'Время в других поясах';
   }
 }
 
@@ -391,8 +480,9 @@ export function genKindHint(kind: GenKind): string {
     case 'goal': return 'Кольцо прогресса до цели';
     case 'countdown': return 'Сколько дней осталось';
     case 'note': return 'Крупный текст на виду';
-    case 'feed': return 'Настоящие данные браузера, всегда свежие';
-    case 'stat': return 'Настоящее число браузера, всегда свежее';
+    case 'feed': return 'Настоящие данные, всегда свежие';
+    case 'stat': return 'Настоящее число, всегда свежее';
+    case 'zones': return 'Считается на месте, без сети';
   }
 }
 
@@ -407,6 +497,7 @@ export function genKindSize(kind: GenKind): { w: number; h: number } {
     case 'note': return { w: 4, h: 2 };
     case 'checklist': return { w: 4, h: 4 };
     case 'feed': return { w: 4, h: 4 };
+    case 'zones': return { w: 4, h: 2 };
     default: return { w: 2, h: 2 };
   }
 }

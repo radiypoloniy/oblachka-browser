@@ -4,6 +4,7 @@ import { TileCaption, TileValue } from './widgets';
 import { RADIUS, TEXT, motion, pad, sp } from '../../styles/system';
 import { daysUntil, genSourceLabel, type GenSpec, type GenRuntime, type GenSource, type GenItem } from '../../../shared/genSpec';
 import { genClockLeftMs } from '../../../shared/genWidget';
+import { resolveJsonPath, displayableValue } from '../../../shared/genWeb';
 
 // Восемь плиток каталога — нарисованы РУКАМИ, как «Погода» и «Часы».
 //
@@ -280,11 +281,21 @@ export function GenNote({ spec, box, hero }: KindProps) {
 
 interface FeedRow { main: string; sub?: string; url?: string }
 
-async function readFeed(source: GenSource, rows: number): Promise<FeedRow[]> {
+async function readFeed(source: GenSource, rows: number, url?: string): Promise<FeedRow[]> {
   const host = (u: string): string => {
     try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; }
   };
   try {
+    if (source === 'web') {
+      // ⚠️ Ходит не эта страница, а main: запрос идёт сессией Electron и потому уважает VPN.
+      const got = await window.oblako.fetchGenWeb(url ?? '');
+      if (!got.ok || got.kind !== 'feed') return [];
+      return got.items.slice(0, rows).map((it) => ({
+        main: it.title,
+        sub: it.at ? new Date(it.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : undefined,
+        url: it.link,
+      }));
+    }
     if (source === 'history') {
       const raw = await window.oblako.getHistory(rows * 4);
       const seen = new Set<string>();
@@ -323,9 +334,9 @@ export function GenFeed({ spec, onOpen }: KindProps & { onOpen?: (url: string) =
   const [data, setData] = useState<FeedRow[] | null>(null);
   useEffect(() => {
     let alive = true;
-    void readFeed(source, rows).then((d) => { if (alive) setData(d); });
+    void readFeed(source, rows, spec.url).then((d) => { if (alive) setData(d); });
     return () => { alive = false; };
-  }, [source, rows]);
+  }, [source, rows, spec.url]);
   return (
     <div style={shell()}>
       <TileCaption>{spec.title || genSourceLabel(source)}</TileCaption>
@@ -361,35 +372,42 @@ export function GenFeed({ spec, onOpen }: KindProps & { onOpen?: (url: string) =
 }
 
 // ── Из браузера: число ───────────────────────────────────────────────────────
-async function readStat(source: GenSource): Promise<{ value: number; unit: string }> {
+async function readStat(source: GenSource, spec?: GenSpec): Promise<{ value: string; unit: string }> {
   try {
+    if (source === 'web') {
+      const got = await window.oblako.fetchGenWeb(spec?.url ?? '');
+      if (!got.ok || got.kind !== 'json') return { value: '—', unit: '' };
+      const shown = displayableValue(resolveJsonPath(got.json, spec?.path ?? ''));
+      return { value: shown ?? '—', unit: spec?.unit ?? '' };
+    }
     if (source === 'tabs') {
       const tabs = await window.oblako.getAllTabs();
-      return { value: tabs.filter((t) => t.kind === 'page').length, unit: 'вкладок' };
+      return { value: String(tabs.filter((t) => t.kind === 'page').length), unit: 'вкладок' };
     }
     if (source === 'blocked') {
       const st = await window.oblako.getAdBlockState();
-      return { value: st.sessionBlockCount, unit: 'за сеанс' };
+      return { value: String(st.sessionBlockCount), unit: 'за сеанс' };
     }
     const dl = await window.oblako.getDownloads();
-    return { value: dl.length, unit: 'файлов' };
+    return { value: String(dl.length), unit: 'файлов' };
   } catch {
-    return { value: 0, unit: '' };
+    return { value: '—', unit: '' };
   }
 }
 
 export function GenStat({ spec, box, hero }: KindProps) {
   const source = spec.source ?? 'tabs';
-  const [stat, setStat] = useState<{ value: number; unit: string } | null>(null);
+  const [stat, setStat] = useState<{ value: string; unit: string } | null>(null);
   useEffect(() => {
     let alive = true;
-    const read = () => { void readStat(source).then((v) => { if (alive) setStat(v); }); };
+    const read = () => { void readStat(source, spec).then((v) => { if (alive) setStat(v); }); };
     read();
-    // Число из браузера обязано быть живым: вкладки открывают и закрывают, пока плитка на виду.
-    const t = window.setInterval(read, 5000);
+    // ⚠️ Число из браузера обязано быть живым: вкладки открывают и закрывают, пока плитка на
+    // виду. По ссылке частим реже — чужой сервер не наш, и там свой порог (см. GenWebSource).
+    const t = window.setInterval(read, source === 'web' ? 60_000 : 5000);
     return () => { alive = false; window.clearInterval(t); };
-  }, [source]);
-  const shown = stat ? String(stat.value) : '—';
+  }, [source, spec]);
+  const shown = stat ? stat.value : '—';
   return (
     <div style={shell()}>
       <TileCaption>{spec.title || genSourceLabel(source)}</TileCaption>
@@ -399,6 +417,46 @@ export function GenStat({ spec, box, hero }: KindProps) {
       </div>
     </div>
   );
+}
+
+// ── Часы других поясов ───────────────────────────────────────────────────────
+// ⚠️ БЕЗ СЕТИ. Живой вопрос 22.08 — «выйдет ли виджет из сайта-конвертера часовых поясов»:
+// из сайта не выйдет, там нет ни фида, ни JSON. А виджет выходит, потому что перевод времени —
+// это не чужие данные, а вычисление: все 400+ поясов лежат в ICU прямо в браузере.
+export function GenZones({ spec, box }: KindProps) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 10_000);
+    return () => window.clearInterval(t);
+  }, []);
+  const items = spec.items ?? [];
+  const size = Math.round(Math.min(box.height / Math.max(items.length, 1) * 0.5, 34));
+  return (
+    <div style={shell()}>
+      <TileCaption>{spec.title}</TileCaption>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: sp(1) }}>
+        {items.map((it) => (
+          <div key={it.main} style={{ display: 'flex', alignItems: 'baseline', gap: sp(2) }}>
+            <span style={{
+              ...TEXT.body, flex: 1, minWidth: 0, color: 'var(--text-faint)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{it.sub || it.main.split('/').pop()?.replace(/_/g, ' ')}</span>
+            <TileValue size={size}>{zoneTime(it.main, now)}</TileValue>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function zoneTime(zone: string, now: number): string {
+  try {
+    return new Intl.DateTimeFormat('ru-RU', {
+      timeZone: zone, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(now));
+  } catch {
+    return '--:--';
+  }
 }
 
 // ── Таймер ───────────────────────────────────────────────────────────────────
@@ -483,4 +541,5 @@ export const GEN_KIND_RENDERERS = {
   note: GenNote,
   feed: GenFeed,
   stat: GenStat,
+  zones: GenZones,
 } as const;

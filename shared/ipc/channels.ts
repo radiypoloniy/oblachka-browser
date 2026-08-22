@@ -76,6 +76,7 @@ export const IPC = {
   RULES_CHANGED:     'rules:changed',      // main → renderer: список изменился
 
   DESKTOP_GEN_SPEC: 'desktop:gen-spec',    // renderer → main: фраза → спека своего виджета (тип + данные, по грамматике)
+  DESKTOP_GEN_WEB: 'desktop:gen-web',      // renderer → main: сходить по ссылке человека (фид или JSON) через сессию Electron
   DESKTOP_GEN_PROGRESS: 'desktop:gen-progress', // main → renderer: ход сборки (стадия + объём)
 
   // Омнибокс

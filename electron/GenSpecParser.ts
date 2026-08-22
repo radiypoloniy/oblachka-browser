@@ -1,8 +1,10 @@
 import { runTabOrganizePrompt } from './TranslationService';
 import {
-  GEN_KIND_SCHEMA, genDataSchema, validateGenSpec, isGenKind, genKindHint, genKindSize,
-  GEN_KINDS, type GenKind, type GenSpec,
+  GEN_KIND_SCHEMA, GEN_WEB_VALUE_SCHEMA, genDataSchema, validateGenSpec, isGenKind,
+  genKindHint, genKindSize, isAllowedGenUrl, GEN_KINDS, type GenKind, type GenSpec,
 } from '../shared/genSpec';
+import { jsonSample, jsonLeafPaths, resolveJsonPath, displayableValue } from '../shared/genWeb';
+import { fetchGenWeb } from './GenWebSource';
 
 // Фраза человека → спека виджета. Модель НЕ ПИШЕТ КОД — она выбирает тип и заполняет поля.
 //
@@ -28,7 +30,72 @@ export type GenSpecOutcome =
   | { ok: true; spec: GenSpec; size: { w: number; h: number } }
   // 'unclear' — фраза не легла ни в один тип каталога. Это НОРМАЛЬНЫЙ исход, и человеку про
   // него говорят словами: раньше в такой ситуации на стол вставала пустая плитка.
-  | { ok: false; reason: 'unclear' | 'model-error'; error?: string; kind?: GenKind };
+  | { ok: false; reason: 'unclear' | 'model-error' | 'link'; error?: string; kind?: GenKind };
+
+/**
+ * Виджет по ссылке, которую дал ЧЕЛОВЕК.
+ *
+ * ⚠️ Порядок здесь важен и обратен привычному: СНАЧАЛА хост идёт по ссылке, и только потом
+ * спрашивают модель. Без этого она выбирала бы путь в JSON вслепую — то есть выдумывала бы
+ * ключи, ровно как выдумывала историю посещений. Модель отвечает уже по настоящему образцу.
+ *
+ * ⚠️ Фиду модель не нужна вовсе: заголовки в RSS/Atom лежат по стандарту, спрашивать не о чем.
+ */
+async function buildFromUrl(
+  phrase: string,
+  url: string,
+  onProgress?: (p: GenSpecProgress) => void,
+): Promise<GenSpecOutcome> {
+  onProgress?.({ stage: 'kind', chars: 0 });
+  const got = await fetchGenWeb(url, true);
+  if (!got.ok) return { ok: false, reason: 'link', error: got.error };
+
+  if (got.kind === 'feed') {
+    const spec = validateGenSpec({
+      kind: 'feed', source: 'web', url, rows: 6,
+      title: got.title || phrase.slice(0, 24),
+    });
+    if (!spec) return { ok: false, reason: 'link', error: 'Ссылка не годится для виджета' };
+    onProgress?.({ stage: 'done', chars: 0 });
+    return { ok: true, spec, size: genKindSize('feed') };
+  }
+
+  const paths = jsonLeafPaths(got.json);
+  if (paths.length === 0) {
+    return { ok: false, reason: 'link', error: 'В ответе нет ни одного числа или короткой строки' };
+  }
+  let chars = 0;
+  onProgress?.({ stage: 'data', chars: 0 });
+  const res = await runTabOrganizePrompt(
+    `A browser home-screen tile must show ONE value from this JSON answer.\n`
+    + `The user asked, in Russian: "${phrase}"\n\n`
+    + `Here is the real answer, shortened:\n${JSON.stringify(jsonSample(got.json))}\n\n`
+    + `Paths you may choose from (copy one EXACTLY):\n${paths.slice(0, 24).join('\n')}\n\n`
+    + `Give "path" (one of the above), "unit" (a short Russian word or a sign like ₽, may be empty) `
+    + `and "title" (1-3 Russian words).\nAnswer as JSON.`,
+    {
+      maxTokens: 200,
+      schema: GEN_WEB_VALUE_SCHEMA,
+      onChunk: (t) => { chars += t.length; onProgress?.({ stage: 'data', chars }); },
+    },
+  );
+  onProgress?.({ stage: 'done', chars });
+  if (!res.ok) return { ok: false, reason: 'model-error', error: res.error };
+
+  const picked = parseJson(res.out) as { path?: unknown; unit?: unknown; title?: unknown } | null;
+  let path = typeof picked?.path === 'string' ? picked.path.trim() : '';
+  // ⚠️ Путь проверяем на НАСТОЯЩЕМ ответе, а не верим на слово: грамматика гарантирует форму
+  // строки, но не то, что такой ключ существует. Промах — берём первый годный сам, потому что
+  // ссылка рабочая и отказывать человеку не за что.
+  if (displayableValue(resolveJsonPath(got.json, path)) === null) path = paths[0] ?? '';
+  const spec = validateGenSpec({
+    kind: 'stat', source: 'web', url, path,
+    unit: typeof picked?.unit === 'string' ? picked.unit : '',
+    title: typeof picked?.title === 'string' ? picked.title : phrase.slice(0, 24),
+  });
+  if (!spec) return { ok: false, reason: 'link', error: 'Не удалось выбрать значение в ответе' };
+  return { ok: true, spec, size: genKindSize('stat') };
+}
 
 function catalogLines(): string {
   return GEN_KINDS.map((k) => `- ${k}: ${genKindHint(k)}`).join('\n');
@@ -48,6 +115,7 @@ function buildKindPrompt(phrase: string): string {
     `- Pages read, kilometres run, anything with a finish line is "goal".\n` +
     `- Days until a date (holiday, birthday) is "countdown".\n` +
     `- A reminder to keep in sight is "note".\n` +
+    `- Time in another city or time zone is "zones" — it is computed locally, no internet needed.\n` +
     // ⚠️ Всё, что про САМ БРАУЗЕР, обязано уходить в feed/stat: выдумать историю модель не может,
     // и на «список последних посещённых сайтов» она честно сочиняла афоризмы (живой случай 22.08).
     `- Anything about the BROWSER ITSELF — visited sites, history, open tabs, downloads, blocked\n` +
@@ -109,6 +177,13 @@ function buildDataPrompt(phrase: string, kind: GenKind, title: string): string {
       return head
         + 'Pick the browser source for one big number: "tabs" (tabs open now), "blocked" '
         + '(trackers blocked this session), "downloads" (files downloaded).\nAnswer as JSON.';
+    case 'zones':
+      // ⚠️ Просим IANA-идентификаторы, а не «EDT» и «МСК»: аббревиатуры неоднозначны и ICU их
+      // не знает, а по идентификатору время считается на месте, без всякой сети.
+      return head
+        + 'Write 1-4 time zones as IANA identifiers in "main" (America/New_York, Europe/Moscow, '
+        + 'Asia/Tokyo) and the city name in Russian in "sub".\n'
+        + 'Never write abbreviations like EDT or МСК — only identifiers with a slash.\nAnswer as JSON.';
   }
 }
 
@@ -124,8 +199,17 @@ function parseJson(out: string): unknown {
 export async function parsePhraseToGenSpec(
   phrase: string,
   onProgress?: (p: GenSpecProgress) => void,
+  url?: string,
 ): Promise<GenSpecOutcome> {
   const p = phrase.trim();
+  const link = (url ?? '').trim();
+  // Ссылка есть — это другой разговор: тип виджета определяется тем, что по ней лежит.
+  if (link) {
+    if (!isAllowedGenUrl(link)) {
+      return { ok: false, reason: 'link', error: 'Нужна ссылка https на публичный адрес' };
+    }
+    return buildFromUrl(p || 'Виджет', link, onProgress);
+  }
   if (p.length < 3) return { ok: false, reason: 'unclear' };
 
   let kindChars = 0;
