@@ -2,9 +2,9 @@ import { app } from 'electron';
 import type { Session } from 'electron';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import fs from 'node:fs';
 import type { PermissionRecord, PermissionRequest, PermKey } from '../shared/ipc';
 import { isBackgroundWebContents } from './BackgroundWebContents';
+import { sqliteOpenFailed } from './sqliteOpenFailed';
 
 type Database = import('better-sqlite3').Database;
 type BetterSqlite3 = typeof import('better-sqlite3');
@@ -97,16 +97,7 @@ export class PermissionManager {
       this.#setup();
       console.log('[Permissions] база инициализирована:', this.#dbPath);
     } catch (e) {
-      console.error('[Permissions] ошибка открытия БД:', (e as Error).message);
-      try {
-        fs.unlinkSync(this.#dbPath);
-        this.#db = new Sqlite!(this.#dbPath);
-        this.#setup();
-        console.log('[Permissions] БД пересоздана');
-      } catch (e2) {
-        console.error('[Permissions] пересоздание провалилось:', (e2 as Error).message);
-        this.#db = null;
-      }
+      this.#db = sqliteOpenFailed('Permissions', this.#dbPath, e);
     }
   }
 

@@ -1,10 +1,10 @@
 import { app } from 'electron';
 import path from 'node:path';
-import fs from 'node:fs';
 import type { HistoryEntry, HistoryClearPeriod } from '../shared/ipc';
 import { isSearchResultUrl } from '../shared/searchEngines';
 import { normalizeForOmnibox } from '../shared/frecency';
 import { stemText, stemQuery } from './textStemming';
+import { sqliteOpenFailed } from './sqliteOpenFailed';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
 // Грузим динамически, чтобы браузер запускался даже без C++ инструментов.
@@ -69,19 +69,7 @@ export class HistoryManager {
       this.#dropEmbeddingsTable();
       console.log('[History] база инициализирована:', this.#dbPath);
     } catch (e) {
-      console.error('[History] не удалось открыть БД:', (e as Error).message);
-      // Попробуем удалить битый файл и пересоздать
-      try {
-        fs.unlinkSync(this.#dbPath);
-        this.#db = new SqliteConstructor!(this.#dbPath);
-        this.#setup();
-        this.#migrateContentChunksToTextVersion();
-        this.#dropEmbeddingsTable();
-        console.log('[History] БД пересоздана после ошибки');
-      } catch (e2) {
-        console.error('[History] пересоздание БД провалилось — история отключена:', (e2 as Error).message);
-        this.#db = null;
-      }
+      this.#db = sqliteOpenFailed('History', this.#dbPath, e);
     }
   }
 

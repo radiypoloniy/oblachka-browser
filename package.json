@@ -16,6 +16,7 @@
     "start": "cross-env NODE_ENV=production electron .",
     "test": "node scripts/test.mjs",
     "stand": "node scripts/isolated-stand.mjs",
+    "leak-check": "node scripts/leak-stand.mjs",
     "make-icon": "node scripts/make-icon.mjs",
     "dist": "npm run build && electron-builder --win --publish never",
     "release": "npm run build && electron-builder --win --publish always",

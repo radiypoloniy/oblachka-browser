@@ -1,11 +1,11 @@
 import { app } from 'electron';
 import path from 'node:path';
-import fs from 'node:fs';
 import type {
   GraphDoc, GraphEdge, GraphMeta, GraphNode, GraphNodeKind, GraphStructure,
   GraphNodeVersion, GraphChatMessage, GraphStructureNode,
 } from '../shared/graph';
 import type { ImagePreset } from '../shared/imagePresets';
+import { sqliteOpenFailed } from './sqliteOpenFailed';
 
 // Хранилище граф-воркспейсов. Свой файл, не таблица внутри истории/закладок — тот же приём
 // «один менеджер, один файл», что у bookmarks.sqlite и passwords.sqlite: у графов свой
@@ -69,18 +69,7 @@ export class GraphStore {
       this.#setup();
       console.log('[Graph] база инициализирована:', this.#dbPath);
     } catch (e) {
-      console.error('[Graph] не удалось открыть БД:', (e as Error).message);
-      // Пересоздание уместно только здесь: графы — новая фича, терять при повреждении
-      // нечего, кроме самих графов, а неработающая вкладка хуже пустого холста.
-      try {
-        fs.unlinkSync(this.#dbPath);
-        this.#db = new SqliteConstructor!(this.#dbPath);
-        this.#setup();
-        console.log('[Graph] БД пересоздана после ошибки');
-      } catch (e2) {
-        console.error('[Graph] пересоздание провалилось — графы отключены:', (e2 as Error).message);
-        this.#db = null;
-      }
+      this.#db = sqliteOpenFailed('Graph', this.#dbPath, e);
     }
   }
 

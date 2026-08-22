@@ -1,14 +1,15 @@
 // Менеджер паролей, шаг 1 — слой БД passwords.sqlite. Тот же паттерн, что HistoryManager.ts
-// (динамический require better-sqlite3, self-heal при битом файле, graceful degradation —
-// падение инициализации не должно ронять запуск браузера, см. main.ts::app.whenReady).
+// (динамический require better-sqlite3, graceful degradation при сбое открытия —
+// файл на диске НЕ удаляем, см. sqliteOpenFailed.ts). Падение инициализации не должно
+// ронять запуск браузера, см. main.ts::app.whenReady.
 // Отдельный файл БД от history.sqlite — изоляция, независимый бэкап, миграции истории не задевают
 // сейф паролей (см. CLAUDE.md — зона максимальной осторожности к потере данных).
 //
 import { app, clipboard } from 'electron';
 import path from 'node:path';
-import fs from 'node:fs';
 import crypto from 'node:crypto';
 import * as VaultCrypto from './VaultCrypto';
+import { sqliteOpenFailed } from './sqliteOpenFailed';
 import type { PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions } from '../shared/ipc';
 
 type Database = import('better-sqlite3').Database;
@@ -43,17 +44,8 @@ export class PasswordManager {
       this.#db = new SqliteConstructor(this.#dbPath);
       this.#setup();
     } catch (e) {
-      console.error('[Passwords] не удалось открыть БД:', (e as Error).message);
-      try {
-        fs.unlinkSync(this.#dbPath);
-        this.#db = new SqliteConstructor(this.#dbPath);
-        this.#setup();
-        console.log('[Passwords] БД пересоздана после ошибки');
-      } catch (e2) {
-        console.error('[Passwords] пересоздание БД провалилось — сейф паролей отключён:', (e2 as Error).message);
-        this.#db = null;
-        return;
-      }
+      this.#db = sqliteOpenFailed('Passwords', this.#dbPath, e);
+      return;
     }
 
     // Fail closed: если safeStorage недоступен, НЕ создаём vault_meta и не пишем псевдо-плейнтекст —

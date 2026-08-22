@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import path from 'node:path';
-import fs from 'node:fs';
 import { runChatMessage, type ChatOutcome } from './TranslationService';
+import { sqliteOpenFailed } from './sqliteOpenFailed';
 import { appendSearxngSources, type SearxngResult } from './SearxngSearch';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
@@ -49,16 +49,7 @@ export class HubChatManager {
       this.#setup();
       console.log('[HubChat] база инициализирована:', this.#dbPath);
     } catch (e) {
-      console.error('[HubChat] не удалось открыть БД:', (e as Error).message);
-      try {
-        fs.unlinkSync(this.#dbPath);
-        this.#db = new SqliteConstructor(this.#dbPath);
-        this.#setup();
-        console.log('[HubChat] БД пересоздана после ошибки');
-      } catch (e2) {
-        console.error('[HubChat] пересоздание БД провалилось — история AI-чата отключена:', (e2 as Error).message);
-        this.#db = null;
-      }
+      this.#db = sqliteOpenFailed('HubChat', this.#dbPath, e);
     }
   }
 

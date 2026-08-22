@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ELECTRON = path.join(ROOT, 'node_modules', 'electron', 'dist', 'electron.exe');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+export { wait };
 
 export function realUserDataDir() {
   if (process.platform === 'win32') return path.join(process.env.APPDATA ?? '', 'oblako-browser');
@@ -101,26 +102,84 @@ export function connectCdp(target) {
 }
 
 function startEcho(port) {
-  /** @type {{ method: string, url: string, ip: string, ua: string, at: number }[]} */
+  /** @type {{ method: string, url: string, ip: string, ua: string, cookie: string, at: number }[]} */
   const hits = [];
   const page = `<!doctype html><meta charset="utf-8"><title>oblako-echo</title>
 <pre id="out">…</pre>
 <script>
 fetch('/echo').then(r=>r.json()).then(j=>{document.getElementById('out').textContent=JSON.stringify(j,null,2)});
 </script>`;
+  const webrtcPage = `<!doctype html><meta charset="utf-8"><title>oblako-webrtc</title>
+<pre id="out">gathering</pre>
+<script>
+(async () => {
+  const collect = (iceServers, ms) => new Promise((ok) => {
+    const pc = new RTCPeerConnection({ iceServers });
+    const cands = [];
+    pc.onicecandidate = (e) => { if (e.candidate?.candidate) cands.push(e.candidate.candidate); };
+    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') { pc.close(); ok(cands); } };
+    pc.createDataChannel('x');
+    pc.createOffer().then((o) => pc.setLocalDescription(o));
+    setTimeout(() => { try { pc.close(); } catch {} ok(cands); }, ms);
+  });
+  // Без STUN — только host (LAN). STUN к Google не зовём: сам запрос уже светит IP чужому серверу.
+  const host = await collect([], 2500);
+  window.__ice = { host };
+  document.getElementById('out').textContent = JSON.stringify(window.__ice, null, 2);
+  document.title = 'ice-ready';
+})();
+</script>`;
   const server = http.createServer((req, res) => {
-    const url = req.url ?? '/';
+    const raw = req.url ?? '/';
+    const u = new URL(raw, 'http://127.0.0.1');
+    const pathname = u.pathname;
     const ip = req.socket.remoteAddress ?? '';
     const ua = String(req.headers['user-agent'] ?? '');
-    hits.push({ method: req.method ?? 'GET', url, ip, ua, at: Date.now() });
-    if (hits.length > 80) hits.shift();
-    if (url.split('?')[0] === '/echo') {
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ ip, ua, url, method: req.method, via: 'loopback-echo' }));
+    const cookie = String(req.headers.cookie ?? '');
+    hits.push({ method: req.method ?? 'GET', url: raw, ip, ua, cookie, at: Date.now() });
+    if (hits.length > 120) hits.shift();
+
+    const json = (obj, extra = {}) => {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', ...extra });
+      res.end(JSON.stringify(obj));
+    };
+    const html = (body) => {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(body);
+    };
+
+    if (pathname === '/echo') {
+      json({ ip, ua, url: raw, method: req.method, via: 'loopback-echo' });
       return;
     }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(page);
+    if (pathname === '/show-cookie') {
+      json({ cookie });
+      return;
+    }
+    if (pathname === '/set-cookie') {
+      const name = u.searchParams.get('name') || 'oblako_stand';
+      const value = u.searchParams.get('value') || '1';
+      json({ set: name }, { 'Set-Cookie': `${name}=${encodeURIComponent(value)}; Path=/` });
+      return;
+    }
+    if (pathname === '/copy') {
+      const text = u.searchParams.get('text') || 'copy-me';
+      const safe = text.replace(/[<&]/g, (c) => (c === '<' ? '&lt;' : '&amp;'));
+      html(`<!doctype html><meta charset="utf-8"><title>copying</title>
+<textarea id="t">${safe}</textarea>
+<script>
+const t = document.getElementById('t');
+t.focus(); t.select();
+document.execCommand('copy');
+document.title = 'copied';
+</script>`);
+      return;
+    }
+    if (pathname === '/webrtc') {
+      html(webrtcPage);
+      return;
+    }
+    html(page);
   });
   const ready = new Promise((ok) => server.listen(port, '127.0.0.1', ok));
   return {

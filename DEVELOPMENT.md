@@ -250,7 +250,12 @@ npm run stand
 
 Нужна прод-сборка (`dist` + `dist-electron`). Эхо слушает только 127.0.0.1, Electron
 снимается деревом (`taskkill /PID /T /F`). `npm test` этот скрипт не подхватывает.
-Волна 1 аудита импортирует `withStand` из `scripts/isolated-stand.mjs`.
+
+```bash
+npm run leak-check    # волна 1: история/куки/буфер/WebRTC/fetch (scripts/leak-stand.mjs)
+```
+
+Имя нарочно не `*-check.mjs`, иначе `npm test` поднял бы Electron. VPN без подписки — SKIP.
 
 ## Данные пользователя
 

@@ -1,7 +1,7 @@
 // Автозаполнение форм — адреса и банковские карты. НЕ логин/пароль (те — PasswordManager). Тот же
 // приём, что у сейфа паролей (CLAUDE.md, зона максимальной осторожности к данным): динамический
-// require better-sqlite3, self-heal при битом файле, graceful degradation (падение не роняет
-// браузер), свой файл БД (autofill.sqlite) и свой DEK через VaultCrypto (safeStorage/DPAPI).
+// require better-sqlite3, graceful degradation (падение не роняет
+// браузер; файл на диске не удаляем — sqliteOpenFailed.ts), свой файл БД (autofill.sqlite) и свой DEK через VaultCrypto (safeStorage/DPAPI).
 //
 // Модель риска: номер карты — секрет, шифруется DEK и наружу массово НЕ отдаётся (list — только
 // маска last4+бренд, полный номер только через revealNumber под OS-подтверждением, гейт в main).
@@ -9,8 +9,8 @@
 // доверенный chrome-UI, не веб-страница). CVC не храним вовсе (PCI).
 import { app } from 'electron';
 import path from 'node:path';
-import fs from 'node:fs';
 import * as VaultCrypto from './VaultCrypto';
+import { sqliteOpenFailed } from './sqliteOpenFailed';
 import type { AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate } from '../shared/ipc';
 
 type Database = import('better-sqlite3').Database;
@@ -52,17 +52,8 @@ export class AutofillManager {
       this.#db = new SqliteConstructor(this.#dbPath);
       this.#setup();
     } catch (e) {
-      console.error('[Autofill] не удалось открыть БД:', (e as Error).message);
-      try {
-        fs.unlinkSync(this.#dbPath);
-        this.#db = new SqliteConstructor(this.#dbPath);
-        this.#setup();
-        console.log('[Autofill] БД пересоздана после ошибки');
-      } catch (e2) {
-        console.error('[Autofill] пересоздание БД провалилось — автозаполнение отключено:', (e2 as Error).message);
-        this.#db = null;
-        return;
-      }
+      this.#db = sqliteOpenFailed('Autofill', this.#dbPath, e);
+      return;
     }
 
     // Fail closed: без safeStorage не пишем секреты в открытом виде — фича просто недоступна.

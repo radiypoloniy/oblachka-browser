@@ -246,6 +246,9 @@
   (`session.json`, версионированный формат, дебаунс-сохранение). ⚠️ Знает ВЛАДЕЛЬЦА
   (`setOwner`) и молча отбрасывает чужой снимок: без этого закрытие лёгкого окна с
   одной вкладкой перезаписало бы дерево из десятков.
+  ⚠️ Инкогнито в дерево не сериализуется, и `#computeActiveRef` тоже не пишет
+  приватный URL: иначе он оказывался в `session.json`, хотя вкладки в файле нет
+  (живой `leak-check`, 21.08.2026).
 - `electron/AdBlockManager.ts` — блокировка рекламы: `@ghostery/adblocker-electron`,
   prebuilt-движок с CDN Ghostery (EasyList + uBO-листы, включая quick-fixes/unbreak и
   YouTube-фильтры, + EasyPrivacy), кэш в userData с фоновым автообновлением раз в 3 дня

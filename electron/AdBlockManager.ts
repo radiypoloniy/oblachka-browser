@@ -16,6 +16,7 @@ import { IPC } from '../shared/ipc';
 import type { AdBlockState } from '../shared/ipc';
 import { joinScriptlets } from '../shared/scriptletBundle';
 import { normalizeDomain } from '../shared/domain';
+import { sqliteOpenFailed } from './sqliteOpenFailed';
 
 type Database = import('better-sqlite3').Database;
 type BetterSqlite3 = typeof import('better-sqlite3');
@@ -571,17 +572,7 @@ export class AdBlockManager {
       this.#db = new Sqlite(this.#dbPath);
       this.#setupDb();
     } catch (e) {
-      console.error('[AdBlock] ошибка открытия whitelist БД:', (e as Error).message);
-      try {
-        fs.unlinkSync(this.#dbPath);
-        this.#db = new Sqlite(this.#dbPath);
-        this.#setupDb();
-        console.log('[AdBlock] whitelist БД пересоздана');
-      } catch (e2) {
-        console.error('[AdBlock] пересоздание whitelist БД провалилось:', (e2 as Error).message);
-        this.#db = null;
-        return;
-      }
+      this.#db = sqliteOpenFailed('AdBlock', this.#dbPath, e);
     }
 
     const fromDb = this.#dbLoadDomains();

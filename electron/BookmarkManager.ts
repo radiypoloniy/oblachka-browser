@@ -1,8 +1,8 @@
 import { app } from 'electron';
 import path from 'node:path';
-import fs from 'node:fs';
 import type { BookmarkEntry, BookmarkNode, BulkBookmarkInput, ImportBookmarkNode } from '../shared/ipc';
 import { setupBookmarksSchema } from './bookmarksSchema';
+import { sqliteOpenFailed } from './sqliteOpenFailed';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
 // Грузим динамически, тот же приём, что HistoryManager.ts — браузер должен запускаться
@@ -48,16 +48,7 @@ export class BookmarkManager {
       this.#setup();
       console.log('[Bookmarks] база инициализирована:', this.#dbPath);
     } catch (e) {
-      console.error('[Bookmarks] не удалось открыть БД:', (e as Error).message);
-      try {
-        fs.unlinkSync(this.#dbPath);
-        this.#db = new SqliteConstructor!(this.#dbPath);
-        this.#setup();
-        console.log('[Bookmarks] БД пересоздана после ошибки');
-      } catch (e2) {
-        console.error('[Bookmarks] пересоздание БД провалилось — закладки отключены:', (e2 as Error).message);
-        this.#db = null;
-      }
+      this.#db = sqliteOpenFailed('Bookmarks', this.#dbPath, e);
     }
   }
 

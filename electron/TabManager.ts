@@ -736,6 +736,9 @@ export class TabManager {
 
     const tab = this.tabMap.get(this.activeId);
     const url = tab ? this.#tabUrl(tab) : '';
+    // Инкогнито не пишем в activeRef: иначе приватный URL оказывается в session.json на диске,
+    // хотя сама вкладка в дерево не сериализуется. После рестарта это не «та же» сессия — хаб.
+    if (tab?.incognito) return { type: 'hub' };
     // Активный OAuth-попап (ephemeral) сам в сейв не попадает — ссылаться на него в activeRef нельзя,
     // после рестарта такого URL в сохранённых вкладках не будет.
     if (tab && !tab.ephemeral && /^https?:\/\//i.test(url)) return { type: 'url', url };
@@ -1137,8 +1140,10 @@ export class TabManager {
   // из getSessionSnapshot/#write — те синхронны и работают в т.ч. на win.on('close'), await там
   // не сработает. Кап на размер (FAVICON_CACHE_MAX_BYTES) — один «тяжёлый» favicon не должен
   // бесконтрольно раздувать session.json.
+  // credentials: 'omit' — как в FaviconService: иначе net.fetch идёт defaultSession и мог бы
+  // приложить куки обычного профиля к запросу, который вызвала даже инкогнито-вкладка.
   #cacheFaviconData(wc: WebContents, url: string): void {
-    net.fetch(url).then(async (res) => {
+    net.fetch(url, { credentials: 'omit' }).then(async (res) => {
       if (!res.ok || wc.isDestroyed()) return;
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.byteLength === 0 || buf.byteLength > FAVICON_CACHE_MAX_BYTES || wc.isDestroyed()) return;
