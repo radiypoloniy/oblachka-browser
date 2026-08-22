@@ -130,8 +130,13 @@ export async function unloadModel(): Promise<void> {
   loadedModelId = null
 }
 
-export function runPrompt(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<PromptResult> {
-  return call<PromptResult>({ kind: 'prompt', prompt, maxTokens, stream: !!onChunk }, onChunk)
+export function runPrompt(
+  prompt: string,
+  maxTokens: number,
+  onChunk?: (text: string) => void,
+  schema?: unknown,
+): Promise<PromptResult> {
+  return call<PromptResult>({ kind: 'prompt', prompt, maxTokens, stream: !!onChunk, schema }, onChunk)
 }
 
 export function runChat(

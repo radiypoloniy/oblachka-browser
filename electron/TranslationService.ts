@@ -374,13 +374,13 @@ async function runPrompt(
   prompt: string,
   maxTokens: number,
   onChunk?: (text: string) => void,
-  opts?: { background?: boolean; signal?: { aborted: boolean } },
+  opts?: { background?: boolean; signal?: { aborted: boolean }; schema?: unknown },
 ): Promise<{ out: string; tokens: number; stopReason: string }> {
-  const run = () => runPromptQueued(prompt, maxTokens, onChunk)
+  const run = () => runPromptQueued(prompt, maxTokens, onChunk, opts?.schema)
   return opts?.background ? withQwenQueueBackground(run, opts.signal) : withQwenQueue(run)
 }
 
-async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (text: string) => void): Promise<{ out: string; tokens: number; stopReason: string }> {
+async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (text: string) => void, schema?: unknown): Promise<{ out: string; tokens: number; stopReason: string }> {
   // ⚠️ ПОЧЕМУ ОДИН И ТОТ ЖЕ ЗАПРОС ИНОГДА ДАЁТ РАЗНЫЙ ОТВЕТ — разобрано замерами, не переоткрывать.
   // Сэмплинг ни при чём: temperature в node-llama-cpp по умолчанию 0, выборка жадная. Остаточный
   // контекст, квантованный KV-кэш и промпт проверены и отвергнуты (промпт побайтно одинаков).
@@ -391,7 +391,7 @@ async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (tex
   // бубном вокруг движка.
   await ensureLoaded()
   const t0 = performance.now()
-  const res = await Inference.runPrompt(prompt, maxTokens, onChunk)
+  const res = await Inference.runPrompt(prompt, maxTokens, onChunk, schema)
   console.log(`[perf] segment: всего=${(performance.now() - t0).toFixed(0)}ms outTokens=${res.tokens}`)
   return res
 }
@@ -504,7 +504,7 @@ export async function runTabOrganizePrompt(
   // наборе, будущие итоги дня). Такая ждёт, пока пользовательская полоса не опустеет.
   // onChunk — токены по мере генерации. Нужен там, где человек СМОТРИТ на сборку и обязан
   // видеть, что она идёт: без него любой долгий прогон выглядит зависшим (см. GenStudio).
-  opts?: { background?: boolean; signal?: { aborted: boolean }; maxTokens?: number; onChunk?: (text: string) => void },
+  opts?: { background?: boolean; signal?: { aborted: boolean }; maxTokens?: number; onChunk?: (text: string) => void; schema?: unknown },
 ): Promise<{ ok: true; out: string; stopReason: string } | { ok: false; error: string; errorCode?: ModelErrorCode }> {
   try {
     await ensureLoaded()

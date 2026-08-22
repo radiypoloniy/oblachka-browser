@@ -5,15 +5,72 @@ import {
   GEN_TOKEN_VARS, wrapGenSrcdoc, clampGenStorage, pickGenMode,
   parseGenDurationMs, genClockLeftMs, formatGenClock, extractGenLexicon, type GenFactId,
 } from '../../../shared/genWidget';
-import { loadGenRecord, loadGenState, loadGenClock, saveGenState, storeGenPhoto, subscribeGenStore } from '../../newtab/genStore';
+import {
+  loadGenRecord, loadGenState, loadGenClock, saveGenState, storeGenPhoto, subscribeGenStore,
+  loadGenRuntime, saveGenRuntime,
+} from '../../newtab/genStore';
 import { startGenClock, pauseGenClock, resetGenClock } from '../../newtab/genClocks';
 import { genFontCss } from '../../newtab/genFonts';
+import { GEN_KIND_RENDERERS, GenTimerTile } from './genKinds';
+import type { GenSpec } from '../../../shared/genSpec';
 
-// Свой виджет: рамка стола наша, внутренности — одностраничник в песочнице.
-// sandbox без allow-same-origin: скрипт не видит window.oblako родителя.
-// Фото рисует хост на всю плитку: в iframe нет шрифтов и нет <input type=file>.
+// Свой виджет. ДВА пути, и это не переходное состояние, а осознанная развилка:
+//
+// 1. СПЕКА (основной, с 22.08.2026) — модель отдала тип из каталога и данные, плитку рисует
+//    genKinds.tsx обычным React'ом. Пустой такая плитка выйти не может.
+// 2. РАЗМЕТКА (легаси) — записи, собранные старым способом, когда модель писала HTML сама.
+//    Они уже лежат у людей на диске, и ломать их нельзя. Новых таких не появляется.
+//
+// ⚠️ Почему путь 1 заменил путь 2 — в шапке shared/genSpec.ts. Коротко: 4B не пишет рабочий
+// интерфейс, а пустую плитку от рабочей человеку не отличить.
 
-export function GenWidget({
+export function GenWidget(props: WidgetProps) {
+  const { genId } = props;
+  const [rev, setRev] = useState(0);
+  useEffect(() => subscribeGenStore(() => setRev((n) => n + 1)), []);
+  const rec = useMemo(() => (genId ? loadGenRecord(genId) : null), [genId, rev]);
+  if (rec?.spec && genId) {
+    return <GenSpecTile {...props} genId={genId} spec={rec.spec} rev={rev} />;
+  }
+  return <GenLegacyTile {...props} />;
+}
+
+/**
+ * Плитка из спеки. Всё, что она делает, — выбирает рисовальщика по типу и хранит накликанное.
+ *
+ * ⚠️ Состояние (счётчик, галочки) лежит ОТДЕЛЬНО от спеки: пересборка виджета не имеет права
+ * обнулить посчитанное человеком.
+ */
+function GenSpecTile({ spec, genId, box, fill, overImage, hero, rev }: WidgetProps & {
+  genId: string; spec: GenSpec; rev: number;
+}) {
+  const runtime = useMemo(() => loadGenRuntime(genId), [genId, rev]);
+  const clock = useMemo(() => loadGenClock(genId), [genId, rev]);
+  const durationMs = (spec.seconds ?? 1500) * 1000;
+  const common = {
+    spec, box, hero,
+    runtime,
+    onRuntime: (next: typeof runtime) => saveGenRuntime(genId, next),
+  };
+  return (
+    <Tile surface toned fill={fill} overImage={overImage} hero={hero} padding={0}>
+      {spec.kind === 'timer' ? (
+        <GenTimerTile
+          {...common}
+          clock={clock}
+          onStart={() => startGenClock(genId, durationMs, clock)}
+          onPause={() => { if (clock) pauseGenClock(genId, clock); }}
+          onReset={() => resetGenClock(genId, durationMs)}
+        />
+      ) : (() => {
+        const Render = GEN_KIND_RENDERERS[spec.kind as keyof typeof GEN_KIND_RENDERERS];
+        return Render ? <Render {...common} /> : null;
+      })()}
+    </Tile>
+  );
+}
+
+function GenLegacyTile({
   fill, overImage, hero, genId, box,
 }: WidgetProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);

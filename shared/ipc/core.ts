@@ -1,5 +1,6 @@
 import type { AutomationRule } from '../rules';
 import type { ModelErrorCode } from './ai';
+import type { GenSpec, GenKind } from '../genSpec';
 
 // ── Узлы сайдбара ─────────────────────────────────────────────────────────────
 // Дискриминированное объединение для трёх типов узлов.
@@ -40,26 +41,18 @@ export interface FindResult {
   count: number;       // всего совпадений
 }
 
-// Разбор фразы в правило (electron/RuleParser.ts). Черновик приходит в renderer, показывается
-// карточкой и сохраняется, только если человек его утвердил, — модель ничего не заводит сама.
-export type GenParseOutcome =
-  | { ok: true; kind: 'builtin'; widget: string; size: { w: number; h: number } }
-  | {
-    ok: true;
-    kind: 'gen';
-    html: string;
-    facts: string[];
-    size: { w: number; h: number };
-    assetPhoto: boolean;
-    title: string;
-    // Кто рисует плитку: сама разметка модели или один из трёх хост-рендереров
-    // (фото / таймер / словарь). См. shared/genWidget.ts::pickGenMode — решение
-    // принимается ОДИН раз здесь, потому что хост-рендерер выбрасывает разметку целиком.
-    mode: 'html' | 'photo' | 'timer' | 'lexicon';
-  }
-  // 'too-hard' — модель ответила, но ответ заведомо нерабочий (пустые коробки без кода).
-  // Отдельно от 'unclear' ради честной формулировки: дело не в словах человека.
-  | { ok: false; reason: 'unclear' | 'model-error' | 'too-hard'; error?: string };
+/**
+ * Разбор фразы в СПЕКУ своего виджета (electron/GenSpecParser.ts): тип из закрытого каталога
+ * плюс данные под него. Черновик приходит в renderer, ставит его человек — модель ничего не
+ * заводит сама.
+ *
+ * ⚠️ Раньше здесь ездил HTML, написанный моделью. Почему так больше не делается — в шапке
+ * shared/genSpec.ts; коротко: 4B не пишет рабочий интерфейс, а пустую плитку от рабочей
+ * человеку не отличить.
+ */
+export type GenSpecOutcome =
+  | { ok: true; spec: GenSpec; size: { w: number; h: number } }
+  | { ok: false; reason: 'unclear' | 'model-error'; error?: string; kind?: GenKind };
 
 /**
  * Ход сборки своего виджета. `chars` — сколько символов модель уже написала на этой стадии.
@@ -67,7 +60,7 @@ export type GenParseOutcome =
  * живости (движение в ритме модели), но не для процентов — проценты пришлось бы выдумать.
  */
 export interface GenProgress {
-  stage: 'meta' | 'html' | 'done';
+  stage: 'kind' | 'data' | 'done';
   chars: number;
 }
 

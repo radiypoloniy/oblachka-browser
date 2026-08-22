@@ -4,7 +4,7 @@ import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal, Star } f
 import type { TileSite } from '../../../shared/frecency';
 import {
   loadDesktop, saveDesktop, subscribeDesktop, computeGrid, placeItems, moveItemTo, normalize,
-  resizeItem, removeItem, addItem, hasItem, minSizeFor, scaleOf, SCALE_PRESETS, DEFAULT_COLS, setHero,
+  resizeItem, removeItem, addItem, minSizeFor, scaleOf, SCALE_PRESETS, DEFAULT_COLS, setHero,
   type DesktopLayout,
 } from '../../newtab/desktop';
 import AddSheet from './AddSheet';
@@ -606,7 +606,6 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
       {studioOpen && (
         <GenStudio
           onGhost={setGhost}
-          already={(key) => hasItem(layout, 'widget', key)}
           onPlace={(item) => apply(addItem(layout, item))}
           onClose={() => { setStudioOpen(false); setGhost(null); }}
         />

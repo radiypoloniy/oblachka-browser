@@ -120,15 +120,33 @@ async function unload(): Promise<void> {
   console.log('[gen] модель выгружена из VRAM')
 }
 
+// Скомпилированные грамматики по ключу схемы. ⚠️ Компиляция GBNF не бесплатна, а схем у нас
+// ровно девять и они постоянны — пересобирать их на каждый прогон значило бы платить за это
+// в самом заметном месте: пока человек смотрит на сборку виджета.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const grammarCache = new Map<string, any>()
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function grammarFor(schema: unknown): Promise<any> {
+  const key = JSON.stringify(schema)
+  const cached = grammarCache.get(key)
+  if (cached) return cached
+  const grammar = await llama.createGrammarForJsonSchema(schema)
+  grammarCache.set(key, grammar)
+  return grammar
+}
+
 // Один прогон без истории. Стриминг уходит наверх отдельными сообщениями с тем же id.
-async function runPrompt(id: number, prompt: string, maxTokens: number, stream: boolean): Promise<PromptResult> {
+async function runPrompt(id: number, prompt: string, maxTokens: number, stream: boolean, schema?: unknown): Promise<PromptResult> {
   const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper })
+  const grammar = schema ? await grammarFor(schema) : undefined
   const inputTokens = model.tokenize(prompt).length
   const tStart = Date.now()
   let firstTokenAt: number | null = null
   let genTokenCount = 0
   const { responseText, stopReason } = await session.promptWithMeta(prompt, {
     maxTokens,
+    grammar,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onToken: (tokens: any[]) => {
       if (firstTokenAt === null) firstTokenAt = Date.now()
@@ -196,7 +214,7 @@ async function handle(req: InferRequest): Promise<unknown> {
   switch (req.kind) {
     case 'load': return load(req.modelPath, req.modelId, req.label, req.contextMaxTokens)
     case 'unload': return unload()
-    case 'prompt': return runPrompt(req.id, req.prompt, req.maxTokens, req.stream)
+    case 'prompt': return runPrompt(req.id, req.prompt, req.maxTokens, req.stream, req.schema)
     case 'chat': return runChat(req.id, req.userText, req.history, req.maxTokens, req.systemPrompt, req.stream)
     case 'vram': return vram()
   }

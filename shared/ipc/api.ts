@@ -2,7 +2,7 @@ import type { SearchEngineId } from '../searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../graph';
 import type { ImagePreset } from '../imagePresets';
 import type { AutomationRule } from '../rules';
-import type { ContentBounds, FindResult, GenProgress, OrganizeCluster, OrganizeProposal, RuleParseOutcome, GenParseOutcome, SearchChipCandidate, SearchChipsConfig, SidebarNode, SpecialTabKind, SyncState, TabState } from './core';
+import type { ContentBounds, FindResult, GenProgress, OrganizeCluster, OrganizeProposal, RuleParseOutcome, GenSpecOutcome, SearchChipCandidate, SearchChipsConfig, SidebarNode, SpecialTabKind, SyncState, TabState } from './core';
 import type { BackfillProgress, BookmarkEntry, BookmarkFolderProposal, BookmarkImportResult, BookmarkImportSource, BookmarkNode, DayDigestState, HistoryClearPeriod, HistoryContentCoverage, HistoryEntry, CsvPasswordImport, ImportDataType, ImportRunResult, ImportSource, SemanticSearchResult, SmartSearchResponse, TitleBarOpts } from './history';
 import type { PasswordAddInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, PasswordMeta, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
 import type { AdBlockState, DownloadEntry, MatchSuggestion, OmniboxPanel, OmniboxRecommendEdit, PageChangesResult, ParsedAddressPart, ProductState, RecommendedSite, SmartTabHit, StuffHit, SuggestDropdownItem, TrackedProduct, TrackingEvent } from './omnibox';
@@ -310,7 +310,8 @@ export interface OblakoApi {
   // Правила-автоматизации. parseRule — единственный вызов с моделью (фраза → черновик),
   // остальное обычный CRUD: правило исполняется кодом, а не моделью.
   parseRule(phrase: string): Promise<RuleParseOutcome>;
-  parseGenWidget(phrase: string): Promise<GenParseOutcome>;
+  /** Фраза → спека своего виджета (тип из каталога + данные). Модель кода не пишет. */
+  buildGenWidget(phrase: string): Promise<GenSpecOutcome>;
   /** Ход сборки — приходит только тому окну, которое её и запросило. */
   onGenWidgetProgress(cb: (p: GenProgress) => void): () => void;
   addRule(draft: AutomationRule): Promise<AutomationRule | null>;

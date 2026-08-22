@@ -37,7 +37,11 @@ export interface VramInfo {
 export type InferRequest =
   | { id: number; kind: 'load'; modelPath: string; modelId: string; label: string; contextMaxTokens: number }
   | { id: number; kind: 'unload' }
-  | { id: number; kind: 'prompt'; prompt: string; maxTokens: number; stream: boolean }
+  // schema — JSON Schema, к которой привязывается ГРАММАТИКА генерации. Это данные, а не
+  // промпт: через границу процессов по-прежнему ходит только «что на вход, что на выход».
+  // ⚠️ С грамматикой невалидный ответ не «редкий», а недостижимый — ограничение действует на
+  // каждом токене. Ради этого она и заведена: модели 3–4B плывут именно в структуре.
+  | { id: number; kind: 'prompt'; prompt: string; maxTokens: number; stream: boolean; schema?: unknown }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | { id: number; kind: 'chat'; userText: string; history: any[]; maxTokens: number; systemPrompt: string; stream: boolean }
   | { id: number; kind: 'vram' }

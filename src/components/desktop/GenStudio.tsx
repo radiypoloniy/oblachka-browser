@@ -1,31 +1,46 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Plus, Trash2 } from 'lucide-react';
 import type { CellSize, DesktopItem } from '../../newtab/desktop';
-import { GEN_SIZES, pickGenFacts, wantsGenPhoto, type GenSizeName } from '../../../shared/genWidget';
+import {
+  GEN_SIZES, type GenSizeName,
+} from '../../../shared/genWidget';
+import {
+  genKindLabel, genKindHint, genKindSize, validateGenSpec,
+  type GenSpec, type GenItem,
+} from '../../../shared/genSpec';
 import { saveGenRecord, deleteGenRecord } from '../../newtab/genStore';
 import { GenWidget } from './GenWidget';
 import { Tile, WIDGET_FILLS, FILL_SWATCH } from './widgets';
 import { RADIUS, TEXT, motion, pad, sp } from '../../styles/system';
-import type { GenParseOutcome, GenProgress } from '../../../shared/ipc';
+import type { GenSpecOutcome, GenProgress } from '../../../shared/ipc';
 
-// Сборка своего виджета — ОТДЕЛЬНЫЙ РЕЖИМ стола, а не строчка в боковой панели.
+// Сборка своего виджета — отдельный режим стола.
 //
-// ⚠️ Три решения здесь неслучайны, каждое из живой жалобы:
-// 1. Болванка — ОБЫЧНЫЙ ЭЛЕМЕНТ СЕТКИ (см. GEN_GHOST_ID и preview в DesktopScreen): встаёт в
-//    первую свободную клетку рядом с остальными плитками и живёт по их правилам. Карточка,
-//    висевшая по центру поверх стола, закрывала соседей и читалась как посторонний мусор —
-//    человек ждёт ровно того же, что при добавлении любого другого виджета.
-// 2. Окно НЕ ЗАКРЫВАЕТСЯ кликом мимо. Боковая панель закрывается — и правильно делает, там
-//    нечего терять; здесь за кликом стоит минута ожидания модели и набранный запрос.
-// 3. Сборка ДВИЖЕТСЯ, и движется в ритме модели (см. onGenWidgetProgress). Прошлый вариант
-//    менял подпись кнопки на «Собираю…» и замирал на десятки секунд — это читалось как зависание.
+// ⚠️ Что здесь изменилось по существу 22.08.2026: модель больше не пишет код, она отдаёт ТИП и
+// ДАННЫЕ (см. shared/genSpec.ts). Из этого следует главное свойство этого окна — данные можно
+// ПРАВИТЬ РУКАМИ. Раньше единственным способом что-то изменить была пересборка вслепую, потому
+// что править было нечего: там лежал HTML, написанный моделью.
+//
+// ⚠️ Три решения остались от прошлой версии, каждое из живой жалобы:
+// 1. Болванка — обычный элемент сетки стола, а не карточка поверх неё.
+// 2. Окно не закрывается кликом мимо: за кликом стоит минута ожидания модели.
+// 3. Сборка движется в ритме модели (onGenWidgetProgress), а не крутит спиннер.
 
 const DRAFT_ID = 'gen-draft';
 
-/** Id болванки в сетке. Синтетический: в раскладку на диск он не попадает никогда. */
+/** Ширина окна — та же, что у панели настройки экрана: два окна одной ширины читаются как система. */
+const STUDIO_WIDTH = 480;
+/** Поле блоков в болванке, пока идёт сборка. */
+const FIELD_COLS = 4;
+const FIELD_ROWS = 5;
+const FIELD_CELLS = FIELD_COLS * FIELD_ROWS;
+/** Сколько символов ответа модели — один блок. */
+const CHARS_PER_BLOCK = 14;
+/** Кружок заливки — тот же размер, что в панели настройки экрана. */
+const SWATCH = 26;
+
 export const GEN_GHOST_ID = 'gen-ghost';
 
-/** Что стол должен нарисовать в болванке. Собирается здесь, рисуется там. */
 export interface GenGhost {
   size: CellSize;
   fill?: string;
@@ -35,18 +50,6 @@ export interface GenGhost {
   hasDraft: boolean;
 }
 
-/** Ширина окна сборки — та же, что у панели настройки: два разных окна одной ширины читаются как одна система. */
-const STUDIO_WIDTH = 480;
-/** Поле блоков в болванке. 4×5 — заметно крупнее пикселей и мельче «плиток». */
-const FIELD_COLS = 4;
-const FIELD_ROWS = 5;
-const FIELD_CELLS = FIELD_COLS * FIELD_ROWS;
-/**
- * Сколько символов модели — один блок. Подобрано так, чтобы на типичном ответе (2–6 тысяч
- * символов) поле успевало собраться несколько раз: движение должно быть заметным, но не рябить.
- */
-const CHARS_PER_BLOCK = 22;
-
 const SIZE_LABELS: [GenSizeName, string][] = [
   ['small', 'Малый'],
   ['medium', 'Широкий'],
@@ -54,8 +57,8 @@ const SIZE_LABELS: [GenSizeName, string][] = [
 ];
 
 const STAGE_LABEL: Record<GenProgress['stage'], string> = {
-  meta: 'Понимаю запрос',
-  html: 'Собираю виджет',
+  kind: 'Понимаю запрос',
+  data: 'Собираю данные',
   done: 'Проверяю',
 };
 
@@ -65,49 +68,54 @@ interface Turn {
 }
 
 export default function GenStudio({
-  onGhost, onPlace, onClose, already,
+  onGhost, onPlace, onClose,
 }: {
-  /** Состояние болванки уходит столу — рисует её он, в своей сетке. */
   onGhost: (g: GenGhost) => void;
   onPlace: (item: Omit<DesktopItem, 'id'>) => void;
   onClose: () => void;
-  already?: (widget: string) => boolean;
 }) {
   const [phrase, setPhrase] = useState('');
   const [sizeName, setSizeName] = useState<GenSizeName>('small');
   const [fill, setFill] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [draft, setDraft] = useState<Extract<GenParseOutcome, { ok: true }> | null>(null);
+  const [spec, setSpec] = useState<GenSpec | null>(null);
   const [progress, setProgress] = useState<GenProgress | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [showCode, setShowCode] = useState(false);
   const busyRef = useRef(false);
-  // ⚠️ Тронул ли человек размер сам. Модель предлагает SIZE, но её подсказка слабее выбора:
-  // выбрать «Широкий», дождаться сборки и увидеть квадрат — значит зря выбирать вообще.
+  // ⚠️ Тронул ли человек размер сам. Подсказка типа слабее выбора: выбрать «Широкий», дождаться
+  // сборки и увидеть квадрат — значит зря выбирать вообще.
   const sizeTouched = useRef(false);
 
-  // ⚠️ Размер держит ОДНО состояние, а не «модель предложила» плюс «человек выбрал». Модель
-  // задаёт его при сборке, дальше он принадлежит человеку: смена размера обязана менять болванку
-  // и не имеет права выбрасывать собранный виджет — за ним минута ожидания.
   const size: CellSize = GEN_SIZES[sizeName];
 
-  // Черновик живёт в хранилище под своим id и убирается за собой при выходе из режима.
   useEffect(() => () => { deleteGenRecord(DRAFT_ID); }, []);
-
   useEffect(() => window.oblako.onGenWidgetProgress((p) => setProgress(p)), []);
 
-  // ⚠️ Esc закрывает ТОЛЬКО пустую студию. Пока идёт сборка или есть собранный черновик, за
-  // Esc стоит потерянная минута ожидания — там он молчит, и выход остаётся явной кнопкой.
+  // Черновик лежит в хранилище под своим id — болванку рисует та же плитка, что и стол.
+  useEffect(() => {
+    if (!spec) return;
+    saveGenRecord(DRAFT_ID, { spec, html: '', facts: [], phrase, title: spec.title, size });
+  }, [spec, phrase, size.w, size.h]);
+
+  useEffect(() => {
+    onGhost({
+      size, fill, busy, hasDraft: !!spec,
+      stage: progress?.stage ?? 'kind',
+      chars: progress?.chars ?? 0,
+    });
+  }, [size.w, size.h, fill, busy, spec, progress, onGhost]);
+
+  // Esc закрывает только пустую студию: пока идёт сборка или есть черновик, за ним потеря работы.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
-      if (busyRef.current || draft) return;
+      if (busyRef.current || spec) return;
       onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [draft, onClose]);
+  }, [spec, onClose]);
 
   async function assemble() {
     const p = phrase.trim();
@@ -115,38 +123,25 @@ export default function GenStudio({
     setBusy(true);
     busyRef.current = true;
     setError('');
-    setDraft(null);
-    setProgress({ stage: 'meta', chars: 0 });
+    setSpec(null);
+    setProgress({ stage: 'kind', chars: 0 });
     try {
-      const res = await window.oblako.parseGenWidget(p);
+      const res: GenSpecOutcome = await window.oblako.buildGenWidget(p);
       if (!res.ok) {
+        // ⚠️ Если тип назван, а данные под него не собрались — говорим это прямо и называем тип.
+        // Человеку это подсказка, что переформулировать, а не глухое «не получилось».
         const msg = res.reason === 'model-error'
           ? (res.error || 'Модель не ответила. Нужна скачанная локальная модель.')
-          : res.reason === 'too-hard'
-            ? 'Локальная модель это не осилила — обычно так с играми и всем, где нужна своя логика. Попробуйте что-то проще: счётчик, список, случайный элемент.'
-            : 'Не собрал. Попробуйте описать другими словами.';
+          : res.kind
+            ? `Понял как «${genKindLabel(res.kind)}», но не собрал данные. Скажите конкретнее — например, сколько и чего.`
+            : 'Не понял, какая это плитка. Попробуйте описать проще: список, счётчик, жребий, таймер, цель, отсчёт до даты, заметка.';
         setError(msg);
         setTurns((t) => [...t, { phrase: p, answer: msg }]);
         return;
       }
-      if (res.kind === 'gen') {
-        saveGenRecord(DRAFT_ID, {
-          html: res.html,
-          facts: pickGenFacts(res.facts),
-          mode: res.mode,
-          photo: res.assetPhoto || wantsGenPhoto(p, res.html, false),
-          phrase: p,
-          title: res.title,
-          size: res.size,
-        });
-      }
-      // Подсказку модели принимаем ТОЛЬКО если человек размер не выбирал.
-      if (!sizeTouched.current) setSizeName(sizeOf(res.size));
-      setDraft(res);
-      setTurns((t) => [...t, {
-        phrase: p,
-        answer: res.kind === 'builtin' ? `Это готовый виджет: ${res.widget}` : `Собрал: ${res.title || 'свой виджет'}`,
-      }]);
+      if (!sizeTouched.current) setSizeName(nameForSize(genKindSize(res.spec.kind)));
+      setSpec(res.spec);
+      setTurns((t) => [...t, { phrase: p, answer: `${genKindLabel(res.spec.kind)}: ${res.spec.title}` }]);
     } catch {
       setError('Не удалось обратиться к модели');
     } finally {
@@ -156,191 +151,266 @@ export default function GenStudio({
     }
   }
 
+  /** Правка данных руками. ⚠️ Проходит через ту же validateGenSpec, что и ответ модели. */
+  function patch(next: Partial<GenSpec>) {
+    if (!spec) return;
+    const merged = validateGenSpec({ ...spec, ...next });
+    if (merged) setSpec(merged);
+  }
+
   function place() {
-    if (!draft) return;
-    if (draft.kind === 'builtin') {
-      if (already?.(draft.widget)) { setError('Этот виджет уже на столе'); return; }
-      onPlace({ kind: 'widget', widget: draft.widget, size, fill });
-      onClose();
-      return;
-    }
+    if (!spec) return;
     const genId = `g${Date.now().toString(36)}`;
-    saveGenRecord(genId, {
-      html: draft.html,
-      facts: pickGenFacts(draft.facts),
-      mode: draft.mode,
-      photo: draft.assetPhoto || wantsGenPhoto(phrase, draft.html, false),
-      phrase,
-      title: draft.title,
-      size,
-    });
+    saveGenRecord(genId, { spec, html: '', facts: [], phrase, title: spec.title, size });
     deleteGenRecord(DRAFT_ID);
-    onPlace({ kind: 'widget', widget: 'gen', genId, size, title: draft.title, fill });
+    onPlace({ kind: 'widget', widget: 'gen', genId, size, title: spec.title, fill });
     onClose();
   }
 
-  const hasDraft = !!draft && draft.kind === 'gen';
-  const draftHtml = draft?.kind === 'gen' ? draft.html : '';
-  useEffect(() => {
-    onGhost({
-      size, fill, busy, hasDraft,
-      stage: progress?.stage ?? 'meta',
-      chars: progress?.chars ?? 0,
-    });
-  }, [size.w, size.h, fill, busy, hasDraft, progress, onGhost]);
-
   return (
-    // ⚠️ Панель НЕ перекрывает стол целиком и не ловит клик подложкой: болванка стоит в сетке,
-    // и человек должен видеть её вместе с соседями, а не через дырку в затемнении.
     <aside style={{
       position: 'absolute', top: 0, right: 0, bottom: 0, zIndex: 40,
       width: STUDIO_WIDTH, maxWidth: '94%', display: 'flex', flexDirection: 'column',
       background: 'var(--surface-solid)', boxShadow: 'var(--shadow-island)',
       animation: 'oblako-panel-in var(--dur-base) var(--ease-out)',
     }}>
-      <>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(4, 6),
-          borderBottom: '1px solid var(--divider)', flex: 'none',
-        }}>
-          <span style={{ flex: 1, ...TEXT.title }}>Свой виджет</span>
-          <button onClick={onClose} title="Закрыть" style={iconBtn}><X size={16} /></button>
-        </div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(4, 6),
+        borderBottom: '1px solid var(--divider)', flex: 'none',
+      }}>
+        <span style={{ flex: 1, ...TEXT.title }}>Свой виджет</span>
+        <button onClick={onClose} title="Закрыть" style={iconBtn}><X size={16} /></button>
+      </div>
 
-        <div style={{
-          flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: sp(6),
-          padding: `${sp(6)}px ${sp(6)}px ${sp(4)}px`,
-        }}>
-          <Group title="Размер" note="Видно сразу на болванке слева — выбирать вслепую не нужно">
-            <Segmented
-              value={sizeName}
-              options={SIZE_LABELS}
-              onChange={(v) => { sizeTouched.current = true; setSizeName(v); }}
-              disabled={busy}
-            />
-          </Group>
-
-          <Group title="Цвет">
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
-              {WIDGET_FILLS.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setFill(f.id === 'theme' ? undefined : f.id)}
-                  title={f.label}
-                  style={{
-                    width: SWATCH, height: SWATCH, borderRadius: RADIUS.pill, cursor: 'default', padding: 0,
-                    background: FILL_SWATCH[f.id] ?? 'var(--surface-sunken)',
-                    border: (fill ?? 'theme') === f.id
-                      ? '2.5px solid var(--accent)' : '1px solid var(--divider-strong)',
-                    transition: motion.hover('border-color'),
-                  }}
-                />
+      <div style={{
+        flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: sp(6),
+        padding: `${sp(6)}px ${sp(6)}px ${sp(4)}px`,
+      }}>
+        <Group title="Запрос" note="Опишите словами. Локальная модель выберет вид плитки и наполнит её — в сеть виджет не ходит">
+          {turns.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+              {turns.map((t, i) => (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+                  <span style={{
+                    alignSelf: 'flex-end', maxWidth: '85%', padding: pad(2, 3),
+                    borderRadius: RADIUS.box, background: 'var(--accent-soft)',
+                    ...TEXT.body, color: 'var(--text-strong)',
+                  }}>{t.phrase}</span>
+                  <span style={{ alignSelf: 'flex-start', maxWidth: '85%', ...TEXT.caption }}>{t.answer}</span>
+                </div>
               ))}
             </div>
-          </Group>
-
-          <Group title="Запрос" note="Опишите словами, что должно быть на плитке. Считает и рисует локальная модель — в сеть виджет не ходит">
-            {turns.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                {turns.map((t, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
-                    <span style={{
-                      alignSelf: 'flex-end', maxWidth: '85%', padding: pad(2, 3),
-                      borderRadius: RADIUS.box, background: 'var(--accent-soft)',
-                      ...TEXT.body, color: 'var(--text-strong)',
-                    }}>{t.phrase}</span>
-                    <span style={{ alignSelf: 'flex-start', maxWidth: '85%', ...TEXT.caption }}>{t.answer}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <textarea
-              value={phrase}
-              onChange={(e) => setPhrase(e.target.value)}
-              onKeyDown={(e) => {
-                // Enter отправляет, Shift+Enter — перенос строки: поле работает как строка чата.
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void assemble(); }
-              }}
-              rows={2}
-              disabled={busy}
-              placeholder="Кубик на шесть граней, счётчик отжиманий, фоторамка…"
-              style={{
-                width: '100%', resize: 'vertical', minHeight: sp(8) * 2,
-                padding: pad(2, 3), borderRadius: RADIUS.control,
-                border: '1px solid var(--divider-strong)', background: 'var(--surface)',
-                ...TEXT.body, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none',
-                opacity: busy ? 0.6 : 1,
-              }}
-            />
-            {error && <div style={{ ...TEXT.body, color: 'var(--danger-500)' }}>{error}</div>}
-          </Group>
-
-          {/* ⚠️ Показ кода — не отладка «на время», а постоянная часть окна. Пустая плитка без
-              возможности заглянуть внутрь неотличима от сломанной функции: и человеку, и тому,
-              кто будет чинить, нужно видеть, что именно написала модель. */}
-          {draftHtml && (
-            <Group title="Что собрала модель">
-              <button type="button" onClick={() => setShowCode((v) => !v)} style={{
-                ...TEXT.body, alignSelf: 'flex-start', padding: pad(1, 3), cursor: 'default',
-                borderRadius: RADIUS.pill, border: '1px solid var(--divider-strong)',
-                background: 'transparent', color: 'var(--text-body)',
-                transition: motion.hover('background', 'color'),
-              }}>{showCode ? 'Скрыть код' : 'Показать код'}</button>
-              {showCode && (
-                <pre style={{
-                  margin: 0, maxHeight: 260, overflow: 'auto', padding: pad(3),
-                  borderRadius: RADIUS.box, background: 'var(--surface-sunken)',
-                  border: '1px solid var(--divider)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                  fontFamily: 'var(--font-mono), ui-monospace, monospace', fontSize: 'var(--fs-xs)',
-                  color: 'var(--text-body)',
-                }}>{draftHtml}</pre>
-              )}
-            </Group>
           )}
-        </div>
+          <textarea
+            value={phrase}
+            onChange={(e) => setPhrase(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void assemble(); } }}
+            rows={2}
+            disabled={busy}
+            placeholder="Что съесть на ужин, отжимания, 100 дней до отпуска…"
+            style={{
+              width: '100%', resize: 'vertical', minHeight: sp(8) * 2,
+              padding: pad(2, 3), borderRadius: RADIUS.control,
+              border: '1px solid var(--divider-strong)', background: 'var(--surface)',
+              ...TEXT.body, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none',
+              opacity: busy ? 0.6 : 1,
+            }}
+          />
+          {error && <div style={{ ...TEXT.body, color: 'var(--danger-500)' }}>{error}</div>}
+        </Group>
 
-        <div style={{
-          flex: 'none', display: 'flex', gap: sp(2), padding: pad(4, 6),
-          borderTop: '1px solid var(--divider)',
-        }}>
+        {spec && (
+          <Group title="Вид плитки">
+            <div style={{
+              display: 'flex', alignItems: 'baseline', gap: sp(2), padding: pad(2, 3),
+              borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
+            }}>
+              <span style={{ ...TEXT.body, fontWeight: 600, color: 'var(--text-strong)' }}>
+                {genKindLabel(spec.kind)}
+              </span>
+              <span style={{ ...TEXT.caption }}>{genKindHint(spec.kind)}</span>
+            </div>
+          </Group>
+        )}
+
+        <Group title="Размер" note="Видно сразу на болванке — выбирать вслепую не нужно">
+          <Segmented
+            value={sizeName}
+            options={SIZE_LABELS}
+            onChange={(v) => { sizeTouched.current = true; setSizeName(v); }}
+            disabled={busy}
+          />
+        </Group>
+
+        <Group title="Цвет">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
+            {WIDGET_FILLS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setFill(f.id === 'theme' ? undefined : f.id)}
+                title={f.label}
+                style={{
+                  width: SWATCH, height: SWATCH, borderRadius: RADIUS.pill, cursor: 'default', padding: 0,
+                  background: FILL_SWATCH[f.id] ?? 'var(--surface-sunken)',
+                  border: (fill ?? 'theme') === f.id
+                    ? '2.5px solid var(--accent)' : '1px solid var(--divider-strong)',
+                  transition: motion.hover('border-color'),
+                }}
+              />
+            ))}
+          </div>
+        </Group>
+
+        {spec && <SpecEditor spec={spec} onPatch={patch} />}
+      </div>
+
+      <div style={{
+        flex: 'none', display: 'flex', gap: sp(2), padding: pad(4, 6),
+        borderTop: '1px solid var(--divider)',
+      }}>
+        <button
+          type="button"
+          onClick={() => void assemble()}
+          disabled={busy || phrase.trim().length < 3}
+          style={{
+            ...btnBase, background: 'var(--accent)', color: 'var(--on-accent)', fontWeight: 600,
+            opacity: busy || phrase.trim().length < 3 ? 0.5 : 1,
+          }}
+        >{busy ? 'Собираю…' : spec ? 'Пересобрать' : 'Собрать'}</button>
+        {spec && (
           <button
             type="button"
-            onClick={() => void assemble()}
-            disabled={busy || phrase.trim().length < 3}
-            style={{
-              ...btnBase,
-              background: 'var(--accent)', color: 'var(--on-accent)', fontWeight: 600,
-              opacity: busy || phrase.trim().length < 3 ? 0.5 : 1,
-            }}
-          >{busy ? 'Собираю…' : draft ? 'Пересобрать' : 'Собрать'}</button>
-          {draft && (
-            <button
-              type="button"
-              onClick={place}
-              style={{ ...btnBase, background: 'var(--accent)', color: 'var(--on-accent)', fontWeight: 600 }}
-            >Поставить</button>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              ...btnBase, background: 'transparent', color: 'var(--text-body)',
-              border: '1px solid var(--divider-strong)',
-            }}
-          >Отмена</button>
-        </div>
-      </>
+            onClick={place}
+            style={{ ...btnBase, background: 'var(--accent)', color: 'var(--on-accent)', fontWeight: 600 }}
+          >Поставить</button>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            ...btnBase, background: 'transparent', color: 'var(--text-body)',
+            border: '1px solid var(--divider-strong)',
+          }}
+        >Отмена</button>
+      </div>
     </aside>
   );
 }
 
 /**
- * Болванка на столе: пока идёт сборка — падающие блоки, после — настоящая плитка.
+ * Правка данных виджета руками.
  *
- * ⚠️ Блоки считаются от ЧИСЛА СИМВОЛОВ, пришедших от модели, и поле переполняется по кругу.
- * Полосы «сколько осталось» здесь нет и быть не может: длина ответа неизвестна заранее, и
- * любая доля выполнения была бы выдумана. Честная задача этой картинки — показать, что работа
- * ИДЁТ, а не сколько её осталось.
+ * ⚠️ Ради этого блока и менялась архитектура. Пока виджет был разметкой от модели, править было
+ * нечего: любая мелочь означала новый прогон и новый результат целиком. Данные правятся точечно
+ * и без модели — а значит виджет становится СВОИМ, а не «что дали».
+ */
+function SpecEditor({ spec, onPatch }: { spec: GenSpec; onPatch: (p: Partial<GenSpec>) => void }) {
+  const items = spec.items ?? [];
+  const listy = spec.kind === 'list' || spec.kind === 'dice' || spec.kind === 'checklist';
+  const subLabel = spec.kind === 'list' ? 'перевод, автор, пояснение' : 'пояснение';
+
+  return (
+    <Group title="Что внутри" note="Правится руками — модель для этого больше не нужна">
+      <Field label="Заголовок" value={spec.title} onChange={(v) => onPatch({ title: v })} />
+
+      {listy && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+          {items.map((it, i) => (
+            <div key={i} style={{ display: 'flex', gap: sp(2), alignItems: 'flex-start' }}>
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+                <input
+                  value={it.main}
+                  onChange={(e) => onPatch({ items: replaceAt(items, i, { ...it, main: e.target.value }) })}
+                  style={inputStyle}
+                />
+                {spec.kind !== 'checklist' && (
+                  <input
+                    value={it.sub ?? ''}
+                    placeholder={subLabel}
+                    onChange={(e) => onPatch({ items: replaceAt(items, i, { ...it, sub: e.target.value }) })}
+                    style={{ ...inputStyle, ...TEXT.caption, color: 'var(--text-faint)' }}
+                  />
+                )}
+              </div>
+              <button
+                type="button"
+                title="Убрать"
+                onClick={() => onPatch({ items: items.filter((_, n) => n !== i) })}
+                style={iconBtn}
+              ><Trash2 size={14} /></button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => onPatch({ items: [...items, { main: 'Новый пункт' }] })}
+            style={{
+              ...TEXT.body, alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center',
+              gap: sp(2), padding: pad(1, 3), cursor: 'default', borderRadius: RADIUS.pill,
+              border: '1px solid var(--divider-strong)', background: 'transparent',
+              color: 'var(--text-body)', transition: motion.hover('background', 'color'),
+            }}
+          ><Plus size={14} /> Добавить</button>
+        </div>
+      )}
+
+      {spec.kind === 'counter' && (
+        <>
+          <Field label="Единица" value={spec.unit ?? ''} onChange={(v) => onPatch({ unit: v })} />
+          <NumField label="Шаг" value={spec.step ?? 1} onChange={(v) => onPatch({ step: v })} />
+        </>
+      )}
+
+      {spec.kind === 'goal' && (
+        <>
+          <NumField label="Цель" value={spec.target ?? 1} onChange={(v) => onPatch({ target: v })} />
+          <Field label="Единица" value={spec.unit ?? ''} onChange={(v) => onPatch({ unit: v })} />
+        </>
+      )}
+
+      {spec.kind === 'timer' && (
+        <NumField
+          label="Минут"
+          value={Math.round((spec.seconds ?? 1500) / 60)}
+          onChange={(v) => onPatch({ seconds: Math.max(1, v) * 60 })}
+        />
+      )}
+
+      {spec.kind === 'countdown' && (
+        <label style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+          <span style={{ ...TEXT.caption }}>Дата</span>
+          <input
+            type="date"
+            value={spec.date ?? ''}
+            onChange={(e) => onPatch({ date: e.target.value })}
+            style={inputStyle}
+          />
+        </label>
+      )}
+
+      {spec.kind === 'note' && (
+        <label style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+          <span style={{ ...TEXT.caption }}>Текст</span>
+          <textarea
+            value={spec.text ?? ''}
+            rows={3}
+            onChange={(e) => onPatch({ text: e.target.value })}
+            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+          />
+        </label>
+      )}
+    </Group>
+  );
+}
+
+function replaceAt(items: GenItem[], i: number, next: GenItem): GenItem[] {
+  return items.map((x, n) => (n === i ? next : x));
+}
+
+/**
+ * Болванка на столе: пока идёт сборка — падающие блоки, после — настоящая плитка черновика.
+ *
+ * ⚠️ Полосы «сколько осталось» здесь нет и быть не может: длина ответа неизвестна заранее.
+ * Задача картинки — показать, что работа идёт, а не сколько её осталось.
  */
 export function GenDraftTile({ ghost, box, overImage }: {
   ghost: GenGhost;
@@ -365,50 +435,49 @@ export function GenDraftTile({ ghost, box, overImage }: {
 
   return (
     <Tile surface toned fill={fill} overImage={overImage} padding={0}>
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+        padding: sp(4), gap: sp(2),
+      }}>
         <div style={{
-          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-          padding: sp(4), gap: sp(2),
+          display: 'grid', flex: 1, minHeight: 0, gap: sp(1),
+          gridTemplateColumns: `repeat(${FIELD_COLS}, 1fr)`,
+          gridTemplateRows: `repeat(${FIELD_ROWS}, 1fr)`,
         }}>
-          <div style={{
-            display: 'grid', flex: 1, minHeight: 0, gap: sp(1),
-            gridTemplateColumns: `repeat(${FIELD_COLS}, 1fr)`,
-            gridTemplateRows: `repeat(${FIELD_ROWS}, 1fr)`,
-          }}>
-            {Array.from({ length: FIELD_CELLS }, (_, i) => {
-              const isFilled = i >= FIELD_CELLS - filled;
-              const isNext = i === FIELD_CELLS - filled - 1;
-              return (
-                <span
-                  // ⚠️ Ключ зависит от того, ЗАПОЛНЕНА ли клетка, и только от этого. Кадры
-                  // проигрываются заново при ремонте элемента, а ремонт случается ровно там, где
-                  // сменился ключ, — то есть у одной новой клетки. Добавь сюда счётчик блоков —
-                  // и ключи сменятся у всех сразу, всё поле начнёт падать заново на каждом токене.
-                  key={isFilled ? `f${i}` : `e${i}`}
-                  style={{
-                    borderRadius: RADIUS.tight,
-                    background: isFilled
-                      ? (i % 3 === 0 ? 'var(--accent)' : 'var(--card-chip)')
-                      : 'var(--divider)',
-                    opacity: isFilled ? 1 : 0.25,
-                    animation: isFilled
-                      ? 'oblako-gen-drop var(--dur-base) var(--ease-out)'
-                      : busy && isNext
-                        ? 'oblako-gen-wait 1.4s var(--ease-standard) infinite'
-                        : undefined,
-                  }}
-                />
-              );
-            })}
-          </div>
-          <span style={{ ...TEXT.caption, textAlign: 'center' }}>
-            {busy ? STAGE_LABEL[stage] : 'Опишите виджет справа'}
-          </span>
+          {Array.from({ length: FIELD_CELLS }, (_, i) => {
+            const isFilled = i >= FIELD_CELLS - filled;
+            const isNext = i === FIELD_CELLS - filled - 1;
+            return (
+              <span
+                // ⚠️ Ключ зависит от того, ЗАПОЛНЕНА ли клетка, и только от этого: кадры
+                // проигрываются заново при ремонте элемента, а он случается у одной новой
+                // клетки. Добавь сюда счётчик — и всё поле начнёт падать на каждом токене.
+                key={isFilled ? `f${i}` : `e${i}`}
+                style={{
+                  borderRadius: RADIUS.tight,
+                  background: isFilled
+                    ? (i % 3 === 0 ? 'var(--accent)' : 'var(--card-chip)')
+                    : 'var(--divider)',
+                  opacity: isFilled ? 1 : 0.25,
+                  animation: isFilled
+                    ? 'oblako-gen-drop var(--dur-base) var(--ease-out)'
+                    : busy && isNext
+                      ? 'oblako-gen-wait 1.4s var(--ease-standard) infinite'
+                      : undefined,
+                }}
+              />
+            );
+          })}
         </div>
+        <span style={{ ...TEXT.caption, textAlign: 'center' }}>
+          {busy ? STAGE_LABEL[stage] : 'Опишите виджет справа'}
+        </span>
+      </div>
     </Tile>
   );
 }
 
-function sizeOf(size: CellSize): GenSizeName {
+function nameForSize(size: { w: number; h: number }): GenSizeName {
   for (const [name, s] of Object.entries(GEN_SIZES) as [GenSizeName, CellSize][]) {
     if (s.w === size.w && s.h === size.h) return name;
   }
@@ -456,8 +525,35 @@ function Segmented<T extends string>({ value, options, onChange, disabled }: {
   );
 }
 
-/** Кружок заливки — тот же размер, что в панели настройки экрана. */
-const SWATCH = 26;
+function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+      <span style={{ ...TEXT.caption }}>{label}</span>
+      <input value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle} />
+    </label>
+  );
+}
+
+function NumField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+      <span style={{ ...TEXT.caption }}>{label}</span>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        style={inputStyle}
+      />
+    </label>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  ...TEXT.body, width: '100%', boxSizing: 'border-box', padding: pad(2, 3),
+  borderRadius: RADIUS.control, border: '1px solid var(--divider-strong)',
+  background: 'var(--surface)', color: 'var(--text-strong)',
+  fontFamily: 'inherit', outline: 'none',
+};
 
 const btnBase: React.CSSProperties = {
   padding: pad(2, 4), border: 'none', cursor: 'default', borderRadius: RADIUS.pill,

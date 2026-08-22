@@ -2,6 +2,7 @@
 // как своё фото фона (см. CUSTOM_IMAGE_KEY в settings.ts).
 
 import { sanitizeGenHtml, pickGenFacts, parseGenClockWrite, isGenMode, type GenFactId, type GenClock, type GenMode } from '../../shared/genWidget';
+import { validateGenSpec, parseGenRuntime, type GenSpec, type GenRuntime } from '../../shared/genSpec';
 
 const PREFIX = 'oblako-desktop-gen-';
 const STATE_PREFIX = 'oblako-desktop-gen-state-';
@@ -13,6 +14,14 @@ const DRAFT_ID = 'gen-draft';
 const PHOTO_SIDE = 720;
 
 export interface GenRecord {
+  /**
+   * Спека виджета — ТИП И ДАННЫЕ (см. shared/genSpec.ts). Основной путь с 22.08.2026.
+   *
+   * ⚠️ Поля html/facts/mode ниже — ЛЕГАСИ: так виджеты собирались раньше, когда модель писала
+   * разметку сама. Записи людей на диске уже есть, и ломать их нельзя, поэтому старый путь
+   * отрисовки живёт рядом. Новых записей с html не появляется.
+   */
+  spec?: GenSpec;
   html: string;
   facts: GenFactId[];
   /** Кто рисует плитку (см. pickGenMode). У записей, собранных до появления поля, его нет —
@@ -58,12 +67,15 @@ export function loadGenRecord(id: string): GenRecord | null {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return null;
     const o = parsed as Record<string, unknown>;
+    const spec = validateGenSpec(o.spec);
     const html = typeof o.html === 'string' ? sanitizeGenHtml(o.html) : '';
-    if (!html) return null;
+    // Ни спеки, ни разметки — записи нет.
+    if (!spec && !html) return null;
     const size = o.size && typeof o.size === 'object'
       ? o.size as { w?: unknown; h?: unknown }
       : null;
     return {
+      spec: spec ?? undefined,
       html,
       facts: pickGenFacts(o.facts),
       mode: isGenMode(o.mode) ? o.mode : undefined,
@@ -85,6 +97,7 @@ export function saveGenRecord(id: string, rec: GenRecord): void {
   try {
     const prev = loadGenRecord(id);
     localStorage.setItem(PREFIX + id, JSON.stringify({
+      spec: rec.spec ?? prev?.spec,
       html: sanitizeGenHtml(rec.html),
       facts: pickGenFacts(rec.facts),
       mode: rec.mode ?? prev?.mode,
@@ -124,6 +137,22 @@ export function listGenLibrary(): GenLibraryItem[] {
       size: rec.size ?? { w: 2, h: 2 },
     }];
   });
+}
+
+/**
+ * Что человек накликал в плитке: значение счётчика, отметки чек-листа.
+ *
+ * ⚠️ Живёт ОТДЕЛЬНО от спеки, и это главное свойство: пересборка виджета не имеет права
+ * обнулить счётчик. Модель меняет описание плитки, а посчитанное принадлежит человеку.
+ */
+export function loadGenRuntime(id: string): GenRuntime {
+  return parseGenRuntime(loadGenState(id));
+}
+
+export function saveGenRuntime(id: string, runtime: GenRuntime): void {
+  if (!id) return;
+  try { localStorage.setItem(STATE_PREFIX + id, JSON.stringify(runtime)); } catch { /* квота */ }
+  window.dispatchEvent(new CustomEvent(EVENT));
 }
 
 export function loadGenState(id: string): string {

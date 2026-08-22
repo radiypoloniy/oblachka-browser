@@ -75,7 +75,7 @@ export const IPC = {
   RULES_REMOVE:      'rules:remove',       // renderer → main: удалить правило
   RULES_CHANGED:     'rules:changed',      // main → renderer: список изменился
 
-  DESKTOP_GEN_PARSE: 'desktop:gen-parse',  // renderer → main: фраза → черновик своего виджета (модель)
+  DESKTOP_GEN_SPEC: 'desktop:gen-spec',    // renderer → main: фраза → спека своего виджета (тип + данные, по грамматике)
   DESKTOP_GEN_PROGRESS: 'desktop:gen-progress', // main → renderer: ход сборки (стадия + объём)
 
   // Омнибокс
