@@ -5,20 +5,23 @@ import {
   loadNewTabSettings, saveNewTabSettings, WALLPAPER_PRESETS, CRYPTO_CHOICES, RATE_CHOICES,
   type NewTabSettings,
 } from '../../newtab/settings';
-import { allMeshes, subscribeMeshes } from '../../newtab/gradients';
-import { compileMeshBackground } from '../../../shared/chromeGround';
+import { allMeshes, subscribeMeshes, meshCss } from '../../newtab/gradients';
 import {
   WIDGET_SIZES, addItem, removeItem, hasItem, setScale, scaleOf, SCALE_PRESETS,
   type DesktopItem, type DesktopLayout, type DesktopScale,
 } from '../../newtab/desktop';
 import { WIDGET_FILLS, FILL_SWATCH } from './widgets';
 import CryptoIcon from '../CryptoIcon';
-import { RADIUS } from '../../styles/system';
+import { RADIUS, ROW_TITLE, TEXT, motion, pad, sp } from '../../styles/system';
 import GenCompose, { GenShelf } from './GenCompose';
 import { deleteGenRecord } from '../../newtab/genStore';
 
 // Боковая панель настройки рабочего стола — всё, что можно поменять, в одном месте и по одному
 // клику. Референс — Bonjourr.
+//
+// ⚠️ Размеры берутся из дизайн-системы (sp/pad/RADIUS/TEXT/motion), а не пишутся числами. Панель
+// под машинную проверку conventions-check не попадает (та смотрит только src/components/settings),
+// но правило одно на проект, и держится оно здесь руками.
 //
 // ⚠️ Панель НЕ ЗАМЕНЯЕТ раздел «Интерфейс» в настройках и не дублирует его состояние: обе
 // стороны читают и пишут ОДИН стор (src/newtab/settings.ts, localStorage + событие окна), просто
@@ -60,6 +63,22 @@ const WIDGET_GROUPS: { title: string; note?: string; items: { key: string; label
     ],
   },
 ];
+
+// ⚠️ РАЗМЕРЫ КОНТРОЛОВ, а не отступы: шкала SPACE описывает воздух между вещами, а не саму
+// вещь. Поэтому они живут именованными константами здесь, а не числами по месту.
+// Ширина панели: 380 было ровно на грани — подписи виджетов ужимались в одну строку, а превью
+// градиентов приходилось делать в почтовую марку. 480 даёт строке тела 14 px нормальную меру.
+const PANEL_WIDTH = 480;
+/** Превью обоев и градиента: ниже 44 узор сетки перестаёт читаться и все превью выглядят одинаково. */
+const THUMB_H = 44;
+/** Кружок заливки виджета. */
+const SWATCH = 26;
+/** Плашка значка в строке виджета — по ней же считается отступ ряда заливок под строкой. */
+const ICON_BOX = 28;
+const TOGGLE_W = 46;
+const TOGGLE_H = 28;
+const TOGGLE_KNOB = 22;
+const TOGGLE_INSET = (TOGGLE_H - TOGGLE_KNOB) / 2;
 
 interface Props {
   layout: DesktopLayout;
@@ -107,23 +126,26 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
       <aside
         onClick={(e) => e.stopPropagation()}
         style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0, width: 380, maxWidth: '94%',
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: PANEL_WIDTH, maxWidth: '94%',
           background: 'var(--surface-solid)', boxShadow: 'var(--shadow-island)',
           display: 'flex', flexDirection: 'column',
           animation: 'oblako-panel-in var(--dur-base) var(--ease-out)',
         }}
       >
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: '16px 18px',
+          display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(4, 6),
           borderBottom: '1px solid var(--divider)', flex: 'none',
         }}>
-          <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>
+          <span style={{ flex: 1, ...TEXT.title }}>
             Настройка экрана
           </span>
           <button onClick={onClose} title="Закрыть" style={iconBtn}><X size={16} /></button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px 28px', display: 'flex', flexDirection: 'column', gap: 26 }}>
+        <div style={{
+          flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: sp(8),
+          padding: `${sp(6)}px ${sp(6)}px ${sp(8)}px`,
+        }}>
 
           <Section title="Расположение" note="Включите, чтобы перетаскивать плитки и менять их размер прямо на экране">
             <Card>
@@ -173,14 +195,17 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
               }}
             />
             {(s.background.kind === 'preset' || s.background.kind === 'mesh') && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+              <div style={{
+                display: 'grid', gap: sp(2),
+                gridTemplateColumns: `repeat(auto-fill, minmax(${THUMB_H * 1.6}px, 1fr))`,
+              }}>
                 {WALLPAPER_PRESETS.map((p) => (
                   <button
                     key={p.id}
                     onClick={() => patchBg({ kind: 'preset', preset: p.id })}
                     title={p.label}
                     style={{
-                      height: 34, borderRadius: RADIUS.control, cursor: 'default', background: p.css,
+                      height: THUMB_H, borderRadius: RADIUS.control, cursor: 'default', background: p.css,
                       border: s.background.kind === 'preset' && s.background.preset === p.id ? '2px solid var(--accent)' : '1px solid var(--divider)',
                     }}
                   />
@@ -191,8 +216,8 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
                     onClick={() => patchBg({ kind: 'mesh', meshId: m.id })}
                     title={m.name}
                     style={{
-                      height: 34, borderRadius: RADIUS.control, cursor: 'default',
-                      backgroundImage: compileMeshBackground(m), backgroundSize: 'cover',
+                      height: THUMB_H, borderRadius: RADIUS.control, cursor: 'default',
+                      backgroundImage: meshCss(m), backgroundSize: 'cover',
                       border: s.background.kind === 'mesh' && s.background.meshId === m.id ? '2px solid var(--accent)' : '1px solid var(--divider)',
                     }}
                   />
@@ -204,7 +229,7 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
                 type="color"
                 value={s.background.color}
                 onChange={(e) => patchBg({ color: e.target.value })}
-                style={{ width: '100%', height: 34, border: 'none', background: 'none', cursor: 'default' }}
+                style={{ width: '100%', height: THUMB_H, border: 'none', background: 'none', cursor: 'default' }}
               />
             )}
             {/* Ползунки — то, ради чего панель и сбоку: результат виден сразу за ней. */}
@@ -247,14 +272,19 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
                       {/* Цвет — под своим же переключателем. Погоды тут нет: у неё цвет означает
                           время суток и саму погоду. */}
                       {on && w.key !== 'weather' && (
-                        <div style={{ display: 'flex', gap: 7, padding: '10px 0 2px 34px' }}>
+                        <div style={{
+                          display: 'flex', gap: sp(2),
+                          // Отступ слева ровно под плашкой значка: ряд заливок принадлежит строке
+                          // выше, и выровнен он по её тексту, а не по краю карточки.
+                          padding: `${sp(3)}px 0 ${sp(1)}px ${ICON_BOX + sp(3)}px`,
+                        }}>
                           {WIDGET_FILLS.map((f) => (
                             <button
                               key={f.id}
                               onClick={() => setFill(w.key, f.id === 'theme' ? undefined : f.id)}
                               title={f.label}
                               style={{
-                                width: 22, height: 22, borderRadius: RADIUS.pill, cursor: 'default', padding: 0,
+                                width: SWATCH, height: SWATCH, borderRadius: RADIUS.pill, cursor: 'default', padding: 0,
                                 background: FILL_SWATCH[f.id] ?? 'var(--surface-sunken)',
                                 border: (item?.fill ?? 'theme') === f.id
                                   ? '2.5px solid var(--accent)' : '1px solid var(--divider-strong)',
@@ -335,9 +365,9 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
           <Section title="Ярлыки">
             <SiteAdder onAdd={(item) => onLayout(addItem(layout, item))} />
             {layout.items.filter((i) => i.kind === 'site').map((i) => (
-              <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
                 <span style={{
-                  flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
+                  flex: 1, minWidth: 0, ...TEXT.body,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>{i.title || i.url}</span>
                 <button onClick={() => onLayout(removeItem(layout, i.id))} title="Убрать" style={iconBtn}>
@@ -354,17 +384,17 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
 
 // ── Примитивы панели ─────────────────────────────────────────────────────────
 // Свои, а не из settings/kit.tsx: тот набор рассчитан на широкий раздел настроек с описаниями
-// под каждым пунктом, здесь же колонка 320 px, и подписи там просто не помещаются.
+// под каждым пунктом, здесь же одна колонка, и подписи там просто не помещаются.
 
 // ⚠️ Раскладка секций — из настроек iOS, а не из плотной формы: заголовок обычным кеглем над
 // КАРТОЧКОЙ со строками, между строками разделители, между секциями воздух. Прежний вариант был
 // сплошным столбцом мелких строк без группировки — он и читался как перегруженная панель.
 function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <span style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>{title}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+      <span style={{ ...TEXT.section }}>{title}</span>
       {note && (
-        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: -4 }}>{note}</span>
+        <span style={{ ...TEXT.caption, marginTop: -sp(1) }}>{note}</span>
       )}
       {children}
     </div>
@@ -375,8 +405,8 @@ function Section({ title, note, children }: { title: string; note?: string; chil
 function Card({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      background: 'var(--surface)', borderRadius: 'var(--radius-card)',
-      border: '1px solid var(--divider)', padding: '4px 14px',
+      background: 'var(--surface)', borderRadius: RADIUS.box,
+      border: '1px solid var(--divider)', padding: pad(1, 4),
     }}>{children}</div>
   );
 }
@@ -385,7 +415,7 @@ function Card({ children }: { children: React.ReactNode }) {
 function Row({ children, divider }: { children: React.ReactNode; divider?: boolean }) {
   return (
     <div style={{
-      padding: '10px 0',
+      padding: `${sp(3)}px 0`,
       borderTop: divider ? '1px solid var(--divider)' : undefined,
     }}>{children}</div>
   );
@@ -398,32 +428,33 @@ function Toggle({ label, hint, on, onChange, icon }: {
     <button
       onClick={() => onChange(!on)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
-        border: 'none', background: 'none', cursor: 'default', padding: '2px 0',
+        display: 'flex', alignItems: 'center', gap: sp(3), width: '100%', textAlign: 'left',
+        border: 'none', background: 'none', cursor: 'default', padding: `${sp(1)}px 0`,
       }}
     >
       {icon && (
         <span style={{
-          width: 26, height: 26, flex: 'none', borderRadius: RADIUS.control, fontSize: 'var(--fs-sm)',
-          background: 'var(--surface-sunken)', display: 'inline-flex',
+          width: ICON_BOX, height: ICON_BOX, flex: 'none', borderRadius: RADIUS.control,
+          ...TEXT.body, background: 'var(--surface-sunken)', display: 'inline-flex',
           alignItems: 'center', justifyContent: 'center',
         }}>{icon}</span>
       )}
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>{label}</span>
+        <span style={{ display: 'block', ...ROW_TITLE }}>{label}</span>
         {hint && (
-          <span style={{ display: 'block', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{hint}</span>
+          <span style={{ display: 'block', ...TEXT.caption }}>{hint}</span>
         )}
       </span>
       <span style={{
-        width: 44, height: 26, borderRadius: RADIUS.pill, flex: 'none', position: 'relative',
+        width: TOGGLE_W, height: TOGGLE_H, borderRadius: RADIUS.pill, flex: 'none', position: 'relative',
         background: on ? 'var(--accent)' : 'var(--surface-sunken)',
-        transition: 'background var(--dur-fast) var(--ease-standard)',
+        transition: motion.hover('background'),
       }}>
         <span style={{
-          position: 'absolute', top: 3, left: on ? 21 : 3, width: 20, height: 20,
+          position: 'absolute', top: TOGGLE_INSET, width: TOGGLE_KNOB, height: TOGGLE_KNOB,
+          left: on ? TOGGLE_W - TOGGLE_KNOB - TOGGLE_INSET : TOGGLE_INSET,
           borderRadius: RADIUS.pill, background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
-          transition: 'left var(--dur-fast) var(--ease-standard)',
+          transition: motion.hover('left'),
         }} />
       </span>
     </button>
@@ -435,8 +466,8 @@ function Slider({ label, value, min, max, step, format, onChange }: {
   format: (v: number) => string; onChange: (v: number) => void;
 }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ display: 'flex', fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+      <span style={{ display: 'flex', ...TEXT.body }}>
         <span style={{ flex: 1 }}>{label}</span>
         <span style={{ color: 'var(--text-faint)', fontVariantNumeric: 'tabular-nums' }}>{format(value)}</span>
       </span>
@@ -453,18 +484,22 @@ function Segmented({ value, options, onChange }: {
   value: string; options: [string, string][]; onChange: (v: string) => void;
 }) {
   return (
-    <div style={{ display: 'flex', gap: 2, padding: 2, background: 'var(--surface-sunken)', borderRadius: 'var(--radius-sm)' }}>
+    <div style={{
+      display: 'flex', gap: 2, padding: 2, background: 'var(--surface-sunken)',
+      borderRadius: RADIUS.control,
+    }}>
       {options.map(([id, label]) => (
         <button
           key={id}
           onClick={() => onChange(id)}
           style={{
-            flex: 1, padding: '5px 0', border: 'none', cursor: 'default',
-            borderRadius: 'calc(var(--radius-sm) - 2px)',
+            flex: 1, padding: `${sp(2)}px 0`, border: 'none', cursor: 'default',
+            borderRadius: RADIUS.tight,
             background: value === id ? 'var(--surface)' : 'transparent',
             boxShadow: value === id ? 'var(--shadow-card)' : 'none',
             color: value === id ? 'var(--text-strong)' : 'var(--text-muted)',
-            fontSize: 'var(--fs-xs)', fontWeight: value === id ? 600 : 400,
+            ...TEXT.body, fontWeight: value === id ? 600 : 400,
+            transition: motion.hover('background', 'color'),
           }}
         >{label}</button>
       ))}
@@ -477,7 +512,7 @@ function Chips({ items, active, onToggle }: {
   active: string[]; onToggle: (id: string) => void;
 }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(1) }}>
       {items.map((it) => {
         const on = active.includes(it.id);
         return (
@@ -485,12 +520,13 @@ function Chips({ items, active, onToggle }: {
             key={it.id}
             onClick={() => onToggle(it.id)}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '4px 9px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'default',
+              display: 'inline-flex', alignItems: 'center', gap: sp(1),
+              padding: pad(2, 3), borderRadius: RADIUS.control, border: 'none', cursor: 'default',
               background: on ? 'var(--surface)' : 'var(--surface-sunken)',
               boxShadow: on ? 'var(--shadow-card)' : 'none',
               color: on ? 'var(--text-strong)' : 'var(--text-muted)',
-              fontSize: 'var(--fs-xs)', fontWeight: on ? 600 : 400,
+              ...TEXT.body, fontWeight: on ? 600 : 400,
+              transition: motion.hover('background', 'color'),
             }}
           >{it.icon}{it.label}</button>
         );
@@ -508,10 +544,10 @@ function Field({ value, placeholder, onChange }: {
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
       style={{
-        width: '100%', boxSizing: 'border-box', padding: '7px 10px',
-        borderRadius: 'var(--radius-sm)', border: '1px solid var(--divider-strong)',
+        width: '100%', boxSizing: 'border-box', padding: pad(2, 3),
+        borderRadius: RADIUS.control, border: '1px solid var(--divider-strong)',
         background: 'var(--surface)', color: 'var(--text-strong)',
-        fontSize: 'var(--fs-sm)', fontFamily: 'inherit', outline: 'none',
+        ...TEXT.body, fontFamily: 'inherit', outline: 'none',
       }}
     />
   );
@@ -529,17 +565,17 @@ function SiteAdder({ onAdd }: { onAdd: (item: Omit<DesktopItem, 'id'>) => void }
     setUrl('');
   };
   return (
-    <div style={{ display: 'flex', gap: 6 }}>
+    <div style={{ display: 'flex', gap: sp(2) }}>
       <input
         value={url}
         placeholder="Адрес сайта"
         onChange={(e) => setUrl(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
         style={{
-          flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '7px 10px',
-          borderRadius: 'var(--radius-sm)', border: '1px solid var(--divider-strong)',
+          flex: 1, minWidth: 0, boxSizing: 'border-box', padding: pad(2, 3),
+          borderRadius: RADIUS.control, border: '1px solid var(--divider-strong)',
           background: 'var(--surface)', color: 'var(--text-strong)',
-          fontSize: 'var(--fs-sm)', fontFamily: 'inherit', outline: 'none',
+          ...TEXT.body, fontFamily: 'inherit', outline: 'none',
         }}
       />
       <button onClick={add} title="Добавить" style={{ ...iconBtn, flex: 'none' }}><Plus size={15} /></button>
@@ -548,6 +584,7 @@ function SiteAdder({ onAdd }: { onAdd: (item: Omit<DesktopItem, 'id'>) => void }
 }
 
 const iconBtn: React.CSSProperties = {
-  border: 'none', background: 'transparent', cursor: 'default', padding: 5,
+  border: 'none', background: 'transparent', cursor: 'default', padding: sp(2),
   borderRadius: RADIUS.control, color: 'var(--text-faint)', display: 'inline-flex',
+  transition: motion.hover('background', 'color'),
 };

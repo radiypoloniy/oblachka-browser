@@ -4,10 +4,13 @@ import type { CellSize, DesktopItem, DesktopLayout } from '../../newtab/desktop'
 import { pickGenFacts, wantsGenPhoto } from '../../../shared/genWidget';
 import { saveGenRecord, deleteGenRecord, listGenLibrary, loadGenRecord, subscribeGenStore } from '../../newtab/genStore';
 import { GenWidget } from './GenWidget';
-import { RADIUS } from '../../styles/system';
+import { RADIUS, TEXT, motion, pad, sp } from '../../styles/system';
 import type { GenParseOutcome } from '../../../shared/ipc';
 
 const DRAFT_ID = 'gen-draft';
+
+/** Высота превью черновика: ниже плитка перестаёт быть похожа на себя же на столе. */
+const PREVIEW_H = 140;
 
 export default function GenCompose({
   onPlace,
@@ -41,6 +44,7 @@ export default function GenCompose({
         saveGenRecord(DRAFT_ID, {
           html: res.html,
           facts: pickGenFacts(res.facts),
+          mode: res.mode,
           photo: res.assetPhoto || wantsGenPhoto(p, res.html, false),
           phrase: p,
           title: res.title,
@@ -71,6 +75,7 @@ export default function GenCompose({
     saveGenRecord(genId, {
       html: draft.html,
       facts: pickGenFacts(draft.facts),
+      mode: draft.mode,
       photo: draft.assetPhoto || wantsGenPhoto(phrase, draft.html, false),
       phrase,
       title: draft.title,
@@ -85,8 +90,8 @@ export default function GenCompose({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
+      <div style={{ ...TEXT.caption }}>
         Опишите виджет своими словами. Модель соберёт одностраничник, поставите вы.
       </div>
       <textarea
@@ -95,10 +100,10 @@ export default function GenCompose({
         rows={2}
         placeholder="Помодоро, фоторамка, сколько вкладок открыто…"
         style={{
-          width: '100%', resize: 'vertical', minHeight: 52,
-          padding: '8px 10px', borderRadius: RADIUS.control,
+          width: '100%', resize: 'vertical', minHeight: sp(8) * 2,
+          padding: pad(2, 3), borderRadius: RADIUS.control,
           border: '1px solid var(--divider-strong)', background: 'var(--surface)',
-          color: 'var(--text-body)', font: 'inherit', boxSizing: 'border-box',
+          ...TEXT.body, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none',
         }}
       />
       <button
@@ -106,45 +111,48 @@ export default function GenCompose({
         onClick={() => void assemble()}
         disabled={busy || phrase.trim().length < 3}
         style={{
-          alignSelf: 'flex-start', padding: '6px 12px', border: 'none', cursor: 'default',
+          alignSelf: 'flex-start', padding: pad(2, 4), border: 'none', cursor: 'default',
           borderRadius: RADIUS.pill, background: 'var(--accent)', color: 'var(--on-accent)',
-          fontSize: 'var(--fs-sm)', fontWeight: 600, opacity: busy ? 0.6 : 1,
+          ...TEXT.body, fontWeight: 600, opacity: busy ? 0.6 : 1,
+          transition: motion.hover('opacity', 'background'),
         }}
       >
         {busy ? 'Собираю…' : 'Собрать'}
       </button>
-      {error && <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--danger-500)' }}>{error}</div>}
+      {error && <div style={{ ...TEXT.body, color: 'var(--danger-500)' }}>{error}</div>}
       {draft && (
         <div style={{
-          display: 'flex', flexDirection: 'column', gap: 8,
-          padding: 10, borderRadius: RADIUS.box, border: '1px solid var(--divider)',
+          display: 'flex', flexDirection: 'column', gap: sp(2),
+          padding: sp(3), borderRadius: RADIUS.box, border: '1px solid var(--divider)',
         }}>
-          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-            {draft.kind === 'builtin' ? `Готовый виджет: ${draft.widget}` : draft.title}
-          </div>
+          {draft.kind === 'builtin' && (
+            <div style={{ ...TEXT.body, fontWeight: 600, color: 'var(--text-strong)' }}>
+              Готовый виджет: {draft.widget}
+            </div>
+          )}
           {draft.kind === 'gen' && (
-            <div style={{ height: 140, borderRadius: RADIUS.control, overflow: 'hidden' }}>
+            <div style={{ height: PREVIEW_H, borderRadius: RADIUS.control, overflow: 'hidden' }}>
               <GenWidget
-                size={draft.size} box={{ width: 240, height: 140 }} tiles={[]}
+                size={draft.size} box={{ width: 240, height: PREVIEW_H }} tiles={[]}
                 onOpen={() => { /* превью */ }} city="" genId={DRAFT_ID}
               />
             </div>
           )}
           {draft.kind === 'gen' && draft.assetPhoto && (
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+            <div style={{ ...TEXT.caption }}>
               После постановки нажмите на плитку и выберите фото.
             </div>
           )}
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: sp(2) }}>
             <button type="button" onClick={confirm} style={{
-              padding: '6px 12px', border: 'none', cursor: 'default',
+              padding: pad(2, 4), border: 'none', cursor: 'default',
               borderRadius: RADIUS.pill, background: 'var(--accent)', color: 'var(--on-accent)',
-              fontSize: 'var(--fs-sm)', fontWeight: 600,
+              ...TEXT.body, fontWeight: 600, transition: motion.hover('background'),
             }}>Поставить</button>
             <button type="button" onClick={() => { setDraft(null); deleteGenRecord(DRAFT_ID); }} style={{
-              padding: '6px 12px', border: '1px solid var(--divider-strong)', cursor: 'default',
+              padding: pad(2, 4), border: '1px solid var(--divider-strong)', cursor: 'default',
               borderRadius: RADIUS.pill, background: 'transparent', color: 'var(--text-body)',
-              fontSize: 'var(--fs-sm)',
+              ...TEXT.body, transition: motion.hover('background', 'color'),
             }}>Отмена</button>
           </div>
         </div>
@@ -179,6 +187,7 @@ export function GenShelf({
         saveGenRecord(id, {
           html: res.html,
           facts: pickGenFacts(res.facts),
+          mode: res.mode,
           photo: res.assetPhoto || wantsGenPhoto(p, res.html, false),
           phrase: p,
           title: res.title,
@@ -191,13 +200,13 @@ export function GenShelf({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2), paddingTop: sp(1) }}>
       {lib.map((it) => {
         const placed = onDesk.has(it.id);
         return (
-          <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
             <span style={{
-              flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
+              flex: 1, minWidth: 0, ...TEXT.body,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{it.title}</span>
             {placed ? (
@@ -224,7 +233,7 @@ export function GenShelf({
 }
 
 const ghostBtn: CSSProperties = {
-  flex: 'none', padding: '4px 8px', border: '1px solid var(--divider-strong)', cursor: 'default',
+  flex: 'none', padding: pad(1, 2), border: '1px solid var(--divider-strong)', cursor: 'default',
   borderRadius: RADIUS.pill, background: 'transparent', color: 'var(--text-body)',
-  fontSize: 'var(--fs-xs)',
+  ...TEXT.caption, transition: motion.hover('background', 'color'),
 };
