@@ -31,6 +31,10 @@ export default function ProfilesSection() {
   const [busy, setBusy] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
+  // ⚠️ Состояние берётся И из ответа на каждое действие, И из рассылки. Не дублирование:
+  // рассылка нужна, чтобы список обновился после правки в другом окне, а ответ — чтобы экран
+  // не зависел от того, дошла ли она. Первая версия полагалась только на рассылку, и та уходила
+  // мимо слоя хрома: кнопки выглядели мёртвыми, хотя main всё выполнял.
   useEffect(() => {
     void window.oblako.getProfiles().then(setState);
     return window.oblako.onProfilesChanged(setState);
@@ -74,7 +78,7 @@ export default function ProfilesSection() {
               title={p.name}
               subtitle={subtitleFor(p, pinned === p.id, state.activeId === p.id)}
               active={state.activeId === p.id}
-              onClick={() => { void window.oblako.switchProfile(p.id); }}
+              onClick={() => { void window.oblako.switchProfile(p.id).then(setState); }}
               icon={<Dot profile={p} />}
               actions={(
                 <div style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
@@ -87,7 +91,11 @@ export default function ProfilesSection() {
                   {p.id !== DEFAULT_PROFILE_ID && (
                     <button
                       title="Удалить профиль вместе с его логинами"
-                      onClick={(e) => { e.stopPropagation(); void window.oblako.removeProfile(p.id); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void window.oblako.removeProfile(p.id).then(setState);
+                        if (openId === p.id) setOpenId(null);
+                      }}
                       style={{
                         border: 'none', background: 'transparent', cursor: 'pointer', padding: sp(1),
                         color: 'var(--text-faint)', display: 'inline-flex',
@@ -109,7 +117,7 @@ export default function ProfilesSection() {
                 <span style={{ ...TEXT.caption }}>Название</span>
                 <TextField
                   value={p.name}
-                  onChange={(v) => { void window.oblako.renameProfile(p.id, v); }}
+                  onChange={(v) => { void window.oblako.renameProfile(p.id, v).then(setState); }}
                 />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
@@ -117,7 +125,7 @@ export default function ProfilesSection() {
                 <Segmented
                   value={p.settings.vpn}
                   options={VPN_OPTIONS}
-                  onChange={(v) => { void window.oblako.setProfileSettings(p.id, { vpn: v }); }}
+                  onChange={(v) => { void window.oblako.setProfileSettings(p.id, { vpn: v }).then(setState); }}
                 />
               </div>
               {p.id !== DEFAULT_PROFILE_ID && (
@@ -162,7 +170,7 @@ export default function ProfilesSection() {
               title="Спрашивать"
               subtitle="Экран выбора профиля при каждом запуске"
               active={!pinned}
-              onClick={() => { void window.oblako.setStartupProfile(null); }}
+              onClick={() => { void window.oblako.setStartupProfile(null).then(setState); }}
             />
             {state.profiles.map((p) => (
               <OptionRow
@@ -170,7 +178,7 @@ export default function ProfilesSection() {
                 title={`Всегда «${p.name}»`}
                 subtitle="Запускаться с этим профилем и не спрашивать"
                 active={pinned === p.id}
-                onClick={() => { void window.oblako.setStartupProfile(p.id); }}
+                onClick={() => { void window.oblako.setStartupProfile(p.id).then(setState); }}
                 icon={<Dot profile={p} />}
               />
             ))}

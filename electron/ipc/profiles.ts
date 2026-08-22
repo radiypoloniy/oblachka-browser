@@ -1,10 +1,11 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain } from 'electron';
 import { IPC } from '../../shared/ipc';
 import { DEFAULT_PROFILE_ID, type ProfileSettings } from '../../shared/profiles';
 import {
   getProfiles, createProfile, deleteProfile, updateProfileName,
   updateProfileSettings, setActiveProfile, pinStartupProfile,
 } from '../ProfileStore';
+import { broadcastToChrome } from '../WindowRegistry';
 import type { IpcDeps } from './deps';
 
 // Профили: свои куки и свои сетевые настройки (см. shared/profiles.ts).
@@ -14,11 +15,14 @@ import type { IpcDeps } from './deps';
 // продолжает идти как шёл. Ложное чувство защиты хуже её отсутствия: ровно этим обоснован
 // fail-closed у VPN (см. комментарий к kill switch в main.ts).
 
+// ⚠️ broadcastToChrome, а НЕ BrowserWindow.webContents.send. Интерфейс браузера живёт в
+// WebContentsView внутри окна, и webContents САМОГО окна — это другой объект: сообщение туда
+// уходит в никуда. Живой случай 22.08: переключение профиля и удаление молча «не работали» —
+// main всё делал правильно, но список на экране не обновлялся, и человек видел, будто кнопки
+// мертвы. Хуже того, удалённые профили продолжали показываться, пока их не смахнуло следующим
+// ответом IPC, — со стороны это выглядело как пропажа данных.
 function broadcast(): void {
-  const state = getProfiles();
-  for (const w of BrowserWindow.getAllWindows()) {
-    if (!w.isDestroyed()) w.webContents.send(IPC.PROFILES_CHANGED, state);
-  }
+  broadcastToChrome(IPC.PROFILES_CHANGED, getProfiles());
 }
 
 export function registerProfilesIpc(d: IpcDeps): void {
