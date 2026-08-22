@@ -4,7 +4,7 @@ import { Check, Plus, X, Play, Pause, SkipBack, SkipForward } from 'lucide-react
 import type { TileSite } from '../../../shared/frecency';
 import type { MediaCommand, MediaNowPlaying } from '../../../shared/ipc';
 import type { CellSize } from '../../newtab/desktop';
-import { card, cardGlass, grain, RADIUS, DISPLAY, CAPS, CARD_COLOR_ENABLED, CARD_INK, altitude, ALTITUDE, HERO_ENABLED } from '../../styles/system';
+import { card, cardGlass, grain, RADIUS, DISPLAY, CAPS, CARD_COLOR_ENABLED, CARD_INK, altitude, ALTITUDE, HERO_ENABLED, sp } from '../../styles/system';
 import { loadNewTabSettings } from '../../newtab/settings';
 import CryptoIcon from '../CryptoIcon';
 import { siteTint } from './siteTint';
@@ -321,25 +321,28 @@ function AnalogFace({ size, now, seconds }: { size: number; now: Date; seconds: 
           пошли за темой, весь циферблат стал белым по белому — со стороны это выглядело как
           «аналоговые часы не работают», хотя они исправно рисовались невидимыми. currentColor
           наследуется от плитки: тёмный на светлой поверхности, белый на выбранной заливке. */}
-      <circle cx="50" cy="50" r="47" fill="currentColor" fillOpacity="0.05" stroke="currentColor" strokeOpacity="0.22" strokeWidth="1" />
-      {/* Двенадцать рисок; каждая третья (12/3/6/9) крупнее — по ним глаз и цепляется. */}
-      {Array.from({ length: 12 }, (_, i) => {
-        const major = i % 3 === 0;
-        return (
-          <line
-            key={i}
-            x1="50" y1={major ? 8 : 9.5} x2="50" y2={major ? 15 : 13}
-            stroke="currentColor" strokeOpacity={major ? 0.85 : 0.4}
-            strokeWidth={major ? 2.6 : 1.4} strokeLinecap="round"
-            transform={`rotate(${i * 30} 50 50)`}
-          />
-        );
-      })}
-      <Hand angle={hourAngle} length={25} width={4.8} color="currentColor" />
-      <Hand angle={minAngle}  length={36} width={3.2} color="currentColor" />
-      {seconds && <Hand angle={secAngle} length={40} width={1.3} color={CLOCK_SECOND} tail={9} />}
-      <circle cx="50" cy="50" r="3" fill="currentColor" />
-      {seconds && <circle cx="50" cy="50" r="1.5" fill={CLOCK_SECOND} />}
+      {/* ⚠️ Обода НЕТ. Нарисованный круг с рамкой и двенадцатью рисками — это часы из набора
+          иконок 2010-х; современный циферблат держится ПУСТОТОЙ и точками, а границу задаёт сама
+          плитка. Осталось ровно то, что читает глаз: четыре точки-ориентира и стрелки. */}
+      {/* Четыре ориентира вместо двенадцати рисок: 12/3/6/9 — единственные, по которым время
+          читают на самом деле, а остальные восемь только зашумляют мелкую плитку. */}
+      {[0, 3, 6, 9].map((i) => (
+        <circle
+          key={i}
+          cx="50" cy="13" r="2.1" fill="currentColor" fillOpacity="0.5"
+          transform={`rotate(${i * 30} 50 50)`}
+        />
+      ))}
+      {/* ⚠️ Стрелки — КАПСУЛЫ со скруглением, а не отрезки-палки: это то же требование к
+          скруглениям, что и у всего остального интерфейса, просто внутри svg. Часовая толще и
+          короче минутной — иначе их не различить с одного взгляда. */}
+      <Hand angle={hourAngle} length={22} width={5.4} color="currentColor" />
+      <Hand angle={minAngle}  length={33} width={3.6} color="currentColor" />
+      {seconds && <Hand angle={secAngle} length={37} width={1.4} color={CLOCK_SECOND} tail={8} />}
+      {/* Центр: точка цвета плитки внутри стрелок — стрелки «выходят» из-под неё, а не
+          упираются в кляксу. */}
+      <circle cx="50" cy="50" r="3.4" fill="currentColor" />
+      <circle cx="50" cy="50" r="1.5" fill={seconds ? CLOCK_SECOND : 'var(--surface)'} />
     </svg>
   );
 }
@@ -443,8 +446,11 @@ function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
     // рисуем живое небо. Само небо — не токен темы: это носитель настроения, как цвет у погоды.
     <Tile tint={fill ?? (isDay ? skyDay : skyNight)} fill={fill} padding={pad}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flex: 'none' }}>
-        <span style={{ fontSize: Math.min(box.height * 0.24, 34), fontWeight: 300, lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>{time}</span>
-        <span style={{ fontSize: 'var(--fs-sm)', opacity: 0.85, textTransform: 'capitalize' }}>{weekday}</span>
+        {/* ⚠️ Дисплейная гарнитура, как у остальных крупных чисел стола (роль DISPLAY).
+            Прежний lightweight-шрифт в 300 весе был чужим здесь: на столе всё крупное набрано
+            Unbounded, и часы выпадали из общего вида ровно тем, что «просто текст». */}
+        <span style={{ ...DISPLAY, fontSize: Math.min(box.height * 0.26, 40) }}>{time}</span>
+        <span style={{ ...CAPS, opacity: 0.8 }}>{weekday}</span>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'flex-end' }}>
         <svg width="100%" height={Math.max(60, svgH)} viewBox="0 0 200 100" preserveAspectRatio="xMidYMax meet" style={{ display: 'block', overflow: 'visible' }}>
@@ -454,6 +460,31 @@ function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
               <stop offset="0.5" stopColor="#fff" stopOpacity="0.6" />
               <stop offset="1" stopColor="#fff" stopOpacity="0.25" />
             </linearGradient>
+            {/* Ядро солнца: светлее в верхнем левом углу — там, откуда «падает» свет. */}
+            <radialGradient id="sunCore" cx="0.35" cy="0.3" r="0.75">
+              <stop offset="0" stopColor="#FFFBEA" />
+              <stop offset="0.55" stopColor="#FFD65C" />
+              <stop offset="1" stopColor="#F7A93B" />
+            </radialGradient>
+            <radialGradient id="sunGlow" cx="0.5" cy="0.5" r="0.5">
+              <stop offset="0.4" stopColor="#FFD65C" stopOpacity="0.45" />
+              <stop offset="1" stopColor="#FFD65C" stopOpacity="0" />
+            </radialGradient>
+            <radialGradient id="moonCore" cx="0.35" cy="0.3" r="0.8">
+              <stop offset="0" stopColor="#FFFFFF" />
+              <stop offset="0.6" stopColor="#E4E9F4" />
+              <stop offset="1" stopColor="#C3CBDD" />
+            </radialGradient>
+            <radialGradient id="moonGlow" cx="0.5" cy="0.5" r="0.5">
+              <stop offset="0.45" stopColor="#DCE4F5" stopOpacity="0.35" />
+              <stop offset="1" stopColor="#DCE4F5" stopOpacity="0" />
+            </radialGradient>
+            {/* ⚠️ Маска серпа объявлена ЗДЕСЬ, а не внутри ветки ночи: defs с одинаковым id,
+                объявленный дважды, в svg ведёт себя непредсказуемо. */}
+            <mask id="moonMask">
+              <rect x="0" y="0" width="200" height="100" fill="#fff" />
+              <circle cx={bodyX + 4.2} cy={bodyY - 3.2} r="8" fill="#000" />
+            </mask>
           </defs>
           {/* Линия горизонта */}
           <line x1="8" y1={cy} x2="192" y2={cy} stroke="#fff" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="2 3" />
@@ -467,26 +498,49 @@ function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
           <circle cx={riseX} cy={cy} r="2.4" fill="#fff" fillOpacity="0.75" />
           <circle cx={setX} cy={cy} r="2.4" fill="#fff" fillOpacity="0.75" />
           {/* Светило */}
+          {/* ⚠️ Светило — не «шарик» и не «полумесяц». У солнца тёплое ядро, ореол и мягкое
+              свечение вокруг; у луны — холодный градиент и настоящие моря, а серп задаётся
+              смещённой маской, а не вырезанным полукругом. Это единственная картинка на плитке,
+              и она несёт всё настроение. */}
           {isDay ? (
             <g>
-              <circle cx={bodyX} cy={bodyY} r="9" fill="#FFD65C" />
-              <circle cx={bodyX} cy={bodyY} r="14" fill="#FFD65C" fillOpacity="0.25" />
+              <circle cx={bodyX} cy={bodyY} r="20" fill="url(#sunGlow)" />
+              <circle cx={bodyX} cy={bodyY} r="10.5" fill="#FFF3C4" fillOpacity="0.55" />
+              <circle cx={bodyX} cy={bodyY} r="8" fill="url(#sunCore)" />
             </g>
           ) : (
-            // Луна — круг с «откушенным» краем через маску, читается лунным серпом даже мелко.
             <g>
-              <defs>
-                <mask id="moon"><rect x="0" y="0" width="200" height="100" fill="#fff" /><circle cx={bodyX + 4} cy={bodyY - 3} r="8" fill="#000" /></mask>
-              </defs>
-              <circle cx={bodyX} cy={bodyY} r="7.5" fill="#E8ECF5" mask="url(#moon)" />
+              <circle cx={bodyX} cy={bodyY} r="16" fill="url(#moonGlow)" />
+              <circle cx={bodyX} cy={bodyY} r="8" fill="url(#moonCore)" mask="url(#moonMask)" />
+              {/* Моря — то, что отличает луну от белого кружка. */}
+              <g mask="url(#moonMask)" fill="#B9C3D6" fillOpacity="0.55">
+                <circle cx={bodyX - 2.4} cy={bodyY - 2} r="1.9" />
+                <circle cx={bodyX + 0.6} cy={bodyY + 2.4} r="1.3" />
+                <circle cx={bodyX - 3} cy={bodyY + 2.6} r="0.9" />
+              </g>
             </g>
           )}
         </svg>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--fs-xs)', opacity: 0.85, flex: 'none', marginTop: 2 }}>
-        <span>🌅 {minutesToHHMM(sunrise)}</span>
-        <span style={{ opacity: 0.9 }}>{remainLabel}</span>
-        <span>{minutesToHHMM(sunset)} 🌇</span>
+      {/* ⚠️ Стеклянная полоса вместо голых эмодзи в строку. Эмодзи рисует система, они разного
+          стиля и размера в разных шрифтах — на фирменном небе это выглядело наклейками. Время
+          восхода и заката говорят сами за себя, а положение (слева/справа) уже сказано дугой. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: sp(2),
+        // ⚠️ Не pad() из системы: в этой функции есть СВОЯ переменная pad (отступ плитки),
+        // и она затеняет рецепт. Берём ступени шкалы напрямую — значения те же.
+        flex: 'none', marginTop: sp(1), padding: `${sp(1)}px ${sp(3)}px`,
+        borderRadius: RADIUS.pill,
+        background: 'rgba(255,255,255,0.16)',
+        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+        border: '1px solid rgba(255,255,255,0.22)',
+        fontSize: 'var(--fs-xs)',
+      }}>
+        <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.95 }}>{minutesToHHMM(sunrise)}</span>
+        <span style={{ opacity: 0.95, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {remainLabel}
+        </span>
+        <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.95 }}>{minutesToHHMM(sunset)}</span>
       </div>
     </Tile>
   );

@@ -1,21 +1,30 @@
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Check } from 'lucide-react';
 import {
   PROFILE_COLORS, PROFILES_MAX, shouldAskProfileOnStart,
   type Profile, type ProfilesState,
 } from '../../shared/profiles';
-import { RADIUS, TEXT, motion, pad, sp } from '../styles/system';
-import { glassPlate } from '../styles/island';
+import { ALTITUDE, DISPLAY, RADIUS, TEXT, altitude, motion, pad, sp } from '../styles/system';
 
 // Выбор профиля при запуске.
 //
 // ⚠️ ПОПОВЕР В ОКНЕ, а не отдельное окно выбора. Второе окно — это вспышка на старте, своя
-// иконка в панели задач, свой размер и своя тема; сущностей и так хватает. Здесь тот же слой,
-// что у остальных карточек браузера, и та же дизайн-система.
+// иконка в панели задач, свой размер и своя тема; сущностей и так хватает.
 //
-// ⚠️ Появляется ТОЛЬКО когда спрашивать есть о чем (см. shouldAskProfileOnStart): профилей
-// больше одного и человек не закрепил выбор. Один профиль — вопроса нет вовсе, иначе это
-// издевательство: «с каким из одного?».
+// ⚠️ Карточка собрана из ГОТОВЫХ РЕЦЕПТОВ, а не нарисована с нуля: altitude() задаёт поверхность,
+// скругление и тень, TEXT/DISPLAY — роли текста, sp/pad — шкалу. Первая версия рисовалась руками
+// и это было видно сразу: прямые углы (glassPlate НАМЕРЕННО не задаёт радиус — его ставит
+// вызывающий) и мелкий текст в тесной коробке.
+//
+// ⚠️ Дисплейная гарнитура здесь УМЕСТНА и это единственное её место в диалогах: правило
+// «в интерфейс не заходит никогда» сделано для плотного набора в мелком кегле, а этот экран —
+// «лицо» продукта наравне со столом и онбордингом, и человек видит его до всего остального.
+//
+// ⚠️ Появляется ТОЛЬКО когда спрашивать есть о чём (см. shouldAskProfileOnStart): профилей
+// больше одного и человек не закрепил выбор.
+
+/** Кружок метки. Крупный: на этом экране он «аватар», а не значок в строке. */
+const DOT = 40;
 
 export default function ProfilePicker({ onDone }: { onDone: () => void }) {
   const [state, setState] = useState<ProfilesState | null>(null);
@@ -54,8 +63,7 @@ export default function ProfilePicker({ onDone }: { onDone: () => void }) {
     setBusy(true);
     try {
       const color = PROFILE_COLORS[state.profiles.length % PROFILE_COLORS.length]!;
-      const next = await window.oblako.createProfile(name, color);
-      setState(next);
+      setState(await window.oblako.createProfile(name, color));
       setDraft('');
       setAdding(false);
     } finally {
@@ -67,50 +75,33 @@ export default function ProfilePicker({ onDone }: { onDone: () => void }) {
     <div style={{
       position: 'absolute', inset: 0, zIndex: 80,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(10,12,20,0.28)',
+      padding: sp(8),
+      background: 'rgba(10,12,20,0.32)',
+      backdropFilter: 'blur(2px)',
     }}>
       <div style={{
-        ...glassPlate(),
-        width: 420, maxWidth: '92%', padding: pad(6),
-        display: 'flex', flexDirection: 'column', gap: sp(4),
+        // Готовый рецепт «острова» — поверхность, скругление содержимого (24), тень, кромка.
+        ...altitude(ALTITUDE.island, { content: true }),
+        width: 560, maxWidth: '100%', maxHeight: '100%', overflowY: 'auto',
+        padding: `${sp(8)}px ${sp(8)}px ${sp(6)}px`,
+        display: 'flex', flexDirection: 'column', gap: sp(6),
         animation: 'oblako-drag-card-in var(--dur-base) var(--ease-out)',
       }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-          <span style={{ ...TEXT.title }}>С каким профилем начать?</span>
-          {/* ⚠️ Объяснение обязательно и здесь. Человек видит этот экран РАНЬШЕ, чем что-либо
-              успел прочитать про профили; без него вопрос выглядит как требование выбрать
-              непонятно что. */}
-          <span style={{ ...TEXT.caption }}>
-            У профиля свои логины, вкладки и настройки сети. Рабочее не смешивается с личным,
-            а на одном сайте можно держать два аккаунта.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
+          <span style={{ ...DISPLAY, fontSize: 34, color: 'var(--text-strong)' }}>
+            С чего начнём?
+          </span>
+          {/* ⚠️ Объяснение обязательно: человек видит этот экран РАНЬШЕ, чем успел прочитать
+              что-либо про профили, и без него вопрос выглядит требованием выбрать непонятно что. */}
+          <span style={{ ...TEXT.body, color: 'var(--text-muted)', maxWidth: '46ch' }}>
+            У профиля свои логины, вкладки и настройки сети. Рабочее не смешивается
+            с личным, а на одном сайте можно держать два аккаунта.
           </span>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
           {state.profiles.map((p) => (
-            <button
-              key={p.id}
-              disabled={busy}
-              onClick={() => { void pick(p.id); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: sp(3), width: '100%',
-                padding: pad(3), borderRadius: RADIUS.control, cursor: 'default',
-                border: '1px solid var(--divider)', background: 'var(--surface)',
-                color: 'inherit', textAlign: 'left', font: 'inherit',
-                transition: motion.hover('background', 'border-color'),
-              }}
-            >
-              <Dot profile={p} />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', ...TEXT.body, color: 'var(--text-strong)', fontWeight: 600 }}>
-                  {p.name}
-                </span>
-                <span style={{ display: 'block', ...TEXT.caption }}>
-                  {p.settings.vpn === 'on' ? 'Только через VPN'
-                    : p.settings.vpn === 'off' ? 'Без VPN' : 'Как в приложении'}
-                </span>
-              </span>
-            </button>
+            <ProfileButton key={p.id} profile={p} disabled={busy} onPick={() => { void pick(p.id); }} />
           ))}
 
           {adding ? (
@@ -124,38 +115,53 @@ export default function ProfilePicker({ onDone }: { onDone: () => void }) {
               }}
               placeholder="Название профиля"
               style={{
-                ...TEXT.body, width: '100%', boxSizing: 'border-box', padding: pad(3),
-                borderRadius: RADIUS.control, border: '1px solid var(--divider-strong)',
-                background: 'var(--surface)', color: 'var(--text-strong)',
-                fontFamily: 'inherit', outline: 'none',
+                ...TEXT.section, fontWeight: 400, width: '100%', boxSizing: 'border-box',
+                padding: pad(4), borderRadius: RADIUS.box,
+                border: '1px solid var(--accent)', background: 'var(--surface)',
+                color: 'var(--text-strong)', fontFamily: 'inherit', outline: 'none',
               }}
             />
           ) : state.profiles.length < PROFILES_MAX && (
             <button
               onClick={() => { setAdding(true); setDraft(''); }}
               style={{
-                ...TEXT.body, display: 'flex', alignItems: 'center', gap: sp(2),
-                padding: pad(3), borderRadius: RADIUS.control, cursor: 'default',
+                ...TEXT.section, fontWeight: 400,
+                display: 'flex', alignItems: 'center', gap: sp(3),
+                padding: `${sp(4)}px ${sp(4)}px`, borderRadius: RADIUS.box, cursor: 'default',
                 border: '1px dashed var(--divider-strong)', background: 'transparent',
                 color: 'var(--text-muted)', textAlign: 'left',
-                transition: motion.hover('background', 'color'),
+                transition: motion.hover('background', 'color', 'border-color'),
               }}
-            ><Plus size={14} /> Новый профиль</button>
+            >
+              <span style={{
+                width: DOT, height: DOT, flex: 'none', borderRadius: RADIUS.pill,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                border: '1px dashed var(--divider-strong)',
+              }}><Plus size={18} /></span>
+              Новый профиль
+            </button>
           )}
         </div>
 
-        {/* ⚠️ Галочка — про то, чтобы вопрос БОЛЬШЕ НЕ ПОЯВЛЯЛСЯ, и сказано это прямо.
-            Отменяется в настройках, и про это тоже сказано здесь: иначе человек, поставивший
-            её однажды, не поймёт, куда делся выбор. */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: sp(2), cursor: 'default' }}>
-          <input
-            type="checkbox"
-            checked={remember}
-            onChange={(e) => setRemember(e.target.checked)}
-            style={{ accentColor: 'var(--accent)' }}
-          />
+        {/* ⚠️ Галочка — про то, чтобы вопрос БОЛЬШЕ НЕ ПОЯВЛЯЛСЯ, и сказано это прямо. Отмена
+            в настройках названа здесь же: иначе человек, поставивший её однажды, не поймёт,
+            куда делся выбор. */}
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: sp(3), cursor: 'default',
+          paddingTop: sp(2), borderTop: '1px solid var(--divider)',
+        }}>
+          <span
+            onClick={() => setRemember((v) => !v)}
+            style={{
+              width: 22, height: 22, flex: 'none', borderRadius: RADIUS.tight,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              background: remember ? 'var(--accent)' : 'transparent',
+              border: remember ? 'none' : '1.5px solid var(--divider-strong)',
+              color: 'var(--on-accent)', transition: motion.hover('background', 'border-color'),
+            }}
+          >{remember && <Check size={14} strokeWidth={3} />}</span>
           <span style={{ ...TEXT.caption }}>
-            Запускать с выбранным профилем и больше не спрашивать (можно вернуть в настройках)
+            Запускать с выбранным профилем и больше не спрашивать — можно вернуть в настройках
           </span>
         </label>
       </div>
@@ -163,13 +169,36 @@ export default function ProfilePicker({ onDone }: { onDone: () => void }) {
   );
 }
 
-function Dot({ profile }: { profile: Profile }) {
+function ProfileButton({ profile, disabled, onPick }: {
+  profile: Profile; disabled: boolean; onPick: () => void;
+}) {
+  const vpn = profile.settings.vpn === 'on' ? 'Только через VPN'
+    : profile.settings.vpn === 'off' ? 'Без VPN' : 'Как в приложении';
   return (
-    <span style={{
-      width: 26, height: 26, flex: 'none', borderRadius: RADIUS.pill,
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      ...TEXT.body, background: `var(--tile-${profile.color})`, color: 'var(--white)',
-      fontWeight: 700,
-    }}>{(profile.name.trim()[0] ?? '?').toUpperCase()}</span>
+    <button
+      disabled={disabled}
+      onClick={onPick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: sp(4), width: '100%',
+        padding: pad(4), borderRadius: RADIUS.box, cursor: 'default',
+        border: '1px solid var(--divider)', background: 'var(--surface-sunken)',
+        color: 'inherit', textAlign: 'left', font: 'inherit',
+        transition: motion.hover('background', 'border-color'),
+      }}
+    >
+      <span style={{
+        width: DOT, height: DOT, flex: 'none', borderRadius: RADIUS.pill,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        // ⚠️ Спред роли идёт ПЕРВЫМ: он несёт свой цвет и затёр бы белый.
+        ...DISPLAY, fontSize: 18,
+        background: `var(--tile-${profile.color})`, color: 'var(--white)',
+      }}>{(profile.name.trim()[0] ?? '?').toUpperCase()}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', ...TEXT.section, color: 'var(--text-strong)' }}>
+          {profile.name}
+        </span>
+        <span style={{ display: 'block', ...TEXT.caption, marginTop: sp(1) }}>{vpn}</span>
+      </span>
+    </button>
   );
 }
