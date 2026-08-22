@@ -31,13 +31,16 @@ export function registerTabsIpc(d: IpcDeps): void {
   }));
   ipcMain.handle(IPC.TABS_GET_ALL, (e) => tabsOf(e)?.snapshot() ?? []);
   // Тема chrome (light/dark + инкогнито + палитра) от главного рендерера → раскидываем во все наши вью.
-  ipcMain.handle(IPC.CHROME_THEME_SET, (_e, dark: boolean, incognito: boolean, palette: ThemePaletteId) => {
+  ipcMain.handle(IPC.CHROME_THEME_SET, (_e, dark: boolean, incognito: boolean, palette: ThemePaletteId, wash?: { accent?: unknown; tint?: unknown } | null) => {
+    const accent = typeof wash?.accent === 'string' && /^#[0-9a-f]{6}$/i.test(wash.accent) ? wash.accent.toLowerCase() : null;
+    const tint = typeof wash?.tint === 'string' && /^#[0-9a-f]{6}$/i.test(wash.tint) ? wash.tint.toLowerCase() : null;
     d.setChromeTheme({
       dark: !!dark,
       incognito: !!incognito,
       // Пришло из рендерера — значит недоверенное; промах гасим базовой палитрой, а не пишем
       // в атрибут произвольную строку.
       palette: (THEME_PALETTE_IDS as readonly string[]).includes(palette) ? palette : 'charcoal',
+      wash: accent && tint ? { accent, tint } : null,
     });
     broadcastChromeTheme();
   });

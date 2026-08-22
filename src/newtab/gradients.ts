@@ -7,7 +7,7 @@
 // а выбор «какой id сейчас стоит» остаётся в settings (как preset).
 
 import {
-  BUILTIN_MESHES, validateMesh, type MeshGradient,
+  BUILTIN_MESHES, validateMesh, compileMeshBackground, adaptMeshToTheme, type MeshGradient,
 } from '../../shared/chromeGround';
 
 const KEY = 'oblako-user-gradients';
@@ -76,4 +76,12 @@ export function subscribeMeshes(cb: () => void): () => void {
     window.removeEventListener(EVENT, handler);
     window.removeEventListener('storage', handler);
   };
+}
+
+export function documentIsDark(): boolean {
+  return document.documentElement.getAttribute('data-theme') === 'dark';
+}
+
+export function meshCss(mesh: MeshGradient, dark = documentIsDark()): string {
+  return compileMeshBackground(adaptMeshToTheme(mesh, dark));
 }

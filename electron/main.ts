@@ -88,6 +88,7 @@ import { buildSearchTargets } from './SearchTargets';
 import { readPageSelection } from './PageSelection';
 import { SearchTargetStore } from './SearchTargetStore';
 import { applyBangTemplate, isValidBangTemplate, parseBangCandidate, bangHomeUrl } from '../shared/bangs';
+import { CHROME_OVERLAY_PX } from '../shared/chromeGround';
 import { hideSuggestDropdown } from './SuggestDropdownManager';
 import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPasswordPopoverAnchorBounds } from './PasswordPopoverManager';
 import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
@@ -256,18 +257,32 @@ app.on('web-contents-created', (_e, wc) => applyWebrtcPolicy(wc));
 // этих атрибутов не видит. Держим актуальную тему в main и раскидываем во ВСЕ наши chrome-вью
 // (oblako-chrome://…) через executeJavaScript — без правок в каждом preload/entry. Реальные
 // сайты (гостевые вкладки) не трогаем (isChromePageUrl отсекает по URL).
-let currentChromeTheme: { dark: boolean; incognito: boolean; palette: ThemePaletteId } =
-  { dark: false, incognito: false, palette: 'charcoal' };
+let currentChromeTheme: {
+  dark: boolean;
+  incognito: boolean;
+  palette: ThemePaletteId;
+  wash: { accent: string; tint: string } | null;
+} = { dark: false, incognito: false, palette: 'charcoal', wash: null };
 function isChromePageUrl(u: string): boolean {
   return u.startsWith('oblako-chrome://') || u.includes('localhost:5173'); // прод + dev-сервер Vite
 }
-function chromeThemeJs(t: { dark: boolean; incognito: boolean; palette: ThemePaletteId }): string {
+function isWashHex(v: string): boolean {
+  return /^#[0-9a-f]{6}$/i.test(v);
+}
+function chromeThemeJs(t: typeof currentChromeTheme): string {
+  const wash = t.wash && isWashHex(t.wash.accent) && isWashHex(t.wash.tint)
+    ? `r.style.setProperty('--accent','${t.wash.accent.toLowerCase()}');`
+      + `r.style.setProperty('--sidebar-tint','${t.wash.tint.toLowerCase()}');`
+    : `r.style.removeProperty('--accent');r.style.removeProperty('--sidebar-tint');`;
   return `(function(){try{var r=document.documentElement;`
     + `r.setAttribute('data-theme','${t.dark ? 'dark' : 'light'}');`
     // Палитра — вторая ось темы (см. palettes.css): без неё поповеры остались бы на базовой земле,
     // а окно перекрасилось бы, и стык был бы виден на каждом дропдауне.
     + `r.setAttribute('data-palette','${t.palette}');`
     + (t.incognito ? `r.setAttribute('data-incognito','true');` : `r.removeAttribute('data-incognito');`)
+    // wash — акцент от сетки окна. Без него кнопки и поповеры остаются цвета палитры, а земля —
+    // цвета градиента, и это снова «часть синим, часть зелёным».
+    + wash
     + `}catch(e){}})()`;
 }
 function applyChromeThemeTo(wc: WebContents): void {
@@ -622,7 +637,7 @@ function wireSharedSessions(): void {
   // Тема, известная main'у ДО того, как хром успеет её прислать. Без этого поповер, созданный
   // раньше первого CHROME_THEME_SET, открывался бы светлым в тёмной теме — видимая вспышка.
   const startPrefs = currentThemePrefs();
-  currentChromeTheme = { dark: isDarkTheme(startPrefs), incognito: false, palette: startPrefs.palette };
+  currentChromeTheme = { dark: isDarkTheme(startPrefs), incognito: false, palette: startPrefs.palette, wash: null };
 
   // Система переключила светлую/тёмную (расписание Windows или руками в параметрах). Значение
   // хранит ОС, а не мы, поэтому здесь только пересылка: окна с режимом «как в системе» перекрасятся
@@ -768,7 +783,7 @@ function createWindow(role: WindowRole = 'main') {
     titleBarOverlay: {
       color: '#F2F2F7',   // --app-bg светлой темы; обновляется через IPC при смене темы
       symbolColor: '#3C3C43',
-      height: 56,
+      height: CHROME_OVERLAY_PX,
     },
   });
 

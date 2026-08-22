@@ -115,8 +115,8 @@ const api: OblakoApi = {
   setTabMuted: (id: string, muted: boolean) => ipcRenderer.invoke(IPC.TAB_SET_MUTED, id, muted),
   showTabMenu:  (id: string) => ipcRenderer.invoke(IPC.TAB_SHOW_MENU, id),
   showNewTabMenu: () => ipcRenderer.invoke(IPC.NEW_TAB_SHOW_MENU) as Promise<void>,
-  setChromeTheme: (dark: boolean, incognito: boolean, palette: ThemePaletteId) =>
-    ipcRenderer.invoke(IPC.CHROME_THEME_SET, dark, incognito, palette) as Promise<void>,
+  setChromeTheme: (dark: boolean, incognito: boolean, palette: ThemePaletteId, wash?: { accent: string; tint: string } | null) =>
+    ipcRenderer.invoke(IPC.CHROME_THEME_SET, dark, incognito, palette, wash ?? null) as Promise<void>,
   getTheme: () => ipcRenderer.invoke(IPC.THEME_GET) as Promise<ThemePrefs>,
   setTheme: (mode: ThemeMode, palette: ThemePaletteId) =>
     ipcRenderer.invoke(IPC.THEME_SET, mode, palette) as Promise<void>,

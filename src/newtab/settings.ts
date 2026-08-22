@@ -1,4 +1,4 @@
-import { meshIsLight } from '../../shared/chromeGround';
+import { meshIsLight, adaptMeshToTheme } from '../../shared/chromeGround';
 import { findMesh } from './gradients';
 
 // Настройки минималистичной новой вкладки (в духе Bonjourr). Живут в localStorage: и сама вкладка
@@ -155,7 +155,10 @@ export function isLightBackground(bg: NewTabSettings['background']): boolean {
   }
   if (bg.kind === 'mesh') {
     const mesh = findMesh(bg.meshId);
-    return !!mesh && meshIsLight(mesh) && bg.dim < 0.2;
+    if (!mesh) return false;
+    const dark = typeof document !== 'undefined'
+      && document.documentElement.getAttribute('data-theme') === 'dark';
+    return meshIsLight(adaptMeshToTheme(mesh, dark)) && bg.dim < 0.2;
   }
   return false;
 }

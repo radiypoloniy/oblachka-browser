@@ -20,8 +20,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { computeCalc, fmtCalc, calcDisp, resolvePercent, parsePastedNumber } from '../../shared/calc'
 import { altitude, ALTITUDE, DISPLAY } from '../styles/system'
 import { WALLPAPER_PRESETS } from '../newtab/settings'
-import { allMeshes, findMesh, subscribeMeshes } from '../newtab/gradients'
-import { compileMeshBackground } from '../../shared/chromeGround'
+import { allMeshes, findMesh, subscribeMeshes, meshCss } from '../newtab/gradients'
 import type { CalcOp } from '../../shared/calc'
 import {
   Calculator, RefreshCw, Timer, Pipette, X, SlidersHorizontal, ImagePlus, Languages, Cat, Type,
@@ -243,7 +242,7 @@ export function wallpaperBackground(id: string): React.CSSProperties {
   const mesh = findMesh(id)
   if (mesh) {
     return {
-      backgroundImage: compileMeshBackground(mesh),
+      backgroundImage: meshCss(mesh),
       backgroundSize: '100% 100%',
       backgroundPosition: 'center top',
       backgroundRepeat: 'no-repeat',
@@ -662,7 +661,7 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
                     title={m.name}
                     style={{
                       width: 28, height: 28, borderRadius: '50%', padding: 0, cursor: 'pointer',
-                      backgroundImage: compileMeshBackground(m), backgroundSize: 'cover',
+                      backgroundImage: meshCss(m), backgroundSize: 'cover',
                       border: m.id === wallpaper ? '2px solid var(--accent)' : '2px solid transparent',
                     }}
                   />

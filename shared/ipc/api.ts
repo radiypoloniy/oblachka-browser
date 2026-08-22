@@ -117,7 +117,7 @@ export interface OblakoApi {
   setTabMuted(id: string, muted: boolean): Promise<void>; // выключить/включить звук вкладки
   showTabMenu(id: string): Promise<void>;
   showNewTabMenu(): Promise<void>; // ПКМ по кнопке «Новая вкладка»: обычная / инкогнито / восстановить
-  setChromeTheme(dark: boolean, incognito: boolean, palette: ThemePaletteId): Promise<void>; // раздать тему во все chrome-вью (поповеры)
+  setChromeTheme(dark: boolean, incognito: boolean, palette: ThemePaletteId, wash?: { accent: string; tint: string } | null): Promise<void>; // раздать тему во все chrome-вью (поповеры). wash — акцент от сетки окна, null сбрасывает.
 
   // Тема оформления (см. ThemePrefs). setTheme пишет выбор на диск и рассылает его во все окна —
   // применяет тему по-прежнему сам рендерер, у себя на documentElement.

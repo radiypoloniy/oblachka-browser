@@ -214,6 +214,12 @@ function AiPanel() {
     saveWallpaper(id)
   }
   useEffect(() => subscribeMeshes(() => setWallpaperRev((r) => r + 1)), [])
+  useEffect(() => {
+    const el = document.documentElement
+    const obs = new MutationObserver(() => setWallpaperRev((r) => r + 1))
+    obs.observe(el, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => obs.disconnect()
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') window.aiPanel.close(); };

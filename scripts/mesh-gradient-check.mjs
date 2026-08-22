@@ -9,7 +9,8 @@ import {
   parseHex, mixFromSeeds, createMeshDraft, sampleMesh, compileMeshBackground,
   meshPaintLayers, meshIsLight, buildChromeGroundFromMesh, validateMesh,
   BUILTIN_MESHES, MESH_SEEDS_MIN, MESH_SEEDS_MAX,
-  contrast, relLuminance,
+  contrast, relLuminance, adaptMeshToTheme, accentFromMesh, randomMesh,
+  overlaySymbolColor, CHROME_OVERLAY_PX,
 } from '../shared/chromeGround.ts';
 
 let passed = 0;
@@ -97,11 +98,39 @@ console.log('\n— земля окна из сетки —');
     tint: '#007AFF', appBg: '#F2F2F7', surface: '#FFFFFF', amount: 30, dark: false,
   });
   check('кромка — hex', /^#[0-9a-f]{6}$/.test(g.top), true);
-  check('кромка стоит на 0%', g.backgroundImage.includes(`${g.top} 0%`), true);
+  check('кромка стоит на 0px (высота полосы Windows)', g.backgroundImage.includes(`${g.top} 0px`), true);
   check('слоёв больше одного', g.paintLayers > 1, true);
   check('остров светлее или равен кромке не требуется — но остров валиден',
     /^#[0-9a-f]{6}$/.test(g.island), true);
   check('остров не совпадает с чёрным', g.island !== '#000000', true);
+  check('кромка держится на высоте полосы Windows', g.backgroundImage.includes(`${CHROME_OVERLAY_PX}px`), true);
+}
+
+console.log('\n— сетка под тему —');
+{
+  const mesh = mixFromSeeds(['#e07a5f', '#2f6f8f', '#f1e3d3']);
+  const full = { id: 't', name: 't', ...mesh };
+  const light = adaptMeshToTheme(full, false);
+  const dark = adaptMeshToTheme(full, true);
+  check('семена не переписываются', light.seeds, full.seeds);
+  check('тёмная атмосфера темнее светлой', relLuminance(dark.base) < relLuminance(light.base), true);
+  check('акцент в светлой держит белый текст', contrast(accentFromMesh(full, false), '#FFFFFF') >= 4.5, true);
+}
+
+console.log('\n— кромка Windows —');
+check('на светлой кромке тёмные символы', overlaySymbolColor('#efe8dc'), '#3C3C43');
+check('на тёмной кромке светлые символы', overlaySymbolColor('#141216'), '#EBEBF5');
+
+console.log('\n— случайная гармония —');
+{
+  let i = 0;
+  const seq = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.15, 0.25, 0.35];
+  const rand = () => seq[i++ % seq.length];
+  const a = randomMesh(rand);
+  i = 0;
+  const b = randomMesh(rand);
+  check('детерминированный rng воспроизводится', a.seeds, b.seeds);
+  check('случайный — не меньше двух семян', a.seeds.length >= 2, true);
 }
 
 console.log('\n— каталог —');

@@ -13,8 +13,7 @@ import {
   loadNewTabSettings, subscribeNewTabSettings, presetCss, getNewTabCustomImage,
   ensureCustomImageShrunk, isLightBackground, type NewTabSettings,
 } from '../../newtab/settings';
-import { findMesh } from '../../newtab/gradients';
-import { compileMeshBackground } from '../../../shared/chromeGround';
+import { findMesh, meshCss } from '../../newtab/gradients';
 import { APPS, AppIconBadge } from '../aiApps';
 import SiteIcon from './SiteIcon';
 import { WIDGET_FILLS, WIDGET_RENDERERS, fillCss } from './widgets';
@@ -669,7 +668,10 @@ function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoU
     : bg.kind === 'mesh' ? (() => {
         const mesh = findMesh(bg.meshId);
         return mesh
-          ? { ...base, backgroundImage: compileMeshBackground(mesh), backgroundSize: '100% 100%' }
+          // ⚠️ meshCss, а не compileMeshBackground: сетка обязана следовать теме ровно так же,
+          // как превью в настройках и как расчёт isLightBackground. Сырая сетка здесь означала
+          // светлые обои под светлым текстом в тёмной теме («Лагуна», «Сумерки»).
+          ? { ...base, backgroundImage: meshCss(mesh), backgroundSize: '100% 100%' }
           : { ...base, backgroundImage: presetCss('aurora') };
       })()
     : { ...base, backgroundImage: presetCss(bg.preset) };

@@ -11,10 +11,12 @@ import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../..
 import type { SearchEngineId } from '../../shared/searchEngines';
 import { chromeCluster, omniField, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
+import { CHROME_OVERLAY_PX } from '../../shared/chromeGround';
 import { glyph } from '../styles/system';
 
-// Высота тулбара — должна совпадать с CSS-значением (56px).
-const TOOLBAR_HEIGHT = 56;
+// Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
+// ОС сядут на другой цвет, чем остальная шапка.
+const TOOLBAR_HEIGHT = CHROME_OVERLAY_PX;
 // Дебаунс запроса к истории (мс).
 const SUGGEST_DEBOUNCE = 150;
 // Максимум строк в дропдауне.

@@ -10,10 +10,11 @@ import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT } from './components/SplitDragCard';
 import { islandPlate, chromeTintStyle, tintedPlateVars, chromeSpaceStyle } from './styles/island';
-import { buildChromeGround, buildChromeGroundFromMesh } from '../shared/chromeGround';
+import { buildChromeGround, buildChromeGroundFromMesh, accentFromMesh, overlaySymbolColor, CHROME_OVERLAY_PX } from '../shared/chromeGround';
 import type { Ground } from '../shared/chromeGround';
 import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
 import { findMesh, subscribeMeshes } from './newtab/gradients';
+import { watchGenClocks } from './newtab/genClocks';
 import { isDarkTheme } from '../shared/ipc';
 import type { ContentBounds, SplitSwapHint, SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal, ThemePrefs } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
@@ -249,6 +250,8 @@ function resolveColor(css: string): string {
 export default function App() {
   console.log('[renderer-alive] App смонтирован')
 
+  useEffect(() => watchGenClocks(), []);
+
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [sidebarNodes, setSidebarNodes] = useState<SidebarNode[]>([]);
   // Роль своего окна (см. shared/ipc.ts::WindowRole). Спрашивается один раз: окно не меняет роль
@@ -268,6 +271,7 @@ export default function App() {
   // настроек, поэтому мигания «тёмная → светлая» на старте не будет.
   const [themePrefs, setThemePrefs] = useState<ThemePrefs>({ mode: 'light', palette: 'charcoal', systemDark: false });
   const dark = isDarkTheme(themePrefs);
+  const [meshWash, setMeshWash] = useState<{ accent: string; tint: string } | null>(null);
   // Импорт данных из другого браузера — модалка поверх всего chrome. 'manual' — открыта кнопкой
   // из настроек, 'onboarding' — авто-предложение первого запуска (мягче тон + «Пропустить»),
   // null — закрыта. См. ImportDialog.tsx / electron/browserImport/.
@@ -398,10 +402,17 @@ export default function App() {
     root.setAttribute('data-palette', themePrefs.palette);
     if (activeIncognito) root.setAttribute('data-incognito', 'true');
     else root.removeAttribute('data-incognito');
+    if (meshWash) {
+      root.style.setProperty('--accent', meshWash.accent);
+      root.style.setProperty('--sidebar-tint', meshWash.tint);
+    } else {
+      root.style.removeProperty('--accent');
+      root.style.removeProperty('--sidebar-tint');
+    }
     // Раздаём ту же тему во все отдельные chrome-вью (поповеры/дропдаун живут в своих document,
     // этот атрибут сам по себе до них не дойдёт) — см. main.ts::broadcastChromeTheme.
-    void window.oblako.setChromeTheme(dark || activeIncognito, activeIncognito, themePrefs.palette);
-  }, [dark, activeIncognito, themePrefs.palette]);
+    void window.oblako.setChromeTheme(dark || activeIncognito, activeIncognito, themePrefs.palette, meshWash);
+  }, [dark, activeIncognito, themePrefs.palette, meshWash]);
 
   // Онбординг: однократное предложение импорта из другого браузера при первом запуске (если на
   // диске реально найден источник). shouldOfferImport вернёт false после первого показа (флаг
@@ -446,17 +457,24 @@ export default function App() {
   // тему: порядок объявления = порядок выполнения, тот же приём, что у полосы системных кнопок ниже.
   const [ground, setGround] = useState<Ground | null>(null);
   useEffect(() => {
-    if (!chromeTinted) { setGround(null); return; }
+    if (!chromeTinted) { setGround(null); setMeshWash(null); return; }
     const tint = resolveColor('var(--sidebar-tint)');
     const appBg = resolveColor('var(--app-bg)');
     const surface = resolveColor('var(--surface)');
-    if (!tint || !appBg || !surface) { setGround(null); return; }
+    if (!tint || !appBg || !surface) { setGround(null); setMeshWash(null); return; }
     const input = { tint, appBg, surface, amount: groundPrefs.amount, dark: dark || activeIncognito };
     if (groundPrefs.source === 'mesh') {
       const mesh = findMesh(groundPrefs.meshId);
-      if (mesh) { setGround(buildChromeGroundFromMesh(mesh, input)); return; }
+      if (mesh) {
+        const g = buildChromeGroundFromMesh(mesh, input);
+        setGround(g);
+        const accent = accentFromMesh(mesh, input.dark);
+        setMeshWash({ accent, tint: accent });
+        return;
+      }
     }
     setGround(buildChromeGround(input));
+    setMeshWash(null);
     // themePrefs.palette — ради ПЕРЕЧИТЫВАНИЯ токенов: палитра меняет их, не меняя dark.
     // meshRev — сетку правили в каталоге, не трогая sidebar.meshId.
   }, [chromeTinted, groundPrefs.amount, groundPrefs.source, groundPrefs.meshId, meshRev, dark, activeIncognito, themePrefs.palette]);
@@ -516,7 +534,8 @@ export default function App() {
         // «чтобы не осталось незатемнённого места», а давала на чистом профиле почти чёрный
         // прямоугольник в углу светлого окна — см. scrimState.ts, удалён вместе с ней.
         color: base,
-        symbolColor: (dark || activeIncognito) ? '#EBEBF5' : '#3C3C43',
+        symbolColor: overlaySymbolColor(base),
+        height: CHROME_OVERLAY_PX,
       });
     };
     id = requestAnimationFrame(apply);

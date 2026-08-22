@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Shuffle } from 'lucide-react';
 import {
-  compileMeshBackground, mixFromSeeds, MESH_SEEDS_MAX, MESH_SEEDS_MIN,
-  MESH_SOFTNESS_MIN, MESH_SOFTNESS_MAX, type MeshGradient,
+  mixFromSeeds, MESH_SEEDS_MAX, MESH_SEEDS_MIN,
+  MESH_SOFTNESS_MIN, MESH_SOFTNESS_MAX, randomMesh, type MeshGradient,
 } from '../../../shared/chromeGround';
+import { meshCss } from '../../newtab/gradients';
 import { RADIUS, sp, pad, TEXT, well } from '../../styles/system';
 import { btnGhost, btnPrimary, TextField } from './kit';
 import ColorField from './ColorField';
 
 export default function GradientEditor({
-  mesh, onChange, onSave, onCancel, heading,
+  mesh, dark, onChange, onSave, onCancel, heading,
 }: {
   mesh: MeshGradient;
+  dark: boolean;
   onChange: (next: MeshGradient) => void;
   onSave: () => void;
   onCancel: () => void;
@@ -19,7 +21,7 @@ export default function GradientEditor({
 }) {
   const [seedIndex, setSeedIndex] = useState(0);
   const current = mesh.seeds[Math.min(seedIndex, mesh.seeds.length - 1)] ?? mesh.seeds[0]!;
-  const css = compileMeshBackground(mesh);
+  const css = meshCss(mesh, dark);
 
   function patchSeeds(seeds: string[], blobs = mesh.blobs) {
     const mixed = mixFromSeeds(seeds, {
@@ -78,7 +80,8 @@ export default function GradientEditor({
       <div>
         <div style={{ ...TEXT.section }}>{heading}</div>
         <p style={{ margin: `${sp(1)}px 0 0`, ...TEXT.caption }}>
-          Цвета выбираете вы, смешивание и пятна — система. Обои это содержимое: любой цвет,
+          Цвета выбираете вы, смешивание и пятна — система. Превью следует светлой или тёмной
+          теме окна: те же семена, другая атмосфера. Обои это содержимое: любой цвет,
           в том числе сиреневый. Закон палитры сюда не действует.
         </p>
       </div>
@@ -177,6 +180,15 @@ export default function GradientEditor({
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
         <button type="button" onClick={onSave} style={btnPrimary}>Сохранить</button>
+        <button
+          type="button"
+          onClick={() => onChange({ ...mesh, ...randomMesh(), id: mesh.id, name: mesh.name || 'Случайный' })}
+          style={btnGhost}
+        >
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Shuffle size={14} /> Случайный
+          </span>
+        </button>
         <button type="button" onClick={onCancel} style={btnGhost}>Отмена</button>
       </div>
     </div>

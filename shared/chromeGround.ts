@@ -33,10 +33,9 @@ export interface Ground {
   /**
    * Цвет ВЕРХНЕЙ КРОМКИ окна.
    *
-   * ⚠️ Он же уходит в полосу системных кнопок Windows (setTitleBarOverlay): её рисует ОС, а не
-   * веб-слой, поэтому цвет обязан совпадать с нарисованным под ней. Ось градиента поэтому строго
-   * ВЕРТИКАЛЬНАЯ: цвет постоянен вдоль каждой горизонтали, и верхняя кромка точно равна первой
-   * ступени. У диагональной оси угол отличался от неё и полоса читалась чужой заплаткой.
+   * ⚠️ Полосу кнопок Windows рисует ОС одним hex, веб-градиент туда не заезжает.
+   * Для палитры ось строго вертикальная — верх равен первой ступени. Для сетки кромка
+   * берётся справа (там кнопки) и держится CHROME_OVERLAY_PX пикселей.
    */
   top: string;
   /**
@@ -397,9 +396,11 @@ const BLOB_LAYOUT: Record<number, { x: number; y: number; size: number }[]> = {
   ],
 };
 
-function mixBase(seeds: string[]): string {
+function mixBase(seeds: string[], dark?: boolean): string {
   let acc = seeds[0] ?? MESH_PAPER;
   for (let i = 1; i < seeds.length; i++) acc = blend(seeds[i]!, acc, 50);
+  if (dark === true) return blend(acc, MESH_INK, 48);
+  if (dark === false) return blend(acc, MESH_PAPER, 36);
   return relLuminance(acc) > 0.36 ? blend(acc, MESH_PAPER, 30) : blend(acc, MESH_INK, 40);
 }
 
@@ -414,14 +415,14 @@ function layoutBlobs(colors: string[]): MeshBlob[] {
 
 export function mixFromSeeds(
   seeds: string[],
-  opts: { intensity?: number; softness?: number; blobs?: MeshBlob[] } = {},
+  opts: { intensity?: number; softness?: number; blobs?: MeshBlob[]; dark?: boolean } = {},
 ): Pick<MeshGradient, 'base' | 'blobs' | 'intensity' | 'softness' | 'seeds'> {
   const parsed = seeds.map(parseHex).filter((x): x is string => x !== null)
     .slice(0, MESH_SEEDS_MAX);
   const ready = parsed.length >= MESH_SEEDS_MIN ? parsed : [...parsed, MESH_PAPER, MESH_INK].slice(0, MESH_SEEDS_MIN);
   const intensity = Math.max(0, Math.min(100, opts.intensity ?? MESH_INTENSITY_DEFAULT));
   const softness = Math.max(MESH_SOFTNESS_MIN, Math.min(MESH_SOFTNESS_MAX, opts.softness ?? MESH_SOFTNESS_DEFAULT));
-  const base = mixBase(ready);
+  const base = mixBase(ready, opts.dark);
   const colors = ready.map((s) => blend(s, base, intensity));
   const keep = opts.blobs && opts.blobs.length === colors.length;
   const blobs = keep
@@ -482,20 +483,126 @@ export function compileMeshBackground(mesh: MeshGradient): string {
 }
 
 /**
- * Земля окна из сетки. ⚠️ Сверху тонкая растяжка в цвет кромки: пятна сами по себе разного
- * цвета слева и справа, а полосу кнопок Windows рисует ОС одним hex. Без этой ступени углы
- * окна читались бы чужой заплаткой — та же причина, по которой палитра вертикальна.
+ * Высота полосы системных кнопок Windows (`titleBarOverlay.height`) и тулбара.
+ * ⚠️ Кромка сетки красится в ПИКСЕЛЯХ, не в процентах: 14% от окна то выше, то ниже кнопок,
+ * и прямоугольник ОС расходится с землёй. Число одно — здесь, в main.ts и в Toolbar.tsx.
  */
-export function buildChromeGroundFromMesh(mesh: MeshGradient, input: GroundInput): Ground {
-  const fitted = mixFromSeeds(mesh.seeds, {
+export const CHROME_OVERLAY_PX = 56;
+
+/**
+ * Сетка под тему: те же семена, другая атмосфера. Без этого тёмная сетка на светлом хроме
+ * (и наоборот) не «складывается», и человек вынужден руками переключать тему.
+ * Семена в сохранённом объекте НЕ меняются — это только рисунок.
+ */
+export function adaptMeshToTheme(mesh: MeshGradient, dark: boolean): MeshGradient {
+  const seeds = mesh.seeds.map((s) => {
+    const l = lightnessOf(s);
+    return dark
+      ? withLightness(s, Math.min(Math.max(l, 0.20), 0.56))
+      : withLightness(s, Math.min(Math.max(l, 0.40), 0.78));
+  });
+  const mixed = mixFromSeeds(seeds, {
     intensity: mesh.intensity,
     softness: mesh.softness,
     blobs: mesh.blobs,
+    dark,
   });
-  const live: MeshGradient = { ...mesh, ...fitted };
-  const top = sampleMesh(live, 50, 0);
+  return { ...mesh, base: mixed.base, blobs: mixed.blobs };
+}
+
+/** Цвет кромки ТАМ, где Windows рисует кнопки — правый верх, не середина окна. */
+export function meshCaptionTop(mesh: MeshGradient): string {
+  const a = sampleMesh(mesh, 88, 0);
+  const b = sampleMesh(mesh, 96, 0);
+  const c = sampleMesh(mesh, 99, 2);
+  return blend(blend(a, b, 50), c, 35);
+}
+
+/** Символ кнопок Windows: от фактической кромки, не от темы. Иначе светлая сетка в тёмной теме гасит иконки. */
+export function overlaySymbolColor(top: string): string {
+  return relLuminance(top) > 0.42 ? '#3C3C43' : '#EBEBF5';
+}
+
+export function hslSaturation(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((v) => v / 255) as [number, number, number];
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  if (mx === mn) return 0;
+  const l = (mx + mn) / 2;
+  const d = mx - mn;
+  return l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+}
+
+export function hslToHex(hDeg: number, s: number, l: number): string {
+  const h = (((hDeg % 360) + 360) % 360) / 360;
+  const sat = Math.max(0, Math.min(1, s));
+  const light = Math.max(0, Math.min(1, l));
+  if (sat === 0) return rgbToHex([light * 255, light * 255, light * 255]);
+  const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+  const p = 2 * light - q;
+  const ch = (t: number): number => {
+    let x = t;
+    if (x < 0) x += 1;
+    if (x > 1) x -= 1;
+    if (x < 1 / 6) return p + (q - p) * 6 * x;
+    if (x < 1 / 2) return q;
+    if (x < 2 / 3) return p + (q - p) * (2 / 3 - x) * 6;
+    return p;
+  };
+  return rgbToHex([ch(h + 1 / 3) * 255, ch(h) * 255, ch(h - 1 / 3) * 255]);
+}
+
+/**
+ * Акцент кнопок и поповеров от сетки — как палитра «Мята» красит хром в зелёный.
+ * В светлой теме уводится вниз по светлоте, пока белый текст не проходит 4.5.
+ */
+export function accentFromMesh(mesh: MeshGradient, dark: boolean): string {
+  let best = mesh.seeds[0] ?? '#2C4BD8';
+  let bestSat = -1;
+  for (const s of mesh.seeds) {
+    const sat = hslSaturation(s);
+    if (sat > bestSat) { bestSat = sat; best = s; }
+  }
+  if (dark) {
+    const l = lightnessOf(best);
+    return withLightness(best, Math.min(0.64, Math.max(0.46, l)));
+  }
+  let lo = 0;
+  let hi = Math.min(0.48, lightnessOf(best));
+  for (let i = 0; i < 18; i++) {
+    const mid = (lo + hi) / 2;
+    if (contrast(withLightness(best, mid), '#FFFFFF') < 4.5) hi = mid; else lo = mid;
+  }
+  return withLightness(best, lo);
+}
+
+/** Случайная гармония, не три случайных hex: аналоги + один сдвиг, пастельная светлота. */
+export function randomMesh(rand: () => number = Math.random): MeshGradient {
+  const hue = Math.floor(rand() * 360);
+  const n = rand() < 0.45 ? 2 : 3;
+  const deltas = n === 2 ? [0, 32 + rand() * 18] : [0, 28 + rand() * 16, 168 + rand() * 24];
+  const seeds = deltas.map((d, i) => hslToHex(
+    hue + d,
+    0.38 + rand() * 0.28,
+    0.48 + rand() * 0.18 + (i === 1 ? 0.06 : 0),
+  ));
+  const mixed = mixFromSeeds(seeds, {
+    intensity: 68 + Math.floor(rand() * 20),
+    softness: 64 + Math.floor(rand() * 16),
+  });
+  return { id: '', name: 'Случайный', ...mixed };
+}
+
+/**
+ * Земля окна из сетки. ⚠️ Сверху полоса в ПИКСЕЛЯХ высотой CHROME_OVERLAY_PX: её рисует ОС
+ * одним hex (setTitleBarOverlay), и процент от окна с ней никогда не совпадёт.
+ * Цвет кромки берётся справа — там кнопки, не по центру.
+ */
+export function buildChromeGroundFromMesh(mesh: MeshGradient, input: GroundInput): Ground {
+  const live = adaptMeshToTheme(mesh, input.dark);
+  const top = meshCaptionTop(live);
   const deep = sampleMesh(live, 50, 18);
-  const fade = `linear-gradient(180deg, ${top} 0%, ${rgba(top, 0)} 14%)`;
+  const fade = `linear-gradient(180deg, ${top} 0px, ${top} ${CHROME_OVERLAY_PX}px, ${rgba(top, 0)} ${CHROME_OVERLAY_PX + 64}px)`;
   const layers = [fade, ...meshPaintLayers(live)];
   return {
     top,

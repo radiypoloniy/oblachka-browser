@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Upload, Trash2, RotateCcw, Plus } from 'lucide-react';
+import { Upload, Trash2, RotateCcw, Plus, Shuffle } from 'lucide-react';
 import { SectionHeader, Subsection, InlineError, TextField, btnGhost, segBtnStyle, SegTrack,
 } from './kit';
 import Toggle from '../Toggle';
@@ -11,11 +11,9 @@ import {
   WALLPAPER_PRESETS, RATE_CHOICES, CRYPTO_CHOICES, TINT_AMOUNT_MIN, TINT_AMOUNT_MAX,
   type NewTabSettings, type BackgroundKind,
 } from '../../newtab/settings';
+import { allMeshes, deleteUserMesh, isUserMesh, saveUserMesh, subscribeMeshes, meshCss } from '../../newtab/gradients';
 import {
-  allMeshes, deleteUserMesh, isUserMesh, saveUserMesh, subscribeMeshes,
-} from '../../newtab/gradients';
-import {
-  compileMeshBackground, createMeshDraft, type MeshGradient,
+  createMeshDraft, randomMesh, type MeshGradient,
 } from '../../../shared/chromeGround';
 import GradientEditor from './GradientEditor';
 
@@ -78,6 +76,16 @@ export default function AppearanceSection() {
   const patchWeather = (p: Partial<NewTabSettings['weather']>) => apply({ ...s, weather: { ...s.weather, ...p } });
   const patchRates = (p: Partial<NewTabSettings['rates']>) => apply({ ...s, rates: { ...s.rates, ...p } });
   const patchSidebar = (p: Partial<NewTabSettings['sidebar']>) => apply({ ...s, sidebar: { ...s.sidebar, ...p } });
+
+  function applyRandom(from: 'chrome' | 'newtab') {
+    const saved = saveUserMesh(randomMesh());
+    if (!saved) { openDraft(from, randomMesh()); return; }
+    if (from === 'chrome') {
+      apply({ ...s, sidebar: { ...s.sidebar, tinted: true, source: 'mesh', meshId: saved.id } });
+    } else {
+      apply({ ...s, background: { ...s.background, kind: 'mesh', meshId: saved.id } });
+    }
+  }
 
   function openDraft(from: 'chrome' | 'newtab', existing?: MeshGradient) {
     setDraftTarget(from);
@@ -245,6 +253,7 @@ export default function AppearanceSection() {
                 <MeshThumb
                   key={m.id}
                   mesh={m}
+                  dark={themeIsDark}
                   selected={s.sidebar.source === 'mesh' && s.sidebar.meshId === m.id}
                   onSelect={() => patchSidebar({ source: 'mesh', meshId: m.id })}
                   onEdit={() => openDraft('chrome', m)}
@@ -252,12 +261,20 @@ export default function AppearanceSection() {
                 />
               ))}
             </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <button
               onClick={() => openDraft('chrome')}
               style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 8 }}
             >
               <Plus size={14} /> Создать градиент
             </button>
+            <button
+              onClick={() => applyRandom('chrome')}
+              style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            >
+              <Shuffle size={14} /> Случайный
+            </button>
+            </div>
             {s.sidebar.source !== 'mesh' && (
               <SliderRow
                 label="Насыщенность"
@@ -321,6 +338,7 @@ export default function AppearanceSection() {
               <MeshThumb
                 key={m.id}
                 mesh={m}
+                dark={themeIsDark}
                 selected={s.background.kind === 'mesh' && s.background.meshId === m.id}
                 onSelect={() => patchBg({ kind: 'mesh', meshId: m.id })}
                 onEdit={() => openDraft('newtab', m)}
@@ -328,12 +346,20 @@ export default function AppearanceSection() {
               />
             ))}
           </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <button
             onClick={() => openDraft('newtab')}
             style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 8 }}
           >
             <Plus size={14} /> Создать градиент
           </button>
+          <button
+            onClick={() => applyRandom('newtab')}
+            style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+          >
+            <Shuffle size={14} /> Случайный
+          </button>
+          </div>
           </>
         )}
 
@@ -441,6 +467,7 @@ export default function AppearanceSection() {
         <div style={{ flex: '1 1 280px', minWidth: 0, maxWidth: 480, position: 'sticky', top: 0, alignSelf: 'flex-start' }}>
           <GradientEditor
             mesh={draft}
+            dark={themeIsDark}
             onChange={setDraft}
             onSave={saveDraft}
             onCancel={() => setDraft(null)}
@@ -460,8 +487,8 @@ function SegBtn({ active, onClick, children }: { active: boolean; onClick: () =>
   return <button onClick={onClick} style={segBtnStyle(active)}>{children}</button>;
 }
 
-function MeshThumb({ mesh, selected, onSelect, onEdit, onDelete }: {
-  mesh: MeshGradient; selected: boolean; onSelect: () => void; onEdit: () => void; onDelete?: () => void;
+function MeshThumb({ mesh, dark, selected, onSelect, onEdit, onDelete }: {
+  mesh: MeshGradient; dark: boolean; selected: boolean; onSelect: () => void; onEdit: () => void; onDelete?: () => void;
 }) {
   return (
     <span style={{ position: 'relative', display: 'inline-flex' }}>
@@ -471,7 +498,7 @@ function MeshThumb({ mesh, selected, onSelect, onEdit, onDelete }: {
         onDoubleClick={onEdit}
         style={{
           width: 64, height: 44, borderRadius: 'var(--radius-sm)', cursor: 'default', border: 'none',
-          backgroundImage: compileMeshBackground(mesh), backgroundSize: 'cover',
+          backgroundImage: meshCss(mesh, dark), backgroundSize: 'cover',
           outline: selected ? '2px solid var(--accent)' : '2px solid transparent',
           outlineOffset: 2,
         }}
