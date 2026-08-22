@@ -1,8 +1,9 @@
-import { app, net, screen } from 'electron';
+import { app, screen } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fetchInProfile } from './ProfileSession';
 
-// «Фото дня» для фона новой вкладки. Качаем ТОЛЬКО через main (net.fetch = Chromium-сеть, уважает
+// «Фото дня» для фона новой вкладки. Качаем ТОЛЬКО через main (fetchInProfile = Chromium-сеть, уважает
 // VPN/прокси/kill-switch — приватный режим не течёт мимо туннеля), кэшируем на календарный день в
 // userData и держим в памяти. Источник — Lorem Picsum с дневным сидом (без API-ключа, реальные
 // фото, стабильны в пределах суток). Опция включается пользователем в разделе «Интерфейс».
@@ -73,7 +74,7 @@ async function wikimediaPhotoUrls(date: string): Promise<string[] | null> {
   try {
     // ⚠️ User-Agent обязателен: Wikimedia отвечает отказом на запросы без него, и это их
     // задокументированное требование, а не каприз.
-    const res = await net.fetch(feed, { headers: { 'User-Agent': 'OblakoBrowser/0.5 (https://oblako.app)' } });
+    const res = await fetchInProfile(feed, { headers: { 'User-Agent': 'OblakoBrowser/0.5 (https://oblako.app)' } });
     if (!res.ok) return null;
     const json = await res.json() as { image?: { thumbnail?: { source?: string } } };
     const thumb = json.image?.thumbnail?.source;
@@ -115,7 +116,7 @@ export async function getPhotoOfDay(): Promise<{ ok: boolean; dataUrl?: string }
     if (!urls) return { ok: false };
     let buf: Buffer | null = null;
     for (const url of urls) {
-      const res = await net.fetch(url, { headers: { 'User-Agent': 'OblakoBrowser/0.5 (https://oblako.app)' }, redirect: 'follow' });
+      const res = await fetchInProfile(url, { headers: { 'User-Agent': 'OblakoBrowser/0.5 (https://oblako.app)' }, redirect: 'follow' });
       if (!res.ok) continue;
       const candidate = Buffer.from(await res.arrayBuffer());
       // Ответ-заглушка весит пару килобайт: для полноэкранного снимка это заведомо не фотография.

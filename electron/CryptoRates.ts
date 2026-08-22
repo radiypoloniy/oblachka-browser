@@ -7,9 +7,9 @@
 //
 // Источник — CoinGecko: без ключа, отдаёт цены сразу В РУБЛЯХ (не через кросс-курс к доллару, где
 // накапливалась бы своя ошибка) и изменение за 24 часа в том же ответе. Fetch живёт в main через
-// net.fetch по тем же причинам, что у CurrencyRates.ts: CORS у oblako-chrome:// не гарантирован,
-// а net.fetch уважает системный прокси и VPN, как обычные вкладки.
-import { net } from 'electron'
+// fetchInProfile по тем же причинам, что у CurrencyRates.ts: CORS у oblako-chrome:// не гарантирован,
+// а fetchInProfile уважает системный прокси и VPN, как обычные вкладки.
+import { fetchInProfile } from './ProfileSession';
 
 export interface CryptoRatesResult {
   ok: boolean
@@ -49,7 +49,7 @@ export async function getCryptoRates(): Promise<CryptoRatesResult> {
     // Просим ВСЕ известные тикеры одним запросом, а не только выбранные в настройках: ответ
     // всё равно крошечный, зато переключение актива в настройках не идёт в сеть заново.
     const ids = Object.values(COIN_IDS).join(',')
-    const res = await net.fetch(
+    const res = await fetchInProfile(
       `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=rub&include_24hr_change=true`,
     )
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -89,7 +89,7 @@ export async function getCryptoHistory(ticker: string, days = 30): Promise<numbe
   if (hit && Date.now() - hit.at < HISTORY_TTL_MS) return hit.values
 
   try {
-    const res = await net.fetch(
+    const res = await fetchInProfile(
       `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=rub&days=${days}&interval=daily`,
     )
     if (!res.ok) throw new Error(`HTTP ${res.status}`)

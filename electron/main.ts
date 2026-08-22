@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, Menu, session, webContents, nativeTheme, Notification } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, Menu, webContents, nativeTheme, Notification } from 'electron';
 import type { WebContents } from 'electron';
 import { registerSchemesAsPrivileged, registerModelProtocol, registerChromeProtocol } from './AppProtocol';
 import { applyChromeUserAgent, applyClientHints } from './BrowserIdentity';
@@ -60,7 +60,7 @@ import { SettingsManager } from './SettingsManager';
 import * as ModelRegistry from './ModelRegistry';
 import * as ModelDownloader from './ModelDownloader';
 import { HubChatManager } from './HubChatManager';
-import { IPC, INCOGNITO_PARTITION, isDarkTheme } from '../shared/ipc';
+import { IPC, isDarkTheme } from '../shared/ipc';
 import type { ThemePaletteId, ThemePrefs } from '../shared/ipc';
 import type { FindResult, SidebarNode, GroupNode, BergamotStatus, QuickHit, SearchTarget } from '../shared/ipc';
 import type { SavedNode } from './SessionManager';
@@ -78,6 +78,7 @@ import { TranslationCacheManager } from './TranslationCacheManager';
 import { showFindBar, closeFindBar, sendFindResult, setTabManager as setFindBarTabManager } from './FindBarManager';
 import { captureTabScreenshot, saveCurrentScreenshot, closeScreenshot, setScreenshotTabManager } from './ScreenshotManager';
 import { mapFormFields, type FormFieldDescriptor } from './AutofillFieldMapper';
+import { profileSession, incognitoSession as incognitoBrowsingSession, allBrowsingSessions } from './ProfileSession';
 import { RuleStore } from './RuleStore';
 import { applyRules } from './RuleEngine';
 import { prewarmDropZones } from './DropZoneManager';
@@ -621,18 +622,18 @@ function wireSharedSessions(): void {
   sharedSessionsWired = true;
 
   // Орфография (ru+en): одна сессия на все вкладки — одного вызова достаточно.
-  session.defaultSession.setSpellCheckerLanguages(['ru', 'en-US']);
+  profileSession().setSpellCheckerLanguages(['ru', 'en-US']);
 
   // Клиентские подсказки Sec-CH-UA (см. BrowserIdentity.ts): Electron их не шлёт вовсе,
   // а без них наша строка UA «Chrome/144» противоречит поведению настоящего Chrome и вход
   // в аккаунт Google отвечает «This browser or app may not be secure».
-  applyClientHints(session.defaultSession);
+  applyClientHints(profileSession());
 
   // Доверие корню Минцифры — своё, внутри браузера, и только для банков из списка (см.
   // CertificateTrust.ts: там же разбор, почему список, а не «доверять везде»). Ставится и на
   // приватную сессию: в инкогнито Сбер должен открываться так же, как в обычной вкладке.
-  installCertificateTrust(session.defaultSession);
-  installCertificateTrust(session.fromPartition(INCOGNITO_PARTITION));
+  installCertificateTrust(profileSession());
+  installCertificateTrust(incognitoBrowsingSession());
 
   // Тема, известная main'у ДО того, как хром успеет её прислать. Без этого поповер, созданный
   // раньше первого CHROME_THEME_SET, открывался бы светлым в тёмной теме — видимая вспышка.
@@ -652,7 +653,7 @@ function wireSharedSessions(): void {
   // Поведение сохранения из настроек — до первой загрузки, иначе первый же файл ушёл бы по
   // дефолтному правилу вместо выбранного человеком.
   downloads.setAskLocation(settings.getAskDownloadLocation());
-  downloads.attach(session.defaultSession, (entries) => {
+  downloads.attach(profileSession(), (entries) => {
     broadcastToChrome(IPC.DOWNLOADS_CHANGED, entries);
     // Отдельным пушем — в открытый поповер: broadcastToChrome доходит только до слоёв хрома,
     // а поповер живёт своей WebContentsView и иначе показывал бы замерший прогресс.
@@ -677,12 +678,12 @@ function wireSharedSessions(): void {
     closeFindBar(win);
     showPermissionRequest(win, req);
   };
-  permissions.attach(session.defaultSession, onPermissionRequest);
+  permissions.attach(profileSession(), onPermissionRequest);
 
   // Инкогнито-сессия (in-memory, см. INCOGNITO_PARTITION). Привязываем к ней тот же набор, что к
   // дефолтной, чтобы приватный режим был НЕ хуже обычного: адблок, загрузки, разрешения. Прокси
   // VPN — в applyVpnProxy (обязательно, иначе инкогнито-трафик тёк бы мимо VPN/kill-switch).
-  incognitoSession = session.fromPartition(INCOGNITO_PARTITION);
+  incognitoSession = incognitoBrowsingSession();
   applyClientHints(incognitoSession); // приватная вкладка обязана выглядеть НЕ подозрительнее обычной
   adblock.attachSession(incognitoSession);
   downloads.observeSession(incognitoSession);
@@ -1824,10 +1825,11 @@ function applyVpnProxy(): Promise<void> {
         ? 'direct://' // человек сам отключил — прямой выход честен
         : VPN_KILL_SWITCH_PROXY_RULES; // 'starting' и 'error': ждёт защиты или туннель упал
     const cfg = { proxyRules };
-    await session.defaultSession.setProxy(cfg);
-    // Инкогнито-сессия ОБЯЗАНА следовать тем же прокси/kill-switch, иначе приватный трафик тёк бы
-    // мимо VPN (утечка). Держим её в синхроне при каждой смене состояния VPN.
-    if (incognitoSession) await incognitoSession.setProxy(cfg);
+    // ⚠️ Прокси ставится ВСЕМ сессиям, по которым идёт пользовательский трафик, и список берётся
+    // из одного места (allBrowsingSessions). Раньше здесь были перечислены две сессии руками, и
+    // забыть третью значило бы утечку ровно того вида, который закрывали в августе: приватный
+    // трафик мимо туннеля. С профилями сессий станет больше — правка будет одна и не здесь.
+    for (const s of allBrowsingSessions()) await s.setProxy(cfg);
     // WebRTC STUN иначе обходит SOCKS и отдаёт реальный IP при «VPN включён».
     // На прямом выходе политику возвращаем: звонки без VPN не ломаем.
     currentWebrtcPolicy = proxyRules === 'direct://' ? 'default' : 'disable_non_proxied_udp';

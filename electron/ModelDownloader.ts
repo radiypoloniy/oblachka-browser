@@ -5,16 +5,16 @@
 // Уборка осиротевших .part-файлов — cleanupOrphanedParts(), зовётся из main.ts синхронно при
 // старте (ДО того, как пользователь может запустить новую загрузку) — см. её же комментарий.
 //
-// ⚠️ net.fetch (модуль Electron), НЕ глобальный fetch() — тот не уважает session.setProxy(),
+// ⚠️ fetchInProfile (модуль Electron), НЕ глобальный fetch() — тот не уважает session.setProxy(),
 // см. AdBlockManager.ts:268-272 (тот же живой аудит утечек VPN). Скачивание с HuggingFace обязано
 // идти через тот же туннель, что и остальной трафик, когда VPN включён.
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { net } from 'electron'
 import * as ModelRegistry from './ModelRegistry'
 import { ensureDir, getFreeSpaceBytes } from './FsUtils'
 import type { DownloadProgress, ModelDownloadSpec } from '../shared/ipc'
+import { fetchInProfile } from './ProfileSession';
 
 // ~4 раза в секунду — троттлинг пуша прогресса в UI (не на каждый чанк: на 5+ ГБ чанков могут
 // быть десятки тысяч, IPC-шторм). Внутренний счётчик receivedBytes обновляется на каждом чанке
@@ -234,9 +234,9 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
     // ещё не тронуто, поэтому при отказе (не хватает места, докачка не подтвердилась) можно
     // спокойно освободить соединение, не потратив ни байта на диск. redirect:'follow' —
     // HuggingFace редиректит resolve-ссылку на реальный CDN (см. разведку — Xet, отдаёт 206
-    // на Range уже ПОСЛЕ редиректа, net.fetch с redirect:'follow' отдаёт заголовки именно
+    // на Range уже ПОСЛЕ редиректа, fetchInProfile с redirect:'follow' отдаёт заголовки именно
     // конечного ответа).
-    let res: Awaited<ReturnType<typeof net.fetch>>
+    let res: Awaited<ReturnType<typeof fetchInProfile>>
     let totalBytes: number | null = null
     let needSidecarWrite = false
     // Эталон для проверки — сначала из spec (обычный путь). При подтверждённой докачке НИЖЕ
@@ -247,7 +247,7 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
 
     if (sidecar !== null) {
       resumeFromBytes = fs.statSync(partPath).size
-      const resumeRes = await net.fetch(spec.url, { redirect: 'follow', headers: { Range: `bytes=${resumeFromBytes}-` } })
+      const resumeRes = await fetchInProfile(spec.url, { redirect: 'follow', headers: { Range: `bytes=${resumeFromBytes}-` } })
       const resumeEtag = resumeRes.headers.get('etag')
       if (resumeRes.status === 206 && resumeEtag !== null && resumeEtag === sidecar.etag) {
         console.log(`[model-download] "${spec.fileName}": докачка с ${resumeFromBytes} байт (код 206, ETag совпал)`)
@@ -266,12 +266,12 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
         await resumeRes.body?.cancel().catch(() => {})
         removePartAndSidecar(partPath)
         resumeFromBytes = 0
-        res = await net.fetch(spec.url, { redirect: 'follow' })
+        res = await fetchInProfile(spec.url, { redirect: 'follow' })
         needSidecarWrite = true
         expectedSha256 = spec.expectedSha256 ?? null
       }
     } else {
-      res = await net.fetch(spec.url, { redirect: 'follow' })
+      res = await fetchInProfile(spec.url, { redirect: 'follow' })
       needSidecarWrite = true
     }
 
@@ -371,7 +371,7 @@ export async function startDownload(spec: ModelDownloadSpec): Promise<void> {
     // 7. Целостность — сверяем фактический размер .part с ожидаемым Content-Length, если он был.
     // ⚠️ Content-Length может отражать РАЗМЕР НА ПРОВОДЕ (сжатый), а не итоговых декодированных
     // байт: живой пример на easylist.txt — content-length=758786 при content-encoding:gzip, но
-    // фактически полученных (декомпрессированных net.fetch на лету) байт — 2146738. Для GGUF
+    // фактически полученных (декомпрессированных fetchInProfile на лету) байт — 2146738. Для GGUF
     // (бинарные веса, HF отдаёт как есть, без сжатия по наблюдениям) это не ожидается, но при
     // ложном срабатывании этой проверки на реально целом файле — см. сюда.
     // ⚠️ При докачке эта проверка критичнее, чем при обычной загрузке: совпадение ETag ДО дозаписи

@@ -1,4 +1,4 @@
-import { WebContentsView, app, session } from 'electron';
+import { WebContentsView, app } from 'electron';
 import type { BrowserWindow, Rectangle } from 'electron';
 import path from 'node:path';
 import fsp from 'node:fs/promises';
@@ -7,6 +7,7 @@ import type { TabManager } from './TabManager';
 import {
   SELECTION_SCRIPT, IMAGE_CAPTURE_SCRIPT, buildInsertScript, buildLastAnswerScript, profileForUrl,
 } from './graphWebApps';
+import { profileSession } from './ProfileSession';
 
 // Живой чужой сайт для узла-веб-приложения графа. Один узел — одна WebContentsView,
 // как у WebAppManager раздела «Приложения», и с теми же инвариантами изоляции:
@@ -191,7 +192,7 @@ export async function captureImage(
       ext = m[1]!.toLowerCase() === 'jpeg' ? 'jpg' : m[1]!.toLowerCase();
       body = Buffer.from(m[2]!, 'base64');
     } else {
-      const res = await session.defaultSession.fetch(found.url!);
+      const res = await profileSession().fetch(found.url!);
       if (!res.ok) return { ok: false, error: `Сайт не отдал картинку (${res.status})` };
       body = Buffer.from(await res.arrayBuffer());
       const mime = (res.headers.get('content-type') ?? '').split(';')[0]!.trim();

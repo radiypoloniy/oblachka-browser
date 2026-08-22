@@ -1,10 +1,10 @@
 // Web-grounding для AI-панели через собственный SearXNG сервера пользователя — по образцу
-// GeminiFactCheck.ts (то же net.fetch на session.defaultSession, тот же путь в сеть, автоматически
+// GeminiFactCheck.ts (то же fetchInProfile на session.defaultSession, тот же путь в сеть, автоматически
 // идущий через VPN, если он включён, см. main.ts::applyVpnProxy). В отличие от фактчека, эта
 // функция — ТОЛЬКО добыча и разбор результатов; генерация ответа уходит в обычный стрим-путь
 // Qwen (runChatMessage), не в собственный blocking-вызов модели, см. AiPanelManager.ts.
-import { net } from 'electron'
 import { getConfig } from './SearxngKeyStore'
+import { fetchInProfile } from './ProfileSession';
 
 export interface SearxngResult {
   title: string
@@ -51,7 +51,7 @@ export async function searxngSearch(query: string): Promise<SearxngSearchOutcome
 
   let res: Response
   try {
-    res = await net.fetch(url, { headers, signal: controller.signal })
+    res = await fetchInProfile(url, { headers, signal: controller.signal })
   } catch (e) {
     // AbortError (наш же таймаут) — отдельное, более понятное сообщение, чем сырой "aborted".
     // Всё остальное (в т.ч. VPN kill-switch: socks5://127.0.0.1:1 из main.ts::applyVpnProxy —

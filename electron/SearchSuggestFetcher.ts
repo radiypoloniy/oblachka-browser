@@ -5,13 +5,13 @@
 // (сеть отработает, но JS не сможет прочитать тело). Main — обычный Node-контекст, CORS там не
 // действует вовсе.
 //
-// ⚠️ net.fetch (модуль Electron 'net'), НЕ глобальный fetch() — живой аудит утечек VPN (см. план,
+// ⚠️ fetchInProfile (модуль Electron 'net'), НЕ глобальный fetch() — живой аудит утечек VPN (см. план,
 // шаг 3) поймал именно этот файл: глобальный fetch() идёт через сетевой стек Node/undici и НЕ
 // уважает session.setProxy() — при включённом VPN подсказки при наборе в омнибоксе продолжали бы
-// идти напрямую, светя реальный IP поисковику. net.fetch — часть session.defaultSession.
-import { net } from 'electron'
+// идти напрямую, светя реальный IP поисковику. fetchInProfile — часть session.defaultSession.
 import { getSearchEngine } from '../shared/searchEngines'
 import type { SearchEngineId } from '../shared/searchEngines'
+import { fetchInProfile } from './ProfileSession';
 
 // Не висеть, если эндпоинт не отвечает — таймаут через AbortController (совмещён с отменой
 // устаревшего запроса ниже, один и тот же signal).
@@ -36,7 +36,7 @@ export async function fetchSearchSuggestions(query: string, engineId: SearchEngi
 
   try {
     const engine = getSearchEngine(engineId)
-    const res = await net.fetch(engine.suggestUrl(query), { signal: controller.signal })
+    const res = await fetchInProfile(engine.suggestUrl(query), { signal: controller.signal })
     if (!res.ok) return []
     const json = await res.json()
     return engine.parseSuggest(json).slice(0, MAX_SUGGESTIONS)

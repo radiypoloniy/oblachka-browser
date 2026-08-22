@@ -1,8 +1,8 @@
 // Погода для виджета раздела «Приложения» AI-панели (src/components/aiApps.tsx).
 // Источник — Open-Meteo (без API-ключа): геокодинг названия города + текущая погода.
 // Fetch в main по той же причине, что и CurrencyRates.ts: у oblako-chrome:// нет гарантий
-// CORS, а net.fetch идёт через сетевой стек Chromium (прокси/будущий VPN — как у вкладок).
-import { net } from 'electron'
+// CORS, а fetchInProfile идёт через сетевой стек Chromium (прокси/будущий VPN — как у вкладок).
+import { fetchInProfile } from './ProfileSession';
 
 export interface WeatherResult {
   /** Ощущается как — Apple показывает её первой строкой под температурой. */
@@ -40,7 +40,7 @@ export async function getWeather(cityQuery: string): Promise<WeatherResult> {
   if (hit && hit.result.ok && Date.now() - hit.at < CACHE_TTL_MS) return hit.result
 
   try {
-    const geoRes = await net.fetch(
+    const geoRes = await fetchInProfile(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=ru&format=json`,
     )
     if (!geoRes.ok) throw new Error(`геокодинг: HTTP ${geoRes.status}`)
@@ -56,7 +56,7 @@ export async function getWeather(cityQuery: string): Promise<WeatherResult> {
     // столе одной цифры мало — без «ощущается», максимума-минимума и ближайших часов плитка
     // выглядит пустой (ровно то, за что виджет и ругают). is_day нужен, чтобы ночью плитка была
     // тёмной, а не «солнечной».
-    const wRes = await net.fetch(
+    const wRes = await fetchInProfile(
       `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}` +
       `&current=temperature_2m,weather_code,wind_speed_10m,apparent_temperature,is_day` +
       `&hourly=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset` +
@@ -134,7 +134,7 @@ function hhmm(v: unknown): string | undefined {
 // исход, а не ошибка. Поэтому undefined, а не throw.
 async function fetchAqi(lat: number, lon: number): Promise<number | undefined> {
   try {
-    const res = await net.fetch(
+    const res = await fetchInProfile(
       `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}` +
       `&current=european_aqi&timezone=auto`,
     )

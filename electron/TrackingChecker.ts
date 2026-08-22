@@ -9,12 +9,13 @@
 // облака, и обещать человеку иное нельзя. Прямое следствие — заход ПРИ ЗАПУСКЕ (см. STARTUP_* и
 // tick(true) ниже): раз проверять мы можем только пока браузер открыт, момент открытия обязан
 // быть рабочим, а не пропущенным.
-import { BrowserWindow, session, app } from 'electron';
+import { BrowserWindow, app } from 'electron';
 import type { TrackingStore } from './TrackingStore';
 import { detectProduct } from './ProductDetector';
 import { jsonLdBlocksFromHtml, productFromJsonLd, type ProductSignal } from '../shared/productSignal';
 import { allContexts } from './WindowRegistry';
 import { detectEvent, describeEvent } from '../shared/priceEvents';
+import { profileSession } from './ProfileSession';
 
 // Как часто просыпаемся посмотреть, не пора ли кого проверить.
 const TICK_MS = 30 * 60 * 1000;          // полчаса
@@ -68,7 +69,7 @@ async function checkRaw(url: string): Promise<ProductSignal | null> {
   try {
     // Через сессию браузера — с куками человека, нашим UA и клиентскими подсказками: «голый»
     // запрос ловит 403 там, где браузерный проходит (замерено).
-    const res = await session.defaultSession.fetch(url, { method: 'GET' });
+    const res = await profileSession().fetch(url, { method: 'GET' });
     if (!res.ok) return null;
     return productFromJsonLd(jsonLdBlocksFromHtml(await res.text()));
   } catch {

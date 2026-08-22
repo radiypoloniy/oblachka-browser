@@ -29,6 +29,7 @@ import { hostOfUrl } from '../shared/rules';
 import { isExternalAppUrl } from './ExternalProtocol';
 import { localPathToFileUrl } from './localFileUrl';
 import { isRussianCaCandidate } from './CertificateTrust';
+import { fetchInProfile } from './ProfileSession';
 
 const CLOSED_STACK_MAX = 10;
 
@@ -1140,10 +1141,10 @@ export class TabManager {
   // из getSessionSnapshot/#write — те синхронны и работают в т.ч. на win.on('close'), await там
   // не сработает. Кап на размер (FAVICON_CACHE_MAX_BYTES) — один «тяжёлый» favicon не должен
   // бесконтрольно раздувать session.json.
-  // credentials: 'omit' — как в FaviconService: иначе net.fetch идёт defaultSession и мог бы
+  // credentials: 'omit' — как в FaviconService: иначе fetchInProfile идёт defaultSession и мог бы
   // приложить куки обычного профиля к запросу, который вызвала даже инкогнито-вкладка.
   #cacheFaviconData(wc: WebContents, url: string): void {
-    net.fetch(url, { credentials: 'omit' }).then(async (res) => {
+    fetchInProfile(url, { credentials: 'omit' }).then(async (res) => {
       if (!res.ok || wc.isDestroyed()) return;
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.byteLength === 0 || buf.byteLength > FAVICON_CACHE_MAX_BYTES || wc.isDestroyed()) return;

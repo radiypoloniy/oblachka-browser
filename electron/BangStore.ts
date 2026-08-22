@@ -1,8 +1,9 @@
-import { app, net } from 'electron';
+import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { BUILTIN_BANGS, isValidBangKey, isValidBangTemplate } from '../shared/bangs';
 import type { BangDef } from '../shared/bangs';
+import { fetchInProfile } from './ProfileSession';
 
 // Хранилище бэнгов омнибокса (см. shared/bangs.ts — типы, встроенный набор, разбор строки).
 //
@@ -159,11 +160,11 @@ export class BangStore {
 
   // Импорт полного списка DuckDuckGo в userData по явной команде пользователя. В репозиторий
   // этот датасет не кладётся (чужой, 2.2 МБ) — только сюда, на диск конкретного пользователя.
-  // net.fetch, а не глобальный fetch: тот не уважает session.setProxy и ходил бы мимо VPN
+  // fetchInProfile, а не глобальный fetch: тот не уважает session.setProxy и ходил бы мимо VPN
   // (тот же аргумент, что в AdBlockManager).
   async importDuckDuckGoBangs(): Promise<ImportBangsResult> {
     try {
-      const res = await net.fetch(DDG_BANGS_URL);
+      const res = await fetchInProfile(DDG_BANGS_URL);
       if (!res.ok) return { ok: false, imported: 0, error: `Сервер ответил ${res.status}` };
       const data = (await res.json()) as unknown;
       if (!Array.isArray(data)) return { ok: false, imported: 0, error: 'Неожиданный формат ответа' };

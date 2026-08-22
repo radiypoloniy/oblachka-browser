@@ -6,7 +6,7 @@
 // что в AiKeyStore.ts: если секрет хоть раз попадёт на диск открытым текстом, он рискует
 // остаться читаемым в бэкапах даже после перехода на шифрование).
 //
-// ⚠️ getConfig() — только main (нужен будущему запросу к SearXNG через net.fetch, см.
+// ⚠️ getConfig() — только main (нужен будущему запросу к SearXNG через fetchInProfile, см.
 // GeminiFactCheck.ts за образец сетевого вызова). В renderer уходит только getStatus() —
 // булев факт "настроено/нет", ни endpoint, ни токен наружу через IPC не пересекают границу.
 import { app, safeStorage } from 'electron';
@@ -57,7 +57,7 @@ export function getStatus(): boolean {
   return config !== null;
 }
 
-// Только main: будущий вызов к SearXNG (net.fetch, тот же путь и та же VPN-проводка через
+// Только main: будущий вызов к SearXNG (fetchInProfile, тот же путь и та же VPN-проводка через
 // session.defaultSession.setProxy, что у Gemini — см. GeminiFactCheck.ts) читает отсюда.
 export function getConfig(): SearxngConfig | null {
   return config;

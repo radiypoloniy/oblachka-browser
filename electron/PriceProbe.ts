@@ -16,11 +16,12 @@
 // ⚠️ Стенд ничего не пишет: ни истории, ни сессии, ни индекса. Он поднимается ВМЕСТО боевого
 // окна (как OBLAKO_LLAMA_TEST) и работает на боевом профиле только ради кук — это осознанно,
 // иначе замер соврёт: без кук магазины ведут себя иначе.
-import { BrowserWindow, session, app } from 'electron';
+import { BrowserWindow, app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PAGE_FACTS_SCRIPT, type PageFacts } from './pageFacts';
 import { applyClientHints } from './BrowserIdentity';
+import { profileSession } from './ProfileSession';
 
 // Сколько ждём догрузки страницы. Карточки товара тяжёлые, но вечно ждать нельзя — «не успело»
 // это тоже результат замера.
@@ -85,7 +86,7 @@ async function probeRaw(url: string): Promise<{ text: string; note: string }> {
   try {
     // ⚠️ Через session.defaultSession, а не голым fetch: так уходят куки человека, наш UA и
     // клиентские подсказки — то есть запрос выглядит как из браузера, а не как из скрипта.
-    const res = await session.defaultSession.fetch(url, { method: 'GET' });
+    const res = await profileSession().fetch(url, { method: 'GET' });
     if (!res.ok) return { text: 'нет', note: `HTTP ${res.status}` };
     const html = await res.text();
     const facts = factsFromRawHtml(html);
@@ -173,7 +174,7 @@ function pad(s: string, n: number): string {
 }
 
 export async function runPriceProbe(urls: string[]): Promise<void> {
-  applyClientHints(session.defaultSession);
+  applyClientHints(profileSession());
   const out: string[] = [];
   // ⚠️ Отчёт пишется ФАЙЛОМ в UTF-8, а не только в консоль: консоль Windows показывает кириллицу
   // кракозябрами (cp866), и прочитать результат замера было невозможно (поймано на живом прогоне).

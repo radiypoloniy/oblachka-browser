@@ -1,4 +1,4 @@
-import { app, session as electronSession, ipcMain, net, webContents as electronWebContents } from 'electron';
+import { app, session as electronSession, ipcMain, webContents as electronWebContents } from 'electron';
 import type {
   OnBeforeRequestListenerDetails, CallbackResponse,
   OnHeadersReceivedListenerDetails, HeadersReceivedResponse,
@@ -17,6 +17,7 @@ import type { AdBlockState } from '../shared/ipc';
 import { joinScriptlets } from '../shared/scriptletBundle';
 import { normalizeDomain } from '../shared/domain';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
+import { fetchInProfile } from './ProfileSession';
 
 type Database = import('better-sqlite3').Database;
 type BetterSqlite3 = typeof import('better-sqlite3');
@@ -166,7 +167,7 @@ export class AdBlockManager {
         setTimeout(() => reject(new Error('adblock refresh timeout')), REFRESH_TIMEOUT_MS),
       );
       const fresh = await Promise.race([
-        ElectronBlocker.fromPrebuiltAdsAndTracking((url) => net.fetch(url)),
+        ElectronBlocker.fromPrebuiltAdsAndTracking((url) => fetchInProfile(url)),
         deadline,
       ]);
       // tmp+rename — битый недописанный кэш при падении на середине не должен подменить целый
@@ -514,11 +515,11 @@ export class AdBlockManager {
     try {
       // fromPrebuiltAdsAndTracking: скачивает prebuilt-бинарник с CDN Ghostery
       // (уже скомпилирован с косметикой). При повторных стартах — из кэша (<50ms).
-      // net.fetch (модуль Electron), НЕ глобальный fetch() — живой аудит утечек VPN (см. план,
+      // fetchInProfile (модуль Electron), НЕ глобальный fetch() — живой аудит утечек VPN (см. план,
       // шаг 3): глобальный fetch() не уважает session.setProxy(), обновление списков блокировки
       // при включённом VPN продолжало бы идти напрямую в обход туннеля.
       const load = ElectronBlocker.fromPrebuiltAdsAndTracking(
-        (url) => net.fetch(url),
+        (url) => fetchInProfile(url),
         {
           path: this.#enginePath,
           read:  (p) => fs.promises.readFile(p),

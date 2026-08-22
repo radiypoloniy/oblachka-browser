@@ -1,9 +1,9 @@
 // Курсы валют для конвертера раздела «Приложения» AI-панели (src/components/aiApps.tsx).
 // Источник — суточные курсы ЦБ РФ через зеркало cbr-xml-daily.ru (официальный XML ЦБ,
 // переупакованный в JSON, без API-ключа). Fetch живёт в main, а не в renderer панели:
-// у oblako-chrome:// нет гарантий CORS к внешним хостам, а net.fetch идёт через сетевой
+// у oblako-chrome:// нет гарантий CORS к внешним хостам, а fetchInProfile идёт через сетевой
 // стек Chromium — уважает системный прокси (и будущий VPN), как обычные вкладки.
-import { net } from 'electron'
+import { fetchInProfile } from './ProfileSession';
 
 export interface CurrencyRatesResult {
   ok: boolean
@@ -26,7 +26,7 @@ interface CbrValute { Value?: unknown; Nominal?: unknown; Previous?: unknown }
 export async function getCurrencyRates(): Promise<CurrencyRatesResult> {
   if (cache && cache.result.ok && Date.now() - cache.at < CACHE_TTL_MS) return cache.result
   try {
-    const res = await net.fetch(SOURCE_URL)
+    const res = await fetchInProfile(SOURCE_URL)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = (await res.json()) as { Date?: unknown; Valute?: Record<string, CbrValute> }
     const rates: Record<string, number> = { RUB: 1 }
@@ -83,7 +83,7 @@ export async function getCurrencyHistory(code: string, days = 30): Promise<numbe
   const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000)
 
   try {
-    const res = await net.fetch(
+    const res = await fetchInProfile(
       `https://www.cbr.ru/scripts/XML_dynamic.asp?date_req1=${fmt(from)}&date_req2=${fmt(to)}&VAL_NM_RQ=${id}`,
     )
     if (!res.ok) throw new Error(`HTTP ${res.status}`)

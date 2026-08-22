@@ -1,8 +1,9 @@
-import { app, nativeImage, net } from 'electron';
+import { app, nativeImage } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fetchInProfile } from './ProfileSession';
 
-// Favicon для адресов (список паролей и т.п.). Тянем ТОЛЬКО с самого сайта (через net.fetch —
+// Favicon для адресов (список паролей и т.п.). Тянем ТОЛЬКО с самого сайта (через fetchInProfile —
 // это Chromium-сеть, уважает VPN/прокси/адблок), без сторонних favicon-сервисов — приватный
 // браузер не должен светить домены аккаунтов третьей стороне. Двухуровневый кэш: память на сессию
 // + файлы в userData (иконки маленькие, но повторно дёргать сеть при каждом открытии настроек не
@@ -175,13 +176,13 @@ class FaviconService {
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
       // ⚠️ credentials:'omit' — запрос уходит БЕЗ кук. Это список сохранённых паролей: домены
-      // здесь те, где человек залогинен, и по умолчанию net.fetch приложил бы к каждой иконке
+      // здесь те, где человек залогинен, и по умолчанию fetchInProfile приложил бы к каждой иконке
       // его сессионные куки — то есть отметился бы на всех его сайтах при одном открытии
       // настроек. Пункт 4 бэклога безопасности паролей в CLAUDE.md.
       // ⚠️ Отдельную сессию заводить НЕЛЬЗЯ, хотя напрашивается: прокси VPN ставится только на
       // дефолтную и инкогнито-сессию (applyVpnProxy в main.ts), и своя сессия пошла бы мимо
       // тоннеля — вместо утечки кук получили бы утечку адреса, что хуже.
-      const res = await net.fetch(url, { signal: controller.signal, redirect: 'follow', credentials: 'omit' });
+      const res = await fetchInProfile(url, { signal: controller.signal, redirect: 'follow', credentials: 'omit' });
       if (!res.ok) return null;
       const ab = await res.arrayBuffer();
       if (ab.byteLength === 0 || ab.byteLength > maxBytes) return null;

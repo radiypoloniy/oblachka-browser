@@ -1,13 +1,13 @@
 // VPN, шаг 1 — оркестрация: fetch ссылки подписки + парсинг + сохранение. Разделено с
 // VpnParser.ts (чистая логика) и VpnKeyStore.ts (хранение) — здесь только склейка.
 //
-// ⚠️ net.fetch (модуль Electron 'net'), НЕ глобальный fetch() — тот идёт через сетевой стек
+// ⚠️ fetchInProfile (модуль Electron 'net'), НЕ глобальный fetch() — тот идёт через сетевой стек
 // Node/undici и НЕ уважает session.setProxy(), см. живой аудит утечек (SearchSuggestFetcher.ts
-// тем же багом). net.fetch — часть session.defaultSession, когда шаг 3 включит прокси на VPN,
+// тем же багом). fetchInProfile — часть session.defaultSession, когда шаг 3 включит прокси на VPN,
 // обновление подписки автоматически пойдёт через тот же туннель, а не в обход него.
-import { net } from 'electron';
 import { parseSubscriptionContent } from './VpnParser';
 import * as store from './VpnKeyStore';
+import { fetchInProfile } from './ProfileSession';
 
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -30,7 +30,7 @@ async function fetchText(url: string): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await net.fetch(url, { signal: controller.signal, headers: { 'User-Agent': SUBSCRIPTION_USER_AGENT } });
+    const res = await fetchInProfile(url, { signal: controller.signal, headers: { 'User-Agent': SUBSCRIPTION_USER_AGENT } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.text();
   } finally {

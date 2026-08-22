@@ -2,10 +2,10 @@
 // ⚠️ Архитектурное требование, не опция: ссылки в отчёте берутся ТОЛЬКО из groundingMetadata
 // реального ответа API (candidate.groundingMetadata.groundingChunks[].web), никогда из текста
 // генерации модели — иначе фича с названием "фактчек" может показать несуществующие источники.
-// net.fetch — тот же способ похода в сеть из main, что уже используется для кэша favicon
+// fetchInProfile — тот же способ похода в сеть из main, что уже используется для кэша favicon
 // (см. TabManager.ts::#cacheFaviconData) — не заводим отдельный http-клиент/зависимость.
-import { net } from 'electron'
 import { getKey } from './AiKeyStore'
+import { fetchInProfile } from './ProfileSession';
 
 export type FactCheckOutcome =
   | { ok: true; out: string }
@@ -34,7 +34,7 @@ export async function runFactCheck(pageText: string, pageTitle: string, pageUrl:
 
   let res: Response
   try {
-    res = await net.fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+    res = await fetchInProfile(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

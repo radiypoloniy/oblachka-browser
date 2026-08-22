@@ -1,8 +1,8 @@
-import { net } from 'electron'
+import { fetchInProfile } from './ProfileSession';
 
 // Ближайший государственный праздник — для виджета «Праздники» на рабочем столе.
 // Источник — date.nager.at (без ключа, без регистрации). Fetch в main по той же причине, что у
-// WeatherService/CurrencyRates: у oblako-chrome:// нет гарантий CORS, а net.fetch идёт сетевым
+// WeatherService/CurrencyRates: у oblako-chrome:// нет гарантий CORS, а fetchInProfile идёт сетевым
 // стеком Chromium, то есть уважает прокси и VPN, как обычные вкладки.
 //
 // ⚠️ Это НОВЫЙ получатель данных, и footprint у него намеренно крошечный: один запрос на год,
@@ -37,7 +37,7 @@ async function fetchYear(country: string, year: number): Promise<Holiday[]> {
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.list
 
-  const res = await net.fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`)
+  const res = await fetchInProfile(`https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const raw = (await res.json()) as unknown
   const list = Array.isArray(raw)

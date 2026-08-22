@@ -1,4 +1,3 @@
-import { net } from 'electron';
 import {
   parseFeedItems, looksLikeFeed,
   GEN_WEB_MAX_BYTES, GEN_WEB_TIMEOUT_MS, GEN_WEB_MIN_INTERVAL_MS,
@@ -7,10 +6,11 @@ import {
 // ⚠️ Допуск адреса лежит в genSpec: два модуля из shared/ не могут ссылаться друг на друга,
 // потому что проверки гоняют их голым node (см. шапку genWeb.ts).
 import { isAllowedGenUrl } from '../shared/genSpec';
+import { fetchInProfile } from './ProfileSession';
 
 // Поход по ссылке, которую дал человек. ЕДИНСТВЕННОЕ место, откуда свой виджет достаёт сеть.
 //
-// ⚠️ Ходит МAIN через net.fetch, а не страница. Это не формальность: net.fetch идёт сессией
+// ⚠️ Ходит МAIN через fetchInProfile, а не страница. Это не формальность: fetchInProfile идёт сессией
 // Electron, то есть уважает session.setProxy — а значит VPN, kill switch и адблок. Тот же
 // запрос из renderer'а через глобальный fetch ушёл бы стеком Node мимо туннеля (этот случай
 // в проекте уже ловили, см. SearchSuggestFetcher.ts и аудит утечек).
@@ -68,7 +68,7 @@ export async function fetchGenWeb(rawUrl: string, force = false): Promise<GenWeb
   const timer = setTimeout(() => ctl.abort(), GEN_WEB_TIMEOUT_MS);
   let res: GenWebResult;
   try {
-    const r = await net.fetch(url, {
+    const r = await fetchInProfile(url, {
       credentials: 'omit',
       signal: ctl.signal,
       headers: { accept: 'application/json, application/rss+xml, application/atom+xml, text/xml;q=0.9, */*;q=0.5' },

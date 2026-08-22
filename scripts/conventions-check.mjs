@@ -172,6 +172,37 @@ function hueSat(hex) {
     'мост живёт в preload; прямой ipcRenderer в src/ обходит контракт и типы OblakoApi');
 }
 
+// ── 2б. Сеть ходит сессией профиля, а не «какой попало» ─────────────────────
+// ⚠️ Правило родилось из замера 22.08.2026 перед заходом в профили. `net.fetch` — глобальная
+// функция, и сессию она НЕ принимает: запрос уходит `session.defaultSession`. Значит каждый
+// такой вызов молча привязан к профилю по умолчанию, а поиском по `defaultSession` его не
+// найти — в коде там просто `net.fetch(url)`. Неявных пользователей дефолтной сессии было
+// 23 против 31 явного, и ни один инструмент их не видел.
+//
+// ⚠️ Цена ошибки здесь не косметическая: при VPN-на-профиль забытый вызов светит трафик
+// сессией чужого профиля — с его куками и его прокси. Это тот же класс, что закрывали волной
+// утечек, где ловили глобальный fetch (см. шапки SearchSuggestFetcher.ts, VpnSubscription.ts).
+//
+// Единственное место, которому можно, — electron/ProfileSession.ts: там решение и принимается.
+{
+  const allowed = 'electron/ProfileSession.ts';
+  const hits = [];
+  for (const f of walk(path.join(ROOT, 'electron'), ['.ts'])) {
+    if (rel(f).replace(/\\/g, '/') === allowed) continue;
+    const code = codeLines(fs.readFileSync(f, 'utf8'));
+    code.forEach((line, i) => {
+      if (/\bnet\.fetch\s*\(/.test(line)) {
+        hits.push(`${rel(f)}:${i + 1}  net.fetch — возьми fetchInProfile()`);
+      }
+      if (/session\.defaultSession/.test(line)) {
+        hits.push(`${rel(f)}:${i + 1}  session.defaultSession — возьми profileSession() или allBrowsingSessions()`);
+      }
+    });
+  }
+  checkEmpty('сеть идёт сессией профиля (ProfileSession.ts)', hits,
+    'net.fetch и defaultSession зашивают профиль по умолчанию — с профилями это утечка чужой сессии');
+}
+
 // ── 3. any и @ts-ignore — только с объяснением ──────────────────────────────
 // Из CLAUDE.md: «Не глуши ошибки через any/@ts-ignore без причины и комментария, почему иначе
 // нельзя». Проверяем наличие комментария на той же или предыдущей строке — не сам текст: судить
