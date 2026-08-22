@@ -13,7 +13,6 @@ import { chromeCluster, omniField, clusterBtn, ISLAND_HEIGHT } from '../styles/i
 import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
 import { CHROME_OVERLAY_PX } from '../../shared/chromeGround';
 import { glyph } from '../styles/system';
-import ProfileSwitcher from './ProfileSwitcher';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -1792,10 +1791,6 @@ export default function Toolbar({
         {/* Плашка-остров остаётся — как у всех кнопок тулбара. Меняется только ТОН: в покое
             нейтральный значок на обычной плашке, ровно как «назад/вперёд/обновить»; акцент
             загорается, когда панель открыта, то есть означает состояние, а не важность. */}
-        {/* Профиль: цветная метка, как аватар аккаунта. ⚠️ Не щит и не замок — профиль это
-            единица удобства (второй аккаунт, работа/личное), а приватность внутри него один из
-            тумблеров. Скрыт, пока профиль один: переключать не на что. */}
-        {!isLightWindow && <ProfileSwitcher />}
         {!isLightWindow && (
           <button className="chrome-btn" title="AI-панель" onClick={onToggleAiPanel} style={clusterBtn({ active: aiPanelOpen })}>
             <SparkGlyph size={18} />

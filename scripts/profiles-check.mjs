@@ -7,6 +7,7 @@ import {
   defaultProfilesState, parseProfiles, profilePartition, sanitizeProfileId,
   addProfile, removeProfile, renameProfile, switchProfile, setProfileSettings,
   activeProfile, findProfile, profileWantsVpn, profileFailsClosed,
+  shouldAskProfileOnStart, startupProfile, setStartupProfile,
   DEFAULT_PROFILE_ID, PROFILES_MAX, PROFILE_NAME_MAX,
 } from '../shared/profiles.ts';
 
@@ -89,6 +90,29 @@ console.log('\n── переименование и переключение �
   check('активный профиль находится', activeProfile(switchProfile(s, id)).name, 'Работа');
 }
 
+console.log('\n── выбор профиля при запуске ──');
+{
+  // ⚠️ Ошибка здесь встречает человека при КАЖДОМ запуске, поэтому условия проверяются по одному.
+  const one = defaultProfilesState();
+  checkTrue('с одним профилем не спрашиваем — выбирать не из чего', !shouldAskProfileOnStart(one));
+
+  const two = addProfile(one, 'Работа', 'green', 6000);
+  const workId = two.profiles[1].id;
+  checkTrue('с двумя и без закрепления — спрашиваем', shouldAskProfileOnStart(two));
+  check('без закрепления стартуем с основного', startupProfile(two).id, DEFAULT_PROFILE_ID);
+
+  const pinned = setStartupProfile(two, workId);
+  checkTrue('закрепили — больше не спрашиваем', !shouldAskProfileOnStart(pinned));
+  check('и стартуем с закреплённого', startupProfile(pinned).id, workId);
+  checkTrue('сняли закрепление — снова спрашиваем', shouldAskProfileOnStart(setStartupProfile(pinned, null)));
+  check('закрепить призрака нельзя', setStartupProfile(two, 'нет-такого').startupProfileId, null);
+
+  // ⚠️ Удалили закреплённый — вопрос возвращается сам, а не молча падает в основной.
+  const afterRemove = removeProfile(pinned, workId);
+  check('закрепление снято вместе с профилем', afterRemove.startupProfileId, null);
+  checkTrue('и одного профиля снова мало для вопроса', !shouldAskProfileOnStart(afterRemove));
+}
+
 console.log('\n── чтение с диска ──');
 {
   // ⚠️ Битый файл не имеет права стоить людям логинов: основной профиль восстанавливается всегда.
@@ -108,6 +132,14 @@ console.log('\n── чтение с диска ──');
     parseProfiles({ profiles: Array.from({ length: 40 }, (_, i) => ({ id: `p${i}` })) })
       .profiles.some((p) => p.id === DEFAULT_PROFILE_ID));
   check('неизвестный цвет заменён', parseProfiles({ profiles: [{ id: 'p1', color: '#ff0000' }] }).profiles[1].color, 'blue');
+  check('закрепление на призрака сброшено',
+    parseProfiles({ profiles: [{ id: 'p1' }], startupProfileId: 'p9' }).startupProfileId, null);
+  check('закрепление на существующий сохранено',
+    parseProfiles({ profiles: [{ id: 'p1' }], startupProfileId: 'p1' }).startupProfileId, 'p1');
+  check('закрепление на призрака сброшено',
+    parseProfiles({ profiles: [{ id: 'p1' }], startupProfileId: 'p9' }).startupProfileId, null);
+  check('закрепление на существующий сохранено',
+    parseProfiles({ profiles: [{ id: 'p1' }], startupProfileId: 'p1' }).startupProfileId, 'p1');
   check('неизвестный режим VPN заменён на inherit',
     parseProfiles({ profiles: [{ id: 'p1', settings: { vpn: 'магия' } }] }).profiles[1].settings.vpn, 'inherit');
 }

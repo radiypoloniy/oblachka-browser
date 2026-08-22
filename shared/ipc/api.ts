@@ -328,6 +328,8 @@ export interface OblakoApi {
   renameProfile(id: string, name: string): Promise<ProfilesState>;
   setProfileSettings(id: string, patch: Partial<ProfileSettings>): Promise<ProfilesState>;
   switchProfile(id: string): Promise<ProfilesState>;
+  /** Закрепить профиль за запуском. null — спрашивать при каждом старте. */
+  setStartupProfile(id: string | null): Promise<ProfilesState>;
   onProfilesChanged(cb: (s: ProfilesState) => void): () => void;
   /** Ход сборки — приходит только тому окну, которое её и запросило. */
   onGenWidgetProgress(cb: (p: GenProgress) => void): () => void;

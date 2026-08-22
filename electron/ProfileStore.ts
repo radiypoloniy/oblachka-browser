@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   parseProfiles, defaultProfilesState, addProfile, removeProfile, renameProfile,
-  switchProfile, setProfileSettings, activeProfile, findProfile,
+  switchProfile, setProfileSettings, activeProfile, findProfile, setStartupProfile,
   type Profile, type ProfileSettings, type ProfilesState,
 } from '../shared/profiles';
 
@@ -83,6 +83,12 @@ export function updateProfileName(id: string, name: string): ProfilesState {
 
 export function updateProfileSettings(id: string, patch: Partial<ProfileSettings>): ProfilesState {
   const next = setProfileSettings(load(), id, patch);
+  save(next);
+  return next;
+}
+
+export function pinStartupProfile(id: string | null): ProfilesState {
+  const next = setStartupProfile(load(), id);
   save(next);
   return next;
 }

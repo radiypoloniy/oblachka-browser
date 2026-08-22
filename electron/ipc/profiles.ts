@@ -3,7 +3,7 @@ import { IPC } from '../../shared/ipc';
 import { DEFAULT_PROFILE_ID, type ProfileSettings } from '../../shared/profiles';
 import {
   getProfiles, createProfile, deleteProfile, updateProfileName,
-  updateProfileSettings, setActiveProfile,
+  updateProfileSettings, setActiveProfile, pinStartupProfile,
 } from '../ProfileStore';
 import type { IpcDeps } from './deps';
 
@@ -55,6 +55,12 @@ export function registerProfilesIpc(d: IpcDeps): void {
     const state = updateProfileSettings(String(id), (patch ?? {}) as Partial<ProfileSettings>);
     // ⚠️ Немедленно, а не при следующей смене состояния VPN: см. шапку файла.
     await d.applyVpnProxy();
+    broadcast();
+    return state;
+  });
+
+  ipcMain.handle(IPC.PROFILES_STARTUP, (_e, id: string | null) => {
+    const state = pinStartupProfile(typeof id === 'string' ? id : null);
     broadcast();
     return state;
   });

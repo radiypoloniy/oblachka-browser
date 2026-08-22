@@ -85,6 +85,7 @@ export const IPC = {
   PROFILES_RENAME: 'profiles:rename',      // renderer → main: переименовать
   PROFILES_SETTINGS: 'profiles:settings',  // renderer → main: VPN/адблок профиля
   PROFILES_SWITCH: 'profiles:switch',      // renderer → main: сделать активным
+  PROFILES_STARTUP: 'profiles:startup',    // renderer → main: закрепить профиль за запуском (null — спрашивать)
   PROFILES_CHANGED: 'profiles:changed',    // main → renderer: список изменился
   DESKTOP_GEN_PROGRESS: 'desktop:gen-progress', // main → renderer: ход сборки (стадия + объём)
 

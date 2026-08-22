@@ -50,6 +50,14 @@ export interface Profile {
 export interface ProfilesState {
   profiles: Profile[];
   activeId: string;
+  /**
+   * С каким профилем запускаться, не спрашивая. null — спрашивать при старте.
+   *
+   * ⚠️ Умолчание — null, но экран выбора при этом НЕ появляется, пока профиль один: спрашивать
+   * «с каким из одного?» — издевательство. Условие показа целиком в shouldAskProfileOnStart,
+   * и оно проверяется, потому что ошибка здесь встречает человека при КАЖДОМ запуске.
+   */
+  startupProfileId: string | null;
 }
 
 /** Цвета меток. ⚠️ Из набора плиток стола, чтобы профиль читался как часть системы. */
@@ -72,7 +80,35 @@ export function defaultProfilesState(): ProfilesState {
       createdAt: 0,
     }],
     activeId: DEFAULT_PROFILE_ID,
+    startupProfileId: null,
   };
+}
+
+/**
+ * Спрашивать ли профиль при запуске.
+ *
+ * ⚠️ Три условия, и каждое отвечает на своё возражение: профилей больше одного (иначе выбирать
+ * не из чего), человек не закрепил выбор (закрепил — значит просил не спрашивать), а закреплённый
+ * профиль всё ещё существует (удалил — вопрос возвращается сам, а не молча падает в основной).
+ */
+export function shouldAskProfileOnStart(state: ProfilesState): boolean {
+  if (state.profiles.length < 2) return false;
+  if (!state.startupProfileId) return true;
+  return !state.profiles.some((p) => p.id === state.startupProfileId);
+}
+
+/** С каким профилем стартовать без вопроса. */
+export function startupProfile(state: ProfilesState): Profile {
+  const pinned = state.startupProfileId
+    ? state.profiles.find((p) => p.id === state.startupProfileId)
+    : null;
+  return pinned ?? state.profiles.find((p) => p.id === DEFAULT_PROFILE_ID) ?? state.profiles[0]!;
+}
+
+/** Закрепить профиль за запуском (или снять закрепление, передав null). */
+export function setStartupProfile(state: ProfilesState, id: string | null): ProfilesState {
+  if (id === null) return { ...state, startupProfileId: null };
+  return state.profiles.some((p) => p.id === id) ? { ...state, startupProfileId: id } : state;
 }
 
 /**
@@ -148,7 +184,10 @@ export function parseProfiles(raw: unknown): ProfilesState {
 
   const wanted = String(o.activeId ?? '');
   const activeId = profiles.some((p) => p.id === wanted) ? wanted : DEFAULT_PROFILE_ID;
-  return { profiles, activeId };
+  const pinned = typeof o.startupProfileId === 'string' && profiles.some((p) => p.id === o.startupProfileId)
+    ? o.startupProfileId
+    : null;
+  return { profiles, activeId, startupProfileId: pinned };
 }
 
 export function findProfile(state: ProfilesState, id: string): Profile | null {
@@ -201,7 +240,10 @@ export function removeProfile(state: ProfilesState, id: string): ProfilesState {
   const profiles = state.profiles.filter((p) => p.id !== id);
   if (profiles.length === state.profiles.length) return state;
   const activeId = state.activeId === id ? DEFAULT_PROFILE_ID : state.activeId;
-  return { profiles, activeId };
+  // ⚠️ Закрепление за удалённым профилем снимается здесь же. Иначе следующий запуск искал бы
+  // несуществующий профиль — и либо молча падал в основной, либо спрашивал без объяснения.
+  const startupProfileId = state.startupProfileId === id ? null : state.startupProfileId;
+  return { profiles, activeId, startupProfileId };
 }
 
 export function switchProfile(state: ProfilesState, id: string): ProfilesState {

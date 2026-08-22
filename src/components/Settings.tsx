@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Shield, ShieldCheck, Wifi, Cpu, Palette, Lock, SlidersHorizontal, CreditCard, Wand2, Search, Sparkles, type LucideIcon } from 'lucide-react';
+import { X, Shield, ShieldCheck, Wifi, Cpu, Palette, Lock, SlidersHorizontal, CreditCard, Wand2, Search, Sparkles, type LucideIcon, Users } from 'lucide-react';
 import { searchSettings, isEntryAvailable, SETTINGS_INDEX, type SettingsEntry, type SettingsAvailability } from '../../shared/settingsIndex';
 import type { AdBlockState } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
@@ -12,6 +12,7 @@ import AutofillSection from './settings/AutofillSection';
 import GeneralSection from './settings/GeneralSection';
 import PermissionsSection from './settings/PermissionsSection';
 import AppearanceSection from './settings/AppearanceSection';
+import ProfilesSection from './settings/ProfilesSection';
 import RulesSection from './settings/RulesSection';
 import { useRubberBand } from '../rubberBand';
 
@@ -55,11 +56,13 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'passwords',  label: 'Пароли',         Icon: Lock },
   { id: 'autofill',   label: 'Автозаполнение', Icon: CreditCard },
   { id: 'permissions', label: 'Разрешения',    Icon: ShieldCheck },
+  // Профили — рядом с разрешениями: и то и другое про «что этому окружению позволено».
+  { id: 'profiles',   label: 'Профили',        Icon: Users },
   // Правила стоят последними как самое редкое, но по-прежнему отдельным разделом, а не блоком
   // внутри AI: фразу разбирает модель, а исполняются они обычным кодом и живут без модели.
   { id: 'rules',      label: 'Правила',        Icon: Wand2 },
 ];
-type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'rules' | 'passwords' | 'autofill' | 'permissions' | 'appearance';
+type SectionId = 'general' | 'adblock' | 'vpn' | 'ai' | 'rules' | 'passwords' | 'autofill' | 'permissions' | 'appearance' | 'profiles';
 
 // ⚠️ Проверка идёт по САМОМУ меню, а не по своему списку строк. Отдельный список тут уже
 // разошёлся с NAV_ITEMS однажды (новый раздел «Правила» существовал в меню, но открыть его
@@ -401,6 +404,7 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
           {section === 'autofill' && <AutofillSection />}
           {section === 'permissions' && <PermissionsSection />}
           {section === 'appearance' && <AppearanceSection />}
+          {section === 'profiles' && <ProfilesSection />}
           </div>
         </div>
       </div>

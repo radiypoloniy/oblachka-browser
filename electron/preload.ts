@@ -94,6 +94,7 @@ const api: OblakoApi = {
   renameProfile: (id: string, name: string) => ipcRenderer.invoke(IPC.PROFILES_RENAME, id, name) as Promise<ProfilesState>,
   setProfileSettings: (id: string, patch: Partial<ProfileSettings>) => ipcRenderer.invoke(IPC.PROFILES_SETTINGS, id, patch) as Promise<ProfilesState>,
   switchProfile: (id: string) => ipcRenderer.invoke(IPC.PROFILES_SWITCH, id) as Promise<ProfilesState>,
+  setStartupProfile: (id: string | null) => ipcRenderer.invoke(IPC.PROFILES_STARTUP, id) as Promise<ProfilesState>,
   onProfilesChanged: (cb: (s: ProfilesState) => void) => {
     const handler = (_e: unknown, s: ProfilesState) => cb(s);
     ipcRenderer.on(IPC.PROFILES_CHANGED, handler);
