@@ -1,24 +1,28 @@
-import { useMemo, useState } from 'react';
+import { Component, useMemo, useState, type ReactNode } from 'react';
 import type React from 'react';
 import { X, Search, Globe } from 'lucide-react';
 import { APPS, AppIconBadge } from '../aiApps';
 import type { TileSite } from '../../../shared/frecency';
 import { WIDGET_SIZES, type DesktopItem, type DesktopLayout, hasItem } from '../../newtab/desktop';
-import { WIDGET_RENDERERS } from './widgets';
-import { CAPS, RADIUS, ROW_TITLE, TEXT, motion, pad, sp } from '../../styles/system';
+import { WIDGET_RENDERERS, Tile, TileCaption, TileValue } from './widgets';
+import { btnPrimary } from '../settings/kit';
+import {
+  ALTITUDE, CAPS, DISPLAY, RADIUS, ROW_TITLE, TEXT, altitude, cardGlass, motion, pad, sp,
+} from '../../styles/system';
 
 // Палитра добавления: виджеты, приложения и свои сайты.
 //
-// ⚠️ ГАЛЕРЕЯ С ПРЕДПРОСМОТРОМ, а не список строк. Прежний вид — иконка, название, подпись —
-// заставлял человека представлять виджет по описанию: «Отслеживание · цены товаров» ничего не
-// говорит о том, что окажется на столе. Виджет — вещь ВИЗУАЛЬНАЯ, и выбирают его глазами;
-// поэтому здесь он показан ровно таким, каким встанет на стол.
+// ⚠️ ВИДЖЕТ ПОКАЗАН САМ СОБОЙ, БЕЗ ПОДЛОЖКИ. Первая версия галереи ставила каждый предпросмотр
+// в серую коробку с рамкой — и это была двойная ошибка: коробка спорила с собственной плиткой
+// виджета (получалась карточка в карточке), а её пропорции ломали композицию, потому что виджет
+// внутри всё считает от пиксельного размера коробки. У Apple ровно так же: в палитре лежит сам
+// виджет своей формы — квадрат или прямоугольник, — а не картинка виджета в рамке.
 //
-// ⚠️ Предпросмотр ЖИВОЙ только у тех, кто не ходит в сеть. Это не лень и не оптимизация:
-// смонтировать здесь погоду или курсы значило бы сходить к стороннему сервису ДО того, как
-// человек решил их поставить, — то есть ровно то, ради избежания чего их нет в стартовом наборе
-// (см. defaultLayout в newtab/desktop.ts). Сетевые показываются карточкой-плакатом, и в подписи
-// прямо назван сервис, к которому виджет обратится.
+// ⚠️ Предпросмотр ЖИВОЙ только у тех, кто не ходит в сеть. Смонтировать здесь погоду или курсы
+// значило бы сходить к стороннему сервису ДО того, как человек решил их поставить, — то есть
+// ровно то, ради избежания чего их нет в стартовом наборе (см. defaultLayout в newtab/desktop.ts).
+// Сетевые показываются ПЛИТКОЙ ТОЙ ЖЕ ФОРМЫ с их знаком и именем сервиса: форма и материал
+// честные, данных нет.
 //
 // ⚠️ Уже стоящее на столе не предлагается повторно (см. hasItem): два одинаковых виджета погоды —
 // не фича, а недосмотр, который человек потом молча удаляет. Сайты — исключение: их сколько
@@ -55,13 +59,12 @@ const WIDGET_CHOICES: { key: string; label: string; hint: string; glyph: string;
   { key: 'tracking',  label: 'Отслеживание',     hint: 'Цены товаров',                   glyph: '⤓', size: 'medium' },
 ];
 
-// Клетка и зазор сетки стола: предпросмотр рисуется в НАСТОЯЩИХ пропорциях плитки и лишь потом
-// уменьшается целиком. Иначе виджет в галерее выглядел бы не так, как встанет на стол, — у него
-// внутри всё считается от пиксельного размера коробки.
+// Клетка и зазор сетки стола: предпросмотр рисуется в НАСТОЯЩИХ пропорциях плитки и уменьшается
+// целиком. Ширина колонки постоянна, поэтому коэффициент известен заранее — без замеров и без
+// «примерно похоже».
 const CELL = 120;
 const GAP = 14;
-const PREVIEW_W = 232;
-const PREVIEW_H = 132;
+const COL = 236;
 
 interface Props {
   layout: DesktopLayout;
@@ -106,33 +109,36 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
       onClick={onClose}
       style={{
         position: 'absolute', inset: 0, zIndex: 20,
-        background: 'rgba(0,0,0,0.42)', backdropFilter: 'blur(3px)',
+        background: 'rgba(10,12,20,0.42)', backdropFilter: 'blur(3px)',
         display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: sp(6),
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: '100%', maxWidth: 880, maxHeight: '86%', overflowY: 'auto',
-          background: 'var(--surface-solid)', borderRadius: 'var(--radius-island)',
-          boxShadow: 'var(--shadow-island)', padding: sp(6),
+          // Готовый рецепт острова — поверхность, скругление содержимого, тень, кромка.
+          // ⚠️ Тот же, что у экрана выбора профиля: два «листа поверх экрана» в одном продукте
+          // обязаны быть сделаны одинаково, иначе интерфейс выглядит собранным из кусков.
+          ...altitude(ALTITUDE.island, { content: true }),
+          width: '100%', maxWidth: 980, maxHeight: '88%', overflowY: 'auto',
+          padding: `${sp(6)}px ${sp(6)}px ${sp(8)}px`,
           display: 'flex', flexDirection: 'column', gap: sp(6),
           animation: 'oblako-drag-card-in var(--dur-base) var(--ease-out)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: sp(3) }}>
-          <span style={{ flex: 1, ...TEXT.section, color: 'var(--text-strong)' }}>
-            Добавить на экран
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: sp(3) }}>
+          <span style={{ flex: 1, ...DISPLAY, fontSize: 28, color: 'var(--text-strong)' }}>
+            Что поставим?
           </span>
           <button onClick={onClose} title="Закрыть" style={iconBtn}><X size={16} /></button>
         </div>
 
         {/* Поиск. ⚠️ Ищет и по подписи, а не только по названию: человек чаще помнит, ЧТО виджет
             делает («цены»), чем как он у нас назван («Отслеживание»). */}
-        <div style={{
+        <label style={{
           display: 'flex', alignItems: 'center', gap: sp(2),
           padding: pad(2, 4), borderRadius: RADIUS.pill,
-          background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
+          ...cardGlass(), color: 'var(--text-body)',
         }}>
           <Search size={16} style={{ color: 'var(--text-faint)', flex: 'none' }} />
           <input
@@ -145,13 +151,17 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
               color: 'var(--text-body)', ...TEXT.body, fontFamily: 'inherit',
             }}
           />
-        </div>
+        </label>
 
         {widgets.length > 0 && (
           <Group title="Виджеты">
+            {/* ⚠️ Колонки ФИКСИРОВАННОЙ ширины, а не резиновые: от неё считается уменьшение
+                предпросмотра, и резиновая колонка означала бы замер на каждый кадр. Остаток
+                ширины уходит в зазор — сетка остаётся выровненной по левому краю. */}
             <div style={{
-              display: 'grid', gap: sp(4),
-              gridTemplateColumns: `repeat(auto-fill, minmax(${PREVIEW_W}px, 1fr))`,
+              display: 'grid', gap: `${sp(6)}px ${sp(4)}px`,
+              gridTemplateColumns: `repeat(auto-fill, ${COL}px)`,
+              alignItems: 'start',
             }}>
               {widgets.map((w) => (
                 <WidgetCard
@@ -173,12 +183,14 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
                 <button
                   key={a.id}
                   onClick={() => onAdd({ kind: 'app', appId: a.id, size: { w: 1, h: 1 } })}
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = motion.lift; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: sp(2),
                     padding: pad(1, 3), borderRadius: RADIUS.pill,
-                    border: '1px solid var(--divider)', background: 'var(--surface-sunken)',
-                    color: 'var(--text-body)', cursor: 'default', font: 'inherit',
-                    transition: motion.hover('background', 'border-color'),
+                    ...cardGlass(),
+                    cursor: 'default', font: 'inherit',
+                    transition: motion.hover('background', 'transform'),
                   }}
                 >
                   <AppIconBadge app={a} size={24} iconSize={14} />
@@ -211,14 +223,12 @@ export default function AddSheet({ layout, tiles, onAdd, onClose }: Props) {
               placeholder="Название (необязательно)"
               style={{ ...field, flex: '1 1 160px' }}
             />
+            {/* ⚠️ Общий рецепт кнопки из дизайн-системы (btnPrimary), а не своя пилюля. Каждая
+                самодельная кнопка — это ещё один вид кнопки в продукте, и именно так интерфейс
+                перестаёт выглядеть сделанным одной рукой. */}
             <button
               onClick={addSite}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: sp(2), flex: 'none',
-                padding: `0 ${sp(4)}px`, height: 38, borderRadius: RADIUS.pill,
-                border: 'none', cursor: 'default', background: 'var(--accent)', color: 'var(--on-accent)',
-                ...TEXT.body, fontWeight: 600,
-              }}
+              style={{ ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
             ><Globe size={15} /> Добавить</button>
           </div>
         </Group>
@@ -234,79 +244,119 @@ function WidgetCard({ choice, tiles, service, onAdd }: {
   service?: string;
   onAdd: () => void;
 }) {
-  return (
-    <button
-      onClick={onAdd}
-      onMouseEnter={(e) => { e.currentTarget.style.transform = motion.lift; }}
-      onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
-      style={{
-        display: 'flex', flexDirection: 'column', gap: sp(2), textAlign: 'left',
-        padding: 0, border: 'none', background: 'transparent', cursor: 'default',
-        transition: motion.hover('transform'),
-      }}
-    >
-      <div style={{
-        width: '100%', height: PREVIEW_H, borderRadius: RADIUS.box, overflow: 'hidden',
-        background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-        display: 'grid', placeItems: 'center',
-      }}>
-        {service
-          ? <Poster glyph={choice.glyph} />
-          : <LivePreview widgetKey={choice.key} size={choice.size} tiles={tiles} />}
-      </div>
-      <span style={{ ...ROW_TITLE }}>{choice.label}</span>
-      <span style={{
-        ...TEXT.caption,
-        // ⚠️ Про сеть сказано ЗДЕСЬ и с ИМЕНЕМ сервиса, в момент выбора: человек решает, ставить
-        // ли виджет, и ровно в этот момент узнаёт цену.
-        color: service ? 'var(--warning-500)' : 'var(--text-faint)',
-      }}>
-        {service ? `${choice.hint} · запрашивает данные у ${service}` : choice.hint}
-      </span>
-    </button>
-  );
-}
-
-/** Живой виджет, уменьшенный целиком. Только для тех, кто не ходит в сеть, — см. шапку файла. */
-function LivePreview({ widgetKey, size, tiles }: {
-  widgetKey: string; size: keyof typeof WIDGET_SIZES; tiles: TileSite[];
-}) {
-  const cells = WIDGET_SIZES[size];
+  const cells = WIDGET_SIZES[choice.size];
   const w = cells.w * CELL + (cells.w - 1) * GAP;
   const h = cells.h * CELL + (cells.h - 1) * GAP;
-  // Вписываем с полями: плитка в предпросмотре должна читаться как отдельный предмет, а не
-  // упираться в края карточки.
-  const scale = Math.min((PREVIEW_W - sp(6)) / w, (PREVIEW_H - sp(4)) / h);
-  const Render = WIDGET_RENDERERS[widgetKey];
-  if (!Render) return <Poster glyph="★" />;
+  // ⚠️ Широкая плитка занимает ДВЕ колонки. Не ради красоты: 2×2 это квадрат, 4×2 — ровно две
+  // такие клетки в ряд, и при таком разбиении высота у них СОВПАДАЕТ. Иначе строки галереи
+  // получаются рваными — широкий предпросмотр вдвое ниже квадратного, и под ним зияет дыра.
+  const span = cells.w >= 4 ? 2 : 1;
+  const cardW = COL * span + sp(4) * (span - 1);
+  const scale = cardW / w;
+
   return (
-    <div style={{
-      width: w, height: h, flex: 'none',
-      transform: `scale(${scale})`, transformOrigin: 'center',
-      // ⚠️ Клики внутрь не пускаем: карточка целиком — это кнопка «добавить», и нажатие на
-      // «Собрать» внутри предпросмотра запускало бы работу виджета, которого ещё нет на столе.
-      pointerEvents: 'none',
-    }}>
-      <Render
-        size={cells}
-        box={{ width: w, height: h }}
-        tiles={tiles}
-        onOpen={() => {}}
-        city=""
-      />
+    // ⚠️ НЕ <button>. Внутри предпросмотра живут собственные кнопки виджета («Собрать», «Старт»),
+    // а кнопка внутри кнопки — недопустимая разметка: React ругается, а браузеры расходятся в
+    // том, куда уходит клик. Роль и обработчик клавиатуры оставляем, чтобы карточка осталась
+    // доступной.
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onAdd}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(); } }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
+      style={{
+        gridColumn: `span ${span}`,
+        display: 'flex', flexDirection: 'column', gap: sp(3), textAlign: 'left',
+        cursor: 'default', outline: 'none',
+        transition: motion.state('transform'),
+      }}
+    >
+      {/* Коробка ровно по уменьшенной плитке: никакой рамки и никакой подложки — сам виджет и
+          есть картинка. ⚠️ Центрируем ПОЗИЦИОНИРОВАНИЕМ, а не выравниванием сетки: элемент
+          крупнее коробки, и браузер выравнивает такой «безопасно» — прижимает к началу. Именно
+          от этого предпросмотры уезжали вправо и обрезались. */}
+      <div style={{ width: cardW, height: Math.round(h * scale), position: 'relative' }}>
+        <div style={{
+          position: 'absolute', left: '50%', top: '50%',
+          width: w, height: h,
+          transform: `translate(-50%, -50%) scale(${scale})`,
+          // ⚠️ Клики внутрь не пускаем: карточка целиком — кнопка «добавить», и нажатие на
+          // «Собрать» внутри предпросмотра запускало бы работу виджета, которого ещё нет на столе.
+          pointerEvents: 'none',
+        }}>
+          {service
+            ? <PosterTile choice={choice} service={service} tileH={h} />
+            : <LivePreview widgetKey={choice.key} cells={cells} box={{ width: w, height: h }} tiles={tiles} />}
+        </div>
+      </div>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+        <span style={{ ...ROW_TITLE }}>{choice.label}</span>
+        <span style={{
+          ...TEXT.caption,
+          // ⚠️ Про сеть сказано ЗДЕСЬ и с ИМЕНЕМ сервиса, в момент выбора: человек решает,
+          // ставить ли виджет, и ровно в этот момент узнаёт цену.
+          color: service ? 'var(--warning-500)' : 'var(--text-faint)',
+        }}>
+          {service ? `${choice.hint} · данные у ${service}` : choice.hint}
+        </span>
+      </span>
     </div>
   );
 }
 
-/** Карточка-плакат для сетевых виджетов: показываем знак, а не ходим за данными. */
-function Poster({ glyph }: { glyph: string }) {
+/** Живой виджет. Только для тех, кто не ходит в сеть, — см. шапку файла. */
+function LivePreview({ widgetKey, cells, box, tiles }: {
+  widgetKey: string;
+  cells: { w: number; h: number };
+  box: { width: number; height: number };
+  tiles: TileSite[];
+}) {
+  const Render = WIDGET_RENDERERS[widgetKey];
+  if (!Render) return null;
   return (
-    <span style={{
-      width: 64, height: 64, borderRadius: RADIUS.box,
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      background: 'var(--surface)', border: '1px solid var(--divider)',
-      fontSize: 30, lineHeight: 1,
-    }}>{glyph}</span>
+    <PreviewBoundary>
+      <Render size={cells} box={box} tiles={tiles} onOpen={() => {}} city="" />
+    </PreviewBoundary>
+  );
+}
+
+/**
+ * Ограда вокруг предпросмотра.
+ *
+ * ⚠️ Заведена не «на всякий случай». Палитра монтирует ДЕСЯТОК виджетов разом, и падение любого
+ * из них уносило бы весь стол — React снимает всё дерево до ближайшей ограды, а её не было.
+ * Цена ошибки несоразмерна: человек открыл список, чтобы что-то поставить, а получил пустую
+ * вкладку. Поймано стендом, где виджету досталось пустое хранилище.
+ */
+class PreviewBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError(): { failed: boolean } { return { failed: true }; }
+  render(): ReactNode {
+    if (this.state.failed) return null;
+    return this.props.children;
+  }
+}
+
+/**
+ * Плитка-заглушка для сетевого виджета: та же форма и тот же материал, что у настоящей, но без
+ * единого запроса. ⚠️ Знак крупный и набран дисплейной гарнитурой — плитка должна читаться как
+ * виджет, а не как «место, где что-то не загрузилось».
+ */
+function PosterTile({ choice, service, tileH }: {
+  choice: typeof WIDGET_CHOICES[number]; service: string; tileH: number;
+}) {
+  return (
+    <Tile surface toned>
+      <TileCaption>{choice.label}</TileCaption>
+      <div style={{
+        flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <TileValue size={Math.round(tileH * 0.38)}>{choice.glyph}</TileValue>
+      </div>
+      <span style={{ ...TEXT.caption, color: 'inherit', opacity: 0.7 }}>{service}</span>
+    </Tile>
   );
 }
 

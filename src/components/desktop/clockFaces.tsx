@@ -265,8 +265,13 @@ export function FitLine({ text, weight = 800, upper = false, maxTrack = 0.12, al
     let alive = true;
     const run = (): void => {
       if (!alive || !b || !s) return;
-      const W = b.clientWidth;
-      const H = b.clientHeight;
+      // ⚠️ Коробку меряем ТЕМ ЖЕ методом, что и строку. clientWidth отдаёт РАСКЛАДОЧНЫЕ пиксели,
+      // а getBoundingClientRect — ЭКРАННЫЕ: внутри контейнера с transform: scale() это разные
+      // числа, и подгонка считала кегль больше нужного — строка вылезала за плитку (поймано на
+      // стенде палитры, где предпросмотр уменьшен масштабом).
+      const box = b.getBoundingClientRect();
+      const W = box.width;
+      const H = box.height;
       if (!W || !H) return;
       // Пробный кегль → натуральная ширина → пропорция. Один замер, дальше арифметика.
       s.style.letterSpacing = '0px';
