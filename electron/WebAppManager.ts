@@ -47,7 +47,7 @@ const HTTP_SCHEME = /^https?:\/\//i
 // сайты рисуют десктопную вёрстку — она в таком окне требует скролла и малофункциональна.
 // С Android-UA Яндекс.Переводчик и большинство сайтов отдают компактную мобильную версию,
 // свёрстанную ровно под эту ширину. Версия Chrome — реальная (из рантайма), не зашитая.
-const MOBILE_UA = `Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) ` +
+export const MOBILE_UA = `Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) ` +
   `Chrome/${process.versions.chrome} Mobile Safari/537.36`
 
 export function openWebApp(win: BrowserWindow, appId: string, url: string): void {

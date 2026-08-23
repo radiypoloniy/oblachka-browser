@@ -440,6 +440,18 @@ export class AdBlockManager {
     if (this.#enabled && this.#blocker) this.#enableNetworkBlocking(session);
   }
 
+  /**
+   * Снять блокировку с сессии — профиль выключил адблок у себя.
+   *
+   * ⚠️ Парная attachSession, и без неё настройка «адблок в этом профиле» была бы односторонней:
+   * включить можно, выключить нельзя до перезапуска. Гейты снимаются теми же средствами, что при
+   * общем выключении движка (см. #disableNetworkBlocking), — второго способа не заводим.
+   */
+  detachSession(session: Session): void {
+    if (!this.#extraSessions.delete(session)) return;
+    this.#disableNetworkBlocking(session);
+  }
+
   // Инъекция косметики/скриптлетов — копия оригинального adblocker-electron
   // onInjectCosmeticFilters (dist/commonjs/index.js, v2.18.0) с ЕДИНСТВЕННЫМ отличием: все
   // скриптлеты страницы выполняются ОДНИМ executeJavaScript, а не каждый отдельно.
