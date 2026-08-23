@@ -104,26 +104,6 @@ function monthLong(now: Date): string {
   return now.toLocaleDateString('ru-RU', { month: 'long' });
 }
 
-/**
- * Растянуть набор на всю ширину плитки.
- *
- * textLength меняет ширину глифов, а не сплющивает контейнер: так календарные карточки
- * заполняют поле буквами. preserveAspectRatio=none здесь уместен — деформируем букву, не круг.
- */
-function StretchText({ text, fill }: { text: string; fill: string }) {
-  return (
-    <svg viewBox="0 0 100 24" preserveAspectRatio="none" width="100%" height="100%" aria-hidden>
-      <text
-        x="0" y="20"
-        textLength="100"
-        lengthAdjust="spacingAndGlyphs"
-        fill={fill}
-        style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 22 }}
-      >{text}</text>
-    </svg>
-  );
-}
-
 const tileShell = (extra?: CSSProperties): CSSProperties => ({
   width: '100%',
   height: '100%',
@@ -132,6 +112,10 @@ const tileShell = (extra?: CSSProperties): CSSProperties => ({
   minHeight: 0,
   ...extra,
 });
+
+// Пределы оси ширины Archivo (см. tokens/fonts.css). Держим весь диапазон: в узкой плитке
+// шрифт поджимается, в растянутой — раскрывается, и оба края нарисованы, а не вычислены.
+const CLOCK_WIDTH: [number, number] = [62, 125];
 
 /** (1) Время — набор на всю плитку. Небо фазы только подложка, без дуги. */
 export function WideTypeClock({ now, sunrise, sunset }: {
@@ -150,9 +134,12 @@ export function WideTypeClock({ now, sunrise, sunset }: {
       transition: motion.enter('background'),
     })}>
       <div style={{ ...CAPS, color: 'inherit', opacity: 0.78 }}>{weekdayLong(now)}</div>
+      {/* ⚠️ Время набирается ГАРНИТУРОЙ С ОСЬЮ ШИРИНЫ (--font-clock), а не растянутым дисплейным.
+          Растяжение плющило цифры — «шрифт не очень выглядит в растянутой позиции»; ось ширины
+          даёт настоящее широкое начертание, и в узкой плитке она же поджимается обратно. */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
-        <div style={{ width: '100%', height: '100%', maxHeight: 92 }}>
-          <StretchText text={time} fill="#fff" />
+        <div style={{ width: '100%', height: '100%', maxHeight: 108 }}>
+          <FitLine text={time} family="var(--font-clock)" weight={700} stretch={CLOCK_WIDTH} maxTrack={0.02} />
         </div>
       </div>
       <div style={{ ...TEXT.body, color: 'inherit', opacity: 0.82, fontWeight: 600 }}>
@@ -219,7 +206,7 @@ export function WideClusterClock({ now, seconds }: { now: Date; seconds: boolean
             часами»: растянутый на всю ширину набор превращал цифры в лапшу. Кегль подбирается
             под коробку, а остаток ширины добирается трекингом (см. FitLine). */}
         <div style={{ width: '100%', height: '68%' }}>
-          <FitLine text={time} align="center" maxTrack={0.06} />
+          <FitLine text={time} family="var(--font-clock)" weight={700} stretch={CLOCK_WIDTH} align="center" maxTrack={0.02} />
         </div>
       </div>
     </div>
@@ -245,7 +232,7 @@ export function WideClusterClock({ now, seconds }: { now: Date; seconds: boolean
  */
 const FIT_PROBE = 100;
 
-export function FitLine({ text, weight = 800, upper = false, maxTrack = 0.12, align = 'left', style }: {
+export function FitLine({ text, weight = 800, upper = false, maxTrack = 0.12, align = 'left', family, stretch, style }: {
   text: string;
   weight?: number;
   /** Верхний регистр — как на карточках рефа. */
@@ -253,11 +240,22 @@ export function FitLine({ text, weight = 800, upper = false, maxTrack = 0.12, al
   /** Потолок разрядки в долях кегля. */
   maxTrack?: number;
   align?: 'left' | 'center';
+  /** Своя гарнитура (по умолчанию дисплейная). */
+  family?: string;
+  /**
+   * Пределы ОСИ ШИРИНЫ переменного шрифта, проценты.
+   *
+   * ⚠️ Если ось есть — ширину добираем ЕЮ, а не разрядкой и уж точно не масштабом. Разница
+   * принципиальная: масштаб плющит букву (именно от этого «шрифт выглядит не очень» в
+   * растянутых часах), разрядка растаскивает слово на буквы, а ось ширины даёт начертание,
+   * НАРИСОВАННОЕ рисовальщиком для этой ширины.
+   */
+  stretch?: [number, number];
   style?: CSSProperties;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const ink = useRef<HTMLSpanElement>(null);
-  const [fit, setFit] = useState<{ size: number; track: number } | null>(null);
+  const [fit, setFit] = useState<{ size: number; track: number; wdth: number } | null>(null);
   const label = upper ? text.toUpperCase() : text;
 
   useLayoutEffect(() => {
@@ -272,22 +270,34 @@ export function FitLine({ text, weight = 800, upper = false, maxTrack = 0.12, al
       if (!W || !H) return;
       // Пробный кегль → натуральная ширина → пропорция. Один замер, дальше арифметика.
       s.style.letterSpacing = '0px';
+      s.style.fontStretch = '100%';
       s.style.fontSize = `${FIT_PROBE}px`;
       const natural = s.getBoundingClientRect().width || 1;
+
+      // Ось ширины: какая ширина нужна, чтобы строка кеглем в высоту коробки заняла её ширину.
+      // Модель линейная (ширина знака растёт пропорционально оси) — она приблизительная, и
+      // именно поэтому дальше идёт НАСТОЯЩИЙ замер, а не доверие формуле.
+      let wdth = 100;
+      if (stretch) {
+        const atFullHeight = natural * (H / FIT_PROBE);
+        wdth = Math.max(stretch[0], Math.min(stretch[1], (W / Math.max(1, atFullHeight)) * 100));
+        s.style.fontStretch = `${wdth}%`;
+      }
+      const widened = s.getBoundingClientRect().width || 1;
       // Высота строки у дисплейной гарнитуры примерно равна кеглю: line-height держим 1.
-      const size = Math.min((W / natural) * FIT_PROBE, H);
+      const size = Math.min((W / widened) * FIT_PROBE, H);
       s.style.fontSize = `${size}px`;
       const actual = s.getBoundingClientRect().width;
       const gaps = Math.max(1, label.length - 1);
       const track = Math.max(0, Math.min((W - actual) / gaps, size * maxTrack));
-      setFit({ size, track });
+      setFit({ size, track, wdth });
     };
     run();
     const ro = new ResizeObserver(run);
     ro.observe(b);
     void document.fonts?.ready?.then(run);
     return () => { alive = false; ro.disconnect(); };
-  }, [label, maxTrack]);
+  }, [label, maxTrack, stretch]);
 
   return (
     <div
@@ -302,8 +312,9 @@ export function FitLine({ text, weight = 800, upper = false, maxTrack = 0.12, al
       <span
         ref={ink}
         style={{
-          fontFamily: 'var(--font-display)', fontWeight: weight, lineHeight: 1,
+          fontFamily: family ?? 'var(--font-display)', fontWeight: weight, lineHeight: 1,
           whiteSpace: 'nowrap', color: 'inherit',
+          fontStretch: fit ? `${fit.wdth}%` : undefined,
           fontSize: fit?.size ?? FIT_PROBE,
           letterSpacing: fit ? `${fit.track}px` : undefined,
           // ⚠️ Разрядка добавляет пробел и ПОСЛЕ последней буквы — строка съезжает влево от края.
@@ -356,14 +367,21 @@ export function CalendarFace({ now }: { now: Date }) {
   const [grid, gridBox] = useBoxSize<HTMLDivElement>();
   // Строк в сетке: шапка недели плюс недели месяца. Кегль дня — доля высоты строки, с потолком:
   // на 4×4 иначе цифры перерастают слово месяца и спорят с ним за главную роль.
+  //
+  // ⚠️ Доля 0.62, а не 0.52, и снизу стоит ПОЛ: на мелком масштабе стола (клетка 110) плитка 2×2
+  // это 234 px, строка сетки — около 22, и прежняя доля давала 11 px. Живая жалоба: «приходится
+  // напрягаться, чтобы разобрать». Цифры дат — не подпись, а содержимое: ниже 13 px им нельзя.
   const rows = 1 + cells.length / 7;
-  const dayFont = gridBox.h ? Math.min(Math.round((gridBox.h / rows) * 0.52), 28) : 0;
+  const dayFont = gridBox.h ? Math.max(13, Math.min(Math.round((gridBox.h / rows) * 0.62), 28)) : 0;
+  // ⚠️ Год снимается с мелкой плитки целиком. Он полезен, но это самая необязательная строка
+  // календаря, а место, которое она занимает, — единственное, откуда можно взять высоту для дат.
+  const tiny = gridBox.h > 0 && gridBox.h < 170;
   return (
     <div style={tileShell({ padding: pad(4), gap: sp(2) })}>
       {/* ⚠️ Номер месяца набирается ТЕМ ЖЕ подгоном, что и слово: заданный кегль («2.4em»)
           выглядел второстепенным на 4×4 и великоватым на 2×2, потому что не зависел от плитки.
           Доля ширины у него постоянная — так номер остаётся вторым фокусом на любом размере. */}
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: sp(3), flex: 'none', height: '26%' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: sp(3), flex: 'none', height: tiny ? '22%' : '26%' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <FitLine text={monthLong(now)} upper />
         </div>
@@ -409,14 +427,22 @@ export function CalendarFace({ now }: { now: Date }) {
         })}
       </div>
 
-      <div style={{ ...CAPS, color: 'inherit', opacity: 0.4, flex: 'none' }}>
-        {now.getFullYear()}
-      </div>
+      {!tiny && (
+        <div style={{ ...CAPS, color: 'inherit', opacity: 0.4, flex: 'none' }}>
+          {now.getFullYear()}
+        </div>
+      )}
     </div>
   );
 }
 
 const WEEK_LETTERS = ['п', 'в', 'с', 'ч', 'п', 'с', 'в'];
+
+// Фон текущей плитки. ⚠️ Переменную объявляет сама плитка (Tile в widgets.tsx) — лицо не может
+// знать, что под ним: тема, выбранная человеком заливка, стекло или акцент героя. Фолбэк на
+// поверхность нужен для стенда, где лицо живёт вне плитки.
+const TILE_BG = 'var(--tile-bg, var(--surface))';
+const TILE_INK = 'var(--tile-ink, var(--text-strong))';
 
 function monthCells(now: Date): number[] {
   const y = now.getFullYear();
@@ -481,11 +507,11 @@ export function TimerLayout({
       >
         <rect
           x={inset} y={inset} width={Math.max(0, w - inset * 2)} height={Math.max(0, h - inset * 2)}
-          rx={RADIUS.content} fill="none" stroke="currentColor" strokeOpacity={0.16} strokeWidth={inset * 2}
+          rx={RADIUS.content} fill="none" stroke="currentColor" strokeOpacity={0.14} strokeWidth={inset * 2}
         />
         <rect
           x={inset} y={inset} width={Math.max(0, w - inset * 2)} height={Math.max(0, h - inset * 2)}
-          rx={RADIUS.content} fill="none" stroke="var(--accent)" strokeWidth={inset * 2}
+          rx={RADIUS.content} fill="none" stroke="currentColor" strokeWidth={inset * 2}
           strokeLinecap="round" pathLength={1} strokeDasharray={`${p} 1`}
           style={{ transition: motion.state('stroke-dasharray') }}
         />
@@ -501,11 +527,16 @@ export function TimerLayout({
               onClick={() => onPreset(item.id)}
               style={{
                 ...TEXT.caption, fontWeight: 700,
-                color: on ? 'var(--on-accent)' : 'inherit',
+                // ⚠️ Выбранная кнопка красится КРАСКОЙ ПЛИТКИ, а не акцентом. Акцентная заливка
+                // и акцентная кнопка на ней — это кнопка-невидимка (живая жалоба: «сделал
+                // виджет акцентным — кнопки теряются»). Заливка кнопки = цвет текста плитки,
+                // подпись = фон плитки: контраст гарантирован на любой заливке, потому что это
+                // та же пара, которой плитка уже рисует свой текст.
+                color: on ? TILE_BG : 'inherit',
                 opacity: on ? 1 : 0.6,
                 border: 'none', cursor: 'default',
                 padding: pad(1, 2), borderRadius: RADIUS.pill,
-                background: on ? 'var(--accent)' : 'color-mix(in srgb, currentColor 10%, transparent)',
+                background: on ? TILE_INK : 'color-mix(in srgb, currentColor 12%, transparent)',
                 transition: motion.hover('background', 'color', 'opacity'),
               }}
             >{item.label}</button>
@@ -522,8 +553,10 @@ export function TimerLayout({
       }}>
         {/* ⚠️ Время — единственный герой плитки, поэтому занимает всё свободное поле. Дерзость
             здесь ровно в этом: не «крупная надпись среди элементов», а надпись во всю плитку. */}
+        {/* Время таймера — той же гарнитурой с осью ширины, что и часы: это одна сущность,
+            и разными шрифтами она выглядела бы как два разных продукта на одном столе. */}
         <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-          <FitLine text={leftLabel} maxTrack={0.02} />
+          <FitLine text={leftLabel} family="var(--font-clock)" weight={700} stretch={CLOCK_WIDTH} maxTrack={0.02} />
         </div>
 
         <div style={{
@@ -539,7 +572,8 @@ export function TimerLayout({
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               border: 'none', cursor: 'default', padding: 0,
               borderRadius: RADIUS.box,
-              background: 'var(--accent)', color: 'var(--on-accent)',
+              // Та же пара, что у выбранной кнопки длительности, — см. комментарий выше.
+              background: TILE_INK, color: TILE_BG,
               transition: motion.hover('background', 'transform'),
             }}
           >

@@ -25,6 +25,9 @@ const tile = (w: number, h: number): { w: number; h: number } => ({
   h: h * CELL + (h - 1) * GAP,
 });
 const T_SMALL = tile(2, 2);
+// Мелкий масштаб стола: клетка 110 вместо 120 (см. SCALE_PRESETS). Жалоба на нечитаемые даты
+// пришла именно с него, поэтому календарь показываем и в нём.
+const T_SMALL_COMPACT = { w: 2 * 110 + 14, h: 2 * 110 + 14 };
 const T_WIDE = tile(4, 2);
 const T_LARGE = tile(4, 4);
 
@@ -113,7 +116,10 @@ function ClockStand() {
 
         <Section n="3" title="Календарь месяца" hint="По рефу с печатными карточками: слово месяца целыми буквами, номер месяца вторым фокусом, времени внутри нет.">
           <div style={{ display: 'flex', gap: sp(4), flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            <Frame size={T_SMALL} label="2×2 · плитка">
+            <Frame size={T_SMALL_COMPACT} label="2×2 · мелкий масштаб">
+              <CalendarFace now={now} />
+            </Frame>
+            <Frame size={T_SMALL} label="2×2 · средний">
               <CalendarFace now={now} />
             </Frame>
             <Frame size={T_SMALL} label="2×2 · чернила" fill="ink">
@@ -198,13 +204,25 @@ function Section({ n, title, hint, children }: {
 // выворачивались в белые и дрались с фоном стола.
 type Fill = 'card' | 'ink' | 'accent' | 'none';
 
+// ⚠️ Каждая заливка объявляет --tile-bg — ту же переменную, что на столе объявляет Tile.
+// Без неё лица не знают, на чём стоят, и кнопки таймера красятся мимо (см. TILE_BG в clockFaces).
 const FILLS: Record<Fill, CSSProperties> = {
   card: {
     background: 'var(--surface)', color: 'var(--text-strong)',
     boxShadow: 'var(--shadow-lvl2), var(--inner-light)',
+    ['--tile-bg' as string]: 'var(--surface)',
+    ['--tile-ink' as string]: 'var(--text-strong)',
   },
-  ink: { background: 'var(--text-strong)', color: 'var(--app-bg)' },
-  accent: { background: 'var(--accent)', color: 'var(--on-accent)' },
+  ink: {
+    background: 'var(--text-strong)', color: 'var(--app-bg)',
+    ['--tile-bg' as string]: 'var(--text-strong)',
+    ['--tile-ink' as string]: 'var(--app-bg)',
+  },
+  accent: {
+    background: 'var(--accent)', color: 'var(--on-accent)',
+    ['--tile-bg' as string]: 'var(--accent)',
+    ['--tile-ink' as string]: 'var(--on-accent)',
+  },
   none: {},
 };
 

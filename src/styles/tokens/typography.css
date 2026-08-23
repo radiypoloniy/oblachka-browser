@@ -13,6 +13,10 @@
      (см. DISPLAY в src/styles/system.ts). В интерфейсе её быть не должно. */
   --font-display: "Unbounded", "Golos Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  /* Часы растянутой плитки. ⚠️ Отдельная роль, а не «ещё один дисплейный»: единственная
+     причина её существования — ОСЬ ШИРИНЫ (см. fonts.css). Больше нигде эта гарнитура
+     появляться не должна: в интерфейсе у нас Golos, в «лицах» — Unbounded. */
+  --font-clock: "Archivo", "Unbounded", "Golos Text", system-ui, sans-serif;
 
   /* Type scale (px). Display = the personal greeting on the hub. */
   /* Шкала поднята на ступень: прежняя (33/24/20/17/15/13/11.5) была рассчитана на плотный

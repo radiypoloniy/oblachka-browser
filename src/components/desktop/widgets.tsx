@@ -141,8 +141,23 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, glass
   const heroStyle = useHero ? altitude(ALTITUDE.hero, { content: true }) : null;
   const toneStyle = heroStyle ?? (useGlass ? cardGlass() : useCard ? card(toned === 'high') : null);
   const onSurface = surface && !custom && !useCard && !useGlass && !useHero;
+  // ⚠️ Плитка объявляет СВОЙ ФОН переменной. Содержимому (лицам часов, таймеру) нужна краска,
+  // на которой гарантированно читается заливка из currentColor: акцентная кнопка на акцентной
+  // плитке — кнопка-невидимка. Своя заливка человека бывает градиентом, поэтому берём её плоский
+  // образец (FILL_SWATCH) — он для того и заведён.
+  const tileBg = custom
+    ? (FILL_SWATCH[fill ?? ''] ?? 'var(--surface)')
+    : useHero ? 'var(--accent)' : 'var(--surface)';
+  // ⚠️ И ФОН, И КРАСКА — двумя переменными, а не одной. Содержимому нужна ПАРА: заливка кнопки
+  // краской плитки и подпись на ней фоном плитки. Через currentColor это не выражается: в
+  // `background: currentColor` он берёт цвет САМОГО элемента, а элемент этот цвет тут же
+  // переопределяет под подпись — кнопка красится сама собой и исчезает (проверено на стенде).
+  const tileInk = toneStyle?.color ?? (onSurface ? 'var(--text-body)' : '#fff');
   return (
     <div onClick={onActivate} style={{
+      // Кастомное свойство в inline-стиле — React пропускает его как есть.
+      ['--tile-bg' as string]: tileBg,
+      ['--tile-ink' as string]: tileInk,
       width: '100%', height: '100%', overflow: 'hidden', position: 'relative',
       // ⚠️ У содержимого радиус свой и крупнее, чем у хрома: два мира — разная геометрия.
       borderRadius: RADIUS.content,
@@ -161,7 +176,7 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, glass
       isolation: toneStyle?.isolation,
       // На выбранной заливке текст всегда белый: все заливки набора тёмные настолько, что
       // --text-body на них не читался бы.
-      color: toneStyle?.color ?? (onSurface ? 'var(--text-body)' : '#fff'),
+      color: tileInk,
       padding,
       display: 'flex', flexDirection: 'column',
     }}>
