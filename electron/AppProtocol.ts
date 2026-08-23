@@ -113,6 +113,58 @@ function resolveDistDir(): string {
 export function registerChromeProtocol(): void {
   const distDir = resolveDistDir()
 
+/**
+ * CSP интерфейса браузера (аудит 11.08 и 21.08 — долг закрыт).
+ *
+ * ⚠️ Это ГЛУБИНА ЗАЩИТЫ, а не заплатка на найденную дыру: XSS в хроме не найден
+ * (`dangerouslySetInnerHTML` в `src/` нет). Но цена его появления здесь несоразмерна обычной:
+ * в этом origin живёт `window.oblako` — пароли, файлы, VPN, история. Без CSP любая будущая
+ * инъекция получает их целиком, с CSP — упирается в запрет на чужой скрипт.
+ *
+ * Разбор по директивам, каждая обоснована фактом из кода, а не «на всякий случай»:
+ *
+ *  • default-src 'none' — база «запрещено всё», дальше открываем поимённо. Обратный порядок
+ *    (разрешить всё, запретить лишнее) даёт дыру на каждой новой возможности Chromium.
+ *  • script-src 'self' — только наш бандл. ⚠️ Ни 'unsafe-inline', ни 'unsafe-eval': в renderer
+ *    нет ни одного `eval`/`new Function` (проверено поиском), и это ровно та строчка, ради
+ *    которой всё затевалось.
+ *  • style-src 'self' 'unsafe-inline' — ⚠️ ВЫНУЖДЕННО. Весь интерфейс написан инлайновыми
+ *    `style={{…}}` React, и без 'unsafe-inline' он превратится в голый HTML. Ослабление
+ *    осознанное: стилевая инъекция без скриптовой опасна разве что подделкой вида, а
+ *    переписывать тысячи мест на классы — отдельная работа, не аудит.
+ *  • img-src 'self' data: blob: https: — ⚠️ https нужен по факту: фавиконы сайтов грузятся
+ *    прямо с них (`https://host/favicon.ico`), обложка играющего трека приходит ссылкой
+ *    сервиса. Картинка — не код, а http: не пускаем, чтобы не было смешанного содержимого.
+ *  • font-src 'self' data: — свои шрифты вшиты, генератор виджетов подставляет их data-URL.
+ *  • connect-src 'self' data: blob: — сеть у интерфейса идёт через IPC, а не fetch; `fetch`
+ *    в renderer встречается только на data:/blob: (перекодирование фото и шрифтов).
+ *  • frame-src 'self' data: blob: — свой одностраничник виджета живёт в `srcdoc`-iframe с
+ *    `sandbox="allow-scripts"` (см. GenWidget.tsx).
+ *  • object-src 'none' — плагинов нет и не будет.
+ *  • base-uri 'none' — <base> умеет переписать адреса всех относительных загрузок разом; нам
+ *    он не нужен нигде, а инъекции полезен.
+ *  • form-action 'none' — интерфейс никуда не отправляет форм: всё уходит через IPC.
+ *  • frame-ancestors 'none' — нас никто не имеет права встраивать.
+ *
+ * ⚠️ Заголовок ставится на КАЖДЫЙ ответ, а не только на index.html: CSP документа определяется
+ * заголовком его собственного ответа, и промах на любом html-входе (поповеры, findbar, панель)
+ * оставил бы этот документ вовсе без политики.
+ */
+const CHROME_CSP = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "connect-src 'self' data: blob:",
+  "frame-src 'self' data: blob:",
+  "media-src 'self' data: blob:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join('; ')
+
   protocol.handle('oblako-chrome', (request) => {
     const url = new URL(request.url)
     // /index.html → 'index.html'; /assets/index-XXX.js → 'assets/index-XXX.js'
@@ -141,6 +193,7 @@ export function registerChromeProtocol(): void {
         //   Итог: crossOriginIsolated=true → SAB=true → ORT задействует все потоки WASM.
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'credentialless',
+        'Content-Security-Policy': CHROME_CSP,
       },
     })
   })
