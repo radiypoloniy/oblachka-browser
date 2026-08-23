@@ -1,5 +1,5 @@
-import type { CSSProperties } from 'react';
-import { Pause } from 'lucide-react';
+import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { Pause, Play } from 'lucide-react';
 import { dayPhase, skyStops, type DayPhase } from '../../../shared/dayPhase';
 import { CAPS, DISPLAY, RADIUS, TEXT, motion, pad, sp } from '../../styles/system';
 
@@ -124,9 +124,15 @@ function StretchText({ text, fill }: { text: string; fill: string }) {
   );
 }
 
-const inkWell: CSSProperties = {
-  background: 'var(--text-strong)',
-  color: 'var(--app-bg)',
+/**
+ * Внутренний блок лица (квадрат циферблата, квадрат даты).
+ *
+ * ⚠️ Тон берётся ОТ ТЕКСТА текущей плитки (`currentColor`), а не задаётся своим цветом. Иначе
+ * блок приходится красить дважды — под светлую тему и под тёмную, — и он всё равно мимо, когда
+ * человек выбрал плитке свою заливку. Так же ведут себя чипы в дизайн-системе.
+ */
+const innerBlock: CSSProperties = {
+  background: 'color-mix(in srgb, currentColor 10%, transparent)',
   borderRadius: RADIUS.content,
   overflow: 'hidden',
 };
@@ -176,14 +182,14 @@ export function WideClusterClock({ now, seconds }: { now: Date; seconds: boolean
     <div style={tileShell({ gap: sp(2) })}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: sp(2), flex: 1, minHeight: 0 }}>
         <div style={{
-          ...inkWell,
+          ...innerBlock,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           padding: sp(3),
         }}>
           <AnalogFace size={118} now={now} seconds={seconds} />
         </div>
         <div style={{
-          ...inkWell,
+          ...innerBlock,
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
           padding: pad(4),
@@ -208,52 +214,177 @@ export function WideClusterClock({ now, seconds }: { now: Date; seconds: boolean
         justifyContent: 'center',
         padding: `0 ${sp(4)}px`,
       }}>
+        {/* ⚠️ Полоса времени БОЛЬШЕ НЕ ТЯНЕТ БУКВЫ. Здесь и была «промашка с узкими и длинными
+            часами»: растянутый на всю ширину набор превращал цифры в лапшу. Кегль подбирается
+            под коробку, а остаток ширины добирается трекингом (см. FitLine). */}
         <div style={{ width: '100%', height: 56 }}>
-          <StretchText text={time} fill="currentColor" />
+          <FitLine text={time} align="center" maxTrack={0.06} />
         </div>
       </div>
     </div>
   );
 }
 
-/** (3) Плакат: месяц растянут, сетка дней, время — второй ряд. */
-export function WidePosterClock({ now }: { now: Date }) {
-  const month = monthLong(now);
-  const year = String(now.getFullYear());
+/**
+ * Строка, подогнанная под коробку БЕЗ деформации глифов.
+ *
+ * ⚠️ Так чинится главная претензия к плакату месяца: там ширина набиралась через
+ * `textLength` + `lengthAdjust="spacingAndGlyphs"`, то есть буквы РАСТЯГИВАЛИСЬ по горизонтали.
+ * На вывеске это читается как «шрифт сломали»: у Unbounded и так широкие овалы, и растянутый
+ * «АВГУСТ» превращается в кашу из плоских О. В типографике ширину добирают ТРЕКИНГОМ, а не
+ * телом буквы, — так набирают обложки и календарные карточки, с которых взят реф.
+ *
+ * Порядок ровно тот же, что делает человек руками: подобрать кегль (по меньшему из двух —
+ * ширине и высоте), а остаток ширины раздать межбуквенными пробелами, и то с потолком: разрядка
+ * сверх ~12% кегля перестаёт быть словом и становится россыпью букв.
+ *
+ * ⚠️ Меряем ЖИВОЙ элемент, а не считаем по таблице ширин: гарнитура грузится асинхронно, и
+ * подгонка, сделанная до её загрузки, промахивается на треть. Отсюда и повтор по
+ * `document.fonts.ready`, и ResizeObserver — плитка меняет размер вместе с сеткой стола.
+ */
+const FIT_PROBE = 100;
+
+export function FitLine({ text, weight = 800, upper = false, maxTrack = 0.12, align = 'left', style }: {
+  text: string;
+  weight?: number;
+  /** Верхний регистр — как на карточках рефа. */
+  upper?: boolean;
+  /** Потолок разрядки в долях кегля. */
+  maxTrack?: number;
+  align?: 'left' | 'center';
+  style?: CSSProperties;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const ink = useRef<HTMLSpanElement>(null);
+  const [fit, setFit] = useState<{ size: number; track: number } | null>(null);
+  const label = upper ? text.toUpperCase() : text;
+
+  useLayoutEffect(() => {
+    const b = box.current;
+    const s = ink.current;
+    if (!b || !s) return;
+    let alive = true;
+    const run = (): void => {
+      if (!alive || !b || !s) return;
+      const W = b.clientWidth;
+      const H = b.clientHeight;
+      if (!W || !H) return;
+      // Пробный кегль → натуральная ширина → пропорция. Один замер, дальше арифметика.
+      s.style.letterSpacing = '0px';
+      s.style.fontSize = `${FIT_PROBE}px`;
+      const natural = s.getBoundingClientRect().width || 1;
+      // Высота строки у дисплейной гарнитуры примерно равна кеглю: line-height держим 1.
+      const size = Math.min((W / natural) * FIT_PROBE, H);
+      s.style.fontSize = `${size}px`;
+      const actual = s.getBoundingClientRect().width;
+      const gaps = Math.max(1, label.length - 1);
+      const track = Math.max(0, Math.min((W - actual) / gaps, size * maxTrack));
+      setFit({ size, track });
+    };
+    run();
+    const ro = new ResizeObserver(run);
+    ro.observe(b);
+    void document.fonts?.ready?.then(run);
+    return () => { alive = false; ro.disconnect(); };
+  }, [label, maxTrack]);
+
+  return (
+    <div
+      ref={box}
+      style={{
+        width: '100%', height: '100%', overflow: 'hidden',
+        display: 'flex', alignItems: 'center',
+        justifyContent: align === 'center' ? 'center' : 'flex-start',
+        ...style,
+      }}
+    >
+      <span
+        ref={ink}
+        style={{
+          fontFamily: 'var(--font-display)', fontWeight: weight, lineHeight: 1,
+          whiteSpace: 'nowrap', color: 'inherit',
+          fontSize: fit?.size ?? FIT_PROBE,
+          letterSpacing: fit ? `${fit.track}px` : undefined,
+          // ⚠️ Разрядка добавляет пробел и ПОСЛЕ последней буквы — строка съезжает влево от края.
+          // Съедаем его отрицательным полем, иначе выключка вправо всегда мимо на один пробел.
+          marginRight: fit ? -fit.track : undefined,
+          // До первого замера прячем: иначе видна вспышка строки пробного кегля.
+          visibility: fit ? 'visible' : 'hidden',
+        }}
+      >{label}</span>
+    </div>
+  );
+}
+
+/**
+ * Размер коробки в пикселях. ⚠️ Нужен там, где кегль ЗАВИСИТ ОТ ПЛИТКИ: на 2×2 сетка дней
+ * помещается только подписью, на 4×4 та же подпись выглядит пылью в углу большого поля.
+ * Проценты тут не помогают — font-size в процентах считается от РОДИТЕЛЬСКОГО кегля, а не от
+ * высоты коробки.
+ */
+function useBoxSize<T extends HTMLElement>(): [RefObject<T>, { w: number; h: number }] {
+  const ref = useRef<T>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const read = (): void => setSize({ w: el.clientWidth, h: el.clientHeight });
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, size];
+}
+
+/**
+ * (3) Календарь месяца одним квадратом — по рефу с печатными карточками.
+ *
+ * ⚠️ Времени здесь НЕТ, и это не потеря, а разделение. В прежней версии внизу стояли часы, и
+ * плитка пыталась быть сразу календарём и часами: время проигрывало вниманием сетке дней, а
+ * сетка мешала времени. Реф — календарь, и виджет пусть будет календарём; часы рядом свои.
+ *
+ * ⚠️ Номер месяца — ВТОРОЙ фокус, как на карточках: крупная цифра держит композицию, когда
+ * слово месяца короткое («май» иначе оставляет полплитки пустой). Он же делает узнаваемым
+ * набор из двенадцати плиток: у каждой свой номер, а не только своё слово.
+ */
+export function CalendarFace({ now }: { now: Date }) {
   const cells = monthCells(now);
   const today = now.getDate();
+  const num = String(now.getMonth() + 1).padStart(2, '0');
+  const [grid, gridBox] = useBoxSize<HTMLDivElement>();
+  // Строк в сетке: шапка недели плюс недели месяца. Кегль дня — доля высоты строки, с потолком:
+  // на 4×4 иначе цифры перерастают слово месяца и спорят с ним за главную роль.
+  const rows = 1 + cells.length / 7;
+  const dayFont = gridBox.h ? Math.min(Math.round((gridBox.h / rows) * 0.52), 28) : 0;
   return (
-    <div style={tileShell({
-      ...inkWell,
-      padding: pad(4),
-      gap: sp(2),
-    })}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: sp(3), height: 44, flex: 'none' }}>
-        <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
-          <StretchText text={month} fill="currentColor" />
+    <div style={tileShell({ padding: pad(4), gap: sp(2) })}>
+      {/* ⚠️ Номер месяца набирается ТЕМ ЖЕ подгоном, что и слово: заданный кегль («2.4em»)
+          выглядел второстепенным на 4×4 и великоватым на 2×2, потому что не зависел от плитки.
+          Доля ширины у него постоянная — так номер остаётся вторым фокусом на любом размере. */}
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: sp(3), flex: 'none', height: '26%' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <FitLine text={monthLong(now)} upper />
         </div>
-        <div style={{
-          ...CAPS,
-          color: 'inherit',
-          opacity: 0.55,
-          writingMode: 'vertical-rl',
-          transform: 'rotate(180deg)',
-          height: 40,
-        }}>{year}</div>
+        {/* ⚠️ Номер тональный (та же краска, тише), а НЕ акцентный. Акцентом он пропадал
+            начисто, когда человек выбирал плитке акцентную заливку: акцент на акценте. Реф
+            держит второй фокус ровно так же — тем же цветом, но легче. */}
+        <div style={{ flex: 'none', width: '22%', opacity: 0.45 }}>
+          <FitLine text={num} align="center" maxTrack={0.02} />
+        </div>
       </div>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(7, 1fr)',
-        gap: 2,
-        flex: 1,
-        minHeight: 0,
-      }}>
-        {['п', 'в', 'с', 'ч', 'п', 'с', 'в'].map((d, i) => (
-          // ⚠️ Кегль — роль CAPS как есть, без своего числа. Шапка недели тише строки дней уже
-          // трижды: моноширинной капсой, разрядкой и прозрачностью; четвёртым ослаблением
-          // (свой мелкий кегль) она уходила из шкалы, а сторож типографики ловит это как ошибку.
+
+      <div
+        ref={grid}
+        style={{
+          display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
+          gap: sp(1) - 2, flex: 1, minHeight: 0,
+        }}
+      >
+        {WEEK_LETTERS.map((d, i) => (
           <div key={`h${i}`} style={{
-            ...CAPS, color: 'inherit', opacity: 0.4, textAlign: 'center',
+            ...CAPS, color: 'inherit', opacity: 0.38, textAlign: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>{d}</div>
         ))}
         {cells.map((n, i) => {
@@ -261,23 +392,30 @@ export function WidePosterClock({ now }: { now: Date }) {
           return (
             <div key={i} style={{
               ...TEXT.caption,
-              textAlign: 'center',
-              borderRadius: RADIUS.pill,
-              background: on ? 'var(--accent)' : 'transparent',
-              color: on ? 'var(--on-accent)' : 'inherit',
+              // Кегль дня — от высоты строки сетки, а не из шкалы подписи: см. useBoxSize.
+              fontSize: dayFont || undefined,
+              color: 'inherit', textAlign: 'center', borderRadius: RADIUS.pill,
+              // ⚠️ Сегодня — КОЛЬЦО, а не заливка. Заливка акцентом исчезала на акцентной плитке
+              // (тот же случай, что с номером месяца), а кольцо краской самой плитки читается
+              // на любой заливке и ближе к печатной карточке рефа.
+              boxShadow: on ? 'inset 0 0 0 2px currentColor' : 'none',
               opacity: n ? 1 : 0,
-              fontWeight: on ? 700 : 500,
+              fontWeight: on ? 800 : 500,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: motion.state('box-shadow'),
             }}>{n || ''}</div>
           );
         })}
       </div>
-      <div style={{ ...DISPLAY, fontSize: 28, fontWeight: 700, letterSpacing: '-0.04em', color: 'inherit' }}>
-        {hhmm(now)}
+
+      <div style={{ ...CAPS, color: 'inherit', opacity: 0.4, flex: 'none' }}>
+        {now.getFullYear()}
       </div>
     </div>
   );
 }
+
+const WEEK_LETTERS = ['п', 'в', 'с', 'ч', 'п', 'с', 'в'];
 
 function monthCells(now: Date): number[] {
   const y = now.getFullYear();
@@ -291,10 +429,27 @@ function monthCells(now: Date): number[] {
   return out;
 }
 
-/** Компоновка таймера: пилюли длительности, крупное время, квадрат хода. */
+/**
+ * Таймер — целиком внутри плитки.
+ *
+ * ⚠️ Выбор длительности переехал ВНУТРЬ. На рефе пилюли висят над карточкой, и это честно для
+ * картинки, но не для стола: у плитки нет «над», там сразу следующий виджет. Вынесенный ряд
+ * означал бы, что таймер занимает больше места, чем его плитка, — то есть ломает сетку.
+ *
+ * ⚠️ Ход показывает ОБВОДКА ВСЕЙ ПЛИТКИ, а не колечко в углу. Так время видно боковым зрением
+ * с любого расстояния: убывает сама рамка, а не деталь внутри. Заодно это снимает вторую
+ * претензию — пустоту: у прежней версии полплитки занимал квадрат с паузой, и при этом само
+ * время было мельче него.
+ *
+ * ⚠️ Кегль времени НЕ задан числом: строка подгоняется под ширину (FitLine). Прежняя версия
+ * ставила 44 px и на узкой плитке обрезала минуты, а на широкой оставляла поля.
+ */
 export function TimerLayout({
-  title, leftLabel, running, progress, presets, preset, onPreset, onStop, onToggle,
+  w, h, title, leftLabel, running, progress, presets, preset, onPreset, onStop, onToggle,
 }: {
+  /** Реальные размеры плитки: обводка хода рисуется в пикселях, а не в процентах. */
+  w: number;
+  h: number;
   title: string;
   leftLabel: string;
   running: boolean;
@@ -306,9 +461,36 @@ export function TimerLayout({
   onToggle: () => void;
 }) {
   const p = Math.max(0, Math.min(1, progress));
+  // Широкая плитка (4×2) кладёт время и кнопку в ряд, квадратная (2×2) — в колонку.
+  const wide = w / Math.max(1, h) > 1.5;
+  const inset = 3;
+  const btn = wide ? Math.round(h * 0.46) : Math.round(h * 0.24);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3), height: '100%' }}>
-      <div style={{ display: 'flex', gap: sp(2) }}>
+    <div style={{
+      position: 'relative', width: '100%', height: '100%', overflow: 'hidden',
+      borderRadius: RADIUS.content,
+      padding: pad(4), display: 'flex', flexDirection: 'column', gap: sp(2),
+    }}>
+      {/* Обводка хода. pathLength=1 — доля рисуется прямо прогрессом, без пересчёта периметра. */}
+      <svg
+        width={w} height={h}
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+        aria-hidden
+      >
+        <rect
+          x={inset} y={inset} width={Math.max(0, w - inset * 2)} height={Math.max(0, h - inset * 2)}
+          rx={RADIUS.content} fill="none" stroke="currentColor" strokeOpacity={0.16} strokeWidth={inset * 2}
+        />
+        <rect
+          x={inset} y={inset} width={Math.max(0, w - inset * 2)} height={Math.max(0, h - inset * 2)}
+          rx={RADIUS.content} fill="none" stroke="var(--accent)" strokeWidth={inset * 2}
+          strokeLinecap="round" pathLength={1} strokeDasharray={`${p} 1`}
+          style={{ transition: motion.state('stroke-dasharray') }}
+        />
+      </svg>
+
+      <div style={{ display: 'flex', gap: sp(1), flex: 'none' }}>
         {presets.map((item) => {
           const on = item.id === preset;
           return (
@@ -317,95 +499,64 @@ export function TimerLayout({
               type="button"
               onClick={() => onPreset(item.id)}
               style={{
-                ...TEXT.body,
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'default',
-                padding: pad(2, 4),
-                borderRadius: RADIUS.control,
-                background: on ? 'var(--accent)' : 'var(--surface)',
-                color: on ? 'var(--on-accent)' : 'var(--text-body)',
-                boxShadow: on ? 'none' : 'var(--shadow-lvl1)',
-                transition: motion.hover('background', 'color'),
+                ...TEXT.caption, fontWeight: 700,
+                color: on ? 'var(--on-accent)' : 'inherit',
+                opacity: on ? 1 : 0.6,
+                border: 'none', cursor: 'default',
+                padding: pad(1, 2), borderRadius: RADIUS.pill,
+                background: on ? 'var(--accent)' : 'color-mix(in srgb, currentColor 10%, transparent)',
+                transition: motion.hover('background', 'color', 'opacity'),
               }}
             >{item.label}</button>
           );
         })}
+        <span style={{ ...CAPS, opacity: 0.35, marginLeft: 'auto' }}>{title}</span>
       </div>
+
       <div style={{
-        flex: 1,
-        minHeight: 0,
-        background: 'var(--surface)',
-        borderRadius: RADIUS.content,
-        boxShadow: 'var(--shadow-lvl2), var(--inner-light)',
-        border: '1px solid var(--divider)',
-        padding: pad(4),
-        display: 'flex',
-        gap: sp(4),
-        alignItems: 'stretch',
-        color: 'var(--text-body)',
+        flex: 1, minHeight: 0, display: 'flex',
+        flexDirection: wide ? 'row' : 'column',
+        alignItems: wide ? 'center' : 'stretch',
+        gap: sp(3),
       }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ ...TEXT.body, color: 'var(--text-faint)' }}>{title}</div>
-          <div style={{
-            ...DISPLAY,
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            fontSize: 44,
-            fontWeight: 700,
-            color: 'var(--accent)',
-          }}>{leftLabel}</div>
+        {/* ⚠️ Время — единственный герой плитки, поэтому занимает всё свободное поле. Дерзость
+            здесь ровно в этом: не «крупная надпись среди элементов», а надпись во всю плитку. */}
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+          <FitLine text={leftLabel} maxTrack={0.02} />
+        </div>
+
+        <div style={{
+          flex: 'none', display: 'flex', alignItems: 'center', gap: sp(2),
+          flexDirection: wide ? 'column' : 'row',
+        }}>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={running ? 'Пауза' : 'Продолжить'}
+            style={{
+              width: btn, height: btn, flex: 'none',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              border: 'none', cursor: 'default', padding: 0,
+              borderRadius: RADIUS.box,
+              background: 'var(--accent)', color: 'var(--on-accent)',
+              transition: motion.hover('background', 'transform'),
+            }}
+          >
+            {running
+              ? <Pause size={Math.round(btn * 0.42)} strokeWidth={2.6} />
+              : <Play size={Math.round(btn * 0.42)} strokeWidth={2.6} />}
+          </button>
           <button
             type="button"
             onClick={onStop}
             style={{
-              ...TEXT.body,
-              fontWeight: 600,
-              alignSelf: 'flex-start',
-              border: 'none',
-              cursor: 'default',
-              padding: pad(2, 4),
-              borderRadius: RADIUS.control,
-              background: 'var(--accent)',
-              color: 'var(--on-accent)',
+              ...CAPS, color: 'inherit', opacity: 0.6,
+              border: 'none', background: 'transparent', cursor: 'default',
+              padding: pad(1, 2), borderRadius: RADIUS.pill,
+              transition: motion.hover('opacity'),
             }}
-          >Стоп</button>
+          >Сброс</button>
         </div>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label={running ? 'Пауза' : 'Продолжить'}
-          style={{
-            width: 132, flex: 'none',
-            border: 'none',
-            cursor: 'default',
-            padding: 0,
-            background: 'transparent',
-            color: 'var(--accent)',
-            borderRadius: RADIUS.box,
-          }}
-        >
-          <svg width="132" height="132" viewBox="0 0 132 132">
-            <rect x="6" y="6" width="120" height="120" rx="20"
-              fill="none" stroke="var(--divider)" strokeWidth="3" />
-            <rect x="6" y="6" width="120" height="120" rx="20"
-              fill="none" stroke="var(--accent)" strokeWidth="5" strokeLinecap="round"
-              pathLength={1}
-              strokeDasharray={`${p} 1`}
-              transform="rotate(-90 66 66)"
-              style={{ transition: motion.state('stroke-dasharray') }}
-            />
-            <foreignObject x="0" y="0" width="132" height="132">
-              <div style={{
-                width: '100%', height: '100%',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Pause size={36} color="var(--accent)" />
-              </div>
-            </foreignObject>
-          </svg>
-        </button>
       </div>
     </div>
   );

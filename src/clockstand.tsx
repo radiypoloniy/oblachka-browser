@@ -5,13 +5,28 @@ import {
   AnalogFace,
   WideTypeClock,
   WideClusterClock,
-  WidePosterClock,
+  CalendarFace,
   TimerLayout,
 } from './components/desktop/clockFaces';
 import { CAPS, DISPLAY, RADIUS, TEXT, motion, pad, sp } from './styles/system';
+import type { CSSProperties } from 'react';
 
-// Временный стенд лиц часов. Три широких варианта сразу, плюс аналог и таймер.
-// Дугу дня не показываю: задача была сравнить ДРУГИЕ идеи, а не ещё одну дугу.
+// Временный стенд лиц часов. Сносится вместе с невыбранными вариантами.
+//
+// ⚠️ Плитки показаны В РЕАЛЬНЫХ ПИКСЕЛЯХ СЕТКИ СТОЛА, а не «примерно широкими». Первая версия
+// стенда рисовала произвольные 480×200, и по ней нельзя было судить о том, что получится:
+// у стола клетка 120 и зазор 14, то есть 2×2 — это ровно 254×254, а 4×2 — 522×254. Вывод
+// «узкие и длинные часы — промашка» был сделан по стенду, а не по столу: столько места, сколько
+// занимала полоса времени на стенде, на столе не бывает вовсе.
+const CELL = 120;
+const GAP = 14;
+const tile = (w: number, h: number): { w: number; h: number } => ({
+  w: w * CELL + (w - 1) * GAP,
+  h: h * CELL + (h - 1) * GAP,
+});
+const T_SMALL = tile(2, 2);
+const T_WIDE = tile(4, 2);
+const T_LARGE = tile(4, 4);
 
 const SUNRISE = 6 * 60 + 12;
 const SUNSET = 20 * 60 + 5;
@@ -40,13 +55,15 @@ function mixNow(frozen: Date | null, live: Date): Date {
 function ClockStand() {
   const [live, setLive] = useState(() => new Date());
   const [phase, setPhase] = useState('live');
+  const [dark, setDark] = useState(true);
   const frozen = PHASES.find((p) => p.id === phase)?.stamp ?? null;
   const now = mixNow(frozen, live);
 
+  // Тема переключается прямо на стенде: лица живут и на светлом столе, и на тёмном, и решение
+  // «берём этот вариант» нельзя принимать, увидев только одну сторону.
   useEffect(() => {
-    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  }, []);
+  }, [dark]);
 
   useEffect(() => {
     const t = window.setInterval(() => setLive(new Date()), 1000);
@@ -60,98 +77,104 @@ function ClockStand() {
       color: 'var(--text-body)',
       padding: pad(8, 6),
     }}>
-      <header style={{ maxWidth: 980, margin: `0 auto ${sp(6)}px` }}>
-        <div style={{ ...CAPS, marginBottom: sp(2) }}>стенд · часы</div>
+      <header style={{ maxWidth: 1120, margin: `0 auto ${sp(6)}px` }}>
+        <div style={{ ...CAPS, marginBottom: sp(2) }}>стенд · часы и календарь</div>
         <h1 style={{ ...DISPLAY, fontSize: 32, fontWeight: 700, color: 'var(--text-strong)', margin: 0 }}>
-          Три широких лица, без дуги
+          Причёсано по рефам
         </h1>
-        <p style={{ ...TEXT.body, maxWidth: 640, margin: `${sp(3)}px 0 0` }}>
-          Набор вместо траектории: широкие часы заполняют плитку буквами, а не аркой.
-          Аналог и таймер — отдельно, по вашим рефам. Назовите номер.
+        <p style={{ ...TEXT.body, maxWidth: 680, margin: `${sp(3)}px 0 0` }}>
+          Плитки в настоящих размерах сетки стола: 2×2 — 254 px, 4×2 — 522×254, 4×4 — 522×522.
+          Календарь набран трекингом вместо растянутых букв, таймер собран внутрь плитки.
         </p>
         <div style={{ display: 'flex', gap: sp(2), marginTop: sp(4), flexWrap: 'wrap' }}>
-          {PHASES.map((p) => {
-            const on = p.id === phase;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setPhase(p.id)}
-                style={{
-                  ...TEXT.body,
-                  fontWeight: 600,
-                  border: 'none',
-                  cursor: 'default',
-                  padding: pad(2, 4),
-                  borderRadius: RADIUS.pill,
-                  background: on ? 'var(--accent)' : 'var(--surface)',
-                  color: on ? 'var(--on-accent)' : 'var(--text-body)',
-                  boxShadow: on ? 'none' : 'var(--shadow-lvl1)',
-                  transition: motion.hover('background', 'color'),
-                }}
-              >{p.label}</button>
-            );
-          })}
+          {PHASES.map((p) => (
+            <Chip key={p.id} on={p.id === phase} onClick={() => setPhase(p.id)}>{p.label}</Chip>
+          ))}
+          <span style={{ width: sp(4) }} />
+          <Chip on={dark} onClick={() => setDark((v) => !v)}>{dark ? 'тёмная' : 'светлая'}</Chip>
         </div>
       </header>
 
       <main style={{
-        maxWidth: 980, margin: '0 auto',
+        maxWidth: 1120, margin: '0 auto',
         display: 'flex', flexDirection: 'column', gap: sp(8),
       }}>
-        <Section n="1" title="Набор на всю ширину" hint="Время растянуто по плитке. Небо фазы — только земля, без дуги.">
-          <Frame w={480} h={200}>
+        <Section n="1" title="Набор на всю ширину" hint="Оставлен как был — растяжение здесь и есть характер. Небо по фазе дня.">
+          <Frame size={T_WIDE} label="4×2" fill="none">
             <WideTypeClock now={now} sunrise={SUNRISE} sunset={SUNSET} />
           </Frame>
         </Section>
 
-        <Section n="2" title="Кластер: циферблат, дата, полоса" hint="Компоновка рефа с часами и календарём. Полоса — акцент палитры, не чужой оранж.">
-          <Frame w={480} h={220}>
+        <Section n="2" title="Кластер: циферблат, дата, полоса" hint="Полоса времени больше не тянет буквы: кегль подобран, ширина добрана трекингом.">
+          <Frame size={T_WIDE} label="4×2">
             <WideClusterClock now={now} seconds />
           </Frame>
         </Section>
 
-        <Section n="3" title="Плакат месяца" hint="Буквы месяца заполняют поле, как на календарных карточках. Сетка дней и время ниже.">
-          <Frame w={480} h={280}>
-            <WidePosterClock now={now} />
-          </Frame>
-        </Section>
-
-        <Section n="A" title="Аналог" hint="Клинья 12/3/6/9, тупые стрелки. Уже подключён к виджету часов на столе.">
-          <div style={{ display: 'flex', gap: sp(4) }}>
-            <Frame w={200} h={200}>
-              <div style={{
-                width: '100%', height: '100%',
-                background: 'var(--surface)',
-                color: 'var(--text-strong)',
-                borderRadius: RADIUS.content,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: 'var(--shadow-lvl2), var(--inner-light)',
-              }}>
-                <AnalogFace size={168} now={now} seconds />
-              </div>
+        <Section n="3" title="Календарь месяца" hint="По рефу с печатными карточками: слово месяца целыми буквами, номер месяца вторым фокусом, времени внутри нет.">
+          <div style={{ display: 'flex', gap: sp(4), flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <Frame size={T_SMALL} label="2×2 · плитка">
+              <CalendarFace now={now} />
             </Frame>
-            <Frame w={200} h={200}>
-              <div style={{
-                width: '100%', height: '100%',
-                background: 'var(--text-strong)',
-                color: 'var(--app-bg)',
-                borderRadius: RADIUS.content,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <AnalogFace size={168} now={now} seconds />
-              </div>
+            <Frame size={T_SMALL} label="2×2 · чернила" fill="ink">
+              <CalendarFace now={now} />
+            </Frame>
+            <Frame size={T_SMALL} label="2×2 · цветная" fill="accent">
+              <CalendarFace now={now} />
+            </Frame>
+            <Frame size={T_LARGE} label="4×4">
+              <CalendarFace now={now} />
             </Frame>
           </div>
         </Section>
 
-        <Section n="T" title="Таймер" hint="Пилюли длительности, крупное время, квадрат хода. Цвета — акцент системы.">
-          <Frame w={480} h={260}>
-            <TimerDemo />
-          </Frame>
+        <Section n="A" title="Циферблат" hint="Клинья 12/3/6/9, тупые стрелки. Уже подключён к виджету часов на столе.">
+          <div style={{ display: 'flex', gap: sp(4) }}>
+            <Frame size={T_SMALL} label="2×2 · плитка">
+              <Center><AnalogFace size={T_SMALL.h - 48} now={now} seconds /></Center>
+            </Frame>
+            <Frame size={T_SMALL} label="2×2 · чернила" fill="ink">
+              <Center><AnalogFace size={T_SMALL.h - 48} now={now} seconds /></Center>
+            </Frame>
+            <Frame size={T_SMALL} label="2×2 · цветная" fill="accent">
+              <Center><AnalogFace size={T_SMALL.h - 48} now={now} seconds /></Center>
+            </Frame>
+          </div>
+        </Section>
+
+        <Section n="T" title="Таймер" hint="Выбор длительности внутри плитки, ход показывает обводка всей плитки, время занимает всё поле.">
+          <div style={{ display: 'flex', gap: sp(4), flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <Frame size={T_SMALL} label="2×2 · плитка">
+              <TimerDemo w={T_SMALL.w} h={T_SMALL.h} />
+            </Frame>
+            <Frame size={T_SMALL} label="2×2 · чернила" fill="ink">
+              <TimerDemo w={T_SMALL.w} h={T_SMALL.h} />
+            </Frame>
+            <Frame size={T_WIDE} label="4×2" fill="ink">
+              <TimerDemo w={T_WIDE.w} h={T_WIDE.h} />
+            </Frame>
+          </div>
         </Section>
       </main>
     </div>
+  );
+}
+
+function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        ...TEXT.body, fontWeight: 600,
+        border: 'none', cursor: 'default',
+        padding: pad(2, 4), borderRadius: RADIUS.pill,
+        background: on ? 'var(--accent)' : 'var(--surface)',
+        color: on ? 'var(--on-accent)' : 'var(--text-body)',
+        boxShadow: on ? 'none' : 'var(--shadow-lvl1)',
+        transition: motion.hover('background', 'color'),
+      }}
+    >{children}</button>
   );
 }
 
@@ -164,25 +187,61 @@ function Section({ n, title, hint, children }: {
         <span style={{ ...CAPS, color: 'var(--accent)' }}>{n}</span>
         <h2 style={{ ...TEXT.section, margin: 0 }}>{title}</h2>
       </div>
-      <p style={{ ...TEXT.caption, margin: `0 0 ${sp(3)}px` }}>{hint}</p>
+      <p style={{ ...TEXT.caption, margin: `0 0 ${sp(3)}px`, maxWidth: '68ch' }}>{hint}</p>
       {children}
     </section>
   );
 }
 
-function Frame({ w, h, children }: { w: number; h: number; children: ReactNode }) {
+// Заливка плитки. ⚠️ Красит ПЛИТКА, а не лицо: на столе фон даёт виджет (или выбор человека),
+// и лицо обязано ложиться на любой. Прежняя версия красила себя сама — на тёмной теме карточки
+// выворачивались в белые и дрались с фоном стола.
+type Fill = 'card' | 'ink' | 'accent' | 'none';
+
+const FILLS: Record<Fill, CSSProperties> = {
+  card: {
+    background: 'var(--surface)', color: 'var(--text-strong)',
+    boxShadow: 'var(--shadow-lvl2), var(--inner-light)',
+  },
+  ink: { background: 'var(--text-strong)', color: 'var(--app-bg)' },
+  accent: { background: 'var(--accent)', color: 'var(--on-accent)' },
+  none: {},
+};
+
+function Frame({ size, label, fill = 'card', children }: {
+  size: { w: number; h: number };
+  label: string;
+  fill?: Fill;
+  children: ReactNode;
+}) {
   return (
-    <div style={{ width: w, height: h }}>{children}</div>
+    <div>
+      <div style={{
+        width: size.w, height: size.h,
+        borderRadius: RADIUS.content, overflow: 'hidden',
+        ...FILLS[fill],
+      }}>{children}</div>
+      <div style={{ ...CAPS, opacity: 0.45, marginTop: sp(2) }}>{label}</div>
+    </div>
+  );
+}
+
+function Center({ children }: { children: ReactNode }) {
+  return (
+    <div style={{
+      width: '100%', height: '100%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>{children}</div>
   );
 }
 
 const TIMER_PRESETS = [
-  { id: '5', label: '5 мин', sec: 5 * 60 },
-  { id: '10', label: '10 мин', sec: 10 * 60 },
-  { id: '20', label: '20 мин', sec: 20 * 60 },
+  { id: '5', label: '5', sec: 5 * 60 },
+  { id: '10', label: '10', sec: 10 * 60 },
+  { id: '20', label: '20', sec: 20 * 60 },
 ];
 
-function TimerDemo() {
+function TimerDemo({ w, h }: { w: number; h: number }) {
   const [preset, setPreset] = useState('20');
   const total = TIMER_PRESETS.find((p) => p.id === preset)?.sec ?? 20 * 60;
   const [left, setLeft] = useState(total);
@@ -207,7 +266,9 @@ function TimerDemo() {
 
   return (
     <TimerLayout
-      title="Таймер"
+      w={w}
+      h={h}
+      title="таймер"
       leftLabel={`${mm}:${ss}`}
       running={running && left > 0}
       progress={progress}
