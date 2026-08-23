@@ -4,7 +4,7 @@ import type { BackfillProgress, HistoryContentCoverage, TranslationEngineId, Ber
 import ModelsSection from '../ModelsSection';
 import SkillsSection from './SkillsSection';
 import {
-  btnPrimary, btnGhost, OptionList, OptionRow, SectionHeader, Subsection, CapsLabel,
+  btnPrimary, btnGhost, OptionList, OptionRow, SectionHeader, Subsection, CapsLabel, FactGrid, Fact,
   StatusCard, StatusCardSkeleton, TextField, InputRow, fieldFlex,
 } from './kit';
 import { TEXT, RADIUS } from '../../styles/system';
@@ -35,6 +35,12 @@ export default function AiSection() {
         Локальная модель работает на этом устройстве и ничего не отправляет. Облачные сервисы
         ниже подключаются по отдельности и только вашим ключом.
       </SectionHeader>
+
+      {/* ⚠️ Сводка ЧЕТЫРЁХ подсистем разом. Раздел собран из шести самостоятельных блоков, и
+          чтобы понять «что у меня вообще включено», человеку приходилось пролистать их все.
+          Сетка отвечает на это сразу, а блоки ниже остаются для настройки. */}
+      <AiOverview />
+
       <ModelsSection />
       <TranslationEngineSection />
       <HistoryBackfillSection />
@@ -42,6 +48,58 @@ export default function AiSection() {
       <GeminiSection />
       <SearxngSection />
     </div>
+  );
+}
+
+/**
+ * Сводка раздела: что из AI сейчас работает.
+ *
+ * ⚠️ Собственные запросы здесь НЕ заводятся — состояние спрашивается теми же каналами, что уже
+ * есть у блоков ниже. Иначе один экран ходил бы за одним и тем же дважды, а расхождение между
+ * сводкой и блоком выглядело бы как баг.
+ */
+function AiOverview() {
+  const [gemini, setGemini] = useState<boolean | null>(null);
+  const [searx, setSearx] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void window.oblako.getAiKeyStatus().then((v) => { if (alive) setGemini(v); });
+    void window.oblako.getSearxngStatus().then((v) => { if (alive) setSearx(v); });
+    // ⚠️ Подписки на изменения — те же, что у блоков ниже: иначе сводка отстанет от блока,
+    // человек сохранит ключ и увидит наверху «выключен», то есть решит, что ничего не вышло.
+    const offKey = window.oblako.onAiKeyStatusChanged((v) => setGemini(v));
+    const offSearx = window.oblako.onSearxngStatusChanged((v) => setSearx(v));
+    return () => { alive = false; offKey(); offSearx(); };
+  }, []);
+
+  return (
+    <FactGrid>
+      <Fact
+        label="Фактчек"
+        hint="Gemini, облачный"
+        value={gemini === null ? '—' : gemini ? 'Ключ есть' : 'Выключен'}
+        active={gemini === true}
+      />
+      <Fact
+        label="Веб-поиск"
+        hint="SearXNG, свой сервер"
+        value={searx === null ? '—' : searx ? 'Настроен' : 'Выключен'}
+        active={searx === true}
+      />
+      <Fact
+        label="Перевод страниц"
+        hint="Bergamot, без сети"
+        value="Локально"
+        active
+      />
+      <Fact
+        label="Приватность"
+        hint="Локальная модель никуда не ходит"
+        value="На устройстве"
+        active
+      />
+    </FactGrid>
   );
 }
 

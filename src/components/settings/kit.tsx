@@ -287,6 +287,105 @@ export function Subsection({ title, description, children }: {
   );
 }
 
+/**
+ * ГЛАВНЫЙ ПЕРЕКЛЮЧАТЕЛЬ раздела.
+ *
+ * ⚠️ Карточка, а не строка списка, и это правка UX, а не украшение. Раньше «включено/выключено»
+ * было строкой наравне с остальными — при том, что ради него раздел чаще всего и открывают.
+ * Состояние набрано СЛОВОМ дисплейной гарнитурой («Включена»), потому что глаз ловит слово
+ * быстрее, чем положение тумблера, и не путается, что означает крайнее положение.
+ *
+ * ⚠️ Рамка меняется вместе с состоянием: включено — сплошная краской текста, выключено — обычный
+ * разделитель. Так «выключено» видно ещё до чтения, и это не цвет: цвет здесь означал бы статус,
+ * а статус у нас фона не красит (цветовой закон).
+ */
+export function MasterSwitch({ on, title, description, control }: {
+  on: boolean;
+  title: string;
+  description?: React.ReactNode;
+  /** Сам тумблер — приходит снаружи, kit про его логику ничего не знает. */
+  control: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '1fr auto', gap: sp(4), alignItems: 'center',
+      padding: pad(4), borderRadius: RADIUS.box,
+      border: `2px solid ${on ? 'var(--text-strong)' : 'var(--divider)'}`,
+      background: on ? 'var(--surface)' : 'transparent',
+      transition: motion.state('border-color', 'background'),
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{
+          ...DISPLAY, fontSize: 24, fontWeight: 800, letterSpacing: '-0.03em',
+          lineHeight: 1.05, color: 'var(--text-strong)',
+        }}>{title}</div>
+        {description && (
+          <div style={{ ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1), maxWidth: MEASURE }}>
+            {description}
+          </div>
+        )}
+      </div>
+      {control}
+    </div>
+  );
+}
+
+/**
+ * Сетка коротких фактов раздела.
+ *
+ * ⚠️ Заводится ровно потому, что список из четырёх однострочных настроек читается хуже, чем
+ * четыре плитки: в списке глаз идёт сверху вниз и каждую строку разбирает отдельно, в сетке
+ * четыре факта схватываются разом. Это та же логика, по которой стол сделан плитками.
+ *
+ * ⚠️ НЕ применять к перечням (исключения, серверы, пароли): у их строк разная длина и им нужна
+ * одна колонка. Сетка там была бы модой ради моды.
+ */
+export function FactGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'grid', gap: sp(2),
+      gridTemplateColumns: 'repeat(auto-fit, minmax(196px, 1fr))',
+    }}>{children}</div>
+  );
+}
+
+/**
+ * Факт в сетке: что это, пояснение и значение.
+ *
+ * ⚠️ ЗНАЧЕНИЕ ВНИЗУ и дисплейной гарнитурой — оно и есть ответ. Порядок «подпись сверху, ответ
+ * снизу» держит одну линию по всем плиткам независимо от длины пояснения.
+ *
+ * ⚠️ `active` заливает плитку ЧЕРНИЛАМИ, а не тоном раздела: включённых плиток на экране бывает
+ * три-четыре, и три цветные заливки рядом с цветной шапкой дают ровно ту пестроту, от которой
+ * уходили. Тон остаётся у шапки и точек — одна цветная плоскость на экран.
+ */
+export function Fact({ label, hint, value, active }: {
+  label: React.ReactNode;
+  hint?: React.ReactNode;
+  value: React.ReactNode;
+  /** Настройка включена/действует — плитка становится «залитой». */
+  active?: boolean;
+}) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: sp(2),
+      padding: pad(3), borderRadius: RADIUS.box, minHeight: 112,
+      background: active ? 'var(--text-strong)' : 'var(--surface-sunken)',
+      color: active ? 'var(--app-bg)' : 'var(--text-body)',
+      transition: motion.state('background', 'color'),
+    }}>
+      <span style={{ ...TEXT.body, fontWeight: 600, color: 'inherit' }}>{label}</span>
+      {hint && (
+        <span style={{ ...TEXT.caption, color: 'inherit', opacity: 0.62 }}>{hint}</span>
+      )}
+      <span style={{
+        ...DISPLAY, fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em',
+        marginTop: 'auto', color: 'inherit',
+      }}>{value}</span>
+    </div>
+  );
+}
+
 // Капс-лейбл группы («ССЫЛКА ПОДПИСКИ», «ИСКЛЮЧЕНИЯ»…). style — для точечных отклонений
 // (напр. flex:1 + ellipsis в шапке списка паролей).
 export function CapsLabel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {

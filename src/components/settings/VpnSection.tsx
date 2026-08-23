@@ -5,13 +5,21 @@ import { stripEmoji } from '../../../shared/text';
 import { detectCountry } from '../../../shared/countries';
 import CountryFlag from '../CountryFlag';
 import {
-  btnPrimary, btnGhost, SectionHeader, CapsLabel, LoadingNote,
+  btnPrimary, btnGhost, SectionHeader, CapsLabel, LoadingNote, FactGrid, Fact,
   StatusCard, TextField, InputRow, fieldFlex, OptionList, OptionRow,
 } from './kit';
 
 // Подписка и список серверов. Ссылка подписки и credential никогда не покидают main —
 // сюда приходит только редактированный список (VpnServerMeta) и статусы. «Подключиться»
 // поднимает Xray; трафик вкладок переключает applyVpnProxy в main (session.setProxy).
+/** Состояние туннеля одним словом — для героя шапки. */
+const VPN_STATE_WORD: Record<VpnConnectionState['state'], string> = {
+  stopped: 'Выключен',
+  starting: 'Подключаюсь',
+  running: 'Подключено',
+  error: 'Ошибка',
+};
+
 export default function VpnSection() {
   const [status, setStatus] = useState<VpnStatus | null>(null);
   const [servers, setServers] = useState<VpnServerMeta[]>([]);
@@ -83,14 +91,54 @@ export default function VpnSection() {
   // Один протокол на всю подписку — обычное дело, и тогда его слово в каждой строке лишнее.
   const mixedProtocols = new Set(servers.map((x) => x.protocol)).size > 1;
 
+  // ⚠️ Пока состояние не пришло, считаем туннель выключенным, а не рисуем пустоту: раздел
+  // появляется мгновенно, и мигание заглушки в шапке заметнее, чем неточность в первые
+  // миллисекунды. Ошибиться в эту сторону безопасно — «выключен» не обещает защиты.
+  const connState: VpnConnectionState['state'] = conn?.state ?? 'stopped';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
-      <SectionHeader title="VPN">
-        Вставьте ссылку подписки от вашего VPN-сервиса (vless/trojan) — так же, как в Happ или
-        Hiddify. Ссылка и серверы хранятся зашифрованными на этом устройстве, никуда, кроме
-        вашего провайдера, не отправляются. Подключение пока экспериментальное: поднимает
-        локальный туннель, но ещё не переключает на него трафик вкладок — это следующий шаг.
+      {/* ⚠️ Герой — САМ ФАКТ подключения, а не название раздела: заходя сюда, человек хочет
+          знать «я сейчас через туннель или нет», и ответ обязан быть первым, что он видит. */}
+      <SectionHeader
+        title="VPN"
+        hero={connState === 'running' ? (conn?.serverRemark ?? 'Подключено') : VPN_STATE_WORD[connState]}
+        heroLabel={connState === 'running'
+          ? 'трафик браузера идёт через сервер'
+          : connState === 'error'
+            ? (conn?.error ?? 'туннель не поднялся')
+            : 'трафик идёт напрямую'}
+      >
+        Ссылка подписки и серверы хранятся зашифрованными на этом устройстве и никуда, кроме
+        вашего провайдера, не отправляются.
       </SectionHeader>
+
+      {/* ⚠️ Сетка показывает то, чего в разделе НЕ БЫЛО ВООБЩЕ. Про kill switch и WebRTC человек
+          мог узнать только из README, хотя это и есть ответ на вопрос «а точно ли я защищён» —
+          главный вопрос, ради которого VPN включают. */}
+      <FactGrid>
+        <Fact
+          label="Kill switch"
+          hint="Туннель упал — сеть закрывается"
+          value={connState === 'running' ? 'Сторожит' : 'В покое'}
+          active={connState === 'running'}
+        />
+        <Fact
+          label="WebRTC"
+          hint="Локальный адрес не утекает"
+          value={connState === 'running' ? 'Закрыт' : 'Как обычно'}
+          active={connState === 'running'}
+        />
+        <Fact
+          label="Серверы"
+          hint={status.fetchedAt ? `обновлено ${new Date(status.fetchedAt).toLocaleDateString('ru-RU')}` : 'подписка не добавлена'}
+          value={status.hasSubscription ? String(status.serverCount) : 'Нет'}
+        />
+        <Fact
+          label="Протокол"
+          hint="Xray-core дочерним процессом"
+          value="VLESS"
+        />
+      </FactGrid>
 
       {/* Статус */}
       <StatusCard

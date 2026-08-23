@@ -363,6 +363,16 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
                   <Icon size={18} strokeWidth={active ? 2.2 : 1.9} />
                 </span>
                 <span className="settings-nav-label">{label}</span>
+                {/* ⚠️ Точка тона раздела. Раздел узнаётся по цвету ДО клика — то же, что делает
+                    цветная шапка, но заранее: глаз запоминает «блокировка оранжевая» и в
+                    следующий раз идёт к ней, не читая подписи. Показываем только у НЕактивного:
+                    у активного пункта своя заливка, и две метки на одной строке спорят. */}
+                {!soon && !active && SECTION_TONE[id] && (
+                  <span style={{
+                    width: 7, height: 7, borderRadius: RADIUS.pill, flex: 'none', marginLeft: 'auto',
+                    background: `var(--poster-${SECTION_TONE[id]})`,
+                  }} />
+                )}
                 {soon && (
                   <span className="settings-nav-badge" style={{ marginLeft: 'auto', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontWeight: 400 }}>
                     скоро
