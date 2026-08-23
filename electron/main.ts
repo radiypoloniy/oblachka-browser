@@ -648,7 +648,7 @@ function wireProfileSession(profileId: string): void {
   const s = sessionForProfile(profileId);
   applyClientHints(s);
   installCertificateTrust(s);
-  downloads.observeSession(s);
+  downloads.observeSession(s, profileId);
   permissions.attach(s, permissionHandler);
   // ⚠️ Косметический адблок (прятать блоки) — только у сессии по умолчанию: его
   // enableBlockingInSession регистрирует ГЛОБАЛЬНЫЕ ipcMain-обработчики и второй раз падает
@@ -694,12 +694,13 @@ function wireSharedSessions(): void {
     broadcastToChrome(IPC.THEME_CHANGED, currentThemePrefs());
   });
 
-  // Перехватываем все загрузки на дефолтной сессии (вкладки partition не задают). Список загрузок
-  // общий для приложения — потому и рассылка во все окна, а не пуш в одно.
+  // Перехватываем загрузки сессии активного профиля. Список загрузок — НА ПРОФИЛЬ (см.
+  // DownloadManager.#profileOf), но рассылка идёт во все окна: окна показывают один и тот же
+  // активный профиль.
   // Поведение сохранения из настроек — до первой загрузки, иначе первый же файл ушёл бы по
   // дефолтному правилу вместо выбранного человеком.
   downloads.setAskLocation(settings.getAskDownloadLocation());
-  downloads.attach(profileSession(), (entries) => {
+  downloads.attach(profileSession(), getActiveProfile().id, (entries) => {
     broadcastToChrome(IPC.DOWNLOADS_CHANGED, entries);
     // Отдельным пушем — в открытый поповер: broadcastToChrome доходит только до слоёв хрома,
     // а поповер живёт своей WebContentsView и иначе показывал бы замерший прогресс.
@@ -733,7 +734,7 @@ function wireSharedSessions(): void {
   incognitoSession = incognitoBrowsingSession();
   applyClientHints(incognitoSession); // приватная вкладка обязана выглядеть НЕ подозрительнее обычной
   adblock.attachSession(incognitoSession);
-  downloads.observeSession(incognitoSession);
+  downloads.observeSession(incognitoSession, null);
   permissions.attach(incognitoSession, onPermissionRequest);
   // Сессии профилей человека: тот же набор, что у основной (см. wireProfileSession).
   wireAllProfileSessions();

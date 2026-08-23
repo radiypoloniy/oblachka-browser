@@ -108,6 +108,9 @@ export function registerProfilesIpc(d: IpcDeps): void {
     // отслеживаю» и звёздочка-индикатор в адресной строке иначе показывали бы список прежнего
     // профиля — то есть чужие покупки под новым именем.
     broadcastToChrome(IPC.TRACKING_CHANGED);
+    // Загрузки тоже профильные (DownloadManager.#profileOf): читаем файл нового профиля и
+    // рассылаем его список — иначе значок и поповер показывали бы чужие файлы.
+    d.downloads.onProfileSwitched(state.activeId);
     for (const ctx of allContexts()) d.pushProductState(ctx.win);
     // Товары нового профиля лежали без движения, пока человек сидел в другом, — догоняем
     // проверки его порогами запуска (см. TrackingChecker).

@@ -6,6 +6,8 @@ import path from 'node:path';
 import type { DownloadEntry, DuplicateDownloadPrompt } from '../shared/ipc';
 import { isBackgroundWebContents } from './BackgroundWebContents';
 import { markDownloadedFile, isRiskyDownload } from './DownloadSafety';
+import { profileDataPath } from './ProfilePaths';
+import { getActiveProfile } from './ProfileStore';
 
 // Минимальный интервал отправки обновлений прогресса в renderer.
 // Каждый байт не шлём — слишком шумно.
@@ -77,7 +79,21 @@ export class DownloadManager {
   // сохранил сам и он никуда не денется, а вот ССЫЛКА в постоянном файле — уже след приватной
   // вкладки, ради отсутствия которого её и открывают (так же поступает Chrome).
   #incognitoIds = new Set<string>();
-  #loaded = false;
+  // Чья это загрузка. ⚠️ Список загрузок — НА ПРОФИЛЬ (см. #storePath): запись это адрес, имя
+  // файла и время, то есть та же строка истории, только говорящая громче («договор_ООО.pdf»).
+  // Разделив историю и оставив загрузки общими, мы бы оставили дыру ровно там, где человек
+  // проверит обещание первым делом.
+  // ⚠️ Изоляция здесь про СЛЕДЫ И ПОРЯДОК, а не про защиту: сами файлы лежат в общей системной
+  // папке «Загрузки», и профиль их не прячет. Обещать иное нельзя.
+  #profileOf = new Map<string, string>();
+  // Файлы каких профилей уже прочитаны с диска. Читаем лениво и по одному: качать в чужом
+  // профиле человек может годами не начать, а список грузится синхронно.
+  #loadedProfiles = new Set<string>();
+  // ⚠️ Сессии, на которые слушатель уже навешен. Без этого множества сессия основного профиля
+  // получала ДВА `will-download` — один от attach (активный профиль), другой от observeSession
+  // (обвязка того же профиля в wireProfileSession), — и каждая загрузка попадала в список
+  // дважды. WeakSet, а не Set: сессия профиля живёт своей жизнью, держать её здесь незачем.
+  #wiredSessions = new WeakSet<Session>();
   #session: Session | null = null;
   #onChange: ((entries: DownloadEntry[]) => void) | null = null;
   // Спрашивать ли, куда сохранять. По умолчанию НЕТ: системный диалог на каждую картинку с
@@ -108,18 +124,30 @@ export class DownloadManager {
 
   #askOnceUrls = new Set<string>();
 
-  attach(sess: Session, onChange: (entries: DownloadEntry[]) => void): void {
+  attach(sess: Session, profileId: string, onChange: (entries: DownloadEntry[]) => void): void {
     this.#session = sess;
     this.#onChange = onChange;
-    this.#ensureLoaded();
-    this.#wireWillDownload(sess, false);
+    this.#ensureLoaded(profileId);
+    this.#wireWillDownload(sess, profileId);
   }
 
-  // Наблюдать загрузки ещё одной сессии (инкогнито), не делая её основной: перехват will-download
-  // тот же, но #session (для retry/downloadURL) остаётся дефолтной. Загрузки из инкогнито попадают
-  // в тот же список на время сеанса, но не в файл на диске — см. #incognitoIds.
-  observeSession(sess: Session): void {
-    this.#wireWillDownload(sess, true);
+  // Наблюдать загрузки ещё одной сессии (другой профиль, инкогнито), не делая её основной:
+  // перехват will-download тот же, но #session (для retry/downloadURL) остаётся дефолтной.
+  // profileId === null — приватная сессия: такие загрузки живут в списке до конца сеанса и на
+  // диск не попадают (см. #incognitoIds), а показываются в том профиле, где их начали.
+  observeSession(sess: Session, profileId: string | null): void {
+    this.#wireWillDownload(sess, profileId);
+  }
+
+  /**
+   * Человек переключил профиль — показать ЕГО список.
+   *
+   * ⚠️ Файл нового профиля читается здесь, а не при первом взгляде на поповер: рассылка уходит
+   * тут же, и без чтения человек увидел бы пустой список там, где загрузки есть.
+   */
+  onProfileSwitched(profileId: string): void {
+    this.#ensureLoaded(profileId);
+    this.#notify();
   }
 
   /**
@@ -134,10 +162,13 @@ export class DownloadManager {
    * знать о них следующей сессии неоткуда — предупреждение из них сделало бы приватную вкладку
    * заметной снаружи.
    */
-  #findDownloaded(url: string, filename: string, totalBytes: number): DownloadEntry | null {
+  #findDownloaded(url: string, filename: string, totalBytes: number, profileId: string): DownloadEntry | null {
     const wantedPath = stripQuery(url);
     for (const e of this.#entries.values()) {
       if (this.#incognitoIds.has(e.id)) continue;
+      // ⚠️ Только СВОЙ профиль. Предупреждение «ты это уже качал» о файле из другого профиля
+      // рассказало бы про чужую загрузку ровно то, что мы только что перестали показывать.
+      if (this.#profileOf.get(e.id) !== profileId) continue;
       if (e.state !== 'completed' || !e.savePath) continue;
       // ⚠️ Адрес сравниваем И БЕЗ ЗАПРОСА тоже. Ссылки на файлы у крупных сервисов ПОДПИСАНЫ:
       // хост и путь постоянны (в пути лежит идентификатор файла), а подпись и срок годности живут
@@ -153,7 +184,9 @@ export class DownloadManager {
     return null;
   }
 
-  #wireWillDownload(sess: Session, incognito: boolean): void {
+  #wireWillDownload(sess: Session, profileId: string | null): void {
+    if (this.#wiredSessions.has(sess)) return;
+    this.#wiredSessions.add(sess);
     sess.on('will-download', (_event, item, wc) => {
       // Фоновая (не пользователем открытая) вкладка — см. BackgroundWebContents.ts. Отменяем
       // молча: прямая ссылка на файл на переоткрытой в фоне странице не должна класть файл
@@ -200,7 +233,7 @@ export class DownloadManager {
       const url = item.getURL();
       const already = this.#approvedOnce.has(url)
         ? null
-        : this.#findDownloaded(url, filename, item.getTotalBytes());
+        : this.#findDownloaded(url, filename, item.getTotalBytes(), profileId ?? getActiveProfile().id);
       this.#approvedOnce.delete(url);
       if (already && this.#onDuplicate) {
         // ⚠️ Загрузку ОТМЕНЯЕМ, а не ставим на паузу. Пауза не спасает: маленький файл успевает
@@ -220,7 +253,7 @@ export class DownloadManager {
         return;
       }
 
-      this.#registerItem(item, incognito);
+      this.#registerItem(item, profileId);
     });
   }
 
@@ -247,7 +280,7 @@ export class DownloadManager {
   // Всё, что происходит с принятой загрузкой: запись в список, подписки на прогресс и финал.
   // Вынесено из обработчика will-download, потому что теперь сюда есть два входа — обычный и
   // отложенный (после ответа на вопрос о дубле).
-  #registerItem(item: Electron.DownloadItem, incognito: boolean): void {
+  #registerItem(item: Electron.DownloadItem, profileId: string | null): void {
     {
       const id = randomUUID();
       const entry: DownloadEntry = {
@@ -265,11 +298,15 @@ export class DownloadManager {
       };
       this.#entries.set(id, entry);
       this.#items.set(id, item);
-      if (incognito) this.#incognitoIds.add(id);
+      // ⚠️ Приватная загрузка тоже получает профиль — тот, в котором её начали. Иначе она не
+      // показалась бы НИГДЕ: на диск она не пишется, а список фильтруется по профилю.
+      const owner = profileId ?? getActiveProfile().id;
+      this.#profileOf.set(id, owner);
+      if (profileId === null) this.#incognitoIds.add(id);
       // Пишем уже на СТАРТЕ, а не только по завершении: иначе падение или закрытие браузера
       // посреди скачивания стирало бы саму память о нём, хотя недокачанный файл на диске остался.
       // При чтении такая запись превращается в «Прервано» — см. #load.
-      this.#persist();
+      this.#persist(owner);
       this.#notify();
 
       let lastReceived = 0;
@@ -309,15 +346,24 @@ export class DownloadManager {
         e.bytesPerSec   = 0;
         // Метка «файл из интернета» — сразу после успешного завершения, см. DownloadSafety.ts.
         if (e.state === 'completed' && e.savePath) markDownloadedFile(e.savePath, e.url);
-        this.#persist();
+        this.#persist(owner);
         this.#notify();
       });
     }
   }
 
+  /**
+   * Список для интерфейса — загрузки АКТИВНОГО профиля.
+   *
+   * ⚠️ Записи всех профилей живут в одной памяти (фоновая загрузка соседнего профиля обязана
+   * дойти до конца и попасть в свой файл), поэтому фильтр здесь, а не два разных хранилища.
+   */
   getAll(): DownloadEntry[] {
-    this.#ensureLoaded();
-    return [...this.#entries.values()].sort((a, b) => b.startedAt - a.startedAt);
+    const active = getActiveProfile().id;
+    this.#ensureLoaded(active);
+    return [...this.#entries.values()]
+      .filter((e) => this.#profileOf.get(e.id) === active)
+      .sort((a, b) => b.startedAt - a.startedAt);
   }
 
   pause(id: string):  void { this.#items.get(id)?.pause(); }
@@ -325,10 +371,12 @@ export class DownloadManager {
   cancel(id: string): void { this.#items.get(id)?.cancel(); }
 
   clear(id: string): void {
+    const owner = this.#profileOf.get(id);
     this.#entries.delete(id);
     this.#items.delete(id);
     this.#incognitoIds.delete(id);
-    this.#persist();
+    this.#profileOf.delete(id);
+    if (owner) this.#persist(owner);
     this.#notify();
   }
 
@@ -358,7 +406,8 @@ export class DownloadManager {
     e.filename = filename;
     e.savePath = savePath;
     e.fileMissing = false;
-    this.#persist();
+    const owner = this.#profileOf.get(id);
+    if (owner) this.#persist(owner);
     this.#notify();
   }
 
@@ -399,20 +448,24 @@ export class DownloadManager {
   // ⚠️ Читается ЛЕНИВО, а не в конструкторе: менеджер создаётся на уровне модуля в main.ts,
   // то есть до app.whenReady(), и лезть за userData оттуда — просить гонку на ровном месте.
 
-  #storePath(): string {
-    return path.join(app.getPath('userData'), 'downloads.json');
+  // ⚠️ Путь — через ProfilePaths, единственное место путей к данным профиля. У основного
+  // профиля файл остаётся ТАМ ЖЕ и под тем же именем (`userData/downloads.json`): это боевой
+  // список человека, и переезд ради единообразия — лишний шанс его потерять.
+  #storePath(profileId: string): string {
+    return profileDataPath(profileId, 'downloads.json');
   }
 
-  #ensureLoaded(): void {
-    if (this.#loaded) return;
-    this.#loaded = true;
+  #ensureLoaded(profileId: string): void {
+    if (this.#loadedProfiles.has(profileId)) return;
+    this.#loadedProfiles.add(profileId);
     let arr: unknown;
-    try { arr = JSON.parse(fs.readFileSync(this.#storePath(), 'utf8')); }
+    try { arr = JSON.parse(fs.readFileSync(this.#storePath(profileId), 'utf8')); }
     catch { return; /* файла ещё нет или он битый — начинаем с пустого списка */ }
     if (!Array.isArray(arr)) return;
 
     for (const raw of arr as StoredDownload[]) {
       if (!raw || typeof raw.id !== 'string' || typeof raw.filename !== 'string') continue;
+      this.#profileOf.set(raw.id, profileId);
       this.#entries.set(raw.id, {
         id: raw.id,
         filename: raw.filename,
@@ -432,9 +485,12 @@ export class DownloadManager {
     }
   }
 
-  #persist(): void {
-    const data: StoredDownload[] = this.getAll()
-      .filter((e) => !this.#incognitoIds.has(e.id))
+  // ⚠️ Пишем файл КОНКРЕТНОГО профиля, а не активного: загрузка соседнего профиля продолжает
+  // качаться, пока человек смотрит другой, и завершиться она обязана в своём файле.
+  #persist(profileId: string): void {
+    const data: StoredDownload[] = [...this.#entries.values()]
+      .filter((e) => this.#profileOf.get(e.id) === profileId && !this.#incognitoIds.has(e.id))
+      .sort((a, b) => b.startedAt - a.startedAt)
       .slice(0, MAX_STORED)
       .map((e) => ({
         id: e.id,
@@ -448,7 +504,7 @@ export class DownloadManager {
         startedAt: e.startedAt,
       }));
     // tmp + rename — тот же приём атомарной записи, что в BangStore/SettingsManager.
-    const target = this.#storePath();
+    const target = this.#storePath(profileId);
     try {
       fs.writeFileSync(target + '.tmp', JSON.stringify(data), 'utf8');
       fs.renameSync(target + '.tmp', target);
