@@ -115,6 +115,11 @@ export function registerProfilesIpc(d: IpcDeps): void {
     // Загрузки тоже профильные (DownloadManager.#profileOf): читаем файл нового профиля и
     // рассылаем его список — иначе значок и поповер показывали бы чужие файлы.
     d.downloads.onProfileSwitched(state.activeId);
+    // ⚠️ Тема и палитра у профиля могут быть свои (ProfileLook), а разрешаются они в main
+    // (currentThemePrefs). Без этой рассылки человек переключил бы профиль и увидел прежние
+    // цвета до первой правки настроек — то есть решил бы, что своя тема не работает.
+    broadcastToChrome(IPC.THEME_CHANGED, d.currentThemePrefs());
+    d.broadcastChromeTheme();
     for (const ctx of allContexts()) d.pushProductState(ctx.win);
     // Товары нового профиля лежали без движения, пока человек сидел в другом, — догоняем
     // проверки его порогами запуска (см. TrackingChecker).

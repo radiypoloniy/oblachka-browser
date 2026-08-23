@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import {
   DEFAULT_PROFILE_ID, PROFILE_COLORS, PROFILES_MAX,
-  type Profile, type ProfileAvatar as AvatarValue, type ProfileUa, type ProfileVpn,
-  type ProfilesState,
+  type Profile, type ProfileAvatar as AvatarValue, type ProfileTheme, type ProfileUa,
+  type ProfileVpn, type ProfilesState,
 } from '../../../shared/profiles';
+import { THEME_PALETTE_IDS } from '../../../shared/ipc';
 import { SectionHeader, Subsection, OptionList, OptionRow, Segmented, TextField, btnGhost,
   InlineHint, InlineError,
 } from './kit';
@@ -50,6 +51,23 @@ const LANG_OPTIONS: { id: string; label: string; hint: string; value: string | n
   { id: 'ru', label: 'Русский', hint: 'Сайты отвечают по-русски, где умеют', value: 'ru-RU,ru;q=0.9,en;q=0.8' },
   { id: 'en', label: 'English', hint: 'Сайты отвечают по-английски, где умеют', value: 'en-US,en;q=0.9' },
 ];
+
+// Своя тема профиля. ⚠️ Пусто — это «как в приложении», а не «светлая»: профиль без своей темы
+// обязан следовать общей настройке, в том числе когда её меняют при открытом профиле.
+const THEME_OPTIONS: { id: string; label: string; hint: string; value: ProfileTheme | null }[] = [
+  { id: 'inherit', label: 'Как в приложении', hint: 'Тема профиля не задана', value: null },
+  { id: 'light', label: 'Светлая', hint: 'Всегда светлая, что бы ни стояло в приложении', value: 'light' },
+  { id: 'dark', label: 'Тёмная', hint: 'Всегда тёмная, что бы ни стояло в приложении', value: 'dark' },
+  { id: 'system', label: 'Как в системе', hint: 'Следует переключателю Windows', value: 'system' },
+];
+
+// ⚠️ Подписи палитр продублированы из раздела «Внешний вид» СОЗНАТЕЛЬНО — те же слова, что человек
+// уже видел там. Тащить сюда весь список с образцами цветов незачем: здесь выбирают не палитру
+// как таковую, а «чем этот профиль отличается», и хватает названия.
+const PALETTE_LABELS: Record<string, string> = {
+  charcoal: 'Уголь', graphite: 'Графит', slate: 'Сланец',
+  paper: 'Бумага', mint: 'Мята', sky: 'Небо',
+};
 
 const VPN_OPTIONS: { id: ProfileVpn; label: string; hint: string }[] = [
   { id: 'inherit', label: 'Как в приложении', hint: 'Следует общему переключателю VPN' },
@@ -149,6 +167,32 @@ export default function ProfilesSection() {
                 <span style={{ ...TEXT.caption }}>Как выглядит</span>
                 <AvatarEditor profile={p} onState={setState} />
               </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+                <span style={{ ...TEXT.caption }}>Тема профиля</span>
+                <Segmented
+                  value={THEME_OPTIONS.find((o) => o.value === p.look.theme)?.id ?? 'inherit'}
+                  options={THEME_OPTIONS}
+                  onChange={(v) => {
+                    const value = THEME_OPTIONS.find((o) => o.id === v)?.value ?? null;
+                    void window.oblako.setProfileLook(p.id, { theme: value }).then(setState);
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+                <span style={{ ...TEXT.caption }}>Палитра профиля</span>
+                <Segmented
+                  value={p.look.palette ?? 'inherit'}
+                  options={[
+                    { id: 'inherit', label: 'Как в приложении' },
+                    ...THEME_PALETTE_IDS.map((id) => ({ id, label: PALETTE_LABELS[id] ?? id })),
+                  ]}
+                  onChange={(v) => {
+                    void window.oblako.setProfileLook(p.id, { palette: v === 'inherit' ? null : v }).then(setState);
+                  }}
+                />
+              </div>
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
                 <span style={{ ...TEXT.caption }}>Название</span>
                 <TextField
@@ -291,6 +335,7 @@ function subtitleFor(p: Profile, isPinned: boolean, isActive: boolean): string {
   // профиля, которая ТЕРЯЕТ данные, и узнавать о ней, раскрыв карточку, поздно.
   if (p.settings.clearOnExit && p.id !== DEFAULT_PROFILE_ID) parts.push('Стирает логины при выходе');
   if (p.settings.ua === 'mobile') parts.push('Мобильные версии');
+  if (p.look.theme || p.look.palette) parts.push('Свой облик');
   return parts.join(' · ') || 'Свои куки и логины';
 }
 
