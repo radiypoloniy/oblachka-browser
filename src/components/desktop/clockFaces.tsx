@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { Pause, Play } from 'lucide-react';
 import { dayPhase, skyStops, type DayPhase } from '../../../shared/dayPhase';
-import { CAPS, DISPLAY, RADIUS, TEXT, motion, pad, sp } from '../../styles/system';
+import { CAPS, RADIUS, TEXT, cardGlass, motion, pad, sp } from '../../styles/system';
 
 // Лица часов: аналог для стола и три широких варианта для стенда.
 // Дугу дня сюда не тащим — владелец назвал её посредственной; широкие часы держатся набором.
@@ -124,19 +124,6 @@ function StretchText({ text, fill }: { text: string; fill: string }) {
   );
 }
 
-/**
- * Внутренний блок лица (квадрат циферблата, квадрат даты).
- *
- * ⚠️ Тон берётся ОТ ТЕКСТА текущей плитки (`currentColor`), а не задаётся своим цветом. Иначе
- * блок приходится красить дважды — под светлую тему и под тёмную, — и он всё равно мимо, когда
- * человек выбрал плитке свою заливку. Так же ведут себя чипы в дизайн-системе.
- */
-const innerBlock: CSSProperties = {
-  background: 'color-mix(in srgb, currentColor 10%, transparent)',
-  borderRadius: RADIUS.content,
-  overflow: 'hidden',
-};
-
 const tileShell = (extra?: CSSProperties): CSSProperties => ({
   width: '100%',
   height: '100%',
@@ -175,49 +162,63 @@ export function WideTypeClock({ now, sunrise, sunset }: {
   );
 }
 
-/** (2) Кластер: циферблат + дата сверху, широкая полоса времени снизу. */
+/**
+ * (2) Кластер: циферблат, дата, полоса времени — компоновка рефа.
+ *
+ * ⚠️ У циферблата НЕТ своей подложки. Серый квадрат под ним читался как «часы в рамке внутри
+ * плитки»: две вложенные коробки на 254 px съедали место и уменьшали сам циферблат — то есть
+ * ровно то, ради чего плитку и ставят. Круг сидит прямо на плитке и занимает всю высоту ряда.
+ *
+ * ⚠️ Дата — СТЕКЛО, а не серая заливка (cardGlass из дизайн-системы). Серые плашки в системе
+ * остались только там, где стекло невозможно; здесь оно и уместно, и просилось по проекту.
+ *
+ * ⚠️ Число даты набирается подгоном (FitLine), а не кеглем: на 4×2 и 4×4 одна и та же цифра
+ * иначе выглядит то крупной, то потерянной.
+ */
 export function WideClusterClock({ now, seconds }: { now: Date; seconds: boolean }) {
   const time = hhmm(now);
+  const [top, topBox] = useBoxSize<HTMLDivElement>();
+  // Циферблат вписан в высоту ряда: он круглый, и ширина ему нужна ровно такая же.
+  const dial = Math.max(0, topBox.h);
+
   return (
-    <div style={tileShell({ gap: sp(2) })}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: sp(2), flex: 1, minHeight: 0 }}>
+    <div style={tileShell({ gap: sp(2), padding: pad(3) })}>
+      <div ref={top} style={{ display: 'flex', gap: sp(3), flex: 1, minHeight: 0, alignItems: 'stretch' }}>
         <div style={{
-          ...innerBlock,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: sp(3),
+          flex: 'none', width: dial, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
         }}>
-          <AnalogFace size={118} now={now} seconds={seconds} />
+          <AnalogFace size={dial} now={now} seconds={seconds} />
         </div>
         <div style={{
-          ...innerBlock,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          padding: pad(4),
-          gap: sp(1),
+          ...cardGlass(),
+          flex: 1, minWidth: 0, color: 'inherit',
+          borderRadius: RADIUS.content,
+          padding: pad(3),
+          display: 'flex', flexDirection: 'column', gap: sp(1),
         }}>
-          <div style={{ ...TEXT.section, color: 'inherit', opacity: 0.72 }}>
+          <div style={{ ...CAPS, color: 'inherit', opacity: 0.5, flex: 'none' }}>
             {weekdayShort(now)}
           </div>
-          <div style={{ ...DISPLAY, fontSize: 52, fontWeight: 700, color: 'inherit' }}>
-            {now.getDate()}
+          {/* Выключка влево, как на рефе: «вс» и число читаются одним столбцом, а не вразнобой. */}
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <FitLine text={String(now.getDate())} maxTrack={0.02} />
           </div>
         </div>
       </div>
       <div style={{
         flex: 'none',
-        height: 72,
+        height: '30%',
         borderRadius: RADIUS.content,
         background: 'var(--accent)',
         color: 'var(--on-accent)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        display: 'flex', alignItems: 'center',
         padding: `0 ${sp(4)}px`,
       }}>
         {/* ⚠️ Полоса времени БОЛЬШЕ НЕ ТЯНЕТ БУКВЫ. Здесь и была «промашка с узкими и длинными
             часами»: растянутый на всю ширину набор превращал цифры в лапшу. Кегль подбирается
             под коробку, а остаток ширины добирается трекингом (см. FitLine). */}
-        <div style={{ width: '100%', height: 56 }}>
+        <div style={{ width: '100%', height: '68%' }}>
           <FitLine text={time} align="center" maxTrack={0.06} />
         </div>
       </div>
