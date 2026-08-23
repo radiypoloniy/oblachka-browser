@@ -9,6 +9,7 @@ import { card, cardGlass, grain, RADIUS, DISPLAY, CAPS, CARD_COLOR_ENABLED, CARD
 import { loadNewTabSettings } from '../../newtab/settings';
 import CryptoIcon from '../CryptoIcon';
 import { siteTint } from './siteTint';
+import { AnalogFace } from './clockFaces';
 import { MoonWidget, ShieldWidget, DownloadsWidget, HolidayWidget, DigestWidget, TrackingWidget } from './localWidgets';
 
 // Виджеты рабочего стола.
@@ -206,8 +207,6 @@ export function TileValue({ children, size, hero, style }: {
 // Apple секундная всегда контрастного тёплого цвета, потому что она единственная движется
 // непрерывно и должна отделяться от двух статичных. Цветовой закон это не нарушает — он про
 // интерфейс браузера, а плитки стола сознательно живут своими цветами (см. шапку файла).
-const CLOCK_SECOND = '#FF9F0A';
-
 function tinyDial(box: { width: number; height: number }, avail: number, dateH: number): number {
   const small = box.height < 150;
   const reserved = small ? 0 : 20 + dateH;
@@ -318,72 +317,6 @@ export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
         </div>
       )}
     </Tile>
-  );
-}
-
-/**
- * Циферблат. Рисуем сами SVG в системе координат 100×100 и масштабируем размером самого <svg> —
- * так же, как спарклайн ниже: круг, дюжина рисок и три стрелки не стоят внешней зависимости, а
- * фиксированный вьюбокс избавляет от пересчёта всех координат под резиновую плитку.
- */
-function AnalogFace({ size, now, seconds }: { size: number; now: Date; seconds: boolean }) {
-  const h = now.getHours() % 12;
-  const m = now.getMinutes();
-  const s = now.getSeconds();
-  // Часовая идёт ПЛАВНО за минутами (+0.5° на минуту), минутная — за секундами. Иначе в 10:59
-  // часовая всё ещё указывала бы ровно на 10, и время читалось бы неверно на целый час.
-  const hourAngle = h * 30 + m * 0.5;
-  const minAngle  = m * 6 + s * 0.1;
-  const secAngle  = s * 6;
-
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 100" style={{ display: 'block', flex: 'none' }}>
-      {/* ⚠️ Циферблат рисуется currentColor, а не белым. Он делался под тёмную плитку, и когда часы
-          пошли за темой, весь циферблат стал белым по белому — со стороны это выглядело как
-          «аналоговые часы не работают», хотя они исправно рисовались невидимыми. currentColor
-          наследуется от плитки: тёмный на светлой поверхности, белый на выбранной заливке. */}
-      {/* ⚠️ Обода НЕТ. Нарисованный круг с рамкой и двенадцатью рисками — это часы из набора
-          иконок 2010-х; современный циферблат держится ПУСТОТОЙ и точками, а границу задаёт сама
-          плитка. Осталось ровно то, что читает глаз: четыре точки-ориентира и стрелки. */}
-      {/* ⚠️ Тонкое кольцо вернулось — но именно ТОНКОЕ и еле заметное. Без него циферблат без
-          обода «терялся»: четыре точки и стрелки не давали глазу границы, и на большой плитке
-          это читалось как россыпь мусора. Старомодным его делали ТОЛСТЫЙ обод, заливка и
-          двенадцать рисок — их и убрали. */}
-      <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeOpacity="0.14" strokeWidth="1" />
-      {/* Четыре ориентира вместо двенадцати рисок: 12/3/6/9 — единственные, по которым время
-          читают на самом деле, а остальные восемь только зашумляют мелкую плитку. */}
-      {[0, 3, 6, 9].map((i) => (
-        <circle
-          key={i}
-          cx="50" cy="13" r="2.1" fill="currentColor" fillOpacity="0.5"
-          transform={`rotate(${i * 30} 50 50)`}
-        />
-      ))}
-      {/* ⚠️ Стрелки — КАПСУЛЫ со скруглением, а не отрезки-палки: это то же требование к
-          скруглениям, что и у всего остального интерфейса, просто внутри svg. Часовая толще и
-          короче минутной — иначе их не различить с одного взгляда. */}
-      <Hand angle={hourAngle} length={22} width={5.4} color="currentColor" />
-      <Hand angle={minAngle}  length={33} width={3.6} color="currentColor" />
-      {seconds && <Hand angle={secAngle} length={37} width={1.4} color={CLOCK_SECOND} tail={8} />}
-      {/* Центр: точка цвета плитки внутри стрелок — стрелки «выходят» из-под неё, а не
-          упираются в кляксу. */}
-      <circle cx="50" cy="50" r="3.4" fill="currentColor" />
-      <circle cx="50" cy="50" r="1.5" fill={seconds ? CLOCK_SECOND : 'var(--surface)'} />
-    </svg>
-  );
-}
-
-// Стрелка — линия из центра вверх, повёрнутая на угол. tail — хвостик за центром (есть только у
-// секундной, как у настоящих часов).
-function Hand({ angle, length, width, color, tail = 0 }: {
-  angle: number; length: number; width: number; color: string; tail?: number;
-}) {
-  return (
-    <line
-      x1="50" y1={50 + tail} x2="50" y2={50 - length}
-      stroke={color} strokeWidth={width} strokeLinecap="round"
-      transform={`rotate(${angle} 50 50)`}
-    />
   );
 }
 

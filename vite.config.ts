@@ -47,6 +47,8 @@ export default defineConfig({
         dropzones: resolve(__dirname, 'src/dropzones.html'),
         // Карточка снимка вкладки (Ctrl+Shift+S) — та же техника (см. ScreenshotManager.ts).
         screenshot: resolve(__dirname, 'src/screenshot.html'),
+        // Временный стенд лиц часов (B1). Сносится вместе с невыбранными вариантами.
+        clockstand: resolve(__dirname, 'src/clockstand.html'),
       },
     },
   },
