@@ -80,8 +80,10 @@ import { showFindBar, closeFindBar, sendFindResult, setTabManager as setFindBarT
 import { captureTabScreenshot, saveCurrentScreenshot, closeScreenshot, setScreenshotTabManager } from './ScreenshotManager';
 import { mapFormFields, type FormFieldDescriptor } from './AutofillFieldMapper';
 import { profileSession, incognitoSession as incognitoBrowsingSession, sessionForProfile } from './ProfileSession';
-import { getProfiles, getActiveProfile } from './ProfileStore';
-import { profileWantsVpn, DEFAULT_PROFILE_ID } from '../shared/profiles';
+import { getProfiles, getActiveProfile, getProfile } from './ProfileStore';
+import { profileWantsVpn, profileClearsOnExit, DEFAULT_PROFILE_ID } from '../shared/profiles';
+import { chromeUserAgent } from './BrowserIdentity';
+import { MOBILE_UA } from './WebAppManager';
 import { RuleStore } from './RuleStore';
 import { applyRules } from './RuleEngine';
 import { prewarmDropZones } from './DropZoneManager';
@@ -654,7 +656,40 @@ function wireProfileSession(profileId: string): void {
   // enableBlockingInSession регистрирует ГЛОБАЛЬНЫЕ ipcMain-обработчики и второй раз падает
   // с «second handler» (см. AdBlockManager.#enableFullBlocking). Остальным профилям достаётся
   // сетевая блокировка — та самая, что режет запросы к трекерам. Так же живёт инкогнито.
-  if (profileId !== DEFAULT_PROFILE_ID) adblock.attachSession(s);
+  // Включена она или нет — решает настройка профиля, см. applyProfileSettings.
+  applyProfileSettings(profileId);
+}
+
+/**
+ * Настройки профиля, действующие НА СЕССИЮ: как профиль представляется сайтам и режется ли в нём
+ * реклама.
+ *
+ * ⚠️ Зовётся и при заведении обвязки, и на КАЖДУЮ правку настроек. Иначе получается настройка,
+ * которая «применится когда-нибудь потом»: человек переключил вид на «Телефон», сайт открылся
+ * прежним — и это худший вид неработающей функции, потому что выглядит она рабочей.
+ *
+ * ⚠️ Про UA сказано честно и в контракте (shared/profiles.ts): это НЕ другой отпечаток и не
+ * анонимность. Профиль «Телефон» просто получает мобильные версии сайтов.
+ */
+function applyProfileSettings(profileId: string): void {
+  const prof = getProfile(profileId);
+  if (!prof) return;
+  const s = sessionForProfile(profileId);
+
+  // ⚠️ Язык и UA ставятся ОДНИМ вызовом: setUserAgent — единственное место, где Electron даёт
+  // задать Accept-Language сессии. Пустой второй аргумент означает «как у приложения», поэтому
+  // null из настроек превращается в undefined, а не в пустую строку (та обнулила бы заголовок).
+  const ua = prof.settings.ua === 'mobile' ? MOBILE_UA : chromeUserAgent();
+  s.setUserAgent(ua, prof.settings.lang ?? undefined);
+
+  // ⚠️ Адблок профиля — это СЕТЕВАЯ блокировка его сессии. У профиля по умолчанию поле не
+  // действует: его сессия — defaultSession, там живёт общий движок вместе с косметикой, и
+  // «выключить рекламу в этом профиле» означало бы выключить её во всём приложении. Для него
+  // ручка так и остаётся общей — в настройках адблока.
+  if (profileId !== DEFAULT_PROFILE_ID) {
+    if (prof.settings.adblock) adblock.attachSession(s);
+    else adblock.detachSession(s);
+  }
 }
 
 /** Профили, заведённые человеком, тоже должны получить обвязку — не только активный. */
@@ -1971,7 +2006,7 @@ export function makeIpcDeps() {
     adblock, autofill, bangs, bookmarkImporters, bookmarks, downloads, graphs, history, hubChat,
     importManager, passwords, permissions, rules, searchTargets, settings, tracking, updates,
     // Функции main
-    applyVpnProxy, wireProfileSession, broadcastChromeTheme, buildMoveToWindowItems, collectGroups, createWindow,
+    applyVpnProxy, applyProfileSettings, wireProfileSession, broadcastChromeTheme, buildMoveToWindowItems, collectGroups, createWindow,
     currentThemePrefs, ensurePasswordAuth, escapeHtml, escapeHtmlAttr, maybeLazyWarmupOnDemand,
     moveTabToExistingWindow, moveTabToNewWindow, notifyGraphChanged, pushProductState,
     renameTabSmart, showBookmarkMenu, showProductMenu,
@@ -2266,4 +2301,38 @@ app.on('before-quit', () => {
   // Процесс инференса — дочерний, и Windows не убивает такие сама (та же причина, по которой
   // явно останавливается xray.exe): без этого он остался бы висеть с моделью в видеопамяти.
   shutdownInference();
+});
+
+// ── «Стирать куки при выходе» ────────────────────────────────────────────────────────────
+//
+// ⚠️ Выход ЗАДЕРЖИВАЕТСЯ до конца очистки, и это единственный способ сделать обещание правдой:
+// clearStorageData асинхронный, а процесс, уходящий раньше, оставил бы куки на диске — то есть
+// настройка выглядела бы работающей, ничего не делая. Задержка безопасна для данных: сессия
+// вкладок уже записана синхронно в win.on('close') задолго до этого момента.
+//
+// ⚠️ Стираются только ХРАНИЛИЩА САЙТОВ этой партиции (куки, localStorage, IndexedDB, кэши
+// service worker) — история, закладки и пароли профиля НЕ ТРОГАЮТСЯ ВООБЩЕ. Это разные вещи:
+// человек просил не оставлять логинов на чужом компьютере, а не стирать свою историю.
+//
+// ⚠️ Профиль по умолчанию исключён на уровне контракта (profileClearsOnExit): его партиция —
+// сессия со ВСЕМИ логинами человека, и очистка там означала бы разлогин везде при каждом выходе.
+const CLEARED_STORAGES = [
+  'cookies', 'localstorage', 'indexdb', 'websql', 'serviceworkers', 'cachestorage',
+] as const;
+let exitCleanupDone = false;
+app.on('before-quit', (e) => {
+  if (exitCleanupDone) return;
+  const targets = getProfiles().profiles.filter(profileClearsOnExit);
+  if (targets.length === 0) return;
+  exitCleanupDone = true;
+  e.preventDefault();
+  void Promise.allSettled(
+    targets.map((prof) => sessionForProfile(prof.id).clearStorageData({ storages: [...CLEARED_STORAGES] })),
+  ).then((results) => {
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed) console.warn('[profiles] очистка при выходе: не удалось у', failed, 'профилей');
+    // ⚠️ Выходим ВСЕГДА, даже если очистка упала: браузер, который не закрывается из-за
+    // неудавшейся уборки, — худшая беда, чем оставшиеся куки.
+    app.quit();
+  });
 });

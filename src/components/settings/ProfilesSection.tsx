@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import {
   DEFAULT_PROFILE_ID, PROFILE_COLORS, PROFILES_MAX,
-  type Profile, type ProfileAvatar as AvatarValue, type ProfileVpn, type ProfilesState,
+  type Profile, type ProfileAvatar as AvatarValue, type ProfileUa, type ProfileVpn,
+  type ProfilesState,
 } from '../../../shared/profiles';
 import { SectionHeader, Subsection, OptionList, OptionRow, Segmented, TextField, btnGhost,
   InlineHint, InlineError,
@@ -26,6 +27,29 @@ const EMOJI_BTN = 34;
 // ⚠️ Профиль — единица УДОБСТВА. Поэтому здесь нет ни щитов, ни предупреждений: обычный список,
 // как разрешения сайтов или движки поиска. Настройки приватности внутри профиля — такие же
 // обычные строки, а не «режим защиты».
+
+// ⚠️ Двоичные настройки профиля показаны СЕГМЕНТАМИ, а не тумблерами: в разделе настроек
+// тумблера нет вовсе (см. kit.tsx), и заводить его ради двух строк здесь значило бы принести в
+// продукт ещё один вид контрола — ровно то, из-за чего интерфейсы перестают выглядеть цельными.
+const ON_OFF: { id: 'on' | 'off'; label: string }[] = [
+  { id: 'on', label: 'Включена' },
+  { id: 'off', label: 'Выключена' },
+];
+
+const UA_OPTIONS: { id: ProfileUa; label: string; hint: string }[] = [
+  { id: 'desktop', label: 'Компьютер', hint: 'Обычные версии сайтов' },
+  // ⚠️ Формулировка честная: это НЕ другой отпечаток и не анонимность (см. shared/profiles.ts).
+  // Профиль просто получает мобильные версии — иногда они удобнее и легче.
+  { id: 'mobile', label: 'Телефон', hint: 'Мобильные версии сайтов — не анонимность, а удобство' },
+];
+
+// Язык, который профиль просит у сайтов. ⚠️ Не поле ввода: заголовок Accept-Language человек
+// руками не пишет, а ошибка в нём молча ломает выдачу сайтов на «непонятном» языке.
+const LANG_OPTIONS: { id: string; label: string; hint: string; value: string | null }[] = [
+  { id: 'inherit', label: 'Как в приложении', hint: 'Профиль не просит ничего особенного', value: null },
+  { id: 'ru', label: 'Русский', hint: 'Сайты отвечают по-русски, где умеют', value: 'ru-RU,ru;q=0.9,en;q=0.8' },
+  { id: 'en', label: 'English', hint: 'Сайты отвечают по-английски, где умеют', value: 'en-US,en;q=0.9' },
+];
 
 const VPN_OPTIONS: { id: ProfileVpn; label: string; hint: string }[] = [
   { id: 'inherit', label: 'Как в приложении', hint: 'Следует общему переключателю VPN' },
@@ -140,11 +164,57 @@ export default function ProfilesSection() {
                   onChange={(v) => { void window.oblako.setProfileSettings(p.id, { vpn: v }).then(setState); }}
                 />
               </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+                <span style={{ ...TEXT.caption }}>Как представляться сайтам</span>
+                <Segmented
+                  value={p.settings.ua}
+                  options={UA_OPTIONS}
+                  onChange={(v) => { void window.oblako.setProfileSettings(p.id, { ua: v }).then(setState); }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+                <span style={{ ...TEXT.caption }}>Язык сайтов</span>
+                <Segmented
+                  value={langIdOf(p)}
+                  options={LANG_OPTIONS}
+                  onChange={(v) => {
+                    const value = LANG_OPTIONS.find((o) => o.id === v)?.value ?? null;
+                    void window.oblako.setProfileSettings(p.id, { lang: value }).then(setState);
+                  }}
+                />
+              </div>
+
+              {/* ⚠️ Адблок профиля — только у НЕ основного: у основного это сессия по умолчанию,
+                  где живёт общий движок, и «выключить здесь» означало бы выключить везде. */}
               {p.id !== DEFAULT_PROFILE_ID && (
-                <InlineHint>
-                  Блокировка рекламы в этом профиле режет запросы к трекерам, но не прячет
-                  блоки на странице — косметическая часть работает только в основном профиле.
-                </InlineHint>
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+                    <span style={{ ...TEXT.caption }}>Блокировка рекламы</span>
+                    <Segmented
+                      value={p.settings.adblock ? 'on' : 'off'}
+                      options={ON_OFF}
+                      onChange={(v) => { void window.oblako.setProfileSettings(p.id, { adblock: v === 'on' }).then(setState); }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+                    <span style={{ ...TEXT.caption }}>Куки и данные сайтов при выходе</span>
+                    <Segmented
+                      value={p.settings.clearOnExit ? 'on' : 'off'}
+                      options={CLEAR_OPTIONS}
+                      onChange={(v) => { void window.oblako.setProfileSettings(p.id, { clearOnExit: v === 'on' }).then(setState); }}
+                    />
+                  </div>
+
+                  <InlineHint>
+                    Блокировка рекламы в этом профиле режет запросы к трекерам, но не прячет
+                    блоки на странице — косметическая часть работает только в основном профиле.
+                    Очистка при выходе стирает логины этого профиля, но не трогает его историю,
+                    закладки и пароли.
+                  </InlineHint>
+                </>
               )}
             </div>
           );
@@ -201,12 +271,26 @@ export default function ProfilesSection() {
   );
 }
 
+const CLEAR_OPTIONS: { id: 'on' | 'off'; label: string; hint: string }[] = [
+  { id: 'off', label: 'Оставлять', hint: 'Профиль помнит, где вы вошли' },
+  { id: 'on', label: 'Стирать', hint: 'При закрытии браузера логины этого профиля пропадут' },
+];
+
+/** Какой из вариантов языка выбран сейчас. Незнакомая строка считается «как в приложении». */
+function langIdOf(p: Profile): string {
+  return LANG_OPTIONS.find((o) => o.value === p.settings.lang)?.id ?? 'inherit';
+}
+
 function subtitleFor(p: Profile, isPinned: boolean, isActive: boolean): string {
   const parts: string[] = [];
   if (isActive) parts.push('Активен');
   if (isPinned) parts.push('Открывается при запуске');
   const vpn = VPN_OPTIONS.find((o) => o.id === p.settings.vpn);
   if (p.settings.vpn !== 'inherit' && vpn) parts.push(vpn.label);
+  // ⚠️ Про очистку сказано В СПИСКЕ, а не только внутри «Настроить»: это единственная настройка
+  // профиля, которая ТЕРЯЕТ данные, и узнавать о ней, раскрыв карточку, поздно.
+  if (p.settings.clearOnExit && p.id !== DEFAULT_PROFILE_ID) parts.push('Стирает логины при выходе');
+  if (p.settings.ua === 'mobile') parts.push('Мобильные версии');
   return parts.join(' · ') || 'Свои куки и логины';
 }
 

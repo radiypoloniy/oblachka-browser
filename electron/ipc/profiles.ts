@@ -64,6 +64,10 @@ export function registerProfilesIpc(d: IpcDeps): void {
     const state = updateProfileSettings(String(id), (patch ?? {}) as Partial<ProfileSettings>);
     // ⚠️ Немедленно, а не при следующей смене состояния VPN: см. шапку файла.
     await d.applyVpnProxy();
+    // ⚠️ То же правило и для остальных настроек сессии (UA, язык, адблок): применяются сразу,
+    // иначе человек переключает вид на «Телефон», сайт открывается прежним — и функция выглядит
+    // рабочей, ничего не делая.
+    d.applyProfileSettings(String(id));
     broadcast();
     return state;
   });
