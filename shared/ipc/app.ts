@@ -151,6 +151,21 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 export const THEME_PALETTE_IDS = ['charcoal', 'graphite', 'slate', 'paper', 'mint', 'sky'] as const;
 export type ThemePaletteId = typeof THEME_PALETTE_IDS[number];
 
+/**
+ * Состояние таймера стола.
+ *
+ * ⚠️ Инвариант: пока таймер ИДЁТ, задан endAt, а leftMs равен нулю; на паузе наоборот. Две
+ * заполненные величины означали бы два источника правды об одном и том же остатке.
+ */
+export interface TimerState {
+  /** Выбранная длительность, мс. */
+  durationMs: number;
+  /** Момент срабатывания (epoch ms). 0 — таймер не идёт. */
+  endAt: number;
+  /** Остаток на паузе, мс. Осмыслен только при endAt === 0. */
+  leftMs: number;
+}
+
 export interface ThemePrefs {
   mode: ThemeMode;
   palette: ThemePaletteId;

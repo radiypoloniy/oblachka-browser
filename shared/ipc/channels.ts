@@ -110,6 +110,12 @@ export const IPC = {
   HOLIDAY_GET: 'holiday:get',   // renderer → main: ближайший праздник (виджет стола)
   CURRENCY_GET: 'currency:get', // renderer → main: курсы ЦБ РФ для виджета новой вкладки (CurrencyRates)
   CRYPTO_GET: 'crypto:get', // renderer → main: курсы криптовалют для виджета «Крипта» (CryptoRates)
+  // Таймер стола. ⚠️ Срок живёт в main (electron/TimerService.ts), а не в виджете: счётчик в
+  // рендерере досчитывал только пока открыта новая вкладка, то есть молчал ровно тогда, когда
+  // человек занят чем-то другим, — а таймер заводят именно для этого случая.
+  TIMER_GET: 'timer:get',         // renderer → main: текущее состояние таймера
+  TIMER_SET: 'timer:set',         // renderer → main: старт/пауза/сброс — состояние целиком
+  TIMER_CHANGED: 'timer:changed', // main → chrome: состояние изменилось (в т.ч. таймер сработал)
   NEWTAB_PHOTO_GET: 'newtab:photo-get', // renderer → main: «фото дня» для фона вкладки (data-URL), кэш на день
   // renderer → main: «другое фото» — шаг назад по календарю Wikimedia. Не случайный сид: там на
   // каждый день ровно одна картинка, отобранная людьми, поэтому вчерашняя тоже хорошая.

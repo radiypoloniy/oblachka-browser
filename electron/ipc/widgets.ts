@@ -3,6 +3,8 @@
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
 import { IPC } from '../../shared/ipc';
+import type { TimerState } from '../../shared/ipc';
+import { getTimer, setTimer } from '../TimerService';
 import type { PasswordCopyField } from '../../shared/ipc';
 import { getCryptoRates } from '../CryptoRates';
 import { getCurrencyRates } from '../CurrencyRates';
@@ -42,6 +44,10 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   // Погода для виджета новой вкладки (тот же WeatherService, что у AI-панели; отдельный typed-канал
   // для главного рендерера — preload-aipanel до него не относится).
   ipcMain.handle(IPC.WEATHER_GET,        (_e, city: string) => getWeather(typeof city === 'string' ? city : ''));
+  // Таймер стола. ⚠️ Состояние держит main (TimerService), потому что виджет живёт только на
+  // новой вкладке: досчитывать после ухода с неё было бы некому.
+  ipcMain.handle(IPC.TIMER_GET, () => getTimer());
+  ipcMain.handle(IPC.TIMER_SET, (_e, next: Partial<TimerState>) => setTimer(next ?? {}));
   ipcMain.handle(IPC.NEWTAB_PHOTO_GET,   () => getPhotoOfDay());
   ipcMain.handle(IPC.NEWTAB_PHOTO_SHUFFLE, () => { shufflePhoto(); return getPhotoOfDay(); });
   // Курсы для виджета новой вкладки. Отдельный канал от 'ai-panel:currency-rates' (там своя

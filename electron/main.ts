@@ -116,6 +116,7 @@ import { suggestFolderForBookmark } from './BookmarkFolderPick';
 import { detectProduct } from './ProductDetector';
 import { TrackingStore } from './TrackingStore';
 import { initTrackingChecker, setTrackingEventHandler } from './TrackingChecker';
+import { initTimer } from './TimerService';
 import { findMatchFor } from './ProductMatcher';
 import * as clipboardBuffer from './ClipboardBuffer';
 import { initClipboardPopover, toggleClipboardPopover, closeClipboardPopover } from './ClipboardPopoverManager';
@@ -405,6 +406,26 @@ async function refreshProductForWebContents(wc: Electron.WebContents): Promise<v
  * ⚠️ Клик открывает страницу товара: уведомление, сообщающее новость, с которой ничего нельзя
  * сделать, — это просто помеха.
  */
+/**
+ * Тост таймера.
+ *
+ * ⚠️ Клик ВОЗВРАЩАЕТ В БРАУЗЕР, а не открывает страницу: таймер человек ставил, уже находясь
+ * здесь, и «показать» ему нечего — нужно просто вернуть окно на глаза. Если окон не осталось
+ * (браузер закрыт, а процесс жив на macOS), клик не делает ничего: поднимать окно из небытия
+ * ради сработавшего таймера — это не помощь.
+ */
+function showTimerToast(): void {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title: 'Таймер', body: 'Время вышло' });
+  n.on('click', () => {
+    const ctx = mainContext() ?? allContexts()[0];
+    if (!ctx || ctx.win.isDestroyed()) return;
+    if (ctx.win.isMinimized()) ctx.win.restore();
+    ctx.win.focus();
+  });
+  n.show();
+}
+
 function showTrackingToast(title: string, url: string, text: string): void {
   if (!Notification.isSupported()) return;
   const n = new Notification({ title: title.slice(0, 80), body: text });
@@ -2198,6 +2219,12 @@ app.whenReady().then(async () => {
   }
 
   setTrackingEventHandler(({ title, url, text }) => showTrackingToast(title, url, text));
+  // Таймер стола: срок держит main, интерфейс только показывает. ⚠️ Рассылка идёт всем окнам —
+  // виджет может стоять на новой вкладке в каждом из них.
+  initTimer({
+    onFire: () => showTimerToast(),
+    onChange: (state) => broadcastToChrome(IPC.TIMER_CHANGED, state),
+  });
   searxngKeyStore.loadFromDisk();
   vpnKeyStore.loadFromDisk();
   skillsStore.loadFromDisk();

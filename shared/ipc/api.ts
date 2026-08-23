@@ -8,7 +8,7 @@ import type { BackfillProgress, BookmarkEntry, BookmarkFolderProposal, BookmarkI
 import type { PasswordAddInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, PasswordMeta, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
 import type { AdBlockState, DownloadEntry, MatchSuggestion, OmniboxPanel, OmniboxRecommendEdit, PageChangesResult, ParsedAddressPart, ProductState, RecommendedSite, SmartTabHit, StuffHit, SuggestDropdownItem, TrackedProduct, TrackingEvent } from './omnibox';
 import type { BangDefWire, BangsSnapshot, BergamotStatus, CatalogEntry, DeleteModelResult, DerivedBangCandidate, DownloadProgress, HardwareSnapshot, HubChatMessage, HubChatOutcome, HubChatSessionMeta, HubMode, ImportBangsResult, InstalledModel, ModelDownloadSpec, ModelLoadMode, PageTranslateProgress, PageTranslateState, PermKey, PermissionRecord, SetDefaultModelResult, Skill, TranslationEngineId, UpdateStatus } from './ai';
-import type { AddressInput, AddressProfile, AddressUpdate, CardInput, CardMeta, CardUpdate, CryptoRatesInfo, CurrencyRatesInfo, DefaultBrowserRequest, DragCard, MediaCommand, MediaNowPlaying, NextHolidayInfo, SplitSwapHint, TabDropResult, TabDropZone, ThemeMode, ThemePaletteId, ThemePrefs, WeatherInfo, WindowRole } from './app';
+import type { AddressInput, AddressProfile, AddressUpdate, CardInput, CardMeta, CardUpdate, CryptoRatesInfo, CurrencyRatesInfo, DefaultBrowserRequest, DragCard, MediaCommand, MediaNowPlaying, NextHolidayInfo, SplitSwapHint, TabDropResult, TabDropZone, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, WeatherInfo, WindowRole } from './app';
 
 export interface OblakoApi {
   // Атомарный начальный запрос + подписка (заменяют getAllTabs+getSidebarNodes+onTabsChanged+onSidebarNodesChanged).
@@ -135,6 +135,10 @@ export interface OblakoApi {
   onThemeChanged(cb: (prefs: ThemePrefs) => void): () => void;
 
   getWeather(city: string): Promise<WeatherInfo>; // погода для виджета новой вкладки
+  /** Таймер стола: состояние держит main, виджет только показывает (см. TimerService.ts). */
+  getTimer(): Promise<TimerState>;
+  setTimer(next: Partial<TimerState>): Promise<TimerState>;
+  onTimerChanged(cb: (state: TimerState) => void): () => void;
   getCurrencyRates(): Promise<CurrencyRatesInfo>;
   /** Ближайший госпраздник. Новый получатель данных (date.nager.at), наружу уходит только код страны. */
   getNextHoliday(country?: string): Promise<NextHolidayInfo>; // курсы ЦБ РФ для виджета новой вкладки

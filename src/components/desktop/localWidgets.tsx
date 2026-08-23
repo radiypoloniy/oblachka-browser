@@ -1,11 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DISPLAY, RADIUS } from '../../styles/system';
 import { Tile, TileCaption, Sparkline, TONE_GREEN, TONE_WARM, FILL_GREEN, FILL_WARM, type WidgetProps } from './widgets';
 import { CalendarFace, TimerLayout } from './clockFaces';
-import {
-  TIMER_PRESETS, loadTimer, saveTimer, subscribeTimer, timerLeftMs, timerRunning,
-  type TimerState,
-} from '../../newtab/timerStore';
+import { TIMER_PRESETS, timerLeftMs, timerRunning } from '../../newtab/timerStore';
+import type { TimerState } from '../../../shared/ipc';
 import type { TrackedProduct } from '../../../shared/ipc';
 import type { DayDigestState } from '../../../shared/ipc';
 
@@ -525,51 +523,41 @@ export function CalendarWidget({ fill, overImage, hero }: WidgetProps) {
 
 // ── Таймер ────────────────────────────────────────────────────────────────────
 //
-// ⚠️ Состояние — в своём хранилище (newtab/timerStore.ts), а не в раскладке стола: идущий таймер
-// это состояние момента, и класть его в файл раскладки означало бы писать раскладку на диск
-// каждую секунду.
+// ⚠️ Состояние держит MAIN (electron/TimerService.ts), а виджет только показывает. Раньше
+// счётчик жил здесь целиком, то есть досчитывал лишь пока открыта новая вкладка: ушёл на сайт —
+// сработать некому. Таймер, который молчит, когда человек занят другим, бесполезен ровно в том
+// случае, ради которого его и заводят.
 //
-// ⚠️ Своего звука у нас нет и не заводится файлом: короткий сигнал синтезируется WebAudio на
-// месте. Файл ради одного «пик» — это лишний ассет в сборке и лишний путь, который может не
-// найтись; ноль зависимостей стоит здесь дешевле.
+// ⚠️ Тик раз в секунду остаётся ЗДЕСЬ, и это не дублирование: main знает МОМЕНТ срабатывания и
+// не просыпается до него вовсе, а рисовать убывающие цифры всё равно кому-то надо.
 export function TimerWidget({ box, fill, overImage, hero }: WidgetProps) {
-  const [state, setState] = useState(loadTimer);
+  const [state, setState] = useState<TimerState | null>(null);
   const [, setTick] = useState(0);
-  const beeped = useRef(false);
 
-  useEffect(() => subscribeTimer(() => setState(loadTimer())), []);
+  useEffect(() => {
+    void window.oblako.getTimer().then(setState).catch(() => { /* останется пусто */ });
+    return window.oblako.onTimerChanged(setState);
+  }, []);
 
-  // Тик раз в секунду и только пока идёт: остановленный таймер не должен будить вкладку.
-  const running = timerRunning(state);
+  const running = state ? timerRunning(state) : false;
   useEffect(() => {
     if (!running) return;
     const t = setInterval(() => setTick((v) => v + 1), 1000);
     return () => clearInterval(t);
   }, [running]);
 
-  const left = timerLeftMs(state);
-
-  // Сигнал ровно один раз на срабатывание. ⚠️ Флаг снимается при любом новом запуске, иначе
-  // второй таймер за сеанс отработал бы молча.
-  useEffect(() => {
-    if (left > 0 || state.endAt === 0) return;
-    if (beeped.current) return;
-    beeped.current = true;
-    beep();
-    // Отсчёт кончился — переводим в остановленное состояние, чтобы плитка не считала мимо нуля.
-    saveTimer({ ...state, endAt: 0, leftMs: 0 });
-  }, [left, state]);
-
-  const apply = (next: TimerState): void => {
-    beeped.current = next.endAt > 0 ? false : beeped.current;
-    setState(next);
-    saveTimer(next);
+  // ⚠️ Пока состояние не пришло, плитка рисуется по умолчанию, а не пустой: главный процесс
+  // отвечает за миллисекунды, и мигать заглушкой на каждом открытии вкладки незачем.
+  const cur: TimerState = state ?? { durationMs: TIMER_PRESETS[1]!.ms, endAt: 0, leftMs: TIMER_PRESETS[1]!.ms };
+  const left = timerLeftMs(cur);
+  const apply = (next: Partial<TimerState>): void => {
+    void window.oblako.setTimer(next).then(setState).catch(() => { /* main ответит рассылкой */ });
   };
 
   const mm = Math.floor(left / 60_000);
   const ss = String(Math.floor((left % 60_000) / 1000)).padStart(2, '0');
-  const progress = state.durationMs > 0 ? 1 - left / state.durationMs : 0;
-  const presetId = TIMER_PRESETS.find((p) => p.ms === state.durationMs)?.id ?? '';
+  const progress = cur.durationMs > 0 ? 1 - left / cur.durationMs : 0;
+  const presetId = TIMER_PRESETS.find((p) => p.ms === cur.durationMs)?.id ?? '';
 
   return (
     <Tile surface glass overImage={overImage} hero={hero} fill={fill} padding={0}>
@@ -585,36 +573,15 @@ export function TimerWidget({ box, fill, overImage, hero }: WidgetProps) {
         // ⚠️ Выбор длительности СРАЗУ ЗАПУСКАЕТ отсчёт. Отдельная кнопка «старт» после выбора —
         // лишнее движение: человек нажимает «20», потому что хочет двадцать минут прямо сейчас.
         onPreset={(id) => {
-          const ms = TIMER_PRESETS.find((p) => p.id === id)?.ms ?? state.durationMs;
-          apply({ durationMs: ms, endAt: Date.now() + ms, leftMs: ms });
+          const ms = TIMER_PRESETS.find((p) => p.id === id)?.ms ?? cur.durationMs;
+          apply({ durationMs: ms, endAt: Date.now() + ms, leftMs: 0 });
         }}
         onToggle={() => {
-          if (running) apply({ ...state, endAt: 0, leftMs: left });
-          else apply({ ...state, endAt: Date.now() + Math.max(left, 1000), leftMs: left });
+          if (running) apply({ durationMs: cur.durationMs, endAt: 0, leftMs: left });
+          else apply({ durationMs: cur.durationMs, endAt: Date.now() + Math.max(left, 1000), leftMs: 0 });
         }}
-        onStop={() => apply({ durationMs: state.durationMs, endAt: 0, leftMs: state.durationMs })}
+        onStop={() => apply({ durationMs: cur.durationMs, endAt: 0, leftMs: cur.durationMs })}
       />
     </Tile>
   );
-}
-
-/** Короткий сигнал окончания. Молча ничего не делает, если звук недоступен. */
-function beep(): void {
-  try {
-    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 880;
-    // Мягкий спад вместо щелчка: резкий обрыв синуса слышен как треск.
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.62);
-    osc.onended = () => void ctx.close();
-  } catch { /* звук запрещён политикой автовоспроизведения — плитка всё равно показала ноль */ }
 }
