@@ -22,6 +22,9 @@ let relatedBusy = false;
 export function registerTabsIpc(d: IpcDeps): void {
   const { bookmarks, broadcastChromeTheme, currentThemePrefs, downloads, history, settings, tabsOf } = d;
 
+  // Модальный экран хрома просит спрятать содержимое (см. TabManager.setChromeModal).
+  ipcMain.handle(IPC.CHROME_MODAL, (e, on: boolean) => { tabsOf(e)?.setChromeModal(!!on); });
+
 
   ipcMain.handle(IPC.SYNC_GET, (e) => ({
     tabs:  tabsOf(e)?.snapshot()              ?? [],

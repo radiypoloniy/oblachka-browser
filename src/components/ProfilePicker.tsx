@@ -41,6 +41,17 @@ export default function ProfilePicker({ onDone }: { onDone: () => void }) {
     });
   }, [onDone]);
 
+  // ⚠️ Пока карточка висит, содержимое обязано быть спрятано. WebContentsView страницы лежит
+  // ПОВЕРХ React-рамки, и без этого при восстановленной сессии человек видит затемнение по
+  // краям, но не саму карточку: браузер выглядит зависшим и требующим выбора, которого не
+  // показывает (живой случай 23.08). Снимаем в уборке — в том числе если компонент ушёл
+  // раньше, чем человек выбрал.
+  useEffect(() => {
+    if (!state) return;
+    void window.oblako.setChromeModal(true);
+    return () => { void window.oblako.setChromeModal(false); };
+  }, [state]);
+
   if (!state) return null;
 
   async function pick(id: string): Promise<void> {

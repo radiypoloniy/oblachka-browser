@@ -103,6 +103,14 @@ export interface OblakoApi {
   onTabDragZone(cb: (zone: TabDropZone | null) => void): () => void;
   // Сигнал «оболочка отрисована» — main показывает скрытое до этого окно (см. IPC.CHROME_UI_READY).
   chromeUiReady(): void;
+  /**
+   * Модальный экран в хроме висит/снят.
+   *
+   * ⚠️ Обязателен для любой модалки, нарисованной React по центру окна: WebContentsView
+   * страницы лежит ПОВЕРХ React-рамки, и без этого человек видит затемнение по краям без
+   * самой карточки (живой случай 23.08 — выбор профиля при старте).
+   */
+  setChromeModal(on: boolean): Promise<void>;
 
   // Поиск по странице
   findStart(query: string, forward: boolean): Promise<void>;

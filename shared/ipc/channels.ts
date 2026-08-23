@@ -648,6 +648,11 @@ export const IPC = {
   // (против белого экрана) и показывается по этому сигналу (см. main.ts::createWindow).
   CHROME_UI_READY: 'chrome:ui-ready',
 
+  // Модальный экран в ХРОМЕ (выбор профиля при старте, онбординг): renderer → main, «спрячь
+  // содержимое, пока я вишу». ⚠️ Без этого модалка, нарисованная React по центру окна, лежит
+  // ПОД WebContentsView страницы — видно только затемнение по краям, а кнопок нет.
+  CHROME_MODAL: 'chrome:modal',
+
   // Индикатор качества индекса умного поиска (см. Settings.tsx::HistoryBackfillSection) — сколько
   // страниц истории реально имеют извлечённый текст (chunks), а не только заголовок+домен.
   HISTORY_CONTENT_COVERAGE: 'history:content-coverage', // renderer → main: снимок охвата на момент запроса

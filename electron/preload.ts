@@ -81,6 +81,7 @@ const api: OblakoApi = {
     return () => ipcRenderer.removeListener(IPC.TAB_DRAG_ZONE, h);
   },
   chromeUiReady: () => ipcRenderer.send(IPC.CHROME_UI_READY),
+  setChromeModal: (on: boolean) => ipcRenderer.invoke(IPC.CHROME_MODAL, on) as Promise<void>,
 
   // Правила-автоматизации (см. shared/rules.ts). parseRule ходит к модели, остальное — обычный
   // CRUD над rules.json.

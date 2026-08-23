@@ -58,6 +58,7 @@
   "CERT_TRUST_LIST=cert-trust:list",
   "CERT_TRUST_REMOVE=cert-trust:remove",
   "CHROME_FOCUS=chrome:focus",
+  "CHROME_MODAL=chrome:modal",
   "CHROME_THEME_SET=chrome:theme-set",
   "CHROME_UI_READY=chrome:ui-ready",
   "CLIPBOARD_CHANGED=clipboard:changed",

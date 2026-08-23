@@ -319,6 +319,8 @@ export class TabManager {
   // wc в колбэке — чтобы получатель знал ПРОФИЛЬ вкладки: заголовок обновляет любая
   // вкладка, включая фоновую чужого профиля, а история теперь на профиль.
   private onTitleUpdateCb?: (url: string, title: string, wc: WebContents) => void;
+  /** Висит ли поверх хрома модальный экран (см. setChromeModal). */
+  private chromeModal = false;
   private onHistoryOpenCb?: () => void;
   // Ctrl+D / Ctrl+Shift+O. Отдельными сеттерами, а не через конструктор: закладки появились
   // позже, и расширять и без того длинный список параметров ради двух колбэков незачем.
@@ -2157,6 +2159,16 @@ export class TabManager {
     // Пробуждаем вкладку, если она спит (до любой логики с view).
     if (tab.sleeping) this.wakeTab(id);
 
+    // ⚠️ Под модальным экраном хрома вкладка становится активной, но НЕ показывается: иначе
+    // страница легла бы поверх модалки. Показ отдаётся снятию модалки (setChromeModal(false)).
+    if (this.chromeModal) {
+      this.activeId = id;
+      tab.lastActiveAt = Date.now();
+      for (const t of this.tabMap.values()) if (this.isHttpView(t.view)) t.view.setVisible(false);
+      this.onChange();
+      return;
+    }
+
     // Останавливаем поиск на уходящей вкладке перед переключением.
     if (this.activeId !== id) {
       const prev = this.activeId === HUB_ID ? null : this.tabMap.get(this.activeId);
@@ -3971,7 +3983,34 @@ export class TabManager {
 
   // ── Показать / скрыть вьюху активной вкладки ──
   // revealView: вызывается после did-navigate (успешная загрузка) — показываем.
+  /**
+   * Модальный экран в ХРОМЕ (выбор профиля при старте, онбординг) — прятать содержимое.
+   *
+   * ⚠️ Зачем это нужно вообще. React рисует рамку, а WebContentsView страницы кладётся ПОВЕРХ
+   * неё в область контента. Значит любая модалка, нарисованная в React по центру окна, при
+   * открытой странице оказывается ПОД ней: человек видит только затемнение по краям — сайдбар
+   * и тулбар потемнели, а карточки с кнопками нет. Со стороны это выглядит как «браузер завис
+   * и требует выбора, которого не показывает», и пользоваться им нельзя.
+   *
+   * Живой случай 23.08: экран выбора профиля при старте. Он всегда был уязвим, но всплывал
+   * только при восстановленной сессии со страницей — на первом запуске активен Хаб, у которого
+   * вьюхи нет вовсе (та же оговорка стоит в Onboarding.tsx и по той же причине).
+   */
+  setChromeModal(on: boolean): void {
+    if (this.chromeModal === on) return;
+    this.chromeModal = on;
+    if (on) {
+      for (const t of this.tabMap.values()) if (this.isHttpView(t.view)) t.view.setVisible(false);
+      return;
+    }
+    // Снятие — через обычный путь показа: он один знает про split-пары, ошибки и спящих.
+    if (this.activeId && this.activeId !== HUB_ID) this.activate(this.activeId);
+  }
+
   private revealView(id: string): void {
+    // ⚠️ Пока висит модальный экран хрома, поднимать вьюху нельзя ничем — иначе фоновая
+    // навигация (did-navigate восстановленной вкладки) вернёт страницу поверх модалки.
+    if (this.chromeModal) return;
     const tab = this.tabMap.get(id);
     if (!tab || !this.isHttpView(tab.view)) return;
     const pair = this.#pairContaining(id);
