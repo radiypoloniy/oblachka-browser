@@ -83,6 +83,15 @@ export function registerProfilesIpc(d: IpcDeps): void {
 
   ipcMain.handle(IPC.PROFILES_LOOK, (_e, id: string, patch: Partial<ProfileLook>) => {
     const state = updateProfileLook(String(id), (patch ?? {}) as Partial<ProfileLook>);
+    // ⚠️ Правка облика ДЕЙСТВУЮЩЕГО профиля обязана перекрасить интерфейс тут же. Без этой
+    // рассылки человек выбирал профилю тёмную тему и не видел ровно ничего: облик уходил на
+    // диск, а тема пересчитывается только по THEME_CHANGED — то есть до следующего переключения
+    // профиля настройка выглядела мёртвой. Ровно та же ошибка, что была с рассылкой списка
+    // профилей 22.08: main всё делал правильно, а на экране не менялось ничего.
+    if (String(id) === state.activeId) {
+      broadcastToChrome(IPC.THEME_CHANGED, d.currentThemePrefs());
+      d.broadcastChromeTheme();
+    }
     broadcast();
     return state;
   });
