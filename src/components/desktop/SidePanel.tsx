@@ -43,6 +43,8 @@ const WIDGET_GROUPS: { title: string; note?: string; items: { key: string; label
     note: 'Работают офлайн, ничего никуда не отправляют',
     items: [
       { key: 'clock',     label: 'Часы',             icon: '🕒', size: 'small' },
+      { key: 'calendar',  label: 'Календарь',        icon: '📅', size: 'small' },
+      { key: 'timer',     label: 'Таймер',           icon: '⏱',  size: 'small' },
       { key: 'moon',      label: 'Луна',             icon: '🌙', size: 'small' },
       { key: 'shield',    label: 'Защита',           icon: '🛡', size: 'small' },
       { key: 'tasks',     label: 'Дела',             icon: '✓',  size: 'medium' },
@@ -306,6 +308,10 @@ export default function SidePanel({ layout, onLayout, onClose, editing, onEditin
 
           {hasItem(layout, 'widget', 'clock') && (
             <Section title="Часы">
+              {/* ⚠️ Этот же выбор решает, каким будет лицо РАСТЯНУТОЙ плитки: стрелки — кластер
+                  (крупный циферблат, дата, полоса времени), цифры — набор на всю ширину по небу
+                  текущей фазы дня. Третьего переключателя заводить не стали: у одного виджета не
+                  может быть двух настроек вида, иначе человек ищет, какая из них сейчас главная. */}
               <Segmented
                 value={s.clock.face}
                 options={[['analog', 'Стрелки'], ['digital', 'Цифры']]}

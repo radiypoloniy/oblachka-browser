@@ -1,16 +1,15 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import type React from 'react';
 import { Check, Plus, X, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import type { MediaCommand, MediaNowPlaying } from '../../../shared/ipc';
 import type { CellSize } from '../../newtab/desktop';
-import { dayPhase, arcPosition, minutesUntilNextEvent, skyStops, isWarmPhase, starField } from '../../../shared/dayPhase';
 import { card, cardGlass, grain, RADIUS, DISPLAY, CAPS, CARD_COLOR_ENABLED, CARD_INK, altitude, ALTITUDE, HERO_ENABLED, sp } from '../../styles/system';
 import { loadNewTabSettings } from '../../newtab/settings';
 import CryptoIcon from '../CryptoIcon';
 import { siteTint } from './siteTint';
-import { AnalogFace } from './clockFaces';
-import { MoonWidget, ShieldWidget, DownloadsWidget, HolidayWidget, DigestWidget, TrackingWidget } from './localWidgets';
+import { AnalogFace, WideClusterClock, WideTypeClock } from './clockFaces';
+import { MoonWidget, ShieldWidget, DownloadsWidget, HolidayWidget, DigestWidget, TrackingWidget, CalendarWidget, TimerWidget } from './localWidgets';
 
 // Виджеты рабочего стола.
 //
@@ -94,7 +93,7 @@ export function fillCss(id: string | undefined): string | null {
   return WIDGET_FILLS.find((f) => f.id === id)?.css ?? null;
 }
 
-export function Tile({ children, tint, padding = 16, surface, fill, toned, overImage, hero, onActivate }: {
+export function Tile({ children, tint, padding = 16, surface, fill, toned, glass, overImage, hero, onActivate }: {
   children: React.ReactNode;
   /** Заливка цветной плитки. Игнорируется при surface. */
   tint?: string;
@@ -111,6 +110,15 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, overI
    * Весь цвет содержимого гасится одной константой CARD_COLOR_ENABLED.
    */
   toned?: boolean | 'high';
+  /**
+   * Плитка — СТЕКЛО всегда, а не только над фотографией.
+   *
+   * ⚠️ Заводится для виджетов, у которых стекло — часть их собственного языка (календарь,
+   * таймер): у них внутри крупная типографика и тонкие линии, и на плотной заливке они читаются
+   * как наклейка поверх стола, а не как его часть. Выбор человека по-прежнему сильнее: задал
+   * свою заливку — стекла нет.
+   */
+  glass?: boolean;
   /** Высота 3: цвет в полную силу. Ровно один герой на стол — см. setHero. */
   hero?: boolean;
   /**
@@ -128,7 +136,7 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, overI
   // Цвет карточки — только когда человек не выбрал свою заливку и плитка вообще идёт за темой.
   // ⚠️ Порядок разбора и есть иерархия высот: выбор человека → герой → стекло над фото → карта.
   const useHero = !custom && !!hero && HERO_ENABLED;
-  const useGlass = !custom && !useHero && surface && !!overImage;
+  const useGlass = !custom && !useHero && surface && (!!overImage || !!glass);
   const useCard = !custom && !useHero && surface && !!toned && !useGlass && CARD_COLOR_ENABLED;
   const heroStyle = useHero ? altitude(ALTITUDE.hero, { content: true }) : null;
   const toneStyle = heroStyle ?? (useGlass ? cardGlass() : useCard ? card(toned === 'high') : null);
@@ -213,6 +221,11 @@ function tinyDial(box: { width: number; height: number }, avail: number, dateH: 
   return Math.max(44, Math.min(avail, box.height - (small ? 24 : 32) - reserved));
 }
 
+// Средние сумерки на случай, когда города нет: 6:00 и 21:00. Не «правильные» для конкретной
+// широты, но и не выдумка — это медиана по году для средней полосы.
+const DEFAULT_SUNRISE = 6 * 60;
+const DEFAULT_SUNSET = 21 * 60;
+
 export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
   const [now, setNow] = useState(() => new Date());
   const opts = loadNewTabSettings().clock;
@@ -223,18 +236,27 @@ export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
     return () => clearInterval(t);
   }, [opts.seconds]);
 
-  // ⚠️ Дуга дня — САМОСТОЯТЕЛЬНЫЙ широкий вид, а не альтернатива циферблату, и показывается в
-  // растянутой плитке НЕЗАВИСИМО от выбора аналог/цифры. Причина: широкий аналоговый циферблат —
-  // это круг с пустотой в половину плитки по бокам, а человек, растянувший часы, просил ровно
-  // «в растянутом виде даёт больше». Восход/закат берём из погоды (уже кэшируется, тот же город) —
-  // своей геолокации часам не заводим. Порог по пропорции, не по числу клеток: «заметно шире, чем
-  // высокая» — ровно тот случай, где появляется место под горизонтальную дугу. Нет города или
-  // данных — откат на обычный вид (аналог/цифры) ниже.
+  // ⚠️ В РАСТЯНУТОЙ плитке у часов своё лицо — и оно следует тому же выбору «стрелки/цифры»,
+  // что и обычный вид, а не заводит третий. Дуга дня, стоявшая здесь раньше, снята: три захода
+  // подряд по ней не сошлись, и владелец выбрал по стенду два других лица (см. clockFaces.tsx).
+  //   • стрелки → кластер: крупный циферблат, дата стеклом, полоса времени;
+  //   • цифры  → набор на всю ширину по небу текущей фазы дня.
+  // Порог по пропорции, а не по числу клеток: клетка резиновая, а «заметно шире, чем высокая» —
+  // ровно тот случай, где узкий круг посреди пустоты перестаёт работать.
   const wide = box.width > box.height * 1.7;
-  const sun = useSunTimes(wide ? city : '');
-  if (wide && sun) {
-    return <DayArcClock box={box} fill={fill} now={now} sunrise={sun.rise} sunset={sun.set}
-      time={fmtTime(now, opts)} weekday={now.toLocaleDateString('ru-RU', { weekday: 'long' })} />;
+  // Восход/закат берём из погоды (уже кэшируется, тот же город) — своей геолокации часам не
+  // заводим. ⚠️ Нет города — не отказываемся от лица, а берём средние сумерки: небо станет чуть
+  // менее точным, но виджет останется тем, что человек выбрал. Прежний код в этом случае
+  // молча показывал совсем другой вид.
+  const sun = useSunTimes(wide && !analog ? city : '');
+  if (wide) {
+    return (
+      <Tile surface toned overImage={overImage} hero={hero} fill={fill} padding={0}>
+        {analog
+          ? <WideClusterClock now={now} seconds={opts.seconds} />
+          : <WideTypeClock now={now} sunrise={sun?.rise ?? DEFAULT_SUNRISE} sunset={sun?.set ?? DEFAULT_SUNSET} />}
+      </Tile>
+    );
   }
 
   const time = fmtTime(now, opts);
@@ -357,183 +379,6 @@ function useSunTimes(city: string): { rise: number; set: number } | null {
     return () => { alive = false; };
   }, [city]);
   return sun;
-}
-
-// Дуга дня — «лицо» растянутых часов: небо текущей фазы, дуга от восхода до заката и светило
-// на позиции текущего момента.
-//
-// ⚠️ НОЧЬЮ ПО ДУГЕ ИДЁТ ЛУНА, а не «солнце ниже горизонта». Прежняя версия прятала светило под
-// линию горизонта, и луна лежала в углу плитки — со стороны это читалось как баг, а не замысел
-// (живая жалоба «луна хрен знает где»). У настоящих приложений этого жанра (Sundial, Sloww) у
-// луны СВОЯ дуга по ночному небу; расчёт — в shared/dayPhase.ts под npm test.
-//
-// ⚠️ Небо — ШЕСТЬ фаз, а не «день/ночь». Двоичное небо переключалось скачком: в 21:15 рисовалось
-// то же, что в 3 часа ночи, и картинка выглядела бедной. Сумерки — отдельное состояние, и
-// именно они дают настроение.
-//
-// ⚠️ Небо здесь НЕ ТОКЕНЫ ТЕМЫ, и это осознанно: как и цвет у погоды, оно носитель настроения.
-// Цветовой закон говорит про хром, а плитка часов — содержимое.
-function DayArcClock({ box, fill, now, sunrise, sunset, time, weekday }: {
-  box: { width: number; height: number };
-  fill?: string;
-  now: Date;
-  sunrise: number; // минуты от полуночи
-  sunset: number;
-  time: string;
-  weekday: string;
-}) {
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  const phase = dayPhase(nowMin, sunrise, sunset);
-  const { frac, body } = arcPosition(nowMin, sunrise, sunset);
-  const left = minutesUntilNextEvent(nowMin, sunrise, sunset);
-  const [top, mid, low] = skyStops(phase);
-  const warm = isWarmPhase(phase);
-  const isDay = body === 'sun';
-
-  // ⚠️ ГЕОМЕТРИЯ В РЕАЛЬНЫХ ПИКСЕЛЯХ, а не в условных 200×100 с растяжением. Прошлая версия
-  // рисовала в фиксированном viewBox и тянула его на ширину плитки через
-  // preserveAspectRatio="none" — а это НЕРАВНОМЕРНОЕ масштабирование: круги превращались в
-  // горизонтальные прямоугольники, и звёзды выглядели пиксельным мусором (живая жалоба).
-  // Совпадение viewBox с настоящим размером убирает масштабирование целиком: круг остаётся кругом.
-  const tilePad = 16;
-  const vw = Math.max(120, Math.round(box.width - tilePad * 2));
-  const vh = Math.max(70, Math.round(box.height - tilePad * 2 - 68));
-  // Дуга — ЭЛЛИПС по ширине плитки: полукруг радиусом в полширины не поместился бы по высоте,
-  // а поднимать его выше нечем. Светило при этом остаётся круглым — растягивается путь, не тело.
-  const cx = vw / 2;
-  const cy = vh - 12;
-  const rx = vw / 2 - 14;
-  const ry = Math.min(rx, cy - 10);
-  const angle = Math.PI * frac;
-  const bodyX = cx - rx * Math.cos(angle);
-  const bodyY = cy - ry * Math.sin(angle);
-  const riseX = cx - rx, setX = cx + rx;
-  const arc = (toX: number, toY: number) => `M ${riseX} ${cy} A ${rx} ${ry} 0 0 1 ${toX} ${toY}`;
-  const bodyR = Math.max(7, Math.min(vh * 0.13, 16));
-
-  const leftH = Math.floor(left / 60);
-  const leftM = left % 60;
-  const leftText = `${leftH ? `${leftH} ч ` : ''}${leftM} мин`.trim();
-  const label = isDay ? `светло ещё ${leftText}` : `рассвет через ${leftText}`;
-
-  const stars = useMemo(() => (isDay ? [] : starField()), [isDay]);
-
-  return (
-    // Заливку человека уважаем (fill перебивает небо) — тот же приём, что у остальных плиток.
-    <Tile tint={fill ?? `linear-gradient(180deg, ${top} 0%, ${mid} 58%, ${low} 100%)`} fill={fill} padding={tilePad}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flex: 'none' }}>
-        <span style={{ ...DISPLAY, fontSize: Math.min(box.height * 0.26, 40) }}>{time}</span>
-        <span style={{ ...CAPS, opacity: 0.75 }}>{weekday}</span>
-      </div>
-
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'flex-end' }}>
-        <svg width="100%" height={vh} viewBox={`0 0 ${vw} ${vh}`}
-          style={{ display: 'block', overflow: 'visible' }}>
-          <defs>
-            {/* Пройденный путь: тёплый днём, холодный ночью — иначе ночная дуга выглядит
-                чужой золотой полосой на синем. */}
-            <linearGradient id="arcDone" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor={warm ? '#FFD98A' : '#9FB6E8'} stopOpacity="0.35" />
-              <stop offset="1" stopColor={warm ? '#FFE9B8' : '#DCE6FF'} stopOpacity="0.95" />
-            </linearGradient>
-            {/* Заливка под дугой — то, чего не хватало больше всего: пустое небо читалось
-                незаполненной заготовкой. */}
-            <linearGradient id="arcFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor={warm ? '#FFE0A0' : '#A8BCEA'} stopOpacity="0.28" />
-              <stop offset="1" stopColor={warm ? '#FFE0A0' : '#A8BCEA'} stopOpacity="0" />
-            </linearGradient>
-            {/* Зарево у горизонта в той стороне, где светило всходит или садится. */}
-            <radialGradient id="horizonGlow" cx="0.5" cy="1" r="0.85">
-              <stop offset="0" stopColor={warm ? '#FFC978' : '#6E86C8'} stopOpacity="0.55" />
-              <stop offset="1" stopColor={warm ? '#FFC978' : '#6E86C8'} stopOpacity="0" />
-            </radialGradient>
-            <radialGradient id="sunCore" cx="0.35" cy="0.3" r="0.8">
-              <stop offset="0" stopColor="#FFFDF2" />
-              <stop offset="0.5" stopColor="#FFD65C" />
-              <stop offset="1" stopColor="#F79B2E" />
-            </radialGradient>
-            <radialGradient id="bodyGlow" cx="0.5" cy="0.5" r="0.5">
-              <stop offset="0.35" stopColor={isDay ? '#FFD65C' : '#CFE0FF'} stopOpacity="0.5" />
-              <stop offset="1" stopColor={isDay ? '#FFD65C' : '#CFE0FF'} stopOpacity="0" />
-            </radialGradient>
-            <radialGradient id="moonCore" cx="0.34" cy="0.28" r="0.85">
-              <stop offset="0" stopColor="#FFFFFF" />
-              <stop offset="0.6" stopColor="#E6ECFA" />
-              <stop offset="1" stopColor="#BFC9E0" />
-            </radialGradient>
-            {/* ⚠️ Маска серпа объявлена ЗДЕСЬ, в общем defs: два defs с одним id внутри одного
-                svg ведут себя непредсказуемо. */}
-            <mask id="moonMask">
-              <rect x="0" y="0" width={vw} height={vh} fill="#fff" />
-              <circle cx={bodyX + 5.4} cy={bodyY - 4.2} r="10.5" fill="#000" />
-            </mask>
-          </defs>
-
-          {/* Звёзды — только ночью и в сумерках, и они не мигают: позиции детерминированы. */}
-          {/* ⚠️ Радиус в ПИКСЕЛЯХ и одинаковый по обеим осям — теперь это точки, а не чёрточки. */}
-          {stars.map((st, i) => (
-            <circle key={i} cx={st.x * vw} cy={st.y * vh} r={0.7 + st.r * 0.8}
-              fill="#fff" fillOpacity={0.2 + st.r * 0.4} />
-          ))}
-
-          {/* Зарево там, где светило сейчас пересекает горизонт. */}
-          <ellipse cx={frac < 0.5 ? riseX : setX} cy={cy} rx={vw * 0.3} ry={vh * 0.32} fill="url(#horizonGlow)" />
-
-          {/* Небо под дугой */}
-          <path d={`${arc(setX, cy)} L ${riseX} ${cy} Z`} fill="url(#arcFill)" />
-          {/* Сама дуга и пройденная часть */}
-          <path d={arc(setX, cy)} fill="none" stroke="#fff" strokeOpacity="0.28" strokeWidth="1.6" strokeLinecap="round" />
-          <path d={arc(bodyX, bodyY)} fill="none" stroke="url(#arcDone)" strokeWidth="2.4" strokeLinecap="round" />
-
-          <line x1="6" y1={cy} x2={vw - 6} y2={cy} stroke="#fff" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="2 5" />
-          <circle cx={riseX} cy={cy} r="2.6" fill="#fff" fillOpacity="0.8" />
-          <circle cx={setX} cy={cy} r="2.6" fill="#fff" fillOpacity="0.8" />
-
-          {/* Светило. Размер от высоты плитки: на большой плитке крошечное солнце теряется. */}
-          <circle cx={bodyX} cy={bodyY} r={bodyR * 2.6} fill="url(#bodyGlow)" />
-          {isDay ? (
-            <>
-              <circle cx={bodyX} cy={bodyY} r={bodyR * 1.4} fill="#FFF3C4" fillOpacity="0.5" />
-              <circle cx={bodyX} cy={bodyY} r={bodyR} fill="url(#sunCore)" />
-            </>
-          ) : (
-            <g>
-              <circle cx={bodyX} cy={bodyY} r={bodyR} fill="url(#moonCore)" mask="url(#moonMask)" />
-              {/* Моря — то, что отличает луну от белого кружка. */}
-              <g mask="url(#moonMask)" fill="#AFBBD4" fillOpacity="0.45">
-                <circle cx={bodyX - bodyR * 0.3} cy={bodyY - bodyR * 0.24} r={bodyR * 0.24} />
-                <circle cx={bodyX + bodyR * 0.05} cy={bodyY + bodyR * 0.3} r={bodyR * 0.16} />
-                <circle cx={bodyX - bodyR * 0.38} cy={bodyY + bodyR * 0.33} r={bodyR * 0.11} />
-              </g>
-            </g>
-          )}
-        </svg>
-      </div>
-
-      {/* Стеклянная полоса вместо эмодзи в строку: их рисует система, каждый своим стилем, и на
-          фирменном небе они читались наклейками. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: sp(2),
-        flex: 'none', marginTop: sp(2), padding: `${sp(1)}px ${sp(3)}px`,
-        borderRadius: RADIUS.pill,
-        background: 'rgba(255,255,255,0.16)',
-        backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-        border: '1px solid rgba(255,255,255,0.22)',
-        fontSize: 'var(--fs-xs)',
-      }}>
-        <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.95 }}>{minutesToHHMM(sunrise)}</span>
-        <span style={{ opacity: 0.95, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {label}
-        </span>
-        <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.95 }}>{minutesToHHMM(sunset)}</span>
-      </div>
-    </Tile>
-  );
-}
-
-function minutesToHHMM(m: number): string {
-  const h = Math.floor(m / 60), min = m % 60;
-  return `${h}:${String(min).padStart(2, '0')}`;
 }
 
 // ── Погода ────────────────────────────────────────────────────────────────────
@@ -1397,4 +1242,6 @@ export const WIDGET_RENDERERS: Record<string, (p: WidgetProps) => React.ReactEle
   downloads: DownloadsWidget,
   holiday: HolidayWidget,
   tracking: TrackingWidget,
+  calendar: CalendarWidget,
+  timer: TimerWidget,
 };

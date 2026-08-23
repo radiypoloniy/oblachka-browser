@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DISPLAY, RADIUS } from '../../styles/system';
 import { Tile, TileCaption, Sparkline, TONE_GREEN, TONE_WARM, FILL_GREEN, FILL_WARM, type WidgetProps } from './widgets';
+import { CalendarFace, TimerLayout } from './clockFaces';
+import {
+  TIMER_PRESETS, loadTimer, saveTimer, subscribeTimer, timerLeftMs, timerRunning,
+  type TimerState,
+} from '../../newtab/timerStore';
 import type { TrackedProduct } from '../../../shared/ipc';
 import type { DayDigestState } from '../../../shared/ipc';
 
@@ -493,4 +498,123 @@ function dayWord(n: number): string {
   if (last === 1) return 'день';
   if (last >= 2 && last <= 4) return 'дня';
   return 'дней';
+}
+
+// ── Календарь месяца ──────────────────────────────────────────────────────────
+//
+// ⚠️ Отдельный виджет, а не «часы с сеткой дней». Прежний плакат месяца пытался быть сразу
+// календарём и часами, и время в нём проигрывало вниманием сетке — на плитке помещается ровно
+// один герой. Часы рядом свои, и это честнее: их и календарь ставят по разным причинам.
+//
+// ⚠️ Плитка СТЕКЛЯННАЯ (см. Tile.glass): внутри крупная типографика и тонкая сетка, и на плотной
+// заливке лист читается как наклейка поверх стола, а не как его часть.
+export function CalendarWidget({ fill, overImage, hero }: WidgetProps) {
+  const [now, setNow] = useState(() => new Date());
+  // Раз в минуту: календарю секунды не нужны вовсе, но полночь он обязан пережить сам — иначе
+  // «сегодня» останется на вчерашнем числе до перезагрузки вкладки.
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <Tile surface glass overImage={overImage} hero={hero} fill={fill} padding={0}>
+      <CalendarFace now={now} />
+    </Tile>
+  );
+}
+
+// ── Таймер ────────────────────────────────────────────────────────────────────
+//
+// ⚠️ Состояние — в своём хранилище (newtab/timerStore.ts), а не в раскладке стола: идущий таймер
+// это состояние момента, и класть его в файл раскладки означало бы писать раскладку на диск
+// каждую секунду.
+//
+// ⚠️ Своего звука у нас нет и не заводится файлом: короткий сигнал синтезируется WebAudio на
+// месте. Файл ради одного «пик» — это лишний ассет в сборке и лишний путь, который может не
+// найтись; ноль зависимостей стоит здесь дешевле.
+export function TimerWidget({ box, fill, overImage, hero }: WidgetProps) {
+  const [state, setState] = useState(loadTimer);
+  const [, setTick] = useState(0);
+  const beeped = useRef(false);
+
+  useEffect(() => subscribeTimer(() => setState(loadTimer())), []);
+
+  // Тик раз в секунду и только пока идёт: остановленный таймер не должен будить вкладку.
+  const running = timerRunning(state);
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setTick((v) => v + 1), 1000);
+    return () => clearInterval(t);
+  }, [running]);
+
+  const left = timerLeftMs(state);
+
+  // Сигнал ровно один раз на срабатывание. ⚠️ Флаг снимается при любом новом запуске, иначе
+  // второй таймер за сеанс отработал бы молча.
+  useEffect(() => {
+    if (left > 0 || state.endAt === 0) return;
+    if (beeped.current) return;
+    beeped.current = true;
+    beep();
+    // Отсчёт кончился — переводим в остановленное состояние, чтобы плитка не считала мимо нуля.
+    saveTimer({ ...state, endAt: 0, leftMs: 0 });
+  }, [left, state]);
+
+  const apply = (next: TimerState): void => {
+    beeped.current = next.endAt > 0 ? false : beeped.current;
+    setState(next);
+    saveTimer(next);
+  };
+
+  const mm = Math.floor(left / 60_000);
+  const ss = String(Math.floor((left % 60_000) / 1000)).padStart(2, '0');
+  const progress = state.durationMs > 0 ? 1 - left / state.durationMs : 0;
+  const presetId = TIMER_PRESETS.find((p) => p.ms === state.durationMs)?.id ?? '';
+
+  return (
+    <Tile surface glass overImage={overImage} hero={hero} fill={fill} padding={0}>
+      <TimerLayout
+        w={box.width}
+        h={box.height}
+        title="таймер"
+        leftLabel={`${mm}:${ss}`}
+        running={running}
+        progress={progress}
+        presets={TIMER_PRESETS.map(({ id, label }) => ({ id, label }))}
+        preset={presetId}
+        // ⚠️ Выбор длительности СРАЗУ ЗАПУСКАЕТ отсчёт. Отдельная кнопка «старт» после выбора —
+        // лишнее движение: человек нажимает «20», потому что хочет двадцать минут прямо сейчас.
+        onPreset={(id) => {
+          const ms = TIMER_PRESETS.find((p) => p.id === id)?.ms ?? state.durationMs;
+          apply({ durationMs: ms, endAt: Date.now() + ms, leftMs: ms });
+        }}
+        onToggle={() => {
+          if (running) apply({ ...state, endAt: 0, leftMs: left });
+          else apply({ ...state, endAt: Date.now() + Math.max(left, 1000), leftMs: left });
+        }}
+        onStop={() => apply({ durationMs: state.durationMs, endAt: 0, leftMs: state.durationMs })}
+      />
+    </Tile>
+  );
+}
+
+/** Короткий сигнал окончания. Молча ничего не делает, если звук недоступен. */
+function beep(): void {
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    // Мягкий спад вместо щелчка: резкий обрыв синуса слышен как треск.
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.62);
+    osc.onended = () => void ctx.close();
+  } catch { /* звук запрещён политикой автовоспроизведения — плитка всё равно показала ноль */ }
 }

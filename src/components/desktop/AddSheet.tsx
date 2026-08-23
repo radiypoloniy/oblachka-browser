@@ -26,6 +26,8 @@ const NETWORK_WIDGETS: Record<string, string> = {
 const WIDGET_CHOICES: { key: string; label: string; hint: string; size: keyof typeof WIDGET_SIZES }[] = [
   { key: 'weather',  label: 'Погода',           hint: 'Прогноз на ближайшие часы', size: 'medium' },
   { key: 'clock',    label: 'Часы',             hint: 'Время и дата',              size: 'small' },
+  { key: 'calendar', label: 'Календарь',        hint: 'Месяц целиком · без сети',  size: 'small' },
+  { key: 'timer',    label: 'Таймер',           hint: '5, 10 или 20 минут · без сети', size: 'small' },
   { key: 'rates',    label: 'Курс валют',       hint: 'ЦБ РФ и график за месяц',   size: 'small' },
   { key: 'crypto',   label: 'Крипта',           hint: 'Цены в рублях и за 24 часа', size: 'small' },
   { key: 'tasks',    label: 'Дела',             hint: 'Список с галочками',        size: 'medium' },
@@ -109,7 +111,7 @@ export default function AddSheet({ layout, onAdd, onClose }: Props) {
                 width: 40, height: 40, borderRadius: RADIUS.box, flex: 'none',
                 background: 'var(--surface-sunken)', display: 'inline-flex',
                 alignItems: 'center', justifyContent: 'center', fontSize: 18,
-              }}>{w.key === 'weather' ? '🌤' : w.key === 'clock' ? '🕒' : w.key === 'rates' ? '₽' : w.key === 'crypto' ? '₿' : w.key === 'tasks' ? '✓' : w.key === 'shield' ? '🛡' : w.key === 'moon' ? '🌙' : w.key === 'downloads' ? '⤓' : w.key === 'holiday' ? '🎉' : w.key === 'tracking' ? '⤓' : '★'}</span>}
+              }}>{w.key === 'weather' ? '🌤' : w.key === 'clock' ? '🕒' : w.key === 'calendar' ? '📅' : w.key === 'timer' ? '⏱' : w.key === 'rates' ? '₽' : w.key === 'crypto' ? '₿' : w.key === 'tasks' ? '✓' : w.key === 'shield' ? '🛡' : w.key === 'moon' ? '🌙' : w.key === 'downloads' ? '⤓' : w.key === 'holiday' ? '🎉' : w.key === 'tracking' ? '⤓' : '★'}</span>}
             />
           ))}
           {WIDGET_CHOICES.every((w) => hasItem(layout, 'widget', w.key)) && <Empty>Все виджеты уже на экране.</Empty>}
