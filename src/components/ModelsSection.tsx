@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Trash2, AlertTriangle } from 'lucide-react';
 import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
-import { CapsLabel, OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox,
+import { CapsLabel, Subsection, OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox,
 } from './settings/kit';
-import { sp, TEXT, RADIUS } from '../styles/system';
+import { RADIUS } from '../styles/system';
 
 function gb(bytes: number): string {
   return (bytes / 1e9).toFixed(1);
@@ -138,22 +138,13 @@ export default function ModelsSection() {
   // местам ради экономии шести строк.
   if (installed === null || catalog === null) {
     return (
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 12,
-        paddingTop: 24, marginTop: 4, borderTop: '1px solid var(--divider)',
-      }}>
-        <div>
-          <h3 style={{ margin: 0, ...TEXT.section }}>
-            Локальные модели
-          </h3>
-          <p style={{ margin: `${sp(1)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)' }}>
-            Модель для AI-перевода, чата и остальных функций хранится и считается на этом устройстве.
-            Без хотя бы одной установленной модели остальные AI-функции не работают.
-          </p>
-        </div>
+      <Subsection
+        title="Локальные модели"
+        description="Модель для AI-перевода, чата и остальных функций хранится и считается на этом устройстве. Без хотя бы одной установленной модели остальные AI-функции не работают."
+      >
         <StatusCardSkeleton />
         <StatusCardSkeleton />
-      </div>
+      </Subsection>
     );
   }
 
@@ -182,20 +173,15 @@ export default function ModelsSection() {
     ? `${gb(hardware.vramTotalBytes - hardware.vramFreeBytes)} из ${gb(hardware.vramTotalBytes)} ГБ`
     : null;
 
+  // ⚠️ Subsection из kit, а НЕ своя копия. Здесь разделитель, заголовок и описание были набраны
+  // руками — и блок не получил ни меру чтения (описание тянулось на всю ширину панели), ни тон
+  // разделителя, ни дисплейный заголовок. Та же беда, что была с метками групп: копия примитива
+  // тихо отстаёт от оригинала.
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 12,
-      paddingTop: 24, marginTop: 4, borderTop: '1px solid var(--divider)',
-    }}>
-      <div>
-        <h3 style={{ margin: 0, ...TEXT.section }}>
-          Локальные модели
-        </h3>
-        <p style={{ margin: `${sp(1)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)' }}>
-          Модель для AI-перевода, чата и остальных функций хранится и считается на этом устройстве.
-          Без хотя бы одной установленной модели остальные AI-функции не работают.
-        </p>
-      </div>
+    <Subsection
+      title="Локальные модели"
+      description="Модель для AI-перевода, чата и остальных функций хранится и считается на этом устройстве. Без хотя бы одной установленной модели остальные AI-функции не работают."
+    >
 
       {/* ── Группа A: установленные ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -338,7 +324,7 @@ export default function ModelsSection() {
           </div>
         )}
       </div>
-    </div>
+    </Subsection>
   );
 }
 

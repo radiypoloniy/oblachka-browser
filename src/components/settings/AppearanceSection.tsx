@@ -162,7 +162,10 @@ export default function AppearanceSection() {
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 32, alignItems: 'flex-start' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24, flex: '1 1 360px', maxWidth: 560, minWidth: 0 }}>
+      {/* ⚠️ Ширину колонка не ограничивает: раздел двухколоночный (настройки + живой предпросмотр
+          новой вкладки), и обе колонки делят место сами. Зашитые 560 px мешали именно здесь —
+          предпросмотр прижимался к краю, хотя места было вдоволь. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6), flex: '1 1 420px', minWidth: 0 }}>
       <SectionHeader title="Интерфейс">
         Тема и палитра браузера, оформление новой вкладки — фон, часы, приветствие и быстрые ссылки.
       </SectionHeader>

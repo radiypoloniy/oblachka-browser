@@ -203,7 +203,7 @@ export function selected(active: boolean): CSSProperties {
   // ⚠️ Внутри страницы с тоном заливка берёт ЕЁ тон: синяя строка на мандариновой странице
   // читалась как элемент чужого интерфейса, и это не мелочь — выбранных строк на экране
   // несколько, то есть чужой цвет повторялся чаще собственного.
-  return { background: 'var(--section-selected, var(--selected))' };
+  return { background: 'var(--section-soft, var(--selected))' };
 }
 
 /**

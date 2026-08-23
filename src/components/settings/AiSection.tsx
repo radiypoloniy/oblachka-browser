@@ -7,7 +7,7 @@ import {
   btnPrimary, btnGhost, OptionList, OptionRow, SectionHeader, Subsection, CapsLabel, FactGrid, Fact,
   StatusCard, StatusCardSkeleton, TextField, InputRow, fieldFlex,
 } from './kit';
-import { TEXT, RADIUS } from '../../styles/system';
+import { TEXT, RADIUS, sp } from '../../styles/system';
 
 // ── Секция «AI» ───────────────────────────────────────────────────────────────
 //
@@ -25,7 +25,7 @@ export default function AiSection() {
   // разом и тут же начинал дёргаться, потому что каждый вложенный блок догружался своим темпом.
   // Теперь ждёт только та карточка, которой нечего показать; остальное монтируется сразу.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
       {/* ⚠️ Шапка стоит в КОРНЕ раздела, а не внутри одного из блоков. Раздел собран из шести
           самостоятельных кусков (модели, перевод, история, навыки, Gemini, SearXNG), и раньше
           общего заголовка у него не было вовсе: экран начинался прямо с «Локальные модели», и

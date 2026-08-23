@@ -1,4 +1,5 @@
 import { Plus, Trash2, RotateCcw } from 'lucide-react';
+import { sp } from '../../styles/system';
 import type { AdBlockState } from '../../../shared/ipc';
 import Toggle from '../Toggle';
 import {
@@ -46,7 +47,7 @@ export default function AdBlockSection({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
       {/* ⚠️ Герой — счётчик за сеанс, а не название раздела: ради этого числа сюда и заходят.
           Раньше оно лежало подписью внутри строки состояния, тем же кеглем, что и всё остальное. */}
       <SectionHeader

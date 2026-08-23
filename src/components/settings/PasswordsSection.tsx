@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sp } from '../../styles/system';
 import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, Search, ChevronRight, FileUp, Loader2 } from 'lucide-react';
 import type { PasswordMeta, PasswordCopyField } from '../../../shared/ipc';
 import Toggle from '../Toggle';
@@ -234,7 +235,7 @@ export default function PasswordsSection() {
   const count = entries?.length ?? null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
       <SectionHeader title="Пароли">
         Зашифрованный сейф на этом устройстве — записи защищены ключом, привязанным к вашей
         учётной записи Windows. Автозаполнение в веб-формы появится отдельным шагом.

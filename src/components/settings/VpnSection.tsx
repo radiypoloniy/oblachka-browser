@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { sp } from '../../styles/system';
 import { Check, Wifi, RefreshCw, Trash2 } from 'lucide-react';
 import type { VpnStatus, VpnServerMeta, VpnConnectionState } from '../../../shared/ipc';
 import { stripEmoji } from '../../../shared/text';
@@ -96,7 +97,7 @@ export default function VpnSection() {
   // миллисекунды. Ошибиться в эту сторону безопасно — «выключен» не обещает защиты.
   const connState: VpnConnectionState['state'] = conn?.state ?? 'stopped';
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
       {/* ⚠️ Герой — САМ ФАКТ подключения, а не название раздела: заходя сюда, человек хочет
           знать «я сейчас через туннель или нет», и ответ обязан быть первым, что он видит. */}
       <SectionHeader

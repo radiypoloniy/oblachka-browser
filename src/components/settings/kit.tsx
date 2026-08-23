@@ -416,6 +416,28 @@ export function Fact({ label, hint, value, active }: {
   );
 }
 
+/**
+ * ⚠️ ПОЛОСЫ ШИРИНЫ — правило, из-за которого настройки выглядели «сделанными для мини-версии».
+ *
+ * `maxWidth: 560` был зашит в шести разделах из десяти; те, что писались позже (профили,
+ * разрешения, правила), его не ставили и тянулись на всю панель. Отсюда и разнобой, и половина
+ * пустого экрана на широком окне.
+ *
+ * Ширину определяет ВИД СОДЕРЖИМОГО, а не раздел — тогда новый блок встаёт правильно сам, и
+ * договариваться каждый раз заново не нужно:
+ *
+ *  • ЧТЕНИЕ (`Read`) — абзацы, описания, подсказки. Мера 68ch: глаз теряет начало следующей
+ *    строки после ~75 знаков, и растянуть текст на 1400 px значит сделать его нечитаемым.
+ *  • СЕТКА (`FactGrid`) — плитки перестраиваются сами, 2 → 3 → 4 в ряд.
+ *  • ПОЛНАЯ (по умолчанию) — списки данных: у их строк есть правый край с действиями, и ширина
+ *    ему нужна.
+ *
+ * Проверка простая: справа у блока что-то есть — он полной ширины; это текст — он в `Read`.
+ */
+export function Read({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <div style={{ maxWidth: MEASURE, ...style }}>{children}</div>;
+}
+
 // Капс-лейбл группы («ССЫЛКА ПОДПИСКИ», «ИСКЛЮЧЕНИЯ»…). style — для точечных отклонений
 // (напр. flex:1 + ellipsis в шапке списка паролей).
 export function CapsLabel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
@@ -549,7 +571,7 @@ export function TextField({
         onKeyDown={onEnter ? (e) => { if (e.key === 'Enter') onEnter(); } : undefined}
         // ⚠️ Фокус подсвечивается ТОНОМ раздела, а не акцентом палитры: на цветной странице
         // синяя рамка вокруг поля — тот же чужой элемент, что и синяя кнопка была.
-        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--section-mark, var(--accent))')}
+        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--section-tone, var(--accent))')}
         onBlur={(e) => (e.currentTarget.style.borderColor = error ? errorColor : 'var(--divider-strong)')}
         style={{
           ...inputBase,
@@ -699,18 +721,19 @@ interface OptionRowProps {
 
 export function OptionRow({
   title, subtitle, active = false, disabled, onClick, badge, badge2, actions, selectable,
-  // ⚠️ Отметка выбора — ТОНОМ раздела (--section-mark). Синяя галочка на бирюзовой странице
+  // ⚠️ Отметка выбора — ТОНОМ раздела (--section-tone). Синяя галочка на бирюзовой странице
   // была самым заметным чужим элементом: выбранных строк на экране несколько, то есть чужой
   // цвет повторялся чаще, чем свой.
-  icon, markerColor = 'var(--section-mark, var(--accent))',
+  icon, markerColor = 'var(--section-tone, var(--accent))',
 }: OptionRowProps) {
   const canSelect = selectable ?? onClick !== undefined;
   // ⚠️ Заливка ТОЛЬКО у выбранного и ТОЛЬКО акцентная (готовый токен, посчитанный от акцента
   // палитры): у выбора ровно одно значение — «вот этот», и читаться он обязан одинаково во всех
   // палитрах и обеих темах.
-  // ⚠️ Заливка выбранного берёт ТОН СТРАНИЦЫ (--section-selected ведёт на мягкую долю тона, а
-  // без тона — на прежний --selected, поэтому экраны вне настроек не меняются).
-  const activeFill = active ? 'var(--section-selected, var(--selected))' : 'transparent';
+  // ⚠️ Заливка выбранного берёт мягкую долю тона страницы; без тона — прежний --selected,
+  // поэтому экраны вне настроек не меняются. Подстановка пишется ЗДЕСЬ, а не отдельным токеном
+  // на :root: там var() вычислился бы до того, как раздел объявит тон (см. colors.css).
+  const activeFill = active ? 'var(--section-soft, var(--selected))' : 'transparent';
   // ⚠️ Полосы у левого края больше нет: она компенсировала невидимую заливку в 10 % акцента.
   // Заливка теперь одна на всё приложение и посчитана по контрасту (--selected), см. system.selected().
   const activeEdge = undefined;

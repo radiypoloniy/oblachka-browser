@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { sp } from '../../styles/system';
 import { Plus, Trash2, Pencil, MapPin, CreditCard, Eye, EyeOff } from 'lucide-react';
 import type { AddressProfile, AddressInput, CardMeta, ParsedAddressPart } from '../../../shared/ipc';
 import {
@@ -44,7 +45,7 @@ export default function AutofillSection() {
   if (addresses === null || cards === null) return <LoadingNote />;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
       <SectionHeader title="Автозаполнение">
         Адреса и банковские карты для быстрого заполнения форм. Данные зашифрованы на этом
         устройстве; CVC/CVV карт не сохраняется. Подстановка в формы появится следующим шагом.
