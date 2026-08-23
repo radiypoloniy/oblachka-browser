@@ -1,5 +1,5 @@
 import { Children, Fragment, useEffect, useRef, useState } from 'react';
-import { sp, pad, RADIUS, TEXT, ROW_TITLE, CAPS, MEASURE, motion, well } from '../../styles/system';
+import { sp, pad, RADIUS, TEXT, ROW_TITLE, CAPS, MEASURE, DISPLAY, grain, motion, well } from '../../styles/system';
 import { Check } from 'lucide-react';
 
 // ── Набор презентационных примитивов раздела настроек ─────────────────────────
@@ -113,17 +113,103 @@ export function IconBtn({ title, active, onClick, children }: {
 // ── Заголовки и подписи ───────────────────────────────────────────────────────
 
 // Заголовок секции верхнего уровня (h2 + серое описание под ним).
-export function SectionHeader({ title, children }: { title: string; children?: React.ReactNode }) {
+/**
+ * Плакатные цвета разделов (дизайн-система 2.0). Ключ — тон, значение — пара «фон + краска».
+ *
+ * ⚠️ Пара обязательна и не вкусовая: на мандарине, горчице, лайме и небе контраст чернил выше
+ * 7:1, а белого ниже 3:1; на чае и страсти наоборот. Взять «белый, потому что на цвете всегда
+ * белый» — значит сделать горчичный раздел нечитаемым.
+ */
+export type PosterTone = 'tangerine' | 'mustard' | 'lime' | 'tea' | 'sky' | 'passion';
+const POSTER_INK: Record<PosterTone, string> = {
+  tangerine: 'var(--on-poster-dark)',
+  mustard: 'var(--on-poster-dark)',
+  lime: 'var(--on-poster-dark)',
+  sky: 'var(--on-poster-dark)',
+  tea: 'var(--on-poster-light)',
+  passion: 'var(--on-poster-light)',
+};
+
+/**
+ * Шапка раздела настроек.
+ *
+ * ⚠️ ЦВЕТНАЯ ПЛОСКОСТЬ, а не строка текста, и это главная правка редизайна 23.08. Раньше раздел
+ * открывался заголовком 22-го кегля на общем фоне — и двадцать один раздел выглядел одинаково.
+ * Человек не жаловался на «некрасиво»: он говорил «скучно вне стола», и это точный диагноз.
+ * Свой цвет делает раздел УЗНАВАЕМЫМ: «Приватность» всегда мандариновая, и после третьего
+ * открытия её находят по цвету, не читая.
+ *
+ * ⚠️ ГЕРОЙСКОЕ ЧИСЛО (`hero`) — не украшение. Это ответ на вопрос, ради которого раздел
+ * открывают: сколько трекеров заблокировано, сколько паролей хранится, сколько места занято.
+ * Раньше такие числа лежали строкой списка наравне с подписями — то есть главное было набрано
+ * тем же кеглем, что второстепенное.
+ *
+ * ⚠️ Дисплейная гарнитура здесь УМЕСТНА: это «лицо» раздела, а не плотный набор в мелком кегле,
+ * ради которого её держат вне интерфейса (см. DISPLAY в styles/system.ts).
+ */
+export function SectionHeader({ title, tone, hero, heroLabel, children }: {
+  title: string;
+  /** Тон раздела. Без него шапка остаётся тихой — так живут служебные разделы. */
+  tone?: PosterTone;
+  /** Главное число раздела. */
+  hero?: React.ReactNode;
+  /** Подпись под числом: что оно значит. */
+  heroLabel?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  if (!tone) {
+    return (
+      <div>
+        {/* ⚠️ Заголовок раздела — 22, а не 16: разница с описанием обязана быть ЗАМЕТНОЙ. Раньше
+            заголовок (16/700) и описание (14) отличались на два пункта, иерархии не возникало и
+            экран читался серой массой (см. TEXT в styles/system.ts). */}
+        <h2 style={{ margin: 0, ...TEXT.title }}>{title}</h2>
+        {children && (
+          <p style={{ margin: `${sp(2)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)', maxWidth: MEASURE }}>
+            {children}
+          </p>
+        )}
+      </div>
+    );
+  }
+  const ink = POSTER_INK[tone];
   return (
-    <div>
-      {/* ⚠️ Заголовок раздела — 22, а не 16: разница с описанием обязана быть ЗАМЕТНОЙ. Раньше
-          заголовок (16/700) и описание (14) отличались на два пункта, иерархии не возникало и
-          экран читался серой массой (см. TEXT в styles/system.ts). */}
-      <h2 style={{ margin: 0, ...TEXT.title }}>{title}</h2>
+    <div style={{
+      background: `var(--poster-${tone})`,
+      color: ink,
+      // ⚠️ Отрицательные поля ВЫЧИТАЮТ ИМЕННО padding панели (pad(6, 8) в Settings.tsx —
+      // 24 сверху, 32 по бокам), поэтому шапка идёт от края до края, как в рефах, а не висит
+      // карточкой внутри отступов. Числа связаны: поменяется padding панели — поменять и здесь.
+      margin: `-${sp(6)}px -${sp(8)}px ${sp(6)}px`,
+      padding: `${sp(6)}px ${sp(8)}px`,
+      // ⚠️ Левый верхний угол ПРЯМОЙ, остальные скруглены. Шапка упирается в край панели слева
+      // и сверху — круглый угол там открыл бы полоску фона, — а справа она кончается вместе с
+      // колонкой содержимого, и прямой обрыв читался бы как ошибка вёрстки.
+      borderRadius: `0 ${RADIUS.content}px ${RADIUS.content}px ${RADIUS.content}px`,
+      position: 'relative', overflow: 'hidden',
+    }}>
+      {/* Зерно поверх заливки — та же текстура, что на карточках стола (grain в system.ts).
+          Она и отличает «напечатано» от «залито в макете». */}
+      <div style={grain} />
+      <h2 style={{
+        margin: 0, ...DISPLAY,
+        fontSize: hero ? 22 : 30, fontWeight: 700, letterSpacing: '-0.02em',
+        color: 'inherit', position: 'relative',
+      }}>{title}</h2>
+      {hero !== undefined && (
+        <div style={{
+          ...DISPLAY, fontSize: 54, fontWeight: 800, lineHeight: 1.02,
+          letterSpacing: '-0.04em', marginTop: sp(2), color: 'inherit', position: 'relative',
+        }}>{hero}</div>
+      )}
+      {heroLabel && (
+        <div style={{ ...TEXT.body, opacity: 0.72, color: 'inherit', position: 'relative' }}>{heroLabel}</div>
+      )}
       {children && (
-        <p style={{ margin: `${sp(2)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)', maxWidth: MEASURE }}>
-          {children}
-        </p>
+        <p style={{
+          margin: `${sp(2)}px 0 0`, ...TEXT.body, opacity: 0.78,
+          color: 'inherit', maxWidth: MEASURE, position: 'relative',
+        }}>{children}</p>
       )}
     </div>
   );

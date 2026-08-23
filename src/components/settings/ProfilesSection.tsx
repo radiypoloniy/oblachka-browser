@@ -111,7 +111,7 @@ export default function ProfilesSection() {
 
   return (
     <>
-      <SectionHeader title="Профили" />
+      <SectionHeader title="Профили" tone="sky" />
 
       <Subsection
         title="Зачем это нужно"

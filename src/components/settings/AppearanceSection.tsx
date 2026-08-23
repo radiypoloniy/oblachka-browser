@@ -163,7 +163,7 @@ export default function AppearanceSection() {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 32, alignItems: 'flex-start' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24, flex: '1 1 360px', maxWidth: 560, minWidth: 0 }}>
-      <SectionHeader title="Интерфейс">
+      <SectionHeader title="Интерфейс" tone="lime">
         Тема и палитра браузера, оформление новой вкладки — фон, часы, приветствие и быстрые ссылки.
       </SectionHeader>
 

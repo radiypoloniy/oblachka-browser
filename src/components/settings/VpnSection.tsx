@@ -85,7 +85,7 @@ export default function VpnSection() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
-      <SectionHeader title="VPN">
+      <SectionHeader title="VPN" tone="passion">
         Вставьте ссылку подписки от вашего VPN-сервиса (vless/trojan) — так же, как в Happ или
         Hiddify. Ссылка и серверы хранятся зашифрованными на этом устройстве, никуда, кроме
         вашего провайдера, не отправляются. Подключение пока экспериментальное: поднимает

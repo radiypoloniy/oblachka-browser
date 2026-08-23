@@ -32,9 +32,15 @@ export default function AdBlockSection({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
-      <SectionHeader title="Блокировка рекламы и трекеров">
-        Фильтрует рекламу и трекеры через EasyList / EasyPrivacy.
-        Работает на уровне сетевых запросов — быстрее расширений браузера.
+      {/* ⚠️ Герой — счётчик за сеанс, а не название раздела: ради этого числа сюда и заходят.
+          Раньше оно лежало подписью внутри строки состояния, тем же кеглем, что и всё остальное. */}
+      <SectionHeader
+        title="Блокировка рекламы"
+        tone="tangerine"
+        hero={state.sessionBlockCount.toLocaleString('ru')}
+        heroLabel={state.sessionBlockCount === 1 ? 'запрос заблокирован за сеанс' : 'запросов заблокировано за сеанс'}
+      >
+        EasyList и EasyPrivacy на уровне сетевых запросов — быстрее расширений браузера.
       </SectionHeader>
 
       {/* Уведомление о перезагрузке */}
@@ -61,7 +67,9 @@ export default function AdBlockSection({
           ? <Shield size={22} style={{ color: 'var(--text-body)', flex: 'none' }} />
           : <ShieldOff size={22} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
         title={state.enabled ? 'Блокировка включена' : 'Блокировка выключена'}
-        subtitle={`Заблокировано за сессию: ${state.sessionBlockCount.toLocaleString('ru')}`}
+        // ⚠️ Счётчик отсюда УБРАН: он теперь герой шапки. Одно и то же число, сказанное дважды
+        // на одном экране, — это не «подчеркнули важное», а шум.
+        subtitle={state.enabled ? 'Реклама и трекеры режутся на всех сайтах, кроме исключений' : 'Сайты грузятся как есть'}
         actions={<Toggle checked={state.enabled} onChange={onToggle} />}
       />
 

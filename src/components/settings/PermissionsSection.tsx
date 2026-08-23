@@ -80,7 +80,7 @@ export default function PermissionsSection() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <SectionHeader title="Разрешения сайтов">
+      <SectionHeader title="Разрешения сайтов" tone="mustard">
         Что сайты могут запрашивать у браузера. Решение запоминается, когда вы отвечаете на вопрос
         с галочкой «запомнить», — здесь его можно посмотреть и изменить.
       </SectionHeader>

@@ -137,7 +137,7 @@ export default function RulesSection() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
-      <SectionHeader title="Правила">
+      <SectionHeader title="Правила" tone="tangerine">
         Браузер сам делает мелкую работу: раскладывает вкладки по группам, закрепляет нужные,
         включает VPN на выбранных сайтах. Правило выполняется обычным кодом — модель для этого
         не нужна и не запускается.
