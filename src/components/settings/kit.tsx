@@ -1,5 +1,5 @@
 import { Children, Fragment, useEffect, useRef, useState } from 'react';
-import { sp, pad, RADIUS, TEXT, ROW_TITLE, CAPS, MEASURE, DISPLAY, grain, motion, well } from '../../styles/system';
+import { sp, pad, RADIUS, TEXT, CAPS, MEASURE, DISPLAY, DISPLAY_CARD, DISPLAY_ROW, grain, motion, well } from '../../styles/system';
 import { Check } from 'lucide-react';
 
 // ── Набор презентационных примитивов раздела настроек ─────────────────────────
@@ -15,17 +15,47 @@ export const errorColor = 'var(--danger-500)';
 
 // ⚠️ Отклик на наведение стоит ЗДЕСЬ, в самом рецепте кнопки, а не у каждого потребителя:
 // иначе анимированными окажутся те кнопки, до которых дошли руки (см. motion в styles/system.ts).
+/**
+ * ⚠️ КНОПКИ — ПИЛЮЛИ И ЧЕРНИЛА (дизайн-система 2.0).
+ *
+ * Живой отзыв после первого шага: «есть красивая вершина, дальше начинается старое». Причина
+ * оказалась не в мелочах, а в том, что в настройках жили ДВЕ несогласованные системы: новая
+ * шапка (пилюли, дисплейная гарнитура, чернила) и старые контролы (радиус 10, синий акцент,
+ * кегль 14). Никакая подкраска этого не лечит — примитивы переписаны целиком.
+ *
+ * Главная кнопка — ЧЕРНИЛА, а не акцент палитры: синяя кнопка посреди мандаринового или
+ * бирюзового раздела читается как деталь из чужого интерфейса. Чернила не спорят с тоном
+ * вовсе — это не второй цвет, а контраст. Акцент остаётся в хроме, где тона нет.
+ */
 export const btnPrimary: React.CSSProperties = {
-  padding: pad(2, 4), borderRadius: RADIUS.control, border: 'none',
-  background: 'var(--accent)', color: 'var(--on-accent)',
-  fontSize: TEXT.body.fontSize, fontWeight: 600, cursor: 'default', flex: 'none',
+  padding: pad(2, 4), borderRadius: RADIUS.pill, border: 'none',
+  background: 'var(--text-strong)', color: 'var(--app-bg)',
+  fontSize: TEXT.body.fontSize, fontWeight: 650, cursor: 'default', flex: 'none',
   whiteSpace: 'nowrap',
   transition: motion.hover('background', 'transform', 'box-shadow'),
 };
+
+/**
+ * Кнопка ТОНОМ раздела — для одного главного действия на блок («Добавить», «Скачать»).
+ *
+ * ⚠️ Ровно одна на блок: если тоном покрасить и «Добавить», и «Убрать», тон перестанет означать
+ * «главное действие» и станет просто вторым цветом кнопок.
+ */
+export const btnTone: React.CSSProperties = {
+  padding: pad(2, 4), borderRadius: RADIUS.pill, border: 'none',
+  background: 'var(--section-tone, var(--accent))', color: 'var(--section-ink, var(--on-accent))',
+  fontSize: TEXT.body.fontSize, fontWeight: 650, cursor: 'default', flex: 'none',
+  whiteSpace: 'nowrap',
+  transition: motion.hover('background', 'transform'),
+};
+
 export const btnGhost: React.CSSProperties = {
-  padding: pad(2, 4), borderRadius: RADIUS.control,
-  border: '1px solid var(--divider-strong)', background: 'transparent',
-  color: 'var(--text-body)', fontSize: TEXT.body.fontSize, cursor: 'default', flex: 'none',
+  // ⚠️ Пилюля, как и у остальных: две формы кнопок на одном экране читаются как два разных
+  // набора контролов, и починить это в каждом месте вызова нельзя — только здесь.
+  padding: pad(2, 4), borderRadius: RADIUS.pill,
+  border: '1.5px solid var(--divider-strong)', background: 'transparent',
+  color: 'var(--text-body)', fontSize: TEXT.body.fontSize, fontWeight: 500,
+  cursor: 'default', flex: 'none',
   transition: motion.hover('background', 'border-color', 'transform'),
 };
 
@@ -412,7 +442,9 @@ export function InlineError({ children, style }: { children: React.ReactNode; st
 }
 
 export function InlineHint({ children }: { children: React.ReactNode }) {
-  return <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{children}</span>;
+  // ⚠️ Кегль подписи, а не самый мелкий: подсказки в настройках объясняют цену решения
+  // («очистка сотрёт логины»), и набирать их мельче всего на экране — значит прятать важное.
+  return <span style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>{children}</span>;
 }
 
 // ── Карточка статуса ──────────────────────────────────────────────────────────
@@ -459,8 +491,10 @@ export function StatusCard({ icon, title, subtitle, actions }: {
     }}>
       {icon}
       <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-        <div style={ROW_TITLE}>{title}</div>
-        {subtitle && <div style={{ ...TEXT.caption, marginTop: sp(1) }}>{subtitle}</div>}
+        {/* ⚠️ Заголовок карточки — дисплейной гарнитурой, как у MasterSwitch и Fact. Пока он был
+            обычным ROW_TITLE, карточка выглядела элементом другой системы, чем шапка над ней. */}
+        <div style={DISPLAY_CARD}>{title}</div>
+        {subtitle && <div style={{ ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1) }}>{subtitle}</div>}
       </div>
       {actions}
     </div>
@@ -513,7 +547,9 @@ export function TextField({
         maxLength={maxLength}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onEnter ? (e) => { if (e.key === 'Enter') onEnter(); } : undefined}
-        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+        // ⚠️ Фокус подсвечивается ТОНОМ раздела, а не акцентом палитры: на цветной странице
+        // синяя рамка вокруг поля — тот же чужой элемент, что и синяя кнопка была.
+        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--section-mark, var(--accent))')}
         onBlur={(e) => (e.currentTarget.style.borderColor = error ? errorColor : 'var(--divider-strong)')}
         style={{
           ...inputBase,
@@ -581,8 +617,11 @@ export const fieldFlex: React.CSSProperties = { flex: '1 1 200px' };
 // Проверка `scripts/conventions-check.mjs` следит, чтобы в файлах настроек не появлялись
 // islandPlate, boxShadow и сырые заливки: система разъезжается тихо, по одной «мелкой правке».
 export const settingsBox: React.CSSProperties = {
-  border: '1px solid var(--divider-strong)',
-  borderRadius: RADIUS.box,
+  // ⚠️ Радиус КОНТЕНТНЫЙ (20), а не коробочный (12). Шапка раздела скруглена по 20, и коробка с
+  // радиусом 12 под ней читалась как деталь из другого набора — это и есть «две несогласованные
+  // системы» в самом заметном виде. Кромка тоньше и мягче: рамка держит группу, а не обводит её.
+  border: '1px solid var(--divider)',
+  borderRadius: RADIUS.content,
   overflow: 'hidden',
 };
 
@@ -660,13 +699,18 @@ interface OptionRowProps {
 
 export function OptionRow({
   title, subtitle, active = false, disabled, onClick, badge, badge2, actions, selectable,
-  icon, markerColor = 'var(--accent)',
+  // ⚠️ Отметка выбора — ТОНОМ раздела (--section-mark). Синяя галочка на бирюзовой странице
+  // была самым заметным чужим элементом: выбранных строк на экране несколько, то есть чужой
+  // цвет повторялся чаще, чем свой.
+  icon, markerColor = 'var(--section-mark, var(--accent))',
 }: OptionRowProps) {
   const canSelect = selectable ?? onClick !== undefined;
   // ⚠️ Заливка ТОЛЬКО у выбранного и ТОЛЬКО акцентная (готовый токен, посчитанный от акцента
   // палитры): у выбора ровно одно значение — «вот этот», и читаться он обязан одинаково во всех
   // палитрах и обеих темах.
-  const activeFill = active ? 'var(--selected)' : 'transparent';
+  // ⚠️ Заливка выбранного берёт ТОН СТРАНИЦЫ (--section-selected ведёт на мягкую долю тона, а
+  // без тона — на прежний --selected, поэтому экраны вне настроек не меняются).
+  const activeFill = active ? 'var(--section-selected, var(--selected))' : 'transparent';
   // ⚠️ Полосы у левого края больше нет: она компенсировала невидимую заливку в 10 % акцента.
   // Заливка теперь одна на всё приложение и посчитана по контрасту (--selected), см. system.selected().
   const activeEdge = undefined;
@@ -681,15 +725,21 @@ export function OptionRow({
           ? <Check size={18} style={{ color: markerColor, flex: 'none' }} />
           : <span style={{ width: 18, flex: 'none' }} />)}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={ROW_TITLE}>{title}</div>
-        {subtitle && <div style={{ ...TEXT.caption, marginTop: sp(1) }}>{subtitle}</div>}
+        {/* Заголовок строки — дисплейной гарнитурой: та же роль, что у Fact и MasterSwitch, и
+            список перестаёт быть «серой массой из строк кегля 14». */}
+        <div style={DISPLAY_ROW}>{title}</div>
+        {subtitle && <div style={{ ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1) - 3 }}>{subtitle}</div>}
       </div>
       {(badge || badge2) && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: sp(1), flex: 'none' }}>
+          {/* ⚠️ Бейдж — ЧИП С ЗАЛИВКОЙ, а не цветное слово. Зелёное «ГОТОВ» посреди строки
+              читалось как ошибка вёрстки: цвет висел в воздухе, ни на чём. Чип даёт ему форму,
+              а заливка берётся из его же цвета — один источник, без второго токена. */}
           {[badge, badge2].map((b, i) => b && (
             <span key={i} style={{
-              fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
-              color: b.color,
+              ...CAPS, color: b.color, letterSpacing: '0.08em',
+              background: `color-mix(in srgb, ${b.color} 14%, transparent)`,
+              padding: `2px ${sp(2)}px`, borderRadius: RADIUS.pill, whiteSpace: 'nowrap',
             }}>
               {b.text}
             </span>
@@ -700,7 +750,8 @@ export function OptionRow({
   );
 
   const shared: React.CSSProperties = {
-    display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(3, 4), width: '100%',
+    // Воздуха больше: строка была плотнее всего остального на экране.
+    display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(4), width: '100%',
     textAlign: 'left', border: 'none', boxSizing: 'border-box', flex: 1, minWidth: 0,
     background: actions ? 'transparent' : activeFill,
     boxShadow: actions ? undefined : activeEdge,
@@ -741,8 +792,10 @@ export function OptionRow({
 // а приподнятую фишку внутри дорожки — без неё выбранный сегмент неотличим от фона дорожки.
 export function segBtnStyle(active: boolean, color?: string): React.CSSProperties {
   return {
-    flex: 'none', padding: pad(2, 4), borderRadius: RADIUS.control - 2, border: 'none',
-    cursor: 'default', fontSize: TEXT.body.fontSize, fontWeight: active ? 600 : 400,
+    // ⚠️ Пилюля: сегменты стоят рядом с кнопками-пилюлями, и прямоугольный сегмент рядом с
+    // круглой кнопкой — самый заметный признак двух разных наборов контролов на экране.
+    flex: 'none', padding: pad(2, 4), borderRadius: RADIUS.pill, border: 'none',
+    cursor: 'default', fontSize: TEXT.body.fontSize, fontWeight: active ? 650 : 450,
     background: active ? 'var(--surface)' : 'transparent',
     boxShadow: active ? 'var(--shadow-card)' : 'none',
     color: color ?? (active ? 'var(--text-strong)' : 'var(--text-muted)'),
@@ -760,10 +813,11 @@ export function SegTrack({ children }: { children: React.ReactNode }) {
     // колонку, КОНТРОЛ — никогда.
     <div style={{
       display: 'inline-flex', alignSelf: 'flex-start', gap: sp(1) - 2, padding: sp(1) - 1,
+      borderRadius: RADIUS.pill,
       // Общий рецепт углубления — тот же, что под переключателем сайдбара (см. well в system.ts).
       // Раньше здесь стояла своя заливка --surface-sunken: на белой панели настроек она видна, на
       // земле — нет, и два одинаковых с виду контрола держались разными способами.
-      ...well(RADIUS.control),
+      ...well(RADIUS.pill),
       maxWidth: '100%', flexWrap: 'wrap',
     }}>
       {children}
