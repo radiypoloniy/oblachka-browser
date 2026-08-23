@@ -21,11 +21,11 @@ export function registerTrackingIpc(d: IpcDeps): void {
     const ctx = contextFromSender(e.sender);
     if (ctx) showProductMenu(ctx.win);
   });
-  ipcMain.handle(IPC.TRACKING_LIST, (): TrackedProduct[] => tracking.list());
-  ipcMain.handle(IPC.TRACKING_EVENTS, () => tracking.listEvents());
-  ipcMain.handle(IPC.TRACKING_NOTIFY_GET, () => tracking.notificationsEnabled());
-  ipcMain.handle(IPC.TRACKING_NOTIFY_SET, (_e, on: boolean) => { tracking.setNotificationsEnabled(on); });
-  ipcMain.handle(IPC.TRACKING_SUGGESTIONS, () => tracking.listSuggestions());
+  ipcMain.handle(IPC.TRACKING_LIST, (): TrackedProduct[] => tracking().list());
+  ipcMain.handle(IPC.TRACKING_EVENTS, () => tracking().listEvents());
+  ipcMain.handle(IPC.TRACKING_NOTIFY_GET, () => tracking().notificationsEnabled());
+  ipcMain.handle(IPC.TRACKING_NOTIFY_SET, (_e, on: boolean) => { tracking().setNotificationsEnabled(on); });
+  ipcMain.handle(IPC.TRACKING_SUGGESTIONS, () => tracking().listSuggestions());
 
   // ── Буфер скопированного со страниц ─────────────────────────────────────────
   // Копия, сделанная в самом интерфейсе (адресная строка, история, закладки). Источником считаем
@@ -131,15 +131,15 @@ export function registerTrackingIpc(d: IpcDeps): void {
     if (ctx) syncClipboardPopoverAnchor(ctx.win, b);
   });
   ipcMain.handle(IPC.TRACKING_MERGE, (_e, aId: number, bId: number) => {
-    tracking.joinGroup(aId, bId);
+    tracking().joinGroup(aId, bId);
     broadcastToChrome(IPC.TRACKING_CHANGED);
   });
   ipcMain.handle(IPC.TRACKING_MERGE_DISMISS, (_e, aId: number, bId: number) => {
-    tracking.dismissSuggestion(aId, bId);
+    tracking().dismissSuggestion(aId, bId);
     broadcastToChrome(IPC.TRACKING_CHANGED);
   });
   ipcMain.handle(IPC.TRACKING_UNGROUP, (_e, id: number) => {
-    tracking.leaveGroup(id);
+    tracking().leaveGroup(id);
     broadcastToChrome(IPC.TRACKING_CHANGED);
   });
   // ⚠️ Проверка по кнопке идёт БЕЗ пауз и без гейта «давно не проверяли»: человек нажал и ждёт.
@@ -150,7 +150,7 @@ export function registerTrackingIpc(d: IpcDeps): void {
     return res;
   });
   ipcMain.handle(IPC.TRACKING_UNTRACK, (e, id: number) => {
-    tracking.untrack(id);
+    tracking().untrack(id);
     broadcastToChrome(IPC.TRACKING_CHANGED);
     const ctx = contextFromSender(e.sender);
     if (ctx) pushProductState(ctx.win);

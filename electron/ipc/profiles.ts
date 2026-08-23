@@ -9,6 +9,7 @@ import {
   setActiveProfile, pinStartupProfile,
 } from '../ProfileStore';
 import { initProfileData } from '../ProfileData';
+import { trackingCheckAfterProfileSwitch } from '../TrackingChecker';
 import { allContexts, broadcastToChrome } from '../WindowRegistry';
 import type { IpcDeps } from './deps';
 
@@ -103,6 +104,14 @@ export function registerProfilesIpc(d: IpcDeps): void {
     // Панель закладок висит на экране постоянно и сама не перечитывается — без этого она
     // продолжала бы показывать закладки прежнего профиля до первой правки.
     broadcastToChrome(IPC.BOOKMARK_CHANGED);
+    // ⚠️ Отслеживание товаров тоже профильное (ProfileData.ts). Открытая страница «Что я
+    // отслеживаю» и звёздочка-индикатор в адресной строке иначе показывали бы список прежнего
+    // профиля — то есть чужие покупки под новым именем.
+    broadcastToChrome(IPC.TRACKING_CHANGED);
+    for (const ctx of allContexts()) d.pushProductState(ctx.win);
+    // Товары нового профиля лежали без движения, пока человек сидел в другом, — догоняем
+    // проверки его порогами запуска (см. TrackingChecker).
+    trackingCheckAfterProfileSwitch();
     broadcast();
     return state;
   });

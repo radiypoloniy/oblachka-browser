@@ -1,11 +1,13 @@
 import { DEFAULT_PROFILE_ID } from '../shared/profiles';
 import { BookmarkManager } from './BookmarkManager';
 import { HistoryManager } from './HistoryManager';
+import { TrackingStore } from './TrackingStore';
 import { getActiveProfile } from './ProfileStore';
 import { profileDataPath } from './ProfilePaths';
 
-// История и закладки НА ПРОФИЛЬ. Реестр инстансов: один HistoryManager и один BookmarkManager
-// на каждый открытый профиль, файлы — через ProfilePaths (единственная точка путей).
+// История, закладки и отслеживание товаров НА ПРОФИЛЬ. Реестр инстансов: по одному
+// HistoryManager, BookmarkManager и TrackingStore на каждый открытый профиль, файлы — через
+// ProfilePaths (единственная точка путей).
 //
 // ⚠️ Почему это вообще понадобилось. До сих пор партиция сессии была профильной (куки, логины,
 // прокси), а история и закладки — общими: человек заводил «рабочий» профиль и видел в нём всю
@@ -22,9 +24,17 @@ import { profileDataPath } from './ProfilePaths';
 // initProfileData перед тем, как разослать «обновитесь» в интерфейс: иначе человек увидел бы
 // пустые закладки и решил, что они пропали.
 
+// ⚠️ Почему сюда же попало ОТСЛЕЖИВАНИЕ ТОВАРОВ, хотя это не «личные следы» в том же смысле,
+// что история. Причина не в приватности, а в том, что список отслеживаемого — это рабочий
+// контекст: у профиля «работа» свои закупки, у личного свои, и общий список превращает обе
+// подборки в кашу, где ничего не найти. Плюс проверка цен ходит СЕССИЕЙ активного профиля
+// (TrackingChecker → profileSession): держать в одном списке товары, часть которых проверяется
+// не теми куками и не через тот прокси, — значит получать необъяснимые провалы проверок.
+
 interface ProfileData {
   history: HistoryManager;
   bookmarks: BookmarkManager;
+  tracking: TrackingStore;
   /** Обещание инициализации: ждать его, а не заводить второе. */
   ready: Promise<void>;
 }
@@ -34,13 +44,18 @@ const byProfile = new Map<string, ProfileData>();
 function make(profileId: string): ProfileData {
   const history = new HistoryManager(profileDataPath(profileId, 'history.sqlite'));
   const bookmarks = new BookmarkManager(profileDataPath(profileId, 'bookmarks.sqlite'));
+  // ⚠️ Отслеживание поднимается СИНХРОННО (initialize у него не асинхронный) и внутри уже
+  // молчаливо деградирует, если better-sqlite3 не собрался, — поэтому в общее ожидание ready
+  // его класть незачем: к моменту возврата из make он либо готов, либо честно отключён.
+  const tracking = new TrackingStore(profileDataPath(profileId, 'tracking.sqlite'));
+  tracking.initialize();
   // Обе базы поднимаются параллельно и НЕ роняют друг друга: better-sqlite3 — нативный модуль,
   // и «не собрался» здесь означает «браузер без закладок», а не «браузер не запустился».
   const ready = Promise.all([
     history.initialize().catch((e: unknown) => console.warn('[ProfileData] история профиля', profileId, e)),
     bookmarks.initialize().catch((e: unknown) => console.warn('[ProfileData] закладки профиля', profileId, e)),
   ]).then(() => undefined);
-  return { history, bookmarks, ready };
+  return { history, bookmarks, tracking, ready };
 }
 
 function entry(profileId: string): ProfileData {
@@ -58,6 +73,10 @@ export function bookmarksFor(profileId: string): BookmarkManager {
   return entry(profileId).bookmarks;
 }
 
+export function trackingFor(profileId: string): TrackingStore {
+  return entry(profileId).tracking;
+}
+
 /** История активного профиля — то, что показывает интерфейс здесь и сейчас. */
 export function activeHistory(): HistoryManager {
   return historyFor(getActiveProfile().id);
@@ -66,6 +85,11 @@ export function activeHistory(): HistoryManager {
 /** Закладки активного профиля. */
 export function activeBookmarks(): BookmarkManager {
   return bookmarksFor(getActiveProfile().id);
+}
+
+/** Отслеживаемые товары активного профиля. */
+export function activeTracking(): TrackingStore {
+  return trackingFor(getActiveProfile().id);
 }
 
 /** Поднять базы профиля и дождаться их. Зовётся на старте и при переключении профиля. */

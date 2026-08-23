@@ -43,7 +43,7 @@ import { UpdateManager } from './UpdateManager';
 import { BangStore } from './BangStore';
 import type { HistoryManager } from './HistoryManager';
 import type { BookmarkManager } from './BookmarkManager';
-import { activeHistory, activeBookmarks, historyFor, initProfileData } from './ProfileData';
+import { activeHistory, activeBookmarks, activeTracking, historyFor, initProfileData } from './ProfileData';
 import { GraphStore } from './GraphStore';
 import { setImagePresetsSource } from './GraphEngine';
 import { buildAddToGraphMenuItem } from './GraphInbox';
@@ -323,7 +323,10 @@ let mainSess: SessionManager | null = null;
 let isShuttingDown = false;
 
 // ── Отслеживание товаров (PRICE-TRACKING.md, срез 1) ────────────────────────
-const tracking = new TrackingStore();
+// ⚠️ Список отслеживаемого — НА ПРОФИЛЬ (см. ProfileData.ts), поэтому здесь функция, а не
+// объект: та же причина, что у истории и закладок ниже — ссылку на базу прежнего профиля
+// пришлось бы подменять во всех местах, куда она уже попала.
+const tracking = (): TrackingStore => activeTracking();
 // Распознанный товар по вкладке. ⚠️ Кэш нужен, чтобы при переключении вкладок не лезть в
 // страницу заново: индикатор обязан отвечать мгновенно, а распознавание асинхронно.
 const productByTab = new Map<string, { url: string; signal: import('../shared/productSignal').ProductSignal }>();
@@ -345,7 +348,7 @@ function productStateFor(win: BrowserWindow): ProductState | null {
     price: found.signal.price,
     currency: found.signal.currency,
     availability: found.signal.availability,
-    tracked: tracking.idForUrl(active.url) !== null,
+    tracked: tracking().idForUrl(active.url) !== null,
   };
 }
 
@@ -367,8 +370,8 @@ async function refreshProductForWebContents(wc: Electron.WebContents): Promise<v
     productByTab.set(tabId, { url, signal });
     // ⚠️ Уже отслеживаемому товару цена записывается САМА, без спроса: человек уже сказал «следи»,
     // и открытая им страница — самый достоверный и самый дешёвый источник наблюдения.
-    const id = tracking.idForUrl(url);
-    if (id !== null) tracking.addPoint(id, signal.price, signal.availability);
+    const id = tracking().idForUrl(url);
+    if (id !== null) tracking().addPoint(id, signal.price, signal.availability);
   } else {
     productByTab.delete(tabId);
   }
@@ -422,8 +425,8 @@ function productMenuTemplate(win: BrowserWindow): MenuItemConstructorOptions[] |
     template.push({
       label: 'Не отслеживать',
       click: () => {
-        const id = tracking.idForUrl(active.url);
-        if (id !== null) tracking.untrack(id);
+        const id = tracking().idForUrl(active.url);
+        if (id !== null) tracking().untrack(id);
         pushProductState(win);
         broadcastToChrome(IPC.TRACKING_CHANGED);
       },
@@ -432,7 +435,7 @@ function productMenuTemplate(win: BrowserWindow): MenuItemConstructorOptions[] |
     template.push({
       label: 'Отслеживать цену',
       click: () => {
-        const newId = tracking.track({
+        const newId = tracking().track({
           url: active.url,
           host: (() => { try { return new URL(active.url).hostname.replace(/^www\./, ''); } catch { return ''; } })(),
           title: found.signal.name,
@@ -449,7 +452,7 @@ function productMenuTemplate(win: BrowserWindow): MenuItemConstructorOptions[] |
         // Поискать, нет ли того же товара в другом магазине. Коды склеят сами, модель — только
         // предложит (см. ProductMatcher). Фоном: человек нажал «отслеживать», а не «найди пару».
         if (newId !== null) {
-          void findMatchFor(tracking, newId)
+          void findMatchFor(tracking(), newId)
             .then(() => broadcastToChrome(IPC.TRACKING_CHANGED))
             .catch(() => { /* сопоставление не обязано получаться */ });
         }
@@ -2129,8 +2132,6 @@ app.whenReady().then(async () => {
   // safeStorage требует app.isReady() — грузим сохранённый (зашифрованный) ключ Gemini здесь,
   // не на верхнем уровне модуля (см. AiKeyStore.ts, заход D шаг 3).
   aiKeyStore.loadFromDisk();
-  tracking.initialize();
-  initTrackingChecker(tracking);
   // ⚠️ Тост Windows — нативный (Notification), свой центр уведомлений не нужен: система даёт и
   // очередь, и «не беспокоить», и историю. Клик по тосту открывает страницу товара — иначе он
   // сообщает новость, с которой ничего нельзя сделать.
@@ -2161,6 +2162,9 @@ app.whenReady().then(async () => {
   // ⚠️ Поднимаем только активный профиль, а не все: базы остальных откроются при первом
   // переключении. Открывать восемь профилей на старте значило бы восемь sqlite ради одного.
   await initProfileData(getActiveProfile().id);
+  // ⚠️ Проверка цен заводится ПОСЛЕ баз профиля: она сразу спрашивает у активного профиля его
+  // хранилище (initialize у TrackingStore синхронный и живёт внутри ProfileData).
+  initTrackingChecker(tracking);
   // Графы — та же деградация: нет better-sqlite3, значит вкладка графов пустая, браузер цел.
   await graphs.initialize().catch((e) =>
     console.error('[Graph] инициализация упала:', e),

@@ -56,10 +56,17 @@ const GAP_MS = 8000;
 // сразу нельзя. Полторы минуты — восстановление сессии к этому моменту уже позади.
 const FIRST_DELAY_MS = 90 * 1000;
 
+// Пауза после переключения профиля — см. trackingCheckAfterProfileSwitch.
+const SWITCH_DELAY_MS = 15 * 1000;
+
 const LOAD_TIMEOUT_MS = 25_000;
 const SETTLE_MS = 2500;
 
-let store: TrackingStore | null = null;
+// ⚠️ Храним НЕ ссылку на базу, а способ её спросить. У профиля свой список товаров
+// (ProfileData.ts), и берётся он у АКТИВНОГО профиля в момент захода: запомненная ссылка
+// означала бы, что после переключения профиля мы проверяем и пишем цены в чужую базу — молча
+// и без единой ошибки в логе. Ровно тот же приём, что у истории и закладок.
+let storeOf: (() => TrackingStore) | null = null;
 let timer: NodeJS.Timeout | null = null;
 let running = false;
 let stopped = false;
@@ -105,21 +112,24 @@ async function checkView(url: string): Promise<ProductSignal | null> {
 let onEvent: ((p: { id: number; title: string; url: string; text: string }) => void) | null = null;
 export function setTrackingEventHandler(fn: typeof onEvent): void { onEvent = fn; }
 
-async function checkOne(item: { id: number; url: string }): Promise<boolean> {
+// ⚠️ store передаётся ПАРАМЕТРОМ по всей цепочке, а не спрашивается заново на каждом шаге:
+// проверка одного товара — это секунды сети, и человек успевает переключить профиль внутри
+// пачки. Тогда результат обязан лечь в ту базу, откуда товар взяли.
+async function checkOne(store: TrackingStore, item: { id: number; url: string }): Promise<boolean> {
   // ⚠️ Запоминаем, КАКИМ путём удалось: от этого зависит, как часто мы будем сюда возвращаться.
   const raw = await checkRaw(item.url);
   const signal = raw ?? (await checkView(item.url));
   if (!signal) {
-    store?.markChecked(item.id, false);
+    store.markChecked(item.id, false);
     return false;
   }
   // ⚠️ Сравниваем ДО записи новой точки: после записи «предыдущим» стало бы само наблюдение.
-  const prev = store?.lastPoint(item.id) ?? null;
-  store?.addPoint(item.id, signal.price, signal.availability);
-  store?.markChecked(item.id, true, raw ? 0 : 1);
+  const prev = store.lastPoint(item.id) ?? null;
+  store.addPoint(item.id, signal.price, signal.availability);
+  store.markChecked(item.id, true, raw ? 0 : 1);
 
   const event = detectEvent(prev, { price: signal.price, availability: signal.availability });
-  if (event && store) {
+  if (event) {
     const text = describeEvent(event, signal.currency);
     store.addEvent(item.id, event.kind, text);
     // Тост — только если человек его не выключал. Журнал пишется в любом случае: выключенные
@@ -137,27 +147,29 @@ async function checkOne(item: { id: number; url: string }): Promise<boolean> {
  * ⚠️ Строго по одному и с паузой: параллельные загрузки чужих страниц — это и нагрузка на машину,
  * и поведение, неотличимое от парсера.
  */
-async function runBatch(items: Array<{ id: number; url: string }>, gapMs: number): Promise<number> {
+async function runBatch(store: TrackingStore, items: Array<{ id: number; url: string }>, gapMs: number): Promise<number> {
   let ok = 0;
   for (const item of items) {
     if (stopped) break;
     // Окон не осталось — человек закрыл браузер, и держать его живым ради проверок нельзя.
     if (allContexts().length === 0) break;
-    if (await checkOne(item)) ok++;
+    if (await checkOne(store, item)) ok++;
     if (gapMs > 0) await new Promise((r) => setTimeout(r, gapMs));
   }
   return ok;
 }
 
 async function tick(startup = false): Promise<void> {
-  if (running || stopped || !store) return;
+  if (running || stopped) return;
+  const store = storeOf?.() ?? null;
+  if (!store) return;
   const due = startup
     ? store.dueForCheck(STARTUP_RAW_MS, STARTUP_VIEW_MS, STARTUP_FAIL_MS, STARTUP_BATCH)
     : store.dueForCheck(RAW_INTERVAL_MS, VIEW_INTERVAL_MS, FAIL_INTERVAL_MS, BATCH);
   if (due.length === 0) return;
   running = true;
   try {
-    const ok = await runBatch(due, GAP_MS);
+    const ok = await runBatch(store, due, GAP_MS);
     console.log(`[tracking] ${startup ? 'проверка при запуске' : 'фоновая проверка'}: ${ok} из ${due.length}`);
   } finally {
     running = false;
@@ -171,12 +183,13 @@ async function tick(startup = false): Promise<void> {
  * то же различие, что у остальных функций проекта между фоновой затеей и явным действием.
  */
 export async function checkAllNow(): Promise<{ ok: number; total: number }> {
+  const store = storeOf?.() ?? null;
   if (!store) return { ok: 0, total: 0 };
   if (running) return { ok: 0, total: 0 };
   const items = store.allForCheck();
   running = true;
   try {
-    const ok = await runBatch(items, 0);
+    const ok = await runBatch(store, items, 0);
     console.log(`[tracking] проверка по кнопке: ${ok} из ${items.length}`);
     return { ok, total: items.length };
   } finally {
@@ -184,9 +197,9 @@ export async function checkAllNow(): Promise<{ ok: number; total: number }> {
   }
 }
 
-export function initTrackingChecker(s: TrackingStore): void {
-  store = s;
-  if (!s.available) return;
+export function initTrackingChecker(getStore: () => TrackingStore): void {
+  storeOf = getStore;
+  if (!getStore().available) return;
   setTimeout(() => { void tick(true); }, FIRST_DELAY_MS);
   timer = setInterval(() => { void tick(); }, TICK_MS);
   // Выход из приложения не должен ждать нашу пачку.
@@ -194,4 +207,20 @@ export function initTrackingChecker(s: TrackingStore): void {
     stopped = true;
     if (timer) { clearInterval(timer); timer = null; }
   });
+}
+
+/**
+ * Человек переключил профиль — догнать проверки его товаров.
+ *
+ * ⚠️ Порогами ЗАПУСКА, а не обычными: для только что открытого профиля ситуация ровно та же, что
+ * при старте браузера, — его данные лежали без движения, пока человек сидел в другом профиле, и
+ * по обычным интервалам «не просрочено ничего». Без этого товары непопулярного профиля
+ * проверялись бы только если получасовой тик случайно попадёт в момент, когда человек там.
+ *
+ * ⚠️ С задержкой: переключение профиля само по себе тяжёлое (вкладки, сессия), и лезть в сеть
+ * тем же кадром — конкурировать с ним за машину человека.
+ */
+export function trackingCheckAfterProfileSwitch(): void {
+  if (stopped) return;
+  setTimeout(() => { void tick(true); }, SWITCH_DELAY_MS);
 }
