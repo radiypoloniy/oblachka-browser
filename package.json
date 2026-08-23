@@ -17,6 +17,7 @@
     "test": "node scripts/test.mjs",
     "stand": "node scripts/isolated-stand.mjs",
     "leak-check": "node scripts/leak-stand.mjs",
+    "profile-data-check": "node scripts/profile-data-drive.mjs",
     "make-icon": "node scripts/make-icon.mjs",
     "dist": "npm run build && electron-builder --win --publish never",
     "release": "npm run build && electron-builder --win --publish always",

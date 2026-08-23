@@ -116,7 +116,7 @@ export function registerTabsIpc(d: IpcDeps): void {
     if (!active?.url || relatedBusy) return [];
     relatedBusy = true;
     try {
-      return await findRelatedPages(history, active.url, active.title || '');
+      return await findRelatedPages(history(), active.url, active.title || '');
     } catch (err) {
       console.warn('[related] ошибка:', err);
       return [];
@@ -133,10 +133,10 @@ export function registerTabsIpc(d: IpcDeps): void {
     const tabs = tabsOf(e);
     const active = tabs?.snapshot().find((t) => t.isActive && !t.isHub);
     if (!tabs || !active?.url || tabs.isIncognito(active.id)) return { changed: false };
-    return getPageChanges(history, active.url, tabs.getActiveWebContents());
+    return getPageChanges(history(), active.url, tabs.getActiveWebContents());
   });
   // «Куда я это дел» (AI-IDEAS.md №4) — один поиск по истории, закладкам и загрузкам.
   // Явное действие человека (Enter), поэтому без гейта тёплой модели и пользовательской полосой.
-  ipcMain.handle(IPC.STUFF_SEARCH, (_e, query: string) => searchStuff(history, bookmarks, downloads, query));
+  ipcMain.handle(IPC.STUFF_SEARCH, (_e, query: string) => searchStuff(history(), bookmarks(), downloads, query));
 
 }

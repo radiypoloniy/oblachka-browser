@@ -41,8 +41,9 @@ import { SessionManager } from './SessionManager';
 import { AdBlockManager } from './AdBlockManager';
 import { UpdateManager } from './UpdateManager';
 import { BangStore } from './BangStore';
-import { HistoryManager } from './HistoryManager';
-import { BookmarkManager } from './BookmarkManager';
+import type { HistoryManager } from './HistoryManager';
+import type { BookmarkManager } from './BookmarkManager';
+import { activeHistory, activeBookmarks, historyFor, initProfileData } from './ProfileData';
 import { GraphStore } from './GraphStore';
 import { setImagePresetsSource } from './GraphEngine';
 import { buildAddToGraphMenuItem } from './GraphInbox';
@@ -79,7 +80,7 @@ import { showFindBar, closeFindBar, sendFindResult, setTabManager as setFindBarT
 import { captureTabScreenshot, saveCurrentScreenshot, closeScreenshot, setScreenshotTabManager } from './ScreenshotManager';
 import { mapFormFields, type FormFieldDescriptor } from './AutofillFieldMapper';
 import { profileSession, incognitoSession as incognitoBrowsingSession, sessionForProfile } from './ProfileSession';
-import { getProfiles } from './ProfileStore';
+import { getProfiles, getActiveProfile } from './ProfileStore';
 import { profileWantsVpn, DEFAULT_PROFILE_ID } from '../shared/profiles';
 import { RuleStore } from './RuleStore';
 import { applyRules } from './RuleEngine';
@@ -481,9 +482,12 @@ let ensureVpnOnForRules: () => Promise<boolean> = async () => false;
 // лениво, на первое обращение (см. SearchTargetStore).
 const searchTargets = new SearchTargetStore();
 const updates     = new UpdateManager();
-const history     = new HistoryManager();
+// История и закладки теперь ЖИВУТ НА ПРОФИЛЬ (см. ProfileData.ts). Здесь остались две функции
+// вместо двух объектов, и это не косметика: объект пришлось бы подменять при каждом переключении
+// профиля во всех местах, куда он уже попал по ссылке, — а таких мест два десятка.
+const history = (): HistoryManager => activeHistory();
+const bookmarks = (): BookmarkManager => activeBookmarks();
 setOrganizerHistoryManager(history);
-const bookmarks   = new BookmarkManager();
 // Импорт закладок — список создаётся один раз, isAvailable() зовётся заново на каждый
 // BOOKMARK_IMPORT_LIST_SOURCES (профиль браузера-источника может появиться/пропасть между вызовами).
 const bookmarkImporters = createChromiumImporters(bookmarks);
@@ -999,7 +1003,10 @@ function createWindow(role: WindowRole = 'main') {
     ()              => chromeView?.webContents.send(IPC.OMNIBOX_FOCUS),
     ()              => chromeView?.webContents.focus(),
     (url, title, wc) => {
-      history.recordVisit(url, title);
+      // ⚠️ Профиль ВКЛАДКИ, а не активный: фоновая вкладка «Работы» догружается, пока человек
+      // смотрит «Личное», и её визит ушёл бы в чужую историю. См. TabManager.profileOfWebContents.
+      const visitHistory = historyFor(tabs?.profileOfWebContents(wc.id) ?? DEFAULT_PROFILE_ID);
+      visitHistory.recordVisit(url, title);
       // Тот же адрес — материал для целей быстрого поиска: если он похож на выдачу, сайт
       // становится целью Ctrl+E навсегда. Колбэк не приходит для инкогнито (TabManager),
       // поэтому приватные вкладки сюда не попадают по построению.
@@ -1011,7 +1018,7 @@ function createWindow(role: WindowRole = 'main') {
       // не обязательно активная — HistoryIndexer сам ждёт её догрузки перед извлечением.
       // Fire-and-forget с внешним .catch — indexVisit сама не должна бросать (try/catch на
       // каждом уровне), но лишняя страховка здесь ничего не стоит.
-      void indexVisit(history, url, title, wc).catch((e: unknown) =>
+      void indexVisit(visitHistory, url, title, wc).catch((e: unknown) =>
         console.warn('[HistoryIndexer] неожиданная ошибка:', e),
       );
       // Товар на странице (PRICE-TRACKING.md). ⚠️ С задержкой: JSON-LD у части магазинов
@@ -1019,7 +1026,9 @@ function createWindow(role: WindowRole = 'main') {
       // запоминаем, чтобы индикатор в тулбаре знал, есть ли тут что отслеживать.
       setTimeout(() => { void refreshProductForWebContents(wc); }, PRODUCT_DETECT_DELAY_MS);
     },
-    (url, title)    => history.updateTitle(url, title),
+    // ⚠️ Тоже по профилю ВКЛАДКИ, а не активного: page-title-updated стреляет у любой вкладки,
+    // включая фоновую чужого профиля (SPA обновляют заголовок постоянно).
+    (url, title, wc) => historyFor(tabs?.profileOfWebContents(wc.id) ?? DEFAULT_PROFILE_ID).updateTitle(url, title),
     ()              => chromeView?.webContents.send(IPC.HISTORY_OPEN),
     ()              => console.log(`[startup] firsttab ${Date.now() - startT0}ms`),
     (action, text, rect, wc, canReplace, targetLang) => {
@@ -1329,14 +1338,14 @@ function createWindow(role: WindowRole = 'main') {
       }
     }
 
-    for (const b of bookmarks.list()) {
+    for (const b of bookmarks().list()) {
       if (hits.length >= 6) break;
       if (matches(b.title ?? '', b.url)) {
         add({ kind: 'bookmark', url: b.url, title: b.title || b.url });
       }
     }
 
-    for (const h of history.search(text.trim())) {
+    for (const h of history().search(text.trim())) {
       if (hits.length >= 9) break;
       add({ kind: 'history', url: h.url, title: h.title || h.url });
     }
@@ -1752,7 +1761,7 @@ async function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): Promise<v
   if (!url || !/^https?:/i.test(url)) return; // хаб и служебные страницы в закладки не идут
   const title = wc.getTitle() || url;
 
-  const existing = bookmarks.listTree();
+  const existing = bookmarks().listTree();
   const findByUrl = (nodes: BookmarkNode[]): BookmarkNode | null => {
     for (const n of nodes) {
       if (n.kind === 'link' && n.url === url) return n;
@@ -1764,7 +1773,7 @@ async function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): Promise<v
 
   let entry = findByUrl(existing);
   if (!entry) {
-    const added = bookmarks.add(url, title);
+    const added = bookmarks().add(url, title);
     if (!added) return;
     entry = { ...added, children: undefined };
     broadcastToChrome(IPC.BOOKMARK_CHANGED);
@@ -1784,7 +1793,7 @@ async function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): Promise<v
       walk(n.children ?? [], depth + 1, path);
     }
   };
-  walk(bookmarks.listTree(), 0, '');
+  walk(bookmarks().listTree(), 0, '');
 
   // Подсказка папки (AI-IDEAS.md №2) — только для закладки, лежащей В КОРНЕ. То, что человек уже
   // разложил руками, модель не трогает: это его решение, и мы его не понимаем (тот же принцип,
@@ -1797,7 +1806,7 @@ async function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): Promise<v
   if (win.isDestroyed()) return;
 
   const pick = (parentId: number | null): void => {
-    if (bookmarks.move(bookmarkId, parentId)) broadcastToChrome(IPC.BOOKMARK_CHANGED);
+    if (bookmarks().move(bookmarkId, parentId)) broadcastToChrome(IPC.BOOKMARK_CHANGED);
   };
 
   const template: MenuItemConstructorOptions[] = [
@@ -1822,7 +1831,7 @@ async function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): Promise<v
     { type: 'separator' },
     {
       label: 'Удалить из закладок',
-      click: () => { bookmarks.remove(bookmarkId); broadcastToChrome(IPC.BOOKMARK_CHANGED); },
+      click: () => { bookmarks().remove(bookmarkId); broadcastToChrome(IPC.BOOKMARK_CHANGED); },
     },
   ];
   Menu.buildFromTemplate(template).popup({ window: win });
@@ -2147,14 +2156,11 @@ app.whenReady().then(async () => {
   // лежащей на полке записи.
   clipboardBuffer.loadPinnedFromDisk();
 
-  // История: нативный модуль может отсутствовать — падение не блокирует запуск.
-  await history.initialize().catch((e) =>
-    console.error('[History] инициализация упала:', e),
-  );
-  // Закладки — тот же паттерн деградации, отдельный файл (см. BookmarkManager.ts).
-  await bookmarks.initialize().catch((e) =>
-    console.error('[Bookmarks] инициализация упала:', e),
-  );
+  // История и закладки АКТИВНОГО профиля. Нативный модуль может отсутствовать — падение не
+  // блокирует запуск (обе базы деградируют молча, см. ProfileData.ts).
+  // ⚠️ Поднимаем только активный профиль, а не все: базы остальных откроются при первом
+  // переключении. Открывать восемь профилей на старте значило бы восемь sqlite ради одного.
+  await initProfileData(getActiveProfile().id);
   // Графы — та же деградация: нет better-sqlite3, значит вкладка графов пустая, браузер цел.
   await graphs.initialize().catch((e) =>
     console.error('[Graph] инициализация упала:', e),

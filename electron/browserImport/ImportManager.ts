@@ -19,8 +19,10 @@ import { importYandexPasswords } from './YandexPasswordReader';
 const IMPLEMENTED_TYPES: ReadonlySet<ImportDataType> = new Set<ImportDataType>(['bookmarks', 'history', 'passwords']);
 
 interface ImportDeps {
-  bookmarks: BookmarkManager;
-  history: HistoryManager;
+  // ⚠️ Закладки и история — ГЕТТЕРЫ: обе базы профильные (ProfileData.ts), и импорт обязан
+  // попадать в тот профиль, который активен В МОМЕНТ импорта, а не при сборке зависимостей.
+  bookmarks: () => BookmarkManager;
+  history: () => HistoryManager;
   passwords: PasswordManager;
 }
 
@@ -58,10 +60,10 @@ export class ImportManager {
       if (!IMPLEMENTED_TYPES.has(type)) continue;
       switch (type) {
         case 'bookmarks':
-          result.bookmarks = importChromiumBookmarks(profile.profilePath, this.#deps.bookmarks);
+          result.bookmarks = importChromiumBookmarks(profile.profilePath, this.#deps.bookmarks());
           break;
         case 'history':
-          result.history = importChromiumHistory(profile.profilePath, this.#deps.history);
+          result.history = importChromiumHistory(profile.profilePath, this.#deps.history());
           break;
         case 'passwords':
           // Яндекс.Браузер — своя схема (файл Ya Passman Data + доп. ключ), остальные Chromium — общая.

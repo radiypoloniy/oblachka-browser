@@ -26,19 +26,19 @@ export function registerOverlaysIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.DIGEST_GET, (): DayDigestState => {
     // Заодно решаем, не пора ли обновить фоном: условие внутри (прошёл час И прибавилось
     // страниц) и только на тёплой модели, так что обычно это дешёвая проверка без последствий.
-    if (shouldRefresh((since) => history.getSince(since))) {
+    if (shouldRefresh((since) => history().getSince(since))) {
       // ⚠️ Результат НИКУДА не пушим намеренно. Виджет спрашивает итог сам при каждом открытии
       // новой вкладки, а открывают её десятки раз в день — пересобранный фоном итог доедет до
       // экрана без единого лишнего канала. Пуш здесь был бы каналом, который слушать некому:
       // именно так и появляются «живые» сообщения, уходящие в пустоту.
-      void buildDigest((since) => history.getSince(since), false)
+      void buildDigest((since) => history().getSince(since), false)
         .catch(() => { /* фоновая пересборка — не повод шуметь */ });
     }
     return getDigest();
   });
   // Явное «собрать» — человек нажал кнопку и готов подождать загрузку модели.
   ipcMain.handle(IPC.DIGEST_BUILD, (): Promise<DayDigestState> =>
-    buildDigest((since) => history.getSince(since), true));
+    buildDigest((since) => history().getSince(since), true));
   ipcMain.handle(IPC.CONTENT_SET_BOUNDS, (e, b: ContentBounds) => {
     tabsOf(e)?.setContentBounds(b);
     // Та же геометрия двигает FindBar — центрирование по контентной зоне (учитывает сайдбар) и

@@ -48,8 +48,11 @@ export class HistoryManager {
   #db: Database | null = null;
   #dbPath: string;
 
-  constructor() {
-    this.#dbPath = path.join(app.getPath('userData'), 'history.sqlite');
+  // dbPath задаётся ProfileData: у каждого профиля своя база (см. ProfilePaths.ts). Без
+  // аргумента — прежний путь профиля по умолчанию, чтобы менеджер оставался пригодным для
+  // разовых проверок и не тянул за собой реестр профилей.
+  constructor(dbPath?: string) {
+    this.#dbPath = dbPath ?? path.join(app.getPath('userData'), 'history.sqlite');
   }
 
   async initialize(): Promise<void> {

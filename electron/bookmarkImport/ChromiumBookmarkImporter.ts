@@ -49,9 +49,9 @@ export class ChromiumBookmarkImporter implements BookmarkImporter {
   readonly id: string;
   readonly label: string;
   #bookmarksPath: string;
-  #bookmarks: BookmarkManager;
+  #bookmarks: () => BookmarkManager;
 
-  constructor(id: string, label: string, profileDir: string, bookmarks: BookmarkManager) {
+  constructor(id: string, label: string, profileDir: string, bookmarks: () => BookmarkManager) {
     this.id = id;
     this.label = label;
     this.#bookmarks = bookmarks;
@@ -81,7 +81,7 @@ export class ChromiumBookmarkImporter implements BookmarkImporter {
         const tree = toTree(root);
         if (tree?.children) items.push(...tree.children);
       }
-      return this.#bookmarks.bulkInsertTree(items, null);
+      return this.#bookmarks().bulkInsertTree(items, null);
     } catch (e) {
       console.warn(`[BookmarkImport:${this.id}] import error:`, (e as Error).message);
       return { inserted: 0, skipped: 0 };
@@ -91,7 +91,7 @@ export class ChromiumBookmarkImporter implements BookmarkImporter {
 
 // Известные на Windows Chromium-производные — делят один и тот же формат/расположение профиля
 // (отличается только путь до вендора), поэтому один параметризуемый класс, а не 4 копии.
-export function createChromiumImporters(bookmarks: BookmarkManager): BookmarkImporter[] {
+export function createChromiumImporters(bookmarks: () => BookmarkManager): BookmarkImporter[] {
   return [
     new ChromiumBookmarkImporter('chrome', 'Google Chrome', path.join('Google', 'Chrome'), bookmarks),
     new ChromiumBookmarkImporter('edge', 'Microsoft Edge', path.join('Microsoft', 'Edge'), bookmarks),

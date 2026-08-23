@@ -13,9 +13,11 @@ export function setTabManager(tm: TabManager): void {
   tabManagerRef = tm;
 }
 
-let historyRef: HistoryManager | null = null;
-export function setHistoryManager(h: HistoryManager): void {
-  historyRef = h;
+// ⚠️ Геттер, а не инстанс: история теперь живёт на профиль (ProfileData.ts), и сохранённая
+// здесь ссылка указывала бы на базу того профиля, который был активен при запуске.
+let historyRef: (() => HistoryManager) | null = null;
+export function setHistoryManager(get: () => HistoryManager): void {
+  historyRef = get;
 }
 
 interface Candidate {
@@ -262,7 +264,7 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
   const modelWasCold = getLoadedModelId() === null;
 
   const tabs = tabManagerRef;
-  const history = historyRef;
+  const history = historyRef?.() ?? null;
   if (!tabs || !history) return { ok: true, clusters: [], modelWasCold };
 
   const nodes = tabs.sidebarNodesSnapshot();

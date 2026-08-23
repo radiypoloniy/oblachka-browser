@@ -8,6 +8,7 @@ import {
   updateProfileSettings, updateProfileAvatar, updateProfileLook,
   setActiveProfile, pinStartupProfile,
 } from '../ProfileStore';
+import { initProfileData } from '../ProfileData';
 import { allContexts, broadcastToChrome } from '../WindowRegistry';
 import type { IpcDeps } from './deps';
 
@@ -87,14 +88,21 @@ export function registerProfilesIpc(d: IpcDeps): void {
     return state;
   });
 
-  ipcMain.handle(IPC.PROFILES_SWITCH, (_e, id: string) => {
+  ipcMain.handle(IPC.PROFILES_SWITCH, async (_e, id: string) => {
     const state = setActiveProfile(String(id));
+    // ⚠️ ЖДЁМ базы нового профиля прежде, чем звать интерфейс перечитаться. У профиля своя
+    // история и свои закладки (ProfileData.ts), и открываются они асинхронно: разошли мы
+    // «обновитесь» раньше — человек увидел бы ПУСТЫЕ закладки и решил, что они пропали.
+    await initProfileData(state.activeId);
     // ⚠️ Прокси НЕ трогаем: он персональный и уже стоит у каждой сессии.
     // ⚠️ А вот полосу вкладок трогаем обязательно и ВО ВСЕХ окнах: у профиля свой набор вкладок,
     // и чужие обязаны уйти с глаз (не закрыться — просто перестать показываться, см.
     // TabManager.onProfileSwitched). Без этого человек переключался и видел те же вкладки, что
     // и всегда, — ровно та жалоба, с которой началась эта правка.
     for (const ctx of allContexts()) ctx.tabs.onProfileSwitched();
+    // Панель закладок висит на экране постоянно и сама не перечитывается — без этого она
+    // продолжала бы показывать закладки прежнего профиля до первой правки.
+    broadcastToChrome(IPC.BOOKMARK_CHANGED);
     broadcast();
     return state;
   });

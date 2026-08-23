@@ -316,7 +316,9 @@ export class TabManager {
   // HistoryIndexer.ts доступ именно к WebContents НАВИГИРОВАВШЕЙ вкладки, а не к активной —
   // важно для фоновых вкладок, у которых getActiveWebContents() вернул бы чужой DOM.
   private onNavigateCb?: (url: string, title: string, wc: WebContents) => void;
-  private onTitleUpdateCb?: (url: string, title: string) => void;
+  // wc в колбэке — чтобы получатель знал ПРОФИЛЬ вкладки: заголовок обновляет любая
+  // вкладка, включая фоновую чужого профиля, а история теперь на профиль.
+  private onTitleUpdateCb?: (url: string, title: string, wc: WebContents) => void;
   private onHistoryOpenCb?: () => void;
   // Ctrl+D / Ctrl+Shift+O. Отдельными сеттерами, а не через конструктор: закладки появились
   // позже, и расширять и без того длинный список параметров ради двух колбэков незачем.
@@ -399,7 +401,7 @@ export class TabManager {
     onOmniboxFocus: () => void,
     onFocusChrome: () => void,
     onNavigate?: (url: string, title: string, wc: WebContents) => void,
-    onTitleUpdate?: (url: string, title: string) => void,
+    onTitleUpdate?: (url: string, title: string, wc: WebContents) => void,
     onHistoryOpen?: () => void,
     onFirstTabLoad?: () => void,
     onAiAction?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents, canReplace?: boolean, targetLang?: string) => void,
@@ -1743,7 +1745,7 @@ export class TabManager {
     wc.on('page-title-updated', (_e, title) => {
       if (!mine()) return; // вкладка уехала в другое окно — её обслуживает новый владелец
       // Обновляем только заголовок — без инкремента счётчика посещений.
-      this.onTitleUpdateCb?.(wc.getURL(), title);
+      this.onTitleUpdateCb?.(wc.getURL(), title, wc);
       notify();
     });
 
@@ -2789,6 +2791,25 @@ export class TabManager {
     }
     return null;
   }
+
+  /**
+   * Профиль вкладки по её webContents.
+   *
+   * ⚠️ Нужен там, где событие пришло ОТ СТРАНИЦЫ, а записать его надо в базу её профиля —
+   * запись визита в историю прежде всего. Брать активный профиль там нельзя: фоновая вкладка
+   * профиля «Работа» продолжает грузиться, пока человек смотрит «Личное», и её визит ушёл бы
+   * в чужую историю — то есть ровно та утечка между профилями, которую мы и закрываем.
+   *
+   * Вкладка без profileId — созданная до появления профилей; её место в основном.
+   */
+  profileOfWebContents(wcId: number): string {
+    for (const tab of this.tabMap.values()) {
+      const wc = tab.view?.webContents;
+      if (wc && !wc.isDestroyed() && wc.id === wcId) return tab.profileId ?? DEFAULT_PROFILE_ID;
+    }
+    return DEFAULT_PROFILE_ID;
+  }
+
 
   // ── Умное имя вкладки (см. electron/TabRenamer.ts) ─────────────────────────
   // Сам текст придумывает модель в main; сюда приезжает готовый результат. Менеджер вкладок про
