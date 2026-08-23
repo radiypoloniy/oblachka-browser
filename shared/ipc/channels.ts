@@ -83,7 +83,9 @@ export const IPC = {
   PROFILES_CREATE: 'profiles:create',      // renderer → main: завести профиль
   PROFILES_REMOVE: 'profiles:remove',      // renderer → main: удалить (основной — нельзя)
   PROFILES_RENAME: 'profiles:rename',      // renderer → main: переименовать
-  PROFILES_SETTINGS: 'profiles:settings',  // renderer → main: VPN/адблок профиля
+  PROFILES_SETTINGS: 'profiles:settings',  // renderer → main: VPN/адблок/UA/язык профиля
+  PROFILES_AVATAR: 'profiles:avatar',      // renderer → main: аватарка профиля (буква/эмодзи/фото)
+  PROFILES_LOOK: 'profiles:look',          // renderer → main: своя тема/палитра/обои профиля
   PROFILES_SWITCH: 'profiles:switch',      // renderer → main: сделать активным
   PROFILES_STARTUP: 'profiles:startup',    // renderer → main: закрепить профиль за запуском (null — спрашивать)
   PROFILES_CHANGED: 'profiles:changed',    // main → renderer: список изменился

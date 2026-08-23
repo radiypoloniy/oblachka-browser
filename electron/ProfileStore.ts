@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   parseProfiles, defaultProfilesState, addProfile, removeProfile, renameProfile,
-  switchProfile, setProfileSettings, activeProfile, findProfile, setStartupProfile,
-  type Profile, type ProfileSettings, type ProfilesState,
+  switchProfile, setProfileSettings, setProfileAvatar, setProfileLook,
+  activeProfile, findProfile, setStartupProfile,
+  type Profile, type ProfileAvatar, type ProfileLook, type ProfileSettings, type ProfilesState,
 } from '../shared/profiles';
 
 // Список профилей на диске. Вся логика — в shared/profiles.ts под npm test; здесь только файл.
@@ -83,6 +84,18 @@ export function updateProfileName(id: string, name: string): ProfilesState {
 
 export function updateProfileSettings(id: string, patch: Partial<ProfileSettings>): ProfilesState {
   const next = setProfileSettings(load(), id, patch);
+  save(next);
+  return next;
+}
+
+export function updateProfileAvatar(id: string, avatar: ProfileAvatar): ProfilesState {
+  const next = setProfileAvatar(load(), id, avatar);
+  save(next);
+  return next;
+}
+
+export function updateProfileLook(id: string, patch: Partial<ProfileLook>): ProfilesState {
+  const next = setProfileLook(load(), id, patch);
   save(next);
   return next;
 }

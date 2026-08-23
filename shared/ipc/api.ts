@@ -2,7 +2,7 @@ import type { SearchEngineId } from '../searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../graph';
 import type { ImagePreset } from '../imagePresets';
 import type { AutomationRule } from '../rules';
-import type { ProfilesState, ProfileSettings } from '../profiles';
+import type { ProfilesState, ProfileSettings, ProfileAvatar, ProfileLook } from '../profiles';
 import type { ContentBounds, FindResult, GenProgress, GenWebResult, OrganizeCluster, OrganizeProposal, RuleParseOutcome, GenSpecOutcome, SearchChipCandidate, SearchChipsConfig, SidebarNode, SpecialTabKind, SyncState, TabState } from './core';
 import type { BackfillProgress, BookmarkEntry, BookmarkFolderProposal, BookmarkImportResult, BookmarkImportSource, BookmarkNode, DayDigestState, HistoryClearPeriod, HistoryContentCoverage, HistoryEntry, CsvPasswordImport, ImportDataType, ImportRunResult, ImportSource, SemanticSearchResult, SmartSearchResponse, TitleBarOpts } from './history';
 import type { PasswordAddInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, PasswordMeta, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
@@ -327,6 +327,10 @@ export interface OblakoApi {
   removeProfile(id: string): Promise<ProfilesState>;
   renameProfile(id: string, name: string): Promise<ProfilesState>;
   setProfileSettings(id: string, patch: Partial<ProfileSettings>): Promise<ProfilesState>;
+  /** Аватарка: буква имени, эмодзи или своё фото (data-URL в пределах PROFILE_PHOTO_MAX). */
+  setProfileAvatar(id: string, avatar: ProfileAvatar): Promise<ProfilesState>;
+  /** Своя тема/палитра/обои. null в поле — «как в приложении». */
+  setProfileLook(id: string, patch: Partial<ProfileLook>): Promise<ProfilesState>;
   switchProfile(id: string): Promise<ProfilesState>;
   /** Закрепить профиль за запуском. null — спрашивать при каждом старте. */
   setStartupProfile(id: string | null): Promise<ProfilesState>;

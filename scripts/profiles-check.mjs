@@ -8,7 +8,8 @@ import {
   addProfile, removeProfile, renameProfile, switchProfile, setProfileSettings,
   activeProfile, findProfile, profileWantsVpn, profileFailsClosed,
   shouldAskProfileOnStart, startupProfile, setStartupProfile,
-  DEFAULT_PROFILE_ID, PROFILES_MAX, PROFILE_NAME_MAX,
+  setProfileAvatar, setProfileLook, profileClearsOnExit, profileInitial, defaultProfileLook,
+  DEFAULT_PROFILE_ID, PROFILES_MAX, PROFILE_NAME_MAX, PROFILE_PHOTO_MAX,
 } from '../shared/profiles.ts';
 
 let passed = 0;
@@ -149,6 +150,85 @@ console.log('\n── потолок числа профилей ──');
   let s = defaultProfilesState();
   for (let i = 0; i < PROFILES_MAX + 5; i++) s = addProfile(s, `П${i}`, 'blue', 5000 + i);
   check('больше потолка не заводится', s.profiles.length, PROFILES_MAX);
+}
+
+console.log('\n── аватарка ──');
+{
+  const base = addProfile(defaultProfilesState(), 'Работа', 'teal', 7000);
+  const id = base.profiles[1].id;
+  const at = (s) => s.profiles[1].avatar;
+
+  check('умолчание — буква', at(base), { kind: 'letter' });
+  check('эмодзи ставится', at(setProfileAvatar(base, id, { kind: 'emoji', emoji: '🚀' })), { kind: 'emoji', emoji: '🚀' });
+  // ⚠️ Один графемный кластер, а не один символ. «👩‍💻» — три кодовые точки со склейкой,
+  // «🇷🇸» — две: срез по первому символу нарисовал бы на кружке половину картинки.
+  check('склеенный эмодзи не рвётся', at(setProfileAvatar(base, id, { kind: 'emoji', emoji: '👩‍💻' })), { kind: 'emoji', emoji: '👩‍💻' });
+  check('флаг не рвётся', at(setProfileAvatar(base, id, { kind: 'emoji', emoji: '🇷🇸' })), { kind: 'emoji', emoji: '🇷🇸' });
+  check('лишнее после первого кластера отброшено', at(setProfileAvatar(base, id, { kind: 'emoji', emoji: '🚀🚀🚀' })), { kind: 'emoji', emoji: '🚀' });
+  check('пустой эмодзи падает в букву', at(setProfileAvatar(base, id, { kind: 'emoji', emoji: '   ' })), { kind: 'letter' });
+
+  const png = 'data:image/png;base64,AAAA';
+  check('фото принимается', at(setProfileAvatar(base, id, { kind: 'photo', dataUrl: png })), { kind: 'photo', dataUrl: png });
+  // ⚠️ Ссылка в сеть здесь означала бы поход наружу при каждом показе списка профилей — и мимо
+  // сессии профиля, то есть ровно тот класс утечки, который закрывали волной 1.
+  check('http-ссылка вместо фото отвергнута',
+    at(setProfileAvatar(base, id, { kind: 'photo', dataUrl: 'https://example.com/a.png' })), { kind: 'letter' });
+  check('svg отвергнут (в нём исполняемый код)',
+    at(setProfileAvatar(base, id, { kind: 'photo', dataUrl: 'data:image/svg+xml;base64,AAAA' })), { kind: 'letter' });
+  check('фото сверх потолка отвергнуто',
+    at(setProfileAvatar(base, id, { kind: 'photo', dataUrl: 'data:image/png;base64,' + 'A'.repeat(PROFILE_PHOTO_MAX) })), { kind: 'letter' });
+  check('мусор вместо аватарки падает в букву', at(setProfileAvatar(base, id, { kind: 'магия' })), { kind: 'letter' });
+
+  // Файл с диска чистится тем же разбором, а не только сеттером.
+  check('битая аватарка из файла',
+    parseProfiles({ profiles: [{ id: 'p1', avatar: { kind: 'photo', dataUrl: 'javascript:alert(1)' } }] }).profiles[1].avatar,
+    { kind: 'letter' });
+
+  check('буква имени', profileInitial(base.profiles[1]), 'Р');
+  check('буква имени с эмодзи', profileInitial({ ...base.profiles[1], name: '👨‍🚀 Космос' }), '👨‍🚀');
+}
+
+console.log('\n── свой облик профиля ──');
+{
+  const base = addProfile(defaultProfilesState(), 'Отдых', 'pink', 7100);
+  const id = base.profiles[1].id;
+  const look = (s) => s.profiles[1].look;
+
+  // ⚠️ Умолчание — null во всех полях, а не 'system'/'blue': пусто значит «как в приложении».
+  // Подставь сюда конкретную тему — и профиль перестанет следовать переключателю приложения.
+  check('умолчание — пусто', look(base), defaultProfileLook());
+  check('тема ставится', look(setProfileLook(base, id, { theme: 'dark' })).theme, 'dark');
+  check('патч частичный: палитра не сбита темой',
+    look(setProfileLook(setProfileLook(base, id, { palette: 'mint' }), id, { theme: 'dark' })).palette, 'mint');
+  check('неизвестная тема падает в null', look(setProfileLook(base, id, { theme: 'кислотная' })).theme, null);
+  check('пустая строка обоев = как в приложении', look(setProfileLook(base, id, { wallpaper: '  ' })).wallpaper, null);
+  check('облик из битого файла', parseProfiles({ profiles: [{ id: 'p1', look: 'да' }] }).profiles[1].look, defaultProfileLook());
+}
+
+console.log('\n── новые настройки: UA, язык, очистка при выходе ──');
+{
+  const base = addProfile(defaultProfilesState(), 'Телефон', 'orange', 7200);
+  const id = base.profiles[1].id;
+  const st = (s) => s.profiles[1].settings;
+
+  // ⚠️ Файл, записанный ДО появления этих полей, обязан читаться как «веди себя как раньше».
+  check('старый файл: умолчания', parseProfiles({ profiles: [{ id: 'p1', settings: { vpn: 'on' } }] }).profiles[1].settings,
+    { vpn: 'on', adblock: true, ua: 'desktop', lang: null, clearOnExit: false });
+  check('мобильный UA ставится', st(setProfileSettings(base, id, { ua: 'mobile' })).ua, 'mobile');
+  check('неизвестный UA падает в desktop', st(setProfileSettings(base, id, { ua: 'консоль' })).ua, 'desktop');
+  check('язык хранится строкой заголовка', st(setProfileSettings(base, id, { lang: 'en-US,en;q=0.9' })).lang, 'en-US,en;q=0.9');
+  check('пустой язык = как в приложении', st(setProfileSettings(base, id, { lang: '   ' })).lang, null);
+
+  // ⚠️ Главный случай раздела: у основного профиля «очищать при выходе» означало бы разлогин
+  // ВЕЗДЕ при каждом закрытии браузера — его партиция и есть сессия по умолчанию.
+  const dflt = setProfileSettings(base, DEFAULT_PROFILE_ID, { clearOnExit: true });
+  check('основному очистка при выходе запрещена на записи', dflt.profiles[0].settings.clearOnExit, false);
+  checkTrue('и на чтении тоже',
+    profileClearsOnExit({ ...dflt.profiles[0], settings: { ...dflt.profiles[0].settings, clearOnExit: true } }) === false);
+  checkTrue('обычному профилю разрешена', profileClearsOnExit(setProfileSettings(base, id, { clearOnExit: true }).profiles[1]));
+  // Файл, поправленный руками, тоже не пробивает запрет — потому что он стоит и на чтении.
+  const hacked = parseProfiles({ profiles: [{ id: DEFAULT_PROFILE_ID, settings: { clearOnExit: true } }] });
+  checkTrue('и файл с диска основного не пробивает', profileClearsOnExit(hacked.profiles[0]) === false);
 }
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);

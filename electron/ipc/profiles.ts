@@ -1,9 +1,12 @@
 import { ipcMain } from 'electron';
 import { IPC } from '../../shared/ipc';
-import { DEFAULT_PROFILE_ID, type ProfileSettings } from '../../shared/profiles';
+import {
+  DEFAULT_PROFILE_ID, type ProfileAvatar, type ProfileLook, type ProfileSettings,
+} from '../../shared/profiles';
 import {
   getProfiles, createProfile, deleteProfile, updateProfileName,
-  updateProfileSettings, setActiveProfile, pinStartupProfile,
+  updateProfileSettings, updateProfileAvatar, updateProfileLook,
+  setActiveProfile, pinStartupProfile,
 } from '../ProfileStore';
 import { allContexts, broadcastToChrome } from '../WindowRegistry';
 import type { IpcDeps } from './deps';
@@ -59,6 +62,21 @@ export function registerProfilesIpc(d: IpcDeps): void {
     const state = updateProfileSettings(String(id), (patch ?? {}) as Partial<ProfileSettings>);
     // ⚠️ Немедленно, а не при следующей смене состояния VPN: см. шапку файла.
     await d.applyVpnProxy();
+    broadcast();
+    return state;
+  });
+
+  // ⚠️ Аватарка и облик прокси НЕ трогают — это внешность, а не сеть. Отдельные каналы, а не
+  // поля в PROFILES_SETTINGS, именно поэтому: там каждая правка обязана переставить прокси
+  // (см. шапку), и гнать перестановку туннеля из-за смены эмодзи было бы и медленно, и странно.
+  ipcMain.handle(IPC.PROFILES_AVATAR, (_e, id: string, avatar: ProfileAvatar) => {
+    const state = updateProfileAvatar(String(id), avatar);
+    broadcast();
+    return state;
+  });
+
+  ipcMain.handle(IPC.PROFILES_LOOK, (_e, id: string, patch: Partial<ProfileLook>) => {
+    const state = updateProfileLook(String(id), (patch ?? {}) as Partial<ProfileLook>);
     broadcast();
     return state;
   });

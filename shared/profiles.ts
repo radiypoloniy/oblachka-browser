@@ -36,13 +36,75 @@ export interface ProfileSettings {
   vpn: ProfileVpn;
   /** Сетевая блокировка трекеров в этой сессии. Косметика — только у профиля по умолчанию. */
   adblock: boolean;
+  /**
+   * Как профиль представляется сайтам. 'mobile' — тот же UA, что у веб-приложений панели.
+   *
+   * ⚠️ Это НЕ «другой отпечаток» и не анонимность (см. §4.Б карты: разный отпечаток мы не
+   * делаем и не обещаем). Это удобство: профиль «Телефон» открывает мобильные версии сайтов.
+   */
+  ua: ProfileUa;
+  /**
+   * Accept-Language профиля. null — как в приложении.
+   *
+   * Строка в формате заголовка ('en-US,en;q=0.9'), а не код языка: сессия принимает именно её.
+   */
+  lang: string | null;
+  /**
+   * Стирать куки этой партиции при выходе из приложения.
+   *
+   * ⚠️ У профиля по умолчанию это ЗАПРЕЩЕНО и игнорируется на чтении (profileClearsOnExit):
+   * его партиция — это сессия, где лежат ВСЕ логины человека, и «очистить при выходе» там
+   * означало бы разлогинить его везде при каждом закрытии браузера. Ровно та же причина, по
+   * которой основной профиль нельзя удалить.
+   */
+  clearOnExit: boolean;
 }
+
+/** Как профиль представляется сайтам. */
+export type ProfileUa = 'desktop' | 'mobile';
+
+/**
+ * Аватарка профиля.
+ *
+ * ⚠️ Фото хранится ВНУТРИ profiles.json как data-URL, и это осознанно: файл читается на самом
+ * раннем старте (до окна, чтобы знать партицию), и второй источник — отдельная папка картинок —
+ * означал бы второе место, где данные могут разъехаться со списком профилей. Цена — потолок
+ * PROFILE_PHOTO_MAX; всё, что больше, разбор роняет в 'letter', а не пишет на диск.
+ */
+export type ProfileAvatar =
+  | { kind: 'letter' }
+  | { kind: 'emoji'; emoji: string }
+  | { kind: 'photo'; dataUrl: string };
+
+/**
+ * Свой облик профиля. null в любом поле — «как в приложении», а не «пусто».
+ *
+ * ⚠️ Сюда НЕ переезжают поисковик и модель (решение 22.08): модель весит гигабайты и держит
+ * видеопамять — второй профиль не имеет права требовать вторую загрузку, а поисковик на
+ * профиль это раздражение без пользы.
+ */
+export interface ProfileLook {
+  theme: ProfileTheme | null;
+  /** Id палитры из palettes.css. null — палитра приложения. */
+  palette: string | null;
+  /** Id сетчатого градиента (src/newtab/gradients.ts) или ключ обоев. null — как в приложении. */
+  wallpaper: string | null;
+}
+
+export type ProfileTheme = 'light' | 'dark' | 'system';
+
+/** Потолок data-URL фотографии профиля в символах (~192 КБ). */
+export const PROFILE_PHOTO_MAX = 192 * 1024;
 
 export interface Profile {
   id: string;
   name: string;
   /** Цвет метки — id из палитры плиток, не сырой цвет (см. WIDGET_FILLS). */
   color: string;
+  /** Чем профиль показывается в списке. Умолчание — буква имени на цветном кружке. */
+  avatar: ProfileAvatar;
+  /** Своя тема/палитра/обои. Пустой облик = как в приложении. */
+  look: ProfileLook;
   settings: ProfileSettings;
   createdAt: number;
 }
@@ -66,8 +128,13 @@ export const PROFILE_COLORS = ['blue', 'teal', 'green', 'orange', 'pink', 'slate
 export function defaultProfileSettings(): ProfileSettings {
   // ⚠️ Умолчание — 'inherit', а не 'off' и не 'on'. Новый профиль обязан вести себя ровно так
   // же, как браузер вёл себя до профилей: человек не просил ничего менять, он просил отдельные
-  // куки. Любое другое умолчание — это молчаливое изменение поведения.
-  return { vpn: 'inherit', adblock: true };
+  // куки. Любое другое умолчание — это молчаливое изменение поведения. По той же причине
+  // 'desktop', null и false ниже: новые поля не имеют права менять поведение старых профилей.
+  return { vpn: 'inherit', adblock: true, ua: 'desktop', lang: null, clearOnExit: false };
+}
+
+export function defaultProfileLook(): ProfileLook {
+  return { theme: null, palette: null, wallpaper: null };
 }
 
 export function defaultProfilesState(): ProfilesState {
@@ -76,6 +143,8 @@ export function defaultProfilesState(): ProfilesState {
       id: DEFAULT_PROFILE_ID,
       name: 'Основной',
       color: 'blue',
+      avatar: { kind: 'letter' },
+      look: defaultProfileLook(),
       settings: defaultProfileSettings(),
       createdAt: 0,
     }],
@@ -143,7 +212,56 @@ function cleanName(raw: unknown, fallback: string): string {
 function cleanSettings(raw: unknown): ProfileSettings {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const vpn: ProfileVpn = o.vpn === 'on' || o.vpn === 'off' ? o.vpn : 'inherit';
-  return { vpn, adblock: o.adblock !== false };
+  // ⚠️ Отсутствующее поле = умолчание, а не 'выключено': файл, записанный до появления этих
+  // настроек, обязан читаться как «веди себя как раньше». Поэтому сравнение с ожидаемым
+  // значением, а не приведение к boolean.
+  const ua: ProfileUa = o.ua === 'mobile' ? 'mobile' : 'desktop';
+  const lang = typeof o.lang === 'string' && o.lang.trim() ? o.lang.trim().slice(0, 64) : null;
+  return { vpn, adblock: o.adblock !== false, ua, lang, clearOnExit: o.clearOnExit === true };
+}
+
+/**
+ * Один графемный кластер для аватарки-эмодзи.
+ *
+ * ⚠️ Именно кластер, а не символ: «👩‍💻» это три кодовые точки со склейкой, «🇷🇸» — две,
+ * а первый символ строки у них — половина картинки. Обрезка «по первому символу» рисовала бы
+ * на кружке мусор. Intl.Segmenter есть и в Node, и в Chromium; фолбэк — на случай урезанной ICU.
+ */
+function cleanEmoji(raw: unknown): string {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  if (!s) return '';
+  try {
+    const it = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)[Symbol.iterator]();
+    const first = it.next();
+    return first.done ? '' : String(first.value.segment).slice(0, 24);
+  } catch {
+    return (Array.from(s)[0] ?? '').slice(0, 24);
+  }
+}
+
+function cleanAvatar(raw: unknown): ProfileAvatar {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  if (o.kind === 'emoji') {
+    const emoji = cleanEmoji(o.emoji);
+    return emoji ? { kind: 'emoji', emoji } : { kind: 'letter' };
+  }
+  if (o.kind === 'photo') {
+    const url = typeof o.dataUrl === 'string' ? o.dataUrl : '';
+    // ⚠️ Только data-URL картинки и только в пределах потолка. Ссылка на http здесь означала бы
+    // поход в сеть при каждом показе списка профилей — и мимо сессии профиля.
+    const ok = /^data:image\/(png|jpeg|webp);base64,/.test(url) && url.length <= PROFILE_PHOTO_MAX;
+    return ok ? { kind: 'photo', dataUrl: url } : { kind: 'letter' };
+  }
+  return { kind: 'letter' };
+}
+
+function cleanLook(raw: unknown): ProfileLook {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const theme: ProfileTheme | null =
+    o.theme === 'light' || o.theme === 'dark' || o.theme === 'system' ? o.theme : null;
+  const str = (v: unknown): string | null =>
+    typeof v === 'string' && v.trim() ? v.trim().slice(0, 64) : null;
+  return { theme, palette: str(o.palette), wallpaper: str(o.wallpaper) };
 }
 
 /**
@@ -169,6 +287,8 @@ export function parseProfiles(raw: unknown): ProfilesState {
       id,
       name: cleanName(p.name, id === DEFAULT_PROFILE_ID ? 'Основной' : 'Профиль'),
       color: (PROFILE_COLORS as readonly string[]).includes(String(p.color)) ? String(p.color) : 'blue',
+      avatar: cleanAvatar(p.avatar),
+      look: cleanLook(p.look),
       settings: cleanSettings(p.settings),
       createdAt: typeof p.createdAt === 'number' ? p.createdAt : 0,
     });
@@ -206,6 +326,8 @@ export function addProfile(state: ProfilesState, name: string, color: string, no
     id,
     name: cleanName(name, 'Профиль'),
     color: (PROFILE_COLORS as readonly string[]).includes(color) ? color : 'blue',
+    avatar: { kind: 'letter' },
+    look: defaultProfileLook(),
     settings: defaultProfileSettings(),
     createdAt: now,
   };
@@ -223,9 +345,53 @@ export function setProfileSettings(state: ProfilesState, id: string, patch: Part
   return {
     ...state,
     profiles: state.profiles.map((p) => (
-      p.id === id ? { ...p, settings: cleanSettings({ ...p.settings, ...patch }) } : p
+      p.id === id ? { ...p, settings: guardSettings(p.id, cleanSettings({ ...p.settings, ...patch })) } : p
     )),
   };
+}
+
+/**
+ * Настройки, которые основному профилю запрещены.
+ *
+ * ⚠️ Запрет стоит на ЗАПИСИ и на ЧТЕНИИ (profileClearsOnExit) сразу, и это не перестраховка:
+ * запись защищает от кнопки, чтение — от файла, который человек поправил руками или который
+ * достался от прежней версии. Цена ошибки здесь — разлогин везде при закрытии браузера.
+ */
+function guardSettings(id: string, s: ProfileSettings): ProfileSettings {
+  return id === DEFAULT_PROFILE_ID && s.clearOnExit ? { ...s, clearOnExit: false } : s;
+}
+
+/** Стирать ли куки этого профиля при выходе. Основной — никогда, см. guardSettings. */
+export function profileClearsOnExit(p: Profile): boolean {
+  return p.id !== DEFAULT_PROFILE_ID && p.settings.clearOnExit;
+}
+
+/** Поменять аватарку. Мусор и слишком тяжёлое фото падают в букву, а не пишутся на диск. */
+export function setProfileAvatar(state: ProfilesState, id: string, avatar: ProfileAvatar): ProfilesState {
+  return {
+    ...state,
+    profiles: state.profiles.map((p) => (p.id === id ? { ...p, avatar: cleanAvatar(avatar) } : p)),
+  };
+}
+
+/** Поменять облик. Частичный патч: не переданное поле остаётся как было. */
+export function setProfileLook(state: ProfilesState, id: string, patch: Partial<ProfileLook>): ProfilesState {
+  return {
+    ...state,
+    profiles: state.profiles.map((p) => (
+      p.id === id ? { ...p, look: cleanLook({ ...p.look, ...patch }) } : p
+    )),
+  };
+}
+
+/**
+ * Что показать на кружке профиля, когда своей картинки нет.
+ *
+ * ⚠️ Первый ГРАФЕМНЫЙ кластер имени, а не `name[0]`: имя «👨‍🚀 Космос» или «Ёж» на срезе по
+ * первому символу даёт половину эмодзи или голую «Е» без точек.
+ */
+export function profileInitial(p: Profile): string {
+  return (cleanEmoji(p.name) || '?').toUpperCase();
 }
 
 /**
