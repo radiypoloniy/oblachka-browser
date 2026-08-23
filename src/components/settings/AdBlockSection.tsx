@@ -36,7 +36,6 @@ export default function AdBlockSection({
           Раньше оно лежало подписью внутри строки состояния, тем же кеглем, что и всё остальное. */}
       <SectionHeader
         title="Блокировка рекламы"
-        tone="tangerine"
         hero={state.sessionBlockCount.toLocaleString('ru')}
         heroLabel={state.sessionBlockCount === 1 ? 'запрос заблокирован за сеанс' : 'запросов заблокировано за сеанс'}
       >

@@ -235,7 +235,7 @@ export default function PasswordsSection() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
-      <SectionHeader title="Пароли" tone="tea">
+      <SectionHeader title="Пароли">
         Зашифрованный сейф на этом устройстве — записи защищены ключом, привязанным к вашей
         учётной записи Windows. Автозаполнение в веб-формы появится отдельным шагом.
       </SectionHeader>

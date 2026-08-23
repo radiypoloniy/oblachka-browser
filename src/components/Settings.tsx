@@ -4,6 +4,7 @@ import { searchSettings, isEntryAvailable, SETTINGS_INDEX, type SettingsEntry, t
 import type { AdBlockState } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
 import { sp, pad, RADIUS, motion, selected, panelIsland } from '../styles/system';
+import { SECTION_TONE, toneVars } from './settings/kit';
 import AdBlockSection from './settings/AdBlockSection';
 import VpnSection from './settings/VpnSection';
 import AiSection from './settings/AiSection';
@@ -379,7 +380,10 @@ export default function Settings({ onClose, defaultSection, onOpenImport, onSect
             пережить смену раздела, иначе слушатель колеса остаётся на выброшенном узле и
             резинка работает ровно один раз. Обёртка же нужна самой отдаче — двигать надо
             содержимое, а не контейнер, иначе уедут его края и полоса прокрутки. */}
-        <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: pad(6, 8) }}>
+        {/* ⚠️ Тон раздела кладётся ЗДЕСЬ, один раз, переменными (см. SECTION_TONE в kit.tsx).
+            Не пропом в каждую секцию: тогда шапка и содержимое красились бы из разных мест и
+            однажды разошлись бы. Так цвет по построению один на весь раздел. */}
+        <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: pad(6, 8), ...toneVars(SECTION_TONE[section]) }}>
           <div key={section} className="oblako-section-in">
           {section === 'general' && <GeneralSection onOpenImport={onOpenImport} />}
           {section === 'adblock' && (

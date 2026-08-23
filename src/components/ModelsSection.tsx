@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Trash2, AlertTriangle } from 'lucide-react';
 import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
-import { OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox,
+import { CapsLabel, OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox,
 } from './settings/kit';
-import { sp, TEXT, CAPS, RADIUS } from '../styles/system';
+import { sp, TEXT, RADIUS } from '../styles/system';
 
 function gb(bytes: number): string {
   return (bytes / 1e9).toFixed(1);
@@ -36,7 +36,6 @@ function requirementsLine(entry: CatalogEntry): string {
   return `${gb(entry.model.sizeBytes)} ГБ загрузки · нужно ${Math.ceil(entry.minVramBytes / 1024 ** 3)} ГБ видеопамяти`;
 }
 
-const groupLabelStyle: React.CSSProperties = { ...CAPS };
 
 // ── Модели: установленные (выбор дефолта, удаление) + каталог для скачивания ──────────────────
 // Первая подсекция AI — без хотя бы одной установленной модели остальной AI (перевод/чат/группировка)
@@ -200,7 +199,7 @@ export default function ModelsSection() {
 
       {/* ── Группа A: установленные ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={groupLabelStyle}>Установленные модели</div>
+        <CapsLabel>Установленные модели</CapsLabel>
 
         {diverged && (
           // ⚠️ Без цветной подложки: статус говорит значком и словом, фон он не красит (закон
@@ -265,7 +264,7 @@ export default function ModelsSection() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
             {/* Своя подпись группы: без неё выбор висит вплотную к списку моделей и читается как
                 его продолжение, а это отдельный вопрос. */}
-            <div style={{ ...groupLabelStyle, marginBottom: 4 }}>Когда загружать модель</div>
+            <CapsLabel style={{ marginBottom: 4 }}>Когда загружать модель</CapsLabel>
             {/* ⚠️ Сегменты, а не две строки-карточки: выбор бинарный и короткий, а цена размена
                 (память против времени первого ответа) не теряется — она уходит подписью под
                 пилюлей, см. Segmented в kit.tsx. */}
@@ -283,7 +282,7 @@ export default function ModelsSection() {
 
       {/* ── Группа B: доступные для загрузки ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-        <div style={groupLabelStyle}>Доступные для загрузки</div>
+        <CapsLabel>Доступные для загрузки</CapsLabel>
 
         {downloadRunning && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

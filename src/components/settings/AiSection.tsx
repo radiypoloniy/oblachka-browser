@@ -26,6 +26,15 @@ export default function AiSection() {
   // Теперь ждёт только та карточка, которой нечего показать; остальное монтируется сразу.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
+      {/* ⚠️ Шапка стоит в КОРНЕ раздела, а не внутри одного из блоков. Раздел собран из шести
+          самостоятельных кусков (модели, перевод, история, навыки, Gemini, SearXNG), и раньше
+          общего заголовка у него не было вовсе: экран начинался прямо с «Локальные модели», и
+          человек, зашедший в «AI», попадал сразу в частность. После того как остальные разделы
+          получили цветные шапки, пропажа стала бросаться в глаза. */}
+      <SectionHeader title="AI">
+        Локальная модель работает на этом устройстве и ничего не отправляет. Облачные сервисы
+        ниже подключаются по отдельности и только вашим ключом.
+      </SectionHeader>
       <ModelsSection />
       <TranslationEngineSection />
       <HistoryBackfillSection />
@@ -68,10 +77,10 @@ function GeminiSection() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <SectionHeader title="Фактчек — ключ Gemini">
-        Ключ Gemini нужен для фактчека в AI-панели — проверки утверждений страницы по реальным
-        источникам в интернете. Хранится зашифрованным, не в виде обычного текста.
-      </SectionHeader>
+      <Subsection
+        title="Фактчек — ключ Gemini"
+        description="Проверка утверждений страницы по источникам в интернете. Ключ хранится зашифрованным, не обычным текстом."
+      ><span /></Subsection>
 
       {/* Статус */}
       {connected === null ? <StatusCardSkeleton /> : <StatusCard
@@ -154,10 +163,12 @@ function SearxngSection() {
   // Тот же приём, что у блока Gemini выше: ждёт только карточка статуса, не весь блок.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <SectionHeader title="SearXNG — веб-поиск для AI">
-        Свой поисковый сервер для web-grounding в AI-панели. Адрес и токен хранятся зашифрованными,
-        не в виде обычного текста.
-      </SectionHeader>
+      {/* ⚠️ Подраздел, а не вторая шапка раздела: цветных шапок на экране должна быть РОВНО одна,
+          иначе цвет перестаёт означать «здесь начинается раздел». */}
+      <Subsection
+        title="SearXNG — веб-поиск для AI"
+        description="Свой поисковый сервер для web-grounding в AI-панели. Адрес и токен хранятся зашифрованными, не обычным текстом."
+      ><span /></Subsection>
 
       {/* Статус */}
       {configured === null ? <StatusCardSkeleton /> : <StatusCard

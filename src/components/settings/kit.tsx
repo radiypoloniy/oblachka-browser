@@ -131,6 +131,44 @@ const POSTER_INK: Record<PosterTone, string> = {
 };
 
 /**
+ * Тон раздела. ⚠️ ОДНА карта на всё приложение — источник правды.
+ *
+ * Раньше тон приходил пропом в каждую секцию, и это была заготовка расхождения: раздел мог
+ * получить один тон в шапке и другой (или никакой) внутри. Теперь Settings.tsx кладёт тон
+ * переменными на контейнер, а компоненты kit читают их — и шапка, и содержимое красятся из
+ * одного места по построению.
+ *
+ * ⚠️ Тон закреплён НАВСЕГДА: узнаваемость и есть смысл затеи. «Блокировка» всегда мандариновая,
+ * и после третьего открытия её находят по цвету, не читая.
+ */
+export const SECTION_TONE: Record<string, PosterTone> = {
+  general: 'sky',
+  appearance: 'lime',
+  ai: 'tea',
+  vpn: 'passion',
+  adblock: 'tangerine',
+  passwords: 'tea',
+  autofill: 'sky',
+  permissions: 'mustard',
+  profiles: 'sky',
+  rules: 'tangerine',
+};
+
+/** Переменные тона для контейнера раздела. Кладутся один раз в Settings.tsx. */
+export function toneVars(tone: PosterTone | undefined): React.CSSProperties {
+  if (!tone) return {};
+  return {
+    ['--section-tone' as string]: `var(--poster-${tone})`,
+    ['--section-ink' as string]: POSTER_INK[tone],
+    // ⚠️ Мягкая доля тона — для разделителей, меток и подложек ВНУТРИ раздела. Считается
+    // формулой от того же цвета, а не подбирается вручную: иначе шесть тонов дали бы шесть
+    // разных ощущений плотности, и разделы перестали бы выглядеть одной системой.
+    ['--section-soft' as string]: `color-mix(in srgb, var(--poster-${tone}) 14%, transparent)`,
+    ['--section-edge' as string]: `color-mix(in srgb, var(--poster-${tone}) 42%, transparent)`,
+  };
+}
+
+/**
  * Шапка раздела настроек.
  *
  * ⚠️ ЦВЕТНАЯ ПЛОСКОСТЬ, а не строка текста, и это главная правка редизайна 23.08. Раньше раздел
@@ -149,7 +187,11 @@ const POSTER_INK: Record<PosterTone, string> = {
  */
 export function SectionHeader({ title, tone, hero, heroLabel, children }: {
   title: string;
-  /** Тон раздела. Без него шапка остаётся тихой — так живут служебные разделы. */
+  /**
+   * ⚠️ Проп оставлен только для мест ВНЕ настроек (свои экраны, стенды). В самих настройках его
+   * передавать не надо: тон приходит переменной от Settings.tsx (см. SECTION_TONE) — так шапка и
+   * содержимое гарантированно одного цвета.
+   */
   tone?: PosterTone;
   /** Главное число раздела. */
   hero?: React.ReactNode;
@@ -157,35 +199,23 @@ export function SectionHeader({ title, tone, hero, heroLabel, children }: {
   heroLabel?: React.ReactNode;
   children?: React.ReactNode;
 }) {
-  if (!tone) {
-    return (
-      <div>
-        {/* ⚠️ Заголовок раздела — 22, а не 16: разница с описанием обязана быть ЗАМЕТНОЙ. Раньше
-            заголовок (16/700) и описание (14) отличались на два пункта, иерархии не возникало и
-            экран читался серой массой (см. TEXT в styles/system.ts). */}
-        <h2 style={{ margin: 0, ...TEXT.title }}>{title}</h2>
-        {children && (
-          <p style={{ margin: `${sp(2)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)', maxWidth: MEASURE }}>
-            {children}
-          </p>
-        )}
-      </div>
-    );
-  }
-  const ink = POSTER_INK[tone];
+  // Тон берётся из переменной контейнера (см. toneVars); проп — запасной путь для экранов вне
+  // настроек. Fallback в var() держит вид, если раздел тон не объявил.
+  const bg = tone ? `var(--poster-${tone})` : 'var(--section-tone, var(--surface-sunken))';
+  const ink = tone ? POSTER_INK[tone] : 'var(--section-ink, var(--text-strong))';
   return (
     <div style={{
-      background: `var(--poster-${tone})`,
+      background: bg,
       color: ink,
       // ⚠️ Отрицательные поля ВЫЧИТАЮТ ИМЕННО padding панели (pad(6, 8) в Settings.tsx —
       // 24 сверху, 32 по бокам), поэтому шапка идёт от края до края, как в рефах, а не висит
       // карточкой внутри отступов. Числа связаны: поменяется padding панели — поменять и здесь.
       margin: `-${sp(6)}px -${sp(8)}px ${sp(6)}px`,
       padding: `${sp(6)}px ${sp(8)}px`,
-      // ⚠️ Левый верхний угол ПРЯМОЙ, остальные скруглены. Шапка упирается в край панели слева
-      // и сверху — круглый угол там открыл бы полоску фона, — а справа она кончается вместе с
-      // колонкой содержимого, и прямой обрыв читался бы как ошибка вёрстки.
-      borderRadius: `0 ${RADIUS.content}px ${RADIUS.content}px ${RADIUS.content}px`,
+      // ⚠️ ВЕРХНИЕ углы прямые, нижние скруглены. Шапка упирается в верхний край панели, и
+      // скругление там открывало бы полоску фона; снизу же она отрывается от края и обязана
+      // выглядеть предметом, а не обрезанной заливкой.
+      borderRadius: `0 0 ${RADIUS.content}px ${RADIUS.content}px`,
       position: 'relative', overflow: 'hidden',
     }}>
       {/* Зерно поверх заливки — та же текстура, что на карточках стола (grain в system.ts).
@@ -231,10 +261,21 @@ export function Subsection({ title, description, children }: {
     // Расхождение имени с реестром ничего не ломает — раздел откроется, просто без подсветки.
     <div data-setting-block={title} style={{
       display: 'flex', flexDirection: 'column', gap: sp(3),
-      paddingTop: sp(6), marginTop: sp(1), borderTop: '1px solid var(--divider)',
+      paddingTop: sp(6), marginTop: sp(1),
+      // ⚠️ Разделитель — ТОНОМ РАЗДЕЛА и в два пикселя, а не общая серая линия в один.
+      // Живой отзыв: «только тонкие линии, всё блёклое». Полоска цвета делает две вещи разом:
+      // держит ритм страницы и связывает содержимое с цветной шапкой, из-за чего экран
+      // перестаёт разваливаться на «яркую обложку и серое тело».
+      borderTop: '2px solid var(--section-edge, var(--divider))',
     }}>
       <div>
-        <h3 style={{ margin: 0, ...TEXT.section }}>{title}</h3>
+        <h3 style={{
+          margin: 0, ...TEXT.section,
+          // Заголовок подраздела — дисплейной гарнитурой: с ней разрыв между ним и описанием
+          // читается как уровень, а не как «то же самое чуть жирнее».
+          ...DISPLAY, fontSize: 19, fontWeight: 700, letterSpacing: '-0.01em',
+          color: 'var(--text-strong)',
+        }}>{title}</h3>
         {description && (
           <p style={{ margin: `${sp(1)}px 0 0`, ...TEXT.body, color: 'var(--text-faint)', maxWidth: MEASURE }}>
             {description}
@@ -250,7 +291,14 @@ export function Subsection({ title, description, children }: {
 // (напр. flex:1 + ellipsis в шапке списка паролей).
 export function CapsLabel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ ...CAPS, marginBottom: sp(2), ...style }}>
+    // ⚠️ Метка группы получает ТОЧКУ тона слева. Мелочь на 6 пикселей, но именно такие мелочи
+    // отличают «страницу продукта» от «списка настроек»: цвет появляется там же, где начинается
+    // новая группа, и глаз цепляется за начало, а не за сплошной серый столбик.
+    <div style={{ ...CAPS, marginBottom: sp(2), display: 'flex', alignItems: 'center', gap: sp(2), ...style }}>
+      <span style={{
+        width: 6, height: 6, borderRadius: RADIUS.pill, flex: 'none',
+        background: 'var(--section-tone, var(--text-faint))',
+      }} />
       {children}
     </div>
   );

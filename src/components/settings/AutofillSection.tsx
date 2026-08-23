@@ -45,7 +45,7 @@ export default function AutofillSection() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 560 }}>
-      <SectionHeader title="Автозаполнение" tone="tea">
+      <SectionHeader title="Автозаполнение">
         Адреса и банковские карты для быстрого заполнения форм. Данные зашифрованы на этом
         устройстве; CVC/CVV карт не сохраняется. Подстановка в формы появится следующим шагом.
       </SectionHeader>

@@ -20,7 +20,7 @@ interface GeneralSectionProps {
 export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <SectionHeader title="Браузер" tone="sky">
+      <SectionHeader title="Браузер">
         Общие настройки браузера.
       </SectionHeader>
 
