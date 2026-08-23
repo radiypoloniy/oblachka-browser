@@ -2,6 +2,7 @@
 import { app, WebContentsView, BrowserWindow, Menu, clipboard, net } from 'electron';
 import type { MenuItemConstructorOptions, PostBody, WebContents, WebFrameMain } from 'electron';
 import { randomUUID } from 'node:crypto';
+import { isGuestNavigable } from '../shared/guestNavigation';
 import path from 'node:path';
 import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
 import { profilePartition, DEFAULT_PROFILE_ID } from '../shared/profiles';
@@ -1494,6 +1495,7 @@ export class TabManager {
     // Дальше — только проводка событий, разнесённая по темам. Тела обработчиков не менялись:
     // каждый из них по-прежнему первым делом спрашивает mine() — вкладку могли передать другому
     // окну, а снять слушатели выборочно нечем (см. разбор выше).
+    this.#wireNavigationGuard(view);
     this.#wireGuestSignals(id, view, mine);
     this.#wirePageLifecycle(id, view, mine, notify);
     this.#wireWindowOpenPolicy(id, view);
@@ -1502,6 +1504,41 @@ export class TabManager {
 
 
     this.registerHotkeyHandler(wc);
+  }
+
+/**
+   * Запрет привилегированных схем в гостевой вкладке (аудит 21.08, находка 7).
+   *
+   * ⚠️ Дыра была РЕАЛЬНАЯ и открытая: `setWindowOpenHandler` здесь стоял, а `will-navigate` —
+   * нет, хотя рядом, в `WebAppManager` и `GraphWebAppManager`, этот запрет уже написан с тем же
+   * обоснованием. Страница могла сделать `location = 'oblako-chrome://localhost/index.html'` и
+   * получить НАШ интерфейс в своём процессе: не мгновенный Node (у гостя `preload-content`, а не
+   * `window.oblako`), но подделка «настроек Oblako» внутри вкладки и путаница origin — этого
+   * достаточно. `oblako-model://` вдобавок отдаёт файлы моделей с `Access-Control-Allow-Origin: *`.
+   *
+   * ⚠️ `will-redirect` ОТДЕЛЬНО, а не «заодно»: `will-navigate` не ловит СЕРВЕРНЫЙ редирект, то
+   * есть сайт, отвечающий `Location: oblako-chrome://…`, прошёл бы мимо одной проверки.
+   *
+   * ⚠️ `file:` разрешён ТОЛЬКО когда переход идёт с другого `file:`. Локальные документы часто
+   * ссылаются друг на друга, и ломать это нельзя; но переход `https:` → `file:` — это чужая
+   * страница, тянущая браузер к диску пользователя, и законных причин у неё нет. Открыть файл
+   * человек по-прежнему может из омнибокса: тот грузится через `loadURL` из main, а `will-navigate`
+   * на программную загрузку не срабатывает вовсе.
+   *
+   * ⚠️ Хук вешается на КАЖДУЮ гостевую вкладку и НЕ спрашивает `mine()`. Здесь это осознанно:
+   * запрет схемы — свойство самой страницы, а не того, какое окно ей сейчас владеет. Вкладка,
+   * переданная другому окну, обязана остаться под тем же запретом.
+   */
+  #wireNavigationGuard(view: WebContentsView): void {
+    const wc = view.webContents;
+    const guard = (e: Electron.Event, target: string): void => {
+      if (!isGuestNavigable(target, wc.getURL())) {
+        e.preventDefault();
+        console.warn('[TabMgr] навигация на привилегированную схему запрещена:', target.slice(0, 120));
+      }
+    };
+    wc.on('will-navigate', guard);
+    wc.on('will-redirect', guard);
   }
 
   // Сигналы ОТ гостевой страницы (content-preload): пароли, автозаполнение, буфер обмена.

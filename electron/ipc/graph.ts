@@ -5,6 +5,7 @@
 import type { GraphStructure } from '../../shared/graph';
 import type { ImagePreset } from '../../shared/imagePresets';
 import { IPC } from '../../shared/ipc';
+import { isReadableImagePath } from '../../shared/imageFilePolicy';
 import type { ContentBounds } from '../../shared/ipc';
 import { SUPPORTED_FILE_EXTENSIONS } from '../FileExtract';
 import { sendChatMessage } from '../GraphChat';
@@ -112,6 +113,15 @@ export function registerGraphIpc(d: IpcDeps): void {
   // Превью картинки узла. Файл читает main: у renderer нет доступа к file://, а тащить в
   // карточку полноразмерный кадр с генератора незачем — data-URL раздулся бы на десятки МБ.
   ipcMain.handle(IPC.GRAPH_IMAGE_PREVIEW, async (_e, filePath: string) => {
+    // ⚠️ Аудит 21.08, находка 9: здесь читался ЛЮБОЙ путь, присланный хромом. Гость этот канал
+    // не зовёт, но XSS в нашем интерфейсе означал бы выдачу `passwords.sqlite`, `session.json`
+    // или SSH-ключа в renderer одной строкой. Ограничить каталогом нельзя — картинку человек
+    // выбирает системным диалогом где угодно на диске, — поэтому барьер стоит по типу файла
+    // (shared/imageFilePolicy.ts).
+    if (!isReadableImagePath(filePath)) {
+      console.warn('[graph] превью запрошено не для картинки — отказано');
+      return null;
+    }
     try {
       const stat = await fsp.stat(filePath);
       if (!stat.isFile() || stat.size > 40 * 1024 * 1024) return null;
