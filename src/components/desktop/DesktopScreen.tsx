@@ -635,6 +635,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
       {sheetOpen && (
         <AddSheet
           layout={layout}
+          tiles={tiles}
           onAdd={(item) => { apply(addItem(layout, item)); setSheetOpen(false); }}
           onClose={() => setSheetOpen(false)}
         />
