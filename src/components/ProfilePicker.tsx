@@ -5,6 +5,7 @@ import {
   type Profile, type ProfilesState,
 } from '../../shared/profiles';
 import { ALTITUDE, DISPLAY, RADIUS, TEXT, altitude, motion, pad, sp } from '../styles/system';
+import ProfileAvatar from './ProfileAvatar';
 
 // Выбор профиля при запуске.
 //
@@ -197,13 +198,9 @@ function ProfileButton({ profile, disabled, onPick }: {
         transition: motion.hover('background', 'border-color'),
       }}
     >
-      <span style={{
-        width: DOT, height: DOT, flex: 'none', borderRadius: RADIUS.pill,
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        // ⚠️ Спред роли идёт ПЕРВЫМ: он несёт свой цвет и затёр бы белый.
-        ...DISPLAY, fontSize: 18,
-        background: `var(--tile-${profile.color})`, color: 'var(--white)',
-      }}>{(profile.name.trim()[0] ?? '?').toUpperCase()}</span>
+      {/* ⚠️ Тот же компонент, что в настройках: аватарка, выбранная человеком там, обязана
+          встретить его здесь — иначе выбор облика выглядит как настройка ни на что не влияющая. */}
+      <ProfileAvatar profile={profile} size={DOT} />
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', ...TEXT.section, color: 'var(--text-strong)' }}>
           {profile.name}

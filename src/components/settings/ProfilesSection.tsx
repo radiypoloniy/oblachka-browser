@@ -1,12 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import {
   DEFAULT_PROFILE_ID, PROFILE_COLORS, PROFILES_MAX,
-  type Profile, type ProfileVpn, type ProfilesState,
+  type Profile, type ProfileAvatar as AvatarValue, type ProfileVpn, type ProfilesState,
 } from '../../../shared/profiles';
-import { SectionHeader, Subsection, OptionList, OptionRow, Segmented, TextField, btnGhost, InlineHint,
+import { SectionHeader, Subsection, OptionList, OptionRow, Segmented, TextField, btnGhost,
+  InlineHint, InlineError,
 } from './kit';
-import { RADIUS, TEXT, sp } from '../../styles/system';
+import ProfileAvatar, { AVATAR_EMOJI } from '../ProfileAvatar';
+import { readFileDataUrl, shrinkAvatarPhoto } from '../profileAvatarPhoto';
+import { RADIUS, TEXT, motion, selected, sp } from '../../styles/system';
+
+// Сторона кнопки эмодзи в наборе. Не из шкалы отступов: это площадь НАЖАТИЯ, а не воздух,
+// и мельче 32 в неё не попасть мышью с первого раза (правило Fitts, тот же размер у кнопок
+// тулбара).
+const EMOJI_BTN = 34;
 
 // Раздел «Профили» — свои логины и свои настройки сети.
 //
@@ -65,7 +73,7 @@ export default function ProfilesSection() {
 
       <Subsection
         title="Зачем это нужно"
-        description="У каждого профиля свои куки и логины: можно держать два аккаунта одного сайта открытыми рядом, а рабочее не смешивать с личным. Плюс свои настройки сети — например, один профиль всегда через VPN, а другой напрямую. История и закладки у каждого профиля свои. Пароли пока общие для всех профилей."
+        description="У каждого профиля свои куки и логины: можно держать два аккаунта одного сайта открытыми рядом, а рабочее не смешивать с личным. Плюс свои настройки сети — например, один профиль всегда через VPN, а другой напрямую. История, закладки, список загрузок и отслеживание товаров у каждого профиля свои. Сами скачанные файлы лежат в общей папке «Загрузки», как и раньше. Пароли пока общие для всех профилей."
       >
         <span />
       </Subsection>
@@ -79,7 +87,7 @@ export default function ProfilesSection() {
               subtitle={subtitleFor(p, pinned === p.id, state.activeId === p.id)}
               active={state.activeId === p.id}
               onClick={() => { void window.oblako.switchProfile(p.id).then(setState); }}
-              icon={<Dot profile={p} />}
+              icon={<ProfileAvatar profile={p} />}
               actions={(
                 <div style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
                   <button
@@ -113,6 +121,10 @@ export default function ProfilesSection() {
           if (!p) return null;
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4), paddingTop: sp(2) }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+                <span style={{ ...TEXT.caption }}>Как выглядит</span>
+                <AvatarEditor profile={p} onState={setState} />
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
                 <span style={{ ...TEXT.caption }}>Название</span>
                 <TextField
@@ -179,7 +191,7 @@ export default function ProfilesSection() {
                 subtitle="Запускаться с этим профилем и не спрашивать"
                 active={pinned === p.id}
                 onClick={() => { void window.oblako.setStartupProfile(p.id).then(setState); }}
-                icon={<Dot profile={p} />}
+                icon={<ProfileAvatar profile={p} />}
               />
             ))}
           </OptionList>
@@ -198,18 +210,116 @@ function subtitleFor(p: Profile, isPinned: boolean, isActive: boolean): string {
   return parts.join(' · ') || 'Свои куки и логины';
 }
 
-/** Метка профиля — цветной кружок с буквой, как аватар аккаунта. */
-export function Dot({ profile, size = 18 }: { profile: Profile; size?: number }) {
+// Выбор облика профиля: буква, эмодзи или своё фото.
+//
+// ⚠️ Стоит ПЕРВЫМ в блоке «Настроить», до названия и выхода в сеть. Не потому, что важнее, а
+// потому, что это единственная настройка профиля, которую человек видит потом каждый день:
+// аватарка едет на экран выбора при запуске и в строку списка, а «выход в сеть» он поставит
+// один раз и забудет.
+function AvatarEditor({ profile, onState }: { profile: Profile; onState: (s: ProfilesState) => void }) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const kind = profile.avatar.kind;
+  const emoji = profile.avatar.kind === 'emoji' ? profile.avatar.emoji : '';
+
+  async function apply(av: AvatarValue): Promise<void> {
+    setErr('');
+    onState(await window.oblako.setProfileAvatar(profile.id, av));
+  }
+
+  async function onPick(file: File | undefined): Promise<void> {
+    if (!file) return;
+    setBusy(true);
+    setErr('');
+    try {
+      const small = await shrinkAvatarPhoto(await readFileDataUrl(file));
+      // ⚠️ Отказ ОБЪЯСНЯЕТСЯ. Разбор на той стороне роняет негодную аватарку в букву молча, и без
+      // этой строки человек, выбравший файл, увидел бы букву и решил, что кнопка не работает.
+      if (!small) { setErr('Не получилось ужать эту картинку — попробуйте другую (PNG, JPEG или WebP)'); return; }
+      await apply({ kind: 'photo', dataUrl: small });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <span style={{
-      width: size, height: size, borderRadius: RADIUS.pill, flex: 'none',
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      // ⚠️ Спред роли идёт ПЕРВЫМ: он несёт свой цвет и затёр бы белый, стой он после.
-      ...TEXT.caption,
-      // ⚠️ Токен, а не литерал: белый на цветной метке — тот же случай, что текст на акценте
-      // (--on-accent выведен из него же). Литерал здесь ловит машина, и правильно ловит.
-      background: `var(--tile-${profile.color})`, color: 'var(--white)',
-      fontWeight: 700, lineHeight: 1,
-    }}>{(profile.name.trim()[0] ?? '?').toUpperCase()}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(4) }}>
+        {/* Крупный показ — единственное место, где человек видит аватарку в полный рост до того,
+            как встретит её на экране выбора при запуске. */}
+        <ProfileAvatar profile={profile} size={48} />
+        <Segmented
+          value={kind}
+          options={[
+            { id: 'letter' as const, label: 'Буква' },
+            { id: 'emoji' as const, label: 'Эмодзи' },
+            { id: 'photo' as const, label: 'Фото' },
+          ]}
+          onChange={(k) => {
+            if (k === 'letter') { void apply({ kind: 'letter' }); return; }
+            if (k === 'emoji') { void apply({ kind: 'emoji', emoji: emoji || AVATAR_EMOJI[0]! }); return; }
+            // ⚠️ «Фото» открывает выбор файла и НЕ переключает вид сам: отменил диалог — облик
+            // остался прежним. Иначе отказ от выбора оставлял бы профиль с пустым кружком.
+            if (kind !== 'photo') fileRef.current?.click();
+          }}
+        />
+      </div>
+
+      {kind === 'emoji' && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(1) }}>
+          {AVATAR_EMOJI.map((e) => {
+            const active = e === emoji;
+            return (
+              <button
+                key={e}
+                onClick={() => { void apply({ kind: 'emoji', emoji: e }); }}
+                onMouseEnter={(ev) => { ev.currentTarget.style.transform = motion.lift; }}
+                onMouseLeave={(ev) => { ev.currentTarget.style.transform = 'none'; }}
+                style={{
+                  width: EMOJI_BTN, height: EMOJI_BTN, flex: 'none', borderRadius: RADIUS.control,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  border: 'none', cursor: 'default', lineHeight: 1,
+                  // Кегль от кнопки, а не из шкалы текста: это глиф, а не подпись.
+                  fontSize: Math.round(EMOJI_BTN * 0.56),
+                  background: 'transparent',
+                  ...selected(active),
+                  // Выбранный держится кольцом цвета профиля — тем же приёмом, что сама аватарка.
+                  boxShadow: active ? `inset 0 0 0 1.5px var(--tile-${profile.color})` : 'none',
+                  transition: motion.hover('background', 'box-shadow', 'transform'),
+                }}
+              >{e}</button>
+            );
+          })}
+        </div>
+      )}
+
+      {kind === 'photo' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
+          <button style={{ ...btnGhost, opacity: busy ? 0.5 : 1 }} disabled={busy}
+            onClick={() => fileRef.current?.click()}
+          >{busy ? 'Готовлю…' : 'Заменить фото'}</button>
+          <button style={btnGhost} onClick={() => { void apply({ kind: 'letter' }); }}>Убрать</button>
+        </div>
+      )}
+
+      {err && <InlineError>{err}</InlineError>}
+
+      {/* Один вход для файла на оба случая (первый выбор и замена): второй input означал бы
+          второй обработчик и второй шанс разойтись. */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          // ⚠️ Значение сбрасываем СРАЗУ: без этого повторный выбор ТОГО ЖЕ файла не даёт события
+          // change вовсе — человек жмёт «заменить», указывает тот же файл, и ничего не происходит.
+          e.target.value = '';
+          void onPick(file);
+        }}
+      />
+    </div>
   );
 }
