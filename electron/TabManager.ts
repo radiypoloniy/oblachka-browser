@@ -1,5 +1,5 @@
 ﻿import os from 'os';
-import { app, WebContentsView, BrowserWindow, Menu, clipboard, net } from 'electron';
+import { app, WebContentsView, BrowserWindow, Menu, clipboard, ipcMain, net } from 'electron';
 import type { MenuItemConstructorOptions, PostBody, WebContents, WebFrameMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { isGuestNavigable } from '../shared/guestNavigation';
@@ -3876,9 +3876,38 @@ export class TabManager {
   setOnSaveAs(cb: (url: string) => void): void { this.onSaveAsCb = cb; }
   setOnClipboardToggle(cb: () => void): void { this.onClipboardToggleCb = cb; }
 
+  /**
+   * Спорный хоткей, который страница себе НЕ забрала (см. preload-content.ts).
+   *
+   * ⚠️ Слушатель один на менеджер, а не на вкладку, и он обязан проверять принадлежность
+   * отправителя: `ipcMain.on` глобален, и без гварда одно нажатие в одном окне сработало бы во
+   * всех — ровно та же ловушка, что уже разобрана у `before-input-event` ниже (после переезда
+   * вкладки её слушатель остаётся у прежнего менеджера навсегда).
+   */
+  private pageHotkeyBound = false;
+  private bindPageHotkeys(): void {
+    if (this.pageHotkeyBound) return;
+    this.pageHotkeyBound = true;
+    ipcMain.on(IPC.PAGE_HOTKEY, (event, action: unknown) => {
+      if (!this.ownsWebContents(event.sender.id)) return;
+      switch (action) {
+        case 'find':
+          this.findBarOpen = true;
+          this.onFindOpenCb();
+          break;
+        case 'quick':    this.onQuickSearchCb?.(); break;
+        case 'bookmark': this.onBookmarkPageCb?.(); break;
+        case 'history':  this.onHistoryOpenCb?.(); break;
+        case 'reload':   this.reload(this.activeId); break;
+        default: break;  // незнакомое имя — молча мимо, страница могла быть старой версии
+      }
+    });
+  }
+
   // source — откуда пришёл ввод. Слой хрома принадлежит окну навсегда и никуда не переезжает;
   // вкладка — может (см. detachTabForMove), и это решает всё, см. гвард ниже.
   registerHotkeyHandler(wc: WebContents, source: 'chrome' | 'tab' = 'tab'): void {
+    this.bindPageHotkeys();
     wc.on('before-input-event', (event, input) => {
       // ⚠️ Тот же закон, что у mine() в wirePageEvents, только здесь он был пропущен: после
       // переезда вкладки в другое окно слушатель ПРЕЖНЕГО менеджера остаётся на её webContents
@@ -3971,28 +4000,37 @@ export class TabManager {
       } else if (code === 'Digit0' || code === 'Numpad0') {
         event.preventDefault();
         this.resetZoom();                   // Ctrl+0: сбросить к 100%
-      } else if (code === 'KeyF' && !shift) {
+      // ⚠️ Ctrl+F / Ctrl+E / Ctrl+D / Ctrl+R / Ctrl+H здесь БОЛЬШЕ НЕ ПЕРЕХВАТЫВАЮТСЯ, и это не
+      // пропуск. `before-input-event` срабатывает раньше страницы, а в Google Таблицах Ctrl+D —
+      // «заполнить вниз», Ctrl+R — «заполнить вправо», Ctrl+E — выравнивание, Ctrl+F и Ctrl+H —
+      // их собственные поиск и замена. Перехват означал бы, что редактор своих клавиш не видит
+      // вообще. Эти пять приходят СНИЗУ, из preload страницы (IPC.PAGE_HOTKEY), и только когда
+      // страница ими не воспользовалась — см. разбор там же.
+      // ⚠️ У СЛОЯ ХРОМА страницы нет, и снизу ничего не придёт: на хабе, в настройках и в
+      // библиотеке preload-content.ts не работает вовсе. Поэтому для него те же пять клавиш
+      // разбираются здесь, как раньше, — гвард по source и есть вся разница.
+      } else if (source === 'chrome' && code === 'KeyF' && !shift) {
         event.preventDefault();
         this.findBarOpen = true;
         this.onFindOpenCb();                // Ctrl+F: открыть / сфокусировать FindBar
-      } else if (code === 'KeyE' && !shift) {
+      } else if (source === 'chrome' && code === 'KeyE' && !shift) {
         event.preventDefault();
-        this.onQuickSearchCb?.();           // Ctrl+E: поповер быстрого поиска поверх страницы
-      } else if (code === 'KeyR' && !shift) {
+        this.onQuickSearchCb?.();           // Ctrl+E: поповер быстрого поиска
+      } else if (source === 'chrome' && code === 'KeyR' && !shift) {
         event.preventDefault();
         this.reload(this.activeId);         // Ctrl+R: обновить страницу
+      } else if (source === 'chrome' && code === 'KeyH' && !shift) {
+        event.preventDefault();
+        this.onHistoryOpenCb?.();           // Ctrl+H: открыть библиотеку
+      } else if (source === 'chrome' && code === 'KeyD' && !shift) {
+        event.preventDefault();
+        this.onBookmarkPageCb?.();          // Ctrl+D: сохранить страницу в закладки
       } else if ((code === 'KeyR' && shift) || code === 'F5') {
         event.preventDefault();
         this.reloadHard(this.activeId);     // Ctrl+Shift+R / Ctrl+F5: обновить мимо кэша
       } else if (code === 'KeyL' && !shift) {
         event.preventDefault();
         this.onOmniboxFocusCb();            // Ctrl+L: фокус в омнибокс
-      } else if (code === 'KeyH' && !shift) {
-        event.preventDefault();
-        this.onHistoryOpenCb?.();           // Ctrl+H: открыть панель истории
-      } else if (code === 'KeyD' && !shift) {
-        event.preventDefault();
-        this.onBookmarkPageCb?.();          // Ctrl+D: сохранить страницу в закладки
       } else if (code === 'KeyS' && shift) {
         event.preventDefault();
         this.onScreenshotCb?.();            // Ctrl+Shift+S: снять активную вкладку

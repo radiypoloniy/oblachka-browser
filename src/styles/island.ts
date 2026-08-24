@@ -115,7 +115,7 @@ export function glassPlate({ surface = 'material', shadow = 'shadow-card', borde
  * коридору светлоты, и без дизеринга слабый переход ложится полосами — 8-битный sRGB просто не
  * имеет промежуточных значений.
  */
-function noise(opacity: number): string {
+export function noise(opacity: number): string {
   return "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E" +
     "%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E" +
     `%3Crect width='180' height='180' filter='url(%23n)' opacity='${opacity}'/%3E%3C/svg%3E\")`;

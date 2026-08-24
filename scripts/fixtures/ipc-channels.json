@@ -214,6 +214,7 @@
   "ONBOARDING_MARK_SHOWN=onboarding:mark-shown",
   "ONBOARDING_SHOULD_SHOW=onboarding:should-show",
   "PAGE_CHANGES_GET=page:changes-get",
+  "PAGE_HOTKEY=page:hotkey",
   "PAGE_TRANSLATE_GET_STATE=page-translate:get-state",
   "PAGE_TRANSLATE_PROGRESS_CHANGED=page-translate:progress-changed",
   "PAGE_TRANSLATE_STATE_CHANGED=page-translate:state-changed",

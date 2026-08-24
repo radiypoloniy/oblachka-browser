@@ -9,7 +9,7 @@ import type { ThemeMode, ThemePaletteId, ThemePrefs } from '../../../shared/ipc'
 import {
   loadNewTabSettings, saveNewTabSettings, setNewTabCustomImage, getNewTabCustomImage,
   shrinkBackgroundImage,
-  WALLPAPER_PRESETS, RATE_CHOICES, CRYPTO_CHOICES, TINT_AMOUNT_MIN, TINT_AMOUNT_MAX,
+  WALLPAPER_PRESETS, livePresetId, RATE_CHOICES, CRYPTO_CHOICES, TINT_AMOUNT_MIN, TINT_AMOUNT_MAX,
   type NewTabSettings, type BackgroundKind,
 } from '../../newtab/settings';
 import { allMeshes, deleteUserMesh, isUserMesh, saveUserMesh, subscribeMeshes, meshCss } from '../../newtab/gradients';
@@ -387,7 +387,10 @@ export default function AppearanceSection() {
                 style={{
                   width: SWATCH_W, height: SWATCH_H, borderRadius: RADIUS.box, cursor: 'default',
                   background: p.css, border: 'none',
-                  outline: s.background.kind === 'preset' && s.background.preset === p.id ? '2px solid var(--accent)' : '2px solid transparent',
+                  // ⚠️ Сравниваем через livePresetId: у человека мог остаться выбранным снятый
+                  // фон («Лаванда», «Полночь»), и без перевода ни один образец не подсветился бы
+                  // — список выглядел бы так, будто фон не выбран вовсе.
+                  outline: s.background.kind === 'preset' && livePresetId(s.background.preset) === p.id ? '2px solid var(--accent)' : '2px solid transparent',
                   outlineOffset: 2,
                 }} />
             ))}

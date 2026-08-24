@@ -15,6 +15,7 @@ import {
   ensureCustomImageShrunk, isLightBackground, type NewTabSettings,
 } from '../../newtab/settings';
 import { findMesh, meshCss } from '../../newtab/gradients';
+import { GRAIN, noise } from '../../styles/island';
 import { APPS, AppIconBadge } from '../aiApps';
 import SiteIcon from './SiteIcon';
 import { WIDGET_FILLS, WIDGET_RENDERERS, fillCss } from './widgets';
@@ -735,10 +736,26 @@ function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoU
       })()
     : { ...base, backgroundImage: presetCss(bg.preset) };
 
+  // ⚠️ ЗЕРНО ПОВЕРХ ГРАДИЕНТА — это ДИЗЕРИНГ, а не украшение. Градиент во весь экран идёт
+  // крошечными шагами цвета, и в 8-битном sRGB одна ступень растягивается на десятки пикселей:
+  // получаются полосы. Зерно их разбивает. Ровно тот же слой и те же параметры, что у цветной
+  // земли окна (см. noise/GRAIN в src/styles/island.ts): numOctaves=1, чтобы не пошли крупные
+  // разводы, и stitchTiles, иначе повторение видно швами.
+  //
+  // ⚠️ Только под ГРАДИЕНТОМ и своим цветом. У фотографии своя фактура, и шум поверх неё
+  // читается грязью на снимке, а не материалом.
+  const grainy = bg.kind === 'preset' || bg.kind === 'mesh' || bg.kind === 'color';
+
   return (
     <>
       <div style={style} />
-      {bg.dim > 0 && <div style={{ position: 'absolute', inset: 0, zIndex: 1, background: `rgba(0,0,0,${bg.dim})` }} />}
+      {grainy && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
+          backgroundImage: noise(GRAIN.tinted),
+        }} />
+      )}
+      {bg.dim > 0 && <div style={{ position: 'absolute', inset: 0, zIndex: 2, background: `rgba(0,0,0,${bg.dim})` }} />}
     </>
   );
 }

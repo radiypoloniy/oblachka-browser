@@ -120,22 +120,29 @@ export const CRYPTO_CHOICES: { code: string; label: string }[] = [
 // light: фон светлый, поверх него текст должен быть ТЁМНЫМ (см. isLightBackground). Без этой
 // пометки нежные градиенты выглядели бы пустыми: белые часы на бело-розовом фоне не видно.
 export const WALLPAPER_PRESETS: { id: string; label: string; css: string; light?: boolean }[] = [
-  { id: 'aurora',   label: 'Аврора',   css: 'var(--wallpaper-aurora)' },
-  { id: 'ocean',    label: 'Океан',    css: 'var(--wallpaper-ocean)' },
-  { id: 'sunset',   label: 'Закат',    css: 'var(--wallpaper-sunset)' },
-  { id: 'lavender', label: 'Лаванда',  css: 'var(--wallpaper-lavender)' },
-  { id: 'graphite', label: 'Графит',   css: 'var(--wallpaper-graphite)' },
-  { id: 'indigo',   label: 'Индиго',   css: 'var(--wallpaper-indigo)' },
-  { id: 'emerald',  label: 'Изумруд',  css: 'var(--wallpaper-emerald)' },
-  { id: 'ember',    label: 'Пламя',    css: 'var(--wallpaper-ember)' },
-  { id: 'plum',     label: 'Слива',    css: 'var(--wallpaper-plum)' },
-  { id: 'midnight', label: 'Полночь',  css: 'var(--wallpaper-midnight)' },
-  { id: 'peach',    label: 'Персик',   css: 'var(--wallpaper-peach)' },
-  { id: 'mint',     label: 'Мята',     css: 'var(--wallpaper-mint)',    light: true },
-  { id: 'sky',      label: 'Небо',     css: 'var(--wallpaper-sky)',     light: true },
-  { id: 'blossom',  label: 'Цветение', css: 'var(--wallpaper-blossom)', light: true },
-  { id: 'pearl',    label: 'Жемчуг',   css: 'var(--wallpaper-pearl)',   light: true },
+  // ⚠️ Порядок значимый: сначала ПЛАКАТНЫЕ — построенные из тех же --poster-*, которыми покрашены
+  // разделы настроек и библиотеки. Обои перестают быть случайной картинкой со стороны: выбранный
+  // фон и цвет разделов оказываются одной семьёй.
+  //
+  // ⚠️ Из набора УБРАНЫ «Лаванда», «Слива» и «Цветение» — они были фиолетовыми и розово-сиреневыми,
+  // а фиолетового в системе нет вообще (см. шапку colors.css). Убраны и дубли: «Индиго» повторял
+  // «Океан», «Полночь» — «Графит», и в списке стояли четыре почти одинаковые плитки.
+  { id: 'tangerine', label: 'Мандарин', css: 'var(--wallpaper-tangerine)' },
+  { id: 'tea',       label: 'Чай',      css: 'var(--wallpaper-tea)' },
+  { id: 'passion',   label: 'Страсть',  css: 'var(--wallpaper-passion)' },
+  { id: 'ocean',     label: 'Океан',    css: 'var(--wallpaper-ocean)' },
+  { id: 'aurora',    label: 'Аврора',   css: 'var(--wallpaper-aurora)' },
+  { id: 'sunset',    label: 'Закат',    css: 'var(--wallpaper-sunset)' },
+  { id: 'emerald',   label: 'Изумруд',  css: 'var(--wallpaper-emerald)' },
+  { id: 'ember',     label: 'Пламя',    css: 'var(--wallpaper-ember)' },
+  { id: 'graphite',  label: 'Графит',   css: 'var(--wallpaper-graphite)' },
+  { id: 'mustard',   label: 'Горчица',  css: 'var(--wallpaper-mustard)', light: true },
+  { id: 'lime',      label: 'Лайм',     css: 'var(--wallpaper-lime)',    light: true },
+  { id: 'sky',       label: 'Небо',     css: 'var(--wallpaper-sky)',     light: true },
+  { id: 'peach',     label: 'Персик',   css: 'var(--wallpaper-peach)',   light: true },
+  { id: 'pearl',     label: 'Жемчуг',   css: 'var(--wallpaper-pearl)',   light: true },
 ];
+
 
 // Светлый ли фон — от этого зависит цвет текста и плашек на вкладке.
 // Для своего цвета считаем яркость по формуле восприятия (зелёный весит больше синего);
@@ -162,8 +169,32 @@ export function isLightBackground(bg: NewTabSettings['background']): boolean {
   }
   return false;
 }
+/**
+ * Обои, которых больше нет, → ближайшие оставшиеся.
+ *
+ * ⚠️ Без этой таблицы у всех, кто выбрал «Лаванду» или «Полночь», фон молча стал бы первым в
+ * списке: `presetCss` падает на WALLPAPER_PRESETS[0]. Человек ничего не менял, а обои поменялись
+ * сами — и понять, почему, ему неоткуда. Замена по родству цвета этого не отменяет, но делает
+ * происшедшее объяснимым: тёмно-синий остаётся тёмно-синим, серый — серым.
+ */
+const RETIRED_WALLPAPERS: Record<string, string> = {
+  lavender: 'ocean',    // фиолетовый — в системе такого цвета нет
+  plum:     'passion',  // фиолетово-розовый, ближайший по температуре
+  blossom:  'peach',    // светлый розовый
+  mint:     'sky',      // светлый бирюзовый
+  indigo:   'ocean',    // дублировал «Океан»
+  midnight: 'graphite', // дублировал «Графит»
+};
+
 export function presetCss(id: string): string {
-  return WALLPAPER_PRESETS.find((p) => p.id === id)?.css ?? WALLPAPER_PRESETS[0]!.css;
+  const wanted = RETIRED_WALLPAPERS[id] ?? id;
+  return WALLPAPER_PRESETS.find((p) => p.id === wanted)?.css ?? WALLPAPER_PRESETS[0]!.css;
+}
+
+/** Тот же перевод для списка в настройках: снятые обои показываются выбранными как их замена. */
+export function livePresetId(id: string): string {
+  const wanted = RETIRED_WALLPAPERS[id] ?? id;
+  return WALLPAPER_PRESETS.some((p) => p.id === wanted) ? wanted : WALLPAPER_PRESETS[0]!.id;
 }
 
 const KEY = 'oblako-newtab-settings';
