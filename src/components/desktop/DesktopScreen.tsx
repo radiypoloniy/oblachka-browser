@@ -16,6 +16,13 @@ import {
 } from '../../newtab/settings';
 import { findMesh, meshCss } from '../../newtab/gradients';
 import { GRAIN, noise } from '../../styles/island';
+
+// Полотно зерна собирается ОДИН раз на модуль, а не в рендере: это data-URI на несколько сотен
+// символов, и пересобирать его на каждую перерисовку стола незачем — строка всегда одна и та же.
+const GRAIN_LAYER: React.CSSProperties = {
+  position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
+  backgroundImage: noise(GRAIN.tinted),
+};
 import { APPS, AppIconBadge } from '../aiApps';
 import SiteIcon from './SiteIcon';
 import { WIDGET_FILLS, WIDGET_RENDERERS, fillCss } from './widgets';
@@ -750,10 +757,7 @@ function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoU
     <>
       <div style={style} />
       {grainy && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
-          backgroundImage: noise(GRAIN.tinted),
-        }} />
+        <div style={GRAIN_LAYER} />
       )}
       {bg.dim > 0 && <div style={{ position: 'absolute', inset: 0, zIndex: 2, background: `rgba(0,0,0,${bg.dim})` }} />}
     </>

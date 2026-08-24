@@ -19,6 +19,13 @@ import { glyph } from '../styles/system';
 // ОС сядут на другой цвет, чем остальная шапка.
 const TOOLBAR_HEIGHT = CHROME_OVERLAY_PX;
 // Дебаунс запроса к истории (мс).
+// ⚠️ ДЕБАУНС ТОЛЬКО ДЛЯ СЕТИ. Раньше он стоял на ВСЁМ, включая локальную историю, и это была
+// главная причина, по которой дропдаун ощущался медленнее чужих: человек нажимал букву, и
+// РОВНО НИЧЕГО не происходило 150 мс, хотя ответ уже был готов.
+// Замер (scripts/tmp-hbench, 40 000 записей, тот же движок SQLite): поиск по истории —
+// 0,8–2,5 мс на совпадающем запросе и 14,5 мс в худшем случае (полный скан без совпадений).
+// Ждать 150 мс ради ответа за 2 мс незачем; ждать имеет смысл только там, где цена вопроса
+// секунды — у живых подсказок поисковика (таймаут 3 с, см. SearchSuggestFetcher.ts).
 const SUGGEST_DEBOUNCE = 150;
 // Максимум строк в дропдауне.
 const SUGGEST_MAX = 8;
@@ -164,6 +171,12 @@ export default function Toolbar({
   const inputRef = externalRef ?? internalRef;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suggestSeqRef = useRef(0);
+  // Живые подсказки поисковика для ПОСЛЕДНЕГО запроса. Кладёт отложенный запрос, читает
+  // buildSuggestions — так история рисуется сразу, а сеть догоняет и перерисовывает список.
+  const phrasesRef = useRef<{ q: string; phrases: string[] }>({ q: '', phrases: [] });
+  // Показан ли сейчас непустой список. Нужен рефом, а не стейтом: читается внутри
+  // buildSuggestions, который живёт в useCallback и со стейтом видел бы прошлое значение.
+  const listShownRef = useRef(false);
   // Кэши дорисовки панели — ПО АДРЕСУ и на сеанс работы окна.
   // ⚠️ Не оптимизация ради оптимизации: getPageChanges достаёт текст живой страницы и сравнивает
   // со снимком в истории, а панель открывается на каждый щелчок по адресной строке. Без кэша один
@@ -472,6 +485,9 @@ export default function Toolbar({
     setDropdownOpen(false);
     setSuggestions([]);
     setSelectedIdx(-1);
+    // ⚠️ Сброс обязателен: без него провизорный показ не сработал бы при СЛЕДУЮЩЕМ открытии, и
+    // между кликом в строку и первым ответом истории дропдаун остался бы пустым.
+    listShownRef.current = false;
     onSuggestToggle?.(false);
     // Открепление нативной вью — НЕ через опциональный onSuggestToggle (тот существует для
     // внешней синхронизации App.tsx, но closeDropdown не должен ЗАВИСЕТЬ от того, передан ли он
@@ -831,16 +847,23 @@ export default function Toolbar({
     // ⚠️ Выделения тут нет (setSelectedIdx(-1)): Enter в этот момент обязан вести туда же, куда
     // вёл бы без дропдауна вовсе, — на набранное. Иначе исход нажатия зависел бы от того,
     // успела ли долететь сеть.
-    const provisional: SuggestItem[] = [{
-      kind: 'search',
-      label: `Искать: ${query}`,
-      url: getSearchEngine(searchEngineId).buildUrl(query),
-    }];
-    setSuggestions(provisional);
-    setSelectedIdx(-1);
-    openDropdown();
-    void window.oblako.setSuggestDropdownItems(provisional);
-    void window.oblako.setSuggestDropdownHighlight(-1);
+    // ⚠️ ТОЛЬКО НА ПЕРВОЕ ОТКРЫТИЕ, а не на каждую букву. Смысл провизорного показа был в том,
+    // что готовый список ждали 150 мс дебаунса плюс до трёх секунд сети. Теперь история приходит
+    // за миллисекунды, и подставлять одну строку «Искать: …» на каждое нажатие значит дважды
+    // перерисовывать список внутри одного кадра: он мигает, а в main летят лишние два сообщения
+    // на КАЖДЫЙ символ. Когда дропдаун уже открыт со списком — просто ждём готовый.
+    if (!listShownRef.current) {
+      const provisional: SuggestItem[] = [{
+        kind: 'search',
+        label: `Искать: ${query}`,
+        url: getSearchEngine(searchEngineId).buildUrl(query),
+      }];
+      setSuggestions(provisional);
+      setSelectedIdx(-1);
+      openDropdown();
+      void window.oblako.setSuggestDropdownItems(provisional);
+      void window.oblako.setSuggestDropdownHighlight(-1);
+    }
 
     // Заход 10: история и живые suggest-подсказки — параллельно, каждая изолирована через
     // Promise.allSettled (не Promise.all — сбой ОДНОЙ не должен обрушить ДРУГУЮ). fetchSuggestions
@@ -848,15 +871,17 @@ export default function Toolbar({
     // ловится там и превращается в []), но изоляция здесь дублируется намеренно: buildSuggestions
     // не должен зависеть от внутренней гарантии другого модуля, чтобы сбой suggest-API НИ ПРИ
     // КАКИХ обстоятельствах не уронил историю/вкладки.
+    // ⚠️ ЖДЁМ ТОЛЬКО ИСТОРИЮ. Она отвечает за миллисекунды (замер у SUGGEST_DEBOUNCE), а сеть
+    // может думать до трёх секунд — держать из-за неё готовый список нельзя. Живые подсказки
+    // приезжают своим ходом (см. triggerSuggest) и перезапускают эту же сборку: список просто
+    // становится длиннее, а не появляется позже.
     let histEntries: HistoryEntry[] = [];
-    let suggestPhrases: string[] = [];
-    const [histResult, suggestResult] = await Promise.allSettled([
-      window.oblako.searchHistory(query),
-      window.oblako.fetchSuggestions(query),
-    ]);
-    if (histResult.status === 'fulfilled') histEntries = histResult.value;
-    if (suggestResult.status === 'fulfilled') suggestPhrases = suggestResult.value;
+    const histResult = await Promise.allSettled([window.oblako.searchHistory(query)]);
+    if (histResult[0]!.status === 'fulfilled') histEntries = histResult[0]!.value;
     if (seq !== suggestSeqRef.current) return;
+    // Фразы берём из кэша и только для ЭТОГО запроса: чужие подсказки под свежим набором —
+    // это подсказки не о том, и человек их читает как ошибку.
+    const suggestPhrases = phrasesRef.current.q === query ? phrasesRef.current.phrases : [];
 
     const now = Date.now();
 
@@ -1094,6 +1119,7 @@ export default function Toolbar({
       ? [topItem, searchItem, ...restItems, ...suggestItems]
       : [searchItem, ...suggestItems]).map(asNav);
     if (seq !== suggestSeqRef.current) return;
+    listShownRef.current = deduped.length > 0;
     setSuggestions(deduped);
     // ⚠️ Enter должен вести на ПЕРВУЮ строку, а не на набранные 2-4 символа — но только когда
     // первая строка это «герой» (лучшее совпадение из истории/вкладок). Жалоба была именно про
@@ -1167,7 +1193,20 @@ export default function Toolbar({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!q.trim()) { closeDropdown('empty-query-trigger'); return; }
     const seq = ++suggestSeqRef.current;
-    debounceRef.current = setTimeout(() => { void buildSuggestions(q, seq); }, SUGGEST_DEBOUNCE);
+    // ⚠️ История — БЕЗ ЗАДЕРЖКИ, прямо на нажатие. Это и есть разница с прежним поведением:
+    // раньше здесь стоял единственный setTimeout на 150 мс, и первые 150 мс после буквы дропдаун
+    // не показывал ничего, хотя ответ был готов за 2 мс.
+    void buildSuggestions(q, seq);
+    // Сеть — отложенно. Дошла — кладём в кэш и пересобираем список тем же seq: если человек
+    // успел напечатать дальше, seq уже другой, и устаревшие подсказки не всплывут.
+    debounceRef.current = setTimeout(() => {
+      void window.oblako.fetchSuggestions(q).then((phrases) => {
+        if (seq !== suggestSeqRef.current) return;
+        if (phrases.length === 0) return;   // пересобирать список ради пустоты незачем
+        phrasesRef.current = { q, phrases };
+        void buildSuggestions(q, seq);
+      }).catch(() => { /* сеть недоступна — список уже показан без подсказок */ });
+    }, SUGGEST_DEBOUNCE);
   }, [buildSuggestions, closeDropdown]);
 
   // ── Панель по клику в НЕТРОНУТУЮ строку ──────────────────────────────────────────────────────
