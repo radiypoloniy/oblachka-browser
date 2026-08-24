@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, Search, Star, Download, Loader2, Folder, Sparkles } from 'lucide-react';
+import { X, Download, Loader2, Folder, Sparkles } from 'lucide-react';
 import type { BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource } from '../../shared/ipc';
-import { islandPlate, untintedPlateVars } from '../styles/island';
-import { panelIsland } from '../styles/system';
+import { islandPlate } from '../styles/island';
+import { RADIUS, TEXT, motion, pad, sp } from '../styles/system';
+import { GroupCap, Row, Rows, SideNav, SplitView, type LibrarySummary } from './library/kit';
+import { btnGhost } from './settings/kit';
 import SiteFavicon from './SiteFavicon';
 import { EmptyState } from './EmptyState';
 import { StarGlyph, SearchGlyph } from './glyphs';
@@ -12,7 +14,9 @@ import { StarGlyph, SearchGlyph } from './glyphs';
 type FlatBookmark = BookmarkEntry & { folderTitle: string | null };
 
 interface BookmarksProps {
-  onClose: () => void;
+  /** Строка поиска — общая на всю библиотеку, живёт в оболочке (LibraryShell). */
+  query: string;
+  onSummary: (s: LibrarySummary) => void;
 }
 
 function domainOf(url: string): string {
@@ -22,13 +26,12 @@ function domainOf(url: string): string {
 // Упрощённая копия History.tsx: без группировки по дням (закладки не хронология, порядок —
 // position/id), без Qwen-«умного поиска» — список маленький, фильтр на клиенте достаточен,
 // не нужен отдельный IPC-запрос на каждое нажатие.
-export default function Bookmarks({ onClose }: BookmarksProps) {
+export default function Bookmarks({ query, onSummary }: BookmarksProps) {
   const [entries, setEntries] = useState<FlatBookmark[]>([]);
   // Дерево держим рядом с плоским списком: колонка папок строится из него, а список — из
   // плоского. Один запрос, два представления — иначе счётчики разошлись бы с содержимым.
   const [tree, setTree] = useState<BookmarkNode[]>([]);
   const [folderId, setFolderId] = useState<number | null>(null);
-  const [query, setQuery] = useState('');
   // Умная раскладка. 'idle' → 'computing' → 'preview'. ⚠️ Между computing и применением стоит
   // ЯВНОЕ согласие человека: раскладка не применяется сама ни при каком исходе.
   const [organize, setOrganize] = useState<'idle' | 'computing' | 'preview'>('idle');
@@ -160,210 +163,165 @@ export default function Bookmarks({ onClose }: BookmarksProps) {
     }
   }
 
+  // ⚠️ Сводка считается здесь, из уже загруженного дерева: все числа честные, дополнительных
+  // запросов не нужно (в отличие от истории, которая приходит страницами).
+  const rootless = entries.filter((e) => e.folderTitle === null).length;
+  const monthAgo = Date.now() - 30 * 86_400_000;
+  const freshCount = entries.filter((e) => (e.createdAt ?? 0) > monthAgo).length;
+  const biggest = folderNav.reduce<{ title: string; count: number } | null>(
+    (best, f) => (best === null || f.count > best.count ? { title: f.title, count: f.count } : best), null);
+  useEffect(() => {
+    onSummary({
+      hero: entries.length === 0 ? '—' : String(entries.length),
+      heroLabel: entries.length === 0
+        ? 'вы пока ничего не сохранили'
+        : `сохранено · в ${folderNav.length} ${plural(folderNav.length, 'папке', 'папках', 'папках')}, ${rootless} без папки`,
+      facts: [
+        { label: 'Всего', hint: 'ссылок в сейфе', value: String(entries.length), active: entries.length > 0 },
+        { label: 'Папок', hint: biggest ? `самая большая — «${biggest.title}»` : 'папок пока нет', value: String(folderNav.length), active: folderNav.length > 0 },
+        { label: 'Без папки', hint: 'лежат в общей куче', value: String(rootless) },
+        { label: 'За месяц', hint: 'добавлено новых', value: String(freshCount), active: freshCount > 0 },
+      ],
+    });
+  }, [onSummary, entries.length, folderNav.length, rootless, freshCount, biggest?.title]);
+
   return (
-    <div style={{
-      height: '100%', position: 'relative',
-      display: 'flex', flexDirection: 'column',
-      overflow: 'hidden',
-      // Тот же «остров», что у История/Настройки (Sidebar.tsx::asideBase) — совпадает
-      // с CONTENT_CORNER_RADIUS обычной вкладки.
-      ...islandPlate,
-      ...panelIsland(),
-      ...untintedPlateVars,
-    }}>
-      {/* Заголовок */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '16px 20px 12px',
-        borderBottom: '1px solid var(--divider)',
-        flexShrink: 0,
-      }}>
-        <Star size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        <span style={{ fontWeight: 600, fontSize: 'var(--fs-md)', color: 'var(--text-strong)', flex: 1 }}>
-          Закладки
-        </span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
+      {/* Управление разделом. Крестика тут больше нет — он один и стоит в шапке библиотеки. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), flexWrap: 'wrap', position: 'relative' }}>
+        <span style={{ flex: 1 }} />
         <button
           onClick={() => void toggleImport()}
-          title="Импортировать из другого браузера"
-          style={{
-            background: importOpen ? 'var(--surface-hover)' : 'none', border: 'none', cursor: 'pointer', padding: 4,
-            color: 'var(--text-muted)', borderRadius: 'var(--radius-sm)',
-            display: 'flex', alignItems: 'center',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-body)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = importOpen ? 'var(--surface-hover)' : 'none'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-        >
-          <Download size={15} />
-        </button>
-        <button
-          onClick={onClose}
-          title="Закрыть"
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-            color: 'var(--text-muted)', borderRadius: 'var(--radius-sm)',
-            display: 'flex', alignItems: 'center',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-body)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-        >
-          <X size={16} />
-        </button>
+          style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
+        ><Download size={14} /> Импортировать</button>
+        {importOpen && (
+          <div style={{
+            position: 'absolute', top: 40, right: 0, zIndex: 200, minWidth: 210,
+            ...islandPlate, borderRadius: RADIUS.box, overflow: 'hidden',
+          }}>
+            {importSources.length === 0 ? (
+              <div style={{ padding: pad(2, 3), ...TEXT.body, color: 'var(--text-muted)' }}>
+                Ни один браузер не найден
+              </div>
+            ) : importSources.map((source) => (
+              <button
+                key={source.id}
+                onClick={() => void handleImport(source)}
+                disabled={importingId !== null}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: sp(2), width: '100%', textAlign: 'left',
+                  padding: pad(2, 3), background: 'none', border: 'none', cursor: 'default',
+                  ...TEXT.body, color: 'var(--text-body)',
+                  transition: motion.hover('background'),
+                }}
+                onMouseEnter={(e) => { if (!importingId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+              >
+                {importingId === source.id && <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />}
+                {source.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-
-      {/* Дропдаун импорта — список реально найденных браузеров (пусто, если ни один Chromium-
-          профиль не найден на диске). Позиционирование — тот же приём, что clearOpen в History.tsx. */}
-      {importOpen && (
-        <div style={{
-          position: 'absolute', top: 52, right: 52,
-          ...islandPlate,
-          borderRadius: 'var(--radius-card)',
-          zIndex: 200, overflow: 'hidden', minWidth: 200,
-        }}>
-          {importSources.length === 0 ? (
-            <div style={{ padding: '10px 14px', fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>
-              Ни один браузер не найден
-            </div>
-          ) : importSources.map((source) => (
-            <button
-              key={source.id}
-              onClick={() => void handleImport(source)}
-              disabled={importingId !== null}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
-                padding: '8px 14px', background: 'none', border: 'none',
-                cursor: importingId ? 'default' : 'pointer', fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
-              }}
-              onMouseEnter={(e) => { if (!importingId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-            >
-              {importingId === source.id && <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />}
-              {source.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       {importMessage && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 20px', fontSize: 'var(--fs-sm)',
-          color: 'var(--text-muted)', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: sp(2), ...TEXT.body, color: 'var(--text-muted)',
         }}>
           {importMessage}
-          <button
-            onClick={() => setImportMessage(null)}
-            style={{
-              marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
-              color: 'inherit', display: 'flex', padding: 2,
-            }}
-          >
-            <X size={12} />
-          </button>
+          <button onClick={() => setImportMessage(null)} style={{
+            marginLeft: 'auto', background: 'none', border: 'none', cursor: 'default',
+            color: 'inherit', display: 'flex', padding: 2,
+          }}><X size={12} /></button>
         </div>
       )}
 
-      {/* Поиск — на всю ширину плиты, клиентский фильтр */}
-      <div style={{ padding: '10px 20px', flexShrink: 0 }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          ...islandPlate,
-          borderRadius: 'var(--radius-sm)', padding: '6px 10px',
-        }}>
-          <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск в закладках…"
-            style={{
-              flex: 1, background: 'none', border: 'none', outline: 'none',
-              fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
-            }}
-          />
-          {query && (
-            <button
-              onClick={() => setQuery('')}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: 2, color: 'var(--text-muted)', display: 'flex',
-              }}
-            >
-              <X size={12} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Раскладка — та же, что у Истории: узкая навигация слева, список справа. Там слева
-          даты, здесь папки; в остальном это одна и та же страница-архив, и разводить их по
-          разным формам значило бы заставить человека учить второй интерфейс ради того же
-          действия. ⚠️ При поиске колонка папок ПРЯЧЕТСЯ: искать положено по всему сейфу, а не
-          внутри выбранной папки, иначе найденное молча зависит от того, что выбрано слева. */}
+      {/* ⚠️ При поиске колонка папок ПРЯЧЕТСЯ: искать положено по всему сейфу, а не внутри
+          выбранной папки, иначе найденное молча зависит от того, что выбрано слева. */}
       {searching ? (
         filtered.length === 0 ? (
-          <Empty text="Ничего не найдено" />
+          <EmptyState
+            icon={<SearchGlyph size={22} />}
+            title="Ничего не нашлось"
+            hint="Поиск смотрит по названию закладки и по адресу — и всегда по всему сейфу, а не внутри выбранной папки."
+          />
         ) : (
-          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}>
+          <Rows>
+            <GroupCap title="Найдено" note={`${filtered.length} ${plural(filtered.length, 'ссылка', 'ссылки', 'ссылок')}`} />
             {filtered.map((entry) => (
               <BookmarkRow key={entry.id} entry={entry} onDelete={handleDelete} />
             ))}
-          </div>
+          </Rows>
         )
       ) : (
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
-          <nav style={{
-            width: 170, flexShrink: 0, overflowY: 'auto',
-            padding: '10px 8px 16px', borderRight: '1px solid var(--divider)',
-          }}>
-            <FolderNavItem
-              label="Все закладки" count={entries.length}
-              active={folderId === null} onClick={() => setFolderId(null)} depth={0}
+        <SplitView side={(
+          <div style={{ width: 172, flex: 'none', display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+            <SideNav
+              caption="папки"
+              activeKey={folderId === null ? 'all' : String(folderId)}
+              items={[
+                { key: 'all', label: 'Все закладки', note: String(entries.length) },
+                ...folderNav.map((f) => ({ key: String(f.id), label: f.title, note: String(f.count), removable: true })),
+              ]}
+              onPick={(key) => setFolderId(key === 'all' ? null : Number(key))}
+              onRemove={(key) => {
+                const f = folderNav.find((x) => String(x.id) === key);
+                if (f) void handleDeleteFolder(f.id, f.title, f.count);
+              }}
             />
-            {folderNav.map((f) => (
-              <FolderNavItem
-                key={f.id} label={f.title} count={f.count} depth={f.depth}
-                active={folderId === f.id} onClick={() => setFolderId(f.id)}
-                onDelete={() => void handleDeleteFolder(f.id, f.title, f.count)}
-              />
-            ))}
-
             {/* Умная раскладка живёт ЗДЕСЬ, в колонке папок, а не в шапке: она про то, какие
                 папки будут, то есть про эту колонку. Кнопки нет, пока раскладывать нечего. */}
             {rootLinkCount >= 4 && (
               <button
                 onClick={() => void runOrganize()}
                 disabled={organize === 'computing'}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
-                  marginTop: 10, padding: '6px 10px', border: 'none', background: 'none',
-                  borderRadius: 'var(--radius-sm)', cursor: 'default',
-                  fontSize: 'var(--fs-xs)', color: 'var(--accent)',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+                style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2), justifyContent: 'center' }}
               >
-                <Sparkles size={12} strokeWidth={2} style={{ flexShrink: 0 }} />
+                <Sparkles size={13} strokeWidth={2} />
                 {organize === 'computing' ? 'Разбираю…' : 'Разложить по папкам'}
               </button>
             )}
-          </nav>
-          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}>
-            {organize === 'preview' ? (
-              <OrganizePreview
-                proposals={proposals} dropped={dropped} setDropped={setDropped}
-                byId={byId}
-                onApply={() => void applyOrganize()}
-                onCancel={() => setOrganize('idle')}
-              />
-            ) : visible.length === 0 ? (
-              <Empty text={folderId === null ? 'Нет закладок' : 'В этой папке пусто'} />
-            ) : visible.map((entry) => (
-              <BookmarkRow key={entry.id} entry={entry} onDelete={handleDelete} />
-            ))}
           </div>
-        </div>
+        )}>
+          {organize === 'preview' ? (
+            <OrganizePreview
+              proposals={proposals} dropped={dropped} setDropped={setDropped}
+              byId={byId}
+              onApply={() => void applyOrganize()}
+              onCancel={() => setOrganize('idle')}
+            />
+          ) : visible.length === 0 ? (
+            <EmptyState
+              icon={<StarGlyph size={22} />}
+              title={folderId === null ? 'Закладок пока нет' : 'В этой папке пусто'}
+              hint="Звёздочка в адресной строке сохраняет страницу сюда."
+            />
+          ) : (
+            <Rows>
+              <GroupCap
+                title={folderId === null ? 'Все закладки' : (folderNav.find((f) => f.id === folderId)?.title ?? 'Папка')}
+                note={`${visible.length} ${plural(visible.length, 'ссылка', 'ссылки', 'ссылок')}`}
+              />
+              {visible.map((entry) => (
+                <BookmarkRow key={entry.id} entry={entry} onDelete={handleDelete} />
+              ))}
+            </Rows>
+          )}
+        </SplitView>
       )}
     </div>
   );
+}
+
+/** Русское склонение: 1 ссылка, 2 ссылки, 5 ссылок. */
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  const mod10 = n % 10;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
 }
 
 // Предложение раскладки. ⚠️ Ничего ещё не применено: пока человек не нажал «Разложить», в базе
@@ -481,128 +439,36 @@ function Empty({ text }: { text: string }) {
 // Строка навигации по папкам — визуально та же, что строка даты в Истории. Отступ показывает
 // вложенность: дерево тут плоское списком, потому что папок у человека десятки, а не тысячи,
 // и раскрывающиеся уровни в колонке 170 px читались бы хуже, чем один сплошной перечень.
-function FolderNavItem({ label, count, active, onClick, depth, onDelete }: {
-  label: string; count: number; active: boolean; onClick: () => void; depth: number;
-  /** Нет у «Все закладки» — это не папка, удалять там нечего. */
-  onDelete?: () => void;
-}) {
-  const [menu, setMenu] = useState(false);
-  return (
-    <div style={{ position: 'relative' }}>
-    <button
-      onClick={onClick}
-      // ПКМ — как у вкладок и групп в сайдбаре: удаление папки живёт в меню, а не кнопкой
-      // по наведению. Оно разрушительное, и случайно попасть по нему быть не должно.
-      onContextMenu={(e) => { if (onDelete) { e.preventDefault(); setMenu(true); } }}
-      onBlur={() => setMenu(false)}
-      title={label}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
-        padding: '6px 10px', paddingLeft: 10 + depth * 12, marginBottom: 1,
-        border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'default',
-        background: active ? 'var(--surface-hover)' : 'none',
-        fontSize: 'var(--fs-xs)', color: active ? 'var(--text-strong)' : 'var(--text-body)',
-        fontWeight: active ? 600 : 400,
-      }}
-      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface-hover)' : 'none'; }}
-    >
-      <Folder size={12} strokeWidth={2} style={{ flexShrink: 0, color: 'var(--text-faint)' }} />
-      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {label}
-      </span>
-      <span style={{ flexShrink: 0, color: 'var(--text-faint)' }}>{count || ''}</span>
-    </button>
-    {menu && onDelete && (
-      <div style={{
-        position: 'absolute', top: '100%', left: 10, zIndex: 50,
-        ...islandPlate, borderRadius: 'var(--radius-sm)', overflow: 'hidden', minWidth: 150,
-      }}>
-        <button
-          // onMouseDown, а не onClick: onBlur кнопки-папки успевает закрыть меню раньше клика.
-          onMouseDown={() => { setMenu(false); onDelete(); }}
-          style={{
-            display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
-            border: 'none', background: 'none', cursor: 'default',
-            fontSize: 'var(--fs-sm)', color: 'var(--danger-500)',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-        >Удалить папку…</button>
-      </div>
-    )}
-    </div>
-  );
-}
-
 function BookmarkRow({ entry, onDelete }: { entry: FlatBookmark; onDelete: (id: number) => void }) {
-  const [hovered, setHovered] = useState(false);
-  const domain = domainOf(entry.url);
-
-  function handleNavigate() {
-    void window.oblako.createTab(entry.url);
-  }
-
   return (
-    <div
-      style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        // Просторнее и крупнее — тот же шаг, что в строке Истории: это главный список раздела,
-        // а он читался как плотная таблица.
-        padding: '9px 10px', borderRadius: 'var(--radius-sm)',
-        background: hovered ? 'var(--surface-hover)' : 'transparent',
-        cursor: 'pointer',
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={handleNavigate}
-    >
-      {/* Настоящий значок сайта — тот же компонент, что в Истории: закладку узнают по нему
-          быстрее, чем прочитывают заголовок. */}
-      <SiteFavicon url={entry.url} size={22} />
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6 }}>
-        <span style={{
-          flex: 1, minWidth: 0,
-          fontSize: 'var(--fs-md)', color: 'var(--text-strong)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-          {entry.title || entry.url}
+    <Row
+      icon={<SiteFavicon url={entry.url} size={22} />}
+      title={entry.title || entry.url}
+      subtitle={domainOf(entry.url)}
+      // Папка — отдельной правой колонкой. Раньше она стояла В ОДНОЙ строке с заголовком и
+      // доменом: три разные вещи слипались в одну серую строку, и заголовок терял ширину.
+      // У корневых закладок метки нет вовсе — пустой значок папки только шумел бы.
+      meta={entry.folderTitle ? (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Folder size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
+          {entry.folderTitle}
         </span>
-        {/* Папка — перед доменом: список плоский, и без неё нельзя понять, откуда запись.
-            У корневых закладок метки нет вовсе, пустой значок папки только шумел бы. */}
-        {entry.folderTitle && (
-          <span style={{
-            flexShrink: 2, minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 3,
-            fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>
-            <Folder size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
-            {entry.folderTitle}
-          </span>
-        )}
-        <span style={{
-          flexShrink: 3, minWidth: 0,
-          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-          {domain}
-        </span>
-      </div>
-      {hovered && (
+      ) : undefined}
+      title2={entry.url}
+      onClick={() => { void window.oblako.createTab(entry.url); }}
+      actions={(
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
           title="Удалить из закладок"
           style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: 3, color: 'var(--text-muted)', display: 'flex',
-            borderRadius: 'var(--radius-sm)', flexShrink: 0,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 26, height: 26, border: 'none', borderRadius: RADIUS.control,
+            background: 'transparent', color: 'var(--text-faint)', cursor: 'default',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
-        >
-          <X size={13} />
-        </button>
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-sunken)'; e.currentTarget.style.color = 'var(--text-body)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-faint)'; }}
+        ><X size={14} /></button>
       )}
-    </div>
+    />
   );
 }

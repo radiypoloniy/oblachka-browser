@@ -1,17 +1,26 @@
-import { useMemo, useRef, useState } from 'react';
-import { X, Download, FolderOpen, ExternalLink, RotateCcw, Pause, Play, XCircle, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { X, FolderOpen, ExternalLink, RotateCcw, Pause, Play, XCircle, Trash2 } from 'lucide-react';
 import type { DownloadEntry } from '../../shared/ipc';
-import { islandPlate, untintedPlateVars } from '../styles/island';
-import { panelIsland, RADIUS } from '../styles/system';
+import { RADIUS, sp } from '../styles/system';
+import { packBySite, type DownloadPack } from '../../shared/downloadGroups';
 // Форматирование, подписи состояний и значок по типу файла — общие с поповером у кнопки тулбара
 // (см. downloadsShared.tsx): один и тот же файл в двух местах должен выглядеть одинаково.
-import { FileKindIcon, formatBytes, formatSpeed, STATE_LABEL, STATE_COLOR } from './downloadsShared';
+import { FileKindIcon, formatBytes, formatSpeed } from './downloadsShared';
 import { EmptyState } from './EmptyState';
 import { DownloadGlyph } from './glyphs';
+import { GroupCap, Row, Rows, type LibrarySummary } from './library/kit';
+import { btnGhost } from './settings/kit';
+
+// Раздел «Загрузки» большого меню. Своей шапки, своего крестика и своего поля поиска здесь
+// БОЛЬШЕ НЕТ — всё это переехало в оболочку библиотеки (LibraryShell): раньше пять разделов
+// несли пять разных шапок и четыре одинаковые кнопки «закрыть», хотя закрывают они вкладку.
 
 interface DownloadsProps {
   downloads: DownloadEntry[];
-  onClose: () => void;
+  /** Строка поиска — общая на всю библиотеку, живёт в оболочке. */
+  query: string;
+  /** Раздел сам знает свои числа; шапка библиотеки их только показывает. */
+  onSummary: (s: LibrarySummary) => void;
 }
 
 // Ключ дня — по локальной дате, а не по UTC: «сегодня» человек считает по своим часам.
@@ -29,22 +38,65 @@ function dayLabelOf(ts: number): string {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-export default function Downloads({ downloads, onClose }: DownloadsProps) {
+function hostOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
+}
+
+function timeOf(ts: number): string {
+  return new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+export default function Downloads({ downloads, query, onSummary }: DownloadsProps) {
   const hasFinished = downloads.some((d) => d.state !== 'progressing');
-  const dayRefs = useRef(new Map<string, HTMLDivElement>());
+  const [openPacks, setOpenPacks] = useState<Record<string, boolean>>({});
+
+  // Фильтр по общей строке поиска: имя файла или сайт, откуда он приехал.
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return downloads;
+    return downloads.filter((d) =>
+      d.filename.toLowerCase().includes(q) || hostOf(d.url).toLowerCase().includes(q));
+  }, [downloads, query]);
 
   // Группировка по дням в том порядке, в каком записи уже пришли (свежие сверху) — своей
-  // сортировки не заводим, порядок списка задаёт DownloadManager.
+  // сортировки не заводим, порядок списка задаёт DownloadManager. Внутри дня записи одного
+  // сайта, приехавшие подряд, сворачиваются в пачку (shared/downloadGroups.ts).
   const dayGroups = useMemo(() => {
-    const groups: { key: string; label: string; items: DownloadEntry[] }[] = [];
-    for (const d of downloads) {
+    const groups: { key: string; label: string; packs: DownloadPack<DownloadEntry>[]; count: number }[] = [];
+    for (const d of shown) {
       const key = dayKeyOf(d.startedAt);
       const last = groups[groups.length - 1];
-      if (last && last.key === key) last.items.push(d);
-      else groups.push({ key, label: dayLabelOf(d.startedAt), items: [d] });
+      if (last && last.key === key) last.count += 1;
+      else groups.push({ key, label: dayLabelOf(d.startedAt), packs: [], count: 1 });
+    }
+    // Пачки считаем внутри уже собранного дня: склеивать через границу суток нельзя.
+    for (const g of groups) {
+      g.packs = packBySite(shown.filter((d) => dayKeyOf(d.startedAt) === g.key));
     }
     return groups;
-  }, [downloads]);
+  }, [shown]);
+
+  // ⚠️ Числа шапки считаются ЗДЕСЬ и из уже пришедшего массива: раздел знает свои данные, а
+  // оболочка — нет. Сообщаем наверх эффектом, а не вызовом в теле рендера: setState чужого
+  // компонента во время своего рендера React запрещает.
+  const totalBytes = downloads.reduce((sum, d) => sum + (d.totalBytes || d.receivedBytes), 0);
+  const todayCount = downloads.filter((d) => dayKeyOf(d.startedAt) === dayKeyOf(Date.now())).length;
+  const failedCount = downloads.filter((d) =>
+    d.state === 'interrupted' || d.state === 'cancelled' || (d.state === 'completed' && d.fileMissing)).length;
+  useEffect(() => {
+    onSummary({
+      hero: downloads.length === 0 ? '—' : formatBytes(totalBytes),
+      heroLabel: downloads.length === 0
+        ? 'вы пока ничего не скачивали'
+        : `в ${downloads.length} ${plural(downloads.length, 'файле', 'файлах', 'файлах')}`,
+      facts: [
+        { label: 'Файлов', hint: 'за всё время', value: String(downloads.length), active: downloads.length > 0 },
+        { label: 'Занимают', hint: 'на диске', value: downloads.length === 0 ? '—' : formatBytes(totalBytes), active: downloads.length > 0 },
+        { label: 'Сегодня', hint: 'скачано', value: String(todayCount), active: todayCount > 0 },
+        { label: 'Не получилось', hint: 'прервано или пропало', value: String(failedCount) },
+      ],
+    });
+  }, [onSummary, downloads.length, totalBytes, todayCount, failedCount]);
 
   function clearFinished() {
     const finished = downloads.filter((d) => d.state !== 'progressing');
@@ -53,285 +105,165 @@ export default function Downloads({ downloads, onClose }: DownloadsProps) {
     }
   }
 
+  if (downloads.length === 0) {
+    return (
+      <EmptyState
+        icon={<DownloadGlyph size={22} />}
+        title="Загрузок пока нет"
+        hint="Файлы, которые вы скачаете, останутся здесь — вместе с адресом страницы, откуда они пришли."
+      />
+    );
+  }
+
+  if (shown.length === 0) {
+    return (
+      <EmptyState
+        icon={<DownloadGlyph size={22} />}
+        title="Ничего не нашлось"
+        hint="Поиск смотрит по имени файла и по сайту, откуда он приехал."
+      />
+    );
+  }
+
   return (
-    <div style={{
-      // Тот же остров, что у Настроек и Истории (см. Settings.tsx::settings-root): раньше
-      // Загрузки были оверлеем поверх контента и несли своё оформление — фон приложения,
-      // растяжку на весь контейнер и никакого острова. Отступ по периметру даёт contentRef
-      // в App.tsx, здесь его быть не должно.
-      display: 'flex', flexDirection: 'column', height: '100%',
-      overflow: 'hidden',
-      ...islandPlate,
-      ...panelIsland(),
-      ...untintedPlateVars,
-    }}>
-      {/* Заголовок */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '18px 24px',
-        borderBottom: '1px solid var(--divider-strong)', flex: 'none',
-      }}>
-        {/* Тот же квадратный значок, что у раздела в сайдбаре и в настройках — язык один. */}
-        <span style={{
-          width: 22, height: 22, flex: 'none', borderRadius: RADIUS.control,
-          background: 'var(--tile-teal)', color: '#fff',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Download size={13} strokeWidth={2.4} />
-        </span>
-        <span style={{ fontWeight: 600, fontSize: 'var(--fs-md)', color: 'var(--text-strong)', flex: 1 }}>
-          Загрузки
-        </span>
-        {hasFinished && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
+      {hasFinished && (
+        <div style={{ display: 'flex' }}>
           <button
             onClick={clearFinished}
-            title="Очистить завершённые"
-            style={headerBtn}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-body)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-          >
-            <Trash2 size={15} />
-          </button>
-        )}
-        <button
-          onClick={onClose}
-          title="Закрыть"
-          style={headerBtn}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-body)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-        >
-          <X size={16} />
-        </button>
-      </div>
-
-      {/* Список. Раскладка — та же, что у Истории и Закладок: узкая навигация слева, содержимое
-          справа. Это третий экран одного семейства («что я уже видел / взял»), и три разные
-          формы для трёх соседних разделов человек читает как три разные программы. Слева даты —
-          ровно как в Истории, потому что загрузки тоже хронология. */}
-      {downloads.length === 0 ? (
-        <EmptyState
-          icon={<DownloadGlyph size={22} />}
-          title="Загрузок пока нет"
-          hint="Файлы, которые вы скачаете, останутся здесь — вместе с адресом страницы, откуда они пришли."
-        />
-      ) : (
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
-          <nav style={{
-            width: 150, flexShrink: 0, overflowY: 'auto',
-            padding: '10px 8px 16px', borderRight: '1px solid var(--divider)',
-          }}>
-            {dayGroups.map((g) => (
-              <button
-                key={g.key}
-                onClick={() => dayRefs.current.get(g.key)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
-                  padding: '6px 10px', marginBottom: 1, border: 'none', background: 'none',
-                  borderRadius: 'var(--radius-sm)', cursor: 'default',
-                  fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-              >
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {g.label}
-                </span>
-                <span style={{ flexShrink: 0, color: 'var(--text-faint)' }}>{g.items.length}</span>
-              </button>
-            ))}
-          </nav>
-          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '8px 20px 16px' }}>
-            {dayGroups.map((g) => (
-              <div key={g.key} ref={(el) => { if (el) dayRefs.current.set(g.key, el); else dayRefs.current.delete(g.key); }}>
-                <div style={{
-                  position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface-solid)',
-                  fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
-                  padding: '10px 8px 6px',
-                }}>{g.label}</div>
-                {g.items.map((d) => <DownloadRow key={d.id} entry={d} />)}
+            style={{ ...btnGhost, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
+          ><Trash2 size={14} /> Очистить завершённые</button>
+        </div>
+      )}
+      <Rows>
+        {dayGroups.map((g) => (
+          <div key={g.key}>
+            <GroupCap title={g.label} note={`${g.count} ${plural(g.count, 'файл', 'файла', 'файлов')}`} />
+            {g.packs.map((pack) => (
+              <div key={pack.head.id}>
+                <DownloadRow entry={pack.head} />
+                {/* ⚠️ Пачка РАЗВОРАЧИВАЕТСЯ НА МЕСТЕ, а не уводит на страницу, как в поповере:
+                    здесь и есть та страница, уводить некуда, а потолка высоты нет. */}
+                {pack.rest.length > 0 && (openPacks[pack.head.id]
+                  ? pack.rest.map((d) => <DownloadRow key={d.id} entry={d} />)
+                  : (
+                    <Row
+                      lead=""
+                      icon={<span style={{ display: 'flex', gap: 3, flex: 'none' }}>
+                        {pack.rest.slice(0, 3).map((d) => (
+                          <span key={d.id} style={{
+                            width: 22, height: 22, borderRadius: RADIUS.tight,
+                            display: 'grid', placeItems: 'center', background: 'var(--surface-sunken)',
+                          }}><FileKindIcon filename={d.filename} size={13} /></span>
+                        ))}
+                      </span>}
+                      title={`Ещё ${pack.rest.length} ${plural(pack.rest.length, 'файл', 'файла', 'файлов')} из этой пачки`}
+                      subtitle={hostOf(pack.head.url)}
+                      meta="развернуть"
+                      onClick={() => setOpenPacks((p) => ({ ...p, [pack.head.id]: true }))}
+                    />
+                  ))}
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ))}
+      </Rows>
     </div>
   );
 }
 
-function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
-  const [hovered, setHovered] = useState(false);
+/** Русское склонение: 1 файл, 2 файла, 5 файлов. */
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  const mod10 = n % 10;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+}
 
-  const isActive   = d.state === 'progressing';
-  // Скачано, но файла на месте уже нет — открывать нечего, зато можно скачать заново.
-  const isGone     = d.state === 'completed' && !!d.fileMissing;
-  const isDone     = d.state === 'completed' && !isGone;
-  const isFailed   = d.state === 'interrupted' || d.state === 'cancelled' || isGone;
-  const pct        = d.totalBytes > 0 ? Math.round(d.receivedBytes / d.totalBytes * 100) : 0;
-  const speed      = formatSpeed(d.bytesPerSec);
-  const sizeLabel  = d.totalBytes > 0
-    ? `${formatBytes(d.receivedBytes)} / ${formatBytes(d.totalBytes)}`
+// Строка загрузки — общий рецепт библиотеки: слева время, дальше значок типа, имя дисплейной,
+// под ним размер и сайт моноширинным, справа действия.
+function DownloadRow({ entry: d }: { entry: DownloadEntry }) {
+  const isActive = d.state === 'progressing';
+  const isGone   = d.state === 'completed' && !!d.fileMissing;
+  const isDone   = d.state === 'completed' && !isGone;
+  const isFailed = d.state === 'interrupted' || d.state === 'cancelled' || isGone;
+  const pct      = d.totalBytes > 0 ? Math.round(d.receivedBytes / d.totalBytes * 100) : 0;
+  const size     = d.totalBytes > 0
+    ? `${formatBytes(d.receivedBytes)} из ${formatBytes(d.totalBytes)}`
     : formatBytes(d.receivedBytes);
+  const sub = isActive
+    ? `${size} · ${d.isPaused ? 'на паузе' : formatSpeed(d.bytesPerSec)}`
+    : isGone ? 'файла на месте нет'
+      : d.state === 'cancelled' ? 'отменено'
+        : d.state === 'interrupted' ? 'прервано'
+          : `${formatBytes(d.totalBytes || d.receivedBytes)} · ${hostOf(d.url)}`;
 
   return (
-    <div
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 12,
-        padding: '10px 8px', borderRadius: 'var(--radius-sm)',
-        background: hovered ? 'var(--surface-hover)' : 'transparent',
-        marginBottom: 2,
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <FileKindIcon filename={d.filename} size={34} muted={isFailed} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-      {/* Имя файла + статус */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
-        <span style={{
-          fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0,
-        }}>
-          {d.filename}
-        </span>
-        <span style={{
-          fontSize: 'var(--fs-xs)', flexShrink: 0,
-          color: isGone ? 'var(--text-faint)' : STATE_COLOR[d.state],
-        }}>
-          {isGone ? 'Файла нет' : STATE_LABEL[d.state]}
-        </span>
-      </div>
-
-      {/* ⚠️ Полного адреса источника здесь БОЛЬШЕ НЕТ. Он занимал целую строку под каждым файлом
-          и почти всегда был нечитаемой кашей из параметров — а отвечал на вопрос, который к
-          скачанному файлу не относится: человек ищет здесь файл, а не ссылку. Домен остался
-          в подписи выше, полный адрес — в подсказке при наведении на строку. */}
-
-      {/* Прогресс-бар */}
-      {isActive && (
-        <div style={{ marginBottom: 6 }}>
-          <div style={{
-            height: 3, borderRadius: RADIUS.pill, background: 'var(--divider)',
-            overflow: 'hidden', position: 'relative',
-          }}>
-            {d.totalBytes > 0 ? (
-              <div style={{
-                position: 'absolute', top: 0, left: 0, bottom: 0,
-                width: `${pct}%`,
-                background: 'var(--accent)', borderRadius: RADIUS.pill,
-                transition: 'width 0.2s linear',
-              }} />
-            ) : (
-              // Индетерминированная анимация — Content-Length неизвестен
-              <div style={{
-                position: 'absolute', top: 0, bottom: 0,
-                width: '25%', background: 'var(--accent)', borderRadius: RADIUS.pill,
-                animation: 'oblako-progress 1.4s ease-in-out infinite',
-              }} />
-            )}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{sizeLabel}</span>
-            {speed && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{speed}</span>}
-          </div>
-        </div>
+    <Row
+      lead={isActive || isFailed ? '' : timeOf(d.startedAt)}
+      icon={<FileKindIcon filename={d.filename} size={22} muted={isFailed} />}
+      title={d.filename}
+      subtitle={sub}
+      title2={d.url}
+      onClick={isDone && d.savePath ? () => void window.oblako.openDownloadFile(d.id) : undefined}
+      meta={isActive && d.totalBytes > 0 ? `${pct} %` : undefined}
+      actions={(
+        <>
+          {isActive && (
+            <IconBtn
+              title={d.isPaused ? 'Продолжить' : 'Пауза'}
+              onClick={() => void (d.isPaused
+                ? window.oblako.resumeDownload(d.id)
+                : window.oblako.pauseDownload(d.id))}
+            >{d.isPaused ? <Play size={14} /> : <Pause size={14} />}</IconBtn>
+          )}
+          {isActive && (
+            <IconBtn title="Отменить" onClick={() => void window.oblako.cancelDownload(d.id)}>
+              <XCircle size={14} />
+            </IconBtn>
+          )}
+          {isDone && d.savePath && (
+            <>
+              <IconBtn title="Открыть" onClick={() => void window.oblako.openDownloadFile(d.id)}>
+                <ExternalLink size={14} />
+              </IconBtn>
+              <IconBtn title="Показать в папке" onClick={() => void window.oblako.showDownloadFolder(d.id)}>
+                <FolderOpen size={14} />
+              </IconBtn>
+            </>
+          )}
+          {isFailed && (
+            <IconBtn title="Скачать заново" onClick={() => void window.oblako.retryDownload(d.id)}>
+              <RotateCcw size={14} />
+            </IconBtn>
+          )}
+          <IconBtn title="Убрать из списка" onClick={() => void window.oblako.clearDownload(d.id)}>
+            <X size={14} />
+          </IconBtn>
+        </>
       )}
-
-      {/* ⚠️ Путь сохранения тоже убран из строки: он одинаковый почти у всех файлов (папка
-          загрузок), то есть повторял одно и то же под каждой записью и ничего не различал.
-          Добраться до файла по-прежнему можно кнопкой «Показать в папке» ниже. */}
-
-      {/* Кнопки действий — по наведению. Постоянно раскрытые, они шумели: у каждой записи внизу
-          висел ряд из трёх подписанных кнопок, и список превращался в стену управляющих
-          элементов вместо перечня файлов.
-          ⚠️ Место под них зарезервировано ВСЕГДА (высота фиксирована, меняется только
-          прозрачность). Появление их в разметке двигало бы соседние строки на каждое движение
-          мыши — ровно то дрожание, что уже ловили в сайдбаре закладок.
-          ⚠️ У идущей загрузки кнопки видны всегда: «Пауза» и «Отмена» нужны в тот момент, когда
-          человек смотрит на прогресс, а не наводит мышь. */}
-      <div style={{
-        display: 'flex', gap: 4, flexWrap: 'nowrap', minHeight: 24, alignItems: 'center',
-        opacity: hovered || isActive ? 1 : 0,
-        pointerEvents: hovered || isActive ? 'auto' : 'none',
-        transition: 'opacity var(--dur-fast) var(--ease-standard)',
-      }}>
-        {isActive && !d.isPaused && (
-          <ActionBtn
-            icon={<Pause size={12} />}
-            label="Пауза"
-            onClick={() => void window.oblako.pauseDownload(d.id)}
-          />
-        )}
-        {isActive && d.isPaused && (
-          <ActionBtn
-            icon={<Play size={12} />}
-            label="Продолжить"
-            onClick={() => void window.oblako.resumeDownload(d.id)}
-          />
-        )}
-        {isActive && (
-          <ActionBtn
-            icon={<XCircle size={12} />}
-            label="Отменить"
-            onClick={() => void window.oblako.cancelDownload(d.id)}
-          />
-        )}
-        {isDone && d.savePath && (
-          <>
-            <ActionBtn
-              icon={<ExternalLink size={12} />}
-              label="Открыть"
-              onClick={() => void window.oblako.openDownloadFile(d.id)}
-            />
-            <ActionBtn
-              icon={<FolderOpen size={12} />}
-              label="В папке"
-              onClick={() => void window.oblako.showDownloadFolder(d.id)}
-            />
-          </>
-        )}
-        {isFailed && (
-          <ActionBtn
-            icon={<RotateCcw size={12} />}
-            label="Повторить"
-            onClick={() => void window.oblako.retryDownload(d.id)}
-          />
-        )}
-        {!isActive && (
-          <ActionBtn
-            icon={<X size={12} />}
-            label="Убрать"
-            onClick={() => void window.oblako.clearDownload(d.id)}
-          />
-        )}
-      </div>
-      </div>
-    </div>
+    />
   );
 }
 
-function ActionBtn({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+// Кнопка-значок строки. ⚠️ Видна ВСЕГДА, а не по наведению: в длинном списке «наведи, чтобы
+// увидеть» — это игра в прятки, а раньше действия загрузки прятались именно так.
+function IconBtn({ title, onClick, children }: {
+  title: string; onClick: () => void; children: React.ReactNode;
+}) {
   return (
     <button
-      onClick={onClick}
-      title={label}
+      title={title}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4,
-        padding: '3px 8px', border: 'none', cursor: 'default',
-        borderRadius: 'var(--radius-sm)',
-        background: 'var(--surface)',
-        boxShadow: 'var(--shadow-card)',
-        fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 26, height: 26, padding: 0, border: 'none', cursor: 'default',
+        borderRadius: RADIUS.control, background: 'transparent', color: 'var(--text-faint)',
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
-    >
-      {icon}
-      {label}
-    </button>
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-sunken)'; e.currentTarget.style.color = 'var(--text-body)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-faint)'; }}
+    >{children}</button>
   );
 }
-
-const headerBtn: React.CSSProperties = {
-  background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-  color: 'var(--text-muted)', borderRadius: 'var(--radius-sm)',
-  display: 'flex', alignItems: 'center',
-};

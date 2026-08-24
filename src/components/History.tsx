@@ -1,14 +1,18 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { X, Search, Trash2, Clock, Wand2, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { X, Trash2, Wand2, Loader2 } from 'lucide-react';
 import type { HistoryEntry, HistoryClearPeriod } from '../../shared/ipc';
-import { islandPlate, untintedPlateVars } from '../styles/island';
-import { TEXT, CAPS, panelIsland } from '../styles/system';
+import { islandPlate } from '../styles/island';
+import { TEXT, RADIUS, motion, pad, sp } from '../styles/system';
+import { GroupCap, Row, Rows, SideNav, SplitView, type LibrarySummary } from './library/kit';
+import { btnGhost } from './settings/kit';
 import SiteFavicon from './SiteFavicon';
 import { EmptyState } from './EmptyState';
 import { ClockGlyph, SearchGlyph } from './glyphs';
 
 interface HistoryProps {
-  onClose: () => void;
+  /** Строка поиска — общая на всю библиотеку, живёт в оболочке (LibraryShell). */
+  query: string;
+  onSummary: (s: LibrarySummary) => void;
 }
 
 // ── Группировка по дню (референс — страница истории Chrome/Яндекс) ──────────────────────────
@@ -106,9 +110,8 @@ const CLEAR_OPTIONS: { label: string; value: HistoryClearPeriod }[] = [
   { label: 'За всё время',        value: 'all'  },
 ];
 
-export default function History({ onClose }: HistoryProps) {
+export default function History({ query, onSummary }: HistoryProps) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const [query, setQuery] = useState('');
   const [clearOpen, setClearOpen] = useState(false);
   const [clearError, setClearError] = useState(false);
   // Умный поиск (Qwen-реранк) — своё поле, отдельное от омнибокса (см. диагностику: это два
@@ -194,175 +197,96 @@ export default function History({ onClose }: HistoryProps) {
     }
   }
 
-  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' && smartOn) void handleSmartSearch();
-  }
+  // ⚠️ Сводка. Числа берутся из УЖЕ ЗАГРУЖЕННОГО куска, и это ограничение названо честно: история
+  // живёт в SQLite и приходит страницами, поэтому «сколько всего» отсюда не узнать. Показываем то,
+  // что посчитать можно без вранья: страниц за сегодня в загруженном и разных сайтов в нём же.
+  // Общий счётчик появится, когда для него будет запрос (см. library-pass-1.html, раздел 07).
+  const todayCount = entries.filter((e) => diffDaysFromToday(e.lastVisit) === 0).length;
+  const siteCount = new Set(entries.map((e) => domainOf(e.url))).size;
+  useEffect(() => {
+    onSummary({
+      hero: entries.length === 0 ? '—' : String(todayCount),
+      heroLabel: entries.length === 0
+        ? 'страниц за сегодня пока нет'
+        : `${plural(todayCount, 'страница', 'страницы', 'страниц')} за сегодня`,
+      facts: [
+        { label: 'За сегодня', hint: 'открытых страниц', value: String(todayCount), active: todayCount > 0 },
+        { label: 'Сайтов', hint: 'разных доменов в списке', value: String(siteCount), active: siteCount > 0 },
+        { label: 'Записей', hint: 'загружено в этот список', value: String(entries.length), active: entries.length > 0 },
+        { label: 'Поиск по смыслу', hint: 'Qwen переранжирует находки', value: smartOn ? 'Включён' : 'Выключен', active: smartOn },
+      ],
+    });
+  }, [onSummary, entries.length, todayCount, siteCount, smartOn]);
 
   return (
-    <div style={{
-      height: '100%', position: 'relative',
-      display: 'flex', flexDirection: 'column',
-      overflow: 'hidden',
-      // Тот же "остров", что у сайдбара (Sidebar.tsx::asideBase) — radius-island/shadow-island
-      // совпадают с CONTENT_CORNER_RADIUS у обычной вкладки (TabManager.ts), только фон
-      // непрозрачный (--surface-solid), не --surface-island: у сайдбара мало текста, лёгкая
-      // прозрачность не мешает, а плотный список истории на полупрозрачном фоне читался бы хуже.
-      // Отступ по периметру — НЕ здесь: contentRef в App.tsx уже даёт margin:var(--gutter-shell)
-      // один раз на весь контент (Hub тоже им пользуется, без своего собственного margin).
-      ...islandPlate,
-      ...panelIsland(),
-      ...untintedPlateVars,
-    }}>
-      {/* Заголовок */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '16px 20px 12px',
-        borderBottom: '1px solid var(--divider)',
-        flexShrink: 0,
-      }}>
-        <Clock size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        {/* Роль «заголовок раздела» из системы: 22/700 с плотным трекингом. Раньше здесь стоял
-            fs-md (16) обычным весом — заголовок панели читался как строка списка. */}
-        <span style={{ ...TEXT.title, flex: 1 }}>История посещений</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
+      {/* Управление разделом. Крестика тут больше нет — он один и стоит в шапке библиотеки. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), flexWrap: 'wrap', position: 'relative' }}>
+        {/* ⚠️ «Найти по смыслу» — СТРОКА-ДЕЙСТВИЕ, а не спрятанная палочка в поле ввода. Кнопка
+            ✨ внутри поля включала переранжирование моделью, то есть отдельное решение ценой в
+            секунды, и нажать её вслепую человек не мог. Теперь предложение появляется тогда,
+            когда его есть чем выполнить, — при непустом запросе. */}
+        {query.trim() && (
+          <button
+            onClick={() => { setSmartOn(true); void handleSmartSearch(); }}
+            disabled={smartLoading}
+            style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2), opacity: smartLoading ? 0.6 : 1 }}
+          >
+            {smartLoading
+              ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+              : <Wand2 size={14} />}
+            {smartLoading ? 'Qwen переранжирует…' : 'Найти по смыслу'}
+          </button>
+        )}
+        <span style={{ flex: 1 }} />
         <button
           onClick={() => setClearOpen((v) => !v)}
-          title="Очистить историю"
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-            color: 'var(--text-muted)', borderRadius: 'var(--radius-sm)',
-            display: 'flex', alignItems: 'center',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-body)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-        >
-          <Trash2 size={15} />
-        </button>
-        <button
-          onClick={onClose}
-          title="Закрыть"
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-            color: 'var(--text-muted)', borderRadius: 'var(--radius-sm)',
-            display: 'flex', alignItems: 'center',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-body)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-        >
-          <X size={16} />
-        </button>
+          style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
+        ><Trash2 size={14} /> Очистить</button>
+        {clearOpen && (
+          <div style={{
+            position: 'absolute', top: 40, right: 0, zIndex: 200, minWidth: 190,
+            ...islandPlate, borderRadius: RADIUS.box, overflow: 'hidden',
+          }}>
+            {CLEAR_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => void handleClear(opt.value)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left', padding: pad(2, 3),
+                  background: 'none', border: 'none', cursor: 'default',
+                  ...TEXT.body, color: 'var(--text-body)',
+                  transition: motion.hover('background'),
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+              >{opt.label}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       {clearError && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 20px', fontSize: 'var(--fs-sm)',
+          display: 'flex', alignItems: 'center', gap: sp(2), padding: pad(2, 3),
+          borderRadius: RADIUS.control, ...TEXT.body,
           background: 'color-mix(in srgb, var(--danger-500) 12%, transparent)',
-          color: 'var(--danger-500)', flexShrink: 0,
+          color: 'var(--danger-500)',
         }}>
           Не удалось очистить историю. Попробуйте ещё раз.
-          <button
-            onClick={() => setClearError(false)}
-            style={{
-              marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
-              color: 'inherit', display: 'flex', padding: 2,
-            }}
-          >
-            <X size={12} />
-          </button>
+          <button onClick={() => setClearError(false)} style={{
+            marginLeft: 'auto', background: 'none', border: 'none', cursor: 'default',
+            color: 'inherit', display: 'flex', padding: 2,
+          }}><X size={12} /></button>
         </div>
       )}
 
-      {/* Дропдаун очистки */}
-      {clearOpen && (
-        <div style={{
-          position: 'absolute', top: 52, right: 16,
-          ...islandPlate,
-          borderRadius: 'var(--radius-card)',
-          zIndex: 200, overflow: 'hidden', minWidth: 180,
-        }}>
-          {CLEAR_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => void handleClear(opt.value)}
-              style={{
-                display: 'block', width: '100%', textAlign: 'left',
-                padding: '8px 14px', background: 'none', border: 'none',
-                cursor: 'pointer', fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Поиск — на всю ширину плиты */}
-      <div style={{ padding: '10px 20px', flexShrink: 0 }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          ...islandPlate,
-          borderRadius: 'var(--radius-sm)', padding: '6px 10px',
-        }}>
-          <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-          <input
-            ref={searchRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Поиск в истории…"
-            style={{
-              flex: 1, background: 'none', border: 'none', outline: 'none',
-              fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
-            }}
-          />
-          {query && (
-            <button
-              onClick={() => setQuery('')}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: 2, color: 'var(--text-muted)', display: 'flex',
-              }}
-            >
-              <X size={12} />
-            </button>
-          )}
-          {/* Умный поиск (Qwen-реранк) — своё отдельное поле, не омнибокс (см. диагностику).
-              Влияет только на Enter (handleSearchKeyDown), сам факт включения ничего не запускает. */}
-          <button
-            onClick={() => setSmartOn((v) => !v)}
-            title={smartOn ? 'Умный поиск (Qwen): включён — Enter запускает переранжирование' : 'Умный поиск (Qwen): выключен'}
-            style={{
-              background: smartOn ? 'var(--accent-soft)' : 'none',
-              border: 'none', cursor: 'default', padding: 3, borderRadius: 'var(--radius-sm)',
-              color: smartOn ? 'var(--accent)' : 'var(--text-muted)', display: 'flex', flexShrink: 0,
-            }}
-          >
-            <Wand2 size={14} />
-          </button>
-        </div>
-      </div>
-
-      {smartLoading && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', padding: '0 20px 8px', flexShrink: 0,
-        }}>
-          <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-          Qwen переранжирует…
-        </div>
-      )}
-
-      {/* Реранк не отработал (упал/недоступна модель) — вместо молчаливой подмены честно
-          показываем, что порядок ниже — cosine top-k, не решение Qwen (SmartSearchResponse.degraded). */}
+      {/* Реранк не отработал (упал/недоступна модель) — честно говорим, что порядок ниже это
+          cosine top-k, а не решение Qwen (SmartSearchResponse.degraded). */}
       {smartResultsShown && smartDegraded && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '0 20px 8px', fontSize: 'var(--fs-sm)', color: 'var(--warning-500)', flexShrink: 0,
-        }}>
+        <span style={{ ...TEXT.caption, color: 'var(--warning-500)' }}>
           Показан быстрый результат — AI не ответил, порядок по сходству, не по смыслу.
-        </div>
+        </span>
       )}
 
       {entries.length === 0 ? (
@@ -374,145 +298,85 @@ export default function History({ onClose }: HistoryProps) {
             : 'Страницы, которые вы откроете, появятся здесь по дням — и их можно будет найти словом из текста.'}
         />
       ) : smartResultsShown ? (
-        // Умный поиск — плоский список в порядке релевантности (см. комментарий у smartResultsShown).
-        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}
-          onClick={() => { if (clearOpen) setClearOpen(false); }}
-        >
+        // Умный поиск — плоский список в порядке релевантности: группировка по дню разрушила бы
+        // этот порядок, раскидав находки по датам.
+        <Rows>
+          <GroupCap title="По смыслу" note={`${entries.length} ${plural(entries.length, 'находка', 'находки', 'находок')}`} />
           {entries.map((entry) => (
             <HistoryRow key={entry.id} entry={entry} onDelete={handleDelete} />
           ))}
-        </div>
+        </Rows>
       ) : (
-        // Референс — страница истории Chrome/Яндекс: узкая навигация по датам слева,
-        // список записей справа, сгруппированный блоками по дню.
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
-          <nav style={{
-            width: 150, flexShrink: 0, overflowY: 'auto',
-            padding: '10px 8px 16px', borderRight: '1px solid var(--divider)',
-          }}>
-            {navItems.map((item) => (
-              <button
-                key={item.key}
-                onClick={() => scrollToDay(item.targetKey)}
-                style={{
-                  display: 'block', width: '100%', textAlign: 'left',
-                  padding: '6px 10px', marginBottom: 1, border: 'none', background: 'none',
-                  borderRadius: 'var(--radius-sm)', cursor: 'default',
-                  fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '0 20px 16px' }}
-            onClick={() => { if (clearOpen) setClearOpen(false); }}
-          >
+        <SplitView side={(
+          <SideNav
+            caption="когда"
+            items={navItems.map((item) => ({ key: item.key, label: item.label }))}
+            onPick={(key) => {
+              const item = navItems.find((n) => n.key === key);
+              if (item) scrollToDay(item.targetKey);
+            }}
+          />
+        )}>
+          <Rows>
             {dayGroups.map((group) => (
               <div
                 key={group.key}
                 ref={(el) => { if (el) dayRefs.current.set(group.key, el); else dayRefs.current.delete(group.key); }}
               >
-                {/* Подпись группы — тот же приём, что в настройках и на плитках: моноширинная
-                    капса. Именно она делает список «своим», а не набором строк. */}
-                <div style={{
-                  position: 'sticky', top: 0, zIndex: 1,
-                  background: 'var(--surface-solid)',
-                  ...CAPS,
-                  padding: '12px 8px 6px',
-                }}>
-                  {group.label}
-                </div>
+                <GroupCap
+                  title={group.label}
+                  note={`${group.entries.length} ${plural(group.entries.length, 'страница', 'страницы', 'страниц')}`}
+                />
                 {group.entries.map((entry) => (
                   <HistoryRow key={entry.id} entry={entry} onDelete={handleDelete} />
                 ))}
               </div>
             ))}
-          </div>
-        </div>
+          </Rows>
+        </SplitView>
       )}
     </div>
   );
 }
 
+/** Русское склонение: 1 страница, 2 страницы, 5 страниц. */
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  const mod10 = n % 10;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+}
+
+// Строка истории — общий рецепт библиотеки: слева время моноширинным (это данные, они обязаны
+// стоять столбцом), значок сайта, имя дисплейной, адрес под ним.
+//
+// ⚠️ Адрес переехал ПОД заголовок. Раньше домен стоял справа от него в одной строке и отъедал
+// ширину: длинные заголовки обрезались вдвое раньше, чем нужно, при том что сайт и так виден
+// по значку.
 function HistoryRow({ entry, onDelete }: { entry: HistoryEntry & { snippet?: string }; onDelete: (id: number) => void }) {
-  const [hovered, setHovered] = useState(false);
-  const domain = domainOf(entry.url);
-
-  function handleNavigate() {
-    void window.oblako.createTab(entry.url);
-  }
-
   return (
-    <div
-      style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        // Строка стала выше и просторнее: это главный список раздела, а он читался как плотная
-        // таблица — 6 px по вертикали на строку с 13-м кеглем. Пролистывать такое глазами тяжело.
-        padding: '9px 10px', borderRadius: 'var(--radius-sm)',
-        background: hovered ? 'var(--surface-hover)' : 'transparent',
-        cursor: 'pointer',
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={handleNavigate}
-    >
-      {/* Время — МОНОШИРИННОЕ: это данные, а не текст, и в столбце они обязаны стоять ровно. */}
-      <span style={{
-        fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xs)', letterSpacing: '0.02em',
-        color: 'var(--text-faint)', width: 44, flexShrink: 0, fontVariantNumeric: 'tabular-nums',
-      }}>
-        {timeOf(entry.lastVisit)}
-      </span>
-      {/* Настоящий значок сайта вместо буквы домена: страницу человек узнаёт по нему быстрее,
-          чем прочитывает заголовок. Буква осталась запасным путём внутри SiteFavicon. */}
-      <SiteFavicon url={entry.url} size={22} />
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6 }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
-            <span style={{
-              flex: 1, minWidth: 0,
-              ...TEXT.body, color: 'var(--text-strong)',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>
-              {entry.title || entry.url}
-            </span>
-            <span style={{
-              flexShrink: 3, minWidth: 0,
-              fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>
-              {domain}
-            </span>
-          </div>
-          {entry.snippet && (
-            <div style={{
-              fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', marginTop: 2,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>
-              {entry.snippet}
-            </div>
-          )}
-        </div>
-      </div>
-      {hovered && (
+    <Row
+      lead={timeOf(entry.lastVisit)}
+      icon={<SiteFavicon url={entry.url} size={22} />}
+      title={entry.title || entry.url}
+      subtitle={entry.snippet ? `${domainOf(entry.url)} · ${entry.snippet}` : domainOf(entry.url)}
+      title2={entry.url}
+      onClick={() => { void window.oblako.createTab(entry.url); }}
+      actions={(
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
           title="Удалить из истории"
           style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: 3, color: 'var(--text-muted)', display: 'flex',
-            borderRadius: 'var(--radius-sm)', flexShrink: 0,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 26, height: 26, border: 'none', borderRadius: RADIUS.control,
+            background: 'transparent', color: 'var(--text-faint)', cursor: 'default',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
-        >
-          <X size={13} />
-        </button>
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-sunken)'; e.currentTarget.style.color = 'var(--text-body)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-faint)'; }}
+        ><X size={14} /></button>
       )}
-    </div>
+    />
   );
 }

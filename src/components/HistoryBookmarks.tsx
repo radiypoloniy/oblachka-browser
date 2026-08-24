@@ -1,12 +1,13 @@
-import { useState } from 'react';
-import { Clock, Star, Download, Search, TrendingDown } from 'lucide-react';
-import { ModeButton } from './Hub';
-import { sp } from '../styles/system';
+import { useCallback, useState } from 'react';
+import { Clock, Star, Download, TrendingDown } from 'lucide-react';
+import { RADIUS, TEXT, motion, pad, sp } from '../styles/system';
 import History from './History';
 import Bookmarks from './Bookmarks';
 import Downloads from './Downloads';
 import StuffSearchView from './StuffSearchView';
 import Tracking from './Tracking';
+import LibraryShell from './library/LibraryShell';
+import type { LibrarySummary, LibraryTone } from './library/kit';
 import type { DownloadEntry } from '../../shared/ipc';
 
 type Section = 'history' | 'bookmarks' | 'downloads' | 'search' | 'tracking';
@@ -19,81 +20,122 @@ interface Props {
   onClose: () => void;
 }
 
-// Объединённая точка входа (сайдбар: одна иконка вместо двух) для Истории и Закладок.
-// История/Bookmarks — каждая свой самодостаточный остров (свой header/close/shadow, свой SQLite,
-// свои SQLite-запросы) — НЕ трогаем ни то, ни другое, просто переключаем, какой из двух показан.
-// Переключатель сверху — та же капсула, что у «Обзор/AI» в Hub.tsx (ModeButton оттуда экспортирован
-// и переиспользован, не переизобретён). Секция — локальный React-стейт: createSpecialTab() всегда
-// создаёт новую вкладку (не переиспользует существующую), так что при каждом открытии это заведомо
-// свежий инстанс — «пережить рестарт» не про что.
+// БИБЛИОТЕКА — объединённая точка входа: История, Закладки, Загрузки, Отслеживание и поиск
+// сразу по всем трём архивам.
+//
+// ⚠️ Состав разделов НЕ меняется и менять его не надо: человек приходит с одним вопросом «где я
+// это видел», и разводить ответы по разным экранам значило бы требовать знать ответ заранее.
+// Поиск «Везде» отдельно от четвёрки — тоже верно: это не пятый архив, а способ искать.
+//
+// ⚠️ ЧТО ИЗМЕНИЛОСЬ. Раньше каждый из пяти разделов был самостоятельным островом со своей
+// шапкой, своим заголовком (История ролью TEXT.title, Отслеживание своим fs-lg/700, у поиска
+// заголовка не было вовсе), своим полем поиска и своей кнопкой «закрыть». Переход между
+// разделами читался как переход между приложениями. Теперь оболочка одна (LibraryShell), а
+// разделы отдают ей только СВОДКУ и содержимое.
+//
+// ⚠️ ТОН ЗАКРЕПЛЁН ЗА РАЗДЕЛОМ навсегда — тот же приём, что SECTION_TONE в настройках. Смысл в
+// узнаваемости: после третьего открытия раздел находят по цвету, не читая.
+const TONE: Record<Section, LibraryTone> = {
+  history: 'sky',
+  bookmarks: 'mustard',
+  downloads: 'tea',
+  tracking: 'tangerine',
+  // Лайм закреплён за ПОИСКОМ: он не архив, и цвета архива у него быть не должно.
+  search: 'lime',
+};
+
+const TITLE: Record<Section, string> = {
+  history: 'История',
+  bookmarks: 'Закладки',
+  downloads: 'Загрузки',
+  tracking: 'Отслеживание',
+  search: 'Поиск везде',
+};
+
+const PLACEHOLDER: Record<Section, string> = {
+  history: 'Искать по истории…',
+  bookmarks: 'Искать по закладкам…',
+  downloads: 'Искать по загрузкам…',
+  tracking: 'Искать по товарам…',
+  search: 'Один вопрос по истории, закладкам и загрузкам — Enter',
+};
+
+const RAIL: { id: Exclude<Section, 'search'>; label: string; icon: JSX.Element }[] = [
+  { id: 'history', label: 'История', icon: <Clock size={14} /> },
+  { id: 'bookmarks', label: 'Закладки', icon: <Star size={14} /> },
+  { id: 'downloads', label: 'Загрузки', icon: <Download size={14} /> },
+  { id: 'tracking', label: 'Отслеживание', icon: <TrendingDown size={14} /> },
+];
+
 export default function HistoryBookmarks({ defaultSection, downloads, onClose }: Props) {
-  const [section, setSection] = useState<Section>(defaultSection);
+  const [section, setSection] = useState<Section>(defaultSection === 'search' ? 'history' : defaultSection);
+  const [everywhere, setEverywhere] = useState(defaultSection === 'search');
+  const [query, setQuery] = useState('');
+  // Поиск «Везде» ходит к модели и работает по Enter — токен и есть сигнал «ищи сейчас».
+  const [runToken, setRunToken] = useState(0);
+  // Сводка приходит СНИЗУ: числа знает раздел, а шапка — нет. Через эффект в разделе, а не
+  // вызовом в его рендере: setState чужого компонента во время своего рендера React запрещает.
+  const [summary, setSummary] = useState<LibrarySummary>({ hero: '—', heroLabel: '' });
+  const onSummary = useCallback((s: LibrarySummary) => setSummary(s), []);
+
+  const shown: Section = everywhere ? 'search' : section;
+
+  const rail = (
+    <div style={{
+      display: 'inline-flex', padding: 3, gap: 2, flex: 'none',
+      background: 'var(--surface)', borderRadius: RADIUS.pill,
+      border: '1px solid var(--divider)',
+    }}>
+      {RAIL.map((item) => {
+        const on = !everywhere && section === item.id;
+        return (
+          <button
+            key={item.id}
+            onClick={() => { setSection(item.id); setEverywhere(false); setQuery(''); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: sp(2), padding: pad(2, 3),
+              border: 'none', borderRadius: RADIUS.pill, cursor: 'default',
+              ...TEXT.caption, fontWeight: 650,
+              background: on ? 'var(--surface-sunken)' : 'transparent',
+              color: on ? 'var(--text-strong)' : 'var(--text-muted)',
+              transition: motion.state('background', 'color'),
+            }}
+          >{item.icon}{item.label}</button>
+        );
+      })}
+    </div>
+  );
 
   return (
     // width/maxWidth/minWidth здесь — не декоративно: без них длинный необёрнутый контент внутри
-    // История/Закладки (заголовки, URL — свои overflow:hidden+ellipsis есть, но без min-width:0 в
-    // цепочке flex-предков не срабатывают, см. фикс в History.tsx/Bookmarks.tsx) раздувает ЭТОТ
-    // контейнер шире окна — переключатель ниже, центрируемый через свою 100%-широкую строку,
-    // тогда уезжает вместе с ним.
+    // разделов раздувает контейнер шире окна.
     //
-    // ⚠️ ЗДЕСЬ БОЛЬШЕ НЕТ overflowX: 'hidden', и это ключ ко всей истории с «тенью, которой нет».
-    // По спецификации CSS, если одна ось получает значение отличное от visible, ВТОРАЯ ось тоже
-    // перестаёт быть visible и вычисляется как auto. То есть один `overflowX: hidden` молча
-    // превращал контейнер в ПРОКРУТКУ по обеим осям — а прокрутка режет всё, что выходит за её
-    // рамку, включая тень острова. Настройки живут без такого родителя, поэтому у них тень была,
-    // а у истории оставался голый угол: рецепт совпадал, обрезка — нет.
-    // Ширину теперь держит minWidth: 0 в цепочке (то же лекарство, что и от расползания текста),
-    // а внутреннее переполнение по-прежнему режет сама панель своим overflow: hidden.
+    // ⚠️ ЗДЕСЬ НЕТ overflowX: 'hidden', и это ключ ко всей истории с «тенью, которой нет». По
+    // спецификации CSS, если одна ось получает значение отличное от visible, ВТОРАЯ тоже
+    // перестаёт быть visible и вычисляется как auto — то есть один overflowX молча превращал
+    // контейнер в прокрутку по обеим осям, а прокрутка режет всё, включая тень острова.
     <div style={{
       height: '100%', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box',
-      display: 'flex', flexDirection: 'column', gap: 8,
     }}>
-      {/* Отдельная строка над скроллом (не sticky — контент ниже скроллится сам, внутри своих
-          островов, не эта строка). width:100% + justifyContent:center — центр ОКНА, не центр
-          потенциально раздутого родителя (alignSelf:center на самой капсуле так не гарантирует). */}
-      {/* ⚠️ ДВЕ капсулы, а не одна. «Везде» — это не пятый архив, а поиск ПО ВСЕМ трём сразу, и
-          стоять в одном ряду с ними он не должен: человек читает ряд как «выбери один из
-          пяти», хотя выбор здесь другого рода. Тот же приём, что в iOS 26, где поиск вынесен
-          отдельной капсулой рядом с сегментами. */}
-      <div style={{ flex: 'none', width: '100%', display: 'flex', justifyContent: 'center', gap: sp(2) }}>
-        <div style={{
-          display: 'inline-flex', padding: 3, gap: 2,
-          background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
-          border: '1px solid var(--glass-edge)',
-        }}>
-          <ModeButton active={section === 'history'} onClick={() => setSection('history')} icon={<Clock size={14} />} label="История" />
-          <ModeButton active={section === 'bookmarks'} onClick={() => setSection('bookmarks')} icon={<Star size={14} />} label="Закладки" />
-          {/* Загрузки — третьим сюда же, а не отдельной вкладкой: это такой же архив «что я уже
-              видел/взял», и держать его в стороне от истории значило бы разводить по разным
-              экранам вещи, за которыми человек приходит с одним и тем же вопросом. */}
-          <ModeButton active={section === 'downloads'} onClick={() => setSection('downloads')} icon={<Download size={14} />} label="Загрузки" />
-          {/* «Куда я это дел» (AI-IDEAS.md №4) — четвёртым режимом здесь, а не отдельным экраном:
-              вопрос «где я это видел» тот же самый, просто человек не помнит, в каком из трёх
-              архивов лежит ответ. Разводить его с ними по разным местам значило бы требовать
-              знать ответ заранее — ровно то, от чего фича и избавляет. */}
-          {/* Отслеживание — сюда же (PRICE-TRACKING.md): это тот же архив «мои данные», и свой
-              вид вкладки ради него не заводится, чтобы не менять формат session.json. */}
-          <ModeButton active={section === 'tracking'} onClick={() => setSection('tracking')} icon={<TrendingDown size={14} />} label="Отслеживание" />
-        </div>
-
-        {/* Поиск по всем архивам — своя капсула. */}
-        <div style={{
-          display: 'inline-flex', padding: 3,
-          background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
-          border: '1px solid var(--glass-edge)',
-        }}>
-          <ModeButton active={section === 'search'} onClick={() => setSection('search')} icon={<Search size={14} />} label="Везде" />
-        </div>
-      </div>
-      {/* Поля под тень здесь больше не нужно: обрезки нет, и остров живёт в том же 12-пиксельном
-          гуттере, что и настройки (contentRef в App.tsx). */}
-      <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-        {section === 'history' ? <History onClose={onClose} />
-          : section === 'bookmarks' ? <Bookmarks onClose={onClose} />
-          : section === 'search' ? <StuffSearchView onClose={onClose} />
-          : section === 'tracking' ? <Tracking />
-          : <Downloads downloads={downloads} onClose={onClose} />}
-      </div>
+      <LibraryShell
+        tone={TONE[shown]}
+        title={TITLE[shown]}
+        summary={summary}
+        query={query}
+        onQuery={setQuery}
+        searchPlaceholder={PLACEHOLDER[shown]}
+        everywhere={everywhere}
+        onEverywhere={(v) => { setEverywhere(v); if (v) setRunToken((t) => t + 1); }}
+        onSubmit={() => { if (everywhere) setRunToken((t) => t + 1); }}
+        rail={rail}
+        onClose={onClose}
+      >
+        {shown === 'search' ? <StuffSearchView query={query} runToken={runToken} onSummary={onSummary} onClose={onClose} />
+          : shown === 'history' ? <History query={query} onSummary={onSummary} />
+            : shown === 'bookmarks' ? <Bookmarks query={query} onSummary={onSummary} />
+              : shown === 'tracking' ? <Tracking query={query} onSummary={onSummary} />
+                : <Downloads downloads={downloads} query={query} onSummary={onSummary} />}
+      </LibraryShell>
     </div>
   );
 }

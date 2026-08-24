@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { TrendingDown, Trash2, ExternalLink, RefreshCw, AlertTriangle, Bell, BellOff, Link2, Unlink, Store } from 'lucide-react';
 import type { TrackedProduct, TrackingEvent, MatchSuggestion } from '../../shared/ipc';
-import { islandPlate, untintedPlateVars } from '../styles/island';
-import { panelIsland, RADIUS } from '../styles/system';
+import { CAPS, RADIUS, TEXT, sp } from '../styles/system';
+import { EmptyState } from './EmptyState';
+import type { LibrarySummary } from './library/kit';
+import { btnGhost } from './settings/kit';
 
 // Экран «что я отслеживаю» (PRICE-TRACKING.md). Компонент только рисует: список, историю цен и
 // группы считает main (electron/TrackingStore.ts).
@@ -104,7 +106,10 @@ function toCards(items: TrackedProduct[]): ProductCardData[] {
   });
 }
 
-export default function Tracking() {
+export default function Tracking({ query, onSummary }: {
+  query: string;
+  onSummary: (s: LibrarySummary) => void;
+}) {
   const [items, setItems] = useState<TrackedProduct[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkNote, setCheckNote] = useState('');
@@ -130,74 +135,94 @@ export default function Tracking() {
     reload();
   }
 
+  // ⚠️ Сводка считается ЗДЕСЬ, из уже загруженного списка: раздел знает свои числа, оболочка —
+  // нет. Отдаём наверх эффектом, а не вызовом в рендере (setState чужого компонента во время
+  // своего рендера React запрещает).
+  //
+  // ⚠️ ГЕРОЙ — ДЕНЬГИ, а не количество: ради этого числа отслеживание и включают. Считается
+  // ЧЕСТНО — по каждому предложению от первой увиденной цены к последней, и подорожавшее
+  // ВЫЧИТАЕТСЯ. Иначе число превратилось бы в рекламный баннер, который всегда показывает выгоду.
+  const totalDiff = (items ?? []).reduce((sum, it) => {
+    const prices = it.points.map((pt) => pt.price);
+    if (prices.length < 2) return sum;
+    return sum + (prices[prices.length - 1]! - prices[0]!);
+  }, 0);
+  const lastCheck = (items ?? []).reduce((max, it) => Math.max(max, it.lastCheckedAt), 0);
+  const cardCount = items === null ? 0 : toCards(items).length;
+  useEffect(() => {
+    const money = Math.abs(totalDiff).toLocaleString('ru-RU', { maximumFractionDigits: 0 });
+    onSummary({
+      hero: items === null ? '…' : cardCount === 0 ? '—' : `${totalDiff <= 0 ? '−' : '+'}${money} ₽`,
+      heroLabel: cardCount === 0
+        ? 'вы пока ничего не отслеживаете'
+        : `${totalDiff <= 0 ? 'подешевело' : 'подорожало'} с тех пор, как вы добавили · ${cardCount} ${plural(cardCount, 'товар', 'товара', 'товаров')}`,
+      facts: [
+        { label: 'Товаров', hint: 'под наблюдением', value: String(cardCount), active: cardCount > 0 },
+        { label: 'Изменилось', hint: 'по всем наблюдениям', value: cardCount === 0 ? '—' : `${totalDiff <= 0 ? '−' : '+'}${money} ₽`, active: cardCount > 0 && totalDiff < 0 },
+        { label: 'Проверка', hint: 'пока браузер открыт', value: lastCheck ? checkedAgo(lastCheck).replace('проверено ', '') : '—', active: lastCheck > 0 },
+        { label: 'Уведомления', hint: 'когда цена упала', value: notify ? 'Включены' : 'Молча', active: notify },
+      ],
+    });
+  }, [onSummary, items, cardCount, totalDiff, lastCheck, notify]);
+
   if (items === null) {
-    return <div style={{ padding: 24, color: 'var(--text-faint)', fontSize: 'var(--fs-sm)' }}>Загрузка…</div>;
+    return <div style={{ ...TEXT.body, color: 'var(--text-faint)', padding: sp(4) }}>Загрузка…</div>;
   }
 
-  const cards = toCards(items);
+  // Фильтр по общей строке библиотеки: название товара или магазин.
+  const q = query.trim().toLowerCase();
+  const cards = toCards(items).filter((c) => !q
+    || c.title.toLowerCase().includes(q)
+    || c.offers.some((o) => o.host.toLowerCase().includes(q)));
 
   return (
-    <div style={{
-      height: '100%', display: 'flex', flexDirection: 'column',
-      ...islandPlate, borderRadius: 'var(--radius-island)',
-      ...untintedPlateVars,
-      ...panelIsland(), background: 'var(--surface-solid)', overflow: 'hidden',
-    }}>
-      <div style={{ padding: '18px 24px 12px', borderBottom: '1px solid var(--divider-strong)', flex: 'none' }}>
-        <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text-strong)' }}>Отслеживание</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-          <div style={{ flex: 1, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-            Браузер сам перепроверяет цены несколько раз в день, пока открыт. График появится, когда
-            цена изменится хотя бы раз. Часть магазинов не отдаёт цену роботу — это видно по дате проверки.
-          </div>
-          {checkNote && (
-            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>{checkNote}</span>
-          )}
-          {/* ⚠️ Тумблер обязателен: уведомления, которые нельзя выключить, — это не забота, а
-              навязчивость. Журнал при этом пишется всегда: «не дёргай меня» ≠ «мне неинтересно». */}
-          <button
-            title={notify ? 'Уведомления включены' : 'Уведомления выключены'}
-            onClick={() => { const next = !notify; setNotify(next); void window.oblako.setTrackingNotify(next); }}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none',
-              padding: '6px 10px', borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--divider-strong)', background: 'transparent',
-              color: notify ? 'var(--text-body)' : 'var(--text-faint)',
-              fontSize: 'var(--fs-xs)', cursor: 'default',
-            }}
-          >
-            {notify ? <Bell size={13} /> : <BellOff size={13} />}
-            {notify ? 'Уведомлять' : 'Молча'}
-          </button>
-          <button
-            onClick={() => void checkNow()}
-            disabled={checking}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none',
-              padding: '6px 10px', borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--divider-strong)', background: 'transparent',
-              color: 'var(--text-body)', fontSize: 'var(--fs-xs)', cursor: 'default',
-              opacity: checking ? 0.6 : 1,
-            }}
-          >
-            <RefreshCw size={13} />
-            {checking ? 'Проверяю…' : 'Проверить сейчас'}
-          </button>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
+      {/* Управление разделом. ⚠️ Тумблер уведомлений обязателен: уведомления, которые нельзя
+          выключить, — это не забота, а навязчивость. Журнал при этом пишется всегда:
+          «не дёргай меня» ≠ «мне неинтересно». */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), flexWrap: 'wrap' }}>
+        <span style={{ flex: 1, minWidth: 0, ...TEXT.caption, color: 'var(--text-faint)' }}>
+          Браузер сам перепроверяет цены, пока открыт. Часть магазинов не отдаёт цену роботу —
+          это видно по дате проверки.
+        </span>
+        {checkNote && (
+          <span style={{ ...TEXT.caption, color: 'var(--text-faint)', flex: 'none' }}>{checkNote}</span>
+        )}
+        <button
+          title={notify ? 'Уведомления включены' : 'Уведомления выключены'}
+          onClick={() => { const next = !notify; setNotify(next); void window.oblako.setTrackingNotify(next); }}
+          style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
+        >
+          {notify ? <Bell size={14} /> : <BellOff size={14} />}
+          {notify ? 'Уведомлять' : 'Молча'}
+        </button>
+        <button
+          onClick={() => void checkNow()}
+          disabled={checking}
+          style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2), opacity: checking ? 0.6 : 1 }}
+        >
+          <RefreshCw size={14} />
+          {checking ? 'Проверяю…' : 'Проверить сейчас'}
+        </button>
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px 20px' }}>
+      <div>
+
         {/* Предложения склеить один товар из разных магазинов. ⚠️ Именно ПРЕДЛОЖЕНИЯ: пока человек
             не подтвердил, ничего не объединено. Ошибка здесь — два разных товара в одной карточке
             с общим графиком цен, то есть враньё в самой сути фичи. */}
         {suggestions.map((sg) => (
           <div key={`${sg.aId}-${sg.bId}`} style={{
             marginBottom: 12, padding: '12px 14px',
-            border: '1px solid var(--accent)', borderRadius: 'var(--radius-card)',
-            background: 'var(--accent-soft)',
+            // ⚠️ ТОНОМ РАЗДЕЛА, а не акцентом. Библиотека — страница приложения, тут дома
+            // плакатный цвет; системный синий был последним местом, где страница говорила
+            // языком хрома.
+            border: '1px solid var(--poster-tangerine)',
+            borderRadius: 'var(--radius-card)',
+            background: 'color-mix(in srgb, var(--poster-tangerine) 12%, transparent)',
             display: 'flex', alignItems: 'center', gap: 12,
           }}>
-            <Link2 size={16} style={{ color: 'var(--accent)', flex: 'none' }} />
+            <Link2 size={16} style={{ color: 'var(--poster-tangerine)', flex: 'none' }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
                 Похоже, это один товар в двух магазинах
@@ -210,7 +235,7 @@ export default function Tracking() {
               onClick={() => { void window.oblako.mergeTracked(sg.aId, sg.bId).then(reload); }}
               style={{
                 flex: 'none', padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
-                background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'default',
+                background: 'var(--text-strong)', color: 'var(--app-bg)', fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'default',
               }}
             >Объединить</button>
             <button
@@ -228,10 +253,7 @@ export default function Tracking() {
             не было» — главный вопрос к отслеживанию. */}
         {events.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <div style={{
-              padding: '0 2px 6px', fontSize: 'var(--fs-xs)', fontWeight: 600,
-              color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 'var(--ls-caps)',
-            }}>Что произошло</div>
+            <div style={{ ...CAPS, padding: '0 2px 6px' }}>Что произошло</div>
             {events.slice(0, 8).map((ev) => (
               <button
                 key={ev.id}
@@ -260,13 +282,13 @@ export default function Tracking() {
         )}
 
         {cards.length === 0 && (
-          <div style={{
-            padding: '28px 12px', display: 'flex', alignItems: 'center', gap: 8,
-            fontSize: 'var(--fs-sm)', color: 'var(--text-faint)',
-          }}>
-            <TrendingDown size={15} />
-            Пока ничего не отслеживается. Откройте карточку товара и нажмите значок в адресной строке.
-          </div>
+          <EmptyState
+            icon={<TrendingDown size={22} />}
+            title={query.trim() ? 'Ничего не нашлось' : 'Пока ничего не отслеживается'}
+            hint={query.trim()
+              ? 'Поиск смотрит по названию товара и по магазину.'
+              : 'Откройте карточку товара и нажмите значок в адресной строке — браузер начнёт следить за ценой.'}
+          />
         )}
 
         {cards.map((card) => <ProductCard key={card.key} card={card} onChanged={reload} />)}
@@ -411,4 +433,14 @@ function OfferRow({ offer, currency, cheapest, onChanged }: {
       ><Trash2 size={15} /></button>
     </div>
   );
+}
+
+/** Русское склонение: 1 товар, 2 товара, 5 товаров. */
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  const mod10 = n % 10;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
 }

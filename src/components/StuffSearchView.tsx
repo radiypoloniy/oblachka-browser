@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { Search, Clock, Star, FileText, Sparkles } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Clock, Star, FileText, Sparkles } from 'lucide-react';
 import type { StuffHit } from '../../shared/ipc';
-import { islandPlate } from '../styles/island';
+import { RADIUS, TEXT, sp } from '../styles/system';
+import { GroupCap, Row, Rows, type LibrarySummary } from './library/kit';
+import { EmptyState } from './EmptyState';
 
 // «Куда я это дел» (AI-IDEAS.md №4) — один вопрос сразу по истории, закладкам и загрузкам.
 // Компонент только рисует и зовёт window.oblako.searchStuff: вся логика (сбор кандидатов из трёх
@@ -9,6 +11,10 @@ import { islandPlate } from '../styles/island';
 //
 // ⚠️ Поиск по ENTER, а не на каждую букву: он ходит к модели, а это секунды, не миллисекунды —
 // то же правило, что у умного поиска истории и смыслового Ctrl+F.
+//
+// ⚠️ Своего поля ввода здесь БОЛЬШЕ НЕТ. Строка одна на всю библиотеку и живёт в оболочке, а
+// сюда приходит уже набранный запрос и `runToken` — счётчик нажатий Enter. Раньше полей было
+// три (у истории, у закладок и своё здесь), все с разным поведением.
 
 const KIND_ICON = {
   history: Clock,
@@ -22,21 +28,54 @@ const KIND_LABEL = {
   download: 'Загрузка',
 } as const;
 
-export default function StuffSearchView({ onClose }: { onClose: () => void }) {
-  const [query, setQuery] = useState('');
+export default function StuffSearchView({ query, runToken, onSummary, onClose }: {
+  query: string;
+  /** Растёт на каждое нажатие Enter в общей строке — это и есть команда «ищи». */
+  runToken: number;
+  onSummary: (s: LibrarySummary) => void;
+  onClose: () => void;
+}) {
   const [hits, setHits] = useState<StuffHit[] | null>(null);
   const [working, setWorking] = useState(false);
   const [degraded, setDegraded] = useState(false);
+  // Запрос, по которому получена нынешняя выдача: он и стоит героем в шапке.
+  const [asked, setAsked] = useState('');
+  // Ответы асинхронные и могут разъехаться с последним нажатием — применяем только последний.
+  const seqRef = useRef(0);
 
-  async function run() {
+  useEffect(() => {
+    if (runToken === 0) return;
     const q = query.trim();
-    if (!q || working) return;
+    if (!q) return;
+    const seq = ++seqRef.current;
     setWorking(true);
-    const res = await window.oblako.searchStuff(q).catch(() => ({ hits: [], degraded: true }));
-    setHits(res.hits);
-    setDegraded(res.degraded);
-    setWorking(false);
-  }
+    setAsked(q);
+    void window.oblako.searchStuff(q)
+      .catch(() => ({ hits: [] as StuffHit[], degraded: true }))
+      .then((res) => {
+        if (seq !== seqRef.current) return;
+        setHits(res.hits);
+        setDegraded(res.degraded);
+        setWorking(false);
+      });
+    // ⚠️ Зависимость ТОЛЬКО от runToken: реагировать на сам query значило бы ходить к модели на
+    // каждую букву — ровно то, ради чего поиск и сделан по Enter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runToken]);
+
+  useEffect(() => {
+    onSummary({
+      // ⚠️ Герой здесь — САМ ЗАПРОС, а не количество: у остальных разделов число отвечает
+      // «сколько у меня этого», а тут вопрос задаёт человек, и крупно показать надо его слово —
+      // чтобы видеть, что именно искала модель.
+      hero: asked || 'Везде',
+      heroLabel: working ? 'ищу по истории, закладкам и загрузкам'
+        : hits === null ? 'спросите словами — Enter ищет'
+          : `${hits.length} ${plural(hits.length, 'находка', 'находки', 'находок')} в истории, закладках и загрузках`,
+      // Плиток у поиска нет: сводить нечего, тут вопрос, а не архив.
+      facts: [],
+    });
+  }, [onSummary, asked, working, hits]);
 
   function open(hit: StuffHit) {
     // ⚠️ Загрузку открываем штатным путём по её id: там уже есть перепроверка «файл ещё на месте»
@@ -46,94 +85,67 @@ export default function StuffSearchView({ onClose }: { onClose: () => void }) {
     onClose();
   }
 
-  return (
-    <div style={{
-      height: '100%', display: 'flex', flexDirection: 'column',
-      ...islandPlate, borderRadius: 'var(--radius-island)',
-      boxShadow: 'var(--shadow-island)', background: 'var(--surface-solid)',
-      overflow: 'hidden',
-    }}>
-      <div style={{ padding: '18px 24px 12px', borderBottom: '1px solid var(--divider-strong)', flex: 'none' }}>
-        <div style={{ position: 'relative' }}>
-          <Search size={16} style={{
-            position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
-            color: 'var(--text-faint)', pointerEvents: 'none',
-          }} />
-          <input
-            autoFocus
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') void run(); }}
-            placeholder="Где та штука про ипотеку…"
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              padding: '10px 12px 10px 34px', borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--divider-strong)', background: 'var(--surface)',
-              color: 'var(--text-strong)', fontSize: 'var(--fs-md)', fontFamily: 'inherit',
-              outline: 'none',
-            }}
-          />
-        </div>
-        <div style={{ marginTop: 6, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          Ищет сразу по истории, закладкам и загрузкам. Enter — искать.
-        </div>
-      </div>
+  if (working) {
+    return (
+      <div style={{ ...TEXT.body, color: 'var(--text-faint)', padding: sp(4) }}>Ищу…</div>
+    );
+  }
 
-      <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px 16px' }}>
-        {working && (
-          <div style={{ padding: '20px 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-            Ищу…
-          </div>
-        )}
-        {!working && hits !== null && hits.length === 0 && (
-          <div style={{ padding: '20px 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-            Ничего не нашлось
-          </div>
-        )}
-        {!working && hits !== null && hits.length > 0 && degraded && (
-          // Честно говорим, что модель не участвовала: иначе человек решит, что так она и отобрала.
-          <div style={{ padding: '6px 12px', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-            Показано найденное по словам — модель не отвечала
-          </div>
-        )}
-        {!working && hits?.map((hit, i) => {
-          const Icon = KIND_ICON[hit.kind];
-          return (
-            <button
-              key={`${hit.kind}-${hit.url}-${i}`}
-              onClick={() => open(hit)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-                padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
-                background: 'transparent', cursor: 'default', textAlign: 'left',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <Icon size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{
-                  display: 'block', fontSize: 'var(--fs-sm)', color: 'var(--text-strong)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{hit.title}</span>
-                <span style={{
-                  display: 'block', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{[KIND_LABEL[hit.kind], hit.subtitle].filter(Boolean).join(' · ')}</span>
-              </span>
-            </button>
-          );
-        })}
-        {!working && hits === null && (
-          <div style={{
-            padding: '28px 12px', display: 'flex', alignItems: 'center', gap: 8,
-            fontSize: 'var(--fs-sm)', color: 'var(--text-faint)',
-          }}>
-            <Sparkles size={15} />
-            Спросите словами — например «та статья про ипотеку» или «договор, который я скачивал»
-          </div>
-        )}
-      </div>
-    </div>
+  if (hits === null) {
+    return (
+      <EmptyState
+        icon={<Sparkles size={22} />}
+        title="Спросите словами"
+        hint="Например «та статья про ипотеку» или «договор, который я скачивал». Enter — искать: вопрос уходит модели, поэтому не на каждую букву."
+      />
+    );
+  }
+
+  if (hits.length === 0) {
+    return (
+      <EmptyState
+        icon={<Sparkles size={22} />}
+        title="Ничего не нашлось"
+        hint="Попробуйте другими словами — поиск смотрит по заголовкам, адресам и именам файлов."
+      />
+    );
+  }
+
+  return (
+    <Rows>
+      <GroupCap
+        title="Находки"
+        // Честно говорим, что модель не участвовала: иначе человек решит, что так она и отобрала.
+        note={degraded ? 'по словам — модель не отвечала' : 'порядок по смыслу'}
+      />
+      {hits.map((hit, i) => {
+        const Icon = KIND_ICON[hit.kind];
+        return (
+          <Row
+            key={`${hit.kind}-${hit.url}-${i}`}
+            icon={<span style={{
+              width: 24, height: 24, flex: 'none', borderRadius: RADIUS.tight,
+              display: 'grid', placeItems: 'center', background: 'var(--surface-sunken)',
+              color: 'var(--text-muted)',
+            }}><Icon size={14} /></span>}
+            title={hit.title}
+            subtitle={hit.subtitle}
+            meta={KIND_LABEL[hit.kind]}
+            title2={hit.url}
+            onClick={() => open(hit)}
+          />
+        );
+      })}
+    </Rows>
   );
+}
+
+/** Русское склонение: 1 находка, 2 находки, 5 находок. */
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  const mod10 = n % 10;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
 }
