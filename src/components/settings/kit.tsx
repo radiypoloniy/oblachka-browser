@@ -417,6 +417,169 @@ export function Fact({ label, hint, value, active }: {
 }
 
 /**
+ * Две колонки: слева выбранное, справа остальные. Сжимается в одну, когда панель узкая.
+ *
+ * ⚠️ Не «раскладка профилей». Одно и то же место занимает пропуск сайта, дело профиля,
+ * завтра — правило: выбранное крупнее, очередь справа. Ширину колонок не зашивать в секции.
+ */
+export function Stage({ lead, side }: { lead: React.ReactNode; side?: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', gap: sp(4), alignItems: 'stretch',
+    }}>
+      <div style={{ flex: '1 1 320px', minWidth: 0 }}>{lead}</div>
+      {side && (
+        <div style={{
+          flex: '1 1 240px', minWidth: 0,
+          display: 'flex', flexDirection: 'column', gap: sp(3),
+        }}>{side}</div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Карточка сущности: профиль, сайт, любое «личное дело».
+ *
+ * ⚠️ ОДНА на все разделы. Пятно — CSS-переменная цвета (`stain`), не своя заливка на раздел:
+ * перекраска живёт в токене, карточка об этом не знает. Выбранность — чернильная обводка, как
+ * у MasterSwitch: не тон шапки и не статус. Статус, если нужен, приходит чипом `mark`.
+ *
+ * ⚠️ Шапка кликабельна отдельно от тела. В теле живут сегменты и кнопки, и карточка-кнопка
+ * вокруг них была бы кнопкой в кнопке.
+ */
+export function SpotCard({
+  stain, eyebrow, icon, title, subtitle, fields, mark, selected, onClick, actions, children, compact,
+}: {
+  stain?: string;
+  eyebrow?: React.ReactNode;
+  icon?: React.ReactNode;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  fields?: { label: string; value: string }[];
+  mark?: React.ReactNode;
+  selected?: boolean;
+  onClick?: () => void;
+  actions?: React.ReactNode;
+  children?: React.ReactNode;
+  compact?: boolean;
+}) {
+  const header = (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: sp(3),
+      padding: pad(4), position: 'relative',
+      minHeight: compact ? undefined : 120,
+    }}>
+      {stain && (
+        <span aria-hidden style={{
+          position: 'absolute', width: 180, height: 140, right: -36, top: -48,
+          borderRadius: '50%', pointerEvents: 'none',
+          background: `radial-gradient(circle at 40% 40%, ${stain}, transparent 68%)`,
+          opacity: 0.5,
+        }} />
+      )}
+      <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: sp(3) }}>
+        {eyebrow && (
+          <span style={{ ...CAPS, color: 'var(--text-muted)' }}>{eyebrow}</span>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: sp(3) }}>
+          {icon}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ ...DISPLAY, fontSize: compact ? 20 : 26, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--text-strong)' }}>
+              {title}
+            </div>
+            {subtitle && <div style={{ ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1) }}>{subtitle}</div>}
+          </div>
+        </div>
+        {fields && fields.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: `${sp(2)}px ${sp(4)}px`, marginTop: 'auto' }}>
+            {fields.map((f) => (
+              <div key={f.label}>
+                <div style={{ ...CAPS, marginBottom: sp(1) }}>{f.label}</div>
+                <div style={{ ...TEXT.body, color: 'var(--text-strong)' }}>{f.value}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {mark && (
+        <div style={{ position: 'relative', flex: 'none' }}>{mark}</div>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{
+      ...settingsBox,
+      outline: selected ? '2px solid var(--text-strong)' : 'none',
+      outlineOffset: 2,
+      transition: motion.state('outline-color'),
+    }}>
+      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+        {onClick
+          ? <button type="button" onClick={onClick} style={{
+              display: 'block', flex: 1, minWidth: 0, border: 'none', background: 'transparent',
+              padding: 0, textAlign: 'left', cursor: 'default', color: 'inherit',
+            }}>{header}</button>
+          : <div style={{ flex: 1, minWidth: 0 }}>{header}</div>}
+        {actions && (
+          <div style={{
+            flex: 'none', display: 'flex', alignItems: 'center', paddingRight: sp(3), position: 'relative',
+          }}>{actions}</div>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Строка внутри SpotCard: право слева, контрол справа. Та же геометрия у камеры сайта и у поля профиля. */
+export function SpotLine({ title, hint, control }: {
+  title: React.ReactNode;
+  hint?: React.ReactNode;
+  control: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: sp(3), alignItems: 'center',
+      padding: pad(3, 4), borderTop: '1px solid var(--divider)',
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ ...TEXT.body, fontWeight: 650, color: 'var(--text-strong)' }}>{title}</div>
+        {hint && <div style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>{hint}</div>}
+      </div>
+      {control}
+    </div>
+  );
+}
+
+/**
+ * Рамка настроек выбранной сущности. Не внутри карточки: карточка показывает КТО, рамка — ЧТО можно.
+ * Та же чернильная кромка, что у включённого MasterSwitch.
+ */
+export function InkFrame({ title, hint, children }: {
+  title?: React.ReactNode;
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: sp(4),
+      padding: pad(4), borderRadius: RADIUS.box,
+      border: '2px solid var(--text-strong)',
+    }}>
+      {title && (
+        <div style={{ ...DISPLAY, fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-strong)' }}>
+          {title}
+        </div>
+      )}
+      {hint && <Read><span style={{ ...TEXT.body, color: 'var(--text-muted)' }}>{hint}</span></Read>}
+      {children}
+    </div>
+  );
+}
+
+/**
  * ⚠️ ПОЛОСЫ ШИРИНЫ — правило, из-за которого настройки выглядели «сделанными для мини-версии».
  *
  * `maxWidth: 560` был зашит в шести разделах из десяти; те, что писались позже (профили,
@@ -617,9 +780,11 @@ export const fieldFlex: React.CSSProperties = { flex: '1 1 200px' };
 
 // ── ДИЗАЙН-СИСТЕМА РАЗДЕЛА НАСТРОЕК ───────────────────────────────────────────
 //
-// ⚠️ Здесь ровно ЧЕТЫРЕ сущности, и других быть не должно: Panel (коробка), OptionList (коробка
-// со строками), OptionRow (строка), Segmented (выбор из двух-трёх). Всё остальное — контролы
-// (кнопки, поля, тумблер) и текст.
+// ⚠️ Здесь ровно ЧЕТЫРЕ сущности списка, плюс факты и карточка сущности:
+// Panel, OptionList, OptionRow, Segmented — списки и выбор.
+// Fact / FactGrid / MasterSwitch — сводка раздела (как VPN и AI).
+// Stage / SpotCard / SpotLine / InkFrame — выбранная сущность и её настройки.
+// Других коробок в секциях заводить нельзя: новая сущность через месяц станет двумя похожими.
 //
 // Правила, которые эти сущности воплощают, — не вкусовые, каждое оплачено жалобой:
 //
