@@ -134,9 +134,10 @@ export default function ProfilesSection() {
         <Stage
           lead={(
             <SpotCard
+              lead
               stain={`var(--tile-${featured.color})`}
-              eyebrow="дело"
-              icon={<ProfileAvatar profile={featured} size={48} />}
+              eyebrow={`дело · ${fileNo(state.profiles.indexOf(featured))}`}
+              icon={<ProfileAvatar profile={featured} size={56} />}
               title={featured.name}
               subtitle={subtitleFor(featured, pinned === featured.id, state.activeId === featured.id)}
               selected
@@ -153,6 +154,7 @@ export default function ProfilesSection() {
                   key={p.id}
                   compact
                   stain={`var(--tile-${p.color})`}
+                  eyebrow={`дело · ${fileNo(state.profiles.indexOf(p))}`}
                   icon={<ProfileAvatar profile={p} size={40} />}
                   title={p.name}
                   subtitle={subtitleFor(p, pinned === p.id, state.activeId === p.id)}
@@ -174,14 +176,18 @@ export default function ProfilesSection() {
                   ) : undefined}
                 />
               ))}
+              {/* ⚠️ Заведение дела — БЕЗ заголовка и абзаца внутри рамки. С ними коробка выходила
+                  вдвое выше карточек рядом, правый столбец перевешивал левый, и герой сцены
+                  тянулся за ним в пустоту: поля дела прижаты к низу, а между ними и именем
+                  оставалась дыра. Подпись живёт полем ввода, объяснение — заголовком блока. */}
               {state.profiles.length < PROFILES_MAX && (
-                <InkFrame title="Новое дело" hint="Например «Работа», «Личное» или «Второй аккаунт»">
+                <InkFrame>
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: sp(2) }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <TextField
                         value={draft}
                         onChange={setDraft}
-                        placeholder="Работа"
+                        placeholder="Новое дело: «Работа», «Личное»…"
                         onEnter={() => { void create(); }}
                       />
                     </div>
@@ -345,6 +351,11 @@ const CLEAR_OPTIONS: { id: 'on' | 'off'; label: string; hint: string }[] = [
   { id: 'off', label: 'Оставлять', hint: 'Профиль помнит, где вы вошли' },
   { id: 'on', label: 'Стирать', hint: 'При закрытии браузера логины этого профиля пропадут' },
 ];
+
+/** Номер дела на язычке папки: «01», «02». Порядок — тот же, что в хранилище профилей. */
+function fileNo(index: number): string {
+  return String(index + 1).padStart(2, '0');
+}
 
 /** Какой из вариантов языка выбран сейчас. Незнакомая строка считается «как в приложении». */
 function langIdOf(p: Profile): string {

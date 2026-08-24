@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { sp } from '../../styles/system';
-import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, Search, ChevronRight, FileUp, Loader2 } from 'lucide-react';
+import { TEXT, motion, pad, sp, well } from '../../styles/system';
+import { Plus, Trash2, Check, Lock, Eye, EyeOff, Copy, Pencil, RefreshCw, Download, Upload, ChevronRight, FileUp, Loader2 } from 'lucide-react';
 import type { PasswordMeta, PasswordCopyField } from '../../../shared/ipc';
 import Toggle from '../Toggle';
 import {
-  btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote,
+  btnPrimary, btnGhost, IconBtn, SectionHeader, CapsLabel, LoadingNote, MasterSwitch,
+  FactGrid, Fact, Subsection, StatusCard, Panel, Read,
   InlineError, InlineHint, TextField, TextArea, InputRow, fieldFlex, Favicon, settingsBox,
 } from './kit';
 
 // Геометрия списка. LIST_VIEWPORT держит потолок высоты (см. комментарий у самого списка),
 // ROW_OVERSCAN — сколько строк рисуем сверх видимых, чтобы при быстрой прокрутке не мелькала
 // пустота. ROW_PITCH_GUESS — только до первого замера живой строки.
+// ⚠️ Зазора между строками БОЛЬШЕ НЕТ: список переехал внутрь Panel, и строки разделяет
+// волосяная линия (правило 4 у settingsBox), а не воздух. Шаг строки = её высота.
 const LIST_VIEWPORT = 420;
-const ROW_GAP = 4;
 const ROW_OVERSCAN = 4;
 const ROW_PITCH_GUESS = 60;
 
@@ -215,7 +217,7 @@ export default function PasswordsSection() {
   const [rowPitch, setRowPitch] = useState(ROW_PITCH_GUESS);
   useEffect(() => {
     const h = rowProbeRef.current?.getBoundingClientRect().height;
-    if (h && Math.abs(h + ROW_GAP - rowPitch) > 1) setRowPitch(h + ROW_GAP);
+    if (h && Math.abs(h - rowPitch) > 1) setRowPitch(h);
   });
   // Поиск меняет набор — прокрутку возвращаем в начало, иначе окно указывало бы в пустоту.
   useEffect(() => { setScrollTop(0); if (listRef.current) listRef.current.scrollTop = 0; }, [query]);
@@ -233,210 +235,214 @@ export default function PasswordsSection() {
   // сейфу не рисовались ни тумблер Windows-подтверждения, ни экспорт. Теперь ожидание локально
   // внутри списка, остальное видно сразу.
   const count = entries?.length ?? null;
+  // Разных сайтов в сейфе — не то же самое, что число записей: у одного домена бывает два
+  // аккаунта. Считаем по origin, а не по заголовку: заголовок человек правит руками.
+  const siteCount = entries === null ? null : new Set(entries.map((e) => e.origin)).size;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
-      <SectionHeader title="Пароли">
-        Зашифрованный сейф на этом устройстве — записи защищены ключом, привязанным к вашей
-        учётной записи Windows. Автозаполнение в веб-формы появится отдельным шагом.
+      {/* ⚠️ ГЕРОЙ — ЧИСЛО ЗАПИСЕЙ. Раздел открывают с вопросом «сколько у меня там и насколько
+          это закрыто», а раньше он встречал заголовком «Пароли» и абзацем про DPAPI: главное
+          число лежало серой подписью внутри свёрнутого блока, мельче объяснения рядом. */}
+      <SectionHeader
+        title="Пароли"
+        hero={count === null ? '…' : String(count)}
+        heroLabel="записей в сейфе на этом устройстве · ключ привязан к учётной записи Windows"
+      >
+        Сейф зашифрован и никуда не отправляется. Автозаполнение в веб-формы появится
+        отдельным шагом.
       </SectionHeader>
 
-      {/* Доп. защита: подтверждение Windows перед показом/копированием пароля (electron/osAuth.ts) */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-        ...settingsBox,
-      }}>
-        <Lock size={18} style={{ color: 'var(--text-faint)', flex: 'none' }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-            Подтверждение Windows для показа пароля
-          </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4 }}>
-            Спрашивать пароль/PIN Windows перед тем, как показать или скопировать сохранённый пароль.
-          </div>
-        </div>
-        <Toggle checked={authEnabled} onChange={() => void handleToggleAuth()} />
-      </div>
+      {/* ⚠️ Подтверждение Windows — ГЛАВНЫЙ ПЕРЕКЛЮЧАТЕЛЬ раздела, а не строка наравне с
+          остальными: это единственная настройка, которая здесь вообще что-то меняет в защите.
+          Раньше он был самодельной коробкой с кеглем 13 и своей вёрсткой — той самой «старой
+          системой» посреди новой. */}
+      <MasterSwitch
+        on={authEnabled}
+        title={authEnabled ? 'Windows спрашивает PIN' : 'Windows не спрашивает'}
+        description="Перед тем как показать или скопировать сохранённый пароль"
+        control={<Toggle checked={authEnabled} onChange={() => void handleToggleAuth()} />}
+      />
 
-      {/* Список сохранённых записей — раскрывается по требованию, см. listOpen выше */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-          <button
-            onClick={() => setListOpen((v) => !v)}
-            style={{
-              flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8,
-              background: 'none', border: 'none', padding: 0, cursor: 'default', textAlign: 'left',
-            }}
-          >
-            {/* Поворот стрелки, а не подмена иконки: один элемент, который едет по --dur-fast,
-                читается как «раскрылось», а не как «сменилась картинка». */}
-            <ChevronRight
-              size={14}
-              style={{
-                color: 'var(--text-faint)', flex: 'none',
-                transform: listOpen ? 'rotate(90deg)' : 'none',
-                transition: 'transform var(--dur-fast) var(--ease-standard)',
-              }}
-            />
-            <CapsLabel style={{
-              minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap', marginBottom: 0,
-            }}>
-              Сохранённые пароли
-            </CapsLabel>
-            {/* Счётчик — единственная причина, по которой метаданные всё же читаются при открытии
-                настроек: это локальный запрос к SQLite без сети, а без числа свёрнутый блок
-                не отвечает на вопрос «а есть ли там вообще что-то». */}
-            {count !== null && (
-              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
-                {count}
-              </span>
-            )}
-          </button>
-          {!formOpen && (
-            <button onClick={openAddForm} style={{ ...btnPrimary, display: 'flex', gap: 8, alignItems: 'center' }}>
-              <Plus size={14} /> Добавить
-            </button>
+      <FactGrid>
+        <Fact
+          label="Подтверждение"
+          hint="Пароль или PIN учётной записи"
+          value={authEnabled ? 'Спрашивает' : 'Не спрашивает'}
+          active={authEnabled}
+        />
+        <Fact
+          label="Сайтов"
+          hint="разных доменов в сейфе"
+          value={siteCount === null ? '—' : String(siteCount)}
+          active={siteCount !== null && siteCount > 0}
+        />
+        <Fact
+          label="Хранение"
+          hint="ключ в учётной записи Windows, не в облаке"
+          value="На устройстве"
+          active
+        />
+        <Fact
+          label="Внешний менеджер"
+          hint="Bitwarden и другие"
+          value="Скоро"
+        />
+      </FactGrid>
+
+      <Subsection
+        title="Сохранённые пароли"
+        description="Список свёрнут не для красоты: каждая строка тянет значок своего сайта, и раскрытый сейф рассылает список ваших аккаунтов по чужим серверам."
+      >
+        <StatusCard
+          icon={<Lock size={20} style={{ color: 'var(--text-muted)' }} />}
+          title={count === null ? 'Читаю сейф…' : count === 0 ? 'Записей пока нет' : `${count} ${plural(count, 'запись', 'записи', 'записей')}`}
+          subtitle={listOpen ? 'Значки сайтов загружены' : 'Значки сайтов не загружаются, пока список свёрнут'}
+          actions={(
+            <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
+              <button onClick={() => setListOpen((v) => !v)} style={{
+                ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2),
+              }}>
+                <ChevronRight size={14} style={{
+                  transform: listOpen ? 'rotate(90deg)' : 'none',
+                  transition: motion.state('transform'),
+                }} />
+                {listOpen ? 'Свернуть' : 'Показать'}
+              </button>
+              {!formOpen && (
+                <button onClick={openAddForm} style={{
+                  ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: sp(2),
+                }}><Plus size={14} /> Добавить</button>
+              )}
+            </div>
           )}
-        </div>
+        />
 
         {listOpen && entries === null && <LoadingNote />}
 
         {listOpen && entries !== null && (
-        <>
-        {formOpen && (
-          <PasswordForm
-            editing={editingId !== null}
-            urlInput={urlInput} onUrlChange={setUrlInput}
-            usernameInput={usernameInput} onUsernameChange={setUsernameInput}
-            passwordInput={passwordInput} onPasswordChange={setPasswordInput}
-            notesInput={notesInput} onNotesChange={setNotesInput}
-            formError={formError} saving={saving}
-            generatorOpen={generatorOpen} onToggleGenerator={() => setGeneratorOpen((v) => !v)}
-            genLength={genLength} onGenLength={setGenLength}
-            genLower={genLower} onGenLower={setGenLower}
-            genUpper={genUpper} onGenUpper={setGenUpper}
-            genDigits={genDigits} onGenDigits={setGenDigits}
-            genSymbols={genSymbols} onGenSymbols={setGenSymbols}
-            onGenerate={() => void handleGenerate()}
-            onSave={() => void handleSave()}
-            onCancel={() => setFormOpen(false)}
-          />
-        )}
-
-        {entries.length === 0 && !formOpen && (
-          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '8px 4px' }}>
-            Записей пока нет.
-          </div>
-        )}
-
-        {/* Поиск — показываем, когда есть что искать (несколько записей). Инлайн-плита в стиле
-            поиска Истории/Закладок, чтобы список из десятков паролей был обозрим. */}
-        {entries.length > 1 && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
-            ...settingsBox, padding: '8px 12px',
-          }}>
-            <Search size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск по сайту или логину…"
-              style={{
-                flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none',
-                fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
-              }}
-            />
-            {query && (
-              <button
-                onClick={() => setQuery('')}
-                title="Очистить"
-                style={{ background: 'none', border: 'none', cursor: 'default', padding: 4, color: 'var(--text-faint)', display: 'flex', fontSize: 'var(--fs-md)', lineHeight: 1 }}
-              >×</button>
-            )}
-          </div>
-        )}
-
-        {/* Своя прокрутка с потолком высоты: даже раскрытый сейф на сотню записей не должен
-            отодвигать экспорт и подключение внешнего менеджера за край страницы.
-            ⚠️ РИСУЮТСЯ ТОЛЬКО ВИДИМЫЕ СТРОКИ. Замер на фикстуре из 300 записей: раскрытие списка
-            занимало кадр в 263 мс (плюс серия длинных задач 123/93/123/93) — то есть заметную
-            заморозку интерфейса ровно в момент, когда человек нажал «показать». Видно из них
-            от силы семь: остальное — работа в никуда. Место несуществующих строк держат распорки
-            сверху и снизу, поэтому полоса прокрутки и её положение остаются честными. */}
-        <div
-          ref={listRef}
-          onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-          style={{ maxHeight: LIST_VIEWPORT, overflowY: 'auto' }}
-        >
-          {topSpacer > 0 && <div style={{ height: topSpacer }} />}
-          {visibleRows.map((entry) => (
-            <div key={entry.id} ref={rowProbeRef} style={{ marginBottom: ROW_GAP }}>
-              <PasswordRow
-                entry={entry}
-                revealedValue={revealed[entry.id]}
-                copiedKey={copiedKey}
-                onToggleReveal={() => void handleReveal(entry.id)}
-                onCopy={(field) => void handleCopy(entry.id, field)}
-                onEdit={() => openEditForm(entry)}
-                onDelete={() => void handleDelete(entry.id)}
+          <>
+            {formOpen && (
+              <PasswordForm
+                editing={editingId !== null}
+                urlInput={urlInput} onUrlChange={setUrlInput}
+                usernameInput={usernameInput} onUsernameChange={setUsernameInput}
+                passwordInput={passwordInput} onPasswordChange={setPasswordInput}
+                notesInput={notesInput} onNotesChange={setNotesInput}
+                formError={formError} saving={saving}
+                generatorOpen={generatorOpen} onToggleGenerator={() => setGeneratorOpen((v) => !v)}
+                genLength={genLength} onGenLength={setGenLength}
+                genLower={genLower} onGenLower={setGenLower}
+                genUpper={genUpper} onGenUpper={setGenUpper}
+                genDigits={genDigits} onGenDigits={setGenDigits}
+                genSymbols={genSymbols} onGenSymbols={setGenSymbols}
+                onGenerate={() => void handleGenerate()}
+                onSave={() => void handleSave()}
+                onCancel={() => setFormOpen(false)}
               />
-            </div>
-          ))}
-          {bottomSpacer > 0 && <div style={{ height: bottomSpacer }} />}
-          {entries.length > 0 && filtered.length === 0 && (
-            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', padding: '8px 4px' }}>
-              Ничего не найдено.
-            </div>
-          )}
-        </div>
-        </>
+            )}
+
+            {/* Поиск — показываем, когда есть что искать (несколько записей). */}
+            {entries.length > 1 && (
+              <InputRow>
+                <TextField
+                  value={query} onChange={setQuery}
+                  placeholder="Поиск по сайту или логину…"
+                  style={fieldFlex}
+                />
+                {query && <button onClick={() => setQuery('')} style={btnGhost}>Сбросить</button>}
+              </InputRow>
+            )}
+
+            {/* Своя прокрутка с потолком высоты: даже раскрытый сейф на сотню записей не должен
+                отодвигать экспорт и подключение внешнего менеджера за край страницы.
+                ⚠️ РИСУЮТСЯ ТОЛЬКО ВИДИМЫЕ СТРОКИ. Замер на фикстуре из 300 записей: раскрытие
+                списка занимало кадр в 263 мс (плюс серия длинных задач 123/93/123/93) — то есть
+                заметную заморозку интерфейса ровно в момент, когда человек нажал «показать».
+                Видно из них от силы семь: остальное — работа в никуда. Место несуществующих
+                строк держат распорки сверху и снизу, поэтому полоса прокрутки честная. */}
+            {filtered.length > 0 && (
+              <Panel>
+                <div
+                  ref={listRef}
+                  onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+                  style={{ maxHeight: LIST_VIEWPORT, overflowY: 'auto' }}
+                >
+                  {topSpacer > 0 && <div style={{ height: topSpacer }} />}
+                  {visibleRows.map((entry) => (
+                    <div key={entry.id} ref={rowProbeRef}>
+                      <PasswordRow
+                        entry={entry}
+                        revealedValue={revealed[entry.id]}
+                        copiedKey={copiedKey}
+                        onToggleReveal={() => void handleReveal(entry.id)}
+                        onCopy={(field) => void handleCopy(entry.id, field)}
+                        onEdit={() => openEditForm(entry)}
+                        onDelete={() => void handleDelete(entry.id)}
+                      />
+                    </div>
+                  ))}
+                  {bottomSpacer > 0 && <div style={{ height: bottomSpacer }} />}
+                </div>
+              </Panel>
+            )}
+            {entries.length > 0 && filtered.length === 0 && (
+              <InlineHint>Ничего не найдено.</InlineHint>
+            )}
+          </>
         )}
-      </div>
+      </Subsection>
 
       {/* Импорт из другого браузера (CSV). Отдельно и ВЫШЕ зашифрованной копии: это то, за чем
-          человек сюда обычно и приходит («перенести пароли из Chrome»). Пароли современного Chrome
-          с диска не читаются (App-Bound), поэтому путь — экспорт CSV из самого браузера. */}
-      <div style={{ paddingTop: 24, borderTop: '1px solid var(--divider)' }}>
-        <CapsLabel>Перенести из другого браузера</CapsLabel>
-        <p style={{ margin: '0 0 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-          Пароли современного Chrome зашифрованы и напрямую не переносятся. Экспортируйте их в самом
-          браузере: <b>Настройки → Пароли → ⋮ → Экспорт паролей</b> — и выберите полученный
-          CSV-файл здесь.
-        </p>
-        <button
-          onClick={() => void handleCsvImport()}
-          disabled={csvBusy}
-          style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center', opacity: csvBusy ? 0.5 : 1 }}
-        >
-          {csvBusy
-            ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-            : <FileUp size={14} />}
-          Выбрать CSV-файл
-        </button>
-        {csvMsg && (
-          <p style={{ margin: '8px 0 0', fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>{csvMsg}</p>
-        )}
-      </div>
+          человек сюда обычно и приходит («перенести пароли из Chrome»). Пароли современного
+          Chrome с диска не читаются (App-Bound), поэтому путь — экспорт CSV из самого браузера. */}
+      <Subsection
+        title="Перенести из другого браузера"
+        description="Пароли современного Chrome зашифрованы и напрямую не переносятся. Выгрузите их в самом браузере: Настройки → Пароли → ⋮ → Экспорт паролей — и выберите полученный файл здесь."
+      >
+        <StatusCard
+          icon={<FileUp size={20} style={{ color: 'var(--text-muted)' }} />}
+          title="CSV-экспорт паролей"
+          subtitle="Chrome, Edge, Firefox, Яндекс.Браузер"
+          actions={(
+            <button
+              onClick={() => void handleCsvImport()}
+              disabled={csvBusy}
+              style={{ ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: sp(2), opacity: csvBusy ? 0.5 : 1 }}
+            >
+              {csvBusy
+                ? <Loader2 size={14} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+                : <FileUp size={14} />}
+              Выбрать файл
+            </button>
+          )}
+        />
+        {csvMsg && <Read><InlineHint>{csvMsg}</InlineHint></Read>}
+      </Subsection>
 
-      {/* Экспорт / импорт зашифрованной КОПИИ нашего сейфа (не путать с импортом из браузера выше:
-          здесь наш формат под парольной фразой, туда — открытый CSV чужого браузера). */}
-      <div style={{ paddingTop: 24, borderTop: '1px solid var(--divider)' }}>
-        <CapsLabel>Зашифрованная копия сейфа</CapsLabel>
-        <p style={{ margin: '0 0 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-          Ключ сейфа привязан к этому Windows-профилю и не переживёт переустановку — сохраните
-          зашифрованную копию отдельной парольной фразой, чтобы не потерять пароли.
-        </p>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-          <button
-            onClick={() => { setExportOpen((v) => !v); setImportOpen(false); setExportMsg(''); }}
-            style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }}
-          ><Download size={14} /> Экспорт</button>
-          <button
-            onClick={() => { setImportOpen((v) => !v); setExportOpen(false); setImportMsg(''); }}
-            style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }}
-          ><Upload size={14} /> Импорт</button>
-        </div>
+      {/* Экспорт / импорт зашифрованной КОПИИ нашего сейфа (не путать с импортом из браузера
+          выше: здесь наш формат под парольной фразой, туда — открытый CSV чужого браузера). */}
+      <Subsection
+        title="Зашифрованная копия сейфа"
+        description="Ключ сейфа привязан к этому Windows-профилю и не переживёт переустановку. Сохраните копию под отдельной парольной фразой, чтобы не потерять пароли."
+      >
+        <StatusCard
+          icon={<Download size={20} style={{ color: 'var(--text-muted)' }} />}
+          title="Копия под парольной фразой"
+          subtitle="Наш формат, не CSV — фразу спросим и при восстановлении"
+          actions={(
+            <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
+              <button
+                onClick={() => { setExportOpen((v) => !v); setImportOpen(false); setExportMsg(''); }}
+                style={{ ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
+              ><Download size={14} /> Экспорт</button>
+              <button
+                onClick={() => { setImportOpen((v) => !v); setExportOpen(false); setImportMsg(''); }}
+                style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
+              ><Upload size={14} /> Импорт</button>
+            </div>
+          )}
+        />
 
         {exportOpen && (
           <PassphrasePrompt
@@ -456,28 +462,32 @@ export default function PasswordsSection() {
             onConfirm={() => void handleImport()}
           />
         )}
-      </div>
+      </Subsection>
 
-      {/* Внешние коннекторы — плейсхолдер, коннекторов пока нет */}
-      <div style={{
-        paddingTop: 24, borderTop: '1px solid var(--divider)', opacity: 0.45,
-      }}>
-        <CapsLabel>Подключить внешний менеджер</CapsLabel>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-          ...settingsBox,
-        }}>
-          <Lock size={18} style={{ color: 'var(--text-faint)', flex: 'none' }} />
-          <span style={{ flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-            Bitwarden и другие менеджеры
-          </span>
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontWeight: 600 }}>скоро</span>
-        </div>
-      </div>
+      <Subsection
+        title="Подключить внешний менеджер"
+        description="Чтобы Oblako брал пароли из того сейфа, которым вы уже пользуетесь."
+      >
+        <StatusCard
+          icon={<Lock size={20} style={{ color: 'var(--text-faint)' }} />}
+          title="Bitwarden и другие"
+          subtitle="Коннекторов пока нет — сейф работает только свой"
+          actions={<CapsLabel style={{ marginBottom: 0 }}>Скоро</CapsLabel>}
+        />
+      </Subsection>
     </div>
   );
 }
 
+/** Русское склонение числительного: 1 запись, 2 записи, 5 записей. */
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  const mod10 = n % 10;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+}
 // ── Строка одной записи (список секции «Пароли») ──────────────────────────────
 
 interface PasswordRowProps {
@@ -501,19 +511,19 @@ function PasswordRow({ entry, revealedValue, copiedKey, onToggleReveal, onCopy, 
     // (OptionList) сюда не поставить, а разделитель — только inset-тенью, которая высоту не
     // меняет. Заливки нет: прежний var(--surface) совпадал с цветом самой панели.
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 12px',
+      display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(3, 4),
       boxShadow: 'inset 0 -1px 0 var(--divider)',
     }}>
       <Favicon host={hostOf(entry.origin)} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
+          ...TEXT.body, fontWeight: 650, color: 'var(--text-strong)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {entry.title || entry.origin}
         </div>
         <div style={{
-          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4,
+          ...TEXT.caption, color: 'var(--text-muted)', marginTop: sp(1),
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)',
         }}>
           {entry.username || '—'}{revealed ? `  ·  ${revealedValue}` : ''}
@@ -562,7 +572,7 @@ function PasswordForm({
 }: PasswordFormProps) {
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', gap: 12, padding: '16px 16px', marginBottom: 12,
+      display: 'flex', flexDirection: 'column', gap: sp(3), padding: pad(4), marginBottom: sp(3),
       ...settingsBox,
     }}>
       <TextField value={urlInput} placeholder="example.com" onChange={onUrlChange} />
@@ -583,18 +593,18 @@ function PasswordForm({
 
       {generatorOpen && (
         <div style={{
-          display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 16px',
-          borderRadius: 'var(--radius-sm)', background: 'var(--surface-hover)',
+          display: 'flex', flexDirection: 'column', gap: sp(3), padding: pad(3, 4),
+          ...well,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>Длина: {genLength}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(3) }}>
+            <span style={{ ...TEXT.caption, color: 'var(--text-muted)', flex: 'none' }}>Длина: {genLength}</span>
             <input
               type="range" min={8} max={64} value={genLength}
               onChange={(e) => onGenLength(Number(e.target.value))}
               style={{ flex: 1 }}
             />
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(3) }}>
             <GenToggle label="a-z" checked={genLower} onChange={() => onGenLower(!genLower)} />
             <GenToggle label="A-Z" checked={genUpper} onChange={() => onGenUpper(!genUpper)} />
             <GenToggle label="0-9" checked={genDigits} onChange={() => onGenDigits(!genDigits)} />
@@ -610,7 +620,7 @@ function PasswordForm({
 
       {formError && <InlineError>{formError}</InlineError>}
 
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: sp(2) }}>
         <button onClick={onSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>
           {saving ? 'Сохранение…' : 'Сохранить'}
         </button>
@@ -622,9 +632,9 @@ function PasswordForm({
 
 function GenToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default' }}>
+    <label style={{ display: 'flex', alignItems: 'center', gap: sp(2), cursor: 'default' }}>
       <Toggle checked={checked} onChange={onChange} />
-      <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', fontFamily: 'var(--font-mono)' }}>{label}</span>
+      <span style={{ ...TEXT.caption, color: 'var(--text-body)', fontFamily: 'var(--font-mono)' }}>{label}</span>
     </label>
   );
 }
@@ -639,7 +649,7 @@ function PassphrasePrompt({
 }) {
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 16px', marginBottom: 8,
+      display: 'flex', flexDirection: 'column', gap: sp(2), padding: pad(3, 4), marginBottom: sp(2),
       ...settingsBox,
     }}>
       <InlineHint>{label}</InlineHint>

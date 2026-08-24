@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
-import { SectionHeader, Subsection, StatusCard, btnPrimary } from './kit';
+import { SectionHeader, Subsection, StatusCard, btnPrimary, FactGrid, Fact } from './kit';
 import UpdatesBlock from './UpdatesBlock';
 import BangsBlock from './BangsBlock';
 import SearchChipsBlock from './SearchChipsBlock';
@@ -7,22 +8,22 @@ import DefaultSearchBlock from './DefaultSearchBlock';
 import DefaultBrowserBlock from './DefaultBrowserBlock';
 import DownloadsBlock from './DownloadsBlock';
 import NeverSleepBlock from './NeverSleepBlock';
+import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../../shared/searchEngines';
+import type { SearchEngineId } from '../../../shared/searchEngines';
+import { subscribeDefaultSearchEngine } from '../../searchEngineSetting';
+import { sp } from '../../styles/system';
 
 interface GeneralSectionProps {
-  // Открыть диалог импорта — состояние живёт в App.tsx (модалка поверх всего chrome), сюда
-  // приходит только команда, самого диалога секция не рисует (см. ImportDialog.tsx).
   onOpenImport: () => void;
 }
 
-// Раздел «Браузер» — общие настройки браузера: поиск по умолчанию, обновления, бэнги, цели
-// быстрого поиска, импорт данных из другого браузера (закладки/история/пароли, см.
-// electron/browserImport/). Дальше сюда же — поведение при старте и т.п.
 export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
       <SectionHeader title="Браузер">
-        Общие настройки браузера.
+        Поиск из адресной строки, бэнги, загрузки и то, как браузер ведёт себя на этом компьютере.
       </SectionHeader>
+      <BrowserOverview />
 
       <Subsection
         title="Поиск по умолчанию"
@@ -38,7 +39,7 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
         <DefaultBrowserBlock />
       </Subsection>
 
-      {/* ⚠️ Импорт стоит третьим, а не последним, как раньше. Это разовое дело, но самое раннее:
+      {/* ⚠️ Импорт стоит третьим, а не последним. Это разовое дело, но самое раннее:
           человек, только поставивший браузер, идёт в настройки прежде всего за своими закладками
           и паролями. Ниже — то, что настраивают позже и реже. */}
       <Subsection
@@ -89,7 +90,54 @@ export default function GeneralSection({ onOpenImport }: GeneralSectionProps) {
       >
         <SearchChipsBlock />
       </Subsection>
-
     </div>
+  );
+}
+
+function BrowserOverview() {
+  const [engineId, setEngineId] = useState<SearchEngineId>(DEFAULT_SEARCH_ENGINE_ID);
+  const [isDefault, setIsDefault] = useState<boolean | null>(null);
+  const [bangCount, setBangCount] = useState<{ user: number; builtin: number; imported: number } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void window.oblako.getSearchEngine().then((id) => { if (mounted) setEngineId(id); });
+    void window.oblako.isDefaultBrowser().then((v) => { if (mounted) setIsDefault(v); });
+    void window.oblako.listBangs().then((snap) => {
+      if (mounted) setBangCount({ user: snap.user.length, builtin: snap.builtin.length, imported: snap.importedCount });
+    });
+    const offEngine = subscribeDefaultSearchEngine((id) => { if (mounted) setEngineId(id); });
+    const onFocus = () => {
+      void window.oblako.isDefaultBrowser().then((v) => { if (mounted) setIsDefault(v); });
+      void window.oblako.listBangs().then((snap) => {
+        if (mounted) setBangCount({ user: snap.user.length, builtin: snap.builtin.length, imported: snap.importedCount });
+      });
+    };
+    window.addEventListener('focus', onFocus);
+    return () => { mounted = false; offEngine(); window.removeEventListener('focus', onFocus); };
+  }, []);
+
+  const engineName = getSearchEngine(engineId).name;
+  const bangsValue = bangCount
+    ? (bangCount.user > 0 ? `${bangCount.builtin + bangCount.user}` : String(bangCount.builtin))
+    : '—';
+
+  return (
+    <FactGrid>
+      <Fact label="Поиск" hint="Из адресной строки, если это не адрес" value={engineName} active />
+      <Fact
+        label="Браузер по умолчанию"
+        hint="Ссылки из других программ"
+        value={isDefault === null ? '—' : isDefault ? 'Oblako' : 'Другой'}
+        active={isDefault === true}
+      />
+      <Fact
+        label="Бэнги"
+        hint={bangCount && bangCount.imported > 0 ? `и набор DuckDuckGo: ${bangCount.imported}` : 'свои, встроенные, «!yt котики»'}
+        value={bangsValue}
+        active
+      />
+      <Fact label="Ctrl+E" hint="Поповер быстрого поиска" value="Цели" />
+    </FactGrid>
   );
 }

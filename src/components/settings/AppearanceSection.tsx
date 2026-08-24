@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Upload, Trash2, RotateCcw, Plus, Shuffle } from 'lucide-react';
-import { SectionHeader, Subsection, InlineError, TextField, btnGhost, segBtnStyle, SegTrack,
+import { SectionHeader, Subsection, InlineError, InlineHint, TextField, btnGhost, segBtnStyle, SegTrack,
+  FactGrid, Fact, SpotGrid, SpotCard, MasterSwitch, OptionList, OptionRow, CapsLabel,
 } from './kit';
 import Toggle from '../Toggle';
 import { isDarkTheme } from '../../../shared/ipc';
@@ -18,7 +19,7 @@ import {
 import GradientEditor from './GradientEditor';
 
 import CryptoIcon from '../CryptoIcon';
-import { RADIUS, sp } from '../../styles/system';
+import { RADIUS, TEXT, pad, sp } from '../../styles/system';
 
 // Раздел «Интерфейс» — оформление самого браузера (тема и палитра) и новой вкладки.
 // Настройки вкладки пишутся в localStorage-стор (saveNewTabSettings шлёт событие → открытая
@@ -26,7 +27,31 @@ import { RADIUS, sp } from '../../styles/system';
 // каждый поповер (см. shared/ipc.ts::ThemePrefs). UI-примитивы — из settings/kit + общий Toggle.
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // свыше — риск переполнить квоту localStorage
 
+// Сторона образца палитры, обоев и градиента.
+// ⚠️ Не из шкалы отступов: это КАРТИНКА, её читают целиком, а не как элемент вёрстки. На прежних
+// 64×44 «Уголь» и «Бумага» различались одним оттенком фона, и весь раздел рядом с крупным
+// набором остальных настроек выглядел набором служебных квадратиков — живой отзыв: «всё очень
+// мелкое и старомодное». Радиус — коробочный, как у всех карточек раздела, а не radius-sm.
+const SWATCH_W = 84;
+const SWATCH_H = 56;
+
 const THEME_MODES: [ThemeMode, string][] = [['light', 'Светлая'], ['dark', 'Тёмная'], ['system', 'Как в системе']];
+
+// Подпись под именем темы — что она означает, а не как называется.
+const THEME_HINT: Record<ThemeMode, string> = {
+  light: 'Всегда светлый интерфейс',
+  dark: 'Всегда тёмный интерфейс',
+  system: 'Следует переключателю Windows',
+};
+
+// Чем сейчас занят фон новой вкладки — одним словом для плитки факта.
+const BG_WORD: Record<BackgroundKind, string> = {
+  preset: 'Градиент',
+  mesh: 'Свой градиент',
+  color: 'Свой цвет',
+  custom: 'Своё фото',
+  photo: 'Фото дня',
+};
 
 // Образцы палитр для превью. ⚠️ Значения продублированы из palettes.css сознательно: показать
 // невыбранную палитру можно только её собственными цветами, а прочитать CSS-переменные темы,
@@ -160,70 +185,89 @@ export default function AppearanceSection() {
     if (s.background.kind === 'custom') patchBg({ kind: 'preset' });
   }
 
+  // Нынешний облик словами — для шапки и плиток. ⚠️ Берётся из тех же таблиц, что рисуют выбор
+  // ниже (THEME_MODES, PALETTES, BG_WORD): вторая копия подписей разошлась бы с первой в тот
+  // день, когда добавят седьмую палитру.
+  const themeWord = THEME_MODES.find(([m]) => m === theme.mode)?.[1] ?? 'Светлая';
+  const palette = PALETTES.find((p) => p.id === theme.palette);
+  const paletteLabel = palette?.label ?? 'Уголь';
+  const paletteHint = palette?.hint ?? 'оттенок нейтрали';
+  const groundWord = !s.sidebar.tinted
+    ? 'Ровный'
+    : s.sidebar.source === 'mesh' ? 'Свой градиент' : 'Тон палитры';
+  const bgWord = BG_WORD[s.background.kind];
+
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 32, alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(8), alignItems: 'flex-start' }}>
       {/* ⚠️ Ширину колонка не ограничивает: раздел двухколоночный (настройки + живой предпросмотр
           новой вкладки), и обе колонки делят место сами. Зашитые 560 px мешали именно здесь —
           предпросмотр прижимался к краю, хотя места было вдоволь. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6), flex: '1 1 420px', minWidth: 0 }}>
-      <SectionHeader title="Интерфейс">
+      {/* ⚠️ ГЕРОЙ — нынешний облик словами, а не название раздела. До этого «Интерфейс» был
+          единственным крупным разделом без ответа в шапке: чтобы понять, какая тема и палитра
+          стоят, приходилось искать подсвеченный образец среди шести квадратиков. */}
+      <SectionHeader
+        title="Интерфейс"
+        hero={`${themeWord} · ${paletteLabel}`}
+        heroLabel="облик всего браузера — окно, поповеры и новая вкладка"
+      >
         Тема и палитра браузера, оформление новой вкладки — фон, часы, приветствие и быстрые ссылки.
       </SectionHeader>
 
-      {/* ── Тема ── */}
-      <Subsection title="Тема" description="Светлая, тёмная или вслед за системой.">
-        <SegTrack>
+      <FactGrid>
+        <Fact label="Тема" hint="светлая, тёмная или вслед за системой" value={themeWord} active />
+        <Fact label="Палитра" hint={paletteHint} value={paletteLabel} active />
+        <Fact
+          label="Фон окна"
+          hint={s.sidebar.tinted ? 'мягкий градиент и текстура' : 'ровная заливка палитры'}
+          value={groundWord}
+          active={s.sidebar.tinted}
+        />
+        <Fact label="Новая вкладка" hint="что стоит фоном" value={bgWord} active />
+      </FactGrid>
+
+      {/* ── Тема ──
+          ⚠️ КАРТОЧКИ С ОБРАЗЦОМ, а не три слова в пилюле. Тема — это не пункт списка, а то, как
+          браузер будет выглядеть; выбирать её по подписи «Светлая» значит выбирать вслепую.
+          Образец рисуется теми же цветами, что и палитра ниже, поэтому пара «тема + палитра»
+          видна целиком до применения. */}
+      <Subsection title="Тема" description="Светлая, тёмная или вслед за системой. Образец показывает выбранную палитру.">
+        <SpotGrid dense>
           {THEME_MODES.map(([mode, label]) => (
-            <SegBtn key={mode} active={theme.mode === mode} onClick={() => applyTheme(mode, theme.palette)}>
-              {label}
-            </SegBtn>
+            <SpotCard
+              key={mode}
+              compact
+              stack
+              selected={theme.mode === mode}
+              onClick={() => applyTheme(mode, theme.palette)}
+              icon={<ThemeSample mode={mode} palette={palette} systemDark={theme.systemDark} />}
+              title={label}
+              subtitle={THEME_HINT[mode]}
+            />
           ))}
-        </SegTrack>
+        </SpotGrid>
         {/* Приватные вкладки всегда тёмные и всегда одного вида — иначе режим перестаёт читаться
             как режим. Сказать об этом здесь дешевле, чем оставить человека гадать, почему выбор
             не подействовал на окно инкогнито. */}
-        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-          Приватные вкладки остаются тёмными при любой теме.
-        </span>
+        <InlineHint>Приватные вкладки остаются тёмными при любой теме.</InlineHint>
       </Subsection>
 
       {/* ── Палитра ── */}
       <Subsection title="Палитра" description="Оттенок нейтрали: фон, поверхности и текст. Акцентный цвет не меняется.">
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {PALETTES.map((p) => {
-            const [ground, surface, text] = themeIsDark ? p.dark : p.light;
-            const active = theme.palette === p.id;
-            return (
-              <button key={p.id} title={p.hint} onClick={() => applyTheme(theme.mode, p.id)}
-                style={{
-                  display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center',
-                  padding: 0, border: 'none', background: 'none', cursor: 'default',
-                }}>
-                {/* Образец рисуется той же лестницей, что и сам интерфейс: земля, на ней
-                    приподнятый остров, на острове строка текста. */}
-                <span style={{
-                  width: 64, height: 44, borderRadius: 'var(--radius-sm)', background: ground,
-                  display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 8,
-                  outline: active ? '2px solid var(--accent)' : '2px solid transparent', outlineOffset: 2,
-                  boxShadow: 'inset 0 0 0 1px var(--divider)',
-                }}>
-                  <span style={{
-                    width: 44, height: 22, borderRadius: RADIUS.control, background: surface,
-                    display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, padding: '0 6px',
-                  }}>
-                    <span style={{ height: 3, borderRadius: RADIUS.tight, background: text, opacity: 0.85 }} />
-                    <span style={{ height: 3, borderRadius: RADIUS.tight, background: text, opacity: 0.45, width: '65%' }} />
-                  </span>
-                </span>
-                <span style={{
-                  fontSize: 'var(--fs-xs)',
-                  color: active ? 'var(--text-body)' : 'var(--text-faint)',
-                  fontWeight: active ? 600 : 400,
-                }}>{p.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        <SpotGrid dense>
+          {PALETTES.map((p) => (
+            <SpotCard
+              key={p.id}
+              compact
+              stack
+              selected={theme.palette === p.id}
+              onClick={() => applyTheme(theme.mode, p.id)}
+              icon={<Sample swatch={themeIsDark ? p.dark : p.light} />}
+              title={p.label}
+              subtitle={p.hint}
+            />
+          ))}
+        </SpotGrid>
       </Subsection>
 
       {/* ── Фон интерфейса ──
@@ -234,19 +278,25 @@ export default function AppearanceSection() {
           боковой плашкой на сером окне. Подкраска это свойство ОКНА; ключ в хранилище оставлен
           прежним (`sidebar.tinted`), чтобы не терять уже сделанный человеком выбор. */}
       <Subsection title="Фон интерфейса" description="Мягкий градиент и лёгкая текстура на всём окне вместо ровной заливки. Можно взять тон палитры или свой градиент из общего каталога.">
-        <ToggleRow
-          label="Цветной фон"
-          checked={s.sidebar.tinted}
-          onChange={(v) => apply({ ...s, sidebar: { ...s.sidebar, tinted: v } })}
+        {/* ⚠️ ГЛАВНЫЙ ПЕРЕКЛЮЧАТЕЛЬ блока, а не голая строка с тумблером: всё остальное здесь
+            (градиенты, насыщенность) существует только когда он включён. Тот же рецепт, что у
+            блокировки рекламы и подтверждения Windows у паролей. */}
+        <MasterSwitch
+          on={s.sidebar.tinted}
+          title={s.sidebar.tinted ? 'Цветной фон' : 'Ровная заливка'}
+          description={s.sidebar.tinted
+            ? 'Мягкий градиент и лёгкая текстура на всём окне'
+            : 'Окно залито ровным фоном палитры'}
+          control={<Toggle checked={s.sidebar.tinted} onChange={() => apply({ ...s, sidebar: { ...s.sidebar, tinted: !s.sidebar.tinted } })} />}
         />
         {s.sidebar.tinted && (
           <>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(3) }}>
               <button
                 title="Палитра"
                 onClick={() => patchSidebar({ source: 'palette' })}
                 style={{
-                  width: 64, height: 44, borderRadius: 'var(--radius-sm)', cursor: 'default', border: 'none',
+                  width: SWATCH_W, height: SWATCH_H, borderRadius: RADIUS.box, cursor: 'default', border: 'none',
                   background: 'linear-gradient(180deg, color-mix(in srgb, var(--sidebar-tint) 45%, var(--app-bg)), var(--app-bg))',
                   outline: s.sidebar.source !== 'mesh' ? '2px solid var(--accent)' : '2px solid transparent',
                   outlineOffset: 2,
@@ -264,28 +314,30 @@ export default function AppearanceSection() {
                 />
               ))}
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
             <button
               onClick={() => openDraft('chrome')}
-              style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
             >
               <Plus size={14} /> Создать градиент
             </button>
             <button
               onClick={() => applyRandom('chrome')}
-              style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
             >
               <Shuffle size={14} /> Случайный
             </button>
             </div>
             {s.sidebar.source !== 'mesh' && (
-              <SliderRow
-                label="Насыщенность"
-                value={s.sidebar.amount}
-                min={TINT_AMOUNT_MIN} max={TINT_AMOUNT_MAX} step={1}
-                onChange={(v) => patchSidebar({ amount: v })}
-                format={(v) => `${v}%`}
-              />
+              <OptionList>
+                <SliderRow
+                  label="Насыщенность"
+                  value={s.sidebar.amount}
+                  min={TINT_AMOUNT_MIN} max={TINT_AMOUNT_MAX} step={1}
+                  onChange={(v) => patchSidebar({ amount: v })}
+                  format={(v) => `${v}%`}
+                />
+              </OptionList>
             )}
           </>
         )}
@@ -306,9 +358,11 @@ export default function AppearanceSection() {
 
         {s.background.kind === 'photo' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 1, minWidth: '24ch' }}>
-              Картинка дня Wikimedia — отбирают редакторы Commons. Загружается через ваше
-              соединение или VPN и кэшируется на день.
+            <span style={{ flex: 1, minWidth: '24ch' }}>
+              <InlineHint>
+                Картинка дня Wikimedia — отбирают редакторы Commons. Загружается через ваше
+                соединение или VPN и кэшируется на день.
+              </InlineHint>
             </span>
             {/* ⚠️ «Другое фото» — шаг НАЗАД ПО КАЛЕНДАРЮ, а не случайный снимок: у Wikimedia на
                 каждый день ровно одна отобранная картинка, поэтому вчерашняя тоже хорошая.
@@ -327,11 +381,11 @@ export default function AppearanceSection() {
 
         {(s.background.kind === 'preset' || s.background.kind === 'mesh') && (
           <>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(3) }}>
             {WALLPAPER_PRESETS.map((p) => (
               <button key={p.id} title={p.label} onClick={() => patchBg({ kind: 'preset', preset: p.id })}
                 style={{
-                  width: 64, height: 44, borderRadius: 'var(--radius-sm)', cursor: 'default',
+                  width: SWATCH_W, height: SWATCH_H, borderRadius: RADIUS.box, cursor: 'default',
                   background: p.css, border: 'none',
                   outline: s.background.kind === 'preset' && s.background.preset === p.id ? '2px solid var(--accent)' : '2px solid transparent',
                   outlineOffset: 2,
@@ -349,16 +403,16 @@ export default function AppearanceSection() {
               />
             ))}
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
           <button
             onClick={() => openDraft('newtab')}
-            style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
           >
             <Plus size={14} /> Создать градиент
           </button>
           <button
             onClick={() => applyRandom('newtab')}
-            style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}
           >
             <Shuffle size={14} /> Случайный
           </button>
@@ -367,33 +421,34 @@ export default function AppearanceSection() {
         )}
 
         {s.background.kind === 'color' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(3) }}>
             <input type="color" value={s.background.color}
               onChange={(e) => patchBg({ color: e.target.value })}
               style={{ width: 44, height: 32, border: 'none', background: 'none', cursor: 'default' }} />
-            <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', fontFamily: 'var(--font-mono)' }}>{s.background.color}</span>
+            <span style={{ ...TEXT.body, color: 'var(--text-strong)', fontFamily: 'var(--font-mono)' }}>{s.background.color}</span>
           </div>
         )}
 
         {s.background.kind === 'custom' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
             <input ref={fileRef} type="file" accept="image/*" hidden
               onChange={(e) => onPickFile(e.target.files?.[0])} />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }} onClick={() => fileRef.current?.click()}>
+            <div style={{ display: 'flex', gap: sp(2) }}>
+              <button style={{ ...btnGhost, display: 'flex', gap: sp(2), alignItems: 'center' }} onClick={() => fileRef.current?.click()}>
                 <Upload size={14} /> {hasCustom ? 'Заменить фото' : 'Выбрать фото'}
               </button>
               {hasCustom && (
-                <button style={{ ...btnGhost, display: 'flex', gap: 8, alignItems: 'center' }} onClick={removeCustom}>
+                <button style={{ ...btnGhost, display: 'flex', gap: sp(2), alignItems: 'center' }} onClick={removeCustom}>
                   <Trash2 size={14} /> Убрать
                 </button>
               )}
             </div>
             {imgError && <InlineError>{imgError}</InlineError>}
-            {!hasCustom && !imgError && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Изображение хранится локально на этом устройстве.</span>}
+            {!hasCustom && !imgError && <InlineHint>Изображение хранится локально на этом устройстве.</InlineHint>}
           </div>
         )}
 
+        <OptionList>
         <SliderRow label="Затемнение" value={s.background.dim} min={0} max={0.8} step={0.02}
           onChange={(v) => patchBg({ dim: v })} format={(v) => `${Math.round(v * 100)}%`} />
         {/* ⚠️ Потолок снижен с 40: размытие держали ради читаемости виджетов, а эту работу теперь
@@ -401,6 +456,7 @@ export default function AppearanceSection() {
             пикселей превращали фотографию в цветное пятно; шестнадцати хватает как эффекту. */}
         <SliderRow label="Размытие" value={s.background.blur} min={0} max={16} step={1}
           onChange={(v) => patchBg({ blur: v })} format={(v) => `${v}px`} />
+        </OptionList>
       </Subsection>
 
       {/* ── Часы ── */}
@@ -409,23 +465,32 @@ export default function AppearanceSection() {
           два разных способа убрать одно и то же неизбежно разошлись бы. Здесь остались только
           настройки САМИХ виджетов — формат времени, город, валюты. */}
       <Subsection title="Часы" description="Вид и формат виджета часов на новой вкладке.">
-        <div style={{ display: 'flex', gap: 8 }}>
+        <SegTrack>
           <SegBtn active={s.clock.face !== 'digital'} onClick={() => patchClock({ face: 'analog' })}>Циферблат</SegBtn>
           <SegBtn active={s.clock.face === 'digital'} onClick={() => patchClock({ face: 'digital' })}>Цифры</SegBtn>
-        </div>
+        </SegTrack>
         {/* 24-часовой формат у циферблата смысла не имеет — прячем, а не показываем неработающий
             тумблер. «Секунды» осмысленны у обоих: у стрелок это секундная стрелка. */}
-        {s.clock.face === 'digital' && (
-          <ToggleRow label="24-часовой формат" checked={s.clock.hour24} onChange={(v) => patchClock({ hour24: v })} />
-        )}
-        <ToggleRow label={s.clock.face === 'digital' ? 'Секунды' : 'Секундная стрелка'}
-          checked={s.clock.seconds} onChange={(v) => patchClock({ seconds: v })} />
-        <ToggleRow label="Дата и день недели" checked={s.clock.date} onChange={(v) => patchClock({ date: v })} />
+        <OptionList>
+          {s.clock.face === 'digital' && (
+            <SwitchRow title="24-часовой формат" subtitle="Иначе 12 часов с AM и PM"
+              checked={s.clock.hour24} onChange={(v) => patchClock({ hour24: v })} />
+          )}
+          <SwitchRow
+            title={s.clock.face === 'digital' ? 'Секунды' : 'Секундная стрелка'}
+            subtitle="Обновление раз в секунду вместо раза в минуту"
+            checked={s.clock.seconds} onChange={(v) => patchClock({ seconds: v })} />
+          <SwitchRow title="Дата и день недели" subtitle="Строка под временем"
+            checked={s.clock.date} onChange={(v) => patchClock({ date: v })} />
+        </OptionList>
       </Subsection>
 
       {/* ── Поиск ── */}
-      <Subsection title="Поиск">
-        <ToggleRow label="Строка поиска" checked={s.search.show} onChange={(v) => apply({ ...s, search: { show: v } })} />
+      <Subsection title="Поиск" description="Строка поиска на самой новой вкладке — адресная строка работает независимо от неё.">
+        <OptionList>
+          <SwitchRow title="Строка поиска" subtitle="Поле по центру новой вкладки"
+            checked={s.search.show} onChange={(v) => apply({ ...s, search: { show: v } })} />
+        </OptionList>
       </Subsection>
 
       {/* ── Погода ── */}
@@ -433,16 +498,16 @@ export default function AppearanceSection() {
         <>
           <TextField value={s.weather.city} placeholder="Город (например, Москва)"
             onChange={(v) => patchWeather({ city: v })} />
-          <div style={{ display: 'flex', gap: 8 }}>
+          <SegTrack>
             <SegBtn active={s.weather.units === 'c'} onClick={() => patchWeather({ units: 'c' })}>°C</SegBtn>
             <SegBtn active={s.weather.units === 'f'} onClick={() => patchWeather({ units: 'f' })}>°F</SegBtn>
-          </div>
+          </SegTrack>
         </>
       </Subsection>
 
       {/* ── Курс валют ── */}
       <Subsection title="Курс валют" description="Какие валюты показывает виджет курса (данные ЦБ РФ).">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
           {RATE_CHOICES.map((c) => (
             <SegBtn key={c.code} active={s.rates.codes.includes(c.code)} onClick={() => toggleRateCode(c.code)}>
               {c.symbol} {c.label}
@@ -453,11 +518,11 @@ export default function AppearanceSection() {
 
       {/* ── Крипта ── */}
       <Subsection title="Крипта" description="Какие активы показывает виджет «Крипта» (цены в рублях, источник — CoinGecko).">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
           {CRYPTO_CHOICES.map((c) => (
             <SegBtn key={c.code} active={s.crypto.codes.includes(c.code)} onClick={() => toggleCryptoCode(c.code)}>
               {/* Тот же значок, что в самом виджете, — выбирают по нему, а не по названию. */}
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(2) }}>
                 <CryptoIcon code={c.code} size={16} /> {c.label}
               </span>
             </SegBtn>
@@ -490,6 +555,60 @@ function SegBtn({ active, onClick, children }: { active: boolean; onClick: () =>
   return <button onClick={onClick} style={segBtnStyle(active)}>{children}</button>;
 }
 
+// Образец палитры: земля, на ней приподнятый остров, на острове две строки текста.
+//
+// ⚠️ Рисуется той же ЛЕСТНИЦЕЙ, что и настоящий интерфейс, а не квадратиком одного цвета. Полоска
+// текста здесь не украшение: без неё «Уголь» и «Бумага» различались бы только оттенком фона, а
+// тёплое/холодное заметнее всего именно на тексте. Значения ступеней продублированы из
+// palettes.css сознательно — прочитать переменные НЕ применённой сейчас темы нельзя в принципе.
+function Sample({ swatch, clip }: { swatch: Swatch; clip?: 'left' | 'right' }) {
+  const [ground, surface, text] = swatch;
+  return (
+    <span style={{
+      // Половинки «как в системе» стыкуются встык: у каждой своя земля, обводка общая снаружи.
+      position: clip ? 'absolute' : 'relative',
+      inset: clip === 'left' ? '0 50% 0 0' : clip === 'right' ? '0 0 0 50%' : undefined,
+      width: clip ? undefined : SWATCH_W, height: clip ? undefined : SWATCH_H,
+      borderRadius: clip ? 0 : RADIUS.box, background: ground, overflow: 'hidden',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: sp(2),
+    }}>
+      <span style={{
+        width: 58, height: 28, borderRadius: RADIUS.control, background: surface, flex: 'none',
+        display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, padding: '0 8px',
+      }}>
+        <span style={{ height: 3, borderRadius: RADIUS.tight, background: text, opacity: 0.85 }} />
+        <span style={{ height: 3, borderRadius: RADIUS.tight, background: text, opacity: 0.45, width: '65%' }} />
+      </span>
+    </span>
+  );
+}
+
+// Образец темы. ⚠️ «Как в системе» показан РАЗРЕЗАННЫМ ПОПОЛАМ, а не той половиной, что стоит в
+// Windows прямо сейчас: смысл варианта в том, что вид меняется сам, и картинка обязана это
+// сказать. Показывать только текущую половину значило бы рисовать её неотличимой от «Светлой».
+function ThemeSample({ mode, palette, systemDark }: {
+  mode: ThemeMode;
+  palette: { light: Swatch; dark: Swatch } | undefined;
+  systemDark: boolean;
+}) {
+  const light = palette?.light ?? PALETTES[0]!.light;
+  const dark = palette?.dark ?? PALETTES[0]!.dark;
+  const frame: React.CSSProperties = {
+    position: 'relative', width: SWATCH_W, height: SWATCH_H, borderRadius: RADIUS.box,
+    overflow: 'hidden', flex: 'none', display: 'block',
+    boxShadow: 'inset 0 0 0 1px var(--divider)',
+  };
+  if (mode === 'system') {
+    return (
+      <span style={frame} title={systemDark ? 'Сейчас в Windows тёмная' : 'Сейчас в Windows светлая'}>
+        <Sample swatch={light} clip="left" />
+        <Sample swatch={dark} clip="right" />
+      </span>
+    );
+  }
+  return <span style={frame}><Sample swatch={mode === 'dark' ? dark : light} /></span>;
+}
+
 function MeshThumb({ mesh, dark, selected, onSelect, onEdit, onDelete }: {
   mesh: MeshGradient; dark: boolean; selected: boolean; onSelect: () => void; onEdit: () => void; onDelete?: () => void;
 }) {
@@ -500,7 +619,7 @@ function MeshThumb({ mesh, dark, selected, onSelect, onEdit, onDelete }: {
         onClick={onSelect}
         onDoubleClick={onEdit}
         style={{
-          width: 64, height: 44, borderRadius: 'var(--radius-sm)', cursor: 'default', border: 'none',
+          width: SWATCH_W, height: SWATCH_H, borderRadius: RADIUS.box, cursor: 'default', border: 'none',
           backgroundImage: meshCss(mesh, dark), backgroundSize: 'cover',
           outline: selected ? '2px solid var(--accent)' : '2px solid transparent',
           outlineOffset: 2,
@@ -528,27 +647,43 @@ function MeshThumb({ mesh, dark, selected, onSelect, onEdit, onDelete }: {
 // Редактор своих быстрых ссылок: строки «название + адрес», добавление/удаление. Пустые строки
 // (без адреса) вкладка просто не покажет, поэтому чистить их отдельно не нужно.
 
-function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+// Строка-тумблер внутри OptionList.
+//
+// ⚠️ Своей вёрстки у неё БОЛЬШЕ НЕТ: это OptionRow с тумблером в действиях. Прежний ToggleRow был
+// голой парой «подпись слева, тумблер справа» без коробки и без разделителей — четыре такие
+// строки подряд в «Часах» и были той самой «старой сборкой» посреди новой. Заливки выбранного у
+// неё нет намеренно: включённый тумблер — это состояние, а заливка в разделе означает «выбрано».
+function SwitchRow({ title, subtitle, checked, onChange }: {
+  title: string; subtitle?: string; checked: boolean; onChange: (v: boolean) => void;
+}) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <span style={{ flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>{label}</span>
-      <Toggle checked={checked} onChange={() => onChange(!checked)} />
-    </div>
+    <OptionRow
+      title={title}
+      subtitle={subtitle}
+      actions={<Toggle checked={checked} onChange={() => onChange(!checked)} />}
+    />
   );
 }
 
+// Строка с ползунком. Живёт ВНУТРИ OptionList — группу держит рамка, соседние строки разделяет
+// волосяная линия, как в OptionList.
+//
+// ⚠️ accentColor обязателен: без него Chromium рисует системно-синий ползунок независимо от
+// палитры, и на «Мяте» он оказывался единственным синим элементом на экране — ровно та жалоба,
+// из-за которой акцент вообще переехал в палитру (см. цветовой закон).
 function SliderRow({ label, value, min, max, step, onChange, format }: {
   label: string; value: number; min: number; max: number; step: number;
   onChange: (v: number) => void; format: (v: number) => string;
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <span style={{ flex: '0 0 130px', fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>{label}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(3, 4) }}>
+      <span style={{ flex: '0 0 120px', ...TEXT.body, fontWeight: 550, color: 'var(--text-strong)' }}>{label}</span>
       <input type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(Number(e.target.value))} style={{ flex: 1 }} />
-      <span style={{ flex: '0 0 44px', textAlign: 'right', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', fontVariantNumeric: 'tabular-nums' }}>
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ flex: 1, minWidth: 0, accentColor: 'var(--accent)', cursor: 'default' }} />
+      <CapsLabel style={{ marginBottom: 0, flex: '0 0 46px', justifyContent: 'flex-end', fontVariantNumeric: 'tabular-nums' }}>
         {format(value)}
-      </span>
+      </CapsLabel>
     </div>
   );
 }

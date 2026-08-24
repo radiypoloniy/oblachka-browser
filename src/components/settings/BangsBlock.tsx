@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Zap, Trash2, Download, Plus, Wand2 } from 'lucide-react';
-import { StatusCard, btnPrimary, btnGhost, TextField, InputRow, fieldFlex, InlineError, InlineHint, CapsLabel } from './kit';
+import { Trash2, Download, Plus, Wand2, Zap } from 'lucide-react';
+import {
+  btnPrimary, btnGhost, TextField, InputRow, fieldFlex, InlineError, InlineHint, CapsLabel,
+  SpotCard, InkFrame, MonoChip, FactGrid, Fact,
+} from './kit';
+import { sp } from '../../styles/system';
 import type { BangsSnapshot, BangDefWire, DerivedBangCandidate } from '../../../shared/ipc';
 
-// Блок «Бэнги» раздела «Браузер». Только рисует то, что прислал main (см. CLAUDE.md): разбор
-// строки и хранилище живут в electron/BangStore.ts + shared/bangs.ts, здесь — список и форма.
+// Блок «Бэнги» раздела «Браузер». Только рисует то, что прислал main: разбор строки и
+// хранилище живут в electron/BangStore.ts + shared/bangs.ts.
 
 export default function BangsBlock() {
   const [snap, setSnap] = useState<BangsSnapshot | null>(null);
@@ -14,7 +18,6 @@ export default function BangsBlock() {
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importNote, setImportNote] = useState<string | null>(null);
-  // null — распознавание ещё не запускали (показываем кнопку), [] — запускали и не нашли.
   const [found, setFound] = useState<DerivedBangCandidate[] | null>(null);
 
   async function detect() {
@@ -55,20 +58,40 @@ export default function BangsBlock() {
   if (!snap) return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4) }}>
+      {/* ⚠️ Сводка плитками, а не абзацем. Блок стоит посреди цветных разделов, и до неё он
+          читался канцелярией: три подписи, поле ввода и стопка серых строк. Четыре факта
+          отвечают на то, ради чего сюда заходят, — «сколько их и что писать в строке». */}
+      <FactGrid>
+        <Fact
+          label="Свои"
+          hint={snap.user.length > 0 ? `ключ !${snap.user[0]!.key} → ${snap.user[0]!.name}` : 'своих пока нет'}
+          value={snap.user.length > 0 ? String(snap.user.length) : '—'}
+          active={snap.user.length > 0}
+        />
+        <Fact label="Встроенные" hint="Google, YouTube, GitHub…" value={String(snap.builtin.length)} active />
+        <Fact
+          label="Набор DuckDuckGo"
+          hint="в профиле, не в приложении"
+          value={snap.importedCount > 0 ? snap.importedCount.toLocaleString('ru-RU') : 'Не скачан'}
+          active={snap.importedCount > 0}
+        />
+        <Fact label="Пример" hint="в адресной строке" value="!yt котики" />
+      </FactGrid>
+
       <InlineHint>
-        Введите в адресной строке «!yt котики» — запрос уйдёт сразу на YouTube, минуя поисковик.
         Бэнг можно ставить и в конце: «котики !yt». Один «!ключ» без запроса открывает главную сайта.
       </InlineHint>
 
-      {/* Свои бэнги */}
       {snap.user.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
           <CapsLabel>Свои</CapsLabel>
           {snap.user.map((b) => (
-            <StatusCard
+            <SpotCard
               key={b.key}
-              icon={<Zap size={18} style={{ color: 'var(--accent)' }} />}
+              compact
+              stain="var(--tile-orange)"
+              icon={<Zap size={18} style={{ color: 'var(--text-strong)' }} />}
               title={`!${b.key} — ${b.name}`}
               subtitle={b.template}
               actions={
@@ -81,14 +104,15 @@ export default function BangsBlock() {
         </div>
       )}
 
-      {/* Заготовки из открытых вкладок — главный способ добавить бэнг без возни с URL */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
         <CapsLabel>Взять из открытой вкладки</CapsLabel>
         {found === null ? (
-          <StatusCard
-            icon={<Wand2 size={18} style={{ color: 'var(--accent)' }} />}
+          <SpotCard
+            compact
+            stain="var(--tile-teal)"
+            icon={<Wand2 size={18} />}
             title="Распознать поиск на открытых сайтах"
-            subtitle="Откройте сайт, выполните на нём любой поиск — и браузер сам составит шаблон по адресу результатов."
+            subtitle="Откройте сайт, найдите на нём что-нибудь — шаблон соберётся по адресу результатов."
             actions={<button style={btnPrimary} onClick={() => void detect()}>Распознать</button>}
           />
         ) : found.length === 0 ? (
@@ -99,15 +123,15 @@ export default function BangsBlock() {
           </InlineHint>
         ) : (
           found.map((c) => (
-            <StatusCard
+            <SpotCard
               key={c.template}
-              icon={<Wand2 size={18} style={{ color: 'var(--accent)' }} />}
+              compact
+              stain="var(--tile-teal)"
+              icon={<Wand2 size={18} />}
               title={`${c.name} — параметр «${c.param}»`}
               subtitle={c.template}
               actions={
                 <button style={btnPrimary} onClick={() => {
-                  // Не сохраняем сразу: человек должен увидеть ключ и при желании сократить его
-                  // («overgear» → «og») до того, как бэнг появится в списке.
                   setKey(c.key); setName(c.name); setTemplate(c.template); setError(null); setFound(null);
                 }}>
                   Заполнить
@@ -118,37 +142,38 @@ export default function BangsBlock() {
         )}
       </div>
 
-      {/* Форма добавления */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
         <CapsLabel>Добавить свой</CapsLabel>
-        <InputRow>
-          <TextField value={key} onChange={setKey} placeholder="ключ, напр. og" style={{ flex: '0 1 140px' }} />
-          <TextField value={name} onChange={setName} placeholder="название, напр. Overgear" style={fieldFlex} />
-        </InputRow>
-        <InputRow>
-          <TextField
-            value={template}
-            onChange={setTemplate}
-            placeholder="https://overgear.com/search?q={query}"
-            style={fieldFlex}
-          />
-          <button style={btnPrimary} onClick={() => void add()} disabled={!key || !template}>
-            <Plus size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
-            Добавить
-          </button>
-        </InputRow>
-        {error && <InlineError>{error}</InlineError>}
-        <InlineHint>
-          В шаблоне обязателен {'{query}'} — на это место подставится запрос. Адрес можно взять из
-          строки браузера, выполнив поиск на нужном сайте.
-        </InlineHint>
+        <InkFrame>
+          <InputRow>
+            <TextField value={key} onChange={setKey} placeholder="ключ, напр. og" style={{ flex: '0 1 140px' }} />
+            <TextField value={name} onChange={setName} placeholder="название, напр. Overgear" style={fieldFlex} />
+          </InputRow>
+          <InputRow>
+            <TextField
+              value={template}
+              onChange={setTemplate}
+              placeholder="https://overgear.com/search?q={query}"
+              style={fieldFlex}
+            />
+            <button style={btnPrimary} onClick={() => void add()} disabled={!key || !template}>
+              <Plus size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+              Добавить
+            </button>
+          </InputRow>
+          {error && <InlineError>{error}</InlineError>}
+          <InlineHint>
+            В шаблоне обязателен {'{query}'} — на это место подставится запрос.
+          </InlineHint>
+        </InkFrame>
       </div>
 
-      {/* Импорт готового набора */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
         <CapsLabel>Готовый набор</CapsLabel>
-        <StatusCard
-          icon={<Download size={18} style={{ color: 'var(--text-muted)' }} />}
+        <SpotCard
+          compact
+          stain="var(--tile-brown)"
+          icon={<Download size={18} />}
           title={snap.importedCount > 0 ? `Набор DuckDuckGo: ${snap.importedCount}` : 'Набор DuckDuckGo'}
           subtitle={
             snap.importedCount > 0
@@ -156,7 +181,7 @@ export default function BangsBlock() {
               : 'Несколько тысяч готовых бэнгов. Скачивается в ваш профиль, в приложение не входит.'
           }
           actions={
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: sp(2) }}>
               {snap.importedCount > 0 && (
                 <button style={btnGhost} onClick={() => void clearImported()}>Удалить</button>
               )}
@@ -169,22 +194,13 @@ export default function BangsBlock() {
         {importNote && <InlineHint>{importNote}</InlineHint>}
       </div>
 
-      {/* Встроенные — только для справки, менять их нельзя */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
         <CapsLabel>Встроенные</CapsLabel>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
           {snap.builtin.map((b) => (
-            <span
-              key={b.key}
-              title={`${b.name} — ${b.template}`}
-              style={{
-                fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
-                padding: '4px 8px', borderRadius: 'var(--radius-sm)',
-                background: 'var(--surface-sunken)', fontFamily: 'var(--font-mono)',
-              }}
-            >
+            <MonoChip key={b.key} strong title={`${b.name} — ${b.template}`}>
               !{b.key}
-            </span>
+            </MonoChip>
           ))}
         </div>
       </div>

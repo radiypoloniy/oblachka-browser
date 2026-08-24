@@ -421,16 +421,21 @@ export function Fact({ label, hint, value, active }: {
  *
  * ⚠️ Не «раскладка профилей». Одно и то же место занимает пропуск сайта, дело профиля,
  * завтра — правило: выбранное крупнее, очередь справа. Ширину колонок не зашивать в секции.
+ *
+ * ⚠️ ВЕС КОЛОНОК 1,4 : 1, а не поровну. Первая версия ставила обеим `flex: 1` при близких
+ * базисах — свободное место делилось пополам, и «выбранное» выходило ровно такой же ширины,
+ * как очередь рядом. Живой отзыв по профилям: «основной не такой значительный на фоне
+ * вспомогательного». Сцена без перевеса — это две колонки, а не сцена.
  */
 export function Stage({ lead, side }: { lead: React.ReactNode; side?: React.ReactNode }) {
   return (
     <div style={{
       display: 'flex', flexWrap: 'wrap', gap: sp(4), alignItems: 'stretch',
     }}>
-      <div style={{ flex: '1 1 320px', minWidth: 0 }}>{lead}</div>
+      <div style={{ flex: '1.4 1 340px', minWidth: 0, display: 'flex', flexDirection: 'column' }}>{lead}</div>
       {side && (
         <div style={{
-          flex: '1 1 240px', minWidth: 0,
+          flex: '1 1 260px', minWidth: 0,
           display: 'flex', flexDirection: 'column', gap: sp(3),
         }}>{side}</div>
       )}
@@ -449,87 +454,218 @@ export function Stage({ lead, side }: { lead: React.ReactNode; side?: React.Reac
  * вокруг них была бы кнопкой в кнопке.
  */
 export function SpotCard({
-  stain, eyebrow, icon, title, subtitle, fields, mark, selected, onClick, actions, children, compact,
+  stain, eyebrow, icon, title, subtitle, fields, foot, mark, selected, filled,
+  onClick, actions, children, compact, lead, stack,
 }: {
   stain?: string;
+  /** Ярлык дела: рисуется ЯЗЫЧКОМ тоном раздела в верхнем углу, а не серой строчкой. */
   eyebrow?: React.ReactNode;
   icon?: React.ReactNode;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
   fields?: { label: string; value: string }[];
+  /** Подвал карточки: прижат к низу, живёт внутри тех же полей. Тумблер, метка, «Править». */
+  foot?: React.ReactNode;
   mark?: React.ReactNode;
   selected?: boolean;
+  /** Как у Fact.active: сущность включена — заливка чернилами, не тоном шапки. */
+  filled?: boolean;
   onClick?: () => void;
   actions?: React.ReactNode;
   children?: React.ReactNode;
+  /** Полоска: строка данных с действием справа (бэнг, набор, кандидат). */
   compact?: boolean;
+  /** Герой сцены: выбранное дело слева в `Stage`. Крупнее и выше остальных по построению. */
+  lead?: boolean;
+  /** Значок НАД именем, а не рядом: карточка-кнопка, где глиф — лицо, а не иконка строки. */
+  stack?: boolean;
 }) {
+  const ink = filled ? 'var(--app-bg)' : 'var(--text-strong)';
+  const muted = filled ? 'color-mix(in srgb, var(--app-bg) 62%, transparent)' : 'var(--text-muted)';
+  // ⚠️ Пятно масштабируется ЯРУСОМ. Пока размер был один на все карточки, кружок 180×140 на
+  // полоске в 72 пикселя занимал её целиком — и «вспомогательное» кричало ровно так же громко,
+  // как герой сцены. Перевес по ширине это не лечит: цветное пятно замечают раньше набора.
+  const blob = lead
+    ? { w: 240, h: 190, right: -48, top: -56 }
+    : compact ? { w: 132, h: 104, right: -28, top: -34 }
+      : { w: 180, h: 140, right: -36, top: -48 };
   const header = (
+    // ⚠️ alignItems: STRETCH, а не flex-start. Пока стояло flex-start, колонка содержимого не
+    // тянулась на высоту шапки — и `marginTop: auto` у полей дела и подвала не делал ничего:
+    // всё сбивалось под имя, а низ высокой карточки оставался пустым. Ровно это и видно как
+    // «проеб по высоте» на сцене профилей. Значок статуса при этом обязан остаться вверху.
     <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: sp(3),
-      padding: pad(4), position: 'relative',
-      minHeight: compact ? undefined : 120,
+      display: 'flex', alignItems: 'stretch', gap: sp(3),
+      padding: pad(4), paddingTop: eyebrow ? sp(3) : sp(4), position: 'relative',
+      flex: compact ? undefined : 1,
+      minHeight: lead ? 208 : compact ? undefined : 120,
     }}>
       {stain && (
         <span aria-hidden style={{
-          position: 'absolute', width: 180, height: 140, right: -36, top: -48,
+          position: 'absolute', width: blob.w, height: blob.h, right: blob.right, top: blob.top,
           borderRadius: '50%', pointerEvents: 'none',
           background: `radial-gradient(circle at 40% 40%, ${stain}, transparent 68%)`,
           opacity: 0.5,
         }} />
       )}
       <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: sp(3) }}>
-        {eyebrow && (
-          <span style={{ ...CAPS, color: 'var(--text-muted)' }}>{eyebrow}</span>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: sp(3) }}>
+        <div style={{
+          display: 'flex', gap: stack ? sp(2) : sp(3),
+          flexDirection: stack ? 'column' : 'row',
+          alignItems: stack ? 'flex-start' : 'center',
+        }}>
           {icon}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ ...DISPLAY, fontSize: compact ? 20 : 26, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--text-strong)' }}>
+          <div style={{ flex: stack ? 'none' : 1, width: stack ? '100%' : undefined, minWidth: 0 }}>
+            <div style={{
+              ...DISPLAY, fontSize: lead ? 30 : compact ? 20 : 26,
+              fontWeight: 800, letterSpacing: '-0.03em', color: ink,
+            }}>
               {title}
             </div>
-            {subtitle && <div style={{ ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1) }}>{subtitle}</div>}
+            {subtitle && <div style={{ ...TEXT.body, color: muted, marginTop: sp(1) }}>{subtitle}</div>}
           </div>
         </div>
         {fields && fields.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: `${sp(2)}px ${sp(4)}px`, marginTop: 'auto' }}>
             {fields.map((f) => (
               <div key={f.label}>
-                <div style={{ ...CAPS, marginBottom: sp(1) }}>{f.label}</div>
-                <div style={{ ...TEXT.body, color: 'var(--text-strong)' }}>{f.value}</div>
+                <div style={{ ...CAPS, marginBottom: sp(1), color: muted }}>{f.label}</div>
+                <div style={{ ...TEXT.body, color: ink }}>{f.value}</div>
               </div>
             ))}
           </div>
         )}
+        {foot && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: sp(2), marginTop: 'auto', color: ink,
+          }}>{foot}</div>
+        )}
       </div>
       {mark && (
-        <div style={{ position: 'relative', flex: 'none' }}>{mark}</div>
+        <div style={{ position: 'relative', flex: 'none', alignSelf: 'flex-start' }}>{mark}</div>
       )}
     </div>
+  );
+
+  const body = (
+    <>
+      {eyebrow && (
+        // Язычок папки. Тон и краска берутся ПАРОЙ из раздела (см. toneVars): своего цвета у
+        // язычка быть не может — на горчице белый текст физически не читается.
+        <div style={{ padding: `${sp(3)}px 0 0 ${sp(4)}px`, position: 'relative' }}>
+          <span style={{
+            ...CAPS, display: 'inline-block', padding: `${sp(1)}px ${sp(3)}px`,
+            borderRadius: RADIUS.pill,
+            background: 'var(--section-tone, var(--surface-sunken))',
+            color: 'var(--section-ink, var(--text-strong))',
+          }}>{eyebrow}</span>
+        </div>
+      )}
+      {header}
+    </>
   );
 
   return (
     <div style={{
       ...settingsBox,
-      outline: selected ? '2px solid var(--text-strong)' : 'none',
+      display: 'flex', flexDirection: 'column',
+      flex: compact ? undefined : 1,
+      height: compact ? undefined : '100%',
+      width: '100%',
+      minHeight: 0,
+      background: filled ? 'var(--text-strong)' : undefined,
+      outline: selected && !filled ? '2px solid var(--text-strong)' : 'none',
       outlineOffset: 2,
-      transition: motion.state('outline-color'),
+      transition: motion.state('outline-color', 'background', 'color'),
     }}>
-      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', flex: compact ? undefined : 1, minHeight: 0 }}>
         {onClick
           ? <button type="button" onClick={onClick} style={{
-              display: 'block', flex: 1, minWidth: 0, border: 'none', background: 'transparent',
+              display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0,
+              border: 'none', background: 'transparent',
               padding: 0, textAlign: 'left', cursor: 'default', color: 'inherit',
-            }}>{header}</button>
-          : <div style={{ flex: 1, minWidth: 0 }}>{header}</div>}
+            }}>{body}</button>
+          : <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>{body}</div>}
         {actions && (
           <div style={{
-            flex: 'none', display: 'flex', alignItems: 'center', paddingRight: sp(3), position: 'relative',
+            flex: 'none', display: 'flex', alignItems: 'center', gap: sp(2),
+            paddingRight: sp(3), position: 'relative',
           }}>{actions}</div>
         )}
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * Сетка карточек-сущностей: скиллы, завтра — правила или движки.
+ *
+ * ⚠️ Не `FactGrid`. Плитка факта отвечает на вопрос одним словом и живёт в сводке раздела;
+ * здесь в каждой ячейке кнопка со своим состоянием и своими действиями, и ей нужна ширина
+ * (240 против 196) — иначе промпт рвётся на четыре строки, а подвал переносится.
+ *
+ * ⚠️ `dense` — для карточек БЕЗ действий внутри: образец, имя, короткая подсказка (палитры,
+ * темы). Им 240 не нужны, а шесть палитр по две в ряд превращают выбор оттенка в четыре экрана
+ * прокрутки. Это не «другая сетка», а тот же рецепт с другой мерой ячейки.
+ */
+export function SpotGrid({ children, dense }: { children: React.ReactNode; dense?: boolean }) {
+  return (
+    <div style={{
+      display: 'grid', gap: sp(3),
+      gridTemplateColumns: `repeat(auto-fit, minmax(${dense ? 176 : 240}px, 1fr))`,
+      alignItems: 'stretch',
+    }}>{children}</div>
+  );
+}
+
+/**
+ * Тумблер чернилами — пара к Fact/SpotCard.filled. Синий акцент здесь чужой: он из хрома,
+ * а в настройках состояние читается заливкой чернил. Геометрия как у Toggle в панели сайта,
+ * чтобы не завести третий размер пилюли.
+ */
+export function InkSwitch({ on, onChange, onDark }: {
+  on: boolean;
+  onChange: () => void;
+  /** На залитой чернилами карточке бегунок обязан остаться видимым. */
+  onDark?: boolean;
+}) {
+  const track = on
+    ? (onDark ? 'var(--app-bg)' : 'var(--text-strong)')
+    : (onDark ? 'color-mix(in srgb, var(--app-bg) 28%, transparent)' : 'var(--surface-sunken)');
+  const knob = on && onDark ? 'var(--text-strong)' : 'var(--app-bg)';
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onChange}
+      style={{
+        position: 'relative', width: 44, height: 24, borderRadius: RADIUS.pill,
+        border: 'none', cursor: 'default', flex: 'none', padding: 0, background: track,
+        transition: motion.state('background'),
+      }}
+    >
+      <span style={{
+        position: 'absolute', top: 3, left: 3, width: 18, height: 18, borderRadius: '50%',
+        background: knob, transform: on ? 'translateX(20px)' : 'none',
+        transition: motion.state('transform', 'background'),
+      }} />
+    </button>
+  );
+}
+
+/** Моноширинный чип: бэнг, ключ, короткая метка. Заливка в kit, не в секции. */
+export function MonoChip({ children, title, strong }: {
+  children: React.ReactNode; title?: string; strong?: boolean;
+}) {
+  return (
+    <span title={title} style={{
+      fontFamily: 'var(--font-mono)', fontSize: TEXT.body.fontSize, fontWeight: 500,
+      padding: `${sp(2)}px ${sp(3)}px`, borderRadius: RADIUS.control,
+      background: strong ? 'var(--text-strong)' : 'var(--surface-sunken)',
+      color: strong ? 'var(--app-bg)' : 'var(--text-strong)',
+    }}>{children}</span>
   );
 }
 

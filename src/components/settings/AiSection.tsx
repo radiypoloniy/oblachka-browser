@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Check, KeyRound, Search, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
-import type { BackfillProgress, HistoryContentCoverage, TranslationEngineId, BergamotStatus } from '../../../shared/ipc';
+import type { BackfillProgress, HistoryContentCoverage, InstalledModel, TranslationEngineId, BergamotStatus } from '../../../shared/ipc';
 import ModelsSection from '../ModelsSection';
 import SkillsSection from './SkillsSection';
 import {
@@ -28,17 +28,12 @@ export default function AiSection() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
       {/* ⚠️ Шапка стоит в КОРНЕ раздела, а не внутри одного из блоков. Раздел собран из шести
           самостоятельных кусков (модели, перевод, история, навыки, Gemini, SearXNG), и раньше
-          общего заголовка у него не было вовсе: экран начинался прямо с «Локальные модели», и
-          человек, зашедший в «AI», попадал сразу в частность. После того как остальные разделы
-          получили цветные шапки, пропажа стала бросаться в глаза. */}
-      <SectionHeader title="AI">
-        Локальная модель работает на этом устройстве и ничего не отправляет. Облачные сервисы
-        ниже подключаются по отдельности и только вашим ключом.
-      </SectionHeader>
-
-      {/* ⚠️ Сводка ЧЕТЫРЁХ подсистем разом. Раздел собран из шести самостоятельных блоков, и
-          чтобы понять «что у меня вообще включено», человеку приходилось пролистать их все.
-          Сетка отвечает на это сразу, а блоки ниже остаются для настройки. */}
+          общего заголовка у него не было вовсе: экран начинался прямо с «Локальные модели».
+          ⚠️ Шапка и сводка — ОДИН компонент, как у VPN. Раньше здесь стоял заголовок «AI» с
+          абзацем, то есть раздел открывался названием самого себя; ответа на вопрос «а модель у
+          меня вообще есть и готова ли она» не было ни в шапке, ни в первом экране — за ним нужно
+          было спуститься в «Локальные модели». VPN этот же вопрос («я сейчас через туннель?»)
+          выносит героем, и AI обязан вести себя так же. */}
       <AiOverview />
 
       <ModelsSection />
@@ -52,54 +47,97 @@ export default function AiSection() {
 }
 
 /**
- * Сводка раздела: что из AI сейчас работает.
+ * Шапка раздела и сводка того, что из AI сейчас работает.
  *
  * ⚠️ Собственные запросы здесь НЕ заводятся — состояние спрашивается теми же каналами, что уже
  * есть у блоков ниже. Иначе один экран ходил бы за одним и тем же дважды, а расхождение между
  * сводкой и блоком выглядело бы как баг.
+ *
+ * ⚠️ ГЕРОЙ — ИМЯ МОДЕЛИ, а не слово «AI». Разбор тот же, что у VPN: заходя в раздел, человек
+ * спрашивает «что у меня стоит и готово ли оно», и ответ обязан быть первым, что он видит.
+ * Название раздела он уже прочитал в боковом списке, пока сюда шёл.
+ *
+ * ⚠️ «Готова» и «В памяти» — РАЗНЫЕ состояния, и склеивать их нельзя (см. SetDefaultModelResult
+ * в shared/ipc/ai.ts): дефолт назначен — модель ответит, но с паузой на загрузку; загружена в
+ * VRAM — ответит сразу. Это ровно та разница, из-за которой первый ответ «долго думает».
  */
 function AiOverview() {
   const [gemini, setGemini] = useState<boolean | null>(null);
   const [searx, setSearx] = useState<boolean | null>(null);
+  const [installed, setInstalled] = useState<InstalledModel[] | null>(null);
+  const [defaultId, setDefaultId] = useState<string | null>(null);
+  const [loadedId, setLoadedId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     void window.oblako.getAiKeyStatus().then((v) => { if (alive) setGemini(v); });
     void window.oblako.getSearxngStatus().then((v) => { if (alive) setSearx(v); });
+    const reloadModels = () => {
+      void window.oblako.getInstalledModels().then((v) => { if (alive) setInstalled(v); });
+      void window.oblako.getDefaultModelId().then((v) => { if (alive) setDefaultId(v); });
+      void window.oblako.getLoadedModelId().then((v) => { if (alive) setLoadedId(v); });
+    };
+    reloadModels();
     // ⚠️ Подписки на изменения — те же, что у блоков ниже: иначе сводка отстанет от блока,
     // человек сохранит ключ и увидит наверху «выключен», то есть решит, что ничего не вышло.
     const offKey = window.oblako.onAiKeyStatusChanged((v) => setGemini(v));
     const offSearx = window.oblako.onSearxngStatusChanged((v) => setSearx(v));
-    return () => { alive = false; offKey(); offSearx(); };
+    // ⚠️ Push-события «модель загрузилась» нет — getLoadedModelId чисто pull (см. ModelsSection).
+    // Перечитываем по тем же двум поводам, что и блок моделей: конец загрузки файла и закрытие
+    // AI-панели (там модель могла подняться в VRAM сообщением в чат).
+    const offDownload = window.oblako.onModelDownloadProgress((p) => { if (!p.running) reloadModels(); });
+    const offPanel = window.oblako.onAiPanelStateChanged((open) => { if (!open) reloadModels(); });
+    return () => { alive = false; offKey(); offSearx(); offDownload(); offPanel(); };
   }, []);
 
+  const active = installed?.find((m) => m.id === defaultId) ?? null;
+  const loaded = loadedId !== null && loadedId === defaultId;
+  const hero = installed === null ? '…' : active ? active.label : 'Нет модели';
+  const heroLabel = installed === null
+    ? 'смотрю, что установлено'
+    : !active
+      ? 'скачайте модель ниже — без неё не работают скиллы, перевод и поиск по смыслу'
+      : loaded
+        ? 'загружена в память — отвечает сразу, ничего не отправляет наружу'
+        : 'готова — поднимется в память при первом запросе';
+
   return (
-    <FactGrid>
-      <Fact
-        label="Фактчек"
-        hint="Gemini, облачный"
-        value={gemini === null ? '—' : gemini ? 'Ключ есть' : 'Выключен'}
-        active={gemini === true}
-      />
-      <Fact
-        label="Веб-поиск"
-        hint="SearXNG, свой сервер"
-        value={searx === null ? '—' : searx ? 'Настроен' : 'Выключен'}
-        active={searx === true}
-      />
-      <Fact
-        label="Перевод страниц"
-        hint="Bergamot, без сети"
-        value="Локально"
-        active
-      />
-      <Fact
-        label="Приватность"
-        hint="Локальная модель никуда не ходит"
-        value="На устройстве"
-        active
-      />
-    </FactGrid>
+    <>
+      <SectionHeader title="AI" hero={hero} heroLabel={heroLabel}>
+        Локальная модель работает на этом устройстве и ничего не отправляет. Облачные сервисы
+        ниже подключаются по отдельности и только вашим ключом.
+      </SectionHeader>
+
+      {/* ⚠️ Сводка ЧЕТЫРЁХ подсистем разом. Раздел собран из шести самостоятельных блоков, и
+          чтобы понять «что у меня вообще включено», человеку приходилось пролистать их все.
+          Сетка отвечает на это сразу, а блоки ниже остаются для настройки. */}
+      <FactGrid>
+        <Fact
+          label="Модель"
+          hint={active ? `${(active.sizeBytes / 1024 ** 3).toFixed(1)} ГБ на диске` : 'ни одна не установлена'}
+          value={installed === null ? '—' : !active ? 'Нет' : loaded ? 'В памяти' : 'Готова'}
+          active={active !== null}
+        />
+        <Fact
+          label="Перевод страниц"
+          hint="Bergamot, без сети"
+          value="Локально"
+          active
+        />
+        <Fact
+          label="Фактчек"
+          hint="Gemini, облачный"
+          value={gemini === null ? '—' : gemini ? 'Ключ есть' : 'Выключен'}
+          active={gemini === true}
+        />
+        <Fact
+          label="Веб-поиск"
+          hint="SearXNG, свой сервер"
+          value={searx === null ? '—' : searx ? 'Настроен' : 'Выключен'}
+          active={searx === true}
+        />
+      </FactGrid>
+    </>
   );
 }
 

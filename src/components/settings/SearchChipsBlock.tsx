@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Search, X, Globe, Compass } from 'lucide-react';
-import { OptionList, OptionRow, CapsLabel, InlineHint, TextField, Favicon, Panel,
+import { OptionList, OptionRow, CapsLabel, InlineHint, TextField, Favicon, Panel, MonoChip,
+  SpotCard, StatusCard, btnGhost,
 } from './kit';
+import { TEXT, pad, selected as selectedStyle, motion, sp } from '../../styles/system';
 import type { SearchChipsConfig, SearchChipCandidate } from '../../../shared/ipc';
 import { getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../../shared/searchEngines';
 import type { SearchEngineId } from '../../../shared/searchEngines';
@@ -15,6 +17,13 @@ import { subscribeDefaultSearchEngine } from '../../searchEngineSetting';
 // чипов такое не показать (и раньше, до поиска, из импортированных нельзя было выбрать вообще
 // ничего). Поэтому наружу из main только короткая выдача на запрос, а выбранное разрешается
 // точечно по id — см. каналы SEARCH_CHIPS_SEARCH/SEARCH_CHIPS_RESOLVE.
+//
+// ⚠️ Вид строки цели переписан вместе с дизайн-системой 2.0. Живой отзыв: «очень мелкий и
+// старомодный список сайтов». Причина была не в плотности, а в том, что строка несла ЧЕТЫРЕ
+// равноправных куска текста подряд (имя, !ключ, источник, галочка) кеглем 13 и 11 — то есть
+// читалась таблицей, а не списком мест, куда уйдёт запрос. Теперь имя и источник стоят
+// лестницей, ключ — моночипом, значок сайта крупнее: строка узнаётся по логотипу, как в
+// самом поповере Ctrl+E.
 
 const SOURCE_LABEL: Record<SearchChipCandidate['source'], string> = {
   user: 'свой бэнг',
@@ -44,28 +53,27 @@ function TargetRow({ candidate, selected, action, title, onClick }: {
       onClick={onClick}
       title={title}
       style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', cursor: 'default',
-        // Заливка только у выбранного и только акцентом — общее правило раздела (kit.tsx).
-        background: selected ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'transparent',
+        display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(3, 4), cursor: 'default',
+        // Заливка только у выбранного и только тоном раздела — общее правило (см. selected()).
+        ...selectedStyle(selected === true),
+        transition: motion.state('background'),
       }}
     >
-      <Favicon host={candidate.host} />
-      <span style={{
-        flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: 500, color: 'var(--text-strong)',
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-      }}>
-        {candidate.name}
-      </span>
-      {candidate.bangKey && (
-        <span style={{ flex: 'none', fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
-          !{candidate.bangKey}
-        </span>
-      )}
-      <span style={{ flex: 'none', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-        {SOURCE_LABEL[candidate.source]}
-      </span>
+      <Favicon host={candidate.host} size={26} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          ...TEXT.body, fontWeight: 650, color: 'var(--text-strong)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {candidate.name}
+        </div>
+        <div style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>
+          {SOURCE_LABEL[candidate.source]}
+        </div>
+      </div>
+      {candidate.bangKey && <MonoChip>!{candidate.bangKey}</MonoChip>}
       {action}
-      {selected && <Check size={15} style={{ flex: 'none', color: 'var(--accent)' }} />}
+      {selected && <Check size={16} style={{ flex: 'none', color: 'var(--accent)' }} />}
     </div>
   );
 }
@@ -94,9 +102,9 @@ function TargetSearch({ placeholder, isPicked, onPick }: {
   }, [query]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Search size={15} style={{ flex: 'none', color: 'var(--text-faint)' }} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
+        <Search size={16} style={{ flex: 'none', color: 'var(--text-faint)' }} />
         <TextField value={query} onChange={setQuery} placeholder={placeholder} style={{ flex: 1 }} />
       </div>
       {/* Пустая выдача на пустой строке — это первый кадр до ответа main, а не «ничего нет»:
@@ -107,9 +115,18 @@ function TargetSearch({ placeholder, isPicked, onPick }: {
           в «Бэнгах адресной строки» выше.
         </InlineHint>
       )}
-      {results.map((c) => (
-        <TargetRow key={c.id} candidate={c} selected={isPicked(c.id)} onClick={() => onPick(c)} />
-      ))}
+      {/* ⚠️ Выдача — в рамке с волосяными разделителями, а не стопкой голых строк: без коробки
+          десять строк подряд читались продолжением поля ввода, а не отдельным списком. */}
+      {results.length > 0 && (
+        <Panel>
+          {results.map((c, i) => (
+            <div key={c.id}>
+              {i > 0 && <div style={{ height: 1, background: 'var(--divider)' }} />}
+              <TargetRow candidate={c} selected={isPicked(c.id)} onClick={() => onPick(c)} />
+            </div>
+          ))}
+        </Panel>
+      )}
     </div>
   );
 }
@@ -157,49 +174,68 @@ export default function SearchChipsBlock() {
     save({ ...cfg, pinned });
   };
 
-  // Строка выбранной цели по умолчанию: что сейчас, и кнопка вернуться к контекстному поведению.
+  // Что происходит по Enter в поповере Ctrl+E — карточкой, а не строкой в общей стопке.
+  // ⚠️ Это ответ на главный вопрос блока, и он обязан выглядеть иначе, чем варианты выбора под
+  // ним: раньше выбранная цель была такой же строкой, как кандидаты в выдаче, и отличалась
+  // только галочкой — то есть «что у меня стоит» и «из чего выбрать» читались одинаково.
   const defaultSummary = (): React.ReactNode => {
     const reset = (
       <button
         onClick={() => save({ ...cfg, defaultId: null })}
         title="Вернуть поведение по умолчанию"
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 4, flex: 'none',
-          border: 'none', background: 'transparent', color: 'var(--text-muted)',
-          fontSize: 'var(--fs-xs)', cursor: 'default', padding: '4px',
-        }}
+        style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(1) }}
       >
-        <X size={13} />сбросить
+        <X size={13} /> Сбросить
       </button>
     );
     if (cfg.defaultId === 'engine') {
       return (
-        <TargetRow
-          selected
-          action={reset}
-          candidate={{ id: 'engine', name: engineName, kind: 'bang', source: 'builtin', host: engineHost(engineId) }}
+        <SpotCard
+          compact
+          stain="var(--tile-blue)"
+          icon={<Favicon host={engineHost(engineId)} size={28} />}
+          title={engineName}
+          subtitle="Enter в Ctrl+E всегда уходит в поисковик"
+          actions={reset}
         />
       );
     }
-    if (defaultCard) return <TargetRow candidate={defaultCard} selected action={reset} />;
+    if (defaultCard) {
+      return (
+        <SpotCard
+          compact
+          stain="var(--tile-teal)"
+          icon={<Favicon host={defaultCard.host} size={28} />}
+          title={defaultCard.name}
+          subtitle={`Enter в Ctrl+E уходит сюда · ${SOURCE_LABEL[defaultCard.source]}`}
+          actions={reset}
+        />
+      );
+    }
     if (cfg.defaultId) {
       // id есть, а цели уже нет: бэнг удалили или сайт вытеснили из выученных.
-      return <InlineHint>Выбранная цель больше не существует — поповер откроется как обычно.{' '}{reset}</InlineHint>;
+      return (
+        <StatusCard
+          icon={<Compass size={20} style={{ color: 'var(--text-muted)' }} />}
+          title="Цель потерялась"
+          subtitle="Бэнг удалили или сайт вытеснили из выученных — поповер откроется как обычно"
+          actions={reset}
+        />
+      );
     }
     return (
-      <Panel style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px' }}>
-        <Compass size={18} style={{ flex: 'none', color: 'var(--text-muted)' }} />
-        <span style={{ flex: 1, fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
-          Сайт, на котором вы сейчас — а если поиска по нему нет, то {engineName}
-        </span>
-        <span style={{ flex: 'none', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>как было</span>
-      </Panel>
+      <StatusCard
+        icon={<Compass size={20} style={{ color: 'var(--text-muted)' }} />}
+        title="Сайт, на котором вы сейчас"
+        subtitle={`А если поиска по нему нет — ${engineName}`}
+        actions={<CapsLabel style={{ marginBottom: 0 }}>Как было</CapsLabel>}
+      />
     );
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
         <CapsLabel>Цель по умолчанию</CapsLabel>
         <InlineHint>
           На ней поповер Ctrl+E открывается: набрали запрос, нажали Enter — ушло туда, без клика
@@ -209,14 +245,9 @@ export default function SearchChipsBlock() {
         {cfg.defaultId !== 'engine' && (
           <button
             onClick={() => save({ ...cfg, defaultId: 'engine' })}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start',
-              padding: '8px 12px', borderRadius: 'var(--radius-sm)', cursor: 'default',
-              border: '1px solid var(--divider-strong)', background: 'transparent',
-              color: 'var(--text-body)', fontSize: 'var(--fs-xs)',
-            }}
+            style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2), alignSelf: 'flex-start' }}
           >
-            <Globe size={14} />всегда искать в {engineName}
+            <Globe size={14} /> Всегда искать в {engineName}
           </button>
         )}
         <TargetSearch
@@ -226,7 +257,7 @@ export default function SearchChipsBlock() {
         />
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
         <CapsLabel>Что ещё показывать в полосе</CapsLabel>
         <OptionList>
         <OptionRow
@@ -248,22 +279,28 @@ export default function SearchChipsBlock() {
       </div>
 
       {cfg.mode === 'pinned' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
           <CapsLabel>Закреплённые ({cfg.pinned.length})</CapsLabel>
           {cfg.pinned.length === 0 && <InlineHint>Пока ничего не закреплено — найдите цель ниже и нажмите на неё.</InlineHint>}
-          {cfg.pinned.map((id) => {
-            const c = picked.get(id);
-            if (!c) return null; // цель исчезла (удалённый бэнг) — молча не показываем
-            return (
-              <TargetRow
-                key={id}
-                candidate={c}
-                title="Убрать из закреплённых"
-                onClick={() => togglePin(id)}
-                action={<X size={14} style={{ flex: 'none', color: 'var(--text-muted)' }} />}
-              />
-            );
-          })}
+          {cfg.pinned.length > 0 && (
+            <Panel>
+              {cfg.pinned.map((id, i) => {
+                const c = picked.get(id);
+                if (!c) return null; // цель исчезла (удалённый бэнг) — молча не показываем
+                return (
+                  <div key={id}>
+                    {i > 0 && <div style={{ height: 1, background: 'var(--divider)' }} />}
+                    <TargetRow
+                      candidate={c}
+                      title="Убрать из закреплённых"
+                      onClick={() => togglePin(id)}
+                      action={<X size={15} style={{ flex: 'none', color: 'var(--text-muted)' }} />}
+                    />
+                  </div>
+                );
+              })}
+            </Panel>
+          )}
           <TargetSearch
             placeholder="Добавить цель в полосу…"
             isPicked={(id) => cfg.pinned.includes(id)}

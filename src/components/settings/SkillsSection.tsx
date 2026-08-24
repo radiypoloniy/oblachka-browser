@@ -1,17 +1,26 @@
 import { useEffect, useState } from 'react';
 import { Plus, Pencil } from 'lucide-react';
 import type { Skill } from '../../../shared/ipc';
-import Toggle from '../Toggle';
 import {
-  btnPrimary, btnGhost, IconBtn, Subsection, InlineError, InlineHint,
-  TextField, TextArea, InputRow, fieldFlex, errorColor, settingsBox, OptionList,
+  btnPrimary, btnGhost, Subsection, InlineError, InlineHint,
+  TextField, TextArea, InputRow, fieldFlex, errorColor,
+  SpotCard, SpotGrid, InkFrame, InkSwitch,
 } from './kit';
+import { CAPS, sp } from '../../styles/system';
 
-// ── Секция «Скиллы» — CRUD-редактор prompt-кнопок AI-панели (см. electron/SkillsStore.ts,
-// мост в window.oblako.{list,add,update,remove}Skill/onSkillsChanged уже проложен отдельным
-// коммитом). Один источник правды — push из main: после add/update/remove локальный skills НЕ
-// правится вручную, список перерисуется сам через onSkillsChanged (тот же снапшот уходит и в
-// AI-панель её собственным ai-panel:skills-list, независимо от этого моста).
+// ── Секция «Скиллы» — CRUD-редактор prompt-кнопок AI-панели (см. electron/SkillsStore.ts).
+// Карточка — тот же SpotCard, что у профиля и сайта: не заводить «скилл-плитку» рядом.
+//
+// ⚠️ Скиллы — единственная сущность настроек БЕЗ плиток фактов, и это решение, а не пропуск.
+// Сводка тут пустая («5 на панели»), а выразительность нужна каждой кнопке отдельно: человек
+// выбирает не «сколько их», а «какую нажать». Поэтому карточка — значок над именем и кусок
+// промпта под ним, то есть ровно то, что он увидит в панели.
+
+const SKILL_STAIN = [
+  'var(--tile-orange)', 'var(--tile-teal)', 'var(--tile-brown)',
+  'var(--tile-slate)', 'var(--tile-green)', 'var(--tile-blue)', 'var(--tile-red)',
+] as const;
+
 export default function SkillsSection() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [formOpen, setFormOpen] = useState(false);
@@ -44,11 +53,7 @@ export default function SkillsSection() {
   async function handleSave() {
     const label = labelInput.trim();
     const prompt = promptInput.trim();
-    // Кнопка и так disabled на пустых полях (canSave ниже) — эта проверка страхует от гонки
-    // (напр. Enter до ре-рендера disabled), не дублирует UI-гейт зря.
     if (!label || !prompt) return;
-    // Пустой icon → undefined, не '' — валидатор стора принимает оба, но не плодим пустые
-    // строки в данных (см. SkillsStore.ts::isValidSkill).
     const icon = iconInput.trim() || undefined;
     setSaving(true);
     setFormError('');
@@ -70,15 +75,67 @@ export default function SkillsSection() {
       description="Кнопки-сценарии над полем ввода в AI-панели (Объяснить, Сделать саммари и ваши свои) —
         каждая отправляет свой промпт про текущую страницу."
     >
-      {!formOpen && (
-        <button onClick={openAddForm} style={{ ...btnPrimary, alignSelf: 'flex-start', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Plus size={14} /> Новый скилл
-        </button>
-      )}
+      {/* ⚠️ «Новый скилл» — кнопка НАД сеткой, а не карточка внутри неё. Пока она стояла ячейкой,
+          она перестраивалась вместе с остальными и в какой-то ширине оказывалась в середине
+          ряда, между двумя настоящими скиллами: действие выглядело сущностью. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: sp(3), flexWrap: 'wrap',
+      }}>
+        <InlineHint>
+          Включённые залиты чернилами — ровно они и стоят кнопками над полем ввода панели.
+        </InlineHint>
+        <button onClick={openAddForm} style={{
+          ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: sp(2), flex: 'none',
+        }}><Plus size={14} /> Новый скилл</button>
+      </div>
+
+      <SpotGrid>
+        {skills.map((skill, i) => {
+          const preview = skill.prompt.length > 90 ? `${skill.prompt.slice(0, 90)}…` : skill.prompt;
+          const onDark = skill.visible;
+          return (
+            <SpotCard
+              key={skill.id}
+              stack
+              filled={skill.visible}
+              selected={editingId === skill.id}
+              stain={SKILL_STAIN[i % SKILL_STAIN.length]}
+              icon={<span style={{ fontSize: 28, lineHeight: 1 }}>{skill.icon || '✳'}</span>}
+              title={skill.label}
+              subtitle={preview}
+              foot={(
+                <>
+                  <InkSwitch
+                    on={skill.visible}
+                    onDark={onDark}
+                    onChange={() => void window.oblako.updateSkill(skill.id, { visible: !skill.visible })}
+                  />
+                  <span style={{ ...CAPS, color: 'inherit', opacity: 0.7 }}>
+                    {skill.visible ? 'на панели' : 'скрыт'}
+                  </span>
+                  <button
+                    title="Изменить имя, значок и промпт"
+                    onClick={() => openEditForm(skill)}
+                    style={{
+                      ...btnGhost, marginLeft: 'auto', color: 'inherit',
+                      display: 'inline-flex', alignItems: 'center', gap: sp(1),
+                      // На залитой чернилами карточке кромка кнопки обязана посветлеть —
+                      // тёмная на тёмном исчезает вместе с самой кнопкой.
+                      ...(onDark ? { borderColor: 'color-mix(in srgb, var(--app-bg) 28%, transparent)' } : null),
+                    }}
+                  ><Pencil size={13} /> Править</button>
+                </>
+              )}
+            />
+          );
+        })}
+      </SpotGrid>
 
       {formOpen && (
         <SkillForm
           key={editingId ?? 'new'}
+          title={editingId ? 'Скилл' : 'Новый скилл'}
           iconInput={iconInput} onIconChange={setIconInput}
           labelInput={labelInput} onLabelChange={setLabelInput}
           promptInput={promptInput} onPromptChange={setPromptInput}
@@ -90,61 +147,15 @@ export default function SkillsSection() {
           onDelete={() => { if (editingId !== null) void handleDelete(editingId); }}
         />
       )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <OptionList>
-        {skills.map((skill) => (
-          <SkillRow
-            key={skill.id}
-            skill={skill}
-            onToggleVisible={() => void window.oblako.updateSkill(skill.id, { visible: !skill.visible })}
-            onEdit={() => openEditForm(skill)}
-          />
-        ))}
-        </OptionList>
-      </div>
     </Subsection>
   );
 }
 
-interface SkillRowProps {
-  skill: Skill;
-  onToggleVisible: () => void;
-  onEdit: () => void;
-}
-
-function SkillRow({ skill, onToggleVisible, onEdit }: SkillRowProps) {
-  const preview = skill.prompt.length > 80 ? `${skill.prompt.slice(0, 80)}…` : skill.prompt;
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 12px' }}>
-      {skill.icon && (
-        <div style={{ flex: 'none', fontSize: 'var(--fs-md)', lineHeight: 1 }}>{skill.icon}</div>
-      )}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {skill.label}
-        </div>
-        <div style={{
-          fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {preview}
-        </div>
-      </div>
-      {/* Видимость на панели — независима от builtin, доступна для ЛЮБОГО скилла (это и есть
-          способ спрятать встроенный, не удаляя — remove() для builtin всё равно вернёт false). */}
-      <div title={skill.visible ? 'Показывается в AI-панели' : 'Скрыта из AI-панели'} style={{ flex: 'none' }}>
-        <Toggle checked={skill.visible} onChange={onToggleVisible} />
-      </div>
-      <IconBtn title="Редактировать" onClick={onEdit}><Pencil size={14} /></IconBtn>
-    </div>
-  );
-}
-
-interface SkillFormProps {
+function SkillForm({
+  title, iconInput, onIconChange, labelInput, onLabelChange, promptInput, onPromptChange,
+  formError, saving, canSave, onSave, onCancel, showDelete, onDelete,
+}: {
+  title: string;
   iconInput: string; onIconChange: (v: string) => void;
   labelInput: string; onLabelChange: (v: string) => void;
   promptInput: string; onPromptChange: (v: string) => void;
@@ -153,25 +164,12 @@ interface SkillFormProps {
   onCancel: () => void;
   showDelete: boolean;
   onDelete: () => void;
-}
-
-function SkillForm({
-  iconInput, onIconChange, labelInput, onLabelChange, promptInput, onPromptChange,
-  formError, saving, canSave, onSave, onCancel, showDelete, onDelete,
-}: SkillFormProps) {
-  // Подтверждение живёт локально в форме (не в SkillsSection) — компонент ремонтится при смене
-  // editingId (см. key={editingId} у вызывающего), так что confirm сам сбрасывается.
+}) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 12, padding: '16px 16px', marginBottom: 12,
-      ...settingsBox,
-    }}>
+    <InkFrame title={title} hint="Промпт уходит модели вместе с текстом текущей страницы.">
       <InputRow>
-        {/* Без maxLength=1 — составной эмодзи (семья, флаг, ZWJ-последовательность) занимает
-            несколько кодовых точек, обрезка по length искалечила бы его. Юзер вставляет из
-            системного эмодзи-пикера ОС, это не текстовый ввод произвольной длины. */}
         <TextField
           value={iconInput} placeholder="🙂" maxLength={8} onChange={onIconChange}
           style={{ flex: 'none', width: 56 }} inputStyle={{ textAlign: 'center' }}
@@ -185,10 +183,8 @@ function SkillForm({
         value={promptInput} placeholder="Промпт — что отправить модели про текущую страницу"
         rows={3} onChange={onPromptChange}
       />
-
       {formError && <InlineError>{formError}</InlineError>}
-
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: sp(2), alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={onSave} disabled={saving || !canSave} style={{ ...btnPrimary, opacity: saving || !canSave ? 0.6 : 1 }}>
           {saving ? 'Сохранение…' : 'Сохранить'}
         </button>
@@ -207,7 +203,6 @@ function SkillForm({
         )}
         <button onClick={onCancel} style={btnGhost}>Отмена</button>
       </div>
-    </div>
+    </InkFrame>
   );
 }
-
