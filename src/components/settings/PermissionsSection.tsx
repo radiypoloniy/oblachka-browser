@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RADIUS } from '../../styles/system';
 import { Camera, Clipboard, MapPin, Maximize, Mic, Bell, RotateCcw, ExternalLink } from 'lucide-react';
 import type { PermissionRecord, PermKey } from '../../../shared/ipc';
-import { Favicon, SectionHeader, Subsection, segBtnStyle,
+import { siteHue } from '../desktop/siteTint';
+import {
+  Favicon, SectionHeader, Subsection, SegTrack, segBtnStyle,
+  FactGrid, Fact, SpotCard, SpotLine, btnGhost, Read,
 } from './kit';
+import { TEXT, sp } from '../../styles/system';
 
 // Раздел «Разрешения сайтов» — что каким сайтам разрешено и как это поменять.
 //
@@ -15,6 +18,9 @@ import { Favicon, SectionHeader, Subsection, segBtnStyle,
 // ⚠️ ТРИ состояния, а не два. «Забыть» ≠ «Запретить»: забытый сайт спросит снова, запрещённый
 // не спросит никогда. Если склеить их в одну кнопку, исправить своё же ошибочное «нет» станет
 // невозможно — ровно та дыра, из-за которой раздел и появился.
+//
+// Карточка сайта — тот же SpotCard, что у профиля: пятно, шапка, тело со строками. Не рисовать
+// второй вид «пропуска».
 
 const LABEL: Record<PermKey, string> = {
   'camera': 'Камера',
@@ -44,23 +50,22 @@ function hostOf(origin: string): string {
   try { return new URL(origin).hostname; } catch { return origin; }
 }
 
+/** Пятно из того же набора оттенков, что плитки сайтов на столе — без сиреневого сектора. */
+function stainOf(host: string): string {
+  return `hsl(${siteHue(host)} 58% 48%)`;
+}
+
 export default function PermissionsSection() {
   const [records, setRecords] = useState<PermissionRecord[]>([]);
-  // Сайты, которым человек сам разрешил корень Минцифры (см. electron/CertTrustStore.ts).
-  // ⚠️ Экран отзыва — не украшение: разрешение постоянное, и без него оно превратилось бы в то,
-  // что человек однажды выдал, а найти и отменить уже не может.
   const [certTrust, setCertTrust] = useState<Array<{ domain: string; addedAt: number }>>([]);
 
   const load = async (): Promise<void> => setRecords(await window.oblako.listPermissions());
   const loadCertTrust = async (): Promise<void> => setCertTrust(await window.oblako.listCertTrust());
   useEffect(() => { void load(); void loadCertTrust(); }, []);
 
-  // Группируем по сайту: человек думает про сайт («что можно телемосту»), а не про разрешение.
   const sites = useMemo(() => {
     const map = new Map<string, PermissionRecord[]>();
     for (const r of records) {
-      // ⚠️ Записи с битым origin («null» строкой) отбрасываем из показа: строка, у которой нет
-      // сайта, человеку ничего не говорит и починить её через этот экран нельзя.
       if (!r.origin || r.origin === 'null') continue;
       const list = map.get(r.origin) ?? [];
       list.push(r);
@@ -68,6 +73,9 @@ export default function PermissionsSection() {
     }
     return [...map.entries()].sort((a, b) => hostOf(a[0]).localeCompare(hostOf(b[0]), 'ru'));
   }, [records]);
+
+  const granted = records.filter((r) => r.decision === 'granted').length;
+  const denied = records.filter((r) => r.decision === 'denied').length;
 
   const setDecision = async (origin: string, key: PermKey, decision: 'granted' | 'denied'): Promise<void> => {
     await window.oblako.setPermission(origin, key, decision);
@@ -79,135 +87,121 @@ export default function PermissionsSection() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <SectionHeader title="Разрешения сайтов">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
+      <SectionHeader
+        title="Разрешения"
+        hero={sites.length === 0 ? 'Пусто' : String(sites.length)}
+        heroLabel={sites.length === 1 ? 'сайт с сохранённым решением' : 'сайтов с сохранённым решением'}
+      >
         Что сайты могут запрашивать у браузера. Решение запоминается, когда вы отвечаете на вопрос
         с галочкой «запомнить», — здесь его можно посмотреть и изменить.
       </SectionHeader>
+
+      <FactGrid>
+        <Fact label="Сайты" hint="Есть сохранённое решение" value={String(sites.length)} active={sites.length > 0} />
+        <Fact label="Разрешено" hint="Больше не спрашиваем" value={String(granted)} active={granted > 0} />
+        <Fact label="Запрещено" hint="Сайт не спросит снова" value={String(denied)} />
+        <Fact
+          label="Минцифры"
+          hint="Корни, которым сказали «доверять»"
+          value={certTrust.length === 0 ? 'Нет' : String(certTrust.length)}
+        />
+      </FactGrid>
 
       <Subsection
         title="Сайты"
         description="«Забыть» вернёт вопрос: сайт спросит снова при следующей попытке. «Запретить» закрывает вопрос насовсем."
       >
         {sites.length === 0 ? (
-          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>
-            Пока ни одно решение не сохранено. Сайты будут спрашивать при первой попытке.
-          </div>
+          <Read>
+            <span style={{ ...TEXT.body, color: 'var(--text-muted)' }}>
+              Пока ни одно решение не сохранено. Сайты будут спрашивать при первой попытке.
+            </span>
+          </Read>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {sites.map(([origin, list]) => (
-              <div key={origin} style={{
-                border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)', overflow: 'hidden',
-              }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 12px', background: 'var(--surface-hover)',
-                }}>
-                  <Favicon host={hostOf(origin)} size={18} />
-                  <span style={{
-                    flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: 600,
-                    color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>{hostOf(origin)}</span>
-                  <button
-                    onClick={() => void forget(origin)}
-                    title="Забыть все решения по этому сайту"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none',
-                      background: 'none', cursor: 'default', padding: '4px 8px',
-                      borderRadius: RADIUS.control, fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-                  >
-                    <RotateCcw size={12} strokeWidth={2} /> Сбросить всё
-                  </button>
-                </div>
-
-                {list.map((r) => {
-                  const Icon = ICON[r.permission];
-                  return (
-                    <div key={r.permission} style={{
-                      display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px',
-                      borderTop: '1px solid var(--divider)',
-                    }}>
-                      <Icon size={14} strokeWidth={2} style={{ flexShrink: 0, color: 'var(--text-faint)' }} />
-                      <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
-                        {LABEL[r.permission] ?? r.permission}
-                      </span>
-                      {/* Три кнопки на строку, а не тумблер: у состояния три значения, и
-                          двухпозиционный переключатель не смог бы выразить «спрашивать». */}
-                      <Seg active={r.decision === 'granted'} onClick={() => void setDecision(r.origin, r.permission, 'granted')}>
-                        Разрешено
-                      </Seg>
-                      <Seg active={r.decision === 'denied'} onClick={() => void setDecision(r.origin, r.permission, 'denied')} danger>
-                        Запрещено
-                      </Seg>
-                      <Seg active={false} onClick={() => void forget(r.origin, r.permission)}>
-                        Спрашивать
-                      </Seg>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4) }}>
+            {sites.map(([origin, list]) => {
+              const host = hostOf(origin);
+              return (
+                <SpotCard
+                  key={origin}
+                  stain={stainOf(host)}
+                  icon={<Favicon host={host} size={28} />}
+                  title={host}
+                  subtitle={`${list.length} ${list.length === 1 ? 'решение' : 'решения'}`}
+                  actions={(
+                    <button
+                      onClick={() => void forget(origin)}
+                      title="Забыть все решения по этому сайту"
+                      style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(1) }}
+                    >
+                      <RotateCcw size={14} strokeWidth={2} /> Сбросить всё
+                    </button>
+                  )}
+                >
+                  {list.map((r) => {
+                    const Icon = ICON[r.permission];
+                    return (
+                      <SpotLine
+                        key={r.permission}
+                        title={(
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: sp(2) }}>
+                            <Icon size={14} strokeWidth={2} style={{ color: 'var(--text-faint)' }} />
+                            {LABEL[r.permission] ?? r.permission}
+                          </span>
+                        )}
+                        control={(
+                          <SegTrack>
+                            <button
+                              onClick={() => void setDecision(r.origin, r.permission, 'granted')}
+                              style={segBtnStyle(r.decision === 'granted')}
+                            >Разрешено</button>
+                            <button
+                              onClick={() => void setDecision(r.origin, r.permission, 'denied')}
+                              style={segBtnStyle(r.decision === 'denied', r.decision === 'denied' ? 'var(--danger-500)' : undefined)}
+                            >Запрещено</button>
+                            <button
+                              onClick={() => void forget(r.origin, r.permission)}
+                              style={segBtnStyle(false)}
+                            >Спрашивать</button>
+                          </SegTrack>
+                        )}
+                      />
+                    );
+                  })}
+                </SpotCard>
+              );
+            })}
           </div>
         )}
       </Subsection>
-      {/* ⚠️ Сертификаты — ПОД списком сайтов: раздел про разрешения, и главное в нём — сайты.
-          Блок появляется, только когда что-то разрешено: пустой раздел про сертификаты пугал бы
-          человека вопросом, которого у него нет. */}
+
       {certTrust.length > 0 && (
         <Subsection
           title="Сертификаты Минцифры"
           description="Сайты, которым вы разрешили сертификаты удостоверяющего центра Минцифры — ответив «доверять» на вопрос браузера. Банки, у которых другого сертификата не бывает, работают и без этого списка."
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
             {certTrust.map((t) => (
-              <div key={t.domain} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 12px', border: '1px solid var(--divider)', borderRadius: 'var(--radius-sm)',
-              }}>
-                <Favicon host={t.domain} size={18} />
-                <span style={{
-                  flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{t.domain}</span>
-                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>
-                  {new Date(t.addedAt).toLocaleDateString('ru-RU')}
-                </span>
-                <button
-                  onClick={() => { void window.oblako.removeCertTrust(t.domain).then(loadCertTrust); }}
-                  title="Отозвать доверие"
-                  style={{
-                    border: 'none', background: 'none', cursor: 'default', padding: '4px 8px',
-                    borderRadius: RADIUS.control, fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', flexShrink: 0,
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-                >
-                  Отозвать
-                </button>
-              </div>
+              <SpotCard
+                key={t.domain}
+                compact
+                stain={stainOf(t.domain)}
+                icon={<Favicon host={t.domain} size={28} />}
+                title={t.domain}
+                subtitle={new Date(t.addedAt).toLocaleDateString('ru-RU')}
+                actions={(
+                  <button
+                    onClick={() => { void window.oblako.removeCertTrust(t.domain).then(loadCertTrust); }}
+                    title="Отозвать доверие"
+                    style={btnGhost}
+                  >Отозвать</button>
+                )}
+              />
             ))}
           </div>
         </Subsection>
       )}
     </div>
-  );
-}
-
-function Seg({ active, danger, onClick, children }: {
-  active: boolean; danger?: boolean; onClick: () => void; children: React.ReactNode;
-}) {
-  const color = active ? (danger ? 'var(--danger-500)' : 'var(--accent)') : 'var(--text-muted)';
-  return (
-    <button
-      onClick={onClick}
-      // Общий рецепт сегмента (kit.tsx): здесь он трёхпозиционный и со своим цветом у каждого
-      // положения, но кнопка та же самая — своей копии стиля тут больше нет.
-      style={{ ...segBtnStyle(active, color), padding: '4px 8px', fontSize: 'var(--fs-xs)' }}
-      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--surface)' : 'transparent'; }}
-    >{children}</button>
   );
 }

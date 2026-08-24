@@ -6,8 +6,8 @@ import {
   type ProfileVpn, type ProfilesState,
 } from '../../../shared/profiles';
 import { THEME_PALETTE_IDS } from '../../../shared/ipc';
-import { SectionHeader, Subsection, OptionList, OptionRow, Segmented, TextField, btnGhost,
-  InlineHint, InlineError,
+import { SectionHeader, Subsection, OptionList, OptionRow, Segmented, TextField, btnGhost, btnPrimary,
+  InlineHint, InlineError, FactGrid, Fact, Stage, SpotCard, InkFrame, CapsLabel, Read,
 } from './kit';
 import ProfileAvatar, { AVATAR_EMOJI } from '../ProfileAvatar';
 import { readFileDataUrl, shrinkAvatarPhoto } from '../profileAvatarPhoto';
@@ -108,37 +108,57 @@ export default function ProfilesSection() {
   }
 
   const pinned = state.startupProfileId;
+  const featured = state.profiles.find((p) => p.id === (openId ?? state.activeId)) ?? state.profiles[0]!;
+  const others = state.profiles.filter((p) => p.id !== featured.id);
+  const active = state.profiles.find((p) => p.id === state.activeId);
 
   return (
-    <>
-      <SectionHeader title="Профили" />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
+      <SectionHeader
+        title="Профили"
+        hero={active?.name ?? '—'}
+        heroLabel="активен сейчас · переключение действует на новые вкладки"
+      />
+
+      <FactGrid>
+        <Fact label="Куки и логины" hint="Два аккаунта одного сайта рядом" value="Свои" active />
+        <Fact label="Сеть" hint="VPN и блокировка — на профиль" value="Своя" active />
+        <Fact label="История и закладки" hint="Скачанные файлы — в общей папке" value="Свои" active />
+        <Fact label="Пароли" hint="Сейф пока один на устройство" value="Общие" />
+      </FactGrid>
 
       <Subsection
-        title="Зачем это нужно"
-        description="У каждого профиля свои куки и логины: можно держать два аккаунта одного сайта открытыми рядом, а рабочее не смешивать с личным. Плюс свои настройки сети — например, один профиль всегда через VPN, а другой напрямую. История, закладки, список загрузок и отслеживание товаров у каждого профиля свои. Сами скачанные файлы лежат в общей папке «Загрузки», как и раньше. Пароли пока общие для всех профилей."
+        title="Ваши профили"
+        description="Карточка слева — то дело, которое настраиваете. Переключение действует на новые вкладки, уже открытые остаются в своих сессиях."
       >
-        <span />
-      </Subsection>
-
-      <Subsection title="Ваши профили" description="Переключение действует на новые вкладки — уже открытые остаются в своих сессиях">
-        <OptionList>
-          {state.profiles.map((p) => (
-            <OptionRow
-              key={p.id}
-              title={p.name}
-              subtitle={subtitleFor(p, pinned === p.id, state.activeId === p.id)}
-              active={state.activeId === p.id}
-              onClick={() => { void window.oblako.switchProfile(p.id).then(setState); }}
-              icon={<ProfileAvatar profile={p} />}
-              actions={(
-                <div style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setOpenId(openId === p.id ? null : p.id); }}
-                    style={btnGhost}
-                  >{openId === p.id ? 'Свернуть' : 'Настроить'}</button>
-                  {/* ⚠️ Основной профиль не удаляется: это сессия, где лежат данные человека,
-                      и «удалить» означало бы стереть их. Кнопки просто нет. */}
-                  {p.id !== DEFAULT_PROFILE_ID && (
+        <Stage
+          lead={(
+            <SpotCard
+              stain={`var(--tile-${featured.color})`}
+              eyebrow="дело"
+              icon={<ProfileAvatar profile={featured} size={48} />}
+              title={featured.name}
+              subtitle={subtitleFor(featured, pinned === featured.id, state.activeId === featured.id)}
+              selected
+              fields={fieldsFor(featured)}
+              mark={state.activeId === featured.id
+                ? <span style={{ ...TEXT.caption, color: 'var(--success-500)', fontWeight: 700 }}>Активен</span>
+                : undefined}
+            />
+          )}
+          side={(
+            <>
+              {others.map((p) => (
+                <SpotCard
+                  key={p.id}
+                  compact
+                  stain={`var(--tile-${p.color})`}
+                  icon={<ProfileAvatar profile={p} size={40} />}
+                  title={p.name}
+                  subtitle={subtitleFor(p, pinned === p.id, state.activeId === p.id)}
+                  selected={false}
+                  onClick={() => setOpenId(p.id)}
+                  actions={p.id !== DEFAULT_PROFILE_ID ? (
                     <button
                       title="Удалить профиль вместе с его логинами"
                       onClick={(e) => {
@@ -151,141 +171,147 @@ export default function ProfilesSection() {
                         color: 'var(--text-faint)', display: 'inline-flex',
                       }}
                     ><Trash2 size={15} /></button>
-                  )}
-                </div>
+                  ) : undefined}
+                />
+              ))}
+              {state.profiles.length < PROFILES_MAX && (
+                <InkFrame title="Новое дело" hint="Например «Работа», «Личное» или «Второй аккаунт»">
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: sp(2) }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <TextField
+                        value={draft}
+                        onChange={setDraft}
+                        placeholder="Работа"
+                        onEnter={() => { void create(); }}
+                      />
+                    </div>
+                    <button onClick={() => { void create(); }} disabled={busy || !draft.trim()} style={{
+                      ...btnPrimary, display: 'inline-flex', alignItems: 'center', gap: sp(2),
+                      opacity: busy || !draft.trim() ? 0.5 : 1,
+                    }}><Plus size={14} /> Создать</button>
+                  </div>
+                </InkFrame>
               )}
-            />
-          ))}
-        </OptionList>
+            </>
+          )}
+        />
 
-        {openId && (() => {
-          const p = state.profiles.find((x) => x.id === openId);
-          if (!p) return null;
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4), paddingTop: sp(2) }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                <span style={{ ...TEXT.caption }}>Как выглядит</span>
-                <AvatarEditor profile={p} onState={setState} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                <span style={{ ...TEXT.caption }}>Тема профиля</span>
-                <Segmented
-                  value={THEME_OPTIONS.find((o) => o.value === p.look.theme)?.id ?? 'inherit'}
-                  options={THEME_OPTIONS}
-                  onChange={(v) => {
-                    const value = THEME_OPTIONS.find((o) => o.id === v)?.value ?? null;
-                    void window.oblako.setProfileLook(p.id, { theme: value }).then(setState);
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                <span style={{ ...TEXT.caption }}>Палитра профиля</span>
-                <Segmented
-                  value={p.look.palette ?? 'inherit'}
-                  options={[
-                    { id: 'inherit', label: 'Как в приложении' },
-                    ...THEME_PALETTE_IDS.map((id) => ({ id, label: PALETTE_LABELS[id] ?? id })),
-                  ]}
-                  onChange={(v) => {
-                    void window.oblako.setProfileLook(p.id, { palette: v === 'inherit' ? null : v }).then(setState);
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                <span style={{ ...TEXT.caption }}>Название</span>
-                <TextField
-                  value={p.name}
-                  onChange={(v) => { void window.oblako.renameProfile(p.id, v).then(setState); }}
-                />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                <span style={{ ...TEXT.caption }}>Выход в сеть</span>
-                <Segmented
-                  value={p.settings.vpn}
-                  options={VPN_OPTIONS}
-                  onChange={(v) => { void window.oblako.setProfileSettings(p.id, { vpn: v }).then(setState); }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                <span style={{ ...TEXT.caption }}>Как представляться сайтам</span>
-                <Segmented
-                  value={p.settings.ua}
-                  options={UA_OPTIONS}
-                  onChange={(v) => { void window.oblako.setProfileSettings(p.id, { ua: v }).then(setState); }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                <span style={{ ...TEXT.caption }}>Язык сайтов</span>
-                <Segmented
-                  value={langIdOf(p)}
-                  options={LANG_OPTIONS}
-                  onChange={(v) => {
-                    const value = LANG_OPTIONS.find((o) => o.id === v)?.value ?? null;
-                    void window.oblako.setProfileSettings(p.id, { lang: value }).then(setState);
-                  }}
-                />
-              </div>
-
-              {/* ⚠️ Адблок профиля — только у НЕ основного: у основного это сессия по умолчанию,
-                  где живёт общий движок, и «выключить здесь» означало бы выключить везде. */}
-              {p.id !== DEFAULT_PROFILE_ID && (
-                <>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                    <span style={{ ...TEXT.caption }}>Блокировка рекламы</span>
-                    <Segmented
-                      value={p.settings.adblock ? 'on' : 'off'}
-                      options={ON_OFF}
-                      onChange={(v) => { void window.oblako.setProfileSettings(p.id, { adblock: v === 'on' }).then(setState); }}
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                    <span style={{ ...TEXT.caption }}>Куки и данные сайтов при выходе</span>
-                    <Segmented
-                      value={p.settings.clearOnExit ? 'on' : 'off'}
-                      options={CLEAR_OPTIONS}
-                      onChange={(v) => { void window.oblako.setProfileSettings(p.id, { clearOnExit: v === 'on' }).then(setState); }}
-                    />
-                  </div>
-
+        <InkFrame
+          title={`Настройки «${featured.name}»`}
+          hint="Карточка показывает, кто это. Здесь — что ему можно. Основной профиль нельзя удалить и нельзя просить стирать логины при выходе."
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4) }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+              <CapsLabel>Как выглядит</CapsLabel>
+              <AvatarEditor profile={featured} onState={setState} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+              <CapsLabel>Тема профиля</CapsLabel>
+              <Segmented
+                value={THEME_OPTIONS.find((o) => o.value === featured.look.theme)?.id ?? 'inherit'}
+                options={THEME_OPTIONS}
+                onChange={(v) => {
+                  const value = THEME_OPTIONS.find((o) => o.id === v)?.value ?? null;
+                  void window.oblako.setProfileLook(featured.id, { theme: value }).then(setState);
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+              <CapsLabel>Палитра профиля</CapsLabel>
+              <Segmented
+                value={featured.look.palette ?? 'inherit'}
+                options={[
+                  { id: 'inherit', label: 'Как в приложении' },
+                  ...THEME_PALETTE_IDS.map((id) => ({ id, label: PALETTE_LABELS[id] ?? id })),
+                ]}
+                onChange={(v) => {
+                  void window.oblako.setProfileLook(featured.id, { palette: v === 'inherit' ? null : v }).then(setState);
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+              <CapsLabel>Название</CapsLabel>
+              <TextField
+                value={featured.name}
+                onChange={(v) => { void window.oblako.renameProfile(featured.id, v).then(setState); }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+              <CapsLabel>Выход в сеть</CapsLabel>
+              <Segmented
+                value={featured.settings.vpn}
+                options={VPN_OPTIONS}
+                onChange={(v) => { void window.oblako.setProfileSettings(featured.id, { vpn: v }).then(setState); }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+              <CapsLabel>Как представляться сайтам</CapsLabel>
+              <Segmented
+                value={featured.settings.ua}
+                options={UA_OPTIONS}
+                onChange={(v) => { void window.oblako.setProfileSettings(featured.id, { ua: v }).then(setState); }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+              <CapsLabel>Язык сайтов</CapsLabel>
+              <Segmented
+                value={langIdOf(featured)}
+                options={LANG_OPTIONS}
+                onChange={(v) => {
+                  const value = LANG_OPTIONS.find((o) => o.id === v)?.value ?? null;
+                  void window.oblako.setProfileSettings(featured.id, { lang: value }).then(setState);
+                }}
+              />
+            </div>
+            {featured.id !== DEFAULT_PROFILE_ID && (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+                  <CapsLabel>Блокировка рекламы</CapsLabel>
+                  <Segmented
+                    value={featured.settings.adblock ? 'on' : 'off'}
+                    options={ON_OFF}
+                    onChange={(v) => { void window.oblako.setProfileSettings(featured.id, { adblock: v === 'on' }).then(setState); }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+                  <CapsLabel>Куки и данные сайтов при выходе</CapsLabel>
+                  <Segmented
+                    value={featured.settings.clearOnExit ? 'on' : 'off'}
+                    options={CLEAR_OPTIONS}
+                    onChange={(v) => { void window.oblako.setProfileSettings(featured.id, { clearOnExit: v === 'on' }).then(setState); }}
+                  />
+                </div>
+                <Read>
                   <InlineHint>
                     Блокировка рекламы в этом профиле режет запросы к трекерам, но не прячет
                     блоки на странице — косметическая часть работает только в основном профиле.
                     Очистка при выходе стирает логины этого профиля, но не трогает его историю,
                     закладки и пароли.
                   </InlineHint>
-                </>
+                </Read>
+              </>
+            )}
+            <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
+              {state.activeId !== featured.id && (
+                <button
+                  onClick={() => { void window.oblako.switchProfile(featured.id).then(setState); }}
+                  style={btnPrimary}
+                >Переключиться на это дело</button>
+              )}
+              {featured.id !== DEFAULT_PROFILE_ID && (
+                <button
+                  onClick={() => {
+                    void window.oblako.removeProfile(featured.id).then(setState);
+                    setOpenId(null);
+                  }}
+                  style={btnGhost}
+                >Удалить дело</button>
               )}
             </div>
-          );
-        })()}
+          </div>
+        </InkFrame>
       </Subsection>
 
-      {state.profiles.length < PROFILES_MAX && (
-        <Subsection title="Новый профиль" description="Например «Работа», «Личное» или «Второй аккаунт»">
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: sp(2) }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <TextField
-                value={draft}
-                onChange={setDraft}
-                placeholder="Работа"
-                onEnter={() => { void create(); }}
-              />
-            </div>
-            <button onClick={() => { void create(); }} disabled={busy || !draft.trim()} style={{
-              ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2),
-              opacity: busy || !draft.trim() ? 0.5 : 1,
-            }}><Plus size={14} /> Создать</button>
-          </div>
-        </Subsection>
-      )}
-
-      {/* ⚠️ Появляется только когда профилей больше одного: пока он один, вопрос «с каким
-          запускаться» бессмыслен, а строка настройки — просто шум. */}
       {state.profiles.length > 1 && (
         <Subsection
           title="При запуске браузера"
@@ -311,7 +337,7 @@ export default function ProfilesSection() {
           </OptionList>
         </Subsection>
       )}
-    </>
+    </div>
   );
 }
 
@@ -337,6 +363,18 @@ function subtitleFor(p: Profile, isPinned: boolean, isActive: boolean): string {
   if (p.settings.ua === 'mobile') parts.push('Мобильные версии');
   if (p.look.theme || p.look.palette) parts.push('Свой облик');
   return parts.join(' · ') || 'Свои куки и логины';
+}
+
+function fieldsFor(p: Profile): { label: string; value: string }[] {
+  const vpn = VPN_OPTIONS.find((o) => o.id === p.settings.vpn);
+  const ua = UA_OPTIONS.find((o) => o.id === p.settings.ua);
+  const lang = LANG_OPTIONS.find((o) => o.id === langIdOf(p));
+  return [
+    { label: 'Выход', value: vpn?.label ?? 'Как в приложении' },
+    { label: 'Сайтам', value: ua?.label ?? 'Компьютер' },
+    { label: 'Язык', value: lang?.label ?? 'Как в приложении' },
+    { label: 'Облик', value: (p.look.theme || p.look.palette) ? 'Свой' : 'Как в приложении' },
+  ];
 }
 
 // Выбор облика профиля: буква, эмодзи или своё фото.
