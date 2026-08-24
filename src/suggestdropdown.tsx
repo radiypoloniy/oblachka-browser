@@ -26,7 +26,7 @@ import './styles/global.css';
 import type { SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, PermKey } from '../shared/ipc';
 import { siteHue } from './components/desktop/siteTint';
 import { installOverlayReveal } from './overlayReveal';
-import { RADIUS } from './styles/system';
+import { CAPS, DISPLAY_CARD, DISPLAY_ROW, RADIUS } from './styles/system';
 // ⚠️ Поверхность оверлея — непрозрачная: карточка живёт в своей вью над страницей, где
 // backdrop-filter не работает (разбор — --overlay-plate в styles/tokens/colors.css).
 import { overlayPlate } from './styles/island';
@@ -244,7 +244,11 @@ const PANEL_CSS = `
 .omni-plate { transition: transform var(--dur-fast) var(--ease-out, var(--ease-out)), box-shadow var(--dur-fast) ease; }
 .omni-tile:hover { background: color-mix(in srgb, var(--surface) 60%, transparent); }
 .omni-tile:hover .omni-plate { transform: translateY(-2px) scale(1.05); box-shadow: 0 6px 14px rgba(0,0,0,0.14); }
-.omni-tile[data-active="1"] { background: var(--accent-soft); }
+/* ⚠️ --selected, а НЕ --accent-soft. Мягкая доля акцента даёт к панели контраст 1,17 — её
+   почти не видно, и в настройках её по этой причине уже заменили (см. selected() в system.ts).
+   Здесь цена выше всего: по выдаче ходят СТРЕЛКАМИ, и невидимая подсветка означает, что человек
+   не знает, что он сейчас выберет по Enter. */
+.omni-tile[data-active="1"] { background: var(--selected); }
 .omni-tile[data-active="1"] .omni-plate { box-shadow: 0 0 0 2px var(--accent); }
 .omni-tile[data-active="1"] .omni-label { color: var(--text-strong); }
 
@@ -269,9 +273,11 @@ const PANEL_CSS = `
 }
 .omni-folder-head {
   display: flex; align-items: center; gap: 8px; padding: 0 8px 6px;
-  /* muted, а не faint: заголовок уже ослаблен кеглем, весом и капителью — см. CAPS в system.ts. */
-  font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: 0.04em;
+  /* ⚠️ МОНОШИРИННЫЙ капс — тот же рецепт CAPS, что во всём остальном продукте. Раньше здесь была
+     основная гарнитура в uppercase: единственный вид капители, набранный не тем шрифтом, и на
+     фоне заголовков настроек и подписей плиток он читался как чужой. */
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.15em;
 }
 .omni-pencil {
   margin-left: auto; display: inline-flex; align-items: center; gap: 4px;
@@ -281,7 +287,7 @@ const PANEL_CSS = `
   transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .omni-pencil:hover { background: color-mix(in srgb, var(--surface) 70%, transparent); color: var(--text-body); }
-.omni-pencil[data-on="1"] { background: var(--accent-soft); color: var(--accent); }
+.omni-pencil[data-on="1"] { background: var(--selected); color: var(--text-strong); }
 
 .omni-card {
   display: flex; flex-direction: column; gap: 6px; min-width: 0;
@@ -290,7 +296,7 @@ const PANEL_CSS = `
   transition: background var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out, var(--ease-out)), box-shadow var(--dur-fast) ease;
 }
 .omni-card:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,0.10); }
-.omni-card[data-active="1"] { background: var(--accent-soft); border-color: var(--accent); }
+.omni-card[data-active="1"] { background: var(--selected); border-color: var(--divider-strong); }
 
 .omni-head { transition: background var(--dur-fast) ease; }
 .omni-head:hover { background: var(--surface-sunken); }
@@ -327,8 +333,7 @@ function SectionLabel({ children, icon, divider }: {
       <div style={{
         display: 'flex', alignItems: 'center', gap: 6,
         padding: divider ? '12px 0 8px' : '14px 16px 8px',
-        fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)',
-        textTransform: 'uppercase', letterSpacing: '0.04em',
+        ...CAPS, color: 'var(--text-muted)',
       }}>
         {icon}{children}
       </div>
@@ -369,12 +374,15 @@ function SiteHeader({ site, url }: { site: NonNullable<OmniboxPanel['site']>; ur
     >
       <SitePlate url={url} size={34} radius={10} />
       <div style={{ minWidth: 0, flex: 1 }}>
+        {/* ⚠️ Домен дисплейной 17-м — так же, как в поповере замочка. Эти два экрана показывают
+            ОДНУ и ту же сводку одного и того же сайта (клик по шапке уводит в поповер), и
+            расходиться в наборе им нельзя. */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 5,
-          fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
+          ...DISPLAY_CARD,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
-          {site.secure && <Lock size={11} style={{ flex: 'none', color: 'var(--text-faint)' }} />}
+          {site.secure && <Lock size={12} style={{ flex: 'none', color: 'var(--text-faint)' }} />}
           {site.host}
         </div>
         {site.changed && (
@@ -651,16 +659,18 @@ function ListView({ items, activeIdx, onHover, onLeave }: {
                 display: 'flex', alignItems: 'center', gap: isHero ? 12 : 10,
                 padding: isHero ? '12px 14px' : '8px 14px',
                 cursor: 'default', minWidth: 0,
-                background: active ? 'var(--accent-soft)' : (isHero ? 'var(--surface-sunken)' : 'transparent'),
+                background: active ? 'var(--selected)' : (isHero ? 'var(--surface-sunken)' : 'transparent'),
                 borderBottom: isHero ? '1px solid var(--glass-edge)' : 'none',
                 transition: 'background 0.08s',
               }}
             >
               <RowIcon item={item} size={isHero ? 30 : 16} />
               <div style={{ flex: 1, minWidth: 0 }}>
+                {/* ⚠️ Герой — ДИСПЛЕЙНОЙ гарнитурой, остальные строки нет. Это ровно тот случай,
+                    ради которого её держат: одно «лицо» выдачи в крупном кегле. В плотный набор
+                    остальных строк она не заходит — там её мелкий кегль теряет читаемость. */}
                 <div style={{
-                  fontSize: isHero ? 'var(--fs-md)' : 'var(--fs-sm)',
-                  fontWeight: isHero ? 600 : 400,
+                  ...(isHero ? DISPLAY_ROW : { fontSize: 'var(--fs-sm)', fontWeight: 400 }),
                   color: 'var(--text-strong)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>

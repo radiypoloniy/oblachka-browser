@@ -17,10 +17,13 @@ import { getAiPanelReservedWidth } from './AiPanelManager'
 import type { TabManager } from './TabManager'
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
 
-const POPOVER_WIDTH = 620
+// ⚠️ Ширина и базовая высота ДУБЛИРУЮТСЯ в src/searchpopover.tsx (WIDTH) — держать в синхроне.
+// Здесь они задают размер самой вью, там — ширину карточки внутри неё; разойдутся — карточка
+// либо обрежется, либо повиснет в пустой вью.
+const POPOVER_WIDTH = 720
 // Высота БЕЗ списка находок — с ним карточка растёт, и её сообщает сам поповер (см.
 // 'searchpopover:resize'): сколько строк поместилось, знает только он.
-const POPOVER_BASE_HEIGHT = 124
+const POPOVER_BASE_HEIGHT = 140
 const TOP_GAP = 8
 
 export interface SearchPopoverContext {

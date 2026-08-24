@@ -37,6 +37,7 @@
     "contrast-check": "node --experimental-strip-types scripts/contrast-check.mjs",
     "overlay-shadow-check": "node --experimental-strip-types scripts/overlay-shadow-check.mjs",
     "clipboard-order-check": "node --experimental-strip-types scripts/clipboard-order-check.mjs",
+    "download-groups-check": "node --experimental-strip-types scripts/download-groups-check.mjs",
     "product-signal-check": "node --experimental-strip-types scripts/product-signal-check.mjs",
     "price-events-check": "node --experimental-strip-types scripts/price-events-check.mjs",
     "product-match-check": "node --experimental-strip-types scripts/product-match-check.mjs",

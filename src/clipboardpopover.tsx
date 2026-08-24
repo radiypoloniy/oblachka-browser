@@ -10,6 +10,8 @@ import SiteFavicon from './components/SiteFavicon';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
+import { CAPS, DISPLAY_ROW, RADIUS, TEXT, sp } from './styles/system';
+import { latestCopy } from '../shared/clipboardOrder';
 
 // Поповер буфера скопированного со страниц.
 //
@@ -82,10 +84,17 @@ function ClipboardPopoverApp() {
   // ⚠️ Закреплённое идёт СВОЕЙ секцией сверху, а не первым внутри группы своего сайта. Смысл
   // закрепления — «эта запись всегда на виду», а группировка по сайту его бы размыла: закреплённое
   // осталось бы перемешанным со свежими копиями того же сайта.
+  // ⚠️ Самая свежая запись поднимается ГЕРОЕМ и ниже больше не показывается. «Взять только что
+  // скопированное» — главный сценарий поповера, а до этого последняя запись ничем не отличалась
+  // от предпоследней: человек искал её глазами среди одинаковых абзацев.
+  // ⚠️ НЕ entries[0]. orderCopies ставит первым ЗАКРЕПЛЁННОЕ, и «просто первый элемент» оказывался
+  // закреплённой записью: она показывалась под подписью «последнее» и пропадала из своего раздела.
+  // Правило и случаи — в shared/clipboardOrder.ts под scripts/clipboard-order-check.mjs.
+  const hero = latestCopy(entries);
   const pinned = entries.filter((e) => e.pinned);
   const groups: { host: string; url: string; items: ClipboardEntry[] }[] = [];
   for (const e of entries) {
-    if (e.pinned) continue;
+    if (e.pinned || e.id === hero?.id) continue;
     const host = e.host || 'без адреса';
     const g = groups.find((x) => x.host === host);
     if (g) g.items.push(e);
@@ -109,10 +118,7 @@ function ClipboardPopoverApp() {
           padding: '10px 10px 10px 14px', borderBottom: '1px solid var(--divider)',
         }}>
           <Clipboard size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} />
-          <span style={{
-            flex: 1, fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-faint)',
-            textTransform: 'uppercase', letterSpacing: 'var(--ls-caps)',
-          }}>Скопировано со страниц</span>
+          <span style={{ ...CAPS, flex: 1 }}>Скопировано со страниц</span>
           {/* ⚠️ Кнопка называет то, что делает: закреплённое она НЕ трогает (см. clearCopies).
               И появляется только когда есть что убирать — при списке из одних закреплённых она
               была бы кнопкой без действия. Стереть вообще всё, включая закреплённое, умеет
@@ -126,6 +132,8 @@ function ClipboardPopoverApp() {
           )}
           <button title="Закрыть" onClick={() => window.clipboardPopover.close()} style={iconBtn}><X size={13} /></button>
         </div>
+
+        {hero && <HeroCopy entry={hero} onChanged={reload} />}
 
         <div style={{ maxHeight: 420, overflow: 'auto', padding: 6 }}>
           {entries.length === 0 && (
@@ -145,9 +153,9 @@ function ClipboardPopoverApp() {
               }}>
                 <Pin size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} />
                 <span style={{
-                  fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-body)',
+                  ...DISPLAY_ROW,
                 }}>Закреплённое</span>
-                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+                <span style={{ ...TEXT.caption, color: 'var(--text-faint)', marginLeft: 'auto' }}>
                   переживает перезапуск
                 </span>
               </div>
@@ -160,8 +168,11 @@ function ClipboardPopoverApp() {
                 display: 'flex', alignItems: 'center', gap: 7, padding: '8px 8px 5px',
               }}>
                 <SiteFavicon url={g.url} size={18} loadIcon={window.clipboardPopover.favicon} />
+                {/* ⚠️ Имя сайта — ДИСПЛЕЙНОЙ: группировка по сайтам и есть главная зацепка списка
+                    («я это копировал на Хабре»), и заголовок группы обязан читаться раньше самих
+                    записей, а не наравне с ними. */}
                 <span style={{
-                  fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-body)',
+                  ...DISPLAY_ROW,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>{g.host}</span>
               </div>
@@ -172,19 +183,44 @@ function ClipboardPopoverApp() {
 
         {/* ⚠️ Выключатель прямо здесь, а не в настройках: человек вспоминает о слежке за
             копированием ровно в тот момент, когда видит список. Выключение стирает собранное. */}
+        {/* ⚠️ ТУМБЛЕР, а не кнопка с формулировкой. Раньше строка называлась «Не вести историю
+            копирования», то есть состояние читалось ТОЛЬКО из отрицания: чтобы понять, ведём ли
+            мы её сейчас, надо было мысленно перевернуть надпись. Это было единственное двойное
+            отрицание в продукте. Теперь подпись называет предмет, а положение говорит состояние. */}
         <button
+          role="switch"
+          aria-checked={enabled}
           onClick={() => {
             const next = !enabled;
             setEnabled(next);
             void window.clipboardPopover.setEnabled(next).then(reload);
           }}
           style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', border: 'none',
-            borderTop: '1px solid var(--divider)', background: 'transparent', cursor: 'default',
-            fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', textAlign: 'left',
+            display: 'flex', alignItems: 'center', gap: sp(2), padding: `${sp(2)}px ${sp(4)}px`,
+            border: 'none', borderTop: '1px solid var(--divider)', background: 'transparent',
+            cursor: 'default', textAlign: 'left', width: '100%',
           }}
         >
-          <span style={{ flex: 1 }}>{enabled ? 'Не вести историю копирования' : 'Вести историю копирования'}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', ...TEXT.body, fontWeight: 550, color: 'var(--text-strong)' }}>
+              История копирования
+            </span>
+            <span style={{ display: 'block', ...TEXT.caption, color: 'var(--text-muted)' }}>
+              {enabled ? 'Собирается на этот сеанс' : 'Выключена — собранное стёрто'}
+            </span>
+          </span>
+          <span style={{
+            position: 'relative', width: 38, height: 21, flex: 'none', borderRadius: RADIUS.pill,
+            background: enabled ? 'var(--text-strong)' : 'var(--surface-sunken)',
+            transition: 'background var(--dur-base) var(--ease-standard)',
+          }}>
+            <span style={{
+              position: 'absolute', top: 3, left: 3, width: 15, height: 15, borderRadius: '50%',
+              background: 'var(--app-bg)',
+              transform: enabled ? 'translateX(17px)' : 'none',
+              transition: 'transform var(--dur-base) var(--ease-out)',
+            }} />
+          </span>
         </button>
       </div>
     </div>
@@ -201,6 +237,51 @@ const iconBtn: React.CSSProperties = {
 const hostOf = (url: string): string => {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
 };
+
+// Самая свежая запись — герой карточки.
+//
+// ⚠️ Залита ЧЕРНИЛАМИ, а не тоном и не акцентом: это не «выбрано» и не статус, а «вот оно, бери».
+// Чернила здесь законны по той же причине, что и в поповере замочка, — они контраст, а не цвет,
+// а поповер лежит поверх чужого сайта, где плакатному тону места нет.
+function HeroCopy({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const take = () => {
+    void window.clipboardPopover.put(entry.id).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+      onChanged();
+    });
+  };
+  return (
+    <div style={{ padding: `${sp(2)}px ${sp(3)}px ${sp(3)}px`, borderBottom: '1px solid var(--divider)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), padding: `0 ${sp(1)}px ${sp(1)}px` }}>
+        <span style={{ ...CAPS, flex: 1 }}>
+          последнее{entry.host ? ` · ${entry.host}` : ''}
+        </span>
+        <span style={{ ...TEXT.caption, color: 'var(--text-faint)' }}>{timeAgo(entry.at)}</span>
+      </div>
+      <button
+        onClick={take}
+        title="Скопировать снова"
+        style={{
+          display: 'flex', alignItems: 'flex-start', gap: sp(2), width: '100%', textAlign: 'left',
+          padding: `${sp(2)}px ${sp(3)}px`, border: 'none', borderRadius: RADIUS.box, cursor: 'default',
+          background: 'var(--text-strong)', color: 'var(--app-bg)',
+          font: 'inherit',
+        }}
+      >
+        <span style={{
+          flex: 1, minWidth: 0, ...TEXT.body, color: 'inherit', lineHeight: 1.35,
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+        }}>{entry.text}</span>
+        <span style={{ flex: 'none', opacity: 0.75, marginTop: 2 }}>
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+        </span>
+      </button>
+    </div>
+  );
+}
 
 function Row({ entry, onChanged }: { entry: ClipboardEntry; onChanged: () => void }) {
   const [open, setOpen] = useState(false);

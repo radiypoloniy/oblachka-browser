@@ -5,7 +5,7 @@
 // делает ровно то, от чего её закрепляли. Человек увидит не сбой, а «оно куда-то делось».
 //
 // Запуск: npm run clipboard-order-check
-import { orderCopies, trimCopies } from '../shared/clipboardOrder.ts';
+import { latestCopy, orderCopies, trimCopies } from '../shared/clipboardOrder.ts';
 
 let passed = 0;
 let failed = 0;
@@ -50,6 +50,24 @@ check('вытеснять нечего, кроме закреплённых — 
   ids(trimCopies([e(1, true), e(2, true), e(3)], 1)), [1, 2]);
 check('предел ноль — незакреплённые уходят все',
   ids(trimCopies([e(1), e(2, true)], 0)), [2]);
+
+// ── Герой поповера: «последнее скопированное» ────────────────────────────────────────────────
+// ⚠️ Случай ИЗ ЖИЗНИ. Поповер брал ПЕРВЫЙ элемент списка, а orderCopies ставит первым
+// закреплённое. Из-за этого закреплённая запись показывалась под подписью «последнее» и
+// пропадала из раздела «Закреплённое» — визуальная пропажа ровно того, что закрепляли.
+console.log('');
+console.log('— последнее скопированное —');
+const heroId = (x) => (x === null ? null : x.id);
+check('закреплённое НЕ становится последним',
+  heroId(latestCopy(orderCopies([e(1), e(2, true)]))), 1);
+check('без закреплённых — просто первое',
+  heroId(latestCopy(orderCopies([e(1), e(2)]))), 1);
+check('все закреплены — героя нет',
+  heroId(latestCopy(orderCopies([e(1, true), e(2, true)]))), null);
+check('пустой список — героя нет',
+  heroId(latestCopy([])), null);
+check('несколько закреплённых впереди не сбивают выбор',
+  heroId(latestCopy(orderCopies([e(1), e(2, true), e(3), e(4, true)]))), 1);
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

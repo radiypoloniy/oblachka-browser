@@ -16,6 +16,7 @@ import { installOverlayReveal } from './overlayReveal';
 // ⚠️ Поверхность оверлея — непрозрачная: карточка живёт в своей вью над страницей, где
 // backdrop-filter не работает (разбор — --overlay-plate в styles/tokens/colors.css).
 import { overlayPlate } from './styles/island';
+import { CAPS, RADIUS, TEXT } from './styles/system';
 
 declare global {
   interface Window {
@@ -115,13 +116,24 @@ function Popover() {
           fontFamily: 'var(--font-sans)',
         }}
       >
+        {/* ⚠️ Шапка называет ДЕЙСТВИЕ, а под ним — исходное выделение цитатой. Раньше здесь была
+            одна серая строка с текстом, и по ней нельзя было понять, что именно поповер сейчас
+            делает: перевод, пересказ и правка выглядели одинаково. Герой карточки — сам результат
+            ниже, поэтому шапка обязана остаться тихой, но осмысленной. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <ActionIcon size={14} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
-          <span style={{
-            fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
-            flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {text}
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ ...CAPS, display: 'block' }}>
+              {action === 'translate' && targetLang
+                ? `перевод на ${translateLangLabel(targetLang).toLowerCase()}`
+                : ACTION_VERB[action].toLowerCase()}
+            </span>
+            <span style={{
+              display: 'block', ...TEXT.caption, color: 'var(--text-faint)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {text}
+            </span>
           </span>
           <button
             onClick={() => window.translatePopover.close()}
@@ -167,9 +179,11 @@ function Popover() {
                 onClick={() => window.translatePopover.replace(outcome.out)}
                 style={{
                   alignSelf: 'flex-start', marginTop: 2,
-                  border: 'none', background: 'var(--accent)', color: 'var(--on-accent)',
-                  padding: '6px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                  fontSize: 'var(--fs-sm)', fontWeight: 500, fontFamily: 'inherit',
+                  // Чернила, а не акцент: карточка висит поверх чужой страницы (см. тот же разбор
+                  // у чипов быстрого поиска и главной кнопки настроек).
+                  border: 'none', background: 'var(--text-strong)', color: 'var(--app-bg)',
+                  padding: '6px 12px', borderRadius: RADIUS.pill, cursor: 'pointer',
+                  fontSize: 'var(--fs-sm)', fontWeight: 600, fontFamily: 'inherit',
                 }}
               >
                 Заменить в поле
@@ -186,7 +200,9 @@ function Popover() {
         )}
 
         {outcome?.ok === false && (
-          <span style={{ fontSize: 'var(--fs-sm)', color: 'rgba(200,50,50,0.85)' }}>
+          // ⚠️ Токен, а не литерал. rgba(200,50,50,.85) был единственным сырым красным в продукте
+          // мимо --danger-500: в тёмной теме он уходил в грязь, а перекраска темы его не касалась.
+          <span style={{ ...TEXT.body, color: 'var(--danger-500)' }}>
             Ошибка: {outcome.error}
           </span>
         )}

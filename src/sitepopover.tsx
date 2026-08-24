@@ -6,6 +6,7 @@ import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnCo
 // страницей, где backdrop-filter не работает вовсе, и полупрозрачность означала бы
 // просвечивающий текст сайта. Разбор — у --overlay-plate в styles/tokens/colors.css.
 import { overlayPlate } from './styles/island';
+import { CAPS, DISPLAY_CARD, DISPLAY_ROW, RADIUS, TEXT } from './styles/system';
 import { normalizeDomain } from '../shared/domain';
 import VpnIndicatorPopover from './components/VpnIndicatorPopover';
 import AdBlockSitePanel from './components/AdBlockSitePanel';
@@ -78,6 +79,46 @@ function originOf(url: string): string {
   try { return new URL(url).origin; } catch { return ''; }
 }
 
+// Состояние туннеля одним словом — как в шапке раздела VPN в настройках.
+const VPN_WORD: Record<string, string> = {
+  stopped: 'Выключен',
+  starting: 'Подключаюсь',
+  running: 'Подключено',
+  error: 'Ошибка',
+};
+
+// Плитка факта. Свой маленький рецепт, а не импорт из settings/kit: поповер — отдельная точка
+// входа со своим бандлом, и тянуть сюда весь модуль настроек ради четырёх плиток нельзя
+// (та же причина, по которой у popoverKit свой SiteIcon).
+function Fact({ label, hint, value, on }: {
+  label: string; hint: string; value: string; on?: boolean;
+}) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 4, minHeight: 74,
+      // ⚠️ minWidth: 0 обязателен и здесь: без него сам флекс-контейнер плитки не даёт себе
+      // стать уже содержимого, и ограничение колонки выше не спасает.
+      minWidth: 0, overflow: 'hidden',
+      padding: '10px 11px', borderRadius: RADIUS.box,
+      background: on ? 'var(--text-strong)' : 'var(--surface-sunken)',
+      color: on ? 'var(--app-bg)' : 'var(--text-body)',
+    }}>
+      <span style={{
+        ...TEXT.caption, fontWeight: 650, color: 'inherit',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{label}</span>
+      <span style={{
+        ...TEXT.caption, color: 'inherit', opacity: 0.62, lineHeight: 1.25,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{hint}</span>
+      <span style={{
+        ...DISPLAY_ROW, marginTop: 'auto', color: 'inherit',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{value}</span>
+    </div>
+  );
+}
+
 function SitePopoverApp() {
   const [url, setUrl] = useState('');
   const [perms, setPerms] = useState<PermissionRecord[]>([]);
@@ -147,6 +188,20 @@ function SitePopoverApp() {
   const sitePerms = perms.filter((p) => p.origin === origin);
   const domain = normalizeDomain(url);
 
+  // Подпись героя: шифруется ли, в каком профиле и не обязан ли профиль идти через VPN.
+  // ⚠️ Куски, которых нет, просто не пишутся — «профиль: Основной» это вечная метка ни о чём,
+  // ровно по той же причине, по которой строка профиля ниже показывается только у неосновного.
+  const heroLine = [
+    !host ? 'Внутренняя страница Oblako'
+      : secure ? 'Шифруется'
+        : 'Не шифруется — данные идут открытым текстом',
+    profile && !profile.isDefault ? `профиль «${profile.name}»` : null,
+    profile?.strict ? 'только через VPN' : null,
+  ].filter(Boolean).join(' · ');
+
+  // Что именно сайт спрашивал — словами, а не «2 решения»: список короткий и он и есть ответ.
+  const permsHint = sitePerms.map((p) => PERM_LABEL[p.permission].toLowerCase()).join(', ');
+
   // Адблок общий выключатель. Push'а ADBLOCK_STATE_CHANGED в эту вью нет (main шлёт его только в
   // слой хрома), поэтому после своей же мутации состояние перезапрашиваем явно.
   async function toggleAdBlockEnabled() {
@@ -174,26 +229,72 @@ function SitePopoverApp() {
         display: 'flex', flexDirection: 'column',
         fontFamily: 'var(--font-sans)',
       }}>
-        {/* ── Соединение ── */}
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '14px 16px' }}>
+        {/* ── ГЕРОЙ: кто это и в каком я профиле ──
+            ⚠️ Домен ДИСПЛЕЙНОЙ 17-м — ровно так же, как в шапке выпадашки омнибокса
+            (suggestdropdown.tsx::SiteHeader). Эти два экрана показывают одну и ту же сводку
+            одного и того же сайта, и клик по шапке выпадашки уводит СЮДА: расходиться в наборе
+            им нельзя, иначе переход читается как попадание в другое приложение.
+            ⚠️ Подпись собирается из того, что человек и так спрашивает при взгляде на щит:
+            шифруется ли, в каком профиле, и не обязан ли профиль идти через VPN. */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '15px 16px 12px' }}>
           <span style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 32, height: 32, borderRadius: 'var(--radius-sm)', flex: 'none',
+            width: 34, height: 34, borderRadius: RADIUS.control, flex: 'none',
             background: secure ? 'color-mix(in srgb, var(--dot-local) 14%, transparent)' : 'color-mix(in srgb, var(--danger-500) 14%, transparent)',
             color: secure ? 'var(--dot-local)' : 'var(--danger-500)',
           }}>
-            {secure ? <Lock size={16} /> : <ShieldOff size={16} />}
+            {secure ? <Lock size={17} /> : <ShieldOff size={17} />}
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ ...DISPLAY_CARD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {host || 'Страница браузера'}
             </div>
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-              {!host ? 'Внутренняя страница Oblako'
-                : secure ? 'Соединение защищено — данные шифруются'
-                : 'Соединение не защищено: данные идут открытым текстом'}
+            <div style={{ ...TEXT.caption, color: 'var(--text-muted)', marginTop: 3 }}>
+              {heroLine}
             </div>
           </div>
+        </div>
+
+        {/* ── ЧЕТЫРЕ ОТВЕТА ОДНИМ ВЗГЛЯДОМ ──
+            ⚠️ Плитки залиты ЧЕРНИЛАМИ, а не цветом и не зелёным «всё хорошо». Поповер лежит
+            поверх чужого сайта, где плакатный тон запрещён, а статус в этом продукте не красит
+            фон вообще — он говорит значком и словом. Чернила не цвет, а контраст, поэтому в
+            хроме законны так же, как на странице настроек.
+            ⚠️ Плитка «Разрешения» показывает ЧИСЛО, а сами решения остаются строками ниже: тут
+            их читают, а меняют редко — сводка и управление это разные вопросы. */}
+        {/* ⚠️ minmax(0, 1fr), а НЕ 1fr. `1fr` это `minmax(auto, 1fr)`, то есть минимум колонки —
+            ширина её содержимого; подсказка внутри плитки набрана в одну строку без переносов, и
+            длинное имя сервера («euАвто — оптимальное подключение») распирало сетку за край
+            карточки. Нолём в минимуме колонка получает право быть уже содержимого, и подсказка
+            честно обрезается многоточием. */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+          gap: 8, padding: '0 14px 14px',
+        }}>
+          <Fact
+            label="VPN"
+            hint={connState?.state === 'running' ? (connState.serverRemark ?? 'туннель поднят') : 'трафик идёт напрямую'}
+            value={VPN_WORD[connState?.state ?? 'stopped']}
+            on={connState?.state === 'running'}
+          />
+          <Fact
+            label="Реклама"
+            hint={adblockOff ? 'этот сайт в исключениях' : 'срезано за сеанс'}
+            value={adblockOff ? 'Не режем' : String(blocked ?? 0)}
+            on={!adblockOff && adBlockState?.enabled === true}
+          />
+          <Fact
+            label="Соединение"
+            hint={secure ? 'сертификат в порядке' : 'данные идут открытым текстом'}
+            value={!host ? '—' : secure ? 'HTTPS' : 'Открыто'}
+            on={secure && !!host}
+          />
+          <Fact
+            label="Разрешения"
+            hint={sitePerms.length > 0 ? permsHint : 'сайт ничего не просил'}
+            value={sitePerms.length > 0 ? String(sitePerms.length) : 'Нет'}
+            on={sitePerms.length > 0}
+          />
         </div>
 
         {/* ── Защита: VPN и адблок ──
@@ -225,7 +326,7 @@ function SitePopoverApp() {
                   background: `var(--tile-${profile.color})`, color: 'var(--white)',
                   fontSize: 'var(--fs-xs)', fontWeight: 700, lineHeight: 1,
                 }}>{profile.name.trim().slice(0, 1).toUpperCase()}</span>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-strong)' }}>
+                <span style={{ flex: 1, minWidth: 0, ...TEXT.body, fontWeight: 550, color: 'var(--text-strong)' }}>
                   Профиль «{profile.name}»
                 </span>
                 <span style={{ fontSize: 'var(--fs-xs)', color: profile.strict && connState?.state !== 'running' ? 'var(--warning-500)' : 'var(--text-faint)' }}>
@@ -261,13 +362,15 @@ function SitePopoverApp() {
             {sitePerms.map((p) => {
               const Icon = PERM_ICON[p.permission];
               return (
-                <div key={p.permission} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px' }}>
-                  <Icon size={15} style={{ color: 'var(--text-muted)', flex: 'none' }} />
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
+                <div key={p.permission} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px' }}>
+                  <Icon size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />
+                  <span style={{ flex: 1, minWidth: 0, ...TEXT.body, fontWeight: 550, color: 'var(--text-strong)' }}>
                     {PERM_LABEL[p.permission]}
                   </span>
+                  {/* Статус — СЛОВОМ И ЦВЕТОМ СЛОВА, фон он не красит: закон цвета, заливка в
+                      продукте означает «выбрано», а не «разрешено». */}
                   <span style={{
-                    fontSize: 'var(--fs-xs)', fontWeight: 600,
+                    ...TEXT.caption, fontWeight: 700,
                     color: p.decision === 'granted' ? 'var(--dot-local)' : 'var(--danger-500)',
                   }}>
                     {p.decision === 'granted' ? 'разрешено' : 'запрещено'}
@@ -297,12 +400,12 @@ function SitePopoverApp() {
             <div style={{ padding: '4px 16px 8px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <History size={15} style={{ color: 'var(--text-muted)', flex: 'none', marginTop: 2 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
+                <div style={{ ...TEXT.body, fontWeight: 550, color: 'var(--text-strong)' }}>
                   {changes.summary ?? 'Страница изменилась'}
                 </div>
                 {/* Без фразы показываем первый кусок дословно — он со страницы, значит не выдуман. */}
                 {!changes.summary && changes.pieces?.[0] && (
-                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
+                  <div style={{ ...TEXT.caption, color: 'var(--text-muted)', marginTop: 2 }}>
                     {changes.pieces[0].after || changes.pieces[0].before}
                   </div>
                 )}
@@ -326,10 +429,10 @@ function Section({ title, children }: { title?: string; children: React.ReactNod
   return (
     <div style={{ borderTop: '1px solid var(--divider)', padding: '10px 0' }}>
       {title && (
-        <div style={{
-          fontSize: 'var(--fs-xs)', fontWeight: 600, letterSpacing: 'var(--ls-caps)',
-          textTransform: 'uppercase', color: 'var(--text-faint)', padding: '0 16px 6px',
-        }}>
+        // ⚠️ МОНОШИРИННЫЙ капс — общий рецепт CAPS. Основная гарнитура в uppercase была тут
+        // единственной такой капителью на весь поповер и не совпадала ни с шапкой выпадашки,
+        // ни с подписями настроек, куда отсюда ведут ссылки.
+        <div style={{ ...CAPS, padding: '0 16px 6px' }}>
           {title}
         </div>
       )}

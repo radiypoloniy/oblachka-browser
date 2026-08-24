@@ -19,7 +19,7 @@ import './styles/global.css';
 import type { SearchTarget, QuickHit, QuickQueryResult } from '../shared/ipc';
 import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
-import { RADIUS } from './styles/system';
+import { CAPS, DISPLAY, DISPLAY_ROW, RADIUS, TEXT } from './styles/system';
 import { FaviconImg } from './components/SiteFavicon';
 // ⚠️ Поверхность оверлея — непрозрачная: карточка живёт в своей вью над страницей, где
 // backdrop-filter не работает (разбор — --overlay-plate в styles/tokens/colors.css).
@@ -41,7 +41,7 @@ declare global {
 }
 
 // Держать в синхроне с SearchPopoverManager.ts — ширина и базовая высота задают размер вью.
-const WIDTH = 620;
+const WIDTH = 720;
 // Больше пяти строк в поповере — уже панель истории, а не быстрый выбор.
 const MAX_HITS = 5;
 const QUERY_DEBOUNCE = 120;
@@ -49,6 +49,11 @@ const QUERY_DEBOUNCE = 120;
 // и типичной длине имени; остальное прячется под кнопку с ЧИСЛОМ, чтобы было видно, сколько
 // там ещё (горизонтальная прокрутка этого не показывала вообще).
 const CHIPS_COLLAPSED = 6;
+// Сторона чипа цели и строки находки. ⚠️ Не из шкалы отступов: это площадь НАЖАТИЯ и площадь
+// чтения краем глаза. Поповер вызывают горячей клавишей посреди работы, целятся в него мышью
+// не глядя, и мелкий контрол здесь стоит промаха — тот же довод, что у кнопок тулбара.
+const CHIP_H = 46;
+const HIT_H = 56;
 
 const HIT_ICON = { tab: PanelTop, history: Clock, bookmark: Star } as const;
 const HIT_LABEL = { tab: 'вкладка', history: 'история', bookmark: 'закладка' } as const;
@@ -101,30 +106,39 @@ function Chip({ target, selected, showKey, onClick }: {
       onClick={onClick}
       title={target.kind === 'site' ? `Поиск по сайту ${target.name}` : target.name}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 8, flex: 'none',
-        maxWidth: 230, height: 40, padding: '0 14px 0 10px',
+        display: 'inline-flex', alignItems: 'center', gap: 9, flex: 'none',
+        maxWidth: 260, height: CHIP_H, padding: '0 16px 0 12px',
         border: '1px solid',
         borderColor: selected ? 'transparent' : 'var(--glass-edge)',
-        background: selected ? 'var(--accent)' : 'var(--surface-sunken)',
-        // ⚠️ --on-accent, а не литерал '#fff': в тёмной теме белый на поднятом акценте даёт от
-        // 1,77 до 3,91 при пороге 4,5 — там текст на акценте обязан быть ТЁМНЫМ (см. colors.css).
-        color: selected ? 'var(--on-accent)' : 'var(--text-body)',
+        // ⚠️ ЧЕРНИЛА, а не акцент. Поповер лежит поверх чужого сайта, и синяя пилюля там читается
+        // как деталь чужого интерфейса — тот же довод, по которому главная кнопка настроек и
+        // подсветка выбранного в выпадашке уже перестали быть акцентными. Чернила не спорят с
+        // тоном страницы вовсе и одинаково работают в обеих темах.
+        background: selected ? 'var(--text-strong)' : 'var(--surface-sunken)',
+        color: selected ? 'var(--app-bg)' : 'var(--text-body)',
         borderRadius: RADIUS.pill,
-        fontSize: 'var(--fs-sm)', fontWeight: selected ? 600 : 500,
         cursor: 'default', fontFamily: 'inherit',
         whiteSpace: 'nowrap', overflow: 'hidden',
       }}
     >
       <FaviconImg
         src={target.faviconUrl}
-        size={18}
+        size={22}
         radius={RADIUS.tight}
         style={{ flex: 'none' }}
-        fallback={<Globe size={17} style={{ flex: 'none', opacity: selected ? 0.9 : 0.55 }} />}
+        fallback={<Globe size={20} style={{ flex: 'none', opacity: selected ? 0.9 : 0.55 }} />}
       />
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{target.name}</span>
+      {/* Имя цели — ДИСПЛЕЙНОЙ: полоса целей это и есть выбор, а выбирают по имени сайта. */}
+      <span style={{
+        ...DISPLAY_ROW, color: 'inherit',
+        overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>{target.name}</span>
+      {/* Ключ — МОНОШИРИННЫМ, как везде, где показывается бэнг: в настройках он моночип, и
+          узнаваться должен так же. */}
       {showKey && target.bangKey && (
-        <span style={{ flex: 'none', opacity: 0.6, fontSize: 'var(--fs-xs)' }}>!{target.bangKey}</span>
+        <span style={{
+          flex: 'none', opacity: 0.65, fontSize: 'var(--fs-xs)', fontFamily: 'var(--font-mono)',
+        }}>!{target.bangKey}</span>
       )}
     </button>
   );
@@ -301,12 +315,16 @@ function SearchPopover() {
       }}>
 
         {/* ── Остров 1: строка запроса ── */}
+        {/* ⚠️ Строка — ГЕРОЙ карточки, и набрана она дисплейной. Ради неё поповер и вызывают:
+            «сначала запрос, цель потом» — это то, что человек печатает, а не то, что он читает.
+            Кегль 24 против прежнего --fs-lg: на 720 пикселях ширины прежний набор выглядел
+            обычным полем формы, а не главным входом. */}
         <div style={{
           ...islandCard,
-          display: 'flex', alignItems: 'center', gap: 10,
-          height: 58, padding: '0 14px',
+          display: 'flex', alignItems: 'center', gap: 12,
+          height: 68, padding: '0 18px',
         }}>
-          <Search size={19} style={{ flex: 'none', color: 'var(--text-muted)' }} />
+          <Search size={21} style={{ flex: 'none', color: 'var(--text-muted)' }} />
           <input
             ref={inputRef}
             type="text"
@@ -317,17 +335,17 @@ function SearchPopover() {
             placeholder={active ? `Искать в ${active.name}…` : 'Что найти?'}
             style={{
               flex: 1, minWidth: 0, border: 'none', background: 'transparent',
-              fontSize: 'var(--fs-lg)', color: 'var(--text-strong)', outline: 'none',
-              fontFamily: 'inherit',
+              ...DISPLAY, fontSize: 24, fontWeight: 700, letterSpacing: '-0.025em',
+              lineHeight: 1.2, color: 'var(--text-strong)', outline: 'none',
             }}
           />
           <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5, flex: 'none',
-            padding: '4px 9px', borderRadius: RADIUS.pill,
+            display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none',
+            padding: '6px 11px', borderRadius: RADIUS.pill,
             background: 'var(--surface-sunken)', border: '1px solid var(--glass-edge)',
-            fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
+            ...CAPS, color: 'var(--text-muted)',
           }}>
-            <CornerDownLeft size={13} />
+            <CornerDownLeft size={14} />
             новая вкладка
           </span>
         </div>
@@ -337,7 +355,13 @@ function SearchPopover() {
             выборе — цель уже названа словами, и два одновременно «выбранных» ответа на
             вопрос «куда искать» только путали бы. */}
         {(targets.length > 0 || bangTarget) && (
-          <div style={{ ...islandCard, padding: 8 }}>
+          <div style={{ ...islandCard, padding: 12, display: 'flex', flexDirection: 'column', gap: 9 }}>
+            {/* ⚠️ Подпись острова — наш капс. Островов три, и без подписей они читались как три
+                одинаковых прямоугольника: что полоса целей отвечает на «куда искать», а список
+                ниже — на «у вас это уже есть», приходилось выводить из содержимого. */}
+            <span style={{ ...CAPS, paddingLeft: 4 }}>
+              {bangTarget ? 'цель задана бэнгом' : 'куда искать'}
+            </span>
             {bangTarget ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 4px' }}>
                 <Chip target={bangTarget} selected onClick={() => inputRef.current?.focus()} />
@@ -379,7 +403,7 @@ function SearchPopover() {
                     title={chipsExpanded ? 'Свернуть список целей' : 'Показать все цели'}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none',
-                      height: 40, padding: '0 14px', borderRadius: RADIUS.pill,
+                      height: CHIP_H, padding: '0 16px', borderRadius: RADIUS.pill,
                       border: '1px dashed var(--divider-strong)', background: 'transparent',
                       color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', fontWeight: 500,
                       cursor: 'default', fontFamily: 'inherit',
@@ -397,7 +421,8 @@ function SearchPopover() {
 
         {/* ── Остров 3: находки в своих данных ── */}
         {hits.length > 0 && (
-          <div style={{ ...islandCard, padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ ...islandCard, padding: 10, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ ...CAPS, padding: '2px 4px 6px' }}>у вас уже есть</span>
             {hits.map((h, i) => {
               const Icon = HIT_ICON[h.kind];
               const isSelected = i === hitIndex;
@@ -408,9 +433,9 @@ function SearchPopover() {
                   onMouseEnter={() => setHitIndex(i)}
                   title={h.url}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    height: 46, flex: 'none', width: '100%',
-                    padding: '0 10px', border: 'none', textAlign: 'left',
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    height: HIT_H, flex: 'none', width: '100%',
+                    padding: '0 12px', border: 'none', textAlign: 'left',
                     background: isSelected ? 'var(--surface-hover)' : 'transparent',
                     borderRadius: 'calc(var(--radius-card) / 2)',
                     cursor: 'default', fontFamily: 'inherit',
@@ -418,19 +443,22 @@ function SearchPopover() {
                 >
                   <IconTile src={h.faviconUrl} Fallback={Icon} />
                   <span style={{
-                    flex: 1, minWidth: 0, fontSize: 'var(--fs-md)', color: 'var(--text-strong)',
+                    flex: 1, minWidth: 0, ...DISPLAY_ROW,
                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                   }}>{h.title}</span>
+                  {/* Домен — МОНОШИРИННЫМ, как адреса везде: он тут не подпись, а различитель
+                      двух похожих заголовков. */}
                   <span style={{
-                    flex: 'none', maxWidth: 170, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
+                    flex: 'none', maxWidth: 190, ...TEXT.caption, fontFamily: 'var(--font-mono)',
+                    color: 'var(--text-faint)',
                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                   }}>{hostOf(h.url)}</span>
                   {/* Пометка «вкладка» — единственная, что меняет исход: по ней переключаются,
                       а не открывают копию. Остальные две держим ради одинаковой строки. */}
                   <span style={{
-                    flex: 'none', padding: '3px 8px', borderRadius: RADIUS.pill,
+                    flex: 'none', padding: '5px 10px', borderRadius: RADIUS.pill,
                     background: 'var(--surface-sunken)', border: '1px solid var(--glass-edge)',
-                    fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
+                    ...CAPS, color: 'var(--text-muted)',
                   }}>{HIT_LABEL[h.kind]}</span>
                 </button>
               );
