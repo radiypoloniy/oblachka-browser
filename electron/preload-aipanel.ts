@@ -85,6 +85,8 @@ contextBridge.exposeInMainWorld('aiPanel', {
   // Курсы валют (конвертер раздела «Приложения») — invoke: ответ нужен только запросившему.
   // Форма CurrencyRatesResult (electron/CurrencyRates.ts) зеркалится в renderer локально
   // (aiApps.tsx) — ad-hoc канал, как и chat-result выше, не контракт shared/ipc.ts.
+  // Состояние локальной модели для плашки страницы: { label, loaded }.
+  modelState: () => ipcRenderer.invoke('ai-panel:model-state'),
   currencyRates: () => ipcRenderer.invoke('ai-panel:currency-rates'),
   // Погода для виджета «Приложений» — та же схема (форма WeatherResult зеркалится в aiApps.tsx).
   weather: (city: string) => ipcRenderer.invoke('ai-panel:weather', city),

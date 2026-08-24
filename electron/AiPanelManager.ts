@@ -108,6 +108,27 @@ export function setOnChatIntent(cb: () => void): void {
   onChatIntentCb = cb
 }
 
+// Состояние локальной модели для плашки страницы («в памяти» / «готова» / «нет модели»).
+//
+// ⚠️ Провайдер приходит ИЗ MAIN, а не читается здесь: панель про ModelRegistry и TranslationService
+// не знает и знать не должна — тот же приём, что у setOnChatIntent выше. Иначе панельный модуль
+// потянул бы за собой реестр моделей ради одной подписи.
+//
+// ⚠️ «Готова» и «в памяти» — РАЗНЫЕ состояния, и склеивать их нельзя: дефолт назначен — модель
+// ответит, но с паузой на загрузку; поднята в VRAM — ответит сразу. Это единственное объяснение,
+// почему первый ответ думает полминуты, а следующий мгновенно, и до сих пор его не было нигде,
+// кроме раздела настроек, куда во время разговора не ходят.
+export interface PanelModelState {
+  /** Имя модели по умолчанию; null — модели нет вовсе. */
+  label: string | null
+  /** Она же поднята в память прямо сейчас. */
+  loaded: boolean
+}
+let modelStateProvider: (() => PanelModelState) | null = null
+export function setModelStateProvider(cb: () => PanelModelState): void {
+  modelStateProvider = cb
+}
+
 // Человек кликнул В САМУ ПАНЕЛЬ — поповеры тулбара пора закрыть.
 //
 // ⚠️ Нужен отдельный сигнал, потому что «клик мимо» слушает слой хрома, а панель — отдельная
@@ -721,6 +742,12 @@ function ensureIpcRegistered(): void {
   // Курсы валют для конвертера раздела «Приложения» (aiApps.tsx) — invoke/handle, не пуш:
   // данные нужны только по заходу пользователя в категорию «Валюты», рассылать их каждому
   // открытию панели незачем. Сам fetch и кэш — CurrencyRates.ts, здесь только труба.
+  // Состояние модели для плашки. Pull, а не push: подпись нужна ровно тогда, когда панель
+  // открыта и рисует плашку, а событий «модель поднялась» в проекте нет (getLoadedModelId чисто
+  // pull — см. ModelsSection.tsx).
+  ipcMain.handle('ai-panel:model-state', (): PanelModelState => (
+    modelStateProvider ? modelStateProvider() : { label: null, loaded: false }
+  ))
   ipcMain.handle('ai-panel:currency-rates', () => getCurrencyRates())
 
   // Погода для виджета «Приложений» — та же схема, что курсы выше (fetch/кэш в WeatherService.ts).

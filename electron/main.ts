@@ -66,12 +66,12 @@ import type { ThemePaletteId, ThemePrefs } from '../shared/ipc';
 import type { FindResult, SidebarNode, GroupNode, BergamotStatus, QuickHit, SearchTarget } from '../shared/ipc';
 import type { SavedNode } from './SessionManager';
 import { showTranslatePopover, closeTranslatePopoverOnTabSwitch, closeTranslatePopoverForClosedTab } from './TranslatePopoverManager';
-import { warmup as warmupTranslation } from './TranslationService';
+import { warmup as warmupTranslation, getLoadedModelId } from './TranslationService';
 import { shutdownInference } from './inference/InferenceHost';
 import { isExternalAppUrl, openExternalWithConsent, setExternalConsentAsk } from './ExternalProtocol';
 import { localPathToFileUrl } from './localFileUrl';
 import { installCertificateTrust } from './CertificateTrust';
-import { prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView, setOnChatIntent as setOnAiPanelChatIntent, setOnPanelFocus as setOnAiPanelFocus } from './AiPanelManager';
+import { prewarmPanel, onTabsSynced, setTabManager, setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView, setOnChatIntent as setOnAiPanelChatIntent, setOnPanelFocus as setOnAiPanelFocus, setModelStateProvider as setAiPanelModelStateProvider } from './AiPanelManager';
 import { onTabsSynced as onPageTranslateTabsSynced, setTabManager as setPageTranslateTabManager, onStateChanged as onPageTranslateStateChanged, onProgressChanged as onPageTranslateProgressChanged } from './PageTranslateManager';
 import { setActiveEngineId, registerEngine, setCacheManager } from './TranslationEngineRegistry';
 import { BergamotTranslationEngine } from './BergamotTranslationEngine';
@@ -1295,6 +1295,12 @@ function createWindow(role: WindowRole = 'main') {
     // здесь, панель о ней не знает; сам maybeLazyWarmupOnDemand по-прежнему отсрочен и уважает
     // режим загрузки модели и пустой реестр.
     setOnAiPanelChatIntent(() => maybeLazyWarmupOnDemand());
+    // Имя и состояние модели для плашки панели. Политику знает main, панель получает готовую
+    // пару «как называется» / «уже в памяти» — тем же приёмом, что прогрев выше.
+    setAiPanelModelStateProvider(() => {
+      const def = ModelRegistry.getDefault();
+      return { label: def?.label ?? null, loaded: def !== null && getLoadedModelId() === def.id };
+    });
     // Клик в AI-панель — это «мимо поповера тулбара». Слушатель клика мимо живёт в слое хрома, а
     // панель отдельная нативная вью, и её клики до хрома не доходят вовсе: без этой строки поповер
     // висел над панелью, и привычное «щёлкнуть мимо» там просто не работало. Тот же набор, что при

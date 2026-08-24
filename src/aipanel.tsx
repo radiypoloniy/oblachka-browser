@@ -18,7 +18,7 @@ import { subscribeMeshes } from './newtab/gradients';
 import type { CurrencyRatesResult, WeatherResult } from './components/aiApps';
 import { SHELL_MARGIN } from '../shared/layout';
 import { installOverlayReveal } from './overlayReveal';
-import { RADIUS } from './styles/system';
+import { CAPS, DISPLAY_ROW, RADIUS, TEXT } from './styles/system';
 
 // Код причины отказа (см. electron/TranslationService.ts::ModelError, shared/ipc.ts::ModelErrorCode)
 // — зеркалим локально, тот же приём, что и у ChatOutcome ниже.
@@ -38,6 +38,14 @@ interface ChatMessage {
 // Запас высоты у схлопнутого ряда подсказок: обрезка идёт по нижнему краю первой строки, и без
 // запаса она срезала бы --shadow-chip у самих чипов. Меньше зазора между строками (6) — иначе в
 // щель заглядывала бы вторая строка.
+// Цветные пятна карточек скиллов. ⚠️ Тот же набор и тот же порядок, что в настройках
+// (SkillsSection.tsx): карточка одного и того же скилла обязана выглядеть одинаково там, где её
+// настраивают, и там, где её нажимают.
+const SKILL_STAIN = [
+  'var(--tile-orange)', 'var(--tile-teal)', 'var(--tile-brown)',
+  'var(--tile-slate)', 'var(--tile-green)', 'var(--tile-blue)', 'var(--tile-red)',
+] as const
+
 const COLLAPSED_SLACK = 4
 
 // Форма Skill из electron/SkillsStore.ts — зеркалим локально, тот же приём, что у ChatOutcome
@@ -93,6 +101,7 @@ declare global {
       openSettings: (section?: string) => void
       // Курсы валют (конвертер) и погода (виджет) «Приложений» — формы ответов зеркалятся
       // в aiApps.tsx (ad-hoc каналы, как остальные ai-panel:*).
+      modelState: () => Promise<{ label: string | null; loaded: boolean }>
       currencyRates: () => Promise<CurrencyRatesResult>
       weather: (city: string) => Promise<WeatherResult>
       // Веб-приложения (заход 3) — open/bounds/close веб-слотов, см. WebAppManager.ts.
@@ -151,6 +160,8 @@ function describeChatError(error: string, code: ModelErrorCode | null): { headin
 function AiPanel() {
   const [tabId, setTabId] = useState<string | null>(null)
   const [pageTitle, setPageTitle] = useState('')
+  const [pageUrl, setPageUrl] = useState('')
+  const [modelState, setModelState] = useState<{ label: string | null; loaded: boolean } | null>(null)
   const [pageFavicon, setPageFavicon] = useState<string | null>(null)
   const [faviconError, setFaviconError] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -235,6 +246,7 @@ function AiPanel() {
     const unsubContext = window.aiPanel.onContext((ctx) => {
       setTabId(ctx.tabId)
       setPageTitle(ctx.title)
+      setPageUrl(ctx.url)
       setPageFavicon(ctx.favicon ?? null)
       setMessages(ctx.messages)
       setStreamedText('')
@@ -243,11 +255,15 @@ function AiPanel() {
       setWebSearching(false)
       setError(null)
       setErrorCode(null)
+      // Модель могла подняться в память между показами панели — push-события на это в проекте
+      // нет (см. ai-panel:model-state), поэтому перечитываем на каждый новый контекст.
+      void window.aiPanel.modelState().then(setModelState)
     })
     const unsubChunk = window.aiPanel.onChatChunk((chunkText) => {
       setWebSearching(false)
       setStreamedText((prev) => prev + chunkText)
     })
+    void window.aiPanel.modelState().then(setModelState)
     const unsubResult = window.aiPanel.onChatResult((outcome) => {
       setSending(false)
       setFactChecking(false)
@@ -261,6 +277,8 @@ function AiPanel() {
         setError(outcome.error)
         setErrorCode(outcome.errorCode ?? null)
       }
+      // Ответ пришёл — значит модель точно поднялась. Чип обязан перестать обещать ожидание.
+      void window.aiPanel.modelState().then(setModelState)
     })
     const unsubKeyStatus = window.aiPanel.onKeyStatus((connected) => {
       setFactCheckAvailable(connected)
@@ -339,6 +357,12 @@ function AiPanel() {
     setShowWebGroundingConfirm(false)
     setWebGroundingActive(true)
   }
+
+  // Домен текущей страницы для плашки. ⚠️ Заголовки страниц врут чаще адресов («Главная» есть на
+  // сотне сайтов), поэтому под именем стоит хост, а не второй кусок заголовка.
+  const pageHost = (() => {
+    try { return new URL(pageUrl).hostname.replace(/^www\./, '') } catch { return '' }
+  })()
 
   const handleDetachFromPage = () => {
     // TODO: механика отвязки панели от активной вкладки — реализуем отдельно.
@@ -542,13 +566,47 @@ function AiPanel() {
           ) : (
             <Globe size={16} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
           )}
-          <span style={{
-            flex: 1, minWidth: 0,
-            fontSize: 'var(--fs-sm)', fontWeight: 500, color: 'var(--text-body)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {pageTitle || 'Новая вкладка'}
+          {/* ⚠️ ЗАГОЛОВОК ДИСПЛЕЙНОЙ, ПОД НИМ ДОМЕН. Это герой панели: вопрос «он вообще про эту
+              вкладку или про предыдущую?» возникает раньше любого другого и задаётся заново после
+              каждого переключения. Домен нужен отдельной строкой потому, что заголовки страниц
+              врут чаще адресов — «Главная» встречается на сотне сайтов. */}
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{
+              display: 'block', ...DISPLAY_ROW,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {pageTitle || 'Новая вкладка'}
+            </span>
+            {pageHost && (
+              <span style={{
+                display: 'block', ...TEXT.caption, color: 'var(--text-muted)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {pageHost}
+              </span>
+            )}
           </span>
+          {/* ⚠️ Состояние модели — ЧИПОМ В ПЛАШКЕ, а не отдельной строкой и не героем. Вопрос
+              «он про эту вкладку?» человек задаёт каждый раз, а «что за модель и почему долго» —
+              один раз; поэтому страница крупно, модель мелко, но в том же ряду: одна строка
+              отвечает на оба вопроса и панель не теряет высоту у ленты. */}
+          {modelState && (
+            <span
+              title={modelState.label
+                ? (modelState.loaded
+                  ? `${modelState.label} — в памяти, отвечает сразу`
+                  : `${modelState.label} — поднимется в память при первом запросе`)
+                : 'Локальная модель не установлена'}
+              style={{
+                ...CAPS, flex: 'none', whiteSpace: 'nowrap',
+                padding: '4px 8px', borderRadius: RADIUS.pill,
+                background: modelState.loaded ? 'var(--surface-sunken)' : 'var(--selected)',
+                color: 'var(--text-muted)',
+              }}
+            >
+              {!modelState.label ? 'нет модели' : modelState.loaded ? 'в памяти' : 'поднимаю'}
+            </span>
+          )}
           <button
             onClick={handleDetachFromPage}
             title="Отвязать панель от страницы"
@@ -570,12 +628,10 @@ function AiPanel() {
           display: 'flex', flexDirection: 'column', gap: 10,
           padding: `10px var(--pad-island) var(--pad-island)`,
         }}>
-          {messages.length === 0 && !sending && (
-            <span className="ai-empty-hint" style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>
-              Спросите что-нибудь у Qwen про эту страницу. Первый ответ может занять до 30–40 секунд —
-              модель загружается.
-            </span>
-          )}
+          {/* ⚠️ Подсказки пустого состояния здесь БОЛЬШЕ НЕТ. Она висела вверху пустой ленты, а
+              карточки скиллов прижаты к полю ввода внизу — между ними зияла дыра во весь экран,
+              и это читалось как поломка, а не как «пока пусто». Теперь она стоит подписью НАД
+              карточками, то есть там же, где ответ на вопрос «а что я могу спросить». */}
 
           {messages.map((m, i) => (
             // Ответ модели — БЕЗ подложки и во всю ширину: так он выглядит в любом чат-боте,
@@ -688,6 +744,11 @@ function AiPanel() {
             переходит в компактный вид (chipsCompact выше). Плашка приватности фактчека занимает
             то же место — она по-прежнему взаимоисключающа с рядом (см. showFactCheckConfirm). */}
         {(
+          // ⚠️ ТРИ ветки, и у каждой свой key. React переиспользует узел того же типа в той же
+          // позиции, а к узлу ряда привязан ResizeObserver замера строки — именно так однажды
+          // и вышло, что он мерил плашку фактчека вместо ряда (разбор у attachChips). Разные key
+          // заставляют React честно размонтировать предыдущую ветку: ref-колбэк получает null,
+          // наблюдатель отцепляется, мусорных чисел не остаётся.
           showFactCheckConfirm ? (
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 8,
@@ -726,12 +787,110 @@ function AiPanel() {
                 </button>
               </div>
             </div>
+          ) : !chipsCompact ? (
+            // ПУСТАЯ БЕСЕДА — карточки, а не чипы.
+            //
+            // ⚠️ Скилл в настройках и скилл в панели до этого выглядели как две разные вещи: там
+            // карточка со значком и куском промпта, здесь чип кеглем 11. Место под ними свободно
+            // ровно один раз — пока разговор не начат, — и это единственный момент, когда человек
+            // выбирает, ЧТО спросить, а не спрашивает дальше.
+            //
+            // ⚠️ Чернилами карточки тут НЕ залиты, в отличие от настроек, и это не забывчивость:
+            // там заливка означает «скилл включён», а в панель попадают только включённые — то
+            // есть означать ей нечего. Четыре чёрных прямоугольника поверх чужой страницы были бы
+            // весом без смысла.
+            <div key="skill-cards" style={{
+              padding: `0 var(--pad-island)`, marginBottom: 8, flexShrink: 0,
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}>
+              <span className="ai-empty-hint" style={{ ...CAPS, display: 'block' }}>
+                {modelState && !modelState.label
+                  ? 'модели нет — скачайте её в настройках'
+                  : modelState && !modelState.loaded
+                    ? 'что сделать со страницей · первый ответ дольше, модель поднимается'
+                    : 'что сделать со страницей'}
+              </span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {[
+                { id: 'translate', icon: '🌐', label: 'Перевести', hint: 'Страницу на русский', onPress: sendQuickTranslate },
+                ...(factCheckAvailable
+                  ? [{ id: 'factcheck', icon: '🔍', label: 'Фактчек', hint: 'Проверить по источникам в сети', onPress: () => setShowFactCheckConfirm(true) }]
+                  : []),
+                ...skills.filter((skill) => skill.visible).map((skill) => ({
+                  id: skill.id,
+                  icon: skill.icon || '✳',
+                  label: skill.label,
+                  hint: skill.prompt.length > 64 ? `${skill.prompt.slice(0, 64)}…` : skill.prompt,
+                  onPress: () => sendText(skill.prompt),
+                })),
+              ].map((card, i) => (
+                <button
+                  key={card.id}
+                  onClick={card.onPress}
+                  disabled={chipsBusy}
+                  style={{
+                    position: 'relative', overflow: 'hidden',
+                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
+                    minHeight: 92, padding: '10px 11px', textAlign: 'left',
+                    borderRadius: 'var(--radius-card)', border: 'none',
+                    background: 'var(--text-strong)', color: 'var(--app-bg)',
+                    boxShadow: 'var(--shadow-chip)',
+                    cursor: chipsBusy ? 'default' : 'pointer',
+                    opacity: chipsBusy ? 0.5 : 1,
+                    font: 'inherit',
+                    transition: 'transform var(--dur-fast) var(--ease-out)',
+                  }}
+                  onMouseEnter={(e) => { if (!chipsBusy) e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
+                >
+                  {/* Цветное пятно — то же, что у карточки скилла в настройках: оно и отличает
+                      кнопки друг от друга. Без него девять чернильных прямоугольников подряд
+                      сливаются в один чёрный блок. */}
+                  <span aria-hidden style={{
+                    position: 'absolute', width: 120, height: 96, right: -30, top: -34,
+                    borderRadius: '50%', pointerEvents: 'none',
+                    background: `radial-gradient(circle at 40% 40%, ${SKILL_STAIN[i % SKILL_STAIN.length]}, transparent 68%)`,
+                    opacity: 0.55,
+                  }} />
+                  <span style={{ position: 'relative', fontSize: 20, lineHeight: 1 }}>{card.icon}</span>
+                  <span style={{ ...DISPLAY_ROW, position: 'relative', display: 'block', color: 'var(--app-bg)' }}>
+                    {card.label}
+                  </span>
+                  <span style={{
+                    ...TEXT.caption, position: 'relative',
+                    color: 'color-mix(in srgb, var(--app-bg) 66%, transparent)',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  }}>{card.hint}</span>
+                </button>
+              ))}
+              {/* «Настроить AI» — последней ячейкой, а не значком в углу: в сетке у него есть своё
+                  место, и он не спорит с карточками за верхний правый угол. */}
+              <button
+                onClick={() => window.aiPanel.openSettings('ai')}
+                title="Настроить скиллы"
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
+                  minHeight: 92, padding: '10px 11px', textAlign: 'left',
+                  borderRadius: 'var(--radius-card)',
+                  border: '1px dashed var(--divider-strong)',
+                  background: 'transparent', cursor: 'pointer', font: 'inherit',
+                }}
+              >
+                <Plus size={20} style={{ color: 'var(--text-faint)' }} />
+                <span style={{ ...DISPLAY_ROW, display: 'block', color: 'var(--text-strong)' }}>Свой скилл</span>
+                <span style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>
+                  Кнопка со своим промптом
+                </span>
+              </button>
+              </div>
+            </div>
           ) : (
             // Внешняя строка: слева переносящаяся область чипов, справа НЕСДВИГАЕМЫЙ хвост
             // (шеврон + настройки). Хвост вынесен из потока чипов намеренно — попав в перенос, он
             // уезжал бы во вторую строку и в схлопнутом виде становился недоступен, а это
             // единственные две кнопки, которые обязаны быть под рукой всегда.
-            <div style={{
+            <div key="chips-row" style={{
               display: 'flex', alignItems: 'flex-start', gap: 6,
               padding: `0 var(--pad-island)`,
               marginBottom: 8,
@@ -841,10 +1000,9 @@ function AiPanel() {
                   {skill.label}
                 </button>
               ))}
-              {/* Пока ряд не схлопывается, «+» идёт в общем потоке — то есть встаёт ПОСЛЕ
-                  последнего скилла, а не в конце первой строки. В хвосте (справа сверху) он
-                  выглядел бы приклеенным к верхней строке, хотя относится ко всему списку. */}
-              {!chipsCompact && settingsChip}
+              {/* ⚠️ «+» здесь БОЛЬШЕ НЕТ: ряд рисуется только в начатой беседе (chipsCompact),
+                  а там «+» и так стоит в несдвигаемом хвосте ниже. В пустой беседе его место —
+                  пунктирная карточка «Свой скилл» в сетке. */}
             </div>
             {/* Шеврон «показать все» — только когда строк действительно больше одной (chipsOverflow
                 меряется, а не угадывается) и только в схлопывающемся режиме. Разворачивает ВСЕ
