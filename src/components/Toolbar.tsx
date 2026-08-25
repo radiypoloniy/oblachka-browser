@@ -4,7 +4,7 @@ import { Copy, Check, ChevronDown, KeyRound, Loader2, Clipboard, MoreHorizontal 
 // ⚠️ Значки, которые человек видит каждую минуту, — свои (штрих плюс тело, см. glyphs.tsx).
 // Остальное остаётся на lucide: в глубине интерфейса характер набора никто не заметит, а
 // перерисовка всего означала бы правку импортов в шести десятках файлов ради того же результата.
-import { BackGlyph, ForwardGlyph, RefreshGlyph, ShieldGlyph, StarGlyph, SparkGlyph, DownloadGlyph } from './glyphs';
+import { ShieldGlyph, StarGlyph, SparkGlyph, DownloadGlyph } from './glyphs';
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { composeSuggestions, looksLikeAddress } from '../../shared/suggestList';
@@ -22,6 +22,7 @@ import { useProfileBadge, profileHint } from './toolbar/useProfileBadge';
 import { useDownloadFlight } from './toolbar/useDownloadFlight';
 import { ProgressRing } from './toolbar/ProgressRing';
 import { useEngineMenu } from './toolbar/useEngineMenu';
+import { NavCluster } from './toolbar/NavCluster';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -1270,18 +1271,15 @@ export default function Toolbar({
         position: 'relative',
       }}
     >
-      {/* Кнопки навигации — парящая плашка-остров (glass/тень/скругление из поповера/AI-панели).
-          Вписана в текущую высоту тулбара: паддинг плашки не увеличивает высоту кнопок. */}
-      <div className="no-drag" style={chromeCluster()}>
-        <button className="chrome-btn" title="Назад" disabled={!tab?.canGoBack} onClick={onBack}
-          style={clusterBtn({ disabled: !tab?.canGoBack })}><BackGlyph size={18} /></button>
-        <button className="chrome-btn" title="Вперёд" disabled={!tab?.canGoForward} onClick={onForward}
-          style={clusterBtn({ disabled: !tab?.canGoForward })}><ForwardGlyph size={18} /></button>
-        {/* ⚠️ 18, а не 17: соседние стрелки восемнадцатые, и на глаз «Обновить» выглядела мельче
-            остальных. Высоту группы это не двигает — та задана явно (ISLAND_HEIGHT). */}
-        <button className="chrome-btn" title="Обновить" disabled={isHub} onClick={onReload}
-          style={clusterBtn({ disabled: isHub })}><RefreshGlyph size={18} /></button>
-      </div>
+      {/* Кнопки навигации — парящая плашка-остров (см. toolbar/NavCluster.tsx). */}
+      <NavCluster
+        canGoBack={!!tab?.canGoBack}
+        canGoForward={!!tab?.canGoForward}
+        isHub={isHub}
+        onBack={onBack}
+        onForward={onForward}
+        onReload={onReload}
+      />
 
       {/* Омнибокс — главный объект полосы, и теперь он занимает всё свободное место между
           навигацией и правой группой (см. разбор у OMNIBOX_MAX_WIDTH: прежнее центрирование
