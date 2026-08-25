@@ -5,6 +5,7 @@ import { CAPS, RADIUS, TEXT, sp } from '../styles/system';
 import { EmptyState } from './EmptyState';
 import type { LibrarySummary } from './library/kit';
 import { btnGhost } from './settings/kit';
+import { sectionCache } from './library/sectionCache';
 
 // Экран «что я отслеживаю» (PRICE-TRACKING.md). Компонент только рисует: список, историю цен и
 // группы считает main (electron/TrackingStore.ts).
@@ -106,21 +107,27 @@ function toCards(items: TrackedProduct[]): ProductCardData[] {
   });
 }
 
+// ⚠️ Последний показанный список — переживает размонтирование раздела и ЗАБЫВАЕТСЯ при смене
+// профиля (разбор — в шапке library/sectionCache.ts).
+const cachedItems = sectionCache<TrackedProduct[] | null>(null);
+const cachedEvents = sectionCache<TrackingEvent[]>([]);
+const cachedSuggestions = sectionCache<MatchSuggestion[]>([]);
+
 export default function Tracking({ query, onSummary }: {
   query: string;
   onSummary: (s: LibrarySummary) => void;
 }) {
-  const [items, setItems] = useState<TrackedProduct[] | null>(null);
+  const [items, setItems] = useState<TrackedProduct[] | null>(cachedItems.get);
   const [checking, setChecking] = useState(false);
   const [checkNote, setCheckNote] = useState('');
-  const [events, setEvents] = useState<TrackingEvent[]>([]);
+  const [events, setEvents] = useState<TrackingEvent[]>(cachedEvents.get);
   const [notify, setNotify] = useState(true);
-  const [suggestions, setSuggestions] = useState<MatchSuggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<MatchSuggestion[]>(cachedSuggestions.get);
 
   const reload = () => {
-    void window.oblako.listTracked().then(setItems);
-    void window.oblako.listTrackingEvents().then(setEvents);
-    void window.oblako.listTrackingSuggestions().then(setSuggestions);
+    void window.oblako.listTracked().then((v) => { cachedItems.set(v); setItems(v); });
+    void window.oblako.listTrackingEvents().then((v) => { cachedEvents.set(v); setEvents(v); });
+    void window.oblako.listTrackingSuggestions().then((v) => { cachedSuggestions.set(v); setSuggestions(v); });
   };
   useEffect(() => { reload(); void window.oblako.getTrackingNotify().then(setNotify); }, []);
   useEffect(() => window.oblako.onTrackingChanged(reload), []);

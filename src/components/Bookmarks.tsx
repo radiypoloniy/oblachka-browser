@@ -8,6 +8,7 @@ import { btnGhost } from './settings/kit';
 import SiteFavicon from './SiteFavicon';
 import { EmptyState } from './EmptyState';
 import { StarGlyph, SearchGlyph } from './glyphs';
+import { sectionCache } from './library/sectionCache';
 
 // Ссылка вместе с именем папки, в которой лежит — панель плоская, и без этого нельзя понять,
 // откуда запись. null — корень.
@@ -26,11 +27,16 @@ function domainOf(url: string): string {
 // Упрощённая копия History.tsx: без группировки по дням (закладки не хронология, порядок —
 // position/id), без Qwen-«умного поиска» — список маленький, фильтр на клиенте достаточен,
 // не нужен отдельный IPC-запрос на каждое нажатие.
+// ⚠️ Последний показанный список — переживает размонтирование раздела и ЗАБЫВАЕТСЯ при смене
+// профиля (разбор — в шапке library/sectionCache.ts).
+const cachedFlat = sectionCache<FlatBookmark[]>([]);
+const cachedTree = sectionCache<BookmarkNode[]>([]);
+
 export default function Bookmarks({ query, onSummary }: BookmarksProps) {
-  const [entries, setEntries] = useState<FlatBookmark[]>([]);
+  const [entries, setEntries] = useState<FlatBookmark[]>(cachedFlat.get);
   // Дерево держим рядом с плоским списком: колонка папок строится из него, а список — из
   // плоского. Один запрос, два представления — иначе счётчики разошлись бы с содержимым.
-  const [tree, setTree] = useState<BookmarkNode[]>([]);
+  const [tree, setTree] = useState<BookmarkNode[]>(cachedTree.get);
   const [folderId, setFolderId] = useState<number | null>(null);
   // Умная раскладка. 'idle' → 'computing' → 'preview'. ⚠️ Между computing и применением стоит
   // ЯВНОЕ согласие человека: раскладка не применяется сама ни при каком исходе.
@@ -59,6 +65,8 @@ export default function Bookmarks({ query, onSummary }: BookmarksProps) {
       }
     };
     walk(roots, null);
+    cachedTree.set(roots);
+    cachedFlat.set(flat);
     setTree(roots);
     setEntries(flat);
   };

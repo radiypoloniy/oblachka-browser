@@ -8,6 +8,7 @@ import { btnGhost } from './settings/kit';
 import SiteFavicon from './SiteFavicon';
 import { EmptyState } from './EmptyState';
 import { ClockGlyph, SearchGlyph } from './glyphs';
+import { sectionCache } from './library/sectionCache';
 
 interface HistoryProps {
   /** Строка поиска — общая на всю библиотеку, живёт в оболочке (LibraryShell). */
@@ -103,6 +104,12 @@ function buildNavItems(groups: DayGroup[]): NavItem[] {
   return items;
 }
 
+// ⚠️ Последний показанный список — переживает размонтирование раздела и ЗАБЫВАЕТСЯ при смене
+// профиля (разбор — в шапке library/sectionCache.ts).
+// ⚠️ Кладём сюда только НЕОТФИЛЬТРОВАННЫЙ список. Иначе, вернувшись в раздел, человек увидел бы
+// результаты прошлого поиска как полный архив.
+const cachedEntries = sectionCache<HistoryEntry[]>([]);
+
 const CLEAR_OPTIONS: { label: string; value: HistoryClearPeriod }[] = [
   { label: 'За последний час',    value: 'hour' },
   { label: 'За сегодня',          value: 'day'  },
@@ -111,7 +118,8 @@ const CLEAR_OPTIONS: { label: string; value: HistoryClearPeriod }[] = [
 ];
 
 export default function History({ query, onSummary }: HistoryProps) {
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  // Первый кадр — то, что показывали в прошлый раз; свежий список приезжает следом.
+  const [entries, setEntries] = useState<HistoryEntry[]>(cachedEntries.get);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearError, setClearError] = useState(false);
   // Умный поиск (Qwen-реранк) — своё поле, отдельное от омнибокса (см. диагностику: это два
@@ -145,6 +153,7 @@ export default function History({ query, onSummary }: HistoryProps) {
       ? await window.oblako.searchHistory(query)
       : await window.oblako.getHistory();
     if (searchSeqRef.current !== seq) return; // подоспел более новый запрос — этот ответ устарел
+    if (!query.trim()) cachedEntries.set(result);
     setEntries(result);
     setSmartResultsShown(false);
     setSmartDegraded(false);
