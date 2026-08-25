@@ -40,22 +40,38 @@ export const SEARCH_ENGINES: readonly SearchEngineDef[] = [
   {
     id: 'google', name: 'Google',
     buildUrl: (q) => `https://www.google.com/search?q=${encodeURIComponent(q)}`,
-    isResultUrl: (u) => /(^|\.)google\.[a-z.]+$/i.test(u.hostname) && u.pathname === '/search' && u.searchParams.has('q'),
+    // Тот же принцип, что у Яндекса ниже: news.google.com/search?q=… это не веб-поиск.
+    isResultUrl: (u) => /^(www\.)?google\.[a-z.]+$/i.test(u.hostname)
+      && u.pathname === '/search' && u.searchParams.has('q'),
     suggestUrl: (q) => `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(q)}`,
     parseSuggest: parseArrayFormat,
   },
   {
     id: 'yandex', name: 'Яндекс',
     buildUrl: (q) => `https://yandex.ru/search/?text=${encodeURIComponent(q)}`,
-    isResultUrl: (u) => /(^|\.)yandex\.[a-z.]+$/i.test(u.hostname) && u.pathname.startsWith('/search') && u.searchParams.has('text'),
+    // ⚠️ Хост ТОЛЬКО сам поисковик, без поддоменов. Прежнее `(^|\.)yandex\.` ловило и
+    // market.yandex.ru/search?text=… — то есть страницы Маркета не попадали в историю ВООБЩЕ:
+    // человек искал товар, а потом не мог найти его у себя. Поймано проверкой
+    // scripts/search-engines-check.mjs на записи из боевой базы.
+    // ⚠️ Путь СТРОГО /search — у картинок и видео свои разделы (/images/search, /video/search),
+    // и они не веб-поиск: туда возвращаются, как на обычную страницу.
+    isResultUrl: (u) => /^(www\.)?yandex\.[a-z.]+$/i.test(u.hostname)
+      && (u.pathname === '/search' || u.pathname === '/search/')
+      && u.searchParams.has('text'),
     suggestUrl: (q) => `https://suggest.yandex.ru/suggest-ff.cgi?part=${encodeURIComponent(q)}`,
     parseSuggest: parseArrayFormat,
   },
 ];
 
 // Result-страница ЛЮБОГО известного поисковика (не домен/главная сама по себе — google.com,
-// yandex.ru как есть остаются валидной историей). Используется ТОЛЬКО фильтром записи в
-// историю (HistoryManager.ts::#shouldRecord) — omnibox-навигацию/подсказки не трогает.
+// yandex.ru как есть остаются валидной историей).
+//
+// ⚠️ Спрашивают её ДВА места, и второе появилось не от перестраховки: фильтр записи в историю
+// (HistoryManager::#shouldRecord) и фильтр ЧТЕНИЯ в подсказках омнибокса (Toolbar). В базе лежит
+// наследие — записи старше самого фильтра плюс всё, что приехало импортом из чужого браузера, где
+// такого фильтра не было вовсе. Живой случай 25.08.2026: «лучшим совпадением» по запросу «dai»
+// стала страница Google, у которой ЗАГОЛОВОК — сам запрос, а запросом был вставленный когда-то
+// адрес daily.afisha.ru. Выглядело мусором, и Enter уводил в поиск вместо страницы.
 export function isSearchResultUrl(url: string): boolean {
   try {
     const u = new URL(url);

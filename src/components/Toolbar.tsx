@@ -8,10 +8,8 @@ import { BackGlyph, ForwardGlyph, RefreshGlyph, ShieldGlyph, StarGlyph, SparkGly
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { composeSuggestions, looksLikeAddress } from '../../shared/suggestList';
-import { SEARCH_ENGINES, getSearchEngine } from '../../shared/searchEngines';
-import type { SearchEngineId } from '../../shared/searchEngines';
+import { SEARCH_ENGINES, getSearchEngine, isSearchResultUrl } from '../../shared/searchEngines';
 import { chromeCluster, omniField, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
-import { setDefaultSearchEngine } from '../searchEngineSetting';
 import { CHROME_OVERLAY_PX } from '../../shared/chromeGround';
 import { glyph } from '../styles/system';
 // Жизненный цикл и разговор с main — в хуках рядом (docs/architecture-code.md, §Хук).
@@ -22,6 +20,8 @@ import { useOmniboxGeometry } from './toolbar/useOmniboxGeometry';
 import { useAnchoredPopover } from './toolbar/useAnchoredPopover';
 import { useProfileBadge, profileHint } from './toolbar/useProfileBadge';
 import { useDownloadFlight } from './toolbar/useDownloadFlight';
+import { ProgressRing } from './toolbar/ProgressRing';
+import { useEngineMenu } from './toolbar/useEngineMenu';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -216,18 +216,10 @@ export default function Toolbar({
   // затем подтверждает или поправляет — иначе звезда загоралась бы с задержкой в круг IPC.
   const [bookmarked, setBookmarked] = useBookmarked(!isHub ? tab?.url : undefined);
 
-  // Капсула выбора поисковика — только на хабе (isHub), см. omnibox ниже.
-  const [engineMenuOpen, setEngineMenuOpen] = useState(false);
-  const engineBtnRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => { if (!isHub) setEngineMenuOpen(false); }, [isHub]);
-
-  const pickEngine = (id: SearchEngineId) => {
-    setEngineMenuOpen(false);
-    // ⚠️ Своей копии выбора здесь больше нет: setDefaultSearchEngine пишет в main, а подписка
-    // внутри useSearchEngine возвращает значение обратно. Прежний setSearchEngineId делал то же
-    // самое вторым путём — то есть заводил вторую правду на время круга IPC.
-    setDefaultSearchEngine(id);
-  };
+  // Капсула выбора поисковика — только на хабе (см. useEngineMenu).
+  const {
+    open: engineMenuOpen, setOpen: setEngineMenuOpen, btnRef: engineBtnRef, pick: pickEngine,
+  } = useEngineMenu(isHub);
 
   // Живой баг: переход из хаба создаёт НОВУЮ вкладку (хаб — фиксированный HUB_ID, не переиспользуется),
   // и у неё в первый момент url === '' (wc.getURL() до коммита навигации) — тот же пустой url, что
@@ -708,8 +700,10 @@ export default function Toolbar({
     // history.sqlite хранит отдельными строками (там UNIQUE по точному URL, см. HistoryManager.ts).
     // Разные СТРАНИЦЫ одного домена (не дубли) по-прежнему остаются разными записями — их
     // взаимный порядок решает ранжирование ниже (homepage поднимается при прочих равных).
+    // Страницы результатов поиска — мимо: в базе лежит наследие, см. isSearchResultUrl.
     const byUrl = new Map<string, HistoryEntry>();
     for (const e of histEntries) {
+      if (isSearchResultUrl(e.url)) continue;
       const key = normalizeForOmnibox(e.url);
       const cur = byUrl.get(key);
       if (!cur || scoreEntry(e, now) > scoreEntry(cur, now)) byUrl.set(key, e);
@@ -1041,6 +1035,7 @@ export default function Toolbar({
     const siteOf = (u: string): string => { try { return new URL(u).origin; } catch { return u; } };
     const best = new Map<string, HistoryEntry>();
     for (const e of entries) {
+      if (isSearchResultUrl(e.url)) continue; // то же наследие, что и в подсказках выше
       if (normalizeForOmnibox(e.url) === currentKey) continue;
       const key = siteOf(e.url);
       const cur = best.get(key);
@@ -1744,28 +1739,6 @@ export default function Toolbar({
 
 // Дуга прогресса вокруг кнопки загрузок. value=null — размер файла неизвестен, крутим
 // бесконечную дугу: замершая на месте шкала врала бы, что работа встала.
-function ProgressRing({ value }: { value: number | null }) {
-  const R = 13;
-  const LEN = 2 * Math.PI * R;
-  return (
-    <svg
-      viewBox="0 0 32 32" width={30} height={30} aria-hidden
-      style={{
-        position: 'absolute', inset: 0, margin: 'auto', pointerEvents: 'none',
-        transform: 'rotate(-90deg)', // старт дуги сверху, а не справа
-        animation: value === null ? 'oblako-dl-spin 1.1s linear infinite' : undefined,
-      }}
-    >
-      <circle cx="16" cy="16" r={R} fill="none" stroke="var(--accent)" strokeOpacity={0.18} strokeWidth="2" />
-      <circle
-        cx="16" cy="16" r={R} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round"
-        strokeDasharray={LEN}
-        strokeDashoffset={LEN * (1 - (value ?? 0.25))}
-        style={{ transition: value === null ? undefined : 'stroke-dashoffset var(--dur-slow) var(--ease-standard)' }}
-      />
-    </svg>
-  );
-}
 
 // ── Пилюля «Защита» (VPN + адблок) ────────────────────────────────────────────
 
