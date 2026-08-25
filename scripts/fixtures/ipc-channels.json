@@ -251,6 +251,7 @@
   "PERMISSION_RESPONSE=permission:response",
   "PERMISSION_REVOKE=permission:revoke",
   "PERMISSION_SET=permission:set",
+  "POPOVER_PREWARM=popover:prewarm",
   "PRODUCT_MENU=product:menu",
   "PRODUCT_STATE=product:state",
   "PROFILES_AVATAR=profiles:avatar",

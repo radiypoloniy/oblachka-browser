@@ -120,6 +120,24 @@ function ensureView(st: WindowPopover): WebContentsView {
   return st.view;
 }
 
+/**
+ * Прогрев: построить вью заранее, не показывая (см. IPC.POPOVER_PREWARM).
+ *
+ * ⚠️ Первый показ поповера — это целый документ: свой рендер-процесс, загрузка
+ * oblako-chrome://…html, React, первый кадр. Между показами вью живёт, поэтому второй клик уже
+ * мгновенный — отсюда и жалоба «первый раз тормозит, дальше нормально».
+ *
+ * Не бросает наружу — как prewarmDropZones: сбой прогрева обязан оставить поповер ленивым, а не
+ * уронить интерфейс.
+ */
+export function prewarmClipboardPopover(win: BrowserWindow): void {
+  try {
+    ensureView(stateFor(win));
+  } catch (e) {
+    console.error('[popover:clipboard] прогрев упал:', e);
+  }
+}
+
 export function showClipboardPopover(win: BrowserWindow): void {
   const st = stateFor(win);
   st.open = true;

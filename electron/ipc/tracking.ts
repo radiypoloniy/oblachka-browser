@@ -5,7 +5,7 @@
 import { IPC } from '../../shared/ipc';
 import type { ClipboardRevealResult, ContentBounds, TrackedProduct } from '../../shared/ipc';
 import * as clipboardBuffer from '../ClipboardBuffer';
-import { closeClipboardPopover, syncClipboardPopoverAnchor, toggleClipboardPopover, windowOfClipboardPopover } from '../ClipboardPopoverManager';
+import { closeClipboardPopover, syncClipboardPopoverAnchor, toggleClipboardPopover, windowOfClipboardPopover, prewarmClipboardPopover } from '../ClipboardPopoverManager';
 import { sendFindResult, showFindBar } from '../FindBarManager';
 import { highlightCandidates } from '../SmartFind';
 import { checkAllNow } from '../TrackingChecker';
@@ -125,6 +125,13 @@ export function registerTrackingIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.CLIPBOARD_POPOVER_TOGGLE, (e) => {
     const ctx = contextFromSender(e.sender);
     if (ctx) toggleClipboardPopover(ctx.win);
+  });
+  // ⚠️ `on`, а не `handle`: прогрев — это пожелание, а не запрос. Ответа ждать нечего, и
+  // отказ (окно уже закрылось) ничего не значит — поповер просто останется ленивым.
+  ipcMain.on(IPC.POPOVER_PREWARM, (e, kind: string) => {
+    const ctx = contextFromSender(e.sender);
+    if (!ctx) return;
+    if (kind === 'clipboard') prewarmClipboardPopover(ctx.win);
   });
   ipcMain.on(IPC.CLIPBOARD_POPOVER_BOUNDS, (e, b: ContentBounds) => {
     const ctx = contextFromSender(e.sender);

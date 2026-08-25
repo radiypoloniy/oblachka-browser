@@ -1471,7 +1471,7 @@ export default function Toolbar({
   return (
     <div
       ref={toolbarRef}
-      className="drag"
+      className="drag chrome-icons"
       style={{
         // alignItems:'flex-start' + paddingTop:--gutter-shell — верхняя кромка плашек-островов
         // совпадает с верхней кромкой сайдбара-острова (тот же токен воздуха). Высота контейнера
@@ -1874,7 +1874,11 @@ export default function Toolbar({
             нужного инструмента — лишний шум»). Решение перевёрнуто осознанно: шумом оказался как
             раз значок, ВОЗНИКАЮЩИЙ после первой копии, — он сдвигал весь кластер и омнибокс в
             произвольный момент работы. Пустой буфер теперь просто гасит кнопку. */}
-        <div ref={clipboardControlRef} style={{ display: 'inline-flex' }}>
+        {/* ⚠️ Прогрев на НАВЕДЕНИИ, а не на старте: пока мышь идёт от края кнопки до нажатия,
+            вью успевает построиться, и первый клик перестаёт ждать целый документ. У тех, кто
+            буфером не пользуется, лишнего процесса при этом не появляется вовсе. */}
+        <div ref={clipboardControlRef} style={{ display: 'inline-flex' }}
+          onMouseEnter={() => { if (clipboardCount > 0) window.oblako.prewarmPopover('clipboard'); }}>
           <button className="chrome-btn"
             disabled={clipboardCount === 0}
             title={clipboardCount === 0

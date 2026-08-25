@@ -394,6 +394,12 @@ export const IPC = {
   CLIPBOARD_ENABLED_SET: 'clipboard:enabled-set',
   CLIPBOARD_CHANGED:  'clipboard:changed',     // main → chrome: список изменился (для индикатора)
   CLIPBOARD_POPOVER_TOGGLE: 'clipboard-popover:toggle', // chrome → main: открыть/закрыть
+  // renderer → main: мышь пришла на кнопку поповера — построй его вью заранее.
+  // ⚠️ Прогрев ПО НАВЕДЕНИЮ, а не на старте: между «мышь на кнопке» и «кнопка нажата» проходит
+  // 150–400 мс, и этого хватает, чтобы документ успел загрузиться, — а вью при этом не висит
+  // процессом у тех, кто этой кнопкой не пользуется. Поповеры, которые открывают чаще всех
+  // (карточка сайта, загрузки), прогреваются иначе — на старте, см. main.ts.
+  POPOVER_PREWARM: 'popover:prewarm',
   CLIPBOARD_POPOVER_BOUNDS: 'clipboard-popover:bounds', // chrome → main: где стоит кнопка
   CLIPBOARD_POPOVER_CLOSED: 'clipboard-popover:closed', // main → chrome: закрылся сам
 

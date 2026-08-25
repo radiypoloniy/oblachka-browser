@@ -41,6 +41,7 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.CLIPBOARD_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.CLIPBOARD_CHANGED, handler);
   },
+  prewarmPopover: (kind: 'clipboard') => ipcRenderer.send(IPC.POPOVER_PREWARM, kind),
   toggleClipboardPopover: () => ipcRenderer.invoke(IPC.CLIPBOARD_POPOVER_TOGGLE) as Promise<void>,
   syncClipboardPopoverBounds: (b: ContentBounds) => ipcRenderer.send(IPC.CLIPBOARD_POPOVER_BOUNDS, b),
   onClipboardPopoverClosed: (cb: () => void) => {

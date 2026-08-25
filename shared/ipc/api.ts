@@ -56,6 +56,8 @@ export interface OblakoApi {
   // поднимается с диска ещё до неё.
   getClipboardCount(): Promise<number>;
   onClipboardChanged(cb: (count: number) => void): () => void;
+  /** Мышь пришла на кнопку поповера — построить его вью заранее (см. IPC.POPOVER_PREWARM). */
+  prewarmPopover(kind: 'clipboard'): void;
   toggleClipboardPopover(): Promise<void>;
   syncClipboardPopoverBounds(b: ContentBounds): void;
   onClipboardPopoverClosed(cb: () => void): () => void;
