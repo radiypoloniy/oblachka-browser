@@ -121,7 +121,6 @@ import { findMatchFor } from './ProductMatcher';
 import * as clipboardBuffer from './ClipboardBuffer';
 import { initClipboardPopover, toggleClipboardPopover, closeClipboardPopover } from './ClipboardPopoverManager';
 import type { ProductState } from '../shared/ipc';
-import type { BookmarkNode } from '../shared/ipc';
 import { registerTabsIpc } from './ipc/tabs';
 import { registerProfilesIpc } from './ipc/profiles';
 import { registerTrackingIpc } from './ipc/tracking';
@@ -136,6 +135,7 @@ import { registerPasswordsIpc } from './ipc/passwords';
 import { registerHistoryIpc } from './ipc/history';
 import { registerSystemIpc } from './ipc/system';
 import { registerMenusIpc } from './ipc/menus';
+import { initBookmarkMenu, showBookmarkMenu } from './BookmarkMenu';
 
 // Последняя сеть под main-процессом. Заведена под охоту на "Object has been destroyed"
 // (closeTab → exitSplit на закрытии окна со split) и своё отработала — стек указал точную
@@ -552,11 +552,19 @@ let ensureVpnOnForRules: () => Promise<boolean> = async () => false;
 // лениво, на первое обращение (см. SearchTargetStore).
 const searchTargets = new SearchTargetStore();
 const updates     = new UpdateManager();
+
 // История и закладки теперь ЖИВУТ НА ПРОФИЛЬ (см. ProfileData.ts). Здесь остались две функции
 // вместо двух объектов, и это не косметика: объект пришлось бы подменять при каждом переключении
 // профиля во всех местах, куда он уже попал по ссылке, — а таких мест два десятка.
 const history = (): HistoryManager => activeHistory();
 const bookmarks = (): BookmarkManager => activeBookmarks();
+// Меню звезды закладки живёт своим модулем (BookmarkMenu.ts) — здесь только связываем его с
+// закладками активного профиля, рассылкой изменений и подсказкой папки от модели.
+initBookmarkMenu({
+  bookmarks,
+  notifyChanged: () => broadcastToChrome(IPC.BOOKMARK_CHANGED),
+  suggestFolder: suggestFolderForBookmark,
+});
 setOrganizerHistoryManager(history);
 // Импорт закладок — список создаётся один раз, isAvailable() зовётся заново на каждый
 // BOOKMARK_IMPORT_LIST_SOURCES (профиль браузера-источника может появиться/пропасть между вызовами).
@@ -1875,88 +1883,6 @@ function buildMoveToWindowItems(
 // ⚠️ Асинхронна из-за подсказки папки: нативное меню после popup() изменить нечем, поэтому ответ
 // модели нужен ДО показа. Задержка возникает только на тёплой модели (иначе гейт возвращает null
 // сразу), и сама закладка сохраняется ДО ожидания — звезда загорается мгновенно, ждёт только меню.
-async function showBookmarkMenu(win: BrowserWindow, tabs: TabManager): Promise<void> {
-  const wc = tabs.getActiveWebContents();
-  if (!wc) return;
-  const url = wc.getURL();
-  if (!url || !/^https?:/i.test(url)) return; // хаб и служебные страницы в закладки не идут
-  const title = wc.getTitle() || url;
-
-  const existing = bookmarks().listTree();
-  const findByUrl = (nodes: BookmarkNode[]): BookmarkNode | null => {
-    for (const n of nodes) {
-      if (n.kind === 'link' && n.url === url) return n;
-      const hit = n.children ? findByUrl(n.children) : null;
-      if (hit) return hit;
-    }
-    return null;
-  };
-
-  let entry = findByUrl(existing);
-  if (!entry) {
-    const added = bookmarks().add(url, title);
-    if (!added) return;
-    entry = { ...added, children: undefined };
-    broadcastToChrome(IPC.BOOKMARK_CHANGED);
-  }
-  const bookmarkId = entry.id;
-  const currentParent = entry.parentId;
-
-  // Плоский перечень папок с отступами — вложенность в нативном меню показать больше нечем.
-  // Путь от корня собираем тем же обходом: он нужен модели, чтобы различить две папки «Разное»
-  // в разных родителях (в самом меню вложенность видна отступом).
-  const folders: { id: number; title: string; depth: number; path: string }[] = [];
-  const walk = (nodes: BookmarkNode[], depth: number, prefix: string): void => {
-    for (const n of nodes) {
-      if (n.kind !== 'folder') continue;
-      const path = prefix ? `${prefix} / ${n.title}` : n.title;
-      folders.push({ id: n.id, title: n.title, depth, path });
-      walk(n.children ?? [], depth + 1, path);
-    }
-  };
-  walk(bookmarks().listTree(), 0, '');
-
-  // Подсказка папки (AI-IDEAS.md №2) — только для закладки, лежащей В КОРНЕ. То, что человек уже
-  // разложил руками, модель не трогает: это его решение, и мы его не понимаем (тот же принцип,
-  // что в BookmarkOrganizer.ts). На холодной модели вернётся null мгновенно, без задержки меню.
-  const suggestedId = currentParent === null
-    ? await suggestFolderForBookmark(title, url, folders.map((f) => ({ id: f.id, path: f.path })))
-    : null;
-  const suggested = folders.find((f) => f.id === suggestedId) ?? null;
-  // За время генерации окно могли закрыть — всплывать тогда некуда.
-  if (win.isDestroyed()) return;
-
-  const pick = (parentId: number | null): void => {
-    if (bookmarks().move(bookmarkId, parentId)) broadcastToChrome(IPC.BOOKMARK_CHANGED);
-  };
-
-  const template: MenuItemConstructorOptions[] = [
-    { label: 'Сохранено в закладки', enabled: false },
-    // ⚠️ Подсказка — ОТДЕЛЬНЫЙ пункт-действие, а не предвыбранный radio в списке ниже. Отметка
-    // означает «закладка лежит здесь», и поставить её на непроизошедший перенос значило бы
-    // соврать: человек закрыл бы меню, не нажав ничего, а закладка осталась бы в корне.
-    ...(suggested
-      ? [
-          { type: 'separator' } as MenuItemConstructorOptions,
-          { label: `Положить в «${suggested.title}»`, click: () => pick(suggested.id) },
-        ]
-      : []),
-    { type: 'separator' },
-    { label: 'Все закладки', type: 'radio', checked: currentParent === null, click: () => pick(null) },
-    ...folders.map((f): MenuItemConstructorOptions => ({
-      label: `${'    '.repeat(f.depth)}${f.title}`,
-      type: 'radio',
-      checked: currentParent === f.id,
-      click: () => pick(f.id),
-    })),
-    { type: 'separator' },
-    {
-      label: 'Удалить из закладок',
-      click: () => { bookmarks().remove(bookmarkId); broadcastToChrome(IPC.BOOKMARK_CHANGED); },
-    },
-  ];
-  Menu.buildFromTemplate(template).popup({ window: win });
-}
 
 // Лёгкое окно, из которого унесли последнюю страницу, закрываем: пустое окно с одним хабом на
 // экране — мусор, которого никто не просил (так же ведёт себя Chrome). Полное окно не трогаем

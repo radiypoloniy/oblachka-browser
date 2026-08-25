@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { BookmarkEntry, BookmarkNode, BulkBookmarkInput, ImportBookmarkNode } from '../shared/ipc';
 import { setupBookmarksSchema } from './bookmarksSchema';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
+import { pageKey } from '../shared/pageKey';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
 // Грузим динамически, тот же приём, что HistoryManager.ts — браузер должен запускаться
@@ -197,11 +198,24 @@ export class BookmarkManager {
     }
   }
 
+  /**
+   * Сохранена ли ЭТА СТРАНИЦА — по ключу, а не по точной строке адреса.
+   *
+   * ⚠️ Живой баг (25.08.2026): карточка товара Ozon сохранялась с метками шаринга `at`/`sh`, а
+   * при открытии из панели площадка выдавала другие — точное сравнение давало «не в закладках»,
+   * звезда не горела, и повторное нажатие плодило дубль. Ключ (shared/pageKey.ts) считает такие
+   * адреса одной страницей, а значимые параметры (запрос поиска, id видео) сохраняет.
+   *
+   * ⚠️ Перебор ссылок, а не запрос по индексу, — сознательно: колонка с ключом означала бы
+   * МИГРАЦИЮ боевой базы закладок ради индикатора. Закладок у человека сотни, сравнение строк —
+   * микросекунды, а метод зовётся на смену адреса вкладки, не в цикле.
+   */
   isBookmarked(url: string): boolean {
     if (!this.#db || !url) return false;
     try {
-      const row = this.#db.prepare(`SELECT 1 FROM bookmarks WHERE url = ? AND kind = 'link' LIMIT 1`).get(url);
-      return row !== undefined;
+      const key = pageKey(url);
+      const rows = this.#db.prepare(`SELECT url FROM bookmarks WHERE kind = 'link'`).all() as { url: string }[];
+      return rows.some((r) => pageKey(r.url) === key);
     } catch (e) {
       console.warn('[Bookmarks] isBookmarked error:', (e as Error).message);
       return false;
