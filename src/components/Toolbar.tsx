@@ -19,6 +19,7 @@ import { useSearchEngine } from './toolbar/useSearchEngine';
 import { useClipboardCount } from './toolbar/useClipboardCount';
 import { useBookmarked } from './toolbar/useBookmarked';
 import { useOmniboxGeometry } from './toolbar/useOmniboxGeometry';
+import { useAnchoredPopover } from './toolbar/useAnchoredPopover';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -413,12 +414,19 @@ export default function Toolbar({
   const closeDropdownFullyRef = useRef(closeDropdownFully);
   closeDropdownFullyRef.current = closeDropdownFully;
 
-  const pushPasswordPopoverBounds = useCallback(() => {
-    const el = passwordControlRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    void window.oblako.setPasswordPopoverAnchorBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+  // Четыре поповера тулбара живут одной механикой (см. useAnchoredPopover): якорь-кнопка,
+  // прямоугольник в main, наблюдатель за размером и закрытие по клику мимо.
+  const dismissPassword = useCallback(() => {
+    setPasswordPopoverOpen(false);
+    void window.oblako.closePasswordPopover();
   }, []);
+  const { pushBounds: pushPasswordPopoverBounds } = useAnchoredPopover({
+    anchorRef: passwordControlRef,
+    open: passwordPopoverOpen,
+    push: (b) => { void window.oblako.setPasswordPopoverAnchorBounds(b); },
+    onDismiss: dismissPassword,
+    reflowKey: toolbarWidth,
+  });
 
   const togglePasswordPopover = useCallback(() => {
     if (!passwordIndicator) return;
@@ -433,12 +441,17 @@ export default function Toolbar({
     void window.oblako.showPasswordPopover(passwordIndicator);
   }, [closeDropdownFully, passwordIndicator, passwordPopoverOpen, pushPasswordPopoverBounds]);
 
-  const pushDownloadsPopoverBounds = useCallback(() => {
-    const el = downloadsControlRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    void window.oblako.setDownloadsPopoverAnchorBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+  const dismissDownloads = useCallback(() => {
+    setDownloadsPopoverOpen(false);
+    void window.oblako.closeDownloadsPopover();
   }, []);
+  const { pushBounds: pushDownloadsPopoverBounds } = useAnchoredPopover({
+    anchorRef: downloadsControlRef,
+    open: downloadsPopoverOpen,
+    push: (b) => { void window.oblako.setDownloadsPopoverAnchorBounds(b); },
+    onDismiss: dismissDownloads,
+    reflowKey: toolbarWidth,
+  });
 
   const toggleDownloadsPopover = useCallback(() => {
     closeDropdownFully('downloads-button');
@@ -486,12 +499,33 @@ export default function Toolbar({
   // Раньше замок был просто картинкой. Теперь это точка входа в «что за сайт передо мной»:
   // защищено ли соединение, что ему разрешено, сколько вырезано трекеров и что похожего вы уже
   // читали. Механика ровно та же, что у поповеров VPN и загрузок — своя вью, якорь, клик мимо.
-  const pushSitePopoverBounds = useCallback(() => {
-    const el = siteControlRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    void window.oblako.setSitePopoverAnchorBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+  // ⚠️ У карточки сайта закрытие — ТОГГЛ того же канала, а не отдельный close: main держит её
+  // состояние у себя и отвечает им же (см. toggleSitePopover ниже).
+  const dismissSite = useCallback(() => {
+    setSitePopoverOpen(false);
+    void window.oblako.toggleSitePopover();
   }, []);
+  const dismissClipboard = useCallback(() => {
+    setClipboardPopoverOpen(false);
+    void window.oblako.toggleClipboardPopover();
+  }, []);
+  // ⚠️ Наблюдатель за якорем буфера нужен и теперь, когда кнопка перестала появляться-исчезать:
+  // её прямоугольник всё равно ездит от ресайза окна и сворачивания сайдбара.
+  useAnchoredPopover({
+    anchorRef: clipboardControlRef,
+    open: clipboardPopoverOpen,
+    push: (b) => { window.oblako.syncClipboardPopoverBounds(b); },
+    onDismiss: dismissClipboard,
+    reflowKey: toolbarWidth,
+  });
+
+  const { pushBounds: pushSitePopoverBounds } = useAnchoredPopover({
+    anchorRef: siteControlRef,
+    open: sitePopoverOpen,
+    push: (b) => { void window.oblako.setSitePopoverAnchorBounds(b); },
+    onDismiss: dismissSite,
+    reflowKey: toolbarWidth,
+  });
 
   // Активный профиль — ради точки у щита. ⚠️ Здесь, а не в App: точка живёт в тулбаре, и
   // прокидывать ради неё ещё один проп через десяток уровней незачем.
@@ -529,79 +563,6 @@ export default function Toolbar({
   toggleSitePopoverRef.current = toggleSitePopover;
   useEffect(() => window.oblako.onSuggestDropdownSiteInfo(() => { toggleSitePopoverRef.current(); }), []);
 
-  useEffect(() => {
-    if (!sitePopoverOpen) return;
-    pushSitePopoverBounds();
-    const el = siteControlRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(pushSitePopoverBounds);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [sitePopoverOpen, toolbarWidth, pushSitePopoverBounds]);
-
-  useEffect(() => {
-    if (!sitePopoverOpen) return;
-    const onOutsideMouseDown = (e: MouseEvent) => {
-      if (!siteControlRef.current?.contains(e.target as Node)) {
-        setSitePopoverOpen(false);
-        void window.oblako.toggleSitePopover();
-      }
-    };
-    document.addEventListener('mousedown', onOutsideMouseDown, true);
-    return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
-  }, [sitePopoverOpen]);
-
-  useEffect(() => {
-    if (!downloadsPopoverOpen) return;
-    pushDownloadsPopoverBounds();
-    const el = downloadsControlRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(pushDownloadsPopoverBounds);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [downloadsPopoverOpen, toolbarWidth, pushDownloadsPopoverBounds]);
-
-  useEffect(() => {
-    if (!downloadsPopoverOpen) return;
-    const onOutsideMouseDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!downloadsControlRef.current?.contains(target)) {
-        setDownloadsPopoverOpen(false);
-        void window.oblako.closeDownloadsPopover();
-      }
-    };
-    document.addEventListener('mousedown', onOutsideMouseDown, true);
-    return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
-  }, [downloadsPopoverOpen]);
-
-  // Буфер: якорь и клик мимо — ровно та же механика, что у загрузок выше. Наблюдатель нужен и
-  // теперь, когда кнопка перестала появляться-исчезать: её прямоугольник всё равно ездит от
-  // ресайза окна и сворачивания сайдбара.
-  useEffect(() => {
-    if (!clipboardPopoverOpen) return;
-    const el = clipboardControlRef.current;
-    if (!el) return;
-    const push = () => {
-      const r = el.getBoundingClientRect();
-      window.oblako.syncClipboardPopoverBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
-    };
-    push();
-    const ro = new ResizeObserver(push);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [clipboardPopoverOpen, toolbarWidth]);
-
-  useEffect(() => {
-    if (!clipboardPopoverOpen) return;
-    const onOutsideMouseDown = (e: MouseEvent) => {
-      if (!clipboardControlRef.current?.contains(e.target as Node)) {
-        setClipboardPopoverOpen(false);
-        void window.oblako.toggleClipboardPopover();
-      }
-    };
-    document.addEventListener('mousedown', onOutsideMouseDown, true);
-    return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
-  }, [clipboardPopoverOpen]);
 
   // ── Заход 5 (кардинальный фикс): закрытие БЕЗ blur ──────────────────────────────────────────
   // blur омнибокса — НЕ триггер закрытия (по образцу FindBar/поповера/AI-панели, см. BACKLOG.md:
@@ -647,29 +608,13 @@ export default function Toolbar({
 
   useEffect(() => window.oblako.onPasswordPopoverClosed(() => setPasswordPopoverOpen(false)), []);
 
+  // ⚠️ Якорь и клик мимо держит useAnchoredPopover; здесь остаётся ровно то, чего у соседей нет:
+  // СОДЕРЖИМОЕ. Индикатор мог смениться, пока поповер открыт (другое поле, другой аккаунт), и
+  // тогда ему нужно новое состояние — иначе он показывал бы прошлое.
   useEffect(() => {
-    if (!passwordPopoverOpen) return;
-    pushPasswordPopoverBounds();
-    if (passwordIndicator) void window.oblako.showPasswordPopover(passwordIndicator);
-    const el = passwordControlRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(pushPasswordPopoverBounds);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [passwordPopoverOpen, passwordIndicator, toolbarWidth, pushPasswordPopoverBounds]);
-
-  useEffect(() => {
-    if (!passwordPopoverOpen) return;
-    const onOutsideMouseDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!passwordControlRef.current?.contains(target)) {
-        setPasswordPopoverOpen(false);
-        void window.oblako.closePasswordPopover();
-      }
-    };
-    document.addEventListener('mousedown', onOutsideMouseDown, true);
-    return () => document.removeEventListener('mousedown', onOutsideMouseDown, true);
-  }, [passwordPopoverOpen]);
+    if (!passwordPopoverOpen || !passwordIndicator) return;
+    void window.oblako.showPasswordPopover(passwordIndicator);
+  }, [passwordPopoverOpen, passwordIndicator]);
 
   // (2) Реальный OS-фокус ушёл на контент активной вкладки (ДРУГОЙ webContents — клик мышью по
   // странице) — main шлёт это из TabManager.wirePageEvents::wc.on('focus'), см. shared/ipc.ts::
