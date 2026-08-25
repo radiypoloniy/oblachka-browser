@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { createPortal } from 'react-dom';
-import { Copy, Check, ChevronDown, KeyRound, Loader2, MoreHorizontal } from 'lucide-react';
+import { Copy, Check, KeyRound, Loader2, MoreHorizontal } from 'lucide-react';
 // ⚠️ Значки, которые человек видит каждую минуту, — свои (штрих плюс тело, см. glyphs.tsx).
 // Остальное остаётся на lucide: в глубине интерфейса характер набора никто не заметит, а
 // перерисовка всего означала бы правку импортов в шести десятках файлов ради того же результата.
@@ -8,7 +7,7 @@ import { ShieldGlyph, StarGlyph } from './glyphs';
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { composeSuggestions, looksLikeAddress } from '../../shared/suggestList';
-import { SEARCH_ENGINES, getSearchEngine, isSearchResultUrl } from '../../shared/searchEngines';
+import { getSearchEngine, isSearchResultUrl } from '../../shared/searchEngines';
 import { omniField, ISLAND_HEIGHT } from '../styles/island';
 import { CHROME_OVERLAY_PX } from '../../shared/chromeGround';
 import { glyph } from '../styles/system';
@@ -23,6 +22,7 @@ import { useDownloadFlight } from './toolbar/useDownloadFlight';
 import { useEngineMenu } from './toolbar/useEngineMenu';
 import { NavCluster } from './toolbar/NavCluster';
 import { RightCluster } from './toolbar/RightCluster';
+import { EngineCapsule } from './toolbar/EngineCapsule';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -1561,70 +1561,19 @@ export default function Toolbar({
                 окне омнибокс уже узкий (VPN-режим 'short' даёт ~278px) — полное имя туда не влезает
                 и вылезает за скруглённый край пилюли, поэтому ниже CAPSULE_FULL_THRESHOLD показываем
                 только первую букву названия. */}
-            {isHub && capsuleMode !== 'hidden' && (
-              <button
-                ref={engineBtnRef}
-                title={`Поисковик: ${getSearchEngine(searchEngineId).name}`}
-                onClick={() => setEngineMenuOpen((v) => !v)}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4, flex: 'none',
-                  border: 'none', cursor: 'default', padding: capsuleMode === 'full' ? '4px 8px' : '4px 6px',
-                  borderRadius: 'var(--radius-sm)', background: 'var(--surface-hover)',
-                  color: 'var(--text-muted)', fontSize: 'var(--fs-xs)', fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {capsuleMode === 'full'
-                  ? getSearchEngine(searchEngineId).name
-                  : getSearchEngine(searchEngineId).name.charAt(0)}
-                <ChevronDown {...glyph(12)} />
-              </button>
+            {isHub && (
+              <EngineCapsule
+                mode={capsuleMode}
+                engineId={searchEngineId}
+                open={engineMenuOpen}
+                onToggle={() => setEngineMenuOpen((v) => !v)}
+                onPick={pickEngine}
+                btnRef={engineBtnRef}
+              />
             )}
           </div>
         </div>
 
-        {/* Меню выбора поисковика — портал в body (та же техника, что у дропдауна подсказок),
-            прозрачный оверлей на весь экран закрывает по клику мимо, сам список — поверх него. */}
-        {isHub && engineMenuOpen && (() => {
-          const btnRect = engineBtnRef.current?.getBoundingClientRect();
-          if (!btnRect) return null;
-          return createPortal(
-            <>
-              <div
-                onClick={() => setEngineMenuOpen(false)}
-                style={{ position: 'fixed', inset: 0, zIndex: 9000 }}
-              />
-              <div style={{
-                position: 'fixed', top: btnRect.bottom + 6, left: btnRect.right - 140,
-                width: 140, zIndex: 9001,
-                background: 'var(--surface-solid)',
-                borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)',
-                border: '1px solid var(--glass-edge)',
-                overflow: 'hidden', padding: 4,
-              }}>
-                {SEARCH_ENGINES.map((engine) => (
-                  <div
-                    key={engine.id}
-                    onClick={() => pickEngine(engine.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '7px 10px', borderRadius: 'var(--radius-sm)', cursor: 'default',
-                      fontSize: 'var(--fs-sm)',
-                      color: engine.id === searchEngineId ? 'var(--text-strong)' : 'var(--text-body)',
-                      fontWeight: engine.id === searchEngineId ? 600 : 400,
-                      background: engine.id === searchEngineId ? 'var(--surface-sunken)' : 'transparent',
-                    }}
-                    onMouseEnter={(e) => { if (engine.id !== searchEngineId) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                    onMouseLeave={(e) => { if (engine.id !== searchEngineId) e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    {engine.name}
-                  </div>
-                ))}
-              </div>
-            </>,
-            document.body,
-          );
-        })()}
       </div>
 
       <RightCluster
