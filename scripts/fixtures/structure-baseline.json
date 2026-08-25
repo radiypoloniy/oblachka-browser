@@ -185,12 +185,6 @@
     "effects": 3,
     "ipc": 3
   },
-  "src/components/settings/AiSection.tsx": {
-    "lines": 521,
-    "fn": 93,
-    "effects": 1,
-    "ipc": 27
-  },
   "src/components/settings/AppearanceSection.tsx": {
     "lines": 715,
     "fn": 498,
