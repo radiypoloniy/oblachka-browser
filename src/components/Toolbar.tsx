@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 // ⚠️ Значки, которые человек видит каждую минуту, — свои (штрих плюс тело, см. glyphs.tsx).
 // Остальное остаётся на lucide: в глубине интерфейса характер набора никто не заметит, а
 // перерисовка всего означала бы правку импортов в шести десятках файлов ради того же результата.
-import { ShieldGlyph } from './glyphs';
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { composeSuggestions, looksLikeAddress } from '../../shared/suggestList';
@@ -15,13 +14,14 @@ import { useClipboardCount } from './toolbar/useClipboardCount';
 import { useBookmarked } from './toolbar/useBookmarked';
 import { useOmniboxGeometry } from './toolbar/useOmniboxGeometry';
 import { useAnchoredPopover } from './toolbar/useAnchoredPopover';
-import { useProfileBadge, profileHint } from './toolbar/useProfileBadge';
+import { useProfileBadge } from './toolbar/useProfileBadge';
 import { useDownloadFlight } from './toolbar/useDownloadFlight';
 import { useEngineMenu } from './toolbar/useEngineMenu';
 import { NavCluster } from './toolbar/NavCluster';
 import { RightCluster } from './toolbar/RightCluster';
 import { EngineCapsule } from './toolbar/EngineCapsule';
 import { PageActions } from './toolbar/PageActions';
+import { ShieldButton } from './toolbar/ShieldButton';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -1303,48 +1303,14 @@ export default function Toolbar({
             display: 'flex', alignItems: 'center', gap: 8, height: ISLAND_HEIGHT,
             padding: '0 12px', borderRadius: 'var(--radius-pill)',
           }}>
-            {/* ⚠️ Замок — КНОПКА, а не украшение: по нему открывается карточка сайта (соединение,
-                разрешения, заблокированные трекеры, «вы это уже читали» — см. SitePopoverManager.ts).
-                На хабе и в приватной вкладке остаётся прежний неактивный значок: там нет сайта,
-                про который можно что-то рассказать. */}
-            <button
-              ref={siteControlRef}
-              title={profileHint(profile, vpnOn)}
-              onClick={toggleSitePopover}
-              style={{
-                border: 'none', background: sitePopoverOpen ? 'var(--accent-soft)' : 'transparent',
-                cursor: 'default', padding: 3, borderRadius: 'var(--radius-sm)',
-                display: 'inline-flex', flex: 'none', position: 'relative',
-                // ⚠️ Зелёная ЗАЛИВКА щита = VPN поднят. Функциональный зелёный по цветовому закону
-                // (--dot-vpn), и ровно тот же приём, что был у пилюли «Защита», — просьба была
-                // именно про заливку, а не про точку рядом. Открытый поповер перебивает акцентом:
-                // это состояние интерфейса, а не состояние защиты.
-                color: sitePopoverOpen ? 'var(--accent)' : vpnOn ? 'var(--dot-vpn)' : 'var(--text-faint)',
-              }}
-            >
-              {/* ⚠️ Щит вместо замка, и это не косметика. Кнопка отвечает на вопрос «что защищает
-                  меня прямо сейчас» — соединение, вырезанные трекеры, VPN, — а замок обещает
-                  только первое. Раньше на хабе и в инкогнито здесь стояла НЕКЛИКАБЕЛЬНАЯ картинка;
-                  теперь кнопка живая всегда, иначе до VPN нельзя было бы добраться с новой
-                  вкладки — а включают его чаще всего именно оттуда. */}
-              <ShieldGlyph size={14} filled={vpnOn && !sitePopoverOpen} />
-              {/* ⚠️ Точка профиля — вместо полосы во всю ширину окна, которая была уродлива и
-                  занимала строку ради одного факта. Индикация нужна, но её место здесь: у щита,
-                  где и так собрано «что защищает меня прямо сейчас». Показывается только когда
-                  профиль НЕ основной — иначе это вечная метка ни о чём.
-                  ⚠️ Профиль ждёт VPN — точка становится предупреждающей: цвет несёт статус
-                  (по цветовому закону), а не украшение. */}
-              {profile && !profile.isDefault && (
-                <span
-                  style={{
-                    position: 'absolute', right: 0, bottom: 0,
-                    width: 7, height: 7, borderRadius: 'var(--radius-pill)',
-                    background: profile.strict && !vpnOn ? 'var(--warning-500)' : `var(--tile-${profile.color})`,
-                    boxShadow: '0 0 0 1.5px var(--surface)',
-                  }}
-                />
-              )}
-            </button>
+            {/* Щит — вход в карточку сайта (см. toolbar/ShieldButton.tsx). */}
+            <ShieldButton
+              btnRef={siteControlRef}
+              vpnOn={vpnOn}
+              popoverOpen={sitePopoverOpen}
+              profile={profile}
+              onToggle={toggleSitePopover}
+            />
             <input
               ref={inputRef}
               value={value}
