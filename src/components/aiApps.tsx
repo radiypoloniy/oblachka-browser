@@ -18,7 +18,7 @@ import { CSS } from '@dnd-kit/utilities'
 // логика, живёт в shared под проверкой (scripts/calc-check.mjs): ломается она на реальных случаях
 // («50 + 10 %», «1 234,56 ₽»), а не на глаз.
 import { computeCalc, fmtCalc, calcDisp, resolvePercent, parsePastedNumber } from '../../shared/calc'
-import { altitude, ALTITUDE, DISPLAY, CAPS } from '../styles/system'
+import { altitude, ALTITUDE, DISPLAY, CAPS, grain } from '../styles/system'
 import { WALLPAPER_PRESETS } from '../newtab/settings'
 import { allMeshes, findMesh, subscribeMeshes, meshCss } from '../newtab/gradients'
 import type { CalcOp } from '../../shared/calc'
@@ -33,6 +33,8 @@ import { AppGlyph, hasGlyph } from './appGlyphs'
 // одинаково везде, а пилюля-кнопка означает действие и для состояния не годится.
 import Toggle from './Toggle'
 import ZonesApp from './ZonesApp'
+// Значок погоды и словесное состояние — те же, что на столе (см. weatherIcon.tsx).
+import { WeatherIcon, wmoText, weatherSkin } from './desktop/weather'
 
 // Форма ответа ai-panel:currency-rates (electron/CurrencyRates.ts) — зеркалим локально,
 // тот же приём, что у ChatOutcome в aipanel.tsx (ad-hoc канал, не через shared/ipc.ts).
@@ -694,7 +696,7 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
           }}
           widgets={widgets}
           weatherCity={weatherCity}
-          onWallpaper={wallpaper !== 'none'}
+          labelTone={wallpaper === 'none' ? 'theme' : wallpaperIsLight(wallpaper) ? 'dark' : 'light'}
         />
       )}
 
@@ -1008,8 +1010,11 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
 }
 
 // ── Домашний экран: виджеты + сетка иконок ───────────────────────────────────────────────────
-// onWallpaper: подписи иконок белые с тенью только ПОВЕРХ обоев; на «Без обоев» (белый остров)
-// они переходят на цвета темы — иначе нечитаемы.
+// labelTone: чем красить подписи иконок.
+// ⚠️ Раньше решение принималось по факту «обои есть» — и белая подпись ложилась в том числе на
+// Горчицу, Лайм, Небо, Персик, Жемчуг и три Бумаги, где её не прочитать. Светлоту объявляет сам
+// пресет (флаг light в WALLPAPER_PRESETS), панель просто перестала это игнорировать; живой
+// градиент и своя картинка светлоты не объявляют — там остаётся белая с тенью.
 // Иконка приложения: lucide-глиф либо первая буква названия (пользовательские веб-приложения).
 // Плитки приложений.
 //
@@ -1028,22 +1033,26 @@ const SQUIRCLE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' v
 // силуэт. Маски Phosphor остались только запасным путём для приложений без своего глифа.
 const PHOSPHOR_APPS = new Set(['calc', 'convert', 'timer', 'color', 'kitten', 'counter'])
 
-// Цвет глифа для СВЕТЛЫХ плиток (см. --appicon-counter/--appicon-color в tokens/apps.css):
-// на белой поверхности белый силуэт, разумеется, не виден, и цвет берёт на себя он.
+// Краска глифа там, где светлая не годится. ⚠️ Ходит ПАРОЙ к плитке, как и везде в системе:
+// на горчице, небе и бумаге белый силуэт даёт меньше 3:1 — то же правило, что у fillInk на
+// плитках стола и у краски погоды.
 const GLYPH_TINT: Record<string, string> = {
-  counter: '#007AFF', // systemBlue
-  color: '#FF2D55',   // systemPink — фиолетового в системе нет, см. --tile-* в colors.css
+  counter: 'var(--appicon-glyph-dark)',
+  kitten: 'var(--appicon-glyph-dark)',
+  webcustom: 'var(--appicon-glyph-dark)',
+  // Бумажная плитка: цвет целиком берёт на себя глиф. Страсть из плакатного набора —
+  // фиолетового в системе нет, см. --tile-* в colors.css.
+  color: 'var(--poster-passion)',
   // ⚠️ «Пояса» — плитка ТЁМНАЯ, а не светлая, но глиф на ней всё равно цветной: янтарное
-  // солнце на ночном небе. Это единственная такая пара в наборе, и ради неё LIGHT_TILES ниже
+  // солнце на ночном небе. Единственная такая пара в наборе, ради неё PAPER_TILES ниже
   // перечисляется руками, а не выводится из ключей этой таблицы.
   zones: '#F5B544',   // тёплый янтарь
 }
 
-// Светлым плиткам нужна собственная кромка: на белом фоне светлые блики не работают, а без
-// границы иконка сливается со светлыми обоями.
-// ⚠️ Список ЯВНЫЙ, а не производный от GLYPH_TINT: цветной глиф бывает и на тёмной плитке
-// («Пояса»), и рисовать ей светлую кромку значит испортить ровно то, ради чего она тёмная.
-const LIGHT_TILES = new Set(['counter', 'color'])
+// БУМАЖНЫМ плиткам нужна собственная кромка: на светлых обоях они иначе сливаются с фоном.
+// ⚠️ Список явный, а не производный от GLYPH_TINT: тёмный глиф есть и у горчицы с небом, но
+// кромка им не нужна — они сами по себе краска.
+const PAPER_TILES = new Set(['color', 'webcustom'])
 
 export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
   app: AppDef
@@ -1057,7 +1066,7 @@ export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
   const Icon = app.icon
   const maskFile = PHOSPHOR_APPS.has(app.id) ? app.id : app.kind === 'web' ? 'web' : null
   const glyphColor = GLYPH_TINT[app.id] ?? 'var(--appicon-glyph)'
-  const isLightTile = LIGHT_TILES.has(app.id)
+  const paper = PAPER_TILES.has(app.id)
   const squircle: React.CSSProperties = {
     WebkitMaskImage: `url("${SQUIRCLE}")`,
     maskImage: `url("${SQUIRCLE}")`,
@@ -1073,32 +1082,24 @@ export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
     // форму суперэллипса, а не прямоугольника).
     <span style={{
       display: 'inline-flex', width: size, height: size, flexShrink: 0, position: 'relative',
-      filter: shadow ? 'drop-shadow(0 1px 2px rgba(12,14,24,0.28)) drop-shadow(0 7px 14px rgba(12,14,24,0.30))' : undefined,
+      filter: shadow ? 'drop-shadow(0 2px 5px rgba(12,14,24,0.22))' : undefined,
     }}>
       <span style={{
         ...squircle,
         position: 'relative', width: size, height: size,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: app.gradient,
+        // Кромка ВНУТРЕННЕЙ тенью, а не border: border лёг бы поверх маски прямоугольником.
+        boxShadow: paper ? 'inset 0 0 0 1px rgba(20,20,15,0.12)' : undefined,
       }}>
-        {/* Слои света. Порядок и смысл те же, что у иконок iOS: мягкая засветка сверху-слева
-            (откуда «падает свет»), тонкая светлая кромка по верхнему краю и лёгкое затемнение
-            к низу. Каждый по отдельности почти незаметен — вместе они и дают объём. */}
-        <span style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          background: isLightTile
-            ? 'radial-gradient(120% 90% at 28% 0%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 60%)'
-            : 'radial-gradient(130% 100% at 30% -10%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.06) 55%, rgba(255,255,255,0) 78%)',
-        }} />
-        <span style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          background: isLightTile
-            ? 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(0,0,0,0.05) 100%)'
-            : 'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 12%, rgba(0,0,0,0) 78%, rgba(0,0,0,0.10) 100%)',
-        }} />
+        {/* ⚠️ Слоёв света здесь БОЛЬШЕ НЕТ. Их было три (радиальная засветка сверху-слева,
+            светлая кромка по верху, затемнение к низу) — язык иконок iOS, который и читался как
+            «переливы». Материал теперь даёт ЗЕРНО: тот же рецепт, что на плитках стола и на
+            земле окна, — плоская краска плюс фактура, а не имитация освещения. */}
+        <span aria-hidden style={{ ...grain, borderRadius: 'inherit' }} />
 
         {hasGlyph(app.id) || (app.kind === 'web' && hasGlyph('web')) ? (
-          <span style={{ position: 'relative', display: 'inline-flex', filter: isLightTile ? undefined : 'drop-shadow(0 1px 1px rgba(0,0,0,0.18))' }}>
+          <span style={{ position: 'relative', display: 'inline-flex' }}>
             <AppGlyph id={hasGlyph(app.id) ? app.id : 'web'} size={iconSize} color={glyphColor} />
           </span>
         ) : maskFile ? (
@@ -1110,16 +1111,13 @@ export function AppIconBadge({ app, size, radius, iconSize, shadow }: {
             WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
             WebkitMaskPosition: 'center', maskPosition: 'center',
             WebkitMaskSize: 'contain', maskSize: 'contain',
-            // Тень под глифом — он должен лежать НА поверхности, а не быть в неё впечатан.
-            filter: isLightTile ? undefined : 'drop-shadow(0 1px 1px rgba(0,0,0,0.22))',
           }} />
         ) : Icon !== null ? (
-          <Icon size={iconSize} strokeWidth={2.4} style={{ color: 'var(--appicon-glyph)', position: 'relative' }} />
+          <Icon size={iconSize} strokeWidth={2.4} style={{ color: glyphColor, position: 'relative' }} />
         ) : (
           <span style={{
             fontSize: Math.round(iconSize * 0.82), fontWeight: 600, lineHeight: 1,
-            color: 'var(--appicon-glyph)', position: 'relative',
-            textShadow: '0 1px 1px rgba(0,0,0,0.22)',
+            color: glyphColor, position: 'relative',
           }}>
             {app.label.charAt(0).toUpperCase()}
           </span>
@@ -1146,10 +1144,12 @@ const GRID_COLUMNS = 4
 // Иконка приложения. Вынесена отдельно намеренно: ровно ею же рисуется призрак под курсором
 // (DragOverlay), а призрак, нарисованный «похоже, но не тем же», — классический источник
 // расхождений вида «в руке одно, приземлилось другое».
-function AppIcon({ app, opened, onWallpaper, dragging, onOpen, onMenu }: {
+type LabelTone = 'theme' | 'light' | 'dark'
+
+function AppIcon({ app, opened, labelTone, dragging, onOpen, onMenu }: {
   app: AppDef
   opened: boolean
-  onWallpaper: boolean
+  labelTone: LabelTone
   dragging?: boolean
   onOpen?: () => void
   onMenu?: (x: number, y: number) => void
@@ -1181,8 +1181,9 @@ function AppIcon({ app, opened, onWallpaper, dragging, onOpen, onMenu }: {
       <span style={{
         maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         fontSize: 'var(--fs-xs)', fontWeight: 500,
-        color: onWallpaper ? 'var(--app-label)' : 'var(--text-body)',
-        textShadow: onWallpaper ? 'var(--app-label-shadow)' : undefined,
+        color: labelTone === 'light' ? 'var(--app-label)'
+          : labelTone === 'dark' ? 'var(--app-label-dark)' : 'var(--text-body)',
+        textShadow: labelTone === 'light' ? 'var(--app-label-shadow)' : undefined,
       }}>
         {app.label}
       </span>
@@ -1192,10 +1193,10 @@ function AppIcon({ app, opened, onWallpaper, dragging, onOpen, onMenu }: {
 
 // DnD-обёртка иконки — ровно та же, что у ячеек закреплённых вкладок в сайдбаре.
 // Исходная позиция становится прозрачной, пока идёт жест: рисует её призрак.
-function SortableAppIcon({ app, opened, onWallpaper, onOpen, onMenu }: {
+function SortableAppIcon({ app, opened, labelTone, onOpen, onMenu }: {
   app: AppDef
   opened: boolean
-  onWallpaper: boolean
+  labelTone: LabelTone
   onOpen: () => void
   onMenu: (x: number, y: number) => void
 }) {
@@ -1211,7 +1212,7 @@ function SortableAppIcon({ app, opened, onWallpaper, onOpen, onMenu }: {
       {...attributes}
       {...listeners}
     >
-      <AppIcon app={app} opened={opened} onWallpaper={onWallpaper} onOpen={onOpen} onMenu={onMenu} />
+      <AppIcon app={app} opened={opened} labelTone={labelTone} onOpen={onOpen} onMenu={onMenu} />
     </div>
   )
 }
@@ -1287,7 +1288,7 @@ function IconMenu({ app, x, y, opened, onOpen, onClose, onHide, onRemove, onDism
   )
 }
 
-function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widgets, weatherCity, onWallpaper }: {
+function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widgets, weatherCity, labelTone }: {
   apps: AppDef[]
   openApps: AppId[]
   onOpen: (id: AppId) => void
@@ -1297,7 +1298,7 @@ function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widgets, weat
   onIconMenu: (app: AppDef, x: number, y: number) => void
   widgets: WidgetsConfig
   weatherCity: string
-  onWallpaper: boolean
+  labelTone: LabelTone
 }) {
   // Тащим — призрак под курсором (DragOverlay), соседи расступаются сами (rectSortingStrategy).
   // ⚠️ activationConstraint.distance обязателен: без него первое же нажатие на иконку считалось бы
@@ -1362,7 +1363,7 @@ function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widgets, weat
                 key={app.id}
                 app={app}
                 opened={openApps.includes(app.id)}
-                onWallpaper={onWallpaper}
+                labelTone={labelTone}
                 onOpen={() => onOpen(app.id)}
                 onMenu={(x, y) => onIconMenu(app, x, y)}
               />
@@ -1372,7 +1373,7 @@ function HomeGrid({ apps, openApps, onOpen, onReorder, onIconMenu, widgets, weat
         {/* Призрак под курсором — иначе иконка «прыгает» на место лишь в конце жеста, и человек
             не понимает, тащит он что-то или нет (ровно эта жалоба и была). */}
         <DragOverlay dropAnimation={null}>
-          {dragged && <AppIcon app={dragged} opened={false} onWallpaper={onWallpaper} dragging />}
+          {dragged && <AppIcon app={dragged} opened={false} labelTone={labelTone} dragging />}
         </DragOverlay>
       </DndContext>
     </div>
@@ -1389,20 +1390,39 @@ const widgetCardStyle: React.CSSProperties = {
   padding: '10px 12px', flexShrink: 0,
 }
 
-// WMO weather code → человекочитаемое состояние. Диапазоны из документации Open-Meteo.
-function describeWeather(code: number): { icon: string; text: string } {
-  if (code === 0) return { icon: '☀️', text: 'Ясно' }
-  if (code === 1) return { icon: '🌤️', text: 'В основном ясно' }
-  if (code === 2) return { icon: '⛅', text: 'Переменная облачность' }
-  if (code === 3) return { icon: '☁️', text: 'Пасмурно' }
-  if (code === 45 || code === 48) return { icon: '🌫️', text: 'Туман' }
-  if (code >= 51 && code <= 57) return { icon: '🌦️', text: 'Морось' }
-  if (code >= 61 && code <= 67) return { icon: '🌧️', text: 'Дождь' }
-  if (code >= 71 && code <= 77) return { icon: '🌨️', text: 'Снег' }
-  if (code >= 80 && code <= 82) return { icon: '🌧️', text: 'Ливень' }
-  if (code === 85 || code === 86) return { icon: '🌨️', text: 'Снегопад' }
-  if (code >= 95) return { icon: '⛈️', text: 'Гроза' }
-  return { icon: '🌡️', text: '' }
+/**
+ * Плитка виджета панели.
+ *
+ * ⚠️ Тот же материал, что на столе: плоская краска плюс зерно. До этой правки виджеты панели
+ * были стеклянными строками с эмодзи вместо значка — третий способ рисовать те же данные,
+ * которые стол уже показывает капсой и дисплейной гарнитурой.
+ */
+function PanelTile({ bg, ink, children }: {
+  bg: string
+  ink: string
+  children: React.ReactNode
+}) {
+  return (
+    <div style={{
+      position: 'relative', overflow: 'hidden', flexShrink: 0,
+      padding: '10px 12px', borderRadius: 'var(--radius-card)',
+      background: bg, color: ink,
+      boxShadow: 'var(--shadow-card)',
+    }}>
+      <span aria-hidden style={grain} />
+      <div style={{ position: 'relative' }}>{children}</div>
+    </div>
+  )
+}
+
+/** Подпись плитки — моноширинная капса, как на столе (TileCaption). */
+function PanelCaption({ children }: { children: React.ReactNode }) {
+  return <div style={{ ...CAPS, color: 'inherit', opacity: 0.72 }}>{children}</div>
+}
+
+/** Ключевое число — дисплейной гарнитурой с табличными цифрами (TileValue). */
+function PanelValue({ children, size }: { children: React.ReactNode; size: number }) {
+  return <span style={{ ...DISPLAY, fontSize: size, fontWeight: 600, lineHeight: 1 }}>{children}</span>
 }
 
 const fmtTemp = (t: number): string => `${t > 0 ? '+' : ''}${Math.round(t)}°`
@@ -1425,9 +1445,9 @@ function WeatherWidget({ city }: { city: string }) {
     return () => { cancelled = true; clearInterval(id) }
   }, [city, reloadKey])
 
-  return (
-    <div style={widgetCardStyle}>
-      {data === null ? (
+  if (data === null) {
+    return (
+      <div style={widgetCardStyle}>
         <span style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           fontSize: 'var(--fs-sm)', color: 'var(--text-faint)',
@@ -1435,46 +1455,53 @@ function WeatherWidget({ city }: { city: string }) {
           <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
           Погода…
         </span>
-      ) : !data.ok ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-            Погода недоступна: {data.error}
-          </span>
-          <button
-            onClick={() => setReloadKey((k) => k + 1)}
-            style={{
-              padding: '4px 10px', borderRadius: 'var(--radius-chip)', border: 'none',
-              background: 'var(--surface-sunken)', color: 'var(--text-muted)',
-              fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer', flexShrink: 0,
-            }}
-          >
-            Повторить
-          </button>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 26, lineHeight: 1 }}>
-            {describeWeather(data.weatherCode ?? -1).icon}
-          </span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {data.city}
-            </div>
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-              {describeWeather(data.weatherCode ?? -1).text}
+      </div>
+    )
+  }
+
+  if (!data.ok) {
+    return (
+      <div style={{ ...widgetCardStyle, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+          Погода недоступна: {data.error}
+        </span>
+        <button
+          onClick={() => setReloadKey((k) => k + 1)}
+          style={{
+            padding: '4px 10px', borderRadius: 'var(--radius-chip)', border: 'none',
+            background: 'var(--surface-sunken)', color: 'var(--text-muted)',
+            fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer', flexShrink: 0,
+          }}
+        >
+          Повторить
+        </button>
+      </div>
+    )
+  }
+
+  const code = data.weatherCode ?? 0
+  // ⚠️ Время суток панели никто не присылает — берём его из самой погоды: ночью Open-Meteo
+  // отдаёт коды с ночными значками, а для краски достаточно часа по месту.
+  const hour = new Date().getHours()
+  const isDay = hour >= 7 && hour <= 20
+  const skin = weatherSkin(code, isDay)
+
+  return (
+    <PanelTile bg={skin.bg} ink={skin.ink}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <PanelCaption>{data.city}</PanelCaption>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+            <PanelValue size={30}>{data.tempC !== undefined ? fmtTemp(data.tempC) : '—'}</PanelValue>
+            <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.85, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {wmoText(code)}
               {data.windKmh !== undefined ? ` · ветер ${Math.round(data.windKmh)} км/ч` : ''}
-            </div>
+            </span>
           </div>
-          {/* Тот же язык, что на столе: ключевое число — дисплейной гарнитурой (см. DISPLAY). */}
-          <span style={{ ...DISPLAY, fontSize: 24, color: 'var(--text-strong)', flexShrink: 0 }}>
-            {data.tempC !== undefined ? fmtTemp(data.tempC) : ''}
-          </span>
         </div>
-      )}
-    </div>
+        <WeatherIcon code={code} day={isDay} size={40} />
+      </div>
+    </PanelTile>
   )
 }
 
@@ -1502,17 +1529,9 @@ function CurrencyWidget() {
     load()
   }, [])
 
-  return (
-    <div style={{ ...widgetCardStyle, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ flex: 1, fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-muted)' }}>
-          Курс ЦБ
-        </span>
-        {rates !== null && rates.date !== '' && (
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{rates.date}</span>
-        )}
-      </div>
-      {rates === null && error === null && (
+  if (rates === null && error === null) {
+    return (
+      <div style={widgetCardStyle}>
         <span style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           fontSize: 'var(--fs-sm)', color: 'var(--text-faint)',
@@ -1520,39 +1539,52 @@ function CurrencyWidget() {
           <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
           Загружаю…
         </span>
-      )}
-      {error !== null && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-            Курсы недоступны: {error}
-          </span>
-          <button
-            onClick={load}
-            style={{
-              padding: '4px 10px', borderRadius: 'var(--radius-chip)', border: 'none',
-              background: 'var(--surface-sunken)', color: 'var(--text-muted)',
-              fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer', flexShrink: 0,
-            }}
-          >
-            Повторить
-          </button>
-        </div>
-      )}
-      {rates !== null && WIDGET_CURRENCIES.map(({ code, sym }) => {
-        const value = rates.rates[code]
-        if (value === undefined) return null
-        return (
-          <div key={code} style={{ display: 'flex', alignItems: 'center' }}>
-            <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-              {sym} {code}
+      </div>
+    )
+  }
+
+  if (error !== null) {
+    return (
+      <div style={{ ...widgetCardStyle, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+          Курсы недоступны: {error}
+        </span>
+        <button
+          onClick={load}
+          style={{
+            padding: '4px 10px', borderRadius: 'var(--radius-chip)', border: 'none',
+            background: 'var(--surface-sunken)', color: 'var(--text-muted)',
+            fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer', flexShrink: 0,
+          }}
+        >
+          Повторить
+        </button>
+      </div>
+    )
+  }
+
+  // ⚠️ Бумага, а не краска: ярких плоскостей на экране и так хватает — обои плюс погода. То же
+  // решение, что у плитки курсов на столе (там она идёт за темой, а не за цветом).
+  return (
+    <PanelTile bg="var(--wallpaper-paper)" ink="var(--on-poster-dark)">
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <PanelCaption>Курс ЦБ</PanelCaption>
+        <span style={{ flex: 1 }} />
+        {rates !== null && rates.date !== '' && <PanelCaption>{rates.date}</PanelCaption>}
+      </div>
+      <div style={{ display: 'flex', gap: 18, marginTop: 6, flexWrap: 'wrap' }}>
+        {rates !== null && WIDGET_CURRENCIES.map(({ code, sym }) => {
+          const value = rates.rates[code]
+          if (value === undefined) return null
+          return (
+            <span key={code} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.7 }}>{sym}</span>
+              <PanelValue size={22}>{value.toFixed(2).replace('.', ',')}</PanelValue>
             </span>
-            <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', fontVariantNumeric: 'tabular-nums' }}>
-              {value.toFixed(2).replace('.', ',')} ₽
-            </span>
-          </div>
-        )
-      })}
-    </div>
+          )
+        })}
+      </div>
+    </PanelTile>
   )
 }
 
