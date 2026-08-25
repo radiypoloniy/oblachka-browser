@@ -1,15 +1,15 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Check, ChevronDown, KeyRound, Loader2, Clipboard, MoreHorizontal } from 'lucide-react';
+import { Copy, Check, ChevronDown, KeyRound, Loader2, MoreHorizontal } from 'lucide-react';
 // ⚠️ Значки, которые человек видит каждую минуту, — свои (штрих плюс тело, см. glyphs.tsx).
 // Остальное остаётся на lucide: в глубине интерфейса характер набора никто не заметит, а
 // перерисовка всего означала бы правку импортов в шести десятках файлов ради того же результата.
-import { ShieldGlyph, StarGlyph, SparkGlyph, DownloadGlyph } from './glyphs';
+import { ShieldGlyph, StarGlyph } from './glyphs';
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { composeSuggestions, looksLikeAddress } from '../../shared/suggestList';
 import { SEARCH_ENGINES, getSearchEngine, isSearchResultUrl } from '../../shared/searchEngines';
-import { chromeCluster, omniField, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
+import { omniField, ISLAND_HEIGHT } from '../styles/island';
 import { CHROME_OVERLAY_PX } from '../../shared/chromeGround';
 import { glyph } from '../styles/system';
 // Жизненный цикл и разговор с main — в хуках рядом (docs/architecture-code.md, §Хук).
@@ -20,9 +20,9 @@ import { useOmniboxGeometry } from './toolbar/useOmniboxGeometry';
 import { useAnchoredPopover } from './toolbar/useAnchoredPopover';
 import { useProfileBadge, profileHint } from './toolbar/useProfileBadge';
 import { useDownloadFlight } from './toolbar/useDownloadFlight';
-import { ProgressRing } from './toolbar/ProgressRing';
 import { useEngineMenu } from './toolbar/useEngineMenu';
 import { NavCluster } from './toolbar/NavCluster';
+import { RightCluster } from './toolbar/RightCluster';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -1627,110 +1627,22 @@ export default function Toolbar({
         })()}
       </div>
 
-      {/* Правая группа. marginLeft:auto прижимает к правому краю flex-контейнера.
-          ⚠️ Кнопки браузера собраны в ОДНУ плашку-остров с ПОСТОЯННЫМ набором, и это главная
-          правка раскладки. Раньше здесь стояла россыпь отдельных островов, половина из которых
-          появлялась и исчезала по состоянию страницы (перевод — только на реальной, буфер —
-          только после первой копии). Кластер от этого менял ширину, а вместе с ним ездил
-          омнибокс — прямо под курсором. Теперь недоступное ГАСНЕТ, оставаясь на месте.
-          Правило, по которому решается «гасить или прятать»: условие про ОКНО прячет (лёгкое
-          окно не получит AI-панель никогда, и место под неё резервировать незачем), условие про
-          СТРАНИЦУ гасит. Тот же приём, что у «Обновить» на хабе. */}
-      <div className="no-drag" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginLeft: 'auto' }}>
-        <div style={chromeCluster()}>
-        {/* Полностраничный перевод (см. PageTranslateManager.ts) — только на реальной странице,
-            на хабе/истории/настройках переводить нечего. idle: приглушённая иконка, как адблок
-            выкл. translating: спиннер, клик игнорируется (та же неактивность по смыслу, что
-            disabled у кнопки «Обновить» на хабе — просто без атрибута disabled, там же логика
-            игнора живёт в PageTranslateManager.ts::togglePageTranslate). translated: подсветка
-            accent-soft — тот же тон, что у открытого поповера. */}
-        {/* ⚠️ Перевод страницы отсюда УЕХАЛ под «⋯» в адресной строке. Правый кластер — про
-            браузер, а перевод относится к конкретной открытой странице; после переезда деление
-            стало объяснимым, а слотов здесь осталось ровно три. */}
-        {/* Плашка-остров остаётся — как у всех кнопок тулбара. Меняется только ТОН: в покое
-            нейтральный значок на обычной плашке, ровно как «назад/вперёд/обновить»; акцент
-            загорается, когда панель открыта, то есть означает состояние, а не важность. */}
-        {!isLightWindow && (
-          <button className="chrome-btn" title="AI-панель" onClick={onToggleAiPanel} style={clusterBtn({ active: aiPanelOpen })}>
-            <SparkGlyph size={18} />
-          </button>
-        )}
-        {/* Буфер скопированного — рядом с загрузками намеренно: это одна группа «что я забрал со
-            страниц».
-            ⚠️ Прежде кнопки не было вовсе, пока буфер пуст («постоянный значок ради изредка
-            нужного инструмента — лишний шум»). Решение перевёрнуто осознанно: шумом оказался как
-            раз значок, ВОЗНИКАЮЩИЙ после первой копии, — он сдвигал весь кластер и омнибокс в
-            произвольный момент работы. Пустой буфер теперь просто гасит кнопку. */}
-        {/* ⚠️ Прогрев на НАВЕДЕНИИ, а не на старте: пока мышь идёт от края кнопки до нажатия,
-            вью успевает построиться, и первый клик перестаёт ждать целый документ. У тех, кто
-            буфером не пользуется, лишнего процесса при этом не появляется вовсе. */}
-        <div ref={clipboardControlRef} style={{ display: 'inline-flex' }}
-          onMouseEnter={() => { if (clipboardCount > 0) window.oblako.prewarmPopover('clipboard'); }}>
-          <button className="chrome-btn"
-            disabled={clipboardCount === 0}
-            title={clipboardCount === 0
-              ? 'Скопированное со страниц — пока пусто'
-              : 'Скопированное со страниц (Ctrl+Shift+B)'}
-            onClick={toggleClipboardPopover}
-            style={clusterBtn({ active: clipboardPopoverOpen, disabled: clipboardCount === 0 })}
-          >
-            <Clipboard {...glyph(18)} />
-          </button>
-        </div>
-        {/* Кнопка загрузок: точка-индикатор когда есть активные загрузки. Иконка нейтральная
-            всегда (заход 3) — акцент не для постоянных/переключаемых состояний, только точка
-            новой активности остаётся акцентной (единичное уведомление, не постоянный статус).
-            Клик открывает поповер с последними загрузками (см. DownloadsPopoverManager.ts), а не
-            раздел целиком: посмотреть только что скачанный файл — самый частый повод сюда нажать,
-            и ради него не должна уезжать открытая страница. Полный список — со дна поповера. */}
-        <div ref={downloadsControlRef} style={{ display: 'inline-flex' }}>
-          <button
-            title="Загрузки"
-            onClick={toggleDownloadsPopover}
-            style={{ ...clusterBtn({ active: downloadsPopoverOpen }), position: 'relative' }}
-          >
-            <DownloadGlyph size={18} style={flying ? { animation: 'oblako-dl-land 520ms var(--ease-out)' } : undefined} />
-
-            {/* ⚠️ Прилетающий файл — единственный момент, когда человеку СООБЩАЮТ, что загрузка
-                вообще началась: у нас нет ни системы тостов, ни полосы загрузок снизу, и раньше
-                о начале скачивания говорила только точка 5×5 в углу кнопки, которую никто не
-                замечал. Летит снизу-слева, со стороны страницы, — оттуда файл и «пришёл».
-                Только transform и opacity: они не трогают раскладку и уходят в композитор. */}
-            {flying && (
-              <>
-                <span
-                  aria-hidden
-                  style={{
-                    position: 'absolute', inset: 0, display: 'flex',
-                    alignItems: 'center', justifyContent: 'center',
-                    color: 'var(--accent)', pointerEvents: 'none', zIndex: 1,
-                    animation: 'oblako-dl-fly 520ms var(--ease-out)',
-                  }}
-                >
-                  <DownloadGlyph size={18} />
-                </span>
-                <span
-                  aria-hidden
-                  style={{
-                    position: 'absolute', inset: 0, borderRadius: '50%',
-                    pointerEvents: 'none',
-                    animation: 'oblako-dl-halo 520ms var(--ease-out) var(--dur-slow)',
-                  }}
-                />
-              </>
-            )}
-
-            {/* Идёт скачивание — дуга прогресса по кругу кнопки. Прежняя статичная точка не
-                отвечала на вопрос «идёт или нет»: она выглядела одинаково и на первом проценте,
-                и на девяноста. Размер неизвестен (totalBytes = 0) — крутится бесконечная дуга,
-                это честнее замершей шкалы. */}
-            {downloadsActive && !downloadsPopoverOpen && (
-              <ProgressRing value={downloadsProgress} />
-            )}
-          </button>
-        </div>
-        </div>
-      </div>
+      <RightCluster
+        isLightWindow={isLightWindow}
+        aiPanelOpen={aiPanelOpen}
+        onToggleAiPanel={onToggleAiPanel}
+        clipboardRef={clipboardControlRef}
+        clipboardCount={clipboardCount}
+        clipboardOpen={clipboardPopoverOpen}
+        onToggleClipboard={toggleClipboardPopover}
+        onHoverClipboard={() => { if (clipboardCount > 0) window.oblako.prewarmPopover('clipboard'); }}
+        downloadsRef={downloadsControlRef}
+        downloadsOpen={downloadsPopoverOpen}
+        onToggleDownloads={toggleDownloadsPopover}
+        flying={flying}
+        downloadsActive={downloadsActive}
+        downloadsProgress={downloadsProgress}
+      />
     </div>
   );
 }
