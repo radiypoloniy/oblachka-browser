@@ -100,8 +100,8 @@ import { initPasswordPopover, showPasswordPopover, closePasswordPopover, syncPas
 import { initAutofillPopover, showAutofillPopover, closeAutofillPopover, syncAutofillPopoverAnchorBounds } from './AutofillPopoverManager';
 import * as autofillOrchestrator from './AutofillOrchestrator';
 import { parseAddressBlob } from './AddressParser';
-import { initDownloadsPopover, closeDownloadsPopover, broadcastDownloads, setDuplicatePrompt, setDuplicateDecisionHandler } from './DownloadsPopoverManager';
-import { initSitePopover, closeSitePopover } from './SitePopoverManager';
+import { initDownloadsPopover, closeDownloadsPopover, broadcastDownloads, setDuplicatePrompt, setDuplicateDecisionHandler, prewarmDownloadsPopover } from './DownloadsPopoverManager';
+import { initSitePopover, closeSitePopover, prewarmSitePopover } from './SitePopoverManager';
 import * as aiKeyStore from './AiKeyStore';
 import * as searxngKeyStore from './SearxngKeyStore';
 import * as vpnKeyStore from './VpnKeyStore';
@@ -174,6 +174,13 @@ const AI_PANEL_PREWARM_DELAY_MS = 1500;
 // бить три прогрева в одну точку старта незачем. Без него первый за сессию жест платил холодную
 // цену целиком — ту самую заметную задержку перед появлением карточки в руке.
 const DROPZONES_PREWARM_DELAY_MS = 2200;
+// Прогрев поповеров, которые открывает сам человек и часто: карточка сайта под замком и список
+// загрузок. ⚠️ Разнесены во времени и идут ПОСЛЕ зон перетаскивания: каждая вью — отдельный
+// рендер-процесс, и три подряд в одну точку старта дали бы ровно тот провал, ради ухода от
+// которого staggered-задержки тут и появились. Поповеры, которые открывает СТРАНИЦА (пароли,
+// разрешения, автозаполнение), остаются ленивыми — их в этом сеансе может не быть вовсе.
+const SITE_POPOVER_PREWARM_DELAY_MS = 2600;
+const DOWNLOADS_POPOVER_PREWARM_DELAY_MS = 3600;
 
 // Изолированные стенды AI-инфраструктурных тестов (node-llama-cpp).
 // OBLAKO_LLAMA_TEST=1 / OBLAKO_TRANSLATE_TEST=1 npm start → вместо боевого окна открывается
@@ -219,11 +226,35 @@ let pendingStartUrl: string | null = null;
 // Ссылка среди аргументов запуска. ⚠️ Берём только http/https: в argv лежат и путь к самому
 // приложению, и ключи Chromium (--user-data-dir и прочие), и принимать оттуда произвольную
 // строку как адрес — значит открывать что попало по чужой команде.
+/**
+ * Лежит ли путь ВНУТРИ самого приложения.
+ *
+ * ⚠️ Заведено по живому случаю, а не «на всякий случай». `node-llama-cpp` перед загрузкой
+ * нативного бинарника проверяет его в отдельном процессе и делает это через
+ * `child_process.fork(__filename)`. В упакованном приложении `fork` берёт `process.execPath`, то
+ * есть запускает ВТОРОЙ ЭКЗЕМПЛЯР Oblako.exe, передав ему путь к своему же `testBindingBinary.js`
+ * аргументом. Замок одного экземпляра пересылает аргументы первому окну — и человек получал
+ * вкладку с исходником библиотеки на каждом запуске браузера.
+ *
+ * ⚠️ Отсекаем по КАТАЛОГУ, а не по расширению: запрет на `.js` лечил бы ровно этот случай и
+ * промахнулся бы на следующем таком же, а открывать собственные внутренности вкладкой у нас нет
+ * причин вообще — что бы там ни лежало.
+ */
+function insideAppBundle(filePath: string): boolean {
+  const resolved = path.resolve(filePath).toLowerCase();
+  const roots = [process.resourcesPath, path.dirname(process.execPath), app.getAppPath()]
+    .filter((r): r is string => typeof r === 'string' && r.length > 0)
+    .map((r) => path.resolve(r).toLowerCase());
+  return roots.some((root) => resolved === root || resolved.startsWith(root + path.sep));
+}
+
 function firstUrlFromArgv(argv: string[]): string | null {
   for (const arg of argv.slice(1)) {
     if (arg.startsWith('-')) continue; // ключи Chromium (--user-data-dir и прочие) адресами не бывают
     if (/^https?:\/\//i.test(arg)) return arg;
     if (/^file:\/\//i.test(arg)) return arg;
+    // Свои же файлы вкладкой не открываем — см. разбор у insideAppBundle.
+    if (insideAppBundle(arg)) continue;
     // ⚠️ И ПУТЬ К ФАЙЛУ ТОЖЕ. Установщик регистрирует за нами .htm/.html, то есть система
     // запускает `Oblako.exe "C:\...\page.html"` — без этой ветки такой запуск не открывал ничего
     // вовсе. Существование файла проверяется внутри, каталоги отсекаются там же: в dev-режиме
@@ -988,6 +1019,14 @@ function createWindow(role: WindowRole = 'main') {
       setTimeout(() => {
         if (!thisWin.isDestroyed()) prewarmPanel();
       }, AI_PANEL_PREWARM_DELAY_MS);
+      // Поповеры — общие на приложение (одна вью на все окна), поэтому под тем же `isMain`, что
+      // и прогревы выше: второе окно не должно строить их заново.
+      setTimeout(() => {
+        if (!thisWin.isDestroyed()) prewarmSitePopover();
+      }, SITE_POPOVER_PREWARM_DELAY_MS);
+      setTimeout(() => {
+        if (!thisWin.isDestroyed()) prewarmDownloadsPopover();
+      }, DOWNLOADS_POPOVER_PREWARM_DELAY_MS);
     };
     // ⚠️ Сигнал принимаем только от СВОЕГО слоя хрома: канал общий на приложение, и окно,
     // созданное вторым, показалось бы по чужой готовности — до того, как отрисуется само.

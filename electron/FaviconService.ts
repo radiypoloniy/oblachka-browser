@@ -2,6 +2,7 @@ import { app, nativeImage } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fetchInProfile } from './ProfileSession';
+import { createLimiter } from '../shared/limitConcurrency';
 
 // Favicon для адресов (список паролей и т.п.). Тянем ТОЛЬКО с самого сайта (через fetchInProfile —
 // это Chromium-сеть, уважает VPN/прокси/адблок), без сторонних favicon-сервисов — приватный
@@ -12,6 +13,12 @@ import { fetchInProfile } from './ProfileSession';
 // ⚠️ Каталог сменил имя вместе с правилом отбора иконки (см. #fetchForHost): в прежнем лежат
 // сохранённые 16×16, и без смены имени человек так и остался бы с лесенками — кэш отдавал бы
 // старую мелкую иконку раньше, чем дело дошло бы до новой логики.
+// Сколько незнакомых доменов опрашиваем одновременно. ⚠️ Четыре, а не «сколько попросят»:
+// значок это украшение строки, и он не имеет права соревноваться за сеть со страницей, которую
+// человек открывает. Больше четырёх заметно только на первом открытии архива с пустым кэшем —
+// и там выигрыш съедается конкуренцией за туннель.
+const FAVICON_NET = createLimiter(4);
+
 const CACHE_DIR = path.join(app.getPath('userData'), 'favicon-cache-v3');
 const LEGACY_CACHE_DIRS = ['favicon-cache', 'favicon-cache-hidpi'].map((d) => path.join(app.getPath('userData'), d));
 const MAX_BYTES = 256 * 1024;       // иконка больше четверти мегабайта — почти наверняка не иконка
@@ -81,6 +88,11 @@ interface IconCandidate { href: string; score: number }
 
 class FaviconService {
   #mem = new Map<string, string | null>();
+  // ⚠️ Запросы В ПОЛЁТЕ. Кэш #mem заполняется ТОЛЬКО ПОСЛЕ ответа, поэтому без этой карты пять
+  // одновременных вопросов про один домен давали пять походов в сеть — а спрашивают его правда
+  // одновременно: список истории, сайдбар и поповер живут в РАЗНЫХ вью, и кэш обещаний renderer'а
+  // (SiteFavicon.tsx) у каждой свой.
+  #inflight = new Map<string, Promise<string | null>>();
   #sweptLegacy = false;
 
   // Прежний каталог кэша осиротел вместе со сменой правила отбора (см. CACHE_DIR). Сносим его —
@@ -105,10 +117,24 @@ class FaviconService {
     const disk = this.#readDisk(key);
     if (disk !== undefined) { this.#mem.set(key, disk); return disk; }
 
-    const url = await this.#fetchForHost(key);
-    this.#mem.set(key, url);
-    if (url) this.#writeDisk(key, url);
-    return url;
+    const flying = this.#inflight.get(key);
+    if (flying) return flying;
+
+    // ⚠️ В сеть — ЧЕРЕЗ ОЧЕРЕДЬ. Один незнакомый домен это до трёх запросов (/favicon.ico →
+    // страница → apple-touch-icon), и все они идут сессией профиля, то есть через VPN, если он
+    // включён. Открытая с холодным кэшем история давала залп в несколько десятков запросов
+    // разом: они конкурировали за туннель друг с другом и с той страницей, которую человек
+    // открывает прямо сейчас. Очередь ничего не отбрасывает — только растягивает.
+    const job = FAVICON_NET.run(() => this.#fetchForHost(key))
+      .then((url) => {
+        this.#mem.set(key, url);
+        if (url) this.#writeDisk(key, url);
+        return url;
+      })
+      .catch(() => null)
+      .finally(() => { this.#inflight.delete(key); });
+    this.#inflight.set(key, job);
+    return job;
   }
 
   // ── Сеть ──────────────────────────────────────────────────────────────────

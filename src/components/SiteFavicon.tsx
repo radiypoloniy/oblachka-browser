@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
 
 // Значок сайта для строк архива (История, Закладки). Тянется через FaviconService в main — то
@@ -12,6 +12,15 @@ import type React from 'react';
 // Кэш обещаний — общий на модуль: один и тот же домен встречается в списке десятки раз, и без
 // него это были бы десятки одинаковых IPC-запросов (main тоже кэширует, но спамить незачем).
 const cache = new Map<string, Promise<string | null>>();
+
+// ⚠️ ЗНАЧОК ПРОСИТСЯ, ТОЛЬКО КОГДА СТРОКУ ВИДНО. История отдаёт до 500 записей, а на экране их
+// пятнадцать — до этой правки список просил иконку для всех сразу. Каждая незнакомая иконка это
+// поход В СЕТЬ сессией профиля (то есть через VPN, если он включён), и до трёх запросов на домен:
+// FaviconService сначала пробует /favicon.ico, потом саму страницу, потом apple-touch-icon. Отсюда
+// и брался «первый раз медленно, дальше нормально»: со второго раза всё лежит в кэше на диске.
+//
+// ⚠️ Приём не новый для проекта: ровно так же устроен Favicon в settings/kit.tsx (список
+// исключений адблока — те же сотни строк). Здесь он просто не был применён.
 
 function load(host: string, fetcher: (h: string) => Promise<string | null>): Promise<string | null> {
   let p = cache.get(host);
@@ -28,16 +37,37 @@ export default function SiteFavicon({ url, size = 20, loadIcon }: {
   loadIcon?: (host: string) => Promise<string | null>;
 }) {
   const [src, setSrc] = useState<string | null>(null);
+  // Строку показали хоть раз — дальше значок грузится и остаётся, даже если она уехала за экран.
+  const [seen, setSeen] = useState(false);
+  const boxRef = useRef<HTMLSpanElement | null>(null);
   const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
 
   useEffect(() => {
+    if (seen) return;
+    const el = boxRef.current;
+    // IntersectionObserver может быть недоступен только в экзотике; тогда честнее показать
+    // иконки, чем не показать их никогда.
+    if (!el || typeof IntersectionObserver === 'undefined') { setSeen(true); return; }
+    const io = new IntersectionObserver((entries) => {
+      // rootMargin — запас на быструю прокрутку: значок успевает приехать до того, как строка
+      // окажется под глазами.
+      if (entries.some((e) => e.isIntersecting)) { setSeen(true); io.disconnect(); }
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen]);
+
+  useEffect(() => {
     if (!host) return;
+    // Уже спрашивали этот домен в этом сеансе — отдаём сразу, не дожидаясь видимости: запроса
+    // всё равно не будет, а мигание буквой при возврате к списку выглядит как подгрузка заново.
+    if (!seen && !cache.has(host)) return;
     let alive = true;
     setSrc(null);
     const fetcher = loadIcon ?? ((h: string) => window.oblako.getFavicon(h));
     void load(host, fetcher).then((d) => { if (alive) setSrc(d); }).catch(() => { /* останется буква */ });
     return () => { alive = false; };
-  }, [host, loadIcon]);
+  }, [host, seen, loadIcon]);
 
   const box: React.CSSProperties = {
     width: size, height: size, flexShrink: 0, borderRadius: 'var(--radius-sm)',
@@ -46,13 +76,13 @@ export default function SiteFavicon({ url, size = 20, loadIcon }: {
 
   if (src) {
     return (
-      <span style={box}>
+      <span ref={boxRef} style={box}>
         <img src={src} alt="" width={size} height={size} style={{ objectFit: 'contain' }} />
       </span>
     );
   }
   return (
-    <span style={{
+    <span ref={boxRef} style={{
       ...box, background: 'var(--neutral-300)', color: 'var(--text-body)',
       fontSize: Math.round(size * 0.5), fontWeight: 600,
     }}>

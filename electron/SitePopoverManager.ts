@@ -98,12 +98,39 @@ function ensurePopoverView(): WebContentsView {
     },
   });
   popoverView.setBackgroundColor('#00000000');
+  const startedAt = Date.now();
   popoverView.webContents.once('did-finish-load', () => {
     popoverLoaded = true;
+    console.log(`[popover:site] документ готов за ${Date.now() - startedAt} мс`);
     if (isOpen) popoverView?.webContents.send('site-popover:show');
   });
   popoverView.webContents.loadURL('oblako-chrome://localhost/sitepopover.html');
   return popoverView;
+}
+
+/**
+ * Прогрев: создать вью и загрузить её документ ЗАРАНЕЕ, не показывая.
+ *
+ * ⚠️ Первый показ поповера — это не «нарисовать карточку», а построить целый документ: новый
+ * рендер-процесс, загрузка oblako-chrome://…html, React, шрифты, первый кадр. Между показами вью
+ * ЖИВЁТ, поэтому второй клик мгновенный, — ровно то, что человек описывает как «первый раз
+ * тормозит, дальше нормально».
+ *
+ * ⚠️ Прогреваются не все девять поповеров, и это осознанно: каждая вью — процесс, и девять
+ * процессов ради интерфейса, который в этом сеансе могут не открыть ни разу, обменяли бы жалобу
+ * на задержку на жалобу к памяти. Прогреваются только те, что открывает САМ ЧЕЛОВЕК и часто
+ * (см. вызовы в main.ts); те, что открывает страница (пароли, разрешения, автозаполнение),
+ * остаются ленивыми.
+ *
+ * Не бросает наружу — как prewarmDropZones и prewarmPanel: сбой прогрева обязан оставить фичу
+ * ленивой, а не уронить старт.
+ */
+export function prewarmSitePopover(): void {
+  try {
+    ensurePopoverView();
+  } catch (e) {
+    console.error('[popover:site] прогрев упал:', e);
+  }
 }
 
 export function showSitePopover(win: BrowserWindow): void {
