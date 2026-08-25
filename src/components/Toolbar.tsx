@@ -946,7 +946,7 @@ export default function Toolbar({
     // окнам, а здесь видно только своё — в лёгком окне с двумя вкладками мы молчали бы ровно
     // тогда, когда искать по другим окнам и нужно.
     // Результат приезжает отдельным обновлением списка: ждать модель, ничего не показывая, нельзя.
-    const hasTabHit = deduped.some((i) => i.kind === 'tab' || i.openTab); // openTab — та же вкладка, но навигацией
+    const hasTabHit = deduped.some((i) => i.kind === 'tab');
     if (!hasTabHit && q.includes(' ') && q.length >= 6) {
       const smartHits = await window.oblako.searchTabsSmart(query).catch(() => [] as SmartTabHit[]);
       if (seq !== suggestSeqRef.current || smartHits.length === 0) return;

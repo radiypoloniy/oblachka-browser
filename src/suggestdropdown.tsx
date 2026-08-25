@@ -23,7 +23,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Search, Globe, Lock, ShieldCheck, ShieldOff, Sparkles, ChevronRight, Camera, Mic, MapPin, Bell, Maximize, Clipboard, History, Pencil, Check, X, Plus, ExternalLink } from 'lucide-react';
 import './styles/global.css';
-import { OpenTabBadge } from './components/suggest/OpenTabBadge';
 import type { SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, PermKey } from '../shared/ipc';
 import { siteHue } from './components/desktop/siteTint';
 import { installOverlayReveal } from './overlayReveal';
@@ -687,23 +686,10 @@ function ListView({ items, activeIdx, onHover, onLeave }: {
                   </div>
                 )}
               </div>
-              {/* Смысловой поиск вкладок: там переключение — основное действие строки, пометка
-                  просто объясняет, что это вкладка. */}
               {item.kind === 'tab' && (
                 <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', flex: 'none' }}>
                   вкладка
                 </span>
-              )}
-              {/* Пометка «уже открыта» — отдельным компонентом: см. suggest/OpenTabBadge.tsx. */}
-              {item.openTab && (
-                <OpenTabBadge
-                  onGo={() => window.suggestDropdown.pick({
-                    ...item,
-                    kind: 'tab',
-                    tabId: item.openTab?.tabId,
-                    windowId: item.openTab?.windowId,
-                  })}
-                />
               )}
             </div>
           </React.Fragment>
