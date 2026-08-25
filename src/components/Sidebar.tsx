@@ -18,7 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropResult, DragCard } from '../../shared/ipc';
-import { well, RADIUS, glyph } from '../styles/system';
+import { well, RADIUS, glyph, CAPS } from '../styles/system';
 import { FaviconImg } from './SiteFavicon';
 
 // Стабильный id droppable-контейнера секции «Открытые вкладки».
@@ -521,9 +521,12 @@ function SortablePairBlock({ left, right, activeId, onSelect, onClose, onContext
 // Ячейка «только иконка»: favicon + tooltip, без заголовка и крестика. Одна разметка на три
 // места — сетка закреплённых, ghost в DragOverlay и вся свёрнутая панель (та же связка, что
 // TabRow/SortableTabRow и PairTile/SortablePairBlock). ghost — только визуал, без кликов.
-function IconCell({ tab, active, onClick, onContextMenu, onMiddleClick, ghost }: {
+function IconCell({ tab, active, onClick, onContextMenu, onMiddleClick, onToggleMute, ghost }: {
   tab: TabState; active: boolean;
-  onClick?: () => void; onContextMenu?: () => void; onMiddleClick?: () => void; ghost?: boolean;
+  onClick?: () => void; onContextMenu?: () => void; onMiddleClick?: () => void;
+  /** Клик по значку звука. Без него значок остаётся картинкой (ghost, призрак перетаскивания). */
+  onToggleMute?: () => void;
+  ghost?: boolean;
 }) {
   return (
     <button
@@ -577,16 +580,27 @@ function IconCell({ tab, active, onClick, onContextMenu, onMiddleClick, ghost }:
         {/* ⚠️ Значок звука нужен и здесь, а не только в развёрнутом списке: закреплённые вкладки
             живут в этой сетке всегда, и музыка чаще всего играет именно в них. Рисуем поверх
             иконки сайта — свободного места в 56-пиксельной полосе нет вовсе. Загрузка
-            приоритетнее: она короткая, а звук никуда не денется и покажется следом. */}
-        {!ghost && (tab.audible || tab.muted) && !tab.isLoading && (
-          <span title={tab.muted ? 'Звук выключен' : 'Звук'}
+            приоритетнее: она короткая, а звук никуда не денется и покажется следом.
+            ⚠️ ЭТО КНОПКА, а не картинка: раньше клик по значку просто переключал вкладку, потому
+            что попадал в кнопку-ячейку под ним, — живая жалоба «иконка есть, а нажать нельзя».
+            Отсюда же и размер: 16 px против прежних 12 — по значку в 12 px в 56-пиксельной полосе
+            промахиваются, и промах означает не «ничего», а «ушёл на другую вкладку».
+            ⚠️ stopPropagation обязателен по той же причине: без него всплытие доедет до ячейки и
+            звук выключится ВМЕСТЕ с переключением вкладки. */}
+        {!ghost && (tab.audible || tab.muted) && !tab.isLoading && onToggleMute && (
+          <span
+            role="button"
+            title={tab.muted ? 'Включить звук' : 'Выключить звук'}
+            onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
+            onPointerDown={(e) => e.stopPropagation()}
             style={{
-              position: 'absolute', right: -3, bottom: -3,
+              position: 'absolute', right: -4, bottom: -4,
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 12, height: 12, borderRadius: '50%',
-              background: 'var(--surface-island)', color: 'var(--text-muted)',
+              width: 16, height: 16, borderRadius: '50%', cursor: 'default',
+              background: 'var(--surface-island)',
+              color: tab.muted ? 'var(--text-faint)' : 'var(--text-muted)',
               boxShadow: '0 0 0 1.5px var(--surface-island)',
-            }}>{tab.muted ? <VolumeX {...glyph(9)} /> : <Volume2 {...glyph(9)} />}</span>
+            }}>{tab.muted ? <VolumeX {...glyph(10)} /> : <Volume2 {...glyph(10)} />}</span>
         )}
       </span>
     </button>
@@ -657,16 +671,19 @@ interface CollapsedCellsProps {
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onTabMenu: (id: string) => void;
+  /** Клик по значку звука на ячейке. Не приходит призракам перетаскивания. */
+  onToggleMute?: (id: string) => void;
   ghost?: boolean;
 }
 
 // Split-пара в узкой полосе: две иконки на общей утопленной подложке с волосяной линией между
 // ними. Без подложки пара неотличима от двух соседних вкладок — а это разные вещи: она и
 // переезжает, и закрывается как одно целое.
-function CollapsedPairTile({ left, right, activeId, onSelect, onClose, onTabMenu, ghost }: {
+function CollapsedPairTile({ left, right, activeId, onSelect, onClose, onTabMenu, onToggleMute, ghost }: {
   left: TabState; right: TabState; activeId: string;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
+  onToggleMute?: (id: string) => void;
   onTabMenu: (id: string) => void;
   ghost?: boolean;
 }) {
@@ -676,6 +693,7 @@ function CollapsedPairTile({ left, right, activeId, onSelect, onClose, onTabMenu
       onClick={() => onSelect(tab.id)}
       onContextMenu={() => onTabMenu(tab.id)}
       onMiddleClick={() => onClose(tab.id)}
+      onToggleMute={onToggleMute ? () => onToggleMute(tab.id) : undefined}
     />
   );
   // Обойма split-пары в свёрнутой полосе. ⚠️ Была залита --surface-sunken — на подложке это
@@ -694,7 +712,7 @@ function CollapsedPairTile({ left, right, activeId, onSelect, onClose, onTabMenu
 }
 
 // Узел дерева → ячейки свёрнутой полосы. Общий кусок для верхнего уровня и для детей папки.
-function CollapsedNodeCells({ node, tabMap, activeId, onSelect, onClose, onTabMenu, ghost }: CollapsedCellsProps) {
+function CollapsedNodeCells({ node, tabMap, activeId, onSelect, onClose, onTabMenu, onToggleMute, ghost }: CollapsedCellsProps) {
   if (node.type === 'single') {
     const tab = tabMap.get(node.tabId);
     if (!tab) return null;
@@ -704,6 +722,7 @@ function CollapsedNodeCells({ node, tabMap, activeId, onSelect, onClose, onTabMe
         onClick={() => onSelect(tab.id)}
         onContextMenu={() => onTabMenu(tab.id)}
         onMiddleClick={() => onClose(tab.id)}
+        onToggleMute={onToggleMute ? () => onToggleMute(tab.id) : undefined}
       />
     );
   }
@@ -714,7 +733,7 @@ function CollapsedNodeCells({ node, tabMap, activeId, onSelect, onClose, onTabMe
     return (
       <CollapsedPairTile
         left={left} right={right} activeId={activeId} ghost={ghost}
-        onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
+        onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu} onToggleMute={onToggleMute}
       />
     );
   }
@@ -745,13 +764,14 @@ function SortableCollapsedItem({ id, children }: { id: string; children: React.R
 // (то же состояние group.collapsed, что и в развёрнутой панели, — одна правда, и она уже
 // переживает перезапуск). Тон острова: нейтральный, если цвет папки не задан, иначе — бледная
 // заливка её цветом, чтобы принадлежность читалась без подписи.
-function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTabMenu, zone }: {
+function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTabMenu, onToggleMute, zone }: {
   group: GroupNode;
   tabMap: Map<string, TabState>;
   activeId: string;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onTabMenu: (id: string) => void;
+  onToggleMute?: (id: string) => void;
   zone: ChildDragZone;
 }) {
   const innerSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -839,6 +859,7 @@ function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClose, onTa
                     <CollapsedNodeCells
                       node={child} tabMap={tabMap} activeId={activeId}
                       onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
+                      onToggleMute={onToggleMute}
                     />
                   </SortableCollapsedItem>
                 ))}
@@ -1341,6 +1362,28 @@ function ModeSwitch({ mode, onChange }: { mode: 'tabs' | 'bookmarks'; onChange: 
   );
 }
 
+/**
+ * Подпись секции сайдбара: моноширинная капса и число рядом.
+ *
+ * ⚠️ Тот же приём, что на плитках стола и в настройках, и здесь он законен: капса — это ТИПОГРАФИКА,
+ * а не цвет. Хром обязан молчать цветом, но не обязан быть безымянной простынёй — до этого
+ * закреплённые и открытые вкладки шли одним потоком, и понять, где кончается одно и начинается
+ * другое, можно было только по форме значков.
+ */
+function SectionLabel({ children, count }: { children: React.ReactNode; count?: number }) {
+  return (
+    <div className="no-drag" style={{
+      ...CAPS, color: 'var(--text-faint, var(--text-muted))',
+      display: 'flex', alignItems: 'center', gap: 6, padding: '2px 4px 4px',
+    }}>
+      <span>{children}</span>
+      {count !== undefined && (
+        <span style={{ color: 'var(--text-body)', fontWeight: 600 }}>{count}</span>
+      )}
+    </div>
+  );
+}
+
 // Кнопка отката одного вида изменений. Подпись строится как «Вернуть …»: три отдельные
 // формулировки в ряд читались бы длиннее, чем сама полоса вкладок.
 function UndoChip({ label, onClick }: { label: string; onClick: () => void }) {
@@ -1474,6 +1517,13 @@ export default function Sidebar({
   // Карта tabId → TabState для O(1)-поиска (нужна до pinned: при активной оптимистике
   // ищем вкладку здесь, а не в pinnedBase — tabs ещё не обновился).
   const tabMap = new Map(tabs.map((t) => [t.id, t]));
+  // Звук вкладки из СВЁРНУТОЙ полосы: там у ячейки нет ничего, кроме значка сайта, и значок
+  // звука на нём — единственная кнопка, до которой можно дотянуться, не разворачивая панель.
+  // Вторая дверь — пункт в меню по правой кнопке (electron/ipc/menus.ts).
+  const toggleMute = (id: string): void => {
+    const t = tabMap.get(id);
+    if (t) void window.oblako.setTabMuted(id, !t.muted);
+  };
 
   // pinned: при активном localPinnedOrder берём TabState из tabMap.
   // Это даёт мгновенный показ X в секции закреплённых ДО ответа main —
@@ -1829,7 +1879,8 @@ export default function Sidebar({
                   <SortableCollapsedItem key={t.id} id={t.id}>
                     <IconCell tab={t} active={activeId === t.id}
                       onClick={() => onSelect(t.id)}
-                      onContextMenu={() => onTabMenu(t.id)} />
+                      onContextMenu={() => onTabMenu(t.id)}
+                      onToggleMute={() => toggleMute(t.id)} />
                   </SortableCollapsedItem>
                 ))}
               </SortableContext>
@@ -1853,12 +1904,14 @@ export default function Sidebar({
                     key={node.id}
                     group={node} tabMap={tabMap} activeId={activeId}
                     onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
+                    onToggleMute={toggleMute}
                   />
                 ) : (
                   <SortableCollapsedItem key={nodeToTopId(node)} id={nodeToTopId(node)}>
                     <CollapsedNodeCells
                       node={node} tabMap={tabMap} activeId={activeId}
                       onSelect={onSelect} onClose={onClose} onTabMenu={onTabMenu}
+                      onToggleMute={toggleMute}
                     />
                   </SortableCollapsedItem>
                 )
@@ -1916,7 +1969,7 @@ export default function Sidebar({
 
   // ── Развёрнутый режим с drag-and-drop ──
   return (
-    <aside className="drag" style={{ ...asideBase, width, padding: '12px 12px 14px 16px', position: 'relative', ...returnHintStyle }}>
+    <aside className="drag chrome-icons" style={{ ...asideBase, width, padding: '12px 12px 14px 16px', position: 'relative', ...returnHintStyle }}>
       {/* Ручка ширины — прозрачная полоска. Своей заливки нет намеренно: видимая вертикальная
           черта читалась бы как рамка, а именно от рамок сайдбар и уходил. Курсор объясняет всё
           сам.
@@ -1995,6 +2048,7 @@ export default function Sidebar({
             Плашка-обёртка — СНАРУЖИ SortableContext, сам dnd-контекст и ячейки не тронуты. */}
         {pinned.length > 0 && (
           <div className="no-drag" style={{ padding: '2px 0 6px', marginBottom: 6 }}>
+            <SectionLabel count={pinned.length}>Закреплённые</SectionLabel>
             {/* rect-, а не verticalList-стратегия: пины лежат сеткой с переносом строк, и
                 вертикальная стратегия расталкивала соседей по Y — не в ту сторону, куда
                 едет курсор. rectSortingStrategy считает по реальным прямоугольникам. */}
@@ -2010,6 +2064,11 @@ export default function Sidebar({
           </div>
         )}
 
+        {/* ⚠️ Подпись СНАРУЖИ SortableContext: внутри он ждёт только сортируемые элементы, и
+            лишний узел между ними сбивает расчёт позиций при перетаскивании. */}
+        {effectiveNodes.length > 0 && organizeState !== 'preview' && (
+          <SectionLabel count={openIds.length}>Открыто</SectionLabel>
+        )}
         {/* Верхний уровень: singles, pairs, groups — все в одном SortableContext */}
         <SortableContext items={openIds} strategy={verticalListSortingStrategy}>
           <div ref={setNormalDropRef} className="no-drag" style={{

@@ -3890,18 +3890,60 @@ export class TabManager {
     this.pageHotkeyBound = true;
     ipcMain.on(IPC.PAGE_HOTKEY, (event, action: unknown) => {
       if (!this.ownsWebContents(event.sender.id)) return;
-      switch (action) {
-        case 'find':
-          this.findBarOpen = true;
-          this.onFindOpenCb();
-          break;
-        case 'quick':    this.onQuickSearchCb?.(); break;
-        case 'bookmark': this.onBookmarkPageCb?.(); break;
-        case 'history':  this.onHistoryOpenCb?.(); break;
-        case 'reload':   this.reload(this.activeId); break;
-        default: break;  // незнакомое имя — молча мимо, страница могла быть старой версии
-      }
+      if (typeof action === 'string') this.runPageHotkey(action);
     });
+  }
+
+  /** Спорное действие, дошедшее до нас (снизу от страницы либо из кросс-origin кадра). */
+  private runPageHotkey(action: string): void {
+    switch (action) {
+      case 'find':
+        this.findBarOpen = true;
+        this.onFindOpenCb();
+        break;
+      case 'quick':    this.onQuickSearchCb?.(); break;
+      case 'bookmark': this.onBookmarkPageCb?.(); break;
+      case 'history':  this.onHistoryOpenCb?.(); break;
+      case 'reload':   this.reload(this.activeId); break;
+      default: break;  // незнакомое имя — молча мимо, страница могла быть старой версии
+    }
+  }
+
+  /**
+   * Код клавиши → спорное действие. ⚠️ Обязан совпадать с DISPUTED в preload-content.ts: это две
+   * половины одного правила, и разъехавшись, они дадут клавишу, которая работает в одном кадре и
+   * не работает в другом.
+   */
+  private static readonly DISPUTED_BY_CODE: Record<string, string> = {
+    KeyF: 'find', KeyE: 'quick', KeyD: 'bookmark', KeyR: 'reload', KeyH: 'history',
+  };
+
+  /**
+   * Застряла ли спорная клавиша в ЧУЖОМ КАДРЕ.
+   *
+   * ⚠️ Разбор живой жалобы «Ctrl+F срабатывает не каждый раз». Спорные клавиши приходят снизу, из
+   * preload страницы, — но preload намеренно НЕ выполняется в iframe (структурный гвард против
+   * чтения чужого origin, см. webPreferences вкладки). Значит, когда фокус стоит во встроенном
+   * кадре — плеере, комментариях, рекламном блоке, встроенной карте, — keydown всплывает до окна
+   * ЭТОГО кадра, наш слушатель его не видит, и клавиша пропадает совсем: сверху мы её не
+   * перехватываем, снизу никто не присылает. Отсюда и «через раз»: зависит от того, куда человек
+   * кликнул последним.
+   *
+   * ⚠️ ORIGIN СРАВНИВАЕТСЯ НЕ ИЗ ПЕДАНТИЗМА. Кадр СВОЕГО origin — это, как правило, часть самого
+   * приложения: у Google Документов ввод с клавиатуры живёт в скрытом кадре, и отобрав у него
+   * Ctrl+F, мы вернули бы ровно тот баг, который чинили, отдавая редакторам их клавиши. Поэтому
+   * вмешиваемся только в ЧУЖОЙ кадр: встроенный чужой контент своего поиска почти никогда не
+   * имеет, а наш ему в самый раз.
+   */
+  private disputedKeyStuckInFrame(wc: WebContents): boolean {
+    try {
+      const focused = wc.focusedFrame;
+      if (!focused || !focused.parent) return false;   // фокус в главном кадре — путь снизу цел
+      return focused.origin !== wc.mainFrame.origin;
+    } catch {
+      // Кадр мог умереть между нажатием и проверкой — тогда это не наш случай.
+      return false;
+    }
   }
 
   // source — откуда пришёл ввод. Слой хрома принадлежит окну навсегда и никуда не переезжает;
@@ -4009,6 +4051,13 @@ export class TabManager {
       // ⚠️ У СЛОЯ ХРОМА страницы нет, и снизу ничего не придёт: на хабе, в настройках и в
       // библиотеке preload-content.ts не работает вовсе. Поэтому для него те же пять клавиш
       // разбираются здесь, как раньше, — гвард по source и есть вся разница.
+      // ⚠️ Спорная клавиша, застрявшая в чужом встроенном кадре (см. disputedKeyStuckInFrame).
+      // Стоит ПЕРЕД ветками слоя хрома и после всех бесспорных: у страницы приоритет остаётся
+      // везде, где путь снизу вообще работает.
+      } else if (source === 'tab' && !shift && TabManager.DISPUTED_BY_CODE[code] !== undefined
+        && this.disputedKeyStuckInFrame(wc)) {
+        event.preventDefault();
+        this.runPageHotkey(TabManager.DISPUTED_BY_CODE[code]!);
       } else if (source === 'chrome' && code === 'KeyF' && !shift) {
         event.preventDefault();
         this.findBarOpen = true;
