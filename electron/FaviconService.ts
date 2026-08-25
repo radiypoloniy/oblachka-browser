@@ -125,10 +125,15 @@ class FaviconService {
     // включён. Открытая с холодным кэшем история давала залп в несколько десятков запросов
     // разом: они конкурировали за туннель друг с другом и с той страницей, которую человек
     // открывает прямо сейчас. Очередь ничего не отбрасывает — только растягивает.
+    const startedAt = Date.now();
     const job = FAVICON_NET.run(() => this.#fetchForHost(key))
       .then((url) => {
         this.#mem.set(key, url);
         if (url) this.#writeDisk(key, url);
+        // Шумит только на действительно медленных — те, что приезжают за десятые доли секунды,
+        // в логе не нужны. Нужен он ровно для одного вопроса: сеть тормозит или мы сами.
+        const ms = Date.now() - startedAt;
+        if (ms > 1500) console.log(`[favicon] ${key}: ${ms} мс${url ? '' : ' (иконки нет)'}`);
         return url;
       })
       .catch(() => null)
@@ -231,11 +236,17 @@ class FaviconService {
     }
   }
 
+  // ⚠️ Запись АСИНХРОННАЯ, в отличие от чтения. Кэш пишется по ответу сети, то есть пачкой и в
+  // тот самый момент, когда человек листает список: writeFileSync на каждый значок — это
+  // блокировка ГЛАВНОГО процесса, а в нём же живут вкладки. Ответ вызывающему при этом ждать
+  // записи незачем — значок уже в памяти.
   #writeDisk(host: string, dataUrl: string): void {
-    try {
-      fs.mkdirSync(CACHE_DIR, { recursive: true });
-      fs.writeFileSync(path.join(CACHE_DIR, sanitizeHostForFile(host)), dataUrl, 'utf8');
-    } catch { /* нет доступа к диску — переживём, останется память */ }
+    void (async () => {
+      try {
+        await fs.promises.mkdir(CACHE_DIR, { recursive: true });
+        await fs.promises.writeFile(path.join(CACHE_DIR, sanitizeHostForFile(host)), dataUrl, 'utf8');
+      } catch { /* нет доступа к диску — переживём, останется память */ }
+    })();
   }
 }
 
