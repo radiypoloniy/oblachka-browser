@@ -21,11 +21,53 @@ const cache = new Map<string, Promise<string | null>>();
 //
 // ⚠️ Приём не новый для проекта: ровно так же устроен Favicon в settings/kit.tsx (список
 // исключений адблока — те же сотни строк). Здесь он просто не был применён.
+//
+// ⚠️ НАБЛЮДАТЕЛЬ ОДИН НА МОДУЛЬ, а не по одному на строку. В истории строк до пятисот, и пятьсот
+// отдельных IntersectionObserver — это пятьсот объектов наблюдения, каждый со своей записью в
+// планировщике; на маунте раздела это давало заметную паузу. Один наблюдатель с картой
+// «элемент → что делать» стоит столько же, сколько один.
 
 function load(host: string, fetcher: (h: string) => Promise<string | null>): Promise<string | null> {
   let p = cache.get(host);
   if (!p) { p = fetcher(host); cache.set(host, p); }
   return p;
+}
+
+// Кого мы наблюдаем и что делать, когда он появится.
+const watched = new Map<Element, () => void>();
+let observer: IntersectionObserver | null = null;
+
+function ensureObserver(): IntersectionObserver | null {
+  if (observer) return observer;
+  // IntersectionObserver может быть недоступен только в экзотике; тогда честнее показать иконки,
+  // чем не показать их никогда (см. вызывающего).
+  if (typeof IntersectionObserver === 'undefined') return null;
+  observer = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      const cb = watched.get(e.target);
+      if (!cb) continue;
+      // Снимаем ДО вызова: строку показали один раз, дальше значок уже едет.
+      watched.delete(e.target);
+      observer?.unobserve(e.target);
+      cb();
+    }
+  // rootMargin — запас на быструю прокрутку: значок успевает приехать до того, как строка
+  // окажется под глазами.
+  }, { rootMargin: '200px' });
+  return observer;
+}
+
+/** Позвать `onSeen`, когда элемент впервые попадёт в поле зрения. Возвращает отписку. */
+function watchVisible(el: Element, onSeen: () => void): () => void {
+  const io = ensureObserver();
+  if (!io) { onSeen(); return () => { /* нечего снимать */ }; }
+  watched.set(el, onSeen);
+  io.observe(el);
+  return () => {
+    watched.delete(el);
+    io.unobserve(el);
+  };
 }
 
 // ⚠️ `loadIcon` существует ради изолированных вью (поповер буфера): у них свой preload и боевого
@@ -45,16 +87,8 @@ export default function SiteFavicon({ url, size = 20, loadIcon }: {
   useEffect(() => {
     if (seen) return;
     const el = boxRef.current;
-    // IntersectionObserver может быть недоступен только в экзотике; тогда честнее показать
-    // иконки, чем не показать их никогда.
-    if (!el || typeof IntersectionObserver === 'undefined') { setSeen(true); return; }
-    const io = new IntersectionObserver((entries) => {
-      // rootMargin — запас на быструю прокрутку: значок успевает приехать до того, как строка
-      // окажется под глазами.
-      if (entries.some((e) => e.isIntersecting)) { setSeen(true); io.disconnect(); }
-    }, { rootMargin: '200px' });
-    io.observe(el);
-    return () => io.disconnect();
+    if (!el) { setSeen(true); return; }
+    return watchVisible(el, () => setSeen(true));
   }, [seen]);
 
   useEffect(() => {
