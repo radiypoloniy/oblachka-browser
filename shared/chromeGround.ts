@@ -234,8 +234,18 @@ function groundStop(input: GroundInput, deg: number, weight: number): string {
  * строится ОТ ЗЕМЛИ: поднимается по светлоте, пока не станет светлее её самого насыщенного места
  * в ISLAND_LIFT раз. Тогда он читается при любом тоне и любой насыщенности — по построению.
  */
+/**
+ * ⚠️ Доля тона в СВЕТЛОМ острове. Была 6% — «намёк», и на спокойной земле этого хватало. На
+ * насыщенной (мятная палитра, плакатная краска) остров при 6% остаётся практически белым: адресная
+ * строка и «Новая вкладка» читались деталями из другой темы посреди цветного окна — живая жалоба
+ * ровно этими словами.
+ * ⚠️ 16% — потолок, а не вкус: выше остров перестаёт быть заметно светлее земли, и вся иерархия
+ * «парящее светлее фона» держится тогда одной тенью. Порог держит chrome-ground-check.
+ */
+export const ISLAND_TINT_LIGHT = 16;
+
 export function islandOver(deepest: string, tint: string, surface: string, dark: boolean): string {
-  if (!dark) return blend(tint, surface, 6);
+  if (!dark) return blend(tint, surface, ISLAND_TINT_LIGHT);
   let lo = lightnessOf(deepest);
   let hi = 1;
   for (let i = 0; i < 22; i++) {
@@ -329,9 +339,21 @@ export interface MeshBlob {
   size: number;
 }
 
+/**
+ * Как рисуется градиент. ⚠️ Это РЕЖИМ существующей сетки, а не новая сущность: сохранение,
+ * каталог, обои панели и адаптация к теме общие. Поле необязательное, и отсутствие означает
+ * 'mesh' — иначе у всех, кто уже собрал свой градиент, он не прошёл бы валидацию.
+ *
+ *   mesh   — мягкие цветные пятна на базе (было всегда);
+ *   duplex — печать в ДВЕ КРАСКИ: там, где вторая легла на первую, цвет их произведение;
+ *   retro  — ступенчатая заливка одного тона вместо плавного хода.
+ */
+export type MeshKind = 'mesh' | 'duplex' | 'retro';
+
 export interface MeshGradient {
   id: string;
   name: string;
+  kind?: MeshKind;
   /** Цвета, которые выбрал человек. Пятна и база считаются из них. */
   seeds: string[];
   base: string;
@@ -413,16 +435,88 @@ function layoutBlobs(colors: string[]): MeshBlob[] {
   });
 }
 
+/**
+ * Произведение двух красок — то, что физически происходит в печати при наложении.
+ *
+ * ⚠️ Считаем ЦВЕТ, а не ставим `background-blend-mode: multiply`. Свойство наложения живёт вне
+ * `background-image`, а компиляция сетки отдаёт ровно одну строку — под неё заточены и превью,
+ * и обои панели, и кромка окна. Ради одного режима менять этот договор пришлось бы во всех
+ * четырёх местах; посчитать цвет дешевле и даёт тот же результат.
+ */
+export function multiplyColors(a: string, b: string): string {
+  const [r1, g1, b1] = hexToRgb(a);
+  const [r2, g2, b2] = hexToRgb(b);
+  const mul = (x: number, y: number) => Math.round((x * y) / 255);
+  return rgbToHex([mul(r1, r2), mul(g1, g2), mul(b1, b2)]);
+}
+
+/**
+ * Сколько ступеней у ретро-заливки.
+ *
+ * ⚠️ Считается из `softness`, а не хранится отдельным полем. Ручек у сетки две, и они уже
+ * означают «насколько держит цвет» и «насколько мягко»; для ступеней вторая читается прямо —
+ * мягче значит больше ступеней, жёстче меньше. Новое поле пришлось бы валидировать, мигрировать
+ * и показывать в трёх местах ради числа, которое выводится.
+ */
+export const RETRO_STEPS_MIN = 3;
+export const RETRO_STEPS_MAX = 7;
+export function retroSteps(softness: number): number {
+  const t = (softness - MESH_SOFTNESS_MIN) / (MESH_SOFTNESS_MAX - MESH_SOFTNESS_MIN);
+  return Math.round(RETRO_STEPS_MIN + t * (RETRO_STEPS_MAX - RETRO_STEPS_MIN));
+}
+
+/** Ступени ретро — от светлого к тёмному внутри ОДНОГО тона. */
+export function retroRamp(mesh: MeshGradient): string[] {
+  // База, а не seeds[0]: см. mixFromSeeds — у ретро это и есть первое семя, уже под темой.
+  const seed = mesh.base;
+  const steps = retroSteps(mesh.softness);
+  const l = lightnessOf(seed);
+  // Размах тем шире, чем выше интенсивность: ручка «держит свой цвет» здесь означает контраст
+  // между верхней и нижней ступенью.
+  const spread = 0.16 + (mesh.intensity / 100) * 0.30;
+  const top = Math.min(0.88, l + spread * 0.6);
+  const bottom = Math.max(0.08, l - spread * 0.6);
+  const out: string[] = [];
+  for (let i = 0; i < steps; i++) {
+    out.push(withLightness(seed, top - ((top - bottom) * i) / Math.max(1, steps - 1)));
+  }
+  return out;
+}
+
 export function mixFromSeeds(
   seeds: string[],
-  opts: { intensity?: number; softness?: number; blobs?: MeshBlob[]; dark?: boolean } = {},
+  opts: { intensity?: number; softness?: number; blobs?: MeshBlob[]; dark?: boolean; kind?: MeshKind } = {},
 ): Pick<MeshGradient, 'base' | 'blobs' | 'intensity' | 'softness' | 'seeds'> {
   const parsed = seeds.map(parseHex).filter((x): x is string => x !== null)
     .slice(0, MESH_SEEDS_MAX);
   const ready = parsed.length >= MESH_SEEDS_MIN ? parsed : [...parsed, MESH_PAPER, MESH_INK].slice(0, MESH_SEEDS_MIN);
   const intensity = Math.max(0, Math.min(100, opts.intensity ?? MESH_INTENSITY_DEFAULT));
   const softness = Math.max(MESH_SOFTNESS_MIN, Math.min(MESH_SOFTNESS_MAX, opts.softness ?? MESH_SOFTNESS_DEFAULT));
-  const base = mixBase(ready, opts.dark);
+  const base = opts.kind === 'retro'
+    // ⚠️ У ретро база — САМО ПЕРВОЕ СЕМЯ, а не смесь: ступени строятся из него, и смешанная база
+    // увела бы их в чужой тон. Приглушение под тему уже применено к семенам вызывающей стороной
+    // (adaptMeshToTheme), поэтому здесь оно доезжает бесплатно.
+    ? ready[0]!
+    : mixBase(ready, opts.dark);
+  // ⚠️ ДУПЛЕКС отличается от сетки ровно одним: цветом пятна. База — первая краска целиком (лист,
+  // на который печатают), пятно — ПРОИЗВЕДЕНИЕ первой и второй, потому что именно это происходит,
+  // когда вторая краска ложится поверх первой. Прежняя формула подмешивала пятно к базе долей
+  // интенсивности — так краски осветляют друг друга, чего в печати не бывает.
+  if (opts.kind === 'duplex') {
+    const first = ready[0]!;
+    const rest = ready.slice(1);
+    const overlap = rest.map((c) => blend(multiplyColors(first, c), c, intensity));
+    const keepDuplex = opts.blobs && opts.blobs.length === overlap.length;
+    return {
+      seeds: ready,
+      base: first,
+      blobs: keepDuplex
+        ? opts.blobs!.map((b, i) => ({ color: overlap[i]!, x: clamp01(b.x), y: clamp01(b.y), size: clampSize(b.size) }))
+        : layoutBlobs(overlap),
+      intensity,
+      softness,
+    };
+  }
   const colors = ready.map((s) => blend(s, base, intensity));
   const keep = opts.blobs && opts.blobs.length === colors.length;
   const blobs = keep
@@ -436,8 +530,8 @@ export function mixFromSeeds(
   return { seeds: ready, base, blobs, intensity, softness };
 }
 
-export function createMeshDraft(seeds: string[], name = 'Градиент'): MeshGradient {
-  return { id: '', name, ...mixFromSeeds(seeds) };
+export function createMeshDraft(seeds: string[], name = 'Градиент', kind: MeshKind = 'mesh'): MeshGradient {
+  return { id: '', name, kind, ...mixFromSeeds(seeds, { kind }) };
 }
 
 function blobAlpha(blob: MeshBlob, x: number, y: number, softness: number): number {
@@ -454,6 +548,15 @@ function blobAlpha(blob: MeshBlob, x: number, y: number, softness: number): numb
 
 /** Цвет сетки в точке 0…100. Нужен кромке окна и решению «стекло или заливка». */
 export function sampleMesh(mesh: MeshGradient, x: number, y: number): string {
+  // ⚠️ Кромка окна, «светлая ли сетка» и цвет под кнопками Windows читаются ОТСЮДА. Без ветки
+  // ретро они брали бы base, то есть цвет одной ступени вместо той, что реально под точкой, —
+  // и кнопки ОС оказались бы не в цвет окна.
+  if (mesh.kind === 'retro') {
+    const ramp = retroRamp(mesh);
+    // Ось та же, что у заливки (160°): вклад y преобладает, x лишь слегка сдвигает ступень.
+    const t = Math.max(0, Math.min(0.999, (y * 0.94 + x * 0.06) / 100));
+    return ramp[Math.min(ramp.length - 1, Math.floor(t * ramp.length))]!;
+  }
   let color = mesh.base;
   for (let i = mesh.blobs.length - 1; i >= 0; i--) {
     const blob = mesh.blobs[i]!;
@@ -470,6 +573,18 @@ export function meshIsLight(mesh: MeshGradient): boolean {
 }
 
 export function meshPaintLayers(mesh: MeshGradient): string[] {
+  // ⚠️ Ретро — единственный режим со своей отрисовкой: ступени нельзя выразить пятнами, у них
+  // жёсткие границы. Дуплекс своей ветки не требует вовсе — он выражается теми же пятнами, у
+  // которых цвет посчитан как произведение красок (см. mixFromSeeds).
+  if (mesh.kind === 'retro') {
+    const ramp = retroRamp(mesh);
+    const stops = ramp.map((c, i) => {
+      const from = ((i / ramp.length) * 100).toFixed(2);
+      const to = (((i + 1) / ramp.length) * 100).toFixed(2);
+      return `${c} ${from}% ${to}%`;
+    });
+    return [`linear-gradient(160deg, ${stops.join(', ')})`];
+  }
   const end = 52 + mesh.softness * 0.38;
   const mid = end * 0.42;
   const blobs = mesh.blobs.map((b) =>
@@ -506,7 +621,11 @@ export function adaptMeshToTheme(mesh: MeshGradient, dark: boolean): MeshGradien
     softness: mesh.softness,
     blobs: mesh.blobs,
     dark,
+    kind: mesh.kind,
   });
+  // ⚠️ Семена в сохранённом объекте НЕ переписываются — это инвариант, его держит проверка
+  // mesh-gradient-check. Ретро поэтому берёт основу ступеней из base, куда mixFromSeeds уже
+  // положил приглушённое под тему первое семя: адаптация доезжает, а выбор человека цел.
   return { ...mesh, base: mixed.base, blobs: mixed.blobs };
 }
 
@@ -556,12 +675,45 @@ export function hslToHex(hDeg: number, s: number, l: number): string {
  * Акцент кнопок и поповеров от сетки — как палитра «Мята» красит хром в зелёный.
  * В светлой теме уводится вниз по светлоте, пока белый текст не проходит 4.5.
  */
-export function accentFromMesh(mesh: MeshGradient, dark: boolean): string {
+/** Тон в градусах. Нужен, чтобы сравнивать РОДСТВО цветов, а не их светлоту. */
+export function hueOf(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((v) => v / 255) as [number, number, number];
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  if (mx === mn) return 0;
+  const d = mx - mn;
+  const h = mx === r ? ((g - b) / d + (g < b ? 6 : 0))
+    : mx === g ? (b - r) / d + 2
+    : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+
+/** Кратчайшее расстояние между тонами по кругу: 350° и 10° — соседи, а не противоположности. */
+function hueGap(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+/**
+ * @param groundHint цвет земли хрома — акцент выбирается В РОДСТВЕ с ней.
+ *
+ * ⚠️ Раньше брался просто самый насыщенный цвет сетки, и это давало разлад: в зелёно-оранжевой
+ * сетке земля хрома выходила мятной (она считается по своей области), а акцент — оранжево-красным,
+ * потому что оранжевое семя насыщеннее. Живая жалоба: «переключение между вкладками и закладками
+ * почему-то розовое, хотя всё зелёное».
+ *
+ * ⚠️ Насыщенность из формулы НЕ выброшена: акценту всё ещё положено быть цветным, иначе выбранная
+ * вкладка перестанет читаться. Просто родство с землёй теперь весит больше — за каждые 60°
+ * расхождения семя теряет столько же, сколько даёт половина насыщенности.
+ */
+export function accentFromMesh(mesh: MeshGradient, dark: boolean, groundHint?: string): string {
   let best = mesh.seeds[0] ?? '#2C4BD8';
-  let bestSat = -1;
+  let bestScore = -Infinity;
+  const groundHue = groundHint ? hueOf(groundHint) : null;
   for (const s of mesh.seeds) {
     const sat = hslSaturation(s);
-    if (sat > bestSat) { bestSat = sat; best = s; }
+    const score = groundHue === null ? sat : sat - (hueGap(hueOf(s), groundHue) / 60) * 0.5;
+    if (score > bestScore) { bestScore = score; best = s; }
   }
   if (dark) {
     const l = lightnessOf(best);
@@ -632,12 +784,16 @@ export function validateMesh(raw: unknown): MeshGradient | null {
     if (!Number.isFinite(o.x) || !Number.isFinite(o.y) || !Number.isFinite(o.size)) continue;
     blobs.push({ color, x: clamp01(o.x), y: clamp01(o.y), size: clampSize(o.size) });
   }
+  // ⚠️ Незнакомый режим (файл из будущей версии, ручная правка localStorage) читается как 'mesh',
+  // а не отбраковывается: потерять чужой градиент хуже, чем нарисовать его прежним способом.
+  const kind: MeshKind = r.kind === 'duplex' || r.kind === 'retro' ? r.kind : 'mesh';
   const mixed = mixFromSeeds(seeds, {
     intensity: typeof r.intensity === 'number' && Number.isFinite(r.intensity) ? r.intensity : MESH_INTENSITY_DEFAULT,
     softness: typeof r.softness === 'number' && Number.isFinite(r.softness) ? r.softness : MESH_SOFTNESS_DEFAULT,
     blobs: blobs.length === seeds.length ? blobs : undefined,
+    kind,
   });
-  return { id: r.id, name: name.trim() || 'Градиент', ...mixed };
+  return { id: r.id, name: name.trim() || 'Градиент', kind, ...mixed };
 }
 
 function builtin(id: string, name: string, seeds: string[], blobs: MeshBlob[]): MeshGradient {

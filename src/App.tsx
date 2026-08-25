@@ -12,7 +12,7 @@ import { SPLIT_DRAG_CARD_CAPTURE_WIDTH, SPLIT_DRAG_CARD_CAPTURE_MAX_HEIGHT } fro
 import { islandPlate, chromeTintStyle, tintedPlateVars, chromeSpaceStyle } from './styles/island';
 import { buildChromeGround, buildChromeGroundFromMesh, accentFromMesh, overlaySymbolColor, CHROME_OVERLAY_PX } from '../shared/chromeGround';
 import type { Ground } from '../shared/chromeGround';
-import { loadNewTabSettings, subscribeNewTabSettings } from './newtab/settings';
+import { loadNewTabSettings, subscribeNewTabSettings, posterToneCss } from './newtab/settings';
 import { findMesh, subscribeMeshes } from './newtab/gradients';
 import { watchGenClocks } from './newtab/genClocks';
 import { setDesktopProfile } from './newtab/desktop';
@@ -471,7 +471,12 @@ export default function App() {
   const [ground, setGround] = useState<Ground | null>(null);
   useEffect(() => {
     if (!chromeTinted) { setGround(null); setMeshWash(null); return; }
-    const tint = resolveColor('var(--sidebar-tint)');
+    // ⚠️ Тон земли берётся ИЗ ИСТОЧНИКА, а не всегда из палитры: 'poster' означает, что человек
+    // выбрал краску напрямую. Дальше путь общий — та же подмешка долей amount к --app-bg, тот же
+    // потолок 30%. Плакатная краска здесь работает как ТОН ЗЕМЛИ, а не как заливка хрома.
+    const tint = resolveColor(
+      groundPrefs.source === 'poster' ? posterToneCss(groundPrefs.tone) : 'var(--sidebar-tint)',
+    );
     const appBg = resolveColor('var(--app-bg)');
     const surface = resolveColor('var(--surface)');
     if (!tint || !appBg || !surface) { setGround(null); setMeshWash(null); return; }
@@ -481,7 +486,8 @@ export default function App() {
       if (mesh) {
         const g = buildChromeGroundFromMesh(mesh, input);
         setGround(g);
-        const accent = accentFromMesh(mesh, input.dark);
+        // Акцент берём В РОДСТВЕ с землёй этой же сетки — иначе на зелёном хроме он выходил розовым.
+        const accent = accentFromMesh(mesh, input.dark, g.top);
         setMeshWash({ accent, tint: accent });
         return;
       }
@@ -490,7 +496,7 @@ export default function App() {
     setMeshWash(null);
     // themePrefs.palette — ради ПЕРЕЧИТЫВАНИЯ токенов: палитра меняет их, не меняя dark.
     // meshRev — сетку правили в каталоге, не трогая sidebar.meshId.
-  }, [chromeTinted, groundPrefs.amount, groundPrefs.source, groundPrefs.meshId, meshRev, dark, activeIncognito, themePrefs.palette]);
+  }, [chromeTinted, groundPrefs.amount, groundPrefs.source, groundPrefs.meshId, groundPrefs.tone, meshRev, dark, activeIncognito, themePrefs.palette]);
 
   useEffect(() => {
     // ⚠️ Фон берём из ЖИВОГО значения --app-bg, а не из литерала: с палитрами (см. palettes.css)
@@ -1107,8 +1113,8 @@ export default function App() {
       // Цветная земля несёт зерно сама; обычная получает его здесь — иначе фактура доставалась
       // бы только тем, кто включил подкраску (разбор — chromeGrainStyle в styles/island.ts).
       // Пространство рисуется ВСЕГДА; цветная подкраска — усиленный вариант того же маршрута.
-      ...(ground ? chromeTintStyle(ground.backgroundImage, ground.paintLayers) : chromeSpaceStyle(dark || activeIncognito)),
-      ...(ground ? tintedPlateVars(ground.island) : null),
+      ...(ground ? chromeTintStyle(ground.backgroundImage, ground.paintLayers, dark || activeIncognito, ground.top) : chromeSpaceStyle(dark || activeIncognito)),
+      ...(ground ? tintedPlateVars(ground.island, dark || activeIncognito) : null),
       ['--sidebar-plate' as string]: ground ? ground.island : 'var(--surface)',
     }}>
       {/* Оверлей во время drag разделителя: держит col-resize курсор по всей ширине

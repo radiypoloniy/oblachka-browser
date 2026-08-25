@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DISPLAY, RADIUS } from '../../styles/system';
-import { Tile, TileCaption, Sparkline, TONE_GREEN, TONE_WARM, FILL_GREEN, FILL_WARM, type WidgetProps } from './widgets';
+import { Tile, TileCaption, Sparkline, TONE_GREEN, TONE_WARM, FILL_GREEN, FILL_WARM, displayEm, type WidgetProps } from './widgets';
 import { CalendarFace, TimerLayout } from './clockFaces';
 import { TIMER_PRESETS, timerLeftMs, timerRunning } from '../../newtab/timerStore';
 import type { TimerState } from '../../../shared/ipc';
@@ -396,13 +396,24 @@ export function TrackingWidget({ box, fill, onActivate, overImage, hero: isHero 
   const tight = box.height < 120;
   const others = groups.size - 1;
 
+  // ⚠️ Кегль цены СЧИТАЕТСЯ от плитки, а не задан константой. Прежние 18/22 не зависели ни от
+  // ширины плитки, ни от длины самой цены: на крупной плитке ключевое число выглядело мельче
+  // подписей-соседей, а «1 234 567 ₽» на узкой рисковало обрезаться краем. Место справа под
+  // изменение цены вычитается заранее — оно рисуется мелким кеглем и от кегля цены не зависит.
+  const priceText = money(last, hero.currency);
+  const forDiff = diff !== 0 ? 76 : 0;
+  const priceFs = Math.round(Math.max(16, Math.min(
+    ((box.width - 32 - forDiff) * 0.94) / displayEm(priceText),
+    tight ? 20 : 34,
+  )));
+
   return (
     <Tile surface toned overImage={overImage} hero={isHero} fill={fill} onActivate={onActivate}>
       <TileCaption>Отслеживание</TileCaption>
 
       <div style={{ flex: 'none', display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ ...DISPLAY, fontSize: tight ? 18 : 22, fontWeight: isHero ? 700 : 600, lineHeight: 1.05 }}>
-          {money(last, hero.currency)}
+        <span style={{ ...DISPLAY, fontSize: priceFs, fontWeight: isHero ? 700 : 600, lineHeight: 1.05 }}>
+          {priceText}
         </span>
         {diff !== 0 && (
           <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: down ? 'var(--tone-green)' : 'var(--tone-warm)' }}>

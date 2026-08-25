@@ -115,11 +115,57 @@ export function glassPlate({ surface = 'material', shadow = 'shadow-card', borde
  * коридору светлоты, и без дизеринга слабый переход ложится полосами — 8-битный sRGB просто не
  * имеет промежуточных значений.
  */
-export function noise(opacity: number): string {
+export function noise(opacity: number, freq = '0.85', octaves = 1): string {
   return "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E" +
-    "%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E" +
+    `%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='${freq}' numOctaves='${octaves}' stitchTiles='stitch'/%3E%3C/filter%3E` +
     `%3Crect width='180' height='180' filter='url(%23n)' opacity='${opacity}'/%3E%3C/svg%3E\")`;
 }
+
+/**
+ * Зерно ЗЕМЛИ ОКНА — то же, что на плитках стола, а не тот же, что дизеринг островов.
+ *
+ * ⚠️ Разница не в силе, а в ЗАДАЧЕ, и её стоило назвать раньше. Дизеринг (GRAIN.*, мелкий калибр
+ * 0.85, альфа 0.06–0.09, без наложения) разбивает полосы слабого градиента — ему видимым быть и
+ * не надо. Фактура печати должна читаться глазом: живая оценка земли под сайдбаром была «зерна
+ * вообще нет и не видно», при том что формально оно там рисовалось.
+ *
+ * ⚠️ Поэтому здесь тот же рецепт, что у `grain` в system.ts: калибр 0.65 в два октава и наложение
+ * overlay. Мелкий калибр на HiDPI усредняется в ровную серость, а без наложения серый шум просто
+ * гасит контраст вместо того, чтобы дать поверхность.
+ */
+// ⚠️ Альфа зашита В SVG, поэтому темой управляет ПАРАМЕТР, а не токен (как у зерна плиток):
+// data-URI собирается строкой, и var() внутри него не вычисляется.
+// ⚠️ В тёмной теме доза втрое меньше: overlay кладёт светлые крапины на тёмную землю, и та же
+// сила, что даёт печатную фактуру на светлом, читается шумом поверх интерфейса.
+/**
+ * Высота полосы системных кнопок Windows. ⚠️ Дубль числа из shared/chromeGround.ts — намеренный:
+ * island.ts не тянет значимых импортов, а сама полоса здесь нужна ровно для одного — погасить в
+ * ней зерно (см. capStrip ниже).
+ */
+const OVERLAY_STRIP_PX = 56;
+
+/**
+ * Полоса без зерна под кнопками Windows.
+ *
+ * ⚠️ Кнопки окна рисует ОПЕРАЦИОННАЯ СИСТЕМА, и она заливает свою полосу ЧИСТЫМ цветом — фактуру
+ * туда передать нечем. Пока зерно было на пределе видимости, стык не читался; с печатной дозой
+ * разница стала заметна, и это ощущается как «кнопки не соответствуют браузеру, чувствуется
+ * разница в цветах и стиле» — при том что сам цвет совпадает точно (overlay со средним 50% серым
+ * не смещает тон, смещается только фактура).
+ *
+ * ⚠️ Гасим НЕПРОЗРАЧНОЙ заливкой цвета верхней кромки, а не маской: маска у слоя фона в CSS
+ * применяется ко всему элементу, а нам нужен ровно первый слой.
+ */
+function capStrip(topColor: string): string {
+  return `linear-gradient(180deg, ${topColor} 0px, ${topColor} ${OVERLAY_STRIP_PX - 12}px, transparent ${OVERLAY_STRIP_PX}px)`;
+}
+
+const GROUND_GRAIN_LIGHT = 0.85;
+const GROUND_GRAIN_DARK = 0.28;
+const GROUND_GRAIN_FREQ = '0.65';
+const GROUND_GRAIN_OCTAVES = 2;
+export const groundGrain = (dark = false): string =>
+  noise(dark ? GROUND_GRAIN_DARK : GROUND_GRAIN_LIGHT, GROUND_GRAIN_FREQ, GROUND_GRAIN_OCTAVES);
 
 /**
  * Сила зерна: светлая тема / тёмная / поверх насыщенной подкраски.
@@ -141,16 +187,18 @@ export const GRAIN = { light: 0.09, dark: 0.09, tinted: 0.075, material: 0.06, o
 // Сам рисунок земли считает shared/chromeGround.ts (там же и проверка): CSS не умеет ни поворот
 // тона, ни притемнение по светимости, а без них цветной фон ломает читаемость в тёмной теме.
 // Здесь остаётся только обёртка — положить готовую картинку и накрыть её зерном.
-export function chromeTintStyle(backgroundImage: string, paintLayers = 1): React.CSSProperties {
+export function chromeTintStyle(backgroundImage: string, paintLayers = 1, dark = false, topColor = 'var(--app-bg)'): React.CSSProperties {
   // ⚠️ Размер и повтор — на КАЖДЫЙ слой краски, не «зерно + одно 100%». У сетки слоёв несколько,
   // и недостающие размеры CSS берёт С НАЧАЛА списка: пятно получало бы плитку зерна 180 px.
   const paintSize = Array.from({ length: paintLayers }, () => '100% 100%').join(', ');
   const paintRepeat = Array.from({ length: paintLayers }, () => 'no-repeat').join(', ');
   return {
-    // На насыщенной подкраске зерно приходится держать сильнее: цвет «съедает» мелкий шум.
-    backgroundImage: `${noise(GRAIN.tinted)}, ${backgroundImage}`,
-    backgroundRepeat: `repeat, ${paintRepeat}`,
-    backgroundSize: `180px 180px, ${paintSize}`,
+    backgroundImage: `${capStrip(topColor)}, ${groundGrain(dark)}, ${backgroundImage}`,
+    // ⚠️ normal на полосу, overlay на зерно, normal на все слои краски. Без наложения шум ложится
+    // серой плёнкой поверх цвета: он гасит краску вместо того, чтобы дать ей поверхность.
+    backgroundBlendMode: `normal, overlay, ${Array.from({ length: paintLayers }, () => 'normal').join(', ')}`,
+    backgroundRepeat: `no-repeat, repeat, ${paintRepeat}`,
+    backgroundSize: `100% ${OVERLAY_STRIP_PX}px, 180px 180px, ${paintSize}`,
   };
 }
 
@@ -174,6 +222,9 @@ export function chromeTintStyle(backgroundImage: string, paintLayers = 1): React
  * полосами, зерно их разбивает. Это условие, при котором градиент вообще может быть слабым.
  */
 export const GRAIN_ENABLED = true;
+// ⚠️ Параметр `dark` вернулся, но по ДРУГОЙ причине, чем был. Раньше он выбирал между GRAIN.light
+// и GRAIN.dark, а они давно равны (0.09 и 0.09) — различение существовало на бумаге. Теперь он
+// задаёт дозу фактуры: overlay на тёмной земле заметно агрессивнее, чем на светлой.
 export function chromeSpaceStyle(dark = false): React.CSSProperties {
   const gradient =
     'linear-gradient(180deg, var(--ground-1) 0%, var(--ground-2) 52%, var(--ground-3) 100%)';
@@ -181,9 +232,10 @@ export function chromeSpaceStyle(dark = false): React.CSSProperties {
     return { backgroundImage: gradient, backgroundRepeat: 'no-repeat', backgroundSize: '100% 100%' };
   }
   return {
-    backgroundImage: `${noise(dark ? GRAIN.dark : GRAIN.light)}, ${gradient}`,
-    backgroundRepeat: 'repeat, no-repeat',
-    backgroundSize: '180px 180px, 100% 100%',
+    backgroundImage: `${capStrip('var(--ground-1)')}, ${groundGrain(dark)}, ${gradient}`,
+    backgroundBlendMode: 'normal, overlay, normal',
+    backgroundRepeat: 'no-repeat, repeat, no-repeat',
+    backgroundSize: `100% ${OVERLAY_STRIP_PX}px, 180px 180px, 100% 100%`,
   };
 }
 
@@ -208,12 +260,26 @@ export function chromeSpaceStyle(dark = false): React.CSSProperties {
 // а не «землёй с примесью». 6% тона по белому даёт заметно более светлый тон, чем 12–3% того же
 // тона по --app-bg, — то есть остров читается даже там, где градиент гуще всего.
 // island — готовый цвет острова (islandColor из shared/chromeGround.ts, посчитан по живым токенам).
-export function tintedPlateVars(island: string): React.CSSProperties {
+export function tintedPlateVars(island: string, dark = false): React.CSSProperties {
   return {
+    // ⚠️ В ТЁМНОЙ теме на подкрашенной плашке приглушённый текст перестаёт читаться, и это замер,
+    // а не впечатление: остров поднимается над землёй всего в ISLAND_LIFT (1.35) раз и остаётся
+    // тёмным И насыщенным, а --text-muted — нейтрально-серый. На мятной земле плейсхолдер
+    // адресной строки давал 2.82 при норме 4.5, «Новая вкладка» — столько же. Ступень выше
+    // (n11/n10) возвращает 4.4–5.1 на всех палитрах, проверено на мяте, чае, синем и мандарине.
+    // ⚠️ В светлой теме этого не нужно: там остров почти белый, и серый на нём читается.
+    ...(dark ? {
+      ['--text-muted' as string]: 'var(--n11)',
+      ['--text-faint' as string]: 'var(--n10)',
+    } : null),
     ['--plate-bg' as string]: island,
     // Блюр по НЕПРОЗРАЧНОЙ земле не даёт ничего, кроме расхода: заливка сплошная.
     ['--plate-filter' as string]: 'none',
     ['--plate-edge' as string]: 'color-mix(in srgb, var(--sidebar-tint) 16%, transparent)',
+    // ⚠️ Поле строки НЕМНОГО глубже плашки, а не равно ей: поле — это место ВВОДА, и на цветной
+    // земле оно обязано остаться вдавленным. Совпадение с плашкой стирало бы разницу между
+    // «сюда пишут» и «это просто поверхность».
+    ['--plate-field' as string]: `color-mix(in srgb, var(--sidebar-tint) 10%, ${island})`,
     // --plate-shadow НЕ переопределяем: тень и есть то, чем остров парит. Именно её отсутствие
     // читалось как «элементы перестали парить».
   };
@@ -241,6 +307,10 @@ export const untintedPlateVars: React.CSSProperties = {
   ['--plate-bg' as string]: 'var(--surface-sunken)',
   ['--plate-filter' as string]: 'none',
   ['--plate-edge' as string]: 'initial',
+  // ⚠️ Текст возвращается к своим ступеням вместе с плашками: внутри сплошной панели подкраски
+  // нет, и поднятый приглушённый читался бы там не «читаемым», а просто крикливым.
+  ['--text-muted' as string]: 'initial',
+  ['--text-faint' as string]: 'initial',
 };
 
 // Изначально жили только в Toolbar.tsx — вынесены сюда для переиспользования в других панелях
@@ -304,10 +374,14 @@ export function chromeCluster(): React.CSSProperties {
 export function omniField(): React.CSSProperties {
   return {
     backgroundImage: noise(GRAIN.material),
-    backgroundColor: 'var(--field)',
-    backdropFilter: 'var(--material-blur)',
-    WebkitBackdropFilter: 'var(--material-blur)',
-    boxShadow: 'inset 0 1px 0 var(--material-edge), 0 0 0 1px var(--divider)',
+    // ⚠️ Поле адресной строки — ЕДИНСТВЕННАЯ плашка верхней полосы, которая не участвовала в
+    // подкраске: остальные берут `--plate-bg`, а здесь стоял жёсткий `--field`. На цветной земле
+    // строка оставалась прежней и читалась деталью из другой темы — живая жалоба «на градиентных
+    // фонах адресная строка сильно выбивается, почти не меняется с палитрой».
+    backgroundColor: 'var(--plate-field, var(--field))',
+    backdropFilter: 'var(--plate-filter, var(--material-blur))',
+    WebkitBackdropFilter: 'var(--plate-filter, var(--material-blur))',
+    boxShadow: 'inset 0 1px 0 var(--material-edge), 0 0 0 1px var(--plate-edge, var(--divider))',
     borderRadius: 'var(--radius-pill)',
   };
 }

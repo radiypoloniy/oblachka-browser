@@ -181,5 +181,64 @@ console.log('\n— рисунок —');
   check('три ступени', (g.backgroundImage.match(/#[0-9a-f]{6}/g) || []).length, 3);
 }
 
+console.log('');
+console.log('— ПЛАКАТНАЯ КРАСКА КАК ЗЕМЛЯ —');
+// ⚠️ Краска выбирается источником тона (POSTER_TONES в src/newtab/settings.ts) и идёт тем же
+// путём, что тон палитры: подмешивается к --app-bg долей amount с потолком 30%. Пороги поэтому
+// ровно те же, что выше для палитр, — иначе «выбрать любимый цвет» означало бы «получить окно,
+// на котором не видно адресной строки».
+//
+// ⚠️ Сравнивать землю с --surface НАПРЯМУЮ нельзя, и это стоило ложной тревоги при написании
+// случая: в тёмной теме земля с подкраской светлее голого --surface у ВСЕХ палитр тоже, потому
+// что остров поднимается отдельно (ISLAND_LIFT). Значимое здесь — контраст земли к фону.
+const POSTER = ['#E8611C', '#E9BE1E', '#A9E86B', '#1F5E52', '#9BD3DE', '#4C5665'];
+// ⚠️ Страсть (#C63F3E) в наборе земель ОТСУТСТВУЕТ — она и заводит этот случай: в тёмной теме
+// её земля даёт 1.30 при пороге 1.35. Случай зафиксирован, чтобы краску не вернули «для
+// симметрии с остальным набором».
+check('страсть как земля не проходит порог видимости',
+  contrast(buildChromeGround({ tint: '#C63F3E', appBg: DARK.appBg, surface: DARK.surface, amount: 30, dark: true }).top,
+    DARK.appBg) < 1.35, true);
+for (const tint of POSTER) {
+  const at = (amount) => buildChromeGround({ tint, appBg: DARK.appBg, surface: DARK.surface, amount, dark: true });
+  const full = at(30);
+  check(`краска ${tint} на максимуме отличима от фона (≥1.35)`, contrast(full.top, DARK.appBg) >= 1.35, true);
+  check(`краска ${tint} на минимуме сдержанна (≤1.25)`, contrast(at(6).top, DARK.appBg) <= 1.25, true);
+  check(`краска ${tint} — ползунок двигает землю монотонно`,
+    contrast(at(6).top, DARK.appBg) < contrast(at(18).top, DARK.appBg)
+      && contrast(at(18).top, DARK.appBg) < contrast(full.top, DARK.appBg), true);
+  // Светлая тема: земля обязана остаться ТЕМНЕЕ островов, иначе иерархия выворачивается.
+  const light = buildChromeGround({ tint, appBg: LIGHT.appBg, surface: LIGHT.surface, amount: 30, dark: false });
+  check(`краска ${tint} — в светлой теме земля темнее острова`,
+    relLuminance(light.top) < relLuminance(LIGHT.surface), true);
+}
+
+console.log('');
+console.log('— ОСТРОВ НА НАСЫЩЕННОЙ ЗЕМЛЕ —');
+// ⚠️ Остров обязан держать ДВА условия сразу, и они тянут в разные стороны: принадлежать палитре
+// (иначе адресная строка читается деталью из другой темы — живая жалоба) и оставаться заметно
+// светлее земли (иначе теряется вся иерархия «парящее светлее фона»).
+for (const tint of ['#3EB489', '#E8611C', '#1F5E52', '#9BD3DE', '#007AFF']) {
+  const g = buildChromeGround({ tint, appBg: LIGHT.appBg, surface: LIGHT.surface, amount: 30, dark: false });
+  check(`остров на ${tint} светлее земли`, relLuminance(g.island) > relLuminance(g.top), true);
+  check(`остров на ${tint} не белый — тон виден`, g.island.toLowerCase() !== '#ffffff', true);
+  // Порог «заметно светлее»: ниже него плашка перестаёт отделяться от земли без тени.
+  check(`остров на ${tint} отделён от земли (≥1.08)`, contrast(g.island, g.top) >= 1.08, true);
+}
+
+console.log('');
+console.log('— ПРИГЛУШЁННЫЙ ТЕКСТ НА ПОДКРАШЕННОЙ ПЛАШКЕ (тёмная тема) —');
+// ⚠️ Живая жалоба: «на тёмной теме плохо читается серый текст внутри адресной строки и открыть
+// новую вкладку». Причина замерена: остров поднимается над землёй всего в ISLAND_LIFT (1.35) раз
+// и остаётся тёмным И насыщенным, а --text-muted нейтрально-серый. На мяте выходило 2.82.
+// Поэтому при цветной земле в тёмной теме приглушённый текст берёт ступень выше (n11).
+const N10 = '#B0B0B6';  // прежний --text-muted тёмной темы
+const N11 = '#D9D9DC';  // ступень, на которую он поднимается под подкраской
+for (const tint of ['#3EB489', '#E8611C', '#007AFF', '#1F5E52', '#E9BE1E']) {
+  const g = buildChromeGround({ tint, appBg: DARK.appBg, surface: DARK.surface, amount: 30, dark: true });
+  const field = blend(tint, g.island, 10); // --plate-field: поле адресной строки
+  check(`${tint}: поднятый приглушённый читается на поле (≥4.2)`, contrast(N11, field) >= 4.2, true);
+  check(`${tint}: прежняя ступень читалась хуже`, contrast(N10, field) < contrast(N11, field), true);
+}
+
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

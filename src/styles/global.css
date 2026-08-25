@@ -375,3 +375,15 @@ progress {
   @keyframes oblako-gen-drop { from, to { transform: none; opacity: 1; } }
   @keyframes oblako-gen-wait { from, to { opacity: 0.3; transform: none; } }
 }
+
+/* ── Вес значка в хроме ───────────────────────────────────────────────────────
+   ⚠️ Число — CHROME_ICON_STROKE в src/styles/system.ts; здесь оно продублировано ЕДИНСТВЕННЫЙ
+   раз, потому что inline-стилю React обводка чужого svg недоступна: lucide ставит её
+   presentation-атрибутом на своём элементе, а не на нашем контейнере.
+
+   ⚠️ Область ограничена классом chrome-icons и повешена на корни тулбара и сайдбара. Глобальное
+   правило переписало бы и осознанно утолщённые глифы иконок приложений (2.4): CSS всегда бьёт
+   presentation attribute, независимо от порядка. */
+.chrome-icons svg.lucide {
+  stroke-width: 1.6;
+}

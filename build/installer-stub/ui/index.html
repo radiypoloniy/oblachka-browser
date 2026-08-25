@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oblako</title>
+<style>
+@font-face {
+  font-family: "Golos Text";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: block;
+  src: url("fonts/golos-text-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Golos Text";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: block;
+  src: url("fonts/golos-text-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Unbounded";
+  font-style: normal;
+  font-weight: 600 800;
+  font-display: block;
+  src: url("fonts/unbounded-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Unbounded";
+  font-style: normal;
+  font-weight: 600 800;
+  font-display: block;
+  src: url("fonts/unbounded-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+:root {
+  --paper: #EDE7DA;
+  --surface: #F7F3EA;
+  --sunken: #E6DFD1;
+  --ink: #14140F;
+  --muted: rgba(20,20,15,.58);
+  --line: rgba(20,20,15,.13);
+  --sky: #9BD3DE;
+  --mustard: #E9BE1E;
+  --passion: #C63F3E;
+  --ok: #2E7D52;
+  --f-d: "Unbounded", "Golos Text", system-ui, sans-serif;
+  --f-t: "Golos Text", system-ui, sans-serif;
+  --f-m: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  font-family: var(--f-t);
+  color: var(--ink);
+  background: var(--surface);
+}
+.card {
+  display: flex;
+  height: 100%;
+}
+.left {
+  width: 42%;
+  flex: none;
+  padding: 28px 26px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  color: #14140F;
+}
+.left::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .14;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='1' stitchTiles='stitch'/%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.left > * { position: relative; z-index: 1; }
+.left.sky { background: var(--sky); }
+.left.mustard { background: var(--mustard); }
+.left.passion { background: var(--passion); color: #F2EDE1; }
+.caps {
+  font-family: var(--f-m);
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  opacity: .7;
+}
+h1 {
+  font-family: var(--f-d);
+  font-weight: 800;
+  font-size: 32px;
+  letter-spacing: -.04em;
+  line-height: 1.05;
+  margin: 12px 0 0;
+}
+.lede {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-top: 12px;
+  opacity: .82;
+  max-width: 28ch;
+}
+.right {
+  flex: 1;
+  min-width: 0;
+  padding: 28px 28px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--surface);
+}
+.cap {
+  font-family: var(--f-m);
+  font-size: 10px;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: none;
+}
+.dot.wait {
+  background: var(--sunken);
+  outline: 1.5px solid var(--line);
+}
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--sunken);
+  overflow: hidden;
+  margin-top: 4px;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  width: 36%;
+  background: var(--ink);
+  border-radius: 3px;
+  animation: slide 1.2s ease-in-out infinite;
+}
+.bar.done i { width: 100%; animation: none; }
+@keyframes slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(280%); }
+}
+.meta { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.foot {
+  margin-top: auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+}
+.b1 { background: var(--ink); color: var(--paper); }
+.b2 { background: transparent; border-color: var(--line); color: var(--ink); }
+button:disabled { opacity: .45; cursor: default; }
+.screen { display: none; flex: 1; min-height: 0; }
+.screen.on { display: flex; }
+#s-done, #s-err { /* same flex as card via parent */ }
+</style>
+</head>
+<body>
+<div id="s-install" class="card screen on">
+  <div class="left sky">
+    <span class="caps">Oblako</span>
+    <h1>Поставим<br>за минуту</h1>
+    <p class="lede">Подождите немного: устанавливаем браузер и настраиваем его работу.</p>
+  </div>
+  <div class="right">
+    <span class="cap">Установка</span>
+    <div class="row"><i class="dot" id="d1"></i> Подготовка</div>
+    <div class="row"><i class="dot wait" id="d2"></i> Копируем файлы</div>
+    <div class="row"><i class="dot wait" id="d3"></i> Почти готово</div>
+    <div class="bar"><i></i></div>
+    <span class="meta">Это займёт меньше минуты. Браузер откроется, когда скажете.</span>
+    <div class="foot">
+      <button class="b2" type="button" id="cancel">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<div id="s-done" class="card screen">
+  <div class="left mustard">
+    <span class="caps">Готово</span>
+    <h1>Можно<br>открывать</h1>
+    <p class="lede">Откройте браузер, чтобы закончить настройку.</p>
+  </div>
+  <div class="right">
+    <span class="cap">Дальше внутри</span>
+    <p class="meta" style="max-width:none">Перенос закладок, оформление и защита — на первом запуске. Здесь больше ничего нажимать не нужно.</p>
+    <div class="foot">
+      <button class="b1" type="button" id="open">Открыть Oblako</button>
+    </div>
+  </div>
+</div>
+
+<div id="s-err" class="card screen">
+  <div class="left passion">
+    <span class="caps">Ошибка</span>
+    <h1>Не<br>получилось</h1>
+    <p class="lede">Установка остановилась. Можно попробовать ещё раз.</p>
+  </div>
+  <div class="right">
+    <span class="cap">Что случилось</span>
+    <p class="meta" style="max-width:none" id="err-text">Закройте старый Oblako, если он открыт, и повторите установку.</p>
+    <div class="foot">
+      <button class="b1" type="button" id="close">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function post(msg) {
+  if (window.chrome && chrome.webview) chrome.webview.postMessage(msg);
+}
+function show(id) {
+  document.querySelectorAll('.screen').forEach((el) => el.classList.toggle('on', el.id === id));
+}
+document.getElementById('cancel').onclick = () => post('cancel');
+document.getElementById('open').onclick = () => post('open');
+document.getElementById('close').onclick = () => post('close');
+
+if (window.chrome && chrome.webview) {
+  chrome.webview.addEventListener('message', (e) => {
+    const m = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+    if (m.screen === 'copy') {
+      document.getElementById('d2').classList.remove('wait');
+    }
+    if (m.screen === 'done') {
+      document.querySelector('.bar')?.classList.add('done');
+      show('s-done');
+    }
+    if (m.screen === 'error') {
+      if (m.text) document.getElementById('err-text').textContent = m.text;
+      show('s-err');
+    }
+  });
+}
+
+setTimeout(() => document.getElementById('d2').classList.remove('wait'), 1200);
+setTimeout(() => document.getElementById('d3').classList.remove('wait'), 8000);
+</script>
+</body>
+</html>

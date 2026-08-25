@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import {
-  Shield, Sparkles, Check, Loader2, ArrowRight, ArrowLeft, FileUp,
-  Globe, BrainCircuit, Link2, Search, Palette, LayoutGrid,
+  Check, Loader2, ArrowRight, ArrowLeft, FileUp,
 } from 'lucide-react';
 import type {
   ImportSource, ImportDataType, ImportRunResult, ImportTypeResult,
@@ -13,7 +12,7 @@ import { isDarkTheme } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
 import { btnPrimary, btnGhost } from './settings/kit';
 import BrowserLogo from './BrowserLogo';
-import { CAPS, RADIUS, TEXT, DISPLAY, grain, sp } from '../styles/system';
+import { CAPS, RADIUS, TEXT, DISPLAY, grain, sp, pad, motion } from '../styles/system';
 
 // Экран первого запуска: короткий рассказ о том, чем этот браузер отличается, и перенос данных
 // из привычного браузера последним шагом.
@@ -35,99 +34,34 @@ interface Props {
 // ── Иллюстрации ───────────────────────────────────────────────────────────────
 // Рисуем разметкой, а не картинками: интерфейс здесь и есть предмет разговора, а нарисованный
 // теми же токенами он совпадает с тем, что человек увидит через минуту.
-/**
- * Логотип Oblako вектором.
- *
- * ⚠️ Это ПЕРЕРИСОВКА настоящего знака (build/logo-source.png), а не «облако с нуля»: рисовать
- * своё облако рядом с существующим логотипом — значит завести второй знак у одного продукта.
- * Первая попытка так и вышла: три круга и скруглённая плита читались диваном, а не облаком.
- *
- * Почему вектор, а не сам PNG: знак должен жить на любом кегле (210 px на первом экране, 62 px в
- * шаге переноса, дальше — где понадобится) и не мылиться на HiDPI, а растр под это пришлось бы
- * держать в трёх размерах.
- *
- * ⚠️ Цвета ФИРМЕННЫЕ и НЕ следуют палитре — в отличие от всего остального в интерфейсе. Логотип
- * узнают по цвету; перекрашенный под «Мяту» знак — это уже другой знак. Сиреневая ступень взята
- * из оригинала и держится на 252° — вне сектора, который стережёт conventions-check, и это не
- * обход правила: закон запрещает фиолетовый в СИСТЕМНЫХ ролях, а тут фирменный знак.
- */
-function OblakoLogo({ size = 200 }: { size?: number }) {
-  // id градиентов уникальны по размеру: два знака на одном экране (первый слайд и шаг переноса)
-  // с одинаковыми id подхватили бы чужие defs.
-  const uid = `oblako-logo-${size}`;
+
+
+
+
+
+
+// Крупный факт для карточки модели: подпись капсом сверху, число дисплейной гарнитурой снизу.
+// ⚠️ Размер файла и требование к видеопамяти — единственные числа, по которым человек решает,
+// соглашаться ли на загрузку. Они обязаны читаться первыми, а не быть серой строкой через «·».
+function BigFact({ cap, value }: { cap: string; value: string }) {
   return (
-    <svg
-      width={size} height={size} viewBox="0 0 200 200" aria-hidden
-      style={{ display: 'block', filter: 'drop-shadow(0 14px 26px rgba(79, 111, 245, 0.28))' }}
-    >
-      <defs>
-        {/* Небо: насыщенный синий сверху-слева, сиреневая ступень справа, светлая синь снизу. */}
-        <linearGradient id={`${uid}-sky`} x1="0.08" y1="0.04" x2="0.92" y2="0.9">
-          <stop offset="0%" stopColor="#4F6FF5" />
-          <stop offset="40%" stopColor="#7C99FC" />
-          <stop offset="70%" stopColor="#B7A8F0" />
-          <stop offset="100%" stopColor="#9FC0FF" />
-        </linearGradient>
-        {/* Дальний ряд облаков — холоднее и темнее переднего, иначе слои сливаются в пятно. */}
-        <linearGradient id={`${uid}-back`} x1="0.5" y1="0" x2="0.5" y2="1">
-          <stop offset="0%" stopColor="#F1F4FE" />
-          <stop offset="100%" stopColor="#D6E0F9" />
-        </linearGradient>
-        <linearGradient id={`${uid}-front`} x1="0.3" y1="0" x2="0.65" y2="1">
-          <stop offset="0%" stopColor="#FFFFFF" />
-          <stop offset="65%" stopColor="#F6F9FF" />
-          <stop offset="100%" stopColor="#E4EBFC" />
-        </linearGradient>
-        {/* Облака обрезаны кругом — как в оригинале: знак читается «окном в небо». */}
-        <clipPath id={`${uid}-clip`}><circle cx="100" cy="100" r="94" /></clipPath>
-      </defs>
-
-      <circle cx="100" cy="100" r="94" fill={`url(#${uid}-sky)`} />
-
-      <g clipPath={`url(#${uid}-clip)`}>
-        <g fill={`url(#${uid}-back)`}>
-          <circle cx="137" cy="96" r="31" />
-          <circle cx="171" cy="127" r="23" />
-          <circle cx="53" cy="107" r="27" />
-          <rect x="42" y="106" width="150" height="58" rx="29" />
-        </g>
-        {/* Верхний купол — главный объём знака. */}
-        <circle cx="98" cy="88" r="47" fill={`url(#${uid}-front)`} />
-        {/* Передняя гряда: два кома и общая плита-основание. */}
-        <g fill={`url(#${uid}-front)`}>
-          <circle cx="119" cy="141" r="47" />
-          <circle cx="52" cy="147" r="31" />
-          <rect x="28" y="141" width="162" height="72" rx="36" />
-        </g>
-      </g>
-    </svg>
+    <span style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+      <span style={{ ...CAPS }}>{cap}</span>
+      <span style={{
+        ...DISPLAY, fontSize: 24, fontWeight: 800, letterSpacing: '-0.03em',
+        color: 'var(--text-strong)', lineHeight: 1,
+      }}>{value}</span>
+    </span>
   );
 }
 
-
-
-
-
-function ArtStack({ children }: { children: React.ReactNode }) {
+// Оговорка шага индексации. Тире, а не значок: набор случайных иконок рядом с текстом читался
+// как «странные символы» и мешал, вместо того чтобы помогать.
+function IndexNote({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{
-      height: '100%', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', gap: 14,
-    }}>{children}</div>
-  );
-}
-
-function Pill({ text, dot, delay = 0 }: { text: string; dot?: string; delay?: number }) {
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      padding: '5px 11px', borderRadius: 'var(--radius-pill)',
-      background: 'var(--surface-sunken)', color: 'var(--text-body)',
-      fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap',
-      animation: `oblako-onb-rise var(--dur-slow) var(--ease-out) ${delay}ms backwards`,
-    }}>
-      {dot && <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flex: 'none' }} />}
-      {text}
+    <span style={{ display: 'flex', gap: sp(2), ...TEXT.body, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+      <span style={{ color: 'var(--text-faint)' }}>—</span>
+      <span>{children}</span>
     </span>
   );
 }
@@ -166,7 +100,7 @@ const MAP_SPOTS: { key: string; label: string; box: React.CSSProperties }[] = [
 function WindowMap() {
   return (
     <div style={{
-      position: 'relative', width: '100%', height: 214,
+      position: 'relative', width: '100%', height: 300,
       borderRadius: RADIUS.content, border: '1px solid var(--divider)',
       background: 'var(--surface-sunken)', overflow: 'hidden',
     }}>
@@ -284,28 +218,25 @@ type StepKind = 'import' | 'model' | 'index' | 'look' | 'guide';
  * десяти пунктов на первом запуске не читают вовсе, а прочитанные четыре человек действительно
  * находит потом глазами. Всё остальное живёт в настройках и находится по ходу.
  */
-const GUIDE: { icon: React.ReactNode; title: string; text: string }[] = [
-  {
-    icon: <Shield size={20} />,
-    title: 'Щит в адресной строке',
-    text: 'VPN и блокировщик живут под ним — там же счётчик заблокированного и переключатель для текущего сайта.',
-  },
-  {
-    icon: <LayoutGrid size={20} />,
-    title: 'Приложения на новой вкладке',
-    text: 'Встроенные приложения, виджеты и любые сайты — плитками на рабочем столе. Добавляются кнопкой там же.',
-  },
-  {
-    icon: <Palette size={20} />,
-    title: 'Цвет браузера',
-    text: 'Настройки → «Интерфейс»: шесть палитр, светлая и тёмная тема, обои новой вкладки.',
-  },
-  {
-    icon: <Sparkles size={20} />,
-    title: 'ИИ в боковой панели',
-    text: 'Спросить о странице, перевести её целиком или разобрать выделенный текст — всё оттуда.',
-  },
+/**
+ * Четыре места, ради которых стоит заглянуть в интерфейс.
+ *
+ * ⚠️ Ровно четыре и ни одним больше. Это не справка, а «куда смотреть в первую минуту»: список
+ * из десяти пунктов на первом запуске не читают вовсе.
+ *
+ * ⚠️ ПОДПИСИ КОРОТКИЕ — по одной фразе. Раньше здесь стояли абзацы, и вместе со схемой окна выше
+ * шаг превращался в стену текста, которую надо прокручивать. Где эти места находятся, показывает
+ * схема; подписи отвечают только на «что там».
+ *
+ * ⚠️ Значков нет: они дублировали бы подписи схемы и добавляли на экран чужую графику.
+ */
+const GUIDE: { title: string; text: string }[] = [
+  { title: 'Щит',         text: 'VPN и блокировщик' },
+  { title: 'ИИ',          text: 'Спросить о странице' },
+  { title: 'Приложения',  text: 'Плитки и виджеты стола' },
+  { title: 'Настройки',   text: 'Тема, палитра, обои' },
 ];
+
 
 export default function Onboarding({ onFinish }: Props) {
   const [step, setStep] = useState(0);
@@ -483,11 +414,11 @@ export default function Onboarding({ onFinish }: Props) {
   // Левая половина осталась плакатной и несёт только тон, заголовок и одну фразу.
   const head: { art: React.ReactNode; title: string; text: string } =
     kind === 'import' ? {
-      art: <ArtImport />,
+      art: null,
       title: 'Перенесём ваши данные?',
       text: 'Закладки, история и пароли переедут из привычного браузера. В нём ничего не изменится — данные только копируются.',
     } : kind === 'model' ? {
-      art: <ArtModel />,
+      art: null,
       title: modelOffer ? 'Скачать локальную модель?' : 'Про локальную модель',
       text: modelOffer
         ? 'Перевод, пересказ и поиск по смыслу работают прямо на вашем компьютере — для этого нужен один файл модели. Качается в фоне, пользоваться браузером можно сразу.'
@@ -501,7 +432,7 @@ export default function Onboarding({ onFinish }: Props) {
         ? 'Загрузка идёт в фоне и переживёт этот экран — браузером можно пользоваться прямо сейчас. А пока покажем, где что лежит.'
         : 'Ничего настраивать не нужно, но эти четыре вещи стоит знать заранее — потом найдёте их глазами.',
     } : kind === 'index' ? {
-      art: <ArtIndex />,
+      art: null,
       title: 'Подготовить историю к поиску?',
       text: 'Из другого браузера переехали адреса и заголовки. Чтобы искать по смыслу — «та статья про ипотеку», — страницы нужно один раз прочитать.',
     } : {
@@ -537,7 +468,10 @@ export default function Onboarding({ onFinish }: Props) {
           разобранный живой баг, а не запас осторожности. */}
       <div style={{
         position: 'relative',
-        width: 880, maxWidth: 'calc(100vw - 48px)', maxHeight: 'calc(100vh - 80px)',
+        // ⚠️ КРУПНО. Экран первого запуска не экономит место: он показывается один раз, и
+        // впихивать в него побольше информации мелким кеглем — ровно то, из-за чего он и
+        // читался «невзрачным». Лучше меньше слов и больше воздуха.
+        width: 1040, maxWidth: 'calc(100vw - 64px)', height: 680, maxHeight: 'calc(100vh - 64px)',
         display: 'flex', overflow: 'hidden',
         ...islandPlate,
         borderRadius: 'var(--radius-island)',
@@ -547,53 +481,57 @@ export default function Onboarding({ onFinish }: Props) {
       }}>
         {/* «Пропустить» — в углу, а не в ряду кнопок: это выход из разговора, а не шаг в нём.
             Внизу тогда остаются только «Назад» и «Дальше», и ряд читается как одно движение. */}
+        {/* ⚠️ «Пропустить» стоит на ПЛАКАТНОЙ половине, а не в правом углу карточки. Справа он
+            налезал на содержимое шага — на схеме окна буквально перекрывал подсветку «ИИ». Слева
+            воздуха вдоволь, и это по-прежнему выход из разговора, а не шаг в нём. */}
         <button
           onClick={onFinish}
           style={{
-            position: 'absolute', top: 14, right: 18, zIndex: 1,
+            position: 'absolute', top: sp(6), left: sp(8), zIndex: 2,
             border: 'none', background: 'transparent', cursor: 'default',
-            color: 'var(--text-faint)', fontSize: 'var(--fs-sm)', padding: '6px 10px',
-            borderRadius: 'var(--radius-sm)',
+            color: ink, opacity: 0.6, ...TEXT.body, padding: 0,
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; }}
         >
           Пропустить
         </button>
 
         {/* ── Левая половина: тон, номер шага, заголовок, одна фраза ── */}
         <div key={`side-${step}`} style={{
-          width: '40%', flex: 'none', position: 'relative', overflow: 'hidden',
+          width: '38%', flex: 'none', position: 'relative', overflow: 'hidden',
           background: `var(--poster-${tone})`, color: ink,
-          padding: `${sp(6)}px ${sp(6)}px ${sp(6)}px`,
+          padding: `${sp(8)}px ${sp(8)}px ${sp(6)}px`,
           display: 'flex', flexDirection: 'column',
           animation: 'oblako-onb-rise var(--dur-slow) var(--ease-out)',
         }}>
           {/* Зерно — та же текстура, что на шапках настроек и библиотеки: она и отличает
               «напечатано» от «залито в макете». */}
           <div style={grain} />
-          <span style={{ ...CAPS, color: 'inherit', opacity: 0.66, position: 'relative' }}>
+          <span style={{ ...CAPS, color: 'inherit', opacity: 0.66, position: 'relative', marginTop: sp(6) }}>
             Шаг {step + 1} из {steps.length}
           </span>
           {/* ⚠️ Дисплейная гарнитура — онбординг один из трёх экранов, где она разрешена (см.
               CLAUDE.md): это «лицо» продукта, а не интерфейс. lineHeight поднят против её
               фирменного 1: на двух строках заголовка плотный интерлиньяж слипается. */}
           <div style={{
-            ...DISPLAY, fontSize: 34, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1.05,
+            ...DISPLAY, fontSize: 44, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1.04,
             marginTop: sp(3), color: 'inherit', position: 'relative',
           }}>
             {head.title}
           </div>
           <div style={{
-            marginTop: sp(3), ...TEXT.body, lineHeight: 1.55, opacity: 0.82,
-            color: 'inherit', position: 'relative', maxWidth: '34ch',
+            // Кегль РОЛИ «section» (16), но обычным весом: это лид-абзац, а не заголовок.
+            // Свой размер тут завести нельзя — шкала одна на продукт (см. typography-check).
+            marginTop: sp(4), ...TEXT.section, fontWeight: 400, lineHeight: 1.6, opacity: 0.82,
+            color: 'inherit', position: 'relative', maxWidth: '32ch',
           }}>
             {head.text}
           </div>
           <div style={{ marginTop: 'auto', display: 'flex', gap: 6, position: 'relative' }}>
             {steps.map((_, i) => (
               <span key={i} style={{
-                width: i === step ? 22 : 7, height: 7, borderRadius: RADIUS.pill,
+                width: i === step ? 28 : 9, height: 9, borderRadius: RADIUS.pill,
                 background: 'currentColor', opacity: i === step ? 0.9 : 0.3,
                 transition: 'width var(--dur-base) var(--ease-out), opacity var(--dur-base) var(--ease-standard)',
               }} />
@@ -604,7 +542,7 @@ export default function Onboarding({ onFinish }: Props) {
         {/* ── Правая половина: дело шага ── */}
         <div style={{
           flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column',
-          padding: `${sp(6)}px ${sp(6)}px ${sp(6)}px`,
+          padding: `${sp(8)}px ${sp(8)}px ${sp(6)}px`, overflowY: 'auto',
         }}>
         <div key={step} style={{ flex: 'none', animation: 'oblako-onb-rise var(--dur-slow) var(--ease-out)' }}>
           {head.art}
@@ -617,17 +555,20 @@ export default function Onboarding({ onFinish }: Props) {
             «Выбрать CSV-файл» уходила под край. Теперь тело занимает место между шапкой и подвалом
             и прокручивается внутри себя. */}
         {importStep && (
-          <div style={{ flex: 1, minHeight: 0, padding: '18px 28px 6px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: sp(3) }}>
             {sources === null ? (
               <Muted>Ищем браузеры на компьютере…</Muted>
             ) : sources.length === 0 ? (
               <Muted>Других браузеров с данными не нашлось — переносить нечего.</Muted>
             ) : (
               <>
-                {/* Карточки тянутся по ширине ряда, а не стоят фиксированными марками по центру:
-                    при двух найденных браузерах узкая пара в широком окне оставляла по бокам
-                    пустоту и весь шаг выглядел незаполненным. */}
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {/* ⚠️ ШИРОКИЕ СТРОКИ ВО ВСЮ ШИРИНУ, а не квадратные марки по центру. Прежние
+                    карточки были узкими, стояли посередине и оставляли справа и снизу пустоту:
+                    правая половина выглядела незаполненной, а сам выбор — мелким. Строка даёт
+                    место для того, что человеку и нужно знать, — что именно переедет и сколько
+                    записей. */}
+                <span style={{ ...CAPS }}>Нашли на этом компьютере</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
                   {sources.map((source) => {
                     const active = source.id === selectedId;
                     return (
@@ -635,61 +576,78 @@ export default function Onboarding({ onFinish }: Props) {
                         key={source.id}
                         onClick={() => selectSource(source)}
                         style={{
-                          flex: '1 1 150px', maxWidth: 260, minWidth: 140,
-                          padding: '16px 12px', borderRadius: 'var(--radius-card)',
-                          border: 'none', cursor: 'default',
-                          background: active ? 'var(--surface)' : 'transparent',
-                          boxShadow: active ? '0 0 0 2px var(--accent) inset' : '0 0 0 1px var(--divider) inset',
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-                          transition: 'box-shadow var(--dur-fast) var(--ease-standard)',
+                          display: 'flex', alignItems: 'center', gap: sp(4), width: '100%',
+                          padding: pad(4), borderRadius: RADIUS.content, cursor: 'default',
+                          textAlign: 'left', background: active ? 'var(--surface)' : 'transparent',
+                          // Выбранное — ЧЕРНИЛЬНАЯ кромка в два пикселя. Раньше это был акцент,
+                          // но экран первого запуска — страница приложения, и обводка здесь
+                          // означает «вот это», а не состояние хрома.
+                          border: active ? '2px solid var(--text-strong)' : '2px solid var(--divider)',
+                          transition: motion.state('border-color', 'background'),
                         }}
                       >
                         <BrowserLogo vendorId={source.id.split('::')[0]} label={source.label} />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{
+                            display: 'block', ...DISPLAY, fontSize: 20, fontWeight: 700,
+                            letterSpacing: '-0.02em', color: 'var(--text-strong)',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>{source.label}</span>
+                          <span style={{ display: 'block', ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1) }}>
+                            {source.dataTypes.map((t) => TYPE_LABELS[t].toLowerCase()).join(', ')}
+                          </span>
+                        </span>
                         <span style={{
-                          fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
-                          maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>{source.label}</span>
+                          width: 24, height: 24, flex: 'none', borderRadius: RADIUS.control,
+                          display: 'grid', placeItems: 'center',
+                          background: active ? 'var(--text-strong)' : 'transparent',
+                          border: active ? 'none' : '2px solid var(--divider-strong)',
+                          color: 'var(--app-bg)',
+                        }}>{active && <Check size={15} strokeWidth={3} />}</span>
                       </button>
                     );
                   })}
                 </div>
 
+                {/* ⚠️ Что именно переносить — ОТДЕЛЬНОЙ строкой под списком, а не пилюлями по
+                    центру экрана. Раньше они висели сами по себе и не были связаны ни с одним
+                    из браузеров, хотя относятся к ВЫБРАННОМУ. */}
                 {selected && !report && (
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-                    {selected.dataTypes.map((type) => {
-                      const on = checked.has(type);
-                      return (
-                        <button
-                          key={type}
-                          onClick={() => toggleType(type)}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 7,
-                            padding: '7px 13px', borderRadius: 'var(--radius-pill)', border: 'none',
-                            cursor: 'default', fontSize: 'var(--fs-sm)',
-                            background: on ? 'var(--accent-soft)' : 'var(--surface-sunken)',
-                            color: on ? 'var(--text-strong)' : 'var(--text-muted)',
-                          }}
-                        >
-                          <span style={{
-                            width: 16, height: 16, borderRadius: RADIUS.tight, flex: 'none',
-                            background: on ? 'var(--accent)' : 'transparent',
-                            border: on ? 'none' : '1.5px solid var(--divider-strong)',
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          }}>{on && <Check size={12} style={{ color: 'var(--on-accent)' }} />}</span>
-                          {TYPE_LABELS[type]}
-                        </button>
-                      );
-                    })}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2), marginTop: sp(2) }}>
+                    <span style={{ ...CAPS }}>Что перенести</span>
+                    <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
+                      {selected.dataTypes.map((type) => {
+                        const on = checked.has(type);
+                        return (
+                          <button
+                            key={type}
+                            onClick={() => toggleType(type)}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: sp(2),
+                              padding: pad(2, 4), borderRadius: RADIUS.pill, cursor: 'default',
+                              ...TEXT.body, fontWeight: 550,
+                              background: on ? 'var(--text-strong)' : 'transparent',
+                              color: on ? 'var(--app-bg)' : 'var(--text-muted)',
+                              border: on ? '2px solid var(--text-strong)' : '2px solid var(--divider)',
+                              transition: motion.state('background', 'color', 'border-color'),
+                            }}
+                          >
+                            {on && <Check size={14} strokeWidth={3} />}
+                            {TYPE_LABELS[type]}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
                 {report && (
                   <div style={{
-                    ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '12px 14px',
-                    display: 'flex', flexDirection: 'column', gap: 4,
+                    ...islandPlate, borderRadius: RADIUS.content, padding: pad(4),
+                    display: 'flex', flexDirection: 'column', gap: sp(2),
                   }}>
                     {(Object.keys(report) as ImportDataType[]).map((type) => (
-                      <div key={type} style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>
+                      <div key={type} style={{ ...TEXT.body, color: 'var(--text-body)' }}>
                         ✅ {resultLine(type, report[type] ?? null)}
                       </div>
                     ))}
@@ -702,10 +660,10 @@ export default function Onboarding({ onFinish }: Props) {
                     поймёт почему. */}
                 {report && 'passwords' in report && (report.passwords?.inserted ?? 0) === 0 && (
                   <div style={{
-                    ...islandPlate, borderRadius: 'var(--radius-sm)', padding: '12px 14px',
-                    display: 'flex', flexDirection: 'column', gap: 8,
+                    ...islandPlate, borderRadius: RADIUS.content, padding: pad(4),
+                    display: 'flex', flexDirection: 'column', gap: sp(3),
                   }}>
-                    <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', lineHeight: 1.5 }}>
+                    <span style={{ ...TEXT.body, color: 'var(--text-body)', lineHeight: 1.5 }}>
                       Пароли современного Chrome зашифрованы и напрямую не переносятся. Экспортируйте
                       их в браузере (<b>Настройки → Пароли → ⋮ → Экспорт паролей</b>) и выберите
                       CSV-файл здесь.
@@ -721,7 +679,7 @@ export default function Onboarding({ onFinish }: Props) {
                       Выбрать CSV-файл
                     </button>
                     {csvMsg && (
-                      <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)' }}>{csvMsg}</span>
+                      <span style={{ ...TEXT.body, color: 'var(--text-body)' }}>{csvMsg}</span>
                     )}
                   </div>
                 )}
@@ -730,26 +688,31 @@ export default function Onboarding({ onFinish }: Props) {
           </div>
         )}
 
-        {/* Тело шага модели. */}
+        {/* Тело шага модели.
+            ⚠️ Карточка КРУПНАЯ и во всю ширину, потому что решение здесь дорогое: человек
+            соглашается на многогигабайтную загрузку. Прежняя версия сообщала имя модели тем же
+            кеглем, что и подпись под ним, а размер и требования прятала в серую строку через
+            «·» — то есть ровно то, ради чего экран и существует, было самым мелким на нём. */}
         {kind === 'model' && modelOffer && (
-          <div style={{ padding: '18px 28px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4) }}>
+            <span style={{ ...CAPS }}>Что скачаем</span>
             <div style={{
-              ...islandPlate, borderRadius: 'var(--radius-card)', padding: '14px 16px',
-              display: 'flex', flexDirection: 'column', gap: 6,
+              display: 'flex', flexDirection: 'column', gap: sp(4),
+              padding: pad(6), borderRadius: RADIUS.content, border: '2px solid var(--divider)',
             }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-strong)' }}>
-                  {modelOffer.model.label}
-                </span>
-                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
-                  {gb(modelOffer.model.sizeBytes)} · нужно {gb(modelOffer.minVramBytes)} видеопамяти
-                </span>
+              <span style={{
+                ...DISPLAY, fontSize: 30, fontWeight: 800, letterSpacing: '-0.03em',
+                color: 'var(--text-strong)', lineHeight: 1.05,
+              }}>{modelOffer.model.label}</span>
+              <div style={{ display: 'flex', gap: sp(8) }}>
+                <BigFact cap="Размер" value={gb(modelOffer.model.sizeBytes)} />
+                <BigFact cap="Нужно видеопамяти" value={gb(modelOffer.minVramBytes)} />
               </div>
               {/* Строка «чем отличается» приходит ИЗ КАТАЛОГА: это пересказ наших замеров, и
                   расходиться описанию с числами нельзя (см. CatalogEntry.summary). */}
-              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              <span style={{ ...TEXT.body, color: 'var(--text-muted)', lineHeight: 1.55 }}>
                 {modelOffer.summary}
-              </div>
+              </span>
             </div>
 
             {dl?.error ? (
@@ -768,7 +731,7 @@ export default function Onboarding({ onFinish }: Props) {
 
         {/* Тело шага индексации. */}
         {kind === 'index' && (
-          <div style={{ padding: '18px 28px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4) }}>
             {backfill?.running ? (
               <Progress
                 done={backfill.processed} total={backfill.total}
@@ -778,73 +741,55 @@ export default function Onboarding({ onFinish }: Props) {
             ) : indexAsked ? (
               <Muted>✅ Запустили — дальше браузер сделает это сам.</Muted>
             ) : (
-              // ⚠️ Говорим ПРЯМО, что для этого страницы будут открыты заново. Это сеть и это следы
-              // в чужих логах — умолчать о таком в приватном браузере нельзя, а решение всё равно
-              // остаётся за человеком.
-              <Muted>
-                Браузер по одной откроет перенесённые адреса, чтобы прочитать текст. Это займёт время
-                и потребует сети; всё остальное в это время работает как обычно.
-              </Muted>
+              <>
+                <span style={{ ...CAPS }}>Что произойдёт</span>
+                {/* ⚠️ Говорим ПРЯМО, что для этого страницы будут открыты заново. Это сеть и это
+                    следы в чужих логах — умолчать о таком в приватном браузере нельзя, а решение
+                    всё равно остаётся за человеком. Поэтому текст здесь КРУПНЫЙ: это не сноска
+                    мелким шрифтом, а то, на что человек соглашается. */}
+                <span style={{
+                  ...TEXT.section, fontWeight: 450, color: 'var(--text-body)', lineHeight: 1.5,
+                }}>
+                  Браузер по одной откроет перенесённые адреса, чтобы прочитать текст.
+                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+                  <IndexNote>Это займёт время и потребует сети.</IndexNote>
+                  <IndexNote>Всё остальное в это время работает как обычно.</IndexNote>
+                  <IndexNote>Прочитанное остаётся на вашем компьютере.</IndexNote>
+                </div>
+              </>
             )}
           </div>
         )}
 
-        {kind === 'guide' && (
-          <div style={{ flex: 1, minHeight: 0, padding: `${sp(3)}px ${sp(4)}px 0`, overflowY: 'auto' }}>
-            {/* ⚠️ Сетка 2×2, а не колонка на четыре строки: колонка не помещалась в экран вместе с
-                шапкой и подвалом и заставляла прокручивать первый же разговор с браузером. */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: sp(2) }}>
-              {GUIDE.map((g, i) => (
-                <div key={g.title} style={{
-                  display: 'flex', gap: sp(2), padding: sp(2),
-                  borderRadius: RADIUS.box, background: 'var(--surface-sunken)',
-                  animation: `oblako-onb-rise var(--dur-slow) var(--ease-out) ${80 + i * 70}ms backwards`,
-                }}>
-                  <span style={{
-                    width: 34, height: 34, flex: 'none', borderRadius: RADIUS.control,
-                    display: 'grid', placeItems: 'center',
-                    background: 'var(--accent-soft)', color: 'var(--accent)',
-                  }}>{g.icon}</span>
-                  <span style={{ minWidth: 0 }}>
-                    <span style={{ ...TEXT.section, display: 'block' }}>{g.title}</span>
-                    <span style={{ ...TEXT.caption, display: 'block', marginTop: 2 }}>{g.text}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
+        {/* ⚠️ Карточек с четырьмя местами здесь БОЛЬШЕ НЕТ. Они дублировали то же самое, что
+            уже показано схемой окна выше: на экране одновременно стояли и схема с подписями, и
+            сетка 2×2 с теми же четырьмя абзацами — из-за этого шаг превращался в кашу из текста
+            и требовал прокрутки. Схема и есть ответ, повторять его словами не надо. */}
 
-            {/* Ход загрузки — здесь же, а не на шаге модели: человек уже ушёл с него, а знать,
-                что процесс идёт и переживёт закрытие экрана, ему по-прежнему нужно. */}
-            {dl?.running && (
-              <div style={{ marginTop: sp(3) }}>
-                <Progress
-                  done={dl.receivedBytes} total={dl.totalBytes}
-                  label={`Модель качается — ${gb(dl.receivedBytes)}${dl.totalBytes ? ` из ${gb(dl.totalBytes)}` : ''}`}
-                  hint="Можно закрывать этот экран: загрузка продолжится в фоне."
-                />
-              </div>
-            )}
+        {/* Ход загрузки — здесь же, а не на шаге модели: человек уже ушёл с него, а знать,
+            что процесс идёт и переживёт закрытие экрана, ему по-прежнему нужно. */}
+        {kind === 'guide' && dl?.running && (
+          <div style={{ marginTop: sp(4) }}>
+            <Progress
+              done={dl.receivedBytes} total={dl.totalBytes}
+              label={`Модель качается — ${gb(dl.receivedBytes)}${dl.totalBytes ? ` из ${gb(dl.totalBytes)}` : ''}`}
+              hint="Можно закрывать этот экран: загрузка продолжится в фоне."
+            />
           </div>
         )}
 
         {/* Подвал. ⚠️ Всё по ЦЕНТРУ, в колонку: точки слева и кнопка справа тянули взгляд к
             краям, хотя весь экран выстроен по центральной оси, — от этого он и читался
             перекошенным. Здесь одна ось, и она совпадает с осью текста. */}
+        {/* ⚠️ Точек шага здесь БОЛЬШЕ НЕТ — они стоят на плакатной половине. Две одинаковые
+            дорожки на одном экране читались как два разных счётчика. */}
         <div style={{
-          marginTop: 'auto', padding: '26px 32px 30px', flex: 'none',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18,
+          marginTop: 'auto', paddingTop: sp(6), flex: 'none',
+          display: 'flex', alignItems: 'center', gap: sp(3),
         }}>
-          <div style={{ display: 'flex', gap: 7 }}>
-            {steps.map((_, i) => (
-              <span key={i} style={{
-                width: i === step ? 20 : 7, height: 7, borderRadius: 'var(--radius-pill)',
-                background: i === step ? 'var(--accent)' : 'var(--divider-strong)',
-                transition: 'width var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-standard)',
-              }} />
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ flex: 1 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: sp(3) }}>
             {/* Назад. ⚠️ Прячем только там, где возвращаться некуда (первый шаг) или уже
                 бессмысленно (перенос сделан): предлагать «назад» после отчёта значило бы
                 звать повторить импорт. */}
@@ -913,7 +858,7 @@ const bigGhost: React.CSSProperties = {
 };
 
 function Muted({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)', textAlign: 'center' }}>{children}</div>;
+  return <div style={{ ...TEXT.body, color: 'var(--text-faint)', lineHeight: 1.5 }}>{children}</div>;
 }
 
 function gb(bytes: number): string {
@@ -926,59 +871,18 @@ function gb(bytes: number): string {
 function Progress({ done, total, label, hint }: { done: number; total: number | null; label: string; hint: string }) {
   const pct = total && total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-      <div style={{ height: 6, borderRadius: 'var(--radius-pill)', background: 'var(--surface-sunken)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+      <div style={{ height: 10, borderRadius: RADIUS.pill, background: 'var(--surface-sunken)', overflow: 'hidden' }}>
         <div style={{
-          height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--accent)',
+          height: '100%', borderRadius: RADIUS.pill, background: 'var(--accent)',
           // Неизвестная длина — не повод врать полосой: показываем узкую «живую» вместо доли.
           width: pct === null ? '25%' : `${pct}%`,
           transition: 'width var(--dur-base) var(--ease-out)',
         }} />
       </div>
-      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', textAlign: 'center' }}>{label}</div>
+      <div style={{ ...TEXT.section, fontWeight: 550, color: 'var(--text-strong)' }}>{label}</div>
       <Muted>{hint}</Muted>
     </div>
-  );
-}
-
-// Иллюстрация шага модели: файл приезжает на сам компьютер, а не в облако.
-function ArtModel() {
-  return (
-    <ArtStack>
-      <div style={{
-        width: 120, height: 88, borderRadius: 'var(--radius-card)',
-        background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}><BrainCircuit size={38} style={{ color: 'var(--accent)' }} /></div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <Pill text="перевод" delay={120} />
-        <Pill text="пересказ" delay={200} />
-        <Pill text="поиск по смыслу" dot="var(--dot-local)" delay={280} />
-      </div>
-    </ArtStack>
-  );
-}
-
-// Иллюстрация шага индексации: список адресов превращается в то, по чему можно искать словами.
-function ArtIndex() {
-  return (
-    <ArtStack>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-        <div style={{
-          width: 88, height: 88, borderRadius: 'var(--radius-card)', background: 'var(--surface-sunken)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}><Link2 size={34} style={{ color: 'var(--text-muted)' }} /></div>
-        <ArrowRight size={30} style={{ color: 'var(--accent)', animation: 'oblako-onb-nudge 1.6s var(--ease-standard) infinite' }} />
-        <div style={{
-          width: 88, height: 88, borderRadius: 'var(--radius-card)',
-          background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}><Search size={34} style={{ color: 'var(--accent)' }} /></div>
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <Pill text="«та статья про ипотеку»" delay={160} />
-      </div>
-    </ArtStack>
   );
 }
 
@@ -1001,17 +905,22 @@ function ArtIndex() {
 //
 // ⚠️ Человек ищет эти места потом ГЛАЗАМИ, а не по памяти о списке. Список из четырёх абзацев
 // он прочитает и забудет; схему — узнает, когда через минуту увидит настоящее окно.
+// Последний шаг: САМО ОКНО с подсветками, а не список абзацев.
+//
+// ⚠️ Человек ищет эти места потом ГЛАЗАМИ, а не по памяти о тексте. Схема показывает ГДЕ,
+// четыре подписи под ней — ЧТО, одной фразой. Раньше здесь одновременно стояли и схема, и сетка
+// карточек с теми же четырьмя абзацами: шаг читался кашей и требовал прокрутки.
 function ArtGuide() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(3) }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(6) }}>
       <WindowMap />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: `${sp(4)}px ${sp(6)}px` }}>
         {GUIDE.map((g) => (
-          <div key={g.title} style={{ display: 'flex', gap: sp(2), alignItems: 'baseline' }}>
-            <span style={{ ...TEXT.body, fontWeight: 650, color: 'var(--text-strong)', flex: 'none' }}>
+          <div key={g.title}>
+            <div style={{ ...DISPLAY, fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-strong)' }}>
               {g.title}
-            </span>
-            <span style={{ ...TEXT.caption, color: 'var(--text-muted)', minWidth: 0 }}>{g.text}</span>
+            </div>
+            <div style={{ marginTop: sp(1), ...TEXT.body, color: 'var(--text-muted)' }}>{g.text}</div>
           </div>
         ))}
       </div>
@@ -1155,29 +1064,3 @@ function LookStep() {
   );
 }
 
-function ArtImport() {
-  return (
-    <ArtStack>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-        <div style={{
-          width: 88, height: 88, borderRadius: 'var(--radius-card)', background: 'var(--surface-sunken)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}><Globe size={36} style={{ color: 'var(--text-muted)' }} /></div>
-        <ArrowRight size={30} style={{
-          color: 'var(--accent)',
-          animation: 'oblako-onb-nudge 1.6s var(--ease-standard) infinite',
-        }} />
-        <div style={{
-          width: 88, height: 88, borderRadius: 'var(--radius-card)',
-          background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}><OblakoLogo size={62} /></div>
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <Pill text="закладки" delay={120} />
-        <Pill text="история" delay={200} />
-        <Pill text="пароли" delay={280} />
-      </div>
-    </ArtStack>
-  );
-}

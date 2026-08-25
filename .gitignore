@@ -2,6 +2,11 @@ node_modules/
 dist/
 dist-electron/
 release/
+build/installer-stub/bin/
+build/installer-stub/obj/
+build/installer-stub/publish/
+build/installer-stub/ui/fonts/
+build/oblako-setup-ui.exe
 *.log
 .DS_Store
 scripts/shots/
@@ -41,3 +46,8 @@ summaryoblachka.md
 # рабочий документ, а не часть продукта. В репозиторий не идёт: устаревает быстрее кода и
 # содержит разбор ещё не закрытых дыр безопасности. Общая карта продукта — docs/roadmap.md.
 docs/roadmap-2026-08-20.md
+
+# Ревизия качества кода и готовности к открытию исходников (25.08.2026). Та же причина, что
+# выше, и одна дополнительная: документ перечисляет НЕЗАКРЫТЫЕ дыры (DNS в туннеле, net.fetch
+# мимо kill switch, OAuth-попап) — то есть готовую карту для того, кто станет их искать.
+docs/code-quality-2026-08-25.md

@@ -454,22 +454,37 @@ export function defaultLayout(): DesktopLayout {
     version: 2,
     scale: DEFAULT_SCALE,
     cols: SCALE_PRESETS[DEFAULT_SCALE].cols,
+    // ⚠️ Набор СОБРАН, а не «что первое пришло»: стол показывается на каждой новой вкладке и это
+    // лицо продукта, поэтому у плиток заданы и КООРДИНАТЫ, и ЗАЛИВКИ. Без координат укладчик
+    // выстраивает их подряд, без заливок всё уходит в цвет темы — стол выглядит серой сеткой,
+    // хотя каждая плитка по отдельности хороша.
+    //
+    // ⚠️ Цвета взяты из плакатного набора и НЕ ПОВТОРЯЮТСЯ рядом: небо у часов, графит у защиты,
+    // страсть у таймера, горчица у календаря. Соседние плитки одного тона сливаются в пятно —
+    // это уже ловили на паре «погода и календарь», когда обе были синими.
+    //
+    // ⚠️ Виджеты, ходящие в СЕТЬ БЕЗ СПРОСА (курс валют, крипта), в наборе по-прежнему НЕТ.
+    // Стол открывается на каждой новой вкладке, то есть браузер сам, без единого действия
+    // человека, регулярно стучался бы в ЦБ РФ и CoinGecko. Добавляются через «+», и там сказано,
+    // куда уйдёт запрос (NETWORK_WIDGETS в AddSheet.tsx).
+    // ⚠️ Погода — ИСКЛЮЧЕНИЕ, и оно проверяемое: без выбранного города запроса нет вовсе
+    // (`if (!city) return` в WeatherWidget), плитка показывает «Укажите город». То есть в наборе
+    // она стоит молча и оживает только после явного действия человека.
     items: [
-      // ⚠️ Виджетов, ходящих в СЕТЬ (погода, курсы, крипта), в стартовом наборе НЕТ намеренно.
-      // Стол показывается на каждой новой вкладке, то есть по умолчанию браузер сам, без единого
-      // действия человека, регулярно стучался бы в Open-Meteo, ЦБ РФ и CoinGecko — и рассказывал
-      // бы им, когда человек открывает вкладки, а погода вдобавок и в каком он городе. Для
-      // приватного браузера это не мелочь. Добавляются они через «+», и там же сказано, куда
-      // именно уйдёт запрос (см. NETWORK_WIDGETS в AddSheet.tsx).
-      { id: 'w-clock',    kind: 'widget', widget: 'clock',    size: WIDGET_SIZES.small },
-      { id: 'w-tasks',    kind: 'widget', widget: 'tasks',    size: WIDGET_SIZES.medium },
-      { id: 'w-topsites', kind: 'widget', widget: 'topsites', size: WIDGET_SIZES.medium },
-      { id: 'a-calc',     kind: 'app', appId: 'calc',    size: { w: 1, h: 1 } },
-      { id: 'a-convert',  kind: 'app', appId: 'convert', size: { w: 1, h: 1 } },
-      { id: 'a-timer',    kind: 'app', appId: 'timer',   size: { w: 1, h: 1 } },
-      { id: 'a-counter',  kind: 'app', appId: 'counter', size: { w: 1, h: 1 } },
-      { id: 'a-color',    kind: 'app', appId: 'color',   size: { w: 1, h: 1 } },
-      { id: 'a-kitten',   kind: 'app', appId: 'kitten',  size: { w: 1, h: 1 } },
+      { id: 'w-clock',    kind: 'widget', widget: 'clock',    size: WIDGET_SIZES.small,  col: 0, row: 0, fill: 'blue' },
+      { id: 'w-shield',   kind: 'widget', widget: 'shield',   size: WIDGET_SIZES.bar,    col: 2, row: 0, fill: 'slate' },
+      { id: 'w-music',    kind: 'widget', widget: 'music',    size: WIDGET_SIZES.bar,    col: 2, row: 1 },
+      { id: 'w-weather',  kind: 'widget', widget: 'weather',  size: WIDGET_SIZES.small,  col: 4, row: 0 },
+      { id: 'w-timer',    kind: 'widget', widget: 'timer',    size: WIDGET_SIZES.small,  col: 0, row: 2, fill: 'pink' },
+      { id: 'w-calendar', kind: 'widget', widget: 'calendar', size: { w: 3, h: 2 },      col: 2, row: 2, fill: 'mustard' },
+      { id: 'w-tasks',    kind: 'widget', widget: 'tasks',    size: WIDGET_SIZES.medium, col: 0, row: 4 },
+      { id: 'w-topsites', kind: 'widget', widget: 'topsites', size: WIDGET_SIZES.medium, col: 4, row: 4 },
+      { id: 'a-calc',     kind: 'app', appId: 'calc',    size: { w: 1, h: 1 }, col: 5, row: 2 },
+      { id: 'a-convert',  kind: 'app', appId: 'convert', size: { w: 1, h: 1 }, col: 5, row: 3 },
+      { id: 'a-timer',    kind: 'app', appId: 'timer',   size: { w: 1, h: 1 }, col: 0, row: 6 },
+      { id: 'a-counter',  kind: 'app', appId: 'counter', size: { w: 1, h: 1 }, col: 1, row: 6 },
+      { id: 'a-color',    kind: 'app', appId: 'color',   size: { w: 1, h: 1 }, col: 2, row: 6 },
+      { id: 'a-kitten',   kind: 'app', appId: 'kitten',  size: { w: 1, h: 1 }, col: 3, row: 6 },
     ],
   };
 }

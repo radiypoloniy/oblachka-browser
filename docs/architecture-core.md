@@ -440,6 +440,12 @@
   называется. Чтобы Oblako вообще появился в том списке, установщик пишет
   RegisteredApplications/Capabilities — `build/installer.nsh` (подключён через
   `nsis.include` в electron-builder.yml). UI — `settings/DefaultBrowserBlock.tsx`.
+  ⚠️ Лицо первой установки — не мастер Windows. `customInit` запускает
+  `build/oblako-setup-ui.exe` (исходники `build/installer-stub/`, сборка
+  `npm run build-installer-ui`) и переводит NSIS в Silent: файлы, ярлыки и реестр
+  пишет NSIS, карточку рисует WebView2. Апдейт с `--updated` карточку не показывает.
+  `runAfterFinish: false` — после первой установки браузер открывает кнопка на
+  карточке; апдейтер по-прежнему передаёт `--force-run`.
   ⚠️ Вместе с этим в `main.ts` появился `requestSingleInstanceLock`: система запускает
   браузер заново на КАЖДУЮ ссылку, и без замка это был бы второй процесс на том же
   userData — два владельца session.json и открытых SQLite разом. Адрес из argv берётся

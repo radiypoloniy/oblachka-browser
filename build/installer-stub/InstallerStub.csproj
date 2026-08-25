@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>OblakoSetupUi</RootNamespace>
+    <AssemblyName>oblako-setup-ui</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- ⚠️ InvariantGlobalization здесь стоять НЕ МОЖЕТ. WinForms на WM_INPUTLANGCHANGE строит
+         CultureInfo по LCID раскладки, а в invariant-режиме это исключение: русская раскладка
+         (0x0419 = 1049) роняла окно установки английским диалогом .NET, и человек видел белый
+         прямоугольник вместо карточки. На Windows ICU берётся из системы (icu.dll, Win10 1903+),
+         так что отказ от invariant ничего не весит. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <!-- ⚠️ Без этого single-file собирает в exe только управляемые сборки, а нативный
+         WebView2Loader.dll остаётся ЛЕЖАТЬ РЯДОМ в publish. NSIS кладёт в пакет один exe —
+         и на чужой машине CreateAsync падал на отсутствующей библиотеке, окно оставалось
+         пустым прямоугольником. Проверка: запустить сам build/oblako-setup-ui.exe, окно
+         должно нарисовать карточку, а не однотонную заливку. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3351.48" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="ui\index.html" LogicalName="ui/index.html" />
+    <EmbeddedResource Include="ui\fonts\*.woff2">
+      <LogicalName>ui/fonts/%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

@@ -114,21 +114,23 @@ nsis:
   # Регистрация браузера в реестре Windows (RegisteredApplications/Capabilities). Без неё
   # Oblako не появляется в системном списке «Приложения по умолчанию», и назначить его
   # браузером нельзя в принципе — см. build/installer.nsh и electron/DefaultBrowser.ts.
-  # Там же — оформление мастера (цвета, заголовки страниц) и разбор того, что в NSIS в
-  # принципе настраивается, а что нет.
+  # Лицо установки — не MUI, а oblako-setup-ui.exe: customInit прячет мастер (SetSilent)
+  # и показывает карточку. Сборка лица: npm run build-installer-ui, до electron-builder.
   include: build/installer.nsh
-  # Картинки мастера. Размеры (164×314 и 150×57) задаёт сам MUI и произвольными не бывают;
-  # собираются из того же логотипа, что и иконка, — npm run make-installer-art.
-  # ⚠️ Формат строго BMP 24 бита: контрол Windows, которым мастер их рисует, альфу игнорирует,
-  # а 32-битный файл частью сборок NSIS не читается вовсе.
+  # Картинки MUI остаются для деинсталлятора и запасного пути, если UI-exe не поднялся.
+  # Размеры (164×314 и 150×57) задаёт сам MUI; BMP 24 бита — требование контрола Windows.
   installerSidebar: build/installer-sidebar.bmp
   uninstallerSidebar: build/installer-sidebar.bmp
   installerHeader: build/installer-header.bmp
   # Установка в профиль пользователя, без прав администратора. Это принципиально для
   # автообновления: perMachine потребовал бы UAC-подтверждения на КАЖДОЕ обновление.
   perMachine: false
-  oneClick: false
-  allowToChangeInstallationDirectory: true
+  # oneClick: без «Далее» и выбора папки. Карточка — единственный экран для человека.
+  oneClick: true
+  allowToChangeInstallationDirectory: false
+  # Приложение после первой установки открывает карточка («Открыть Oblako»). Апдейтер
+  # передаёт --force-run и поднимает браузер сам, карточку на --updated не показывает.
+  runAfterFinish: false
   # Блок-карта для дифференциальных обновлений: следующая версия качает только изменившиеся
   # блоки, а не весь установщик целиком. При ~600 МБ бинарников AI это разница между
   # «обновление на 10 МБ» и «обновление на полгигабайта».

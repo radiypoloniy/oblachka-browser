@@ -10,6 +10,7 @@ import {
   loadNewTabSettings, saveNewTabSettings, setNewTabCustomImage, getNewTabCustomImage,
   shrinkBackgroundImage,
   WALLPAPER_PRESETS, livePresetId, RATE_CHOICES, CRYPTO_CHOICES, TINT_AMOUNT_MIN, TINT_AMOUNT_MAX,
+  POSTER_TONES,
   type NewTabSettings, type BackgroundKind,
 } from '../../newtab/settings';
 import { allMeshes, deleteUserMesh, isUserMesh, saveUserMesh, subscribeMeshes, meshCss } from '../../newtab/gradients';
@@ -194,7 +195,10 @@ export default function AppearanceSection() {
   const paletteHint = palette?.hint ?? 'оттенок нейтрали';
   const groundWord = !s.sidebar.tinted
     ? 'Ровный'
-    : s.sidebar.source === 'mesh' ? 'Свой градиент' : 'Тон палитры';
+    : s.sidebar.source === 'mesh' ? 'Свой градиент'
+    : s.sidebar.source === 'poster'
+      ? (POSTER_TONES.find((t) => t.id === s.sidebar.tone)?.label ?? 'Краска')
+      : 'Тон палитры';
   const bgWord = BG_WORD[s.background.kind];
 
   return (
@@ -298,10 +302,28 @@ export default function AppearanceSection() {
                 style={{
                   width: SWATCH_W, height: SWATCH_H, borderRadius: RADIUS.box, cursor: 'default', border: 'none',
                   background: 'linear-gradient(180deg, color-mix(in srgb, var(--sidebar-tint) 45%, var(--app-bg)), var(--app-bg))',
-                  outline: s.sidebar.source !== 'mesh' ? '2px solid var(--accent)' : '2px solid transparent',
+                  outline: s.sidebar.source === 'palette' ? '2px solid var(--accent)' : '2px solid transparent',
                   outlineOffset: 2,
                 }}
               />
+              {/* ⚠️ Краска здесь — ТОН ЗЕМЛИ, а не заливка хрома: она подмешивается к --app-bg
+                  долей «Насыщенности» с прежним потолком 30%, выше которого острова перестают
+                  отделяться от фона. Поэтому образец показан так же, как у палитры, — растяжкой
+                  в землю, а не квадратом краски в полную силу: иначе он обещал бы не то. */}
+              {POSTER_TONES.map((t) => (
+                <button
+                  key={t.id}
+                  title={t.label}
+                  onClick={() => patchSidebar({ source: 'poster', tone: t.id })}
+                  style={{
+                    width: SWATCH_W, height: SWATCH_H, borderRadius: RADIUS.box, cursor: 'default', border: 'none',
+                    background: `linear-gradient(180deg, color-mix(in srgb, ${t.css} 45%, var(--app-bg)), var(--app-bg))`,
+                    outline: s.sidebar.source === 'poster' && s.sidebar.tone === t.id
+                      ? '2px solid var(--accent)' : '2px solid transparent',
+                    outlineOffset: 2,
+                  }}
+                />
+              ))}
               {meshes.map((m) => (
                 <MeshThumb
                   key={m.id}

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Plus, Trash2, Shuffle } from 'lucide-react';
 import {
   mixFromSeeds, MESH_SEEDS_MAX, MESH_SEEDS_MIN,
-  MESH_SOFTNESS_MIN, MESH_SOFTNESS_MAX, randomMesh, type MeshGradient,
+  MESH_SOFTNESS_MIN, MESH_SOFTNESS_MAX, randomMesh, retroSteps,
+  type MeshGradient, type MeshKind,
 } from '../../../shared/chromeGround';
 import { meshCss } from '../../newtab/gradients';
 import { RADIUS, sp, pad, TEXT, well } from '../../styles/system';
@@ -22,12 +23,18 @@ export default function GradientEditor({
   const [seedIndex, setSeedIndex] = useState(0);
   const current = mesh.seeds[Math.min(seedIndex, mesh.seeds.length - 1)] ?? mesh.seeds[0]!;
   const css = meshCss(mesh, dark);
+  const kind: MeshKind = mesh.kind ?? 'mesh';
+  // ⚠️ Ступени ретро жёсткие, пятен там нет вовсе — значит и таскать по превью нечего, и
+  // «размер пятна» показывать не за что. Ручки прячутся по режиму, а не отключаются: серый
+  // ползунок, который ничего не делает, читается как поломка.
+  const hasBlobs = kind !== 'retro';
 
   function patchSeeds(seeds: string[], blobs = mesh.blobs) {
     const mixed = mixFromSeeds(seeds, {
       intensity: mesh.intensity,
       softness: mesh.softness,
       blobs: blobs.length === seeds.length ? blobs : undefined,
+      kind,
     });
     onChange({ ...mesh, ...mixed });
     if (seedIndex >= seeds.length) setSeedIndex(seeds.length - 1);
@@ -94,7 +101,7 @@ export default function GradientEditor({
           boxShadow: 'inset 0 0 0 1px var(--divider)',
         }}
       >
-        {mesh.blobs.map((b, i) => (
+        {hasBlobs && mesh.blobs.map((b, i) => (
           <span
             key={i}
             style={{
@@ -111,7 +118,37 @@ export default function GradientEditor({
           />
         ))}
       </div>
-      <span style={{ ...TEXT.caption }}>Перетащите пятно, чтобы сдвинуть его.</span>
+      {hasBlobs && <span style={{ ...TEXT.caption }}>Перетащите пятно, чтобы сдвинуть его.</span>}
+
+      {/* Режим — это КАК рисуется тот же набор красок: сетка мягкими пятнами, дуплекс печатью в
+          две краски, ретро ступенями. Семена, имя и сохранение общие для всех трёх. */}
+      <div style={{ display: 'flex', gap: sp(1) - 2, padding: sp(1) - 2, ...well(RADIUS.control) }}>
+        {([
+          ['mesh', 'Сетка'],
+          ['duplex', 'Дуплекс'],
+          ['retro', 'Ретро'],
+        ] as [MeshKind, string][]).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => onChange({
+              ...mesh, kind: id,
+              // Пятна пересобираются под режим: у дуплекса их цвет — произведение красок, а не
+              // подмешанная к базе доля. Без пересборки переключение выглядело бы как «ничего
+              // не изменилось» до первого движения ползунка.
+              ...mixFromSeeds(mesh.seeds, {
+                intensity: mesh.intensity, softness: mesh.softness, blobs: mesh.blobs, kind: id,
+              }),
+            })}
+            style={{
+              flex: 1, border: 'none', cursor: 'default', padding: pad(1, 1),
+              borderRadius: 'calc(var(--radius-sm) - 2px)',
+              background: kind === id ? 'var(--selected)' : 'transparent',
+              color: kind === id ? 'var(--text-strong)' : 'var(--text-muted)',
+              fontSize: 'var(--fs-xs)', fontWeight: kind === id ? 600 : 400,
+            }}
+          >{label}</button>
+        ))}
+      </div>
 
       <TextField value={mesh.name} onChange={(name) => onChange({ ...mesh, name })} placeholder="Название" />
 
@@ -152,27 +189,32 @@ export default function GradientEditor({
         onChange={(hex) => patchSeeds(mesh.seeds.map((c, i) => i === seedIndex ? hex : c), mesh.blobs)}
       />
 
+      {/* ⚠️ Ручек по-прежнему ДВЕ на все режимы — меняется только их подпись. Заводить свои
+          ползунки под дуплекс и ретро значило бы держать три набора состояний вместо одного,
+          хотя смысл у ручек один и тот же: насколько сильно и насколько мягко. */}
       <Slider
-        label="Насыщенность пятен"
+        label={kind === 'duplex' ? 'Плотность второй краски' : kind === 'retro' ? 'Размах ступеней' : 'Насыщенность пятен'}
         value={mesh.intensity} min={20} max={100} step={1}
         format={(v) => `${v}%`}
-        onChange={(intensity) => onChange({ ...mesh, ...mixFromSeeds(mesh.seeds, { intensity, softness: mesh.softness, blobs: mesh.blobs }) })}
+        onChange={(intensity) => onChange({ ...mesh, ...mixFromSeeds(mesh.seeds, { intensity, softness: mesh.softness, blobs: mesh.blobs, kind }) })}
       />
       <Slider
-        label="Мягкость"
+        label={kind === 'retro' ? 'Ступеней' : 'Мягкость'}
         value={mesh.softness} min={MESH_SOFTNESS_MIN} max={MESH_SOFTNESS_MAX} step={1}
-        format={(v) => `${v}%`}
+        format={(v) => kind === 'retro' ? String(retroSteps(v)) : `${v}%`}
         onChange={(softness) => onChange({ ...mesh, softness })}
       />
-      <Slider
-        label="Размер пятна"
-        value={mesh.blobs[seedIndex]?.size ?? 70} min={40} max={110} step={1}
-        format={(v) => `${v}%`}
-        onChange={(size) => {
-          const blobs = mesh.blobs.map((b, i) => i === seedIndex ? { ...b, size } : b);
-          onChange({ ...mesh, blobs });
-        }}
-      />
+      {hasBlobs && (
+        <Slider
+          label={kind === 'duplex' ? 'Размер наложения' : 'Размер пятна'}
+          value={mesh.blobs[seedIndex]?.size ?? 70} min={40} max={110} step={1}
+          format={(v) => `${v}%`}
+          onChange={(size) => {
+            const blobs = mesh.blobs.map((b, i) => i === seedIndex ? { ...b, size } : b);
+            onChange({ ...mesh, blobs });
+          }}
+        />
+      )}
 
       <div style={{ ...well(), padding: pad(3), ...TEXT.caption }}>
         Готовый градиент появится и в фоне окна, и на новой вкладке.

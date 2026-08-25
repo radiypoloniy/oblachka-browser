@@ -1,6 +1,6 @@
-; Регистрация Oblako как браузера в Windows.
+; Регистрация Oblako как браузера в Windows + запуск своего окна установки.
 ;
-; Зачем это здесь, а не в коде приложения: в системном списке «Приложения по умолчанию»
+; Зачем реестр здесь, а не в коде приложения: в системном списке «Приложения по умолчанию»
 ; Windows показывает только те программы, что объявили себя через RegisteredApplications →
 ; Capabilities → URLAssociations. Без этих ключей кнопка «Сделать браузером по умолчанию»
 ; открывала бы системное окно, в котором Oblako попросту нет.
@@ -13,25 +13,34 @@
 ; профиль пользователя (наш случай, perMachine: false), HKLM при машинной. Жёстко писать HKCU
 ; нельзя — иначе машинная установка зарегистрировала бы приложение не там.
 
-; ── Вид мастера ───────────────────────────────────────────────────────────────
+; ── Лицо установки ────────────────────────────────────────────────────────────
 ;
-; ⚠️ ПОТОЛОК НАЗВАН ЧЕСТНО: мастер рисует Windows штатными контролами, своей вёрстки в нём быть
-; не может. Настраиваются ровно три вещи — две картинки (боковина приветствия и полоска шапки,
-; см. scripts/make-installer-art.mjs), цвета фона/текста и собственные заголовки страниц. Всё
-; «воздушное» здесь живёт в картинках и цвете, а не в раскладке. Настоящий свой экран потребовал
-; бы отдельного окна-лаунчера — это другая задача и другой класс риска.
+; Мастер MUI человеку больше не показываем: customInit поднимает oblako-setup-ui.exe
+; (карточка на токенах) и переводит NSIS в Silent — копирование файлов идёт без окна Windows.
+; Апдейтер передаёт --updated: карточку не показываем, ставим молча и --force-run открывает
+; браузер (см. UpdateManager.quitAndInstall).
 ;
-; ⚠️ Через MUI_BGCOLOR перекрашивается фон страниц приветствия и завершения — именно тех, где
-; лежит наша боковина. Без него картинка соседствовала бы с системным белым, и стык был бы виден
-; полосой. Значение — тот же почти-белый, в который у нас растворяется низ боковины.
-!define MUI_BGCOLOR "FAFBFE"
-!define MUI_TEXTCOLOR "2A2E37"
-
-; Заголовки — свои, вместо безличных «Welcome to the … Setup Wizard».
-!define MUI_WELCOMEPAGE_TITLE "Oblako"
-!define MUI_WELCOMEPAGE_TEXT "Приватный браузер со встроенными VPN и ИИ.$\r$\n$\r$\nУстановка займёт минуту и не потребует прав администратора: Oblako ставится в ваш профиль.$\r$\n$\r$\nНажмите «Далее», чтобы продолжить."
-!define MUI_FINISHPAGE_TITLE "Готово"
-!define MUI_FINISHPAGE_TEXT "Oblako установлен.$\r$\n$\r$\nЧтобы сделать его браузером по умолчанию, откройте «Настройки → Браузер»: Windows не разрешает программам назначать себя самим."
+; Состояние для карточки пишем в %TEMP%, не в $PLUGINSDIR: каталог плагинов NSIS сносит при
+; выходе, а окно «Готово» должно пережить установщик.
+!macro customInit
+  ; StdUtils уже подключён шаблоном electron-builder. TestParameter ловит --updated
+  ; апдейтера: тогда карточка не нужна, браузер откроет --force-run.
+  ${StdUtils.TestParameter} $R9 "updated"
+  ${If} $R9 == "true"
+    SetSilent silent
+  ${ElseIfNot} ${Silent}
+    InitPluginsDir
+    SetOutPath "$TEMP"
+    File /oname=$TEMP\oblako-setup-ui.exe "${BUILD_RESOURCES_DIR}\oblako-setup-ui.exe"
+    StrCpy $0 "$TEMP\oblako-setup-ui.state"
+    FileOpen $1 $0 w
+    FileWrite $1 "installing$\r$\n"
+    FileClose $1
+    System::Call "kernel32::GetCurrentProcessId() i .r2"
+    Exec '"$TEMP\oblako-setup-ui.exe" --state "$0" --pid $2'
+    SetSilent silent
+  ${EndIf}
+!macroend
 
 !macro customInstall
   ; ProgID — «класс документа», на который ссылаются ассоциации.
@@ -50,6 +59,12 @@
 
   ; Заявка в общий список приложений системы — именно она делает нас видимыми в настройках.
   WriteRegStr SHCTX "Software\RegisteredApplications" "Oblako" "Software\Oblako\Capabilities"
+
+  ; Карточка ждёт эту строку, чтобы показать «Готово» и знать, какой exe открыть.
+  FileOpen $1 "$TEMP\oblako-setup-ui.state" w
+  FileWrite $1 "done$\r$\n"
+  FileWrite $1 "$INSTDIR\${APP_EXECUTABLE_FILENAME}$\r$\n"
+  FileClose $1
 !macroend
 
 !macro customUnInstall

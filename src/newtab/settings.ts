@@ -53,14 +53,20 @@ export interface NewTabSettings {
   // иерархию. Поэтому притемнение считается по светимости, см. groundTint в styles/island.ts.
   // source: 'palette' — прежняя земля из тона палитры; 'mesh' — сетка из общего каталога.
   // ⚠️ Поля добавлены с дефолтом в merge: старый JSON без них продолжает работать.
-  sidebar: { tinted: boolean; amount: number; source: 'palette' | 'mesh'; meshId: string };
+  // source: 'palette' — прежняя земля из тона палитры; 'mesh' — сетка из общего каталога;
+  // 'poster' — одна из плакатных красок (tone — её id из POSTER_TONES ниже).
+  sidebar: { tinted: boolean; amount: number; source: 'palette' | 'mesh' | 'poster'; meshId: string; tone: string };
 }
 
 export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
   // ⚠️ По умолчанию — чистый белый, а не градиент. Пёстрый фон при первом запуске спорит и с
   // приветственным экраном, и с самим содержимым вкладки; выбрать себе градиент человек может
   // в «Интерфейсе» одним кликом, а вот убрать навязанный — заметно дороже.
-  background: { kind: 'color', preset: 'aurora', meshId: '', color: '#FFFFFF', dim: 0, blur: 0 },
+  // ⚠️ Фон новой вкладки — плакатная «Страсть», а не белый. Прежний комментарий («пёстрый фон при
+  // первом запуске спорит с содержимым») писался про ГРАДИЕНТЫ: радужный ход действительно спорил
+  // с плитками. Плоская краска с зерном ведёт себя иначе — она читается землёй, а не картинкой,
+  // и стол на ней собирается в одно целое. Убрать по-прежнему один щелчок в «Фоне».
+  background: { kind: 'preset', preset: 'passion', meshId: '', color: '#FFFFFF', dim: 0, blur: 0 },
   clock: { show: true, seconds: false, hour24: true, date: true, face: 'analog' },
   greeting: { show: true, name: '' },
   search: { show: true },
@@ -70,7 +76,11 @@ export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
   crypto: { codes: ['BTC', 'ETH'] },
   // ⚠️ По умолчанию выключено — по той же причине, что и белый фон новой вкладки выше:
   // навязанное оформление убирать дороже, чем включить желаемое.
-  sidebar: { tinted: false, amount: 30, source: 'palette', meshId: '' },
+  // ⚠️ Цветной фон окна ВКЛЮЧЁН и идёт за тоном палитры: на «Мяте» это зелёная земля, то есть
+  // окно и стол оказываются одной семьёй с первого запуска. Источник — 'palette', а не сетка:
+  // тон следует за выбором палитры сам, и человек, сменивший её на «Небо», получает голубую
+  // землю без второго действия.
+  sidebar: { tinted: true, amount: 30, source: 'palette', meshId: '', tone: 'tangerine' },
 };
 
 // Пределы насыщенности цветного фона. ⚠️ Верхний — НЕ «сколько влезет»: выше него земля догоняет
@@ -78,6 +88,37 @@ export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
 // подборке вариантов). Нижний — там, где цвет ещё видно; ниже тумблер просто не имеет смысла.
 export const TINT_AMOUNT_MIN = 6;
 export const TINT_AMOUNT_MAX = 30;
+
+/**
+ * Плакатные краски как ИСТОЧНИК ТОНА земли окна.
+ *
+ * ⚠️ Это не «плакатный цвет в хроме» и закон не нарушает. Роль здесь — ЗЕМЛЯ: краска не заливает
+ * тулбар и сайдбар, а задаёт тон, который подмешивается к --app-bg долей amount. Потолок доли
+ * прежний (TINT_AMOUNT_MAX = 30) и держит ровно то, ради чего заведён: выше земля догоняет
+ * острова по светлоте и адресная строка перестаёт читаться. Полной заливки окна краской здесь
+ * нет и быть не должно — это была бы рамка, спорящая с чужим сайтом.
+ *
+ * ⚠️ Тот же набор, что у обоев, заливок виджетов и разделов настроек: выбранная земля и цвет
+ * плиток оказываются одной семьёй, а не двумя разными наборами.
+ */
+export const POSTER_TONES: { id: string; label: string; css: string }[] = [
+  { id: 'tangerine', label: 'Мандарин', css: 'var(--poster-tangerine)' },
+  { id: 'mustard',   label: 'Горчица',  css: 'var(--poster-mustard)' },
+  { id: 'lime',      label: 'Лайм',     css: 'var(--poster-lime)' },
+  { id: 'tea',       label: 'Чай',      css: 'var(--poster-tea)' },
+  { id: 'sky',       label: 'Небо',     css: 'var(--poster-sky)' },
+  { id: 'neutral',   label: 'Графит',   css: 'var(--poster-neutral)' },
+];
+// ⚠️ «Страсти» в списке НЕТ, и это замер, а не вкус: в тёмной теме её земля на максимуме
+// ползунка даёт контраст к фону 1.30 при пороге видимости 1.35 (chrome-ground-check). Причина
+// физическая — при равной светлоте красный даёт меньшую яркость, чем зелёный или жёлтый, — а
+// поднять потолок ползунка нельзя: выше 30% земля догоняет острова и теряется адресная строка.
+// Как заливка виджета и как обои страсть работает: там она не land, а плоскость в полную силу.
+
+/** Токен выбранной краски. Неизвестный id — первая краска: набор мог измениться между версиями. */
+export function posterToneCss(id: string): string {
+  return POSTER_TONES.find((t) => t.id === id)?.css ?? POSTER_TONES[0]!.css;
+}
 
 // Валюты, предлагаемые в настройках. Не весь список ЦБ (там ~40 позиций) — те, что осмысленно
 // держать перед глазами; коды совпадают с ключами rates из CurrencyRates.ts.
@@ -119,28 +160,48 @@ export const CRYPTO_CHOICES: { code: string; label: string }[] = [
 // список для вкладки (рендер) и раздела «Интерфейс» (пикер).
 // light: фон светлый, поверх него текст должен быть ТЁМНЫМ (см. isLightBackground). Без этой
 // пометки нежные градиенты выглядели бы пустыми: белые часы на бело-розовом фоне не видно.
+/**
+ * Плоская краска, пригодная для `background-image`.
+ *
+ * ⚠️ Обёртка в градиент — НЕ украшение и не костыль ради красоты. Обои подставляются именно в
+ * `background-image` (стол, обои AI-панели, превью в настройках), а ЦВЕТ там невалиден: свойство
+ * молча игнорируется, и фон не меняется вовсе. Живой случай ровно этот — после перехода на
+ * плоские обои выбор пресета перестал что-либо делать, хотя настройка сохранялась.
+ *
+ * ⚠️ Сам токен `--wallpaper-*` при этом остаётся ЦВЕТОМ, и это важно: его берут `color-mix` и
+ * расчёт светлоты. Заворачиваем на границе, а не в токене.
+ */
+const flat = (token: string) => `linear-gradient(${token} 0%, ${token} 100%)`;
+
 export const WALLPAPER_PRESETS: { id: string; label: string; css: string; light?: boolean }[] = [
   // ⚠️ Порядок значимый: сначала ПЛАКАТНЫЕ — построенные из тех же --poster-*, которыми покрашены
   // разделы настроек и библиотеки. Обои перестают быть случайной картинкой со стороны: выбранный
   // фон и цвет разделов оказываются одной семьёй.
   //
+  // ⚠️ Обои — ПЛОСКАЯ КРАСКА С ЗЕРНОМ, а не градиент (разбор — в шапке блока обоев в apps.css).
+  //
   // ⚠️ Из набора УБРАНЫ «Лаванда», «Слива» и «Цветение» — они были фиолетовыми и розово-сиреневыми,
   // а фиолетового в системе нет вообще (см. шапку colors.css). Убраны и дубли: «Индиго» повторял
-  // «Океан», «Полночь» — «Графит», и в списке стояли четыре почти одинаковые плитки.
-  { id: 'tangerine', label: 'Мандарин', css: 'var(--wallpaper-tangerine)' },
-  { id: 'tea',       label: 'Чай',      css: 'var(--wallpaper-tea)' },
-  { id: 'passion',   label: 'Страсть',  css: 'var(--wallpaper-passion)' },
-  { id: 'ocean',     label: 'Океан',    css: 'var(--wallpaper-ocean)' },
-  { id: 'aurora',    label: 'Аврора',   css: 'var(--wallpaper-aurora)' },
-  { id: 'sunset',    label: 'Закат',    css: 'var(--wallpaper-sunset)' },
-  { id: 'emerald',   label: 'Изумруд',  css: 'var(--wallpaper-emerald)' },
-  { id: 'ember',     label: 'Пламя',    css: 'var(--wallpaper-ember)' },
-  { id: 'graphite',  label: 'Графит',   css: 'var(--wallpaper-graphite)' },
-  { id: 'mustard',   label: 'Горчица',  css: 'var(--wallpaper-mustard)', light: true },
-  { id: 'lime',      label: 'Лайм',     css: 'var(--wallpaper-lime)',    light: true },
-  { id: 'sky',       label: 'Небо',     css: 'var(--wallpaper-sky)',     light: true },
-  { id: 'peach',     label: 'Персик',   css: 'var(--wallpaper-peach)',   light: true },
-  { id: 'pearl',     label: 'Жемчуг',   css: 'var(--wallpaper-pearl)',   light: true },
+  // «Океан», «Полночь» — «Графит». Позже выбыли «Аврора» и «Закат»: они держались только на
+  // переходе между тремя тонами и плоскими стали дублями «Изумруда» и «Персика».
+  // Все снятые подхватывает RETIRED_WALLPAPERS ниже.
+  { id: 'tangerine', label: 'Мандарин', css: flat('var(--wallpaper-tangerine)') },
+  { id: 'tea',       label: 'Чай',      css: flat('var(--wallpaper-tea)') },
+  { id: 'passion',   label: 'Страсть',  css: flat('var(--wallpaper-passion)') },
+  { id: 'neutral',   label: 'Графит',   css: flat('var(--wallpaper-neutral)') },
+  { id: 'ocean',     label: 'Океан',    css: flat('var(--wallpaper-ocean)') },
+  { id: 'emerald',   label: 'Изумруд',  css: flat('var(--wallpaper-emerald)') },
+  { id: 'ember',     label: 'Пламя',    css: flat('var(--wallpaper-ember)') },
+  { id: 'graphite',  label: 'Уголь',    css: flat('var(--wallpaper-graphite)') },
+  { id: 'mustard',   label: 'Горчица',  css: flat('var(--wallpaper-mustard)'), light: true },
+  { id: 'lime',      label: 'Лайм',     css: flat('var(--wallpaper-lime)'),    light: true },
+  { id: 'sky',       label: 'Небо',     css: flat('var(--wallpaper-sky)'),     light: true },
+  { id: 'peach',     label: 'Персик',   css: flat('var(--wallpaper-peach)'),   light: true },
+  { id: 'pearl',     label: 'Жемчуг',   css: flat('var(--wallpaper-pearl)'),   light: true },
+  // Бумага — земля дизайн-системы 2.0. На ней плитки стола перестают быть стеклом.
+  { id: 'paper',       label: 'Бумага',        css: flat('var(--wallpaper-paper)'),       light: true },
+  { id: 'paper-light', label: 'Бумага светлая',css: flat('var(--wallpaper-paper-light)'), light: true },
+  { id: 'paper-shade', label: 'Бумага тень',   css: flat('var(--wallpaper-paper-shade)'), light: true },
 ];
 
 
@@ -184,6 +245,11 @@ const RETIRED_WALLPAPERS: Record<string, string> = {
   mint:     'sky',      // светлый бирюзовый
   indigo:   'ocean',    // дублировал «Океан»
   midnight: 'graphite', // дублировал «Графит»
+  // ⚠️ Плоскими эти два стали дублями: «Аврора» держалась на ходе зелёный → синий, «Закат» —
+  // персиковый → красный. Уводим в тот тон, с которого каждый начинался, — так фон меняется
+  // меньше всего.
+  aurora:   'emerald',
+  sunset:   'peach',
 };
 
 export function presetCss(id: string): string {
