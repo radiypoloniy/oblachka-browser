@@ -18,6 +18,7 @@ import { glyph } from '../styles/system';
 import { useSearchEngine } from './toolbar/useSearchEngine';
 import { useClipboardCount } from './toolbar/useClipboardCount';
 import { useBookmarked } from './toolbar/useBookmarked';
+import { useOmniboxGeometry } from './toolbar/useOmniboxGeometry';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -70,21 +71,9 @@ const RECOMMENDED_MAX = 8;
 // Замерено на 2560px — дыра выходила больше тысячи пикселей. Поэтому строка занимает всё
 // свободное место, как в Chrome, Edge и Safari.
 
-// Ниже PLACEHOLDER_HIDE плейсхолдер скрывается — текст не помещается, иконка остаётся.
-// Выше PLACEHOLDER_SHOW — возвращается. Зазор 20px = гистерезис против мигания.
-const PLACEHOLDER_HIDE_THRESHOLD = 200;
-const PLACEHOLDER_SHOW_THRESHOLD = 220;
-
-// ── Капсула поисковика: то же ступенчатое схлопывание, что у VPN-пилюли, но по
-// ширине САМОГО омнибокса (omniboxWidth), т.к. капсула живёт внутри его «таблетки».
-// full   : полное имя движка («DuckDuckGo») + шеврон
-// compact: только первая буква названия + шеврон — умещается даже на дефолтном окне
-//          (омнибокс в режиме VPN 'short' уже узкий, полное имя туда не влезает,
-//          см. заход с капсулой — иначе капсула вылезает за скруглённый край пилюли)
-// hidden : совсем убираем на очень узких окнах — приоритет у поля ввода
-type CapsuleMode = 'full' | 'compact' | 'hidden';
-const CAPSULE_FULL_THRESHOLD = 380;
-const CAPSULE_HIDE_THRESHOLD = 200;
+// ⚠️ Пороги схлопывания (плейсхолдер, капсула поисковика) переехали в useOmniboxGeometry —
+// туда же, где живут замеры, из которых они читаются. Смысл ступеней там же:
+// full — полное имя движка, compact — первая буква, hidden — приоритет у поля ввода.
 
 // ── Типы ─────────────────────────────────────────────────────────────────────
 
@@ -141,16 +130,6 @@ export default function Toolbar({
   const [suggestions, setSuggestions] = useState<SuggestItem[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [toolbarWidth, setToolbarWidth] = useState(1280);
-  // ⚠️ Ширина омнибокса теперь ИЗМЕРЯЕТСЯ, а не вычисляется. Её задаёт flex, и оценивать её
-  // формулой значило бы держать вторую, неизбежно расходящуюся правду: от неё зависят пороги
-  // схлопывания капсулы поисковика и плейсхолдера, и разъедься оценка с реальностью — капсула
-  // складывалась бы не тогда, когда ей тесно.
-  // Обратной связи на раскладку нет: ширину диктует родитель (flex + maxWidth), содержимое
-  // таблетки на неё не влияет (minWidth:0), поэтому запись измерения в состояние не может
-  // запустить цикл «измерил → перерисовал → измерил другое».
-  const [omniboxWidth, setOmniboxWidth] = useState(0);
-  const [placeholderVisible, setPlaceholderVisible] = useState(true);
   const [passwordIndicator, setPasswordIndicator] = useState<PasswordIndicatorState | null>(null);
   const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false);
   const [downloadsPopoverOpen, setDownloadsPopoverOpen] = useState(false);
@@ -233,6 +212,11 @@ export default function Toolbar({
   const clipboardControlRef = useRef<HTMLDivElement>(null);
   const siteControlRef = useRef<HTMLButtonElement>(null);
 
+  // Замеры тулбара и таблетки, пороги схлопывания и отправка геометрии дропдауну — всё вместе,
+  // потому что это одна тема: пороги читаются только из этих замеров (см. useOmniboxGeometry).
+  const { toolbarWidth, capsuleMode, placeholderVisible, pushOmniboxBounds } =
+    useOmniboxGeometry(toolbarRef, omniboxPillRef);
+
   const searchEngineId = useSearchEngine();
   // ⚠️ Пара, а не одно значение: клик по звезде ставит признак ОПТИМИСТИЧНО, а BOOKMARK_CHANGED
   // затем подтверждает или поправляет — иначе звезда загоралась бы с задержкой в круг IPC.
@@ -250,71 +234,6 @@ export default function Toolbar({
     // самое вторым путём — то есть заводил вторую правду на время круга IPC.
     setDefaultSearchEngine(id);
   };
-
-  // Измеряем ширину тулбара для расчёта режима VPN и ширины омнибокса.
-  useEffect(() => {
-    const el = toolbarRef.current;
-    if (!el) return;
-    const update = () => setToolbarWidth(el.offsetWidth);
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    update();
-    return () => ro.disconnect();
-  }, []);
-
-  // Режим капсулы поисковика — см. константы выше. Приоритет у поля ввода:
-  // капсула схлопывается первой, а не наоборот.
-  const capsuleMode: CapsuleMode = omniboxWidth >= CAPSULE_FULL_THRESHOLD ? 'full'
-    : omniboxWidth >= CAPSULE_HIDE_THRESHOLD ? 'compact'
-    : 'hidden';
-
-  // Пушим прямоугольник «таблетки» омнибокса в main (см. IPC.OMNIBOX_SET_BOUNDS) — координаты
-  // окна, тот же getBoundingClientRect(), что и pushBounds в App.tsx для contentRef.
-  // ResizeObserver ловит изменение РАЗМЕРА таблетки (ресайз окна, схлопывание VPN-пилюли — оба
-  // меняют omniboxWidth и тем самым реальную ширину таблетки). Но НЕ ловит чистое смещение без
-  // изменения размера: сворачивание сайдбара двигает тулбар по X (таблетка центрируется внутри
-  // него), при этом её собственная ширина может в моменте не измениться — поэтому дублируем пуш
-  // явным эффектом на toolbarWidth: он меняется во ВСЕХ трёх случаях (ресайз окна и сворачивание
-  // сайдбара напрямую меняют ширину тулбара, порог VPN-пилюли — производная от неё же величина).
-  // Единая точка пуша геометрии омнибокса. Мест вызова три, и они намеренно перекрываются (см.
-  // комментарии рядом) — но перекрытие означало и дублирующий IPC: замер показал ровно два
-  // одинаковых сообщения подряд на каждое изменение. Каждое такое сообщение в main двигает
-  // WebContentsView дропдауна синхронно, поэтому отсекаем повтор здесь, а не считаем его дешёвым.
-  // Сравнение с последним ОТПРАВЛЕННЫМ значением, не с текущим DOM: при перезагрузке чрома ref
-  // обнулится и первый пуш уйдёт в любом случае.
-  const lastOmniboxBoundsRef = useRef('');
-  const pushOmniboxBounds = useCallback(() => {
-    const el = omniboxPillRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    // Тот же замер обслуживает и пороги схлопывания внутри таблетки (см. omniboxWidth).
-    setOmniboxWidth(r.width);
-    const b = { x: r.left, y: r.top, width: r.width, height: r.height };
-    const key = `${b.x},${b.y},${b.width},${b.height}`;
-    if (key === lastOmniboxBoundsRef.current) return;
-    lastOmniboxBoundsRef.current = key;
-    void window.oblako.setOmniboxBounds(b);
-  }, []);
-
-  useEffect(() => {
-    const el = omniboxPillRef.current;
-    if (!el) return;
-    pushOmniboxBounds();
-    const ro = new ResizeObserver(pushOmniboxBounds);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [pushOmniboxBounds]);
-
-  useEffect(() => {
-    pushOmniboxBounds();
-  }, [toolbarWidth, pushOmniboxBounds]);
-
-  // Гистерезис плейсхолдера: прячем когда поле узкое, возвращаем с запасом.
-  useEffect(() => {
-    if (omniboxWidth < PLACEHOLDER_HIDE_THRESHOLD) setPlaceholderVisible(false);
-    else if (omniboxWidth >= PLACEHOLDER_SHOW_THRESHOLD) setPlaceholderVisible(true);
-    // в зоне [200, 220) — не меняем, чтобы не мигало
-  }, [omniboxWidth]);
 
   // Живой баг: переход из хаба создаёт НОВУЮ вкладку (хаб — фиксированный HUB_ID, не переиспользуется),
   // и у неё в первый момент url === '' (wc.getURL() до коммита навигации) — тот же пустой url, что
