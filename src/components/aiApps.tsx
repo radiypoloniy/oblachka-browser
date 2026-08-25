@@ -18,17 +18,20 @@ import { CSS } from '@dnd-kit/utilities'
 // логика, живёт в shared под проверкой (scripts/calc-check.mjs): ломается она на реальных случаях
 // («50 + 10 %», «1 234,56 ₽»), а не на глаз.
 import { computeCalc, fmtCalc, calcDisp, resolvePercent, parsePastedNumber } from '../../shared/calc'
-import { altitude, ALTITUDE, DISPLAY } from '../styles/system'
+import { altitude, ALTITUDE, DISPLAY, CAPS } from '../styles/system'
 import { WALLPAPER_PRESETS } from '../newtab/settings'
 import { allMeshes, findMesh, subscribeMeshes, meshCss } from '../newtab/gradients'
 import type { CalcOp } from '../../shared/calc'
 import {
   Calculator, RefreshCw, Timer, Pipette, X, SlidersHorizontal, ImagePlus, Languages, Cat, Type,
   Play, Pause, RotateCcw, ArrowDownUp, ArrowUpDown, Copy, Check, Loader2,
-  Globe,
+  Globe, Plus,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { AppGlyph, hasGlyph } from './appGlyphs'
+// Тот же тумблер, что в настройках браузера: состояние «включено» обязано выглядеть
+// одинаково везде, а пилюля-кнопка означает действие и для состояния не годится.
+import Toggle from './Toggle'
 import ZonesApp from './ZonesApp'
 
 // Форма ответа ai-panel:currency-rates (electron/CurrencyRates.ts) — зеркалим локально,
@@ -263,6 +266,32 @@ export function wallpaperBackground(id: string): React.CSSProperties {
   }
 }
 
+/**
+ * Светлые ли обои — то есть нужна ли на них ТЁМНАЯ краска подписей.
+ *
+ * ⚠️ Данные для этого решения были всё время: флаг `light` стоит у восьми пресетов
+ * (WALLPAPER_PRESETS в src/newtab/settings.ts). До места он просто не доезжал — подписи иконок
+ * красились белым по факту «обои есть», и на Горчице, Лайме, Небе и трёх Бумагах их было не
+ * прочитать. Живой градиент и своя картинка светлоты не объявляют — там остаётся белая с тенью.
+ */
+export function wallpaperIsLight(id: string): boolean {
+  return WALLPAPER_PRESETS.find((w) => w.id === id)?.light === true
+}
+
+/** Человеческое имя выбранных обоев — для подписи под выбором. */
+export function wallpaperTitle(id: string, meshes: { id: string; name: string }[]): string {
+  if (id === 'none') return 'Без обоев'
+  if (id === 'custom') return 'Своя картинка'
+  return WALLPAPER_PRESETS.find((w) => w.id === id)?.label
+    ?? meshes.find((m) => m.id === id)?.name
+    ?? 'Обои'
+}
+
+/** Домен веб-приложения — в списке он читается лучше полного адреса с хвостом параметров. */
+function hostOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
+}
+
 // ── Виджеты: конфиг и город для погоды ───────────────────────────────────────────────────────
 // Персистентность та же, что у обоев (localStorage панели — косметика одного renderer'а).
 export interface WidgetsConfig { weather: boolean; currency: boolean }
@@ -289,6 +318,81 @@ function saveWeatherCity(city: string): void {
   try { localStorage.setItem(WEATHER_CITY_KEY, city) } catch { /* см. loadWallpaper */ }
 }
 
+// ── Части листа настроек ─────────────────────────────────────────────────────────────────────
+// ⚠️ Вкладки, а не три блока подряд: один экран — один вопрос. Разбор — в docs и в комментарии
+// у самой разметки.
+type SheetTab = 'bg' | 'widgets' | 'apps'
+const SHEET_TABS: { id: SheetTab; label: string }[] = [
+  { id: 'bg', label: 'Фон' },
+  { id: 'widgets', label: 'Виджеты' },
+  { id: 'apps', label: 'Приложения' },
+]
+
+// Плитки фона идут в пропорции экрана, а не кружками: кружок 28 px не показывает, как выглядит
+// фон, и не оставляет места подписи.
+const WALL_GRID: React.CSSProperties = {
+  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(56px, 1fr))', gap: 6,
+}
+
+/** Подпись группы внутри листа — та же моноширинная капса, что и везде в системе. */
+function SheetLabel({ children }: { children: React.ReactNode }) {
+  return <span style={{ ...CAPS, color: 'var(--text-faint)' }}>{children}</span>
+}
+
+/** Строка «название + пояснение + управление»: состояние объясняется словами, а не цветом. */
+function SheetRow({ title, hint, control }: {
+  title: string
+  hint?: string
+  control: React.ReactNode
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 550, color: 'var(--text-strong)' }}>{title}</div>
+        {hint && (
+          <div style={{
+            fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{hint}</div>
+        )}
+      </div>
+      {control}
+    </div>
+  )
+}
+
+/** Плитка фона. Выбранная помечена ГАЛОЧКОЙ, а не только кромкой: кромку на тёмной краске видно плохо. */
+function WallSwatch({ css, label, on, onPick }: {
+  css: string
+  label: string
+  on: boolean
+  onPick: () => void
+}) {
+  return (
+    <button
+      onClick={onPick}
+      title={label}
+      aria-pressed={on}
+      style={{
+        position: 'relative', height: 38, padding: 0, cursor: 'pointer',
+        borderRadius: 'var(--radius-sm)',
+        backgroundImage: css, backgroundColor: 'var(--surface-sunken)',
+        backgroundSize: 'cover', backgroundPosition: 'center',
+        border: on ? '2px solid var(--accent)' : '1px solid var(--glass-edge)',
+      }}
+    >
+      {on && (
+        <span style={{
+          position: 'absolute', right: 3, bottom: 2, display: 'inline-flex',
+          color: '#FFFFFF', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.55))',
+        }}>
+          <Check size={12} strokeWidth={3} />
+        </span>
+      )}
+    </button>
+  )
+}
+
 // ── Корень раздела ───────────────────────────────────────────────────────────────────────────
 // Обои сюда приходят пропсами: стейт живёт в aipanel.tsx, потому что обоями красится весь
 // остров панели (включая фон за шапкой), а не только эта область.
@@ -301,6 +405,9 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
 }) {
   const [openApps, setOpenApps] = useState<AppId[]>([])
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [sheetTab, setSheetTab] = useState<SheetTab>('bg')
+  // Поля добавления сайта развёрнуты только по просьбе — пустыми они занимали место обещанием.
+  const [addOpen, setAddOpen] = useState(false)
   const [widgets, setWidgets] = useState<WidgetsConfig>(loadWidgets)
   const [weatherCity, setWeatherCity] = useState<string>(loadWeatherCity)
   const [cityDraft, setCityDraft] = useState(weatherCity)
@@ -318,7 +425,9 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   // ⚠️ Спрятанное убирается только с ЭКРАНА: открытый слот с ним продолжает работать, пока его не
   // закроют. Иначе «скрыть» на глазах убивало бы наполовину введённое в приложении.
   const allApps: AppDef[] = everyApp.filter((a) => !hiddenApps.includes(a.id))
-  const hiddenDefs: AppDef[] = everyApp.filter((a) => hiddenApps.includes(a.id))
+  // ⚠️ Отдельного списка спрятанных больше нет: во вкладке «Приложения» они стоят в общем списке
+  // с выключенным тумблером. Прежний блок «Скрытые с экрана» появлялся и исчезал сам, и был
+  // единственной дверью назад — при том что прячут приложение совсем в другом месте.
 
   const hideApp = (id: string) => {
     const next = [...hiddenApps, id]
@@ -389,6 +498,9 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
       if (e.key !== 'Escape') return
       // Открытое меню у иконки забирает Esc себе — оно «поверх» и по смыслу, и на экране.
       if (iconMenu) { e.stopPropagation(); setIconMenu(null); return }
+      // Следом — лист настроек: он тоже «поверх» экрана, и закрывать его повторным кликом по
+      // «Настроить» было единственным способом.
+      if (sheetOpen) { e.stopPropagation(); setSheetOpen(false); return }
       if (openApps.length === 0) return
       e.stopPropagation()
       // ⚠️ Закрывается АКТИВНОЕ приложение, а не последнее в списке. Прежнее «последнее» было
@@ -399,7 +511,7 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [openApps, iconMenu, activeApp])
+  }, [openApps, iconMenu, activeApp, sheetOpen])
 
   // Перетаскивание слотов: тот же порог в 5 px, что у иконок, — иначе нажатие на шапку (кнопки
   // свопа и закрытия живут там же) считалось бы началом жеста.
@@ -612,14 +724,16 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
             <div style={{
               alignSelf: 'stretch', pointerEvents: 'auto',
               display: 'flex', flexDirection: 'column', gap: 10, padding: 12,
+              // Лист не выше половины панели: он настраивает экран, который сам же и закрывает.
+              maxHeight: '58vh', overflowY: 'auto',
               background: 'var(--surface-solid)', borderRadius: 'var(--radius-card)',
               border: '1px solid var(--glass-edge)', boxShadow: 'var(--shadow-card)',
             }}>
-              {/* Шапка шита: явный крестик — раньше закрыть можно было только повторным кликом
-                  по «Настроить», что неочевидно. */}
+              {/* ⚠️ Заголовок называет ПРЕДМЕТ, а не жанр. Прежнее «Настройки» читалось как
+                  настройки браузера — а это косметика одного экрана, и у браузера есть свои. */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-                  Настройки
+                  Экран приложений
                 </span>
                 <button
                   onClick={() => setSheetOpen(false)}
@@ -634,233 +748,241 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
                   <X size={12} strokeWidth={2} />
                 </button>
               </div>
-              <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-muted)' }}>
-                Обои
-              </span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-                <button
-                  onClick={() => onSelectWallpaper('none')}
-                  title="Без обоев"
-                  style={{
-                    width: 28, height: 28, borderRadius: '50%', padding: 0, cursor: 'pointer',
-                    background: 'var(--surface-solid)',
-                    border: wallpaper === 'none' ? '2px solid var(--accent)' : '2px solid var(--divider-strong)',
-                  }}
-                />
-                {WALLPAPER_PRESETS.map((w) => (
+
+              {/* ⚠️ Три вкладки вместо трёх блоков подряд: один экран — один вопрос. В одном
+                  столбце фон, виджеты и приложения читались как одна лента, в которой подписи
+                  разделов ничем не сильнее подписей полей. */}
+              <div role="tablist" style={{
+                display: 'flex', gap: 2, padding: 3, flexShrink: 0,
+                background: 'var(--surface-sunken)', borderRadius: 'var(--radius-pill)',
+              }}>
+                {SHEET_TABS.map((t) => (
                   <button
-                    key={w.id}
-                    onClick={() => onSelectWallpaper(w.id)}
-                    title={w.label}
+                    key={t.id}
+                    role="tab"
+                    aria-selected={sheetTab === t.id}
+                    onClick={() => setSheetTab(t.id)}
                     style={{
-                      width: 28, height: 28, borderRadius: '50%', padding: 0, cursor: 'pointer',
-                      background: w.css,
-                      border: w.id === wallpaper ? '2px solid var(--accent)' : '2px solid transparent',
-                    }}
-                  />
-                ))}
-                {meshes.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => onSelectWallpaper(m.id)}
-                    title={m.name}
-                    style={{
-                      width: 28, height: 28, borderRadius: '50%', padding: 0, cursor: 'pointer',
-                      backgroundImage: meshCss(m), backgroundSize: 'cover',
-                      border: m.id === wallpaper ? '2px solid var(--accent)' : '2px solid transparent',
-                    }}
-                  />
-                ))}
-                {customWallpaper !== null && (
-                  <button
-                    onClick={() => onSelectWallpaper('custom')}
-                    title="Своя картинка"
-                    style={{
-                      width: 28, height: 28, borderRadius: '50%', padding: 0, cursor: 'pointer',
-                      backgroundImage: `url(${customWallpaper})`,
-                      backgroundSize: 'cover', backgroundPosition: 'center',
-                      border: wallpaper === 'custom' ? '2px solid var(--accent)' : '2px solid transparent',
-                    }}
-                  />
-                )}
-                {/* label оборачивает скрытый file-input — тот же приём, что «Палитра» в пипетке. */}
-                <label
-                  title="Загрузить свою картинку"
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
-                    background: 'var(--surface-sunken)', border: '2px dashed var(--divider-strong)',
-                    color: 'var(--text-muted)', position: 'relative',
-                  }}
-                >
-                  <ImagePlus size={13} />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      // Сброс value — иначе повторный выбор ТОГО ЖЕ файла не даст события change.
-                      e.target.value = ''
-                      if (file) void handleWallpaperFile(file)
-                    }}
-                    style={{ position: 'absolute', opacity: 0, width: 1, height: 1, pointerEvents: 'none' }}
-                  />
-                </label>
-              </div>
-              {uploadError !== null && (
-                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger-500)' }}>{uploadError}</span>
-              )}
-              <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-muted)' }}>
-                Виджеты
-              </span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {([['weather', 'Погода'], ['currency', 'Курс валют']] as [keyof WidgetsConfig, string][]).map(([key, label]) => {
-                  const active = widgets[key]
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => toggleWidget(key)}
-                      style={{
-                        padding: '4px 10px', borderRadius: 'var(--radius-chip)', cursor: 'pointer',
-                        border: active ? '1px solid var(--accent)' : '1px solid var(--glass-edge)',
-                        background: active ? 'var(--accent-soft)' : 'var(--surface-sunken)',
-                        color: active ? 'var(--accent)' : 'var(--text-muted)',
-                        fontSize: 'var(--fs-xs)', fontWeight: 500,
-                      }}
-                    >
-                      {label}
-                    </button>
-                  )
-                })}
-              </div>
-              {widgets.weather && (
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input
-                    value={cityDraft}
-                    onChange={(e) => setCityDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') applyCity() }}
-                    placeholder="Город для погоды"
-                    style={{
-                      flex: 1, minWidth: 0, border: 'none', outline: 'none',
-                      borderRadius: 'var(--radius-sm)', padding: '7px 10px',
-                      background: 'var(--surface-sunken)', color: 'var(--text-strong)',
-                      fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
-                    }}
-                  />
-                  <button
-                    onClick={applyCity}
-                    disabled={cityDraft.trim() === '' || cityDraft.trim() === weatherCity}
-                    style={{
-                      padding: '0 12px', borderRadius: 'var(--radius-chip)', border: 'none',
-                      background: 'var(--accent)', color: 'var(--text-on-accent)',
-                      fontSize: 'var(--fs-xs)', fontWeight: 600,
-                      cursor: 'pointer',
-                      opacity: cityDraft.trim() === '' || cityDraft.trim() === weatherCity ? 0.45 : 1,
+                      flex: 1, padding: '6px 10px', border: 'none', cursor: 'pointer',
+                      borderRadius: 'var(--radius-pill)',
+                      background: sheetTab === t.id ? 'var(--surface-solid)' : 'transparent',
+                      boxShadow: sheetTab === t.id ? 'var(--shadow-chip)' : 'none',
+                      color: sheetTab === t.id ? 'var(--text-strong)' : 'var(--text-muted)',
+                      fontSize: 'var(--fs-xs)', fontWeight: 600, fontFamily: 'var(--font-sans)',
                     }}
                   >
-                    ОК
+                    {t.label}
                   </button>
-                </div>
-              )}
-              <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-muted)' }}>
-                Веб-приложения
-              </span>
-              {customApps.map((c) => (
-                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{
-                    flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    fontSize: 'var(--fs-sm)', fontWeight: 500, color: 'var(--text-strong)',
-                  }}>
-                    {c.name}
-                  </span>
-                  <span style={{
-                    maxWidth: '45%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
-                  }}>
-                    {c.url}
-                  </span>
-                  <button
-                    onClick={() => removeCustomApp(c.id)}
-                    title="Удалить"
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      width: 20, height: 20, flexShrink: 0, padding: 0,
-                      background: 'transparent', border: 'none', borderRadius: '50%',
-                      color: 'var(--text-faint)', cursor: 'pointer',
-                    }}
-                  >
-                    <X size={12} strokeWidth={2} />
-                  </button>
-                </div>
-              ))}
-              <input
-                value={newAppName}
-                onChange={(e) => setNewAppName(e.target.value)}
-                placeholder="Название (необязательно)"
-                style={{
-                  border: 'none', outline: 'none',
-                  borderRadius: 'var(--radius-sm)', padding: '7px 10px',
-                  background: 'var(--surface-sunken)', color: 'var(--text-strong)',
-                  fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
-                }}
-              />
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input
-                  value={newAppUrl}
-                  onChange={(e) => setNewAppUrl(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') addCustomApp() }}
-                  placeholder="URL сайта"
-                  style={{
-                    flex: 1, minWidth: 0, border: 'none', outline: 'none',
-                    borderRadius: 'var(--radius-sm)', padding: '7px 10px',
-                    background: 'var(--surface-sunken)', color: 'var(--text-strong)',
-                    fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
-                  }}
-                />
-                <button
-                  onClick={addCustomApp}
-                  disabled={newAppUrl.trim() === ''}
-                  style={{
-                    padding: '0 12px', borderRadius: 'var(--radius-chip)', border: 'none',
-                    background: 'var(--accent)', color: 'var(--text-on-accent)',
-                    fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer',
-                    opacity: newAppUrl.trim() === '' ? 0.45 : 1,
-                  }}
-                >
-                  Добавить
-                </button>
+                ))}
               </div>
 
-              {/* Спрятанные — здесь же, а не отдельным экраном: это единственное место, откуда их
-                  можно вернуть, и оно обязано быть рядом с самим списком приложений. Пусто —
-                  блока нет вовсе, чтобы не занимать место обещанием. */}
-              {hiddenDefs.length > 0 && (
+              {/* ── ФОН ─────────────────────────────────────────────────────────────── */}
+              {sheetTab === 'bg' && (
                 <>
-                  <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
-                    Скрытые с экрана
-                  </span>
-                  {hiddenDefs.map((h) => (
-                    <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <AppIconBadge app={h} size={20} radius={6} iconSize={12} />
-                      <span style={{
-                        flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
-                      }}>
-                        {h.label}
-                      </span>
-                      <button
-                        onClick={() => unhideApp(h.id)}
-                        style={{
-                          padding: '0 10px', height: 24, flexShrink: 0,
-                          borderRadius: 'var(--radius-pill)', border: '1px solid var(--glass-edge)',
-                          background: 'transparent', color: 'var(--text-body)',
-                          fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer',
+                  {/* ⚠️ Плитка в пропорции экрана, а не кружок 28 px: кружок не показывает, как
+                      будет выглядеть фон, и не оставляет места подписи. Группы — потому что
+                      краска, бумага и картинка выбираются по разным поводам. */}
+                  <SheetLabel>Плакат</SheetLabel>
+                  <div style={WALL_GRID}>
+                    {WALLPAPER_PRESETS.filter((w) => !w.id.startsWith('paper')).map((w) => (
+                      <WallSwatch key={w.id} css={w.css} label={w.label}
+                        on={w.id === wallpaper} onPick={() => onSelectWallpaper(w.id)} />
+                    ))}
+                  </div>
+                  <SheetLabel>Бумага</SheetLabel>
+                  <div style={WALL_GRID}>
+                    {WALLPAPER_PRESETS.filter((w) => w.id.startsWith('paper')).map((w) => (
+                      <WallSwatch key={w.id} css={w.css} label={w.label}
+                        on={w.id === wallpaper} onPick={() => onSelectWallpaper(w.id)} />
+                    ))}
+                  </div>
+                  <SheetLabel>Живые и своё</SheetLabel>
+                  <div style={WALL_GRID}>
+                    <WallSwatch css="var(--surface-solid)" label="Без обоев"
+                      on={wallpaper === 'none'} onPick={() => onSelectWallpaper('none')} />
+                    {meshes.map((m) => (
+                      <WallSwatch key={m.id} css={meshCss(m)} label={m.name}
+                        on={m.id === wallpaper} onPick={() => onSelectWallpaper(m.id)} />
+                    ))}
+                    {customWallpaper !== null && (
+                      <WallSwatch css={'url(' + customWallpaper + ')'} label="Своя картинка"
+                        on={wallpaper === 'custom'} onPick={() => onSelectWallpaper('custom')} />
+                    )}
+                    {/* label оборачивает скрытый file-input — тот же приём, что «Палитра» в пипетке. */}
+                    <label
+                      title="Загрузить свою картинку"
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        height: 38, borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                        background: 'var(--surface-sunken)', border: '1px dashed var(--divider-strong)',
+                        color: 'var(--text-muted)', position: 'relative',
+                      }}
+                    >
+                      <ImagePlus size={14} />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          // Сброс value — иначе повторный выбор ТОГО ЖЕ файла не даст события change.
+                          e.target.value = ''
+                          if (file) void handleWallpaperFile(file)
                         }}
-                      >
-                        Вернуть
-                      </button>
+                        style={{ position: 'absolute', opacity: 0, width: 1, height: 1, pointerEvents: 'none' }}
+                      />
+                    </label>
+                  </div>
+                  {uploadError !== null && (
+                    <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger-500)' }}>{uploadError}</span>
+                  )}
+                  {/* Что именно выбрано — словами: кромка вокруг плитки отвечает «который», а не «какой». */}
+                  <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+                    {wallpaperTitle(wallpaper, meshes)}
+                    {wallpaper !== 'none' && wallpaper !== 'custom'
+                      && (wallpaperIsLight(wallpaper) ? ' · светлый фон, подписи тёмные' : ' · тёмный фон, подписи светлые')}
+                  </span>
+                </>
+              )}
+
+              {/* ── ВИДЖЕТЫ ─────────────────────────────────────────────────────────── */}
+              {sheetTab === 'widgets' && (
+                <>
+                  {/* ⚠️ Тумблер, а не пилюля: пилюля — язык действия («нажми»), а здесь состояние
+                      («включено»). По серой пилюле было не решить, выключено оно или недоступно. */}
+                  <SheetRow
+                    title="Погода"
+                    hint={widgets.weather && weatherCity
+                      ? weatherCity + ' · обновляется раз в 15 минут'
+                      : 'Температура и состояние на сегодня'}
+                    control={<Toggle checked={widgets.weather} onChange={() => toggleWidget('weather')} />}
+                  />
+                  {widgets.weather && (
+                    <div style={{ paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <SheetLabel>Город</SheetLabel>
+                      {/* ⚠️ Кнопки «ОК» больше нет: она не говорила, что произойдёт, и гасла по
+                          невидимому правилу. Сохраняет Enter и уход из поля. */}
+                      <input
+                        value={cityDraft}
+                        onChange={(e) => setCityDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') applyCity() }}
+                        onBlur={applyCity}
+                        placeholder="Например, Краснодар"
+                        style={{
+                          border: 'none', outline: 'none',
+                          borderRadius: 'var(--radius-sm)', padding: '7px 10px',
+                          background: 'var(--surface-sunken)', color: 'var(--text-strong)',
+                          fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
+                        }}
+                      />
                     </div>
-                  ))}
+                  )}
+                  <SheetRow
+                    title="Курс валют"
+                    hint="ЦБ РФ · доллар и евро"
+                    control={<Toggle checked={widgets.currency} onChange={() => toggleWidget('currency')} />}
+                  />
+                </>
+              )}
+
+              {/* ── ПРИЛОЖЕНИЯ ──────────────────────────────────────────────────────── */}
+              {sheetTab === 'apps' && (
+                <>
+                  {/* ⚠️ ВСЕ приложения одним списком — и встроенные, и свои. Раньше спрятать можно
+                      было из меню иконки, а вернуть только отсюда: две двери в одну комнату,
+                      причём вторая появлялась и исчезала сама. */}
+                  {everyApp.map((a) => {
+                    const on = !hiddenApps.includes(a.id)
+                    const own = customApps.some((c) => c.id === a.id)
+                    return (
+                      <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                        <AppIconBadge app={a} size={22} iconSize={13} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: 'var(--fs-sm)', fontWeight: 550, color: 'var(--text-strong)',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>{a.label}</div>
+                          {(own || !on) && (
+                            <div style={{
+                              fontSize: 'var(--fs-xs)', color: 'var(--text-faint)',
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>{own ? hostOf(a.url ?? '') : 'скрыто с экрана'}</div>
+                          )}
+                        </div>
+                        <Toggle checked={on} onChange={() => { if (on) hideApp(a.id); else unhideApp(a.id) }} />
+                        {own && (
+                          <button
+                            onClick={() => removeCustomApp(a.id)}
+                            title="Удалить приложение"
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              width: 20, height: 20, flexShrink: 0, padding: 0,
+                              background: 'transparent', border: 'none', borderRadius: '50%',
+                              color: 'var(--text-faint)', cursor: 'pointer',
+                            }}
+                          >
+                            <X size={12} strokeWidth={2} />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {/* ⚠️ Поля добавления развёрнуты не всегда: три пустых поля внизу списка
+                      занимали место обещанием, которым пользуются раз в месяц. */}
+                  {!addOpen ? (
+                    <button
+                      onClick={() => setAddOpen(true)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6, padding: '7px 0',
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        color: 'var(--accent)', fontSize: 'var(--fs-sm)', fontWeight: 600,
+                        fontFamily: 'var(--font-sans)',
+                      }}
+                    >
+                      <Plus size={14} /> Добавить сайт
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <input
+                        value={newAppName}
+                        onChange={(e) => setNewAppName(e.target.value)}
+                        placeholder="Название (необязательно)"
+                        style={{
+                          border: 'none', outline: 'none',
+                          borderRadius: 'var(--radius-sm)', padding: '7px 10px',
+                          background: 'var(--surface-sunken)', color: 'var(--text-strong)',
+                          fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input
+                          value={newAppUrl}
+                          onChange={(e) => setNewAppUrl(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { addCustomApp(); setAddOpen(false) } }}
+                          autoFocus
+                          placeholder="Адрес сайта"
+                          style={{
+                            flex: 1, minWidth: 0, border: 'none', outline: 'none',
+                            borderRadius: 'var(--radius-sm)', padding: '7px 10px',
+                            background: 'var(--surface-sunken)', color: 'var(--text-strong)',
+                            fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
+                          }}
+                        />
+                        <button
+                          onClick={() => { addCustomApp(); setAddOpen(false) }}
+                          disabled={newAppUrl.trim() === ''}
+                          style={{
+                            padding: '0 12px', borderRadius: 'var(--radius-chip)', border: 'none',
+                            background: 'var(--accent)', color: 'var(--text-on-accent)',
+                            fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer',
+                            opacity: newAppUrl.trim() === '' ? 0.45 : 1,
+                          }}
+                        >
+                          Добавить
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
