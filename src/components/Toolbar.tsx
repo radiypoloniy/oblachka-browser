@@ -7,13 +7,17 @@ import { Copy, Check, ChevronDown, KeyRound, Loader2, Clipboard, MoreHorizontal 
 import { BackGlyph, ForwardGlyph, RefreshGlyph, ShieldGlyph, StarGlyph, SparkGlyph, DownloadGlyph } from './glyphs';
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
-import { SEARCH_ENGINES, getSearchEngine, DEFAULT_SEARCH_ENGINE_ID } from '../../shared/searchEngines';
+import { SEARCH_ENGINES, getSearchEngine } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
 import { chromeCluster, omniField, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
-import { setDefaultSearchEngine, subscribeDefaultSearchEngine } from '../searchEngineSetting';
+import { setDefaultSearchEngine } from '../searchEngineSetting';
 import { CHROME_OVERLAY_PX } from '../../shared/chromeGround';
 import { DEFAULT_PROFILE_ID, type ProfilesState } from '../../shared/profiles';
 import { glyph } from '../styles/system';
+// Жизненный цикл и разговор с main — в хуках рядом (docs/architecture-code.md, §Хук).
+import { useSearchEngine } from './toolbar/useSearchEngine';
+import { useClipboardCount } from './toolbar/useClipboardCount';
+import { useBookmarked } from './toolbar/useBookmarked';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -150,12 +154,9 @@ export default function Toolbar({
   const [passwordIndicator, setPasswordIndicator] = useState<PasswordIndicatorState | null>(null);
   const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false);
   const [downloadsPopoverOpen, setDownloadsPopoverOpen] = useState(false);
-  // Буфер скопированного со страниц. ⚠️ Кнопки НЕТ, пока буфер пуст: на чистом сеансе она была бы
-  // мёртвым значком, а тулбар и так тесный (тот же приём, что у индикатора товара).
-  const [clipboardCount, setClipboardCount] = useState(0);
+  const clipboardCount = useClipboardCount();
   const [clipboardPopoverOpen, setClipboardPopoverOpen] = useState(false);
   const [sitePopoverOpen, setSitePopoverOpen] = useState(false);
-  const [bookmarked, setBookmarked] = useState(false);
   // Анимация прилёта файла в кнопку загрузок. Живёт ровно столько, сколько играет — держать
   // её состоянием после окончания незачем, а CSS-анимация без размонтирования не перезапустится
   // на вторую загрузку подряд.
@@ -232,17 +233,10 @@ export default function Toolbar({
   const clipboardControlRef = useRef<HTMLDivElement>(null);
   const siteControlRef = useRef<HTMLButtonElement>(null);
 
-  // Текущий выбранный поисковик — источник истины в main (SettingsManager); здесь только
-  // читаем id и строим URL по общему шаблону (shared/searchEngines.ts), не хардкодим движок.
-  const [searchEngineId, setSearchEngineId] = useState<SearchEngineId>(DEFAULT_SEARCH_ENGINE_ID);
-  useEffect(() => {
-    let mounted = true;
-    window.oblako.getSearchEngine().then((id) => { if (mounted) setSearchEngineId(id); });
-    // Тот же выбор есть в настройках («Браузер» → «Поиск по умолчанию»), а тулбар над открытыми
-    // настройками остаётся на экране — без подписки капсула показывала бы прежний движок.
-    const off = subscribeDefaultSearchEngine((id) => { if (mounted) setSearchEngineId(id); });
-    return () => { mounted = false; off(); };
-  }, []);
+  const searchEngineId = useSearchEngine();
+  // ⚠️ Пара, а не одно значение: клик по звезде ставит признак ОПТИМИСТИЧНО, а BOOKMARK_CHANGED
+  // затем подтверждает или поправляет — иначе звезда загоралась бы с задержкой в круг IPC.
+  const [bookmarked, setBookmarked] = useBookmarked(!isHub ? tab?.url : undefined);
 
   // Капсула выбора поисковика — только на хабе (isHub), см. omnibox ниже.
   const [engineMenuOpen, setEngineMenuOpen] = useState(false);
@@ -250,8 +244,10 @@ export default function Toolbar({
   useEffect(() => { if (!isHub) setEngineMenuOpen(false); }, [isHub]);
 
   const pickEngine = (id: SearchEngineId) => {
-    setSearchEngineId(id);
     setEngineMenuOpen(false);
+    // ⚠️ Своей копии выбора здесь больше нет: setDefaultSearchEngine пишет в main, а подписка
+    // внутри useSearchEngine возвращает значение обратно. Прежний setSearchEngineId делал то же
+    // самое вторым путём — то есть заводил вторую правду на время круга IPC.
     setDefaultSearchEngine(id);
   };
 
@@ -414,33 +410,6 @@ export default function Toolbar({
     return () => { cancelAnimationFrame(raf); window.removeEventListener('focus', onWindowFocus); };
   }, [isHub, tab?.id]);
 
-  // Звезда «в закладках» — перепроверяем при каждой смене url активной вкладки. seq-ref —
-  // тот же приём, что searchSeqRef в History.tsx: быстрое переключение вкладок не должно
-  // позволить УСТАРЕВШЕМУ ответу isBookmarked(старый url) перезаписать состояние уже другой,
-  // текущей вкладки.
-  const bookmarkSeqRef = useRef(0);
-  useEffect(() => {
-    const url = !isHub ? tab?.url : undefined;
-    const seq = ++bookmarkSeqRef.current;
-    if (!url) { setBookmarked(false); return; }
-    void window.oblako.isBookmarked(url).then((v) => {
-      if (seq === bookmarkSeqRef.current) setBookmarked(v);
-    });
-  }, [isHub, tab?.url]);
-
-  // Мутация где угодно (например, удалили закладку из панели закладок, пока эта же страница
-  // ещё открыта в другой вкладке) — перепроверяем звезду ТЕКУЩЕЙ вкладки заново.
-  useEffect(() => {
-    return window.oblako.onBookmarksChanged(() => {
-      const url = !isHub ? tab?.url : undefined;
-      if (!url) return;
-      const seq = ++bookmarkSeqRef.current;
-      void window.oblako.isBookmarked(url).then((v) => {
-        if (seq === bookmarkSeqRef.current) setBookmarked(v);
-      });
-    });
-  }, [isHub, tab?.url]);
-
   // ⚠️ Звезда больше не ТУМБЛЕР. Прежнее поведение («нажал — сохранил в корень, нажал ещё —
   // удалил») не давало положить страницу в папку вовсе: единственным местом закладки был корень,
   // и разгребать его приходилось потом руками. Теперь клик сохраняет и сразу предлагает папку —
@@ -570,11 +539,6 @@ export default function Toolbar({
 
   useEffect(() => window.oblako.onDownloadsPopoverClosed(() => setDownloadsPopoverOpen(false)), []);
 
-  useEffect(() => window.oblako.onClipboardChanged(setClipboardCount), []);
-  // ⚠️ И СРАЗУ спрашиваем текущее число, не дожидаясь первого изменения: закреплённое поднимается
-  // с диска при старте, и без этого запроса кнопка буфера оставалась серой до первого копирования
-  // — то есть достать закреплённое, ничего не скопировав, было нельзя.
-  useEffect(() => { void window.oblako.getClipboardCount().then(setClipboardCount); }, []);
   useEffect(() => window.oblako.onClipboardPopoverClosed(() => setClipboardPopoverOpen(false)), []);
 
   const toggleClipboardPopover = useCallback(() => {
