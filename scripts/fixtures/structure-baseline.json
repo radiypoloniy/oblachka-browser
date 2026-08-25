@@ -132,8 +132,8 @@
     "ipc": 9
   },
   "src/components/Toolbar.tsx": {
-    "lines": 1609,
-    "fn": 1478,
+    "lines": 1562,
+    "fn": 1432,
     "effects": 17,
     "ipc": 74
   },

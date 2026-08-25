@@ -1,16 +1,14 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Copy, Check, KeyRound, Loader2, MoreHorizontal } from 'lucide-react';
 // ⚠️ Значки, которые человек видит каждую минуту, — свои (штрих плюс тело, см. glyphs.tsx).
 // Остальное остаётся на lucide: в глубине интерфейса характер набора никто не заметит, а
 // перерисовка всего означала бы правку импортов в шести десятках файлов ради того же результата.
-import { ShieldGlyph, StarGlyph } from './glyphs';
+import { ShieldGlyph } from './glyphs';
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
 import { composeSuggestions, looksLikeAddress } from '../../shared/suggestList';
 import { getSearchEngine, isSearchResultUrl } from '../../shared/searchEngines';
 import { omniField, ISLAND_HEIGHT } from '../styles/island';
 import { CHROME_OVERLAY_PX } from '../../shared/chromeGround';
-import { glyph } from '../styles/system';
 // Жизненный цикл и разговор с main — в хуках рядом (docs/architecture-code.md, §Хук).
 import { useSearchEngine } from './toolbar/useSearchEngine';
 import { useClipboardCount } from './toolbar/useClipboardCount';
@@ -23,6 +21,7 @@ import { useEngineMenu } from './toolbar/useEngineMenu';
 import { NavCluster } from './toolbar/NavCluster';
 import { RightCluster } from './toolbar/RightCluster';
 import { EngineCapsule } from './toolbar/EngineCapsule';
+import { PageActions } from './toolbar/PageActions';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -1496,66 +1495,20 @@ export default function Toolbar({
                 fontFamily: 'var(--font-sans)',
               }}
             />
-            {!isHub && tab?.url && (
-              passwordIndicator && (
-                <div ref={passwordControlRef} style={{ display: 'inline-flex', flex: 'none' }}>
-                  <button
-                    title="Пароли"
-                    onClick={togglePasswordPopover}
-                    style={{
-                      border: 'none', background: passwordPopoverOpen ? 'var(--accent-soft)' : 'transparent',
-                      cursor: 'default', padding: 3, borderRadius: 'var(--radius-sm)',
-                      display: 'inline-flex',
-                      color: passwordPopoverOpen ? 'var(--accent)' : 'var(--text-muted)',
-                      position: 'relative',
-                    }}
-                  >
-                    <KeyRound {...glyph(14)} />
-                  </button>
-                </div>
-              )
-            )}
-            {!isHub && tab?.url && (
-              <button title="Копировать адрес" onClick={copyUrl}
-                style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
-                         display: 'inline-flex', color: copied ? 'var(--dot-local)' : 'var(--text-faint)' }}>
-                {copied ? <Check {...glyph(14)} /> : <Copy {...glyph(14)} />}
-              </button>
-            )}
-            {!isHub && tab?.url && (
-              <button title={bookmarked ? 'Удалить из закладок' : 'Добавить в закладки'}
-                onClick={toggleBookmark}
-                style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3,
-                         display: 'inline-flex', color: bookmarked ? 'var(--accent)' : 'var(--text-muted)' }}>
-                <StarGlyph size={14} filled={bookmarked} />
-              </button>
-            )}
-            {/* «⋯» — действия над ЭТОЙ страницей, которым не нужна постоянная кнопка: перевод и
-                отслеживание цены (само меню собирает main, см. IPC.OMNIBOX_MORE_MENU).
-                ⚠️ Подсвечивается акцентом, пока перевод активен. Спрятанное в меню состояние
-                иначе не видно вовсе — человек не понял бы, почему страница вдруг по-русски.
-                Отслеживание цены отдельного сигнала здесь не получает: акцент в полосе один, и
-                отдавать его надо тому состоянию, которое меняет саму страницу. */}
-            {!isHub && tab?.url && (
-              <button
-                title={pageTranslateState === 'translating'
-                  ? (pageTranslateProgress
-                      ? `Перевожу страницу… ${Math.min(pageTranslateProgress.batchIndex + 1, pageTranslateProgress.batchCount)}/${pageTranslateProgress.batchCount} · ${pageTranslateProgress.charsStreamed} симв.`
-                      : 'Перевожу страницу…')
-                  : pageTranslateState === 'translated' ? 'Страница переведена — ещё действия'
-                  : 'Ещё действия со страницей'}
-                onClick={() => { void window.oblako.showOmniboxMoreMenu(); }}
-                style={{
-                  border: 'none', background: 'transparent', cursor: 'default', padding: 3,
-                  borderRadius: 'var(--radius-sm)', display: 'inline-flex', flex: 'none',
-                  color: pageTranslateState === 'idle' ? 'var(--text-muted)' : 'var(--accent)',
-                }}
-              >
-                {pageTranslateState === 'translating'
-                  ? <Loader2 {...glyph(14)} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-                  : <MoreHorizontal {...glyph(14)} />}
-              </button>
-            )}
+            <PageActions
+              visible={!isHub && !!tab?.url}
+              hasPasswords={!!passwordIndicator}
+              passwordsRef={passwordControlRef}
+              passwordsOpen={passwordPopoverOpen}
+              onTogglePasswords={togglePasswordPopover}
+              copied={copied}
+              onCopy={copyUrl}
+              bookmarked={bookmarked}
+              onToggleBookmark={toggleBookmark}
+              translateState={pageTranslateState}
+              translateProgress={pageTranslateProgress}
+              onMore={() => { void window.oblako.showOmniboxMoreMenu(); }}
+            />
             {/* Капсула выбора поисковика — только на хабе, в контентных вкладках не рендерится вовсе.
                 Схлопывается по тому же принципу, что VPN-пилюля (см. capsuleMode выше): на дефолтном
                 окне омнибокс уже узкий (VPN-режим 'short' даёт ~278px) — полное имя туда не влезает
