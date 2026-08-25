@@ -1,0 +1,260 @@
+{
+  "electron/AiPanelManager.ts": {
+    "lines": 903,
+    "fn": 250,
+    "effects": 0,
+    "ipc": 0
+  },
+  "electron/ModelDownloader.ts": {
+    "lines": 541,
+    "fn": 283,
+    "effects": 0,
+    "ipc": 0
+  },
+  "electron/TabManager.ts": {
+    "lines": 4481,
+    "fn": 160,
+    "effects": 0,
+    "ipc": 0
+  },
+  "electron/TranslationService.ts": {
+    "lines": 846,
+    "fn": 69,
+    "effects": 0,
+    "ipc": 0
+  },
+  "electron/ipc/menus.ts": {
+    "lines": 434,
+    "fn": 406,
+    "effects": 0,
+    "ipc": 0
+  },
+  "electron/main.ts": {
+    "lines": 2427,
+    "fn": 842,
+    "effects": 0,
+    "ipc": 0
+  },
+  "electron/preload-content.ts": {
+    "lines": 1622,
+    "fn": 63,
+    "effects": 0,
+    "ipc": 0
+  },
+  "electron/preload.ts": {
+    "lines": 812,
+    "fn": 6,
+    "effects": 0,
+    "ipc": 0
+  },
+  "shared/chromeGround.ts": {
+    "lines": 843,
+    "fn": 31,
+    "effects": 0,
+    "ipc": 0
+  },
+  "shared/ipc/channels.ts": {
+    "lines": 773,
+    "fn": 0,
+    "effects": 0,
+    "ipc": 0
+  },
+  "src/App.tsx": {
+    "lines": 1398,
+    "fn": 1146,
+    "effects": 26,
+    "ipc": 78
+  },
+  "src/aipanel.tsx": {
+    "lines": 1313,
+    "fn": 984,
+    "effects": 8,
+    "ipc": 0
+  },
+  "src/components/Bookmarks.tsx": {
+    "lines": 483,
+    "fn": 289,
+    "effects": 3,
+    "ipc": 9
+  },
+  "src/components/GraphCanvas.tsx": {
+    "lines": 1028,
+    "fn": 928,
+    "effects": 10,
+    "ipc": 24
+  },
+  "src/components/History.tsx": {
+    "lines": 408,
+    "fn": 246,
+    "effects": 3,
+    "ipc": 6
+  },
+  "src/components/Hub.tsx": {
+    "lines": 542,
+    "fn": 337,
+    "effects": 4,
+    "ipc": 13
+  },
+  "src/components/ImportDialog.tsx": {
+    "lines": 324,
+    "fn": 275,
+    "effects": 1,
+    "ipc": 3
+  },
+  "src/components/ModelsSection.tsx": {
+    "lines": 461,
+    "fn": 286,
+    "effects": 1,
+    "ipc": 19
+  },
+  "src/components/Onboarding.tsx": {
+    "lines": 1067,
+    "fn": 603,
+    "effects": 5,
+    "ipc": 12
+  },
+  "src/components/Settings.tsx": {
+    "lines": 428,
+    "fn": 347,
+    "effects": 4,
+    "ipc": 8
+  },
+  "src/components/Sidebar.tsx": {
+    "lines": 2418,
+    "fn": 999,
+    "effects": 4,
+    "ipc": 20
+  },
+  "src/components/SidebarBookmarks.tsx": {
+    "lines": 555,
+    "fn": 222,
+    "effects": 5,
+    "ipc": 9
+  },
+  "src/components/Toolbar.tsx": {
+    "lines": 1998,
+    "fn": 1827,
+    "effects": 36,
+    "ipc": 83
+  },
+  "src/components/aiApps.tsx": {
+    "lines": 2836,
+    "fn": 610,
+    "effects": 5,
+    "ipc": 0
+  },
+  "src/components/desktop/DesktopScreen.tsx": {
+    "lines": 857,
+    "fn": 566,
+    "effects": 6,
+    "ipc": 2
+  },
+  "src/components/desktop/GenStudio.tsx": {
+    "lines": 660,
+    "fn": 290,
+    "effects": 6,
+    "ipc": 2
+  },
+  "src/components/desktop/GenWidget.tsx": {
+    "lines": 420,
+    "fn": 298,
+    "effects": 7,
+    "ipc": 2
+  },
+  "src/components/desktop/SidePanel.tsx": {
+    "lines": 611,
+    "fn": 297,
+    "effects": 2,
+    "ipc": 0
+  },
+  "src/components/desktop/widgets.tsx": {
+    "lines": 1317,
+    "fn": 140,
+    "effects": 2,
+    "ipc": 9
+  },
+  "src/components/graph/GraphNodeCard.tsx": {
+    "lines": 700,
+    "fn": 508,
+    "effects": 1,
+    "ipc": 1
+  },
+  "src/components/graph/GraphWebAppWindow.tsx": {
+    "lines": 303,
+    "fn": 218,
+    "effects": 3,
+    "ipc": 3
+  },
+  "src/components/settings/AiSection.tsx": {
+    "lines": 521,
+    "fn": 93,
+    "effects": 1,
+    "ipc": 27
+  },
+  "src/components/settings/AppearanceSection.tsx": {
+    "lines": 715,
+    "fn": 498,
+    "effects": 2,
+    "ipc": 4
+  },
+  "src/components/settings/GradientEditor.tsx": {
+    "lines": 253,
+    "fn": 226,
+    "effects": 0,
+    "ipc": 0
+  },
+  "src/components/settings/PasswordsSection.tsx": {
+    "lines": 670,
+    "fn": 455,
+    "effects": 3,
+    "ipc": 15
+  },
+  "src/components/settings/ProfilesSection.tsx": {
+    "lines": 504,
+    "fn": 271,
+    "effects": 1,
+    "ipc": 17
+  },
+  "src/components/settings/RulesSection.tsx": {
+    "lines": 375,
+    "fn": 321,
+    "effects": 2,
+    "ipc": 7
+  },
+  "src/components/settings/VpnSection.tsx": {
+    "lines": 272,
+    "fn": 247,
+    "effects": 1,
+    "ipc": 10
+  },
+  "src/components/settings/kit.tsx": {
+    "lines": 1175,
+    "fn": 144,
+    "effects": 2,
+    "ipc": 1
+  },
+  "src/findbar.tsx": {
+    "lines": 313,
+    "fn": 238,
+    "effects": 1,
+    "ipc": 0
+  },
+  "src/searchpopover.tsx": {
+    "lines": 480,
+    "fn": 325,
+    "effects": 5,
+    "ipc": 0
+  },
+  "src/sitepopover.tsx": {
+    "lines": 451,
+    "fn": 304,
+    "effects": 5,
+    "ipc": 0
+  },
+  "src/suggestdropdown.tsx": {
+    "lines": 811,
+    "fn": 101,
+    "effects": 5,
+    "ipc": 0
+  }
+}
