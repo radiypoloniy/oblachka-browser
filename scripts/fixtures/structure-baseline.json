@@ -132,10 +132,10 @@
     "ipc": 9
   },
   "src/components/Toolbar.tsx": {
-    "lines": 1826,
-    "fn": 1661,
-    "effects": 20,
-    "ipc": 76
+    "lines": 1789,
+    "fn": 1638,
+    "effects": 18,
+    "ipc": 74
   },
   "src/components/aiApps.tsx": {
     "lines": 2836,

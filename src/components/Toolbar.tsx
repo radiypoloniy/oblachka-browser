@@ -12,7 +12,6 @@ import type { SearchEngineId } from '../../shared/searchEngines';
 import { chromeCluster, omniField, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
 import { setDefaultSearchEngine } from '../searchEngineSetting';
 import { CHROME_OVERLAY_PX } from '../../shared/chromeGround';
-import { DEFAULT_PROFILE_ID, type ProfilesState } from '../../shared/profiles';
 import { glyph } from '../styles/system';
 // Жизненный цикл и разговор с main — в хуках рядом (docs/architecture-code.md, §Хук).
 import { useSearchEngine } from './toolbar/useSearchEngine';
@@ -20,6 +19,8 @@ import { useClipboardCount } from './toolbar/useClipboardCount';
 import { useBookmarked } from './toolbar/useBookmarked';
 import { useOmniboxGeometry } from './toolbar/useOmniboxGeometry';
 import { useAnchoredPopover } from './toolbar/useAnchoredPopover';
+import { useProfileBadge, profileHint } from './toolbar/useProfileBadge';
+import { useDownloadFlight } from './toolbar/useDownloadFlight';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -137,16 +138,7 @@ export default function Toolbar({
   const clipboardCount = useClipboardCount();
   const [clipboardPopoverOpen, setClipboardPopoverOpen] = useState(false);
   const [sitePopoverOpen, setSitePopoverOpen] = useState(false);
-  // Анимация прилёта файла в кнопку загрузок. Живёт ровно столько, сколько играет — держать
-  // её состоянием после окончания незачем, а CSS-анимация без размонтирования не перезапустится
-  // на вторую загрузку подряд.
-  const [flying, setFlying] = useState(false);
-  useEffect(() => {
-    if (downloadStartTick === 0) return; // стартовое значение, загрузок ещё не было
-    setFlying(true);
-    const t = setTimeout(() => setFlying(false), 820);
-    return () => clearTimeout(t);
-  }, [downloadStartTick]);
+  const flying = useDownloadFlight(downloadStartTick);
 
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = externalRef ?? internalRef;
@@ -527,21 +519,7 @@ export default function Toolbar({
     reflowKey: toolbarWidth,
   });
 
-  // Активный профиль — ради точки у щита. ⚠️ Здесь, а не в App: точка живёт в тулбаре, и
-  // прокидывать ради неё ещё один проп через десяток уровней незачем.
-  const [profile, setProfile] = useState<ProfileBadge | null>(null);
-  useEffect(() => {
-    const read = (p: ProfilesState): void => {
-      const cur = p.profiles.find((x) => x.id === p.activeId);
-      setProfile(cur ? {
-        name: cur.name, color: cur.color,
-        isDefault: cur.id === DEFAULT_PROFILE_ID,
-        strict: cur.settings.vpn === 'on',
-      } : null);
-    };
-    void window.oblako.getProfiles().then(read);
-    return window.oblako.onProfilesChanged(read);
-  }, []);
+  const profile = useProfileBadge();
 
   const toggleSitePopover = useCallback(() => {
     closeDropdownFully('site-button');
@@ -1808,18 +1786,3 @@ function ProgressRing({ value }: { value: number | null }) {
 // тулбара (TOOLBAR_HEIGHT не меняется) — сами токены стекла/тени/скругления не подбирались
 // заново, те же, что уже отлажены в поповере/AI-панели.
 
-interface ProfileBadge {
-  name: string;
-  color: string;
-  isDefault: boolean;
-  strict: boolean;
-}
-
-/** Подсказка щита: сначала то, что сломано, потом обычное состояние. */
-function profileHint(profile: ProfileBadge | null, vpnOn: boolean): string {
-  if (profile && !profile.isDefault && profile.strict && !vpnOn) {
-    return `Профиль «${profile.name}» открывает сайты только через VPN, а туннель выключен`;
-  }
-  const base = vpnOn ? 'Защита: VPN включён' : 'Защита: VPN, блокировка рекламы, сведения о сайте';
-  return profile && !profile.isDefault ? `${base} · профиль «${profile.name}»` : base;
-}
