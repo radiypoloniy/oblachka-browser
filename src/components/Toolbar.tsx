@@ -22,6 +22,7 @@ import { RightCluster } from './toolbar/RightCluster';
 import { EngineCapsule } from './toolbar/EngineCapsule';
 import { PageActions } from './toolbar/PageActions';
 import { ShieldButton } from './toolbar/ShieldButton';
+import { useOmniboxDrafts } from './toolbar/useOmniboxDrafts';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -127,8 +128,10 @@ export default function Toolbar({
   pageTranslateState, pageTranslateProgress, isLightWindow = false,
 }: ToolbarProps) {
   const isHub = tab?.isHub ?? true;
-  const [value, setValue] = useState('');
   const [editing, setEditing] = useState(false);
+  // Что показано в строке и черновики по вкладкам — см. useOmniboxDrafts. `editing` нужен ему,
+  // чтобы фоновая навигация не вырывала значение из-под рук у печатающего.
+  const { value, setValue, setDraft, clearDraft, resetToTab } = useOmniboxDrafts(tab, editing);
   const [copied, setCopied] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestItem[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(-1);
@@ -162,12 +165,6 @@ export default function Toolbar({
   // собирается синхронно, иначе плитки набора приезжали бы вторым кадром и сдвигали номера строк
   // уже после того, как человек нацелился стрелками.
   const recommendedRef = useRef<SuggestItem[]>([]);
-  // Черновик (набранный, но не отправленный текст) — по вкладке, переживает потерю фокуса и
-  // переключение вкладок, как в популярных браузерах: просто отвлечься на другую вкладку не должно
-  // стирать то, что печатали. Стирается явно — submit() (реальная навигация) и Escape (см.
-  // handleKeyDown) — а не любым blur/setEditing(false) (клик мимо, фокус на контент, тоггл
-  // поповера паролей/VPN и т.п. этот Map не трогают вовсе).
-  const draftsRef = useRef<Map<string, string>>(new Map());
   // Момент последней отправки. Нужен фокус-циклу ниже: submit() снимает фокус НАМЕРЕННО, и
   // возвращать его в этот момент нельзя — иначе строка перехватывает фокус у только что
   // открытой страницы (и держит editing, из-за чего набранный текст не сменялся адресом).
@@ -175,10 +172,6 @@ export default function Toolbar({
   // Первый показ хаба за жизнь окна — старт приложения. Ему нужно окно ожидания длиннее (см.
   // эффект фокуса ниже), поэтому случай отличается флагом, а не таймером «на всякий случай».
   const firstHubRef = useRef(true);
-  // Последняя (id, url) АКТИВНОЙ вкладки — отличает «эта же вкладка реально куда-то перешла»
-  // (черновик стал неактуален) от «просто переключились на другую вкладку» (черновик той вкладки
-  // ещё жив и должен вернуться при переключении обратно). См. эффекты ниже.
-  const lastNavTabRef = useRef<{ id: string; url: string } | undefined>(undefined);
   // Unified focus tracker: объединяет realMouseDownRef + hasRealFocusRef в один объект.
   // Отличает настоящий клик пользователя от спонтанных событий фокуса при addChildView/removeChildView
   // нативной WebContentsView дропдауна. isRealFocus = true выставляется ТОЛЬКО настоящим mousedown
@@ -221,42 +214,6 @@ export default function Toolbar({
     open: engineMenuOpen, setOpen: setEngineMenuOpen, btnRef: engineBtnRef, pick: pickEngine,
   } = useEngineMenu(isHub);
 
-  // Живой баг: переход из хаба создаёт НОВУЮ вкладку (хаб — фиксированный HUB_ID, не переиспользуется),
-  // и у неё в первый момент url === '' (wc.getURL() до коммита навигации) — тот же пустой url, что
-  // и у хаба. Раз значение строки ('' === '') не изменилось, эффект «реальная навигация», раньше
-  // висевший отдельно на [tab?.url], НЕ срабатывал на само переключение и lastNavTabRef оставался
-  // указывать на СТАРУЮ (хаб) вкладку. Когда чуть позже url реально приходил (тот же id, новый url),
-  // это ошибочно классифицировалось как «другая вкладка» (сравнение шло со старым id) — и адрес так
-  // и оставался пустым навсегда, до принудительного пересчёта переключением вкладок туда-обратно.
-  // Единый эффект на [tab?.id, tab?.url] чинит это — lastNavTabRef обновляется на КАЖДЫЙ прогон,
-  // включая сам момент переключения, поэтому последующий приход url всегда сверяется с АКТУАЛЬНЫМ id.
-  useEffect(() => {
-    if (!tab) return;
-    const switchedTab = lastNavTabRef.current?.id !== tab.id;
-    lastNavTabRef.current = { id: tab.id, url: tab.url };
-    if (switchedTab) {
-      // ⚠️ Хаб открывается ЧИСТЫМ, без черновика. Он не страница, а экран «новая вкладка», и
-      // человек приходит на него, чтобы начать заново. Жалоба была ровно об этом: набрал текст,
-      // перешёл по нему, открыл новую вкладку — а текст всё ещё в строке. Причина живучая:
-      // хаб один на окно (HUB_ID), его черновик переживает и переход, и создание новой вкладки,
-      // и всплывает при следующем возврате. Ловилось нерегулярно, потому что зависит от того,
-      // успел ли submit() снять черновик до того, как список вкладок доехал из main.
-      if (tab.isHub) { draftsRef.current.delete(tab.id); setValue(''); return; }
-      // Переключение вкладки — поднимаем ЕЁ черновик, если печатали в ней раньше и не отправили,
-      // иначе показываем её текущий url (может быть ещё пустым, если страница только начала
-      // грузиться — эта же ветка при следующем реальном приходе url сама всё поправит, см. ниже).
-      const draft = draftsRef.current.get(tab.id);
-      setValue(draft !== undefined ? draft : tab.url);
-      return;
-    }
-    // Та же вкладка — url изменился (реальная навигация либо url «доехал» уже после переключения
-    // на ещё не догрузившуюся вкладку) — черновик неактуален. editing — защита от другого случая:
-    // фоновая навигация той же вкладки не должна вырывать значение из-под рук, если человек как
-    // раз печатает что-то новое поверх старого адреса.
-    if (editing) return;
-    draftsRef.current.delete(tab.id);
-    setValue(tab.url);
-  }, [tab?.id, tab?.url]);
 
   // Новая вкладка — сразу можно печатать: фокус в адресной строке.
   //
@@ -1163,10 +1120,9 @@ export default function Toolbar({
     inputRef.current?.blur();
     closeDropdownFully('submit');
     setValue(v);
-    // Реальная навигация — черновик этой вкладки отправлен, хранить нечего (на случай, если
-    // url ещё не успел обновиться в проп tab — эффект на tab?.url ниже подчистил бы его и сам,
-    // но не сразу, а после того как навигация реально произойдёт).
-    if (tab) draftsRef.current.delete(tab.id);
+    // Реальная навигация — черновик этой вкладки отправлен, хранить нечего (на случай, если url
+    // ещё не успел обновиться в пропе tab: сам хук подчистит его позже, но не сразу).
+    clearDraft();
   };
 
   const copyUrl = async () => {
@@ -1249,8 +1205,7 @@ export default function Toolbar({
       } else {
         // Escape — явная отмена: в отличие от обычного клика мимо (тот черновик сохраняет),
         // здесь пользователь осознанно откатывает правку, как и в любом браузере.
-        if (tab) draftsRef.current.delete(tab.id);
-        setValue(isHub ? '' : (tab?.url ?? ''));
+        resetToTab();
         inputRef.current?.blur();
         closeDropdownFully('escape-clear');
       }
@@ -1341,8 +1296,7 @@ export default function Toolbar({
                   || uriList
                   || e.dataTransfer.getData('text/plain');
                 if (!dropped) return;
-                setValue(dropped);
-                if (tab) draftsRef.current.set(tab.id, dropped);
+                setDraft(dropped);
                 setEditing(true);
                 // Выделяем целиком: брошенное чаще заменяют целиком, чем дописывают, — и это
                 // ровно то состояние, из которого Enter уводит по адресу.
@@ -1350,8 +1304,7 @@ export default function Toolbar({
               }}
               onChange={(e) => {
                 const v = e.target.value;
-                setValue(v);
-                if (tab) draftsRef.current.set(tab.id, v);
+                setDraft(v);
                 triggerSuggest(v);
               }}
               onMouseDown={() => {
