@@ -22,6 +22,7 @@ import { RightCluster } from './toolbar/RightCluster';
 import { EngineCapsule } from './toolbar/EngineCapsule';
 import { PageActions } from './toolbar/PageActions';
 import { ShieldButton } from './toolbar/ShieldButton';
+import { usePopoverFlags } from './toolbar/usePopoverFlags';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -133,15 +134,13 @@ export default function Toolbar({
   useEffect(() => { window.oblako.setOmniboxEditing(editing); }, [editing]);
 
   const [copied, setCopied] = useState(false);
+  // Четыре поповера тулбара и их синхронизация с main — см. usePopoverFlags.
+  const popovers = usePopoverFlags();
   const [suggestions, setSuggestions] = useState<SuggestItem[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [passwordIndicator, setPasswordIndicator] = useState<PasswordIndicatorState | null>(null);
-  const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false);
-  const [downloadsPopoverOpen, setDownloadsPopoverOpen] = useState(false);
   const clipboardCount = useClipboardCount();
-  const [clipboardPopoverOpen, setClipboardPopoverOpen] = useState(false);
-  const [sitePopoverOpen, setSitePopoverOpen] = useState(false);
   const flying = useDownloadFlight(downloadStartTick);
 
   const internalRef = useRef<HTMLInputElement>(null);
@@ -405,12 +404,12 @@ export default function Toolbar({
   // Четыре поповера тулбара живут одной механикой (см. useAnchoredPopover): якорь-кнопка,
   // прямоугольник в main, наблюдатель за размером и закрытие по клику мимо.
   const dismissPassword = useCallback(() => {
-    setPasswordPopoverOpen(false);
+    popovers.setPassword(false);
     void window.oblako.closePasswordPopover();
   }, []);
   const { pushBounds: pushPasswordPopoverBounds } = useAnchoredPopover({
     anchorRef: passwordControlRef,
-    open: passwordPopoverOpen,
+    open: popovers.password,
     push: (b) => { void window.oblako.setPasswordPopoverAnchorBounds(b); },
     onDismiss: dismissPassword,
     reflowKey: toolbarWidth,
@@ -419,23 +418,23 @@ export default function Toolbar({
   const togglePasswordPopover = useCallback(() => {
     if (!passwordIndicator) return;
     closeDropdownFully('password-indicator');
-    if (passwordPopoverOpen) {
-      setPasswordPopoverOpen(false);
+    if (popovers.password) {
+      popovers.setPassword(false);
       void window.oblako.closePasswordPopover();
       return;
     }
     pushPasswordPopoverBounds();
-    setPasswordPopoverOpen(true);
+    popovers.setPassword(true);
     void window.oblako.showPasswordPopover(passwordIndicator);
-  }, [closeDropdownFully, passwordIndicator, passwordPopoverOpen, pushPasswordPopoverBounds]);
+  }, [closeDropdownFully, passwordIndicator, popovers.password, pushPasswordPopoverBounds]);
 
   const dismissDownloads = useCallback(() => {
-    setDownloadsPopoverOpen(false);
+    popovers.setDownloads(false);
     void window.oblako.closeDownloadsPopover();
   }, []);
   const { pushBounds: pushDownloadsPopoverBounds } = useAnchoredPopover({
     anchorRef: downloadsControlRef,
-    open: downloadsPopoverOpen,
+    open: popovers.downloads,
     push: (b) => { void window.oblako.setDownloadsPopoverAnchorBounds(b); },
     onDismiss: dismissDownloads,
     reflowKey: toolbarWidth,
@@ -444,42 +443,34 @@ export default function Toolbar({
   const toggleDownloadsPopover = useCallback(() => {
     closeDropdownFully('downloads-button');
     // Двум поповерам в тулбаре одновременно места нет — открывая один, гасим соседей.
-    if (passwordPopoverOpen) { setPasswordPopoverOpen(false); void window.oblako.closePasswordPopover(); }
-    if (sitePopoverOpen) { setSitePopoverOpen(false); void window.oblako.toggleSitePopover(); }
-    if (clipboardPopoverOpen) { setClipboardPopoverOpen(false); void window.oblako.toggleClipboardPopover(); }
-    if (downloadsPopoverOpen) {
-      setDownloadsPopoverOpen(false);
+    popovers.closeOthers('downloads');
+    if (popovers.downloads) {
+      popovers.setDownloads(false);
       void window.oblako.closeDownloadsPopover();
       return;
     }
     pushDownloadsPopoverBounds();
-    setDownloadsPopoverOpen(true);
+    popovers.setDownloads(true);
     void window.oblako.showDownloadsPopover();
-  }, [closeDropdownFully, passwordPopoverOpen, sitePopoverOpen, downloadsPopoverOpen, clipboardPopoverOpen, pushDownloadsPopoverBounds]);
-
-  useEffect(() => window.oblako.onDownloadsPopoverClosed(() => setDownloadsPopoverOpen(false)), []);
-
-  useEffect(() => window.oblako.onClipboardPopoverClosed(() => setClipboardPopoverOpen(false)), []);
+  }, [closeDropdownFully, popovers.password, popovers.site, popovers.downloads, popovers.clipboard, pushDownloadsPopoverBounds]);
 
   const toggleClipboardPopover = useCallback(() => {
     closeDropdownFully('clipboard-button');
-    if (passwordPopoverOpen) { setPasswordPopoverOpen(false); void window.oblako.closePasswordPopover(); }
-    if (sitePopoverOpen) { setSitePopoverOpen(false); void window.oblako.toggleSitePopover(); }
-    if (downloadsPopoverOpen) { setDownloadsPopoverOpen(false); void window.oblako.closeDownloadsPopover(); }
+    popovers.closeOthers('clipboard');
     const el = clipboardControlRef.current;
     if (el) {
       const r = el.getBoundingClientRect();
       window.oblako.syncClipboardPopoverBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
     }
-    setClipboardPopoverOpen((v) => !v);
+    popovers.setClipboard((v) => !v);
     void window.oblako.toggleClipboardPopover();
-  }, [closeDropdownFully, passwordPopoverOpen, sitePopoverOpen, downloadsPopoverOpen]);
+  }, [closeDropdownFully, popovers.password, popovers.site, popovers.downloads]);
 
   // Вопрос «этот файл уже скачан» — открываем поповер загрузок ровно тем же путём, что по клику
   // (с якорем и подсветкой кнопки). Сам вопрос уже лежит в main, карточка заберёт его сама.
   useEffect(() => window.oblako.onDownloadDuplicateAsk(() => {
     pushDownloadsPopoverBounds();
-    setDownloadsPopoverOpen(true);
+    popovers.setDownloads(true);
     void window.oblako.showDownloadsPopover();
   }), [pushDownloadsPopoverBounds]);
 
@@ -490,18 +481,18 @@ export default function Toolbar({
   // ⚠️ У карточки сайта закрытие — ТОГГЛ того же канала, а не отдельный close: main держит её
   // состояние у себя и отвечает им же (см. toggleSitePopover ниже).
   const dismissSite = useCallback(() => {
-    setSitePopoverOpen(false);
+    popovers.setSite(false);
     void window.oblako.toggleSitePopover();
   }, []);
   const dismissClipboard = useCallback(() => {
-    setClipboardPopoverOpen(false);
+    popovers.setClipboard(false);
     void window.oblako.toggleClipboardPopover();
   }, []);
   // ⚠️ Наблюдатель за якорем буфера нужен и теперь, когда кнопка перестала появляться-исчезать:
   // её прямоугольник всё равно ездит от ресайза окна и сворачивания сайдбара.
   useAnchoredPopover({
     anchorRef: clipboardControlRef,
-    open: clipboardPopoverOpen,
+    open: popovers.clipboard,
     push: (b) => { window.oblako.syncClipboardPopoverBounds(b); },
     onDismiss: dismissClipboard,
     reflowKey: toolbarWidth,
@@ -509,7 +500,7 @@ export default function Toolbar({
 
   const { pushBounds: pushSitePopoverBounds } = useAnchoredPopover({
     anchorRef: siteControlRef,
-    open: sitePopoverOpen,
+    open: popovers.site,
     push: (b) => { void window.oblako.setSitePopoverAnchorBounds(b); },
     onDismiss: dismissSite,
     reflowKey: toolbarWidth,
@@ -519,16 +510,11 @@ export default function Toolbar({
 
   const toggleSitePopover = useCallback(() => {
     closeDropdownFully('site-button');
-    if (passwordPopoverOpen) { setPasswordPopoverOpen(false); void window.oblako.closePasswordPopover(); }
-    if (sitePopoverOpen) { setSitePopoverOpen(false); void window.oblako.toggleSitePopover(); }
-    if (downloadsPopoverOpen) { setDownloadsPopoverOpen(false); void window.oblako.closeDownloadsPopover(); }
-    if (clipboardPopoverOpen) { setClipboardPopoverOpen(false); void window.oblako.toggleClipboardPopover(); }
+    popovers.closeOthers('site');
     pushSitePopoverBounds();
     // Состояние приходит ответом самого toggle — второго источника правды не заводим.
-    void window.oblako.toggleSitePopover().then(setSitePopoverOpen);
-  }, [closeDropdownFully, passwordPopoverOpen, sitePopoverOpen, downloadsPopoverOpen, clipboardPopoverOpen, pushSitePopoverBounds]);
-
-  useEffect(() => window.oblako.onSitePopoverClosed(() => setSitePopoverOpen(false)), []);
+    void window.oblako.toggleSitePopover().then(popovers.setSite);
+  }, [closeDropdownFully, popovers.password, popovers.site, popovers.downloads, popovers.clipboard, pushSitePopoverBounds]);
 
   // Клик по полоске сайта В ПАНЕЛИ омнибокса — открываем тот же поповер, что и замочек. Через
   // ref, а не прямой зависимостью: подписка ставится один раз, а toggleSitePopover пересоздаётся
@@ -574,21 +560,19 @@ export default function Toolbar({
     return window.oblako.onPasswordIndicatorChanged((state) => {
       setPasswordIndicator(state);
       if (!state) {
-        setPasswordPopoverOpen(false);
+        popovers.setPassword(false);
         void window.oblako.closePasswordPopover();
       }
     });
   }, []);
 
-  useEffect(() => window.oblako.onPasswordPopoverClosed(() => setPasswordPopoverOpen(false)), []);
-
   // ⚠️ Якорь и клик мимо держит useAnchoredPopover; здесь остаётся ровно то, чего у соседей нет:
   // СОДЕРЖИМОЕ. Индикатор мог смениться, пока поповер открыт (другое поле, другой аккаунт), и
   // тогда ему нужно новое состояние — иначе он показывал бы прошлое.
   useEffect(() => {
-    if (!passwordPopoverOpen || !passwordIndicator) return;
+    if (!popovers.password || !passwordIndicator) return;
     void window.oblako.showPasswordPopover(passwordIndicator);
-  }, [passwordPopoverOpen, passwordIndicator]);
+  }, [popovers.password, passwordIndicator]);
 
   // (2) Реальный OS-фокус ушёл на контент активной вкладки (ДРУГОЙ webContents — клик мышью по
   // странице) — main шлёт это из TabManager.wirePageEvents::wc.on('focus'), см. shared/ipc.ts::
@@ -609,16 +593,16 @@ export default function Toolbar({
   // режим редактирования и мгновенно его гасит — омнибокс становится неуправляемым.
   useEffect(() => {
     if (editing) { closeDropdownFullyRef.current('tab-switch'); }
-    if (passwordPopoverOpen) {
-      setPasswordPopoverOpen(false);
+    if (popovers.password) {
+      popovers.setPassword(false);
       void window.oblako.closePasswordPopover();
     }
-    if (sitePopoverOpen) {
-      setSitePopoverOpen(false);
+    if (popovers.site) {
+      popovers.setSite(false);
       void window.oblako.toggleSitePopover();
     }
-    if (downloadsPopoverOpen) {
-      setDownloadsPopoverOpen(false);
+    if (popovers.downloads) {
+      popovers.setDownloads(false);
       void window.oblako.closeDownloadsPopover();
     }
   }, [tab?.id]);
@@ -1310,7 +1294,7 @@ export default function Toolbar({
             <ShieldButton
               btnRef={siteControlRef}
               vpnOn={vpnOn}
-              popoverOpen={sitePopoverOpen}
+              popoverOpen={popovers.site}
               profile={profile}
               onToggle={toggleSitePopover}
             />
@@ -1468,7 +1452,7 @@ export default function Toolbar({
               visible={!isHub && !!tab?.url}
               hasPasswords={!!passwordIndicator}
               passwordsRef={passwordControlRef}
-              passwordsOpen={passwordPopoverOpen}
+              passwordsOpen={popovers.password}
               onTogglePasswords={togglePasswordPopover}
               copied={copied}
               onCopy={copyUrl}
@@ -1504,11 +1488,11 @@ export default function Toolbar({
         onToggleAiPanel={onToggleAiPanel}
         clipboardRef={clipboardControlRef}
         clipboardCount={clipboardCount}
-        clipboardOpen={clipboardPopoverOpen}
+        clipboardOpen={popovers.clipboard}
         onToggleClipboard={toggleClipboardPopover}
         onHoverClipboard={() => { if (clipboardCount > 0) window.oblako.prewarmPopover('clipboard'); }}
         downloadsRef={downloadsControlRef}
-        downloadsOpen={downloadsPopoverOpen}
+        downloadsOpen={popovers.downloads}
         onToggleDownloads={toggleDownloadsPopover}
         flying={flying}
         downloadsActive={downloadsActive}
