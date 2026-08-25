@@ -211,6 +211,7 @@
   "OMNIBOX_FOCUS=omnibox:focus",
   "OMNIBOX_MORE_MENU=omnibox:more-menu",
   "OMNIBOX_SET_BOUNDS=omnibox:set-bounds",
+  "OMNIBOX_SET_EDITING=omnibox:set-editing",
   "ONBOARDING_MARK_SHOWN=onboarding:mark-shown",
   "ONBOARDING_SHOULD_SHOW=onboarding:should-show",
   "PAGE_CHANGES_GET=page:changes-get",

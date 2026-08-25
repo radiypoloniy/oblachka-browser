@@ -3846,6 +3846,20 @@ export class TabManager {
   // Ctrl+S принадлежит ей, а не странице.
   private screenshotOpen = false;
   setScreenshotOpen(open: boolean): void { this.screenshotOpen = open; }
+
+  /**
+   * Человек правит адресную строку прямо сейчас.
+   *
+   * ⚠️ Заведено ради Escape и только ради него. `before-input-event` в слое хрома срабатывает
+   * РАНЬШЕ страницы и раньше React: ветка Escape гасила клавишу и звала stop() у активной вью —
+   * то есть «остановить загрузку». Пока фокус в омнибоксе, это неверный адресат: человек ждёт,
+   * что Escape вернёт прежний адрес, как в любом браузере.
+   *
+   * ⚠️ Живой симптом был асимметричным и потому запутанным: на хабе Escape работал (там нет
+   * активной вью, gate не срабатывал), а на любой открытой странице — нет вовсе.
+   */
+  private omniboxEditing = false;
+  setOmniboxEditing(on: boolean): void { this.omniboxEditing = on; }
   private onScreenshotCb: (() => void) | null = null;
   private onScreenshotSaveCb: (() => void) | null = null;
   private onScreenshotCloseCb: (() => void) | null = null;
@@ -3974,6 +3988,9 @@ export class TabManager {
             event.preventDefault();
             this.findBarOpen = false;   // немедленный сброс, чтобы второй Esc не зацикливался
             this.onFindCloseCb();
+          } else if (this.omniboxEditing) {
+            // Строку правят — клавиша принадлежит омнибоксу. Не гасим: React-обработчик вернёт
+            // прежний адрес (Toolbar::handleKeyDown), а загрузку останавливать не просили.
           } else {
             const active = this.getActiveWebContents();
             if (active) { event.preventDefault(); active.stop(); }

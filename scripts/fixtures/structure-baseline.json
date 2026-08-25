@@ -12,8 +12,8 @@
     "ipc": 0
   },
   "electron/TabManager.ts": {
-    "lines": 4481,
-    "fn": 160,
+    "lines": 4498,
+    "fn": 163,
     "effects": 0,
     "ipc": 0
   },
@@ -42,7 +42,7 @@
     "ipc": 0
   },
   "electron/preload.ts": {
-    "lines": 812,
+    "lines": 813,
     "fn": 6,
     "effects": 0,
     "ipc": 0
@@ -54,7 +54,7 @@
     "ipc": 0
   },
   "shared/ipc/channels.ts": {
-    "lines": 773,
+    "lines": 777,
     "fn": 0,
     "effects": 0,
     "ipc": 0
@@ -132,10 +132,10 @@
     "ipc": 9
   },
   "src/components/Toolbar.tsx": {
-    "lines": 1528,
-    "fn": 1398,
-    "effects": 17,
-    "ipc": 74
+    "lines": 1531,
+    "fn": 1401,
+    "effects": 18,
+    "ipc": 75
   },
   "src/components/aiApps.tsx": {
     "lines": 2836,

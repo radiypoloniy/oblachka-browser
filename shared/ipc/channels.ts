@@ -399,6 +399,10 @@ export const IPC = {
   // 150–400 мс, и этого хватает, чтобы документ успел загрузиться, — а вью при этом не висит
   // процессом у тех, кто этой кнопкой не пользуется. Поповеры, которые открывают чаще всех
   // (карточка сайта, загрузки), прогреваются иначе — на старте, см. main.ts.
+  // renderer → main: человек ПРАВИТ адресную строку прямо сейчас.
+  // ⚠️ Нужен ровно для одного: Escape. Пока идёт правка, эта клавиша принадлежит омнибоксу
+  // (откатить набранное), а не странице (остановить загрузку) — см. разбор в TabManager.
+  OMNIBOX_SET_EDITING: 'omnibox:set-editing',
   POPOVER_PREWARM: 'popover:prewarm',
   CLIPBOARD_POPOVER_BOUNDS: 'clipboard-popover:bounds', // chrome → main: где стоит кнопка
   CLIPBOARD_POPOVER_CLOSED: 'clipboard-popover:closed', // main → chrome: закрылся сам

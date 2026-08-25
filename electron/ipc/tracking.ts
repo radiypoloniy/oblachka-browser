@@ -128,6 +128,9 @@ export function registerTrackingIpc(d: IpcDeps): void {
   });
   // ⚠️ `on`, а не `handle`: прогрев — это пожелание, а не запрос. Ответа ждать нечего, и
   // отказ (окно уже закрылось) ничего не значит — поповер просто останется ленивым.
+  ipcMain.on(IPC.OMNIBOX_SET_EDITING, (e, on: boolean) => {
+    contextFromSender(e.sender)?.tabs.setOmniboxEditing(!!on);
+  });
   ipcMain.on(IPC.POPOVER_PREWARM, (e, kind: string) => {
     const ctx = contextFromSender(e.sender);
     if (!ctx) return;

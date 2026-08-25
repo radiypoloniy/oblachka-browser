@@ -129,6 +129,9 @@ export default function Toolbar({
   const isHub = tab?.isHub ?? true;
   const [value, setValue] = useState('');
   const [editing, setEditing] = useState(false);
+  // Пока строку правят, Escape принадлежит омнибоксу, а не странице (разбор — в TabManager).
+  useEffect(() => { window.oblako.setOmniboxEditing(editing); }, [editing]);
+
   const [copied, setCopied] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestItem[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(-1);
