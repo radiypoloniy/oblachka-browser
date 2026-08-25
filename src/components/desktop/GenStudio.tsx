@@ -13,6 +13,7 @@ import { GenWidget } from './GenWidget';
 import { Tile, WIDGET_FILLS, FILL_SWATCH } from './widgets';
 import { RADIUS, TEXT, motion, pad, sp } from '../../styles/system';
 import type { GenSpecOutcome, GenProgress } from '../../../shared/ipc';
+import { CELL_REF } from '../../../shared/tileBudget';
 
 // Сборка своего виджета — отдельный режим стола.
 //
@@ -517,7 +518,7 @@ export function GenDraftTile({ ghost, box, overImage }: {
   if (!busy && hasDraft) {
     return (
       <GenWidget
-        size={{ w: 1, h: 1 }} box={box} tiles={[]}
+        size={{ w: 1, h: 1 }} box={box} cell={Math.round(Math.min(CELL_REF, box.width))} tiles={[]}
         onOpen={() => { /* черновик: плитка ещё не на столе */ }} city="" genId={DRAFT_ID}
         fill={fill} overImage={overImage}
       />

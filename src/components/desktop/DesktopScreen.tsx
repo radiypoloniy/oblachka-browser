@@ -23,11 +23,14 @@ const GRAIN_LAYER: React.CSSProperties = {
   position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
   backgroundImage: noise(GRAIN.tinted),
 };
+
+// Фактура печати для ПЛОСКИХ обоев — общее зерно системы, поднятое на слой фона.
+const FLAT_GRAIN_LAYER: React.CSSProperties = { ...grain, zIndex: 1 };
 import { APPS, AppIconBadge } from '../aiApps';
 import SiteIcon from './SiteIcon';
 import { WIDGET_FILLS, WIDGET_RENDERERS, fillCss } from './widgets';
 import { GenWidget } from './GenWidget';
-import { RADIUS } from '../../styles/system';
+import { RADIUS, grain } from '../../styles/system';
 
 // Рабочий стол новой вкладки — springboard в духе iPad: сетка иконок и виджетов поверх обоев.
 // Раскладку считает src/newtab/desktop.ts (там же объяснено, почему элементы хранят порядок, а
@@ -417,7 +420,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
                   // ⚠️ Погода заливку НЕ получает намеренно: там цвет означает время суток и
                   // саму погоду (ночью тёмная, в грозу свинцовая), и подмена его на выбранный
                   // стёрла бы единственный виджет, где цвет — сообщение, а не оформление.
-                  <Render size={item.size} box={box} tiles={tiles} onOpen={onSubmit}
+                  <Render size={item.size} box={box} cell={grid.cell} tiles={tiles} onOpen={onSubmit}
                     city={settings.weather.city}
                     // ⚠️ В режиме правки обработчик НЕ передаём вовсе: там плитку таскают, и клик
                     // по ней означает «взял», а не «открой».
@@ -727,7 +730,7 @@ function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoU
     bg.kind === 'color' ? { ...base, backgroundColor: bg.color, backgroundImage: 'none' }
     : bg.kind === 'custom' ? (() => {
         const url = getNewTabCustomImage();
-        return url ? { ...base, backgroundImage: `url("${url}")` } : { ...base, backgroundImage: presetCss('aurora') };
+        return url ? { ...base, backgroundImage: `url("${url}")` } : { ...base, backgroundImage: presetCss('emerald') };
       })()
     : bg.kind === 'photo' ? (photoUrl
         ? { ...base, backgroundImage: `url("${photoUrl}")` }
@@ -739,25 +742,31 @@ function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoU
           // как превью в настройках и как расчёт isLightBackground. Сырая сетка здесь означала
           // светлые обои под светлым текстом в тёмной теме («Лагуна», «Сумерки»).
           ? { ...base, backgroundImage: meshCss(mesh), backgroundSize: '100% 100%' }
-          : { ...base, backgroundImage: presetCss('aurora') };
+          : { ...base, backgroundImage: presetCss('emerald') };
       })()
     : { ...base, backgroundImage: presetCss(bg.preset) };
 
-  // ⚠️ ЗЕРНО ПОВЕРХ ГРАДИЕНТА — это ДИЗЕРИНГ, а не украшение. Градиент во весь экран идёт
-  // крошечными шагами цвета, и в 8-битном sRGB одна ступень растягивается на десятки пикселей:
-  // получаются полосы. Зерно их разбивает. Ровно тот же слой и те же параметры, что у цветной
-  // земли окна (см. noise/GRAIN в src/styles/island.ts): numOctaves=1, чтобы не пошли крупные
-  // разводы, и stitchTiles, иначе повторение видно швами.
+  // ⚠️ ЗЕРЕН ЗДЕСЬ ДВА, и это РАЗНЫЕ ЗАДАЧИ, а не дубль — сливать их нельзя.
   //
-  // ⚠️ Только под ГРАДИЕНТОМ и своим цветом. У фотографии своя фактура, и шум поверх неё
-  // читается грязью на снимке, а не материалом.
-  const grainy = bg.kind === 'preset' || bg.kind === 'mesh' || bg.kind === 'color';
+  //   • ДИЗЕРИНГ (noise/GRAIN из island.ts, сила 0.075) нужен СЕТКЕ: градиент во весь экран идёт
+  //     крошечными шагами цвета, и в 8-битном sRGB одна ступень растягивается на десятки
+  //     пикселей — получаются полосы. Зерно их разбивает. Сила там подобрана под эту работу:
+  //     сильнее — и шум сам станет заметнее полос, которые он лечит.
+  //   • ФАКТУРА (grain из system.ts, сила 0.45) нужна ПЛОСКОЙ КРАСКЕ: обои перестали быть
+  //     градиентом, полос у них нет вовсе, а ровная краска на весь экран без материала читается
+  //     как заливка из макета. Это то же зерно, что на плитках стола и на плакатных плоскостях
+  //     страниц, — одно на всю систему.
+  //
+  // ⚠️ У фотографии нет ни того, ни другого: у снимка своя фактура, и шум поверх неё читается
+  // грязью, а не материалом.
+  const flatPaint = bg.kind === 'preset' || bg.kind === 'color';
+  const grainy = flatPaint || bg.kind === 'mesh';
 
   return (
     <>
       <div style={style} />
       {grainy && (
-        <div style={GRAIN_LAYER} />
+        <div style={flatPaint ? FLAT_GRAIN_LAYER : GRAIN_LAYER} />
       )}
       {bg.dim > 0 && <div style={{ position: 'absolute', inset: 0, zIndex: 2, background: `rgba(0,0,0,${bg.dim})` }} />}
     </>

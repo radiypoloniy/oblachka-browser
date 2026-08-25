@@ -6,6 +6,7 @@ import type { TileSite } from '../../../shared/frecency';
 import { WIDGET_SIZES, type DesktopItem, type DesktopLayout, hasItem } from '../../newtab/desktop';
 import { WIDGET_RENDERERS, Tile, TileCaption, TileValue } from './widgets';
 import { btnPrimary } from '../settings/kit';
+import { CELL_REF } from '../../../shared/tileBudget';
 import {
   ALTITUDE, CAPS, DISPLAY, RADIUS, ROW_TITLE, TEXT, altitude, cardGlass, motion, pad, sp,
 } from '../../styles/system';
@@ -317,7 +318,10 @@ function LivePreview({ widgetKey, cells, box, tiles }: {
   if (!Render) return null;
   return (
     <PreviewBoundary>
-      <Render size={cells} box={box} tiles={tiles} onOpen={() => {}} city="" />
+      {/* Клетка у превью своя: сетки стола здесь нет, а плотность виджет обязан знать —
+          иначе образец в списке живёт по другим правилам, чем плитка на столе. */}
+      <Render size={cells} box={box} cell={Math.round(Math.min(CELL_REF, box.width / cells.w))}
+        tiles={tiles} onOpen={() => {}} city="" />
     </PreviewBoundary>
   );
 }

@@ -6,6 +6,10 @@ import type { MediaCommand, MediaNowPlaying } from '../../../shared/ipc';
 import type { CellSize } from '../../newtab/desktop';
 import { card, cardGlass, grain, RADIUS, DISPLAY, CAPS, CARD_COLOR_ENABLED, CARD_INK, altitude, ALTITUDE, HERO_ENABLED, sp } from '../../styles/system';
 import { loadNewTabSettings } from '../../newtab/settings';
+// Что вообще влезает в плитку — чистая арифметика под проверкой (scripts/tile-budget-check.mjs).
+// ⚠️ Здесь её быть не должно: ровно эти числа раньше стояли порогами по месту и на узком окне
+// резали содержимое краем плитки.
+import { densityOf, padOf, weatherFit, musicFit, tileGridCell } from '../../../shared/tileBudget';
 import CryptoIcon from '../CryptoIcon';
 import { siteTint } from './siteTint';
 import { AnalogFace, WideClusterClock, WideTypeClock } from './clockFaces';
@@ -32,6 +36,14 @@ export interface WidgetProps {
   onActivate?: () => void;
   /** Пиксельные размеры плитки — от них считаются кегли и число колонок внутри. */
   box: { width: number; height: number };
+  /**
+   * Сторона КЛЕТКИ сетки — не плитки.
+   *
+   * ⚠️ Плотность стола задаёт именно она: плитка 2×2 крупная всегда, а вот тесно на ней или нет,
+   * решает клетка. На узком окне клетка падает со 132 до 95, и всё, что было абсолютным
+   * (значки, кнопки, ячейки), обязано ужиматься вместе с ней — см. shared/tileBudget.ts.
+   */
+  cell: number;
   tiles: TileSite[];
   onOpen: (url: string) => void;
   /** Город для погоды — из настроек вкладки; пустой означает «человек ещё не выбрал». */
@@ -65,38 +77,51 @@ export interface WidgetProps {
 // вместе с интерфейсом и палитрой, а выбранный цвет живёт своей жизнью. Поэтому список начинается
 // с темы, а не с цвета, и поэтому здесь id, а не готовые цвета в раскладке стола.
 // ⚠️ Фиолетового нет — то же правило, что у --tile-* и подложек иконок сайтов.
-export const WIDGET_FILLS: { id: string; label: string; css: string | null }[] = [
-  { id: 'theme',  label: 'Как тема', css: null },
-  { id: 'blue',   label: 'Синий',    css: 'linear-gradient(165deg, #4E92E8 0%, #2E6FC4 100%)' },
-  { id: 'teal',   label: 'Бирюза',   css: 'linear-gradient(165deg, #35B6C4 0%, #2391A4 100%)' },
-  { id: 'green',  label: 'Зелёный',  css: 'linear-gradient(165deg, #46BE7A 0%, #2FA063 100%)' },
-  { id: 'orange', label: 'Оранж',    css: 'linear-gradient(165deg, #FFA53D 0%, #F1811A 100%)' },
-  { id: 'pink',   label: 'Розовый',  css: 'linear-gradient(165deg, #F2708F 0%, #DF5175 100%)' },
-  { id: 'slate',  label: 'Графит',   css: 'linear-gradient(165deg, #5A6472 0%, #3B4350 100%)' },
+export const WIDGET_FILLS: { id: string; label: string; css: string | null; ink: string | null }[] = [
+  { id: 'theme',   label: 'Как тема', css: null,                     ink: null },
+  { id: 'blue',    label: 'Небо',     css: 'var(--poster-sky)',      ink: 'var(--on-poster-dark)' },
+  { id: 'mustard', label: 'Горчица',  css: 'var(--poster-mustard)',  ink: 'var(--on-poster-dark)' },
+  { id: 'green',   label: 'Лайм',     css: 'var(--poster-lime)',     ink: 'var(--on-poster-dark)' },
+  { id: 'orange',  label: 'Мандарин', css: 'var(--poster-tangerine)',ink: 'var(--on-poster-dark)' },
+  { id: 'teal',    label: 'Чай',      css: 'var(--poster-tea)',      ink: 'var(--on-poster-light)' },
+  { id: 'pink',    label: 'Страсть',  css: 'var(--poster-passion)',  ink: 'var(--on-poster-light)' },
+  { id: 'slate',   label: 'Графит',   css: 'var(--poster-neutral)', ink: 'var(--on-poster-light)' },
 ];
 
-// ⚠️ Образец цвета в пикере — ПЛОСКИЙ, а не тот же градиент, что на плитке. На кружке 22 px
-// градиент не читается как объём: он превращается в грязное пятно с невнятной серединой, и
-// набор таких кружков выглядит дёшево. Плитка при этом остаётся с градиентом — там он работает,
-// потому что поверхность большая.
-export const FILL_SWATCH: Record<string, string> = {
-  theme:  'var(--surface-sunken)',
-  blue:   '#3C81DA',
-  teal:   '#2AA0B0',
-  green:  '#3AAE6D',
-  orange: '#F5931F',
-  pink:   '#E8617F',
-  slate:  '#4C5665',
-};
+// ⚠️ Образец в пикере — ТА ЖЕ строка, что и заливка, а не отдельный цвет. Раньше здесь лежал
+// свой плоский набор, потому что градиент на кружке 22 px превращался в грязное пятно с
+// невнятной серединой. Градиентов больше нет, и второй набор стал ровно тем, чем такие наборы
+// становятся: местом, где два списка расходятся при первой же правке.
+export const FILL_SWATCH: Record<string, string> = Object.fromEntries(
+  WIDGET_FILLS.map((f) => [f.id, f.css ?? 'var(--surface-sunken)']),
+);
 
 export function fillCss(id: string | undefined): string | null {
   return WIDGET_FILLS.find((f) => f.id === id)?.css ?? null;
 }
 
-export function Tile({ children, tint, padding = 16, surface, fill, toned, glass, overImage, hero, onActivate }: {
+/**
+ * Краска на выбранной заливке.
+ *
+ * ⚠️ Пара «цвет + краска» обязательна и не вкусовая: на небе, горчице, лайме и мандарине чернила
+ * дают контраст выше 7:1, а белый — ниже 3:1; на чае, страсти и графите наоборот. Прежний код
+ * ставил белый на ЛЮБУЮ заливку, и на светлой половине набора текст было физически не прочитать.
+ */
+export function fillInk(id: string | undefined): string | null {
+  return WIDGET_FILLS.find((f) => f.id === id)?.ink ?? null;
+}
+
+export function Tile({ children, tint, tintInk, padding = 16, surface, fill, toned, glass, overImage, hero, onActivate }: {
   children: React.ReactNode;
   /** Заливка цветной плитки. Игнорируется при surface. */
   tint?: string;
+  /**
+   * Краска на собственной заливке плитки (погода).
+   *
+   * ⚠️ Ходит ПАРОЙ с tint и не имеет разумного умолчания: набор состояний погоды идёт от почти
+   * белого снега до тёмного чая, и одного цвета текста на них не существует.
+   */
+  tintInk?: string;
   padding?: number;
   /** Плитка идёт за темой и палитрой, а не за собственным цветом. */
   surface?: boolean;
@@ -143,21 +168,33 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, glass
   const onSurface = surface && !custom && !useCard && !useGlass && !useHero;
   // ⚠️ Плитка объявляет СВОЙ ФОН переменной. Содержимому (лицам часов, таймеру) нужна краска,
   // на которой гарантированно читается заливка из currentColor: акцентная кнопка на акцентной
-  // плитке — кнопка-невидимка. Своя заливка человека бывает градиентом, поэтому берём её плоский
-  // образец (FILL_SWATCH) — он для того и заведён.
-  const tileBg = custom
-    ? (FILL_SWATCH[fill ?? ''] ?? 'var(--surface)')
-    : useHero ? 'var(--accent)' : 'var(--surface)';
+  // плитке — кнопка-невидимка.
+  // ⚠️ Плоский образец (FILL_SWATCH) здесь больше не нужен: заливки перестали быть градиентами,
+  // и `custom` уже плоская краска. Раньше подстановка градиента в --tile-bg давала подпись на
+  // кнопке, залитую двухцветным переливом, — отсюда и брался отдельный образец.
+  const tileBg = custom ?? (useHero ? 'var(--accent)' : 'var(--surface)');
   // ⚠️ И ФОН, И КРАСКА — двумя переменными, а не одной. Содержимому нужна ПАРА: заливка кнопки
   // краской плитки и подпись на ней фоном плитки. Через currentColor это не выражается: в
   // `background: currentColor` он берёт цвет САМОГО элемента, а элемент этот цвет тут же
   // переопределяет под подпись — кнопка красится сама собой и исчезает (проверено на стенде).
-  const tileInk = toneStyle?.color ?? (onSurface ? 'var(--text-body)' : '#fff');
+  // ⚠️ Белого литерала здесь больше нет. Он был единственной краской на любой цветной плитке, и
+  // после перехода на плакатные заливки половина набора (небо, горчица, лайм, мандарин) стала бы
+  // нечитаемой: контраст белого на них ниже 3:1. Краска приходит парой к заливке — от человека
+  // через fillInk, от погоды через tintInk.
+  const tileInk = toneStyle?.color
+    ?? (onSurface ? 'var(--text-body)' : (fillInk(fill) ?? tintInk ?? 'var(--on-poster-light)'));
   return (
     <div onClick={onActivate} style={{
       // Кастомное свойство в inline-стиле — React пропускает его как есть.
       ['--tile-bg' as string]: tileBg,
       ['--tile-ink' as string]: tileInk,
+      // ⚠️ Подпись на ПЛАКАТНОЙ плоскости приглушается слабее: 0.62 задумывалась для плитки темы,
+      // где под текстом почти белая поверхность. На страсти светлая краска и без приглушения даёт
+      // 4.30, а с 0.62 падает до 2.52 — капса перестаёт читаться вовсе.
+      // ⚠️ Граница названа честно: на страсти мелкая капса не даёт 4.5:1 ни при какой
+      // непрозрачности (потолок 4.30 — свойство самого цвета). Крупные числа там же идут в полную
+      // силу и проходят как крупный текст; приглушать имело смысл только подписи.
+      ['--tile-caption-op' as string]: (custom || tint) && !useHero ? 0.78 : 0.62,
       width: '100%', height: '100%', overflow: 'hidden', position: 'relative',
       // ⚠️ У содержимого радиус свой и крупнее, чем у хрома: два мира — разная геометрия.
       borderRadius: RADIUS.content,
@@ -183,7 +220,10 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, glass
       {/* Зерно: тонкая текстура поверх заливки — она и отличает материал от плоской заливки из
           макета. Только на тонированных плитках: на своей картинке человека и на фото дня зерно
           было бы грязью. */}
-      {useCard && <div style={grain} />}
+      {/* ⚠️ Зерно — на любой ПЛОТНОЙ заливке: и на карточке темы, и на плакатной краске, и на
+          собственном цвете погоды. Не на стекле и не поверх фото человека: там под слоем лежит
+          чужая картинка, и текстура поверх неё читается грязью (правило из манифеста). */}
+      {(useCard || custom || tint) && !useGlass && <div style={grain} />}
       {children}
     </div>
   );
@@ -193,7 +233,7 @@ export function Tile({ children, tint, padding = 16, surface, fill, toned, glass
 // «нового шрифта»: пока подписи были обычным гротеском, плитки визуально жили в старой системе,
 // сколько бы материал ни меняли (живая жалоба: «прозрачность сделал, а типографику не тронул»).
 export function TileCaption({ children }: { children: React.ReactNode }) {
-  return <div style={{ ...CAPS, color: 'inherit', opacity: 0.62, flex: 'none' }}>{children}</div>;
+  return <div style={{ ...CAPS, color: 'inherit', opacity: 'var(--tile-caption-op, 0.62)', flex: 'none' }}>{children}</div>;
 }
 
 /**
@@ -203,6 +243,44 @@ export function TileCaption({ children }: { children: React.ReactNode }) {
  * считается от её геометрии, и общего кегля тут быть не может. У ГЕРОЯ число крупнее в
  * HERO_SCALE раз — именно это и делает геройство видимым на любом виджете, а не только на погоде.
  */
+// ── Метрика дисплейных цифр ───────────────────────────────────────────────────
+//
+// ⚠️ Числа ЗАМЕРЕНЫ, а не прикинуты. `measureText` по Unbounded при кегле 100 даёт «19:44» =
+// 233.3 px и «0:00» = 183.3 px; из разницы следует, что цифра занимает ровно 0.50 em, а
+// двоеточие 0.33 em. Прежние оценки — 0.78 у часов и 0.62 у курса — резервировали ширину,
+// которой цифры не занимают, и кегль упирался не в геометрию плитки, а в ошибку измерения:
+// на квадратной плитке часы стояли на 52 при доступных ~72.
+//
+// ⚠️ Пересчитывать при смене дисплейной гарнитуры. Замер повторяется страницей с
+// document.fonts.ready + measureText — сам шрифт лежит в src/assets/fonts.
+const DIGIT_EM = 0.50;
+const COLON_EM = 0.34;
+const SPACE_EM = 0.28;
+// Всё прочее (знаки валют, °, буквы) — с запасом: они шире цифр, и лучше недобрать кегль,
+// чем обрезать строку краем плитки.
+const WIDE_EM = 0.60;
+
+/** Ширина строки в единицах кегля: сколько em займёт текст дисплейной гарнитурой. */
+export function displayEm(text: string): number {
+  let em = 0;
+  for (const ch of text) {
+    if (ch >= '0' && ch <= '9') em += DIGIT_EM;
+    else if (ch === ':') em += COLON_EM;
+    else if (ch === ' ' || ch === ' ' || ch === ' ') em += SPACE_EM;
+    else em += WIDE_EM;
+  }
+  return em;
+}
+
+/**
+ * Доля доступной ширины, которую занимает ключевое число.
+ *
+ * ⚠️ Не «запас на ошибку», а решение о композиции: число во всю плитку, но с полем примерно в
+ * 9% с каждой стороны. Без поля цифры упираются в край и плитка читается как обрезанная —
+ * ровно то, чего не было в согласованном макете.
+ */
+const VALUE_SIDE = 0.82;
+
 const HERO_SCALE = 1.28;
 export function TileValue({ children, size, hero, style }: {
   children: React.ReactNode; size: number; hero?: boolean; style?: React.CSSProperties;
@@ -287,8 +365,19 @@ export function ClockWidget({ box, fill, city, overImage, hero }: WidgetProps) {
   // у которой знаки заметно шире: формула давала кегль в полтора раза больше нужного, и «17:16»
   // вылезало за правый край плитки (живая жалоба «накосячил с размером часов»).
   // Замена гарнитуры без замены этого числа — та же ошибка ещё раз.
-  const DIGIT_RATIO = 0.78;
-  const fs = Math.round(Math.min(box.height * 0.42, avail / (time.length * DIGIT_RATIO), 92));
+  // ⚠️ Ширина считается ПО СИМВОЛАМ, а не «длина × средний коэффициент»: двоеточие втрое уже
+  // цифры, поэтому «19:44» и «0:00» — это 2.34 и 1.84 em, а не 5 и 4 одинаковых знака.
+  // Высотный множитель 0.42 остаётся: на низкой широкой плитке (2×1) ограничивает именно он,
+  // и трогать его значило бы уронить кегль там, где ширина не мешает.
+  // ⚠️ Масштаб героя (HERO_SCALE) учитывается ЗДЕСЬ, а не после: TileValue умножит кегль уже
+  // после расчёта, и без поправки геройские часы считали бы ширину для 81, а рисовали для 104 —
+  // то есть выезжали бы за плитку тем сильнее, чем честнее мы посчитали метрику.
+  const heroScale = hero ? HERO_SCALE : 1;
+  const fs = Math.round(Math.min(
+    box.height * 0.42,
+    (avail * VALUE_SIDE) / (displayEm(time) * heroScale),
+    92,
+  ));
 
   // Циферблат — КРУГ, поэтому его размер держит меньшая из сторон свободного места, иначе на
   // широкой плитке он вылез бы за нижний край. Подпись сверху и дата снизу вычитаются заранее.
@@ -461,15 +550,34 @@ function wmoText(code: number): string {
 
 // Цвет плитки — от времени суток и состояния неба. Это и есть «настроение» виджета Apple:
 // ясный день голубой, пасмурный серо-синий, ночь тёмная.
-function weatherTint(code: number, isDay: boolean): string {
-  if (!isDay) return 'linear-gradient(160deg, #2B3B5B 0%, #1B2437 65%, #141A28 100%)';
-  if (code >= 71) return 'linear-gradient(160deg, #8FA6C4 0%, #5C77A0 100%)';
-  if (code >= 51) return 'linear-gradient(160deg, #6E86A8 0%, #47597B 100%)';
-  if (code >= 3)  return 'linear-gradient(160deg, #7C93B4 0%, #566A8C 100%)';
-  return 'linear-gradient(160deg, #4FA3E3 0%, #2E7BC4 55%, #2463A8 100%)';
+/**
+ * Кожа погоды: плоская краска и краска текста к ней.
+ *
+ * ⚠️ Погода — единственная плитка со СВОИМ цветом (он означает время суток и осадки), и до этой
+ * правки её пять серо-синих градиентов были отдельной палитрой посреди стола. Тона взяты из
+ * общего плакатного набора, смысл сохранён: ясно — небо, ночь — чай, дождь и снег — холодные
+ * промежуточные, пасмурно — бумага-тень.
+ *
+ * ⚠️ Краска идёт ПАРОЙ с цветом, иначе половина состояний нечитаема: на небе и бумаге-тени нужен
+ * тёмный текст, на чае и дожде — светлый. Прежний код ставил белый на все пять.
+ */
+type Skin = { bg: string; ink: string };
+const SKIN_DARK = 'var(--on-poster-dark)';
+const SKIN_LIGHT = 'var(--on-poster-light)';
+
+function weatherSkin(code: number, isDay: boolean): Skin {
+  if (!isDay) return { bg: 'var(--poster-tea)', ink: SKIN_LIGHT };
+  // Снег: почти белая плоскость — единственное состояние, которое читается светлым по смыслу.
+  if (code >= 71) return { bg: '#CFDCE4', ink: SKIN_DARK };
+  // ⚠️ Дождь темнее, чем просится на глаз (#7E93A8), и это про контраст, а не про вкус: на том
+  // тоне светлая краска давала 2.71, то есть подписи «ощущается» и «воздух» читались с трудом.
+  // #55697D — первый шаг вниз, на котором пара проходит 4.5:1.
+  if (code >= 51) return { bg: '#55697D', ink: SKIN_LIGHT };
+  if (code >= 3)  return { bg: 'var(--surface-sunken)', ink: 'var(--text-body)' };
+  return { bg: 'var(--poster-sky)', ink: SKIN_DARK };
 }
 
-export function WeatherWidget({ size, box, city, hero }: WidgetProps) {
+export function WeatherWidget({ size, box, cell, city, hero }: WidgetProps) {
   const [data, setData] = useState<WeatherState | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -494,7 +602,7 @@ export function WeatherWidget({ size, box, city, hero }: WidgetProps) {
 
   if (!city || failed) {
     return (
-      <Tile tint="linear-gradient(160deg, #7C93B4 0%, #566A8C 100%)" hero={hero}>
+      <Tile tint="var(--surface-sunken)" tintInk="var(--text-body)" hero={hero}>
         <TileCaption>Погода</TileCaption>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'var(--fs-sm)', opacity: 0.9, lineHeight: 1.4 }}>
           {city ? 'Не удалось загрузить' : 'Укажите город в настройках интерфейса'}
@@ -504,11 +612,18 @@ export function WeatherWidget({ size, box, city, hero }: WidgetProps) {
   }
 
   const wide = size.w >= 4;
-  const tempSize = Math.round(Math.min(box.height * (wide ? 0.3 : 0.34), 64));
-  const hours = data?.hours.slice(0, wide ? 6 : 3) ?? [];
+  const skin = weatherSkin(data?.code ?? 0, data?.isDay ?? true);
+  // ⚠️ Что показывать, решает БЮДЖЕТ, а не пороги по высоте коробки. Прежние `box.height > 120`
+  // и `> 150` не знали, сколько уже занято шапкой, числом и описанием: на клетке 105 ряду не
+  // хватало 26 px, и `overflow: hidden` срезал ему низ (см. shared/tileBudget.ts).
+  const fit = weatherFit(box, cell, wide, {
+    air: data?.aqi !== undefined || !!data?.sunrise,
+    hours: data?.hours.length ?? 0,
+  });
+  const hours = data?.hours.slice(0, fit.hours) ?? [];
 
   return (
-    <Tile tint={weatherTint(data?.code ?? 0, data?.isDay ?? true)} hero={hero}>
+    <Tile tint={skin.bg} tintInk={skin.ink} hero={hero} padding={padOf(densityOf(cell))}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flex: 'none' }}>
         <span style={{
           fontSize: 'var(--fs-sm)', fontWeight: 600,
@@ -525,8 +640,8 @@ export function WeatherWidget({ size, box, city, hero }: WidgetProps) {
         {/* ⚠️ У ГЕРОЯ число набирается дисплейной гарнитурой и плотнее: он на экране один, и
             смотрят на него издалека. У обычной плитки остаётся тонкое начертание — иначе стол
             превращается в набор кричащих цифр. */}
-        <TileValue size={tempSize} hero={hero}>{data ? `${data.t}°` : '—'}</TileValue>
-        <WeatherIcon code={data?.code ?? 0} day={data?.isDay ?? true} size={Math.round(tempSize * 1.05)} />
+        <TileValue size={fit.tempSize} hero={hero}>{data ? `${data.t}°` : '—'}</TileValue>
+        <WeatherIcon code={data?.code ?? 0} day={data?.isDay ?? true} size={fit.iconSize} />
       </div>
 
       <div style={{ fontSize: 'var(--fs-sm)', opacity: 0.9, marginTop: 2, flex: 'none' }}>
@@ -539,19 +654,19 @@ export function WeatherWidget({ size, box, city, hero }: WidgetProps) {
           рядом и не читается — «европейский индекс 34» сам по себе человеку ничего не говорит,
           а «34, хорошо» рядом с +19° и солнцем складывается в одну картину дня.
           Строка появляется, только если место есть: в маленькой плитке ей не встать. */}
-      {(data?.aqi !== undefined || data?.sunrise) && box.height > 120 && (
+      {fit.showAir && (
         <div style={{
           display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap',
           fontSize: 'var(--fs-xs)', opacity: 0.85,
         }}>
-          {data.aqi !== undefined && <span>Воздух: {data.aqi} · {aqiLabel(data.aqi)}</span>}
-          {data.sunrise && data.sunset && <span>↑ {data.sunrise} ↓ {data.sunset}</span>}
+          {data?.aqi !== undefined && <span>Воздух: {data.aqi} · {aqiLabel(data.aqi)}</span>}
+          {data?.sunrise && data.sunset && <span>↑ {data.sunrise} ↓ {data.sunset}</span>}
         </div>
       )}
 
       {/* Почасовой ряд — то, чем виджет Apple заполняет нижнюю половину. Появляется, только
           если место под него реально есть: втиснутый в низкую плитку он был бы кашей. */}
-      {hours.length > 0 && box.height > 150 && (
+      {hours.length > 0 && (
         <div style={{
           marginTop: 'auto', paddingTop: 10, display: 'flex', justifyContent: 'space-between',
           borderTop: '1px solid rgba(255,255,255,0.18)',
@@ -559,7 +674,7 @@ export function WeatherWidget({ size, box, city, hero }: WidgetProps) {
           {hours.map((h) => (
             <div key={h.hour} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
               <span style={{ fontSize: 'var(--fs-xs)', opacity: 0.8 }}>{String(h.hour).padStart(2, '0')}</span>
-              <WeatherIcon code={h.code} day={h.hour >= 7 && h.hour <= 20} size={30} />
+              <WeatherIcon code={h.code} day={h.hour >= 7 && h.hour <= 20} size={fit.hourIcon} />
               <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600 }}>{Math.round(h.tempC)}°</span>
             </div>
           ))}
@@ -614,7 +729,9 @@ function rowFontSize(box: { width: number; height: number }, rows: number, opts?
   const chars = opts?.chars ?? 6;
   const byHeight = (box.height - 32 /* поля Tile */ - 18 /* строка заголовка */) / Math.max(1, rows) * 0.5;
   const forDelta = opts?.delta === false ? 0 : 52; // процент + зазор перед ним
-  const byWidth = (box.width - 32 - forDelta - 9) / (1.1 + 0.62 * chars);
+  // ⚠️ 0.62 на знак было той же оценкой на глаз, что и 0.78 у часов, — теперь замеренная
+  // метрика. Знак валюты считаем шире цифры: «$» и «₽» действительно шире.
+  const byWidth = (box.width - 32 - forDelta - 9) / (WIDE_EM + DIGIT_EM * chars);
   return Math.round(Math.max(13, Math.min(byHeight, byWidth, 26)));
 }
 
@@ -888,16 +1005,16 @@ function hostLabel(url: string): string {
  * место встаёт буква на цветной подложке: место занято всегда, а цвет выводится из имени домена,
  * поэтому у одного сайта он не меняется от запуска к запуску.
  */
-function FaviconTile({ host }: { host: string }) {
+function FaviconTile({ host, size }: { host: string; size: number }) {
   const [failed, setFailed] = useState(false);
 
   if (failed) {
     return (
       <span style={{
-        width: 44, height: 44, borderRadius: RADIUS.box, flex: 'none',
+        width: size, height: size, borderRadius: RADIUS.box, flex: 'none',
         background: siteTint(host),
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 19, fontWeight: 600, color: '#fff',
+        fontSize: Math.round(size * 0.43), fontWeight: 600, color: '#fff',
       }}>{(host.charAt(0) || '?').toUpperCase()}</span>
     );
   }
@@ -913,8 +1030,8 @@ function FaviconTile({ host }: { host: string }) {
       // границ. На тёмной плитке проблемы не было видно вовсе, поэтому и всплыло только сейчас.
       // Кромка токеном, а не литералом: в тёмной теме она обязана становиться светлой.
       style={{
-        width: 44, height: 44, borderRadius: RADIUS.box, objectFit: 'contain', flex: 'none',
-        background: 'rgba(255,255,255,0.94)', padding: 7, boxSizing: 'border-box',
+        width: size, height: size, borderRadius: RADIUS.box, objectFit: 'contain', flex: 'none',
+        background: 'rgba(255,255,255,0.94)', padding: Math.round(size * 0.16), boxSizing: 'border-box',
         border: '1px solid var(--divider)',
         boxShadow: '0 1px 2px rgba(16,20,40,0.10), 0 2px 6px rgba(16,20,40,0.08)',
       }}
@@ -922,13 +1039,14 @@ function FaviconTile({ host }: { host: string }) {
   );
 }
 
-export function TopSitesWidget({ box, tiles, onOpen, fill, overImage, hero }: WidgetProps) {
+export function TopSitesWidget({ box, cell, tiles, onOpen, fill, overImage, hero }: WidgetProps) {
   // ⚠️ Подпись — ДОМЕН, а не заголовок страницы. Первая версия ставила сюда title, и «Далай
   // лама: смотрите и скачивайте изображения — Яндекс Картинки» расползался на всю плитку,
   // налезая на соседние иконки. Домен короткий, узнаваемый и примерно одной длины у всех.
-  const pad = 16;
-  const cellW = 76;
-  const cellH = 80;
+  const pad = padOf(densityOf(cell));
+  // ⚠️ Ячейка ужимается вместе с клеткой стола: 76×80 были константой, и на узком окне сетка
+  // сайтов оставалась прежней внутри уменьшившейся плитки — отсюда и налезание подписей.
+  const { w: cellW, h: cellH } = tileGridCell(cell);
   const inner = box.width - pad * 2;
   const cols = Math.max(2, Math.floor((inner + 12) / (cellW + 12)));
   const rows = Math.max(1, Math.floor((box.height - pad * 2 - 26 + 12) / (cellH + 12)));
@@ -957,7 +1075,7 @@ export function TopSitesWidget({ box, tiles, onOpen, fill, overImage, hero }: Wi
                 minWidth: 0, color: 'inherit',
               }}
             >
-              <FaviconTile host={hostLabel(t.url)} />
+              <FaviconTile host={hostLabel(t.url)} size={Math.round(cellW * 0.58)} />
               <span style={{
                 maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 fontSize: 'var(--fs-xs)', opacity: 0.9,
@@ -1107,7 +1225,7 @@ const MUSIC_SERVICES: { label: string; url: string }[] = [
 // Последний открытый отсюда сервис — чтобы во второй раз не выбирать заново.
 const MUSIC_LAST_KEY = 'oblako-music-last';
 
-export function MusicWidget({ box, fill, overImage, hero: isHero, onOpen }: WidgetProps) {
+export function MusicWidget({ box, cell, fill, overImage, hero: isHero, onOpen }: WidgetProps) {
   const [state, setState] = useState<MediaNowPlaying | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -1118,6 +1236,10 @@ export function MusicWidget({ box, fill, overImage, hero: isHero, onOpen }: Widg
 
   const playing = state?.playbackState === 'playing';
   const compact = box.height < 150;
+  // ⚠️ Именно здесь на узком окне рождалось наложение со снимка: две кнопки сервисов переносились
+  // на две строки, контент становился выше коробки, а центрирование при переполнении растит его
+  // в ОБЕ стороны — верхняя строка уезжала под подпись плитки (см. shared/tileBudget.ts).
+  const fit = musicFit(box, cell);
 
   async function cmd(action: MediaCommand) {
     setBusy(true);
@@ -1135,9 +1257,12 @@ export function MusicWidget({ box, fill, overImage, hero: isHero, onOpen }: Widg
     try { last = localStorage.getItem(MUSIC_LAST_KEY) ?? ''; } catch { /* см. loadWallpaper */ }
     const lastLabel = last ? (MUSIC_SERVICES.find((x) => x.url === last)?.label ?? hostLabel(last)) : '';
     return (
-      <Tile surface toned overImage={overImage} hero={isHero} fill={fill} padding={compact ? 12 : 16}>
+      <Tile surface toned overImage={overImage} hero={isHero} fill={fill} padding={padOf(densityOf(cell))}>
         <TileCaption>Музыка</TileCaption>
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
+        {/* ⚠️ `safe center` — не косметика: обычный center при переполнении выталкивает содержимое
+            за ОБА края, и первая строка садится на подпись плитки. Safe в тесноте прижимает к
+            началу и обрезки не даёт вовсе. */}
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'safe center', gap: 8 }}>
           <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--nt-text-muted, var(--text-muted))' }}>
             Ничего не играет
           </div>
@@ -1145,7 +1270,7 @@ export function MusicWidget({ box, fill, overImage, hero: isHero, onOpen }: Widg
             {/* ⚠️ Кнопки открывают сервис ОБЫЧНОЙ ВКЛАДКОЙ, а не встроенным плеером: свой плеер
                 означал бы чужой логин, чужую подписку и чужой DRM — то есть работу, которую уже
                 сделал сам сервис. Наше дело — управлять тем, что он играет. */}
-            {(lastLabel ? [{ label: lastLabel, url: last }] : MUSIC_SERVICES).map((svc) => (
+            {(lastLabel ? [{ label: lastLabel, url: last }] : MUSIC_SERVICES.slice(0, fit.services)).map((svc) => (
               <button
                 key={svc.url}
                 onClick={() => open(svc.url)}
@@ -1157,7 +1282,7 @@ export function MusicWidget({ box, fill, overImage, hero: isHero, onOpen }: Widg
               >{svc.label}</button>
             ))}
           </div>
-          {!compact && (
+          {fit.hint && (
             <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--nt-text-muted, var(--text-muted))' }}>
               Подхватит любой сервис — виджет читает то, что играет во вкладке.
             </div>
@@ -1173,7 +1298,7 @@ export function MusicWidget({ box, fill, overImage, hero: isHero, onOpen }: Widg
       onClick={() => { if (enabled && !busy) void cmd(action); }}
       title={action === 'play' ? 'Играть' : action === 'pause' ? 'Пауза' : action === 'nexttrack' ? 'Следующий' : 'Предыдущий'}
       style={{
-        width: primary ? 38 : 30, height: primary ? 38 : 30, flex: 'none',
+        width: primary ? fit.primary : fit.secondary, height: primary ? fit.primary : fit.secondary, flex: 'none',
         borderRadius: '50%', border: 'none', cursor: 'default',
         display: 'grid', placeItems: 'center',
         background: primary ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.18)',
