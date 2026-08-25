@@ -7,6 +7,7 @@ import { Copy, Check, ChevronDown, KeyRound, Loader2, Clipboard, MoreHorizontal 
 import { BackGlyph, ForwardGlyph, RefreshGlyph, ShieldGlyph, StarGlyph, SparkGlyph, DownloadGlyph } from './glyphs';
 import type { TabState, HistoryEntry, SuggestDropdownItem, PasswordIndicatorState, PageTranslateState, PageTranslateProgress, SmartTabHit, OmniboxPanelSite, PermissionRecord, SemanticSearchResult } from '../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../shared/frecency';
+import { composeSuggestions, looksLikeAddress } from '../../shared/suggestList';
 import { SEARCH_ENGINES, getSearchEngine } from '../../shared/searchEngines';
 import type { SearchEngineId } from '../../shared/searchEngines';
 import { chromeCluster, omniField, clusterBtn, ISLAND_HEIGHT } from '../styles/island';
@@ -900,30 +901,17 @@ export default function Toolbar({
       .slice(0, 3)
       .map((t) => ({ kind: 'tab' as SuggestKind, label: t.url, sub: t.title, url: t.url, tabId: t.id }));
 
+    // Порядок секций, подписи и правило «набран адрес → не переключай на вкладку, открывай» —
+    // чистая логика под проверкой (shared/suggestList.ts, npm test -- suggest-list).
     const [topItem, ...restItems] = [...items, ...liveTabItems];
-    // Подписи секций — по образцу Safari («Предложения Google» / «Закладки и история»), см. живое
-    // сравнение. У героя (topItem) своей подписи нет — он и так визуально выделен отдельной
-    // карточкой (RowIcon/hero-стиль в suggestdropdown.tsx), подпись над одной строкой была бы
-    // лишним шумом. Ставим ТОЛЬКО на первый элемент каждой группы — вью просто рисует то, что
-    // получила, сама ничего не группирует (см. комментарий у sectionHeader в shared/ipc.ts).
-    if (restItems[0]) restItems[0] = { ...restItems[0], sectionHeader: 'История и вкладки' };
-    if (suggestItems[0]) {
-      suggestItems[0] = { ...suggestItems[0], sectionHeader: `Предложения ${getSearchEngine(searchEngineId).name}` };
-    }
-    // ⚠️ Набран АДРЕС, совпавший с открытой вкладкой → первой подсказкой был «перейти на вкладку»
-    // (kind:'tab' → TAB_ACTIVATE): человек ввёл адрес, чтобы ОТКРЫТЬ страницу, а его перекидывало на
-    // старую вкладку (живая жалоба: «неудобно, хочу дубль»). У нас дубли есть, поэтому для АДРЕСНЫХ
-    // запросов переход-на-вкладку превращаем в обычную навигацию (kind:'history', без tabId) — и
-    // Enter, и клик открывают адрес дублем. Для запросов-ИМЁН/описаний (без точки и схемы)
-    // переключение на уже открытую вкладку остаётся — там оно как раз удобно.
-    const looksLikeAddress = /[.:]/.test(query.trim());
-    const asNav = (i: SuggestItem): SuggestItem =>
-      looksLikeAddress && i.kind === 'tab'
-        ? { ...i, kind: 'history' as SuggestKind, tabId: undefined, windowId: undefined }
-        : i;
-    const deduped = (topItem
-      ? [topItem, searchItem, ...restItems, ...suggestItems]
-      : [searchItem, ...suggestItems]).map(asNav);
+    const deduped = composeSuggestions({
+      topItem,
+      searchItem,
+      restItems,
+      suggestItems,
+      query,
+      engineName: getSearchEngine(searchEngineId).name,
+    });
     if (seq !== suggestSeqRef.current) return;
     listShownRef.current = deduped.length > 0;
     setSuggestions(deduped);
@@ -940,7 +928,7 @@ export default function Toolbar({
     // грубый и в спорную сторону — есть точка или схема, значит считаем адресом и оставляем
     // прежнее поведение. Дублировать здесь разбор resolveInput нельзя: две копии правил разъедутся
     // молча (в этом файле такое уже было с перечнем разделов настроек).
-    const preselect = topItem && !looksLikeAddress ? 0 : -1;
+    const preselect = topItem && !looksLikeAddress(query) ? 0 : -1;
     setSelectedIdx(preselect);
     openDropdown();
     // Тот же список — дополнительно в нативную вью дропдауна (заход 3/5, параллельно старому
