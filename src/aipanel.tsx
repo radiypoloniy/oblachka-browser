@@ -38,15 +38,51 @@ interface ChatMessage {
 // Запас высоты у схлопнутого ряда подсказок: обрезка идёт по нижнему краю первой строки, и без
 // запаса она срезала бы --shadow-chip у самих чипов. Меньше зазора между строками (6) — иначе в
 // щель заглядывала бы вторая строка.
-// Цветные пятна карточек скиллов. ⚠️ Тот же набор и тот же порядок, что в настройках
-// (SkillsSection.tsx): карточка одного и того же скилла обязана выглядеть одинаково там, где её
-// настраивают, и там, где её нажимают.
-const SKILL_STAIN = [
-  'var(--tile-orange)', 'var(--tile-teal)', 'var(--tile-brown)',
-  'var(--tile-slate)', 'var(--tile-green)', 'var(--tile-blue)', 'var(--tile-red)',
-] as const
-
 const COLLAPSED_SLACK = 4
+
+/**
+ * Крупное действие над страницей — «Перевести» и «Фактчек».
+ *
+ * ⚠️ Их ровно два, и это условие, при котором им разрешено быть крупными: они заданы нами и
+ * работают на любой странице. Пятно цвета осталось только здесь — на девяти карточках оно было
+ * не различением, а витриной.
+ */
+function PrimaryAction({ icon, label, hint, bg, ink, busy, onPress }: {
+  icon: string
+  label: string
+  hint: string
+  bg: string
+  ink: string
+  busy: boolean
+  onPress: () => void
+}) {
+  return (
+    <button
+      onClick={onPress}
+      disabled={busy}
+      style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
+        padding: '10px 12px', textAlign: 'left', font: 'inherit',
+        borderRadius: 'var(--radius-card)', border: 'none',
+        background: bg, color: ink,
+        boxShadow: 'var(--shadow-chip)',
+        cursor: busy ? 'default' : 'pointer',
+        opacity: busy ? 0.5 : 1,
+        transition: 'transform var(--dur-fast) var(--ease-out)',
+      }}
+      onMouseEnter={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-2px)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'none' }}
+    >
+      <span style={{ ...DISPLAY_ROW, display: 'block', color: 'inherit' }}>
+        <span style={{ marginRight: 6 }}>{icon}</span>{label}
+      </span>
+      <span style={{
+        ...TEXT.caption, color: 'inherit', opacity: 0.72,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%',
+      }}>{hint}</span>
+    </button>
+  )
+}
 
 // Форма Skill из electron/SkillsStore.ts — зеркалим локально, тот же приём, что у ChatOutcome
 // выше (ad-hoc канал, не через shared/ipc.ts).
@@ -628,10 +664,24 @@ function AiPanel() {
           display: 'flex', flexDirection: 'column', gap: 10,
           padding: `10px var(--pad-island) var(--pad-island)`,
         }}>
-          {/* ⚠️ Подсказки пустого состояния здесь БОЛЬШЕ НЕТ. Она висела вверху пустой ленты, а
-              карточки скиллов прижаты к полю ввода внизу — между ними зияла дыра во весь экран,
-              и это читалось как поломка, а не как «пока пусто». Теперь она стоит подписью НАД
-              карточками, то есть там же, где ответ на вопрос «а что я могу спросить». */}
+          {/* ⚠️ Приглашение прижато К НИЗУ (marginTop:auto), а не висит вверху пустой ленты:
+              иначе между ним и действиями у поля ввода зияет дыра во весь экран, и это читается
+              как поломка. Оно отвечает на единственное, чего про панель не знают: страница уже
+              прочитана, спрашивать можно словами. */}
+          {messages.length === 0 && !sending && (
+            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ ...DISPLAY_ROW, fontSize: 19, color: 'var(--text-strong)' }}>
+                Спросите о странице
+              </span>
+              <span style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>
+                {modelState && !modelState.label
+                  ? 'Модели нет — скачайте её в настройках, и панель начнёт отвечать.'
+                  : modelState && !modelState.loaded
+                    ? 'Текст уже прочитан. Первый ответ дольше — модель поднимается.'
+                    : 'Текст уже прочитан — спрашивайте своими словами или возьмите готовое действие ниже.'}
+              </span>
+            </div>
+          )}
 
           {messages.map((m, i) => (
             // Ответ модели — БЕЗ подложки и во всю ширину: так он выглядит в любом чат-боте,
@@ -787,109 +837,49 @@ function AiPanel() {
                 </button>
               </div>
             </div>
-          ) : !chipsCompact ? (
-            // ПУСТАЯ БЕСЕДА — карточки, а не чипы.
-            //
-            // ⚠️ Скилл в настройках и скилл в панели до этого выглядели как две разные вещи: там
-            // карточка со значком и куском промпта, здесь чип кеглем 11. Место под ними свободно
-            // ровно один раз — пока разговор не начат, — и это единственный момент, когда человек
-            // выбирает, ЧТО спросить, а не спрашивает дальше.
-            //
-            // ⚠️ Чернилами карточки тут НЕ залиты, в отличие от настроек, и это не забывчивость:
-            // там заливка означает «скилл включён», а в панель попадают только включённые — то
-            // есть означать ей нечего. Четыре чёрных прямоугольника поверх чужой страницы были бы
-            // весом без смысла.
-            <div key="skill-cards" style={{
-              padding: `0 var(--pad-island)`, marginBottom: 8, flexShrink: 0,
-              display: 'flex', flexDirection: 'column', gap: 8,
-            }}>
-              <span className="ai-empty-hint" style={{ ...CAPS, display: 'block' }}>
-                {modelState && !modelState.label
-                  ? 'модели нет — скачайте её в настройках'
-                  : modelState && !modelState.loaded
-                    ? 'что сделать со страницей · первый ответ дольше, модель поднимается'
-                    : 'что сделать со страницей'}
-              </span>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {[
-                { id: 'translate', icon: '🌐', label: 'Перевести', hint: 'Страницу на русский', onPress: sendQuickTranslate },
-                ...(factCheckAvailable
-                  ? [{ id: 'factcheck', icon: '🔍', label: 'Фактчек', hint: 'Проверить по источникам в сети', onPress: () => setShowFactCheckConfirm(true) }]
-                  : []),
-                ...skills.filter((skill) => skill.visible).map((skill) => ({
-                  id: skill.id,
-                  icon: skill.icon || '✳',
-                  label: skill.label,
-                  hint: skill.prompt.length > 64 ? `${skill.prompt.slice(0, 64)}…` : skill.prompt,
-                  onPress: () => sendText(skill.prompt),
-                })),
-              ].map((card, i) => (
-                <button
-                  key={card.id}
-                  onClick={card.onPress}
-                  disabled={chipsBusy}
-                  style={{
-                    position: 'relative', overflow: 'hidden',
-                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
-                    minHeight: 92, padding: '10px 11px', textAlign: 'left',
-                    borderRadius: 'var(--radius-card)', border: 'none',
-                    background: 'var(--text-strong)', color: 'var(--app-bg)',
-                    boxShadow: 'var(--shadow-chip)',
-                    cursor: chipsBusy ? 'default' : 'pointer',
-                    opacity: chipsBusy ? 0.5 : 1,
-                    font: 'inherit',
-                    transition: 'transform var(--dur-fast) var(--ease-out)',
-                  }}
-                  onMouseEnter={(e) => { if (!chipsBusy) e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
-                >
-                  {/* Цветное пятно — то же, что у карточки скилла в настройках: оно и отличает
-                      кнопки друг от друга. Без него девять чернильных прямоугольников подряд
-                      сливаются в один чёрный блок. */}
-                  <span aria-hidden style={{
-                    position: 'absolute', width: 120, height: 96, right: -30, top: -34,
-                    borderRadius: '50%', pointerEvents: 'none',
-                    background: `radial-gradient(circle at 40% 40%, ${SKILL_STAIN[i % SKILL_STAIN.length]}, transparent 68%)`,
-                    opacity: 0.55,
-                  }} />
-                  <span style={{ position: 'relative', fontSize: 20, lineHeight: 1 }}>{card.icon}</span>
-                  <span style={{ ...DISPLAY_ROW, position: 'relative', display: 'block', color: 'var(--app-bg)' }}>
-                    {card.label}
-                  </span>
-                  <span style={{
-                    ...TEXT.caption, position: 'relative',
-                    color: 'color-mix(in srgb, var(--app-bg) 66%, transparent)',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                  }}>{card.hint}</span>
-                </button>
-              ))}
-              {/* «Настроить AI» — последней ячейкой, а не значком в углу: в сетке у него есть своё
-                  место, и он не спорит с карточками за верхний правый угол. */}
-              <button
-                onClick={() => window.aiPanel.openSettings('ai')}
-                title="Настроить скиллы"
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
-                  minHeight: 92, padding: '10px 11px', textAlign: 'left',
-                  borderRadius: 'var(--radius-card)',
-                  border: '1px dashed var(--divider-strong)',
-                  background: 'transparent', cursor: 'pointer', font: 'inherit',
-                }}
-              >
-                <Plus size={20} style={{ color: 'var(--text-faint)' }} />
-                <span style={{ ...DISPLAY_ROW, display: 'block', color: 'var(--text-strong)' }}>Свой скилл</span>
-                <span style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>
-                  Кнопка со своим промптом
-                </span>
-              </button>
-              </div>
-            </div>
           ) : (
-            // Внешняя строка: слева переносящаяся область чипов, справа НЕСДВИГАЕМЫЙ хвост
-            // (шеврон + настройки). Хвост вынесен из потока чипов намеренно — попав в перенос, он
-            // уезжал бы во вторую строку и в схлопнутом виде становился недоступен, а это
-            // единственные две кнопки, которые обязаны быть под рукой всегда.
+            <>
+            {/* ПУСТАЯ БЕСЕДА — два наших действия крупно, остальное тем же рядом, что и в беседе.
+                ⚠️ Раньше здесь была СЕТКА КАРТОЧЕК по 92 px: восемь скиллов плюс пунктирная
+                «Свой скилл» — 492 px из ~700, то есть выбор занимал больше места, чем ответ,
+                ради которого панель открыли. И это был ВТОРОЙ интерфейс: до беседы карточки,
+                после — чипы; два места, где всё ломается по-разному.
+                ⚠️ Крупными остаются только «Перевести» и «Фактчек»: их задаём мы, они про
+                страницу и работают на любой. Скиллы человек пишет сам, их число растёт — им ряд.
+                ⚠️ Подпись-промпт с карточек ушла совсем: `skill.prompt.slice(0, 64)` — это
+                внутренность наружу («Напиши SEO-заголовок… Требования: …»). Полный текст живёт
+                в подсказке чипа и в настройках, где его и правят. */}
+            {!chipsCompact && (
+              <div style={{
+                padding: `0 var(--pad-island)`, marginBottom: 8, flexShrink: 0,
+                display: 'grid', gridTemplateColumns: factCheckAvailable ? '1fr 1fr' : '1fr', gap: 8,
+              }}>
+                <PrimaryAction
+                  icon="🌐" label="Перевести" hint="Страницу на русский"
+                  bg="var(--text-strong)" ink="var(--app-bg)"
+                  busy={chipsBusy} onPress={sendQuickTranslate}
+                />
+                {factCheckAvailable && (
+                  <PrimaryAction
+                    icon="🔍" label="Фактчек" hint="Проверить в сети"
+                    bg="var(--poster-tea)" ink="var(--on-poster-light)"
+                    busy={chipsBusy} onPress={() => setShowFactCheckConfirm(true)}
+                  />
+                )}
+              </div>
+            )}
+            {!chipsCompact && (
+              <span className="ai-empty-hint" style={{
+                ...CAPS, display: 'block', padding: `0 var(--pad-island)`, marginBottom: 6,
+              }}>
+                скиллы
+              </span>
+            )}
+
+            {/* Внешняя строка: слева переносящаяся область чипов, справа НЕСДВИГАЕМЫЙ хвост
+                (шеврон + настройки). Хвост вынесен из потока чипов намеренно — попав в перенос, он
+                уезжал бы во вторую строку и в схлопнутом виде становился недоступен, а это
+                единственные две кнопки, которые обязаны быть под рукой всегда. */}
             <div key="chips-row" style={{
               display: 'flex', alignItems: 'flex-start', gap: 6,
               padding: `0 var(--pad-island)`,
@@ -912,7 +902,10 @@ function AiPanel() {
                 transition: 'max-height var(--dur-base) var(--ease-standard)',
               }}
             >
-              {/* Перевести — спец-кнопка вне реестра скиллов (см. комментарий выше), всегда первая. */}
+              {/* Перевести — спец-кнопка вне реестра скиллов (см. комментарий выше), всегда первая.
+                  ⚠️ В ПУСТОЙ беседе её тут нет: она стоит крупной плиткой выше, и дубль в ряду
+                  был бы одним и тем же действием дважды на одном экране. */}
+              {chipsCompact && (
               <button
                 onClick={sendQuickTranslate}
                 disabled={chipsBusy}
@@ -940,6 +933,7 @@ function AiPanel() {
               >
                 <span>🌐</span> Перевести
               </button>
+              )}
               {/* Заход D — видна ТОЛЬКО когда ключ Gemini подключён (см. onKeyStatus выше), не
                   disabled-серая: без ключа кнопки нет вообще. Тот же нейтральный стиль, что у
                   остальных подсказок — она такое же одно из равных действий, не отдельная
@@ -948,7 +942,7 @@ function AiPanel() {
                   обе спец-кнопки заданы нами, а список скиллов человек наполняет сам и он может
                   быть длинным. В хвосте фактчек уезжал за обрез первой строки и выглядел как
                   пропавший — живая жалоба «а что с фактчеком, почему он исчезает». */}
-              {factCheckAvailable && (
+              {factCheckAvailable && chipsCompact && (
                 <button
                   onClick={() => setShowFactCheckConfirm(true)}
                   disabled={chipsBusy}
@@ -1037,8 +1031,9 @@ function AiPanel() {
             )}
             {/* В схлопнутом ряду «+» живёт здесь, в несдвигаемом хвосте, — иначе он уехал бы за
                 обрез вместе с лишними строками. См. парную ветку внутри области чипов. */}
-            {chipsCompact && settingsChip}
+            {settingsChip}
             </div>
+            </>
           )
         )}
 
