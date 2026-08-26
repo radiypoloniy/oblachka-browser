@@ -18,7 +18,8 @@ import { subscribeMeshes } from './newtab/gradients';
 import { SHELL_MARGIN } from '../shared/layout';
 import { installOverlayReveal } from './overlayReveal';
 import { CAPS, DISPLAY_ROW, RADIUS, TEXT } from './styles/system';
-import type { ChatMessage, ModelErrorCode, SkillItem } from './aipanel/contract';
+import { useAiChat } from './aipanel/useAiChat';
+import type { ModelErrorCode } from './aipanel/contract';
 import './aipanel/contract';
 
 // Запас высоты у схлопнутого ряда подсказок: обрезка идёт по нижнему краю первой строки, и без
@@ -116,47 +117,25 @@ function describeChatError(error: string, code: ModelErrorCode | null): { headin
 }
 
 function AiPanel() {
-  const [tabId, setTabId] = useState<string | null>(null)
-  const [pageTitle, setPageTitle] = useState('')
-  const [pageUrl, setPageUrl] = useState('')
-  const [modelState, setModelState] = useState<{ label: string | null; loaded: boolean } | null>(null)
-  const [pageFavicon, setPageFavicon] = useState<string | null>(null)
-  const [faviconError, setFaviconError] = useState(false)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  // Беседа целиком — подписки на main, лента, признаки занятости и три способа отправки.
+  const {
+    tabId, pageTitle, pageUrl, pageFavicon, modelState,
+    messages, streamedText, sending, error, errorCode,
+    skills, factCheckAvailable, factChecking, searxngConfigured, webSearching,
+    sendText, sendQuickTranslate, sendFactCheck,
+  } = useAiChat()
+
   const [input, setInput] = useState('')
-  // Копится по мере генерации (тот же токен-стриминг, что у поповера/AI-действий) — показывается
-  // как «печатающееся» сообщение ассистента, пока не придёт финальный result.
-  const [streamedText, setStreamedText] = useState('')
-  const [sending, setSending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [errorCode, setErrorCode] = useState<ModelErrorCode | null>(null)
-  // Заход D — кнопка фактчека видна только когда ключ Gemini подключён (см. AiKeyStore.ts,
-  // пуш через AiPanelManager.ts::sendKeyStatus). factChecking — отдельный флаг ТОЛЬКО для
-  // текстовой/визуальной подписи «печатающегося» сообщения (см. рендер ленты ниже): вызов Gemini
-  // с Search Grounding идёт заметно дольше локальной модели и без частичного стриминга, обычное
-  // «…» выглядело бы как зависание — явный текст снижает риск повторного клика.
-  // Коммит 1 (реестр скиллов) — prompt-кнопки (Объяснить/Саммари, позже пользовательские) из
-  // main (SkillsStore.ts), см. onSkillsList ниже. Перевести/Фактчек в этот стейт не входят —
-  // они остаются спец-кнопками (см. комментарий выше про «Перевести»).
-  const [skills, setSkills] = useState<SkillItem[]>([])
-  const [factCheckAvailable, setFactCheckAvailable] = useState(false)
-  const [factChecking, setFactChecking] = useState(false)
-  // Плашка приватности перед вызовом (см. sendFactCheck ниже) — обязательна каждый раз, без «запомнить».
+  // Ошибка загрузки favicon — чисто про <img> в шапке, к беседе отношения не имеет.
+  const [faviconError, setFaviconError] = useState(false)
+  // Плашка приватности перед фактчеком — обязательна каждый раз, без «запомнить».
   const [showFactCheckConfirm, setShowFactCheckConfirm] = useState(false)
-  // Задел под web-grounding (SearXNG) — тоггл-глобус в поле ввода. webGroundingActive: чисто
-  // локальный UI-стейт (не персистится, не переживает переключение вкладки/перезапуск панели —
-  // тот же принцип, что mode ниже). searxngConfigured — пуш из AiPanelManager.ts::sendSearxngStatus,
-  // тот же источник, что читает секция настроек. showWebGroundingConfirm — плашка согласия,
-  // обязательна перед КАЖДЫМ включением, тот же приём, что у фактчека, но свой флаг: это разные
-  // независимые действия, не должны гаситься/путаться друг с другом.
+  // Тоггл-глобус web-grounding: чисто локальный UI-стейт (не персистится, не переживает
+  // переключение вкладки/перезапуск панели — тот же принцип, что mode ниже).
+  // ⚠️ Плашка согласия у него СВОЯ, отдельная от фактчека: это разные независимые действия, и
+  // общий флаг гасил бы одно при подтверждении другого.
   const [webGroundingActive, setWebGroundingActive] = useState(false)
-  const [searxngConfigured, setSearxngConfigured] = useState(false)
   const [showWebGroundingConfirm, setShowWebGroundingConfirm] = useState(false)
-  // Заход 3 задела (сквозной grounding) — фаза «идёт поиск в SearXNG», ДО первого чанка от Qwen:
-  // main сначала ждёт searxngSearch(), генерация стартует только после (см. AiPanelManager.ts).
-  // Без этого флага та же дыра, что чинил factChecking — пустой streamedText молча висел бы,
-  // читаясь как зависание. Гасится первым чанком (unsubChunk) — тем же сигналом «генерация началась».
-  const [webSearching, setWebSearching] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   // Заход 3 — переключатель AI/Приложения (см. дизайн-систему): локальный, не персистится.
   // «Приложения» (aiApps.tsx) в режиме чата НЕ размонтируются, а прячутся display:none (см.
@@ -196,60 +175,6 @@ function AiPanel() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  useEffect(() => {
-    // Переключение вкладки / смена её URL / (пере)открытие панели — main присылает АВТОРИТЕТНУЮ
-    // ленту этой вкладки целиком. Любая незавершённая генерация «протухшей» вкладки визуально
-    // гасится (sending/streamedText/error сбрасываются) — она никуда не делась в main, просто эта
-    // страница её больше не показывает, пока пользователь не вернётся на ту вкладку.
-    const unsubContext = window.aiPanel.onContext((ctx) => {
-      setTabId(ctx.tabId)
-      setPageTitle(ctx.title)
-      setPageUrl(ctx.url)
-      setPageFavicon(ctx.favicon ?? null)
-      setMessages(ctx.messages)
-      setStreamedText('')
-      setSending(false)
-      setFactChecking(false)
-      setWebSearching(false)
-      setError(null)
-      setErrorCode(null)
-      // Модель могла подняться в память между показами панели — push-события на это в проекте
-      // нет (см. ai-panel:model-state), поэтому перечитываем на каждый новый контекст.
-      void window.aiPanel.modelState().then(setModelState)
-    })
-    const unsubChunk = window.aiPanel.onChatChunk((chunkText) => {
-      setWebSearching(false)
-      setStreamedText((prev) => prev + chunkText)
-    })
-    void window.aiPanel.modelState().then(setModelState)
-    const unsubResult = window.aiPanel.onChatResult((outcome) => {
-      setSending(false)
-      setFactChecking(false)
-      setWebSearching(false)
-      setStreamedText('')
-      if (outcome.ok) {
-        setMessages((prev) => [...prev, { role: 'assistant', text: outcome.out }])
-        setError(null)
-        setErrorCode(null)
-      } else {
-        setError(outcome.error)
-        setErrorCode(outcome.errorCode ?? null)
-      }
-      // Ответ пришёл — значит модель точно поднялась. Чип обязан перестать обещать ожидание.
-      void window.aiPanel.modelState().then(setModelState)
-    })
-    const unsubKeyStatus = window.aiPanel.onKeyStatus((connected) => {
-      setFactCheckAvailable(connected)
-    })
-    const unsubSkillsList = window.aiPanel.onSkillsList((list) => {
-      setSkills(list)
-    })
-    const unsubSearxngStatus = window.aiPanel.onSearxngStatus((configured) => {
-      setSearxngConfigured(configured)
-    })
-    return () => { unsubContext(); unsubChunk(); unsubResult(); unsubKeyStatus(); unsubSkillsList(); unsubSearxngStatus() }
-  }, [])
-
   // Смена favicon (переключение вкладки/навигация) — сбрасываем прошлую ошибку загрузки,
   // иначе новая иконка не покажется, если старая когда-то не загрузилась.
   useEffect(() => { setFaviconError(false) }, [pageFavicon])
@@ -261,44 +186,11 @@ function AiPanel() {
     el.scrollTop = el.scrollHeight
   }, [messages, streamedText])
 
-  // Общая точка отправки — и текстовое поле, и кнопки-подсказки шлют через неё «как будто
-  // пользователь сам написал»: один и тот же путь (оптимистичное сообщение в ленте → sendChat).
-  const sendText = (text: string) => {
-    if (!text || sending || !tabId) return
-    setMessages((prev) => [...prev, { role: 'user', text }])
+  const handleSend = () => {
+    const text = input.trim()
+    if (!text) return
     setInput('')
-    setStreamedText('')
-    setError(null)
-    setSending(true)
-    setWebSearching(webGroundingActive)
-    window.aiPanel.sendChat(text, webGroundingActive)
-  }
-
-  const handleSend = () => sendText(input.trim())
-
-  // «Перевести» — не sendText: промпт (с определённым src/tgt) собирается в main, после извлечения
-  // текста страницы и детекции языка. Здесь только оптимистичная метка в ленте + сигнал main.
-  const sendQuickTranslate = () => {
-    if (sending || !tabId) return
-    setMessages((prev) => [...prev, { role: 'user', text: 'Перевести' }])
-    setStreamedText('')
-    setError(null)
-    setSending(true)
-    window.aiPanel.quickTranslate()
-  }
-
-  // Заход D — фактчек уходит в облако (Google Gemini), а не к локальной модели: плашка
-  // приватности обязательна перед КАЖДЫМ вызовом (см. showFactCheckConfirm выше) — реальная
-  // отправка происходит только по явному подтверждению.
-  const sendFactCheck = () => {
-    if (sending || !tabId) return
-    setShowFactCheckConfirm(false)
-    setMessages((prev) => [...prev, { role: 'user', text: 'Фактчек' }])
-    setStreamedText('')
-    setError(null)
-    setSending(true)
-    setFactChecking(true)
-    window.aiPanel.factCheck()
+    sendText(text, webGroundingActive)
   }
 
   // Задел под web-grounding (SearXNG) — глобус в поле ввода. Три исхода клика:
@@ -750,7 +642,7 @@ function AiPanel() {
                   Отмена
                 </button>
                 <button
-                  onClick={sendFactCheck}
+                  onClick={() => { setShowFactCheckConfirm(false); sendFactCheck() }}
                   style={{
                     padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
                     background: 'var(--accent)', color: 'var(--on-accent)',
@@ -896,7 +788,7 @@ function AiPanel() {
               {skills.filter((skill) => skill.visible).map((skill) => (
                 <button
                   key={skill.id}
-                  onClick={() => sendText(skill.prompt)}
+                  onClick={() => sendText(skill.prompt, webGroundingActive)}
                   disabled={chipsBusy}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5,
