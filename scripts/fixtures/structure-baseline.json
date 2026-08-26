@@ -60,10 +60,10 @@
     "ipc": 0
   },
   "src/App.tsx": {
-    "lines": 1398,
-    "fn": 1146,
-    "effects": 26,
-    "ipc": 78
+    "lines": 1216,
+    "fn": 1005,
+    "effects": 21,
+    "ipc": 76
   },
   "src/aipanel.tsx": {
     "lines": 1313,
