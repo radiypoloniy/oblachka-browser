@@ -324,7 +324,17 @@ const PAGE_TEXT_MAX_CHARS = 28000
 // Результат извлечения: text — как раньше (readability либо fallback-innerText, обрезан по
 // лимиту), markdown — ТОЛЬКО для ветки чата (см. вызовы ниже), null если Readability не удалась
 // (fallback) или article.content пуст — тогда чат берёт text как есть, markdown не форсируем.
+//
+// ⚠️ ok отличает НЕУДАЧУ от честно пустой страницы, и это различие несущее. Пустой text даёт и
+// то и другое, а поступать с ними надо по-разному: пустую страницу можно запомнить и больше не
+// трогать, а неудачу — обязательно повторить. Без этого признака одна осечка (страница ещё не
+// загрузилась, вкладка спала, скрипт упал) запоминалась НАВСЕГДА: pageText переставал быть null,
+// повторное извлечение больше не запускалось, и модель до конца жизни этой страницы отвечала
+// без неё. Живой симптом: «ИИ отвечает, но страницы будто не видит», сам собой проходило после
+// перехода на другой адрес — там контекст сбрасывается целиком.
 export interface ExtractedPage {
+  /** false — извлечь не удалось (нет живой страницы или скрипт упал). Такой результат не кэшируем. */
+  ok: boolean
   text: string
   markdown: string | null
 }
@@ -332,7 +342,12 @@ export interface ExtractedPage {
 // Экспортирована для HistoryIndexer.ts (заход на обогащение эмбеддинга истории контентом
 // страницы) — тот же пайплайн Readability, без дублирования. Сама функция не менялась.
 export async function extractPageText(wc: WebContents | null): Promise<ExtractedPage> {
-  if (!wc || wc.isDestroyed()) return { text: '', markdown: null }
+  if (!wc || wc.isDestroyed()) {
+    // Живой страницы нет: вкладка спит, ещё грузится, это хаб или псевдо-вкладка. Не «пусто», а
+    // «пока неоткуда взять» — вызывающий обязан попробовать снова на следующем вопросе.
+    console.warn('[ai-panel] извлечение пропущено: у активной вкладки нет живой страницы')
+    return { ok: false, text: '', markdown: null }
+  }
   try {
     // Страница ролика: содержание лежит в субтитрах, а Readability возьмёт описание и
     // комментарии. Пробуем расшифровку ПЕРВОЙ; не вышло — идём обычным путём, потому что
@@ -347,7 +362,7 @@ export async function extractPageText(wc: WebContents | null): Promise<Extracted
           lines: res.lines as { t: string; text: string }[],
         }).slice(0, PAGE_TEXT_MAX_CHARS)
         console.log(`[ai-panel] извлечение: расшифровка видео, ${res.lines.length} строк, ${text.length} симв.`)
-        return { text, markdown: null }
+        return { ok: true, text, markdown: null }
       }
       console.log(`[ai-panel] расшифровка недоступна (${res?.reason ?? 'нет ответа'}) — обычное извлечение`)
     }
@@ -397,10 +412,10 @@ ${body}` : body).slice(0, PAGE_TEXT_MAX_CHARS)
     if (facts && card) {
       console.log(`[ai-panel] факты: ${facts.kind ?? 'без типа'}, характеристик ${facts.specs.length}, отзывов вырезано ${facts.removedReviewChars} симв.`)
     }
-    return { text, markdown }
+    return { ok: true, text, markdown }
   } catch (e) {
     console.error('[ai-panel] извлечение текста страницы упало:', e)
-    return { text: '', markdown: null }
+    return { ok: false, text: '', markdown: null }
   }
 }
 
@@ -632,8 +647,13 @@ function ensureIpcRegistered(): void {
       let promptText = text
       if (needsExtraction) {
         const extracted = await extractPageText(pageWc)
-        ctx.pageText = extracted.text
-        ctx.pageMarkdown = extracted.markdown
+        // ⚠️ Запоминаем ТОЛЬКО удавшееся извлечение (см. ExtractedPage.ok): после неудачи
+        // pageText остаётся null, и следующий вопрос попробует снова. Иначе одна осечка
+        // выключала контекст страницы до конца её жизни.
+        if (extracted.ok) {
+          ctx.pageText = extracted.text
+          ctx.pageMarkdown = extracted.markdown
+        }
         // Чат получает markdown, когда Readability реально удалась и html был; иначе — тот же
         // plain text, что и раньше (fallback/форумы — markdown не форсируем).
         promptText = buildFirstTurnPrompt(extracted.markdown ?? extracted.text, title, text)
@@ -687,9 +707,11 @@ function ensureIpcRegistered(): void {
     void (async () => {
       if (needsExtraction) {
         const extracted = await extractPageText(pageWc)
-        ctx.pageText = extracted.text
-        ctx.pageMarkdown = extracted.markdown
-        console.log(`[ai-panel] текст страницы извлечён: ${ctx.pageText.length} симв. (лимит ${PAGE_TEXT_MAX_CHARS})`)
+        if (extracted.ok) {          // см. разбор у ExtractedPage.ok
+          ctx.pageText = extracted.text
+          ctx.pageMarkdown = extracted.markdown
+        }
+        console.log(`[ai-panel] текст страницы извлечён: ${extracted.text.length} симв. (лимит ${PAGE_TEXT_MAX_CHARS})`)
       }
       // Перевод остаётся на plain text — markdown (ctx.pageMarkdown) сюда намеренно не идёт.
       const pageText = ctx.pageText ?? ''
@@ -735,9 +757,11 @@ function ensureIpcRegistered(): void {
     void (async () => {
       if (needsExtraction) {
         const extracted = await extractPageText(pageWc)
-        ctx.pageText = extracted.text
-        ctx.pageMarkdown = extracted.markdown
-        console.log(`[ai-panel] текст страницы извлечён: ${ctx.pageText.length} симв. (для фактчека)`)
+        if (extracted.ok) {          // см. разбор у ExtractedPage.ok
+          ctx.pageText = extracted.text
+          ctx.pageMarkdown = extracted.markdown
+        }
+        console.log(`[ai-panel] текст страницы извлечён: ${extracted.text.length} симв. (для фактчека)`)
       }
       const outcome = await runFactCheck(ctx.pageText ?? '', title, url)
 
