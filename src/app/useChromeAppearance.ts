@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { buildChromeGround, buildChromeGroundFromMesh, accentFromMesh, overlaySymbolColor, CHROME_OVERLAY_PX } from '../../shared/chromeGround';
 import type { Ground } from '../../shared/chromeGround';
+import { isDarkTheme } from '../../shared/ipc';
 import type { ThemePrefs } from '../../shared/ipc';
 import { loadNewTabSettings, subscribeNewTabSettings, posterToneCss } from '../newtab/settings';
 import { findMesh, subscribeMeshes } from '../newtab/gradients';
@@ -55,11 +56,29 @@ function resolveColor(css: string): string {
 }
 
 /**
- * Считает землю окна и держит её в согласии с темой. Возвращает землю для разметки
- * (`chromeTintStyle`/`tintedPlateVars` в App) — остальное хук делает сам: атрибуты темы на
- * корне, раздачу темы в chrome-вью и цвет полосы системных кнопок.
+ * Считает землю окна и держит её в согласии с темой. Наружу отдаёт землю для разметки
+ * (`chromeTintStyle`/`tintedPlateVars` в App) и признак тёмной темы — остальное делает сам:
+ * читает выбор темы из main и слушает его изменения, проставляет атрибуты на корне, раздаёт тему
+ * в chrome-вью и красит полосу системных кнопок.
+ *
+ * ⚠️ Тёмная тема — НЕ то же самое, что инкогнито. Приватная вкладка принудительно тёмная, но
+ * `dark` наружу отдаётся именно как выбор темы: разметке нужны оба признака по отдельности.
  */
-export function useChromeAppearance(dark: boolean, incognito: boolean, palette: ThemePrefs['palette']): Ground | null {
+export function useChromeAppearance(incognito: boolean): { ground: Ground | null; dark: boolean } {
+  // Оформление (см. ThemePrefs в shared/ipc.ts). Владеет значением main — оно на диске и одно на
+  // все окна; здесь только копия для отрисовки. До первого ответа держим светлую — она же дефолт
+  // настроек, поэтому мигания «тёмная → светлая» на старте не будет.
+  const [themePrefs, setThemePrefs] = useState<ThemePrefs>({ mode: 'light', palette: 'charcoal', systemDark: false });
+  const dark = isDarkTheme(themePrefs);
+  const palette = themePrefs.palette;
+
+  // Выбор темы живёт в main (settings.json): читаем при старте и слушаем изменения — их шлёт и
+  // соседнее окно, где человек ткнул настройку, и сама система при смене светлой/тёмной.
+  // ⚠️ Стоит ПЕРВЫМ из эффектов этого хука: остальные читают уже применённые токены темы.
+  useEffect(() => {
+    void window.oblako.getTheme().then(setThemePrefs).catch(() => { /* останемся на светлой */ });
+    return window.oblako.onThemeChanged(setThemePrefs);
+  }, []);
   // Подмешка акцента от сетки: считается вместе с землёй (ниже), а применяется темой (сразу под
   // этим). Из-за этой пары эффекты и нельзя развести по разным местам.
   const [meshWash, setMeshWash] = useState<{ accent: string; tint: string } | null>(null);
@@ -207,5 +226,5 @@ export function useChromeAppearance(dark: boolean, incognito: boolean, palette: 
     // включение цветного фона меняет цвет полосы кнопок, не трогая ни тему, ни палитру.
   }, [dark, incognito, palette, chromeTinted, ground]);
 
-  return ground;
+  return { ground, dark };
 }

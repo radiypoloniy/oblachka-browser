@@ -23,8 +23,7 @@ import { useChromeAppearance } from './app/useChromeAppearance';
 import { watchGenClocks } from './newtab/genClocks';
 import { setDesktopProfile } from './newtab/desktop';
 import ProfilePicker from './components/ProfilePicker';
-import { isDarkTheme } from '../shared/ipc';
-import type { TabState, ThemePrefs } from '../shared/ipc';
+import type { TabState } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
 import { RADIUS } from './styles/system';
 
@@ -219,11 +218,6 @@ export default function App() {
   const vpnConn = useVpnConnection();
   const { pageTranslateState, pageTranslateProgress } = usePageTranslate();
   const { downloads, downloadsActive, downloadsProgress, downloadStartTick } = useDownloads();
-  // Оформление (см. ThemePrefs в shared/ipc.ts). Владеет значением main — оно на диске и одно на
-  // все окна; здесь только копия для отрисовки. До первого ответа держим светлую — она же дефолт
-  // настроек, поэтому мигания «тёмная → светлая» на старте не будет.
-  const [themePrefs, setThemePrefs] = useState<ThemePrefs>({ mode: 'light', palette: 'charcoal', systemDark: false });
-  const dark = isDarkTheme(themePrefs);
   // Импорт данных из другого браузера — модалка поверх всего chrome. 'manual' — открыта кнопкой
   // из настроек, 'onboarding' — авто-предложение первого запуска (мягче тон + «Пропустить»),
   // null — закрыта. См. ImportDialog.tsx / electron/browserImport/.
@@ -285,17 +279,9 @@ export default function App() {
       .catch(() => { /* роль не пришла — остаёмся полным окном, как было до многооконности */ });
   }, []);
 
-  // Выбор темы живёт в main (settings.json): читаем при старте и слушаем изменения — их шлёт и
-  // соседнее окно, где человек ткнул настройку, и сама система при смене светлой/тёмной.
-  useEffect(() => {
-    void window.oblako.getTheme().then(setThemePrefs).catch(() => { /* останемся на светлой */ });
-    return window.oblako.onThemeChanged(setThemePrefs);
-  }, []);
-
-  // ⚠️ Вызов стоит ИМЕННО ЗДЕСЬ, и это несущее: тема, земля и полоса системных кнопок связаны
-  // порядком эффектов, а порядок задаётся местом вызова хука (разбор — в шапке useChromeAppearance).
-  // Выше по файлу — состояние темы, ниже — разметка, которая эту землю рисует.
-  const ground = useChromeAppearance(dark, activeIncognito, themePrefs.palette);
+  // Тема, земля окна и полоса системных кнопок — одним хуком: они связаны порядком эффектов
+  // (разбор — в его шапке), поэтому и живут вместе.
+  const { ground, dark } = useChromeAppearance(activeIncognito);
 
   // Онбординг: однократное предложение импорта из другого браузера при первом запуске (если на
   // диске реально найден источник). shouldOfferImport вернёт false после первого показа (флаг
