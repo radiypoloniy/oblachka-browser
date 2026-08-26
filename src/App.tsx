@@ -22,7 +22,7 @@ import { setDesktopProfile } from './newtab/desktop';
 import ProfilePicker from './components/ProfilePicker';
 import { isDarkTheme } from '../shared/ipc';
 import type { SyncState, TabState, SidebarNode, SplitPairNode, ThemePrefs } from '../shared/ipc';
-import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
+import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS, clampSplitRatio } from '../shared/layout';
 import { RADIUS } from './styles/system';
 
 const HUB_ID = 'hub';
@@ -189,8 +189,6 @@ const splitPanelStyle = (active: boolean, flex: number, empty: boolean): CSSProp
 // Зазор 20 px = гистерезис: убирает дёрганье на границе.
 const SIDEBAR_COLLAPSE_THRESHOLD = 960;
 const SIDEBAR_EXPAND_THRESHOLD   = 980;
-const SPLIT_RATIO_MIN = 0.2;
-const SPLIT_RATIO_MAX = 0.8;
 
 // Показываемая пара — не «первая в дереве с нужным splitSide» (при 2+ парах это может
 // быть ЧУЖАЯ, непоказываемая пара), а та, что реально содержит activeId — тот же принцип,
@@ -369,7 +367,7 @@ export default function App() {
       // с нужным splitSide, иначе при 2+ парах ratio восстанавливался бы для чужой пары.
       const activePairNode = active ? findActiveSplitPairNode(s.nodes, active.id) : null;
       if (activePairNode) {
-        setSplitRatioState(Math.max(SPLIT_RATIO_MIN, Math.min(SPLIT_RATIO_MAX, activePairNode.ratio)));
+        setSplitRatioState(clampSplitRatio(activePairNode.ratio));
       }
     };
     let mounted = true;
@@ -449,7 +447,7 @@ export default function App() {
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const ratio = Math.max(SPLIT_RATIO_MIN, Math.min(SPLIT_RATIO_MAX, x / rect.width));
+    const ratio = clampSplitRatio(x / rect.width);
     setSplitRatioState(ratio);
     void window.oblako.setSplitRatio(ratio);
   }, []);
