@@ -11,7 +11,7 @@
 // дерево там правится по ссылке, а возврат копии потребовал бы переписывать вызывающих.
 //
 // ⚠️ Значимых импортов тут быть НЕ должно, только типовые — см. ту же причину в shared/sessionTree.ts.
-import type { SidebarNode, GroupNode } from './ipc';
+import type { SidebarNode, GroupNode, SplitPairNode } from './ipc';
 
 // Ищет родительский массив и индекс узла, содержащего tabId (рекурсивно).
 export function findTabParent(
@@ -128,4 +128,26 @@ export function disbandGroup(groupId: string, nodes: SidebarNode[]): boolean {
     }
   }
   return false;
+}
+
+// Показываемая split-пара — та, что СОДЕРЖИТ активную вкладку.
+//
+// ⚠️ Не «первая в дереве с нужным splitSide»: при двух и более парах плоский поиск по splitSide
+// всегда попадал бы на первую по порядку пару, а не на реально показываемую. Тот же принцип, что
+// у #activePair() в TabManager.ts — там это источник истины, здесь его отражение для чрома.
+//
+// null означает в том числе ПРИПАРКОВАННУЮ пару: человек смотрит вкладку вне пары, узел не
+// найден, сплит не рисуется — но splitSide у обеих вкладок пары остаётся непустым, и по нему
+// сайдбар всё ещё показывает значок пары.
+export function findActiveSplitPairNode(nodes: SidebarNode[], activeId: string): SplitPairNode | null {
+  for (const node of nodes) {
+    if (node.type === 'split-pair' && (node.leftTabId === activeId || node.rightTabId === activeId)) {
+      return node;
+    }
+    if (node.type === 'group') {
+      const nested = findActiveSplitPairNode(node.children, activeId);
+      if (nested) return nested;
+    }
+  }
+  return null;
 }

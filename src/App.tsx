@@ -21,7 +21,8 @@ import { watchGenClocks } from './newtab/genClocks';
 import { setDesktopProfile } from './newtab/desktop';
 import ProfilePicker from './components/ProfilePicker';
 import { isDarkTheme } from '../shared/ipc';
-import type { SyncState, TabState, SidebarNode, SplitPairNode, ThemePrefs } from '../shared/ipc';
+import { findActiveSplitPairNode } from '../shared/nodeTree';
+import type { SyncState, TabState, SidebarNode, ThemePrefs } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS, clampSplitRatio } from '../shared/layout';
 import { RADIUS } from './styles/system';
 
@@ -189,22 +190,6 @@ const splitPanelStyle = (active: boolean, flex: number, empty: boolean): CSSProp
 // Зазор 20 px = гистерезис: убирает дёрганье на границе.
 const SIDEBAR_COLLAPSE_THRESHOLD = 960;
 const SIDEBAR_EXPAND_THRESHOLD   = 980;
-
-// Показываемая пара — не «первая в дереве с нужным splitSide» (при 2+ парах это может
-// быть ЧУЖАЯ, непоказываемая пара), а та, что реально содержит activeId — тот же принцип,
-// что #activePair() в TabManager.ts. Рекурсивно, т.к. пара может лежать внутри группы.
-function findActiveSplitPairNode(nodes: SidebarNode[], activeId: string): SplitPairNode | null {
-  for (const node of nodes) {
-    if (node.type === 'split-pair' && (node.leftTabId === activeId || node.rightTabId === activeId)) {
-      return node;
-    }
-    if (node.type === 'group') {
-      const nested = findActiveSplitPairNode(node.children, activeId);
-      if (nested) return nested;
-    }
-  }
-  return null;
-}
 
 export default function App() {
   console.log('[renderer-alive] App смонтирован')

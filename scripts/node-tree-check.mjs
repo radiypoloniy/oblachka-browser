@@ -8,7 +8,7 @@
 // Запуск: npm test -- node-tree
 import {
   findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent,
-  pruneEmptyGroups, dissolveSplitPair, disbandGroup,
+  pruneEmptyGroups, dissolveSplitPair, disbandGroup, findActiveSplitPairNode,
 } from '../shared/nodeTree.ts';
 
 let passed = 0;
@@ -160,6 +160,37 @@ console.log('\n— роспуск группы —');
   const nodes = [group('g', 'Г', [pair('l', 'r')])];
   disbandGroup('g', nodes);
   check('пара переживает роспуск группы целой', nodes[0].type, 'split-pair');
+}
+
+console.log('\n— показываемая split-пара —');
+{
+  const nodes = [pair('l1', 'r1'), pair('l2', 'r2')];
+  check('пара по левой половине', findActiveSplitPairNode(nodes, 'l1')?.rightTabId, 'r1');
+  check('пара по правой половине', findActiveSplitPairNode(nodes, 'r1')?.leftTabId, 'l1');
+  // ⚠️ Случай из жизни: при 2+ парах вернуться обязана та, что содержит активную вкладку, а не
+  // первая по порядку. Плоский поиск по splitSide всегда отдавал первую — и сплит рисовался чужой.
+  check('вторая пара, а не первая по порядку', findActiveSplitPairNode(nodes, 'r2')?.leftTabId, 'l2');
+}
+{
+  const nodes = [single('a'), pair('l', 'r'), single('b')];
+  // «Припаркованная» пара: смотрим вкладку вне её — сплит не показывается.
+  check('вкладка вне пары — пары нет', findActiveSplitPairNode(nodes, 'a'), null);
+  check('чужой вкладки нет', findActiveSplitPairNode(nodes, 'zzz'), null);
+  check('пустое дерево', findActiveSplitPairNode([], 'a'), null);
+}
+{
+  // Ради рекурсии: пара внутри группы обязана находиться так же.
+  const nodes = [single('a'), group('g', 'Г', [single('x'), pair('l', 'r')])];
+  check('пара внутри группы', findActiveSplitPairNode(nodes, 'r')?.leftTabId, 'l');
+}
+{
+  const nodes = [group('g1', 'Внешняя', [group('g2', 'Внутренняя', [pair('l', 'r')])])];
+  check('пара во вложенной группе', findActiveSplitPairNode(nodes, 'l')?.rightTabId, 'r');
+}
+{
+  // Доля показываемой пары — то, ради чего её и ищут: она едет в раскладку окна.
+  const nodes = [pair('l1', 'r1', 0.3), pair('l2', 'r2', 0.7)];
+  check('доля берётся у СВОЕЙ пары', findActiveSplitPairNode(nodes, 'l2')?.ratio, 0.7);
 }
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
