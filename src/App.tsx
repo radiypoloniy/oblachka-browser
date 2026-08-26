@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { X } from 'lucide-react';
 import Sidebar, { FaviconTile } from './components/Sidebar';
 import Toolbar from './components/Toolbar';
@@ -14,6 +14,7 @@ import { useContentBounds } from './app/useContentBounds';
 import { useTabOrganizer } from './app/useTabOrganizer';
 import { useAiPanel } from './app/useAiPanel';
 import { useBrowserModel } from './app/useBrowserModel';
+import { useSidebarCollapse } from './app/useSidebarCollapse';
 import { useDownloads } from './app/useDownloads';
 import { usePageTranslate } from './app/usePageTranslate';
 import { useVpnConnection } from './app/useVpnConnection';
@@ -184,12 +185,6 @@ const splitPanelStyle = (active: boolean, flex: number, empty: boolean): CSSProp
   transition: 'box-shadow var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard)',
 });
 
-// Ниже COLLAPSE_THRESHOLD сайдбар схлопывается принудительно.
-// Выше EXPAND_THRESHOLD — восстанавливается желаемое состояние пользователя.
-// Зазор 20 px = гистерезис: убирает дёрганье на границе.
-const SIDEBAR_COLLAPSE_THRESHOLD = 960;
-const SIDEBAR_EXPAND_THRESHOLD   = 980;
-
 export default function App() {
   console.log('[renderer-alive] App смонтирован')
 
@@ -262,13 +257,8 @@ export default function App() {
     handleOrganizeRollback, handleRenameRollback, handleRollbackAll,
   } = useTabOrganizer({ tabs, sidebarNodes, hasOrganizeSnapshot, hasRenameSnapshot });
 
-  // desired — что выбрал пользователь (идёт в автосейв, когда он появится).
-  // effective — что реально отображается (может быть принудительно true при узком окне).
-  // Авто-схлопывание НЕ пишет в desired и НЕ пишет в автосейв.
-  const [desiredCollapsed, setDesiredCollapsed] = useState(false);
-  const [effectiveCollapsed, setEffectiveCollapsed] = useState(false);
-  const desiredCollapsedRef = useRef(desiredCollapsed);
-  desiredCollapsedRef.current = desiredCollapsed;
+  // Схлопывание сайдбара: выбор человека и принудительное схлопывание на узком окне.
+  const { collapsed: sidebarCollapsed, setCollapsed: setSidebarCollapsed } = useSidebarCollapse();
 
   const omniboxRef = useRef<HTMLInputElement>(null);
 
@@ -348,28 +338,6 @@ export default function App() {
     };
   }, []);
 
-  // ── Авто-схлопывание сайдбара по ширине окна ──
-  // Пересчитывается при каждом resize. Гистерезис: схлопнуть < 960, развернуть > 980.
-  const updateSidebarCollapse = useCallback(() => {
-    const w = window.innerWidth;
-    if (w < SIDEBAR_COLLAPSE_THRESHOLD) {
-      setEffectiveCollapsed(true);
-    } else if (w >= SIDEBAR_EXPAND_THRESHOLD) {
-      setEffectiveCollapsed(desiredCollapsedRef.current);
-    }
-    // в зоне гистерезиса [960, 980) — не меняем effective
-  }, []);
-
-  // Ручное переключение из сайдбара: всегда пишем в desired.
-  // В effective применяем сразу, только если окно не в зоне принудительного схлопывания.
-  const handleSidebarCollapse = useCallback((v: boolean) => {
-    setDesiredCollapsed(v);
-    desiredCollapsedRef.current = v;
-    if (window.innerWidth >= SIDEBAR_COLLAPSE_THRESHOLD) {
-      setEffectiveCollapsed(v);
-    }
-  }, []);
-
   // ── Drag разделителя split ──
   // setPointerCapture удерживает pointermove на разделителе даже когда курсор
   // уходит над нативными WebContentsViews (в Electron/Aura все вьюхи в одном HWND).
@@ -404,12 +372,6 @@ export default function App() {
     handlePanelDragPointerUp, handlePanelDragPointerCancel,
   } = useSplitPanelDrag({ splitLeft, splitRight, isSplit, contentRef });
 
-  useLayoutEffect(() => {
-    updateSidebarCollapse(); // начальная проверка при маунте
-    window.addEventListener('resize', updateSidebarCollapse);
-    return () => window.removeEventListener('resize', updateSidebarCollapse);
-  }, [updateSidebarCollapse]);
-
   return (
     // ⚠️ Цветной фон рисуется ЗДЕСЬ, одним слоем на всё окно. Раньше он жил в Sidebar.tsx и
     // красил только сайдбар — из-за чего тот и выглядел боковой плашкой: цветной прямоугольник
@@ -440,8 +402,8 @@ export default function App() {
           «вкладок слишком мало» (см. Sidebar.tsx). */}
       <Sidebar
         tabs={tabs} activeId={activeId}
-        collapsed={effectiveCollapsed}
-        onCollapsedChange={handleSidebarCollapse}
+        collapsed={sidebarCollapsed}
+        onCollapsedChange={setSidebarCollapsed}
         onSelect={select} onClose={close} onNewTab={newTab} onNewTabMenu={() => { void window.oblako.showNewTabMenu(); }}
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
         onSplit={(id) => enterSplit(id)}
