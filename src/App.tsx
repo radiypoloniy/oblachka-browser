@@ -10,12 +10,15 @@ import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { islandPlate, chromeTintStyle, tintedPlateVars, chromeSpaceStyle } from './styles/island';
 import { useSplitPanelDrag } from './app/useSplitPanelDrag';
+import { useDownloads } from './app/useDownloads';
+import { usePageTranslate } from './app/usePageTranslate';
+import { useVpnConnection } from './app/useVpnConnection';
 import { useChromeAppearance } from './app/useChromeAppearance';
 import { watchGenClocks } from './newtab/genClocks';
 import { setDesktopProfile } from './newtab/desktop';
 import ProfilePicker from './components/ProfilePicker';
 import { isDarkTheme } from '../shared/ipc';
-import type { SyncState, TabState, DownloadEntry, SidebarNode, SplitPairNode, VpnConnectionState, PageTranslateState, PageTranslateProgress, ClusterProposal, ThemePrefs } from '../shared/ipc';
+import type { SyncState, TabState, SidebarNode, SplitPairNode, ClusterProposal, ThemePrefs } from '../shared/ipc';
 import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
 import { RADIUS } from './styles/system';
 
@@ -231,13 +234,9 @@ export default function App() {
   // главном окне выглядит правильно; в лёгком лишние кнопки просто исчезнут первым же ответом.
   const [isLightWindow, setIsLightWindow] = useState(false);
   const [activeId, setActiveId] = useState(HUB_ID);
-  // VPN, шаг 3 — реальное состояние вместо мока (было: локальный boolean, всегда true при старте,
-  // «Финляндия» захардкожена в Toolbar.tsx). Индикатор, который не отражает, действительно ли
-  // сейчас блокируется/маршрутизируется трафик, — прямая противоположность тому, что должен
-  // давать fail-closed (см. electron/main.ts::applyVpnProxy). null — статус ещё не загружен.
-  const [vpnConn, setVpnConn] = useState<VpnConnectionState | null>(null);
-  const [pageTranslateState, setPageTranslateState] = useState<PageTranslateState>('idle');
-  const [pageTranslateProgress, setPageTranslateProgress] = useState<PageTranslateProgress | null>(null);
+  const vpnConn = useVpnConnection();
+  const { pageTranslateState, pageTranslateProgress } = usePageTranslate();
+  const { downloads, downloadsActive, downloadsProgress, downloadStartTick } = useDownloads();
   // Оформление (см. ThemePrefs в shared/ipc.ts). Владеет значением main — оно на диске и одно на
   // все окна; здесь только копия для отрисовки. До первого ответа держим светлую — она же дефолт
   // настроек, поэтому мигания «тёмная → светлая» на старте не будет.
@@ -257,7 +256,6 @@ export default function App() {
   // Экран первого запуска — рассказ о браузере + перенос данных (см. Onboarding.tsx). Отдельно
   // от importDialog: тот остался ручным импортом из настроек, с другим тоном и объёмом.
   const [onboarding, setOnboarding] = useState(false);
-  const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -431,27 +429,6 @@ export default function App() {
     };
   }, []);
 
-  // Подписка на обновления загрузок.
-  useEffect(() => {
-    void window.oblako.getDownloads().then(setDownloads);
-    const unsub = window.oblako.onDownloadsChanged(setDownloads);
-    return () => unsub();
-  }, []);
-
-  // VPN, шаг 3 — реальный статус подключения для тулбарной пилюли (см. VpnPill в Toolbar.tsx).
-  useEffect(() => {
-    void window.oblako.getVpnConnectionState().then(setVpnConn);
-    const unsub = window.oblako.onVpnConnectionStateChanged(setVpnConn);
-    return () => unsub();
-  }, []);
-
-  // Состояние полностраничного перевода для кнопки в тулбаре (см. PageTranslateManager.ts).
-  useEffect(() => {
-    void window.oblako.getPageTranslateState().then(setPageTranslateState);
-    const unsub = window.oblako.onPageTranslateStateChanged(setPageTranslateState);
-    return () => unsub();
-  }, []);
-
   // Персистентная ширина AI-дока (заход 3) — читаем один раз при маунте (как hubMode/searchEngine
   // в Settings.tsx), дальше живёт в локальном стейте и обновляется во время драга.
   useEffect(() => {
@@ -462,13 +439,6 @@ export default function App() {
   // внутри панели тоже сюда доезжают, не только тоггл в тулбаре — см. AiPanelManager.ts::setOpenState).
   useEffect(() => {
     const unsub = window.oblako.onAiPanelStateChanged(setAiPanelOpen);
-    return () => unsub();
-  }, []);
-
-  // Прогресс перевода страницы (батч N/M + живой счётчик символов) — только push, без get: живёт
-  // секунды, гонка старта окна ей не грозит (см. PageTranslateProgress в shared/ipc.ts).
-  useEffect(() => {
-    const unsub = window.oblako.onPageTranslateProgressChanged(setPageTranslateProgress);
     return () => unsub();
   }, []);
 
@@ -709,34 +679,6 @@ export default function App() {
     void window.oblako.organizeRollback();
     setUndoDismissed(true);
   }, []);
-
-  const downloadsActive = downloads.some((d) => d.state === 'progressing');
-  // Совокупный прогресс всех идущих загрузок — по БАЙТАМ, а не как среднее процентов: иначе
-  // мелкий файл рядом с большим тянул бы шкалу вперёд, хотя работа почти не сдвинулась.
-  // null — считать нечего (нечего качать либо ни у одного файла неизвестен размер).
-  const downloadsProgress = (() => {
-    const live = downloads.filter((d) => d.state === 'progressing' && d.totalBytes > 0);
-    if (live.length === 0) return null;
-    const total = live.reduce((n, d) => n + d.totalBytes, 0);
-    const done = live.reduce((n, d) => n + d.receivedBytes, 0);
-    return total > 0 ? Math.min(1, done / total) : null;
-  })();
-  // Тик «началась новая загрузка» — сигнал для анимации прилёта в кнопку. Считаем по ПОЯВЛЕНИЮ
-  // нового id, а не по downloadsActive: тот истинен всё время скачивания, и анимация по нему
-  // играла бы один раз на пачку файлов либо повторялась на каждом кадре прогресса.
-  const seenDownloadIds = useRef<Set<string> | null>(null);
-  const [downloadStartTick, setDownloadStartTick] = useState(0);
-  useEffect(() => {
-    const ids = new Set(downloads.map((d) => d.id));
-    // Первый приход списка — это восстановление с диска, а не новые загрузки: запоминаем молча.
-    if (seenDownloadIds.current === null) { seenDownloadIds.current = ids; return; }
-    // ⚠️ Ловим ЛЮБОЙ новый id, а не только 'progressing'. Мелкий файл успевает докачаться до
-    // того, как список доедет до рендерера, и приходит уже 'completed' — по прежнему условию
-    // такая загрузка проходила молча, то есть анимация не играла именно на быстрых файлах.
-    const fresh = downloads.some((d) => !seenDownloadIds.current!.has(d.id));
-    seenDownloadIds.current = ids;
-    if (fresh) setDownloadStartTick((n) => n + 1);
-  }, [downloads]);
 
   const select = (id: string) => { setActiveId(id); window.oblako.activateTab(id); };
   const newTab = () => { setActiveId(HUB_ID); window.oblako.activateTab(HUB_ID); };
