@@ -1,7 +1,7 @@
 {
   "electron/AiPanelManager.ts": {
-    "lines": 903,
-    "fn": 250,
+    "lines": 928,
+    "fn": 262,
     "effects": 0,
     "ipc": 0
   },
@@ -66,8 +66,8 @@
     "ipc": 24
   },
   "src/aipanel.tsx": {
-    "lines": 1313,
-    "fn": 984,
+    "lines": 1317,
+    "fn": 986,
     "effects": 8,
     "ipc": 0
   },

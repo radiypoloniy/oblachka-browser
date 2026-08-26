@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('aiPanel', {
   // Кнопка-подсказка «Перевести» — без текста: направление (src/tgt) решает main после извлечения
   // и детекции языка страницы, см. AiPanelManager.ts.
   quickTranslate: () => ipcRenderer.send('ai-panel:quick-translate'),
+  // Очистить беседу текущей вкладки. Ответом придёт обычный ai-panel:context с пустой лентой —
+  // отдельного канала «очищено» нет намеренно: панель и так умеет показывать присланную ленту.
+  clearChat: () => ipcRenderer.send('ai-panel:clear-chat'),
   onChatChunk: (cb: (text: string) => void) => {
     const handler = (_e: unknown, text: string) => cb(text);
     ipcRenderer.on('ai-panel:chat-chunk', handler);

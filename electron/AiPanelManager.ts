@@ -165,6 +165,23 @@ interface TabChatContext {
 }
 
 const tabContexts = new Map<string, TabChatContext>()
+
+// Начать беседу этой вкладки с чистого листа. Сбрасываются ЧЕТЫРЕ поля, и все четыре нужны:
+// лента для человека, история для Qwen и извлечённый текст страницы — чтобы следующий вопрос
+// перечитал её заново и снова получил контекст страницы первым ходом (см. needsExtraction в
+// ai-panel:chat-send: текст подмешивается ровно когда pageText === null).
+//
+// ⚠️ Одна функция на два входа: смена URL вкладки (страница другая — разговор другой) и кнопка
+// «очистить» в панели. Раньше это были те же четыре строки прямо в обработчике смены URL, и
+// кнопка неизбежно завела бы им копию — а разойтись копиям здесь означало бы «после очистки
+// модель отвечает без страницы».
+function resetChat(ctx: TabChatContext, url: string): void {
+  ctx.url = url
+  ctx.messages = []
+  ctx.history = []
+  ctx.pageText = null
+  ctx.pageMarkdown = null
+}
 let activeTabId: string | null = null
 let activeTabUrl = ''
 let activeTabTitle = ''
@@ -457,11 +474,7 @@ export function onTabsSynced(tabsSnapshot: TabState[]): void {
   // сравнивать с ним после этой строчки было бы уже не с чем (оба всегда совпадут).
   let urlChanged = false
   if (ctx.url !== active.url) {
-    ctx.url = active.url
-    ctx.messages = []
-    ctx.history = []
-    ctx.pageText = null // другая страница — извлечём заново при следующем вопросе (лениво)
-    ctx.pageMarkdown = null
+    resetChat(ctx, active.url) // другая страница — другой разговор, текст извлечём заново
     urlChanged = true
   }
 
@@ -641,6 +654,18 @@ function ensureIpcRegistered(): void {
         wc.send('ai-panel:chat-result', outcome)
       }
     })()
+  })
+
+  // Кнопка «очистить беседу» в шапке панели. То же, что происходит само при уходе на другую
+  // страницу, только по просьбе человека и не сходя с места: лента пустеет, Qwen забывает
+  // разговор, а текст страницы будет извлечён заново на следующий вопрос — то есть остаётся
+  // ровно тот контекст, что есть на странице, и ничего сверх него.
+  ipcMain.on('ai-panel:clear-chat', () => {
+    if (!activeTabId) return
+    const ctx = tabContexts.get(activeTabId)
+    if (!ctx) return
+    resetChat(ctx, activeTabUrl)
+    sendCurrentContext()
   })
 
   // Кнопка-подсказка «Перевести» — двунаправленный перевод СТРАНИЦЫ тем же определением

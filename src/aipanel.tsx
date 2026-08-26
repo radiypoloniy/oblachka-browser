@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Plus, ChevronDown } from 'lucide-react';
+import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Plus, ChevronDown, RotateCcw } from 'lucide-react';
 import './styles/global.css';
 import { markdownComponents } from './components/aiMarkdown';
 import { AppsMode, loadWallpaper, saveWallpaper, wallpaperBackground } from './components/aiApps';
@@ -121,6 +121,8 @@ declare global {
       // webGrounding — тоггл-глобус: true → main отвечает через SearXNG-ветку (см. AiPanelManager.ts).
       sendChat: (text: string, webGrounding: boolean) => void
       quickTranslate: () => void
+      // Очистить беседу текущей вкладки — main ответит обычным onContext с пустой лентой.
+      clearChat: () => void
       onChatChunk: (cb: (text: string) => void) => () => void
       onChatResult: (cb: (outcome: ChatOutcome) => void) => () => void
       onContext: (cb: (ctx: TabContext) => void) => () => void
@@ -400,11 +402,6 @@ function AiPanel() {
     try { return new URL(pageUrl).hostname.replace(/^www\./, '') } catch { return '' }
   })()
 
-  const handleDetachFromPage = () => {
-    // TODO: механика отвязки панели от активной вкладки — реализуем отдельно.
-    // Пока только визуальный элемент; кнопка намеренно ничего не делает.
-  }
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -566,8 +563,7 @@ function AiPanel() {
         </div>
 
         {/* Индикатор текущей страницы — парящий островок. Смена URL внутри вкладки обновит и его,
-            и ленту (сброшенную на новый разговор) одним и тем же onContext. Крестик = отвязать
-            панель от страницы (механика позже, см. handleDetachFromPage). */}
+            и ленту (сброшенную на новый разговор) одним и тем же onContext. */}
         {/* ⚠️ Чат ПРЯЧЕТСЯ, а не размонтируется. Раньше здесь стоял условный рендер, и режимы
             вели себя несимметрично: приложения переживали переключение (display:none), а чат
             каждый раз собирался заново — вся лента сообщений, разметка markdown, эффекты. Отсюда
@@ -643,18 +639,26 @@ function AiPanel() {
               {!modelState.label ? 'нет модели' : modelState.loaded ? 'в памяти' : 'поднимаю'}
             </span>
           )}
-          <button
-            onClick={handleDetachFromPage}
-            title="Отвязать панель от страницы"
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 22, height: 22, flexShrink: 0,
-              background: 'transparent', border: 'none', borderRadius: '50%',
-              color: 'var(--text-faint)', cursor: 'pointer', padding: 0,
-            }}
-          >
-            <X size={13} strokeWidth={2} />
-          </button>
+          {/* Очистить беседу — начать с чистого листа, не уходя со страницы. Показывается
+              только когда чистить есть что: на пустой ленте это была бы кнопка без действия.
+              Во время генерации гасится по той же причине, что и чипы подсказок (chipsBusy) —
+              иначе ответ приехал бы в уже очищенную ленту. */}
+          {messages.length > 0 && (
+            <button
+              onClick={() => window.aiPanel.clearChat()}
+              disabled={sending}
+              title="Очистить беседу"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 22, height: 22, flexShrink: 0,
+                background: 'transparent', border: 'none', borderRadius: '50%',
+                color: 'var(--text-faint)', cursor: sending ? 'default' : 'pointer', padding: 0,
+                opacity: sending ? 0.4 : 1,
+              }}
+            >
+              <RotateCcw size={13} strokeWidth={2} />
+            </button>
+          )}
         </div>
 
         {/* Лента сообщений — minHeight:0 обязателен, иначе flex-контейнер не даёт себе схлопнуться
