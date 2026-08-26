@@ -10,6 +10,7 @@ import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { islandPlate, chromeTintStyle, tintedPlateVars, chromeSpaceStyle } from './styles/island';
 import { useSplitPanelDrag } from './app/useSplitPanelDrag';
+import { useAiPanel } from './app/useAiPanel';
 import { useDownloads } from './app/useDownloads';
 import { usePageTranslate } from './app/usePageTranslate';
 import { useVpnConnection } from './app/useVpnConnection';
@@ -189,12 +190,6 @@ const SIDEBAR_EXPAND_THRESHOLD   = 980;
 const SPLIT_RATIO_MIN = 0.2;
 const SPLIT_RATIO_MAX = 0.8;
 
-// Заход 3 — AI-хаб: поповер → правый док, тянется как split (см. App.tsx::handleAiDivider*).
-// Клампы дублируют electron/AiPanelManager.ts (главный источник истины — там; здесь только
-// живой визуальный превью во время драга, до подтверждения основным процессом).
-const AI_PANEL_WIDTH_MIN = 300;
-const AI_PANEL_WIDTH_MAX = 640;
-
 // Показываемая пара — не «первая в дереве с нужным splitSide» (при 2+ парах это может
 // быть ЧУЖАЯ, непоказываемая пара), а та, что реально содержит activeId — тот же принцип,
 // что #activePair() в TabManager.ts. Рекурсивно, т.к. пара может лежать внутри группы.
@@ -259,12 +254,12 @@ export default function App() {
   const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
 
-  // AI-хаб (заход 3): правый док вместо поповера. aiPanelOpen — источник истины main
-  // (toggleAiPanel возвращает актуальное open), не локальный тоггл — тот же принцип, что и
-  // остальные push/invoke-состояния этого файла (vpnConn, adBlockState, ...).
-  const [aiPanelOpen, setAiPanelOpen] = useState(false);
-  const [aiPanelWidth, setAiPanelWidthState] = useState(360);
-  const [isAiPanelDragging, setIsAiPanelDragging] = useState(false);
+  // AI-хаб (заход 3): правый док вместо поповера — открытость, ширина и её делитель.
+  const {
+    aiPanelOpen, aiPanelWidth, isAiPanelDragging,
+    aiPanelContainerRef, toggleAiPanel,
+    handleAiDividerPointerDown, handleAiDividerPointerMove, handleAiDividerPointerUp,
+  } = useAiPanel();
 
   // AI-группировка: состояние флоу + предложения + наличие снимка для отката
   const [organizeState, setOrganizeState] = useState<'idle' | 'computing' | 'preview' | 'model-error'>('idle');
@@ -429,19 +424,6 @@ export default function App() {
     };
   }, []);
 
-  // Персистентная ширина AI-дока (заход 3) — читаем один раз при маунте (как hubMode/searchEngine
-  // в Settings.tsx), дальше живёт в локальном стейте и обновляется во время драга.
-  useEffect(() => {
-    void window.oblako.getAiPanelWidth().then(setAiPanelWidthState);
-  }, []);
-
-  // Источник истины для aiPanelOpen — push из main на ЛЮБОЕ закрытие/открытие (крестик/Escape
-  // внутри панели тоже сюда доезжают, не только тоггл в тулбаре — см. AiPanelManager.ts::setOpenState).
-  useEffect(() => {
-    const unsub = window.oblako.onAiPanelStateChanged(setAiPanelOpen);
-    return () => unsub();
-  }, []);
-
   // ── Авто-схлопывание сайдбара по ширине окна ──
   // Пересчитывается при каждом resize. Гистерезис: схлопнуть < 960, развернуть > 980.
   const updateSidebarCollapse = useCallback(() => {
@@ -502,33 +484,6 @@ export default function App() {
     handlePanelDragPointerDown, handlePanelDragPointerMove,
     handlePanelDragPointerUp, handlePanelDragPointerCancel,
   } = useSplitPanelDrag({ splitLeft, splitRight, isSplit, contentRef });
-
-  // ── Drag разделителя AI-дока (заход 3) — та же схема pointer capture, что у split-
-  // разделителя выше, только ширина считается от ПРАВОГО края контейнера (тянем левый край
-  // дока влево/вправо), а не ratio от левого. Контейнер — тот же самый div, что содержит и
-  // contentRef, и этот разделитель, и spacer дока (см. JSX ниже) — его правая граница
-  // совпадает с правым краем окна-контента.
-  const aiPanelContainerRef = useRef<HTMLDivElement>(null);
-
-  const handleAiDividerPointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    setIsAiPanelDragging(true);
-  }, []);
-
-  const handleAiDividerPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) return;
-    const container = aiPanelContainerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const width = Math.max(AI_PANEL_WIDTH_MIN, Math.min(AI_PANEL_WIDTH_MAX, rect.right - e.clientX));
-    setAiPanelWidthState(width);
-    window.oblako.resizeAiPanel(width);
-  }, []);
-
-  const handleAiDividerPointerUp = useCallback((_e: React.PointerEvent) => {
-    setIsAiPanelDragging(false);
-  }, []);
 
   // ── Главное: измеряем "дырку" под контент и сообщаем main, ──
   // ── куда положить WebContentsView активной вкладки.       ──
@@ -770,7 +725,7 @@ export default function App() {
           downloadsActive={downloadsActive}
           downloadsProgress={downloadsProgress}
           downloadStartTick={downloadStartTick}
-          onToggleAiPanel={() => { void window.oblako.toggleAiPanel(); }}
+          onToggleAiPanel={toggleAiPanel}
           aiPanelOpen={aiPanelOpen}
           pageTranslateState={pageTranslateState}
           pageTranslateProgress={pageTranslateProgress}
