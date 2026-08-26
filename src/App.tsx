@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { X } from 'lucide-react';
 import Sidebar, { FaviconTile } from './components/Sidebar';
 import Toolbar from './components/Toolbar';
@@ -16,6 +16,8 @@ import { useAiPanel } from './app/useAiPanel';
 import { useBrowserModel } from './app/useBrowserModel';
 import { useSidebarCollapse } from './app/useSidebarCollapse';
 import { useSplitDivider } from './app/useSplitDivider';
+import { useFileDropGuard } from './app/useFileDropGuard';
+import { useChromeShortcuts } from './app/useChromeShortcuts';
 import { useDownloads } from './app/useDownloads';
 import { usePageTranslate } from './app/usePageTranslate';
 import { useVpnConnection } from './app/useVpnConnection';
@@ -254,24 +256,11 @@ export default function App() {
   // Схлопывание сайдбара: выбор человека и принудительное схлопывание на узком окне.
   const { collapsed: sidebarCollapsed, setCollapsed: setSidebarCollapsed } = useSidebarCollapse();
 
-  const omniboxRef = useRef<HTMLInputElement>(null);
+  // Фокус в адресную строку и открытие псевдо-вкладок с клавиатуры — push из main.
+  const omniboxRef = useChromeShortcuts(openSpecial);
 
-  // ⚠️ ПРЕДОХРАНИТЕЛЬ ОТ ДРОПА ФАЙЛА В САМ ИНТЕРФЕЙС. Слой хрома — обычная веб-страница, и по
-  // умолчанию Chromium на брошенный файл её ПЕРЕОТКРЫВАЕТ: у нас это означало голое окно без
-  // вкладок и адресной строки (а в худшем случае — подмену самого интерфейса браузера файлом).
-  // Ни одного места, где такой жест что-то осмысленно значит, в чроме нет: адресная строка
-  // обрабатывает дроп сама и до сюда его не пускает (stopPropagation), перетаскивание вкладок
-  // живёт на pointer-событиях dnd-kit и HTML5-драга не использует вовсе. Поэтому здесь глухая
-  // заглушка, а не разбор случаев.
-  useEffect(() => {
-    const swallow = (e: DragEvent) => { e.preventDefault(); };
-    document.addEventListener('dragover', swallow);
-    document.addEventListener('drop', swallow);
-    return () => {
-      document.removeEventListener('dragover', swallow);
-      document.removeEventListener('drop', swallow);
-    };
-  }, []);
+  // Брошенный в интерфейс файл не должен переоткрывать слой хрома (разбор — в шапке хука).
+  useFileDropGuard();
 
   useEffect(() => {
     window.oblako.getWindowRole()
@@ -296,32 +285,6 @@ export default function App() {
       void window.oblako.markOnboardingShown();
     });
     return () => { cancelled = true; };
-  }, []);
-
-  // Подписки на разные push-события хрома — один раз на маунт. FindBar (открытие/закрытие/
-  // результат) сюда больше не входит — переехал в отдельную WebContentsView, см.
-  // electron/FindBarManager.ts (main сам решает, когда её показать/спрятать/куда слать счётчик).
-  useEffect(() => {
-    const unsubOmnibox = window.oblako.onOmniboxFocus(() => {
-      omniboxRef.current?.focus();
-      omniboxRef.current?.select();
-    });
-
-    // Ctrl+H — та же псевдо-вкладка, что и иконка в сайдбаре (см. onHistory prop у Sidebar
-    // ниже): всегда создаёт новую (простая, предсказуемая семантика, как у обычного createTab —
-    // без «переключиться на уже открытую, если есть»).
-    const unsubHistory = window.oblako.onHistoryOpen(() => {
-      void openSpecial('history');
-    });
-
-    const unsubDownloadsOpen = window.oblako.onDownloadsOpen(() => {
-      void openSpecial('downloads');
-    });
-
-    return () => {
-      unsubOmnibox();
-      unsubHistory(); unsubDownloadsOpen();
-    };
   }, []);
 
   // Замер «дырки» под контент и отправка её в main — стык, на котором держится показ страниц.
