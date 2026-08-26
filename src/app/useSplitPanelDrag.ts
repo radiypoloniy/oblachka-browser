@@ -72,7 +72,14 @@ export function useSplitPanelDrag(opts: {
   const endPanelDrag = useCallback((apply: boolean) => {
     const d = panelDragRef.current;
     panelDragRef.current = null;
-    if (!d?.started) return;
+    if (!d?.started) {
+      // ⚠️ Состояние в React чистим ВСЕГДА, даже когда обрывать нечего. Оно могло пережить
+      // прошлый жест (см. страховку в pointerdown ниже), а тогда шапка остаётся пустой и
+      // ненажимаемой на вид, хотя никакого жеста уже нет. Когда состояние и так пусто, вызов
+      // бесплатен: React сравнивает значение и не перерисовывает.
+      setPanelDrag(null);
+      return;
+    }
     if (d.cursorFrame !== null) cancelAnimationFrame(d.cursorFrame);
     setPanelDrag(null);
     window.oblako.sendSplitDragCursor(null);
@@ -95,6 +102,13 @@ export function useSplitPanelDrag(opts: {
     if (e.button !== 0) return;
     // Крестик в шапке — своя кнопка, драг с неё не начинаем.
     if ((e.target as HTMLElement).closest('button')) return;
+    // ⚠️ ПРОШЛЫЙ ЖЕСТ ЗАКРЫВАЕМ ЯВНО, а не затираем ссылкой ниже. Затирание молча теряло его:
+    // React-состояние оставалось «эту панель несут» (шапка пустая, на вид неактивная), в main
+    // оставалась раскладка жеста, а следующий pointerup выходил сразу — у свежей записи
+    // started === false. Дальше залипание жило до разрыва сплита. Тот же приём, что у
+    // перетаскивания вкладки (DropZoneManager::startTabDrag первой строкой зовёт stopDrag) и что
+    // у страховки в TabManager::applyPanelDragLayout — теперь он есть на обоих концах.
+    if (panelDragRef.current) endPanelDrag(false);
     // ⚠️ Без preventDefault: он гасит совместимостные mouse-события, а вместе с ними рискует унести
     // и click — а клик по шапке обязан по-прежнему фокусировать панель (onClick рамки). Выделение
     // текста при протяжке снимает userSelect:'none' на самой шапке, отдельный preventDefault не нужен.
@@ -120,7 +134,7 @@ export function useSplitPanelDrag(opts: {
       // Драг мог начаться раньше, чем пришёл снимок — тогда карточка подменяет подпись на ходу.
       if (d.started) window.oblako.sendSplitDragThumb(thumb);
     });
-  }, []);
+  }, [endPanelDrag]);
 
   const handlePanelDragPointerMove = useCallback((e: ReactPointerEvent) => {
     const d = panelDragRef.current;
