@@ -13,6 +13,7 @@ import { useSplitPanelDrag } from './app/useSplitPanelDrag';
 import { useContentBounds } from './app/useContentBounds';
 import { useTabOrganizer } from './app/useTabOrganizer';
 import { useAiPanel } from './app/useAiPanel';
+import { useBrowserModel } from './app/useBrowserModel';
 import { useDownloads } from './app/useDownloads';
 import { usePageTranslate } from './app/usePageTranslate';
 import { useVpnConnection } from './app/useVpnConnection';
@@ -21,12 +22,10 @@ import { watchGenClocks } from './newtab/genClocks';
 import { setDesktopProfile } from './newtab/desktop';
 import ProfilePicker from './components/ProfilePicker';
 import { isDarkTheme } from '../shared/ipc';
-import { findActiveSplitPairNode } from '../shared/nodeTree';
-import type { SyncState, TabState, SidebarNode, ThemePrefs } from '../shared/ipc';
-import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS, clampSplitRatio } from '../shared/layout';
+import type { TabState, ThemePrefs } from '../shared/ipc';
+import { ISLAND_GAP, SHELL_MARGIN, SPLIT_HEADER_HEIGHT, SPLIT_PANE_INSET, SPLIT_PANE_RADIUS } from '../shared/layout';
 import { RADIUS } from './styles/system';
 
-const HUB_ID = 'hub';
 
 // «Остров» позади реальной вкладки (обычная страница/её ошибка, не hub) — та же плашка,
 // что уже рисуют History/Settings/Bookmarks под собой (radius-island/shadow-island,
@@ -207,13 +206,20 @@ export default function App() {
     return window.oblako.onProfilesChanged((p) => setDesktopProfile(p.activeId));
   }, []);
 
-  const [tabs, setTabs] = useState<TabState[]>([]);
-  const [sidebarNodes, setSidebarNodes] = useState<SidebarNode[]>([]);
+  // ⚠️ Модель браузера — ПЕРВОЙ среди хуков: от activeIncognito зависит тема, от activeId —
+  // замер области контента, от tabs/nodes — жест сплита и группировка (разбор — в шапке хука).
+  const {
+    tabs, sidebarNodes, activeId, splitRatio,
+    hasOrganizeSnapshot, hasRenameSnapshot,
+    active, activeIncognito, isHub, tabError, kind,
+    splitLeft, splitRight, isSplit,
+    select, newTab, close, submit, openSpecial, enterSplit, setSplitRatio,
+  } = useBrowserModel();
+
   // Роль своего окна (см. shared/ipc.ts::WindowRole). Спрашивается один раз: окно не меняет роль
   // за свою жизнь. До ответа считаем окно полным — это состояние живёт доли секунды и только в
   // главном окне выглядит правильно; в лёгком лишние кнопки просто исчезнут первым же ответом.
   const [isLightWindow, setIsLightWindow] = useState(false);
-  const [activeId, setActiveId] = useState(HUB_ID);
   const vpnConn = useVpnConnection();
   const { pageTranslateState, pageTranslateProgress } = usePageTranslate();
   const { downloads, downloadsActive, downloadsProgress, downloadStartTick } = useDownloads();
@@ -236,7 +242,6 @@ export default function App() {
   // Экран первого запуска — рассказ о браузере + перенос данных (см. Onboarding.tsx). Отдельно
   // от importDialog: тот остался ручным импортом из настроек, с другим тоном и объёмом.
   const [onboarding, setOnboarding] = useState(false);
-  const [splitRatio, setSplitRatioState] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
 
   // AI-хаб (заход 3): правый док вместо поповера — открытость, ширина и её делитель.
@@ -248,8 +253,6 @@ export default function App() {
 
   // Снимки для отката живут в main, сюда приезжают синхронизацией (см. applySync ниже) — поэтому
   // они принадлежат App, а не флоу группировки: тот их только читает.
-  const [hasOrganizeSnapshot, setHasOrganizeSnapshot] = useState(false);
-  const [hasRenameSnapshot, setHasRenameSnapshot] = useState(false);
 
   // AI-группировка: предложить группы, применить, назвать вкладки и откатить любую половину.
   const {
@@ -268,26 +271,6 @@ export default function App() {
   desiredCollapsedRef.current = desiredCollapsed;
 
   const omniboxRef = useRef<HTMLInputElement>(null);
-
-  const active = tabs.find((t) => t.id === activeId);
-  // Активна ли приватная вкладка — тогда весь chrome (острова, тулбар, титлбар) уходит в тёмный
-  // «инкогнито»-режим (как отдельное окно инкогнито в Chrome, но у нас — по активной вкладке).
-  const activeIncognito = active?.incognito ?? false;
-  const isHub = active?.isHub ?? true;
-  const tabError = active?.tabError ?? null;
-  // kind — заход на псевдо-вкладки (История/Настройки, см. shared/ipc.ts::TabState.kind):
-  // отдельно от isHub (тот трогать рискованно, читается ~15+ мест) — только для нового рендер-пути.
-  const kind = active?.kind ?? 'hub';
-
-  // Split View: показываемая пара — та, что в дереве СОДЕРЖИТ activeId (findActiveSplitPairNode),
-  // а не первая в tabs с нужным splitSide — при 2+ парах плоский .find() по splitSide всегда
-  // попадал бы на первую по порядку пару в дереве, а не на реально активную (см. историю).
-  // При «припаркованном» split (смотрим другую вкладку вне пары) — узел не найден, isSplit=false,
-  // но splitSide у обеих вкладок той пары не null → сайдбар показывает Columns2-индикатор.
-  const activeSplitPairNode = findActiveSplitPairNode(sidebarNodes, activeId);
-  const splitLeft  = activeSplitPairNode ? tabs.find((t) => t.id === activeSplitPairNode.leftTabId) : undefined;
-  const splitRight = activeSplitPairNode ? tabs.find((t) => t.id === activeSplitPairNode.rightTabId) : undefined;
-  const isSplit = !!splitLeft && !!splitRight;
 
   // ⚠️ ПРЕДОХРАНИТЕЛЬ ОТ ДРОПА ФАЙЛА В САМ ИНТЕРФЕЙС. Слой хрома — обычная веб-страница, и по
   // умолчанию Chromium на брошенный файл её ПЕРЕОТКРЫВАЕТ: у нас это означало голое окно без
@@ -339,28 +322,6 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // Атомарная подписка: tabs + nodes в одном IPC-сообщении → один рендер, нет рассинхрона.
-  useEffect(() => {
-    const applySync = (s: SyncState) => {
-      setTabs(s.tabs);
-      setSidebarNodes(s.nodes);
-      setHasOrganizeSnapshot(s.hasOrganizeSnapshot);
-      setHasRenameSnapshot(s.hasRenameSnapshot);
-      const active = s.tabs.find((x) => x.isActive);
-      if (active) setActiveId(active.id);
-      // Та же пара, что реально будет показана (findActiveSplitPairNode) — не первая в дереве
-      // с нужным splitSide, иначе при 2+ парах ratio восстанавливался бы для чужой пары.
-      const activePairNode = active ? findActiveSplitPairNode(s.nodes, active.id) : null;
-      if (activePairNode) {
-        setSplitRatioState(clampSplitRatio(activePairNode.ratio));
-      }
-    };
-    let mounted = true;
-    window.oblako.getSyncState().then((s) => { if (mounted) applySync(s); });
-    const unsub = window.oblako.onSyncChanged((s) => { if (mounted) applySync(s); });
-    return () => { mounted = false; unsub(); };
-  }, []);
-
   // Подписки на разные push-события хрома — один раз на маунт. FindBar (открытие/закрытие/
   // результат) сюда больше не входит — переехал в отдельную WebContentsView, см.
   // electron/FindBarManager.ts (main сам решает, когда её показать/спрятать/куда слать счётчик).
@@ -374,12 +335,11 @@ export default function App() {
     // ниже): всегда создаёт новую (простая, предсказуемая семантика, как у обычного createTab —
     // без «переключиться на уже открытую, если есть»).
     const unsubHistory = window.oblako.onHistoryOpen(() => {
-      void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })();
-      
+      void openSpecial('history');
     });
 
     const unsubDownloadsOpen = window.oblako.onDownloadsOpen(() => {
-      void (async () => { setActiveId(await window.oblako.createSpecialTab('downloads')); })();
+      void openSpecial('downloads');
     });
 
     return () => {
@@ -413,13 +373,6 @@ export default function App() {
   // ── Drag разделителя split ──
   // setPointerCapture удерживает pointermove на разделителе даже когда курсор
   // уходит над нативными WebContentsViews (в Electron/Aura все вьюхи в одном HWND).
-  // Вкладка сброшена в область контента → split (dragged = right, activeId = left).
-  // side — край, за который тянули: вкладка встаёт именно туда, куда её вели (см. TabDropResult).
-  const handleDropOnContent = useCallback((tabId: string, side?: 'left' | 'right') => {
-    setSplitRatioState(0.5);
-    void window.oblako.enterSplit(tabId, side);
-  }, []);
-
   const handleDividerPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -432,10 +385,8 @@ export default function App() {
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const ratio = clampSplitRatio(x / rect.width);
-    setSplitRatioState(ratio);
-    void window.oblako.setSplitRatio(ratio);
-  }, []);
+    setSplitRatio(x / rect.width);
+  }, [setSplitRatio]);
 
   const handleDividerPointerUp = useCallback((_e: React.PointerEvent) => {
     setIsDragging(false);
@@ -458,19 +409,6 @@ export default function App() {
     window.addEventListener('resize', updateSidebarCollapse);
     return () => window.removeEventListener('resize', updateSidebarCollapse);
   }, [updateSidebarCollapse]);
-
-  const select = (id: string) => { setActiveId(id); window.oblako.activateTab(id); };
-  const newTab = () => { setActiveId(HUB_ID); window.oblako.activateTab(HUB_ID); };
-  const close = (id: string) => { window.oblako.closeTab(id); };
-
-  const submit = async (input: string) => {
-    if (isHub) {
-      const id = await window.oblako.createTab(input);
-      setActiveId(id);
-    } else {
-      window.oblako.navigate(activeId, input);
-    }
-  };
 
   return (
     // ⚠️ Цветной фон рисуется ЗДЕСЬ, одним слоем на всё окно. Раньше он жил в Sidebar.tsx и
@@ -506,14 +444,14 @@ export default function App() {
         onCollapsedChange={handleSidebarCollapse}
         onSelect={select} onClose={close} onNewTab={newTab} onNewTabMenu={() => { void window.oblako.showNewTabMenu(); }}
         onTabMenu={(id) => { void window.oblako.showTabMenu(id); }}
-        onSplit={(id) => { setSplitRatioState(0.5); void window.oblako.enterSplit(id); }}
+        onSplit={(id) => enterSplit(id)}
         onExitSplit={(tabId) => { void window.oblako.exitSplit(tabId); }}
-        onSettings={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })();  }}
-        onHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })();  }}
+        onSettings={() => void openSpecial('settings')}
+        onHistory={() => void openSpecial('history')}
         onReorder={(section, ids) => { void window.oblako.reorderTabs(section, ids); }}
         onMoveSection={(tabId, section, idx) => { void window.oblako.moveTabSection(tabId, section, idx); }}
         sidebarNodes={sidebarNodes}
-        onDropOnContent={handleDropOnContent}
+        onDropOnContent={enterSplit}
         returnHint={panelDrag?.zone === 'sidebar'}
         organizeTabsCount={isLightWindow ? 0 : organizeTabsCount}
         organizeState={organizeState}
@@ -694,8 +632,8 @@ export default function App() {
             isHub
               ? <Hub
                   tabId={activeId} onSubmit={submit} isLightWindow={isLightWindow}
-                  onOpenHistory={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('history')); })(); }}
-                  onOpenSettings={() => { void (async () => { setActiveId(await window.oblako.createSpecialTab('settings')); })(); }}
+                  onOpenHistory={() => void openSpecial('history')}
+                  onOpenSettings={() => void openSpecial('settings')}
                 />
               : (
                 <div style={TAB_FRAME_STYLE}>
