@@ -3377,6 +3377,19 @@ export class TabManager {
     // Припаркованную пару не трогаем: её вьюхи и так скрыты, двигать нечего.
     if (!pair || pair !== this.#activePair()) return;
 
+    // ⚠️ СТРАХОВКА ОТ НЕЗАКРЫТОГО ЖЕСТА. Попасть сюда можно только одним способом: о прошлом
+    // жесте не пришло закрывающее сообщение. Без этой ветки состояние — ТУПИК: repositionViews держит
+    // несомую вью скрытой при каждом пересчёте, а жест по ДРУГОЙ половине молча игнорируется; выйти
+    // можно было только разорвав сплит (exitSplit сбрасывает panelDrag) или перезапустив приложение.
+    // Тот же приём, что у вкладки: startTabDrag первой строкой зовёт stopDrag по той же причине.
+    // ⚠️ ПРИЧИНА ПОТЕРИ НЕ НАЙДЕНА: баг пойман живьём один раз (шапка половины перестала
+    // таскаться, лечилось разрывом сплита) и не воспроизводится. Отсюда и лог: если страховка
+    // когда-нибудь сработает, она назовёт случай сама.
+    if (this.panelDrag && this.panelDrag.tabId !== hint.tabId) {
+      console.warn('[split-drag] прошлый жест не закрылся штатно:', this.panelDrag.tabId, '→ новый:', hint.tabId);
+      this.#endPanelDragLayout();
+    }
+
     if (!this.panelDrag) {
       this.panelDrag = { tabId: hint.tabId, preview: false };
       const carried = this.tabMap.get(hint.tabId);
@@ -3384,7 +3397,6 @@ export class TabManager {
       // ⚠️ onChange тут НЕ зовём: модель не изменилась (вкладки и дерево те же), поменялась только
       // видимость вьюхи. Лишний прогон синхронизации перерисовал бы весь чром посреди жеста.
     }
-    if (this.panelDrag.tabId !== hint.tabId) return;
 
     const wantPreview = hint.zone === 'swap';
     if (this.panelDrag.preview === wantPreview) return;
