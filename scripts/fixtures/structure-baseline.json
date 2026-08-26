@@ -66,7 +66,7 @@
     "ipc": 24
   },
   "src/aipanel.tsx": {
-    "lines": 1317,
+    "lines": 1237,
     "fn": 986,
     "effects": 8,
     "ipc": 0
