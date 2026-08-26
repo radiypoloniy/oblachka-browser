@@ -188,10 +188,19 @@ export class DownloadManager {
     if (this.#wiredSessions.has(sess)) return;
     this.#wiredSessions.add(sess);
     sess.on('will-download', (_event, item, wc) => {
+      // ⚠️ ИНИЦИАТОРА МОЖЕТ НЕ БЫТЬ, и типы про это молчат. В electron.d.ts третий аргумент
+      // объявлен как `webContents: WebContents` без null, но у загрузки, запущенной через
+      // session.downloadURL (это наш «Скачать заново», см. retry), никакой страницы-инициатора
+      // нет — приходит пусто. Прежнее `wc.id` первой же строкой роняло ВЕСЬ обработчик
+      // исключением: до setSavePath дело не доходило, Electron показывал системное «Сохранить
+      // как», а #registerItem не выполнялся вовсе — загрузка не появлялась в списке, и понять,
+      // идёт она или нет, было нельзя. С сайта тот же файл качался нормально: там wc настоящий.
+      const initiator: Electron.WebContents | null = wc ?? null;
+
       // Фоновая (не пользователем открытая) вкладка — см. BackgroundWebContents.ts. Отменяем
       // молча: прямая ссылка на файл на переоткрытой в фоне странице не должна класть файл
       // пользователю в Загрузки без его ведома.
-      if (isBackgroundWebContents(wc.id)) { item.cancel(); return; }
+      if (initiator && isBackgroundWebContents(initiator.id)) { item.cancel(); return; }
 
       // ⚠️ Путь задаём САМИ — иначе Electron показывает системный диалог «Сохранить как» на
       // каждый файл (именно так и было). setSavePath отменяет диалог целиком.
@@ -235,7 +244,10 @@ export class DownloadManager {
         ? null
         : this.#findDownloaded(url, filename, item.getTotalBytes(), profileId ?? getActiveProfile().id);
       this.#approvedOnce.delete(url);
-      if (already && this.#onDuplicate) {
+      // Без инициатора вопрос о дубле задать некому — поповер всплывает в ОКНЕ, где качают
+      // (см. #onDuplicate). Такой путь ровно один — наш собственный «Скачать заново», и он уже
+      // разрешён одноразово в retry, то есть до вопроса и не доходит.
+      if (already && this.#onDuplicate && initiator) {
         // ⚠️ Загрузку ОТМЕНЯЕМ, а не ставим на паузу. Пауза не спасает: маленький файл успевает
         // дойти до диска раньше, чем пауза применится, — замерено, второй файл появлялся, хотя
         // вопрос ещё висел на экране. Поэтому до ответа на диск не попадает ничего, а «всё равно
@@ -243,8 +255,8 @@ export class DownloadManager {
         // #approvedOnce не даёт спросить второй раз и уйти в цикл).
         try { item.cancel(); } catch { /* мог успеть завершиться */ }
         const askId = randomUUID();
-        this.#pendingDuplicates.set(askId, { url, wc, already });
-        this.#onDuplicate(wc, {
+        this.#pendingDuplicates.set(askId, { url, wc: initiator, already });
+        this.#onDuplicate(initiator, {
           askId,
           filename: already.filename,
           savePath: already.savePath,
