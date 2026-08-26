@@ -1180,7 +1180,7 @@ export default function Toolbar({
   // Клик по строке ВО вью нативного дропдауна (другой webContents, заход 3/5) — main пересылает
   // выбор сюда, вызываем тот же pickSuggestion(), что и старый chrome-DOM дропдаун (не дублируем
   // его поведение). Ref — чтобы не пересобирать подписку на каждый рендер (pickSuggestion не
-  // мемоизирована), тот же приём, что isHubRef/findOpenRef в App.tsx.
+  // мемоизирована), тот же приём, что allTabsRef в app/useTabOrganizer.ts.
   const pickSuggestionRef = useRef(pickSuggestion);
   pickSuggestionRef.current = pickSuggestion;
   useEffect(() => {

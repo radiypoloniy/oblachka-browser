@@ -308,15 +308,6 @@ export default function App() {
   const splitRight = activeSplitPairNode ? tabs.find((t) => t.id === activeSplitPairNode.rightTabId) : undefined;
   const isSplit = !!splitLeft && !!splitRight;
 
-  // Refs для использования актуальных значений внутри IPC-колбэков (замыкания).
-  const isHubRef = useRef(isHub);
-  isHubRef.current = isHub;
-  const kindRef = useRef(kind);
-  kindRef.current = kind;
-  // tabErrorRef нужен в pushBounds: reserve не применяем когда показана страница ошибки.
-  const tabErrorRef = useRef(tabError);
-  tabErrorRef.current = tabError;
-
   // ⚠️ ПРЕДОХРАНИТЕЛЬ ОТ ДРОПА ФАЙЛА В САМ ИНТЕРФЕЙС. Слой хрома — обычная веб-страница, и по
   // умолчанию Chromium на брошенный файл её ПЕРЕОТКРЫВАЕТ: у нас это означало голое окно без
   // вкладок и адресной строки (а в худшем случае — подмену самого интерфейса браузера файлом).

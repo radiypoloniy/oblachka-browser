@@ -60,8 +60,8 @@
     "ipc": 0
   },
   "src/App.tsx": {
-    "lines": 844,
-    "fn": 634,
+    "lines": 835,
+    "fn": 625,
     "effects": 11,
     "ipc": 46
   },
