@@ -10,6 +10,7 @@ import ImportDialog from './components/ImportDialog';
 import Onboarding from './components/Onboarding';
 import { islandPlate, chromeTintStyle, tintedPlateVars, chromeSpaceStyle } from './styles/island';
 import { useSplitPanelDrag } from './app/useSplitPanelDrag';
+import { useContentBounds } from './app/useContentBounds';
 import { useTabOrganizer } from './app/useTabOrganizer';
 import { useAiPanel } from './app/useAiPanel';
 import { useDownloads } from './app/useDownloads';
@@ -283,9 +284,6 @@ export default function App() {
   const desiredCollapsedRef = useRef(desiredCollapsed);
   desiredCollapsedRef.current = desiredCollapsed;
 
-  const contentRef = useRef<HTMLDivElement>(null);
-  // Актуальный DOMRect контент-зоны: обновляется ResizeObserver-ом, читается Sidebar во время drag.
-  const contentRectRef = useRef<DOMRect | null>(null);
   const omniboxRef = useRef<HTMLInputElement>(null);
 
   const active = tabs.find((t) => t.id === activeId);
@@ -460,6 +458,10 @@ export default function App() {
     setIsDragging(false);
   }, []);
 
+  // Замер «дырки» под контент и отправка её в main — стык, на котором держится показ страниц.
+  // ⚠️ Вызов стоит ДО useSplitPanelDrag: тот меряет contentRef, который заводит этот хук.
+  const contentRef = useContentBounds(activeId, isHub);
+
   // Перетаскивание половины сплита за её шапку — жест целиком в useSplitPanelDrag, там же разбор,
   // почему это pointer capture и почему карточку в руке рисует оверлей, а не чром.
   const {
@@ -468,63 +470,12 @@ export default function App() {
     handlePanelDragPointerUp, handlePanelDragPointerCancel,
   } = useSplitPanelDrag({ splitLeft, splitRight, isSplit, contentRef });
 
-  // ── Главное: измеряем "дырку" под контент и сообщаем main, ──
-  // ── куда положить WebContentsView активной вкладки.       ──
-  //
-  // Callback стабилен (deps=[]), читает актуальные значения через рефы.
-  // Отсечение повторов: pushBounds дёргается из ResizeObserver, window.resize и нескольких
-  // эффектов сразу, и они регулярно приходят с ОДНИМ И ТЕМ ЖЕ прямоугольником. Каждое сообщение
-  // заставляет main синхронно переставлять WebContentsView активной вкладки (см. чек-лист
-  // производительности: «главный поток заблокирован» + «чрезмерный IPC»), поэтому молчание при
-  // отсутствии изменений — не микрооптимизация, а снятие лишней работы с main-потока.
-  // Модуль-скоуп для ref не годится (компонент один, но так честнее к React) — храним в ref ниже.
-  const lastContentBoundsRef = useRef('');
-  const sendContentBounds = useCallback((b: { x: number; y: number; width: number; height: number }) => {
-    const key = `${b.x},${b.y},${b.width},${b.height}`;
-    if (key === lastContentBoundsRef.current) return;
-    lastContentBoundsRef.current = key;
-    void window.oblako.setContentBounds(b);
-  }, []);
-
-  const pushBounds = useCallback(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    // Загрузки теперь такая же псевдо-вкладка, как История и Настройки (view: null в
-    // TabManager, приём хаба): activate() сам прячет ранее показанную реальную вьюху, и
-    // отдельное «спрятать контент нулевыми bounds» для оверлея больше не нужно.
-    const r = el.getBoundingClientRect();
-    // Дропдаун омнибокса больше НЕ резервирует место — нативная вью (SuggestDropdownManager.ts)
-    // плавает поверх контента как самостоятельный оверлей (native z-order, addChildView), контенту
-    // сдвигаться незачем (заход 5: устранена дублирующая система, см. Toolbar.tsx).
-    // ⚠️ Резерва под запрос разрешения здесь больше НЕТ. Приглашение переехало в собственную
-    // WebContentsView поверх страницы (electron/PermissionPopoverManager.ts) — раньше оно
-    // откусывало 64 px сверху и роняло вёрстку живой страницы вниз-вверх на каждый вопрос.
-    sendContentBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
-  }, []);
-
-  useLayoutEffect(() => {
-    const updateAll = () => {
-      contentRectRef.current = contentRef.current?.getBoundingClientRect() ?? null;
-      pushBounds();
-    };
-    updateAll();
-    const ro = new ResizeObserver(updateAll);
-    if (contentRef.current) ro.observe(contentRef.current);
-    window.addEventListener('resize', updateAll);
-    return () => { ro.disconnect(); window.removeEventListener('resize', updateAll); };
-  }, [pushBounds]);
-
   useLayoutEffect(() => {
     updateSidebarCollapse(); // начальная проверка при маунте
     window.addEventListener('resize', updateSidebarCollapse);
     return () => window.removeEventListener('resize', updateSidebarCollapse);
   }, [updateSidebarCollapse]);
 
-  // когда переключаемся между хабом/страницей/псевдо-вкладкой (История/Настройки), геометрия
-  // дырки та же, но main должен переотобразить вьюху — пушим bounds ещё раз. activeId один уже
-  // покрывает переключение НА/С Истории и Настроек (это теперь обычная смена activeId, не
-  // отдельное состояние) — специальных эффектов под них больше не нужно.
-  useEffect(() => { pushBounds(); }, [activeId, isHub, pushBounds]);
   const select = (id: string) => { setActiveId(id); window.oblako.activateTab(id); };
   const newTab = () => { setActiveId(HUB_ID); window.oblako.activateTab(HUB_ID); };
   const close = (id: string) => { window.oblako.closeTab(id); };
