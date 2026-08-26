@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { X } from 'lucide-react';
 import Sidebar, { FaviconTile } from './components/Sidebar';
 import Toolbar from './components/Toolbar';
@@ -15,6 +15,7 @@ import { useTabOrganizer } from './app/useTabOrganizer';
 import { useAiPanel } from './app/useAiPanel';
 import { useBrowserModel } from './app/useBrowserModel';
 import { useSidebarCollapse } from './app/useSidebarCollapse';
+import { useSplitDivider } from './app/useSplitDivider';
 import { useDownloads } from './app/useDownloads';
 import { usePageTranslate } from './app/usePageTranslate';
 import { useVpnConnection } from './app/useVpnConnection';
@@ -237,7 +238,6 @@ export default function App() {
   // Экран первого запуска — рассказ о браузере + перенос данных (см. Onboarding.tsx). Отдельно
   // от importDialog: тот остался ручным импортом из настроек, с другим тоном и объёмом.
   const [onboarding, setOnboarding] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
 
   // AI-хаб (заход 3): правый док вместо поповера — открытость, ширина и её делитель.
   const {
@@ -338,31 +338,14 @@ export default function App() {
     };
   }, []);
 
-  // ── Drag разделителя split ──
-  // setPointerCapture удерживает pointermove на разделителе даже когда курсор
-  // уходит над нативными WebContentsViews (в Electron/Aura все вьюхи в одном HWND).
-  const handleDividerPointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    setIsDragging(true);
-  }, []);
-
-  const handleDividerPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) return;
-    const container = contentRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    setSplitRatio(x / rect.width);
-  }, [setSplitRatio]);
-
-  const handleDividerPointerUp = useCallback((_e: React.PointerEvent) => {
-    setIsDragging(false);
-  }, []);
-
   // Замер «дырки» под контент и отправка её в main — стык, на котором держится показ страниц.
   // ⚠️ Вызов стоит ДО useSplitPanelDrag: тот меряет contentRef, который заводит этот хук.
   const contentRef = useContentBounds(activeId, isHub);
+
+  // Делитель между половинами сплита. Стоит ПОСЛЕ замера: жест меряет ту же область контента.
+  const {
+    isDragging, handleDividerPointerDown, handleDividerPointerMove, handleDividerPointerUp,
+  } = useSplitDivider({ contentRef, onRatio: setSplitRatio });
 
   // Перетаскивание половины сплита за её шапку — жест целиком в useSplitPanelDrag, там же разбор,
   // почему это pointer capture и почему карточку в руке рисует оверлей, а не чром.
