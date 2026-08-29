@@ -1,0 +1,279 @@
+import { useState } from 'react';
+import { PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
+import { arrayMove } from '@dnd-kit/sortable';
+import type { TabState, SidebarNode, GroupNode, TabDropResult, DragCard } from '../../../shared/ipc';
+import { findNodeByTopId } from './nodeIds';
+import { useOptimisticOrder } from './useOptimisticOrder';
+import type { ChildDragZone } from './useGroupChildOrder';
+
+// Стабильный id droppable-контейнера секции «Открытые вкладки».
+const SECTION_NORMAL_ID = 'drop-section-normal';
+
+/**
+ * Перетаскивание в сайдбаре целиком: оптимистичный порядок, ghost-состояние, разбор исхода
+ * (перестановка / split / новое окно / передача соседнему окну) и производные списки, которые
+ * от этого порядка зависят.
+ *
+ * ⚠️ Сам оптимистичный порядок живёт в useOptimisticOrder и приезжает сюда готовым. Связь
+ * между ними односторонняя и в этом весь смысл разделения: порядок применяется синхронно в
+ * момент дропа (иначе dnd-kit анимирует приземление по СТАРОМУ ряду, см. handleDragEnd), а
+ * жест лишь говорит, что поставить (applyOrder) и когда откатить (revert) — по ответу main о
+ * зоне. Обратных вызовов из порядка в жест нет.
+ */
+export function useSidebarDrag({
+  tabs, sidebarNodes, onReorder, onMoveSection, onDropOnContent,
+}: {
+  tabs: TabState[];
+  sidebarNodes: SidebarNode[];
+  onReorder: (section: 'normal' | 'pinned', orderedIds: string[]) => void;
+  onMoveSection: (tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number) => void;
+  onDropOnContent: (tabId: string, side?: 'left' | 'right') => void;
+}) {
+  // Оптимистичный порядок: применяется сразу при drop, до ответа main.
+  // Оптимистичный порядок и производные от него списки — в useOptimisticOrder.
+  const { tabMap, pinned, effectiveNodes, pinnedIds, openIds, applyOrder, revert: revertLocalOrder }
+    = useOptimisticOrder({ tabs, sidebarNodes });
+
+  // ID активного drag-элемента (может быть tabId одиночной, left.id пары или
+  // 'group:${id}') — САМ id не говорит, какого типа узел: у одиночной и у левой
+  // панели пары id выглядит одинаково (голый tabId). Резолвим РЕАЛЬНЫЙ тип, найдя
+  // узел в дереве (findNodeByTopId), а не гадая по виду строки.
+  const [dragActiveId, setDragActiveId] = useState<string | null>(null);
+  // Закреплённые живут ОТДЕЛЬНОЙ структурой (TabManager.pinnedTabs), в sidebarNodes их нет —
+  // findNodeByTopId по дереву пин не находит. Отсюда и пропадала иконка при перетаскивании:
+  // оригинал гасил себя (opacity:0 в расчёте на призрак), а призрака никто не рисовал.
+  // Резолвим пин отдельно и ДО дерева — заодно исключает двойной призрак в окне
+  // рассинхрона, когда только что закреплённая вкладка ещё висит и в sidebarNodes.
+  const dragPinnedTab: TabState | null = dragActiveId
+    ? (pinned.find((t) => t.id === dragActiveId) ?? null)
+    : null;
+  const dragNode: SidebarNode | null = dragActiveId && !dragPinnedTab
+    ? findNodeByTopId(sidebarNodes, dragActiveId)
+    : null;
+  const dragTab: TabState | null = dragNode?.type === 'single'
+    ? (tabs.find((t) => t.id === dragNode.tabId) ?? null)
+    : null;
+  const dragGroup: GroupNode | null = dragNode?.type === 'group' ? dragNode : null;
+  const dragPairTabs: { left: TabState; right: TabState } | null = (() => {
+    if (dragNode?.type !== 'split-pair') return null;
+    const left  = tabs.find((t) => t.id === dragNode.leftTabId);
+    const right = tabs.find((t) => t.id === dragNode.rightTabId);
+    return left && right ? { left, right } : null;
+  })();
+
+  // PointerSensor с минимальным расстоянием активации: клики не превращаются в drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  // Droppable-контейнер секции «Открытые вкладки» для дропа из pinned в пустую секцию.
+  const { setNodeRef: setNormalDropRef } = useDroppable({ id: SECTION_NORMAL_ID });
+
+
+  // Зоны дропа для детей группы. Собраны здесь, потому что и tabDragStart, и разбор результата
+  // (applyZoneDrop) уже живут в этой области видимости; компонентам групп уезжает готовый набор.
+  // useMemo — чтобы объект не пересоздавался на каждый рендер и не дёргал хук внутри групп.
+  // ⚠️ БЕЗ useMemo, и это не небрежность. С пустым списком зависимостей объект замыкал
+  // applyZoneDrop ПЕРВОГО рендера, а тот, в свою очередь, — список вкладок первого рендера,
+  // то есть пустой (вкладки приезжают из main позже). Дальше всё выглядело исправным:
+  // подсветку рисует main по реальному курсору, зона возвращалась верная, а applyZoneDrop
+  // не находил вкладку по id в пустом массиве и молча не делал ничего. Ровно поэтому жест
+  // работал вне групп и не работал внутри: снаружи применяется свежий обработчик, внутри —
+  // замороженный. Пересоздание объекта на каждый рендер безвредно: он живёт только внутри
+  // обработчиков и ни в один список зависимостей не входит.
+  const childDragZone: ChildDragZone = {
+    start: (id: string) => { void window.oblako.tabDragStart(dragCardFor(id)); },
+    finish: (e: DragEndEvent) => finishDrag().then((res) => applyZoneDrop(e, res)),
+    // Отмена (Esc, потеря указателя): зоны надо погасить, но исход не применять.
+    cancel: () => { void window.oblako.tabDragEnd().catch(() => {}); },
+  };
+
+  // Что нести в руке над страницей: имя и значок. Карточку рисует оверлей (чром над областью
+  // контента не виден), поэтому данные для неё уходят в main сразу на старте. У папки одной
+  // страницы нет — ей достаётся имя без значка.
+  const dragCardFor = (id: string): DragCard | null => {
+    if (id.startsWith('group:')) {
+      const g = findNodeByTopId(sidebarNodes, id);
+      return g?.type === 'group' ? { title: g.label, favicon: null } : null;
+    }
+    const tab = tabMap.get(id);
+    if (!tab) return null;
+    return { title: tab.title || tab.url || 'Вкладка', favicon: tab.faviconUrl };
+  };
+
+  const handleDragStart = (e: DragStartEvent) => {
+    const id = e.active.id as string;
+    setDragActiveId(id);
+    // Зоны дропа поверх страницы и слежение за курсором — на стороне main: нативная вью страницы
+    // и рисовать поверх себя не даёт, и указатель у чрома забирает (см. DropZoneManager.ts).
+    void window.oblako.tabDragStart(dragCardFor(id));
+  };
+
+  // Хвост любого драга — снять слушатель, погасить подсветку контент-зоны, сбросить id.
+  // Отдельной функцией, потому что нужен и в конце драга, и в ОТМЕНЕ (Esc, потеря указателя):
+  // при отмене dnd-kit зовёт onDragCancel вместо onDragEnd, и без этого pointermove-слушатель
+  // оставался висеть на document навсегда, продолжая дёргать onDragOverContent на каждое
+  // движение мыши, а подсветка «бросить сюда» — залипать.
+  // Хвост любого драга: убрать зоны и вернуть последнюю — main считает её по реальному курсору.
+  // Зовётся и в конце, и в ОТМЕНЕ (Esc, потеря указателя), иначе зоны остались бы висеть.
+  const finishDrag = (): Promise<TabDropResult> => {
+    setDragActiveId(null);
+    return window.oblako.tabDragEnd().catch(() => ({ zone: null }));
+  };
+
+
+  // Зону, в которой отпустили, знает main (см. finishDrag) — поэтому решение асинхронное.
+  //
+  // ⚠️ Но НОВЫЙ ПОРЯДОК В СПИСКЕ применяется синхронно, прямо здесь, до всякого ожидания.
+  // Раньше ждали и его тоже, и от этого перетаскивание выглядело сломанным: dnd-kit запускает
+  // анимацию приземления в тот же миг, когда обработчик вернул управление, и меряет исходный
+  // ряд ТАМ, ГДЕ ОН СЕЙЧАС. А он в этот момент ещё на старом месте — призрак улетал обратно,
+  // откуда вкладку взяли, и только потом список перескакивал в новый порядок. Механика при
+  // этом работала верно, врала одна анимация.
+  // Порядок и так оптимистичный (localOpenOrder/localPinnedOrder — см. выше), main его лишь
+  // подтверждает, поэтому применить на кадр раньше ничего не стоит. Команда же в main уходит
+  // по-прежнему только после ответа о зоне, а если зона оказалась не сайдбаром — порядок
+  // откатывается тем же кадром, в котором пришёл ответ.
+  const handleDragEnd = (e: DragEndEvent) => {
+    const commit = planReorder(e, { pinnedIds, openIds, applyOrder, onReorder, onMoveSection });
+    void (async () => {
+      const drop = await finishDrag();
+      if (applyZoneDrop(e, drop)) { revertLocalOrder(); return; }
+      commit?.();
+    })();
+  };
+
+  /**
+   * Исходы, которые перестановкой в сайдбаре не являются: split, вынос в новое окно, передача
+   * в соседнее. Возвращает true, если дроп забрала зона, — тогда локальный порядок откатывается.
+   */
+  const applyZoneDrop = (e: DragEndEvent, { zone, windowId, side, replaceId }: TabDropResult): boolean => {
+    const draggedId = e.active.id as string;
+    const draggedTab = draggedId.startsWith('group:') ? undefined : tabs.find((t) => t.id === draggedId);
+    // Группу и участника split не выносим: у первой нет одной страницы, второй увёл бы за собой
+    // половину пары. Хаб — не страница вовсе.
+    const canDetach = !!draggedTab && !draggedTab.isHub && draggedTab.splitSide === null;
+
+    // Середина страницы (и всё, что вне окна) — «новое окно». Это и есть ответ на развёрнутое во
+    // весь экран окно: выйти за его край там некуда, поэтому жест не должен зависеть от границы.
+    if (zone === 'window' && canDetach) {
+      void window.oblako.moveTabToNewWindow(draggedId);
+      return true;
+    }
+    // Отпустили над ДРУГИМ окном Oblako — вкладка переезжает в него. Это обратный жест к
+    // выносу: вытащенное по ошибке окно возвращается перетаскиванием, а не только закрытием.
+    if (zone === 'adopt' && windowId !== undefined && canDetach) {
+      void window.oblako.moveTabToWindow(draggedId, windowId);
+      return true;
+    }
+    // Отпустили над панелью уже открытого сплита — вкладка занимает её место, выселенная
+    // возвращается в список. Ту же проверку, что и у split ниже: группу и половину чужой пары
+    // на панель не кладём.
+    if (zone === 'replace' && replaceId) {
+      if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
+        void window.oblako.replaceSplitPanel(replaceId, draggedId);
+      }
+      return true;
+    }
+    // Дроп в контент-зону → split вместо reorder. Сторону считает main по реальному курсору
+    // (см. TabDropResult.side) — вкладка встаёт туда, куда её вели, а не всегда справа.
+    // Группы в split не входят — проверяем только обычные вкладки.
+    if (zone === 'split') {
+      if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
+        onDropOnContent(draggedId, side);
+      }
+      return true;
+    }
+    return false;
+  };
+
+
+  return {
+    tabMap, pinned, effectiveNodes, pinnedIds, openIds,
+    sensors, setNormalDropRef, childDragZone,
+    dragActiveId, dragNode, dragPinnedTab, dragTab, dragGroup, dragPairTabs,
+    handleDragStart, handleDragEnd, finishDrag,
+  };
+}
+
+
+interface PlanContext {
+  pinnedIds: string[];
+  openIds: string[];
+  applyOrder: (next: { open?: string[]; pinned?: string[] }) => void;
+  onReorder: (section: 'normal' | 'pinned', orderedIds: string[]) => void;
+  onMoveSection: (tabId: string, targetSection: 'pinned' | 'normal', targetIndex: number) => void;
+}
+
+/**
+ * Перестановка в сайдбаре: локальный порядок применяется СРАЗУ (ради анимации приземления,
+ * см. handleDragEnd), а команду в main возвращаем отложенной — её отправит только тот, кто
+ * дождался зоны. null — дроп ничего не меняет.
+ */
+function planReorder(e: DragEndEvent, ctx: PlanContext): (() => void) | null {
+const { pinnedIds, openIds, applyOrder, onReorder, onMoveSection } = ctx;
+  const { active, over } = e;
+
+  if (!over || active.id === over.id) return null;
+
+  const activeItemId = active.id as string;
+  const overId       = over.id  as string;
+
+  const isActivePinned      = pinnedIds.includes(activeItemId);
+  const overIsPinnedTab     = pinnedIds.includes(overId);
+  const overIsNormalItem    = openIds.includes(overId);
+  const overIsNormalSection = overId === SECTION_NORMAL_ID;
+
+  const overInPinned = overIsPinnedTab;
+  const overInNormal = overIsNormalItem || overIsNormalSection;
+
+  if (!overInPinned && !overInNormal) return null;
+
+  const crossSection = (isActivePinned && overInNormal) || (!isActivePinned && overInPinned);
+
+  if (crossSection) {
+    // Группы нельзя перемещать в закреплённые — это операция только над вкладками
+    if (activeItemId.startsWith('group:')) return null;
+
+    const targetSection: 'pinned' | 'normal' = overInNormal ? 'normal' : 'pinned';
+
+    let targetIndex: number;
+    if (overIsNormalSection) {
+      targetIndex = openIds.length;
+    } else if (overIsNormalItem) {
+      targetIndex = openIds.indexOf(overId);
+    } else {
+      targetIndex = pinnedIds.indexOf(overId);
+    }
+
+    if (targetSection === 'normal') {
+      const newPinnedIds = pinnedIds.filter((id) => id !== activeItemId);
+      const newOpenIds   = [...openIds];
+      newOpenIds.splice(targetIndex, 0, activeItemId);
+      applyOrder({ open: newOpenIds, pinned: newPinnedIds });
+    } else {
+      const newOpenIds   = openIds.filter((id) => id !== activeItemId);
+      const newPinnedIds = [...pinnedIds];
+      newPinnedIds.splice(targetIndex, 0, activeItemId);
+      applyOrder({ open: newOpenIds, pinned: newPinnedIds });
+    }
+    return () => onMoveSection(activeItemId, targetSection, targetIndex);
+  }
+
+  // ── Перемещение внутри секции ─────────────────────────────────────────
+  if (isActivePinned) {
+    const oldIdx = pinnedIds.indexOf(activeItemId);
+    const newIdx = overIsPinnedTab ? pinnedIds.indexOf(overId) : -1;
+    if (newIdx < 0 || oldIdx === newIdx) return null;
+    const newOrder = arrayMove(pinnedIds, oldIdx, newIdx);
+    applyOrder({ pinned: newOrder });
+    return () => onReorder('pinned', newOrder);
+  }
+
+  const oldIdx = openIds.indexOf(activeItemId);
+  const newIdx = overIsNormalItem ? openIds.indexOf(overId) : -1;
+  if (newIdx < 0 || oldIdx === newIdx) return null;
+  const newOrder = arrayMove(openIds, oldIdx, newIdx);
+  applyOrder({ open: newOrder });
+  return () => onReorder('normal', newOrder);
+}

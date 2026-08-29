@@ -1,32 +1,22 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 // Свои значки — см. разбор в glyphs.tsx.
 import { PanelGlyph, PlusGlyph, SlidersGlyph, CloseGlyph, ClockGlyph, SparkGlyph } from './glyphs';
 import { islandPlate } from '../styles/island';
 import SidebarBookmarks from './SidebarBookmarks';
-import {
-  DndContext, DragOverlay,
-  PointerSensor, useSensor, useSensors,
-  closestCenter, useDroppable,
-  type DragStartEvent, type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext, verticalListSortingStrategy, rectSortingStrategy, arrayMove,
-} from '@dnd-kit/sortable';
+import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, rectSortingStrategy } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropResult, DragCard } from '../../shared/ipc';
+import type { TabState, SidebarNode, ClusterProposal } from '../../shared/ipc';
 import { RADIUS } from '../styles/system';
 import { useSidebarWidth, SIDEBAR_HANDLE_OUTSET } from './sidebar/useSidebarWidth';
-import { nodeToTopId, findNodeByTopId } from './sidebar/nodeIds';
+import { nodeToTopId } from './sidebar/nodeIds';
 import { useTabDragOverPage } from './sidebar/useTabDragOverPage';
 import { GROUP_COLORS } from './sidebar/groupColors';
 import { FolderGlyph, CollapsedNodeCells, CollapsedGroupIsland, SortableCollapsedItem, collapsedGhostPlate } from './sidebar/collapsed';
-import { type ChildDragZone } from './sidebar/useGroupChildOrder';
 import { SortableGroupBlock } from './sidebar/GroupBlock';
 import { asideBase, utilIconBtn, ModeSwitch, SectionLabel, UndoChip } from './sidebar/chrome';
+import { useSidebarDrag } from './sidebar/useSidebarDrag';
 import { TabRow, SortableTabRow, PairTile, SortablePairBlock, IconCell, SortablePinCell } from './sidebar/rows';
-
-// Стабильный id droppable-контейнера секции «Открытые вкладки».
-const SECTION_NORMAL_ID = 'drop-section-normal';
 
 
 
@@ -91,9 +81,14 @@ export default function Sidebar({
 }: SidebarProps) {
 
   const dragOverPage = useTabDragOverPage();
-  // Оптимистичный порядок: применяется сразу при drop, до ответа main.
-  const [localPinnedOrder, setLocalPinnedOrder] = useState<string[] | null>(null);
-  const [localOpenOrder,   setLocalOpenOrder]   = useState<string[] | null>(null);
+  // Перетаскивание и оптимистичный порядок — в useSidebarDrag. Там же разбор, почему порядок
+  // применяется синхронно, а исход дожидается ответа main.
+  const {
+    tabMap, pinned, effectiveNodes, pinnedIds, openIds,
+    sensors, setNormalDropRef, childDragZone,
+    dragNode, dragPinnedTab, dragTab, dragGroup, dragPairTabs,
+    handleDragStart, handleDragEnd, finishDrag,
+  } = useSidebarDrag({ tabs, sidebarNodes, onReorder, onMoveSection, onDropOnContent });
   // ID группы, которая сейчас в режиме inline-переименования
   const [renameGroupId, setRenameGroupId] = useState<string | null>(null);
   // Что показывает сайдбар. Состояние взгляда, а не данных: переживать перезапуск ему незачем,
@@ -113,52 +108,13 @@ export default function Sidebar({
     if (mode === 'bookmarks') setMode('tabs');
   };
 
-  const REORDER_CONFIRM_MS = 3000;
-  const openTimeoutRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pinnedTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const moveListenerRef   = useRef<((e: PointerEvent) => void) | null>(null);
-
-  // Валидация оптимистичного порядка при любом изменении tabs или sidebarNodes.
-  // Если состав ID изменился → сброс (закрытие/открытие/группировка).
-  // Если порядок совпал с оптимистичным → подтверждение, сброс.
-  useEffect(() => {
-    const newTopIds    = sidebarNodes.map(nodeToTopId);
-    const newPinnedIds = tabs.filter((t) => t.isPinned && !t.isHub).map((t) => t.id);
-
-    const decide = (cur: string[], newIds: string[]): string[] | null => {
-      const curSet = new Set(cur);
-      if (cur.length !== newIds.length || newIds.some((id) => !curSet.has(id))) return null;
-      if (cur.every((id, i) => id === newIds[i])) return null;
-      return cur;
-    };
-
-    setLocalOpenOrder((cur)   => (cur === null ? null : decide(cur, newTopIds)));
-    setLocalPinnedOrder((cur) => (cur === null ? null : decide(cur, newPinnedIds)));
-  }, [tabs, sidebarNodes]);
 
   // Подписка на GROUP_RENAME_PROMPT: нативное меню просит начать inline-переименование
   useEffect(() => {
     return window.oblako.onGroupRenamePrompt((groupId) => setRenameGroupId(groupId));
   }, []);
 
-  // Очистка таймаутов и pointermove-слушателя при размонтировании.
-  useEffect(() => {
-    return () => {
-      if (openTimeoutRef.current)   clearTimeout(openTimeoutRef.current);
-      if (pinnedTimeoutRef.current) clearTimeout(pinnedTimeoutRef.current);
-      if (moveListenerRef.current) {
-        document.removeEventListener('pointermove', moveListenerRef.current);
-        moveListenerRef.current = null;
-      }
-    };
-  }, []);
 
-  const pinnedBase = tabs.filter((t) => t.isPinned && !t.isHub);
-
-  // Карта tabId → TabState для O(1)-поиска (нужна до pinned: при активной оптимистике
-  // ищем вкладку здесь, а не в pinnedBase — tabs ещё не обновился).
-  const tabMap = new Map(tabs.map((t) => [t.id, t]));
   // Звук вкладки из СВЁРНУТОЙ полосы: там у ячейки нет ничего, кроме значка сайта, и значок
   // звука на нём — единственная кнопка, до которой можно дотянуться, не разворачивая панель.
   // Вторая дверь — пункт в меню по правой кнопке (electron/ipc/menus.ts).
@@ -167,292 +123,7 @@ export default function Sidebar({
     if (t) void window.oblako.setTabMuted(id, !t.muted);
   };
 
-  // pinned: при активном localPinnedOrder берём TabState из tabMap.
-  // Это даёт мгновенный показ X в секции закреплённых ДО ответа main —
-  // без этого pinned.find() не находит X (tabs ещё isPinned=false) и dnd-kit
-  // анимирует snap-back.
-  const pinned: TabState[] = localPinnedOrder
-    ? localPinnedOrder.map((id) => tabMap.get(id)).filter((t): t is TabState => t !== undefined && !t.isHub)
-    : pinnedBase;
 
-  // Набор «эффективно закреплённых» для фильтрации открытой секции:
-  // оптимистика в приоритете — это предотвращает дубль X в обеих секциях
-  // во время race-окна между TABS_CHANGED и SIDEBAR_NODES_CHANGED
-  // (два сообщения приходят отдельными рендерами).
-  const effectivePinnedIds: Set<string> = localPinnedOrder
-    ? new Set(localPinnedOrder)
-    : new Set(pinnedBase.map((t) => t.id));
-
-  // Канонические ID верхнего уровня: single→tabId, pair→leftTabId, group→'group:${id}'
-  const topLevelOpenIds = sidebarNodes.map(nodeToTopId);
-
-  // Карта topId → SidebarNode для восстановления порядка при localOpenOrder
-  const nodeByTopId = new Map<string, SidebarNode>();
-  for (const node of sidebarNodes) {
-    nodeByTopId.set(nodeToTopId(node), node);
-  }
-  const effectiveNodes: SidebarNode[] = (localOpenOrder
-    ? localOpenOrder.map((id) => nodeByTopId.get(id)).filter((n): n is SidebarNode => n !== undefined)
-    : sidebarNodes
-  ).filter((node) => {
-    if (node.type === 'single') return !effectivePinnedIds.has(node.tabId);
-    return true;
-  });
-
-  // ID активного drag-элемента (может быть tabId одиночной, left.id пары или
-  // 'group:${id}') — САМ id не говорит, какого типа узел: у одиночной и у левой
-  // панели пары id выглядит одинаково (голый tabId). Резолвим РЕАЛЬНЫЙ тип, найдя
-  // узел в дереве (findNodeByTopId), а не гадая по виду строки.
-  const [dragActiveId, setDragActiveId] = useState<string | null>(null);
-  // Закреплённые живут ОТДЕЛЬНОЙ структурой (TabManager.pinnedTabs), в sidebarNodes их нет —
-  // findNodeByTopId по дереву пин не находит. Отсюда и пропадала иконка при перетаскивании:
-  // оригинал гасил себя (opacity:0 в расчёте на призрак), а призрака никто не рисовал.
-  // Резолвим пин отдельно и ДО дерева — заодно исключает двойной призрак в окне
-  // рассинхрона, когда только что закреплённая вкладка ещё висит и в sidebarNodes.
-  const dragPinnedTab: TabState | null = dragActiveId
-    ? (pinned.find((t) => t.id === dragActiveId) ?? null)
-    : null;
-  const dragNode: SidebarNode | null = dragActiveId && !dragPinnedTab
-    ? findNodeByTopId(sidebarNodes, dragActiveId)
-    : null;
-  const dragTab: TabState | null = dragNode?.type === 'single'
-    ? (tabs.find((t) => t.id === dragNode.tabId) ?? null)
-    : null;
-  const dragGroup: GroupNode | null = dragNode?.type === 'group' ? dragNode : null;
-  const dragPairTabs: { left: TabState; right: TabState } | null = (() => {
-    if (dragNode?.type !== 'split-pair') return null;
-    const left  = tabs.find((t) => t.id === dragNode.leftTabId);
-    const right = tabs.find((t) => t.id === dragNode.rightTabId);
-    return left && right ? { left, right } : null;
-  })();
-
-  // PointerSensor с минимальным расстоянием активации: клики не превращаются в drag.
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  );
-
-  // Droppable-контейнер секции «Открытые вкладки» для дропа из pinned в пустую секцию.
-  const { setNodeRef: setNormalDropRef } = useDroppable({ id: SECTION_NORMAL_ID });
-
-  const pinnedIds = pinned.map((t) => t.id);
-  const openIds = (localOpenOrder ?? topLevelOpenIds).filter((id) => !effectivePinnedIds.has(id));
-
-  // Зоны дропа для детей группы. Собраны здесь, потому что и tabDragStart, и разбор результата
-  // (applyZoneDrop) уже живут в этой области видимости; компонентам групп уезжает готовый набор.
-  // useMemo — чтобы объект не пересоздавался на каждый рендер и не дёргал хук внутри групп.
-  // ⚠️ БЕЗ useMemo, и это не небрежность. С пустым списком зависимостей объект замыкал
-  // applyZoneDrop ПЕРВОГО рендера, а тот, в свою очередь, — список вкладок первого рендера,
-  // то есть пустой (вкладки приезжают из main позже). Дальше всё выглядело исправным:
-  // подсветку рисует main по реальному курсору, зона возвращалась верная, а applyZoneDrop
-  // не находил вкладку по id в пустом массиве и молча не делал ничего. Ровно поэтому жест
-  // работал вне групп и не работал внутри: снаружи применяется свежий обработчик, внутри —
-  // замороженный. Пересоздание объекта на каждый рендер безвредно: он живёт только внутри
-  // обработчиков и ни в один список зависимостей не входит.
-  const childDragZone: ChildDragZone = {
-    start: (id: string) => { void window.oblako.tabDragStart(dragCardFor(id)); },
-    finish: (e: DragEndEvent) => finishDrag().then((res) => applyZoneDrop(e, res)),
-    // Отмена (Esc, потеря указателя): зоны надо погасить, но исход не применять.
-    cancel: () => { void window.oblako.tabDragEnd().catch(() => {}); },
-  };
-
-  // Что нести в руке над страницей: имя и значок. Карточку рисует оверлей (чром над областью
-  // контента не виден), поэтому данные для неё уходят в main сразу на старте. У папки одной
-  // страницы нет — ей достаётся имя без значка.
-  const dragCardFor = (id: string): DragCard | null => {
-    if (id.startsWith('group:')) {
-      const g = findNodeByTopId(sidebarNodes, id);
-      return g?.type === 'group' ? { title: g.label, favicon: null } : null;
-    }
-    const tab = tabMap.get(id);
-    if (!tab) return null;
-    return { title: tab.title || tab.url || 'Вкладка', favicon: tab.faviconUrl };
-  };
-
-  const handleDragStart = (e: DragStartEvent) => {
-    const id = e.active.id as string;
-    setDragActiveId(id);
-    // Зоны дропа поверх страницы и слежение за курсором — на стороне main: нативная вью страницы
-    // и рисовать поверх себя не даёт, и указатель у чрома забирает (см. DropZoneManager.ts).
-    void window.oblako.tabDragStart(dragCardFor(id));
-  };
-
-  // Хвост любого драга — снять слушатель, погасить подсветку контент-зоны, сбросить id.
-  // Отдельной функцией, потому что нужен и в конце драга, и в ОТМЕНЕ (Esc, потеря указателя):
-  // при отмене dnd-kit зовёт onDragCancel вместо onDragEnd, и без этого pointermove-слушатель
-  // оставался висеть на document навсегда, продолжая дёргать onDragOverContent на каждое
-  // движение мыши, а подсветка «бросить сюда» — залипать.
-  // Хвост любого драга: убрать зоны и вернуть последнюю — main считает её по реальному курсору.
-  // Зовётся и в конце, и в ОТМЕНЕ (Esc, потеря указателя), иначе зоны остались бы висеть.
-  const finishDrag = (): Promise<TabDropResult> => {
-    setDragActiveId(null);
-    return window.oblako.tabDragEnd().catch(() => ({ zone: null }));
-  };
-
-  // Сброс оптимистичного порядка вместе с таймерами подтверждения — нужен, когда дроп
-  // оказался не перестановкой в сайдбаре, а split/выносом в окно (см. handleDragEnd).
-  const revertLocalOrder = (): void => {
-    if (openTimeoutRef.current)   { clearTimeout(openTimeoutRef.current);   openTimeoutRef.current   = null; }
-    if (pinnedTimeoutRef.current) { clearTimeout(pinnedTimeoutRef.current); pinnedTimeoutRef.current = null; }
-    setLocalOpenOrder(null);
-    setLocalPinnedOrder(null);
-  };
-
-  // Зону, в которой отпустили, знает main (см. finishDrag) — поэтому решение асинхронное.
-  //
-  // ⚠️ Но НОВЫЙ ПОРЯДОК В СПИСКЕ применяется синхронно, прямо здесь, до всякого ожидания.
-  // Раньше ждали и его тоже, и от этого перетаскивание выглядело сломанным: dnd-kit запускает
-  // анимацию приземления в тот же миг, когда обработчик вернул управление, и меряет исходный
-  // ряд ТАМ, ГДЕ ОН СЕЙЧАС. А он в этот момент ещё на старом месте — призрак улетал обратно,
-  // откуда вкладку взяли, и только потом список перескакивал в новый порядок. Механика при
-  // этом работала верно, врала одна анимация.
-  // Порядок и так оптимистичный (localOpenOrder/localPinnedOrder — см. выше), main его лишь
-  // подтверждает, поэтому применить на кадр раньше ничего не стоит. Команда же в main уходит
-  // по-прежнему только после ответа о зоне, а если зона оказалась не сайдбаром — порядок
-  // откатывается тем же кадром, в котором пришёл ответ.
-  const handleDragEnd = (e: DragEndEvent) => {
-    const commit = planReorder(e);
-    void (async () => {
-      const drop = await finishDrag();
-      if (applyZoneDrop(e, drop)) { revertLocalOrder(); return; }
-      commit?.();
-    })();
-  };
-
-  /**
-   * Исходы, которые перестановкой в сайдбаре не являются: split, вынос в новое окно, передача
-   * в соседнее. Возвращает true, если дроп забрала зона, — тогда локальный порядок откатывается.
-   */
-  const applyZoneDrop = (e: DragEndEvent, { zone, windowId, side, replaceId }: TabDropResult): boolean => {
-    const draggedId = e.active.id as string;
-    const draggedTab = draggedId.startsWith('group:') ? undefined : tabs.find((t) => t.id === draggedId);
-    // Группу и участника split не выносим: у первой нет одной страницы, второй увёл бы за собой
-    // половину пары. Хаб — не страница вовсе.
-    const canDetach = !!draggedTab && !draggedTab.isHub && draggedTab.splitSide === null;
-
-    // Середина страницы (и всё, что вне окна) — «новое окно». Это и есть ответ на развёрнутое во
-    // весь экран окно: выйти за его край там некуда, поэтому жест не должен зависеть от границы.
-    if (zone === 'window' && canDetach) {
-      void window.oblako.moveTabToNewWindow(draggedId);
-      return true;
-    }
-    // Отпустили над ДРУГИМ окном Oblako — вкладка переезжает в него. Это обратный жест к
-    // выносу: вытащенное по ошибке окно возвращается перетаскиванием, а не только закрытием.
-    if (zone === 'adopt' && windowId !== undefined && canDetach) {
-      void window.oblako.moveTabToWindow(draggedId, windowId);
-      return true;
-    }
-    // Отпустили над панелью уже открытого сплита — вкладка занимает её место, выселенная
-    // возвращается в список. Ту же проверку, что и у split ниже: группу и половину чужой пары
-    // на панель не кладём.
-    if (zone === 'replace' && replaceId) {
-      if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
-        void window.oblako.replaceSplitPanel(replaceId, draggedId);
-      }
-      return true;
-    }
-    // Дроп в контент-зону → split вместо reorder. Сторону считает main по реальному курсору
-    // (см. TabDropResult.side) — вкладка встаёт туда, куда её вели, а не всегда справа.
-    // Группы в split не входят — проверяем только обычные вкладки.
-    if (zone === 'split') {
-      if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
-        onDropOnContent(draggedId, side);
-      }
-      return true;
-    }
-    return false;
-  };
-
-  /**
-   * Перестановка в сайдбаре: локальный порядок применяется СРАЗУ (ради анимации приземления,
-   * см. handleDragEnd), а команду в main возвращаем отложенной — её отправит только тот, кто
-   * дождался зоны. null — дроп ничего не меняет.
-   */
-  const planReorder = (e: DragEndEvent): (() => void) | null => {
-    const { active, over } = e;
-
-    if (!over || active.id === over.id) return null;
-
-    const activeItemId = active.id as string;
-    const overId       = over.id  as string;
-
-    const isActivePinned      = pinnedIds.includes(activeItemId);
-    const overIsPinnedTab     = pinnedIds.includes(overId);
-    const overIsNormalItem    = openIds.includes(overId);
-    const overIsNormalSection = overId === SECTION_NORMAL_ID;
-
-    const overInPinned = overIsPinnedTab;
-    const overInNormal = overIsNormalItem || overIsNormalSection;
-
-    if (!overInPinned && !overInNormal) return null;
-
-    const crossSection = (isActivePinned && overInNormal) || (!isActivePinned && overInPinned);
-
-    if (crossSection) {
-      // Группы нельзя перемещать в закреплённые — это операция только над вкладками
-      if (activeItemId.startsWith('group:')) return null;
-
-      const targetSection: 'pinned' | 'normal' = overInNormal ? 'normal' : 'pinned';
-
-      let targetIndex: number;
-      if (overIsNormalSection) {
-        targetIndex = openIds.length;
-      } else if (overIsNormalItem) {
-        targetIndex = openIds.indexOf(overId);
-      } else {
-        targetIndex = pinnedIds.indexOf(overId);
-      }
-
-      if (targetSection === 'normal') {
-        const newPinnedIds = pinnedIds.filter((id) => id !== activeItemId);
-        const newOpenIds   = [...openIds];
-        newOpenIds.splice(targetIndex, 0, activeItemId);
-        if (pinnedTimeoutRef.current) clearTimeout(pinnedTimeoutRef.current);
-        if (openTimeoutRef.current)   clearTimeout(openTimeoutRef.current);
-        setLocalPinnedOrder(newPinnedIds);
-        setLocalOpenOrder(newOpenIds);
-        pinnedTimeoutRef.current = setTimeout(() => { setLocalPinnedOrder(null); pinnedTimeoutRef.current = null; }, REORDER_CONFIRM_MS);
-        openTimeoutRef.current   = setTimeout(() => { setLocalOpenOrder(null);   openTimeoutRef.current   = null; }, REORDER_CONFIRM_MS);
-      } else {
-        const newOpenIds   = openIds.filter((id) => id !== activeItemId);
-        const newPinnedIds = [...pinnedIds];
-        newPinnedIds.splice(targetIndex, 0, activeItemId);
-        if (pinnedTimeoutRef.current) clearTimeout(pinnedTimeoutRef.current);
-        if (openTimeoutRef.current)   clearTimeout(openTimeoutRef.current);
-        setLocalOpenOrder(newOpenIds);
-        setLocalPinnedOrder(newPinnedIds);
-        openTimeoutRef.current   = setTimeout(() => { setLocalOpenOrder(null);   openTimeoutRef.current   = null; }, REORDER_CONFIRM_MS);
-        pinnedTimeoutRef.current = setTimeout(() => { setLocalPinnedOrder(null); pinnedTimeoutRef.current = null; }, REORDER_CONFIRM_MS);
-      }
-      return () => onMoveSection(activeItemId, targetSection, targetIndex);
-    }
-
-    // ── Перемещение внутри секции ─────────────────────────────────────────
-    if (isActivePinned) {
-      const oldIdx = pinnedIds.indexOf(activeItemId);
-      const newIdx = overIsPinnedTab ? pinnedIds.indexOf(overId) : -1;
-      if (newIdx < 0 || oldIdx === newIdx) return null;
-      const newOrder = arrayMove(pinnedIds, oldIdx, newIdx);
-      if (pinnedTimeoutRef.current) clearTimeout(pinnedTimeoutRef.current);
-      setLocalPinnedOrder(newOrder);
-      pinnedTimeoutRef.current = setTimeout(() => {
-        setLocalPinnedOrder(null);
-        pinnedTimeoutRef.current = null;
-      }, REORDER_CONFIRM_MS);
-      return () => onReorder('pinned', newOrder);
-    }
-
-    const oldIdx = openIds.indexOf(activeItemId);
-    const newIdx = overIsNormalItem ? openIds.indexOf(overId) : -1;
-    if (newIdx < 0 || oldIdx === newIdx) return null;
-    const newOrder = arrayMove(openIds, oldIdx, newIdx);
-    if (openTimeoutRef.current) clearTimeout(openTimeoutRef.current);
-    setLocalOpenOrder(newOrder);
-    openTimeoutRef.current = setTimeout(() => {
-      setLocalOpenOrder(null);
-      openTimeoutRef.current = null;
-    }, REORDER_CONFIRM_MS);
-    return () => onReorder('normal', newOrder);
-  };
 
   // Возврат половины сплита: остров отзывается мягкой заливкой акцентом и волосяным кантом внутрь
   // (box-shadow, не border — рамка сдвинула бы раскладку). Тот же тихий язык, что у панели-цели в
