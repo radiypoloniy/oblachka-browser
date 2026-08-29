@@ -20,6 +20,7 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropResult, DragCard } from '../../shared/ipc';
 import { well, RADIUS, glyph, CAPS } from '../styles/system';
 import { FaviconImg } from './SiteFavicon';
+import { useSidebarWidth, SIDEBAR_HANDLE_OUTSET } from './sidebar/useSidebarWidth';
 
 // Стабильный id droppable-контейнера секции «Открытые вкладки».
 const SECTION_NORMAL_ID = 'drop-section-normal';
@@ -1241,28 +1242,6 @@ function SortableGroupBlock({
 // Справа margin нет — контент теперь сам отступает от сайдбара своим собственным margin
 // (src/App.tsx, contentRef), поэтому граница ровно совпадает без удвоения зазора; скругление —
 // все четыре угла (--radius-island), т.к. контент больше не примыкает вплотную.
-// Ширина развёрнутого сайдбара. ⚠️ Вилка узкая намеренно: сайдбар — не панель контента, а
-// полоса вкладок, и её ширина решает ровно одно — сколько букв заголовка помещается в строку.
-// Ниже 200 подписи вырождаются в «Как приго…», выше 420 полоса начинает соперничать со
-// страницей за место, ради которого её и сужают. 256 — прежнее жёсткое значение, оно же дефолт.
-const SIDEBAR_W_MIN = 200;
-const SIDEBAR_W_MAX = 420;
-const SIDEBAR_W_DEFAULT = 256;
-// Насколько ручка ширины выходит ЗА правую кромку сайдбара. Равно --gutter-shell: ровно столько
-// между сайдбаром и карточкой контента, то есть полоса захвата доходит до её левого края — до
-// единственной видимой границы в этом месте, за которую человек и тянет. Больше нельзя: дальше
-// начинается нативная вью страницы, куда события мыши DOM'а не доходят.
-const SIDEBAR_HANDLE_OUTSET = 12;
-const SIDEBAR_W_KEY = 'oblako-sidebar-width';
-
-function loadSidebarWidth(): number {
-  try {
-    const raw = Number(localStorage.getItem(SIDEBAR_W_KEY));
-    if (Number.isFinite(raw) && raw > 0) return Math.min(SIDEBAR_W_MAX, Math.max(SIDEBAR_W_MIN, raw));
-  } catch { /* приватный режим/выключенный storage — просто дефолт */ }
-  return SIDEBAR_W_DEFAULT;
-}
-
 // ── «Цветной» сайдбар: градиент + шум ────────────────────────────────────────────────────────
 //
 // ⚠️ Цвет берётся ИЗ ПАЛИТРЫ, а не задаётся своими значениями. Токены --surface/--surface-sunken
@@ -1427,39 +1406,9 @@ export default function Sidebar({
   // Что показывает сайдбар. Состояние взгляда, а не данных: переживать перезапуск ему незачем,
   // а по умолчанию браузер обязан открываться на вкладках.
   const [mode, setMode] = useState<'tabs' | 'bookmarks'>('tabs');
-  const [width, setWidth] = useState<number>(loadSidebarWidth);
-  // Тумблер «цветной сайдбар» из раздела «Интерфейс». Подписка — тот же механизм, что у новой
-  // вкладки: своё событие для этого же окна плюс 'storage' для остальных.
-  // ⚠️ Ширину двигаем на pointermove по документу, а не по самой ручке: увести курсор за пределы
-  // тонкой полоски проще простого, и без захвата на документе перетаскивание рвалось бы на
-  // первом же быстром движении. setPointerCapture тут не годится — ручка живёт внутри области
-  // с window-drag («drag»), и захват конфликтует с перетаскиванием окна.
-  const dragW = useRef<{ startX: number; startW: number } | null>(null);
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      const d = dragW.current;
-      if (!d) return;
-      e.preventDefault();
-      const next = Math.min(SIDEBAR_W_MAX, Math.max(SIDEBAR_W_MIN, d.startW + (e.clientX - d.startX)));
-      setWidth(next);
-    };
-    const onUp = () => {
-      if (!dragW.current) return;
-      dragW.current = null;
-      document.body.style.cursor = '';
-      // Пишем на диск ТОЛЬКО в конце жеста: на каждое движение это была бы сотня записей в секунду.
-      try { localStorage.setItem(SIDEBAR_W_KEY, String(widthRef.current)); } catch { /* см. loadSidebarWidth */ }
-    };
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp);
-    return () => {
-      document.removeEventListener('pointermove', onMove);
-      document.removeEventListener('pointerup', onUp);
-    };
-  }, []);
-  // Свежая ширина для обработчика отпускания: тот заведён один раз и замкнул бы стартовое значение.
-  const widthRef = useRef(width);
-  widthRef.current = width;
+  // Ширина и жест её изменения — в useSidebarWidth. Там же разбор, почему pointermove висит на
+  // документе, а не на самой ручке.
+  const { width, onHandlePointerDown, onHandleDoubleClick } = useSidebarWidth();
   // ⚠️ «Новая вкладка» из режима закладок ВОЗВРАЩАЕТ к вкладкам. Кнопка и раньше была видна в
   // обоих режимах и честно открывала вкладку — но сайдбар оставался на закладках, где не видно
   // ни полосы вкладок, ни активной. Со стороны это читалось как «кнопка не сработала»: человек
@@ -1982,15 +1931,8 @@ export default function Sidebar({
           и события мыши до DOM уже не доходят. */}
       <div
         className="no-drag"
-        onPointerDown={(e) => {
-          e.preventDefault();
-          dragW.current = { startX: e.clientX, startW: width };
-          document.body.style.cursor = 'col-resize';
-        }}
-        onDoubleClick={() => {
-          setWidth(SIDEBAR_W_DEFAULT);
-          try { localStorage.setItem(SIDEBAR_W_KEY, String(SIDEBAR_W_DEFAULT)); } catch { /* см. loadSidebarWidth */ }
-        }}
+        onPointerDown={onHandlePointerDown}
+        onDoubleClick={onHandleDoubleClick}
         title="Потяните, чтобы изменить ширину (двойной щелчок — вернуть)"
         style={{
           position: 'absolute', top: 0, right: -SIDEBAR_HANDLE_OUTSET, bottom: 0,
