@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { RotateCcw } from 'lucide-react';
 // Свои значки — см. разбор в glyphs.tsx.
 import { PanelGlyph, PlusGlyph, SlidersGlyph, CloseGlyph, ClockGlyph, SparkGlyph } from './glyphs';
 import { islandPlate } from '../styles/island';
@@ -15,7 +14,7 @@ import {
 } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import type { TabState, SidebarNode, GroupNode, ClusterProposal, TabDropResult, DragCard } from '../../shared/ipc';
-import { well, RADIUS, glyph, CAPS } from '../styles/system';
+import { RADIUS } from '../styles/system';
 import { useSidebarWidth, SIDEBAR_HANDLE_OUTSET } from './sidebar/useSidebarWidth';
 import { nodeToTopId, findNodeByTopId } from './sidebar/nodeIds';
 import { useTabDragOverPage } from './sidebar/useTabDragOverPage';
@@ -23,6 +22,7 @@ import { GROUP_COLORS } from './sidebar/groupColors';
 import { FolderGlyph, CollapsedNodeCells, CollapsedGroupIsland, SortableCollapsedItem, collapsedGhostPlate } from './sidebar/collapsed';
 import { type ChildDragZone } from './sidebar/useGroupChildOrder';
 import { SortableGroupBlock } from './sidebar/GroupBlock';
+import { asideBase, utilIconBtn, ModeSwitch, SectionLabel, UndoChip } from './sidebar/chrome';
 import { TabRow, SortableTabRow, PairTile, SortablePairBlock, IconCell, SortablePinCell } from './sidebar/rows';
 
 // Стабильный id droppable-контейнера секции «Открытые вкладки».
@@ -78,150 +78,6 @@ interface SidebarProps {
   onDismissUndo: () => void;
 }
 
-
-// ── «Цветной» сайдбар: градиент + шум ────────────────────────────────────────────────────────
-//
-// ⚠️ Цвет берётся ИЗ ПАЛИТРЫ, а не задаётся своими значениями. Токены --surface/--surface-sunken
-// меняются вместе с темой и палитрой (см. palettes.css), поэтому текстура подстраивается сама —
-// ровно то, что просили: один тумблер, а не список вариантов на каждую палитру. И цветовой
-// закон не нарушен: акцент и функциональные цвета сюда не заходят, работает только «земля».
-//
-// ⚠️ Шум — инлайновый SVG, а не картинка в бандле: фоновый файл пришлось бы тянуть сетью или
-// класть в ресурсы, а он весь состоит из одного фильтра. baseFrequency крупная (0.9) — на мелкой
-// сетке зерно сливается в грязь, на крупной читается как фактура бумаги.
-// ⚠️ Непрозрачность 3.5%: на глаз это «плотность», а не «пятно». Всё, что заметно как рисунок,
-// на вертикальной полосе с текстом начинает мешать читать заголовки вкладок.
-// ⚠️ Сайдбар — ПОДЛОЖКА, а не остров: ни внешнего отступа, ни скругления, ни заливки, ни тени.
-// Фон под ним даёт холст окна (--canvas на body), сайдбар прозрачен и лежит заподлицо с краем.
-//
-// Причина не в моде на Arc. В теме `--surface-island` и `--surface` — оба #FFFFFF, то есть остров
-// сайдбара и страница были сделаны ИЗ ОДНОГО МАТЕРИАЛА, и различал их только 12-пиксельный зазор
-// с тенью. Фигуры и фона не было — два одинаковых белых прямоугольника на сером. Теперь серым
-// стал весь хром, а белой осталась только страница, ради которой браузер и открывают.
-//
-// ⚠️ Отсюда общее правило для всего, что рисуется внутри: НА ПОДЛОЖКЕ НЕЛЬЗЯ УХОДИТЬ ВГЛУБЬ СЕРЫМ.
-// `--surface-sunken` (#E5E5EA) против `--app-bg` (#F2F2F7) — это контраст 1,13:1, то есть один и
-// тот же цвет. Пассивное здесь прозрачно, активное поднимается белой карточкой. Значков это не
-// касается: `--text-muted` даёт 4,7:1 на подложке против 5,2:1 на белом — просадка в десятую часть.
-// ⚠️ overflow здесь БОЛЬШЕ НЕ hidden: он был нужен острову, чтобы содержимое не вылезало за
-// скруглённые углы. Углов нет, а обрезка мешает — ручка ширины обязана выходить ЗА правую кромку
-// (см. ниже), иначе её не за что взять.
-const asideBase: React.CSSProperties = {
-  flex: 'none', display: 'flex', flexDirection: 'column',
-  background: 'transparent',
-};
-
-// ⚠️ Здесь был `innerPlate` — общая «внутренняя плашка» сайдбара (обойма закреплённых, пара в
-// сплите, заголовок папки, «Новая вкладка»). Его больше НЕТ, и ни одного потребителя не осталось:
-// поверхностей внутри сайдбара нет вовсе.
-//
-// Смысл правки не в том, что плашки были некрасивые, а в том, что панелью сайдбар делали именно
-// они. Снятия внешнего острова не хватило: стопка белых карточек на белом читается как панель
-// сама по себе — что с островом, что без. Ровно это и было видно в первой попытке, где «просто
-// вернулась боковая панель».
-//
-// Что осталось из выделений и почему: АКТИВНАЯ вкладка (единственное состояние, которое обязано
-// быть видно всегда), волосок вокруг пары в сплите (иначе две ячейки перестают читаться парой) и
-// цветная заливка папки (это опознание, а не украшение). Всё остальное — прозрачное, отзыв только
-// по наведению.
-
-// Кнопка сайдбара — свернуть/развернуть панель, «Новая вкладка» в свёрнутом виде. БЕЗ плашки.
-//
-// ⚠️ Все они были белыми карточками (прежний floatingIconBtn, удалён). Вместе с обоймой
-// закреплённых, дорожкой переключателя и «Новой вкладкой» во всю ширину именно из этих карточек
-// сайдбар и складывался в «боковую панель» — независимо от того, есть у него внешний остров или
-// нет. Поверхностей внутри сайдбара больше нет вовсе: всё лежит прямо на фоне окна, отзыв —
-// только по наведению.
-const utilIconBtn: React.CSSProperties = {
-  border: 'none', background: 'transparent', cursor: 'default', padding: 7,
-  borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', display: 'inline-flex',
-};
-
-// Переключатель режима сайдбара. Намеренно КРОШЕЧНЫЙ: он не команда, а указатель «где я», и
-// стоять рядом с полосой вкладок ему положено тише, чем самим вкладкам. Отсюда же подписи
-// текстом, а не иконками: две иконки рядом (страница и звезда) в 20 px читаются хуже, чем два
-// коротких слова, а места занимают столько же.
-function ModeSwitch({ mode, onChange }: { mode: 'tabs' | 'bookmarks'; onChange: (m: 'tabs' | 'bookmarks') => void }) {
-  const seg = (m: 'tabs' | 'bookmarks', label: string): React.ReactNode => {
-    const active = mode === m;
-    return (
-      <button
-        className="no-drag"
-        onClick={() => onChange(m)}
-        style={{
-          flex: 1, border: 'none', cursor: 'default', padding: '4px 0',
-          borderRadius: 'calc(var(--radius-sm) - 2px)',
-          background: active ? 'var(--selected)' : 'transparent',
-          boxShadow: active ? 'var(--shadow-card)' : 'none',
-          color: active ? 'var(--text-strong)' : 'var(--text-muted)',
-          fontSize: 'var(--fs-xs)', fontWeight: active ? 600 : 400,
-          transition: 'background var(--dur-fast) var(--ease-standard)',
-        }}
-        onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--selected)' : 'transparent'; }}
-      >{label}</button>
-    );
-  };
-  return (
-    <div className="no-drag" style={{
-      display: 'flex', gap: 2, padding: 2, marginBottom: 10,
-      // ⚠️ Дорожка вернулась, но НЕ заливкой. Прежняя была --surface-sunken и против --app-bg
-      // давала 1,13:1 — она просто исчезала, а на цветном сайдбаре читалась серой полосой из
-      // другой темы; поэтому её и убрали совсем. Общий рецепт углубления держится СВЕТОМ (тень
-      // внутрь + светлая кромка снизу) и выводит свою заливку из чернил палитры, поэтому виден
-      // на любой земле. Тот же well() стоит под сегментами настроек — один элемент, не два.
-      ...well(RADIUS.control),
-    }}>
-      {seg('tabs', 'Вкладки')}
-      {seg('bookmarks', 'Закладки')}
-    </div>
-  );
-}
-
-/**
- * Подпись секции сайдбара: моноширинная капса и число рядом.
- *
- * ⚠️ Тот же приём, что на плитках стола и в настройках, и здесь он законен: капса — это ТИПОГРАФИКА,
- * а не цвет. Хром обязан молчать цветом, но не обязан быть безымянной простынёй — до этого
- * закреплённые и открытые вкладки шли одним потоком, и понять, где кончается одно и начинается
- * другое, можно было только по форме значков.
- */
-function SectionLabel({ children, count }: { children: React.ReactNode; count?: number }) {
-  return (
-    <div className="no-drag" style={{
-      ...CAPS, color: 'var(--text-faint, var(--text-muted))',
-      display: 'flex', alignItems: 'center', gap: 6, padding: '2px 4px 4px',
-    }}>
-      <span>{children}</span>
-      {count !== undefined && (
-        <span style={{ color: 'var(--text-body)', fontWeight: 600 }}>{count}</span>
-      )}
-    </div>
-  );
-}
-
-// Кнопка отката одного вида изменений. Подпись строится как «Вернуть …»: три отдельные
-// формулировки в ряд читались бы длиннее, чем сама полоса вкладок.
-function UndoChip({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      className="no-drag"
-      onClick={onClick}
-      title={`Вернуть ${label}`}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4,
-        border: 'none', background: 'var(--surface-sunken)', cursor: 'default',
-        padding: '3px 8px', borderRadius: 'var(--radius-pill)',
-        color: 'var(--text-body)', fontSize: 'var(--fs-xs)',
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-active)')}
-      onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
-    >
-      <RotateCcw {...glyph(10)} />
-      {label}
-    </button>
-  );
-}
 
 export default function Sidebar({
   tabs, sidebarNodes, activeId, collapsed, onCollapsedChange,
