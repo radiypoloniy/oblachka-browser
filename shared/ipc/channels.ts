@@ -122,6 +122,10 @@ export const IPC = {
   NEWTAB_PHOTO_SHUFFLE: 'newtab:photo-shuffle',
   NOTEBOOK_EXTRACT_URL: 'notebook:extract-url', // renderer → main: извлечь читаемый текст URL-источника блокнота
   NOTEBOOK_STUDIO_GEN:  'notebook:studio-gen',  // renderer → main: (kind, context) → материал Студии (текст/спек)
+  // «Собрать материал»: два канала, а не один, потому что между ними стоит ЧЕЛОВЕК — он правит
+  // предложенные запросы до того, как они уйдут на внешний SearXNG (см. electron/NotebookGather.ts).
+  NOTEBOOK_SUGGEST_QUERIES: 'notebook:suggest-queries', // renderer → main: (тема, контекст) → поисковые запросы
+  NOTEBOOK_SEARCH:          'notebook:search',          // renderer → main: подтверждённые запросы → находки
 
   // Граф-воркспейс (electron/GraphStore.ts + GraphEngine.ts). Структуру пишет renderer,
   // результаты узлов — только движок, см. шапку GraphStore.

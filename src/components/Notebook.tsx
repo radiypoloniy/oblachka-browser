@@ -7,9 +7,11 @@ import ReactMarkdown from 'react-markdown';
 import { InfographicView, MindmapView, QuizView } from './studioViews';
 import { islandPlate } from '../styles/island';
 import { sp, pad, RADIUS } from '../styles/system';
-import { SectionHeader, toneVars, CapsLabel, btnTone } from './settings/kit';
+import { SectionHeader, toneVars, CapsLabel, btnTone, btnGhost } from './settings/kit';
 import { useNotebookColumns } from './notebook/useNotebookColumns';
 import { NotebookEmpty, SourcesEmpty } from './notebook/NotebookEmpty';
+import { GatherSheet } from './notebook/GatherSheet';
+import { useGather } from './notebook/useGather';
 import { markdownComponents } from './aiMarkdown';
 import {
   loadSources, saveSources, sourceFromInput, loadSelectedIds, saveSelectedIds, subscribeNotebook,
@@ -60,6 +62,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   // ⚠️ Форма добавления живёт ЗДЕСЬ, а не в колонке источников: её открывают и двери пустого
   // экрана в центре. Иначе пришлось бы дублировать форму во второй колонке.
   const [adding, setAdding] = useState<null | 'url' | 'text'>(null);
+  const gather = useGather(addUrls);
 
   // Внешние изменения стора (напр. из другой вкладки) — перечитываем.
   useEffect(() => subscribeNotebook(() => setSources(loadSources())), []);
@@ -89,6 +92,18 @@ export default function Notebook({ children, onBack }: NotebookProps) {
     persistSelected(new Set(selected).add(src.id));
     if (src.kind === 'url') void extractSource(src);
   }
+  // Пачкой — из находок «Собрать материал». Отдельно от addSource: там одна строка от человека,
+  // здесь список адресов, и каждый сразу уходит в извлечение.
+  function addUrls(urls: string[]) {
+    const added = urls.map((u) => sourceFromInput(u)).filter((x): x is NotebookSource => x !== null);
+    if (added.length === 0) return;
+    persist([...sources, ...added]);
+    const sel = new Set(selected);
+    for (const a of added) sel.add(a.id);
+    persistSelected(sel);
+    for (const a of added) if (a.kind === 'url') void extractSource(a);
+  }
+
   function retrySource(id: string) {
     const src = sources.find((s) => s.id === id);
     if (!src) return;
@@ -160,7 +175,12 @@ export default function Notebook({ children, onBack }: NotebookProps) {
         display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 24px',
       }}>
         {empty
-          ? <NotebookEmpty onAddUrl={() => setAdding('url')} onAddText={() => setAdding('text')} />
+          ? <NotebookEmpty
+              onAddUrl={() => setAdding('url')} onAddText={() => setAdding('text')}
+              extra={gather.available
+                ? <button onClick={gather.start} style={btnGhost}>Собрать материал</button>
+                : undefined}
+            />
           : children}
       </div>
 
@@ -171,6 +191,17 @@ export default function Notebook({ children, onBack }: NotebookProps) {
           onGenerate={(k) => void handleStudio(k)} />
       )}
       </div>
+
+      {gather.open && (
+        <GatherSheet
+          busy={gather.busy} step={gather.step} topic={gather.topic}
+          queries={gather.queries} hits={gather.hits} error={gather.error}
+          onTopicChange={gather.setTopic}
+          onSuggest={() => void gather.suggest(getSelectedSourceContext() ?? '')}
+          onQueriesChange={gather.setQueries}
+          onSearch={() => void gather.search()} onAdd={gather.add} onClose={gather.close}
+        />
+      )}
 
       {studio && <StudioResultModal state={studio} onClose={() => setStudio(null)} />}
     </div>

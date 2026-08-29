@@ -166,6 +166,11 @@ const api: OblakoApi = {
   shuffleNewtabPhoto: () => ipcRenderer.invoke(IPC.NEWTAB_PHOTO_SHUFFLE) as Promise<{ ok: boolean; dataUrl?: string }>,
   extractNotebookUrl: (url: string) => ipcRenderer.invoke(IPC.NOTEBOOK_EXTRACT_URL, url) as Promise<{ ok: boolean; title?: string; text?: string }>,
   generateStudio: (kind: string, context: string) => ipcRenderer.invoke(IPC.NOTEBOOK_STUDIO_GEN, kind, context) as Promise<{ ok: boolean; text?: string; error?: string }>,
+  // «Собрать материал» — два шага с человеком между ними (см. electron/NotebookGather.ts).
+  suggestNotebookQueries: (topic: string, context: string) =>
+    ipcRenderer.invoke(IPC.NOTEBOOK_SUGGEST_QUERIES, topic, context) as Promise<{ ok: boolean; queries?: string[]; error?: string }>,
+  searchNotebook: (queries: string[]) =>
+    ipcRenderer.invoke(IPC.NOTEBOOK_SEARCH, queries) as Promise<{ ok: boolean; hits?: { title: string; url: string; snippet: string }[]; error?: string }>,
 
   enterSplit:      (tabId: string, side?: 'left' | 'right') => ipcRenderer.invoke(IPC.TAB_ENTER_SPLIT, tabId, side),
   replaceSplitPanel: (panelId: string, newId: string) => ipcRenderer.invoke(IPC.TAB_REPLACE_PANEL, panelId, newId),

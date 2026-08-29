@@ -13,6 +13,7 @@ import { getNextHoliday } from '../HolidaysService';
 import { getPhotoOfDay, shufflePhoto } from '../NewTabPhoto';
 import { extractUrlText } from '../NotebookExtract';
 import { generateStudio } from '../NotebookStudio';
+import { suggestQueries, runSearch } from '../NotebookGather';
 import type { StudioKind } from '../NotebookStudio';
 import { parsePhraseToGenSpec } from '../GenSpecParser';
 import { fetchGenWeb } from '../GenWebSource';
@@ -64,6 +65,12 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   });
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (_e, kind: StudioKind, context: string) =>
     generateStudio(kind, typeof context === 'string' ? context : ''));
+  // ⚠️ Два канала, а не один: между ними стоит человек. suggestQueries только ПРЕДЛАГАЕТ, наружу
+  // ничего не уходит; runSearch отправляет на SearXNG ровно то, что человек подтвердил.
+  ipcMain.handle(IPC.NOTEBOOK_SUGGEST_QUERIES, (_e, topic: string, context: string) =>
+    suggestQueries(typeof topic === 'string' ? topic : '', typeof context === 'string' ? context : ''));
+  ipcMain.handle(IPC.NOTEBOOK_SEARCH, (_e, queries: string[]) =>
+    runSearch(Array.isArray(queries) ? queries.filter((q): q is string => typeof q === 'string') : []));
   let genParseBusy = false;
   ipcMain.handle(IPC.DESKTOP_GEN_WEB, (_e, url: string, force: boolean) =>
     fetchGenWeb(String(url ?? ''), !!force));
