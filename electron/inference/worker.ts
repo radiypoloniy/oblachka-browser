@@ -137,6 +137,14 @@ async function grammarFor(schema: unknown): Promise<any> {
 }
 
 // Один прогон без истории. Стриминг уходит наверх отдельными сообщениями с тем же id.
+// Контроллеры идущих генераций по id запроса.
+//
+// ⚠️ До этого прервать начатую генерацию было НЕЧЕМ (так и написано было в QwenQueue.ts), и
+// стоило это дорого: человек закрывал окно Студии, а модель продолжала считать документ в
+// фоне — а следующее открытие ставило в очередь ещё один прогон за старым. Снаружи это
+// выглядело как «браузер жрёт процессор сам по себе».
+const running = new Map<number, AbortController>()
+
 async function runPrompt(id: number, prompt: string, maxTokens: number, stream: boolean, schema?: unknown): Promise<PromptResult> {
   const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt: '', chatWrapper })
   const grammar = schema ? await grammarFor(schema) : undefined
@@ -144,9 +152,17 @@ async function runPrompt(id: number, prompt: string, maxTokens: number, stream: 
   const tStart = Date.now()
   let firstTokenAt: number | null = null
   let genTokenCount = 0
+  const ctrl = new AbortController()
+  running.set(id, ctrl)
+  // ⚠️ Снятие контроллера — в finally, а не после await: на ошибке генерации запись осталась бы
+  // в карте навсегда, и «стоп» по этому id потом молча ничего бы не делал.
   const { responseText, stopReason } = await session.promptWithMeta(prompt, {
     maxTokens,
     grammar,
+    signal: ctrl.signal,
+    // ⚠️ Прерванная генерация ВОЗВРАЩАЕТ то, что успела, а не бросает: наверху это обычный
+    // ответ со stopReason 'abort', и вызывающий сам решает, годится ли частичный результат.
+    stopOnAbortSignal: true,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onToken: (tokens: any[]) => {
       if (firstTokenAt === null) firstTokenAt = Date.now()
@@ -186,8 +202,12 @@ async function runChat(
   const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt, chatWrapper })
   session.setChatHistory(history)
   const t0 = Date.now()
+  const ctrl = new AbortController()
+  running.set(id, ctrl)
   const { responseText, stopReason } = await session.promptWithMeta(userText, {
     maxTokens,
+    signal: ctrl.signal,
+    stopOnAbortSignal: true,
     onTextChunk: stream ? (text: string) => port.postMessage({ id, chunk: text } satisfies InferResponse) : undefined,
   })
   const ms = Date.now() - t0
@@ -223,12 +243,26 @@ async function vram(): Promise<VramInfo> {
 }
 
 async function handle(req: InferRequest): Promise<unknown> {
+  // Прогон снимает свой контроллер, чем бы ни кончился: успехом, ошибкой или прерыванием.
+  if (req.kind === 'prompt' || req.kind === 'chat') {
+    try { return await dispatch(req) } finally { running.delete(req.id) }
+  }
+  return dispatch(req)
+}
+
+async function dispatch(req: InferRequest): Promise<unknown> {
   switch (req.kind) {
     case 'load': return load(req.modelPath, req.modelId, req.label, req.contextMaxTokens)
     case 'unload': return unload()
     case 'prompt': return runPrompt(req.id, req.prompt, req.maxTokens, req.stream, req.schema)
     case 'chat': return runChat(req.id, req.userText, req.history, req.maxTokens, req.systemPrompt, req.stream)
     case 'vram': return vram()
+    case 'abort': {
+      // Нет контроллера — генерация уже кончилась сама. Это не ошибка: гонка «человек нажал
+      // стоп в тот же миг, когда модель дописала» штатная, и падать на ней незачем.
+      running.get(req.target)?.abort()
+      return true
+    }
   }
 }
 

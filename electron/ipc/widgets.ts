@@ -18,6 +18,7 @@ import { getPhotoOfDay, shufflePhoto } from '../NewTabPhoto';
 import { extractUrlText } from '../NotebookExtract';
 import { extractFileText, SUPPORTED_FILE_EXTENSIONS } from '../FileExtract';
 import { generateStudio } from '../NotebookStudio';
+import { cancelActivity, getActivity } from '../AiActivity';
 import { suggestQueries, runSearch } from '../NotebookGather';
 import type { StudioKind } from '../NotebookStudio';
 import { parsePhraseToGenSpec } from '../GenSpecParser';
@@ -126,6 +127,8 @@ export function registerWidgetsIpc(d: IpcDeps): void {
     }
     return !!tabsOf(e)?.createTab(pathToFileURL(file).href);
   });
+  ipcMain.handle(IPC.AI_ACTIVITY_GET, () => getActivity());
+  ipcMain.handle(IPC.AI_ACTIVITY_CANCEL, () => cancelActivity());
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (e, kind: StudioKind, context: string) => {
     const sender = e.sender;
     return generateStudio(kind, typeof context === 'string' ? context : '', undefined, (chars) => {

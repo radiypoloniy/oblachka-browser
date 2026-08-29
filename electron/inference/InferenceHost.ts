@@ -118,13 +118,22 @@ function spawn(): Promise<void> {
 // и вызов с полем конкретного варианта («prompt») перестал бы проходить проверку.
 type WithoutId<T> = T extends { id: number } ? Omit<T, 'id'> : never
 
-async function call<T>(req: WithoutId<InferRequest>, onChunk?: (text: string) => void): Promise<T> {
+async function call<T>(req: WithoutId<InferRequest>, onChunk?: (text: string) => void, abort?: AbortSignal): Promise<T> {
   await spawn()
   const id = nextId++
   const p = new Promise<T>((resolve, reject) => {
     pending.set(id, { resolve: resolve as (v: unknown) => void, reject, onChunk })
   })
   child?.postMessage({ ...req, id } as InferRequest)
+  // ⚠️ Сам AbortSignal через границу процессов не уедет — это объект. Уезжает СОБЫТИЕ: хост
+  // слушает сигнал и шлёт отдельное сообщение с id прерываемого запроса. Уже прерванный сигнал
+  // обрабатывается тем же путём (addEventListener на aborted зовёт обработчик синхронно нет —
+  // поэтому проверяем явно), иначе «стоп до старта» терялся бы.
+  if (abort) {
+    const send = () => child?.postMessage({ kind: 'abort', target: id, id: nextId++ } as InferRequest)
+    if (abort.aborted) send();
+    else abort.addEventListener('abort', send, { once: true })
+  }
   return p
 }
 
@@ -147,8 +156,9 @@ export function runPrompt(
   maxTokens: number,
   onChunk?: (text: string) => void,
   schema?: unknown,
+  abort?: AbortSignal,
 ): Promise<PromptResult> {
-  return call<PromptResult>({ kind: 'prompt', prompt, maxTokens, stream: !!onChunk, schema }, onChunk)
+  return call<PromptResult>({ kind: 'prompt', prompt, maxTokens, stream: !!onChunk, schema }, onChunk, abort)
 }
 
 export function runChat(

@@ -13,6 +13,7 @@ import { NotebookEmpty, SourcesEmpty } from './notebook/NotebookEmpty';
 import { GatherSheet } from './notebook/GatherSheet';
 import { DocumentView } from './notebook/DocumentView';
 import { useGather } from './notebook/useGather';
+import { useStudio, type StudioState } from './notebook/useStudio';
 import { markdownComponents } from './aiMarkdown';
 import {
   loadSources, saveSources, sourceFromInput, sourceFromFile, loadSelectedIds, saveSelectedIds,
@@ -58,11 +59,8 @@ export default function Notebook({ children, onBack }: NotebookProps) {
     const ids = loadSelectedIds();
     return new Set(ids ?? loadSources().map((s) => s.id));
   });
-  const [studioNote, setStudioNote] = useState<string | null>(null);
-  // Открытый результат Студии (модалка). busy — идёт генерация; text/error — итог.
-  const [studio, setStudio] = useState<{ kind: StudioKind; label: string; busy: boolean; text?: string; error?: string } | null>(null);
-  // Знаков сгенерировано — приходит из main по ходу прогона (см. NOTEBOOK_STUDIO_PROGRESS).
-  const [genChars, setGenChars] = useState(0);
+  // Генерация материала Студии, её ход и остановка — в useStudio.
+  const studio = useStudio((k) => STUDIO.find((x) => x.kind === k)!.label);
 
   // Подвижные границы колонок и их память между сессиями — в useNotebookColumns.
   const cols = useNotebookColumns();
@@ -73,7 +71,6 @@ export default function Notebook({ children, onBack }: NotebookProps) {
 
   // Внешние изменения стора (напр. из другой вкладки) — перечитываем.
   useEffect(() => subscribeNotebook(() => setSources(loadSources())), []);
-  useEffect(() => window.oblako.onStudioProgress(setGenChars), []);
 
   const persist = (list: NotebookSource[]) => { setSources(list); saveSources(list); };
   const persistSelected = (next: Set<string>) => { setSelected(next); saveSelectedIds([...next]); };
@@ -154,19 +151,6 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   const selectedCount = sources.filter((s) => selected.has(s.id) && s.status === 'ready').length;
   const empty = sources.length === 0;
 
-  // Реализованные типы Студии (остальные — свои заходы, пока показывают заметку «скоро»).
-  const STUDIO_IMPLEMENTED = new Set<StudioKind>(['summary', 'mindmap', 'infographic', 'quiz', 'document']);
-  async function handleStudio(kind: StudioKind) {
-    const label = STUDIO.find((s) => s.kind === kind)!.label;
-    const ctx = getSelectedSourceContext();
-    if (!ctx) { setStudioNote('Выберите источники с текстом — по ним построю материал.'); return; }
-    if (!STUDIO_IMPLEMENTED.has(kind)) { setStudioNote(`«${label}» — скоро, генерация появится следующим заходом.`); return; }
-    setStudioNote(null);
-    setGenChars(0);
-    setStudio({ kind, label, busy: true });
-    const r = await window.oblako.generateStudio(kind, ctx);
-    setStudio({ kind, label, busy: false, text: r.ok ? r.text : undefined, error: r.ok ? undefined : (r.error || 'Не удалось сгенерировать') });
-  }
 
   return (
     <div style={{
@@ -220,8 +204,8 @@ export default function Notebook({ children, onBack }: NotebookProps) {
       {!empty && <Grip onPointerDown={cols.onGripDown('right')} />}
 
       {!empty && (
-        <StudioPanel selectedCount={selectedCount} note={studioNote} busyKind={studio?.busy ? studio.kind : null}
-          onGenerate={(k) => void handleStudio(k)} />
+        <StudioPanel selectedCount={selectedCount} note={studio.note} busyKind={studio.busyKind}
+          onGenerate={(k) => void studio.generate(k, getSelectedSourceContext())} />
       )}
       </div>
 
@@ -236,7 +220,9 @@ export default function Notebook({ children, onBack }: NotebookProps) {
         />
       )}
 
-      {studio && <StudioResultModal state={studio} chars={genChars} onClose={() => setStudio(null)} />}
+      {studio.state && (
+        <StudioResultModal state={studio.state} chars={studio.chars} onClose={studio.close} onStop={studio.stop} />
+      )}
     </div>
   );
 }
@@ -266,11 +252,12 @@ function Grip({ onPointerDown }: { onPointerDown: (e: React.PointerEvent) => voi
 
 // Модалка результата Студии. Саммари — Markdown; майндкарта — SVG через markmap; будущие типы
 // (инфографика/тест) добавят свои рендеры этим же контейнером.
-function StudioResultModal({ state, chars, onClose }: {
-  state: { kind: StudioKind; label: string; busy: boolean; text?: string; error?: string };
+function StudioResultModal({ state, chars, onClose, onStop }: {
+  state: StudioState;
   /** Знаков сгенерировано. Показываем только пока идёт прогон — см. ниже, почему. */
   chars: number;
   onClose: () => void;
+  onStop: () => void;
 }) {
   const isMindmap = state.kind === 'mindmap';
   const isInfographic = state.kind === 'infographic';
@@ -290,6 +277,9 @@ function StudioResultModal({ state, chars, onClose }: {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', borderBottom: '1px solid var(--divider-strong)', flex: 'none' }}>
           <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text-strong)' }}>{state.label}</span>
+          {/* ⚠️ «Остановить» — СЛОВОМ, а не значком: это единственное действие, которым человек
+              возвращает себе машину, и угадывать его по пиктограмме он не должен. */}
+          {state.busy && <button onClick={onStop} style={btnGhost}>Остановить</button>}
           <button onClick={onClose} style={xBtn}><X size={16} /></button>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: wide ? 0 : '16px 20px' }}>

@@ -1,5 +1,6 @@
 import { runChatMessage, runTabOrganizePrompt } from './TranslationService';
 import { DOC_SCHEMA, normalizeDoc } from '../shared/notebookDoc';
+import { beginActivity } from './AiActivity';
 
 // Генерация материалов «Студии» блокнота по тексту выбранных источников. Модель локальная —
 // её задача выдать СТРУКТУРУ/ТЕКСТ (саммари в Markdown; далее — markdown-аутлайн для майндкарты,
@@ -212,14 +213,22 @@ export async function generateStudio(
   // ⚠️ Документ идёт мимо общего пути: ему нужна грамматика, а runChatMessage её не принимает.
   if (kind === 'document') {
     let chars = 0;
+    // ⚠️ Работа заявляется в общий реестр ДО прогона: с этого момента её видно в AI-панели и
+    // можно прервать откуда угодно, а не только из того окна, где её заказали.
+    const act = beginActivity('Собираю документ');
     const res = await runTabOrganizePrompt(buildDocPrompt(context), {
       maxTokens: DOC_MAX_TOKENS,
       schema: DOC_SCHEMA,
+      abort: act.signal,
       // ⚠️ Считаем знаки СЫРОГО ответа (это JSON), а не текста документа: пересчитывать их в
       // «знаки документа» пришлось бы разбором недописанного JSON на каждом чанке. Человеку
       // нужен признак жизни, а не точная цифра, — и растущее число его даёт.
-      onChunk: (t) => { chars += t.length; onProgress?.(chars); },
+      onChunk: (t) => { chars += t.length; onProgress?.(chars); act.progress(chars); },
     });
+    act.done();
+    // Прерванная генерация возвращается обычным ответом с тем, что успела (stopOnAbortSignal),
+    // — но человек нажал «стоп», и показывать ему огрызок вместо документа незачем.
+    if (act.cancelled) return { ok: false, error: 'Сборка остановлена' };
     if (!res.ok) return { ok: false, error: res.error };
     let parsed: unknown = null;
     try { parsed = JSON.parse(res.out); } catch { parsed = null; }

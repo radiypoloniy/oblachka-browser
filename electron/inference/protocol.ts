@@ -50,6 +50,12 @@ export type InferRequest =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | { id: number; kind: 'chat'; userText: string; history: any[]; maxTokens: number; systemPrompt: string; stream: boolean }
   | { id: number; kind: 'vram' }
+  // Прервать УЖЕ ИДУЩУЮ генерацию. target — id того запроса, который надо остановить.
+  //
+  // ⚠️ Отдельным сообщением, а не флагом в запросе: прерывание приходит ПОЗЖЕ и должно быть
+  // обработано, пока первый запрос ещё висит в await. Очередь сообщений utilityProcess это
+  // позволяет — обработчик 'abort' возвращается мгновенно и не ждёт генерацию.
+  | { id: number; kind: 'abort'; target: number }
 
 export type InferResponse =
   | { id: number; ready: true }                                   // процесс поднялся и готов

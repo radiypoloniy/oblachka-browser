@@ -133,6 +133,12 @@ export const IPC = {
   NOTEBOOK_OPEN_SOURCE:     'notebook:open-source',     // renderer → main: открыть источник — адрес вкладкой, файл системой
   NOTEBOOK_OPEN_DOC:        'notebook:open-doc',        // renderer → main: собранный документ — во временный файл и новой вкладкой
 
+  // Что ИИ делает прямо сейчас (electron/AiActivity.ts). Один реестр на приложение: у модели
+  // один контекст и одна очередь, значит и состояние физически одно.
+  AI_ACTIVITY_GET:     'ai-activity:get',     // renderer → main: текущая работа или null
+  AI_ACTIVITY_CANCEL:  'ai-activity:cancel',  // renderer → main: прервать текущую работу
+  AI_ACTIVITY_CHANGED: 'ai-activity:changed', // main → renderer: push AiActivityState|null
+
   // Граф-воркспейс (electron/GraphStore.ts + GraphEngine.ts). Структуру пишет renderer,
   // результаты узлов — только движок, см. шапку GraphStore.
   GRAPH_LIST:     'graph:list',     // renderer → main: список воркспейсов (GraphMeta[])

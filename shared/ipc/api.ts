@@ -7,7 +7,7 @@ import type { ContentBounds, FindResult, GenProgress, GenWebResult, OrganizeClus
 import type { BackfillProgress, BookmarkEntry, BookmarkFolderProposal, BookmarkImportResult, BookmarkImportSource, BookmarkNode, DayDigestState, HistoryClearPeriod, HistoryContentCoverage, HistoryEntry, CsvPasswordImport, ImportDataType, ImportRunResult, ImportSource, SemanticSearchResult, SmartSearchResponse, TitleBarOpts } from './history';
 import type { PasswordAddInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, PasswordMeta, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
 import type { AdBlockState, DownloadEntry, MatchSuggestion, OmniboxPanel, OmniboxRecommendEdit, PageChangesResult, ParsedAddressPart, ProductState, RecommendedSite, SmartTabHit, StuffHit, SuggestDropdownItem, TrackedProduct, TrackingEvent } from './omnibox';
-import type { BangDefWire, BangsSnapshot, BergamotStatus, CatalogEntry, DeleteModelResult, DerivedBangCandidate, DownloadProgress, HardwareSnapshot, HubChatMessage, HubChatOutcome, HubChatSessionMeta, HubMode, ImportBangsResult, InstalledModel, ModelDownloadSpec, ModelLoadMode, PageTranslateProgress, PageTranslateState, PermKey, PermissionRecord, SetDefaultModelResult, Skill, TranslationEngineId, UpdateStatus } from './ai';
+import type { AiActivityState, BangDefWire, BangsSnapshot, BergamotStatus, CatalogEntry, DeleteModelResult, DerivedBangCandidate, DownloadProgress, HardwareSnapshot, HubChatMessage, HubChatOutcome, HubChatSessionMeta, HubMode, ImportBangsResult, InstalledModel, ModelDownloadSpec, ModelLoadMode, PageTranslateProgress, PageTranslateState, PermKey, PermissionRecord, SetDefaultModelResult, Skill, TranslationEngineId, UpdateStatus } from './ai';
 import type { AddressInput, AddressProfile, AddressUpdate, CardInput, CardMeta, CardUpdate, CryptoRatesInfo, CurrencyRatesInfo, DefaultBrowserRequest, DragCard, MediaCommand, MediaNowPlaying, NextHolidayInfo, SplitSwapHint, TabDropResult, TabDropZone, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, WeatherInfo, WindowRole } from './app';
 
 export interface OblakoApi {
@@ -166,6 +166,10 @@ export interface OblakoApi {
   openNotebookSource(kind: 'url' | 'file', target: string): Promise<boolean>;
   /** Открыть собранный документ новой вкладкой (через временный файл). */
   openStudioDoc(name: string, html: string): Promise<boolean>;
+  /** Что ИИ делает прямо сейчас, или null. cancel возвращает false, если прерывать было нечего. */
+  getAiActivity(): Promise<AiActivityState | null>;
+  cancelAiActivity(): Promise<boolean>;
+  onAiActivityChanged(cb: (state: AiActivityState | null) => void): () => void;
 
   // Split View
   // side — какую половину займёт ПРИВОДИМАЯ вкладка (по умолчанию правую: так входят в сплит
