@@ -120,8 +120,8 @@
     "ipc": 8
   },
   "src/components/Sidebar.tsx": {
-    "lines": 724,
-    "fn": 643,
+    "lines": 709,
+    "fn": 627,
     "effects": 1,
     "ipc": 4
   },
