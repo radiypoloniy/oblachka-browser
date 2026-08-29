@@ -138,7 +138,7 @@
     "ipc": 61
   },
   "src/components/aiApps.tsx": {
-    "lines": 1594,
+    "lines": 768,
     "fn": 610,
     "effects": 5,
     "ipc": 0
