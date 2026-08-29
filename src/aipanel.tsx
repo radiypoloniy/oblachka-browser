@@ -12,6 +12,7 @@ import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
 import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Plus, ChevronDown, RotateCcw } from 'lucide-react';
 import './styles/global.css';
+import { AiActivityPill } from './aipanel/AiActivityPill';
 import { markdownComponents } from './components/aiMarkdown';
 import { AppsMode, loadWallpaper, saveWallpaper, wallpaperBackground } from './components/aiApps';
 import { subscribeMeshes } from './newtab/gradients';
@@ -320,6 +321,11 @@ function AiPanel() {
             <X size={15} strokeWidth={2} />
           </button>
         </div>
+
+        {/* ⚠️ Полосой под шапкой, а не пилюлей В шапке: панель узкая, а рядом с переключателем
+            режимов индикатор либо ужимался бы до нечитаемого, либо выталкивал крестик. Здесь он
+            виден в ОБОИХ режимах — работа ИИ не принадлежит ни чату, ни приложениям. */}
+        <AiActivityPill />
 
         {/* Индикатор текущей страницы — парящий островок. Смена URL внутри вкладки обновит и его,
             и ленту (сброшенную на новый разговор) одним и тем же onContext. */}

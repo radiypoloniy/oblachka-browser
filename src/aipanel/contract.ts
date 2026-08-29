@@ -4,6 +4,7 @@
 // WebContentsView со своим preload (electron/preload-aipanel.ts), как и поповеры. Поэтому формы
 // ответов ЗЕРКАЛЯТСЯ с main вручную — сторож контракта (scripts/contract-check.mjs) сюда не
 // смотрит, и расхождение поймает только человек. Правишь форму в main — правь и здесь.
+import type { AiActivityState } from '../../shared/ipc'
 import type { CurrencyRatesResult, WeatherResult } from '../components/aiApps';
 
 // Код причины отказа (см. electron/TranslationService.ts::ModelError, shared/ipc.ts::ModelErrorCode)
@@ -45,6 +46,10 @@ declare global {
   interface Window {
     aiPanel: {
       close: () => void
+      // Что ИИ делает прямо сейчас (общий реестр electron/AiActivity.ts) и его остановка.
+      aiActivity: () => Promise<AiActivityState | null>
+      cancelAi: () => Promise<boolean>
+      onAiActivity: (cb: (state: AiActivityState | null) => void) => () => void
       // Фокус в поле ввода чата = намерение поговорить с моделью. Именно по нему main греет
       // Qwen — не по открытию панели (в ней ещё приложения и виджеты), см. AiPanelManager.ts.
       chatIntent: () => void

@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import path from 'node:path';
 import { runChatMessage, type ChatOutcome } from './TranslationService';
+import { beginActivity } from './AiActivity';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
 import { appendSearxngSources, type SearxngResult } from './SearxngSearch';
 
@@ -72,7 +73,12 @@ export class HubChatManager {
     grounding?: { promptText: string; sources: SearxngResult[] },
   ): Promise<{ outcome: ChatOutcome; sessionId: number | null }> {
     const ctx = this.#getOrCreateCtx(tabId);
-    const outcome = await runChatMessage(grounding?.promptText ?? text, ctx.history, onChunk);
+    // ⚠️ Ответ по источникам считается долго — в блокноте контекст доходит до 24 000 знаков.
+    // Поэтому он тоже заявляется в общий реестр: светодиод в AI-панели и кнопка «Стоп» должны
+    // работать и здесь, а не только на генерации документа.
+    const act = beginActivity('Отвечаю по источникам');
+    const outcome = await runChatMessage(grounding?.promptText ?? text, ctx.history, onChunk, act.signal);
+    act.done();
     if (outcome.ok) {
       ctx.history = outcome.history;
       // Источники-ссылки приклеиваем только у web-grounding (SearXNG). У грунтинга блокнота

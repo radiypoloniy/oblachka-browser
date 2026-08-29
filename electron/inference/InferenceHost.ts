@@ -168,8 +168,9 @@ export function runChat(
   maxTokens: number,
   systemPrompt: string,
   onChunk?: (text: string) => void,
+  abort?: AbortSignal,
 ): Promise<ChatResult> {
-  return call<ChatResult>({ kind: 'chat', userText, history, maxTokens, systemPrompt, stream: !!onChunk }, onChunk)
+  return call<ChatResult>({ kind: 'chat', userText, history, maxTokens, systemPrompt, stream: !!onChunk }, onChunk, abort)
 }
 
 export function getVram(): Promise<VramInfo> {

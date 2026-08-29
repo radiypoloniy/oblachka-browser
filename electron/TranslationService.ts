@@ -815,8 +815,11 @@ export async function runChatMessage(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   history: any[],
   onChunk?: (text: string) => void,
+  // Прерывание уже идущего ответа (доезжает до llama.cpp). Заводится там, где ответ может
+  // считаться долго и человеку нужна кнопка «Стоп» — см. electron/AiActivity.ts.
+  abort?: AbortSignal,
 ): Promise<ChatOutcome> {
-  return withQwenQueue(() => runChatMessageQueued(userText, history, onChunk))
+  return withQwenQueue(() => runChatMessageQueued(userText, history, onChunk, abort))
 }
 
 async function runChatMessageQueued(
@@ -824,12 +827,13 @@ async function runChatMessageQueued(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   history: any[],
   onChunk?: (text: string) => void,
+  abort?: AbortSignal,
 ): Promise<ChatOutcome> {
   try {
     const wasLoaded = loadPromise !== null
     const loadMs = await ensureLoaded()
     const { out, history: newHistory, ms, tokens } = await Inference.runChat(
-      userText, history, CHAT_MAX_TOKENS, CHAT_SYSTEM_PROMPT, onChunk,
+      userText, history, CHAT_MAX_TOKENS, CHAT_SYSTEM_PROMPT, onChunk, abort,
     )
     console.log(
       `[chat] "${userText.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +

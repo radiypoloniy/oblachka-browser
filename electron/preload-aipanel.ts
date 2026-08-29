@@ -2,6 +2,12 @@
 // контекст вкладки) — не трогают контракт основного хрома (shared/ipc.ts), как и
 // preload-translatepopover.ts.
 import { contextBridge, ipcRenderer } from 'electron'
+// ⚠️ Три канала ниже — ИЗ ОБЩЕГО КОНТРАКТА, в отличие от остальных 'ai-panel:*' здесь. Так и
+// должно быть: «занят ли ИИ» — состояние всего приложения, а не приватное дело панели, и его
+// же читает блокнот. Дублировать строки, как в sandboxed preload-content.ts, тут не нужно —
+// эта панель не в песочнице, импорт до неё доезжает.
+import { IPC } from '../shared/ipc'
+import type { AiActivityState } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('aiPanel', {
   // Иконка приложения на рабочем столе новой вкладки → панель открывается сразу на нём.
@@ -11,6 +17,15 @@ contextBridge.exposeInMainWorld('aiPanel', {
     return () => ipcRenderer.removeListener('ai-panel:open-app', handler)
   },
   close: () => ipcRenderer.send('ai-panel:close'),
+  // Что ИИ делает прямо сейчас — и кнопка «Стоп». Панель показывает это независимо от того,
+  // где работу заказали: экран Студии к этому моменту может быть уже закрыт.
+  aiActivity: () => ipcRenderer.invoke(IPC.AI_ACTIVITY_GET) as Promise<AiActivityState | null>,
+  cancelAi: () => ipcRenderer.invoke(IPC.AI_ACTIVITY_CANCEL) as Promise<boolean>,
+  onAiActivity: (cb: (state: AiActivityState | null) => void) => {
+    const handler = (_e: unknown, state: AiActivityState | null) => cb(state)
+    ipcRenderer.on(IPC.AI_ACTIVITY_CHANGED, handler)
+    return () => ipcRenderer.removeListener(IPC.AI_ACTIVITY_CHANGED, handler)
+  },
   // Слот с сайтом стал активным (Ctrl+Tab) — фокус его вью отдаёт main: панель до чужой
   // WebContentsView не дотягивается, а без фокуса набирать в сайте некуда.
   webappFocus: (appId: string) => ipcRenderer.send('ai-panel:webapp-focus', appId),
