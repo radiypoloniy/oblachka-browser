@@ -178,6 +178,8 @@ const api: OblakoApi = {
     ipcRenderer.invoke(IPC.NOTEBOOK_EXTRACT_FILE, path) as Promise<{ ok: boolean; title?: string; text?: string }>,
   openNotebookSource: (kind: 'url' | 'file', target: string) =>
     ipcRenderer.invoke(IPC.NOTEBOOK_OPEN_SOURCE, kind, target) as Promise<boolean>,
+  openStudioDoc: (name: string, html: string) =>
+    ipcRenderer.invoke(IPC.NOTEBOOK_OPEN_DOC, name, html) as Promise<boolean>,
   // Ход сборки документа: без него прогон 3 000 токенов неотличим от зависшего.
   onStudioProgress: (cb: (chars: number) => void) => {
     const handler = (_e: unknown, chars: number) => cb(chars);

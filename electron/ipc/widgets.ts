@@ -2,9 +2,10 @@
 //
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
-import { dialog, shell } from 'electron';
+import { app, dialog, shell } from 'electron';
 import fsp from 'node:fs/promises';
 import nodePath from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { IPC } from '../../shared/ipc';
 import type { TimerState } from '../../shared/ipc';
 import { getTimer, setTimer } from '../TimerService';
@@ -105,6 +106,25 @@ export function registerWidgetsIpc(d: IpcDeps): void {
       return !err;
     }
     return !!tabsOf(e)?.createTab(target);
+  });
+  // Документ новой вкладкой. ⚠️ Файл кладём во ВРЕМЕННУЮ папку системы, а не в userData:
+  // это предпросмотр, а не пользовательские данные — сохранить документ насовсем человек
+  // просит отдельной кнопкой. По той же причине здесь ничего не удаляется и не подчищается:
+  // трогать чужие файлы во временной папке мы права не имеем (см. CLAUDE.md о sqlite в userData).
+  //
+  // ⚠️ Вкладка открывается ПРОГРАММНО из main, и только поэтому file:// вообще срабатывает:
+  // гостевой странице переход на file: с http-страницы запрещён (shared/guestNavigation.ts).
+  ipcMain.handle(IPC.NOTEBOOK_OPEN_DOC, async (e, suggestedName: string, html: string) => {
+    if (typeof html !== 'string' || !html) return false;
+    const safe = (suggestedName || 'документ').replace(/[\/:*?"<>|]/g, ' ').trim().slice(0, 60);
+    const file = nodePath.join(app.getPath('temp'), `oblako-${Date.now()}-${safe || 'документ'}.html`);
+    try {
+      await fsp.writeFile(file, html, 'utf8');
+    } catch (err) {
+      console.warn('[Notebook] не удалось записать документ во временный файл:', (err as Error).message);
+      return false;
+    }
+    return !!tabsOf(e)?.createTab(pathToFileURL(file).href);
   });
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (e, kind: StudioKind, context: string) => {
     const sender = e.sender;

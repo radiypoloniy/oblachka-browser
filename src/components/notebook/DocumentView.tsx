@@ -1,117 +1,88 @@
-import { Download } from 'lucide-react';
-import { sp, pad, RADIUS, TEXT, DISPLAY, MEASURE } from '../../styles/system';
-import { btnTone, CapsLabel } from '../settings/kit';
-import { normalizeDoc, type DocBlock, type DocSpec } from '../../../shared/notebookDoc';
-import { docToHtml } from './docExport';
+import { useMemo, useState } from 'react';
+import { Download, ExternalLink } from 'lucide-react';
+import { sp, pad, RADIUS, TEXT } from '../../styles/system';
+import { btnTone, btnGhost, CapsLabel } from '../settings/kit';
+import { normalizeDoc, type DocSpec } from '../../../shared/notebookDoc';
+import { docToHtml, docChars, isTemplateFit, DOC_TEMPLATES, type DocTemplate } from './doc';
+
+const KEY = 'oblako-notebook-doc-template';
 
 /**
- * Документ Студии: девять типов блоков, каждый рисуется своим куском разметки.
+ * Документ Студии: один и тот же разбор, три шаблона на выбор.
  *
- * ⚠️ Разметку делаем МЫ, модель только выбрала последовательность блоков и наполнила их текстом
- * (разбор — в shared/notebookDoc.ts). Отсюда и «красиво»: не потому, что модель хорошо
- * сверстала, а потому, что верстали мы — теми же токенами, что весь браузер.
+ * ⚠️ Предпросмотр показывает РОВНО ТОТ ЖЕ html, который сохранится и откроется вкладкой —
+ * шаблон рисует одну строку, а не две реализации (разбор — в doc/shell.ts). Поэтому здесь
+ * iframe, а не React-вёрстка: другой реализации просто нет, и разъехаться нечему.
+ *
+ * ⚠️ sandbox пустой строкой — максимально строгий: ни скриптов, ни форм, ни навигации.
+ * Текст в документе пришёл от модели по материалам ЧУЖИХ страниц, и хотя он весь экранирован
+ * (esc в doc/shell.ts), полагаться на одну линию обороны здесь незачем.
  */
 export function DocumentView({ json }: { json: string }) {
-  let doc: DocSpec | null = null;
-  try { doc = normalizeDoc(JSON.parse(json)); } catch { doc = null; }
-  if (!doc) {
+  const spec = useMemo<DocSpec | null>(() => {
+    try { return normalizeDoc(JSON.parse(json)); } catch { return null; }
+  }, [json]);
+
+  const [tpl, setTpl] = useState<DocTemplate>(() => {
+    const saved = localStorage.getItem(KEY);
+    return DOC_TEMPLATES.some((t) => t.id === saved) ? saved as DocTemplate : 'report';
+  });
+
+  const html = useMemo(() => spec ? docToHtml(spec, tpl) : '', [spec, tpl]);
+
+  if (!spec) {
     return <div style={{ ...TEXT.body, color: 'var(--danger-500)', padding: pad(4, 6) }}>Документ не разобрался.</div>;
   }
-  const spec = doc;
+
+  // Шаблон, который не выдержит этот материал, не предлагаем — но и не прячем совсем:
+  // приглушённая пилюля с подсказкой честнее исчезнувшей кнопки (см. isTemplateFit).
+  const pick = (id: DocTemplate) => { setTpl(id); localStorage.setItem(KEY, id); };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: sp(2), padding: pad(3, 6),
-        borderBottom: '1px solid var(--divider)', flex: 'none',
+        borderBottom: '1px solid var(--divider)', flex: 'none', flexWrap: 'wrap',
       }}>
-        <CapsLabel style={{ marginBottom: 0, flex: 1 }}>{spec.blocks.length} блоков</CapsLabel>
-        {/* ⚠️ Выгрузка — САМОДОСТАТОЧНЫЙ файл со стилями инлайном: док уезжает человеку, у
-            которого нашего браузера нет, и ссылка на наши токены там ничего не значит. */}
-        <button onClick={() => void saveDoc(spec)} style={{ ...btnTone, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}>
-          <Download size={15} /> Сохранить .html
+        <div style={{ display: 'flex', gap: sp(1) }}>
+          {DOC_TEMPLATES.map((t) => {
+            const fit = isTemplateFit(spec, t.id);
+            const on = tpl === t.id;
+            return (
+              <button key={t.id} onClick={() => pick(t.id)}
+                title={fit ? t.hint : `${t.hint} — на этом материале развалится`}
+                style={{
+                  border: '1px solid', borderColor: on ? 'transparent' : 'var(--divider-strong)',
+                  background: on ? 'var(--section-tone)' : 'transparent',
+                  color: on ? 'var(--section-ink)' : 'var(--text-body)',
+                  opacity: fit || on ? 1 : 0.45,
+                  padding: pad(1, 3), borderRadius: RADIUS.control, cursor: 'default',
+                  fontSize: 'var(--fs-xs)', fontWeight: 600,
+                }}>
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+        <CapsLabel style={{ marginBottom: 0, flex: 1 }}>
+          {spec.blocks.length} блоков · {docChars(spec).toLocaleString('ru-RU')} знаков
+        </CapsLabel>
+        {/* ⚠️ «Открыть» стоит ПЕРЕД «Сохранить» и оформлена главной: посмотреть документ целиком
+            хочется чаще, чем положить его файлом на диск, а в модалке он всегда подрезан. */}
+        <button onClick={() => void window.oblako.openStudioDoc(spec.title, html)}
+          style={{ ...btnTone, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}>
+          <ExternalLink size={15} /> Открыть в новой вкладке
+        </button>
+        <button onClick={() => void window.oblako.saveNotebookDoc(spec.title, html)}
+          style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}>
+          <Download size={15} /> Сохранить
         </button>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: pad(6) }}>
-        <div style={{ maxWidth: 620, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: sp(4) }}>
-          {spec.blocks.map((b, i) => <Block key={i} block={b} />)}
-        </div>
-      </div>
+      <iframe
+        title={spec.title} srcDoc={html} sandbox=""
+        style={{ flex: 1, minHeight: 420, width: '100%', border: 'none', background: 'var(--surface-sunken)' }}
+      />
     </div>
   );
-}
-
-async function saveDoc(spec: DocSpec): Promise<void> {
-  await window.oblako.saveNotebookDoc(spec.title, docToHtml(spec));
-}
-
-function Block({ block }: { block: DocBlock }) {
-  switch (block.kind) {
-    case 'cover':
-      return (
-        <div style={{
-          borderRadius: RADIUS.box, padding: pad(4, 4), position: 'relative', overflow: 'hidden',
-          background: 'var(--section-tone, var(--accent))', color: 'var(--section-ink, var(--on-accent))',
-        }}>
-          <div style={{ ...DISPLAY, fontSize: 24, fontWeight: 700, letterSpacing: '-0.03em' }}>{block.title}</div>
-          {block.text && <div style={{ ...TEXT.caption, color: 'inherit', opacity: 0.78, marginTop: sp(1) }}>{block.text}</div>}
-        </div>
-      );
-    case 'heading':
-      return <h3 style={{ ...TEXT.section, margin: 0 }}>{block.title}</h3>;
-    case 'text':
-      return <p style={{ ...TEXT.body, margin: 0, maxWidth: MEASURE }}>{block.text}</p>;
-    case 'quote':
-      return (
-        <blockquote style={{
-          margin: 0, paddingLeft: sp(3), borderLeft: '3px solid var(--section-tone, var(--accent))',
-          ...TEXT.body, fontWeight: 600, color: 'var(--text-strong)', maxWidth: MEASURE,
-        }}>{block.text}</blockquote>
-      );
-    case 'list':
-      return (
-        <ul style={{ margin: 0, paddingLeft: sp(4), ...TEXT.body, maxWidth: MEASURE }}>
-          {block.items?.map((it, i) => <li key={i} style={{ marginBottom: sp(1) }}>{it}</li>)}
-        </ul>
-      );
-    case 'metrics':
-      return (
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(block.pairs?.length ?? 1, 4)}, 1fr)`, gap: sp(2) }}>
-          {block.pairs?.map((p, i) => (
-            <div key={i} style={{ background: 'var(--surface-sunken)', borderRadius: RADIUS.box, padding: pad(3) }}>
-              <div style={{ ...DISPLAY, fontSize: 22, fontWeight: 700, color: 'var(--section-tone, var(--accent))' }}>{p.value}</div>
-              <div style={{ ...TEXT.caption }}>{p.label}</div>
-            </div>
-          ))}
-        </div>
-      );
-    case 'table':
-    case 'compare':
-      return (
-        <div style={{ borderRadius: RADIUS.box, overflow: 'hidden', border: '1px solid var(--divider)' }}>
-          {block.pairs?.map((p, i) => (
-            <div key={i} style={{
-              display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr)', gap: sp(3),
-              padding: pad(2, 3), borderBottom: i === (block.pairs!.length - 1) ? 'none' : '1px solid var(--divider-soft, var(--divider))',
-            }}>
-              <span style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>{p.label}</span>
-              <span style={{ ...TEXT.body }}>{p.value}</span>
-            </div>
-          ))}
-        </div>
-      );
-    case 'sources':
-      return (
-        <div>
-          <CapsLabel>{block.title || 'Источники'}</CapsLabel>
-          {block.pairs?.map((p, i) => (
-            <div key={i} style={{ ...TEXT.caption, marginBottom: sp(1) }}>
-              <span style={{ color: 'var(--text-body)' }}>{p.label}</span>
-              {p.value && <span style={{ fontFamily: 'var(--font-mono)' }}> · {p.value}</span>}
-            </div>
-          ))}
-        </div>
-      );
-  }
 }

@@ -208,6 +208,7 @@
   "NEW_TAB_SHOW_MENU=tab:new-menu",
   "NOTEBOOK_EXTRACT_FILE=notebook:extract-file",
   "NOTEBOOK_EXTRACT_URL=notebook:extract-url",
+  "NOTEBOOK_OPEN_DOC=notebook:open-doc",
   "NOTEBOOK_OPEN_SOURCE=notebook:open-source",
   "NOTEBOOK_PICK_FILES=notebook:pick-files",
   "NOTEBOOK_SAVE_DOC=notebook:save-doc",

@@ -164,6 +164,8 @@ export interface OblakoApi {
   extractNotebookFile(path: string): Promise<{ ok: boolean; title?: string; text?: string }>;
   /** Открыть источник: адрес — новой вкладкой, файл — системной программой. */
   openNotebookSource(kind: 'url' | 'file', target: string): Promise<boolean>;
+  /** Открыть собранный документ новой вкладкой (через временный файл). */
+  openStudioDoc(name: string, html: string): Promise<boolean>;
 
   // Split View
   // side — какую половину займёт ПРИВОДИМАЯ вкладка (по умолчанию правую: так входят в сплит

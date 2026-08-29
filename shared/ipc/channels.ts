@@ -131,6 +131,7 @@ export const IPC = {
   NOTEBOOK_PICK_FILES:      'notebook:pick-files',      // renderer → main: диалог выбора локальных документов
   NOTEBOOK_EXTRACT_FILE:    'notebook:extract-file',    // renderer → main: путь → текст документа (pdf/docx/txt/…)
   NOTEBOOK_OPEN_SOURCE:     'notebook:open-source',     // renderer → main: открыть источник — адрес вкладкой, файл системой
+  NOTEBOOK_OPEN_DOC:        'notebook:open-doc',        // renderer → main: собранный документ — во временный файл и новой вкладкой
 
   // Граф-воркспейс (electron/GraphStore.ts + GraphEngine.ts). Структуру пишет renderer,
   // результаты узлов — только движок, см. шапку GraphStore.
