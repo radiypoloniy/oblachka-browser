@@ -5,7 +5,7 @@
 // и виджеты с сетевыми данными — следующие заходы, см. план в истории задач.
 // Живёт в src/components (как aiMarkdown.tsx) — импортируется ТОЛЬКО из aipanel.tsx, в дерево
 // App.tsx не входит. Все цвета — токены (включая градиенты иконок/обоев — tokens/apps.css).
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 // Та же связка, что держит порядок вкладок и закреплённых в сайдбаре: свой HTML5 drag-and-drop
 // на этой сетке выглядел чужеродно (иконка не едет за курсором, соседи не расступаются, а цель
 // надо угадывать), а здесь ровно та же задача — порядок в одном списке.
@@ -23,17 +23,18 @@ import {
 } from 'lucide-react'
 export { AppIconBadge } from './apps/AppIconBadge'
 import { AppIconBadge } from './apps/AppIconBadge'
+import { useSlotSplit } from './apps/useSlotSplit'
+import { useOpenSlots } from './apps/useOpenSlots'
+import { useAppsRegistry } from './apps/useAppsRegistry'
 import { HomeGrid, IconMenu, ICON_MENU_WIDTH, ICON_MENU_HEIGHT, ICON_MENU_EDGE } from './apps/HomeGrid'
 import { SlotDivider, AppSlot, WebAppSlot } from './apps/slots'
 export type { AppId, AppDef, CurrencyRatesResult, WeatherResult } from './apps/types'
-import type { AppDef, AppId } from './apps/types'
+import type { AppDef } from './apps/types'
 import {
-  loadCustomApps, saveCustomApps, customToDef, loadAppsOrder, saveAppsOrder,
-  loadHiddenApps, saveHiddenApps, loadSplit, saveSplit, orderApps, hostOf,
-  getCustomWallpaper, saveCustomWallpaper,
+  hostOf, getCustomWallpaper, saveCustomWallpaper,
   wallpaperIsLight, wallpaperTitle,
   loadWidgets, saveWidgets, loadWeatherCity, saveWeatherCity,
-  SPLIT_MIN, SPLIT_MAX, type CustomWebApp, type WidgetsConfig,
+  type WidgetsConfig,
 } from './apps/storage'
 export {
   getCustomWallpaper, loadWallpaper, saveWallpaper, wallpaperBackground,
@@ -162,7 +163,6 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   requestedApp?: string | null
   onRequestHandled?: () => void
 }) {
-  const [openApps, setOpenApps] = useState<AppId[]>([])
   const [sheetOpen, setSheetOpen] = useState(false)
   const [sheetTab, setSheetTab] = useState<SheetTab>('bg')
   // Поля добавления сайта развёрнуты только по просьбе — пустыми они занимали место обещанием.
@@ -170,163 +170,49 @@ export function AppsMode({ wallpaper, onSelectWallpaper, requestedApp, onRequest
   const [widgets, setWidgets] = useState<WidgetsConfig>(loadWidgets)
   const [weatherCity, setWeatherCity] = useState<string>(loadWeatherCity)
   const [cityDraft, setCityDraft] = useState(weatherCity)
-  const [customApps, setCustomApps] = useState<CustomWebApp[]>(loadCustomApps)
   const [newAppName, setNewAppName] = useState('')
   const [newAppUrl, setNewAppUrl] = useState('')
   const [meshes, setMeshes] = useState(() => allMeshes())
   useEffect(() => subscribeMeshes(() => setMeshes(allMeshes())), [])
 
-  const [appsOrder, setAppsOrder] = useState<string[]>(loadAppsOrder)
-  const [hiddenApps, setHiddenApps] = useState<string[]>(loadHiddenApps)
   // Меню у иконки (ПКМ): что за приложение и где рисовать. Координаты — относительно раздела.
   const [iconMenu, setIconMenu] = useState<{ app: AppDef; x: number; y: number } | null>(null)
-  const everyApp: AppDef[] = orderApps([...APPS, ...customApps.map(customToDef)], appsOrder)
-  // ⚠️ Спрятанное убирается только с ЭКРАНА: открытый слот с ним продолжает работать, пока его не
-  // закроют. Иначе «скрыть» на глазах убивало бы наполовину введённое в приложении.
-  const allApps: AppDef[] = everyApp.filter((a) => !hiddenApps.includes(a.id))
-  // ⚠️ Отдельного списка спрятанных больше нет: во вкладке «Приложения» они стоят в общем списке
-  // с выключенным тумблером. Прежний блок «Скрытые с экрана» появлялся и исчезал сам, и был
-  // единственной дверью назад — при том что прячут приложение совсем в другом месте.
+  // Открытые слоты, активный из них и клавиатура — в useOpenSlots.
+  const { openApps, activeApp, setActiveApp, openApp, closeApp, swapSlots } = useOpenSlots({
+    requestedApp,
+    onRequestHandled,
+    // ⚠️ Esc сначала предлагается тому, что «поверх» экрана, и порядок здесь неслучаен: меню у
+    // иконки поверх листа настроек, лист — поверх слотов.
+    consumeEscape: useCallback(() => {
+      if (iconMenu) { setIconMenu(null); return true }
+      if (sheetOpen) { setSheetOpen(false); return true }
+      return false
+    }, [iconMenu, sheetOpen]),
+  })
 
-  const hideApp = (id: string) => {
-    const next = [...hiddenApps, id]
-    setHiddenApps(next)
-    saveHiddenApps(next)
-  }
-  const unhideApp = (id: string) => {
-    const next = hiddenApps.filter((x) => x !== id)
-    setHiddenApps(next)
-    saveHiddenApps(next)
-  }
-  const reorderApps = (ids: string[]) => {
-    setAppsOrder(ids)
-    saveAppsOrder(ids)
-  }
-  // Шит рисуется только пока виден домашний экран; отдельный флаг нужен и веб-слотам —
-  // WebContentsView лежит ПОВЕРХ панели, открытый шит иначе оказался бы под сайтом.
-  const sheetVisible = sheetOpen && openApps.length < 2
-
-  const openApp = (id: AppId) => {
-    setOpenApps((prev) => (prev.includes(id) || prev.length >= 2 ? prev : [...prev, id]))
-  }
-  const closeApp = (id: AppId) => setOpenApps((prev) => prev.filter((a) => a !== id))
-
-  // Внешний запрос: открыть приложение и сразу сообщить, что он обработан, — иначе повторный
-  // клик по той же иконке не сработал бы (значение в родителе не поменялось бы).
-  useEffect(() => {
-    if (!requestedApp) return
-    openApp(requestedApp)
-    onRequestHandled?.()
-    // openApp/onRequestHandled стабильны по смыслу вызова; следим только за самим запросом.
-     
-  }, [requestedApp])
-  // Обмен верхнего/нижнего слота — ключи не меняются, React переставляет DOM без ремаунта,
-  // состояние приложений (набранное в калькуляторе, таймер) переезжает вместе со слотом.
-  const swapSlots = () => setOpenApps((prev) => (prev.length === 2 ? [prev[1], prev[0]] : prev))
-
-  // ── Какой слот активен ──
-  // ⚠️ Нужно ровно тогда, когда открыты ОБА: они занимают всю площадь, и по виду не отличить, в
-  // каком сейчас идёт работа. Живой случай: набираешь в конвертере — калькулятор рядом не
-  // принимает ввод, но выглядит так же. Кольцо на иконке этого не решало: сетка иконок при двух
-  // открытых приложениях вообще не видна.
-  const [activeApp, setActiveApp] = useState<AppId | null>(null)
-  // Клик в САЙТ веб-слота панель не видит — про него сообщает main (см. WebAppManager.ts).
-  useEffect(() => window.aiPanel.onWebAppFocused((id) => setActiveApp(id)), [])
-  // Закрыли слот — активным становится оставшийся, иначе рамка осталась бы на пустом месте.
-  useEffect(() => {
-    if (openApps.length === 1) setActiveApp(openApps[0])
-    else if (openApps.length === 0) setActiveApp(null)
-    else if (activeApp === null || !openApps.includes(activeApp)) setActiveApp(openApps[0])
-  }, [openApps, activeApp])
-
-  // Esc закрывает СЛОТ, а не панель, пока открыто хоть одно приложение.
-  // ⚠️ Слушатель в фазе ПЕРЕХВАТА и с stopPropagation: панель закрывает себя по Esc своим
-  // обработчиком на document (см. aipanel.tsx), и без перехвата один Esc делал бы оба дела разом
-  // — закрывал приложение и захлопывал панель. Закрывается ПОСЛЕДНИЙ открытый: он верхний в
-  // стопке внимания, как последняя открытая вкладка при Ctrl+W.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // Ctrl+Tab — переключить активное приложение с клавиатуры. Обычные стрелки для этого не
-      // годятся: они уже ходят по сетке иконок, а внутри приложений живут поля ввода.
-      if (e.key === 'Tab' && e.ctrlKey && openApps.length === 2) {
-        e.preventDefault()
-        e.stopPropagation()
-        setActiveApp((cur) => (cur === openApps[0] ? openApps[1] : openApps[0]))
-        return
-      }
-      if (e.key !== 'Escape') return
-      // Открытое меню у иконки забирает Esc себе — оно «поверх» и по смыслу, и на экране.
-      if (iconMenu) { e.stopPropagation(); setIconMenu(null); return }
-      // Следом — лист настроек: он тоже «поверх» экрана, и закрывать его повторным кликом по
-      // «Настроить» было единственным способом.
-      if (sheetOpen) { e.stopPropagation(); setSheetOpen(false); return }
-      if (openApps.length === 0) return
-      e.stopPropagation()
-      // ⚠️ Закрывается АКТИВНОЕ приложение, а не последнее в списке. Прежнее «последнее» было
-      // прямым багом: подсвечен конвертер, жмёшь Esc — закрывается калькулятор, потому что он
-      // оказался нижним. Esc обязан относиться к тому же, к чему относится рамка.
-      const target = activeApp && openApps.includes(activeApp) ? activeApp : openApps[openApps.length - 1]
-      setOpenApps((prev) => prev.filter((x) => x !== target))
-    }
-    document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
-  }, [openApps, iconMenu, activeApp, sheetOpen])
+  // Что стоит на экране (встроенные + свои веб-приложения, порядок, спрятанные) — в
+  // useAppsRegistry.
+  const {
+    customApps, everyApp, allApps, hiddenApps,
+    hideApp, unhideApp, reorderApps, addCustomApp, removeCustomApp,
+  } = useAppsRegistry({
+    newAppName, newAppUrl,
+    onAdded: () => { setNewAppName(''); setNewAppUrl('') },
+    closeApp,
+  })
 
   // Перетаскивание слотов: тот же порог в 5 px, что у иконок, — иначе нажатие на шапку (кнопки
   // свопа и закрытия живут там же) считалось бы началом жеста.
   const slotSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const [draggingSlot, setDraggingSlot] = useState(false)
 
-  // ── Размер слотов перетаскиванием разделителя ──
-  const slotsRef = useRef<HTMLDivElement>(null)
-  const [splitRatio, setSplitRatio] = useState<number>(loadSplit)
-  const ratioRef = useRef(splitRatio)
-  // ⚠️ Пока тянут разделитель, веб-слоты ПРЯЧУТСЯ. Не косметика: их WebContentsView лежит ПОВЕРХ
-  // панели, и как только указатель заходит на сайт, панель перестаёт получать pointermove — тот
-  // же закон, из-за которого зоны дропа вкладок считает main, а не рендерер. Спрятанная вью
-  // отдаёт указатель панели, и разделитель доезжает до конца; сайт возвращается на отпускании.
-  const [resizing, setResizing] = useState(false)
+  // Шит рисуется только пока виден домашний экран; отдельный флаг нужен и веб-слотам —
+  // WebContentsView лежит ПОВЕРХ панели, открытый шит иначе оказался бы под сайтом.
+  const sheetVisible = sheetOpen && openApps.length < 2
 
-  const startResize = (e: React.PointerEvent) => {
-    const box = slotsRef.current?.getBoundingClientRect()
-    if (!box || box.height <= 0) return
-    e.preventDefault()
-    setResizing(true)
-    const move = (ev: PointerEvent) => {
-      const r = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, (ev.clientY - box.top) / box.height))
-      ratioRef.current = r
-      setSplitRatio(r)
-    }
-    const up = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      setResizing(false)
-      saveSplit(ratioRef.current)
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-  }
-
-  const addCustomApp = () => {
-    const rawUrl = newAppUrl.trim()
-    if (!rawUrl) return
-    const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`
-    let name = newAppName.trim()
-    if (!name) {
-      try { name = new URL(url).hostname.replace(/^www\./, '') } catch { name = rawUrl }
-    }
-    const next = [...customApps, { id: `web:custom-${Date.now()}`, name, url }]
-    setCustomApps(next)
-    saveCustomApps(next)
-    setNewAppName('')
-    setNewAppUrl('')
-  }
-  const removeCustomApp = (id: string) => {
-    closeApp(id) // если открыт в слоте — слот закрывается (и view в main умирает с ним)
-    const next = customApps.filter((c) => c.id !== id)
-    setCustomApps(next)
-    saveCustomApps(next)
-  }
+  // Доля слотов и жест разделителя — в useSlotSplit. resizing оттуда прячет веб-слоты на время
+  // жеста (разбор — в самом хуке).
+  const { slotsRef, splitRatio, resizing, startResize } = useSlotSplit()
 
   const toggleWidget = (key: keyof WidgetsConfig) => {
     setWidgets((prev) => {
