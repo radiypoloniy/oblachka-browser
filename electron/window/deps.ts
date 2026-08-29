@@ -5,3 +5,9 @@
 // импорта: конструкция чисто типовая и стирается при компиляции, поэтому цикла между main.ts и
 // этими модулями в рантайме нет. Тот же приём, что у electron/ipc/deps.ts.
 export type WindowDeps = ReturnType<typeof import('../main').makeWindowDeps>;
+
+
+/** Контекст окна в реестре (electron/WindowRegistry.ts) — форма, которую собирает createWindow. */
+export type WindowCtxShape = ReturnType<typeof import('../WindowRegistry').contextForWindow> extends infer T
+  ? NonNullable<T>
+  : never;
