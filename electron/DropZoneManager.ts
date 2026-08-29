@@ -66,9 +66,83 @@ interface ActiveDrag {
   // чром не виден, см. setSwapHint — жест половины сплита устроен так же). null — тащат папку,
   // у неё одной страницы нет.
   card: DragCard | null;
+  // ── Страховка от залипшего жеста (см. разбор у armFinish) ──
+  startedAt: number;
+  // Отсчёт «renderer обязан закрыть жест»: заведён, но ещё не сработал.
+  finishTimer: NodeJS.Timeout | null;
+  // Как отписаться от всего, на что подписались на время жеста.
+  offInput: Array<() => void>;
+  // id webContents, на которые слушатель уже повешен — вью показывается в разных окнах, и
+  // подписаться дважды легко.
+  watched: Set<number>;
 }
 
 let drag: ActiveDrag | null = null;
+
+// ⚠️ ПОЧЕМУ ЗДЕСЬ ВООБЩЕ НУЖНА СТРАХОВКА. Жест целиком ведёт renderer: dnd-kit зовёт
+// tabDragStart на onDragStart и tabDragEnd на onDragEnd/onDragCancel. До этой правки у main НЕ
+// БЫЛО ни одного собственного условия завершения — ни отпускания кнопки, ни потери фокуса, ни
+// таймаута. Не дошёл onDragEnd — оверлей с подписью «разделить экран / новое окно» и карточка в
+// руке оставались на экране НАВСЕГДА, а опрос курсора крутился каждые 30 мс до закрытия окна.
+// Живая жалоба: «браузер предлагает фантомное окно открыть в сплите, и это никак не сбросить».
+//
+// ⚠️ И вот откуда берётся пропавший onDragEnd: оверлей НЕ ставит setIgnoreMouseEvents, то есть
+// на время жеста он лежит поверх области контента настоящей вью и события мыши над ней достаются
+// ЕМУ, а не хрому — а dnd-kit ждёт pointerup именно в хроме. Обычно спасает захват мыши
+// Chromium'ом (нажали в хроме — туда же идут и последующие события), но захват переживает не
+// всякую перестановку вью в окне, а мы добавляем оверлей ровно посреди жеста. Отсюда и
+// «иногда»: воспроизводится не каждый раз, и потому три прошлых захода чинили сторону renderer'а
+// и не помогали. Лечение — не угадывать, почему молчит dnd-kit, а дать main СВОЙ признак конца.
+//
+// Признаков три, от самого точного к последнему рубежу:
+//   1. mouseUp с любой вью (input-event) — настоящий конец жеста, где бы кнопку ни отпустили;
+//   2. потеря фокуса окном-источником — Alt+Tab и Win+D посреди перетаскивания;
+//   3. потолок длительности — если оба сигнала прошли мимо.
+
+// ⚠️ Отпустили кнопку — жест НЕ гасится немедленно, и это принципиально: сразу за mouseUp идёт
+// штатный tabDragEnd из renderer'а, а он читает drag, чтобы вернуть зону. Погаси мы жест первым,
+// сплит и вынос в окно перестали бы работать вовсе — то есть страховка сломала бы то, ради чего
+// всё и написано. Поэтому mouseUp лишь ЗАВОДИТ отсчёт: успел renderer — стоп по нормальному
+// пути, не успел — гасим сами. 400 мс — с большим запасом: путь mouseUp → dnd-kit → invoke
+// укладывается в единицы миллисекунд.
+const FINISH_GRACE_MS = 400;
+// Нажатие мыши, случившееся ЗАМЕТНО позже старта жеста, — тоже доказательство, что прошлый жест
+// давно закончился (человек уже кликает по чему-то другому). Порог нужен, чтобы не поймать
+// нажатие, которым сам жест и начался.
+const NEW_PRESS_MS = 300;
+// Последний рубеж. Настоящее перетаскивание вкладки столько не длится; сработало — значит оба
+// сигнала выше прошли мимо, и об этом надо узнать из лога, а не от пользователя.
+const MAX_DRAG_MS = 60_000;
+
+// Отсчёт «жест обязан закрыться сам». Повторные вызовы игнорируются: первый сигнал и решает.
+function armFinish(reason: string): void {
+  if (!drag || drag.finishTimer) return;
+  drag.finishTimer = setTimeout(() => {
+    if (!drag) return;
+    console.warn(`[dropzones] жест не закрылся сам (${reason}) — гашу зоны страховкой`);
+    stopDrag(`страховка: ${reason}`);
+  }, FINISH_GRACE_MS);
+}
+
+// Слушаем ввод там, куда события мыши реально попадают во время жеста: оверлей окна (он лежит
+// поверх страницы) и слой хрома (сайдбар, тулбар). Подписка живёт ровно столько, сколько жест.
+function watchInput(st: WindowDropZones | null): void {
+  if (!drag || !st) return;
+  const targets = [st.view?.webContents, contextForWindow(st.win)?.chromeView?.webContents];
+  for (const wc of targets) {
+    if (!wc || wc.isDestroyed() || drag.watched.has(wc.id)) continue;
+    drag.watched.add(wc.id);
+    const onInput = (_e: Electron.Event, input: Electron.InputEvent): void => {
+      if (!drag) return;
+      if (input.type === 'mouseUp') armFinish('отпустили кнопку мыши');
+      else if (input.type === 'mouseDown' && Date.now() - drag.startedAt > NEW_PRESS_MS) {
+        armFinish('новое нажатие мыши');
+      }
+    };
+    wc.on('input-event', onInput);
+    drag.offInput.push(() => { if (!wc.isDestroyed()) wc.off('input-event', onInput); });
+  }
+}
 
 function stateFor(win: BrowserWindow): WindowDropZones {
   const existing = perWindow.get(win.id);
@@ -81,7 +155,7 @@ function stateFor(win: BrowserWindow): WindowDropZones {
   win.once('closed', () => {
     // Окно закрылось посреди жеста — драг обрывается вместе с ним, иначе таймер продолжил бы
     // опрашивать курсор и слать сообщения в уничтоженную вью.
-    if (drag && (drag.source.win.id === win.id || drag.shown?.win.id === win.id)) stopDrag();
+    if (drag && (drag.source.win.id === win.id || drag.shown?.win.id === win.id)) stopDrag('окно закрылось');
     // ⚠️ Вью закрываем руками — окно не уносит с собой дочерние вью ВООБЩЕ, ни прогретую
     // (prewarmDropZones до первого жеста даже не добавлена в contentView), ни лежащую в нём.
     // Здесь это заметили первым, когда прогрев сделал осиротевший процесс рендерера гарантией
@@ -359,6 +433,13 @@ function otherWindowUnderCursor(source: WindowDropZones): WindowDropZones | null
 // Один тик слежения: где курсор, что из этого следует и в каком окне это рисовать.
 function updateDrag(): void {
   if (!drag) return;
+  // Последний рубеж: оба честных сигнала конца (mouseUp, потеря фокуса) прошли мимо. Настоящее
+  // перетаскивание столько не длится — значит это залипший жест, и лучше погасить его самим.
+  if (Date.now() - drag.startedAt > MAX_DRAG_MS) {
+    console.warn('[dropzones] жест идёт дольше потолка — гашу зоны страховкой');
+    stopDrag('страховка: потолок длительности');
+    return;
+  }
   const inSource = !!cursorInWindow(drag.source);
   const other = otherWindowUnderCursor(drag.source);
   // Зона внутри источника (если курсор в нём). 'window' здесь = «вынести в новое окно», null —
@@ -399,6 +480,10 @@ function updateDrag(): void {
     });
     drag.shown = shouldShowIn;
     drag.zone = null; // новое окно ещё ничего не знает — заставляем послать зону ниже
+    // Перенос в соседнее окно: события мыши теперь достаются ЕГО оверлею и его хрому — значит и
+    // отпускание кнопки придёт оттуда. Без этой подписки страховка не увидела бы конец жеста
+    // ровно в том сценарии, где renderer-источник и так рискует его пропустить.
+    watchInput(shouldShowIn);
   }
   // Курсор — карточке в руке, в координатах ОВЕРЛЕЯ (то есть области контента). Считаем по тому
   // окну, где он сейчас показан: при переносе в соседнее окно карточка обязана ехать в НЁМ, туда
@@ -418,9 +503,14 @@ function updateDrag(): void {
   }
 }
 
-function stopDrag(): void {
+function stopDrag(reason: string): void {
   if (!drag) return;
   if (drag.timer) clearInterval(drag.timer);
+  if (drag.finishTimer) clearTimeout(drag.finishTimer);
+  // ⚠️ Отписка — до обнуления drag: замыкания в offInput на него не смотрят, но вью могла уже
+  // умереть, и каждый снимающий вызов защищён своим try, чтобы одна мёртвая не сорвала уборку
+  // остальных.
+  for (const off of drag.offInput) { try { off(); } catch { /* вью уже уничтожена */ } }
   sendZone(drag.shown, null);
   sendTabDrag(drag.shown, null);
   sendCursor(drag.shown, null);
@@ -428,14 +518,28 @@ function stopDrag(): void {
   if (chrome && !chrome.webContents.isDestroyed()) chrome.webContents.send(IPC.TAB_DRAG_ZONE, null);
   hideOverlayIn(drag.shown);
   drag = null;
+  // ⚠️ Лог обязателен и убирать его не надо. Залипший жест снаружи выглядит как «оверлей висит,
+  // непонятно почему», и три захода ушли именно на это «непонятно». Пара строк старт/стоп в
+  // логе называет причину сразу.
+  console.log(`[dropzones] стоп: ${reason}`);
 }
 
 // Начало перетаскивания вкладки: показываем зоны и начинаем следить за курсором.
 export function startTabDrag(win: BrowserWindow, card: DragCard | null = null): void {
-  stopDrag(); // предыдущий жест мог не закрыться штатно (окно закрылось, дроп отменили)
+  stopDrag('новый жест'); // предыдущий мог не закрыться штатно (окно закрылось, дроп отменили)
   const st = stateFor(win);
   if (st.content.width === 0 || st.content.height === 0) return; // контента нет (настройки/история)
-  drag = { source: st, shown: null, zone: null, target: null, timer: null, card };
+  drag = {
+    source: st, shown: null, zone: null, target: null, timer: null, card,
+    startedAt: Date.now(), finishTimer: null, offInput: [], watched: new Set(),
+  };
+  console.log(`[dropzones] старт: окно ${win.id}`);
+  watchInput(st);
+  // Alt+Tab или Win+D посреди жеста: отпускания мыши мы уже не увидим — оно достанется чужому
+  // приложению. Окно, потерявшее фокус, — достаточное доказательство, что жест кончился.
+  const onBlur = (): void => armFinish('окно потеряло фокус');
+  win.on('blur', onBlur);
+  drag.offInput.push(() => { if (!win.isDestroyed()) win.off('blur', onBlur); });
   // См. setSwapHint: вью общая на все жесты, и остатки прошлого надо обнулить до первого тика.
   sendSwapHint(st, null);
   setSwapThumb(win, null);
@@ -446,6 +550,12 @@ export function startTabDrag(win: BrowserWindow, card: DragCard | null = null): 
 // Конец перетаскивания: прячем зоны и отдаём последнее посчитанное — по нему сайдбар и решает,
 // что сделать (разделить экран, вынести в окно, отдать другому окну или просто переупорядочить).
 export function endTabDrag(win: BrowserWindow): TabDropResult {
+  // ⚠️ Раньше этот выход был МОЛЧАЛИВЫМ, и потому состояние «жест начало одно окно, а закрыть
+  // просит другое» не диагностировалось никак — а оно означает залипший жест у источника:
+  // тот свой tabDragEnd не прислал, и страховка ниже про него ничего не узнает от этого вызова.
+  if (drag && drag.source.win.id !== win.id) {
+    console.warn(`[dropzones] endTabDrag от окна ${win.id}, а жест начало окно ${drag.source.win.id}`);
+  }
   if (!drag || drag.source.win.id !== win.id) return { zone: null };
   // Пересчитываем на месте: последний тик мог быть до 30 мс назад, а решает именно точка отпускания.
   updateDrag();
@@ -462,7 +572,7 @@ export function endTabDrag(win: BrowserWindow): TabDropResult {
   const panels = zone === 'replace' ? contextForWindow(drag.source.win)?.tabs.splitPanelRects() : null;
   const replaceId = panels ? (side === 'left' ? panels.leftId : panels.rightId) : undefined;
   const windowId = drag.target?.win.id;
-  stopDrag();
+  stopDrag('endTabDrag');
   // 'adopt' без живого приёмника — не исход, а полпути: лучше ничего не делать, чем унести
   // вкладку неизвестно куда.
   if (zone === 'adopt' && windowId === undefined) return { zone: null };
