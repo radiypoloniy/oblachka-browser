@@ -138,9 +138,9 @@
     "ipc": 61
   },
   "src/components/aiApps.tsx": {
-    "lines": 768,
-    "fn": 610,
-    "effects": 5,
+    "lines": 654,
+    "fn": 495,
+    "effects": 1,
     "ipc": 0
   },
   "src/components/desktop/DesktopScreen.tsx": {
