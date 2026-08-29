@@ -18,6 +18,7 @@
     "stand": "node scripts/isolated-stand.mjs",
     "leak-check": "node scripts/leak-stand.mjs",
     "profile-data-check": "node scripts/profile-data-drive.mjs",
+    "session-restore-check": "node scripts/session-restore-drive.mjs",
     "chrome-modal-check": "node scripts/chrome-modal-drive.mjs",
     "make-icon": "node scripts/make-icon.mjs",
     "build-installer-ui": "node scripts/build-installer-ui.mjs",
