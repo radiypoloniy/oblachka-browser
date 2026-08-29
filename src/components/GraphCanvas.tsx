@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow, Background, Controls, MiniMap,
-  applyEdgeChanges, applyNodeChanges, addEdge,
-  type Connection, type Edge, type EdgeChange, type Node, type NodeChange,
+  applyNodeChanges,
+  type Node, type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
   Plus, Play, Square, Trash2, ArrowLeft, Pencil,
 } from 'lucide-react';
-import type {
-  GraphDoc, GraphMeta, GraphNodeConfig, GraphNodeKind, GraphNodeStatus, GraphStructure,
-} from '../../shared/graph';
+import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../shared/graph';
 import { NODE_KINDS } from '../../shared/graph';
 import GraphNodeCard, { DEFAULT_NODE_SIZE, type GraphNodeData } from './graph/GraphNodeCard';
 import { useGraphNodeActions } from './graph/useGraphNodeActions';
 import { useGraphWebApps } from './graph/useGraphWebApps';
+import { useGraphDoc } from './graph/useGraphDoc';
 import GraphWebAppWindow, { type WebAppMode } from './graph/GraphWebAppWindow';
 import ImagePresetEditor from './graph/ImagePresetEditor';
 import TemplatePicker from './graph/TemplatePicker';
@@ -48,67 +47,22 @@ const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
   { title: 'Пометки', kinds: ['sticker'] },
 ];
 
-const SAVE_DEBOUNCE_MS = 600;
 
-function toRFNodes(doc: GraphDoc): RFNode[] {
-  return doc.nodes.map((n) => ({
-    id: n.id,
-    type: 'oblako',
-    position: { x: n.x, y: n.y },
-    // Размер задаём всегда, в том числе узлам, сохранённым до появления колонок w/h:
-    // при определённой высоте внутренности карточки растягиваются по flex честно.
-    width: n.w ?? DEFAULT_NODE_SIZE[n.kind].w,
-    height: n.h ?? DEFAULT_NODE_SIZE[n.kind].h,
-    data: {
-      kind: n.kind,
-      title: n.title,
-      config: n.config,
-      // Узел с результатом и без ошибки — готов. Более тонкое «устарел» посчитает движок:
-      // он один знает отпечаток входов, renderer его не воспроизводит.
-      status: (n.error ? 'error' : n.output ? 'done' : 'idle') as GraphNodeStatus,
-      output: n.output,
-      outputTitle: n.outputTitle,
-      error: n.error,
-      onPatch: () => {},
-      onRun: () => {},
-      onDelete: () => {},
-      onDuplicate: () => {},
-      onShowHistory: () => {},
-      onExpand: () => {},
-      onPickFile: () => {},
-      onPickImage: () => {},
-      imagePresets: [],
-      onEditPresets: () => {},
-      onCopyOutput: () => {},
-      onSaveOutput: () => {},
-      onOpenWebApp: () => {},
-      pullFromInput: null,
-      inputLabels: [],
-    },
-  }));
-}
-
-function toRFEdges(doc: GraphDoc): Edge[] {
-  return doc.edges.map((e) => ({
-    id: e.id,
-    source: e.fromNode,
-    sourceHandle: e.fromPort,
-    target: e.toNode,
-    targetHandle: e.toPort,
-  }));
-}
 
 export default function GraphCanvas({ onBack }: { onBack: () => void }) {
-  const [list, setList] = useState<GraphMeta[]>([]);
-  const [currentId, setCurrentId] = useState<number | null>(null);
-  const [nodes, setNodes] = useState<RFNode[]>([]);
-  const [edges, setEdges] = useState<Edge[]>([]);
-  const [running, setRunning] = useState(false);
-  const [loading, setLoading] = useState(true);
-  // Открытые узлы-веб-приложения. Их может быть несколько: держать рядом ChatGPT и Gemini,
-  // сравнивая ответы, — основной сценарий графа. Порядок в массиве = порядок наложения,
-  // последний сверху (см. focusWebApp).
-  // Переименование воркспейса прямо в списке: id строки в правке и текущий черновик.
+  // Документ: список холстов, открытый холст, его узлы и связи, ход прогона и автосейв
+  // структуры — в useGraphDoc.
+  const {
+    list, currentId, setCurrentId, nodes, setNodes, edges, setEdges,
+    running,
+    loadedIdRef, nodesRef, edgesRef,
+    refreshList, openGraph, onEdgesChange, onConnect,
+  } = useGraphDoc({
+    // ⚠️ useCallback обязателен: колбэк стоит в зависимостях эффекта первичной загрузки внутри
+    // хука, и новая ссылка на каждый рендер запускала бы загрузку по кругу.
+    onFirstRunEmpty: useCallback(() => setTemplatePickerOpen(true), []),
+  });
+
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   // Пресеты картинок: встроенные приходят из shared, пользовательские — из базы.
@@ -140,15 +94,6 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
 
   // Пока идёт загрузка графа, автосейв обязан молчать: иначе пустое стартовое состояние
   // успело бы записаться поверх только что открытого воркспейса.
-  const loadedIdRef = useRef<number | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Связи нужны patchNode для пометки «устарел», но через замыкание они пересоздавали бы
-  // колбэки на каждое движение мыши по холсту — держим их зеркалом в ref.
-  const edgesRef = useRef<Edge[]>([]);
-  useEffect(() => { edgesRef.current = edges; }, [edges]);
-  const nodesRef = useRef<RFNode[]>([]);
-  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
-
   // Окна чужих AI-сайтов поверх холста — в useGraphWebApps.
   const { webApps, webAppNotes, openWebApp, setWebApps, setWebAppMode, focusWebApp,
     insertPrompt, captureAnswer, captureImage }
@@ -172,117 +117,6 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
 
-  const refreshList = useCallback(async () => {
-    const metas = await window.oblako.listGraphs();
-    setList(metas);
-    return metas;
-  }, []);
-
-  const openGraph = useCallback(async (graphId: number) => {
-    setLoading(true);
-    loadedIdRef.current = null;
-    const doc = await window.oblako.getGraph(graphId);
-    if (!doc) { setLoading(false); return; }
-    setNodes(toRFNodes(doc));
-    setEdges(toRFEdges(doc));
-    setCurrentId(graphId);
-    loadedIdRef.current = graphId;
-    setLoading(false);
-  }, []);
-
-  // Первое открытие: берём самый свежий воркспейс, а если их нет — заводим первый,
-  // чтобы человек попал сразу на холст, а не на пустой экран с одной кнопкой.
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      const metas = await refreshList();
-      if (!alive) return;
-      if (metas.length > 0) {
-        await openGraph(metas[0]!.id);
-      } else {
-        // Первый запуск: пустой воркспейс заводим сразу (иначе холсту нечего показывать),
-        // но следом открываем выбор схемы — это первое, что видит человек.
-        const created = await window.oblako.createGraph('Мой первый граф');
-        if (!alive || !created) { setLoading(false); return; }
-        await refreshList();
-        await openGraph(created.id);
-        if (alive) setTemplatePickerOpen(true);
-      }
-    })();
-    return () => { alive = false; };
-  }, [openGraph, refreshList]);
-
-  // Граф мог пополниться снаружи — из ПКМ «Добавить в граф» на странице или в сайдбаре.
-  // Перечитываем целиком: узлы добавились в базу мимо холста, и локального состояния,
-  // которое можно было бы подшить, у нас нет.
-  useEffect(() => {
-    return window.oblako.onGraphChanged((graphId) => {
-      void refreshList();
-      if (graphId === loadedIdRef.current) void openGraph(graphId);
-    });
-  }, [openGraph, refreshList]);
-
-  // Ход прогона из main. Чанки Qwen приходят потоком — дописываем их в вывод узла.
-  useEffect(() => {
-    return window.oblako.onGraphProgress((p) => {
-      if (p.graphId !== loadedIdRef.current) return;
-      setNodes((prev) => prev.map((n) => {
-        if (n.id !== p.nodeId) return n;
-        const data = { ...n.data, status: p.status };
-        if (p.chunk !== undefined) {
-          data.output = (n.data.output ?? '') + p.chunk;
-        } else if (p.status === 'running') {
-          data.output = null; // новый прогон — старый результат больше не про него
-          data.error = null;
-        }
-        if (p.output !== undefined) data.output = p.output;
-        if (p.outputTitle !== undefined) data.outputTitle = p.outputTitle;
-        // awaiting несёт не ошибку, а подсказку «что от вас требуется» — показываем её тем
-        // же полем, карточка красит его жёлтым, а не красным (см. GraphNodeCard).
-        if (p.status === 'error' || p.status === 'awaiting') data.error = p.error ?? 'Не получилось';
-        if (p.status === 'done') data.error = null;
-        return { ...n, data };
-      }));
-      if (p.status === 'running' || p.status === 'queued') setRunning(true);
-    });
-  }, []);
-
-  // Прогон закончился, когда ни один узел больше не в работе.
-  useEffect(() => {
-    const busy = nodes.some((n) => n.data.status === 'running' || n.data.status === 'queued');
-    if (!busy) setRunning(false);
-  }, [nodes]);
-
-  // Автосохранение структуры. Шлём только её — результаты узлов принадлежат движку
-  // (см. шапку electron/GraphStore.ts), холст не должен затирать их своей копией.
-  useEffect(() => {
-    if (loading || currentId === null || loadedIdRef.current !== currentId) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      const structure: GraphStructure = {
-        nodes: nodes.map((n) => ({
-          id: n.id,
-          kind: n.data.kind,
-          x: n.position.x,
-          y: n.position.y,
-          w: n.width ?? null,
-          h: n.height ?? null,
-          title: n.data.title,
-          config: n.data.config,
-        })),
-        edges: edges.map((e) => ({
-          id: e.id,
-          fromNode: e.source,
-          fromPort: e.sourceHandle ?? 'text',
-          toNode: e.target,
-          toPort: e.targetHandle ?? 'context',
-        })),
-      };
-      void window.oblako.saveGraph(currentId, structure);
-    }, SAVE_DEBOUNCE_MS);
-    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [nodes, edges, currentId, loading]);
-
   const onNodesChange = useCallback((changes: NodeChange<RFNode>[]) => {
     for (const ch of changes) {
       // Узел убрали с холста — его живой сайт больше не нужен, иначе процесс чужой
@@ -294,20 +128,12 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
     }
     setNodes((ns) => applyNodeChanges(changes, ns));
   }, [currentId]);
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => setEdges((es) => applyEdgeChanges(changes, es)),
-    [],
-  );
-  const onConnect = useCallback(
-    (c: Connection) => setEdges((es) => addEdge({ ...c, id: crypto.randomUUID() }, es)),
-    [],
-  );
 
   // Действия над узлом (правка, прогон, удаление, файлы, дублирование + Ctrl+D) — в
-  // useGraphNodeActions.
+  // useGraphNodeActions. Стоит ПОСЛЕ onNodesChange: тот уходит в хук параметром, потому что
+  // удаление узла обязано идти через него (на remove висит закрытие живого сайта узла).
   const { patchNode, runNode, deleteNode, pickFile, pickImage, copyOutput, saveOutput, duplicateNodes }
     = useGraphNodeActions({ setNodes, setEdges, nodesRef, edgesRef, currentId, onNodesChange });
-
   const addNode = useCallback((kind: GraphNodeKind) => {
     setNodes((ns) => {
       // Каскадом от количества — новый узел не ложится ровно поверх предыдущего.
