@@ -126,6 +126,7 @@ export const IPC = {
   // предложенные запросы до того, как они уйдут на внешний SearXNG (см. electron/NotebookGather.ts).
   NOTEBOOK_SUGGEST_QUERIES: 'notebook:suggest-queries', // renderer → main: (тема, контекст) → поисковые запросы
   NOTEBOOK_SEARCH:          'notebook:search',          // renderer → main: подтверждённые запросы → находки
+  NOTEBOOK_SAVE_DOC:        'notebook:save-doc',        // renderer → main: диалог «сохранить документ Студии в .html»
 
   // Граф-воркспейс (electron/GraphStore.ts + GraphEngine.ts). Структуру пишет renderer,
   // результаты узлов — только движок, см. шапку GraphStore.

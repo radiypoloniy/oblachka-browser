@@ -207,6 +207,7 @@
   "NEWTAB_PHOTO_SHUFFLE=newtab:photo-shuffle",
   "NEW_TAB_SHOW_MENU=tab:new-menu",
   "NOTEBOOK_EXTRACT_URL=notebook:extract-url",
+  "NOTEBOOK_SAVE_DOC=notebook:save-doc",
   "NOTEBOOK_SEARCH=notebook:search",
   "NOTEBOOK_STUDIO_GEN=notebook:studio-gen",
   "NOTEBOOK_SUGGEST_QUERIES=notebook:suggest-queries",

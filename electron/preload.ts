@@ -171,6 +171,8 @@ const api: OblakoApi = {
     ipcRenderer.invoke(IPC.NOTEBOOK_SUGGEST_QUERIES, topic, context) as Promise<{ ok: boolean; queries?: string[]; error?: string }>,
   searchNotebook: (queries: string[]) =>
     ipcRenderer.invoke(IPC.NOTEBOOK_SEARCH, queries) as Promise<{ ok: boolean; hits?: { title: string; url: string; snippet: string }[]; error?: string }>,
+  saveNotebookDoc: (name: string, html: string) =>
+    ipcRenderer.invoke(IPC.NOTEBOOK_SAVE_DOC, name, html) as Promise<boolean>,
 
   enterSplit:      (tabId: string, side?: 'left' | 'right') => ipcRenderer.invoke(IPC.TAB_ENTER_SPLIT, tabId, side),
   replaceSplitPanel: (panelId: string, newId: string) => ipcRenderer.invoke(IPC.TAB_REPLACE_PANEL, panelId, newId),

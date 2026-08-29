@@ -2,6 +2,8 @@
 //
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
+import { dialog } from 'electron';
+import fsp from 'node:fs/promises';
 import { IPC } from '../../shared/ipc';
 import type { TimerState } from '../../shared/ipc';
 import { getTimer, setTimer } from '../TimerService';
@@ -71,6 +73,26 @@ export function registerWidgetsIpc(d: IpcDeps): void {
     suggestQueries(typeof topic === 'string' ? topic : '', typeof context === 'string' ? context : ''));
   ipcMain.handle(IPC.NOTEBOOK_SEARCH, (_e, queries: string[]) =>
     runSearch(Array.isArray(queries) ? queries.filter((q): q is string => typeof q === 'string') : []));
+  // Выгрузка документа Студии. Тот же приём, что у сохранения результата узла графа
+  // (GRAPH_SAVE_OUTPUT): имя чистим от того, что Windows не пустит в путь.
+  ipcMain.handle(IPC.NOTEBOOK_SAVE_DOC, async (e, suggestedName: string, html: string) => {
+    const w = winOf(e);
+    if (!w || typeof html !== 'string' || !html) return false;
+    const safe = (suggestedName || 'документ').replace(/[\/:*?"<>|]/g, ' ').trim().slice(0, 80);
+    const res = await dialog.showSaveDialog(w, {
+      title: 'Сохранить документ',
+      defaultPath: `${safe || 'документ'}.html`,
+      filters: [{ name: 'HTML', extensions: ['html'] }],
+    });
+    if (res.canceled || !res.filePath) return false;
+    try {
+      await fsp.writeFile(res.filePath, html, 'utf8');
+      return true;
+    } catch (err) {
+      console.warn('[Notebook] сохранение документа упало:', (err as Error).message);
+      return false;
+    }
+  });
   let genParseBusy = false;
   ipcMain.handle(IPC.DESKTOP_GEN_WEB, (_e, url: string, force: boolean) =>
     fetchGenWeb(String(url ?? ''), !!force));

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   FileText, Plus, X, ArrowLeft, Sparkles, Network, BarChart3, ListChecks, Link2, AlignLeft,
-  Loader2, RotateCw,
+  Loader2, RotateCw, FileDown,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { InfographicView, MindmapView, QuizView } from './studioViews';
@@ -11,6 +11,7 @@ import { SectionHeader, toneVars, CapsLabel, btnTone, btnGhost } from './setting
 import { useNotebookColumns } from './notebook/useNotebookColumns';
 import { NotebookEmpty, SourcesEmpty } from './notebook/NotebookEmpty';
 import { GatherSheet } from './notebook/GatherSheet';
+import { DocumentView } from './notebook/DocumentView';
 import { useGather } from './notebook/useGather';
 import { markdownComponents } from './aiMarkdown';
 import {
@@ -38,12 +39,16 @@ interface NotebookProps {
   onBack: () => void;    // назад к минимал-вкладке (mode 'tiles')
 }
 
-export type StudioKind = 'summary' | 'mindmap' | 'infographic' | 'quiz';
+export type StudioKind = 'summary' | 'mindmap' | 'infographic' | 'quiz' | 'document';
 const STUDIO: { kind: StudioKind; label: string; Icon: typeof FileText; hint: string }[] = [
   { kind: 'summary',     label: 'Саммари',      Icon: FileText,   hint: 'Краткий пересказ по источникам' },
   { kind: 'mindmap',     label: 'Майндкарта',   Icon: Network,    hint: 'Ветвистая карта идей' },
   { kind: 'infographic', label: 'Инфографика',  Icon: BarChart3,  hint: 'Визуальная сводка' },
   { kind: 'quiz',        label: 'Тест',         Icon: ListChecks, hint: 'Вопросы по мотивам' },
+  // ⚠️ Документ — пятый артефакт, а не новая машинерия: та же generateStudio, тот же канал,
+  // тот же контейнер модалки. Модель выбирает блоки из закрытого каталога и наполняет их
+  // текстом, вёрстку делает DocumentView (разбор — shared/notebookDoc.ts).
+  { kind: 'document',    label: 'Документ',     Icon: FileDown,   hint: 'Собрать и выгрузить .html' },
 ];
 
 export default function Notebook({ children, onBack }: NotebookProps) {
@@ -125,7 +130,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   const empty = sources.length === 0;
 
   // Реализованные типы Студии (остальные — свои заходы, пока показывают заметку «скоро»).
-  const STUDIO_IMPLEMENTED = new Set<StudioKind>(['summary', 'mindmap', 'infographic', 'quiz']);
+  const STUDIO_IMPLEMENTED = new Set<StudioKind>(['summary', 'mindmap', 'infographic', 'quiz', 'document']);
   async function handleStudio(kind: StudioKind) {
     const label = STUDIO.find((s) => s.kind === kind)!.label;
     const ctx = getSelectedSourceContext();
@@ -239,7 +244,9 @@ function StudioResultModal({ state, onClose }: {
 }) {
   const isMindmap = state.kind === 'mindmap';
   const isInfographic = state.kind === 'infographic';
-  const wide = isMindmap || isInfographic;
+  const isDocument = state.kind === 'document';
+  // Документу простор нужен по той же причине, что карте: это страница, а не заметка.
+  const wide = isMindmap || isInfographic || isDocument;
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, zIndex: 500, background: 'var(--scrim, rgba(0,0,0,0.4))',
@@ -266,6 +273,8 @@ function StudioResultModal({ state, onClose }: {
             <MindmapView markdown={state.text || ''} />
           ) : isInfographic ? (
             <InfographicView syntax={state.text || ''} />
+          ) : isDocument ? (
+            <DocumentView json={state.text || ''} />
           ) : state.kind === 'quiz' ? (
             <QuizView json={state.text || ''} />
           ) : (

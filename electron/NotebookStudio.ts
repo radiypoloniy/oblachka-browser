@@ -1,11 +1,12 @@
-import { runChatMessage } from './TranslationService';
+import { runChatMessage, runTabOrganizePrompt } from './TranslationService';
+import { DOC_SCHEMA, normalizeDoc } from '../shared/notebookDoc';
 
 // Генерация материалов «Студии» блокнота по тексту выбранных источников. Модель локальная —
 // её задача выдать СТРУКТУРУ/ТЕКСТ (саммари в Markdown; далее — markdown-аутлайн для майндкарты,
 // JSON для инфографики и теста), «красоту» детерминированно рисует renderer.
 // Одноразовый прогон (без истории чата): runChatMessage(prompt, []).
 
-export type StudioKind = 'summary' | 'mindmap' | 'infographic' | 'quiz';
+export type StudioKind = 'summary' | 'mindmap' | 'infographic' | 'quiz' | 'document';
 
 // Промпт на тип. null — тип ещё не реализован (появится своим заходом).
 function buildPrompt(kind: StudioKind, context: string): string | null {
@@ -156,12 +157,49 @@ function normalizeInfographic(raw: string): string | null {
 // items — тексты источников ПООТДЕЛЬНОСТИ. Нужны инфографике: когда источников несколько,
 // человек ждёт сравнение, а не сводку по одному из них наугад (живой случай: пять карточек
 // смартфонов на входе — и инфографика про батарею одного из них).
+// Документ собирается ОТДЕЛЬНЫМ путём — под грамматикой, а не свободным ответом. Ровно поэтому
+// он и возможен: модель выбирает последовательность блоков из закрытого каталога и наполняет их
+// текстом, а вёрстку делает renderer нашими компонентами (разбор — в shared/notebookDoc.ts).
+const DOC_MAX_TOKENS = 1400;
+
+function buildDocPrompt(context: string): string {
+  const rules = [
+    'По приведённым ниже источникам собери документ. Ты НЕ пишешь вёрстку — ты выбираешь',
+    'последовательность блоков и наполняешь их текстом.',
+    'Начни с блока cover (заголовок документа и одна строка подписи). Дальше 4–10 блоков:',
+    'heading — заголовок раздела; text — абзац 2–4 предложения; quote — одна мысль, которую',
+    'стоит запомнить; list — 3–6 коротких пунктов; metrics — 2–4 числа с подписями',
+    '(label — что это, value — само число с единицей); table — пары «параметр → значение»;',
+    'compare — пары для сравнения; sources — перечень источников (label — название,',
+    'value — адрес).',
+    'Заканчивай выводом (heading + text). Пиши по-русски. Опирайся ТОЛЬКО на источники,',
+    'ничего не выдумывай.',
+  ].join(' ');
+  return `${rules}
+
+${context}`;
+}
+
 export async function generateStudio(
   kind: StudioKind,
   context: string,
   items?: string[],
 ): Promise<{ ok: boolean; text?: string; error?: string }> {
   if (!context || !context.trim()) return { ok: false, error: 'Не выбраны источники с текстом' };
+  // ⚠️ Документ идёт мимо общего пути: ему нужна грамматика, а runChatMessage её не принимает.
+  if (kind === 'document') {
+    const res = await runTabOrganizePrompt(buildDocPrompt(context), {
+      maxTokens: DOC_MAX_TOKENS,
+      schema: DOC_SCHEMA,
+    });
+    if (!res.ok) return { ok: false, error: res.error };
+    let parsed: unknown = null;
+    try { parsed = JSON.parse(res.out); } catch { parsed = null; }
+    const doc = normalizeDoc(parsed);
+    return doc
+      ? { ok: true, text: JSON.stringify(doc) }
+      : { ok: false, error: 'Не удалось собрать документ — попробуйте ещё раз' };
+  }
   const comparison = kind === 'infographic' && !!items && items.length > 1;
   const prompt = comparison ? buildComparisonPrompt(items!) : buildPrompt(kind, context);
   if (prompt === null) return { ok: false, error: 'Этот тип пока не поддерживается' };
