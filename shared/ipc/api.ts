@@ -158,6 +158,12 @@ export interface OblakoApi {
   saveNotebookDoc(name: string, html: string): Promise<boolean>; // выгрузка документа Студии одним .html
   /** Ход сборки документа: знаков сгенерировано. Возвращает отписку. */
   onStudioProgress(cb: (chars: number) => void): () => void;
+  /** Диалог выбора локальных документов для блокнота. Текст ещё не читается — только пути. */
+  pickNotebookFiles(): Promise<{ path: string; name: string }[]>;
+  /** Текст локального документа: pdf, docx, txt, md, csv, json, log. */
+  extractNotebookFile(path: string): Promise<{ ok: boolean; title?: string; text?: string }>;
+  /** Открыть источник: адрес — новой вкладкой, файл — системной программой. */
+  openNotebookSource(kind: 'url' | 'file', target: string): Promise<boolean>;
 
   // Split View
   // side — какую половину займёт ПРИВОДИМАЯ вкладка (по умолчанию правую: так входят в сплит

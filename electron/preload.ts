@@ -173,6 +173,11 @@ const api: OblakoApi = {
     ipcRenderer.invoke(IPC.NOTEBOOK_SEARCH, queries) as Promise<{ ok: boolean; hits?: { title: string; url: string; snippet: string }[]; error?: string }>,
   saveNotebookDoc: (name: string, html: string) =>
     ipcRenderer.invoke(IPC.NOTEBOOK_SAVE_DOC, name, html) as Promise<boolean>,
+  pickNotebookFiles: () => ipcRenderer.invoke(IPC.NOTEBOOK_PICK_FILES) as Promise<{ path: string; name: string }[]>,
+  extractNotebookFile: (path: string) =>
+    ipcRenderer.invoke(IPC.NOTEBOOK_EXTRACT_FILE, path) as Promise<{ ok: boolean; title?: string; text?: string }>,
+  openNotebookSource: (kind: 'url' | 'file', target: string) =>
+    ipcRenderer.invoke(IPC.NOTEBOOK_OPEN_SOURCE, kind, target) as Promise<boolean>,
   // Ход сборки документа: без него прогон 3 000 токенов неотличим от зависшего.
   onStudioProgress: (cb: (chars: number) => void) => {
     const handler = (_e: unknown, chars: number) => cb(chars);

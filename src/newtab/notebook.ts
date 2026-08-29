@@ -6,11 +6,34 @@
 
 export interface NotebookSource {
   id: string;
-  kind: 'url' | 'text';
+  kind: 'url' | 'text' | 'file';
   title: string;
   content: string;   // текст источника; для url наполняется извлечением, до тех пор пуст
+  /**
+   * Адрес — только у kind 'url'.
+   *
+   * ⚠️ Отдельное поле, а не content: извлечение ЗАТИРАЕТ content текстом статьи, и адрес
+   * после этого терялся навсегда. Пока источник нельзя было открыть, это не мешало; теперь
+   * мешало бы сразу — открывать было бы нечего.
+   */
+  url?: string;
+  /** Путь на диске — только у kind 'file'. Нужен и для извлечения, и чтобы открыть документ. */
+  path?: string;
   addedAt: number;
-  status: 'ready' | 'loading' | 'error'; // loading — идёт извлечение url; error — не удалось
+  status: 'ready' | 'loading' | 'error'; // loading — идёт извлечение url/файла; error — не удалось
+}
+
+/**
+ * Локальный документ источником. Текста ещё нет — его читает main (extractFileText), поэтому
+ * источник заводится в 'loading', как и ссылка.
+ *
+ * ⚠️ Путь живёт в отдельном поле, а не в content: у ссылки content до извлечения занят самим
+ * адресом, и текст его затирает — а путь к файлу нужен и ПОСЛЕ извлечения, чтобы документ
+ * можно было открыть.
+ */
+export function sourceFromFile(file: { path: string; name: string }): NotebookSource {
+  const id = (globalThis.crypto?.randomUUID?.() ?? String(Date.now() + Math.random()));
+  return { id, kind: 'file', title: file.name, content: '', path: file.path, addedAt: Date.now(), status: 'loading' };
 }
 
 const KEY = 'oblako-notebook-sources';
@@ -25,8 +48,13 @@ export function loadSources(): NotebookSource[] {
     const raw = localStorage.getItem(KEY);
     const arr = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(arr)) return [];
-    // Терпимость к старому формату без status.
-    return (arr as NotebookSource[]).map((s) => ({ ...s, status: s.status ?? 'ready' }));
+    // Терпимость к старому формату: без status и без url. Адрес у старых записей лежал в
+    // content и уцелел только у тех, кого ещё не извлекли, — восстанавливаем что можем.
+    return (arr as NotebookSource[]).map((s) => ({
+      ...s,
+      status: s.status ?? 'ready',
+      url: s.url ?? (s.kind === 'url' && /^https?:\/\//i.test(s.content) ? s.content : undefined),
+    }));
   } catch {
     return [];
   }
@@ -70,8 +98,9 @@ export function sourceFromInput(raw: string): NotebookSource | null {
     const url = /^https?:\/\//i.test(v) ? v : `https://${v}`;
     let host = v;
     try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { /* оставим как есть */ }
-    return { id, kind: 'url', title: host, content: url, addedAt: Date.now(), status: 'loading' };
-    // NB: у url в content до извлечения лежит сам адрес (для повторного extract), текст затрёт его.
+    // content до извлечения тоже держит адрес — так работает повторное извлечение у источников,
+    // добавленных до появления поля url (терпимость к старому формату, см. loadSources).
+    return { id, kind: 'url', title: host, content: url, url, addedAt: Date.now(), status: 'loading' };
   }
   const title = v.split('\n')[0]!.slice(0, 60);
   return { id, kind: 'text', title, content: v, addedAt: Date.now(), status: 'ready' };

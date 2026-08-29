@@ -11,9 +11,10 @@ import { btnTone, btnGhost } from '../settings/kit';
  * ⚠️ Тон здесь тот же, что у наполненного блокнота: цвет принадлежит разделу, а не состоянию
  * (см. SECTION_TONE в kit.tsx). Что блокнот пуст, говорит крупный 0 в шапке.
  */
-export function NotebookEmpty({ onAddUrl, onAddText, extra }: {
+export function NotebookEmpty({ onAddUrl, onAddText, onAddFiles, extra }: {
   onAddUrl: () => void;
   onAddText: () => void;
+  onAddFiles: () => void;
   /** Третья дверь — «Собрать материал». Появляется только у тех, кто подключил поиск. */
   extra?: React.ReactNode;
 }) {
@@ -33,13 +34,14 @@ export function NotebookEmpty({ onAddUrl, onAddText, extra }: {
           Соберите материал — блокнот ответит по нему
         </h2>
         <p style={{ ...TEXT.body, color: 'var(--text-faint)', margin: 0 }}>
-          Добавьте ссылки или вставьте текст. Чат будет отвечать только по ним, а «Студия»
-          соберёт из них пересказ, карту или тест.
+          Добавьте ссылки, документы с диска или вставьте текст. Чат будет отвечать только по
+          ним, а «Студия» соберёт из них пересказ, карту, тест или документ.
         </p>
         <div style={{
           display: 'flex', gap: sp(2), flexWrap: 'wrap', justifyContent: 'center', marginTop: sp(1),
         }}>
           <button onClick={onAddUrl} style={btnTone}>Добавить ссылку</button>
+          <button onClick={onAddFiles} style={btnGhost}>Выбрать документы</button>
           <button onClick={onAddText} style={btnGhost}>Вставить текст</button>
           {extra}
         </div>

@@ -128,6 +128,9 @@ export const IPC = {
   NOTEBOOK_SEARCH:          'notebook:search',          // renderer → main: подтверждённые запросы → находки
   NOTEBOOK_SAVE_DOC:        'notebook:save-doc',        // renderer → main: диалог «сохранить документ Студии в .html»
   NOTEBOOK_STUDIO_PROGRESS: 'notebook:studio-progress', // main → renderer: знаков сгенерировано (документ идёт минутами)
+  NOTEBOOK_PICK_FILES:      'notebook:pick-files',      // renderer → main: диалог выбора локальных документов
+  NOTEBOOK_EXTRACT_FILE:    'notebook:extract-file',    // renderer → main: путь → текст документа (pdf/docx/txt/…)
+  NOTEBOOK_OPEN_SOURCE:     'notebook:open-source',     // renderer → main: открыть источник — адрес вкладкой, файл системой
 
   // Граф-воркспейс (electron/GraphStore.ts + GraphEngine.ts). Структуру пишет renderer,
   // результаты узлов — только движок, см. шапку GraphStore.

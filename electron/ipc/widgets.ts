@@ -2,8 +2,9 @@
 //
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
-import { dialog } from 'electron';
+import { dialog, shell } from 'electron';
 import fsp from 'node:fs/promises';
+import nodePath from 'node:path';
 import { IPC } from '../../shared/ipc';
 import type { TimerState } from '../../shared/ipc';
 import { getTimer, setTimer } from '../TimerService';
@@ -14,6 +15,7 @@ import { faviconService } from '../FaviconService';
 import { getNextHoliday } from '../HolidaysService';
 import { getPhotoOfDay, shufflePhoto } from '../NewTabPhoto';
 import { extractUrlText } from '../NotebookExtract';
+import { extractFileText, SUPPORTED_FILE_EXTENSIONS } from '../FileExtract';
 import { generateStudio } from '../NotebookStudio';
 import { suggestQueries, runSearch } from '../NotebookGather';
 import type { StudioKind } from '../NotebookStudio';
@@ -24,7 +26,7 @@ import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
 
 export function registerWidgetsIpc(d: IpcDeps): void {
-  const { ensurePasswordAuth, passwords, settings, winOf } = d;
+  const { ensurePasswordAuth, passwords, settings, winOf, tabsOf } = d;
 
   // через reveal/generate — list его не отдаёт, copy сам кладёт в буфер и наружу не возвращает.
   ipcMain.handle(IPC.PASSWORDS_LIST,     () => passwords.list());
@@ -68,6 +70,42 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   // ⚠️ Прогресс шлётся ОТДЕЛЬНЫМ каналом поверх invoke, а не вместо него: ответ по-прежнему
   // один и финальный, меняется только то, что человек видит во время ожидания. Тот же приём,
   // что у DESKTOP_GEN_PROGRESS ниже.
+  // ⚠️ Локальный документ — ТАКОЙ ЖЕ источник, как ссылка, и машинерия под него уже была:
+  // extractFileText читает pdf/docx/txt/md/csv/json/log и служит узлу графа и умному
+  // переименованию загрузок. Блокнот мимо неё просто не был проведён.
+  ipcMain.handle(IPC.NOTEBOOK_PICK_FILES, async (e) => {
+    const w = winOf(e);
+    if (!w) return [];
+    const res = await dialog.showOpenDialog(w, {
+      title: 'Документы для блокнота',
+      // Несколько сразу: материал для исследования человек собирает пачкой, а не по одному.
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'Документы', extensions: [...SUPPORTED_FILE_EXTENSIONS] },
+        { name: 'Все файлы', extensions: ['*'] },
+      ],
+    });
+    if (res.canceled) return [];
+    return res.filePaths.map((p) => ({ path: p, name: nodePath.basename(p) }));
+  });
+  // Отдельным каналом от выбора — ровно как у ссылок: диалог отвечает мгновенно, а разбор
+  // 300-страничного PDF идёт секунды, и всё это время источник должен стоять в списке
+  // со своим «извлекается…», а не задерживать диалог.
+  ipcMain.handle(IPC.NOTEBOOK_EXTRACT_FILE, (_e, filePath: string) =>
+    typeof filePath === 'string' && filePath
+      ? extractFileText(filePath)
+      : { ok: false, error: 'Пустой путь' });
+  // Открыть источник. ⚠️ Адрес открывается НАШЕЙ вкладкой (человек остаётся в браузере), а
+  // файл отдаётся системе: рисовать свой просмотрщик docx и pdf ради этого незачем.
+  ipcMain.handle(IPC.NOTEBOOK_OPEN_SOURCE, async (e, kind: 'url' | 'file', target: string) => {
+    if (typeof target !== 'string' || !target) return false;
+    if (kind === 'file') {
+      const err = await shell.openPath(target);
+      if (err) console.warn('[Notebook] не удалось открыть файл:', err);
+      return !err;
+    }
+    return !!tabsOf(e)?.createTab(target);
+  });
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (e, kind: StudioKind, context: string) => {
     const sender = e.sender;
     return generateStudio(kind, typeof context === 'string' ? context : '', undefined, (chars) => {

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   FileText, Plus, X, ArrowLeft, Sparkles, Network, BarChart3, ListChecks, Link2, AlignLeft,
-  Loader2, RotateCw, FileDown,
+  Loader2, RotateCw, FileDown, Paperclip, ExternalLink,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { InfographicView, MindmapView, QuizView } from './studioViews';
@@ -15,8 +15,8 @@ import { DocumentView } from './notebook/DocumentView';
 import { useGather } from './notebook/useGather';
 import { markdownComponents } from './aiMarkdown';
 import {
-  loadSources, saveSources, sourceFromInput, loadSelectedIds, saveSelectedIds, subscribeNotebook,
-  getSelectedSourceContext, type NotebookSource,
+  loadSources, saveSources, sourceFromInput, sourceFromFile, loadSelectedIds, saveSelectedIds,
+  subscribeNotebook, getSelectedSourceContext, type NotebookSource,
 } from '../newtab/notebook';
 
 // Большой AI-экран как «блокнот» (NotebookLM-подобный): 3 колонки — Источники / Чат / Студия.
@@ -81,7 +81,9 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   // Извлечение текста URL после добавления/по повтору. Обновляем именно этот источник, читая
   // актуальный список (функциональный setState — без гонки с параллельными добавлениями).
   async function extractSource(src: NotebookSource) {
-    const res = await window.oblako.extractNotebookUrl(src.content);
+    const res = src.kind === 'file'
+      ? await window.oblako.extractNotebookFile(src.path ?? '')
+      : await window.oblako.extractNotebookUrl(src.url ?? src.content);
     setSources((prev) => {
       const upd = prev.map((s) => s.id !== src.id ? s : (
         res.ok
@@ -110,6 +112,26 @@ export default function Notebook({ children, onBack }: NotebookProps) {
     for (const a of added) sel.add(a.id);
     persistSelected(sel);
     for (const a of added) if (a.kind === 'url') void extractSource(a);
+  }
+
+  // Локальные документы пачкой. Отдельно от addUrls: там адреса строками, здесь готовые
+  // записи из диалога — придумывать им kind по виду строки нечего, он известен.
+  async function addFiles() {
+    const files = await window.oblako.pickNotebookFiles();
+    if (files.length === 0) return;
+    const added = files.map(sourceFromFile);
+    persist([...sources, ...added]);
+    const sel = new Set(selected);
+    for (const a of added) sel.add(a.id);
+    persistSelected(sel);
+    for (const a of added) void extractSource(a);
+  }
+
+  // Открыть источник: адрес — вкладкой, файл — системной программой. Текст открывать негде,
+  // он и так весь перед глазами.
+  function openSource(s: NotebookSource) {
+    if (s.kind === 'url' && s.url) void window.oblako.openNotebookSource('url', s.url);
+    else if (s.kind === 'file' && s.path) void window.oblako.openNotebookSource('file', s.path);
   }
 
   function retrySource(id: string) {
@@ -172,7 +194,8 @@ export default function Notebook({ children, onBack }: NotebookProps) {
       }}>
       <SourcesPanel
         sources={sources} selected={selected} adding={adding} onAddingChange={setAdding}
-        onAdd={addSource} onRemove={removeSource} onToggle={toggle} onRetry={retrySource} onBack={onBack}
+        onAdd={addSource} onAddFiles={() => void addFiles()} onOpen={openSource}
+        onRemove={removeSource} onToggle={toggle} onRetry={retrySource} onBack={onBack}
       />
 
       <Grip onPointerDown={cols.onGripDown('left')} />
@@ -186,6 +209,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
         {empty
           ? <NotebookEmpty
               onAddUrl={() => setAdding('url')} onAddText={() => setAdding('text')}
+              onAddFiles={() => void addFiles()}
               extra={gather.available
                 ? <button onClick={gather.start} style={btnGhost}>Собрать материал</button>
                 : undefined}
@@ -302,22 +326,26 @@ function StudioResultModal({ state, chars, onClose }: {
 }
 
 // ── Источники (слева) ──────────────────────────────────────────────────────────
-function SourcesPanel({ sources, selected, adding, onAddingChange, onAdd, onRemove, onToggle, onRetry, onBack }: {
+function SourcesPanel({ sources, selected, adding, onAddingChange, onAdd, onAddFiles, onOpen, onRemove, onToggle, onRetry, onBack }: {
   sources: NotebookSource[]; selected: Set<string>;
   /** Открыта ли форма и с какой подсказкой. Состояние поднято в Notebook: форму открывают ещё и
    *  двери пустого экрана в центральной колонке. */
   adding: null | 'url' | 'text';
   onAddingChange: (v: null | 'url' | 'text') => void;
-  onAdd: (raw: string) => void; onRemove: (id: string) => void; onToggle: (id: string) => void;
+  onAdd: (raw: string) => void; onAddFiles: () => void; onOpen: (s: NotebookSource) => void;
+  onRemove: (id: string) => void; onToggle: (id: string) => void;
   onRetry: (id: string) => void; onBack: () => void;
 }) {
   const [value, setValue] = useState('');
   const submit = () => { if (value.trim()) { onAdd(value); setValue(''); onAddingChange(null); } };
 
   return (
-    <Panel title="Источники" onBack={onBack} action={
-      <IconButton title="Добавить источник" onClick={() => onAddingChange(adding ? null : 'url')}><Plus size={16} /></IconButton>
-    }>
+    <Panel title="Источники" onBack={onBack} action={<>
+      {/* Скрепка отдельной кнопкой, а не пунктом меню: выбор файла — самостоятельное действие,
+          и прятать его за раскрытием формы значило бы сделать его на клик дальше остальных. */}
+      <IconButton title="Добавить документы с диска" onClick={onAddFiles}><Paperclip size={15} /></IconButton>
+      <IconButton title="Добавить адрес или текст" onClick={() => onAddingChange(adding ? null : 'url')}><Plus size={16} /></IconButton>
+    </>}>
       {adding && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
           <textarea
@@ -342,6 +370,8 @@ function SourcesPanel({ sources, selected, adding, onAddingChange, onAdd, onRemo
           {sources.map((s) => {
             const loading = s.status === 'loading';
             const failed = s.status === 'error';
+            // Вставленный текст открывать негде — он и так весь в источниках.
+            const openable = (s.kind === 'url' && !!s.url) || (s.kind === 'file' && !!s.path);
             return (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: 'var(--radius-sm)' }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
@@ -353,9 +383,27 @@ function SourcesPanel({ sources, selected, adding, onAddingChange, onAdd, onRemo
                   ? <Loader2 size={14} style={{ color: 'var(--text-faint)', flex: 'none', animation: 'oblako-spin 1s linear infinite' }} />
                   : s.kind === 'url'
                     ? <Link2 size={14} style={{ color: failed ? 'var(--danger-500)' : 'var(--text-faint)', flex: 'none' }} />
-                    : <AlignLeft size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
+                    : s.kind === 'file'
+                      ? <Paperclip size={14} style={{ color: failed ? 'var(--danger-500)' : 'var(--text-faint)', flex: 'none' }} />
+                      : <AlignLeft size={14} style={{ color: 'var(--text-faint)', flex: 'none' }} />}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
+                  {/* Открытие висит на ИМЕНИ, а не на всей строке: строку занимает чекбокс, и
+                      промах по нему уводил бы во вкладку вместо снятия галочки. */}
+                  {openable ? (
+                    <button onClick={() => onOpen(s)} title={s.kind === 'file' ? 'Открыть документ' : 'Открыть в новой вкладке'}
+                      style={{
+                        border: 'none', background: 'transparent', padding: 0, cursor: 'default',
+                        display: 'flex', alignItems: 'center', gap: 5, width: '100%', textAlign: 'left',
+                        fontSize: 'var(--fs-sm)', color: 'var(--text-body)',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--section-tone)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-body)')}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</span>
+                      <ExternalLink size={11} style={{ flex: 'none', opacity: 0.5 }} />
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
+                  )}
                   {loading && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>извлекается…</div>}
                   {failed && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger-500)' }}>не удалось извлечь</div>}
                 </div>
