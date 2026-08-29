@@ -60,7 +60,7 @@
     "ipc": 0
   },
   "src/App.tsx": {
-    "lines": 601,
+    "lines": 602,
     "fn": 411,
     "effects": 4,
     "ipc": 24
@@ -120,10 +120,10 @@
     "ipc": 8
   },
   "src/components/Sidebar.tsx": {
-    "lines": 2360,
+    "lines": 1197,
     "fn": 962,
     "effects": 3,
-    "ipc": 20
+    "ipc": 11
   },
   "src/components/SidebarBookmarks.tsx": {
     "lines": 555,
