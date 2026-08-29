@@ -210,6 +210,7 @@
   "NOTEBOOK_SAVE_DOC=notebook:save-doc",
   "NOTEBOOK_SEARCH=notebook:search",
   "NOTEBOOK_STUDIO_GEN=notebook:studio-gen",
+  "NOTEBOOK_STUDIO_PROGRESS=notebook:studio-progress",
   "NOTEBOOK_SUGGEST_QUERIES=notebook:suggest-queries",
   "OMNIBOX_FOCUS=omnibox:focus",
   "OMNIBOX_MORE_MENU=omnibox:more-menu",

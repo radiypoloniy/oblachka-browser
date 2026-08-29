@@ -26,6 +26,19 @@ export const DOC_BLOCKS = [
 
 export type DocBlockKind = typeof DOC_BLOCKS[number];
 
+/**
+ * Потолок числа блоков в документе.
+ *
+ * ⚠️ Было 12 — и это молча ограничивало Студию заметкой на страницу. Настоящее
+ * исследование по нескольким источникам — это 6 разделов, таблица, числа, врезки и выводы,
+ * то есть 18–24 блока; на потолке в 12 модель обрывала документ ровно там, где начиналось
+ * самое ценное. Замер на макете: док на 5 400 знаков занял 19 блоков.
+ *
+ * ⚠️ Потолок нужен всё равно: без него модель уходит в перечисление, а грамматика её
+ * не остановит — она следит за формой, а не за длиной.
+ */
+export const DOC_MAX_BLOCKS = 24;
+
 export interface DocBlock {
   kind: DocBlockKind;
   /** Заголовок блока: название документа у cover, заголовок раздела у heading, подпись у прочих. */
@@ -59,7 +72,7 @@ export const DOC_SCHEMA = {
     blocks: {
       type: 'array',
       minItems: 4,
-      maxItems: 12,
+      maxItems: DOC_MAX_BLOCKS,
       items: {
         type: 'object',
         properties: {
@@ -113,7 +126,7 @@ export function normalizeDoc(raw: unknown): DocSpec | null {
   const blocksRaw = Array.isArray(obj.blocks) ? obj.blocks : [];
   const blocks: DocBlock[] = [];
 
-  for (const b of blocksRaw.slice(0, 12)) {
+  for (const b of blocksRaw.slice(0, DOC_MAX_BLOCKS)) {
     const src = b as Record<string, unknown>;
     if (!isKind(src.kind)) continue;
     const block: DocBlock = { kind: src.kind };

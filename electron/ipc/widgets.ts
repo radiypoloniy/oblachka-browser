@@ -65,8 +65,15 @@ export function registerWidgetsIpc(d: IpcDeps): void {
     const w = winOf(e);
     return w ? extractUrlText(w, typeof url === 'string' ? url : '') : { ok: false };
   });
-  ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (_e, kind: StudioKind, context: string) =>
-    generateStudio(kind, typeof context === 'string' ? context : ''));
+  // ⚠️ Прогресс шлётся ОТДЕЛЬНЫМ каналом поверх invoke, а не вместо него: ответ по-прежнему
+  // один и финальный, меняется только то, что человек видит во время ожидания. Тот же приём,
+  // что у DESKTOP_GEN_PROGRESS ниже.
+  ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (e, kind: StudioKind, context: string) => {
+    const sender = e.sender;
+    return generateStudio(kind, typeof context === 'string' ? context : '', undefined, (chars) => {
+      if (!sender.isDestroyed()) sender.send(IPC.NOTEBOOK_STUDIO_PROGRESS, chars);
+    });
+  });
   // ⚠️ Два канала, а не один: между ними стоит человек. suggestQueries только ПРЕДЛАГАЕТ, наружу
   // ничего не уходит; runSearch отправляет на SearXNG ровно то, что человек подтвердил.
   ipcMain.handle(IPC.NOTEBOOK_SUGGEST_QUERIES, (_e, topic: string, context: string) =>

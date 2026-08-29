@@ -6,7 +6,7 @@
 // поломкой, а не задумкой. Каждый случай ниже — про это.
 //
 // Запуск: npm test -- notebook-doc
-import { normalizeDoc, DOC_BLOCKS } from '../shared/notebookDoc.ts';
+import { normalizeDoc, DOC_BLOCKS, DOC_MAX_BLOCKS, DOC_SCHEMA } from '../shared/notebookDoc.ts';
 
 let passed = 0;
 let failed = 0;
@@ -56,10 +56,23 @@ check(
 );
 
 // ── потолки ─────────────────────────────────────────────────────────────────
+// ⚠️ Потолок читается из DOC_MAX_BLOCKS, а не зашит числом: он уже менялся (12 -> 24, когда
+// оказалось, что на 12 блоках исследование обрывается на середине), и проверка не должна
+// падать от осознанной правки — она должна ловить рассинхрон схемы и разбора.
 check(
-  'блоков не больше двенадцати',
-  normalizeDoc({ blocks: Array.from({ length: 20 }, (_, i) => ({ kind: 'text', text: `а${i}` })) })?.blocks.length,
-  12,
+  'блоков не больше потолка',
+  normalizeDoc({ blocks: Array.from({ length: DOC_MAX_BLOCKS + 8 }, (_, i) => ({ kind: 'text', text: `а${i}` })) })?.blocks.length,
+  DOC_MAX_BLOCKS,
+);
+check(
+  'потолок разбора совпадает с потолком грамматики',
+  DOC_SCHEMA.properties.blocks.maxItems,
+  DOC_MAX_BLOCKS,
+);
+check(
+  'потолок рассчитан на исследование, а не на заметку',
+  DOC_MAX_BLOCKS >= 18,
+  true,
 );
 check(
   'пунктов не больше восьми',

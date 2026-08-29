@@ -173,6 +173,12 @@ const api: OblakoApi = {
     ipcRenderer.invoke(IPC.NOTEBOOK_SEARCH, queries) as Promise<{ ok: boolean; hits?: { title: string; url: string; snippet: string }[]; error?: string }>,
   saveNotebookDoc: (name: string, html: string) =>
     ipcRenderer.invoke(IPC.NOTEBOOK_SAVE_DOC, name, html) as Promise<boolean>,
+  // Ход сборки документа: без него прогон 3 000 токенов неотличим от зависшего.
+  onStudioProgress: (cb: (chars: number) => void) => {
+    const handler = (_e: unknown, chars: number) => cb(chars);
+    ipcRenderer.on(IPC.NOTEBOOK_STUDIO_PROGRESS, handler);
+    return () => ipcRenderer.removeListener(IPC.NOTEBOOK_STUDIO_PROGRESS, handler);
+  },
 
   enterSplit:      (tabId: string, side?: 'left' | 'right') => ipcRenderer.invoke(IPC.TAB_ENTER_SPLIT, tabId, side),
   replaceSplitPanel: (panelId: string, newId: string) => ipcRenderer.invoke(IPC.TAB_REPLACE_PANEL, panelId, newId),

@@ -61,6 +61,8 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   const [studioNote, setStudioNote] = useState<string | null>(null);
   // Открытый результат Студии (модалка). busy — идёт генерация; text/error — итог.
   const [studio, setStudio] = useState<{ kind: StudioKind; label: string; busy: boolean; text?: string; error?: string } | null>(null);
+  // Знаков сгенерировано — приходит из main по ходу прогона (см. NOTEBOOK_STUDIO_PROGRESS).
+  const [genChars, setGenChars] = useState(0);
 
   // Подвижные границы колонок и их память между сессиями — в useNotebookColumns.
   const cols = useNotebookColumns();
@@ -71,6 +73,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
 
   // Внешние изменения стора (напр. из другой вкладки) — перечитываем.
   useEffect(() => subscribeNotebook(() => setSources(loadSources())), []);
+  useEffect(() => window.oblako.onStudioProgress(setGenChars), []);
 
   const persist = (list: NotebookSource[]) => { setSources(list); saveSources(list); };
   const persistSelected = (next: Set<string>) => { setSelected(next); saveSelectedIds([...next]); };
@@ -137,6 +140,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
     if (!ctx) { setStudioNote('Выберите источники с текстом — по ним построю материал.'); return; }
     if (!STUDIO_IMPLEMENTED.has(kind)) { setStudioNote(`«${label}» — скоро, генерация появится следующим заходом.`); return; }
     setStudioNote(null);
+    setGenChars(0);
     setStudio({ kind, label, busy: true });
     const r = await window.oblako.generateStudio(kind, ctx);
     setStudio({ kind, label, busy: false, text: r.ok ? r.text : undefined, error: r.ok ? undefined : (r.error || 'Не удалось сгенерировать') });
@@ -208,7 +212,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
         />
       )}
 
-      {studio && <StudioResultModal state={studio} onClose={() => setStudio(null)} />}
+      {studio && <StudioResultModal state={studio} chars={genChars} onClose={() => setStudio(null)} />}
     </div>
   );
 }
@@ -238,8 +242,10 @@ function Grip({ onPointerDown }: { onPointerDown: (e: React.PointerEvent) => voi
 
 // Модалка результата Студии. Саммари — Markdown; майндкарта — SVG через markmap; будущие типы
 // (инфографика/тест) добавят свои рендеры этим же контейнером.
-function StudioResultModal({ state, onClose }: {
+function StudioResultModal({ state, chars, onClose }: {
   state: { kind: StudioKind; label: string; busy: boolean; text?: string; error?: string };
+  /** Знаков сгенерировано. Показываем только пока идёт прогон — см. ниже, почему. */
+  chars: number;
   onClose: () => void;
 }) {
   const isMindmap = state.kind === 'mindmap';
@@ -265,7 +271,14 @@ function StudioResultModal({ state, onClose }: {
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: wide ? 0 : '16px 20px' }}>
           {state.busy ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', padding: wide ? '16px 20px' : 0 }}>
-              <Loader2 size={16} style={{ animation: 'oblako-spin 1s linear infinite' }} /> Генерирую по источникам…
+              <Loader2 size={16} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+              {/* ⚠️ Растущее число, а не полоса: сколько всего будет знаков, мы не знаем —
+                  модель останавливается сама. Полоса прогресса тут была бы враньём, а счётчик
+                  честно показывает, что работа идёт. Документ на 5–6 тысяч знаков собирается
+                  минутами, и без этого признака жизни окно закрывают раньше времени. */}
+              {isDocument
+                ? <span>Собираю документ… {chars > 0 && <b style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{chars.toLocaleString('ru-RU')} знаков</b>}</span>
+                : <span>Генерирую по источникам…</span>}
             </div>
           ) : state.error ? (
             <div style={{ color: 'var(--danger-500)', fontSize: 'var(--fs-sm)', padding: wide ? '16px 20px' : 0 }}>{state.error}</div>

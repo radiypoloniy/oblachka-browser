@@ -156,6 +156,8 @@ export interface OblakoApi {
   suggestNotebookQueries(topic: string, context: string): Promise<{ ok: boolean; queries?: string[]; error?: string }>;
   searchNotebook(queries: string[]): Promise<{ ok: boolean; hits?: { title: string; url: string; snippet: string }[]; error?: string }>;
   saveNotebookDoc(name: string, html: string): Promise<boolean>; // выгрузка документа Студии одним .html
+  /** Ход сборки документа: знаков сгенерировано. Возвращает отписку. */
+  onStudioProgress(cb: (chars: number) => void): () => void;
 
   // Split View
   // side — какую половину займёт ПРИВОДИМАЯ вкладка (по умолчанию правую: так входят в сплит

@@ -127,6 +127,7 @@ export const IPC = {
   NOTEBOOK_SUGGEST_QUERIES: 'notebook:suggest-queries', // renderer → main: (тема, контекст) → поисковые запросы
   NOTEBOOK_SEARCH:          'notebook:search',          // renderer → main: подтверждённые запросы → находки
   NOTEBOOK_SAVE_DOC:        'notebook:save-doc',        // renderer → main: диалог «сохранить документ Студии в .html»
+  NOTEBOOK_STUDIO_PROGRESS: 'notebook:studio-progress', // main → renderer: знаков сгенерировано (документ идёт минутами)
 
   // Граф-воркспейс (electron/GraphStore.ts + GraphEngine.ts). Структуру пишет renderer,
   // результаты узлов — только движок, см. шапку GraphStore.
