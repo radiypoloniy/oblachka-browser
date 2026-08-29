@@ -56,7 +56,8 @@
     "measure-model": "node scripts/measure-model-requirements.mjs",
     "postinstall:sqlite": "node scripts/rebuild-sqlite.mjs",
     "postinstall:bergamot": "node scripts/patch-bergamot.mjs",
-    "postinstall": "npm run postinstall:sqlite && npm run postinstall:bergamot",
+    "postinstall:llama": "node scripts/patch-llama-gpu-test.mjs",
+    "postinstall": "npm run postinstall:sqlite && npm run postinstall:bergamot && npm run postinstall:llama",
     "make-installer-art": "node scripts/make-installer-art.mjs"
   },
   "dependencies": {

@@ -207,7 +207,19 @@ async function runChat(
 async function vram(): Promise<VramInfo> {
   const backend = await getLlamaBackend()
   const state = await backend.getVramState()
-  return { total: state.total, free: state.free, gpu: String(backend.gpu) }
+  // ⚠️ Имена устройств спрашиваем отдельным try: на CPU-бэкенде метод есть, но списка нет, и
+  // ронять из-за диагностики замер VRAM нельзя — от него зависит весь каталог моделей.
+  let deviceNames: string[] = []
+  try {
+    deviceNames = (await backend.getGpuDeviceNames()) as string[]
+  } catch (e) {
+    console.warn('[gen] имена GPU-устройств недоступны:', (e as Error).message)
+  }
+  console.log(
+    `[gen] vram: gpu=${String(backend.gpu)} total=${state.total} free=${state.free} `
+    + `devices=[${deviceNames.join(', ')}]`,
+  )
+  return { total: state.total, free: state.free, gpu: String(backend.gpu), deviceNames }
 }
 
 async function handle(req: InferRequest): Promise<unknown> {

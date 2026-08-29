@@ -94,6 +94,7 @@ export async function getLlamaBackend(): Promise<any> {
         nlc = await Function('return import("node-llama-cpp")')()
         llama = await nlc.getLlama()
         if (i > 0) console.log(`[gen] llama backend поднялся с попытки ${i + 1} (первая была отбита)`)
+        else console.log(`[gen] llama backend: gpu=${String(llama.gpu)}`)
         return llama
       } catch (e) {
         last = e

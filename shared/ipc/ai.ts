@@ -119,7 +119,16 @@ export type ModelErrorCode = 'NO_MODEL_INSTALLED' | 'MODEL_FILE_MISSING' | 'LOAD
 export interface HardwareSnapshot {
   vramTotalBytes: number | null;
   vramFreeBytes: number | null;
+  // 'vulkan' | 'cuda' | ... — бэкенд поднялся; 'false' — llama.cpp НЕ нашёл ни одного GPU и
+  // считает на процессоре; null — детект не выполнился (см. error).
+  // ⚠️ Различать 'false' и маленькую карту обязательно: интерфейс не имеет права говорить
+  // «устройство не потянет», когда он видеокарту просто не увидел. Ровно так выглядела жалоба
+  // владельца ноутбука с хорошей картой — и ровно так же выглядел баг упакованной сборки
+  // (разбор — scripts/patch-llama-gpu-test.mjs).
   gpuBackend: string | null;
+  // Что llama.cpp перечислил как GPU-устройства. Пусто, если бэкенда GPU нет. Нужны, чтобы на
+  // гибридном ноутбуке было видно, ВЗЯЛИ ЛИ ТУ карту, а не только сколько у неё памяти.
+  gpuDeviceNames: string[];
   ramTotalBytes: number;
   ramFreeBytes: number;
   cpuCores: number;

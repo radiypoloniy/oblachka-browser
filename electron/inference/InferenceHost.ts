@@ -77,9 +77,21 @@ function spawn(): Promise<void> {
     const entry = workerEntryPath()
     const proc = utilityProcess.fork(entry, [], {
       serviceName: 'oblako-inference', // под этим именем процесс видно в диспетчере задач
-      stdio: 'inherit',                // логи [gen]/[perf] по-прежнему идут в общий вывод
+      // ⚠️ 'pipe', а НЕ 'inherit'. С 'inherit' логи процесса инференса видны только в dev: у
+      // упакованного GUI-приложения наследовать нечего, и весь вывод — свой [gen]/[perf] и чужие
+      // предупреждения node-llama-cpp о том, какой бэкенд не поднялся, — пропадал молча. Ровно
+      // поэтому «в установщике ИИ считает на процессоре» пришлось искать вслепую. Перекладываем
+      // руками в общий вывод, с пометкой процесса.
+      stdio: 'pipe',
     })
     child = proc
+    const relay = (stream: NodeJS.ReadableStream | null, write: (s: string) => void): void => {
+      stream?.on('data', (chunk: Buffer) => {
+        for (const line of chunk.toString().split(/\r?\n/)) if (line) write(`[inference] ${line}`)
+      })
+    }
+    relay(proc.stdout, (s) => console.log(s))
+    relay(proc.stderr, (s) => console.error(s))
 
     proc.on('message', (data: InferResponse) => {
       if ('ready' in data) { resolve(); return }
@@ -152,6 +164,21 @@ export function runChat(
 
 export function getVram(): Promise<VramInfo> {
   return call<VramInfo>({ kind: 'vram' })
+}
+
+// Погасить ПРОСТАИВАЮЩИЙ процесс инференса, чтобы следующий запрос поднял новый.
+//
+// ⚠️ Единственный способ переспросить железо. node-llama-cpp кэширует поднятый бэкенд на весь
+// процесс (LlamaBackend.ts::initPromise), поэтому «GPU не найден» — приговор до конца жизни
+// процесса, а не до следующего вызова. Отсюда и условие: только когда модель НЕ загружена. С
+// загруженной моделью перезапуск стоил бы человеку выгруженной из памяти модели и ~30 секунд
+// на повторную загрузку — ради перепроверки, которая ему в этот момент ничего не даёт.
+// Возвращает true, если процесс действительно погашен.
+export function restartInferenceIfIdle(): boolean {
+  if (!child || loadedModelId !== null) return false
+  child.kill()
+  teardown('перепроверка железа')
+  return true
 }
 
 // Остановить процесс при выходе из приложения. Дожидаться нечего: модель живёт только в его

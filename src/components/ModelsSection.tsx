@@ -37,6 +37,118 @@ function requirementsLine(entry: CatalogEntry): string {
 }
 
 
+// ⚠️ «Видеокарты НЕТ» и «видеокарта слабая» — РАЗНЫЕ состояния, и раньше они были склеены в
+// один приговор «локальный AI на этом устройстве не потянет». gpuBackend==='false' означает, что
+// llama.cpp не поднял ни одного GPU-бэкенда и считает на процессоре. Ровно так выглядел баг
+// упакованной сборки (разбор — scripts/patch-llama-gpu-test.mjs): владелец RTX 2070 SUPER видел
+// «не потянет», каталог моделей был пуст, а модель на несколько гигабайт жила в оперативной
+// памяти и занимала все ядра. Первое состояние обычно чинится (драйвер, перезапуск, наша
+// собственная ошибка), второе не чинится вовсе — и текст обязан их различать.
+function isGpuMissing(hw: HardwareSnapshot | null): boolean {
+  return hw !== null && (hw.error !== null || hw.gpuBackend === null || hw.gpuBackend === 'false');
+}
+
+// Что именно увидел детект — строкой, которую человек может переслать в отчёте о проблеме.
+// Без неё «не потянет» невозможно оспорить: непонятно, чего браузеру не хватило.
+function detectedGpuLine(hw: HardwareSnapshot | null): string | null {
+  if (hw === null) return null;
+  if (isGpuMissing(hw)) {
+    const what = hw.gpuBackend === 'false' ? 'ни одного GPU-устройства' : 'детект не выполнился';
+    return `Определено: ${what}${hw.error ? ` (${hw.error.slice(0, 120)})` : ''}`;
+  }
+  const names = hw.gpuDeviceNames.join(', ') || hw.gpuBackend;
+  const vram = hw.vramTotalBytes ? `, ${gb(hw.vramTotalBytes)} ГБ видеопамяти` : '';
+  return `Определено: ${names}${vram}`;
+}
+
+interface RecheckProps {
+  detected: string | null;
+  rechecking: boolean;
+  onRecheck: () => void;
+}
+
+// ⚠️ Модель есть, а видеокарты не видно — это и есть то состояние, в котором браузер «жрёт
+// ресурсы»: модель живёт в оперативной памяти (3–6 ГБ на процессе инференса), и каждый прогон
+// занимает все ядра. Раньше об этом не говорилось нигде, и снаружи это выглядело как «браузер
+// вдруг начал грузить процессор на 70%». Молчать нельзя: цена скрыта, а платит за неё человек.
+function CpuFallbackWarning({ detected, rechecking, onRecheck }: RecheckProps) {
+  return (
+    <div style={{
+      ...settingsBox,
+      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+      fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
+    }}>
+      <AlertTriangle size={15} style={{ color: 'var(--warning-500)', flex: 'none' }} />
+      <span style={{ flex: 1 }}>
+        Видеокарта не обнаружена — модель считается на процессоре: ответы в разы медленнее, а в
+        оперативной памяти она занимает столько же, сколько заняла бы в видеопамяти.
+        {detected ? ` ${detected}.` : ''}
+      </span>
+      <RecheckButton rechecking={rechecking} onRecheck={onRecheck} style={{ flex: 'none' }} />
+    </div>
+  );
+}
+
+function RecheckButton({ rechecking, onRecheck, style }: Omit<RecheckProps, 'detected'> & { style?: React.CSSProperties }) {
+  return (
+    <button
+      onClick={onRecheck}
+      disabled={rechecking}
+      style={{ ...btnGhost, opacity: rechecking ? 0.6 : 1, ...style }}
+    >
+      {rechecking ? 'Проверяю…' : 'Проверить снова'}
+    </button>
+  );
+}
+
+// Каталог пуст и ставить нечего. Два разных текста — см. isGpuMissing выше.
+function NoModelsNotice({ gpuMissing, detected, rechecking, onRecheck }: RecheckProps & { gpuMissing: boolean }) {
+  return (
+    <div style={{ ...settingsBox, padding: '16px' }}>
+      <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
+        {gpuMissing ? 'Видеокарта не обнаружена' : 'Локальный AI на этом устройстве не потянет'}
+      </div>
+      <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4, lineHeight: 1.45 }}>
+        {gpuMissing
+          ? 'Локальные модели считаются на видеокарте, а браузер её сейчас не видит — поэтому список моделей пуст. Обычно помогает обновление драйвера видеокарты и перезапуск браузера.'
+          : 'Нужна видеокарта минимум с 4 ГБ памяти.'}
+        {' '}Всё остальное — вкладки, блокировка рекламы, VPN, пароли — работает как обычно.
+      </div>
+      {detected && (
+        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 8, opacity: 0.8 }}>
+          {detected}
+        </div>
+      )}
+      {gpuMissing && (
+        <RecheckButton rechecking={rechecking} onRecheck={onRecheck} style={{ marginTop: 12 }} />
+      )}
+    </div>
+  );
+}
+
+// Режим загрузки — когда именно модель поднимается в память (SettingsManager.ts, modelLoadMode).
+// Оба варианта явно называют цену размена (память против времени первого ответа), человек
+// выбирает осознанно, не вслепую.
+// ⚠️ Сегменты, а не две строки-карточки: выбор бинарный и короткий, а цена размена не теряется —
+// она уходит подписью под пилюлей, см. Segmented в kit.tsx.
+function LoadModeChooser({ value, onChange }: { value: ModelLoadMode; onChange: (id: ModelLoadMode) => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+      {/* Своя подпись группы: без неё выбор висит вплотную к списку моделей и читается как его
+          продолжение, а это отдельный вопрос. */}
+      <CapsLabel style={{ marginBottom: 4 }}>Когда загружать модель</CapsLabel>
+      <Segmented
+        value={value}
+        onChange={onChange}
+        options={[
+          { id: 'startup', label: 'При старте браузера', hint: 'Модель готова сразу, занимает ~6 ГБ оперативной памяти постоянно.' },
+          { id: 'on-demand', label: 'При первом обращении', hint: 'Экономит память, первый ответ займёт около 30 секунд.' },
+        ]}
+      />
+    </div>
+  );
+}
+
 // ── Модели: установленные (выбор дефолта, удаление) + каталог для скачивания ──────────────────
 // Первая подсекция AI — без хотя бы одной установленной модели остальной AI (перевод/чат/группировка)
 // не работает, поэтому она наверху (см. AiSection). electron/ здесь не трогается — вся логика уже
@@ -50,6 +162,7 @@ export default function ModelsSection() {
   const [unloading, setUnloading] = useState(false);
   const [hardware, setHardware] = useState<HardwareSnapshot | null>(null);
   const [loadMode, setLoadModeState] = useState<ModelLoadMode | null>(null);
+  const [rechecking, setRechecking] = useState(false);
 
   // Флаг перехода running true→false — по нему решаем, когда перечитать installed/catalog
   // (скачанная модель должна переехать из группы B в группу A без перезагрузки Settings).
@@ -104,6 +217,17 @@ export default function ModelsSection() {
     // перечитываем состояние в любом случае — реестр остаётся источником истины, не оптимистичный UI.
     void res;
     reloadInstalled();
+  }
+
+  // Перепроверка железа: снапшот + каталог. ⚠️ Именно refreshHardwareSnapshot, а не
+  // getHardwareSnapshot — только он гасит простаивающий процесс инференса и заставляет
+  // node-llama-cpp поднять бэкенд заново (см. HardwareInfo.refresh).
+  async function handleRecheckGpu() {
+    setRechecking(true);
+    const snapshot = await window.oblako.refreshHardwareSnapshot();
+    setHardware(snapshot);
+    reloadCatalog();
+    setRechecking(false);
   }
 
   async function handleUnloadNow() {
@@ -170,8 +294,12 @@ export default function ModelsSection() {
   // модель) — намеренно не подписываем как «модель занимает». Оба поля снапшота нужны вместе:
   // асимметрия null у одного при числе у другого не встречается по конструкции HardwareInfo.ts.
   const vramUsedText = hardware && hardware.vramTotalBytes !== null && hardware.vramFreeBytes !== null
+    && hardware.vramTotalBytes > 0
     ? `${gb(hardware.vramTotalBytes - hardware.vramFreeBytes)} из ${gb(hardware.vramTotalBytes)} ГБ`
     : null;
+
+  const gpuMissing = isGpuMissing(hardware);
+  const detectedLine = detectedGpuLine(hardware);
 
   // ⚠️ Subsection из kit, а НЕ своя копия. Здесь разделитель, заголовок и описание были набраны
   // руками — и блок не получил ни меру чтения (описание тянулось на всю ширину панели), ни тон
@@ -210,6 +338,10 @@ export default function ModelsSection() {
           </div>
         )}
 
+        {installed.length > 0 && gpuMissing && (
+          <CpuFallbackWarning detected={detectedLine} rechecking={rechecking} onRecheck={() => void handleRecheckGpu()} />
+        )}
+
         {installed.length === 0 && (
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>Нет установленных моделей.</div>
         )}
@@ -243,27 +375,7 @@ export default function ModelsSection() {
           </div>
         )}
 
-        {/* Режим загрузки — когда именно модель поднимается в память (SettingsManager.ts,
-            modelLoadMode). Оба варианта явно называют цену размена (память vs время первого
-            ответа), пользователь выбирает осознанно, не вслепую. */}
-        {loadMode !== null && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-            {/* Своя подпись группы: без неё выбор висит вплотную к списку моделей и читается как
-                его продолжение, а это отдельный вопрос. */}
-            <CapsLabel style={{ marginBottom: 4 }}>Когда загружать модель</CapsLabel>
-            {/* ⚠️ Сегменты, а не две строки-карточки: выбор бинарный и короткий, а цена размена
-                (память против времени первого ответа) не теряется — она уходит подписью под
-                пилюлей, см. Segmented в kit.tsx. */}
-            <Segmented
-              value={loadMode}
-              onChange={(id) => handleSetLoadMode(id)}
-              options={[
-                { id: 'startup', label: 'При старте браузера', hint: 'Модель готова сразу, занимает ~6 ГБ оперативной памяти постоянно.' },
-                { id: 'on-demand', label: 'При первом обращении', hint: 'Экономит память, первый ответ займёт около 30 секунд.' },
-              ]}
-            />
-          </div>
-        )}
+        {loadMode !== null && <LoadModeChooser value={loadMode} onChange={handleSetLoadMode} />}
       </div>
 
       {/* ── Группа B: доступные для загрузки ── */}
@@ -309,19 +421,13 @@ export default function ModelsSection() {
           </div>
         )}
 
-        {/* Честный тупик: на этом железе ни одна модель не заработает как следует. Говорим прямо
-            и не предлагаем скачать что-нибудь «хотя бы такое» — браузер без локального AI лучше
-            браузера с моделью, которая отвечает мимо. */}
         {visibleCatalog.length === 0 && installed.length === 0 && (
-          <div style={{ ...settingsBox, padding: '16px' }}>
-            <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-              Локальный AI на этом устройстве не потянет
-            </div>
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginTop: 4, lineHeight: 1.45 }}>
-              Нужна видеокарта минимум с 4 ГБ памяти. Всё остальное — вкладки, блокировка рекламы,
-              VPN, пароли — работает как обычно.
-            </div>
-          </div>
+          <NoModelsNotice
+            gpuMissing={gpuMissing}
+            detected={detectedLine}
+            rechecking={rechecking}
+            onRecheck={() => void handleRecheckGpu()}
+          />
         )}
       </div>
     </Subsection>
