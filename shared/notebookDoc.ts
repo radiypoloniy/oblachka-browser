@@ -39,6 +39,9 @@ export type DocBlockKind = typeof DOC_BLOCKS[number];
  */
 export const DOC_MAX_BLOCKS = 24;
 
+/** Длиннее этого «заголовок» — на самом деле абзац (см. normalizeDoc). */
+export const HEADING_MAX_CHARS = 120;
+
 export interface DocBlock {
   kind: DocBlockKind;
   /** Заголовок блока: название документа у cover, заголовок раздела у heading, подпись у прочих. */
@@ -139,6 +142,24 @@ export function normalizeDoc(raw: unknown): DocSpec | null {
     if (items.length) block.items = items;
     if (pairs.length) block.pairs = pairs;
 
+    // ⚠️ СНАЧАЛА ПОДБИРАЕМ СОДЕРЖИМОЕ ИЗ СОСЕДНЕГО ПОЛЯ, и только потом решаем, пусто ли.
+    //
+    // Живой случай (29.08.2026): модель выдала 6 000 знаков, а в документе оказались одни
+    // заголовки — семь подряд, между ними пустота. Причина не в модели: в схеме и title, и
+    // text необязательны у ЛЮБОГО блока, грамматика различить их не может, и модель, только
+    // что написав "title" у heading, продолжала класть в "title" и абзацы. Всё это молча
+    // выбрасывалось как «пустой блок».
+    //
+    // Вывод сильнее случая: раз грамматика не различает поля, различать обязаны мы — и
+    // ошибаться в сторону СОХРАНЕНИЯ текста. Блок, у которого есть хоть что-то, рисуется;
+    // выбрасываем только по-настоящему пустой. Потерять абзац хуже, чем нарисовать его
+    // абзацем там, где модель считала его заголовком.
+    if (block.kind === 'text' || block.kind === 'quote') {
+      if (!block.text && block.title) { block.text = block.title; delete block.title; }
+    } else if (block.kind === 'cover' || block.kind === 'heading') {
+      if (!block.title && block.text) { block.title = block.text; delete block.text; }
+    }
+
     // Чем блок наполнен — зависит от типа. Пустой по своему типу блок не рисуем.
     const filled =
       block.kind === 'cover'    ? !!block.title
@@ -151,6 +172,17 @@ export function normalizeDoc(raw: unknown): DocSpec | null {
   }
 
   if (blocks.length === 0) return null;
+
+  // ⚠️ Обратный перекос того же случая: модель кладёт в heading целый абзац. Заголовок в
+  // 300 знаков ломает вёрстку любого шаблона и оглавление заодно, поэтому длинный heading
+  // считаем абзацем. Порог грубый намеренно — настоящий заголовок раздела в него не упирается.
+  for (const b of blocks) {
+    if (b.kind === 'heading' && b.title && b.title.length > HEADING_MAX_CHARS) {
+      b.text = b.title;
+      delete b.title;
+      (b as { kind: DocBlockKind }).kind = 'text';
+    }
+  }
 
   // Заголовок документа: своё поле, иначе — заголовок обложки. Без него документ безымянный,
   // а его ещё выгружать файлом.

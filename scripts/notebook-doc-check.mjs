@@ -6,7 +6,7 @@
 // поломкой, а не задумкой. Каждый случай ниже — про это.
 //
 // Запуск: npm test -- notebook-doc
-import { normalizeDoc, DOC_BLOCKS, DOC_MAX_BLOCKS, DOC_SCHEMA } from '../shared/notebookDoc.ts';
+import { normalizeDoc, DOC_BLOCKS, DOC_MAX_BLOCKS, DOC_SCHEMA, HEADING_MAX_CHARS } from '../shared/notebookDoc.ts';
 
 let passed = 0;
 let failed = 0;
@@ -32,10 +32,15 @@ check(
 
 // ── ПУСТЫЕ ПО СВОЕМУ ТИПУ ───────────────────────────────────────────────────
 // Форму даёт грамматика, наполнение — нет. Это и есть главный класс случаев.
+//
+// ⚠️ Два случая здесь ПЕРЕВЁРНУТЫ 29.08.2026, и это не послабление проверки. Раньше они
+// утверждали, что блок с текстом в соседнем поле выбрасывается, — и ровно это оказалось
+// багом, стоившим человеку документа из семи пустых разделов (разбор ниже, «содержимое в
+// соседнем поле»). Пустой теперь значит ПО-НАСТОЯЩЕМУ пустой: ни text, ни title.
 check('list без пунктов не рисуется', normalizeDoc({ blocks: [{ kind: 'list' }] }), null);
-check('text без текста не рисуется', normalizeDoc({ blocks: [{ kind: 'text', title: 'Только заголовок' }] }), null);
+check('text вовсе без содержимого не рисуется', normalizeDoc({ blocks: [{ kind: 'text' }] }), null);
 check('metrics без пар не рисуется', normalizeDoc({ blocks: [{ kind: 'metrics', title: 'Числа' }] }), null);
-check('cover без заголовка не рисуется', normalizeDoc({ blocks: [{ kind: 'cover', text: 'подпись' }] }), null);
+check('cover вовсе без содержимого не рисуется', normalizeDoc({ blocks: [{ kind: 'cover' }] }), null);
 check(
   'quote живёт текстом, а не заголовком',
   normalizeDoc({ blocks: [{ kind: 'quote', text: 'Мысль' }] })?.blocks,
@@ -83,6 +88,48 @@ check(
   'пар не больше шести',
   normalizeDoc({ blocks: [{ kind: 'metrics', pairs: Array.from({ length: 20 }, (_, i) => ({ label: `л${i}`, value: `${i}` })) }] })?.blocks[0].pairs.length,
   6,
+);
+
+// ── СОДЕРЖИМОЕ В СОСЕДНЕМ ПОЛЕ ──────────────────────────────────────────────
+// ⚠️ Случай из жизни (29.08.2026): модель выдала 6 000 знаков, а документ вышел из одних
+// заголовков — семь подряд, между ними пустота. В схеме и title, и text необязательны у
+// любого блока, грамматика их не различает, и модель клала абзацы в title. Всё это молча
+// выбрасывалось как «пустой блок». Терять текст нельзя ни при каком раскладе.
+check(
+  'абзац, положенный в title, не теряется',
+  normalizeDoc({ blocks: [{ kind: 'text', title: 'Связный абзац про дело' }] })?.blocks,
+  [{ kind: 'text', text: 'Связный абзац про дело' }],
+);
+check(
+  'цитата, положенная в title, не теряется',
+  normalizeDoc({ blocks: [{ kind: 'quote', title: 'Мысль на память' }] })?.blocks,
+  [{ kind: 'quote', text: 'Мысль на память' }],
+);
+check(
+  'заголовок, положенный в text, не теряется',
+  normalizeDoc({ blocks: [{ kind: 'heading', text: 'Как выглядит атака' }] })?.blocks,
+  [{ kind: 'heading', title: 'Как выглядит атака' }],
+);
+check(
+  'обложка, положенная в text, не теряется',
+  normalizeDoc({ blocks: [{ kind: 'cover', text: 'Название документа' }] })?.blocks,
+  [{ kind: 'cover', title: 'Название документа' }],
+);
+check(
+  'правильно заполненный блок не трогаем',
+  normalizeDoc({ blocks: [{ kind: 'text', title: 'Подпись', text: 'Абзац' }] })?.blocks,
+  [{ kind: 'text', title: 'Подпись', text: 'Абзац' }],
+);
+// Обратный перекос: целый абзац в heading ломает и вёрстку, и оглавление.
+check(
+  'длинный «заголовок» становится абзацем',
+  normalizeDoc({ blocks: [{ kind: 'heading', title: 'а'.repeat(HEADING_MAX_CHARS + 1) }] })?.blocks[0].kind,
+  'text',
+);
+check(
+  'настоящий заголовок раздела остаётся заголовком',
+  normalizeDoc({ blocks: [{ kind: 'heading', title: 'Как выглядит атака' }] })?.blocks[0].kind,
+  'heading',
 );
 
 // ── заголовок документа ─────────────────────────────────────────────────────
