@@ -9,6 +9,7 @@ import { islandPlate } from '../styles/island';
 import { sp, pad, RADIUS } from '../styles/system';
 import { SectionHeader, toneVars, CapsLabel, btnTone } from './settings/kit';
 import { useNotebookColumns } from './notebook/useNotebookColumns';
+import { NotebookEmpty, SourcesEmpty } from './notebook/NotebookEmpty';
 import { markdownComponents } from './aiMarkdown';
 import {
   loadSources, saveSources, sourceFromInput, loadSelectedIds, saveSelectedIds, subscribeNotebook,
@@ -56,6 +57,9 @@ export default function Notebook({ children, onBack }: NotebookProps) {
 
   // Подвижные границы колонок и их память между сессиями — в useNotebookColumns.
   const cols = useNotebookColumns();
+  // ⚠️ Форма добавления живёт ЗДЕСЬ, а не в колонке источников: её открывают и двери пустого
+  // экрана в центре. Иначе пришлось бы дублировать форму во второй колонке.
+  const [adding, setAdding] = useState<null | 'url' | 'text'>(null);
 
   // Внешние изменения стора (напр. из другой вкладки) — перечитываем.
   useEffect(() => subscribeNotebook(() => setSources(loadSources())), []);
@@ -103,6 +107,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   }
 
   const selectedCount = sources.filter((s) => selected.has(s.id) && s.status === 'ready').length;
+  const empty = sources.length === 0;
 
   // Реализованные типы Студии (остальные — свои заходы, пока показывают заметку «скоро»).
   const STUDIO_IMPLEMENTED = new Set<StudioKind>(['summary', 'mindmap', 'infographic', 'quiz']);
@@ -133,12 +138,16 @@ export default function Notebook({ children, onBack }: NotebookProps) {
         heroLabel={selectedCount === 1 ? 'источник выбран' : 'источников выбрано'}
       />
 
+      {/* ⚠️ Пока источников нет, колонки «Студия» НЕТ вовсе, а не пустует: каждая её кнопка
+          в этом состоянии отвечает «выберите источники». Пять мёртвых кнопок хуже их отсутствия. */}
       <div style={{
         flex: 1, minHeight: 0, display: 'grid',
-        gridTemplateColumns: `${cols.left}px ${GRIP}px minmax(0, 1fr) ${GRIP}px ${cols.right}px`,
+        gridTemplateColumns: empty
+          ? `${cols.left}px ${GRIP}px minmax(0, 1fr)`
+          : `${cols.left}px ${GRIP}px minmax(0, 1fr) ${GRIP}px ${cols.right}px`,
       }}>
       <SourcesPanel
-        sources={sources} selected={selected}
+        sources={sources} selected={selected} adding={adding} onAddingChange={setAdding}
         onAdd={addSource} onRemove={removeSource} onToggle={toggle} onRetry={retrySource} onBack={onBack}
       />
 
@@ -150,13 +159,17 @@ export default function Notebook({ children, onBack }: NotebookProps) {
         position: 'relative', minHeight: 0, overflow: 'hidden',
         display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 24px',
       }}>
-        {children}
+        {empty
+          ? <NotebookEmpty onAddUrl={() => setAdding('url')} onAddText={() => setAdding('text')} />
+          : children}
       </div>
 
-      <Grip onPointerDown={cols.onGripDown('right')} />
+      {!empty && <Grip onPointerDown={cols.onGripDown('right')} />}
 
-      <StudioPanel selectedCount={selectedCount} note={studioNote} busyKind={studio?.busy ? studio.kind : null}
-        onGenerate={(k) => void handleStudio(k)} />
+      {!empty && (
+        <StudioPanel selectedCount={selectedCount} note={studioNote} busyKind={studio?.busy ? studio.kind : null}
+          onGenerate={(k) => void handleStudio(k)} />
+      )}
       </div>
 
       {studio && <StudioResultModal state={studio} onClose={() => setStudio(null)} />}
@@ -236,24 +249,27 @@ function StudioResultModal({ state, onClose }: {
 }
 
 // ── Источники (слева) ──────────────────────────────────────────────────────────
-function SourcesPanel({ sources, selected, onAdd, onRemove, onToggle, onRetry, onBack }: {
+function SourcesPanel({ sources, selected, adding, onAddingChange, onAdd, onRemove, onToggle, onRetry, onBack }: {
   sources: NotebookSource[]; selected: Set<string>;
+  /** Открыта ли форма и с какой подсказкой. Состояние поднято в Notebook: форму открывают ещё и
+   *  двери пустого экрана в центральной колонке. */
+  adding: null | 'url' | 'text';
+  onAddingChange: (v: null | 'url' | 'text') => void;
   onAdd: (raw: string) => void; onRemove: (id: string) => void; onToggle: (id: string) => void;
   onRetry: (id: string) => void; onBack: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
   const [value, setValue] = useState('');
-  const submit = () => { if (value.trim()) { onAdd(value); setValue(''); setAdding(false); } };
+  const submit = () => { if (value.trim()) { onAdd(value); setValue(''); onAddingChange(null); } };
 
   return (
     <Panel title="Источники" onBack={onBack} action={
-      <IconButton title="Добавить источник" onClick={() => setAdding((v) => !v)}><Plus size={16} /></IconButton>
+      <IconButton title="Добавить источник" onClick={() => onAddingChange(adding ? null : 'url')}><Plus size={16} /></IconButton>
     }>
       {adding && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
           <textarea
             value={value} onChange={(e) => setValue(e.target.value)} autoFocus rows={3}
-            placeholder="Вставьте адрес сайта или текст…"
+            placeholder={adding === 'text' ? 'Вставьте текст…' : 'Вставьте адрес сайта или текст…'}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit(); }}
             style={{
               width: '100%', boxSizing: 'border-box', resize: 'vertical', minHeight: 60,
@@ -267,7 +283,7 @@ function SourcesPanel({ sources, selected, onAdd, onRemove, onToggle, onRetry, o
       )}
 
       {sources.length === 0 ? (
-        <Empty>Добавьте сайты или тексты — на них будет опираться чат и Студия.</Empty>
+        <SourcesEmpty />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
           {sources.map((s) => {
@@ -379,9 +395,6 @@ function IconButton({ title, onClick, children }: { title: string; onClick: () =
       onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>{children}</button>
   );
-}
-function Empty({ children }: { children: ReactNode }) {
-  return <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', padding: '8px 4px', lineHeight: 1.5 }}>{children}</div>;
 }
 
 const xBtn: React.CSSProperties = {
