@@ -1,6 +1,6 @@
 {
   "name": "oblako-browser",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Oblako — приватный браузер со встроенным VPN и AI.",
   "main": "dist-electron/electron/main.js",
   "author": "Oblako",
