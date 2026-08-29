@@ -66,9 +66,9 @@
     "ipc": 24
   },
   "src/aipanel.tsx": {
-    "lines": 1129,
-    "fn": 877,
-    "effects": 7,
+    "lines": 1074,
+    "fn": 826,
+    "effects": 6,
     "ipc": 0
   },
   "src/components/Bookmarks.tsx": {
@@ -102,10 +102,10 @@
     "ipc": 3
   },
   "src/components/ModelsSection.tsx": {
-    "lines": 461,
-    "fn": 286,
+    "lines": 567,
+    "fn": 280,
     "effects": 1,
-    "ipc": 19
+    "ipc": 20
   },
   "src/components/Onboarding.tsx": {
     "lines": 1067,
