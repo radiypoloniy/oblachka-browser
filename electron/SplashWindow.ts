@@ -60,11 +60,18 @@ function buildHtml(logo: string): string {
 }
 
 function logoDataUrl(): string {
-  // В упакованном приложении файл лежит в resources/brand (см. extraResources), в разработке —
-  // в build/. Не нашли — заставка обойдётся без картинки, ронять из-за этого запуск незачем.
+  // Источник логотипа ОДИН — build/icon.png (его собирает `npm run make-icon` из
+  // build/logo-source.png). В упакованном приложении electron-builder кладёт этот самый файл в
+  // resources/brand/icon.png (см. extraResources), в разработке он читается прямо из build/.
+  // Не нашли — заставка обойдётся без картинки, ронять из-за этого запуск незачем.
+  //
+  // ⚠️ Собственной копии логотипа в resources/brand/ репозитория БОЛЬШЕ НЕТ, и заводить её
+  // заново нельзя. Она была, её никто не пересобирал, и упакованный браузер полтора месяца
+  // показывал на заставке ПРОШЛЫЙ логотип — при том что значок приложения и `npm start` были
+  // уже с новым, потому что оба брали build/icon.png. Разъезжается ровно то, что лежит в двух
+  // местах.
   const candidates = [
     path.join(process.resourcesPath, 'brand', 'icon.png'),
-    path.join(app.getAppPath(), 'resources', 'brand', 'icon.png'),
     path.join(app.getAppPath(), 'build', 'icon.png'),
   ];
   for (const file of candidates) {
