@@ -40,10 +40,15 @@ export function DocumentView({ json }: { json: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+      {/* ⚠️ Две строки, а не одна. В одну ряд пилюль, счётчик и две кнопки не помещались и
+          переносились как попало — выбор шаблона терялся среди них настолько, что человек его
+          не заметил вовсе («нет выбора какой стиль нужен»). Теперь у выбора своя строка со
+          своей подписью, а действия — своей. */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: sp(2), padding: pad(3, 6),
-        borderBottom: '1px solid var(--divider)', flex: 'none', flexWrap: 'wrap',
+        display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(3, 6), paddingBottom: sp(2),
+        flex: 'none', flexWrap: 'wrap',
       }}>
+        <CapsLabel style={{ marginBottom: 0 }}>Шаблон</CapsLabel>
         <div style={{ display: 'flex', gap: sp(1) }}>
           {DOC_TEMPLATES.map((t) => {
             const fit = isTemplateFit(spec, t.id);
@@ -56,17 +61,27 @@ export function DocumentView({ json }: { json: string }) {
                   background: on ? 'var(--section-tone)' : 'transparent',
                   color: on ? 'var(--section-ink)' : 'var(--text-body)',
                   opacity: fit || on ? 1 : 0.45,
-                  padding: pad(1, 3), borderRadius: RADIUS.control, cursor: 'default',
-                  fontSize: 'var(--fs-xs)', fontWeight: 600,
+                  padding: pad(2, 3), borderRadius: RADIUS.pill, cursor: 'default',
+                  fontSize: 'var(--fs-sm)', fontWeight: 600,
                 }}>
                 {t.label}
               </button>
             );
           })}
         </div>
-        <CapsLabel style={{ marginBottom: 0, flex: 1 }}>
+        <span style={{ flex: 1 }} />
+        <CapsLabel style={{ marginBottom: 0 }}>
           {spec.blocks.length} блоков · {docChars(spec).toLocaleString('ru-RU')} знаков
         </CapsLabel>
+      </div>
+
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: sp(2), padding: pad(1, 6), paddingTop: 0, paddingBottom: sp(3),
+        borderBottom: '1px solid var(--divider)', flex: 'none', flexWrap: 'wrap',
+      }}>
+        <span style={{ ...TEXT.caption, color: 'var(--text-faint)', flex: 1, minWidth: 0 }}>
+          {DOC_TEMPLATES.find((t) => t.id === tpl)?.hint}
+        </span>
         {/* ⚠️ «Открыть» стоит ПЕРЕД «Сохранить» и оформлена главной: посмотреть документ целиком
             хочется чаще, чем положить его файлом на диск, а в модалке он всегда подрезан. */}
         <button onClick={() => void window.oblako.openStudioDoc(spec.title, html)}

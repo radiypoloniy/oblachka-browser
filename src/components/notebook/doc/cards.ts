@@ -12,15 +12,16 @@ import { C, esc } from './shell';
 // то, что развалится.
 
 export const CSS = `
-.sheet{max-width:900px}
-.top{padding:26px 28px 0;display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap}
+.sheet{max-width:min(1180px,100%);box-shadow:0 1px 2px rgba(20,20,30,.06),0 12px 40px rgba(20,20,30,.07)}
+.top{padding:clamp(24px,4vw,34px) clamp(20px,4vw,34px) 0;display:flex;align-items:flex-end;
+  gap:20px;flex-wrap:wrap}
 .top h1{font-size:26px;font-weight:800;letter-spacing:-.035em;line-height:1.12;color:${C.ink};
   margin:6px 0 0;font-family:"Unbounded","Golos Text",system-ui,sans-serif}
 .top .sd{font-size:13px;color:${C.faint};margin:8px 0 0;max-width:60ch}
 .chip{font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:5px 11px;
   border-radius:999px;background:rgba(31,94,82,.12);color:${C.tea};white-space:nowrap;
   font-family:"JetBrains Mono",ui-monospace,monospace}
-.sec{padding:22px 28px 0}
+.sec{padding:24px clamp(20px,4vw,34px) 0}
 .sec .h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .sec .h::after{content:'';flex:1;height:1px;background:${C.line}}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px}
@@ -35,7 +36,8 @@ export const CSS = `
 .wide{grid-column:1/-1}
 .tone{background:${C.tea};color:${C.cream}}
 .tone b,.tone p{color:inherit}
-.tone .caps{color:inherit;opacity:.72}
+/* .caps красит серым — на тоновой карточке это нечитаемо (см. разбор в report.ts). */
+.tone .caps{color:inherit;opacity:.75}
 .big b{font-size:30px;font-weight:800;letter-spacing:-.035em;line-height:1;color:${C.tea};
   font-family:"Unbounded","Golos Text",system-ui,sans-serif}
 .quote{background:transparent;border:2px solid ${C.ink}}

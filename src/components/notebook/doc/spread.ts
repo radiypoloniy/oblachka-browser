@@ -10,8 +10,10 @@ import { C, esc } from './shell';
 // не показывать.
 
 export const CSS = `
-.sheet{max-width:900px}
-.cover{background:${C.night};color:${C.cream};padding:44px 38px 38px}
+.sheet{max-width:min(1180px,100%);box-shadow:0 1px 2px rgba(20,20,30,.06),0 12px 40px rgba(20,20,30,.07)}
+.cover{background:${C.night};color:${C.cream};padding:clamp(30px,4vw,46px) clamp(20px,4vw,40px)}
+/* .caps красит серым — на тёмной обложке это нечитаемо (см. разбор в report.ts). */
+.cover .caps,.cover .k,.cover .nol{color:inherit}
 .cover .i{display:grid;grid-template-columns:1fr auto;gap:28px;align-items:end}
 .cover .k{opacity:.6;letter-spacing:.16em}
 .cover h1{font-size:38px;font-weight:800;letter-spacing:-.045em;margin:10px 0 0;
@@ -27,11 +29,12 @@ export const CSS = `
   font-family:"Unbounded","Golos Text",system-ui,sans-serif}
 .strip span{display:block;font-size:9px;letter-spacing:.12em;text-transform:uppercase;
   opacity:.74;margin-top:6px;font-family:"JetBrains Mono",ui-monospace,monospace}
-.body{padding:32px 38px 38px;display:grid;grid-template-columns:minmax(0,1fr) 200px;gap:34px}
+.body{padding:clamp(26px,4vw,40px) clamp(20px,4vw,40px) 44px;display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(190px,240px);gap:clamp(24px,3vw,40px)}
 .main h2{font-size:18px;font-weight:700;letter-spacing:-.025em;color:${C.ink};margin:26px 0 9px;
   font-family:"Unbounded","Golos Text",system-ui,sans-serif}
 .main>h2:first-child{margin-top:0}
-.main p{font-size:14.5px;line-height:1.68}
+.main p{font-size:15px;line-height:1.68;max-width:70ch}
 .main p.drop::first-letter{font-size:46px;float:left;line-height:.85;padding:4px 10px 0 0;
   color:${C.tea};font-weight:800;font-family:"Unbounded","Golos Text",system-ui,sans-serif}
 blockquote{margin:24px 0;padding:20px 0;border-top:2px solid ${C.ink};border-bottom:2px solid ${C.ink};
@@ -50,7 +53,8 @@ blockquote{margin:24px 0;padding:20px 0;border-top:2px solid ${C.ink};border-bot
 .side .sd{font-size:12px;color:${C.faint};margin-bottom:6px;line-height:1.45}
 .side .sd em{font-style:normal;display:block;opacity:.8;margin-top:1px;
   font-family:"JetBrains Mono",ui-monospace,monospace}
-@media print{.body{grid-template-columns:1fr}.side{border-left:none;border-top:1px solid ${C.line};padding-left:0}}
+@media print,(max-width:760px){.body{grid-template-columns:1fr}
+  .side{border-left:none;border-top:1px solid ${C.line};padding-left:0;padding-top:20px}}
 `;
 
 function mainBlock(b: DocBlock, firstText: boolean): string {
