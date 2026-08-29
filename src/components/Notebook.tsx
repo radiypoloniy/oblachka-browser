@@ -6,6 +6,9 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { InfographicView, MindmapView, QuizView } from './studioViews';
 import { islandPlate } from '../styles/island';
+import { sp, pad, RADIUS } from '../styles/system';
+import { SectionHeader, toneVars, CapsLabel, btnTone } from './settings/kit';
+import { useNotebookColumns } from './notebook/useNotebookColumns';
 import { markdownComponents } from './aiMarkdown';
 import {
   loadSources, saveSources, sourceFromInput, loadSelectedIds, saveSelectedIds, subscribeNotebook,
@@ -13,6 +16,15 @@ import {
 } from '../newtab/notebook';
 
 // Большой AI-экран как «блокнот» (NotebookLM-подобный): 3 колонки — Источники / Чат / Студия.
+//
+// ⚠️ ВИЗУАЛ СОБРАН ИЗ ГОТОВЫХ ПРИМИТИВОВ (src/components/settings/kit.tsx), своих здесь нет и
+// заводить их не надо: шапка — SectionHeader, подписи групп — CapsLabel, кнопки — btnPrimary,
+// острова — islandPlate, отступы и радиусы — sp()/RADIUS из styles/system.ts.
+//
+// ⚠️ Тон раздела — ЧАЙ, и он один на весь блокнот, включая подэкраны. Цвет принадлежит РАЗДЕЛУ,
+// как в настройках (SECTION_TONE.ai === 'tea'), а не состоянию: над этой картой в kit.tsx стоит
+// «Тон закреплён НАВСЕГДА: узнаваемость и есть смысл затеи». Пустоту показывает hero шапки
+// (крупный 0), а не другой цвет.
 // Центр (children) — существующий чат хаба (AiChatView, движок HubChatManager), не переписываем.
 // Заход 1 — каркас и кнопки: источники добавляются/выбираются (localStorage), студия-кнопки на
 // месте (генерация — следующими заходами). Заземление чата на источники и генерация артефактов —
@@ -41,6 +53,9 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   const [studioNote, setStudioNote] = useState<string | null>(null);
   // Открытый результат Студии (модалка). busy — идёт генерация; text/error — итог.
   const [studio, setStudio] = useState<{ kind: StudioKind; label: string; busy: boolean; text?: string; error?: string } | null>(null);
+
+  // Подвижные границы колонок и их память между сессиями — в useNotebookColumns.
+  const cols = useNotebookColumns();
 
   // Внешние изменения стора (напр. из другой вкладки) — перечитываем.
   useEffect(() => subscribeNotebook(() => setSources(loadSources())), []);
@@ -105,12 +120,29 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   return (
     <div style={{
       position: 'absolute', inset: 0,
-      display: 'grid', gridTemplateColumns: '280px 1fr 300px', gap: 'var(--gutter-shell, 12px)',
+      // ⚠️ Поля ровно pad(6, 8): SectionHeader вычитает ИМЕННО их отрицательными полями, чтобы
+      // шапка шла от края до края панели (см. её разбор в kit.tsx). Поменяются поля — поменять и там.
+      padding: pad(6, 8),
+      display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden',
+      ...toneVars('tea'),
     }}>
+      <SectionHeader
+        title="Блокнот"
+        tone="tea"
+        hero={selectedCount}
+        heroLabel={selectedCount === 1 ? 'источник выбран' : 'источников выбрано'}
+      />
+
+      <div style={{
+        flex: 1, minHeight: 0, display: 'grid',
+        gridTemplateColumns: `${cols.left}px ${GRIP}px minmax(0, 1fr) ${GRIP}px ${cols.right}px`,
+      }}>
       <SourcesPanel
         sources={sources} selected={selected}
         onAdd={addSource} onRemove={removeSource} onToggle={toggle} onRetry={retrySource} onBack={onBack}
       />
+
+      <Grip onPointerDown={cols.onGripDown('left')} />
 
       {/* Центр — чат (children). AiChatView сам flex:1 внутри — даём ему высоту колонки. */}
       <div style={{
@@ -121,10 +153,36 @@ export default function Notebook({ children, onBack }: NotebookProps) {
         {children}
       </div>
 
+      <Grip onPointerDown={cols.onGripDown('right')} />
+
       <StudioPanel selectedCount={selectedCount} note={studioNote} busyKind={studio?.busy ? studio.kind : null}
         onGenerate={(k) => void handleStudio(k)} />
+      </div>
 
       {studio && <StudioResultModal state={studio} onClose={() => setStudio(null)} />}
+    </div>
+  );
+}
+
+// Ширина полосы захвата между колонками. Совпадает с зазором между островами (--gutter-shell):
+// ручка и есть этот зазор, отдельного места она не занимает.
+const GRIP = 12;
+
+/** Ручка между колонками. Своя, а не примитив kit: у настроек колонок нет. */
+function Grip({ onPointerDown }: { onPointerDown: (e: React.PointerEvent) => void }) {
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      title="Потяните, чтобы изменить ширину"
+      style={{
+        cursor: 'col-resize', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        // ⚠️ Полоска рисуется ТОНКОЙ, а зона захвата — во всю ширину зазора: цель в 3 px мышью
+        // не берётся, а видимая линия в 12 px читалась бы разделителем-предметом.
+      }}
+    >
+      <span style={{
+        width: 3, height: 38, borderRadius: RADIUS.tight, background: 'var(--divider)',
+      }} />
     </div>
   );
 }
@@ -204,7 +262,7 @@ function SourcesPanel({ sources, selected, onAdd, onRemove, onToggle, onRetry, o
               fontSize: 'var(--fs-sm)', outline: 'none',
             }}
           />
-          <button onClick={submit} style={btnPrimary}>Добавить</button>
+          <button onClick={submit} style={btnTone}>Добавить</button>
         </div>
       )}
 
@@ -249,22 +307,29 @@ function StudioPanel({ selectedCount, note, busyKind, onGenerate }: {
 }) {
   return (
     <Panel title="Студия">
-      <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', marginBottom: 10 }}>
-        Материалы по выбранным источникам ({selectedCount}).
-      </div>
+      <CapsLabel>Материалы · {selectedCount} источн.</CapsLabel>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {STUDIO.map(({ kind, label, Icon, hint }) => (
           <button key={kind} onClick={() => onGenerate(kind)} title={hint}
             style={{
-              display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', width: '100%',
-              padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--divider-strong)',
-              background: 'var(--surface)', cursor: 'default',
+              display: 'flex', alignItems: 'center', gap: sp(3), textAlign: 'left', width: '100%',
+              padding: pad(2, 3), borderRadius: RADIUS.box, border: 'none',
+              background: 'var(--surface-sunken)', cursor: 'default',
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--surface)')}>
-            {busyKind === kind
-              ? <Loader2 size={18} style={{ color: 'var(--accent)', flex: 'none', animation: 'oblako-spin 1s linear infinite' }} />
-              : <Icon size={18} style={{ color: 'var(--accent)', flex: 'none' }} />}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--surface-sunken)')}>
+            {/* ⚠️ Глиф в плитке ТОНОМ РАЗДЕЛА, а не своим цветом на каждый артефакт. Плакатная
+                палитра различает разделы, а не строки внутри одного: пять цветов в одной колонке
+                спорят с правилом узнаваемости (см. SECTION_TONE в kit.tsx). */}
+            <span style={{
+              width: 30, height: 30, borderRadius: RADIUS.control, flex: 'none',
+              display: 'grid', placeItems: 'center',
+              background: 'var(--section-soft)', color: 'var(--section-tone)',
+            }}>
+              {busyKind === kind
+                ? <Loader2 size={16} style={{ animation: 'oblako-spin 1s linear infinite' }} />
+                : <Icon size={16} />}
+            </span>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>{label}</div>
               <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>{hint}</div>
@@ -296,14 +361,14 @@ function Panel({ title, action, onBack, children }: {
       display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden',
     }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px',
+        display: 'flex', alignItems: 'center', gap: sp(2), padding: pad(3, 4),
         borderBottom: '1px solid var(--divider)', flex: 'none',
       }}>
         {onBack && <button onClick={onBack} title="Назад" style={xBtn}><ArrowLeft size={16} /></button>}
         <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--text-strong)' }}>{title}</span>
         {action}
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 14px' }}>{children}</div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: pad(3, 4) }}>{children}</div>
     </div>
   );
 }
@@ -319,10 +384,6 @@ function Empty({ children }: { children: ReactNode }) {
   return <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', padding: '8px 4px', lineHeight: 1.5 }}>{children}</div>;
 }
 
-const btnPrimary: React.CSSProperties = {
-  padding: '7px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
-  background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'default',
-};
 const xBtn: React.CSSProperties = {
   border: 'none', background: 'transparent', cursor: 'default', padding: 5,
   borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', display: 'inline-flex', flex: 'none',
