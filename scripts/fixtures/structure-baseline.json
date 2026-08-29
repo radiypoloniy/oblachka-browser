@@ -30,8 +30,8 @@
     "ipc": 0
   },
   "electron/main.ts": {
-    "lines": 2353,
-    "fn": 842,
+    "lines": 2245,
+    "fn": 763,
     "effects": 0,
     "ipc": 0
   },
