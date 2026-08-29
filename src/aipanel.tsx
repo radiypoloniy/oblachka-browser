@@ -7,7 +7,7 @@
 // приходит через onContext при переключении/навигации/(пере)открытии панели. Свой собственный
 // messages-стейт здесь — витрина: пополняется оптимистично при отправке и полностью ЗАМЕНЯЕТСЯ
 // целиком при каждом onContext (переключили вкладку → другая лента, не дописывание к старой).
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
 import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Plus, ChevronDown, RotateCcw } from 'lucide-react';
@@ -19,13 +19,9 @@ import { SHELL_MARGIN } from '../shared/layout';
 import { installOverlayReveal } from './overlayReveal';
 import { CAPS, DISPLAY_ROW, RADIUS, TEXT } from './styles/system';
 import { useAiChat } from './aipanel/useAiChat';
+import { useChipsRow } from './aipanel/useChipsRow';
 import type { ModelErrorCode } from './aipanel/contract';
 import './aipanel/contract';
-
-// Запас высоты у схлопнутого ряда подсказок: обрезка идёт по нижнему краю первой строки, и без
-// запаса она срезала бы --shadow-chip у самих чипов. Меньше зазора между строками (6) — иначе в
-// щель заглядывала бы вторая строка.
-const COLLAPSED_SLACK = 4
 
 /**
  * Крупное действие над страницей — «Перевести» и «Фактчек».
@@ -236,59 +232,10 @@ function AiPanel() {
   // действовать не над чем. Оба случая гасят кнопку одинаково — она видна, но не нажимается.
   const chipsBusy = !tabId || sending
 
-  // Высота ОДНОЙ строки чипов и признак «строк больше одной». И то и другое меряется, а не
-  // задаётся числом: высота чипа зависит от --fs-xs и от наличия иконки, а сколько их влезает в
-  // строку — от ширины панели, которую человек тянет мышью.
-  const chipsElRef = useRef<HTMLDivElement | null>(null)
-  const chipsRoRef = useRef<ResizeObserver | null>(null)
-  const [chipRowH, setChipRowH] = useState(0)
-  const [chipsFullH, setChipsFullH] = useState(0)
-  const [chipsOverflow, setChipsOverflow] = useState(false)
-  const [chipsExpanded, setChipsExpanded] = useState(false)
-
-  const measureChips = useCallback(() => {
-    const el = chipsElRef.current
-    if (!el) return
-    const first = el.firstElementChild as HTMLElement | null
-    const last = el.lastElementChild as HTMLElement | null
-    if (!first || !last) return
-    // ⚠️ «Строк больше одной» считается по РАСКЛАДКЕ ДЕТЕЙ, а не по scrollHeight ряда. Схлопнутый
-    // ряд зажат max-height и обрезан overflow:hidden, и что при этом считать высотой его
-    // содержимого — вопрос тонкий; offsetTop детей от обрезки не зависит вовсе, чипы стоят там же,
-    // просто не видны. Перенос заполняет строки по порядку, поэтому последний чип всегда в
-    // последней строке — сравнения первого с последним достаточно.
-    const rowH = first.offsetHeight
-    const fullH = last.offsetTop - first.offsetTop + last.offsetHeight
-    const multiRow = last.offsetTop > first.offsetTop
-    if (rowH) setChipRowH((prev) => (prev === rowH ? prev : rowH))
-    setChipsFullH((prev) => (prev === fullH ? prev : fullH))
-    setChipsOverflow((prev) => (prev === multiRow ? prev : multiRow))
-  }, [])
-
-  // ⚠️ Ref-КОЛБЭК, а не useRef, и наблюдатель живёт в нём же — иначе фактчек ломает весь ряд.
-  // Плашка подтверждения фактчека стоит в ТОЙ ЖЕ позиции тернарника, что и ряд подсказок, а React
-  // при совпадении типа узла переиспользует его, а не создаёт новый. Прежняя версия захватывала
-  // элемент в замыкание эффекта, и ResizeObserver оставался висеть на этом общем узле: смена
-  // размера «ряд → плашка» будила его, и он мерил ПЛАШКУ — за высоту строки принималась высота
-  // абзаца про приватность. Мусорные числа жили дальше, потому что после возврата ряда ни одна
-  // зависимость эффекта не менялась (беседа уже начата — chipsCompact и так true). Живой симптом:
-  // после фактчека шеврон пропадал и возвращался только при переходе на другую страницу, где
-  // onContext сбрасывает ленту и тем самым дёргает пересчёт.
-  const attachChips = useCallback((el: HTMLDivElement | null) => {
-    chipsRoRef.current?.disconnect()
-    chipsRoRef.current = null
-    chipsElRef.current = el
-    if (!el) return // ряд сейчас не показан (его место занято плашкой) — мерить нечего
-    // Ширину панели тянут мышью, и от неё зависит, сколько чипов влезло в строку.
-    const ro = new ResizeObserver(measureChips)
-    ro.observe(el)
-    chipsRoRef.current = ro
-    measureChips()
-  }, [measureChips])
-
-  // Содержимое ряда меняется и без ресайза: пришли скиллы, подключили ключ Gemini, развернули
-  // список, началась беседа. setState внутри срабатывает только на изменение — цикла нет.
-  useLayoutEffect(measureChips, [measureChips, skills, factCheckAvailable, chipsCompact, chipsExpanded])
+  // Ряд подсказок: измерение строки, схлопывание и шеврон — в useChipsRow. ⚠️ Разбор ловушек
+  // (почему ref-колбэк, а не useRef, и почему «строк больше одной» считается по offsetTop детей)
+  // живёт там же, рядом с кодом, а не здесь.
+  const chips = useChipsRow({ compact: chipsCompact, skills, factCheckAvailable })
 
   // "+" — вход в Settings сразу на разделе AI (редактор скиллов появится там отдельным коммитом).
   // Не зависит от tabId (настройки — не действие над страницей), поэтому всегда активна.
@@ -612,7 +559,7 @@ function AiPanel() {
         {(
           // ⚠️ ТРИ ветки, и у каждой свой key. React переиспользует узел того же типа в той же
           // позиции, а к узлу ряда привязан ResizeObserver замера строки — именно так однажды
-          // и вышло, что он мерил плашку фактчека вместо ряда (разбор у attachChips). Разные key
+          // и вышло, что он мерил плашку фактчека вместо ряда (разбор в useChipsRow). Разные key
           // заставляют React честно размонтировать предыдущую ветку: ref-колбэк получает null,
           // наблюдатель отцепляется, мусорных чисел не остаётся.
           showFactCheckConfirm ? (
@@ -703,7 +650,7 @@ function AiPanel() {
               flexShrink: 0,
             }}>
             <div
-              ref={attachChips}
+              ref={chips.attach}
               style={{
                 flex: '1 1 auto', minWidth: 0,
                 display: 'flex', flexWrap: 'wrap', gap: 6,
@@ -711,9 +658,7 @@ function AiPanel() {
                 // `undefined`: к нему max-height не анимируется, ряд бы прыгал); пустая беседа —
                 // без ограничения вовсе. Пока высота не измерена, ограничения тоже нет: лучше
                 // кадр полной высоты, чем кадр со срезанными наполовину кнопками.
-                maxHeight: !chipsCompact ? undefined
-                  : chipsExpanded ? (chipsFullH ? chipsFullH + COLLAPSED_SLACK : undefined)
-                    : (chipRowH ? chipRowH + COLLAPSED_SLACK : undefined),
+                maxHeight: chips.maxHeight,
                 overflow: chipsCompact ? 'hidden' : 'visible',
                 transition: 'max-height var(--dur-base) var(--ease-standard)',
               }}
@@ -814,14 +759,14 @@ function AiPanel() {
                   а там «+» и так стоит в несдвигаемом хвосте ниже. В пустой беседе его место —
                   пунктирная карточка «Свой скилл» в сетке. */}
             </div>
-            {/* Шеврон «показать все» — только когда строк действительно больше одной (chipsOverflow
+            {/* Шеврон «показать все» — только когда строк действительно больше одной (chips.overflow
                 меряется, а не угадывается) и только в схлопывающемся режиме. Разворачивает ВСЕ
                 подсказки разом: со скиллами человек работает списком, а не выискивает нужную. */}
-            {chipsCompact && chipsOverflow && (
+            {chipsCompact && chips.overflow && (
               <button
-                onClick={() => setChipsExpanded((v) => !v)}
-                title={chipsExpanded ? 'Свернуть подсказки' : 'Показать все подсказки'}
-                aria-expanded={chipsExpanded}
+                onClick={chips.toggleExpanded}
+                title={chips.expanded ? 'Свернуть подсказки' : 'Показать все подсказки'}
+                aria-expanded={chips.expanded}
                 style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0,
@@ -839,7 +784,7 @@ function AiPanel() {
                 <ChevronDown
                   size={13}
                   style={{
-                    transform: chipsExpanded ? 'rotate(180deg)' : 'none',
+                    transform: chips.expanded ? 'rotate(180deg)' : 'none',
                     transition: 'transform var(--dur-fast) var(--ease-standard)',
                   }}
                 />
