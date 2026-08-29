@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { X } from 'lucide-react';
-import Sidebar, { FaviconTile } from './components/Sidebar';
+import Sidebar from './components/Sidebar';
+import { FaviconTile } from './components/sidebar/FaviconTile';
 import Toolbar from './components/Toolbar';
 import Hub from './components/Hub';
 import TabError from './components/TabError';
