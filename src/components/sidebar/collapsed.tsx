@@ -6,6 +6,7 @@ import { IconCell } from './rows';
 import { nodeToTopId } from './nodeIds';
 import { useTabDragOverPage } from './useTabDragOverPage';
 import { GROUP_COLORS } from './groupColors';
+import { DragGhostPlate } from './DragGhostPlate';
 import { useGroupChildOrder, type ChildDragZone } from './useGroupChildOrder';
 
 // ── Свёрнутая панель ──────────────────────────────────────────────────────────
@@ -47,11 +48,6 @@ export const nodesContainTab = (nodes: SidebarNode[], tabId: string): boolean =>
     : nodesContainTab(n.children, tabId));
 
 // Обёртка призрака DragOverlay — одна на все «иконочные» призраки свёрнутой полосы.
-export const collapsedGhostPlate: React.CSSProperties = {
-  boxShadow: 'var(--shadow-card)', borderRadius: 'var(--radius-sm)',
-  background: 'var(--surface)', opacity: 0.95, display: 'inline-flex',
-};
-
 interface CollapsedCellsProps {
   node: SidebarNode;
   tabMap: Map<string, TabState>;
@@ -257,13 +253,13 @@ export function CollapsedGroupIsland({ group, tabMap, activeId, onSelect, onClos
             {/* Портал призрака живёт в своём DndContext — верхний сюда не дотягивается. */}
             {!dragOverPage && <DragOverlay>
               {dragChild && (
-                <div style={collapsedGhostPlate}>
+                <DragGhostPlate inline>
                   <CollapsedNodeCells
                     node={dragChild} tabMap={tabMap} activeId={activeId}
                     onSelect={() => {}} onClose={() => {}} onTabMenu={() => {}}
                     ghost
                   />
-                </div>
+                </DragGhostPlate>
               )}
             </DragOverlay>}
           </DndContext>

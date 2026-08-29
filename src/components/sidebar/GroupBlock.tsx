@@ -9,6 +9,7 @@ import { GROUP_COLORS } from './groupColors';
 import { useTabDragOverPage } from './useTabDragOverPage';
 import { useGroupChildOrder, type ChildDragZone } from './useGroupChildOrder';
 import { TabRow, SortableTabRow, PairTile, SortablePairBlock } from './rows';
+import { DragGhostPlate } from './DragGhostPlate';
 
 export interface GroupBlockProps {
   group: GroupNode;
@@ -264,12 +265,7 @@ function GroupChildren({
               (child уже под рукой в effectiveChildren, дерево обходить не нужно). */}
           {!dragOverPage && <DragOverlay>
             {dragChildTab && (
-              <div style={{
-                boxShadow: 'var(--shadow-card)',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--surface)',
-                opacity: 0.95,
-              }}>
+              <DragGhostPlate>
                 <TabRow
                   tab={dragChildTab}
                   active={activeId === dragChildTab.id}
@@ -278,15 +274,10 @@ function GroupChildren({
                   onContextMenu={() => {}}
                   ghost
                 />
-              </div>
+              </DragGhostPlate>
             )}
             {dragChildPairTabs && (
-              <div style={{
-                boxShadow: 'var(--shadow-card)',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--surface)',
-                opacity: 0.95,
-              }}>
+              <DragGhostPlate>
                 <PairTile
                   left={dragChildPairTabs.left}
                   right={dragChildPairTabs.right}
@@ -297,7 +288,7 @@ function GroupChildren({
                   onExitSplit={() => {}}
                   ghost
                 />
-              </div>
+              </DragGhostPlate>
             )}
           </DragOverlay>}
         </DndContext>

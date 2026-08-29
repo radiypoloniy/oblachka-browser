@@ -12,7 +12,8 @@ import { useSidebarWidth, SIDEBAR_HANDLE_OUTSET } from './sidebar/useSidebarWidt
 import { nodeToTopId } from './sidebar/nodeIds';
 import { useTabDragOverPage } from './sidebar/useTabDragOverPage';
 import { GROUP_COLORS } from './sidebar/groupColors';
-import { FolderGlyph, CollapsedNodeCells, CollapsedGroupIsland, SortableCollapsedItem, collapsedGhostPlate } from './sidebar/collapsed';
+import { FolderGlyph, CollapsedNodeCells, CollapsedGroupIsland, SortableCollapsedItem } from './sidebar/collapsed';
+import { DragGhostPlate } from './sidebar/DragGhostPlate';
 import { SortableGroupBlock } from './sidebar/GroupBlock';
 import { asideBase, utilIconBtn, ModeSwitch, SectionLabel, UndoChip } from './sidebar/chrome';
 import { useSidebarDrag } from './sidebar/useSidebarDrag';
@@ -236,26 +237,26 @@ export default function Sidebar({
               (dragPinnedTab / dragNode), только в «иконочной» подаче. */}
           {!dragOverPage && <DragOverlay>
             {dragPinnedTab && (
-              <div style={collapsedGhostPlate}>
+              <DragGhostPlate inline>
                 <IconCell tab={dragPinnedTab} active={activeId === dragPinnedTab.id} ghost />
-              </div>
+              </DragGhostPlate>
             )}
             {dragNode && dragNode.type !== 'group' && (
-              <div style={collapsedGhostPlate}>
+              <DragGhostPlate inline>
                 <CollapsedNodeCells
                   node={dragNode} tabMap={tabMap} activeId={activeId}
                   onSelect={() => {}} onClose={() => {}} onTabMenu={() => {}}
                   ghost
                 />
-              </div>
+              </DragGhostPlate>
             )}
             {dragGroup && (
-              <div style={{ ...collapsedGhostPlate, padding: 5 }}>
+              <DragGhostPlate inline padding={5}>
                 <FolderGlyph
                   tone={(dragGroup.color ? GROUP_COLORS[dragGroup.color] : null) ?? 'var(--text-muted)'}
                   size={18}
                 />
-              </div>
+              </DragGhostPlate>
             )}
           </DragOverlay>}
         </DndContext>
@@ -441,23 +442,12 @@ export default function Sidebar({
             пара — PairTile (две ячейки); группа — минимальный заголовок. */}
         {!dragOverPage && <DragOverlay>
           {dragPinnedTab && (
-            <div style={{
-              boxShadow: 'var(--shadow-card)',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--surface)',
-              opacity: 0.95,
-              display: 'inline-flex',
-            }}>
+            <DragGhostPlate inline>
               <IconCell tab={dragPinnedTab} active={activeId === dragPinnedTab.id} ghost />
-            </div>
+            </DragGhostPlate>
           )}
           {dragTab && (
-            <div style={{
-              boxShadow: 'var(--shadow-card)',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--surface)',
-              opacity: 0.95,
-            }}>
+            <DragGhostPlate>
               <TabRow
                 tab={dragTab}
                 active={activeId === dragTab.id}
@@ -466,15 +456,10 @@ export default function Sidebar({
                 onContextMenu={() => {}}
                 ghost
               />
-            </div>
+            </DragGhostPlate>
           )}
           {dragPairTabs && (
-            <div style={{
-              boxShadow: 'var(--shadow-card)',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--surface)',
-              opacity: 0.95,
-            }}>
+            <DragGhostPlate>
               <PairTile
                 left={dragPairTabs.left}
                 right={dragPairTabs.right}
@@ -485,7 +470,7 @@ export default function Sidebar({
                 onExitSplit={() => {}}
                 ghost
               />
-            </div>
+            </DragGhostPlate>
           )}
           {dragGroup && (
             <div style={{

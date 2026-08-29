@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import type { TabState, SidebarNode, GroupNode, TabDropResult, DragCard } from '../../../shared/ipc';
@@ -60,6 +60,16 @@ export function useSidebarDrag({
     const right = tabs.find((t) => t.id === dragNode.rightTabId);
     return left && right ? { left, right } : null;
   })();
+
+  // ⚠️ Курсор жеста — классом на body, а не стилем на строке вкладки. Как только указатель
+  // уходит со строки (а он уходит сразу: вкладку ведут к области контента), её собственный
+  // курсор перестаёт что-либо значить. Разбор, почему именно класс с !important, — в global.css
+  // у правила .oblako-dragging-tab.
+  useEffect(() => {
+    if (dragActiveId === null) return;
+    document.body.classList.add('oblako-dragging-tab');
+    return () => document.body.classList.remove('oblako-dragging-tab');
+  }, [dragActiveId]);
 
   // PointerSensor с минимальным расстоянием активации: клики не превращаются в drag.
   const sensors = useSensors(
