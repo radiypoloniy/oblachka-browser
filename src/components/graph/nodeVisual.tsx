@@ -41,6 +41,11 @@ export function graphToneVars(tone: GraphTone): React.CSSProperties {
   };
 }
 
+/** Цвет тона строкой CSS — для мест, где переменные объявить негде (обводка SVG у связей). */
+export function toneColor(tone: GraphTone): string {
+  return `var(--poster-${tone})`;
+}
+
 /** Группы библиотеки: откуда взять — что сделать — что получить. */
 export const NODE_GROUPS: { title: string; tone: GraphTone; kinds: GraphNodeKind[] }[] = [
   { title: 'Откуда', tone: 'tea', kinds: ['source.url', 'source.file', 'source.note', 'source.image'] },

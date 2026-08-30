@@ -46,7 +46,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   // Документ: список холстов, открытый холст, его узлы и связи, ход прогона и автосейв
   // структуры — в useGraphDoc.
   const {
-    list, currentId, setCurrentId, nodes, setNodes, edges, setEdges,
+    list, currentId, setCurrentId, nodes, setNodes, edges, setEdges, rfEdges,
     running,
     loadedIdRef, nodesRef, edgesRef,
     refreshList, openGraph, onEdgesChange, onConnect,
@@ -383,7 +383,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
           >
           <ReactFlow
             nodes={rfNodes}
-            edges={edges}
+            edges={rfEdges}
             nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}

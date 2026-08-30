@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { applyEdgeChanges, addEdge } from '@xyflow/react';
 import type { Connection, Edge, EdgeChange, Node } from '@xyflow/react';
 import type { GraphDoc, GraphMeta, GraphNodeStatus, GraphStructure } from '../../../shared/graph';
 import type { GraphNodeData } from './GraphNodeCard';
+import { NODE_TONE, toneColor } from './nodeVisual';
 import { DEFAULT_NODE_SIZE } from './GraphNodeCard';
 
 type RFNode = Node<GraphNodeData>;
@@ -45,6 +46,32 @@ function toRFNodes(doc: GraphDoc): RFNode[] {
       inputLabels: [],
     },
   }));
+}
+
+/**
+ * Как выглядит связь: цвет по узлу-ИСТОЧНИКУ, толщина по готовности, пунктир — пока цель считается.
+ *
+ * ⚠️ Цвет берётся у источника, а не у цели, потому что связь отвечает на вопрос «откуда это
+ * пришло»: глядя на узел сборки, надо видеть, что в него втекает страница, а что — фактчек.
+ * ⚠️ Бегущий пунктир — ЕДИНСТВЕННОЕ движение на холсте, и он отвечает ровно на «что происходит
+ * прямо сейчас». Рисует его сама библиотека (`animated`), поэтому своих ключевых кадров нет и
+ * системную настройку уменьшенного движения гасит одно правило в global.css.
+ */
+function decorateEdges(edges: Edge[], nodes: Node<GraphNodeData>[]): Edge[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  return edges.map((e) => {
+    const from = byId.get(e.source);
+    const flowing = byId.get(e.target)?.data.status === 'running';
+    const live = flowing || from?.data.status === 'done';
+    return {
+      ...e,
+      animated: flowing,
+      style: {
+        stroke: live && from ? toneColor(NODE_TONE[from.data.kind]) : 'var(--divider-strong)',
+        strokeWidth: live ? 2 : 1.4,
+      },
+    };
+  });
 }
 
 function toRFEdges(doc: GraphDoc): Edge[] {
@@ -214,8 +241,12 @@ export function useGraphDoc({ onFirstRunEmpty }: {
     [],
   );
 
+  // Связи для отрисовки: те же данные плюс цвет и состояние. Живут отдельно от `edges`, потому
+  // что в автосейв уезжает именно чистая структура — украшения в файл графа попасть не должны.
+  const rfEdges = useMemo(() => decorateEdges(edges, nodes), [edges, nodes]);
+
   return {
-    list, currentId, setCurrentId, nodes, setNodes, edges, setEdges,
+    list, currentId, setCurrentId, nodes, setNodes, edges, setEdges, rfEdges,
     running, setRunning, loading,
     loadedIdRef, nodesRef, edgesRef,
     refreshList, openGraph, onEdgesChange, onConnect,
