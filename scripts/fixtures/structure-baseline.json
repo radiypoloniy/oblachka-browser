@@ -42,7 +42,7 @@
     "ipc": 0
   },
   "electron/preload.ts": {
-    "lines": 853,
+    "lines": 855,
     "fn": 6,
     "effects": 0,
     "ipc": 0
@@ -54,7 +54,7 @@
     "ipc": 0
   },
   "shared/ipc/channels.ts": {
-    "lines": 799,
+    "lines": 801,
     "fn": 0,
     "effects": 0,
     "ipc": 0
@@ -102,10 +102,10 @@
     "ipc": 3
   },
   "src/components/ModelsSection.tsx": {
-    "lines": 567,
-    "fn": 280,
+    "lines": 603,
+    "fn": 288,
     "effects": 1,
-    "ipc": 20
+    "ipc": 22
   },
   "src/components/Onboarding.tsx": {
     "lines": 652,

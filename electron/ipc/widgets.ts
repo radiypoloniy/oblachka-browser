@@ -6,7 +6,7 @@ import { app, dialog, shell } from 'electron';
 import fsp from 'node:fs/promises';
 import nodePath from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { IPC } from '../../shared/ipc';
+import { IPC, PAGE_LENGTH_TOKENS } from '../../shared/ipc';
 import type { TimerState } from '../../shared/ipc';
 import { getTimer, setTimer } from '../TimerService';
 import type { PasswordCopyField } from '../../shared/ipc';
@@ -135,9 +135,11 @@ export function registerWidgetsIpc(d: IpcDeps): void {
     const list = Array.isArray(sources)
       ? sources.filter((s): s is DocSource => typeof s?.title === 'string' && typeof s?.url === 'string')
       : [];
-    return generateStudio(kind, typeof context === 'string' ? context : '', undefined, list, (chars) => {
-      if (!sender.isDestroyed()) sender.send(IPC.NOTEBOOK_STUDIO_PROGRESS, chars);
-    });
+    return generateStudio(
+      kind, typeof context === 'string' ? context : '', undefined, list,
+      PAGE_LENGTH_TOKENS[settings.getPageLength()],
+      (chars) => { if (!sender.isDestroyed()) sender.send(IPC.NOTEBOOK_STUDIO_PROGRESS, chars); },
+    );
   });
   // ⚠️ Два канала, а не один: между ними стоит человек. suggestQueries только ПРЕДЛАГАЕТ, наружу
   // ничего не уходит; runSearch отправляет на SearXNG ровно то, что человек подтвердил.

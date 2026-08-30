@@ -8,6 +8,7 @@
 // ⚠️ Сам OblakoApi по-прежнему ОДИН тип (api.ts наследует все части): звать его из renderer'а
 // приходится как единое window.oblako, и дробить эту точку входа было бы правдой про файлы, а не
 // про программу.
+import type { PageLength } from './ai';
 import type { SearchEngineId } from '../searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../graph';
 import type { ImagePreset } from '../imagePresets';
@@ -139,6 +140,9 @@ export interface AiApi {
   setHubMode(mode: HubMode): Promise<void>;
   getModelLoadMode(): Promise<ModelLoadMode>;
   setModelLoadMode(mode: ModelLoadMode): Promise<void>;
+  /** Объём страницы Студии: ступень, а не число знаков (см. PAGE_LENGTH_TOKENS). */
+  getPageLength(): Promise<PageLength>;
+  setPageLength(v: PageLength): Promise<void>;
 
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
   // send — fire-and-forget, ответ идёт стримом через onHubChatChunk/onHubChatResult.

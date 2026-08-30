@@ -4,7 +4,7 @@ import path from 'node:path';
 import { DEFAULT_SEARCH_ENGINE_ID, isSearchEngineId } from '../shared/searchEngines';
 import type { SearchEngineId } from '../shared/searchEngines';
 import { THEME_PALETTE_IDS } from '../shared/ipc';
-import type { HubMode, ModelLoadMode, RecommendedSite, SearchChipsConfig, ThemeMode, ThemePaletteId } from '../shared/ipc';
+import type { HubMode, ModelLoadMode, PageLength, RecommendedSite, SearchChipsConfig, ThemeMode, ThemePaletteId } from '../shared/ipc';
 import type { EngineId } from './TranslationEngine';
 
 const DEFAULT_HUB_MODE: HubMode = 'tiles';
@@ -49,6 +49,7 @@ interface PersistedSettings {
   translationEngine: EngineId;
   aiPanelWidth: number;
   modelLoadMode: ModelLoadMode;
+  pageLength: PageLength;
   // Онбординг импорта из другого браузера показывался ли уже (см. electron/browserImport/).
   // Однократное предложение при первом запуске — потом только вручную из настроек.
   importOffered: boolean;
@@ -154,6 +155,7 @@ export class SettingsManager {
   #translationEngine: EngineId = DEFAULT_TRANSLATION_ENGINE;
   #aiPanelWidth: number = DEFAULT_AI_PANEL_WIDTH;
   #modelLoadMode: ModelLoadMode = DEFAULT_MODEL_LOAD_MODE;
+  #pageLength: PageLength = 'normal';
   #importOffered = false;
   // Спрашивать папку для каждого файла. По умолчанию НЕТ — см. DownloadManager.
   #askDownloadLocation = false;
@@ -224,6 +226,17 @@ export class SettingsManager {
   setModelLoadMode(mode: ModelLoadMode): void {
     if (!isModelLoadMode(mode)) return;
     this.#modelLoadMode = mode;
+    this.#write();
+  }
+
+  /** Объём страницы Студии. Читает NotebookPage, показывает раздел «Модель». */
+  getPageLength(): PageLength {
+    return this.#pageLength;
+  }
+
+  setPageLength(v: PageLength): void {
+    if (v !== 'short' && v !== 'normal' && v !== 'long') return;
+    this.#pageLength = v;
     this.#write();
   }
 
@@ -333,6 +346,8 @@ export class SettingsManager {
         if (typeof pw === 'number' && Number.isFinite(pw)) this.#aiPanelWidth = clampAiPanelWidth(pw);
         const lm = (data as Record<string, unknown>)['modelLoadMode'];
         if (isModelLoadMode(lm)) this.#modelLoadMode = lm;
+        const pl = (data as Record<string, unknown>)['pageLength'];
+        if (pl === 'short' || pl === 'normal' || pl === 'long') this.#pageLength = pl;
         const io = (data as Record<string, unknown>)['importOffered'];
         if (typeof io === 'boolean') this.#importOffered = io;
         const dl = (data as Record<string, unknown>)['askDownloadLocation'];
@@ -363,6 +378,7 @@ export class SettingsManager {
       translationEngine: this.#translationEngine,
       aiPanelWidth: this.#aiPanelWidth,
       modelLoadMode: this.#modelLoadMode,
+      pageLength: this.#pageLength,
       importOffered: this.#importOffered,
       askDownloadLocation: this.#askDownloadLocation,
       passwordAuthEnabled: this.#passwordAuthEnabled,

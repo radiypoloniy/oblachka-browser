@@ -506,6 +506,8 @@ export const IPC = {
   NEVER_SLEEP_CHANGED: 'never-sleep:changed',
   SETTINGS_GET_MODEL_LOAD_MODE: 'settings:get-model-load-mode', // renderer → main: текущий ModelLoadMode
   SETTINGS_SET_MODEL_LOAD_MODE: 'settings:set-model-load-mode', // renderer → main: сменить режим загрузки модели
+  SETTINGS_GET_PAGE_LENGTH:   'settings:get-page-length',   // renderer → main: объём страницы Студии
+  SETTINGS_SET_PAGE_LENGTH:   'settings:set-page-length',   // renderer → main: (PageLength)
   // Ширина AI-дока (заход 3 — поповер → правый split-view-подобный док, см. AiPanelManager.ts).
   // Читается один раз при маунте chrome; живой ресайз идёт отдельным ad-hoc каналом
   // ai-panel:resize (не здесь — остальная AI-panel-механика уже сознательно вне typed-контракта).

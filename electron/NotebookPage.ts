@@ -44,10 +44,12 @@ const NUMBERS_SCHEMA = {
 
 const HEAD_MAX_TOKENS = 200;
 const NUMBERS_MAX_TOKENS = 220;
-// ⚠️ Тело — единственный длинный прогон. 3 200 токенов это примерно 7–8 тысяч знаков разметки,
-// то есть статья на 5–6 тысяч знаков текста плюс теги. Больше ставить незачем: дальше растёт
-// не глубина, а вода.
-const BODY_MAX_TOKENS = 3200;
+// ⚠️ Тело — единственный длинный прогон, и его потолок теперь ВЫБИРАЕТ ЧЕЛОВЕК (три ступени,
+// см. PAGE_LENGTH_TOKENS). Раньше здесь стояло фиксированное 3 200 — примерно 7–8 тысяч знаков
+// разметки; оно осталось средней ступенью и значением по умолчанию.
+//
+// ⚠️ Цена верхней ступени — ВРЕМЯ, линейно: 6 000 токенов идут две-три минуты против минуты у
+// средней. Про это написано в подписи к настройке, потому что удивляет человека именно оно.
 
 const CONTEXT_MAX = 18_000;
 
@@ -83,6 +85,10 @@ export async function buildPage(
   sources: DocSource[],
   act: ActivityHandle,
   onProgress: (chars: number) => void,
+  // ⚠️ Потолок приходит СНАРУЖИ, а не читается тут из настроек: этот модуль про сборку
+  // страницы, а не про то, где живут настройки приложения. Заодно его можно прогнать с любым
+  // бюджетом, не поднимая SettingsManager.
+  bodyMaxTokens: number,
 ): Promise<{ ok: true; page: PageSpec } | { ok: false; error: string }> {
   let chars = 0;
   const bump = (n: number) => { chars += n; onProgress(chars); act.progress(chars); };
@@ -125,7 +131,7 @@ export async function buildPage(
   // ⚠️ Без schema. См. шапку файла: грамматика здесь не помогает, а мешает.
   act.note('Пишу статью');
   const res = await runTabOrganizePrompt(BODY_PROMPT + '\n\n' + short, {
-    maxTokens: BODY_MAX_TOKENS,
+    maxTokens: bodyMaxTokens,
     abort: act.signal,
     onChunk: (t) => bump(t.length),
   });
