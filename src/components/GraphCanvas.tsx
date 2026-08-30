@@ -5,11 +5,11 @@ import {
   type Node, type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Play, Square } from 'lucide-react';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../shared/graph';
 import { NODE_KINDS } from '../../shared/graph';
 import GraphNodeCard, { DEFAULT_NODE_SIZE, type GraphNodeData } from './graph/GraphNodeCard';
-import NodeLibrary from './graph/NodeLibrary';
+import NodeLibrary, { LibraryHandle } from './graph/NodeLibrary';
+import RunBar from './graph/RunBar';
 import { groundGrain } from '../styles/island';
 import { documentIsDark } from '../newtab/gradients';
 import { useGraphNodeActions } from './graph/useGraphNodeActions';
@@ -43,6 +43,8 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   // помимо признака темы правит землю окна и полосу системных кнопок — побочные действия,
   // которым на холсте графа делать нечего.
   const dark = documentIsDark();
+  // Библиотека открыта по умолчанию: без неё на пустом холсте не видно, с чего начинать.
+  const [libraryOpen, setLibraryOpen] = useState(true);
   // Документ: список холстов, открытый холст, его узлы и связи, ход прогона и автосейв
   // структуры — в useGraphDoc.
   const {
@@ -167,6 +169,16 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
 
   // Колбэки вживляются на рендере, а в состоянии узлы лежат чистыми данными — иначе они
   // попали бы в автосейв и в сравнение состояний.
+  // Что показывает полоса прогона. Считаем из статусов узлов, а не заводим второй счётчик в
+  // main: статусы и так приезжают на каждый шаг, и другого источника правды тут быть не должно.
+  const nowTitle = useMemo(() => {
+    const now = nodes.find((n) => n.data.status === 'running');
+    return now ? (now.data.title || NODE_KINDS[now.data.kind].label) : null;
+  }, [nodes]);
+  const queuedCount = useMemo(
+    () => nodes.filter((n) => n.data.status === 'queued').length, [nodes],
+  );
+
   const rfNodes = useMemo(
     () => nodes.map((n) => ({
       ...n,
@@ -318,51 +330,6 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
       />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <div
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6, rowGap: 6, flexWrap: 'wrap',
-            padding: '9px 12px', borderBottom: '1px solid var(--divider-strong)',
-          }}
-        >
-          <NodeLibrary onAdd={addNode} />
-
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 7 }}>
-            <button
-              type="button"
-              onClick={() => { if (currentId !== null) window.oblako.runGraph(currentId, null); }}
-              disabled={running || currentId === null}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                background: running ? 'var(--surface-sunken)' : 'var(--accent)',
-                color: running ? 'var(--text-muted)' : 'var(--text-on-accent)',
-                border: 0, borderRadius: 'var(--radius-chip)', padding: '7px 13px',
-                cursor: running ? 'default' : 'pointer', font: 'inherit',
-                fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)', fontFamily: 'var(--font-sans)',
-              }}
-            >
-              <Play size={14} />
-              Посчитать всё
-            </button>
-            {running && (
-              <button
-                type="button"
-                onClick={() => { if (currentId !== null) void window.oblako.cancelGraphRun(currentId); }}
-                title="Текущий узел досчитается — прервать генерацию модели нельзя"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-                  borderRadius: 'var(--radius-chip)', padding: '7px 13px', cursor: 'pointer',
-                  color: 'var(--text-body)', font: 'inherit',
-                  fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
-                }}
-              >
-                <Square size={13} />
-                Остановить
-              </button>
-            )}
-          </div>
-        </div>
-
         <div style={{ flex: 1, minHeight: 0, display: 'flex', background: 'var(--surface-sunken)' }}>
           <div
             className="oblako-graph"
@@ -399,9 +366,24 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             {/* ⚠️ Шаг 22 и точка 1.4 вместо 18/1: при отдалении холста прежняя сетка сливалась
                 в ровную серость и переставала быть опорой — ради которой она и нужна. */}
             <Background gap={22} size={1.4} />
-            <Controls showInteractive={false} />
+            {/* ⚠️ Наверх справа: внизу слева, где библиотека React Flow ставит их по умолчанию,
+                теперь стоит панель узлов, а внизу по центру — полоса прогона. */}
+            <Controls showInteractive={false} position="top-right" />
             <MiniMap pannable zoomable />
           </ReactFlow>
+
+          {libraryOpen
+            ? <NodeLibrary onAdd={addNode} onClose={() => setLibraryOpen(false)} />
+            : <LibraryHandle onOpen={() => setLibraryOpen(true)} />}
+
+          <RunBar
+            running={running}
+            nowTitle={nowTitle}
+            queued={queuedCount}
+            canRun={!running && currentId !== null}
+            onRun={() => { if (currentId !== null) window.oblako.runGraph(currentId, null); }}
+            onStop={() => { if (currentId !== null) void window.oblako.cancelGraphRun(currentId); }}
+          />
           </div>
 
           {expandedNode && currentId !== null && (
