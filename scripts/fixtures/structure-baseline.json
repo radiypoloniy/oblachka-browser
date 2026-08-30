@@ -53,12 +53,6 @@
     "effects": 0,
     "ipc": 0
   },
-  "shared/ipc/api.ts": {
-    "lines": 704,
-    "fn": 0,
-    "effects": 0,
-    "ipc": 0
-  },
   "shared/ipc/channels.ts": {
     "lines": 799,
     "fn": 0,
@@ -138,10 +132,10 @@
     "ipc": 9
   },
   "src/components/Toolbar.tsx": {
-    "lines": 1519,
-    "fn": 1387,
-    "effects": 14,
-    "ipc": 61
+    "lines": 1406,
+    "fn": 1274,
+    "effects": 12,
+    "ipc": 43
   },
   "src/components/aiApps.tsx": {
     "lines": 654,
