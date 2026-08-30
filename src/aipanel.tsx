@@ -9,19 +9,18 @@
 // целиком при каждом onContext (переключили вкладку → другая лента, не дописывание к старой).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import ReactMarkdown from 'react-markdown';
-import { Sparkles, X, Send, Globe, Loader2, LayoutGrid, Plus, ChevronDown, RotateCcw } from 'lucide-react';
+import { Sparkles, X, Send, Globe, LayoutGrid, Plus } from 'lucide-react';
 import './styles/global.css';
 import { AiActivityPill } from './aipanel/AiActivityPill';
-import { markdownComponents } from './components/aiMarkdown';
 import { AppsMode, loadWallpaper, saveWallpaper, wallpaperBackground } from './components/aiApps';
 import { subscribeMeshes } from './newtab/gradients';
 import { SHELL_MARGIN } from '../shared/layout';
 import { installOverlayReveal } from './overlayReveal';
-import { CAPS, DISPLAY_ROW, RADIUS, TEXT } from './styles/system';
 import { useAiChat } from './aipanel/useAiChat';
+import { ActionsRow } from './aipanel/parts/ActionsRow'
+import { MessageList } from './aipanel/parts/MessageList'
+import { PageIsland } from './aipanel/parts/PageIsland'
 import { useChipsRow } from './aipanel/useChipsRow';
-import type { ModelErrorCode } from './aipanel/contract';
 import './aipanel/contract';
 
 /**
@@ -31,42 +30,6 @@ import './aipanel/contract';
  * работают на любой странице. Пятно цвета осталось только здесь — на девяти карточках оно было
  * не различением, а витриной.
  */
-function PrimaryAction({ icon, label, hint, bg, ink, busy, onPress }: {
-  icon: string
-  label: string
-  hint: string
-  bg: string
-  ink: string
-  busy: boolean
-  onPress: () => void
-}) {
-  return (
-    <button
-      onClick={onPress}
-      disabled={busy}
-      style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
-        padding: '10px 12px', textAlign: 'left', font: 'inherit',
-        borderRadius: 'var(--radius-card)', border: 'none',
-        background: bg, color: ink,
-        boxShadow: 'var(--shadow-chip)',
-        cursor: busy ? 'default' : 'pointer',
-        opacity: busy ? 0.5 : 1,
-        transition: 'transform var(--dur-fast) var(--ease-out)',
-      }}
-      onMouseEnter={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-2px)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.transform = 'none' }}
-    >
-      <span style={{ ...DISPLAY_ROW, display: 'block', color: 'inherit' }}>
-        <span style={{ marginRight: 6 }}>{icon}</span>{label}
-      </span>
-      <span style={{
-        ...TEXT.caption, color: 'inherit', opacity: 0.72,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%',
-      }}>{hint}</span>
-    </button>
-  )
-}
 
 // Воздух вокруг карточки — bounds самой WebContentsView его не выделяют (см.
 // AiPanelManager.ts::computeBounds — flush), это чистый CSS-padding внутри вью, и заодно зона
@@ -92,26 +55,6 @@ function PrimaryAction({ icon, label, hint, bg, ink, busy, onPress }: {
 // AiPanelManager.ts::resolveDirection/buildPrompt), поэтому у неё нет готового prompt — только
 // сигнал quickTranslate() в main.
 
-// Человекочитаемая карточка вместо сырого String(e) — NO_MODEL_INSTALLED/MODEL_FILE_MISSING
-// ведут в Настройки (showModelButton), LOAD_FAILED и всё прочее без errorCode — просто внятная
-// подводка над текстом ошибки от бэкенда (он уже человекочитаем, см. TranslationService.ts).
-function describeChatError(error: string, code: ModelErrorCode | null): { heading: string; detail: string; showModelButton: boolean } {
-  if (code === 'NO_MODEL_INSTALLED') {
-    return {
-      heading: 'Локальная модель не установлена',
-      detail: 'AI считает прямо на этом устройстве, без облака — модель нужно скачать один раз, дальше всё работает офлайн.',
-      showModelButton: true,
-    }
-  }
-  if (code === 'MODEL_FILE_MISSING') {
-    return {
-      heading: 'Файл модели не найден',
-      detail: 'Похоже, файл модели переместили или удалили с диска. Выберите модель заново.',
-      showModelButton: true,
-    }
-  }
-  return { heading: 'Не удалось получить ответ', detail: error, showModelButton: false }
-}
 
 function AiPanel() {
   // Беседа целиком — подписки на main, лента, признаки занятости и три способа отправки.
@@ -340,221 +283,19 @@ function AiPanel() {
           flex: 1, minHeight: 0,
           display: mode === 'chat' ? 'flex' : 'none', flexDirection: 'column',
         }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          margin: `10px var(--pad-island) 0`,
-          padding: '7px 8px 7px 12px',
-          background: 'var(--surface-solid)',
-          border: '1px solid var(--glass-edge)',
-          boxShadow: 'var(--shadow-card)',
-          borderRadius: 'var(--radius-card)',
-          flexShrink: 0,
-          minWidth: 0,
-        }}>
-          {pageFavicon && !faviconError ? (
-            <img
-              src={pageFavicon}
-              alt=""
-              width={16}
-              height={16}
-              onError={() => setFaviconError(true)}
-              style={{ flexShrink: 0, borderRadius: RADIUS.tight, objectFit: 'contain' }}
-            />
-          ) : (
-            <Globe size={16} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
-          )}
-          {/* ⚠️ ЗАГОЛОВОК ДИСПЛЕЙНОЙ, ПОД НИМ ДОМЕН. Это герой панели: вопрос «он вообще про эту
-              вкладку или про предыдущую?» возникает раньше любого другого и задаётся заново после
-              каждого переключения. Домен нужен отдельной строкой потому, что заголовки страниц
-              врут чаще адресов — «Главная» встречается на сотне сайтов. */}
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{
-              display: 'block', ...DISPLAY_ROW,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {pageTitle || 'Новая вкладка'}
-            </span>
-            {pageHost && (
-              <span style={{
-                display: 'block', ...TEXT.caption, color: 'var(--text-muted)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {pageHost}
-              </span>
-            )}
-          </span>
-          {/* ⚠️ Состояние модели — ЧИПОМ В ПЛАШКЕ, а не отдельной строкой и не героем. Вопрос
-              «он про эту вкладку?» человек задаёт каждый раз, а «что за модель и почему долго» —
-              один раз; поэтому страница крупно, модель мелко, но в том же ряду: одна строка
-              отвечает на оба вопроса и панель не теряет высоту у ленты. */}
-          {modelState && (
-            <span
-              title={modelState.label
-                ? (modelState.loaded
-                  ? `${modelState.label} — в памяти, отвечает сразу`
-                  : `${modelState.label} — поднимется в память при первом запросе`)
-                : 'Локальная модель не установлена'}
-              style={{
-                ...CAPS, flex: 'none', whiteSpace: 'nowrap',
-                padding: '4px 8px', borderRadius: RADIUS.pill,
-                background: modelState.loaded ? 'var(--surface-sunken)' : 'var(--selected)',
-                color: 'var(--text-muted)',
-              }}
-            >
-              {!modelState.label ? 'нет модели' : modelState.loaded ? 'в памяти' : 'поднимаю'}
-            </span>
-          )}
-          {/* Очистить беседу — начать с чистого листа, не уходя со страницы. Показывается
-              только когда чистить есть что: на пустой ленте это была бы кнопка без действия.
-              Во время генерации гасится по той же причине, что и чипы подсказок (chipsBusy) —
-              иначе ответ приехал бы в уже очищенную ленту. */}
-          {messages.length > 0 && (
-            <button
-              onClick={() => window.aiPanel.clearChat()}
-              disabled={sending}
-              title="Очистить беседу"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 22, height: 22, flexShrink: 0,
-                background: 'transparent', border: 'none', borderRadius: '50%',
-                color: 'var(--text-faint)', cursor: sending ? 'default' : 'pointer', padding: 0,
-                opacity: sending ? 0.4 : 1,
-              }}
-            >
-              <RotateCcw size={13} strokeWidth={2} />
-            </button>
-          )}
-        </div>
+      <PageIsland
+        pageTitle={pageTitle} pageHost={pageHost} pageFavicon={pageFavicon}
+        faviconError={faviconError} sending={sending}
+        messages={messages} modelState={modelState} setFaviconError={setFaviconError}
+      />
 
         {/* Лента сообщений — minHeight:0 обязателен, иначе flex-контейнер не даёт себе схлопнуться
             под overflowY:auto и скролл не работает (стандартная ловушка flex+scroll). */}
-        <div ref={listRef} style={{
-          flex: 1, minHeight: 0, overflowY: 'auto',
-          display: 'flex', flexDirection: 'column', gap: 10,
-          padding: `10px var(--pad-island) var(--pad-island)`,
-        }}>
-          {/* ⚠️ Приглашение прижато К НИЗУ (marginTop:auto), а не висит вверху пустой ленты:
-              иначе между ним и действиями у поля ввода зияет дыра во весь экран, и это читается
-              как поломка. Оно отвечает на единственное, чего про панель не знают: страница уже
-              прочитана, спрашивать можно словами. */}
-          {messages.length === 0 && !sending && (
-            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ ...DISPLAY_ROW, fontSize: 19, color: 'var(--text-strong)' }}>
-                Спросите о странице
-              </span>
-              <span style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>
-                {modelState && !modelState.label
-                  ? 'Модели нет — скачайте её в настройках, и панель начнёт отвечать.'
-                  : modelState && !modelState.loaded
-                    ? 'Текст уже прочитан. Первый ответ дольше — модель поднимается.'
-                    : 'Текст уже прочитан — спрашивайте своими словами или возьмите готовое действие ниже.'}
-              </span>
-            </div>
-          )}
-
-          {messages.map((m, i) => (
-            // Ответ модели — БЕЗ подложки и во всю ширину: так он выглядит в любом чат-боте,
-            // и так его удобнее читать. Пузырь остаётся только у реплики пользователя —
-            // он короткий и его роль в том, чтобы отделиться от ответа (ср. Hub.tsx).
-            <div key={i} style={{
-              alignSelf: m.role === 'user' ? 'flex-end' : 'stretch',
-              maxWidth: m.role === 'user' ? '82%' : '100%',
-              padding: m.role === 'user' ? '8px 12px' : '2px 0',
-              borderRadius: m.role === 'user' ? 14 : 0,
-              background: m.role === 'user' ? 'var(--accent)' : 'transparent',
-              color: m.role === 'user' ? 'var(--text-on-accent)' : 'var(--text-strong)',
-              overflowWrap: 'anywhere',
-            }}>
-              {m.role === 'assistant' ? (
-                <ReactMarkdown components={markdownComponents}>{m.text}</ReactMarkdown>
-              ) : (
-                <span style={{
-                  fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)',
-                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                }}>
-                  {m.text}
-                </span>
-              )}
-            </div>
-          ))}
-
-          {/* «Печатающееся» сообщение ассистента — тот же markdown-рендер до и после финализации
-              (react-markdown нормально переживает промежуточный незакрытый синтаксис), что и
-              в поповере. */}
-          {sending && (
-            // ⚠️ Ровно та же геометрия, что у ГОТОВОГО ответа выше: без подложки, во всю ширину,
-            // те же отступы. Раньше здесь был серый пузырь на 82% ширины, и в момент завершения
-            // генерации ответ прыгал — менял ширину, отступы, скругление и фон разом. Читалось
-            // так, будто подложка «спадает» с готового ответа. Правило простое: печатающийся
-            // ответ и завершённый — это один и тот же ответ, отличаться им нечем.
-            <div style={{
-              alignSelf: 'stretch', maxWidth: '100%',
-              padding: '2px 0', borderRadius: 0,
-              background: 'transparent', color: 'var(--text-strong)',
-              overflowWrap: 'anywhere',
-            }}>
-              {streamedText.length > 0 ? (
-                <ReactMarkdown components={markdownComponents}>{streamedText}</ReactMarkdown>
-              ) : factChecking ? (
-                // Явный индикатор, отличный от «мгновенного» «…» локальных кнопок — Gemini с
-                // Search Grounding занимает заметно дольше и не стримит частями, «…» тут читался
-                // бы как зависание и мог спровоцировать повторный клик.
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontSize: 'var(--fs-sm)', color: 'var(--text-faint)',
-                }}>
-                  <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-                  Анализирую источники…
-                </span>
-              ) : webSearching ? (
-                // Та же дыра, что чинит factChecking выше: до первого чанка от Qwen main ещё ждёт
-                // ответа от SearXNG — без явного текста «…» читался бы как зависание.
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontSize: 'var(--fs-sm)', color: 'var(--text-faint)',
-                }}>
-                  <Loader2 size={13} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-                  Ищу в интернете…
-                </span>
-              ) : (
-                <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-faint)' }}>…</span>
-              )}
-            </div>
-          )}
-
-          {error && (() => {
-            const { heading, detail, showModelButton } = describeChatError(error, errorCode)
-            return (
-              <div style={{
-                display: 'flex', flexDirection: 'column', gap: 8,
-                padding: '10px 12px',
-                borderRadius: 'var(--radius-chip)',
-                background: 'color-mix(in srgb, var(--danger-500) 10%, var(--surface-solid))',
-                border: '1px solid color-mix(in srgb, var(--danger-500) 30%, transparent)',
-              }}>
-                <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-strong)' }}>
-                  {heading}
-                </div>
-                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-faint)', lineHeight: 'var(--lh-body)' }}>
-                  {detail}
-                </div>
-                {showModelButton && (
-                  <button
-                    onClick={() => window.aiPanel.openSettings('ai')}
-                    style={{
-                      alignSelf: 'flex-start',
-                      padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
-                      background: 'var(--accent)', color: 'var(--on-accent)',
-                      fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer',
-                    }}
-                  >
-                    Выбрать модель
-                  </button>
-                )}
-              </div>
-            )
-          })()}
-        </div>
+      <MessageList
+        listRef={listRef} messages={messages} streamedText={streamedText}
+        sending={sending} factChecking={factChecking} webSearching={webSearching}
+        error={error} errorCode={errorCode} modelState={modelState}
+      />
 
         {/* Кнопки-подсказки над полем ввода.
             ⚠️ Раньше ряд жил под условием `messages.length === 0 && !sending` — то есть скилл был
@@ -562,247 +303,14 @@ function AiPanel() {
             исчезли вместе с первым же ответом. Теперь ряд не исчезает никогда, а в начатой беседе
             переходит в компактный вид (chipsCompact выше). Плашка приватности фактчека занимает
             то же место — она по-прежнему взаимоисключающа с рядом (см. showFactCheckConfirm). */}
-        {(
-          // ⚠️ ТРИ ветки, и у каждой свой key. React переиспользует узел того же типа в той же
-          // позиции, а к узлу ряда привязан ResizeObserver замера строки — именно так однажды
-          // и вышло, что он мерил плашку фактчека вместо ряда (разбор в useChipsRow). Разные key
-          // заставляют React честно размонтировать предыдущую ветку: ref-колбэк получает null,
-          // наблюдатель отцепляется, мусорных чисел не остаётся.
-          showFactCheckConfirm ? (
-            <div style={{
-              display: 'flex', flexDirection: 'column', gap: 8,
-              margin: `0 var(--pad-island) 8px`,
-              padding: '12px 14px',
-              borderRadius: 'var(--radius-card)',
-              background: 'var(--surface-solid)',
-              border: '1px solid var(--glass-edge)',
-              boxShadow: 'var(--shadow-card)',
-              flexShrink: 0,
-            }}>
-              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)', overflowWrap: 'anywhere' }}>
-                Текст страницы и запрос уйдут в облако (Google Gemini) для проверки по реальным
-                источникам в интернете.
-              </span>
-              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setShowFactCheckConfirm(false)}
-                  style={{
-                    padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
-                    background: 'transparent', color: 'var(--text-muted)',
-                    fontSize: 'var(--fs-xs)', fontWeight: 500, cursor: 'pointer',
-                  }}
-                >
-                  Отмена
-                </button>
-                <button
-                  onClick={() => { setShowFactCheckConfirm(false); sendFactCheck() }}
-                  style={{
-                    padding: '5px 12px', borderRadius: 'var(--radius-chip)', border: 'none',
-                    background: 'var(--accent)', color: 'var(--on-accent)',
-                    fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer',
-                  }}
-                >
-                  Продолжить
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-            {/* ПУСТАЯ БЕСЕДА — два наших действия крупно, остальное тем же рядом, что и в беседе.
-                ⚠️ Раньше здесь была СЕТКА КАРТОЧЕК по 92 px: восемь скиллов плюс пунктирная
-                «Свой скилл» — 492 px из ~700, то есть выбор занимал больше места, чем ответ,
-                ради которого панель открыли. И это был ВТОРОЙ интерфейс: до беседы карточки,
-                после — чипы; два места, где всё ломается по-разному.
-                ⚠️ Крупными остаются только «Перевести» и «Фактчек»: их задаём мы, они про
-                страницу и работают на любой. Скиллы человек пишет сам, их число растёт — им ряд.
-                ⚠️ Подпись-промпт с карточек ушла совсем: `skill.prompt.slice(0, 64)` — это
-                внутренность наружу («Напиши SEO-заголовок… Требования: …»). Полный текст живёт
-                в подсказке чипа и в настройках, где его и правят. */}
-            {!chipsCompact && (
-              <div style={{
-                padding: `0 var(--pad-island)`, marginBottom: 8, flexShrink: 0,
-                display: 'grid', gridTemplateColumns: factCheckAvailable ? '1fr 1fr' : '1fr', gap: 8,
-              }}>
-                <PrimaryAction
-                  icon="🌐" label="Перевести" hint="Страницу на русский"
-                  bg="var(--text-strong)" ink="var(--app-bg)"
-                  busy={chipsBusy} onPress={sendQuickTranslate}
-                />
-                {factCheckAvailable && (
-                  <PrimaryAction
-                    icon="🔍" label="Фактчек" hint="Проверить в сети"
-                    bg="var(--poster-tea)" ink="var(--on-poster-light)"
-                    busy={chipsBusy} onPress={() => setShowFactCheckConfirm(true)}
-                  />
-                )}
-              </div>
-            )}
-            {!chipsCompact && (
-              <span className="ai-empty-hint" style={{
-                ...CAPS, display: 'block', padding: `0 var(--pad-island)`, marginBottom: 6,
-              }}>
-                скиллы
-              </span>
-            )}
-
-            {/* Внешняя строка: слева переносящаяся область чипов, справа НЕСДВИГАЕМЫЙ хвост
-                (шеврон + настройки). Хвост вынесен из потока чипов намеренно — попав в перенос, он
-                уезжал бы во вторую строку и в схлопнутом виде становился недоступен, а это
-                единственные две кнопки, которые обязаны быть под рукой всегда. */}
-            <div key="chips-row" style={{
-              display: 'flex', alignItems: 'flex-start', gap: 6,
-              padding: `0 var(--pad-island)`,
-              marginBottom: 8,
-              flexShrink: 0,
-            }}>
-            <div
-              ref={chips.attach}
-              style={{
-                flex: '1 1 auto', minWidth: 0,
-                display: 'flex', flexWrap: 'wrap', gap: 6,
-                // Схлопнуто — ровно одна строка; развёрнуто — измеренная полная высота (не
-                // `undefined`: к нему max-height не анимируется, ряд бы прыгал); пустая беседа —
-                // без ограничения вовсе. Пока высота не измерена, ограничения тоже нет: лучше
-                // кадр полной высоты, чем кадр со срезанными наполовину кнопками.
-                maxHeight: chips.maxHeight,
-                overflow: chipsCompact ? 'hidden' : 'visible',
-                transition: 'max-height var(--dur-base) var(--ease-standard)',
-              }}
-            >
-              {/* Перевести — спец-кнопка вне реестра скиллов (см. комментарий выше), всегда первая.
-                  ⚠️ В ПУСТОЙ беседе её тут нет: она стоит крупной плиткой выше, и дубль в ряду
-                  был бы одним и тем же действием дважды на одном экране. */}
-              {chipsCompact && (
-              <button
-                onClick={sendQuickTranslate}
-                disabled={chipsBusy}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  // Без этого flex ужимал бы чипы по ширине вместо переноса на новую строку, а
-                  // длинная подпись скилла ломалась бы посреди слова.
-                  flexShrink: 0, whiteSpace: 'nowrap',
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-chip)',
-                  // Белая парящая кнопка — тот же принцип, что у поля ввода ниже (surface-solid +
-                  // glass-edge), просто мельче и с --shadow-chip вместо --shadow-card (для
-                  // чипа-кнопки уместнее лёгкая тень, не островная). Раньше сидела на
-                  // --surface-sunken (серая в покое внутри уже белой панели) без hover вообще.
-                  border: '1px solid var(--glass-edge)',
-                  background: 'var(--surface-solid)',
-                  boxShadow: 'var(--shadow-chip)',
-                  color: 'var(--text-body)',
-                  fontSize: 'var(--fs-xs)', fontWeight: 500,
-                  cursor: chipsBusy ? 'default' : 'pointer',
-                  opacity: chipsBusy ? 0.5 : 1,
-                }}
-                onMouseEnter={(e) => { if (!chipsBusy) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
-              >
-                <span>🌐</span> Перевести
-              </button>
-              )}
-              {/* Заход D — видна ТОЛЬКО когда ключ Gemini подключён (см. onKeyStatus выше), не
-                  disabled-серая: без ключа кнопки нет вообще. Тот же нейтральный стиль, что у
-                  остальных подсказок — она такое же одно из равных действий, не отдельная
-                  система/облако-роль (заход 3, новая дизайн-система убрала эту роль у violet).
-                  ⚠️ Стоит СРАЗУ за «Перевести», до пользовательских скиллов, и это не косметика:
-                  обе спец-кнопки заданы нами, а список скиллов человек наполняет сам и он может
-                  быть длинным. В хвосте фактчек уезжал за обрез первой строки и выглядел как
-                  пропавший — живая жалоба «а что с фактчеком, почему он исчезает». */}
-              {factCheckAvailable && chipsCompact && (
-                <button
-                  onClick={() => setShowFactCheckConfirm(true)}
-                  disabled={chipsBusy}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    flexShrink: 0, whiteSpace: 'nowrap',
-                    padding: '6px 12px',
-                    borderRadius: 'var(--radius-chip)',
-                    border: '1px solid var(--glass-edge)',
-                    background: 'var(--surface-solid)',
-                    boxShadow: 'var(--shadow-chip)',
-                    color: 'var(--text-body)',
-                    fontSize: 'var(--fs-xs)', fontWeight: 500,
-                    cursor: chipsBusy ? 'default' : 'pointer',
-                    opacity: chipsBusy ? 0.5 : 1,
-                  }}
-                  onMouseEnter={(e) => { if (!chipsBusy) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
-                >
-                  <span>🔍</span> Фактчек
-                </button>
-              )}
-              {/* Коммит 1 (реестр скиллов) — Объяснить/Саммари и позже пользовательские, из
-                  onSkillsList (SkillsStore.ts), тот же стиль кнопки, что и Перевести выше.
-                  Заход «видимость»: панель получает ПОЛНЫЙ список (включая скрытые) — фильтр
-                  на рендере, не на источнике (Settings показывает и скрытые тоже). */}
-              {skills.filter((skill) => skill.visible).map((skill) => (
-                <button
-                  key={skill.id}
-                  onClick={() => sendText(skill.prompt, webGroundingActive)}
-                  disabled={chipsBusy}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    flexShrink: 0, whiteSpace: 'nowrap',
-                    padding: '6px 12px',
-                    borderRadius: 'var(--radius-chip)',
-                    border: '1px solid var(--glass-edge)',
-                    background: 'var(--surface-solid)',
-                    boxShadow: 'var(--shadow-chip)',
-                    color: 'var(--text-body)',
-                    fontSize: 'var(--fs-xs)', fontWeight: 500,
-                    cursor: chipsBusy ? 'default' : 'pointer',
-                    opacity: chipsBusy ? 0.5 : 1,
-                  }}
-                  onMouseEnter={(e) => { if (!chipsBusy) e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
-                >
-                  {skill.icon && <span>{skill.icon}</span>}
-                  {skill.label}
-                </button>
-              ))}
-              {/* ⚠️ «+» здесь БОЛЬШЕ НЕТ: ряд рисуется только в начатой беседе (chipsCompact),
-                  а там «+» и так стоит в несдвигаемом хвосте ниже. В пустой беседе его место —
-                  пунктирная карточка «Свой скилл» в сетке. */}
-            </div>
-            {/* Шеврон «показать все» — только когда строк действительно больше одной (chips.overflow
-                меряется, а не угадывается) и только в схлопывающемся режиме. Разворачивает ВСЕ
-                подсказки разом: со скиллами человек работает списком, а не выискивает нужную. */}
-            {chipsCompact && chips.overflow && (
-              <button
-                onClick={chips.toggleExpanded}
-                title={chips.expanded ? 'Свернуть подсказки' : 'Показать все подсказки'}
-                aria-expanded={chips.expanded}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                  padding: '6px 8px',
-                  borderRadius: 'var(--radius-chip)',
-                  border: '1px solid var(--glass-edge)',
-                  background: 'var(--surface-solid)',
-                  boxShadow: 'var(--shadow-chip)',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-solid)'; }}
-              >
-                <ChevronDown
-                  size={13}
-                  style={{
-                    transform: chips.expanded ? 'rotate(180deg)' : 'none',
-                    transition: 'transform var(--dur-fast) var(--ease-standard)',
-                  }}
-                />
-              </button>
-            )}
-            {/* В схлопнутом ряду «+» живёт здесь, в несдвигаемом хвосте, — иначе он уехал бы за
-                обрез вместе с лишними строками. См. парную ветку внутри области чипов. */}
-            {settingsChip}
-            </div>
-            </>
-          )
-        )}
+        <ActionsRow
+          chips={chips} chipsBusy={chipsBusy} chipsCompact={chipsCompact}
+          factCheckAvailable={factCheckAvailable}
+          skills={skills} settingsChip={settingsChip}
+          showFactCheckConfirm={showFactCheckConfirm} webGroundingActive={webGroundingActive}
+          setShowFactCheckConfirm={setShowFactCheckConfirm}
+          sendText={sendText} sendQuickTranslate={sendQuickTranslate} sendFactCheck={sendFactCheck}
+        />
 
         {/* Плашка согласия на web-grounding — та же механика, что у фактчека (обязательна перед
             КАЖДЫМ включением, без «запомнить»), но текст честный про СВОЮ инфраструктуру: это не
