@@ -94,3 +94,13 @@ export function NodeIcon({ kind, size = 16 }: { kind: GraphNodeKind; size?: numb
   const Icon = NODE_ICON[kind];
   return <Icon size={size} strokeWidth={1.6} style={{ flex: 'none' }} aria-hidden />;
 }
+
+/** Круглая кнопка в шапке узла. Одна на карточку, стикер и раскрытый вид. */
+export const headerButton: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 22, height: 22, flex: 'none', padding: 0,
+  background: 'none', border: 0, borderRadius: '50%',
+  // ⚠️ Не серый хрома, а краска родителя: те же кнопки стоят и на цветной плите шапки, где
+  // --text-faint читался бы грязным пятном. Приглушение даёт opacity, а не второй цвет.
+  color: 'currentColor', opacity: 0.72, cursor: 'pointer',
+};

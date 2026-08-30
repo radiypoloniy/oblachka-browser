@@ -7,7 +7,7 @@ import { markdownComponents } from '../aiMarkdown';
 import { InfographicView, MindmapView, QuizView } from '../studioViews';
 import NodeChatView from './NodeChatView';
 import { ImagePreview } from './GraphNodeCard';
-import { NodeIcon } from './nodeVisual';
+import { NodeIcon, NODE_TONE, graphToneVars } from './nodeVisual';
 
 // Раскрытый узел — один общий механизм на все типы, а не три похожих режима.
 // Внутри меняется только содержимое: артефакт рисуется своим рендерером, текст — разметкой,
@@ -53,7 +53,8 @@ const headerButton: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   width: 30, height: 30, flex: 'none', padding: 0,
   background: 'none', border: 0, borderRadius: '50%',
-  color: 'var(--text-body)', cursor: 'pointer',
+  // Краска родителя: шапка цветная, серый хрома на ней читался бы грязным пятном.
+  color: 'currentColor', opacity: 0.82, cursor: 'pointer',
 };
 
 export default function NodeFullscreen({
@@ -84,8 +85,12 @@ export default function NodeFullscreen({
       <div
         style={{
           display: 'flex', alignItems: 'center', gap: 8, flex: 'none',
-          padding: '10px 14px', borderBottom: '1px solid var(--divider-strong)',
-          background: 'var(--surface-solid)',
+          padding: '10px 14px',
+          // ⚠️ Та же цветная плита, что в шапке карточки на холсте: узел не должен менять
+          // принадлежность оттого, что его раскрыли. Белый лист под содержимым (разбор выше)
+          // это не трогает — тон живёт только на полоске шапки.
+          ...graphToneVars(NODE_TONE[kind]),
+          background: 'var(--section-tone)', color: 'var(--section-ink)',
         }}
       >
         <button type="button" onClick={onClose} title="Вернуться к графу (Esc)" style={headerButton}>
@@ -95,7 +100,7 @@ export default function NodeFullscreen({
         <span
           style={{
             flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            fontSize: 'var(--fs-md)', fontWeight: 'var(--fw-semibold)', color: 'var(--text-strong)',
+            fontSize: 'var(--fs-md)', fontWeight: 'var(--fw-semibold)', color: 'currentColor',
           }}
         >
           {title || spec.label}
@@ -104,7 +109,7 @@ export default function NodeFullscreen({
         <button
           type="button" onClick={onRun} disabled={busy}
           title={busy ? 'Уже в работе' : 'Посчитать заново'}
-          style={{ ...headerButton, color: busy ? 'var(--text-faint)' : 'var(--text-body)' }}
+          style={{ ...headerButton, opacity: busy ? 0.4 : 0.82 }}
         >
           <Play size={15} />
         </button>

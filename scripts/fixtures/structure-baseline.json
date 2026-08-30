@@ -168,8 +168,8 @@
     "ipc": 9
   },
   "src/components/graph/GraphNodeCard.tsx": {
-    "lines": 700,
-    "fn": 508,
+    "lines": 659,
+    "fn": 506,
     "effects": 1,
     "ipc": 1
   },

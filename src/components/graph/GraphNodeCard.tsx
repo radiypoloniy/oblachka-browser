@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Handle, NodeResizer, Position } from '@xyflow/react';
-import {
-  Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink, X, Files, Maximize2,
-} from 'lucide-react';
+import { Play, ExternalLink, X, Files, Maximize2 } from 'lucide-react';
 import { NODE_KINDS } from '../../../shared/graph';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
-import { NodeIcon } from './nodeVisual';
+import { NodeIcon, NODE_TONE, graphToneVars, headerButton } from './nodeVisual';
+import { STATUS_HINT, STATUS_TONE, STATUS_WORD, StatusIcon } from './nodeStatus';
+import StickerCard from './StickerCard';
 import type { ImagePreset } from '../../../shared/imagePresets';
 import { markdownComponents } from '../aiMarkdown';
 import { InfographicView, MindmapView, QuizView } from '../studioViews';
@@ -80,39 +80,6 @@ export const DEFAULT_NODE_SIZE: Record<GraphNodeKind, { w: number; h: number }> 
   'sticker': { w: 300, h: 96 },
 };
 
-const STATUS_TONE: Record<GraphNodeStatus, string> = {
-  idle: 'var(--text-faint)',
-  stale: 'var(--warning-500)',
-  queued: 'var(--text-muted)',
-  running: 'var(--accent)',
-  // Жёлтый, как и «устарел»: оба состояния означают «нужно вмешательство», а не поломку.
-  awaiting: 'var(--warning-500)',
-  // Зелёный функционален по цветовому закону проекта: результат посчитан локальной моделью
-  // на этой машине — тот же смысл, что у --dot-local в статусе модели.
-  done: 'var(--dot-local)',
-  error: 'var(--danger-500)',
-};
-
-const STATUS_HINT: Record<GraphNodeStatus, string> = {
-  idle: 'Не считался',
-  stale: 'Устарел — входные данные изменились',
-  queued: 'Ждёт очереди',
-  running: 'Считается',
-  awaiting: 'Ждёт вас — откройте чат и заберите ответ',
-  done: 'Готово',
-  error: 'Ошибка',
-};
-
-function StatusIcon({ status }: { status: GraphNodeStatus }) {
-  const color = STATUS_TONE[status];
-  if (status === 'running') return <Loader2 size={13} color={color} className="oblako-graph-spin" />;
-  if (status === 'awaiting') return <Hand size={13} color={color} />;
-  if (status === 'error') return <AlertCircle size={13} color={color} />;
-  if (status === 'done') return <Check size={13} color={color} />;
-  if (status === 'queued') return <Clock size={13} color={color} />;
-  return <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, display: 'inline-block' }} />;
-}
-
 const fieldStyle: React.CSSProperties = {
   width: '100%',
   boxSizing: 'border-box',
@@ -128,12 +95,6 @@ const fieldStyle: React.CSSProperties = {
   resize: 'none',
 };
 
-const headerButton: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  width: 22, height: 22, flex: 'none', padding: 0,
-  background: 'none', border: 0, borderRadius: '50%',
-  color: 'var(--text-faint)', cursor: 'pointer',
-};
 
 // Вывод модели — БЕЗ подложки: чёрным по фону карточки, как текст в любом чат-боте.
 // Серая плашка тут только отнимала контраст и делала ответ похожим на поле ввода.
@@ -151,43 +112,12 @@ const outputBox: React.CSSProperties = {
 export default function GraphNodeCard({ data, selected }: { data: GraphNodeData; selected?: boolean }) {
   const spec = NODE_KINDS[data.kind];
 
-  // Стикер — подпись на холсте, а не узел конвейера: ни портов, ни статуса, ни кнопки
-  // «посчитать». Отдельная ветка целиком, потому что общая шапка ему вся не нужна.
   if (data.kind === 'sticker') {
     return (
-      <div
-        style={{
-          width: '100%', height: '100%', display: 'flex', boxSizing: 'border-box',
-          padding: '10px 12px',
-          background: 'var(--accent-soft)',
-          border: `1px solid ${selected ? 'var(--accent)' : 'var(--accent-soft-border)'}`,
-          borderRadius: 'var(--radius-card)',
-        }}
-      >
-        <NodeResizer
-          minWidth={160} minHeight={56} isVisible={!!selected}
-          lineStyle={{ borderColor: 'var(--accent)' }}
-          handleStyle={{ width: 8, height: 8, borderRadius: RADIUS.tight, background: 'var(--accent)', border: 0 }}
-        />
-        <textarea
-          className="nodrag nowheel"
-          value={data.config.text ?? ''}
-          placeholder="Подпись к участку графа"
-          onChange={(e) => data.onPatch({ config: { ...data.config, text: e.target.value } })}
-          style={{
-            flex: 1, resize: 'none', border: 0, outline: 'none', background: 'transparent',
-            color: 'var(--text-strong)', font: 'inherit',
-            fontSize: 'var(--fs-md)', fontWeight: 'var(--fw-medium)',
-            fontFamily: 'var(--font-sans)', lineHeight: 'var(--lh-snug)',
-          }}
-        />
-        <button
-          type="button" className="nodrag" onClick={data.onDelete} title="Удалить заметку"
-          style={{ ...headerButton, alignSelf: 'flex-start' }}
-        >
-          <X size={13} />
-        </button>
-      </div>
+      <StickerCard
+        config={data.config} selected={selected}
+        onPatch={data.onPatch} onDelete={data.onDelete}
+      />
     );
   }
 
@@ -213,10 +143,16 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--surface-island)',
-        border: `1px solid ${selected ? 'var(--accent)' : 'var(--divider)'}`,
-        borderRadius: 'var(--radius-card)',
+        // Кромка в цвет тона: карточка целиком принадлежит своей роли, а не только её шапка.
+        border: `1px solid ${selected ? 'var(--accent)' : 'var(--section-edge)'}`,
+        // ⚠️ Радиус СОДЕРЖИМОГО (24), а не коробки хрома (12). Граф — содержимое, как стол и
+        // хаб; в дизайн-системе у него своя геометрия, и она читается раньше цвета.
+        borderRadius: RADIUS.content,
         boxShadow: 'var(--shadow-island, 0 6px 20px -10px rgba(0,0,0,.3))',
         overflow: 'hidden',
+        // Тон роли приходит переменными на карточку — шапка, кромка и порты берут его отсюда,
+        // тем же приёмом, что разделы настроек (см. toneVars в settings/kit).
+        ...graphToneVars(NODE_TONE[data.kind]),
       }}
     >
       <NodeResizer
@@ -233,29 +169,36 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           id={port.id}
           type="target"
           position={Position.Left}
+          // ⚠️ Порт в цвет ТОНА и крупнее прежних 9 px: раньше он был акцентным на любом узле,
+          // то есть ничего не говорил о том, к чему принадлежит, и в него было трудно попасть.
           style={{
-            top: 46 + i * 18,
-            width: 9, height: 9,
-            background: 'var(--surface)',
-            border: '2px solid var(--accent)',
+            top: 48 + i * 18,
+            width: 11, height: 11,
+            background: 'var(--surface-island)',
+            border: '2px solid var(--section-tone)',
           }}
         />
       ))}
 
+      {/* ⚠️ Шапка — ЦВЕТНАЯ ПЛОСКОСТЬ роли, тот же приём, что SectionHeader в настройках: цвет
+          заливает плиту, содержимое живёт ниже на обычной поверхности. Красить тоном всю
+          карточку нельзя — в ней поля ввода и вывод модели, и на полной силе плакатного цвета
+          их не прочитать. Зато при отдалении холста видно ровно плиты, и граф читается ролями.
+          ⚠️ Статуса тут НЕТ намеренно: его цвета на плакатном фоне не работают (зелёное
+          «готово» на лаймовых «Артефактах» неразличимо). Он живёт в подвале — значком и словом. */}
       <div
         style={{
           display: 'flex', alignItems: 'center', gap: 7, flex: 'none',
-          padding: '9px 11px', borderBottom: '1px solid var(--divider)',
+          padding: '9px 11px',
+          background: 'var(--section-tone)', color: 'var(--section-ink)',
         }}
-        title={STATUS_HINT[data.status]}
       >
-        <StatusIcon status={data.status} />
         <NodeIcon kind={data.kind} />
         <span
           style={{
             fontSize: 'var(--fs-xs)', fontWeight: 'var(--fw-semibold)',
             letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
-            color: 'var(--text-muted)',
+            color: 'currentColor', opacity: 0.86,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
           }}
         >
@@ -270,7 +213,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           style={{
             marginLeft: 'auto', display: 'inline-flex', alignItems: 'center',
             background: 'none', border: 0, padding: 3, borderRadius: '50%',
-            color: busy ? 'var(--text-faint)' : 'var(--text-body)',
+            color: 'currentColor', opacity: busy ? 0.4 : 0.8,
             cursor: busy ? 'default' : 'pointer',
           }}
         >
@@ -299,12 +242,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           className="nodrag"
           onClick={data.onDelete}
           title="Удалить узел"
-          style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 22, height: 22, flex: 'none', padding: 0,
-            background: 'none', border: 0, borderRadius: '50%',
-            color: 'var(--text-faint)', cursor: 'pointer',
-          }}
+          style={headerButton}
         >
           <X size={13} />
         </button>
@@ -639,6 +577,27 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         )}
       </div>
 
+      {/* Подвал статуса: значок И слово, по цветовому закону. Заливки тут нет — она язык
+          акцента и означала бы «выбрано». */}
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, flex: 'none',
+          padding: '5px 11px 7px', borderTop: '1px solid var(--divider)',
+        }}
+        title={STATUS_HINT[data.status]}
+      >
+        <StatusIcon status={data.status} />
+        <span
+          style={{
+            fontSize: 'var(--fs-xs)', letterSpacing: 'var(--ls-caps)', textTransform: 'uppercase',
+            color: STATUS_TONE[data.status],
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}
+        >
+          {STATUS_WORD[data.status]}
+        </span>
+      </div>
+
       {spec.outputs.map((port, i) => (
         <Handle
           key={port.id}
@@ -646,10 +605,10 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
           type="source"
           position={Position.Right}
           style={{
-            top: 46 + i * 18,
-            width: 9, height: 9,
-            background: 'var(--accent)',
-            border: '2px solid var(--surface)',
+            top: 48 + i * 18,
+            width: 11, height: 11,
+            background: 'var(--section-tone)',
+            border: '2px solid var(--surface-island)',
           }}
         />
       ))}
