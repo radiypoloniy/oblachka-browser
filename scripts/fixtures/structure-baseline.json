@@ -78,8 +78,8 @@
     "ipc": 9
   },
   "src/components/GraphCanvas.tsx": {
-    "lines": 487,
-    "fn": 448,
+    "lines": 479,
+    "fn": 438,
     "effects": 2,
     "ipc": 10
   },

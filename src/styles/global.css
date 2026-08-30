@@ -252,6 +252,51 @@ button, input, textarea, select { font-family: inherit; }
   .oblako-graph-spin { animation: none; }
 }
 
+/* ── Холст графа: чужие детали React Flow в наших токенах ──────────────────────
+   ⚠️ Через ПЕРЕМЕННЫЕ библиотеки (--xy-*), а не перебиванием её классов. Классы у @xyflow
+   внутренние: следующее обновление переименует их, наши правила тихо перестанут применяться,
+   и панель управления вернётся к заводскому виду — молча, без ошибки сборки. Переменные же
+   входят в публичный API темизации. Класс тут нужен ровно для того, чтобы объявить их на
+   поддереве холста, и ещё для радиуса с обрезкой — им переменных не отвели.
+
+   Радиус коробки (12), а не содержимого (24): это ПРИБОРЫ поверх холста — панель зума и
+   карта, — а не содержимое графа. Правило вложенности требует, чтобы накладка была мельче
+   плиты, на которой лежит. */
+.oblako-graph {
+  --xy-background-color: transparent;
+  --xy-background-pattern-color: var(--divider-strong);
+
+  --xy-controls-button-background-color: var(--surface-island);
+  --xy-controls-button-background-color-hover: var(--surface-sunken);
+  --xy-controls-button-color: var(--text-body);
+  --xy-controls-button-color-hover: var(--text-strong);
+  --xy-controls-button-border-color: var(--divider);
+  --xy-controls-box-shadow: var(--shadow-island, 0 6px 20px -10px rgba(0, 0, 0, .3));
+
+  --xy-minimap-background-color: var(--surface-island);
+  --xy-minimap-mask-background-color: var(--surface-sunken);
+  --xy-minimap-node-background-color: var(--divider-strong);
+  --xy-minimap-node-stroke-color: transparent;
+
+  --xy-edge-stroke: var(--divider-strong);
+  --xy-edge-stroke-selected: var(--accent);
+  --xy-edge-stroke-width: 2;
+  --xy-connectionline-stroke: var(--accent);
+  --xy-connectionline-stroke-width: 2;
+
+  --xy-attribution-background-color: transparent;
+  --xy-selection-background-color: var(--accent-soft);
+  --xy-selection-border: 1px dashed var(--accent);
+}
+.oblako-graph .react-flow__controls,
+.oblako-graph .react-flow__minimap {
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+.oblako-graph .react-flow__minimap { border: 1px solid var(--divider); }
+/* Кнопки зума набраны залитыми глифами самой библиотеки — красим их той же краской, что текст. */
+.oblako-graph .react-flow__controls-button svg { fill: currentColor; }
+
 /* Новая вкладка: ступенчатое появление блоков. Часы, инфо-строка, приветствие, поиск и
    плитки въезжают по очереди с шагом 60 мс — это первое, что видит человек при открытии
    вкладки, и единственное место, где длинная (420 мс) анимация уместна: она играет один

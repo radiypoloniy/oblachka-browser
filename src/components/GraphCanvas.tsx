@@ -9,7 +9,9 @@ import { Play, Square } from 'lucide-react';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../shared/graph';
 import { NODE_KINDS } from '../../shared/graph';
 import GraphNodeCard, { DEFAULT_NODE_SIZE, type GraphNodeData } from './graph/GraphNodeCard';
-import { NODE_GROUPS, NodeIcon } from './graph/nodeVisual';
+import NodeLibrary from './graph/NodeLibrary';
+import { groundGrain } from '../styles/island';
+import { documentIsDark } from '../newtab/gradients';
 import { useGraphNodeActions } from './graph/useGraphNodeActions';
 import { useGraphWebApps } from './graph/useGraphWebApps';
 import { useGraphDoc } from './graph/useGraphDoc';
@@ -37,6 +39,10 @@ type RFNode = Node<GraphNodeData>;
 const nodeTypes = { oblako: GraphNodeCard };
 
 export default function GraphCanvas({ onBack }: { onBack: () => void }) {
+  // Тема нужна только силе зерна. Читаем атрибут корня, а не тянем useChromeAppearance: тот
+  // помимо признака темы правит землю окна и полосу системных кнопок — побочные действия,
+  // которым на холсте графа делать нечего.
+  const dark = documentIsDark();
   // Документ: список холстов, открытый холст, его узлы и связи, ход прогона и автосейв
   // структуры — в useGraphDoc.
   const {
@@ -318,39 +324,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             padding: '9px 12px', borderBottom: '1px solid var(--divider-strong)',
           }}
         >
-          {NODE_GROUPS.map((group, gi) => (
-            <div key={group.title} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {gi > 0 && (
-                <span style={{ width: 1, height: 20, background: 'var(--divider)', marginRight: 3 }} />
-              )}
-              <span
-                style={{
-                  fontSize: 'var(--fs-xs)', letterSpacing: 'var(--ls-caps)',
-                  textTransform: 'uppercase', color: 'var(--text-faint)', marginRight: 1,
-                }}
-              >
-                {group.title}
-              </span>
-              {group.kinds.map((kind) => (
-                <button
-                  key={kind}
-                  type="button"
-                  onClick={() => addNode(kind)}
-                  title={NODE_KINDS[kind].hint}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    background: 'var(--surface-sunken)', border: '1px solid var(--divider)',
-                    borderRadius: 'var(--radius-chip)', padding: '5px 10px', cursor: 'pointer',
-                    color: 'var(--text-body)', font: 'inherit',
-                    fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
-                  }}
-                >
-                  <NodeIcon kind={kind} size={15} />
-                  {NODE_KINDS[kind].label}
-                </button>
-              ))}
-            </div>
-          ))}
+          <NodeLibrary onAdd={addNode} />
 
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 7 }}>
             <button
@@ -390,7 +364,23 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
         </div>
 
         <div style={{ flex: 1, minHeight: 0, display: 'flex', background: 'var(--surface-sunken)' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            className="oblako-graph"
+            style={{
+              flex: 1, minWidth: 0, position: 'relative',
+              // ⚠️ Зерно ЗЕМЛИ, тот же рецепт, что под островами окна (groundGrain в island.ts):
+              // фрактальный шум калибра 0.65 в два октава, наложенный overlay. Холст — большая
+              // пустая плоскость, и без фактуры она читается пластиком; тот же приём делает
+              // землю окна бумагой, а не заливкой.
+              // ⚠️ Слоем ФОНА, а не накладкой поверх: overlay поверх узлов положил бы крапины на
+              // мелкий текст в карточках — ровно та жалоба, из-за которой в тёмной теме силу
+              // зерна уменьшили втрое.
+              backgroundImage: groundGrain(dark),
+              backgroundBlendMode: 'overlay',
+              backgroundRepeat: 'repeat',
+              backgroundSize: '180px 180px',
+            }}
+          >
           <ReactFlow
             nodes={rfNodes}
             edges={edges}
@@ -406,7 +396,9 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
             deleteKeyCode={['Delete']}
             fitView
           >
-            <Background gap={18} size={1} />
+            {/* ⚠️ Шаг 22 и точка 1.4 вместо 18/1: при отдалении холста прежняя сетка сливалась
+                в ровную серость и переставала быть опорой — ради которой она и нужна. */}
+            <Background gap={22} size={1.4} />
             <Controls showInteractive={false} />
             <MiniMap pannable zoomable />
           </ReactFlow>
