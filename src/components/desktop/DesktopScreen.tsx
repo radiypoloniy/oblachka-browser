@@ -1,15 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
-import { Search, Sparkles, Workflow, Check, Plus, X, SlidersHorizontal, Star, Pencil } from 'lucide-react';
+import { Search, Sparkles, Workflow, Check, Plus, SlidersHorizontal } from 'lucide-react';
 import type { TileSite } from '../../../shared/frecency';
 import {
-  loadDesktop, saveDesktop, subscribeDesktop, computeGrid, placeItems, moveItemTo, normalize,
-  resizeItem, removeItem, addItem, minSizeFor, scaleOf, SCALE_PRESETS, DEFAULT_COLS, setHero,
-  type DesktopLayout,
+  loadDesktop, subscribeDesktop, addItem, type DesktopLayout,
 } from '../../newtab/desktop';
 import AddSheet from './AddSheet';
 import SidePanel from './SidePanel';
-import GenStudio, { GEN_GHOST_ID, GenDraftTile, type GenGhost } from './GenStudio';
+import GenStudio, { type GenGhost } from './GenStudio';
 import {
   loadNewTabSettings, subscribeNewTabSettings, presetCss, getNewTabCustomImage,
   ensureCustomImageShrunk, isLightBackground, type NewTabSettings,
@@ -26,10 +24,8 @@ const GRAIN_LAYER: React.CSSProperties = {
 
 // Фактура печати для ПЛОСКИХ обоев — общее зерно системы, поднятое на слой фона.
 const FLAT_GRAIN_LAYER: React.CSSProperties = { ...grain, zIndex: 1 };
-import { APPS, AppIconBadge } from '../aiApps';
-import SiteIcon from './SiteIcon';
-import { WIDGET_FILLS, WIDGET_RENDERERS, fillCss } from './widgets';
-import { GenWidget } from './GenWidget';
+import { useDesktopGrid } from './useDesktopGrid';
+import { DesktopGrid } from './DesktopGrid';
 import { RADIUS, grain } from '../../styles/system';
 
 // Рабочий стол новой вкладки — springboard в духе iPad: сетка иконок и виджетов поверх обоев.
@@ -82,11 +78,6 @@ const LIGHT_PALETTE: Record<string, string> = {
   '--nt-plate-border': 'rgba(0,0,0,0.07)',
 };
 
-// Что делает клик по плитке. Пусто — виджет не открывается никуда (у большинства открывать и
-// нечего: часы, луна, погода сами по себе полный ответ).
-const WIDGET_ACTIVATE: Record<string, (() => void) | undefined> = {
-  tracking: () => { void window.oblako.createSpecialTab('history', 'tracking'); },
-};
 
 export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, isLightWindow = false, onOpenApp }: Props) {
   const [settings, setSettings] = useState<NewTabSettings>(() => loadNewTabSettings());
@@ -114,17 +105,6 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
   // ⚠️ Хранит не только «куда встанет», но и смещение курсора: без него элемент оставался
   // на месте, пока его тащили, — двигалась лишь прозрачность. Именно это и выглядело криво:
   // жест есть, отклика нет.
-  const [drag, setDrag] = useState<{
-    id: string;
-    startX: number; startY: number; dx: number; dy: number;
-    // ⚠️ Позиция элемента В МОМЕНТ ЗАХВАТА. Он рисуется от неё, а не от целевой клетки: место
-    // назначения меняется по ходу жеста, и элемент прыгал следом за ним, уезжая из-под курсора.
-    originX: number; originY: number;
-    // Клетка, в которую он встанет, если отпустить. Считается от угла самой плитки, а не от
-    // курсора, — плитка примагничивается к ближайшей клетке, как иконка на springboard.
-    col: number; row: number;
-  } | null>(null);
-  const [resizing, setResizing] = useState<{ id: string; w: number; h: number } | null>(null);
 
   useEffect(() => subscribeNewTabSettings(() => setSettings(loadNewTabSettings())), []);
   useEffect(() => subscribeDesktop(() => setLayout(loadDesktop())), []);
@@ -165,123 +145,12 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
     ro.observe(el);
     return () => { cancelAnimationFrame(frame); ro.disconnect(); };
   }, []);
-
-  // Правка раскладки: сохраняем сразу — стол это косметика, отдельной кнопки «применить» тут
-  // не нужно, а неожиданно потерянная перестановка раздражает сильнее лишней записи.
-  // ⚠️ normalize — не косметика: у только что добавленного элемента координат ещё нет, их
-  // назначает укладчик. Без записи назад сохранённая раскладка отличалась бы от увиденной, и
-  // первая же смена плотности разложила бы стол не так, как он выглядел.
-  const apply = (next: DesktopLayout): void => {
-    const n = normalize(next);
-    setLayout(n);
-    saveDesktop(n);
-  };
-
   const light = isLightBackground(settings.background);
-  // Колонки берутся из раскладки, а не из ширины окна (см. computeGrid): расклад не должен
-  // перестраиваться от того, что окно потянули за край.
-  const grid = useMemo(
-    () => computeGrid(Math.max(320, width), layout.cols ?? DEFAULT_COLS, SCALE_PRESETS[scaleOf(layout)].cell),
-    [width, layout.cols, layout.scale],
-  );
-  // ⚠️ Раскладка считается по ПРЕДПОЛАГАЕМОМУ состоянию: во время перетаскивания элемент уже
-  // стоит в целевой клетке, во время растягивания — уже нового размера. Отпускание тогда ничего
-  // не меняет, и «отпустил, а встало не туда» невозможно по построению.
-  //
-  // ⚠️ Прежней ловушки обратной связи (место считалось по раскладке, которую сам расчёт и менял,
-  // отчего в конце жеста начиналась дрожь) здесь больше нет вовсе: на координатах перенос одного
-  // элемента не двигает соседей, поэтому и колебаться нечему. Гистерезис, база «без элемента» и
-  // порог в треть клетки уехали вместе с укладкой по порядку.
-  const moved = useMemo(() => {
-    if (drag) return moveItemTo(layout, drag.id, drag.col, drag.row);
-    if (resizing) return resizeItem(layout, resizing.id, { w: resizing.w, h: resizing.h });
-    return layout;
-  }, [layout, drag, resizing]);
-
-  // Болванка сборки подмешивается в раскладку ТОЛЬКО для показа: укладчик ставит её в первую
-  // свободную клетку, как любой новый виджет, а на диск она не попадает никогда — сохраняется
-  // `layout`, а не `preview`.
-  const preview = useMemo(() => (
-    studioOpen && ghost && !studioEditId
-      ? { ...moved, items: [...moved.items, { id: GEN_GHOST_ID, kind: 'widget' as const, widget: 'gen', size: ghost.size, fill: ghost.fill }] }
-      : moved
-  ), [moved, studioOpen, ghost, studioEditId]);
-
-  const { placed, rows } = useMemo(
-    () => placeItems(preview.items, grid.cols, drag?.id ?? resizing?.id),
-    [preview.items, grid.cols, drag?.id, resizing?.id],
-  );
-
-  // Встанет ли плитка туда, куда её тянут. Отказ (занято чем-то другого размера) виден сразу:
-  // подсветки целевой клетки нет, и плитка вернётся на место — гадать после отпускания не нужно.
-  const dropOk = drag ? moved !== layout : false;
-  // Где рисовать контур цели. Берём МЕСТО ИЗ РАСЧЁТА, а не желаемую клетку: укладчик мог
-  // подвинуть плитку (например, край сетки), и контур обязан показывать правду.
-  const dropCell = useMemo(() => {
-    const at = drag ? placed.find((p) => p.item.id === drag.id) : null;
-    return at ?? { col: 0, row: 0, w: 1, h: 1 };
-  }, [placed, drag]);
-
-  // Пока ширина не измерена, сетки нет вовсе: показать её «как получится» и переставить через
-  // кадр — это и есть та самая куча при запуске.
-  const ready = width > 0;
-  const step = grid.cell + grid.gap;
-  // Запасная строка снизу в режиме правки — иначе положить плитку ниже последней некуда.
-  const gridRows = rows + (editing ? 1 : 0);
-
-  // Сменилась ли геометрия сетки в этом кадре (человек тянет границу окна). Плиткам в такой
-  // кадр переходы противопоказаны — они обязаны встать по новой сетке немедленно, вместе с
-  // контейнером. Сравнение через ref, а не состояние: лишний рендер тут ни к чему.
-  const prevMetrics = useRef({ cell: grid.cell, gap: grid.gap });
-  const metricsChanged = prevMetrics.current.cell !== grid.cell || prevMetrics.current.gap !== grid.gap;
-  useEffect(() => { prevMetrics.current = { cell: grid.cell, gap: grid.gap }; });
-  const appById = useMemo(() => new Map(APPS.map((a) => [a.id, a])), []);
-
-  const onItemPointerDown = (e: React.PointerEvent, id: string): void => {
-    if (!editing || e.button !== 0) return;
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    const at = placed.find((p) => p.item.id === id);
-    setDrag({
-      id,
-      startX: e.clientX, startY: e.clientY, dx: 0, dy: 0,
-      originX: (at?.col ?? 0) * step, originY: (at?.row ?? 0) * step,
-      col: at?.col ?? 0, row: at?.row ?? 0,
-    });
-  };
-
-  const onGridPointerMove = (e: React.PointerEvent): void => {
-    if (drag) {
-      const dx = e.clientX - drag.startX;
-      const dy = e.clientY - drag.startY;
-      // Клетка — по УГЛУ плитки, а не по курсору: плитка примагничивается к ближайшей клетке,
-      // как иконка на springboard. Курсор при этом может быть где угодно внутри плитки, и
-      // широкий виджет не прыгает вбок оттого, что взяли его за правый край.
-      const col = Math.round((drag.originX + dx) / step);
-      const row = Math.round((drag.originY + dy) / step);
-      setDrag({ ...drag, dx, dy, col, row });
-      return;
-    }
-    if (!resizing) return;
-    const box = gridRef.current?.getBoundingClientRect();
-    const item = placed.find((p) => p.item.id === resizing.id);
-    if (!box || !item) return;
-    // Тянем от левого-верхнего угла элемента: сколько клеток укладывается до курсора.
-    // ⚠️ Не меньше минимума своего типа (см. WIDGET_MIN): на плитке 1×1 у «Курса» и «Защиты»
-    // содержимое налезает само на себя, и адаптацией это не лечится — там нет места под число
-    // и подпись к нему. Ручка просто не даёт утянуть туда, где виджет заведомо сломается.
-    const min = minSizeFor(item.item);
-    const w = Math.max(min.w, Math.min(grid.cols, Math.round((e.clientX - box.left - item.col * step) / step)));
-    const h = Math.max(min.h, Math.min(4, Math.round((e.clientY - box.top - item.row * step) / step)));
-    if (w !== resizing.w || h !== resizing.h) setResizing({ ...resizing, w, h });
-  };
-
-  const onGridPointerUp = (): void => {
-    // Применяем ровно ту раскладку, которую человек видел под рукой: пересчитывать её заново
-    // другим способом — верный путь к «отпустил, а встало не туда».
-    if (drag) { apply(preview); setDrag(null); }
-    if (resizing) { apply(resizeItem(layout, resizing.id, { w: resizing.w, h: resizing.h })); setResizing(null); }
-  };
+  // Геометрия сетки и жесты переноса/растягивания — в useDesktopGrid.
+  // ⚠️ Результат хука уезжает в сетку ОДНИМ объектом. Разложить его на двадцать пропсов
+  // технически можно, но список пришлось бы держать в синхроне в трёх местах: тут, в сигнатуре
+  // сетки и в самом хуке. Здесь это не «мешок всего», а связная модель одного предмета.
+  const g = useDesktopGrid({ layout, setLayout, width, editing, studioOpen, studioEditId, ghost, gridRef });
 
   return (
     <div style={{
@@ -316,273 +185,12 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
 
         {/* Область сетки: меряем её ширину, а саму сетку центрируем — на широком экране она
             перестаёт расти (см. потолки в computeGrid) и стоит по центру, как springboard. */}
-        <div ref={areaRef} style={{ width: '100%', maxWidth: 1320, marginTop: settings.search.show ? 26 : 0 }}>
-          <div
-            ref={gridRef}
-            onPointerMove={onGridPointerMove}
-            onPointerUp={onGridPointerUp}
-            onPointerCancel={onGridPointerUp}
-            style={{
-              position: 'relative', margin: '0 auto',
-              // ⚠️ В режиме правки снизу добавляется ПУСТАЯ строка. Дыры теперь законны, и без
-              // запасной строки положить плитку ниже последней было бы физически некуда —
-              // сетка кончалась ровно на последнем элементе.
-              width: grid.width, height: gridRows * step - grid.gap,
-              // В режиме правки курсор над сеткой сообщает, что элементы можно двигать.
-              cursor: editing ? (drag ? 'grabbing' : 'grab') : undefined,
-            }}
-          >
-            {/* ⚠️ Клетки видны ТОЛЬКО в режиме правки. Раньше жест был вслепую: элемент ехал за
-                курсором, соседи расступались, но КУДА он встанет и по какой сетке — человек
-                достраивал в уме. Пунктирные клетки отвечают на это прямо, а вне правки исчезают:
-                на обычном экране решётка поверх обоев была бы шумом. */}
-            {editing && Array.from({ length: gridRows * grid.cols }).map((_, i) => (
-              <div
-                key={`cell-${i}`}
-                style={{
-                  position: 'absolute', left: 0, top: 0, pointerEvents: 'none',
-                  width: grid.cell, height: grid.cell, borderRadius: 'var(--radius-card)',
-                  transform: `translate3d(${(i % grid.cols) * step}px, ${Math.floor(i / grid.cols) * step}px, 0)`,
-                  border: '1.5px dashed var(--nt-plate-border)',
-                  background: 'var(--nt-plate)',
-                  opacity: 0.5,
-                }}
-              />
-            ))}
-
-            {/* ⚠️ Подсветка будущего места ВЕРНУЛАСЬ, и вот почему. Раньше её убрали как третий
-                лишний сигнал: исход показывали расступившиеся соседи. На координатах соседи не
-                расступаются вовсе (перенос одного элемента больше никого не касается) — и без
-                контура жест снова стал бы вслепую. Контура нет, когда встать нельзя: это и есть
-                ответ «сюда не влезет», данный ДО отпускания, а не после. */}
-            {drag && dropOk && (
-              <div style={{
-                position: 'absolute', left: 0, top: 0, pointerEvents: 'none', zIndex: 4,
-                transform: `translate3d(${dropCell.col * step}px, ${dropCell.row * step}px, 0)`,
-                width: dropCell.w * grid.cell + (dropCell.w - 1) * grid.gap,
-                height: dropCell.h * grid.cell + (dropCell.h - 1) * grid.gap,
-                borderRadius: 'var(--radius-card)',
-                border: '2px solid var(--accent)',
-                background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
-                transition: 'transform var(--dur-fast) var(--ease-out)',
-              }} />
-            )}
-
-            {ready && placed.map(({ item, col, row, w, h }) => {
-              // Размер во время жеста уже новый: раскладка считается по preview (см. выше), так
-              // что и сам элемент, и расступившиеся соседи двигаются одновременно.
-              const live = { w, h };
-              const stretching = resizing?.id === item.id;
-              const box = {
-                width: live.w * grid.cell + (live.w - 1) * grid.gap,
-                height: live.h * grid.cell + (live.h - 1) * grid.gap,
-              };
-              const dragging = drag?.id === item.id;
-              // Перетаскиваемый живёт отдельно от сетки: он идёт от места захвата за курсором и
-              // НЕ переезжает вместе с расчётом будущей клетки.
-              const held = dragging
-                ? `translate3d(${drag.originX + drag.dx}px, ${drag.originY + drag.dy}px, 0) scale(1.04)`
-                : null;
-              const style: React.CSSProperties = {
-                position: 'absolute', left: 0, top: 0,
-                // ⚠️ Позиция — transform, а не left/top. Смена left/top заставляет браузер
-                // пересчитывать раскладку и перерисовывать слой на каждом кадре анимации;
-                // transform уходит в композитор и двигает уже готовую текстуру.
-                transform: held ?? `translate3d(${col * step}px, ${row * step}px, 0)`,
-                width: box.width, height: box.height,
-                zIndex: dragging || resizing?.id === item.id ? 5 : 1,
-                // Пока элемент в руке — никакого перехода: он обязан быть точно под курсором,
-                // иначе тянется следом с задержкой и промахивается мимо места.
-                // ⚠️ И никакого перехода, пока МЕНЯЕТСЯ САМА СЕТКА (см. metricsChanged). Плавность
-                // здесь нужна ровно для правки раскладки — переставили плитку, соседи разъехались.
-                // При ресайзе окна клетка меняется на каждом кадре, и те же 220 мс превращались
-                // в отставание: контейнер уже нового размера, а плитки ещё едут к нему — со
-                // стороны это выглядит так, будто иконки не поспевают за окном.
-                transition: dragging || !ready || metricsChanged ? undefined
-                  : stretching ? 'transform 220ms var(--ease-out)'
-                  : 'transform 220ms var(--ease-out), width 180ms var(--ease-out), height 180ms var(--ease-out)',
-                filter: dragging ? 'drop-shadow(0 12px 24px rgba(10,12,20,0.35))' : undefined,
-                touchAction: editing ? 'none' : undefined,
-                // ⚠️ Дрожание вешаем на ВНУТРЕННИЙ слой (см. ниже), а не сюда: анимация transform
-                // на этом элементе затёрла бы позиционирующий translate3d.
-                willChange: dragging || editing ? 'transform' : undefined,
-              };
-
-              const content = item.id === GEN_GHOST_ID && ghost ? (
-                <GenDraftTile
-                  ghost={ghost}
-                  box={box}
-                  overImage={settings.background.kind === 'photo' || settings.background.kind === 'custom' || settings.background.kind === 'mesh'}
-                />
-              ) : item.kind === 'widget' ? (() => {
-                const Render = item.widget === 'gen' ? GenWidget : WIDGET_RENDERERS[item.widget ?? ''];
-                return Render ? (
-                  // ⚠️ Погода заливку НЕ получает намеренно: там цвет означает время суток и
-                  // саму погоду (ночью тёмная, в грозу свинцовая), и подмена его на выбранный
-                  // стёрла бы единственный виджет, где цвет — сообщение, а не оформление.
-                  <Render size={item.size} box={box} cell={grid.cell} tiles={tiles} onOpen={onSubmit}
-                    city={settings.weather.city}
-                    // ⚠️ В режиме правки обработчик НЕ передаём вовсе: там плитку таскают, и клик
-                    // по ней означает «взял», а не «открой».
-                    onActivate={editing ? undefined : WIDGET_ACTIVATE[item.widget ?? '']}
-                    fill={item.widget === 'weather' ? undefined : item.fill}
-                    // Над фотографией плитки идут стеклом, над ровным фоном — сплошной картой.
-                    overImage={settings.background.kind === 'photo' || settings.background.kind === 'custom' || settings.background.kind === 'mesh'}
-                    hero={item.hero === true}
-                    genId={item.genId} />
-                ) : null;
-              })() : item.kind === 'app' ? (() => {
-                const app = appById.get(item.appId ?? '');
-                if (!app) return null;
-                const iconSize = Math.round(grid.cell * 0.72);
-                return (
-                  <button
-                    onClick={() => { if (!editing) onOpenApp(app.id); }}
-                    title={app.label}
-                    style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                      width: '100%', height: '100%', padding: 0, border: 'none',
-                      background: 'transparent', cursor: 'default',
-                    }}
-                  >
-                    <AppIconBadge app={app} size={iconSize} iconSize={Math.round(iconSize * 0.56)} shadow />
-                    <span style={{
-                      maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      fontSize: 'var(--fs-xs)', fontWeight: 500,
-                      color: 'var(--nt-text)', textShadow: 'var(--nt-shadow)',
-                    }}>{app.label}</span>
-                  </button>
-                );
-              })() : (
-                <SiteIcon
-                  url={item.url ?? ''}
-                  title={item.title ?? ''}
-                  size={Math.round(grid.cell * 0.72)}
-                  onOpen={(url) => { if (!editing) onSubmit(url); }}
-                  labelColor="var(--nt-text)"
-                  labelShadow="var(--nt-shadow)"
-                />
-              );
-
-              return (
-                <div
-                  key={item.id}
-                  // Атрибут нужен диагностике: по нему проверка находит конкретный элемент
-                  // сетки, не угадывая его по стилям.
-                  data-desktop-item={item.id}
-                  style={style}
-                  onPointerDown={(e) => onItemPointerDown(e, item.id)}
-                >
-                  {/* ⚠️ В режиме правки перехватываем указатель ПЕРЕД содержимым: иначе клик по
-                      кнопке приложения открывал бы его прямо во время перестановки. */}
-                  {editing && <div style={{ position: 'absolute', inset: 0, zIndex: 2 }} />}
-                  <div style={{
-                    width: '100%', height: '100%',
-                    animation: editing && !dragging ? 'oblako-jiggle 1.6s ease-in-out infinite' : undefined,
-                    animationDelay: editing ? `${((col + row) % 5) * 90}ms` : undefined,
-                  }}>{content}</div>
-
-                  {editing && (
-                    <>
-                      <button
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={() => apply(removeItem(layout, item.id))}
-                        title="Убрать с экрана"
-                        style={{
-                          position: 'absolute', top: -8, left: -8, zIndex: 6,
-                          width: 22, height: 22, borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
-                          background: 'rgba(30,30,34,0.92)', color: '#fff',
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
-                        }}
-                      ><X size={13} /></button>
-
-                      {/* ⚠️ ГЕРОЯ ВЫБИРАЕТ ЧЕЛОВЕК. Набор виджетов у каждого свой: на одном столе
-                          главной будет погода, на другом — курс или защита, и решать это за него
-                          в коде нельзя. Кнопка — переключатель: повторное нажатие снимает
-                          геройство, а назначение нового снимает флаг с прежнего (см. setHero). */}
-                      {item.kind === 'widget' && (
-                        <button
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={() => apply(setHero(layout, item.id))}
-                          title={item.hero ? 'Больше не главный' : 'Сделать главным'}
-                          style={{
-                            position: 'absolute', top: -8, right: -8, zIndex: 6,
-                            width: 22, height: 22, borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
-                            background: item.hero ? 'var(--accent)' : 'rgba(30,30,34,0.92)',
-                            color: item.hero ? 'var(--on-accent)' : '#fff',
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
-                          }}
-                        ><Star size={12} fill={item.hero ? 'currentColor' : 'none'} /></button>
-                      )}
-
-                      {/* ⚠️ Правка СВОЕГО виджета на месте. Без неё поменять таймеру время можно
-                          было только пересборкой нового и удалением старого — а данные правятся
-                          точечно, ради другого числа гонять модель незачем. */}
-                      {item.kind === 'widget' && item.widget === 'gen' && item.genId && (
-                        <button
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={() => { setStudioEditId(item.genId ?? null); setStudioOpen(true); }}
-                          title="Изменить виджет"
-                          style={{
-                            position: 'absolute', bottom: -8, left: -8, zIndex: 6,
-                            width: 22, height: 22, borderRadius: RADIUS.pill, border: 'none', cursor: 'default',
-                            background: 'rgba(30,30,34,0.92)', color: '#fff',
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
-                          }}
-                        ><Pencil size={12} /></button>
-                      )}
-
-                      {/* Выбор заливки — только у виджетов и только в режиме правки: цвет это
-                          настройка вида, а не действие, и в обычном режиме кнопке над плиткой
-                          делать нечего. Погоду не трогаем — там цвет несёт смысл. */}
-                      {item.kind === 'widget' && item.widget !== 'weather' && (
-                        <FillPicker
-                          value={item.fill}
-                          onPick={(fill) => apply({
-                            ...layout,
-                            items: layout.items.map((it) => (it.id === item.id ? { ...it, fill } : it)),
-                          })}
-                        />
-                      )}
-
-                      {/* Уголок растягивания — только у виджетов: иконка занимает ровно клетку,
-                          и «растянутая» иконка была бы просто размытым квадратом. */}
-                      {item.kind === 'widget' && (
-                        <div
-                          onPointerDown={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-                            setResizing({ id: item.id, w, h });
-                          }}
-                          title="Потяните, чтобы изменить размер"
-                          style={{
-                            position: 'absolute', right: -6, bottom: -6, zIndex: 6,
-                            width: 20, height: 20, borderRadius: RADIUS.pill,
-                            background: stretching ? 'var(--accent)' : 'rgba(30,30,34,0.92)',
-                            cursor: 'nwse-resize',
-                            boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            transform: stretching ? 'scale(1.15)' : undefined,
-                            transition: 'transform var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-standard)',
-                          }}
-                        >
-                          <span style={{
-                            width: 8, height: 8, borderRight: '2px solid #fff', borderBottom: '2px solid #fff',
-                            transform: 'translate(-1px,-1px)',
-                          }} />
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      <DesktopGrid
+        g={g} layout={layout} settings={settings} tiles={tiles} editing={editing}
+        ghost={ghost} areaRef={areaRef} gridRef={gridRef}
+        onSubmit={onSubmit} onOpenApp={onOpenApp}
+        setStudioOpen={setStudioOpen} setStudioEditId={setStudioEditId}
+      />
         <div style={{ marginBottom: 'auto', flex: 'none' }} />
       </div>
 
@@ -626,7 +234,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
       {panelOpen && (
         <SidePanel
           layout={layout}
-          onLayout={apply}
+          onLayout={g.apply}
           editing={editing}
           onEditing={setEditing}
           onClose={() => setPanelOpen(false)}
@@ -638,7 +246,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
         <GenStudio
           editId={studioEditId ?? undefined}
           onGhost={setGhost}
-          onPlace={(item) => apply(addItem(layout, item))}
+          onPlace={(item) => g.apply(addItem(layout, item))}
           onClose={() => { setStudioOpen(false); setGhost(null); setStudioEditId(null); }}
         />
       )}
@@ -647,7 +255,7 @@ export default function DesktopScreen({ onSubmit, onOpenAi, onOpenGraph, tiles, 
         <AddSheet
           layout={layout}
           tiles={tiles}
-          onAdd={(item) => { apply(addItem(layout, item)); setSheetOpen(false); }}
+          onAdd={(item) => { g.apply(addItem(layout, item)); setSheetOpen(false); }}
           onClose={() => setSheetOpen(false)}
         />
       )}
@@ -773,50 +381,6 @@ function Background({ bg, photoUrl }: { bg: NewTabSettings['background']; photoU
   );
 }
 
-// Выбор заливки виджета — точка-палитра в углу плитки, раскрывается рядом с ней.
-// ⚠️ Хранится ID заливки, а не цвет: «как тема» обязана оставаться живой связью с темой и
-// палитрой, а записанный цвет застыл бы навсегда (см. DesktopItem.fill).
-function FillPicker({ value, onPick }: { value?: string; onPick: (fill: string | undefined) => void }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        title="Цвет виджета"
-        style={{
-          position: 'absolute', left: -6, bottom: -6, zIndex: 6,
-          width: 20, height: 20, borderRadius: RADIUS.pill, border: '2px solid #fff',
-          background: fillCss(value) ?? 'var(--surface)',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.35)', cursor: 'default', padding: 0,
-        }}
-      />
-      {open && (
-        <div
-          onPointerDown={(e) => e.stopPropagation()}
-          style={{
-            position: 'absolute', left: -6, bottom: 20, zIndex: 8,
-            display: 'flex', gap: 5, padding: 7, borderRadius: 'var(--radius-card)',
-            background: 'var(--surface-solid)', boxShadow: 'var(--shadow-pop)',
-          }}
-        >
-          {WIDGET_FILLS.map((f) => (
-            <button
-              key={f.id}
-              onClick={(e) => { e.stopPropagation(); onPick(f.id === 'theme' ? undefined : f.id); setOpen(false); }}
-              title={f.label}
-              style={{
-                width: 20, height: 20, borderRadius: RADIUS.pill, cursor: 'default', padding: 0,
-                background: f.css ?? 'var(--surface)',
-                border: (value ?? 'theme') === f.id ? '2px solid var(--accent)' : '1px solid var(--divider-strong)',
-              }}
-            />
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
 
 // Приветствие над поиском. Текст зависит от времени суток — это единственное, что делает его
 // живым; без него это была бы просто строка с именем.

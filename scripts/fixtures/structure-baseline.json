@@ -149,12 +149,6 @@
     "effects": 1,
     "ipc": 0
   },
-  "src/components/desktop/DesktopScreen.tsx": {
-    "lines": 857,
-    "fn": 566,
-    "effects": 6,
-    "ipc": 2
-  },
   "src/components/desktop/GenStudio.tsx": {
     "lines": 660,
     "fn": 290,
