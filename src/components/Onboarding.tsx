@@ -1,18 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useOnboarding } from './onboarding/useOnboarding';
 import type React from 'react';
 import {
-  Check, Loader2, ArrowRight, ArrowLeft, FileUp,
+  Loader2, ArrowRight, ArrowLeft,
 } from 'lucide-react';
 import type {
-  ImportSource, ImportDataType, ImportRunResult, ImportTypeResult,
-  CatalogEntry, InstalledModel, DownloadProgress, BackfillProgress,
   ThemeMode, ThemePaletteId, ThemePrefs,
 } from '../../shared/ipc';
 import { isDarkTheme } from '../../shared/ipc';
 import { islandPlate, untintedPlateVars } from '../styles/island';
-import { btnPrimary, btnGhost } from './settings/kit';
-import BrowserLogo from './BrowserLogo';
-import { CAPS, RADIUS, TEXT, DISPLAY, grain, sp, pad, motion } from '../styles/system';
+import { btnPrimary } from './settings/kit';
+import { Progress, gb, bigGhost } from './onboarding/parts';
+import { ImportStep } from './onboarding/ImportStep';
+import { IndexStep, ModelStep } from './onboarding/steps';
+import { CAPS, RADIUS, TEXT, DISPLAY, grain, sp } from '../styles/system';
 
 // Экран первого запуска: короткий рассказ о том, чем этот браузер отличается, и перенос данных
 // из привычного браузера последним шагом.
@@ -40,31 +41,7 @@ interface Props {
 
 
 
-// Крупный факт для карточки модели: подпись капсом сверху, число дисплейной гарнитурой снизу.
-// ⚠️ Размер файла и требование к видеопамяти — единственные числа, по которым человек решает,
-// соглашаться ли на загрузку. Они обязаны читаться первыми, а не быть серой строкой через «·».
-function BigFact({ cap, value }: { cap: string; value: string }) {
-  return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
-      <span style={{ ...CAPS }}>{cap}</span>
-      <span style={{
-        ...DISPLAY, fontSize: 24, fontWeight: 800, letterSpacing: '-0.03em',
-        color: 'var(--text-strong)', lineHeight: 1,
-      }}>{value}</span>
-    </span>
-  );
-}
 
-// Оговорка шага индексации. Тире, а не значок: набор случайных иконок рядом с текстом читался
-// как «странные символы» и мешал, вместо того чтобы помогать.
-function IndexNote({ children }: { children: React.ReactNode }) {
-  return (
-    <span style={{ display: 'flex', gap: sp(2), ...TEXT.body, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-      <span style={{ color: 'var(--text-faint)' }}>—</span>
-      <span>{children}</span>
-    </span>
-  );
-}
 
 // ── Схема окна для последнего шага ────────────────────────────────────────────
 //
@@ -189,27 +166,14 @@ const TONE_INK: Record<StepTone, string> = {
   tea: 'var(--on-poster-light)',
 };
 
-const TYPE_LABELS: Record<ImportDataType, string> = {
-  bookmarks: 'Закладки',
-  history: 'История',
-  passwords: 'Пароли',
-};
 
-function resultLine(type: ImportDataType, res: ImportTypeResult | null): string {
-  const label = TYPE_LABELS[type];
-  if (res === null) return `${label}: не удалось прочитать`;
-  const parts = [`перенесено ${res.inserted}`];
-  if (res.skipped > 0) parts.push(`уже были ${res.skipped}`);
-  if (res.unsupported && res.unsupported > 0) parts.push(`не поддержано ${res.unsupported}`);
-  return `${label}: ${parts.join(', ')}`;
-}
 
 // Шаги мастера. ⚠️ Список СОБИРАЕТСЯ, а не пронумерован константами: два последних шага
 // условные — модель не предлагаем, если она уже стоит или не поедет на этом железе, а индексацию
 // не предлагаем, если человек не переносил историю. Оба добавляются ПОСЛЕ текущей позиции
 // (появиться они могут только на шаге переноса или раньше), поэтому пересборка списка никогда не
 // сдвигает шаг под ногами.
-type StepKind = 'import' | 'model' | 'index' | 'look' | 'guide';
+export type StepKind = 'import' | 'model' | 'index' | 'look' | 'guide';
 
 /**
  * Что показать в конце разговора — четыре места, ради которых стоит заглянуть в интерфейс.
@@ -239,172 +203,13 @@ const GUIDE: { title: string; text: string }[] = [
 
 
 export default function Onboarding({ onFinish }: Props) {
-  const [step, setStep] = useState(0);
-  const [sources, setSources] = useState<ImportSource[] | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [checked, setChecked] = useState<Set<ImportDataType>>(new Set());
-  const [running, setRunning] = useState(false);
-  const [report, setReport] = useState<ImportRunResult | null>(null);
-  // CSV-путь для паролей прямо в мастере: пароли современного Chrome с диска не переносятся
-  // (App-Bound v20), поэтому после отчёта с нулём паролей предлагаем выбрать CSV, не выходя отсюда.
-  const [csvBusy, setCsvBusy] = useState(false);
-  const [csvMsg, setCsvMsg] = useState('');
-
-  // Модель: каталог и уже установленное. Оба грузим заранее, на слайдах, — как и источники
-  // импорта: к своему шагу список обязан быть готов, а не появляться с задержкой.
-  const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
-  const [installed, setInstalled] = useState<InstalledModel[] | null>(null);
-  const [dl, setDl] = useState<DownloadProgress | null>(null);
-  const [backfill, setBackfill] = useState<BackfillProgress | null>(null);
-  const [indexAsked, setIndexAsked] = useState(false);
-
-  // Что предлагаем скачать. ⚠️ Роль назначает КАТАЛОГ (см. shared/ipc.ts::ModelRole), а не этот
-  // экран: там же живут замеры и резервы видеопамяти. Наше дело — показать 'recommended', то есть
-  // самую лёгкую модель с измеренным качеством, и ничего не придумывать сверх.
-  const modelOffer = useMemo(
-    () => catalog?.find((e) => e.role === 'recommended') ?? catalog?.find((e) => e.role !== null) ?? null,
-    [catalog],
-  );
-  // Шаг модели не показываем вовсе, если модель уже стоит: человек её не просил, и повторное
-  // предложение выглядело бы навязчивым. Каталог ещё не приехал — шага тоже нет, дорисовывать его
-  // задним числом посреди мастера незачем.
-  // ⚠️ СЧИТАЕМ ТОЛЬКО СКАЧАННЫЕ ('downloaded'). Реестр моделей отдаёт ещё и бандловую из
-  // resources/models/gguf с пометкой 'legacy' — она лежит на диске у КАЖДОГО, и по наивной проверке
-  // «список непуст» этот шаг не показался бы никогда, то есть ровно на чистой машине, ради которой
-  // он и сделан. Бандл — аварийный фолбэк на EuroLLM-1.7B, а не «у человека есть модель».
-  const modelStepShown = installed !== null && catalog !== null
-    && installed.every((m) => m.source !== 'downloaded');
-  // Индексация — ТОЛЬКО если историю действительно перенесли и она непустая: без импорта
-  // индексировать нечего, а предлагать работу над пустотой значит просить о бессмысленном.
-  const historyImported = (report?.history?.inserted ?? 0) > 0;
-
-  const steps = useMemo<StepKind[]>(() => {
-    // ⚠️ ПЕРВЫМ идёт ПЕРЕНОС. Раньше перед ним стояли четыре слайда рассказа, и до дела, ради
-    // которого браузер ставят, долистывали не все.
-    const out: StepKind[] = ['import'];
-    if (modelStepShown) out.push('model');
-    if (historyImported) out.push('index');
-    // Облик — безусловный: тему и палитру человек всё равно выбирает в первые минуты, а узнать
-    // о них было неоткуда.
-    out.push('look');
-    // ⚠️ Гайд — БЕЗУСЛОВНЫЙ и последний. Соблазн привязать его к загрузке модели («расскажем, пока
-    // качается») есть, но привязка означала бы, что человек, отказавшийся от модели, гайда не
-    // увидит вовсе — а отказ от модели не должен ничего отнимать. Меняется только рамка разговора:
-    // идёт загрузка — «пока качается», не идёт — просто «напоследок».
-    out.push('guide');
-    return out;
-  }, [modelStepShown, historyImported]);
-
-  const kind = steps[step] ?? 'import';
-  const importStep = kind === 'import';
-  const isLastStep = step >= steps.length - 1;
-  // Загрузка ЗАВЕРШИЛАСЬ успешно. Отдельным именем, а не тройным условием в трёх местах: от него
-  // зависят и текст в теле шага, и обе кнопки, и разъехаться им нельзя.
-  const modelDone = !!dl && !dl.running && !dl.cancelled && !dl.error && dl.receivedBytes > 0;
-
-  // Источники ищем заранее, ещё на слайдах: разбор профилей на диске занимает время, и к
-  // последнему шагу список должен быть уже готов, а не появляться с задержкой.
-  useEffect(() => {
-    let alive = true;
-    void window.oblako.listImportSources().then((list) => {
-      if (!alive) return;
-      setSources(list);
-      if (list.length > 0) selectSource(list[0]);
-    });
-    return () => { alive = false; };
-  }, []);
-
-  // Каталог и установленные модели — тем же приёмом «готовим заранее», что и источники импорта.
-  useEffect(() => {
-    let alive = true;
-    void window.oblako.getModelCatalog()
-      .then((c) => { if (alive) setCatalog(c); })
-      .catch(() => { if (alive) setCatalog([]); }); // не смогли посчитать железо — просто не предлагаем
-    void window.oblako.getInstalledModels()
-      .then((m) => { if (alive) setInstalled(m); })
-      .catch(() => { if (alive) setInstalled([]); });
-    return () => { alive = false; };
-  }, []);
-
-  // ⚠️ Обе долгие работы идут в MAIN и переживают закрытие этого экрана — в том и смысл. Здесь
-  // только подписка на их прогресс, никакой отмены при размонтировании: человек нажал «скачать» и
-  // ушёл пользоваться браузером, загрузка обязана продолжиться.
-  useEffect(() => window.oblako.onModelDownloadProgress(setDl), []);
-  useEffect(() => window.oblako.onHistoryContentBackfillProgress(setBackfill), []);
-
-  const selected = useMemo(() => sources?.find((s) => s.id === selectedId) ?? null, [sources, selectedId]);
-
-  // Стрелки — привычный способ листать презентацию. ⚠️ Назад с последнего шага разрешаем только
-  // до отчёта: после переноса «вернуться» значило бы предложить сделать его ещё раз.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // Вперёд стрелкой — только там, где шаг ничего не требует: на шаге переноса и модели
-      // «дальше» это решение, и принимать его случайным нажатием стрелки нельзя.
-      if (e.key === 'ArrowRight' && (kind === 'look' || kind === 'guide') && !isLastStep) setStep((s) => s + 1);
-      if (e.key === 'ArrowLeft' && step > 0 && !report && !running) setStep((s) => s - 1);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [step, report, running]);
-
-  function selectSource(source: ImportSource) {
-    setSelectedId(source.id);
-    setChecked(new Set(source.dataTypes));
-    setReport(null);
-  }
-
-  function toggleType(type: ImportDataType) {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(type)) next.delete(type); else next.add(type);
-      return next;
-    });
-  }
-
-  async function handleRun() {
-    if (!selected || checked.size === 0 || running) return;
-    setRunning(true);
-    setReport(null);
-    try {
-      const types = selected.dataTypes.filter((t) => checked.has(t));
-      setReport(await window.oblako.runImport(selected.id, types));
-      setCsvMsg('');
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  // Импорт паролей из CSV-экспорта браузера — тот же путь, что в разделе Пароли. Без парольной фразы.
-  async function handleCsvImport() {
-    if (csvBusy) return;
-    setCsvBusy(true); setCsvMsg('');
-    const res = await window.oblako.importPasswordsCsv();
-    setCsvBusy(false);
-    switch (res.status) {
-      case 'canceled':          break;
-      case 'ok':                setCsvMsg(res.inserted > 0
-        ? `Перенесено паролей: ${res.inserted}. Удалите CSV-файл — пароли в нём открытым текстом.`
-        : `Ничего не добавлено — все ${res.skipped} записей уже были.`); break;
-      case 'empty':             setCsvMsg('В файле не нашлось паролей — это точно CSV-экспорт паролей?'); break;
-      case 'read-error':        setCsvMsg('Не удалось прочитать файл.'); break;
-      case 'vault-unavailable': setCsvMsg('Хранилище паролей недоступно.'); break;
-    }
-  }
-
-  function handleDownload() {
-    if (!modelOffer) return;
-    const m = modelOffer.model;
-    // fire-and-forget: startModelDownload — send, не invoke, ошибки приходят через progress.error
-    // (тот же вызов, что в ModelsSection.tsx — второй способ скачать модель заводить незачем).
-    window.oblako.startModelDownload({
-      url: m.url, fileName: m.fileName, label: m.label, expectedSha256: m.expectedSha256,
-    });
-  }
-
-  function handleIndex() {
-    setIndexAsked(true);
-    window.oblako.startHistoryContentBackfill();
-  }
+  const o = useOnboarding();
+  const {
+    step, setStep, steps, kind, importStep, isLastStep,
+    sources, selected, selectedId, checked, running, report, csvBusy, csvMsg,
+    dl, backfill, indexAsked, modelOffer, modelDone,
+    selectSource, toggleType, handleRun, handleCsvImport, handleDownload, handleIndex,
+  } = o;
 
   // Шапка шага: тон, заголовок, подпись. ⚠️ Ровно одна точка на все виды шагов — раньше здесь
   // стоял тернарник «слайд или импорт», и любой третий вид шага уронил бы экран на слайде,
@@ -555,137 +360,12 @@ export default function Onboarding({ onFinish }: Props) {
             «Выбрать CSV-файл» уходила под край. Теперь тело занимает место между шапкой и подвалом
             и прокручивается внутри себя. */}
         {importStep && (
-          <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: sp(3) }}>
-            {sources === null ? (
-              <Muted>Ищем браузеры на компьютере…</Muted>
-            ) : sources.length === 0 ? (
-              <Muted>Других браузеров с данными не нашлось — переносить нечего.</Muted>
-            ) : (
-              <>
-                {/* ⚠️ ШИРОКИЕ СТРОКИ ВО ВСЮ ШИРИНУ, а не квадратные марки по центру. Прежние
-                    карточки были узкими, стояли посередине и оставляли справа и снизу пустоту:
-                    правая половина выглядела незаполненной, а сам выбор — мелким. Строка даёт
-                    место для того, что человеку и нужно знать, — что именно переедет и сколько
-                    записей. */}
-                <span style={{ ...CAPS }}>Нашли на этом компьютере</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                  {sources.map((source) => {
-                    const active = source.id === selectedId;
-                    return (
-                      <button
-                        key={source.id}
-                        onClick={() => selectSource(source)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: sp(4), width: '100%',
-                          padding: pad(4), borderRadius: RADIUS.content, cursor: 'default',
-                          textAlign: 'left', background: active ? 'var(--surface)' : 'transparent',
-                          // Выбранное — ЧЕРНИЛЬНАЯ кромка в два пикселя. Раньше это был акцент,
-                          // но экран первого запуска — страница приложения, и обводка здесь
-                          // означает «вот это», а не состояние хрома.
-                          border: active ? '2px solid var(--text-strong)' : '2px solid var(--divider)',
-                          transition: motion.state('border-color', 'background'),
-                        }}
-                      >
-                        <BrowserLogo vendorId={source.id.split('::')[0]} label={source.label} />
-                        <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{
-                            display: 'block', ...DISPLAY, fontSize: 20, fontWeight: 700,
-                            letterSpacing: '-0.02em', color: 'var(--text-strong)',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>{source.label}</span>
-                          <span style={{ display: 'block', ...TEXT.body, color: 'var(--text-muted)', marginTop: sp(1) }}>
-                            {source.dataTypes.map((t) => TYPE_LABELS[t].toLowerCase()).join(', ')}
-                          </span>
-                        </span>
-                        <span style={{
-                          width: 24, height: 24, flex: 'none', borderRadius: RADIUS.control,
-                          display: 'grid', placeItems: 'center',
-                          background: active ? 'var(--text-strong)' : 'transparent',
-                          border: active ? 'none' : '2px solid var(--divider-strong)',
-                          color: 'var(--app-bg)',
-                        }}>{active && <Check size={15} strokeWidth={3} />}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* ⚠️ Что именно переносить — ОТДЕЛЬНОЙ строкой под списком, а не пилюлями по
-                    центру экрана. Раньше они висели сами по себе и не были связаны ни с одним
-                    из браузеров, хотя относятся к ВЫБРАННОМУ. */}
-                {selected && !report && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2), marginTop: sp(2) }}>
-                    <span style={{ ...CAPS }}>Что перенести</span>
-                    <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
-                      {selected.dataTypes.map((type) => {
-                        const on = checked.has(type);
-                        return (
-                          <button
-                            key={type}
-                            onClick={() => toggleType(type)}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: sp(2),
-                              padding: pad(2, 4), borderRadius: RADIUS.pill, cursor: 'default',
-                              ...TEXT.body, fontWeight: 550,
-                              background: on ? 'var(--text-strong)' : 'transparent',
-                              color: on ? 'var(--app-bg)' : 'var(--text-muted)',
-                              border: on ? '2px solid var(--text-strong)' : '2px solid var(--divider)',
-                              transition: motion.state('background', 'color', 'border-color'),
-                            }}
-                          >
-                            {on && <Check size={14} strokeWidth={3} />}
-                            {TYPE_LABELS[type]}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {report && (
-                  <div style={{
-                    ...islandPlate, borderRadius: RADIUS.content, padding: pad(4),
-                    display: 'flex', flexDirection: 'column', gap: sp(2),
-                  }}>
-                    {(Object.keys(report) as ImportDataType[]).map((type) => (
-                      <div key={type} style={{ ...TEXT.body, color: 'var(--text-body)' }}>
-                        ✅ {resultLine(type, report[type] ?? null)}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Пароли просили, но перенеслось ноль — почти всегда это v20 (App-Bound) свежего
-                    Chrome, диском их не взять. Не бросаем человека с необъяснённым нулём, а прямо
-                    здесь даём рабочий путь через CSV — иначе он уйдёт из мастера без паролей и не
-                    поймёт почему. */}
-                {report && 'passwords' in report && (report.passwords?.inserted ?? 0) === 0 && (
-                  <div style={{
-                    ...islandPlate, borderRadius: RADIUS.content, padding: pad(4),
-                    display: 'flex', flexDirection: 'column', gap: sp(3),
-                  }}>
-                    <span style={{ ...TEXT.body, color: 'var(--text-body)', lineHeight: 1.5 }}>
-                      Пароли современного Chrome зашифрованы и напрямую не переносятся. Экспортируйте
-                      их в браузере (<b>Настройки → Пароли → ⋮ → Экспорт паролей</b>) и выберите
-                      CSV-файл здесь.
-                    </span>
-                    <button
-                      onClick={() => void handleCsvImport()}
-                      disabled={csvBusy}
-                      style={{ ...bigGhost, alignSelf: 'flex-start', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 7, opacity: csvBusy ? 0.5 : 1 }}
-                    >
-                      {csvBusy
-                        ? <Loader2 size={15} style={{ animation: 'oblako-spin 1s linear infinite' }} />
-                        : <FileUp size={15} />}
-                      Выбрать CSV-файл
-                    </button>
-                    {csvMsg && (
-                      <span style={{ ...TEXT.body, color: 'var(--text-body)' }}>{csvMsg}</span>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          <ImportStep
+            sources={sources} selected={selected} selectedId={selectedId}
+            checked={checked} report={report} csvBusy={csvBusy} csvMsg={csvMsg}
+            selectSource={selectSource} toggleType={toggleType}
+            handleCsvImport={() => void handleCsvImport()}
+          />
         )}
 
         {/* Тело шага модели.
@@ -693,74 +373,10 @@ export default function Onboarding({ onFinish }: Props) {
             соглашается на многогигабайтную загрузку. Прежняя версия сообщала имя модели тем же
             кеглем, что и подпись под ним, а размер и требования прятала в серую строку через
             «·» — то есть ровно то, ради чего экран и существует, было самым мелким на нём. */}
-        {kind === 'model' && modelOffer && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4) }}>
-            <span style={{ ...CAPS }}>Что скачаем</span>
-            <div style={{
-              display: 'flex', flexDirection: 'column', gap: sp(4),
-              padding: pad(6), borderRadius: RADIUS.content, border: '2px solid var(--divider)',
-            }}>
-              <span style={{
-                ...DISPLAY, fontSize: 30, fontWeight: 800, letterSpacing: '-0.03em',
-                color: 'var(--text-strong)', lineHeight: 1.05,
-              }}>{modelOffer.model.label}</span>
-              <div style={{ display: 'flex', gap: sp(8) }}>
-                <BigFact cap="Размер" value={gb(modelOffer.model.sizeBytes)} />
-                <BigFact cap="Нужно видеопамяти" value={gb(modelOffer.minVramBytes)} />
-              </div>
-              {/* Строка «чем отличается» приходит ИЗ КАТАЛОГА: это пересказ наших замеров, и
-                  расходиться описанию с числами нельзя (см. CatalogEntry.summary). */}
-              <span style={{ ...TEXT.body, color: 'var(--text-muted)', lineHeight: 1.55 }}>
-                {modelOffer.summary}
-              </span>
-            </div>
-
-            {dl?.error ? (
-              <Muted>Загрузка не удалась: {dl.error}. Можно повторить позже в «Настройки → ИИ».</Muted>
-            ) : dl?.running ? (
-              <Progress
-                done={dl.receivedBytes} total={dl.totalBytes}
-                label={dl.totalBytes ? `Качаем — ${gb(dl.receivedBytes)} из ${gb(dl.totalBytes)}` : 'Качаем…'}
-                hint="Можно идти дальше: загрузка продолжится в фоне."
-              />
-            ) : modelDone ? (
-              <Muted>✅ Модель скачана — локальный ИИ готов.</Muted>
-            ) : null}
-          </div>
-        )}
+        {kind === 'model' && modelOffer && <ModelStep modelOffer={modelOffer} dl={dl} modelDone={modelDone} />}
 
         {/* Тело шага индексации. */}
-        {kind === 'index' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: sp(4) }}>
-            {backfill?.running ? (
-              <Progress
-                done={backfill.processed} total={backfill.total}
-                label={`Читаем страницы — ${backfill.processed} из ${backfill.total}`}
-                hint="Можно идти дальше: это продолжится в фоне."
-              />
-            ) : indexAsked ? (
-              <Muted>✅ Запустили — дальше браузер сделает это сам.</Muted>
-            ) : (
-              <>
-                <span style={{ ...CAPS }}>Что произойдёт</span>
-                {/* ⚠️ Говорим ПРЯМО, что для этого страницы будут открыты заново. Это сеть и это
-                    следы в чужих логах — умолчать о таком в приватном браузере нельзя, а решение
-                    всё равно остаётся за человеком. Поэтому текст здесь КРУПНЫЙ: это не сноска
-                    мелким шрифтом, а то, на что человек соглашается. */}
-                <span style={{
-                  ...TEXT.section, fontWeight: 450, color: 'var(--text-body)', lineHeight: 1.5,
-                }}>
-                  Браузер по одной откроет перенесённые адреса, чтобы прочитать текст.
-                </span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-                  <IndexNote>Это займёт время и потребует сети.</IndexNote>
-                  <IndexNote>Всё остальное в это время работает как обычно.</IndexNote>
-                  <IndexNote>Прочитанное остаётся на вашем компьютере.</IndexNote>
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        {kind === 'index' && <IndexStep backfill={backfill} indexAsked={indexAsked} />}
 
         {/* ⚠️ Карточек с четырьмя местами здесь БОЛЬШЕ НЕТ. Они дублировали то же самое, что
             уже показано схемой окна выше: на экране одновременно стояли и схема с подписями, и
@@ -851,40 +467,9 @@ const bigPrimary: React.CSSProperties = {
 };
 
 // Пара к ней: тихие кнопки того же роста, иначе ряд «Назад | Дальше» выглядит ступенькой.
-const bigGhost: React.CSSProperties = {
-  ...btnGhost,
-  padding: '11px 18px',
-  fontSize: 'var(--fs-md)',
-};
 
-function Muted({ children }: { children: React.ReactNode }) {
-  return <div style={{ ...TEXT.body, color: 'var(--text-faint)', lineHeight: 1.5 }}>{children}</div>;
-}
 
-function gb(bytes: number): string {
-  return `${(bytes / 1024 ** 3).toFixed(1).replace('.', ',')} ГБ`;
-}
 
-// Полоса хода работы — общая для загрузки модели и чтения истории: обе долгие, обе продолжаются
-// в фоне, и подпись про фон здесь не украшение, а единственное место, где человек узнаёт, что
-// уходить со страницы можно.
-function Progress({ done, total, label, hint }: { done: number; total: number | null; label: string; hint: string }) {
-  const pct = total && total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-      <div style={{ height: 10, borderRadius: RADIUS.pill, background: 'var(--surface-sunken)', overflow: 'hidden' }}>
-        <div style={{
-          height: '100%', borderRadius: RADIUS.pill, background: 'var(--accent)',
-          // Неизвестная длина — не повод врать полосой: показываем узкую «живую» вместо доли.
-          width: pct === null ? '25%' : `${pct}%`,
-          transition: 'width var(--dur-base) var(--ease-out)',
-        }} />
-      </div>
-      <div style={{ ...TEXT.section, fontWeight: 550, color: 'var(--text-strong)' }}>{label}</div>
-      <Muted>{hint}</Muted>
-    </div>
-  );
-}
 
 /**
  * Схема окна для гайда.

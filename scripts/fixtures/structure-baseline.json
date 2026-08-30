@@ -114,10 +114,10 @@
     "ipc": 20
   },
   "src/components/Onboarding.tsx": {
-    "lines": 1067,
-    "fn": 603,
-    "effects": 5,
-    "ipc": 12
+    "lines": 652,
+    "fn": 255,
+    "effects": 1,
+    "ipc": 3
   },
   "src/components/Settings.tsx": {
     "lines": 428,
