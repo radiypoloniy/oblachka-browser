@@ -6,7 +6,8 @@
 // поломкой, а не задумкой. Каждый случай ниже — про это.
 //
 // Запуск: npm test -- notebook-doc
-import { normalizeDoc, DOC_BLOCKS, DOC_MAX_BLOCKS, DOC_SCHEMA, HEADING_MAX_CHARS } from '../shared/notebookDoc.ts';
+import fs from 'node:fs';
+import { normalizeDoc, DOC_BLOCKS, DOC_MAX_BLOCKS, HEADING_MAX_CHARS } from '../shared/notebookDoc.ts';
 
 let passed = 0;
 let failed = 0;
@@ -63,15 +64,11 @@ check(
 // ── потолки ─────────────────────────────────────────────────────────────────
 // ⚠️ Потолок читается из DOC_MAX_BLOCKS, а не зашит числом: он уже менялся (12 -> 24, когда
 // оказалось, что на 12 блоках исследование обрывается на середине), и проверка не должна
-// падать от осознанной правки — она должна ловить рассинхрон схемы и разбора.
+// падать от осознанной правки. Общей схемы документа больше нет — документ собирается фазами
+// (electron/NotebookDocument.ts), и потолок остался только у разбора.
 check(
   'блоков не больше потолка',
   normalizeDoc({ blocks: Array.from({ length: DOC_MAX_BLOCKS + 8 }, (_, i) => ({ kind: 'text', text: `а${i}` })) })?.blocks.length,
-  DOC_MAX_BLOCKS,
-);
-check(
-  'потолок разбора совпадает с потолком грамматики',
-  DOC_SCHEMA.properties.blocks.maxItems,
   DOC_MAX_BLOCKS,
 );
 check(
@@ -151,6 +148,32 @@ check(
 
 // ── каталог закрыт ──────────────────────────────────────────────────────────
 check('каталог блоков не разросся', DOC_BLOCKS.length, 9);
+
+// ── ЗАМОК ФАЗОВОЙ СБОРКИ ────────────────────────────────────────────────────
+// ⚠️ Проверяется по тексту, а не прогоном: модуль тянет electron. Зато проверяется самое ценное,
+// что в нём есть, — ФОРМА ЗАПРОСА на фазе наполнения.
+//
+// Схема раздела обязана оставаться МАССИВОМ СТРОК с minItems. Именно это делает «план вместо
+// документа» физически недостижимым: в массив строк нельзя положить структуру, только прозу.
+// Стоит кому-нибудь «обобщить» её обратно до объекта с необязательными полями — и вернётся тот
+// самый баг, ради которого затевались фазы: обложка и семь пустых заголовков подряд.
+const doc = fs.readFileSync('electron/NotebookDocument.ts', 'utf8');
+const section = (doc.match(/const SECTION_SCHEMA = [\s\S]*?as const;/) || [''])[0];
+check('фазы: у раздела схема — массив', /type: 'array'/.test(section), true);
+check('фазы: элементы раздела — строки', /items: \{ type: 'string' \}/.test(section), true);
+check('фазы: у раздела есть minItems', /minItems: [1-9]/.test(section), true);
+check('фазы: в разделе нет вложенных объектов', /items:[\s\S]*type: 'object'/.test(section), false);
+
+// План и наполнение — РАЗНЫЕ прогоны. Один общий прогон и был причиной пустых разделов.
+check('фазы: план отдельной схемой', /const PLAN_SCHEMA/.test(doc), true);
+check('фазы: разделы пишутся по одному', /for \(let i = 0; i < sections\.length/.test(doc), true);
+check('фазы: пустой раздел не ставится', /if \(paragraphs\.length === 0\) continue;/.test(doc), true);
+
+// Источники — наши. Подвал документа единственное место, где выдуманный адрес выглядит фактом.
+check('фазы: источники берутся из аргумента', /\.map\(\(s\) => \(\{ label: s\.title/.test(doc), true);
+
+// Общая схема документа не должна вернуться.
+check('общей схемы документа нет', /DOC_SCHEMA/.test(fs.readFileSync('shared/notebookDoc.ts', 'utf8')), false);
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

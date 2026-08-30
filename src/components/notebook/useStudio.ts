@@ -25,7 +25,14 @@ export function useStudio(labelOf: (k: StudioKind) => string) {
 
   useEffect(() => window.oblako.onStudioProgress(setChars), []);
 
-  async function generate(kind: StudioKind, context: string | null): Promise<void> {
+  async function generate(
+    kind: StudioKind,
+    context: string | null,
+    // ⚠️ Список источников уходит в main ГОТОВЫМ, а не восстанавливается моделью из текста:
+    // подвал документа — единственное место, где выдумка выглядит как факт (см.
+    // electron/NotebookDocument.ts).
+    sources: { title: string; url: string }[] = [],
+  ): Promise<void> {
     const label = labelOf(kind);
     if (!context) { setNote('Выберите источники с текстом — по ним построю материал.'); return; }
     setNote(null);
@@ -33,7 +40,7 @@ export function useStudio(labelOf: (k: StudioKind) => string) {
     // Прежнюю работу снимает main (beginActivity прерывает предыдущую), поэтому здесь ничего
     // ждать не нужно: очередь не копится по построению.
     setState({ kind, label, busy: true });
-    const r = await window.oblako.generateStudio(kind, context);
+    const r = await window.oblako.generateStudio(kind, context, sources);
     setState({
       kind, label, busy: false,
       text: r.ok ? r.text : undefined,

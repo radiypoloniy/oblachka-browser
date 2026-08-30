@@ -61,41 +61,17 @@ export interface DocSpec {
   blocks: DocBlock[];
 }
 
-/**
- * Схема под грамматику node-llama-cpp (createGrammarForJsonSchema).
- *
- * ⚠️ Ограничение действует на КАЖДОМ токене, поэтому невалидный документ не «редкий», а
- * недостижимый: разбирать текст, чинить забор из ``` и угадывать намерение здесь не нужно.
- * Ровно это и оказалось решающим в виджетах: модели 3–4B плывут в структуре, а не в понимании.
- */
-export const DOC_SCHEMA = {
-  type: 'object',
-  properties: {
-    title: { type: 'string' },
-    blocks: {
-      type: 'array',
-      minItems: 4,
-      maxItems: DOC_MAX_BLOCKS,
-      items: {
-        type: 'object',
-        properties: {
-          kind: { enum: [...DOC_BLOCKS] },
-          title: { type: 'string' },
-          text: { type: 'string' },
-          items: { type: 'array', items: { type: 'string' }, maxItems: 8 },
-          pairs: {
-            type: 'array',
-            maxItems: 6,
-            items: {
-              type: 'object',
-              properties: { label: { type: 'string' }, value: { type: 'string' } },
-            },
-          },
-        },
-      },
-    },
-  },
-} as const;
+// ⚠️ ОБЩЕЙ СХЕМЫ ДОКУМЕНТА ЗДЕСЬ БОЛЬШЕ НЕТ, и заводить её обратно не надо.
+//
+// Она была: одна JSON Schema на весь документ, грамматика по ней, один прогон. На живых
+// прогонах это давало ПЛАН ВМЕСТО ДОКУМЕНТА — обложку и семь заголовков подряд, без единого
+// абзаца. Причина в самой схеме: она разрешает блок, у которого заполнен только заголовок,
+// значит цепочка коротких heading — самый дешёвый структурно валидный ответ, и жадная выборка
+// идёт по нему. Промптом это не лечится, потому что промпт не меняет того, что дёшево.
+//
+// Теперь документ собирается ФАЗАМИ (electron/NotebookDocument.ts): план — отдельным прогоном,
+// каждый раздел — своим, и на фазе наполнения схема это МАССИВ СТРОК с minItems, куда нельзя
+// положить ничего, кроме прозы. Здесь остались только типы и разбор готовой структуры.
 
 const isKind = (v: unknown): v is DocBlockKind =>
   typeof v === 'string' && (DOC_BLOCKS as readonly string[]).includes(v);

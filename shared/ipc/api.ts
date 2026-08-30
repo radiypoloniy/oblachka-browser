@@ -151,7 +151,7 @@ export interface OblakoApi {
   /** «Другое фото» — шаг назад по календарю Wikimedia, ответ приходит уже новым снимком. */
   shuffleNewtabPhoto(): Promise<{ ok: boolean; dataUrl?: string }>;
   extractNotebookUrl(url: string): Promise<{ ok: boolean; title?: string; text?: string }>; // текст URL-источника блокнота
-  generateStudio(kind: string, context: string): Promise<{ ok: boolean; text?: string; error?: string }>; // материал Студии блокнота
+  generateStudio(kind: string, context: string, sources?: { title: string; url: string }[]): Promise<{ ok: boolean; text?: string; error?: string }>; // материал Студии блокнота
   // «Собрать материал»: сначала предложить запросы, потом — по команде человека — искать.
   suggestNotebookQueries(topic: string, context: string): Promise<{ ok: boolean; queries?: string[]; error?: string }>;
   searchNotebook(queries: string[]): Promise<{ ok: boolean; hits?: { title: string; url: string; snippet: string }[]; error?: string }>;

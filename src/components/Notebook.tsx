@@ -149,6 +149,10 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   }
 
   const selectedCount = sources.filter((s) => selected.has(s.id) && s.status === 'ready').length;
+  // Выбранные источники для подвала документа: адрес у ссылки, имя файла у документа с диска.
+  const selectedSources = () => sources
+    .filter((s) => selected.has(s.id) && s.status === 'ready')
+    .map((s) => ({ title: s.title, url: s.url ?? (s.kind === 'file' ? 'локальный файл' : '') }));
   const empty = sources.length === 0;
 
 
@@ -205,7 +209,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
 
       {!empty && (
         <StudioPanel selectedCount={selectedCount} note={studio.note} busyKind={studio.busyKind}
-          onGenerate={(k) => void studio.generate(k, getSelectedSourceContext())} />
+          onGenerate={(k) => void studio.generate(k, getSelectedSourceContext(), selectedSources())} />
       )}
       </div>
 

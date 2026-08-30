@@ -18,6 +18,7 @@ import { getPhotoOfDay, shufflePhoto } from '../NewTabPhoto';
 import { extractUrlText } from '../NotebookExtract';
 import { extractFileText, SUPPORTED_FILE_EXTENSIONS } from '../FileExtract';
 import { generateStudio } from '../NotebookStudio';
+import type { DocSource } from '../NotebookDocument';
 import { cancelActivity, getActivity } from '../AiActivity';
 import { suggestQueries, runSearch } from '../NotebookGather';
 import type { StudioKind } from '../NotebookStudio';
@@ -129,9 +130,12 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   });
   ipcMain.handle(IPC.AI_ACTIVITY_GET, () => getActivity());
   ipcMain.handle(IPC.AI_ACTIVITY_CANCEL, () => cancelActivity());
-  ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (e, kind: StudioKind, context: string) => {
+  ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (e, kind: StudioKind, context: string, sources?: DocSource[]) => {
     const sender = e.sender;
-    return generateStudio(kind, typeof context === 'string' ? context : '', undefined, (chars) => {
+    const list = Array.isArray(sources)
+      ? sources.filter((s): s is DocSource => typeof s?.title === 'string' && typeof s?.url === 'string')
+      : [];
+    return generateStudio(kind, typeof context === 'string' ? context : '', undefined, list, (chars) => {
       if (!sender.isDestroyed()) sender.send(IPC.NOTEBOOK_STUDIO_PROGRESS, chars);
     });
   });

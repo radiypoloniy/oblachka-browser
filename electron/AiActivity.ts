@@ -33,6 +33,14 @@ export interface ActivityHandle {
   /** Прервали ли эту работу. */
   readonly cancelled: boolean;
   progress(chars: number): void;
+  /**
+   * Сменить подпись по ходу работы: «Пишу раздел 3 из 6».
+   *
+   * ⚠️ Нужна потому, что документ собирается ФАЗАМИ (см. NotebookDocument.ts), и растущее число
+   * знаков про это ничего не говорит. «Раздел 3 из 6» — единственный показатель, у которого
+   * есть конец, а значит единственный, по которому человек может решить, ждать ему или нет.
+   */
+  note(label: string): void;
   done(): void;
 }
 
@@ -54,6 +62,11 @@ export function beginActivity(label: string): ActivityHandle {
     progress(chars: number) {
       if (current !== run) return;   // нас уже сменили — молчим, чтобы не мигать чужим числом
       run.chars = chars;
+      broadcast();
+    },
+    note(label: string) {
+      if (current !== run) return;
+      run.label = label;
       broadcast();
     },
     done() {
