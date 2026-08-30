@@ -20,21 +20,67 @@ import { overlayPlate } from '../styles/island';
 // движения. Ни одного собственного числа тут нет и быть не должно.
 
 /** Карточка поповера. Ширину задаёт вызывающий: у разных экранов разное содержимое. */
-export function PopoverCard({ width = 280, children }: { width?: number; children: React.ReactNode }) {
+export function PopoverCard({ width = 280, invert = false, tail, children }: {
+  width?: number;
+  /**
+   * Инверсная плита — тёмная карточка на светлой странице (и наоборот в тёмной теме).
+   *
+   * ⚠️ Ровно ОДНА карточка в браузере имеет на это право — вопрос о разрешении. Причина в
+   * замере, а не во вкусе: обычная плита светлая, сайты тоже светлые, и всё, что отделяло
+   * карточку от страницы, — тень. Её пропускали («даже я постоянно пропускаю их»). Контраст
+   * даёт ЗЕМЛЯ, а не статус: красная карточка нарушила бы цветовой закон, инверсия — та же
+   * нейтраль с другого конца шкалы. Разбор токенов — у --overlay-plate-invert в colors.css.
+   *
+   * ⚠️ Не раздавать другим карточкам. Инверсия работает ровно потому, что она одна: как только
+   * инверсных станет две, обе перестанут значить «ответь сейчас».
+   */
+  invert?: boolean;
+  /** Хвостик к якорю в хроме: карточка перестаёт быть «где-то сверху» и указывает на щит. */
+  tail?: boolean;
+  children: React.ReactNode;
+}) {
+  const plate = invert
+    ? { background: 'var(--overlay-plate-invert)', border: '1px solid var(--overlay-invert-line)', color: 'var(--overlay-invert-body)' }
+    : overlayPlate;
   return (
     <div style={{
       width,
       // ⚠️ Поверхность оверлея (непрозрачная), а не стекло: все карточки набора живут в отдельных
       // вью над страницей, где backdrop-filter не работает вовсе, и полупрозрачность означала бы
       // просвечивающий текст сайта. Разбор — у --overlay-plate в styles/tokens/colors.css.
-      ...overlayPlate,
-      boxShadow: 'var(--shadow-overlay)',
-      borderRadius: RADIUS.box,
-      padding: sp(3),
-      display: 'flex', flexDirection: 'column', gap: sp(2),
+      ...plate,
+      // Инверсной нужна тень глубже: она уже контрастна, но без опоры выглядит наклейкой.
+      boxShadow: invert ? 'var(--shadow-overlay-strong, var(--shadow-overlay))' : 'var(--shadow-overlay)',
+      borderRadius: invert ? RADIUS.island : RADIUS.box,
+      padding: invert ? pad(4, 4) : sp(3),
+      display: 'flex', flexDirection: 'column', gap: invert ? sp(4) : sp(2),
+      position: 'relative',
     }}>
+      {tail && <PopoverTail invert={invert} />}
       {children}
     </div>
+  );
+}
+
+/**
+ * Хвостик карточки — треугольник, указывающий на якорь в хроме.
+ *
+ * ⚠️ Не украшение: карточка разрешений всплывала в углу содержимого и НИ НА ЧТО не указывала,
+ * хотя ответ на неё потом живёт под щитом. Хвостик связывает два места, между которыми связи не
+ * было, — и заодно объясняет, куда идти, если карточку закрыли не ответив.
+ *
+ * ⚠️ Повёрнутый квадрат с двумя кромками, а не clip-path: так у него та же граница, что у самой
+ * плиты, и на стыке не появляется шва.
+ */
+export function PopoverTail({ invert = false }: { invert?: boolean }) {
+  const line = invert ? 'var(--overlay-invert-line)' : 'var(--overlay-line, var(--divider-strong))';
+  return (
+    <span aria-hidden style={{
+      position: 'absolute', top: -7, left: sp(6), width: 14, height: 14,
+      background: invert ? 'var(--overlay-plate-invert)' : 'var(--overlay-plate)',
+      borderLeft: `1px solid ${line}`, borderTop: `1px solid ${line}`,
+      transform: 'rotate(45deg)',
+    }} />
   );
 }
 
@@ -187,18 +233,23 @@ const buttonBase: React.CSSProperties = {
 };
 
 /** Основное действие. */
-export function PrimaryButton({ children, onClick, disabled, stretch }: {
+export function PrimaryButton({ children, onClick, disabled, stretch, big }: {
   children: React.ReactNode; onClick?: () => void; disabled?: boolean;
   /** Делить ширину поровну со второй кнопкой — когда выбор равноправный (разрешить/запретить). */
   stretch?: boolean;
+  /** Крупная — только у вопроса о разрешении: в неё перестаёшь промахиваться. */
+  big?: boolean;
 }) {
   return (
     <button onClick={onClick} disabled={disabled} style={{
-      ...buttonBase, background: 'var(--accent)', color: 'var(--on-accent)',
+      ...buttonBase, ...(big ? bigButton : null), background: 'var(--accent)', color: 'var(--on-accent)',
       opacity: disabled ? 0.5 : 1, ...(stretch ? { flex: 1 } : null),
     }}>{children}</button>
   );
 }
+
+/** Крупный размер кнопки: та же роль, тот же радиус, больше поле. */
+const bigButton: React.CSSProperties = { padding: pad(3, 4), fontSize: 'var(--fs-md)' };
 
 /**
  * Тихое действие — «не сейчас», «отмена».
@@ -207,12 +258,18 @@ export function PrimaryButton({ children, onClick, disabled, stretch }: {
  * уже есть кромка материала и разделители), а тихая заливка отделяет кнопку от фона ровно
  * настолько, насколько нужно второму по важности действию.
  */
-export function QuietButton({ children, onClick, disabled, stretch }: {
+export function QuietButton({ children, onClick, disabled, stretch, big, invert }: {
   children: React.ReactNode; onClick?: () => void; disabled?: boolean; stretch?: boolean;
+  big?: boolean;
+  /** На инверсной плите тихая заливка тоже инверсная — иначе кнопка светится дырой. */
+  invert?: boolean;
 }) {
   return (
     <button onClick={onClick} disabled={disabled} style={{
-      ...buttonBase, background: 'var(--surface-sunken)', color: 'var(--text-body)', fontWeight: 500,
+      ...buttonBase, ...(big ? bigButton : null),
+      background: invert ? 'var(--overlay-invert-quiet)' : 'var(--surface-sunken)',
+      color: invert ? 'var(--overlay-invert-ink)' : 'var(--text-body)',
+      fontWeight: invert ? 600 : 500,
       opacity: disabled ? 0.5 : 1, ...(stretch ? { flex: 1 } : null),
     }}>{children}</button>
   );
