@@ -6,7 +6,7 @@ import { app, dialog, shell } from 'electron';
 import fsp from 'node:fs/promises';
 import nodePath from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { IPC, PAGE_LENGTH_TOKENS } from '../../shared/ipc';
+import { IPC } from '../../shared/ipc';
 import type { TimerState } from '../../shared/ipc';
 import { getTimer, setTimer } from '../TimerService';
 import type { PasswordCopyField } from '../../shared/ipc';
@@ -137,7 +137,7 @@ export function registerWidgetsIpc(d: IpcDeps): void {
       : [];
     return generateStudio(
       kind, typeof context === 'string' ? context : '', undefined, list,
-      PAGE_LENGTH_TOKENS[settings.getPageLength()],
+      settings.getPageLength(),
       (chars) => { if (!sender.isDestroyed()) sender.send(IPC.NOTEBOOK_STUDIO_PROGRESS, chars); },
     );
   });

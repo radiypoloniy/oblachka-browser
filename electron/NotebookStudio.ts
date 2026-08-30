@@ -1,6 +1,7 @@
 import { runChatMessage } from './TranslationService';
 import { beginActivity } from './AiActivity';
 import { buildPage, type DocSource } from './NotebookPage';
+import type { PageLength } from '../shared/ipc';
 
 // Генерация материалов «Студии» блокнота по тексту выбранных источников. Модель локальная —
 // её задача выдать СТРУКТУРУ/ТЕКСТ (саммари в Markdown; далее — markdown-аутлайн для майндкарты,
@@ -170,8 +171,8 @@ export async function generateStudio(
   // Источники документа берём ГОТОВЫМИ от интерфейса, а не спрашиваем у модели — см. разбор
   // в NotebookPage.ts: это единственное место, где выдумка выглядит как факт.
   sources?: DocSource[],
-  /** Потолок вывода на тело страницы — ступень, выбранная человеком в настройках. */
-  bodyMaxTokens?: number,
+  /** Ступень объёма страницы, выбранная человеком: от неё зависят и просьба, и потолок. */
+  pageLength?: PageLength,
   // Ход генерации документа: сколько знаков модель уже выдала. Тот же приём, что у сборки
   // виджетов (GenSpecParser.onProgress) — и по той же причине, см. DOC_MAX_TOKENS выше.
   onProgress?: (chars: number) => void,
@@ -180,7 +181,7 @@ export async function generateStudio(
   // ⚠️ Документ идёт мимо общего пути: ему нужна грамматика, а runChatMessage её не принимает.
   if (kind === 'page') {
     const act = beginActivity('Пишу страницу');
-    const res = await buildPage(context, sources ?? [], act, (n) => onProgress?.(n), bodyMaxTokens ?? 3200);
+    const res = await buildPage(context, sources ?? [], act, (n) => onProgress?.(n), pageLength ?? 'normal');
     act.done();
     if (!res.ok) return { ok: false, error: res.error };
     return { ok: true, text: JSON.stringify(res.page) };
