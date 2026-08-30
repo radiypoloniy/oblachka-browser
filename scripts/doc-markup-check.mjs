@@ -10,7 +10,7 @@
 // разворачиваются, а не выбрасываются вместе с содержимым.
 //
 // Запуск: npm test -- doc-markup
-import { sanitizeDocHtml, groupSections, markupTextLength, PAGE_MIN_CHARS } from '../shared/docMarkup.ts';
+import { sanitizeDocHtml, groupSections, splitSections, markupTextLength, PAGE_MIN_CHARS } from '../shared/docMarkup.ts';
 
 let passed = 0;
 let failed = 0;
@@ -215,6 +215,27 @@ check(
   '<section><h2>Раз</h2><p>А</p></section>',
 );
 check('пустая разметка не ломает группировку', groupSections(''), '');
+
+// ── РАЗБОР НА РАЗДЕЛЫ ───────────────────────────────────────────────────────
+// ⚠️ Из этих заголовков стили строят навигацию (вкладки «Пульта», оглавление «Лонгрида»).
+// Спросить их у модели второй раз было бы вторым источником правды, который однажды разойдётся.
+check(
+  'разделы разбираются с заголовками',
+  splitSections('<section><h2>Раз</h2><p>А</p></section><section><h2>Два</h2><p>Б</p></section>')
+    .map((s) => s.title),
+  ['Раз', 'Два'],
+);
+check(
+  'содержимое раздела остаётся целым',
+  splitSections('<section><h2>Раз</h2><p>А</p><blockquote>М</blockquote></section>')[0].html,
+  '<h2>Раз</h2><p>А</p><blockquote>М</blockquote>',
+);
+check('без разделов — пусто', splitSections('<p>А</p>'), []);
+check(
+  'раздел без заголовка не роняет разбор',
+  splitSections('<section><p>А</p></section>').map((s) => s.title),
+  [''],
+);
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

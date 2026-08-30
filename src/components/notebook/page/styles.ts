@@ -18,12 +18,14 @@
 //
 // ⚠️ Стили ЧИСЛАМИ, а не токенами: страница уезжает человеку, у которого нашего браузера нет.
 
+import { STYLE_SCRIPTS } from './scripts';
+
 export type PageStyle = 'izdanie' | 'panel' | 'polosa';
 
 export const PAGE_STYLES: { id: PageStyle; label: string; hint: string }[] = [
   { id: 'izdanie', label: 'Издание', hint: 'Бумага: заголовок на поле едет за текстом, буквица, зерно' },
-  { id: 'panel',   label: 'Панель',  hint: 'Тёмная приборная доска: абзацы карточками, метки разделов' },
-  { id: 'polosa',  label: 'Полоса',  hint: 'Длинное чтение: висячие номера, врезка во всю ширину' },
+  { id: 'panel',   label: 'Пульт',   hint: 'Разделы вкладками, абзацы раскрываются, тёмная доска' },
+  { id: 'polosa',  label: 'Лонгрид', hint: 'Оглавление-компаньон, полоса чтения, кнопка наверх' },
 ];
 
 const FONT_FRAUNCES = '@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&display=swap");';
@@ -142,20 +144,44 @@ const PANEL = BASE + [
   '  letter-spacing:-.03em;color:#5BE3A7}',
   '.stats span{display:block;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9.5px;',
   '  letter-spacing:.11em;text-transform:uppercase;color:#66717F;margin-top:10px}',
-  // ⚠️ Две колонки — ВНУТРИ раздела. Заголовок занимает всю ширину и открывает свой раздел,
-  // поэтому разделы не перемешиваются между собой: это и была ошибка колонок.
-  'section{display:grid;gap:14px;margin-bottom:22px}',
-  '@media(min-width:1080px){section{grid-template-columns:1fr 1fr}}',
-  'section>h2,section>blockquote,section>table,section>ul,section>ol{grid-column:1/-1}',
+  // ⚠️ Разделы стали ВКЛАДКАМИ, а не лентой. Причина в жалобе «сделано по остаточному
+  // принципу»: тёмная доска без единого отклика читалась картинкой, а не прибором. Теперь
+  // виден один раздел, переход — мягким подъёмом.
+  '.navrow{display:flex;gap:8px;overflow-x:auto;padding:0 0 18px;scrollbar-width:none}',
+  '.navrow::-webkit-scrollbar{display:none}',
+  '.nav{flex:none;display:flex;align-items:center;gap:9px;background:#151A21;border:1px solid #222932;',
+  '  color:#8A94A3;border-radius:999px;padding:9px 16px;font:inherit;font-size:13px;font-weight:600;',
+  '  cursor:pointer;font-family:inherit;transition:background .18s,color .18s,border-color .18s}',
+  '.nav .k{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;color:#5BE3A7}',
+  '.nav:hover{border-color:#2E3A46;color:#C9D2DD}',
+  '.nav.on{background:#5BE3A7;color:#0D1014;border-color:#5BE3A7}',
+  '.nav.on .k{color:rgba(13,16,20,.6)}',
+  'section{display:none;margin-bottom:22px}',
+  'section.on{display:block;animation:oblako-pane-in .32s cubic-bezier(.16,1,.3,1) both}',
+  '@keyframes oblako-pane-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}',
+  // Абзац — раскрывающаяся карточка. Высоту анимирует сетка, а не скрипт: мерить нечего.
+  '.cardx{background:#151A21;border:1px solid #222932;border-radius:16px;margin-bottom:10px;overflow:hidden}',
+  '.chead{width:100%;display:flex;align-items:center;justify-content:space-between;background:none;',
+  '  border:0;color:#7C8797;font:inherit;font-family:"JetBrains Mono",ui-monospace,monospace;',
+  '  font-size:10px;letter-spacing:.14em;text-transform:uppercase;padding:14px 18px;cursor:pointer}',
+  '.chead i{width:9px;height:9px;border-right:2px solid #5BE3A7;border-bottom:2px solid #5BE3A7;',
+  '  transform:rotate(45deg);transition:transform .25s cubic-bezier(.16,1,.3,1);margin-bottom:3px}',
+  '.cardx.open .chead i{transform:rotate(-135deg);margin-bottom:-3px}',
+  '.cbody{display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s cubic-bezier(.16,1,.3,1)}',
+  '.cardx.open .cbody{grid-template-rows:1fr}',
+  '.cbody>p{overflow:hidden;margin:0;padding:0 18px;max-width:74ch;background:none;border:0}',
+  '.cardx.open .cbody>p{padding:0 18px 16px}',
+  '@media(prefers-reduced-motion:reduce){section.on{animation:none}',
+  '  .cbody,.chead i{transition:none}}',
   'h2{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.17em;',
   '  text-transform:uppercase;color:#66717F;margin:10px 0 -2px;font-weight:500;',
   '  display:flex;align-items:center;gap:14px}',
   'h2::before{counter-increment:sec;content:"[" counter(sec,decimal-leading-zero) "]";color:#5BE3A7}',
   'h2::after{content:"";flex:1;height:1px;background:#222932}',
   'h3{font-size:14px;font-weight:600;color:#D6DCE4;margin:0 0 -4px;grid-column:1/-1}',
-  'section>p{background:#151A21;border:1px solid #222932;border-radius:16px;padding:19px 21px;margin:0;',
-  '  transition:border-color .2s,transform .2s}',
-  'section>p:hover{border-color:#2E3A46;transform:translateY(-2px)}',
+  // Отклик на курсор у числовых плиток: деталь, которая отличает прибор от картинки.
+  '.stats div{transition:transform .18s,border-color .18s}',
+  '.stats div:hover{transform:translateY(-3px);border-color:#2E3A46}',
   'blockquote{margin:4px 0;padding:26px 28px;border-radius:18px;',
   '  background:linear-gradient(135deg,#14302A 0%,#151A21 70%);border:1px solid #24523F;',
   '  font-family:Unbounded,system-ui,sans-serif;font-weight:700;font-size:clamp(16px,1.9vw,23px);',
@@ -179,8 +205,31 @@ const PANEL = BASE + [
 
 // ── Полоса: длинное чтение, висячие номера, вылеты во всю ширину ────────────
 const POLOSA = BASE + [
+  'html{scroll-behavior:smooth}',
   'body{background:#fff;color:#2F343B;font:18.5px/1.76 "Golos Text",system-ui,sans-serif}',
-  'body::before{background:#15181C}',
+  // ⚠️ Полоса чтения теперь на СКРИПТЕ, а не на animation-timeline: та работала только в
+  // свежем Chromium, а файл уезжает человеку с любым браузером.
+  '#read-bar{position:fixed;top:0;left:0;height:3px;width:0;background:#12151A;z-index:9;',
+  '  transition:width .1s linear}',
+  'body::before{display:none}',
+  // Оглавление-компаньон: липкое, с подсветкой текущего раздела. На узком окне его нет —
+  // там место занимает сам текст.
+  '.toc{display:none}',
+  '@media(min-width:1180px){.toc{display:flex;flex-direction:column;gap:2px;position:fixed;',
+  '  left:clamp(14px,3vw,40px);top:96px;width:190px;z-index:4}}',
+  '.toc a{display:flex;gap:10px;font-size:13px;color:#8A929D;text-decoration:none;padding:7px 10px;',
+  '  border-radius:9px;border-left:2px solid transparent;line-height:1.35;',
+  '  transition:color .18s,background .18s,border-color .18s}',
+  '.toc a span{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;opacity:.6;flex:none}',
+  '.toc a:hover{background:#F4F6F8;color:#12151A}',
+  '.toc a.on{color:#12151A;font-weight:600;border-left-color:#12151A;background:#F4F6F8}',
+  '#to-top{position:fixed;right:22px;bottom:22px;width:44px;height:44px;border-radius:50%;',
+  '  border:1px solid #E6E9ED;background:#fff;color:#12151A;cursor:pointer;font-size:17px;',
+  '  box-shadow:0 6px 20px rgba(20,20,40,.14);opacity:0;transform:translateY(10px);',
+  '  transition:opacity .22s,transform .22s;z-index:8}',
+  '#to-top.on{opacity:1;transform:none}',
+  '@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}',
+  '  #read-bar,#to-top,.toc a{transition:none}}',
   // ⚠️ Сетка «мера чтения + вылеты»: обычный блок в центральной колонке, врезка и числа
   // объявляют себя full и выходят на всю ширину окна. Тянется СТРАНИЦА, а не строка — строка
   // длиннее 70 знаков теряется на возврате.
@@ -250,3 +299,12 @@ export const STYLE_CSS: Record<PageStyle, string> = {
   panel: PANEL,
   polosa: POLOSA,
 };
+
+/**
+ * Скрипт стиля — то, что делает страницу сайтом, а не картинкой.
+ *
+ * ⚠️ Пустая строка означает «стилю скрипт не нужен», и у «Издания» он именно такой: там всё
+ * движение уже сделано на CSS (`animation-timeline`), а трогать этот стиль не просили — он
+ * нравится как есть.
+ */
+export const STYLE_JS: Record<PageStyle, string> = STYLE_SCRIPTS;

@@ -224,6 +224,29 @@ export function groupSections(html: string): string {
   return out.join('');
 }
 
+/**
+ * Разбирает готовую разметку на разделы: заголовок и содержимое каждого.
+ *
+ * ⚠️ Нужно стилям, которые из разделов строят НАВИГАЦИЮ: вкладки у «Пульта», оглавление у
+ * «Лонгрида». Заголовки у нас уже есть — второй раз спрашивать их у модели значило бы завести
+ * второй источник правды, который однажды разойдётся с первым.
+ *
+ * ⚠️ Разбор регуляркой, а не DOM: функция чистая и гоняется голым node в проверке, а разметка
+ * здесь СВОЯ — её только что собрал groupSections, и никаких вложенных <section> в ней нет.
+ * Для чужого HTML такой разбор был бы наивным; для собственного он точен.
+ */
+export function splitSections(html: string): { title: string; html: string }[] {
+  const out: { title: string; html: string }[] = [];
+  const re = /<section>([\s\S]*?)<\/section>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const inner = m[1] ?? '';
+    const h = /<h2>([\s\S]*?)<\/h2>/.exec(inner);
+    out.push({ title: (h?.[1] ?? '').trim(), html: inner });
+  }
+  return out;
+}
+
 /** Сколько в разметке текста: по нему решаем, состоялась ли страница вообще. */
 export function markupTextLength(html: string): number {
   return html.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, 'x').replace(/\s+/g, ' ').trim().length;
