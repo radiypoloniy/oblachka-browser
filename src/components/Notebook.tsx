@@ -12,6 +12,7 @@ import { useNotebookColumns } from './notebook/useNotebookColumns';
 import { NotebookEmpty, SourcesEmpty } from './notebook/NotebookEmpty';
 import { GatherSheet } from './notebook/GatherSheet';
 import { NotebookSwitcher } from './notebook/NotebookSwitcher';
+import { PageLengthRow } from './notebook/PageLengthRow';
 import { PageView } from './notebook/PageView';
 import { useGather } from './notebook/useGather';
 import { useStudio, type StudioState } from './notebook/useStudio';
@@ -466,6 +467,9 @@ function StudioPanel({ selectedCount, note, busyKind, pages, onGenerate, onOpenP
           </button>
         ))}
       </div>
+      {/* Объём страницы — рядом с кнопкой, которая его тратит (разбор в PageLengthRow). */}
+      <PageLengthRow />
+
       {/* ⚠️ Готовые страницы стоят ПОД кнопками, а не над: кнопки — то, зачем сюда приходят,
           а список нужен, только когда что-то уже собрано. Пока он пуст, его нет вовсе. */}
       {pages.length > 0 && (

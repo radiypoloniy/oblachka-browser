@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Trash2, AlertTriangle } from 'lucide-react';
-import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode, PageLength } from '../../shared/ipc';
+import type { InstalledModel, CatalogEntry, CatalogModel, DownloadProgress, DeleteModelResult, HardwareSnapshot, ModelLoadMode } from '../../shared/ipc';
 import { CapsLabel, Subsection, OptionList, OptionRow, Segmented, StatusCardSkeleton, btnPrimary, btnGhost, settingsBox,
 } from './settings/kit';
 import { RADIUS } from '../styles/system';
@@ -149,34 +149,6 @@ function LoadModeChooser({ value, onChange }: { value: ModelLoadMode; onChange: 
   );
 }
 
-/**
- * Объём страницы Студии.
- *
- * ⚠️ Подпись говорит про ВРЕМЯ, а не про знаки. Знаки человека не удивят, а три минуты ожидания
- * удивят — платит он именно ими. Числа не выдуманы: 6 000 токенов это 13–15 тысяч знаков, и
- * идут они линейно дольше средней ступени.
- *
- * ⚠️ Стоит здесь, рядом с моделью, а не в блокноте: длина ответа — свойство МОДЕЛИ и её
- * бюджета, и в том же разделе уже живёт «когда загружать». Настройка одного предмета не должна
- * лежать в двух местах.
- */
-function PageLengthChooser({ value, onChange }: { value: PageLength; onChange: (id: PageLength) => void }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-      <CapsLabel style={{ marginBottom: 4 }}>Объём страницы в «Студии»</CapsLabel>
-      <Segmented
-        value={value}
-        onChange={onChange}
-        options={[
-          { id: 'short', label: 'Кратко', hint: 'Около 4 тысяч знаков, полминуты.' },
-          { id: 'normal', label: 'Обычно', hint: 'Около 8 тысяч знаков, минута-полторы.' },
-          { id: 'long', label: 'Подробно', hint: 'До 15 тысяч знаков, две-три минуты.' },
-        ]}
-      />
-    </div>
-  );
-}
-
 // ── Модели: установленные (выбор дефолта, удаление) + каталог для скачивания ──────────────────
 // Первая подсекция AI — без хотя бы одной установленной модели остальной AI (перевод/чат/группировка)
 // не работает, поэтому она наверху (см. AiSection). electron/ здесь не трогается — вся логика уже
@@ -190,7 +162,6 @@ export default function ModelsSection() {
   const [unloading, setUnloading] = useState(false);
   const [hardware, setHardware] = useState<HardwareSnapshot | null>(null);
   const [loadMode, setLoadModeState] = useState<ModelLoadMode | null>(null);
-  const [pageLength, setPageLengthState] = useState<PageLength | null>(null);
   const [rechecking, setRechecking] = useState(false);
 
   // Флаг перехода running true→false — по нему решаем, когда перечитать installed/catalog
@@ -212,7 +183,6 @@ export default function ModelsSection() {
     // после unloadModel() (см. handleUnloadNow), где vramFree заведомо изменился.
     void window.oblako.getHardwareSnapshot().then((s) => { if (mounted) setHardware(s); });
     void window.oblako.getModelLoadMode().then((m) => { if (mounted) setLoadModeState(m); });
-    void window.oblako.getPageLength().then((v) => { if (mounted) setPageLengthState(v); });
     window.oblako.getModelDownloadProgress().then((p) => {
       if (!mounted) return;
       setProgress(p);
@@ -275,10 +245,6 @@ export default function ModelsSection() {
     void window.oblako.setModelLoadMode(mode);
   }
 
-  function handleSetPageLength(v: PageLength) {
-    setPageLengthState(v);   // оптимистично, как и у режима загрузки
-    void window.oblako.setPageLength(v);
-  }
 
   function handleDownload(model: CatalogModel) {
     // fire-and-forget: startModelDownload — send, не invoke. Ошибки придут через progress.error,
@@ -411,7 +377,6 @@ export default function ModelsSection() {
         )}
 
         {loadMode !== null && <LoadModeChooser value={loadMode} onChange={handleSetLoadMode} />}
-        {pageLength !== null && <PageLengthChooser value={pageLength} onChange={handleSetPageLength} />}
       </div>
 
       {/* ── Группа B: доступные для загрузки ── */}

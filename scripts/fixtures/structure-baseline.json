@@ -102,10 +102,10 @@
     "ipc": 3
   },
   "src/components/ModelsSection.tsx": {
-    "lines": 603,
-    "fn": 288,
+    "lines": 568,
+    "fn": 281,
     "effects": 1,
-    "ipc": 22
+    "ipc": 20
   },
   "src/components/Onboarding.tsx": {
     "lines": 652,
