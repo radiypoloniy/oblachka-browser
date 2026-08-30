@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import type { TabState, SidebarNode, GroupNode, TabDropResult, DragCard } from '../../../shared/ipc';
@@ -33,6 +33,15 @@ export function useSidebarDrag({
   // Оптимистичный порядок и производные от него списки — в useOptimisticOrder.
   const { tabMap, pinned, effectiveNodes, pinnedIds, openIds, applyOrder, revert: revertLocalOrder }
     = useOptimisticOrder({ tabs, sidebarNodes });
+
+  // ⚠️ Обработчики через ref: эффект подписки живёт всё время жизни сайдбара (пустые
+  // зависимости), а applyZoneDrop замыкает список вкладок, который меняется на каждом рендере.
+  // Без ref сигнал страховки применял бы исход к вкладкам первого рендера — то есть к пустому
+  // списку. Ровно та же ловушка уже стоила работоспособности жеста внутри групп (см. childDragZone).
+  const applyZoneDropRef = useRef<(id: string, r: TabDropResult) => boolean>(() => false);
+  const revertLocalOrderRef = useRef<() => void>(() => {});
+  /** Тот же dragActiveId, но читаемый из обработчика вне рендера. */
+  const dragActiveIdRef = useRef<string | null>(null);
 
   // ID активного drag-элемента (может быть tabId одиночной, left.id пары или
   // 'group:${id}') — САМ id не говорит, какого типа узел: у одиночной и у левой
@@ -71,6 +80,41 @@ export function useSidebarDrag({
     return () => document.body.classList.remove('oblako-dragging-tab');
   }, [dragActiveId]);
 
+  /**
+   * Жест закрыт СТРАХОВКОЙ в main — выходим из перетаскивания сами.
+   *
+   * ⚠️ Ради этого всё и затевалось. Оверлей зон лежит поверх области контента, и когда кнопку
+   * отпускают над страницей, `pointerup` достаётся ЕМУ, а не хрому. Обычно спасает захват мыши
+   * Chromium'ом, но он переживает не всякую перестановку вью — а её мы делаем ровно посреди
+   * жеста. В такой прогон dnd-kit не получал ни pointerup, ни pointercancel и оставался в
+   * состоянии перетаскивания НАВСЕГДА: в сайдбаре залипал курсор руки, а следующее движение
+   * мыши выглядело как «вкладка сама начала тащиться» — это был не новый жест, а тот же,
+   * незакрытый. Три прошлых захода чинили симптомы (прятали окошко зон, гасили зоны в main),
+   * и ни один не трогал причину: renderer о принудительном конце просто не узнавал.
+   *
+   * ⚠️ Синтетический `pointercancel` НА ДОКУМЕНТЕ — не хак, а единственный честный выход:
+   * PointerSensor вешает слушатели именно на ownerDocument и именно на это событие
+   * (node_modules/@dnd-kit/core: events.cancel.name === 'pointercancel'). Своего API «прервать
+   * жест» у dnd-kit нет, а просто обнулить dragActiveId мало: сам dnd-kit остался бы в драге и
+   * при следующем клике выдал бы onDragEnd от ПРОШЛОГО жеста, то есть чужую перестановку.
+   *
+   * ⚠️ Исход применяем ТОТ, что посчитал main. Раньше в этом случае дроп пропадал молча:
+   * человек вёл вкладку в сплит, отпускал — и не происходило ничего.
+   */
+  useEffect(() => window.oblako.onTabDragFinished((res) => {
+    const activeId = dragActiveIdRef.current;
+    if (activeId === null) return;          // жест уже закрылся штатно — сигнал опоздал
+    // ⚠️ Читаем id из ref, а НЕ из апдейтера setState: внутри апдейтера это был бы побочный
+    // эффект, а React вправе прогнать апдейтер дважды (StrictMode) — и pointercancel улетел бы
+    // дважды, второй раз уже в чужой жест.
+    dragActiveIdRef.current = null;
+    document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }));
+    setDragActiveId(null);
+    // Перестановки в сайдбаре в этом пути не было (planReorder не отрабатывал), но откат
+    // безвреден и оставлен ради симметрии с handleDragEnd — правда о порядке одна.
+    if (applyZoneDropRef.current(activeId, res)) revertLocalOrderRef.current();
+  }), []);
+
   // PointerSensor с минимальным расстоянием активации: клики не превращаются в drag.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -93,7 +137,7 @@ export function useSidebarDrag({
   // обработчиков и ни в один список зависимостей не входит.
   const childDragZone: ChildDragZone = {
     start: (id: string) => { void window.oblako.tabDragStart(dragCardFor(id)); },
-    finish: (e: DragEndEvent) => finishDrag().then((res) => applyZoneDrop(e, res)),
+    finish: (e: DragEndEvent) => finishDrag().then((res) => applyZoneDrop(e.active.id as string, res)),
     // Отмена (Esc, потеря указателя): зоны надо погасить, но исход не применять.
     cancel: () => { void window.oblako.tabDragEnd().catch(() => {}); },
   };
@@ -113,6 +157,7 @@ export function useSidebarDrag({
 
   const handleDragStart = (e: DragStartEvent) => {
     const id = e.active.id as string;
+    dragActiveIdRef.current = id;
     setDragActiveId(id);
     // Зоны дропа поверх страницы и слежение за курсором — на стороне main: нативная вью страницы
     // и рисовать поверх себя не даёт, и указатель у чрома забирает (см. DropZoneManager.ts).
@@ -127,6 +172,7 @@ export function useSidebarDrag({
   // Хвост любого драга: убрать зоны и вернуть последнюю — main считает её по реальному курсору.
   // Зовётся и в конце, и в ОТМЕНЕ (Esc, потеря указателя), иначе зоны остались бы висеть.
   const finishDrag = (): Promise<TabDropResult> => {
+    dragActiveIdRef.current = null;
     setDragActiveId(null);
     return window.oblako.tabDragEnd().catch(() => ({ zone: null }));
   };
@@ -145,58 +191,24 @@ export function useSidebarDrag({
   // по-прежнему только после ответа о зоне, а если зона оказалась не сайдбаром — порядок
   // откатывается тем же кадром, в котором пришёл ответ.
   const handleDragEnd = (e: DragEndEvent) => {
+    // ⚠️ Жест мог быть уже закрыт страховкой (см. onTabDragFinished). Тогда это ОПОЗДАВШЕЕ
+    // событие того же перетаскивания, и применять по нему перестановку нельзя: исход уже
+    // применён, а второй раз он лёг бы поверх — человек увидел бы, что вкладка уехала не туда.
+    if (dragActiveIdRef.current === null) return;
     const commit = planReorder(e, { pinnedIds, openIds, applyOrder, onReorder, onMoveSection });
     void (async () => {
       const drop = await finishDrag();
-      if (applyZoneDrop(e, drop)) { revertLocalOrder(); return; }
+      if (applyZoneDrop(e.active.id as string, drop)) { revertLocalOrder(); return; }
       commit?.();
     })();
   };
 
-  /**
-   * Исходы, которые перестановкой в сайдбаре не являются: split, вынос в новое окно, передача
-   * в соседнее. Возвращает true, если дроп забрала зона, — тогда локальный порядок откатывается.
-   */
-  const applyZoneDrop = (e: DragEndEvent, { zone, windowId, side, replaceId }: TabDropResult): boolean => {
-    const draggedId = e.active.id as string;
-    const draggedTab = draggedId.startsWith('group:') ? undefined : tabs.find((t) => t.id === draggedId);
-    // Группу и участника split не выносим: у первой нет одной страницы, второй увёл бы за собой
-    // половину пары. Хаб — не страница вовсе.
-    const canDetach = !!draggedTab && !draggedTab.isHub && draggedTab.splitSide === null;
+  const applyZoneDrop = (id: string, res: TabDropResult): boolean =>
+    zoneDrop(id, res, { tabs, onDropOnContent });
 
-    // Середина страницы (и всё, что вне окна) — «новое окно». Это и есть ответ на развёрнутое во
-    // весь экран окно: выйти за его край там некуда, поэтому жест не должен зависеть от границы.
-    if (zone === 'window' && canDetach) {
-      void window.oblako.moveTabToNewWindow(draggedId);
-      return true;
-    }
-    // Отпустили над ДРУГИМ окном Oblako — вкладка переезжает в него. Это обратный жест к
-    // выносу: вытащенное по ошибке окно возвращается перетаскиванием, а не только закрытием.
-    if (zone === 'adopt' && windowId !== undefined && canDetach) {
-      void window.oblako.moveTabToWindow(draggedId, windowId);
-      return true;
-    }
-    // Отпустили над панелью уже открытого сплита — вкладка занимает её место, выселенная
-    // возвращается в список. Ту же проверку, что и у split ниже: группу и половину чужой пары
-    // на панель не кладём.
-    if (zone === 'replace' && replaceId) {
-      if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
-        void window.oblako.replaceSplitPanel(replaceId, draggedId);
-      }
-      return true;
-    }
-    // Дроп в контент-зону → split вместо reorder. Сторону считает main по реальному курсору
-    // (см. TabDropResult.side) — вкладка встаёт туда, куда её вели, а не всегда справа.
-    // Группы в split не входят — проверяем только обычные вкладки.
-    if (zone === 'split') {
-      if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
-        onDropOnContent(draggedId, side);
-      }
-      return true;
-    }
-    return false;
-  };
 
+  applyZoneDropRef.current = applyZoneDrop;
+  revertLocalOrderRef.current = revertLocalOrder;
 
   return {
     tabMap, pinned, effectiveNodes, pinnedIds, openIds,
@@ -286,4 +298,52 @@ const { pinnedIds, openIds, applyOrder, onReorder, onMoveSection } = ctx;
   const newOrder = arrayMove(openIds, oldIdx, newIdx);
   applyOrder({ open: newOrder });
   return () => onReorder('normal', newOrder);
+}
+
+/**
+ * Исходы, которые перестановкой в сайдбаре не являются: split, вынос в новое окно, передача
+ * в соседнее. Возвращает true, если дроп забрала зона, — тогда локальный порядок откатывается.
+ */
+function zoneDrop(
+draggedId: string,
+{ zone, windowId, side, replaceId }: TabDropResult,
+ctx: { tabs: TabState[]; onDropOnContent: (tabId: string, side?: 'left' | 'right') => void },
+): boolean {
+const { tabs, onDropOnContent } = ctx;
+  const draggedTab = draggedId.startsWith('group:') ? undefined : tabs.find((t) => t.id === draggedId);
+  // Группу и участника split не выносим: у первой нет одной страницы, второй увёл бы за собой
+  // половину пары. Хаб — не страница вовсе.
+  const canDetach = !!draggedTab && !draggedTab.isHub && draggedTab.splitSide === null;
+
+  // Середина страницы (и всё, что вне окна) — «новое окно». Это и есть ответ на развёрнутое во
+  // весь экран окно: выйти за его край там некуда, поэтому жест не должен зависеть от границы.
+  if (zone === 'window' && canDetach) {
+    void window.oblako.moveTabToNewWindow(draggedId);
+    return true;
+  }
+  // Отпустили над ДРУГИМ окном Oblako — вкладка переезжает в него. Это обратный жест к
+  // выносу: вытащенное по ошибке окно возвращается перетаскиванием, а не только закрытием.
+  if (zone === 'adopt' && windowId !== undefined && canDetach) {
+    void window.oblako.moveTabToWindow(draggedId, windowId);
+    return true;
+  }
+  // Отпустили над панелью уже открытого сплита — вкладка занимает её место, выселенная
+  // возвращается в список. Ту же проверку, что и у split ниже: группу и половину чужой пары
+  // на панель не кладём.
+  if (zone === 'replace' && replaceId) {
+    if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
+      void window.oblako.replaceSplitPanel(replaceId, draggedId);
+    }
+    return true;
+  }
+  // Дроп в контент-зону → split вместо reorder. Сторону считает main по реальному курсору
+  // (см. TabDropResult.side) — вкладка встаёт туда, куда её вели, а не всегда справа.
+  // Группы в split не входят — проверяем только обычные вкладки.
+  if (zone === 'split') {
+    if (draggedTab && !draggedTab.isHub && !draggedTab.isPinned && draggedTab.splitSide === null) {
+      onDropOnContent(draggedId, side);
+    }
+    return true;
+  }
+  return false;
 }

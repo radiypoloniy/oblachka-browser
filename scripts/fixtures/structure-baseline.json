@@ -42,7 +42,7 @@
     "ipc": 0
   },
   "electron/preload.ts": {
-    "lines": 847,
+    "lines": 853,
     "fn": 6,
     "effects": 0,
     "ipc": 0
@@ -54,13 +54,13 @@
     "ipc": 0
   },
   "shared/ipc/api.ts": {
-    "lines": 702,
+    "lines": 704,
     "fn": 0,
     "effects": 0,
     "ipc": 0
   },
   "shared/ipc/channels.ts": {
-    "lines": 796,
+    "lines": 799,
     "fn": 0,
     "effects": 0,
     "ipc": 0

@@ -105,6 +105,8 @@ export interface OblakoApi {
   // когда курсор ушёл на страницу: там карточку ведёт оверлей, и две вещи разом читались бы как
   // сбой. null — курсор над чромом (сайдбар/тулбар), призрак рисует чром.
   onTabDragZone(cb: (zone: TabDropZone | null) => void): () => void;
+  /** Жест закрыт страховкой в main (pointerup не доехал до хрома) — вот его исход. */
+  onTabDragFinished(cb: (res: TabDropResult) => void): () => void;
   // Сигнал «оболочка отрисована» — main показывает скрытое до этого окно (см. IPC.CHROME_UI_READY).
   chromeUiReady(): void;
   /**

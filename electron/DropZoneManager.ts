@@ -114,13 +114,30 @@ const NEW_PRESS_MS = 300;
 // сигнала выше прошли мимо, и об этом надо узнать из лога, а не от пользователя.
 const MAX_DRAG_MS = 60_000;
 
-// Отсчёт «жест обязан закрыться сам». Повторные вызовы игнорируются: первый сигнал и решает.
-function armFinish(reason: string): void {
+/**
+ * Отсчёт «жест обязан закрыться сам». Повторные вызовы игнорируются: первый сигнал и решает.
+ *
+ * ⚠️ dropped — отпустили ли кнопку. Разница принципиальна: при mouseUp человек СДЕЛАЛ выбор, и
+ * если renderer его не забрал, забрать обязаны мы — иначе дроп исчезает без следа. При потере
+ * фокуса или потолке длительности выбора не было, и исход обязан быть пустым.
+ *
+ * ⚠️ И в том, и в другом случае хрому УХОДИТ СООБЩЕНИЕ. Раньше страховка гасила зоны молча, а
+ * renderer об этом не узнавал — dnd-kit оставался в состоянии перетаскивания навсегда. Снаружи
+ * это выглядело как «в сайдбаре залип курсор руки» и «вкладка иногда сама начинает тащиться»:
+ * второе — не новый жест, а продолжение того же, незакрытого.
+ */
+function armFinish(reason: string, dropped: boolean): void {
   if (!drag || drag.finishTimer) return;
   drag.finishTimer = setTimeout(() => {
     if (!drag) return;
-    console.warn(`[dropzones] жест не закрылся сам (${reason}) — гашу зоны страховкой`);
-    stopDrag(`страховка: ${reason}`);
+    console.warn(`[dropzones] жест не закрылся сам (${reason}) — закрываю страховкой`);
+    const chrome = contextForWindow(drag.source.win)?.chromeView;
+    const result: TabDropResult = dropped ? resolveDrop() : { zone: null };
+    // resolveDrop уже мог погасить жест (он зовёт stopDrag) — второй вызов ниже безвреден.
+    if (drag) stopDrag(`страховка: ${reason}`);
+    if (chrome && !chrome.webContents.isDestroyed()) {
+      chrome.webContents.send(IPC.TAB_DRAG_FINISHED, result);
+    }
   }, FINISH_GRACE_MS);
 }
 
@@ -134,9 +151,9 @@ function watchInput(st: WindowDropZones | null): void {
     drag.watched.add(wc.id);
     const onInput = (_e: Electron.Event, input: Electron.InputEvent): void => {
       if (!drag) return;
-      if (input.type === 'mouseUp') armFinish('отпустили кнопку мыши');
+      if (input.type === 'mouseUp') armFinish('отпустили кнопку мыши', true);
       else if (input.type === 'mouseDown' && Date.now() - drag.startedAt > NEW_PRESS_MS) {
-        armFinish('новое нажатие мыши');
+        armFinish('новое нажатие мыши', false);
       }
     };
     wc.on('input-event', onInput);
@@ -437,7 +454,13 @@ function updateDrag(): void {
   // перетаскивание столько не длится — значит это залипший жест, и лучше погасить его самим.
   if (Date.now() - drag.startedAt > MAX_DRAG_MS) {
     console.warn('[dropzones] жест идёт дольше потолка — гашу зоны страховкой');
+    // ⚠️ Хрому сообщаем и отсюда: без этого renderer остался бы в перетаскивании, а зоны бы
+    // погасли — то самое состояние «курсор руки залип», ради которого всё и переписано.
+    const chrome = contextForWindow(drag.source.win)?.chromeView;
     stopDrag('страховка: потолок длительности');
+    if (chrome && !chrome.webContents.isDestroyed()) {
+      chrome.webContents.send(IPC.TAB_DRAG_FINISHED, { zone: null } satisfies TabDropResult);
+    }
     return;
   }
   const inSource = !!cursorInWindow(drag.source);
@@ -537,7 +560,7 @@ export function startTabDrag(win: BrowserWindow, card: DragCard | null = null): 
   watchInput(st);
   // Alt+Tab или Win+D посреди жеста: отпускания мыши мы уже не увидим — оно достанется чужому
   // приложению. Окно, потерявшее фокус, — достаточное доказательство, что жест кончился.
-  const onBlur = (): void => armFinish('окно потеряло фокус');
+  const onBlur = (): void => armFinish('окно потеряло фокус', false);
   win.on('blur', onBlur);
   drag.offInput.push(() => { if (!win.isDestroyed()) win.off('blur', onBlur); });
   // См. setSwapHint: вью общая на все жесты, и остатки прошлого надо обнулить до первого тика.
@@ -557,6 +580,20 @@ export function endTabDrag(win: BrowserWindow): TabDropResult {
     console.warn(`[dropzones] endTabDrag от окна ${win.id}, а жест начало окно ${drag.source.win.id}`);
   }
   if (!drag || drag.source.win.id !== win.id) return { zone: null };
+  return resolveDrop();
+}
+
+/**
+ * Куда попали, где бы renderer об этом ни спросил.
+ *
+ * ⚠️ Вынесено отдельной функцией не ради красоты: ровно тот же расчёт нужен СТРАХОВКЕ. Раньше
+ * страховка умела только погасить зоны — то есть в случае, когда pointerup не доехал до хрома,
+ * дроп молча пропадал, а renderer оставался в состоянии перетаскивания навсегда. Считать исход
+ * во втором месте по второй копии кода означало бы завести две разные правды о том, куда
+ * человек отпустил вкладку.
+ */
+function resolveDrop(): TabDropResult {
+  if (!drag) return { zone: null };
   // Пересчитываем на месте: последний тик мог быть до 30 мс назад, а решает именно точка отпускания.
   updateDrag();
   const zone = toAction(drag.zone);

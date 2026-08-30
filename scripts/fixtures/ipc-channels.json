@@ -343,6 +343,7 @@
   "TAB_CREATE_INCOGNITO=tab:create-incognito",
   "TAB_CREATE_SPECIAL=tab:create-special",
   "TAB_DRAG_END=tab:drag-end",
+  "TAB_DRAG_FINISHED=tab-drag:finished",
   "TAB_DRAG_START=tab:drag-start",
   "TAB_DRAG_ZONE=tab:drag-zone",
   "TAB_ENTER_SPLIT=tab:enter-split",

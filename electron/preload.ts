@@ -82,6 +82,12 @@ const api: OblakoApi = {
     ipcRenderer.on(IPC.TAB_DRAG_ZONE, h);
     return () => ipcRenderer.removeListener(IPC.TAB_DRAG_ZONE, h);
   },
+  // Жест закрыт страховкой в main — renderer обязан выйти из перетаскивания сам.
+  onTabDragFinished: (cb: (res: TabDropResult) => void) => {
+    const handler = (_e: unknown, res: TabDropResult) => cb(res);
+    ipcRenderer.on(IPC.TAB_DRAG_FINISHED, handler);
+    return () => ipcRenderer.removeListener(IPC.TAB_DRAG_FINISHED, handler);
+  },
   chromeUiReady: () => ipcRenderer.send(IPC.CHROME_UI_READY),
   setChromeModal: (on: boolean) => ipcRenderer.invoke(IPC.CHROME_MODAL, on) as Promise<void>,
 
