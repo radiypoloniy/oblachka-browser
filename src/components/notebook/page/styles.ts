@@ -173,11 +173,12 @@ const PANEL = BASE + [
   '.cardx.open .cbody>p{padding:0 18px 16px}',
   '@media(prefers-reduced-motion:reduce){section.on{animation:none}',
   '  .cbody,.chead i{transition:none}}',
-  'h2{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.17em;',
-  '  text-transform:uppercase;color:#66717F;margin:10px 0 -2px;font-weight:500;',
-  '  display:flex;align-items:center;gap:14px}',
-  'h2::before{counter-increment:sec;content:"[" counter(sec,decimal-leading-zero) "]";color:#5BE3A7}',
-  'h2::after{content:"";flex:1;height:1px;background:#222932}',
+  // ⚠️ Заголовок внутри вкладки — НАСТОЯЩИЙ заголовок, а не моношрифтовая метка. Метка с
+  // номером теперь живёт на кнопке вкладки, и дублировать её тут значило бы сказать одно
+  // дважды. Заодно чинится счётчик: у скрытых разделов (display:none) ::before не создаётся,
+  // counter-increment не срабатывает — номер в заголовке всегда показывал бы «01».
+  'h2{font-family:Unbounded,system-ui,sans-serif;font-weight:700;font-size:clamp(19px,2.2vw,26px);',
+  '  letter-spacing:-.03em;line-height:1.16;color:#F2F5F9;margin:2px 0 16px}',
   'h3{font-size:14px;font-weight:600;color:#D6DCE4;margin:0 0 -4px;grid-column:1/-1}',
   // Отклик на курсор у числовых плиток: деталь, которая отличает прибор от картинки.
   '.stats div{transition:transform .18s,border-color .18s}',
@@ -194,13 +195,17 @@ const PANEL = BASE + [
   'tr:last-child td{border-bottom:none}',
   'td:first-child,th:first-child{color:#66717F;font-family:"JetBrains Mono",ui-monospace,monospace;',
   '  font-size:11px;letter-spacing:.07em;text-transform:uppercase;width:30%}',
-  '.sources{margin-top:26px;padding-top:20px;border-top:1px solid #222932;display:grid;gap:10px;',
-  '  grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}',
-  '.sources h2{grid-column:1/-1;margin:0;color:#66717F}',
-  '.sources h2::before{content:none}.sources h2::after{content:none}',
-  '.sources div{font-size:13px;color:#818C9B}',
-  '.sources em.src{display:block;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;',
-  '  color:#5BE3A7;margin-top:3px}',
+  // ⚠️ Источники СТРОКАМИ, а не сеткой. Сетка auto-fit разводила их по колонкам разной
+  // высоты, и подвал «ехал»: два названия разной длины давали разный низ. Строка с адресом
+  // справа читается списком и не может разъехаться по построению.
+  '.sources{margin-top:26px;padding-top:18px;border-top:1px solid #222932}',
+  '.sources h2{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.16em;',
+  '  text-transform:uppercase;color:#66717F;font-weight:500;margin:0 0 12px}',
+  '.sources div{display:flex;align-items:baseline;gap:14px;font-size:13.5px;color:#A8B1BE;',
+  '  padding:9px 0;border-bottom:1px solid #1B212A}',
+  '.sources div:last-child{border-bottom:none}',
+  '.sources em.src{margin-left:auto;flex:none;font-family:"JetBrains Mono",ui-monospace,monospace;',
+  '  font-size:11.5px;color:#5BE3A7}',
 ].join('');
 
 // ── Полоса: длинное чтение, висячие номера, вылеты во всю ширину ────────────

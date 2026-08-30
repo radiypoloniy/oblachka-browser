@@ -36,7 +36,14 @@ navs.forEach(function (b) {
 const POLOSA_JS = `
 var bar = document.getElementById('read-bar');
 var up = document.getElementById('to-top');
-var secs = [].slice.call(document.querySelectorAll('section'));
+// ⚠️ Меряем ЗАГОЛОВКИ, а не разделы, и это не стилистика. В «Лонгриде» раздел объявлен
+// display:contents — он раскрывается в сетку страницы и СВОЕЙ КОРОБКИ НЕ ИМЕЕТ, поэтому
+// getBoundingClientRect() возвращает у него сплошные нули. Условие «верх выше 40 % экрана»
+// выполнялось тогда для ВСЕХ разделов сразу, и текущим всегда оказывался последний — что и
+// было видно: стоишь в начале, подсвечен конец.
+var secs = [].slice.call(document.querySelectorAll('section')).map(function (s) {
+  return s.querySelector('h2') || s;
+});
 var links = [].slice.call(document.querySelectorAll('.toc a'));
 function tick() {
   var h = document.body.scrollHeight - window.innerHeight;
