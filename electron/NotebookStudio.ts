@@ -1,13 +1,19 @@
 import { runChatMessage } from './TranslationService';
 import { beginActivity } from './AiActivity';
 import { buildDocument, type DocSource } from './NotebookDocument';
+import { buildPage } from './NotebookPage';
 
 // Генерация материалов «Студии» блокнота по тексту выбранных источников. Модель локальная —
 // её задача выдать СТРУКТУРУ/ТЕКСТ (саммари в Markdown; далее — markdown-аутлайн для майндкарты,
 // JSON для инфографики и теста), «красоту» детерминированно рисует renderer.
 // Одноразовый прогон (без истории чата): runChatMessage(prompt, []).
 
-export type StudioKind = 'summary' | 'mindmap' | 'infographic' | 'quiz' | 'document';
+// ⚠️ 'document' и 'page' — ДВА ПУТИ К ОДНОМУ РЕЗУЛЬТАТУ, и они живут рядом намеренно.
+// document: модель отдаёт структуру, вёрстку делаем мы (исторический путь проекта).
+// page: модель пишет тело разметкой, стили делаем мы (см. shared/docMarkup.ts — почему).
+// Структурный путь провалился трижды на живых прогонах, разметочный ещё не проверен. Удалить
+// проигравший — дело одного захода; удалять до проверки значило бы гадать.
+export type StudioKind = 'summary' | 'mindmap' | 'infographic' | 'quiz' | 'document' | 'page';
 
 // Промпт на тип. null — тип ещё не реализован (появится своим заходом).
 function buildPrompt(kind: StudioKind, context: string): string | null {
@@ -185,6 +191,13 @@ export async function generateStudio(
     if (!res.ok) return { ok: false, error: res.error };
     console.log(`[Notebook] документ собран: блоков=${res.doc.blocks.length}`);
     return { ok: true, text: JSON.stringify(res.doc) };
+  }
+  if (kind === 'page') {
+    const act = beginActivity('Пишу страницу');
+    const res = await buildPage(context, sources ?? [], act, (n) => onProgress?.(n));
+    act.done();
+    if (!res.ok) return { ok: false, error: res.error };
+    return { ok: true, text: JSON.stringify(res.page) };
   }
   const comparison = kind === 'infographic' && !!items && items.length > 1;
   const prompt = comparison ? buildComparisonPrompt(items!) : buildPrompt(kind, context);
