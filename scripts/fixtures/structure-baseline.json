@@ -90,9 +90,9 @@
     "ipc": 6
   },
   "src/components/Hub.tsx": {
-    "lines": 542,
-    "fn": 337,
-    "effects": 4,
+    "lines": 547,
+    "fn": 342,
+    "effects": 5,
     "ipc": 13
   },
   "src/components/ImportDialog.tsx": {

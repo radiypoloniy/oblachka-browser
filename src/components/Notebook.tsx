@@ -11,13 +11,14 @@ import { SectionHeader, toneVars, CapsLabel, btnTone, btnGhost } from './setting
 import { useNotebookColumns } from './notebook/useNotebookColumns';
 import { NotebookEmpty, SourcesEmpty } from './notebook/NotebookEmpty';
 import { GatherSheet } from './notebook/GatherSheet';
+import { NotebookSwitcher } from './notebook/NotebookSwitcher';
 import { PageView } from './notebook/PageView';
 import { useGather } from './notebook/useGather';
 import { useStudio, type StudioState } from './notebook/useStudio';
 import { markdownComponents } from './aiMarkdown';
 import {
   loadSources, saveSources, sourceFromInput, sourceFromFile, loadSelectedIds, saveSelectedIds,
-  subscribeNotebook, getSelectedSourceContext, type NotebookSource,
+  subscribeNotebook, subscribeNotebookSwitch, getSelectedSourceContext, type NotebookSource,
 } from '../newtab/notebook';
 
 // Большой AI-экран как «блокнот» (NotebookLM-подобный): 3 колонки — Источники / Чат / Студия.
@@ -70,6 +71,15 @@ export default function Notebook({ children, onBack }: NotebookProps) {
 
   // Внешние изменения стора (напр. из другой вкладки) — перечитываем.
   useEffect(() => subscribeNotebook(() => setSources(loadSources())), []);
+  // ⚠️ При смене блокнота перечитываем И ВЫБОР тоже. Источники обновились бы и без этого
+  // (подписка выше), а выбор остался бы от прежнего блокнота — то есть галочки стояли бы на
+  // чужих id, и Студия собирала бы материал из пустоты.
+  useEffect(() => subscribeNotebookSwitch(() => {
+    setSources(loadSources());
+    const ids = loadSelectedIds();
+    setSelected(new Set(ids ?? loadSources().map((s) => s.id)));
+    setAdding(null);
+  }), []);
 
   const persist = (list: NotebookSource[]) => { setSources(list); saveSources(list); };
   const persistSelected = (next: Set<string>) => { setSelected(next); saveSelectedIds([...next]); };
@@ -333,7 +343,7 @@ function SourcesPanel({ sources, selected, adding, onAddingChange, onAdd, onAddF
   const submit = () => { if (value.trim()) { onAdd(value); setValue(''); onAddingChange(null); } };
 
   return (
-    <Panel title="Источники" onBack={onBack} action={<>
+    <Panel titleNode={<NotebookSwitcher />} onBack={onBack} action={<>
       {/* Скрепка отдельной кнопкой, а не пунктом меню: выбор файла — самостоятельное действие,
           и прятать его за раскрытием формы значило бы сделать его на клик дальше остальных. */}
       <IconButton title="Добавить документы с диска" onClick={onAddFiles}><Paperclip size={15} /></IconButton>
@@ -462,8 +472,11 @@ function StudioPanel({ selectedCount, note, busyKind, onGenerate }: {
 }
 
 // ── Общая рамка-панель ──────────────────────────────────────────────────────────
-function Panel({ title, action, onBack, children }: {
-  title: string; action?: ReactNode; onBack?: () => void; children: ReactNode;
+function Panel({ title, titleNode, action, onBack, children }: {
+  title?: string;
+  /** Заголовок компонентом — у колонки источников там переключатель блокнотов. */
+  titleNode?: ReactNode;
+  action?: ReactNode; onBack?: () => void; children: ReactNode;
 }) {
   return (
     <div style={{
@@ -475,7 +488,9 @@ function Panel({ title, action, onBack, children }: {
         borderBottom: '1px solid var(--divider)', flex: 'none',
       }}>
         {onBack && <button onClick={onBack} title="Назад" style={xBtn}><ArrowLeft size={16} /></button>}
-        <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--text-strong)' }}>{title}</span>
+        {titleNode ?? (
+          <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--text-strong)' }}>{title}</span>
+        )}
         {action}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: pad(3, 4) }}>{children}</div>

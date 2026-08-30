@@ -12,7 +12,7 @@ import { glassPlate } from '../styles/island';
 import DesktopScreen from './desktop/DesktopScreen';
 import Notebook from './Notebook';
 import GraphCanvas from './GraphCanvas';
-import { getSelectedSourceContext } from '../newtab/notebook';
+import { getSelectedSourceContext, subscribeNotebookSwitch } from '../newtab/notebook';
 
 interface HubProps {
   tabId: string;
@@ -245,6 +245,11 @@ function AiChatView({ tabId, onModeChange, onOpenSettings }: {
     setError(null);
     textareaRef.current?.focus();
   };
+
+  // ⚠️ Смена блокнота ОБЯЗАНА начинать новую беседу. Иначе ответы по прошлой теме остаются
+  // висеть под новыми источниками и читаются как ответы по ним — а это худший вид вранья,
+  // потому что выглядит правдоподобно (см. src/newtab/notebook.ts::subscribeNotebookSwitch).
+  useEffect(() => subscribeNotebookSwitch(() => { newChat(); }), []);
 
   const openSession = (id: number) => {
     if (streaming || id === sessionId) return;
