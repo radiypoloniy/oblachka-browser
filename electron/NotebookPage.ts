@@ -1,13 +1,14 @@
 import { runTabOrganizePrompt } from './TranslationService';
 import { sanitizeDocHtml, groupSections, markupTextLength, PAGE_MIN_CHARS, type PageSpec } from '../shared/docMarkup';
 import type { ActivityHandle } from './AiActivity';
-import type { DocSource } from './NotebookDocument';
+/** Источник документа: имя и адрес. Подставляем МЫ — у модели их не спрашиваем. */
+export interface DocSource { title: string; url: string }
 
 // Страница: модель пишет ТЕЛО РАЗМЕТКОЙ, стили пишем мы.
 //
-// ⚠️ Это второй, принципиально другой путь рядом с NotebookDocument.ts, а не замена ему. Пока не
-// проверено на живых источниках, кто из них лучше, оба живут рядом кнопками в Студии. Проиграет
-// один — второй удаляется целиком; сейчас удалять что-либо значило бы гадать.
+// ⚠️ Это ЕДИНСТВЕННЫЙ путь. Структурный (модель отдаёт блоки под грамматикой, вёрстку делаем мы)
+// проверялся трижды и удалён 30.08: на живых прогонах он давал пустые заголовки без единого
+// абзаца. Заводить его заново не надо — разбор причины в shared/docMarkup.ts.
 //
 // ⚠️ Ключевое отличие: ЗДЕСЬ НЕТ ГРАММАТИКИ на основном прогоне, и это не небрежность. Разбор
 // трёх провалов структурного пути — в шапке shared/docMarkup.ts: под грамматикой модель пишет
@@ -52,7 +53,7 @@ const CONTEXT_MAX = 18_000;
 
 const clean = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 
-/** Те же числа, что и в NotebookDocument: не «любые цифры», а похожее на измерение. */
+/** Не «любые цифры»: год и номер дома есть везде, и по ним модель охотно сочиняет показатели. */
 function hasNumbers(context: string): boolean {
   return /\d[\d\s.,]*\s*(%|млн|млрд|тыс|тысяч|миллион|миллиард|₽|\$|€|раз|человек|компан)/i.test(context);
 }

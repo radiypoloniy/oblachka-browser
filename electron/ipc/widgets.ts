@@ -18,7 +18,7 @@ import { getPhotoOfDay, shufflePhoto } from '../NewTabPhoto';
 import { extractUrlText } from '../NotebookExtract';
 import { extractFileText, SUPPORTED_FILE_EXTENSIONS } from '../FileExtract';
 import { generateStudio } from '../NotebookStudio';
-import type { DocSource } from '../NotebookDocument';
+import type { DocSource } from '../NotebookPage';
 import { cancelActivity, getActivity } from '../AiActivity';
 import { suggestQueries, runSearch } from '../NotebookGather';
 import type { StudioKind } from '../NotebookStudio';

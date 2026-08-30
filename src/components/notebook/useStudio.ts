@@ -30,7 +30,7 @@ export function useStudio(labelOf: (k: StudioKind) => string) {
     context: string | null,
     // ⚠️ Список источников уходит в main ГОТОВЫМ, а не восстанавливается моделью из текста:
     // подвал документа — единственное место, где выдумка выглядит как факт (см.
-    // electron/NotebookDocument.ts).
+    // electron/NotebookPage.ts).
     sources: { title: string; url: string }[] = [],
   ): Promise<void> {
     const label = labelOf(kind);

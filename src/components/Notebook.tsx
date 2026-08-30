@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   FileText, Plus, X, ArrowLeft, Sparkles, Network, BarChart3, ListChecks, Link2, AlignLeft,
-  Loader2, RotateCw, FileDown, Paperclip, ExternalLink, Newspaper,
+  Loader2, RotateCw, Paperclip, ExternalLink, Newspaper,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { InfographicView, MindmapView, QuizView } from './studioViews';
@@ -11,7 +11,6 @@ import { SectionHeader, toneVars, CapsLabel, btnTone, btnGhost } from './setting
 import { useNotebookColumns } from './notebook/useNotebookColumns';
 import { NotebookEmpty, SourcesEmpty } from './notebook/NotebookEmpty';
 import { GatherSheet } from './notebook/GatherSheet';
-import { DocumentView } from './notebook/DocumentView';
 import { PageView } from './notebook/PageView';
 import { useGather } from './notebook/useGather';
 import { useStudio, type StudioState } from './notebook/useStudio';
@@ -41,19 +40,15 @@ interface NotebookProps {
   onBack: () => void;    // назад к минимал-вкладке (mode 'tiles')
 }
 
-export type StudioKind = 'summary' | 'mindmap' | 'infographic' | 'quiz' | 'document' | 'page';
+export type StudioKind = 'summary' | 'mindmap' | 'infographic' | 'quiz' | 'page';
 const STUDIO: { kind: StudioKind; label: string; Icon: typeof FileText; hint: string }[] = [
   { kind: 'summary',     label: 'Саммари',      Icon: FileText,   hint: 'Краткий пересказ по источникам' },
   { kind: 'mindmap',     label: 'Майндкарта',   Icon: Network,    hint: 'Ветвистая карта идей' },
   { kind: 'infographic', label: 'Инфографика',  Icon: BarChart3,  hint: 'Визуальная сводка' },
   { kind: 'quiz',        label: 'Тест',         Icon: ListChecks, hint: 'Вопросы по мотивам' },
-  // ⚠️ Документ — пятый артефакт, а не новая машинерия: та же generateStudio, тот же канал,
-  // тот же контейнер модалки. Модель выбирает блоки из закрытого каталога и наполняет их
-  // текстом, вёрстку делает DocumentView (разбор — shared/notebookDoc.ts).
-  { kind: 'document',    label: 'Документ',     Icon: FileDown,   hint: 'Структура блоками, вёрстка наша' },
-  // ⚠️ Второй путь к тому же результату — модель пишет тело разметкой (разбор в
-  // shared/docMarkup.ts). Стоит рядом с «Документом», пока не проверено, кто из них лучше.
-  { kind: 'page',        label: 'Страница',     Icon: Newspaper,  hint: 'Статью пишет модель, стили наши' },
+  // ⚠️ Страница — пятый артефакт, а не новая машинерия: та же generateStudio, тот же канал,
+  // тот же контейнер модалки. Модель пишет тело разметкой, стили наши (shared/docMarkup.ts).
+  { kind: 'page',        label: 'Страница',     Icon: Newspaper,  hint: 'Статья по источникам, три стиля' },
 ];
 
 export default function Notebook({ children, onBack }: NotebookProps) {
@@ -269,10 +264,9 @@ function StudioResultModal({ state, chars, onClose, onStop }: {
 }) {
   const isMindmap = state.kind === 'mindmap';
   const isInfographic = state.kind === 'infographic';
-  const isDocument = state.kind === 'document';
   const isPage = state.kind === 'page';
-  // Документу простор нужен по той же причине, что карте: это страница, а не заметка.
-  const wide = isMindmap || isInfographic || isDocument || isPage;
+  // Странице простор нужен по той же причине, что карте: это страница, а не заметка.
+  const wide = isMindmap || isInfographic || isPage;
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, zIndex: 500, background: 'var(--scrim, rgba(0,0,0,0.4))',
@@ -299,8 +293,8 @@ function StudioResultModal({ state, chars, onClose, onStop }: {
                   модель останавливается сама. Полоса прогресса тут была бы враньём, а счётчик
                   честно показывает, что работа идёт. Документ на 5–6 тысяч знаков собирается
                   минутами, и без этого признака жизни окно закрывают раньше времени. */}
-              {isDocument || isPage
-                ? <span>{isPage ? 'Пишу страницу' : 'Собираю документ'}… {chars > 0 && <b style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{chars.toLocaleString('ru-RU')} знаков</b>}</span>
+              {isPage
+                ? <span>Пишу страницу… {chars > 0 && <b style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{chars.toLocaleString('ru-RU')} знаков</b>}</span>
                 : <span>Генерирую по источникам…</span>}
             </div>
           ) : state.error ? (
@@ -309,8 +303,6 @@ function StudioResultModal({ state, chars, onClose, onStop }: {
             <MindmapView markdown={state.text || ''} />
           ) : isInfographic ? (
             <InfographicView syntax={state.text || ''} />
-          ) : isDocument ? (
-            <DocumentView json={state.text || ''} />
           ) : isPage ? (
             <PageView json={state.text || ''} />
           ) : state.kind === 'quiz' ? (

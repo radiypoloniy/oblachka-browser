@@ -1,19 +1,13 @@
 import { runChatMessage } from './TranslationService';
 import { beginActivity } from './AiActivity';
-import { buildDocument, type DocSource } from './NotebookDocument';
-import { buildPage } from './NotebookPage';
+import { buildPage, type DocSource } from './NotebookPage';
 
 // Генерация материалов «Студии» блокнота по тексту выбранных источников. Модель локальная —
 // её задача выдать СТРУКТУРУ/ТЕКСТ (саммари в Markdown; далее — markdown-аутлайн для майндкарты,
 // JSON для инфографики и теста), «красоту» детерминированно рисует renderer.
 // Одноразовый прогон (без истории чата): runChatMessage(prompt, []).
 
-// ⚠️ 'document' и 'page' — ДВА ПУТИ К ОДНОМУ РЕЗУЛЬТАТУ, и они живут рядом намеренно.
-// document: модель отдаёт структуру, вёрстку делаем мы (исторический путь проекта).
-// page: модель пишет тело разметкой, стили делаем мы (см. shared/docMarkup.ts — почему).
-// Структурный путь провалился трижды на живых прогонах, разметочный ещё не проверен. Удалить
-// проигравший — дело одного захода; удалять до проверки значило бы гадать.
-export type StudioKind = 'summary' | 'mindmap' | 'infographic' | 'quiz' | 'document' | 'page';
+export type StudioKind = 'summary' | 'mindmap' | 'infographic' | 'quiz' | 'page';
 
 // Промпт на тип. null — тип ещё не реализован (появится своим заходом).
 function buildPrompt(kind: StudioKind, context: string): string | null {
@@ -165,15 +159,16 @@ function normalizeInfographic(raw: string): string | null {
 // человек ждёт сравнение, а не сводку по одному из них наугад (живой случай: пять карточек
 // смартфонов на входе — и инфографика про батарею одного из них).
 //
-// ⚠️ Документ сюда НЕ входит: он собирается фазами в NotebookDocument.ts. Общей схемы документа
-// (DOC_SCHEMA) больше нет и заводить её обратно не надо — именно одна грамматика на весь
-// документ и позволяла модели отделаться цепочкой пустых заголовков.
+// ⚠️ Страница сюда НЕ входит: она собирается в NotebookPage.ts, и основной прогон там идёт БЕЗ
+// грамматики. Структурный путь к тому же результату (модель отдаёт блоки, вёрстку делаем мы)
+// проверялся трижды и удалён: под грамматикой модель писала не то, что хотела, и на выходе
+// получались пустые заголовки без единого абзаца — разбор в shared/docMarkup.ts.
 export async function generateStudio(
   kind: StudioKind,
   context: string,
   items?: string[],
   // Источники документа берём ГОТОВЫМИ от интерфейса, а не спрашиваем у модели — см. разбор
-  // в NotebookDocument.ts: это единственное место, где выдумка выглядит как факт.
+  // в NotebookPage.ts: это единственное место, где выдумка выглядит как факт.
   sources?: DocSource[],
   // Ход генерации документа: сколько знаков модель уже выдала. Тот же приём, что у сборки
   // виджетов (GenSpecParser.onProgress) — и по той же причине, см. DOC_MAX_TOKENS выше.
@@ -181,17 +176,6 @@ export async function generateStudio(
 ): Promise<{ ok: boolean; text?: string; error?: string }> {
   if (!context || !context.trim()) return { ok: false, error: 'Не выбраны источники с текстом' };
   // ⚠️ Документ идёт мимо общего пути: ему нужна грамматика, а runChatMessage её не принимает.
-  if (kind === 'document') {
-    // ⚠️ Документ собирается ФАЗАМИ, а не одним прогоном (разбор — в NotebookDocument.ts).
-    // Один запрос «собери документ» давал план вместо документа: обложку и семь пустых
-    // заголовков подряд.
-    const act = beginActivity('Собираю документ');
-    const res = await buildDocument(context, sources ?? [], act, (n) => onProgress?.(n));
-    act.done();
-    if (!res.ok) return { ok: false, error: res.error };
-    console.log(`[Notebook] документ собран: блоков=${res.doc.blocks.length}`);
-    return { ok: true, text: JSON.stringify(res.doc) };
-  }
   if (kind === 'page') {
     const act = beginActivity('Пишу страницу');
     const res = await buildPage(context, sources ?? [], act, (n) => onProgress?.(n));

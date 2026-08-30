@@ -82,8 +82,12 @@ const IZDANIE = FONT_FRAUNCES + BASE + [
   // одной строке, а липкость ограничена своим разделом: наехать на соседний заголовок нечему.
   'section{margin-bottom:8px}',
   '@media(min-width:1000px){',
-  '  section{display:grid;grid-template-columns:minmax(180px,230px) minmax(0,68ch);column-gap:56px}',
-  '  section>h2{grid-column:1;grid-row:1/span 99;position:sticky;top:26px;align-self:start;margin-top:0}',
+  '  section{display:grid;grid-template-columns:minmax(200px,270px) minmax(0,68ch);column-gap:64px}',
+  // ⚠️ min-width:0 и перенос по слогам ОБЯЗАТЕЛЬНЫ. Элемент сетки по умолчанию не уже своего
+  // содержимого, и одно длинное слово («Диверсификация» в 32 px — это ~250 px) распирало
+  // колонку и наезжало на текст справа. Живой случай, виден на скриншоте 30.08.
+  '  section>h2{grid-column:1;grid-row:1/span 99;position:sticky;top:26px;align-self:start;margin-top:0;',
+  '    min-width:0;overflow-wrap:break-word;hyphens:auto;font-size:clamp(21px,2vw,27px)}',
   '  section>*:not(h2){grid-column:2}',
   '}',
   'h2{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:clamp(23px,2.5vw,32px);',
@@ -219,9 +223,13 @@ const POLOSA = BASE + [
   'blockquote{grid-column:full;margin:56px 0;padding:clamp(34px,6vw,72px) clamp(16px,6vw,90px);',
   '  background:#12151A;color:#fff;font-family:Unbounded,system-ui,sans-serif;font-weight:700;',
   '  font-size:clamp(19px,2.8vw,34px);line-height:1.28;letter-spacing:-.028em;text-align:center;',
-  '  position:relative;overflow:hidden}',
-  'blockquote::before{content:"\\00AB";position:absolute;left:clamp(8px,3vw,40px);top:-.1em;',
-  '  font-family:Unbounded,system-ui,sans-serif;font-size:clamp(60px,10vw,140px);line-height:1;color:#2A2F37}',
+  '  position:relative;overflow:hidden;isolation:isolate}',
+  // ⚠️ Кавычка — ФОН, а не украшение поверх текста. Позиционированный ::before рисуется НАД текстом
+  // соседнего узла, и на живом прогоне она легла прямо на первую строку. z-index:-1 уводит её под текст,
+  // а isolation выше не даёт ей уйти за сам фон врезки и пропасть вовсе.
+  'blockquote::before{content:"«";position:absolute;z-index:-1;left:clamp(4px,2vw,32px);',
+  '  top:clamp(-18px,-2vw,-6px);font-family:Unbounded,system-ui,sans-serif;',
+  '  font-size:clamp(72px,11vw,160px);line-height:1;color:#1C2129}',
   'ul,ol{margin:0 0 26px;padding-left:0;list-style:none}',
   'li{padding-left:28px;position:relative;margin-bottom:12px}',
   'li:before{content:"";position:absolute;left:2px;top:13px;width:9px;height:9px;border-radius:50%;',
