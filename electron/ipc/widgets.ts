@@ -18,6 +18,7 @@ import { getPhotoOfDay, shufflePhoto } from '../NewTabPhoto';
 import { extractUrlText } from '../NotebookExtract';
 import { extractFileText, SUPPORTED_FILE_EXTENSIONS } from '../FileExtract';
 import { generateStudio } from '../NotebookStudio';
+import { savePageAsPdf } from '../NotebookPdf';
 import type { DocSource } from '../NotebookPage';
 import { cancelActivity, getActivity } from '../AiActivity';
 import { suggestQueries, runSearch } from '../NotebookGather';
@@ -130,6 +131,10 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   });
   ipcMain.handle(IPC.AI_ACTIVITY_GET, () => getActivity());
   ipcMain.handle(IPC.AI_ACTIVITY_CANCEL, () => cancelActivity());
+  ipcMain.handle(IPC.NOTEBOOK_SAVE_PDF, async (e, name: string, html: string) => {
+    const w = winOf(e);
+    return w && typeof html === 'string' ? savePageAsPdf(w, String(name ?? ''), html) : false;
+  });
   ipcMain.handle(IPC.NOTEBOOK_STUDIO_GEN, (e, kind: StudioKind, context: string, sources?: DocSource[]) => {
     const sender = e.sender;
     const list = Array.isArray(sources)

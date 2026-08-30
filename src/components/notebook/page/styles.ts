@@ -20,12 +20,13 @@
 
 import { STYLE_SCRIPTS } from './scripts';
 
-export type PageStyle = 'izdanie' | 'panel' | 'ekran';
+export type PageStyle = 'izdanie' | 'panel' | 'ekran' | 'deck';
 
 export const PAGE_STYLES: { id: PageStyle; label: string; hint: string }[] = [
   { id: 'izdanie', label: 'Издание', hint: 'Бумага: заголовок на поле едет за текстом, буквица, зерно' },
   { id: 'panel',   label: 'Пульт',   hint: 'Разделы вкладками, абзацы раскрываются, тёмная доска' },
   { id: 'ekran',   label: 'Экран',   hint: 'Кино: титры, проявление разделов, счёт чисел' },
+  { id: 'deck',    label: 'Колода',  hint: 'Презентация: слайд на экран, стрелки, и та же раздатка в PDF' },
 ];
 
 const FONT_FRAUNCES = '@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&display=swap");';
@@ -303,10 +304,87 @@ const EKRAN = BASE + [
   '  #ring{transition:none}}',
 ].join('');
 
+// ── Колода: слайд на экран ───────────────────────────────────────────────────
+//
+// ⚠️ Четвёртый стиль — не новая машинерия, а ещё один CSS над ТОЙ ЖЕ разметкой. Слайды это тот
+// же документ, разложенный по экранам: обложка, числа, по слайду на раздел, финальная мысль.
+// Модель про них не знает и знать не должна.
+//
+// ⚠️ scroll-snap, а не перехват колеса. Прокрутка остаётся системной: колесо, тачпад, полоса и
+// клавиши работают как везде. Скролл-джекинг тут был бы соблазнительнее всего — и именно он
+// первым делом раздражает на сайтах-презентациях.
+//
+// ⚠️ Каждый слайд — А4 при печати: то же самое уходит в PDF раздаткой, без второго шаблона.
+const DECK = BASE + [
+  'html,body{height:100%}',
+  'html{scroll-snap-type:y mandatory;overflow-y:auto;scroll-behavior:smooth}',
+  'body{background:#12151A;color:#E7EBF0;font:17px/1.6 "Golos Text",system-ui,sans-serif}',
+  'body::before{display:none}',
+  '.page{display:contents}',
+  // Обложка и каждый раздел — свой экран.
+  '.hero,section,blockquote,.stats,.sources{scroll-snap-align:start;min-height:100vh;',
+  '  display:flex;flex-direction:column;justify-content:center;',
+  '  padding:clamp(28px,6vw,80px);position:relative;border-bottom:1px solid #1E242C}',
+  '.hero .meta{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.18em;',
+  '  text-transform:uppercase;color:#5A6472;margin-bottom:16px}',
+  '.hero .title{font-family:Unbounded,system-ui,sans-serif;font-weight:800;',
+  '  font-size:clamp(28px,6vw,66px);line-height:1;letter-spacing:-.045em;color:#fff;',
+  '  margin:0 0 20px;max-width:18ch}',
+  '.hero .lede{font-size:clamp(15px,2vw,21px);color:#8A94A3;max-width:52ch;margin:0}',
+  '.hero .down{position:absolute;left:clamp(28px,6vw,80px);bottom:clamp(20px,4vw,44px);',
+  '  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.16em;',
+  '  text-transform:uppercase;color:#4A535F}',
+  // Числа — отдельный слайд.
+  '.stats{display:grid;align-content:center;gap:14px;',
+  '  grid-template-columns:repeat(auto-fit,minmax(190px,1fr));min-height:100vh}',
+  '.stats div{background:#171D25;border:1px solid #232B35;border-radius:18px;padding:24px}',
+  '.stats b{display:block;font-family:Unbounded,system-ui,sans-serif;font-weight:800;',
+  '  font-size:clamp(24px,3.4vw,44px);line-height:1;color:#5BE3A7;letter-spacing:-.035em;',
+  '  font-variant-numeric:tabular-nums}',
+  '.stats span{display:block;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9.5px;',
+  '  letter-spacing:.12em;text-transform:uppercase;color:#66717F;margin-top:11px}',
+  '.no{position:absolute;top:clamp(20px,4vw,44px);left:clamp(28px,6vw,80px);',
+  '  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;letter-spacing:.16em;color:#5BE3A7}',
+  'h2{font-family:Unbounded,system-ui,sans-serif;font-weight:700;font-size:clamp(22px,4vw,44px);',
+  '  letter-spacing:-.035em;line-height:1.08;color:#fff;margin:0 0 18px;max-width:20ch}',
+  'h3{font-family:Unbounded,system-ui,sans-serif;font-weight:700;font-size:19px;color:#fff;margin:18px 0 8px}',
+  // ⚠️ На слайде живёт ПЕРВЫЙ абзац; остальные прячем. Слайд с шестью абзацами — это не слайд,
+  // а страница, набранная крупно. Полный текст у человека есть в трёх других стилях.
+  'section p{font-size:clamp(15px,1.7vw,20px);color:#A6AFBC;max-width:56ch;margin:0}',
+  'section p~p{display:none}',
+  'section ul,section ol,section table{display:none}',
+  'blockquote{align-items:center}',
+  'blockquote,blockquote p{font-family:Unbounded,system-ui,sans-serif;font-weight:700;',
+  '  font-size:clamp(19px,3.4vw,40px);line-height:1.24;letter-spacing:-.03em;color:#8FF0C4;max-width:20ch}',
+  'blockquote p{margin:0}',
+  '.sources h2{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.15em;',
+  '  text-transform:uppercase;color:#66717F;font-weight:500;margin:0 0 18px}',
+  '.sources div{display:flex;align-items:baseline;gap:14px;font-size:15px;color:#A6AFBC;',
+  '  padding:10px 0;border-bottom:1px solid #1E242C;max-width:70ch}',
+  '.sources div:last-child{border-bottom:none}',
+  '.sources em.src{margin-left:auto;flex:none;font-family:"JetBrains Mono",ui-monospace,monospace;',
+  '  font-size:12px;color:#5BE3A7}',
+  // Точки справа: где ты в колоде.
+  '#dots{position:fixed;right:18px;top:50%;transform:translateY(-50%);display:flex;',
+  '  flex-direction:column;gap:8px;z-index:5}',
+  '#dots i{width:7px;height:7px;border-radius:50%;background:#2B333D;',
+  '  transition:background .2s,transform .2s}',
+  '#dots i.on{background:#5BE3A7;transform:scale(1.4)}',
+  '#hint{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:5;',
+  '  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.14em;',
+  '  text-transform:uppercase;color:#4A535F}',
+  // Печать: слайд = страница A4, точки и подсказка не нужны.
+  '@media print{html{scroll-snap-type:none}#dots,#hint{display:none}',
+  '  .hero,section,blockquote,.stats,.sources{min-height:auto;height:100vh;',
+  '  break-after:page;border-bottom:none}}',
+  '@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}#dots i{transition:none}}',
+].join('');
+
 export const STYLE_CSS: Record<PageStyle, string> = {
   izdanie: IZDANIE,
   panel: PANEL,
   ekran: EKRAN,
+  deck: DECK,
 };
 
 /**

@@ -173,6 +173,8 @@ export interface CoreApi {
   openNotebookSource(kind: 'url' | 'file', target: string): Promise<boolean>;
   /** Открыть собранный документ новой вкладкой (через временный файл). */
   openStudioDoc(name: string, html: string): Promise<boolean>;
+  /** Та же страница, но напечатанная в PDF (скрытая вью + printToPDF). */
+  savePageAsPdf(name: string, html: string): Promise<boolean>;
   /** Что ИИ делает прямо сейчас, или null. cancel возвращает false, если прерывать было нечего. */
   getAiActivity(): Promise<AiActivityState | null>;
   cancelAiActivity(): Promise<boolean>;

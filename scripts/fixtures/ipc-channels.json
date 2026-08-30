@@ -215,6 +215,7 @@
   "NOTEBOOK_OPEN_SOURCE=notebook:open-source",
   "NOTEBOOK_PICK_FILES=notebook:pick-files",
   "NOTEBOOK_SAVE_DOC=notebook:save-doc",
+  "NOTEBOOK_SAVE_PDF=notebook:save-pdf",
   "NOTEBOOK_SEARCH=notebook:search",
   "NOTEBOOK_STUDIO_GEN=notebook:studio-gen",
   "NOTEBOOK_STUDIO_PROGRESS=notebook:studio-progress",

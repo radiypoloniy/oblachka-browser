@@ -118,8 +118,48 @@ tick();
 if (ring) ring.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
 `;
 
+/**
+ * «Колода»: точки-указатели и листание стрелками.
+ *
+ * ⚠️ Стрелки ДОБАВЛЯЮТ способ листать, а не заменяют прокрутку. Колесо, тачпад и полоса
+ * работают как везде — перехватывать их (скролл-джекинг) здесь соблазнительнее всего, и именно
+ * это первым делом раздражает на сайтах-презентациях.
+ */
+const DECK_JS = `
+var slides = [].slice.call(document.querySelectorAll('.hero, .stats, section, blockquote, .sources'));
+var dots = document.getElementById('dots');
+if (dots) {
+  slides.forEach(function () { dots.appendChild(document.createElement('i')); });
+}
+var marks = dots ? [].slice.call(dots.children) : [];
+var cur = 0;
+
+function sync() {
+  var best = 0, bd = Infinity;
+  slides.forEach(function (s, i) {
+    var d = Math.abs(s.getBoundingClientRect().top);
+    if (d < bd) { bd = d; best = i; }
+  });
+  cur = best;
+  marks.forEach(function (m, i) { m.classList.toggle('on', i === cur); });
+}
+window.addEventListener('scroll', sync, { passive: true });
+window.addEventListener('resize', sync);
+sync();
+
+document.addEventListener('keydown', function (e) {
+  var fwd = e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ';
+  var back = e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp';
+  if (!fwd && !back) return;
+  e.preventDefault();
+  var next = fwd ? Math.min(cur + 1, slides.length - 1) : Math.max(cur - 1, 0);
+  if (next !== cur) slides[next].scrollIntoView({ behavior: 'smooth' });
+});
+`;
+
 export const STYLE_SCRIPTS = {
   izdanie: '',
   panel: PANEL_JS,
   ekran: EKRAN_JS,
+  deck: DECK_JS,
 } as const;

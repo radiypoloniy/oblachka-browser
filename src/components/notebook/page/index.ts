@@ -62,6 +62,24 @@ function bodyFor(page: PageSpec, style: PageStyle): string {
     return `<nav class="navrow">${nav}${all}</nav><div class="body">${panes}</div>`;
   }
 
+  if (style === 'deck') {
+    // ⚠️ Врезка вынимается из раздела, как и в «Экране», и по той же причине: слайдом она может
+    // быть только отдельным блоком верхнего уровня.
+    let n = 0;
+    const body = splitSections(page.html).map((sec) => {
+      n += 1;
+      const quotes: string[] = [];
+      const inner = sec.html.replace(/<blockquote>([\s\S]*?)<\/blockquote>/g, (_m, q: string) => {
+        quotes.push(`<blockquote><p>${q}</p></blockquote>`);
+        return '';
+      });
+      return `<section><span class="no">${String(n).padStart(2, '0')}</span>${inner}</section>`
+        + quotes.join('');
+    }).join('');
+    return `${body || page.html}<div id="dots"></div>`
+      + '<div id="hint">← → или колесо</div>';
+  }
+
   if (style === 'ekran') {
     // ⚠️ Врезка ВЫНИМАЕТСЯ из раздела и ставится сразу за ним. Внутри раздела она не может
     // растянуться во всю ширину: у раздела свои поля, а врезка здесь держит паузу на весь
@@ -99,7 +117,7 @@ function bodyFor(page: PageSpec, style: PageStyle): string {
  * шапка тоже принадлежит стилю, а не общей оболочке: у двух других она остаётся прежней.
  */
 function headerFor(page: PageSpec, style: PageStyle, meta: string): string {
-  if (style === 'ekran') {
+  if (style === 'ekran' || style === 'deck') {
     return '<header class="hero">'
       + `<div class="meta">${esc(meta)}</div>`
       + `<h1 class="title">${esc(page.title)}</h1>`

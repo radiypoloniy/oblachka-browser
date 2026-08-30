@@ -186,6 +186,8 @@ const api: OblakoApi = {
     ipcRenderer.invoke(IPC.NOTEBOOK_OPEN_SOURCE, kind, target) as Promise<boolean>,
   openStudioDoc: (name: string, html: string) =>
     ipcRenderer.invoke(IPC.NOTEBOOK_OPEN_DOC, name, html) as Promise<boolean>,
+  savePageAsPdf: (name: string, html: string) =>
+    ipcRenderer.invoke(IPC.NOTEBOOK_SAVE_PDF, name, html) as Promise<boolean>,
   getAiActivity: () => ipcRenderer.invoke(IPC.AI_ACTIVITY_GET) as Promise<AiActivityState | null>,
   cancelAiActivity: () => ipcRenderer.invoke(IPC.AI_ACTIVITY_CANCEL) as Promise<boolean>,
   onAiActivityChanged: (cb: (state: AiActivityState | null) => void) => {

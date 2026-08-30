@@ -135,6 +135,7 @@ export const IPC = {
   NOTEBOOK_EXTRACT_FILE:    'notebook:extract-file',    // renderer → main: путь → текст документа (pdf/docx/txt/…)
   NOTEBOOK_OPEN_SOURCE:     'notebook:open-source',     // renderer → main: открыть источник — адрес вкладкой, файл системой
   NOTEBOOK_OPEN_DOC:        'notebook:open-doc',        // renderer → main: собранный документ — во временный файл и новой вкладкой
+  NOTEBOOK_SAVE_PDF:        'notebook:save-pdf',        // renderer → main: та же страница, но печатью в PDF
 
   // Что ИИ делает прямо сейчас (electron/AiActivity.ts). Один реестр на приложение: у модели
   // один контекст и одна очередь, значит и состояние физически одно.

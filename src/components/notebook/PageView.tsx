@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Download, ExternalLink } from 'lucide-react';
+import { Download, ExternalLink, FileText } from 'lucide-react';
 import { sp, pad, RADIUS, TEXT } from '../../styles/system';
 import { btnTone, btnGhost, CapsLabel } from '../settings/kit';
 import { markupTextLength, type PageSpec } from '../../../shared/docMarkup';
@@ -92,7 +92,13 @@ export function PageView({ json }: { json: string }) {
         </button>
         <button onClick={() => void window.oblako.saveNotebookDoc(page.title, html)}
           style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}>
-          <Download size={15} /> Сохранить
+          <Download size={15} /> .html
+        </button>
+        {/* ⚠️ PDF печатает СКРЫТАЯ ВЬЮ тем же html, что и предпросмотр (NotebookPdf.ts): что
+            видно — то и напечатается. Отдельного шаблона под печать нет и заводить не надо. */}
+        <button onClick={() => void window.oblako.savePageAsPdf(page.title, html)}
+          style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: sp(2) }}>
+          <FileText size={15} /> PDF
         </button>
       </div>
 
