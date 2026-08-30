@@ -326,6 +326,15 @@ button, input, textarea, select { font-family: inherit; }
   .oblako-section-in, .oblako-tab-in, .oblako-mode-in { animation: none; }
 }
 
+/* Полоса дожития карточки снимка: показывает то, что и так происходит, — карточка прячется сама.
+   ⚠️ Пауза под курсором чистым CSS: в React это стоило бы перерисовки карточки со снимком на
+   каждое движение мыши. Длительность приходит инлайном — она разная у снимка и у «сохранено». */
+@keyframes oblako-shot-life { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.oblako-shot-life { transform-origin: 0 50%; animation-name: oblako-shot-life;
+  animation-timing-function: linear; animation-fill-mode: forwards; }
+.oblako-shot-card:hover .oblako-shot-life { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .oblako-shot-life { animation: none; transform: scaleX(0.35); } }
+
 /* Приезд карточки-вопроса.
    ⚠️ Движение здесь не украшение, а САМЫЙ СИЛЬНЫЙ сигнал из доступных и единственный, который
    ничего не стоит по цвету: карточку разрешения пропускали именно потому, что она появлялась
