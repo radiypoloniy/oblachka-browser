@@ -23,6 +23,7 @@ import { EngineCapsule } from './toolbar/EngineCapsule';
 import { PageActions } from './toolbar/PageActions';
 import { ShieldButton } from './toolbar/ShieldButton';
 import { usePopoverFlags } from './toolbar/usePopoverFlags';
+import { usePermissionHint } from './toolbar/usePermissionHint';
 
 // Высота тулбара = высота полосы системных кнопок Windows. Если разъедутся, кнопки
 // ОС сядут на другой цвет, чем остальная шапка.
@@ -217,6 +218,8 @@ export default function Toolbar({
   // ⚠️ Пара, а не одно значение: клик по звезде ставит признак ОПТИМИСТИЧНО, а BOOKMARK_CHANGED
   // затем подтверждает или поправляет — иначе звезда загоралась бы с задержкой в круг IPC.
   const [bookmarked, setBookmarked] = useBookmarked(!isHub ? tab?.url : undefined);
+  // Состояние разрешений сайта для точки на щите (см. usePermissionHint).
+  const permHint = usePermissionHint(isHub ? '' : (tab?.url ?? ''));
 
   // Капсула выбора поисковика — только на хабе (см. useEngineMenu).
   const {
@@ -1296,6 +1299,7 @@ export default function Toolbar({
               vpnOn={vpnOn}
               popoverOpen={popovers.site}
               profile={profile}
+              permHint={permHint}
               onToggle={toggleSitePopover}
             />
             <input

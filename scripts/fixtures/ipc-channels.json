@@ -259,6 +259,8 @@
   "PASSWORD_POPOVER_CLOSED=password-popover:closed",
   "PASSWORD_POPOVER_SET_BOUNDS=password-popover:set-bounds",
   "PASSWORD_POPOVER_SHOW=password-popover:show",
+  "PERMISSION_HINT=permission:hint",
+  "PERMISSION_HINT_CHANGED=permission:hint-changed",
   "PERMISSION_LIST=permission:list",
   "PERMISSION_RESPONSE=permission:response",
   "PERMISSION_REVOKE=permission:revoke",

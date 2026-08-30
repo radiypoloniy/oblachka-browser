@@ -306,6 +306,9 @@ export const IPC = {
   PERMISSION_LIST:   'permission:list',    // renderer → main: -> PermissionRecord[]
   PERMISSION_SET:    'permission:set',     // renderer → main: (origin, key, decision)
   PERMISSION_REVOKE: 'permission:revoke',  // renderer → main: (origin, key?) — забыть, а не запретить
+  // Что показать на щите про этот сайт: висит вопрос или ему молча отказали по прежнему решению.
+  PERMISSION_HINT:         'permission:hint',          // renderer → main: (origin) → 'ask'|'blocked'|null
+  PERMISSION_HINT_CHANGED: 'permission:hint-changed',  // main → renderer: перечитай, состояние поменялось
 
   // Загрузки
   DOWNLOADS_GET_ALL:    'downloads:get-all',    // renderer → main: текущий список

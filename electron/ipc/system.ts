@@ -57,6 +57,8 @@ export function registerSystemIpc(d: IpcDeps): void {
   // Раздел настроек «Разрешения сайтов». ⚠️ Отозвать (забыть) и запретить — РАЗНЫЕ операции:
   // забытый сайт спросит снова, запрещённый не спросит никогда. Склеить их в одну кнопку значило
   // бы лишить человека способа исправить своё же ошибочное «нет».
+  ipcMain.handle(IPC.PERMISSION_HINT, (_e, origin: string) =>
+    permissions.hintFor(typeof origin === 'string' ? origin : ''));
   ipcMain.handle(IPC.PERMISSION_LIST, () => permissions.list());
   ipcMain.handle(IPC.PERMISSION_SET, (_e, origin: string, key: PermKey, decision: 'granted' | 'denied') => {
     permissions.set(origin, key, decision);

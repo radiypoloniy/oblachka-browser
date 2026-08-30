@@ -18,12 +18,20 @@ import type { ProfileBadge } from './useProfileBadge';
  * ⚠️ Зелёная ЗАЛИВКА щита = туннель поднят: функциональный зелёный по цветовому закону
  * (--dot-vpn). Открытый поповер перебивает акцентом — это состояние интерфейса, а не защиты.
  */
-export function ShieldButton({ btnRef, vpnOn, popoverOpen, profile, onToggle }: {
+export function ShieldButton({ btnRef, vpnOn, popoverOpen, profile, permHint, onToggle }: {
   btnRef: RefObject<HTMLButtonElement>;
   vpnOn: boolean;
   popoverOpen: boolean;
   /** Активный профиль — ради точки в углу щита. */
   profile: ProfileBadge | null;
+  /**
+   * Состояние разрешений этого сайта: 'ask' — вопрос без ответа, 'blocked' — молча отказали.
+   *
+   * ⚠️ Вторая половина жалобы «не понимаю, почему действия не проходят»: запомненный запрет
+   * отвечает сайту `false` и не показывает НИЧЕГО. Эта точка — единственный след, и она же
+   * ведёт туда, где чинится: поповер щита умеет откатывать решения.
+   */
+  permHint: 'ask' | 'blocked' | null;
   onToggle: () => void;
 }): React.ReactElement {
   return (
@@ -39,6 +47,26 @@ export function ShieldButton({ btnRef, vpnOn, popoverOpen, profile, onToggle }: 
       }}
     >
       <ShieldGlyph size={14} filled={vpnOn && !popoverOpen} />
+
+      {/* ⚠️ Точка разрешений — СВЕРХУ СПРАВА, профиля — снизу справа. Два угла, чтобы они не
+          спорили за одно место: сайт может одновременно ждать ответа и работать под неосновным
+          профилем.
+          ⚠️ Цвет несёт СТАТУС и красит только знак — заливка щита остаётся за VPN. Жёлтая
+          пульсирует (вопрос ещё можно закрыть), красная стоит ровно (отказ уже случился). */}
+      {permHint && (
+        <span
+          className={permHint === 'ask' ? 'oblako-led' : undefined}
+          title={permHint === 'ask'
+            ? 'Сайт ждёт ответа на запрос доступа'
+            : 'Сайту отказано по прежнему решению — нажмите, чтобы изменить'}
+          style={{
+            position: 'absolute', right: 0, top: 0,
+            width: 7, height: 7, borderRadius: 'var(--radius-pill)',
+            background: permHint === 'ask' ? 'var(--warning-500)' : 'var(--danger-500)',
+            boxShadow: '0 0 0 1.5px var(--surface)',
+          }}
+        />
+      )}
 
       {/* ⚠️ Точка профиля — вместо полосы во всю ширину окна, которая была уродлива и занимала
           строку ради одного факта. Индикация нужна, но её место здесь: у щита, где и так собрано

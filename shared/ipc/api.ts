@@ -239,10 +239,13 @@ export interface OblakoApi {
   addBookmark(url: string, title: string): Promise<BookmarkEntry | null>;
   removeBookmark(id: number): Promise<void>;
   removeBookmarkByUrl(url: string): Promise<void>;
-  // Разрешения сайтов (раздел настроек). revokePermission без key забывает ВСЁ по сайту.
+  // Разрешения сайтов. revokePermission без key забывает ВСЁ по сайту.
   listPermissions(): Promise<PermissionRecord[]>;
   setPermission(origin: string, key: PermKey, decision: 'granted' | 'denied'): Promise<void>;
   revokePermission(origin: string, key?: PermKey): Promise<void>;
+  // Точка на щите: 'ask' — вопрос без ответа, 'blocked' — молча отказали по прежнему решению.
+  permissionHint(origin: string): Promise<'ask' | 'blocked' | null>;
+  onPermissionHintChanged(cb: () => void): () => void;
   // Путь файла, брошенного в интерфейс браузера. ⚠️ Не канал в main, а функция самого preload:
   // `File.path` из Electron убран, а `webUtils.getPathForFile` обязан зваться там, где живёт File.
   // Синхронная — единственная такая во всём API, поэтому и оговорка.
@@ -606,7 +609,6 @@ export interface OblakoApi {
   showPasswordPopover(state: PasswordIndicatorState): Promise<void>;
   closePasswordPopover(): Promise<void>;
   onPasswordPopoverClosed(cb: () => void): () => void;
-
 
   // Поповер загрузок (см. IPC.DOWNLOADS_POPOVER_*, electron/DownloadsPopoverManager.ts) —
   // как и у VPN, здесь только геометрия анкора и открытие/закрытие: список карточка берёт сама.

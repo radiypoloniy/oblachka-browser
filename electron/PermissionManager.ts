@@ -77,6 +77,20 @@ export class PermissionManager {
   #db: Database | null = null;
   #dbPath: string;
   #pending = new Map<string, PendingEntry>();
+  /**
+   * Сайты, которым мы МОЛЧА отказали по прежнему решению.
+   *
+   * ⚠️ Это половина живой жалобы «не понимаю, почему те или иные действия не проходят».
+   * Запомненный запрет отвечает сайту `false` и не показывает НИЧЕГО: кнопка на странице просто
+   * не работает, и узнать почему неоткуда. Теперь такой отказ оставляет след — точку на щите,
+   * откуда видно и где чинится (поповер сайта и так умеет откатывать решения).
+   *
+   * ⚠️ Живёт в памяти, а не в базе: это не решение человека, а событие «сайт только что
+   * упёрся». После перезапуска браузера ему незачем гореть — сайт упрётся снова и зажжёт заново.
+   */
+  #blocked = new Set<string>();
+  /** Кого разбудить, когда состояние сайта поменялось. Ставит main. */
+  #onHintChanged: (() => void) | null = null;
   #sendRequest: SendPermissionRequest | null = null;
 
   constructor() {
@@ -129,12 +143,17 @@ export class PermissionManager {
         }
         if (decisions.some((d) => d === 'denied')) {
           // Хоть один явно запрещён — запрещаем всё без prompt.
+          // ⚠️ Но СЛЕД оставляем: молчаливый отказ и был причиной «действие не проходит, а
+          // почему — непонятно». Карточку не показываем намеренно (всё, что она сообщила бы,
+          // уже лежит в поповере щита) — только точка состояния.
+          this.#markBlocked(origin);
           callback(false);
           return;
         }
 
         const requestId = randomUUID();
         this.#pending.set(requestId, { callback, origin, keysToStore: keys });
+        this.#onHintChanged?.();
         this.#sendRequest?.({ requestId, origin, permission: displayKey }, wc?.id ?? null);
       },
     );
@@ -209,10 +228,40 @@ export class PermissionManager {
   }
 
   // Вызывается из IPC-хендлера когда пользователь ответил на prompt.
+  /** main подписывается сюда, чтобы разослать хрому «перечитай состояние сайта». */
+  onHintChanged(cb: () => void): void { this.#onHintChanged = cb; }
+
+  #markBlocked(origin: string): void {
+    if (this.#blocked.has(origin)) return;   // уже горит — не будим хром впустую
+    this.#blocked.add(origin);
+    this.#onHintChanged?.();
+  }
+
+  /**
+   * Что показывать на щите для этого сайта.
+   *
+   * 'ask' — вопрос висит без ответа; 'blocked' — сайту молча отказали по прежнему решению;
+   * null — сказать нечего.
+   *
+   * ⚠️ Порядок именно такой: незаданный вопрос важнее старого отказа, потому что на него ещё
+   * можно ответить, а отказ уже случился.
+   */
+  hintFor(origin: string): 'ask' | 'blocked' | null {
+    for (const e of this.#pending.values()) if (e.origin === origin) return 'ask';
+    return this.#blocked.has(origin) ? 'blocked' : null;
+  }
+
+  /** Решение изменилось — прежний отказ больше не актуален. */
+  #clearBlocked(origin: string): void {
+    if (this.#blocked.delete(origin)) this.#onHintChanged?.();
+  }
+
   respond(requestId: string, granted: boolean, remember: boolean): void {
     const entry = this.#pending.get(requestId);
     if (!entry) return;
     this.#pending.delete(requestId);
+    this.#clearBlocked(entry.origin);
+    this.#onHintChanged?.();
     entry.callback(granted);
     if (remember) {
       for (const key of entry.keysToStore) {

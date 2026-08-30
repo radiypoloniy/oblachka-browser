@@ -251,6 +251,13 @@ const api: OblakoApi = {
     ipcRenderer.invoke(IPC.PERMISSION_SET, origin, key, decision) as Promise<void>,
   revokePermission: (origin: string, key?: PermKey) =>
     ipcRenderer.invoke(IPC.PERMISSION_REVOKE, origin, key) as Promise<void>,
+  permissionHint: (origin: string) =>
+    ipcRenderer.invoke(IPC.PERMISSION_HINT, origin) as Promise<'ask' | 'blocked' | null>,
+  onPermissionHintChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on(IPC.PERMISSION_HINT_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.PERMISSION_HINT_CHANGED, handler);
+  },
 
   listBookmarks: () => ipcRenderer.invoke(IPC.BOOKMARK_LIST) as Promise<BookmarkEntry[]>,
   listBookmarkTree: () => ipcRenderer.invoke(IPC.BOOKMARK_LIST_TREE) as Promise<BookmarkNode[]>,

@@ -552,6 +552,10 @@ async function ensurePasswordAuth(message: string): Promise<boolean> {
 }
 const downloads   = new DownloadManager();
 const permissions = new PermissionManager();
+// ⚠️ Щит обязан знать про молчаливый отказ. Без этого запомненный запрет отвечает сайту `false`
+// и не показывает НИЧЕГО — «действие не проходит, а почему, непонятно» (живая жалоба).
+// Карточку при этом не показываем намеренно: всё, что она сообщила бы, уже есть в поповере щита.
+permissions.onHintChanged(() => broadcastToChrome(IPC.PERMISSION_HINT_CHANGED));
 const settings    = new SettingsManager();
 const hubChat     = new HubChatManager();
 const translationCache = new TranslationCacheManager();
