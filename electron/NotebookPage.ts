@@ -1,5 +1,5 @@
 import { runTabOrganizePrompt } from './TranslationService';
-import { sanitizeDocHtml, markupTextLength, PAGE_MIN_CHARS, type PageSpec } from '../shared/docMarkup';
+import { sanitizeDocHtml, groupSections, markupTextLength, PAGE_MIN_CHARS, type PageSpec } from '../shared/docMarkup';
 import type { ActivityHandle } from './AiActivity';
 import type { DocSource } from './NotebookDocument';
 
@@ -131,7 +131,9 @@ export async function buildPage(
   if (act.cancelled) return stopped;
   if (!res.ok) return { ok: false, error: res.error };
 
-  const html = sanitizeDocHtml(res.out);
+  // ⚠️ Разделы оборачиваем МЫ, а не модель: от этого зависит вся раскладка «Издания»
+  // (заголовок на поле, липкий в пределах своего раздела) и нумерация во всех трёх.
+  const html = groupSections(sanitizeDocHtml(res.out));
   const len = markupTextLength(html);
   console.log(`[Notebook] страница: ответ=${res.out.length} знаков, после очистки=${len}, stop=${res.stopReason}`);
   // ⚠️ Порог, а не «есть хоть что-то»: три абзаца вместо статьи выглядят сбоем, и честнее
