@@ -35,7 +35,9 @@ export function PageView({ json }: { json: string }) {
 
   const [style, setStyle] = useState<PageStyle>(() => {
     const saved = localStorage.getItem(KEY);
-    return PAGE_STYLES.some((s) => s.id === saved) ? saved as PageStyle : 'polosa';
+    // ⚠️ Запасной вариант — 'ekran': прежний 'polosa' переписан целиком и такого id больше нет.
+    // Сохранённый выбор старого формата не подойдёт проверке и честно уступит новому стилю.
+    return PAGE_STYLES.some((s) => s.id === saved) ? saved as PageStyle : 'ekran';
   });
 
   const html = useMemo(() => page ? pageToHtml(page, style) : '', [page, style]);

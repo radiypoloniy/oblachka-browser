@@ -20,12 +20,12 @@
 
 import { STYLE_SCRIPTS } from './scripts';
 
-export type PageStyle = 'izdanie' | 'panel' | 'polosa';
+export type PageStyle = 'izdanie' | 'panel' | 'ekran';
 
 export const PAGE_STYLES: { id: PageStyle; label: string; hint: string }[] = [
   { id: 'izdanie', label: 'Издание', hint: 'Бумага: заголовок на поле едет за текстом, буквица, зерно' },
   { id: 'panel',   label: 'Пульт',   hint: 'Разделы вкладками, абзацы раскрываются, тёмная доска' },
-  { id: 'polosa',  label: 'Лонгрид', hint: 'Оглавление-компаньон, полоса чтения, кнопка наверх' },
+  { id: 'ekran',   label: 'Экран',   hint: 'Кино: титры, проявление разделов, счёт чисел' },
 ];
 
 const FONT_FRAUNCES = '@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&display=swap");';
@@ -156,6 +156,9 @@ const PANEL = BASE + [
   '.nav:hover{border-color:#2E3A46;color:#C9D2DD}',
   '.nav.on{background:#5BE3A7;color:#0D1014;border-color:#5BE3A7}',
   '.nav.on .k{color:rgba(13,16,20,.6)}',
+  // «Развернуть всё» — та же пилюля, но приглушённая: это служебное действие, а не раздел.
+  '.nav.toggle{margin-left:auto;color:#66717F;border-style:dashed}',
+  '.nav.toggle:hover{color:#5BE3A7;border-color:#2E4A3E}',
   'section{display:none;margin-bottom:22px}',
   'section.on{display:block;animation:oblako-pane-in .32s cubic-bezier(.16,1,.3,1) both}',
   '@keyframes oblako-pane-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}',
@@ -208,101 +211,102 @@ const PANEL = BASE + [
   '  font-size:11.5px;color:#5BE3A7}',
 ].join('');
 
-// ── Полоса: длинное чтение, висячие номера, вылеты во всю ширину ────────────
-const POLOSA = BASE + [
+// ── Экран: кино, а не бумага ─────────────────────────────────────────────────
+//
+// ⚠️ Третий стиль переписан целиком. Прежний («Полоса») был честно назван «газетой на белом»:
+// я взял «Издание», убрал засечки и покрасил в белое — вышел тот же документ, только тише.
+// Белый фон, чёрный текст, единственный приём — оглавление сбоку, ни одного состояния.
+//
+// ⚠️ Отсюда решение о территориях: «Издание» — бумага, «Пульт» — прибор, третьему остаётся
+// КИНО. Тёмный зал, крупный кегль, вещи появляются по мере того, как до них доходишь.
+// Название честнее прежнего: «Экран» не обещает газету.
+//
+// ⚠️ Скролл-джекинга здесь нет и не будет. Прокрутка обычная: ни перехвата колеса, ни
+// «долистывания» за человека — это первое, что раздражает на сайтах-презентациях. Всё движение
+// отвечает только на вопросы «где я», «что появилось», «сколько осталось».
+const EKRAN = BASE + [
   'html{scroll-behavior:smooth}',
-  'body{background:#fff;color:#2F343B;font:18.5px/1.76 "Golos Text",system-ui,sans-serif}',
-  // ⚠️ Полоса чтения теперь на СКРИПТЕ, а не на animation-timeline: та работала только в
-  // свежем Chromium, а файл уезжает человеку с любым браузером.
-  '#read-bar{position:fixed;top:0;left:0;height:3px;width:0;background:#12151A;z-index:9;',
-  '  transition:width .1s linear}',
+  'body{background:#0B0A0F;color:#9C9AA8;font:19px/1.72 "Golos Text",system-ui,sans-serif;overflow-x:hidden}',
   'body::before{display:none}',
-  // Оглавление-компаньон: липкое, с подсветкой текущего раздела. На узком окне его нет —
-  // там место занимает сам текст.
-  '.toc{display:none}',
-  '@media(min-width:1180px){.toc{display:flex;flex-direction:column;gap:2px;position:fixed;',
-  '  left:clamp(14px,3vw,40px);top:96px;width:190px;z-index:4}}',
-  '.toc a{display:flex;gap:10px;font-size:13px;color:#8A929D;text-decoration:none;padding:7px 10px;',
-  '  border-radius:9px;border-left:2px solid transparent;line-height:1.35;',
-  '  transition:color .18s,background .18s,border-color .18s}',
-  '.toc a span{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;opacity:.6;flex:none}',
-  '.toc a:hover{background:#F4F6F8;color:#12151A}',
-  '.toc a.on{color:#12151A;font-weight:600;border-left-color:#12151A;background:#F4F6F8}',
-  '#to-top{position:fixed;right:22px;bottom:22px;width:44px;height:44px;border-radius:50%;',
-  '  border:1px solid #E6E9ED;background:#fff;color:#12151A;cursor:pointer;font-size:17px;',
-  '  box-shadow:0 6px 20px rgba(20,20,40,.14);opacity:0;transform:translateY(10px);',
-  '  transition:opacity .22s,transform .22s;z-index:8}',
-  '#to-top.on{opacity:1;transform:none}',
-  '@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}',
-  '  #read-bar,#to-top,.toc a{transition:none}}',
-  // ⚠️ Сетка «мера чтения + вылеты»: обычный блок в центральной колонке, врезка и числа
-  // объявляют себя full и выходят на всю ширину окна. Тянется СТРАНИЦА, а не строка — строка
-  // длиннее 70 знаков теряется на возврате.
-  '.page{display:grid;counter-reset:sec;grid-template-columns:',
-  '  [full-start] minmax(clamp(14px,4vw,56px),1fr)',
-  '  [wide-start] minmax(0,150px)',
-  '  [text-start] minmax(0,66ch) [text-end]',
-  '  minmax(0,150px) [wide-end]',
-  '  minmax(clamp(14px,4vw,56px),1fr) [full-end];',
-  '  padding:clamp(26px,5vw,80px) 0 90px}',
-  '.page>*,section>*{grid-column:text}',
-  // section прозрачен для сетки: его дети встают в общую колонку страницы, но группировка
-  // сохраняется — от неё зависит и нумерация, и «первый абзац первого раздела».
-  'section{display:contents}',
-  '.meta{grid-column:wide;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;',
-  '  letter-spacing:.16em;text-transform:uppercase;color:#8A929D;margin:0 0 16px}',
-  '.title{grid-column:wide;font-family:Unbounded,system-ui,sans-serif;font-weight:800;',
-  '  font-size:clamp(32px,5.4vw,60px);line-height:1;letter-spacing:-.042em;color:#12151A;margin:0 0 20px}',
-  '.lede{grid-column:wide;font-size:clamp(19px,2.1vw,24px);line-height:1.48;color:#5B636E;margin:0 0 46px}',
-  '.stats{grid-column:full;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));',
-  '  gap:1px;background:#E6E9ED;border-top:1px solid #E6E9ED;border-bottom:1px solid #E6E9ED;margin:0 0 54px}',
-  '.stats div{background:#fff;padding:26px clamp(14px,3vw,36px)}',
+  // Титры: первый экран занят целиком, название уезжает медленнее текста (параллакс на слое).
+  '.hero{min-height:92vh;display:flex;flex-direction:column;justify-content:center;',
+  '  padding:0 clamp(20px,7vw,110px);position:relative}',
+  '.hero .meta{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.2em;',
+  '  text-transform:uppercase;color:#4E4B5C;margin-bottom:26px}',
+  '.hero .title{font-family:Unbounded,system-ui,sans-serif;font-weight:800;',
+  '  font-size:clamp(38px,9vw,116px);line-height:.92;letter-spacing:-.05em;color:#fff;',
+  '  margin:0 0 28px;max-width:14ch}',
+  '.hero .lede{font-family:"Instrument Serif",Georgia,serif;font-style:italic;',
+  '  font-size:clamp(19px,2.6vw,32px);line-height:1.34;color:#8F8CA0;max-width:30ch;margin:0}',
+  '.hero .down{position:absolute;bottom:34px;left:clamp(20px,7vw,110px);',
+  '  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.18em;',
+  '  text-transform:uppercase;color:#413E4E;animation:oblako-bob 2.4s ease-in-out infinite}',
+  '@keyframes oblako-bob{0%,100%{transform:translateY(0);opacity:.7}50%{transform:translateY(5px);opacity:1}}',
+  '.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;',
+  '  background:#191722;border-top:1px solid #191722;border-bottom:1px solid #191722;',
+  '  margin:0 0 clamp(60px,10vw,130px)}',
+  '.stats div{background:#0B0A0F;padding:clamp(22px,3vw,38px) clamp(18px,3vw,34px)}',
   '.stats b{display:block;font-family:Unbounded,system-ui,sans-serif;font-weight:800;',
-  '  font-variant-numeric:tabular-nums;font-size:clamp(26px,3.2vw,40px);line-height:1;',
-  '  letter-spacing:-.035em;color:#12151A}',
-  '.stats span{display:block;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;',
-  '  letter-spacing:.11em;text-transform:uppercase;color:#8A929D;margin-top:10px}',
-  // Номер раздела ВИСИТ в левом поле: не занимает места в колонке и держит ритм.
-  'h2{font-family:Unbounded,system-ui,sans-serif;font-weight:700;font-size:clamp(21px,2.3vw,29px);',
-  '  letter-spacing:-.03em;line-height:1.18;color:#12151A;margin:56px 0 16px;position:relative}',
-  'h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);position:absolute;',
-  '  left:-64px;top:.36em;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;',
-  '  letter-spacing:.1em;color:#B6BDC6;font-weight:400}',
-  '@media(max-width:1000px){h2::before{position:static;display:block;margin-bottom:8px}}',
-  'h3{font-size:19px;font-weight:600;color:#12151A;margin:28px 0 10px}',
-  'p{margin:0 0 22px}',
-  'section:first-of-type>h2+p{font-size:1.06em}',
-  'section:first-of-type>h2+p::first-letter{font-family:Unbounded,system-ui,sans-serif;font-weight:800;',
-  '  font-size:3.5em;float:left;line-height:.84;padding:.04em .1em 0 0;color:#12151A}',
-  'blockquote{grid-column:full;margin:56px 0;padding:clamp(34px,6vw,72px) clamp(16px,6vw,90px);',
-  '  background:#12151A;color:#fff;font-family:Unbounded,system-ui,sans-serif;font-weight:700;',
-  '  font-size:clamp(19px,2.8vw,34px);line-height:1.28;letter-spacing:-.028em;text-align:center;',
-  '  position:relative;overflow:hidden;isolation:isolate}',
-  // ⚠️ Кавычка — ФОН, а не украшение поверх текста. Позиционированный ::before рисуется НАД текстом
-  // соседнего узла, и на живом прогоне она легла прямо на первую строку. z-index:-1 уводит её под текст,
-  // а isolation выше не даёт ей уйти за сам фон врезки и пропасть вовсе.
-  'blockquote::before{content:"«";position:absolute;z-index:-1;left:clamp(4px,2vw,32px);',
-  '  top:clamp(-18px,-2vw,-6px);font-family:Unbounded,system-ui,sans-serif;',
-  '  font-size:clamp(72px,11vw,160px);line-height:1;color:#1C2129}',
-  'ul,ol{margin:0 0 26px;padding-left:0;list-style:none}',
-  'li{padding-left:28px;position:relative;margin-bottom:12px}',
-  'li:before{content:"";position:absolute;left:2px;top:13px;width:9px;height:9px;border-radius:50%;',
-  '  border:2px solid #12151A}',
-  'table{grid-column:wide;margin:28px 0 36px;font-size:16px}',
-  'td,th{padding:16px 18px 16px 0;border-bottom:1px solid #EDEFF2;vertical-align:top;text-align:left}',
-  'td:first-child,th:first-child{color:#8A929D;width:28%;font-weight:500}',
-  '.sources{grid-column:wide;margin-top:70px;padding-top:26px;border-top:1px solid #E6E9ED}',
+  '  font-size:clamp(26px,4vw,48px);line-height:1;letter-spacing:-.04em;color:#fff;',
+  '  font-variant-numeric:tabular-nums}',
+  '.stats span{display:block;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9.5px;',
+  '  letter-spacing:.13em;text-transform:uppercase;color:#5A5668;margin-top:12px}',
+  'section{position:relative;padding:0 clamp(20px,7vw,110px);margin-bottom:clamp(52px,8vw,104px)}',
+  '@media(min-width:1100px){section{padding-left:clamp(150px,16vw,260px)}}',
+  // Огромный номер на поле — украшение, а не навигация: на узком окне он встаёт над текстом.
+  '.no{position:absolute;left:clamp(20px,4vw,60px);top:-0.16em;',
+  '  font-family:Unbounded,system-ui,sans-serif;font-weight:800;font-size:clamp(56px,9vw,132px);',
+  '  line-height:1;color:#16141E;letter-spacing:-.06em;pointer-events:none;user-select:none}',
+  '@media(max-width:1099px){.no{position:static;display:block;font-size:44px;margin-bottom:6px}}',
+  'h2{font-family:Unbounded,system-ui,sans-serif;font-weight:700;font-size:clamp(23px,3.4vw,44px);',
+  '  letter-spacing:-.04em;line-height:1.08;color:#fff;margin:0 0 22px;max-width:20ch}',
+  'h3{font-family:Unbounded,system-ui,sans-serif;font-weight:700;font-size:20px;color:#fff;margin:26px 0 10px}',
+  'section p{margin:0 0 24px;max-width:60ch}',
+  'section p:first-of-type{color:#B8B5C6}',
+  // Врезка держит паузу во весь экран — единственный акцентный цвет в стиле.
+  'blockquote{margin:0 0 clamp(52px,8vw,104px);min-height:76vh;display:flex;align-items:center;',
+  '  padding:0 clamp(20px,7vw,110px);background:#100E17;',
+  '  border-top:1px solid #1C1926;border-bottom:1px solid #1C1926;',
+  '  font-family:"Instrument Serif",Georgia,serif;font-style:italic;',
+  '  font-size:clamp(24px,4.6vw,58px);line-height:1.18;color:#C9A227}',
+  'blockquote p{margin:0;max-width:18ch;font:inherit;color:inherit}',
+  'ul,ol{margin:0 0 26px;padding-left:0;list-style:none;max-width:60ch}',
+  'li{padding-left:26px;position:relative;margin-bottom:13px}',
+  'li:before{content:"";position:absolute;left:2px;top:14px;width:8px;height:8px;',
+  '  border-radius:50%;background:#C9A227}',
+  'table{margin:26px 0 34px;font-size:16px;max-width:64ch}',
+  'td,th{padding:15px 18px 15px 0;border-bottom:1px solid #1C1926;vertical-align:top;text-align:left}',
+  'td:first-child,th:first-child{color:#5A5668;width:28%}',
+  // Кольцо прогресса — оно же кнопка «наверх». Один предмет вместо двух, и его видно.
+  '#ring{position:fixed;right:22px;bottom:22px;width:52px;height:52px;border:0;background:none;',
+  '  cursor:pointer;opacity:0;transform:scale(.85);transition:opacity .25s,transform .25s;z-index:9}',
+  '#ring.on{opacity:1;transform:none}',
+  '#ring svg{display:block;transform:rotate(-90deg)}',
+  '#ring circle{fill:none;stroke-width:2}',
+  '#ring .bg{stroke:#221F2C}',
+  '#ring .fg{stroke:#C9A227;stroke-linecap:round;transition:stroke-dashoffset .12s linear}',
+  '#ring i{position:absolute;inset:0;display:grid;place-items:center;color:#8F8CA0;',
+  '  font-size:15px;font-style:normal}',
+  '.rise{opacity:0;transform:translateY(22px);',
+  '  transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}',
+  '.rise.in{opacity:1;transform:none}',
+  '.sources{margin:0 clamp(20px,7vw,110px);padding-top:26px;border-top:1px solid #1C1926}',
   '.sources h2{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.15em;',
-  '  text-transform:uppercase;color:#8A929D;font-weight:500;margin:0 0 14px}',
-  '.sources h2::before{content:none}',
-  '.sources div{font-size:15px;margin-bottom:10px}',
-  '.sources em.src{display:block;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:#8A929D}',
+  '  text-transform:uppercase;color:#5A5668;font-weight:500;margin:0 0 14px;max-width:none}',
+  '.sources div{display:flex;align-items:baseline;gap:14px;font-size:15px;color:#9C9AA8;',
+  '  padding:9px 0;border-bottom:1px solid #16141E}',
+  '.sources div:last-child{border-bottom:none}',
+  '.sources em.src{margin-left:auto;flex:none;font-family:"JetBrains Mono",ui-monospace,monospace;',
+  '  font-size:12px;color:#5A5668}',
+  '@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}',
+  '  .rise{opacity:1;transform:none;transition:none}.hero .down{animation:none}',
+  '  #ring{transition:none}}',
 ].join('');
 
 export const STYLE_CSS: Record<PageStyle, string> = {
   izdanie: IZDANIE,
   panel: PANEL,
-  polosa: POLOSA,
+  ekran: EKRAN,
 };
 
 /**
