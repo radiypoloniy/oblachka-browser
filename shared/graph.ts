@@ -67,10 +67,9 @@ export interface PortSpec {
 export interface NodeKindSpec {
   label: string
   hint: string
-  // Эмодзи вместо иконки — тон холста намеренно дружелюбный, а не «инженерная панель».
-  // Живёт здесь, а не в компоненте: значок один и тот же в кнопке панели и в шапке
-  // карточки, и разъехаться они не должны.
-  emoji: string
+  // ⚠️ Значка здесь НЕТ намеренно. Он lucide-компонент, то есть renderer-only, а этот модуль
+  // читает и main (GraphEngine). Роль, цвет и значок узла живут одной картой в
+  // src/components/graph/nodeVisual.tsx.
   inputs: PortSpec[]
   outputs: PortSpec[]
 }
@@ -81,126 +80,108 @@ export const NODE_KINDS: Record<GraphNodeKind, NodeKindSpec> = {
   'source.url': {
     label: 'Страница',
     hint: 'Загружает URL в фоне и достаёт читаемый текст',
-    emoji: '🌐',
     inputs: [],
     outputs: [{ id: 'text', label: 'текст', type: 'text' }],
   },
   'source.note': {
     label: 'Заметка',
     hint: 'Произвольный текст, который вы вводите сами',
-    emoji: '📝',
     inputs: [],
     outputs: [{ id: 'text', label: 'текст', type: 'text' }],
   },
   'source.file': {
     label: 'Файл',
     hint: 'Документ с диска: Word, PDF, текст, таблица CSV',
-    emoji: '📎',
     inputs: [],
     outputs: [{ id: 'text', label: 'текст', type: 'text' }],
   },
   'source.image': {
     label: 'Картинка',
     hint: 'Изображение с диска: реф или готовый результат генерации',
-    emoji: '🖼️',
     inputs: [],
     outputs: [{ id: 'text', label: 'ссылка', type: 'text' }],
   },
   'qwen.transform': {
     label: 'Qwen',
     hint: 'Выполняет вашу инструкцию над тем, что пришло на вход',
-    emoji: '🧠',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'ответ', type: 'text' }],
   },
   'draft.text': {
     label: 'Черновик',
     hint: 'Текст, который вы правите руками посреди цепочки',
-    emoji: '✏️',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'текст', type: 'text' }],
   },
   'compose.doc': {
     label: 'Сборка',
     hint: 'Собирает готовый документ из входов по вашему шаблону, без модели',
-    emoji: '📄',
     inputs: [{ id: 'context', label: 'блоки', type: 'textList' }],
     outputs: [{ id: 'text', label: 'документ', type: 'text' }],
   },
   'image.prompt': {
     label: 'Промпт картинки',
     hint: 'Собирает готовый промпт для Midjourney/DALL·E по выбранному стилю',
-    emoji: '🎨',
     inputs: [{ id: 'context', label: 'материал', type: 'textList' }],
     outputs: [{ id: 'text', label: 'промпт', type: 'text' }],
   },
   'qwen.chat': {
     label: 'Диалог',
     hint: 'Переписка с локальной моделью; материал со входа она видит',
-    emoji: '🗨️',
     inputs: [{ id: 'context', label: 'материал', type: 'textList' }],
     outputs: [{ id: 'text', label: 'последний ответ', type: 'text' }],
   },
   'webapp.chat': {
     label: 'Веб-чат',
     hint: 'Чужой AI-сайт в панели: граф готовит промпт, отправляете вы',
-    emoji: '💬',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'ответ', type: 'text' }],
   },
   'search.web': {
     label: 'Веб-поиск',
     hint: 'Ищет в интернете через SearXNG и отдаёт найденные сниппеты',
-    emoji: '🔍',
     inputs: [{ id: 'context', label: 'запрос', type: 'textList' }],
     outputs: [{ id: 'text', label: 'находки', type: 'text' }],
   },
   'factcheck.gemini': {
     label: 'Фактчек',
     hint: 'Проверяет утверждения через Gemini с поиском Google (облако, нужен ключ)',
-    emoji: '🕵️',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'разбор', type: 'text' }],
   },
   'artifact.summary': {
     label: 'Саммари',
     hint: 'Краткая структурированная выжимка по входу',
-    emoji: '📋',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'текст', type: 'text' }],
   },
   'artifact.mindmap': {
     label: 'Майндкарта',
     hint: 'Иерархия понятий по входу, рисуется как дерево',
-    emoji: '🗺️',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'аутлайн', type: 'text' }],
   },
   'artifact.infographic': {
     label: 'Инфографика',
     hint: 'Визуальная сводка по входу',
-    emoji: '📊',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'спека', type: 'text' }],
   },
   'artifact.quiz': {
     label: 'Тест',
     hint: 'Вопросы с вариантами ответа по входу',
-    emoji: '❓',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [{ id: 'text', label: 'JSON', type: 'text' }],
   },
   'sticker': {
     label: 'Заметка на холсте',
     hint: 'Подпись к участку графа — ничего не считает',
-    emoji: '📌',
     inputs: [],
     outputs: [],
   },
   'output.text': {
     label: 'Результат',
     hint: 'Показывает итог и даёт его скопировать',
-    emoji: '📤',
     inputs: [{ id: 'context', label: 'вход', type: 'textList' }],
     outputs: [],
   },

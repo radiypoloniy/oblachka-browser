@@ -7,6 +7,7 @@ import { markdownComponents } from '../aiMarkdown';
 import { InfographicView, MindmapView, QuizView } from '../studioViews';
 import NodeChatView from './NodeChatView';
 import { ImagePreview } from './GraphNodeCard';
+import { NodeIcon } from './nodeVisual';
 
 // Раскрытый узел — один общий механизм на все типы, а не три похожих режима.
 // Внутри меняется только содержимое: артефакт рисуется своим рендерером, текст — разметкой,
@@ -90,7 +91,7 @@ export default function NodeFullscreen({
         <button type="button" onClick={onClose} title="Вернуться к графу (Esc)" style={headerButton}>
           <ArrowLeft size={17} />
         </button>
-        <span style={{ fontSize: 'var(--fs-lg)', flex: 'none' }}>{spec.emoji}</span>
+        <NodeIcon kind={kind} size={18} />
         <span
           style={{
             flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

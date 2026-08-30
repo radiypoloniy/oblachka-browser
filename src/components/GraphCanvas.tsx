@@ -9,6 +9,7 @@ import { Play, Square } from 'lucide-react';
 import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../shared/graph';
 import { NODE_KINDS } from '../../shared/graph';
 import GraphNodeCard, { DEFAULT_NODE_SIZE, type GraphNodeData } from './graph/GraphNodeCard';
+import { NODE_GROUPS, NodeIcon } from './graph/nodeVisual';
 import { useGraphNodeActions } from './graph/useGraphNodeActions';
 import { useGraphWebApps } from './graph/useGraphWebApps';
 import { useGraphDoc } from './graph/useGraphDoc';
@@ -34,19 +35,6 @@ import type { ImagePreset } from '../../shared/imagePresets';
 type RFNode = Node<GraphNodeData>;
 
 const nodeTypes = { oblako: GraphNodeCard };
-
-// Панель сгруппирована по роли узла, а не свалена в один ряд: восемь одинаковых кнопок
-// подряд не читаются, а группы отвечают на вопрос «откуда взять — что сделать — что получить».
-const NODE_GROUPS: { title: string; kinds: GraphNodeKind[] }[] = [
-  { title: 'Откуда', kinds: ['source.url', 'source.file', 'source.note', 'source.image'] },
-  { title: 'Обработка', kinds: ['qwen.transform', 'qwen.chat', 'image.prompt', 'webapp.chat'] },
-  { title: 'Проверка', kinds: ['search.web', 'factcheck.gemini'] },
-  { title: 'Артефакты', kinds: ['artifact.summary', 'artifact.mindmap', 'artifact.infographic', 'artifact.quiz'] },
-  { title: 'Итог', kinds: ['draft.text', 'compose.doc', 'output.text'] },
-  { title: 'Пометки', kinds: ['sticker'] },
-];
-
-
 
 export default function GraphCanvas({ onBack }: { onBack: () => void }) {
   // Документ: список холстов, открытый холст, его узлы и связи, ход прогона и автосейв
@@ -357,7 +345,7 @@ export default function GraphCanvas({ onBack }: { onBack: () => void }) {
                     fontSize: 'var(--fs-sm)', fontFamily: 'var(--font-sans)',
                   }}
                 >
-                  <span style={{ fontSize: 'var(--fs-md)', lineHeight: 1 }}>{NODE_KINDS[kind].emoji}</span>
+                  <NodeIcon kind={kind} size={15} />
                   {NODE_KINDS[kind].label}
                 </button>
               ))}

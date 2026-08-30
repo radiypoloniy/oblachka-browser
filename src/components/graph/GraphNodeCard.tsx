@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Handle, NodeResizer, Position } from '@xyflow/react';
 import {
-  Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink, X, Files,
-  Maximize2,
+  Play, AlertCircle, Loader2, Check, Clock, Hand, ExternalLink, X, Files, Maximize2,
 } from 'lucide-react';
-import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
 import { NODE_KINDS } from '../../../shared/graph';
+import type { GraphNodeConfig, GraphNodeKind, GraphNodeStatus } from '../../../shared/graph';
+import { NodeIcon } from './nodeVisual';
 import type { ImagePreset } from '../../../shared/imagePresets';
 import { markdownComponents } from '../aiMarkdown';
 import { InfographicView, MindmapView, QuizView } from '../studioViews';
@@ -250,7 +250,7 @@ export default function GraphNodeCard({ data, selected }: { data: GraphNodeData;
         title={STATUS_HINT[data.status]}
       >
         <StatusIcon status={data.status} />
-        <span style={{ fontSize: 'var(--fs-md)', lineHeight: 1, flex: 'none' }}>{spec.emoji}</span>
+        <NodeIcon kind={data.kind} />
         <span
           style={{
             fontSize: 'var(--fs-xs)', fontWeight: 'var(--fw-semibold)',
