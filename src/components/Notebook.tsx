@@ -18,7 +18,8 @@ import { useStudio, type StudioState } from './notebook/useStudio';
 import { markdownComponents } from './aiMarkdown';
 import {
   loadSources, saveSources, sourceFromInput, sourceFromFile, loadSelectedIds, saveSelectedIds,
-  subscribeNotebook, subscribeNotebookSwitch, getSelectedSourceContext, type NotebookSource,
+  subscribeNotebook, subscribeNotebookSwitch, getSelectedSourceContext, loadPages, deletePage,
+  type NotebookSource, type SavedPage,
 } from '../newtab/notebook';
 
 // Большой AI-экран как «блокнот» (NotebookLM-подобный): 3 колонки — Источники / Чат / Студия.
@@ -54,6 +55,8 @@ const STUDIO: { kind: StudioKind; label: string; Icon: typeof FileText; hint: st
 
 export default function Notebook({ children, onBack }: NotebookProps) {
   const [sources, setSources] = useState<NotebookSource[]>(() => loadSources());
+  // Готовые страницы этого блокнота. Перечитываются той же подпиской, что и источники.
+  const [pages, setPages] = useState<SavedPage[]>(() => loadPages());
   // По умолчанию выбраны все (как в NotebookLM): loadSelectedIds()===null → берём все текущие id.
   const [selected, setSelected] = useState<Set<string>>(() => {
     const ids = loadSelectedIds();
@@ -70,12 +73,13 @@ export default function Notebook({ children, onBack }: NotebookProps) {
   const gather = useGather(addUrls);
 
   // Внешние изменения стора (напр. из другой вкладки) — перечитываем.
-  useEffect(() => subscribeNotebook(() => setSources(loadSources())), []);
+  useEffect(() => subscribeNotebook(() => { setSources(loadSources()); setPages(loadPages()); }), []);
   // ⚠️ При смене блокнота перечитываем И ВЫБОР тоже. Источники обновились бы и без этого
   // (подписка выше), а выбор остался бы от прежнего блокнота — то есть галочки стояли бы на
   // чужих id, и Студия собирала бы материал из пустоты.
   useEffect(() => subscribeNotebookSwitch(() => {
     setSources(loadSources());
+    setPages(loadPages());
     const ids = loadSelectedIds();
     setSelected(new Set(ids ?? loadSources().map((s) => s.id)));
     setAdding(null);
@@ -218,6 +222,7 @@ export default function Notebook({ children, onBack }: NotebookProps) {
 
       {!empty && (
         <StudioPanel selectedCount={selectedCount} note={studio.note} busyKind={studio.busyKind}
+          pages={pages} onOpenPage={studio.open} onDeletePage={deletePage}
           onGenerate={(k) => void studio.generate(k, getSelectedSourceContext(), selectedSources())} />
       )}
       </div>
@@ -422,8 +427,12 @@ function SourcesPanel({ sources, selected, adding, onAddingChange, onAdd, onAddF
 }
 
 // ── Студия (справа) ─────────────────────────────────────────────────────────────
-function StudioPanel({ selectedCount, note, busyKind, onGenerate }: {
-  selectedCount: number; note: string | null; busyKind: StudioKind | null; onGenerate: (k: StudioKind) => void;
+function StudioPanel({ selectedCount, note, busyKind, pages, onGenerate, onOpenPage, onDeletePage }: {
+  selectedCount: number; note: string | null; busyKind: StudioKind | null;
+  pages: SavedPage[];
+  onGenerate: (k: StudioKind) => void;
+  onOpenPage: (p: SavedPage) => void;
+  onDeletePage: (id: string) => void;
 }) {
   return (
     <Panel title="Студия">
@@ -457,6 +466,41 @@ function StudioPanel({ selectedCount, note, busyKind, onGenerate }: {
           </button>
         ))}
       </div>
+      {/* ⚠️ Готовые страницы стоят ПОД кнопками, а не над: кнопки — то, зачем сюда приходят,
+          а список нужен, только когда что-то уже собрано. Пока он пуст, его нет вовсе. */}
+      {pages.length > 0 && (
+        <div style={{ marginTop: sp(4) }}>
+          <CapsLabel>Готовые</CapsLabel>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {pages.map((p) => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: sp(1) }}>
+                <button onClick={() => onOpenPage(p)} title="Открыть без пересборки"
+                  style={{
+                    flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: sp(2),
+                    border: 'none', background: 'transparent', cursor: 'default',
+                    padding: pad(2, 2), borderRadius: RADIUS.control, textAlign: 'left',
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                  <Newspaper size={13} style={{ flex: 'none', color: 'var(--section-tone)' }} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{
+                      display: 'block', fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{p.title}</span>
+                    <span style={{ display: 'block', fontSize: 'var(--fs-xs)', color: 'var(--text-faint)' }}>
+                      {new Date(p.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </span>
+                </button>
+                <button onClick={() => onDeletePage(p.id)} title="Удалить" style={xBtn}><X size={12} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {note && (
         <div style={{
           marginTop: 12, padding: '10px 12px', borderRadius: 'var(--radius-sm)',

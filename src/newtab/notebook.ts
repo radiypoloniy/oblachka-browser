@@ -13,6 +13,8 @@
 // (electron/NotebookExtract, electron/FileExtract). Изменения рассылаются window-событием →
 // открытая панель и чат применяют их живьём (subscribeNotebook).
 
+import type { PageSpec } from '../../shared/docMarkup';
+
 export interface NotebookSource {
   id: string;
   kind: 'url' | 'text' | 'file';
@@ -32,6 +34,21 @@ export interface NotebookSource {
   status: 'ready' | 'loading' | 'error'; // loading — идёт извлечение url/файла; error — не удалось
 }
 
+/**
+ * Готовая страница, оставшаяся в блокноте.
+ *
+ * ⚠️ Хранится ЦЕЛИКОМ (со всей разметкой), а не пересобирается по требованию. Пересборка —
+ * это минута работы модели и другой текст на выходе: та же тема, но не та же страница, которую
+ * человек уже посмотрел и одобрил. Живая жалоба ровно про это: «чтобы сохранить или посмотреть
+ * другой стиль, я вынужден генерировать заново».
+ */
+export interface SavedPage {
+  id: string;
+  title: string;
+  createdAt: number;
+  spec: PageSpec;
+}
+
 export interface Notebook {
   id: string;
   /** Имя, заданное человеком. Пусто — показываем имя первого источника (см. notebookTitle). */
@@ -40,6 +57,8 @@ export interface Notebook {
   sources: NotebookSource[];
   /** Выбранные источники. null — выбраны все (поведение по умолчанию, как у NotebookLM). */
   selected: string[] | null;
+  /** Готовые страницы, новые сверху. Может отсутствовать у записей прежнего формата. */
+  pages?: SavedPage[];
 }
 
 interface Store { activeId: string; list: Notebook[] }
@@ -61,8 +80,18 @@ const newId = (): string =>
   (globalThis.crypto?.randomUUID?.() ?? String(Date.now() + Math.random()));
 
 function emptyNotebook(): Notebook {
-  return { id: newId(), title: '', createdAt: Date.now(), sources: [], selected: null };
+  return { id: newId(), title: '', createdAt: Date.now(), sources: [], selected: null, pages: [] };
 }
+
+/**
+ * Потолок числа сохранённых страниц на блокнот.
+ *
+ * ⚠️ Не «на всякий случай»: весь стор блокнотов лежит в localStorage вместе с ТЕКСТАМИ
+ * источников, а это десятки килобайт на статью. Без потолка страницы однажды упёрлись бы в
+ * квоту, и перестало бы сохраняться ВСЁ, включая сами источники, — молча, потому что setItem
+ * бросает, а ловим мы его тихо.
+ */
+const MAX_PAGES = 12;
 
 /** Терпимость к старому формату записи источника: без status и без url. */
 function fixSource(s: NotebookSource): NotebookSource {
@@ -176,6 +205,29 @@ export function deleteNotebook(id: string): void {
   const switched = st.activeId === id;
   if (switched) st.activeId = st.list[Math.max(0, at - 1)]!.id;
   writeStore(st, switched);
+}
+
+// ── Готовые страницы активного блокнота ─────────────────────────────────────
+
+export function loadPages(): SavedPage[] {
+  return active(readStore()).pages ?? [];
+}
+
+/** Кладёт свежую страницу первой. Возвращает её id — по нему её сразу и открывают. */
+export function savePage(spec: PageSpec): string {
+  const st = readStore();
+  const nb = active(st);
+  const page: SavedPage = { id: newId(), title: spec.title, createdAt: Date.now(), spec };
+  nb.pages = [page, ...(nb.pages ?? [])].slice(0, MAX_PAGES);
+  writeStore(st);
+  return page.id;
+}
+
+export function deletePage(id: string): void {
+  const st = readStore();
+  const nb = active(st);
+  nb.pages = (nb.pages ?? []).filter((p) => p.id !== id);
+  writeStore(st);
 }
 
 // ── Источники активного блокнота ────────────────────────────────────────────
