@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Play, Pause, RotateCcw } from 'lucide-react'
+import { timerResume } from '../../newtab/timerStore'
 
 // ── Таймер ───────────────────────────────────────────────────────────────────────────────────
 const TIMER_PRESETS_MIN = [1, 3, 5, 10, 15, 30]
@@ -52,9 +53,15 @@ export default function TimerApp() {
     return () => clearInterval(id)
   }, [running])
 
+  // ⚠️ Досчитавший таймер запускается ЗАНОВО на всю длительность. Раньше здесь стояло
+  // `if (remaining === 0) return`, то есть после срабатывания кнопка «пуск» молча не делала
+  // ничего, и поставить тот же срок ещё раз было нельзя — только пересобрать через пресет.
+  // Состояние «досчитал» — это не «нечего считать», а «готов пойти заново» (см. timerResume).
   const start = () => {
-    if (remaining === 0) return
-    endAtRef.current = Date.now() + remaining * 1000
+    const secs = timerResume(remaining, duration)
+    if (secs <= 0) return
+    endAtRef.current = Date.now() + secs * 1000
+    setRemaining(secs)
     setFinished(false)
     setRunning(true)
   }

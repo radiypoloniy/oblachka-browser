@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { DISPLAY, RADIUS } from '../../styles/system';
 import { Tile, TileCaption, Sparkline, TONE_GREEN, TONE_WARM, FILL_GREEN, FILL_WARM, displayEm, type WidgetProps } from './widgets';
 import { CalendarFace, TimerLayout } from './clockFaces';
-import { TIMER_PRESETS, timerLeftMs, timerRunning } from '../../newtab/timerStore';
+import { TIMER_PRESETS, timerLeftMs, timerResume, timerRunning } from '../../newtab/timerStore';
 import type { TimerState } from '../../../shared/ipc';
 import type { TrackedProduct } from '../../../shared/ipc';
 import type { DayDigestState } from '../../../shared/ipc';
@@ -587,9 +587,12 @@ export function TimerWidget({ box, fill, overImage, hero }: WidgetProps) {
           const ms = TIMER_PRESETS.find((p) => p.id === id)?.ms ?? cur.durationMs;
           apply({ durationMs: ms, endAt: Date.now() + ms, leftMs: 0 });
         }}
+        // ⚠️ Досчитавший таймер «пуск» запускает ЗАНОВО на всю длительность, а не продолжает с
+        // нуля — см. timerResume(). Прежний `Math.max(left, 1000)` давал секундный отсчёт, и
+        // таймер срабатывал повторно сразу же.
         onToggle={() => {
           if (running) apply({ durationMs: cur.durationMs, endAt: 0, leftMs: left });
-          else apply({ durationMs: cur.durationMs, endAt: Date.now() + Math.max(left, 1000), leftMs: 0 });
+          else apply({ durationMs: cur.durationMs, endAt: Date.now() + timerResume(left, cur.durationMs), leftMs: 0 });
         }}
         onStop={() => apply({ durationMs: cur.durationMs, endAt: 0, leftMs: cur.durationMs })}
       />
