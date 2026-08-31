@@ -47,7 +47,8 @@ const METRICS = `(() => {
     type: m.type,
     name: m.name ?? m.serviceName ?? '',
     ws: (m.memory?.workingSetSize ?? 0) * 1024,
-    peak: (m.memory?.peakWorkingSetSize ?? 0) * 1024,
+    priv: (m.memory?.privateBytes ?? 0) * 1024,
+    cpu: m.cpu?.percentCPUUsage ?? 0,
   }));
   // ⚠️ Связь pid↔вкладка лежала в одной строке и не использовалась ни разу: под давлением мы
   // выселяли самых ДАВНИХ, ничего не зная о том, кто из них дорогой.
@@ -68,18 +69,25 @@ function report(title, snap) {
     if (!byPid.has(v.pid)) byPid.set(v.pid, []);
     byPid.get(v.pid).push(v);
   }
-  const total = procs.reduce((s, p) => s + p.ws, 0);
+  // ⚠️ Главное число — Private Bytes, а не Working Set. Working Set включает разделяемые страницы
+  // и файловый кэш (в том числе mmap-нутый файл модели), поэтому сумма по процессам их задваивает,
+  // а падение этого числа ничего не стоит: страницы просто вытеснили. Private — то, что процесс
+  // реально забрал у системы. Оба печатаются рядом, чтобы разницу было видно, а не приходилось
+  // верить на слово.
+  const total = procs.reduce((s, p) => s + p.priv, 0);
+  const totalWs = procs.reduce((s, p) => s + p.ws, 0);
 
   console.log(`\n── ${title} ${'─'.repeat(Math.max(0, 60 - title.length))}`);
-  console.log(`  процессов ${procs.length}, вью ${views.length}, суммарно ${mb(total)}`);
+  console.log(`  процессов ${procs.length}, вью ${views.length}`);
+  console.log(`  Private Bytes ${mb(total)}   ·   Working Set ${mb(totalWs)}`);
 
   const byType = new Map();
-  for (const p of procs) byType.set(p.type, (byType.get(p.type) ?? 0) + p.ws);
-  console.log('  по типу процесса:');
+  for (const p of procs) byType.set(p.type, (byType.get(p.type) ?? 0) + p.priv);
+  console.log('  Private Bytes по типу процесса:');
   for (const [t, v] of [...byType].sort((a, b) => b[1] - a[1])) {
     console.log(`    ${pad(t, 14)} ${pad(mb(v), 9)} ${(v / total * 100).toFixed(0)}%`);
   }
-  return { total, byPid, procs, views };
+  return { total, totalWs, byPid, procs, views };
 }
 
 // ── прогон ───────────────────────────────────────────────────────────────────────────────────
@@ -137,17 +145,17 @@ await withStand(async (ctx) => {
 
   // ── цена каждой вкладки ────────────────────────────────────────────────────────────────────
   console.log('\n── цена каждой вью ───────────────────────────────────────────');
-  console.log(`  ${pad('pid', 7)}${pad('тип вью', 16)}${pad('память', 10)}что это`);
+  console.log(`  ${pad('pid', 7)}${pad('тип вью', 14)}${pad('private', 10)}${pad('workset', 10)}что это`);
   const rows = [];
   for (const p of loaded.procs) {
     const vs = loaded.byPid.get(p.pid) ?? [];
     const what = vs.length
       ? vs.map((v) => v.url || `(без адреса, ${v.type})`).join(' + ')
       : `— процесс без вью (${p.type}${p.name ? `, ${p.name}` : ''})`;
-    rows.push({ pid: p.pid, type: vs[0]?.type ?? p.type, ws: p.ws, what });
+    rows.push({ pid: p.pid, type: vs[0]?.type ?? p.type, ws: p.ws, priv: p.priv, what });
   }
-  for (const r of rows.sort((a, b) => b.ws - a.ws)) {
-    console.log(`  ${pad(r.pid, 7)}${pad(r.type, 16)}${pad(mb(r.ws), 10)}${r.what.slice(0, 78)}`);
+  for (const r of rows.sort((a, b) => b.priv - a.priv)) {
+    console.log(`  ${pad(r.pid, 7)}${pad(r.type, 14)}${pad(mb(r.priv), 10)}${pad(mb(r.ws), 10)}${r.what.slice(0, 62)}`);
   }
 
   // ⚠️ Главное число раздела: сколько держат рендереры, которые человеку сейчас ничего не
@@ -155,14 +163,14 @@ await withStand(async (ctx) => {
   // Слой хрома (index.html) сюда НЕ входит — он и есть интерфейс, он виден всегда.
   const hidden = rows.filter((r) => !r.what.includes('/tab-') && !r.what.includes('index.html')
     && !r.what.startsWith('—'));
-  const hiddenSum = hidden.reduce((s, r) => s + r.ws, 0);
+  const hiddenSum = hidden.reduce((s, r) => s + r.priv, 0);
   console.log(`\n  вью, ничего не показывающих человеку: ${hidden.length}, они держат ${mb(hiddenSum)}`);
-  for (const r of hidden) console.log(`    ${pad(mb(r.ws), 9)}${r.what.slice(0, 70)}`);
+  for (const r of hidden) console.log(`    ${pad(mb(r.priv), 9)}${r.what.slice(0, 70)}`);
 
   // ⚠️ Процесс Browser отслеживаем ОТДЕЛЬНО по всем этапам: сумма по типам его прячет, а он в
   // замере оказался самым крупным потребителем — этого не предполагала ни одна из гипотез.
-  const browser = (s) => s.procs.find((p) => p.type === 'Browser')?.ws ?? 0;
-  console.log('\n── главный процесс (Browser) по этапам ───────────────────────');
+  const browser = (s) => s.procs.find((p) => p.type === 'Browser')?.priv ?? 0;
+  console.log('\n── главный процесс (Browser), Private Bytes по этапам ────────');
   console.log(`  холодный старт      ${mb(browser(cold))}`);
   console.log(`  после прогрева      ${mb(browser(warm))}   (+${mb(browser(warm) - browser(cold))})`);
   console.log(`  вкладки открыты     ${mb(browser(opened))}   (+${mb(browser(opened) - browser(warm))})`);
@@ -200,14 +208,7 @@ await withStand(async (ctx) => {
   console.log(`  возврат в 'active':                        ${freeze.thawed === true ? 'РАБОТАЕТ' : freeze.thawed}`);
   if (freeze.attach) console.log(`  attach: ${freeze.attach}`);
 
-  // ⚠️ Оговорка, без которой числа выше можно прочитать неправильно. getAppMetrics отдаёт ТОЛЬКО
-  // Working Set (privateBytes из Electron убран), а он включает разделяемые страницы — то есть
-  // сумма по процессам их СЧИТАЕТ НЕСКОЛЬКО РАЗ. Годится для «кто из них дороже» и для «стало
-  // легче или нет», но абсолютное «браузер занимает X» по нему называть нельзя.
-  console.log('\n  ⚠️ Working Set включает разделяемые страницы: сумма по процессам их');
-  console.log('     задваивает. Числа сравнимы между собой, абсолютная сумма завышена.');
-
-  console.log('\n── итог ──────────────────────────────────────────────────────');
+  console.log('\n── итог (Private Bytes) ──────────────────────────────────────');
   console.log(`  холодный старт      ${mb(cold.total)}`);
   console.log(`  + прогрев поповеров ${mb(warm.total - cold.total)}`);
   console.log(`  + ${TABS} пустых вкладок  ${mb(opened.total - warm.total)}`);
