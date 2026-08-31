@@ -1,0 +1,1591 @@
+{
+  "hexToRgb #4285F4": [
+    66,
+    133,
+    244
+  ],
+  "hexToRgb чёрный": [
+    0,
+    0,
+    0
+  ],
+  "rgbToHex обратно": "#4285f4",
+  "rgbToHex зажимает выход за диапазон": "#00ff80",
+  "parseHex «4285f4»": "#4285f4",
+  "parseHex «#ABC»": "#aabbcc",
+  "parseHex «#4285F4»": "#4285f4",
+  "parseHex «rgb(1,2,3)»": null,
+  "parseHex «»": null,
+  "parseHex «#12345»": null,
+  "blend бело-чёрный 0%": "#000000",
+  "blend бело-чёрный 12%": "#1f1f1f",
+  "blend бело-чёрный 30%": "#4d4d4d",
+  "blend бело-чёрный 50%": "#808080",
+  "blend бело-чёрный 88%": "#e0e0e0",
+  "blend бело-чёрный 100%": "#ffffff",
+  "blend тона с землёй": "#d5def0",
+  "multiplyColors две краски": "#283034",
+  "multiplyColors с белым не меняет": "#2c4bd8",
+  "rgba 0": "rgba(66, 133, 244, 0.000)",
+  "rgba 0.4": "rgba(66, 133, 244, 0.400)",
+  "rgba 1": "rgba(66, 133, 244, 1.000)",
+  "relLuminance #FFFFFF": 1,
+  "lightnessOf #FFFFFF": 1,
+  "hslSaturation #FFFFFF": 0,
+  "hueOf #FFFFFF": 0,
+  "relLuminance #000000": 0,
+  "lightnessOf #000000": 0,
+  "hslSaturation #000000": 0,
+  "hueOf #000000": 0,
+  "relLuminance #4285F4": 0.24464961992425516,
+  "lightnessOf #4285F4": 0.607843137254902,
+  "hslSaturation #4285F4": 0.8900000000000001,
+  "hueOf #4285F4": 217.41573033707868,
+  "relLuminance #B08968": 0.28120903089495736,
+  "lightnessOf #B08968": 0.5490196078431373,
+  "hslSaturation #B08968": 0.31304347826086953,
+  "hueOf #B08968": 27.5,
+  "relLuminance #1F7A4C": 0.14732176280693213,
+  "lightnessOf #1F7A4C": 0.3,
+  "hslSaturation #1F7A4C": 0.5947712418300654,
+  "hueOf #1F7A4C": 149.6703296703297,
+  "contrast бело-чёрный": 21,
+  "contrast тон к земле": 2.9662780621723916,
+  "contrast сам с собой": 1,
+  "rotateHue -30°": "#42def4",
+  "rotateHue 0°": "#4285f4",
+  "rotateHue 30°": "#5842f4",
+  "rotateHue 180°": "#f4b142",
+  "rotateHue 400°": "#7642f4",
+  "withLightness 0": "#000000",
+  "withLightness 0.24": "#073074",
+  "withLightness 0.5": "#0e63f1",
+  "withLightness 0.86": "#bcd3fb",
+  "withLightness 1": "#ffffff",
+  "hslToHex 0/0/0.15": "#262626",
+  "hslToHex 0/0/0.35": "#595959",
+  "hslToHex 0/0/0.5": "#808080",
+  "hslToHex 0/0/0.65": "#a6a6a6",
+  "hslToHex 0/0/0.9": "#e6e6e6",
+  "hslToHex 0/0.2/0.15": "#2e1f1f",
+  "hslToHex 0/0.2/0.35": "#6b4747",
+  "hslToHex 0/0.2/0.5": "#996666",
+  "hslToHex 0/0.2/0.65": "#b89494",
+  "hslToHex 0/0.2/0.9": "#ebe0e0",
+  "hslToHex 0/0.65/0.15": "#3f0d0d",
+  "hslToHex 0/0.65/0.35": "#931f1f",
+  "hslToHex 0/0.65/0.5": "#d22d2d",
+  "hslToHex 0/0.65/0.65": "#e06c6c",
+  "hslToHex 0/0.65/0.9": "#f6d5d5",
+  "hslToHex 0/1/0.15": "#4d0000",
+  "hslToHex 0/1/0.35": "#b30000",
+  "hslToHex 0/1/0.5": "#ff0000",
+  "hslToHex 0/1/0.65": "#ff4d4d",
+  "hslToHex 0/1/0.9": "#ffcccc",
+  "hslToHex 45/0/0.15": "#262626",
+  "hslToHex 45/0/0.35": "#595959",
+  "hslToHex 45/0/0.5": "#808080",
+  "hslToHex 45/0/0.65": "#a6a6a6",
+  "hslToHex 45/0/0.9": "#e6e6e6",
+  "hslToHex 45/0.2/0.15": "#2e2a1f",
+  "hslToHex 45/0.2/0.35": "#6b6247",
+  "hslToHex 45/0.2/0.5": "#998c66",
+  "hslToHex 45/0.2/0.65": "#b8af94",
+  "hslToHex 45/0.2/0.9": "#ebe8e0",
+  "hslToHex 45/0.65/0.15": "#3f330d",
+  "hslToHex 45/0.65/0.35": "#93761f",
+  "hslToHex 45/0.65/0.5": "#d2a92d",
+  "hslToHex 45/0.65/0.65": "#e0c36c",
+  "hslToHex 45/0.65/0.9": "#f6eed5",
+  "hslToHex 45/1/0.15": "#4d3900",
+  "hslToHex 45/1/0.35": "#b38600",
+  "hslToHex 45/1/0.5": "#ffbf00",
+  "hslToHex 45/1/0.65": "#ffd24d",
+  "hslToHex 45/1/0.9": "#fff2cc",
+  "hslToHex 120/0/0.15": "#262626",
+  "hslToHex 120/0/0.35": "#595959",
+  "hslToHex 120/0/0.5": "#808080",
+  "hslToHex 120/0/0.65": "#a6a6a6",
+  "hslToHex 120/0/0.9": "#e6e6e6",
+  "hslToHex 120/0.2/0.15": "#1f2e1f",
+  "hslToHex 120/0.2/0.35": "#476b47",
+  "hslToHex 120/0.2/0.5": "#669966",
+  "hslToHex 120/0.2/0.65": "#94b894",
+  "hslToHex 120/0.2/0.9": "#e0ebe0",
+  "hslToHex 120/0.65/0.15": "#0d3f0d",
+  "hslToHex 120/0.65/0.35": "#1f931f",
+  "hslToHex 120/0.65/0.5": "#2dd22d",
+  "hslToHex 120/0.65/0.65": "#6ce06c",
+  "hslToHex 120/0.65/0.9": "#d5f6d5",
+  "hslToHex 120/1/0.15": "#004d00",
+  "hslToHex 120/1/0.35": "#00b300",
+  "hslToHex 120/1/0.5": "#00ff00",
+  "hslToHex 120/1/0.65": "#4dff4d",
+  "hslToHex 120/1/0.9": "#ccffcc",
+  "hslToHex 200/0/0.15": "#262626",
+  "hslToHex 200/0/0.35": "#595959",
+  "hslToHex 200/0/0.5": "#808080",
+  "hslToHex 200/0/0.65": "#a6a6a6",
+  "hslToHex 200/0/0.9": "#e6e6e6",
+  "hslToHex 200/0.2/0.15": "#1f292e",
+  "hslToHex 200/0.2/0.35": "#475f6b",
+  "hslToHex 200/0.2/0.5": "#668899",
+  "hslToHex 200/0.2/0.65": "#94acb8",
+  "hslToHex 200/0.2/0.9": "#e0e7eb",
+  "hslToHex 200/0.65/0.15": "#0d2f3f",
+  "hslToHex 200/0.65/0.35": "#1f6d93",
+  "hslToHex 200/0.65/0.5": "#2d9bd2",
+  "hslToHex 200/0.65/0.65": "#6cb9e0",
+  "hslToHex 200/0.65/0.9": "#d5ebf6",
+  "hslToHex 200/1/0.15": "#00334d",
+  "hslToHex 200/1/0.35": "#0077b3",
+  "hslToHex 200/1/0.5": "#00aaff",
+  "hslToHex 200/1/0.65": "#4dc3ff",
+  "hslToHex 200/1/0.9": "#cceeff",
+  "hslToHex 300/0/0.15": "#262626",
+  "hslToHex 300/0/0.35": "#595959",
+  "hslToHex 300/0/0.5": "#808080",
+  "hslToHex 300/0/0.65": "#a6a6a6",
+  "hslToHex 300/0/0.9": "#e6e6e6",
+  "hslToHex 300/0.2/0.15": "#2e1f2e",
+  "hslToHex 300/0.2/0.35": "#6b476b",
+  "hslToHex 300/0.2/0.5": "#996699",
+  "hslToHex 300/0.2/0.65": "#b894b8",
+  "hslToHex 300/0.2/0.9": "#ebe0eb",
+  "hslToHex 300/0.65/0.15": "#3f0d3f",
+  "hslToHex 300/0.65/0.35": "#931f93",
+  "hslToHex 300/0.65/0.5": "#d22dd2",
+  "hslToHex 300/0.65/0.65": "#e06ce0",
+  "hslToHex 300/0.65/0.9": "#f6d5f6",
+  "hslToHex 300/1/0.15": "#4d004c",
+  "hslToHex 300/1/0.35": "#b300b2",
+  "hslToHex 300/1/0.5": "#ff00ff",
+  "hslToHex 300/1/0.65": "#ff4dff",
+  "hslToHex 300/1/0.9": "#ffccff",
+  "hslToHex 359/0/0.15": "#262626",
+  "hslToHex 359/0/0.35": "#595959",
+  "hslToHex 359/0/0.5": "#808080",
+  "hslToHex 359/0/0.65": "#a6a6a6",
+  "hslToHex 359/0/0.9": "#e6e6e6",
+  "hslToHex 359/0.2/0.15": "#2e1f1f",
+  "hslToHex 359/0.2/0.35": "#6b4748",
+  "hslToHex 359/0.2/0.5": "#996667",
+  "hslToHex 359/0.2/0.65": "#b89494",
+  "hslToHex 359/0.2/0.9": "#ebe0e1",
+  "hslToHex 359/0.65/0.15": "#3f0d0e",
+  "hslToHex 359/0.65/0.35": "#931f21",
+  "hslToHex 359/0.65/0.5": "#d22d2f",
+  "hslToHex 359/0.65/0.65": "#e06c6e",
+  "hslToHex 359/0.65/0.9": "#f6d5d5",
+  "hslToHex 359/1/0.15": "#4d0001",
+  "hslToHex 359/1/0.35": "#b30003",
+  "hslToHex 359/1/0.5": "#ff0004",
+  "hslToHex 359/1/0.65": "#ff4d4f",
+  "hslToHex 359/1/0.9": "#ffcccd",
+  "hslToHex 400/0/0.15": "#262626",
+  "hslToHex 400/0/0.35": "#595959",
+  "hslToHex 400/0/0.5": "#808080",
+  "hslToHex 400/0/0.65": "#a6a6a6",
+  "hslToHex 400/0/0.9": "#e6e6e6",
+  "hslToHex 400/0.2/0.15": "#2e291f",
+  "hslToHex 400/0.2/0.35": "#6b5f47",
+  "hslToHex 400/0.2/0.5": "#998866",
+  "hslToHex 400/0.2/0.65": "#b8ac94",
+  "hslToHex 400/0.2/0.9": "#ebe7e0",
+  "hslToHex 400/0.65/0.15": "#3f2f0d",
+  "hslToHex 400/0.65/0.35": "#936d1f",
+  "hslToHex 400/0.65/0.5": "#d29b2d",
+  "hslToHex 400/0.65/0.65": "#e0b96c",
+  "hslToHex 400/0.65/0.9": "#f6ebd5",
+  "hslToHex 400/1/0.15": "#4d3300",
+  "hslToHex 400/1/0.35": "#b37700",
+  "hslToHex 400/1/0.5": "#ffaa00",
+  "hslToHex 400/1/0.65": "#ffc34d",
+  "hslToHex 400/1/0.9": "#ffeecc",
+  "hslToHex -30/0/0.15": "#262626",
+  "hslToHex -30/0/0.35": "#595959",
+  "hslToHex -30/0/0.5": "#808080",
+  "hslToHex -30/0/0.65": "#a6a6a6",
+  "hslToHex -30/0/0.9": "#e6e6e6",
+  "hslToHex -30/0.2/0.15": "#2e1f26",
+  "hslToHex -30/0.2/0.35": "#6b4759",
+  "hslToHex -30/0.2/0.5": "#996680",
+  "hslToHex -30/0.2/0.65": "#b894a6",
+  "hslToHex -30/0.2/0.9": "#ebe0e6",
+  "hslToHex -30/0.65/0.15": "#3f0d26",
+  "hslToHex -30/0.65/0.35": "#931f59",
+  "hslToHex -30/0.65/0.5": "#d22d80",
+  "hslToHex -30/0.65/0.65": "#e06ca6",
+  "hslToHex -30/0.65/0.9": "#f6d5e6",
+  "hslToHex -30/1/0.15": "#4d0026",
+  "hslToHex -30/1/0.35": "#b30059",
+  "hslToHex -30/1/0.5": "#ff0080",
+  "hslToHex -30/1/0.65": "#ff4da6",
+  "hslToHex -30/1/0.9": "#ffcce6",
+  "groundTint уголь, светлая": "#007AFF",
+  "deepestGround уголь, светлая, 0%": "#e9eaef",
+  "buildChromeGround уголь, светлая, 0%": {
+    "top": "#e9eaef",
+    "island": "#d6eaff",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #e9eaef 0%, #e9eaef 42%, #e9eaef 100%)"
+  },
+  "deepestGround уголь, светлая, 40%": "#95c8f5",
+  "buildChromeGround уголь, светлая, 40%": {
+    "top": "#95c8f5",
+    "island": "#d6eaff",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #95c8f5 0%, #a8cbf3 42%, #bacff2 100%)"
+  },
+  "deepestGround уголь, светлая, 100%": "#1795fd",
+  "buildChromeGround уголь, светлая, 100%": {
+    "top": "#1795fd",
+    "island": "#d6eaff",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #1795fd 0%, #469cfa 42%, #75a6f7 100%)"
+  },
+  "islandOver уголь, светлая": "#d6eaff",
+  "groundTint уголь, тёмная": "#003772",
+  "deepestGround уголь, тёмная, 0%": "#121214",
+  "buildChromeGround уголь, тёмная, 0%": {
+    "top": "#121214",
+    "island": "#2d2d31",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #121214 0%, #121214 42%, #121214 100%)"
+  },
+  "deepestGround уголь, тёмная, 40%": "#003a6b",
+  "buildChromeGround уголь, тёмная, 40%": {
+    "top": "#003a6b",
+    "island": "#004d8f",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #003a6b 0%, #002c5c 42%, #001d4c 100%)"
+  },
+  "deepestGround уголь, тёмная, 100%": "#003a6b",
+  "buildChromeGround уголь, тёмная, 100%": {
+    "top": "#003a6b",
+    "island": "#004d8f",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #003a6b 0%, #002c5c 42%, #001d4c 100%)"
+  },
+  "islandOver уголь, тёмная": "#004d8f",
+  "groundTint графит, светлая": "#5B6B7A",
+  "deepestGround графит, светлая, 0%": "#e4e5e7",
+  "buildChromeGround графит, светлая, 0%": {
+    "top": "#e4e5e7",
+    "island": "#e5e7ea",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #e4e5e7 0%, #e4e5e7 42%, #e4e5e7 100%)"
+  },
+  "deepestGround графит, светлая, 40%": "#b3bac0",
+  "buildChromeGround графит, светлая, 40%": {
+    "top": "#b3bac0",
+    "island": "#e5e7ea",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #b3bac0 0%, #bec3c8 42%, #c9ccd1 100%)"
+  },
+  "deepestGround графит, светлая, 100%": "#697985",
+  "buildChromeGround графит, светлая, 100%": {
+    "top": "#697985",
+    "island": "#e5e7ea",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #697985 0%, #84909b 42%, #a0a7b1 100%)"
+  },
+  "islandOver графит, светлая": "#e5e7ea",
+  "groundTint графит, тёмная": "#313a42",
+  "deepestGround графит, тёмная, 0%": "#121214",
+  "buildChromeGround графит, тёмная, 0%": {
+    "top": "#121214",
+    "island": "#2d2d31",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #121214 0%, #121214 42%, #121214 100%)"
+  },
+  "deepestGround графит, тёмная, 40%": "#2e373d",
+  "buildChromeGround графит, тёмная, 40%": {
+    "top": "#2e373d",
+    "island": "#3e4b53",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #2e373d 0%, #272e34 42%, #21252c 100%)"
+  },
+  "deepestGround графит, тёмная, 100%": "#2e373d",
+  "buildChromeGround графит, тёмная, 100%": {
+    "top": "#2e373d",
+    "island": "#3e4b53",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #2e373d 0%, #272e34 42%, #21252c 100%)"
+  },
+  "islandOver графит, тёмная": "#3e4b53",
+  "groundTint бумага, светлая": "#B08968",
+  "deepestGround бумага, светлая, 0%": "#e8e2d5",
+  "buildChromeGround бумага, светлая, 0%": {
+    "top": "#e8e2d5",
+    "island": "#f1e9df",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #e8e2d5 0%, #e8e2d5 42%, #e8e2d5 100%)"
+  },
+  "deepestGround бумага, светлая, 40%": "#d4c0ae",
+  "buildChromeGround бумага, светлая, 40%": {
+    "top": "#d4c0ae",
+    "island": "#f1e9df",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #d4c0ae 0%, #d8c9b6 42%, #ddd2bf 100%)"
+  },
+  "deepestGround бумага, светлая, 100%": "#b68d73",
+  "buildChromeGround бумага, светлая, 100%": {
+    "top": "#b68d73",
+    "island": "#f1e9df",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #b68d73 0%, #c1a489 42%, #ccb99f 100%)"
+  },
+  "islandOver бумага, светлая": "#f1e9df",
+  "groundTint бумага, тёмная": "#4b3827",
+  "deepestGround бумага, тёмная, 0%": "#121214",
+  "buildChromeGround бумага, тёмная, 0%": {
+    "top": "#121214",
+    "island": "#2d2d31",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #121214 0%, #121214 42%, #121214 100%)"
+  },
+  "deepestGround бумага, тёмная, 40%": "#463225",
+  "buildChromeGround бумага, тёмная, 40%": {
+    "top": "#463225",
+    "island": "#5f4432",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #463225 0%, #3c2d1f 42%, #32271a 100%)"
+  },
+  "deepestGround бумага, тёмная, 100%": "#463225",
+  "buildChromeGround бумага, тёмная, 100%": {
+    "top": "#463225",
+    "island": "#5f4432",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #463225 0%, #3c2d1f 42%, #32271a 100%)"
+  },
+  "islandOver бумага, тёмная": "#5f4432",
+  "groundTint мята, светлая": "#34A853",
+  "deepestGround мята, светлая, 0%": "#deeae2",
+  "buildChromeGround мята, светлая, 0%": {
+    "top": "#deeae2",
+    "island": "#dff1e3",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #deeae2 0%, #deeae2 42%, #deeae2 100%)"
+  },
+  "deepestGround мята, светлая, 40%": "#a1d2ac",
+  "buildChromeGround мята, светлая, 40%": {
+    "top": "#a1d2ac",
+    "island": "#dff1e3",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #a1d2ac 0%, #aed8ba 42%, #bcddc8 100%)"
+  },
+  "deepestGround мята, светлая, 100%": "#45af5a",
+  "buildChromeGround мята, светлая, 100%": {
+    "top": "#45af5a",
+    "island": "#dff1e3",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #45af5a 0%, #67bc7e 42%, #89c9a1 100%)"
+  },
+  "islandOver мята, светлая": "#dff1e3",
+  "groundTint мята, тёмная": "#1b572b",
+  "deepestGround мята, тёмная, 0%": "#121214",
+  "buildChromeGround мята, тёмная, 0%": {
+    "top": "#121214",
+    "island": "#2d2d31",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #121214 0%, #121214 42%, #121214 100%)"
+  },
+  "deepestGround мята, тёмная, 40%": "#195224",
+  "buildChromeGround мята, тёмная, 40%": {
+    "top": "#195224",
+    "island": "#20682d",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #195224 0%, #164623 42%, #123a21 100%)"
+  },
+  "deepestGround мята, тёмная, 100%": "#195224",
+  "buildChromeGround мята, тёмная, 100%": {
+    "top": "#195224",
+    "island": "#20682d",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #195224 0%, #164623 42%, #123a21 100%)"
+  },
+  "islandOver мята, тёмная": "#20682d",
+  "groundTint небо, светлая": "#4285F4",
+  "deepestGround небо, светлая, 0%": "#dce5f6",
+  "buildChromeGround небо, светлая, 0%": {
+    "top": "#dce5f6",
+    "island": "#e1ebfd",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #dce5f6 0%, #dce5f6 42%, #dce5f6 100%)"
+  },
+  "deepestGround небо, светлая, 40%": "#a5c7f5",
+  "buildChromeGround небо, светлая, 40%": {
+    "top": "#a5c7f5",
+    "island": "#e1ebfd",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #a5c7f5 0%, #b1caf5 42%, #bdcef6 100%)"
+  },
+  "deepestGround небо, светлая, 100%": "#5199f4",
+  "buildChromeGround небо, светлая, 100%": {
+    "top": "#5199f4",
+    "island": "#e1ebfd",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #5199f4 0%, #70a2f5 42%, #8facf5 100%)"
+  },
+  "islandOver небо, светлая": "#e1ebfd",
+  "groundTint небо, тёмная": "#062d6c",
+  "deepestGround небо, тёмная, 0%": "#121214",
+  "buildChromeGround небо, тёмная, 0%": {
+    "top": "#121214",
+    "island": "#2d2d31",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #121214 0%, #121214 42%, #121214 100%)"
+  },
+  "deepestGround небо, тёмная, 40%": "#063065",
+  "buildChromeGround небо, тёмная, 40%": {
+    "top": "#063065",
+    "island": "#08438c",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #063065 0%, #052457 42%, #041748 100%)"
+  },
+  "deepestGround небо, тёмная, 100%": "#063065",
+  "buildChromeGround небо, тёмная, 100%": {
+    "top": "#063065",
+    "island": "#08438c",
+    "paintLayers": 1,
+    "backgroundImage": "linear-gradient(180deg, #063065 0%, #052457 42%, #041748 100%)"
+  },
+  "islandOver небо, тёмная": "#08438c",
+  "meshIsLight mesh": true,
+  "meshCaptionTop mesh": "#dfe1e9",
+  "overlaySymbolColor mesh": "#3C3C43",
+  "meshPaintLayers mesh": [
+    "radial-gradient(ellipse 62% 48.4% at 18% 22%, #2C4BD8 0%, rgba(44, 75, 216, 0.520) 33.3%, transparent 79.4%)",
+    "radial-gradient(ellipse 54% 42.1% at 78% 30%, #E8A33D 0%, rgba(232, 163, 61, 0.520) 33.3%, transparent 79.4%)",
+    "radial-gradient(ellipse 58% 45.2% at 46% 84%, #1F7A4C 0%, rgba(31, 122, 76, 0.520) 33.3%, transparent 79.4%)",
+    "linear-gradient(180deg, #dfe3ee 0%, #dfe3ee 100%)"
+  ],
+  "compileMeshBackground mesh": "radial-gradient(ellipse 62% 48.4% at 18% 22%, #2C4BD8 0%, rgba(44, 75, 216, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 54% 42.1% at 78% 30%, #E8A33D 0%, rgba(232, 163, 61, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 58% 45.2% at 46% 84%, #1F7A4C 0%, rgba(31, 122, 76, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #dfe3ee 0%, #dfe3ee 100%)",
+  "sampleMesh mesh 0/0": "#acb7e8",
+  "sampleMesh mesh 0/20": "#788be1",
+  "sampleMesh mesh 0/40": "#9eace6",
+  "sampleMesh mesh 0/60": "#dfe3ee",
+  "sampleMesh mesh 0/80": "#dfe3ee",
+  "sampleMesh mesh 0/100": "#dfe3ee",
+  "sampleMesh mesh 20/0": "#9ba9e6",
+  "sampleMesh mesh 20/20": "#3a56da",
+  "sampleMesh mesh 20/40": "#8a9be4",
+  "sampleMesh mesh 20/60": "#c9d6dc",
+  "sampleMesh mesh 20/80": "#96bbb0",
+  "sampleMesh mesh 20/100": "#afc9c5",
+  "sampleMesh mesh 40/0": "#b3bee9",
+  "sampleMesh mesh 40/20": "#8796de",
+  "sampleMesh mesh 40/40": "#a7b0e0",
+  "sampleMesh mesh 40/60": "#a8c5c0",
+  "sampleMesh mesh 40/80": "#458f6c",
+  "sampleMesh mesh 40/100": "#83b1a0",
+  "sampleMesh mesh 60/0": "#dfe2ed",
+  "sampleMesh mesh 60/20": "#cbb7a8",
+  "sampleMesh mesh 60/40": "#dfc4a2",
+  "sampleMesh mesh 60/60": "#b1cac6",
+  "sampleMesh mesh 60/80": "#66a188",
+  "sampleMesh mesh 60/100": "#90b8ab",
+  "sampleMesh mesh 80/0": "#e0ddde",
+  "sampleMesh mesh 80/20": "#e5b97a",
+  "sampleMesh mesh 80/40": "#e5b97a",
+  "sampleMesh mesh 80/60": "#dfdddd",
+  "sampleMesh mesh 80/80": "#b3cbc9",
+  "sampleMesh mesh 80/100": "#c7d6da",
+  "sampleMesh mesh 100/0": "#dfe3ee",
+  "sampleMesh mesh 100/20": "#e2ccae",
+  "sampleMesh mesh 100/40": "#e2ccae",
+  "sampleMesh mesh 100/60": "#dfe3ee",
+  "sampleMesh mesh 100/80": "#dfe3ee",
+  "sampleMesh mesh 100/100": "#dfe3ee",
+  "sampleMesh mesh внутри пятна 18/22": "#2c4bd8",
+  "sampleMesh mesh внутри пятна 26/30": "#6279df",
+  "sampleMesh mesh внутри пятна 34/42": "#a1aee6",
+  "sampleMesh mesh внутри пятна 78/30": "#e8a33d",
+  "sampleMesh mesh внутри пятна 86/44": "#e3c498",
+  "sampleMesh mesh внутри пятна 46/84": "#1f7a4c",
+  "sampleMesh mesh внутри пятна 46/66": "#89b4a6",
+  "adaptMeshToTheme mesh, светлая": {
+    "id": "golden",
+    "name": "Эталон",
+    "kind": "mesh",
+    "seeds": [
+      "#2C4BD8",
+      "#E8A33D",
+      "#1F7A4C"
+    ],
+    "base": "#b9c7b8",
+    "blobs": [
+      {
+        "color": "#4b66d1",
+        "x": 18,
+        "y": 22,
+        "size": 62
+      },
+      {
+        "color": "#deab58",
+        "x": 78,
+        "y": 30,
+        "size": 54
+      },
+      {
+        "color": "#49ab77",
+        "x": 46,
+        "y": 84,
+        "size": 58
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "accentFromMesh mesh, светлая": "#a46a14",
+  "accentFromMesh mesh с подсказкой земли, светлая": "#1f7a4c",
+  "buildChromeGroundFromMesh mesh, светлая": {
+    "top": "#bac6b5",
+    "island": "#dde2f9",
+    "paintLayers": 5,
+    "backgroundImage": "linear-gradient(180deg, #bac6b5 0px, #bac6b5 56px, rgba(186, 198, 181, 0.000) 120px), radial-gradient(ellipse 62% 48.4% at 18% 22%, #4b66d1 0%, rgba(75, 102, 209, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 54% 42.1% at 78% 30%, #deab58 0%, rgba(222, 171, 88, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 58% 45.2% at 46% 84%, #49ab77 0%, rgba(73, 171, 119, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #b9c7b8 0%, #b9c7b8 100%)"
+  },
+  "adaptMeshToTheme mesh, тёмная": {
+    "id": "golden",
+    "name": "Эталон",
+    "kind": "mesh",
+    "seeds": [
+      "#2C4BD8",
+      "#E8A33D",
+      "#1F7A4C"
+    ],
+    "base": "#33433e",
+    "blobs": [
+      {
+        "color": "#2e49b6",
+        "x": 18,
+        "y": 22,
+        "size": 62
+      },
+      {
+        "color": "#bf8c38",
+        "x": 78,
+        "y": 30,
+        "size": 54
+      },
+      {
+        "color": "#236e49",
+        "x": 46,
+        "y": 84,
+        "size": 58
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "accentFromMesh mesh, тёмная": "#e8a33d",
+  "accentFromMesh mesh с подсказкой земли, тёмная": "#30bb75",
+  "buildChromeGroundFromMesh mesh, тёмная": {
+    "top": "#37453e",
+    "island": "#59657a",
+    "paintLayers": 5,
+    "backgroundImage": "linear-gradient(180deg, #37453e 0px, #37453e 56px, rgba(55, 69, 62, 0.000) 120px), radial-gradient(ellipse 62% 48.4% at 18% 22%, #2e49b6 0%, rgba(46, 73, 182, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 54% 42.1% at 78% 30%, #bf8c38 0%, rgba(191, 140, 56, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 58% 45.2% at 46% 84%, #236e49 0%, rgba(35, 110, 73, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #33433e 0%, #33433e 100%)"
+  },
+  "meshIsLight retro": true,
+  "meshCaptionTop retro": "#d7dcea",
+  "overlaySymbolColor retro": "#3C3C43",
+  "meshPaintLayers retro": [
+    "linear-gradient(160deg, #d7dcea 0.00% 16.67%, #c9d0e2 16.67% 33.33%, #bbc3db 33.33% 50.00%, #adb7d3 50.00% 66.67%, #9eaacc 66.67% 83.33%, #909ec4 83.33% 100.00%)"
+  ],
+  "compileMeshBackground retro": "linear-gradient(160deg, #d7dcea 0.00% 16.67%, #c9d0e2 16.67% 33.33%, #bbc3db 33.33% 50.00%, #adb7d3 50.00% 66.67%, #9eaacc 66.67% 83.33%, #909ec4 83.33% 100.00%)",
+  "sampleMesh retro 0/0": "#d7dcea",
+  "sampleMesh retro 0/20": "#c9d0e2",
+  "sampleMesh retro 0/40": "#bbc3db",
+  "sampleMesh retro 0/60": "#adb7d3",
+  "sampleMesh retro 0/80": "#9eaacc",
+  "sampleMesh retro 0/100": "#909ec4",
+  "sampleMesh retro 20/0": "#d7dcea",
+  "sampleMesh retro 20/20": "#c9d0e2",
+  "sampleMesh retro 20/40": "#bbc3db",
+  "sampleMesh retro 20/60": "#adb7d3",
+  "sampleMesh retro 20/80": "#9eaacc",
+  "sampleMesh retro 20/100": "#909ec4",
+  "sampleMesh retro 40/0": "#d7dcea",
+  "sampleMesh retro 40/20": "#c9d0e2",
+  "sampleMesh retro 40/40": "#bbc3db",
+  "sampleMesh retro 40/60": "#adb7d3",
+  "sampleMesh retro 40/80": "#9eaacc",
+  "sampleMesh retro 40/100": "#909ec4",
+  "sampleMesh retro 60/0": "#d7dcea",
+  "sampleMesh retro 60/20": "#c9d0e2",
+  "sampleMesh retro 60/40": "#bbc3db",
+  "sampleMesh retro 60/60": "#adb7d3",
+  "sampleMesh retro 60/80": "#9eaacc",
+  "sampleMesh retro 60/100": "#909ec4",
+  "sampleMesh retro 80/0": "#d7dcea",
+  "sampleMesh retro 80/20": "#c9d0e2",
+  "sampleMesh retro 80/40": "#bbc3db",
+  "sampleMesh retro 80/60": "#adb7d3",
+  "sampleMesh retro 80/80": "#9eaacc",
+  "sampleMesh retro 80/100": "#909ec4",
+  "sampleMesh retro 100/0": "#d7dcea",
+  "sampleMesh retro 100/20": "#c9d0e2",
+  "sampleMesh retro 100/40": "#bbc3db",
+  "sampleMesh retro 100/60": "#adb7d3",
+  "sampleMesh retro 100/80": "#9eaacc",
+  "sampleMesh retro 100/100": "#909ec4",
+  "sampleMesh retro внутри пятна 18/22": "#c9d0e2",
+  "sampleMesh retro внутри пятна 26/30": "#c9d0e2",
+  "sampleMesh retro внутри пятна 34/42": "#bbc3db",
+  "sampleMesh retro внутри пятна 78/30": "#c9d0e2",
+  "sampleMesh retro внутри пятна 86/44": "#bbc3db",
+  "sampleMesh retro внутри пятна 46/84": "#9eaacc",
+  "sampleMesh retro внутри пятна 46/66": "#adb7d3",
+  "adaptMeshToTheme retro, светлая": {
+    "id": "golden-retro",
+    "name": "Эталон",
+    "kind": "retro",
+    "seeds": [
+      "#2C4BD8",
+      "#E8A33D",
+      "#1F7A4C"
+    ],
+    "base": "#2c4bd8",
+    "blobs": [
+      {
+        "color": "#2c4bd8",
+        "x": 18,
+        "y": 22,
+        "size": 62
+      },
+      {
+        "color": "#bf905f",
+        "x": 78,
+        "y": 30,
+        "size": 54
+      },
+      {
+        "color": "#2a907e",
+        "x": 46,
+        "y": 84,
+        "size": 58
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "accentFromMesh retro, светлая": "#a46a14",
+  "accentFromMesh retro с подсказкой земли, светлая": "#1f7a4c",
+  "buildChromeGroundFromMesh retro, светлая": {
+    "top": "#92a2eb",
+    "island": "#dde2f9",
+    "paintLayers": 2,
+    "backgroundImage": "linear-gradient(180deg, #92a2eb 0px, #92a2eb 56px, rgba(146, 162, 235, 0.000) 120px), linear-gradient(160deg, #92a2eb 0.00% 16.67%, #697fe3 16.67% 33.33%, #405cdc 33.33% 50.00%, #2542c7 50.00% 66.67%, #1d359e 66.67% 83.33%, #162776 83.33% 100.00%)"
+  },
+  "adaptMeshToTheme retro, тёмная": {
+    "id": "golden-retro",
+    "name": "Эталон",
+    "kind": "retro",
+    "seeds": [
+      "#2C4BD8",
+      "#E8A33D",
+      "#1F7A4C"
+    ],
+    "base": "#2c4bd8",
+    "blobs": [
+      {
+        "color": "#2c4bd8",
+        "x": 18,
+        "y": 22,
+        "size": 62
+      },
+      {
+        "color": "#be8d5a",
+        "x": 78,
+        "y": 30,
+        "size": 54
+      },
+      {
+        "color": "#22706b",
+        "x": 46,
+        "y": 84,
+        "size": 58
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "accentFromMesh retro, тёмная": "#e8a33d",
+  "accentFromMesh retro с подсказкой земли, тёмная": "#30bb75",
+  "buildChromeGroundFromMesh retro, тёмная": {
+    "top": "#92a2eb",
+    "island": "#8799e9",
+    "paintLayers": 2,
+    "backgroundImage": "linear-gradient(180deg, #92a2eb 0px, #92a2eb 56px, rgba(146, 162, 235, 0.000) 120px), linear-gradient(160deg, #92a2eb 0.00% 16.67%, #697fe3 16.67% 33.33%, #405cdc 33.33% 50.00%, #2542c7 50.00% 66.67%, #1d359e 66.67% 83.33%, #162776 83.33% 100.00%)"
+  },
+  "meshIsLight duplex": true,
+  "meshCaptionTop duplex": "#dfe1e9",
+  "overlaySymbolColor duplex": "#3C3C43",
+  "meshPaintLayers duplex": [
+    "radial-gradient(ellipse 62% 48.4% at 18% 22%, #2C4BD8 0%, rgba(44, 75, 216, 0.520) 33.3%, transparent 79.4%)",
+    "radial-gradient(ellipse 54% 42.1% at 78% 30%, #E8A33D 0%, rgba(232, 163, 61, 0.520) 33.3%, transparent 79.4%)",
+    "radial-gradient(ellipse 58% 45.2% at 46% 84%, #1F7A4C 0%, rgba(31, 122, 76, 0.520) 33.3%, transparent 79.4%)",
+    "linear-gradient(180deg, #dfe3ee 0%, #dfe3ee 100%)"
+  ],
+  "compileMeshBackground duplex": "radial-gradient(ellipse 62% 48.4% at 18% 22%, #2C4BD8 0%, rgba(44, 75, 216, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 54% 42.1% at 78% 30%, #E8A33D 0%, rgba(232, 163, 61, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 58% 45.2% at 46% 84%, #1F7A4C 0%, rgba(31, 122, 76, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #dfe3ee 0%, #dfe3ee 100%)",
+  "sampleMesh duplex 0/0": "#acb7e8",
+  "sampleMesh duplex 0/20": "#788be1",
+  "sampleMesh duplex 0/40": "#9eace6",
+  "sampleMesh duplex 0/60": "#dfe3ee",
+  "sampleMesh duplex 0/80": "#dfe3ee",
+  "sampleMesh duplex 0/100": "#dfe3ee",
+  "sampleMesh duplex 20/0": "#9ba9e6",
+  "sampleMesh duplex 20/20": "#3a56da",
+  "sampleMesh duplex 20/40": "#8a9be4",
+  "sampleMesh duplex 20/60": "#c9d6dc",
+  "sampleMesh duplex 20/80": "#96bbb0",
+  "sampleMesh duplex 20/100": "#afc9c5",
+  "sampleMesh duplex 40/0": "#b3bee9",
+  "sampleMesh duplex 40/20": "#8796de",
+  "sampleMesh duplex 40/40": "#a7b0e0",
+  "sampleMesh duplex 40/60": "#a8c5c0",
+  "sampleMesh duplex 40/80": "#458f6c",
+  "sampleMesh duplex 40/100": "#83b1a0",
+  "sampleMesh duplex 60/0": "#dfe2ed",
+  "sampleMesh duplex 60/20": "#cbb7a8",
+  "sampleMesh duplex 60/40": "#dfc4a2",
+  "sampleMesh duplex 60/60": "#b1cac6",
+  "sampleMesh duplex 60/80": "#66a188",
+  "sampleMesh duplex 60/100": "#90b8ab",
+  "sampleMesh duplex 80/0": "#e0ddde",
+  "sampleMesh duplex 80/20": "#e5b97a",
+  "sampleMesh duplex 80/40": "#e5b97a",
+  "sampleMesh duplex 80/60": "#dfdddd",
+  "sampleMesh duplex 80/80": "#b3cbc9",
+  "sampleMesh duplex 80/100": "#c7d6da",
+  "sampleMesh duplex 100/0": "#dfe3ee",
+  "sampleMesh duplex 100/20": "#e2ccae",
+  "sampleMesh duplex 100/40": "#e2ccae",
+  "sampleMesh duplex 100/60": "#dfe3ee",
+  "sampleMesh duplex 100/80": "#dfe3ee",
+  "sampleMesh duplex 100/100": "#dfe3ee",
+  "sampleMesh duplex внутри пятна 18/22": "#2c4bd8",
+  "sampleMesh duplex внутри пятна 26/30": "#6279df",
+  "sampleMesh duplex внутри пятна 34/42": "#a1aee6",
+  "sampleMesh duplex внутри пятна 78/30": "#e8a33d",
+  "sampleMesh duplex внутри пятна 86/44": "#e3c498",
+  "sampleMesh duplex внутри пятна 46/84": "#1f7a4c",
+  "sampleMesh duplex внутри пятна 46/66": "#89b4a6",
+  "adaptMeshToTheme duplex, светлая": {
+    "id": "golden-duplex",
+    "name": "Эталон",
+    "kind": "duplex",
+    "seeds": [
+      "#2C4BD8",
+      "#E8A33D",
+      "#1F7A4C"
+    ],
+    "base": "#2c4bd8",
+    "blobs": [
+      {
+        "color": "#524936",
+        "x": 18,
+        "y": 22,
+        "size": 86
+      },
+      {
+        "color": "#0e4959",
+        "x": 84,
+        "y": 78,
+        "size": 82
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "accentFromMesh duplex, светлая": "#a46a14",
+  "accentFromMesh duplex с подсказкой земли, светлая": "#1f7a4c",
+  "buildChromeGroundFromMesh duplex, светлая": {
+    "top": "#2c4bd8",
+    "island": "#dde2f9",
+    "paintLayers": 4,
+    "backgroundImage": "linear-gradient(180deg, #2c4bd8 0px, #2c4bd8 56px, rgba(44, 75, 216, 0.000) 120px), radial-gradient(ellipse 86% 67.1% at 18% 22%, #524936 0%, rgba(82, 73, 54, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 82% 64.0% at 84% 78%, #0e4959 0%, rgba(14, 73, 89, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #2c4bd8 0%, #2c4bd8 100%)"
+  },
+  "adaptMeshToTheme duplex, тёмная": {
+    "id": "golden-duplex",
+    "name": "Эталон",
+    "kind": "duplex",
+    "seeds": [
+      "#2C4BD8",
+      "#E8A33D",
+      "#1F7A4C"
+    ],
+    "base": "#2c4bd8",
+    "blobs": [
+      {
+        "color": "#524830",
+        "x": 18,
+        "y": 22,
+        "size": 86
+      },
+      {
+        "color": "#0b3743",
+        "x": 84,
+        "y": 78,
+        "size": 82
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "accentFromMesh duplex, тёмная": "#e8a33d",
+  "accentFromMesh duplex с подсказкой земли, тёмная": "#30bb75",
+  "buildChromeGroundFromMesh duplex, тёмная": {
+    "top": "#2c4bd8",
+    "island": "#4e5dab",
+    "paintLayers": 4,
+    "backgroundImage": "linear-gradient(180deg, #2c4bd8 0px, #2c4bd8 56px, rgba(44, 75, 216, 0.000) 120px), radial-gradient(ellipse 86% 67.1% at 18% 22%, #524830 0%, rgba(82, 72, 48, 0.520) 33.3%, transparent 79.4%), radial-gradient(ellipse 82% 64.0% at 84% 78%, #0b3743 0%, rgba(11, 55, 67, 0.520) 33.3%, transparent 79.4%), linear-gradient(180deg, #2c4bd8 0%, #2c4bd8 100%)"
+  },
+  "retroSteps 40": 3,
+  "retroSteps 55": 4,
+  "retroSteps 72": 6,
+  "retroSteps 90": 7,
+  "retroRamp эталонной ретро-сетки": [
+    "#d7dcea",
+    "#c9d0e2",
+    "#bbc3db",
+    "#adb7d3",
+    "#9eaacc",
+    "#909ec4"
+  ],
+  "mixFromSeeds из одного семени": {
+    "seeds": [
+      "#2c4bd8",
+      "#efe8dc"
+    ],
+    "base": "#454864",
+    "blobs": [
+      {
+        "color": "#324abe",
+        "x": 18,
+        "y": 22,
+        "size": 86
+      },
+      {
+        "color": "#cac5c2",
+        "x": 84,
+        "y": 78,
+        "size": 82
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "mixFromSeeds из пустого списка": {
+    "seeds": [
+      "#efe8dc",
+      "#141216"
+    ],
+    "base": "#403d3e",
+    "blobs": [
+      {
+        "color": "#c9c2b9",
+        "x": 18,
+        "y": 22,
+        "size": 86
+      },
+      {
+        "color": "#1e1b1f",
+        "x": 84,
+        "y": 78,
+        "size": 82
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "mixFromSeeds отбрасывает лишние семена": {
+    "seeds": [
+      "#111111",
+      "#222222",
+      "#333333",
+      "#444444",
+      "#555555"
+    ],
+    "base": "#282729",
+    "blobs": [
+      {
+        "color": "#161616",
+        "x": 14,
+        "y": 16,
+        "size": 68
+      },
+      {
+        "color": "#232324",
+        "x": 88,
+        "y": 16,
+        "size": 66
+      },
+      {
+        "color": "#313031",
+        "x": 12,
+        "y": 86,
+        "size": 70
+      },
+      {
+        "color": "#3e3e3e",
+        "x": 88,
+        "y": 86,
+        "size": 68
+      },
+      {
+        "color": "#4b4b4b",
+        "x": 50,
+        "y": 48,
+        "size": 58
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "mixFromSeeds зажимает насыщенность и мягкость": {
+    "seeds": [
+      "#2c4bd8",
+      "#e8a33d"
+    ],
+    "base": "#433a45",
+    "blobs": [
+      {
+        "color": "#2c4bd8",
+        "x": 18,
+        "y": 22,
+        "size": 86
+      },
+      {
+        "color": "#e8a33d",
+        "x": 84,
+        "y": 78,
+        "size": 82
+      }
+    ],
+    "intensity": 100,
+    "softness": 40
+  },
+  "createMeshDraft": {
+    "id": "",
+    "name": "Градиент",
+    "kind": "mesh",
+    "seeds": [
+      "#2c4bd8",
+      "#e8a33d"
+    ],
+    "base": "#433a45",
+    "blobs": [
+      {
+        "color": "#3147b8",
+        "x": 18,
+        "y": 22,
+        "size": 86
+      },
+      {
+        "color": "#c48c3f",
+        "x": 84,
+        "y": 78,
+        "size": 82
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "createMeshDraft ретро": {
+    "id": "",
+    "name": "Ретро",
+    "kind": "retro",
+    "seeds": [
+      "#2c4bd8",
+      "#e8a33d"
+    ],
+    "base": "#2c4bd8",
+    "blobs": [
+      {
+        "color": "#2c4bd8",
+        "x": 18,
+        "y": 22,
+        "size": 86
+      },
+      {
+        "color": "#bf905f",
+        "x": 84,
+        "y": 78,
+        "size": 82
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "randomMesh на зерне 20260831": {
+    "id": "",
+    "name": "Случайный",
+    "seeds": [
+      "#3bc659",
+      "#8ae2d0",
+      "#da64d8"
+    ],
+    "base": "#4c4956",
+    "blobs": [
+      {
+        "color": "#3fa958",
+        "x": 16,
+        "y": 18,
+        "size": 80
+      },
+      {
+        "color": "#7cbfb4",
+        "x": 88,
+        "y": 26,
+        "size": 74
+      },
+      {
+        "color": "#b95eba",
+        "x": 46,
+        "y": 88,
+        "size": 84
+      }
+    ],
+    "intensity": 77,
+    "softness": 70
+  },
+  "randomMesh на зерне 7": {
+    "id": "",
+    "name": "Случайный",
+    "seeds": [
+      "#a8c67d",
+      "#55c35a",
+      "#ae85ca"
+    ],
+    "base": "#484d4b",
+    "blobs": [
+      {
+        "color": "#9cb677",
+        "x": 16,
+        "y": 18,
+        "size": 80
+      },
+      {
+        "color": "#53b458",
+        "x": 88,
+        "y": 26,
+        "size": 74
+      },
+      {
+        "color": "#a17eb9",
+        "x": 46,
+        "y": 88,
+        "size": 84
+      }
+    ],
+    "intensity": 87,
+    "softness": 72
+  },
+  "randomMesh на зерне 42": {
+    "id": "",
+    "name": "Случайный",
+    "seeds": [
+      "#8cbf59",
+      "#79c488"
+    ],
+    "base": "#cfddbc",
+    "blobs": [
+      {
+        "color": "#a0c877",
+        "x": 18,
+        "y": 22,
+        "size": 86
+      },
+      {
+        "color": "#93cc98",
+        "x": 84,
+        "y": 78,
+        "size": 82
+      }
+    ],
+    "intensity": 70,
+    "softness": 77
+  },
+  "randomMesh на зерне 999": {
+    "id": "",
+    "name": "Случайный",
+    "seeds": [
+      "#6880c3",
+      "#aa80e4",
+      "#dac574"
+    ],
+    "base": "#ddd3cb",
+    "blobs": [
+      {
+        "color": "#8c9ac5",
+        "x": 16,
+        "y": 18,
+        "size": 80
+      },
+      {
+        "color": "#ba9adc",
+        "x": 88,
+        "y": 26,
+        "size": 74
+      },
+      {
+        "color": "#dbc98f",
+        "x": 46,
+        "y": 88,
+        "size": 84
+      }
+    ],
+    "intensity": 69,
+    "softness": 77
+  },
+  "randomMesh на зерне 123456": {
+    "id": "",
+    "name": "Случайный",
+    "seeds": [
+      "#cf9661",
+      "#bfc479"
+    ],
+    "base": "#e3d6bb",
+    "blobs": [
+      {
+        "color": "#d5a87a",
+        "x": 18,
+        "y": 22,
+        "size": 86
+      },
+      {
+        "color": "#c9c98b",
+        "x": 84,
+        "y": 78,
+        "size": 82
+      }
+    ],
+    "intensity": 72,
+    "softness": 71
+  },
+  "randomMesh на зерне 2": {
+    "id": "",
+    "name": "Случайный",
+    "seeds": [
+      "#8cca36",
+      "#7bc976",
+      "#9c65cf"
+    ],
+    "base": "#464848",
+    "blobs": [
+      {
+        "color": "#7fb339",
+        "x": 16,
+        "y": 18,
+        "size": 80
+      },
+      {
+        "color": "#71b26e",
+        "x": 88,
+        "y": 26,
+        "size": 74
+      },
+      {
+        "color": "#8d60b7",
+        "x": 46,
+        "y": 88,
+        "size": 84
+      }
+    ],
+    "intensity": 82,
+    "softness": 65
+  },
+  "randomMesh на зерне 31337": {
+    "id": "",
+    "name": "Случайный",
+    "seeds": [
+      "#64cc81",
+      "#4ed1c3",
+      "#c87bad"
+    ],
+    "base": "#464d50",
+    "blobs": [
+      {
+        "color": "#5ba773",
+        "x": 16,
+        "y": 18,
+        "size": 80
+      },
+      {
+        "color": "#4caba2",
+        "x": 88,
+        "y": 26,
+        "size": 74
+      },
+      {
+        "color": "#a26e92",
+        "x": 46,
+        "y": 88,
+        "size": 84
+      }
+    ],
+    "intensity": 71,
+    "softness": 75
+  },
+  "meshIsLight сетка «светлая»": true,
+  "meshCaptionTop сетка «светлая»": "#eee6d7",
+  "overlaySymbolColor сетка «светлая»": "#3C3C43",
+  "accentFromMesh «светлая» при земле #1F7A4C": "#967025",
+  "accentFromMesh «светлая» при земле #D8452C": "#967025",
+  "accentFromMesh «светлая» при земле #2C4BD8": "#967025",
+  "accentFromMesh «светлая» при земле без подсказки": "#967025",
+  "meshIsLight сетка «тёмная»": false,
+  "meshCaptionTop сетка «тёмная»": "#161321",
+  "overlaySymbolColor сетка «тёмная»": "#EBEBF5",
+  "accentFromMesh «тёмная» при земле #1F7A4C": "#0e1a14",
+  "accentFromMesh «тёмная» при земле #D8452C": "#1c1030",
+  "accentFromMesh «тёмная» при земле #2C4BD8": "#14202e",
+  "accentFromMesh «тёмная» при земле без подсказки": "#1c1030",
+  "meshIsLight сетка «пёстрая»": false,
+  "meshCaptionTop сетка «пёстрая»": "#413b33",
+  "overlaySymbolColor сетка «пёстрая»": "#EBEBF5",
+  "accentFromMesh «пёстрая» при земле #1F7A4C": "#14202e",
+  "accentFromMesh «пёстрая» при земле #D8452C": "#a46a14",
+  "accentFromMesh «пёстрая» при земле #2C4BD8": "#14202e",
+  "accentFromMesh «пёстрая» при земле без подсказки": "#a46a14",
+  "validateMesh принимает эталон": {
+    "id": "golden",
+    "name": "Эталон",
+    "kind": "mesh",
+    "seeds": [
+      "#2c4bd8",
+      "#e8a33d",
+      "#1f7a4c"
+    ],
+    "base": "#2e3b38",
+    "blobs": [
+      {
+        "color": "#2c47b5",
+        "x": 18,
+        "y": 22,
+        "size": 62
+      },
+      {
+        "color": "#bf8c3c",
+        "x": 78,
+        "y": 30,
+        "size": 54
+      },
+      {
+        "color": "#226c48",
+        "x": 46,
+        "y": 84,
+        "size": 58
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "validateMesh чинит отсутствующий kind": {
+    "id": "golden",
+    "name": "Эталон",
+    "kind": "mesh",
+    "seeds": [
+      "#2c4bd8",
+      "#e8a33d",
+      "#1f7a4c"
+    ],
+    "base": "#2e3b38",
+    "blobs": [
+      {
+        "color": "#2c47b5",
+        "x": 18,
+        "y": 22,
+        "size": 62
+      },
+      {
+        "color": "#bf8c3c",
+        "x": 78,
+        "y": 30,
+        "size": 54
+      },
+      {
+        "color": "#226c48",
+        "x": 46,
+        "y": 84,
+        "size": 58
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "validateMesh отвергает мусор": null,
+  "validateMesh отвергает не объект": null,
+  "validateMesh отвергает одно семя": null,
+  "validateMesh отвергает пустой id": null,
+  "validateMesh принимает id ровно в 64 знака": {
+    "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "name": "Эталон",
+    "kind": "mesh",
+    "seeds": [
+      "#2c4bd8",
+      "#e8a33d",
+      "#1f7a4c"
+    ],
+    "base": "#2e3b38",
+    "blobs": [
+      {
+        "color": "#2c47b5",
+        "x": 18,
+        "y": 22,
+        "size": 62
+      },
+      {
+        "color": "#bf8c3c",
+        "x": 78,
+        "y": 30,
+        "size": 54
+      },
+      {
+        "color": "#226c48",
+        "x": 46,
+        "y": 84,
+        "size": 58
+      }
+    ],
+    "intensity": 78,
+    "softness": 72
+  },
+  "validateMesh отвергает id в 65 знаков": null,
+  "validateMesh отвергает id не строкой": null,
+  "findBuiltinMesh несуществующий": null,
+  "состав встроенного каталога": [
+    "mesh-lagoon",
+    "mesh-ember",
+    "mesh-meadow",
+    "mesh-dusk",
+    "mesh-fog",
+    "mesh-citrus"
+  ],
+  "встроенная «Лагуна»": {
+    "id": "mesh-lagoon",
+    "name": "Лагуна",
+    "seeds": [
+      "#7ec8c8",
+      "#2f6f8f",
+      "#e7d5b8"
+    ],
+    "base": "#d7dacf",
+    "blobs": [
+      {
+        "color": "#8ecbc9",
+        "x": 18,
+        "y": 20,
+        "size": 82
+      },
+      {
+        "color": "#4d829b",
+        "x": 86,
+        "y": 30,
+        "size": 76
+      },
+      {
+        "color": "#e4d6bc",
+        "x": 48,
+        "y": 88,
+        "size": 80
+      }
+    ],
+    "intensity": 82,
+    "softness": 74
+  },
+  "встроенная «Лагуна» — кромка окна": "#aabdbe",
+  "встроенная «Лагуна» — светлая ли": true,
+  "встроенная «Лагуна» — фон целиком": "radial-gradient(ellipse 82% 64.0% at 18% 20%, #8ecbc9 0%, rgba(142, 203, 201, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 76% 59.3% at 86% 30%, #4d829b 0%, rgba(77, 130, 155, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 80% 62.4% at 48% 88%, #e4d6bc 0%, rgba(228, 214, 188, 0.520) 33.7%, transparent 80.1%), linear-gradient(180deg, #d7dacf 0%, #d7dacf 100%)",
+  "встроенная «Угольки»": {
+    "id": "mesh-ember",
+    "name": "Угольки",
+    "seeds": [
+      "#e07a5f",
+      "#f2cc8f",
+      "#3d405b"
+    ],
+    "base": "#473837",
+    "blobs": [
+      {
+        "color": "#c46e58",
+        "x": 22,
+        "y": 24,
+        "size": 84
+      },
+      {
+        "color": "#d3b17f",
+        "x": 78,
+        "y": 18,
+        "size": 70
+      },
+      {
+        "color": "#3f3f55",
+        "x": 70,
+        "y": 86,
+        "size": 88
+      }
+    ],
+    "intensity": 82,
+    "softness": 74
+  },
+  "встроенная «Угольки» — кромка окна": "#856d57",
+  "встроенная «Угольки» — светлая ли": false,
+  "встроенная «Угольки» — фон целиком": "radial-gradient(ellipse 84% 65.5% at 22% 24%, #c46e58 0%, rgba(196, 110, 88, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 70% 54.6% at 78% 18%, #d3b17f 0%, rgba(211, 177, 127, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 88% 68.6% at 70% 86%, #3f3f55 0%, rgba(63, 63, 85, 0.520) 33.7%, transparent 80.1%), linear-gradient(180deg, #473837 0%, #473837 100%)",
+  "встроенная «Луг»": {
+    "id": "mesh-meadow",
+    "name": "Луг",
+    "seeds": [
+      "#81b29a",
+      "#f4f1de",
+      "#3d5a45"
+    ],
+    "base": "#3e4741",
+    "blobs": [
+      {
+        "color": "#759f8a",
+        "x": 20,
+        "y": 28,
+        "size": 86
+      },
+      {
+        "color": "#d3d2c2",
+        "x": 82,
+        "y": 22,
+        "size": 68
+      },
+      {
+        "color": "#3d5744",
+        "x": 55,
+        "y": 90,
+        "size": 78
+      }
+    ],
+    "intensity": 82,
+    "softness": 74
+  },
+  "встроенная «Луг» — кромка окна": "#797e74",
+  "встроенная «Луг» — светлая ли": false,
+  "встроенная «Луг» — фон целиком": "radial-gradient(ellipse 86% 67.1% at 20% 28%, #759f8a 0%, rgba(117, 159, 138, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 68% 53.0% at 82% 22%, #d3d2c2 0%, rgba(211, 210, 194, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 78% 60.8% at 55% 90%, #3d5744 0%, rgba(61, 87, 68, 0.520) 33.7%, transparent 80.1%), linear-gradient(180deg, #3e4741 0%, #3e4741 100%)",
+  "встроенная «Сумерки»": {
+    "id": "mesh-dusk",
+    "name": "Сумерки",
+    "seeds": [
+      "#c97b63",
+      "#1d3557",
+      "#f1e3d3"
+    ],
+    "base": "#ddd2c8",
+    "blobs": [
+      {
+        "color": "#cd8b75",
+        "x": 16,
+        "y": 22,
+        "size": 78
+      },
+      {
+        "color": "#40516b",
+        "x": 88,
+        "y": 40,
+        "size": 90
+      },
+      {
+        "color": "#ede0d1",
+        "x": 40,
+        "y": 86,
+        "size": 72
+      }
+    ],
+    "intensity": 82,
+    "softness": 74
+  },
+  "встроенная «Сумерки» — кромка окна": "#b3afaf",
+  "встроенная «Сумерки» — светлая ли": false,
+  "встроенная «Сумерки» — фон целиком": "radial-gradient(ellipse 78% 60.8% at 16% 22%, #cd8b75 0%, rgba(205, 139, 117, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 90% 70.2% at 88% 40%, #40516b 0%, rgba(64, 81, 107, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 72% 56.2% at 40% 86%, #ede0d1 0%, rgba(237, 224, 209, 0.520) 33.7%, transparent 80.1%), linear-gradient(180deg, #ddd2c8 0%, #ddd2c8 100%)",
+  "встроенная «Туман»": {
+    "id": "mesh-fog",
+    "name": "Туман",
+    "seeds": [
+      "#cdd6dd",
+      "#8aa2b4",
+      "#f6f3ee"
+    ],
+    "base": "#e6e3dc",
+    "blobs": [
+      {
+        "color": "#d2d8dd",
+        "x": 24,
+        "y": 18,
+        "size": 88
+      },
+      {
+        "color": "#9baebb",
+        "x": 80,
+        "y": 70,
+        "size": 80
+      },
+      {
+        "color": "#f3f0eb",
+        "x": 48,
+        "y": 48,
+        "size": 64
+      }
+    ],
+    "intensity": 82,
+    "softness": 74
+  },
+  "встроенная «Туман» — кромка окна": "#e6e3dc",
+  "встроенная «Туман» — светлая ли": true,
+  "встроенная «Туман» — фон целиком": "radial-gradient(ellipse 88% 68.6% at 24% 18%, #d2d8dd 0%, rgba(210, 216, 221, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 80% 62.4% at 80% 70%, #9baebb 0%, rgba(155, 174, 187, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 64% 49.9% at 48% 48%, #f3f0eb 0%, rgba(243, 240, 235, 0.520) 33.7%, transparent 80.1%), linear-gradient(180deg, #e6e3dc 0%, #e6e3dc 100%)",
+  "встроенная «Цитрус»": {
+    "id": "mesh-citrus",
+    "name": "Цитрус",
+    "seeds": [
+      "#f4a261",
+      "#e9c46a",
+      "#2a9d8f"
+    ],
+    "base": "#444e3e",
+    "blobs": [
+      {
+        "color": "#d4935b",
+        "x": 18,
+        "y": 16,
+        "size": 80
+      },
+      {
+        "color": "#cbaf62",
+        "x": 86,
+        "y": 24,
+        "size": 74
+      },
+      {
+        "color": "#2f8f80",
+        "x": 52,
+        "y": 88,
+        "size": 82
+      }
+    ],
+    "intensity": 82,
+    "softness": 74
+  },
+  "встроенная «Цитрус» — кромка окна": "#7e774d",
+  "встроенная «Цитрус» — светлая ли": false,
+  "встроенная «Цитрус» — фон целиком": "radial-gradient(ellipse 80% 62.4% at 18% 16%, #d4935b 0%, rgba(212, 147, 91, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 74% 57.7% at 86% 24%, #cbaf62 0%, rgba(203, 175, 98, 0.520) 33.7%, transparent 80.1%), radial-gradient(ellipse 82% 64.0% at 52% 88%, #2f8f80 0%, rgba(47, 143, 128, 0.520) 33.7%, transparent 80.1%), linear-gradient(180deg, #444e3e 0%, #444e3e 100%)",
+  "константы": {
+    "ISLAND_LIFT": 1.35,
+    "ISLAND_TINT_LIGHT": 16,
+    "HUE_MAX_SPREAD": 14,
+    "CHROME_OVERLAY_PX": 56,
+    "MESH_SEEDS_MIN": 2,
+    "MESH_SEEDS_MAX": 5,
+    "MESH_SOFTNESS_MIN": 40,
+    "MESH_SOFTNESS_MAX": 90,
+    "MESH_INTENSITY_DEFAULT": 78,
+    "MESH_SOFTNESS_DEFAULT": 72,
+    "RETRO_STEPS_MIN": 3,
+    "RETRO_STEPS_MAX": 7
+  }
+}

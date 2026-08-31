@@ -25,6 +25,11 @@ const ROOT = path.resolve(HERE, '..');
 const GOLDEN = path.join(HERE, 'fixtures', 'ipc-channels.json');
 const UPDATE = process.argv.includes('--update');
 
+// В машинном режиме (--json, см. хвост файла) на stdout уходит ТОЛЬКО json: обычный вывод сторожа
+// смешался бы с ним и не разобрался бы. Глушим одной строкой, а не переписываем полсотни вызовов.
+const JSON_OUT = process.argv.includes('--json');
+if (JSON_OUT) console.log = () => {};
+
 let passed = 0;
 let failed = 0;
 
@@ -326,6 +331,27 @@ if (UPDATE) {
     [...gone.map((x) => `− ${x}`), ...added.map((x) => `+ ${x}`)],
     'если изменение осознанное: node scripts/contract-check.mjs --update',
   );
+}
+
+// ⚠️ Машинный вывод для ЖИВОЙ проверки проводки (scripts/ipc-wiring-drive.mjs). Тот разбор
+// исходников, что уже сделан здесь, ей нужен целиком: какие каналы ОБЯЗАНЫ иметь глобальную
+// регистрацию в ipcMain и каким способом. Второй раз писать тот же AST-проход значило бы завести
+// две расходящиеся модели контракта — ровно ту болезнь, от которой этот сторож и лечит.
+//
+// ⚠️ Здесь только `ipcMain.handle/on`. Регистрация на КОНКРЕТНОМ WebContents (`wc.ipc.on` в
+// TabManager) в handlerSites не попадает по построению — и не должна: в глобальном реестре
+// Electron её нет, и живая проверка искала бы её там впустую.
+if (process.argv.includes('--json')) {
+  const of = (kind) => [...handlerSites]
+    .filter(([, sites]) => sites.some((s) => s.kind === kind))
+    .map(([k]) => channels.get(k))
+    .sort();
+  process.stdout.write(JSON.stringify({
+    channels: Object.fromEntries(channels),
+    handle: of('handle'),
+    on: of('on'),
+  }));
+  process.exit(failed === 0 ? 0 : 1);
 }
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);

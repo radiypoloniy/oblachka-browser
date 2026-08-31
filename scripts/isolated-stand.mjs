@@ -228,21 +228,59 @@ export async function withStand(fn, opts = {}) {
   seedProfile(profile);
 
   const echoPort = await freePort();
-  const cdpPort = await freePort();
   const echo = startEcho(echoPort);
   await echo.ready;
 
-  const child = spawn(
-    ELECTRON,
-    [`--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`, ROOT],
-    { env: { ...process.env, NODE_ENV: 'production' }, stdio: ['ignore', 'pipe', 'pipe'] },
-  );
+  // ⚠️ Порт CDP и дочерний процесс — ПЕРЕМЕННЫЕ, а не константы: ctx.restart() поднимает
+  // приложение заново на том же профиле, и старый порт к этому моменту может быть ещё не отпущен
+  // ядром. Каждый запуск берёт свободный порт заново.
+  let cdpPort = 0;
+  let inspectPort = 0;
+  let child = null;
+  let chrome = null;
+  let main = null;
   const appLog = [];
-  child.stdout?.on('data', (d) => appLog.push(d.toString()));
-  child.stderr?.on('data', (d) => appLog.push(d.toString()));
+
+  // ⚠️ Окно в MAIN-процесс: с ним видно то, чего из renderer не видно в принципе, — например,
+  // что обработчик IPC действительно зарегистрирован (ipc-wiring-drive.mjs). По умолчанию
+  // выключено: лишний отладочный порт нужен ровно одной проверке из семи.
+  const wantMain = opts.main === true;
+
+  async function launch() {
+    cdpPort = await freePort();
+    if (wantMain) inspectPort = await freePort();
+    child = spawn(
+      ELECTRON,
+      [
+        ...(wantMain ? [`--inspect=${inspectPort}`] : []),
+        `--remote-debugging-port=${cdpPort}`,
+        `--user-data-dir=${profile}`,
+        ROOT,
+      ],
+      { env: { ...process.env, NODE_ENV: 'production' }, stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    child.stdout?.on('data', (d) => appLog.push(d.toString()));
+    child.stderr?.on('data', (d) => appLog.push(d.toString()));
+
+    const chromeT = await findTarget(cdpPort, (t) => t.url?.includes('index.html'));
+    if (!chromeT) {
+      const tail = appLog.join('').slice(-800);
+      throw new Error(`слой хрома не поднялся за отведённое время.${tail ? `\nлог:\n${tail}` : ''}`);
+    }
+    chrome = connectCdp(chromeT);
+    await chrome.ready;
+
+    if (wantMain) {
+      const mainT = await findTarget(inspectPort, (t) => t.type === 'node');
+      if (!mainT) throw new Error('инспектор main-процесса не поднялся');
+      main = connectCdp(mainT);
+      await main.ready;
+    }
+    return chrome;
+  }
 
   const stop = async () => {
-    killTree(child.pid);
+    killTree(child?.pid);
     await echo.close();
     await wait(400);
     if (!keep) {
@@ -251,23 +289,47 @@ export async function withStand(fn, opts = {}) {
   };
 
   try {
-    const chromeT = await findTarget(cdpPort, (t) => t.url?.includes('index.html'));
-    if (!chromeT) {
-      const tail = appLog.join('').slice(-800);
-      throw new Error(`слой хрома не поднялся за отведённое время.${tail ? `\nлог:\n${tail}` : ''}`);
-    }
-    const chrome = connectCdp(chromeT);
-    await chrome.ready;
+    await launch();
     const ctx = {
       profile,
       realUserData: realUserDataDir(),
       echo,
       echoUrl: echo.url,
-      cdpPort,
-      chrome,
-      findTarget: (pred, tries) => findTarget(cdpPort, pred, tries),
       appLog,
       keep,
+      get cdpPort() { return cdpPort; },
+      get chrome() { return chrome; },
+      /** CDP к MAIN-процессу. null, если стенд поднят без `{ main: true }`. */
+      get main() { return main; },
+      /**
+       * Выражение в контексте main-процесса.
+       * ⚠️ `require` там НЕ определён (контекст — внутренний bootstrap Electron,
+       * `electron/js2c/browser_init`), поэтому единственный рабочий путь к модулям приложения
+       * идёт через `process.mainModule.require`. Проверено разведкой на Electron 42.
+       */
+      evalMain: (expr) => {
+        if (!main) throw new Error('стенд поднят без { main: true } — окна в main-процесс нет');
+        return main.evaluate(expr);
+      },
+      findTarget: (pred, tries) => findTarget(cdpPort, pred, tries),
+      /**
+       * Перезапуск приложения НА ТОМ ЖЕ ПРОФИЛЕ — то, ради чего вообще существует проверка круга
+       * сессии: снимок должен доехать до диска и подняться обратно.
+       *
+       * ⚠️ Дерево процессов снимается taskkill /F, то есть окно НЕ закрывается по-человечески и
+       * `win.on('close')` не срабатывает. Значит, полагаться приходится на отложенный автосейв
+       * (SessionManager, DEBOUNCE_MS = 1500). Пауза по умолчанию с запасом вдвое: без неё
+       * проверка ловила бы не «сессия не восстановилась», а «сессия не успела сохраниться» —
+       * самый обидный вид красного.
+       */
+      restart: async (settleMs = 3000) => {
+        await wait(settleMs);
+        killTree(child?.pid);
+        // Порт CDP и single-instance lock отпускаются не мгновенно; без паузы новый запуск
+        // видит замок занятым и молча выходит с нулём (разбор — в CLAUDE.md).
+        await wait(1500);
+        return launch();
+      },
     };
     return await fn(ctx);
   } finally {
