@@ -324,7 +324,7 @@ function SearxngSection() {
 
 // ── Движок полностраничного перевода (Qwen / Bergamot) ────────────────────────
 // Bergamot греется в фоне на старте main.ts независимо от того, что сейчас выбрано (см.
-// main.ts::warmupBergamot) — статус может прийти push'ем ДО монтирования этой секции ИЛИ уже
+// main.ts::probeBergamot) — статус может прийти push'ем ДО монтирования этой секции ИЛИ уже
 // быть готовым к моменту get (та же пара get+onChanged, что у PageTranslateState — гонка старта).
 function TranslationEngineSection() {
   const [engine, setEngineState] = useState<TranslationEngineId | null>(null);

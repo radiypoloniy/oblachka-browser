@@ -13,7 +13,7 @@ import type { WebContents } from 'electron'
 import type { TabState, PageTranslateState, PageTranslateProgress } from '../shared/ipc'
 import type { TabManager } from './TabManager'
 import { resolveDirection } from './TranslationService'
-import { getActiveEngine } from './TranslationEngineRegistry'
+import { getActiveEngine, ensureActiveEngineWarm } from './TranslationEngineRegistry'
 import type { TranslationResult } from './TranslationEngine'
 
 let tabManagerRef: TabManager | null = null
@@ -442,6 +442,9 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
   // дожидаясь apply (executeJavaScript в вкладку — отдельный IPC-круговорот, во время которого
   // движок иначе простаивал бы). Сериализация вызовов — забота самого движка (withQwenQueue в
   // TranslationService.ts для Qwen).
+  // ⚠️ Момент, когда Bergamot поднимает свой воркер: человек нажал «перевести страницу». На старте
+  // он больше не греется — см. разбор у ensureActiveEngineWarm и showWhenReady.ts.
+  await ensureActiveEngineWarm(src, tgt)
   const engine = getActiveEngine(src, tgt)
   if (!engine) {
     throw new Error('Перевод недоступен: нет готового движка')

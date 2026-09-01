@@ -546,10 +546,9 @@ setActiveEngineId(settings.getTranslationEngine());
 setAiPanelSettingsManager(settings); // ширина дока (заход 3) — персист через тот же SettingsManager
 
 // Bergamot регистрируется в registry независимо от того, что сейчас активно, — так реестр может
-// откатиться на него/с него в любой момент смены настройки без пересоздания движка. Прогревается
-// (warmupBergamot ниже) тоже независимо от активного выбора — иначе Settings.tsx не смог бы
-// показать актуальный статус ДО того, как пользователь попробует переключиться (см. живой план,
-// Этап 3: "supportsPair/isReady возвращают false... в UI пометка «модель перевода не загружена»").
+// откатиться на него/с него в любой момент смены настройки без пересоздания движка. А вот
+// ПРОГРЕВА на старте у него больше нет: статус для настроек снимается с диска (probeBergamot
+// ниже), воркер поднимается при первом переводе. Разбор — там же.
 // Фолбэк-путь к бандлу моделей (см. BergamotWorkerEntry.ts/scripts/download-translation-models.mjs) —
 // тот же приём packaged/dev, что resolveModelsBase в AppProtocol.ts.
 const bergamotBundledModelsDir = app.isPackaged
@@ -563,17 +562,16 @@ function pushBergamotStatus(status: BergamotStatus): void {
   bergamotStatus = status;
   broadcastToChrome(IPC.TRANSLATION_ENGINE_BERGAMOT_STATUS_CHANGED, status);
 }
-async function warmupBergamot(): Promise<void> {
-  try {
-    await bergamotEngine.warmup();
-    pushBergamotStatus('ready');
-  } catch (e) {
-    // Ожидаемый исход, если файлов моделей ещё нет на диске (см. README — Bergamot) или воркер
-    // не смог подняться — НЕ бросаем дальше: TranslationEngineRegistry.getActiveEngine() сам
-    // тихо откатится на Qwen (isReady()===false), а UI покажет "модель перевода не загружена".
-    console.error('[bergamot] прогрев упал, движок недоступен:', e);
-    pushBergamotStatus('unavailable');
-  }
+/**
+ * Статус Bergamot для настроек — БЕЗ подъёма воркера.
+ *
+ * ⚠️ Раньше здесь стоял настоящий прогрев, и он стоил 1170 МБ на каждом старте браузера — ради
+ * строчки в разделе настроек, который человек может не открыть ни разу (замер и разбор — у
+ * BergamotTranslationEngine.hasModelsOnDisk). Воркер поднимается при первом переводе страницы,
+ * см. ensureActiveEngineWarm в TranslationEngineRegistry.ts.
+ */
+function probeBergamot(): void {
+  pushBergamotStatus(bergamotEngine.hasModelsOnDisk() ? 'ready' : 'unavailable');
 }
 
 // Ленивый прогрев в режиме modelLoadMode==='on-demand' (см. SettingsManager.ts) — только по
@@ -890,7 +888,7 @@ function createWindow(role: WindowRole = 'main') {
     // ⚠️ Колбэком, а не значением: tabs объявляется НИЖЕ по файлу, а показ окна случается
     // асинхронно — к тому моменту он уже есть. Раньше это держалось на `tabs?.` и порядке строк.
     getTabs: () => tabs,
-    settings, warmupTranslation, warmupBergamot,
+    settings, warmupTranslation, probeBergamot,
   });
 
   const layoutChrome = () => {

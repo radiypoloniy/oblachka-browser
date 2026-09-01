@@ -44,7 +44,7 @@ const SITE_POPOVER_PREWARM_DELAY_MS = 2600;
 const DOWNLOADS_POPOVER_PREWARM_DELAY_MS = 3600;
 
 export function showWhenReady({
-  win, chromeView, isMain, startedAt, getTabs, settings, warmupTranslation, warmupBergamot,
+  win, chromeView, isMain, startedAt, getTabs, settings, warmupTranslation, probeBergamot,
 }: {
   win: BrowserWindow;
   chromeView: WebContentsView;
@@ -54,7 +54,7 @@ export function showWhenReady({
   getTabs: () => TabManager | null;
   settings: SettingsManager;
   warmupTranslation: () => Promise<void>;
-  warmupBergamot: () => Promise<void>;
+  probeBergamot: () => void;
 }): void {
   // Показ окна: ждём сигнал «оболочка отрисована» (useEffect+rAF в src/main.tsx). Fallback-таймаут
   // обязателен — если сигнал не пришёл (упал preload/React, Vite ещё не поднялся в dev),
@@ -109,12 +109,15 @@ export function showWhenReady({
             console.log('[startup] GGUF-модель не установлена — прогрев Qwen пропущен');
           }
         }
-        // Bergamot — свой воркер (см. BergamotService.ts), не конкурирует с Qwen за VRAM/диск,
-        // но всё равно на той же задержке: не соревнуется с первой отрисовкой чрома.
-        void warmupBergamot();
+        // Bergamot: только СТАТУС для настроек, воркер здесь больше не поднимается.
+        // ⚠️ Прогрев отсюда убран по замеру: спавн воркера добавлял главному процессу 1170 МБ —
+        // больше половины всей памяти браузера — на каждом старте, ради движка, которым за сеанс
+        // могли ни разу не воспользоваться. Воркер поднимается при первом переводе страницы
+        // (ensureActiveEngineWarm в TranslationEngineRegistry.ts).
+        probeBergamot();
       }, TRANSLATION_WARMUP_DELAY_MS);
       // Прогрев AI-панели — своя, более ранняя задержка (см. AI_PANEL_PREWARM_DELAY_MS): лёгкий
-      // прогрев (не модель), staggered отдельно от warmupTranslation/warmupBergamot выше, чтобы не
+      // прогрев (не модель), staggered отдельно от прогрева Qwen выше, чтобы не
       // бить оба прогрева в одну точку старта.
       setTimeout(() => {
         if (!thisWin.isDestroyed()) prewarmPanel();

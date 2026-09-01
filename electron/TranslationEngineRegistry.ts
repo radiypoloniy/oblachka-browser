@@ -39,6 +39,27 @@ export function setCacheManager(cache: TranslationCacheManager): void {
   cacheManager = cache
 }
 
+/**
+ * Разбудить АКТИВНЫЙ движок, если он ещё не готов. Зовётся из PageTranslateManager перед выбором.
+ *
+ * ⚠️ Заведено потому, что Bergamot больше не греется на старте (см. showWhenReady.ts): его воркер
+ * стоит главному процессу 1170 МБ, и платить их до того, как человек хоть раз попросил перевод,
+ * незачем. Без этой строки getActiveEngine() видел бы isReady() === false и молча уходил на Qwen —
+ * то есть настройка «движок перевода: Bergamot» перестала бы действовать вовсе.
+ *
+ * ⚠️ Греется только АКТИВНЫЙ, а не все подряд: фолбэк на чужой движок должен оставаться дешёвым.
+ * Отказ глушится — getActiveEngine ниже сам разберётся и откатится, как делал и раньше.
+ */
+export async function ensureActiveEngineWarm(from: string, to: string): Promise<void> {
+  const active = engines.get(activeId)
+  if (!active || active.isReady()) return
+  try {
+    await active.warmup(from, to)
+  } catch (e) {
+    console.warn(`[translation-engine] прогрев "${activeId}" по требованию не удался:`, e)
+  }
+}
+
 function isUsable(engine: ITranslationEngine, from?: string, to?: string): boolean {
   return engine.isReady() && (from === undefined || to === undefined || engine.supportsPair(from, to))
 }

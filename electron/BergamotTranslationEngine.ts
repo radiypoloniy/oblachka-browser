@@ -6,6 +6,8 @@
 // а не наш кастомный синтаксис; Qwen (QwenTranslationEngine.ts) наоборот инструктируется через
 // промпт копировать ⟪N⟫ как есть и HTML ему не нужен. DOM-слой не знает ни про то, ни про другое —
 // получает и отдаёт только ⟪N⟫, конвертация — целиком внутренняя забота этого файла.
+import fs from 'node:fs'
+import path from 'node:path'
 import type { ITranslationEngine, TranslationItem, TranslationResult } from './TranslationEngine'
 import { BergamotService } from './BergamotService'
 
@@ -47,8 +49,37 @@ export class BergamotTranslationEngine implements ITranslationEngine {
   // bundledModelsDir — фолбэк на бандл (resources/models/translation), см. BergamotWorkerEntry.ts:
   // без него после npm run download-translation-models модели оказывались в resources/, а боевой
   // воркер смотрел только в userData и тихо считал Bergamot неготовым (живой баг, см. историю).
+  #userModelsDir: string
+  #bundledModelsDir: string
+
   constructor(userDataPath: string, bundledModelsDir: string) {
     this.#service = new BergamotService(userDataPath, bundledModelsDir)
+    this.#userModelsDir = path.join(userDataPath, 'models', 'translation')
+    this.#bundledModelsDir = bundledModelsDir
+  }
+
+  /**
+   * Есть ли на диске хоть одна пара моделей — БЕЗ подъёма воркера.
+   *
+   * ⚠️ Заведено ради того, чтобы настройки могли показать статус движка, не платя за это
+   * гигабайтом. Замер 01.09.2026: спавн воркера Bergamot добавляет главному процессу 1170 МБ
+   * private bytes за секунду (WASM-память живёт в изоляте worker_thread, поэтому её не видно
+   * ни в V8 heap главного потока, ни в external — только в private bytes процесса). Раньше это
+   * платилось на КАЖДОМ старте браузера ради строчки в разделе настроек.
+   *
+   * ⚠️ Та же пара каталогов и тот же порядок, что у воркера (BergamotWorkerEntry.ts): userData
+   * сначала, бандл фолбэком. Разъехавшись, они дали бы «модели есть» при пустом каталоге у
+   * воркера — то есть кнопку перевода, которая загорается и ничего не переводит.
+   */
+  hasModelsOnDisk(): boolean {
+    const anyPair = (dir: string): boolean => {
+      try {
+        return fs.readdirSync(dir, { withFileTypes: true }).some((d) => d.isDirectory())
+      } catch {
+        return false
+      }
+    }
+    return anyPair(this.#userModelsDir) || anyPair(this.#bundledModelsDir)
   }
 
   // ⚠️ Живой баг, пойманный на реальном прогоне: воркер репортит "ready" уже после того, как
