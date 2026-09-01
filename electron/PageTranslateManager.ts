@@ -152,6 +152,12 @@ const WALK_SCRIPT = `(function(){
 
   window.__oblakoTr = {};
   var store = window.__oblakoTr;
+  // Снимок ТЕКСТОВ корня, а не разметки. ⚠️ Нужен откату («показать оригинал»): innerHTML ниже
+  // остаётся фолбэком, но восстанавливать им — значит пересоздать все узлы заново, а это ровно то,
+  // от чего фреймворк падает (разбор — в buildApplyScript). По текстам откат ложится в те же самые
+  // узлы, ничего не отцепляя.
+  window.__oblakoTrPlan = {};
+  var plan = window.__oblakoTrPlan;
   var nextId = 0;
   var units = [];
   var vw = window.innerWidth, vh = window.innerHeight;
@@ -200,6 +206,15 @@ const WALK_SCRIPT = `(function(){
     var id = nextId;
     el.setAttribute('data-oblako-tr-id', String(id));
     store[id] = el.innerHTML;
+    // Промежутки между элементами и собственный текст каждого элемента — ровно то, что меняет
+    // быстрый путь применения, и ровно то, что нужно вернуть.
+    var pKids = el.childNodes, pGaps = [], pChild = [], pAcc = '';
+    for (var p = 0; p < pKids.length; p++) {
+      if (pKids[p].nodeType === 3) pAcc += pKids[p].nodeValue;
+      else if (pKids[p].nodeType === 1) { pGaps.push(pAcc); pAcc = ''; pChild.push(pKids[p].textContent || ''); }
+    }
+    pGaps.push(pAcc);
+    plan[id] = { gaps: pGaps, childTexts: pChild };
     var r = el.getBoundingClientRect();
     var visible = r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
     units.push({ id: id, text: serialize(el), visible: visible });
@@ -361,13 +376,54 @@ function buildApplyScript(entries: Array<{ id: number; text: string }>): string 
 // no-op, если вкладка уже успела уйти на другой документ (window.__oblakoTr тогда не существует).
 const RESTORE_SCRIPT = `(function(){
   var store = window.__oblakoTr || {};
-  var els = document.querySelectorAll('[data-oblako-tr-id]');
-  for (var i = 0; i < els.length; i++) {
-    var id = els[i].getAttribute('data-oblako-tr-id');
-    if (Object.prototype.hasOwnProperty.call(store, id)) els[i].innerHTML = store[id];
-    els[i].removeAttribute('data-oblako-tr-id');
+  var plan = window.__oblakoTrPlan || {};
+
+  // Вернуть тексты НА МЕСТО, ничего не отцепляя. Зеркало быстрого пути применения (см.
+  // buildApplyScript): те же промежутки, те же узлы, только значения прежние.
+  //
+  // ⚠️ Живой случай (kod.ru, Next.js): перевод чинили, а «показать оригинал» продолжало ронять
+  // сайт тем же Application error. Причина была здесь: innerHTML = … не возвращает узлы, а
+  // СОЗДАЁТ новые вместо них. Для фреймворка это хуже перестановки — все его ссылки разом
+  // становятся мусором, и падает он на первом же своём обновлении.
+  function restoreInPlace(root, p) {
+    var kids = Array.prototype.slice.call(root.childNodes);
+    var els = [], gaps = [], cur = [];
+    for (var i = 0; i < kids.length; i++) {
+      if (kids[i].nodeType === 1) { gaps.push(cur); cur = []; els.push(kids[i]); }
+      else if (kids[i].nodeType === 3) cur.push(kids[i]);
+    }
+    gaps.push(cur);
+    // Состав сошёлся — значит применение шло быстрым путём и структура цела.
+    if (els.length !== p.childTexts.length || gaps.length !== p.gaps.length) return false;
+    for (var e = 0; e < els.length; e++) els[e].textContent = p.childTexts[e];
+    for (var g = 0; g < gaps.length; g++) {
+      var run = gaps[g];
+      if (run.length > 0) {
+        run[0].nodeValue = p.gaps[g];
+        for (var r = 1; r < run.length; r++) run[r].nodeValue = '';
+      } else if (p.gaps[g] !== '') {
+        var ins = document.createTextNode(p.gaps[g]);
+        if (g < els.length) root.insertBefore(ins, els[g]); else root.appendChild(ins);
+      }
+    }
+    return true;
+  }
+
+  var nodes = document.querySelectorAll('[data-oblako-tr-id]');
+  for (var i = 0; i < nodes.length; i++) {
+    var id = nodes[i].getAttribute('data-oblako-tr-id');
+    var done = false;
+    if (Object.prototype.hasOwnProperty.call(plan, id)) {
+      try { done = restoreInPlace(nodes[i], plan[id]); } catch (e) { done = false; }
+    }
+    // ⚠️ Фолбэк на разметку остаётся: применение могло уйти медленным путём (модель переставила
+    // маркеры) и пересобрать корень. Тогда текстами не отделаться — состав уже другой, и вернуть
+    // страницу к исходному виду можно только разметкой, приняв её цену.
+    if (!done && Object.prototype.hasOwnProperty.call(store, id)) nodes[i].innerHTML = store[id];
+    nodes[i].removeAttribute('data-oblako-tr-id');
   }
   window.__oblakoTr = {};
+  window.__oblakoTrPlan = {};
 })()`
 
 // Читает флаг, выставленный слушателем error/unhandledrejection в WALK_SCRIPT — см. комментарий
