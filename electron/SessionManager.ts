@@ -19,6 +19,8 @@ const DEBOUNCE_MS = 1500;
 
 interface SessionDataV5 {
   version: 5;
+  /** Версия приложения, записавшего файл. Необязательна: у файлов до 01.09.2026 её нет. */
+  app?: string;
   savedAt: string;
   activeRef: SavedActiveRef;
   pinnedTabs: SavedTab[];
@@ -72,6 +74,14 @@ export class SessionManager {
       if (d['version'] === 3) return this.#loadV3(d);
       if (d['version'] === 2) return this.#migrateV2(d as unknown as SessionDataV2);
       if (d['version'] === 1) return this.#migrateV1(d as unknown as SessionDataV1);
+      // ⚠️ ФАЙЛ ИЗ БУДУЩЕГО — единственная ветка, где потеря данных РЕАЛЬНА, и включает её ровно
+      // автообновление. Сценарий: человек получил новую версию, та записала session.json нового
+      // формата, человек откатился на старую сборку. Она формата не знает, возвращает null — и
+      // это ещё полбеды («вкладки не восстановились»). Беда дальше: первое же закрытие окна
+      // ПЕРЕЗАПИСЫВАЕТ файл текущим форматом, и вкладки исчезают навсегда, включая те, что
+      // вернулись бы при повторном обновлении. Поэтому непонятый файл уносим в сторону ДО того,
+      // как его затрут.
+      this.#preserveFromFuture(d['version']);
       return null;
     } catch {
       return null;
@@ -226,9 +236,35 @@ export class SessionManager {
     this.#write(snapshot);
   }
 
+  /**
+   * Сохранить копию файла, который мы не поняли, рядом с ним.
+   *
+   * ⚠️ Копия, а не переименование: если человек тут же вернётся на новую версию, ОРИГИНАЛ должен
+   * остаться на месте и открыться как ни в чём не бывало. Переименовав, мы бы «спасли» данные
+   * ценой того, что нормальный путь их больше не находит.
+   *
+   * ⚠️ Имя с версией и меткой времени: откатов может быть несколько, и затирать прошлую копию
+   * следующей — значит терять ровно тот снимок, который человек и хотел вернуть.
+   */
+  #preserveFromFuture(version: unknown): void {
+    const v = typeof version === 'number' ? version : 'unknown';
+    const dest = `${this.#filePath}.from-v${v}.${Date.now()}`;
+    try {
+      fs.copyFileSync(this.#filePath, dest);
+      console.warn(`[Session] файл сохранён версией ${v} — эта сборка её не знает. Копия: ${dest}`);
+    } catch (e) {
+      console.warn('[Session] копию непонятого файла сделать не удалось:', (e as Error).message);
+    }
+  }
+
   #write(snapshot: SessionSnapshot): void {
     const data: SessionDataV5 = {
       version: SESSION_VERSION as 5,
+      // ⚠️ Версия приложения в файле — не диагностика, а материал для будущего разбора. Формат и
+      // сборка меняются независимо: одна и та же версия формата бывает записана разными сборками,
+      // и когда данные окажутся странными, первый вопрос будет «кто это писал».
+      // Читателей у поля нет намеренно: гадать по нему о формате нельзя, для этого есть version.
+      app: app.getVersion(),
       savedAt: new Date().toISOString(),
       activeRef: snapshot.activeRef,
       pinnedTabs: snapshot.pinnedTabs,
