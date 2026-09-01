@@ -531,7 +531,7 @@ function ListView({ items, activeIdx, onHover, onLeave }: {
               </div>
             )}
             <div
-              data-row={idx}
+              data-row={idx} data-active={active ? '1' : '0'}
               // onMouseDown (не onClick) — регистрирует выбор ДО потенциального ухода фокуса у
               // омнибокса, а не после (см. закрытие без blur — Toolbar.tsx, заход 5).
               onMouseDown={() => window.suggestDropdown.pick(item)}
