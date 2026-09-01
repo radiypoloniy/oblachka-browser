@@ -20,6 +20,7 @@ import { usePopoverFlags } from './toolbar/usePopoverFlags';
 import { usePermissionHint } from './toolbar/usePermissionHint';
 import { usePasswordIndicator } from './toolbar/usePasswordIndicator';
 import { useOmniboxValue } from './toolbar/useOmniboxValue';
+import { useHubAutofocus } from './toolbar/useHubAutofocus';
 import { useToolbarPopovers } from './toolbar/useToolbarPopovers';
 import { OmniboxPill } from './toolbar/OmniboxPill';
 
@@ -135,9 +136,11 @@ export default function Toolbar({
   // возвращать его в этот момент нельзя — иначе строка перехватывает фокус у только что
   // открытой страницы (и держит editing, из-за чего набранный текст не сменялся адресом).
   const submittedAtRef = useRef(0);
+  // Фокус строки на новой вкладке — цикл подтверждения и его три условия молчания
+  // (см. useHubAutofocus). Возвращает флаг «кнопка зажата в строке»: ставит его сама строка.
+  const pointerInInputRef = useHubAutofocus({ active: isHub && !!tab, tabId: tab?.id, inputRef, submittedAtRef });
   // Первый показ хаба за жизнь окна — старт приложения. Ему нужно окно ожидания длиннее (см.
   // эффект фокуса ниже), поэтому случай отличается флагом, а не таймером «на всякий случай».
-  const firstHubRef = useRef(true);
   // Unified focus tracker: объединяет realMouseDownRef + hasRealFocusRef в один объект.
   // Отличает настоящий клик пользователя от спонтанных событий фокуса при addChildView/removeChildView
   // нативной WebContentsView дропдауна. isRealFocus = true выставляется ТОЛЬКО настоящим mousedown
@@ -154,7 +157,6 @@ export default function Toolbar({
   // момент нажатия физически нельзя — протяжки ещё не было.
   const selectAllPendingRef = useRef(false);
   // Кнопка мыши зажата внутри строки — на это время цикл автофокуса хаба обязан молчать (см. ниже).
-  const pointerInInputRef = useRef(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
   // «Таблетка» омнибокса (иконка+инпут+капсула/copy) — прямоугольник, под которым должен
   // вставать дропдаун подсказок. Пушится в main отдельным каналом (OMNIBOX_SET_BOUNDS) —
@@ -183,62 +185,6 @@ export default function Toolbar({
   } = useEngineMenu(isHub);
 
 
-  // Новая вкладка — сразу можно печатать: фокус в адресной строке.
-  //
-  // ⚠️ Живёт ЗДЕСЬ, а не в App.tsx, и это не вкусовщина. Первая версия правки стояла в App.tsx
-  // и спорила с submit(), который блёрит строку намеренно: человек нажимал Enter на хабе, строка
-  // теряла фокус — и тут же получала его обратно от чужого цикла. Политика фокуса адресной
-  // строки обязана жить там, где известно про отправку, черновики и editing.
-  //
-  // ⚠️ Ждём `tab`, а не полагаемся на isHub. При старте приложения tab ещё не приехал из main,
-  // а isHub по умолчанию true — эффект отрабатывал вхолостую до появления самой строки, и
-  // браузер, открывшийся на новой вкладке, оставался без фокуса. Это была вторая жалоба.
-  //
-  // ⚠️ Одного focus() не хватает: замер показал, что строка получает фокус и теряет его через
-  // пару миллисекунд — хром перерисовывается на приход списка вкладок из main, и поле в этот
-  // момент пересоздаётся. Поэтому фокус подтверждается несколько кадров подряд. Отступаем, если
-  // фокус занял ДРУГОЕ поле ввода (человек сам выбрал, куда печатать) — но не если его держит
-  // кнопка: вкладку открывают кликом по «Новая вкладка», и она остаётся сфокусированной.
-  // ⚠️ ЗАПУСК ПРИЛОЖЕНИЯ — отдельный случай с длинным окном. Обычная смена вкладки успокаивается
-  // за пару кадров, а старт — нет: одновременно восстанавливается сессия, создаются вью вкладок,
-  // окно только получает фокус ОС. Короткого окна там не хватало, и браузер, открывшийся на новой
-  // вкладке, оставался без фокуса — при том что переключение на новую вкладку уже работало.
-  // Плюс перезапуск по событию фокуса окна: если фокус ОС пришёл позже нашего окна ожидания,
-  // без этого он бы уже никого не застал.
-  useEffect(() => {
-    if (!isHub || !tab) return;
-    let raf = 0;
-    const isTypingTarget = (el: Element | null) =>
-      !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'
-        || (el as HTMLElement).isContentEditable);
-    const run = (windowMs: number) => {
-      const deadline = performance.now() + windowMs;
-      const settle = () => {
-        // Только что отправили запрос — blur был осознанным, не отбираем его обратно.
-        // ⚠️ Окно короче срока жизни цикла намеренно: длиннее — и «Enter, сразу новая вкладка»
-        // не получил бы фокуса вовсе, потому что подавление пережило бы весь цикл. Дольше
-        // держать и не нужно — после отправки хаб перестаёт быть активным, и цикл гаснет сам.
-        if (performance.now() - submittedAtRef.current < 300) return;
-        // ⚠️ Пока кнопка мыши зажата в строке, цикл обязан молчать: он делает focus()+select()
-        // каждый кадр, то есть попал бы ровно в середину протяжки и выделил всё вместо
-        // протянутого. На хабе это окно активно первые 400 мс (и до 3 с на старте) — как раз
-        // тогда, когда человек первым делом и лезет в адресную строку.
-        if (pointerInInputRef.current) return;
-        const input = inputRef.current;
-        const active = document.activeElement;
-        if (input && active !== input && isTypingTarget(active)) return; // выбор человека — не спорим
-        if (input && active !== input) { input.focus(); input.select(); }
-        if (performance.now() < deadline) raf = requestAnimationFrame(settle);
-      };
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(settle);
-    };
-    run(firstHubRef.current ? 3000 : 400);
-    firstHubRef.current = false;
-    const onWindowFocus = () => run(400);
-    window.addEventListener('focus', onWindowFocus);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('focus', onWindowFocus); };
-  }, [isHub, tab?.id]);
 
   // ⚠️ Звезда больше не ТУМБЛЕР. Прежнее поведение («нажал — сохранил в корень, нажал ещё —
   // удалил») не давало положить страницу в папку вовсе: единственным местом закладки был корень,
@@ -309,14 +255,6 @@ export default function Toolbar({
     focusTracker.current.isRealFocus = false;
   }, [closeDropdown]);
 
-  // ⚠️ Отпустить кнопку можно и ЗА пределами строки — протяжка через край обычное дело. Тогда
-  // onMouseUp самой строки не придёт вовсе, и флаг «кнопка зажата» остался бы висеть, навсегда
-  // заглушив цикл автофокуса хаба. Слушаем документ, не строку.
-  useEffect(() => {
-    const clear = () => { pointerInInputRef.current = false; };
-    document.addEventListener('mouseup', clear, true);
-    return () => document.removeEventListener('mouseup', clear, true);
-  }, []);
 
   // Ref для closeDropdownFully — чтобы слушатель mousedown не пересоздавался при каждом изменении
   // колбэка, но всегда вызывал актуальную версию. Тот же приём, что pickSuggestionRef ниже.

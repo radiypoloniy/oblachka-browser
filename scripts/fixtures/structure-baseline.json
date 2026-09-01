@@ -126,9 +126,9 @@
     "ipc": 9
   },
   "src/components/Toolbar.tsx": {
-    "lines": 611,
-    "fn": 504,
-    "effects": 7,
+    "lines": 549,
+    "fn": 441,
+    "effects": 5,
     "ipc": 13
   },
   "src/components/aiApps.tsx": {
