@@ -475,33 +475,20 @@ export default function Toolbar({
   // Клавиатурная навигация. e.code — раскладконезависимо.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (dropdownOpen && suggestions.length > 0) {
-      if (e.code === 'ArrowDown') {
-        e.preventDefault();
-        const next = Math.min(selectedIdx + 1, suggestions.length - 1);
-        setSelectedIdx(next);
-        void window.oblako.setSuggestDropdownHighlight(next);
-        return;
-      }
-      if (e.code === 'ArrowUp') {
-        e.preventDefault();
-        const next = Math.max(selectedIdx - 1, -1);
-        setSelectedIdx(next);
-        void window.oblako.setSuggestDropdownHighlight(next);
-        return;
-      }
-      if (e.code === 'Home') {
-        e.preventDefault();
-        setSelectedIdx(0);
-        void window.oblako.setSuggestDropdownHighlight(0);
-        return;
-      }
-      if (e.code === 'End') {
-        e.preventDefault();
-        const last = suggestions.length - 1;
-        setSelectedIdx(last);
-        void window.oblako.setSuggestDropdownHighlight(last);
-        return;
-      }
+      // ⚠️ Список ЗАКОЛЬЦОВАН, и -1 — полноправная позиция в кольце, а не край. -1 означает
+      // «выбрана сама набранная строка»: Enter в этом состоянии ведёт по набранному, как вёл бы
+      // без дропдауна вовсе. Поэтому кольцо выглядит так: набранное → первая → … → последняя →
+      // снова набранное. Ровно так ходит Chrome, и это же чинит живую жалобу «домотал до конца, а
+      // на первую позицию не вернуться»: раньше обе стрелки ЗАЖИМАЛИСЬ по краям (min/max), то есть
+      // в конце списка ArrowDown просто переставал что-либо менять.
+      const last = suggestions.length - 1;
+      // Выбор живёт в ДВУХ местах сразу: здесь (Enter выполняется отсюда) и в нативной вью, где
+      // строка подсвечивается. Одной строкой на оба, чтобы они не разъехались.
+      const moveTo = (i: number) => { setSelectedIdx(i); void window.oblako.setSuggestDropdownHighlight(i); };
+      if (e.code === 'ArrowDown') { e.preventDefault(); moveTo(selectedIdx >= last ? -1 : selectedIdx + 1); return; }
+      if (e.code === 'ArrowUp') { e.preventDefault(); moveTo(selectedIdx <= -1 ? last : selectedIdx - 1); return; }
+      if (e.code === 'Home') { e.preventDefault(); moveTo(0); return; }
+      if (e.code === 'End') { e.preventDefault(); moveTo(last); return; }
       if (e.code === 'Enter') {
         e.preventDefault();
         if (selectedIdx >= 0 && selectedIdx < suggestions.length) {
