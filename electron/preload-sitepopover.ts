@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnConnectionState, AdBlockState } from '../shared/ipc';
 import type { ProfilesState } from '../shared/profiles';
+import type { AutomationRule } from '../shared/rules';
 
 // Мост поповера «Защита» — того, что открывается по щиту в адресной строке. ⚠️ Ни одного нового
 // обработчика в main: всё, что здесь нужно, уже посчитано другими частями браузера и открыто теми
@@ -50,6 +51,13 @@ contextBridge.exposeInMainWorld('sitePopover', {
   adBlockAddDomain:    (domain: string) => ipcRenderer.invoke(IPC.ADBLOCK_ADD_DOMAIN, domain) as Promise<void>,
   adBlockRemoveDomain: (domain: string) => ipcRenderer.invoke(IPC.ADBLOCK_REMOVE_DOMAIN, domain) as Promise<void>,
   adBlockReloadTabs:   (domain?: string) => ipcRenderer.invoke(IPC.ADBLOCK_RELOAD_TABS, domain) as Promise<void>,
+
+  // Правила-автоматизации этого сайта. ⚠️ Отдаём ВЕСЬ список, фильтрует по домену сама вью:
+  // совпадение хоста с доменом правила считает hostMatchesDomain из shared/rules.ts, и второй
+  // копии этого правила (поддомены, www) заводить нельзя — они разъедутся молча.
+  listRules: () => ipcRenderer.invoke(IPC.RULES_LIST) as Promise<AutomationRule[]>,
+  setRuleEnabled: (id: string, enabled: boolean) =>
+    ipcRenderer.invoke(IPC.RULES_SET_ENABLED, id, enabled) as Promise<void>,
 
   getPageChanges: () => ipcRenderer.invoke(IPC.PAGE_CHANGES_GET) as Promise<PageChangesResult>,
   openUrl: (url: string) => ipcRenderer.invoke(IPC.TAB_CREATE, url) as Promise<string>,

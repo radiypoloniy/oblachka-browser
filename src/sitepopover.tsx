@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Lock, ShieldOff, Camera, Mic, MapPin, Bell, Maximize, Clipboard, RotateCcw, History, ExternalLink } from 'lucide-react';
+import { Lock, ShieldOff, Camera, Mic, MapPin, Bell, Maximize, Clipboard, RotateCcw, History, ExternalLink, Wand2 } from 'lucide-react';
 import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnConnectionState, AdBlockState } from '../shared/ipc';
 // ⚠️ Поверхность оверлея (непрозрачная), а не островная плита: карточка живёт в своей вью над
 // страницей, где backdrop-filter не работает вовсе, и полупрозрачность означала бы
@@ -8,6 +8,8 @@ import type { PermissionRecord, PermKey, PageChangesResult, VpnServerMeta, VpnCo
 import { overlayPlate } from './styles/island';
 import { CAPS, DISPLAY_CARD, DISPLAY_ROW, RADIUS, TEXT } from './styles/system';
 import { normalizeDomain } from '../shared/domain';
+import { describeRule, hostMatchesDomain } from '../shared/rules';
+import type { AutomationRule } from '../shared/rules';
 import VpnIndicatorPopover from './components/VpnIndicatorPopover';
 import AdBlockSitePanel from './components/AdBlockSitePanel';
 import './styles/global.css';
@@ -22,6 +24,8 @@ declare global {
       getProfiles: () => Promise<ProfilesState>;
       openProfileSettings: () => Promise<string>;
       getPermissions: () => Promise<PermissionRecord[]>;
+      listRules: () => Promise<AutomationRule[]>;
+      setRuleEnabled: (id: string, enabled: boolean) => Promise<void>;
       revokePermission: (origin: string, key: PermKey) => Promise<void>;
       getBlockedCount: (domain: string) => Promise<number>;
       isAdblockAllowed: (domain: string) => Promise<boolean>;
@@ -119,6 +123,83 @@ function Fact({ label, hint, value, on }: {
   );
 }
 
+/**
+ * «Здесь работает правило» — что браузер делает на этом сайте ЗА человека.
+ *
+ * ⚠️ Раздел отвечает на вопрос, которого щиту не хватало. Соседние отвечают «что меня защищает»
+ * (VPN, адблок) и «что я разрешил» (камера и прочее), а этот — про действия браузера. Без него
+ * правило неотличимо от магии: вкладка сама уехала в группу, а причину видно только в настройках.
+ *
+ * ⚠️ Молчит, когда правил нет. «Ничего не делает» — обычное состояние подавляющего большинства
+ * сайтов, и отдельной строкой это был бы шум на каждой странице.
+ */
+function RulesHere({ rules, onToggled }: { rules: AutomationRule[]; onToggled: () => void }) {
+  if (rules.length === 0) return null;
+  return (
+    <Section title="Здесь работает правило">
+      {rules.map((r) => (
+        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px' }}>
+          <Wand2 size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />
+          <span style={{ flex: 1, minWidth: 0, ...TEXT.body, color: 'var(--text-strong)' }}>
+            {describeRule(r)}
+          </span>
+          {/* Выключатель, а не удаление: человек стоит на сайте и решает про ЗДЕСЬ И СЕЙЧАС.
+              Удаление насовсем — в разделе настроек, где виден весь список. */}
+          <button
+            title={r.enabled ? 'Выключить правило' : 'Включить правило'}
+            onClick={() => { void window.sitePopover.setRuleEnabled(r.id, !r.enabled).then(onToggled); }}
+            style={{
+              border: 'none', background: 'transparent', cursor: 'default', padding: 3,
+              display: 'inline-flex', flex: 'none',
+              ...TEXT.caption, fontWeight: 700,
+              color: r.enabled ? 'var(--dot-local)' : 'var(--text-faint)',
+            }}
+          >
+            {r.enabled ? 'работает' : 'выключено'}
+          </button>
+        </div>
+      ))}
+    </Section>
+  );
+}
+
+/** Разрешения этого сайта. Вынесено рядом с RulesHere — секции карточки живут компонентами. */
+function PermissionsList({ perms, onRevoked }: { perms: PermissionRecord[]; onRevoked: () => void }) {
+  if (perms.length === 0) return null;
+  return (
+    <Section title="Разрешения">
+      {perms.map((p) => {
+        const Icon = PERM_ICON[p.permission];
+        return (
+          <div key={p.permission} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px' }}>
+            <Icon size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />
+            <span style={{ flex: 1, minWidth: 0, ...TEXT.body, fontWeight: 550, color: 'var(--text-strong)' }}>
+              {PERM_LABEL[p.permission]}
+            </span>
+            {/* Статус — СЛОВОМ И ЦВЕТОМ СЛОВА, фон он не красит: закон цвета, заливка в
+                продукте означает «выбрано», а не «разрешено». */}
+            <span style={{
+              ...TEXT.caption, fontWeight: 700,
+              color: p.decision === 'granted' ? 'var(--dot-local)' : 'var(--danger-500)',
+            }}>
+              {p.decision === 'granted' ? 'разрешено' : 'запрещено'}
+            </span>
+            {/* «Забыть» ≠ «запретить»: забытый сайт спросит снова. Та же тройка состояний,
+                что в разделе настроек — здесь оставлен только сброс, остальное там. */}
+            <button
+              title="Забыть решение — сайт спросит снова"
+              onClick={() => { void window.sitePopover.revokePermission(p.origin, p.permission).then(onRevoked); }}
+              style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
+            >
+              <RotateCcw size={13} />
+            </button>
+          </div>
+        );
+      })}
+    </Section>
+  );
+}
+
 function SitePopoverApp() {
   const [url, setUrl] = useState('');
   const [perms, setPerms] = useState<PermissionRecord[]>([]);
@@ -126,6 +207,8 @@ function SitePopoverApp() {
   const [adblockOff, setAdblockOff] = useState(false);
   // «Что изменилось с прошлого раза» (AI-IDEAS.md №7). null — ещё считаем.
   const [changes, setChanges] = useState<PageChangesResult | null>(null);
+  // Правила-автоматизации: весь список, отбор по домену — ниже (см. siteRules).
+  const [rules, setRules] = useState<AutomationRule[]>([]);
   // ── Защита: VPN и адблок. Переехали сюда из поповера пилюли «Защита» (удалён). ──
   const [servers, setServers] = useState<VpnServerMeta[]>([]);
   const [connState, setConnState] = useState<VpnConnectionState | null>(null);
@@ -146,7 +229,8 @@ function SitePopoverApp() {
     // ⚠️ Нет сайта (новая вкладка, инкогнито, настройки) — это НЕ повод не открываться: раздел
     // «Защита» глобальный и нужен как раз оттуда, VPN чаще всего включают на новой вкладке.
     // Гасим только то, что про сайт.
-    if (!host) { setPerms([]); setBlocked(null); setAdblockOff(false); setChanges(null); return; }
+    if (!host) { setPerms([]); setBlocked(null); setAdblockOff(false); setChanges(null); setRules([]); return; }
+    void window.sitePopover.listRules().then(setRules).catch(() => setRules([]));
     void window.sitePopover.getPermissions().then(setPerms);
     void window.sitePopover.getBlockedCount(host).then(setBlocked);
     void window.sitePopover.isAdblockAllowed(host).then(setAdblockOff);
@@ -186,6 +270,12 @@ function SitePopoverApp() {
   const origin = originOf(url);
   const secure = url.startsWith('https://');
   const sitePerms = perms.filter((p) => p.origin === origin);
+  // ⚠️ Совпадение хоста с доменом правила считает hostMatchesDomain из shared/rules.ts — та же
+  // функция, по которой правило РЕАЛЬНО срабатывает в движке. Своя проверка здесь (например,
+  // сравнение строк) молча разошлась бы с ней на поддоменах и www, и карточка показывала бы не то
+  // правило, которое сработает. Триггер «перешёл по ссылке с сайта» сюда не попадает намеренно:
+  // он про источник перехода, а не про сайт, на котором человек стоит.
+  const siteRules = rules.filter((r) => r.trigger.kind === 'site' && !!host && hostMatchesDomain(host, r.trigger.domain));
   const domain = normalizeDomain(url);
 
   // Подпись героя: шифруется ли, в каком профиле и не обязан ли профиль идти через VPN.
@@ -357,38 +447,16 @@ function SitePopoverApp() {
         </Section>
 
         {/* ── Разрешения ── */}
-        {host && sitePerms.length > 0 && (
-          <Section title="Разрешения">
-            {sitePerms.map((p) => {
-              const Icon = PERM_ICON[p.permission];
-              return (
-                <div key={p.permission} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px' }}>
-                  <Icon size={16} style={{ color: 'var(--text-muted)', flex: 'none' }} />
-                  <span style={{ flex: 1, minWidth: 0, ...TEXT.body, fontWeight: 550, color: 'var(--text-strong)' }}>
-                    {PERM_LABEL[p.permission]}
-                  </span>
-                  {/* Статус — СЛОВОМ И ЦВЕТОМ СЛОВА, фон он не красит: закон цвета, заливка в
-                      продукте означает «выбрано», а не «разрешено». */}
-                  <span style={{
-                    ...TEXT.caption, fontWeight: 700,
-                    color: p.decision === 'granted' ? 'var(--dot-local)' : 'var(--danger-500)',
-                  }}>
-                    {p.decision === 'granted' ? 'разрешено' : 'запрещено'}
-                  </span>
-                  {/* «Забыть» ≠ «запретить»: забытый сайт спросит снова. Та же тройка состояний,
-                      что в разделе настроек — здесь оставлен только сброс, остальное там. */}
-                  <button
-                    title="Забыть решение — сайт спросит снова"
-                    onClick={() => { void window.sitePopover.revokePermission(p.origin, p.permission).then(reload); }}
-                    style={{ border: 'none', background: 'transparent', cursor: 'default', padding: 3, display: 'inline-flex', color: 'var(--text-faint)', flex: 'none' }}
-                  >
-                    <RotateCcw size={13} />
-                  </button>
-                </div>
-              );
-            })}
-          </Section>
-        )}
+        {host && <PermissionsList perms={sitePerms} onRevoked={reload} />}
+
+        {/* ── Что браузер делает здесь сам ──
+            ⚠️ Раздел отвечает на вопрос, которого щиту не хватало. Соседние отвечают «что меня
+            защищает» (VPN, адблок) и «что я разрешил» (доступ к камере и прочему), а этот — «что
+            браузер делает на этом сайте ЗА МЕНЯ». Без него правило неотличимо от магии: вкладка
+            сама уехала в группу, а причину видно только в настройках.
+            ⚠️ Показываем только когда правило есть. «Ничего не делает» — обычное состояние
+            подавляющего большинства сайтов, и отдельной строкой это был бы шум на каждой странице. */}
+        <RulesHere rules={siteRules} onToggled={reload} />
 
         {/* ── Что изменилось с прошлого раза ──
             ⚠️ Показываем ТОЛЬКО когда изменение действительно нашлось: молчание здесь — обычное
