@@ -30,7 +30,7 @@
     "ipc": 0
   },
   "electron/main.ts": {
-    "lines": 1650,
+    "lines": 1648,
     "fn": 200,
     "effects": 0,
     "ipc": 0
@@ -126,10 +126,10 @@
     "ipc": 9
   },
   "src/components/Toolbar.tsx": {
-    "lines": 1226,
-    "fn": 1097,
-    "effects": 12,
-    "ipc": 41
+    "lines": 1061,
+    "fn": 942,
+    "effects": 10,
+    "ipc": 27
   },
   "src/components/aiApps.tsx": {
     "lines": 654,
