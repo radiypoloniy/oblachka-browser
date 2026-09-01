@@ -274,6 +274,68 @@ function buildApplyScript(entries: Array<{ id: number; text: string }>): string 
       }
       if (last < translated.length) seq.push({ t: 'text', v: translated.slice(last) });
 
+      // ⚠️ БЫСТРЫЙ ПУТЬ БЕЗ ПЕРЕСБОРКИ — ради чужих фреймворков, а не ради скорости.
+      //
+      // Живой случай (kod.ru, Next.js): «сначала переводит нормально, а потом Application error:
+      // a client-side exception». Причина была ровно ниже: textContent = '' отцепляет ВСЕХ
+      // детей разом, и пусть мы тут же возвращаем те же самые узлы обратно, React про эту
+      // перестановку не знает: он держит свои ссылки и своё представление о том, где чей ребёнок.
+      // На следующем СВОЁМ обновлении (наведение, переход, гидрация) он зовёт removeChild/
+      // insertBefore на узле, который лежит уже не там, получает NotFoundError — и его error
+      // boundary красит этим сообщением весь экран. Отсюда и «сначала норм»: падает не наш код и
+      // не в момент перевода, а чужой и позже.
+      //
+      // Поэтому: если модель СОХРАНИЛА порядок и состав элементов (а это подавляющее большинство
+      // случаев), структуру не трогаем вовсе — правим только значения текстовых узлов. Ноль
+      // отцеплений, ноль вставок, React ничего не замечает.
+      var sameOrder = true;
+      var elCount = 0;
+      for (var s = 0; s < seq.length; s++) {
+        if (seq[s].t !== 'el') continue;
+        if (seq[s].v !== origChildren[elCount]) { sameOrder = false; break; }
+        elCount++;
+      }
+      if (sameOrder && elCount === origChildren.length) {
+        // Текущие дети корня, разбитые на промежутки между элементами: [текст…] el [текст…] el …
+        var gaps = [];
+        var cur = [];
+        var kids = Array.prototype.slice.call(root.childNodes);
+        for (var g = 0; g < kids.length; g++) {
+          if (kids[g].nodeType === 1) { gaps.push(cur); cur = []; }
+          else if (kids[g].nodeType === 3) cur.push(kids[g]);
+        }
+        gaps.push(cur);
+        // Желаемый текст для каждого промежутка — в том же порядке, что промежутки выше.
+        var want = [];
+        var acc = '';
+        for (var w = 0; w < seq.length; w++) {
+          if (seq[w].t === 'text') acc += seq[w].v;
+          else { want.push(acc); acc = ''; }
+        }
+        want.push(acc);
+        if (want.length === gaps.length) {
+          for (var q = 0; q < gaps.length; q++) {
+            var run = gaps[q];
+            if (run.length > 0) {
+              // ⚠️ nodeValue, а не замена узла: узел остаётся ТЕМ ЖЕ, и для фреймворка ничего не
+              // произошло. Хвост прогона гасим пустой строкой — удалять нельзя по той же причине.
+              run[0].nodeValue = want[q];
+              for (var r = 1; r < run.length; r++) run[r].nodeValue = '';
+            } else if (want[q] !== '') {
+              // Текста в этом месте не было вовсе — вставляем. Единственная структурная правка
+              // быстрого пути, и она ДОБАВЛЯЮЩАЯ: чужие узлы остаются на местах.
+              var ins = document.createTextNode(want[q]);
+              if (q < origChildren.length) root.insertBefore(ins, origChildren[q]);
+              else root.appendChild(ins);
+            }
+          }
+          return;
+        }
+      }
+
+      // Медленный путь: модель переставила или потеряла маркеры — сохранить структуру нечем,
+      // пересобираем. Риск для фреймворка здесь остаётся, и это осознанный размен: без пересборки
+      // такой ответ пришлось бы выбрасывать целиком, оставляя абзац непереведённым.
       var frag = document.createDocumentFragment();
       for (var i = 0; i < seq.length; i++) {
         if (seq[i].t === 'text') frag.appendChild(document.createTextNode(seq[i].v));
