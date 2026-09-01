@@ -12,8 +12,6 @@ import crypto from 'node:crypto';
 
 const GCM_IV_LEN = 12;
 const GCM_TAG_LEN = 16;
-const SCRYPT_SALT_LEN = 16;
-const SCRYPT_KEY_LEN = 32;
 
 export function isAvailable(): boolean {
   return safeStorage.isEncryptionAvailable();
@@ -51,45 +49,9 @@ export function decryptField(dek: Buffer, blob: Buffer): string {
 }
 
 // ── Экспорт/импорт — отдельный конверт под пользовательскую парольную фразу ────────────────────
-// DPAPI-сейф непереносим (другая машина/переустановка Windows = wrapped_dek не расшифровать),
-// поэтому экспорт шифруется ключом из scrypt(passphrase), а не DEK — портируемый формат.
-// node:crypto.scryptSync без новых зависимостей (соответствует брифу — без argon2 на этом шаге).
-interface PassphraseEnvelope {
-  v: 1;
-  salt: string;
-  iv: string;
-  authTag: string;
-  ciphertext: string;
-}
-
-export function encryptWithPassphrase(passphrase: string, plaintext: string): string {
-  const salt = crypto.randomBytes(SCRYPT_SALT_LEN);
-  const key = crypto.scryptSync(passphrase, salt, SCRYPT_KEY_LEN);
-  const iv = crypto.randomBytes(GCM_IV_LEN);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  const envelope: PassphraseEnvelope = {
-    v: 1,
-    salt: salt.toString('base64'),
-    iv: iv.toString('base64'),
-    authTag: authTag.toString('base64'),
-    ciphertext: ciphertext.toString('base64'),
-  };
-  return JSON.stringify(envelope);
-}
-
-// Бросает при неверной парольной фразе/битом файле (authTag не сойдётся) — вызывающая сторона
-// (PasswordManager.importVault) ловит и превращает в понятный результат для UI.
-export function decryptWithPassphrase(passphrase: string, payload: string): string {
-  const envelope = JSON.parse(payload) as PassphraseEnvelope;
-  if (envelope.v !== 1) throw new Error('unsupported envelope version');
-  const salt = Buffer.from(envelope.salt, 'base64');
-  const key = crypto.scryptSync(passphrase, salt, SCRYPT_KEY_LEN);
-  const iv = Buffer.from(envelope.iv, 'base64');
-  const authTag = Buffer.from(envelope.authTag, 'base64');
-  const ciphertext = Buffer.from(envelope.ciphertext, 'base64');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(authTag);
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
-}
+//
+// ⚠️ Логика переехала в vaultEnvelope.ts и здесь только реэкспортируется. Причина не в размере:
+// в том файле нет ни одного импорта Electron, значит его можно прогнать обычным node — и он
+// прогоняется (scripts/vault-envelope-check.mjs). Отсюда, из соседства с safeStorage, это было
+// невозможно: сейф завязан на DPAPI живой машины.
+export { encryptWithPassphrase, decryptWithPassphrase } from './vaultEnvelope';
