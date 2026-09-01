@@ -59,7 +59,22 @@ const METRICS = `(() => {
     try { url = w.getURL(); } catch { url = ''; }
     return { pid, id: w.id, type: w.getType(), url: url.slice(0, 80), destroyed: w.isDestroyed() };
   });
-  return { procs, views };
+  // ⚠️ Разбор САМОГО главного процесса. getAppMetrics говорит, СКОЛЬКО он держит, и молчит о том,
+  // ЧТО там лежит, — а держит он больше всех остальных вместе взятых. Этот код выполняется прямо
+  // в нём, поэтому process.memoryUsage() и статистика V8 здесь про него и есть.
+  const v8 = process.mainModule.require('v8');
+  const mu = process.memoryUsage();
+  const hs = v8.getHeapStatistics();
+  const main = {
+    rss: mu.rss,
+    heapTotal: mu.heapTotal,
+    heapUsed: mu.heapUsed,
+    external: mu.external,
+    arrayBuffers: mu.arrayBuffers,
+    malloced: hs.malloced_memory,
+    peakMalloced: hs.peak_malloced_memory,
+  };
+  return { procs, views, main };
 })()`;
 
 function report(title, snap) {
@@ -87,7 +102,7 @@ function report(title, snap) {
   for (const [t, v] of [...byType].sort((a, b) => b[1] - a[1])) {
     console.log(`    ${pad(t, 14)} ${pad(mb(v), 9)} ${(v / total * 100).toFixed(0)}%`);
   }
-  return { total, totalWs, byPid, procs, views };
+  return { total, totalWs, byPid, procs, views, main: snap.main };
 }
 
 // ── прогон ───────────────────────────────────────────────────────────────────────────────────
@@ -175,6 +190,40 @@ await withStand(async (ctx) => {
   console.log(`  после прогрева      ${mb(browser(warm))}   (+${mb(browser(warm) - browser(cold))})`);
   console.log(`  вкладки открыты     ${mb(browser(opened))}   (+${mb(browser(opened) - browser(warm))})`);
   console.log(`  вкладки нагружены   ${mb(browser(loaded))}   (+${mb(browser(loaded) - browser(opened))})`);
+
+  // ── куда уходит главный процесс ────────────────────────────────────────────────────────────
+  //
+  // ⚠️ Раздел отвечает на вопрос, который прошлый замер только поставил: Browser держит больше
+  // половины всей памяти, и почти всё берёт в первые секунды. getAppMetrics на этот вопрос
+  // ответить не может — он знает сумму, а не состав.
+  //
+  // Три корзины, и различать их обязательно, потому что чинятся они по-разному:
+  //   • V8 heap  — наши объекты в JS. Растёт от кода main-процесса; утечка здесь видна снимком кучи.
+  //   • external — то, что V8 держит снаружи: ArrayBuffer'ы, буферы Node. Сюда попадают, например,
+  //                прочитанные файлы и кэши в Buffer.
+  //   • нативное — всё остальное: better-sqlite3, движок адблока, внутренности самого Chromium
+  //                (сеть, дисковый кэш, композитор). V8 их не видит вовсе, снимок кучи бесполезен.
+  //
+  // ⚠️ «Нативное» считается вычитанием и потому приблизительно: private byte'ы Windows и учёт V8
+  // меряют не одно и то же. Но порядок величины эта разность даёт честно, а нам сейчас нужен
+  // именно он — понять, в какой из трёх корзин лежит гигабайт, прежде чем лезть внутрь.
+  console.log('\n── куда уходит главный процесс ───────────────────────────────');
+  console.log(`  ${pad('этап', 20)}${pad('private', 10)}${pad('rss', 10)}${pad('V8 heap', 10)}${pad('external', 10)}нативное`);
+  const mainRow = (title, s) => {
+    const priv = s.procs.find((p) => p.type === 'Browser')?.priv ?? 0;
+    const m = s.main ?? {};
+    const native = priv - (m.heapTotal ?? 0) - (m.external ?? 0);
+    console.log(
+      `  ${pad(title, 20)}${pad(mb(priv), 10)}${pad(mb(m.rss ?? 0), 10)}`
+      + `${pad(mb(m.heapTotal ?? 0), 10)}${pad(mb(m.external ?? 0), 10)}${mb(native)}`,
+    );
+  };
+  mainRow('холодный старт', cold);
+  mainRow('после прогрева', warm);
+  mainRow('вкладки открыты', opened);
+  mainRow('вкладки нагружены', loaded);
+  console.log('\n  ⚠️ где вырос гигабайт — в той корзине и надо копать. V8 heap → снимок кучи main;');
+  console.log(`     нативное → подозреваемые по порядку: движок адблока, better-sqlite3, кэши Chromium.`);
 
   // ── разведка: работает ли заморозка через CDP ──────────────────────────────────────────────
   //

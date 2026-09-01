@@ -9,11 +9,10 @@
 //
 // Запуск: npm test -- model-idle
 import {
-  isVramTight, isRamTight, ramFreeShare, isHardwareTight, shouldUnloadModel,
+  isVramTight, isHardwareTight, shouldUnloadModel,
   MODEL_IDLE_TIMEOUT, MODEL_CHECK_INTERVAL, PRESSURE_MIN_IDLE, TIGHT_STREAK,
-  VRAM_FREE_MIN_SHARE, VRAM_OTHERS_MIN, SYSTEM_FREE_MIN_SHARE,
+  VRAM_FREE_MIN_SHARE, VRAM_OTHERS_MIN,
 } from '../shared/modelIdle.ts';
-import { SYSTEM_FREE_MIN_SHARE as SLEEP_FREE_SHARE } from '../shared/sleepPolicy.ts';
 
 let passed = 0;
 let failed = 0;
@@ -40,10 +39,6 @@ const MIN = 60 * 1000;
   check('тесно должно быть три проверки подряд', TIGHT_STREAK, 3);
   check('порог свободной видеопамяти — 15 %', VRAM_FREE_MIN_SHARE, 0.15);
   check('чужой приход — от гигабайта', VRAM_OTHERS_MIN, 1024 * 1024 * 1024);
-
-  // ⚠️ Копия числа из sleepPolicy.ts (значимых импортов в shared/modelIdle.ts быть не должно).
-  // Разъехавшись, они дали бы браузер, которому машина тесна для вкладок и просторна для модели.
-  check('порог свободной ОЗУ совпадает с политикой усыпления', SYSTEM_FREE_MIN_SHARE, SLEEP_FREE_SHARE);
 }
 
 // ── Видеопамять: чужой приход против нашей же модели ─────────────────────────
@@ -83,31 +78,17 @@ const MIN = 60 * 1000;
     isVramTight({ total: 8 * GB, free: 3 * GB, freeAtLoad: 1 * GB }), false);
 }
 
-// ── Обычная память ───────────────────────────────────────────────────────────
+// ── Железу тесно: только видеопамять ─────────────────────────────────────────
+//
+// ⚠️ Ветки по обычной памяти в политике НЕТ намеренно — разбор в шапке shared/modelIdle.ts. Эти
+// ассерты её отсутствие и закрепляют: модель на CPU по давлению не выгружается вовсе.
 {
-  check('доля свободной памяти', ramFreeShare(4 * GB, 16 * GB), 0.25);
-  check('машина без памяти — доля 1 (делить не на что)', ramFreeShare(0, 0), 1);
-  check('свободно четверть — не тесно', isRamTight(4 * GB, 16 * GB), false);
-  check('свободно ровно 20 % — не тесно', isRamTight(3.2 * GB, 16 * GB), false);
-  check('свободно 10 % — тесно', isRamTight(1.6 * GB, 16 * GB), true);
-}
-
-// ── Железу тесно: любой из двух поводов ──────────────────────────────────────
-{
-  const roomyRam = { ramFree: 8 * GB, ramTotal: 16 * GB };
-  check('модель на CPU, памяти много — не тесно',
-    isHardwareTight({ vram: null, ...roomyRam }), false);
-  check('модель на CPU, памяти мало — тесно',
-    isHardwareTight({ vram: null, ramFree: 1 * GB, ramTotal: 16 * GB }), true);
-  check('карта забита чужими, ОЗУ свободна — всё равно тесно',
-    isHardwareTight({ vram: { total: 8 * GB, free: 0.4 * GB, freeAtLoad: 1.9 * GB }, ...roomyRam }), true);
-  check('карта просторна, ОЗУ забита — тесно',
-    isHardwareTight({
-      vram: { total: 24 * GB, free: 12 * GB, freeAtLoad: 20 * GB },
-      ramFree: 1 * GB, ramTotal: 16 * GB,
-    }), true);
-  check('и там и там просторно — не тесно',
-    isHardwareTight({ vram: { total: 24 * GB, free: 20 * GB, freeAtLoad: 20 * GB }, ...roomyRam }), false);
+  check('карты нет (модель на CPU) — по давлению не выгружаем',
+    isHardwareTight({ vram: null }), false);
+  check('карта забита чужими — тесно',
+    isHardwareTight({ vram: { total: 8 * GB, free: 0.4 * GB, freeAtLoad: 1.9 * GB } }), true);
+  check('карта просторна — не тесно',
+    isHardwareTight({ vram: { total: 24 * GB, free: 20 * GB, freeAtLoad: 20 * GB } }), false);
 }
 
 // ── Решение: выгружать или держать ───────────────────────────────────────────

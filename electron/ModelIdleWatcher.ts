@@ -6,7 +6,6 @@
 // ⚠️ Решение целиком лежит в shared/modelIdle.ts, здесь только сбор фактов. Так политика попадает
 // под npm test и мутационный прогон, а этот файл остаётся тем, что проверками не покрывается в
 // принципе — проводкой к живым менеджерам.
-import os from 'os';
 import { MODEL_CHECK_INTERVAL, TIGHT_STREAK, isHardwareTight, shouldUnloadModel } from '../shared/modelIdle';
 import type { HardwareState, VramState } from '../shared/modelIdle';
 import { getLoadedModelIdMirror, getVramFreeAtLoad, getVram } from './inference/InferenceHost';
@@ -56,11 +55,7 @@ async function tick(): Promise<void> {
       return;
     }
 
-    const hw: HardwareState = {
-      vram: await readVram(),
-      ramFree: os.freemem(),
-      ramTotal: os.totalmem(),
-    };
+    const hw: HardwareState = { vram: await readVram() };
     tightStreak = isHardwareTight(hw) ? Math.min(tightStreak + 1, TIGHT_STREAK) : 0;
 
     const reason = shouldUnloadModel({
