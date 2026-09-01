@@ -4,7 +4,11 @@
   "description": "Oblako — приватный браузер со встроенным VPN и AI.",
   "main": "dist-electron/electron/main.js",
   "author": "Oblako",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/radiypoloniy/oblachka-browser.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n VITE,ELECTRON -c cyan,magenta \"npm:dev:vite\" \"npm:dev:electron\"",
