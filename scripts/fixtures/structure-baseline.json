@@ -1,6 +1,6 @@
 {
   "electron/AiPanelManager.ts": {
-    "lines": 952,
+    "lines": 846,
     "fn": 271,
     "effects": 0,
     "ipc": 0
@@ -12,8 +12,8 @@
     "ipc": 0
   },
   "electron/TabManager.ts": {
-    "lines": 4510,
-    "fn": 163,
+    "lines": 4302,
+    "fn": 171,
     "effects": 0,
     "ipc": 0
   },
@@ -30,8 +30,8 @@
     "ipc": 0
   },
   "electron/main.ts": {
-    "lines": 1676,
-    "fn": 217,
+    "lines": 1650,
+    "fn": 200,
     "effects": 0,
     "ipc": 0
   },
@@ -50,12 +50,6 @@
   "shared/chromeGround.ts": {
     "lines": 843,
     "fn": 31,
-    "effects": 0,
-    "ipc": 0
-  },
-  "shared/ipc/channels.ts": {
-    "lines": 802,
-    "fn": 0,
     "effects": 0,
     "ipc": 0
   },
@@ -216,7 +210,7 @@
     "ipc": 10
   },
   "src/components/settings/kit.tsx": {
-    "lines": 1175,
+    "lines": 1171,
     "fn": 144,
     "effects": 2,
     "ipc": 1

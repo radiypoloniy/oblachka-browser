@@ -35,6 +35,16 @@ interface Job {
 const lanes: Record<QueueLane, Job[]> = { user: [], background: [] };
 let running = false;
 
+// Когда человек в последний раз просил модель. ⚠️ Отмечается ТОЛЬКО пользовательская полоса:
+// политика выгрузки (shared/modelIdle.ts) считает простоем время без просьб ЧЕЛОВЕКА, а фоновые
+// задачи ездят на тёплой модели и своего времени ей не покупают — иначе выгрузка не наступит
+// никогда, ведь фон и запускается-то лишь потому, что модель тёплая.
+//
+// ⚠️ Сама выгрузка тоже идёт через пользовательскую полосу и, значит, тоже ставит отметку. Это
+// безвредно: политика смотрит на отметку, только пока модель ЗАГРУЖЕНА, а после выгрузки её
+// поднимет заново лишь новая просьба человека — и она поставит свою.
+let lastUserRequestAt = Date.now();
+
 function nextJob(): Job | null {
   // Человек всегда первый. Фоновую берём, только когда его полоса пуста.
   return lanes.user.shift() ?? lanes.background.shift() ?? null;
@@ -74,6 +84,7 @@ function pump(): void {
  * @param signal объект с полем aborted (подойдёт и AbortSignal): снимает задачу, пока она ЖДЁТ.
  */
 export function enqueueQwen<T>(fn: () => Promise<T>, lane: QueueLane = 'user', signal?: { aborted: boolean }): Promise<T> {
+  if (lane === 'user') lastUserRequestAt = Date.now();
   return new Promise<T>((resolve, reject) => {
     lanes[lane].push({
       run: fn as () => Promise<unknown>,
@@ -87,6 +98,11 @@ export function enqueueQwen<T>(fn: () => Promise<T>, lane: QueueLane = 'user', s
 /** Занята ли модель прямо сейчас (или уже есть очередь). Для фоновых фич — повод не лезть. */
 export function isQwenBusy(): boolean {
   return running || lanes.user.length > 0 || lanes.background.length > 0;
+}
+
+/** Когда человек в последний раз просил модель (ms epoch). Для политики выгрузки по простою. */
+export function lastQwenUserRequestAt(): number {
+  return lastUserRequestAt;
 }
 
 /** Сколько задач ждёт в полосе — только для диагностики и тестов. */

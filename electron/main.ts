@@ -66,8 +66,9 @@ import type { ThemePaletteId, ThemePrefs } from '../shared/ipc';
 import type { SidebarNode, GroupNode, BergamotStatus } from '../shared/ipc';
 import { warmup as warmupTranslation } from './TranslationService';
 import { shutdownInference } from './inference/InferenceHost';
+import { startModelIdleWatcher, stopModelIdleWatcher } from './ModelIdleWatcher';
+import { firstUrlFromArgv } from './startUrlArgv';
 import { isExternalAppUrl, openExternalWithConsent, setExternalConsentAsk } from './ExternalProtocol';
-import { localPathToFileUrl } from './localFileUrl';
 import { installCertificateTrust } from './CertificateTrust';
 import { setSettingsManager as setAiPanelSettingsManager, setChromeView as setAiPanelChromeView } from './AiPanelManager';
 import { setActiveEngineId, registerEngine, setCacheManager } from './TranslationEngineRegistry';
@@ -180,47 +181,6 @@ async function runTranslateTestWindow(): Promise<void> {
 // Адрес, пришедший до того, как окно готово его принять (macOS open-url на холодном старте).
 let pendingStartUrl: string | null = null;
 
-// Ссылка среди аргументов запуска. ⚠️ Берём только http/https: в argv лежат и путь к самому
-// приложению, и ключи Chromium (--user-data-dir и прочие), и принимать оттуда произвольную
-// строку как адрес — значит открывать что попало по чужой команде.
-/**
- * Лежит ли путь ВНУТРИ самого приложения.
- *
- * ⚠️ Заведено по живому случаю, а не «на всякий случай». `node-llama-cpp` перед загрузкой
- * нативного бинарника проверяет его в отдельном процессе и делает это через
- * `child_process.fork(__filename)`. В упакованном приложении `fork` берёт `process.execPath`, то
- * есть запускает ВТОРОЙ ЭКЗЕМПЛЯР Oblako.exe, передав ему путь к своему же `testBindingBinary.js`
- * аргументом. Замок одного экземпляра пересылает аргументы первому окну — и человек получал
- * вкладку с исходником библиотеки на каждом запуске браузера.
- *
- * ⚠️ Отсекаем по КАТАЛОГУ, а не по расширению: запрет на `.js` лечил бы ровно этот случай и
- * промахнулся бы на следующем таком же, а открывать собственные внутренности вкладкой у нас нет
- * причин вообще — что бы там ни лежало.
- */
-function insideAppBundle(filePath: string): boolean {
-  const resolved = path.resolve(filePath).toLowerCase();
-  const roots = [process.resourcesPath, path.dirname(process.execPath), app.getAppPath()]
-    .filter((r): r is string => typeof r === 'string' && r.length > 0)
-    .map((r) => path.resolve(r).toLowerCase());
-  return roots.some((root) => resolved === root || resolved.startsWith(root + path.sep));
-}
-
-function firstUrlFromArgv(argv: string[]): string | null {
-  for (const arg of argv.slice(1)) {
-    if (arg.startsWith('-')) continue; // ключи Chromium (--user-data-dir и прочие) адресами не бывают
-    if (/^https?:\/\//i.test(arg)) return arg;
-    if (/^file:\/\//i.test(arg)) return arg;
-    // Свои же файлы вкладкой не открываем — см. разбор у insideAppBundle.
-    if (insideAppBundle(arg)) continue;
-    // ⚠️ И ПУТЬ К ФАЙЛУ ТОЖЕ. Установщик регистрирует за нами .htm/.html, то есть система
-    // запускает `Oblako.exe "C:\...\page.html"` — без этой ветки такой запуск не открывал ничего
-    // вовсе. Существование файла проверяется внутри, каталоги отсекаются там же: в dev-режиме
-    // аргументом идёт папка приложения.
-    const file = localPathToFileUrl(arg);
-    if (file) return file;
-  }
-  return null;
-}
 
 // t0 стартовых тайминов: фиксируем в app.whenReady, до createWindow.
 let startT0 = 0;
@@ -1405,6 +1365,36 @@ app.on('web-contents-created', (_e, contents) => {
 //
 // Исключение — изолированные тестовые стенды (OBLAKO_*_TEST): они намеренно живут отдельно и
 // боевого профиля не касаются.
+// Адблок на старте: поднять и решить, ждать ли его.
+//
+// ⚠️ Отдельной функцией, а не строками внутри whenReady: разбор «ждать или не ждать» длиннее
+// самого кода вчетверо и читается как отдельная история, а тело whenReady и без него за
+// порогом храповика структуры (scripts/structure-check.mjs).
+async function initAdblock(): Promise<void> {
+  // Ghostery ставит свой onBeforeRequest внутри initialize().
+  // try/catch: падение адблока не должно блокировать запуск браузера.
+  //
+  // Ждать инициализацию или нет — решаем по наличию кэша движка, и это принципиально разные
+  // случаи, а не микрооптимизация:
+  //   • кэш есть (любой запуск после первого) — ЖДЁМ. Это десериализация локального файла,
+  //     десятки миллисекунд, зато к моменту пробуждения восстановленной активной вкладки
+  //     (tabs.activate → wakeTab, см. восстановление сессии ниже) фильтр уже стоит. Защита в
+  //     повседневном сценарии не меняется ни на йоту.
+  //   • кэша нет (самый первый запуск) — НЕ ждём. Иначе окно не появляется, пока движок не
+  //     скачается с CDN: замерено 2774 мс против 974 мс, а в пределе — FETCH_TIMEOUT_MS = 15 с.
+  //     Документация Electron (tutorial/performance) прямо запрещает держать main-поток на
+  //     сетевой операции. Плата за это ровно одна и разовая: на ПЕРВОМ запуске восстановленная
+  //     активная вкладка может успеть загрузиться до того, как фильтр встанет.
+  const adblockReady = adblock
+    .initialize((state) => { broadcastToChrome(IPC.ADBLOCK_STATE_CHANGED, state); })
+    .catch((e) => { console.error('[AdBlock] инициализация упала, браузер работает без блокировки:', e); });
+  if (adblock.hasCachedEngine()) {
+    await adblockReady;
+  } else {
+    console.log('[AdBlock] кэша движка нет — качаем в фоне, окно не ждёт');
+  }
+}
+
 const singleInstance = LLAMA_TEST || TRANSLATE_TEST || app.requestSingleInstanceLock();
 if (!singleInstance) {
   app.quit();
@@ -1580,28 +1570,7 @@ app.whenReady().then(async () => {
   );
   setCacheManager(translationCache);
 
-  // Ghostery ставит свой onBeforeRequest внутри initialize().
-  // try/catch: падение адблока не должно блокировать запуск браузера.
-  //
-  // Ждать инициализацию или нет — решаем по наличию кэша движка, и это принципиально разные
-  // случаи, а не микрооптимизация:
-  //   • кэш есть (любой запуск после первого) — ЖДЁМ. Это десериализация локального файла,
-  //     десятки миллисекунд, зато к моменту пробуждения восстановленной активной вкладки
-  //     (tabs.activate → wakeTab, см. восстановление сессии ниже) фильтр уже стоит. Защита в
-  //     повседневном сценарии не меняется ни на йоту.
-  //   • кэша нет (самый первый запуск) — НЕ ждём. Иначе окно не появляется, пока движок не
-  //     скачается с CDN: замерено 2774 мс против 974 мс, а в пределе — FETCH_TIMEOUT_MS = 15 с.
-  //     Документация Electron (tutorial/performance) прямо запрещает держать main-поток на
-  //     сетевой операции. Плата за это ровно одна и разовая: на ПЕРВОМ запуске восстановленная
-  //     активная вкладка может успеть загрузиться до того, как фильтр встанет.
-  const adblockReady = adblock
-    .initialize((state) => { broadcastToChrome(IPC.ADBLOCK_STATE_CHANGED, state); })
-    .catch((e) => { console.error('[AdBlock] инициализация упала, браузер работает без блокировки:', e); });
-  if (adblock.hasCachedEngine()) {
-    await adblockReady;
-  } else {
-    console.log('[AdBlock] кэша движка нет — качаем в фоне, окно не ждёт');
-  }
+  await initAdblock();
 
   // Автообновление. Ставится ПОСЛЕ adblock и БЕЗ await: initialize() только подписывается на
   // события и заводит отложенный таймер, сеть трогается через 20 с после старта — запуск окна
@@ -1616,6 +1585,10 @@ app.whenReady().then(async () => {
   const startUrl = pendingStartUrl ?? firstUrlFromArgv(process.argv);
   pendingStartUrl = null;
   if (startUrl) mainTabs?.createTab(startUrl);
+
+  // Сторож простоя модели. ⚠️ Здесь, в самом конце whenReady, а не рядом с прочей инициализацией:
+  // ветки LLAMA_TEST/TRANSLATE_TEST выходят раньше, и стендам этот таймер не нужен вовсе.
+  startModelIdleWatcher();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1637,6 +1610,7 @@ app.on('before-quit', () => {
   if (mainTabs && mainSess) mainSess.saveNow(mainTabs.getSessionSnapshot(), mainTabs);
   // Процесс инференса — дочерний, и Windows не убивает такие сама (та же причина, по которой
   // явно останавливается xray.exe): без этого он остался бы висеть с моделью в видеопамяти.
+  stopModelIdleWatcher();
   shutdownInference();
 });
 
