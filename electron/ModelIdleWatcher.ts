@@ -9,7 +9,7 @@
 import os from 'os';
 import { MODEL_CHECK_INTERVAL, TIGHT_STREAK, isHardwareTight, shouldUnloadModel } from '../shared/modelIdle';
 import type { HardwareState, VramState } from '../shared/modelIdle';
-import { getLoadedModelIdMirror, getVram } from './inference/InferenceHost';
+import { getLoadedModelIdMirror, getVramFreeAtLoad, getVram } from './inference/InferenceHost';
 import { isModelWarm, unloadModel } from './TranslationService';
 import { isQwenBusy, lastQwenUserRequestAt } from './QwenQueue';
 import { isAiPanelOpen } from './AiPanelManager';
@@ -20,17 +20,12 @@ let timer: NodeJS.Timeout | null = null;
 // функция и памяти между вызовами не имеет.
 let tightStreak = 0;
 
-// Свободная видеопамять сразу после загрузки модели — «сколько на карте было без чужих».
-// ⚠️ Ради неё же и заведён id: смена модели обнуляет замер, иначе новая большая модель считалась
-// бы чужим приходом и выгружала сама себя.
-let vramBaseline: { modelId: string; freeAtLoad: number } | null = null;
-
 // Идёт ли уже проверка. ⚠️ Замер видеопамяти асинхронный (запрос в процесс инференса), и без
 // этого флага долгий ответ дал бы два наложившихся тика с двумя вызовами выгрузки.
 let checking = false;
 
 /** Состояние видеопамяти либо null, если модель считается лежащей в обычной памяти. */
-async function readVram(modelId: string): Promise<VramState | null> {
+async function readVram(): Promise<VramState | null> {
   let info;
   try {
     info = await getVram();
@@ -39,10 +34,13 @@ async function readVram(modelId: string): Promise<VramState | null> {
   }
   // gpu приходит строкой от node-llama-cpp: 'cuda' | 'vulkan' | 'metal' | 'false'.
   if (info.gpu === 'false' || info.total <= 0) return null;
-  if (vramBaseline === null || vramBaseline.modelId !== modelId) {
-    vramBaseline = { modelId, freeAtLoad: info.free };
-  }
-  return { total: info.total, free: info.free, freeAtLoad: vramBaseline.freeAtLoad };
+  // ⚠️ Точка отсчёта приходит из ЗАМЕРА В ВОРКЕРЕ, сделанного сразу после загрузки, и НЕ снимается
+  // здесь. Сторож просыпается раз в минуту, и его собственный снимок «как было до чужих» опаздывал
+  // ровно на то время, за которое игра успевает запуститься, — из-за чего давление не срабатывало
+  // вовсе, а модель висела все сорок минут.
+  const freeAtLoad = getVramFreeAtLoad();
+  if (freeAtLoad === null) return null; // замер не удался — про чужой приход судить не по чему
+  return { total: info.total, free: info.free, freeAtLoad };
 }
 
 async function tick(): Promise<void> {
@@ -51,16 +49,15 @@ async function tick(): Promise<void> {
   try {
     const modelId = getLoadedModelIdMirror();
     if (modelId === null) {
-      // Модели в памяти нет — ни считать тесноту, ни держать замер незачем. ⚠️ И, главное, нельзя
-      // спрашивать видеопамять: getVram() поднимает процесс инференса, если тот не запущен, то
-      // есть сторож простоя сам бы его и запускал.
+      // Модели в памяти нет — считать тесноту незачем. ⚠️ И, главное, нельзя спрашивать
+      // видеопамять: getVram() поднимает процесс инференса, если тот не запущен, то есть сторож
+      // простоя сам бы его и запускал.
       tightStreak = 0;
-      vramBaseline = null;
       return;
     }
 
     const hw: HardwareState = {
-      vram: await readVram(modelId),
+      vram: await readVram(),
       ramFree: os.freemem(),
       ramTotal: os.totalmem(),
     };
@@ -81,7 +78,6 @@ async function tick(): Promise<void> {
 
     console.log(`[model] выгружаем модель: ${reason === 'idle' ? 'простой' : 'железу тесно'}`);
     tightStreak = 0;
-    vramBaseline = null;
     // ⚠️ Выгрузка сама встаёт в очередь к модели (withQwenQueue), поэтому идущую генерацию она не
     // режет, а дожидается. Отказ глушим: не смогли выгрузить — попробуем через минуту.
     await unloadModel().catch((e: unknown) => console.log(`[model] выгрузка не удалась: ${String(e)}`));

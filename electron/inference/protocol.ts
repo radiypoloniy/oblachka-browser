@@ -12,6 +12,10 @@ export interface LoadedInfo {
   modelId: string
   nCtx: number
   gpu: string
+  // Сколько видеопамяти было свободно сразу после того, как модель и её контекст встали на карту
+  // (null — карты нет либо замер не удался). ⚠️ Нужно политике выгрузки как точка отсчёта: по
+  // разности с ней она видит, что после нас на карту пришёл кто-то ещё.
+  vramFreeAtLoad: number | null
 }
 
 export interface PromptResult {

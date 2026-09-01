@@ -39,6 +39,14 @@ export function getLoadedModelIdMirror(): string | null {
   return loadedModelId
 }
 
+// Свободная видеопамять сразу после загрузки модели (замер в воркере, см. worker.ts). null —
+// модели нет, карты нет либо замер не удался. Спрашивает политика выгрузки (ModelIdleWatcher).
+let loadedVramFreeAtLoad: number | null = null
+
+export function getVramFreeAtLoad(): number | null {
+  return loadedVramFreeAtLoad
+}
+
 // ⚠️ Падение ребёнка — штатный (пусть и редкий) исход: OOM видеопамяти, битый GGUF, отказ драйвера.
 // Раньше это уносило всё приложение. Теперь: висящие запросы получают внятный отказ, состояние
 // сбрасывается, и СЛЕДУЮЩИЙ запрос поднимет процесс заново — сам по себе, без перезапуска браузера.
@@ -58,6 +66,7 @@ function teardown(reason: string): void {
   child = null
   ready = null
   loadedModelId = null
+  loadedVramFreeAtLoad = null
   for (const cb of goneListeners) cb()
 }
 
@@ -142,6 +151,7 @@ export async function loadModel(
 ): Promise<LoadedInfo> {
   const info = await call<LoadedInfo>({ kind: 'load', modelPath, modelId, label, contextMaxTokens })
   loadedModelId = info.modelId
+  loadedVramFreeAtLoad = info.vramFreeAtLoad
   return info
 }
 
@@ -149,6 +159,7 @@ export async function unloadModel(): Promise<void> {
   if (!child) return // процесса нет — выгружать нечего, и поднимать его ради этого незачем
   await call<void>({ kind: 'unload' })
   loadedModelId = null
+  loadedVramFreeAtLoad = null
 }
 
 export function runPrompt(

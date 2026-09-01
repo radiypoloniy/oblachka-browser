@@ -34,6 +34,17 @@ let chatWrapper: any = null
 let loadedModelId: string | null = null
 let loadedPath: string | null = null
 
+// Сколько видеопамяти было свободно СРАЗУ ПОСЛЕ того, как модель и её контекст встали на карту.
+// Политика выгрузки (shared/modelIdle.ts) сравнивает с этим числом текущую свободную память и по
+// разности понимает, что после нас пришёл кто-то ещё.
+//
+// ⚠️ Замер здесь, в воркере, а не в main, и это и есть починка живого косяка. Раньше этот снимок
+// делал сторож на ближайшем своём тике — то есть до минуты спустя. Игра, запущенная в эту минуту,
+// попадала в снимок как норма: разность оставалась нулевой, давление не срабатывало никогда, и
+// модель висела в видеопамяти все сорок минут до простоя. Здесь между загрузкой и замером не
+// проходит ничего, кроме самой загрузки.
+let vramFreeAtLoad: number | null = null
+
 // Настройки QwenChatWrapper, которые применяются, ТОЛЬКО если резолвер сам решит, что загруженная
 // модель — Qwen. thoughts:'discourage' давит reasoning (без него в панель лезут <think>-блоки),
 // variation:'3.5' — актуальный чат-шаблон линейки.
@@ -49,13 +60,21 @@ async function load(modelPath: string, modelId: string, label: string, contextMa
   // Уже загружена ТА ЖЕ модель — повтор не нужен: main дедуплицирует свои вызовы, но после
   // перезапуска упавшего процесса сюда может прийти вторая загрузка того же файла.
   if (model !== null && loadedPath === modelPath) {
-    return { loadMs: 0, modelId: loadedModelId ?? modelId, nCtx: context.contextSize, gpu: String(llama?.gpu ?? '') }
+    return {
+      loadMs: 0, modelId: loadedModelId ?? modelId, nCtx: context.contextSize,
+      gpu: String(llama?.gpu ?? ''), vramFreeAtLoad,
+    }
   }
   const t0 = Date.now()
   const nlc = await getNlc()
   llama = await getLlamaBackend()
   console.log(`[gen] llama backend: gpu=${llama.gpu}`)
   LlamaChatSession = nlc.LlamaChatSession
+
+  // ⚠️ Замер ДО модели, но ПОСЛЕ подъёма бэкенда — только ради строчки в логе «модель держит
+  // столько-то»: сам бэкенд тоже занимает немного видеопамяти, и приписывать её модели значило бы
+  // завышать её вес на постоянную величину.
+  const vramFreeBefore = await freeVramOrNull()
 
   // Flash attention + 8-битный (Q8_0) KV-кэш: примерно вдвое меньше VRAM под контекст при потере
   // качества около нуля. Квантованный KV в llama.cpp работает только с flash attention — в паре.
@@ -99,7 +118,16 @@ async function load(modelPath: string, modelId: string, label: string, contextMa
   context = await model.createContext({ sequences: 1, contextSize: { max: contextMaxTokens } })
   sequence = context.getSequence()
   console.log(`[gen] context: n_ctx=${context.contextSize} trainContextSize=${model.trainContextSize}`)
-  return { loadMs: Date.now() - t0, modelId, nCtx: context.contextSize, gpu: String(llama.gpu) }
+
+  // ⚠️ После создания КОНТЕКСТА, а не сразу после модели: KV-кэш живёт там же, на карте, и на
+  // длинном контексте он сопоставим с весами. Снимок раньше этой строки считал бы контекст чужим
+  // приходом — то есть выгружал бы модель из-за неё самой.
+  vramFreeAtLoad = await freeVramOrNull()
+  if (vramFreeBefore !== null && vramFreeAtLoad !== null) {
+    const self = Math.max(0, vramFreeBefore - vramFreeAtLoad)
+    console.log(`[gen] модель держит видеопамяти: ${(self / 1024 / 1024).toFixed(0)} МБ`)
+  }
+  return { loadMs: Date.now() - t0, modelId, nCtx: context.contextSize, gpu: String(llama.gpu), vramFreeAtLoad }
 }
 
 async function unload(): Promise<void> {
@@ -117,6 +145,7 @@ async function unload(): Promise<void> {
   chatWrapper = null
   loadedModelId = null
   loadedPath = null
+  vramFreeAtLoad = null
   console.log('[gen] модель выгружена из VRAM')
 }
 
@@ -222,6 +251,18 @@ async function runChat(
     `(limit=${maxTokens}, outTokens=${tokens})`,
   )
   return { out, history: newHistory, ms, tokens }
+}
+
+/** Свободная видеопамять либо null, если карты нет или бэкенд не ответил. Только для замера доли. */
+async function freeVramOrNull(): Promise<number | null> {
+  try {
+    const backend = await getLlamaBackend()
+    if (!backend.gpu) return null // CPU-бэкенд: видеопамяти нет, доли тоже
+    const state = await backend.getVramState()
+    return typeof state.free === 'number' ? state.free : null
+  } catch {
+    return null
+  }
 }
 
 async function vram(): Promise<VramInfo> {
