@@ -23,6 +23,10 @@ export interface RuleCapabilities {
   groupTab: (tabId: string, groupName: string) => void;
   pinTab: (tabId: string) => void;
   adblockOff: (domain: string) => void;
+  /** Перевести страницу вкладки. Ничего не делает, если перевод уже идёт или уже сделан. */
+  translateTab: (tabId: string) => void;
+  setZoom: (tabId: string, percent: number) => void;
+  muteTab: (tabId: string) => void;
   /** Включает VPN, если он выключен. true — включили ПРЯМО СЕЙЧАС (значит нужна перезагрузка). */
   ensureVpnOn: () => Promise<boolean>;
   reloadTab: (tabId: string) => void;
@@ -50,6 +54,10 @@ export async function applyRules(
   // Перезагрузку по vpn-on делаем ОДИН раз в конце, даже если правил сработало несколько:
   // два reload подряд — это гонка навигаций на глазах у человека.
   let needsReload = false;
+  // ⚠️ Перевод откладывается до конца по той же причине, по какой перезагрузка: если этой же
+  // навигацией правило подняло VPN, страница сейчас перезагрузится, и переводить нечего — обход
+  // случится заново на новой навигации и переведёт уже то, что приехало через туннель.
+  let wantTranslate = false;
 
   for (const rule of rules) {
     const matched = rule.trigger.kind === 'site'
@@ -64,6 +72,15 @@ export async function applyRules(
           break;
         case 'pin':
           caps.pinTab(ev.tabId);
+          break;
+        case 'translate':
+          wantTranslate = true;
+          break;
+        case 'zoom':
+          if (rule.action.zoomPercent) caps.setZoom(ev.tabId, rule.action.zoomPercent);
+          break;
+        case 'mute':
+          caps.muteTab(ev.tabId);
           break;
         case 'adblock-off':
           // Домен берём СО СТРАНИЦЫ, а не из правила: у триггера «перешёл по ссылке с X» правило
@@ -86,6 +103,7 @@ export async function applyRules(
   // ⚠️ Перезагружаем ТОЛЬКО когда VPN включился этим самым срабатыванием. Иначе правило
   // зациклилось бы: перезагрузка → новая навигация → правило снова сработало → перезагрузка.
   if (needsReload) caps.reloadTab(ev.tabId);
+  else if (wantTranslate) caps.translateTab(ev.tabId);
   if (applied.length > 0) {
     console.log(`[rules] ${host}: сработало ${applied.length} (перезагрузка: ${needsReload ? 'да' : 'нет'})`);
   }

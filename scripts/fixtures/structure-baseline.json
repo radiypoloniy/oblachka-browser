@@ -198,8 +198,8 @@
     "ipc": 17
   },
   "src/components/settings/RulesSection.tsx": {
-    "lines": 375,
-    "fn": 321,
+    "lines": 422,
+    "fn": 314,
     "effects": 2,
     "ipc": 7
   },

@@ -5,6 +5,7 @@ import Toggle from '../Toggle';
 import {
   describeRule, actionSpec, triggerSpec, normalizeRuleDomain, hostOfUrl,
   TRIGGERS, ACTIONS, RULES_MAX, GROUP_NAME_MAX,
+  ZOOM_PERCENT_MIN, ZOOM_PERCENT_MAX, ZOOM_PERCENT_DEFAULT,
 } from '../../../shared/rules';
 import type { AutomationRule, RuleTriggerKind, RuleActionKind } from '../../../shared/rules';
 import {
@@ -26,11 +27,64 @@ import {
 // разбора, и в списке. Разные слова в этих трёх местах означали бы, что подтверждали одно, а
 // работает другое.
 
-const emptyDraft = (kind: RuleActionKind, domain: string, groupName: string, trigger: RuleTriggerKind): AutomationRule => ({
+const emptyDraft = (
+  kind: RuleActionKind, domain: string, groupName: string, trigger: RuleTriggerKind, zoomPercent: number,
+): AutomationRule => ({
   id: 'preview', enabled: true, phrase: '', createdAt: 0,
   trigger: { kind: trigger, domain },
-  action: { kind, ...(kind === 'group' ? { groupName } : {}) },
+  action: {
+    kind,
+    ...(kind === 'group' ? { groupName } : {}),
+    ...(kind === 'zoom' ? { zoomPercent } : {}),
+  },
 });
+
+/** Поле имени группы для действия «класть в группу». Пара к ZoomField ниже — см. разбор там же. */
+function GroupField({ value, onChange, onEnter }: {
+  value: string; onChange: (v: string) => void; onEnter: () => void;
+}) {
+  return (
+    <div style={{ marginTop: sp(3) }}>
+      <TextField
+        value={value}
+        onChange={onChange}
+        placeholder="Имя группы, например «Чтение»"
+        maxLength={GROUP_NAME_MAX}
+        onEnter={onEnter}
+      />
+    </div>
+  );
+}
+
+/**
+ * Поле масштаба для действия «открывать с масштабом».
+ *
+ * ⚠️ Ползунок, а не ввод числа: масштаб — величина с пределами, и промахнуться в ней нельзя.
+ * Пределы те же, что у Ctrl+= вручную (см. ZOOM_PERCENT_* в shared/rules.ts) — правило не должно
+ * уметь просить масштаб, недостижимый руками.
+ *
+ * ⚠️ Отдельным компонентом, а не разметкой внутри формы: RulesSection стоит в базе храповика
+ * структуры, и место под новое поле освобождается выносом.
+ */
+function ZoomField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div style={{ marginTop: sp(3) }}>
+      <InputRow>
+        <input
+          type="range"
+          min={ZOOM_PERCENT_MIN}
+          max={ZOOM_PERCENT_MAX}
+          step={5}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          style={{ ...fieldFlex, accentColor: 'var(--accent)' }}
+          aria-label="Масштаб страницы"
+        />
+        <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-strong)' }}>{value}%</span>
+      </InputRow>
+    </div>
+  );
+}
 
 export default function RulesSection() {
   const [rules, setRules] = useState<AutomationRule[] | null>(null);
@@ -41,6 +95,7 @@ export default function RulesSection() {
   const [action, setAction] = useState<RuleActionKind>('group');
   const [site, setSite] = useState('');
   const [groupName, setGroupName] = useState('');
+  const [zoomPercent, setZoomPercent] = useState(ZOOM_PERCENT_DEFAULT);
   const [hostHints, setHostHints] = useState<string[]>([]);
 
   // ── Фраза (вторая дорожка) ──
@@ -78,9 +133,9 @@ export default function RulesSection() {
   }, [site]);
 
   const domain = normalizeRuleDomain(site);
-  const groupOk = action !== 'group' || !!groupName.trim();
-  const formValid = !!domain && groupOk;
-  const preview = formValid ? emptyDraft(action, domain, groupName.trim(), trigger) : null;
+  // Домен обязателен всегда, имя группы — только у «класть в группу» (у масштаба ввода нет).
+  const formValid = !!domain && (action !== 'group' || !!groupName.trim());
+  const preview = formValid ? emptyDraft(action, domain, groupName.trim(), trigger, zoomPercent) : null;
 
   const save = async (rule: Omit<AutomationRule, 'id' | 'enabled' | 'createdAt'>) => {
     const saved = await window.oblako.addRule({ ...rule, createdAt: Date.now() } as AutomationRule);
@@ -94,8 +149,7 @@ export default function RulesSection() {
 
   const createFromForm = async () => {
     if (!preview) return;
-    const ok = await save({ phrase: '', trigger: preview.trigger, action: preview.action });
-    if (ok) { setSite(''); setGroupName(''); }
+    if (await save({ phrase: '', trigger: preview.trigger, action: preview.action })) { setSite(''); setGroupName(''); }
   };
 
   const parse = async () => {
@@ -208,16 +262,9 @@ export default function RulesSection() {
                 />
               ))}
             </OptionList>
+            {action === 'zoom' && <ZoomField value={zoomPercent} onChange={setZoomPercent} />}
             {action === 'group' && (
-              <div style={{ marginTop: sp(3) }}>
-                <TextField
-                  value={groupName}
-                  onChange={setGroupName}
-                  placeholder="Имя группы, например «Чтение»"
-                  maxLength={GROUP_NAME_MAX}
-                  onEnter={() => void createFromForm()}
-                />
-              </div>
+              <GroupField value={groupName} onChange={setGroupName} onEnter={() => void createFromForm()} />
             )}
             {/* Честная оговорка действия — у vpn-on про то, что первый запрос уже ушёл. */}
             {formSpec?.caveat && (

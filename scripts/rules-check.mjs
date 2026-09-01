@@ -6,8 +6,8 @@
 // обычным node (--experimental-strip-types, Node 22.6+).
 //
 //   npm run rules-check
-import { validateRule, describeRule, normalizeRuleDomain, hostMatchesDomain, hostOfUrl, sameRule, groupNameFromDomain }
-  from '../shared/rules.ts';
+import { validateRule, describeRule, normalizeRuleDomain, hostMatchesDomain, hostOfUrl, sameRule, groupNameFromDomain,
+  ZOOM_PERCENT_MIN, ZOOM_PERCENT_MAX } from '../shared/rules.ts';
 
 let failed = 0;
 const check = (name, got, want) => {
@@ -88,6 +88,40 @@ check(
   ),
   false,
 );
+
+// ── новые действия каталога ──
+//
+// ⚠️ Каталог — граница доверия: validateRule принимает только перечисленное. Каждое новое действие
+// обязано появиться и здесь, иначе расширение каталога останется непроверенным ровно в том месте,
+// ради которого этот файл и заведён.
+console.log('');
+console.log('── действия: перевод, звук ──');
+const withAction = (kind, extra = {}) =>
+  validateRule({ trigger: { kind: 'site', domain: 'habr.com' }, action: { kind, ...extra } }, { id: 'n1' });
+
+check('перевод — принимается', withAction('translate')?.action.kind, 'translate');
+check('перевод описывается словами человека',
+  describeRule(withAction('translate')), 'Когда открываю страницу на habr.com — переводить страницу');
+check('без звука — принимается', withAction('mute')?.action.kind, 'mute');
+check('выдуманное действие — отвергается целиком', withAction('закрыть-вкладки'), null);
+
+console.log('');
+console.log('── масштаб: число с пределами ──');
+check('обычное значение проходит как есть', withAction('zoom', { zoomPercent: 125 })?.action.zoomPercent, 125);
+check('дробное округляется', withAction('zoom', { zoomPercent: 132.4 })?.action.zoomPercent, 132);
+// ⚠️ Зажимаем, а не отвергаем: промах в ЧИСЛЕ имеет осмысленный ответ, в отличие от выдумки
+// про само действие. Оба края закреплены отдельно — односторонний зажим прошёл бы половину.
+check('слишком мелкий зажимается снизу', withAction('zoom', { zoomPercent: 5 })?.action.zoomPercent, ZOOM_PERCENT_MIN);
+check('слишком крупный зажимается сверху', withAction('zoom', { zoomPercent: 4000 })?.action.zoomPercent, ZOOM_PERCENT_MAX);
+// А вот НЕЧИСЛО означает, что разбор не понял просьбу вовсе, — такое правило заводить нельзя.
+check('масштаб строкой — правило отвергается', withAction('zoom', { zoomPercent: 'побольше' }), null);
+check('масштаб не указан — правило отвергается', withAction('zoom'), null);
+check('масштаб виден в описании',
+  describeRule(withAction('zoom', { zoomPercent: 150 })), 'Когда открываю страницу на habr.com — открывать с масштабом 150%');
+check('разный масштаб — не дубль',
+  sameRule(withAction('zoom', { zoomPercent: 110 }), withAction('zoom', { zoomPercent: 150 })), false);
+check('тот же масштаб — дубль',
+  sameRule(withAction('zoom', { zoomPercent: 110 }), withAction('zoom', { zoomPercent: 110 })), true);
 
 console.log(failed === 0 ? '\nВСЁ ПРОШЛО\n' : `\nПРОВАЛОВ: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);

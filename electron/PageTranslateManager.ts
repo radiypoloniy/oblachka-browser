@@ -660,6 +660,11 @@ export async function togglePageTranslate(): Promise<void> {
     return
   }
 
+  await startTranslation(wc, tabId)
+}
+
+/** Общее тело запуска: им пользуются и кнопка в тулбаре, и правило-автоматизация. */
+async function startTranslation(wc: WebContents, tabId: string): Promise<void> {
   const mySeq = bumpSeq(tabId)
   pushState(tabId, 'translating')
   try {
@@ -669,6 +674,20 @@ export async function togglePageTranslate(): Promise<void> {
     console.error('[page-translate] упало:', e)
     if (mySeq === runSeqByTab.get(tabId)) pushState(tabId, 'idle')
   }
+}
+
+/**
+ * Перевести КОНКРЕТНУЮ вкладку — вход для правил-автоматизаций (действие «переводить страницу»).
+ *
+ * ⚠️ Не togglePageTranslate: тот работает с АКТИВНОЙ вкладкой и переключает состояние. Правило
+ * срабатывает на навигации, которая может случиться в фоновой вкладке, и «переключить» для него
+ * означало бы снять уже сделанный перевод. Здесь только запуск и только из состояния 'idle'.
+ */
+export function translateTabByRule(tabId: string): void {
+  const wc = tabManagerRef?.getWebContentsForTab(tabId) ?? null
+  if (!wc || wc.isDestroyed()) return
+  if (getState(tabId) !== 'idle') return
+  void startTranslation(wc, tabId)
 }
 
 // Регистрация IPC (ipcMain.on(IPC.PAGE_TRANSLATE_TOGGLE, () => void togglePageTranslate())) — в

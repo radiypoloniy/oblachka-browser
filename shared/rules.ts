@@ -30,12 +30,16 @@ export interface RuleTrigger {
 export type RuleActionKind =
   | 'group'       // положить вкладку в группу с заданным именем (создать, если её нет)
   | 'pin'         // закрепить вкладку
+  | 'translate'   // перевести страницу сразу после загрузки
+  | 'zoom'        // открыть с заданным масштабом
+  | 'mute'        // открыть без звука
   | 'adblock-off' // не трогать этот сайт адблоком (домен в исключения)
   | 'vpn-on';     // включить VPN и перезагрузить страницу
 
 export interface RuleAction {
   kind: RuleActionKind;
-  groupName?: string; // только у 'group'
+  groupName?: string;   // только у 'group'
+  zoomPercent?: number; // только у 'zoom'
 }
 
 export interface AutomationRule {
@@ -52,6 +56,11 @@ export interface AutomationRule {
 // Больше человек всё равно не удержит в голове, а каждое правило — проверка на каждой навигации.
 export const RULES_MAX = 50;
 export const GROUP_NAME_MAX = 24;
+// Пределы масштаба — те же, что у Ctrl+= / Ctrl+− в TabManager (ZOOM_MIN/ZOOM_MAX), только в
+// процентах. ⚠️ Разъехавшись, они дали бы правило, которое просит масштаб, недостижимый руками.
+export const ZOOM_PERCENT_MIN = 50;
+export const ZOOM_PERCENT_MAX = 250;
+export const ZOOM_PERCENT_DEFAULT = 125;
 
 // ── Каталог для промпта и для карточки подтверждения ────────────────────────
 // Один источник правды: и модель видит этот список, и человек читает те же слова в карточке.
@@ -69,6 +78,7 @@ export interface ActionSpec {
   kind: RuleActionKind;
   hint: string;
   needsGroupName?: boolean;
+  needsZoom?: boolean;
   describe: (a: RuleAction) => string;
   /** Честная оговорка под карточкой — там, где действие делает не совсем то, что кажется. */
   caveat?: string;
@@ -98,6 +108,25 @@ export const ACTIONS: ActionSpec[] = [
     describe: (a) => `класть вкладку в группу «${a.groupName ?? ''}»`,
   },
   { kind: 'pin', hint: 'pin the tab', describe: () => 'закреплять вкладку' },
+  {
+    kind: 'translate',
+    hint: 'translate the page right after it loads',
+    describe: () => 'переводить страницу',
+    // ⚠️ Не украшение: перевод стартует ПОСЛЕ загрузки, ровно как по кнопке в тулбаре, — значит
+    // страница на мгновение видна в оригинале. Обещать «откроется сразу переведённой» нельзя.
+    caveat: 'Перевод начнётся после загрузки — страница на секунду видна в оригинале.',
+  },
+  {
+    kind: 'zoom',
+    hint: 'open the page at a given zoom level (percent)',
+    needsZoom: true,
+    describe: (a) => `открывать с масштабом ${a.zoomPercent ?? ZOOM_PERCENT_DEFAULT}%`,
+  },
+  {
+    kind: 'mute',
+    hint: 'open the tab muted',
+    describe: () => 'открывать без звука',
+  },
   {
     kind: 'adblock-off',
     hint: 'stop blocking ads on that website',
@@ -198,6 +227,14 @@ export function validateRule(input: unknown, opts?: { id?: string }): Automation
   if (!domain) return null;
 
   const validated: RuleAction = { kind: aSpec.kind };
+  if (aSpec.needsZoom) {
+    // ⚠️ Зажимаем, а не отвергаем: масштаб вне пределов — это не выдумка модели про действие, а
+    // промах в числе, и осмысленный ответ на него есть. Нечисло — уже другое дело, оно значит,
+    // что разбор не понял просьбу вовсе.
+    const raw = typeof action.zoomPercent === 'number' ? action.zoomPercent : NaN;
+    if (!Number.isFinite(raw)) return null;
+    validated.zoomPercent = Math.round(Math.max(ZOOM_PERCENT_MIN, Math.min(ZOOM_PERCENT_MAX, raw)));
+  }
   if (aSpec.needsGroupName) {
     const name = typeof action.groupName === 'string' ? action.groupName.trim() : '';
     // Имя группы обязательно и не пустое: группа без имени не отличима от любой другой, и
@@ -237,5 +274,6 @@ export function sameRule(a: AutomationRule, b: AutomationRule): boolean {
   return a.trigger.kind === b.trigger.kind
     && a.trigger.domain === b.trigger.domain
     && a.action.kind === b.action.kind
-    && (a.action.groupName ?? '') === (b.action.groupName ?? '');
+    && (a.action.groupName ?? '') === (b.action.groupName ?? '')
+    && (a.action.zoomPercent ?? 0) === (b.action.zoomPercent ?? 0);
 }

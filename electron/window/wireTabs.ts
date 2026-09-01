@@ -24,6 +24,7 @@ import { readPageSelection } from '../PageSelection';
 import { onProgressChanged as onPageTranslateProgressChanged, onStateChanged as onPageTranslateStateChanged, setTabManager as setPageTranslateTabManager } from '../PageTranslateManager';
 import { closePasswordPopover } from '../PasswordPopoverManager';
 import { applyRules } from '../RuleEngine';
+import { translateTabByRule } from '../PageTranslateManager';
 import { captureTabScreenshot, closeScreenshot, saveCurrentScreenshot, setScreenshotTabManager } from '../ScreenshotManager';
 import { setOnQuickOpen, setOnQuickQuery, setOnSearchRun, setTabManager as setSearchPopoverTabManager, showSearchPopover } from '../SearchPopoverManager';
 import { buildSearchTargets } from '../SearchTargets';
@@ -223,6 +224,18 @@ export function wireTabs(
       ensureVpnOn: ()         => ensureVpnOnForRules(),
 
       reloadTab: (tabId)      => tabs?.reload(tabId),
+
+      translateTab: (tabId)   => translateTabByRule(tabId),
+
+      // ⚠️ Зум и звук ставятся ПРЯМО на webContents вкладки, без похода в TabManager: у зума там
+
+      // нет ни состояния, ни публичного сеттера по id (Ctrl+= работает с активной вкладкой), а
+
+      // заводить его ради одной строки значило бы растить файл, который и так на пределе.
+
+      setZoom: (tabId, pct)   => { tabs?.getWebContentsForTab(tabId)?.setZoomFactor(pct / 100); },
+
+      muteTab: (tabId)        => tabs?.setTabMuted(tabId, true),
 
     });
 
