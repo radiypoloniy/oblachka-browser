@@ -68,6 +68,17 @@ export function useOmniboxValue(tab: TabState | undefined, editing: boolean): Om
     if (editing) return;
     draftsRef.current.delete(tab.id);
     setValue(tab.url);
+    // ⚠️ Зависимости здесь НЕПОЛНЫЕ намеренно, и обе недостающие — по делу.
+    //
+    // `editing` читается ВНУТРИ как «человек прямо сейчас печатает». Попади он в зависимости,
+    // эффект срабатывал бы на сам выход из режима правки — то есть на каждый клик мимо строки —
+    // и затирал бы набранное адресом вкладки. Это не осторожность: ровно на этот случай ниже
+    // стоит `if (editing) return`, и он потерял бы смысл.
+    //
+    // `tab` целиком в зависимостях означал бы прогон на КАЖДЫЙ приход списка вкладок из main
+    // (новый объект при том же содержимом) — то есть постоянный сброс строки под руками.
+    // Поэтому сравниваются именно id и url: они и есть то, что делает вкладку другой.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab?.id, tab?.url]);
 
   const forgetDraft = (tabId: string): void => { draftsRef.current.delete(tabId); };

@@ -451,7 +451,7 @@ export function useOmniboxSuggestions(d: OmniboxSuggestionsDeps): OmniboxSuggest
     void window.oblako.setSuggestDropdownHighlight(preselect);
 
     await appendSmartTabs(query, q, deduped, seq, seqRef, setSuggestions);
-  }, [allTabs, openDropdown, closeDropdown, searchEngineId]);
+  }, [allTabs, openDropdown, closeDropdown, searchEngineId, seqRef, setSuggestions, setSelectedIdx]);
 
   // ⚠️ «Вы это уже читали» жило здесь и переехало в поповер замочка (SitePopoverManager.ts).
   // Причина — в омнибоксе оказались ДВЕ фоновые AI-функции сразу, и они мешали друг другу:
@@ -476,7 +476,7 @@ export function useOmniboxSuggestions(d: OmniboxSuggestionsDeps): OmniboxSuggest
         void buildSuggestions(q, seq);
       }).catch(() => { /* сеть недоступна — список уже показан без подсказок */ });
     }, SUGGEST_DEBOUNCE);
-  }, [buildSuggestions, closeDropdown]);
+  }, [buildSuggestions, closeDropdown, seqRef]);
 
   const cancelPending = useCallback(() => {
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
