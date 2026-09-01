@@ -18,6 +18,7 @@
     "mutate": "node scripts/mutation.mjs",
     "drive": "node scripts/drive.mjs",
     "memory": "node scripts/memory-probe.mjs",
+    "memory:timeline": "node scripts/memory-timeline.mjs",
     "stand": "node scripts/isolated-stand.mjs",
     "leak-check": "node scripts/leak-stand.mjs",
     "profile-data-check": "node scripts/profile-data-drive.mjs",
