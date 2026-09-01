@@ -17,7 +17,7 @@ function check(what, actual, expected) {
 }
 
 console.log('— картинки читаются (функция цела) —');
-check('png из папки человека', isReadableImagePath('C:\\Users\\arkie\\Pictures\\shot.png'), true);
+check('png из папки человека', isReadableImagePath('C:\\Users\\user\\Pictures\\shot.png'), true);
 check('jpeg', isReadableImagePath('C:\\photos\\a.jpeg'), true);
 check('svg (nativeImage его не декодирует, читаем как есть)', isReadableImagePath('C:\\icons\\logo.svg'), true);
 check('unix-путь', isReadableImagePath('/home/user/pic.webp'), true);
@@ -25,12 +25,12 @@ check('регистр расширения не важен', isReadableImagePath
 check('точки в имени', isReadableImagePath('C:\\x\\my.photo.2026.png'), true);
 
 console.log('\n— данные пользователя закрыты —');
-check('база паролей', isReadableImagePath('C:\\Users\\arkie\\AppData\\Roaming\\oblako-browser\\passwords.sqlite'), false);
-check('конфиг VPN с учёткой', isReadableImagePath('C:\\Users\\arkie\\AppData\\Roaming\\oblako-browser\\xray-config.json'), false);
-check('сессия вкладок', isReadableImagePath('C:\\Users\\arkie\\AppData\\Roaming\\oblako-browser\\session.json'), false);
+check('база паролей', isReadableImagePath('C:\\Users\\user\\AppData\\Roaming\\oblako-browser\\passwords.sqlite'), false);
+check('конфиг VPN с учёткой', isReadableImagePath('C:\\Users\\user\\AppData\\Roaming\\oblako-browser\\xray-config.json'), false);
+check('сессия вкладок', isReadableImagePath('C:\\Users\\user\\AppData\\Roaming\\oblako-browser\\session.json'), false);
 // ⚠️ У ключа расширения нет вовсе — именно поэтому барьер стоит по расширению, а не по
 // чёрному списку имён.
-check('SSH-ключ (без расширения)', isReadableImagePath('C:\\Users\\arkie\\.ssh\\id_rsa'), false);
+check('SSH-ключ (без расширения)', isReadableImagePath('C:\\Users\\user\\.ssh\\id_rsa'), false);
 check('скрытый файл без расширения', isReadableImagePath('/home/user/.bashrc'), false);
 check('исполняемый файл', isReadableImagePath('C:\\Windows\\System32\\cmd.exe'), false);
 
