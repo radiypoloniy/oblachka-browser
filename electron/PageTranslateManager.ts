@@ -217,7 +217,12 @@ const WALK_SCRIPT = `(function(){
     plan[id] = { gaps: pGaps, childTexts: pChild };
     var r = el.getBoundingClientRect();
     var visible = r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
-    units.push({ id: id, text: serialize(el), visible: visible });
+    // Положение в КООРДИНАТАХ СТРАНИЦЫ (не вьюпорта): по нему юниты сортируются в порядке чтения,
+    // а не в порядке разметки. Прокрутка во время обхода на эти числа не влияет.
+    units.push({
+      id: id, text: serialize(el), visible: visible,
+      top: Math.round(r.top + window.scrollY), left: Math.round(r.left + window.scrollX),
+    });
   }
 
   function walk(el) {
@@ -247,9 +252,19 @@ const WALK_SCRIPT = `(function(){
   // порог по длине текста страхует от пустых/декоративных <main> (SPA-обёртки без реальной
   // семантики). Не нашли уверенного кандидата — как раньше, весь document.body (веб-приложения,
   // дашборды и т.п., где понятия «главный контент» просто нет).
+  // ⚠️ Берём САМОГО СОДЕРЖАТЕЛЬНОГО кандидата, а не первого в разметке. Раньше здесь стоял
+  // querySelector, то есть «первый подходящий в порядке документа», — и на сайте, где блок
+  // «читайте также» свёрстан карточками <article> выше основной статьи, корнем становился он.
+  // Дальше всё шло как задумано и всё равно неправильно: переводились ссылки на другие материалы,
+  // а сама статья оставалась за бортом. Живая жалоба 01.09.2026.
   function findMainRoot() {
-    var explicit = document.querySelector('main, [role="main"], article');
-    return (explicit && textLen(explicit) > 200) ? explicit : document.body;
+    var cands = document.querySelectorAll('main, [role="main"], article');
+    var best = null, bestLen = 200; // тот же порог: ниже него кандидат считается декоративным
+    for (var c = 0; c < cands.length; c++) {
+      var len = textLen(cands[c]);
+      if (len > bestLen) { best = cands[c]; bestLen = len; }
+    }
+    return best || document.body;
   }
 
   var root = findMainRoot();
@@ -433,7 +448,7 @@ const RESTORE_SCRIPT = `(function(){
 const CRASH_CHECK_SCRIPT = 'window.__oblakoTrCrashed === true'
 
 // ── Батчинг и оркестрация перевода ───────────────────────────────────────────────────────────
-interface WalkUnit { id: number; text: string; visible: boolean }
+interface WalkUnit { id: number; text: string; visible: boolean; top: number; left: number }
 interface WalkResult { units: WalkUnit[]; truncated: boolean }
 
 // Перевод многих мелких юнитов ПО ОДНОМУ — неприемлемо медленно (оверхед сессии/prefill на вызов,
@@ -500,8 +515,18 @@ async function runTranslation(wc: WebContents, tabId: string, mySeq: number): Pr
     console.warn(`[page-translate] превышен потолок в ${MAX_ROOTS} корней — переведена только часть страницы`)
   }
 
-  const visible = walkResult.units.filter((u) => u.visible)
-  const rest = walkResult.units.filter((u) => !u.visible)
+  // ⚠️ Внутри каждой группы — ПОРЯДОК ЧТЕНИЯ (сверху вниз, слева направо), а не порядок разметки.
+  // Живая жалоба 01.09.2026: «сначала заголовок, потом элементы сайта, потом ссылки на другие
+  // источники и лишь потом основной текст». Это и был порядок разметки: шапка, меню и боковые
+  // блоки лежат в HTML раньше статьи, даже когда на экране они сбоку или ниже. Человек же смотрит
+  // не в разметку, а на страницу, и ждёт перевода того, на что смотрит.
+  //
+  // ⚠️ Сортировка СТАБИЛЬНАЯ и с добивкой по id: у элементов одной строки top совпадает, и без
+  // третьего ключа порядок между ними зависел бы от реализации сортировки.
+  const byReading = (a: WalkUnit, b: WalkUnit): number =>
+    (a.top - b.top) || (a.left - b.left) || (a.id - b.id)
+  const visible = walkResult.units.filter((u) => u.visible).sort(byReading)
+  const rest = walkResult.units.filter((u) => !u.visible).sort(byReading)
   const ordered = [...visible, ...rest]
 
   const sample = ordered.slice(0, SAMPLE_UNITS_FOR_DETECT).map((u) => u.text).join(' ')
