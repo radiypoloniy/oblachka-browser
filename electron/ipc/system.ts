@@ -14,11 +14,20 @@ import { permissionAnswered, setPermissionPopoverHeight } from '../PermissionPop
 import { searchSettingsByMeaning } from '../SettingsSearch';
 import { ipcMain } from 'electron';
 import type { IpcDeps } from './deps';
+import { buildResourceSnapshot, sleepTabFromResources } from '../ResourceSnapshot';
 
 // То же самое для поиска по настройкам фразой (см. SETTINGS_SEARCH_SMART).
 let settingsSearchBusy = false;
 
 export function registerSystemIpc(d: IpcDeps): void {
+  // ── Диспетчер задач (Shift+Esc) ────────────────────────────────────────────
+  //
+  // ⚠️ Здесь, а не в menus.ts: та функция уже за порогом храповика, и дописывать в неё новое —
+  // растить то, что и так велико. Ресурсы приложения — системная тема, файл подходит по смыслу.
+  // Разбор «почему Private Bytes» и «почему снимок по запросу» — в шапке ResourceSnapshot.ts.
+  ipcMain.handle(IPC.RESOURCES_SNAPSHOT, () => buildResourceSnapshot());
+  ipcMain.handle(IPC.RESOURCES_SLEEP_TAB, (_e, tabId: string) => sleepTabFromResources(tabId));
+
   const { downloads, permissions, settings, winOf } = d;
 
   // был только предложением импорта, и без источников показывать было нечего. Теперь это ещё и

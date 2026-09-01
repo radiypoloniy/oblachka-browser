@@ -404,8 +404,8 @@ export function registerMenusIpc(d: IpcDeps): void {
   // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей в UI нет.
   ipcMain.handle(IPC.MODEL_CATALOG_GET, () => ModelCatalog.getCatalogWithFit());
 
-  // Явная выгрузка модели из VRAM (см. TranslationService.ts::unloadModel) — задел, потребителей
-  // в UI нет.
+  // Явная выгрузка модели из VRAM (см. TranslationService.ts::unloadModel). ⚠️ Уже не «задел без
+  // потребителей»: кнопка есть в диспетчере задач (Shift+Esc).
   ipcMain.handle(IPC.MODEL_UNLOAD, () => unloadModel());
 
   // Удаление модели с диска (см. ModelRegistry.ts::deleteModel) — задел, потребителей в UI нет.

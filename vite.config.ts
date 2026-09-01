@@ -45,6 +45,9 @@ export default defineConfig({
         // SuggestDropdownManager.ts) — статичный список, не боевая пока.
         suggestdropdown: resolve(__dirname, 'src/suggestdropdown.html'),
         dropzones: resolve(__dirname, 'src/dropzones.html'),
+        // Диспетчер задач (Shift+Esc) — отдельное ОКНО, а не вью: смотреть на память надо, ПОКА
+        // пользуешься браузером (см. TaskManagerWindow.ts).
+        taskmanager: resolve(__dirname, 'src/taskmanager.html'),
         // Карточка снимка вкладки (Ctrl+Shift+S) — та же техника (см. ScreenshotManager.ts).
         screenshot: resolve(__dirname, 'src/screenshot.html'),
         // Временный стенд лиц часов (B1). Сносится вместе с невыбранными вариантами.

@@ -215,7 +215,7 @@ export function toneVars(tone: PosterTone | undefined): React.CSSProperties {
  * ⚠️ Дисплейная гарнитура здесь УМЕСТНА: это «лицо» раздела, а не плотный набор в мелком кегле,
  * ради которого её держат вне интерфейса (см. DISPLAY в styles/system.ts).
  */
-export function SectionHeader({ title, tone, hero, heroLabel, children }: {
+export function SectionHeader({ title, tone, hero, heroLabel, band, children }: {
   title: string;
   /**
    * ⚠️ Проп оставлен только для мест ВНЕ настроек (свои экраны, стенды). В самих настройках его
@@ -227,6 +227,14 @@ export function SectionHeader({ title, tone, hero, heroLabel, children }: {
   hero?: React.ReactNode;
   /** Подпись под числом: что оно значит. */
   heroLabel?: React.ReactNode;
+  /**
+   * Полоса ВО ВСЮ ШИРИНУ плашки: график, лента, шкала.
+   *
+   * ⚠️ Отдельно от `children`, а не вместо: те заворачиваются в абзац шириной в меру чтения
+   * (MEASURE), и график там обрезается на двух третях — поймано на живом кадре диспетчера.
+   * Абзац объясняет, полоса показывает.
+   */
+  band?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   // Тон берётся из переменной контейнера (см. toneVars); проп — запасной путь для экранов вне
@@ -271,6 +279,7 @@ export function SectionHeader({ title, tone, hero, heroLabel, children }: {
           color: 'inherit', maxWidth: MEASURE, position: 'relative',
         }}>{children}</p>
       )}
+      {band && <div style={{ position: 'relative', marginTop: sp(3) }}>{band}</div>}
     </div>
   );
 }
@@ -389,12 +398,14 @@ export function FactGrid({ children }: { children: React.ReactNode }) {
  * три-четыре, и три цветные заливки рядом с цветной шапкой дают ровно ту пестроту, от которой
  * уходили. Тон остаётся у шапки и точек — одна цветная плоскость на экран.
  */
-export function Fact({ label, hint, value, active }: {
+export function Fact({ label, hint, value, active, foot }: {
   label: React.ReactNode;
   hint?: React.ReactNode;
   value: React.ReactNode;
   /** Настройка включена/действует — плитка становится «залитой». */
   active?: boolean;
+  /** Полоса-мера или лента под значением. ⚠️ ПОД ним, а не вместо: значение и есть ответ. */
+  foot?: React.ReactNode;
 }) {
   return (
     <div style={{
@@ -412,6 +423,7 @@ export function Fact({ label, hint, value, active }: {
         ...DISPLAY, fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em',
         marginTop: 'auto', color: 'inherit',
       }}>{value}</span>
+      {foot}
     </div>
   );
 }
@@ -669,25 +681,9 @@ export function MonoChip({ children, title, strong }: {
   );
 }
 
-/** Строка внутри SpotCard: право слева, контрол справа. Та же геометрия у камеры сайта и у поля профиля. */
-export function SpotLine({ title, hint, control }: {
-  title: React.ReactNode;
-  hint?: React.ReactNode;
-  control: React.ReactNode;
-}) {
-  return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: sp(3), alignItems: 'center',
-      padding: pad(3, 4), borderTop: '1px solid var(--divider)',
-    }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ ...TEXT.body, fontWeight: 650, color: 'var(--text-strong)' }}>{title}</div>
-        {hint && <div style={{ ...TEXT.caption, color: 'var(--text-muted)' }}>{hint}</div>}
-      </div>
-      {control}
-    </div>
-  );
-}
+// SpotLine и Meter переехали в rowKit.tsx (см. его шапку — почему). Реэкспорт держит
+// вызывающие стороны в неведении: импорт из './kit' продолжает работать.
+export { Meter, SpotLine } from './rowKit';
 
 /**
  * Рамка настроек выбранной сущности. Не внутри карточки: карточка показывает КТО, рамка — ЧТО можно.

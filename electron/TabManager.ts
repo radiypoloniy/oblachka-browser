@@ -1,5 +1,5 @@
 ﻿import os from 'os';
-import { app, WebContentsView, BrowserWindow, Menu, clipboard, ipcMain, net } from 'electron';
+import { app, WebContentsView, BrowserWindow, ipcMain, net } from 'electron';
 import type { MenuItemConstructorOptions, PostBody, WebContents, WebFrameMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { isGuestNavigable } from '../shared/guestNavigation';
@@ -8,6 +8,8 @@ import { IPC, INCOGNITO_PARTITION } from '../shared/ipc';
 import { profilePartition, DEFAULT_PROFILE_ID } from '../shared/profiles';
 import { getActiveProfile } from './ProfileStore';
 import { closeWindowView } from './viewTeardown';
+import { wirePageContextMenu } from './pageContextMenu';
+import type { PageContextMenuHost } from './pageContextMenu';
 import type { TabState, TabErrorState, ContentBounds, FindResult, SidebarNode, SingleNode, SplitPairNode, GroupNode, AiAction, SpecialTabKind, ClipboardLink, MediaSessionReport, MediaCommand } from '../shared/ipc';
 
 // Разметка и ссылки скопированного куска — то, что страница присылает вместе с текстом, чтобы
@@ -27,7 +29,6 @@ import { memoryBudgetBytes, systemFreeShare, isUnderMemoryPressure, isIdleForTim
 import { serializeNodes, countSavedTabs, buildNodesFromSaved, collectSplitPairs } from '../shared/sessionTree';
 import { findTabParent, groupContaining, findGroupByLabel, findGroupById, findGroupParent, pruneEmptyGroups, dissolveSplitPair, disbandGroup } from '../shared/nodeTree';
 import type { TabView } from '../shared/sessionTree';
-import { TRANSLATE_TARGETS } from '../shared/translateLangs';
 import { hostOfUrl } from '../shared/rules';
 import { isExternalAppUrl } from './ExternalProtocol';
 import { localPathToFileUrl } from './localFileUrl';
@@ -66,16 +67,6 @@ const PANEL_SLIDE_MS = 240;
 // Кап на размер тела favicon перед base64-кэшированием в сессию (заход C) — без него один
 // «тяжёлый» сайт (нестандартный favicon.ico на сотни КБ) непредсказуемо раздувает session.json.
 const FAVICON_CACHE_MAX_BYTES = 100 * 1024; // 100 КБ сырых байт (до base64, т.е. ~133 КБ в файле)
-
-// «Краткая выжимка» имеет смысл только для достаточно длинного выделения (иначе выжимать нечего) —
-// одно место, легко поменять. ~40 слов ~ 250 символов на кириллице/латинице.
-const SUMMARIZE_MIN_CHARS = 250;
-
-// Обрезает длинный текст для лейблов меню, чтобы не растягивало окно.
-function truncate(text: string, max = 40): string {
-  const s = text.trim().replace(/\s+/g, ' ');
-  return s.length > max ? s.slice(0, max) + '…' : s;
-}
 
 // Фоллбэк-заголовок для вкладки, восстановленной сразу спящей (createSleepingTab) — session.json
 // v4 хранит только url, настоящий title/favicon появятся после пробуждения (загрузки страницы).
@@ -194,42 +185,6 @@ const HAS_FILLED_FORMS_SCRIPT = `(function(){
   return false;
 })()`;
 
-// Прямоугольник выделения (последний range) в координатах viewport страницы — для позиционирования
-// поповера перевода. null, если выделения нет (тогда — фоллбэк на p.x/p.y клика ПКМ) — и ТАК ЖЕ
-// null, если bounding rect всего выделения больше вьюпорта или начинается за его пределами (напр.
-// выделили несколько экранов текста с прокруткой — rect в основном закадровый, якорить под ним
-// поповер уводит его далеко от видимого текста, диагностировано логами: height=1649 при вьюпорте
-// ~744, y=-1278). В этом случае координата клика ПКМ (она точно на экране) надёжнее bounding rect
-// всего выделения — для НОРМАЛЬНОГО выделения, влезающего во вьюпорт, поведение не меняется.
-const SELECTION_RECT_SCRIPT = `(function(){
-  var sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0) return null;
-  var r = sel.getRangeAt(0).getBoundingClientRect();
-  if (r.width === 0 && r.height === 0) return null;
-  if (r.height > window.innerHeight || r.width > window.innerWidth || r.top < 0 || r.left < 0) return null;
-  return { x: r.left, y: r.top, width: r.width, height: r.height };
-})()`;
-
-// Правка своего текста в поле ввода: снимаем содержимое поля под курсором и ПОМЕЧАЕМ само поле,
-// чтобы потом было куда вернуть исправленный текст.
-//
-// ⚠️ Поле ищем по координатам клика (elementFromPoint), а не по document.activeElement: правый
-// клик не всегда переводит фокус в поле, а к моменту вставки фокус вообще будет у поповера.
-// Метка атрибутом — тот же приём, что в pageFacts.ts: ссылку на узел через мост не передать, а
-// путь по индексам протухает от любой перерисовки страницы (SPA перерисовывает форму на каждый
-// ввод). Атрибут переживает перерисовку React'ом ровно потому, что он на том же DOM-узле.
-const EDIT_FIELD_CAPTURE_SCRIPT = (x: number, y: number): string => `(function(){
-  var el = document.elementFromPoint(${x}, ${y});
-  var ed = el && el.closest ? el.closest('input, textarea, [contenteditable=""], [contenteditable="true"]') : null;
-  if (!ed) return null;
-  var prev = document.querySelector('[data-oblako-edit]');
-  if (prev) prev.removeAttribute('data-oblako-edit');
-  ed.setAttribute('data-oblako-edit', '1');
-  var value = ('value' in ed) ? ed.value : ed.innerText;
-  var r = ed.getBoundingClientRect();
-  return { text: String(value || ''), rect: { x: r.left, y: r.top, width: r.width, height: r.height } };
-})()`;
-
 export class TabManager {
   private win: BrowserWindow;
 
@@ -330,7 +285,8 @@ export class TabManager {
   private onFirstTabLoadCb?: () => void;
   // Общий колбэк для ВСЕХ AI-действий над выделением (перевод/выжимка/пересказ/объяснение) — та же
   // труба «координаты → Qwen → поповер», разные action только меняют промпт (см. TranslationService.ts).
-  // canReplace — текст взят из поля ввода и его можно вернуть обратно (см. EDIT_FIELD_CAPTURE_SCRIPT).
+  // canReplace — текст взят из поля ввода и его можно вернуть обратно (см. EDIT_FIELD_CAPTURE_SCRIPT
+  // в pageContextMenu.ts).
   private onAiActionCb?: (action: AiAction, text: string, rect: SelectionRect, wc: WebContents, canReplace?: boolean, targetLang?: string) => void;
   // Поповер перевода анкорится к конкретной вкладке/области — при смене активной вкладки его
   // позиция теряет смысл, при закрытии ИМЕННО этой вкладки — тем более. Два отдельных сигнала
@@ -1956,228 +1912,34 @@ export class TabManager {
     });
   }
 
-  // Нативное контекстное меню страницы (ПКМ).
+  // Нативное контекстное меню страницы (ПКМ) — см. electron/pageContextMenu.ts.
   #wireContextMenu(id: string, view: WebContentsView): void {
-    const wc = view.webContents;
-
-    wc.on('context-menu', (_e, p) => {
-      const items: MenuItemConstructorOptions[] = [];
-      const engine = getSearchEngine(this.searchEngineId);
-      // ⚠️ Всё, что рождается ОТ ЭТОЙ страницы, наследует её приватность. Замерено на стенде
-      // (куки как признак сессии): раньше ссылка, открытая из приватной вкладки, присылала куку
-      // ОБЫЧНОГО профиля — то есть попадала в дисковую сессию, писалась в историю и в автосейв.
-      // Для поиска по выделенному это особенно скверно: наружу уходил выделенный на приватной
-      // странице текст, да ещё и с записью в историю. Пункт «Открыть ссылку в инкогнито» ниже
-      // остаётся отдельным: он поднимает приватность из ОБЫЧНОЙ вкладки, а это другое действие.
-      const priv = this.tabMap.get(id)?.incognito ?? false;
-
-      // ── Ссылка ──────────────────────────────────────────────────────────────
-      if (p.linkURL) {
-        items.push(
-          {
-            label: 'Открыть ссылку в новой вкладке',
-            // Источник новой вкладки — страница, где щёлкнули ссылку (тот же учёт, что в
-            // setWindowOpenHandler): иначе правило «ссылки с хабра — в группу» не сработало бы
-            // на самом частом способе открыть ссылку.
-            click: () => {
-              const openedId = this.createTab(p.linkURL, true, false, priv);
-              this.#navFrom.set(openedId, hostOfUrl(wc.getURL()));
-              this.#openerOf.set(openedId, id); // см. closeTab: закрытие вернёт сюда же
-            },
-          },
-          // Окно создаёт main — TabManager про окна не знает (тот же приём, что у пункта
-          // «Добавить в граф»: сюда приходит готовый колбэк).
-          { label: 'Открыть ссылку в новом окне', click: () => this.onOpenInNewWindowCb?.(p.linkURL) },
-          { label: 'Открыть ссылку в инкогнито', click: () => this.createTab(p.linkURL, true, false, true) },
-        );
-        // Пункт только когда текущая activeId ещё НЕ в показываемой паре — модель split
-        // строго бинарная (пара = 2 панели), добавить третью панель к уже сплитнутой
-        // вкладке некуда. Проверяем #activePair(), а не #currentlyInSplit-переменную —
-        // на неё смотрит здесь именно "текущая вкладка сейчас показывается как часть пары".
-        // ⚠️ Если activeId внутри группы, а новая вкладка (createTab — всегда топ-уровень)
-        // окажется в другом родителе дерева — enterSplit тихо не сработает (guard
-        // #findTabParent требует общего родителя, см. enterSplit). Известное ограничение,
-        // не фикс здесь — для вкладок вне групп путь рабочий.
-        if (!this.#activePair()) {
-          items.push({
-            label: 'Открыть ссылку в split',
-            click: () => {
-              const newId = this.createTab(p.linkURL, true, false, priv); // background — не перебивать фокус до enterSplit
-              if (newId) this.enterSplit(newId); // activeId (текущая) → левая, newId → правая
-            },
-          });
-        }
-        items.push(
-          { label: 'Копировать адрес ссылки', click: () => clipboard.writeText(p.linkURL) },
-        );
-        // «Добавить в граф» строит main: TabManager не должен знать про хранилище графов,
-        // ему отдают готовый пункт меню (тот же приём, что с tabManagerRef у менеджеров вью).
-        const toGraph = this.#graphMenuBuilder?.(
-          [{ url: p.linkURL, title: p.linkText || p.linkURL }],
-          undefined,
-        );
-        if (toGraph) items.push({ type: 'separator' }, toGraph);
-      }
-
-      // ── Картинка ─────────────────────────────────────────────────────────────
-      if (p.mediaType === 'image' && p.srcURL) {
-        if (items.length) items.push({ type: 'separator' });
-        items.push(
-          { label: 'Копировать картинку', click: () => wc.copyImageAt(p.x, p.y) },
-          // ⚠️ Пунктов ДВА, и это прямое следствие того, что диалог «куда сохранить» у нас выключен
-          // по умолчанию (см. DownloadManager: раньше система спрашивала про КАЖДЫЙ файл, включая
-          // картинку с фотостока, и это выпилили). «Сохранить» кладёт в Загрузки молча — то, чего
-          // хотят почти всегда; «как…» обязано спросить, иначе слово «как» в пункте — обман, и
-          // выбрать место было нельзя вообще ничем (живая жалоба).
-          { label: 'Сохранить картинку', click: () => wc.downloadURL(p.srcURL) },
-          {
-            label: 'Сохранить картинку как…',
-            click: () => { this.onSaveAsCb?.(p.srcURL); wc.downloadURL(p.srcURL); },
-          },
-          { label: 'Открыть картинку в новой вкладке', click: () => this.createTab(p.srcURL, true, false, priv) },
-        );
-      }
-
-      // ── Редактируемое поле ───────────────────────────────────────────────────
-      // isEditable обрабатываем ДО selectionText: cut/copy/paste — главное для инпутов.
-      if (p.isEditable) {
-        // Орфография: варианты исправления, только если под курсором реально опечатка.
-        if (p.misspelledWord && p.dictionarySuggestions.length) {
-          if (items.length) items.push({ type: 'separator' });
-          for (const suggestion of p.dictionarySuggestions) {
-            items.push({ label: suggestion, click: () => wc.replaceMisspelling(suggestion) });
-          }
-        }
-        if (items.length) items.push({ type: 'separator' });
-        items.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' });
-        if (p.selectionText.trim()) {
-          items.push({ type: 'separator' });
-          items.push({
-            label: `Поиск «${truncate(p.selectionText)}» в ${engine.name}`,
-            click: () => this.createTab(engine.buildUrl(p.selectionText), false, false, priv),
-          });
-        }
-        // ── Правка своего текста локальной моделью ──────────────────────────
-        // Работаем с ВЫДЕЛЕНИЕМ, если оно есть, иначе со всем содержимым поля: человек чаще
-        // всего хочет причесать весь черновик, а не кусок. Текст поля тянем скриптом — в
-        // params контекстного меню его нет (там только selectionText).
-        if (this.onAiActionCb) {
-          // targetLang — только для перевода своего текста на выбранный язык; для fix/shorten/polite
-          // не задаётся (они отвечают на языке оригинала).
-          const dispatchEdit = (action: AiAction, targetLang?: string) => {
-            void (async () => {
-              let captured: { text: string; rect: { x: number; y: number; width: number; height: number } } | null = null;
-              try { captured = await wc.executeJavaScript(EDIT_FIELD_CAPTURE_SCRIPT(p.x, p.y), true); } catch { /* поле пропало */ }
-              const selected = p.selectionText.trim();
-              const text = selected || (captured?.text ?? '').trim();
-              if (!text) return; // пустое поле — править нечего, молча выходим
-              const viewBounds = view.getBounds();
-              const local = captured?.rect ?? { x: p.x, y: p.y, width: 0, height: 0 };
-              const rect: SelectionRect = {
-                x: viewBounds.x + local.x, y: viewBounds.y + local.y,
-                width: local.width, height: local.height,
-              };
-              // Пятый аргумент — «результат можно вернуть в поле»: поповер покажет «Заменить».
-              this.onAiActionCb!(action, text, rect, wc, true, targetLang);
-            })();
-          };
-          items.push({ type: 'separator' });
-          items.push({
-            label: 'Править текст',
-            submenu: [
-              { label: 'Исправить ошибки', click: () => dispatchEdit('fix') },
-              { label: 'Сделать короче',   click: () => dispatchEdit('shorten') },
-              { label: 'Смягчить тон',     click: () => dispatchEdit('polite') },
-              { type: 'separator' },
-              // «Перевести на …» — свой черновик на чужой язык (пишу по-русски, отправлю по-английски).
-              // Именно подменю с языками, а не свой всплывающий экран: нативное меню — это уже
-              // «всплывающее окошко», и городить ради выбора языка отдельную WebContentsView незачем.
-              {
-                label: 'Перевести на',
-                submenu: TRANSLATE_TARGETS.map((l) => ({
-                  label: l.label,
-                  click: () => dispatchEdit('translate', l.code),
-                })),
-              },
-            ],
-          });
-        }
-      } else if (p.selectionText.trim()) {
-        // ── Выделенный текст (не в инпуте) ──────────────────────────────────
-        if (items.length) items.push({ type: 'separator' });
-        items.push(
-          { role: 'copy' },
-          {
-            label: `Поиск «${truncate(p.selectionText)}» в ${engine.name}`,
-            click: () => this.createTab(engine.buildUrl(p.selectionText), false, false, priv),
-          },
-        );
-        if (this.onAiActionCb) {
-          // Общий диспетчер для всех AI-действий над выделением — только action меняется,
-          // координаты/фоллбэк/лог одни и те же (см. onAiActionCb в TranslationService.ts).
-          const dispatchAiAction = (action: AiAction) => {
-            const text = p.selectionText;
-            const tClick = performance.now();
-            void (async () => {
-              // Фоллбэк на координаты клика ПКМ, если запрос rect не удался/не дал результата
-              // (напр. выделение снялось до клика по пункту меню — редкий race).
-              let local: { x: number; y: number; width: number; height: number };
-              let fellBack = false;
-              try {
-                const scriptResult = await wc.executeJavaScript(SELECTION_RECT_SCRIPT, true);
-                if (scriptResult) { local = scriptResult; } else { local = { x: p.x, y: p.y, width: 0, height: 0 }; fellBack = true; }
-              } catch {
-                local = { x: p.x, y: p.y, width: 0, height: 0 };
-                fellBack = true;
-              }
-              const viewBounds = view.getBounds();
-              const rect: SelectionRect = {
-                x: viewBounds.x + local.x,
-                y: viewBounds.y + local.y,
-                width: local.width,
-                height: local.height,
-              };
-              console.log(`[popover] selrect: fellBack=${fellBack} local=${JSON.stringify(local)} viewBounds=${JSON.stringify(viewBounds)} computed=${JSON.stringify(rect)}`);
-              console.log(`[perf] selection->request: ${(performance.now() - tClick).toFixed(0)}ms`);
-              this.onAiActionCb!(action, text, rect, wc);
-            })();
-          };
-
-          items.push({ label: 'Перевести', click: () => dispatchAiAction('translate') });
-          items.push({ label: 'Пересказать проще', click: () => dispatchAiAction('simplify') });
-          items.push({ label: 'Объяснить', click: () => dispatchAiAction('explain') });
-          // «Краткая выжимка» — только для достаточно длинного выделения (см. SUMMARIZE_MIN_CHARS).
-          if (p.selectionText.trim().length >= SUMMARIZE_MIN_CHARS) {
-            items.push({ label: 'Краткая выжимка', click: () => dispatchAiAction('summarize') });
-          }
-        }
-      }
-
-      // ── Фоллбэк: просто страница (ни ссылки, ни картинки, ни выделения) ────
-      if (!items.length) {
-        items.push(
-          { label: 'Назад',    enabled: wc.canGoBack(),     click: () => wc.goBack() },
-          { label: 'Вперёд',   enabled: wc.canGoForward(),  click: () => wc.goForward() },
-          { label: 'Обновить',                               click: () => wc.reload() },
-          // Пара к «Обновить»: тот же жест, но мимо кэша — когда сайт отдал протухшие стили
-          // или скрипт и обычное обновление ничего не меняет.
-          { label: 'Обновить без кэша', accelerator: 'Ctrl+F5', click: () => wc.reloadIgnoringCache() },
-        );
-      }
-
-      // Инспектор — всегда в конце; inspectElement подсвечивает элемент под курсором.
-      items.push({ type: 'separator' });
-      items.push({
-        label: 'Просмотреть код',
-        click: () => {
-          if (!wc.isDevToolsOpened()) wc.openDevTools({ mode: 'detach' });
-          wc.inspectElement(p.x, p.y);
-        },
-      });
-
-      Menu.buildFromTemplate(items).popup({ window: this.win });
-    });
+    wirePageContextMenu(this.#menuHost, id, view);
   }
+
+  /**
+   * Что контекстное меню спрашивает у менеджера.
+   *
+   * ⚠️ Один объект на менеджер, а не на вкладку: он ничего не помнит, id щёлкнутой вкладки меню
+   * приносит с собой. ⚠️ Стрелками, а не значениями: колбэки ставятся сеттерами уже после
+   * конструктора, и снимок при проводке вкладки заморозил бы здесь undefined навсегда.
+   */
+  #menuHost: PageContextMenuHost = {
+    window: () => this.win,
+    searchEngineId: () => this.searchEngineId,
+    isIncognito: (tabId) => this.tabMap.get(tabId)?.incognito ?? false,
+    openTab: (url, background, incognito) => this.createTab(url, background, false, incognito),
+    noteOpened: (openedId, fromHost, openerId) => {
+      this.#navFrom.set(openedId, fromHost);
+      this.#openerOf.set(openedId, openerId);
+    },
+    splitShown: () => this.#activePair() !== undefined,
+    enterSplit: (tabId) => this.enterSplit(tabId),
+    openInNewWindow: (url) => this.onOpenInNewWindowCb?.(url),
+    saveAs: (url) => this.onSaveAsCb?.(url),
+    graphMenuItem: (items) => this.#graphMenuBuilder?.(items, undefined) ?? null,
+    aiAction: () => this.onAiActionCb ?? null,
+  };
 
   // ── Активация: показываем нужную вьюху, прячем остальные ──
   activate(id: string) {
@@ -2830,6 +2592,23 @@ export class TabManager {
       if (wc && !wc.isDestroyed() && wc.id === wcId) return true;
     }
     return false;
+  }
+
+  /**
+   * Усыпить вкладку по требованию человека из диспетчера задач.
+   *
+   * ⚠️ Через TabManager, а не убийством процесса. Снять рендерер мимо модели вкладок значило бы
+   * оставить её в состоянии, которого не бывает: вкладка есть, вью нет, и никто об этом не знает.
+   *
+   * ⚠️ Активную вкладку не усыпляем: пробуждение у нас — полная перезагрузка страницы, и человек
+   * получил бы мигание и потерю прокрутки прямо в том, на что смотрит. Хаб и спящие — нечего.
+   */
+  sleepTabById(id: string): boolean {
+    const tab = this.tabMap.get(id);
+    if (!tab || tab.sleeping !== null || !tab.view) return false;
+    if (id === this.activeId || id === HUB_ID) return false;
+    this.sleepTab(id);
+    return true;
   }
 
   /**
@@ -3785,6 +3564,11 @@ export class TabManager {
    */
   markFindBarOpen(): void { this.findBarOpen = true; }
 
+  // Диспетчер задач по Shift+Esc. ⚠️ Через колбэк, а не прямым вызовом окна: TabManager
+  // принадлежит окну, а диспетчер — приложению, и знать друг о друге им незачем.
+  private onTaskManagerCb: (() => void) | null = null;
+  onTaskManager(cb: () => void): void { this.onTaskManagerCb = cb; }
+
   stopFind(): void {
     const wc = this.getActiveWebContents();
     if (wc) wc.stopFindInPage('clearSelection');
@@ -4007,6 +3791,14 @@ export class TabManager {
             const active = this.getActiveWebContents();
             if (active) { event.preventDefault(); active.stop(); }
           }
+          return;
+        }
+        // Shift+Esc: диспетчер задач. ⚠️ Стоит РЯДОМ с обычным Esc и отдельной веткой: без явной
+        // проверки shift обычный Esc (остановить загрузку, закрыть панель поиска) и диспетчер
+        // спорили бы за одну клавишу. Та же клавиша, что у Chrome, — жанр общий, привычка тоже.
+        if (code === 'Escape' && shift) {
+          event.preventDefault();
+          this.onTaskManagerCb?.();
           return;
         }
         // F5: обновить активную вкладку. Ctrl+F5 (мимо кэша) сюда не попадает — он разбирается

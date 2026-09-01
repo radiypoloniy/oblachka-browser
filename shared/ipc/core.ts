@@ -282,3 +282,59 @@ export interface ContentBounds {
   width: number;
   height: number;
 }
+
+// ── Диспетчер задач ───────────────────────────────────────────────────────────
+//
+// ⚠️ Заведено потому, что до этого браузер знал о своей памяти ровно одно число — сумму
+// `getAppMetrics()` в `TabManager.#appWorkingSetBytes()`. Оно не говорит ни на что уходит, ни
+// сколько стоит вкладка, и из-за этого под давлением выселялись самые ДАВНИЕ вкладки, а не самые
+// дорогие: связь pid↔вкладка (`getOSProcessId`) лежала в одной строке и не использовалась.
+
+/** Чем занят процесс. По этому полю диспетчер решает, что можно с ним сделать. */
+export type ResourceKind =
+  | 'main'      // главный процесс браузера
+  | 'chrome'    // слой интерфейса окна
+  | 'tab'       // страница человека
+  | 'popover'   // поповер или панель — живёт, даже когда ничего не показывает
+  | 'model'     // процесс инференса (utilityProcess) с локальной моделью
+  | 'gpu'
+  | 'utility'
+  | 'other';
+
+export interface ResourceProcess {
+  pid: number;
+  kind: ResourceKind;
+  /** Человеческое имя строки: «Вкладка», «AI-панель», «Модель». */
+  title: string;
+  /** Уточнение: домен страницы, имя службы, идентификатор модели. */
+  detail: string;
+  /**
+   * ⚠️ ГЛАВНОЕ число — то, что процесс реально забрал у системы.
+   * Working Set рядом включает разделяемые страницы и файловый кэш (в том числе mmap-нутый файл
+   * модели), поэтому по нему сумма задваивается, а падение ничего не стоит: страницы вытеснили.
+   */
+  privateBytes: number;
+  workingSet: number;
+  /** Доля CPU в процентах, как её считает Chromium между вызовами getAppMetrics. */
+  cpu: number;
+  /** id вкладки, если строка — вкладка: по нему диспетчер её усыпляет. */
+  tabId: string | null;
+  sleeping: boolean;
+  /** Активная вкладка своего окна — её усыплять нельзя. */
+  active: boolean;
+}
+
+export interface ResourceSnapshot {
+  at: number;
+  processes: ResourceProcess[];
+  totals: { privateBytes: number; workingSet: number; cpu: number };
+  machine: {
+    ramTotalBytes: number;
+    ramFreeBytes: number;
+    vramTotalBytes: number | null;
+    vramFreeBytes: number | null;
+    gpuBackend: string | null;
+  };
+  /** id загруженной модели или null. Отдельно от processes: строка модели может ещё не появиться. */
+  loadedModelId: string | null;
+}

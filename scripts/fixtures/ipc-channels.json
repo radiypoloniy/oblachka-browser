@@ -279,6 +279,8 @@
   "PROFILES_SETTINGS=profiles:settings",
   "PROFILES_STARTUP=profiles:startup",
   "PROFILES_SWITCH=profiles:switch",
+  "RESOURCES_SLEEP_TAB=resources:sleep-tab",
+  "RESOURCES_SNAPSHOT=resources:snapshot",
   "RULES_ADD=rules:add",
   "RULES_CHANGED=rules:changed",
   "RULES_LIST=rules:list",

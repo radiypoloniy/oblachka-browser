@@ -57,28 +57,42 @@ function parse(file) {
   return ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
 }
 
-// Список каналов живёт в shared/ipc/channels.ts (см. shared/ipc/index.ts — почему нарезано так).
+// ⚠️ Каналы живут в НЕСКОЛЬКИХ файлах — shared/ipc/channels/*.ts, а channels.ts их только
+// собирает через спред. Разрезали, когда единый файл дорос до 813 строк при пороге 700 и храповик
+// структуры справедливо перестал пускать в него новые каналы, то есть блокировал любую фичу с IPC.
+//
+// ⚠️ Отсюда и форма разбора: сторож читает ВСЮ ПАПКУ и снимает строковые свойства с любого
+// экспортированного объекта, а не ищет одну переменную с именем IPC. Иначе после разреза он нашёл
+// бы ноль каналов и молча объявил контракт пустым — худший исход для сторожа. Новый кусок
+// подхватывается сам, править этот файл при добавлении не нужно.
+const CHANNELS_DIR = path.join('shared', 'ipc', 'channels');
 const CHANNELS_FILE = path.join('shared', 'ipc', 'channels.ts');
 
-function readChannels() {
-  const sf = parse(path.join(ROOT, CHANNELS_FILE));
-  const out = new Map(); // KEY -> 'строковое:значение'
+function collectStringProps(sf, out) {
   const visit = (node) => {
-    if (ts.isVariableDeclaration(node) && node.name.getText(sf) === 'IPC' && node.initializer) {
-      // `export const IPC = { ... } as const` — снимаем `as const`, если он есть.
-      let init = node.initializer;
-      if (ts.isAsExpression(init) || ts.isTypeAssertionExpression?.(init)) init = init.expression;
-      if (ts.isObjectLiteralExpression(init)) {
-        for (const p of init.properties) {
-          if (ts.isPropertyAssignment(p) && ts.isStringLiteral(p.initializer)) {
-            out.set(p.name.getText(sf), p.initializer.text);
-          }
+    if (ts.isObjectLiteralExpression(node)) {
+      for (const p of node.properties) {
+        if (ts.isPropertyAssignment(p) && ts.isStringLiteral(p.initializer)) {
+          out.set(p.name.getText(sf), p.initializer.text);
         }
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(sf);
+}
+
+function readChannels() {
+  const out = new Map(); // KEY -> 'строковое:значение'
+  const dir = path.join(ROOT, CHANNELS_DIR);
+  if (fs.existsSync(dir)) {
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.ts')).sort()) {
+      collectStringProps(parse(path.join(dir, f)), out);
+    }
+  }
+  // Сборщик читаем тоже: если канал когда-нибудь останется объявленным прямо в нём, он не должен
+  // выпасть из инвентаря молча.
+  collectStringProps(parse(path.join(ROOT, CHANNELS_FILE)), out);
   return out;
 }
 
@@ -115,6 +129,11 @@ const roles = new Map(); // KEY -> Set<'handler'|'caller'|'listener'|'sender'|'o
 const handlerSites = new Map(); // KEY -> [{ kind: 'handle'|'on', where }]
 const mainSideRef = new Set(); // канал упомянут где-то в electron/ вне preload
 const literalSites = []; // строка канала, зашитая мимо IPC.*
+// ⚠️ Сами объявления каналов из этого правила исключены — иначе сторож ругался бы на файл, где
+// строкам каналов и место. После разреза channels.ts на channels/*.ts исключать надо ВСЮ папку,
+// а не один файл: на первом же прогоне после разреза сторож выдал две сотни «нарушений» подряд.
+const isChannelSource = (rel) => rel === CHANNELS_FILE.split(path.sep).join('/')
+  || rel.startsWith(`${CHANNELS_DIR.split(path.sep).join('/')}/`);
 // Арность: сколько аргументов реально уходит из preload и сколько принимает обработчик.
 // ⚠️ Сравнивать здесь ТИПЫ нельзя, и это проверено разбором: preload сплошь и рядом законно
 // перепаковывает аргументы (три параметра API уезжают в invoke одним объектом), а main местами
@@ -209,7 +228,7 @@ for (const file of files) {
     // Строка, дословно равная объявленному каналу, — обход контракта: переименование значения в
     // shared/ipc.ts такое место не заденет, и сторона молча отвалится.
     if (ts.isStringLiteral(node) && keyOfValue.has(node.text)
-        && !SANDBOXED_PRELOADS.has(rel) && rel !== CHANNELS_FILE.replace(/\\/g, '/')) {
+        && !SANDBOXED_PRELOADS.has(rel) && !isChannelSource(rel)) {
       const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
       literalSites.push(`${rel}:${line}  '${node.text}' → IPC.${keyOfValue.get(node.text)}`);
     }

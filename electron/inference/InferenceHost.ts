@@ -199,3 +199,10 @@ export function shutdownInference(): void {
   child.kill()
   teardown('выход из приложения')
 }
+
+// pid процесса инференса — нужен диспетчеру задач, чтобы отличить строку модели от прочих
+// служебных процессов. ⚠️ Именно pid, а не «есть ли модель»: getAppMetrics говорит на языке
+// процессов, и сшивать их надо тем же ключом, каким они себя называют.
+export function getInferencePid(): number | null {
+  return child?.pid ?? null
+}
