@@ -109,3 +109,31 @@ export function lastQwenUserRequestAt(): number {
 export function queueDepth(lane: QueueLane): number {
   return lanes[lane].length;
 }
+
+// ── Очередь Qwen-вызовов (диагностика "заход на умный поиск, п.4") ──────────────────────────
+// contextSequence из ensureLoaded() — один-единственный слот KV-cache на весь процесс. До этой
+// правки runPrompt (перевод/AI-действия) и runChatMessage (чат/быстрый перевод страницы, см.
+// AiPanelManager.ts::quick-translate) звали его независимо, без всякой сериализации — конкурентный
+// вызов на одном sequence либо портит генерацию, либо роняет исключение внутри node-llama-cpp.
+// Тот же приём, что уже проверен на EmbeddingService.ts::embed (queueTail: Promise<unknown>
+// chaining) — там нашли ровно этот класс гонки на общем worker'е. Хвост ОДИН на весь модуль и
+// оборачивает ОБЕ точки входа (runPrompt И runChatMessage), а не только новую фичу поиска —
+// иначе следующий добавленный потребитель Qwen снова пробил бы ту же гонку.
+// ⚠️ Сама очередь переехала в electron/QwenQueue.ts и стала ДВУХПОЛОСНОЙ: фоновая задача
+// начинается только тогда, когда человеку ничего не нужно. Раньше полоса была одна и честно
+// FIFO — то есть любая фоновая затея вставала перед человеком, нажавшим «перевести». Вынесена
+// отдельным модулем не ради красоты: без импортов node-llama-cpp её можно прогнать прямыми
+// вызовами и доказать порядок, а не надеяться на него.
+export function withQwenQueue<T>(fn: () => Promise<T>): Promise<T> {
+  return enqueueQwen(fn, 'user')
+}
+
+/**
+ * То же самое, но полосой ниже: для того, чего человек не заказывал (итоги дня, разбор полей,
+ * «уже читал»). Пока в пользовательской полосе есть работа, эта задача не начнётся.
+ * `signal` снимает задачу, ПОКА ОНА ЖДЁТ. Прервать УЖЕ ИДУЩУЮ генерацию — это `abort` у
+ * runTabOrganizePrompt: он доезжает до llama.cpp через отдельное сообщение воркеру.
+ */
+export function withQwenQueueBackground<T>(fn: () => Promise<T>, signal?: { aborted: boolean }): Promise<T> {
+  return enqueueQwen(fn, 'background', signal)
+}

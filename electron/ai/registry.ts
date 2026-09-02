@@ -19,7 +19,7 @@ import { createGeminiProvider } from './providers/gemini';
 import type { Provider } from './Provider';
 export type { JsonSchema } from '../../shared/aiSchema';
 export type { AiRole } from '../../shared/aiRouting';
-export type { ChatVia } from './Provider';
+export type { ChatVia, Provider } from './Provider';
 
 let localDeps: LocalDeps | null = null;
 let connections: Connection[] = [];

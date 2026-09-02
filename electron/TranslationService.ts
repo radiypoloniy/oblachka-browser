@@ -14,9 +14,11 @@ import fs from 'node:fs'
 import { getTargetLang } from './TranslationConfig'
 import * as ModelRegistry from './ModelRegistry'
 import * as Inference from './inference/InferenceHost'
-import { enqueueQwen, isQwenBusy } from './QwenQueue'
+import { isQwenBusy } from './QwenQueue'
 import type { AiAction, AiActionOutcome, ModelErrorCode } from '../shared/ipc'
-import { modelFor, type JsonSchema, type AiRole, type ChatVia } from './ai/registry'
+import { modelFor, type JsonSchema, type AiRole, type ChatVia, type Provider } from './ai/registry'
+import { withQwenQueue, withQwenQueueBackground } from './QwenQueue'
+export { withQwenQueueBackground }
 import { pickLanguage, FRANC_TO_CODE, FALLBACK_LANG } from '../shared/langDetect'
 
 // Дискриминируемая ошибка загрузки модели — ensureLoaded() бросает объекты этой формы вместо
@@ -310,34 +312,6 @@ export async function warmup(): Promise<void> {
   }
 }
 
-// ── Очередь Qwen-вызовов (диагностика "заход на умный поиск, п.4") ──────────────────────────
-// contextSequence из ensureLoaded() — один-единственный слот KV-cache на весь процесс. До этой
-// правки runPrompt (перевод/AI-действия) и runChatMessage (чат/быстрый перевод страницы, см.
-// AiPanelManager.ts::quick-translate) звали его независимо, без всякой сериализации — конкурентный
-// вызов на одном sequence либо портит генерацию, либо роняет исключение внутри node-llama-cpp.
-// Тот же приём, что уже проверен на EmbeddingService.ts::embed (queueTail: Promise<unknown>
-// chaining) — там нашли ровно этот класс гонки на общем worker'е. Хвост ОДИН на весь модуль и
-// оборачивает ОБЕ точки входа (runPrompt И runChatMessage), а не только новую фичу поиска —
-// иначе следующий добавленный потребитель Qwen снова пробил бы ту же гонку.
-// ⚠️ Сама очередь переехала в electron/QwenQueue.ts и стала ДВУХПОЛОСНОЙ: фоновая задача
-// начинается только тогда, когда человеку ничего не нужно. Раньше полоса была одна и честно
-// FIFO — то есть любая фоновая затея вставала перед человеком, нажавшим «перевести». Вынесена
-// отдельным модулем не ради красоты: без импортов node-llama-cpp её можно прогнать прямыми
-// вызовами и доказать порядок, а не надеяться на него.
-function withQwenQueue<T>(fn: () => Promise<T>): Promise<T> {
-  return enqueueQwen(fn, 'user')
-}
-
-/**
- * То же самое, но полосой ниже: для того, чего человек не заказывал (итоги дня, разбор полей,
- * «уже читал»). Пока в пользовательской полосе есть работа, эта задача не начнётся.
- * `signal` снимает задачу, ПОКА ОНА ЖДЁТ. Прервать УЖЕ ИДУЩУЮ генерацию — это `abort` у
- * runTabOrganizePrompt: он доезжает до llama.cpp через отдельное сообщение воркеру.
- */
-export function withQwenQueueBackground<T>(fn: () => Promise<T>, signal?: { aborted: boolean }): Promise<T> {
-  return enqueueQwen(fn, 'background', signal)
-}
-
 // Явная выгрузка модели из VRAM — обратная сторона ensureLoaded(). ⚠️ dispose во время активной
 // генерации роняет нативный код (не JS-исключение) — поэтому НЕ await'им qwenQueueTail напрямую
 // (это оставило бы окно гонки: запрос, поставленный в очередь ПОСЛЕ вызова unloadModel(), но ДО
@@ -378,11 +352,13 @@ async function runPrompt(
   onChunk: ((text: string) => void) | undefined,
   opts: { role: AiRole; background?: boolean; signal?: { aborted: boolean }; schema?: JsonSchema; abort?: AbortSignal },
 ): Promise<{ out: string; tokens: number; stopReason: string }> {
-  const run = () => runPromptQueued(prompt, maxTokens, onChunk, opts.role, opts?.schema, opts?.abort)
+  const model = modelFor(opts.role, ensureLoaded, getLoadedModelId)
+  const run = () => runPromptQueued(model, prompt, maxTokens, onChunk, opts?.schema, opts?.abort)
+  if (model.connection.kind !== 'local') return run()
   return opts?.background ? withQwenQueueBackground(run, opts.signal) : withQwenQueue(run)
 }
 
-async function runPromptQueued(prompt: string, maxTokens: number, onChunk: ((text: string) => void) | undefined, role: AiRole, schema?: JsonSchema, abort?: AbortSignal): Promise<{ out: string; tokens: number; stopReason: string }> {
+async function runPromptQueued(model: Provider, prompt: string, maxTokens: number, onChunk: ((text: string) => void) | undefined, schema?: JsonSchema, abort?: AbortSignal): Promise<{ out: string; tokens: number; stopReason: string }> {
   // ⚠️ ПОЧЕМУ ОДИН И ТОТ ЖЕ ЗАПРОС ИНОГДА ДАЁТ РАЗНЫЙ ОТВЕТ — разобрано замерами, не переоткрывать.
   // Сэмплинг ни при чём: temperature в node-llama-cpp по умолчанию 0, выборка жадная. Остаточный
   // контекст, квантованный KV-кэш и промпт проверены и отвергнуты (промпт побайтно одинаков).
@@ -392,7 +368,7 @@ async function runPromptQueued(prompt: string, maxTokens: number, onChunk: ((tex
   // машина, а трудное для модели решение, и лечится это промптом (одно решение на прогон), а не
   // бубном вокруг движка.
   const t0 = performance.now()
-  const res = await modelFor(role, ensureLoaded, getLoadedModelId).generate(prompt, { maxTokens, onChunk, schema, abort })
+  const res = await model.generate(prompt, { maxTokens, onChunk, schema, abort })
   console.log(`[perf] segment: всего=${(performance.now() - t0).toFixed(0)}ms outTokens=${res.tokens}`)
   return res
 }
@@ -819,10 +795,21 @@ export async function runChatMessage(
   // считаться долго и человеку нужна кнопка «Стоп» — см. electron/AiActivity.ts.
   abort?: AbortSignal,
 ): Promise<ChatOutcome> {
-  return withQwenQueue(() => runChatMessageQueued(userText, history, onChunk, abort))
+  // ⚠️ ОЧЕРЕДЬ И ГРЕВ — ТОЛЬКО ДЛЯ ВСТРОЕННОЙ МОДЕЛИ, и это починка живой жалобы «подключил
+  // модель, но нихуя не работает». Раньше любой чат сперва поднимал локальную Qwen: на 4B это
+  // 30–40 секунд молчания перед тем, как уйти в облако, а при занятой видеопамяти — ещё и отказ
+  // «модель не загрузилась» при исправном облачном маршруте. Очередь на один слот — физика
+  // llama.cpp (один контекст на процесс), к чужому серверу она отношения не имеет.
+  //
+  // ⚠️ Признак — kind === 'local', а НЕ caps().local. Второй означает «считается на этой машине»
+  // и верен для Ollama на localhost — но встроенную Qwen ради Ollama греть тоже незачем.
+  const model = modelFor('chat', ensureLoaded, getLoadedModelId)
+  const run = () => runChatMessageQueued(model, userText, history, onChunk, abort)
+  return model.connection.kind === 'local' ? withQwenQueue(run) : run()
 }
 
 async function runChatMessageQueued(
+  model: Provider,
   userText: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   history: any[],
@@ -831,8 +818,8 @@ async function runChatMessageQueued(
 ): Promise<ChatOutcome> {
   try {
     const wasLoaded = loadPromise !== null
-    const loadMs = await ensureLoaded()
-    const { out, history: newHistory, ms, tokens, via } = await modelFor('chat', ensureLoaded, getLoadedModelId).chat(
+    const loadMs = model.connection.kind === 'local' ? await ensureLoaded() : 0
+    const { out, history: newHistory, ms, tokens, via } = await model.chat(
       userText, history, CHAT_SYSTEM_PROMPT, { maxTokens: CHAT_MAX_TOKENS, onChunk, abort },
     )
     console.log(
