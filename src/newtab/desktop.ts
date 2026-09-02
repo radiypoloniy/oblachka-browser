@@ -452,8 +452,11 @@ export function setDesktopProfile(id: string): void {
 export function defaultLayout(): DesktopLayout {
   return {
     version: 2,
-    scale: DEFAULT_SCALE,
-    cols: SCALE_PRESETS[DEFAULT_SCALE].cols,
+    // ⚠️ МЕЛКИЙ масштаб, а не DEFAULT_SCALE. Значение по умолчанию оставлено прежним намеренно:
+    // scaleOf() подставляет его СТАРЫМ сохранённым раскладкам, у которых поля scale нет вовсе, и
+    // смена константы перекроила бы стол людям, которые ничего не просили.
+    scale: 'compact',
+    cols: SCALE_PRESETS.compact.cols,
     // ⚠️ Набор СОБРАН, а не «что первое пришло»: стол показывается на каждой новой вкладке и это
     // лицо продукта, поэтому у плиток заданы и КООРДИНАТЫ, и ЗАЛИВКИ. Без координат укладчик
     // выстраивает их подряд, без заливок всё уходит в цвет темы — стол выглядит серой сеткой,
@@ -471,20 +474,12 @@ export function defaultLayout(): DesktopLayout {
     // (`if (!city) return` в WeatherWidget), плитка показывает «Укажите город». То есть в наборе
     // она стоит молча и оживает только после явного действия человека.
     items: [
-      { id: 'w-clock',    kind: 'widget', widget: 'clock',    size: WIDGET_SIZES.small,  col: 0, row: 0, fill: 'blue' },
-      { id: 'w-shield',   kind: 'widget', widget: 'shield',   size: WIDGET_SIZES.bar,    col: 2, row: 0, fill: 'slate' },
-      { id: 'w-music',    kind: 'widget', widget: 'music',    size: WIDGET_SIZES.bar,    col: 2, row: 1 },
-      { id: 'w-weather',  kind: 'widget', widget: 'weather',  size: WIDGET_SIZES.small,  col: 4, row: 0 },
-      { id: 'w-timer',    kind: 'widget', widget: 'timer',    size: WIDGET_SIZES.small,  col: 0, row: 2, fill: 'pink' },
-      { id: 'w-calendar', kind: 'widget', widget: 'calendar', size: { w: 3, h: 2 },      col: 2, row: 2, fill: 'mustard' },
-      { id: 'w-tasks',    kind: 'widget', widget: 'tasks',    size: WIDGET_SIZES.medium, col: 0, row: 4 },
-      { id: 'w-topsites', kind: 'widget', widget: 'topsites', size: WIDGET_SIZES.medium, col: 4, row: 4 },
-      { id: 'a-calc',     kind: 'app', appId: 'calc',    size: { w: 1, h: 1 }, col: 5, row: 2 },
-      { id: 'a-convert',  kind: 'app', appId: 'convert', size: { w: 1, h: 1 }, col: 5, row: 3 },
-      { id: 'a-timer',    kind: 'app', appId: 'timer',   size: { w: 1, h: 1 }, col: 0, row: 6 },
-      { id: 'a-counter',  kind: 'app', appId: 'counter', size: { w: 1, h: 1 }, col: 1, row: 6 },
-      { id: 'a-color',    kind: 'app', appId: 'color',   size: { w: 1, h: 1 }, col: 2, row: 6 },
-      { id: 'a-kitten',   kind: 'app', appId: 'kitten',  size: { w: 1, h: 1 }, col: 3, row: 6 },
+      { id: 'w-clock',    kind: 'widget', widget: 'clock',    size: WIDGET_SIZES.small, col: 0, row: 0, fill: 'blue' },
+      { id: 'w-weather',  kind: 'widget', widget: 'weather',  size: WIDGET_SIZES.small, col: 2, row: 0 },
+      { id: 'w-calendar', kind: 'widget', widget: 'calendar', size: { w: 3, h: 2 },     col: 4, row: 0, fill: 'mustard' },
+      { id: 'w-timer',    kind: 'widget', widget: 'timer',    size: WIDGET_SIZES.small, col: 0, row: 2, fill: 'pink' },
+      { id: 'w-music',    kind: 'widget', widget: 'music',    size: WIDGET_SIZES.bar,   col: 2, row: 2 },
+      { id: 'w-shield',   kind: 'widget', widget: 'shield',   size: WIDGET_SIZES.bar,   col: 2, row: 3, fill: 'slate' },
     ],
   };
 }
@@ -507,7 +502,11 @@ export function profileDefaultLayout(): DesktopLayout {
   const items = base.items.filter((i) => !(i.kind === 'widget' && personal.has(i.widget ?? '')));
   // Взамен — нейтральный счётчик защиты: он считает вырезанные трекеры ЭТОГО сеанса, ничего не
   // помнит между запусками и в сеть не ходит. Пустой стол выглядел бы поломкой, а не чистотой.
-  items.unshift({ id: 'w-shield', kind: 'widget', widget: 'shield', size: WIDGET_SIZES.small });
+  // ⚠️ Только если его там ещё нет: с тех пор как защита входит в общий набор, безусловный
+  // unshift давал ДВА элемента с одним id — а по id ищется всё, от перетаскивания до удаления.
+  if (!items.some((i) => i.id === 'w-shield')) {
+    items.unshift({ id: 'w-shield', kind: 'widget', widget: 'shield', size: WIDGET_SIZES.small });
+  }
   return { ...base, items };
 }
 

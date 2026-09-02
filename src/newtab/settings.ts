@@ -67,7 +67,7 @@ export const DEFAULT_NEWTAB_SETTINGS: NewTabSettings = {
   // с плитками. Плоская краска с зерном ведёт себя иначе — она читается землёй, а не картинкой,
   // и стол на ней собирается в одно целое. Убрать по-прежнему один щелчок в «Фоне».
   background: { kind: 'preset', preset: 'passion', meshId: '', color: '#FFFFFF', dim: 0, blur: 0 },
-  clock: { show: true, seconds: false, hour24: true, date: true, face: 'analog' },
+  clock: { show: true, seconds: false, hour24: true, date: true, face: 'digital' },
   greeting: { show: true, name: '' },
   search: { show: true },
   quickLinks: { show: true, count: 8, source: 'top', custom: [] },

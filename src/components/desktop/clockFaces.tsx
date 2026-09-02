@@ -387,7 +387,12 @@ export function CalendarFace({ now }: { now: Date }) {
   // это 234 px, строка сетки — около 22, и прежняя доля давала 11 px. Живая жалоба: «приходится
   // напрягаться, чтобы разобрать». Цифры дат — не подпись, а содержимое: ниже 13 px им нельзя.
   const rows = 1 + cells.length / 7;
-  const dayFont = gridBox.h ? Math.max(13, Math.min(Math.round((gridBox.h / rows) * 0.62), 28)) : 0;
+  // ⚠️ Нижний порог 11, а не 13. Тринадцать были поставлены по живой жалобе «приходится
+  // напрягаться, чтобы разобрать», и они же на мелкой плитке не давали семи строкам поместиться:
+  // при высоте плитки 224 px сетка вылезала за свою коробку на 15 px, а оболочка содержимое не
+  // обрезает — эти пиксели рисовались ПОВЕРХ СОСЕДНЕЙ ПЛИТКИ. Порог опущен по прямой просьбе
+  // владельца («сделай помельче»), но один порог всё равно не гарантия — гарантию даёт 1fr ниже.
+  const dayFont = gridBox.h ? Math.max(11, Math.min(Math.round((gridBox.h / rows) * 0.62), 28)) : 0;
   // ⚠️ Год снимается с мелкой плитки целиком. Он полезен, но это самая необязательная строка
   // календаря, а место, которое она занимает, — единственное, откуда можно взять высоту для дат.
   //
@@ -418,6 +423,12 @@ export function CalendarFace({ now }: { now: Date }) {
         ref={grid}
         style={{
           display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
+          // ⚠️ СТРОКИ ЯВНЫЕ И РАВНЫЕ (1fr), а не подразумеваемые. У неявных строк высота растёт по
+          // содержимому: кегль с нижним порогом плюс межстрочный интервал давали строку выше, чем
+          // ей отведено, и сетка вылезала за плитку — на соседа. С 1fr строки делят ровно ту
+          // высоту, что есть, и переполнение становится невозможным ПО ПОСТРОЕНИЮ, а не потому,
+          // что числа удачно сошлись. Тот же приём, которым размыкали круг мерцания.
+          gridTemplateRows: `repeat(${rows}, 1fr)`,
           gap: sp(1) - 2, flex: 1, minHeight: 0,
         }}
       >
@@ -425,6 +436,7 @@ export function CalendarFace({ now }: { now: Date }) {
           <div key={`h${i}`} style={{
             ...CAPS, color: 'inherit', opacity: 0.38, textAlign: 'center',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            minHeight: 0, overflow: 'hidden',
           }}>{d}</div>
         ))}
         {cells.map((n, i) => {
@@ -441,6 +453,10 @@ export function CalendarFace({ now }: { now: Date }) {
               boxShadow: on ? 'inset 0 0 0 2px currentColor' : 'none',
               opacity: n ? 1 : 0,
               fontWeight: on ? 800 : 500,
+              // ⚠️ Межстрочный интервал 1: у роли подписи он 1.45, и на мелкой плитке именно эта
+              // добавка делала строку выше отведённого. Цифре даты воздух сверху и снизу не нужен —
+              // она и так по центру клетки.
+              lineHeight: 1, minHeight: 0, overflow: 'hidden',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: motion.state('box-shadow'),
             }}>{n || ''}</div>
