@@ -73,6 +73,56 @@ const SWEEP = `(async () => {
   return out;
 })()`;
 
+
+// Плитка стоит на месте, пока её никто не трогает.
+//
+// ⚠️ ЭТО ДРУГАЯ ПОЛОМКА, чем мерцание, и прежний замер её НЕ ЛОВИЛ. Живая жалоба: календарь
+// «медленно растягивался и заезжал под виджет за ним», на чистом профиле, без единого действия
+// человека. Сторож размера выше сравнивает ОБОЛОЧКУ с ПЛИТКОЙ — а когда растёт сама плитка,
+// оболочка растёт вместе с ней, и расхождения нет. Слепое пятно ровно в форме симптома.
+//
+// ⚠️ Наблюдение 90 секунд, потому что единственное, что происходит в календаре само, — тик раз в
+// минуту (виджет обязан пережить полночь). Окно короче минуты не захватило бы ни одного тика, то
+// есть проверяло бы покой там, где покой ничем не нарушается.
+//
+// ⚠️ Ложных срабатываний у этой проверки нет по построению: неподвижная плитка неподвижна всегда.
+// Поймать она может не каждый раз — поломка была «один случай из нескольких», — но когда поймает,
+// назовёт и размер, и то, что именно поехало: инлайновый стиль (значит виновата раскладка стола)
+// или только фактический размер (значит CSS).
+const FIND_TILE = `(() => {
+  const grids = [...document.querySelectorAll('div')].filter((d) => {
+    const c = getComputedStyle(d).gridTemplateColumns;
+    return c && c.split(' ').length === 7;
+  });
+  if (grids.length === 0) return false;
+  let frame = grids[0].parentElement;
+  for (let i = 0; i < 8 && frame && !/px/.test(frame.style.height || ''); i++) frame = frame.parentElement;
+  if (!frame) return false;
+  // ⚠️ Запоминаем не только плитку, но и ОКРУЖЕНИЕ: область сетки (maxWidth 1320, см.
+  // DesktopGrid.tsx) и контейнер прокрутки. Когда сторож сработает, по ним сразу видно, что
+  // поехало: ширина области — значит виновато измерение, а если область неподвижна, а плитка
+  // изменилась — значит переписалась сама раскладка (колонки или масштаб стола).
+  let area = frame;
+  for (let i = 0; i < 10 && area && area.style.maxWidth !== '1320px'; i++) area = area.parentElement;
+  let scroller = frame;
+  for (let i = 0; i < 12 && scroller && getComputedStyle(scroller).overflowY !== 'auto'; i++) scroller = scroller.parentElement;
+  window.__calTile = { frame, area, scroller };
+  return true;
+})()`;
+
+const TILE = `(() => {
+  const c = window.__calTile;
+  if (!c) return null;
+  const r = c.frame.getBoundingClientRect();
+  const a = c.area ? c.area.getBoundingClientRect().width : -1;
+  const s = c.scroller ? c.scroller.getBoundingClientRect().width : -1;
+  return {
+    style: c.frame.style.height + ' ' + c.frame.style.width,
+    w: Math.round(r.width), h: Math.round(r.height),
+    area: Math.round(a), scroller: Math.round(s), win: window.innerWidth,
+  };
+})()`;
+
 await withStand(async (ctx) => {
   console.log('профиль:', ctx.profile, '\n');
   await wait(4000);
@@ -104,6 +154,39 @@ await withStand(async (ctx) => {
     const overflowed = rows.filter((r) => r.over > 2);
     check('сетка дней помещается в свою коробку', overflowed.length === 0,
       overflowed.length ? `на ${overflowed.length} высотах, худшая ${overflowed[0].h} px: лишку ${overflowed[0].over} px` : 'на всех высотах помещается');
+  }
+
+  // ── Плитка не растёт сама ─────────────────────────────────────────────────
+  // ⚠️ Опрос идёт СО СТОРОНЫ NODE короткими замерами. Один длинный evaluate на минуты подвешивает
+  // CDP-мост стенда намертво — проверено дважды, оба раза приходилось снимать дерево процессов.
+  // ⚠️ Пауза обязательна: перебор высот выше СТАВИЛ плитке свои размеры и вернул исходный в самом
+  // конце. Без ожидания слежка ловит остаток чужой раскладки и объявляет ростом то, что на деле
+  // возврат к норме. Поймано этим же прогоном: старт 320 при инлайновом стиле 264.
+  await wait(2500);
+  const found = await ctx.chrome.evaluate(FIND_TILE);
+  if (!found) {
+    check('наблюдение за неподвижностью выполнено', false, 'плитка календаря не найдена');
+  } else {
+    const first = await ctx.chrome.evaluate(TILE);
+    let worst = first;
+    for (let i = 0; i < 45; i++) {          // 45 x 2 c = 90 с, минутный тик внутри гарантированно
+      await wait(2000);
+      const now = await ctx.chrome.evaluate(TILE);
+      if (!now) continue;
+      if (Math.abs(now.h - first.h) > Math.abs(worst.h - first.h)
+        || Math.abs(now.w - first.w) > Math.abs(worst.w - first.w)) worst = now;
+    }
+    check('наблюдение за неподвижностью выполнено', true, `90 с, старт ${first.w}x${first.h}`);
+    const dw = worst.w - first.w;
+    const dh = worst.h - first.h;
+    check('плитка не растёт сама по себе', Math.abs(dw) <= 1 && Math.abs(dh) <= 1,
+      (dw || dh)
+        // ⚠️ Печатаем ОКРУЖЕНИЕ вместе с плиткой: если поехала область сетки — виновато измерение
+        // ширины, а если область стоит, а плитка изменилась — переписалась сама раскладка стола
+        // (колонки или масштаб). Без этих трёх чисел следующий разбор начнётся с нуля.
+        ? `поехало на ${dw}x${dh} px, стиль «${first.style}» → «${worst.style}»; `
+          + `область ${first.area}→${worst.area}, прокрутка ${first.scroller}→${worst.scroller}, окно ${first.win}→${worst.win}`
+        : 'за 90 секунд не сдвинулась');
   }
 });
 
