@@ -56,7 +56,18 @@ const SWEEP = `(async () => {
     mo.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
     await sleep(420);            // окно наблюдения
     mo.disconnect();
-    out.push({ h, mutations });
+    // ⚠️ Заодно РАЗМЕР. Мерцание и растягивание — разные поломки одной природы (раскладка,
+    // которая не сходится), и ловить их надо в одном прогоне: высоты уже перебраны, замер стоит
+    // ноль. Оболочка обязана в точности совпадать с плиткой, а сетка — помещаться в свою коробку;
+    // расхождение здесь и есть «виджет растянулся».
+    const f = frame.getBoundingClientRect();
+    const sh = shell.getBoundingClientRect();
+    const g = grid.getBoundingClientRect();
+    out.push({
+      h, mutations,
+      spill: Math.round(sh.height - f.height),
+      over: grid.scrollHeight - Math.round(g.height),
+    });
   }
   frame.style.height = was;
   return out;
@@ -84,6 +95,15 @@ await withStand(async (ctx) => {
     }
     const worst = rows.reduce((m, r) => Math.max(m, r.mutations), 0);
     check('худший размер укладывается в разумное число перерисовок', worst <= 30, `${worst}`);
+
+    // ⚠️ Порог 2 px, а не 0: getBoundingClientRect отдаёт дробные значения, и округление даёт
+    // пиксель туда-сюда законно. Растягивание — это десятки пикселей, а не единицы.
+    const spilled = rows.filter((r) => Math.abs(r.spill) > 2);
+    check('оболочка виджета не вылезает за плитку', spilled.length === 0,
+      spilled.length ? `на ${spilled.length} высотах, худшая ${spilled[0].h} px: ${spilled[0].spill} px` : 'на всех высотах совпадает');
+    const overflowed = rows.filter((r) => r.over > 2);
+    check('сетка дней помещается в свою коробку', overflowed.length === 0,
+      overflowed.length ? `на ${overflowed.length} высотах, худшая ${overflowed[0].h} px: лишку ${overflowed[0].over} px` : 'на всех высотах помещается');
   }
 });
 
