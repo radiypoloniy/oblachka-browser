@@ -13,6 +13,7 @@ import { densityOf, padOf, weatherFit, musicFit, tileGridCell } from '../../../s
 import CryptoIcon from '../CryptoIcon';
 import { siteTint } from './siteTint';
 import { AnalogFace, WideClusterClock, WideTypeClock } from './clockFaces';
+import { displayEm, DIGIT_EM, WIDE_EM } from './displayMetrics';
 // Общие со «Приложениями» AI-панели — см. шапку weatherIcon.tsx.
 import { WeatherIcon, wmoText, weatherSkin } from './weather';
 import { MoonWidget, ShieldWidget, DownloadsWidget, HolidayWidget, DigestWidget, TrackingWidget, CalendarWidget, TimerWidget } from './localWidgets';
@@ -247,33 +248,6 @@ export function TileCaption({ children }: { children: React.ReactNode }) {
  */
 // ── Метрика дисплейных цифр ───────────────────────────────────────────────────
 //
-// ⚠️ Числа ЗАМЕРЕНЫ, а не прикинуты. `measureText` по Unbounded при кегле 100 даёт «19:44» =
-// 233.3 px и «0:00» = 183.3 px; из разницы следует, что цифра занимает ровно 0.50 em, а
-// двоеточие 0.33 em. Прежние оценки — 0.78 у часов и 0.62 у курса — резервировали ширину,
-// которой цифры не занимают, и кегль упирался не в геометрию плитки, а в ошибку измерения:
-// на квадратной плитке часы стояли на 52 при доступных ~72.
-//
-// ⚠️ Пересчитывать при смене дисплейной гарнитуры. Замер повторяется страницей с
-// document.fonts.ready + measureText — сам шрифт лежит в src/assets/fonts.
-const DIGIT_EM = 0.50;
-const COLON_EM = 0.34;
-const SPACE_EM = 0.28;
-// Всё прочее (знаки валют, °, буквы) — с запасом: они шире цифр, и лучше недобрать кегль,
-// чем обрезать строку краем плитки.
-const WIDE_EM = 0.60;
-
-/** Ширина строки в единицах кегля: сколько em займёт текст дисплейной гарнитурой. */
-export function displayEm(text: string): number {
-  let em = 0;
-  for (const ch of text) {
-    if (ch >= '0' && ch <= '9') em += DIGIT_EM;
-    else if (ch === ':') em += COLON_EM;
-    else if (ch === ' ' || ch === ' ' || ch === ' ') em += SPACE_EM;
-    else em += WIDE_EM;
-  }
-  return em;
-}
-
 /**
  * Доля доступной ширины, которую занимает ключевое число.
  *
