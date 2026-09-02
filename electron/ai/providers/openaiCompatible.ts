@@ -17,8 +17,9 @@
 import { fetchInProfile } from '../../ProfileSession';
 import { capsFor, type Connection, type ProviderCaps } from '../../../shared/aiProviders';
 import { extractJson, toDialect, type JsonSchema } from '../../../shared/aiSchema';
-import { createSseParser, isSseDone } from '../../../shared/sseParse';
+import { isSseDone } from '../../../shared/sseParse';
 import { ProviderError, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
+import { httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
 
 interface Msg { role: 'system' | 'user' | 'assistant'; content: string }
 
@@ -52,8 +53,7 @@ export function createOpenAiCompatibleProvider(deps: OpenAiCompatDeps): Provider
         signal: opts?.abort,
       });
     } catch (e) {
-      if (opts?.abort?.aborted) throw new ProviderError('aborted', 'Прервано');
-      throw new ProviderError('unreachable', e instanceof Error ? e.message : 'Сеть недоступна');
+      throw networkError(e, opts?.abort);
     }
 
     if (!res.ok) throw await httpError(res, connection.label);
@@ -152,87 +152,24 @@ async function readWhole(res: Response): Promise<{ text: string; tokens: number;
 }
 
 async function readStream(res: Response, opts?: GenOpts): Promise<{ text: string; tokens: number; stop: string }> {
-  const body = res.body;
-  if (!body) throw new ProviderError('provider', 'Поток пуст');
-
-  const parser = createSseParser();
-  const decoder = new TextDecoder();
-  const reader = body.getReader();
   let text = '';
   let stop = 'stop';
   let tokens = 0;
 
-  const handle = (data: string): void => {
-    if (isSseDone(data)) return;
-    let json: unknown;
-    // ⚠️ Один битый кусок в середине потока не должен ронять весь ответ: остальные пришли целыми,
-    // и человек уже видит их на экране.
-    try { json = JSON.parse(data); } catch { return; }
+  await readSse(res, (ev) => {
+    if (isSseDone(ev.data)) return;
+    const json = parseEventJson(ev.data);
+    if (json === null) return;
     const choice = pick(json, ['choices', '0']);
     const piece = str(pick(choice, ['delta', 'content']));
     if (piece !== null && piece !== '') { text += piece; opts?.onChunk?.(piece); }
     const finish = str(pick(choice, ['finish_reason']));
     if (finish !== null) stop = finish;
+    // ⚠️ usage приходит последним событием и только если его попросили — поэтому не перетираем
+    // накопленное нулём, а обновляем только когда число реально пришло.
     const used = num(pick(json, ['usage', 'completion_tokens']));
     if (used !== null) tokens = used;
-  };
-
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const ev of parser.push(decoder.decode(value, { stream: true }))) handle(ev.data);
-    }
-    for (const ev of parser.flush()) handle(ev.data);
-  } catch (e) {
-    if (opts?.abort?.aborted) throw new ProviderError('aborted', 'Прервано');
-    throw new ProviderError('provider', e instanceof Error ? e.message : String(e));
-  } finally {
-    reader.releaseLock();
-  }
+  }, opts?.abort);
 
   return { text, tokens, stop };
-}
-
-/**
- * Ответ об ошибке → код, различимый для интерфейса.
- *
- * ⚠️ Текст провайдера сохраняется в message, но НЕ становится тем, что видит человек напрямую:
- * там встречается и ключ в открытом виде (некоторые шлюзы возвращают запрос целиком), и простыня
- * на десять строк. Показывать решает верхний слой, у него для этого есть код.
- */
-async function httpError(res: Response, label: string): Promise<ProviderError> {
-  const body = await res.text().catch(() => '');
-  const short = body.slice(0, 300);
-  if (res.status === 401 || res.status === 403) return new ProviderError('no-key', `«${label}» не принял ключ (${res.status})`);
-  if (res.status === 429) return new ProviderError('rate-limited', `«${label}»: слишком много запросов (429)`);
-  // 413 — запрос не влез; 400 с упоминанием контекста — то же самое другими словами.
-  if (res.status === 413 || (res.status === 400 && /context|token/i.test(short))) {
-    return new ProviderError('context', `«${label}»: запрос не помещается в контекст модели`);
-  }
-  return new ProviderError('provider', `«${label}» ответил ${res.status}: ${short}`);
-}
-
-function trimSlash(url: string): string {
-  return url.replace(/\/+$/, '');
-}
-
-// Мелкие безопасные доставалки: ответы провайдеров — чужой JSON, и обращаться к нему как к
-// известной структуре нельзя. `any` тут не нужен, хватает unknown с сужением.
-function pick(v: unknown, pathParts: readonly string[]): unknown {
-  let cur = v;
-  for (const p of pathParts) {
-    if (Array.isArray(cur)) { cur = cur[Number(p)]; continue; }
-    if (typeof cur !== 'object' || cur === null) return null;
-    cur = (cur as Record<string, unknown>)[p];
-  }
-  return cur ?? null;
-}
-
-function str(v: unknown): string | null {
-  return typeof v === 'string' ? v : null;
-}
-
-function num(v: unknown): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
