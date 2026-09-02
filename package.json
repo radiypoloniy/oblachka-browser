@@ -47,6 +47,7 @@
     "ai-providers-check": "node --experimental-strip-types scripts/ai-providers-check.mjs",
     "ai-schema-check": "node --experimental-strip-types scripts/ai-schema-check.mjs",
     "ai-routing-check": "node --experimental-strip-types scripts/ai-routing-check.mjs",
+    "sse-parse-check": "node --experimental-strip-types scripts/sse-parse-check.mjs",
     "chrome-ground-check": "node --experimental-strip-types scripts/chrome-ground-check.mjs",
     "contrast-check": "node --experimental-strip-types scripts/contrast-check.mjs",
     "overlay-shadow-check": "node --experimental-strip-types scripts/overlay-shadow-check.mjs",
