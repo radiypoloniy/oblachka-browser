@@ -91,7 +91,7 @@ export async function parsePhraseToRule(phrase: string): Promise<RuleParseResult
   const p = phrase.trim();
   if (p.length < 5) return { ok: false, reason: 'unclear' };
 
-  const res = await runTabOrganizePrompt(buildPrompt(p));
+  const res = await runTabOrganizePrompt(buildPrompt(p), { role: 'rules' });
   if (!res.ok) {
     console.warn('[rules] модель не ответила:', res.error);
     return { ok: false, reason: 'model-error', error: res.error };
@@ -100,7 +100,7 @@ export async function parsePhraseToRule(phrase: string): Promise<RuleParseResult
   const out = res.out.trim();
   // Триггер — отдельным коротким прогоном (см. buildTriggerPrompt). Ответ общего промпта на это
   // поле оставляем запасным: если короткий прогон не удался, пусть лучше будет догадка, чем отказ.
-  const triggerRes = await runTabOrganizePrompt(buildTriggerPrompt(p));
+  const triggerRes = await runTabOrganizePrompt(buildTriggerPrompt(p), { role: 'rules' });
   const triggerFocused = triggerRes.ok ? labelled(triggerRes.out.trim(), 'TRIGGER').toLowerCase() : '';
   const trigger = (triggerFocused === 'site' || triggerFocused === 'link-from')
     ? triggerFocused

@@ -162,7 +162,7 @@ export async function buildDigest(
   try {
     // Фоновая полоса очереди: даже когда человек нажал кнопку сам, он ждёт СВОЙ итог и не
     // должен из-за него ждать перевод (см. QwenQueue.ts). Задача одна и короткая.
-    const res = await runTabOrganizePrompt(buildPrompt(pages), { background: true });
+    const res = await runTabOrganizePrompt(buildPrompt(pages), { role: 'digest', background: true });
     if (!res.ok) {
       console.warn('[digest] модель не ответила:', res.error);
       return getDigest();

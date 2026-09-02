@@ -70,7 +70,7 @@ export async function suggestFileName(
     return { ok: false, error: 'В файле почти нет текста — назвать нечем' };
   }
 
-  const res = await runTabOrganizePrompt(buildPrompt(currentName, extracted.text));
+  const res = await runTabOrganizePrompt(buildPrompt(currentName, extracted.text), { role: 'organize' });
   if (!res.ok) return { ok: false, error: res.error };
 
   const name = sanitizeFileNameBase(res.out, ext);

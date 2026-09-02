@@ -16,7 +16,7 @@ import * as ModelRegistry from './ModelRegistry'
 import * as Inference from './inference/InferenceHost'
 import { enqueueQwen, isQwenBusy } from './QwenQueue'
 import type { AiAction, AiActionOutcome, ModelErrorCode } from '../shared/ipc'
-import { localProvider, type JsonSchema } from './ai/registry'
+import { modelFor, type JsonSchema, type AiRole } from './ai/registry'
 import { pickLanguage, FRANC_TO_CODE, FALLBACK_LANG } from '../shared/langDetect'
 
 // Дискриминируемая ошибка загрузки модели — ensureLoaded() бросает объекты этой формы вместо
@@ -375,14 +375,14 @@ async function unloadModelQueued(): Promise<void> {
 async function runPrompt(
   prompt: string,
   maxTokens: number,
-  onChunk?: (text: string) => void,
-  opts?: { background?: boolean; signal?: { aborted: boolean }; schema?: JsonSchema; abort?: AbortSignal },
+  onChunk: ((text: string) => void) | undefined,
+  opts: { role: AiRole; background?: boolean; signal?: { aborted: boolean }; schema?: JsonSchema; abort?: AbortSignal },
 ): Promise<{ out: string; tokens: number; stopReason: string }> {
-  const run = () => runPromptQueued(prompt, maxTokens, onChunk, opts?.schema, opts?.abort)
+  const run = () => runPromptQueued(prompt, maxTokens, onChunk, opts.role, opts?.schema, opts?.abort)
   return opts?.background ? withQwenQueueBackground(run, opts.signal) : withQwenQueue(run)
 }
 
-async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (text: string) => void, schema?: JsonSchema, abort?: AbortSignal): Promise<{ out: string; tokens: number; stopReason: string }> {
+async function runPromptQueued(prompt: string, maxTokens: number, onChunk: ((text: string) => void) | undefined, role: AiRole, schema?: JsonSchema, abort?: AbortSignal): Promise<{ out: string; tokens: number; stopReason: string }> {
   // ⚠️ ПОЧЕМУ ОДИН И ТОТ ЖЕ ЗАПРОС ИНОГДА ДАЁТ РАЗНЫЙ ОТВЕТ — разобрано замерами, не переоткрывать.
   // Сэмплинг ни при чём: temperature в node-llama-cpp по умолчанию 0, выборка жадная. Остаточный
   // контекст, квантованный KV-кэш и промпт проверены и отвергнуты (промпт побайтно одинаков).
@@ -392,7 +392,7 @@ async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (tex
   // машина, а трудное для модели решение, и лечится это промптом (одно решение на прогон), а не
   // бубном вокруг движка.
   const t0 = performance.now()
-  const res = await localProvider(ensureLoaded, getLoadedModelId).generate(prompt, { maxTokens, onChunk, schema, abort })
+  const res = await modelFor(role, ensureLoaded, getLoadedModelId).generate(prompt, { maxTokens, onChunk, schema, abort })
   console.log(`[perf] segment: всего=${(performance.now() - t0).toFixed(0)}ms outTokens=${res.tokens}`)
   return res
 }
@@ -468,7 +468,7 @@ export async function rerankHistoryCandidates(
   // этой сессии ещё ни разу не переводил и не чатился) ушёл бы в процесс инференса с незагруженной
   // моделью.
   await ensureLoaded()
-  const { out } = await runPrompt(buildRerankPrompt(query, candidates), RERANK_MAX_TOKENS, undefined, opts)
+  const { out } = await runPrompt(buildRerankPrompt(query, candidates), RERANK_MAX_TOKENS, undefined, { ...opts, role: 'search' })
   const seen = new Set<number>()
   const result: number[] = []
   for (const raw of out.match(/\d+/g) ?? []) {
@@ -507,7 +507,7 @@ export async function runTabOrganizePrompt(
   // видеть, что она идёт: без него любой долгий прогон выглядит зависшим (см. GenStudio).
   // abort — НАСТОЯЩЕЕ прерывание уже идущей генерации (доезжает до llama.cpp). Не путать с
   // signal: тот лишь снимает задачу, пока она ЖДЁТ в очереди.
-  opts?: { background?: boolean; signal?: { aborted: boolean }; maxTokens?: number; onChunk?: (text: string) => void; schema?: JsonSchema; abort?: AbortSignal },
+  opts: { role: AiRole; background?: boolean; signal?: { aborted: boolean }; maxTokens?: number; onChunk?: (text: string) => void; schema?: JsonSchema; abort?: AbortSignal },
 ): Promise<{ ok: true; out: string; stopReason: string } | { ok: false; error: string; errorCode?: ModelErrorCode }> {
   try {
     await ensureLoaded()
@@ -534,7 +534,7 @@ const TRANSLATE_SEGMENT_MAX_TOKENS = 300
 async function runSegmented(
   segments: string[],
   buildSegPrompt: (segment: string) => string,
-  maxTokens: number,
+  maxTokens: number, role: AiRole,
   onChunk?: (text: string) => void,
 ): Promise<{ out: string; ms: number; tokPerSec: number; loadMs: number | null }> {
   const tTotalStart = performance.now()
@@ -550,7 +550,7 @@ async function runSegmented(
     // пробела на границе (onTextChunk отдаёт текст как есть) — пробел между соседними сегментами
     // добавляем явно один раз здесь, а не полагаемся, что модель сама его сгенерирует.
     if (i > 0) onChunk?.(' ')
-    const { out, tokens } = await runPrompt(buildSegPrompt(segments[i]!), maxTokens, onChunk)
+    const { out, tokens } = await runPrompt(buildSegPrompt(segments[i]!), maxTokens, onChunk, { role })
     outs.push(out)
     totalTokens += tokens
   }
@@ -565,7 +565,7 @@ async function runSegmented(
 export async function translate(
   text: string,
   dir: Direction = 'auto',
-  onChunk?: (text: string) => void,
+  onChunk?: (text: string) => void, role: AiRole = 'page', // фрагмент, а не страница: см. aiRouting
 ): Promise<TranslateResult> {
   try {
     // Направление резолвим один раз по всему тексту — не по каждому предложению отдельно.
@@ -575,7 +575,7 @@ export async function translate(
     const dirUsed: ResolvedDirection = `${src}->${tgt}`
     const segments = splitSentences(text)
 
-    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildPrompt(src, tgt, seg), TRANSLATE_SEGMENT_MAX_TOKENS, onChunk)
+    const { out, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildPrompt(src, tgt, seg), TRANSLATE_SEGMENT_MAX_TOKENS, role, onChunk)
 
     console.log(
       `[translate] [${dirUsed}] ${segments.length} seg(s): "${text}" -> "${out}" ` +
@@ -668,7 +668,7 @@ export async function runAiAction(
     // Один связный ответ на весь текст (explain/simplify — пересказ длиной с оригинал; summarize —
     // компактнее, но всё равно длиннее одного переводческого предложения) — см. TEXT_ACTION_MAX_TOKENS
     // выше (модульная константа, не локальная — нужна и здесь, и в стартовом логе [gen] limits).
-    const { out: raw, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), TEXT_ACTION_MAX_TOKENS, onChunk)
+    const { out: raw, ms, tokPerSec, loadMs } = await runSegmented(segments, (seg) => buildActionPrompt(action, lang, seg), TEXT_ACTION_MAX_TOKENS, 'page', onChunk)
     const out = EDIT_ACTIONS.has(action) ? cleanEditOutput(raw) : raw
 
     console.log(
@@ -755,7 +755,7 @@ export async function translatePageBatch(
       charsSoFar += text.length
       onCharsStreamed(charsSoFar)
     })
-    const { out } = await runPrompt(prompt, PAGE_BATCH_MAX_TOKENS, onChunk)
+    const { out } = await runPrompt(prompt, PAGE_BATCH_MAX_TOKENS, onChunk, { role: 'translate' })
     const translations = parsePageBatchResponse(out)
     console.log(`[page-translate] батч ${units.length} юнит(ов) [${src}->${tgt}]: распознано ${translations.size}/${units.length}`)
     // Диагностика редкого бага: модель иногда вместо перевода конкретного юнита вставляет
@@ -832,7 +832,7 @@ async function runChatMessageQueued(
   try {
     const wasLoaded = loadPromise !== null
     const loadMs = await ensureLoaded()
-    const { out, history: newHistory, ms, tokens } = await localProvider(ensureLoaded, getLoadedModelId).chat(
+    const { out, history: newHistory, ms, tokens } = await modelFor('chat', ensureLoaded, getLoadedModelId).chat(
       userText, history, CHAT_SYSTEM_PROMPT, { maxTokens: CHAT_MAX_TOKENS, onChunk, abort },
     )
     console.log(

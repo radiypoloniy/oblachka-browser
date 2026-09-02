@@ -187,7 +187,7 @@ export async function mapFormFields(
   busy = true;
   try {
     // ⚠️ Фоновая полоса: человек просто открыл страницу с формой (см. QwenQueue.ts).
-    const res = await runTabOrganizePrompt(buildPrompt(unknown), { background: true });
+    const res = await runTabOrganizePrompt(buildPrompt(unknown), { role: 'forms', background: true });
     if (!res.ok) {
       console.warn('[autofill-map] модель не ответила:', res.error);
       return result;

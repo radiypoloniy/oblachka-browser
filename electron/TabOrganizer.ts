@@ -180,7 +180,7 @@ export async function suggestGroupName(tabs: { title: string; url: string }[]): 
   const named = tabs.filter((t) => (t.title && t.title.trim()) || t.url);
   if (named.length < 2) return null;
   const lines = named.map((t, i) => `${i + 1}. ${t.title || '(без названия)'} | ${extractHostname(t.url)}`);
-  const res = await runTabOrganizePrompt(buildTopicsPrompt(lines, 1), { background: true });
+  const res = await runTabOrganizePrompt(buildTopicsPrompt(lines, 1), { role: 'organize', background: true });
   if (!res.ok) return null;
   const first = parseTopics(res.out, 1)[0] ?? null;
   // Модель иногда возвращает слово-плейсхолдер из шаблона («тема») вместо ответа — это НЕ имя
@@ -288,7 +288,7 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
     // видеопамять — и в каждом из этих случаев собрать вкладки одного сайта мы всё равно можем.
     // Ошибку возвращаем только если в итоге не набралось НИ ОДНОЙ группы (см. конец функции).
     const maxTopics = topicBudget(unique.length);
-    const topicsRes = await runTabOrganizePrompt(buildTopicsPrompt(lines, maxTopics));
+    const topicsRes = await runTabOrganizePrompt(buildTopicsPrompt(lines, maxTopics), { role: 'organize' });
     if (!topicsRes.ok) {
       console.warn('[organize] модель недоступна, остаётся группировка по сайту:', topicsRes.error);
       modelError = { error: topicsRes.error, errorCode: topicsRes.errorCode };
@@ -306,7 +306,7 @@ export async function suggestGroups(): Promise<OrganizeProposal> {
       // тема, которой вкладка принадлежит по-настоящему, приходила второй и оставалась ни с чем.
       const claims = new Map<number, string[]>(); // номер вкладки → темы, которые её просят
       for (const topic of topics) {
-        const res = await runTabOrganizePrompt(buildTopicMembersPrompt(topic, topics, lines));
+        const res = await runTabOrganizePrompt(buildTopicMembersPrompt(topic, topics, lines), { role: 'organize' });
         if (!res.ok) {
           // Одна упавшая тема не отменяет остальные.
           console.warn(`[organize] тема «${topic}» не разобрана:`, res.error);

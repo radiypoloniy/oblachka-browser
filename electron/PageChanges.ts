@@ -98,7 +98,7 @@ export async function getPageChanges(
 
     let summary = '';
     if (isModelWarm()) {
-      const res = await runTabOrganizePrompt(buildPrompt(diff.pieces), { background: true });
+      const res = await runTabOrganizePrompt(buildPrompt(diff.pieces), { role: 'page', background: true });
       if (res.ok) summary = cleanSummary(res.out);
       else console.warn('[page-changes] модель не ответила:', res.error);
     }

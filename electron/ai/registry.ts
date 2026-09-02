@@ -18,6 +18,7 @@ import { createAnthropicProvider } from './providers/anthropic';
 import { createGeminiProvider } from './providers/gemini';
 import type { Provider } from './Provider';
 export type { JsonSchema } from '../../shared/aiSchema';
+export type { AiRole } from '../../shared/aiRouting';
 
 let localDeps: LocalDeps | null = null;
 let connections: Connection[] = [];
@@ -133,7 +134,7 @@ function limited(inner: Provider, max: number): Provider {
 
 
 /**
- * Встроенная Qwen как провайдер, со сборкой слоя при первом обращении.
+ * Провайдер, отвечающий за эту роль, со сборкой слоя при первом обращении.
  *
  * ⚠️ Живёт ЗДЕСЬ, а не у вызывающего: собрать слой нужно один раз на приложение, а зовут его из
  * TranslationService, который сам и поставляет зависимости. Держать эту склейку у него значило бы
@@ -143,13 +144,16 @@ function limited(inner: Provider, max: number): Provider {
  * ⚠️ Инициализация ЛЕНИВАЯ: провайдер трогает Electron-приложение, и на верхнем уровне модуля это
  * выполнилось бы до app.whenReady().
  *
- * ⚠️ Подключение берётся ПО ИМЕНИ, а не по роли. Роль объявляет вызывающий, а у трубы
- * TranslationService их семнадцать — раздать роли значит поменять семнадцать мест, то есть другой
- * заход. Пока подключений нет ни одного, routeFor всё равно вернул бы локальную.
+ * ⚠️ Роль сюда приносит ВЫЗЫВАЮЩИЙ, и это единственный способ ответить правильно: труба
+ * TranslationService общая на семнадцать разных функций браузера, и «кто спрашивает» она по
+ * построению не знает. Пока подключений нет ни одного, любая роль всё равно ведёт в локальную —
+ * то есть разница появляется ровно тогда, когда человек что-то подключил.
  */
-export function localProvider(ensureLoaded: LocalDeps['ensureLoaded'], modelId: LocalDeps['modelId']): Provider {
+export function modelFor(
+  role: AiRole, ensureLoaded: LocalDeps['ensureLoaded'], modelId: LocalDeps['modelId'],
+): Provider {
   if (localDeps === null) init({ ensureLoaded, modelId });
-  return providerById(LOCAL_CONNECTION_ID);
+  return providerFor(role).provider;
 }
 
 /** Для диагностики и для шапки настроек: что заведено и у чего есть ключ. */

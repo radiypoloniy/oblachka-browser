@@ -67,7 +67,7 @@ export async function findMatchFor(store: TrackingStore, id: number): Promise<vo
     // Спрашиваем про ОДНОГО кандидата — самого длинного по совпадению названия хватает, а каждый
     // лишний вопрос это отдельный прогон модели (правило «дробить, но не размножать»).
     const other = candidates[0]!;
-    const res = await runTabOrganizePrompt(buildPrompt(self.title, other.title), { background: true });
+    const res = await runTabOrganizePrompt(buildPrompt(self.title, other.title), { role: 'page', background: true });
     if (!res.ok) return;
     const yes = parseYes(res.out);
     console.log(`[tracking] пара ${id}+${other.id}: модель ответила ${yes ? 'да' : 'нет'}`);

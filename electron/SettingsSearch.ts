@@ -66,7 +66,7 @@ export async function searchSettingsByMeaning(query: string): Promise<number[]> 
   const lines = SETTINGS_INDEX.map((e, i) => `${i + 1}. ${e.label} (раздел «${e.sectionLabel}»)`);
   // Фоновая полоса: человек печатает, а не нажал кнопку. Если он в этот же момент закажет
   // перевод, перевод пойдёт первым (см. QwenQueue.ts).
-  const res = await runTabOrganizePrompt(buildPrompt(q, lines), { background: true });
+  const res = await runTabOrganizePrompt(buildPrompt(q, lines), { role: 'search', background: true });
   if (!res.ok) {
     console.warn('[settings-search] модель не ответила:', res.error);
     return [];

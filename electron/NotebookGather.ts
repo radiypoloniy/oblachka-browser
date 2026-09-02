@@ -49,7 +49,7 @@ export type SuggestOutcome =
 export async function suggestQueries(topic: string, context: string): Promise<SuggestOutcome> {
   const t = topic.trim();
   if (!t) return { ok: false, error: 'Напишите тему — по ней и подберу запросы' };
-  const res = await runTabOrganizePrompt(buildPrompt(t, context), {
+  const res = await runTabOrganizePrompt(buildPrompt(t, context), { role: 'notebook',
     maxTokens: QUERIES_MAX_TOKENS,
     schema: QUERIES_SCHEMA,
   });

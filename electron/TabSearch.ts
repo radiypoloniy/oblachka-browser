@@ -117,7 +117,7 @@ export async function searchTabsByMeaning(query: string, tabs: TabCandidate[]): 
   const lines = candidates.map((c, i) => `${i + 1}. ${c.tab.title.trim() || c.tab.url} — ${hostOf(c.tab.url)}`);
   // ⚠️ Фоновая полоса: человек печатает в омнибоксе, а не заказывал генерацию. Если он в этот
   // же момент нажмёт «перевести», перевод пойдёт первым (см. QwenQueue.ts).
-  const res = await runTabOrganizePrompt(buildPrompt(q, lines), { background: true });
+  const res = await runTabOrganizePrompt(buildPrompt(q, lines), { role: 'search', background: true });
   if (!res.ok) {
     console.warn('[tab-search] модель не ответила:', res.error);
     return [];

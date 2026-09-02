@@ -73,7 +73,7 @@ async function buildFromUrl(
     + `Paths you may choose from (copy one EXACTLY):\n${paths.slice(0, 24).join('\n')}\n\n`
     + `Give "path" (one of the above), "unit" (a short Russian word or a sign like ₽, may be empty) `
     + `and "title" (1-3 Russian words).\nAnswer as JSON.`,
-    {
+    { role: 'widgets',
       maxTokens: 200,
       schema: GEN_WEB_VALUE_SCHEMA,
       onChunk: (t) => { chars += t.length; onProgress?.({ stage: 'data', chars }); },
@@ -213,7 +213,7 @@ export async function parsePhraseToGenSpec(
   if (p.length < 3) return { ok: false, reason: 'unclear' };
 
   let kindChars = 0;
-  const kindRes = await runTabOrganizePrompt(buildKindPrompt(p), {
+  const kindRes = await runTabOrganizePrompt(buildKindPrompt(p), { role: 'widgets',
     maxTokens: KIND_MAX_TOKENS,
     schema: GEN_KIND_SCHEMA,
     onChunk: (t) => { kindChars += t.length; onProgress?.({ stage: 'kind', chars: kindChars }); },
@@ -227,7 +227,7 @@ export async function parsePhraseToGenSpec(
 
   let dataChars = 0;
   onProgress?.({ stage: 'data', chars: 0 });
-  const dataRes = await runTabOrganizePrompt(buildDataPrompt(p, kind, title), {
+  const dataRes = await runTabOrganizePrompt(buildDataPrompt(p, kind, title), { role: 'widgets',
     maxTokens: DATA_MAX_TOKENS,
     schema: genDataSchema(kind),
     onChunk: (t) => { dataChars += t.length; onProgress?.({ stage: 'data', chars: dataChars }); },

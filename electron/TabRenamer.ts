@@ -103,7 +103,7 @@ export async function suggestTabTitle(
     return { ok: false, error: 'Нечего назвать: страница пуста' };
   }
 
-  const res = await runTabOrganizePrompt(buildPrompt(fallbackTitle, url, text));
+  const res = await runTabOrganizePrompt(buildPrompt(fallbackTitle, url, text), { role: 'organize' });
   if (!res.ok) return { ok: false, error: res.error };
 
   const title = cleanTitle(res.out);

@@ -82,7 +82,7 @@ export async function suggestFolderForBookmark(
   const started = Date.now();
   // Полоса ПОЛЬЗОВАТЕЛЬСКАЯ, а не фоновая: человек нажал звезду и ждёт меню прямо сейчас
   // (в отличие от подсказок при наборе, которых он не заказывал).
-  const res = await runTabOrganizePrompt(buildPrompt(name, hostOf(url), list));
+  const res = await runTabOrganizePrompt(buildPrompt(name, hostOf(url), list), { role: 'organize' });
   if (!res.ok) {
     console.warn('[bookmark-folder] модель не ответила:', res.error);
     return null;

@@ -78,7 +78,7 @@ export async function suggestBookmarkFolders(tree: BookmarkNode[]): Promise<Book
   if (items.length < 4) return []; // на трёх закладках раскладка бессмысленна
 
   const lines = items.map((c, i) => `${i + 1}. ${c.title || c.url} — ${c.url}`);
-  const result = await runTabOrganizePrompt(buildPrompt(lines));
+  const result = await runTabOrganizePrompt(buildPrompt(lines), { role: 'organize' });
   // Отказ модели (не установлена, не загрузилась) — пустое предложение, а не исключение:
   // раскладка это предложение, и «модель промолчала» равносильно «предлагать нечего».
   // Причину человек и так увидит в разделе AI, городить второй канал ошибок незачем.

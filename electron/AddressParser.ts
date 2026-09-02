@@ -72,7 +72,7 @@ export async function parseAddressBlob(
   busy = true;
   let res;
   try {
-    res = await runTabOrganizePrompt(buildPrompt(input), { background: !opts.explicit });
+    res = await runTabOrganizePrompt(buildPrompt(input), { role: 'search', background: !opts.explicit });
   } finally {
     busy = false;
   }

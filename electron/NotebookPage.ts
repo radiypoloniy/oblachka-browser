@@ -150,7 +150,7 @@ export async function buildPage(
   // ── Тело статьи ───────────────────────────────────────────────────────────
   // ⚠️ Без schema. См. шапку файла: грамматика здесь не помогает, а мешает.
   act.note('Пишу статью');
-  const res = await runTabOrganizePrompt(buildBodyPrompt(PAGE_LENGTH_SPEC[length]) + '\n\n' + short, {
+  const res = await runTabOrganizePrompt(buildBodyPrompt(PAGE_LENGTH_SPEC[length]) + '\n\n' + short, { role: 'notebook',
     maxTokens: PAGE_LENGTH_TOKENS[length],
     abort: act.signal,
     onChunk: (t) => bump(t.length),
@@ -179,7 +179,7 @@ async function ask<T>(
   act: ActivityHandle,
   onChars: (n: number) => void,
 ): Promise<T | null> {
-  const res = await runTabOrganizePrompt(prompt, {
+  const res = await runTabOrganizePrompt(prompt, { role: 'notebook',
     maxTokens, schema, abort: act.signal, onChunk: (t) => onChars(t.length),
   });
   if (!res.ok || act.cancelled) return null;

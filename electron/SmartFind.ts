@@ -221,7 +221,7 @@ export async function pickFragmentByMeaning(wc: WebContents | null, query: strin
   for (const batch of batches) {
     scanned += batch.length;
     const allowed = new Set(batch.map((f) => f.n));
-    const res = await runTabOrganizePrompt(buildPrompt(q, batch));
+    const res = await runTabOrganizePrompt(buildPrompt(q, batch), { role: 'search' });
     if (!res.ok) {
       console.warn('[smart-find] модель не ответила:', res.error);
       return { ok: false, reason: 'model-error', error: res.error };
@@ -237,7 +237,7 @@ export async function pickFragmentByMeaning(wc: WebContents | null, query: strin
       // Добавка — по одному фрагменту за прогон, и только в ТОМ ЖЕ батче: раз ответ нашёлся
       // здесь, соседние места по смыслу почти всегда рядом, а лишние прогоны человек ждёт.
       while (chosen.length < MAX_HITS) {
-        const more = await runTabOrganizePrompt(buildMorePrompt(q, batch, chosen));
+        const more = await runTabOrganizePrompt(buildMorePrompt(q, batch, chosen), { role: 'search' });
         if (!more.ok) break;
         const next = parseAnswer(more.out.trim(), allowed).filter((n) => !chosen.includes(n));
         console.log(`[smart-find] добавка: ${next.length ? next[0] : 'нет'}, ответ модели ${JSON.stringify(more.out.trim().slice(0, 40))}`);
