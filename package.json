@@ -49,6 +49,7 @@
     "ai-routing-check": "node --experimental-strip-types scripts/ai-routing-check.mjs",
     "sse-parse-check": "node --experimental-strip-types scripts/sse-parse-check.mjs",
     "limiter-check": "node --experimental-strip-types scripts/limiter-check.mjs",
+    "omnibox-selection-check": "node --experimental-strip-types scripts/omnibox-selection-check.mjs",
     "chrome-ground-check": "node --experimental-strip-types scripts/chrome-ground-check.mjs",
     "contrast-check": "node --experimental-strip-types scripts/contrast-check.mjs",
     "overlay-shadow-check": "node --experimental-strip-types scripts/overlay-shadow-check.mjs",

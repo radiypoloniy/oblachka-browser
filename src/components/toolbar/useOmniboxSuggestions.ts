@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import type { HistoryEntry, SmartTabHit, SuggestDropdownItem, TabState } from '../../../shared/ipc';
 import { normalizeForOmnibox, scoreEntry } from '../../../shared/frecency';
 import { composeSuggestions, looksLikeAddress } from '../../../shared/suggestList';
+import { selectionAfterRebuild, type HeldSelection } from '../../../shared/omniboxSelection';
 import { getSearchEngine, isSearchResultUrl } from '../../../shared/searchEngines';
 import type { SearchEngineId } from '../../../shared/searchEngines';
 
@@ -306,6 +307,14 @@ export interface OmniboxSuggestions {
   /** Собрать список по набранному тексту. Историю рисует сразу, сеть догоняет. */
   triggerSuggest: (q: string) => void;
   /**
+   * Запомнить, что строку выбрал ЧЕЛОВЕК (стрелками), а не предвыбор.
+   *
+   * ⚠️ Зовётся из тулбара, где живут клавиши, но память держит этот хук: читает её пересборка
+   * списка, то есть он же. Без этой памяти вторая сборка — та, что приезжает вместе с живыми
+   * подсказками поисковика через секунды, — сбрасывала выбор человека сама.
+   */
+  holdSelection: (i: number, items: SuggestItem[]) => void;
+  /**
    * Отставить: погасить отложенный запрос к сети и забыть, что список был показан.
    *
    * ⚠️ Нужно закрытию дропдауна, которое живёт в тулбаре. Поднятого поколения хватило бы, чтобы
@@ -318,6 +327,23 @@ export interface OmniboxSuggestions {
 
 export function useOmniboxSuggestions(d: OmniboxSuggestionsDeps): OmniboxSuggestions {
   const { allTabs, searchEngineId, seqRef, openDropdown, closeDropdown, setSuggestions, setSelectedIdx } = d;
+
+  /**
+   * Строка, на которую человек встал СТРЕЛКАМИ, и поколение, в котором он это сделал.
+   *
+   * ⚠️ Память живёт ЗДЕСЬ, а не в тулбаре, хотя ставит её именно он: читает её пересборка списка,
+   * то есть этот же хук. Держать её снаружи значило бы тянуть ref через границу ради одного
+   * потребителя.
+   *
+   * ⚠️ Ref, а не состояние: пересборка живёт в useCallback и со стейтом видела бы прошлое
+   * значение — тот же приём и та же причина, что у seqRef рядом.
+   */
+  const heldRef = useRef<HeldSelection | null>(null);
+
+  /** Запомнить выбор человека. Пустой url — «выбрана набранная строка» (позиция -1). */
+  const holdSelection = useCallback((i: number, items: SuggestItem[]) => {
+    heldRef.current = { seq: seqRef.current, url: i >= 0 ? (items[i]?.url ?? '') : '' };
+  }, [seqRef]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Живые подсказки поисковика для ПОСЛЕДНЕГО запроса. Кладёт отложенный запрос, читает
@@ -438,7 +464,12 @@ export function useOmniboxSuggestions(d: OmniboxSuggestionsDeps): OmniboxSuggest
     // прежнее поведение. Дублировать здесь разбор resolveInput нельзя: две копии правил разъедутся
     // молча (в этом файле такое уже было с перечнем разделов настроек).
     const preselect = topItem && !looksLikeAddress(query) ? 0 : -1;
-    setSelectedIdx(preselect);
+    // ⚠️ Предвыбор применяется ТОЛЬКО если человек ещё не выбирал сам. Список собирается ДВАЖДЫ на
+    // одно нажатие — сразу и когда доедут живые подсказки поисковика (до трёх секунд), — и раньше
+    // вторая сборка безусловно ставила предвыбор: человек уходил стрелками на третью строку, а
+    // через две секунды подсветка прыгала обратно сама. Разбор и правила — в shared/omniboxSelection.ts.
+    const chosen = selectionAfterRebuild(deduped, preselect, heldRef.current, seq);
+    setSelectedIdx(chosen);
     openDropdown();
     // Тот же список — дополнительно в нативную вью дропдауна (заход 3/5, параллельно старому
     // React-дропдауну выше). Формирование списка (история/вкладки/frecency/дедуп) не меняется —
@@ -448,7 +479,7 @@ export function useOmniboxSuggestions(d: OmniboxSuggestionsDeps): OmniboxSuggest
     // иначе вью подсвечивала бы строку, которой уже нет/сместилась. Теперь тем же значением
     // едет и предвыбор героя — человек обязан ВИДЕТЬ, куда уйдёт Enter, иначе это фокус с
     // непредсказуемым исходом.
-    void window.oblako.setSuggestDropdownHighlight(preselect);
+    void window.oblako.setSuggestDropdownHighlight(chosen);
 
     await appendSmartTabs(query, q, deduped, seq, seqRef, setSuggestions);
   }, [allTabs, openDropdown, closeDropdown, searchEngineId, seqRef, setSuggestions, setSelectedIdx]);
@@ -483,5 +514,5 @@ export function useOmniboxSuggestions(d: OmniboxSuggestionsDeps): OmniboxSuggest
     listShownRef.current = false;
   }, []);
 
-  return { triggerSuggest, cancelPending };
+  return { triggerSuggest, cancelPending, holdSelection };
 }

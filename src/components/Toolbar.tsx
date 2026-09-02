@@ -343,7 +343,7 @@ export default function Toolbar({
   // отбрасывать протухшие ответы они обязаны одинаково.
   // Подсказки по набранному тексту — история, вкладки, живые подсказки поисковика, разделы
   // настроек, поиск вкладки по смыслу. Живут хуком рядом (см. useOmniboxSuggestions).
-  const { triggerSuggest, cancelPending } = useOmniboxSuggestions({
+  const { triggerSuggest, cancelPending, holdSelection } = useOmniboxSuggestions({
     allTabs,
     searchEngineId,
     seqRef: suggestSeqRef,
@@ -422,7 +422,7 @@ export default function Toolbar({
       const last = suggestions.length - 1;
       // Выбор живёт в ДВУХ местах сразу: здесь (Enter выполняется отсюда) и в нативной вью, где
       // строка подсвечивается. Одной строкой на оба, чтобы они не разъехались.
-      const moveTo = (i: number) => { setSelectedIdx(i); void window.oblako.setSuggestDropdownHighlight(i); };
+      const moveTo = (i: number) => { setSelectedIdx(i); holdSelection(i, suggestions); void window.oblako.setSuggestDropdownHighlight(i); };
       if (e.code === 'ArrowDown') { e.preventDefault(); moveTo(selectedIdx >= last ? -1 : selectedIdx + 1); return; }
       if (e.code === 'ArrowUp') { e.preventDefault(); moveTo(selectedIdx <= -1 ? last : selectedIdx - 1); return; }
       if (e.code === 'Home') { e.preventDefault(); moveTo(0); return; }
