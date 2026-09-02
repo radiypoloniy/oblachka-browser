@@ -12,6 +12,7 @@ import ReactDOM from 'react-dom/client';
 import { Sparkles, X, Send, Globe, LayoutGrid, Plus } from 'lucide-react';
 import './styles/global.css';
 import { AiActivityPill } from './aipanel/AiActivityPill';
+import { ModelChip } from './aipanel/parts/ModelChip';
 import { AppsMode, loadWallpaper, saveWallpaper, wallpaperBackground } from './components/aiApps';
 import { subscribeMeshes } from './newtab/gradients';
 import { SHELL_MARGIN } from '../shared/layout';
@@ -415,7 +416,7 @@ function AiPanel() {
                 padding: '8px 12px', fontSize: 'var(--fs-md)', fontFamily: 'var(--font-sans)',
                 color: 'var(--text-strong)',
               }}
-            />
+            /><ModelChip />
             <button
               onClick={handleSend}
               disabled={sending || !input.trim()}

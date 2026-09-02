@@ -13,7 +13,7 @@
 import * as Inference from '../../inference/InferenceHost';
 import { capsFor, localConnection, type Connection, type ProviderCaps } from '../../../shared/aiProviders';
 import { extractJson, type JsonSchema } from '../../../shared/aiSchema';
-import { ProviderError, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
+import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
 
 export interface LocalDeps {
   /** Поднять модель, если она ещё не поднята. Возвращает время загрузки (0 — была тёплой). */
@@ -70,7 +70,7 @@ export function createLocalProvider(deps: LocalDeps): Provider {
         const r = await Inference.runChat(
           userText, history, opts?.maxTokens ?? 512, systemPrompt, opts?.onChunk, opts?.abort,
         );
-        return { out: r.out, history: r.history, ms: r.ms, tokens: r.tokens };
+        return { out: r.out, history: r.history, ms: r.ms, tokens: r.tokens, via: viaOf(connection()) };
       } catch (e) {
         throw toProviderError(e);
       }

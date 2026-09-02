@@ -10,7 +10,7 @@
 // придумать состояние, которого у половины реализаций не бывает. Локальный провайдер греет модель
 // сам, внутри своих методов.
 
-import type { Connection, ProviderCaps } from '../../shared/aiProviders';
+import { capsFor, type Connection, type ProviderCaps } from '../../shared/aiProviders';
 import type { JsonSchema } from '../../shared/aiSchema';
 
 export interface GenOpts {
@@ -38,11 +38,25 @@ export interface GenResult {
   stopReason: string;
 }
 
+/**
+ * Кто ответил.
+ *
+ * ⚠️ Подпись собирает САМ ПРОВАЙДЕР, а не вызывающий. Он единственный знает наверняка, кто он:
+ * вызывающий видит лишь роль, а между ролью и провайдером стоит маршрут с откатами (нет ключа,
+ * сервер не ответил). Собрав подпись снаружи, мы бы написали «GPT-5» под ответом, который на деле
+ * дала локальная модель, — то есть соврали ровно в том месте, ради которого метку и заводили.
+ *
+ * ⚠️ `local` — это про АДРЕС, а не про тип: Ollama на localhost такое же «здесь», как встроенная
+ * Qwen, и текст к ней машину не покидает.
+ */
+export interface ChatVia { label: string; local: boolean }
+
 export interface ChatResult {
   out: string;
   history: unknown[];
   ms: number;
   tokens: number;
+  via: ChatVia;
 }
 
 export interface Provider {
@@ -88,4 +102,9 @@ export class ProviderError extends Error {
 
 export function isProviderError(e: unknown): e is ProviderError {
   return e instanceof ProviderError;
+}
+
+/** Подпись по подключению. Один рецепт на всех: иначе «здесь» считалось бы по-разному у каждого. */
+export function viaOf(conn: Connection): ChatVia {
+  return { label: conn.label, local: capsFor(conn).local };
 }

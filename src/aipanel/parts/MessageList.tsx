@@ -64,7 +64,15 @@ export function MessageList({
         overflowWrap: 'anywhere',
       }}>
         {m.role === 'assistant' ? (
-          <ReactMarkdown components={markdownComponents}>{m.text}</ReactMarkdown>
+          <>
+            {/* ⚠️ Метка маршрута — ЕДИНСТВЕННЫЙ способ отличить облачный ответ от локального, и
+                поэтому она у КАЖДОГО ответа, а не одна на панель: в одной беседе соседние ответы
+                могут прийти от разных моделей — человек переключил или случился откат.
+                ⚠️ Показывается только когда есть подключения: без них ответ всегда локальный, и
+                метка сообщала бы ноль, занимая строку в каждом ответе. */}
+            {m.via && <RouteMark via={m.via} />}
+            <ReactMarkdown components={markdownComponents}>{m.text}</ReactMarkdown>
+          </>
         ) : (
           <span style={{
             fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)',
@@ -153,5 +161,33 @@ export function MessageList({
       )
     })()}
   </div>
+  );
+}
+
+/**
+ * Откуда пришёл ответ: точка и имя модели.
+ *
+ * ⚠️ СМЫСЛ НЕСЁТ И ФОРМА, а не только цвет: «здесь» — залитая точка, «облако» — кольцо. Два
+ * оттенка на шести пикселях различит не каждый глаз и не каждый монитор, а заливка против контура
+ * читается всегда.
+ *
+ * ⚠️ Ollama на localhost — это «здесь». Решает не тип подключения, а адрес: текст не покидает
+ * машину, и красить его как облако значило бы соврать.
+ */
+function RouteMark({ via }: { via: { label: string; local: boolean } }) {
+  const color = via.local ? 'var(--dot-local)' : 'var(--dot-cloud)';
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4,
+      fontSize: 'var(--fs-xxs, 11px)', color: 'var(--text-faint)',
+      fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase',
+    }}>
+      <span style={{
+        width: 6, height: 6, borderRadius: '50%', flex: 'none',
+        background: via.local ? color : 'transparent',
+        border: via.local ? 'none' : `1.5px solid ${color}`,
+      }} />
+      {via.label}
+    </div>
   );
 }

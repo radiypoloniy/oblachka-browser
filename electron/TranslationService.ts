@@ -16,7 +16,7 @@ import * as ModelRegistry from './ModelRegistry'
 import * as Inference from './inference/InferenceHost'
 import { enqueueQwen, isQwenBusy } from './QwenQueue'
 import type { AiAction, AiActionOutcome, ModelErrorCode } from '../shared/ipc'
-import { modelFor, type JsonSchema, type AiRole } from './ai/registry'
+import { modelFor, type JsonSchema, type AiRole, type ChatVia } from './ai/registry'
 import { pickLanguage, FRANC_TO_CODE, FALLBACK_LANG } from '../shared/langDetect'
 
 // Дискриминируемая ошибка загрузки модели — ensureLoaded() бросает объекты этой формы вместо
@@ -784,7 +784,7 @@ export async function translatePageBatch(
 // теперь вызывающая сторона решает, чья это история.
 export type ChatOutcome =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  | { ok: true; out: string; history: any[]; ms: number; tokPerSec: number; loadMs: number | null }
+  | { ok: true; out: string; history: any[]; ms: number; tokPerSec: number; loadMs: number | null; via: ChatVia }
   | { ok: false; error: string; errorCode?: ModelErrorCode }
 
 const CHAT_SYSTEM_PROMPT = 'You are a helpful, concise assistant built into a web browser. Respond in the same language the user writes in.'
@@ -832,14 +832,14 @@ async function runChatMessageQueued(
   try {
     const wasLoaded = loadPromise !== null
     const loadMs = await ensureLoaded()
-    const { out, history: newHistory, ms, tokens } = await modelFor('chat', ensureLoaded, getLoadedModelId).chat(
+    const { out, history: newHistory, ms, tokens, via } = await modelFor('chat', ensureLoaded, getLoadedModelId).chat(
       userText, history, CHAT_SYSTEM_PROMPT, { maxTokens: CHAT_MAX_TOKENS, onChunk, abort },
     )
     console.log(
       `[chat] "${userText.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +
       `(${ms.toFixed(0)}ms, ${(tokens / (ms / 1000)).toFixed(1)} tok/s)`,
     )
-    return { ok: true, out, history: newHistory, ms, tokPerSec: tokens / (ms / 1000), loadMs: wasLoaded ? null : loadMs }
+    return { ok: true, out, history: newHistory, ms, tokPerSec: tokens / (ms / 1000), loadMs: wasLoaded ? null : loadMs, via }
   } catch (e) {
     console.error('[chat] error:', e)
     if (isModelError(e)) return { ok: false, error: e.message, errorCode: e.code }

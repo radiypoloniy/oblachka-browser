@@ -16,7 +16,7 @@
 import { fetchInProfile } from '../../ProfileSession';
 import { capsFor, type Connection, type ProviderCaps } from '../../../shared/aiProviders';
 import { extractJson, toDialect, type JsonSchema } from '../../../shared/aiSchema';
-import { ProviderError, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
+import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
 import { arr, httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
 
 interface Part { text: string }
@@ -111,6 +111,7 @@ export function createGeminiProvider(deps: GeminiDeps): Provider {
         history: [...prior, { role: 'user', parts: [{ text: userText }] }, { role: 'model', parts: [{ text: r.text }] }],
         ms: Date.now() - t0,
         tokens: r.tokens,
+        via: viaOf(connection),
       };
     },
   };

@@ -13,13 +13,20 @@ export type ModelErrorCode = 'NO_MODEL_INSTALLED' | 'MODEL_FILE_MISSING' | 'LOAD
 
 // Форма ChatOutcome из electron/TranslationService.ts — не через shared/ipc.ts (ad-hoc канал,
 // как и у поповера, см. preload-aipanel.ts), поэтому просто зеркалим форму локально.
+/** Кто ответил. ⚠️ Именно ОТВЕТИЛ, а не кого выбрали: при откате на локальную это разные вещи. */
+export interface ChatVia { label: string; local: boolean }
+
 export type ChatOutcome =
-  | { ok: true; out: string; ms: number; tokPerSec: number; loadMs: number | null }
+  | { ok: true; out: string; ms: number; tokPerSec: number; loadMs: number | null; via?: ChatVia }
   | { ok: false; error: string; errorCode?: ModelErrorCode }
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
+  /** Только у ответа. ⚠️ Хранится У СООБЩЕНИЯ, а не одним значением на панель: в одной беседе
+   *  соседние ответы могут прийти от разных моделей (человек переключил, или случился откат), и
+   *  общая подпись сверху соврала бы про половину переписки. */
+  via?: ChatVia
 }
 
 // Форма Skill из electron/SkillsStore.ts — зеркалим локально, тот же приём, что у ChatOutcome
@@ -67,6 +74,9 @@ declare global {
       clearChat: () => void
       onChatChunk: (cb: (text: string) => void) => () => void
       onChatResult: (cb: (outcome: ChatOutcome) => void) => () => void
+      aiConnections: () => Promise<AiConnectionsState>
+      setAiRoute: (role: string, connectionId: string | null) => Promise<boolean>
+      onAiConnectionsChanged: (cb: (state: AiConnectionsState) => void) => () => void
       onContext: (cb: (ctx: TabContext) => void) => () => void
       // Заход D — кнопка фактчека: показывается только когда ключ Gemini подключён.
       onKeyStatus: (cb: (connected: boolean) => void) => () => void
@@ -90,4 +100,14 @@ declare global {
       webappClose: (appId: string) => void
     }
   }
+}
+
+/**
+ * Снимок подключений — форма из shared/ipc.ts, зеркалим локально тем же приёмом, что ChatOutcome
+ * выше: панель ходит своим мостом и общий контракт не импортирует.
+ */
+export interface AiConnectionsState {
+  connections: { id: string; label: string; kind: string; model: string }[]
+  routing: Record<string, string>
+  ready: string[]
 }

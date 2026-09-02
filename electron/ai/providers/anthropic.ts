@@ -16,7 +16,7 @@
 import { fetchInProfile } from '../../ProfileSession';
 import { capsFor, type Connection, type ProviderCaps } from '../../../shared/aiProviders';
 import { toDialect, type JsonSchema } from '../../../shared/aiSchema';
-import { ProviderError, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
+import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
 import { arr, httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
 
 /** Версия API в заголовке. Anthropic требует её явно и не имеет «последней» по умолчанию. */
@@ -105,6 +105,7 @@ export function createAnthropicProvider(deps: AnthropicDeps): Provider {
         history: [...prior, { role: 'user', content: userText }, { role: 'assistant', content: r.text }],
         ms: Date.now() - t0,
         tokens: r.tokens,
+        via: viaOf(connection),
       };
     },
   };

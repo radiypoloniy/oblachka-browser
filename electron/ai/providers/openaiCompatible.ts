@@ -18,7 +18,7 @@ import { fetchInProfile } from '../../ProfileSession';
 import { capsFor, type Connection, type ProviderCaps } from '../../../shared/aiProviders';
 import { extractJson, toDialect, type JsonSchema } from '../../../shared/aiSchema';
 import { isSseDone } from '../../../shared/sseParse';
-import { ProviderError, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
+import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
 import { httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
 
 interface Msg { role: 'system' | 'user' | 'assistant'; content: string }
@@ -98,6 +98,7 @@ export function createOpenAiCompatibleProvider(deps: OpenAiCompatDeps): Provider
         history: [...prior, { role: 'user', content: userText }, { role: 'assistant', content: r.text }],
         ms: Date.now() - t0,
         tokens: r.tokens,
+        via: viaOf(connection),
       };
     },
   };

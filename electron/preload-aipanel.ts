@@ -7,6 +7,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 // же читает блокнот. Дублировать строки, как в sandboxed preload-content.ts, тут не нужно —
 // эта панель не в песочнице, импорт до неё доезжает.
 import { IPC } from '../shared/ipc'
+import type { AiConnectionsState } from '../shared/ipc'
 import type { AiActivityState } from '../shared/ipc'
 
 contextBridge.exposeInMainWorld('aiPanel', {
@@ -38,6 +39,16 @@ contextBridge.exposeInMainWorld('aiPanel', {
   },
   // Человек встал в поле ввода чата — вот это и есть намерение поговорить с моделью, а не сам
   // факт открытия панели (в ней ещё живут приложения и виджеты). См. AiPanelManager.ts.
+  // ⚠️ ТЕ ЖЕ каналы, что у настроек (shared/ipc), а не свои ad-hoc: подключения — общее состояние
+  // приложения, и вторая пара каналов означала бы два ответа на один вопрос «что подключено».
+  aiConnections: () => ipcRenderer.invoke(IPC.AI_CONN_LIST) as Promise<AiConnectionsState>,
+  setAiRoute: (role: string, connectionId: string | null) =>
+    ipcRenderer.invoke(IPC.AI_SET_ROUTE, role, connectionId) as Promise<boolean>,
+  onAiConnectionsChanged: (cb: (state: AiConnectionsState) => void) => {
+    const h = (_e: unknown, state: AiConnectionsState) => cb(state);
+    ipcRenderer.on(IPC.AI_CONN_CHANGED, h);
+    return () => { ipcRenderer.removeListener(IPC.AI_CONN_CHANGED, h); };
+  },
   chatIntent: () => ipcRenderer.send('ai-panel:chat-intent'),
 
   // webGrounding — тоггл-глобус (заход 2 задела): main решает по нему, идти ли через
