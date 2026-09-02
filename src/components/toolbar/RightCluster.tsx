@@ -5,6 +5,7 @@ import { SparkGlyph, DownloadGlyph } from '../glyphs';
 import { chromeCluster, clusterBtn } from '../../styles/island';
 import { glyph } from '../../styles/system';
 import { ProgressRing } from './ProgressRing';
+import { WindowControls } from './WindowControls';
 
 /**
  * Правая группа тулбара: AI-панель, буфер скопированного, загрузки.
@@ -131,6 +132,11 @@ export function RightCluster(props: {
           </button>
         </div>
       </div>
+
+      {/* ⚠️ Кнопки окна живут ЗДЕСЬ, а не отдельным блоком в тулбаре: они последние в правом
+          краю полосы и подчиняются той же логике «что человек нажимает справа». Разбор самих
+          кнопок — в WindowControls.tsx. */}
+      <WindowControls />
     </div>
   );
 }

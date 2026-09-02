@@ -30,7 +30,7 @@
     "ipc": 0
   },
   "electron/main.ts": {
-    "lines": 1648,
+    "lines": 1646,
     "fn": 200,
     "effects": 0,
     "ipc": 0
@@ -42,7 +42,7 @@
     "ipc": 0
   },
   "electron/preload.ts": {
-    "lines": 857,
+    "lines": 864,
     "fn": 6,
     "effects": 0,
     "ipc": 0
@@ -126,7 +126,7 @@
     "ipc": 9
   },
   "src/components/Toolbar.tsx": {
-    "lines": 549,
+    "lines": 548,
     "fn": 441,
     "effects": 5,
     "ipc": 13
@@ -156,7 +156,7 @@
     "ipc": 0
   },
   "src/components/desktop/widgets.tsx": {
-    "lines": 1317,
+    "lines": 1291,
     "fn": 140,
     "effects": 2,
     "ipc": 9

@@ -3,7 +3,7 @@
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
 import { IPC } from '../../shared/ipc';
-import type { DragCard, RuleParseOutcome, SmartFindResult, SplitSwapHint, TitleBarOpts } from '../../shared/ipc';
+import type { DragCard, RuleParseOutcome, SmartFindResult, SplitSwapHint } from '../../shared/ipc';
 import { endTabDrag, setSwapCursor, setSwapHint, setSwapThumb, startTabDrag } from '../DropZoneManager';
 import { parsePhraseToRule } from '../RuleParser';
 import { highlightCandidates, pickFragmentByMeaning } from '../SmartFind';
@@ -19,7 +19,16 @@ let smartFindBusy = false;
 export function registerWindowsIpc(d: IpcDeps): void {
   const { createWindow, moveTabToExistingWindow, moveTabToNewWindow, rules, tabsOf, winOf } = d;
 
-  ipcMain.handle(IPC.WINDOW_SET_OVERLAY, (e, opts: TitleBarOpts) => winOf(e)?.setTitleBarOverlay(opts));
+  // ⚠️ Три действия окна вместо прежней покраски полосы. Кнопки рисует наш хром (frame: false),
+  // поэтому нажатия обязаны доехать сюда — у окна без рамки ОС их не обрабатывает.
+  ipcMain.handle(IPC.WINDOW_MINIMIZE, (e) => { winOf(e)?.minimize(); });
+  ipcMain.handle(IPC.WINDOW_TOGGLE_MAXIMIZE, (e) => {
+    const w = winOf(e);
+    if (!w) return;
+    // Разворот и возврат — одна кнопка: у неё меняется только глиф.
+    if (w.isMaximized()) w.unmaximize(); else w.maximize();
+  });
+  ipcMain.handle(IPC.WINDOW_CLOSE, (e) => { winOf(e)?.close(); });
   // Роль окна — чром спрашивает её один раз при монтировании и по ней решает, что рисовать.
   // Отправитель вне реестра (такого быть не должно) трактуем как лёгкое окно: спрятать лишнее
   // безопаснее, чем показать кнопку, которая полезет в чужие вкладки.

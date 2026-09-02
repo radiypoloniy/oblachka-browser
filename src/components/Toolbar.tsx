@@ -463,7 +463,7 @@ export default function Toolbar({
         // совпадает с верхней кромкой сайдбара-острова (тот же токен воздуха). Высота контейнера
         // (TOOLBAR_HEIGHT) не меняется — плашки просто прижаты к верху вместо центрирования.
         display: 'flex', alignItems: 'flex-start', gap: 10, height: TOOLBAR_HEIGHT, flex: 'none',
-        paddingLeft: 16, paddingRight: 138, paddingTop: 'var(--gutter-shell)',
+        paddingLeft: 16, paddingRight: 138, paddingTop: 'var(--gutter-shell)', // 138 = три кнопки окна
         position: 'relative',
       }}
     >
@@ -545,4 +545,3 @@ export default function Toolbar({
 // в других панелях (История/Настройки), см. импорт наверху файла. Вписаны в текущую высоту
 // тулбара (TOOLBAR_HEIGHT не меняется) — сами токены стекла/тени/скругления не подбирались
 // заново, те же, что уже отлажены в поповере/AI-панели.
-

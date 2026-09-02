@@ -9,7 +9,7 @@
 // приходится как единое window.oblako, и дробить эту точку входа было бы правдой про файлы, а не
 // про программу.
 import type { ContentBounds, FindResult, SidebarNode, SpecialTabKind, SyncState, TabState } from './core';
-import type { BookmarkEntry, DayDigestState, HistoryClearPeriod, HistoryEntry, SemanticSearchResult, SmartSearchResponse, TitleBarOpts } from './history';
+import type { BookmarkEntry, DayDigestState, HistoryClearPeriod, HistoryEntry, SemanticSearchResult, SmartSearchResponse } from './history';
 import type { AdBlockState, MatchSuggestion, PageChangesResult, ParsedAddressPart, ProductState, SmartTabHit, StuffHit, TrackedProduct, TrackingEvent } from './omnibox';
 import type { AiActivityState } from './ai';
 import type { CryptoRatesInfo, CurrencyRatesInfo, DragCard, NextHolidayInfo, SplitSwapHint, TabDropResult, TabDropZone, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, WeatherInfo, WindowRole } from './app';
@@ -91,7 +91,12 @@ export interface CoreApi {
   // Прямоугольник омнибокса — see IPC.OMNIBOX_SET_BOUNDS. Пока только сохраняется в main,
   // без вью-потребителя (см. shared/ipc.ts::IPC).
   setOmniboxBounds(bounds: ContentBounds): Promise<void>;
-  setTitleBarOverlay(opts: TitleBarOpts): Promise<void>;
+  // Кнопки окна рисуем сами — см. WindowControls.tsx и разбор у каналов в channels/shell.ts.
+  minimizeWindow(): Promise<void>;
+  toggleMaximizeWindow(): Promise<void>;
+  closeWindow(): Promise<void>;
+  /** Окно развернули или вернули. Возвращает отписку. */
+  onWindowMaximized(cb: (maximized: boolean) => void): () => void;
   // Роль ЭТОГО окна — см. WindowRole. Полное окно рисует всё; лёгкое прячет то, что живёт в
   // приложении в одном экземпляре и принадлежит полному (AI-панель, быстрый поиск, перевод
   // страницы, граф/блокнот на новой вкладке).

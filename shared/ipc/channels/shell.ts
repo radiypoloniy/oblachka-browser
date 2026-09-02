@@ -27,7 +27,17 @@ export const SHELL = {
   // хранит, ничем не пользуется). Гоняется отдельно от CONTENT_SET_BOUNDS — геометрия контента
   // и геометрия омнибокса меняются по разным причинам (сайдбар/VPN-пилюля vs reserve-панели).
   OMNIBOX_SET_BOUNDS: 'omnibox:set-bounds',
-  WINDOW_SET_OVERLAY: 'window:set-overlay', // обновить цвет иконок titleBarOverlay
+  // ⚠️ Здесь был window:set-overlay — единственный рычаг, который Windows давала над полосой
+  // системных кнопок: ОДИН СПЛОШНОЙ ЦВЕТ. Из-за него верх окна не мог участвовать ни в градиенте
+  // земли, ни в затемнении под модалкой: полосу рисовала ОС, вне нашей раскладки. Теперь кнопки
+  // наши (frame: false, см. WindowControls.tsx), красить нечего, и вместо одного канала цвета
+  // появились три канала действий.
+  WINDOW_MINIMIZE: 'window:minimize',
+  WINDOW_TOGGLE_MAXIMIZE: 'window:toggle-maximize',
+  WINDOW_CLOSE: 'window:close',
+  // main → chrome: окно развернули или вернули. От этого зависит только глиф средней кнопки —
+  // спрашивать состояние опросом было бы и дороже, и с задержкой.
+  WINDOW_MAXIMIZED: 'window:maximized',
   // Роль окна (см. WindowRole ниже). Спрашивается один раз при монтировании чрома: от неё
   // зависит, что окно вообще рисует.
   WINDOW_GET_ROLE: 'window:get-role',

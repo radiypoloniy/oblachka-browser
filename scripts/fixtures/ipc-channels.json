@@ -403,9 +403,12 @@
   "VPN_SET_SUBSCRIPTION=vpn:set-subscription",
   "VPN_STATUS_CHANGED=vpn:status-changed",
   "WEATHER_GET=weather:get",
+  "WINDOW_CLOSE=window:close",
   "WINDOW_GET_ROLE=window:get-role",
+  "WINDOW_MAXIMIZED=window:maximized",
+  "WINDOW_MINIMIZE=window:minimize",
   "WINDOW_MOVE_TAB=window:move-tab",
   "WINDOW_MOVE_TAB_TO=window:move-tab-to",
   "WINDOW_OPEN=window:open",
-  "WINDOW_SET_OVERLAY=window:set-overlay"
+  "WINDOW_TOGGLE_MAXIMIZE=window:toggle-maximize"
 ]

@@ -1,6 +1,5 @@
 
 // Параметры titleBarOverlay для динамического обновления (смена темы).
-export type TitleBarOpts = { color?: string; symbolColor?: string; height?: number };
 
 // ── История посещений ────────────────────────────────────────────────────────
 export interface HistoryEntry {

@@ -84,7 +84,6 @@ import { RuleStore } from './RuleStore';
 import { suggestTabTitle } from './TabRenamer';
 import { showPermissionRequest } from './PermissionPopoverManager';
 import { SearchTargetStore } from './SearchTargetStore';
-import { CHROME_OVERLAY_PX } from '../shared/chromeGround';
 import { initPasswordPopover } from './PasswordPopoverManager';
 import { initAutofillPopover } from './AutofillPopoverManager';
 import * as autofillOrchestrator from './AutofillOrchestrator';
@@ -113,6 +112,7 @@ import { registerProfilesIpc } from './ipc/profiles';
 import { registerTrackingIpc } from './ipc/tracking';
 import { registerOverlaysIpc } from './ipc/overlays';
 import { registerWindowsIpc } from './ipc/windows';
+import { wireWindowControls } from './window/windowControls';
 import { registerSearchIpc } from './ipc/search';
 import { registerAiHubIpc } from './ipc/aiHub';
 import { registerVpnIpc } from './ipc/vpn';
@@ -857,12 +857,9 @@ function createWindow(role: WindowRole = 'main') {
     // show:false — против белого экрана: окно покажем, когда React-оболочка отрисуется
     // (сигнал CHROME_UI_READY из src/main.tsx), с fallback-таймаутом ниже.
     show: false,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#F2F2F7',   // --app-bg светлой темы; обновляется через IPC при смене темы
-      symbolColor: '#3C3C43',
-      height: CHROME_OVERLAY_PX,
-    },
+    // ⚠️ Без рамки вовсе, а не titleBarOverlay: полосу системных кнопок ОС красила одним сплошным
+    // цветом вне нашей раскладки — разбор в toolbar/WindowControls.tsx. Кнопки рисует хром.
+    frame: false,
   });
 
   // Слой хрома (сайдбар+тулбар+хаб) — обычный WebContentsView во всё окно.
@@ -918,6 +915,7 @@ function createWindow(role: WindowRole = 'main') {
 
   const ctx = { win, chromeView, tabs, role };
   registerWindow(ctx);
+  wireWindowControls(win);
   sess?.setOwner(tabs);
   if (isMain) { mainWin = win; mainChromeView = chromeView; mainTabs = tabs; mainSess = sess; }
 
