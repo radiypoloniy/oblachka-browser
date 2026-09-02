@@ -145,15 +145,34 @@ export function saveKey(connectionId: string, key: string): boolean {
  * когда ключей не осталось, есть; поддаваться ему не надо. Пустой зашифрованный блоб ничего не
  * стоит, а «удалим файл, раз он пустой» — это ровно та привычка, которая 21.08 стёрла боевые
  * пароли.
+ *
+ * ⚠️ А ВОТ СТАРЫЙ ФАЙЛ ЗДЕСЬ УДАЛЯЕТСЯ, и это не противоречие правилу, а его граница. Правило
+ * запрещает стирать данные человека РАДИ ВОССТАНОВЛЕНИЯ ПОСЛЕ ОШИБКИ — «не прочиталось, удалим и
+ * пересоздадим». Здесь другое: человек нажал «Удалить» и ждёт, что ключа больше нет. Оставить его
+ * лежать читаемым в gemini-key.enc после этого — не бережность, а невыполненное обещание, причём
+ * про секрет. Намерение человека и наша неуверенность в своём коде — разные основания.
+ *
+ * ⚠️ Отметка `migrated` при этом всё равно нужна и ставится раньше: если unlink не удался (файл
+ * занят, права), ключ не должен воскреснуть на следующем старте.
  */
 export function deleteKey(connectionId: string): boolean {
   if (keys[connectionId] === undefined) return true;
   const next = { ...keys };
   delete next[connectionId];
+  migrated.add(connectionId);
   if (!writeKeys(next)) return false;
   keys = next;
+  if (connectionId === LEGACY_GEMINI_ID) removeLegacyFile();
   notify();
   return true;
+}
+
+function removeLegacyFile(): void {
+  try {
+    fs.unlinkSync(filePath(LEGACY_GEMINI_FILE));
+  } catch {
+    // Файла нет — обычный случай на установке, где миграции не было.
+  }
 }
 
 function writeKeys(next: Record<string, string>): boolean {

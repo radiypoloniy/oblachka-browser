@@ -1,97 +1,64 @@
-// Заход D (шаг 3) — хранилище Gemini API-ключа для AI-фактчека, персистентно через
-// Electron safeStorage (тот же DPAPI-принцип, что заложен в CLAUDE.md для будущего SecretStore
-// паролей — на Windows это Data Protection API, ключ шифруется под учётной записью пользователя
-// ОС). Публичный API (getKeyStatus/saveKey/deleteKey/getKey/onKeyStatusChanged) не изменился
-// относительно шага 2 — поменялась только реализация: файл на диске вместо только-памяти.
+// Ключ Gemini — ФАСАД над общим хранилищем ключей (electron/ai/KeyStore.ts).
 //
-// ⚠️ Ключ — секрет, не настройка: НЕ в settings.json рядом с несекретными значениями (см.
-// SettingsManager.ts) — отдельный файл, зашифрованный блоб, а не JSON-строка. Пишем сразу через
-// safeStorage, без промежуточного plaintext-этапа — если ключ хоть раз попадёт на диск открытым
-// текстом, он рискует остаться читаемым в бэкапах даже после перехода на шифрование, а сам переход
-// создаст скачок (старое значение новый код не прочитает, будет казаться, что ключ пропал).
+// ⚠️ Файл сохранён целиком ради его пяти вызывающих (main, AiPanelManager, ipc/aiHub,
+// GeminiFactCheck): публичный API не изменился ни на букву, менять их не пришлось. Переписывать
+// пять мест ради переезда хранилища значило бы смешать в одном заходе перенос данных и правку
+// проводки — а разбираться потом, что именно сломалось, пришлось бы в обоих сразу.
 //
-// connected-статус — единственное, что когда-либо уходит в renderer; сам ключ наружу из main
-// не отдаётся (см. shared/ipc.ts::AI_GET_KEY_STATUS). Не перечитываем safeStorage на каждый
-// вопрос "подключено ли" — держим булев флаг в памяти, инвалидируем при save/delete/загрузке.
-import { app, safeStorage } from 'electron';
-import fs from 'node:fs';
-import path from 'node:path';
+// ⚠️ Что реально изменилось под фасадом: ключ переехал из отдельного файла `gemini-key.enc` в
+// общий `ai-keys.enc`, где лежит карта «подключение → ключ». Миграция ОДНОКРАТНАЯ и добавляющая,
+// разбор — в шапке ai/KeyStore.ts.
+//
+// ⚠️ Почему фасад остаётся, а не исчезает: «ключ Gemini» — это не подключение к модели, а ключ к
+// ФАКТЧЕКУ, у которого своя форма запроса (google_search tool) и своё архитектурное требование
+// (ссылки только из groundingMetadata реального ответа, см. GeminiFactCheck.ts). На общий адаптер
+// он не переезжает и не должен: общий контракт провайдера про grounding ничего не знает.
+import * as KeyStore from './ai/KeyStore';
+
+/** Под каким id ключ фактчека живёт в общем хранилище. */
+const GEMINI_ID = 'gemini';
 
 type Listener = (connected: boolean) => void;
 
-let apiKey: string | null = null;
-const listeners = new Set<Listener>();
-
-function keyFilePath(): string {
-  return path.join(app.getPath('userData'), 'gemini-key.enc');
-}
-
-// Вызывается один раз при старте, ПОСЛЕ app.whenReady() — safeStorage требует готовое приложение
-// (см. main.ts::app.whenReady). Не в конструкторе/на верхнем уровне модуля.
+/**
+ * Вызывается один раз при старте, ПОСЛЕ app.whenReady() — safeStorage требует готовое приложение
+ * (см. main.ts::app.whenReady). Не в конструкторе и не на верхнем уровне модуля.
+ *
+ * ⚠️ Поднимает ВСЕ ключи разом, не только Gemini: хранилище теперь общее. Второй вызов из другого
+ * места ничего не испортит — загрузка идемпотентна.
+ */
 export function loadFromDisk(): void {
-  try {
-    if (!safeStorage.isEncryptionAvailable()) {
-      console.error('[AiKeyStore] safeStorage недоступен на этой машине — ключ Gemini не будет загружен/сохранён');
-      return;
-    }
-    const buf = fs.readFileSync(keyFilePath());
-    const decrypted = safeStorage.decryptString(buf);
-    apiKey = decrypted || null;
-  } catch {
-    // Файла нет (первый запуск / ключ не сохранён) или он битый — остаёмся без ключа, это норма.
-    apiKey = null;
-  }
+  KeyStore.loadFromDisk();
 }
 
 export function getKeyStatus(): boolean {
-  return apiKey !== null;
+  return KeyStore.hasKey(GEMINI_ID);
 }
 
-// Возвращает ключ для реального вызова Gemini (шаг 5) — используется только в main, никогда не
-// пересекает границу IPC.
+/** Ключ для реального вызова Gemini — используется только в main, никогда не пересекает IPC. */
 export function getKey(): string | null {
-  return apiKey;
+  return KeyStore.getKey(GEMINI_ID);
 }
 
 export function saveKey(key: string): boolean {
-  const trimmed = key.trim();
-  if (!trimmed) return false;
-  if (!safeStorage.isEncryptionAvailable()) return false;
-
-  const encrypted = safeStorage.encryptString(trimmed);
-  const filePath = keyFilePath();
-  const tmpPath = filePath + '.tmp';
-  try {
-    fs.writeFileSync(tmpPath, encrypted);
-    fs.renameSync(tmpPath, filePath);
-  } catch (e) {
-    console.error('[AiKeyStore] не удалось записать зашифрованный ключ на диск:', e);
-    return false;
-  }
-
-  apiKey = trimmed;
-  notify();
-  return true;
+  return KeyStore.saveKey(GEMINI_ID, key);
 }
 
-// ⚠️ Удаляет и ключ из памяти, и файл на диске — не должно оставаться «осиротевшего»
-// зашифрованного блоба после удаления через UI.
 export function deleteKey(): void {
-  apiKey = null;
-  try {
-    fs.unlinkSync(keyFilePath());
-  } catch {
-    // Файла и так нет (уже удалён/никогда не сохранялся) — не ошибка.
-  }
-  notify();
+  KeyStore.deleteKey(GEMINI_ID);
 }
 
+/**
+ * ⚠️ Общее хранилище сообщает СПИСОК готовых подключений, а этому фасаду нужен булев ответ про
+ * одно. Пересчитываем на месте, а не пробрасываем список: иначе подписчик (панель, настройки)
+ * получал бы уведомление о чужих ключах и перерисовывался бы без причины.
+ */
 export function onKeyStatusChanged(cb: Listener): () => void {
-  listeners.add(cb);
-  return () => listeners.delete(cb);
-}
-
-function notify(): void {
-  const connected = getKeyStatus();
-  for (const cb of listeners) cb(connected);
+  let last = getKeyStatus();
+  return KeyStore.onChanged(() => {
+    const now = getKeyStatus();
+    if (now === last) return;
+    last = now;
+    cb(now);
+  });
 }
