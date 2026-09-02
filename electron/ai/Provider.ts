@@ -1,0 +1,82 @@
+// Контракт «что умеет модель», один на локальную Qwen и на любое облако.
+//
+// ⚠️ Метод здесь ТРИ, и это предел намеренно. Слой заводится не ради обобщения, а ради одной
+// задачи: перенести тринадцать существующих AI-функций на любого провайдера, не переписывая каждую.
+// Всё, что они на самом деле просят у модели, — это «дай текст», «дай объект по схеме» и «продолжи
+// беседу». Четвёртый метод появится тогда, когда появится четвёртая нужда, а не заранее.
+//
+// ⚠️ Загрузку модели контракт НЕ описывает и описывать не должен. Она есть только у локальной
+// (тридцать секунд и гигабайты VRAM), у облака её нет вовсе, и «унифицировать» их значило бы
+// придумать состояние, которого у половины реализаций не бывает. Локальный провайдер греет модель
+// сам, внутри своих методов.
+
+import type { Connection, ProviderCaps } from '../../shared/aiProviders';
+import type { JsonSchema } from '../../shared/aiSchema';
+
+export interface GenOpts {
+  maxTokens?: number;
+  /** Токены по мере генерации — там, где человек СМОТРИТ на сборку и обязан видеть, что она идёт. */
+  onChunk?: (text: string) => void;
+  /** Настоящее прерывание уже идущей генерации. */
+  abort?: AbortSignal;
+  /** Задача, которой человек не заказывал: ждёт, пока не опустеет пользовательская полоса. */
+  background?: boolean;
+}
+
+export interface GenResult {
+  out: string;
+  tokens: number;
+  stopReason: string;
+}
+
+export interface ChatResult {
+  out: string;
+  history: unknown[];
+  ms: number;
+  tokens: number;
+}
+
+export interface Provider {
+  readonly connection: Connection;
+  caps(): ProviderCaps;
+
+  /** Свободный текст. */
+  generate(prompt: string, opts?: GenOpts): Promise<GenResult>;
+
+  /**
+   * Объект по схеме.
+   *
+   * ⚠️ Возвращает СЫРОЕ разобранное значение, а не проверенное. Проверка границ и ремонтный повтор
+   * живут этажом выше (structured.ts) — общие для всех провайдеров, потому что теряют границы все,
+   * просто по-разному. Дублировать эту работу в каждом адаптере значило бы получить четыре слегка
+   * разных представления о том, что такое валидный ответ.
+   */
+  generateStructured(schema: JsonSchema, prompt: string, opts?: GenOpts): Promise<unknown>;
+
+  /**
+   * Продолжение беседы. `history` — непрозрачное для вызывающего значение: у локальной это формат
+   * LlamaChatSession, у облака — массив сообщений. Кто выдал, тот и разбирает.
+   */
+  chat(userText: string, history: unknown[], systemPrompt: string, opts?: GenOpts): Promise<ChatResult>;
+}
+
+/** Коды отказа, различимые для интерфейса. Текст провайдера кладём в message. */
+export type ProviderErrorCode =
+  | 'no-key'          // ключа нет или он не принят
+  | 'unreachable'     // endpoint не ответил
+  | 'rate-limited'    // упёрлись в лимит провайдера
+  | 'context'         // запрос не влез в контекст модели
+  | 'schema'          // ответ не сошёлся со схемой даже после ремонта
+  | 'aborted'         // прервал человек
+  | 'provider';       // всё прочее, что сказал провайдер
+
+export class ProviderError extends Error {
+  constructor(readonly code: ProviderErrorCode, message: string) {
+    super(message);
+    this.name = 'ProviderError';
+  }
+}
+
+export function isProviderError(e: unknown): e is ProviderError {
+  return e instanceof ProviderError;
+}
