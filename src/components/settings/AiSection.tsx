@@ -3,6 +3,9 @@ import { Check, KeyRound, Search, RefreshCw, Trash2, AlertTriangle } from 'lucid
 import type { BackfillProgress, HistoryContentCoverage, InstalledModel, TranslationEngineId, BergamotStatus } from '../../../shared/ipc';
 import ModelsSection from '../ModelsSection';
 import SkillsSection from './SkillsSection';
+import { AiConnectionsBlock } from './AiConnectionsBlock';
+import { AiRolesBlock } from './AiRolesBlock';
+import type { AiConnectionsState } from '../../../shared/ipc';
 import {
   btnPrimary, btnGhost, OptionList, OptionRow, SectionHeader, Subsection, CapsLabel, FactGrid, Fact,
   StatusCard, StatusCardSkeleton, TextField, InputRow, fieldFlex,
@@ -37,6 +40,7 @@ export default function AiSection() {
       <AiOverview />
 
       <ModelsSection />
+      <AiConnectionsSection />
       <TranslationEngineSection />
       <HistoryBackfillSection />
       <SkillsSection />
@@ -61,6 +65,27 @@ export default function AiSection() {
  * в shared/ipc/ai.ts): дефолт назначен — модель ответит, но с паузой на загрузку; загружена в
  * VRAM — ответит сразу. Это ровно та разница, из-за которой первый ответ «долго думает».
  */
+/**
+ * Подключения и маршруты. ⚠️ Снимок ОДИН на оба блока: список подключений и таблица маршрутов
+ * приходят вместе, и разделять их на два запроса значило бы получить два состояния, которые умеют
+ * разъехаться на одном кадре.
+ */
+function AiConnectionsSection() {
+  const [state, setState] = useState<AiConnectionsState | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void window.oblako.aiConnections().then((s) => { if (alive) setState(s); });
+    const off = window.oblako.onAiConnectionsChanged((s) => { if (alive) setState(s); });
+    return () => { alive = false; off(); };
+  }, []);
+  return (
+    <>
+      <AiConnectionsBlock state={state} />
+      <AiRolesBlock state={state} />
+    </>
+  );
+}
+
 function AiOverview() {
   const [gemini, setGemini] = useState<boolean | null>(null);
   const [searx, setSearx] = useState<boolean | null>(null);

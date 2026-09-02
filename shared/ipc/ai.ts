@@ -128,15 +128,11 @@ export interface AiConnectionsState {
   ready: string[];
 }
 
-export interface AiConnection {
-  id: string;
-  label: string;
-  kind: string;
-  baseUrl: string;
-  model: string;
-  concurrency: number;
-  schema?: string;
-}
+// ⚠️ НЕ КОПИЯ, А ПЕРЕИЗДАНИЕ настоящего типа. Своя структура «такая же, но со строковым kind»
+// разъехалась бы с оригиналом на первой же новой форме подключения, причём молча: контракт
+// продолжал бы компилироваться, а на диск и в реестр уезжали бы разные представления одного.
+import type { Connection as AiConnection } from '../aiProviders';
+export type { AiConnection };
 
 export type AiConnectionTest = { ok: true } | { ok: false; error: string };
 

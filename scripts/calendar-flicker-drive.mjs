@@ -31,9 +31,12 @@ const check = (what, cond, detail = '') => {
 
 // ⚠️ Меряем ПЕРЕРИСОВКИ, а не «правильный ли вид». Мерцание — это не неверная раскладка, а
 // раскладка, которая не может остановиться: любой её кадр сам по себе выглядит законно.
-const SWEEP = `(async () => {
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  // Календарную сетку узнаём по семи колонкам — другой такой раскладки на столе нет.
+// ⚠️ ПЕРЕБОР ВЫСОТ ИДЁТ СО СТОРОНЫ NODE, короткими замерами, а не одним длинным evaluate с
+// циклом внутри страницы. Длинный evaluate подвешивает CDP-мост стенда намертво — это уже третий
+// раз в этом драйвере: сперва на четырёхминутной слежке, потом на минутной, теперь на переборе,
+// который сам по себе работал, но перестал после того, как перед ним появилась долгая слежка.
+// Правило простое и без исключений: через мост ходим часто и коротко.
+const PREPARE = `(() => {
   const grids = [...document.querySelectorAll('div')].filter((d) => {
     const c = getComputedStyle(d).gridTemplateColumns;
     return c && c.split(' ').length === 7;
@@ -41,54 +44,42 @@ const SWEEP = `(async () => {
   if (grids.length === 0) return { ошибка: 'виджет календаря не найден на столе' };
   const grid = grids[0];
   const shell = grid.parentElement;
-  // Плитка — ближайший предок с высотой, заданной в пикселях (её задаёт сетка стола).
   let frame = shell;
   for (let i = 0; i < 8 && frame && !/px/.test(frame.style.height || ''); i++) frame = frame.parentElement;
   if (!frame) return { ошибка: 'плитка календаря не найдена' };
-
-  const was = frame.style.height;
-  const out = [];
-  for (let h = 220; h <= 320; h += 4) {
-    frame.style.height = h + 'px';
-    await sleep(260);            // дать раскладке устояться
-    let mutations = 0;
-    const mo = new MutationObserver((recs) => { mutations += recs.length; });
-    mo.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
-    await sleep(420);            // окно наблюдения
-    mo.disconnect();
-    // ⚠️ Заодно РАЗМЕР. Мерцание и растягивание — разные поломки одной природы (раскладка,
-    // которая не сходится), и ловить их надо в одном прогоне: высоты уже перебраны, замер стоит
-    // ноль. Оболочка обязана в точности совпадать с плиткой, а сетка — помещаться в свою коробку;
-    // расхождение здесь и есть «виджет растянулся».
-    const f = frame.getBoundingClientRect();
-    const sh = shell.getBoundingClientRect();
-    const g = grid.getBoundingClientRect();
-    out.push({
-      h, mutations,
-      spill: Math.round(sh.height - f.height),
-      over: grid.scrollHeight - Math.round(g.height),
-    });
-  }
-  frame.style.height = was;
-  return out;
+  window.__sweep = { grid, shell, frame, was: frame.style.height, mutations: 0, mo: null };
+  return { ok: true };
 })()`;
 
+const setHeight = (h) => `(() => { window.__sweep.frame.style.height = '${h}px'; return true; })()`;
 
-// Плитка стоит на месте, пока её никто не трогает.
-//
-// ⚠️ ЭТО ДРУГАЯ ПОЛОМКА, чем мерцание, и прежний замер её НЕ ЛОВИЛ. Живая жалоба: календарь
-// «медленно растягивался и заезжал под виджет за ним», на чистом профиле, без единого действия
-// человека. Сторож размера выше сравнивает ОБОЛОЧКУ с ПЛИТКОЙ — а когда растёт сама плитка,
-// оболочка растёт вместе с ней, и расхождения нет. Слепое пятно ровно в форме симптома.
-//
-// ⚠️ Наблюдение 70 секунд, потому что единственное, что происходит в календаре само, — тик раз в
-// минуту (виджет обязан пережить полночь). Окно короче минуты не захватило бы ни одного тика, то
-// есть проверяло бы покой там, где покой ничем не нарушается.
-//
-// ⚠️ Ложных срабатываний у этой проверки нет по построению: неподвижная плитка неподвижна всегда.
-// Поймать она может не каждый раз — поломка была «один случай из нескольких», — но когда поймает,
-// назовёт и размер, и то, что именно поехало: инлайновый стиль (значит виновата раскладка стола)
-// или только фактический размер (значит CSS).
+// ⚠️ Меряем ПЕРЕРИСОВКИ, а не «правильный ли вид». Мерцание — это не неверная раскладка, а
+// раскладка, которая не может остановиться: любой её кадр сам по себе выглядит законно.
+const WATCH_START = `(() => {
+  const s = window.__sweep;
+  s.mutations = 0;
+  s.mo = new MutationObserver((recs) => { s.mutations += recs.length; });
+  s.mo.observe(s.shell, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+  return true;
+})()`;
+
+const WATCH_STOP = `(() => {
+  const s = window.__sweep;
+  s.mo.disconnect();
+  const f = s.frame.getBoundingClientRect();
+  const sh = s.shell.getBoundingClientRect();
+  const g = s.grid.getBoundingClientRect();
+  return {
+    mutations: s.mutations,
+    // ⚠️ Заодно РАЗМЕР. Мерцание и растягивание — разные поломки одной природы (раскладка, которая
+    // не сходится), и ловить их надо в одном прогоне: высоты уже перебраны, замер стоит ноль.
+    spill: Math.round(sh.height - f.height),
+    over: s.grid.scrollHeight - Math.round(g.height),
+  };
+})()`;
+
+const RESTORE = `(() => { window.__sweep.frame.style.height = window.__sweep.was; return true; })()`;
+
 const FIND_TILE = `(() => {
   const grids = [...document.querySelectorAll('div')].filter((d) => {
     const c = getComputedStyle(d).gridTemplateColumns;
@@ -137,7 +128,7 @@ await withStand(async (ctx) => {
     const first = await ctx.chrome.evaluate(TILE);
     let worst = first;
     let skipped = 0;
-    for (let i = 0; i < 35; i++) {          // 35 x 2 c = 70 с: минутный тик в такое окно попадает
+    for (let i = 0; i < 32; i++) {          // 32 x 2 c = 64 с: минутный тик в такое окно попадает
       // гарантированно, а прогон укладывается в общий предел драйвера (180 с).
       await wait(2000);
       const now = await ctx.chrome.evaluate(TILE);
@@ -151,7 +142,7 @@ await withStand(async (ctx) => {
         || Math.abs(now.w - first.w) > Math.abs(worst.w - first.w)) worst = now;
     }
     check('наблюдение за неподвижностью выполнено', true,
-      `70 с, старт ${first.w}x${first.h}${skipped ? `, пропущено замеров ${skipped}` : ''}`);
+      `64 с, старт ${first.w}x${first.h}${skipped ? `, пропущено замеров ${skipped}` : ''}`);
     const dw = worst.w - first.w;
     const dh = worst.h - first.h;
     check('плитка не растёт сама по себе', Math.abs(dw) <= 1 && Math.abs(dh) <= 1,
@@ -161,16 +152,28 @@ await withStand(async (ctx) => {
         // (колонки или масштаб). Без этих трёх чисел следующий разбор начнётся с нуля.
         ? `поехало на ${dw}x${dh} px, стиль «${first.style}» → «${worst.style}»; `
           + `область ${first.area}→${worst.area}, прокрутка ${first.scroller}→${worst.scroller}, окно ${first.win}→${worst.win}`
-        : 'за 70 секунд не сдвинулась');
+        : 'за 64 секунды не сдвинулась');
   }
   // ⚠️ ПОРЯДОК ВАЖЕН: неподвижность меряется ПЕРВОЙ, по нетронутому столу. Перебор высот ниже сам
   // ставит плитке размеры, и его восстановление исходного React не видит — на следующем рендере
   // раскладка возвращает своё. После перебора любое шевеление нельзя честно назвать
   // самопроизвольным. Поймано живым прогоном: слежка стартовала с 320 px (последняя высота
   // перебора) и «обнаруживала» возврат к настоящим 264 как рост на 56 px.
-  const rows = await ctx.chrome.evaluate(SWEEP, 120000);
-  if (!Array.isArray(rows)) {
-    check('прогон по высотам выполнен', false, JSON.stringify(rows));
+  const prepared = await ctx.chrome.evaluate(PREPARE);
+  const rows = [];
+  if (prepared?.ok) {
+    for (let h = 220; h <= 320; h += 4) {
+      await ctx.chrome.evaluate(setHeight(h));
+      await wait(200);                      // дать раскладке устояться
+      await ctx.chrome.evaluate(WATCH_START);
+      await wait(420);                      // окно наблюдения
+      const r = await ctx.chrome.evaluate(WATCH_STOP);
+      if (r) rows.push({ h, ...r });
+    }
+    await ctx.chrome.evaluate(RESTORE);
+  }
+  if (rows.length === 0) {
+    check('прогон по высотам выполнен', false, JSON.stringify(prepared));
   } else {
     // ⚠️ Порог не ноль: за 0,42 с в плитке законно случается пара мутаций (обводка хода, смена
     // минуты). Мерцание отличается порядком величины — сотни и тысячи, — а не единицами.
