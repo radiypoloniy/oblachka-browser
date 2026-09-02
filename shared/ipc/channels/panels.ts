@@ -95,6 +95,17 @@ export const PANELS = {
   AI_GET_KEY_STATUS:      'ai:get-key-status',      // renderer → main: connected: boolean
   AI_SAVE_KEY:            'ai:save-key',            // renderer → main: (key: string) → boolean (успех)
   AI_DELETE_KEY:          'ai:delete-key',          // renderer → main: удалить ключ
+  // ── Подключения к моделям (BYOK) ─────────────────────────────────────────
+  // ⚠️ Ключ уходит ТОЛЬКО в save и test, и только в main. Обратно не возвращается никогда — see
+  // electron/ai/KeyStore.ts: наружу уходит лишь список подключений, у которых ключ на месте.
+  AI_CONN_LIST:           'ai:connections',
+  AI_CONN_SAVE:           'ai:connection-save',
+  AI_CONN_DELETE:         'ai:connection-delete',
+  // Проба живого подключения: один дешёвый запрос к провайдеру. Без неё человек узнаёт об опечатке
+  // в ключе через полминуты в чате и не понимает, что случилось.
+  AI_CONN_TEST:           'ai:connection-test',
+  AI_SET_ROUTE:           'ai:set-route',
+  AI_CONN_CHANGED:        'ai:connections-changed',
   AI_KEY_STATUS_CHANGED:  'ai:key-status-changed',  // main → renderer: push нового connected-статуса
 
   // Задел под web-grounding в AI-панели (SearXNG) — тот же контракт, что у ключа Gemini выше:

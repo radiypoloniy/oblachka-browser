@@ -2,6 +2,11 @@
 //
 // Часть контракта IPC, вынесенная из main.ts (см. electron/ipc/deps.ts — почему нарезано
 // непрерывными кусками, а не по доменам). Тела обработчиков перенесены дословно.
+import * as ConnectionStore from '../ai/ConnectionStore';
+import * as KeyStore from '../ai/KeyStore';
+import { connectionsState, probeConnection } from '../ai/connections';
+import type { Connection } from '../../shared/aiProviders';
+import type { AiRole } from '../../shared/aiRouting';
 import { IPC } from '../../shared/ipc';
 import * as aiKeyStore from '../AiKeyStore';
 import * as searxngKeyStore from '../SearxngKeyStore';
@@ -77,6 +82,27 @@ export function registerAiHubIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.AI_GET_KEY_STATUS, () => aiKeyStore.getKeyStatus());
   ipcMain.handle(IPC.AI_SAVE_KEY,       (_e, key: string) => aiKeyStore.saveKey(key));
   ipcMain.handle(IPC.AI_DELETE_KEY,     () => aiKeyStore.deleteKey());
+
+  // ── Подключения к моделям ────────────────────────────────────────────────
+  // ⚠️ Снимок собирается ЗДЕСЬ, а не хранится: `ready` зависит от ключей (другое хранилище), а
+  // список и маршруты — от своего. Держать их склеенными в третьем месте значило бы завести
+  // состояние, которое умеет разъехаться с обоими источниками.
+  ipcMain.handle(IPC.AI_CONN_LIST, () => connectionsState());
+  ipcMain.handle(IPC.AI_CONN_SAVE, (_e, conn: Connection, key: string | null) => {
+    // ⚠️ Порядок важен: сперва ключ, потом подключение. Иначе между записями существует момент,
+    // когда подключение уже видно интерфейсу, а ключа у него ещё нет, — и первый же запрос уйдёт
+    // с отказом «нет ключа», хотя человек его только что ввёл.
+    if (key !== null && key.trim()) KeyStore.saveKey(conn.id, key);
+    return ConnectionStore.upsert(conn);
+  });
+  ipcMain.handle(IPC.AI_CONN_DELETE, (_e, id: string) => {
+    // Ключ удаляем вместе с подключением: осиротевший секрет на диске никому не нужен.
+    KeyStore.deleteKey(id);
+    return ConnectionStore.remove(id);
+  });
+  ipcMain.handle(IPC.AI_CONN_TEST, (_e, conn: Connection, key: string | null) => probeConnection(conn, key));
+  ipcMain.handle(IPC.AI_SET_ROUTE, (_e, role: AiRole, connectionId: string | null) =>
+    ConnectionStore.setRoute(role, connectionId));
   // Пуш статуса в чром (секция настроек) — тот же источник, что слушает и AI-панель отдельно
   // (см. AiPanelManager.ts, заход D шаг 4), оба подписаны на один aiKeyStore.onKeyStatusChanged.
   aiKeyStore.onKeyStatusChanged((connected) => {

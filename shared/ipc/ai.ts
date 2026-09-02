@@ -112,6 +112,35 @@ export type TranslateDirection = `${string}->${string}`;
 // прочие ошибки (не про модель — франк, парсинг и т.п.) errorCode не выставляют, как и раньше.
 export type ModelErrorCode = 'NO_MODEL_INSTALLED' | 'MODEL_FILE_MISSING' | 'LOAD_FAILED';
 
+/**
+ * Всё, что интерфейсу нужно знать о подключениях, ОДНИМ снимком.
+ *
+ * ⚠️ Ключей здесь нет и быть не может: наружу из main уходит только `ready` — список тех, у кого
+ * ключ на месте. Сам ключ границу IPC не пересекает никогда (см. electron/ai/KeyStore.ts).
+ *
+ * ⚠️ `ready` считается по ключам, а не по последней удачной попытке: ключ человек может поправить
+ * сам, а «сервер не ответил в прошлый раз» устареет к следующему запросу.
+ */
+export interface AiConnectionsState {
+  connections: AiConnection[];
+  /** Роль → id подключения. Отсутствующая запись означает «локально». */
+  routing: Record<string, string>;
+  ready: string[];
+}
+
+export interface AiConnection {
+  id: string;
+  label: string;
+  kind: string;
+  baseUrl: string;
+  model: string;
+  concurrency: number;
+  schema?: string;
+}
+
+export type AiConnectionTest = { ok: true } | { ok: false; error: string };
+
+
 // Снапшот железа (см. electron/HardwareInfo.ts) — задел под подбор GGUF-модели по доступной VRAM.
 // vram*/gpuBackend — null, если детект упал (нет подходящего GPU/драйвера) или ещё не запускался;
 // ram*/cpuCores — всегда заполнены (через os, от llama/GPU не зависят). error — причина отказа

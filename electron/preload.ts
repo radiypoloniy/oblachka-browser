@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { ProfilesState, ProfileSettings, ProfileAvatar, ProfileLook } from '../shared/profiles';
 import { IPC } from '../shared/ipc';
+import { aiBridge } from './preload/aiBridge';
 import type { OblakoApi, AiActivityState, PageLength, SpecialTabKind, SyncState, ContentBounds, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, PageChangesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand, GenSpecOutcome, GenProgress, GenWebResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../shared/graph';
@@ -579,14 +580,7 @@ const api: OblakoApi = {
     ipcRenderer.invoke(IPC.GRAPH_WEBAPP_CAPTURE, graphId, nodeId, mode) as Promise<string>,
 
   // Заход D — ключ Gemini (AI-фактчек). Сам ключ никогда не возвращается в renderer.
-  getAiKeyStatus: () => ipcRenderer.invoke(IPC.AI_GET_KEY_STATUS) as Promise<boolean>,
-  saveAiKey:      (key: string) => ipcRenderer.invoke(IPC.AI_SAVE_KEY, key) as Promise<boolean>,
-  deleteAiKey:    () => ipcRenderer.invoke(IPC.AI_DELETE_KEY) as Promise<void>,
-  onAiKeyStatusChanged: (cb: (connected: boolean) => void) => {
-    const handler = (_e: unknown, connected: boolean) => cb(connected);
-    ipcRenderer.on(IPC.AI_KEY_STATUS_CHANGED, handler);
-    return () => ipcRenderer.removeListener(IPC.AI_KEY_STATUS_CHANGED, handler);
-  },
+  ...aiBridge,
 
   // Задел под web-grounding (SearXNG). Сам конфиг никогда не возвращается в renderer.
   getSearxngStatus:    () => ipcRenderer.invoke(IPC.SEARXNG_GET_STATUS) as Promise<boolean>,

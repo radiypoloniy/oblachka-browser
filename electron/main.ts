@@ -89,7 +89,7 @@ import { initAutofillPopover } from './AutofillPopoverManager';
 import * as autofillOrchestrator from './AutofillOrchestrator';
 import { initDownloadsPopover, broadcastDownloads, setDuplicatePrompt, setDuplicateDecisionHandler } from './DownloadsPopoverManager';
 import { initSitePopover } from './SitePopoverManager';
-import * as aiKeyStore from './AiKeyStore';
+import { initAiLayer } from './ai/bootstrap';
 import * as searxngKeyStore from './SearxngKeyStore';
 import * as vpnKeyStore from './VpnKeyStore';
 import * as skillsStore from './SkillsStore';
@@ -1484,7 +1484,7 @@ app.whenReady().then(async () => {
 
   // safeStorage требует app.isReady() — грузим сохранённый (зашифрованный) ключ Gemini здесь,
   // не на верхнем уровне модуля (см. AiKeyStore.ts, заход D шаг 3).
-  aiKeyStore.loadFromDisk();
+  initAiLayer();
   // ⚠️ Тост Windows — нативный (Notification), свой центр уведомлений не нужен: система даёт и
   // очередь, и «не беспокоить», и историю. Клик по тосту открывает страницу товара — иначе он
   // сообщает новость, с которой ничего нельзя сделать.
