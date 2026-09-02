@@ -16,6 +16,7 @@ import * as ModelRegistry from './ModelRegistry'
 import * as Inference from './inference/InferenceHost'
 import { enqueueQwen, isQwenBusy } from './QwenQueue'
 import type { AiAction, AiActionOutcome, ModelErrorCode } from '../shared/ipc'
+import { localProvider, type JsonSchema } from './ai/registry'
 import { pickLanguage, FRANC_TO_CODE, FALLBACK_LANG } from '../shared/langDetect'
 
 // Дискриминируемая ошибка загрузки модели — ensureLoaded() бросает объекты этой формы вместо
@@ -375,13 +376,13 @@ async function runPrompt(
   prompt: string,
   maxTokens: number,
   onChunk?: (text: string) => void,
-  opts?: { background?: boolean; signal?: { aborted: boolean }; schema?: unknown; abort?: AbortSignal },
+  opts?: { background?: boolean; signal?: { aborted: boolean }; schema?: JsonSchema; abort?: AbortSignal },
 ): Promise<{ out: string; tokens: number; stopReason: string }> {
   const run = () => runPromptQueued(prompt, maxTokens, onChunk, opts?.schema, opts?.abort)
   return opts?.background ? withQwenQueueBackground(run, opts.signal) : withQwenQueue(run)
 }
 
-async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (text: string) => void, schema?: unknown, abort?: AbortSignal): Promise<{ out: string; tokens: number; stopReason: string }> {
+async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (text: string) => void, schema?: JsonSchema, abort?: AbortSignal): Promise<{ out: string; tokens: number; stopReason: string }> {
   // ⚠️ ПОЧЕМУ ОДИН И ТОТ ЖЕ ЗАПРОС ИНОГДА ДАЁТ РАЗНЫЙ ОТВЕТ — разобрано замерами, не переоткрывать.
   // Сэмплинг ни при чём: temperature в node-llama-cpp по умолчанию 0, выборка жадная. Остаточный
   // контекст, квантованный KV-кэш и промпт проверены и отвергнуты (промпт побайтно одинаков).
@@ -390,9 +391,8 @@ async function runPromptQueued(prompt: string, maxTokens: number, onChunk?: (tex
   // порядка 1e-4 меняет ответ только там, где модель и так почти не уверена. Значит «плавает» не
   // машина, а трудное для модели решение, и лечится это промптом (одно решение на прогон), а не
   // бубном вокруг движка.
-  await ensureLoaded()
   const t0 = performance.now()
-  const res = await Inference.runPrompt(prompt, maxTokens, onChunk, schema, abort)
+  const res = await localProvider(ensureLoaded, getLoadedModelId).generate(prompt, { maxTokens, onChunk, schema, abort })
   console.log(`[perf] segment: всего=${(performance.now() - t0).toFixed(0)}ms outTokens=${res.tokens}`)
   return res
 }
@@ -507,7 +507,7 @@ export async function runTabOrganizePrompt(
   // видеть, что она идёт: без него любой долгий прогон выглядит зависшим (см. GenStudio).
   // abort — НАСТОЯЩЕЕ прерывание уже идущей генерации (доезжает до llama.cpp). Не путать с
   // signal: тот лишь снимает задачу, пока она ЖДЁТ в очереди.
-  opts?: { background?: boolean; signal?: { aborted: boolean }; maxTokens?: number; onChunk?: (text: string) => void; schema?: unknown; abort?: AbortSignal },
+  opts?: { background?: boolean; signal?: { aborted: boolean }; maxTokens?: number; onChunk?: (text: string) => void; schema?: JsonSchema; abort?: AbortSignal },
 ): Promise<{ ok: true; out: string; stopReason: string } | { ok: false; error: string; errorCode?: ModelErrorCode }> {
   try {
     await ensureLoaded()
@@ -832,8 +832,8 @@ async function runChatMessageQueued(
   try {
     const wasLoaded = loadPromise !== null
     const loadMs = await ensureLoaded()
-    const { out, history: newHistory, ms, tokens } = await Inference.runChat(
-      userText, history, CHAT_MAX_TOKENS, CHAT_SYSTEM_PROMPT, onChunk, abort,
+    const { out, history: newHistory, ms, tokens } = await localProvider(ensureLoaded, getLoadedModelId).chat(
+      userText, history, CHAT_SYSTEM_PROMPT, { maxTokens: CHAT_MAX_TOKENS, onChunk, abort },
     )
     console.log(
       `[chat] "${userText.slice(0, 80)}" -> "${out.slice(0, 200)}" ` +

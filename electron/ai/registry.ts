@@ -17,6 +17,7 @@ import { createOpenAiCompatibleProvider } from './providers/openaiCompatible';
 import { createAnthropicProvider } from './providers/anthropic';
 import { createGeminiProvider } from './providers/gemini';
 import type { Provider } from './Provider';
+export type { JsonSchema } from '../../shared/aiSchema';
 
 let localDeps: LocalDeps | null = null;
 let connections: Connection[] = [];
@@ -128,6 +129,27 @@ function limited(inner: Provider, max: number): Provider {
     generateStructured: (sc, p, o) => lim.run(() => inner.generateStructured(sc, p, o)),
     chat: (t, h, sp, o) => lim.run(() => inner.chat(t, h, sp, o)),
   };
+}
+
+
+/**
+ * Встроенная Qwen как провайдер, со сборкой слоя при первом обращении.
+ *
+ * ⚠️ Живёт ЗДЕСЬ, а не у вызывающего: собрать слой нужно один раз на приложение, а зовут его из
+ * TranslationService, который сам и поставляет зависимости. Держать эту склейку у него значило бы
+ * тащить в файл ленивый флаг и знание про идентификатор локального подключения — ровно то, от чего
+ * слой и избавляет.
+ *
+ * ⚠️ Инициализация ЛЕНИВАЯ: провайдер трогает Electron-приложение, и на верхнем уровне модуля это
+ * выполнилось бы до app.whenReady().
+ *
+ * ⚠️ Подключение берётся ПО ИМЕНИ, а не по роли. Роль объявляет вызывающий, а у трубы
+ * TranslationService их семнадцать — раздать роли значит поменять семнадцать мест, то есть другой
+ * заход. Пока подключений нет ни одного, routeFor всё равно вернул бы локальную.
+ */
+export function localProvider(ensureLoaded: LocalDeps['ensureLoaded'], modelId: LocalDeps['modelId']): Provider {
+  if (localDeps === null) init({ ensureLoaded, modelId });
+  return providerById(LOCAL_CONNECTION_ID);
 }
 
 /** Для диагностики и для шапки настроек: что заведено и у чего есть ключ. */

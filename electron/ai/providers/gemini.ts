@@ -79,8 +79,10 @@ export function createGeminiProvider(deps: GeminiDeps): Provider {
     async generate(prompt: string, opts?: GenOpts): Promise<GenResult> {
       const r = await call({
         contents: [{ role: 'user', parts: [{ text: prompt }] } satisfies Content],
-        generationConfig: generationConfig(opts),
-      }, opts, opts?.onChunk);
+        // Схема, если попросили, ограничивает ГЕНЕРАЦИЮ — текст возвращается сырым (см. GenOpts).
+        // ⚠️ Со схемой поток не запрашиваем: показывать человеку недособранный JSON нечего.
+        generationConfig: generationConfig(opts, opts?.schema),
+      }, opts, opts?.schema ? undefined : opts?.onChunk);
       return { out: r.text, tokens: r.tokens, stopReason: r.stop };
     },
 

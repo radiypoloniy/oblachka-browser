@@ -70,23 +70,22 @@ export function createAnthropicProvider(deps: AnthropicDeps): Provider {
     },
 
     async generate(prompt: string, opts?: GenOpts): Promise<GenResult> {
+      // ⚠️ Со схемой путь другой: у Anthropic структуру даёт ИНСТРУМЕНТ, и ответ приходит готовым
+      // объектом, а не текстом. Контракт обещает сырой текст — сериализуем обратно. Круг
+      // «объект → строка → объект» выглядит лишним, но он честный: другого текста здесь просто не
+      // существует, а притвориться, что схему не просили, было бы хуже.
+      if (opts?.schema) {
+        const withTool = await call(schemaBody(prompt, opts.schema), opts);
+        if (withTool.toolInput === null) throw new ProviderError('schema', 'Модель не вызвала инструмент со схемой');
+        return { out: JSON.stringify(withTool.toolInput), tokens: withTool.tokens, stopReason: withTool.stop };
+      }
       const r = await call({ messages: [{ role: 'user', content: prompt } satisfies Msg] }, opts, opts?.onChunk);
       return { out: r.text, tokens: r.tokens, stopReason: r.stop };
     },
 
     async generateStructured(schema: JsonSchema, prompt: string, opts?: GenOpts): Promise<unknown> {
-      const r = await call({
-        messages: [{ role: 'user', content: prompt } satisfies Msg],
-        tools: [{
-          name: TOOL_NAME,
-          description: 'Верни ответ в этой структуре.',
-          input_schema: toDialect(schema, 'anthropic'),
-        }],
-        // ⚠️ Без принуждения модель вольна ответить текстом «конечно, сейчас сделаю» и не позвать
-        // инструмент вовсе — то есть ровно тот сбой, ради ухода от которого всё и затевалось.
-        tool_choice: { type: 'tool', name: TOOL_NAME },
       // Стриминг структурного ответа не нужен: показывать человеку недособранный JSON нечего.
-      }, opts);
+      const r = await call(schemaBody(prompt, schema), opts);
 
       if (r.toolInput === null) throw new ProviderError('schema', 'Модель не вызвала инструмент со схемой');
       return r.toolInput;
@@ -108,6 +107,20 @@ export function createAnthropicProvider(deps: AnthropicDeps): Provider {
         tokens: r.tokens,
       };
     },
+  };
+}
+
+/**
+ * Запрос со схемой: единственный инструмент плюс принуждение позвать именно его.
+ *
+ * ⚠️ Без принуждения модель вольна ответить текстом «конечно, сейчас сделаю» и не позвать
+ * инструмент вовсе — то есть ровно тот сбой, ради ухода от которого всё и затевалось.
+ */
+function schemaBody(prompt: string, schema: JsonSchema): Record<string, unknown> {
+  return {
+    messages: [{ role: 'user', content: prompt } satisfies Msg],
+    tools: [{ name: TOOL_NAME, description: 'Верни ответ в этой структуре.', input_schema: toDialect(schema, 'anthropic') }],
+    tool_choice: { type: 'tool', name: TOOL_NAME },
   };
 }
 

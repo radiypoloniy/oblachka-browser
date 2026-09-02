@@ -36,7 +36,7 @@ export function createLocalProvider(deps: LocalDeps): Provider {
       await deps.ensureLoaded();
       try {
         const { out, tokens, stopReason } = await Inference.runPrompt(
-          prompt, opts?.maxTokens ?? 512, opts?.onChunk, undefined, opts?.abort,
+          prompt, opts?.maxTokens ?? 512, opts?.onChunk, opts?.schema, opts?.abort,
         );
         return { out, tokens, stopReason };
       } catch (e) {
@@ -81,18 +81,20 @@ export function createLocalProvider(deps: LocalDeps): Provider {
 /**
  * Отказ процесса инференса → общий код провайдера.
  *
- * ⚠️ Коды локальной модели (NO_MODEL_INSTALLED, MODEL_FILE_MISSING, LOAD_FAILED) — все про одно:
- * модели тут нет. Снаружи это неотличимо от «у облака нет ключа», и обе ситуации лечатся одним
- * действием человека — пойти и подключить. Поэтому они сходятся в 'no-key', а исходный текст
- * сохраняется в message: он и объясняет разницу тому, кто читает.
+ * ⚠️ ОШИБКИ С КОДОМ МОДЕЛИ ПРОБРАСЫВАЮТСЯ КАК ЕСТЬ, а не переводятся в код провайдера. Коды
+ * NO_MODEL_INSTALLED / MODEL_FILE_MISSING / LOAD_FAILED — это домен ВСЕГО приложения: их читают
+ * TranslationService, TabOrganizer и интерфейс, чтобы сказать человеку, что именно делать
+ * («модель не установлена» против «файл модели пропал»). Завернув их в общий 'no-key', слой стёр
+ * бы различие, которое приложение уже умеет объяснять, — и это было бы изменением поведения там,
+ * где заход обязан ничего не менять.
+ *
+ * ⚠️ Значит, общий код тут получают только те отказы, у которых своего кода НЕ БЫЛО.
  */
-function toProviderError(e: unknown): ProviderError {
+function toProviderError(e: unknown): unknown {
   if (e instanceof ProviderError) return e;
   const code = (e as { code?: string } | null)?.code;
+  if (code === 'NO_MODEL_INSTALLED' || code === 'MODEL_FILE_MISSING' || code === 'LOAD_FAILED') return e;
   const message = e instanceof Error ? e.message : String(e);
-  if (code === 'NO_MODEL_INSTALLED' || code === 'MODEL_FILE_MISSING' || code === 'LOAD_FAILED') {
-    return new ProviderError('no-key', message);
-  }
   if (/abort/i.test(message)) return new ProviderError('aborted', message);
   return new ProviderError('provider', message);
 }

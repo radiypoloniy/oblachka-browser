@@ -1,4 +1,5 @@
 import { runTabOrganizePrompt } from './TranslationService';
+import type { JsonSchema } from '../shared/aiSchema';
 import { sanitizeDocHtml, groupSections, markupTextLength, PAGE_MIN_CHARS, type PageSpec } from '../shared/docMarkup';
 import { PAGE_LENGTH_SPEC, PAGE_LENGTH_TOKENS, type PageLength, type PageLengthSpec } from '../shared/ipc';
 import type { ActivityHandle } from './AiActivity';
@@ -173,7 +174,7 @@ export async function buildPage(
 
 async function ask<T>(
   prompt: string,
-  schema: unknown,
+  schema: JsonSchema,
   maxTokens: number,
   act: ActivityHandle,
   onChars: (n: number) => void,

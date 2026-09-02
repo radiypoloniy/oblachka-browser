@@ -68,35 +68,15 @@ export function createOpenAiCompatibleProvider(deps: OpenAiCompatDeps): Provider
     },
 
     async generate(prompt: string, opts?: GenOpts): Promise<GenResult> {
-      const r = await call({
-        messages: [{ role: 'user', content: prompt } satisfies Msg],
-        max_tokens: opts?.maxTokens ?? 512,
-      }, opts);
+      // Схема, если попросили, ограничивает ГЕНЕРАЦИЮ — текст возвращается сырым (см. GenOpts).
+      const native = capsFor(connection).schema === 'native';
+      const r = await call(promptBody(prompt, opts, opts?.schema, native), opts);
       return { out: r.text, tokens: r.tokens, stopReason: r.stop };
     },
 
     async generateStructured(schema: JsonSchema, prompt: string, opts?: GenOpts): Promise<unknown> {
-      const mode = capsFor(connection).schema;
-      // ⚠️ Схема уходит В ДИАЛЕКТЕ, а не как есть: strict-режим не принимает maxLength/minItems и
-      // отвергает ЗАПРОС ЦЕЛИКОМ, если они там встретились. Границы после этого держит
-      // validateAgainst этажом выше (см. shared/aiSchema.ts) — провайдер их уже не знает.
-      const body: Record<string, unknown> = mode === 'native'
-        ? {
-          messages: [{ role: 'user', content: prompt } satisfies Msg],
-          max_tokens: opts?.maxTokens ?? 512,
-          response_format: {
-            type: 'json_schema',
-            json_schema: { name: 'answer', strict: true, schema: toDialect(schema, 'openai') },
-          },
-        }
-        : {
-          // Режим none: гарантий нет никаких, схема идёт словами в промпт. Разбирает ответ
-          // extractJson, а годность проверяет валидатор с одним ремонтным повтором.
-          messages: [{ role: 'user', content: prompt } satisfies Msg],
-          max_tokens: opts?.maxTokens ?? 512,
-        };
-
-      const r = await call(body, opts);
+      const native = capsFor(connection).schema === 'native';
+      const r = await call(promptBody(prompt, opts, schema, native), opts);
       const parsed = extractJson(r.text);
       if (!parsed.ok) throw new ProviderError('schema', parsed.error);
       return parsed.value;
@@ -121,6 +101,34 @@ export function createOpenAiCompatibleProvider(deps: OpenAiCompatDeps): Provider
       };
     },
   };
+}
+
+
+/**
+ * Тело запроса на одну реплику. Схема, если она есть, уходит В ДИАЛЕКТЕ, а не как есть.
+ *
+ * ⚠️ strict-режим не принимает maxLength/minItems и отвергает ЗАПРОС ЦЕЛИКОМ, если они там
+ * встретились. Границы после этого держит validateAgainst этажом выше (shared/aiSchema.ts) —
+ * провайдер про них уже не знает.
+ *
+ * ⚠️ Когда режим НЕ native, схема в запрос не кладётся вовсе: за таким адресом может стоять
+ * прокси, который примет response_format и молча его проигнорирует. Тогда ответ разбирает
+ * extractJson, а годность проверяет валидатор с одним ремонтным повтором.
+ */
+function promptBody(
+  prompt: string, opts: GenOpts | undefined, schema: JsonSchema | undefined, native: boolean,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    messages: [{ role: 'user', content: prompt } satisfies Msg],
+    max_tokens: opts?.maxTokens ?? 512,
+  };
+  if (schema && native) {
+    body['response_format'] = {
+      type: 'json_schema',
+      json_schema: { name: 'answer', strict: true, schema: toDialect(schema, 'openai') },
+    };
+  }
+  return body;
 }
 
 /**
