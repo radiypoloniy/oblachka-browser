@@ -20,7 +20,7 @@
 //
 // Запуск: npm run ai-routing-check
 import {
-  AI_ROLES, ROLE_INFO, cloudFit, cloudAllowed, cloudFitNote,
+  AI_ROLES, ROLE_INFO, cloudFit, cloudAllowed, cloudFitNote, hasChoice,
   resolveRoute, routingSummary, DEFAULT_ROUTING, LOCAL_ID,
 } from '../shared/aiRouting.ts';
 
@@ -38,6 +38,18 @@ const OLLAMA = { id: 'ollama', label: 'Ollama', kind: 'openai-compatible', baseU
 
 const ctx = (over) => ({ connections: [GPT, OLLAMA], ready: ['gpt', 'ollama'], localIds: ['ollama'], ...over });
 const route = (role, table, over) => resolveRoute(role, table, ctx(over));
+
+console.log('\n— есть ли из чего выбирать —');
+// ⚠️ Главный выключатель интерфейса подключений: пока человек ничего не подключил, ни чипа модели
+// в панели, ни точек маршрута, ни таблицы ролей быть не должно. Выбор из одного пункта — не выбор,
+// а лишний элемент. Правило держится ЗДЕСЬ, а не тремя условиями в трёх компонентах: разъехавшись,
+// они дали бы худшее — чип в панели есть, а настроить его негде.
+check('ничего не подключено — показывать нечего', hasChoice({ connections: [] }), false);
+check('одно подключение — выбор появился', hasChoice({ connections: [GPT] }), true);
+// ⚠️ Порог — «есть подключение», а НЕ «есть облако». У человека с одной только Ollama на localhost
+// облака нет, но развилка есть: встроенная Qwen против Ollama. Прятать её было бы ошибкой.
+check('одна лишь Ollama на localhost — тоже выбор', hasChoice({ connections: [OLLAMA] }), true);
+check('несколько подключений', hasChoice({ connections: [GPT, OLLAMA] }), true);
 
 console.log('\n— чистая установка: всё считается здесь —');
 check('пустая таблица', route('chat', DEFAULT_ROUTING), { connectionId: LOCAL_ID, reason: 'default', notice: null });
