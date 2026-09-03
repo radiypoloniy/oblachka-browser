@@ -31,9 +31,20 @@ interface PromptState {
   view: WebContentsView | null;
   resizeBound: boolean;
   contentBounds: ContentBounds;
+  /** Приезжала ли хоть раз НАСТОЯЩАЯ геометрия контента (не нулевой сентинел). */
+  hasBounds: boolean;
   height: number;
   queue: McpPromptRequest[];
 }
+
+/**
+ * Запасной отступ сверху, пока настоящая геометрия ни разу не приезжала.
+ *
+ * ⚠️ Нужен ровно для одного случая: вопрос пришёл в окно, где человек ещё не открывал ни одной
+ * страницы. Число приблизительное намеренно — как только контент сообщит свои bounds, карточка
+ * встанет точно; лучше показать её чуть не на месте, чем не показать вовсе.
+ */
+const FALLBACK_TOP = 96;
 
 export interface McpAnswer {
   granted: boolean;
@@ -50,6 +61,7 @@ function stateFor(win: BrowserWindow): PromptState {
   const created: PromptState = {
     win, view: null, resizeBound: false,
     contentBounds: { x: 0, y: 0, width: 0, height: 0 },
+    hasBounds: false,
     height: INITIAL_HEIGHT, queue: [],
   };
   states.set(win.id, created);
@@ -65,7 +77,12 @@ function stateFor(win: BrowserWindow): PromptState {
 }
 
 function bounds(st: PromptState): { x: number; y: number; width: number; height: number } {
-  const cb = st.contentBounds;
+  // ⚠️ Пока настоящей геометрии не было, считаем от окна: вопрос от внешней программы приходит
+  // независимо от того, открыта ли под ним страница.
+  const wb = st.win.getContentBounds();
+  const cb = st.hasBounds
+    ? st.contentBounds
+    : { x: 0, y: FALLBACK_TOP, width: wb.width, height: wb.height - FALLBACK_TOP };
   return {
     x: cb.x + cb.width - CARD_WIDTH - EDGE_GAP - SHADOW_MARGIN,
     y: cb.y + EDGE_GAP - SHADOW_MARGIN,
@@ -107,8 +124,7 @@ function pushCurrent(st: PromptState): void {
 }
 
 function show(st: PromptState): void {
-  if (st.queue.length === 0) return;
-  if (st.contentBounds.width === 0 || st.contentBounds.height === 0) return;
+  if (st.queue.length === 0 || st.win.isDestroyed()) return;
   if (!st.resizeBound) {
     st.win.on('resize', () => layout(st));
     st.resizeBound = true;
@@ -127,11 +143,17 @@ function detach(st: PromptState): void {
 
 /** Та же геометрия, что двигает вкладку: карточка привязана к контентной зоне. */
 export function syncMcpPromptBounds(win: BrowserWindow, b: ContentBounds): void {
-  const st = states.get(win.id);
-  if (!st) return;
+  // ⚠️ stateFor, а не states.get: геометрия приезжает ПОСТОЯННО, а состояние окна создавалось бы
+  // только при первом вопросе — и создавалось бы с нулевыми bounds, то есть карточка не
+  // показалась бы ни разу. Ровно этот пропуск и дал «подтверждения нет, а через минуту отказ».
+  const st = stateFor(win);
+  // ⚠️ Нулевые bounds — сентинел «под нами настройки, история или загрузки». У поповера
+  // разрешений он означает «прятать»: там спрашивает САЙТ, и без страницы вопрос теряет смысл.
+  // Здесь наоборот — спрашивает программа снаружи, и человек, сидящий в настройках, обязан
+  // увидеть вопрос. Поэтому сентинел только не двигает карточку, а не убирает её.
+  if (b.width === 0 || b.height === 0) { layout(st); return; }
   st.contentBounds = b;
-  // Нулевые bounds — сентинел «под нами настройки или история»: прячем, но вопрос не теряем.
-  if (b.width === 0 && b.height === 0) { detach(st); return; }
+  st.hasBounds = true;
   if (st.queue.length > 0 && !isAttached(st)) { show(st); return; }
   layout(st);
 }

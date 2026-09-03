@@ -66,24 +66,25 @@ function PromptCard({ request }: { request: McpPromptRequest }) {
       border: '1px solid var(--glass-edge)',
       borderRadius: RADIUS.box,
       boxShadow: 'var(--shadow-island)',
-      padding: pad(4, 4),
+      padding: pad(4),
       display: 'flex',
       flexDirection: 'column',
-      gap: sp(3),
+      gap: sp(4),
+      animation: 'oblako-panel-in var(--dur-base) var(--ease-out)',
     }}>
-      <div style={{ display: 'flex', gap: sp(3), alignItems: 'flex-start' }}>
-        {/* Значок на нейтральной плашке, а не цветной: тон здесь ничего не сообщает — это
-            вопрос, а не статус. */}
+      <div style={{ display: 'flex', gap: sp(3), alignItems: 'center' }}>
+        {/* ⚠️ Значок на НЕЙТРАЛЬНОЙ плашке, а цвет — на акценте кнопки ниже: правило системы —
+            цвет несёт группа и действие, а не каждый элемент по отдельности. */}
         <span style={{
-          flex: 'none', width: 32, height: 32, borderRadius: RADIUS.control,
-          background: 'var(--surface-sunken)', color: 'var(--text-body)',
+          flex: 'none', width: 40, height: 40, borderRadius: RADIUS.control,
+          background: 'var(--surface-sunken)', color: 'var(--text-strong)',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <Icon size={16} />
+          <Icon size={20} />
         </span>
         <div style={{ minWidth: 0 }}>
-          <div style={{ ...TEXT.body, fontWeight: 600, color: 'var(--text-strong)' }}>
-            {connect ? 'Подключить внешнюю программу?' : 'Разрешить изменить браузер?'}
+          <div style={{ ...TEXT.title, color: 'var(--text-strong)', lineHeight: 1.15 }}>
+            {connect ? 'Подключить программу?' : 'Разрешить изменение?'}
           </div>
           {/* ⚠️ Про непроверенность имени сказано прямо и здесь: карточка не выдаёт чужое
               представление за удостоверение личности. */}
@@ -91,19 +92,21 @@ function PromptCard({ request }: { request: McpPromptRequest }) {
         </div>
       </div>
 
+      {/* Предмет вопроса — в рамке чернилами, как команда подключения в настройках: это то, на
+          что человек смотрит, принимая решение, и оно не должно выглядеть подписью. */}
       <div style={{
         ...TEXT.body, color: 'var(--text-strong)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-        padding: pad(2, 3), borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
+        padding: pad(3), borderRadius: RADIUS.control, border: '2px solid var(--text-strong)',
       }}>{request.detail}</div>
 
-      <div style={{ display: 'flex', gap: sp(2), flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: sp(2), alignItems: 'center' }}>
         <button onClick={() => answer(true)} style={btn('accent')}>
           {connect ? 'Подключить' : 'Разрешить'}
         </button>
         {/* ⚠️ «Всегда» есть не у всякого вопроса: у необратимого (закрыть вкладку) его нет
             вовсе — см. canRemember в shared/mcpPolicy.ts. */}
         {request.canRemember && (
-          <button onClick={() => answer(true, true)} style={btn('quiet')}>Разрешать всегда</button>
+          <button onClick={() => answer(true, true)} style={btn('quiet')}>Всегда</button>
         )}
         <button onClick={() => answer(false)} style={{ ...btn('quiet'), marginLeft: 'auto' }}>
           Отказать
@@ -115,7 +118,7 @@ function PromptCard({ request }: { request: McpPromptRequest }) {
 
 function btn(kind: 'accent' | 'quiet'): React.CSSProperties {
   return {
-    padding: pad(2, 3),
+    padding: pad(2, 4),
     borderRadius: RADIUS.pill,
     border: kind === 'accent' ? 'none' : '1px solid var(--divider-strong)',
     background: kind === 'accent' ? 'var(--accent)' : 'transparent',
