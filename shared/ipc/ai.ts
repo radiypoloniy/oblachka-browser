@@ -47,6 +47,8 @@ export interface HubChatMessage {
   role: 'user' | 'assistant';
   text: string;
   createdAt: number;
+  /** Вложения ответа: описания файлов, байты лежат у main (electron/ai/FileStore.ts). */
+  files?: AiFileMeta[];
 }
 
 export interface HubChatSessionMeta {
@@ -56,7 +58,7 @@ export interface HubChatSessionMeta {
 }
 
 export type HubChatOutcome =
-  | { ok: true; out: string }
+  | { ok: true; out: string; files?: AiFileMeta[] }
   | { ok: false; error: string };
 
 // ── Разрешения сайтов ────────────────────────────────────────────────────────
@@ -132,6 +134,7 @@ export interface AiConnectionsState {
 // разъехалась бы с оригиналом на первой же новой форме подключения, причём молча: контракт
 // продолжал бы компилироваться, а на диск и в реестр уезжали бы разные представления одного.
 import type { Connection as AiConnection } from '../aiProviders';
+import type { AiFileMeta } from '../aiAttachments';
 export type { AiConnection };
 
 export type AiConnectionTest = { ok: true } | { ok: false; error: string };

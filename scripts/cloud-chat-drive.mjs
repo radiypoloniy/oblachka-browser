@@ -26,6 +26,9 @@ const check = (what, cond, detail = '') => {
 };
 
 const ANSWER = 'Привет! Это ответ подключённой модели.';
+// Настоящий однопиксельный PNG: важно, чтобы на диск легли ИМЕННО эти байты, а не их обрезок.
+const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const PNG_BYTES = Buffer.from(PNG_B64, 'base64').length;
 
 /** Поддельный провайдер: тот же протокол, что у настоящего, но локальный и бесплатный. */
 function startFakeProvider() {
@@ -51,6 +54,10 @@ function startFakeProvider() {
         for (const piece of chunks) {
           raw += `data: ${JSON.stringify({ choices: [{ delta: { content: piece } }] })}\n\n`;
         }
+        // ⚠️ Картинка приезжает ОТДЕЛЬНЫМ событием в конце, а не дельтой по кускам — так её
+        // отдают шлюзы (поля `images` в спецификации chat/completions нет вовсе, его завёл
+        // OpenRouter). Если разбор ищет её только в первом событии, здесь он ничего не найдёт.
+        raw += `data: ${JSON.stringify({ choices: [{ delta: {}, message: { images: [{ type: 'image_url', image_url: { url: `data:image/png;base64,${PNG_B64}` } }] } }] })}\n\n`;
         raw += ': keep-alive\n\ndata: [DONE]\n\n';
         let i = 0;
         const pump = () => {
@@ -111,7 +118,7 @@ await withStand(async (ctx) => {
     const t0 = Date.now();
     const r = await svc.runChatMessage('привет', [], (t) => { streamed += t; }, undefined);
     return { ok: r.ok, out: r.ok ? r.out : null, error: r.ok ? null : r.error, via: r.ok ? r.via : null,
-      streamed, ms: Date.now() - t0, localLoaded: svc.getLoadedModelId() };
+      streamed, ms: Date.now() - t0, localLoaded: svc.getLoadedModelId(), files: r.ok ? r.files : null };
   })()`, 90000);
 
   check('чат ответил без ошибки', out?.ok === true, out?.error ?? JSON.stringify(out));
@@ -131,6 +138,29 @@ await withStand(async (ctx) => {
   // от облака. Снаружи лишняя загрузка выглядит ровно как «нихуя не работает»: браузер молчит.
   check('локальная модель НЕ поднималась', out?.localLoaded === null, `загружено: ${JSON.stringify(out?.localLoaded)}`);
   check('ответ пришёл быстро, без ожидания локальной', (out?.ms ?? 99999) < 5000, `${out?.ms} мс`);
+
+  // ── Вложения ──────────────────────────────────────────────────────────────
+  // ⚠️ Ради этого драйвер и трогает картинку: путь «шлюз → разбор → байты на диск → показ» не
+  // проверяет ничто другое. Ошибка в снятии префикса data-URL даёт файл, который откроется битым
+  // через неделю, когда сверить его уже не с чем.
+  const files = out?.files ?? [];
+  check('картинка из ответа доехала описанием', files.length === 1, JSON.stringify(files));
+  check('это картинка, а не безымянный файл', files[0]?.kind === 'image', String(files[0]?.kind));
+  check('тип сохранён', files[0]?.mime === 'image/png', String(files[0]?.mime));
+  check('имя человеческое', files[0]?.name === 'Изображение 1.png', String(files[0]?.name));
+  // ⚠️ Размер сверяем с ФАКТИЧЕСКОЙ длиной байтов, а не с длиной base64: расхождение здесь
+  // означает, что на диск уехало не то, что прислали.
+  check('размер сошёлся с байтами', files[0]?.size === PNG_BYTES, `${files[0]?.size} против ${PNG_BYTES}`);
+
+  const id = files[0]?.id ?? '';
+  const shown = await ctx.evalMain(call('ai:file-data', JSON.stringify(id)));
+  check('картинка отдаётся интерфейсу для показа', shown === `data:image/png;base64,${PNG_B64}`,
+    typeof shown === 'string' ? `${shown.slice(0, 32)}…` : String(shown));
+
+  // ⚠️ Чужой id за пределы каталога не выводит: путь собирается из него склейкой, и это
+  // единственная проверка того, что форму id действительно проверяют.
+  const escaped = await ctx.evalMain(call('ai:file-data', JSON.stringify('../../index')));
+  check('поддельный id ничего не отдаёт', escaped === null, String(escaped));
 }, { main: true });
 
 fake.server.close();

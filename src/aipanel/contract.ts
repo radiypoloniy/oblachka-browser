@@ -5,6 +5,7 @@
 // ответов ЗЕРКАЛЯТСЯ с main вручную — сторож контракта (scripts/contract-check.mjs) сюда не
 // смотрит, и расхождение поймает только человек. Правишь форму в main — правь и здесь.
 import type { AiActivityState } from '../../shared/ipc'
+import type { AiFileMeta } from '../../shared/aiAttachments'
 import type { CurrencyRatesResult, WeatherResult } from '../components/aiApps';
 
 // Код причины отказа (см. electron/TranslationService.ts::ModelError, shared/ipc.ts::ModelErrorCode)
@@ -17,7 +18,7 @@ export type ModelErrorCode = 'NO_MODEL_INSTALLED' | 'MODEL_FILE_MISSING' | 'LOAD
 export interface ChatVia { label: string; local: boolean }
 
 export type ChatOutcome =
-  | { ok: true; out: string; ms: number; tokPerSec: number; loadMs: number | null; via?: ChatVia }
+  | { ok: true; out: string; ms: number; tokPerSec: number; loadMs: number | null; via?: ChatVia; files?: AiFileMeta[] }
   | { ok: false; error: string; errorCode?: ModelErrorCode }
 
 export interface ChatMessage {
@@ -27,6 +28,8 @@ export interface ChatMessage {
    *  соседние ответы могут прийти от разных моделей (человек переключил, или случился откат), и
    *  общая подпись сверху соврала бы про половину переписки. */
   via?: ChatVia
+  /** Вложения ответа: картинки, которые вернула облачная модель. Байты лежат у main. */
+  files?: AiFileMeta[]
 }
 
 // Форма Skill из electron/SkillsStore.ts — зеркалим локально, тот же приём, что у ChatOutcome

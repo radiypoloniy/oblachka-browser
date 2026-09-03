@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ModelChip } from '../ai/ModelChip';
+import { ChatFiles } from '../ai/ChatFiles';
 import { Send, Trash2 } from 'lucide-react';
 import type { GraphChatMessage } from '../../../shared/graph';
 import { markdownComponents } from '../aiMarkdown';
@@ -99,6 +100,7 @@ export default function NodeChatView({ graphId, nodeId }: { graphId: number; nod
             : (
               <div key={i} style={{ fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-strong)' }}>
                 <ReactMarkdown components={markdownComponents}>{m.text}</ReactMarkdown>
+                {m.files && <ChatFiles files={m.files} />}
               </div>
             )))}
 

@@ -16,11 +16,12 @@
 import { fetchInProfile } from '../../ProfileSession';
 import { capsFor, type Connection, type ProviderCaps } from '../../../shared/aiProviders';
 import { extractJson, toDialect, type JsonSchema } from '../../../shared/aiSchema';
-import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
+import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider, type RawFile } from '../Provider';
 import { arr, httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
 
 interface Part { text: string }
 interface Content { role: 'user' | 'model'; parts: Part[] }
+interface Read { text: string; files: RawFile[]; tokens: number; stop: string }
 
 export interface GeminiDeps {
   connection: Connection;
@@ -34,7 +35,7 @@ export function createGeminiProvider(deps: GeminiDeps): Provider {
     body: Record<string, unknown>,
     opts: GenOpts | undefined,
     onText?: (piece: string) => void,
-  ): Promise<{ text: string; tokens: number; stop: string }> {
+  ): Promise<Read> {
     const key = deps.getKey();
     if (key === null) throw new ProviderError('no-key', `Для «${connection.label}» не задан ключ`);
 
@@ -108,6 +109,7 @@ export function createGeminiProvider(deps: GeminiDeps): Provider {
       }, opts, opts?.onChunk);
       return {
         out: r.text,
+        files: r.files,
         history: [...prior, { role: 'user', parts: [{ text: userText }] }, { role: 'model', parts: [{ text: r.text }] }],
         ms: Date.now() - t0,
         tokens: r.tokens,
@@ -143,16 +145,34 @@ function asContents(history: unknown[]): Content[] {
   return out;
 }
 
+/**
+ * Картинки из ответа.
+ *
+ * ⚠️ У Gemini они лежат РЯДОМ С ТЕКСТОМ, отдельными частями того же ответа (inlineData), а не в
+ * своём поле: рисующая модель может вернуть подпись и картинку одним ходом. Поэтому части
+ * перебираются целиком, а не «берём первую».
+ */
+function filesOf(json: unknown): RawFile[] {
+  const out: RawFile[] = [];
+  for (const part of arr(pick(json, ['candidates', '0', 'content', 'parts']))) {
+    const mime = str(pick(part, ['inlineData', 'mimeType']));
+    const data = str(pick(part, ['inlineData', 'data']));
+    if (mime !== null && data !== null && data !== '') out.push({ mime: mime.toLowerCase(), base64: data });
+  }
+  return out;
+}
+
 function textOf(json: unknown): string {
   return arr(pick(json, ['candidates', '0', 'content', 'parts']))
     .map((p) => str(pick(p, ['text'])) ?? '')
     .join('');
 }
 
-async function readWhole(res: Response): Promise<{ text: string; tokens: number; stop: string }> {
+async function readWhole(res: Response): Promise<Read> {
   const json: unknown = await res.json().catch(() => null);
   return {
     text: textOf(json),
+    files: filesOf(json),
     tokens: num(pick(json, ['usageMetadata', 'candidatesTokenCount'])) ?? 0,
     stop: str(pick(json, ['candidates', '0', 'finishReason'])) ?? 'STOP',
   };
@@ -162,10 +182,11 @@ async function readStream(
   res: Response,
   onText: ((piece: string) => void) | undefined,
   abort?: AbortSignal,
-): Promise<{ text: string; tokens: number; stop: string }> {
+): Promise<Read> {
   let text = '';
   let tokens = 0;
   let stop = 'STOP';
+  const files: RawFile[] = [];
 
   await readSse(res, (ev) => {
     const json = parseEventJson(ev.data);
@@ -174,11 +195,12 @@ async function readStream(
     // куски именно склеиваются, а не заменяют друг друга.
     const piece = textOf(json);
     if (piece !== '') { text += piece; onText?.(piece); }
+    files.push(...filesOf(json));
     const s = str(pick(json, ['candidates', '0', 'finishReason']));
     if (s !== null) stop = s;
     const t = num(pick(json, ['usageMetadata', 'candidatesTokenCount']));
     if (t !== null) tokens = t;
   }, abort);
 
-  return { text, tokens, stop };
+  return { text, files, tokens, stop };
 }

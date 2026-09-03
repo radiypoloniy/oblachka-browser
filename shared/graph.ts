@@ -7,6 +7,8 @@
 // (эмбеддинги в проекте уже выпилены как тупик, normalizeQuiz существует потому, что
 // Qwen возвращает битый JSON). Поэтому план не выдумывает модель — план рисует
 // пользователь связями между узлами, а Qwen делает ОДИН узкий шаг на узел.
+import type { AiFileMeta } from './aiAttachments'
+
 
 export type PortType = 'text' | 'textList'
 
@@ -247,6 +249,8 @@ export interface GraphChatMessage {
   at: number
   role: 'user' | 'assistant'
   text: string
+  /** Вложения ответа: описания файлов, байты лежат у main (electron/ai/FileStore.ts). */
+  files?: AiFileMeta[]
 }
 
 export interface GraphEdge {

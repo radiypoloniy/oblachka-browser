@@ -396,4 +396,12 @@ export interface AiApi {
   /** null — вернуть роль на модель этой машины. */
   setAiRoute(role: string, connectionId: string | null): Promise<boolean>;
   onAiConnectionsChanged(cb: (state: AiConnectionsState) => void): () => void;
+
+  // ── Вложения из ответа модели ────────────────────────────────────────────
+  /** Картинка как data-URL — только для показа. Нет файла (вычистили по потолку) — null. */
+  aiFileData(id: string): Promise<string | null>;
+  /** Сохранить вложение по клику: диалог + копия. false — человек отказался или не вышло. */
+  aiFileSave(id: string): Promise<boolean>;
+  /** Сохранить текстовый фрагмент ответа файлом с подсказанным именем. */
+  aiTextSave(name: string, text: string): Promise<boolean>;
 }

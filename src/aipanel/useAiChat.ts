@@ -80,7 +80,7 @@ export function useAiChat() {
       setWebSearching(false)
       setStreamedText('')
       if (outcome.ok) {
-        setMessages((prev) => [...prev, { role: 'assistant', text: outcome.out, via: outcome.via }])
+        setMessages((prev) => [...prev, { role: 'assistant', text: outcome.out, via: outcome.via, files: outcome.files }])
         setError(null)
         setErrorCode(null)
       } else {

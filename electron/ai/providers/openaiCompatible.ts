@@ -18,10 +18,12 @@ import { fetchInProfile } from '../../ProfileSession';
 import { capsFor, type Connection, type ProviderCaps } from '../../../shared/aiProviders';
 import { extractJson, toDialect, type JsonSchema } from '../../../shared/aiSchema';
 import { isSseDone } from '../../../shared/sseParse';
-import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
-import { httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
+import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider, type RawFile } from '../Provider';
+import { arr, httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
+import { parseDataUrl } from '../../../shared/aiAttachments';
 
 interface Msg { role: 'system' | 'user' | 'assistant'; content: string }
+interface Read { text: string; files: RawFile[]; tokens: number; stop: string }
 
 export interface OpenAiCompatDeps {
   connection: Connection;
@@ -32,7 +34,7 @@ export interface OpenAiCompatDeps {
 export function createOpenAiCompatibleProvider(deps: OpenAiCompatDeps): Provider {
   const { connection } = deps;
 
-  async function call(body: Record<string, unknown>, opts?: GenOpts): Promise<{ text: string; tokens: number; stop: string }> {
+  async function call(body: Record<string, unknown>, opts?: GenOpts): Promise<Read> {
     const key = deps.getKey();
     // ⚠️ Локальные раннеры ключа не требуют вовсе — отказывать им «нет ключа» значило бы не пускать
     // Ollama, у которой его не бывает по устройству.
@@ -93,6 +95,7 @@ export function createOpenAiCompatibleProvider(deps: OpenAiCompatDeps): Provider
       const r = await call({ messages, max_tokens: opts?.maxTokens ?? 512 }, opts);
       return {
         out: r.text,
+        files: r.files,
         // ⚠️ История возвращается БЕЗ системного промпта: он приклеивается на каждом запросе заново
         // и, попав в историю, удваивался бы с каждым ходом беседы.
         history: [...prior, { role: 'user', content: userText }, { role: 'assistant', content: r.text }],
@@ -149,21 +152,44 @@ function asMessages(history: unknown[]): Msg[] {
   return out;
 }
 
-async function readWhole(res: Response): Promise<{ text: string; tokens: number; stop: string }> {
+async function readWhole(res: Response): Promise<Read> {
   const json: unknown = await res.json().catch(() => null);
   const choice = pick(json, ['choices', '0']);
   const text = str(pick(choice, ['message', 'content'])) ?? '';
   return {
     text,
+    files: imagesIn(pick(choice, ['message'])),
     tokens: num(pick(json, ['usage', 'completion_tokens'])) ?? 0,
     stop: str(pick(choice, ['finish_reason'])) ?? 'stop',
   };
 }
 
-async function readStream(res: Response, opts?: GenOpts): Promise<{ text: string; tokens: number; stop: string }> {
+/**
+ * Картинки из ответа.
+ *
+ * ⚠️ Поля `images` В СПЕЦИФИКАЦИИ chat/completions НЕТ — его завели шлюзы (первым OpenRouter),
+ * когда через тот же протокол пошли рисующие модели. Поэтому и разбор терпимый: нет поля — просто
+ * нет картинок, а не ошибка. Ждать здесь стандарта неоткуда, стандарт сюда не дошёл.
+ *
+ * ⚠️ Берём только data-URL. Ссылку на чужой хост мы бы потом пошли скачивать сами — то есть завели
+ * бы ещё один канал наружу, мимо профиля и kill switch, ради картинки.
+ */
+function imagesIn(message: unknown): RawFile[] {
+  const out: RawFile[] = [];
+  for (const item of arr(pick(message, ['images']))) {
+    const url = str(pick(item, ['image_url', 'url'])) ?? str(pick(item, ['url']));
+    if (url === null) continue;
+    const parsed = parseDataUrl(url);
+    if (parsed !== null) out.push(parsed);
+  }
+  return out;
+}
+
+async function readStream(res: Response, opts?: GenOpts): Promise<Read> {
   let text = '';
   let stop = 'stop';
   let tokens = 0;
+  const files: RawFile[] = [];
 
   await readSse(res, (ev) => {
     if (isSseDone(ev.data)) return;
@@ -172,6 +198,9 @@ async function readStream(res: Response, opts?: GenOpts): Promise<{ text: string
     const choice = pick(json, ['choices', '0']);
     const piece = str(pick(choice, ['delta', 'content']));
     if (piece !== null && piece !== '') { text += piece; opts?.onChunk?.(piece); }
+    // ⚠️ Картинка приезжает НЕ дельтой по кускам, а целиком в одном событии — обычно последнем.
+    // Складываем, а не заменяем: рисующие модели умеют вернуть несколько за один ответ.
+    files.push(...imagesIn(pick(choice, ['delta'])), ...imagesIn(pick(choice, ['message'])));
     const finish = str(pick(choice, ['finish_reason']));
     if (finish !== null) stop = finish;
     // ⚠️ usage приходит последним событием и только если его попросили — поэтому не перетираем
@@ -180,5 +209,5 @@ async function readStream(res: Response, opts?: GenOpts): Promise<{ text: string
     if (used !== null) tokens = used;
   }, opts?.abort);
 
-  return { text, tokens, stop };
+  return { text, files, tokens, stop };
 }

@@ -2,6 +2,7 @@
 // в поповере, ответы чата в AI-панели) — единственное место с этими стилями, чтобы markdown-вёрстка
 // не расходилась между поповером и панелью. Перенесено из translatepopover.tsx без изменений.
 import type { Components } from 'react-markdown';
+import { CodeBlock } from './ai/CodeBlock';
 
 // Qwen может ответить с разметкой (**жирный**, списки, изредка заголовки) — react-markdown рендерит
 // её в реальные элементы (не dangerouslySetInnerHTML: без risk'а инъекции чужого HTML). Перевод
@@ -9,6 +10,26 @@ import type { Components } from 'react-markdown';
 // раньше у обычного <span>, визуально не отличить. Base-стили (fs-md/lh-body/text-strong) — тут,
 // а не в родителе, т.к. react-markdown сам оборачивает контент в блочные теги (p/ul/li/h1…).
 export const markdownComponents: Components = {
+  // ⚠️ pre отдаём насквозь: контейнер блока рисует сам CodeBlock, а <div> внутри <pre> — невалидная
+  // вложенность, на которой React ругается в консоль и ломает раскладку.
+  pre: ({ children }) => <>{children}</>,
+  code: ({ className, children }) => {
+    const text = String(children ?? '');
+    const lang = /language-([\w+-]+)/.exec(className ?? '')?.[1] ?? null;
+    // Строчный код (`вот такой`) остаётся строчным: у него нет ни языка, ни переносов.
+    if (lang === null && !text.includes('\n')) {
+      return (
+        <code style={{
+          fontFamily: 'var(--font-mono)', fontSize: '0.9em',
+          background: 'var(--surface-sunken)', borderRadius: 'var(--radius-xs, 4px)', padding: '1px 4px',
+        }}>{children}</code>
+      );
+    }
+    // ⚠️ Номер всегда первый, и это не недоделка: react-markdown зовёт компонент кода без
+    // всякого контекста ответа, а модульный счётчик через час работы выдал бы «Таблица 47.csv».
+    // Номер здесь — лишь подсказка имени в диалоге сохранения, и там человек правит его сам.
+    return <CodeBlock lang={lang} text={text.replace(/\n$/, '')} index={0} />;
+  },
   p: ({ children }) => (
     <p style={{
       margin: '0 0 6px', fontSize: 'var(--fs-md)', lineHeight: 'var(--lh-body)',

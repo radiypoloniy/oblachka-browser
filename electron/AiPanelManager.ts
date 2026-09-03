@@ -18,8 +18,8 @@ import { setPanelSource, sendPanelStatuses } from './aipanel/panelStatus'
 import { getCurrencyRates } from './CurrencyRates'
 import { getWeather } from './WeatherService'
 import * as webApps from './WebAppManager'
-import { IPC } from '../shared/ipc'
-import type { TabState } from '../shared/ipc'
+import { IPC, type TabState } from '../shared/ipc'
+import type { AiFileMeta } from '../shared/aiAttachments'
 import type { TabManager } from './TabManager'
 import type { SettingsManager } from './SettingsManager'
 
@@ -147,7 +147,7 @@ export function setOnPanelFocus(cb: () => void): void {
 // только РАЗДЕЛЕНИЕ истории по вкладкам, а не отдельная модель на вкладку. Эфемерно, только в
 // памяти процесса main — без персистентности на диск (как и просили), обнуляется при рестарте
 // браузера вместе со всем модулем.
-interface ChatMessage { role: 'user' | 'assistant'; text: string }
+interface ChatMessage { role: 'user' | 'assistant'; text: string; files?: AiFileMeta[] }
 interface TabChatContext {
   messages: ChatMessage[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -492,7 +492,7 @@ function ensureIpcRegistered(): void {
         })
         if (outcome.ok) {
           const withSources = appendSearxngSources(outcome.out, search.results)
-          ctx.messages.push({ role: 'assistant', text: withSources })
+          ctx.messages.push({ role: 'assistant', text: withSources, files: outcome.files })
           ctx.history = outcome.history
           if (panelView && panelView.webContents === wc && activeTabId === tabId) {
             wc.send('ai-panel:chat-result', { ...outcome, out: withSources })
@@ -535,7 +535,7 @@ function ensureIpcRegistered(): void {
       })
 
       if (outcome.ok) {
-        ctx.messages.push({ role: 'assistant', text: outcome.out })
+        ctx.messages.push({ role: 'assistant', text: outcome.out, files: outcome.files })
         ctx.history = outcome.history
       }
       if (panelView && panelView.webContents === wc && activeTabId === tabId) {
@@ -598,7 +598,7 @@ function ensureIpcRegistered(): void {
       })
 
       if (outcome.ok) {
-        ctx.messages.push({ role: 'assistant', text: outcome.out })
+        ctx.messages.push({ role: 'assistant', text: outcome.out, files: outcome.files })
         ctx.history = outcome.history
       }
       if (panelView && panelView.webContents === wc && activeTabId === tabId) {

@@ -64,7 +64,10 @@ export async function sendChatMessage(
     const answer = outcome.out.trim();
     if (!answer) { sink.done({ ok: false, error: 'Модель вернула пустой ответ' }); return; }
 
-    store.appendChatMessage(graphId, nodeId, 'assistant', answer);
+    // ⚠️ Наружу по графу течёт только ТЕКСТ ответа: соседний узел ждёт материал, который умеет
+    // подставить в свой промпт, а картинку подставить некуда. Вложения остаются у переписки.
+    const files = outcome.files;
+    store.appendChatMessage(graphId, nodeId, 'assistant', answer, files.length ? JSON.stringify(files) : null);
     if (Array.isArray(outcome.history)) store.setChatHistory(graphId, nodeId, outcome.history);
     // Наружу узел отдаёт последний ответ. Отпечаток берём тот же, что посчитал бы движок,
     // — тогда прогон графа не станет пересчитывать узел, у которого уже есть свежий ответ.

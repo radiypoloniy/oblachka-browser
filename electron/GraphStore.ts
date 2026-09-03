@@ -347,22 +347,33 @@ export class GraphStore {
   listChatMessages(graphId: number, nodeId: string): GraphChatMessage[] {
     if (!this.#db) return [];
     try {
-      return this.#db.prepare(`
-        SELECT at, role, text FROM graph_chat_messages
+      const rows = this.#db.prepare(`
+        SELECT at, role, text, files_json AS filesJson FROM graph_chat_messages
         WHERE graph_id = ? AND node_id = ? ORDER BY at ASC
-      `).all(graphId, nodeId) as GraphChatMessage[];
+      `).all(graphId, nodeId) as (GraphChatMessage & { filesJson: string | null })[];
+      // Битый JSON здесь означает «вложений нет», а не потерю переписки: сообщение важнее.
+      return rows.map(({ filesJson, ...m }) => {
+        if (filesJson === null) return m;
+        try {
+          const v: unknown = JSON.parse(filesJson);
+          return Array.isArray(v) && v.length ? { ...m, files: v as GraphChatMessage['files'] } : m;
+        } catch { return m; }
+      });
     } catch (e) {
       console.warn('[Graph] listChatMessages error:', (e as Error).message);
       return [];
     }
   }
 
-  appendChatMessage(graphId: number, nodeId: string, role: 'user' | 'assistant', text: string): void {
+  appendChatMessage(
+    graphId: number, nodeId: string, role: 'user' | 'assistant', text: string, filesJson?: string | null,
+  ): void {
     if (!this.#db || !text) return;
     try {
+      // Вложения — ОПИСАНИЯМИ (id/имя/тип), байты лежат в userData/ai-files. См. HubChatManager.
       this.#db.prepare(`
-        INSERT INTO graph_chat_messages (graph_id, node_id, at, role, text) VALUES (?, ?, ?, ?, ?)
-      `).run(graphId, nodeId, Date.now(), role, text);
+        INSERT INTO graph_chat_messages (graph_id, node_id, at, role, text, files_json) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(graphId, nodeId, Date.now(), role, text, filesJson ?? null);
     } catch (e) {
       console.warn('[Graph] appendChatMessage error:', (e as Error).message);
     }
@@ -536,6 +547,12 @@ export class GraphStore {
     );
     if (!columns.has('w')) db.exec(`ALTER TABLE graph_nodes ADD COLUMN w INTEGER`);
     if (!columns.has('h')) db.exec(`ALTER TABLE graph_nodes ADD COLUMN h INTEGER`);
+
+    // Тем же порядком — вложения в ответах чата узла (описания, не байты; см. HubChatManager).
+    const chatColumns = new Set(
+      (db.pragma('table_info(graph_chat_messages)') as { name: string }[]).map((c) => c.name),
+    );
+    if (!chatColumns.has('files_json')) db.exec(`ALTER TABLE graph_chat_messages ADD COLUMN files_json TEXT`);
   }
 }
 

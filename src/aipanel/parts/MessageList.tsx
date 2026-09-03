@@ -2,6 +2,7 @@ import type React from 'react';
 import { Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { markdownComponents } from '../../components/aiMarkdown';
+import { ChatFiles } from '../../components/ai/ChatFiles';
 import { DISPLAY_ROW, TEXT } from '../../styles/system';
 import type { ChatMessage } from '../contract';
 import type { ModelErrorCode } from '../../../shared/ipc';
@@ -72,6 +73,7 @@ export function MessageList({
                 метка сообщала бы ноль, занимая строку в каждом ответе. */}
             {m.via && <RouteMark via={m.via} />}
             <ReactMarkdown components={markdownComponents}>{m.text}</ReactMarkdown>
+            {m.files && <ChatFiles files={m.files} />}
           </>
         ) : (
           <span style={{

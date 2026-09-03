@@ -14,12 +14,16 @@ import { buildGroundingPrompt, searxngSearch } from '../SearxngSearch';
 import * as skillsStore from '../SkillsStore';
 import type { ChatOutcome } from '../TranslationService';
 import { broadcastToChrome } from '../WindowRegistry';
-import { ipcMain } from 'electron';
+import { dialog, ipcMain } from 'electron';
+import fsp from 'node:fs/promises';
+import * as FileStore from '../ai/FileStore';
+import { extForMime } from '../../shared/aiAttachments';
+import { sanitizeFileNameBase } from '../../shared/fileNameSafety';
 import { randomUUID } from 'node:crypto';
 import type { IpcDeps } from './deps';
 
 export function registerAiHubIpc(d: IpcDeps): void {
-  const { chromeOf, hubChat, sendTo } = d;
+  const { chromeOf, hubChat, sendTo, winOf } = d;
 
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
   // send — fire-and-forget (не invoke): ответ идёт стримом чанков + финальным результатом,
@@ -103,6 +107,49 @@ export function registerAiHubIpc(d: IpcDeps): void {
   ipcMain.handle(IPC.AI_CONN_TEST, (_e, conn: Connection, key: string | null) => probeConnection(conn, key));
   ipcMain.handle(IPC.AI_SET_ROUTE, (_e, role: AiRole, connectionId: string | null) =>
     ConnectionStore.setRoute(role, connectionId));
+
+  // ── Вложения из ответа модели ────────────────────────────────────────────
+  // ⚠️ id приезжает из renderer и превращается в ПУТЬ. Проверка формы — внутри FileStore, здесь
+  // её не дублируем: два места, решающих, что такое годный id, разъедутся на первой же правке.
+  ipcMain.handle(IPC.AI_FILE_DATA, (_e, id: string) => FileStore.dataUrl(id));
+  ipcMain.handle(IPC.AI_FILE_SAVE, async (e, id: string) => {
+    const w = winOf(e);
+    const src = FileStore.pathOf(id);
+    const meta = FileStore.metaOf(id);
+    if (!w || src === null || meta === null) return false;
+    const res = await dialog.showSaveDialog(w, {
+      title: 'Сохранить вложение',
+      defaultPath: meta.name,
+      filters: [{ name: meta.kind === 'image' ? 'Изображение' : 'Файл', extensions: [extForMime(meta.mime)] }],
+    });
+    if (res.canceled || !res.filePath) return false;
+    try {
+      await fsp.copyFile(src, res.filePath);
+      return true;
+    } catch (err) {
+      console.warn('[ai-files] сохранение упало:', (err as Error).message);
+      return false;
+    }
+  });
+  ipcMain.handle(IPC.AI_TEXT_SAVE, async (e, name: string, text: string) => {
+    const w = winOf(e);
+    if (!w || typeof text !== 'string' || text === '') return false;
+    // ⚠️ Имя собрано нами (язык фенса + номер), но ПРИЕЗЖАЕТ ИЗ RENDERER — значит проверяется
+    // здесь, тем же санитайзером, что и имена загрузок. Не прошло — берём безобидное своё, а не
+    // отказываем: человек нажал «сохранить», и молчание в ответ он прочтёт как поломку.
+    const dot = name.lastIndexOf('.');
+    const ext = dot > 0 ? name.slice(dot) : '.txt';
+    const base = sanitizeFileNameBase(dot > 0 ? name.slice(0, dot) : name, ext) ?? 'Фрагмент';
+    const res = await dialog.showSaveDialog(w, { title: 'Сохранить фрагмент', defaultPath: `${base}${ext}` });
+    if (res.canceled || !res.filePath) return false;
+    try {
+      await fsp.writeFile(res.filePath, text, 'utf8');
+      return true;
+    } catch (err) {
+      console.warn('[ai-files] сохранение фрагмента упало:', (err as Error).message);
+      return false;
+    }
+  });
   // Пуш статуса в чром (секция настроек) — тот же источник, что слушает и AI-панель отдельно
   // (см. AiPanelManager.ts, заход D шаг 4), оба подписаны на один aiKeyStore.onKeyStatusChanged.
   aiKeyStore.onKeyStatusChanged((connected) => {

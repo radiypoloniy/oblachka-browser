@@ -107,6 +107,15 @@ export const PANELS = {
   AI_SET_ROUTE:           'ai:set-route',
   AI_CONN_CHANGED:        'ai:connections-changed',
   AI_KEY_STATUS_CHANGED:  'ai:key-status-changed',  // main → renderer: push нового connected-статуса
+  // ── Вложения из ответа модели ────────────────────────────────────────────
+  // ⚠️ БАЙТЫ ЖИВУТ У MAIN (electron/ai/FileStore.ts), наружу ходят описания: картинка от модели
+  // это мегабайты, и через IPC они уезжали бы на каждом пуше, а в истории беседы оставались бы
+  // навсегда. data — по явной просьбе показать картинку, save — сохранение по клику.
+  AI_FILE_DATA:           'ai:file-data',
+  AI_FILE_SAVE:           'ai:file-save',
+  // Текстовый фрагмент ответа файлом: чат-API не отдаёт ни .docx, ни .pdf — «документ» от модели
+  // это всегда текст (таблица, разметка, код), которому не хватает имени и расширения.
+  AI_TEXT_SAVE:           'ai:text-save',
 
   // Задел под web-grounding в AI-панели (SearXNG) — тот же контракт, что у ключа Gemini выше:
   // endpoint/токен никогда не возвращаются в renderer, только булев статус «настроено/нет»

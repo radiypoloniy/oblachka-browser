@@ -32,6 +32,10 @@ export const aiBridge = {
     ipcRenderer.invoke(IPC.AI_CONN_TEST, conn, key) as Promise<AiConnectionTest>,
   setAiRoute: (role: string, connectionId: string | null) =>
     ipcRenderer.invoke(IPC.AI_SET_ROUTE, role, connectionId) as Promise<boolean>,
+  aiFileData: (id: string) => ipcRenderer.invoke(IPC.AI_FILE_DATA, id) as Promise<string | null>,
+  aiFileSave: (id: string) => ipcRenderer.invoke(IPC.AI_FILE_SAVE, id) as Promise<boolean>,
+  aiTextSave: (name: string, text: string) =>
+    ipcRenderer.invoke(IPC.AI_TEXT_SAVE, name, text) as Promise<boolean>,
   onAiConnectionsChanged: (cb: (state: AiConnectionsState) => void) => {
     const h = (_e: unknown, state: AiConnectionsState) => cb(state);
     ipcRenderer.on(IPC.AI_CONN_CHANGED, h);

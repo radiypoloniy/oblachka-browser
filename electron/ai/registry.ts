@@ -20,6 +20,7 @@ import type { Provider } from './Provider';
 export type { JsonSchema } from '../../shared/aiSchema';
 export type { AiRole } from '../../shared/aiRouting';
 export type { ChatVia, Provider } from './Provider';
+export type { AiFileMeta } from '../../shared/aiAttachments';
 
 let localDeps: LocalDeps | null = null;
 let connections: Connection[] = [];

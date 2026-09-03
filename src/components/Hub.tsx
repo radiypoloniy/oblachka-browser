@@ -9,6 +9,7 @@ import type { TileSite } from '../../shared/frecency';
 import type { HubChatMessage, HubChatSessionMeta, HubMode } from '../../shared/ipc';
 import { markdownComponents } from './aiMarkdown';
 import { HubComposer } from './ai/HubComposer';
+import { ChatFiles } from './ai/ChatFiles';
 import { glassPlate } from '../styles/island';
 import DesktopScreen from './desktop/DesktopScreen';
 import Notebook from './Notebook';
@@ -193,8 +194,8 @@ function AiChatView({ tabId, onModeChange, onOpenSettings }: {
       setWebSearching(false);
       setStreamText('');
       if (payload.outcome.ok) {
-        const out = payload.outcome.out;
-        setMessages((prev) => [...prev, { role: 'assistant', text: out, createdAt: Date.now() }]);
+        const { out, files } = payload.outcome;
+        setMessages((prev) => [...prev, { role: 'assistant', text: out, createdAt: Date.now(), files }]);
         setSessionId(payload.sessionId);
         setError(null);
         refreshSessions();
@@ -484,6 +485,7 @@ function MessageBubble({ message, pending, placeholderText = '…' }: {
       {showPlaceholder
         ? <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-faint)' }}>{placeholderText}</span>
         : <ReactMarkdown components={markdownComponents}>{message.text}</ReactMarkdown>}
+      {message.files && <ChatFiles files={message.files} />}
     </div>
   );
 }

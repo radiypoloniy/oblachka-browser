@@ -4,6 +4,7 @@ import { runChatMessage, type ChatOutcome } from './TranslationService';
 import { beginActivity } from './AiActivity';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
 import { appendSearxngSources, type SearxngResult } from './SearxngSearch';
+import type { AiFileMeta } from '../shared/aiAttachments';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
 // Грузим динамически, чтобы браузер запускался даже без C++ инструментов (тот же приём,
@@ -13,13 +14,29 @@ type BetterSqlite3 = typeof import('better-sqlite3');
 
 const TITLE_MAX_LEN = 60;
 
-export interface HubChatMessage { role: 'user' | 'assistant'; text: string; createdAt: number }
+export interface HubChatMessage { role: 'user' | 'assistant'; text: string; createdAt: number; files?: AiFileMeta[] }
 export interface HubChatSessionMeta { id: number; title: string; updatedAt: number }
 
 interface TabChatCtx {
   sessionId: number | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   history: any[]; // ChatHistoryItem[] node-llama-cpp — тот же opaque-формат, что у AiPanelManager.tabContexts
+}
+
+/**
+ * Разбор описаний вложений из базы.
+ *
+ * ⚠️ Не приведение типа, а фильтр: строку писали мы, но читаем мы её через месяцы и после правок
+ * формата. Битый JSON здесь означает «вложений нет», а не падение всей беседы.
+ */
+function parseFiles(json: string | null): AiFileMeta[] | undefined {
+  if (json === null) return undefined;
+  try {
+    const v: unknown = JSON.parse(json);
+    return Array.isArray(v) && v.length ? (v as AiFileMeta[]) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // Отдельный файл БД от history.sqlite (тот же приём, что passwords.sqlite у PasswordManager) —
@@ -89,7 +106,7 @@ export class HubChatManager {
           const now = Date.now();
           if (ctx.sessionId === null) ctx.sessionId = this.#createSession(text, now);
           this.#appendMessage(ctx.sessionId, 'user', text, now);
-          this.#appendMessage(ctx.sessionId, 'assistant', displayOut, now);
+          this.#appendMessage(ctx.sessionId, 'assistant', displayOut, now, outcome.files);
           this.#touchSession(ctx.sessionId, ctx.history, now);
         } catch (e) {
           console.warn('[HubChat] sendMessage persist error:', (e as Error).message);
@@ -137,9 +154,11 @@ export class HubChatManager {
   getSession(sessionId: number): HubChatMessage[] {
     if (!this.#db) return [];
     try {
-      return this.#db.prepare(`
-        SELECT role, text, created_at AS createdAt FROM chat_messages WHERE session_id = ? ORDER BY id ASC
-      `).all(sessionId) as HubChatMessage[];
+      const rows = this.#db.prepare(`
+        SELECT role, text, files_json AS filesJson, created_at AS createdAt
+        FROM chat_messages WHERE session_id = ? ORDER BY id ASC
+      `).all(sessionId) as (HubChatMessage & { filesJson: string | null })[];
+      return rows.map(({ filesJson, ...m }) => ({ ...m, files: parseFiles(filesJson) }));
     } catch (e) {
       console.warn('[HubChat] getSession error:', (e as Error).message);
       return [];
@@ -190,10 +209,16 @@ export class HubChatManager {
     return Number(info.lastInsertRowid);
   }
 
-  #appendMessage(sessionId: number, role: 'user' | 'assistant', text: string, now: number): void {
+  #appendMessage(
+    sessionId: number, role: 'user' | 'assistant', text: string, now: number, files?: AiFileMeta[],
+  ): void {
+    // ⚠️ Пишем ОПИСАНИЯ, а не байты: сами файлы лежат в userData/ai-files (electron/ai/FileStore.ts).
+    // Картинка в поле TEXT раздула бы базу беседы на мегабайты за ход и осталась бы там навсегда.
+    // Обратная сторона честная: каталог вложений с потолком, и очень старая картинка может быть
+    // выселена — тогда на её месте в ленте будет сказано, что она больше не хранится.
     this.#db!.prepare(`
-      INSERT INTO chat_messages (session_id, role, text, created_at) VALUES (?, ?, ?, ?)
-    `).run(sessionId, role, text, now);
+      INSERT INTO chat_messages (session_id, role, text, files_json, created_at) VALUES (?, ?, ?, ?, ?)
+    `).run(sessionId, role, text, files && files.length ? JSON.stringify(files) : null, now);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -226,5 +251,9 @@ export class HubChatManager {
       );
       CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id);
     `);
+    // ⚠️ Колонка ДОБАВЛЯЕТСЯ, а не заводится пересозданием таблицы: у человека в базе лежат его
+    // беседы, и «удалить и создать заново» здесь означало бы стереть их. Существующая колонка —
+    // не ошибка, а обычное состояние второго запуска, поэтому исключение гасится молча.
+    try { db.exec('ALTER TABLE chat_messages ADD COLUMN files_json TEXT'); } catch { /* уже есть */ }
   }
 }
