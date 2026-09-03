@@ -1,16 +1,17 @@
 import { useCallback, useState } from 'react';
-import { Clock, Star, Download, TrendingDown } from 'lucide-react';
+import { Clock, Star, Download, TrendingDown, Plug } from 'lucide-react';
 import { RADIUS, TEXT, motion, pad, sp } from '../styles/system';
 import History from './History';
 import Bookmarks from './Bookmarks';
 import Downloads from './Downloads';
 import StuffSearchView from './StuffSearchView';
 import Tracking from './Tracking';
+import Agents from './Agents';
 import LibraryShell from './library/LibraryShell';
 import type { LibrarySummary, LibraryTone } from './library/kit';
 import type { DownloadEntry } from '../../shared/ipc';
 
-type Section = 'history' | 'bookmarks' | 'downloads' | 'search' | 'tracking';
+type Section = 'history' | 'bookmarks' | 'downloads' | 'search' | 'tracking' | 'agents';
 
 interface Props {
   defaultSection: Section;
@@ -40,6 +41,9 @@ const TONE: Record<Section, LibraryTone> = {
   bookmarks: 'mustard',
   downloads: 'tea',
   tracking: 'tangerine',
+  // ⚠️ Агентам достаётся ЧАЙ, а не свой пятый тон: у библиотеки их всего пять, и заводить шестой
+  // ради раздела, куда заходят реже всех, значило бы размыть узнавание остальных.
+  agents: 'tea',
   // Лайм закреплён за ПОИСКОМ: он не архив, и цвета архива у него быть не должно.
   search: 'lime',
 };
@@ -49,6 +53,7 @@ const TITLE: Record<Section, string> = {
   bookmarks: 'Закладки',
   downloads: 'Загрузки',
   tracking: 'Отслеживание',
+  agents: 'Агенты',
   search: 'Поиск везде',
 };
 
@@ -57,6 +62,7 @@ const PLACEHOLDER: Record<Section, string> = {
   bookmarks: 'Искать по закладкам…',
   downloads: 'Искать по загрузкам…',
   tracking: 'Искать по товарам…',
+  agents: 'Искать по обращениям…',
   search: 'Один вопрос по истории, закладкам и загрузкам — Enter',
 };
 
@@ -65,6 +71,9 @@ const RAIL: { id: Exclude<Section, 'search'>; label: string; icon: JSX.Element }
   { id: 'bookmarks', label: 'Закладки', icon: <Star size={14} /> },
   { id: 'downloads', label: 'Загрузки', icon: <Download size={14} /> },
   { id: 'tracking', label: 'Отслеживание', icon: <TrendingDown size={14} /> },
+  // ⚠️ «Кто приходил и что делал» — это библиотека, а не настройки: там отвечают на вопрос
+  // «включено ли и как подключиться», здесь — показывают накопленное (см. Agents.tsx).
+  { id: 'agents', label: 'Агенты', icon: <Plug size={14} /> },
 ];
 
 export default function HistoryBookmarks({ defaultSection, downloads, onClose }: Props) {
@@ -134,6 +143,7 @@ export default function HistoryBookmarks({ defaultSection, downloads, onClose }:
           : shown === 'history' ? <History query={query} onSummary={onSummary} />
             : shown === 'bookmarks' ? <Bookmarks query={query} onSummary={onSummary} />
               : shown === 'tracking' ? <Tracking query={query} onSummary={onSummary} />
+                : shown === 'agents' ? <Agents query={query} onSummary={onSummary} />
                 : <Downloads downloads={downloads} query={query} onSummary={onSummary} />}
       </LibraryShell>
     </div>

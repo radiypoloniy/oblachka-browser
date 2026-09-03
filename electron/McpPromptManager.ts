@@ -18,9 +18,10 @@ import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics
 // и вся её механика (снятие вопросов при уходе со страницы, ключ «сайт + разрешение») к внешнему
 // агенту не относится.
 //
-// ⚠️ Угол ПРАВЫЙ верхний, а не левый, как у разрешений сайта. Это не вкус: слева спрашивает
-// страница — там же замок и адрес; справа живёт метка «Внешний агент», и карточка обязана
-// выходить из того же места, куда человек смотрит, когда замечает, что браузером кто-то управляет.
+// ⚠️ Угол ЛЕВЫЙ верхний — тот же, что у разрешений сайта, и это правка прежнего решения. Сначала
+// карточка выходила справа, «из-под метки внешнего агента»; связь красивая, но неверная: для
+// человека это ОДИН И ТОТ ЖЕ вид сообщения — «у тебя просят разрешение», — и появляться он обязан
+// в одном месте. Разные углы у одинаковых по смыслу карточек учат искать вопрос глазами.
 
 const CARD_WIDTH = 380;
 const INITIAL_HEIGHT = 170;
@@ -84,7 +85,7 @@ function bounds(st: PromptState): { x: number; y: number; width: number; height:
     ? st.contentBounds
     : { x: 0, y: FALLBACK_TOP, width: wb.width, height: wb.height - FALLBACK_TOP };
   return {
-    x: cb.x + cb.width - CARD_WIDTH - EDGE_GAP - SHADOW_MARGIN,
+    x: cb.x + EDGE_GAP - SHADOW_MARGIN,
     y: cb.y + EDGE_GAP - SHADOW_MARGIN,
     width: CARD_WIDTH + SHADOW_MARGIN * 2,
     height: st.height + SHADOW_MARGIN * 2,
