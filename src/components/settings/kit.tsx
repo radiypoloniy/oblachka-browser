@@ -475,7 +475,7 @@ export function SpotCard({
   icon?: React.ReactNode;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
-  fields?: { label: string; value: string }[];
+  fields?: { label: string; value: React.ReactNode; mono?: boolean }[];  // mono — то, что сверяют, а не читают: имя модели, адрес, id
   /** Подвал карточки: прижат к низу, живёт внутри тех же полей. Тумблер, метка, «Править». */
   foot?: React.ReactNode;
   mark?: React.ReactNode;
@@ -538,11 +538,11 @@ export function SpotCard({
           </div>
         </div>
         {fields && fields.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: `${sp(2)}px ${sp(4)}px`, marginTop: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: `${sp(2)}px ${sp(4)}px`, marginTop: 'auto' }}>
             {fields.map((f) => (
               <div key={f.label}>
                 <div style={{ ...CAPS, marginBottom: sp(1), color: muted }}>{f.label}</div>
-                <div style={{ ...TEXT.body, color: ink }}>{f.value}</div>
+                <div style={{ ...TEXT.body, ...(f.mono ? { fontFamily: 'var(--font-mono)', fontSize: TEXT.caption.fontSize } : null), color: ink }}>{f.value}</div>
               </div>
             ))}
           </div>

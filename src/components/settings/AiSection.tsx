@@ -7,6 +7,7 @@ import { AiConnectionsBlock } from './AiConnectionsBlock';
 import { AiUsageBlock } from './AiUsageBlock';
 import { AiRolesBlock } from './AiRolesBlock';
 import type { AiConnectionsState } from '../../../shared/ipc';
+import type { AiUsage } from '../../../shared/aiUsage';
 import {
   btnPrimary, btnGhost, OptionList, OptionRow, SectionHeader, Subsection, CapsLabel, FactGrid, Fact,
   StatusCard, StatusCardSkeleton, TextField, InputRow, fieldFlex,
@@ -73,16 +74,24 @@ export default function AiSection() {
  */
 function AiConnectionsSection() {
   const [state, setState] = useState<AiConnectionsState | null>(null);
+  // ⚠️ Счёт спрашивается ОДИН РАЗ на секцию, а не каждым блоком отдельно: его показывают и плитки
+  // сводки, и строка «Израсходовано» в карточке, и два запроса за одним и тем же дали бы два
+  // снимка, способных разъехаться на глазах у человека.
+  const [usage, setUsage] = useState<Record<string, AiUsage> | null>(null);
   useEffect(() => {
     let alive = true;
     void window.oblako.aiConnections().then((s) => { if (alive) setState(s); });
+    void window.oblako.aiUsage().then((u) => { if (alive) setUsage(u); });
     const off = window.oblako.onAiConnectionsChanged((s) => { if (alive) setState(s); });
     return () => { alive = false; off(); };
   }, []);
+  const refreshUsage = (): void => { void window.oblako.aiUsage().then(setUsage); };
   return (
     <>
-      <AiConnectionsBlock state={state} />
-      <AiUsageBlock state={state} />
+      <AiConnectionsBlock
+        state={state} usage={usage}
+        summary={<AiUsageBlock state={state} usage={usage} onReset={refreshUsage} />}
+      />
       <AiRolesBlock state={state} />
     </>
   );

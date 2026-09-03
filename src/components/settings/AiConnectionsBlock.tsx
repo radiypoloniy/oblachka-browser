@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import type React from 'react';
 import { Plug, Trash2 } from 'lucide-react';
 import {
-  btnGhost, btnTone, CapsLabel, fieldFlex, InputRow, InlineHint, MonoChip,
-  Panel, Segmented, StatusCard, StatusCardSkeleton, Subsection, TextField,
+  btnGhost, btnTone, CapsLabel, fieldFlex, InputRow, InlineHint,
+  Panel, Segmented, SpotCard, StatusCard, StatusCardSkeleton, Subsection, TextField,
 } from './kit';
-import { pad, sp } from '../../styles/system';
+import { CAPS, RADIUS, pad, sp } from '../../styles/system';
+import { formatCost, formatTokens, totalTokens, type AiUsage } from '../../../shared/aiUsage';
 import { PROVIDER_PRESETS, defaultSchemaMode, isLoopbackUrl, type ProviderKind } from '../../../shared/aiProviders';
 import type { AiConnection, AiConnectionsState } from '../../../shared/ipc';
 
@@ -46,7 +48,14 @@ const KINDS: { id: ProviderKind; label: string; hint?: string }[] = [
 interface Draft { kind: ProviderKind; baseUrl: string; model: string; key: string }
 let draft: Draft = { kind: 'openai-compatible', baseUrl: '', model: '', key: '' };
 
-export function AiConnectionsBlock({ state }: { state: AiConnectionsState | null }) {
+export function AiConnectionsBlock({ state, usage, summary }: {
+  state: AiConnectionsState | null;
+  usage: Record<string, AiUsage> | null;
+  /** ⚠️ Сводка расхода приходит СЛОТОМ и встаёт между карточками и формой: она подводит итог тому,
+   *  что перечислено выше, а не предваряет заведение нового. Отдельным блоком после формы она
+   *  читалась продолжением формы — то есть отвечала не на тот вопрос, под которым стояла. */
+  summary?: React.ReactNode;
+}) {
   const [form, setForm] = useState<Draft>(draft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -95,7 +104,7 @@ export function AiConnectionsBlock({ state }: { state: AiConnectionsState | null
       {state === null
         ? <StatusCardSkeleton />
         : state.connections.map((c) => (
-          <ConnectionCard key={c.id} conn={c} ready={state.ready.includes(c.id)} />
+          <ConnectionCard key={c.id} conn={c} ready={state.ready.includes(c.id)} usage={usage?.[c.id]} />
         ))}
 
       {state !== null && state.connections.length === 0 && (
@@ -105,6 +114,8 @@ export function AiConnectionsBlock({ state }: { state: AiConnectionsState | null
           subtitle="Браузер работает на модели этой машины. Подключение нужно там, где ответ сочиняют: чат, работа со страницей, блокнот."
         />
       )}
+
+      {summary}
 
       <Panel style={{ padding: pad(4), display: 'flex', flexDirection: 'column', gap: sp(3) }}>
         <CapsLabel>Новое подключение</CapsLabel>
@@ -148,6 +159,16 @@ export function AiConnectionsBlock({ state }: { state: AiConnectionsState | null
 /**
  * Карточка подключения.
  *
+ * ⚠️ SpotCard, а НЕ StatusCard, и это не смена кубика ради красоты. StatusCard — «строка
+ * состояния»: один факт и, может быть, кнопка («подписка сохранена», «ссылки открывает другой
+ * браузер»). Подключение — СУЩНОСТЬ: у него есть имя, состояние, параметры и несколько действий.
+ * Для сущности в наборе есть своя карточка с полями дела, и пока их складывали в подпись через
+ * точки, самым тяжёлым пятном карточки становился идентификатор модели.
+ *
+ * ⚠️ Имя модели — ПОЛЕ, а не чип. MonoChip рассчитан на короткое значение (кегль 14, поля 8×12);
+ * сорокознаковый `inclusionai/ling-3.0-flash-fin:free` превращал его в серую плиту, которая
+ * перевешивала имя провайдера. Дизайн-проект говорит об этом прямо: модель — служебный факт.
+ *
  * ⚠️ «Проверить» здесь не для красоты: подключение живёт месяцами, а ключ отзывают, тариф
  * заканчивается, адрес переезжает. Без кнопки человек узнаёт об этом в чате посреди работы — ровно
  * в том виде, в каком уже жаловался: «вроде подключил, но нихуя не работает».
@@ -155,7 +176,9 @@ export function AiConnectionsBlock({ state }: { state: AiConnectionsState | null
  * ⚠️ Ключ при проверке НЕ передаётся: его берёт main из своего хранилища (см. probeConnection).
  * Отдать сюда сохранённый секрет ради кнопки означало бы сломать единственное правило слоя.
  */
-function ConnectionCard({ conn, ready }: { conn: AiConnection; ready: boolean }) {
+function ConnectionCard({ conn, ready, usage }: {
+  conn: AiConnection; ready: boolean; usage: AiUsage | undefined;
+}) {
   const [probe, setProbe] = useState<'idle' | 'busy' | 'ok' | string>('idle');
   const local = isLoopbackUrl(conn.baseUrl);
 
@@ -166,19 +189,24 @@ function ConnectionCard({ conn, ready }: { conn: AiConnection; ready: boolean })
   }
 
   return (
-    <StatusCard
+    <SpotCard
+      compact
       icon={<Dot local={local} ready={ready} />}
-      title={conn.label}
-      subtitle={<span>
-        {local ? 'Считается на этой машине' : ready ? 'Ключ сохранён' : 'Нужен ключ'}
-        {' · '}<MonoChip>{conn.model}</MonoChip>
-        {local ? ' · ключ не нужен' : ` · до ${conn.concurrency} запросов разом`}
-        {probe === 'busy' && ' · проверяю…'}
-        {probe === 'ok' && <span style={{ color: 'var(--success-500)' }}> · отвечает</span>}
-        {typeof probe === 'string' && probe !== 'idle' && probe !== 'busy' && probe !== 'ok' && (
-          <span style={{ color: 'var(--danger-500)' }}> · {probe}</span>
-        )}
-      </span>}
+      // ⚠️ Бейдж стоит РЯДОМ С ИМЕНЕМ, внутри title (он принимает узел именно для такой сборки):
+      // состояние — второе, что читают после «кто это», и уносить его к кнопкам значило бы
+      // разорвать пару. Рецепт чипа — тот же, что у бейджа строки списка: капса с заливкой из
+      // собственного цвета, а не цветное слово, висящее в воздухе.
+      title={(
+        <span style={{ display: 'flex', alignItems: 'center', gap: sp(3), flexWrap: 'wrap' }}>
+          {conn.label}
+          <StatusBadge local={local} ready={ready} probe={probe} />
+        </span>
+      )}
+      fields={[
+        { label: 'Модель', value: conn.model, mono: true },
+        { label: local ? 'Адрес' : 'Одновременно', value: local ? conn.baseUrl : `до ${conn.concurrency} запросов`, mono: local },
+        { label: 'Израсходовано', value: spent(usage) },
+      ]}
       actions={(
         <div style={{ display: 'flex', gap: sp(2) }}>
           <button onClick={() => void test()} disabled={probe === 'busy'} style={btnGhost}>Проверить</button>
@@ -189,6 +217,40 @@ function ConnectionCard({ conn, ready }: { conn: AiConnection; ready: boolean })
         </div>
       )}
     />
+  );
+}
+
+/** ⚠️ Прочерк, а не «0 токенов»: на этом подключении ещё не было ни одного ответа, и ноль
+ *  означал бы «считали и вышло ноль». Разницу между этими случаями держит shared/aiUsage.ts. */
+function spent(u: AiUsage | undefined): string {
+  if (u === undefined || u.requests === 0) return '—';
+  const tokens = `${formatTokens(totalTokens(u))} токенов`;
+  return u.costKnown ? `${tokens} · ${formatCost(u.cost)}` : tokens;
+}
+
+/**
+ * Состояние подключения одним чипом.
+ *
+ * ⚠️ Результат пробы вытесняет обычный статус, а не приписывается к нему. «Ключ сохранён ·
+ * отвечает» — два утверждения об одном и том же; человек нажал «Проверить» и ждёт ответа именно
+ * на этот вопрос.
+ */
+function StatusBadge({ local, ready, probe }: {
+  local: boolean; ready: boolean; probe: 'idle' | 'busy' | 'ok' | string;
+}) {
+  const [text, color] =
+    probe === 'busy' ? ['Проверяю…', 'var(--text-muted)']
+      : probe === 'ok' ? ['Отвечает', 'var(--success-500)']
+        : probe !== 'idle' ? ['Не отвечает', 'var(--danger-500)']
+          : local ? ['Считается здесь', 'var(--dot-local)']
+            : ready ? ['Ключ есть', 'var(--success-500)']
+              : ['Нужен ключ', 'var(--warning-500)'];
+  return (
+    <span style={{
+      ...CAPS, color, letterSpacing: '0.08em', whiteSpace: 'nowrap',
+      background: `color-mix(in srgb, ${color} 14%, transparent)`,
+      padding: `2px ${sp(2)}px`, borderRadius: RADIUS.pill,
+    }}>{text}</span>
   );
 }
 
