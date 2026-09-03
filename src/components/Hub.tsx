@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
-  LayoutGrid, MessageSquarePlus, Send, ArrowLeft, Trash2,
+  LayoutGrid, ArrowLeft, Trash2,
   BookOpen, Lightbulb, Globe, Code2, Bookmark, Utensils, type LucideIcon,
 } from 'lucide-react';
 import { getTopSites } from '../../shared/frecency';
 import type { TileSite } from '../../shared/frecency';
 import type { HubChatMessage, HubChatSessionMeta, HubMode } from '../../shared/ipc';
 import { markdownComponents } from './aiMarkdown';
+import { HubComposer } from './ai/HubComposer';
 import { glassPlate } from '../styles/island';
 import DesktopScreen from './desktop/DesktopScreen';
 import Notebook from './Notebook';
@@ -386,59 +387,12 @@ function AiChatView({ tabId, onModeChange, onOpenSettings }: {
   );
 
   const inputRow = (
-    <div style={{
-      flex: 'none', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '12px 14px',
-      background: 'var(--surface-solid)', borderRadius: 'var(--radius-island)',
-      boxShadow: 'var(--shadow-card)', border: '1px solid var(--glass-edge)',
-    }}>
-      <button
-        onClick={handleGlobeClick}
-        title={!searxngConfigured ? 'Веб-поиск не настроен — открыть настройки' : webGroundingActive ? 'Веб-поиск включён — нажмите, чтобы выключить' : 'Включить веб-поиск (SearXNG)'}
-        style={{
-          flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36,
-          background: webGroundingActive ? 'var(--accent-soft)' : 'transparent',
-          border: webGroundingActive ? '1.5px solid var(--accent)' : '1.5px solid transparent',
-          borderRadius: '50%', color: webGroundingActive ? 'var(--accent)' : 'var(--text-faint)', cursor: 'pointer', padding: 0,
-        }}
-      >
-        <Globe size={16} strokeWidth={2} />
-      </button>
-      <textarea
-        ref={textareaRef}
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
-        placeholder="Напишите сообщение…"
-        rows={1}
-        style={{
-          flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent',
-          color: 'var(--text-strong)', fontSize: 'var(--fs-md)', fontFamily: 'inherit',
-          maxHeight: 140, minHeight: 24, padding: '6px 8px',
-        }}
-      />
-      <button
-        onClick={newChat}
-        title="Новый чат"
-        style={{ flex: 'none', border: 'none', background: 'transparent', cursor: 'default', padding: 8, borderRadius: 'var(--radius-sm)', display: 'inline-flex', color: 'var(--text-faint)' }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-body)'; e.currentTarget.style.background = 'var(--surface-hover)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent'; }}
-      >
-        <MessageSquarePlus size={17} />
-      </button>
-      <button
-        onClick={() => send(input)}
-        disabled={streaming || !input.trim()}
-        title="Отправить"
-        style={{
-          flex: 'none', border: 'none', borderRadius: '50%', cursor: 'default', width: 36, height: 36,
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          background: input.trim() && !streaming ? 'var(--accent)' : 'var(--surface-sunken)',
-          color: input.trim() && !streaming ? 'var(--on-accent)' : 'var(--text-faint)',
-        }}
-      >
-        <Send size={15} />
-      </button>
-    </div>
+    <HubComposer
+      fieldRef={textareaRef} input={input} setInput={setInput}
+      onSend={() => send(input)} streaming={streaming} onNewChat={newChat}
+      searxngConfigured={searxngConfigured} webGroundingActive={webGroundingActive}
+      onGlobeClick={handleGlobeClick}
+    />
   );
 
   // Диалог: стандартный чат — прокручивается лента, ввод закреплён снизу.

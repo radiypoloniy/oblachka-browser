@@ -14,9 +14,7 @@ import { TRANSCRIPT_SCRIPT, composeTranscript, isVideoPage } from './videoTransc
 import { runChatMessage, resolveDirection, buildPrompt } from './TranslationService'
 import { runFactCheck } from './GeminiFactCheck'
 import { searxngSearch, buildGroundingPrompt, appendSearxngSources } from './SearxngSearch'
-import * as aiKeyStore from './AiKeyStore'
-import * as searxngKeyStore from './SearxngKeyStore'
-import * as skillsStore from './SkillsStore'
+import { setPanelSource, sendPanelStatuses } from './aipanel/panelStatus'
 import { getCurrencyRates } from './CurrencyRates'
 import { getWeather } from './WeatherService'
 import * as webApps from './WebAppManager'
@@ -326,33 +324,9 @@ function sendCurrentContext(): void {
   })
 }
 
-// Пушит панели текущий статус ключа Gemini — кнопка фактчека показывается/прячется по нему
-// (см. aipanel.tsx). Тот же источник истины (AiKeyStore.ts), что и секция настроек AI.
-function sendKeyStatus(): void {
-  if (!panelView) return
-  panelView.webContents.send('ai-panel:key-status', aiKeyStore.getKeyStatus())
-}
-
-// Подписка на изменения статуса ключа (сохранили/удалили в настройках) — модуль загружается один
-// раз за жизнь процесса (импорт в main.ts), повторной регистрации не будет.
-aiKeyStore.onKeyStatusChanged(() => sendKeyStatus())
-
-// Задел под web-grounding (SearXNG) — тот же приём, что sendKeyStatus/aiKeyStore.onKeyStatusChanged
-// выше: пуш булева статуса, сам конфиг (endpoint/токен) сюда не попадает.
-function sendSearxngStatus(): void {
-  if (!panelView) return
-  panelView.webContents.send('ai-panel:searxng-status', searxngKeyStore.getStatus())
-}
-searxngKeyStore.onStatusChanged(() => sendSearxngStatus())
-
-// Коммит 1 (реестр скиллов) — prompt-кнопки панели (Объяснить/Саммари и позже пользовательские)
-// теперь данные, не хардкод (см. QUICK_ACTIONS в aipanel.tsx до этого коммита). Перевести/Фактчек
-// остаются спец-кнопками вне реестра — этот пуш их не касается.
-function sendSkillsList(): void {
-  if (!panelView) return
-  panelView.webContents.send('ai-panel:skills-list', skillsStore.list())
-}
-skillsStore.onSkillsChanged(() => sendSkillsList())
+// Статусы приложения (ключ фактчека, веб-поиск, скиллы, подключения) панель получает из
+// aipanel/panelStatus.ts — там же лежат и подписки на их изменение.
+setPanelSource(() => panelView)
 
 // Единственная точка входа из main.ts — вызывается из УЖЕ существующего onChange (тот, что шлёт
 // SYNC_CHANGED в чром), TabManager.ts НЕ трогаем и новых колбэков туда не добавляем. onChange и
@@ -745,7 +719,7 @@ function ensurePanelView(): WebContentsView {
   panelView.setBackgroundColor('#00000000')
   // Первый показ беседы активной вкладки — только после did-finish-load: раньше renderer ещё не
   // навесил обработчик onContext, сообщение потерялось бы. Статус ключа — тем же приёмом.
-  panelView.webContents.once('did-finish-load', () => { sendCurrentContext(); sendKeyStatus(); sendSearxngStatus(); sendSkillsList() })
+  panelView.webContents.once('did-finish-load', () => { sendCurrentContext(); sendPanelStatuses() })
 
   // Клик в панель = «мимо поповера тулбара», см. setOnPanelFocus выше.
   panelView.webContents.on('focus', () => { onPanelFocusCb?.() })
@@ -785,7 +759,7 @@ function ensurePanelView(): WebContentsView {
 // Фоновый прогрев — вызывается ЗАРАНЕЕ (main.ts, после показа окна, с задержкой), ДО первого
 // клика по кнопке AI. Только создание WebContentsView + запуск loadURL — НЕ показывает панель
 // (никакого setBounds/addChildView/setOpenState, это исключительно дело toggleAiPanel). Пуши
-// did-finish-load (sendCurrentContext/sendKeyStatus/...) уйдут в ещё не показанную панель — это
+// did-finish-load (sendCurrentContext/sendPanelStatuses) уйдут в ещё не показанную панель — это
 // безвредно (она просто копит состояние в невидимом renderer'е), а toggleAiPanel при реальном
 // открытии всё равно шлёт их заново (см. ветку alreadyLoaded ниже) — устаревший на момент
 // прогрева контекст никогда не остаётся показанным пользователю.
@@ -835,7 +809,7 @@ export function toggleAiPanel(win: BrowserWindow): boolean {
   setOpenState(true)
   // При повторном открытии (view уже когда-то загрузился) did-finish-load больше не сработает —
   // шлём текущий контекст явно, чтобы панель не показывала последнюю беседу «протухшей» вкладки.
-  if (alreadyLoaded) { sendCurrentContext(); sendKeyStatus(); sendSearxngStatus(); sendSkillsList() }
+  if (alreadyLoaded) { sendCurrentContext(); sendPanelStatuses() }
   // ⚠️ Явный фокус на вью панели — обязателен, и это тот же закон, что у запуска приложения и у
   // FindBar: добавление вью в окно НЕ делает её владельцем фокуса, им продолжает владеть страница.
   // Живой случай: открыл панель кнопкой, нажал Esc — ничего, потому что Esc уходил странице, а не

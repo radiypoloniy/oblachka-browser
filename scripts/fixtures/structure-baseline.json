@@ -1,6 +1,6 @@
 {
   "electron/AiPanelManager.ts": {
-    "lines": 846,
+    "lines": 820,
     "fn": 271,
     "effects": 0,
     "ipc": 0
@@ -18,7 +18,7 @@
     "ipc": 0
   },
   "electron/TranslationService.ts": {
-    "lines": 853,
+    "lines": 840,
     "fn": 69,
     "effects": 0,
     "ipc": 0
@@ -42,7 +42,7 @@
     "ipc": 0
   },
   "electron/preload.ts": {
-    "lines": 864,
+    "lines": 858,
     "fn": 6,
     "effects": 0,
     "ipc": 0
@@ -60,8 +60,8 @@
     "ipc": 24
   },
   "src/aipanel.tsx": {
-    "lines": 588,
-    "fn": 396,
+    "lines": 518,
+    "fn": 325,
     "effects": 6,
     "ipc": 0
   },
@@ -84,8 +84,8 @@
     "ipc": 6
   },
   "src/components/Hub.tsx": {
-    "lines": 547,
-    "fn": 342,
+    "lines": 501,
+    "fn": 295,
     "effects": 5,
     "ipc": 13
   },

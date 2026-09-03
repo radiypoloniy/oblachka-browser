@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { ModelChip } from '../ai/ModelChip';
 import { Send, Trash2 } from 'lucide-react';
 import type { GraphChatMessage } from '../../../shared/graph';
 import { markdownComponents } from '../aiMarkdown';
@@ -119,7 +120,7 @@ export default function NodeChatView({ graphId, nodeId }: { graphId: number; nod
       <div style={{ flex: 'none', maxWidth: 780, width: '100%', margin: '0 auto' }}>
         <div
           style={{
-            display: 'flex', alignItems: 'flex-end', gap: 8, padding: '12px 14px',
+            display: 'flex', flexDirection: 'column', gap: 2, padding: '10px 12px',
             background: 'var(--surface-solid)', borderRadius: 'var(--radius-island)',
             boxShadow: 'var(--shadow-card)', border: '1px solid var(--glass-edge)',
           }}
@@ -134,18 +135,22 @@ export default function NodeChatView({ graphId, nodeId }: { graphId: number; nod
             placeholder="Написать сообщение…"
             rows={1}
             style={{
-              flex: 1, resize: 'none', maxHeight: 96,
+              width: '100%', resize: 'none', maxHeight: 96,
               border: 'none', outline: 'none', background: 'transparent',
-              padding: '8px 12px', fontSize: 'var(--fs-md)', fontFamily: 'var(--font-sans)',
+              padding: '4px 2px', fontSize: 'var(--fs-md)', fontFamily: 'var(--font-sans)',
               color: 'var(--text-strong)',
             }}
           />
+          {/* ⚠️ Управление ПОД полем: метка модели в одной строке с ним отнимала ширину и обрезала
+              плейсхолдер. Разбор — в дизайн-доке метки. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ModelChip />
           <button
             type="button" onClick={clear} disabled={busy || messages.length === 0}
             title="Очистить переписку"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 34, height: 34, flexShrink: 0, padding: 0,
+              width: 30, height: 30, flexShrink: 0, padding: 0, marginLeft: 'auto',
               background: 'transparent', border: 'none', borderRadius: '50%',
               color: 'var(--text-muted)',
               cursor: busy || messages.length === 0 ? 'default' : 'pointer',
@@ -159,7 +164,7 @@ export default function NodeChatView({ graphId, nodeId }: { graphId: number; nod
             title="Отправить"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 34, height: 34, flexShrink: 0, padding: 0,
+              width: 30, height: 30, flexShrink: 0, padding: 0,
               background: 'var(--accent)', border: 'none', borderRadius: '50%',
               color: 'var(--text-on-accent)',
               cursor: !input.trim() || busy ? 'default' : 'pointer',
@@ -168,6 +173,7 @@ export default function NodeChatView({ graphId, nodeId }: { graphId: number; nod
           >
             <Send size={15} strokeWidth={2} />
           </button>
+          </div>
         </div>
       </div>
     </div>
