@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import {
-  MCP_CONFIRM_TTL_MS, approvalFits, canRemember, confirmText,
+  MCP_CONFIRM_TTL_MS, approvalFits, canRemember, confirmSubject, confirmTitle,
   type McpApproval, type McpTool,
 } from '../../shared/mcpPolicy';
 import { askMcp } from '../McpPromptManager';
@@ -92,7 +92,8 @@ async function askHuman(req: ConfirmRequest): Promise<boolean> {
   const res = await askMcp({
     kind: 'action',
     client: req.clientLabel,
-    detail: confirmText(req.tool, req.args),
+    title: confirmTitle(req.tool),
+    detail: confirmSubject(req.tool, req.args),
     canRemember: remembering,
   });
   // ⚠️ «Разрешать всегда» пишется В НАСТРОЙКИ КЛИЕНТА, а не в память процесса: человек ответил

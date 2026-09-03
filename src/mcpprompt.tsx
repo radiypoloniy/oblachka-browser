@@ -2,17 +2,23 @@
 // у ПРАВОГО верхнего угла контентной зоны (см. electron/McpPromptManager.ts). Очередь держит
 // main: сюда приезжает ровно один текущий вопрос, null — очередь пуста.
 //
-// ⚠️ Она заменила системное окно Windows, и в этом вся суть правки: спрашивает браузер — значит
-// и выглядеть это должно как браузер. Дизайн-система здесь та же, что у остального интерфейса,
-// числа — из src/styles/system.ts.
+// ⚠️ РИСУЕТСЯ ТЕМ ЖЕ РЕЦЕПТОМ, ЧТО КАРТОЧКА РАЗРЕШЕНИЙ САЙТА (popoverKit + PermissionPrompt), и
+// это не экономия. У них одна речь — «ответь сейчас, иначе действие не состоится». Своя вёрстка
+// здесь сначала и была написана, и вышло ровно то, чем плоха любая самодеятельность в общем
+// интерфейсе: другая плита, другой кегль, другие кнопки — и карточка читается как чужая.
+//
+// ⚠️ Инверсная плита теперь у ДВУХ карточек, а не у одной. Правило в popoverKit переписано под
+// это: класс — «вопрос, требующий ответа сейчас», членов ровно два (разрешение сайта и
+// разрешение внешней программы). Третьей карточке инверсию не давать.
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Plug, PenLine } from 'lucide-react';
 import type { McpPromptRequest } from '../shared/ipc';
+import { PopoverCard, PopoverActions, PrimaryButton, QuietButton } from './components/popoverKit';
 import './styles/global.css';
 import { installOverlayReveal } from './overlayReveal';
 import { OVERLAY_SHADOW_MARGIN as SHADOW_MARGIN } from '../shared/overlayMetrics';
-import { RADIUS, TEXT, motion, pad, sp } from './styles/system';
+import { RADIUS, TEXT, DISPLAY, sp } from './styles/system';
 
 declare global {
   interface Window {
@@ -54,80 +60,70 @@ function McpPromptApp() {
 }
 
 function PromptCard({ request }: { request: McpPromptRequest }) {
+  const [remember, setRemember] = useState(false);
   const connect = request.kind === 'connect';
   const Icon = connect ? Plug : PenLine;
-  const answer = (granted: boolean, remember = false) => {
-    window.mcpPrompt.respond(request.id, granted, remember);
-  };
 
   return (
-    <div style={{
-      background: 'var(--surface-solid)',
-      border: '1px solid var(--glass-edge)',
-      borderRadius: RADIUS.box,
-      boxShadow: 'var(--shadow-island)',
-      padding: pad(4),
-      display: 'flex',
-      flexDirection: 'column',
-      gap: sp(4),
-      animation: 'oblako-panel-in var(--dur-base) var(--ease-out)',
-    }}>
-      <div style={{ display: 'flex', gap: sp(3), alignItems: 'center' }}>
-        {/* ⚠️ Значок на НЕЙТРАЛЬНОЙ плашке, а цвет — на акценте кнопки ниже: правило системы —
-            цвет несёт группа и действие, а не каждый элемент по отдельности. */}
-        <span style={{
-          flex: 'none', width: 40, height: 40, borderRadius: RADIUS.control,
-          background: 'var(--surface-sunken)', color: 'var(--text-strong)',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Icon size={20} />
-        </span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ ...TEXT.title, color: 'var(--text-strong)', lineHeight: 1.15 }}>
-            {connect ? 'Подключить программу?' : 'Разрешить изменение?'}
+    <div className="oblako-ask-in">
+      <PopoverCard width={CARD_WIDTH} invert>
+        <div style={{ display: 'flex', gap: sp(4), alignItems: 'flex-start' }}>
+          {/* Плашка значка — на инверсной плите своя: акцентная заливка на тёмном не читается. */}
+          <span style={{
+            width: 46, height: 46, borderRadius: RADIUS.box, flex: 'none',
+            display: 'grid', placeItems: 'center',
+            background: 'var(--overlay-invert-quiet)', color: 'var(--overlay-invert-ink)',
+          }}>
+            <Icon size={23} style={{ flexShrink: 0 }} />
+          </span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            {/* ⚠️ ПРОГРАММА ПЕРВОЙ СТРОКОЙ — ровно как имя сайта у разрешений: решение
+                принимается про неё. Моноширинным, как адрес: это идентификатор, а не заголовок. */}
+            <div style={{
+              ...TEXT.caption, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em',
+              color: 'var(--overlay-invert-body)', marginBottom: sp(1),
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{request.client}</div>
+            <div style={{
+              ...DISPLAY, fontSize: 20, fontWeight: 700, letterSpacing: '-0.03em',
+              lineHeight: 1.14, color: 'var(--overlay-invert-ink)', marginBottom: sp(2),
+            }}>{request.title}</div>
+            <div style={{
+              ...TEXT.body, color: 'var(--overlay-invert-body)',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            }}>{request.detail}</div>
           </div>
-          {/* ⚠️ Про непроверенность имени сказано прямо и здесь: карточка не выдаёт чужое
-              представление за удостоверение личности. */}
-          <div style={{ ...TEXT.caption }}>{request.client} · назвалась так сама</div>
         </div>
-      </div>
 
-      {/* Предмет вопроса — в рамке чернилами, как команда подключения в настройках: это то, на
-          что человек смотрит, принимая решение, и оно не должно выглядеть подписью. */}
-      <div style={{
-        ...TEXT.body, color: 'var(--text-strong)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-        padding: pad(3), borderRadius: RADIUS.control, border: '2px solid var(--text-strong)',
-      }}>{request.detail}</div>
-
-      <div style={{ display: 'flex', gap: sp(2), alignItems: 'center' }}>
-        <button onClick={() => answer(true)} style={btn('accent')}>
-          {connect ? 'Подключить' : 'Разрешить'}
-        </button>
-        {/* ⚠️ «Всегда» есть не у всякого вопроса: у необратимого (закрыть вкладку) его нет
-            вовсе — см. canRemember в shared/mcpPolicy.ts. */}
+        {/* ⚠️ Галочка, а не третья кнопка: «больше не спрашивать» — уточнение ответа, а не
+            отдельный ответ. У необратимого (закрыть вкладку) её нет вовсе — см. canRemember. */}
         {request.canRemember && (
-          <button onClick={() => answer(true, true)} style={btn('quiet')}>Всегда</button>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: sp(2),
+            ...TEXT.caption, color: 'var(--overlay-invert-body)',
+            cursor: 'default', userSelect: 'none',
+          }}>
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              style={{ cursor: 'default', accentColor: 'var(--accent)' }}
+            />
+            Больше не спрашивать об этом действии
+          </label>
         )}
-        <button onClick={() => answer(false)} style={{ ...btn('quiet'), marginLeft: 'auto' }}>
-          Отказать
-        </button>
-      </div>
+
+        <PopoverActions>
+          <PrimaryButton stretch big onClick={() => window.mcpPrompt.respond(request.id, true, remember)}>
+            {connect ? 'Подключить' : 'Разрешить'}
+          </PrimaryButton>
+          <QuietButton stretch big invert onClick={() => window.mcpPrompt.respond(request.id, false, false)}>
+            Отказать
+          </QuietButton>
+        </PopoverActions>
+      </PopoverCard>
     </div>
   );
-}
-
-function btn(kind: 'accent' | 'quiet'): React.CSSProperties {
-  return {
-    padding: pad(2, 4),
-    borderRadius: RADIUS.pill,
-    border: kind === 'accent' ? 'none' : '1px solid var(--divider-strong)',
-    background: kind === 'accent' ? 'var(--accent)' : 'transparent',
-    color: kind === 'accent' ? 'var(--on-accent)' : 'var(--text-body)',
-    fontWeight: kind === 'accent' ? 600 : 400,
-    ...TEXT.body,
-    cursor: 'default',
-    transition: motion.hover('background', 'opacity'),
-  };
 }
 
 installOverlayReveal();

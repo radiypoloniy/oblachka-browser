@@ -173,6 +173,7 @@ async function prompt(label: string): Promise<boolean> {
   const res = await askMcp({
     kind: 'connect',
     client: label,
+    title: 'Подключить программу?',
     detail:
       `Сможет без отдельного вопроса:\n${read}\n\n`
       + 'Изменения — открыть, переключить или закрыть вкладку — спрашиваются отдельно. '

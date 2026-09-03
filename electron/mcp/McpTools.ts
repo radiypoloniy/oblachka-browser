@@ -1,6 +1,7 @@
 import { BrowserWindow } from 'electron';
 import { contextForWindow, mainContext } from '../WindowRegistry';
 import { extractPageText } from '../AiPanelManager';
+import { extractUrlText } from '../NotebookExtract';
 import { clampHistoryLimit, clampPageText, safeOpenUrl, visibleTabs } from '../../shared/mcpPolicy';
 import type { HistoryManager } from '../HistoryManager';
 
@@ -157,4 +158,28 @@ export function closeTab(rawId: unknown): McpWriteResult {
   if (!tab) return { ok: false, note: 'No such tab. Call tabs.list first.' };
   ctx.tabs.closeTab(id);
   return { ok: true, note: `Closed ${tab.title || tab.url}` };
+}
+
+/**
+ * Прочитать страницу по адресу — профилем человека.
+ *
+ * ⚠️ ЭТО САМЫЙ ЦЕННЫЙ ИНСТРУМЕНТ НАБОРА, и заведён он по живому провалу: на просьбу «зайди на
+ * сайт и собери материалы» агент пошёл своим fetch'ем и получил 404 там, где у человека в
+ * браузере всё открывается. Разница ровно в том, ради чего браузер вообще отдают наружу: запрос
+ * идёт через ЕГО сессию — куки, логины, адблок, туннель.
+ *
+ * ⚠️ Ничего нового не считаем: extractUrlText сперва пробует УЖЕ ОТКРЫТУЮ вкладку (она прошла
+ * антибот и логин), и только потом открывает скрытую вью. Тот же путь, что у блокнота.
+ */
+export async function readUrl(rawUrl: unknown): Promise<McpPageText> {
+  const url = safeOpenUrl(rawUrl);
+  if (!url) return { ok: false, error: 'Only http(s) addresses can be read.' };
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+  if (!win) return { ok: false, error: 'No browser window is open.' };
+
+  const res = await extractUrlText(win, url);
+  if (!res.ok || !res.text?.trim()) {
+    return { ok: false, error: 'Could not read this page (it did not load, or has no readable text).' };
+  }
+  return { ok: true, title: res.title, url, text: clampPageText(res.text) };
 }

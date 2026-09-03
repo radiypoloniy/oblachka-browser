@@ -4,7 +4,7 @@ import {
   annotationsFor, clientKey, clientLabel, decide, mustAsk, pickVersion,
 } from '../../shared/mcpPolicy';
 import {
-  activateTab, activePageText, closeTab, listTabs, openTab, searchHistory,
+  activateTab, activePageText, closeTab, listTabs, openTab, readUrl, searchHistory,
 } from './McpTools';
 import { askToConnect, isApproved, stancesFor, touchClient } from './McpClients';
 import { confirmWrite } from './McpConfirm';
@@ -26,6 +26,18 @@ import type { HistoryManager } from '../HistoryManager';
 // `isError: true`, который модель прочитает и объяснит человеку. JSON-RPC error оставлен для
 // поломок разговора (неизвестный метод, неподдержанная версия): его клиент показывает как сбой
 // сервера, и «страница ещё грузится» в этом виде выглядит как «браузер сломался».
+
+/**
+ * Кто на том конце соединения.
+ *
+ * ⚠️ Имя приходит ОДИН РАЗ — в `initialize` у старых клиентов и в `_meta` каждого запроса у
+ * новых, — а решать «кто это» надо на каждом вызове. Значит соединение обязано его помнить:
+ * иначе все выпущенные клиенты (а они шлют clientInfo только в рукопожатии) сливаются в одного
+ * «неизвестного», и разрешение, выданное одному, действует для всех сразу. Это не косметика.
+ */
+export interface McpSession {
+  label: string;
+}
 
 export interface McpDeps {
   /**
@@ -64,6 +76,8 @@ function metaOf(req: JsonRpcRequest): Record<string, unknown> {
 }
 
 /** Как клиент себя назвал. ⚠️ Это ПРЕДСТАВЛЕНИЕ, а не удостоверение: проверить его нечем. */
+const UNKNOWN = clientLabel('');
+
 function clientName(req: JsonRpcRequest): string {
   const info = metaOf(req)[`${META}clientInfo`] ?? req.params?.clientInfo;
   const name = typeof info === 'object' && info !== null
@@ -106,8 +120,15 @@ const SERVER_INFO = { name: 'oblako-browser', title: 'Oblako', version: app.getV
  * Обработать один запрос. `null` в ответ означает «отвечать нечего» — так устроены уведомления
  * (у них нет id), и слать на них ответ протокол запрещает.
  */
-export async function dispatch(req: JsonRpcRequest, deps: McpDeps): Promise<object | null> {
+export async function dispatch(
+  req: JsonRpcRequest,
+  deps: McpDeps,
+  session: McpSession,
+): Promise<object | null> {
   const method = typeof req.method === 'string' ? req.method : '';
+  // Имя, названное в рукопожатии или в _meta, запоминаем на всё соединение.
+  const named = clientName(req);
+  if (named !== UNKNOWN) session.label = named;
   const isNotification = req.id === undefined || req.id === null;
 
   if (method.startsWith('notifications/')) return null;
@@ -143,7 +164,7 @@ export async function dispatch(req: JsonRpcRequest, deps: McpDeps): Promise<obje
       return ok(req.id, toolList());
 
     case 'tools/call':
-      return callTool(req, deps);
+      return callTool(req, deps, session);
 
     default:
       if (isNotification) return null;
@@ -151,10 +172,11 @@ export async function dispatch(req: JsonRpcRequest, deps: McpDeps): Promise<obje
   }
 }
 
-async function callTool(req: JsonRpcRequest, deps: McpDeps): Promise<object> {
+async function callTool(req: JsonRpcRequest, deps: McpDeps, session: McpSession): Promise<object> {
   const name = typeof req.params?.name === 'string' ? req.params.name : '';
   const args = (req.params?.arguments ?? {}) as Record<string, unknown>;
-  const who = clientName(req);
+  // ⚠️ Имя берём у СОЕДИНЕНИЯ, а не из вызова: в `tools/call` его нет вовсе у старых клиентов.
+  const who = session.label;
   const key = clientKey(who);
   const note = (ok: boolean, text?: string) => {
     deps.log?.({ at: Date.now(), client: who, tool: name, ok, note: text });
@@ -218,6 +240,11 @@ async function run(name: string, args: Record<string, unknown>, deps: McpDeps): 
     case 'page.text': {
       const page = await activePageText();
       // Не «пусто», а причина словами — см. разбор в McpTools.ts.
+      if (!page.ok) throw new Error(page.error ?? 'unavailable');
+      return { title: page.title, url: page.url, text: page.text };
+    }
+    case 'page.read_url': {
+      const page = await readUrl(args.url);
       if (!page.ok) throw new Error(page.error ?? 'unavailable');
       return { title: page.title, url: page.url, text: page.text };
     }

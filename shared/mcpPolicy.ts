@@ -50,6 +50,15 @@ export type McpMode = 'read' | 'write';
 export interface McpTool {
   name: string;
   mode: McpMode;
+  /**
+   * Чтение, которое всё равно спрашивают.
+   *
+   * ⚠️ Заведено ради `page.read_url`. Он ничего не меняет в браузере — и по режиму это чтение, —
+   * но читает ЛЮБОЙ адрес КУКАМИ ЧЕЛОВЕКА: почту, банк, внутреннюю вики. Разница с `page.text`
+   * принципиальная: тот отдаёт страницу, которую человек и так видит на экране, а этот — любую,
+   * которую выбрала программа. Молча такое отдавать нельзя.
+   */
+  sensitive?: boolean;
   /** Короткая строка для чужого интерфейса. Пишется для ЧЕЛОВЕКА, который увидит её в карточке. */
   title: string;
   description: string;
@@ -113,6 +122,25 @@ export const MCP_TOOLS: readonly McpTool[] = [
         limit: { type: 'number', description: `How many results, 1..${MCP_HISTORY_MAX}.` },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'page.read_url',
+    mode: 'read',
+    sensitive: true,
+    title: 'Прочитать страницу по адресу',
+    description:
+      "Open a URL in the user's browser session and return its readable text. "
+      + 'PREFER THIS over your own web fetching whenever the page needs the user to be logged in, '
+      + 'blocks bots or datacenter IPs, or when the user asked you to use their browser: the '
+      + "request goes through the user's profile, cookies, ad blocker and VPN. "
+      + 'The user is asked to confirm the first time.',
+    input: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Address to read, http(s) only.' },
+      },
+      required: ['url'],
     },
   },
   {
@@ -224,7 +252,8 @@ export type McpStance = 'ask' | 'allow' | 'deny';
  * видит на экране, а не только состояние программы.
  */
 export function defaultStance(tool: McpTool): McpStance {
-  return tool.mode === 'read' ? 'allow' : 'ask';
+  if (tool.mode === 'write' || tool.sensitive) return 'ask';
+  return 'allow';
 }
 
 export function stanceFor(tool: McpTool, saved: Readonly<Record<string, McpStance>>): McpStance {
@@ -378,24 +407,53 @@ export function safeOpenUrl(raw: unknown): string | null {
 }
 
 /**
- * Что показать человеку в карточке подтверждения.
+ * Заголовок карточки — ВОПРОС, а не название действия.
  *
- * ⚠️ Строка собирается ЗДЕСЬ, а не в диалоге, ровно потому, что это часть политики: человек
- * принимает решение по тому, что написано, и текст обязан называть настоящее действие и его
- * настоящий аргумент. «Агент хочет выполнить tabs.close» не решение, а загадка.
+ * ⚠️ Тот же закон, что у карточки разрешений сайта: «Открытие вкладки» — это ярлык раздела
+ * настроек, а здесь у человека спрашивают. Названием карточка читается как сообщение, которое
+ * можно не заметить, — а их и не замечают.
  */
-export function confirmText(tool: McpTool, args: Record<string, unknown>): string {
+export function confirmTitle(tool: McpTool): string {
   switch (tool.name) {
+    case 'page.read_url': return 'Прочитать страницу?';
+    case 'tabs.open': return 'Открыть вкладку?';
+    case 'tabs.activate': return 'Переключить вкладку?';
+    case 'tabs.close': return 'Закрыть вкладку?';
+    default: return `Разрешить «${tool.title}»?`;
+  }
+}
+
+/**
+ * Предмет вопроса: то, на что человек смотрит, принимая решение.
+ *
+ * ⚠️ Адрес отдаётся ЦЕЛИКОМ и проверенным (safeOpenUrl), а не как его прислали: человек должен
+ * увидеть ровно то, что откроется. Строка собирается здесь, а не в карточке, потому что это часть
+ * политики — вопрос обязан называть настоящий аргумент.
+ */
+export function confirmSubject(tool: McpTool, args: Record<string, unknown>): string {
+  switch (tool.name) {
+    case 'page.read_url': {
+      const safe = safeOpenUrl(args.url);
+      // ⚠️ Про куки сказано ПРЯМО: человек решает не «дать почитать сайт», а «дать почитать
+      // сайт от моего имени» — и это разные вопросы.
+      return safe
+        ? `${safe}\n\nСтраница будет открыта вашим профилем — с вашими логинами.`
+        : 'Программа не назвала пригодный адрес.';
+    }
     case 'tabs.open': {
-      const url = safeOpenUrl(args.url) ?? String(args.url ?? '');
-      return `Открыть новую вкладку:\n${url}`;
+      // ⚠️ Пустого предмета не бывает: карточка без адреса — вопрос ни о чём, и человек ответит
+      // «да» просто потому, что читать нечего. Негодный адрес показываем как есть и словами.
+      const safe = safeOpenUrl(args.url);
+      if (safe) return safe;
+      const raw = String(args.url ?? '').trim();
+      return raw ? `Адрес не годится: ${raw.slice(0, 200)}` : 'Программа не назвала адрес.';
     }
     case 'tabs.activate':
-      return 'Переключиться на другую открытую вкладку.';
+      return 'Браузер переключится на другую открытую вкладку.';
     case 'tabs.close':
-      return 'Закрыть открытую вкладку. Отменить это из браузера нельзя.';
+      return 'Вкладка закроется. Отменить это из браузера нельзя.';
     default:
-      return `Выполнить «${tool.title}».`;
+      return tool.description;
   }
 }
 

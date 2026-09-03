@@ -9,7 +9,8 @@ import {
   MCP_HISTORY_MAX, MCP_TEXT_LIMIT,
   MCP_CONFIRM_TTL_MS,
   annotationsFor, approvalFits, clampHistoryLimit, clampPageText, clientKey, clientLabel,
-  canRemember, confirmText, decide, defaultStance, eraOf, findTool, isClosedName, mustAsk,
+  canRemember, confirmSubject, confirmTitle, decide, defaultStance, eraOf, findTool,
+  isClosedName, mustAsk,
   pickVersion, safeOpenUrl, stanceFor, visibleTabs,
 } from '../shared/mcpPolicy.ts';
 
@@ -26,7 +27,8 @@ const ALL = { connected: true, stances: {} };
 console.log('\n— каталог закрыт —');
 // ⚠️ Главный инвариант файла: наружу торчит ровно то, что перечислено, и ничего сверх.
 check('состав каталога', MCP_TOOLS.map((t) => t.name),
-  ['tabs.list', 'page.text', 'history.search', 'tabs.open', 'tabs.activate', 'tabs.close']);
+  ['tabs.list', 'page.text', 'history.search', 'page.read_url',
+    'tabs.open', 'tabs.activate', 'tabs.close']);
 // ⚠️ Главный инвариант захода 2: КАЖДЫЙ инструмент на запись проходит через вопрос человеку.
 // Забытое подтверждение — это чужая программа, меняющая браузер молча.
 // ⚠️ Главный инвариант захода 3: пока человек не решил иначе, ЛЮБАЯ запись спрашивает, а чтение
@@ -34,16 +36,33 @@ check('состав каталога', MCP_TOOLS.map((t) => t.name),
 // приучить жать «разрешить» не глядя.
 check('запись по умолчанию спрашивает',
   MCP_TOOLS.filter((t) => t.mode === 'write' && defaultStance(t) !== 'ask'), []);
-check('чтение по умолчанию идёт молча',
-  MCP_TOOLS.filter((t) => t.mode === 'read' && defaultStance(t) !== 'allow'), []);
-check('у каждого инструмента записи есть слова для карточки',
-  MCP_TOOLS.filter((t) => t.mode === 'write' && confirmText(t, {}).length < 10), []);
+check('обычное чтение идёт молча',
+  MCP_TOOLS.filter((t) => t.mode === 'read' && !t.sensitive && defaultStance(t) !== 'allow'), []);
+// ⚠️ Чтение ЛЮБОГО адреса куками человека — тоже вопрос, хотя браузер оно не меняет: page.text
+// отдаёт страницу, которую человек и так видит, а page.read_url — любую, какую выберет программа.
+check('чтение чужого адреса спрашивает', defaultStance(findTool('page.read_url')), 'ask');
+check('и его можно разрешить навсегда', canRemember(findTool('page.read_url')), true);
+check('«прочитать по адресу» помечено чувствительным', findTool('page.read_url').sensitive, true);
+check('у остальных чтений пометки нет',
+  MCP_TOOLS.filter((t) => t.mode === 'read' && t.sensitive).map((t) => t.name), ['page.read_url']);
+// ⚠️ Заголовок карточки — ВОПРОС: названием действия она читается как сообщение, которое можно
+// не заметить (тот же закон, что у карточки разрешений сайта).
+check('у каждой записи заголовок — вопрос',
+  MCP_TOOLS.filter((t) => t.mode === 'write' && !confirmTitle(t).endsWith('?')), []);
+check('у каждой записи есть предмет вопроса',
+  MCP_TOOLS.filter((t) => t.mode === 'write' && confirmSubject(t, {}).length < 5), []);
+// Адрес в карточке — проверенный, а не тот, что прислали.
+check('в карточке показывается разобранный адрес',
+  confirmSubject(findTool('tabs.open'), { url: 'https://ok.ru' }), 'https://ok.ru/');
 check('у каждого инструмента объявлен режим',
   MCP_TOOLS.filter((t) => t.mode !== 'read' && t.mode !== 'write'), []);
 check('у каждого есть описание для чужого клиента',
   MCP_TOOLS.filter((t) => !t.description || !t.title), []);
+// ⚠️ Подчёркивание и дефис законны: спека просит имена, которые можно положить в HTTP-заголовок
+// как есть (Mcp-Name), а это token-символы RFC 9110. Запрещены пробелы, кириллица и регистр —
+// такое имя пришлось бы кодировать base64, и в чужом интерфейсе оно стало бы нечитаемым.
 check('имя каждого — безопасное для заголовка HTTP',
-  MCP_TOOLS.filter((t) => !/^[a-z][a-z0-9.]*$/.test(t.name)), []);
+  MCP_TOOLS.filter((t) => !/^[a-z][a-z0-9._-]*$/.test(t.name)), []);
 
 console.log('\n— закрытые категории —');
 // ⚠️ Это замок на будущее: сегодня таких инструментов нет, и проверка следит, чтобы они не

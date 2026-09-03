@@ -129,13 +129,16 @@ function CommandLine({ command, copied, onCopy }: {
 }) {
   return (
     <div>
-      <span style={{ ...CAPS, color: 'var(--text-faint)' }}>Команда подключения</span>
+      <span style={{ ...CAPS, color: 'var(--text-faint)', display: 'block', marginBottom: sp(2) }}>Команда подключения</span>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: sp(3), marginTop: sp(2),
+        display: 'flex', alignItems: 'flex-start', gap: sp(3),
         padding: pad(3), borderRadius: RADIUS.box, border: '2px solid var(--text-strong)',
       }}>
+        {/* ⚠️ ПЕРЕНОСИТСЯ, а не едет по горизонтали. Полоса прокрутки внутри поля выглядит
+            поломкой, и главное — команду в ней не видно целиком, а её берут глазами перед тем,
+            как вставить. Ломаем по любому символу: это путь, а не текст. */}
         <code style={{
-          flex: 1, minWidth: 0, overflowX: 'auto', whiteSpace: 'nowrap',
+          flex: 1, minWidth: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.5,
           fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xs)', color: 'var(--text-strong)',
         }}>{command}</code>
         <button onClick={onCopy} style={{ ...btnGhost, flex: 'none', display: 'inline-flex', gap: sp(2) }}>
@@ -169,7 +172,7 @@ function ClientList(props: {
   const { state } = props;
   return (
     <div>
-      <span style={{ ...CAPS, color: 'var(--text-faint)' }}>Подключённые программы</span>
+      <span style={{ ...CAPS, color: 'var(--text-faint)', display: 'block', marginBottom: sp(2) }}>Подключённые программы</span>
       {state.clients.length === 0 ? (
         <InlineHint>
           Пока никто не подключён. Когда программа обратится впервые, браузер спросит вас карточкой
@@ -185,7 +188,15 @@ function ClientList(props: {
                 key={c.key}
                 stain={CLIENT_STAIN[i % CLIENT_STAIN.length]}
                 eyebrow="внешний агент"
-                icon={<Plug size={22} />}
+                icon={(
+                // ⚠️ Значок ПЛАШКОЙ, а не голым глифом: рядом с дисплейным именем в 26 кегле
+                // одиночная иконка выглядит случайно приклеенной (так и вышло на первом кадре).
+                <span style={{
+                  width: 40, height: 40, borderRadius: RADIUS.control, flex: 'none',
+                  display: 'grid', placeItems: 'center',
+                  background: 'var(--surface-sunken)', color: 'var(--text-strong)',
+                }}><Plug size={20} /></span>
+              )}
                 title={c.label}
                 // ⚠️ «Назвалась так сама» стоит прямо под именем: карточка не выдаёт чужое
                 // представление за удостоверение личности.
@@ -247,7 +258,7 @@ function ToolStances({ client, state, onStance }: {
 function CallLog({ calls }: { calls: McpCallLog[] }) {
   return (
     <div>
-      <span style={{ ...CAPS, color: 'var(--text-faint)' }}>Журнал обращений</span>
+      <span style={{ ...CAPS, color: 'var(--text-faint)', display: 'block', marginBottom: sp(2) }}>Журнал обращений</span>
       {calls.length === 0 ? (
         <InlineHint>Пока никто не обращался.</InlineHint>
       ) : (

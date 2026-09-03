@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { app } from 'electron';
-import { dispatch, type McpDeps } from './McpDispatch';
+import { dispatch, type McpDeps, type McpSession } from './McpDispatch';
 
 // Транспорт: именованный канал Windows, а не порт на localhost.
 //
@@ -77,6 +77,9 @@ export function startMcpServer(deps: McpDeps): void {
   const srv = net.createServer((socket) => {
     let authorised = false;
     let buffer = '';
+    // ⚠️ Имя клиента живёт на СОЕДИНЕНИИ: выпущенные клиенты называют себя только в рукопожатии,
+    // а решать про разрешения надо на каждом вызове (разбор — у McpSession в McpDispatch.ts).
+    const session: McpSession = { label: 'неизвестный клиент' };
 
     // ⚠️ Потолок на строку: без него один клиент, шлющий байты без перевода строки, съедает
     // память main-процесса. Разговор с браузером обрывается, а браузер продолжает работать.
@@ -128,7 +131,7 @@ export function startMcpServer(deps: McpDeps): void {
         return;
       }
 
-      const answer = await dispatch(msg, deps);
+      const answer = await dispatch(msg, deps, session);
       // Уведомление: ответа нет, и слать его протокол запрещает.
       if (answer && !socket.destroyed) socket.write(`${JSON.stringify(answer)}\n`);
     };
