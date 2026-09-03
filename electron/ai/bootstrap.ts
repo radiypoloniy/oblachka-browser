@@ -12,6 +12,7 @@ import { connectionsState } from './connections';
 import * as ConnectionStore from './ConnectionStore';
 import * as KeyStore from './KeyStore';
 import * as FileStore from './FileStore';
+import * as UsageStore from './UsageStore';
 import * as Registry from './registry';
 import { IPC } from '../../shared/ipc';
 import { broadcastToChrome } from '../WindowRegistry';
@@ -19,6 +20,7 @@ import { broadcastToChrome } from '../WindowRegistry';
 export function initAiLayer(): void {
   // Каталог вложений — до всего остального: первый же ответ модели может принести картинку.
   FileStore.init();
+  UsageStore.init();
   KeyStore.loadFromDisk();
   ConnectionStore.loadFromDisk();
   push();

@@ -13,6 +13,7 @@
 import { ipcRenderer } from 'electron';
 import { IPC } from '../../shared/ipc';
 import type { AiConnection, AiConnectionsState, AiConnectionTest } from '../../shared/ipc';
+import type { AiUsage } from '../../shared/aiUsage';
 
 export const aiBridge = {
   getAiKeyStatus: () => ipcRenderer.invoke(IPC.AI_GET_KEY_STATUS) as Promise<boolean>,
@@ -32,6 +33,8 @@ export const aiBridge = {
     ipcRenderer.invoke(IPC.AI_CONN_TEST, conn, key) as Promise<AiConnectionTest>,
   setAiRoute: (role: string, connectionId: string | null) =>
     ipcRenderer.invoke(IPC.AI_SET_ROUTE, role, connectionId) as Promise<boolean>,
+  aiUsage: () => ipcRenderer.invoke(IPC.AI_USAGE) as Promise<Record<string, AiUsage>>,
+  resetAiUsage: (connectionId?: string) => ipcRenderer.invoke(IPC.AI_USAGE_RESET, connectionId) as Promise<void>,
   aiFileData: (id: string) => ipcRenderer.invoke(IPC.AI_FILE_DATA, id) as Promise<string | null>,
   aiFileSave: (id: string) => ipcRenderer.invoke(IPC.AI_FILE_SAVE, id) as Promise<boolean>,
   aiTextSave: (name: string, text: string) =>

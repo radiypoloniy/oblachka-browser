@@ -18,10 +18,12 @@ import { capsFor, type Connection, type ProviderCaps } from '../../../shared/aiP
 import { extractJson, toDialect, type JsonSchema } from '../../../shared/aiSchema';
 import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider, type RawFile } from '../Provider';
 import { arr, httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
+import type { UsageDelta } from '../../../shared/aiUsage';
+import * as UsageStore from '../UsageStore';
 
 interface Part { text: string }
 interface Content { role: 'user' | 'model'; parts: Part[] }
-interface Read { text: string; files: RawFile[]; tokens: number; stop: string }
+interface Read { text: string; files: RawFile[]; tokens: number; stop: string; usage: UsageDelta }
 
 export interface GeminiDeps {
   connection: Connection;
@@ -58,7 +60,10 @@ export function createGeminiProvider(deps: GeminiDeps): Provider {
     }
 
     if (!res.ok) throw await httpError(res, connection.label);
-    return stream ? await readStream(res, onText, opts?.abort) : await readWhole(res);
+    const read = stream ? await readStream(res, onText, opts?.abort) : await readWhole(res);
+    // Счёт расхода — в одной точке на все методы адаптера (см. openaiCompatible.ts).
+    UsageStore.record(connection.id, read.usage);
+    return read;
   }
 
   function generationConfig(opts?: GenOpts, schema?: JsonSchema): Record<string, unknown> {
@@ -162,6 +167,17 @@ function filesOf(json: unknown): RawFile[] {
   return out;
 }
 
+/**
+ * Расход из ответа. ⚠️ Стоимости Gemini не возвращает — её здесь нет и не появится, а выдумывать
+ * её по прайс-листу внутри браузера мы не будем (см. shared/aiUsage.ts).
+ */
+function usageIn(json: unknown): UsageDelta {
+  return {
+    promptTokens: num(pick(json, ['usageMetadata', 'promptTokenCount'])) ?? undefined,
+    completionTokens: num(pick(json, ['usageMetadata', 'candidatesTokenCount'])) ?? undefined,
+  };
+}
+
 function textOf(json: unknown): string {
   return arr(pick(json, ['candidates', '0', 'content', 'parts']))
     .map((p) => str(pick(p, ['text'])) ?? '')
@@ -173,6 +189,7 @@ async function readWhole(res: Response): Promise<Read> {
   return {
     text: textOf(json),
     files: filesOf(json),
+    usage: usageIn(json),
     tokens: num(pick(json, ['usageMetadata', 'candidatesTokenCount'])) ?? 0,
     stop: str(pick(json, ['candidates', '0', 'finishReason'])) ?? 'STOP',
   };
@@ -186,6 +203,7 @@ async function readStream(
   let text = '';
   let tokens = 0;
   let stop = 'STOP';
+  let usage: UsageDelta = {};
   const files: RawFile[] = [];
 
   await readSse(res, (ev) => {
@@ -200,7 +218,8 @@ async function readStream(
     if (s !== null) stop = s;
     const t = num(pick(json, ['usageMetadata', 'candidatesTokenCount']));
     if (t !== null) tokens = t;
+    if (pick(json, ['usageMetadata']) !== null) usage = usageIn(json);
   }, abort);
 
-  return { text, files, tokens, stop };
+  return { text, files, tokens, usage, stop };
 }

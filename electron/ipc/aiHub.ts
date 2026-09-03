@@ -17,6 +17,7 @@ import { broadcastToChrome } from '../WindowRegistry';
 import { dialog, ipcMain } from 'electron';
 import fsp from 'node:fs/promises';
 import * as FileStore from '../ai/FileStore';
+import * as UsageStore from '../ai/UsageStore';
 import { extForMime } from '../../shared/aiAttachments';
 import { sanitizeFileNameBase } from '../../shared/fileNameSafety';
 import { randomUUID } from 'node:crypto';
@@ -102,8 +103,9 @@ export function registerAiHubIpc(d: IpcDeps): void {
     return ConnectionStore.upsert(conn);
   });
   ipcMain.handle(IPC.AI_CONN_DELETE, (_e, id: string) => {
-    // Ключ удаляем вместе с подключением: осиротевший секрет на диске никому не нужен.
+    // Ключ и счёт расхода уходят вместе с подключением: осиротевшая запись никому не нужна.
     KeyStore.deleteKey(id);
+    UsageStore.forget(id);
     return ConnectionStore.remove(id);
   });
   ipcMain.handle(IPC.AI_CONN_TEST, (_e, conn: Connection, key: string | null) => probeConnection(conn, key));
@@ -113,6 +115,9 @@ export function registerAiHubIpc(d: IpcDeps): void {
   // ── Вложения из ответа модели ────────────────────────────────────────────
   // ⚠️ id приезжает из renderer и превращается в ПУТЬ. Проверка формы — внутри FileStore, здесь
   // её не дублируем: два места, решающих, что такое годный id, разъедутся на первой же правке.
+  ipcMain.handle(IPC.AI_USAGE, () => UsageStore.snapshot());
+  ipcMain.handle(IPC.AI_USAGE_RESET, (_e, id?: string) => { UsageStore.reset(id); });
+
   ipcMain.handle(IPC.AI_FILE_DATA, (_e, id: string) => FileStore.dataUrl(id));
   ipcMain.handle(IPC.AI_FILE_SAVE, async (e, id: string) => {
     const w = winOf(e);

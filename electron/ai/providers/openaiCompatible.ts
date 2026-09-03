@@ -21,9 +21,11 @@ import { isSseDone } from '../../../shared/sseParse';
 import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider, type RawFile } from '../Provider';
 import { arr, httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
 import { parseDataUrl } from '../../../shared/aiAttachments';
+import type { UsageDelta } from '../../../shared/aiUsage';
+import * as UsageStore from '../UsageStore';
 
 interface Msg { role: 'system' | 'user' | 'assistant'; content: string }
-interface Read { text: string; files: RawFile[]; tokens: number; stop: string }
+interface Read { text: string; files: RawFile[]; tokens: number; stop: string; usage: UsageDelta }
 
 export interface OpenAiCompatDeps {
   connection: Connection;
@@ -51,7 +53,11 @@ export function createOpenAiCompatibleProvider(deps: OpenAiCompatDeps): Provider
           'Content-Type': 'application/json',
           ...(key !== null ? { Authorization: `Bearer ${key}` } : {}),
         },
-        body: JSON.stringify({ model: connection.model, stream, ...body }),
+        // ⚠️ `usage: { include: true }` просим ТОЛЬКО у OpenRouter, и это не привередливость. Поля
+      // нет в спецификации chat/completions: OpenAI и часть шлюзов отвечают на неизвестный
+      // параметр отказом 400, то есть браузер перестал бы работать у всех ради счёта у одного.
+      // Зато у OpenRouter это единственный способ узнать настоящую стоимость ответа.
+      body: JSON.stringify({ model: connection.model, stream, ...askCost(connection.baseUrl), ...body }),
         signal: opts?.abort,
       });
     } catch (e) {
@@ -59,7 +65,11 @@ export function createOpenAiCompatibleProvider(deps: OpenAiCompatDeps): Provider
     }
 
     if (!res.ok) throw await httpError(res, connection.label);
-    return stream ? await readStream(res, opts) : await readWhole(res);
+    const read = stream ? await readStream(res, opts) : await readWhole(res);
+    // ⚠️ Счёт ведём ЗДЕСЬ, в одной точке на все три метода адаптера. Считать его у вызывающих
+    // значило бы забыть про generateStructured, который ходит своим путём.
+    UsageStore.record(connection.id, read.usage);
+    return read;
   }
 
   return {
@@ -160,8 +170,34 @@ async function readWhole(res: Response): Promise<Read> {
     text,
     files: imagesIn(pick(choice, ['message'])),
     tokens: num(pick(json, ['usage', 'completion_tokens'])) ?? 0,
+    usage: usageIn(json),
     stop: str(pick(choice, ['finish_reason'])) ?? 'stop',
   };
+}
+
+/**
+ * Расход из ответа.
+ *
+ * ⚠️ Всё необязательно. Половина совместимых шлюзов не отдаёт usage вовсе, часть отдаёт только
+ * токены, стоимость возвращает по сути один OpenRouter — и `undefined` здесь означает именно
+ * «провайдер промолчал», а не «ноль». Разницу держит shared/aiUsage.ts.
+ */
+function usageIn(json: unknown): UsageDelta {
+  const u = pick(json, ['usage']);
+  return {
+    promptTokens: num(pick(u, ['prompt_tokens'])) ?? undefined,
+    completionTokens: num(pick(u, ['completion_tokens'])) ?? undefined,
+    cost: num(pick(u, ['cost'])) ?? undefined,
+  };
+}
+
+/** Хост, у которого стоимость вообще можно спросить. Список закрытый — см. комментарий у call(). */
+function askCost(baseUrl: string): Record<string, unknown> {
+  return /(^|\.)openrouter\.ai$/i.test(hostOf(baseUrl)) ? { usage: { include: true } } : {};
+}
+
+function hostOf(url: string): string {
+  try { return new URL(url).hostname; } catch { return ''; }
 }
 
 /**
@@ -189,6 +225,7 @@ async function readStream(res: Response, opts?: GenOpts): Promise<Read> {
   let text = '';
   let stop = 'stop';
   let tokens = 0;
+  let usage: UsageDelta = {};
   const files: RawFile[] = [];
 
   await readSse(res, (ev) => {
@@ -207,7 +244,10 @@ async function readStream(res: Response, opts?: GenOpts): Promise<Read> {
     // накопленное нулём, а обновляем только когда число реально пришло.
     const used = num(pick(json, ['usage', 'completion_tokens']));
     if (used !== null) tokens = used;
+    // ⚠️ usage приходит последним событием и только если его отдают — не перетираем накопленное
+    // пустотой, а заменяем лишь когда в событии что-то реально есть.
+    if (pick(json, ['usage']) !== null) usage = usageIn(json);
   }, opts?.abort);
 
-  return { text, files, tokens, stop };
+  return { text, files, tokens, usage, stop };
 }

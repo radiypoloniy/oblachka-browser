@@ -27,6 +27,8 @@
   "AI_SAVE_KEY=ai:save-key",
   "AI_SET_ROUTE=ai:set-route",
   "AI_TEXT_SAVE=ai:text-save",
+  "AI_USAGE=ai:usage",
+  "AI_USAGE_RESET=ai:usage-reset",
   "AUTOFILL_ADDRESS_ADD=autofill:address-add",
   "AUTOFILL_ADDRESS_DELETE=autofill:address-delete",
   "AUTOFILL_ADDRESS_LIST=autofill:address-list",

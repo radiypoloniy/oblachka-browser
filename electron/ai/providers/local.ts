@@ -11,7 +11,8 @@
 // очереди, а не провайдера.
 
 import * as Inference from '../../inference/InferenceHost';
-import { capsFor, localConnection, type Connection, type ProviderCaps } from '../../../shared/aiProviders';
+import { capsFor, localConnection, LOCAL_CONNECTION_ID, type Connection, type ProviderCaps } from '../../../shared/aiProviders';
+import * as UsageStore from '../UsageStore';
 import { extractJson, type JsonSchema } from '../../../shared/aiSchema';
 import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
 
@@ -38,6 +39,10 @@ export function createLocalProvider(deps: LocalDeps): Provider {
         const { out, tokens, stopReason } = await Inference.runPrompt(
           prompt, opts?.maxTokens ?? 512, opts?.onChunk, opts?.schema, opts?.abort,
         );
+        // ⚠️ Встроенная модель тоже попадает в счёт, хотя денег не стоит: без неё в плитках
+        // расхода не с чем сравнить облако, а «сколько на самом деле ушло наружу» — как раз тот
+        // вопрос, ради которого счёт и заведён.
+        UsageStore.record(LOCAL_CONNECTION_ID, { completionTokens: tokens });
         return { out, tokens, stopReason };
       } catch (e) {
         throw toProviderError(e);
@@ -70,6 +75,7 @@ export function createLocalProvider(deps: LocalDeps): Provider {
         const r = await Inference.runChat(
           userText, history, opts?.maxTokens ?? 512, systemPrompt, opts?.onChunk, opts?.abort,
         );
+        UsageStore.record(LOCAL_CONNECTION_ID, { completionTokens: r.tokens });
         return { out: r.out, history: r.history, ms: r.ms, tokens: r.tokens, via: viaOf(connection()) };
       } catch (e) {
         throw toProviderError(e);

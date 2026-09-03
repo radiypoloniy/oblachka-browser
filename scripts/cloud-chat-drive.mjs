@@ -58,6 +58,9 @@ function startFakeProvider() {
         // отдают шлюзы (поля `images` в спецификации chat/completions нет вовсе, его завёл
         // OpenRouter). Если разбор ищет её только в первом событии, здесь он ничего не найдёт.
         raw += `data: ${JSON.stringify({ choices: [{ delta: {}, message: { images: [{ type: 'image_url', image_url: { url: `data:image/png;base64,${PNG_B64}` } }] } }] })}\n\n`;
+        // ⚠️ usage приходит ОТДЕЛЬНЫМ последним событием — так его и отдают шлюзы. Разбор,
+        // ищущий его только в событии с текстом, здесь ничего не найдёт, и счёт останется пуст.
+        raw += `data: ${JSON.stringify({ choices: [{ delta: {} }], usage: { prompt_tokens: 12, completion_tokens: 7, cost: 0.0004 } })}\n\n`;
         raw += ': keep-alive\n\ndata: [DONE]\n\n';
         let i = 0;
         const pump = () => {
@@ -161,6 +164,21 @@ await withStand(async (ctx) => {
   // единственная проверка того, что форму id действительно проверяют.
   const escaped = await ctx.evalMain(call('ai:file-data', JSON.stringify('../../index')));
   check('поддельный id ничего не отдаёт', escaped === null, String(escaped));
+
+  // ── Счёт расхода ──────────────────────────────────────────────────────────
+  // ⚠️ Проверяем ИМЕННО потому, что счёт молчаливый: не записался — человек увидит пустые плитки
+  // и решит, что учёт сломан, а не что провайдер промолчал. Разницу между этими случаями держит
+  // costKnown, и без живого прогона её не видно.
+  const usage = await ctx.evalMain(call('ai:usage'));
+  const mine = usage?.[conn.id];
+  check('расход записан на подключение', mine?.requests >= 1, JSON.stringify(mine));
+  check('токены запроса учтены', mine?.promptTokens === 12, String(mine?.promptTokens));
+  check('токены ответа учтены', mine?.completionTokens === 7, String(mine?.completionTokens));
+  check('цена принята от провайдера', mine?.cost === 0.0004 && mine?.costKnown === true, JSON.stringify([mine?.cost, mine?.costKnown]));
+
+  await ctx.evalMain(call('ai:usage-reset'));
+  const after = await ctx.evalMain(call('ai:usage'));
+  check('счёт обнуляется', (after?.[conn.id] ?? null) === null, JSON.stringify(after?.[conn.id]));
 }, { main: true });
 
 fake.server.close();

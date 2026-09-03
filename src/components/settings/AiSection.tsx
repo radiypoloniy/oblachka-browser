@@ -4,6 +4,7 @@ import type { BackfillProgress, HistoryContentCoverage, InstalledModel, Translat
 import ModelsSection from '../ModelsSection';
 import SkillsSection from './SkillsSection';
 import { AiConnectionsBlock } from './AiConnectionsBlock';
+import { AiUsageBlock } from './AiUsageBlock';
 import { AiRolesBlock } from './AiRolesBlock';
 import type { AiConnectionsState } from '../../../shared/ipc';
 import {
@@ -81,6 +82,7 @@ function AiConnectionsSection() {
   return (
     <>
       <AiConnectionsBlock state={state} />
+      <AiUsageBlock state={state} />
       <AiRolesBlock state={state} />
     </>
   );

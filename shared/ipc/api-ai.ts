@@ -9,6 +9,7 @@
 // приходится как единое window.oblako, и дробить эту точку входа было бы правдой про файлы, а не
 // про программу.
 import type { PageLength, AiConnection, AiConnectionsState, AiConnectionTest } from './ai';
+import type { AiUsage } from '../aiUsage';
 import type { SearchEngineId } from '../searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../graph';
 import type { ImagePreset } from '../imagePresets';
@@ -405,4 +406,9 @@ export interface AiApi {
   aiFileSave(id: string): Promise<boolean>;
   /** Сохранить текстовый фрагмент ответа файлом с подсказанным именем. */
   aiTextSave(name: string, text: string): Promise<boolean>;
+
+  /** Расход по подключениям: id → счёт. Ключ LOCAL_CONNECTION_ID — встроенная модель. */
+  aiUsage(): Promise<Record<string, AiUsage>>;
+  /** Обнулить счёт: одного подключения или весь, если id не задан. */
+  resetAiUsage(connectionId?: string): Promise<void>;
 }

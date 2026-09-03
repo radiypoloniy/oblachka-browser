@@ -18,6 +18,8 @@ import { capsFor, type Connection, type ProviderCaps } from '../../../shared/aiP
 import { toDialect, type JsonSchema } from '../../../shared/aiSchema';
 import { ProviderError, viaOf, type ChatResult, type GenOpts, type GenResult, type Provider } from '../Provider';
 import { arr, httpError, networkError, num, parseEventJson, pick, readSse, str, trimSlash } from './http';
+import type { UsageDelta } from '../../../shared/aiUsage';
+import * as UsageStore from '../UsageStore';
 
 /** Версия API в заголовке. Anthropic требует её явно и не имеет «последней» по умолчанию. */
 const API_VERSION = '2023-06-01';
@@ -37,7 +39,7 @@ export function createAnthropicProvider(deps: AnthropicDeps): Provider {
     body: Record<string, unknown>,
     opts: GenOpts | undefined,
     onText?: (piece: string) => void,
-  ): Promise<{ text: string; toolInput: unknown; tokens: number; stop: string }> {
+  ): Promise<{ text: string; toolInput: unknown; tokens: number; stop: string; usage: UsageDelta }> {
     const key = deps.getKey();
     if (key === null) throw new ProviderError('no-key', `Для «${connection.label}» не задан ключ`);
 
@@ -59,7 +61,10 @@ export function createAnthropicProvider(deps: AnthropicDeps): Provider {
     }
 
     if (!res.ok) throw await httpError(res, connection.label);
-    return stream ? await readStream(res, onText, opts?.abort) : await readWhole(res);
+    const read = stream ? await readStream(res, onText, opts?.abort) : await readWhole(res);
+    // Счёт расхода — в одной точке на все методы адаптера (см. openaiCompatible.ts).
+    UsageStore.record(connection.id, read.usage);
+    return read;
   }
 
   return {
@@ -141,7 +146,7 @@ function asMessages(history: unknown[]): Msg[] {
   return out;
 }
 
-async function readWhole(res: Response): Promise<{ text: string; toolInput: unknown; tokens: number; stop: string }> {
+async function readWhole(res: Response): Promise<{ text: string; toolInput: unknown; tokens: number; stop: string; usage: UsageDelta }> {
   const json: unknown = await res.json().catch(() => null);
   let text = '';
   let toolInput: unknown = null;
@@ -154,7 +159,19 @@ async function readWhole(res: Response): Promise<{ text: string; toolInput: unkn
     text,
     toolInput,
     tokens: num(pick(json, ['usage', 'output_tokens'])) ?? 0,
+    usage: usageIn(json),
     stop: str(pick(json, ['stop_reason'])) ?? 'end_turn',
+  };
+}
+
+/**
+ * Расход из ответа. ⚠️ Стоимости Anthropic не возвращает — только токены; выдумывать цену по
+ * прайс-листу внутри браузера мы не будем (см. shared/aiUsage.ts).
+ */
+function usageIn(json: unknown): UsageDelta {
+  return {
+    promptTokens: num(pick(json, ['usage', 'input_tokens'])) ?? undefined,
+    completionTokens: num(pick(json, ['usage', 'output_tokens'])) ?? undefined,
   };
 }
 
@@ -162,10 +179,11 @@ async function readStream(
   res: Response,
   onText: ((piece: string) => void) | undefined,
   abort?: AbortSignal,
-): Promise<{ text: string; toolInput: unknown; tokens: number; stop: string }> {
+): Promise<{ text: string; toolInput: unknown; tokens: number; stop: string; usage: UsageDelta }> {
   let text = '';
   let tokens = 0;
   let stop = 'end_turn';
+  let usage: UsageDelta = {};
 
   await readSse(res, (ev) => {
     const json = parseEventJson(ev.data);
@@ -184,6 +202,7 @@ async function readStream(
       if (s !== null) stop = s;
       const t = num(pick(json, ['usage', 'output_tokens']));
       if (t !== null) tokens = t;
+      if (pick(json, ['usage']) !== null) usage = usageIn(json);
       return;
     }
     if (type === 'error') {
@@ -192,5 +211,5 @@ async function readStream(
     }
   }, abort);
 
-  return { text, toolInput: null, tokens, stop };
+  return { text, toolInput: null, tokens, usage, stop };
 }
