@@ -180,7 +180,7 @@ export async function generateStudio(
   if (!context || !context.trim()) return { ok: false, error: 'Не выбраны источники с текстом' };
   // ⚠️ Документ идёт мимо общего пути: ему нужна грамматика, а runChatMessage её не принимает.
   if (kind === 'page') {
-    const act = beginActivity('Пишу страницу');
+    const act = beginActivity('Пишу страницу', 'notebook');
     const res = await buildPage(context, sources ?? [], act, (n) => onProgress?.(n), pageLength ?? 'normal');
     act.done();
     if (!res.ok) return { ok: false, error: res.error };

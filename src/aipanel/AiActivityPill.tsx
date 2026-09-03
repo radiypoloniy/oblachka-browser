@@ -10,8 +10,10 @@ import type { AiActivityState } from '../../shared/ipc';
  * «жрал процессор сам по себе». Панель открыта чаще любого другого AI-экрана, поэтому признак
  * занятости живёт здесь.
  *
- * ⚠️ Зелёный — `--dot-local`, тот же, которым помечена модель «на этой машине». Это не выбор
- * оттенка по вкусу: цвет уже означает ровно это — работа идёт локально, ничего не улетает.
+ * ⚠️ ЦВЕТ СВЕТОДИОДА — ЭТО УТВЕРЖДЕНИЕ, а не украшение: зелёный `--dot-local` означает «считается
+ * здесь, текст никуда не улетает», бирюзовый `--dot-cloud` — «ушло в облако». Тот же язык, что у
+ * метки модели в чатах. Пока цвет был зашит зелёным, индикатор врал ровно в том месте, ради
+ * которого весь слой маршрутов и заводился.
  *
  * ⚠️ «Стоп» СЛОВОМ, а не крестиком. Крестик рядом с индикатором читается как «скрыть
  * индикатор», а не «прервать работу», и цена ошибки здесь несимметрична.
@@ -26,6 +28,8 @@ export function AiActivityPill() {
 
   if (!state) return null;
 
+  const dot = state.local ? '--dot-local' : '--dot-cloud';
+
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8,
@@ -38,8 +42,8 @@ export function AiActivityPill() {
     }}>
       <span className="oblako-led" style={{
         width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-        background: 'var(--dot-local)',
-        boxShadow: '0 0 0 3px color-mix(in srgb, var(--dot-local) 22%, transparent)',
+        background: `var(${dot})`,
+        boxShadow: `0 0 0 3px color-mix(in srgb, var(${dot}) 22%, transparent)`,
       }} />
       <span style={{
         flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)', color: 'var(--text-body)',
@@ -53,6 +57,11 @@ export function AiActivityPill() {
             {' · '}{state.chars.toLocaleString('ru-RU')} зн.
           </span>
         )}
+        {/* ⚠️ Забытая фоновая работа не должна пропадать за свежей: показываем самую свежую, а
+            остальные — числом. Ради этого признака индикатор и заведён. */}
+        {state.count > 1 && (
+          <span style={{ color: 'var(--text-faint)' }}>{' · и ещё '}{state.count - 1}</span>
+        )}
       </span>
       <button
         onClick={() => void window.aiPanel.cancelAi()}
@@ -63,7 +72,7 @@ export function AiActivityPill() {
           fontFamily: 'inherit',
         }}
       >
-        Стоп
+        {state.count > 1 ? 'Стоп всё' : 'Стоп'}
       </button>
     </div>
   );

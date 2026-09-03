@@ -98,7 +98,7 @@ export class HubChatManager {
     // ⚠️ Ответ по источникам считается долго — в блокноте контекст доходит до 24 000 знаков.
     // Поэтому он тоже заявляется в общий реестр: светодиод в AI-панели и кнопка «Стоп» должны
     // работать и здесь, а не только на генерации документа.
-    const act = beginActivity('Отвечаю по источникам');
+    const act = beginActivity('Отвечаю по источникам', role);
     const outcome = await runChatMessage(grounding?.promptText ?? text, ctx.history, onChunk, act.signal, role);
     act.done();
     if (outcome.ok) {

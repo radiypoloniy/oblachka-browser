@@ -69,6 +69,20 @@ export function routeFor(role: AiRole): Route {
   });
 }
 
+/**
+ * Считается ли роль на этой машине.
+ *
+ * ⚠️ Не то же самое, что «встроенная Qwen»: Ollama и LM Studio на localhost — тоже «здесь», и
+ * текст к ним машину не покидает. Признак берётся из caps подключения, а не из его вида, потому
+ * что означает он именно АДРЕС, а не тип раннера.
+ */
+export function isLocalRoute(role: AiRole): boolean {
+  const id = routeFor(role).connectionId;
+  if (id === LOCAL_CONNECTION_ID) return true;
+  const conn = connections.find((c) => c.id === id);
+  return conn === undefined ? true : capsFor(conn).local;
+}
+
 /** Готовый провайдер для роли плюс объяснение, если случился откат. */
 export function providerFor(role: AiRole): { provider: Provider; route: Route } {
   const route = routeFor(role);
