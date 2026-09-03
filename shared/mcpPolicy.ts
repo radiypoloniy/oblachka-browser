@@ -203,9 +203,44 @@ export function annotationsFor(tool: McpTool): {
   };
 }
 
-/** Требует ли вызов подтверждения человеком (MRTR) прямо сейчас. */
-export function needsConfirmation(tool: McpTool): boolean {
-  return tool.mode === 'write';
+/**
+ * Как браузер поступает с этим инструментом у этой программы.
+ *
+ * ⚠️ ТРИ СОСТОЯНИЯ, А НЕ ДВА, и это починка по живой жалобе: «требуется подтверждение на каждый
+ * чих». Вопрос на каждый вызов выглядит заботой о безопасности ровно один день; на второй человек
+ * перестаёт читать карточку и жмёт «разрешить» рефлексом — то есть защита превращается в помеху и
+ * при этом перестаёт защищать. Поэтому решение принимается ОДИН РАЗ на инструмент, а не на вызов.
+ */
+export type McpStance = 'ask' | 'allow' | 'deny';
+
+/**
+ * Что стоит по умолчанию, пока человек не решил иначе.
+ *
+ * ⚠️ Чтение — 'allow', и это не послабление: согласие на чтение человек уже дал, подключив
+ * программу, и карточка подключения прямо перечисляет, что она сможет видеть. Спрашивать ещё раз
+ * на каждый `tabs.list` значит спрашивать про то, о чём уже договорились.
+ *
+ * ⚠️ Запись — 'ask', ВКЛЮЧАЯ ту, что кажется безобидной. Открытая вкладка меняет то, что человек
+ * видит на экране, а не только состояние программы.
+ */
+export function defaultStance(tool: McpTool): McpStance {
+  return tool.mode === 'read' ? 'allow' : 'ask';
+}
+
+export function stanceFor(tool: McpTool, saved: Readonly<Record<string, McpStance>>): McpStance {
+  const s = saved[tool.name];
+  return s === 'ask' || s === 'allow' || s === 'deny' ? s : defaultStance(tool);
+}
+
+/**
+ * Можно ли запомнить ответ «разрешать всегда» для этого инструмента.
+ *
+ * ⚠️ У необратимого — НЕЛЬЗЯ. Закрытие вкладки отменить из браузера невозможно, и «всегда» здесь
+ * означало бы, что человек однажды разрешил закрывать всё, что программа сочтёт нужным. Кнопки
+ * «всегда» у такого вопроса просто нет — это надёжнее уговоров в подписи.
+ */
+export function canRemember(tool: McpTool): boolean {
+  return !annotationsFor(tool).destructiveHint;
 }
 
 export type McpDecision =
@@ -217,8 +252,8 @@ export type McpDecision =
 export interface McpGrant {
   /** Подтвердил ли человек этого клиента вообще. */
   connected: boolean;
-  /** Выключенные вручную инструменты. Отсутствие имени здесь означает «разрешён». */
-  disabled: readonly string[];
+  /** Решения человека по инструментам. Пустая запись означает «как по умолчанию». */
+  stances: Readonly<Record<string, McpStance>>;
 }
 
 /**
@@ -240,7 +275,7 @@ export function decide(name: string, grant: McpGrant): McpDecision {
   if (!tool) {
     return { ok: false, reason: 'unknown', message: `Unknown tool: ${name}` };
   }
-  if (grant.disabled.includes(tool.name)) {
+  if (stanceFor(tool, grant.stances) === 'deny') {
     return {
       ok: false,
       reason: 'disabled',
@@ -422,4 +457,14 @@ export function clientLabel(raw: unknown): string {
  */
 export function clientKey(label: string): string {
   return label.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Спрашивать ли человека перед этим вызовом.
+ *
+ * ⚠️ Отдельная функция, а не поле у инструмента: одно и то же действие у одной программы идёт
+ * молча, а у другой — с вопросом, потому что решение принимал человек, а не мы.
+ */
+export function mustAsk(tool: McpTool, saved: Readonly<Record<string, McpStance>>): boolean {
+  return stanceFor(tool, saved) === 'ask';
 }

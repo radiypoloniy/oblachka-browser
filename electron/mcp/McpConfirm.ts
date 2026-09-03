@@ -1,8 +1,10 @@
 import crypto from 'node:crypto';
-import { BrowserWindow, dialog } from 'electron';
 import {
-  MCP_CONFIRM_TTL_MS, approvalFits, confirmText, type McpApproval, type McpTool,
+  MCP_CONFIRM_TTL_MS, approvalFits, canRemember, confirmText,
+  type McpApproval, type McpTool,
 } from '../../shared/mcpPolicy';
+import { askMcp } from '../McpPromptManager';
+import { setStance } from './McpClients';
 
 // Спросить человека перед тем, как чужая программа что-то изменит в браузере.
 //
@@ -13,9 +15,10 @@ import {
 // для нечестного — пустая формальность: он ответит себе «да» сам. Разрешение на чужой браузер
 // обязано спрашиваться там, куда чужая программа не дотянется, — в самом браузере.
 //
-// ⚠️ Диалог НАТИВНЫЙ, а не наш собственный поповер, и это тоже про доверие: окно, нарисованное
-// операционной системой поверх приложения, нельзя подделать содержимым страницы. Ровно тем же
-// приёмом (osAuth) закрыт показ сохранённого пароля.
+// ⚠️ Карточка НАША, а не системное окно, — и это правка прежнего решения. Сначала здесь стоял
+// dialog.showMessageBox с обоснованием «страница не подделает системное окно». Обоснование верное,
+// вывод был неверным: карточка живёт в отдельной WebContentsView поверх страницы, куда страница не
+// дотянется точно так же. Вопрос от браузера должен выглядеть как браузер (см. McpPromptManager).
 //
 // ⚠️ Вызов ЖДЁТ решения человека, а не отвечает «попробуй позже». Агент в это время показывает,
 // что инструмент работает, — это честная картина: он и правда ждёт. Отказ по времени приходит
@@ -85,27 +88,20 @@ export async function confirmWrite(req: ConfirmRequest): Promise<boolean> {
 }
 
 async function askHuman(req: ConfirmRequest): Promise<boolean> {
-  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
-  const detail = `${confirmText(req.tool, req.args)}\n\n`
-    // ⚠️ Про непроверенность имени сказано ПРЯМО в карточке: человек решает, зная, чего мы не
-    // знаем сами. «Claude Code просит разрешение» звучало бы как удостоверение личности.
-    + `Программа представилась так: «${req.clientLabel}». Проверить это мы не можем.`;
-
-  const options = {
-    type: 'question' as const,
-    buttons: ['Разрешить', 'Отказать'],
-    defaultId: 1, // ⚠️ По умолчанию ОТКАЗ: Enter вслепую не должен открывать чужие вкладки.
-    cancelId: 1,
-    noLink: true,
-    title: 'Внешний агент',
-    message: 'Разрешить внешней программе изменить браузер?',
-    detail,
-  };
-
-  const { response } = win
-    ? await dialog.showMessageBox(win, options)
-    : await dialog.showMessageBox(options);
-  return response === 0;
+  const remembering = canRemember(req.tool);
+  const res = await askMcp({
+    kind: 'action',
+    client: req.clientLabel,
+    detail: confirmText(req.tool, req.args),
+    canRemember: remembering,
+  });
+  // ⚠️ «Разрешать всегда» пишется В НАСТРОЙКИ КЛИЕНТА, а не в память процесса: человек ответил
+  // на вопрос «как поступать с этим инструментом», а не «как поступить сейчас», и после
+  // перезапуска браузера ответ обязан остаться. Отменяется он там же, в разделе настроек.
+  if (res.granted && res.remember && remembering) {
+    setStance(req.clientKey, req.tool.name, 'allow');
+  }
+  return res.granted;
 }
 
 /** Забыть выданные разрешения — при отзыве клиента и при выключении сервера. */

@@ -3,6 +3,7 @@ import { app } from 'electron';
 import { endpointPath, mcpRunning, startMcpServer, stopMcpServer } from './McpPipe';
 import { rememberCall } from './McpLog';
 import { forgetApprovals } from './McpConfirm';
+import { dropMcpPrompts } from '../McpPromptManager';
 import type { HistoryManager } from '../HistoryManager';
 
 // Подъём и остановка MCP-сервера — единственная точка, через которую его включают.
@@ -22,8 +23,10 @@ export function setMcpEnabled(on: boolean): void {
   if (!on || !deps) {
     stopMcpServer();
     // ⚠️ Выданные подтверждения на запись гасим вместе с сервером: включив его через час, человек
-    // не должен обнаружить, что чьё-то «разрешаю» ещё в силе.
+    // не должен обнаружить, что чьё-то «разрешаю» ещё в силе. Висящие вопросы снимаем тем же
+    // движением — отвечать на них уже некому.
     forgetApprovals();
+    dropMcpPrompts();
     return;
   }
   startMcpServer({

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Oblako — внешний агент</title>
+  <style>
+    /* !important — global.css грузится позже и иначе перебивает прозрачность, давая
+       непрозрачный прямоугольник вокруг карточки поверх страницы. */
+    html, body, #root { margin: 0; padding: 0; background: transparent !important; overflow: hidden; }
+    #root { display: inline-block; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="./mcpprompt.tsx"></script>
+</body>
+</html>

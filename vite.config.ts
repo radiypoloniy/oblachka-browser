@@ -37,6 +37,9 @@ export default defineConfig({
         // Поповер загрузок у кнопки тулбара — та же техника (см. DownloadsPopoverManager.ts).
         downloadspopover: resolve(__dirname, 'src/downloadspopover.html'),
         clipboardpopover: resolve(__dirname, 'src/clipboardpopover.html'),
+        // Карточка «внешний агент просит разрешение» — та же техника поповера поверх контента
+        // (см. McpPromptManager.ts). Вопрос задаёт не страница, а чужая программа снаружи.
+        mcpprompt: resolve(__dirname, 'src/mcpprompt.html'),
         // Поповер сведений о сайте у замочка в омнибоксе (см. SitePopoverManager.ts).
         sitepopover: resolve(__dirname, 'src/sitepopover.html'),
         // Запрос разрешения сайта (камера/гео/…) — та же техника (см. PermissionPopoverManager.ts).

@@ -1,12 +1,12 @@
 import { app } from 'electron';
 import {
   MCP_SUPPORTED_VERSIONS, MCP_TOOLS, MCP_VERSION,
-  annotationsFor, clientKey, clientLabel, decide, needsConfirmation, pickVersion,
+  annotationsFor, clientKey, clientLabel, decide, mustAsk, pickVersion,
 } from '../../shared/mcpPolicy';
 import {
   activateTab, activePageText, closeTab, listTabs, openTab, searchHistory,
 } from './McpTools';
-import { askToConnect, disabledFor, isApproved, touchClient } from './McpClients';
+import { askToConnect, isApproved, stancesFor, touchClient } from './McpClients';
 import { confirmWrite } from './McpConfirm';
 import type { HistoryManager } from '../HistoryManager';
 
@@ -179,7 +179,7 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps): Promise<object> {
   }
   touchClient(key);
 
-  const verdict = decide(name, { connected: true, disabled: disabledFor(key) });
+  const verdict = decide(name, { connected: true, stances: stancesFor(key) });
   if (!verdict.ok) {
     note(false, verdict.reason);
     // ⚠️ Отказ по разрешению — тоже РЕЗУЛЬТАТ, а не ошибка протокола: модель должна прочитать
@@ -189,7 +189,7 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps): Promise<object> {
 
   // ⚠️ Вопрос задаётся ПЕРЕД действием и ждёт человека. Разбор, почему карточка наша, а не
   // клиентская (то есть почему не MRTR), — в шапке McpConfirm.ts.
-  if (needsConfirmation(verdict.tool)) {
+  if (mustAsk(verdict.tool, stancesFor(key))) {
     const allowed = await confirmWrite({ clientKey: key, clientLabel: who, tool: verdict.tool, args });
     if (!allowed) {
       note(false, 'refused');

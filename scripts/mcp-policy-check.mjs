@@ -9,8 +9,8 @@ import {
   MCP_HISTORY_MAX, MCP_TEXT_LIMIT,
   MCP_CONFIRM_TTL_MS,
   annotationsFor, approvalFits, clampHistoryLimit, clampPageText, clientKey, clientLabel,
-  confirmText, decide, eraOf, findTool, isClosedName, needsConfirmation, pickVersion,
-  safeOpenUrl, visibleTabs,
+  canRemember, confirmText, decide, defaultStance, eraOf, findTool, isClosedName, mustAsk,
+  pickVersion, safeOpenUrl, stanceFor, visibleTabs,
 } from '../shared/mcpPolicy.ts';
 
 let passed = 0;
@@ -21,7 +21,7 @@ const check = (what, got, want) => {
   else { failed++; console.log(` FAIL  ${what}\n         получили ${JSON.stringify(got)}, ждали ${JSON.stringify(want)}`); }
 };
 
-const ALL = { connected: true, disabled: [] };
+const ALL = { connected: true, stances: {} };
 
 console.log('\n— каталог закрыт —');
 // ⚠️ Главный инвариант файла: наружу торчит ровно то, что перечислено, и ничего сверх.
@@ -29,10 +29,13 @@ check('состав каталога', MCP_TOOLS.map((t) => t.name),
   ['tabs.list', 'page.text', 'history.search', 'tabs.open', 'tabs.activate', 'tabs.close']);
 // ⚠️ Главный инвариант захода 2: КАЖДЫЙ инструмент на запись проходит через вопрос человеку.
 // Забытое подтверждение — это чужая программа, меняющая браузер молча.
-check('вся запись под подтверждением',
-  MCP_TOOLS.filter((t) => t.mode === 'write' && !needsConfirmation(t)), []);
-check('ни одно чтение подтверждения не требует',
-  MCP_TOOLS.filter((t) => t.mode === 'read' && needsConfirmation(t)), []);
+// ⚠️ Главный инвариант захода 3: пока человек не решил иначе, ЛЮБАЯ запись спрашивает, а чтение
+// идёт молча — согласие на него дано при подключении, и переспрашивать про уговорённое значит
+// приучить жать «разрешить» не глядя.
+check('запись по умолчанию спрашивает',
+  MCP_TOOLS.filter((t) => t.mode === 'write' && defaultStance(t) !== 'ask'), []);
+check('чтение по умолчанию идёт молча',
+  MCP_TOOLS.filter((t) => t.mode === 'read' && defaultStance(t) !== 'allow'), []);
 check('у каждого инструмента записи есть слова для карточки',
   MCP_TOOLS.filter((t) => t.mode === 'write' && confirmText(t, {}).length < 10), []);
 check('у каждого инструмента объявлен режим',
@@ -60,18 +63,18 @@ console.log('\n— кому и что позволено —');
 check('знакомый инструмент подтверждённому клиенту', decide('tabs.list', ALL).ok, true);
 check('незнакомое имя', decide('tabs.nuke', ALL).reason, 'unknown');
 check('выключенный тумблером',
-  decide('page.text', { connected: true, disabled: ['page.text'] }).reason, 'disabled');
+  decide('page.text', { connected: true, stances: { 'page.text': 'deny' } }).reason, 'disabled');
 check('выключение одного не трогает соседей',
-  decide('tabs.list', { connected: true, disabled: ['page.text'] }).ok, true);
+  decide('tabs.list', { connected: true, stances: { 'page.text': 'deny' } }).ok, true);
 // ⚠️ Неподтверждённый клиент получает ОДИН И ТОТ ЖЕ отказ на любое имя — иначе перебором имён
 // он узнаёт состав каталога и то, чем человек пользуется, ещё до всякого разрешения.
 check('неподтверждённому — отказ на существующее имя',
-  decide('tabs.list', { connected: false, disabled: [] }).reason, 'not-connected');
+  decide('tabs.list', { connected: false, stances: {} }).reason, 'not-connected');
 check('неподтверждённому — тот же отказ на выдуманное имя',
-  decide('нет-такого', { connected: false, disabled: [] }).reason, 'not-connected');
+  decide('нет-такого', { connected: false, stances: {} }).reason, 'not-connected');
 check('и слова у обоих отказов совпадают',
-  decide('tabs.list', { connected: false, disabled: [] }).message
-    === decide('нет-такого', { connected: false, disabled: [] }).message, true);
+  decide('tabs.list', { connected: false, stances: {} }).message
+    === decide('нет-такого', { connected: false, stances: {} }).message, true);
 check('поиск по имени', findTool('history.search')?.mode, 'read');
 check('поиск несуществующего', findTool('history.nuke'), null);
 
@@ -91,8 +94,26 @@ const openTab = { name: 'tabs.open', mode: 'write', title: '', description: '', 
 const closeTab = { name: 'tabs.close', mode: 'write', title: '', description: '', input: { type: 'object', properties: {} } };
 check('открыть вкладку — добавление', annotationsFor(openTab).destructiveHint, false);
 check('закрыть вкладку — необратимо', annotationsFor(closeTab).destructiveHint, true);
-check('запись требует подтверждения', needsConfirmation(openTab), true);
-check('чтение не требует', needsConfirmation(findTool('page.text')), false);
+check('запись требует подтверждения', mustAsk(openTab, {}), true);
+check('чтение не требует', mustAsk(findTool('page.text'), {}), false);
+// ⚠️ «Разрешать всегда» есть у добавляющего и НЕТ у необратимого: одним нажатием разрешить
+// закрывать вкладки навсегда человек не должен даже при желании.
+check('«всегда» можно для открытия', canRemember(openTab), true);
+check('«всегда» нельзя для закрытия', canRemember(closeTab), false);
+
+console.log('\n— решение человека сильнее умолчания —');
+check('разрешил молча — не спрашиваем',
+  mustAsk(openTab, { 'tabs.open': 'allow' }), false);
+check('запретил — decide отказывает',
+  decide('tabs.open', { connected: true, stances: { 'tabs.open': 'deny' } }).reason, 'disabled');
+check('вернул «спрашивать»', mustAsk(openTab, { 'tabs.open': 'ask' }), true);
+// ⚠️ Мусор в записи не должен молча превращаться в разрешение: неизвестное значение — умолчание.
+check('мусор в записи читается как умолчание',
+  stanceFor(openTab, { 'tabs.open': 'да конечно' }), 'ask');
+check('решение про соседа не задевает',
+  mustAsk(openTab, { 'tabs.close': 'allow' }), true);
+check('чтение можно и запретить',
+  decide('tabs.list', { connected: true, stances: { 'tabs.list': 'deny' } }).reason, 'disabled');
 
 console.log('\n— что видно снаружи —');
 const tabs = [

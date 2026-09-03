@@ -371,8 +371,8 @@ export interface McpClientInfo {
   label: string;
   approvedAt: number;
   lastSeen: number;
-  /** Инструменты, выключенные для этой программы отдельно от остальных. */
-  disabled: string[];
+  /** Решения человека по инструментам: 'ask' | 'allow' | 'deny'. Пусто — как по умолчанию. */
+  stances: Record<string, 'ask' | 'allow' | 'deny'>;
 }
 
 /** Строка журнала вызовов: кто, что и чем кончилось. */
@@ -382,4 +382,22 @@ export interface McpCallLog {
   tool: string;
   ok: boolean;
   note?: string;
+}
+
+/**
+ * Вопрос внешнего агента человеку (electron/McpPromptManager.ts).
+ *
+ * ⚠️ Один тип на оба вопроса — подключение программы и разрешение действия: карточка у них одна,
+ * различаются словами и тем, можно ли ответить «всегда». Два типа означали бы две карточки,
+ * которые начнут расходиться по виду.
+ */
+export interface McpPromptRequest {
+  id: string;
+  kind: 'connect' | 'action';
+  /** Как программа себя назвала. ⚠️ Не удостоверение — см. clientLabel в shared/mcpPolicy.ts. */
+  client: string;
+  /** Что именно просят: адрес, название вкладки, перечень доступного. */
+  detail: string;
+  /** Можно ли ответить «разрешать всегда» (у необратимого — нельзя). */
+  canRemember: boolean;
 }

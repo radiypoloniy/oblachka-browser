@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { BrowserWindow, app, dialog } from 'electron';
-import { MCP_TOOLS } from '../../shared/mcpPolicy';
-import { forgetApprovals } from './McpConfirm';
+import { app } from 'electron';
+import { MCP_TOOLS, type McpStance } from '../../shared/mcpPolicy';
+import { askMcp, dropMcpPrompts } from '../McpPromptManager';
 
 // Кто подключён к браузеру и что ему позволено.
 //
@@ -30,8 +30,14 @@ export interface McpClientRecord {
   label: string;
   approvedAt: number;
   lastSeen: number;
-  /** Инструменты, выключенные человеком именно для этого клиента. */
-  disabled: string[];
+  /**
+   * Решения человека по инструментам: 'ask' | 'allow' | 'deny'.
+   *
+   * ⚠️ Пришло на смену списку выключенных, и это не переименование: раньше выбора было два
+   * («спрашивать» или «нельзя»), а нужного третьего — «делай молча» — не существовало, отчего
+   * каждый вызов и превращался в вопрос.
+   */
+  stances: Record<string, McpStance>;
 }
 
 let clients: McpClientRecord[] = [];
@@ -54,7 +60,16 @@ function load(): void {
       typeof c === 'object' && c !== null
       && typeof (c as McpClientRecord).key === 'string'
       && typeof (c as McpClientRecord).label === 'string');
-    for (const c of clients) if (!Array.isArray(c.disabled)) c.disabled = [];
+    for (const c of clients) {
+      // ⚠️ Записи прошлой версии несли список выключенных инструментов. Переводим их, а не
+      // выбрасываем: человек уже принимал эти решения, и терять их при обновлении нельзя.
+      const old = (c as unknown as { disabled?: unknown }).disabled;
+      if (!c.stances || typeof c.stances !== 'object') c.stances = {};
+      if (Array.isArray(old)) {
+        for (const t of old) if (typeof t === 'string') c.stances[t] = 'deny';
+        delete (c as unknown as { disabled?: unknown }).disabled;
+      }
+    }
   } catch { /* файла ещё нет — это чистая установка, а не поломка */ }
 }
 
@@ -68,7 +83,7 @@ function save(): void {
 
 export function listClients(): McpClientRecord[] {
   load();
-  return clients.map((c) => ({ ...c, disabled: [...c.disabled] }));
+  return clients.map((c) => ({ ...c, stances: { ...c.stances } }));
 }
 
 export function isApproved(key: string): boolean {
@@ -76,9 +91,9 @@ export function isApproved(key: string): boolean {
   return clients.some((c) => c.key === key);
 }
 
-export function disabledFor(key: string): string[] {
+export function stancesFor(key: string): Record<string, McpStance> {
   load();
-  return clients.find((c) => c.key === key)?.disabled ?? [];
+  return clients.find((c) => c.key === key)?.stances ?? {};
 }
 
 export function touchClient(key: string): void {
@@ -89,21 +104,29 @@ export function touchClient(key: string): void {
   save();
 }
 
-/** Отозвать доступ. ⚠️ Вместе с записью гасим и выданные подтверждения на запись. */
+/**
+ * Отозвать доступ.
+ *
+ * ⚠️ Выданные подтверждения на запись гасит ВЫЗЫВАЮЩИЙ (electron/ipc/mcp.ts), а не этот модуль,
+ * и это не мелочь стиля: обратный порядок делал бы McpClients и McpConfirm взаимно
+ * импортирующими друг друга. Цикл в main-процессе живёт тихо ровно до дня, когда в одном из
+ * модулей появится работа на верхнем уровне.
+ */
 export function revokeClient(key: string): void {
   load();
   clients = clients.filter((c) => c.key !== key);
   denied.delete(key);
-  forgetApprovals(key);
+  // Висящий вопрос отключённой программы отвечать некому — снимаем.
+  dropMcpPrompts();
   save();
 }
 
-/** Выключить/включить один инструмент для одного клиента. */
-export function setToolEnabled(key: string, tool: string, on: boolean): void {
+/** Как поступать с инструментом у этой программы: спрашивать, разрешать молча или не давать. */
+export function setStance(key: string, tool: string, stance: McpStance): void {
   load();
   const c = clients.find((x) => x.key === key);
   if (!c || !MCP_TOOLS.some((t) => t.name === tool)) return;
-  c.disabled = on ? c.disabled.filter((t) => t !== tool) : [...new Set([...c.disabled, tool])];
+  c.stances = { ...c.stances, [tool]: stance };
   save();
 }
 
@@ -130,7 +153,7 @@ export async function askToConnect(key: string, label: string): Promise<boolean>
       }
       clients = [
         ...clients.filter((c) => c.key !== key),
-        { key, label, approvedAt: Date.now(), lastSeen: Date.now(), disabled: [] },
+        { key, label, approvedAt: Date.now(), lastSeen: Date.now(), stances: {} },
       ];
       save();
       return true;
@@ -146,25 +169,17 @@ export async function askToConnect(key: string, label: string): Promise<boolean>
 }
 
 async function prompt(label: string): Promise<boolean> {
-  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
   const read = MCP_TOOLS.filter((t) => t.mode === 'read').map((t) => `• ${t.title}`).join('\n');
-  const options = {
-    type: 'question' as const,
-    buttons: ['Подключить', 'Отказать'],
-    defaultId: 1, // По умолчанию отказ — как и у подтверждения записи.
-    cancelId: 1,
-    noLink: true,
-    title: 'Внешний агент',
-    message: 'Подключить внешнюю программу к браузеру?',
+  const res = await askMcp({
+    kind: 'connect',
+    client: label,
     detail:
-      `Программа представилась так: «${label}». Проверить это мы не можем.\n\n`
-      + `Она сможет без отдельного вопроса:\n${read}\n\n`
-      + 'Изменения — открыть, переключить или закрыть вкладку — будут спрашиваться каждый раз '
-      + 'отдельно. Пароли, куки и приватные вкладки не отдаются вовсе.\n\n'
-      + 'Отключить можно в настройках, раздел «AI».',
-  };
-  const { response } = win
-    ? await dialog.showMessageBox(win, options)
-    : await dialog.showMessageBox(options);
-  return response === 0;
+      `Сможет без отдельного вопроса:\n${read}\n\n`
+      + 'Изменения — открыть, переключить или закрыть вкладку — спрашиваются отдельно. '
+      + 'Пароли, куки и приватные вкладки не отдаются вовсе.',
+    // ⚠️ У подключения «всегда» нет: сам ответ «Подключить» и есть решение навсегда, а вторая
+    // кнопка с тем же смыслом читалась бы как «а эта — ещё сильнее?».
+    canRemember: false,
+  });
+  return res.granted;
 }

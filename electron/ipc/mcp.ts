@@ -1,10 +1,12 @@
 import { app, ipcMain } from 'electron';
 import { IPC } from '../../shared/ipc';
 import type { McpServerState } from '../../shared/ipc';
-import { MCP_TOOLS } from '../../shared/mcpPolicy';
+import { MCP_TOOLS, type McpStance } from '../../shared/mcpPolicy';
 import { connectCommand, initMcp, mcpState, setMcpEnabled, stopMcp } from '../mcp';
 import { recentCalls } from '../mcp/McpLog';
-import { listClients, revokeClient, setToolEnabled } from '../mcp/McpClients';
+import { answer, setMcpPromptHeight } from '../McpPromptManager';
+import { listClients, revokeClient, setStance } from '../mcp/McpClients';
+import { forgetApprovals } from '../mcp/McpConfirm';
 import type { IpcDeps } from './deps';
 
 // Браузер как инструмент внешнего агента — три канала на весь раздел настроек.
@@ -41,14 +43,24 @@ export function registerMcpIpc(d: IpcDeps): void {
     return state();
   });
   ipcMain.handle(IPC.MCP_CALLS, () => recentCalls());
+  // ⚠️ Свои маленькие каналы карточки (mcp-prompt:*), а не контракт хрома: вью задаёт один
+  // вопрос и исчезает — тот же приём, что у поповера разрешений и findbar.
+  ipcMain.on('mcp-prompt:respond', (_e, id: string, granted: boolean, remember: boolean) => {
+    answer(String(id ?? ''), { granted: !!granted, remember: !!remember });
+  });
+  ipcMain.on('mcp-prompt:height', (e, px: number) => setMcpPromptHeight(e.sender, Number(px) || 0));
   // ⚠️ Отзыв гасит и выданные подтверждения на запись (см. McpClients.revokeClient): иначе
   // отключённая программа успела бы доиграть минуту чужого «разрешаю».
   ipcMain.handle(IPC.MCP_REVOKE, (_e, key: string) => {
-    revokeClient(String(key ?? ''));
+    const key0 = String(key ?? '');
+    revokeClient(key0);
+    // ⚠️ И выданные подтверждения на запись: без этого отключённая программа успела бы доиграть
+    // минуту чужого «разрешаю».
+    forgetApprovals(key0);
     return state();
   });
-  ipcMain.handle(IPC.MCP_TOOL_SET, (_e, key: string, tool: string, on: boolean) => {
-    setToolEnabled(String(key ?? ''), String(tool ?? ''), !!on);
+  ipcMain.handle(IPC.MCP_TOOL_SET, (_e, key: string, tool: string, stance: McpStance) => {
+    setStance(String(key ?? ''), String(tool ?? ''), stance);
     return state();
   });
 }

@@ -18,8 +18,8 @@ export const mcpBridge = {
   getMcpCalls: () => ipcRenderer.invoke(IPC.MCP_CALLS) as Promise<McpCallLog[]>,
   revokeMcpClient: (key: string) =>
     ipcRenderer.invoke(IPC.MCP_REVOKE, key) as Promise<McpServerState>,
-  setMcpToolEnabled: (key: string, tool: string, enabled: boolean) =>
-    ipcRenderer.invoke(IPC.MCP_TOOL_SET, key, tool, enabled) as Promise<McpServerState>,
+  setMcpStance: (key: string, tool: string, stance: 'ask' | 'allow' | 'deny') =>
+    ipcRenderer.invoke(IPC.MCP_TOOL_SET, key, tool, stance) as Promise<McpServerState>,
   onMcpActivity: (cb: (call: McpCallLog) => void) => {
     const handler = (_e: unknown, call: McpCallLog) => cb(call);
     ipcRenderer.on(IPC.MCP_ACTIVITY, handler);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Copy, Check, X } from 'lucide-react';
 import type { McpCallLog, McpServerState } from '../../../shared/ipc';
-import { InkSwitch, InlineHint, MasterSwitch, MonoChip, Subsection } from './kit';
+import { InkSwitch, InlineHint, MasterSwitch, MonoChip, Segmented, Subsection } from './kit';
 import { CAPS, RADIUS, TEXT, pad, sp } from '../../styles/system';
 
 // «Браузер как инструмент» — включение MCP-сервера и то, что человек обязан о нём знать.
@@ -58,6 +58,10 @@ export function McpBlock() {
 
   const revoke = async (key: string) => {
     setState(await window.oblako.revokeMcpClient(key));
+  };
+
+  const stance = async (key: string, tool: string, value: 'ask' | 'allow' | 'deny') => {
+    setState(await window.oblako.setMcpStance(key, tool, value));
   };
 
   const copy = () => {
@@ -130,42 +134,7 @@ export function McpBlock() {
             </InlineHint>
           </div>
 
-          <div>
-            <span style={{ ...CAPS, color: 'var(--text-faint)' }}>Подключённые программы</span>
-            {state.clients.length === 0 ? (
-              <InlineHint>
-                Пока никто не подключён. Когда программа обратится впервые, браузер спросит вас
-                отдельным окном.
-              </InlineHint>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2), marginTop: sp(2) }}>
-                {state.clients.map((c) => (
-                  <div key={c.key} style={{
-                    display: 'flex', alignItems: 'center', gap: sp(2), padding: pad(2, 3),
-                    borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
-                  }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ ...TEXT.body, color: 'var(--text-strong)' }}>{c.label}</div>
-                      {/* ⚠️ Имя непроверяемо, и в интерфейсе это сказано прямо: программа
-                          назвалась так сама, удостоверения у неё нет. */}
-                      <div style={{ ...TEXT.caption }}>
-                        назвалась так сама · последнее обращение {when(c.lastSeen)}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => void revoke(c.key)}
-                      title="Отключить"
-                      style={{
-                        flex: 'none', display: 'inline-flex', border: 'none', cursor: 'default',
-                        background: 'transparent', color: 'var(--text-faint)', padding: sp(1),
-                        borderRadius: RADIUS.control,
-                      }}
-                    ><X size={15} /></button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <ClientList state={state} onRevoke={revoke} onStance={stance} />
 
           <div>
             <span style={{ ...CAPS, color: 'var(--text-faint)' }}>Журнал вызовов</span>
@@ -192,5 +161,83 @@ export function McpBlock() {
         </div>
       )}
     </Subsection>
+  );
+}
+
+/**
+ * Кто подключён и что ему позволено.
+ *
+ * ⚠️ Отдельным компонентом, потому что это отдельный вопрос: тумблер выше отвечает «отдаём ли
+ * браузер наружу вообще», а здесь человек разбирается с конкретными программами. Заодно это
+ * держит McpBlock в пределах, за которыми компонент перестаёт читаться целиком.
+ */
+function ClientList(props: {
+  state: McpServerState;
+  onRevoke: (key: string) => Promise<void>;
+  onStance: (key: string, tool: string, value: 'ask' | 'allow' | 'deny') => Promise<void>;
+}) {
+  return (
+          <div>
+            <span style={{ ...CAPS, color: 'var(--text-faint)' }}>Подключённые программы</span>
+            {props.state.clients.length === 0 ? (
+              <InlineHint>
+                Пока никто не подключён. Когда программа обратится впервые, браузер спросит вас
+                отдельным окном.
+              </InlineHint>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2), marginTop: sp(2) }}>
+                {props.state.clients.map((c) => (
+                  <div key={c.key} style={{
+                    display: 'flex', flexDirection: 'column', gap: sp(2), padding: pad(3, 3),
+                    borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ ...TEXT.body, color: 'var(--text-strong)' }}>{c.label}</div>
+                      {/* ⚠️ Имя непроверяемо, и в интерфейсе это сказано прямо: программа
+                          назвалась так сама, удостоверения у неё нет. */}
+                      <div style={{ ...TEXT.caption }}>
+                        назвалась так сама · последнее обращение {when(c.lastSeen)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => void props.onRevoke(c.key)}
+                      title="Отключить"
+                      style={{
+                        flex: 'none', display: 'inline-flex', border: 'none', cursor: 'default',
+                        background: 'transparent', color: 'var(--text-faint)', padding: sp(1),
+                        borderRadius: RADIUS.control,
+                      }}
+                    ><X size={15} /></button>
+                    </div>
+                    {/* ⚠️ Решения по инструментам стоят ПОД программой, а не общим списком:
+                        одному клиенту открытие вкладок разрешают навсегда, другому — нет, и
+                        общий список это различие спрятал бы. */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
+                      {props.state.tools.map((t) => (
+                        <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: sp(2) }}>
+                          <span style={{ flex: 1, ...TEXT.caption, color: 'var(--text-body)' }}>
+                            {t.title}
+                          </span>
+                          {/* ⚠️ Готовый Segmented из kit, а не свой переключатель: правило
+                              настроек — только рецепты оттуда, иначе плотность и заливки
+                              разъезжаются по разделам (проверяет conventions-check). */}
+                          <div style={{ flex: 'none', minWidth: 210 }}>
+                            <Segmented
+                              value={c.stances[t.name] ?? (t.mode === 'read' ? 'allow' : 'ask')}
+                              options={t.mode === 'write'
+                                ? [{ id: 'ask', label: 'Спрашивать' }, { id: 'allow', label: 'Всегда' }, { id: 'deny', label: 'Никогда' }]
+                                : [{ id: 'allow', label: 'Разрешено' }, { id: 'deny', label: 'Никогда' }]}
+                              onChange={(v) => void props.onStance(c.key, t.name, v)}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
   );
 }
