@@ -362,6 +362,17 @@ export interface McpServerState {
   command: string;
   /** Что отдаётся наружу: имя и человеческий заголовок инструмента. */
   tools: { name: string; title: string; mode: 'read' | 'write' }[];
+  /** Кого человек подключил. ⚠️ Имя — то, которым программа сама себя назвала (см. mcpPolicy). */
+  clients: McpClientInfo[];
+}
+
+export interface McpClientInfo {
+  key: string;
+  label: string;
+  approvedAt: number;
+  lastSeen: number;
+  /** Инструменты, выключенные для этой программы отдельно от остальных. */
+  disabled: string[];
 }
 
 /** Строка журнала вызовов: кто, что и чем кончилось. */

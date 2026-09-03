@@ -1,7 +1,7 @@
 import { BrowserWindow } from 'electron';
 import { contextForWindow, mainContext } from '../WindowRegistry';
 import { extractPageText } from '../AiPanelManager';
-import { clampHistoryLimit, clampPageText, visibleTabs } from '../../shared/mcpPolicy';
+import { clampHistoryLimit, clampPageText, safeOpenUrl, visibleTabs } from '../../shared/mcpPolicy';
 import type { HistoryManager } from '../HistoryManager';
 
 // Три инструмента на чтение — тела вызовов MCP-сервера.
@@ -106,4 +106,55 @@ export function searchHistory(
     lastVisit: new Date(h.lastVisit).toISOString(),
     visits: h.visitCount,
   }));
+}
+
+// ── Запись. ⚠️ Сюда попадают только после подтверждения человеком (см. McpConfirm.ts). ──
+
+export interface McpWriteResult {
+  ok: boolean;
+  note: string;
+}
+
+/**
+ * Открыть адрес новой вкладкой.
+ *
+ * ⚠️ Адрес проходит через safeOpenUrl ЗДЕСЬ ЖЕ, ещё раз, хотя карточка подтверждения показывала
+ * человеку уже проверенный. Это не дубль: между показом и выполнением лежит целый круг через
+ * клиента, и повтор вызова с другим адресом обязан упереться в ту же проверку, а не в память о
+ * том, что «пользователь уже согласился».
+ */
+export function openTab(rawUrl: unknown, background: unknown): McpWriteResult {
+  const ctx = activeContext();
+  if (!ctx) return { ok: false, note: 'No browser window is open.' };
+  const url = safeOpenUrl(rawUrl);
+  if (!url) return { ok: false, note: 'Only http(s) addresses can be opened.' };
+  const id = ctx.tabs.createTab(url, background === true);
+  return { ok: !!id, note: id ? `Opened ${url}` : 'The browser refused to open this address.' };
+}
+
+/**
+ * Переключиться на уже открытую вкладку.
+ *
+ * ⚠️ Переключать можно ТОЛЬКО то, что и так видно снаружи: приватная вкладка и наш интерфейс
+ * недоступны и здесь. Иначе агент, знающий чужой id, вытаскивал бы на экран спрятанное.
+ */
+export function activateTab(rawId: unknown): McpWriteResult {
+  const ctx = activeContext();
+  if (!ctx) return { ok: false, note: 'No browser window is open.' };
+  const id = typeof rawId === 'string' ? rawId : '';
+  const tab = visibleTabs(ctx.tabs.snapshot()).find((t) => t.id === id);
+  if (!tab) return { ok: false, note: 'No such tab. Call tabs.list first.' };
+  ctx.tabs.activate(id);
+  return { ok: true, note: `Switched to ${tab.title || tab.url}` };
+}
+
+/** Закрыть вкладку. ⚠️ Необратимо отсюда — потому и destructiveHint, и вопрос человеку. */
+export function closeTab(rawId: unknown): McpWriteResult {
+  const ctx = activeContext();
+  if (!ctx) return { ok: false, note: 'No browser window is open.' };
+  const id = typeof rawId === 'string' ? rawId : '';
+  const tab = visibleTabs(ctx.tabs.snapshot()).find((t) => t.id === id);
+  if (!tab) return { ok: false, note: 'No such tab. Call tabs.list first.' };
+  ctx.tabs.closeTab(id);
+  return { ok: true, note: `Closed ${tab.title || tab.url}` };
 }

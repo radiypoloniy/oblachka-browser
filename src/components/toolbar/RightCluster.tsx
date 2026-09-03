@@ -5,6 +5,7 @@ import { SparkGlyph, DownloadGlyph } from '../glyphs';
 import { chromeCluster, clusterBtn } from '../../styles/island';
 import { glyph } from '../../styles/system';
 import { ProgressRing } from './ProgressRing';
+import { useMcpAgent } from './useMcpAgent';
 import { WindowControls } from './WindowControls';
 
 /**
@@ -51,9 +52,34 @@ export function RightCluster(props: {
     downloadsRef, downloadsOpen, onToggleDownloads, flying, downloadsActive, downloadsProgress,
   } = props;
 
+  // ⚠️ Состояние берётся ХУКОМ прямо здесь, а не приходит пропом: метка не про адресную строку и
+  // не про страницу — она про то, что снаружи браузером кто-то управляет (см. useMcpAgent).
+  const agent = useMcpAgent();
+
   return (
     // marginLeft:auto прижимает группу к правому краю flex-контейнера.
     <div className="no-drag" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginLeft: 'auto' }}>
+      {/* ⚠️ Метка ПОЯВЛЯЕТСЯ И ПРОПАДАЕТ, в отличие от постоянного набора кнопок рядом, и это
+          не нарушение правила «недоступное гаснет», а его обратная сторона: гаснущая кнопка —
+          про то, чем нельзя воспользоваться, а это — про событие. Событие, которого не было,
+          показывать нечем. Своим островом слева от кластера: она не действие, нажимать её
+          некуда. */}
+      {agent.active && (
+        <div
+          title={`${agent.client}: ${agent.tool}`}
+          style={{
+            ...chromeCluster(),
+            display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px',
+            color: 'var(--accent)', fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap',
+            animation: 'oblako-badge-in var(--dur-fast) var(--ease-out)',
+          }}
+        >
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flex: 'none',
+          }} />
+          Внешний агент
+        </div>
+      )}
       <div style={chromeCluster()}>
         {/* ⚠️ Тон значка означает СОСТОЯНИЕ, а не важность: в покое нейтральный, как у
             «назад/вперёд/обновить»; акцент загорается, когда панель открыта. */}

@@ -4,6 +4,7 @@ import type { McpServerState } from '../../shared/ipc';
 import { MCP_TOOLS } from '../../shared/mcpPolicy';
 import { connectCommand, initMcp, mcpState, setMcpEnabled, stopMcp } from '../mcp';
 import { recentCalls } from '../mcp/McpLog';
+import { listClients, revokeClient, setToolEnabled } from '../mcp/McpClients';
 import type { IpcDeps } from './deps';
 
 // Браузер как инструмент внешнего агента — три канала на весь раздел настроек.
@@ -27,6 +28,7 @@ export function registerMcpIpc(d: IpcDeps): void {
     running: mcpState(),
     command: connectCommand(),
     tools: MCP_TOOLS.map((t) => ({ name: t.name, title: t.title, mode: t.mode })),
+    clients: listClients(),
   });
 
   ipcMain.handle(IPC.MCP_STATE, () => state());
@@ -39,4 +41,14 @@ export function registerMcpIpc(d: IpcDeps): void {
     return state();
   });
   ipcMain.handle(IPC.MCP_CALLS, () => recentCalls());
+  // ⚠️ Отзыв гасит и выданные подтверждения на запись (см. McpClients.revokeClient): иначе
+  // отключённая программа успела бы доиграть минуту чужого «разрешаю».
+  ipcMain.handle(IPC.MCP_REVOKE, (_e, key: string) => {
+    revokeClient(String(key ?? ''));
+    return state();
+  });
+  ipcMain.handle(IPC.MCP_TOOL_SET, (_e, key: string, tool: string, on: boolean) => {
+    setToolEnabled(String(key ?? ''), String(tool ?? ''), !!on);
+    return state();
+  });
 }

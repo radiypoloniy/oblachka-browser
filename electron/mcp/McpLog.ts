@@ -1,4 +1,6 @@
+import { IPC } from '../../shared/ipc';
 import type { McpCallLog } from '../../shared/ipc';
+import { broadcastToChrome } from '../WindowRegistry';
 
 // Журнал вызовов внешнего агента.
 //
@@ -17,6 +19,10 @@ const entries: McpCallLog[] = [];
 export function rememberCall(entry: McpCallLog): void {
   entries.unshift(entry);
   if (entries.length > LIMIT) entries.length = LIMIT;
+  // ⚠️ Рассылка ВСЕМ окнам, а не окну-инициатору: инициатора здесь нет вовсе — вызов пришёл
+  // снаружи браузера. Метка «сейчас тобой управляет внешний агент» обязана быть видна там, куда
+  // человек смотрит, а какое это окно, мы не знаем.
+  broadcastToChrome(IPC.MCP_ACTIVITY, entry);
 }
 
 export function recentCalls(): McpCallLog[] {

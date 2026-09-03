@@ -68,11 +68,12 @@ export const MCP_HISTORY_MAX = 50;
 export const MCP_HISTORY_DEFAULT = 10;
 
 /**
- * Каталог. ⚠️ ПЕРВЫЙ ЗАХОД — ТОЛЬКО ЧТЕНИЕ, ни одного инструмента с mode: 'write'.
+ * Каталог.
  *
- * Запись (открыть вкладку, увести страницу по адресу) приходит следующим заходом ВМЕСТЕ с
- * карточками подтверждения через MRTR: инструмент, меняющий чужой браузер без спроса, не должен
- * существовать даже один заход — иначе «временно без подтверждения» доживёт до релиза.
+ * ⚠️ ЗАПИСЬ ПОЯВИЛАСЬ ВМЕСТЕ С ПОДТВЕРЖДЕНИЕМ, а не раньше него, и порядок здесь не случайный:
+ * инструмент, меняющий чужой браузер без спроса, не должен существовать даже один заход — иначе
+ * «пока без карточки, потом добавим» доживает до релиза. Каждый вызов с mode: 'write' проходит
+ * через вопрос человеку (см. needsConfirmation и electron/mcp/McpConfirm.ts).
  */
 export const MCP_TOOLS: readonly McpTool[] = [
   {
@@ -112,6 +113,48 @@ export const MCP_TOOLS: readonly McpTool[] = [
         limit: { type: 'number', description: `How many results, 1..${MCP_HISTORY_MAX}.` },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'tabs.open',
+    mode: 'write',
+    title: 'Открыть вкладку',
+    description:
+      'Open a URL in a new tab of the browser. The user is asked to confirm every call; '
+      + 'only http and https addresses are accepted.',
+    input: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Address to open, http(s) only.' },
+        background: { type: 'boolean', description: 'Open without switching to it. Default false.' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'tabs.activate',
+    mode: 'write',
+    title: 'Переключить вкладку',
+    description:
+      'Switch the browser to an already open tab, by id from tabs.list. Use it before page.text '
+      + 'to read a tab other than the active one. The user is asked to confirm.',
+    input: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Tab id from tabs.list.' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'tabs.close',
+    mode: 'write',
+    title: 'Закрыть вкладку',
+    description:
+      'Close an open tab, by id from tabs.list. The user is asked to confirm; closing cannot be '
+      + 'undone from here.',
+    input: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Tab id from tabs.list.' } },
+      required: ['id'],
     },
   },
 ];
@@ -268,4 +311,115 @@ export function pickVersion(requested: unknown): VersionPick {
     return { ok: false, supported: MCP_SUPPORTED_VERSIONS };
   }
   return { ok: true, version: requested, era: eraOf(requested) };
+}
+
+// ── Заход 2: запись ──────────────────────────────────────────────────────────
+
+/**
+ * Адрес, который агенту позволено открыть.
+ *
+ * ⚠️ БЕЛЫЙ СПИСОК СХЕМ, а не чёрный, — тот же вывод, что и у гостевой навигации после аудита
+ * 21.08 (shared/guestNavigation.ts). Чёрный список обходится записью, о которой мы не подумали:
+ * `javascript:` с пробелом внутри, `data:text/html`, протокол-относительный `//host`, ведущие
+ * управляющие символы. Здесь пропускаются только http и https — и ничего больше.
+ *
+ * ⚠️ `file://` закрыт НАМЕРЕННО, хотя человек и сам открывает такие ссылки. Открыть локальный
+ * файл по просьбе чужой программы — это чтение диска чужими руками, а не навигация.
+ */
+export function safeOpenUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  // Управляющие символы и пробелы по краям: с ними перевод строки перед `javascript:` даёт
+  // строку, которая глазом читается как обычный адрес.
+  const s = raw.replace(/[\u0000-\u001F\u007F]/g, '').trim();
+  if (!s || s.length > 2000) return null;
+  if (!/^https?:\/\//i.test(s)) return null;
+  try {
+    const u = new URL(s);
+    // Хост обязателен: `http:///path` разбирается, но никуда не ведёт.
+    return u.hostname ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Что показать человеку в карточке подтверждения.
+ *
+ * ⚠️ Строка собирается ЗДЕСЬ, а не в диалоге, ровно потому, что это часть политики: человек
+ * принимает решение по тому, что написано, и текст обязан называть настоящее действие и его
+ * настоящий аргумент. «Агент хочет выполнить tabs.close» не решение, а загадка.
+ */
+export function confirmText(tool: McpTool, args: Record<string, unknown>): string {
+  switch (tool.name) {
+    case 'tabs.open': {
+      const url = safeOpenUrl(args.url) ?? String(args.url ?? '');
+      return `Открыть новую вкладку:\n${url}`;
+    }
+    case 'tabs.activate':
+      return 'Переключиться на другую открытую вкладку.';
+    case 'tabs.close':
+      return 'Закрыть открытую вкладку. Отменить это из браузера нельзя.';
+    default:
+      return `Выполнить «${tool.title}».`;
+  }
+}
+
+/**
+ * Сколько живёт разрешение, выданное на один вызов.
+ *
+ * ⚠️ Секунды, а не минуты, и это не перестраховка. Человек подтверждает КОНКРЕТНОЕ действие,
+ * которое агент собирается сделать сейчас; окно в четверть часа означало бы, что он подписался
+ * под всем, что тот придумает за это время.
+ */
+export const MCP_CONFIRM_TTL_MS = 60_000;
+
+export interface McpApproval {
+  tool: string;
+  /** Слепок аргументов: подтверждение на один адрес не годится для другого. */
+  digest: string;
+  at: number;
+}
+
+/**
+ * Годится ли выданное подтверждение для этого вызова.
+ *
+ * ⚠️ Проверяются ВСЕ ТРИ вещи разом — инструмент, аргументы и срок, — и ни одну нельзя убрать.
+ * Без слепка аргументов подтверждённое «открыть habr.ru» открывает что угодно; без срока оно
+ * живёт до перезапуска; без имени инструмента подтверждение на «открыть» закрывает вкладку.
+ */
+export function approvalFits(
+  approval: McpApproval | null,
+  call: { tool: string; digest: string },
+  now: number,
+): boolean {
+  if (!approval) return false;
+  if (approval.tool !== call.tool) return false;
+  if (approval.digest !== call.digest) return false;
+  return now - approval.at >= 0 && now - approval.at <= MCP_CONFIRM_TTL_MS;
+}
+
+/**
+ * Как называть клиента в интерфейсе.
+ *
+ * ⚠️ Имя приходит от самого клиента (`clientInfo`) и НИЧЕМ не подтверждено. Мы приводим его к
+ * безопасному виду и на этом останавливаемся: карточка говорит «программа представилась так»,
+ * а не «это Claude Desktop». Врать про личность собеседника хуже, чем не знать её.
+ */
+export function clientLabel(raw: unknown): string {
+  const s = typeof raw === 'string'
+    ? raw.replace(/[\u0000-\u001F\u007F]/g, ' ').trim()
+    : '';
+  return s ? s.slice(0, 60) : 'неизвестный клиент';
+}
+
+/**
+ * Ключ, под которым помним решение человека о клиенте.
+ *
+ * ⚠️ Ключ — это имя, и другого у нас нет: чужой процесс не предъявляет ничего проверяемого.
+ * Отсюда прямое следствие, которое надо понимать: подтверждённым именем может назваться другая
+ * программа на этой же машине. Барьер здесь не «кто ты», а «человек знает, что кто-то подключён»
+ * — карточка, журнал и метка в окне; сам канал закрыт токеном (см. McpPipe.ts).
+ */
+export function clientKey(label: string): string {
+  return label.toLowerCase().replace(/\s+/g, ' ').trim();
 }

@@ -218,4 +218,10 @@ export const SERVICES = {
   MCP_STATE: 'mcp:state', // renderer → main: McpServerState
   MCP_SET:   'mcp:set',   // renderer → main: (enabled: boolean) -> McpServerState
   MCP_CALLS: 'mcp:calls', // renderer → main: журнал последних вызовов, McpCallLog[]
+  MCP_REVOKE: 'mcp:revoke',   // renderer → main: (clientKey) — отозвать доступ у программы
+  MCP_TOOL_SET: 'mcp:tool-set', // renderer → main: (clientKey, tool, enabled) — тумблер инструмента
+  // ⚠️ Пуш, а не опрос: метка «браузером управляет внешний агент» обязана появляться В МОМЕНТ
+  // вызова, а не через секунду. Раз в секунду опрашивать main ради тихой метки — это работа,
+  // которая идёт всегда, ради события, которого почти никогда нет.
+  MCP_ACTIVITY: 'mcp:activity', // main → renderer: push McpCallLog
 } as const;

@@ -404,6 +404,10 @@ export interface AiApi {
   getMcpState(): Promise<McpServerState>;
   setMcpEnabled(enabled: boolean): Promise<McpServerState>;
   getMcpCalls(): Promise<McpCallLog[]>;
+  revokeMcpClient(key: string): Promise<McpServerState>;
+  setMcpToolEnabled(key: string, tool: string, enabled: boolean): Promise<McpServerState>;
+  /** Пуш на каждый вызов извне — им живёт метка «браузером управляет внешний агент». */
+  onMcpActivity(cb: (call: McpCallLog) => void): () => void;
   onUpdateStatusChanged(cb: (s: UpdateStatus) => void): () => void;
 
   // ── Подключения к моделям ────────────────────────────────────────────────

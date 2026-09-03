@@ -2,6 +2,7 @@ import path from 'node:path';
 import { app } from 'electron';
 import { endpointPath, mcpRunning, startMcpServer, stopMcpServer } from './McpPipe';
 import { rememberCall } from './McpLog';
+import { forgetApprovals } from './McpConfirm';
 import type { HistoryManager } from '../HistoryManager';
 
 // Подъём и остановка MCP-сервера — единственная точка, через которую его включают.
@@ -20,15 +21,16 @@ export function initMcp(d: { history: () => HistoryManager; enabled: boolean }):
 export function setMcpEnabled(on: boolean): void {
   if (!on || !deps) {
     stopMcpServer();
+    // ⚠️ Выданные подтверждения на запись гасим вместе с сервером: включив его через час, человек
+    // не должен обнаружить, что чьё-то «разрешаю» ещё в силе.
+    forgetApprovals();
     return;
   }
   startMcpServer({
     history: deps.history,
-    // ⚠️ Разрешение спрашивается на КАЖДЫЙ вызов, а не запоминается при подъёме: человек мог
-    // выключить сервер секунду назад, и уже начатое соединение обязано это почувствовать.
-    // Отдельных клиентских карточек здесь пока нет — включённый сервер и есть согласие; они
-    // приходят следующим заходом вместе с инструментами на запись.
-    grant: () => ({ connected: mcpRunning(), disabled: [] }),
+    // ⚠️ Спрашивается на КАЖДЫЙ вызов, а не запоминается при подъёме: человек мог выключить
+    // сервер секунду назад, и уже открытое соединение обязано это почувствовать.
+    running: mcpRunning,
     log: rememberCall,
   });
 }

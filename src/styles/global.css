@@ -39,6 +39,14 @@ button, input, textarea, select { font-family: inherit; }
    не грузящих index.html (aipanel.tsx и т.п.), см. заход D: индикатор фактчека. */
 @keyframes oblako-spin { to { transform: rotate(360deg); } }
 
+/* Метка «внешний агент» в тулбаре: появляется в момент обращения снаружи (см. useMcpAgent.ts).
+   ⚠️ Короткое проявление, а не выезд: метка возникает рядом с постоянными кнопками, и движение
+   сильнее пары кадров читалось бы как «что-то сломалось», а не «кто-то обратился». */
+@keyframes oblako-badge-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: none; }
+}
+
 /* Начало загрузки: файл прилетает в кнопку загрузок со стороны страницы (снизу-слева), кнопка
    коротко отзывается. Единственный момент, когда человеку сообщают, что скачивание пошло, —
    тостов в чроме нет. Только transform/opacity: раскладку не трогают, идут в композитор.
@@ -68,6 +76,7 @@ button, input, textarea, select { font-family: inherit; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  @keyframes oblako-badge-in { from, to { opacity: 1; transform: none; } }
   @keyframes oblako-dl-fly  { from, to { opacity: 0; transform: none; } }
   @keyframes oblako-dl-land { from, to { transform: none; } }
 }

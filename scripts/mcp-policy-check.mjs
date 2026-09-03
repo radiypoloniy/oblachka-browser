@@ -7,8 +7,10 @@
 import {
   MCP_TOOLS, MCP_CLOSED_PREFIXES, MCP_SUPPORTED_VERSIONS, MCP_VERSION,
   MCP_HISTORY_MAX, MCP_TEXT_LIMIT,
-  annotationsFor, clampHistoryLimit, clampPageText, decide, eraOf, findTool,
-  isClosedName, needsConfirmation, pickVersion, visibleTabs,
+  MCP_CONFIRM_TTL_MS,
+  annotationsFor, approvalFits, clampHistoryLimit, clampPageText, clientKey, clientLabel,
+  confirmText, decide, eraOf, findTool, isClosedName, needsConfirmation, pickVersion,
+  safeOpenUrl, visibleTabs,
 } from '../shared/mcpPolicy.ts';
 
 let passed = 0;
@@ -23,8 +25,16 @@ const ALL = { connected: true, disabled: [] };
 
 console.log('\n— каталог закрыт —');
 // ⚠️ Главный инвариант файла: наружу торчит ровно то, что перечислено, и ничего сверх.
-check('состав каталога', MCP_TOOLS.map((t) => t.name), ['tabs.list', 'page.text', 'history.search']);
-check('в первом заходе записи нет вовсе', MCP_TOOLS.filter((t) => t.mode === 'write'), []);
+check('состав каталога', MCP_TOOLS.map((t) => t.name),
+  ['tabs.list', 'page.text', 'history.search', 'tabs.open', 'tabs.activate', 'tabs.close']);
+// ⚠️ Главный инвариант захода 2: КАЖДЫЙ инструмент на запись проходит через вопрос человеку.
+// Забытое подтверждение — это чужая программа, меняющая браузер молча.
+check('вся запись под подтверждением',
+  MCP_TOOLS.filter((t) => t.mode === 'write' && !needsConfirmation(t)), []);
+check('ни одно чтение подтверждения не требует',
+  MCP_TOOLS.filter((t) => t.mode === 'read' && needsConfirmation(t)), []);
+check('у каждого инструмента записи есть слова для карточки',
+  MCP_TOOLS.filter((t) => t.mode === 'write' && confirmText(t, {}).length < 10), []);
 check('у каждого инструмента объявлен режим',
   MCP_TOOLS.filter((t) => t.mode !== 'read' && t.mode !== 'write'), []);
 check('у каждого есть описание для чужого клиента',
@@ -70,7 +80,12 @@ check('чтение помечено чтением', annotationsFor(findTool('t
 check('чтение не разрушительно', annotationsFor(findTool('tabs.list')).destructiveHint, false);
 // ⚠️ Открытый мир везде: ответ зависит от живого веба, и повторный вызов даст другое.
 check('открытый мир у всех', MCP_TOOLS.every((t) => annotationsFor(t).openWorldHint), true);
-check('чтение идемпотентно', MCP_TOOLS.every((t) => annotationsFor(t).idempotentHint), true);
+// ⚠️ Идемпотентно только чтение: повторный tabs.open откроет ВТОРУЮ вкладку, и клиент, решивший
+// «можно смело повторить», сделал бы человеку два окна вместо одного.
+check('чтение идемпотентно',
+  MCP_TOOLS.filter((t) => t.mode === 'read').every((t) => annotationsFor(t).idempotentHint), true);
+check('запись — нет',
+  MCP_TOOLS.filter((t) => t.mode === 'write').every((t) => !annotationsFor(t).idempotentHint), true);
 // Будущая запись: добавление против необратимого — разные карточки у клиента.
 const openTab = { name: 'tabs.open', mode: 'write', title: '', description: '', input: { type: 'object', properties: {} } };
 const closeTab = { name: 'tabs.close', mode: 'write', title: '', description: '', input: { type: 'object', properties: {} } };
@@ -128,6 +143,53 @@ check('пустая строка — то же самое', pickVersion('').ok, 
 check('неизвестная — отказ со списком', pickVersion('2030-01-01'), { ok: false, supported: MCP_SUPPORTED_VERSIONS });
 check('не строка — отказ', pickVersion(42).ok, false);
 check('рубеж эпох', [eraOf('2026-07-28'), eraOf('2025-11-25')], ['modern', 'legacy']);
+
+console.log('\n— какой адрес позволено открыть —');
+// ⚠️ Белый список схем, как у гостевой навигации после аудита 21.08: чёрный обходится записью,
+// о которой мы не подумали.
+check('обычный адрес', safeOpenUrl('https://habr.com/p/1'), 'https://habr.com/p/1');
+check('http тоже можно', safeOpenUrl('http://example.com/') !== null, true);
+check('javascript:', safeOpenUrl('javascript:alert(1)'), null);
+check('перевод строки перед схемой не обманывает', safeOpenUrl('\njavascript:alert(1)'), null);
+check('data:text/html', safeOpenUrl('data:text/html,<b>x</b>'), null);
+// ⚠️ file:// закрыт намеренно: открыть локальный файл по просьбе чужой программы — это чтение
+// диска чужими руками, а не навигация.
+check('file://', safeOpenUrl('file:///C:/secret.txt'), null);
+check('наш интерфейс', safeOpenUrl('oblako-chrome://settings'), null);
+check('протокол-относительный', safeOpenUrl('//evil.example/x'), null);
+// ⚠️ «Без хоста» не значит «с пустым хостом»: `http:///path` разбор нормализует в хост `path`,
+// и это законный, хоть и бессмысленный адрес. Ловим случай, где хоста нет по-настоящему.
+check('одна схема без адреса', safeOpenUrl('https://'), null);
+check('пробелы вместо адреса', safeOpenUrl('https://   '), null);
+check('пусто', safeOpenUrl(''), null);
+check('не строка', safeOpenUrl(42), null);
+check('слишком длинный', safeOpenUrl('https://a.com/' + 'x'.repeat(3000)), null);
+
+console.log('\n— подтверждение живёт недолго и только на своё —');
+const now = 1_000_000;
+const given = { tool: 'tabs.open', digest: 'D1', at: now };
+check('своё подтверждение годится', approvalFits(given, { tool: 'tabs.open', digest: 'D1' }, now), true);
+// ⚠️ Без слепка аргументов подтверждённое «открыть habr.ru» открывало бы что угодно.
+check('другие аргументы — не годится', approvalFits(given, { tool: 'tabs.open', digest: 'D2' }, now), false);
+check('другой инструмент — не годится', approvalFits(given, { tool: 'tabs.close', digest: 'D1' }, now), false);
+check('в пределах срока', approvalFits(given, { tool: 'tabs.open', digest: 'D1' }, now + MCP_CONFIRM_TTL_MS), true);
+check('просрочено', approvalFits(given, { tool: 'tabs.open', digest: 'D1' }, now + MCP_CONFIRM_TTL_MS + 1), false);
+// Часы съехали назад — подтверждение «из будущего» не принимаем.
+check('время назад', approvalFits(given, { tool: 'tabs.open', digest: 'D1' }, now - 1), false);
+check('подтверждения не было вовсе', approvalFits(null, { tool: 'tabs.open', digest: 'D1' }, now), false);
+check('срок — минута', MCP_CONFIRM_TTL_MS, 60000);
+
+console.log('\n— как называем клиента —');
+// ⚠️ Имя приходит от самого клиента и ничем не подтверждено: приводим к безопасному виду и на
+// этом останавливаемся.
+check('обычное имя', clientLabel('Claude Code'), 'Claude Code');
+check('перевод строки не рисует вторую строку в карточке',
+  clientLabel('Claude\nCode: разрешите всё'), 'Claude Code: разрешите всё');
+check('пусто', clientLabel(''), 'неизвестный клиент');
+check('не строка', clientLabel(null), 'неизвестный клиент');
+check('длинное режется', clientLabel('и'.repeat(200)).length, 60);
+check('ключ не зависит от регистра и пробелов',
+  clientKey(clientLabel('  Claude   CODE ')), clientKey(clientLabel('claude code')));
 
 console.log(`\nИтого: ${passed} прошло, ${failed} не прошло\n`);
 process.exit(failed === 0 ? 0 : 1);

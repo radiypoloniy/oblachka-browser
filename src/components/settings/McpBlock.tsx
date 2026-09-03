@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, X } from 'lucide-react';
 import type { McpCallLog, McpServerState } from '../../../shared/ipc';
 import { InkSwitch, InlineHint, MasterSwitch, MonoChip, Subsection } from './kit';
 import { CAPS, RADIUS, TEXT, pad, sp } from '../../styles/system';
@@ -13,6 +13,15 @@ import { CAPS, RADIUS, TEXT, pad, sp } from '../../styles/system';
 //
 // ⚠️ Состояние СПРАШИВАЕТСЯ у main, а не хранится здесь: сервер могли выключить из другого окна
 // настроек, и «включено» на экране при молчащем канале — худший вид неправды.
+
+/** «5 минут назад» — точное время здесь не нужно, нужен порядок величины. */
+function when(at: number): string {
+  const min = Math.max(0, Math.round((Date.now() - at) / 60000));
+  if (min < 1) return 'только что';
+  if (min < 60) return `${min} мин назад`;
+  const h = Math.round(min / 60);
+  return h < 24 ? `${h} ч назад` : `${Math.round(h / 24)} дн назад`;
+}
 
 export function McpBlock() {
   const [state, setState] = useState<McpServerState | null>(null);
@@ -30,7 +39,13 @@ export function McpBlock() {
   useEffect(() => {
     if (!state?.running) { setCalls([]); return; }
     let alive = true;
-    const pull = () => { void window.oblako.getMcpCalls().then((c) => { if (alive) setCalls(c); }); };
+    const pull = () => {
+      void window.oblako.getMcpCalls().then((c) => { if (alive) setCalls(c); });
+      // ⚠️ Заодно перечитываем состояние: первое обращение НОВОЙ программы заводит её в списке
+      // подключённых, и список, не знающий об этом, показывал бы «пока никто не подключён» под
+      // журналом, где уже идут вызовы.
+      void window.oblako.getMcpState().then((st) => { if (alive) setState(st); });
+    };
     pull();
     const timer = setInterval(pull, 4000);
     return () => { alive = false; clearInterval(timer); };
@@ -39,6 +54,10 @@ export function McpBlock() {
   const toggle = async () => {
     const next = await window.oblako.setMcpEnabled(!state?.enabled);
     setState(next);
+  };
+
+  const revoke = async (key: string) => {
+    setState(await window.oblako.revokeMcpClient(key));
   };
 
   const copy = () => {
@@ -97,15 +116,55 @@ export function McpBlock() {
             <span style={{ ...CAPS, color: 'var(--text-faint)' }}>Что доступно агенту</span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2), marginTop: sp(2) }}>
               {state.tools.map((t) => (
-                <MonoChip key={t.name} title={`${t.name} · ${t.mode === 'read' ? 'только чтение' : 'запись'}`}>
-                  {t.title}
+                <MonoChip key={t.name} title={`${t.name} · ${t.mode === 'read' ? 'без вопросов' : 'с подтверждением'}`}>
+                  {t.mode === 'write' ? `${t.title} ·` : t.title}
                 </MonoChip>
               ))}
             </div>
+            {/* ⚠️ Точка у инструмента записи — не украшение: она отделяет то, что происходит
+                молча, от того, что каждый раз спрашивают. */}
             <InlineHint>
-              Только чтение. Пароли, куки, автозаполнение и приватные вкладки наружу не отдаются
-              вовсе — таких инструментов не существует, их нельзя включить.
+              Чтение идёт без вопросов, изменения — только после подтверждения в отдельном окне.
+              Пароли, куки, автозаполнение и приватные вкладки наружу не отдаются вовсе: таких
+              инструментов не существует, их нельзя включить.
             </InlineHint>
+          </div>
+
+          <div>
+            <span style={{ ...CAPS, color: 'var(--text-faint)' }}>Подключённые программы</span>
+            {state.clients.length === 0 ? (
+              <InlineHint>
+                Пока никто не подключён. Когда программа обратится впервые, браузер спросит вас
+                отдельным окном.
+              </InlineHint>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2), marginTop: sp(2) }}>
+                {state.clients.map((c) => (
+                  <div key={c.key} style={{
+                    display: 'flex', alignItems: 'center', gap: sp(2), padding: pad(2, 3),
+                    borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ ...TEXT.body, color: 'var(--text-strong)' }}>{c.label}</div>
+                      {/* ⚠️ Имя непроверяемо, и в интерфейсе это сказано прямо: программа
+                          назвалась так сама, удостоверения у неё нет. */}
+                      <div style={{ ...TEXT.caption }}>
+                        назвалась так сама · последнее обращение {when(c.lastSeen)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => void revoke(c.key)}
+                      title="Отключить"
+                      style={{
+                        flex: 'none', display: 'inline-flex', border: 'none', cursor: 'default',
+                        background: 'transparent', color: 'var(--text-faint)', padding: sp(1),
+                        borderRadius: RADIUS.control,
+                      }}
+                    ><X size={15} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>

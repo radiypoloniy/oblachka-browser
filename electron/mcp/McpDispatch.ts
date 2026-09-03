@@ -1,9 +1,13 @@
 import { app } from 'electron';
 import {
   MCP_SUPPORTED_VERSIONS, MCP_TOOLS, MCP_VERSION,
-  annotationsFor, decide, pickVersion, type McpGrant,
+  annotationsFor, clientKey, clientLabel, decide, needsConfirmation, pickVersion,
 } from '../../shared/mcpPolicy';
-import { activePageText, listTabs, searchHistory } from './McpTools';
+import {
+  activateTab, activePageText, closeTab, listTabs, openTab, searchHistory,
+} from './McpTools';
+import { askToConnect, disabledFor, isApproved, touchClient } from './McpClients';
+import { confirmWrite } from './McpConfirm';
 import type { HistoryManager } from '../HistoryManager';
 
 // Разбор запросов MCP. Один вход, один выход, никакого состояния между вызовами.
@@ -31,8 +35,8 @@ export interface McpDeps {
    * ссылке она пережила бы переключение профиля — то есть агент искал бы в чужой истории.
    */
   history: () => HistoryManager;
-  /** Что человек разрешил. Спрашивается на КАЖДЫЙ вызов: разрешение могли отозвать секунду назад. */
-  grant: () => McpGrant;
+  /** Работает ли сервер вообще. ⚠️ Спрашивается на КАЖДЫЙ вызов: его могли выключить секунду назад. */
+  running: () => boolean;
   /** Журнал: кто, что и чем кончилось. Нужен интерфейсу следующего захода. */
   log?: (entry: McpLogEntry) => void;
 }
@@ -65,7 +69,7 @@ function clientName(req: JsonRpcRequest): string {
   const name = typeof info === 'object' && info !== null
     ? (info as { name?: unknown }).name
     : undefined;
-  return typeof name === 'string' && name.trim() ? name.trim().slice(0, 60) : 'неизвестный клиент';
+  return clientLabel(name);
 }
 
 function ok(id: JsonRpcRequest['id'], result: unknown) {
@@ -151,23 +155,56 @@ async function callTool(req: JsonRpcRequest, deps: McpDeps): Promise<object> {
   const name = typeof req.params?.name === 'string' ? req.params.name : '';
   const args = (req.params?.arguments ?? {}) as Record<string, unknown>;
   const who = clientName(req);
+  const key = clientKey(who);
+  const note = (ok: boolean, text?: string) => {
+    deps.log?.({ at: Date.now(), client: who, tool: name, ok, note: text });
+  };
 
-  const verdict = decide(name, deps.grant());
+  // ⚠️ Сервер выключили — отвечаем отказом, не спрашивая ничего у человека. Иначе выключенный
+  // тумблер поднимал бы диалоги.
+  if (!deps.running()) {
+    note(false, 'off');
+    return ok(req.id, content('The MCP server is turned off in the browser.', true));
+  }
+
+  // ⚠️ ПОДКЛЮЧЕНИЕ КЛИЕНТА — ОТДЕЛЬНОЕ РЕШЕНИЕ ЧЕЛОВЕКА, а не следствие включённого сервера.
+  // Незнакомая программа спрашивает разрешение один раз; отказ запоминается на несколько минут,
+  // чтобы повторными вызовами нельзя было выбить согласие измором (см. McpClients.ts).
+  if (!isApproved(key) && !(await askToConnect(key, who))) {
+    note(false, 'not-connected');
+    return ok(req.id, content(
+      'The user has not connected this client to the browser. A card was shown in the browser window.',
+      true,
+    ));
+  }
+  touchClient(key);
+
+  const verdict = decide(name, { connected: true, disabled: disabledFor(key) });
   if (!verdict.ok) {
-    deps.log?.({ at: Date.now(), client: who, tool: name, ok: false, note: verdict.reason });
+    note(false, verdict.reason);
     // ⚠️ Отказ по разрешению — тоже РЕЗУЛЬТАТ, а не ошибка протокола: модель должна прочитать
     // его словами и передать человеку («включите инструмент в браузере»), а не показать сбой.
     return ok(req.id, content(verdict.message, true));
   }
 
+  // ⚠️ Вопрос задаётся ПЕРЕД действием и ждёт человека. Разбор, почему карточка наша, а не
+  // клиентская (то есть почему не MRTR), — в шапке McpConfirm.ts.
+  if (needsConfirmation(verdict.tool)) {
+    const allowed = await confirmWrite({ clientKey: key, clientLabel: who, tool: verdict.tool, args });
+    if (!allowed) {
+      note(false, 'refused');
+      return ok(req.id, content('The user refused this action in the browser.', true));
+    }
+  }
+
   try {
     const result = await run(verdict.tool.name, args, deps);
-    deps.log?.({ at: Date.now(), client: who, tool: name, ok: true });
+    note(true);
     return ok(req.id, content(result));
   } catch (e) {
     const message = (e as Error).message || String(e);
     console.warn('[mcp] инструмент упал:', name, message);
-    deps.log?.({ at: Date.now(), client: who, tool: name, ok: false, note: message });
+    note(false, message);
     return ok(req.id, content(`Tool failed: ${message}`, true));
   }
 }
@@ -189,6 +226,21 @@ async function run(name: string, args: Record<string, unknown>, deps: McpDeps): 
       if (!query.trim()) throw new Error('Argument "query" is required.');
       const hits = searchHistory(deps.history(), query, args.limit);
       return { query, hits, count: hits.length };
+    }
+    case 'tabs.open': {
+      const res = openTab(args.url, args.background);
+      if (!res.ok) throw new Error(res.note);
+      return { opened: true, note: res.note };
+    }
+    case 'tabs.activate': {
+      const res = activateTab(args.id);
+      if (!res.ok) throw new Error(res.note);
+      return { switched: true, note: res.note };
+    }
+    case 'tabs.close': {
+      const res = closeTab(args.id);
+      if (!res.ok) throw new Error(res.note);
+      return { closed: true, note: res.note };
     }
     default:
       // Недостижимо: имя уже прошло decide(). Оставлено как явный отказ, а не молчание.
