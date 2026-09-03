@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { CAPS, RADIUS, sp, pad } from '../../styles/system';
+import { aiBridge } from './bridge';
 import type { AiConnectionsState } from '../../../shared/ipc';
 
 /**
@@ -30,7 +31,7 @@ export function ModelChip({ align = 'left' }: { align?: 'left' | 'right' }) {
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const api = bridge();
+    const api = aiBridge();
     if (!api) return;
     let alive = true;
     void api.aiConnections().then((s) => { if (alive) setState(s); });
@@ -61,7 +62,7 @@ export function ModelChip({ align = 'left' }: { align?: 'left' | 'right' }) {
     // но между кликом и им — целый круг через IPC и запись на диск, а метка, которая после нажатия
     // ещё мгновение показывает прежнее имя, читается как не сработавшая кнопка.
     setState((s) => (s === null ? s : { ...s, routing: { ...s.routing, chat: id } }));
-    void bridge()?.setAiRoute('chat', id === 'local' ? null : id);
+    void aiBridge()?.setAiRoute('chat', id === 'local' ? null : id);
   };
 
   return (
@@ -106,22 +107,6 @@ export function ModelChip({ align = 'left' }: { align?: 'left' | 'right' }) {
       )}
     </div>
   );
-}
-
-/**
- * Мост до main. ⚠️ Их ДВА и оба законны: панель живёт своим `window.aiPanel` (отдельный preload,
- * отдельный бандл), хаб/блокнот/граф — общим `window.oblako`. Методы у них одноимённые и ходят по
- * ОДНИМ каналам (shared/ipc), поэтому компоненту достаточно взять тот, что есть в этом окне.
- */
-interface ConnectionsBridge {
-  aiConnections: () => Promise<AiConnectionsState>
-  setAiRoute: (role: string, connectionId: string | null) => Promise<boolean>
-  onAiConnectionsChanged: (cb: (state: AiConnectionsState) => void) => () => void
-}
-
-function bridge(): ConnectionsBridge | null {
-  const w = window as unknown as { aiPanel?: ConnectionsBridge; oblako?: ConnectionsBridge };
-  return w.aiPanel ?? w.oblako ?? null;
 }
 
 /**
