@@ -110,8 +110,9 @@ export const MCP_TOOLS: readonly McpTool[] = [
     title: 'Текст страницы',
     description:
       'Read the main text of the tab the user is looking at right now, without ads, menus or '
-      + 'navigation. Takes no arguments: it always reads the ACTIVE tab. To read another one, ask '
-      + 'the user to switch to it.',
+      + 'navigation. Takes no arguments: it always reads the ACTIVE tab. To read a DIFFERENT open '
+      + 'tab, take its url from tabs.list and pass it to page.read_url — that reuses the already '
+      + 'open tab instead of switching the user away from their work.',
     // ⚠️ Аргумента tabId здесь НЕТ намеренно, и это не забывчивость. Чтение произвольной вкладки
     // по номеру — это уже управление чужим браузером вслепую: агент выбирает, во что заглянуть, а
     // человек об этом не знает. Пока нет карточек подтверждения (следующий заход), наружу отдаётся
