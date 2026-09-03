@@ -1,0 +1,109 @@
+import { BrowserWindow } from 'electron';
+import { contextForWindow, mainContext } from '../WindowRegistry';
+import { extractPageText } from '../AiPanelManager';
+import { clampHistoryLimit, clampPageText, visibleTabs } from '../../shared/mcpPolicy';
+import type { HistoryManager } from '../HistoryManager';
+
+// Три инструмента на чтение — тела вызовов MCP-сервера.
+//
+// ⚠️ НИЧЕГО НОВОГО ЗДЕСЬ НЕ СЧИТАЕТСЯ. Вкладки уже знает TabManager, текст страницы — тот же
+// extractPageText, что кормит AI-панель и индексатор истории, поиск — тот же HistoryManager, что
+// стоит за адресной строкой. Второй фасад к готовому, а не вторая реализация: разъехавшись, они
+// дали бы агенту картину, отличную от той, что человек видит в браузере.
+//
+// ⚠️ ФИЛЬТРУЕМ НЕ ЗДЕСЬ. Что видно снаружи, решает shared/mcpPolicy.ts, и эти функции обязаны
+// звать его, а не повторять условия своими словами: приватная вкладка, просочившаяся мимо
+// фильтра, — это не баг отображения, это чужая почта в чужих руках.
+
+export interface McpTabView {
+  id: string;
+  title: string;
+  url: string;
+  active: boolean;
+}
+
+/**
+ * Окно, о котором отвечаем.
+ *
+ * ⚠️ Одно окно, а не все сразу, и это осознанная узость первого захода. У агента нет понятия
+ * «окно»: отдав вкладки трёх окон одним списком, мы получим ответ «у тебя открыто 40 вкладок» на
+ * вопрос про текущую работу. Берём то, куда человек смотрит; окна как понятие — отдельная задача.
+ */
+function activeContext() {
+  return contextForWindow(BrowserWindow.getFocusedWindow()) ?? mainContext();
+}
+
+export function listTabs(): McpTabView[] {
+  const ctx = activeContext();
+  if (!ctx) return [];
+  // snapshot() отдаёт и хаб, и псевдо-вкладки; наружу идёт только то, что прошло политику.
+  return visibleTabs(ctx.tabs.snapshot()).map((t) => ({
+    id: t.id,
+    title: t.title,
+    url: t.url,
+    active: t.isActive,
+  }));
+}
+
+export interface McpPageText {
+  ok: boolean;
+  title?: string;
+  url?: string;
+  text?: string;
+  error?: string;
+}
+
+/**
+ * Текст активной вкладки.
+ *
+ * ⚠️ Отказы здесь ОБЯЗАНЫ быть словами, а не пустым текстом. Спящая вкладка, наш собственный
+ * интерфейс, страница, которая ещё грузится, — для агента это разные ситуации, и «пусто» он
+ * прочитает как «страница пустая» и уверенно соврёт человеку.
+ */
+export async function activePageText(): Promise<McpPageText> {
+  const ctx = activeContext();
+  if (!ctx) return { ok: false, error: 'No browser window is open.' };
+
+  const tab = ctx.tabs.snapshot().find((t) => t.isActive);
+  if (!tab) return { ok: false, error: 'No active tab.' };
+  // Приватная вкладка и наш интерфейс не отдаются даже как «активная страница».
+  if (visibleTabs([tab]).length === 0) {
+    return { ok: false, error: 'The active tab is private or an internal browser page; its content is not exposed.' };
+  }
+
+  const wc = ctx.tabs.getActiveWebContents();
+  if (!wc) return { ok: false, error: 'The active tab has no live page yet (still loading or asleep).' };
+
+  const extracted = await extractPageText(wc);
+  if (!extracted.ok || !extracted.text.trim()) {
+    return { ok: false, error: 'Could not extract readable text from this page.' };
+  }
+  return { ok: true, title: tab.title, url: tab.url, text: clampPageText(extracted.text) };
+}
+
+export interface McpHistoryHit {
+  title: string;
+  url: string;
+  lastVisit: string;
+  visits: number;
+}
+
+/**
+ * Поиск по посещённому.
+ *
+ * ⚠️ Дату отдаём строкой ISO, а не миллисекундами: число агент перескажет человеку как число.
+ */
+export function searchHistory(
+  history: HistoryManager,
+  query: string,
+  limit: unknown,
+): McpHistoryHit[] {
+  const q = query.trim();
+  if (!q) return [];
+  return history.search(q).slice(0, clampHistoryLimit(limit)).map((h) => ({
+    title: h.title,
+    url: h.url,
+    lastVisit: new Date(h.lastVisit).toISOString(),
+    visits: h.visitCount,
+  }));
+}

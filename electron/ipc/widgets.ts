@@ -7,7 +7,7 @@ import fsp from 'node:fs/promises';
 import nodePath from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { IPC } from '../../shared/ipc';
-import type { TimerState } from '../../shared/ipc';
+import type { GenProgress, TimerState } from '../../shared/ipc';
 import { getTimer, setTimer } from '../TimerService';
 import type { PasswordCopyField } from '../../shared/ipc';
 import { getCryptoRates } from '../CryptoRates';
@@ -24,6 +24,10 @@ import { cancelActivity, getActivity } from '../AiActivity';
 import { suggestQueries, runSearch } from '../NotebookGather';
 import type { StudioKind } from '../NotebookStudio';
 import { parsePhraseToGenSpec } from '../GenSpecParser';
+import { buildFreeWidget } from '../GenFreeBuilder';
+import { freeTierAllowed } from '../../shared/genFree';
+import { isLocalRoute } from '../ai/registry';
+import { GEN_SIZES } from '../../shared/genWidget';
 import { fetchGenWeb } from '../GenWebSource';
 import { getWeather } from '../WeatherService';
 import { ipcMain } from 'electron';
@@ -175,16 +179,35 @@ export function registerWidgetsIpc(d: IpcDeps): void {
   let genParseBusy = false;
   ipcMain.handle(IPC.DESKTOP_GEN_WEB, (_e, url: string, force: boolean) =>
     fetchGenWeb(String(url ?? ''), !!force));
-  ipcMain.handle(IPC.DESKTOP_GEN_SPEC, async (e, phrase: string, url: string) => {
+  ipcMain.handle(IPC.DESKTOP_GEN_SPEC, async (e, phrase: string, url: string, size?: { w: number; h: number }) => {
     if (genParseBusy) return { ok: false, reason: 'model-error', error: 'Уже собираю другой виджет' };
     genParseBusy = true;
     // ⚠️ Отвечаем ТОМУ, кто спросил, а не всем окнам: сборка идёт на одном столе, и чужая
     // анимация в соседнем окне — это неверная картина, а не приятная мелочь.
     const sender = e.sender;
+    const tell = (p: GenProgress): void => {
+      if (!sender.isDestroyed()) sender.send(IPC.DESKTOP_GEN_PROGRESS, p);
+    };
+    const link = String(url ?? '');
     try {
-      return await parsePhraseToGenSpec(String(phrase ?? ''), (p) => {
-        if (!sender.isDestroyed()) sender.send(IPC.DESKTOP_GEN_PROGRESS, p);
-      }, String(url ?? ''));
+      // ⚠️ РАЗВИЛКА ЯРУСОВ ЖИВЁТ ЗДЕСЬ, и это единственное место, где она есть. Студия про ярусы
+      // не знает и знать не должна: она просит виджет по фразе, а чем его собрать — вопрос
+      // маршрута роли, то есть настроек, а не экрана (разбор ярусов — в шапке shared/genFree.ts).
+      //
+      // ⚠️ СО ССЫЛКОЙ ЯРУС 1 СИЛЬНЕЕ ЛЮБОГО ОБЛАКА, поэтому проверяется первой. По ссылке ходит
+      // ХОСТ через сессию Electron (GenWebSource) — у песочницы сети нет вовсе, и свободная
+      // разметка про адрес может только соврать: нарисовать число, взятое из головы.
+      if (!link && freeTierAllowed(isLocalRoute('widgets'))) {
+        const cells = size && typeof size.w === 'number' && typeof size.h === 'number'
+          ? { w: size.w, h: size.h }
+          : GEN_SIZES.small;
+        tell({ stage: 'free', chars: 0 });
+        const free = await buildFreeWidget(String(phrase ?? ''), cells, (chars) => tell({ stage: 'free', chars }));
+        return free.ok && free.html
+          ? { ok: true, free: true, html: free.html }
+          : { ok: false, reason: 'model-error', error: free.error };
+      }
+      return await parsePhraseToGenSpec(String(phrase ?? ''), tell, link);
     } catch (err) {
       console.warn('[gen-widget] разбор упал:', err);
       return { ok: false, reason: 'model-error' };

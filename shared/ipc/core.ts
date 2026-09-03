@@ -52,7 +52,16 @@ export interface FindResult {
  * человеку не отличить.
  */
 export type GenSpecOutcome =
-  | { ok: true; spec: GenSpec; size: { w: number; h: number } }
+  | { ok: true; free?: false; spec: GenSpec; size: { w: number; h: number } }
+  /**
+   * ЯРУС 2: модель написала РАЗМЕТКУ (electron/GenFreeBuilder.ts). Приходит только когда роль
+   * «Генератор виджетов» отдана облаку — разбор в шапке shared/genFree.ts.
+   *
+   * ⚠️ Здесь НЕТ спеки, и это не потеря данных, а сама суть яруса: править руками нечего, у
+   * виджета нет полей — есть разметка. Поэтому и `free` живёт признаком в типе, а не догадкой
+   * по наличию html: студия по нему выбирает, показывать редактор полей или только пересборку.
+   */
+  | { ok: true; free: true; html: string }
   // 'link' — не сложилось со ссылкой, а не с моделью: по адресу не фид и не JSON, сайт не
   // ответил, ответ слишком большой. Отдельно от 'model-error' ради честной формулировки.
   | { ok: false; reason: 'unclear' | 'model-error' | 'link'; error?: string; kind?: GenKind };
@@ -72,7 +81,8 @@ export type GenWebResult =
  * живости (движение в ритме модели), но не для процентов — проценты пришлось бы выдумать.
  */
 export interface GenProgress {
-  stage: 'kind' | 'data' | 'done';
+  /** 'free' — единственная стадия яруса 2: там один прогон, и он пишет сразу разметку. */
+  stage: 'kind' | 'data' | 'done' | 'free';
   chars: number;
 }
 
@@ -337,4 +347,28 @@ export interface ResourceSnapshot {
   };
   /** id загруженной модели или null. Отдельно от processes: строка модели может ещё не появиться. */
   loadedModelId: string | null;
+}
+
+/**
+ * Состояние MCP-сервера для настроек (electron/mcp/).
+ *
+ * ⚠️ `command` собирается в MAIN, а не в интерфейсе: там известны настоящие пути к бинарнику и к
+ * файлу точки подключения, а строка нужна человеку такой, чтобы её можно было вставить как есть.
+ */
+export interface McpServerState {
+  enabled: boolean;
+  running: boolean;
+  /** Готовая команда подключения — то, что человек вставит в конфиг своего клиента. */
+  command: string;
+  /** Что отдаётся наружу: имя и человеческий заголовок инструмента. */
+  tools: { name: string; title: string; mode: 'read' | 'write' }[];
+}
+
+/** Строка журнала вызовов: кто, что и чем кончилось. */
+export interface McpCallLog {
+  at: number;
+  client: string;
+  tool: string;
+  ok: boolean;
+  note?: string;
 }

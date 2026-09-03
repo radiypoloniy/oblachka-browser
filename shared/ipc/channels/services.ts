@@ -212,4 +212,10 @@ export const SERVICES = {
   UPDATE_INSTALL:  'update:install',  // renderer → main: (без параметров) — выйти и установить
   UPDATE_STATUS:   'update:status',   // renderer → main: UpdateStatus
   UPDATE_CHANGED:  'update:changed',  // main → renderer: push UpdateStatus
+
+  // Браузер как инструмент внешнего агента (electron/mcp/). ⚠️ Включение — ЯВНОЕ действие
+  // человека и ничего больше: сервер не поднимается сам ни при старте, ни после обновления.
+  MCP_STATE: 'mcp:state', // renderer → main: McpServerState
+  MCP_SET:   'mcp:set',   // renderer → main: (enabled: boolean) -> McpServerState
+  MCP_CALLS: 'mcp:calls', // renderer → main: журнал последних вызовов, McpCallLog[]
 } as const;

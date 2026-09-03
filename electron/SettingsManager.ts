@@ -58,6 +58,10 @@ interface PersistedSettings {
   // копированием пароля. Тумблер в настройках паролей; он же — страховка от лок-аута, если
   // проверка на конкретной машине не срабатывает.
   passwordAuthEnabled: boolean;
+  // Отдавать ли браузер наружу как MCP-сервер (electron/mcp/). ⚠️ По умолчанию ВЫКЛЮЧЕНО и
+  // включается только руками: это доступ внешнего агента к живому профилю человека, и
+  // «включилось само после обновления» здесь недопустимо.
+  mcpEnabled: boolean;
   // Полоса целей поповера Ctrl+E (режим, закреплённые, цель по умолчанию — см. shared/ipc.ts).
   searchChips: SearchChipsConfig;
   // Оформление: светло/темно/как в системе + нейтральная палитра (см. ThemePrefs в shared/ipc.ts).
@@ -160,6 +164,7 @@ export class SettingsManager {
   // Спрашивать папку для каждого файла. По умолчанию НЕТ — см. DownloadManager.
   #askDownloadLocation = false;
   #passwordAuthEnabled = true; // доп. защита по умолчанию включена (см. PersistedSettings)
+  #mcpEnabled = false;         // ⚠️ выключено по умолчанию — см. PersistedSettings
   #searchChips: SearchChipsConfig = { ...DEFAULT_SEARCH_CHIPS };
   // Светлая по умолчанию, а не 'system': тёмной темы в браузере до сих пор не было вовсе, и
   // молча перекрасить интерфейс у тех, у кого Windows в тёмном режиме, значило бы сменить вид
@@ -265,6 +270,15 @@ export class SettingsManager {
     return this.#passwordAuthEnabled;
   }
 
+  getMcpEnabled(): boolean {
+    return this.#mcpEnabled;
+  }
+
+  setMcpEnabled(enabled: boolean): void {
+    this.#mcpEnabled = !!enabled;
+    this.#write();
+  }
+
   setPasswordAuthEnabled(enabled: boolean): void {
     this.#passwordAuthEnabled = !!enabled;
     this.#write();
@@ -354,6 +368,8 @@ export class SettingsManager {
         if (typeof dl === 'boolean') this.#askDownloadLocation = dl;
         const pa = (data as Record<string, unknown>)['passwordAuthEnabled'];
         if (typeof pa === 'boolean') this.#passwordAuthEnabled = pa;
+        const mcp = (data as Record<string, unknown>)['mcpEnabled'];
+        if (typeof mcp === 'boolean') this.#mcpEnabled = mcp;
         // Раньше полоса целей не сохранялась вовсе (в #write её просто не было) — режим и
         // закреплённые сбрасывались на каждый запуск. Ключа нет у старых профилей — нормализатор
         // отдаст дефолт.
@@ -382,6 +398,7 @@ export class SettingsManager {
       importOffered: this.#importOffered,
       askDownloadLocation: this.#askDownloadLocation,
       passwordAuthEnabled: this.#passwordAuthEnabled,
+      mcpEnabled: this.#mcpEnabled,
       searchChips: this.#searchChips,
       themeMode: this.#themeMode,
       themePalette: this.#themePalette,

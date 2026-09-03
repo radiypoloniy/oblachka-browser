@@ -117,6 +117,8 @@ import { registerSearchIpc } from './ipc/search';
 import { registerAiHubIpc } from './ipc/aiHub';
 import { registerVpnIpc } from './ipc/vpn';
 import { registerWidgetsIpc } from './ipc/widgets';
+import { registerMcpIpc } from './ipc/mcp';
+import { previewTrackingToasts } from './NotifyPreview';
 import { registerGraphIpc } from './ipc/graph';
 import { registerPasswordsIpc } from './ipc/passwords';
 import { registerHistoryIpc } from './ipc/history';
@@ -1319,6 +1321,7 @@ function registerIpc() {
   registerAiHubIpc(d);
   registerVpnIpc(d);
   registerWidgetsIpc(d);
+  registerMcpIpc(d);
   registerGraphIpc(d);
   registerPasswordsIpc(d);
   registerHistoryIpc(d);
@@ -1488,18 +1491,7 @@ app.whenReady().then(async () => {
   // ⚠️ Тост Windows — нативный (Notification), свой центр уведомлений не нужен: система даёт и
   // очередь, и «не беспокоить», и историю. Клик по тосту открывает страницу товара — иначе он
   // сообщает новость, с которой ничего нельзя сделать.
-  // Примеры уведомлений — чтобы человек увидел, как они выглядят, не дожидаясь реальной скидки.
-  // Идут через ТОТ ЖЕ обработчик, что и настоящие: иначе примерка показывала бы не то, что придёт.
-  if (NOTIFY_PREVIEW) {
-    setTimeout(() => {
-      const samples = [
-        { title: 'Ноутбук CHUWI Corebook Air 14"', text: 'Подешевело на 1 500 ₽ (-3%), сейчас 47 490 ₽' },
-        { title: 'Биты для шуруповёрта IMPACT PH2', text: 'Больше нет в наличии' },
-        { title: 'Умный выключатель Aqara H2', text: 'Снова в наличии — 4 592 ₽' },
-      ];
-      samples.forEach((s, i) => setTimeout(() => showTrackingToast(s.title, 'https://example.com', s.text), i * 4000));
-    }, 4000);
-  }
+  if (NOTIFY_PREVIEW) previewTrackingToasts(showTrackingToast);
 
   setTrackingEventHandler(({ title, url, text }) => showTrackingToast(title, url, text));
   // Таймер стола: срок держит main, интерфейс только показывает. ⚠️ Рассылка идёт всем окнам —

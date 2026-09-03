@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
 import type { CellSize, DesktopItem } from '../../newtab/desktop';
 import {
-  GEN_SIZES, type GenSizeName,
+  GEN_SIZES, GEN_FACT_IDS, type GenSizeName,
 } from '../../../shared/genWidget';
+import { useFreeTier } from './useFreeTier';
 import {
-  genKindLabel, genKindHint, genKindSize, validateGenSpec, genSourceLabel,
-  type GenSpec, type GenItem,
+  genKindLabel, genKindHint, genKindSize, validateGenSpec, type GenSpec,
 } from '../../../shared/genSpec';
 import { saveGenRecord, deleteGenRecord, loadGenRecord } from '../../newtab/genStore';
 import { GenWidget } from './GenWidget';
-import { Tile, WIDGET_FILLS, FILL_SWATCH } from './widgets';
-import { RADIUS, TEXT, motion, pad, sp } from '../../styles/system';
+import { Tile } from './widgets';
+import { SpecEditor } from './GenSpecEditor';
+import {
+  FillPicker, Group, KindCard, Segmented, StudioFooter, StudioHeader, TurnLog, inputStyle,
+} from './genStudioUi';
+import { RADIUS, TEXT, pad, sp } from '../../styles/system';
 import type { GenSpecOutcome, GenProgress } from '../../../shared/ipc';
 import { CELL_REF } from '../../../shared/tileBudget';
 
@@ -37,9 +40,6 @@ const FIELD_ROWS = 5;
 const FIELD_CELLS = FIELD_COLS * FIELD_ROWS;
 /** Сколько символов ответа модели — один блок. */
 const CHARS_PER_BLOCK = 14;
-/** Кружок заливки — тот же размер, что в панели настройки экрана. */
-const SWATCH = 26;
-
 export const GEN_GHOST_ID = 'gen-ghost';
 
 export interface GenGhost {
@@ -57,10 +57,23 @@ const SIZE_LABELS: [GenSizeName, string][] = [
   ['large', 'Большой'],
 ];
 
+/**
+ * Чем соберётся виджет — словами под полем запроса.
+ *
+ * ⚠️ Разные слова не для красоты: от яруса зависит, ЧЕГО просить. Каталог типов понимает «список,
+ * счётчик, таймер», свободная разметка нарисует и то, чего в каталоге нет (см. shared/genFree.ts).
+ */
+const ASK_NOTE = {
+  free: 'Опишите словами. Облачная модель нарисует плитку сама — в сеть готовый виджет не ходит, данные о браузере ему отдаёт браузер',
+  spec: 'Опишите словами. Локальная модель выберет вид плитки и наполнит её — в сеть виджет не ходит',
+};
+
 const STAGE_LABEL: Record<GenProgress['stage'], string> = {
   kind: 'Понимаю запрос',
   data: 'Собираю данные',
   done: 'Проверяю',
+  // Ярус 2: один прогон, и он сразу пишет вёрстку — «понимаю запрос» здесь было бы неправдой.
+  free: 'Рисую виджет',
 };
 
 interface Turn {
@@ -90,60 +103,88 @@ export default function GenStudio({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [spec, setSpec] = useState<GenSpec | null>(null);
+  /**
+   * Разметка яруса 2 (shared/genFree.ts). ⚠️ Отдельное состояние, а не спека с полем html: у этих
+   * двух исходов разная судьба в интерфейсе — у спеки есть редактор полей, у разметки его нет и
+   * быть не может. Одновременно они не живут: сборка начинается со сброса обоих.
+   */
+  const [freeHtml, setFreeHtml] = useState<string | null>(null);
   const [progress, setProgress] = useState<GenProgress | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const busyRef = useRef(false);
   // Спека на момент открытия. ⚠️ Правки уходят в настоящую запись СРАЗУ — только так плитка на
   // столе меняется на глазах. Значит «Отмена» обязана вернуть то, что было, а не просто закрыть.
   const original = useRef<GenSpec | null>(null);
+  const originalHtml = useRef<string | null>(null);
   // ⚠️ Тронул ли человек размер сам. Подсказка типа слабее выбора: выбрать «Широкий», дождаться
   // сборки и увидеть квадрат — значит зря выбирать вообще.
   const sizeTouched = useRef(false);
 
   const size: CellSize = GEN_SIZES[sizeName];
+  const draft = !!spec || !!freeHtml;
+
+  const freeTier = useFreeTier();
 
   useEffect(() => () => { deleteGenRecord(DRAFT_ID); }, []);
 
   useEffect(() => {
     if (!editId) return;
     const rec = loadGenRecord(editId);
-    if (!rec?.spec) return;
-    original.current = rec.spec;
-    setSpec(rec.spec);
+    if (!rec) return;
     setPhrase(rec.phrase ?? '');
-    setLink(rec.spec.url ?? '');
     if (rec.size) setSizeName(nameForSize(rec.size));
     sizeTouched.current = true;
+    // ⚠️ Виджет яруса 2 открывается на правку ТОЛЬКО ради пересборки: править в нём нечего —
+    // там разметка, а не поля. Молча показать пустую студию было бы хуже: человек решил бы,
+    // что его виджет потерялся.
+    if (!rec.spec) {
+      if (!rec.html) return;
+      originalHtml.current = rec.html;
+      setFreeHtml(rec.html);
+      return;
+    }
+    original.current = rec.spec;
+    setSpec(rec.spec);
+    setLink(rec.spec.url ?? '');
   }, [editId]);
   useEffect(() => window.oblako.onGenWidgetProgress((p) => setProgress(p)), []);
 
   // Черновик лежит в хранилище под своим id — болванку рисует та же плитка, что и стол.
   // При правке пишем сразу в настоящую запись: человек должен видеть изменения на своей плитке.
+  // ⚠️ Оба яруса пишутся ОДНИМ эффектом: запись у них одна, и разъехавшись, они однажды сохранят
+  // спеку поверх разметки. У яруса 2 факты запрашиваются ВСЕ ТРИ — свободная разметка не
+  // объявляет, какими пользуется, а собрать три счётчика дешевле, чем разбирать чужой код.
   useEffect(() => {
-    if (!spec) return;
-    saveGenRecord(editId ?? DRAFT_ID, { spec, html: '', facts: [], phrase, title: spec.title, size });
-  }, [spec, phrase, size.w, size.h, editId]);
+    if (spec) {
+      saveGenRecord(editId ?? DRAFT_ID, { spec, html: '', facts: [], phrase, title: spec.title, size });
+    } else if (freeHtml) {
+      saveGenRecord(editId ?? DRAFT_ID, {
+        html: freeHtml, facts: [...GEN_FACT_IDS], mode: 'html',
+        phrase, title: freeTitle(phrase), size,
+      });
+    }
+  }, [spec, freeHtml, phrase, size.w, size.h, editId]);
 
   useEffect(() => {
     // При правке болванки нет: правится плитка, которая уже стоит на своём месте.
     if (editId) return;
     onGhost({
-      size, fill, busy, hasDraft: !!spec,
+      size, fill, busy, hasDraft: draft,
       stage: progress?.stage ?? 'kind',
       chars: progress?.chars ?? 0,
     });
-  }, [size.w, size.h, fill, busy, spec, progress, onGhost, editId]);
+  }, [size.w, size.h, fill, busy, draft, progress, onGhost, editId]);
 
   // Esc закрывает только пустую студию: пока идёт сборка или есть черновик, за ним потеря работы.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
-      if (busyRef.current || spec) return;
+      if (busyRef.current || draft) return;
       cancel();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [spec, onClose, editId]);
+  }, [draft, onClose, editId]);
 
   async function assemble() {
     const p = phrase.trim();
@@ -153,9 +194,10 @@ export default function GenStudio({
     busyRef.current = true;
     setError('');
     setSpec(null);
-    setProgress({ stage: 'kind', chars: 0 });
+    setFreeHtml(null);
+    setProgress({ stage: freeTier && !link.trim() ? 'free' : 'kind', chars: 0 });
     try {
-      const res: GenSpecOutcome = await window.oblako.buildGenWidget(p, link.trim() || undefined);
+      const res: GenSpecOutcome = await window.oblako.buildGenWidget(p, link.trim() || undefined, size);
       if (!res.ok) {
         // ⚠️ Если тип назван, а данные под него не собрались — говорим это прямо и называем тип.
         // Человеку это подсказка, что переформулировать, а не глухое «не получилось».
@@ -170,6 +212,13 @@ export default function GenStudio({
             : 'Не понял, какая это плитка. Попробуйте описать проще: список, счётчик, жребий, таймер, цель, отсчёт до даты, заметка.';
         setError(msg);
         setTurns((t) => [...t, { phrase: p, answer: msg }]);
+        return;
+      }
+      // Ярус 2: пришла разметка. ⚠️ Размер НЕ переставляем даже без выбора человека — вёрстку
+      // модель писала под тот размер, который стоял в момент просьбы (он уехал в промпт).
+      if (res.free) {
+        setFreeHtml(res.html);
+        setTurns((t) => [...t, { phrase: p, answer: `Виджет написан разметкой: ${res.html.length} знаков` }]);
         return;
       }
       if (!sizeTouched.current) setSizeName(nameForSize(genKindSize(res.spec.kind)));
@@ -199,17 +248,27 @@ export default function GenStudio({
         phrase, title: original.current.title, size,
       });
     }
+    // Тот же откат для яруса 2: пересобрали, не понравилось — на столе обязан остаться прежний.
+    if (editId && originalHtml.current) {
+      saveGenRecord(editId, {
+        html: originalHtml.current, facts: [...GEN_FACT_IDS], mode: 'html',
+        phrase, title: freeTitle(phrase), size,
+      });
+    }
     onClose();
   }
 
   function place() {
-    if (!spec) return;
+    if (!draft) return;
     // Правка: запись уже обновлена по ходу дела, остаётся закрыть окно.
     if (editId) { onClose(); return; }
     const genId = `g${Date.now().toString(36)}`;
-    saveGenRecord(genId, { spec, html: '', facts: [], phrase, title: spec.title, size });
+    const title = spec ? spec.title : freeTitle(phrase);
+    saveGenRecord(genId, spec
+      ? { spec, html: '', facts: [], phrase, title, size }
+      : { html: freeHtml ?? '', facts: [...GEN_FACT_IDS], mode: 'html', phrase, title, size });
     deleteGenRecord(DRAFT_ID);
-    onPlace({ kind: 'widget', widget: 'gen', genId, size, title: spec.title, fill });
+    onPlace({ kind: 'widget', widget: 'gen', genId, size, title, fill });
     onClose();
   }
 
@@ -220,33 +279,17 @@ export default function GenStudio({
       background: 'var(--surface-solid)', boxShadow: 'var(--shadow-island)',
       animation: 'oblako-panel-in var(--dur-base) var(--ease-out)',
     }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: sp(3), padding: pad(4, 6),
-        borderBottom: '1px solid var(--divider)', flex: 'none',
-      }}>
-        <span style={{ flex: 1, ...TEXT.title }}>{editId ? 'Правка виджета' : 'Свой виджет'}</span>
-        <button onClick={cancel} title="Закрыть" style={iconBtn}><X size={16} /></button>
-      </div>
+      <StudioHeader title={editId ? 'Правка виджета' : 'Свой виджет'} onClose={cancel} />
 
       <div style={{
         flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: sp(6),
         padding: `${sp(6)}px ${sp(6)}px ${sp(4)}px`,
       }}>
-        <Group title="Запрос" note="Опишите словами. Локальная модель выберет вид плитки и наполнит её — в сеть виджет не ходит">
-          {turns.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-              {turns.map((t, i) => (
-                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
-                  <span style={{
-                    alignSelf: 'flex-end', maxWidth: '85%', padding: pad(2, 3),
-                    borderRadius: RADIUS.box, background: 'var(--accent-soft)',
-                    ...TEXT.body, color: 'var(--text-strong)',
-                  }}>{t.phrase}</span>
-                  <span style={{ alignSelf: 'flex-start', maxWidth: '85%', ...TEXT.caption }}>{t.answer}</span>
-                </div>
-              ))}
-            </div>
-          )}
+        {/* ⚠️ Подпись говорит, ЧЕМ соберётся виджет, потому что от этого зависит, чего просить:
+            каталог типов понимает «список, счётчик, таймер», а свободная разметка нарисует и то,
+            чего в каталоге нет. Обещать одно, а делать другое — худший вариант из трёх. */}
+        <Group title="Запрос" note={freeTier ? ASK_NOTE.free : ASK_NOTE.spec}>
+          <TurnLog turns={turns} />
           <textarea
             value={phrase}
             onChange={(e) => setPhrase(e.target.value)}
@@ -281,18 +324,16 @@ export default function GenStudio({
           />
         </Group>
 
-        {spec && (
-          <Group title="Вид плитки">
-            <div style={{
-              display: 'flex', alignItems: 'baseline', gap: sp(2), padding: pad(2, 3),
-              borderRadius: RADIUS.control, background: 'var(--surface-sunken)',
-            }}>
-              <span style={{ ...TEXT.body, fontWeight: 600, color: 'var(--text-strong)' }}>
-                {genKindLabel(spec.kind)}
-              </span>
-              <span style={{ ...TEXT.caption }}>{genKindHint(spec.kind)}</span>
-            </div>
-          </Group>
+        {/* ⚠️ Ярусы РАЗНЫЕ, а карточка одна: человеку важно, что за плитка вышла, а не каким
+            путём она собралась. Разница видна словами внутри — «Своя вёрстка» против названия
+            типа из каталога — и тем, что у разметки нет редактора полей ниже. */}
+        {spec && <KindCard title={genKindLabel(spec.kind)} note={genKindHint(spec.kind)} />}
+        {freeHtml && (
+          <KindCard
+            title="Своя вёрстка"
+            note={`${freeHtml.length} знаков разметки`}
+            hint="Разметку писала модель — полей у такого виджета нет. Не то, что хотели, — перескажите просьбу и пересоберите"
+          />
         )}
 
         <Group title="Размер" note="Видно сразу на болванке — выбирать вслепую не нужно">
@@ -304,198 +345,21 @@ export default function GenStudio({
           />
         </Group>
 
-        <Group title="Цвет">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: sp(2) }}>
-            {WIDGET_FILLS.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFill(f.id === 'theme' ? undefined : f.id)}
-                title={f.label}
-                style={{
-                  width: SWATCH, height: SWATCH, borderRadius: RADIUS.pill, cursor: 'default', padding: 0,
-                  background: FILL_SWATCH[f.id] ?? 'var(--surface-sunken)',
-                  border: (fill ?? 'theme') === f.id
-                    ? '2.5px solid var(--accent)' : '1px solid var(--divider-strong)',
-                  transition: motion.hover('border-color'),
-                }}
-              />
-            ))}
-          </div>
-        </Group>
+        <FillPicker fill={fill} onPick={setFill} />
 
         {spec && <SpecEditor spec={spec} onPatch={patch} />}
       </div>
 
-      <div style={{
-        flex: 'none', display: 'flex', gap: sp(2), padding: pad(4, 6),
-        borderTop: '1px solid var(--divider)',
-      }}>
-        <button
-          type="button"
-          onClick={() => void assemble()}
-          disabled={busy || (phrase.trim().length < 3 && !link.trim())}
-          style={{
-            ...btnBase, background: 'var(--accent)', color: 'var(--on-accent)', fontWeight: 600,
-            opacity: busy || (phrase.trim().length < 3 && !link.trim()) ? 0.5 : 1,
-          }}
-        >{busy ? 'Собираю…' : spec ? 'Пересобрать' : 'Собрать'}</button>
-        {spec && (
-          <button
-            type="button"
-            onClick={place}
-            style={{ ...btnBase, background: 'var(--accent)', color: 'var(--on-accent)', fontWeight: 600 }}
-          >{editId ? 'Готово' : 'Поставить'}</button>
-        )}
-        <button
-          type="button"
-          onClick={cancel}
-          style={{
-            ...btnBase, background: 'transparent', color: 'var(--text-body)',
-            border: '1px solid var(--divider-strong)',
-          }}
-        >Отмена</button>
-      </div>
+      <StudioFooter
+        assembleLabel={busy ? 'Собираю…' : draft ? 'Пересобрать' : 'Собрать'}
+        canAssemble={!busy && (phrase.trim().length >= 3 || !!link.trim())}
+        placeLabel={draft ? (editId ? 'Готово' : 'Поставить') : null}
+        onAssemble={() => void assemble()}
+        onPlace={place}
+        onCancel={cancel}
+      />
     </aside>
   );
-}
-
-/**
- * Правка данных виджета руками.
- *
- * ⚠️ Ради этого блока и менялась архитектура. Пока виджет был разметкой от модели, править было
- * нечего: любая мелочь означала новый прогон и новый результат целиком. Данные правятся точечно
- * и без модели — а значит виджет становится СВОИМ, а не «что дали».
- */
-function SpecEditor({ spec, onPatch }: { spec: GenSpec; onPatch: (p: Partial<GenSpec>) => void }) {
-  const items = spec.items ?? [];
-  const listy = spec.kind === 'list' || spec.kind === 'dice' || spec.kind === 'checklist'
-    || spec.kind === 'zones';
-  const subLabel = spec.kind === 'list' ? 'перевод, автор, пояснение'
-    : spec.kind === 'zones' ? 'название города' : 'пояснение';
-
-  return (
-    <Group title="Что внутри" note="Правится руками — модель для этого больше не нужна">
-      <Field label="Заголовок" value={spec.title} onChange={(v) => onPatch({ title: v })} />
-
-      {spec.kind === 'dice' && typeof spec.from === 'number' && (
-        <>
-          <NumField label="От" value={spec.from} onChange={(v) => onPatch({ from: v })} />
-          <NumField label="До" value={spec.to ?? spec.from + 1} onChange={(v) => onPatch({ to: v })} />
-        </>
-      )}
-
-      {listy && !(spec.kind === 'dice' && typeof spec.from === 'number') && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-          {items.map((it, i) => (
-            <div key={i} style={{ display: 'flex', gap: sp(2), alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: sp(1) }}>
-                <input
-                  value={it.main}
-                  onChange={(e) => onPatch({ items: replaceAt(items, i, { ...it, main: e.target.value }) })}
-                  style={inputStyle}
-                />
-                {spec.kind !== 'checklist' && (
-                  <input
-                    value={it.sub ?? ''}
-                    placeholder={subLabel}
-                    onChange={(e) => onPatch({ items: replaceAt(items, i, { ...it, sub: e.target.value }) })}
-                    style={{ ...inputStyle, ...TEXT.caption, color: 'var(--text-faint)' }}
-                  />
-                )}
-              </div>
-              <button
-                type="button"
-                title="Убрать"
-                onClick={() => onPatch({ items: items.filter((_, n) => n !== i) })}
-                style={iconBtn}
-              ><Trash2 size={14} /></button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => onPatch({
-              items: [...items, { main: spec.kind === 'zones' ? 'Europe/Moscow' : 'Новый пункт' }],
-            })}
-            style={{
-              ...TEXT.body, alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center',
-              gap: sp(2), padding: pad(1, 3), cursor: 'default', borderRadius: RADIUS.pill,
-              border: '1px solid var(--divider-strong)', background: 'transparent',
-              color: 'var(--text-body)', transition: motion.hover('background', 'color'),
-            }}
-          ><Plus size={14} /> Добавить</button>
-        </div>
-      )}
-
-      {spec.kind === 'counter' && (
-        <>
-          <Field label="Единица" value={spec.unit ?? ''} onChange={(v) => onPatch({ unit: v })} />
-          <NumField label="Шаг" value={spec.step ?? 1} onChange={(v) => onPatch({ step: v })} />
-        </>
-      )}
-
-      {spec.kind === 'goal' && (
-        <>
-          <NumField label="Цель" value={spec.target ?? 1} onChange={(v) => onPatch({ target: v })} />
-          <Field label="Единица" value={spec.unit ?? ''} onChange={(v) => onPatch({ unit: v })} />
-        </>
-      )}
-
-      {spec.kind === 'timer' && (
-        <NumField
-          label="Минут"
-          value={Math.round((spec.seconds ?? 1500) / 60)}
-          onChange={(v) => onPatch({ seconds: Math.max(1, v) * 60 })}
-        />
-      )}
-
-      {spec.kind === 'countdown' && (
-        <label style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
-          <span style={{ ...TEXT.caption }}>Дата</span>
-          <input
-            type="date"
-            value={spec.date ?? ''}
-            onChange={(e) => onPatch({ date: e.target.value })}
-            style={inputStyle}
-          />
-        </label>
-      )}
-
-      {(spec.kind === 'feed' || spec.kind === 'stat') && spec.source === 'web' && (
-        <>
-          <Field label="Ссылка" value={spec.url ?? ''} onChange={(v) => onPatch({ url: v })} />
-          {spec.kind === 'stat' && (
-            <>
-              <Field label="Путь в ответе" value={spec.path ?? ''} onChange={(v) => onPatch({ path: v })} />
-              <Field label="Единица" value={spec.unit ?? ''} onChange={(v) => onPatch({ unit: v })} />
-            </>
-          )}
-          {spec.kind === 'feed' && (
-            <NumField label="Строк" value={spec.rows ?? 5} onChange={(v) => onPatch({ rows: v })} />
-          )}
-        </>
-      )}
-
-      {(spec.kind === 'feed' || spec.kind === 'stat') && spec.source !== 'web' && (
-        <div style={{ ...TEXT.caption }}>Источник: {genSourceLabel(spec.source ?? 'history')}</div>
-      )}
-
-      {spec.kind === 'note' && (
-        <label style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
-          <span style={{ ...TEXT.caption }}>Текст</span>
-          <textarea
-            value={spec.text ?? ''}
-            rows={3}
-            onChange={(e) => onPatch({ text: e.target.value })}
-            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
-          />
-        </label>
-      )}
-    </Group>
-  );
-}
-
-function replaceAt(items: GenItem[], i: number, next: GenItem): GenItem[] {
-  return items.map((x, n) => (n === i ? next : x));
 }
 
 /**
@@ -569,91 +433,21 @@ export function GenDraftTile({ ghost, box, overImage }: {
   );
 }
 
+/**
+ * Имя виджета яруса 2 — из фразы человека.
+ *
+ * ⚠️ У спеки заголовок даёт модель, а здесь его просто нет: заголовок плитки модель рисует
+ * ВНУТРИ разметки (<p data-caption>), и вытаскивать его оттуда разбором значило бы завести
+ * четвёртое место, которое читает чужой HTML. Фраза человека честнее и всегда на месте.
+ */
+function freeTitle(phrase: string): string {
+  const t = phrase.trim().replace(/\s+/g, ' ').slice(0, 28);
+  return t || 'Виджет';
+}
+
 function nameForSize(size: { w: number; h: number }): GenSizeName {
   for (const [name, s] of Object.entries(GEN_SIZES) as [GenSizeName, CellSize][]) {
     if (s.w === size.w && s.h === size.h) return name;
   }
   return 'small';
 }
-
-function Group({ title, note, children }: {
-  title: string; note?: string; children: React.ReactNode;
-}) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: sp(2) }}>
-      <span style={{ ...TEXT.section }}>{title}</span>
-      {note && <span style={{ ...TEXT.caption, marginTop: -sp(1) }}>{note}</span>}
-      {children}
-    </div>
-  );
-}
-
-function Segmented<T extends string>({ value, options, onChange, disabled }: {
-  value: T; options: [T, string][]; onChange: (v: T) => void; disabled?: boolean;
-}) {
-  return (
-    <div style={{
-      display: 'flex', gap: 2, padding: 2, background: 'var(--surface-sunken)',
-      borderRadius: RADIUS.control, opacity: disabled ? 0.6 : 1,
-    }}>
-      {options.map(([id, label]) => (
-        <button
-          key={id}
-          disabled={disabled}
-          onClick={() => onChange(id)}
-          style={{
-            flex: 1, padding: `${sp(2)}px 0`, border: 'none', cursor: 'default',
-            borderRadius: RADIUS.tight,
-            background: value === id ? 'var(--surface)' : 'transparent',
-            boxShadow: value === id ? 'var(--shadow-card)' : 'none',
-            ...TEXT.body,
-            color: value === id ? 'var(--text-strong)' : 'var(--text-muted)',
-            fontWeight: value === id ? 600 : 400,
-            transition: motion.hover('background', 'color'),
-          }}
-        >{label}</button>
-      ))}
-    </div>
-  );
-}
-
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
-      <span style={{ ...TEXT.caption }}>{label}</span>
-      <input value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle} />
-    </label>
-  );
-}
-
-function NumField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: sp(1) }}>
-      <span style={{ ...TEXT.caption }}>{label}</span>
-      <input
-        type="number"
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
-        style={inputStyle}
-      />
-    </label>
-  );
-}
-
-const inputStyle: React.CSSProperties = {
-  ...TEXT.body, width: '100%', boxSizing: 'border-box', padding: pad(2, 3),
-  borderRadius: RADIUS.control, border: '1px solid var(--divider-strong)',
-  background: 'var(--surface)', color: 'var(--text-strong)',
-  fontFamily: 'inherit', outline: 'none',
-};
-
-const btnBase: React.CSSProperties = {
-  padding: pad(2, 4), border: 'none', cursor: 'default', borderRadius: RADIUS.pill,
-  ...TEXT.body, transition: motion.hover('background', 'opacity'),
-};
-
-const iconBtn: React.CSSProperties = {
-  border: 'none', background: 'transparent', cursor: 'default', padding: sp(2),
-  borderRadius: RADIUS.control, color: 'var(--text-faint)', display: 'inline-flex',
-  transition: motion.hover('background', 'color'),
-};

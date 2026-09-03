@@ -6,6 +6,7 @@ import SkillsSection from './SkillsSection';
 import { AiConnectionsBlock } from './AiConnectionsBlock';
 import { AiUsageBlock } from './AiUsageBlock';
 import { AiRolesBlock } from './AiRolesBlock';
+import { McpBlock } from './McpBlock';
 import type { AiConnectionsState } from '../../../shared/ipc';
 import type { AiUsage } from '../../../shared/aiUsage';
 import {
@@ -46,6 +47,10 @@ export default function AiSection() {
       <TranslationEngineSection />
       <HistoryBackfillSection />
       <SkillsSection />
+      {/* ⚠️ Стоит в разделе AI, хотя это НЕ наша модель, а чужая: человек ищет здесь ответ на
+          вопрос «как ИИ связан с моим браузером», и обе стрелки — мы зовём модель и модель зовёт
+          нас — живут в одном месте. Разводить их по разделам значило бы прятать вторую. */}
+      <McpBlock />
       <GeminiSection />
       <SearxngSection />
     </div>

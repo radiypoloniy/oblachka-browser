@@ -15,7 +15,7 @@ import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProg
 import type { ImagePreset } from '../imagePresets';
 import type { AutomationRule } from '../rules';
 import type { ProfilesState, ProfileSettings, ProfileAvatar, ProfileLook } from '../profiles';
-import type { ContentBounds, GenProgress, GenWebResult, OrganizeCluster, OrganizeProposal, RuleParseOutcome, GenSpecOutcome, SearchChipCandidate, SearchChipsConfig } from './core';
+import type { ContentBounds, GenProgress, GenWebResult, McpCallLog, McpServerState, OrganizeCluster, OrganizeProposal, RuleParseOutcome, GenSpecOutcome, SearchChipCandidate, SearchChipsConfig } from './core';
 import type { PasswordAddInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, PasswordMeta, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
 import type { OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, SuggestDropdownItem } from './omnibox';
 import type { BangDefWire, BangsSnapshot, BergamotStatus, CatalogEntry, DeleteModelResult, DerivedBangCandidate, DownloadProgress, HardwareSnapshot, HubChatMessage, HubChatOutcome, HubChatSessionMeta, HubMode, ImportBangsResult, InstalledModel, ModelDownloadSpec, ModelLoadMode, PageTranslateProgress, PageTranslateState, SetDefaultModelResult, Skill, TranslationEngineId, UpdateStatus } from './ai';
@@ -38,7 +38,14 @@ export interface AiApi {
    * Фраза → спека своего виджета (тип из каталога + данные). Модель кода не пишет.
    * url — ссылка, которую дал ЧЕЛОВЕК; с ней собирается виджет по фиду или JSON.
    */
-  buildGenWidget(phrase: string, url?: string): Promise<GenSpecOutcome>;
+  /**
+   * Собрать свой виджет по фразе. `size` — выбранный человеком размер плитки В КЛЕТКАХ.
+   *
+   * ⚠️ Размер уезжает в main не для проверки, а В ПРОМПТ яруса 2: модель пишет вёрстку, и
+   * квадрат 2×2 против широкой 4×2 — это разная вёрстка (см. electron/GenFreeBuilder.ts).
+   * Какой ярус сработает, решает МАРШРУТ РОЛИ в main, а не студия.
+   */
+  buildGenWidget(phrase: string, url?: string, size?: { w: number; h: number }): Promise<GenSpecOutcome>;
   /** Сходить по ссылке человека. Запрос идёт из main сессией Electron, значит через VPN. */
   fetchGenWeb(url: string, force?: boolean): Promise<GenWebResult>;
 
@@ -387,6 +394,16 @@ export interface AiApi {
   downloadUpdate(): void;
   installUpdate(): void;
   getUpdateStatus(): Promise<UpdateStatus>;
+
+  /**
+   * Браузер как инструмент внешнего агента (electron/mcp/).
+   *
+   * ⚠️ Состояние спрашивается, а не хранится в интерфейсе: сервер могли выключить из другого окна
+   * настроек, и «включено» на экране при молчащем канале — худший вид неправды.
+   */
+  getMcpState(): Promise<McpServerState>;
+  setMcpEnabled(enabled: boolean): Promise<McpServerState>;
+  getMcpCalls(): Promise<McpCallLog[]>;
   onUpdateStatusChanged(cb: (s: UpdateStatus) => void): () => void;
 
   // ── Подключения к моделям ────────────────────────────────────────────────

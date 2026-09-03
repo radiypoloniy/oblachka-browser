@@ -60,7 +60,7 @@ console.log('\n— кому облако отдаётся —');
 check('чат', route('chat', { chat: 'gpt' }), { connectionId: 'gpt', reason: 'chosen', notice: null });
 check('работа со страницей', route('page', { page: 'gpt' }).reason, 'chosen');
 check('блокнот и Студия', route('notebook', { notebook: 'gpt' }).reason, 'chosen');
-check('ровно три роли из десяти', AI_ROLES.filter(cloudAllowed), ['page', 'chat', 'notebook']);
+check('ровно четыре роли из десяти', AI_ROLES.filter(cloudAllowed), ['page', 'chat', 'notebook', 'widgets']);
 
 console.log('\n— выбор не растекается на соседей —');
 check('выбор «чата» не утаскивает блокнот', route('notebook', { chat: 'gpt' }).connectionId, LOCAL_ID);
@@ -97,16 +97,23 @@ check('и указывает, где выбор модели всё-таки е�
 check('у остальных закрытых — общее',
   cloudFitNote('organize'), 'Модель выбирает из готового набора: облако сделает то же самое, но за деньги.');
 check('своё объяснение не отменяет отказа', cloudAllowed('translate'), false);
-// ⚠️ Правила и виджеты — закрытые каталоги, и это не случайность, а починка: генератор виджетов
-// заработал ровно тогда, когда открытую задачу («напиши код плитки») превратили в закрытую
-// («выбери тип и заполни поля»). Пустить туда облако значило бы заново открыть закрытое.
+// ⚠️ Правила из фразы — закрытый каталог, и это не случайность, а починка: правило рождается
+// выбором из готового набора действий, и облако выберет то же самое, только за деньги.
 check('правила из фразы — закрытый каталог', route('rules', { rules: 'gpt' }).reason, 'fallback-not-offered');
-check('виджеты — закрытый каталог', route('widgets', { widgets: 'gpt' }).reason, 'fallback-not-offered');
+
+// ⚠️ А ВИДЖЕТЫ ОТКРЫЛИ ОБРАТНО, и вот почему это не отмена прежнего решения. Генератор заработал
+// тогда, когда открытую задачу («напиши код плитки») превратили в закрытую («выбери тип и заполни
+// поля») — для ЯРУСА 1 это верно и сегодня, каталог типов сильной модели не нужен. Но у генератора
+// появился ярус 2 (shared/genFree.ts): модель снова пишет разметку, и разница между 4B и сильной
+// моделью здесь — это разница между пустой плиткой и работающим виджетом. То есть роль была
+// закрыта не по природе задачи, а по природе единственной доступной тогда модели.
+check('виджеты отдаются облаку', route('widgets', { widgets: 'gpt' }).reason, 'chosen');
+check('но по умолчанию считаются здесь', route('widgets', {}).connectionId, LOCAL_ID);
 
 console.log('\n— две причины отказа, и они разные —');
 check('пока человек набирает — поздно', AI_ROLES.filter((r) => cloudFit(r) === 'too-slow'), ['search', 'forms']);
 check('выбор из закрытого набора — незачем',
-  AI_ROLES.filter((r) => cloudFit(r) === 'no-gain'), ['translate', 'organize', 'digest', 'rules', 'widgets']);
+  AI_ROLES.filter((r) => cloudFit(r) === 'no-gain'), ['translate', 'organize', 'digest', 'rules']);
 check('у каждого отказа есть объяснение словами',
   AI_ROLES.filter((r) => !cloudAllowed(r) && cloudFitNote(r) === null), []);
 check('у разрешённой роли объяснения нет', cloudFitNote('chat'), null);
@@ -130,7 +137,7 @@ check('у всех четырёх откатов есть слова',
   [route('chat', { chat: 'нет' }).notice,
    route('chat', { chat: 'gpt' }, { ready: [] }).notice,
    route('search', { search: 'gpt' }).notice,
-   route('widgets', { widgets: 'gpt' }).notice].map((n) => n !== null && n !== ''),
+   route('rules', { rules: 'gpt' }).notice].map((n) => n !== null && n !== ''),
   [true, true, true, true]);
 
 console.log('\n— сводка для шапки настроек —');

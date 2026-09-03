@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { ProfilesState, ProfileSettings, ProfileAvatar, ProfileLook } from '../shared/profiles';
 import { IPC } from '../shared/ipc';
 import { aiBridge } from './preload/aiBridge';
-import type { OblakoApi, AiActivityState, PageLength, SpecialTabKind, SyncState, ContentBounds, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, PageChangesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, UpdateStatus, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand, GenSpecOutcome, GenProgress, GenWebResult } from '../shared/ipc';
+import { updatesBridge } from './preload/updatesBridge';
+import { mcpBridge } from './preload/mcpBridge';
+import type { OblakoApi, AiActivityState, PageLength, SpecialTabKind, SyncState, ContentBounds, FindResult, AdBlockState, HistoryEntry, HistoryClearPeriod, BookmarkEntry, BookmarkNode, BookmarkFolderProposal, BookmarkImportSource, BookmarkImportResult, ImportSource, ImportDataType, ImportRunResult, CsvPasswordImport, AddressProfile, AddressInput, AddressUpdate, CardMeta, CardInput, CardUpdate, WeatherInfo, CurrencyRatesInfo, CryptoRatesInfo, NextHolidayInfo, DownloadEntry, PermissionRecord, PermKey, SidebarNode, OrganizeCluster, OrganizeProposal, SuggestDropdownItem, OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, PageChangesResult, BackfillProgress, HistoryContentCoverage, SmartSearchResponse, VpnStatus, VpnServerMeta, VpnSubscriptionResult, VpnConnectionState, PasswordMeta, PasswordAddInput, PasswordUpdateInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, HubMode, ModelLoadMode, HubChatMessage, HubChatSessionMeta, HubChatOutcome, PageTranslateState, PageTranslateProgress, TranslationEngineId, BergamotStatus, Skill, HardwareSnapshot, DownloadProgress, ModelDownloadSpec, CatalogEntry, DeleteModelResult, InstalledModel, SetDefaultModelResult, BangsSnapshot, BangDefWire, ImportBangsResult, DerivedBangCandidate, SearchChipsConfig, SearchChipCandidate, WindowRole, TabDropResult, DefaultBrowserRequest, ThemeMode, ThemePaletteId, ThemePrefs, TimerState, DayDigestState, SemanticSearchResult, SmartTabHit, ParsedAddressPart, StuffHit, ProductState, TrackedProduct, TrackingEvent, MatchSuggestion, SplitSwapHint, DragCard, TabDropZone, MediaNowPlaying, MediaCommand, GenSpecOutcome, GenProgress, GenWebResult } from '../shared/ipc';
 import type { SearchEngineId } from '../shared/searchEngines';
 import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProgress, GraphStructure } from '../shared/graph';
 import type { ImagePreset } from '../shared/imagePresets';
@@ -102,7 +104,7 @@ const api: OblakoApi = {
   // Правила-автоматизации (см. shared/rules.ts). parseRule ходит к модели, остальное — обычный
   // CRUD над rules.json.
   parseRule:      (phrase: string)            => ipcRenderer.invoke(IPC.RULES_PARSE, phrase),
-  buildGenWidget: (phrase: string, url?: string) => ipcRenderer.invoke(IPC.DESKTOP_GEN_SPEC, phrase, url ?? '') as Promise<GenSpecOutcome>,
+  buildGenWidget: (phrase: string, url?: string, size?: { w: number; h: number }) => ipcRenderer.invoke(IPC.DESKTOP_GEN_SPEC, phrase, url ?? '', size) as Promise<GenSpecOutcome>,
   fetchGenWeb: (url: string, force?: boolean)  => ipcRenderer.invoke(IPC.DESKTOP_GEN_WEB, url, !!force) as Promise<GenWebResult>,
 
   getProfiles: () => ipcRenderer.invoke(IPC.PROFILES_GET) as Promise<ProfilesState>,
@@ -764,16 +766,8 @@ const api: OblakoApi = {
   searchSearchChipCandidates: (query: string) => ipcRenderer.invoke(IPC.SEARCH_CHIPS_SEARCH, query) as Promise<SearchChipCandidate[]>,
   resolveSearchChipCandidates: (ids: string[]) => ipcRenderer.invoke(IPC.SEARCH_CHIPS_RESOLVE, ids) as Promise<SearchChipCandidate[]>,
 
-  // Автообновление (см. electron/UpdateManager.ts).
-  checkForUpdate: () => ipcRenderer.send(IPC.UPDATE_CHECK),
-  downloadUpdate: () => ipcRenderer.send(IPC.UPDATE_DOWNLOAD),
-  installUpdate: () => ipcRenderer.send(IPC.UPDATE_INSTALL),
-  getUpdateStatus: () => ipcRenderer.invoke(IPC.UPDATE_STATUS) as Promise<UpdateStatus>,
-  onUpdateStatusChanged: (cb: (s: UpdateStatus) => void) => {
-    const handler = (_e: unknown, s: UpdateStatus) => cb(s);
-    ipcRenderer.on(IPC.UPDATE_CHANGED, handler);
-    return () => ipcRenderer.removeListener(IPC.UPDATE_CHANGED, handler);
-  },
+  ...updatesBridge,
+  ...mcpBridge,
 
   // Курируемый каталог моделей (см. electron/ModelCatalog.ts) — задел, потребителей пока нет.
   getModelCatalog: () => ipcRenderer.invoke(IPC.MODEL_CATALOG_GET) as Promise<CatalogEntry[]>,

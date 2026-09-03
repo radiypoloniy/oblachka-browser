@@ -8,7 +8,9 @@ import type { AiConnectionsState } from '../../../shared/ipc';
  * Какая модель отвечает в чате — и переключение на месте.
  *
  * ⚠️ ОДНА МЕТКА НА ВСЕ ЧАТЫ: панель, хаб новой вкладки, блокнот (у него центральная колонка — тот
- * же чат хаба) и узел графа.
+ * же чат хаба) и узел графа. Плюс студия своего виджета — она не чат, но вопрос там ровно тот же
+ * («кто это соберёт»), и от ответа зависит, ЧТО получится: у облака есть ярус свободной разметки,
+ * у локальной — только каталог типов (см. shared/genFree.ts).
  *
  * ⚠️ РОЛЬ У НЕЁ РАЗНАЯ, и это не мелочь. Панель и хаб — роль «Чат»; блокнот и граф — роль
  * «Блокнот, Студия и граф», та самая, которой считаются страницы, тесты и саммари рядом. Метка
@@ -29,7 +31,13 @@ import type { AiConnectionsState } from '../../../shared/ipc';
  * и хранение переписки, а притвориться, что переключатель локальный, когда он глобальный, хуже,
  * чем не иметь его вовсе.
  */
-export function ModelChip({ role = 'chat', align = 'left' }: { role?: AiRole; align?: 'left' | 'right' }) {
+export function ModelChip({ role = 'chat', align = 'left', drop = 'up' }: {
+  role?: AiRole;
+  align?: 'left' | 'right';
+  /** Куда раскрывать список. ⚠️ Не вкус: у композитора метка стоит внизу и вниз места нет, а в
+   *  шапке студии — наоборот, вверх список ушёл бы за край окна. */
+  drop?: 'up' | 'down';
+}) {
   const [state, setState] = useState<AiConnectionsState | null>(null);
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -89,9 +97,12 @@ export function ModelChip({ role = 'chat', align = 'left' }: { role?: AiRole; al
       </button>
 
       {open && (
-        // ⚠️ Раскрывается ВВЕРХ: метка стоит у нижнего края композитора, и вниз списку места нет.
+        // ⚠️ Сторона раскрытия — от места метки, см. `drop`: у композитора вниз места нет.
         <div style={{
-          position: 'absolute', bottom: `calc(100% + ${sp(1) + 2}px)`, zIndex: 10, minWidth: 210,
+          position: 'absolute', zIndex: 10, minWidth: 210,
+          ...(drop === 'up'
+            ? { bottom: `calc(100% + ${sp(1) + 2}px)` }
+            : { top: `calc(100% + ${sp(1) + 2}px)` }),
           ...(align === 'right' ? { right: 0 } : { left: 0 }),
           background: 'var(--surface-solid)', border: '1px solid var(--glass-edge)',
           borderRadius: RADIUS.box, boxShadow: 'var(--shadow-card)', padding: sp(1),

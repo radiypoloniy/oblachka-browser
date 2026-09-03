@@ -69,6 +69,11 @@ extraResources:
     to: brand/icon.png
   - from: resources/xray
     to: xray
+  # Шим MCP: его запускает ЧУЖОЙ клиент (Claude Desktop и подобные) как дочерний процесс, значит
+  # файл обязан лежать на диске рядом с приложением, а не внутри app.asar — путь к нему человек
+  # вставляет в конфиг своего клиента (см. electron/mcp/index.ts::connectCommand).
+  - from: resources/mcp
+    to: mcp
   # Bergamot: только ru↔en (44 МБ). Все 41 пара — это +1.3 ГБ в установщике, при том что
   # рантайм-докачки пар пока нет (есть лишь build-time scripts/download-translation-models.mjs).
   # Для остальных языков движок отдаёт isReady()===false и перевод тихо уходит на Qwen —
