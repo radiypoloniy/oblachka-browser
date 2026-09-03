@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { CAPS, RADIUS, sp, pad } from '../../styles/system';
 import { aiBridge } from './bridge';
+import { ROLE_INFO, type AiRole } from '../../../shared/aiRouting';
 import type { AiConnectionsState } from '../../../shared/ipc';
 
 /**
  * Какая модель отвечает в чате — и переключение на месте.
  *
  * ⚠️ ОДНА МЕТКА НА ВСЕ ЧАТЫ: панель, хаб новой вкладки, блокнот (у него центральная колонка — тот
- * же чат хаба) и узел графа. Все они ходят через runChatMessage, то есть через роль «Чат», поэтому
- * и переключатель у них обязан быть один: две метки, меняющие один маршрут, разъезжались бы на
- * первом же переключении в соседнем окне.
+ * же чат хаба) и узел графа.
+ *
+ * ⚠️ РОЛЬ У НЕЁ РАЗНАЯ, и это не мелочь. Панель и хаб — роль «Чат»; блокнот и граф — роль
+ * «Блокнот, Студия и граф», та самая, которой считаются страницы, тесты и саммари рядом. Метка
+ * обязана показывать ту модель, которая реально ответит ЗДЕСЬ, иначе она врёт: в блокноте она
+ * говорила бы «OpenRouter», а Студия в соседней колонке считала бы локальной.
  *
  * ⚠️ МЕТКИ НЕТ, ПОКА НЕЧЕГО ВЫБИРАТЬ. Без подключений ответ всегда локальный, и элемент, умеющий
  * ровно одно значение, — не выбор, а лишняя строка, которую надо прочитать и понять. В этом
@@ -25,7 +29,7 @@ import type { AiConnectionsState } from '../../../shared/ipc';
  * и хранение переписки, а притвориться, что переключатель локальный, когда он глобальный, хуже,
  * чем не иметь его вовсе.
  */
-export function ModelChip({ align = 'left' }: { align?: 'left' | 'right' }) {
+export function ModelChip({ role = 'chat', align = 'left' }: { role?: AiRole; align?: 'left' | 'right' }) {
   const [state, setState] = useState<AiConnectionsState | null>(null);
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -51,7 +55,7 @@ export function ModelChip({ align = 'left' }: { align?: 'left' | 'right' }) {
 
   if (state === null || state.connections.length === 0) return null;
 
-  const current = state.routing['chat'] ?? 'local';
+  const current = state.routing[role] ?? 'local';
   const chosen = state.connections.find((c) => c.id === current);
   const label = chosen?.label ?? 'На этой машине';
   const local = chosen === undefined || chosen.kind === 'local';
@@ -61,15 +65,15 @@ export function ModelChip({ align = 'left' }: { align?: 'left' | 'right' }) {
     // ⚠️ Состояние правим СРАЗУ, не дожидаясь пуша из main. Пуш приходит и он же источник истины,
     // но между кликом и им — целый круг через IPC и запись на диск, а метка, которая после нажатия
     // ещё мгновение показывает прежнее имя, читается как не сработавшая кнопка.
-    setState((s) => (s === null ? s : { ...s, routing: { ...s.routing, chat: id } }));
-    void aiBridge()?.setAiRoute('chat', id === 'local' ? null : id);
+    setState((s) => (s === null ? s : { ...s, routing: { ...s.routing, [role]: id } }));
+    void aiBridge()?.setAiRoute(role, id === 'local' ? null : id);
   };
 
   return (
     <div ref={box} style={{ position: 'relative', flexShrink: 0, minWidth: 0 }}>
       <button
         onClick={() => setOpen((v) => !v)}
-        title="Кто отвечает в чате"
+        title={`Кто отвечает: ${ROLE_INFO[role].label.toLowerCase()}`}
         style={{
           ...CAPS,
           display: 'flex', alignItems: 'center', gap: sp(1) + 2,

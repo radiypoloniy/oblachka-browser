@@ -10,6 +10,7 @@ import type { HubChatMessage, HubChatSessionMeta, HubMode } from '../../shared/i
 import { markdownComponents } from './aiMarkdown';
 import { HubComposer } from './ai/HubComposer';
 import { ChatFiles } from './ai/ChatFiles';
+import type { AiRole } from '../../shared/aiRouting';
 import { glassPlate } from '../styles/island';
 import DesktopScreen from './desktop/DesktopScreen';
 import Notebook from './Notebook';
@@ -98,7 +99,7 @@ export default function Hub({ tabId, onSubmit, onOpenSettings, isLightWindow = f
       : (
         // Большой AI-экран как блокнот (NotebookLM-подобный): 3 колонки, центр — существующий чат.
         <Notebook onBack={() => pickMode('tiles')}>
-          <AiChatView tabId={tabId} onModeChange={pickMode} onOpenSettings={onOpenSettings} />
+          <AiChatView tabId={tabId} onModeChange={pickMode} onOpenSettings={onOpenSettings} role="notebook" />
         </Notebook>
       )
   );
@@ -140,8 +141,9 @@ const QUICK_PROMPTS: { icon: LucideIcon; text: string }[] = [
   { icon: Utensils, text: 'Как правильно питаться?' },
 ];
 
-function AiChatView({ tabId, onModeChange, onOpenSettings }: {
-  tabId: string; onModeChange: (m: HubMode) => void; onOpenSettings: () => void;
+// role — куда идут запросы этой ленты: на новой вкладке «Чат», в блокноте «Блокнот, Студия и граф».
+function AiChatView({ tabId, onModeChange, onOpenSettings, role = 'chat' }: {
+  tabId: string; onModeChange: (m: HubMode) => void; onOpenSettings: () => void; role?: AiRole;
 }) {
   const [sessions, setSessions] = useState<HubChatSessionMeta[]>([]);
   const [messages, setMessages] = useState<HubChatMessage[]>([]);
@@ -223,7 +225,7 @@ function AiChatView({ tabId, onModeChange, onOpenSettings }: {
     // Заземление на источники блокнота: если web-поиск выключен, подмешиваем текст выбранных
     // источников (см. src/newtab/notebook.ts::getSelectedSourceContext). Web-grounding имеет приоритет.
     const sourcesContext = webGroundingActive ? undefined : (getSelectedSourceContext() ?? undefined);
-    window.oblako.sendHubChatMessage(tabId, trimmed, webGroundingActive, sourcesContext);
+    window.oblako.sendHubChatMessage(tabId, trimmed, webGroundingActive, sourcesContext, role === 'notebook');
   };
 
   // Глобус — тот же контур, что в aipanel.tsx: не настроено → в настройки, ничего не включаем;
@@ -392,7 +394,7 @@ function AiChatView({ tabId, onModeChange, onOpenSettings }: {
       fieldRef={textareaRef} input={input} setInput={setInput}
       onSend={() => send(input)} streaming={streaming} onNewChat={newChat}
       searxngConfigured={searxngConfigured} webGroundingActive={webGroundingActive}
-      onGlobeClick={handleGlobeClick}
+      onGlobeClick={handleGlobeClick} role={role}
     />
   );
 

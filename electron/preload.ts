@@ -489,8 +489,8 @@ const api: OblakoApi = {
 
   // AI-чат на Hub (см. electron/HubChatManager.ts) — send fire-and-forget, ответ стримом.
   // grounding — тоггл-глобус (см. Hub.tsx::AiChatView), свой от AI-панели.
-  sendHubChatMessage: (tabId: string, text: string, grounding: boolean, sourcesContext?: string) =>
-    ipcRenderer.send(IPC.HUB_CHAT_SEND, { tabId, text, grounding, sourcesContext }),
+  sendHubChatMessage: (tabId: string, text: string, grounding: boolean, sourcesContext?: string, notebook?: boolean) =>
+    ipcRenderer.send(IPC.HUB_CHAT_SEND, { tabId, text, grounding, sourcesContext, notebook }),
   onHubChatChunk: (cb: (payload: { tabId: string; text: string }) => void) => {
     const handler = (_e: unknown, payload: { tabId: string; text: string }) => cb(payload);
     ipcRenderer.on(IPC.HUB_CHAT_CHUNK, handler);

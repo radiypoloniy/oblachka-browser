@@ -793,7 +793,7 @@ export async function runChatMessage(
   onChunk?: (text: string) => void,
   // Прерывание уже идущего ответа (доезжает до llama.cpp). Заводится там, где ответ может
   // считаться долго и человеку нужна кнопка «Стоп» — см. electron/AiActivity.ts.
-  abort?: AbortSignal,
+  abort?: AbortSignal, role: AiRole = 'chat',  // панель — роль «Чат», блокнот и граф — своя, см. ROLE_INFO
 ): Promise<ChatOutcome> {
   // ⚠️ ОЧЕРЕДЬ И ГРЕВ — ТОЛЬКО ДЛЯ ВСТРОЕННОЙ МОДЕЛИ, и это починка живой жалобы «подключил
   // модель, но нихуя не работает». Раньше любой чат сперва поднимал локальную Qwen: на 4B это
@@ -803,7 +803,7 @@ export async function runChatMessage(
   //
   // ⚠️ Признак — kind === 'local', а НЕ caps().local. Второй означает «считается на этой машине»
   // и верен для Ollama на localhost — но встроенную Qwen ради Ollama греть тоже незачем.
-  const model = modelFor('chat', ensureLoaded, getLoadedModelId)
+  const model = modelFor(role, ensureLoaded, getLoadedModelId)
   const run = () => runChatMessageQueued(model, userText, history, onChunk, abort)
   return model.connection.kind === 'local' ? withQwenQueue(run) : run()
 }

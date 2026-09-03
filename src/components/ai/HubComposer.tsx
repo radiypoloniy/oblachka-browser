@@ -1,6 +1,7 @@
 import { Globe, MessageSquarePlus, Send } from 'lucide-react';
 import type { RefObject } from 'react';
 import { ModelChip } from './ModelChip';
+import type { AiRole } from '../../../shared/aiRouting';
 
 /**
  * Поле ввода чата хаба. Он же — центральная колонка блокнота: там стоит этот же AiChatView.
@@ -14,8 +15,10 @@ import { ModelChip } from './ModelChip';
  */
 export function HubComposer({
   fieldRef, input, setInput, onSend, streaming, onNewChat,
-  searxngConfigured, webGroundingActive, onGlobeClick,
+  searxngConfigured, webGroundingActive, onGlobeClick, role,
 }: {
+  /** Чья это лента: чат хаба или центральная колонка блокнота. См. ModelChip. */
+  role: AiRole
   fieldRef: RefObject<HTMLTextAreaElement>
   input: string
   setInput: (v: string) => void
@@ -59,7 +62,7 @@ export function HubComposer({
         >
           <Globe size={16} strokeWidth={2} />
         </button>
-        <ModelChip />
+        <ModelChip role={role} />
         <button
           onClick={onNewChat}
           title="Новый чат"

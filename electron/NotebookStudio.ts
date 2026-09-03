@@ -189,7 +189,8 @@ export async function generateStudio(
   const comparison = kind === 'infographic' && !!items && items.length > 1;
   const prompt = comparison ? buildComparisonPrompt(items!) : buildPrompt(kind, context);
   if (prompt === null) return { ok: false, error: 'Этот тип пока не поддерживается' };
-  const outcome = await runChatMessage(prompt, []);
+  // Роль «Блокнот, Студия и граф» — та же, что у страниц и подбора запросов рядом.
+  const outcome = await runChatMessage(prompt, [], undefined, undefined, 'notebook');
   if (!outcome.ok) return { ok: false, error: String(outcome.error) };
   if (kind === 'quiz') {
     const json = normalizeQuiz(outcome.out);

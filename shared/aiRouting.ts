@@ -74,6 +74,10 @@ export const ROLE_INFO: Readonly<Record<AiRole, RoleInfo>> = {
   translate: { role: 'translate', label: 'Перевод страницы целиком', leaves: 'текст всей страницы, батчами', sensitivity: 'page', interactive: false },
   page: { role: 'page', label: 'Работа со страницей', leaves: 'выделенный фрагмент — перевод, пересказ, упрощение, объяснение; изменения страницы; карточки товаров', sensitivity: 'page', interactive: false },
   chat: { role: 'chat', label: 'Чат', leaves: 'ваши сообщения и вложенный контекст вкладки', sensitivity: 'page', interactive: false },
+  // ⚠️ ПОДПИСЬ ЗДЕСЬ — ОБЕЩАНИЕ, и оно однажды уже было ложным. Роль называлась «Блокнот, Студия и
+  // граф», а Студия и чат узла графа ходили через роль «Чат»: человек выбирал облачную модель в
+  // блокноте, а саммари, тесты и страницы рядом продолжала считать встроенная Qwen. Всё, что
+  // перечислено в подписи роли, обязано ходить именно ей — иначе строка в настройках врёт.
   notebook: { role: 'notebook', label: 'Блокнот, Студия и граф', leaves: 'текст источников, которые вы добавили сами', sensitivity: 'page', interactive: false },
   search: { role: 'search', label: 'Поиск и адресная строка', leaves: 'запрос и заголовки из истории, вкладок и настроек', sensitivity: 'profile', interactive: true },
   organize: { role: 'organize', label: 'Порядок и имена', leaves: 'заголовки и адреса вкладок, закладок и загрузок', sensitivity: 'profile', interactive: false },

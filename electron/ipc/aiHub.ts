@@ -28,8 +28,10 @@ export function registerAiHubIpc(d: IpcDeps): void {
   // AI-чат на Hub (см. electron/HubChatManager.ts) — только локальная модель в этом заходе.
   // send — fire-and-forget (не invoke): ответ идёт стримом чанков + финальным результатом,
   // так проще, чем тащить длинный запрос через invoke (тот же приём, что у AI-панели).
-  ipcMain.on(IPC.HUB_CHAT_SEND, (e, payload: { tabId: string; text: string; grounding: boolean; sourcesContext?: string }) => {
+  ipcMain.on(IPC.HUB_CHAT_SEND, (e, payload: { tabId: string; text: string; grounding: boolean; sourcesContext?: string; notebook?: boolean }) => {
     const { tabId, text, grounding, sourcesContext } = payload;
+    // Блокнот целиком (беседа, Студия, страницы) идёт своей ролью — см. HubChatManager.sendMessage.
+    const role: AiRole = payload.notebook ? 'notebook' : 'chat';
     // Адресат ответа фиксируется в момент запроса: стрим приходит асинхронно, и к его концу
     // фокус может быть уже в другом окне — искать окно заново было бы поздно и неверно.
     const target = chromeOf(e);
@@ -57,7 +59,7 @@ export function registerAiHubIpc(d: IpcDeps): void {
           return;
         }
         const promptText = buildGroundingPrompt(text, search.results);
-        const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, { promptText, sources: search.results });
+        const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, { promptText, sources: search.results }, role);
         sendResult(sessionId, outcome);
         return;
       }
@@ -67,11 +69,11 @@ export function registerAiHubIpc(d: IpcDeps): void {
         const promptText =
           'Отвечай, опираясь на приведённые источники. Если ответа в них нет — так и скажи, не выдумывай.\n\n'
           + sourcesContext + '\n\nВопрос: ' + text;
-        const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, { promptText, sources: [] });
+        const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, { promptText, sources: [] }, role);
         sendResult(sessionId, outcome);
         return;
       }
-      const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk);
+      const { outcome, sessionId } = await hubChat.sendMessage(tabId, text, onChunk, undefined, role);
       sendResult(sessionId, outcome);
     })();
   });

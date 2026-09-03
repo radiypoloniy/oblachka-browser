@@ -146,7 +146,7 @@ export default function NodeChatView({ graphId, nodeId }: { graphId: number; nod
           {/* ⚠️ Управление ПОД полем: метка модели в одной строке с ним отнимала ширину и обрезала
               плейсхолдер. Разбор — в дизайн-доке метки. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <ModelChip />
+          <ModelChip role="notebook" />
           <button
             type="button" onClick={clear} disabled={busy || messages.length === 0}
             title="Очистить переписку"

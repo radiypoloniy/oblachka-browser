@@ -46,11 +46,16 @@ export function connectionsState(): AiConnectionsState {
  *
  * ⚠️ Ключ приходит ПАРАМЕТРОМ, а не читается из хранилища: проба нужна и до сохранения — человек
  * жмёт «Проверить» на ещё не заведённом подключении.
+ *
+ * ⚠️ А `null` означает «возьми сохранённый», и это не то же самое, что «ключа нет». Кнопка
+ * «Проверить» у заведённой карточки обязана работать, но ключа у интерфейса нет и быть не должно —
+ * он границу IPC не пересекает. У ещё не сохранённого подключения в хранилище пусто, и поведение
+ * остаётся прежним.
  */
 export async function probeConnection(conn: Connection, key: string | null): Promise<AiConnectionTest> {
   let provider: Provider;
   try {
-    provider = buildProvider(conn, key);
+    provider = buildProvider(conn, key ?? KeyStore.getKey(conn.id));
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

@@ -59,7 +59,7 @@ export async function sendChatMessage(
   store.appendChatMessage(graphId, nodeId, 'user', question);
 
   try {
-    const outcome = await runChatMessage(prompt, history, (chunk) => sink.chunk(chunk));
+    const outcome = await runChatMessage(prompt, history, (chunk) => sink.chunk(chunk), undefined, 'notebook');
     if (!outcome.ok) { sink.done({ ok: false, error: String(outcome.error) }); return; }
     const answer = outcome.out.trim();
     if (!answer) { sink.done({ ok: false, error: 'Модель вернула пустой ответ' }); return; }

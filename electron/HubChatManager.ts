@@ -5,6 +5,7 @@ import { beginActivity } from './AiActivity';
 import { sqliteOpenFailed } from './sqliteOpenFailed';
 import { appendSearxngSources, type SearxngResult } from './SearxngSearch';
 import type { AiFileMeta } from '../shared/aiAttachments';
+import type { AiRole } from '../shared/aiRouting';
 
 // better-sqlite3 — нативный модуль, может отсутствовать если пересборка не прошла.
 // Грузим динамически, чтобы браузер запускался даже без C++ инструментов (тот же приём,
@@ -88,13 +89,17 @@ export class HubChatManager {
   async sendMessage(
     tabId: string, text: string, onChunk?: (chunk: string) => void,
     grounding?: { promptText: string; sources: SearxngResult[] },
+    // ⚠️ Одна и та же лента живёт в двух местах: на новой вкладке это чат хаба (роль «Чат»), а в
+    // блокноте — его центральная колонка (роль «Блокнот, Студия и граф»). Движок общий, маршрут
+    // разный: иначе в блокноте беседа шла бы одной моделью, а Студия рядом — другой.
+    role: AiRole = 'chat',
   ): Promise<{ outcome: ChatOutcome; sessionId: number | null }> {
     const ctx = this.#getOrCreateCtx(tabId);
     // ⚠️ Ответ по источникам считается долго — в блокноте контекст доходит до 24 000 знаков.
     // Поэтому он тоже заявляется в общий реестр: светодиод в AI-панели и кнопка «Стоп» должны
     // работать и здесь, а не только на генерации документа.
     const act = beginActivity('Отвечаю по источникам');
-    const outcome = await runChatMessage(grounding?.promptText ?? text, ctx.history, onChunk, act.signal);
+    const outcome = await runChatMessage(grounding?.promptText ?? text, ctx.history, onChunk, act.signal, role);
     act.done();
     if (outcome.ok) {
       ctx.history = outcome.history;
