@@ -7,6 +7,9 @@ import {
   activateTab, activePageLinks, activePageText, closeTab, listTabs, openTab, readUrl,
   screenshotActiveTab, searchBookmarks, searchHistory, type McpShot,
 } from './McpTools';
+import {
+  MCP_PROMPTS, findPrompt, missingArgs, promptArgs,
+} from '../../shared/mcpPrompts';
 import { askToConnect, isApproved, stancesFor, touchClient } from './McpClients';
 import { confirmWrite } from './McpConfirm';
 import type { HistoryManager } from '../HistoryManager';
@@ -173,7 +176,7 @@ export async function dispatch(
     case 'initialize':
       return ok(req.id, {
         protocolVersion: picked.version,
-        capabilities: { tools: { listChanged: false } },
+        capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
         serverInfo: SERVER_INFO,
       });
 
@@ -181,7 +184,7 @@ export async function dispatch(
     case 'server/discover':
       return ok(req.id, {
         supportedVersions: MCP_SUPPORTED_VERSIONS,
-        capabilities: { tools: { listChanged: false } },
+        capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
         _meta: { [`${META}serverInfo`]: SERVER_INFO },
       });
 
@@ -190,6 +193,36 @@ export async function dispatch(
 
     case 'tools/list':
       return ok(req.id, toolList());
+
+    // ⚠️ Промпты — ТЕКСТ для чата человека, а не действие: клиент показывает их списком (в Claude
+    // Desktop — слэш-командами) и подставляет от его имени. Агентного цикла тут нет, каждый вызов
+    // инструмента внутри сценария проходит те же разрешения (разбор — в shared/mcpPrompts.ts).
+    case 'prompts/list':
+      return ok(req.id, {
+        prompts: MCP_PROMPTS.map((p) => ({
+          name: p.name,
+          title: p.title,
+          description: p.description,
+          ...(p.arguments ? { arguments: p.arguments } : {}),
+        })),
+      });
+
+    case 'prompts/get': {
+      const wanted = typeof req.params?.name === 'string' ? req.params.name : '';
+      const spec = findPrompt(wanted);
+      // ⚠️ Ошибка ПРОТОКОЛА, а не результата: промпт — это часть каталога сервера, и «нет такого
+      // сценария» означает, что клиент спросил несуществующее, а не что задача не удалась.
+      if (!spec) return fail(req.id, -32602, `Unknown prompt: ${wanted}`);
+      const args = promptArgs(req.params?.arguments);
+      const missing = missingArgs(spec, args);
+      if (missing.length > 0) {
+        return fail(req.id, -32602, `Missing required argument: ${missing.join(', ')}`);
+      }
+      return ok(req.id, {
+        description: spec.description,
+        messages: [{ role: 'user', content: { type: 'text', text: spec.build(args) } }],
+      });
+    }
 
     case 'tools/call':
       return callTool(req, deps, session);

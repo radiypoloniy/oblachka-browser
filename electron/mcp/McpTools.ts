@@ -106,6 +106,21 @@ export async function activePageText(): Promise<McpPageText> {
 /** Пауза перед второй попыткой снимка: столько занимает первая компоновка кадра. */
 const EMPTY_FRAME_RETRY_MS = 400;
 
+/**
+ * Снять кадр, не роняя вызов.
+ *
+ * ⚠️ `null` вместо исключения намеренно: «поверхность ещё не готова» — это НЕ ошибка, а состояние
+ * вкладки, открытой секунду назад. Вызывающий подождёт и попробует ещё раз; настоящую поломку он
+ * отличит по второй неудаче подряд.
+ */
+async function tryCapture(wc: Electron.WebContents): Promise<Electron.NativeImage | null> {
+  try {
+    return await wc.capturePage();
+  } catch {
+    return null;
+  }
+}
+
 export interface McpShot {
   ok: boolean;
   error?: string;
@@ -150,16 +165,17 @@ export async function screenshotActiveTab(): Promise<McpShot> {
     // ⚠️ capturePage ждёт следующего скомпонованного кадра и на загруженной машине занимает
     // заметное время — урок оплачен в ScreenshotManager.ts.
     //
-    // ⚠️ ОДНА ПОВТОРНАЯ ПОПЫТКА, и это не перестраховка: у страницы, открытой секунду назад,
-    // первый кадр приходит пустым — живой драйвер поймал это плавающим провалом. Агент просит
-    // снимок ровно тогда, когда вкладку только открыли, и «пустой кадр» он прочитает как
-    // «страница пустая» и уверенно соврёт человеку.
-    let shot = await wc.capturePage();
-    if (shot.isEmpty()) {
+    // ⚠️ ОДНА ПОВТОРНАЯ ПОПЫТКА, и это не перестраховка: агент просит снимок ровно тогда, когда
+    // вкладку только открыли, а у такой вкладки поверхность ещё не готова. Живой драйвер поймал
+    // оба вида этой неготовности — пустой кадр и отказ «current display surface not available».
+    // Пустой кадр агент прочитает как «страница пустая» и уверенно соврёт человеку.
+    let shot = await tryCapture(wc);
+    if (!shot || shot.isEmpty()) {
       await new Promise((r) => setTimeout(r, EMPTY_FRAME_RETRY_MS));
       if (wc.isDestroyed()) return { ok: false, error: 'The tab died while taking the screenshot.' };
-      shot = await wc.capturePage();
+      shot = await tryCapture(wc);
     }
+    if (!shot) return { ok: false, error: 'The page is not ready to be captured yet.' };
     if (shot.isEmpty()) return { ok: false, error: 'The page produced an empty frame (still rendering?).' };
     const size = shot.getSize();
     // Только ширина — высоту NativeImage считает сам, по пропорции кадра. Кадр уже, чем предел,

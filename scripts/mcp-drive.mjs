@@ -216,6 +216,15 @@ await withStand(async (ctx) => {
   await ctx.chrome.evaluate(`window.oblako.createTab(${JSON.stringify(ctx.echo.url('/?shot=1'))})`);
   // ⚠️ Ждём с запасом: capturePage возвращает пустой кадр, пока страница не скомпонована, и на
   // загруженной машине первая компоновка занимает заметно больше, чем загрузка эхо-страницы.
+  //
+  // ⚠️ Окно поднимаем ЯВНО: у окна, не выведенного на экран, Chromium отвечает «current display
+  // surface not available for capture» — снять можно только то, что отрисовано. В бою это честный
+  // отказ (человек свернул браузер), а в прогоне — ложное красное.
+  await ctx.evalMain(`(() => {
+    const w = ${E}.BrowserWindow.getAllWindows().filter((x) => x.getParentWindow() === null)[0];
+    if (w) { w.show(); w.focus(); }
+    return true;
+  })()`);
   await wait(3500);
   const shotCall = await c.send('tools/call', { name: 'page_screenshot', arguments: {} });
   const parts = shotCall?.result?.content ?? [];
@@ -237,6 +246,35 @@ await withStand(async (ctx) => {
   // ⚠️ Машинной копии у снимка нет намеренно: туда уехал бы тот же base64 вторым экземпляром.
   check('машинной копии снимка нет', shotCall?.result?.structuredContent === undefined,
     JSON.stringify(shotCall?.result?.structuredContent ?? null).slice(0, 80));
+
+  // ── Готовые сценарии ──────────────────────────────────────────────────────
+  //
+  // ⚠️ Промпты нужны потому, что человек не знает, что браузер вообще умеет: он сидит в чужой
+  // программе и должен догадаться сам. Клиент показывает их списком (в Claude Desktop — слэш-
+  // командами). Проверяем, что сервер объявляет их в возможностях и отдаёт по протоколу: без
+  // объявления клиент за списком даже не придёт.
+  const caps = await c.send('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: CLIENT, version: '1' } });
+  check('сервер объявляет сценарии в возможностях',
+    !!caps?.result?.capabilities?.prompts, JSON.stringify(caps?.result?.capabilities ?? {}));
+
+  const promptList = await c.send('prompts/list', {});
+  const prompts = promptList?.result?.prompts ?? [];
+  check('сценарии отдаются списком', prompts.length >= 4, `их ${prompts.length}`);
+  check('у каждого есть имя и человеческое название',
+    prompts.every((p) => p.name && p.title && p.description), JSON.stringify(prompts).slice(0, 200));
+
+  const got = await c.send('prompts/get', { name: 'find_saved', arguments: { topic: 'bergamot' } });
+  const msg = got?.result?.messages?.[0]?.content?.text ?? '';
+  check('сценарий отдаёт готовый текст', msg.includes('bergamot') && msg.includes('bookmarks_search'),
+    msg.slice(0, 160));
+  // ⚠️ Обязательный аргумент обязан требоваться: «найди у меня про undefined» — это модель,
+  // честно ищущая пустоту.
+  const без = await c.send('prompts/get', { name: 'find_saved', arguments: {} });
+  check('без обязательного аргумента — отказ протокола', без?.error?.code === -32602,
+    JSON.stringify(без).slice(0, 160));
+  const нет = await c.send('prompts/get', { name: 'do_my_taxes', arguments: {} });
+  check('незнакомый сценарий — тоже отказ протокола', нет?.error?.code === -32602,
+    JSON.stringify(нет).slice(0, 160));
 
   // ── Поиск по закладкам ────────────────────────────────────────────────────
   //
