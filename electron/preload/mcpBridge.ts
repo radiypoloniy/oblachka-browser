@@ -9,7 +9,7 @@
 // его знает шим, читающий файл в userData (см. electron/mcp/McpPipe.ts).
 import { ipcRenderer } from 'electron';
 import { IPC } from '../../shared/ipc';
-import type { McpCallLog, McpServerState } from '../../shared/ipc';
+import type { McpCallLog, McpClientTarget, McpInstallResult, McpServerState } from '../../shared/ipc';
 
 export const mcpBridge = {
   getMcpState: () => ipcRenderer.invoke(IPC.MCP_STATE) as Promise<McpServerState>,
@@ -20,6 +20,9 @@ export const mcpBridge = {
     ipcRenderer.invoke(IPC.MCP_REVOKE, key) as Promise<McpServerState>,
   setMcpStance: (key: string, tool: string, stance: 'ask' | 'allow' | 'deny') =>
     ipcRenderer.invoke(IPC.MCP_TOOL_SET, key, tool, stance) as Promise<McpServerState>,
+  scanMcpClients: () => ipcRenderer.invoke(IPC.MCP_CLIENTS_SCAN) as Promise<McpClientTarget[]>,
+  installMcpClient: (id: string) =>
+    ipcRenderer.invoke(IPC.MCP_CLIENT_INSTALL, id) as Promise<McpInstallResult>,
   onMcpActivity: (cb: (call: McpCallLog) => void) => {
     const handler = (_e: unknown, call: McpCallLog) => cb(call);
     ipcRenderer.on(IPC.MCP_ACTIVITY, handler);

@@ -15,7 +15,7 @@ import type { GraphChatMessage, GraphDoc, GraphMeta, GraphNodeVersion, GraphProg
 import type { ImagePreset } from '../imagePresets';
 import type { AutomationRule } from '../rules';
 import type { ProfilesState, ProfileSettings, ProfileAvatar, ProfileLook } from '../profiles';
-import type { ContentBounds, GenProgress, GenWebResult, McpCallLog, McpServerState, OrganizeCluster, OrganizeProposal, RuleParseOutcome, GenSpecOutcome, SearchChipCandidate, SearchChipsConfig } from './core';
+import type { ContentBounds, GenProgress, GenWebResult, McpCallLog, McpClientTarget, McpInstallResult, McpServerState, OrganizeCluster, OrganizeProposal, RuleParseOutcome, GenSpecOutcome, SearchChipCandidate, SearchChipsConfig } from './core';
 import type { PasswordAddInput, PasswordCopyField, PasswordGenerateOptions, PasswordIndicatorState, PasswordMeta, PasswordUpdateInput, VpnConnectionState, VpnServerMeta, VpnStatus, VpnSubscriptionResult } from './security';
 import type { OmniboxPanel, OmniboxRecommendEdit, RecommendedSite, SuggestDropdownItem } from './omnibox';
 import type { BangDefWire, BangsSnapshot, BergamotStatus, CatalogEntry, DeleteModelResult, DerivedBangCandidate, DownloadProgress, HardwareSnapshot, HubChatMessage, HubChatOutcome, HubChatSessionMeta, HubMode, ImportBangsResult, InstalledModel, ModelDownloadSpec, ModelLoadMode, PageTranslateProgress, PageTranslateState, SetDefaultModelResult, Skill, TranslationEngineId, UpdateStatus } from './ai';
@@ -406,6 +406,10 @@ export interface AiApi {
   getMcpCalls(): Promise<McpCallLog[]>;
   revokeMcpClient(key: string): Promise<McpServerState>;
   setMcpStance(key: string, tool: string, stance: 'ask' | 'allow' | 'deny'): Promise<McpServerState>;
+  /** Кого из MCP-клиентов нашли на этой машине и что будет с его конфигом по нажатию. */
+  scanMcpClients(): Promise<McpClientTarget[]>;
+  /** Дописать нашу запись в конфиг клиента. ⚠️ Правит чужой файл — только по действию человека. */
+  installMcpClient(id: string): Promise<McpInstallResult>;
   /** Пуш на каждый вызов извне — им живёт метка «браузером управляет внешний агент». */
   onMcpActivity(cb: (call: McpCallLog) => void): () => void;
   onUpdateStatusChanged(cb: (s: UpdateStatus) => void): () => void;

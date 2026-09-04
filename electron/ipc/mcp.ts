@@ -6,6 +6,7 @@ import { connectCommand, initMcp, mcpState, setMcpEnabled, stopMcp } from '../mc
 import { recentCalls } from '../mcp/McpLog';
 import { answer, setMcpPromptHeight } from '../McpPromptManager';
 import { listClients, revokeClient, setStance } from '../mcp/McpClients';
+import { installClient, scanClients } from '../mcp/McpInstall';
 import { forgetApprovals } from '../mcp/McpConfirm';
 import type { IpcDeps } from './deps';
 
@@ -43,6 +44,11 @@ export function registerMcpIpc(d: IpcDeps): void {
     return state();
   });
   ipcMain.handle(IPC.MCP_CALLS, () => recentCalls());
+  // ⚠️ Осмотр только читает чужие конфиги, установка — пишет, и это разные каналы намеренно:
+  // раздел настроек осматривает сам при открытии, а правка чужого файла обязана оставаться
+  // отдельным действием человека.
+  ipcMain.handle(IPC.MCP_CLIENTS_SCAN, () => scanClients());
+  ipcMain.handle(IPC.MCP_CLIENT_INSTALL, (_e, id: string) => installClient(String(id ?? '')));
   // ⚠️ Свои маленькие каналы карточки (mcp-prompt:*), а не контракт хрома: вью задаёт один
   // вопрос и исчезает — тот же приём, что у поповера разрешений и findbar.
   ipcMain.on('mcp-prompt:respond', (_e, id: string, granted: boolean, remember: boolean) => {

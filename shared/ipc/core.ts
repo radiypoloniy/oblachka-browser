@@ -366,6 +366,29 @@ export interface McpServerState {
   clients: McpClientInfo[];
 }
 
+/**
+ * MCP-клиент, установленный на этой машине, и что с его конфигом будет по нажатию.
+ *
+ * План: create — файла ещё нет; add — допишем свою запись; replace — запись есть, но устарела
+ * (переехал профиль или обновилось приложение); same — уже прописано ровно так; blocked — файл
+ * читать можно, а править нельзя (см. problem), и тогда человеку показывается блок для ручной
+ * вставки.
+ */
+export interface McpClientTarget {
+  id: string;
+  label: string;
+  /** Полный путь к конфигу — человек должен видеть, КУДА мы собираемся писать. */
+  file: string;
+  /** Только наша запись, для копирования руками. Чужих серверов в ней нет. */
+  block: string;
+  plan: 'create' | 'add' | 'replace' | 'same' | 'blocked';
+  problem?: 'not-json' | 'not-object' | 'section-not-object';
+}
+
+export type McpInstallResult =
+  | { ok: true; plan: 'create' | 'add' | 'replace' | 'same'; file: string; backup?: string }
+  | { ok: false; error: string };
+
 export interface McpClientInfo {
   key: string;
   label: string;

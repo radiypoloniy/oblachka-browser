@@ -3,6 +3,7 @@ import { Copy, Check, ExternalLink } from 'lucide-react';
 import type { McpServerState } from '../../../shared/ipc';
 import { Fact, FactGrid, InkSwitch, InlineHint, MasterSwitch, Subsection, btnGhost } from './kit';
 import { CAPS, RADIUS, pad, sp } from '../../styles/system';
+import { McpClientsBlock } from './McpClientsBlock';
 
 // «Браузер как инструмент» — включение MCP-сервера и то, что человек обязан о нём знать.
 //
@@ -77,6 +78,11 @@ export function McpBlock() {
             />
             <Fact label="Канал" hint="локальный, с секретом" value="Без порта" active />
           </FactGrid>
+
+          {/* ⚠️ Кнопка идёт ПЕРЕД командой, а команда остаётся ниже. Для Claude Desktop, Cursor и
+              VS Code подключение — это дописать объект в их JSON, и мы умеем сделать это сами;
+              команда нужна Claude Code (у него свой CLI) и всем, кого мы на машине не нашли. */}
+          <McpClientsBlock />
 
           <CommandLine command={state.command} copied={copied} onCopy={copy} />
 

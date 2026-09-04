@@ -220,6 +220,10 @@ export const SERVICES = {
   MCP_CALLS: 'mcp:calls', // renderer → main: журнал последних вызовов, McpCallLog[]
   MCP_REVOKE: 'mcp:revoke',   // renderer → main: (clientKey) — отозвать доступ у программы
   MCP_TOOL_SET: 'mcp:tool-set', // renderer → main: (clientKey, tool, enabled) — тумблер инструмента
+  // Подключение к чужому клиенту в одно нажатие. ⚠️ scan только ЧИТАЕТ чужие конфиги; правит их
+  // install, и зовётся он из карточки, где показано, что именно будет дописано в этот файл.
+  MCP_CLIENTS_SCAN: 'mcp:clients-scan',    // renderer → main: McpClientTarget[]
+  MCP_CLIENT_INSTALL: 'mcp:client-install', // renderer → main: (clientId) -> McpInstallResult
   // ⚠️ Пуш, а не опрос: метка «браузером управляет внешний агент» обязана появляться В МОМЕНТ
   // вызова, а не через секунду. Раз в секунду опрашивать main ради тихой метки — это работа,
   // которая идёт всегда, ради события, которого почти никогда нет.

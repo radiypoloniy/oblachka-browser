@@ -202,6 +202,8 @@
   "IMPORT_RUN=import:run",
   "MCP_ACTIVITY=mcp:activity",
   "MCP_CALLS=mcp:calls",
+  "MCP_CLIENTS_SCAN=mcp:clients-scan",
+  "MCP_CLIENT_INSTALL=mcp:client-install",
   "MCP_REVOKE=mcp:revoke",
   "MCP_SET=mcp:set",
   "MCP_STATE=mcp:state",
